@@ -1,0 +1,169 @@
+# Lavalink v4 - Latest config with YouTube + LavaSrc (Spotify, Apple Music, Deezer, etc.)
+# Docs: https://lavalink.dev/configuration/config/file
+# YouTube plugin: https://github.com/lavalink-devs/youtube-source
+# If you see "Must find sig function" / AllClientsFailedException, YouTube changed their
+# player script. Options: 1) Update youtube-plugin to latest, 2) Use a remote cipher server
+# (see youtube-source README), 3) Try different clients below (TVHTML5_SIMPLY often works).
+
+server:
+  port: 2333
+  # Bind inside the container. Port 2333 is exposed only to the private
+  # Compose network; compose.yaml does not publish it to the host.
+  address: 0.0.0.0
+  http2:
+    enabled: false
+
+# Root-level plugins: config for each plugin (names must match plugin expectations)
+plugins:
+  youtube:
+    enabled: true
+
+    oauth:
+      enabled: true
+      refreshToken: "${YOUTUBE_REFRESH_TOKEN:}"
+# 
+    allowSearch: true
+    allowDirectVideoIds: true
+    allowDirectPlaylistIds: true
+
+    clients:
+      - TV
+      - TVHTML5_SIMPLY
+      - ANDROID_VR
+      - WEB
+      - MWEB
+      - ANDROID_MUSIC
+      - WEBEMBEDDED
+      - MUSIC
+
+    clientOptions:
+      MUSIC:
+        videoLoading: false
+        playlistLoading: false
+
+      WEB:
+        playback: false
+
+      TVHTML5_SIMPLY:
+        playlistLoading: false
+
+    remoteCipher:
+      # url: "http://127.0.0.1:8001"
+      # password: "YOUR_CIPHER_PASSWORD"
+      url: "https://cipher.kikkia.dev/"
+      userAgent: "smilodon"
+
+  # LavaSrc: Spotify, Apple Music, Deezer, and more (enable sources and add credentials below)
+  lavasrc:
+    providers:
+      - "ytsearch:\"%ISRC%\""
+      - "ytsearch:%QUERY%"
+      - "scsearch:%QUERY%"
+      - "spsearch:%QUERY%"
+    sources:
+      spotify: true
+      applemusic: true
+      deezer: false
+      yandexmusic: false
+      flowerytts: false
+      youtube: false
+      vkmusic: false
+      tidal: false
+      qobuz: false
+      ytdlp: false
+      jiosaavn: false
+    lyrics-sources:
+      spotify: false
+      deezer: false
+      youtube: false
+      lrcLib: true
+    spotify:
+      # Get from https://developer.spotify.com/dashboard/applications
+      clientId: "${SPOTIFY_CLIENT_ID:}"
+      clientSecret: "${SPOTIFY_CLIENT_SECRET:}"
+      countryCode: "US"
+      playlistLoadLimit: 6
+      albumLoadLimit: 6
+    applemusic:
+      countryCode: "US"
+      # Get token: https://github.com/topi314/LavaSrc#apple-music
+      mediaAPIToken: ""
+      playlistLoadLimit: 6
+      albumLoadLimit: 6
+    deezer:
+      # ARL cookie for Deezer; see https://github.com/topi314/LavaSrc#deezer
+      arl: ""
+      formats: ["MP3_320", "MP3_256", "MP3_128", "MP3_64"]
+
+lavalink:
+  plugins:
+    - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.2"
+    - dependency: "com.github.topi314.lavasrc:lavasrc-plugin:4.8.1"
+  pluginsDir: "./plugins"
+  server:
+    password: "${LAVALINK_PASSWORD}"
+    sources:
+      youtube: false
+      bandcamp: true
+      soundcloud: true
+      twitch: true
+      vimeo: true
+      nico: true
+      http: true
+      local: false
+    filters:
+      volume: true
+      equalizer: true
+      karaoke: true
+      timescale: true
+      tremolo: true
+      vibrato: true
+      distortion: true
+      rotation: true
+      channelMix: true
+      lowPass: true
+    nonAllocatingFrameBuffer: false
+    bufferDurationMs: 400
+    frameBufferDurationMs: 5000
+    opusEncodingQuality: 10
+    resamplingQuality: LOW
+    trackStuckThresholdMs: 10000
+    useSeekGhosting: true
+    youtubePlaylistLoadLimit: 6
+    playerUpdateInterval: 5
+    youtubeSearchEnabled: true
+    soundcloudSearchEnabled: true
+    gc-warnings: true
+    timeouts:
+      connectTimeoutMs: 3000
+      connectionRequestTimeoutMs: 3000
+      socketTimeoutMs: 3000
+
+metrics:
+  prometheus:
+    enabled: false
+    endpoint: /metrics
+
+sentry:
+  dsn: ""
+  environment: ""
+
+logging:
+  file:
+    path: ./logs/
+  level:
+    root: INFO
+    lavalink: INFO
+    dev.lavalink.youtube.http.YoutubeOauth2Handler: INFO
+  request:
+    enabled: true
+    includeClientInfo: true
+    includeHeaders: false
+    includeQueryString: true
+    includePayload: true
+    maxPayloadLength: 10000
+    beforeRequest: false
+  logback:
+    rollingpolicy:
+      max-file-size: 1GB
+      max-history: 30
