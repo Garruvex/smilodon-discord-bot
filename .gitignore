@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+.env
+*.log
+*.tsbuildinfo
+config/local/
+config/instances/*.env
+!config/instances/*.env.example
+data/local/
+data/instances/
+tools/local/
+lavalink/plugins/
+lavalink/logs/

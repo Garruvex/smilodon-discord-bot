@@ -1,0 +1,64 @@
+schemaVersion: 1
+
+guild:
+  id: "123456789012345678"
+  name: "Example Community"
+
+branding:
+  displayName: "Community Bot"
+  embedColor: "#3B82F6"
+  # Optional image displayed when the player is idle.
+  idleImageUrl: null
+
+features:
+  common: true
+  diagnostics: true
+  music: true
+  chatbot: false
+
+roles:
+  botAdministrator:
+    - "234567890123456789"
+  musicController:
+    - "345678901234567890"
+  restricted:
+    - "456789012345678901"
+  # Members with this role may use @bot mention chat. Bot administrators inherit access.
+  chatbot: []
+
+channels:
+  # An empty list allows music commands in every channel.
+  musicCommands:
+    - "567890123456789012"
+  controlPanel: null
+  auditLog: null
+  # An empty list permits mention chat in every channel when enabled.
+  chatbot: []
+
+chat:
+  # Null loads config/local/personalities/<guild-id>.md when present.
+  personalityFile: null
+  # Set automatically by /settings chatbot personality:<markdown attachment>.
+  personalityAsset: null
+  cooldownSeconds: 30
+  deniedMessage: "This feature requires a premium subscription. Try looking richer and ask again."
+  # Responses API capabilities; disabled by default for cost and privacy.
+  webSearchEnabled: false
+  imageInputEnabled: false
+  includeSources: true
+  maxImagesPerRequest: 2
+
+music:
+  volume:
+    default: 75
+    maximum: 150
+    buttonStep: 10
+
+  emptyQueue:
+    action: disconnect
+    delayMs: 120000
+
+  emptyChannel:
+    action: pause
+    gracePeriodMs: 30000
+    resumeWhenOccupied: true
