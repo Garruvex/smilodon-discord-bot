@@ -1,0 +1,137 @@
+import {
+  ChannelType,
+  PermissionFlagsBits,
+  SlashCommandBuilder,
+} from "discord.js";
+
+import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
+import type { GuildSetupService } from "../../../../application/setup/guild-setup-service.js";
+import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
+
+export class SetupCommand implements BotCommand {
+  public readonly definition = new SlashCommandBuilder()
+    .setName("setup")
+    .setDescription("Configures this server for the bot.")
+    .setDMPermission(false)
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("initialize")
+        .setDescription("Creates or adopts roles and a persistent music channel.")
+        .addStringOption((option) =>
+          option
+            .setName("display-name")
+            .setDescription("Display name used by this server profile.")
+            .setMaxLength(80),
+        )
+        .addStringOption((option) =>
+          option
+            .setName("idle-image-url")
+            .setDescription("Stable HTTPS image URL shown when nothing is playing."),
+        )
+        .addChannelOption((option) =>
+          option
+            .setName("control-channel")
+            .setDescription("Existing music control channel; one is created if omitted.")
+            .addChannelTypes(ChannelType.GuildText),
+        )
+        .addRoleOption((option) =>
+          option
+            .setName("administrator-role")
+            .setDescription("Existing bot administrator role; one is created if omitted."),
+        )
+        .addRoleOption((option) =>
+          option
+            .setName("music-controller-role")
+            .setDescription("Existing music controller role; one is created if omitted."),
+        )
+        .addRoleOption((option) =>
+          option
+            .setName("restricted-role")
+            .setDescription("Existing restricted role; one is created if omitted."),
+        ),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand.setName("status").setDescription("Shows this server's setup status."),
+    );
+
+  public readonly module = CommandModule.Bootstrap;
+  public readonly access = {
+    ...publicAccessPolicy,
+    allowUnconfiguredGuild: true,
+    requiredMemberPermissions: [PermissionFlagsBits.ManageGuild],
+  };
+
+  public constructor(private readonly setupService: GuildSetupService) {}
+
+  public async execute(context: CommandContext): Promise<void> {
+    if (!context.interaction.inCachedGuild()) {
+      await context.responses.reply("Setup is only available in a server.");
+      return;
+    }
+
+    const subcommand = context.interaction.options.getSubcommand(true);
+    switch (subcommand) {
+      case "initialize":
+        await this.initialize(context);
+        return;
+      case "status":
+        await this.status(context);
+        return;
+      default:
+        throw new Error(`Unsupported setup subcommand: ${subcommand}`);
+    }
+  }
+
+  private async initialize(context: CommandContext): Promise<void> {
+    if (!context.interaction.inCachedGuild()) return;
+    await context.responses.defer();
+
+    const selectedChannel = context.interaction.options.getChannel("control-channel");
+    const controlChannel = selectedChannel?.type === ChannelType.GuildText
+      ? selectedChannel
+      : null;
+
+    const result = await this.setupService.initialize({
+      guild: context.interaction.guild,
+      initializedBy: context.interaction.member,
+      displayName:
+        context.interaction.options.getString("display-name") ??
+        context.interaction.client.user.username,
+      idleImageUrl: context.interaction.options.getString("idle-image-url"),
+      controlChannel,
+      botAdministratorRole:
+        context.interaction.options.getRole("administrator-role"),
+      musicControllerRole:
+        context.interaction.options.getRole("music-controller-role"),
+      restrictedRole: context.interaction.options.getRole("restricted-role"),
+    });
+
+    await context.responses.edit(
+      [
+        "Server setup completed.",
+        `Control channel: <#${result.controlChannelId}>`,
+        `Bot administrator: <@&${result.botAdministratorRoleId}>`,
+        `Music controller: <@&${result.musicControllerRoleId}>`,
+        `Restricted role: <@&${result.restrictedRoleId}>`,
+        `Synchronized commands: ${result.deployedCommandCount}`,
+      ].join("\n"),
+    );
+  }
+
+  private async status(context: CommandContext): Promise<void> {
+    if (!context.interaction.guildId) return;
+    const status = this.setupService.status(context.interaction.guildId);
+
+    await context.responses.reply({
+      content: status.configured
+        ? [
+            "This server is configured.",
+            `Profile: ${status.profileFile ?? "unknown"}`,
+            `Control panel: ${status.controlPanelChannelId ? `<#${status.controlPanelChannelId}>` : "disabled"}`,
+            `Features: ${status.enabledFeatures.join(", ")}`,
+          ].join("\n")
+        : "This server has not been configured. Run `/setup initialize`.",
+    });
+  }
+
+}
