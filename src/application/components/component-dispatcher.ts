@@ -38,6 +38,23 @@ export class ComponentDispatcher {
       return;
     }
 
-    await handler.execute({ interaction, logger: this.logger });
+    const componentLogger = this.logger.child({
+      componentId: interaction.customId,
+      guildId: interaction.guildId,
+      channelId: interaction.channelId,
+      userId: interaction.user.id,
+    });
+
+    try {
+      await handler.execute({ interaction, logger: componentLogger });
+    } catch (error) {
+      componentLogger.error({ err: error }, "Component execution failed");
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({
+          content: "The control could not be completed. The error has been logged.",
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+    }
   }
 }

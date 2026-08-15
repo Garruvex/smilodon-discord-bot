@@ -30,6 +30,19 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
     const context = request.referencedMessage
       ? `The user replied to this Discord message:\n${request.referencedMessage}\n\nTheir request:\n${request.message}`
       : request.message;
+    const userContent = `${request.userName}: ${context}`;
+    const userMessage = request.images.length > 0
+      ? {
+          role: "user",
+          content: [
+            { type: "text", text: userContent },
+            ...request.images.map((image) => ({
+              type: "image_url",
+              image_url: { url: image.dataUrl },
+            })),
+          ],
+        }
+      : { role: "user", content: userContent };
     const response = await fetch(`${this.baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
@@ -40,7 +53,7 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
         model: this.model,
         messages: [
           { role: "system", content: `${request.personality}\n\n${chatSafetyGuard}` },
-          { role: "user", content: `${request.userName}: ${context}` },
+          userMessage,
         ],
       }),
       signal: AbortSignal.timeout(45_000),

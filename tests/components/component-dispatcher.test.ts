@@ -33,7 +33,11 @@ describe("ComponentDispatcher", () => {
     registry.register(handler);
     const evaluate = vi.fn().mockReturnValue({ allowed: true });
     const access = { evaluate } as unknown as AccessPolicyService;
-    const dispatcher = new ComponentDispatcher(registry, access, {} as Logger);
+    const logger = {
+      child: vi.fn().mockReturnValue({ error: vi.fn() }),
+      warn: vi.fn(),
+    } as unknown as Logger;
+    const dispatcher = new ComponentDispatcher(registry, access, logger);
     const componentInteraction = interaction();
 
     await dispatcher.dispatch(componentInteraction);
@@ -75,6 +79,39 @@ describe("ComponentDispatcher", () => {
     expect(execute).not.toHaveBeenCalled();
     expect(reply).toHaveBeenCalledWith(
       expect.objectContaining({ content: "You are not allowed to use this control here." }),
+    );
+  });
+
+  it("logs and replies when a component handler throws", async () => {
+    const execute = vi.fn().mockRejectedValue(new Error("boom"));
+    const handler: ComponentHandler = {
+      customIdPrefix: "test",
+      module: CommandModule.Common,
+      access: publicAccessPolicy,
+      execute,
+    };
+    const registry = new ComponentRegistry();
+    registry.register(handler);
+    const access = {
+      evaluate: vi.fn().mockReturnValue({ allowed: true }),
+    } as unknown as AccessPolicyService;
+    const error = vi.fn();
+    const child = vi.fn().mockReturnValue({ error });
+    const logger = { child, warn: vi.fn() } as unknown as Logger;
+    const dispatcher = new ComponentDispatcher(registry, access, logger);
+    const reply = vi.fn().mockResolvedValue(undefined);
+    const componentInteraction = {
+      ...interaction(),
+      replied: false,
+      deferred: false,
+      reply,
+    } as unknown as MessageComponentInteraction;
+
+    await dispatcher.dispatch(componentInteraction);
+
+    expect(error).toHaveBeenCalled();
+    expect(reply).toHaveBeenCalledWith(
+      expect.objectContaining({ content: "The control could not be completed. The error has been logged." }),
     );
   });
 });

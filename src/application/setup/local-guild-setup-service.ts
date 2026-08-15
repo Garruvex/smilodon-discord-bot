@@ -2,6 +2,7 @@ import {
   ChannelType,
   PermissionFlagsBits,
   type Guild,
+  type GuildMember,
   type Role,
   type TextChannel,
 } from "discord.js";
@@ -48,12 +49,16 @@ export class LocalGuildSetupService implements GuildSetupService {
     const controlChannel =
       request.controlChannel ?? (await this.createControlChannel(request.guild));
 
-    if (!request.initializedBy.roles.cache.has(botAdministratorRole.id)) {
-      await request.initializedBy.roles.add(
-        botAdministratorRole,
-        "Granted during initial bot guild setup",
-      );
-    }
+    await this.grantRoleIfMissing(
+      request.initializedBy,
+      botAdministratorRole,
+      "Granted during initial bot guild setup",
+    );
+    await this.grantRoleIfMissing(
+      request.initializedBy,
+      musicControllerRole,
+      "Granted during initial bot guild setup",
+    );
 
     const profile = await this.guildConfigurationProvider.create({
       guildId: request.guild.id,
@@ -123,6 +128,7 @@ export class LocalGuildSetupService implements GuildSetupService {
         profileFile: null,
         controlPanelChannelId: null,
         enabledFeatures: [],
+        access: null,
       };
     }
 
@@ -133,6 +139,12 @@ export class LocalGuildSetupService implements GuildSetupService {
       enabledFeatures: Object.entries(profile.features)
         .filter(([, enabled]) => enabled)
         .map(([feature]) => feature),
+      access: {
+        botAdministrator: profile.roles.botAdministrator,
+        musicController: profile.roles.musicController,
+        restricted: profile.roles.restricted,
+        chatbot: profile.roles.chatbot,
+      },
     };
   }
 
@@ -156,6 +168,16 @@ export class LocalGuildSetupService implements GuildSetupService {
 
   private createRole(guild: Guild, name: string): Promise<Role> {
     return guild.roles.create({ name, reason: "Initial bot guild setup" });
+  }
+
+  private async grantRoleIfMissing(
+    member: GuildMember,
+    role: Role,
+    reason: string,
+  ): Promise<void> {
+    if (!member.roles.cache.has(role.id)) {
+      await member.roles.add(role, reason);
+    }
   }
 
   private async createControlChannel(guild: Guild): Promise<TextChannel> {

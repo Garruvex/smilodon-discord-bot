@@ -1,11 +1,19 @@
 import { ChannelType, SlashCommandBuilder } from "discord.js";
 
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
+import {
+  formatRoleGroupList,
+  roleGroupDescriptions,
+} from "../../../../application/access/role-group-descriptions.js";
 import type { UpdateGuildConfigurationInput, GuildConfigurationProvider } from "../../../../config/guild-configuration-provider.js";
+import type { GuildConfiguration } from "../../../../config/guild-configuration.js";
 import { RoleMatchMode, publicAccessPolicy } from "../../../../domain/access/access-policy.js";
 import type { GuildAssetStore } from "../../../../application/assets/guild-asset-store.js";
+import type { ControlChannelService } from "../../../../application/control-panel/control-channel-service.js";
 
 export class SettingsCommand implements BotCommand {
+  private controlChannelService: ControlChannelService | null = null;
+
   public readonly definition = new SlashCommandBuilder()
     .setName("settings")
     .setDescription("Updates this server's bot configuration.")
@@ -14,10 +22,11 @@ export class SettingsCommand implements BotCommand {
       .addStringOption((option) => option.setName("idle-image-url").setDescription("Stable HTTPS idle image URL."))
       .addAttachmentOption((option) => option.setName("idle-image").setDescription("Upload a persistent PNG, JPEG, WebP, or GIF idle image."))
       .addBooleanOption((option) => option.setName("use-default-image").setDescription("Use the bundled Smilodon idle image.")))
-    .addSubcommand((command) => command.setName("roles").setDescription("Updates bot access roles.")
-      .addRoleOption((option) => option.setName("administrator").setDescription("Bot administrator role."))
-      .addRoleOption((option) => option.setName("music-controller").setDescription("Music controller role."))
-      .addRoleOption((option) => option.setName("restricted").setDescription("Restricted role.")))
+    .addSubcommand((command) => command.setName("access").setDescription("Shows configured access roles and what each group controls."))
+    .addSubcommand((command) => command.setName("roles").setDescription("Adds access roles without removing existing ones.")
+      .addRoleOption((option) => option.setName("administrator").setDescription("Adds a bot administrator role for /settings and inherited music control."))
+      .addRoleOption((option) => option.setName("music-controller").setDescription("Adds a role for /play, queue commands, panel controls, and typed song requests."))
+      .addRoleOption((option) => option.setName("restricted").setDescription("Adds a role denied from music and chatbot unless bot-owner bypass applies.")))
     .addSubcommand((command) => command.setName("role-add").setDescription("Adds a role to an access group.")
       .addStringOption((option) => this.addRoleGroupChoices(option.setName("group").setDescription("Access group.").setRequired(true)))
       .addRoleOption((option) => option.setName("role").setDescription("Role to add.").setRequired(true)))
@@ -38,8 +47,8 @@ export class SettingsCommand implements BotCommand {
       .addBooleanOption((option) => option.setName("resume-when-occupied").setDescription("Resume after an automatic pause.")))
     .addSubcommand((command) => command.setName("chatbot").setDescription("Configures mention-based AI replies.")
       .addBooleanOption((option) => option.setName("enabled").setDescription("Reply when permitted users mention the bot."))
-      .addRoleOption((option) => option.setName("role").setDescription("Role allowed to use mention chat."))
-      .addChannelOption((option) => option.setName("channel").setDescription("Only allow mention chat in this text channel.").addChannelTypes(ChannelType.GuildText))
+      .addRoleOption((option) => option.setName("role").setDescription("Adds a role allowed to use mention chat."))
+      .addChannelOption((option) => option.setName("channel").setDescription("Adds a text channel where mention chat is allowed.").addChannelTypes(ChannelType.GuildText))
       .addIntegerOption((option) => option.setName("cooldown-seconds").setDescription("Per-user delay between requests.").setMinValue(0).setMaxValue(86400))
       .addStringOption((option) => option.setName("denied-message").setDescription("Playful response shown to users without access.").setMaxLength(500))
       .addBooleanOption((option) => option.setName("web-search").setDescription("Allow the model to search the public web when needed."))
@@ -60,12 +69,21 @@ export class SettingsCommand implements BotCommand {
     private readonly assets: GuildAssetStore,
   ) {}
 
+  public bindControlChannelService(service: ControlChannelService): void {
+    this.controlChannelService = service;
+  }
+
   public async execute(context: CommandContext): Promise<void> {
     if (!context.interaction.guildId) return;
     await context.responses.defer();
     const previousProfile = this.profiles.require(context.interaction.guildId);
     const input: UpdateGuildConfigurationInput = {};
     const subcommand = context.interaction.options.getSubcommand(true);
+
+    if (subcommand === "access") {
+      await context.responses.edit(this.formatAccessSummary(previousProfile));
+      return;
+    }
 
     if (subcommand === "panel") {
       const channel = context.interaction.options.getChannel("channel");
@@ -89,9 +107,24 @@ export class SettingsCommand implements BotCommand {
       const administrator = context.interaction.options.getRole("administrator");
       const controller = context.interaction.options.getRole("music-controller");
       const restricted = context.interaction.options.getRole("restricted");
-      if (administrator) input.botAdministratorRoleIds = [administrator.id];
-      if (controller) input.musicControllerRoleIds = [controller.id];
-      if (restricted) input.restrictedRoleIds = [restricted.id];
+      if (administrator) {
+        input.botAdministratorRoleIds = [...new Set([
+          ...previousProfile.roles.botAdministrator,
+          administrator.id,
+        ])];
+      }
+      if (controller) {
+        input.musicControllerRoleIds = [...new Set([
+          ...previousProfile.roles.musicController,
+          controller.id,
+        ])];
+      }
+      if (restricted) {
+        input.restrictedRoleIds = [...new Set([
+          ...previousProfile.roles.restricted,
+          restricted.id,
+        ])];
+      }
     } else if (subcommand === "role-add" || subcommand === "role-remove") {
       const group = context.interaction.options.getString("group", true) as
         | "botAdministrator"
@@ -99,10 +132,14 @@ export class SettingsCommand implements BotCommand {
         | "restricted"
         | "chatbot";
       const role = context.interaction.options.getRole("role", true);
-      const profile = this.profiles.require(context.interaction.guildId);
-      const roleIds = new Set(profile.roles[group]);
+      const roleIds = new Set(previousProfile.roles[group]);
       if (subcommand === "role-add") roleIds.add(role.id);
       else roleIds.delete(role.id);
+      const validationError = this.validateRoleGroupUpdate(previousProfile, group, roleIds);
+      if (validationError) {
+        await context.responses.edit(validationError);
+        return;
+      }
       if (group === "botAdministrator") input.botAdministratorRoleIds = [...roleIds];
       if (group === "musicController") input.musicControllerRoleIds = [...roleIds];
       if (group === "restricted") input.restrictedRoleIds = [...roleIds];
@@ -141,8 +178,12 @@ export class SettingsCommand implements BotCommand {
         return;
       }
       if (enabled !== null) input.chatbotEnabled = enabled;
-      if (role) input.chatbotRoleIds = [role.id];
-      if (channel) input.chatbotChannelIds = [channel.id];
+      if (role) {
+        input.chatbotRoleIds = [...new Set([...previousProfile.roles.chatbot, role.id])];
+      }
+      if (channel) {
+        input.chatbotChannelIds = [...new Set([...previousProfile.channels.chatbot, channel.id])];
+      }
       if (cooldown !== null) input.chatbotCooldownSeconds = cooldown;
       if (deniedMessage) input.chatbotDeniedMessage = deniedMessage;
       if (webSearch !== null) input.chatbotWebSearchEnabled = webSearch;
@@ -167,6 +208,7 @@ export class SettingsCommand implements BotCommand {
       return;
     }
     const updatedProfile = await this.profiles.update(context.interaction.guildId, input);
+    await this.syncControlPanel(context.interaction.guildId, subcommand, input, updatedProfile);
     if (
       previousProfile.idleImageAsset &&
       previousProfile.idleImageAsset !== updatedProfile.idleImageAsset
@@ -179,7 +221,96 @@ export class SettingsCommand implements BotCommand {
     ) {
       await this.assets.removePersonality(previousProfile.chat.personalityAsset);
     }
-    await context.responses.edit("Server settings updated.");
+    await context.responses.edit(this.describeUpdate(subcommand, previousProfile, updatedProfile));
+  }
+
+  private async syncControlPanel(
+    guildId: string,
+    subcommand: string,
+    input: UpdateGuildConfigurationInput,
+    profile: GuildConfiguration,
+  ): Promise<void> {
+    if (!this.controlChannelService || !profile.features.music || !profile.channels.controlPanel) {
+      return;
+    }
+
+    if (input.controlPanelChannelId) {
+      await this.controlChannelService.ensureGuildPanel(guildId);
+      return;
+    }
+
+    if (
+      subcommand === "panel" &&
+      (input.idleImageUrl !== undefined || input.idleImageAsset !== undefined)
+    ) {
+      await this.controlChannelService.refreshPanel(guildId, {
+        forceIdleImage:
+          input.idleImageAsset !== undefined ||
+          (input.idleImageUrl === null && input.idleImageAsset === null),
+      });
+    }
+  }
+
+  private formatAccessSummary(profile: GuildConfiguration): string {
+    return [
+      "Configured access roles:",
+      `Bot administrator: ${formatRoleGroupList(profile.roles.botAdministrator)}`,
+      `Music controller: ${formatRoleGroupList(profile.roles.musicController)}`,
+      `Restricted: ${formatRoleGroupList(profile.roles.restricted)}`,
+      `Chatbot: ${formatRoleGroupList(profile.roles.chatbot)}`,
+      "",
+      "Role purposes:",
+      `- Bot administrator: ${roleGroupDescriptions.botAdministrator}`,
+      `- Music controller: ${roleGroupDescriptions.musicController}`,
+      `- Restricted: ${roleGroupDescriptions.restricted}`,
+      `- Chatbot: ${roleGroupDescriptions.chatbot}`,
+    ].join("\n");
+  }
+
+  private validateRoleGroupUpdate(
+    profile: GuildConfiguration,
+    group: "botAdministrator" | "musicController" | "restricted" | "chatbot",
+    nextRoleIds: ReadonlySet<string>,
+  ): string | null {
+    if (group === "botAdministrator" && nextRoleIds.size === 0) {
+      return "At least one bot-administrator role must remain configured.";
+    }
+    if (group === "musicController" && profile.features.music && nextRoleIds.size === 0) {
+      return "Music is enabled, so at least one music-controller role must remain configured.";
+    }
+    return null;
+  }
+
+  private describeUpdate(
+    subcommand: string,
+    previousProfile: GuildConfiguration,
+    updatedProfile: GuildConfiguration,
+  ): string {
+    if (subcommand === "roles" || subcommand === "role-add" || subcommand === "role-remove") {
+      return [
+        "Access roles updated.",
+        `Music controller: ${formatRoleGroupList(updatedProfile.roles.musicController)}`,
+        roleGroupDescriptions.musicController,
+      ].join("\n");
+    }
+    if (
+      subcommand === "panel" &&
+      (
+        previousProfile.idleImageUrl !== updatedProfile.idleImageUrl ||
+        previousProfile.idleImageAsset !== updatedProfile.idleImageAsset ||
+        previousProfile.channels.controlPanel !== updatedProfile.channels.controlPanel
+      )
+    ) {
+      return "Panel settings updated. The control panel has been refreshed.";
+    }
+    if (subcommand === "chatbot" && updatedProfile.roles.chatbot.size !== previousProfile.roles.chatbot.size) {
+      return [
+        "Chatbot settings updated.",
+        `Chatbot roles: ${formatRoleGroupList(updatedProfile.roles.chatbot)}`,
+        roleGroupDescriptions.chatbot,
+      ].join("\n");
+    }
+    return "Server settings updated.";
   }
 
   private assignNumber(
@@ -196,10 +327,10 @@ export class SettingsCommand implements BotCommand {
     option: T,
   ): T {
     return option.addChoices(
-      { name: "Bot administrator", value: "botAdministrator" },
-      { name: "Music controller", value: "musicController" },
-      { name: "Restricted", value: "restricted" },
-      { name: "Chatbot", value: "chatbot" },
+      { name: "Bot administrator (/settings)", value: "botAdministrator" },
+      { name: "Music controller (/play, panel, control channel)", value: "musicController" },
+      { name: "Restricted (deny music and chatbot)", value: "restricted" },
+      { name: "Chatbot (mention replies)", value: "chatbot" },
     );
   }
 }

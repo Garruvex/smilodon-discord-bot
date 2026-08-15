@@ -10,6 +10,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "check": "npm run typecheck && npm run lint && npm run test",
+    "command:create": "tsx src/scripts/generate-command.ts",
     "config:validate": "tsx src/scripts/validate-guild-config.ts",
     "deploy:commands": "tsx src/scripts/deploy-commands.ts",
     "dev": "tsx watch src/bootstrap/start.ts",

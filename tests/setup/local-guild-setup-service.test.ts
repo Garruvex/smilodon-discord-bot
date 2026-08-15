@@ -101,4 +101,79 @@ describe("LocalGuildSetupService", () => {
     expect(result.deployedCommandCount).toBe(12);
     expect(createRole).not.toHaveBeenCalled();
   });
+
+  it("grants bot administrator and music controller roles during first-time setup", async () => {
+    const add = vi.fn().mockResolvedValue(undefined);
+    const botAdministratorRole = { id: "345678901234567890" };
+    const musicControllerRole = { id: "456789012345678901" };
+    const restrictedRole = { id: "567890123456789012" };
+    const controlChannel = {
+      id: channelId,
+      type: 0,
+      guild: { roles: { everyone: { id: guildId } } },
+      permissionOverwrites: { edit: vi.fn().mockResolvedValue(undefined) },
+    };
+    const createRole = vi
+      .fn()
+      .mockResolvedValueOnce(botAdministratorRole)
+      .mockResolvedValueOnce(musicControllerRole)
+      .mockResolvedValueOnce(restrictedRole);
+    const guild = {
+      id: guildId,
+      name: "Test Guild",
+      channels: {
+        create: vi.fn().mockResolvedValue(controlChannel),
+        fetch: vi.fn().mockResolvedValue(controlChannel),
+      },
+      roles: { create: createRole },
+      members: {
+        me: {
+          permissions: {
+            has: () => true,
+          },
+        },
+      },
+    } as unknown as Guild;
+    const provider = {
+      find: vi.fn().mockReturnValue(null),
+      create: vi.fn().mockImplementation((input: { guildId: string }) =>
+        Promise.resolve({ ...profile(), guildId: input.guildId }),
+      ),
+    } as unknown as GuildConfigurationProvider;
+    const deployment = {
+      deploy: vi.fn().mockResolvedValue(12),
+    } as unknown as GuildCommandDeploymentService;
+    const panels = {
+      ensureGuildPanel: vi.fn().mockResolvedValue(undefined),
+    } as unknown as ControlChannelService;
+    const logger = { info: vi.fn() } as unknown as Logger;
+    const service = new LocalGuildSetupService(provider, deployment, panels, logger);
+    const initializedBy = {
+      roles: {
+        cache: new Map(),
+        add,
+      },
+    } as unknown as GuildMember;
+
+    await service.initialize({
+      guild,
+      initializedBy,
+      displayName: "Test Bot",
+      idleImageUrl: null,
+      controlChannel: null,
+      botAdministratorRole: null,
+      musicControllerRole: null,
+      restrictedRole: null,
+    });
+
+    expect(add).toHaveBeenCalledTimes(2);
+    expect(add).toHaveBeenCalledWith(
+      botAdministratorRole,
+      "Granted during initial bot guild setup",
+    );
+    expect(add).toHaveBeenCalledWith(
+      musicControllerRole,
+      "Granted during initial bot guild setup",
+    );
+  });
 });

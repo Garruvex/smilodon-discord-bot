@@ -28,3 +28,11 @@ export class MusicVoiceChannelMismatchError extends MusicError {
     super("You must be in the same voice channel as the bot.");
   }
 }
+
+export class MusicRateLimitError extends MusicError {
+  public constructor(remainingSeconds: number) {
+    super(
+      `You're sending requests too quickly. Try again in ${remainingSeconds} second${remainingSeconds === 1 ? "" : "s"}.`,
+    );
+  }
+}

@@ -44,6 +44,7 @@ const controlChannelService = new ControlChannelService(
   logger,
   musicEventBus,
 );
+dependencies.settingsCommand.bindControlChannelService(controlChannelService);
 const commandDeploymentService = new DiscordGuildCommandDeploymentService(
   configuration,
   dependencies.commandRegistry,
@@ -70,18 +71,27 @@ const application = new Application(
   controlChannelService,
   musicPresenceService,
   logger,
+  (reason) => {
+    void shutdown(reason, 1);
+  },
 );
 
 let shuttingDown = false;
 
-async function shutdown(signal: string): Promise<void> {
+async function shutdown(signal: string, exitCode = 0): Promise<void> {
   if (shuttingDown) {
     return;
   }
 
   shuttingDown = true;
-  await application.stop(signal);
-  await persistence.close();
+  try {
+    await application.stop(signal);
+    await persistence.close();
+  } catch (error) {
+    logger.error({ error, signal }, "Shutdown did not complete cleanly");
+    process.exit(exitCode === 0 ? 1 : exitCode);
+  }
+  process.exit(exitCode);
 }
 
 process.once("SIGINT", () => {
@@ -94,12 +104,12 @@ process.once("SIGTERM", () => {
 
 process.on("unhandledRejection", (error) => {
   logger.fatal({ error }, "Unhandled promise rejection");
-  void shutdown("unhandledRejection");
+  void shutdown("unhandledRejection", 1);
 });
 
 process.on("uncaughtException", (error) => {
   logger.fatal({ error }, "Uncaught exception");
-  void shutdown("uncaughtException");
+  void shutdown("uncaughtException", 1);
 });
 
 await application.start();

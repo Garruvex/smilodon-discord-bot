@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   MusicPlayerNotFoundError,
+  MusicRateLimitError,
   MusicVoiceChannelMismatchError,
   MusicVoiceChannelRequiredError,
 } from "../../src/application/music/music-errors.js";
@@ -110,6 +111,39 @@ describe("PlaybackService", () => {
     await expect(service.stop(createActor())).rejects.toBeInstanceOf(
       MusicPlayerNotFoundError,
     );
+  });
+
+  it("rejects enqueue requests that arrive too quickly", async () => {
+    const gateway = createGateway();
+    const service = new PlaybackService(gateway);
+    const actor = createActor();
+
+    await service.enqueue(actor, "first song");
+    await expect(service.enqueue(actor, "second song")).rejects.toBeInstanceOf(MusicRateLimitError);
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    expect(gateway.enqueue).toHaveBeenCalledTimes(1);
+  });
+
+  it("rate limits a request whose search failed", async () => {
+    const gateway = createGateway();
+    gateway.enqueue = vi.fn(() => Promise.reject(new Error("no playable tracks")));
+    const service = new PlaybackService(gateway);
+    const actor = createActor();
+
+    await expect(service.enqueue(actor, "bogus query")).rejects.toThrow("no playable tracks");
+    await expect(service.enqueue(actor, "bogus query")).rejects.toBeInstanceOf(MusicRateLimitError);
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    expect(gateway.enqueue).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not rate limit a request rejected before the search", async () => {
+    const gateway = createGateway();
+    const service = new PlaybackService(gateway);
+
+    await expect(service.enqueue(createActor(null), "song")).rejects.toBeInstanceOf(
+      MusicVoiceChannelRequiredError,
+    );
+    await expect(service.enqueue(createActor(), "song")).resolves.toBeDefined();
   });
 
   it("routes skip through the gateway after control validation", async () => {

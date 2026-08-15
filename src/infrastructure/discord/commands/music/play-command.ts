@@ -2,8 +2,10 @@ import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import type { PlaybackService } from "../../../../application/music/playback-service.js";
-import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
-import { createPlaybackActor } from "./music-command-support.js";
+import {
+  createPlaybackActor,
+  musicPlaybackAccessPolicy,
+} from "./music-command-support.js";
 
 export class PlayCommand implements BotCommand {
   public readonly definition = new SlashCommandBuilder()
@@ -17,7 +19,7 @@ export class PlayCommand implements BotCommand {
     );
 
   public readonly module = CommandModule.Music;
-  public readonly access = publicAccessPolicy;
+  public readonly access = musicPlaybackAccessPolicy;
 
   public constructor(private readonly playbackService: PlaybackService) {}
 

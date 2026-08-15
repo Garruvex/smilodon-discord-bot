@@ -320,7 +320,9 @@ guild YAML; an uploaded personality takes precedence.
 8. Deploy global setup and every configured guild with `npm run deploy:commands`.
 9. Start the bot with `npm run dev`.
 
-`/play` is public unless the member has a configured restricted role.
+`/play` and typed control-channel song requests require a configured
+music-controller role. Bot administrators inherit music-controller access, and
+configured bot owners retain the owner bypass.
 `/pause`, `/resume`, and `/stop` require a configured music-controller role or
 a bot owner with bypass enabled.
 
@@ -394,6 +396,22 @@ Command implementations do not perform these checks themselves. Every command
 passes through the shared access-policy service before execution.
 
 ## Verification
+
+### Generate a slash-command template
+
+Create a command class and matching test stub with the repository conventions:
+
+```powershell
+npm.cmd run command:create -- server-info common "Shows server information."
+```
+
+Supported modules are `common`, `music`, and `diagnostics`. Music templates use
+the music-controller access policy, diagnostics templates are owner-only, and
+common templates use the standard public policy. The generator refuses to
+overwrite existing files. After generation, implement the handler and register
+the command in `src/bootstrap/dependencies.ts`.
+
+### Run project checks
 
 ```powershell
 npm run check

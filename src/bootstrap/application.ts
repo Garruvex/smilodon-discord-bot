@@ -15,6 +15,7 @@ export class Application {
     private readonly controlChannelService: ControlChannelService,
     private readonly musicPresenceService: MusicPresenceService,
     private readonly logger: Logger,
+    private readonly onFatalError?: (reason: string) => void,
   ) {
     this.registerDiscordEvents();
   }
@@ -66,6 +67,11 @@ export class Application {
         })
         .catch((error: unknown) => {
           this.logger.fatal({ error }, "Lavalink initialization failed");
+          if (this.onFatalError) {
+            this.onFatalError("lavalink-init-failed");
+            return;
+          }
+          void this.stop("lavalink-init-failed");
         });
 
       void this.controlChannelService.initialize().catch((error: unknown) => {

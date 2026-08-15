@@ -2,9 +2,11 @@ import type { GuildMember } from "discord.js";
 
 import {
   MusicPlayerNotFoundError,
+  MusicRateLimitError,
   MusicVoiceChannelMismatchError,
   MusicVoiceChannelRequiredError,
 } from "./music-errors.js";
+import { PlaybackRateLimiter } from "./playback-rate-limiter.js";
 import type {
   EnqueueRequest,
   MusicRepeatMode,
@@ -20,9 +22,16 @@ export interface PlaybackActor {
 }
 
 export class PlaybackService {
+  private readonly rateLimiter = new PlaybackRateLimiter();
+
   public constructor(private readonly playerGateway: MusicPlayerGateway) {}
 
   public async enqueue(actor: PlaybackActor, query: string): Promise<EnqueueResult> {
+    const remainingSeconds = this.rateLimiter.check(actor.guildId, actor.userId);
+    if (remainingSeconds !== null) {
+      throw new MusicRateLimitError(remainingSeconds);
+    }
+
     const voiceChannelId = this.requireVoiceChannel(actor);
     this.assertSameVoiceChannel(actor.guildId, voiceChannelId);
 
@@ -34,6 +43,9 @@ export class PlaybackService {
       requestedByUserId: actor.userId,
     };
 
+    // Recorded before the search so failed lookups are rate limited too; the
+    // gateway performs a Lavalink search before it can reject a bad query.
+    this.rateLimiter.record(actor.guildId, actor.userId);
     return this.playerGateway.enqueue(request);
   }
 

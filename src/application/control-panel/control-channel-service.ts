@@ -7,8 +7,10 @@ import {
   MessageFlags,
   type ButtonInteraction,
   type Client,
+  type Guild,
   type GuildMember,
   type Message,
+  type TextChannel,
 } from "discord.js";
 import { existsSync } from "node:fs";
 import { extname, resolve } from "node:path";
@@ -16,7 +18,7 @@ import type { Logger } from "pino";
 
 import type { PlaybackService } from "../music/playback-service.js";
 import type { MusicEventBus } from "../music/music-event-bus.js";
-import { MusicError } from "../music/music-errors.js";
+import { MusicError, MusicPlayerNotFoundError } from "../music/music-errors.js";
 import type { MusicPlayerGateway, MusicPlayerSnapshot } from "../music/music-player-gateway.js";
 import type { ApplicationConfiguration } from "../../config/configuration.js";
 import type { GuildConfiguration } from "../../config/guild-configuration.js";
@@ -35,6 +37,7 @@ interface ControlPanelPayload {
 
 export class ControlChannelService {
   private refreshTimer: NodeJS.Timeout | null = null;
+  private readonly configuredChannelPermissions = new Set<string>();
 
   public constructor(
     private readonly client: Client,
@@ -55,7 +58,7 @@ export class ControlChannelService {
     await this.stateStore.initialize();
     for (const profile of this.guildConfigurationProvider.getAll()) {
       if (profile.features.music && profile.channels.controlPanel) {
-        await this.ensurePanel(profile).catch((error: unknown) => {
+        await this.ensureGuildPanel(profile.guildId).catch((error: unknown) => {
           this.logger.error(
             { error, guildId: profile.guildId },
             "Unable to initialize music control panel",
@@ -103,14 +106,24 @@ export class ControlChannelService {
       return false;
     }
 
-    const query = message.content.trim();
+    const botId = this.client.user?.id;
+    if (profile.features.chatbot && botId && message.mentions.users.has(botId)) {
+      return false;
+    }
+
+    const query = this.normalizeSongQuery(message);
     if (query.length === 0) {
       await message.delete().catch(() => undefined);
       return true;
     }
 
-    if (this.hasRestrictedRole(message.member, profile)) {
-      const denied = await message.reply("You are not allowed to use music features.");
+    if (
+      !message.member ||
+      !this.canControl(message.member, message.author.id, profile)
+    ) {
+      const denied = await message.reply(
+        "You need a music-controller role to request songs.",
+      );
       this.scheduleDeletion(denied);
       await message.delete().catch(() => undefined);
       return true;
@@ -122,10 +135,6 @@ export class ControlChannelService {
     await message.delete().catch(() => undefined);
 
     try {
-      if (!message.member) {
-        throw new Error("The guild member could not be resolved.");
-      }
-
       const result = await this.playbackService.enqueue(
         {
           guildId: message.guildId,
@@ -207,6 +216,9 @@ export class ControlChannelService {
           await this.playbackService.previous(actor);
           break;
         case "play-pause":
+          if (!this.playerGateway.hasPlayer(interaction.guildId)) {
+            throw new MusicPlayerNotFoundError();
+          }
           if (this.playerGateway.isPaused(interaction.guildId)) {
             await this.playbackService.resume(actor);
           } else {
@@ -262,22 +274,22 @@ export class ControlChannelService {
           return true;
       }
 
-      await interaction.reply({
-        content: "Music control applied.",
-        flags: MessageFlags.Ephemeral,
-      });
+      await this.replyEphemeral(interaction, "Music control applied.");
     } catch (error) {
-      await interaction.reply({
-        content: error instanceof MusicError ? error.message : "The control failed.",
-        flags: MessageFlags.Ephemeral,
-      });
+      await this.replyEphemeral(
+        interaction,
+        error instanceof MusicError ? error.message : "The control failed.",
+      );
     }
 
     await this.refreshPanel(interaction.guildId);
     return true;
   }
 
-  public async refreshPanel(guildId: string): Promise<void> {
+  public async refreshPanel(
+    guildId: string,
+    options: { forceIdleImage?: boolean } = {},
+  ): Promise<void> {
     const profile = this.guildConfigurationProvider.find(guildId);
     if (!profile?.channels.controlPanel || !profile.features.music) return;
 
@@ -285,12 +297,7 @@ export class ControlChannelService {
       const message = await this.ensurePanel(profile);
       const snapshot = this.playerGateway.getSnapshot(profile.guildId);
       const payload = this.createPanelPayload(profile, snapshot);
-      const needsIdleAttachment = !profile.idleImageUrl && !snapshot?.currentTrack;
-      await message.edit(
-        needsIdleAttachment
-          ? { ...payload, attachments: [], files: [this.getIdleImageFile(profile)] }
-          : { ...payload, attachments: [] },
-      );
+      await message.edit(this.createPanelEditOptions(message, profile, snapshot, payload, options));
     } catch (error) {
       this.logger.error({ error, guildId }, "Unable to refresh music control panel");
     }
@@ -308,11 +315,7 @@ export class ControlChannelService {
       throw new Error(`Control panel channel "${channelId}" is not a guild text channel.`);
     }
 
-    await channel.permissionOverwrites.edit(
-      guild.roles.everyone,
-      { UseApplicationCommands: false },
-      { reason: "Reserve the music control channel for panel controls and song requests" },
-    );
+    await this.ensureChannelPermissions(channel, guild);
 
     const state = this.stateStore.find(profile.guildId);
     if (state?.channelId === channelId) {
@@ -339,6 +342,49 @@ export class ControlChannelService {
       await this.deleteObsoletePanel(profile.guildId, state.channelId, state.messageId);
     }
     return created;
+  }
+
+  private normalizeSongQuery(message: Message<true>): string {
+    const botId = this.client.user?.id;
+    const withoutMentions = botId
+      ? message.content.replace(new RegExp(`<@!?${botId}>`, "g"), "")
+      : message.content;
+    return withoutMentions.trim();
+  }
+
+  private async ensureChannelPermissions(channel: TextChannel, guild: Guild): Promise<void> {
+    if (this.configuredChannelPermissions.has(channel.id)) return;
+
+    await channel.permissionOverwrites.edit(
+      guild.roles.everyone,
+      { UseApplicationCommands: false },
+      { reason: "Reserve the music control channel for panel controls and song requests" },
+    );
+    this.configuredChannelPermissions.add(channel.id);
+  }
+
+  private createPanelEditOptions(
+    message: Message,
+    profile: GuildConfiguration,
+    snapshot: MusicPlayerSnapshot | null,
+    payload: ControlPanelPayload,
+    options: { forceIdleImage?: boolean } = {},
+  ): ControlPanelPayload & { attachments: []; files?: Array<{ attachment: string; name: string }> } {
+    const needsIdleImage = !profile.idleImageUrl && !snapshot?.currentTrack;
+    const idleImageName = this.getIdleImageName(profile);
+    const hasIdleAttachment = message.attachments.some((attachment) => attachment.name === idleImageName);
+
+    return needsIdleImage && (!hasIdleAttachment || options.forceIdleImage)
+      ? { ...payload, attachments: [], files: [this.getIdleImageFile(profile)] }
+      : { ...payload, attachments: [] };
+  }
+
+  private async replyEphemeral(interaction: ButtonInteraction, content: string): Promise<void> {
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp({ content, flags: MessageFlags.Ephemeral });
+      return;
+    }
+    await interaction.reply({ content, flags: MessageFlags.Ephemeral });
   }
 
   private async deleteObsoletePanel(
@@ -419,7 +465,7 @@ export class ControlChannelService {
     );
 
     return {
-      content: "Join a voice channel and queue songs by name or URL in here.",
+      content: "Join a voice channel. Members with the music-controller role can queue songs here by name or URL.",
       embeds: [embed],
       components: [primaryControls, secondaryControls],
     };

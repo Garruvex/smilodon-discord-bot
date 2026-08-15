@@ -5,6 +5,10 @@ import {
 } from "discord.js";
 
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
+import {
+  formatRoleGroupList,
+  roleGroupDescriptions,
+} from "../../../../application/access/role-group-descriptions.js";
 import type { GuildSetupService } from "../../../../application/setup/guild-setup-service.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
 
@@ -42,12 +46,14 @@ export class SetupCommand implements BotCommand {
         .addRoleOption((option) =>
           option
             .setName("music-controller-role")
-            .setDescription("Existing music controller role; one is created if omitted."),
+            .setDescription(
+              "Role for /play, queue commands, panel controls, and typed control-channel requests.",
+            ),
         )
         .addRoleOption((option) =>
           option
             .setName("restricted-role")
-            .setDescription("Existing restricted role; one is created if omitted."),
+            .setDescription("Role denied from music and chatbot unless bot-owner bypass applies."),
         ),
     )
     .addSubcommand((subcommand) =>
@@ -114,6 +120,14 @@ export class SetupCommand implements BotCommand {
         `Music controller: <@&${result.musicControllerRoleId}>`,
         `Restricted role: <@&${result.restrictedRoleId}>`,
         `Synchronized commands: ${result.deployedCommandCount}`,
+        "",
+        "Access configured:",
+        `- Bot administrator: ${roleGroupDescriptions.botAdministrator}`,
+        `- Music controller: ${roleGroupDescriptions.musicController}`,
+        `- Restricted: ${roleGroupDescriptions.restricted}`,
+        "",
+        "You were granted bot administrator and music controller.",
+        `Assign <@&${result.musicControllerRoleId}> to members who should queue music.`,
       ].join("\n"),
     );
   }
@@ -122,16 +136,38 @@ export class SetupCommand implements BotCommand {
     if (!context.interaction.guildId) return;
     const status = this.setupService.status(context.interaction.guildId);
 
-    await context.responses.reply({
-      content: status.configured
-        ? [
-            "This server is configured.",
-            `Profile: ${status.profileFile ?? "unknown"}`,
-            `Control panel: ${status.controlPanelChannelId ? `<#${status.controlPanelChannelId}>` : "disabled"}`,
-            `Features: ${status.enabledFeatures.join(", ")}`,
-          ].join("\n")
-        : "This server has not been configured. Run `/setup initialize`.",
-    });
+    if (!status.configured) {
+      await context.responses.reply({
+        content: "This server has not been configured. Run `/setup initialize`.",
+      });
+      return;
+    }
+
+    const lines = [
+      "This server is configured.",
+      `Profile: ${status.profileFile ?? "unknown"}`,
+      `Control panel: ${status.controlPanelChannelId ? `<#${status.controlPanelChannelId}>` : "disabled"}`,
+      `Features: ${status.enabledFeatures.join(", ")}`,
+    ];
+
+    if (status.access) {
+      lines.push(
+        "",
+        "Configured access roles:",
+        `Bot administrator: ${formatRoleGroupList(status.access.botAdministrator)}`,
+        `Music controller: ${formatRoleGroupList(status.access.musicController)}`,
+        `Restricted: ${formatRoleGroupList(status.access.restricted)}`,
+        `Chatbot: ${formatRoleGroupList(status.access.chatbot)}`,
+        "",
+        "Role purposes:",
+        `- Bot administrator: ${roleGroupDescriptions.botAdministrator}`,
+        `- Music controller: ${roleGroupDescriptions.musicController}`,
+        `- Restricted: ${roleGroupDescriptions.restricted}`,
+        `- Chatbot: ${roleGroupDescriptions.chatbot}`,
+      );
+    }
+
+    await context.responses.reply({ content: lines.join("\n") });
   }
 
 }

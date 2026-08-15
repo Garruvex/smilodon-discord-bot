@@ -46,6 +46,7 @@ export interface ApplicationDependencies {
   playbackService: PlaybackService;
   pollService: PollService;
   behaviorDispatcher: BehaviorDispatcher;
+  settingsCommand: SettingsCommand;
 }
 
 export function createDependencies(
@@ -61,10 +62,11 @@ export function createDependencies(
   const componentRegistry = new ComponentRegistry();
   componentRegistry.register(new PollComponentHandler(pollService));
   const guildAssetStore = new GuildAssetStore(configuration.runtimeDataDirectory);
+  const settingsCommand = new SettingsCommand(guildConfigurationProvider, guildAssetStore);
   commandRegistry.register(new PingCommand());
   commandRegistry.register(new DiagnosticCommand());
   commandRegistry.register(new SetupCommand(guildSetupService));
-  commandRegistry.register(new SettingsCommand(guildConfigurationProvider, guildAssetStore));
+  commandRegistry.register(settingsCommand);
   commandRegistry.register(new VoteCommand(pollService));
   const playbackService = new PlaybackService(musicPlayerGateway);
   commandRegistry.register(new PlayCommand(playbackService));
@@ -125,5 +127,6 @@ export function createDependencies(
     playbackService,
     pollService,
     behaviorDispatcher: new BehaviorDispatcher(behaviorRegistry),
+    settingsCommand,
   };
 }

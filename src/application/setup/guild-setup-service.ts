@@ -25,6 +25,12 @@ export interface GuildSetupStatus {
   profileFile: string | null;
   controlPanelChannelId: string | null;
   enabledFeatures: readonly string[];
+  access: {
+    botAdministrator: ReadonlySet<string>;
+    musicController: ReadonlySet<string>;
+    restricted: ReadonlySet<string>;
+    chatbot: ReadonlySet<string>;
+  } | null;
 }
 
 export interface GuildSetupService {

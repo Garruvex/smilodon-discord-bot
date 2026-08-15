@@ -1,14 +1,29 @@
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readFileSync } from "node:fs";
 
-import type { Attachment, GuildMember, Message } from "discord.js";
+import type { Attachment, Message } from "discord.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from "discord.js";
 import type { Logger } from "pino";
 
+import { ChatAccessService } from "../../../application/access/chat-access-service.js";
 import { BehaviorEvent, BehaviorResult, type BotBehavior } from "../../../application/behaviors/behavior.js";
+import { resolveGuildPersonalityPath } from "../../../application/assets/guild-personality-path.js";
 import { ChatProviderError, type ChatProvider, type ChatSource } from "../../../application/chat/chat-provider.js";
+import { ChannelTypingManager } from "../../../application/chat/channel-typing-manager.js";
 import type { ApplicationConfiguration } from "../../../config/configuration.js";
-import type { GuildConfiguration, GuildRoleConfiguration } from "../../../config/guild-configuration.js";
+import type { GuildConfiguration } from "../../../config/guild-configuration.js";
 import type { GuildConfigurationProvider } from "../../../config/guild-configuration-provider.js";
+
+const chatAccessDeniedRickrollUrl = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+const chatAccessDeniedSubscribePrompt = "Please subscribe here →";
+
+function createChatAccessDeniedSubscribeButton(): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setLabel("discord.gg/premium-access")
+      .setStyle(ButtonStyle.Link)
+      .setURL(chatAccessDeniedRickrollUrl),
+  );
+}
 
 const defaultPersonality = `You are a friendly Discord community assistant.
 Reply conversationally and concisely in the user's language.
@@ -17,6 +32,7 @@ Do not claim to be a moderator and direct moderation disputes to server staff.`;
 const supportedImageTypes = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 const allowedDiscordImageHosts = new Set(["cdn.discordapp.com", "media.discordapp.net"]);
 const maximumImageBytes = 8 * 1024 * 1024;
+const cooldownRetentionMs = 60 * 60 * 1_000;
 
 export class MentionChatBehavior implements BotBehavior<Message> {
   public readonly id = "mention-chat";
@@ -24,6 +40,8 @@ export class MentionChatBehavior implements BotBehavior<Message> {
   public readonly priority = 100;
   private readonly lastRequest = new Map<string, number>();
   private readonly processedMessageIds = new Set<string>();
+  private readonly chatAccess: ChatAccessService;
+  private readonly typing = new ChannelTypingManager();
 
   public constructor(
     private readonly clientUserId: () => string | null,
@@ -31,7 +49,9 @@ export class MentionChatBehavior implements BotBehavior<Message> {
     private readonly profiles: GuildConfigurationProvider,
     private readonly provider: ChatProvider | null,
     private readonly logger: Logger,
-  ) {}
+  ) {
+    this.chatAccess = new ChatAccessService(configuration);
+  }
 
   public matches(message: Message): Promise<boolean> {
     const botId = this.clientUserId();
@@ -45,8 +65,13 @@ export class MentionChatBehavior implements BotBehavior<Message> {
     if (this.processedMessageIds.has(message.id)) return BehaviorResult.StopPropagation;
     this.rememberMessage(message.id);
 
-    if (!this.isAllowed(message, profile)) {
-      await message.reply({ content: profile.chat.deniedMessage, allowedMentions: { repliedUser: false } });
+    if (!this.chatAccess.canUseMentionChat(profile, message.member, message.author.id, message.channelId)) {
+      await message.reply({
+        content: `${profile.chat.deniedMessage}\n${chatAccessDeniedSubscribePrompt}`,
+        components: [createChatAccessDeniedSubscribeButton()],
+        flags: MessageFlags.SuppressEmbeds,
+        allowedMentions: { repliedUser: false },
+      });
       return BehaviorResult.StopPropagation;
     }
     if (!this.provider) {
@@ -71,6 +96,7 @@ export class MentionChatBehavior implements BotBehavior<Message> {
     }
 
     const rateKey = `${message.guildId}:${message.author.id}`;
+    this.pruneCooldownEntries();
     const retryAt = (this.lastRequest.get(rateKey) ?? 0) + profile.chat.cooldownSeconds * 1_000;
     if (Date.now() < retryAt) {
       const remainingSeconds = Math.max(1, Math.ceil((retryAt - Date.now()) / 1_000));
@@ -79,8 +105,11 @@ export class MentionChatBehavior implements BotBehavior<Message> {
     }
     this.lastRequest.set(rateKey, Date.now());
 
+    const stopTyping = this.typing.start(
+      message.channelId,
+      () => message.channel.sendTyping(),
+    );
     try {
-      await message.channel.sendTyping();
       const images = await this.loadImages(imageAttachments);
       const startedAt = Date.now();
       this.logger.info({
@@ -128,6 +157,8 @@ export class MentionChatBehavior implements BotBehavior<Message> {
           : "The premium brain is receiving too many requests. Please try again shortly."
         : "The premium brain is temporarily buffering. Please try again later.";
       await message.reply({ content, allowedMentions: { repliedUser: false } });
+    } finally {
+      stopTyping();
     }
     return BehaviorResult.StopPropagation;
   }
@@ -138,26 +169,36 @@ export class MentionChatBehavior implements BotBehavior<Message> {
     timer.unref();
   }
 
-  private isAllowed(message: Message<true>, profile: GuildConfiguration): boolean {
-    if (profile.channels.chatbot.size > 0 && !profile.channels.chatbot.has(message.channelId)) return false;
-    if (!message.member) return false;
-    const memberRoles = message.member.roles.cache;
-    if (this.hasRole(memberRoles, profile.roles.restricted) && !this.configuration.ownerUserIds.has(message.author.id)) return false;
-    if (this.configuration.ownerUserIds.has(message.author.id)) return true;
-    return this.hasRole(memberRoles, profile.roles.chatbot) || this.hasRole(memberRoles, profile.roles.botAdministrator);
-  }
-
-  private hasRole(memberRoles: GuildMember["roles"]["cache"], configured: GuildRoleConfiguration["chatbot"]): boolean {
-    return [...configured].some((roleId) => memberRoles.has(roleId));
+  private pruneCooldownEntries(): void {
+    const cutoff = Date.now() - cooldownRetentionMs;
+    for (const [key, timestamp] of this.lastRequest) {
+      if (timestamp < cutoff) {
+        this.lastRequest.delete(key);
+      }
+    }
   }
 
   private loadPersonality(profile: GuildConfiguration): string {
-    const path = profile.chat.personalityAsset
-      ? resolve(this.configuration.runtimeDataDirectory, profile.chat.personalityAsset)
-      : resolve(profile.chat.personalityFile ?? `config/local/personalities/${profile.guildId}.md`);
-    if (!existsSync(path)) return defaultPersonality;
-    const content = readFileSync(path, "utf8").trim();
-    return content.length > 0 ? content.slice(0, 32_000) : defaultPersonality;
+    const path = resolveGuildPersonalityPath(profile, this.configuration.runtimeDataDirectory);
+    if (!path) {
+      if (profile.chat.personalityAsset ?? profile.chat.personalityFile) {
+        this.logger.warn(
+          {
+            guildId: profile.guildId,
+            personalityFile: profile.chat.personalityFile,
+            personalityAsset: profile.chat.personalityAsset,
+          },
+          "Configured chatbot personality path was rejected; using the default personality",
+        );
+      }
+      return defaultPersonality;
+    }
+    try {
+      const content = readFileSync(path, "utf8").trim();
+      return content.length > 0 ? content.slice(0, 32_000) : defaultPersonality;
+    } catch {
+      return defaultPersonality;
+    }
   }
 
   private async loadImages(attachments: readonly Attachment[]): Promise<Array<{ dataUrl: string }>> {
