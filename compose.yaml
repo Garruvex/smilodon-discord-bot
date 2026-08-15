@@ -1,0 +1,77 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-fntu_bot}
+      POSTGRES_USER: ${POSTGRES_USER:-fntu_bot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  lavalink:
+    image: ghcr.io/lavalink-devs/lavalink:4-alpine
+    restart: unless-stopped
+    environment:
+      LAVALINK_PASSWORD: ${LAVALINK_PASSWORD:?Set LAVALINK_PASSWORD in .env}
+      YOUTUBE_REFRESH_TOKEN: ${YOUTUBE_REFRESH_TOKEN:-}
+      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID:-}
+      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET:-}
+      _JAVA_OPTIONS: -Xms256m -Xmx768m
+    volumes:
+      - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro
+      - lavalink-plugins:/opt/Lavalink/plugins
+    expose:
+      - "2333"
+    ports:
+      - "127.0.0.1:2333:2333"
+
+  migrate:
+    build:
+      context: .
+      target: build
+    command: npm run db:migrate
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-fntu_bot}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-fntu_bot}
+
+  bot:
+    build:
+      context: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      lavalink:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      LAVALINK_HOST: lavalink
+      LAVALINK_PORT: 2333
+      LAVALINK_SECURE: "false"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-fntu_bot}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-fntu_bot}
+      PERSISTENCE_DRIVER: postgres
+      GUILD_CONFIG_DIRECTORY: /app/config/local/guilds
+      RUNTIME_DATA_DIRECTORY: /app/data/local
+    volumes:
+      - ./config/local/guilds:/app/config/local/guilds
+      - ./data/local:/app/data/local
+
+volumes:
+  lavalink-plugins:
+  postgres-data:
