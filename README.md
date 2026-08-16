@@ -428,6 +428,9 @@ npm.cmd run build
 
 ## Local Docker Compose
 
+For a compact list of native, Docker, deployment, and multi-instance commands,
+see the [launch command cheatsheet](docs/launch-cheatsheet.md).
+
 Docker Compose runs the bot, PostgreSQL, and Lavalink in the same private
 network. Database and Lavalink ports are bound only to Windows localhost, not
 to the public network.

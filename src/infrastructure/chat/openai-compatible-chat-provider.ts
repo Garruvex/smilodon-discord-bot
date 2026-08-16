@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { chatSafetyGuard, ChatProviderError, type ChatProvider, type ChatRequest, type ChatResponse } from "../../application/chat/chat-provider.js";
+import { buildChatContext, buildChatInstructions, chatModelJsonSchema, parseChatModelOutput } from "./chat-structured-output.js";
 
 const responseSchema = z.object({
   choices: z.array(z.object({ message: z.object({ content: z.string() }) })).min(1),
@@ -27,10 +28,7 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
   ) {}
 
   public async reply(request: ChatRequest): Promise<ChatResponse> {
-    const context = request.referencedMessage
-      ? `The user replied to this Discord message:\n${request.referencedMessage}\n\nTheir request:\n${request.message}`
-      : request.message;
-    const userContent = `${request.userName}: ${context}`;
+    const userContent = buildChatContext(request);
     const userMessage = request.images.length > 0
       ? {
           role: "user",
@@ -52,9 +50,13 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
       body: JSON.stringify({
         model: this.model,
         messages: [
-          { role: "system", content: `${request.personality}\n\n${chatSafetyGuard}` },
+          { role: "system", content: buildChatInstructions(request, chatSafetyGuard) },
           userMessage,
         ],
+        response_format: {
+          type: "json_schema",
+          json_schema: { name: "persona_chat_response", strict: true, schema: chatModelJsonSchema },
+        },
       }),
       signal: AbortSignal.timeout(45_000),
     });
@@ -71,8 +73,11 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
       );
     }
     const parsed = responseSchema.parse(await response.json());
+    const modelOutput = parseChatModelOutput(parsed.choices[0]!.message.content);
     return {
-      text: parsed.choices[0]!.message.content.trim(),
+      text: modelOutput.response,
+      userMemoryActions: modelOutput.userMemoryActions,
+      guildKnowledgeCandidates: modelOutput.guildKnowledgeCandidates,
       sources: [],
       usage: parsed.usage
         ? {

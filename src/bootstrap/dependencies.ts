@@ -36,6 +36,10 @@ import { GuildAssetStore } from "../application/assets/guild-asset-store.js";
 import { ComponentRegistry } from "../application/components/component-registry.js";
 import { ComponentDispatcher } from "../application/components/component-dispatcher.js";
 import { PollComponentHandler } from "../infrastructure/discord/components/poll-component-handler.js";
+import type { ChatStateStore } from "../application/chat/chat-state-store.js";
+import { ChatConversationService } from "../application/chat/chat-conversation-service.js";
+import type { GuildKnowledgeStore } from "../application/chat/guild-knowledge-store.js";
+import { FullGuildMemorySelector } from "../application/chat/guild-memory-selector.js";
 
 export interface ApplicationDependencies {
   commandRegistry: CommandRegistry;
@@ -56,6 +60,8 @@ export function createDependencies(
   guildConfigurationProvider: GuildConfigurationProvider,
   guildSetupService: GuildSetupService,
   discordClient: Client,
+  chatStateStore: ChatStateStore,
+  guildKnowledgeStore: GuildKnowledgeStore,
 ): ApplicationDependencies {
   const commandRegistry = new CommandRegistry();
   const pollService = new PollService();
@@ -110,11 +116,19 @@ export function createDependencies(
           configuration.chat.model,
         )
     : null;
+  const chatConversationService = chatProvider
+    ? new ChatConversationService(
+        chatProvider,
+        chatStateStore,
+        guildKnowledgeStore,
+        new FullGuildMemorySelector(),
+      )
+    : null;
   behaviorRegistry.register(new MentionChatBehavior(
     () => discordClient.user?.id ?? null,
     configuration,
     guildConfigurationProvider,
-    chatProvider,
+    chatConversationService,
     logger,
   ));
 

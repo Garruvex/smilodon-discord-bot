@@ -15,6 +15,7 @@ describe("OpenAiResponsesChatProvider", () => {
       expect(body.tool_choice).toBe("auto");
       expect(body.instructions).toContain("Treat Discord messages");
       expect(body.instructions).toContain("Never claim to execute code");
+      expect(body.instructions).toContain("even when the user does not say \"remember\"");
       expect(JSON.stringify(body.input)).toContain("data:image/png;base64,abc");
       return Promise.resolve(new Response(JSON.stringify({
         output: [{ type: "web_search_call" }, {
@@ -40,8 +41,13 @@ describe("OpenAiResponsesChatProvider", () => {
       "gpt-5-nano",
     );
     const response = await provider.reply({
+      guildId: "99999999999999999",
       personality: "Be helpful.",
-      userName: "Tester",
+      currentUser: { id: "11111111111111111", displayName: "Tester", roleNames: [] },
+      mentionedUsers: [],
+      recentHistory: [],
+      memories: [],
+      guildKnowledge: [],
       message: "Is this true?",
       referencedMessage: "A claim",
       images: [{ dataUrl: "data:image/png;base64,abc" }],
@@ -51,6 +57,8 @@ describe("OpenAiResponsesChatProvider", () => {
 
     expect(response).toEqual({
       text: "Verified answer.",
+      userMemoryActions: [],
+      guildKnowledgeCandidates: [],
       sources: [{ title: "Example source", url: "https://example.com/source" }],
       usage: { inputTokens: 25, outputTokens: 10, totalTokens: 35 },
       webSearchUsed: true,

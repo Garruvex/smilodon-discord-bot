@@ -107,3 +107,48 @@ Active queues, autoplay state, and 24/7 state are intentionally session-local;
 they reset when the bot process restarts. Personal saved playlists, filters,
 lyrics, dashboard integration, support commands, direct image uploads, and
 chatbot behaviors remain Phase 2 work.
+
+## Chat memory boundaries
+
+Mention chat is orchestrated by an application service rather than the Discord
+adapter. The service loads three deliberately separate inputs: the configured
+personality, bounded confirmed guild knowledge, and only the current user's
+bounded private state. Live Discord identities and role assignments are request
+context and are not copied into learned memory as an authority source.
+
+Normal chat remains one provider call. Its structured result contains the reply,
+private user-memory actions, and proposed guild-knowledge candidates. The
+application supplies ownership and validates subjects, topics, sizes, and
+sensitive-content rules. Safe public self-reports may become confirmed guild
+knowledge. Third-party claims remain expiring candidates and are excluded from
+normal prompts until the subject or a future administrative workflow confirms
+them.
+
+File persistence is isolated by instance runtime directory and then by guild and
+user:
+
+```text
+chat/<guildId>/guild-knowledge.json
+chat/<guildId>/users/<userId>.json
+```
+
+Each user document atomically contains that user's recent session and private
+memories. Guild knowledge is maintained independently with its own smaller hard
+bounds and deterministic topic/slot upserts. A one-time idempotent migration
+copies the earlier aggregate `chat-state.json` into per-user documents and
+retains the source file. PostgreSQL adapters implement the same application
+interfaces with separate session, user-memory, and guild-knowledge tables.
+
+Session persistence stores the exact Discord-visible assistant text, not the raw
+unbounded provider output. Individual user messages are capped at 1,000
+characters and Discord replies at 2,000 characters. Up to eight complete recent
+exchanges are retained within a 16,000-character serialized budget; when the
+budget is exceeded, whole oldest exchanges are removed rather than leaving
+mid-sentence fragments.
+
+Guild-memory selection is an application interface. The current
+`FullGuildMemorySelector` returns the store's bounded confirmed set, keeping the
+normal path to one provider round trip. Up to 100 confirmed records and 16,000
+serialized characters may be included. Record and character counts are logged
+with chat request metadata. A future semantic or model-based selector can replace
+this implementation without changing Discord, persistence, or provider adapters.

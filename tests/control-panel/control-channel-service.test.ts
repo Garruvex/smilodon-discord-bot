@@ -139,6 +139,37 @@ function mentionMessage(): Message<true> {
 }
 
 describe("ControlChannelService", () => {
+  it("preserves an existing idle image attachment during refresh", () => {
+    const { service } = createService(false);
+    const createPanelEditOptions = (
+      service as unknown as {
+        createPanelEditOptions: (
+          message: Message,
+          profile: GuildConfiguration,
+          snapshot: null,
+          payload: { content: string },
+        ) => { attachments?: []; files?: unknown[] };
+      }
+    ).createPanelEditOptions.bind(service);
+    const message = {
+      attachments: {
+        some: (predicate: (attachment: { name: string }) => boolean) =>
+          predicate({ name: "music-idle.png" }),
+      },
+    } as unknown as Message;
+
+    const result = createPanelEditOptions(
+      message,
+      guildConfiguration(false),
+      null,
+      { content: "Idle" },
+    );
+
+    expect(result).toEqual({ content: "Idle" });
+    expect(result).not.toHaveProperty("attachments");
+    expect(result).not.toHaveProperty("files");
+  });
+
   it("ignores bot mentions so mention-chat can handle them", async () => {
     const { service, enqueue } = createService(true);
 

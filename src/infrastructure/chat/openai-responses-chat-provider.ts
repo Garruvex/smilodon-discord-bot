@@ -8,6 +8,7 @@ import {
   type ChatResponse,
   type ChatSource,
 } from "../../application/chat/chat-provider.js";
+import { buildChatContext, buildChatInstructions, chatModelJsonSchema, parseChatModelOutput } from "./chat-structured-output.js";
 
 const responseSchema = z.object({
   output: z.array(z.object({
@@ -44,11 +45,9 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
   ) {}
 
   public async reply(request: ChatRequest): Promise<ChatResponse> {
-    const context = request.referencedMessage
-      ? `The user replied to this Discord message:\n${request.referencedMessage}\n\nTheir request:\n${request.message}`
-      : request.message;
+    const context = buildChatContext(request);
     const content: Array<Record<string, unknown>> = [
-      { type: "input_text", text: `${request.userName}: ${context}` },
+      { type: "input_text", text: context },
       ...request.images.map((image) => ({
         type: "input_image",
         image_url: image.dataUrl,
@@ -63,8 +62,9 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
       },
       body: JSON.stringify({
         model: this.model,
-        instructions: `${request.personality}\n\n${chatSafetyGuard}`,
+        instructions: buildChatInstructions(request, chatSafetyGuard),
         input: [{ role: "user", content }],
+        text: { format: { type: "json_schema", name: "persona_chat_response", strict: true, schema: chatModelJsonSchema } },
         tools: request.webSearchEnabled ? [{ type: "web_search" }] : [],
         tool_choice: request.webSearchEnabled ? "auto" : undefined,
       }),
@@ -100,8 +100,11 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
         }
       }
     }
+    const modelOutput = parseChatModelOutput(texts.join("\n").trim());
     return {
-      text: texts.join("\n").trim(),
+      text: modelOutput.response,
+      userMemoryActions: modelOutput.userMemoryActions,
+      guildKnowledgeCandidates: modelOutput.guildKnowledgeCandidates,
       sources: [...sources.values()].slice(0, 5),
       usage: parsed.usage
         ? {

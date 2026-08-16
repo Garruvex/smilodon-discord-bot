@@ -369,14 +369,22 @@ export class ControlChannelService {
     snapshot: MusicPlayerSnapshot | null,
     payload: ControlPanelPayload,
     options: { forceIdleImage?: boolean } = {},
-  ): ControlPanelPayload & { attachments: []; files?: Array<{ attachment: string; name: string }> } {
+  ): ControlPanelPayload & {
+    attachments?: [];
+    files?: Array<{ attachment: string; name: string }>;
+  } {
     const needsIdleImage = !profile.idleImageUrl && !snapshot?.currentTrack;
     const idleImageName = this.getIdleImageName(profile);
     const hasIdleAttachment = message.attachments.some((attachment) => attachment.name === idleImageName);
 
-    return needsIdleImage && (!hasIdleAttachment || options.forceIdleImage)
-      ? { ...payload, attachments: [], files: [this.getIdleImageFile(profile)] }
-      : { ...payload, attachments: [] };
+    if (!needsIdleImage) return { ...payload, attachments: [] };
+    if (!hasIdleAttachment || options.forceIdleImage) {
+      return { ...payload, attachments: [], files: [this.getIdleImageFile(profile)] };
+    }
+
+    // Omitting `attachments` preserves the existing idle image. Sending an
+    // empty array removes it and makes the next refresh upload it again.
+    return payload;
   }
 
   private async replyEphemeral(interaction: ButtonInteraction, content: string): Promise<void> {

@@ -7,7 +7,8 @@ import type { Logger } from "pino";
 import { ChatAccessService } from "../../../application/access/chat-access-service.js";
 import { BehaviorEvent, BehaviorResult, type BotBehavior } from "../../../application/behaviors/behavior.js";
 import { resolveGuildPersonalityPath } from "../../../application/assets/guild-personality-path.js";
-import { ChatProviderError, type ChatProvider, type ChatSource } from "../../../application/chat/chat-provider.js";
+import { ChatProviderError, type ChatSource } from "../../../application/chat/chat-provider.js";
+import { ChatStateCommitError, type ChatConversationService } from "../../../application/chat/chat-conversation-service.js";
 import { ChannelTypingManager } from "../../../application/chat/channel-typing-manager.js";
 import type { ApplicationConfiguration } from "../../../config/configuration.js";
 import type { GuildConfiguration } from "../../../config/guild-configuration.js";
@@ -32,13 +33,11 @@ Do not claim to be a moderator and direct moderation disputes to server staff.`;
 const supportedImageTypes = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 const allowedDiscordImageHosts = new Set(["cdn.discordapp.com", "media.discordapp.net"]);
 const maximumImageBytes = 8 * 1024 * 1024;
-const cooldownRetentionMs = 60 * 60 * 1_000;
 
 export class MentionChatBehavior implements BotBehavior<Message> {
   public readonly id = "mention-chat";
   public readonly event = BehaviorEvent.MessageCreated;
   public readonly priority = 100;
-  private readonly lastRequest = new Map<string, number>();
   private readonly processedMessageIds = new Set<string>();
   private readonly chatAccess: ChatAccessService;
   private readonly typing = new ChannelTypingManager();
@@ -47,7 +46,7 @@ export class MentionChatBehavior implements BotBehavior<Message> {
     private readonly clientUserId: () => string | null,
     private readonly configuration: ApplicationConfiguration,
     private readonly profiles: GuildConfigurationProvider,
-    private readonly provider: ChatProvider | null,
+    private readonly conversation: ChatConversationService | null,
     private readonly logger: Logger,
   ) {
     this.chatAccess = new ChatAccessService(configuration);
@@ -74,7 +73,7 @@ export class MentionChatBehavior implements BotBehavior<Message> {
       });
       return BehaviorResult.StopPropagation;
     }
-    if (!this.provider) {
+    if (!this.conversation) {
       await message.reply({ content: "The chat subscription has not been configured yet.", allowedMentions: { repliedUser: false } });
       return BehaviorResult.StopPropagation;
     }
@@ -95,16 +94,6 @@ export class MentionChatBehavior implements BotBehavior<Message> {
       return BehaviorResult.StopPropagation;
     }
 
-    const rateKey = `${message.guildId}:${message.author.id}`;
-    this.pruneCooldownEntries();
-    const retryAt = (this.lastRequest.get(rateKey) ?? 0) + profile.chat.cooldownSeconds * 1_000;
-    if (Date.now() < retryAt) {
-      const remainingSeconds = Math.max(1, Math.ceil((retryAt - Date.now()) / 1_000));
-      await message.reply({ content: `Your premium thoughts are arriving too quickly. Try again in ${remainingSeconds} second${remainingSeconds === 1 ? "" : "s"}.`, allowedMentions: { repliedUser: false } });
-      return BehaviorResult.StopPropagation;
-    }
-    this.lastRequest.set(rateKey, Date.now());
-
     const stopTyping = this.typing.start(
       message.channelId,
       () => message.channel.sendTyping(),
@@ -122,14 +111,40 @@ export class MentionChatBehavior implements BotBehavior<Message> {
         imageCount: images.length,
         webSearchEnabled: profile.chat.webSearchEnabled,
       }, "Chat API request started");
-      const response = await this.provider.reply({
+      const mentionedUsers = message.mentions.users
+        .filter((user) => !user.bot && user.id !== message.author.id)
+        .map((user) => ({
+          id: user.id,
+          displayName: message.mentions.members?.get(user.id)?.displayName ?? user.displayName,
+          roleNames: message.mentions.members?.get(user.id)?.roles.cache
+            .filter((role) => role.id !== message.guildId)
+            .map((role) => role.name.slice(0, 50))
+            .slice(0, 10) ?? [],
+        }));
+      const response = await this.conversation.run({
+        guildId: message.guildId,
         personality: this.loadPersonality(profile),
-        userName: message.member?.displayName ?? message.author.username,
+        currentUser: {
+          id: message.author.id,
+          displayName: message.member?.displayName ?? message.author.username,
+          roleNames: message.member?.roles.cache
+            .filter((role) => role.id !== message.guildId)
+            .map((role) => role.name.slice(0, 50))
+            .slice(0, 10) ?? [],
+        },
+        mentionedUsers,
         message: prompt,
         referencedMessage: referenced?.content.slice(0, 4_000) ?? null,
         images,
         webSearchEnabled: profile.chat.webSearchEnabled,
         includeSources: profile.chat.includeSources,
+      }, async (deliveredResponse) => {
+        const content = this.formatResponse(deliveredResponse.text, deliveredResponse.sources) || "I ran out of words. Very premium of me.";
+        await message.reply({
+          content,
+          allowedMentions: { repliedUser: false, parse: [] },
+        });
+        return content;
       });
       this.logger.info({
         guildId: message.guildId,
@@ -144,13 +159,13 @@ export class MentionChatBehavior implements BotBehavior<Message> {
         inputTokens: response.usage?.inputTokens,
         outputTokens: response.usage?.outputTokens,
         totalTokens: response.usage?.totalTokens,
+        memoryActionCount: response.userMemoryActions.length,
+        guildKnowledgeRecordCount: response.contextUsage?.guildKnowledgeRecords,
+        guildKnowledgeChars: response.contextUsage?.guildKnowledgeChars,
       }, "Chat API request completed");
-      await message.reply({
-        content: this.formatResponse(response.text, response.sources) || "I ran out of words. Very premium of me.",
-        allowedMentions: { repliedUser: false, parse: [] },
-      });
     } catch (error) {
       this.logger.error({ error, guildId: message.guildId, channelId: message.channelId, messageId: message.id, userId: message.author.id }, "Mention chat request failed");
+      if (error instanceof ChatStateCommitError) return BehaviorResult.StopPropagation;
       const content = error instanceof ChatProviderError && error.status === 429
         ? error.code === "insufficient_quota" || error.code === "credit_balance_exhausted"
           ? "The premium brain's API quota is empty. Please let a bot administrator know."
@@ -167,15 +182,6 @@ export class MentionChatBehavior implements BotBehavior<Message> {
     this.processedMessageIds.add(messageId);
     const timer = setTimeout(() => this.processedMessageIds.delete(messageId), 5 * 60 * 1_000);
     timer.unref();
-  }
-
-  private pruneCooldownEntries(): void {
-    const cutoff = Date.now() - cooldownRetentionMs;
-    for (const [key, timestamp] of this.lastRequest) {
-      if (timestamp < cutoff) {
-        this.lastRequest.delete(key);
-      }
-    }
   }
 
   private loadPersonality(profile: GuildConfiguration): string {

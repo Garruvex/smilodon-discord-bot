@@ -32,6 +32,8 @@ const dependencies = createDependencies(
   guildConfigurationProvider,
   deferredGuildSetupService,
   discordClient,
+  persistence.chatStateStore,
+  persistence.guildKnowledgeStore,
 );
 const controlPanelStateStore = persistence.controlPanelStateStore;
 const controlChannelService = new ControlChannelService(

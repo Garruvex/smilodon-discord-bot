@@ -8,6 +8,13 @@
       "when": 1786726861157,
       "tag": "0000_productive_tag",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786849200000,
+      "tag": "0001_chat_memory",
+      "breakpoints": true
     }
   ]
 }

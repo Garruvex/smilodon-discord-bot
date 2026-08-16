@@ -1,11 +1,65 @@
 export interface ChatRequest {
+  guildId: string;
   personality: string;
-  userName: string;
+  currentUser: ChatUser;
+  mentionedUsers: readonly ChatUser[];
+  recentHistory: readonly ChatHistoryMessage[];
+  memories: readonly ChatMemoryRecord[];
+  guildKnowledge: readonly GuildKnowledgeRecord[];
   message: string;
   referencedMessage: string | null;
   images: readonly ChatImage[];
   webSearchEnabled: boolean;
   includeSources: boolean;
+}
+
+export interface ChatUser {
+  id: string;
+  displayName: string;
+  roleNames: readonly string[];
+}
+
+export interface ChatHistoryMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface ChatMemoryRecord {
+  id: string;
+  assertedByUserId: string;
+  subjectUserId: string;
+  topic: string;
+  slot: string;
+  statement: string;
+  pinned: boolean;
+}
+
+export interface ProposedMemoryAction {
+  action: "upsert" | "remove";
+  subjectUserId: string;
+  topic: string;
+  slot: string;
+  statement: string | null;
+}
+
+export type GuildKnowledgeSubjectType = "guild" | "member" | "team" | "project";
+
+export interface GuildKnowledgeRecord {
+  id: string;
+  subjectType: GuildKnowledgeSubjectType;
+  subjectId: string;
+  topic: string;
+  slot: string;
+  statement: string;
+  source: "self_report" | "community" | "administrator";
+}
+
+export interface ProposedGuildKnowledgeCandidate {
+  subjectType: GuildKnowledgeSubjectType;
+  subjectId: string;
+  topic: string;
+  slot: string;
+  statement: string;
 }
 
 export interface ChatImage {
@@ -19,9 +73,15 @@ export interface ChatSource {
 
 export interface ChatResponse {
   text: string;
+  userMemoryActions: readonly ProposedMemoryAction[];
+  guildKnowledgeCandidates: readonly ProposedGuildKnowledgeCandidate[];
   sources: readonly ChatSource[];
   usage: ChatUsage | null;
   webSearchUsed: boolean;
+  contextUsage?: {
+    guildKnowledgeRecords: number;
+    guildKnowledgeChars: number;
+  };
 }
 
 export interface ChatUsage {

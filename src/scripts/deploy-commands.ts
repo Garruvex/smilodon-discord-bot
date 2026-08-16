@@ -43,6 +43,8 @@ const dependencies = createDependencies(
   guildConfigurationProvider,
   new DeferredGuildSetupService(),
   createDiscordClient(),
+  persistence.chatStateStore,
+  persistence.guildKnowledgeStore,
 );
 const deploymentService = new DiscordGuildCommandDeploymentService(
   configuration,
