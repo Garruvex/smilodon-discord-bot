@@ -40,6 +40,7 @@ import type { ChatStateStore } from "../application/chat/chat-state-store.js";
 import { ChatConversationService } from "../application/chat/chat-conversation-service.js";
 import type { GuildKnowledgeStore } from "../application/chat/guild-knowledge-store.js";
 import { FullGuildMemorySelector } from "../application/chat/guild-memory-selector.js";
+import { ApplicationEmojiCatalog } from "../infrastructure/discord/application-emoji-catalog.js";
 
 export interface ApplicationDependencies {
   commandRegistry: CommandRegistry;
@@ -51,6 +52,7 @@ export interface ApplicationDependencies {
   pollService: PollService;
   behaviorDispatcher: BehaviorDispatcher;
   settingsCommand: SettingsCommand;
+  applicationEmojiCatalog: ApplicationEmojiCatalog;
 }
 
 export function createDependencies(
@@ -68,14 +70,19 @@ export function createDependencies(
   const componentRegistry = new ComponentRegistry();
   componentRegistry.register(new PollComponentHandler(pollService));
   const guildAssetStore = new GuildAssetStore(configuration.runtimeDataDirectory);
-  const settingsCommand = new SettingsCommand(guildConfigurationProvider, guildAssetStore);
+  const applicationEmojiCatalog = new ApplicationEmojiCatalog(discordClient, logger);
+  const settingsCommand = new SettingsCommand(
+    guildConfigurationProvider,
+    guildAssetStore,
+    applicationEmojiCatalog,
+  );
   commandRegistry.register(new PingCommand());
   commandRegistry.register(new DiagnosticCommand());
   commandRegistry.register(new SetupCommand(guildSetupService));
   commandRegistry.register(settingsCommand);
   commandRegistry.register(new VoteCommand(pollService));
   const playbackService = new PlaybackService(musicPlayerGateway);
-  commandRegistry.register(new PlayCommand(playbackService));
+  commandRegistry.register(new PlayCommand(playbackService, guildConfigurationProvider));
   commandRegistry.register(new PauseCommand(playbackService));
   commandRegistry.register(new ResumeCommand(playbackService));
   commandRegistry.register(new StopCommand(playbackService));
@@ -142,5 +149,6 @@ export function createDependencies(
     pollService,
     behaviorDispatcher: new BehaviorDispatcher(behaviorRegistry),
     settingsCommand,
+    applicationEmojiCatalog,
   };
 }

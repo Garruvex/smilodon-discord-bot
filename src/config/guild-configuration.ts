@@ -44,6 +44,46 @@ export interface GuildMusicConfiguration {
   resumeWhenOccupied: boolean;
 }
 
+export type ProgressBarStyle = "standard" | "yohta" | "custom" | "none";
+
+interface ProgressBarEmojiReferenceBase {
+  id: string;
+  name: string;
+  animated: boolean;
+}
+
+export interface GuildProgressBarEmojiReference extends ProgressBarEmojiReferenceBase {
+  scope: "guild";
+  guildId: string;
+}
+
+export interface ApplicationProgressBarEmojiReference extends ProgressBarEmojiReferenceBase {
+  scope: "application";
+  applicationId: string;
+}
+
+export type ProgressBarEmojiReference =
+  | GuildProgressBarEmojiReference
+  | ApplicationProgressBarEmojiReference;
+
+export interface CustomProgressBarTheme {
+  completed: ProgressBarEmojiReference;
+  remaining: ProgressBarEmojiReference;
+  playing: ProgressBarEmojiReference;
+  paused: ProgressBarEmojiReference;
+  ending: ProgressBarEmojiReference | null;
+}
+
+export interface ProgressBarSettings {
+  style: ProgressBarStyle;
+  length: number;
+  customTheme: CustomProgressBarTheme | null;
+}
+
+export interface GuildPanelConfiguration {
+  progressBar: ProgressBarSettings;
+}
+
 export interface GuildConfiguration {
   schemaVersion: 1;
   guildId: string;
@@ -52,6 +92,7 @@ export interface GuildConfiguration {
   embedColor: string;
   idleImageUrl: string | null;
   idleImageAsset: string | null;
+  panel: GuildPanelConfiguration;
   features: GuildFeatureConfiguration;
   roles: GuildRoleConfiguration;
   channels: GuildChannelConfiguration;

@@ -3,6 +3,34 @@ import { z } from "zod";
 const snowflake = z.string().regex(/^\d{17,20}$/);
 const snowflakeList = z.array(snowflake).default([]);
 
+const progressBarEmojiBase = {
+  id: snowflake,
+  name: z.string().trim().min(1).max(32),
+  animated: z.boolean(),
+};
+const progressBarEmojiSchema = z.discriminatedUnion("scope", [
+  z.object({ ...progressBarEmojiBase, scope: z.literal("guild"), guildId: snowflake }),
+  z.object({
+    ...progressBarEmojiBase,
+    scope: z.literal("application"),
+    applicationId: snowflake,
+  }),
+]);
+
+const customProgressBarThemeSchema = z.object({
+  completed: progressBarEmojiSchema,
+  remaining: progressBarEmojiSchema,
+  playing: progressBarEmojiSchema,
+  paused: progressBarEmojiSchema,
+  ending: progressBarEmojiSchema.nullable().default(null),
+});
+
+const defaultProgressBar = {
+  style: "standard" as const,
+  length: 12,
+  customTheme: null,
+};
+
 export const guildConfigurationFileSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -28,6 +56,17 @@ export const guildConfigurationFileSchema = z
         idleImageUrl: null,
         idleImageAsset: null,
       }),
+    panel: z
+      .object({
+        progressBar: z
+          .object({
+            style: z.enum(["standard", "yohta", "custom", "none"]).default("standard"),
+            length: z.number().int().min(6).max(16).default(12),
+            customTheme: customProgressBarThemeSchema.nullable().default(null),
+          })
+          .default(defaultProgressBar),
+      })
+      .default({ progressBar: defaultProgressBar }),
     features: z
       .object({
         common: z.boolean().default(true),
@@ -121,6 +160,17 @@ export const guildConfigurationFileSchema = z
       }),
   })
   .superRefine((configuration, context) => {
+    if (
+      configuration.panel.progressBar.style === "custom" &&
+      !configuration.panel.progressBar.customTheme
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Custom progress style requires a custom theme.",
+        path: ["panel", "progressBar", "customTheme"],
+      });
+    }
+
     if (configuration.music.volume.default > configuration.music.volume.maximum) {
       context.addIssue({
         code: z.ZodIssueCode.custom,

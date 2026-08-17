@@ -1,5 +1,5 @@
-import type { Message } from "discord.js";
-import { describe, expect, it, vi } from "vitest";
+import { ButtonStyle, type Message } from "discord.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ControlChannelService } from "../../src/application/control-panel/control-channel-service.js";
 import type { PlaybackService } from "../../src/application/music/playback-service.js";
@@ -15,6 +15,10 @@ const controlPanelChannelId = "901234567890123456";
 const botUserId = "789012345678901234";
 const musicControllerRoleId = "234567890123456789";
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 function guildConfiguration(chatbotEnabled: boolean): GuildConfiguration {
   return {
     schemaVersion: 1,
@@ -24,6 +28,9 @@ function guildConfiguration(chatbotEnabled: boolean): GuildConfiguration {
     embedColor: "#3B82F6",
     idleImageUrl: null,
     idleImageAsset: null,
+    panel: {
+      progressBar: { style: "standard", length: 12, customTheme: null },
+    },
     features: {
       common: true,
       diagnostics: true,
@@ -69,22 +76,25 @@ function guildConfiguration(chatbotEnabled: boolean): GuildConfiguration {
 function createService(chatbotEnabled: boolean): {
   service: ControlChannelService;
   enqueue: ReturnType<typeof vi.fn>;
+  getSnapshot: ReturnType<typeof vi.fn>;
 } {
-  const client = { user: { id: botUserId } };
+  const client = { user: { id: botUserId }, guilds: { cache: new Map() } };
   const configuration = {
     ownerUserIds: new Set<string>(),
     runtimeDataDirectory: "./data/local",
   } as unknown as ApplicationConfiguration;
   const provider = {
     find: () => guildConfiguration(chatbotEnabled),
+    getAll: () => [guildConfiguration(chatbotEnabled)],
   } as unknown as GuildConfigurationProvider;
   const stateStore = {
     initialize: vi.fn(),
     find: vi.fn(),
     save: vi.fn(),
   } as unknown as ControlPanelStateStore;
+  const getSnapshot = vi.fn(() => null);
   const playerGateway = {
-    getSnapshot: vi.fn(() => null),
+    getSnapshot,
   } as unknown as MusicPlayerGateway;
   const enqueue = vi.fn().mockResolvedValue({
     firstTrack: {
@@ -99,6 +109,7 @@ function createService(chatbotEnabled: boolean): {
     },
     addedTrackCount: 1,
     startedPlayback: true,
+    queuePosition: null,
   });
   const playbackService = { enqueue } as unknown as PlaybackService;
   const logger = { error: vi.fn(), warn: vi.fn() };
@@ -112,10 +123,12 @@ function createService(chatbotEnabled: boolean): {
       stateStore,
       playerGateway,
       playbackService,
+      { getYohtaTheme: () => null, hasEmoji: () => false } as never,
       logger as never,
       eventBus,
     ),
     enqueue,
+    getSnapshot,
   };
 }
 
@@ -139,6 +152,248 @@ function mentionMessage(): Message<true> {
 }
 
 describe("ControlChannelService", () => {
+  it("acknowledges successful controls silently and refreshes the panel", async () => {
+    const { service } = createService(false);
+    const toggleTwentyFourSeven = vi.fn().mockResolvedValue(true);
+    Object.assign(service, {
+      playbackService: { toggleTwentyFourSeven },
+      stateStore: {
+        find: () => ({
+          guildId,
+          channelId: controlPanelChannelId,
+          messageId: "panel-message",
+        }),
+      },
+    });
+    const refreshPanel = vi.spyOn(service, "refreshPanel").mockResolvedValue(undefined);
+    const interaction = {
+      customId: "music-panel:v1:24-7",
+      inCachedGuild: (): boolean => true,
+      guildId,
+      channelId: controlPanelChannelId,
+      message: { id: "panel-message" },
+      member: { roles: { cache: new Map([[musicControllerRoleId, {}]]) } },
+      user: { id: "345678901234567890" },
+      deferUpdate: vi.fn().mockResolvedValue(undefined),
+      reply: vi.fn().mockResolvedValue(undefined),
+      followUp: vi.fn().mockResolvedValue(undefined),
+      replied: false,
+      deferred: true,
+    };
+
+    await expect(service.handleButton(interaction as never)).resolves.toBe(true);
+
+    expect(interaction.deferUpdate).toHaveBeenCalledOnce();
+    expect(interaction.reply).not.toHaveBeenCalled();
+    expect(interaction.followUp).not.toHaveBeenCalled();
+    expect(toggleTwentyFourSeven).toHaveBeenCalledOnce();
+    expect(refreshPanel).toHaveBeenCalledWith(guildId);
+  });
+
+  it("renders enabled session toggles as green controls", () => {
+    const { service } = createService(false);
+    const payload = (
+      service as unknown as {
+        createPanelPayload: (
+          profile: GuildConfiguration,
+          snapshot: unknown,
+        ) => { components: Array<{ toJSON: () => { components: Array<{ style?: number }> } }> };
+      }
+    ).createPanelPayload(guildConfiguration(false), {
+      guildId,
+      voiceChannelId: "345678901234567890",
+      paused: false,
+      playing: true,
+      volume: 75,
+      queueLength: 0,
+      previousTrackCount: 0,
+      repeatMode: "off",
+      autoQueue: true,
+      twentyFourSeven: true,
+      currentTrack: {
+        title: "Track",
+        author: "Artist",
+        uri: "https://example.com/track",
+        artworkUrl: null,
+        durationMs: 60_000,
+        positionMs: 10_000,
+        isStream: false,
+        requestedByUserId: null,
+      },
+    });
+    const secondary = payload.components[1]!.toJSON().components;
+
+    expect(secondary[2]?.style).toBe(ButtonStyle.Success);
+    expect(secondary[3]?.style).toBe(ButtonStyle.Success);
+  });
+
+  it("disables playback controls while keeping an idle 24/7 session reversible", () => {
+    const { service } = createService(false);
+    const payload = (
+      service as unknown as {
+        createPanelPayload: (
+          profile: GuildConfiguration,
+          snapshot: unknown,
+        ) => { components: Array<{ toJSON: () => { components: Array<{ disabled?: boolean }> } }> };
+      }
+    ).createPanelPayload(guildConfiguration(false), {
+      guildId,
+      voiceChannelId: "345678901234567890",
+      paused: false,
+      playing: false,
+      volume: 75,
+      queueLength: 0,
+      previousTrackCount: 0,
+      repeatMode: "off",
+      autoQueue: false,
+      twentyFourSeven: true,
+      currentTrack: null,
+    });
+    const primary = payload.components[0]!.toJSON().components;
+    const secondary = payload.components[1]!.toJSON().components;
+
+    expect(primary.every((button) => button.disabled)).toBe(true);
+    expect(secondary[0]?.disabled).toBe(true);
+    expect(secondary[1]?.disabled).toBe(true);
+    expect(secondary[2]?.disabled).toBe(true);
+    expect(secondary[3]?.disabled).toBe(false);
+    expect(secondary[4]?.disabled).toBe(true);
+  });
+
+  it("keeps artwork prominent and replaces diagnostic fields with compact playback details", () => {
+    const { service } = createService(false);
+    const embed = (
+      service as unknown as {
+        createPanelEmbed: (
+          profile: GuildConfiguration,
+          snapshot: {
+            paused: boolean;
+            volume: number;
+            queueLength: number;
+            repeatMode: "off";
+            currentTrack: {
+              title: string;
+              author: string;
+              uri: string;
+              artworkUrl: string;
+              durationMs: number;
+              positionMs: number;
+              isStream: boolean;
+              requestedByUserId: string;
+            };
+          },
+        ) => { toJSON: () => { description?: string; image?: { url: string }; fields?: unknown[]; footer?: { text: string } } };
+      }
+    ).createPanelEmbed(guildConfiguration(false), {
+      paused: false,
+      volume: 75,
+      queueLength: 0,
+      repeatMode: "off",
+      currentTrack: {
+        title: "Rice Field",
+        author: "Jay Chou",
+        uri: "https://example.com/rice-field",
+        artworkUrl: "https://example.com/artwork.jpg",
+        durationMs: 224_000,
+        positionMs: 158_000,
+        isStream: false,
+        requestedByUserId: "345678901234567890",
+      },
+    }).toJSON();
+
+    expect(embed.image?.url).toBe("https://example.com/artwork.jpg");
+    expect(embed.description).toContain("Rice Field");
+    expect(embed.description).toContain("Jay Chou");
+    expect(embed.description).toContain("▰");
+    expect(embed.fields).toBeUndefined();
+    expect(embed.footer?.text).toContain("Queue empty");
+  });
+
+  it("refreshes the panel to current idle state during startup", async () => {
+    const { service } = createService(false);
+    const ensureGuildPanel = vi
+      .spyOn(service, "ensureGuildPanel")
+      .mockResolvedValue({} as Message);
+    const refreshPanel = vi.spyOn(service, "refreshPanel").mockResolvedValue(undefined);
+
+    await service.initialize();
+    service.stop();
+
+    expect(ensureGuildPanel).toHaveBeenCalledWith(guildId);
+    expect(refreshPanel).toHaveBeenCalledWith(guildId);
+  });
+
+  it("restarts an active guild's five-second progress countdown after a forced refresh", async () => {
+    vi.useFakeTimers();
+    const { service } = createService(false);
+    const refreshPanel = vi.spyOn(service, "refreshPanel").mockResolvedValue(undefined);
+    const resetProgressRefreshTimer = (
+      service as unknown as {
+        resetProgressRefreshTimer: (guildId: string, snapshot: unknown) => void;
+      }
+    ).resetProgressRefreshTimer.bind(service);
+    const activeSnapshot = {
+      currentTrack: { title: "Track" },
+      playing: true,
+      paused: false,
+    };
+
+    resetProgressRefreshTimer(guildId, activeSnapshot);
+    await vi.advanceTimersByTimeAsync(4_000);
+    resetProgressRefreshTimer(guildId, activeSnapshot);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(refreshPanel).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(4_000);
+    expect(refreshPanel).toHaveBeenCalledOnce();
+    expect(refreshPanel).toHaveBeenCalledWith(guildId);
+  });
+
+  it("cancels progress countdowns when playback becomes paused or idle", async () => {
+    vi.useFakeTimers();
+    const { service } = createService(false);
+    const refreshPanel = vi.spyOn(service, "refreshPanel").mockResolvedValue(undefined);
+    const resetProgressRefreshTimer = (
+      service as unknown as {
+        resetProgressRefreshTimer: (guildId: string, snapshot: unknown) => void;
+      }
+    ).resetProgressRefreshTimer.bind(service);
+
+    resetProgressRefreshTimer(guildId, {
+      currentTrack: { title: "Track" },
+      playing: true,
+      paused: false,
+    });
+    resetProgressRefreshTimer(guildId, {
+      currentTrack: { title: "Track" },
+      playing: false,
+      paused: true,
+    });
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(refreshPanel).not.toHaveBeenCalled();
+  });
+
+  it("keeps refreshing while a current track is in Lavalink's start transition", async () => {
+    vi.useFakeTimers();
+    const { service } = createService(false);
+    const refreshPanel = vi.spyOn(service, "refreshPanel").mockResolvedValue(undefined);
+    const resetProgressRefreshTimer = (
+      service as unknown as {
+        resetProgressRefreshTimer: (guildId: string, snapshot: unknown) => void;
+      }
+    ).resetProgressRefreshTimer.bind(service);
+
+    resetProgressRefreshTimer(guildId, {
+      currentTrack: { title: "Starting track" },
+      playing: false,
+      paused: false,
+    });
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(refreshPanel).toHaveBeenCalledOnce();
+    expect(refreshPanel).toHaveBeenCalledWith(guildId);
+  });
+
   it("preserves an existing idle image attachment during refresh", () => {
     const { service } = createService(false);
     const createPanelEditOptions = (

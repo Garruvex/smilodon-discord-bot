@@ -37,6 +37,13 @@ export class CommandResponses {
     await this.interaction.editReply(options);
   }
 
+  public deleteAfter(milliseconds: number): void {
+    const timer = setTimeout(() => {
+      void this.interaction.deleteReply().catch(() => undefined);
+    }, milliseconds);
+    timer.unref();
+  }
+
   public async error(message: string, title = "Command error"): Promise<void> {
     const embed = new EmbedBuilder()
       .setColor("Red")

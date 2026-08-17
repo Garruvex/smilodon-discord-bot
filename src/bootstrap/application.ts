@@ -74,7 +74,14 @@ export class Application {
           void this.stop("lavalink-init-failed");
         });
 
-      void this.controlChannelService.initialize().catch((error: unknown) => {
+      void (async (): Promise<void> => {
+        try {
+          await this.dependencies.applicationEmojiCatalog.initialize();
+        } catch (error) {
+          this.logger.error({ error }, "Application emoji catalog initialization failed");
+        }
+        await this.controlChannelService.initialize();
+      })().catch((error: unknown) => {
         this.logger.error({ error }, "Control-channel initialization failed");
       });
       this.musicPresenceService.start();
@@ -153,6 +160,7 @@ export function createDiscordClient(): Client {
   return new Client({
     intents: [
       GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildExpressions,
       GatewayIntentBits.GuildMessages,
       GatewayIntentBits.GuildVoiceStates,
       GatewayIntentBits.MessageContent,

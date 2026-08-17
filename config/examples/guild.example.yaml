@@ -10,6 +10,12 @@ branding:
   # Optional image displayed when the player is idle.
   idleImageUrl: null
 
+panel:
+  progressBar:
+    # standard, yohta, custom, or none. Configure custom emojis with /settings panel.
+    style: standard
+    length: 12
+
 features:
   common: true
   diagnostics: true

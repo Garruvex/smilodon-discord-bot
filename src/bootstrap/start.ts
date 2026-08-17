@@ -43,6 +43,7 @@ const controlChannelService = new ControlChannelService(
   controlPanelStateStore,
   musicPlayerGateway,
   dependencies.playbackService,
+  dependencies.applicationEmojiCatalog,
   logger,
   musicEventBus,
 );

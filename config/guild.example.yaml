@@ -9,6 +9,12 @@ branding:
   embedColor: "#3B82F6"
   idleImageUrl: null
 
+panel:
+  progressBar:
+    # standard, yohta, custom, or none. Configure custom emojis with /settings panel.
+    style: standard
+    length: 12
+
 features:
   common: true
   diagnostics: true

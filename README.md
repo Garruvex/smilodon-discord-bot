@@ -220,6 +220,36 @@ another website:
 /settings panel idle-image:<attachment>
 ```
 
+The now-playing panel keeps artwork prominent and supports portable, Yohta,
+custom-emoji, or timestamp-only progress displays. Select a preset with
+`/settings panel progress-style:<style>`. For a custom theme, provide the
+completed, remaining, playing, and paused emojis in the same command; emojis
+may be pasted directly or entered by name and must belong to the current
+server. An optional ending emoji and a bar length from 6–16 are also supported.
+
+The Yohta preset uses application-owned emojis so it works in every server
+where a given bot instance is installed. Provision the bundled assets once per
+Discord application; the command only creates missing names and never deletes
+unrelated emojis:
+
+```powershell
+npm.cmd run instance:emojis:sync
+npm.cmd run instance:emojis:sync -- pinecone
+npm.cmd run instance:emojis:sync -- pinecone yohta
+```
+
+With no names, the command synchronizes every configured instance sequentially.
+One or more names restrict it to those instances.
+
+At startup each instance fetches its own application emoji IDs by logical name.
+If the five-emoji preset is incomplete, Yohta settings are rejected with the
+missing names and existing panels fall back to the standard progress bar.
+
+Successful typed requests in the control channel and `/play` replies show the
+same resolved music card: title/link, artist, artwork, duration or live state,
+requester, playlist size, and queue position. These acknowledgement cards are
+removed after 30 seconds; the persistent control panel remains in place.
+
 PNG, JPEG, WebP, and GIF files up to 8 MB are accepted. The bot downloads the
 file into `RUNTIME_DATA_DIRECTORY/guild-assets/<guild-id>` so it survives a
 restart and does not depend on a temporary Discord attachment URL. Use
@@ -462,8 +492,8 @@ Stop the local stack with `Ctrl+C`, or use `docker compose down` after starting
 it in detached mode. The guild profiles and runtime state are bind-mounted and
 survive container replacement. Only one bot replica should run at a time.
 
-For native TypeScript hot reload, start only the infrastructure services in one
-terminal and the bot in another:
+For native TypeScript hot reload backed by containerized infrastructure, start
+the infrastructure services in one terminal and the bot in another:
 
 ```powershell
 npm.cmd run dev:services
@@ -566,8 +596,7 @@ npm.cmd run instance:start -- pinecone
 ```
 
 `instance:start` starts only that Discord bot and expects shared infrastructure
-to be running. Start every discovered instance with one workspace-local
-Lavalink process:
+to be running. The same is true for the multi-instance launcher:
 
 ```powershell
 npm.cmd run instances:start
@@ -581,6 +610,15 @@ npm.cmd run instances:start -- pinecone smilodon
 
 Each bot remains a separate process and Discord/Lavalink session, but the
 combined launcher prefixes their output and stops the group if a process fails.
-When PostgreSQL persistence is selected, the PostgreSQL server must already be
-running and each instance must point to a different logical database. Legacy
-`local:start` and `deploy:commands` continue to use the root `.env` unchanged.
+To start the workspace-local Lavalink service and every discovered bot with one
+native command, run:
+
+```powershell
+npm.cmd run all:start
+```
+
+Names may be supplied to `all:start` to launch only those bots. This path does
+not require Docker when file persistence is selected. With PostgreSQL
+persistence, start PostgreSQL separately and point every instance at a different
+logical database. Legacy `local:start` and `deploy:commands` continue to use the
+root `.env` unchanged.

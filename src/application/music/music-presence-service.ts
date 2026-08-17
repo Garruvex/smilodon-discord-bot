@@ -5,8 +5,18 @@ import type { GuildConfigurationProvider } from "../../config/guild-configuratio
 import type { MusicEventBus } from "./music-event-bus.js";
 import type { MusicPlayerGateway, MusicPlayerSnapshot } from "./music-player-gateway.js";
 
+const idleActivityNames = [
+  "your next questionable song choice 🎶",
+  "the queue warming up 🔥",
+  "your next song request 🎧",
+  "someone typing a song name…",
+  "the sound of an empty queue 👀",
+  "requests—surprise me!",
+] as const;
+
 export class MusicPresenceService {
   private refreshTimer: NodeJS.Timeout | null = null;
+  private readonly idleActivityName: string;
 
   public constructor(
     private readonly client: Client,
@@ -15,6 +25,9 @@ export class MusicPresenceService {
     private readonly logger: Logger,
     eventBus: MusicEventBus,
   ) {
+    this.idleActivityName = idleActivityNames[
+      Math.floor(Math.random() * idleActivityNames.length)
+    ]!;
     eventBus.subscribe(async () => this.refresh());
   }
 
@@ -43,7 +56,7 @@ export class MusicPresenceService {
       if (active.length === 0) {
         user.setPresence({
           status: "online",
-          activities: [{ name: "music requests", type: ActivityType.Listening }],
+          activities: [{ name: this.idleActivityName, type: ActivityType.Listening }],
         });
       } else if (active.length > 1) {
         user.setPresence({

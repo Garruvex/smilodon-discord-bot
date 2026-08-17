@@ -4,6 +4,11 @@ import type { ControlChannelService } from "../../src/application/control-panel/
 import { SettingsCommand } from "../../src/infrastructure/discord/commands/setup/settings-command.js";
 import type { GuildConfiguration } from "../../src/config/guild-configuration.js";
 
+const applicationEmojiCatalog = {
+  getYohtaTheme: (): null => null,
+  getMissingYohtaEmojiNames: (): string[] => ["progressed"],
+};
+
 function profile(): GuildConfiguration {
   return {
     schemaVersion: 1,
@@ -13,6 +18,9 @@ function profile(): GuildConfiguration {
     embedColor: "#3B82F6",
     idleImageUrl: null,
     idleImageAsset: null,
+    panel: {
+      progressBar: { style: "standard", length: 12, customTheme: null },
+    },
     features: {
       common: true,
       diagnostics: true,
@@ -57,7 +65,7 @@ function profile(): GuildConfiguration {
 
 describe("SettingsCommand", () => {
   it("rejects removing the last music-controller role while music is enabled", () => {
-    const command = new SettingsCommand({} as never, {} as never);
+    const command = new SettingsCommand({} as never, {} as never, applicationEmojiCatalog as never);
     const validation = (
       command as unknown as {
         validateRoleGroupUpdate: (
@@ -72,7 +80,7 @@ describe("SettingsCommand", () => {
   });
 
   it("refreshes the panel immediately after idle-image settings change", async () => {
-    const command = new SettingsCommand({} as never, {} as never);
+    const command = new SettingsCommand({} as never, {} as never, applicationEmojiCatalog as never);
     const refreshPanel = vi.fn().mockResolvedValue(undefined);
     const ensureGuildPanel = vi.fn().mockResolvedValue(undefined);
     command.bindControlChannelService({
@@ -98,5 +106,65 @@ describe("SettingsCommand", () => {
 
     expect(refreshPanel).toHaveBeenCalledWith(profile().guildId, { forceIdleImage: true });
     expect(ensureGuildPanel).not.toHaveBeenCalled();
+  });
+
+  it("refreshes the panel immediately after progress settings change", async () => {
+    const command = new SettingsCommand({} as never, {} as never, applicationEmojiCatalog as never);
+    const refreshPanel = vi.fn().mockResolvedValue(undefined);
+    command.bindControlChannelService({
+      refreshPanel,
+      ensureGuildPanel: vi.fn(),
+    } as unknown as ControlChannelService);
+
+    await (
+      command as unknown as {
+        syncControlPanel: (
+          guildId: string,
+          subcommand: string,
+          input: { progressBar?: GuildConfiguration["panel"]["progressBar"] },
+          profile: GuildConfiguration,
+        ) => Promise<void>;
+      }
+    ).syncControlPanel(
+      profile().guildId,
+      "panel",
+      { progressBar: { style: "yohta", length: 12, customTheme: null } },
+      profile(),
+    );
+
+    expect(refreshPanel).toHaveBeenCalledWith(profile().guildId, {
+      forceIdleImage: false,
+    });
+  });
+
+  it("resolves custom emojis by mention or local name", () => {
+    const command = new SettingsCommand({} as never, {} as never, applicationEmojiCatalog as never);
+    const guildId = profile().guildId;
+    const emoji = {
+      id: "777777777777777777",
+      name: "runner",
+      animated: true,
+      available: true,
+      guild: { id: guildId },
+    };
+    const resolveGuildEmoji = (
+      command as unknown as {
+        resolveGuildEmoji: (
+          guildId: string,
+          emojis: IterableIterator<unknown>,
+          input: string,
+        ) => { id: string; name: string; animated: boolean; scope: "guild"; guildId: string };
+      }
+    ).resolveGuildEmoji.bind(command);
+
+    expect(resolveGuildEmoji(guildId, [emoji].values(), "runner")).toEqual({
+      id: emoji.id,
+      name: "runner",
+      animated: true,
+      scope: "guild",
+      guildId,
+    });
+    expect(resolveGuildEmoji(guildId, [emoji].values(), `<a:runner:${emoji.id}>`))
+      .toEqual(expect.objectContaining({ id: emoji.id, animated: true }));
   });
 });

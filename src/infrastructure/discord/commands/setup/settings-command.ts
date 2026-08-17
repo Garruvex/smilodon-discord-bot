@@ -1,4 +1,4 @@
-import { ChannelType, SlashCommandBuilder } from "discord.js";
+import { ChannelType, SlashCommandBuilder, type Guild, type GuildEmoji } from "discord.js";
 
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import {
@@ -10,6 +10,14 @@ import type { GuildConfiguration } from "../../../../config/guild-configuration.
 import { RoleMatchMode, publicAccessPolicy } from "../../../../domain/access/access-policy.js";
 import type { GuildAssetStore } from "../../../../application/assets/guild-asset-store.js";
 import type { ControlChannelService } from "../../../../application/control-panel/control-channel-service.js";
+import { renderProgressBar } from "../../../../application/control-panel/progress-bar-renderer.js";
+import type {
+  CustomProgressBarTheme,
+  ProgressBarEmojiReference,
+  ProgressBarSettings,
+  ProgressBarStyle,
+} from "../../../../config/guild-configuration.js";
+import type { ApplicationEmojiCatalog } from "../../application-emoji-catalog.js";
 
 export class SettingsCommand implements BotCommand {
   private controlChannelService: ControlChannelService | null = null;
@@ -21,7 +29,19 @@ export class SettingsCommand implements BotCommand {
       .addChannelOption((option) => option.setName("channel").setDescription("Music control channel.").addChannelTypes(ChannelType.GuildText))
       .addStringOption((option) => option.setName("idle-image-url").setDescription("Stable HTTPS idle image URL."))
       .addAttachmentOption((option) => option.setName("idle-image").setDescription("Upload a persistent PNG, JPEG, WebP, or GIF idle image."))
-      .addBooleanOption((option) => option.setName("use-default-image").setDescription("Use the bundled Smilodon idle image.")))
+      .addBooleanOption((option) => option.setName("use-default-image").setDescription("Use the bundled Smilodon idle image."))
+      .addStringOption((option) => option.setName("progress-style").setDescription("Progress bar appearance.").addChoices(
+        { name: "Standard", value: "standard" },
+        { name: "Yohta", value: "yohta" },
+        { name: "Custom", value: "custom" },
+        { name: "Timestamps only", value: "none" },
+      ))
+      .addIntegerOption((option) => option.setName("progress-length").setDescription("Progress bar length.").setMinValue(6).setMaxValue(16))
+      .addStringOption((option) => option.setName("progress-completed").setDescription("Custom completed emoji; paste an emoji or enter its server name."))
+      .addStringOption((option) => option.setName("progress-remaining").setDescription("Custom remaining emoji; paste an emoji or enter its server name."))
+      .addStringOption((option) => option.setName("progress-playing").setDescription("Custom current-position emoji while playing."))
+      .addStringOption((option) => option.setName("progress-paused").setDescription("Custom current-position emoji while paused."))
+      .addStringOption((option) => option.setName("progress-ending").setDescription("Optional ending emoji, or 'none' to remove it.")))
     .addSubcommand((command) => command.setName("access").setDescription("Shows configured access roles and what each group controls."))
     .addSubcommand((command) => command.setName("roles").setDescription("Adds access roles without removing existing ones.")
       .addRoleOption((option) => option.setName("administrator").setDescription("Adds a bot administrator role for /settings and inherited music control."))
@@ -67,6 +87,7 @@ export class SettingsCommand implements BotCommand {
   public constructor(
     private readonly profiles: GuildConfigurationProvider,
     private readonly assets: GuildAssetStore,
+    private readonly applicationEmojiCatalog: ApplicationEmojiCatalog,
   ) {}
 
   public bindControlChannelService(service: ControlChannelService): void {
@@ -102,6 +123,19 @@ export class SettingsCommand implements BotCommand {
       if (useDefault === true) {
         input.idleImageUrl = null;
         input.idleImageAsset = null;
+      }
+      try {
+        const progressBar = await this.buildProgressBarSettings(
+          context.interaction.guild,
+          context,
+          previousProfile.panel.progressBar,
+        );
+        if (progressBar) input.progressBar = progressBar;
+      } catch (error) {
+        await context.responses.edit(
+          error instanceof Error ? error.message : "The progress bar settings are invalid.",
+        );
+        return;
       }
     } else if (subcommand === "roles") {
       const administrator = context.interaction.options.getRole("administrator");
@@ -221,7 +255,12 @@ export class SettingsCommand implements BotCommand {
     ) {
       await this.assets.removePersonality(previousProfile.chat.personalityAsset);
     }
-    await context.responses.edit(this.describeUpdate(subcommand, previousProfile, updatedProfile));
+    const description = this.describeUpdate(subcommand, previousProfile, updatedProfile);
+    await context.responses.edit(
+      input.progressBar
+        ? `${description}\n\nPreview:\n${this.renderProgressPreview(input.progressBar)}`
+        : description,
+    );
   }
 
   private async syncControlPanel(
@@ -241,7 +280,11 @@ export class SettingsCommand implements BotCommand {
 
     if (
       subcommand === "panel" &&
-      (input.idleImageUrl !== undefined || input.idleImageAsset !== undefined)
+      (
+        input.idleImageUrl !== undefined ||
+        input.idleImageAsset !== undefined ||
+        input.progressBar !== undefined
+      )
     ) {
       await this.controlChannelService.refreshPanel(guildId, {
         forceIdleImage:
@@ -298,7 +341,10 @@ export class SettingsCommand implements BotCommand {
       (
         previousProfile.idleImageUrl !== updatedProfile.idleImageUrl ||
         previousProfile.idleImageAsset !== updatedProfile.idleImageAsset ||
-        previousProfile.channels.controlPanel !== updatedProfile.channels.controlPanel
+        previousProfile.channels.controlPanel !== updatedProfile.channels.controlPanel ||
+        previousProfile.panel.progressBar.style !== updatedProfile.panel.progressBar.style ||
+        previousProfile.panel.progressBar.length !== updatedProfile.panel.progressBar.length ||
+        previousProfile.panel.progressBar.customTheme !== updatedProfile.panel.progressBar.customTheme
       )
     ) {
       return "Panel settings updated. The control panel has been refreshed.";
@@ -321,6 +367,102 @@ export class SettingsCommand implements BotCommand {
   ): void {
     const value = context.interaction.options.getInteger(option);
     if (value !== null) input[field] = value;
+  }
+
+  private async buildProgressBarSettings(
+    guild: Guild | null,
+    context: CommandContext,
+    current: ProgressBarSettings,
+  ): Promise<ProgressBarSettings | null> {
+    const style = context.interaction.options.getString("progress-style") as ProgressBarStyle | null;
+    const length = context.interaction.options.getInteger("progress-length");
+    const values = {
+      completed: context.interaction.options.getString("progress-completed"),
+      remaining: context.interaction.options.getString("progress-remaining"),
+      playing: context.interaction.options.getString("progress-playing"),
+      paused: context.interaction.options.getString("progress-paused"),
+      ending: context.interaction.options.getString("progress-ending"),
+    };
+    const hasCustomInput = Object.values(values).some((value) => value !== null);
+    if (!style && length === null && !hasCustomInput) return null;
+
+    let customTheme = current.customTheme;
+    if (hasCustomInput) {
+      if (!guild) throw new Error("Custom progress emojis can only be configured in a server.");
+      const emojis = await guild.emojis.fetch();
+      const requiredKeys = ["completed", "remaining", "playing", "paused"] as const;
+      const resolved = { ...customTheme } as Partial<CustomProgressBarTheme>;
+      for (const key of requiredKeys) {
+        const value = values[key];
+        if (value) resolved[key] = this.resolveGuildEmoji(guild.id, emojis.values(), value);
+      }
+      if (values.ending) {
+        resolved.ending = values.ending.toLowerCase() === "none"
+          ? null
+          : this.resolveGuildEmoji(guild.id, emojis.values(), values.ending);
+      }
+      const missing = requiredKeys.filter((key) => !resolved[key]);
+      if (missing.length > 0) {
+        throw new Error(`A custom theme still needs: ${missing.join(", ")}.`);
+      }
+      customTheme = {
+        completed: resolved.completed!,
+        remaining: resolved.remaining!,
+        playing: resolved.playing!,
+        paused: resolved.paused!,
+        ending: resolved.ending ?? null,
+      };
+    }
+
+    const nextStyle = style ?? (hasCustomInput ? "custom" : current.style);
+    if (nextStyle === "yohta" && !this.applicationEmojiCatalog.getYohtaTheme()) {
+      throw new Error(
+        `The Yohta preset is not provisioned for this bot application. Missing: ${this.applicationEmojiCatalog.getMissingYohtaEmojiNames().join(", ")}.`,
+      );
+    }
+    if (nextStyle === "custom" && !customTheme) {
+      throw new Error("Configure completed, remaining, playing, and paused emojis before selecting custom.");
+    }
+    return {
+      style: nextStyle,
+      length: length ?? current.length,
+      customTheme,
+    };
+  }
+
+  private resolveGuildEmoji(
+    guildId: string,
+    emojis: IterableIterator<GuildEmoji>,
+    input: string,
+  ): ProgressBarEmojiReference {
+    const all = [...emojis];
+    const mention = input.trim().match(/^<(a?):([A-Za-z0-9_]+):(\d{17,20})>$/);
+    const normalizedName = input.trim().replace(/^:|:$/g, "");
+    const emoji = mention
+      ? all.find((candidate) => candidate.id === mention[3])
+      : all.find((candidate) => candidate.name === normalizedName);
+    if (!emoji || emoji.guild.id !== guildId) {
+      throw new Error(`Emoji "${input}" was not found in this server.`);
+    }
+    if (!emoji.available) throw new Error(`Emoji "${emoji.name}" is currently unavailable.`);
+    return {
+      id: emoji.id,
+      name: emoji.name ?? normalizedName,
+      animated: emoji.animated ?? false,
+      scope: "guild",
+      guildId,
+    };
+  }
+
+  private renderProgressPreview(settings: ProgressBarSettings): string {
+    return renderProgressBar({
+      positionMs: 158_000,
+      durationMs: 224_000,
+      paused: false,
+      isStream: false,
+      settings,
+      presetTheme: this.applicationEmojiCatalog.getYohtaTheme(),
+    });
   }
 
   private addRoleGroupChoices<T extends { addChoices: (...choices: { name: string; value: string }[]) => T }>(

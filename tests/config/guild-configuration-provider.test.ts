@@ -59,6 +59,11 @@ describe("LocalGuildConfigurationProvider", () => {
     );
     expect(profile.music.defaultVolume).toBe(80);
     expect(profile.music.emptyQueueAction).toBe("disconnect");
+    expect(profile.panel.progressBar).toEqual({
+      style: "standard",
+      length: 12,
+      customTheme: null,
+    });
   });
 
   it("rejects duplicate profiles for the same guild", () => {
@@ -168,5 +173,44 @@ describe("LocalGuildConfigurationProvider", () => {
     })).rejects.toThrow("Default volume cannot exceed maximum volume");
 
     expect(provider.require("123456789012345678").music.maximumVolume).toBe(120);
+  });
+
+  it("persists a custom progress theme through the shared document pipeline", async () => {
+    const directory = createTemporaryDirectory();
+    writeFileSync(join(directory, "guild.yaml"), validProfile(), "utf8");
+    const provider = new LocalGuildConfigurationProvider(directory);
+    const emoji = (id: string, name: string, animated = false): {
+      id: string;
+      name: string;
+      animated: boolean;
+      scope: "guild";
+      guildId: string;
+    } => ({
+      id,
+      name,
+      animated,
+      scope: "guild",
+      guildId: "123456789012345678",
+    });
+
+    await provider.update("123456789012345678", {
+      progressBar: {
+        style: "custom",
+        length: 14,
+        customTheme: {
+          completed: emoji("111111111111111111", "done"),
+          remaining: emoji("222222222222222222", "left"),
+          playing: emoji("333333333333333333", "run", true),
+          paused: emoji("444444444444444444", "stop"),
+          ending: null,
+        },
+      },
+    });
+
+    const reloaded = new LocalGuildConfigurationProvider(directory)
+      .require("123456789012345678");
+    expect(reloaded.panel.progressBar.style).toBe("custom");
+    expect(reloaded.panel.progressBar.length).toBe(14);
+    expect(reloaded.panel.progressBar.customTheme?.playing.animated).toBe(true);
   });
 });

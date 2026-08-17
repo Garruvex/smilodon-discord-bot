@@ -8,8 +8,9 @@ instead of `npm` if the execution policy blocks `npm.ps1`.
 | Configuration | Launch command | What it starts |
 | --- | --- | --- |
 | Default/single instance | `npm.cmd run local:start` | One Lavalink process and the default bot instance |
-| Every configured instance | `npm.cmd run instances:start` | One shared Lavalink process and every `config/instances/*.env` bot |
-| Selected instances | `npm.cmd run instances:start -- pinecone smilodon` | One shared Lavalink process and only the named bots |
+| Complete native multi-instance stack | `npm.cmd run all:start` | Workspace-local Lavalink and every `config/instances/*.env` bot |
+| Every configured instance, infrastructure already running | `npm.cmd run instances:start` | Every configured bot only |
+| Selected instances, infrastructure already running | `npm.cmd run instances:start -- pinecone smilodon` | Only the named bots |
 | One instance, infrastructure already running | `npm.cmd run instance:start -- pinecone` | Only the named bot; no Lavalink or PostgreSQL |
 
 Do not use `local:start` to launch a multi-instance configuration: it resolves
@@ -37,14 +38,17 @@ same Discord application.
 | Goal | Command |
 | --- | --- |
 | Build and start bot, PostgreSQL, and Lavalink | `npm.cmd run stack:up` |
-| Start PostgreSQL and Lavalink only | `npm.cmd run dev:services` |
+| Start PostgreSQL and Lavalink only (foreground) | `npm.cmd run dev:services` |
+| Start PostgreSQL and Lavalink only (detached/readiness wait) | `npm.cmd run services:docker` |
 | Follow stack logs | `npm.cmd run stack:logs` |
 | Restart the stack | `npm.cmd run stack:restart` |
 | Stop and remove the stack containers | `npm.cmd run stack:down` |
 | Deploy commands inside Compose | `docker compose run --rm bot node dist/scripts/deploy-commands.js` |
 
-For native TypeScript development backed by containerized services, run
-`npm.cmd run dev:services` in one terminal and `npm.cmd run dev` in another.
+For native file-backed development, `npm.cmd run services:start` runs only the
+workspace-local Lavalink service. For PostgreSQL-backed development, use
+`dev:services` in one terminal or `services:docker` for detached containers,
+then run the bot separately.
 
 ## Discord command registration
 
@@ -65,6 +69,8 @@ For example, `pinecone` loads `config/instances/pinecone.env`.
 | Goal | Command |
 | --- | --- |
 | Validate all instance definitions | `npm.cmd run instances:validate` |
+| Start local Lavalink and every configured instance | `npm.cmd run all:start` |
+| Start local Lavalink and selected instances | `npm.cmd run all:start -- pinecone smilodon` |
 | Start every configured instance | `npm.cmd run instances:start` |
 | Start selected instances | `npm.cmd run instances:start -- pinecone smilodon` |
 | Start one instance | `npm.cmd run instance:start -- INSTANCE` |
@@ -72,10 +78,12 @@ For example, `pinecone` loads `config/instances/pinecone.env`.
 | Validate one instance configuration | `npm.cmd run instance:config:validate -- INSTANCE` |
 | Migrate one instance database | `npm.cmd run instance:db:migrate -- INSTANCE` |
 | Deploy one instance's commands | `npm.cmd run instance:deploy -- INSTANCE` |
+| Synchronize every instance's bundled application emojis | `npm.cmd run instance:emojis:sync` |
+| Synchronize selected instances' bundled application emojis | `npm.cmd run instance:emojis:sync -- INSTANCE...` |
 
-`instance:start` expects shared infrastructure such as Lavalink and PostgreSQL
-(when selected) to already be running. In contrast, `instances:start` launches
-one shared local Lavalink process along with all requested bot processes.
+Both `instance:start` and `instances:start` expect Lavalink and PostgreSQL (when
+selected) to already be running. Native `all:start` supplies Lavalink; a selected
+PostgreSQL persistence driver still requires PostgreSQL to be started separately.
 
 ## Before a release or troubleshooting
 
@@ -113,16 +121,15 @@ npm.cmd run instance:check-token -- pinecone
 npm.cmd run instance:check-token -- smilodon
 npm.cmd run instance:deploy -- pinecone
 npm.cmd run instance:deploy -- smilodon
-npm.cmd run instances:start -- pinecone smilodon
+npm.cmd run all:start -- pinecone smilodon
 ```
 
 To launch every discovered instance, omit the names from the last command:
 
 ```powershell
-npm.cmd run instances:start
+npm.cmd run all:start
 ```
 
 Each instance needs a unique Discord application ID and isolated persistence,
 guild configuration, and runtime directories. If an instance uses PostgreSQL,
-start PostgreSQL separately before launching and give each instance a different
-logical database.
+start PostgreSQL separately and give each instance a different logical database.

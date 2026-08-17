@@ -25,9 +25,11 @@ import type { EnqueueResult, MusicTrack } from "../../domain/music/music-track.j
 import type { MusicPlayerSnapshot } from "../../application/music/music-player-gateway.js";
 import type { MusicEventBus, MusicStateChangedEvent } from "../../application/music/music-event-bus.js";
 import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
+import { LavalinkAutoQueue, type AutoQueueOutcome } from "./lavalink-auto-queue.js";
 
 export class LavalinkPlayerGateway implements MusicPlayerGateway {
   private readonly manager: LavalinkManager;
+  private readonly autoQueue = new LavalinkAutoQueue();
   private readonly emptyQueueTimers = new Map<string, NodeJS.Timeout>();
   private readonly emptyChannelTimers = new Map<string, NodeJS.Timeout>();
 
@@ -64,14 +66,8 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
         onEmptyQueue: {
           autoPlayFunction: async (player, lastTrack): Promise<void> => {
             if (!player.get<boolean>("autoQueue")) return;
-            const result = await player.search(
-              { query: `${lastTrack.info.author ?? ""} ${lastTrack.info.title}`.trim() },
-              { userId: "autoqueue" },
-            );
-            const recommendation = result.tracks.find(
-              (track) => track.info.identifier !== lastTrack.info.identifier,
-            );
-            if (recommendation) await player.queue.add(recommendation);
+            const outcome = await this.autoQueue.enqueueNext(player, lastTrack);
+            this.logAutoQueueOutcome(player, lastTrack, outcome);
           },
         },
       },
@@ -180,6 +176,9 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     await player.queue.add(selectedTracks);
 
     const startedPlayback = !player.playing && !player.paused;
+    const queuePosition = startedPlayback
+      ? null
+      : Math.max(1, player.queue.tracks.length - selectedTracks.length + 1);
     if (startedPlayback) {
       await player.play();
     }
@@ -190,6 +189,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
       firstTrack: this.toMusicTrack(firstTrack, request.requestedByUserId),
       addedTrackCount: selectedTracks.length,
       startedPlayback,
+      queuePosition,
     };
   }
 
@@ -209,8 +209,36 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
   }
 
   public async skip(guildId: string): Promise<void> {
-    await this.requirePlayer(guildId).skip();
+    const player = this.requirePlayer(guildId);
+    const currentTrack = player.queue.current;
+    if (
+      currentTrack &&
+      player.get<boolean>("autoQueue") &&
+      player.queue.tracks.length === 0
+    ) {
+      const outcome = await this.autoQueue.enqueueNext(player, currentTrack);
+      this.logAutoQueueOutcome(player, currentTrack, outcome);
+    }
+    await player.skip();
     this.publishStateChange({ guildId, reason: "queue_changed" });
+  }
+
+  private logAutoQueueOutcome(
+    player: Player,
+    sourceTrack: Track | UnresolvedTrack,
+    outcome: AutoQueueOutcome,
+  ): void {
+    if (outcome.status === "queued") return;
+    this.logger.warn(
+      {
+        guildId: player.guildId,
+        trackTitle: sourceTrack.info.title,
+        error: outcome.status === "failed" ? outcome.error : undefined,
+      },
+      outcome.status === "failed"
+        ? "Autoqueue recommendation lookup failed"
+        : "Autoqueue found no unplayed recommendation",
+    );
   }
 
   public async previous(guildId: string): Promise<void> {
@@ -376,6 +404,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
             artworkUrl: current.info.artworkUrl ?? null,
             durationMs: current.info.duration ?? 0,
             positionMs: player.position,
+            isStream: current.info.isStream ?? false,
             requestedByUserId:
               typeof requestedByUserId === "string" ? requestedByUserId : null,
           }

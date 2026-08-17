@@ -55,6 +55,7 @@ export interface MusicPlayerSnapshot {
     artworkUrl: string | null;
     durationMs: number;
     positionMs: number;
+    isStream: boolean;
     requestedByUserId: string | null;
   } | null;
 }

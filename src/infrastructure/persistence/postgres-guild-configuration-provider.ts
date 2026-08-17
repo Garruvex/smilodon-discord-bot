@@ -3,14 +3,16 @@ import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
 import type { GuildConfiguration } from "../../config/guild-configuration.js";
 import {
+  type GuildConfigurationProvider,
+} from "../../config/guild-configuration-provider.js";
+import {
   createGuildConfigurationDocument,
   applyGuildConfigurationUpdate,
   toGuildConfigurationDocument,
   toGuildConfiguration,
   type CreateGuildConfigurationInput,
-  type GuildConfigurationProvider,
   type UpdateGuildConfigurationInput,
-} from "../../config/guild-configuration-provider.js";
+} from "../../config/guild-configuration-document.js";
 import { guildConfigurationFileSchema } from "../../config/guild-configuration-schema.js";
 import * as schema from "../database/schema.js";
 

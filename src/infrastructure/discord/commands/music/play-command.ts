@@ -1,4 +1,4 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { SlashCommandBuilder } from "discord.js";
 
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import type { PlaybackService } from "../../../../application/music/playback-service.js";
@@ -6,6 +6,11 @@ import {
   createPlaybackActor,
   musicPlaybackAccessPolicy,
 } from "./music-command-support.js";
+import type { GuildConfigurationProvider } from "../../../../config/guild-configuration-provider.js";
+import {
+  createQueuedTrackCard,
+  queuedTrackCardLifetimeMs,
+} from "../../music/queued-track-card.js";
 
 export class PlayCommand implements BotCommand {
   public readonly definition = new SlashCommandBuilder()
@@ -21,7 +26,10 @@ export class PlayCommand implements BotCommand {
   public readonly module = CommandModule.Music;
   public readonly access = musicPlaybackAccessPolicy;
 
-  public constructor(private readonly playbackService: PlaybackService) {}
+  public constructor(
+    private readonly playbackService: PlaybackService,
+    private readonly profiles: GuildConfigurationProvider,
+  ) {}
 
   public async execute(context: CommandContext): Promise<void> {
     if (!context.interaction.inCachedGuild()) {
@@ -36,24 +44,10 @@ export class PlayCommand implements BotCommand {
       query,
     );
 
-    const track = result.firstTrack;
-    const description = track.uri.length > 0
-      ? `[${track.title}](${track.uri})`
-      : track.title;
-
-    const embed = new EmbedBuilder()
-      .setTitle(result.startedPlayback ? "Now playing" : "Added to queue")
-      .setDescription(description)
-      .addFields(
-        { name: "Artist", value: track.author, inline: true },
-        { name: "Added tracks", value: String(result.addedTrackCount), inline: true },
-        { name: "Requested by", value: `<@${track.requestedByUserId}>`, inline: true },
-      );
-
-    if (track.artworkUrl) {
-      embed.setThumbnail(track.artworkUrl);
-    }
-
-    await context.responses.edit({ embeds: [embed] });
+    const profile = this.profiles.require(context.interaction.guildId);
+    await context.responses.edit({
+      embeds: [createQueuedTrackCard(result, profile.embedColor as `#${string}`)],
+    });
+    context.responses.deleteAfter(queuedTrackCardLifetimeMs);
   }
 }

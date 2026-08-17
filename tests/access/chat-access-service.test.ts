@@ -42,6 +42,9 @@ function profile(): GuildConfiguration {
     embedColor: "#3B82F6",
     idleImageUrl: null,
     idleImageAsset: null,
+    panel: {
+      progressBar: { style: "standard", length: 12, customTheme: null },
+    },
     features: {
       common: true,
       diagnostics: true,

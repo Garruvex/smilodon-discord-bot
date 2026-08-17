@@ -13,5 +13,5 @@ export interface EnqueueResult {
   firstTrack: MusicTrack;
   addedTrackCount: number;
   startedPlayback: boolean;
+  queuePosition: number | null;
 }
-

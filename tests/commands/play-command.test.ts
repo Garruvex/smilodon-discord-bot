@@ -5,7 +5,7 @@ import { PlayCommand } from "../../src/infrastructure/discord/commands/music/pla
 
 describe("PlayCommand", () => {
   it("requires the music-controller role group", () => {
-    const command = new PlayCommand({} as never);
+    const command = new PlayCommand({} as never, {} as never);
 
     expect(command.access.roles).toEqual({
       match: RoleMatchMode.Any,

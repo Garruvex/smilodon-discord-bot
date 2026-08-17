@@ -31,6 +31,7 @@ function createGateway(): MusicPlayerGateway {
         },
         addedTrackCount: 1,
         startedPlayback: true,
+        queuePosition: null,
       }),
     ),
     pause: vi.fn(() => Promise.resolve()),
