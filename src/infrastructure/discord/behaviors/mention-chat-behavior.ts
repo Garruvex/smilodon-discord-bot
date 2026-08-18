@@ -1,28 +1,25 @@
 import { readFileSync } from "node:fs";
 
-import type { Attachment, Message } from "discord.js";
+import type { Attachment, Message, User } from "discord.js";
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from "discord.js";
 import type { Logger } from "pino";
 
 import { ChatAccessService } from "../../../application/access/chat-access-service.js";
 import { BehaviorEvent, BehaviorResult, type BotBehavior } from "../../../application/behaviors/behavior.js";
 import { resolveGuildPersonalityPath } from "../../../application/assets/guild-personality-path.js";
-import { ChatProviderError, type ChatSource } from "../../../application/chat/chat-provider.js";
+import { ChatProviderError, type ChatImage, type ChatSource } from "../../../application/chat/chat-provider.js";
 import { ChatStateCommitError, type ChatConversationService } from "../../../application/chat/chat-conversation-service.js";
 import { ChannelTypingManager } from "../../../application/chat/channel-typing-manager.js";
 import type { ApplicationConfiguration } from "../../../config/configuration.js";
 import type { GuildConfiguration } from "../../../config/guild-configuration.js";
 import type { GuildConfigurationProvider } from "../../../config/guild-configuration-provider.js";
 
-const chatAccessDeniedRickrollUrl = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
-const chatAccessDeniedSubscribePrompt = "Please subscribe here →";
-
-function createChatAccessDeniedSubscribeButton(): ActionRowBuilder<ButtonBuilder> {
+function createChatAccessDeniedLinkButton(url: string, label: string | null): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
-      .setLabel("discord.gg/premium-access")
+      .setLabel(label ?? url)
       .setStyle(ButtonStyle.Link)
-      .setURL(chatAccessDeniedRickrollUrl),
+      .setURL(url),
   );
 }
 
@@ -66,8 +63,10 @@ export class MentionChatBehavior implements BotBehavior<Message> {
 
     if (!this.chatAccess.canUseMentionChat(profile, message.member, message.author.id, message.channelId)) {
       await message.reply({
-        content: `${profile.chat.deniedMessage}\n${chatAccessDeniedSubscribePrompt}`,
-        components: [createChatAccessDeniedSubscribeButton()],
+        content: profile.chat.deniedMessage,
+        components: profile.chat.deniedLinkUrl
+          ? [createChatAccessDeniedLinkButton(profile.chat.deniedLinkUrl, profile.chat.deniedLinkLabel)]
+          : [],
         flags: MessageFlags.SuppressEmbeds,
         allowedMentions: { repliedUser: false },
       });
@@ -85,21 +84,47 @@ export class MentionChatBehavior implements BotBehavior<Message> {
     const referenced = message.reference?.messageId
       ? await message.channel.messages.fetch(message.reference.messageId).catch(() => null)
       : null;
-    const imageAttachments = profile.chat.imageInputEnabled
-      ? [...message.attachments.values(), ...(referenced?.attachments.values() ?? [])]
-          .slice(0, profile.chat.maxImagesPerRequest)
-      : [];
+    const { selected: imageAttachments, droppedUnsupported, droppedOverLimit } = profile.chat.imageInputEnabled
+      ? this.selectImageAttachments(
+          [...message.attachments.values()],
+          [...(referenced?.attachments.values() ?? [])],
+          profile.chat.maxImagesPerRequest,
+        )
+      : { selected: [], droppedUnsupported: 0, droppedOverLimit: 0 };
     if (!prompt && imageAttachments.length === 0) {
       await message.reply({ content: "Mention me with a question or supported image and I'll try to help.", allowedMentions: { repliedUser: false } });
       return BehaviorResult.StopPropagation;
+    }
+
+    if (this.conversation.isBusy(message.guildId, message.author.id)) {
+      await this.sendNote(
+        message.guildId,
+        message.author,
+        "Still working on your previous message — I'll get to this one right after.",
+      );
     }
 
     const stopTyping = this.typing.start(
       message.channelId,
       () => message.channel.sendTyping(),
     );
+    // A plain object (rather than bare `let` variables) so TypeScript doesn't
+    // over-narrow these to `never` in the catch block below: they're only
+    // reassigned inside the async callbacks passed to conversation.run().
+    const sentMessages: { preview: Message | null; delivered: Message | null } = {
+      preview: null,
+      delivered: null,
+    };
     try {
-      const images = await this.loadImages(imageAttachments);
+      const { images, droppedFailed } = await this.loadImages(imageAttachments);
+      const droppedImageCount = droppedUnsupported + droppedOverLimit + droppedFailed;
+      if (droppedImageCount > 0) {
+        await this.sendNote(
+          message.guildId,
+          message.author,
+          `${droppedImageCount} image${droppedImageCount > 1 ? "s" : ""} skipped — check the per-message image limit, or the file's size/format.`,
+        );
+      }
       const startedAt = Date.now();
       this.logger.info({
         guildId: message.guildId,
@@ -108,8 +133,12 @@ export class MentionChatBehavior implements BotBehavior<Message> {
         userId: message.author.id,
         model: this.configuration.chat?.model,
         apiMode: this.configuration.chat?.mode,
+        reasoningEffort: this.configuration.chat?.reasoningEffort,
+        verbosity: this.configuration.chat?.verbosity,
+        maxOutputTokens: this.configuration.chat?.maxOutputTokens,
         imageCount: images.length,
-        webSearchEnabled: profile.chat.webSearchEnabled,
+        droppedImageCount,
+        webSearchMode: profile.chat.webSearchMode,
       }, "Chat API request started");
       const mentionedUsers = message.mentions.users
         .filter((user) => !user.bot && user.id !== message.author.id)
@@ -136,15 +165,45 @@ export class MentionChatBehavior implements BotBehavior<Message> {
         message: prompt,
         referencedMessage: referenced?.content.slice(0, 4_000) ?? null,
         images,
-        webSearchEnabled: profile.chat.webSearchEnabled,
+        webSearchMode: profile.chat.webSearchMode,
+        imageGenerationEnabled: profile.chat.imageGenerationEnabled,
         includeSources: profile.chat.includeSources,
       }, async (deliveredResponse) => {
-        const content = this.formatResponse(deliveredResponse.text, deliveredResponse.sources) || "I ran out of words. Very premium of me.";
-        await message.reply({
+        const formatted = this.formatResponse(deliveredResponse.text, deliveredResponse.sources);
+        const content = formatted.content ||
+          (deliveredResponse.generatedImages.length > 0 ? "Here you go!" : "I ran out of words. Very premium of me.");
+        if (formatted.truncated) {
+          await this.sendNote(
+            message.guildId,
+            message.author,
+            "That reply was truncated at Discord's message length limit.",
+          );
+        }
+        const payload = {
           content,
+          files: deliveredResponse.generatedImages.map((image) => ({
+            attachment: image.data,
+            name: image.filename,
+          })),
           allowedMentions: { repliedUser: false, parse: [] },
-        });
+        } as const;
+        sentMessages.delivered = sentMessages.preview
+          ? await sentMessages.preview.edit({ ...payload, attachments: [] })
+          : await message.reply(payload);
         return content;
+      }, {
+        onImagePreview: async (image) => {
+          const payload = {
+            content: "Generating your image…",
+            files: [{ attachment: image.data, name: image.filename }],
+            allowedMentions: { repliedUser: false, parse: [] as never[] },
+          };
+          if (sentMessages.preview) {
+            await sentMessages.preview.edit({ ...payload, attachments: [] });
+          } else {
+            sentMessages.preview = await message.reply(payload);
+          }
+        },
       });
       this.logger.info({
         guildId: message.guildId,
@@ -154,28 +213,72 @@ export class MentionChatBehavior implements BotBehavior<Message> {
         model: this.configuration.chat?.model,
         durationMs: Date.now() - startedAt,
         imageCount: images.length,
+        droppedImageCount,
+        generatedImageCount: response.generatedImages.length,
         webSearchUsed: response.webSearchUsed,
         sourceCount: response.sources.length,
         inputTokens: response.usage?.inputTokens,
         outputTokens: response.usage?.outputTokens,
         totalTokens: response.usage?.totalTokens,
+        cachedInputTokens: response.usage?.cachedInputTokens,
+        reasoningTokens: response.usage?.reasoningTokens,
         memoryActionCount: response.userMemoryActions.length,
+        personalityChars: response.contextUsage?.personalityChars,
+        userCustomizationChars: response.contextUsage?.userCustomizationChars,
+        securityInstructionChars: response.contextUsage?.securityInstructionChars,
+        memoryInstructionChars: response.contextUsage?.memoryInstructionChars,
+        historyMessages: response.contextUsage?.historyMessages,
+        historyChars: response.contextUsage?.historyChars,
+        memoryRecordCount: response.contextUsage?.memoryRecords,
+        memoryChars: response.contextUsage?.memoryChars,
         guildKnowledgeRecordCount: response.contextUsage?.guildKnowledgeRecords,
         guildKnowledgeChars: response.contextUsage?.guildKnowledgeChars,
+        referencedMessageChars: response.contextUsage?.referencedMessageChars,
+        currentMessageChars: response.contextUsage?.currentMessageChars,
       }, "Chat API request completed");
     } catch (error) {
       this.logger.error({ error, guildId: message.guildId, channelId: message.channelId, messageId: message.id, userId: message.author.id }, "Mention chat request failed");
-      if (error instanceof ChatStateCommitError) return BehaviorResult.StopPropagation;
+      if (error instanceof ChatStateCommitError) {
+        // The reply was already delivered before the commit failed, so tell the
+        // user their exchange won't be remembered instead of failing silently.
+        await this.sendNote(
+          message.guildId,
+          message.author,
+          "I couldn't save that exchange, so I won't remember it.",
+        );
+        return BehaviorResult.StopPropagation;
+      }
       const content = error instanceof ChatProviderError && error.status === 429
         ? error.code === "insufficient_quota" || error.code === "credit_balance_exhausted"
           ? "The premium brain's API quota is empty. Please let a bot administrator know."
           : "The premium brain is receiving too many requests. Please try again shortly."
         : "The premium brain is temporarily buffering. Please try again later.";
-      await message.reply({ content, allowedMentions: { repliedUser: false } });
+      // If an image-generation preview was already posted, replace it with the
+      // error instead of leaving "Generating your image…" stuck forever while
+      // also posting a separate error reply.
+      if (sentMessages.preview) {
+        await sentMessages.preview.edit({ content, files: [], attachments: [] }).catch(() => undefined);
+      } else {
+        await message.reply({ content, allowedMentions: { repliedUser: false } });
+      }
     } finally {
       stopTyping();
     }
     return BehaviorResult.StopPropagation;
+  }
+
+  // Regular channel messages (unlike slash-command/interaction responses)
+  // have no ephemeral option in Discord's API, so system notes about the
+  // request itself (dropped images, truncation, etc.) can't be made visible
+  // only to the requester in-channel. DMing them is the only private
+  // delivery option; gated by the user's own /memory notes preference, and
+  // silently dropped (never leaked back into the channel) if the DM fails —
+  // e.g. the user has DMs from server members turned off.
+  private async sendNote(guildId: string, user: User, note: string): Promise<void> {
+    if (!this.conversation) return;
+    const enabled = await this.conversation.getDmNotesEnabled(guildId, user.id).catch(() => true);
+    if (!enabled) return;
+    await user.send(note).catch(() => undefined);
   }
 
   private rememberMessage(messageId: string): void {
@@ -207,46 +310,163 @@ export class MentionChatBehavior implements BotBehavior<Message> {
     }
   }
 
-  private async loadImages(attachments: readonly Attachment[]): Promise<Array<{ dataUrl: string }>> {
-    const images: Array<{ dataUrl: string }> = [];
-    for (const attachment of attachments) {
-      if (!attachment.contentType || !supportedImageTypes.has(attachment.contentType)) continue;
-      if (attachment.size <= 0 || attachment.size > maximumImageBytes) continue;
-      const url = new URL(attachment.url);
-      if (url.protocol !== "https:" || !allowedDiscordImageHosts.has(url.hostname)) continue;
-      const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
-      if (!response.ok) continue;
-      const data = Buffer.from(await response.arrayBuffer());
-      if (data.length === 0 || data.length > maximumImageBytes) continue;
-      if (!this.hasValidImageSignature(data, attachment.contentType)) continue;
-      images.push({ dataUrl: `data:${attachment.contentType};base64,${data.toString("base64")}` });
+  private selectImageAttachments(
+    current: readonly Attachment[],
+    referenced: readonly Attachment[],
+    limit: number,
+  ): {
+    selected: Array<{ attachment: Attachment; source: ChatImage["source"]; sourceIndex: number }>;
+    droppedUnsupported: number;
+    droppedOverLimit: number;
+  } {
+    const isImageLike = (attachment: Attachment): boolean => Boolean(attachment.contentType?.startsWith("image/"));
+    const currentImageLike = current.filter(isImageLike);
+    const referencedImageLike = referenced.filter(isImageLike);
+    const currentItems = currentImageLike.filter((attachment) => this.isSupportedImageAttachment(attachment))
+      .map((attachment, sourceIndex) => ({
+      attachment,
+      source: "current_message" as const,
+      sourceIndex,
+      }));
+    const referencedItems = referencedImageLike.filter((attachment) => this.isSupportedImageAttachment(attachment))
+      .map((attachment, sourceIndex) => ({
+      attachment,
+      source: "referenced_message" as const,
+      sourceIndex,
+      }));
+    const droppedUnsupportedAttachments = [
+      ...currentImageLike.filter((attachment) => !this.isSupportedImageAttachment(attachment)),
+      ...referencedImageLike.filter((attachment) => !this.isSupportedImageAttachment(attachment)),
+    ];
+    if (droppedUnsupportedAttachments.length > 0) {
+      this.logger.warn(
+        {
+          images: droppedUnsupportedAttachments.map((attachment) => ({
+            name: attachment.name,
+            contentType: attachment.contentType,
+            size: attachment.size,
+          })),
+        },
+        "Dropped image attachment(s): unsupported content type or size",
+      );
     }
-    return images;
+    const droppedUnsupported = droppedUnsupportedAttachments.length;
+    const candidates = [] as Array<{ attachment: Attachment; source: ChatImage["source"]; sourceIndex: number }>;
+    if (currentItems[0]) candidates.push(currentItems[0]);
+    if (referencedItems[0]) candidates.push(referencedItems[0]);
+    candidates.push(...currentItems.slice(1), ...referencedItems.slice(1));
+    const selected = candidates.slice(0, limit);
+    const droppedOverLimit = Math.max(0, candidates.length - limit);
+    return { selected, droppedUnsupported, droppedOverLimit };
   }
 
-  private hasValidImageSignature(data: Buffer, contentType: string): boolean {
-    if (contentType === "image/png") {
-      return data.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  private normalizeContentType(contentType: string | null): string | null {
+    return contentType?.split(";", 1)[0]?.trim().toLowerCase() ?? null;
+  }
+
+  private isSupportedImageAttachment(attachment: Attachment): boolean {
+    const contentType = this.normalizeContentType(attachment.contentType);
+    return Boolean(
+      contentType &&
+      supportedImageTypes.has(contentType) &&
+      attachment.size > 0 &&
+      attachment.size <= maximumImageBytes,
+    );
+  }
+
+  private async loadImages(
+    attachments: readonly { attachment: Attachment; source: ChatImage["source"]; sourceIndex: number }[],
+  ): Promise<{ images: ChatImage[]; droppedFailed: number }> {
+    const images: ChatImage[] = [];
+    let droppedFailed = 0;
+    for (const { attachment, source, sourceIndex } of attachments) {
+      const dataUrl = await this.loadImageDataUrl(attachment);
+      if (dataUrl) {
+        images.push({ dataUrl, source, sourceIndex });
+      } else {
+        droppedFailed += 1;
+      }
     }
-    if (contentType === "image/jpeg") {
-      return data.length >= 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff;
+    return { images, droppedFailed };
+  }
+
+  private async loadImageDataUrl(attachment: Attachment): Promise<string | null> {
+    const contentType = this.normalizeContentType(attachment.contentType);
+    if (!contentType || !supportedImageTypes.has(contentType)) return null;
+    if (attachment.size <= 0 || attachment.size > maximumImageBytes) return null;
+    const url = new URL(attachment.url);
+    if (url.protocol !== "https:" || !allowedDiscordImageHosts.has(url.hostname)) {
+      this.logger.warn(
+        { name: attachment.name, url: attachment.url },
+        "Dropped image attachment: URL failed host allow-list check",
+      );
+      return null;
     }
-    if (contentType === "image/gif") {
+    const response = await fetch(url, {
+      headers: { Accept: contentType },
+      signal: AbortSignal.timeout(15_000),
+    }).catch((error: unknown) => {
+      this.logger.warn({ name: attachment.name, error }, "Dropped image attachment: fetch failed");
+      return null;
+    });
+    if (!response) return null;
+    if (!response.ok) {
+      this.logger.warn(
+        { name: attachment.name, status: response.status },
+        "Dropped image attachment: fetch returned a non-OK status",
+      );
+      return null;
+    }
+    const data = Buffer.from(await response.arrayBuffer());
+    if (data.length === 0 || data.length > maximumImageBytes) {
+      this.logger.warn(
+        { name: attachment.name, bytes: data.length },
+        "Dropped image attachment: downloaded size out of bounds",
+      );
+      return null;
+    }
+    const actualContentType = this.detectImageContentType(data);
+    if (!actualContentType) {
+      this.logger.warn(
+        { name: attachment.name, contentType, actualHeaderBytes: data.subarray(0, 12).toString("hex") },
+        "Dropped image attachment: file signature did not match any supported image format",
+      );
+      return null;
+    }
+    return `data:${actualContentType};base64,${data.toString("base64")}`;
+  }
+
+  private detectImageContentType(data: Buffer): string | null {
+    if (data.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
+      return "image/png";
+    }
+    if (data.length >= 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) {
+      return "image/jpeg";
+    }
+    if (data.length >= 6) {
       const signature = data.subarray(0, 6).toString("ascii");
-      return signature === "GIF87a" || signature === "GIF89a";
+      if (signature === "GIF87a" || signature === "GIF89a") return "image/gif";
     }
-    if (contentType === "image/webp") {
-      return data.subarray(0, 4).toString("ascii") === "RIFF" &&
-        data.subarray(8, 12).toString("ascii") === "WEBP";
+    if (
+      data.length >= 12 &&
+      data.subarray(0, 4).toString("ascii") === "RIFF" &&
+      data.subarray(8, 12).toString("ascii") === "WEBP"
+    ) {
+      return "image/webp";
     }
-    return false;
+    return null;
   }
 
-  private formatResponse(text: string, sources: readonly ChatSource[]): string {
+  private formatResponse(
+    text: string,
+    sources: readonly ChatSource[],
+  ): { content: string; truncated: boolean } {
     const sourceBlock = sources.length > 0
       ? `\n\nSources:\n${sources.map((source) => `- [${source.title.replaceAll("[", "").replaceAll("]", "")}](${source.url})`).join("\n")}`
       : "";
-    const availableTextLength = Math.max(0, 2_000 - sourceBlock.length);
-    return `${text.slice(0, availableTextLength)}${sourceBlock}`.slice(0, 2_000);
+    const budgetForText = Math.max(0, 2_000 - sourceBlock.length);
+    const truncated = text.length > budgetForText;
+    const content = `${text.slice(0, budgetForText)}${sourceBlock}`.slice(0, 2_000);
+    return { content, truncated };
   }
 }

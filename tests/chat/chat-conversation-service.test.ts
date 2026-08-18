@@ -5,13 +5,14 @@ import type { ChatProvider, ChatRequest, ChatResponse } from "../../src/applicat
 import type { ChatStateStore } from "../../src/application/chat/chat-state-store.js";
 import type { GuildKnowledgeStore } from "../../src/application/chat/guild-knowledge-store.js";
 import type { GuildMemorySelector } from "../../src/application/chat/guild-memory-selector.js";
+import type { UserCustomizationStore } from "../../src/application/chat/user-customization-store.js";
 
 function response(
   text: string,
   userMemoryActions: ChatResponse["userMemoryActions"] = [],
   guildKnowledgeCandidates: ChatResponse["guildKnowledgeCandidates"] = [],
 ): ChatResponse {
-  return { text, userMemoryActions, guildKnowledgeCandidates, sources: [], usage: null, webSearchUsed: false };
+  return { text, userMemoryActions, guildKnowledgeCandidates, sources: [], usage: null, webSearchUsed: false, generatedImages: [] };
 }
 
 function guildStore(): GuildKnowledgeStore {
@@ -31,18 +32,41 @@ function input(message: string): ChatConversationInput {
     message,
     referencedMessage: null,
     images: [],
-    webSearchEnabled: false,
+    webSearchMode: "off",
+    imageGenerationEnabled: false,
     includeSources: false,
   };
 }
 
 describe("ChatConversationService", () => {
+  it("delegates the dm-notes preference straight to the state store", async () => {
+    const getDmNotesEnabled = vi.fn(() => Promise.resolve(false));
+    const store: ChatStateStore = {
+      initialize: () => Promise.resolve(),
+      load: () => Promise.resolve({ exchanges: [], memories: [] }),
+      commitSuccessfulExchange: () => Promise.resolve(),
+      forgetMemory: () => Promise.resolve(false),
+      forgetAllMemories: () => Promise.resolve(0),
+      getDmNotesEnabled,
+      setDmNotesEnabled: () => Promise.resolve(),
+    };
+    const provider: ChatProvider = { reply: vi.fn(() => Promise.resolve(response("hello"))) };
+    const service = new ChatConversationService(provider, store, guildStore());
+
+    await expect(service.getDmNotesEnabled("guild", "user")).resolves.toBe(false);
+    expect(getDmNotesEnabled).toHaveBeenCalledWith("guild", "user");
+  });
+
   it("does not commit when Discord delivery fails", async () => {
     const commitSuccessfulExchange = vi.fn(() => Promise.resolve());
     const store: ChatStateStore = {
       initialize: vi.fn(() => Promise.resolve()),
       load: vi.fn(() => Promise.resolve({ exchanges: [], memories: [] })),
       commitSuccessfulExchange,
+      forgetMemory: vi.fn(() => Promise.resolve(false)),
+      forgetAllMemories: vi.fn(() => Promise.resolve(0)),
+      getDmNotesEnabled: vi.fn(() => Promise.resolve(true)),
+      setDmNotesEnabled: vi.fn(() => Promise.resolve()),
     };
     const provider: ChatProvider = { reply: vi.fn(() => Promise.resolve(response("hello"))) };
     const service = new ChatConversationService(provider, store, guildStore());
@@ -61,6 +85,10 @@ describe("ChatConversationService", () => {
         storedAssistantMessage = commit.assistantMessage;
         return Promise.resolve();
       },
+      forgetMemory: () => Promise.resolve(false),
+      forgetAllMemories: () => Promise.resolve(0),
+      getDmNotesEnabled: () => Promise.resolve(true),
+      setDmNotesEnabled: () => Promise.resolve(),
     };
     const provider: ChatProvider = { reply: () => Promise.resolve(response("raw provider response")) };
     const service = new ChatConversationService(provider, store, guildStore());
@@ -82,6 +110,10 @@ describe("ChatConversationService", () => {
         });
         return Promise.resolve();
       },
+      forgetMemory: () => Promise.resolve(false),
+      forgetAllMemories: () => Promise.resolve(0),
+      getDmNotesEnabled: () => Promise.resolve(true),
+      setDmNotesEnabled: () => Promise.resolve(),
     };
     const provider: ChatProvider = {
       reply: (request: ChatRequest) => {
@@ -107,6 +139,10 @@ describe("ChatConversationService", () => {
         committedActions.push(commit.actions);
         return Promise.resolve();
       },
+      forgetMemory: () => Promise.resolve(false),
+      forgetAllMemories: () => Promise.resolve(0),
+      getDmNotesEnabled: () => Promise.resolve(true),
+      setDmNotesEnabled: () => Promise.resolve(),
     };
     const provider: ChatProvider = {
       reply: () => Promise.resolve(response("ok", [
@@ -129,6 +165,10 @@ describe("ChatConversationService", () => {
       initialize: () => Promise.resolve(),
       load: () => Promise.resolve({ exchanges: [], memories: [] }),
       commitSuccessfulExchange: () => Promise.resolve(),
+      forgetMemory: () => Promise.resolve(false),
+      forgetAllMemories: () => Promise.resolve(0),
+      getDmNotesEnabled: () => Promise.resolve(true),
+      setDmNotesEnabled: () => Promise.resolve(),
     };
     let receivedKnowledgeCount = -1;
     const provider: ChatProvider = {
@@ -161,6 +201,10 @@ describe("ChatConversationService", () => {
       initialize: () => Promise.resolve(),
       load: () => Promise.resolve({ exchanges: [], memories: [] }),
       commitSuccessfulExchange: () => Promise.resolve(),
+      forgetMemory: () => Promise.resolve(false),
+      forgetAllMemories: () => Promise.resolve(0),
+      getDmNotesEnabled: () => Promise.resolve(true),
+      setDmNotesEnabled: () => Promise.resolve(),
     };
     const known = {
       id: "known", subjectType: "guild" as const, subjectId: "guild", topic: "community",
@@ -185,6 +229,71 @@ describe("ChatConversationService", () => {
 
     const result = await service.run(input("hello"), (reply) => Promise.resolve(reply.text));
     expect(providerRecordCount).toBe(0);
-    expect(result.contextUsage).toEqual({ guildKnowledgeRecords: 0, guildKnowledgeChars: 2 });
+    expect(result.contextUsage).toMatchObject({
+      historyMessages: 0,
+      guildKnowledgeRecords: 0,
+      guildKnowledgeChars: 2,
+    });
+  });
+
+  it("loads per-user customization and reports it separately from the guild personality", async () => {
+    const store: ChatStateStore = {
+      initialize: () => Promise.resolve(),
+      load: () => Promise.resolve({ exchanges: [], memories: [] }),
+      commitSuccessfulExchange: () => Promise.resolve(),
+      forgetMemory: () => Promise.resolve(false),
+      forgetAllMemories: () => Promise.resolve(0),
+      getDmNotesEnabled: () => Promise.resolve(true),
+      setDmNotesEnabled: () => Promise.resolve(),
+    };
+    const customizationStore: UserCustomizationStore = {
+      initialize: () => Promise.resolve(),
+      load: () => Promise.resolve("Call me 阿龍."),
+      save: () => Promise.resolve(),
+      clear: () => Promise.resolve(),
+    };
+    let receivedCustomization: string | null = null;
+    const provider: ChatProvider = {
+      reply: (request: ChatRequest) => {
+        receivedCustomization = request.userCustomization;
+        return Promise.resolve(response("ok"));
+      },
+    };
+    const service = new ChatConversationService(
+      provider,
+      store,
+      guildStore(),
+      undefined,
+      undefined,
+      customizationStore,
+    );
+
+    const result = await service.run(input("hi"), (reply) => Promise.resolve(reply.text));
+    expect(receivedCustomization).toBe("Call me 阿龍.");
+    expect(result.contextUsage).toMatchObject({ userCustomizationChars: "Call me 阿龍.".length });
+  });
+
+  it("defaults to no customization when no store is provided", async () => {
+    const store: ChatStateStore = {
+      initialize: () => Promise.resolve(),
+      load: () => Promise.resolve({ exchanges: [], memories: [] }),
+      commitSuccessfulExchange: () => Promise.resolve(),
+      forgetMemory: () => Promise.resolve(false),
+      forgetAllMemories: () => Promise.resolve(0),
+      getDmNotesEnabled: () => Promise.resolve(true),
+      setDmNotesEnabled: () => Promise.resolve(),
+    };
+    let receivedCustomization: string | null = "not-null";
+    const provider: ChatProvider = {
+      reply: (request: ChatRequest) => {
+        receivedCustomization = request.userCustomization;
+        return Promise.resolve(response("ok"));
+      },
+    };
+    const service = new ChatConversationService(provider, store, guildStore());
+
+    const result = await service.run(input("hi"), (reply) => Promise.resolve(reply.text));
+    expect(receivedCustomization).toBeNull();
+    expect(result.contextUsage).toMatchObject({ userCustomizationChars: 0 });
   });
 });

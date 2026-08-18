@@ -1,6 +1,11 @@
 export class KeyedSerialQueue {
   private readonly tails = new Map<string, Promise<void>>();
 
+  // True while a task for this key is running or queued behind one that is.
+  public isBusy(key: string): boolean {
+    return this.tails.has(key);
+  }
+
   public async run<T>(key: string, task: () => Promise<T>): Promise<T> {
     const previous = this.tails.get(key) ?? Promise.resolve();
     let release!: () => void;

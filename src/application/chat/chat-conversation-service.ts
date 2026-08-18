@@ -1,12 +1,15 @@
-import { chatMemoryLimits, validateMemoryActions } from "./chat-memory-policy.js";
-import type { ChatProvider, ChatRequest, ChatResponse } from "./chat-provider.js";
+import { chatMemoryInstructions, chatMemoryLimits, validateMemoryActions } from "./chat-memory-policy.js";
+import { chatSafetyGuard, type ChatProvider, type ChatRequest, type ChatResponse, type ChatResponseObserver } from "./chat-provider.js";
 import type { ChatStateStore } from "./chat-state-store.js";
-import { KeyedSerialQueue } from "./keyed-serial-queue.js";
-import { validateGuildKnowledgeCandidates } from "./guild-knowledge-policy.js";
+import type { UserCustomizationStore } from "./user-customization-store.js";
+import { KeyedSerialQueue } from "../concurrency/keyed-serial-queue.js";
+import { guildKnowledgeInstructions, validateGuildKnowledgeCandidates } from "./guild-knowledge-policy.js";
 import type { GuildKnowledgeStore } from "./guild-knowledge-store.js";
 import { FullGuildMemorySelector, type GuildMemorySelector } from "./guild-memory-selector.js";
+import { RecentPromptHistorySelector, type PromptHistorySelector } from "./prompt-history-selector.js";
 
-export interface ChatConversationInput extends Omit<ChatRequest, "recentHistory" | "memories" | "guildKnowledge"> {
+export interface ChatConversationInput
+  extends Omit<ChatRequest, "recentHistory" | "memories" | "guildKnowledge" | "userCustomization"> {
   guildId: string;
 }
 
@@ -25,23 +28,36 @@ export class ChatConversationService {
     private readonly stateStore: ChatStateStore,
     private readonly guildKnowledgeStore: GuildKnowledgeStore,
     private readonly guildMemorySelector: GuildMemorySelector = new FullGuildMemorySelector(),
+    private readonly promptHistorySelector: PromptHistorySelector = new RecentPromptHistorySelector(),
+    private readonly userCustomizationStore: UserCustomizationStore | null = null,
   ) {}
+
+  // True while a previous request from this same guild+user is still being
+  // processed (or queued behind one that is), so callers can tell the user
+  // their new message will be handled after the current one instead of
+  // appearing to hang silently.
+  public isBusy(guildId: string, userId: string): boolean {
+    return this.queue.isBusy(`${guildId}:${userId}`);
+  }
+
+  public getDmNotesEnabled(guildId: string, userId: string): Promise<boolean> {
+    return this.stateStore.getDmNotesEnabled(guildId, userId);
+  }
 
   public run(
     input: ChatConversationInput,
     deliver: (response: ChatResponse) => Promise<string>,
+    observer?: ChatResponseObserver,
   ): Promise<ChatResponse> {
     const key = `${input.guildId}:${input.currentUser.id}`;
     return this.queue.run(key, async () => {
       const now = Date.now();
-      const [state, guildKnowledge] = await Promise.all([
+      const [state, guildKnowledge, userCustomization] = await Promise.all([
         this.stateStore.load(input.guildId, input.currentUser.id, now),
         this.guildKnowledgeStore.loadConfirmed(input.guildId),
+        this.userCustomizationStore?.load(input.guildId, input.currentUser.id) ?? Promise.resolve(null),
       ]);
-      const recentHistory = state.exchanges.flatMap((exchange) => [
-        { role: "user" as const, content: exchange.user.content },
-        { role: "assistant" as const, content: exchange.assistant.content },
-      ]);
+      const recentHistory = this.promptHistorySelector.select(state.exchanges);
       const selectedGuildKnowledge = await this.guildMemorySelector.select({
         records: guildKnowledge,
         currentUser: input.currentUser,
@@ -54,7 +70,8 @@ export class ChatConversationService {
         recentHistory,
         memories: state.memories,
         guildKnowledge: selectedGuildKnowledge,
-      });
+        userCustomization,
+      }, observer);
       const allowedSubjects = new Set([
         input.currentUser.id,
         ...input.mentionedUsers.map((user) => user.id),
@@ -62,8 +79,18 @@ export class ChatConversationService {
       const validatedResponse = {
         ...response,
         contextUsage: {
+          personalityChars: input.personality.length,
+          userCustomizationChars: userCustomization?.length ?? 0,
+          securityInstructionChars: chatSafetyGuard.length,
+          memoryInstructionChars: chatMemoryInstructions.length + guildKnowledgeInstructions.length,
+          historyMessages: recentHistory.length,
+          historyChars: JSON.stringify(recentHistory).length,
+          memoryRecords: state.memories.length,
+          memoryChars: JSON.stringify(state.memories).length,
           guildKnowledgeRecords: selectedGuildKnowledge.length,
           guildKnowledgeChars: JSON.stringify(selectedGuildKnowledge).length,
+          referencedMessageChars: input.referencedMessage?.length ?? 0,
+          currentMessageChars: input.message.length,
         },
         userMemoryActions: validateMemoryActions(response.userMemoryActions, allowedSubjects),
         guildKnowledgeCandidates: validateGuildKnowledgeCandidates(
