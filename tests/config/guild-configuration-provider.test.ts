@@ -64,6 +64,21 @@ describe("LocalGuildConfigurationProvider", () => {
       length: 12,
       customTheme: null,
     });
+    expect(profile.chat.webSearchMode).toBe("off");
+    expect(profile.chat.imageGenerationEnabled).toBe(false);
+  });
+
+  it("migrates the legacy web-search boolean to auto mode", () => {
+    const directory = createTemporaryDirectory();
+    writeFileSync(
+      join(directory, "guild.yaml"),
+      `${validProfile()}\nchat:\n  webSearchEnabled: true\n`,
+      "utf8",
+    );
+
+    const profile = new LocalGuildConfigurationProvider(directory)
+      .require("123456789012345678");
+    expect(profile.chat.webSearchMode).toBe("auto");
   });
 
   it("rejects duplicate profiles for the same guild", () => {
@@ -89,6 +104,22 @@ describe("LocalGuildConfigurationProvider", () => {
 
     expect(() => new LocalGuildConfigurationProvider(directory)).toThrow(
       "Music requires at least one musicController role",
+    );
+  });
+
+  it("rejects birthdays enabled without an announcements channel", () => {
+    const directory = createTemporaryDirectory();
+    writeFileSync(
+      join(directory, "invalid.yaml"),
+      validProfile().replace(
+        "features:\n  common: true\n  diagnostics: true\n  music: true",
+        "features:\n  common: true\n  diagnostics: true\n  music: true\n  birthdays: true",
+      ),
+      "utf8",
+    );
+
+    expect(() => new LocalGuildConfigurationProvider(directory)).toThrow(
+      "Birthdays requires a birthdayAnnouncements channel",
     );
   });
 
@@ -155,11 +186,13 @@ describe("LocalGuildConfigurationProvider", () => {
       idleImageUrl: "https://example.com/idle.png",
       maximumVolume: 180,
       emptyQueueAction: "stay_connected",
+      chatbotImageGenerationEnabled: true,
     });
 
     expect(updated.idleImageUrl).toBe("https://example.com/idle.png");
     expect(updated.music.maximumVolume).toBe(180);
     expect(updated.music.emptyQueueAction).toBe("stay_connected");
+    expect(updated.chat.imageGenerationEnabled).toBe(true);
     expect(provider.require(updated.guildId)).toEqual(updated);
   });
 

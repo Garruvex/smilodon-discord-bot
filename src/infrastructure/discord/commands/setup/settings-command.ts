@@ -18,6 +18,7 @@ import type {
   ProgressBarStyle,
 } from "../../../../config/guild-configuration.js";
 import type { ApplicationEmojiCatalog } from "../../application-emoji-catalog.js";
+import type { AuditLogService } from "../../../../application/audit/audit-log-service.js";
 
 export class SettingsCommand implements BotCommand {
   private controlChannelService: ControlChannelService | null = null;
@@ -43,6 +44,11 @@ export class SettingsCommand implements BotCommand {
       .addStringOption((option) => option.setName("progress-paused").setDescription("Custom current-position emoji while paused."))
       .addStringOption((option) => option.setName("progress-ending").setDescription("Optional ending emoji, or 'none' to remove it.")))
     .addSubcommand((command) => command.setName("access").setDescription("Shows configured access roles and what each group controls."))
+    .addSubcommand((command) => command.setName("audit-log").setDescription("Configures the channel that receives settings/setup change logs.")
+      .addChannelOption((option) => option.setName("channel").setDescription("Text channel to receive audit log entries.").addChannelTypes(ChannelType.GuildText))
+      .addBooleanOption((option) => option.setName("disable").setDescription("Stop sending audit log entries.")))
+    .addSubcommand((command) => command.setName("audit").setDescription("Shows recent settings/setup change log entries.")
+      .addIntegerOption((option) => option.setName("count").setDescription("How many recent entries to show (default 10).").setMinValue(1).setMaxValue(20)))
     .addSubcommand((command) => command.setName("roles").setDescription("Adds access roles without removing existing ones.")
       .addRoleOption((option) => option.setName("administrator").setDescription("Adds a bot administrator role for /settings and inherited music control."))
       .addRoleOption((option) => option.setName("music-controller").setDescription("Adds a role for /play, queue commands, panel controls, and typed song requests."))
@@ -71,12 +77,24 @@ export class SettingsCommand implements BotCommand {
       .addChannelOption((option) => option.setName("channel").setDescription("Adds a text channel where mention chat is allowed.").addChannelTypes(ChannelType.GuildText))
       .addIntegerOption((option) => option.setName("cooldown-seconds").setDescription("Per-user delay between requests.").setMinValue(0).setMaxValue(86400))
       .addStringOption((option) => option.setName("denied-message").setDescription("Playful response shown to users without access.").setMaxLength(500))
+      .addStringOption((option) => option.setName("denied-link-url").setDescription("Optional link button URL shown with the denied message. Use \"none\" to remove it."))
+      .addStringOption((option) => option.setName("denied-link-label").setDescription("Label for the denied-message link button.").setMaxLength(80))
       .addBooleanOption((option) => option.setName("web-search").setDescription("Allow the model to search the public web when needed."))
       .addBooleanOption((option) => option.setName("image-input").setDescription("Allow bounded image attachments from Discord."))
+      .addBooleanOption((option) => option.setName("image-generation").setDescription("Allow the model to generate images in mention chat."))
       .addBooleanOption((option) => option.setName("include-sources").setDescription("Include web citation links in replies."))
       .addIntegerOption((option) => option.setName("max-images").setDescription("Maximum images accepted per request.").setMinValue(0).setMaxValue(4))
       .addAttachmentOption((option) => option.setName("personality").setDescription("Upload the guild personality as a Markdown file."))
-      .addBooleanOption((option) => option.setName("use-default-personality").setDescription("Remove the uploaded personality and use the built-in/default file.")));
+      .addBooleanOption((option) => option.setName("use-default-personality").setDescription("Remove the uploaded personality and use the built-in/default file.")))
+    .addSubcommand((command) => command.setName("birthdays").setDescription("Configures automatic birthday announcements.")
+      .addBooleanOption((option) => option.setName("enabled").setDescription("Turn birthday announcements on or off."))
+      .addChannelOption((option) => option.setName("channel").setDescription("Text channel where birthday announcements are posted.").addChannelTypes(ChannelType.GuildText)))
+    .addSubcommand((command) => command.setName("nsfw").setDescription("Turns NSFW image commands on or off for this server.")
+      .addBooleanOption((option) => option.setName("enabled").setDescription("Allow NSFW image commands (still requires an age-restricted channel).").setRequired(true)))
+    .addSubcommand((command) => command.setName("link-fix").setDescription("Configures automatic link rewriting for better embeds (Twitter/X, TikTok, Instagram, Reddit).")
+      .addBooleanOption((option) => option.setName("enabled").setDescription("Turn automatic link rewriting on or off."))
+      .addChannelOption((option) => option.setName("channel").setDescription("Adds a text channel to watch for rewritable links.").addChannelTypes(ChannelType.GuildText))
+      .addChannelOption((option) => option.setName("remove-channel").setDescription("Removes a text channel from the watched list.").addChannelTypes(ChannelType.GuildText)));
 
   public readonly module = CommandModule.Common;
   public readonly access = {
@@ -88,6 +106,7 @@ export class SettingsCommand implements BotCommand {
     private readonly profiles: GuildConfigurationProvider,
     private readonly assets: GuildAssetStore,
     private readonly applicationEmojiCatalog: ApplicationEmojiCatalog,
+    private readonly auditLogService?: AuditLogService,
   ) {}
 
   public bindControlChannelService(service: ControlChannelService): void {
@@ -104,6 +123,21 @@ export class SettingsCommand implements BotCommand {
     if (subcommand === "access") {
       await context.responses.edit(this.formatAccessSummary(previousProfile));
       return;
+    }
+
+    if (subcommand === "audit") {
+      await context.responses.edit(await this.formatAuditSummary(
+        context.interaction.guildId,
+        context.interaction.options.getInteger("count") ?? 10,
+      ));
+      return;
+    }
+
+    if (subcommand === "audit-log") {
+      const channel = context.interaction.options.getChannel("channel");
+      const disable = context.interaction.options.getBoolean("disable");
+      if (channel) input.auditLogChannelId = channel.id;
+      if (disable === true) input.auditLogChannelId = null;
     }
 
     if (subcommand === "panel") {
@@ -199,8 +233,11 @@ export class SettingsCommand implements BotCommand {
       const channel = context.interaction.options.getChannel("channel");
       const cooldown = context.interaction.options.getInteger("cooldown-seconds");
       const deniedMessage = context.interaction.options.getString("denied-message");
+      const deniedLinkUrl = context.interaction.options.getString("denied-link-url");
+      const deniedLinkLabel = context.interaction.options.getString("denied-link-label");
       const webSearch = context.interaction.options.getBoolean("web-search");
       const imageInput = context.interaction.options.getBoolean("image-input");
+      const imageGeneration = context.interaction.options.getBoolean("image-generation");
       const includeSources = context.interaction.options.getBoolean("include-sources");
       const maxImages = context.interaction.options.getInteger("max-images");
       const personality = context.interaction.options.getAttachment("personality");
@@ -220,8 +257,13 @@ export class SettingsCommand implements BotCommand {
       }
       if (cooldown !== null) input.chatbotCooldownSeconds = cooldown;
       if (deniedMessage) input.chatbotDeniedMessage = deniedMessage;
-      if (webSearch !== null) input.chatbotWebSearchEnabled = webSearch;
+      if (deniedLinkUrl !== null) {
+        input.chatbotDeniedLinkUrl = deniedLinkUrl.trim().toLowerCase() === "none" ? null : deniedLinkUrl;
+      }
+      if (deniedLinkLabel !== null) input.chatbotDeniedLinkLabel = deniedLinkLabel;
+      if (webSearch !== null) input.chatbotWebSearchMode = webSearch ? "auto" : "off";
       if (imageInput !== null) input.chatbotImageInputEnabled = imageInput;
+      if (imageGeneration !== null) input.chatbotImageGenerationEnabled = imageGeneration;
       if (includeSources !== null) input.chatbotIncludeSources = includeSources;
       if (maxImages !== null) input.chatbotMaxImagesPerRequest = maxImages;
       if (personality) {
@@ -234,6 +276,38 @@ export class SettingsCommand implements BotCommand {
       if (useDefaultPersonality === true) {
         input.chatbotPersonalityAsset = null;
         input.chatbotPersonalityFile = null;
+      }
+    } else if (subcommand === "birthdays") {
+      const enabled = context.interaction.options.getBoolean("enabled");
+      const channel = context.interaction.options.getChannel("channel");
+      if (channel) input.birthdayAnnouncementsChannelId = channel.id;
+      if (enabled !== null) input.birthdaysEnabled = enabled;
+      const nextEnabled = enabled ?? previousProfile.features.birthdays;
+      const nextChannel = channel?.id ?? previousProfile.channels.birthdayAnnouncements;
+      if (nextEnabled && !nextChannel) {
+        await context.responses.edit(
+          "Set a birthday-announcements channel with `channel:<channel>` before enabling this feature.",
+        );
+        return;
+      }
+    } else if (subcommand === "nsfw") {
+      input.nsfwEnabled = context.interaction.options.getBoolean("enabled", true);
+    } else if (subcommand === "link-fix") {
+      const enabled = context.interaction.options.getBoolean("enabled");
+      const channel = context.interaction.options.getChannel("channel");
+      const removeChannel = context.interaction.options.getChannel("remove-channel");
+      const channelIds = new Set(previousProfile.channels.linkFix);
+      if (channel) channelIds.add(channel.id);
+      if (removeChannel) channelIds.delete(removeChannel.id);
+      if (channel || removeChannel) input.linkFixChannelIds = [...channelIds];
+      if (enabled !== null) input.linkFixEnabled = enabled;
+      const nextEnabled = enabled ?? previousProfile.features.linkFix;
+      const nextChannelCount = input.linkFixChannelIds?.length ?? previousProfile.channels.linkFix.size;
+      if (nextEnabled && nextChannelCount === 0) {
+        await context.responses.edit(
+          "Add at least one watched channel with `channel:<channel>` before enabling this feature.",
+        );
+        return;
       }
     }
 
@@ -256,6 +330,11 @@ export class SettingsCommand implements BotCommand {
       await this.assets.removePersonality(previousProfile.chat.personalityAsset);
     }
     const description = this.describeUpdate(subcommand, previousProfile, updatedProfile);
+    await this.auditLogService?.log(
+      context.interaction.guildId,
+      context.interaction.user.id,
+      `**/settings ${subcommand}**\n${description}`,
+    );
     await context.responses.edit(
       input.progressBar
         ? `${description}\n\nPreview:\n${this.renderProgressPreview(input.progressBar)}`
@@ -294,6 +373,22 @@ export class SettingsCommand implements BotCommand {
     }
   }
 
+  private async formatAuditSummary(guildId: string, count: number): Promise<string> {
+    if (!this.auditLogService) return "Audit logging isn't available right now.";
+    const result = await this.auditLogService.fetchRecent(guildId, count);
+    if (!result.configured) {
+      return "No audit log channel is configured. Set one with `/settings audit-log channel:<channel>`.";
+    }
+    if (result.entries.length === 0) {
+      return "No audit log entries found yet.";
+    }
+    const lines = result.entries.map((entry) => {
+      const oneLine = entry.description.replaceAll("\n", " · ");
+      return `<t:${Math.floor(entry.createdAt / 1_000)}:R> ${oneLine}`;
+    });
+    return ["Recent audit log entries:", ...lines].join("\n").slice(0, 2_000);
+  }
+
   private formatAccessSummary(profile: GuildConfiguration): string {
     return [
       "Configured access roles:",
@@ -320,6 +415,9 @@ export class SettingsCommand implements BotCommand {
     }
     if (group === "musicController" && profile.features.music && nextRoleIds.size === 0) {
       return "Music is enabled, so at least one music-controller role must remain configured.";
+    }
+    if (group === "chatbot" && profile.features.chatbot && nextRoleIds.size === 0) {
+      return "Chatbot is enabled, so at least one chatbot role must remain configured (or disable the chatbot feature first).";
     }
     return null;
   }
@@ -356,7 +454,61 @@ export class SettingsCommand implements BotCommand {
         roleGroupDescriptions.chatbot,
       ].join("\n");
     }
-    return "Server settings updated.";
+    const changes = this.describeFieldChanges(previousProfile, updatedProfile);
+    if (changes.length === 0) return "Server settings updated.";
+    const lines = ["Server settings updated.", ...changes];
+    if (
+      changes.some((line) => line.startsWith("Chatbot")) &&
+      !updatedProfile.features.chatbot
+    ) {
+      lines.push("Note: the chatbot feature is currently disabled, so this has no effect until it's enabled.");
+    }
+    return lines.join("\n");
+  }
+
+  private describeFieldChanges(
+    previous: GuildConfiguration,
+    updated: GuildConfiguration,
+  ): string[] {
+    const fields: Array<{ label: string; previous: unknown; updated: unknown }> = [
+      { label: "Audit log channel", previous: previous.channels.auditLog, updated: updated.channels.auditLog },
+      { label: "Default volume", previous: previous.music.defaultVolume, updated: updated.music.defaultVolume },
+      { label: "Maximum volume", previous: previous.music.maximumVolume, updated: updated.music.maximumVolume },
+      { label: "Volume button step", previous: previous.music.volumeButtonStep, updated: updated.music.volumeButtonStep },
+      { label: "Empty-queue action", previous: previous.music.emptyQueueAction, updated: updated.music.emptyQueueAction },
+      { label: "Empty-queue delay (ms)", previous: previous.music.emptyQueueDelayMs, updated: updated.music.emptyQueueDelayMs },
+      { label: "Empty-channel action", previous: previous.music.emptyChannelAction, updated: updated.music.emptyChannelAction },
+      { label: "Empty-channel grace period (ms)", previous: previous.music.emptyChannelGracePeriodMs, updated: updated.music.emptyChannelGracePeriodMs },
+      { label: "Resume when occupied", previous: previous.music.resumeWhenOccupied, updated: updated.music.resumeWhenOccupied },
+      { label: "Chatbot enabled", previous: previous.features.chatbot, updated: updated.features.chatbot },
+      { label: "Chatbot cooldown (seconds)", previous: previous.chat.cooldownSeconds, updated: updated.chat.cooldownSeconds },
+      { label: "Chatbot denied message", previous: previous.chat.deniedMessage, updated: updated.chat.deniedMessage },
+      { label: "Chatbot denied-message link URL", previous: previous.chat.deniedLinkUrl, updated: updated.chat.deniedLinkUrl },
+      { label: "Chatbot denied-message link label", previous: previous.chat.deniedLinkLabel, updated: updated.chat.deniedLinkLabel },
+      { label: "Chatbot web search mode", previous: previous.chat.webSearchMode, updated: updated.chat.webSearchMode },
+      { label: "Chatbot image input", previous: previous.chat.imageInputEnabled, updated: updated.chat.imageInputEnabled },
+      { label: "Chatbot image generation", previous: previous.chat.imageGenerationEnabled, updated: updated.chat.imageGenerationEnabled },
+      { label: "Chatbot include sources", previous: previous.chat.includeSources, updated: updated.chat.includeSources },
+      { label: "Chatbot max images per request", previous: previous.chat.maxImagesPerRequest, updated: updated.chat.maxImagesPerRequest },
+      { label: "Birthdays enabled", previous: previous.features.birthdays, updated: updated.features.birthdays },
+      { label: "Birthday announcements channel", previous: previous.channels.birthdayAnnouncements, updated: updated.channels.birthdayAnnouncements },
+      { label: "NSFW commands enabled", previous: previous.features.nsfw, updated: updated.features.nsfw },
+      { label: "Link fix enabled", previous: previous.features.linkFix, updated: updated.features.linkFix },
+    ];
+    const changes = fields
+      .filter((field) => field.previous !== field.updated)
+      .map((field) => `${field.label}: ${String(field.previous)} → ${String(field.updated)}`);
+    if (
+      previous.channels.linkFix.size !== updated.channels.linkFix.size ||
+      [...previous.channels.linkFix].some((id) => !updated.channels.linkFix.has(id))
+    ) {
+      changes.push(`Link fix watched channels: ${this.formatChannelList(updated.channels.linkFix)}`);
+    }
+    return changes;
+  }
+
+  private formatChannelList(channelIds: ReadonlySet<string>): string {
+    return channelIds.size === 0 ? "none" : [...channelIds].map((id) => `<#${id}>`).join(", ");
   }
 
   private assignNumber(

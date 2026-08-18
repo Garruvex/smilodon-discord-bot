@@ -11,6 +11,7 @@ export interface LavalinkConfiguration {
 }
 
 export interface ApplicationConfiguration {
+  instanceName?: string | null;
   environment: "development" | "test" | "production";
   logLevel: "trace" | "debug" | "info" | "warn" | "error" | "fatal";
   discord: DiscordConfiguration;
@@ -27,5 +28,8 @@ export interface ApplicationConfiguration {
     baseUrl: string;
     model: string;
     mode: "chat_completions" | "responses";
+    reasoningEffort: "minimal" | "low" | "medium" | "high";
+    verbosity: "low" | "medium" | "high";
+    maxOutputTokens: number;
   } | null;
 }

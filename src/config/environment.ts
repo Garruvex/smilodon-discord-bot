@@ -27,6 +27,7 @@ const requiredSnowflakeList = z
   .pipe(z.array(z.string().regex(discordSnowflake)).min(1));
 
 const environmentSchema = z.object({
+  INSTANCE_NAME: optionalNonEmptyString,
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal"]).default("info"),
   DISCORD_TOKEN: z.string().min(1),
@@ -47,6 +48,9 @@ const environmentSchema = z.object({
   CHAT_BASE_URL: optionalUrl,
   CHAT_MODEL: optionalNonEmptyString,
   CHAT_API_MODE: z.enum(["chat_completions", "responses"]).default("chat_completions"),
+  CHAT_REASONING_EFFORT: z.enum(["minimal", "low", "medium", "high"]).default("low"),
+  CHAT_VERBOSITY: z.enum(["low", "medium", "high"]).default("low"),
+  CHAT_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(1).max(128_000).default(2_048),
 });
 
 export function loadConfiguration(
@@ -80,6 +84,7 @@ export function loadConfiguration(
   }
 
   return {
+    instanceName: parsed.data.INSTANCE_NAME ?? null,
     environment: parsed.data.NODE_ENV,
     logLevel: parsed.data.LOG_LEVEL,
     discord: {
@@ -105,6 +110,9 @@ export function loadConfiguration(
           baseUrl: parsed.data.CHAT_BASE_URL.replace(/\/$/, ""),
           model: parsed.data.CHAT_MODEL,
           mode: parsed.data.CHAT_API_MODE,
+          reasoningEffort: parsed.data.CHAT_REASONING_EFFORT,
+          verbosity: parsed.data.CHAT_VERBOSITY,
+          maxOutputTokens: parsed.data.CHAT_MAX_OUTPUT_TOKENS,
         }
       : null,
   };

@@ -58,4 +58,24 @@ describe("loadConfiguration", () => {
 
     expect(configuration.persistence.driver).toBe("postgres");
   });
+
+  it("loads instance-level chat generation settings", () => {
+    const configuration = loadConfiguration({
+      ...validEnvironment,
+      CHAT_API_KEY: "secret",
+      CHAT_BASE_URL: "https://api.openai.com/v1",
+      CHAT_MODEL: "gpt-5-nano-2025-08-07",
+      CHAT_API_MODE: "responses",
+      CHAT_REASONING_EFFORT: "minimal",
+      CHAT_VERBOSITY: "medium",
+      CHAT_MAX_OUTPUT_TOKENS: "1024",
+    });
+
+    expect(configuration.chat).toMatchObject({
+      mode: "responses",
+      reasoningEffort: "minimal",
+      verbosity: "medium",
+      maxOutputTokens: 1_024,
+    });
+  });
 });

@@ -48,6 +48,25 @@ describe("instance environment", () => {
     expect(instance.environment.INSTANCE_NAME).toBe("one");
   });
 
+  it("does not inherit instance-owned chat settings from the shared environment", () => {
+    const root = workspace();
+    writeFileSync(
+      join(root, ".env"),
+      "LAVALINK_HOST=shared-host\nCHAT_MODEL=shared-model\nCHAT_API_KEY=shared-key\n",
+      "utf8",
+    );
+    writeInstance(root, "one", "CHAT_MODEL=instance-model\nCHAT_API_KEY=instance-key");
+
+    const instance = loadInstanceEnvironment("one", root);
+    expect(instance.environment.CHAT_MODEL).toBe("instance-model");
+    expect(instance.environment.CHAT_API_KEY).toBe("instance-key");
+
+    writeInstance(root, "two");
+    const second = loadInstanceEnvironment("two", root);
+    expect(second.environment.CHAT_MODEL).toBeUndefined();
+    expect(second.environment.CHAT_API_KEY).toBeUndefined();
+  });
+
   it("discovers only real instance env files", () => {
     const root = workspace();
     writeInstance(root, "one");

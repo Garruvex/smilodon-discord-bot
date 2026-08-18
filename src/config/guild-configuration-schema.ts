@@ -3,6 +3,26 @@ import { z } from "zod";
 const snowflake = z.string().regex(/^\d{17,20}$/);
 const snowflakeList = z.array(snowflake).default([]);
 
+const guildChatSchema = z.preprocess((value) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const chat = value as Record<string, unknown>;
+  if (chat.webSearchMode !== undefined || typeof chat.webSearchEnabled !== "boolean") return value;
+  const { webSearchEnabled, ...rest } = chat;
+  return { ...rest, webSearchMode: webSearchEnabled ? "auto" : "off" };
+}, z.object({
+  personalityFile: z.string().trim().min(1).nullable().default(null),
+  personalityAsset: z.string().regex(/^guild-assets\/\d{17,20}\/personality\.md$/).nullable().default(null),
+  cooldownSeconds: z.number().int().min(0).max(86_400).default(30),
+  deniedMessage: z.string().trim().min(1).max(500).default("This feature requires a premium subscription. Try looking richer and ask again."),
+  deniedLinkUrl: z.string().trim().url().nullable().default(null),
+  deniedLinkLabel: z.string().trim().min(1).max(80).nullable().default(null),
+  webSearchMode: z.enum(["off", "auto"]).default("off"),
+  imageInputEnabled: z.boolean().default(false),
+  imageGenerationEnabled: z.boolean().default(false),
+  includeSources: z.boolean().default(true),
+  maxImagesPerRequest: z.number().int().min(0).max(4).default(2),
+}));
+
 const progressBarEmojiBase = {
   id: snowflake,
   name: z.string().trim().min(1).max(32),
@@ -73,8 +93,11 @@ export const guildConfigurationFileSchema = z
         diagnostics: z.boolean().default(true),
         music: z.boolean().default(false),
         chatbot: z.boolean().default(false),
+        birthdays: z.boolean().default(false),
+        nsfw: z.boolean().default(false),
+        linkFix: z.boolean().default(false),
       })
-      .default({ common: true, diagnostics: true, music: false, chatbot: false }),
+      .default({ common: true, diagnostics: true, music: false, chatbot: false, birthdays: false, nsfw: false, linkFix: false }),
     roles: z
       .object({
         botAdministrator: snowflakeList,
@@ -94,31 +117,26 @@ export const guildConfigurationFileSchema = z
         controlPanel: snowflake.nullable().default(null),
         auditLog: snowflake.nullable().default(null),
         chatbot: snowflakeList,
+        birthdayAnnouncements: snowflake.nullable().default(null),
+        linkFix: snowflakeList,
       })
       .default({
         musicCommands: [],
         controlPanel: null,
         auditLog: null,
         chatbot: [],
+        birthdayAnnouncements: null,
+        linkFix: [],
       }),
-    chat: z
-      .object({
-        personalityFile: z.string().trim().min(1).nullable().default(null),
-        personalityAsset: z.string().regex(/^guild-assets\/\d{17,20}\/personality\.md$/).nullable().default(null),
-        cooldownSeconds: z.number().int().min(0).max(86_400).default(30),
-        deniedMessage: z.string().trim().min(1).max(500).default("This feature requires a premium subscription. Try looking richer and ask again."),
-        webSearchEnabled: z.boolean().default(false),
-        imageInputEnabled: z.boolean().default(false),
-        includeSources: z.boolean().default(true),
-        maxImagesPerRequest: z.number().int().min(0).max(4).default(2),
-      })
+    chat: guildChatSchema
       .default({
         personalityFile: null,
         personalityAsset: null,
         cooldownSeconds: 30,
         deniedMessage: "This feature requires a premium subscription. Try looking richer and ask again.",
-        webSearchEnabled: false,
+        webSearchMode: "off",
         imageInputEnabled: false,
+        imageGenerationEnabled: false,
         includeSources: true,
         maxImagesPerRequest: 2,
       }),
@@ -187,6 +205,28 @@ export const guildConfigurationFileSchema = z
         code: z.ZodIssueCode.custom,
         message: "Music requires at least one musicController role.",
         path: ["roles", "musicController"],
+      });
+    }
+
+    if (
+      configuration.features.birthdays &&
+      !configuration.channels.birthdayAnnouncements
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Birthdays requires a birthdayAnnouncements channel.",
+        path: ["channels", "birthdayAnnouncements"],
+      });
+    }
+
+    if (
+      configuration.features.linkFix &&
+      configuration.channels.linkFix.length === 0
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Link fix requires at least one watched channel.",
+        path: ["channels", "linkFix"],
       });
     }
   });

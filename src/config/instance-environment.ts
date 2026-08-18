@@ -4,6 +4,7 @@ import { basename, resolve } from "node:path";
 import { parse } from "dotenv";
 
 const instanceNamePattern = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+const instanceOwnedEnvironmentPrefixes = ["CHAT_"] as const;
 
 export interface LoadedInstanceEnvironment {
   name: string;
@@ -38,7 +39,7 @@ export function loadInstanceEnvironment(
     name,
     file,
     environment: {
-      ...loadSharedEnvironment(root),
+      ...withoutInstanceOwnedValues(loadSharedEnvironment(root)),
       ...values,
       INSTANCE_NAME: name,
     },
@@ -66,9 +67,17 @@ export function resolveDefaultInstanceEnvironment(
 ): NodeJS.ProcessEnv {
   if (source.INSTANCE_NAME || !source.DEFAULT_INSTANCE) return source;
   return {
-    ...source,
+    ...withoutInstanceOwnedValues(source),
     ...loadInstanceEnvironment(source.DEFAULT_INSTANCE).environment,
   };
+}
+
+function withoutInstanceOwnedValues(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return Object.fromEntries(
+    Object.entries(source).filter(([key]) =>
+      !instanceOwnedEnvironmentPrefixes.some((prefix) => key.startsWith(prefix)),
+    ),
+  );
 }
 
 export function validateInstanceIsolation(

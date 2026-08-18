@@ -1,4 +1,4 @@
-export type GuildFeatureName = "common" | "diagnostics" | "music" | "chatbot";
+export type GuildFeatureName = "common" | "diagnostics" | "music" | "chatbot" | "birthdays" | "nsfw" | "linkFix";
 export type RoleGroupName = "botAdministrator" | "musicController" | "chatbot";
 
 export interface GuildFeatureConfiguration {
@@ -6,6 +6,9 @@ export interface GuildFeatureConfiguration {
   diagnostics: boolean;
   music: boolean;
   chatbot: boolean;
+  birthdays: boolean;
+  nsfw: boolean;
+  linkFix: boolean;
 }
 
 export interface GuildRoleConfiguration {
@@ -20,6 +23,8 @@ export interface GuildChannelConfiguration {
   controlPanel: string | null;
   auditLog: string | null;
   chatbot: ReadonlySet<string>;
+  birthdayAnnouncements: string | null;
+  linkFix: ReadonlySet<string>;
 }
 
 export interface GuildChatConfiguration {
@@ -27,8 +32,11 @@ export interface GuildChatConfiguration {
   personalityAsset: string | null;
   cooldownSeconds: number;
   deniedMessage: string;
-  webSearchEnabled: boolean;
+  deniedLinkUrl: string | null;
+  deniedLinkLabel: string | null;
+  webSearchMode: "off" | "auto";
   imageInputEnabled: boolean;
+  imageGenerationEnabled: boolean;
   includeSources: boolean;
   maxImagesPerRequest: number;
 }

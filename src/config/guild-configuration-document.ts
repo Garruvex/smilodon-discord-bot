@@ -8,6 +8,7 @@ export interface UpdateGuildConfigurationInput {
   idleImageUrl?: string | null;
   idleImageAsset?: string | null;
   controlPanelChannelId?: string;
+  auditLogChannelId?: string | null;
   progressBar?: ProgressBarSettings;
   botAdministratorRoleIds?: readonly string[];
   musicControllerRoleIds?: readonly string[];
@@ -19,10 +20,18 @@ export interface UpdateGuildConfigurationInput {
   chatbotPersonalityAsset?: string | null;
   chatbotCooldownSeconds?: number;
   chatbotDeniedMessage?: string;
-  chatbotWebSearchEnabled?: boolean;
+  chatbotDeniedLinkUrl?: string | null;
+  chatbotDeniedLinkLabel?: string | null;
+  chatbotWebSearchMode?: "off" | "auto";
   chatbotImageInputEnabled?: boolean;
+  chatbotImageGenerationEnabled?: boolean;
   chatbotIncludeSources?: boolean;
   chatbotMaxImagesPerRequest?: number;
+  birthdaysEnabled?: boolean;
+  birthdayAnnouncementsChannelId?: string | null;
+  nsfwEnabled?: boolean;
+  linkFixEnabled?: boolean;
+  linkFixChannelIds?: readonly string[];
   defaultVolume?: number;
   maximumVolume?: number;
   volumeButtonStep?: number;
@@ -56,7 +65,7 @@ export function createGuildConfigurationDocument(input: CreateGuildConfiguration
       idleImageAsset: null,
     },
     panel: {},
-    features: { common: true, diagnostics: true, music: true, chatbot: false },
+    features: { common: true, diagnostics: true, music: true, chatbot: false, birthdays: false, nsfw: false, linkFix: false },
     roles: {
       botAdministrator: [...input.botAdministratorRoleIds],
       musicController: [...input.musicControllerRoleIds],
@@ -68,6 +77,8 @@ export function createGuildConfigurationDocument(input: CreateGuildConfiguration
       controlPanel: input.controlPanelChannelId,
       auditLog: null,
       chatbot: [],
+      birthdayAnnouncements: null,
+      linkFix: [],
     },
     music: {},
     chat: {},
@@ -96,6 +107,8 @@ export function toGuildConfiguration(parsed: ParsedGuildConfigurationFile, sourc
       controlPanel: parsed.channels.controlPanel,
       auditLog: parsed.channels.auditLog,
       chatbot: new Set(parsed.channels.chatbot),
+      birthdayAnnouncements: parsed.channels.birthdayAnnouncements,
+      linkFix: new Set(parsed.channels.linkFix),
     },
     music: {
       defaultVolume: parsed.music.volume.default,
@@ -135,6 +148,8 @@ export function toGuildConfigurationDocument(configuration: GuildConfiguration):
       controlPanel: configuration.channels.controlPanel,
       auditLog: configuration.channels.auditLog,
       chatbot: [...configuration.channels.chatbot],
+      birthdayAnnouncements: configuration.channels.birthdayAnnouncements,
+      linkFix: [...configuration.channels.linkFix],
     },
     music: {
       volume: {
@@ -161,6 +176,7 @@ export function applyGuildConfigurationUpdate(
   if (input.idleImageUrl !== undefined) next.branding.idleImageUrl = input.idleImageUrl;
   if (input.idleImageAsset !== undefined) next.branding.idleImageAsset = input.idleImageAsset;
   if (input.controlPanelChannelId !== undefined) next.channels.controlPanel = input.controlPanelChannelId;
+  if (input.auditLogChannelId !== undefined) next.channels.auditLog = input.auditLogChannelId;
   if (input.progressBar !== undefined) next.panel.progressBar = structuredClone(input.progressBar);
   if (input.botAdministratorRoleIds !== undefined) next.roles.botAdministrator = [...input.botAdministratorRoleIds];
   if (input.musicControllerRoleIds !== undefined) next.roles.musicController = [...input.musicControllerRoleIds];
@@ -172,10 +188,18 @@ export function applyGuildConfigurationUpdate(
   if (input.chatbotPersonalityAsset !== undefined) next.chat.personalityAsset = input.chatbotPersonalityAsset;
   if (input.chatbotCooldownSeconds !== undefined) next.chat.cooldownSeconds = input.chatbotCooldownSeconds;
   if (input.chatbotDeniedMessage !== undefined) next.chat.deniedMessage = input.chatbotDeniedMessage;
-  if (input.chatbotWebSearchEnabled !== undefined) next.chat.webSearchEnabled = input.chatbotWebSearchEnabled;
+  if (input.chatbotDeniedLinkUrl !== undefined) next.chat.deniedLinkUrl = input.chatbotDeniedLinkUrl;
+  if (input.chatbotDeniedLinkLabel !== undefined) next.chat.deniedLinkLabel = input.chatbotDeniedLinkLabel;
+  if (input.chatbotWebSearchMode !== undefined) next.chat.webSearchMode = input.chatbotWebSearchMode;
   if (input.chatbotImageInputEnabled !== undefined) next.chat.imageInputEnabled = input.chatbotImageInputEnabled;
+  if (input.chatbotImageGenerationEnabled !== undefined) next.chat.imageGenerationEnabled = input.chatbotImageGenerationEnabled;
   if (input.chatbotIncludeSources !== undefined) next.chat.includeSources = input.chatbotIncludeSources;
   if (input.chatbotMaxImagesPerRequest !== undefined) next.chat.maxImagesPerRequest = input.chatbotMaxImagesPerRequest;
+  if (input.birthdaysEnabled !== undefined) next.features.birthdays = input.birthdaysEnabled;
+  if (input.birthdayAnnouncementsChannelId !== undefined) next.channels.birthdayAnnouncements = input.birthdayAnnouncementsChannelId;
+  if (input.nsfwEnabled !== undefined) next.features.nsfw = input.nsfwEnabled;
+  if (input.linkFixEnabled !== undefined) next.features.linkFix = input.linkFixEnabled;
+  if (input.linkFixChannelIds !== undefined) next.channels.linkFix = [...input.linkFixChannelIds];
   if (input.defaultVolume !== undefined) next.music.volume.default = input.defaultVolume;
   if (input.maximumVolume !== undefined) next.music.volume.maximum = input.maximumVolume;
   if (input.volumeButtonStep !== undefined) next.music.volume.buttonStep = input.volumeButtonStep;

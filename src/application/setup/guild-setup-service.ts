@@ -18,6 +18,14 @@ export interface GuildSetupResult {
   musicControllerRoleId: string;
   restrictedRoleId: string;
   deployedCommandCount: number;
+  // True when this run created a new guild profile; false when it resumed an
+  // already-configured guild (a no-op re-run), so callers can tell them apart.
+  wasFreshSetup: boolean;
+}
+
+export interface GuildSetupBotPermissionStatus {
+  ok: boolean;
+  missing: readonly string[];
 }
 
 export interface GuildSetupStatus {
@@ -31,11 +39,12 @@ export interface GuildSetupStatus {
     restricted: ReadonlySet<string>;
     chatbot: ReadonlySet<string>;
   } | null;
+  botPermissions: GuildSetupBotPermissionStatus | null;
 }
 
 export interface GuildSetupService {
   initialize(request: GuildSetupInitializeRequest): Promise<GuildSetupResult>;
-  status(guildId: string): GuildSetupStatus;
+  status(guildId: string, guild?: Guild): GuildSetupStatus;
 }
 
 export class DeferredGuildSetupService implements GuildSetupService {
@@ -50,8 +59,8 @@ export class DeferredGuildSetupService implements GuildSetupService {
     return this.requireService().initialize(request);
   }
 
-  public status(guildId: string): GuildSetupStatus {
-    return this.requireService().status(guildId);
+  public status(guildId: string, guild?: Guild): GuildSetupStatus {
+    return this.requireService().status(guildId, guild);
   }
 
   private requireService(): GuildSetupService {

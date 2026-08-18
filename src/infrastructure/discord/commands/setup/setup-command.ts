@@ -112,14 +112,18 @@ export class SetupCommand implements BotCommand {
       restrictedRole: context.interaction.options.getRole("restricted-role"),
     });
 
-    await context.responses.edit(
-      [
-        "Server setup completed.",
-        `Control channel: <#${result.controlChannelId}>`,
-        `Bot administrator: <@&${result.botAdministratorRoleId}>`,
-        `Music controller: <@&${result.musicControllerRoleId}>`,
-        `Restricted role: <@&${result.restrictedRoleId}>`,
-        `Synchronized commands: ${result.deployedCommandCount}`,
+    const lines = [
+      result.wasFreshSetup
+        ? "Server setup completed."
+        : "This server was already configured — resumed/refreshed the existing setup (no new roles or channel were created).",
+      `Control channel: <#${result.controlChannelId}>`,
+      `Bot administrator: <@&${result.botAdministratorRoleId}>`,
+      `Music controller: <@&${result.musicControllerRoleId}>`,
+      `Restricted role: <@&${result.restrictedRoleId}>`,
+      `Synchronized commands: ${result.deployedCommandCount}`,
+    ];
+    if (result.wasFreshSetup) {
+      lines.push(
         "",
         "Access configured:",
         `- Bot administrator: ${roleGroupDescriptions.botAdministrator}`,
@@ -128,17 +132,30 @@ export class SetupCommand implements BotCommand {
         "",
         "You were granted bot administrator and music controller.",
         `Assign <@&${result.musicControllerRoleId}> to members who should queue music.`,
-      ].join("\n"),
-    );
+      );
+    }
+    await context.responses.edit(lines.join("\n"));
   }
 
   private async status(context: CommandContext): Promise<void> {
     if (!context.interaction.guildId) return;
-    const status = this.setupService.status(context.interaction.guildId);
+    const status = this.setupService.status(
+      context.interaction.guildId,
+      context.interaction.inCachedGuild() ? context.interaction.guild : undefined,
+    );
+
+    const permissionLines = status.botPermissions
+      ? status.botPermissions.ok
+        ? ["Bot permissions: OK"]
+        : [`Bot permissions: MISSING — ${status.botPermissions.missing.join(", ")}`]
+      : [];
 
     if (!status.configured) {
       await context.responses.reply({
-        content: "This server has not been configured. Run `/setup initialize`.",
+        content: [
+          "This server has not been configured. Run `/setup initialize`.",
+          ...permissionLines,
+        ].join("\n"),
       });
       return;
     }
@@ -148,6 +165,7 @@ export class SetupCommand implements BotCommand {
       `Profile: ${status.profileFile ?? "unknown"}`,
       `Control panel: ${status.controlPanelChannelId ? `<#${status.controlPanelChannelId}>` : "disabled"}`,
       `Features: ${status.enabledFeatures.join(", ")}`,
+      ...permissionLines,
     ];
 
     if (status.access) {
