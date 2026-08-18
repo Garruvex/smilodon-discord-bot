@@ -19,6 +19,8 @@ export enum CommandModule {
   Common = "common",
   Diagnostics = "diagnostics",
   Music = "music",
+  Birthdays = "birthdays",
+  Nsfw = "nsfw",
 }
 
 export enum CommandResponseVisibility {

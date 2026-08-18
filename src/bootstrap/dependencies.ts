@@ -8,12 +8,33 @@ import { PlaybackService } from "../application/music/playback-service.js";
 import type { MusicPlayerGateway } from "../application/music/music-player-gateway.js";
 import type { GuildConfigurationProvider } from "../config/guild-configuration-provider.js";
 import { PingCommand } from "../infrastructure/discord/commands/common/ping-command.js";
+import { UserInfoCommand } from "../infrastructure/discord/commands/common/userinfo-command.js";
+import { HelpCommand } from "../infrastructure/discord/commands/common/help-command.js";
+import { BirthdayCommand } from "../infrastructure/discord/commands/common/birthday-command.js";
+import type { BirthdayStore } from "../application/birthdays/birthday-store.js";
+import { OwoifyCommand } from "../infrastructure/discord/commands/common/owoify-command.js";
+import { WolfyCommand } from "../infrastructure/discord/commands/common/wolfy-command.js";
+import { QaCommand } from "../infrastructure/discord/commands/common/qa-command.js";
+import { CleanCommand } from "../infrastructure/discord/commands/common/clean-command.js";
+import { DiceCommand } from "../infrastructure/discord/commands/common/dice-command.js";
+import { EightBallCommand } from "../infrastructure/discord/commands/common/eightball-command.js";
+import { FiltersCommand } from "../infrastructure/discord/commands/music/filters-command.js";
+import { SaveCommand } from "../infrastructure/discord/commands/music/save-command.js";
+import { SeekCommand } from "../infrastructure/discord/commands/music/seek-command.js";
+import { ReplayCommand } from "../infrastructure/discord/commands/music/replay-command.js";
+import { MoveCommand } from "../infrastructure/discord/commands/music/move-command.js";
+import { PlayNextCommand } from "../infrastructure/discord/commands/music/playnext-command.js";
+import { RandomAnimalFactCommand } from "../infrastructure/discord/commands/image/random-animal-fact-command.js";
+import { FurryReactionCommand } from "../infrastructure/discord/commands/image/furry-reaction-command.js";
+import { BooruSearchCommand } from "../infrastructure/discord/commands/image/booru-search-command.js";
+import { FursuitFurtrackCommand } from "../infrastructure/discord/commands/image/fursuit-furtrack-command.js";
 import { DiagnosticCommand } from "../infrastructure/discord/commands/diagnostics/diagnostic-command.js";
 import { PauseCommand } from "../infrastructure/discord/commands/music/pause-command.js";
 import { PlayCommand } from "../infrastructure/discord/commands/music/play-command.js";
 import { ResumeCommand } from "../infrastructure/discord/commands/music/resume-command.js";
 import { StopCommand } from "../infrastructure/discord/commands/music/stop-command.js";
 import { SkipCommand } from "../infrastructure/discord/commands/music/skip-command.js";
+import { SkipToCommand } from "../infrastructure/discord/commands/music/skipto-command.js";
 import { QueueCommand } from "../infrastructure/discord/commands/music/queue-command.js";
 import { LoopCommand } from "../infrastructure/discord/commands/music/loop-command.js";
 import { VolumeCommand } from "../infrastructure/discord/commands/music/volume-command.js";
@@ -25,10 +46,14 @@ import type { GuildSetupService } from "../application/setup/guild-setup-service
 import { SetupCommand } from "../infrastructure/discord/commands/setup/setup-command.js";
 import { SettingsCommand } from "../infrastructure/discord/commands/setup/settings-command.js";
 import { VoteCommand } from "../infrastructure/discord/commands/common/vote-command.js";
+import { MemoryCommand } from "../infrastructure/discord/commands/common/memory-command.js";
+import { CustomizeCommand } from "../infrastructure/discord/commands/common/customize-command.js";
+import type { UserCustomizationStore } from "../application/chat/user-customization-store.js";
 import { PollService } from "../application/polls/poll-service.js";
 import { BehaviorRegistry } from "../application/behaviors/behavior-registry.js";
 import { BehaviorDispatcher } from "../application/behaviors/behavior-dispatcher.js";
 import { MentionChatBehavior } from "../infrastructure/discord/behaviors/mention-chat-behavior.js";
+import { LinkFixBehavior } from "../infrastructure/discord/behaviors/link-fix-behavior.js";
 import { OpenAiCompatibleChatProvider } from "../infrastructure/chat/openai-compatible-chat-provider.js";
 import { OpenAiResponsesChatProvider } from "../infrastructure/chat/openai-responses-chat-provider.js";
 import type { Client } from "discord.js";
@@ -41,6 +66,7 @@ import { ChatConversationService } from "../application/chat/chat-conversation-s
 import type { GuildKnowledgeStore } from "../application/chat/guild-knowledge-store.js";
 import { FullGuildMemorySelector } from "../application/chat/guild-memory-selector.js";
 import { ApplicationEmojiCatalog } from "../infrastructure/discord/application-emoji-catalog.js";
+import type { AuditLogService } from "../application/audit/audit-log-service.js";
 
 export interface ApplicationDependencies {
   commandRegistry: CommandRegistry;
@@ -63,30 +89,72 @@ export function createDependencies(
   guildSetupService: GuildSetupService,
   discordClient: Client,
   chatStateStore: ChatStateStore,
+  userCustomizationStore: UserCustomizationStore,
   guildKnowledgeStore: GuildKnowledgeStore,
+  auditLogService: AuditLogService,
+  birthdayStore: BirthdayStore,
 ): ApplicationDependencies {
   const commandRegistry = new CommandRegistry();
   const pollService = new PollService();
   const componentRegistry = new ComponentRegistry();
   componentRegistry.register(new PollComponentHandler(pollService));
   const guildAssetStore = new GuildAssetStore(configuration.runtimeDataDirectory);
-  const applicationEmojiCatalog = new ApplicationEmojiCatalog(discordClient, logger);
+  const applicationEmojiCatalog = new ApplicationEmojiCatalog(
+    discordClient,
+    logger.child({ component: "emoji-catalog" }),
+  );
   const settingsCommand = new SettingsCommand(
     guildConfigurationProvider,
     guildAssetStore,
     applicationEmojiCatalog,
+    auditLogService,
   );
   commandRegistry.register(new PingCommand());
+  commandRegistry.register(new UserInfoCommand(guildConfigurationProvider));
   commandRegistry.register(new DiagnosticCommand());
   commandRegistry.register(new SetupCommand(guildSetupService));
   commandRegistry.register(settingsCommand);
   commandRegistry.register(new VoteCommand(pollService));
+  commandRegistry.register(new MemoryCommand(chatStateStore));
+  commandRegistry.register(new BirthdayCommand(birthdayStore));
+  commandRegistry.register(new OwoifyCommand());
+  commandRegistry.register(new WolfyCommand());
+  commandRegistry.register(new QaCommand());
+  commandRegistry.register(new CleanCommand());
+  commandRegistry.register(new DiceCommand());
+  commandRegistry.register(new EightBallCommand());
+  for (const [species, emoji, footer] of [
+    ["bird", "🦉", "BORB!"],
+    ["cat", "🐈", "KITTY!"],
+    ["dog", "🐕", "DOG"],
+    ["fox", "🦊", "FOXY!"],
+    ["raccoon", "🦝", "RACCOON!"],
+  ] as const) {
+    commandRegistry.register(new RandomAnimalFactCommand(species, emoji, footer));
+  }
+  for (const [key, description, title, reactionText, footer] of [
+    ["boop", "Gets a random boop image.", "🐽", "boop!", "👃👃👃"],
+    ["hold", "Gets a random hold image.", "✋🦝🤚", "hold me tight!", "🦦"],
+    ["howl", "Gets a random howl image.", "🕪🐕", "Rawr!", "🐾"],
+    ["hug", "Gets a random hug image.", "🤗", "HUG!", "🤔"],
+    ["kiss", "Gets a random kiss image.", "😘", "kisssssie!", "😚"],
+    ["lick", "Gets a random lick image.", "💰🍆", "slurp!", "🍌🍌🍌"],
+  ] as const) {
+    commandRegistry.register(new FurryReactionCommand(key, description, title, reactionText, footer, false));
+  }
+  commandRegistry.register(new BooruSearchCommand("e926", "#66FF33", false));
+  commandRegistry.register(new FursuitFurtrackCommand());
+  commandRegistry.register(new FurryReactionCommand("bulge", "Gets a random bulge image. NSFW.", "✋🦝🤚", "OwO whats this? *notices bulge*", "🦦", true));
+  commandRegistry.register(new FurryReactionCommand("butts", "Gets a random butt image. NSFW.", "🍑", "butttttttttt", "🍑🍑🍑", true));
+  commandRegistry.register(new BooruSearchCommand("e621", "#09CDE2", true));
   const playbackService = new PlaybackService(musicPlayerGateway);
   commandRegistry.register(new PlayCommand(playbackService, guildConfigurationProvider));
+  commandRegistry.register(new PlayNextCommand(playbackService, guildConfigurationProvider));
   commandRegistry.register(new PauseCommand(playbackService));
   commandRegistry.register(new ResumeCommand(playbackService));
   commandRegistry.register(new StopCommand(playbackService));
   commandRegistry.register(new SkipCommand(playbackService));
+  commandRegistry.register(new SkipToCommand(playbackService));
   commandRegistry.register(new PreviousCommand(playbackService));
   commandRegistry.register(new ShuffleCommand(playbackService));
   commandRegistry.register(new QueueCommand(playbackService));
@@ -94,20 +162,27 @@ export function createDependencies(
   commandRegistry.register(new VolumeCommand(playbackService, guildConfigurationProvider));
   commandRegistry.register(new AutoplayCommand(playbackService));
   commandRegistry.register(new TwentyFourSevenCommand(playbackService));
+  commandRegistry.register(new FiltersCommand(playbackService));
+  commandRegistry.register(new SaveCommand(playbackService));
+  commandRegistry.register(new SeekCommand(playbackService));
+  commandRegistry.register(new ReplayCommand(playbackService));
+  commandRegistry.register(new MoveCommand(playbackService));
 
   const accessPolicyService = new AccessPolicyService(
     configuration,
     guildConfigurationProvider,
   );
+  commandRegistry.register(new HelpCommand(commandRegistry, accessPolicyService, guildConfigurationProvider));
+
   const commandDispatcher = new CommandDispatcher(
     commandRegistry,
     accessPolicyService,
-    logger,
+    logger.child({ component: "commands" }),
   );
   const componentDispatcher = new ComponentDispatcher(
     componentRegistry,
     accessPolicyService,
-    logger,
+    logger.child({ component: "components" }),
   );
   const behaviorRegistry = new BehaviorRegistry();
   const chatProvider = configuration.chat
@@ -116,19 +191,28 @@ export function createDependencies(
           configuration.chat.baseUrl,
           configuration.chat.apiKey,
           configuration.chat.model,
+          {
+            reasoningEffort: configuration.chat.reasoningEffort,
+            verbosity: configuration.chat.verbosity,
+            maxOutputTokens: configuration.chat.maxOutputTokens,
+          },
         )
       : new OpenAiCompatibleChatProvider(
           configuration.chat.baseUrl,
           configuration.chat.apiKey,
           configuration.chat.model,
+          logger.child({ component: "chat-provider" }),
         )
     : null;
+  commandRegistry.register(new CustomizeCommand(userCustomizationStore, chatProvider));
   const chatConversationService = chatProvider
     ? new ChatConversationService(
         chatProvider,
         chatStateStore,
         guildKnowledgeStore,
         new FullGuildMemorySelector(),
+        undefined,
+        userCustomizationStore,
       )
     : null;
   behaviorRegistry.register(new MentionChatBehavior(
@@ -136,7 +220,11 @@ export function createDependencies(
     configuration,
     guildConfigurationProvider,
     chatConversationService,
-    logger,
+    logger.child({ component: "chat" }),
+  ));
+  behaviorRegistry.register(new LinkFixBehavior(
+    guildConfigurationProvider,
+    logger.child({ component: "link-fix" }),
   ));
 
   return {

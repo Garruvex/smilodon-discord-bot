@@ -52,6 +52,8 @@ export class DiscordGuildCommandDeploymentService
     if (profile.features.common) modules.add(CommandModule.Common);
     if (profile.features.diagnostics) modules.add(CommandModule.Diagnostics);
     if (profile.features.music) modules.add(CommandModule.Music);
+    if (profile.features.nsfw) modules.add(CommandModule.Nsfw);
+    if (profile.features.birthdays) modules.add(CommandModule.Birthdays);
     return modules;
   }
 }

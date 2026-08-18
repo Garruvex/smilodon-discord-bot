@@ -6,6 +6,7 @@ import type { ApplicationConfiguration } from "../config/configuration.js";
 import type { ControlChannelService } from "../application/control-panel/control-channel-service.js";
 import { BehaviorEvent } from "../application/behaviors/behavior.js";
 import type { MusicPresenceService } from "../application/music/music-presence-service.js";
+import type { BirthdayAnnouncer } from "../application/birthdays/birthday-announcer.js";
 
 export class Application {
   public constructor(
@@ -14,6 +15,7 @@ export class Application {
     private readonly dependencies: ApplicationDependencies,
     private readonly controlChannelService: ControlChannelService,
     private readonly musicPresenceService: MusicPresenceService,
+    private readonly birthdayAnnouncer: BirthdayAnnouncer,
     private readonly logger: Logger,
     private readonly onFatalError?: (reason: string) => void,
   ) {
@@ -21,6 +23,37 @@ export class Application {
   }
 
   public async start(): Promise<void> {
+    const profiles = this.dependencies.guildConfigurationProvider.getAll();
+    this.logger.info({
+      instanceName: this.configuration.instanceName ?? "default",
+      environment: this.configuration.environment,
+      persistenceDriver: this.configuration.persistence.driver,
+      chat: this.configuration.chat
+        ? {
+            configured: true,
+            apiMode: this.configuration.chat.mode,
+            model: this.configuration.chat.model,
+            reasoningEffort: this.configuration.chat.reasoningEffort,
+            verbosity: this.configuration.chat.verbosity,
+            maxOutputTokens: this.configuration.chat.maxOutputTokens,
+          }
+        : { configured: false },
+      guilds: profiles.map((profile) => ({
+        guildId: profile.guildId,
+        guildName: profile.guildName,
+        features: Object.entries(profile.features)
+          .filter(([, enabled]) => enabled)
+          .map(([feature]) => feature),
+        chat: {
+          enabled: profile.features.chatbot,
+          personalityConfigured: Boolean(profile.chat.personalityAsset ?? profile.chat.personalityFile),
+          webSearchMode: profile.chat.webSearchMode,
+          imageInputEnabled: profile.chat.imageInputEnabled,
+          includeSources: profile.chat.includeSources,
+          maxImagesPerRequest: profile.chat.maxImagesPerRequest,
+        },
+      })),
+    }, "Application configuration loaded");
     this.logger.info("Starting Discord client");
     await this.client.login(this.configuration.discord.token);
   }
@@ -29,6 +62,7 @@ export class Application {
     this.logger.info({ reason }, "Stopping application");
     this.controlChannelService.stop();
     this.musicPresenceService.stop();
+    this.birthdayAnnouncer.stop();
     this.dependencies.pollService.stop();
     await this.client.destroy();
   }
@@ -85,6 +119,7 @@ export class Application {
         this.logger.error({ error }, "Control-channel initialization failed");
       });
       this.musicPresenceService.start();
+      this.birthdayAnnouncer.start();
     });
 
     this.client.on(Events.Raw, (payload) => {
@@ -122,12 +157,11 @@ export class Application {
 
     this.client.on(Events.VoiceStateUpdate, (oldState, newState) => {
       const guildId = newState.guild.id;
-      const playerChannelId = this.dependencies.musicPlayerGateway.getVoiceChannelId(guildId);
-      if (!playerChannelId) return;
       if (
         newState.id === this.client.user?.id &&
-        oldState.channelId === playerChannelId &&
-        newState.channelId !== playerChannelId
+        oldState.channelId !== null &&
+        newState.channelId !== oldState.channelId &&
+        this.dependencies.musicPlayerGateway.hasPlayer(guildId)
       ) {
         void this.dependencies.musicPlayerGateway
           .handleBotVoiceDisconnect(guildId)
@@ -136,6 +170,9 @@ export class Application {
           });
         return;
       }
+
+      const playerChannelId = this.dependencies.musicPlayerGateway.getVoiceChannelId(guildId);
+      if (!playerChannelId) return;
       if (oldState.channelId !== playerChannelId && newState.channelId !== playerChannelId) return;
       const channel = newState.guild.channels.cache.get(playerChannelId);
       if (!channel?.isVoiceBased()) return;
@@ -144,6 +181,13 @@ export class Application {
         guildId,
         humanMemberCount,
       );
+    });
+
+    this.client.on(Events.GuildDelete, (guild) => {
+      this.controlChannelService.handleGuildRemoved(guild.id);
+      void this.dependencies.musicPlayerGateway.handleGuildRemoved(guild.id).catch((error: unknown) => {
+        this.logger.error({ error, guildId: guild.id }, "Unable to clean up music player after leaving guild");
+      });
     });
 
     this.client.on(Events.Error, (error) => {

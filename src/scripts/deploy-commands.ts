@@ -6,11 +6,14 @@ import { DiscordGuildCommandDeploymentService } from "../infrastructure/discord/
 import { DeferredGuildSetupService } from "../application/setup/guild-setup-service.js";
 import { createPersistenceServices } from "../infrastructure/persistence/persistence-factory.js";
 import { createDiscordClient } from "../bootstrap/application.js";
+import { AuditLogService } from "../application/audit/audit-log-service.js";
 
 const configuration = loadConfiguration();
 const logger = createLogger(configuration);
 const persistence = await createPersistenceServices(configuration);
 const guildConfigurationProvider = persistence.guildConfigurationProvider;
+const discordClient = createDiscordClient();
+const auditLogService = new AuditLogService(discordClient, guildConfigurationProvider, logger);
 const unavailableMusicGateway: MusicPlayerGateway = {
   initialize: () => Promise.resolve(),
   acceptDiscordGatewayPayload: () => undefined,
@@ -19,18 +22,25 @@ const unavailableMusicGateway: MusicPlayerGateway = {
   resume: () => Promise.reject(new Error("Music is unavailable during command deployment.")),
   stop: () => Promise.reject(new Error("Music is unavailable during command deployment.")),
   skip: () => Promise.reject(new Error("Music is unavailable during command deployment.")),
+  skipTo: () => Promise.reject(new Error("Music is unavailable during command deployment.")),
   previous: () => Promise.reject(new Error("Music is unavailable during command deployment.")),
   changeVolume: () => Promise.reject(new Error("Music is unavailable during command deployment.")),
   setVolume: () => Promise.reject(new Error("Music is unavailable during command deployment.")),
   shuffle: () => Promise.reject(new Error("Music is unavailable during command deployment.")),
   getQueue: () => [],
+  getPlayHistory: () => [],
   removeQueueTrack: () => Promise.reject(new Error("Music is unavailable during command deployment.")),
+  moveQueueTrack: () => Promise.reject(new Error("Music is unavailable during command deployment.")),
   clearQueue: () => Promise.reject(new Error("Music is unavailable during command deployment.")),
+  seek: () => Promise.reject(new Error("Music is unavailable during command deployment.")),
+  replay: () => Promise.reject(new Error("Music is unavailable during command deployment.")),
   setRepeatMode: () => Promise.reject(new Error("Music is unavailable during command deployment.")),
+  setFilterPreset: () => Promise.reject(new Error("Music is unavailable during command deployment.")),
   toggleAutoQueue: () => Promise.reject(new Error("Music is unavailable during command deployment.")),
   toggleTwentyFourSeven: () => Promise.reject(new Error("Music is unavailable during command deployment.")),
   handleBotVoiceDisconnect: () => Promise.resolve(),
   handleVoiceChannelOccupancy: () => undefined,
+  handleGuildRemoved: () => Promise.resolve(),
   hasPlayer: () => false,
   isPaused: () => false,
   getVoiceChannelId: () => null,
@@ -42,9 +52,12 @@ const dependencies = createDependencies(
   unavailableMusicGateway,
   guildConfigurationProvider,
   new DeferredGuildSetupService(),
-  createDiscordClient(),
+  discordClient,
   persistence.chatStateStore,
+  persistence.userCustomizationStore,
   persistence.guildKnowledgeStore,
+  auditLogService,
+  persistence.birthdayStore,
 );
 const deploymentService = new DiscordGuildCommandDeploymentService(
   configuration,

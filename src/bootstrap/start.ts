@@ -10,6 +10,8 @@ import { LocalGuildSetupService } from "../application/setup/local-guild-setup-s
 import { DiscordGuildCommandDeploymentService } from "../infrastructure/discord/commands/discord-guild-command-deployment-service.js";
 import { createPersistenceServices } from "../infrastructure/persistence/persistence-factory.js";
 import { MusicPresenceService } from "../application/music/music-presence-service.js";
+import { AuditLogService } from "../application/audit/audit-log-service.js";
+import { BirthdayAnnouncer } from "../application/birthdays/birthday-announcer.js";
 
 const configuration = loadConfiguration();
 const logger = createLogger(configuration);
@@ -20,9 +22,14 @@ const musicEventBus = new MusicEventBus();
 const musicPlayerGateway = new LavalinkPlayerGateway(
   discordClient,
   configuration.lavalink,
-  logger,
+  logger.child({ component: "lavalink" }),
   musicEventBus,
   guildConfigurationProvider,
+);
+const auditLogService = new AuditLogService(
+  discordClient,
+  guildConfigurationProvider,
+  logger.child({ component: "audit-log" }),
 );
 const deferredGuildSetupService = new DeferredGuildSetupService();
 const dependencies = createDependencies(
@@ -33,7 +40,10 @@ const dependencies = createDependencies(
   deferredGuildSetupService,
   discordClient,
   persistence.chatStateStore,
+  persistence.userCustomizationStore,
   persistence.guildKnowledgeStore,
+  auditLogService,
+  persistence.birthdayStore,
 );
 const controlPanelStateStore = persistence.controlPanelStateStore;
 const controlChannelService = new ControlChannelService(
@@ -44,7 +54,7 @@ const controlChannelService = new ControlChannelService(
   musicPlayerGateway,
   dependencies.playbackService,
   dependencies.applicationEmojiCatalog,
-  logger,
+  logger.child({ component: "control-panel" }),
   musicEventBus,
 );
 dependencies.settingsCommand.bindControlChannelService(controlChannelService);
@@ -56,15 +66,22 @@ const musicPresenceService = new MusicPresenceService(
   discordClient,
   guildConfigurationProvider,
   musicPlayerGateway,
-  logger,
+  logger.child({ component: "music-presence" }),
   musicEventBus,
+);
+const birthdayAnnouncer = new BirthdayAnnouncer(
+  discordClient,
+  guildConfigurationProvider,
+  persistence.birthdayStore,
+  logger.child({ component: "birthdays" }),
 );
 deferredGuildSetupService.setService(
   new LocalGuildSetupService(
     guildConfigurationProvider,
     commandDeploymentService,
     controlChannelService,
-    logger,
+    logger.child({ component: "guild-setup" }),
+    auditLogService,
   ),
 );
 const application = new Application(
@@ -73,7 +90,8 @@ const application = new Application(
   dependencies,
   controlChannelService,
   musicPresenceService,
-  logger,
+  birthdayAnnouncer,
+  logger.child({ component: "application" }),
   (reason) => {
     void shutdown(reason, 1);
   },
