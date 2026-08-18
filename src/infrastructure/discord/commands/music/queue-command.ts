@@ -13,7 +13,8 @@ export class QueueCommand implements BotCommand {
       .setName("remove")
       .setDescription("Removes a queued track by position.")
       .addIntegerOption((option) => option.setName("position").setDescription("Queue position, starting at 1.").setMinValue(1).setRequired(true)))
-    .addSubcommand((command) => command.setName("clear").setDescription("Clears every upcoming track."));
+    .addSubcommand((command) => command.setName("clear").setDescription("Clears every upcoming track."))
+    .addSubcommand((command) => command.setName("history").setDescription("Shows recently played tracks."));
 
   public readonly module = CommandModule.Music;
   public readonly access = musicPlaybackAccessPolicy;
@@ -34,6 +35,15 @@ export class QueueCommand implements BotCommand {
     if (action === "clear") {
       const count = await this.playbackService.clearQueue(createPlaybackActor(context.interaction));
       await context.responses.reply(`Cleared ${count} queued track${count === 1 ? "" : "s"}.`);
+      return;
+    }
+    if (action === "history") {
+      const history = this.playbackService.getPlayHistory(context.interaction.guildId);
+      const description = history.length === 0
+        ? "Nothing has played in this server yet."
+        : history.map((track, index) => `${index + 1}. **${track.title}** — ${track.author}`).join("\n");
+      const embed = new EmbedBuilder().setTitle("Recently played").setDescription(description);
+      await context.responses.reply({ embeds: [embed] });
       return;
     }
 

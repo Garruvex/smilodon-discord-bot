@@ -1,7 +1,17 @@
 import type { EnqueueResult } from "../../domain/music/music-track.js";
-import type { MusicTrack } from "../../domain/music/music-track.js";
+import type { MusicTrack, PlayHistoryEntry } from "../../domain/music/music-track.js";
 
 export type MusicRepeatMode = "off" | "track" | "queue";
+export type MusicFilterPreset =
+  | "off"
+  | "nightcore"
+  | "vaporwave"
+  | "bassboost"
+  | "pop"
+  | "eightD"
+  | "karaoke"
+  | "vibrato"
+  | "tremolo";
 
 export interface EnqueueRequest {
   guildId: string;
@@ -19,18 +29,25 @@ export interface MusicPlayerGateway {
   resume(guildId: string): Promise<void>;
   stop(guildId: string): Promise<void>;
   skip(guildId: string): Promise<void>;
+  skipTo(guildId: string, position: number): Promise<MusicTrack>;
   previous(guildId: string): Promise<void>;
   changeVolume(guildId: string, delta: number, maximum: number): Promise<void>;
   setVolume(guildId: string, volume: number, maximum: number): Promise<void>;
   shuffle(guildId: string): Promise<void>;
   getQueue(guildId: string): readonly MusicTrack[];
+  getPlayHistory(guildId: string): readonly PlayHistoryEntry[];
   removeQueueTrack(guildId: string, position: number): Promise<MusicTrack>;
+  moveQueueTrack(guildId: string, from: number, to: number): Promise<MusicTrack>;
   clearQueue(guildId: string): Promise<number>;
+  seek(guildId: string, positionMs: number): Promise<MusicTrack>;
+  replay(guildId: string): Promise<MusicTrack>;
   setRepeatMode(guildId: string, mode: MusicRepeatMode): Promise<void>;
+  setFilterPreset(guildId: string, preset: MusicFilterPreset): Promise<void>;
   toggleAutoQueue(guildId: string): Promise<boolean>;
   toggleTwentyFourSeven(guildId: string): Promise<boolean>;
   handleBotVoiceDisconnect(guildId: string): Promise<void>;
   handleVoiceChannelOccupancy(guildId: string, humanMemberCount: number): void;
+  handleGuildRemoved(guildId: string): Promise<void>;
   hasPlayer(guildId: string): boolean;
   isPaused(guildId: string): boolean;
   getVoiceChannelId(guildId: string): string | null;
@@ -47,6 +64,10 @@ export interface MusicPlayerSnapshot {
   previousTrackCount: number;
   repeatMode: MusicRepeatMode;
   autoQueue: boolean;
+  // True when the last autoqueue lookup for this player failed or found no
+  // unplayed recommendation, so the panel can surface it instead of leaving
+  // the failure only in logs.
+  autoQueueIssue: boolean;
   twentyFourSeven: boolean;
   currentTrack: {
     title: string;

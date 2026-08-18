@@ -38,18 +38,69 @@ function createGateway(): MusicPlayerGateway {
     resume: vi.fn(() => Promise.resolve()),
     stop: vi.fn(() => Promise.resolve()),
     skip: vi.fn(() => Promise.resolve()),
+    skipTo: vi.fn(() =>
+      Promise.resolve({
+        identifier: "track-id",
+        title: "Track",
+        author: "Artist",
+        uri: "https://example.com/track",
+        artworkUrl: null,
+        durationMs: 60_000,
+        isStream: false,
+        requestedByUserId: "user-id",
+      }),
+    ),
     previous: vi.fn(() => Promise.resolve()),
     changeVolume: vi.fn(() => Promise.resolve()),
     setVolume: vi.fn(() => Promise.resolve()),
     shuffle: vi.fn(() => Promise.resolve()),
     getQueue: vi.fn(() => []),
+    getPlayHistory: vi.fn(() => []),
     removeQueueTrack: vi.fn(() => Promise.reject(new Error("not implemented"))),
+    moveQueueTrack: vi.fn(() =>
+      Promise.resolve({
+        identifier: "track-id",
+        title: "Track",
+        author: "Artist",
+        uri: "https://example.com/track",
+        artworkUrl: null,
+        durationMs: 60_000,
+        isStream: false,
+        requestedByUserId: "user-id",
+      }),
+    ),
     clearQueue: vi.fn(() => Promise.resolve(0)),
+    seek: vi.fn(() =>
+      Promise.resolve({
+        identifier: "track-id",
+        title: "Track",
+        author: "Artist",
+        uri: "https://example.com/track",
+        artworkUrl: null,
+        durationMs: 60_000,
+        isStream: false,
+        requestedByUserId: "user-id",
+      }),
+    ),
+    replay: vi.fn(() =>
+      Promise.resolve({
+        identifier: "track-id",
+        title: "Track",
+        author: "Artist",
+        uri: "https://example.com/track",
+        artworkUrl: null,
+        durationMs: 60_000,
+        isStream: false,
+        requestedByUserId: "user-id",
+      }),
+    ),
     setRepeatMode: vi.fn(() => Promise.resolve()),
+    setFilterPreset: vi.fn(() => Promise.resolve()),
     toggleAutoQueue: vi.fn(() => Promise.resolve(true)),
     toggleTwentyFourSeven: vi.fn(() => Promise.resolve(true)),
     handleBotVoiceDisconnect: vi.fn(() => Promise.resolve()),
     handleVoiceChannelOccupancy: vi.fn(),
+    handleGuildRemoved: vi.fn(() => Promise.resolve()),
     hasPlayer: vi.fn(() => true),
     isPaused: vi.fn(() => false),
     getVoiceChannelId: vi.fn(() => "voice-id"),
@@ -179,5 +230,19 @@ describe("PlaybackService", () => {
     expect(gateway.toggleTwentyFourSeven).toHaveBeenCalledWith("guild-id");
     // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(gateway.clearQueue).toHaveBeenCalledWith("guild-id");
+  });
+
+  it("reads play history straight from the gateway, no voice validation required", () => {
+    const gateway = createGateway();
+    (gateway.getPlayHistory as ReturnType<typeof vi.fn>).mockReturnValue([
+      { identifier: "a", title: "Track A", author: "Artist A", uri: "https://example.com/a", artworkUrl: null, durationMs: 1000, isStream: false, requestedByUserId: "user-id", playedAt: 100 },
+    ]);
+    const service = new PlaybackService(gateway);
+
+    const history = service.getPlayHistory("guild-id");
+
+    expect(history).toHaveLength(1);
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    expect(gateway.getPlayHistory).toHaveBeenCalledWith("guild-id");
   });
 });

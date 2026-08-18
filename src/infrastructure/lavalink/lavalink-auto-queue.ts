@@ -5,19 +5,28 @@ export type AutoQueueOutcome =
   | { status: "empty" }
   | { status: "failed"; error: unknown };
 
+const recentTrackLimit = 50;
+
 /**
  * Owns recommendation discovery for Lavalink players. Queue lifecycle and
  * connection-retention decisions intentionally remain in the player gateway.
  */
 export class LavalinkAutoQueue {
+  private readonly recentTracksByGuild = new Map<string, string[]>();
+
   public async enqueueNext(
     player: Player,
     sourceTrack: Track | UnresolvedTrack,
   ): Promise<AutoQueueOutcome> {
-    const playedIdentifiers = new Set([
-      sourceTrack.info.identifier,
-      ...player.queue.previous.map((track) => track.info.identifier),
+    this.remember(player.guildId, sourceTrack);
+    const excludedIdentifiers = new Set([
+      ...(this.recentTracksByGuild.get(player.guildId) ?? []),
+      ...player.queue.previous.map((track) => this.identifier(track)),
+      ...player.queue.tracks.map((track) => this.identifier(track)),
     ]);
+    if (player.queue.current) {
+      excludedIdentifiers.add(this.identifier(player.queue.current));
+    }
     let lastError: unknown;
     let completedSearch = false;
 
@@ -26,7 +35,7 @@ export class LavalinkAutoQueue {
         const result = await player.search({ query }, { userId: "autoqueue" });
         completedSearch = true;
         const recommendation = result.tracks.find(
-          (track) => !playedIdentifiers.has(track.info.identifier),
+          (track) => !excludedIdentifiers.has(this.identifier(track)),
         );
         if (!recommendation) continue;
 
@@ -35,12 +44,10 @@ export class LavalinkAutoQueue {
           requestedByUserId: "autoqueue",
         };
         await player.queue.add(recommendation);
+        this.remember(player.guildId, recommendation);
         return {
           status: "queued",
-          trackIdentifier:
-            recommendation.info.identifier ??
-            recommendation.info.uri ??
-            recommendation.info.title,
+          trackIdentifier: this.identifier(recommendation),
         };
       } catch (error) {
         lastError = error;
@@ -52,11 +59,38 @@ export class LavalinkAutoQueue {
       : { status: "failed", error: lastError };
   }
 
+  public clear(guildId: string): void {
+    this.recentTracksByGuild.delete(guildId);
+  }
+
   private buildQueries(sourceTrack: Track | UnresolvedTrack): string[] {
     const identifier = sourceTrack.info.identifier;
     const textQuery = `${sourceTrack.info.author ?? ""} ${sourceTrack.info.title}`.trim();
     return sourceTrack.info.sourceName === "youtube" && identifier
       ? [`https://www.youtube.com/watch?v=${identifier}&list=RD${identifier}`, textQuery]
       : [textQuery];
+  }
+
+  private remember(guildId: string, track: Track | UnresolvedTrack): void {
+    const identifier = this.identifier(track);
+    const history = this.recentTracksByGuild.get(guildId) ?? [];
+    const withoutDuplicate = history.filter((entry) => entry !== identifier);
+    withoutDuplicate.push(identifier);
+    if (withoutDuplicate.length > recentTrackLimit) {
+      withoutDuplicate.splice(0, withoutDuplicate.length - recentTrackLimit);
+    }
+    this.recentTracksByGuild.set(guildId, withoutDuplicate);
+  }
+
+  private identifier(track: Track | UnresolvedTrack): string {
+    if (track.info.identifier) return track.info.identifier;
+    if (track.info.uri) return track.info.uri;
+    // Fallback for sources with neither a stable identifier nor a URI.
+    // Normalizing whitespace/case avoids near-duplicate formatting (extra
+    // spaces, casing differences) from being treated as distinct tracks and
+    // slipping past the recent-tracks exclusion list.
+    const author = (track.info.author ?? "").trim().toLocaleLowerCase().replace(/\s+/g, " ");
+    const title = track.info.title.trim().toLocaleLowerCase().replace(/\s+/g, " ");
+    return `${author}:${title}`;
   }
 }

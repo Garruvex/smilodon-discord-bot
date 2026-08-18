@@ -15,3 +15,7 @@ export interface EnqueueResult {
   startedPlayback: boolean;
   queuePosition: number | null;
 }
+
+export interface PlayHistoryEntry extends MusicTrack {
+  playedAt: number;
+}

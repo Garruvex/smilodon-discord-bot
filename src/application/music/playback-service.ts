@@ -9,6 +9,8 @@ import {
 import { PlaybackRateLimiter } from "./playback-rate-limiter.js";
 import type {
   EnqueueRequest,
+  MusicFilterPreset,
+  MusicPlayerSnapshot,
   MusicRepeatMode,
   MusicPlayerGateway,
 } from "./music-player-gateway.js";
@@ -69,6 +71,11 @@ export class PlaybackService {
     await this.playerGateway.skip(actor.guildId);
   }
 
+  public async skipTo(actor: PlaybackActor, position: number): Promise<EnqueueResult["firstTrack"]> {
+    this.assertControllablePlayer(actor);
+    return this.playerGateway.skipTo(actor.guildId, position);
+  }
+
   public async previous(actor: PlaybackActor): Promise<void> {
     this.assertControllablePlayer(actor);
     await this.playerGateway.previous(actor.guildId);
@@ -97,6 +104,10 @@ export class PlaybackService {
     return this.playerGateway.getQueue(guildId);
   }
 
+  public getPlayHistory(guildId: string): ReturnType<MusicPlayerGateway["getPlayHistory"]> {
+    return this.playerGateway.getPlayHistory(guildId);
+  }
+
   public async removeQueueTrack(actor: PlaybackActor, position: number): Promise<EnqueueResult["firstTrack"]> {
     this.assertControllablePlayer(actor);
     return this.playerGateway.removeQueueTrack(actor.guildId, position);
@@ -107,9 +118,33 @@ export class PlaybackService {
     return this.playerGateway.clearQueue(actor.guildId);
   }
 
+  public async moveQueueTrack(actor: PlaybackActor, from: number, to: number): Promise<EnqueueResult["firstTrack"]> {
+    this.assertControllablePlayer(actor);
+    return this.playerGateway.moveQueueTrack(actor.guildId, from, to);
+  }
+
+  public async seek(actor: PlaybackActor, positionMs: number): Promise<EnqueueResult["firstTrack"]> {
+    this.assertControllablePlayer(actor);
+    return this.playerGateway.seek(actor.guildId, positionMs);
+  }
+
+  public async replay(actor: PlaybackActor): Promise<EnqueueResult["firstTrack"]> {
+    this.assertControllablePlayer(actor);
+    return this.playerGateway.replay(actor.guildId);
+  }
+
   public async setRepeatMode(actor: PlaybackActor, mode: MusicRepeatMode): Promise<void> {
     this.assertControllablePlayer(actor);
     await this.playerGateway.setRepeatMode(actor.guildId, mode);
+  }
+
+  public async setFilterPreset(actor: PlaybackActor, preset: MusicFilterPreset): Promise<void> {
+    this.assertControllablePlayer(actor);
+    await this.playerGateway.setFilterPreset(actor.guildId, preset);
+  }
+
+  public getSnapshot(guildId: string): MusicPlayerSnapshot | null {
+    return this.playerGateway.getSnapshot(guildId);
   }
 
   public async toggleAutoQueue(actor: PlaybackActor): Promise<boolean> {

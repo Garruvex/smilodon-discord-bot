@@ -17,21 +17,26 @@ import {
 } from "../../application/music/music-errors.js";
 import type {
   EnqueueRequest,
+  MusicFilterPreset,
   MusicRepeatMode,
   MusicPlayerGateway,
 } from "../../application/music/music-player-gateway.js";
 import type { LavalinkConfiguration } from "../../config/configuration.js";
-import type { EnqueueResult, MusicTrack } from "../../domain/music/music-track.js";
+import type { EnqueueResult, MusicTrack, PlayHistoryEntry } from "../../domain/music/music-track.js";
 import type { MusicPlayerSnapshot } from "../../application/music/music-player-gateway.js";
 import type { MusicEventBus, MusicStateChangedEvent } from "../../application/music/music-event-bus.js";
 import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
 import { LavalinkAutoQueue, type AutoQueueOutcome } from "./lavalink-auto-queue.js";
+
+const playHistoryLimit = 20;
 
 export class LavalinkPlayerGateway implements MusicPlayerGateway {
   private readonly manager: LavalinkManager;
   private readonly autoQueue = new LavalinkAutoQueue();
   private readonly emptyQueueTimers = new Map<string, NodeJS.Timeout>();
   private readonly emptyChannelTimers = new Map<string, NodeJS.Timeout>();
+  private readonly autoQueueIssues = new Set<string>();
+  private readonly playHistoryByGuild = new Map<string, PlayHistoryEntry[]>();
 
   public constructor(
     private readonly client: Client,
@@ -99,8 +104,10 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
       );
     });
 
-    this.manager.on("trackStart", (player) => {
+    this.manager.on("trackStart", (player, track) => {
       this.clearTimer(this.emptyQueueTimers, player.guildId);
+      this.autoQueueIssues.delete(player.guildId);
+      if (track) this.recordPlayHistory(player.guildId, track);
       this.publishStateChange({ guildId: player.guildId, reason: "track_started" });
     });
 
@@ -112,6 +119,8 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     this.manager.on("playerDestroy", (player) => {
       this.clearTimer(this.emptyQueueTimers, player.guildId);
       this.clearTimer(this.emptyChannelTimers, player.guildId);
+      this.autoQueue.clear(player.guildId);
+      this.autoQueueIssues.delete(player.guildId);
       this.publishStateChange({ guildId: player.guildId, reason: "player_destroyed" });
     });
   }
@@ -223,12 +232,31 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     this.publishStateChange({ guildId, reason: "queue_changed" });
   }
 
+  public async skipTo(guildId: string, position: number): Promise<MusicTrack> {
+    const player = this.requirePlayer(guildId);
+    const index = position - 1;
+    const track = player.queue.tracks[index];
+    if (!track) throw new MusicSearchEmptyError();
+    await player.skip(index, true);
+    this.publishStateChange({ guildId, reason: "queue_changed" });
+    return this.toMusicTrack(
+      track,
+      typeof track.userData?.requestedByUserId === "string"
+        ? track.userData.requestedByUserId
+        : "unknown",
+    );
+  }
+
   private logAutoQueueOutcome(
     player: Player,
     sourceTrack: Track | UnresolvedTrack,
     outcome: AutoQueueOutcome,
   ): void {
-    if (outcome.status === "queued") return;
+    if (outcome.status === "queued") {
+      this.autoQueueIssues.delete(player.guildId);
+      return;
+    }
+    this.autoQueueIssues.add(player.guildId);
     this.logger.warn(
       {
         guildId: player.guildId,
@@ -280,6 +308,24 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     ));
   }
 
+  public getPlayHistory(guildId: string): readonly PlayHistoryEntry[] {
+    return this.playHistoryByGuild.get(guildId) ?? [];
+  }
+
+  private recordPlayHistory(guildId: string, track: Track | UnresolvedTrack): void {
+    const entry: PlayHistoryEntry = {
+      ...this.toMusicTrack(
+        track,
+        typeof track.userData?.requestedByUserId === "string"
+          ? track.userData.requestedByUserId
+          : "unknown",
+      ),
+      playedAt: Date.now(),
+    };
+    const history = [entry, ...(this.playHistoryByGuild.get(guildId) ?? [])].slice(0, playHistoryLimit);
+    this.playHistoryByGuild.set(guildId, history);
+  }
+
   public async removeQueueTrack(guildId: string, position: number): Promise<MusicTrack> {
     const player = this.requirePlayer(guildId);
     const index = position - 1;
@@ -291,6 +337,52 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
       track,
       typeof track.userData?.requestedByUserId === "string"
         ? track.userData.requestedByUserId
+        : "unknown",
+    );
+  }
+
+  public async moveQueueTrack(guildId: string, from: number, to: number): Promise<MusicTrack> {
+    const player = this.requirePlayer(guildId);
+    const fromIndex = from - 1;
+    const track = player.queue.tracks[fromIndex];
+    if (!track) throw new MusicSearchEmptyError();
+    const toIndex = Math.max(0, Math.min(to - 1, player.queue.tracks.length - 1));
+    await player.queue.splice(fromIndex, 1);
+    await player.queue.add(track, toIndex);
+    this.publishStateChange({ guildId, reason: "queue_changed" });
+    return this.toMusicTrack(
+      track,
+      typeof track.userData?.requestedByUserId === "string"
+        ? track.userData.requestedByUserId
+        : "unknown",
+    );
+  }
+
+  public async seek(guildId: string, positionMs: number): Promise<MusicTrack> {
+    const player = this.requirePlayer(guildId);
+    const currentTrack = player.queue.current;
+    if (!currentTrack) throw new MusicPlayerNotFoundError();
+    const durationMs = currentTrack.info.duration;
+    await player.seek(Math.max(0, Math.min(positionMs, durationMs)));
+    this.publishStateChange({ guildId, reason: "queue_changed" });
+    return this.toMusicTrack(
+      currentTrack,
+      typeof currentTrack.userData?.requestedByUserId === "string"
+        ? currentTrack.userData.requestedByUserId
+        : "unknown",
+    );
+  }
+
+  public async replay(guildId: string): Promise<MusicTrack> {
+    const player = this.requirePlayer(guildId);
+    const currentTrack = player.queue.current;
+    if (!currentTrack) throw new MusicPlayerNotFoundError();
+    await player.seek(0);
+    this.publishStateChange({ guildId, reason: "queue_changed" });
+    return this.toMusicTrack(
+      currentTrack,
+      typeof currentTrack.userData?.requestedByUserId === "string"
+        ? currentTrack.userData.requestedByUserId
         : "unknown",
     );
   }
@@ -308,10 +400,45 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     this.publishStateChange({ guildId, reason: "queue_changed" });
   }
 
+  public async setFilterPreset(guildId: string, preset: MusicFilterPreset): Promise<void> {
+    const player = this.requirePlayer(guildId);
+    await player.filterManager.resetFilters();
+    switch (preset) {
+      case "off":
+        break;
+      case "nightcore":
+        await player.filterManager.toggleNightcore();
+        break;
+      case "vaporwave":
+        await player.filterManager.toggleVaporwave();
+        break;
+      case "bassboost":
+        await player.filterManager.setEQPreset("BassboostMedium");
+        break;
+      case "pop":
+        await player.filterManager.setEQPreset("Pop");
+        break;
+      case "eightD":
+        await player.filterManager.toggleRotation();
+        break;
+      case "karaoke":
+        await player.filterManager.toggleKaraoke();
+        break;
+      case "vibrato":
+        await player.filterManager.toggleVibrato();
+        break;
+      case "tremolo":
+        await player.filterManager.toggleTremolo();
+        break;
+    }
+    this.publishStateChange({ guildId, reason: "queue_changed" });
+  }
+
   public toggleAutoQueue(guildId: string): Promise<boolean> {
     const player = this.requirePlayer(guildId);
     const enabled = !player.get<boolean>("autoQueue");
     player.set("autoQueue", enabled);
+    if (!enabled) this.autoQueue.clear(guildId);
     this.publishStateChange({ guildId, reason: "queue_changed" });
     return Promise.resolve(enabled);
   }
@@ -334,7 +461,18 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     this.clearTimer(this.emptyQueueTimers, guildId);
     this.clearTimer(this.emptyChannelTimers, guildId);
     await player.destroy("Bot was disconnected or moved from its voice channel");
-    this.publishStateChange({ guildId, reason: "player_destroyed" });
+  }
+
+  // Called when the bot leaves a guild, so per-guild timers/caches don't grow
+  // unbounded across many join/leave cycles.
+  public async handleGuildRemoved(guildId: string): Promise<void> {
+    this.clearTimer(this.emptyQueueTimers, guildId);
+    this.clearTimer(this.emptyChannelTimers, guildId);
+    this.autoQueueIssues.delete(guildId);
+    this.autoQueue.clear(guildId);
+    this.playHistoryByGuild.delete(guildId);
+    const player = this.manager.getPlayer(guildId);
+    if (player) await player.destroy("Bot was removed from the guild");
   }
 
   public handleVoiceChannelOccupancy(guildId: string, humanMemberCount: number): void {
@@ -395,6 +533,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
       previousTrackCount: player.queue.previous.length,
       repeatMode: player.repeatMode,
       autoQueue: player.get<boolean>("autoQueue") ?? false,
+      autoQueueIssue: this.autoQueueIssues.has(guildId),
       twentyFourSeven: player.get<boolean>("twentyFourSeven") ?? false,
       currentTrack: current
         ? {
