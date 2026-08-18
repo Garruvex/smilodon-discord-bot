@@ -21,6 +21,15 @@ features:
   diagnostics: true
   music: true
   chatbot: false
+  # Requires channels.birthdayAnnouncements to be set. Configure with /settings birthdays.
+  birthdays: false
+  # NSFW image commands (e.g. /e621). Discord's per-channel age restriction still applies
+  # regardless of this flag. Configure with /settings nsfw.
+  nsfw: false
+  # Rewrites Twitter/X, TikTok, Instagram, and Reddit links posted in watched channels
+  # into embed-friendly proxy links. Requires channels.linkFix to be set. Configure with
+  # /settings link-fix.
+  linkFix: false
 
 roles:
   botAdministrator:
@@ -40,6 +49,10 @@ channels:
   auditLog: null
   # An empty list permits mention chat in every channel when enabled.
   chatbot: []
+  # Channel that receives the daily "Happy Birthday" announcement. Required if features.birthdays is true.
+  birthdayAnnouncements: null
+  # Channels watched for rewritable links. Required (non-empty) if features.linkFix is true.
+  linkFix: []
 
 chat:
   # Null loads config/local/personalities/<guild-id>.md when present.
@@ -48,9 +61,13 @@ chat:
   personalityAsset: null
   cooldownSeconds: 30
   deniedMessage: "This feature requires a premium subscription. Try looking richer and ask again."
+  # Optional link button shown alongside the denied message. Both null by default (no button).
+  deniedLinkUrl: null
+  deniedLinkLabel: null
   # Responses API capabilities; disabled by default for cost and privacy.
-  webSearchEnabled: false
+  webSearchMode: off
   imageInputEnabled: false
+  imageGenerationEnabled: false
   includeSources: true
   maxImagesPerRequest: 2
 

@@ -146,9 +146,42 @@ exchanges are retained within a 16,000-character serialized budget; when the
 budget is exceeded, whole oldest exchanges are removed rather than leaving
 mid-sentence fragments.
 
+Persistence bounds are separate from provider-context bounds. The replaceable
+`RecentPromptHistorySelector` sends at most the newest four complete exchanges
+within a 6,000-character serialized budget. This preserves additional local
+continuity without paying to send all retained history on every request.
+
+## Birthdays
+
+`BirthdayStore` follows the same local/PostgreSQL split as chat state: local
+JSON is one document per guild (`birthdays/<guildId>.json`) holding each
+member's month/day and a bounded list of already-announced dates; PostgreSQL
+uses `birthdays` and `birthday_announcements` tables with the same shape. No
+birth year is stored.
+
+`BirthdayAnnouncer` checks hourly, using a per-guild-per-date record in the
+store to avoid re-posting after a same-day restart. Announcements require both
+`features.birthdays` and a configured `channels.birthdayAnnouncements`, enforced
+at the schema level. `/settings birthdays` manages both; `/birthday set|view|remove`
+is user-facing.
+
+## NSFW image commands
+
+`features.nsfw` is a guild-level opt-in for the booru/reaction-image commands
+sourced from third-party APIs (e621, bulge, butts). It is defense-in-depth on
+top of Discord's own per-channel age-restriction flag: those commands are
+built with `SlashCommandBuilder.setNSFW(true)`, so Discord already refuses to
+show or run them outside an age-restricted channel. The guild toggle exists so
+administrators can disable the category entirely even where an NSFW channel
+exists. Non-adult reaction/animal-fact commands (hug, kiss, cat, dog, etc.) are
+not gated and register under the `common` module like other fun commands.
+
 Guild-memory selection is an application interface. The current
 `FullGuildMemorySelector` returns the store's bounded confirmed set, keeping the
 normal path to one provider round trip. Up to 100 confirmed records and 16,000
 serialized characters may be included. Record and character counts are logged
-with chat request metadata. A future semantic or model-based selector can replace
-this implementation without changing Discord, persistence, or provider adapters.
+with chat request metadata. Logs also report content-free sizes for personality,
+application security/memory instructions, selected history, private memory,
+replied-to content, and the current message. A future semantic or model-based
+selector can replace this implementation without changing Discord, persistence,
+or provider adapters.

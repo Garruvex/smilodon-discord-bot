@@ -285,6 +285,22 @@ Use `CHAT_API_MODE=responses` with OpenAI's Responses API to enable guarded
 image input and optional model-selected web search. Keep `chat_completions` for
 generic OpenAI-compatible providers that do not implement Responses.
 
+Responses generation settings belong to each bot instance:
+
+```env
+CHAT_REASONING_EFFORT=low
+CHAT_VERBOSITY=low
+CHAT_MAX_OUTPUT_TOKENS=2048
+```
+
+Supported reasoning values remain model-dependent. These settings are ignored
+by the generic Chat Completions provider.
+
+All `CHAT_*` values, including provider credentials, base URL, model, and API
+mode, are instance-owned and must be placed in `config/instances/<name>.env`.
+Named instances deliberately do not inherit `CHAT_*` values from the shared
+`.env`, allowing separate projects, keys, model choices, and usage accounting.
+
 The API key is a secret. To enable the behavior for a guild and assign its
 initial access policy, run:
 
@@ -295,14 +311,20 @@ initial access policy, run:
 Enable Responses capabilities per guild when desired:
 
 ```text
-/settings chatbot web-search:true image-input:true include-sources:true max-images:2
+/settings chatbot web-search:true image-input:true image-generation:true include-sources:true max-images:2
 ```
+
+Image generation is disabled by default. When enabled with Responses mode and a
+model that supports the `image_generation` tool, mention-chat can decide to
+generate an image and return it as a Discord attachment. During generation,
+Pinecone streams up to two partial previews by editing one Discord reply, then
+replaces the latest preview with the completed image.
 
 Image handling accepts only Discord-hosted PNG, JPEG, WebP, and GIF attachments,
 limits each image to 8 MB, and accepts at most the configured number (maximum
 four). Images may come from the mention or its replied-to Discord message. Web
-search remains disabled by default and, when enabled, is selected by the model
-only when the request benefits from current public information.
+search mode is `off` by default and becomes `auto` when enabled, meaning the
+tool is available on every request but the model decides whether to invoke it.
 
 Bot administrators and configured owners inherit access. Members with a
 restricted role remain denied unless the configured owner bypass applies.
@@ -317,11 +339,18 @@ referenced message is included as bounded context. Empty mentions return usage
 help instead of calling the API.
 
 Every provider call emits content-free usage logs. The start record includes
-the model, API mode, Discord identifiers, image count, and whether web search is
-available. The completion record adds latency, whether search was actually
-used, citation count, and provider-reported input/output/total token counts.
+the model, API mode, generation settings, Discord identifiers, image count, and
+web-search mode. The completion record adds latency, whether search was actually
+used, citation count, provider-reported token counts (including cached input and
+reasoning when available), and character/count totals for each context layer.
 Questions, replies, personality text, image bytes, responses, and API keys are
 never included in these usage records.
+
+At launch, each instance also logs a content-safe effective configuration
+summary: instance name, environment, persistence driver, chat API mode, model,
+reasoning effort, verbosity, output limit, enabled guild features, and guild
+chat capabilities. API keys, personality contents, and conversation data are
+never included.
 
 Upload the guild personality through Discord so the same workflow works with
 either YAML or PostgreSQL persistence:
