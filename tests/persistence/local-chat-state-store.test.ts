@@ -70,6 +70,68 @@ describe("LocalChatStateStore", () => {
     expect(existsSync(join(directory, "chat", ".aggregate-v1-migrated"))).toBe(true);
   });
 
+  it("defaults dm notes to enabled and persists a change across reloads", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "chat-state-"));
+    const store = new LocalChatStateStore(directory);
+    await store.initialize();
+
+    expect(await store.getDmNotesEnabled("guild", "user")).toBe(true);
+    await store.setDmNotesEnabled("guild", "user", false);
+    expect(await store.getDmNotesEnabled("guild", "user")).toBe(false);
+
+    const reloaded = new LocalChatStateStore(directory);
+    await reloaded.initialize();
+    expect(await reloaded.getDmNotesEnabled("guild", "user")).toBe(false);
+  });
+
+  it("keeps the dm notes preference when a later exchange is committed", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "chat-state-"));
+    const store = new LocalChatStateStore(directory);
+    await store.initialize();
+    await store.setDmNotesEnabled("guild", "user", false);
+
+    await store.commitSuccessfulExchange({
+      guildId: "guild", userId: "user", userMessage: "hi", assistantMessage: "hello", now: 100, actions: [],
+    });
+
+    expect(await store.getDmNotesEnabled("guild", "user")).toBe(false);
+  });
+
+  it("forgets a single memory by id, including pinned ones", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "chat-state-"));
+    const store = new LocalChatStateStore(directory);
+    await store.initialize();
+    await store.commitSuccessfulExchange({
+      guildId: "guild", userId: "user", userMessage: "remember", assistantMessage: "okay", now: 100,
+      actions: [{ action: "upsert", subjectUserId: "user", topic: "preference", slot: "food.fruit", statement: "likes green apples" }],
+    });
+    const before = await store.load("guild", "user", 101);
+    const memoryId = before.memories[0]!.id;
+
+    expect(await store.forgetMemory("guild", "user", "not-a-real-id")).toBe(false);
+    expect(await store.forgetMemory("guild", "user", memoryId)).toBe(true);
+
+    const after = await store.load("guild", "user", 101);
+    expect(after.memories).toHaveLength(0);
+  });
+
+  it("forgets every memory for a user and reports how many were removed", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "chat-state-"));
+    const store = new LocalChatStateStore(directory);
+    await store.initialize();
+    await store.commitSuccessfulExchange({
+      guildId: "guild", userId: "user", userMessage: "remember", assistantMessage: "okay", now: 100,
+      actions: [
+        { action: "upsert", subjectUserId: "user", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
+        { action: "upsert", subjectUserId: "user", topic: "identity", slot: "role", statement: "is a moderator" },
+      ],
+    });
+
+    expect(await store.forgetAllMemories("guild", "user")).toBe(2);
+    expect(await store.forgetAllMemories("guild", "user")).toBe(0);
+    expect((await store.load("guild", "user", 101)).memories).toHaveLength(0);
+  });
+
   it("drops whole oldest exchanges to satisfy the total session budget", async () => {
     const directory = mkdtempSync(join(tmpdir(), "chat-state-"));
     const store = new LocalChatStateStore(directory);

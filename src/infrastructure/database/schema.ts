@@ -1,4 +1,4 @@
-import { boolean, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 export const guildConfigurations = pgTable("guild_configurations", {
   guildId: text("guild_id").primaryKey(),
@@ -18,6 +18,7 @@ export const chatSessions = pgTable("chat_sessions", {
   guildId: text("guild_id").notNull(),
   userId: text("user_id").notNull(),
   exchanges: jsonb("exchanges").notNull().default([]),
+  dmNotesEnabled: boolean("dm_notes_enabled").notNull().default(true),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [primaryKey({ columns: [table.guildId, table.userId] })]);
 
@@ -37,6 +38,27 @@ export const chatMemories = pgTable("chat_memories", {
     table.guildId, table.assertedByUserId, table.subjectUserId, table.topic, table.slot,
   ),
 ]);
+
+export const userCustomizations = pgTable("user_customizations", {
+  guildId: text("guild_id").notNull(),
+  userId: text("user_id").notNull(),
+  customization: text("customization").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [primaryKey({ columns: [table.guildId, table.userId] })]);
+
+export const birthdays = pgTable("birthdays", {
+  guildId: text("guild_id").notNull(),
+  userId: text("user_id").notNull(),
+  month: integer("month").notNull(),
+  day: integer("day").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [primaryKey({ columns: [table.guildId, table.userId] })]);
+
+export const birthdayAnnouncements = pgTable("birthday_announcements", {
+  guildId: text("guild_id").notNull(),
+  date: text("date").notNull(),
+  announcedAt: timestamp("announced_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [primaryKey({ columns: [table.guildId, table.date] })]);
 
 export const guildKnowledge = pgTable("guild_knowledge", {
   id: uuid("id").primaryKey(),

@@ -17,6 +17,7 @@ const memorySchema = z.object({
 const userDocumentSchema = z.object({
   version: z.literal(1), guildId: z.string(), userId: z.string(),
   exchanges: z.array(exchangeSchema).default([]), memories: z.array(memorySchema).default([]), updatedAt: z.number(),
+  dmNotesEnabled: z.boolean().default(true),
 });
 const aggregateSchema = z.object({
   version: z.literal(1),
@@ -53,7 +54,7 @@ export class LocalChatStateStore implements UserChatStateStore {
   public commitSuccessfulExchange(input: Parameters<UserChatStateStore["commitSuccessfulExchange"]>[0]): Promise<void> {
     const current = this.read(input.guildId, input.userId) ?? {
       version: 1 as const, guildId: input.guildId, userId: input.userId,
-      exchanges: [], memories: [], updatedAt: input.now,
+      exchanges: [], memories: [], updatedAt: input.now, dmNotesEnabled: true,
     };
     const exchanges = boundSessionExchanges([
       ...(input.now - current.updatedAt > chatMemoryLimits.sessionTtlMs ? [] : current.exchanges),
@@ -76,8 +77,42 @@ export class LocalChatStateStore implements UserChatStateStore {
       if (index >= 0) memories[index] = record;
       else if (memories.length < chatMemoryLimits.maxRecords) memories.push(record);
     }
-    this.write({ version: 1, guildId: input.guildId, userId: input.userId, exchanges, memories, updatedAt: input.now });
+    this.write({
+      version: 1, guildId: input.guildId, userId: input.userId, exchanges, memories,
+      updatedAt: input.now, dmNotesEnabled: current.dmNotesEnabled,
+    });
     return Promise.resolve();
+  }
+
+  public getDmNotesEnabled(guildId: string, userId: string): Promise<boolean> {
+    return Promise.resolve(this.read(guildId, userId)?.dmNotesEnabled ?? true);
+  }
+
+  public setDmNotesEnabled(guildId: string, userId: string, enabled: boolean): Promise<void> {
+    const current = this.read(guildId, userId) ?? {
+      version: 1 as const, guildId, userId, exchanges: [], memories: [], updatedAt: Date.now(), dmNotesEnabled: true,
+    };
+    this.write({ ...current, dmNotesEnabled: enabled });
+    return Promise.resolve();
+  }
+
+  public forgetMemory(guildId: string, userId: string, memoryId: string): Promise<boolean> {
+    const state = this.read(guildId, userId);
+    if (!state) return Promise.resolve(false);
+    const index = state.memories.findIndex((memory) => memory.id === memoryId);
+    if (index < 0) return Promise.resolve(false);
+    state.memories.splice(index, 1);
+    this.write(state);
+    return Promise.resolve(true);
+  }
+
+  public forgetAllMemories(guildId: string, userId: string): Promise<number> {
+    const state = this.read(guildId, userId);
+    if (!state || state.memories.length === 0) return Promise.resolve(0);
+    const count = state.memories.length;
+    state.memories = [];
+    this.write(state);
+    return Promise.resolve(count);
   }
 
   private read(guildId: string, userId: string): UserDocument | null {
@@ -116,7 +151,7 @@ export class LocalChatStateStore implements UserChatStateStore {
         if (separator <= 0 || separator === ownerKey.length - 1) throw new Error(`Invalid legacy chat owner key "${ownerKey}".`);
         const guildId = ownerKey.slice(0, separator);
         const userId = ownerKey.slice(separator + 1);
-        if (!this.read(guildId, userId)) this.write({ version: 1, guildId, userId, ...state });
+        if (!this.read(guildId, userId)) this.write({ version: 1, guildId, userId, dmNotesEnabled: true, ...state });
       }
     }
     writeFileSync(this.migrationMarker, "aggregate-v1 migrated; legacy file retained\n", "utf8");

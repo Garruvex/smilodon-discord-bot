@@ -14,15 +14,23 @@ import { PostgresControlPanelStateStore } from "./postgres-control-panel-state-s
 import { PostgresGuildConfigurationProvider } from "./postgres-guild-configuration-provider.js";
 import { LocalChatStateStore } from "./local-chat-state-store.js";
 import { PostgresChatStateStore } from "./postgres-chat-state-store.js";
+import type { UserCustomizationStore } from "../../application/chat/user-customization-store.js";
+import { LocalUserCustomizationStore } from "./local-user-customization-store.js";
+import { PostgresUserCustomizationStore } from "./postgres-user-customization-store.js";
 import type { GuildKnowledgeStore } from "../../application/chat/guild-knowledge-store.js";
 import { LocalGuildKnowledgeStore } from "./local-guild-knowledge-store.js";
 import { PostgresGuildKnowledgeStore } from "./postgres-guild-knowledge-store.js";
+import type { BirthdayStore } from "../../application/birthdays/birthday-store.js";
+import { LocalBirthdayStore } from "./local-birthday-store.js";
+import { PostgresBirthdayStore } from "./postgres-birthday-store.js";
 
 export interface PersistenceServices {
   guildConfigurationProvider: GuildConfigurationProvider;
   controlPanelStateStore: ControlPanelStateStore;
   chatStateStore: ChatStateStore;
+  userCustomizationStore: UserCustomizationStore;
   guildKnowledgeStore: GuildKnowledgeStore;
+  birthdayStore: BirthdayStore;
   close(): Promise<void>;
 }
 
@@ -33,7 +41,9 @@ export async function createPersistenceServices(
   let guildConfigurationProvider: GuildConfigurationProvider;
   let controlPanelStateStore: ControlPanelStateStore;
   let chatStateStore: ChatStateStore;
+  let userCustomizationStore: UserCustomizationStore;
   let guildKnowledgeStore: GuildKnowledgeStore;
+  let birthdayStore: BirthdayStore;
 
   if (configuration.persistence.driver === "postgres") {
     const databaseUrl = configuration.persistence.databaseUrl;
@@ -42,7 +52,9 @@ export async function createPersistenceServices(
     guildConfigurationProvider = new PostgresGuildConfigurationProvider(connection.database);
     controlPanelStateStore = new PostgresControlPanelStateStore(connection.database);
     chatStateStore = new PostgresChatStateStore(connection.database);
+    userCustomizationStore = new PostgresUserCustomizationStore(connection.database);
     guildKnowledgeStore = new PostgresGuildKnowledgeStore(connection.database);
+    birthdayStore = new PostgresBirthdayStore(connection.database);
   } else {
     guildConfigurationProvider = new LocalGuildConfigurationProvider(
       configuration.guildConfigurationDirectory,
@@ -51,19 +63,25 @@ export async function createPersistenceServices(
       configuration.runtimeDataDirectory,
     );
     chatStateStore = new LocalChatStateStore(configuration.runtimeDataDirectory);
+    userCustomizationStore = new LocalUserCustomizationStore(configuration.runtimeDataDirectory);
     guildKnowledgeStore = new LocalGuildKnowledgeStore(configuration.runtimeDataDirectory);
+    birthdayStore = new LocalBirthdayStore(configuration.runtimeDataDirectory);
   }
 
   await guildConfigurationProvider.initialize();
   await controlPanelStateStore.initialize();
   await chatStateStore.initialize();
+  await userCustomizationStore.initialize();
   await guildKnowledgeStore.initialize();
+  await birthdayStore.initialize();
 
   return {
     guildConfigurationProvider,
     controlPanelStateStore,
     chatStateStore,
+    userCustomizationStore,
     guildKnowledgeStore,
+    birthdayStore,
     close: async () => connection?.close(),
   };
 }

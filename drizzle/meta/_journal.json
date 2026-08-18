@@ -12,8 +12,29 @@
     {
       "idx": 1,
       "version": "7",
-      "when": 1786849200000,
+      "when": 1787069214975,
       "tag": "0001_chat_memory",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787069259489,
+      "tag": "0002_birthdays",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1787069280578,
+      "tag": "0003_dm_notes_preference",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1787074273676,
+      "tag": "0004_wise_betty_ross",
       "breakpoints": true
     }
   ]

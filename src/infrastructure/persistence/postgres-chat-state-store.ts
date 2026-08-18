@@ -45,6 +45,40 @@ export class PostgresChatStateStore implements ChatStateStore {
     };
   }
 
+  public async forgetMemory(guildId: string, userId: string, memoryId: string): Promise<boolean> {
+    const result = await this.database.delete(schema.chatMemories).where(and(
+      eq(schema.chatMemories.guildId, guildId),
+      eq(schema.chatMemories.assertedByUserId, userId),
+      eq(schema.chatMemories.id, memoryId),
+    )).returning({ id: schema.chatMemories.id });
+    return result.length > 0;
+  }
+
+  public async forgetAllMemories(guildId: string, userId: string): Promise<number> {
+    const result = await this.database.delete(schema.chatMemories).where(and(
+      eq(schema.chatMemories.guildId, guildId),
+      eq(schema.chatMemories.assertedByUserId, userId),
+    )).returning({ id: schema.chatMemories.id });
+    return result.length;
+  }
+
+  public async getDmNotesEnabled(guildId: string, userId: string): Promise<boolean> {
+    const sessions = await this.database.select({ dmNotesEnabled: schema.chatSessions.dmNotesEnabled })
+      .from(schema.chatSessions)
+      .where(and(eq(schema.chatSessions.guildId, guildId), eq(schema.chatSessions.userId, userId)))
+      .limit(1);
+    return sessions[0]?.dmNotesEnabled ?? true;
+  }
+
+  public async setDmNotesEnabled(guildId: string, userId: string, enabled: boolean): Promise<void> {
+    await this.database.insert(schema.chatSessions).values({
+      guildId, userId, exchanges: [], dmNotesEnabled: enabled, updatedAt: new Date(),
+    }).onConflictDoUpdate({
+      target: [schema.chatSessions.guildId, schema.chatSessions.userId],
+      set: { dmNotesEnabled: enabled },
+    });
+  }
+
   public async commitSuccessfulExchange(input: Parameters<ChatStateStore["commitSuccessfulExchange"]>[0]): Promise<void> {
     await this.database.transaction(async (transaction) => {
       const sessions = await transaction.select().from(schema.chatSessions).where(and(
