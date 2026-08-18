@@ -63,44 +63,46 @@ export class AccessPolicyService {
       return { allowed: false, reason: AccessDenialReason.OwnerOnly };
     }
 
-    if (isOwner && policy.ownerBypass) {
-      return { allowed: true };
+    const ownerBypass = isOwner && policy.ownerBypass;
+
+    if (!ownerBypass) {
+      if (
+        policy.allowedChannelIds.length > 0 &&
+        !policy.allowedChannelIds.includes(interaction.channelId)
+      ) {
+        return { allowed: false, reason: AccessDenialReason.ChannelNotAllowed };
+      }
+
+      if (
+        commandModule === CommandModule.Music &&
+        guildConfiguration &&
+        guildConfiguration.channels.musicCommands.size > 0 &&
+        !guildConfiguration.channels.musicCommands.has(interaction.channelId)
+      ) {
+        return { allowed: false, reason: AccessDenialReason.ChannelNotAllowed };
+      }
+
+      if (
+        !guildConfiguration &&
+        policy.roles.match !== RoleMatchMode.None
+      ) {
+        return { allowed: false, reason: AccessDenialReason.MissingRequiredRole };
+      }
+
+      if (
+        guildConfiguration &&
+        !this.matchesRequiredRoleGroups(policy, memberRoleIds, guildConfiguration)
+      ) {
+        return { allowed: false, reason: AccessDenialReason.MissingRequiredRole };
+      }
+
+      if (!member.permissions.has(policy.requiredMemberPermissions)) {
+        return { allowed: false, reason: AccessDenialReason.MissingMemberPermission };
+      }
     }
 
-    if (
-      policy.allowedChannelIds.length > 0 &&
-      !policy.allowedChannelIds.includes(interaction.channelId)
-    ) {
-      return { allowed: false, reason: AccessDenialReason.ChannelNotAllowed };
-    }
-
-    if (
-      commandModule === CommandModule.Music &&
-      guildConfiguration &&
-      guildConfiguration.channels.musicCommands.size > 0 &&
-      !guildConfiguration.channels.musicCommands.has(interaction.channelId)
-    ) {
-      return { allowed: false, reason: AccessDenialReason.ChannelNotAllowed };
-    }
-
-    if (
-      !guildConfiguration &&
-      policy.roles.match !== RoleMatchMode.None
-    ) {
-      return { allowed: false, reason: AccessDenialReason.MissingRequiredRole };
-    }
-
-    if (
-      guildConfiguration &&
-      !this.matchesRequiredRoleGroups(policy, memberRoleIds, guildConfiguration)
-    ) {
-      return { allowed: false, reason: AccessDenialReason.MissingRequiredRole };
-    }
-
-    if (!member.permissions.has(policy.requiredMemberPermissions)) {
-      return { allowed: false, reason: AccessDenialReason.MissingMemberPermission };
-    }
-
+    // Bot-permission checks always apply, even for an owner bypass: bypassing them would
+    // let a command report "allowed" while the bot itself can't execute it in Discord.
     const botMember = interaction.guild.members.me;
     if (
       !botMember ||
@@ -180,6 +182,10 @@ export class AccessPolicyService {
         return guildConfiguration.features.diagnostics;
       case CommandModule.Music:
         return guildConfiguration.features.music;
+      case CommandModule.Birthdays:
+        return guildConfiguration.features.birthdays;
+      case CommandModule.Nsfw:
+        return guildConfiguration.features.nsfw;
     }
   }
 }

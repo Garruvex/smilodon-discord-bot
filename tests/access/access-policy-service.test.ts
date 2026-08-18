@@ -59,6 +59,9 @@ function guildConfiguration(): GuildConfiguration {
       diagnostics: true,
       music: true,
       chatbot: false,
+      birthdays: false,
+      nsfw: false,
+      linkFix: false,
     },
     roles: {
       botAdministrator: new Set([administratorRoleId]),
@@ -71,6 +74,8 @@ function guildConfiguration(): GuildConfiguration {
       controlPanel: controlPanelChannelId,
       auditLog: null,
       chatbot: new Set(),
+      birthdayAnnouncements: null,
+      linkFix: new Set(),
     },
     music: {
       defaultVolume: 75,
@@ -87,8 +92,11 @@ function guildConfiguration(): GuildConfiguration {
       personalityAsset: null,
       cooldownSeconds: 30,
       deniedMessage: "Premium required.",
-      webSearchEnabled: false,
+      deniedLinkUrl: null,
+      deniedLinkLabel: null,
+      webSearchMode: "off",
       imageInputEnabled: false,
+      imageGenerationEnabled: false,
       includeSources: true,
       maxImagesPerRequest: 2,
     },
@@ -115,6 +123,7 @@ function interaction(
   roleIds: readonly string[],
   userId = "890123456789012345",
   channelId = musicChannelId,
+  botHasPermissions = true,
 ): ChatInputCommandInteraction {
   return {
     inCachedGuild: () => true,
@@ -127,7 +136,7 @@ function interaction(
     },
     guild: {
       members: {
-        me: { permissions: { has: () => true } },
+        me: { permissions: { has: () => botHasPermissions } },
       },
     },
   } as unknown as ChatInputCommandInteraction;
@@ -262,6 +271,24 @@ describe("AccessPolicyService", () => {
     ).toEqual({
       allowed: false,
       reason: AccessDenialReason.ChannelNotAllowed,
+    });
+  });
+
+  it("denies an owner-bypassed command when the bot itself lacks the required permission", () => {
+    const service = new AccessPolicyService(
+      applicationConfiguration(),
+      provider(guildConfiguration()),
+    );
+
+    expect(
+      service.evaluate(
+        controllerPolicy,
+        CommandModule.Music,
+        interaction([], ownerId, musicChannelId, false),
+      ),
+    ).toEqual({
+      allowed: false,
+      reason: AccessDenialReason.BotMissingPermission,
     });
   });
 

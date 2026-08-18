@@ -12,23 +12,26 @@ export class ChatAccessService {
     userId: string,
     channelId: string,
   ): boolean {
-    if (profile.channels.chatbot.size > 0 && !profile.channels.chatbot.has(channelId)) {
-      return false;
-    }
     if (!member) {
       return false;
     }
 
+    const isOwner = this.configuration.ownerUserIds.has(userId);
     const memberRoleIds = member.roles.cache;
-    if (
-      this.hasAnyRole(memberRoleIds, profile.roles.restricted) &&
-      !this.configuration.ownerUserIds.has(userId)
-    ) {
+
+    if (this.hasAnyRole(memberRoleIds, profile.roles.restricted) && !isOwner) {
       return false;
     }
 
-    if (this.configuration.ownerUserIds.has(userId)) {
+    // Owners bypass the same channel allow-list that AccessPolicyService's owner
+    // bypass skips for slash commands, so bot owners aren't locked out of mention
+    // chat outside the guild's configured chatbot channels.
+    if (isOwner) {
       return true;
+    }
+
+    if (profile.channels.chatbot.size > 0 && !profile.channels.chatbot.has(channelId)) {
+      return false;
     }
 
     return (

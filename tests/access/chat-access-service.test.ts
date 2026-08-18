@@ -50,6 +50,9 @@ function profile(): GuildConfiguration {
       diagnostics: true,
       music: true,
       chatbot: true,
+      birthdays: false,
+      nsfw: false,
+      linkFix: false,
     },
     roles: {
       botAdministrator: new Set([administratorRoleId]),
@@ -62,6 +65,8 @@ function profile(): GuildConfiguration {
       controlPanel: null,
       auditLog: null,
       chatbot: new Set([chatChannelId]),
+      birthdayAnnouncements: null,
+      linkFix: new Set(),
     },
     music: {
       defaultVolume: 75,
@@ -78,8 +83,11 @@ function profile(): GuildConfiguration {
       personalityAsset: null,
       cooldownSeconds: 30,
       deniedMessage: "Premium required.",
-      webSearchEnabled: false,
+      deniedLinkUrl: null,
+      deniedLinkLabel: null,
+      webSearchMode: "off",
       imageInputEnabled: false,
+      imageGenerationEnabled: false,
       includeSources: true,
       maxImagesPerRequest: 2,
     },
@@ -129,5 +137,13 @@ describe("ChatAccessService", () => {
     expect(
       service.canUseMentionChat(profile(), member([chatbotRoleId]), "890123456789012345", "999999999999999999"),
     ).toBe(false);
+  });
+
+  it("allows bot owners to chat outside configured chatbot channels", () => {
+    const service = new ChatAccessService(configuration());
+
+    expect(
+      service.canUseMentionChat(profile(), member([]), ownerId, "999999999999999999"),
+    ).toBe(true);
   });
 });
