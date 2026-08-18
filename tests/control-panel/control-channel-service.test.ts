@@ -36,6 +36,9 @@ function guildConfiguration(chatbotEnabled: boolean): GuildConfiguration {
       diagnostics: true,
       music: true,
       chatbot: chatbotEnabled,
+      birthdays: false,
+      nsfw: false,
+      linkFix: false,
     },
     roles: {
       botAdministrator: new Set(),
@@ -48,6 +51,8 @@ function guildConfiguration(chatbotEnabled: boolean): GuildConfiguration {
       controlPanel: controlPanelChannelId,
       auditLog: null,
       chatbot: new Set(),
+      birthdayAnnouncements: null,
+      linkFix: new Set(),
     },
     music: {
       defaultVolume: 75,
@@ -64,8 +69,11 @@ function guildConfiguration(chatbotEnabled: boolean): GuildConfiguration {
       personalityAsset: null,
       cooldownSeconds: 30,
       deniedMessage: "Premium required.",
-      webSearchEnabled: false,
+      deniedLinkUrl: null,
+      deniedLinkLabel: null,
+      webSearchMode: "off",
       imageInputEnabled: false,
+      imageGenerationEnabled: false,
       includeSources: true,
       maxImagesPerRequest: 2,
     },
@@ -190,6 +198,73 @@ describe("ControlChannelService", () => {
     expect(refreshPanel).toHaveBeenCalledWith(guildId);
   });
 
+  it("optimistically flips and disables a toggle button before the real result lands", async () => {
+    const { service, getSnapshot } = createService(false);
+    const toggleAutoQueue = vi.fn().mockResolvedValue(true);
+    getSnapshot.mockReturnValue({
+      guildId,
+      voiceChannelId: "111111111111111111",
+      paused: false,
+      playing: true,
+      volume: 75,
+      queueLength: 0,
+      previousTrackCount: 0,
+      repeatMode: "off",
+      autoQueue: false,
+      autoQueueIssue: false,
+      twentyFourSeven: false,
+      currentTrack: {
+        title: "Track",
+        author: "Artist",
+        uri: "https://example.com/track",
+        artworkUrl: null,
+        durationMs: 60_000,
+        positionMs: 1_000,
+        isStream: false,
+        requestedByUserId: null,
+      },
+    });
+    Object.assign(service, {
+      playbackService: { toggleAutoQueue },
+      stateStore: {
+        find: () => ({
+          guildId,
+          channelId: controlPanelChannelId,
+          messageId: "panel-message",
+        }),
+      },
+    });
+    vi.spyOn(service, "refreshPanel").mockResolvedValue(undefined);
+    const editReply = vi.fn().mockResolvedValue(undefined);
+    const interaction = {
+      customId: "music-panel:v1:autoqueue",
+      inCachedGuild: (): boolean => true,
+      guildId,
+      channelId: controlPanelChannelId,
+      message: { id: "panel-message" },
+      member: { roles: { cache: new Map([[musicControllerRoleId, {}]]) } },
+      user: { id: "345678901234567890" },
+      deferUpdate: vi.fn().mockResolvedValue(undefined),
+      editReply,
+      reply: vi.fn().mockResolvedValue(undefined),
+      followUp: vi.fn().mockResolvedValue(undefined),
+      replied: false,
+      deferred: true,
+    };
+
+    await service.handleButton(interaction as never);
+
+    expect(editReply).toHaveBeenCalledOnce();
+    const [{ components }] = editReply.mock.calls[0] as [{ components: Array<{ components: Array<{ toJSON: () => { custom_id: string; style: number; disabled?: boolean } }> }> }];
+    const autoqueueButton = components
+      .flatMap((row) => row.components)
+      .map((component) => component.toJSON())
+      .find((button) => button.custom_id === "music-panel:v1:autoqueue");
+    expect(autoqueueButton?.style).toBe(ButtonStyle.Success);
+    expect(autoqueueButton?.disabled).toBe(true);
+    expect(toggleAutoQueue).toHaveBeenCalledOnce();
+  });
+
   it("renders enabled session toggles as green controls", () => {
     const { service } = createService(false);
     const payload = (
@@ -209,6 +284,7 @@ describe("ControlChannelService", () => {
       previousTrackCount: 0,
       repeatMode: "off",
       autoQueue: true,
+      autoQueueIssue: false,
       twentyFourSeven: true,
       currentTrack: {
         title: "Track",
@@ -246,6 +322,7 @@ describe("ControlChannelService", () => {
       previousTrackCount: 0,
       repeatMode: "off",
       autoQueue: false,
+      autoQueueIssue: false,
       twentyFourSeven: true,
       currentTrack: null,
     });
@@ -258,6 +335,44 @@ describe("ControlChannelService", () => {
     expect(secondary[2]?.disabled).toBe(true);
     expect(secondary[3]?.disabled).toBe(false);
     expect(secondary[4]?.disabled).toBe(true);
+  });
+
+  it("shows an up-next preview when the queue is non-empty", () => {
+    const { service } = createService(false);
+    const getQueue = vi.fn().mockReturnValue([
+      { identifier: "a", title: "Track A", author: "Artist A", uri: "https://example.com/a", artworkUrl: null, durationMs: 1000, isStream: false, requestedByUserId: "1" },
+      { identifier: "b", title: "Track B", author: "Artist B", uri: "https://example.com/b", artworkUrl: null, durationMs: 1000, isStream: false, requestedByUserId: "1" },
+    ]);
+    Object.assign(service, { playerGateway: { getQueue } });
+    const embed = (
+      service as unknown as {
+        createPanelEmbed: (
+          profile: GuildConfiguration,
+          snapshot: unknown,
+        ) => { toJSON: () => { fields?: Array<{ name: string; value: string }> } };
+      }
+    ).createPanelEmbed(guildConfiguration(false), {
+      paused: false,
+      volume: 75,
+      queueLength: 5,
+      repeatMode: "off",
+      currentTrack: {
+        title: "Rice Field",
+        author: "Jay Chou",
+        uri: "https://example.com/rice-field",
+        artworkUrl: "https://example.com/artwork.jpg",
+        durationMs: 224_000,
+        positionMs: 158_000,
+        isStream: false,
+        requestedByUserId: "345678901234567890",
+      },
+    }).toJSON();
+
+    expect(getQueue).toHaveBeenCalledWith(guildId);
+    const upNext = embed.fields?.find((field) => field.name === "Up next");
+    expect(upNext?.value).toContain("[Track A](https://example.com/a)");
+    expect(upNext?.value).toContain("[Track B](https://example.com/b)");
+    expect(upNext?.value).toContain("…and 3 more");
   });
 
   it("keeps artwork prominent and replaces diagnostic fields with compact playback details", () => {
@@ -307,6 +422,67 @@ describe("ControlChannelService", () => {
     expect(embed.description).toContain("▰");
     expect(embed.fields).toBeUndefined();
     expect(embed.footer?.text).toContain("Queue empty");
+  });
+
+  it("attributes autoqueued tracks to the bot instead of creating an invalid mention", () => {
+    const { service } = createService(false);
+    const embed = (
+      service as unknown as {
+        createPanelEmbed: (
+          profile: GuildConfiguration,
+          snapshot: unknown,
+        ) => { toJSON: () => { description?: string } };
+      }
+    ).createPanelEmbed(guildConfiguration(false), {
+      paused: false,
+      volume: 75,
+      queueLength: 0,
+      repeatMode: "off",
+      currentTrack: {
+        title: "Recommendation",
+        author: "Artist",
+        uri: "https://example.com/recommendation",
+        artworkUrl: null,
+        durationMs: 60_000,
+        positionMs: 10_000,
+        isStream: false,
+        requestedByUserId: "autoqueue",
+      },
+    }).toJSON();
+
+    expect(embed.description).toContain(`Requested by <@${botUserId}> (Autoqueue)`);
+    expect(embed.description).not.toContain("<@autoqueue>");
+  });
+
+  it("surfaces a footer note when autoqueue could not find a recommendation", () => {
+    const { service } = createService(false);
+    const embed = (
+      service as unknown as {
+        createPanelEmbed: (
+          profile: GuildConfiguration,
+          snapshot: unknown,
+        ) => { toJSON: () => { footer?: { text: string } } };
+      }
+    ).createPanelEmbed(guildConfiguration(false), {
+      paused: false,
+      volume: 75,
+      queueLength: 0,
+      repeatMode: "off",
+      autoQueue: true,
+      autoQueueIssue: true,
+      currentTrack: {
+        title: "Track",
+        author: "Artist",
+        uri: "https://example.com/track",
+        artworkUrl: null,
+        durationMs: 60_000,
+        positionMs: 10_000,
+        isStream: false,
+        requestedByUserId: null,
+      },
+    }).toJSON();
+
+    expect(embed.footer?.text).toContain("Autoqueue found nothing to add");
   });
 
   it("refreshes the panel to current idle state during startup", async () => {

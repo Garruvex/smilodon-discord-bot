@@ -1,7 +1,6 @@
 import {
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
+  type ActionRowBuilder,
+  type ButtonBuilder,
   ChannelType,
   EmbedBuilder,
   MessageFlags,
@@ -16,9 +15,10 @@ import { existsSync } from "node:fs";
 import { extname, resolve } from "node:path";
 import type { Logger } from "pino";
 
+import { KeyedSerialQueue } from "../concurrency/keyed-serial-queue.js";
 import type { PlaybackService } from "../music/playback-service.js";
 import type { MusicEventBus } from "../music/music-event-bus.js";
-import { MusicError, MusicPlayerNotFoundError } from "../music/music-errors.js";
+import { MusicError } from "../music/music-errors.js";
 import type { MusicPlayerGateway, MusicPlayerSnapshot } from "../music/music-player-gateway.js";
 import type { ApplicationConfiguration } from "../../config/configuration.js";
 import type { GuildConfiguration } from "../../config/guild-configuration.js";
@@ -35,11 +35,17 @@ import {
   PanelRefreshCoordinator,
   type PanelRefreshOptions,
 } from "./panel-refresh-coordinator.js";
+import {
+  createMusicPanelControlRows,
+  findMusicPanelControl,
+  musicPanelControlIdPrefix,
+} from "./music-panel-controls.js";
 
-const controlIdPrefix = "music-panel:v1:";
 const defaultIdleImageName = "music-idle.png";
 const activePlaybackRefreshIntervalMs = 5_000;
 const defaultIdleImagePath = resolve("assets/music/no_bg.png");
+const upNextPreviewCount = 5;
+const upNextTrackTitleMaxChars = 60;
 
 interface ControlPanelPayload {
   content: string;
@@ -51,6 +57,10 @@ export class ControlChannelService {
   private readonly progressRefreshTimers = new Map<string, NodeJS.Timeout>();
   private readonly configuredChannelPermissions = new Set<string>();
   private readonly refreshCoordinator: PanelRefreshCoordinator;
+  // Serializes per-guild button actions (so a double-click can't race the same
+  // toggle twice) and ensurePanel() calls (so startup init and an event-driven
+  // refresh can't both send a fresh panel message for the same guild).
+  private readonly guildLocks = new KeyedSerialQueue();
 
   public constructor(
     private readonly client: Client,
@@ -94,9 +104,19 @@ export class ControlChannelService {
     this.progressRefreshTimers.clear();
   }
 
+  // Called when the bot leaves a guild, so its per-guild timer/permission
+  // caches don't grow unbounded across many join/leave cycles.
+  public handleGuildRemoved(guildId: string): void {
+    this.clearProgressRefreshTimer(guildId);
+    const profile = this.guildConfigurationProvider.find(guildId);
+    if (profile?.channels.controlPanel) {
+      this.configuredChannelPermissions.delete(profile.channels.controlPanel);
+    }
+  }
+
   public async ensureGuildPanel(guildId: string): Promise<Message> {
     const profile = this.guildConfigurationProvider.require(guildId);
-    const message = await this.ensurePanel(profile);
+    const message = await this.guildLocks.run(guildId, () => this.ensurePanel(profile));
     if (!message.pinned) {
       await message.pin("Persistent music control panel").catch((error: unknown) => {
         this.logger.warn({ error, guildId }, "Unable to pin music control panel");
@@ -180,8 +200,17 @@ export class ControlChannelService {
   }
 
   public async handleButton(interaction: ButtonInteraction): Promise<boolean> {
-    if (!interaction.customId.startsWith(controlIdPrefix)) {
+    if (!interaction.customId.startsWith(musicPanelControlIdPrefix)) {
       return false;
+    }
+
+    const control = findMusicPanelControl(interaction.customId);
+    if (!control) {
+      await interaction.reply({
+        content: "This control is no longer supported.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
     }
 
     if (!interaction.inCachedGuild()) {
@@ -220,7 +249,6 @@ export class ControlChannelService {
     // below will arm a fresh five-second countdown from the updated state.
     this.clearProgressRefreshTimer(interaction.guildId);
 
-    const action = interaction.customId.slice(controlIdPrefix.length);
     const actor = {
       guildId: interaction.guildId,
       textChannelId: interaction.channelId,
@@ -228,60 +256,33 @@ export class ControlChannelService {
       member: interaction.member,
     };
 
-    try {
-      switch (action) {
-        case "previous":
-          await this.playbackService.previous(actor);
-          break;
-        case "play-pause":
-          if (!this.playerGateway.hasPlayer(interaction.guildId)) {
-            throw new MusicPlayerNotFoundError();
-          }
-          if (this.playerGateway.isPaused(interaction.guildId)) {
-            await this.playbackService.resume(actor);
-          } else {
-            await this.playbackService.pause(actor);
-          }
-          break;
-        case "skip":
-          await this.playbackService.skip(actor);
-          break;
-        case "volume-down":
-          await this.playbackService.changeVolume(
-            actor,
-            -profile.music.volumeButtonStep,
-            profile.music.maximumVolume,
-          );
-          break;
-        case "volume-up":
-          await this.playbackService.changeVolume(
-            actor,
-            profile.music.volumeButtonStep,
-            profile.music.maximumVolume,
-          );
-          break;
-        case "shuffle":
-          await this.playbackService.shuffle(actor);
-          break;
-        case "autoqueue": {
-          await this.playbackService.toggleAutoQueue(actor);
-          break;
-        }
-        case "24-7": {
-          await this.playbackService.toggleTwentyFourSeven(actor);
-          break;
-        }
-        case "stop":
-          await this.playbackService.stop(actor);
-          break;
-        default:
-          await interaction.reply({
-            content: "This control is no longer supported.",
-            flags: MessageFlags.Ephemeral,
-          });
-          return true;
+    if (control.toggledSnapshotField) {
+      const currentSnapshot = this.playerGateway.getSnapshot(interaction.guildId);
+      if (currentSnapshot) {
+        // Optimistic instant feedback: flip the toggle's color to the
+        // predicted next state and disable it immediately, rather than
+        // leaving the button looking unresponsive for the duration of the
+        // Lavalink round trip. The unconditional refresh below always
+        // reconciles with ground truth afterward, so a failed toggle
+        // self-corrects on the very next render.
+        const predictedSnapshot: MusicPlayerSnapshot = {
+          ...currentSnapshot,
+          [control.toggledSnapshotField]: !currentSnapshot[control.toggledSnapshotField],
+        };
+        const pendingRows = createMusicPanelControlRows(profile, predictedSnapshot, control.id);
+        await interaction.editReply({ components: pendingRows }).catch(() => undefined);
       }
+    }
 
+    try {
+      // Serialize per guild so rapid double-clicks (e.g. play/pause, volume)
+      // can't both read the same pre-action state and race each other.
+      await this.guildLocks.run(interaction.guildId, () => control.execute({
+        actor,
+        profile,
+        playbackService: this.playbackService,
+        playerGateway: this.playerGateway,
+      }));
     } catch (error) {
       await this.replyEphemeral(
         interaction,
@@ -311,7 +312,7 @@ export class ControlChannelService {
     }
 
     try {
-      const message = await this.ensurePanel(profile);
+      const message = await this.guildLocks.run(guildId, () => this.ensurePanel(profile));
       const snapshot = this.playerGateway.getSnapshot(profile.guildId);
       const payload = this.createPanelPayload(profile, snapshot);
       // Arm the next update from player state, not from the success of the
@@ -440,67 +441,12 @@ export class ControlChannelService {
     snapshot = this.playerGateway.getSnapshot(profile.guildId),
   ): ControlPanelPayload {
     const embed = this.createPanelEmbed(profile, snapshot);
-    const paused = snapshot?.paused ?? false;
-    const hasActiveTrack = Boolean(snapshot?.currentTrack);
-
-    const primaryControls = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`${controlIdPrefix}previous`)
-        .setEmoji("⏮️")
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(!hasActiveTrack || (snapshot?.previousTrackCount ?? 0) === 0),
-      new ButtonBuilder()
-        .setCustomId(`${controlIdPrefix}play-pause`)
-        .setEmoji(paused ? "▶️" : "⏯️")
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(!hasActiveTrack),
-      new ButtonBuilder()
-        .setCustomId(`${controlIdPrefix}stop`)
-        .setEmoji("⏹️")
-        .setStyle(ButtonStyle.Danger)
-        .setDisabled(!hasActiveTrack),
-      new ButtonBuilder()
-        .setCustomId(`${controlIdPrefix}skip`)
-        .setEmoji("⏭️")
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(!hasActiveTrack),
-    );
-
-    const secondaryControls = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`${controlIdPrefix}volume-down`)
-        .setEmoji("🔉")
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(!hasActiveTrack || (snapshot?.volume ?? 0) <= 0),
-      new ButtonBuilder()
-        .setCustomId(`${controlIdPrefix}volume-up`)
-        .setEmoji("🔊")
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(
-          !hasActiveTrack || (snapshot?.volume ?? profile.music.maximumVolume) >= profile.music.maximumVolume,
-        ),
-      new ButtonBuilder()
-        .setCustomId(`${controlIdPrefix}autoqueue`)
-        .setEmoji("♾️")
-        .setStyle(snapshot?.autoQueue ? ButtonStyle.Success : ButtonStyle.Secondary)
-        .setDisabled(!hasActiveTrack),
-      new ButtonBuilder()
-        .setCustomId(`${controlIdPrefix}24-7`)
-        .setLabel("24/7")
-        .setEmoji("🔁")
-        .setStyle(snapshot?.twentyFourSeven ? ButtonStyle.Success : ButtonStyle.Secondary)
-        .setDisabled(!snapshot),
-      new ButtonBuilder()
-        .setCustomId(`${controlIdPrefix}shuffle`)
-        .setEmoji("🔀")
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(!hasActiveTrack || (snapshot?.queueLength ?? 0) < 2),
-    );
 
     return {
-      content: "Join a voice channel. Members with the music-controller role can queue songs here by name or URL.",
+      content: "Join a voice channel. Members with the music-controller role can queue songs here by name or URL.\n" +
+        "-# ♾️ Autoqueue: automatically adds a similar track when the queue runs out.  •  🔁 24/7: keeps the bot connected instead of leaving when idle.",
       embeds: [embed],
-      components: [primaryControls, secondaryControls],
+      components: createMusicPanelControlRows(profile, snapshot),
     };
   }
 
@@ -529,21 +475,62 @@ export class ControlChannelService {
       isEmojiAvailable: (emojiId) => this.applicationEmojiCatalog.hasEmoji(emojiId) ||
         this.client.guilds.cache.some((guild) => guild.emojis.cache.has(emojiId)),
     });
-    const requester = track.requestedByUserId
-      ? `\nRequested by <@${track.requestedByUserId}>`
-      : "";
+    const requester = this.formatRequester(track.requestedByUserId);
     const queueStatus = snapshot.queueLength === 0
       ? "Queue empty"
       : `${snapshot.queueLength} queued`;
+    const autoQueueNote = snapshot.autoQueue && snapshot.autoQueueIssue
+      ? "  •  ⚠️ Autoqueue found nothing to add"
+      : "";
     embed
       .setTitle(snapshot.paused ? "Playback paused" : "Now Playing")
       .setDescription(`### ${title}\n${track.author}\n\n${progress}${requester}`)
       .setFooter({
-        text: `🔊 ${snapshot.volume}%  •  ${queueStatus}  •  Loop ${snapshot.repeatMode}`,
+        text: `🔊 ${snapshot.volume}%  •  ${queueStatus}  •  Loop ${snapshot.repeatMode}${autoQueueNote}`,
       });
+
+    if (snapshot.queueLength > 0) {
+      const upNextField = this.createUpNextField(profile.guildId, snapshot.queueLength);
+      if (upNextField) embed.addFields(upNextField);
+    }
 
     if (track.artworkUrl) embed.setImage(track.artworkUrl);
     return embed;
+  }
+
+  private createUpNextField(
+    guildId: string,
+    queueLength: number,
+  ): { name: string; value: string } | null {
+    const upcoming = this.playerGateway.getQueue(guildId).slice(0, upNextPreviewCount);
+    if (upcoming.length === 0) return null;
+
+    const lines = upcoming.map((track, index) => {
+      const label = this.truncateTrackTitle(track.title);
+      return `${index + 1}. ${track.uri ? `[${label}](${track.uri})` : label}`;
+    });
+    const remaining = queueLength - upcoming.length;
+    if (remaining > 0) lines.push(`…and ${remaining} more`);
+    return { name: "Up next", value: lines.join("\n").slice(0, 1_024) };
+  }
+
+  private truncateTrackTitle(title: string): string {
+    const sanitized = title.replaceAll("[", "").replaceAll("]", "");
+    return sanitized.length > upNextTrackTitleMaxChars
+      ? `${sanitized.slice(0, upNextTrackTitleMaxChars - 1)}…`
+      : sanitized;
+  }
+
+  private formatRequester(requestedByUserId: string | null): string {
+    if (!requestedByUserId) return "";
+    if (requestedByUserId !== "autoqueue") {
+      return `\nRequested by <@${requestedByUserId}>`;
+    }
+
+    const botUserId = this.client.user?.id;
+    return botUserId
+      ? `\nRequested by <@${botUserId}> (Autoqueue)`
+      : "\nRequested by Autoqueue";
   }
 
   private hasRestrictedRole(
