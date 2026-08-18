@@ -9,15 +9,13 @@ const postSchema = z.object({
   score: z.object({ up: z.number() }),
   fav_count: z.number(),
   rating: z.string(),
-  file: z.object({ url: z.string().url().nullable(), ext: z.string() }),
+  file: z.object({ url: z.string().url().nullable() }),
   tags: z.object({
     artist: z.array(z.string()).default([]),
     species: z.array(z.string()).default([]),
   }),
 });
 const responseSchema = z.object({ posts: z.array(postSchema) });
-
-const videoExtensions = new Set(["webm", "mp4"]);
 
 const typeChoices = [
   { name: "GIF", value: "type:gif" },
@@ -74,22 +72,16 @@ export class BooruSearchCommand implements BotCommand {
 
       const postLink = `https://${this.site}.net/posts/${post.id}`;
       const mediaUrl = post.file.url;
-      const isVideo = videoExtensions.has(post.file.ext.toLowerCase());
 
       const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setLabel("View post").setStyle(ButtonStyle.Link).setURL(postLink),
       );
 
-      const titleEmbed = new EmbedBuilder().setColor(this.embedColor).setTitle(`Found Post #${post.id}`);
-      if (isVideo || this.nsfw) {
-        // Embeds can't play video, and embed images can't be spoilered — only
-        // Discord's own preview for a bare (optionally spoilered) URL in the
-        // message content can do either. The title embed rides alongside it.
-        const content = this.nsfw ? `||${mediaUrl}||` : mediaUrl;
-        await context.responses.edit({ content, embeds: [titleEmbed] });
-      } else {
-        await context.responses.edit({ embeds: [titleEmbed.setImage(mediaUrl)] });
-      }
+      // A bare URL (not a markdown link, and not inside an EmbedBuilder embed) lets
+      // Discord auto-generate its own preview — the only way to get a playable
+      // video preview, and the only way to get a spoilered/blurred preview.
+      const linkedMedia = this.nsfw ? `||${mediaUrl}||` : mediaUrl;
+      await context.responses.edit(`Found Post #${post.id}\n${linkedMedia}`);
 
       const embed = new EmbedBuilder()
         .setColor(this.embedColor)
