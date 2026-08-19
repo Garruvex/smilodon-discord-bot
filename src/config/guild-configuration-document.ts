@@ -23,6 +23,7 @@ export interface UpdateGuildConfigurationInput {
   chatbotDeniedLinkUrl?: string | null;
   chatbotDeniedLinkLabel?: string | null;
   chatbotWebSearchMode?: "off" | "auto";
+  chatbotToolCallingEnabled?: boolean;
   chatbotImageInputEnabled?: boolean;
   chatbotImageGenerationEnabled?: boolean;
   chatbotIncludeSources?: boolean;
@@ -200,6 +201,7 @@ export function applyGuildConfigurationUpdate(
   if (input.chatbotDeniedLinkUrl !== undefined) next.chat.deniedLinkUrl = input.chatbotDeniedLinkUrl;
   if (input.chatbotDeniedLinkLabel !== undefined) next.chat.deniedLinkLabel = input.chatbotDeniedLinkLabel;
   if (input.chatbotWebSearchMode !== undefined) next.chat.webSearchMode = input.chatbotWebSearchMode;
+  if (input.chatbotToolCallingEnabled !== undefined) next.chat.toolCallingEnabled = input.chatbotToolCallingEnabled;
   if (input.chatbotImageInputEnabled !== undefined) next.chat.imageInputEnabled = input.chatbotImageInputEnabled;
   if (input.chatbotImageGenerationEnabled !== undefined) next.chat.imageGenerationEnabled = input.chatbotImageGenerationEnabled;
   if (input.chatbotIncludeSources !== undefined) next.chat.includeSources = input.chatbotIncludeSources;

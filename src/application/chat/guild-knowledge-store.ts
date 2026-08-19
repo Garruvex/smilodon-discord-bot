@@ -12,6 +12,15 @@ export interface GuildKnowledgeCandidateRecord extends ProposedGuildKnowledgeCan
   createdAt: number;
   updatedAt: number;
   expiresAt: number | null;
+  embedding: number[] | null;
+}
+
+// What propose() actually persists per candidate — the statement's
+// embedding, computed by the caller (ChatConversationService) since it's a
+// network call and stores stay dumb. Null when embeddings aren't configured
+// or the embed call failed.
+export interface EmbeddedGuildKnowledgeCandidate extends ProposedGuildKnowledgeCandidate {
+  embedding: number[] | null;
 }
 
 export interface GuildKnowledgeStore {
@@ -20,7 +29,7 @@ export interface GuildKnowledgeStore {
   propose(input: {
     guildId: string;
     assertedByUserId: string;
-    candidates: readonly ProposedGuildKnowledgeCandidate[];
+    candidates: readonly EmbeddedGuildKnowledgeCandidate[];
     now: number;
   }): Promise<void>;
 }

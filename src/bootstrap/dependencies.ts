@@ -66,7 +66,18 @@ import { PollComponentHandler } from "../infrastructure/discord/components/poll-
 import type { ChatStateStore } from "../application/chat/chat-state-store.js";
 import { ChatConversationService } from "../application/chat/chat-conversation-service.js";
 import type { GuildKnowledgeStore } from "../application/chat/guild-knowledge-store.js";
-import { RelevantGuildMemorySelector } from "../application/chat/guild-memory-selector.js";
+import { ChatToolRegistry } from "../application/chat/tools/chat-tool-registry.js";
+import { DiceRollTool } from "../application/chat/tools/dice-tool.js";
+import { EightBallTool } from "../application/chat/tools/eightball-tool.js";
+import { BooruSearchTool } from "../application/chat/tools/booru-search-tool.js";
+import { MemoryLookupTool } from "../application/chat/tools/memory-lookup-tool.js";
+import { BirthdayLookupTool } from "../application/chat/tools/birthday-lookup-tool.js";
+import { MusicPlayTool } from "../application/chat/tools/music-play-tool.js";
+import { MusicControlTool } from "../application/chat/tools/music-control-tool.js";
+import { MusicVolumeTool } from "../application/chat/tools/music-volume-tool.js";
+import { MusicQueueTool } from "../application/chat/tools/music-queue-tool.js";
+import { EmbeddingGuildMemorySelector, RelevantGuildMemorySelector } from "../application/chat/guild-memory-selector.js";
+import { OpenAiEmbeddingsClient } from "../infrastructure/chat/openai-embeddings-client.js";
 import { ApplicationEmojiCatalog } from "../infrastructure/discord/application-emoji-catalog.js";
 import type { AuditLogService } from "../application/audit/audit-log-service.js";
 import { MemberProfileService } from "../application/members/member-profile-service.js";
@@ -194,7 +205,7 @@ export function createDependencies(
       ? new OpenAiResponsesChatProvider(
           configuration.chat.baseUrl,
           configuration.chat.apiKey,
-          configuration.chat.model,
+          configuration.chat.models,
           {
             reasoningEffort: configuration.chat.reasoningEffort,
             verbosity: configuration.chat.verbosity,
@@ -204,21 +215,41 @@ export function createDependencies(
       : new OpenAiCompatibleChatProvider(
           configuration.chat.baseUrl,
           configuration.chat.apiKey,
-          configuration.chat.model,
+          configuration.chat.models,
           logger.child({ component: "chat-provider" }),
         )
     : null;
   commandRegistry.register(new CustomizeCommand(userCustomizationStore, chatProvider));
+  const chatToolRegistry = new ChatToolRegistry([
+    new DiceRollTool(),
+    new EightBallTool(),
+    new BooruSearchTool(),
+    new MemoryLookupTool(chatStateStore, guildKnowledgeStore),
+    new BirthdayLookupTool(birthdayStore),
+    new MusicPlayTool(playbackService),
+    new MusicControlTool(playbackService),
+    new MusicVolumeTool(playbackService),
+    new MusicQueueTool(playbackService),
+  ]);
+  const embeddingsClient = configuration.chat?.embeddingModel
+    ? new OpenAiEmbeddingsClient(
+        configuration.chat.baseUrl,
+        configuration.chat.apiKey,
+        configuration.chat.embeddingModel,
+      )
+    : null;
   const chatConversationService = chatProvider
     ? new ChatConversationService(
         chatProvider,
         chatStateStore,
         guildKnowledgeStore,
-        new RelevantGuildMemorySelector(),
+        embeddingsClient ? new EmbeddingGuildMemorySelector(embeddingsClient) : new RelevantGuildMemorySelector(),
         undefined,
         userCustomizationStore,
         undefined,
         birthdayStore,
+        chatToolRegistry,
+        embeddingsClient,
       )
     : null;
   behaviorRegistry.register(new MentionChatBehavior(

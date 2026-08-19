@@ -1,5 +1,24 @@
+import type { ChatTool } from "./tools/chat-tool.js";
+import type { PlaybackActor } from "../music/playback-service.js";
+
 export interface ChatRequest {
   guildId: string;
+  // Optional: when non-empty, the provider offers these as callable
+  // functions and executes them mid-turn (see ChatToolRegistry). Omitted
+  // (or empty) means no tool calling for this turn — existing callers that
+  // predate tool support don't need to change.
+  enabledTools?: readonly ChatTool[];
+  // Whether the Discord channel this turn is happening in is age-restricted.
+  // Passed through to tool execution context; unrelated to any age
+  // gating already applied to the prompt/response content itself.
+  channelIsNsfw?: boolean;
+  // Null/omitted unless the guild has music enabled and the message has a
+  // resolvable member — see ChatTurnSupport.resolveMusicActor and
+  // ChatToolContext.music for why the role gate itself isn't checked here.
+  musicActor?: PlaybackActor | null;
+  musicVolumeMaximum?: number | undefined;
+  musicControllerRoleIds?: ReadonlySet<string> | undefined;
+  musicBotAdministratorRoleIds?: ReadonlySet<string> | undefined;
   personality: string;
   userCustomization: string | null;
   currentUser: ChatUser;
@@ -89,6 +108,10 @@ export interface GuildKnowledgeRecord {
   statement: string;
   source: "self_report" | "community" | "administrator";
   updatedAt: number;
+  // Null for a record written before vector recall was enabled, or when an
+  // embeddings call failed at write time — EmbeddingGuildMemorySelector
+  // treats that as a 0 similarity contribution rather than an error.
+  embedding: number[] | null;
 }
 
 export interface ProposedGuildKnowledgeCandidate {

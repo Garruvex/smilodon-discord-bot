@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildRelevanceContext, scoreRecord, selectByRelevance } from "../../src/application/chat/memory-relevance.js";
+import { buildRelevanceContext, cosineSimilarity, scoreRecord, selectByRelevance } from "../../src/application/chat/memory-relevance.js";
 
 describe("memory-relevance", () => {
   it("scores keyword overlap with the current turn above no match", () => {
@@ -73,5 +73,40 @@ describe("memory-relevance", () => {
     const scores: Record<string, number> = { low: 1, high: 3, mid: 2 };
     const selected = selectByRelevance(records, (record) => scores[record.id]!, 10_000);
     expect(selected.map((record) => record.id)).toEqual(["high", "mid", "low"]);
+  });
+
+  it("computes the char budget from the prompt projection, not the raw record", () => {
+    // A field the projection strips (e.g. a large embedding vector) must not
+    // count against the char budget — only what's actually sent to the model.
+    const records = [
+      { id: "a", statement: "s", embedding: Array(5_000).fill(0.123456) },
+      { id: "b", statement: "s", embedding: Array(5_000).fill(0.123456) },
+    ];
+    const selected = selectByRelevance(
+      records,
+      () => 1,
+      100,
+      (record) => ({ id: record.id, statement: record.statement }),
+    );
+    expect(selected).toHaveLength(2);
+  });
+});
+
+describe("cosineSimilarity", () => {
+  it("returns 1 for identical vectors", () => {
+    expect(cosineSimilarity([1, 2, 3], [1, 2, 3])).toBeCloseTo(1);
+  });
+
+  it("returns 0 for orthogonal vectors", () => {
+    expect(cosineSimilarity([1, 0], [0, 1])).toBeCloseTo(0);
+  });
+
+  it("returns 0 for empty or mismatched-length vectors instead of throwing", () => {
+    expect(cosineSimilarity([], [])).toBe(0);
+    expect(cosineSimilarity([1, 2], [1, 2, 3])).toBe(0);
+  });
+
+  it("clamps a negative cosine to 0 rather than returning a negative score", () => {
+    expect(cosineSimilarity([1, 0], [-1, 0])).toBe(0);
   });
 });

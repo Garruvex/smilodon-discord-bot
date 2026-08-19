@@ -13,6 +13,7 @@ const recordSchema = z.object({
   source: z.enum(["self_report", "community", "administrator"]),
   assertedByUserIds: z.array(z.string()), confirmedByUserIds: z.array(z.string()),
   createdAt: z.number(), updatedAt: z.number(), expiresAt: z.number().nullable(),
+  embedding: z.array(z.number()).nullable().default(null),
 });
 const documentSchema = z.object({
   version: z.literal(1), guildId: z.string(), records: z.array(recordSchema), updatedAt: z.number(),
@@ -33,12 +34,20 @@ export class LocalGuildKnowledgeStore implements GuildKnowledgeStore {
       .slice(0, guildKnowledgeLimits.maxConfirmedRecords).map((record) => ({
         id: record.id, subjectType: record.subjectType, subjectId: record.subjectId,
         topic: record.topic, slot: record.slot, statement: record.statement, source: record.source,
-        updatedAt: record.updatedAt,
+        updatedAt: record.updatedAt, embedding: record.embedding,
       }));
     const bounded: GuildKnowledgeRecord[] = [];
     let serializedChars = 0;
     for (const record of records) {
-      const size = JSON.stringify(record).length;
+      // Excludes `embedding` — it's never sent to the model, so it must not
+      // count against maxSerializedChars (a single embedding vector can be
+      // tens of KB serialized, far larger than the text it's paired with).
+      const promptFields = {
+        id: record.id, subjectType: record.subjectType, subjectId: record.subjectId,
+        topic: record.topic, slot: record.slot, statement: record.statement,
+        source: record.source, updatedAt: record.updatedAt,
+      };
+      const size = JSON.stringify(promptFields).length;
       if (serializedChars + size > guildKnowledgeLimits.maxSerializedChars) break;
       bounded.push(record);
       serializedChars += size;
@@ -62,7 +71,10 @@ export class LocalGuildKnowledgeStore implements GuildKnowledgeStore {
           existing.source = "self_report";
           existing.expiresAt = null;
         }
-        if (selfConfirmed || existing.statement === candidate.statement) existing.statement = candidate.statement;
+        if (selfConfirmed || existing.statement === candidate.statement) {
+          existing.statement = candidate.statement;
+          existing.embedding = candidate.embedding;
+        }
         existing.updatedAt = input.now;
         continue;
       }

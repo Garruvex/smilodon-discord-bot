@@ -58,15 +58,41 @@ export function selectByRelevance<T>(
   records: readonly T[],
   score: (record: T) => number,
   maxSerializedChars: number,
+  // What actually gets serialized for the char-budget calculation — defaults
+  // to the record itself. Callers whose record type carries fields never
+  // sent to the model (e.g. GuildKnowledgeRecord.embedding) must pass a
+  // projection that excludes them, or the budget check would be dominated
+  // by a field the prompt never sees.
+  promptProjection: (record: T) => unknown = (record) => record,
 ): T[] {
   const ranked = [...records].sort((a, b) => score(b) - score(a));
   const selected: T[] = [];
   let serializedChars = 0;
   for (const record of ranked) {
-    const size = JSON.stringify(record).length;
+    const size = JSON.stringify(promptProjection(record)).length;
     if (selected.length > 0 && serializedChars + size > maxSerializedChars) break;
     selected.push(record);
     serializedChars += size;
   }
   return selected;
+}
+
+// Standard cosine similarity, clamped to [0, 1] since embedding relevance
+// should only ever add to a lexical/subject/recency score, never subtract
+// (a negative-cosine pair isn't "anti-relevant" for this use case). Returns
+// 0 for a zero-length vector or a dimension mismatch rather than throwing —
+// callers pass this straight into a scoring function that must never fail.
+export function cosineSimilarity(a: readonly number[], b: readonly number[]): number {
+  if (a.length === 0 || a.length !== b.length) return 0;
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i]! * b[i]!;
+    normA += a[i]! * a[i]!;
+    normB += b[i]! * b[i]!;
+  }
+  if (normA === 0 || normB === 0) return 0;
+  const similarity = dot / (Math.sqrt(normA) * Math.sqrt(normB));
+  return Math.max(0, Math.min(1, similarity));
 }

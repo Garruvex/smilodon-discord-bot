@@ -13,7 +13,7 @@ describe("LocalGuildKnowledgeStore", () => {
       guildId: "guild", assertedByUserId: "user", now: 100,
       candidates: [{
         subjectType: "member", subjectId: "user", topic: "event_responsibility",
-        slot: "raid.friday", statement: "organizes Friday raids",
+        slot: "raid.friday", statement: "organizes Friday raids", embedding: null,
       }],
     });
     expect(await store.loadConfirmed("guild")).toMatchObject([{
@@ -29,7 +29,7 @@ describe("LocalGuildKnowledgeStore", () => {
       guildId: "guild", assertedByUserId: "alice", now: 100,
       candidates: [{
         subjectType: "member", subjectId: "dave", topic: "event_responsibility",
-        slot: "raid.friday", statement: "organizes Friday raids",
+        slot: "raid.friday", statement: "organizes Friday raids", embedding: null,
       }],
     });
     expect(await store.loadConfirmed("guild")).toEqual([]);
@@ -45,7 +45,7 @@ describe("LocalGuildKnowledgeStore", () => {
     await store.initialize();
     const candidate = {
       subjectType: "member" as const, subjectId: "dave", topic: "event_responsibility",
-      slot: "raid.friday", statement: "organizes Friday raids",
+      slot: "raid.friday", statement: "organizes Friday raids", embedding: null,
     };
     await store.propose({ guildId: "guild", assertedByUserId: "alice", candidates: [candidate], now: 100 });
     await store.propose({ guildId: "guild", assertedByUserId: "dave", candidates: [candidate], now: 101 });

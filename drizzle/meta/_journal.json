@@ -50,6 +50,13 @@
       "when": 1787133226420,
       "tag": "0006_add_guild_members_hub",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1787162580602,
+      "tag": "0007_add_guild_knowledge_embedding",
+      "breakpoints": true
     }
   ]
 }

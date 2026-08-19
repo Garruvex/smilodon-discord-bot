@@ -2,6 +2,7 @@ import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 
 import { CommandModule, CommandResponseVisibility, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
+import { rollDice } from "../../../../domain/games/dice.js";
 
 const diceFaces = ["⚀", "⚁", "⚂", "⚃", "⚄", "⚅"] as const;
 
@@ -39,8 +40,7 @@ export class DiceCommand implements BotCommand {
     const sides = context.interaction.options.getInteger("sides") ?? 6;
     const count = context.interaction.options.getInteger("count") ?? 1;
 
-    const rolls = Array.from({ length: count }, () => Math.floor(Math.random() * sides) + 1);
-    const total = rolls.reduce((sum, roll) => sum + roll, 0);
+    const { rolls, total } = rollDice(sides, count);
 
     const footerText = count === 1 ? `d${sides}` : `${count}d${sides} — total ${total}`;
 

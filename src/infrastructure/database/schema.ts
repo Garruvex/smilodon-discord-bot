@@ -95,6 +95,11 @@ export const guildKnowledge = pgTable("guild_knowledge", {
   source: text("source").notNull(),
   assertedByUserIds: jsonb("asserted_by_user_ids").notNull().default([]),
   confirmedByUserIds: jsonb("confirmed_by_user_ids").notNull().default([]),
+  // Plain JSON float array, brute-force cosine similarity computed in
+  // application code (see EmbeddingGuildMemorySelector) — no pgvector,
+  // guild-knowledge sets are small enough on both persistence backends.
+  // Null until vector recall is enabled and/or this record is re-embedded.
+  embedding: jsonb("embedding"),
   expiresAt: timestamp("expires_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),

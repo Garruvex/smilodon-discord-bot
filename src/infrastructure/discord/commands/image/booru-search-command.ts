@@ -1,21 +1,8 @@
 import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, SlashCommandBuilder } from "discord.js";
-import { z } from "zod";
 
 import { CommandModule, CommandResponseVisibility, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
-
-const postSchema = z.object({
-  id: z.number(),
-  score: z.object({ up: z.number() }),
-  fav_count: z.number(),
-  rating: z.string(),
-  file: z.object({ url: z.string().url().nullable(), ext: z.string(), size: z.number() }),
-  tags: z.object({
-    artist: z.array(z.string()).default([]),
-    species: z.array(z.string()).default([]),
-  }),
-});
-const responseSchema = z.object({ posts: z.array(postSchema) });
+import { fetchBooruPost } from "../../../booru/booru-client.js";
 
 const videoExtensions = new Set(["webm", "mp4"]);
 const maxAttachmentBytes = 24 * 1024 * 1024;
@@ -63,13 +50,7 @@ export class BooruSearchCommand implements BotCommand {
     const tags = [query, type, order, "favcount:>100"].filter(Boolean).join(" ");
 
     try {
-      const response = await fetch(`https://${this.site}.net/posts.json?tags=${encodeURIComponent(tags)}&limit=1`, {
-        headers: { "User-Agent": "FNTU-Discord-Bot/1.0 (+https://github.com/)" },
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = responseSchema.parse(await response.json());
-      const post = data.posts[0];
+      const post = await fetchBooruPost(this.site, tags);
       if (!post || !post.file.url) {
         await context.responses.edit(query ? `No results found for \`${query}\`.` : "No results found.");
         return;

@@ -22,14 +22,16 @@ export class PostgresGuildKnowledgeStore implements GuildKnowledgeStore {
     const bounded: GuildKnowledgeRecord[] = [];
     let serializedChars = 0;
     for (const row of rows) {
-      const record: GuildKnowledgeRecord = {
+      const promptFields = {
         id: row.id, subjectType: subjectTypeSchema.parse(row.subjectType), subjectId: row.subjectId,
         topic: row.topic, slot: row.slot, statement: row.statement, source: sourceSchema.parse(row.source),
         updatedAt: row.updatedAt.getTime(),
       };
-      const size = JSON.stringify(record).length;
+      // `embedding` excluded from the size calculation — it's never sent to
+      // the model, so it must not count against maxSerializedChars.
+      const size = JSON.stringify(promptFields).length;
       if (serializedChars + size > guildKnowledgeLimits.maxSerializedChars) break;
-      bounded.push(record);
+      bounded.push({ ...promptFields, embedding: (row.embedding as number[] | null) ?? null });
       serializedChars += size;
     }
     return bounded;
@@ -54,8 +56,10 @@ export class PostgresGuildKnowledgeStore implements GuildKnowledgeStore {
           const confirmedBy = userIdsSchema.parse(existing.confirmedByUserIds);
           if (!assertedBy.includes(input.assertedByUserId)) assertedBy.push(input.assertedByUserId);
           if (selfConfirmed && !confirmedBy.includes(input.assertedByUserId)) confirmedBy.push(input.assertedByUserId);
+          const statementChanged = selfConfirmed || existing.statement === candidate.statement;
           await transaction.update(schema.guildKnowledge).set({
-            statement: selfConfirmed || existing.statement === candidate.statement ? candidate.statement : existing.statement,
+            statement: statementChanged ? candidate.statement : existing.statement,
+            embedding: statementChanged ? candidate.embedding : existing.embedding,
             status: selfConfirmed ? "confirmed" : existing.status,
             source: selfConfirmed ? "self_report" : existing.source,
             assertedByUserIds: assertedBy,
@@ -77,7 +81,8 @@ export class PostgresGuildKnowledgeStore implements GuildKnowledgeStore {
         await transaction.insert(schema.guildKnowledge).values({
           id: randomUUID(), guildId: input.guildId, subjectType: candidate.subjectType,
           subjectId: candidate.subjectId, topic: candidate.topic, slot: candidate.slot,
-          statement: candidate.statement, status: selfConfirmed ? "confirmed" : "candidate",
+          statement: candidate.statement, embedding: candidate.embedding,
+          status: selfConfirmed ? "confirmed" : "candidate",
           source: selfConfirmed ? "self_report" : "community",
           assertedByUserIds: [input.assertedByUserId], confirmedByUserIds: selfConfirmed ? [input.assertedByUserId] : [],
           expiresAt: selfConfirmed ? null : new Date(input.now + guildKnowledgeLimits.candidateTtlMs),

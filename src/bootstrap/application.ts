@@ -34,7 +34,7 @@ export class Application {
         ? {
             configured: true,
             apiMode: this.configuration.chat.mode,
-            model: this.configuration.chat.model,
+            models: this.configuration.chat.models,
             reasoningEffort: this.configuration.chat.reasoningEffort,
             verbosity: this.configuration.chat.verbosity,
             maxOutputTokens: this.configuration.chat.maxOutputTokens,

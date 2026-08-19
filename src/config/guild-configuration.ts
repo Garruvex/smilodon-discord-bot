@@ -46,6 +46,7 @@ export interface GuildChatConfiguration {
   deniedLinkUrl: string | null;
   deniedLinkLabel: string | null;
   webSearchMode: "off" | "auto";
+  toolCallingEnabled: boolean;
   imageInputEnabled: boolean;
   imageGenerationEnabled: boolean;
   includeSources: boolean;

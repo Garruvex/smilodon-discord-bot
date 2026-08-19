@@ -55,7 +55,7 @@ function profile(): GuildConfiguration {
       deniedMessage: "Denied",
       deniedLinkUrl: null,
       deniedLinkLabel: null,
-      webSearchMode: "off",
+      webSearchMode: "off", toolCallingEnabled: false,
       imageInputEnabled: false,
       imageGenerationEnabled: false,
       includeSources: true,

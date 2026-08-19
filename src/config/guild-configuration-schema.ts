@@ -17,6 +17,7 @@ const guildChatSchema = z.preprocess((value) => {
   deniedLinkUrl: z.string().trim().url().nullable().default(null),
   deniedLinkLabel: z.string().trim().min(1).max(80).nullable().default(null),
   webSearchMode: z.enum(["off", "auto"]).default("off"),
+  toolCallingEnabled: z.boolean().default(false),
   imageInputEnabled: z.boolean().default(false),
   imageGenerationEnabled: z.boolean().default(false),
   includeSources: z.boolean().default(true),

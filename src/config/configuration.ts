@@ -26,10 +26,15 @@ export interface ApplicationConfiguration {
   chat: {
     apiKey: string;
     baseUrl: string;
-    model: string;
+    // Ordered (primary, ...fallback) model list — see ModelFallbackChain.
+    // Always has at least one entry.
+    models: readonly string[];
     mode: "chat_completions" | "responses";
     reasoningEffort: "minimal" | "low" | "medium" | "high";
     verbosity: "low" | "medium" | "high";
     maxOutputTokens: number;
+    // Enables vector-assisted guild-knowledge recall when set; null keeps
+    // the existing keyword-only selector.
+    embeddingModel: string | null;
   } | null;
 }

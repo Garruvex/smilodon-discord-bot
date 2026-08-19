@@ -4,15 +4,21 @@ import type { ChatStateStore } from "./chat-state-store.js";
 import type { UserCustomizationStore } from "./user-customization-store.js";
 import { KeyedSerialQueue } from "../concurrency/keyed-serial-queue.js";
 import { guildKnowledgeInstructions, validateGuildKnowledgeCandidates } from "./guild-knowledge-policy.js";
-import type { GuildKnowledgeStore } from "./guild-knowledge-store.js";
+import type { EmbeddedGuildKnowledgeCandidate, GuildKnowledgeStore } from "./guild-knowledge-store.js";
+import type { ProposedGuildKnowledgeCandidate } from "./chat-provider.js";
+import type { EmbeddingsClient } from "../../infrastructure/chat/openai-embeddings-client.js";
 import { RelevantGuildMemorySelector, type GuildMemorySelector } from "./guild-memory-selector.js";
 import { RecentPromptHistorySelector, type PromptHistorySelector } from "./prompt-history-selector.js";
 import { RelevantUserMemorySelector, type UserMemorySelector } from "./user-memory-selector.js";
 import type { BirthdayStore } from "../birthdays/birthday-store.js";
+import type { ChatToolRegistry } from "./tools/chat-tool-registry.js";
 
 export interface ChatConversationInput
-  extends Omit<ChatRequest, "recentHistory" | "memories" | "guildKnowledge" | "userCustomization" | "birthday"> {
+  extends Omit<ChatRequest, "recentHistory" | "memories" | "guildKnowledge" | "userCustomization" | "birthday" | "enabledTools"> {
   guildId: string;
+  // Per-guild opt-in (profile.chat.toolCallingEnabled) — whether the
+  // registered tools are offered to the model for this turn at all.
+  toolsEnabled?: boolean;
 }
 
 export class ChatStateCommitError extends Error {
@@ -34,7 +40,24 @@ export class ChatConversationService {
     private readonly userCustomizationStore: UserCustomizationStore | null = null,
     private readonly userMemorySelector: UserMemorySelector = new RelevantUserMemorySelector(),
     private readonly birthdayStore: BirthdayStore | null = null,
+    private readonly toolRegistry: ChatToolRegistry | null = null,
+    private readonly embeddingsClient: EmbeddingsClient | null = null,
   ) {}
+
+  // Computes each candidate's embedding (in parallel) before it's persisted
+  // — a network call, so it belongs here rather than inside the store
+  // (stores stay dumb, see GuildKnowledgeStore). A failed embed degrades to
+  // null rather than failing the whole turn; the selector treats a null
+  // embedding as a 0 similarity contribution.
+  private async embedCandidates(
+    candidates: readonly ProposedGuildKnowledgeCandidate[],
+  ): Promise<EmbeddedGuildKnowledgeCandidate[]> {
+    if (!this.embeddingsClient) return candidates.map((candidate) => ({ ...candidate, embedding: null }));
+    return Promise.all(candidates.map(async (candidate) => ({
+      ...candidate,
+      embedding: await this.embeddingsClient!.embed(candidate.statement).catch(() => null),
+    })));
+  }
 
   // True while a previous request from this same guild+user is still being
   // processed (or queued behind one that is), so callers can tell the user
@@ -81,13 +104,15 @@ export class ChatConversationService {
           now,
         }),
       ]);
+      const { toolsEnabled, ...requestInput } = input;
       const response = await this.provider.reply({
-        ...input,
+        ...requestInput,
         recentHistory,
         memories: selectedMemories,
         guildKnowledge: selectedGuildKnowledge,
         userCustomization,
         birthday: birthday ? { month: birthday.month, day: birthday.day } : null,
+        enabledTools: toolsEnabled && this.toolRegistry ? this.toolRegistry.list() : [],
       }, observer);
       const allowedSubjects = new Set([
         input.currentUser.id,
@@ -148,7 +173,7 @@ export class ChatConversationService {
             await this.guildKnowledgeStore.propose({
               guildId: input.guildId,
               assertedByUserId: input.currentUser.id,
-              candidates: validatedResponse.guildKnowledgeCandidates,
+              candidates: await this.embedCandidates(validatedResponse.guildKnowledgeCandidates),
               now,
             });
           } catch (error) {
@@ -174,7 +199,7 @@ export class ChatConversationService {
         await this.guildKnowledgeStore.propose({
           guildId: input.guildId,
           assertedByUserId: input.currentUser.id,
-          candidates: validatedResponse.guildKnowledgeCandidates,
+          candidates: await this.embedCandidates(validatedResponse.guildKnowledgeCandidates),
           now,
         });
       } catch (error) {

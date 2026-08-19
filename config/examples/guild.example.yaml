@@ -82,6 +82,10 @@ chat:
   deniedLinkLabel: null
   # Responses API capabilities; disabled by default for cost and privacy.
   webSearchMode: off
+  # Lets the model call a small set of the bot's own functions mid-reply
+  # (dice roll, 8-ball, booru search, memory/birthday lookup). Only takes
+  # effect when chat.mode is "responses" — see /settings chat chatbot.
+  toolCallingEnabled: false
   imageInputEnabled: false
   imageGenerationEnabled: false
   includeSources: true

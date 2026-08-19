@@ -8,6 +8,8 @@ import { chatMemoryLimits } from "../../../application/chat/chat-memory-policy.j
 import type { ChatImage, ChatSource } from "../../../application/chat/chat-provider.js";
 import type { ApplicationConfiguration } from "../../../config/configuration.js";
 import type { GuildConfiguration } from "../../../config/guild-configuration.js";
+import type { PlaybackActor } from "../../../application/music/playback-service.js";
+import { createPlaybackActorFromMember } from "../commands/music/music-command-support.js";
 
 const supportedImageTypes = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 const allowedDiscordImageHosts = new Set(["cdn.discordapp.com", "media.discordapp.net"]);
@@ -46,6 +48,34 @@ export class ChatTurnSupport {
     } catch {
       return defaultPersonality;
     }
+  }
+
+  // Null unless the guild has music enabled and the message has a
+  // resolvable GuildMember — those two facts can't change mid-turn, so
+  // they're resolved once here. The role gate itself (musicController /
+  // botAdministrator) is deliberately NOT checked here: it's rechecked by
+  // each music tool on every call against this same live `member` (whose
+  // `.roles.cache` reflects role changes as they happen), rather than
+  // trusting a single check made before the LLM call — mirrors
+  // musicPlaybackAccessPolicy's role gate, since tool calls bypass the
+  // normal command access-policy pipeline entirely. Actual voice-channel
+  // presence/match is still enforced by PlaybackService.
+  public resolveMusicActor(
+    message: Message,
+    profile: GuildConfiguration,
+  ): {
+    actor: PlaybackActor;
+    volumeMaximum: number;
+    musicControllerRoleIds: ReadonlySet<string>;
+    botAdministratorRoleIds: ReadonlySet<string>;
+  } | null {
+    if (!profile.features.music || !message.inGuild() || !message.member) return null;
+    return {
+      actor: createPlaybackActorFromMember(message.guildId, message.channelId, message.member),
+      volumeMaximum: profile.music.maximumVolume,
+      musicControllerRoleIds: profile.roles.musicController,
+      botAdministratorRoleIds: profile.roles.botAdministrator,
+    };
   }
 
   // Walks up the reply chain from `message`, bounded by both a depth cap and

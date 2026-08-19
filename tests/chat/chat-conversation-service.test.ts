@@ -197,7 +197,7 @@ describe("ChatConversationService", () => {
       initialize: () => Promise.resolve(),
       loadConfirmed: () => Promise.resolve([{
         id: "known", subjectType: "guild", subjectId: "guild", topic: "community",
-        slot: "mascot", statement: "Pinecone is the mascot", source: "administrator", updatedAt: 0,
+        slot: "mascot", statement: "Pinecone is the mascot", source: "administrator", updatedAt: 0, embedding: null,
       }]),
       propose: (proposal) => { proposals.push(proposal); return Promise.resolve(); },
     };
@@ -206,6 +206,77 @@ describe("ChatConversationService", () => {
     await service.run(input("I organize Friday raids"), (reply) => Promise.resolve(reply.text));
     expect(receivedKnowledgeCount).toBe(1);
     expect(proposals[0]?.candidates).toMatchObject([{ subjectId: "user", slot: "raid.friday" }]);
+  });
+
+  it("embeds a proposed candidate's statement before persisting it, when an embeddings client is injected", async () => {
+    const store: ChatStateStore = {
+      initialize: () => Promise.resolve(),
+      load: () => Promise.resolve({ exchanges: [], memories: [] }),
+      commitSuccessfulExchange: () => Promise.resolve(),
+      applyMemoryActions: () => Promise.resolve(),
+      forgetMemory: () => Promise.resolve(false),
+      forgetAllMemories: () => Promise.resolve(0),
+      getDmNotesEnabled: () => Promise.resolve(true),
+      setDmNotesEnabled: () => Promise.resolve(),
+    };
+    const provider: ChatProvider = {
+      reply: () => Promise.resolve(response("ok", [], [{
+        subjectType: "member", subjectId: "user", topic: "event_responsibility",
+        slot: "raid.friday", statement: "organizes Friday raids",
+      }])),
+    };
+    const proposals: Array<Parameters<GuildKnowledgeStore["propose"]>[0]> = [];
+    const knowledgeStore: GuildKnowledgeStore = {
+      initialize: () => Promise.resolve(),
+      loadConfirmed: () => Promise.resolve([]),
+      propose: (proposal) => { proposals.push(proposal); return Promise.resolve(); },
+    };
+    const embeddingsClient = {
+      embed: (text: string): Promise<number[]> => Promise.resolve(text.length % 2 === 0 ? [1, 0] : [0, 1]),
+    };
+    const service = new ChatConversationService(
+      provider, store, knowledgeStore, undefined, undefined, undefined, undefined, undefined, undefined,
+      embeddingsClient,
+    );
+
+    await service.run(input("I organize Friday raids"), (reply) => Promise.resolve(reply.text));
+    expect(proposals[0]?.candidates[0]?.embedding).not.toBeNull();
+  });
+
+  it("degrades to a null embedding instead of failing the turn when the embed call rejects", async () => {
+    const store: ChatStateStore = {
+      initialize: () => Promise.resolve(),
+      load: () => Promise.resolve({ exchanges: [], memories: [] }),
+      commitSuccessfulExchange: () => Promise.resolve(),
+      applyMemoryActions: () => Promise.resolve(),
+      forgetMemory: () => Promise.resolve(false),
+      forgetAllMemories: () => Promise.resolve(0),
+      getDmNotesEnabled: () => Promise.resolve(true),
+      setDmNotesEnabled: () => Promise.resolve(),
+    };
+    const provider: ChatProvider = {
+      reply: () => Promise.resolve(response("ok", [], [{
+        subjectType: "member", subjectId: "user", topic: "event_responsibility",
+        slot: "raid.friday", statement: "organizes Friday raids",
+      }])),
+    };
+    const proposals: Array<Parameters<GuildKnowledgeStore["propose"]>[0]> = [];
+    const knowledgeStore: GuildKnowledgeStore = {
+      initialize: () => Promise.resolve(),
+      loadConfirmed: () => Promise.resolve([]),
+      propose: (proposal) => { proposals.push(proposal); return Promise.resolve(); },
+    };
+    const embeddingsClient = {
+      embed: (): Promise<number[]> => Promise.reject(new Error("embeddings provider down")),
+    };
+    const service = new ChatConversationService(
+      provider, store, knowledgeStore, undefined, undefined, undefined, undefined, undefined, undefined,
+      embeddingsClient,
+    );
+
+    await expect(service.run(input("I organize Friday raids"), (reply) => Promise.resolve(reply.text)))
+      .resolves.toBeDefined();
+    expect(proposals[0]?.candidates[0]?.embedding).toBeNull();
   });
 
   it("uses a replaceable guild-memory selector and reports selected context size", async () => {
@@ -222,6 +293,7 @@ describe("ChatConversationService", () => {
     const known = {
       id: "known", subjectType: "guild" as const, subjectId: "guild", topic: "community",
       slot: "mascot", statement: "Pinecone is the mascot", source: "administrator" as const, updatedAt: 0,
+      embedding: null,
     };
     const knowledgeStore: GuildKnowledgeStore = {
       initialize: () => Promise.resolve(),

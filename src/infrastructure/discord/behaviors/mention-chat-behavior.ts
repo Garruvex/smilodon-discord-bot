@@ -141,7 +141,7 @@ export class MentionChatBehavior implements BotBehavior<Message> {
         channelId: message.channelId,
         messageId: message.id,
         userId: message.author.id,
-        model: this.configuration.chat?.model,
+        model: this.configuration.chat?.models[0],
         apiMode: this.configuration.chat?.mode,
         reasoningEffort: this.configuration.chat?.reasoningEffort,
         verbosity: this.configuration.chat?.verbosity,
@@ -160,6 +160,7 @@ export class MentionChatBehavior implements BotBehavior<Message> {
             .map((role) => role.name.slice(0, 50))
             .slice(0, 10) ?? [],
         }));
+      const musicActor = this.turnSupport.resolveMusicActor(message, profile);
       const response = await this.conversation.run({
         guildId: message.guildId,
         personality: this.turnSupport.loadPersonality(profile, this.configuration),
@@ -180,6 +181,12 @@ export class MentionChatBehavior implements BotBehavior<Message> {
         imageGenerationEnabled: profile.chat.imageGenerationEnabled,
         includeSources: profile.chat.includeSources,
         triggerMode: "direct",
+        toolsEnabled: profile.chat.toolCallingEnabled,
+        channelIsNsfw: "nsfw" in message.channel ? Boolean(message.channel.nsfw) : false,
+        musicActor: musicActor?.actor ?? null,
+        musicVolumeMaximum: musicActor?.volumeMaximum,
+        musicControllerRoleIds: musicActor?.musicControllerRoleIds,
+        musicBotAdministratorRoleIds: musicActor?.botAdministratorRoleIds,
       }, async (deliveredResponse) => {
         const formatted = this.turnSupport.formatResponse(deliveredResponse.text, deliveredResponse.sources);
         const content = formatted.content ||
@@ -222,7 +229,7 @@ export class MentionChatBehavior implements BotBehavior<Message> {
         channelId: message.channelId,
         messageId: message.id,
         userId: message.author.id,
-        model: this.configuration.chat?.model,
+        model: this.configuration.chat?.models[0],
         durationMs: Date.now() - startedAt,
         imageCount: images.length,
         droppedImageCount,

@@ -10,6 +10,7 @@ import {
   type UserCustomizationAnalysisResult,
 } from "../../application/chat/chat-provider.js";
 import { buildChatContext, buildChatInstructions, chatModelJsonSchema, parseChatModelOutput } from "./chat-structured-output.js";
+import { ModelFallbackChain } from "./model-fallback-chain.js";
 import {
   buildUserCustomizationAnalysisPrompt,
   parseUserCustomizationAnalysisOutput,
@@ -36,13 +37,16 @@ const errorResponseSchema = z.object({
 
 export class OpenAiCompatibleChatProvider implements ChatProvider {
   private readonly warnedGuilds = new Set<string>();
+  private readonly modelChain: ModelFallbackChain;
 
   public constructor(
     private readonly baseUrl: string,
     private readonly apiKey: string,
-    private readonly model: string,
+    models: readonly string[],
     private readonly logger?: Logger,
-  ) {}
+  ) {
+    this.modelChain = new ModelFallbackChain(models);
+  }
 
   public async reply(request: ChatRequest): Promise<ChatResponse> {
     this.warnUnsupportedConfig(request);
@@ -64,38 +68,41 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
           ],
         }
       : { role: "user", content: userContent };
-    const response = await fetch(`${this.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: this.model,
-        messages: [
-          { role: "system", content: buildChatInstructions(request, chatSafetyGuard) },
-          userMessage,
-        ],
-        response_format: {
-          type: "json_schema",
-          json_schema: { name: "persona_chat_response", strict: true, schema: chatModelJsonSchema },
+    const body = await this.modelChain.run(async (model) => {
+      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
         },
-      }),
-      signal: AbortSignal.timeout(45_000),
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: buildChatInstructions(request, chatSafetyGuard) },
+            userMessage,
+          ],
+          response_format: {
+            type: "json_schema",
+            json_schema: { name: "persona_chat_response", strict: true, schema: chatModelJsonSchema },
+          },
+        }),
+        signal: AbortSignal.timeout(45_000),
+      });
+      if (!response.ok) {
+        const errorBody: unknown = await response.json().catch(() => null);
+        const parsedError = errorResponseSchema.safeParse(errorBody);
+        const providerCode = parsedError.success
+          ? (parsedError.data.error.code ?? parsedError.data.error.type ?? null)
+          : null;
+        throw new ChatProviderError(
+          `Chat provider returned HTTP ${response.status}${providerCode ? ` (${providerCode})` : ""}.`,
+          response.status,
+          providerCode,
+        );
+      }
+      return response.json();
     });
-    if (!response.ok) {
-      const body: unknown = await response.json().catch(() => null);
-      const parsed = errorResponseSchema.safeParse(body);
-      const providerCode = parsed.success
-        ? (parsed.data.error.code ?? parsed.data.error.type ?? null)
-        : null;
-      throw new ChatProviderError(
-        `Chat provider returned HTTP ${response.status}${providerCode ? ` (${providerCode})` : ""}.`,
-        response.status,
-        providerCode,
-      );
-    }
-    const parsed = responseSchema.parse(await response.json());
+    const parsed = responseSchema.parse(body);
     const modelOutput = parseChatModelOutput(parsed.choices[0]!.message.content);
     return {
       text: modelOutput.response,
@@ -119,35 +126,38 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
   }
 
   public async analyzeUserCustomization(rawText: string): Promise<UserCustomizationAnalysisResult> {
-    const response = await fetch(`${this.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: this.model,
-        messages: [{ role: "system", content: buildUserCustomizationAnalysisPrompt(rawText) }],
-        response_format: {
-          type: "json_schema",
-          json_schema: { name: "user_customization_analysis", strict: true, schema: userCustomizationAnalysisJsonSchema },
+    const body = await this.modelChain.run(async (model) => {
+      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
         },
-      }),
-      signal: AbortSignal.timeout(30_000),
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "system", content: buildUserCustomizationAnalysisPrompt(rawText) }],
+          response_format: {
+            type: "json_schema",
+            json_schema: { name: "user_customization_analysis", strict: true, schema: userCustomizationAnalysisJsonSchema },
+          },
+        }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!response.ok) {
+        const errorBody: unknown = await response.json().catch(() => null);
+        const parsedError = errorResponseSchema.safeParse(errorBody);
+        const providerCode = parsedError.success
+          ? (parsedError.data.error.code ?? parsedError.data.error.type ?? null)
+          : null;
+        throw new ChatProviderError(
+          `Chat provider returned HTTP ${response.status}${providerCode ? ` (${providerCode})` : ""}.`,
+          response.status,
+          providerCode,
+        );
+      }
+      return response.json();
     });
-    if (!response.ok) {
-      const body: unknown = await response.json().catch(() => null);
-      const parsed = errorResponseSchema.safeParse(body);
-      const providerCode = parsed.success
-        ? (parsed.data.error.code ?? parsed.data.error.type ?? null)
-        : null;
-      throw new ChatProviderError(
-        `Chat provider returned HTTP ${response.status}${providerCode ? ` (${providerCode})` : ""}.`,
-        response.status,
-        providerCode,
-      );
-    }
-    const parsed = responseSchema.parse(await response.json());
+    const parsed = responseSchema.parse(body);
     const analysis = parseUserCustomizationAnalysisOutput(parsed.choices[0]!.message.content);
     if (!analysis.ok) {
       return { ok: false, reason: analysis.reason ?? "That file couldn't be accepted as a customization." };
@@ -168,6 +178,7 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
     const unsupported: string[] = [];
     if (request.webSearchMode !== "off") unsupported.push("webSearchMode");
     if (request.imageGenerationEnabled) unsupported.push("imageGenerationEnabled");
+    if (request.enabledTools && request.enabledTools.length > 0) unsupported.push("toolCallingEnabled");
     if (unsupported.length === 0) return;
     this.warnedGuilds.add(request.guildId);
     this.logger.warn(

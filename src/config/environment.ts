@@ -47,10 +47,21 @@ const environmentSchema = z.object({
   CHAT_API_KEY: optionalNonEmptyString,
   CHAT_BASE_URL: optionalUrl,
   CHAT_MODEL: optionalNonEmptyString,
+  // Ordered fallback models tried (in this order) after the primary when it
+  // hits a 429/quota error — see ModelFallbackChain. Optional; primary-only
+  // behavior is unchanged when unset.
+  CHAT_FALLBACK_MODELS: z
+    .string()
+    .default("")
+    .transform((value) => value.split(",").map((item) => item.trim()).filter((item) => item.length > 0)),
   CHAT_API_MODE: z.enum(["chat_completions", "responses"]).default("chat_completions"),
   CHAT_REASONING_EFFORT: z.enum(["minimal", "low", "medium", "high"]).default("low"),
   CHAT_VERBOSITY: z.enum(["low", "medium", "high"]).default("low"),
   CHAT_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(1).max(128_000).default(2_048),
+  // Optional: enables vector-assisted guild-knowledge recall (see
+  // EmbeddingGuildMemorySelector) via the same chat.baseUrl/chat.apiKey
+  // credentials. Unset means the existing keyword-only selector is used.
+  CHAT_EMBEDDING_MODEL: optionalNonEmptyString,
 });
 
 export function loadConfiguration(
@@ -108,11 +119,12 @@ export function loadConfiguration(
       ? {
           apiKey: parsed.data.CHAT_API_KEY,
           baseUrl: parsed.data.CHAT_BASE_URL.replace(/\/$/, ""),
-          model: parsed.data.CHAT_MODEL,
+          models: [parsed.data.CHAT_MODEL, ...parsed.data.CHAT_FALLBACK_MODELS],
           mode: parsed.data.CHAT_API_MODE,
           reasoningEffort: parsed.data.CHAT_REASONING_EFFORT,
           verbosity: parsed.data.CHAT_VERBOSITY,
           maxOutputTokens: parsed.data.CHAT_MAX_OUTPUT_TOKENS,
+          embeddingModel: parsed.data.CHAT_EMBEDDING_MODEL ?? null,
         }
       : null,
   };

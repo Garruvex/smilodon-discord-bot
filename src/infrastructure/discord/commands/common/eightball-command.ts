@@ -2,31 +2,9 @@ import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 
 import { CommandModule, CommandResponseVisibility, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
+import { pickEightBallAnswer } from "../../../../domain/games/eightball.js";
 
 const eightBallImageUrl = "https://cdn.jsdelivr.net/gh/jdecked/twemoji@latest/assets/72x72/1f3b1.png";
-
-const answers = [
-  "It is certain.",
-  "It is decidedly so.",
-  "Without a doubt.",
-  "Yes, definitely.",
-  "You may rely on it.",
-  "As I see it, yes.",
-  "Most likely.",
-  "Outlook good.",
-  "Yes.",
-  "Signs point to yes.",
-  "Reply hazy, try again.",
-  "Ask again later.",
-  "Better not tell you now.",
-  "Cannot predict now.",
-  "Concentrate and ask again.",
-  "Don't count on it.",
-  "My reply is no.",
-  "My sources say no.",
-  "Outlook not so good.",
-  "Very doubtful.",
-] as const;
 
 export class EightBallCommand implements BotCommand {
   public readonly definition = new SlashCommandBuilder()
@@ -44,7 +22,7 @@ export class EightBallCommand implements BotCommand {
 
   public async execute(context: CommandContext): Promise<void> {
     const question = context.interaction.options.getString("question", true);
-    const answer = answers[Math.floor(Math.random() * answers.length)];
+    const answer = pickEightBallAnswer();
 
     const embed = new EmbedBuilder()
       .setColor("#1A1A1A")

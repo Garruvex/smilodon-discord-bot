@@ -46,18 +46,37 @@ export class AmbientChatBehavior implements BotBehavior<Message> {
     // full — never re-judged here.
     if (message.mentions.users.has(botId)) return Promise.resolve(false);
     const profile = this.profiles.find(message.guildId);
-    if (!profile?.features.chatbot || !profile.features.ambientReplies) return Promise.resolve(false);
-    if (!this.conversation) return Promise.resolve(false);
+    if (!profile) return Promise.resolve(false);
+    // `named` is computed before the feature/access/cooldown gates below so
+    // those gates can log a debug reason only when the bot's name was
+    // actually said — logging on every unrelated message would be too
+    // noisy to be useful.
     const liveNickname = message.guild.members.me?.nickname ?? message.guild.members.me?.displayName;
     const named =
       containsBotName(message.content, profile.displayName) ||
       (liveNickname ? containsBotName(message.content, liveNickname) : false);
     if (!named) return Promise.resolve(false);
+    const logContext = { guildId: message.guildId, channelId: message.channelId, messageId: message.id };
+    if (!profile.features.chatbot || !profile.features.ambientReplies) {
+      this.logger.debug(logContext, "Ambient chat: name mentioned but ambientReplies feature is disabled for this guild");
+      return Promise.resolve(false);
+    }
+    if (!this.conversation) {
+      this.logger.debug(logContext, "Ambient chat: name mentioned but no conversation service is configured");
+      return Promise.resolve(false);
+    }
     if (!this.chatAccess.canUseMentionChat(profile, message.member, message.author.id, message.channelId)) {
+      this.logger.debug(logContext, "Ambient chat: name mentioned but access policy denied this user/channel");
       return Promise.resolve(false);
     }
     const cooldownUntil = this.cooldownUntilByChannel.get(message.channelId) ?? 0;
-    if (Date.now() < cooldownUntil) return Promise.resolve(false);
+    if (Date.now() < cooldownUntil) {
+      this.logger.debug(
+        { ...logContext, cooldownRemainingMs: cooldownUntil - Date.now() },
+        "Ambient chat: name mentioned but channel is on cooldown",
+      );
+      return Promise.resolve(false);
+    }
     return Promise.resolve(true);
   }
 
@@ -110,6 +129,7 @@ export class AmbientChatBehavior implements BotBehavior<Message> {
 
     try {
       const { images } = await this.turnSupport.loadImages(imageAttachments);
+      const musicActor = this.turnSupport.resolveMusicActor(message, profile);
       const response = await this.conversation.run({
         guildId: message.guildId,
         personality: this.turnSupport.loadPersonality(profile, this.configuration),
@@ -130,6 +150,12 @@ export class AmbientChatBehavior implements BotBehavior<Message> {
         imageGenerationEnabled: profile.chat.imageGenerationEnabled,
         includeSources: profile.chat.includeSources,
         triggerMode: "ambient",
+        toolsEnabled: profile.chat.toolCallingEnabled,
+        channelIsNsfw: "nsfw" in message.channel ? Boolean(message.channel.nsfw) : false,
+        musicActor: musicActor?.actor ?? null,
+        musicVolumeMaximum: musicActor?.volumeMaximum,
+        musicControllerRoleIds: musicActor?.musicControllerRoleIds,
+        musicBotAdministratorRoleIds: musicActor?.botAdministratorRoleIds,
       }, async (deliveredResponse) => {
         const formatted = this.turnSupport.formatResponse(deliveredResponse.text, deliveredResponse.sources);
         const content = formatted.content || "I ran out of words. Very premium of me.";
@@ -148,15 +174,21 @@ export class AmbientChatBehavior implements BotBehavior<Message> {
           );
         });
       }
+      const outcome = response.ambientAction === "reply"
+        ? "replied"
+        : response.reactionEmoji
+          ? "reacted only"
+          : "ignored";
       this.logger.info({
         guildId: message.guildId,
         channelId: message.channelId,
         messageId: message.id,
         userId: message.author.id,
         ambientAction: response.ambientAction,
+        reactionEmoji: response.reactionEmoji,
         imageCount: images.length,
         droppedImageCount: droppedUnsupported + droppedOverLimit,
-      }, "Ambient chat request completed");
+      }, `Ambient chat: ${outcome}`);
     } catch (error) {
       // Unlike a direct mention, a failed ambient judgment call fails silent
       // (no error reply) — the user never asked to be addressed, so

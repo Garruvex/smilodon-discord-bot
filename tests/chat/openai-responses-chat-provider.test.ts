@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { OpenAiResponsesChatProvider } from "../../src/infrastructure/chat/openai-responses-chat-provider.js";
+import type { ChatTool } from "../../src/application/chat/tools/chat-tool.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -49,7 +50,7 @@ describe("OpenAiResponsesChatProvider", () => {
     const provider = new OpenAiResponsesChatProvider(
       "https://api.openai.com/v1",
       "secret",
-      "gpt-5-nano",
+      ["gpt-5-nano"],
       { reasoningEffort: "low", verbosity: "low", maxOutputTokens: 2_048 },
     );
     const response = await provider.reply({
@@ -133,7 +134,7 @@ describe("OpenAiResponsesChatProvider", () => {
     const provider = new OpenAiResponsesChatProvider(
       "https://api.openai.com/v1",
       "secret",
-      "gpt-5-nano",
+      ["gpt-5-nano"],
       { reasoningEffort: "low", verbosity: "low", maxOutputTokens: 2_048 },
     );
 
@@ -184,7 +185,7 @@ describe("OpenAiResponsesChatProvider", () => {
     const provider = new OpenAiResponsesChatProvider(
       "https://api.openai.com/v1",
       "secret",
-      "gpt-5-nano",
+      ["gpt-5-nano"],
       { reasoningEffort: "low", verbosity: "low", maxOutputTokens: 2_048 },
     );
     const response = await provider.reply({
@@ -208,5 +209,146 @@ describe("OpenAiResponsesChatProvider", () => {
     expect(response.generatedImages).toHaveLength(2);
     expect(response.generatedImages[0]?.data).toEqual(fakePng("first"));
     expect(response.generatedImages[1]?.data).toEqual(fakePng("second"));
+  });
+
+  it("executes a custom tool call and feeds the result back before finalizing", async () => {
+    const executeRollDice = vi.fn((args: { sides: number }) =>
+      Promise.resolve({ content: JSON.stringify({ sides: args.sides, rolls: [4], total: 4 }) }));
+    const rollDiceTool: ChatTool<{ sides: number }> = {
+      name: "roll_dice",
+      description: "Rolls a die.",
+      parameters: { type: "object", additionalProperties: false, required: ["sides"], properties: { sides: { type: "integer" } } },
+      execute: executeRollDice,
+    };
+
+    let callCount = 0;
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+      callCount += 1;
+      if (typeof init?.body !== "string") throw new Error("Expected a JSON request body.");
+      const body = JSON.parse(init.body) as Record<string, unknown>;
+
+      if (callCount === 1) {
+        expect(body.tools).toContainEqual({
+          type: "function",
+          name: "roll_dice",
+          description: "Rolls a die.",
+          parameters: rollDiceTool.parameters,
+          strict: true,
+        });
+        expect(body.tool_choice).toBe("auto");
+        return Promise.resolve(new Response(JSON.stringify({
+          output: [{ type: "function_call", call_id: "call_1", name: "roll_dice", arguments: JSON.stringify({ sides: 20 }) }],
+        }), { status: 200, headers: { "Content-Type": "application/json" } }));
+      }
+
+      // Second round-trip: the model's function_call plus our function_call_output must be echoed back.
+      const input = body.input as Array<Record<string, unknown>>;
+      expect(input).toContainEqual({ type: "function_call", call_id: "call_1", name: "roll_dice", arguments: JSON.stringify({ sides: 20 }) });
+      expect(input).toContainEqual({ type: "function_call_output", call_id: "call_1", output: JSON.stringify({ sides: 20, rolls: [4], total: 4 }) });
+      return Promise.resolve(new Response(JSON.stringify({
+        output: [{
+          type: "message",
+          content: [{ type: "output_text", text: JSON.stringify({ response: "You rolled a 4.", userMemoryActions: [], guildKnowledgeCandidates: [] }) }],
+        }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = new OpenAiResponsesChatProvider(
+      "https://api.openai.com/v1",
+      "secret",
+      ["gpt-5-nano"],
+      { reasoningEffort: "low", verbosity: "low", maxOutputTokens: 2_048 },
+    );
+    const response = await provider.reply({
+      guildId: "99999999999999999",
+      personality: "Be helpful.",
+      userCustomization: null,
+      currentUser: { id: "11111111111111111", displayName: "Tester", roleNames: [] },
+      mentionedUsers: [],
+      recentHistory: [],
+      memories: [],
+      guildKnowledge: [],
+      message: "Roll a d20",
+      replyChain: [], channelHistory: [], birthday: null,
+      images: [],
+      webSearchMode: "off",
+      imageGenerationEnabled: false,
+      includeSources: false,
+      triggerMode: "direct",
+      enabledTools: [rollDiceTool],
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(executeRollDice).toHaveBeenCalledWith({ sides: 20 }, {
+      guildId: "99999999999999999",
+      currentUser: { id: "11111111111111111", displayName: "Tester", roleNames: [] },
+      channelIsNsfw: false,
+      music: null,
+    });
+    expect(response.text).toBe("You rolled a 4.");
+  });
+
+  it("forces a real answer once the round-trip cap is hit instead of throwing", async () => {
+    const stuckTool: ChatTool<Record<string, never>> = {
+      name: "stuck_tool",
+      description: "Always asks to be called again.",
+      parameters: { type: "object", additionalProperties: false, required: [], properties: {} },
+      execute: vi.fn(() => Promise.resolve({ content: "ok" })),
+    };
+    let callCount = 0;
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+      callCount += 1;
+      if (typeof init?.body !== "string") throw new Error("Expected a JSON request body.");
+      const body = JSON.parse(init.body) as { input: Array<Record<string, unknown>>; tools: unknown[] };
+      // The 5th request is the forced finalize round: no tools offered, and
+      // the last function_call_output must carry the budget-exhausted note.
+      if (callCount === 5) {
+        expect(body.tools).toEqual([]);
+        const lastInputItem = body.input.at(-1);
+        expect(lastInputItem).toMatchObject({ type: "function_call_output", call_id: "call_x" });
+        expect((lastInputItem as { output: string }).output).toContain("budget exhausted");
+        return Promise.resolve(new Response(JSON.stringify({
+          output: [{
+            type: "message",
+            content: [{ type: "output_text", text: JSON.stringify({ response: "Here's what I found so far.", userMemoryActions: [], guildKnowledgeCandidates: [] }) }],
+          }],
+        }), { status: 200, headers: { "Content-Type": "application/json" } }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({
+        output: [{ type: "function_call", call_id: "call_x", name: "stuck_tool", arguments: "{}" }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = new OpenAiResponsesChatProvider(
+      "https://api.openai.com/v1",
+      "secret",
+      ["gpt-5-nano"],
+      { reasoningEffort: "low", verbosity: "low", maxOutputTokens: 2_048 },
+    );
+
+    const response = await provider.reply({
+      guildId: "99999999999999999",
+      personality: "Be helpful.",
+      userCustomization: null,
+      currentUser: { id: "11111111111111111", displayName: "Tester", roleNames: [] },
+      mentionedUsers: [],
+      recentHistory: [],
+      memories: [],
+      guildKnowledge: [],
+      message: "Do the thing",
+      replyChain: [], channelHistory: [], birthday: null,
+      images: [],
+      webSearchMode: "off",
+      imageGenerationEnabled: false,
+      includeSources: false,
+      triggerMode: "direct",
+      enabledTools: [stuckTool],
+    });
+
+    // Initial request + 3 tool round-trips + 1 forced finalize round = 5.
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(response.text).toBe("Here's what I found so far.");
   });
 });
