@@ -4,54 +4,36 @@ A configurable TypeScript Discord bot that can serve FNTU, Smilodon, or other
 communities from one maintainable codebase. Server-specific features, roles,
 channels, branding, and music policies live in validated local guild profiles.
 
-## Current milestone
+It runs a Lavalink-backed music player with a persistent, restart-safe
+control panel; role-gated slash commands for music, moderation, and fun/image
+commands; a mention-based (and optional ambient) AI chatbot with per-guild
+personality, memory, and tool calling; and a global `/setup` flow so a server
+admin can bootstrap a guild without editing any files.
 
-The first vertical slice provides:
+For a full end-user command reference and admin `/settings` walkthrough, see
+the [user guide](docs/user-guide.md). For internal architecture, see
+[Architecture](docs/architecture.md).
 
-- strict TypeScript configuration;
-- validated environment configuration;
-- validated local YAML profiles for one or more Discord guilds;
-- structured logging with secret redaction;
-- a typed and validated slash-command registry;
-- centralized, awaited command dispatch and error handling;
-- role-first access control with a restricted-role deny rule;
-- optional bot-owner bypass;
-- separate command deployment;
-- `/ping` and owner-only `/diagnostic` commands;
-- typed component and behavior registry foundations;
-- a Lavalink v4 gateway isolated behind an application interface;
-- core music commands for playback, queue management, loop, volume, autoplay,
-  24/7 mode, shuffle, and previous-track playback;
-- restart-safe persistent music control channels;
-- Discord listening presence with current track and periodically refreshed progress;
-- song requests by typing a name or supported URL into the control channel;
-- the two-row Smilodon control panel with previous, play/pause, stop, next,
-  volume, autoplay, 24/7, and shuffle controls;
-- same-voice-channel validation for playback controls;
-- default-deny behavior for unconfigured guilds;
-- feature-filtered command deployment per guild;
-- a global `/setup` bootstrap command gated by Discord's Manage Server permission;
-- atomic guild-profile generation from Discord;
-- unit tests for configuration, access, registration, and playback rules.
+## Features
 
-Phase 1 includes repository-backed `/settings` updates and configured empty
-queue/channel lifecycle policies. Playlists, lyrics, filters, chatbot features,
-and the dashboard remain Phase 2 work.
-
-## Phase 1 music commands
-
-- `/play`, `/pause`, `/resume`, `/stop`, `/skip`
-- `/previous`, `/shuffle`, `/volume`
-- `/queue show`, `/queue remove`, `/queue clear`
-- `/loop`, `/autoplay`, `/247`
-- `/settings panel`, `/settings roles`, `/settings role-add`,
-  `/settings role-remove`, `/settings volume`, `/settings lifecycle`,
-  `/settings chatbot`
-- `/vote` for button-based Yes/No polls
-
-Music-controller authorization and same-voice-channel checks apply to playback
-mutations. Bot administrators manage server settings. The configured restricted
-role remains a deny rule unless bot-owner bypass applies.
+- Role-first access control (bot administrator, music controller, restricted,
+  chatbot groups) with an optional bot-owner bypass and default-deny behavior
+  for unconfigured guilds.
+- A Lavalink v4 music player: playback, queue management, loop, volume,
+  autoplay, 24/7 mode, shuffle, filters, seeking, and a persistent two-row
+  control panel with song requests typed directly into the control channel.
+- Fun and utility commands: dice, 8-ball, polls, Q&A embeds, birthdays,
+  furry/animal image commands, and more — see the
+  [command reference](docs/user-guide.md#commands).
+- A mention-based AI chatbot (any OpenAI-compatible provider) with optional
+  ambient replies, per-guild personality files, per-user memory and
+  customization, image input/generation, web search, and tool calling into
+  bot features like dice rolls and image search.
+- A global `/setup` bootstrap command gated by Discord's Manage Server
+  permission, and repository-backed `/settings` for everything else — no
+  file editing required to run a guild.
+- File (YAML) or PostgreSQL persistence, single- or multi-instance (multiple
+  Discord applications from one deployment).
 
 ## Requirements
 
@@ -60,7 +42,7 @@ role remains a deny rule unless bot-owner bypass applies.
 - A Lavalink v4 node with at least one usable search source
 - The Discord `Message Content Intent` enabled for the application
 
-## First-time Discord setup
+## Deployment
 
 ### 1. Create the Discord application and bot
 
@@ -209,177 +191,13 @@ changing command definitions or enabled feature modules. All setup responses
 are private. Existing profiles are never overwritten by `/setup initialize`.
 
 After setup, join a voice channel and use `/play`, or type a song name or
-supported URL directly into the configured control channel.
+supported URL directly into the configured control channel. For every other
+command and every `/settings` option, see the
+[user guide](docs/user-guide.md).
 
-### Panel image uploads
+### Manual profile setup
 
-A bot administrator can upload a persistent idle image without hosting it on
-another website:
-
-```text
-/settings panel idle-image:<attachment>
-```
-
-The now-playing panel keeps artwork prominent and supports portable, Yohta,
-custom-emoji, or timestamp-only progress displays. Select a preset with
-`/settings panel progress-style:<style>`. For a custom theme, provide the
-completed, remaining, playing, and paused emojis in the same command; emojis
-may be pasted directly or entered by name and must belong to the current
-server. An optional ending emoji and a bar length from 6–16 are also supported.
-
-The Yohta preset uses application-owned emojis so it works in every server
-where a given bot instance is installed. Provision the bundled assets once per
-Discord application; the command only creates missing names and never deletes
-unrelated emojis:
-
-```powershell
-npm.cmd run instance:emojis:sync
-npm.cmd run instance:emojis:sync -- pinecone
-npm.cmd run instance:emojis:sync -- pinecone yohta
-```
-
-With no names, the command synchronizes every configured instance sequentially.
-One or more names restrict it to those instances.
-
-At startup each instance fetches its own application emoji IDs by logical name.
-If the five-emoji preset is incomplete, Yohta settings are rejected with the
-missing names and existing panels fall back to the standard progress bar.
-
-Successful typed requests in the control channel and `/play` replies show the
-same resolved music card: title/link, artist, artwork, duration or live state,
-requester, playlist size, and queue position. These acknowledgement cards are
-removed after 30 seconds; the persistent control panel remains in place.
-
-PNG, JPEG, WebP, and GIF files up to 8 MB are accepted. The bot downloads the
-file into `RUNTIME_DATA_DIRECTORY/guild-assets/<guild-id>` so it survives a
-restart and does not depend on a temporary Discord attachment URL. Use
-`use-default-image:true` to return to the bundled `no_bg.png`, or set
-`idle-image-url` to use a stable HTTPS image instead.
-
-### Polls
-
-`/vote` creates a Yes/No poll using Discord buttons:
-
-```text
-/vote title:Game night description:Should we play on Friday? duration:300
-```
-
-Each member has one vote and can change it. A duration between 10 seconds and
-24 hours closes the poll automatically; omit it to leave the poll open. Phase 1
-poll state is intentionally in memory, so timed polls should be considered
-closed if the bot restarts.
-
-### Mention-based AI chat
-
-Mention chat uses any provider exposing an OpenAI-compatible
-`/chat/completions` endpoint. Configure all three values together in `.env`:
-
-```env
-CHAT_API_KEY=your_private_provider_key
-CHAT_BASE_URL=https://your-provider.example/v1
-CHAT_MODEL=your-provider-model-name
-CHAT_API_MODE=chat_completions
-```
-
-Use `CHAT_API_MODE=responses` with OpenAI's Responses API to enable guarded
-image input, optional model-selected web search, and LLM tool calling (dice,
-8-ball, booru search, memory/birthday lookup, music control — see
-`/settings chat chatbot tool-calling`). Keep `chat_completions` for generic
-OpenAI-compatible providers that do not implement Responses.
-
-Optional: `CHAT_FALLBACK_MODELS` (comma-separated) walks an ordered list of
-backup models on a 429/quota error instead of failing the turn outright.
-`CHAT_EMBEDDING_MODEL` (e.g. `text-embedding-3-small`) enables vector-assisted
-guild-knowledge recall — semantic search over confirmed guild facts, additive
-to the existing keyword-overlap ranking. Both are opt-in; leaving them unset
-keeps today's single-model, keyword-only behavior.
-
-Responses generation settings belong to each bot instance:
-
-```env
-CHAT_REASONING_EFFORT=low
-CHAT_VERBOSITY=low
-CHAT_MAX_OUTPUT_TOKENS=2048
-```
-
-Supported reasoning values remain model-dependent. These settings are ignored
-by the generic Chat Completions provider.
-
-All `CHAT_*` values, including provider credentials, base URL, model, and API
-mode, are instance-owned and must be placed in `config/instances/<name>.env`.
-Named instances deliberately do not inherit `CHAT_*` values from the shared
-`.env`, allowing separate projects, keys, model choices, and usage accounting.
-
-The API key is a secret. To enable the behavior for a guild and assign its
-initial access policy, run:
-
-```text
-/settings chatbot enabled:true role:@AIUser channel:#bot-chat cooldown-seconds:30
-```
-
-Enable Responses capabilities per guild when desired:
-
-```text
-/settings chatbot web-search:true image-input:true image-generation:true include-sources:true max-images:2
-```
-
-Image generation is disabled by default. When enabled with Responses mode and a
-model that supports the `image_generation` tool, mention-chat can decide to
-generate an image and return it as a Discord attachment. During generation,
-Pinecone streams up to two partial previews by editing one Discord reply, then
-replaces the latest preview with the completed image.
-
-Image handling accepts only Discord-hosted PNG, JPEG, WebP, and GIF attachments,
-limits each image to 8 MB, and accepts at most the configured number (maximum
-four). Images may come from the mention or its replied-to Discord message. Web
-search mode is `off` by default and becomes `auto` when enabled, meaning the
-tool is available on every request but the model decides whether to invoke it.
-
-Bot administrators and configured owners inherit access. Members with a
-restricted role remain denied unless the configured owner bypass applies.
-Members without an allowed role receive the guild's configurable playful
-"premium subscription required" response. Use `/settings role-add` and
-`/settings role-remove` with the `Chatbot` group to manage multiple allowed
-roles. An empty chatbot channel list permits mentions in every channel.
-
-When a permitted member sends `@Bot question`, the bot removes its mention and
-sends the question to the provider. If the message is a Discord reply, the
-referenced message is included as bounded context. Empty mentions return usage
-help instead of calling the API.
-
-Every provider call emits content-free usage logs. The start record includes
-the model, API mode, generation settings, Discord identifiers, image count, and
-web-search mode. The completion record adds latency, whether search was actually
-used, citation count, provider-reported token counts (including cached input and
-reasoning when available), and character/count totals for each context layer.
-Questions, replies, personality text, image bytes, responses, and API keys are
-never included in these usage records.
-
-At launch, each instance also logs a content-safe effective configuration
-summary: instance name, environment, persistence driver, chat API mode, model,
-reasoning effort, verbosity, output limit, enabled guild features, and guild
-chat capabilities. API keys, personality contents, and conversation data are
-never included.
-
-Upload the guild personality through Discord so the same workflow works with
-either YAML or PostgreSQL persistence:
-
-```text
-/settings chatbot personality:<personality.md>
-```
-
-The Markdown is copied into persistent runtime storage and its portable relative
-asset reference is saved in the guild profile or database. Use
-`use-default-personality:true` to remove it. The committed
-`config/examples/personality.example.md` file is a starting template. Advanced
-self-hosted installations may still set `chat.personalityFile` directly in
-guild YAML; an uploaded personality takes precedence.
-
-See [`docs/personality-guide.md`](docs/personality-guide.md) for how to write
-a character personality file that reads like a real chat participant instead
-of an assistant (punctuation, reply length, banned assistant phrasing, etc).
-
-## Manual profile setup
+Prefer this path for local development, or when running without `/setup`:
 
 1. Copy `.env.example` to `.env` and fill in shared infrastructure secrets.
 2. Copy `config/instances/bot.env.example` to an instance `.env` and fill in
@@ -392,12 +210,6 @@ of an assistant (punctuation, reply length, banned assistant phrasing, etc).
 8. Deploy global setup and every configured guild with `npm run deploy:commands`.
 9. Start the bot with `npm run dev`.
 
-`/play` and typed control-channel song requests require a configured
-music-controller role. Bot administrators inherit music-controller access, and
-configured bot owners retain the owner bypass.
-`/pause`, `/resume`, and `/stop` require a configured music-controller role or
-a bot owner with bypass enabled.
-
 Deploy only one configured guild when iterating locally:
 
 ```powershell
@@ -406,116 +218,19 @@ npm run deploy:commands -- --guild 123456789012345678
 
 Commands are always registered as guild commands. Each profile's `features`
 section determines which command modules are visible in that server. Running
-the deployment without `--guild` updates every locally configured guild.
-
-The sole global command is `/setup`. Synchronizing bootstrap commands replaces
+the deployment without `--guild` updates every locally configured guild. The
+sole global command is `/setup`. Synchronizing bootstrap commands replaces
 the application's global command manifest, preventing legacy global music
 commands from leaking into every server.
 
-## Configuration boundaries
-
-The root `.env` contains shared infrastructure secrets such as Lavalink and
-provider credentials. Each instance file contains that Discord application's
-token, application ID, trusted operator IDs, persistence connection, and local
-paths. Local YAML profiles contain ordinary guild policy and are ignored by Git.
-
-The committed example documents the complete initial schema:
-
-- feature enablement;
-- branding;
-- administrator, music-controller, and restricted role mappings;
-- allowed music command channels;
-- future control-panel and audit-log channels;
-- volume and voice lifecycle defaults.
-
-If a profile is missing or invalid, the application fails safely. A guild the
-bot has joined without a profile cannot execute commands.
-
-## Persistent music control channel
-
-Set `channels.controlPanel` in a guild profile. On startup the bot restores the
-stored panel message; if that message or channel changed, it creates a new
-panel and stores the identity under `data/local/control-panels.json`.
-
-Users can join a voice channel and type a song name or supported URL directly
-into the configured control channel. The request and temporary status response
-are removed so the persistent panel remains the channel's focal message.
-
-The bot needs View Channel, Send Messages, Embed Links, Read Message History,
-and Manage Messages in that channel.
-
-Pause/Resume, Skip, and Stop buttons require a `musicController` or
-`botAdministrator` role. A restricted role denies typed requests and panel
-controls unless the configured bot-owner bypass applies.
-
-## Access precedence
-
-The initial role-first authorization order is:
-
-1. The guild must have a valid local profile.
-2. The command's feature module must be enabled.
-3. A member with a configured restricted role is denied.
-4. A configured owner may bypass that denial when the command permits it.
-5. Owner-only policy is checked.
-6. Guild and command channel restrictions are checked.
-7. Required semantic role groups are checked.
-8. Native member and bot Discord permissions are checked.
-
-`botAdministrator` inherits `musicController` access. Restricted roles still
-win unless owner bypass is enabled for that command.
-
-Command implementations do not perform these checks themselves. Every command
-passes through the shared access-policy service before execution.
-
-## Verification
-
-### Generate a slash-command template
-
-Create a command class and matching test stub with the repository conventions:
-
-```powershell
-npm.cmd run command:create -- server-info common "Shows server information."
-```
-
-Supported modules are `common`, `music`, and `diagnostics`. Music templates use
-the music-controller access policy, diagnostics templates are owner-only, and
-common templates use the standard public policy. The generator refuses to
-overwrite existing files. After generation, implement the handler and register
-the command in `src/bootstrap/dependencies.ts`.
-
-### Run project checks
-
-```powershell
-npm run check
-npm run build
-```
-
-On Windows PowerShell, use `npm.cmd` instead of `npm` if the execution policy
-blocks `npm.ps1`:
-
-```powershell
-npm.cmd run check
-npm.cmd run build
-```
-
-## Local Docker Compose
+### Local Docker Compose
 
 For a compact list of native, Docker, deployment, and multi-instance commands,
-see the [launch command cheatsheet](docs/launch-cheatsheet.md). For an
-end-user command reference and admin settings guide, see the
-[user guide](docs/user-guide.md).
+see the [launch command cheatsheet](docs/launch-cheatsheet.md).
 
 Docker Compose runs the bot, PostgreSQL, and Lavalink in the same private
 network. Database and Lavalink ports are bound only to Windows localhost, not
 to the public network.
-
-### Spotify links
-
-Create a Spotify Web API application, then set `SPOTIFY_CLIENT_ID` and
-`SPOTIFY_CLIENT_SECRET` in `.env`. Compose passes both values only to Lavalink;
-they are not stored in guild configuration or the Docker image. LavaSrc resolves
-Spotify metadata and mirrors playback through the configured YouTube/SoundCloud
-providers because Spotify itself is not used as the audio stream.
 
 1. Install Docker Desktop and start its Linux container engine.
 2. Fill in `.env`; `LAVALINK_PASSWORD` is shared automatically with Lavalink.
@@ -575,10 +290,15 @@ npm.cmd run db:import-files
 The importer copies validated YAML profiles and JSON panel identities in one
 transaction and preserves database rows that already exist.
 
-See [Architecture](docs/architecture.md) for dependency boundaries and the
-next implementation slices.
+#### Spotify links
 
-## Native Windows startup without Docker
+Create a Spotify Web API application, then set `SPOTIFY_CLIENT_ID` and
+`SPOTIFY_CLIENT_SECRET` in `.env`. Compose passes both values only to Lavalink;
+they are not stored in guild configuration or the Docker image. LavaSrc resolves
+Spotify metadata and mirrors playback through the configured YouTube/SoundCloud
+providers because Spotify itself is not used as the audio stream.
+
+### Native Windows startup without Docker
 
 For an initial Windows test, the bot can use file persistence and a downloaded
 workspace-local Java/Lavalink runtime. No system Java or PostgreSQL installation
@@ -596,7 +316,7 @@ the default instance `.env` for this workflow. Stop both processes with `Ctrl+C`
 Use `npm.cmd run dev` separately only when intentional TypeScript hot reload is
 needed; do not run it alongside `local:start` for the same Discord application.
 
-## Multiple Discord applications
+### Multiple Discord applications
 
 The root `.env` contains shared infrastructure values such as Lavalink,
 Spotify, YouTube OAuth, PostgreSQL administration, and an optional shared chat
@@ -666,3 +386,166 @@ not require Docker when file persistence is selected. With PostgreSQL
 persistence, start PostgreSQL separately and point every instance at a different
 logical database. Legacy `local:start` and `deploy:commands` continue to use the
 root `.env` unchanged.
+
+## Configuring the AI chatbot
+
+Mention chat uses any provider exposing an OpenAI-compatible
+`/chat/completions` endpoint. Configure all three values together in `.env`:
+
+```env
+CHAT_API_KEY=your_private_provider_key
+CHAT_BASE_URL=https://your-provider.example/v1
+CHAT_MODEL=your-provider-model-name
+CHAT_API_MODE=chat_completions
+```
+
+Use `CHAT_API_MODE=responses` with OpenAI's Responses API to enable guarded
+image input, optional model-selected web search, and LLM tool calling (dice,
+8-ball, booru search, memory/birthday lookup, music control — see
+`/settings chat chatbot tool-calling`). Keep `chat_completions` for generic
+OpenAI-compatible providers that do not implement Responses.
+
+Optional: `CHAT_FALLBACK_MODELS` (comma-separated) walks an ordered list of
+backup models on a 429/quota error instead of failing the turn outright.
+`CHAT_EMBEDDING_MODEL` (e.g. `text-embedding-3-small`) enables vector-assisted
+guild-knowledge recall — semantic search over confirmed guild facts, additive
+to the existing keyword-overlap ranking. Both are opt-in; leaving them unset
+keeps today's single-model, keyword-only behavior.
+
+Responses generation settings belong to each bot instance:
+
+```env
+CHAT_REASONING_EFFORT=low
+CHAT_VERBOSITY=low
+CHAT_MAX_OUTPUT_TOKENS=2048
+```
+
+Supported reasoning values remain model-dependent. These settings are ignored
+by the generic Chat Completions provider.
+
+All `CHAT_*` values, including provider credentials, base URL, model, and API
+mode, are instance-owned and must be placed in `config/instances/<name>.env`.
+Named instances deliberately do not inherit `CHAT_*` values from the shared
+`.env`, allowing separate projects, keys, model choices, and usage accounting.
+The API key is a secret.
+
+To enable the behavior for a guild and assign its initial access policy, run
+`/settings chatbot` — see the
+[chat settings reference](docs/user-guide.md#chat) for every option
+(web search, image input/generation, tool calling, personality upload, and
+more). Advanced self-hosted installations may still set `chat.personalityFile`
+directly in guild YAML; an uploaded personality takes precedence. See
+[`docs/personality-guide.md`](docs/personality-guide.md) for how to write a
+character personality file that reads like a real chat participant instead of
+an assistant.
+
+Every provider call emits content-free usage logs. The start record includes
+the model, API mode, generation settings, Discord identifiers, image count, and
+web-search mode. The completion record adds latency, whether search was actually
+used, citation count, provider-reported token counts (including cached input and
+reasoning when available), and character/count totals for each context layer.
+Questions, replies, personality text, image bytes, responses, and API keys are
+never included in these usage records.
+
+At launch, each instance also logs a content-safe effective configuration
+summary: instance name, environment, persistence driver, chat API mode, model,
+reasoning effort, verbosity, output limit, enabled guild features, and guild
+chat capabilities. API keys, personality contents, and conversation data are
+never included.
+
+## Configuration boundaries
+
+The root `.env` contains shared infrastructure secrets such as Lavalink and
+provider credentials. Each instance file contains that Discord application's
+token, application ID, trusted operator IDs, persistence connection, and local
+paths. Local YAML profiles contain ordinary guild policy and are ignored by Git.
+
+The committed example documents the complete initial schema:
+
+- feature enablement;
+- branding;
+- administrator, music-controller, and restricted role mappings;
+- allowed music command channels;
+- future control-panel and audit-log channels;
+- volume and voice lifecycle defaults.
+
+If a profile is missing or invalid, the application fails safely. A guild the
+bot has joined without a profile cannot execute commands.
+
+## Persistent music control channel
+
+Set `channels.controlPanel` in a guild profile. On startup the bot restores the
+stored panel message; if that message or channel changed, it creates a new
+panel and stores the identity under `data/local/control-panels.json`.
+
+Users can join a voice channel and type a song name or supported URL directly
+into the configured control channel. The request and temporary status response
+are removed so the persistent panel remains the channel's focal message.
+
+The bot needs View Channel, Send Messages, Embed Links, Read Message History,
+and Manage Messages in that channel.
+
+Pause/Resume, Skip, and Stop buttons require a `musicController` or
+`botAdministrator` role. A restricted role denies typed requests and panel
+controls unless the configured bot-owner bypass applies.
+
+## Access precedence
+
+The role-first authorization order is:
+
+1. The guild must have a valid local profile.
+2. The command's feature module must be enabled.
+3. A member with a configured restricted role is denied.
+4. A configured owner may bypass that denial when the command permits it.
+5. Owner-only policy is checked.
+6. Guild and command channel restrictions are checked.
+7. Required semantic role groups are checked.
+8. Native member and bot Discord permissions are checked.
+
+`botAdministrator` inherits `musicController` access. Restricted roles still
+win unless owner bypass is enabled for that command.
+
+Command implementations do not perform these checks themselves. Every command
+passes through the shared access-policy service before execution.
+
+## Development
+
+### Generate a slash-command template
+
+Create a command class and matching test stub with the repository conventions:
+
+```powershell
+npm.cmd run command:create -- server-info common "Shows server information."
+```
+
+Supported modules are `common`, `music`, and `diagnostics`. Music templates use
+the music-controller access policy, diagnostics templates are owner-only, and
+common templates use the standard public policy. The generator refuses to
+overwrite existing files. After generation, implement the handler and register
+the command in `src/bootstrap/dependencies.ts`.
+
+### Run project checks
+
+```powershell
+npm run check
+npm run build
+```
+
+On Windows PowerShell, use `npm.cmd` instead of `npm` if the execution policy
+blocks `npm.ps1`:
+
+```powershell
+npm.cmd run check
+npm.cmd run build
+```
+
+## Further documentation
+
+- [User guide](docs/user-guide.md) — every slash command, the control panel,
+  AI chat behavior, and the full `/settings` reference.
+- [Launch command cheatsheet](docs/launch-cheatsheet.md) — native, Docker,
+  deployment, and multi-instance commands at a glance.
+- [Architecture](docs/architecture.md) — dependency boundaries and
+  implementation slices.
+- [Personality guide](docs/personality-guide.md) — writing a guild chatbot
+  personality file.
