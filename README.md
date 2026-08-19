@@ -1,4 +1,4 @@
-# FNTU Discord Bot
+# Smilodon Discord Bot
 
 A configurable TypeScript Discord bot that can serve FNTU, Smilodon, or other
 communities from one maintainable codebase. Server-specific features, roles,
