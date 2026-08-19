@@ -22,11 +22,38 @@ function Test-TcpPort {
   }
 }
 
+$projectRoot = Split-Path -Parent $PSScriptRoot
+$environmentFile = Join-Path $projectRoot ".env"
+$persistenceDriver = "file"
+if (Test-Path -LiteralPath $environmentFile) {
+  foreach ($line in Get-Content -LiteralPath $environmentFile) {
+    $trimmed = $line.Trim()
+    if (-not $trimmed -or $trimmed.StartsWith("#") -or -not $trimmed.Contains("=")) {
+      continue
+    }
+    $parts = $trimmed.Split("=", 2)
+    if ($parts[0].Trim() -eq "PERSISTENCE_DRIVER" -and $parts[1].Trim()) {
+      $persistenceDriver = $parts[1].Trim()
+    }
+  }
+}
+
+$requiredPorts = @{ "Lavalink" = 2333 }
+if ($persistenceDriver -eq "postgres") {
+  $requiredPorts["PostgreSQL"] = 5432
+}
+
 $deadline = (Get-Date).AddMinutes(3)
-Write-Host "Waiting for Lavalink on 127.0.0.1:2333..."
+Write-Host ("Waiting for " + (($requiredPorts.Keys | ForEach-Object { "$_ on 127.0.0.1:$($requiredPorts[$_])" }) -join " and ") + "...")
 while ((Get-Date) -lt $deadline) {
-  if (Test-TcpPort -HostName "127.0.0.1" -Port 2333) {
-    Write-Host "Lavalink is accepting connections. Starting the bot..."
+  $allReady = $true
+  foreach ($name in $requiredPorts.Keys) {
+    if (-not (Test-TcpPort -HostName "127.0.0.1" -Port $requiredPorts[$name])) {
+      $allReady = $false
+    }
+  }
+  if ($allReady) {
+    Write-Host "Required services are accepting connections. Starting the bot..."
     npm.cmd run local:check-token
     if ($LASTEXITCODE -ne 0) {
       throw "Discord token validation failed. Update DISCORD_TOKEN in .env."
@@ -37,4 +64,4 @@ while ((Get-Date) -lt $deadline) {
   Start-Sleep -Seconds 2
 }
 
-throw "Lavalink did not open port 2333 within three minutes."
+throw "Required local services did not open their ports within three minutes."
