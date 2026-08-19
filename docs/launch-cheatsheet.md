@@ -10,8 +10,8 @@ instead of `npm` if the execution policy blocks `npm.ps1`.
 | Default/single instance | `npm.cmd run local:start` | One Lavalink process and the default bot instance |
 | Complete native multi-instance stack | `npm.cmd run all:start` | Workspace-local Lavalink and every `config/instances/*.env` bot |
 | Every configured instance, infrastructure already running | `npm.cmd run instances:start` | Every configured bot only |
-| Selected instances, infrastructure already running | `npm.cmd run instances:start -- pinecone smilodon` | Only the named bots |
-| One instance, infrastructure already running | `npm.cmd run instance:start -- pinecone` | Only the named bot; no Lavalink or PostgreSQL |
+| Selected instances, infrastructure already running | `npm.cmd run instances:start -- myinstance otherinstance` | Only the named bots |
+| One instance, infrastructure already running | `npm.cmd run instance:start -- myinstance` | Only the named bot; no Lavalink or PostgreSQL |
 
 Do not use `local:start` to launch a multi-instance configuration: it resolves
 only the default instance.
@@ -64,15 +64,15 @@ Run deployment after changing command definitions or enabled feature modules.
 ## Multiple bot instances
 
 Replace `INSTANCE` with the matching filename stem under `config/instances/`.
-For example, `pinecone` loads `config/instances/pinecone.env`.
+For example, `myinstance` loads `config/instances/myinstance.env`.
 
 | Goal | Command |
 | --- | --- |
 | Validate all instance definitions | `npm.cmd run instances:validate` |
 | Start local Lavalink and every configured instance | `npm.cmd run all:start` |
-| Start local Lavalink and selected instances | `npm.cmd run all:start -- pinecone smilodon` |
+| Start local Lavalink and selected instances | `npm.cmd run all:start -- myinstance otherinstance` |
 | Start every configured instance | `npm.cmd run instances:start` |
-| Start selected instances | `npm.cmd run instances:start -- pinecone smilodon` |
+| Start selected instances | `npm.cmd run instances:start -- myinstance otherinstance` |
 | Start one instance | `npm.cmd run instance:start -- INSTANCE` |
 | Check one instance token | `npm.cmd run instance:check-token -- INSTANCE` |
 | Validate one instance configuration | `npm.cmd run instance:config:validate -- INSTANCE` |
@@ -117,11 +117,11 @@ Create one `.env` overlay per bot under `config/instances/`, then run:
 npm.cmd install
 npm.cmd run local:setup
 npm.cmd run instances:validate
-npm.cmd run instance:check-token -- pinecone
-npm.cmd run instance:check-token -- smilodon
-npm.cmd run instance:deploy -- pinecone
-npm.cmd run instance:deploy -- smilodon
-npm.cmd run all:start -- pinecone smilodon
+npm.cmd run instance:check-token -- myinstance
+npm.cmd run instance:check-token -- otherinstance
+npm.cmd run instance:deploy -- myinstance
+npm.cmd run instance:deploy -- otherinstance
+npm.cmd run all:start -- myinstance otherinstance
 ```
 
 To launch every discovered instance, omit the names from the last command:
