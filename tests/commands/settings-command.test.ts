@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { ControlChannelService } from "../../src/application/control-panel/control-channel-service.js";
 import { SettingsCommand } from "../../src/infrastructure/discord/commands/setup/settings-command.js";
+import { formatAuditSummary } from "../../src/infrastructure/discord/commands/setup/settings/audit-setting.js";
+import { resolveGuildEmoji, validateRoleGroupUpdate } from "../../src/infrastructure/discord/commands/setup/settings/settings-support.js";
 import type { GuildConfiguration } from "../../src/config/guild-configuration.js";
+import type { GuildConfigurationProvider } from "../../src/config/guild-configuration-provider.js";
+import type { CommandContext } from "../../src/application/commands/command.js";
 
 const applicationEmojiCatalog = {
   getYohtaTheme: (): null => null,
@@ -29,6 +33,9 @@ function profile(): GuildConfiguration {
       birthdays: false,
       nsfw: false,
       linkFix: false,
+      retainMemberDataOnLeave: true,
+      ambientReplies: false,
+      channelHistory: false,
     },
     roles: {
       botAdministrator: new Set(["345678901234567890"]),
@@ -66,8 +73,66 @@ function profile(): GuildConfiguration {
       imageGenerationEnabled: false,
       includeSources: true,
       maxImagesPerRequest: 2,
+      ambientCooldownSeconds: 20,
+      channelHistoryLimit: 8,
     },
     sourceFile: "test.yaml",
+  };
+}
+
+// Minimal fake CommandContext for exercising SettingsCommand.execute() end to
+// end — options() returns the requested option values, responses.edit
+// captures the final message.
+function fakeContext(subcommand: string, options: Record<string, unknown> = {}): {
+  context: CommandContext;
+  edited: { text: string | null };
+} {
+  const edited: { text: string | null } = { text: null };
+  const context = {
+    interaction: {
+      guildId: profile().guildId,
+      user: { id: "890123456789012345" },
+      options: {
+        getSubcommand: () => subcommand,
+        getString: (name: string) => (options[name] as string | undefined) ?? null,
+        getInteger: (name: string) => (options[name] as number | undefined) ?? null,
+        getBoolean: (name: string) => (options[name] as boolean | undefined) ?? null,
+        getChannel: (name: string) => (options[name] as { id: string } | undefined) ?? null,
+        getRole: (name: string) => (options[name] as { id: string } | undefined) ?? null,
+        getAttachment: () => null,
+      },
+      guild: null,
+    },
+    logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn() },
+    responses: {
+      defer: vi.fn(() => Promise.resolve()),
+      edit: vi.fn((text: string) => {
+        edited.text = text;
+        return Promise.resolve();
+      }),
+      reply: vi.fn(() => Promise.resolve()),
+    },
+  } as unknown as CommandContext;
+  return { context, edited };
+}
+
+function providerWith(current: GuildConfiguration): GuildConfigurationProvider {
+  let stored = current;
+  return {
+    initialize: () => Promise.resolve(),
+    find: () => stored,
+    require: () => stored,
+    getAll: () => [stored],
+    create: () => Promise.resolve(stored),
+    update: (_guildId: string, input): Promise<GuildConfiguration> => {
+      stored = {
+        ...stored,
+        music: { ...stored.music, ...(input.defaultVolume !== undefined ? { defaultVolume: input.defaultVolume } : {}) },
+        chat: { ...stored.chat, ...(input.chatbotCooldownSeconds !== undefined ? { cooldownSeconds: input.chatbotCooldownSeconds } : {}) },
+      };
+      return Promise.resolve(stored);
+    },
+    reload: () => Promise.resolve(),
   };
 }
 
@@ -75,79 +140,87 @@ describe("SettingsCommand", () => {
   it("exposes a per-guild image-generation toggle", () => {
     const command = new SettingsCommand({} as never, {} as never, applicationEmojiCatalog as never);
     const definition = command.definition.toJSON();
-    const chatbot = definition.options?.find((option) => option.name === "chatbot");
+    const chatGroup = definition.options?.find((option) => option.name === "chat");
+    const chatbot = chatGroup && "options" in chatGroup
+      ? chatGroup.options?.find((option: { name: string }) => option.name === "chatbot")
+      : undefined;
 
     expect(chatbot && "options" in chatbot
-      ? chatbot.options?.map((option) => option.name)
+      ? chatbot.options?.map((option: { name: string }) => option.name)
       : []).toContain("image-generation");
   });
 
   it("rejects removing the last music-controller role while music is enabled", () => {
-    const command = new SettingsCommand({} as never, {} as never, applicationEmojiCatalog as never);
-    const validation = (
-      command as unknown as {
-        validateRoleGroupUpdate: (
-          profile: GuildConfiguration,
-          group: "musicController",
-          nextRoleIds: ReadonlySet<string>,
-        ) => string | null;
-      }
-    ).validateRoleGroupUpdate(profile(), "musicController", new Set());
-
+    const validation = validateRoleGroupUpdate(profile(), "musicController", new Set());
     expect(validation).toContain("music-controller");
   });
 
   it("rejects removing the last chatbot role while chatbot is enabled", () => {
-    const command = new SettingsCommand({} as never, {} as never, applicationEmojiCatalog as never);
     const enabledProfile = { ...profile(), features: { ...profile().features, chatbot: true } };
-    const validation = (
-      command as unknown as {
-        validateRoleGroupUpdate: (
-          profile: GuildConfiguration,
-          group: "chatbot",
-          nextRoleIds: ReadonlySet<string>,
-        ) => string | null;
-      }
-    ).validateRoleGroupUpdate(enabledProfile, "chatbot", new Set());
-
+    const validation = validateRoleGroupUpdate(enabledProfile, "chatbot", new Set());
     expect(validation).toContain("chatbot");
   });
 
-  it("describes a specific field change instead of a generic confirmation", () => {
-    const command = new SettingsCommand({} as never, {} as never, applicationEmojiCatalog as never);
-    const previous = profile();
-    const updated = { ...previous, music: { ...previous.music, defaultVolume: 90 } };
+  it("describes a specific field change instead of a generic confirmation", async () => {
+    const command = new SettingsCommand(providerWith(profile()), {} as never, applicationEmojiCatalog as never);
+    const { context, edited } = fakeContext("volume", { default: 90 });
 
-    const description = (
-      command as unknown as {
-        describeUpdate: (
-          subcommand: string,
-          previous: GuildConfiguration,
-          updated: GuildConfiguration,
-        ) => string;
-      }
-    ).describeUpdate("volume", previous, updated);
-
-    expect(description).toContain("Default volume: 75 → 90");
+    await command.execute(context);
+    expect(edited.text).toContain("Default volume: 75 → 90");
   });
 
-  it("warns when a chatbot setting changes while the chatbot feature is disabled", () => {
-    const command = new SettingsCommand({} as never, {} as never, applicationEmojiCatalog as never);
-    const previous = profile();
-    const updated = { ...previous, chat: { ...previous.chat, cooldownSeconds: 60 } };
+  it("warns when a chatbot setting changes while the chatbot feature is disabled", async () => {
+    const command = new SettingsCommand(providerWith(profile()), {} as never, applicationEmojiCatalog as never);
+    const { context, edited } = fakeContext("chatbot", { "cooldown-seconds": 60 });
 
-    const description = (
-      command as unknown as {
-        describeUpdate: (
-          subcommand: string,
-          previous: GuildConfiguration,
-          updated: GuildConfiguration,
-        ) => string;
-      }
-    ).describeUpdate("chatbot", previous, updated);
+    await command.execute(context);
+    expect(edited.text).toContain("Chatbot cooldown (seconds): 30 → 60");
+    expect(edited.text).toContain("currently disabled");
+  });
 
-    expect(description).toContain("Chatbot cooldown (seconds): 30 → 60");
-    expect(description).toContain("currently disabled");
+  it("resolves custom emojis by mention or local name", () => {
+    const guildId = profile().guildId;
+    const emoji = {
+      id: "777777777777777777",
+      name: "runner",
+      animated: true,
+      available: true,
+      guild: { id: guildId },
+    };
+
+    expect(resolveGuildEmoji(guildId, [emoji].values() as never, "runner")).toEqual({
+      id: emoji.id,
+      name: "runner",
+      animated: true,
+      scope: "guild",
+      guildId,
+    });
+    expect(resolveGuildEmoji(guildId, [emoji].values() as never, `<a:runner:${emoji.id}>`))
+      .toEqual(expect.objectContaining({ id: emoji.id, animated: true }));
+  });
+
+  it("tells the admin to configure a channel when audit logging isn't set up", async () => {
+    const auditLogService = { fetchRecent: vi.fn().mockResolvedValue({ configured: false, entries: [] }) };
+
+    const summary = await formatAuditSummary(auditLogService as never, "guild-id", 10);
+
+    expect(auditLogService.fetchRecent).toHaveBeenCalledWith("guild-id", 10);
+    expect(summary).toContain("No audit log channel is configured");
+  });
+
+  it("lists recent audit log entries as relative timestamps", async () => {
+    const auditLogService = {
+      fetchRecent: vi.fn().mockResolvedValue({
+        configured: true,
+        entries: [{ description: "**<@1>**\n**/settings volume**\nDefault volume: 75 → 90", createdAt: 1_700_000_000_000 }],
+      }),
+    };
+
+    const summary = await formatAuditSummary(auditLogService as never, "guild-id", 10);
+
+    expect(summary).toContain("Recent audit log entries:");
+    expect(summary).toContain("Default volume: 75 → 90");
+    expect(summary).not.toContain("\n\n");
   });
 
   it("refreshes the panel immediately after idle-image settings change", async () => {
@@ -206,66 +279,5 @@ describe("SettingsCommand", () => {
     expect(refreshPanel).toHaveBeenCalledWith(profile().guildId, {
       forceIdleImage: false,
     });
-  });
-
-  it("resolves custom emojis by mention or local name", () => {
-    const command = new SettingsCommand({} as never, {} as never, applicationEmojiCatalog as never);
-    const guildId = profile().guildId;
-    const emoji = {
-      id: "777777777777777777",
-      name: "runner",
-      animated: true,
-      available: true,
-      guild: { id: guildId },
-    };
-    const resolveGuildEmoji = (
-      command as unknown as {
-        resolveGuildEmoji: (
-          guildId: string,
-          emojis: IterableIterator<unknown>,
-          input: string,
-        ) => { id: string; name: string; animated: boolean; scope: "guild"; guildId: string };
-      }
-    ).resolveGuildEmoji.bind(command);
-
-    expect(resolveGuildEmoji(guildId, [emoji].values(), "runner")).toEqual({
-      id: emoji.id,
-      name: "runner",
-      animated: true,
-      scope: "guild",
-      guildId,
-    });
-    expect(resolveGuildEmoji(guildId, [emoji].values(), `<a:runner:${emoji.id}>`))
-      .toEqual(expect.objectContaining({ id: emoji.id, animated: true }));
-  });
-
-  it("tells the admin to configure a channel when audit logging isn't set up", async () => {
-    const auditLogService = { fetchRecent: vi.fn().mockResolvedValue({ configured: false, entries: [] }) };
-    const command = new SettingsCommand({} as never, {} as never, applicationEmojiCatalog as never, auditLogService as never);
-
-    const summary = await (
-      command as unknown as { formatAuditSummary: (guildId: string, count: number) => Promise<string> }
-    ).formatAuditSummary("guild-id", 10);
-
-    expect(auditLogService.fetchRecent).toHaveBeenCalledWith("guild-id", 10);
-    expect(summary).toContain("No audit log channel is configured");
-  });
-
-  it("lists recent audit log entries as relative timestamps", async () => {
-    const auditLogService = {
-      fetchRecent: vi.fn().mockResolvedValue({
-        configured: true,
-        entries: [{ description: "**<@1>**\n**/settings volume**\nDefault volume: 75 → 90", createdAt: 1_700_000_000_000 }],
-      }),
-    };
-    const command = new SettingsCommand({} as never, {} as never, applicationEmojiCatalog as never, auditLogService as never);
-
-    const summary = await (
-      command as unknown as { formatAuditSummary: (guildId: string, count: number) => Promise<string> }
-    ).formatAuditSummary("guild-id", 10);
-
-    expect(summary).toContain("Recent audit log entries:");
-    expect(summary).toContain("Default volume: 75 → 90");
-    expect(summary).not.toContain("\n\n");
   });
 });

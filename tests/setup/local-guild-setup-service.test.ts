@@ -23,7 +23,7 @@ function profile(): GuildConfiguration {
     panel: {
       progressBar: { style: "standard", length: 12, customTheme: null },
     },
-    features: { common: true, diagnostics: true, music: true, chatbot: false, birthdays: false, nsfw: false, linkFix: false },
+    features: { common: true, diagnostics: true, music: true, chatbot: false, birthdays: false, nsfw: false, linkFix: false, retainMemberDataOnLeave: true, ambientReplies: false, channelHistory: false },
     roles: {
       botAdministrator: new Set(["345678901234567890"]),
       musicController: new Set(["456789012345678901"]),
@@ -60,6 +60,8 @@ function profile(): GuildConfiguration {
       imageGenerationEnabled: false,
       includeSources: true,
       maxImagesPerRequest: 2,
+      ambientCooldownSeconds: 20,
+      channelHistoryLimit: 8,
     },
     sourceFile: "test.yaml",
   };
