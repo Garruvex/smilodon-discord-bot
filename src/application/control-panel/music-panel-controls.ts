@@ -31,13 +31,14 @@ export interface MusicPanelControl {
   row: MusicPanelControlRow;
   render(context: MusicPanelRenderContext): ButtonBuilder;
   execute(context: MusicPanelExecutionContext): Promise<void>;
-  // For toggle-style controls only: the boolean snapshot field this button
-  // flips. Lets the panel show an instant, optimistic flip to the new
-  // color/state (and disable the button) the moment it's clicked, rather than
-  // waiting on the Lavalink round trip before anything visibly changes. The
-  // follow-up refresh (always run after execute) reconciles with ground
-  // truth, so a failed toggle self-corrects on the very next render.
-  toggledSnapshotField?: "autoQueue" | "twentyFourSeven";
+  // Predicts the post-action snapshot so the panel can show an instant,
+  // optimistic render (new colors/disabled state) the moment the button is
+  // clicked, rather than waiting on the Lavalink round trip before anything
+  // visibly changes. The follow-up refresh (always run after execute)
+  // reconciles with ground truth, so a failed/incorrect prediction
+  // self-corrects on the very next render. Controls without a predictor still
+  // get the clicked button disabled instantly, just without a state change.
+  predictSnapshot?: (snapshot: MusicPlayerSnapshot) => MusicPlayerSnapshot | null;
 }
 
 function controlButton(id: string): ButtonBuilder {
@@ -75,6 +76,10 @@ const musicPanelControls: readonly MusicPanelControl[] = [
       .setStyle(ButtonStyle.Danger)
       .setDisabled(!hasActiveTrack),
     execute: async ({ playbackService, actor }) => playbackService.stop(actor),
+    // Stop destroys the player outright, so the ground-truth snapshot after
+    // it completes is `null` — predict that directly instead of guessing at
+    // individual fields, which instantly disables every other control too.
+    predictSnapshot: () => null,
   },
   {
     id: "skip",
@@ -125,7 +130,7 @@ const musicPanelControls: readonly MusicPanelControl[] = [
     execute: async ({ playbackService, actor }): Promise<void> => {
       await playbackService.toggleAutoQueue(actor);
     },
-    toggledSnapshotField: "autoQueue",
+    predictSnapshot: (snapshot) => ({ ...snapshot, autoQueue: !snapshot.autoQueue }),
   },
   {
     id: "24-7",
@@ -138,7 +143,7 @@ const musicPanelControls: readonly MusicPanelControl[] = [
     execute: async ({ playbackService, actor }): Promise<void> => {
       await playbackService.toggleTwentyFourSeven(actor);
     },
-    toggledSnapshotField: "twentyFourSeven",
+    predictSnapshot: (snapshot) => ({ ...snapshot, twentyFourSeven: !snapshot.twentyFourSeven }),
   },
   {
     id: "shuffle",

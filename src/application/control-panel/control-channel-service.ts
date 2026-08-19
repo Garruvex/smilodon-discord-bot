@@ -256,23 +256,23 @@ export class ControlChannelService {
       member: interaction.member,
     };
 
-    if (control.toggledSnapshotField) {
-      const currentSnapshot = this.playerGateway.getSnapshot(interaction.guildId);
-      if (currentSnapshot) {
-        // Optimistic instant feedback: flip the toggle's color to the
-        // predicted next state and disable it immediately, rather than
-        // leaving the button looking unresponsive for the duration of the
-        // Lavalink round trip. The unconditional refresh below always
-        // reconciles with ground truth afterward, so a failed toggle
-        // self-corrects on the very next render.
-        const predictedSnapshot: MusicPlayerSnapshot = {
-          ...currentSnapshot,
-          [control.toggledSnapshotField]: !currentSnapshot[control.toggledSnapshotField],
-        };
-        const pendingRows = createMusicPanelControlRows(profile, predictedSnapshot, control.id);
-        await interaction.editReply({ components: pendingRows }).catch(() => undefined);
-      }
-    }
+    // Optimistic instant feedback: render the predicted post-action state
+    // (or, for controls without a predictor, just the clicked button
+    // disabled) immediately, rather than leaving the panel looking
+    // unresponsive for the duration of the Lavalink round trip. The
+    // unconditional refresh below always reconciles with ground truth
+    // afterward, so a failed/incorrect prediction self-corrects on the very
+    // next render.
+    const currentSnapshot = this.playerGateway.getSnapshot(interaction.guildId);
+    const predictedSnapshot = currentSnapshot && control.predictSnapshot
+      ? control.predictSnapshot(currentSnapshot)
+      : currentSnapshot;
+    // Components only: the embed (track title/art/idle image) depends on
+    // attachment bookkeeping handled by the real refresh below, so predicting
+    // it here risks a broken image reference. Buttons are self-contained and
+    // safe to render optimistically.
+    const pendingRows = createMusicPanelControlRows(profile, predictedSnapshot, control.id);
+    await interaction.editReply({ components: pendingRows }).catch(() => undefined);
 
     try {
       // Serialize per guild so rapid double-clicks (e.g. play/pause, volume)

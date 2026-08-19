@@ -39,6 +39,9 @@ function guildConfiguration(chatbotEnabled: boolean): GuildConfiguration {
       birthdays: false,
       nsfw: false,
       linkFix: false,
+      retainMemberDataOnLeave: true,
+      ambientReplies: false,
+      channelHistory: false,
     },
     roles: {
       botAdministrator: new Set(),
@@ -76,6 +79,8 @@ function guildConfiguration(chatbotEnabled: boolean): GuildConfiguration {
       imageGenerationEnabled: false,
       includeSources: true,
       maxImagesPerRequest: 2,
+      ambientCooldownSeconds: 20,
+      channelHistoryLimit: 8,
     },
     sourceFile: "test.yaml",
   };
@@ -183,6 +188,7 @@ describe("ControlChannelService", () => {
       member: { roles: { cache: new Map([[musicControllerRoleId, {}]]) } },
       user: { id: "345678901234567890" },
       deferUpdate: vi.fn().mockResolvedValue(undefined),
+      editReply: vi.fn().mockResolvedValue(undefined),
       reply: vi.fn().mockResolvedValue(undefined),
       followUp: vi.fn().mockResolvedValue(undefined),
       replied: false,
@@ -263,6 +269,71 @@ describe("ControlChannelService", () => {
     expect(autoqueueButton?.style).toBe(ButtonStyle.Success);
     expect(autoqueueButton?.disabled).toBe(true);
     expect(toggleAutoQueue).toHaveBeenCalledOnce();
+  });
+
+  it("optimistically disables every control instantly when stop is pressed", async () => {
+    const { service, getSnapshot } = createService(false);
+    const stop = vi.fn().mockResolvedValue(undefined);
+    getSnapshot.mockReturnValue({
+      guildId,
+      voiceChannelId: "111111111111111111",
+      paused: false,
+      playing: true,
+      volume: 75,
+      queueLength: 2,
+      previousTrackCount: 1,
+      repeatMode: "off",
+      autoQueue: true,
+      autoQueueIssue: false,
+      twentyFourSeven: true,
+      currentTrack: {
+        title: "Track",
+        author: "Artist",
+        uri: "https://example.com/track",
+        artworkUrl: null,
+        durationMs: 60_000,
+        positionMs: 1_000,
+        isStream: false,
+        requestedByUserId: null,
+      },
+    });
+    Object.assign(service, {
+      playbackService: { stop },
+      stateStore: {
+        find: () => ({
+          guildId,
+          channelId: controlPanelChannelId,
+          messageId: "panel-message",
+        }),
+      },
+    });
+    vi.spyOn(service, "refreshPanel").mockResolvedValue(undefined);
+    const editReply = vi.fn().mockResolvedValue(undefined);
+    const interaction = {
+      customId: "music-panel:v1:stop",
+      inCachedGuild: (): boolean => true,
+      guildId,
+      channelId: controlPanelChannelId,
+      message: { id: "panel-message" },
+      member: { roles: { cache: new Map([[musicControllerRoleId, {}]]) } },
+      user: { id: "345678901234567890" },
+      deferUpdate: vi.fn().mockResolvedValue(undefined),
+      editReply,
+      reply: vi.fn().mockResolvedValue(undefined),
+      followUp: vi.fn().mockResolvedValue(undefined),
+      replied: false,
+      deferred: true,
+    };
+
+    await service.handleButton(interaction as never);
+
+    expect(editReply).toHaveBeenCalledOnce();
+    const [{ components }] = editReply.mock.calls[0] as [{ components: Array<{ components: Array<{ toJSON: () => { custom_id: string; disabled?: boolean } }> }> }];
+    const buttons = components
+      .flatMap((row) => row.components)
+      .map((component) => component.toJSON());
+    expect(buttons.every((button) => button.disabled)).toBe(true);
+    expect(stop).toHaveBeenCalledOnce();
   });
 
   it("renders enabled session toggles as green controls", () => {
