@@ -3,7 +3,7 @@ import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import { CommandModule, CommandResponseVisibility, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
 
-const eightBallImageUrl = "https://twemoji.maxcdn.com/v/latest/72x72/1f3b1.png";
+const eightBallImageUrl = "https://cdn.jsdelivr.net/gh/jdecked/twemoji@latest/assets/72x72/1f3b1.png";
 
 const answers = [
   "It is certain.",

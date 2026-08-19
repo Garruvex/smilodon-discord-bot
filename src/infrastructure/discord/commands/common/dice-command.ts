@@ -4,17 +4,17 @@ import { CommandModule, CommandResponseVisibility, type BotCommand, type Command
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
 
 const diceFaces = ["⚀", "⚁", "⚂", "⚃", "⚄", "⚅"] as const;
-const diceFaceCodepoints = ["2680", "2681", "2682", "2683", "2684", "2685"] as const;
 
+// The die-face pip glyphs (U+2680-2685) aren't part of the official Unicode
+// Emoji set, so no emoji-art library (Twemoji, OpenMoji, etc.) has images for
+// them. Keycap number emoji (1-6) are real emoji with real art, so those are
+// used to represent the rolled value as an image instead.
 function diceFaceImageUrl(roll: number): string {
-  return `https://twemoji.maxcdn.com/v/latest/72x72/${diceFaceCodepoints[roll - 1]}.png`;
+  const codepoint = (0x30 + roll).toString(16);
+  return `https://cdn.jsdelivr.net/gh/jdecked/twemoji@latest/assets/72x72/${codepoint}-20e3.png`;
 }
 
-// Discord groups embeds that share the same `url` into an image gallery
-// within a single message. This is used to show each die face as a real
-// image without compositing them into one picture ourselves.
-const galleryAnchorUrl = "https://dice-roll.invalid";
-const maxGalleryDice = 10;
+const maxImageDice = 10;
 
 export class DiceCommand implements BotCommand {
   public readonly definition = new SlashCommandBuilder()
@@ -44,11 +44,9 @@ export class DiceCommand implements BotCommand {
 
     const footerText = count === 1 ? `d${sides}` : `${count}d${sides} — total ${total}`;
 
-    if (sides === 6 && count <= maxGalleryDice) {
+    if (sides === 6 && count <= maxImageDice) {
       const embeds = rolls.map((roll, index) => {
-        const embed = new EmbedBuilder()
-          .setURL(galleryAnchorUrl)
-          .setImage(diceFaceImageUrl(roll));
+        const embed = new EmbedBuilder().setImage(diceFaceImageUrl(roll));
         if (index === 0) embed.setTitle("🎲 Dice roll").setFooter({ text: footerText });
         return embed;
       });

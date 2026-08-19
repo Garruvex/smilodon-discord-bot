@@ -1,4 +1,4 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import { z } from "zod";
 
 import { CommandModule, CommandResponseVisibility, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
@@ -9,13 +9,16 @@ const postSchema = z.object({
   score: z.object({ up: z.number() }),
   fav_count: z.number(),
   rating: z.string(),
-  file: z.object({ url: z.string().url().nullable() }),
+  file: z.object({ url: z.string().url().nullable(), ext: z.string(), size: z.number() }),
   tags: z.object({
     artist: z.array(z.string()).default([]),
     species: z.array(z.string()).default([]),
   }),
 });
 const responseSchema = z.object({ posts: z.array(postSchema) });
+
+const videoExtensions = new Set(["webm", "mp4"]);
+const maxAttachmentBytes = 24 * 1024 * 1024;
 
 const typeChoices = [
   { name: "GIF", value: "type:gif" },
@@ -45,14 +48,16 @@ export class BooruSearchCommand implements BotCommand {
       .setName(site)
       .setDescription(`Searches for images on ${site}.`)
       .setNSFW(nsfw)
-      .addStringOption((option) => option.setName("query").setDescription("Tags to search for (e.g. wolf, dragon, solo).").setRequired(true))
+      .addStringOption((option) =>
+        option.setName("query").setDescription("Tags to search for (e.g. wolf, dragon, solo). Leave empty for a random post."),
+      )
       .addStringOption((option) => option.setName("type").setDescription("File type.").addChoices(...typeChoices))
       .addStringOption((option) => option.setName("order").setDescription("Sort order.").addChoices(...orderChoices));
   }
 
   public async execute(context: CommandContext): Promise<void> {
     await context.responses.defer();
-    const query = context.interaction.options.getString("query", true);
+    const query = context.interaction.options.getString("query");
     const type = context.interaction.options.getString("type");
     const order = context.interaction.options.getString("order") ?? "order:random";
     const tags = [query, type, order, "favcount:>100"].filter(Boolean).join(" ");
@@ -66,7 +71,7 @@ export class BooruSearchCommand implements BotCommand {
       const data = responseSchema.parse(await response.json());
       const post = data.posts[0];
       if (!post || !post.file.url) {
-        await context.responses.edit(`No results found for \`${query}\`.`);
+        await context.responses.edit(query ? `No results found for \`${query}\`.` : "No results found.");
         return;
       }
 
@@ -77,11 +82,29 @@ export class BooruSearchCommand implements BotCommand {
         new ButtonBuilder().setLabel("View post").setStyle(ButtonStyle.Link).setURL(postLink),
       );
 
-      // A bare URL (not a markdown link, and not inside an EmbedBuilder embed) lets
-      // Discord auto-generate its own preview — the only way to get a playable
-      // video preview, and the only way to get a spoilered/blurred preview.
-      const linkedMedia = this.nsfw ? `||${mediaUrl}||` : mediaUrl;
-      await context.responses.edit(`Found Post #${post.id}\n${linkedMedia}`);
+      const caption = `Found Post #${post.id}`;
+      const isVideo = videoExtensions.has(post.file.ext.toLowerCase());
+
+      if (post.file.size < maxAttachmentBytes) {
+        // A SPOILER_ filename blurs the attachment (and, for images, the embed
+        // that references it via attachment://) until clicked — the only
+        // reliable way to spoiler media, since Discord won't auto-unfurl a
+        // spoiler-wrapped bare link at all.
+        const fileName = `${this.nsfw ? "SPOILER_" : ""}${post.id}.${post.file.ext}`;
+        const attachment = new AttachmentBuilder(mediaUrl, { name: fileName });
+        if (isVideo) {
+          // Embeds can't play video, so it has to ride as a bare attachment.
+          await context.responses.edit({ content: caption, files: [attachment] });
+        } else {
+          const mediaEmbed = new EmbedBuilder().setColor(this.embedColor).setTitle(caption).setImage(`attachment://${fileName}`);
+          await context.responses.edit({ embeds: [mediaEmbed], files: [attachment] });
+        }
+      } else {
+        // Too large to re-upload — fall back to a bare link (spoilered where
+        // possible, though Discord won't preview a spoilered link).
+        const linkedMedia = this.nsfw ? `||${mediaUrl}||` : mediaUrl;
+        await context.responses.edit(`${caption}\n${linkedMedia}`);
+      }
 
       const embed = new EmbedBuilder()
         .setColor(this.embedColor)
