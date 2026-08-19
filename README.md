@@ -65,27 +65,27 @@ Copy the shared and application templates:
 
 ```powershell
 Copy-Item .env.example .env
-Copy-Item config\instances\bot.env.example config\instances\pinecone.env
+Copy-Item config\instances\bot.env.example config\instances\myinstance.env
 ```
 
 Keep shared infrastructure in `.env`:
 
 ```env
-DEFAULT_INSTANCE=pinecone
+DEFAULT_INSTANCE=myinstance
 LAVALINK_PASSWORD=choose_a_private_lavalink_password
 ```
 
 Put Discord identity and application persistence in
-`config/instances/pinecone.env`:
+`config/instances/myinstance.env`:
 
 ```env
-INSTANCE_NAME=pinecone
+INSTANCE_NAME=myinstance
 DISCORD_TOKEN=the_bot_token_from_the_Bot_page
 DISCORD_APPLICATION_ID=the_application_id
 BOT_OWNER_IDS=your_discord_user_id
 PERSISTENCE_DRIVER=file
-GUILD_CONFIG_DIRECTORY=./config/local/instances/pinecone/guilds
-RUNTIME_DATA_DIRECTORY=./data/instances/pinecone
+GUILD_CONFIG_DIRECTORY=./config/local/instances/myinstance/guilds
+RUNTIME_DATA_DIRECTORY=./data/instances/myinstance
 ```
 
 Enable Discord Developer Mode and use **Copy User ID** on your account to obtain
@@ -322,25 +322,25 @@ The root `.env` contains shared infrastructure values such as Lavalink,
 Spotify, YouTube OAuth, PostgreSQL administration, and an optional shared chat
 provider. Each Discord application overlays it with
 `config/instances/<instance>.env`. The command argument must exactly match that
-filename: `pinecone` loads `config/instances/pinecone.env`.
+filename: `myinstance` loads `config/instances/myinstance.env`.
 
 Create the first overlay from the current legacy `.env` without moving its
 database, guild profiles, or runtime assets:
 
 ```powershell
-npm.cmd run instance:init -- pinecone
-npm.cmd run instance:promote-default -- pinecone
+npm.cmd run instance:init -- myinstance
+npm.cmd run instance:promote-default -- myinstance
 ```
 
 The initializer refuses to overwrite an existing file. `promote-default` moves
 application ownership out of the root `.env` by removing Discord, persistence,
 database URL, guild-directory, and runtime-directory values after verifying the
-instance overlay. It leaves `DEFAULT_INSTANCE=pinecone`, so legacy commands such
+instance overlay. It leaves `DEFAULT_INSTANCE=myinstance`, so legacy commands such
 as `local:start`, `local:check-token`, and `deploy:commands` continue resolving
-Pinecone automatically. For another application,
-copy `config/instances/bot.env.example` to `smilodon.env` and give it a unique
-Discord application ID, database URL, guild configuration directory, and
-runtime data directory. Real instance `.env` files are ignored by Git.
+`myinstance` automatically. For another application,
+copy `config/instances/bot.env.example` to `otherinstance.env` and give it a
+unique Discord application ID, database URL, guild configuration directory,
+and runtime data directory. Real instance `.env` files are ignored by Git.
 
 Validate every discovered instance and reject shared application IDs,
 databases, configuration directories, or asset directories:
@@ -352,11 +352,11 @@ npm.cmd run instances:validate
 Manage one application:
 
 ```powershell
-npm.cmd run instance:check-token -- pinecone
-npm.cmd run instance:config:validate -- pinecone
-npm.cmd run instance:db:migrate -- pinecone
-npm.cmd run instance:deploy -- pinecone
-npm.cmd run instance:start -- pinecone
+npm.cmd run instance:check-token -- myinstance
+npm.cmd run instance:config:validate -- myinstance
+npm.cmd run instance:db:migrate -- myinstance
+npm.cmd run instance:deploy -- myinstance
+npm.cmd run instance:start -- myinstance
 ```
 
 `instance:start` starts only that Discord bot and expects shared infrastructure
@@ -369,7 +369,7 @@ npm.cmd run instances:start
 Names can also be supplied to run a selected subset:
 
 ```powershell
-npm.cmd run instances:start -- pinecone smilodon
+npm.cmd run instances:start -- myinstance otherinstance
 ```
 
 Each bot remains a separate process and Discord/Lavalink session, but the
