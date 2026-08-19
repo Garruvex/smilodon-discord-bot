@@ -12,15 +12,19 @@ interface LinkRewriteRule {
 
 // Community-run "embed fix" proxies that mirror the original page but serve
 // Discord-friendly Open Graph tags (video/image previews, inline players).
-// Twitter/X, TikTok, and Instagram have well-established public proxies.
-// Facebook and Bilibili don't have a comparably reliable public proxy at the
-// time of writing, so they're intentionally left out rather than pointing at
-// an unverified domain — add a rule below once a trustworthy one is chosen.
+// Bilibili has no comparable public proxy, so it's handled separately by
+// BilibiliEmbedService, which builds a native Discord embed from Bilibili's
+// own API instead of depending on a third-party domain.
 const rewriteRules: readonly LinkRewriteRule[] = [
   {
     platform: "Twitter/X",
     hostnames: new Set(["twitter.com", "x.com"]),
     rewriteHostname: "fxtwitter.com",
+  },
+  {
+    platform: "Threads",
+    hostnames: new Set(["threads.net", "threads.com"]),
+    rewriteHostname: "fixthreads.net",
   },
   {
     platform: "TikTok",
