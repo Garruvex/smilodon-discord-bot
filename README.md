@@ -366,6 +366,10 @@ asset reference is saved in the guild profile or database. Use
 self-hosted installations may still set `chat.personalityFile` directly in
 guild YAML; an uploaded personality takes precedence.
 
+See [`docs/personality-guide.md`](docs/personality-guide.md) for how to write
+a character personality file that reads like a real chat participant instead
+of an assistant (punctuation, reply length, banned assistant phrasing, etc).
+
 ## Manual profile setup
 
 1. Copy `.env.example` to `.env` and fill in shared infrastructure secrets.
