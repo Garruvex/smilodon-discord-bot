@@ -80,5 +80,6 @@ export const guildKnowledgeInstructions = `Shared guild knowledge rules:
 - Never propose private, sensitive, medical, financial, contact, moderation, authority, credential, conflict, or activity-log information.
 - Do not turn ordinary one-off actions into guild knowledge.
 - A claim about another member remains a candidate and must not be presented as confirmed truth.
+- A statement one member makes about another member's preferences, habits, or traits belongs here as a member-subject candidate, not as the asserting user's private memory.
 - Use only supplied member IDs. For guild subjects, use the supplied guild ID.
 - When uncertain, propose no guild candidates.`;

@@ -11,8 +11,12 @@ function response(
   text: string,
   userMemoryActions: ChatResponse["userMemoryActions"] = [],
   guildKnowledgeCandidates: ChatResponse["guildKnowledgeCandidates"] = [],
+  ambient: { action: ChatResponse["ambientAction"]; emoji?: string } | null = null,
 ): ChatResponse {
-  return { text, userMemoryActions, guildKnowledgeCandidates, sources: [], usage: null, webSearchUsed: false, generatedImages: [] };
+  return {
+    text, userMemoryActions, guildKnowledgeCandidates, sources: [], usage: null, webSearchUsed: false,
+    generatedImages: [], ambientAction: ambient?.action ?? null, reactionEmoji: ambient?.emoji ?? null,
+  };
 }
 
 function guildStore(): GuildKnowledgeStore {
@@ -30,11 +34,13 @@ function input(message: string): ChatConversationInput {
     currentUser: { id: "user", displayName: "User", roleNames: [] },
     mentionedUsers: [],
     message,
-    referencedMessage: null,
+    replyChain: [],
+    channelHistory: [],
     images: [],
     webSearchMode: "off",
     imageGenerationEnabled: false,
     includeSources: false,
+    triggerMode: "direct",
   };
 }
 
@@ -45,6 +51,7 @@ describe("ChatConversationService", () => {
       initialize: () => Promise.resolve(),
       load: () => Promise.resolve({ exchanges: [], memories: [] }),
       commitSuccessfulExchange: () => Promise.resolve(),
+      applyMemoryActions: () => Promise.resolve(),
       forgetMemory: () => Promise.resolve(false),
       forgetAllMemories: () => Promise.resolve(0),
       getDmNotesEnabled,
@@ -63,6 +70,7 @@ describe("ChatConversationService", () => {
       initialize: vi.fn(() => Promise.resolve()),
       load: vi.fn(() => Promise.resolve({ exchanges: [], memories: [] })),
       commitSuccessfulExchange,
+      applyMemoryActions: () => Promise.resolve(),
       forgetMemory: vi.fn(() => Promise.resolve(false)),
       forgetAllMemories: vi.fn(() => Promise.resolve(0)),
       getDmNotesEnabled: vi.fn(() => Promise.resolve(true)),
@@ -85,6 +93,7 @@ describe("ChatConversationService", () => {
         storedAssistantMessage = commit.assistantMessage;
         return Promise.resolve();
       },
+      applyMemoryActions: () => Promise.resolve(),
       forgetMemory: () => Promise.resolve(false),
       forgetAllMemories: () => Promise.resolve(0),
       getDmNotesEnabled: () => Promise.resolve(true),
@@ -110,6 +119,7 @@ describe("ChatConversationService", () => {
         });
         return Promise.resolve();
       },
+      applyMemoryActions: () => Promise.resolve(),
       forgetMemory: () => Promise.resolve(false),
       forgetAllMemories: () => Promise.resolve(0),
       getDmNotesEnabled: () => Promise.resolve(true),
@@ -139,6 +149,7 @@ describe("ChatConversationService", () => {
         committedActions.push(commit.actions);
         return Promise.resolve();
       },
+      applyMemoryActions: () => Promise.resolve(),
       forgetMemory: () => Promise.resolve(false),
       forgetAllMemories: () => Promise.resolve(0),
       getDmNotesEnabled: () => Promise.resolve(true),
@@ -165,6 +176,7 @@ describe("ChatConversationService", () => {
       initialize: () => Promise.resolve(),
       load: () => Promise.resolve({ exchanges: [], memories: [] }),
       commitSuccessfulExchange: () => Promise.resolve(),
+      applyMemoryActions: () => Promise.resolve(),
       forgetMemory: () => Promise.resolve(false),
       forgetAllMemories: () => Promise.resolve(0),
       getDmNotesEnabled: () => Promise.resolve(true),
@@ -185,7 +197,7 @@ describe("ChatConversationService", () => {
       initialize: () => Promise.resolve(),
       loadConfirmed: () => Promise.resolve([{
         id: "known", subjectType: "guild", subjectId: "guild", topic: "community",
-        slot: "mascot", statement: "Pinecone is the mascot", source: "administrator",
+        slot: "mascot", statement: "Pinecone is the mascot", source: "administrator", updatedAt: 0,
       }]),
       propose: (proposal) => { proposals.push(proposal); return Promise.resolve(); },
     };
@@ -201,6 +213,7 @@ describe("ChatConversationService", () => {
       initialize: () => Promise.resolve(),
       load: () => Promise.resolve({ exchanges: [], memories: [] }),
       commitSuccessfulExchange: () => Promise.resolve(),
+      applyMemoryActions: () => Promise.resolve(),
       forgetMemory: () => Promise.resolve(false),
       forgetAllMemories: () => Promise.resolve(0),
       getDmNotesEnabled: () => Promise.resolve(true),
@@ -208,7 +221,7 @@ describe("ChatConversationService", () => {
     };
     const known = {
       id: "known", subjectType: "guild" as const, subjectId: "guild", topic: "community",
-      slot: "mascot", statement: "Pinecone is the mascot", source: "administrator" as const,
+      slot: "mascot", statement: "Pinecone is the mascot", source: "administrator" as const, updatedAt: 0,
     };
     const knowledgeStore: GuildKnowledgeStore = {
       initialize: () => Promise.resolve(),
@@ -241,6 +254,7 @@ describe("ChatConversationService", () => {
       initialize: () => Promise.resolve(),
       load: () => Promise.resolve({ exchanges: [], memories: [] }),
       commitSuccessfulExchange: () => Promise.resolve(),
+      applyMemoryActions: () => Promise.resolve(),
       forgetMemory: () => Promise.resolve(false),
       forgetAllMemories: () => Promise.resolve(0),
       getDmNotesEnabled: () => Promise.resolve(true),
@@ -278,6 +292,7 @@ describe("ChatConversationService", () => {
       initialize: () => Promise.resolve(),
       load: () => Promise.resolve({ exchanges: [], memories: [] }),
       commitSuccessfulExchange: () => Promise.resolve(),
+      applyMemoryActions: () => Promise.resolve(),
       forgetMemory: () => Promise.resolve(false),
       forgetAllMemories: () => Promise.resolve(0),
       getDmNotesEnabled: () => Promise.resolve(true),
@@ -295,5 +310,147 @@ describe("ChatConversationService", () => {
     const result = await service.run(input("hi"), (reply) => Promise.resolve(reply.text));
     expect(receivedCustomization).toBeNull();
     expect(result.contextUsage).toMatchObject({ userCustomizationChars: 0 });
+  });
+
+  it("skips delivery and persistence entirely for an ambient turn the model chose to ignore", async () => {
+    const commitSuccessfulExchange = vi.fn(() => Promise.resolve());
+    const applyMemoryActions = vi.fn(() => Promise.resolve());
+    const propose = vi.fn(() => Promise.resolve());
+    const store: ChatStateStore = {
+      initialize: () => Promise.resolve(),
+      load: () => Promise.resolve({ exchanges: [], memories: [] }),
+      commitSuccessfulExchange,
+      applyMemoryActions,
+      forgetMemory: () => Promise.resolve(false),
+      forgetAllMemories: () => Promise.resolve(0),
+      getDmNotesEnabled: () => Promise.resolve(true),
+      setDmNotesEnabled: () => Promise.resolve(),
+    };
+    const knowledgeStore: GuildKnowledgeStore = { initialize: () => Promise.resolve(), loadConfirmed: () => Promise.resolve([]), propose };
+    const provider: ChatProvider = {
+      reply: () => Promise.resolve(response("", [
+        { action: "upsert", subjectUserId: "user", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
+      ], [], { action: "ignore" })),
+    };
+    const service = new ChatConversationService(provider, store, knowledgeStore);
+    const deliver = vi.fn(() => Promise.resolve("should not be called"));
+
+    const result = await service.run({ ...input("yohta is neat"), triggerMode: "ambient" }, deliver);
+    expect(result.ambientAction).toBe("ignore");
+    expect(deliver).not.toHaveBeenCalled();
+    expect(commitSuccessfulExchange).not.toHaveBeenCalled();
+    expect(applyMemoryActions).not.toHaveBeenCalled();
+    expect(propose).not.toHaveBeenCalled();
+  });
+
+  it("skips delivery and the session exchange, but still persists memory/guild-knowledge, for an ambient react-only turn", async () => {
+    const commitSuccessfulExchange = vi.fn(() => Promise.resolve());
+    const applyMemoryActions = vi.fn(() => Promise.resolve());
+    const propose = vi.fn(() => Promise.resolve());
+    const store: ChatStateStore = {
+      initialize: () => Promise.resolve(),
+      load: () => Promise.resolve({ exchanges: [], memories: [] }),
+      commitSuccessfulExchange,
+      applyMemoryActions,
+      forgetMemory: () => Promise.resolve(false),
+      forgetAllMemories: () => Promise.resolve(0),
+      getDmNotesEnabled: () => Promise.resolve(true),
+      setDmNotesEnabled: () => Promise.resolve(),
+    };
+    const knowledgeStore: GuildKnowledgeStore = { initialize: () => Promise.resolve(), loadConfirmed: () => Promise.resolve([]), propose };
+    const memoryActions: ChatResponse["userMemoryActions"] = [
+      { action: "upsert", subjectUserId: "user", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
+    ];
+    const provider: ChatProvider = {
+      reply: () => Promise.resolve(response("", memoryActions, [], { action: "ignore", emoji: "😂" })),
+    };
+    const service = new ChatConversationService(provider, store, knowledgeStore);
+    const deliver = vi.fn(() => Promise.resolve("should not be called"));
+
+    const result = await service.run({ ...input("yohta lol"), triggerMode: "ambient" }, deliver);
+    expect(result.ambientAction).toBe("ignore");
+    expect(result.reactionEmoji).toBe("😂");
+    expect(deliver).not.toHaveBeenCalled();
+    expect(commitSuccessfulExchange).not.toHaveBeenCalled();
+    expect(applyMemoryActions).toHaveBeenCalledWith(expect.objectContaining({
+      guildId: "guild", userId: "user", actions: memoryActions,
+    }));
+    expect(propose).toHaveBeenCalledOnce();
+  });
+
+  it("delivers a reply and reacts in the same ambient turn when both are set", async () => {
+    const commitSuccessfulExchange = vi.fn(() => Promise.resolve());
+    const store: ChatStateStore = {
+      initialize: () => Promise.resolve(),
+      load: () => Promise.resolve({ exchanges: [], memories: [] }),
+      commitSuccessfulExchange,
+      applyMemoryActions: () => Promise.resolve(),
+      forgetMemory: () => Promise.resolve(false),
+      forgetAllMemories: () => Promise.resolve(0),
+      getDmNotesEnabled: () => Promise.resolve(true),
+      setDmNotesEnabled: () => Promise.resolve(),
+    };
+    const provider: ChatProvider = {
+      reply: () => Promise.resolve(response("That's a good one!", [], [], { action: "reply", emoji: "😂" })),
+    };
+    const service = new ChatConversationService(provider, store, guildStore());
+    const deliver = vi.fn((reply: ChatResponse) => Promise.resolve(reply.text));
+
+    const result = await service.run({ ...input("yohta that's hilarious"), triggerMode: "ambient" }, deliver);
+    expect(result.ambientAction).toBe("reply");
+    expect(result.reactionEmoji).toBe("😂");
+    expect(deliver).toHaveBeenCalledOnce();
+    expect(commitSuccessfulExchange).toHaveBeenCalledOnce();
+  });
+
+  it("delivers and persists an ambient turn the model chose to reply to, same as a direct turn", async () => {
+    const commitSuccessfulExchange = vi.fn(() => Promise.resolve());
+    const store: ChatStateStore = {
+      initialize: () => Promise.resolve(),
+      load: () => Promise.resolve({ exchanges: [], memories: [] }),
+      commitSuccessfulExchange,
+      applyMemoryActions: () => Promise.resolve(),
+      forgetMemory: () => Promise.resolve(false),
+      forgetAllMemories: () => Promise.resolve(0),
+      getDmNotesEnabled: () => Promise.resolve(true),
+      setDmNotesEnabled: () => Promise.resolve(),
+    };
+    const provider: ChatProvider = {
+      reply: () => Promise.resolve(response("Hi there!", [], [], { action: "reply" })),
+    };
+    const service = new ChatConversationService(provider, store, guildStore());
+    const deliver = vi.fn((reply: ChatResponse) => Promise.resolve(reply.text));
+
+    const result = await service.run({ ...input("hey yohta, what's up"), triggerMode: "ambient" }, deliver);
+    expect(result.ambientAction).toBe("reply");
+    expect(deliver).toHaveBeenCalledOnce();
+    expect(commitSuccessfulExchange).toHaveBeenCalledOnce();
+  });
+
+  it("reports ambient channel history size in contextUsage", async () => {
+    const store: ChatStateStore = {
+      initialize: () => Promise.resolve(),
+      load: () => Promise.resolve({ exchanges: [], memories: [] }),
+      commitSuccessfulExchange: () => Promise.resolve(),
+      applyMemoryActions: () => Promise.resolve(),
+      forgetMemory: () => Promise.resolve(false),
+      forgetAllMemories: () => Promise.resolve(0),
+      getDmNotesEnabled: () => Promise.resolve(true),
+      setDmNotesEnabled: () => Promise.resolve(),
+    };
+    const provider: ChatProvider = { reply: () => Promise.resolve(response("ok")) };
+    const service = new ChatConversationService(provider, store, guildStore());
+    const channelHistory = [
+      { authorId: "other", authorDisplayName: "Other", content: "earlier chatter", imageCount: 0 },
+    ];
+
+    const result = await service.run(
+      { ...input("hi"), channelHistory },
+      (reply) => Promise.resolve(reply.text),
+    );
+    expect(result.contextUsage).toMatchObject({
+      channelHistoryMessages: 1,
+      channelHistoryChars: JSON.stringify(channelHistory).length,
+    });
   });
 });

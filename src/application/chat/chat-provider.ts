@@ -8,11 +8,25 @@ export interface ChatRequest {
   memories: readonly ChatMemoryRecord[];
   guildKnowledge: readonly GuildKnowledgeRecord[];
   message: string;
-  referencedMessage: string | null;
+  replyChain: readonly ReplyChainMessage[];
+  // Recent channel messages from anyone, not reply-linked — ambient context
+  // for a turn that isn't itself a Discord reply. Only populated when the
+  // guild has features.channelHistory on; empty otherwise. Excludes any
+  // message already present in replyChain (see ChatTurnSupport.resolveChannelHistory).
+  channelHistory: readonly ChannelHistoryMessage[];
+  // Explicit, user-supplied structured fact (not model-inferred like
+  // memories) — kept as its own field/prompt section to preserve the
+  // trust/authorship distinction from LLM-curated memory claims.
+  birthday: { month: number; day: number } | null;
   images: readonly ChatImage[];
   webSearchMode: "off" | "auto";
   imageGenerationEnabled: boolean;
   includeSources: boolean;
+  // "direct": an explicit @mention or reply-chain continuation — always
+  // produces a reply. "ambient": the bot's name was merely mentioned in a
+  // message, not @mentioned — the model judges whether to ignore, react
+  // with an emoji, or reply (see ChatResponse.ambientAction).
+  triggerMode: "direct" | "ambient";
 }
 
 export interface ChatUser {
@@ -26,6 +40,26 @@ export interface ChatHistoryMessage {
   content: string;
 }
 
+// One hop of a resolved Discord reply chain, oldest ancestor first, ending
+// just before the current message (which is carried separately as
+// ChatRequest.message).
+export interface ReplyChainMessage {
+  authorId: string;
+  authorDisplayName: string;
+  content: string;
+  imageCount: number;
+}
+
+// One recent channel message included as ambient context — same shape as
+// ReplyChainMessage, but sourced from ChatTurnSupport.resolveChannelHistory
+// rather than a reply-link walk.
+export interface ChannelHistoryMessage {
+  authorId: string;
+  authorDisplayName: string;
+  content: string;
+  imageCount: number;
+}
+
 export interface ChatMemoryRecord {
   id: string;
   assertedByUserId: string;
@@ -33,7 +67,7 @@ export interface ChatMemoryRecord {
   topic: string;
   slot: string;
   statement: string;
-  pinned: boolean;
+  updatedAt: number;
 }
 
 export interface ProposedMemoryAction {
@@ -54,6 +88,7 @@ export interface GuildKnowledgeRecord {
   slot: string;
   statement: string;
   source: "self_report" | "community" | "administrator";
+  updatedAt: number;
 }
 
 export interface ProposedGuildKnowledgeCandidate {
@@ -66,7 +101,10 @@ export interface ProposedGuildKnowledgeCandidate {
 
 export interface ChatImage {
   dataUrl: string;
-  source: "current_message" | "referenced_message";
+  source: "current_message" | "reply_chain";
+  // Global index across the whole selected image set (not per-source), so
+  // numbering shown to the model is unambiguous even when both the current
+  // message and the reply chain contribute images.
   sourceIndex: number;
 }
 
@@ -89,6 +127,11 @@ export interface ChatResponse {
   usage: ChatUsage | null;
   webSearchUsed: boolean;
   generatedImages: readonly GeneratedChatImage[];
+  // Only meaningful when the request's triggerMode was "ambient"; null for
+  // direct-mode responses (treated as "reply" by callers). Independent of
+  // reactionEmoji — an ambient turn can reply, react, both, or neither.
+  ambientAction: "reply" | "ignore" | null;
+  reactionEmoji: string | null;
   contextUsage?: {
     personalityChars: number;
     userCustomizationChars: number;
@@ -100,7 +143,10 @@ export interface ChatResponse {
     memoryChars: number;
     guildKnowledgeRecords: number;
     guildKnowledgeChars: number;
-    referencedMessageChars: number;
+    replyChainMessages: number;
+    replyChainChars: number;
+    channelHistoryMessages: number;
+    channelHistoryChars: number;
     currentMessageChars: number;
   };
 }

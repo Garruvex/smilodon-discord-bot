@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { MemoryCommand } from "../../src/infrastructure/discord/commands/common/memory-command.js";
 import type { ChatStateStore } from "../../src/application/chat/chat-state-store.js";
 import type { CommandContext } from "../../src/application/commands/command.js";
+import { MemberProfileService } from "../../src/application/members/member-profile-service.js";
 
 function makeContext(options: {
   subcommand: string;
@@ -34,16 +35,17 @@ describe("MemoryCommand", () => {
         exchanges: [],
         memories: [{
           id: "abcdefgh-1234", assertedByUserId: "user", subjectUserId: "user",
-          topic: "preference", slot: "food.fruit", statement: "likes green apples", pinned: false,
+          topic: "preference", slot: "food.fruit", statement: "likes green apples", updatedAt: 0,
         }],
       }),
       commitSuccessfulExchange: () => Promise.resolve(),
+      applyMemoryActions: () => Promise.resolve(),
       forgetMemory: () => Promise.resolve(false),
       forgetAllMemories: () => Promise.resolve(0),
       getDmNotesEnabled: () => Promise.resolve(true),
       setDmNotesEnabled: () => Promise.resolve(),
     };
-    const command = new MemoryCommand(store);
+    const command = new MemoryCommand(store, new MemberProfileService(store, null, null));
     const { context, reply } = makeContext({ subcommand: "list" });
 
     await command.execute(context);
@@ -59,12 +61,13 @@ describe("MemoryCommand", () => {
       initialize: () => Promise.resolve(),
       load: () => Promise.resolve({ exchanges: [], memories: [] }),
       commitSuccessfulExchange: () => Promise.resolve(),
+      applyMemoryActions: () => Promise.resolve(),
       forgetMemory: () => Promise.resolve(false),
       forgetAllMemories: () => Promise.resolve(0),
       getDmNotesEnabled: () => Promise.resolve(true),
       setDmNotesEnabled: () => Promise.resolve(),
     };
-    const command = new MemoryCommand(store);
+    const command = new MemoryCommand(store, new MemberProfileService(store, null, null));
     const { context, reply } = makeContext({ subcommand: "list" });
 
     await command.execute(context);
@@ -79,16 +82,17 @@ describe("MemoryCommand", () => {
         exchanges: [],
         memories: [{
           id: "abcdefgh-1234", assertedByUserId: "user", subjectUserId: "user",
-          topic: "preference", slot: "food.fruit", statement: "likes green apples", pinned: false,
+          topic: "preference", slot: "food.fruit", statement: "likes green apples", updatedAt: 0,
         }],
       }),
       commitSuccessfulExchange: () => Promise.resolve(),
+      applyMemoryActions: () => Promise.resolve(),
       forgetMemory,
       forgetAllMemories: () => Promise.resolve(0),
       getDmNotesEnabled: () => Promise.resolve(true),
       setDmNotesEnabled: () => Promise.resolve(),
     };
-    const command = new MemoryCommand(store);
+    const command = new MemoryCommand(store, new MemberProfileService(store, null, null));
     const { context, reply } = makeContext({ subcommand: "forget", id: "abcdefgh" });
 
     await command.execute(context);
@@ -102,12 +106,13 @@ describe("MemoryCommand", () => {
       initialize: () => Promise.resolve(),
       load: () => Promise.resolve({ exchanges: [], memories: [] }),
       commitSuccessfulExchange: () => Promise.resolve(),
+      applyMemoryActions: () => Promise.resolve(),
       forgetMemory: () => Promise.resolve(false),
       forgetAllMemories,
       getDmNotesEnabled: () => Promise.resolve(true),
       setDmNotesEnabled: () => Promise.resolve(),
     };
-    const command = new MemoryCommand(store);
+    const command = new MemoryCommand(store, new MemberProfileService(store, null, null));
     const { context, reply } = makeContext({ subcommand: "forget", all: true });
 
     await command.execute(context);
@@ -121,12 +126,13 @@ describe("MemoryCommand", () => {
       initialize: () => Promise.resolve(),
       load: () => Promise.resolve({ exchanges: [], memories: [] }),
       commitSuccessfulExchange: () => Promise.resolve(),
+      applyMemoryActions: () => Promise.resolve(),
       forgetMemory: () => Promise.resolve(false),
       forgetAllMemories: () => Promise.resolve(0),
       getDmNotesEnabled,
       setDmNotesEnabled: vi.fn(),
     };
-    const command = new MemoryCommand(store);
+    const command = new MemoryCommand(store, new MemberProfileService(store, null, null));
     const { context, reply } = makeContext({ subcommand: "notes" });
 
     await command.execute(context);
@@ -140,12 +146,13 @@ describe("MemoryCommand", () => {
       initialize: () => Promise.resolve(),
       load: () => Promise.resolve({ exchanges: [], memories: [] }),
       commitSuccessfulExchange: () => Promise.resolve(),
+      applyMemoryActions: () => Promise.resolve(),
       forgetMemory: () => Promise.resolve(false),
       forgetAllMemories: () => Promise.resolve(0),
       getDmNotesEnabled: () => Promise.resolve(true),
       setDmNotesEnabled,
     };
-    const command = new MemoryCommand(store);
+    const command = new MemoryCommand(store, new MemberProfileService(store, null, null));
     const { context, reply } = makeContext({ subcommand: "notes", all: false });
 
     await command.execute(context);
@@ -158,12 +165,13 @@ describe("MemoryCommand", () => {
       initialize: () => Promise.resolve(),
       load: () => Promise.resolve({ exchanges: [], memories: [] }),
       commitSuccessfulExchange: () => Promise.resolve(),
+      applyMemoryActions: () => Promise.resolve(),
       forgetMemory: () => Promise.resolve(false),
       forgetAllMemories: () => Promise.resolve(0),
       getDmNotesEnabled: () => Promise.resolve(true),
       setDmNotesEnabled: () => Promise.resolve(),
     };
-    const command = new MemoryCommand(store);
+    const command = new MemoryCommand(store, new MemberProfileService(store, null, null));
     const { context, reply } = makeContext({ subcommand: "forget" });
 
     await command.execute(context);

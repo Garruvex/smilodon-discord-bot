@@ -3,20 +3,25 @@ import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
 import type { BirthdayRecord, BirthdayStore } from "../../application/birthdays/birthday-store.js";
 import * as schema from "../database/schema.js";
+import type { GuildMemberRegistry } from "./guild-member-registry.js";
 
 export class PostgresBirthdayStore implements BirthdayStore {
-  public constructor(private readonly database: PostgresJsDatabase<typeof schema>) {}
+  public constructor(
+    private readonly database: PostgresJsDatabase<typeof schema>,
+    private readonly memberRegistry: GuildMemberRegistry,
+  ) {}
 
   public initialize(): Promise<void> {
     return Promise.resolve();
   }
 
   public async setBirthday(guildId: string, userId: string, month: number, day: number): Promise<void> {
+    const memberId = await this.memberRegistry.resolveMemberId(guildId, userId);
     await this.database.insert(schema.birthdays).values({
-      guildId, userId, month, day, updatedAt: new Date(),
+      guildId, userId, memberId, month, day, updatedAt: new Date(),
     }).onConflictDoUpdate({
       target: [schema.birthdays.guildId, schema.birthdays.userId],
-      set: { month, day, updatedAt: new Date() },
+      set: { month, day, updatedAt: new Date(), memberId },
     });
   }
 

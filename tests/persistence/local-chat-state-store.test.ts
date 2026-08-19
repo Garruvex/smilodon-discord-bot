@@ -97,7 +97,38 @@ describe("LocalChatStateStore", () => {
     expect(await store.getDmNotesEnabled("guild", "user")).toBe(false);
   });
 
-  it("forgets a single memory by id, including pinned ones", async () => {
+  it("applies memory actions without writing a session exchange", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "chat-state-"));
+    const store = new LocalChatStateStore(directory);
+    await store.initialize();
+    await store.applyMemoryActions({
+      guildId: "guild", userId: "user", now: 100,
+      actions: [{ action: "upsert", subjectUserId: "user", topic: "preference", slot: "food.fruit", statement: "likes green apples" }],
+    });
+
+    const state = await store.load("guild", "user", 101);
+    expect(state.exchanges).toHaveLength(0);
+    expect(state.memories).toMatchObject([{ topic: "preference", slot: "food.fruit", statement: "likes green apples" }]);
+  });
+
+  it("removes a memory via applyMemoryActions the same way commitSuccessfulExchange does", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "chat-state-"));
+    const store = new LocalChatStateStore(directory);
+    await store.initialize();
+    await store.applyMemoryActions({
+      guildId: "guild", userId: "user", now: 100,
+      actions: [{ action: "upsert", subjectUserId: "user", topic: "preference", slot: "food.fruit", statement: "likes green apples" }],
+    });
+    await store.applyMemoryActions({
+      guildId: "guild", userId: "user", now: 101,
+      actions: [{ action: "remove", subjectUserId: "user", topic: "preference", slot: "food.fruit", statement: null }],
+    });
+
+    const state = await store.load("guild", "user", 102);
+    expect(state.memories).toHaveLength(0);
+  });
+
+  it("forgets a single memory by id", async () => {
     const directory = mkdtempSync(join(tmpdir(), "chat-state-"));
     const store = new LocalChatStateStore(directory);
     await store.initialize();
@@ -130,6 +161,31 @@ describe("LocalChatStateStore", () => {
     expect(await store.forgetAllMemories("guild", "user")).toBe(2);
     expect(await store.forgetAllMemories("guild", "user")).toBe(0);
     expect((await store.load("guild", "user", 101)).memories).toHaveLength(0);
+  });
+
+  it("evicts the oldest memory instead of silently dropping a new one at the cap", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "chat-state-"));
+    const store = new LocalChatStateStore(directory);
+    await store.initialize();
+    for (let index = 0; index < 40; index += 1) {
+      await store.commitSuccessfulExchange({
+        guildId: "guild", userId: "user", userMessage: `m${index}`, assistantMessage: "ok", now: 100 + index,
+        actions: [{ action: "upsert", subjectUserId: "user", topic: "preference", slot: `slot${index}`, statement: `fact ${index}` }],
+      });
+    }
+    let state = await store.load("guild", "user", 200);
+    expect(state.memories).toHaveLength(40);
+    expect(state.memories.some((memory) => memory.slot === "slot0")).toBe(true);
+
+    await store.commitSuccessfulExchange({
+      guildId: "guild", userId: "user", userMessage: "m40", assistantMessage: "ok", now: 200,
+      actions: [{ action: "upsert", subjectUserId: "user", topic: "preference", slot: "slot40", statement: "fact 40" }],
+    });
+
+    state = await store.load("guild", "user", 201);
+    expect(state.memories).toHaveLength(40);
+    expect(state.memories.some((memory) => memory.slot === "slot0")).toBe(false);
+    expect(state.memories.some((memory) => memory.slot === "slot40")).toBe(true);
   });
 
   it("drops whole oldest exchanges to satisfy the total session budget", async () => {

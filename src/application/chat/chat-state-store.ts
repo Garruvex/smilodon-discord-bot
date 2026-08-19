@@ -22,10 +22,16 @@ export interface UserChatStateStore {
     actions: readonly ProposedMemoryAction[];
     now: number;
   }): Promise<void>;
-  // Explicit user-initiated deletion (unlike commitSuccessfulExchange's
-  // model-proposed "remove" actions, this also deletes pinned records —
-  // pinning protects against accidental removal by the model, not against
-  // the user's own request to forget something).
+  // Merges memory actions only — no session exchange is written. Used for
+  // an ambient "react" turn: the model engaged (if only with an emoji) and
+  // may have proposed memory-worthy facts, but there's no assistant reply
+  // text to record as a session exchange.
+  applyMemoryActions(input: {
+    guildId: string;
+    userId: string;
+    actions: readonly ProposedMemoryAction[];
+    now: number;
+  }): Promise<void>;
   forgetMemory(guildId: string, userId: string, memoryId: string): Promise<boolean>;
   forgetAllMemories(guildId: string, userId: string): Promise<number>;
   // Per-user, per-guild preference for whether mention-chat system notes

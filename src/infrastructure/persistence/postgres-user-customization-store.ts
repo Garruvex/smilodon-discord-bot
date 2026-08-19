@@ -3,9 +3,13 @@ import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
 import type { UserCustomizationStore } from "../../application/chat/user-customization-store.js";
 import * as schema from "../database/schema.js";
+import type { GuildMemberRegistry } from "./guild-member-registry.js";
 
 export class PostgresUserCustomizationStore implements UserCustomizationStore {
-  public constructor(private readonly database: PostgresJsDatabase<typeof schema>) {}
+  public constructor(
+    private readonly database: PostgresJsDatabase<typeof schema>,
+    private readonly memberRegistry: GuildMemberRegistry,
+  ) {}
 
   public initialize(): Promise<void> {
     return Promise.resolve();
@@ -20,11 +24,12 @@ export class PostgresUserCustomizationStore implements UserCustomizationStore {
   }
 
   public async save(guildId: string, userId: string, markdown: string): Promise<void> {
+    const memberId = await this.memberRegistry.resolveMemberId(guildId, userId);
     await this.database.insert(schema.userCustomizations).values({
-      guildId, userId, customization: markdown, updatedAt: new Date(),
+      guildId, userId, memberId, customization: markdown, updatedAt: new Date(),
     }).onConflictDoUpdate({
       target: [schema.userCustomizations.guildId, schema.userCustomizations.userId],
-      set: { customization: markdown, updatedAt: new Date() },
+      set: { customization: markdown, updatedAt: new Date(), memberId },
     });
   }
 

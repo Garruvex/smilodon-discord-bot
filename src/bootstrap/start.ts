@@ -12,6 +12,7 @@ import { createPersistenceServices } from "../infrastructure/persistence/persist
 import { MusicPresenceService } from "../application/music/music-presence-service.js";
 import { AuditLogService } from "../application/audit/audit-log-service.js";
 import { BirthdayAnnouncer } from "../application/birthdays/birthday-announcer.js";
+import { MemberDepartureService } from "../application/members/member-departure-service.js";
 
 const configuration = loadConfiguration();
 const logger = createLogger(configuration);
@@ -75,6 +76,10 @@ const birthdayAnnouncer = new BirthdayAnnouncer(
   persistence.birthdayStore,
   logger.child({ component: "birthdays" }),
 );
+const memberDepartureService = new MemberDepartureService(
+  guildConfigurationProvider,
+  persistence.guildMemberRegistry,
+);
 deferredGuildSetupService.setService(
   new LocalGuildSetupService(
     guildConfigurationProvider,
@@ -91,6 +96,7 @@ const application = new Application(
   controlChannelService,
   musicPresenceService,
   birthdayAnnouncer,
+  memberDepartureService,
   logger.child({ component: "application" }),
   (reason) => {
     void shutdown(reason, 1);

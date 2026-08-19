@@ -27,9 +27,14 @@ export interface UpdateGuildConfigurationInput {
   chatbotImageGenerationEnabled?: boolean;
   chatbotIncludeSources?: boolean;
   chatbotMaxImagesPerRequest?: number;
+  ambientReplies?: boolean;
+  ambientCooldownSeconds?: number;
+  channelHistory?: boolean;
+  channelHistoryLimit?: number;
   birthdaysEnabled?: boolean;
   birthdayAnnouncementsChannelId?: string | null;
   nsfwEnabled?: boolean;
+  retainMemberDataOnLeave?: boolean;
   linkFixEnabled?: boolean;
   linkFixChannelIds?: readonly string[];
   defaultVolume?: number;
@@ -65,7 +70,11 @@ export function createGuildConfigurationDocument(input: CreateGuildConfiguration
       idleImageAsset: null,
     },
     panel: {},
-    features: { common: true, diagnostics: true, music: true, chatbot: false, birthdays: false, nsfw: false, linkFix: false },
+    features: {
+      common: true, diagnostics: true, music: true, chatbot: false, birthdays: false,
+      nsfw: false, linkFix: false, retainMemberDataOnLeave: true, ambientReplies: false,
+      channelHistory: false,
+    },
     roles: {
       botAdministrator: [...input.botAdministratorRoleIds],
       musicController: [...input.musicControllerRoleIds],
@@ -195,9 +204,14 @@ export function applyGuildConfigurationUpdate(
   if (input.chatbotImageGenerationEnabled !== undefined) next.chat.imageGenerationEnabled = input.chatbotImageGenerationEnabled;
   if (input.chatbotIncludeSources !== undefined) next.chat.includeSources = input.chatbotIncludeSources;
   if (input.chatbotMaxImagesPerRequest !== undefined) next.chat.maxImagesPerRequest = input.chatbotMaxImagesPerRequest;
+  if (input.ambientReplies !== undefined) next.features.ambientReplies = input.ambientReplies;
+  if (input.ambientCooldownSeconds !== undefined) next.chat.ambientCooldownSeconds = input.ambientCooldownSeconds;
+  if (input.channelHistory !== undefined) next.features.channelHistory = input.channelHistory;
+  if (input.channelHistoryLimit !== undefined) next.chat.channelHistoryLimit = input.channelHistoryLimit;
   if (input.birthdaysEnabled !== undefined) next.features.birthdays = input.birthdaysEnabled;
   if (input.birthdayAnnouncementsChannelId !== undefined) next.channels.birthdayAnnouncements = input.birthdayAnnouncementsChannelId;
   if (input.nsfwEnabled !== undefined) next.features.nsfw = input.nsfwEnabled;
+  if (input.retainMemberDataOnLeave !== undefined) next.features.retainMemberDataOnLeave = input.retainMemberDataOnLeave;
   if (input.linkFixEnabled !== undefined) next.features.linkFix = input.linkFixEnabled;
   if (input.linkFixChannelIds !== undefined) next.channels.linkFix = [...input.linkFixChannelIds];
   if (input.defaultVolume !== undefined) next.music.volume.default = input.defaultVolume;

@@ -14,9 +14,25 @@ export const controlPanels = pgTable("control_panels", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// Hub entity for "this Discord member in this guild." Existing guildId/userId
+// columns on the tables below are left as the source of truth for reads —
+// memberId is additive, populated on writes via GuildMemberRegistry, and
+// exists only to give ON DELETE CASCADE something to cascade from and to
+// provide a join point for future per-member features.
+export const guildMembers = pgTable("guild_members", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  guildId: text("guild_id").notNull(),
+  userId: text("user_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("guild_members_guild_user").on(table.guildId, table.userId),
+]);
+
 export const chatSessions = pgTable("chat_sessions", {
   guildId: text("guild_id").notNull(),
   userId: text("user_id").notNull(),
+  memberId: uuid("member_id").references(() => guildMembers.id, { onDelete: "cascade" }),
   exchanges: jsonb("exchanges").notNull().default([]),
   dmNotesEnabled: boolean("dm_notes_enabled").notNull().default(true),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
@@ -26,11 +42,16 @@ export const chatMemories = pgTable("chat_memories", {
   id: uuid("id").primaryKey(),
   guildId: text("guild_id").notNull(),
   assertedByUserId: text("asserted_by_user_id").notNull(),
+  // References the asserter (assertedByUserId), not subjectUserId — the
+  // asserter is the row's real owner (eviction/limits are scoped to them).
+  // subjectUserId stays a plain unconstrained column so a memory can
+  // reference someone mentioned in conversation without requiring them to
+  // already have a member row.
+  memberId: uuid("member_id").references(() => guildMembers.id, { onDelete: "cascade" }),
   subjectUserId: text("subject_user_id").notNull(),
   topic: text("topic").notNull(),
   slot: text("slot").notNull(),
   statement: text("statement").notNull(),
-  pinned: boolean("pinned").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
@@ -42,6 +63,7 @@ export const chatMemories = pgTable("chat_memories", {
 export const userCustomizations = pgTable("user_customizations", {
   guildId: text("guild_id").notNull(),
   userId: text("user_id").notNull(),
+  memberId: uuid("member_id").references(() => guildMembers.id, { onDelete: "cascade" }),
   customization: text("customization").notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [primaryKey({ columns: [table.guildId, table.userId] })]);
@@ -49,6 +71,7 @@ export const userCustomizations = pgTable("user_customizations", {
 export const birthdays = pgTable("birthdays", {
   guildId: text("guild_id").notNull(),
   userId: text("user_id").notNull(),
+  memberId: uuid("member_id").references(() => guildMembers.id, { onDelete: "cascade" }),
   month: integer("month").notNull(),
   day: integer("day").notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),

@@ -53,7 +53,9 @@ import { PollService } from "../application/polls/poll-service.js";
 import { BehaviorRegistry } from "../application/behaviors/behavior-registry.js";
 import { BehaviorDispatcher } from "../application/behaviors/behavior-dispatcher.js";
 import { MentionChatBehavior } from "../infrastructure/discord/behaviors/mention-chat-behavior.js";
+import { AmbientChatBehavior } from "../infrastructure/discord/behaviors/ambient-chat-behavior.js";
 import { LinkFixBehavior } from "../infrastructure/discord/behaviors/link-fix-behavior.js";
+import { BilibiliEmbedService } from "../infrastructure/links/bilibili-embed-service.js";
 import { OpenAiCompatibleChatProvider } from "../infrastructure/chat/openai-compatible-chat-provider.js";
 import { OpenAiResponsesChatProvider } from "../infrastructure/chat/openai-responses-chat-provider.js";
 import type { Client } from "discord.js";
@@ -64,9 +66,10 @@ import { PollComponentHandler } from "../infrastructure/discord/components/poll-
 import type { ChatStateStore } from "../application/chat/chat-state-store.js";
 import { ChatConversationService } from "../application/chat/chat-conversation-service.js";
 import type { GuildKnowledgeStore } from "../application/chat/guild-knowledge-store.js";
-import { FullGuildMemorySelector } from "../application/chat/guild-memory-selector.js";
+import { RelevantGuildMemorySelector } from "../application/chat/guild-memory-selector.js";
 import { ApplicationEmojiCatalog } from "../infrastructure/discord/application-emoji-catalog.js";
 import type { AuditLogService } from "../application/audit/audit-log-service.js";
+import { MemberProfileService } from "../application/members/member-profile-service.js";
 
 export interface ApplicationDependencies {
   commandRegistry: CommandRegistry;
@@ -115,7 +118,8 @@ export function createDependencies(
   commandRegistry.register(new SetupCommand(guildSetupService));
   commandRegistry.register(settingsCommand);
   commandRegistry.register(new VoteCommand(pollService));
-  commandRegistry.register(new MemoryCommand(chatStateStore));
+  const memberProfileService = new MemberProfileService(chatStateStore, birthdayStore, userCustomizationStore);
+  commandRegistry.register(new MemoryCommand(chatStateStore, memberProfileService));
   commandRegistry.register(new BirthdayCommand(birthdayStore));
   commandRegistry.register(new OwoifyCommand());
   commandRegistry.register(new WolfyCommand());
@@ -210,9 +214,11 @@ export function createDependencies(
         chatProvider,
         chatStateStore,
         guildKnowledgeStore,
-        new FullGuildMemorySelector(),
+        new RelevantGuildMemorySelector(),
         undefined,
         userCustomizationStore,
+        undefined,
+        birthdayStore,
       )
     : null;
   behaviorRegistry.register(new MentionChatBehavior(
@@ -222,8 +228,16 @@ export function createDependencies(
     chatConversationService,
     logger.child({ component: "chat" }),
   ));
+  behaviorRegistry.register(new AmbientChatBehavior(
+    () => discordClient.user?.id ?? null,
+    configuration,
+    guildConfigurationProvider,
+    chatConversationService,
+    logger.child({ component: "ambient-chat" }),
+  ));
   behaviorRegistry.register(new LinkFixBehavior(
     guildConfigurationProvider,
+    new BilibiliEmbedService(logger.child({ component: "bilibili-embed" })),
     logger.child({ component: "link-fix" }),
   ));
 

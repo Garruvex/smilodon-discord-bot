@@ -1,0 +1,1 @@
+ALTER TABLE "chat_memories" DROP COLUMN "pinned";

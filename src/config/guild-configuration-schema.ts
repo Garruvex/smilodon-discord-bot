@@ -21,6 +21,8 @@ const guildChatSchema = z.preprocess((value) => {
   imageGenerationEnabled: z.boolean().default(false),
   includeSources: z.boolean().default(true),
   maxImagesPerRequest: z.number().int().min(0).max(4).default(2),
+  ambientCooldownSeconds: z.number().int().min(0).max(86_400).default(20),
+  channelHistoryLimit: z.number().int().min(1).max(25).default(8),
 }));
 
 const progressBarEmojiBase = {
@@ -96,8 +98,15 @@ export const guildConfigurationFileSchema = z
         birthdays: z.boolean().default(false),
         nsfw: z.boolean().default(false),
         linkFix: z.boolean().default(false),
+        retainMemberDataOnLeave: z.boolean().default(true),
+        ambientReplies: z.boolean().default(false),
+        channelHistory: z.boolean().default(false),
       })
-      .default({ common: true, diagnostics: true, music: false, chatbot: false, birthdays: false, nsfw: false, linkFix: false }),
+      .default({
+        common: true, diagnostics: true, music: false, chatbot: false, birthdays: false,
+        nsfw: false, linkFix: false, retainMemberDataOnLeave: true, ambientReplies: false,
+        channelHistory: false,
+      }),
     roles: z
       .object({
         botAdministrator: snowflakeList,
@@ -139,6 +148,8 @@ export const guildConfigurationFileSchema = z
         imageGenerationEnabled: false,
         includeSources: true,
         maxImagesPerRequest: 2,
+        ambientCooldownSeconds: 20,
+        channelHistoryLimit: 8,
       }),
     music: z
       .object({

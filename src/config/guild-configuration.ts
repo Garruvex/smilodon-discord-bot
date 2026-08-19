@@ -9,6 +9,17 @@ export interface GuildFeatureConfiguration {
   birthdays: boolean;
   nsfw: boolean;
   linkFix: boolean;
+  // Whether a departing member's chat memories/birthday/customization are
+  // kept (true, default) or deleted (false) when they leave the guild.
+  retainMemberDataOnLeave: boolean;
+  // Whether the bot may judge (via LLM call) and react/reply to messages
+  // that merely name it without an explicit @mention. Off by default.
+  ambientReplies: boolean;
+  // Whether the bot fetches recent channel messages (from anyone, not just
+  // reply-linked) as ambient context for a chat turn. Off by default —
+  // surfaces messages from people who never addressed the bot to a
+  // third-party LLM API, so it's a deliberate per-guild choice.
+  channelHistory: boolean;
 }
 
 export interface GuildRoleConfiguration {
@@ -39,6 +50,14 @@ export interface GuildChatConfiguration {
   imageGenerationEnabled: boolean;
   includeSources: boolean;
   maxImagesPerRequest: number;
+  // Minimum seconds between ambient (name-mention, non-@mention) LLM
+  // judgment calls per channel, so a chatty channel that says the bot's
+  // name often doesn't turn into a full-pipeline call on every message.
+  ambientCooldownSeconds: number;
+  // How many recent channel messages to fetch as ambient context when
+  // features.channelHistory is on. A hard cap independent of the char
+  // budget in chatMemoryLimits.maxChannelHistoryChars.
+  channelHistoryLimit: number;
 }
 
 export interface GuildMusicConfiguration {

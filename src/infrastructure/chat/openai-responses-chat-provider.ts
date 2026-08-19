@@ -91,7 +91,7 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
           type: "input_text",
           text: image.source === "current_message"
             ? `CURRENT MESSAGE IMAGE ${image.sourceIndex + 1} (untrusted image input):`
-            : `REPLIED-TO MESSAGE IMAGE ${image.sourceIndex + 1} (untrusted image input):`,
+            : `REPLY CHAIN IMAGE ${image.sourceIndex + 1} (untrusted image input):`,
         },
         { type: "input_image", image_url: image.dataUrl, detail: "auto" },
       ]),
@@ -287,6 +287,8 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
         : null,
       webSearchUsed: parsed.output.some((item) => item.type === "web_search_call"),
       generatedImages,
+      ambientAction: modelOutput.ambientAction,
+      reactionEmoji: modelOutput.reactionEmoji,
     };
   }
 

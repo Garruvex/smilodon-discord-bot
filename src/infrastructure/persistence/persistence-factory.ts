@@ -23,6 +23,7 @@ import { PostgresGuildKnowledgeStore } from "./postgres-guild-knowledge-store.js
 import type { BirthdayStore } from "../../application/birthdays/birthday-store.js";
 import { LocalBirthdayStore } from "./local-birthday-store.js";
 import { PostgresBirthdayStore } from "./postgres-birthday-store.js";
+import { GuildMemberRegistry } from "./guild-member-registry.js";
 
 export interface PersistenceServices {
   guildConfigurationProvider: GuildConfigurationProvider;
@@ -31,6 +32,9 @@ export interface PersistenceServices {
   userCustomizationStore: UserCustomizationStore;
   guildKnowledgeStore: GuildKnowledgeStore;
   birthdayStore: BirthdayStore;
+  // Null on the local (file-based) backend, which has no hub-table concept —
+  // it's purely a dev/testing convenience and doesn't need it.
+  guildMemberRegistry: GuildMemberRegistry | null;
   close(): Promise<void>;
 }
 
@@ -44,17 +48,19 @@ export async function createPersistenceServices(
   let userCustomizationStore: UserCustomizationStore;
   let guildKnowledgeStore: GuildKnowledgeStore;
   let birthdayStore: BirthdayStore;
+  let guildMemberRegistry: GuildMemberRegistry | null = null;
 
   if (configuration.persistence.driver === "postgres") {
     const databaseUrl = configuration.persistence.databaseUrl;
     if (!databaseUrl) throw new Error("PostgreSQL persistence requires DATABASE_URL.");
     connection = createDatabaseConnection(databaseUrl);
+    guildMemberRegistry = new GuildMemberRegistry(connection.database);
     guildConfigurationProvider = new PostgresGuildConfigurationProvider(connection.database);
     controlPanelStateStore = new PostgresControlPanelStateStore(connection.database);
-    chatStateStore = new PostgresChatStateStore(connection.database);
-    userCustomizationStore = new PostgresUserCustomizationStore(connection.database);
+    chatStateStore = new PostgresChatStateStore(connection.database, guildMemberRegistry);
+    userCustomizationStore = new PostgresUserCustomizationStore(connection.database, guildMemberRegistry);
     guildKnowledgeStore = new PostgresGuildKnowledgeStore(connection.database);
-    birthdayStore = new PostgresBirthdayStore(connection.database);
+    birthdayStore = new PostgresBirthdayStore(connection.database, guildMemberRegistry);
   } else {
     guildConfigurationProvider = new LocalGuildConfigurationProvider(
       configuration.guildConfigurationDirectory,
@@ -82,6 +88,7 @@ export async function createPersistenceServices(
     userCustomizationStore,
     guildKnowledgeStore,
     birthdayStore,
+    guildMemberRegistry,
     close: async () => connection?.close(),
   };
 }

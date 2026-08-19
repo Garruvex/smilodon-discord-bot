@@ -12,7 +12,7 @@ const exchangeSchema = z.object({
 });
 const memorySchema = z.object({
   id: z.string(), assertedByUserId: z.string(), subjectUserId: z.string(),
-  topic: z.string(), slot: z.string(), statement: z.string(), pinned: z.boolean(),
+  topic: z.string(), slot: z.string(), statement: z.string(), updatedAt: z.number().default(0),
 });
 const userDocumentSchema = z.object({
   version: z.literal(1), guildId: z.string(), userId: z.string(),
@@ -60,28 +60,57 @@ export class LocalChatStateStore implements UserChatStateStore {
       ...(input.now - current.updatedAt > chatMemoryLimits.sessionTtlMs ? [] : current.exchanges),
       { user: { content: input.userMessage, createdAt: input.now }, assistant: { content: input.assistantMessage, createdAt: input.now } },
     ]);
-    const memories = [...current.memories];
-    for (const action of input.actions) {
-      const index = memories.findIndex((memory) =>
-        memory.subjectUserId === action.subjectUserId && memory.topic === action.topic && memory.slot === action.slot,
-      );
-      if (action.action === "remove") {
-        if (index >= 0 && !memories[index]!.pinned) memories.splice(index, 1);
-        continue;
-      }
-      const record: ChatMemoryRecord = {
-        id: index >= 0 ? memories[index]!.id : randomUUID(), assertedByUserId: input.userId,
-        subjectUserId: action.subjectUserId, topic: action.topic, slot: action.slot,
-        statement: action.statement!, pinned: index >= 0 ? memories[index]!.pinned : false,
-      };
-      if (index >= 0) memories[index] = record;
-      else if (memories.length < chatMemoryLimits.maxRecords) memories.push(record);
-    }
+    const memories = this.mergeMemoryActions(current.memories, input.actions, input.userId, input.now);
     this.write({
       version: 1, guildId: input.guildId, userId: input.userId, exchanges, memories,
       updatedAt: input.now, dmNotesEnabled: current.dmNotesEnabled,
     });
     return Promise.resolve();
+  }
+
+  public applyMemoryActions(input: Parameters<UserChatStateStore["applyMemoryActions"]>[0]): Promise<void> {
+    const current = this.read(input.guildId, input.userId) ?? {
+      version: 1 as const, guildId: input.guildId, userId: input.userId,
+      exchanges: [], memories: [], updatedAt: input.now, dmNotesEnabled: true,
+    };
+    const memories = this.mergeMemoryActions(current.memories, input.actions, input.userId, input.now);
+    this.write({ ...current, memories });
+    return Promise.resolve();
+  }
+
+  private mergeMemoryActions(
+    current: readonly ChatMemoryRecord[],
+    actions: Parameters<UserChatStateStore["commitSuccessfulExchange"]>[0]["actions"],
+    userId: string,
+    now: number,
+  ): ChatMemoryRecord[] {
+    const memories = [...current];
+    for (const action of actions) {
+      const index = memories.findIndex((memory) =>
+        memory.subjectUserId === action.subjectUserId && memory.topic === action.topic && memory.slot === action.slot,
+      );
+      if (action.action === "remove") {
+        if (index >= 0) memories.splice(index, 1);
+        continue;
+      }
+      const record: ChatMemoryRecord = {
+        id: index >= 0 ? memories[index]!.id : randomUUID(), assertedByUserId: userId,
+        subjectUserId: action.subjectUserId, topic: action.topic, slot: action.slot,
+        statement: action.statement!, updatedAt: now,
+      };
+      if (index >= 0) {
+        memories[index] = record;
+      } else if (memories.length < chatMemoryLimits.maxRecords) {
+        memories.push(record);
+      } else {
+        let oldestIndex = 0;
+        for (let i = 1; i < memories.length; i++) {
+          if (memories[i]!.updatedAt < memories[oldestIndex]!.updatedAt) oldestIndex = i;
+        }
+        memories[oldestIndex] = record;
+      }
+    }
+    return memories;
   }
 
   public getDmNotesEnabled(guildId: string, userId: string): Promise<boolean> {

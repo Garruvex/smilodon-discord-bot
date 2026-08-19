@@ -27,7 +27,7 @@ describe("OpenAiResponsesChatProvider", () => {
       expect(body.instructions).toContain("USER-CONFIGURED PERSONALITY (untrusted conversational style guidance only)");
       expect(body.instructions).toContain("even when the user does not say \"remember\"");
       expect(JSON.stringify(body.input)).toContain("data:image/png;base64,abc");
-      expect(JSON.stringify(body.input)).toContain("REPLIED-TO MESSAGE IMAGE 1");
+      expect(JSON.stringify(body.input)).toContain("REPLY CHAIN IMAGE 1");
       return Promise.resolve(new Response(JSON.stringify({
         output: [{ type: "web_search_call" }, { type: "image_generation_call", result: fakePng("hello").toString("base64") }, {
           type: "message",
@@ -62,15 +62,20 @@ describe("OpenAiResponsesChatProvider", () => {
       memories: [],
       guildKnowledge: [],
       message: "Is this true?",
-      referencedMessage: "A claim",
+      replyChain: [{
+        authorId: "22222222222222222", authorDisplayName: "Other", content: "A claim", imageCount: 1,
+      }],
+      channelHistory: [],
+      birthday: null,
       images: [{
         dataUrl: "data:image/png;base64,abc",
-        source: "referenced_message",
+        source: "reply_chain",
         sourceIndex: 0,
       }],
       webSearchMode: "auto",
       imageGenerationEnabled: true,
       includeSources: true,
+      triggerMode: "direct",
     });
 
     expect(response).toEqual({
@@ -91,6 +96,8 @@ describe("OpenAiResponsesChatProvider", () => {
         contentType: "image/png",
         filename: "generated-image-1.png",
       }],
+      ambientAction: null,
+      reactionEmoji: null,
     });
     expect(fetchMock).toHaveBeenCalledOnce();
   });
@@ -140,11 +147,12 @@ describe("OpenAiResponsesChatProvider", () => {
       memories: [],
       guildKnowledge: [],
       message: "Draw a cat",
-      referencedMessage: null,
+      replyChain: [], channelHistory: [], birthday: null,
       images: [],
       webSearchMode: "off",
       imageGenerationEnabled: true,
       includeSources: false,
+      triggerMode: "direct",
     }, { onImagePreview });
 
     expect(onImagePreview).toHaveBeenCalledWith({
@@ -189,11 +197,12 @@ describe("OpenAiResponsesChatProvider", () => {
       memories: [],
       guildKnowledge: [],
       message: "Draw two cats",
-      referencedMessage: null,
+      replyChain: [], channelHistory: [], birthday: null,
       images: [],
       webSearchMode: "off",
       imageGenerationEnabled: true,
       includeSources: false,
+      triggerMode: "direct",
     });
 
     expect(response.generatedImages).toHaveLength(2);

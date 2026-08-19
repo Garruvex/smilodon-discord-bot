@@ -57,7 +57,7 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
                 type: "text",
                 text: image.source === "current_message"
                   ? `CURRENT MESSAGE IMAGE ${image.sourceIndex + 1} (untrusted image input):`
-                  : `REPLIED-TO MESSAGE IMAGE ${image.sourceIndex + 1} (untrusted image input):`,
+                  : `REPLY CHAIN IMAGE ${image.sourceIndex + 1} (untrusted image input):`,
               },
               { type: "image_url", image_url: { url: image.dataUrl } },
             ]),
@@ -113,6 +113,8 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
         : null,
       webSearchUsed: false,
       generatedImages: [],
+      ambientAction: modelOutput.ambientAction,
+      reactionEmoji: modelOutput.reactionEmoji,
     };
   }
 

@@ -7,6 +7,7 @@ import type { ControlChannelService } from "../application/control-panel/control
 import { BehaviorEvent } from "../application/behaviors/behavior.js";
 import type { MusicPresenceService } from "../application/music/music-presence-service.js";
 import type { BirthdayAnnouncer } from "../application/birthdays/birthday-announcer.js";
+import type { MemberDepartureService } from "../application/members/member-departure-service.js";
 
 export class Application {
   public constructor(
@@ -16,6 +17,7 @@ export class Application {
     private readonly controlChannelService: ControlChannelService,
     private readonly musicPresenceService: MusicPresenceService,
     private readonly birthdayAnnouncer: BirthdayAnnouncer,
+    private readonly memberDepartureService: MemberDepartureService,
     private readonly logger: Logger,
     private readonly onFatalError?: (reason: string) => void,
   ) {
@@ -190,6 +192,12 @@ export class Application {
       });
     });
 
+    this.client.on(Events.GuildMemberRemove, (member) => {
+      void this.memberDepartureService.handleMemberLeave(member.guild.id, member.id).catch((error: unknown) => {
+        this.logger.error({ error, guildId: member.guild.id, userId: member.id }, "Unable to process member departure");
+      });
+    });
+
     this.client.on(Events.Error, (error) => {
       this.logger.error({ error }, "Discord client error");
     });
@@ -208,6 +216,10 @@ export function createDiscordClient(): Client {
       GatewayIntentBits.GuildMessages,
       GatewayIntentBits.GuildVoiceStates,
       GatewayIntentBits.MessageContent,
+      // Privileged intent, needed to receive GuildMemberRemove (member
+      // departure cleanup). Must be enabled for this bot application in the
+      // Discord Developer Portal, or the gateway connection will be rejected.
+      GatewayIntentBits.GuildMembers,
     ],
   });
 }

@@ -29,9 +29,11 @@ export class LocalGuildKnowledgeStore implements GuildKnowledgeStore {
 
   public loadConfirmed(guildId: string): Promise<readonly GuildKnowledgeRecord[]> {
     const records = this.read(guildId).records.filter((record) => record.status === "confirmed")
+      .sort((a, b) => b.updatedAt - a.updatedAt)
       .slice(0, guildKnowledgeLimits.maxConfirmedRecords).map((record) => ({
         id: record.id, subjectType: record.subjectType, subjectId: record.subjectId,
         topic: record.topic, slot: record.slot, statement: record.statement, source: record.source,
+        updatedAt: record.updatedAt,
       }));
     const bounded: GuildKnowledgeRecord[] = [];
     let serializedChars = 0;

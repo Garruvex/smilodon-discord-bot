@@ -3,6 +3,12 @@ import { SlashCommandBuilder } from "discord.js";
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
 import type { ChatStateStore } from "../../../../application/chat/chat-state-store.js";
+import type { MemberProfileService } from "../../../../application/members/member-profile-service.js";
+
+const monthNames = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
 
 export class MemoryCommand implements BotCommand {
   public readonly definition = new SlashCommandBuilder()
@@ -30,7 +36,10 @@ export class MemoryCommand implements BotCommand {
   public readonly module = CommandModule.Common;
   public readonly access = publicAccessPolicy;
 
-  public constructor(private readonly chatStateStore: ChatStateStore) {}
+  public constructor(
+    private readonly chatStateStore: ChatStateStore,
+    private readonly memberProfileService: MemberProfileService,
+  ) {}
 
   public async execute(context: CommandContext): Promise<void> {
     if (!context.interaction.guildId) {
@@ -70,19 +79,29 @@ export class MemoryCommand implements BotCommand {
   }
 
   private async list(context: CommandContext, guildId: string, userId: string): Promise<void> {
-    const state = await this.chatStateStore.load(guildId, userId, Date.now());
-    if (state.memories.length === 0) {
+    const profile = await this.memberProfileService.load(guildId, userId, Date.now());
+    if (profile.memories.length === 0 && !profile.birthday && !profile.customization) {
       await context.responses.reply("I don't have anything remembered about you in this server yet.");
       return;
     }
-    const lines = state.memories.map((memory) =>
-      `- \`${memory.id.slice(0, 8)}\` **${memory.topic}.${memory.slot}**: ${memory.statement}${memory.pinned ? " (pinned)" : ""}`,
+    const profileLines: string[] = [];
+    if (profile.birthday) {
+      profileLines.push(
+        `- [birthday] ${monthNames[profile.birthday.month - 1]} ${profile.birthday.day} — manage with \`/birthday\``,
+      );
+    }
+    if (profile.customization) {
+      profileLines.push("- [customization] set — manage with `/customize`");
+    }
+    const memoryLines = profile.memories.map((memory) =>
+      `- \`${memory.id.slice(0, 8)}\` **${memory.topic}.${memory.slot}**: ${memory.statement}`,
     );
     const content = [
-      `Here's what I remember about you in this server (${state.memories.length}):`,
-      ...lines,
+      `Here's what I remember about you in this server:`,
+      ...profileLines,
+      ...memoryLines,
       "",
-      "Use `/memory forget id:<id>` to remove one, or `/memory forget all:true` to clear everything.",
+      "Use `/memory forget id:<id>` to remove a memory, or `/memory forget all:true` to clear all memories.",
     ].join("\n").slice(0, 2_000);
     await context.responses.reply(content);
   }

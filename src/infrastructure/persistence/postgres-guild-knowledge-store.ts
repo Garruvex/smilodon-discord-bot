@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, gt, isNull, or } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, or } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { z } from "zod";
 import { guildKnowledgeLimits, maySelfConfirm } from "../../application/chat/guild-knowledge-policy.js";
@@ -18,13 +18,14 @@ export class PostgresGuildKnowledgeStore implements GuildKnowledgeStore {
   public async loadConfirmed(guildId: string): Promise<readonly GuildKnowledgeRecord[]> {
     const rows = await this.database.select().from(schema.guildKnowledge).where(and(
       eq(schema.guildKnowledge.guildId, guildId), eq(schema.guildKnowledge.status, "confirmed"),
-    )).limit(guildKnowledgeLimits.maxConfirmedRecords);
+    )).orderBy(desc(schema.guildKnowledge.updatedAt)).limit(guildKnowledgeLimits.maxConfirmedRecords);
     const bounded: GuildKnowledgeRecord[] = [];
     let serializedChars = 0;
     for (const row of rows) {
       const record: GuildKnowledgeRecord = {
         id: row.id, subjectType: subjectTypeSchema.parse(row.subjectType), subjectId: row.subjectId,
         topic: row.topic, slot: row.slot, statement: row.statement, source: sourceSchema.parse(row.source),
+        updatedAt: row.updatedAt.getTime(),
       };
       const size = JSON.stringify(record).length;
       if (serializedChars + size > guildKnowledgeLimits.maxSerializedChars) break;

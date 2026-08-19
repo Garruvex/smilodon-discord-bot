@@ -1,0 +1,34 @@
+import type { ChatMemoryRecord } from "../chat/chat-provider.js";
+import type { ChatStateStore } from "../chat/chat-state-store.js";
+import type { UserCustomizationStore } from "../chat/user-customization-store.js";
+import type { BirthdayRecord, BirthdayStore } from "../birthdays/birthday-store.js";
+
+export interface MemberProfile {
+  memories: readonly ChatMemoryRecord[];
+  birthday: BirthdayRecord | null;
+  customization: string | null;
+}
+
+// Assembles the three currently-disconnected per-member stores into one
+// view, for both /memory list (so a user can see everything the bot knows
+// about them in one place) and the AI chat context (so the bot can draw on
+// birthday/customization the same turn it draws on memories). Read-only —
+// each field is still owned and mutated by its existing dedicated store
+// (ChatStateStore, BirthdayStore, UserCustomizationStore); this doesn't
+// introduce a new write path or a merged schema.
+export class MemberProfileService {
+  public constructor(
+    private readonly chatStateStore: ChatStateStore,
+    private readonly birthdayStore: BirthdayStore | null,
+    private readonly userCustomizationStore: UserCustomizationStore | null,
+  ) {}
+
+  public async load(guildId: string, userId: string, now: number): Promise<MemberProfile> {
+    const [state, birthday, customization] = await Promise.all([
+      this.chatStateStore.load(guildId, userId, now),
+      this.birthdayStore?.getBirthday(guildId, userId) ?? Promise.resolve(null),
+      this.userCustomizationStore?.load(guildId, userId) ?? Promise.resolve(null),
+    ]);
+    return { memories: state.memories, birthday, customization };
+  }
+}

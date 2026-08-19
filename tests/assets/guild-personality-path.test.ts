@@ -28,6 +28,9 @@ function profile(overrides: Partial<GuildConfiguration["chat"]> = {}): GuildConf
       birthdays: false,
       nsfw: false,
       linkFix: false,
+      retainMemberDataOnLeave: true,
+      ambientReplies: false,
+      channelHistory: false,
     },
     roles: {
       botAdministrator: new Set(),
@@ -65,6 +68,8 @@ function profile(overrides: Partial<GuildConfiguration["chat"]> = {}): GuildConf
       imageGenerationEnabled: false,
       includeSources: true,
       maxImagesPerRequest: 2,
+      ambientCooldownSeconds: 20,
+      channelHistoryLimit: 8,
       ...overrides,
     },
     sourceFile: "test.yaml",

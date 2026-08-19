@@ -1,20 +1,26 @@
 import { randomUUID } from "node:crypto";
 
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { z } from "zod";
 
 import { chatMemoryLimits } from "../../application/chat/chat-memory-policy.js";
 import { boundSessionExchanges, type ChatSessionExchange, type ChatStateSnapshot, type ChatStateStore } from "../../application/chat/chat-state-store.js";
 import * as schema from "../database/schema.js";
+import type { GuildMemberRegistry } from "./guild-member-registry.js";
 
 const exchangesSchema = z.array(z.object({
   user: z.object({ content: z.string(), createdAt: z.number() }),
   assistant: z.object({ content: z.string(), createdAt: z.number() }),
 }));
 
+type PgTransaction = Parameters<Parameters<PostgresJsDatabase<typeof schema>["transaction"]>[0]>[0];
+
 export class PostgresChatStateStore implements ChatStateStore {
-  public constructor(private readonly database: PostgresJsDatabase<typeof schema>) {}
+  public constructor(
+    private readonly database: PostgresJsDatabase<typeof schema>,
+    private readonly memberRegistry: GuildMemberRegistry,
+  ) {}
 
   public initialize(): Promise<void> { return Promise.resolve(); }
 
@@ -40,7 +46,7 @@ export class PostgresChatStateStore implements ChatStateStore {
         topic: memory.topic,
         slot: memory.slot,
         statement: memory.statement,
-        pinned: memory.pinned,
+        updatedAt: memory.updatedAt.getTime(),
       })),
     };
   }
@@ -71,15 +77,17 @@ export class PostgresChatStateStore implements ChatStateStore {
   }
 
   public async setDmNotesEnabled(guildId: string, userId: string, enabled: boolean): Promise<void> {
+    const memberId = await this.memberRegistry.resolveMemberId(guildId, userId);
     await this.database.insert(schema.chatSessions).values({
-      guildId, userId, exchanges: [], dmNotesEnabled: enabled, updatedAt: new Date(),
+      guildId, userId, memberId, exchanges: [], dmNotesEnabled: enabled, updatedAt: new Date(),
     }).onConflictDoUpdate({
       target: [schema.chatSessions.guildId, schema.chatSessions.userId],
-      set: { dmNotesEnabled: enabled },
+      set: { dmNotesEnabled: enabled, memberId },
     });
   }
 
   public async commitSuccessfulExchange(input: Parameters<ChatStateStore["commitSuccessfulExchange"]>[0]): Promise<void> {
+    const memberId = await this.memberRegistry.resolveMemberId(input.guildId, input.userId);
     await this.database.transaction(async (transaction) => {
       const sessions = await transaction.select().from(schema.chatSessions).where(and(
         eq(schema.chatSessions.guildId, input.guildId), eq(schema.chatSessions.userId, input.userId),
@@ -93,47 +101,74 @@ export class PostgresChatStateStore implements ChatStateStore {
         assistant: { content: input.assistantMessage, createdAt: input.now },
       }]);
       await transaction.insert(schema.chatSessions).values({
-        guildId: input.guildId, userId: input.userId, exchanges, updatedAt: new Date(input.now),
+        guildId: input.guildId, userId: input.userId, memberId, exchanges, updatedAt: new Date(input.now),
       }).onConflictDoUpdate({
         target: [schema.chatSessions.guildId, schema.chatSessions.userId],
-        set: { exchanges, updatedAt: new Date(input.now) },
+        set: { exchanges, updatedAt: new Date(input.now), memberId },
       });
 
-      for (const action of input.actions) {
-        const identity = and(
-          eq(schema.chatMemories.guildId, input.guildId),
-          eq(schema.chatMemories.assertedByUserId, input.userId),
-          eq(schema.chatMemories.subjectUserId, action.subjectUserId),
-          eq(schema.chatMemories.topic, action.topic),
-          eq(schema.chatMemories.slot, action.slot),
-        );
-        if (action.action === "remove") {
-          await transaction.delete(schema.chatMemories).where(and(identity, eq(schema.chatMemories.pinned, false)));
-          continue;
-        }
-        const count = await transaction.$count(schema.chatMemories, and(
-          eq(schema.chatMemories.guildId, input.guildId),
-          eq(schema.chatMemories.assertedByUserId, input.userId),
-        ));
-        const existing = await transaction.select({ id: schema.chatMemories.id }).from(schema.chatMemories).where(identity).limit(1);
-        if (existing.length === 0 && count >= chatMemoryLimits.maxRecords) continue;
-        await transaction.insert(schema.chatMemories).values({
-          id: existing[0]?.id ?? randomUUID(),
-          guildId: input.guildId,
-          assertedByUserId: input.userId,
-          subjectUserId: action.subjectUserId,
-          topic: action.topic,
-          slot: action.slot,
-          statement: action.statement!,
-          updatedAt: new Date(input.now),
-        }).onConflictDoUpdate({
-          target: [
-            schema.chatMemories.guildId, schema.chatMemories.assertedByUserId,
-            schema.chatMemories.subjectUserId, schema.chatMemories.topic, schema.chatMemories.slot,
-          ],
-          set: { statement: action.statement!, updatedAt: new Date(input.now) },
-        });
-      }
+      await this.applyMemoryActionsInTransaction(transaction, input.guildId, input.userId, memberId, input.actions, input.now);
     });
+  }
+
+  public async applyMemoryActions(input: Parameters<ChatStateStore["applyMemoryActions"]>[0]): Promise<void> {
+    const memberId = await this.memberRegistry.resolveMemberId(input.guildId, input.userId);
+    await this.database.transaction((transaction) =>
+      this.applyMemoryActionsInTransaction(transaction, input.guildId, input.userId, memberId, input.actions, input.now),
+    );
+  }
+
+  private async applyMemoryActionsInTransaction(
+    transaction: PgTransaction,
+    guildId: string,
+    userId: string,
+    memberId: string,
+    actions: Parameters<ChatStateStore["applyMemoryActions"]>[0]["actions"],
+    now: number,
+  ): Promise<void> {
+    for (const action of actions) {
+      const identity = and(
+        eq(schema.chatMemories.guildId, guildId),
+        eq(schema.chatMemories.assertedByUserId, userId),
+        eq(schema.chatMemories.subjectUserId, action.subjectUserId),
+        eq(schema.chatMemories.topic, action.topic),
+        eq(schema.chatMemories.slot, action.slot),
+      );
+      if (action.action === "remove") {
+        await transaction.delete(schema.chatMemories).where(identity);
+        continue;
+      }
+      const existing = await transaction.select({ id: schema.chatMemories.id }).from(schema.chatMemories).where(identity).limit(1);
+      if (existing.length === 0) {
+        const count = await transaction.$count(schema.chatMemories, and(
+          eq(schema.chatMemories.guildId, guildId),
+          eq(schema.chatMemories.assertedByUserId, userId),
+        ));
+        if (count >= chatMemoryLimits.maxRecords) {
+          const oldest = await transaction.select({ id: schema.chatMemories.id }).from(schema.chatMemories).where(and(
+            eq(schema.chatMemories.guildId, guildId),
+            eq(schema.chatMemories.assertedByUserId, userId),
+          )).orderBy(asc(schema.chatMemories.updatedAt)).limit(1);
+          if (oldest[0]) await transaction.delete(schema.chatMemories).where(eq(schema.chatMemories.id, oldest[0].id));
+        }
+      }
+      await transaction.insert(schema.chatMemories).values({
+        id: existing[0]?.id ?? randomUUID(),
+        guildId,
+        assertedByUserId: userId,
+        memberId,
+        subjectUserId: action.subjectUserId,
+        topic: action.topic,
+        slot: action.slot,
+        statement: action.statement!,
+        updatedAt: new Date(now),
+      }).onConflictDoUpdate({
+        target: [
+          schema.chatMemories.guildId, schema.chatMemories.assertedByUserId,
+          schema.chatMemories.subjectUserId, schema.chatMemories.topic, schema.chatMemories.slot,
+        ],
+        set: { statement: action.statement!, updatedAt: new Date(now), memberId },
+      });
+    }
   }
 }
