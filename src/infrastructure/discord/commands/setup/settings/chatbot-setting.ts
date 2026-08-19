@@ -19,6 +19,7 @@ export const chatbotSetting: MutationSettingDefinition = {
     .addStringOption((o) => o.setName("denied-link-url").setDescription("Optional link button URL shown with the denied message. Use \"none\" to remove it."))
     .addStringOption((o) => o.setName("denied-link-label").setDescription("Label for the denied-message link button.").setMaxLength(80))
     .addBooleanOption((o) => o.setName("web-search").setDescription("Allow the model to search the public web when needed."))
+    .addBooleanOption((o) => o.setName("tool-calling").setDescription("Allow the model to call bot functions mid-reply (dice, 8-ball, booru, lookups)."))
     .addBooleanOption((o) => o.setName("image-input").setDescription("Allow bounded image attachments from Discord."))
     .addBooleanOption((o) => o.setName("image-generation").setDescription("Allow the model to generate images in mention chat."))
     .addBooleanOption((o) => o.setName("include-sources").setDescription("Include web citation links in replies."))
@@ -34,6 +35,7 @@ export const chatbotSetting: MutationSettingDefinition = {
     const deniedLinkUrl = context.interaction.options.getString("denied-link-url");
     const deniedLinkLabel = context.interaction.options.getString("denied-link-label");
     const webSearch = context.interaction.options.getBoolean("web-search");
+    const toolCalling = context.interaction.options.getBoolean("tool-calling");
     const imageInput = context.interaction.options.getBoolean("image-input");
     const imageGeneration = context.interaction.options.getBoolean("image-generation");
     const includeSources = context.interaction.options.getBoolean("include-sources");
@@ -57,6 +59,7 @@ export const chatbotSetting: MutationSettingDefinition = {
     }
     if (deniedLinkLabel !== null) input.chatbotDeniedLinkLabel = deniedLinkLabel;
     if (webSearch !== null) input.chatbotWebSearchMode = webSearch ? "auto" : "off";
+    if (toolCalling !== null) input.chatbotToolCallingEnabled = toolCalling;
     if (imageInput !== null) input.chatbotImageInputEnabled = imageInput;
     if (imageGeneration !== null) input.chatbotImageGenerationEnabled = imageGeneration;
     if (includeSources !== null) input.chatbotIncludeSources = includeSources;
@@ -88,6 +91,7 @@ export const chatbotSetting: MutationSettingDefinition = {
     { label: "Chatbot denied-message link URL", read: (p) => p.chat.deniedLinkUrl },
     { label: "Chatbot denied-message link label", read: (p) => p.chat.deniedLinkLabel },
     { label: "Chatbot web search mode", read: (p) => p.chat.webSearchMode },
+    { label: "Chatbot tool calling", read: (p) => p.chat.toolCallingEnabled },
     { label: "Chatbot image input", read: (p) => p.chat.imageInputEnabled },
     { label: "Chatbot image generation", read: (p) => p.chat.imageGenerationEnabled },
     { label: "Chatbot include sources", read: (p) => p.chat.includeSources },

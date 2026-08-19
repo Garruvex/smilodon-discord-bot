@@ -282,8 +282,17 @@ CHAT_API_MODE=chat_completions
 ```
 
 Use `CHAT_API_MODE=responses` with OpenAI's Responses API to enable guarded
-image input and optional model-selected web search. Keep `chat_completions` for
-generic OpenAI-compatible providers that do not implement Responses.
+image input, optional model-selected web search, and LLM tool calling (dice,
+8-ball, booru search, memory/birthday lookup, music control — see
+`/settings chat chatbot tool-calling`). Keep `chat_completions` for generic
+OpenAI-compatible providers that do not implement Responses.
+
+Optional: `CHAT_FALLBACK_MODELS` (comma-separated) walks an ordered list of
+backup models on a 429/quota error instead of failing the turn outright.
+`CHAT_EMBEDDING_MODEL` (e.g. `text-embedding-3-small`) enables vector-assisted
+guild-knowledge recall — semantic search over confirmed guild facts, additive
+to the existing keyword-overlap ranking. Both are opt-in; leaving them unset
+keeps today's single-model, keyword-only behavior.
 
 Responses generation settings belong to each bot instance:
 
@@ -492,7 +501,9 @@ npm.cmd run build
 ## Local Docker Compose
 
 For a compact list of native, Docker, deployment, and multi-instance commands,
-see the [launch command cheatsheet](docs/launch-cheatsheet.md).
+see the [launch command cheatsheet](docs/launch-cheatsheet.md). For an
+end-user command reference and admin settings guide, see the
+[user guide](docs/user-guide.md).
 
 Docker Compose runs the bot, PostgreSQL, and Lavalink in the same private
 network. Database and Lavalink ports are bound only to Windows localhost, not
