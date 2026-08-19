@@ -1,0 +1,1 @@
+ALTER TABLE "guild_knowledge" ADD COLUMN "embedding" jsonb;

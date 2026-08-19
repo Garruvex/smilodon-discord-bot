@@ -1,0 +1,1 @@
+ALTER TABLE "chat_sessions" ADD COLUMN "dm_notes_enabled" boolean DEFAULT true NOT NULL;

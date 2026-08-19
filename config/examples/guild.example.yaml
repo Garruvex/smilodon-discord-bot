@@ -1,0 +1,114 @@
+schemaVersion: 1
+
+guild:
+  id: "123456789012345678"
+  name: "Example Community"
+
+branding:
+  displayName: "Community Bot"
+  embedColor: "#3B82F6"
+  # Optional image displayed when the player is idle.
+  idleImageUrl: null
+
+panel:
+  progressBar:
+    # standard, yohta, custom, or none. Configure custom emojis with /settings music panel.
+    style: standard
+    length: 12
+
+features:
+  common: true
+  diagnostics: true
+  music: true
+  chatbot: false
+  # Requires channels.birthdayAnnouncements to be set. Configure with /settings community birthdays.
+  birthdays: false
+  # NSFW image commands (e.g. /e621). Discord's per-channel age restriction still applies
+  # regardless of this flag. Configure with /settings community nsfw.
+  nsfw: false
+  # Rewrites Twitter/X, Threads, Instagram, TikTok, and Reddit links posted in watched
+  # channels into embed-friendly proxy links, and replies to Bilibili links with a native
+  # embed built from Bilibili's API. Requires channels.linkFix to be set. Configure with
+  # /settings community link-fix.
+  linkFix: false
+  # Whether a departing member's chat memories, birthday, and customization are
+  # kept (true, default) or deleted (false) when they leave the guild. Requires
+  # the bot's "Server Members Intent" to be enabled in the Discord Developer
+  # Portal to detect departures at all. Configure with /settings community member-data.
+  retainMemberDataOnLeave: true
+  # Whether the bot may judge (via an LLM call) and react or reply to messages that name
+  # it (matches branding.displayName) without an explicit @mention. Off by default since
+  # it changes bot behavior in channels nobody explicitly invoked it in. Configure with
+  # /settings chat ambient-replies.
+  ambientReplies: false
+  # Whether the bot fetches recent channel messages (from anyone, not just reply-linked)
+  # as ambient context for a chat turn. Off by default — surfaces messages from people who
+  # never addressed the bot to a third-party LLM API, so it's a deliberate per-guild
+  # choice. Configure with /settings chat channel-history.
+  channelHistory: false
+
+roles:
+  botAdministrator:
+    - "234567890123456789"
+  musicController:
+    - "345678901234567890"
+  restricted:
+    - "456789012345678901"
+  # Members with this role may use @bot mention chat. Bot administrators inherit access.
+  chatbot: []
+
+channels:
+  # An empty list allows music commands in every channel.
+  musicCommands:
+    - "567890123456789012"
+  controlPanel: null
+  auditLog: null
+  # An empty list permits mention chat in every channel when enabled.
+  chatbot: []
+  # Channel that receives the daily "Happy Birthday" announcement. Required if features.birthdays is true.
+  birthdayAnnouncements: null
+  # Channels watched for rewritable links. Required (non-empty) if features.linkFix is true.
+  linkFix: []
+
+chat:
+  # Null loads config/local/personalities/<guild-id>.md when present.
+  personalityFile: null
+  # Set automatically by /settings chat chatbot personality:<markdown attachment>.
+  personalityAsset: null
+  cooldownSeconds: 30
+  deniedMessage: "This feature requires a premium subscription. Try looking richer and ask again."
+  # Optional link button shown alongside the denied message. Both null by default (no button).
+  deniedLinkUrl: null
+  deniedLinkLabel: null
+  # Responses API capabilities; disabled by default for cost and privacy.
+  webSearchMode: off
+  # Lets the model call a small set of the bot's own functions mid-reply
+  # (dice roll, 8-ball, booru search, memory/birthday lookup). Only takes
+  # effect when chat.mode is "responses" — see /settings chat chatbot.
+  toolCallingEnabled: false
+  imageInputEnabled: false
+  imageGenerationEnabled: false
+  includeSources: true
+  maxImagesPerRequest: 2
+  # Minimum seconds between ambient (name-mention, non-@mention) LLM judgment calls per
+  # channel, so a chatty channel that says the bot's name often doesn't turn into a
+  # full-pipeline call on every message.
+  ambientCooldownSeconds: 20
+  # How many recent channel messages to fetch as ambient context when features.channelHistory
+  # is on. A hard cap independent of the char budget applied on top of it.
+  channelHistoryLimit: 8
+
+music:
+  volume:
+    default: 75
+    maximum: 150
+    buttonStep: 10
+
+  emptyQueue:
+    action: disconnect
+    delayMs: 120000
+
+  emptyChannel:
+    action: pause
+    gracePeriodMs: 30000
+    resumeWhenOccupied: true

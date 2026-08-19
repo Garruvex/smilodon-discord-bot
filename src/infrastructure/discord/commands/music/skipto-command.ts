@@ -1,0 +1,27 @@
+import { SlashCommandBuilder } from "discord.js";
+
+import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
+import type { PlaybackService } from "../../../../application/music/playback-service.js";
+import { createPlaybackActor, musicPlaybackAccessPolicy } from "./music-command-support.js";
+
+export class SkipToCommand implements BotCommand {
+  public readonly definition = new SlashCommandBuilder()
+    .setName("skipto")
+    .setDescription("Skips ahead to a specific track in the queue.")
+    .addIntegerOption((option) => option
+      .setName("position")
+      .setDescription("Queue position, starting at 1.")
+      .setMinValue(1)
+      .setRequired(true));
+  public readonly module = CommandModule.Music;
+  public readonly access = musicPlaybackAccessPolicy;
+
+  public constructor(private readonly playbackService: PlaybackService) {}
+
+  public async execute(context: CommandContext): Promise<void> {
+    if (!context.interaction.inCachedGuild()) return;
+    const position = context.interaction.options.getInteger("position", true);
+    const track = await this.playbackService.skipTo(createPlaybackActor(context.interaction), position);
+    await context.responses.reply(`Skipped to **${track.title}** — ${track.author}.`);
+  }
+}

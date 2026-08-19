@@ -1,0 +1,51 @@
+schemaVersion: 1
+
+guild:
+  id: "123456789012345678"
+  name: "Example Community"
+
+branding:
+  displayName: "Community Bot"
+  embedColor: "#3B82F6"
+  idleImageUrl: null
+
+panel:
+  progressBar:
+    # standard, yohta, custom, or none. Configure custom emojis with /settings music panel.
+    style: standard
+    length: 12
+
+features:
+  common: true
+  diagnostics: true
+  music: true
+
+roles:
+  botAdministrator:
+    - "234567890123456789"
+  musicController:
+    - "345678901234567890"
+  restricted:
+    - "456789012345678901"
+
+channels:
+  # An empty list allows music commands in every channel.
+  musicCommands:
+    - "567890123456789012"
+  controlPanel: null
+  auditLog: null
+
+music:
+  volume:
+    default: 75
+    maximum: 150
+    buttonStep: 10
+
+  emptyQueue:
+    action: disconnect
+    delayMs: 120000
+
+  emptyChannel:
+    action: pause
+    gracePeriodMs: 30000
+    resumeWhenOccupied: true
