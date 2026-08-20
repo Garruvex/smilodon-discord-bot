@@ -37,13 +37,6 @@ plugins:
       - MUSIC
 
     clientOptions:
-      MUSIC:
-        videoLoading: false
-        playlistLoading: false
-
-      WEB:
-        playback: false
-
       TVHTML5_SIMPLY:
         playlistLoading: false
 
@@ -98,7 +91,7 @@ plugins:
 lavalink:
   plugins:
     - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.2"
-    - dependency: "com.github.topi314.lavasrc:lavasrc-plugin:4.8.1"
+    - dependency: "com.github.topi314.lavasrc:lavasrc-plugin:4.8.3"
   pluginsDir: "./plugins"
   server:
     password: "${LAVALINK_PASSWORD}"
