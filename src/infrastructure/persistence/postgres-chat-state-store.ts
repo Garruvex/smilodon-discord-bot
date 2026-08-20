@@ -24,10 +24,11 @@ export class PostgresChatStateStore implements ChatStateStore {
 
   public initialize(): Promise<void> { return Promise.resolve(); }
 
-  public async load(guildId: string, userId: string, now: number): Promise<ChatStateSnapshot> {
+  public async load(guildId: string, userId: string, channelId: string, now: number): Promise<ChatStateSnapshot> {
     const [sessions, memories] = await Promise.all([
       this.database.select().from(schema.chatSessions).where(and(
         eq(schema.chatSessions.guildId, guildId), eq(schema.chatSessions.userId, userId),
+        eq(schema.chatSessions.channelId, channelId),
       )).limit(1),
       this.database.select().from(schema.chatMemories).where(and(
         eq(schema.chatMemories.guildId, guildId), eq(schema.chatMemories.assertedByUserId, userId),
@@ -47,6 +48,7 @@ export class PostgresChatStateStore implements ChatStateStore {
         slot: memory.slot,
         statement: memory.statement,
         updatedAt: memory.updatedAt.getTime(),
+        embedding: memory.embedding ?? null,
       })),
     };
   }
@@ -69,46 +71,52 @@ export class PostgresChatStateStore implements ChatStateStore {
   }
 
   public async getDmNotesEnabled(guildId: string, userId: string): Promise<boolean> {
-    const sessions = await this.database.select({ dmNotesEnabled: schema.chatSessions.dmNotesEnabled })
-      .from(schema.chatSessions)
-      .where(and(eq(schema.chatSessions.guildId, guildId), eq(schema.chatSessions.userId, userId)))
+    const preferences = await this.database.select({ dmNotesEnabled: schema.dmNotesPreferences.dmNotesEnabled })
+      .from(schema.dmNotesPreferences)
+      .where(and(eq(schema.dmNotesPreferences.guildId, guildId), eq(schema.dmNotesPreferences.userId, userId)))
       .limit(1);
-    return sessions[0]?.dmNotesEnabled ?? true;
+    return preferences[0]?.dmNotesEnabled ?? true;
   }
 
   public async setDmNotesEnabled(guildId: string, userId: string, enabled: boolean): Promise<void> {
     const memberId = await this.memberRegistry.resolveMemberId(guildId, userId);
-    await this.database.insert(schema.chatSessions).values({
-      guildId, userId, memberId, exchanges: [], dmNotesEnabled: enabled, updatedAt: new Date(),
+    await this.database.insert(schema.dmNotesPreferences).values({
+      guildId, userId, memberId, dmNotesEnabled: enabled, updatedAt: new Date(),
     }).onConflictDoUpdate({
-      target: [schema.chatSessions.guildId, schema.chatSessions.userId],
+      target: [schema.dmNotesPreferences.guildId, schema.dmNotesPreferences.userId],
       set: { dmNotesEnabled: enabled, memberId },
     });
   }
 
-  public async commitSuccessfulExchange(input: Parameters<ChatStateStore["commitSuccessfulExchange"]>[0]): Promise<void> {
+  public async commitSuccessfulExchange(
+    input: Parameters<ChatStateStore["commitSuccessfulExchange"]>[0],
+  ): Promise<{ droppedExchanges: readonly ChatSessionExchange[] }> {
     const memberId = await this.memberRegistry.resolveMemberId(input.guildId, input.userId);
+    let dropped: ChatSessionExchange[] = [];
     await this.database.transaction(async (transaction) => {
       const sessions = await transaction.select().from(schema.chatSessions).where(and(
         eq(schema.chatSessions.guildId, input.guildId), eq(schema.chatSessions.userId, input.userId),
+        eq(schema.chatSessions.channelId, input.channelId),
       )).limit(1);
       const session = sessions[0];
       const prior: ChatSessionExchange[] = session && input.now - session.updatedAt.getTime() <= chatMemoryLimits.sessionTtlMs
         ? exchangesSchema.parse(session.exchanges)
         : [];
-      const exchanges = boundSessionExchanges([...prior, {
+      const bounded = boundSessionExchanges([...prior, {
         user: { content: input.userMessage, createdAt: input.now },
         assistant: { content: input.assistantMessage, createdAt: input.now },
       }]);
+      dropped = bounded.dropped;
       await transaction.insert(schema.chatSessions).values({
-        guildId: input.guildId, userId: input.userId, memberId, exchanges, updatedAt: new Date(input.now),
+        guildId: input.guildId, userId: input.userId, channelId: input.channelId, memberId, exchanges: bounded.kept, updatedAt: new Date(input.now),
       }).onConflictDoUpdate({
-        target: [schema.chatSessions.guildId, schema.chatSessions.userId],
-        set: { exchanges, updatedAt: new Date(input.now), memberId },
+        target: [schema.chatSessions.guildId, schema.chatSessions.userId, schema.chatSessions.channelId],
+        set: { exchanges: bounded.kept, updatedAt: new Date(input.now), memberId },
       });
 
       await this.applyMemoryActionsInTransaction(transaction, input.guildId, input.userId, memberId, input.actions, input.now);
     });
+    return { droppedExchanges: dropped };
   }
 
   public async applyMemoryActions(input: Parameters<ChatStateStore["applyMemoryActions"]>[0]): Promise<void> {
@@ -161,13 +169,14 @@ export class PostgresChatStateStore implements ChatStateStore {
         topic: action.topic,
         slot: action.slot,
         statement: action.statement!,
+        embedding: action.embedding,
         updatedAt: new Date(now),
       }).onConflictDoUpdate({
         target: [
           schema.chatMemories.guildId, schema.chatMemories.assertedByUserId,
           schema.chatMemories.subjectUserId, schema.chatMemories.topic, schema.chatMemories.slot,
         ],
-        set: { statement: action.statement!, updatedAt: new Date(now), memberId },
+        set: { statement: action.statement!, embedding: action.embedding, updatedAt: new Date(now), memberId },
       });
     }
   }

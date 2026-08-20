@@ -70,6 +70,8 @@ function guildConfiguration(chatbotEnabled: boolean): GuildConfiguration {
     chat: {
       personalityFile: null,
       personalityAsset: null,
+      examplesFile: null,
+      examplesAsset: null,
       cooldownSeconds: 30,
       deniedMessage: "Premium required.",
       deniedLinkUrl: null,

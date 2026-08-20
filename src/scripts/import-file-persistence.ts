@@ -37,7 +37,7 @@ const panelStates = existsSync(panelStateFile)
   ? Object.values(panelStateSchema.parse(JSON.parse(readFileSync(panelStateFile, "utf8"))))
   : [];
 
-const connection = createDatabaseConnection(databaseUrl);
+const connection = await createDatabaseConnection(databaseUrl);
 try {
   await connection.database.transaction(async (transaction) => {
     for (const document of guildDocuments) {

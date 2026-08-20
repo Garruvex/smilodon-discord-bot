@@ -25,7 +25,11 @@ export class MemberProfileService {
 
   public async load(guildId: string, userId: string, now: number): Promise<MemberProfile> {
     const [state, birthday, customization] = await Promise.all([
-      this.chatStateStore.load(guildId, userId, now),
+      // Only `.memories` (guild+user scoped) is used below — `.exchanges`
+      // would be channel-scoped, but this view isn't tied to any one
+      // channel, so an empty channelId is passed (matches no real session,
+      // exchanges come back empty, which is fine since they're unused here).
+      this.chatStateStore.load(guildId, userId, "", now),
       this.birthdayStore?.getBirthday(guildId, userId) ?? Promise.resolve(null),
       this.userCustomizationStore?.load(guildId, userId) ?? Promise.resolve(null),
     ]);

@@ -3,6 +3,8 @@ import { extname, resolve } from "node:path";
 
 import type { Attachment } from "discord.js";
 
+import { parseExampleExchanges } from "../chat/example-exchange.js";
+
 export class GuildAssetError extends Error {
   public constructor(message: string) {
     super(message);
@@ -79,6 +81,40 @@ export class GuildAssetStore {
   }
 
   public async removePersonality(asset: string | null): Promise<void> {
+    if (!asset) return;
+    const target = resolve(this.runtimeDirectory, asset);
+    const root = resolve(this.runtimeDirectory, "guild-assets");
+    if (!target.startsWith(`${root}\\`) && !target.startsWith(`${root}/`)) return;
+    await rm(target, { force: true });
+  }
+
+  public async saveExamples(guildId: string, attachment: Attachment): Promise<string> {
+    if (!attachment.name.toLowerCase().endsWith(".md")) {
+      throw new GuildAssetError("Chatbot examples must be uploaded as a Markdown (.md) file.");
+    }
+    if (attachment.size > 128 * 1024) throw new GuildAssetError("Chatbot examples must be 128 KB or smaller.");
+
+    const response = await fetch(attachment.url, { signal: AbortSignal.timeout(30_000) });
+    if (!response.ok) throw new GuildAssetError(`Discord examples download failed with HTTP ${response.status}.`);
+    const data = Buffer.from(await response.arrayBuffer());
+    if (data.length > 128 * 1024) throw new GuildAssetError("Downloaded examples file exceeded 128 KB.");
+    const content = data.toString("utf8").trim();
+    if (!content) throw new GuildAssetError("Chatbot examples cannot be empty.");
+
+    const parsed = parseExampleExchanges(content);
+    if ("error" in parsed) throw new GuildAssetError(parsed.error);
+
+    const relativeDirectory = `guild-assets/${guildId}`;
+    const directory = resolve(this.runtimeDirectory, relativeDirectory);
+    await mkdir(directory, { recursive: true });
+    const target = resolve(directory, "examples.md");
+    const temporary = `${target}.tmp`;
+    await writeFile(temporary, `${content}\n`, "utf8");
+    await rename(temporary, target);
+    return `${relativeDirectory}/examples.md`;
+  }
+
+  public async removeExamples(asset: string | null): Promise<void> {
     if (!asset) return;
     const target = resolve(this.runtimeDirectory, asset);
     const root = resolve(this.runtimeDirectory, "guild-assets");

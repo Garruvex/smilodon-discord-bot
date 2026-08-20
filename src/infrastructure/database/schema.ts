@@ -1,4 +1,10 @@
-import { boolean, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid, vector } from "drizzle-orm/pg-core";
+
+// Fixed at schema-definition time — pgvector columns can't have a variable
+// dimension. Matches OpenAI's text-embedding-3-small, the default/most
+// common embedding model for this app (see CHAT_EMBEDDING_MODEL). Switching
+// to a model with a different output size requires a follow-up migration.
+export const embeddingDimensions = 1536;
 
 export const guildConfigurations = pgTable("guild_configurations", {
   guildId: text("guild_id").primaryKey(),
@@ -29,11 +35,28 @@ export const guildMembers = pgTable("guild_members", {
   uniqueIndex("guild_members_guild_user").on(table.guildId, table.userId),
 ]);
 
+// Recent-exchange transcript, scoped per channel so a user's short-term
+// "what did we just say" history doesn't bleed across channels (e.g.
+// #general chatter leaking into a DND channel's scene continuity, or vice
+// versa). dmNotesEnabled lives separately in dmNotesPreferences — it's a
+// per-user preference, not per-channel, and can't live on a row keyed by
+// channel.
 export const chatSessions = pgTable("chat_sessions", {
   guildId: text("guild_id").notNull(),
   userId: text("user_id").notNull(),
+  channelId: text("channel_id").notNull(),
   memberId: uuid("member_id").references(() => guildMembers.id, { onDelete: "cascade" }),
   exchanges: jsonb("exchanges").notNull().default([]),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [primaryKey({ columns: [table.guildId, table.userId, table.channelId] })]);
+
+// Per-user, per-guild preference for whether mention-chat system notes are
+// DMed to them — split out of chat_sessions once that table became
+// per-channel (a preference isn't scoped to any one channel).
+export const dmNotesPreferences = pgTable("dm_notes_preferences", {
+  guildId: text("guild_id").notNull(),
+  userId: text("user_id").notNull(),
+  memberId: uuid("member_id").references(() => guildMembers.id, { onDelete: "cascade" }),
   dmNotesEnabled: boolean("dm_notes_enabled").notNull().default(true),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [primaryKey({ columns: [table.guildId, table.userId] })]);
@@ -52,12 +75,17 @@ export const chatMemories = pgTable("chat_memories", {
   topic: text("topic").notNull(),
   slot: text("slot").notNull(),
   statement: text("statement").notNull(),
+  // Native pgvector storage — HNSW-indexed below for cosine-distance nearest-
+  // neighbor queries. Null until vector recall is enabled and/or this record
+  // is re-embedded.
+  embedding: vector("embedding", { dimensions: embeddingDimensions }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   uniqueIndex("chat_memories_owner_subject_topic_slot").on(
     table.guildId, table.assertedByUserId, table.subjectUserId, table.topic, table.slot,
   ),
+  index("chat_memories_embedding_hnsw").using("hnsw", table.embedding.op("vector_cosine_ops")),
 ]);
 
 export const userCustomizations = pgTable("user_customizations", {
@@ -86,6 +114,12 @@ export const birthdayAnnouncements = pgTable("birthday_announcements", {
 export const guildKnowledge = pgTable("guild_knowledge", {
   id: uuid("id").primaryKey(),
   guildId: text("guild_id").notNull(),
+  // Null = guild-wide fact, visible from every channel. Set = scoped to one
+  // channel/scene — only surfaced when that channel is the current one (see
+  // PostgresGuildKnowledgeStore.loadConfirmed). Part of the identity index
+  // below so a channel-scoped fact and a guild-wide fact can coexist under
+  // the same (subjectType, subjectId, topic, slot).
+  channelId: text("channel_id"),
   subjectType: text("subject_type").notNull(),
   subjectId: text("subject_id").notNull(),
   topic: text("topic").notNull(),
@@ -95,16 +129,16 @@ export const guildKnowledge = pgTable("guild_knowledge", {
   source: text("source").notNull(),
   assertedByUserIds: jsonb("asserted_by_user_ids").notNull().default([]),
   confirmedByUserIds: jsonb("confirmed_by_user_ids").notNull().default([]),
-  // Plain JSON float array, brute-force cosine similarity computed in
-  // application code (see EmbeddingGuildMemorySelector) — no pgvector,
-  // guild-knowledge sets are small enough on both persistence backends.
-  // Null until vector recall is enabled and/or this record is re-embedded.
-  embedding: jsonb("embedding"),
+  // Native pgvector storage — HNSW-indexed below for cosine-distance nearest-
+  // neighbor queries. Null until vector recall is enabled and/or this record
+  // is re-embedded.
+  embedding: vector("embedding", { dimensions: embeddingDimensions }),
   expiresAt: timestamp("expires_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   uniqueIndex("guild_knowledge_subject_topic_slot").on(
-    table.guildId, table.subjectType, table.subjectId, table.topic, table.slot,
+    table.guildId, table.channelId, table.subjectType, table.subjectId, table.topic, table.slot,
   ),
+  index("guild_knowledge_embedding_hnsw").using("hnsw", table.embedding.op("vector_cosine_ops")),
 ]);

@@ -2,7 +2,9 @@ import { ChannelType, type Client } from "discord.js";
 import {
   LavalinkManager,
   type Player,
+  type SearchResult,
   type Track,
+  type UnresolvedSearchResult,
   type UnresolvedTrack,
   type VoicePacket,
   type VoiceServer,
@@ -62,7 +64,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
       autoMove: true,
       autoSkipOnResolveError: true,
       playerOptions: {
-        defaultSearchPlatform: "ytsearch",
+        defaultSearchPlatform: "spsearch",
         clientBasedPositionUpdateInterval: 1_000,
         onDisconnect: {
           autoReconnect: false,
@@ -153,10 +155,9 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
       if (profile) await player.setVolume(profile.music.defaultVolume);
     }
 
-    const searchResult = await player.search(
-      { query: request.query },
-      { userId: request.requestedByUserId },
-    );
+    const searchResult = await this.searchWithFallback(player, request.query, {
+      userId: request.requestedByUserId,
+    });
     const tracks = searchResult.tracks;
 
     if (tracks.length === 0) {
@@ -200,6 +201,21 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
       startedPlayback,
       queuePosition,
     };
+  }
+
+  private async searchWithFallback(
+    player: Player,
+    query: string,
+    requester: { userId: string },
+  ): Promise<SearchResult | UnresolvedSearchResult> {
+    try {
+      const primary = await player.search({ query, source: "spsearch" }, requester);
+      if (primary.tracks.length > 0) return primary;
+    } catch (error) {
+      this.logger.warn({ error, query }, "Spotify search failed, falling back to YouTube");
+    }
+
+    return player.search({ query, source: "ytsearch" }, requester);
   }
 
   public async pause(guildId: string): Promise<void> {

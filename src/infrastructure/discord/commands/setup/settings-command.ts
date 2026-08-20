@@ -107,6 +107,12 @@ export class SettingsCommand implements BotCommand {
     ) {
       await this.assets.removePersonality(previousProfile.chat.personalityAsset);
     }
+    if (
+      previousProfile.chat.examplesAsset &&
+      previousProfile.chat.examplesAsset !== updatedProfile.chat.examplesAsset
+    ) {
+      await this.assets.removeExamples(previousProfile.chat.examplesAsset);
+    }
     const description = this.describeUpdate(setting, previousProfile, updatedProfile, input);
     await this.auditLogService?.log(
       context.interaction.guildId,

@@ -51,6 +51,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@google/genai": "^2.18.0",
+    "better-sqlite3": "^13.0.3",
     "discord.js": "^14.16.0",
     "dotenv": "^16.4.7",
     "drizzle-orm": "^0.45.2",
@@ -63,6 +65,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
+    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.10.0",
     "concurrently": "^10.0.4",
     "drizzle-kit": "^0.31.10",
