@@ -25,7 +25,9 @@ export const chatbotSetting: MutationSettingDefinition = {
     .addBooleanOption((o) => o.setName("include-sources").setDescription("Include web citation links in replies."))
     .addIntegerOption((o) => o.setName("max-images").setDescription("Maximum images accepted per request.").setMinValue(0).setMaxValue(4))
     .addAttachmentOption((o) => o.setName("personality").setDescription("Upload the guild personality as a Markdown file."))
-    .addBooleanOption((o) => o.setName("use-default-personality").setDescription("Remove the uploaded personality and use the built-in/default file.")),
+    .addBooleanOption((o) => o.setName("use-default-personality").setDescription("Remove the uploaded personality and use the built-in/default file."))
+    .addAttachmentOption((o) => o.setName("examples").setDescription("Upload example character exchanges as a Markdown file."))
+    .addBooleanOption((o) => o.setName("use-default-examples").setDescription("Remove the uploaded examples file.")),
   handle: async (context, deps, previousProfile, input) => {
     const enabled = context.interaction.options.getBoolean("enabled");
     const role = context.interaction.options.getRole("role");
@@ -44,6 +46,11 @@ export const chatbotSetting: MutationSettingDefinition = {
     const useDefaultPersonality = context.interaction.options.getBoolean("use-default-personality");
     if (personality && useDefaultPersonality === true) {
       return { ok: false, message: "Choose either a personality upload or the default personality, not both." };
+    }
+    const examples = context.interaction.options.getAttachment("examples");
+    const useDefaultExamples = context.interaction.options.getBoolean("use-default-examples");
+    if (examples && useDefaultExamples === true) {
+      return { ok: false, message: "Choose either an examples upload or removing examples, not both." };
     }
     if (enabled !== null) input.chatbotEnabled = enabled;
     if (role) {
@@ -71,6 +78,14 @@ export const chatbotSetting: MutationSettingDefinition = {
     if (useDefaultPersonality === true) {
       input.chatbotPersonalityAsset = null;
       input.chatbotPersonalityFile = null;
+    }
+    if (examples) {
+      input.chatbotExamplesAsset = await deps.assets.saveExamples(context.interaction.guildId!, examples);
+      input.chatbotExamplesFile = null;
+    }
+    if (useDefaultExamples === true) {
+      input.chatbotExamplesAsset = null;
+      input.chatbotExamplesFile = null;
     }
     return { ok: true };
   },

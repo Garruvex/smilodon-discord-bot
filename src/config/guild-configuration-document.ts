@@ -18,6 +18,8 @@ export interface UpdateGuildConfigurationInput {
   chatbotEnabled?: boolean;
   chatbotPersonalityFile?: string | null;
   chatbotPersonalityAsset?: string | null;
+  chatbotExamplesFile?: string | null;
+  chatbotExamplesAsset?: string | null;
   chatbotCooldownSeconds?: number;
   chatbotDeniedMessage?: string;
   chatbotDeniedLinkUrl?: string | null;
@@ -196,6 +198,8 @@ export function applyGuildConfigurationUpdate(
   if (input.chatbotEnabled !== undefined) next.features.chatbot = input.chatbotEnabled;
   if (input.chatbotPersonalityFile !== undefined) next.chat.personalityFile = input.chatbotPersonalityFile;
   if (input.chatbotPersonalityAsset !== undefined) next.chat.personalityAsset = input.chatbotPersonalityAsset;
+  if (input.chatbotExamplesFile !== undefined) next.chat.examplesFile = input.chatbotExamplesFile;
+  if (input.chatbotExamplesAsset !== undefined) next.chat.examplesAsset = input.chatbotExamplesAsset;
   if (input.chatbotCooldownSeconds !== undefined) next.chat.cooldownSeconds = input.chatbotCooldownSeconds;
   if (input.chatbotDeniedMessage !== undefined) next.chat.deniedMessage = input.chatbotDeniedMessage;
   if (input.chatbotDeniedLinkUrl !== undefined) next.chat.deniedLinkUrl = input.chatbotDeniedLinkUrl;

@@ -5,6 +5,7 @@ import type { ChatProvider, ChatRequest, ChatResponse } from "../../src/applicat
 import type { ChatStateStore } from "../../src/application/chat/chat-state-store.js";
 import type { GuildKnowledgeStore } from "../../src/application/chat/guild-knowledge-store.js";
 import type { GuildMemorySelector } from "../../src/application/chat/guild-memory-selector.js";
+import type { ExampleExchangeSelector } from "../../src/application/chat/example-exchange-selector.js";
 import type { UserCustomizationStore } from "../../src/application/chat/user-customization-store.js";
 
 function response(
@@ -30,7 +31,9 @@ function guildStore(): GuildKnowledgeStore {
 function input(message: string): ChatConversationInput {
   return {
     guildId: "guild",
+    channelId: "channel",
     personality: "Friendly",
+    examplePool: [],
     currentUser: { id: "user", displayName: "User", roleNames: [] },
     mentionedUsers: [],
     message,
@@ -50,7 +53,7 @@ describe("ChatConversationService", () => {
     const store: ChatStateStore = {
       initialize: () => Promise.resolve(),
       load: () => Promise.resolve({ exchanges: [], memories: [] }),
-      commitSuccessfulExchange: () => Promise.resolve(),
+      commitSuccessfulExchange: () => Promise.resolve({ droppedExchanges: [] }),
       applyMemoryActions: () => Promise.resolve(),
       forgetMemory: () => Promise.resolve(false),
       forgetAllMemories: () => Promise.resolve(0),
@@ -65,7 +68,7 @@ describe("ChatConversationService", () => {
   });
 
   it("does not commit when Discord delivery fails", async () => {
-    const commitSuccessfulExchange = vi.fn(() => Promise.resolve());
+    const commitSuccessfulExchange = vi.fn(() => Promise.resolve({ droppedExchanges: [] }));
     const store: ChatStateStore = {
       initialize: vi.fn(() => Promise.resolve()),
       load: vi.fn(() => Promise.resolve({ exchanges: [], memories: [] })),
@@ -91,7 +94,7 @@ describe("ChatConversationService", () => {
       load: () => Promise.resolve({ exchanges: [], memories: [] }),
       commitSuccessfulExchange: (commit) => {
         storedAssistantMessage = commit.assistantMessage;
-        return Promise.resolve();
+        return Promise.resolve({ droppedExchanges: [] });
       },
       applyMemoryActions: () => Promise.resolve(),
       forgetMemory: () => Promise.resolve(false),
@@ -117,7 +120,7 @@ describe("ChatConversationService", () => {
           user: { content: commit.userMessage, createdAt: commit.now },
           assistant: { content: commit.assistantMessage, createdAt: commit.now },
         });
-        return Promise.resolve();
+        return Promise.resolve({ droppedExchanges: [] });
       },
       applyMemoryActions: () => Promise.resolve(),
       forgetMemory: () => Promise.resolve(false),
@@ -147,7 +150,7 @@ describe("ChatConversationService", () => {
       load: () => Promise.resolve({ exchanges: [], memories: [] }),
       commitSuccessfulExchange: (commit) => {
         committedActions.push(commit.actions);
-        return Promise.resolve();
+        return Promise.resolve({ droppedExchanges: [] });
       },
       applyMemoryActions: () => Promise.resolve(),
       forgetMemory: () => Promise.resolve(false),
@@ -167,7 +170,7 @@ describe("ChatConversationService", () => {
 
     await service.run(input("remember this"), (reply) => Promise.resolve(reply.text));
     expect(committedActions[0]).toEqual([
-      { action: "upsert", subjectUserId: "user", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
+      { action: "upsert", subjectUserId: "user", topic: "preference", slot: "food.fruit", statement: "likes green apples", embedding: null },
     ]);
   });
 
@@ -175,7 +178,7 @@ describe("ChatConversationService", () => {
     const store: ChatStateStore = {
       initialize: () => Promise.resolve(),
       load: () => Promise.resolve({ exchanges: [], memories: [] }),
-      commitSuccessfulExchange: () => Promise.resolve(),
+      commitSuccessfulExchange: () => Promise.resolve({ droppedExchanges: [] }),
       applyMemoryActions: () => Promise.resolve(),
       forgetMemory: () => Promise.resolve(false),
       forgetAllMemories: () => Promise.resolve(0),
@@ -188,7 +191,7 @@ describe("ChatConversationService", () => {
         receivedKnowledgeCount = request.guildKnowledge.length;
         return Promise.resolve(response("ok", [], [{
           subjectType: "member", subjectId: "user", topic: "event_responsibility",
-          slot: "raid.friday", statement: "organizes Friday raids",
+          slot: "raid.friday", statement: "organizes Friday raids", channelScoped: false,
         }]));
       },
     };
@@ -212,7 +215,7 @@ describe("ChatConversationService", () => {
     const store: ChatStateStore = {
       initialize: () => Promise.resolve(),
       load: () => Promise.resolve({ exchanges: [], memories: [] }),
-      commitSuccessfulExchange: () => Promise.resolve(),
+      commitSuccessfulExchange: () => Promise.resolve({ droppedExchanges: [] }),
       applyMemoryActions: () => Promise.resolve(),
       forgetMemory: () => Promise.resolve(false),
       forgetAllMemories: () => Promise.resolve(0),
@@ -222,7 +225,7 @@ describe("ChatConversationService", () => {
     const provider: ChatProvider = {
       reply: () => Promise.resolve(response("ok", [], [{
         subjectType: "member", subjectId: "user", topic: "event_responsibility",
-        slot: "raid.friday", statement: "organizes Friday raids",
+        slot: "raid.friday", statement: "organizes Friday raids", channelScoped: false,
       }])),
     };
     const proposals: Array<Parameters<GuildKnowledgeStore["propose"]>[0]> = [];
@@ -235,7 +238,7 @@ describe("ChatConversationService", () => {
       embed: (text: string): Promise<number[]> => Promise.resolve(text.length % 2 === 0 ? [1, 0] : [0, 1]),
     };
     const service = new ChatConversationService(
-      provider, store, knowledgeStore, undefined, undefined, undefined, undefined, undefined, undefined,
+      provider, store, knowledgeStore, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
       embeddingsClient,
     );
 
@@ -247,7 +250,7 @@ describe("ChatConversationService", () => {
     const store: ChatStateStore = {
       initialize: () => Promise.resolve(),
       load: () => Promise.resolve({ exchanges: [], memories: [] }),
-      commitSuccessfulExchange: () => Promise.resolve(),
+      commitSuccessfulExchange: () => Promise.resolve({ droppedExchanges: [] }),
       applyMemoryActions: () => Promise.resolve(),
       forgetMemory: () => Promise.resolve(false),
       forgetAllMemories: () => Promise.resolve(0),
@@ -257,7 +260,7 @@ describe("ChatConversationService", () => {
     const provider: ChatProvider = {
       reply: () => Promise.resolve(response("ok", [], [{
         subjectType: "member", subjectId: "user", topic: "event_responsibility",
-        slot: "raid.friday", statement: "organizes Friday raids",
+        slot: "raid.friday", statement: "organizes Friday raids", channelScoped: false,
       }])),
     };
     const proposals: Array<Parameters<GuildKnowledgeStore["propose"]>[0]> = [];
@@ -270,7 +273,7 @@ describe("ChatConversationService", () => {
       embed: (): Promise<number[]> => Promise.reject(new Error("embeddings provider down")),
     };
     const service = new ChatConversationService(
-      provider, store, knowledgeStore, undefined, undefined, undefined, undefined, undefined, undefined,
+      provider, store, knowledgeStore, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
       embeddingsClient,
     );
 
@@ -283,7 +286,7 @@ describe("ChatConversationService", () => {
     const store: ChatStateStore = {
       initialize: () => Promise.resolve(),
       load: () => Promise.resolve({ exchanges: [], memories: [] }),
-      commitSuccessfulExchange: () => Promise.resolve(),
+      commitSuccessfulExchange: () => Promise.resolve({ droppedExchanges: [] }),
       applyMemoryActions: () => Promise.resolve(),
       forgetMemory: () => Promise.resolve(false),
       forgetAllMemories: () => Promise.resolve(0),
@@ -321,11 +324,47 @@ describe("ChatConversationService", () => {
     });
   });
 
+  it("narrows the guild's example pool through the injected selector and threads the result into the request", async () => {
+    const store: ChatStateStore = {
+      initialize: () => Promise.resolve(),
+      load: () => Promise.resolve({ exchanges: [], memories: [] }),
+      commitSuccessfulExchange: () => Promise.resolve({ droppedExchanges: [] }),
+      applyMemoryActions: () => Promise.resolve(),
+      forgetMemory: () => Promise.resolve(false),
+      forgetAllMemories: () => Promise.resolve(0),
+      getDmNotesEnabled: () => Promise.resolve(true),
+      setDmNotesEnabled: () => Promise.resolve(),
+    };
+    const pool = [{ tags: "exam", user: "我今天期中考炸了", character: "草ww 哪科啦" }];
+    const selected = [pool[0]!];
+    let receivedRecords: typeof pool | null = null;
+    let receivedExampleExchanges: typeof pool | null = null;
+    const provider: ChatProvider = {
+      reply: (request) => {
+        receivedExampleExchanges = [...request.exampleExchanges];
+        return Promise.resolve(response("ok"));
+      },
+    };
+    const exampleExchangeSelector: ExampleExchangeSelector = {
+      select: (selectInput): Promise<typeof pool> => {
+        receivedRecords = [...selectInput.records];
+        return Promise.resolve(selected);
+      },
+    };
+    const service = new ChatConversationService(
+      provider, store, guildStore(), undefined, undefined, exampleExchangeSelector,
+    );
+
+    await service.run({ ...input("hi"), examplePool: pool }, (reply) => Promise.resolve(reply.text));
+    expect(receivedRecords).toEqual(pool);
+    expect(receivedExampleExchanges).toEqual(selected);
+  });
+
   it("loads per-user customization and reports it separately from the guild personality", async () => {
     const store: ChatStateStore = {
       initialize: () => Promise.resolve(),
       load: () => Promise.resolve({ exchanges: [], memories: [] }),
-      commitSuccessfulExchange: () => Promise.resolve(),
+      commitSuccessfulExchange: () => Promise.resolve({ droppedExchanges: [] }),
       applyMemoryActions: () => Promise.resolve(),
       forgetMemory: () => Promise.resolve(false),
       forgetAllMemories: () => Promise.resolve(0),
@@ -351,6 +390,7 @@ describe("ChatConversationService", () => {
       guildStore(),
       undefined,
       undefined,
+      undefined,
       customizationStore,
     );
 
@@ -363,7 +403,7 @@ describe("ChatConversationService", () => {
     const store: ChatStateStore = {
       initialize: () => Promise.resolve(),
       load: () => Promise.resolve({ exchanges: [], memories: [] }),
-      commitSuccessfulExchange: () => Promise.resolve(),
+      commitSuccessfulExchange: () => Promise.resolve({ droppedExchanges: [] }),
       applyMemoryActions: () => Promise.resolve(),
       forgetMemory: () => Promise.resolve(false),
       forgetAllMemories: () => Promise.resolve(0),
@@ -385,7 +425,7 @@ describe("ChatConversationService", () => {
   });
 
   it("skips delivery and persistence entirely for an ambient turn the model chose to ignore", async () => {
-    const commitSuccessfulExchange = vi.fn(() => Promise.resolve());
+    const commitSuccessfulExchange = vi.fn(() => Promise.resolve({ droppedExchanges: [] }));
     const applyMemoryActions = vi.fn(() => Promise.resolve());
     const propose = vi.fn(() => Promise.resolve());
     const store: ChatStateStore = {
@@ -416,7 +456,7 @@ describe("ChatConversationService", () => {
   });
 
   it("skips delivery and the session exchange, but still persists memory/guild-knowledge, for an ambient react-only turn", async () => {
-    const commitSuccessfulExchange = vi.fn(() => Promise.resolve());
+    const commitSuccessfulExchange = vi.fn(() => Promise.resolve({ droppedExchanges: [] }));
     const applyMemoryActions = vi.fn(() => Promise.resolve());
     const propose = vi.fn(() => Promise.resolve());
     const store: ChatStateStore = {
@@ -445,13 +485,14 @@ describe("ChatConversationService", () => {
     expect(deliver).not.toHaveBeenCalled();
     expect(commitSuccessfulExchange).not.toHaveBeenCalled();
     expect(applyMemoryActions).toHaveBeenCalledWith(expect.objectContaining({
-      guildId: "guild", userId: "user", actions: memoryActions,
+      guildId: "guild", userId: "user",
+      actions: memoryActions.map((action) => ({ ...action, embedding: null })),
     }));
     expect(propose).toHaveBeenCalledOnce();
   });
 
   it("delivers a reply and reacts in the same ambient turn when both are set", async () => {
-    const commitSuccessfulExchange = vi.fn(() => Promise.resolve());
+    const commitSuccessfulExchange = vi.fn(() => Promise.resolve({ droppedExchanges: [] }));
     const store: ChatStateStore = {
       initialize: () => Promise.resolve(),
       load: () => Promise.resolve({ exchanges: [], memories: [] }),
@@ -476,7 +517,7 @@ describe("ChatConversationService", () => {
   });
 
   it("delivers and persists an ambient turn the model chose to reply to, same as a direct turn", async () => {
-    const commitSuccessfulExchange = vi.fn(() => Promise.resolve());
+    const commitSuccessfulExchange = vi.fn(() => Promise.resolve({ droppedExchanges: [] }));
     const store: ChatStateStore = {
       initialize: () => Promise.resolve(),
       load: () => Promise.resolve({ exchanges: [], memories: [] }),
@@ -503,7 +544,7 @@ describe("ChatConversationService", () => {
     const store: ChatStateStore = {
       initialize: () => Promise.resolve(),
       load: () => Promise.resolve({ exchanges: [], memories: [] }),
-      commitSuccessfulExchange: () => Promise.resolve(),
+      commitSuccessfulExchange: () => Promise.resolve({ droppedExchanges: [] }),
       applyMemoryActions: () => Promise.resolve(),
       forgetMemory: () => Promise.resolve(false),
       forgetAllMemories: () => Promise.resolve(0),
@@ -524,5 +565,77 @@ describe("ChatConversationService", () => {
       channelHistoryMessages: 1,
       channelHistoryChars: JSON.stringify(channelHistory).length,
     });
+  });
+
+  it("consolidates dropped exchanges into channel-scoped guild knowledge when the provider supports it", async () => {
+    const store: ChatStateStore = {
+      initialize: () => Promise.resolve(),
+      load: () => Promise.resolve({ exchanges: [], memories: [] }),
+      commitSuccessfulExchange: () => Promise.resolve({
+        droppedExchanges: [{ user: { content: "old question", createdAt: 0 }, assistant: { content: "old answer", createdAt: 0 } }],
+      }),
+      applyMemoryActions: () => Promise.resolve(),
+      forgetMemory: () => Promise.resolve(false),
+      forgetAllMemories: () => Promise.resolve(0),
+      getDmNotesEnabled: () => Promise.resolve(true),
+      setDmNotesEnabled: () => Promise.resolve(),
+    };
+    const proposals: Array<Parameters<GuildKnowledgeStore["propose"]>[0]> = [];
+    const knowledgeStore: GuildKnowledgeStore = {
+      initialize: () => Promise.resolve(),
+      loadConfirmed: () => Promise.resolve([]),
+      propose: (proposal) => { proposals.push(proposal); return Promise.resolve(); },
+    };
+    const summarizeDroppedExchanges = vi.fn(() => Promise.resolve([{ slot: "scene.discovery", statement: "the party found a hidden door" }]));
+    const provider: ChatProvider = { reply: () => Promise.resolve(response("ok")), summarizeDroppedExchanges };
+    const service = new ChatConversationService(provider, store, knowledgeStore);
+
+    await service.run(input("what happened earlier"), (reply) => Promise.resolve(reply.text));
+    expect(summarizeDroppedExchanges).toHaveBeenCalledWith([{ user: "old question", assistant: "old answer" }]);
+    expect(proposals).toHaveLength(2);
+    expect(proposals[1]).toMatchObject({
+      guildId: "guild",
+      assertedByUserId: null,
+      candidates: [{ subjectType: "guild", subjectId: "guild", topic: "scene_summary", slot: "scene.discovery", channelId: "channel" }],
+    });
+  });
+
+  it("skips consolidation entirely when no exchanges were dropped", async () => {
+    const store: ChatStateStore = {
+      initialize: () => Promise.resolve(),
+      load: () => Promise.resolve({ exchanges: [], memories: [] }),
+      commitSuccessfulExchange: () => Promise.resolve({ droppedExchanges: [] }),
+      applyMemoryActions: () => Promise.resolve(),
+      forgetMemory: () => Promise.resolve(false),
+      forgetAllMemories: () => Promise.resolve(0),
+      getDmNotesEnabled: () => Promise.resolve(true),
+      setDmNotesEnabled: () => Promise.resolve(),
+    };
+    const summarizeDroppedExchanges = vi.fn(() => Promise.resolve([]));
+    const provider: ChatProvider = { reply: () => Promise.resolve(response("ok")), summarizeDroppedExchanges };
+    const service = new ChatConversationService(provider, store, guildStore());
+
+    await service.run(input("hi"), (reply) => Promise.resolve(reply.text));
+    expect(summarizeDroppedExchanges).not.toHaveBeenCalled();
+  });
+
+  it("does not fail the turn when consolidation itself throws", async () => {
+    const store: ChatStateStore = {
+      initialize: () => Promise.resolve(),
+      load: () => Promise.resolve({ exchanges: [], memories: [] }),
+      commitSuccessfulExchange: () => Promise.resolve({
+        droppedExchanges: [{ user: { content: "old question", createdAt: 0 }, assistant: { content: "old answer", createdAt: 0 } }],
+      }),
+      applyMemoryActions: () => Promise.resolve(),
+      forgetMemory: () => Promise.resolve(false),
+      forgetAllMemories: () => Promise.resolve(0),
+      getDmNotesEnabled: () => Promise.resolve(true),
+      setDmNotesEnabled: () => Promise.resolve(),
+    };
+    const summarizeDroppedExchanges = vi.fn(() => Promise.reject(new Error("provider down")));
+    const provider: ChatProvider = { reply: () => Promise.resolve(response("ok")), summarizeDroppedExchanges };
+    const service = new ChatConversationService(provider, store, guildStore());
+
+    await expect(service.run(input("hi"), (reply) => Promise.resolve(reply.text))).resolves.toBeDefined();
   });
 });

@@ -35,10 +35,10 @@ describe("MemoryCommand", () => {
         exchanges: [],
         memories: [{
           id: "abcdefgh-1234", assertedByUserId: "user", subjectUserId: "user",
-          topic: "preference", slot: "food.fruit", statement: "likes green apples", updatedAt: 0,
+          topic: "preference", slot: "food.fruit", statement: "likes green apples", updatedAt: 0, embedding: null,
         }],
       }),
-      commitSuccessfulExchange: () => Promise.resolve(),
+      commitSuccessfulExchange: () => Promise.resolve({ droppedExchanges: [] }),
       applyMemoryActions: () => Promise.resolve(),
       forgetMemory: () => Promise.resolve(false),
       forgetAllMemories: () => Promise.resolve(0),
@@ -60,7 +60,7 @@ describe("MemoryCommand", () => {
     const store: ChatStateStore = {
       initialize: () => Promise.resolve(),
       load: () => Promise.resolve({ exchanges: [], memories: [] }),
-      commitSuccessfulExchange: () => Promise.resolve(),
+      commitSuccessfulExchange: () => Promise.resolve({ droppedExchanges: [] }),
       applyMemoryActions: () => Promise.resolve(),
       forgetMemory: () => Promise.resolve(false),
       forgetAllMemories: () => Promise.resolve(0),
@@ -82,10 +82,10 @@ describe("MemoryCommand", () => {
         exchanges: [],
         memories: [{
           id: "abcdefgh-1234", assertedByUserId: "user", subjectUserId: "user",
-          topic: "preference", slot: "food.fruit", statement: "likes green apples", updatedAt: 0,
+          topic: "preference", slot: "food.fruit", statement: "likes green apples", updatedAt: 0, embedding: null,
         }],
       }),
-      commitSuccessfulExchange: () => Promise.resolve(),
+      commitSuccessfulExchange: () => Promise.resolve({ droppedExchanges: [] }),
       applyMemoryActions: () => Promise.resolve(),
       forgetMemory,
       forgetAllMemories: () => Promise.resolve(0),
@@ -105,7 +105,7 @@ describe("MemoryCommand", () => {
     const store: ChatStateStore = {
       initialize: () => Promise.resolve(),
       load: () => Promise.resolve({ exchanges: [], memories: [] }),
-      commitSuccessfulExchange: () => Promise.resolve(),
+      commitSuccessfulExchange: () => Promise.resolve({ droppedExchanges: [] }),
       applyMemoryActions: () => Promise.resolve(),
       forgetMemory: () => Promise.resolve(false),
       forgetAllMemories,
@@ -125,7 +125,7 @@ describe("MemoryCommand", () => {
     const store: ChatStateStore = {
       initialize: () => Promise.resolve(),
       load: () => Promise.resolve({ exchanges: [], memories: [] }),
-      commitSuccessfulExchange: () => Promise.resolve(),
+      commitSuccessfulExchange: () => Promise.resolve({ droppedExchanges: [] }),
       applyMemoryActions: () => Promise.resolve(),
       forgetMemory: () => Promise.resolve(false),
       forgetAllMemories: () => Promise.resolve(0),
@@ -145,7 +145,7 @@ describe("MemoryCommand", () => {
     const store: ChatStateStore = {
       initialize: () => Promise.resolve(),
       load: () => Promise.resolve({ exchanges: [], memories: [] }),
-      commitSuccessfulExchange: () => Promise.resolve(),
+      commitSuccessfulExchange: () => Promise.resolve({ droppedExchanges: [] }),
       applyMemoryActions: () => Promise.resolve(),
       forgetMemory: () => Promise.resolve(false),
       forgetAllMemories: () => Promise.resolve(0),
@@ -164,7 +164,7 @@ describe("MemoryCommand", () => {
     const store: ChatStateStore = {
       initialize: () => Promise.resolve(),
       load: () => Promise.resolve({ exchanges: [], memories: [] }),
-      commitSuccessfulExchange: () => Promise.resolve(),
+      commitSuccessfulExchange: () => Promise.resolve({ droppedExchanges: [] }),
       applyMemoryActions: () => Promise.resolve(),
       forgetMemory: () => Promise.resolve(false),
       forgetAllMemories: () => Promise.resolve(0),

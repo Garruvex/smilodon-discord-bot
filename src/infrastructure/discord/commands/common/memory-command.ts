@@ -123,7 +123,9 @@ export class MemoryCommand implements BotCommand {
       return;
     }
 
-    const state = await this.chatStateStore.load(guildId, userId, Date.now());
+    // Only `.memories` is used below — see MemberProfileService.load for why
+    // an empty channelId is safe here (this view isn't tied to any channel).
+    const state = await this.chatStateStore.load(guildId, userId, "", Date.now());
     const match = state.memories.find((memory) => memory.id === id || memory.id.startsWith(id));
     if (!match) {
       await context.responses.reply("I couldn't find a memory with that ID. Check `/memory list`.");

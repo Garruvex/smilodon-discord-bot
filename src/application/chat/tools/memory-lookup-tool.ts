@@ -35,8 +35,8 @@ export class MemoryLookupTool implements ChatTool<MemoryLookupToolArgs> {
     const needle = args.query.trim().toLowerCase();
     if (!needle) return { content: "Empty search query." };
     const [state, guildKnowledge] = await Promise.all([
-      this.stateStore.load(ctx.guildId, ctx.currentUser.id, Date.now()),
-      this.guildKnowledgeStore.loadConfirmed(ctx.guildId),
+      this.stateStore.load(ctx.guildId, ctx.currentUser.id, ctx.channelId, Date.now()),
+      this.guildKnowledgeStore.loadConfirmed(ctx.guildId, ctx.channelId),
     ]);
     const matches = (haystack: { topic: string; slot: string; statement: string }): boolean =>
       haystack.topic.toLowerCase().includes(needle) ||

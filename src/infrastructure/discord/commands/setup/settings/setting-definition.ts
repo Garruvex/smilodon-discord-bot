@@ -1,4 +1,4 @@
-import type { SlashCommandSubcommandBuilder } from "discord.js";
+import type { InteractionEditReplyOptions, SlashCommandSubcommandBuilder } from "discord.js";
 
 import type { CommandContext } from "../../../../../application/commands/command.js";
 import type { GuildAssetStore } from "../../../../../application/assets/guild-asset-store.js";
@@ -52,7 +52,11 @@ export interface MutationSettingDefinition extends BaseSettingDefinition {
 // A setting that only reads and replies — never touches config (access, audit).
 export interface ReadOnlySettingDefinition extends BaseSettingDefinition {
   kind: "readOnly";
-  run(context: CommandContext, deps: SettingDeps, profile: GuildConfiguration): Promise<string>;
+  // A plain string covers the common case (access/audit summaries); a full
+  // InteractionEditReplyOptions lets a setting attach a file (e.g. sending a
+  // starter personality.md/examples.md — see template-setting.ts) without
+  // every other readOnly setting needing to know about that shape.
+  run(context: CommandContext, deps: SettingDeps, profile: GuildConfiguration): Promise<string | InteractionEditReplyOptions>;
 }
 
 export type SettingDefinition = MutationSettingDefinition | ReadOnlySettingDefinition;

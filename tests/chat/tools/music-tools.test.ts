@@ -11,6 +11,7 @@ import type { ChatToolContext } from "../../../src/application/chat/tools/chat-t
 function contextWithoutMusic(): ChatToolContext {
   return {
     guildId: "guild-1",
+    channelId: "channel-1",
     currentUser: { id: "user-1", displayName: "Tester", roleNames: [] },
     channelIsNsfw: false,
     music: null,
@@ -26,6 +27,7 @@ function fakeMember(roleIds: readonly string[]): GuildMember {
 function contextWithMusic(volumeMaximum = 150): ChatToolContext {
   return {
     guildId: "guild-1",
+    channelId: "channel-1",
     currentUser: { id: "user-1", displayName: "Tester", roleNames: [] },
     channelIsNsfw: false,
     music: {

@@ -101,7 +101,12 @@ export class MentionChatBehavior implements BotBehavior<Message> {
           profile.chat.maxImagesPerRequest,
         )
       : { selected: [], droppedUnsupported: 0, droppedOverLimit: 0 };
-    if (!prompt && imageAttachments.length === 0) {
+    // An empty tag is still a valid request when it's a reply — "@bot" on
+    // its own replying to someone else's message means "look at this", with
+    // the replied-to message standing in for the question (see the reply
+    // chain instructions in buildChatInstructions). Only bail out empty-
+    // handed when there's truly nothing to go on.
+    if (!prompt && imageAttachments.length === 0 && replyChainMessages.length === 0) {
       await message.reply({ content: "Mention me with a question or supported image and I'll try to help.", allowedMentions: { repliedUser: false } });
       return BehaviorResult.StopPropagation;
     }
@@ -142,9 +147,7 @@ export class MentionChatBehavior implements BotBehavior<Message> {
         messageId: message.id,
         userId: message.author.id,
         model: this.configuration.chat?.models[0],
-        apiMode: this.configuration.chat?.mode,
-        reasoningEffort: this.configuration.chat?.reasoningEffort,
-        verbosity: this.configuration.chat?.verbosity,
+        provider: this.configuration.chat?.provider,
         maxOutputTokens: this.configuration.chat?.maxOutputTokens,
         imageCount: images.length,
         droppedImageCount,
@@ -163,7 +166,9 @@ export class MentionChatBehavior implements BotBehavior<Message> {
       const musicActor = this.turnSupport.resolveMusicActor(message, profile);
       const response = await this.conversation.run({
         guildId: message.guildId,
+        channelId: message.channelId,
         personality: this.turnSupport.loadPersonality(profile, this.configuration),
+        examplePool: this.turnSupport.loadExampleExchanges(profile, this.configuration),
         currentUser: {
           id: message.author.id,
           displayName: message.member?.displayName ?? message.author.username,

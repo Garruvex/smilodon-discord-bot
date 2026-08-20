@@ -4,7 +4,10 @@ import { basename, resolve } from "node:path";
 import { parse } from "dotenv";
 
 const instanceNamePattern = /^[a-z0-9][a-z0-9_-]{0,63}$/;
-const instanceOwnedEnvironmentPrefixes = ["CHAT_"] as const;
+// CHATBOT_* (main chatbot persona/reply model) and UTILITY_* (fully
+// independent provider for standalone structured-output calls) — both
+// instance-owned, neither inherited from the shared root .env.
+const instanceOwnedEnvironmentPrefixes = ["CHATBOT_", "UTILITY_"] as const;
 
 export interface LoadedInstanceEnvironment {
   name: string;
@@ -86,11 +89,35 @@ export function validateInstanceIsolation(
   requireUnique(instances, "DISCORD_APPLICATION_ID", true);
   requireUnique(instances, "RUNTIME_DATA_DIRECTORY", true);
   requireUnique(instances, "GUILD_CONFIG_DIRECTORY", true);
-  requireUnique(
-    instances.filter((instance) => instance.environment.PERSISTENCE_DRIVER === "postgres"),
-    "DATABASE_URL",
-    true,
-  );
+  // Every Postgres instance has an "effective schema": PERSISTENCE_SCHEMA_PER_INSTANCE
+  // opts it into one derived from its name (mirrors resolveInstanceSchemaName
+  // in src/infrastructure/database/database.ts), otherwise it's the
+  // database's default ("public") — exactly today's behavior. Two instances
+  // sharing a DATABASE_URL must resolve to different effective schemas, or
+  // they'd read/write the same tables. This is a strict relaxation of the
+  // old "DATABASE_URL must always be unique" rule: an instance that hasn't
+  // opted in still can't share a database with anything (its effective
+  // schema is always "public"), matching prior behavior exactly.
+  const postgresInstances = instances.filter((instance) => instance.environment.PERSISTENCE_DRIVER === "postgres");
+  const schemaOwnersByDatabaseUrl = new Map<string, Map<string, string>>();
+  for (const instance of postgresInstances) {
+    const databaseUrl = instance.environment.DATABASE_URL?.trim();
+    if (!databaseUrl) throw new Error(`Instance "${instance.name}" is missing DATABASE_URL.`);
+    const effectiveSchema = instance.environment.PERSISTENCE_SCHEMA_PER_INSTANCE === "true"
+      ? instance.name.replaceAll("-", "_")
+      : "public";
+    const schemaOwners = schemaOwnersByDatabaseUrl.get(databaseUrl) ?? new Map<string, string>();
+    schemaOwnersByDatabaseUrl.set(databaseUrl, schemaOwners);
+    const existing = schemaOwners.get(effectiveSchema);
+    if (existing) {
+      throw new Error(
+        `Instances "${existing}" and "${instance.name}" share DATABASE_URL and resolve to the same schema ` +
+        `("${effectiveSchema}"); each bot must be isolated — rename one or enable ` +
+        `PERSISTENCE_SCHEMA_PER_INSTANCE with a distinct instance name.`,
+      );
+    }
+    schemaOwners.set(effectiveSchema, instance.name);
+  }
 }
 
 function validateInstanceName(name: string): void {

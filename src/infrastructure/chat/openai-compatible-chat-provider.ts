@@ -14,7 +14,6 @@ import { ModelFallbackChain } from "./model-fallback-chain.js";
 import {
   buildUserCustomizationAnalysisPrompt,
   parseUserCustomizationAnalysisOutput,
-  renderUserCustomizationMarkdown,
   userCustomizationAnalysisJsonSchema,
 } from "./user-customization-analysis.js";
 
@@ -38,14 +37,20 @@ const errorResponseSchema = z.object({
 export class OpenAiCompatibleChatProvider implements ChatProvider {
   private readonly warnedGuilds = new Set<string>();
   private readonly modelChain: ModelFallbackChain;
+  // Separate chain for the standalone analyzeUserCustomization call — falls
+  // back to the primary chain when the caller doesn't configure a cheaper
+  // summary model.
+  private readonly summaryModelChain: ModelFallbackChain;
 
   public constructor(
     private readonly baseUrl: string,
     private readonly apiKey: string,
     models: readonly string[],
+    summaryModels: readonly string[] | null,
     private readonly logger?: Logger,
   ) {
     this.modelChain = new ModelFallbackChain(models);
+    this.summaryModelChain = new ModelFallbackChain(summaryModels ?? models);
   }
 
   public async reply(request: ChatRequest): Promise<ChatResponse> {
@@ -126,7 +131,7 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
   }
 
   public async analyzeUserCustomization(rawText: string): Promise<UserCustomizationAnalysisResult> {
-    const body = await this.modelChain.run(async (model) => {
+    const body = await this.summaryModelChain.run(async (model) => {
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: "POST",
         headers: {
@@ -162,7 +167,7 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
     if (!analysis.ok) {
       return { ok: false, reason: analysis.reason ?? "That file couldn't be accepted as a customization." };
     }
-    const markdown = renderUserCustomizationMarkdown(analysis);
+    const markdown = analysis.cleanedMarkdown?.trim();
     if (!markdown) {
       return { ok: false, reason: "No usable style preferences were found in that file." };
     }

@@ -132,7 +132,9 @@ export class AmbientChatBehavior implements BotBehavior<Message> {
       const musicActor = this.turnSupport.resolveMusicActor(message, profile);
       const response = await this.conversation.run({
         guildId: message.guildId,
+        channelId: message.channelId,
         personality: this.turnSupport.loadPersonality(profile, this.configuration),
+        examplePool: this.turnSupport.loadExampleExchanges(profile, this.configuration),
         currentUser: {
           id: message.author.id,
           displayName: message.member?.displayName ?? message.author.username,

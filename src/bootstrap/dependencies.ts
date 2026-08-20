@@ -56,8 +56,10 @@ import { MentionChatBehavior } from "../infrastructure/discord/behaviors/mention
 import { AmbientChatBehavior } from "../infrastructure/discord/behaviors/ambient-chat-behavior.js";
 import { LinkFixBehavior } from "../infrastructure/discord/behaviors/link-fix-behavior.js";
 import { BilibiliEmbedService } from "../infrastructure/links/bilibili-embed-service.js";
+import type { ChatProvider } from "../application/chat/chat-provider.js";
 import { OpenAiCompatibleChatProvider } from "../infrastructure/chat/openai-compatible-chat-provider.js";
 import { OpenAiResponsesChatProvider } from "../infrastructure/chat/openai-responses-chat-provider.js";
+import { GeminiChatProvider } from "../infrastructure/chat/gemini-chat-provider.js";
 import type { Client } from "discord.js";
 import { GuildAssetStore } from "../application/assets/guild-asset-store.js";
 import { ComponentRegistry } from "../application/components/component-registry.js";
@@ -77,10 +79,83 @@ import { MusicControlTool } from "../application/chat/tools/music-control-tool.j
 import { MusicVolumeTool } from "../application/chat/tools/music-volume-tool.js";
 import { MusicQueueTool } from "../application/chat/tools/music-queue-tool.js";
 import { EmbeddingGuildMemorySelector, RelevantGuildMemorySelector } from "../application/chat/guild-memory-selector.js";
+import { EmbeddingUserMemorySelector } from "../application/chat/user-memory-selector.js";
+import { RelevantExampleExchangeSelector } from "../application/chat/example-exchange-selector.js";
 import { OpenAiEmbeddingsClient } from "../infrastructure/chat/openai-embeddings-client.js";
 import { ApplicationEmojiCatalog } from "../infrastructure/discord/application-emoji-catalog.js";
 import type { AuditLogService } from "../application/audit/audit-log-service.js";
 import { MemberProfileService } from "../application/members/member-profile-service.js";
+
+// Shape common to both configuration.chat and configuration.utilityChat —
+// summaryModels is optional here since only `chat` carries it (utilityChat
+// IS the summary/utility model already, see configuration.ts).
+type ProviderConfig =
+  | {
+      provider: "openai-responses";
+      apiKey: string;
+      baseUrl: string;
+      models: readonly string[];
+      reasoningEffort: "minimal" | "low" | "medium" | "high";
+      verbosity: "low" | "medium" | "high";
+      maxOutputTokens: number;
+      summaryModels?: readonly string[];
+    }
+  | {
+      provider: "openai-compatible";
+      apiKey: string;
+      baseUrl: string;
+      models: readonly string[];
+      maxOutputTokens: number;
+      summaryModels?: readonly string[];
+    }
+  | {
+      provider: "gemini";
+      apiKey: string;
+      models: readonly string[];
+      maxOutputTokens: number;
+      thinkingBudget: number | null;
+      summaryModels?: readonly string[];
+    };
+
+// Shared by both the main chatbot provider (configuration.chat) and the
+// optional fully-independent utility provider (configuration.utilityChat) —
+// same 3-way branch, just parameterized on which config block it's building
+// from. summaryModels defaults to the provider's own `models` when omitted
+// (utilityChat never sets it — it IS the summary/utility model already).
+function createChatProviderFromConfig(config: ProviderConfig, logger: Logger): ChatProvider {
+  const summaryModels = config.summaryModels ?? config.models;
+  if (config.provider === "openai-responses") {
+    return new OpenAiResponsesChatProvider(
+      config.baseUrl,
+      config.apiKey,
+      config.models,
+      {
+        reasoningEffort: config.reasoningEffort,
+        verbosity: config.verbosity,
+        maxOutputTokens: config.maxOutputTokens,
+        summaryModels,
+      },
+    );
+  }
+  if (config.provider === "gemini") {
+    return new GeminiChatProvider(
+      config.apiKey,
+      config.models,
+      {
+        maxOutputTokens: config.maxOutputTokens,
+        thinkingBudget: config.thinkingBudget,
+        summaryModels,
+      },
+    );
+  }
+  return new OpenAiCompatibleChatProvider(
+    config.baseUrl,
+    config.apiKey,
+    config.models,
+    summaryModels,
+    logger.child({ component: "chat-provider" }),
+  );
+}
 
 export interface ApplicationDependencies {
   commandRegistry: CommandRegistry;
@@ -200,26 +275,19 @@ export function createDependencies(
     logger.child({ component: "components" }),
   );
   const behaviorRegistry = new BehaviorRegistry();
-  const chatProvider = configuration.chat
-    ? configuration.chat.mode === "responses"
-      ? new OpenAiResponsesChatProvider(
-          configuration.chat.baseUrl,
-          configuration.chat.apiKey,
-          configuration.chat.models,
-          {
-            reasoningEffort: configuration.chat.reasoningEffort,
-            verbosity: configuration.chat.verbosity,
-            maxOutputTokens: configuration.chat.maxOutputTokens,
-          },
-        )
-      : new OpenAiCompatibleChatProvider(
-          configuration.chat.baseUrl,
-          configuration.chat.apiKey,
-          configuration.chat.models,
-          logger.child({ component: "chat-provider" }),
-        )
-    : null;
-  commandRegistry.register(new CustomizeCommand(userCustomizationStore, chatProvider));
+  const chatProvider = configuration.chat ? createChatProviderFromConfig(configuration.chat, logger) : null;
+  // Fully independent provider for the two standalone structured-output
+  // calls (analyzeUserCustomization, summarizeDroppedExchanges) when
+  // configuration.utilityChat is set (own credentials/model, can be a
+  // different provider type entirely). Falls back to `chatProvider` itself
+  // when unset — which already does its own same-credentials summary-model
+  // routing internally (configuration.chat.summaryModels) — so this adds a
+  // layer on top rather than replacing it, and requires no config change
+  // for anyone not using UTILITY_*.
+  const utilityProvider = configuration.utilityChat
+    ? createChatProviderFromConfig(configuration.utilityChat, logger)
+    : chatProvider;
+  commandRegistry.register(new CustomizeCommand(userCustomizationStore, utilityProvider));
   const chatToolRegistry = new ChatToolRegistry([
     new DiceRollTool(),
     new EightBallTool(),
@@ -231,7 +299,9 @@ export function createDependencies(
     new MusicVolumeTool(playbackService),
     new MusicQueueTool(playbackService),
   ]);
-  const embeddingsClient = configuration.chat?.embeddingModel
+  // Gemini has no embeddings client wired yet — embeddingModel is only
+  // consumed for the two OpenAI-shaped providers, which both carry baseUrl.
+  const embeddingsClient = configuration.chat?.embeddingModel && configuration.chat.provider !== "gemini"
     ? new OpenAiEmbeddingsClient(
         configuration.chat.baseUrl,
         configuration.chat.apiKey,
@@ -245,11 +315,14 @@ export function createDependencies(
         guildKnowledgeStore,
         embeddingsClient ? new EmbeddingGuildMemorySelector(embeddingsClient) : new RelevantGuildMemorySelector(),
         undefined,
+        new RelevantExampleExchangeSelector(),
         userCustomizationStore,
-        undefined,
+        embeddingsClient ? new EmbeddingUserMemorySelector(embeddingsClient) : undefined,
         birthdayStore,
         chatToolRegistry,
         embeddingsClient,
+        logger.child({ component: "chat-conversation" }),
+        utilityProvider,
       )
     : null;
   behaviorRegistry.register(new MentionChatBehavior(

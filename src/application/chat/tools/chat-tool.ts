@@ -10,6 +10,7 @@ export type ChatToolParameterSchema = Record<string, unknown>;
 
 export interface ChatToolContext {
   guildId: string;
+  channelId: string;
   currentUser: ChatUser;
   // Whether the Discord channel the turn is happening in is age-restricted.
   // Tools that can return adult content (e.g. booru search) must gate on

@@ -4,7 +4,9 @@ import type { Attachment, Message } from "discord.js";
 import type { Logger } from "pino";
 
 import { resolveGuildPersonalityPath } from "../../../application/assets/guild-personality-path.js";
+import { resolveGuildExamplesPath } from "../../../application/assets/guild-examples-path.js";
 import { chatMemoryLimits } from "../../../application/chat/chat-memory-policy.js";
+import { parseExampleExchanges, type ExampleExchange } from "../../../application/chat/example-exchange.js";
 import type { ChatImage, ChatSource } from "../../../application/chat/chat-provider.js";
 import type { ApplicationConfiguration } from "../../../config/configuration.js";
 import type { GuildConfiguration } from "../../../config/guild-configuration.js";
@@ -50,6 +52,28 @@ export class ChatTurnSupport {
     }
   }
 
+  // A missing/unconfigured/malformed examples file must never break a chat
+  // turn — unlike upload-time validation (GuildAssetStore.saveExamples),
+  // this is on the hot path for every message, so any failure here just
+  // degrades to no examples (logged) rather than throwing.
+  public loadExampleExchanges(profile: GuildConfiguration, configuration: ApplicationConfiguration): ExampleExchange[] {
+    const path = resolveGuildExamplesPath(profile, configuration.runtimeDataDirectory);
+    if (!path) return [];
+    try {
+      const content = readFileSync(path, "utf8").trim();
+      if (!content) return [];
+      const parsed = parseExampleExchanges(content);
+      if ("error" in parsed) {
+        this.logger.warn({ guildId: profile.guildId, path, error: parsed.error }, "Guild examples file failed to parse; sending no examples this turn");
+        return [];
+      }
+      return parsed.exchanges;
+    } catch (error) {
+      this.logger.warn({ guildId: profile.guildId, path, error }, "Guild examples file could not be read; sending no examples this turn");
+      return [];
+    }
+  }
+
   // Null unless the guild has music enabled and the message has a
   // resolvable GuildMember — those two facts can't change mid-turn, so
   // they're resolved once here. The role gate itself (musicController /
@@ -70,8 +94,15 @@ export class ChatTurnSupport {
     botAdministratorRoleIds: ReadonlySet<string>;
   } | null {
     if (!profile.features.music || !message.inGuild() || !message.member) return null;
+    // Bind the player's text channel to the same channel the control panel's
+    // own plain-text song requests use (ControlChannelService.handleMessage),
+    // not wherever this chat message happened to be posted — otherwise a
+    // player started via ambient/mention chat ends up bound to an arbitrary
+    // channel instead of the one the panel and its "up next"/now-playing
+    // state are anchored to.
+    const musicTextChannelId = profile.channels.controlPanel ?? message.channelId;
     return {
-      actor: createPlaybackActorFromMember(message.guildId, message.channelId, message.member),
+      actor: createPlaybackActorFromMember(message.guildId, musicTextChannelId, message.member),
       volumeMaximum: profile.music.maximumVolume,
       musicControllerRoleIds: profile.roles.musicController,
       botAdministratorRoleIds: profile.roles.botAdministrator,

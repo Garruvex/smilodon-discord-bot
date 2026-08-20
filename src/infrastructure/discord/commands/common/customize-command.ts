@@ -28,7 +28,12 @@ export class CustomizeCommand implements BotCommand {
 
   public constructor(
     private readonly store: UserCustomizationStore,
-    private readonly chatProvider: ChatProvider | null,
+    // The utility provider (own credentials/model when UTILITY_* is
+    // configured, else the main chatbot provider as a fallback — see
+    // dependencies.ts) — analysis of a customization submission is exactly
+    // the kind of cheap structured-extraction task the utility split exists
+    // for, not the main persona model.
+    private readonly utilityProvider: ChatProvider | null,
   ) {}
 
   public async execute(context: CommandContext): Promise<void> {
@@ -96,13 +101,13 @@ export class CustomizeCommand implements BotCommand {
     // plain style-preference fields and strips anything that reads as an
     // attempt to redefine identity or override rules, rather than storing
     // the user's raw text verbatim.
-    if (!this.chatProvider?.analyzeUserCustomization) {
+    if (!this.utilityProvider?.analyzeUserCustomization) {
       await context.responses.edit("Chat isn't configured on this bot, so customization can't be reviewed right now.");
       return;
     }
     let markdown: string;
     try {
-      const analysis = await this.chatProvider.analyzeUserCustomization(validation.value);
+      const analysis = await this.utilityProvider.analyzeUserCustomization(validation.value);
       if (!analysis.ok) {
         await context.responses.edit(`That customization wasn't accepted: ${analysis.reason}`);
         return;

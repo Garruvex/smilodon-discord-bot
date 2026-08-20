@@ -31,7 +31,7 @@ export class ModelFallbackChain {
     let lastError: unknown;
     for (const model of candidates) {
       try {
-        return await attempt(model);
+        return await this.attemptWithStreamRetry(attempt, model);
       } catch (error) {
         lastError = error;
         if (error instanceof ChatProviderError && error.status === 429) {
@@ -42,5 +42,20 @@ export class ModelFallbackChain {
       }
     }
     throw lastError instanceof Error ? lastError : new ChatModelFallbackExhaustedError();
+  }
+
+  // A stream that closes with no response.completed and no explicit error
+  // event is a dropped connection, not a quota or capability signal — retried
+  // once on the same model before falling into the normal (non-retrying)
+  // error path above.
+  private async attemptWithStreamRetry<T>(attempt: (model: string) => Promise<T>, model: string): Promise<T> {
+    try {
+      return await attempt(model);
+    } catch (error) {
+      if (error instanceof ChatProviderError && error.code === "incomplete_stream") {
+        return await attempt(model);
+      }
+      throw error;
+    }
   }
 }

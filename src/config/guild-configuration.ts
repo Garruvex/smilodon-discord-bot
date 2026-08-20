@@ -41,6 +41,8 @@ export interface GuildChannelConfiguration {
 export interface GuildChatConfiguration {
   personalityFile: string | null;
   personalityAsset: string | null;
+  examplesFile: string | null;
+  examplesAsset: string | null;
   cooldownSeconds: number;
   deniedMessage: string;
   deniedLinkUrl: string | null;

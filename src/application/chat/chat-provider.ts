@@ -1,8 +1,15 @@
 import type { ChatTool } from "./tools/chat-tool.js";
+import type { ExampleExchange } from "./example-exchange.js";
 import type { PlaybackActor } from "../music/playback-service.js";
 
 export interface ChatRequest {
   guildId: string;
+  // The Discord channel this turn is happening in — scopes guild-knowledge
+  // read/write and the recent-exchange session to this channel (see
+  // guild-knowledge-store.ts / chat-state-store.ts), and is surfaced to the
+  // model in <guild_context> so it can judge whether a proposed fact is
+  // durable/guild-wide or specific to this channel/scene.
+  channelId: string;
   // Optional: when non-empty, the provider offers these as callable
   // functions and executes them mid-turn (see ChatToolRegistry). Omitted
   // (or empty) means no tool calling for this turn — existing callers that
@@ -20,6 +27,10 @@ export interface ChatRequest {
   musicControllerRoleIds?: ReadonlySet<string> | undefined;
   musicBotAdministratorRoleIds?: ReadonlySet<string> | undefined;
   personality: string;
+  // Relevance-selected subset of the guild's uploaded example exchanges
+  // (see example-exchange-selector.ts) — empty for guilds that haven't
+  // uploaded an examples.md.
+  exampleExchanges: readonly ExampleExchange[];
   userCustomization: string | null;
   currentUser: ChatUser;
   mentionedUsers: readonly ChatUser[];
@@ -87,6 +98,10 @@ export interface ChatMemoryRecord {
   slot: string;
   statement: string;
   updatedAt: number;
+  // Null for a record written before vector recall was enabled, or when an
+  // embeddings call failed at write time — EmbeddingUserMemorySelector
+  // treats that as a 0 similarity contribution rather than an error.
+  embedding: number[] | null;
 }
 
 export interface ProposedMemoryAction {
@@ -106,7 +121,7 @@ export interface GuildKnowledgeRecord {
   topic: string;
   slot: string;
   statement: string;
-  source: "self_report" | "community" | "administrator";
+  source: "self_report" | "community" | "administrator" | "consolidation";
   updatedAt: number;
   // Null for a record written before vector recall was enabled, or when an
   // embeddings call failed at write time — EmbeddingGuildMemorySelector
@@ -120,6 +135,10 @@ export interface ProposedGuildKnowledgeCandidate {
   topic: string;
   slot: string;
   statement: string;
+  // Raw, model-authored signal — resolved into the real stored `channelId`
+  // by validateGuildKnowledgeCandidates, which is the only place that knows
+  // the current turn's actual channel.
+  channelScoped: boolean;
 }
 
 export interface ChatImage {
@@ -166,6 +185,8 @@ export interface ChatResponse {
     memoryChars: number;
     guildKnowledgeRecords: number;
     guildKnowledgeChars: number;
+    exampleExchangeRecords: number;
+    exampleExchangeChars: number;
     replyChainMessages: number;
     replyChainChars: number;
     channelHistoryMessages: number;
@@ -186,9 +207,22 @@ export type UserCustomizationAnalysisResult =
   | { ok: true; markdown: string }
   | { ok: false; reason: string };
 
+export interface DroppedExchangeFact {
+  slot: string;
+  statement: string;
+}
+
 export interface ChatProvider {
   reply(request: ChatRequest, observer?: ChatResponseObserver): Promise<ChatResponse>;
   analyzeUserCustomization?(rawText: string): Promise<UserCustomizationAnalysisResult>;
+  // Standalone call (own prompt/schema, outside the main reply turn — same
+  // shape as analyzeUserCustomization) asking the model to extract 0-2
+  // durable facts from exchanges about to be evicted from a channel's
+  // recent-history window, so they aren't silently lost. Returns an empty
+  // array when nothing in the exchanges was worth keeping.
+  summarizeDroppedExchanges?(
+    exchanges: readonly { user: string; assistant: string }[],
+  ): Promise<readonly DroppedExchangeFact[]>;
 }
 
 export interface ChatResponseObserver {

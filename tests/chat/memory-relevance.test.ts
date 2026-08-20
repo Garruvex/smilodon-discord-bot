@@ -1,6 +1,39 @@
 import { describe, expect, it } from "vitest";
 
-import { buildRelevanceContext, cosineSimilarity, scoreRecord, selectByRelevance } from "../../src/application/chat/memory-relevance.js";
+import {
+  bm25Score,
+  buildBm25Corpus,
+  buildRelevanceContext,
+  cosineSimilarity,
+  reciprocalRankFusion,
+  selectByRelevance,
+  tokenize,
+} from "../../src/application/chat/memory-relevance.js";
+
+describe("tokenize", () => {
+  it("tokenizes English exactly as before CJK support was added — space-delimited words, 3+ chars, lowercased", () => {
+    expect([...tokenize("The Quick Brown fox jumps over a lazy dog42")].sort())
+      .toEqual(["brown", "dog42", "fox", "jumps", "lazy", "over", "quick", "the"]);
+  });
+
+  it("segments Chinese text into real word tokens instead of producing nothing", () => {
+    const tokens = tokenize("我今天期中考炸了");
+    expect(tokens.size).toBeGreaterThan(0);
+    expect(tokens.has("期中考")).toBe(true);
+  });
+
+  it("filters common Chinese function words the way English stopwords like 'the'/'a' are implicitly excluded by the length cutoff", () => {
+    const tokens = tokenize("這個是我的東西");
+    expect(tokens.has("這個")).toBe(false);
+    expect(tokens.has("是")).toBe(false);
+  });
+
+  it("tokenizes mixed English/Chinese text, extracting terms from both scripts", () => {
+    const tokens = tokenize("today's 期中考 was rough lol");
+    expect(tokens.has("today")).toBe(true);
+    expect(tokens.has("期中考")).toBe(true);
+  });
+});
 
 describe("memory-relevance", () => {
   it("scores keyword overlap with the current turn above no match", () => {
@@ -10,12 +43,15 @@ describe("memory-relevance", () => {
       subjectIds: new Set(),
       now: 1_000,
     });
-    const matching = scoreRecord(context, {
+    const matchingRecord = {
       subjectId: "someone-else", topic: "preference", slot: "food.fruit", statement: "likes green apples", updatedAt: 1_000,
-    });
-    const nonMatching = scoreRecord(context, {
+    };
+    const nonMatchingRecord = {
       subjectId: "someone-else", topic: "gaming", slot: "role.overwatch", statement: "plays support", updatedAt: 1_000,
-    });
+    };
+    const corpus = buildBm25Corpus([matchingRecord, nonMatchingRecord]);
+    const matching = bm25Score(corpus, context, matchingRecord);
+    const nonMatching = bm25Score(corpus, context, nonMatchingRecord);
     expect(matching).toBeGreaterThan(nonMatching);
   });
 
@@ -26,12 +62,15 @@ describe("memory-relevance", () => {
       subjectIds: new Set(["user-1"]),
       now: 1_000,
     });
-    const aboutSubject = scoreRecord(context, {
+    const aboutSubjectRecord = {
       subjectId: "user-1", topic: "identity", slot: "role", statement: "is a moderator", updatedAt: 1_000,
-    });
-    const aboutSomeoneElse = scoreRecord(context, {
+    };
+    const aboutSomeoneElseRecord = {
       subjectId: "user-2", topic: "identity", slot: "role", statement: "is a moderator", updatedAt: 1_000,
-    });
+    };
+    const corpus = buildBm25Corpus([aboutSubjectRecord, aboutSomeoneElseRecord]);
+    const aboutSubject = bm25Score(corpus, context, aboutSubjectRecord);
+    const aboutSomeoneElse = bm25Score(corpus, context, aboutSomeoneElseRecord);
     expect(aboutSubject).toBeGreaterThan(aboutSomeoneElse);
   });
 
@@ -42,13 +81,26 @@ describe("memory-relevance", () => {
       subjectIds: new Set(),
       now: 1_000_000,
     });
-    const older = scoreRecord(context, {
+    const olderRecord = {
       subjectId: "x", topic: "other", slot: "a", statement: "some old fact", updatedAt: 0,
-    });
-    const newer = scoreRecord(context, {
+    };
+    const newerRecord = {
       subjectId: "x", topic: "other", slot: "b", statement: "some new fact", updatedAt: 999_000,
-    });
+    };
+    const corpus = buildBm25Corpus([olderRecord, newerRecord]);
+    const older = bm25Score(corpus, context, olderRecord);
+    const newer = bm25Score(corpus, context, newerRecord);
     expect(newer).toBeGreaterThan(older);
+  });
+
+  it("fuses two rankings via reciprocal rank fusion, favoring items ranked highly in both", () => {
+    const items = ["a", "b", "c"];
+    const rankingOne = ["a", "b", "c"];
+    const rankingTwo = ["b", "a", "c"];
+    const fused = reciprocalRankFusion([rankingOne, rankingTwo]);
+    expect(fused.get("a")!).toBeGreaterThan(fused.get("c")!);
+    expect(fused.get("b")!).toBeGreaterThan(fused.get("c")!);
+    expect([...items].sort((x, y) => fused.get(y)! - fused.get(x)!)[2]).toBe("c");
   });
 
   it("always keeps at least the top-ranked record even if it alone exceeds the char budget", () => {

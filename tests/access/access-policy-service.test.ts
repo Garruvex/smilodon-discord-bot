@@ -31,7 +31,7 @@ function applicationConfiguration(): ApplicationConfiguration {
     ownerUserIds: new Set([ownerId]),
     guildConfigurationDirectory: "unused",
     runtimeDataDirectory: "unused",
-    persistence: { driver: "file", databaseUrl: null },
+    persistence: { driver: "file", databaseUrl: null, schemaPerInstance: false },
     lavalink: {
       host: "localhost",
       port: 2333,
@@ -39,6 +39,7 @@ function applicationConfiguration(): ApplicationConfiguration {
       secure: false,
     },
     chat: null,
+    utilityChat: null,
   };
 }
 
@@ -93,6 +94,8 @@ function guildConfiguration(): GuildConfiguration {
     chat: {
       personalityFile: null,
       personalityAsset: null,
+      examplesFile: null,
+      examplesAsset: null,
       cooldownSeconds: 30,
       deniedMessage: "Premium required.",
       deniedLinkUrl: null,

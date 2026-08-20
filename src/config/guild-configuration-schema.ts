@@ -12,6 +12,8 @@ const guildChatSchema = z.preprocess((value) => {
 }, z.object({
   personalityFile: z.string().trim().min(1).nullable().default(null),
   personalityAsset: z.string().regex(/^guild-assets\/\d{17,20}\/personality\.md$/).nullable().default(null),
+  examplesFile: z.string().trim().min(1).nullable().default(null),
+  examplesAsset: z.string().regex(/^guild-assets\/\d{17,20}\/examples\.md$/).nullable().default(null),
   cooldownSeconds: z.number().int().min(0).max(86_400).default(30),
   deniedMessage: z.string().trim().min(1).max(500).default("This feature requires a premium subscription. Try looking richer and ask again."),
   deniedLinkUrl: z.string().trim().url().nullable().default(null),
@@ -142,6 +144,8 @@ export const guildConfigurationFileSchema = z
       .default({
         personalityFile: null,
         personalityAsset: null,
+        examplesFile: null,
+        examplesAsset: null,
         cooldownSeconds: 30,
         deniedMessage: "This feature requires a premium subscription. Try looking richer and ask again.",
         webSearchMode: "off",

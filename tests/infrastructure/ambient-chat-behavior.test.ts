@@ -21,9 +21,10 @@ function configuration(): ApplicationConfiguration {
     ownerUserIds: new Set([ownerId]),
     guildConfigurationDirectory: "unused",
     runtimeDataDirectory: "unused",
-    persistence: { driver: "file", databaseUrl: null },
+    persistence: { driver: "file", databaseUrl: null, schemaPerInstance: false },
     lavalink: { host: "localhost", port: 2333, password: "test-password", secure: false },
     chat: null,
+    utilityChat: null,
   };
 }
 
@@ -63,7 +64,7 @@ function profile(overrides: { ambientReplies?: boolean } = {}): GuildConfigurati
       emptyChannelAction: "pause", emptyChannelGracePeriodMs: 30_000, resumeWhenOccupied: true,
     },
     chat: {
-      personalityFile: null, personalityAsset: null, cooldownSeconds: 30,
+      personalityFile: null, personalityAsset: null, examplesFile: null, examplesAsset: null, cooldownSeconds: 30,
       deniedMessage: "Premium required.", deniedLinkUrl: null, deniedLinkLabel: null,
       webSearchMode: "off", toolCallingEnabled: false, imageInputEnabled: false, imageGenerationEnabled: false,
       includeSources: true, maxImagesPerRequest: 2, ambientCooldownSeconds: 20,

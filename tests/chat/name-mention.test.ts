@@ -36,4 +36,22 @@ describe("containsBotName", () => {
   it("returns false when a CJK display name does not appear at all", () => {
     expect(containsBotName("今天天氣真好", "松果")).toBe(false);
   });
+
+  it("matches a Latin display name flanked directly by CJK characters", () => {
+    expect(containsBotName("yohta我想聽好睡的歌幫我挑個幾首", "Yohta")).toBe(true);
+    expect(containsBotName("欸yohta在嗎", "Yohta")).toBe(true);
+  });
+
+  it("still rejects a Latin display name embedded in a longer Latin word even next to CJK text", () => {
+    expect(containsBotName("yohtabot我在嗎", "Yohta")).toBe(false);
+  });
+
+  it("matches a Thai display name flanked directly by other Thai characters", () => {
+    expect(containsBotName("สวัสดีโยธาครับ", "โยธา")).toBe(true);
+    expect(containsBotName("โยธาอยู่ไหม", "โยธา")).toBe(true);
+  });
+
+  it("matches a Latin display name flanked directly by Thai characters", () => {
+    expect(containsBotName("สวัสดีบอทYohtaครับ", "Yohta")).toBe(true);
+  });
 });

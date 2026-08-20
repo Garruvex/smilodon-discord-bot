@@ -64,6 +64,8 @@ function profile(): GuildConfiguration {
     chat: {
       personalityFile: null,
       personalityAsset: null,
+      examplesFile: null,
+      examplesAsset: null,
       cooldownSeconds: 30,
       deniedMessage: "Denied",
       deniedLinkUrl: null,

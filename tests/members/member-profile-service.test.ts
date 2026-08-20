@@ -12,10 +12,10 @@ function stubChatStateStore(): ChatStateStore {
       exchanges: [],
       memories: [{
         id: "m1", assertedByUserId: "user", subjectUserId: "user",
-        topic: "preference", slot: "food.fruit", statement: "likes green apples", updatedAt: 0,
+        topic: "preference", slot: "food.fruit", statement: "likes green apples", updatedAt: 0, embedding: null,
       }],
     }),
-    commitSuccessfulExchange: () => Promise.resolve(),
+    commitSuccessfulExchange: () => Promise.resolve({ droppedExchanges: [] }),
     applyMemoryActions: () => Promise.resolve(),
     forgetMemory: () => Promise.resolve(false),
     forgetAllMemories: () => Promise.resolve(0),

@@ -13,6 +13,7 @@ import { retainMemberDataSetting } from "./retain-member-data-setting.js";
 import { roleAddSetting, roleRemoveSetting } from "./role-membership-setting.js";
 import { rolesSetting } from "./roles-setting.js";
 import type { SettingDefinition } from "./setting-definition.js";
+import { templateSetting } from "./template-setting.js";
 import { volumeSetting } from "./volume-setting.js";
 
 export type {
@@ -49,7 +50,7 @@ export const settingGroups: readonly SettingGroup[] = [
   {
     name: "chat",
     description: "AI chat behavior.",
-    settings: [chatbotSetting, ambientRepliesSetting, channelHistorySetting],
+    settings: [chatbotSetting, ambientRepliesSetting, channelHistorySetting, templateSetting],
   },
   {
     name: "community",
