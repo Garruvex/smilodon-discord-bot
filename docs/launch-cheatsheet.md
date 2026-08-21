@@ -38,24 +38,23 @@ same Discord application.
 
 | Goal | Command |
 | --- | --- |
-| Validate the selected instance file | `npm.cmd run instance:config:validate -- INSTANCE` |
-| Build and start the selected bot, PostgreSQL, and Lavalink | `npm.cmd run stack:up` |
+| Validate all instance files | `npm.cmd run instances:validate` |
+| Build and start declared bots, PostgreSQL, and Lavalink | `npm.cmd run stack:up` |
 | Start native PostgreSQL and Lavalink together | `npm.cmd run services:start` |
 | Start PostgreSQL and Lavalink in Docker (detached) | `npm.cmd run services:start:docker` |
 | Follow stack logs | `npm.cmd run stack:logs` |
-| Restart the bot container | `npm.cmd run stack:restart:bot` |
+| Restart both bot containers | `npm.cmd run stack:restart:bot` |
 | Stop and remove the stack containers | `npm.cmd run stack:down` |
 | Erase PostgreSQL and rebuild from the baseline | `npm.cmd run stack:reset` |
-| Deploy commands for the selected Docker instance | `npm.cmd run stack:deploy` |
+| Deploy commands for both Docker instances | `npm.cmd run stack:deploy` |
 | Render the effective Compose configuration | `npm.cmd run stack:config` |
 
-`DOCKER_INSTANCE=pinecone` in `.env` selects
-`config/instances/pinecone.env`. Compose waits for PostgreSQL and Lavalink,
-migrates the instance schema, and then starts the bot. Persistent state lives
-under `DATA_ROOT` (default `./data`). Compose contains no generated services.
-If you need multiple Docker bots, duplicate the bot service in your own Compose
-file with a different instance env file; all copies can share PostgreSQL because
-each instance uses its own schema.
+The root `.env` contains shared infrastructure values only. `compose.yaml`
+declares `bot-yohta` and `bot-pinecone`, which load their matching files under
+`config/instances/`. Compose waits for PostgreSQL and Lavalink, then each bot
+migrates its isolated schema, registers its Discord commands, and starts. Add
+another bot by copying a bot service entry; all instances reuse the same image,
+PostgreSQL database, and Lavalink.
 
 `services:start` runs the workspace-local PostgreSQL and Lavalink processes in
 one foreground terminal. Use `services:start:docker` for the same two services
@@ -63,7 +62,8 @@ in detached containers, then run the bot separately.
 
 ## Discord command registration
 
-Bot startup does not register updated slash commands automatically.
+Docker bot startup registers updated slash commands automatically. Native bot
+startup does not.
 
 | Goal | Command |
 | --- | --- |
@@ -141,13 +141,12 @@ To launch every discovered instance, omit the names from the last command:
 npm.cmd run instances:start:local
 ```
 
-Each instance needs a unique Discord application ID and isolated persistence,
-guild configuration, and runtime directories. If an instance uses PostgreSQL,
-start PostgreSQL separately and give each instance a different logical database
-(`DATABASE_URL`) by default.
+Each instance needs a unique Discord application ID, guild configuration, and
+runtime directory. PostgreSQL connection credentials are shared through the
+root `.env` `POSTGRES_*` values.
 
 Every PostgreSQL instance automatically gets its own schema derived from its
 instance name (`my-bot` becomes `my_bot`). Instances can therefore share one
-server, database, and `DATABASE_URL` without sharing tables. The application
+server and database without sharing tables. The application
 never falls back to the `public` schema. `npm run instance:db:migrate -- <name>`
 creates and migrates the correct schema.

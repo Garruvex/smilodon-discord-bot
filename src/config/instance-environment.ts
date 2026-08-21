@@ -39,14 +39,28 @@ export function loadInstanceEnvironment(
       `INSTANCE_NAME "${values.INSTANCE_NAME}" does not match filename "${name}.env".`,
     );
   }
+  const shared = withoutInstanceOwnedValues(loadSharedEnvironment(root));
+  const environment: NodeJS.ProcessEnv = {
+    ...shared,
+    ...values,
+    INSTANCE_NAME: name,
+  };
   return {
     name,
     file,
-    environment: {
-      ...withoutInstanceOwnedValues(loadSharedEnvironment(root)),
-      ...values,
-      INSTANCE_NAME: name,
-    },
+    environment: resolveSharedPostgresEnvironment(environment),
+  };
+}
+
+export function resolveSharedPostgresEnvironment(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  if (source.PERSISTENCE_DRIVER !== "postgres" || !source.POSTGRES_PASSWORD) return source;
+  const host = source.POSTGRES_HOST?.trim() || "127.0.0.1";
+  const port = source.POSTGRES_PORT?.trim() || "5432";
+  const database = source.POSTGRES_DB?.trim() || "fntu_bot";
+  const user = source.POSTGRES_USER?.trim() || "fntu_bot";
+  return {
+    ...source,
+    DATABASE_URL: `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(source.POSTGRES_PASSWORD)}@${host}:${port}/${encodeURIComponent(database)}`,
   };
 }
 

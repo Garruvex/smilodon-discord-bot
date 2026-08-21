@@ -210,10 +210,20 @@ own emoji for each segment), or **Timestamps only**.
 | `/settings chat ambient-replies [enabled] [cooldown-seconds]` | Turns on ambient (non-mention) chat and its per-channel cooldown. |
 | `/settings chat channel-history [enabled] [limit]` | Includes recent messages from anyone as extra context for ambient chat. |
 | `/settings chat template <kind>` | Sends a starter `personality.md` or `examples.md` file to download, edit, and upload back via `/settings chat chatbot`. |
+| `/settings chat context-scan-add channel [seed-days] [restart]` | Queues a channel for a one-time history scan (default 7-day lookback) folded into guild-wide memory. `restart:true` re-reads a completed scan from scratch. |
+| `/settings chat context-daily-add channel` | Adds a channel to ongoing daily summarization, checked hourly. |
+| `/settings chat context-daily-remove channel` | Stops daily summarization for a channel (existing memories are kept). |
+| `/settings chat context-remove channel` | Removes a channel from both the scan and daily sets (existing memories are kept; re-adding resumes rather than re-reading history). |
+| `/settings chat context-status [channel]` | Shows provider availability, whether the chatbot feature is paused, and per-channel scan/daily progress and errors. |
 
 An empty channel list on `/settings chat chatbot` means mention chat is
 allowed in every channel. Use `/settings access role-add`/`role-remove` with
 the `Chatbot` group to manage multiple allowed roles at once.
+
+The `context-*` commands require a chat provider configured with channel-
+summarization support (every built-in provider mode has it) — see the
+README's [Channel-context memory](../README.md#channel-context-memory)
+section for the full processing model and trust rules.
 
 ### Community
 

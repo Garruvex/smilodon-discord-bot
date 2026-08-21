@@ -58,6 +58,7 @@ const dependencies = createDependencies(
   auditLogService,
   persistence.birthdayStore,
   persistence.memoryRepository,
+  persistence.channelSummaryCheckpointStore,
 );
 const deploymentService = new DiscordGuildCommandDeploymentService(
   configuration,

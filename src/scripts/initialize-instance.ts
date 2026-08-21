@@ -23,7 +23,6 @@ const values = [
   `BOT_OWNER_IDS=${source.BOT_OWNER_IDS}`,
   "",
   `PERSISTENCE_DRIVER=${source.PERSISTENCE_DRIVER ?? "file"}`,
-  `DATABASE_URL=${source.DATABASE_URL ?? ""}`,
   `GUILD_CONFIG_DIRECTORY=${source.GUILD_CONFIG_DIRECTORY ?? "./config/local/guilds"}`,
   `RUNTIME_DATA_DIRECTORY=${source.RUNTIME_DATA_DIRECTORY ?? "./data/local"}`,
   "",

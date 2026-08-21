@@ -71,6 +71,19 @@ export interface GuildChatConfiguration {
   // accumulated persona-drift.json (see PersonaDriftStore.reset for the
   // explicit wipe action).
   personaDriftEnabled: boolean;
+  // Channel-context (Plan 2) — see channel-summary-scheduler.ts. Plain
+  // arrays (not Set) since `chat.*` passes through document<->configuration
+  // conversion as-is, unlike `channels.*`/`roles.*` (see
+  // guild-configuration-document.ts's toGuildConfiguration /
+  // toGuildConfigurationDocument — chat is a direct passthrough, no Set
+  // wrapping, same as disabledTools above).
+  // contextScanChannelIds: one-time history scan, may be several channels.
+  // contextDailyChannelIds: ongoing daily summary, independent of the scan
+  // set (a channel can be in both, either, or neither).
+  contextScanChannelIds: readonly string[];
+  contextDailyChannelIds: readonly string[];
+  // How many days back a channel's FIRST run (scan or daily) looks.
+  contextSeedDays: number;
 }
 
 export interface GuildMusicConfiguration {

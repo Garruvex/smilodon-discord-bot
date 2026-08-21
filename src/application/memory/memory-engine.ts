@@ -11,6 +11,7 @@ import type {
   MemoryIngestResult,
   MemoryRecallInput,
   MemoryRepository,
+  ProposedMemory,
 } from "./memory.js";
 import { canRecall } from "./memory.js";
 import { validateProposal } from "./memory-validation.js";
@@ -48,12 +49,20 @@ function memoryPromptProjection(memory: Memory): unknown {
 // A claim about someone else starts as "candidate". Mirrors the legacy
 // maySelfConfirm's intent, simplified: this pass doesn't carry over the
 // legacy per-topic allowlist (selfConfirmingGuildTopics) — see follow-up
-// note in the plan. Consolidation self-activates: there's no "asserter" to
-// require agreement from — it's the bot's own summary of a channel event,
-// not a claim about a person — so requiring assertedByUserId to match a
-// subject (which is never true for it; consolidation always passes
-// assertedByUserId: null) would make every consolidated summary
-// permanently stuck as an unrecallable candidate.
+// note in the plan.
+//
+// Consolidation (channel-summary) trust rules (Plan 2, Phase 5): guild/
+// team/project facts are community-level, not personal claims about
+// someone — active once validated, same as before. A member-subject fact
+// is different: it's a claim ABOUT a specific person, so it only
+// self-activates when that person is the one who said it (assertedByUserId
+// here is ChannelSummaryScheduler's per-fact evidence-derived asserter —
+// see resolveEvidence — not the batch-level null). A claim about a member
+// made by someone else in the batch stays "candidate" regardless of
+// source; letting consolidation blanket-trust every member fact just
+// because the subject participated somewhere in the channel would let a
+// third party's claim about someone become durable, active memory with no
+// confirmation from the subject at all.
 function resolveInitialStatus(
   audience: "private" | "channel" | "guild",
   subjectType: Memory["subjectType"],
@@ -62,7 +71,7 @@ function resolveInitialStatus(
   source: Memory["source"],
 ): Memory["status"] {
   if (audience === "private") return "active";
-  if (source === "consolidation") return "active";
+  if (source === "consolidation" && subjectType !== "member") return "active";
   if (assertedByUserId !== null && subjectType === "member" && subjectId === assertedByUserId) return "active";
   return "candidate";
 }
@@ -105,23 +114,26 @@ export class DefaultMemoryEngine implements MemoryEngine {
   }
 
   public async ingest(input: MemoryIngestInput): Promise<MemoryIngestResult> {
-    if (!allowsDurableWrites(input.channelMode)) return { ingested: [], removed: 0 };
+    if (!allowsDurableWrites(input.channelMode)) return { ingested: [], removed: 0, rejected: 0, failed: 0 };
     const ingested: Memory[] = [];
     let removed = 0;
+    let rejected = 0;
+    let failed = 0;
     for (const proposal of input.proposals) {
       const validated = validateProposal(proposal);
-      if (!validated) continue;
+      if (!validated) { rejected += 1; continue; }
       if (validated.proposal.action === "remove") {
         removed += await this.removeOne(input.guildId, validated.proposal);
         continue;
       }
       const memory = await this.upsertOne(input, validated.proposal, validated.topic, validated.slot, validated.statement!);
       if (memory) ingested.push(memory);
+      else failed += 1;
     }
-    return { ingested, removed };
+    return { ingested, removed, rejected, failed };
   }
 
-  private async removeOne(guildId: string, proposal: Extract<import("./memory.js").ProposedMemory, { action: "remove" }>): Promise<number> {
+  private async removeOne(guildId: string, proposal: Extract<ProposedMemory, { action: "remove" }>): Promise<number> {
     if (proposal.ownerUserId === null) return 0;
     const owned = await this.repository.listByUser(guildId, proposal.ownerUserId);
     const match = owned.find((memory) =>
@@ -133,7 +145,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
 
   private async upsertOne(
     input: MemoryIngestInput,
-    proposal: Extract<import("./memory.js").ProposedMemory, { action: "upsert" }>,
+    proposal: Extract<ProposedMemory, { action: "upsert" }>,
     topic: string,
     slot: string,
     statement: string,
@@ -142,7 +154,12 @@ export class DefaultMemoryEngine implements MemoryEngine {
       audience: proposal.audience,
       channelScoped: proposal.channelScoped,
     });
-    const status = resolveInitialStatus(scope.audience, proposal.subjectType, proposal.subjectId, input.assertedByUserId, input.source);
+    // proposal.assertedByUserId overrides the ingest-level value when
+    // present (including explicitly null) — see ProposedMemory's upsert
+    // variant for why: a consolidation batch has no single asserter, so
+    // ChannelSummaryScheduler resolves one per fact from its evidence.
+    const assertedByUserId = proposal.assertedByUserId !== undefined ? proposal.assertedByUserId : input.assertedByUserId;
+    const status = resolveInitialStatus(scope.audience, proposal.subjectType, proposal.subjectId, assertedByUserId, input.source);
     const embedding = this.embeddingsClient ? await this.embeddingsClient.embed(statement).catch(() => null) : null;
     try {
       return await this.repository.ingest({
@@ -167,7 +184,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
         now: input.now,
         sourceMessageId: input.sourceMessageId,
         sourceChannelId: input.channelId,
-        assertedByUserId: input.assertedByUserId,
+        assertedByUserId,
       });
     } catch (error) {
       this.logger?.warn({ error, guildId: input.guildId }, "Memory ingest failed for one proposal");

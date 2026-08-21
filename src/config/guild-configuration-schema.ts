@@ -37,6 +37,12 @@ const guildChatSchema = z.preprocess((value) => {
   // Unlisted channels default to "shared" — today's behavior, unchanged.
   channelMemoryModes: z.record(snowflake, z.enum(["shared", "isolated", "session_only", "disabled"])).default({}),
   personaDriftEnabled: z.boolean().default(false),
+  // Channel-context (Plan 2): contextScanChannelIds get one one-time
+  // history scan; contextDailyChannelIds get an ongoing daily summary. A
+  // channel can be in both or either — see channel-summary-scheduler.ts.
+  contextScanChannelIds: snowflakeList,
+  contextDailyChannelIds: snowflakeList,
+  contextSeedDays: z.number().int().min(1).max(90).default(7),
 }));
 
 const progressBarEmojiBase = {

@@ -11,8 +11,7 @@ export interface LavalinkConfiguration {
 }
 
 // The knobs every provider variant carries regardless of which block
-// (chat/utilityChat) it belongs to. `chat` adds summaryModels/embeddingModel
-// on top (see ApplicationConfiguration.chat); `utilityChat` uses this as-is.
+// (chat/utilityChat) it belongs to.
 type ChatProviderVariant =
   | {
       provider: "openai-responses";
@@ -41,10 +40,15 @@ type ChatProviderVariant =
       thinkingBudget: number | null;
     };
 
-type ChatConfigVariant =
-  | (Extract<ChatProviderVariant, { provider: "openai-responses" }> & { summaryModels: readonly string[]; embeddingModel: string | null })
-  | (Extract<ChatProviderVariant, { provider: "openai-compatible" }> & { summaryModels: readonly string[]; embeddingModel: string | null })
-  | (Extract<ChatProviderVariant, { provider: "gemini" }> & { summaryModels: readonly string[]; embeddingModel: string | null });
+type ChatConfigVariant = ChatProviderVariant & {
+  summaryModels: readonly string[];
+  summaryMaxOutputTokens: number;
+  summaryReasoningEffort?: "minimal" | "low" | "medium" | "high";
+};
+
+export type EmbeddingConfiguration =
+  | { provider: "openai"; apiKey: string; baseUrl: string; model: string }
+  | { provider: "gemini"; apiKey: string; model: string };
 
 export interface ApplicationConfiguration {
   instanceName?: string | null;
@@ -75,6 +79,9 @@ export interface ApplicationConfiguration {
   // entirely different provider type from `chat`. Null means those calls
   // fall back to `chat`'s own summaryModels routing instead (see
   // dependencies.ts's `utilityProvider` fallback chain). No summaryModels/
-  // embeddingModel here — this block IS the summary/utility model already.
+  // embedding configuration here — this block IS the summary/utility model already.
   utilityChat: ChatProviderVariant | null;
+  // Independent of chat/utility generation: either vendor can provide
+  // vectors regardless of which provider produces replies or summaries.
+  embeddings: EmbeddingConfiguration | null;
 }

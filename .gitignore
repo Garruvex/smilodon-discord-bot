@@ -12,3 +12,7 @@ data/
 tools/local/
 lavalink/plugins/
 lavalink/logs/
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+drizzle-sqlite/*.sqlite
+drizzle-sqlite/*.sqlite-*

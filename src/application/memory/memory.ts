@@ -27,7 +27,7 @@ export interface Memory {
   topic: string;
   slot: string;
   statement: string;
-  structuredValue: unknown | null;
+  structuredValue: unknown;
   status: MemoryStatus;
   supersededById: string | null;
   source: MemorySourceKind;
@@ -88,7 +88,7 @@ export interface RepositoryIngestInput {
   topic: string;
   slot: string;
   statement: string;
-  structuredValue?: unknown | null;
+  structuredValue?: unknown;
   status: MemoryStatus;
   source: MemorySourceKind;
   confidence: number;
@@ -171,6 +171,14 @@ export type ProposedMemory =
       // engine's channel-mode policy may override this, never trusts it
       // blindly in "isolated" mode. See memory-channel-policy.ts.
       channelScoped: boolean;
+      // Per-proposal override for MemoryIngestInput.assertedByUserId —
+      // undefined means "use the ingest call's own value" (the normal case:
+      // one asserting user per live-chat turn). A consolidation batch has no
+      // single asserter, so ChannelSummaryScheduler sets this per-proposal
+      // from each fact's evidence (see resolveInitialStatus's consolidation
+      // branch in memory-engine.ts) — null explicitly means "no self-report
+      // evidence found", distinct from "not applicable".
+      assertedByUserId?: string | null;
     }
   | {
       action: "remove";
@@ -198,6 +206,15 @@ export interface MemoryIngestInput {
 export interface MemoryIngestResult {
   ingested: readonly Memory[];
   removed: number;
+  // Proposals that failed validateProposal (bad topic/slot/subject, secret
+  // content, etc.) — permanently invalid content; retrying the same batch
+  // will not fix these.
+  rejected: number;
+  // Proposals that passed validation but failed at the repository/embedding
+  // layer (transient infra error) — retryable. Background callers (see
+  // ChannelSummaryScheduler) must not advance their checkpoint when this is
+  // nonzero; interactive chat may still log-and-continue.
+  failed: number;
 }
 
 export interface MemoryTurnCommit {

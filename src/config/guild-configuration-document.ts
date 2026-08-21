@@ -39,6 +39,16 @@ export interface UpdateGuildConfigurationInput {
   // never wholesale-replaced) — same "add" semantics as chatbotChannelIds.
   chatbotChannelMemoryModes?: Readonly<Record<string, "shared" | "isolated" | "session_only" | "disabled">>;
   chatbotPersonaDriftEnabled?: boolean;
+  // Explicit single-channel operations (not a list to merge/replace) — each
+  // is applied centrally in applyGuildConfigurationUpdate, idempotently:
+  // adding an already-present id or removing an absent one is a no-op.
+  contextScanAddChannelId?: string;
+  contextScanRemoveChannelId?: string;
+  contextDailyAddChannelId?: string;
+  contextDailyRemoveChannelId?: string;
+  // Removed from both lists — used by context-remove.
+  contextRemoveChannelId?: string;
+  contextSeedDays?: number;
   birthdaysEnabled?: boolean;
   birthdayAnnouncementsChannelId?: string | null;
   nsfwEnabled?: boolean;
@@ -216,6 +226,23 @@ export function applyGuildConfigurationUpdate(
   }
   if (input.chatbotDisabledToolNames !== undefined) next.chat.disabledTools = [...input.chatbotDisabledToolNames];
   if (input.chatbotPersonaDriftEnabled !== undefined) next.chat.personaDriftEnabled = input.chatbotPersonaDriftEnabled;
+  if (input.contextScanAddChannelId !== undefined && !next.chat.contextScanChannelIds.includes(input.contextScanAddChannelId)) {
+    next.chat.contextScanChannelIds = [...next.chat.contextScanChannelIds, input.contextScanAddChannelId];
+  }
+  if (input.contextScanRemoveChannelId !== undefined) {
+    next.chat.contextScanChannelIds = next.chat.contextScanChannelIds.filter((id) => id !== input.contextScanRemoveChannelId);
+  }
+  if (input.contextDailyAddChannelId !== undefined && !next.chat.contextDailyChannelIds.includes(input.contextDailyAddChannelId)) {
+    next.chat.contextDailyChannelIds = [...next.chat.contextDailyChannelIds, input.contextDailyAddChannelId];
+  }
+  if (input.contextDailyRemoveChannelId !== undefined) {
+    next.chat.contextDailyChannelIds = next.chat.contextDailyChannelIds.filter((id) => id !== input.contextDailyRemoveChannelId);
+  }
+  if (input.contextRemoveChannelId !== undefined) {
+    next.chat.contextScanChannelIds = next.chat.contextScanChannelIds.filter((id) => id !== input.contextRemoveChannelId);
+    next.chat.contextDailyChannelIds = next.chat.contextDailyChannelIds.filter((id) => id !== input.contextRemoveChannelId);
+  }
+  if (input.contextSeedDays !== undefined) next.chat.contextSeedDays = input.contextSeedDays;
   if (input.chatbotImageInputEnabled !== undefined) next.chat.imageInputEnabled = input.chatbotImageInputEnabled;
   if (input.chatbotImageGenerationEnabled !== undefined) next.chat.imageGenerationEnabled = input.chatbotImageGenerationEnabled;
   if (input.chatbotIncludeSources !== undefined) next.chat.includeSources = input.chatbotIncludeSources;

@@ -49,3 +49,16 @@ music:
     action: pause
     gracePeriodMs: 30000
     resumeWhenOccupied: true
+
+# Normally managed via `/settings chat context-scan-add|context-daily-add|
+# context-daily-remove|context-remove|context-status` rather than edited
+# directly — shown here only so self-hosted installs know the shape. Both
+# lists are no-ops unless a chat provider is configured (CHATBOT_* or
+# UTILITY_*) that supports channel summarization; see the README's
+# "Channel-context memory" section.
+# chat:
+#   contextScanChannelIds:
+#     - "678901234567890123"
+#   contextDailyChannelIds:
+#     - "678901234567890123"
+#   contextSeedDays: 7

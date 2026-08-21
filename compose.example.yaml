@@ -9,8 +9,12 @@ x-bot-environment: &bot-environment
   LAVALINK_PORT: 2333
   LAVALINK_PASSWORD: ${LAVALINK_PASSWORD:?Set LAVALINK_PASSWORD in .env}
   LAVALINK_SECURE: "false"
-  DATABASE_URL: postgresql://${POSTGRES_USER:-fntu_bot}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-fntu_bot}
   PERSISTENCE_DRIVER: postgres
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: 5432
+  POSTGRES_DB: ${POSTGRES_DB:-fntu_bot}
+  POSTGRES_USER: ${POSTGRES_USER:-fntu_bot}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
 
 x-bot-service: &bot-service
   image: fntu-discord-bot-runtime:local

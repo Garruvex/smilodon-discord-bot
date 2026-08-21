@@ -18,6 +18,56 @@ const validEnvironment: NodeJS.ProcessEnv = {
 };
 
 describe("loadConfiguration", () => {
+  it("allows Gemini chat with independent OpenAI embeddings", () => {
+    const configuration = loadConfiguration({
+      ...validEnvironment,
+      GOOGLE_API_KEY: "google-secret",
+      OPENAI_API_KEY: "openai-secret",
+      CHATBOT_MODEL: "gemini-2.5-flash",
+      CHATBOT_PROVIDER: "gemini",
+      EMBEDDING_PROVIDER: "openai",
+      EMBEDDING_MODEL: "text-embedding-3-small",
+    });
+
+    expect(configuration.chat?.provider).toBe("gemini");
+    expect(configuration.embeddings).toMatchObject({
+      provider: "openai", model: "text-embedding-3-small", apiKey: "openai-secret",
+    });
+  });
+
+  it("allows OpenAI chat with independent Gemini embeddings", () => {
+    const configuration = loadConfiguration({
+      ...validEnvironment,
+      GOOGLE_API_KEY: "google-secret",
+      OPENAI_API_KEY: "openai-secret",
+      CHATBOT_MODEL: "gpt-5-nano",
+      CHATBOT_PROVIDER: "openai",
+      EMBEDDING_PROVIDER: "gemini",
+      EMBEDDING_MODEL: "gemini-embedding-001",
+    });
+
+    expect(configuration.embeddings).toEqual({
+      provider: "gemini", model: "gemini-embedding-001", apiKey: "google-secret",
+    });
+  });
+
+  it("requires the embedding provider's credential", () => {
+    expect(() => loadConfiguration({
+      ...validEnvironment,
+      EMBEDDING_PROVIDER: "gemini",
+      EMBEDDING_MODEL: "gemini-embedding-001",
+    })).toThrow("GOOGLE_API_KEY is required");
+  });
+
+  it("keeps legacy CHATBOT_EMBEDDING_MODEL as an OpenAI configuration", () => {
+    const configuration = loadConfiguration({
+      ...validEnvironment,
+      OPENAI_API_KEY: "openai-secret",
+      CHATBOT_EMBEDDING_MODEL: "text-embedding-3-small",
+    });
+    expect(configuration.embeddings?.provider).toBe("openai");
+  });
+
   it("parses snowflake lists into sets", () => {
     const configuration = loadConfiguration(validEnvironment);
 
@@ -207,9 +257,15 @@ describe("loadConfiguration", () => {
       CHATBOT_MODE: "responses",
       CHATBOT_SUMMARY_MODEL: "gpt-5-mini",
       CHATBOT_SUMMARY_FALLBACK_MODELS: "gpt-5-nano",
+      CHATBOT_SUMMARY_REASONING_EFFORT: "minimal",
+      CHATBOT_SUMMARY_MAX_OUTPUT_TOKENS: "4096",
     });
 
-    expect(configuration.chat).toMatchObject({ summaryModels: ["gpt-5-mini", "gpt-5-nano"] });
+    expect(configuration.chat).toMatchObject({
+      summaryModels: ["gpt-5-mini", "gpt-5-nano"],
+      summaryReasoningEffort: "minimal",
+      summaryMaxOutputTokens: 4_096,
+    });
   });
 
   it("defaults utilityChat to null when UTILITY_MODEL is unset", () => {

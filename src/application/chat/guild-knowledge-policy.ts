@@ -33,6 +33,12 @@ export const guildKnowledgeLimits = {
   maxStatementChars: 200,
   maxSerializedChars: 16_000,
   maxCandidatesPerResponse: 3,
+  // Channel summaries extract from a whole batch of messages, not one
+  // conversational turn — see channel-message-summarization.ts's schema,
+  // which already caps the model's own output at 5. Passed explicitly as
+  // validateGuildKnowledgeCandidates' maxCandidates override so a valid
+  // 4th/5th fact isn't silently sliced off by the live-chat-sized default.
+  maxChannelSummaryCandidates: 5,
   candidateTtlMs: 30 * 24 * 60 * 60 * 1_000,
 } as const;
 
@@ -59,10 +65,11 @@ export function validateGuildKnowledgeCandidates(
     currentChannelId: string;
     currentUserId: string;
     allowedMemberIds: ReadonlySet<string>;
+    maxCandidates?: number;
   },
 ): ValidatedGuildKnowledgeCandidate[] {
   const valid: ValidatedGuildKnowledgeCandidate[] = [];
-  for (const candidate of candidates.slice(0, guildKnowledgeLimits.maxCandidatesPerResponse)) {
+  for (const candidate of candidates.slice(0, input.maxCandidates ?? guildKnowledgeLimits.maxCandidatesPerResponse)) {
     const topic = candidate.topic.trim().toLowerCase();
     const slot = candidate.slot.trim().toLowerCase();
     const statement = candidate.statement.replace(/\s+/g, " ").trim();

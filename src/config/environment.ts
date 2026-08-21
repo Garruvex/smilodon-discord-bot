@@ -3,7 +3,10 @@ import "dotenv/config";
 import { z } from "zod";
 
 import type { ApplicationConfiguration } from "./configuration.js";
-import { resolveDefaultInstanceEnvironment } from "./instance-environment.js";
+import {
+  resolveDefaultInstanceEnvironment,
+  resolveSharedPostgresEnvironment,
+} from "./instance-environment.js";
 
 const discordSnowflake = /^\d{17,20}$/;
 const optionalNonEmptyString = z.preprocess(
@@ -78,6 +81,11 @@ const environmentSchema = z.object({
   // Superseded by UTILITY_* when that's configured (see buildUtilityChatConfiguration).
   CHATBOT_SUMMARY_MODEL: optionalNonEmptyString,
   CHATBOT_SUMMARY_FALLBACK_MODELS: fallbackModelsList,
+  // Structured summary calls can use a different reasoning/output budget
+  // from interactive replies. This matters for the Responses API because
+  // max_output_tokens includes both hidden reasoning and visible JSON.
+  CHATBOT_SUMMARY_REASONING_EFFORT: z.enum(["minimal", "low", "medium", "high"]).default("low"),
+  CHATBOT_SUMMARY_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(1).max(128_000).default(4_096),
   // Which vendor/protocol family to talk to. CHATBOT_MODE only applies (and
   // is only meaningful) when PROVIDER=openai — it picks the OpenAI wire
   // variant (generic Chat Completions vs. OpenAI's own Responses API).
@@ -88,10 +96,13 @@ const environmentSchema = z.object({
   CHATBOT_REASONING_EFFORT: z.enum(["minimal", "low", "medium", "high"]).default("low"),
   CHATBOT_VERBOSITY: z.enum(["low", "medium", "high"]).default("low"),
   CHATBOT_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(1).max(128_000).default(2_048),
-  // Optional: enables vector-assisted guild-knowledge recall (see
-  // EmbeddingGuildMemorySelector) via the same chat.baseUrl/chat.apiKey
-  // credentials. Unset means the existing keyword-only selector is used.
+  // Legacy OpenAI-only model name. Prefer the provider-independent
+  // EMBEDDING_PROVIDER and EMBEDDING_MODEL settings below.
   CHATBOT_EMBEDDING_MODEL: optionalNonEmptyString,
+  // Provider-independent replacement for CHATBOT_EMBEDDING_MODEL. The
+  // legacy name remains accepted as an OpenAI model for compatibility.
+  EMBEDDING_MODEL: optionalNonEmptyString,
+  EMBEDDING_PROVIDER: z.enum(["openai", "gemini"]).default("openai"),
   // Gemini-only. 0 = thinking disabled, -1 = automatic; unset leaves the
   // model's own default budget in place — see GeminiChatProvider.
   CHATBOT_GEMINI_THINKING_BUDGET: z.coerce.number().int().min(-1).max(32_768).optional(),
@@ -117,7 +128,9 @@ const environmentSchema = z.object({
 export function loadConfiguration(
   source: NodeJS.ProcessEnv = process.env,
 ): ApplicationConfiguration {
-  const parsed = environmentSchema.safeParse(resolveDefaultInstanceEnvironment(source));
+  const parsed = environmentSchema.safeParse(
+    resolveSharedPostgresEnvironment(resolveDefaultInstanceEnvironment(source)),
+  );
 
   if (!parsed.success) {
     const details = parsed.error.issues
@@ -147,6 +160,21 @@ export function loadConfiguration(
     parsed.data.OPENAI_API_KEY,
     parsed.data.GOOGLE_API_KEY,
   );
+
+  const embeddingModel = parsed.data.EMBEDDING_MODEL ?? parsed.data.CHATBOT_EMBEDDING_MODEL;
+  const embeddingProvider = parsed.data.CHATBOT_EMBEDDING_MODEL && !parsed.data.EMBEDDING_MODEL
+    ? "openai"
+    : parsed.data.EMBEDDING_PROVIDER;
+  if (embeddingModel && embeddingProvider === "openai" && !parsed.data.OPENAI_API_KEY) {
+    throw new Error(
+      "Invalid application configuration: OPENAI_API_KEY is required when EMBEDDING_PROVIDER=openai and EMBEDDING_MODEL is set",
+    );
+  }
+  if (embeddingModel && embeddingProvider === "gemini" && !parsed.data.GOOGLE_API_KEY) {
+    throw new Error(
+      "Invalid application configuration: GOOGLE_API_KEY is required when EMBEDDING_PROVIDER=gemini and EMBEDDING_MODEL is set",
+    );
+  }
   validateProviderConfig(
     "UTILITY",
     parsed.data.UTILITY_MODEL,
@@ -180,6 +208,16 @@ export function loadConfiguration(
     },
     chat: buildChatConfiguration(parsed.data),
     utilityChat: buildUtilityChatConfiguration(parsed.data),
+    embeddings: embeddingModel
+      ? embeddingProvider === "gemini"
+        ? { provider: "gemini", apiKey: parsed.data.GOOGLE_API_KEY as string, model: embeddingModel }
+        : {
+            provider: "openai",
+            apiKey: parsed.data.OPENAI_API_KEY as string,
+            baseUrl: parsed.data.OPENAI_BASE_URL.replace(/\/$/, ""),
+            model: embeddingModel,
+          }
+      : null,
   };
 }
 
@@ -232,8 +270,8 @@ function buildChatConfiguration(
   const summaryModels = data.CHATBOT_SUMMARY_MODEL
     ? [data.CHATBOT_SUMMARY_MODEL, ...data.CHATBOT_SUMMARY_FALLBACK_MODELS]
     : models;
-  const embeddingModel = data.CHATBOT_EMBEDDING_MODEL ?? null;
   const maxOutputTokens = data.CHATBOT_MAX_OUTPUT_TOKENS;
+  const summaryMaxOutputTokens = data.CHATBOT_SUMMARY_MAX_OUTPUT_TOKENS;
 
   if (data.CHATBOT_PROVIDER === "gemini") {
     return {
@@ -242,9 +280,9 @@ function buildChatConfiguration(
       apiKey: data.GOOGLE_API_KEY as string,
       models,
       summaryModels,
+      summaryMaxOutputTokens,
       maxOutputTokens,
       thinkingBudget: data.CHATBOT_GEMINI_THINKING_BUDGET ?? null,
-      embeddingModel,
     };
   }
   const apiKey = data.OPENAI_API_KEY as string;
@@ -256,10 +294,11 @@ function buildChatConfiguration(
       baseUrl,
       models,
       summaryModels,
+      summaryMaxOutputTokens,
+      summaryReasoningEffort: data.CHATBOT_SUMMARY_REASONING_EFFORT,
       reasoningEffort: data.CHATBOT_REASONING_EFFORT,
       verbosity: data.CHATBOT_VERBOSITY,
       maxOutputTokens,
-      embeddingModel,
     };
   }
   return {
@@ -268,13 +307,13 @@ function buildChatConfiguration(
     baseUrl,
     models,
     summaryModels,
+    summaryMaxOutputTokens,
     maxOutputTokens,
-    embeddingModel,
   };
 }
 
 // Mirrors buildChatConfiguration's shape/branching but for the fully
-// independent UTILITY_* task — no summaryModels/embeddingModel here, since
+// independent UTILITY_* task — no summaryModels/embedding configuration here, since
 // this config block IS the summary/utility model; it doesn't need further
 // sub-routing, and embeddings stay tied to the main chatbot config.
 function buildUtilityChatConfiguration(

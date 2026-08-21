@@ -34,6 +34,10 @@ the [user guide](docs/user-guide.md). For internal architecture, see
 - A global `/setup` bootstrap command gated by Discord's Manage Server
   permission, and repository-backed `/settings` for everything else — no
   file editing required to run a guild.
+- Optional channel-context memory: point the bot at specific channels for a
+  one-time history scan and/or ongoing daily summaries, folded into durable
+  guild knowledge with per-fact trust rules — see
+  [Channel-context memory](#channel-context-memory).
 - File (YAML) or PostgreSQL persistence, single- or multi-instance (multiple
   Discord applications from one deployment).
 
@@ -94,8 +98,9 @@ RUNTIME_DATA_DIRECTORY=./data/instances/myinstance
 The root file is shared infrastructure only. Discord credentials, persistence,
 storage paths, and optional AI provider settings belong to the selected
 instance file. `DEFAULT_INSTANCE` is the filename stem used by native commands
-that do not receive an explicit instance name. `DOCKER_INSTANCE` selects the
-single instance file loaded by Docker Compose.
+that do not receive an explicit instance name. Docker services reference their
+instance files directly in `compose.yaml`; the root `.env` does not decide
+which bots start.
 
 Enable Discord Developer Mode and use **Copy User ID** on your account to obtain
 `BOT_OWNER_IDS`. Multiple application operators can be provided as comma-separated
@@ -239,21 +244,21 @@ commands from leaking into every server.
 For a compact list of native, Docker, deployment, and multi-instance commands,
 see the [launch command cheatsheet](docs/launch-cheatsheet.md).
 
-Docker Compose runs PostgreSQL 17 with pgvector, Lavalink, and one selected bot
-instance in the same private network. Database and Lavalink ports are bound
+Docker Compose runs PostgreSQL 17 with pgvector, Lavalink, and the declared bot
+services in the same private network. Database and Lavalink ports are bound
 only to Windows localhost, not to the public network.
 
-1. Install Docker Desktop and start its Linux container engine.
-2. Set `DATA_ROOT`, `POSTGRES_PASSWORD`, `LAVALINK_PASSWORD`, and the instance
-   name in `.env`, then create its matching instance file:
+[`compose.example.yaml`](compose.example.yaml) is the generic copy-and-edit
+template. The repository's [`compose.yaml`](compose.yaml) is the current
+Yohta + Pinecone deployment.
 
-```env
-DOCKER_INSTANCE=pinecone
-```
-3. Validate the selected instance:
+1. Install Docker Desktop and start its Linux container engine.
+2. Set `DATA_ROOT`, `POSTGRES_PASSWORD`, and `LAVALINK_PASSWORD` in `.env`.
+   Bot services and their instance files are listed directly in `compose.yaml`.
+3. Validate the configured instances:
 
 ```powershell
-npm.cmd run instance:config:validate -- pinecone
+npm.cmd run instances:validate
 ```
 
 4. Build and start the complete stack:
@@ -262,17 +267,14 @@ npm.cmd run instance:config:validate -- pinecone
 npm.cmd run stack:up
 ```
 
-`stack:up` loads `config/instances/<DOCKER_INSTANCE>.env`, builds one production
-bot image, waits for healthy infrastructure, migrates that instance's schema,
-and starts the bot. Inspect the stack with `npm.cmd run stack:logs`.
+`stack:up` builds one production bot image and starts both `bot-yohta` and
+`bot-pinecone` after healthy infrastructure. Each bot migrates its own schema,
+registers its Discord commands, and then starts. Add another bot by copying one
+short bot service entry and changing its env file and data paths; no generated
+Compose overlay is involved.
 
-Compose intentionally defines one bot service and does not generate an overlay.
-For multiple simultaneous bots, duplicate the `bot` service in your own Compose
-file and give each copy a different instance env file. They may share this same
-PostgreSQL database because each `INSTANCE_NAME` maps to an isolated schema.
-
-In another terminal, register Discord commands without restarting the running
-bot:
+Docker startup registers commands automatically. To register them again without
+restarting the running bots:
 
 ```powershell
 npm.cmd run stack:deploy
@@ -283,8 +285,8 @@ organized below `DATA_ROOT` (default `./data`): PostgreSQL under `postgres/`,
 Lavalink under `lavalink/`, and bot runtime state under `instances/<name>/`.
 Guild configuration remains under `config/local/instances/<name>/`.
 
-To deliberately discard the shared PostgreSQL cluster and rebuild the selected
-instance schema from the current baseline, run `npm.cmd run stack:reset`. This
+To deliberately discard the shared PostgreSQL cluster and rebuild all declared
+instance schemas from the current baseline, run `npm.cmd run stack:reset`. This
 stops the stack and permanently removes only `${DATA_ROOT}/postgres` before
 starting again; instance files and runtime assets are preserved.
 
@@ -309,9 +311,9 @@ Native execution supports either persistence driver:
 # for chat sessions/memory/guild knowledge
 PERSISTENCE_DRIVER=file
 
-# PostgreSQL guild profiles, control-panel state, and chat/knowledge tables
+# PostgreSQL guild profiles, control-panel state, and chat/knowledge tables.
+# Connection settings come from POSTGRES_* in the shared root .env.
 PERSISTENCE_DRIVER=postgres
-DATABASE_URL=postgresql://fntu_bot:password@127.0.0.1:5432/fntu_bot
 ```
 
 Run native PostgreSQL migrations with
@@ -434,7 +436,8 @@ schemas. `local:start` and `deploy:commands` use the instance selected by
 
 PostgreSQL schema isolation is automatic. Every PostgreSQL instance uses a
 schema derived from `INSTANCE_NAME` (`my-bot` becomes `my_bot`), so instances
-can share the same `DATABASE_URL` without sharing tables. There is no
+share the PostgreSQL connection derived from root `POSTGRES_*` values without
+sharing tables. There is no
 configuration flag and no application fallback to the `public` schema.
 
 ## Configuring the AI chatbot
@@ -483,21 +486,46 @@ setting it is rejected at startup rather than silently ignored.
 `CHATBOT_GEMINI_THINKING_BUDGET` (tokens; `0` disables thinking, `-1` is
 automatic) is optional and Gemini-only.
 
+Provider support matrix — every mode implements channel-summarization (used
+by [channel-context memory](#channel-context-memory)) and vector-assisted
+recall (configured independently with `EMBEDDING_PROVIDER` and `EMBEDDING_MODEL`); the rest vary:
+
+| Capability | `chat_completions` | `responses` | `gemini` |
+| --- | --- | --- | --- |
+| Image input | ❌ | ✅ | ✅ |
+| Image generation | ❌ | ✅ | ✅ (native) |
+| Web search | ❌ | ✅ | ✅ (`googleSearch` grounding) |
+| Tool calling | ❌ | ✅ | ✅ |
+| Channel summarization | ✅ | ✅ | ✅ |
+| Vector-assisted recall (OpenAI or Gemini embeddings) | ✅ | ✅ | ✅ |
+
+Enabling a capability a mode doesn't support (e.g. web search under
+`chat_completions`) is inert, not an error — the guild toggle has no effect
+in that mode, logged once per guild per process as a warning.
+
 Optional: `CHATBOT_FALLBACK_MODELS` (comma-separated) walks an ordered list of
 backup models on a 429/quota error instead of failing the turn outright.
-`CHATBOT_EMBEDDING_MODEL` (e.g. `text-embedding-3-small`) enables vector-assisted
-guild-knowledge recall — semantic search over confirmed guild facts, additive
-to the existing keyword-overlap ranking. Both are opt-in; leaving them unset
-keeps today's single-model, keyword-only behavior. `CHATBOT_EMBEDDING_MODEL` is
-not yet wired up for `CHATBOT_PROVIDER=gemini`.
+`EMBEDDING_PROVIDER` plus `EMBEDDING_MODEL` (for example, OpenAI
+`text-embedding-3-small` or a Gemini embedding model) enables vector-assisted
+recall independently of the chat provider. You can mix Gemini chat with OpenAI
+embeddings or OpenAI chat with Gemini embeddings. Leaving `EMBEDDING_MODEL`
+unset keeps keyword-only behavior. The legacy `CHATBOT_EMBEDDING_MODEL` remains
+accepted as an OpenAI configuration.
 
 Optional: `CHATBOT_SUMMARY_MODEL` (+ `CHATBOT_SUMMARY_FALLBACK_MODELS`, same
-comma-separated shape as above) points the two standalone structured-output
-calls that aren't a chat reply — customization-file analysis and dropped-
-exchange consolidation — at a separate, typically cheaper/smaller model on
+comma-separated shape as above) points standalone structured-output calls
+that aren't a chat reply — customization-file analysis, dropped-exchange
+consolidation, and channel-history summaries — at a separate, typically cheaper/smaller model on
 the **same provider/key** as `CHATBOT_*`, since those are low-stakes extraction
 tasks that don't need the primary reply model's quality. Leave unset to keep
 using `CHATBOT_MODEL`/`CHATBOT_FALLBACK_MODELS` for those calls too.
+
+`CHATBOT_SUMMARY_REASONING_EFFORT` (default `low`) and
+`CHATBOT_SUMMARY_MAX_OUTPUT_TOKENS` (default `4096`) independently control
+OpenAI Responses structured summaries. This keeps interactive replies on their
+own `CHATBOT_REASONING_EFFORT`/`CHATBOT_MAX_OUTPUT_TOKENS` budget. A channel
+summary that returns `status: incomplete` is retried on the configured summary
+fallback model and reports the provider's incomplete reason if all models fail.
 
 For a genuinely independent model for those same two calls — own provider,
 even a different vendor entirely (e.g. main chat on OpenAI, utility calls on
@@ -554,6 +582,68 @@ summary: instance name, environment, persistence driver, chat API mode, model,
 reasoning effort, verbosity, output limit, enabled guild features, and guild
 chat capabilities. API keys, personality contents, and conversation data are
 never included.
+
+## Channel-context memory
+
+Beyond per-conversation memory, an admin can point the bot at specific
+channels so it builds durable, guild-wide knowledge from the messages that
+happen there — without anyone needing to talk to the bot directly. Two
+independent modes, both configured with `/settings chat`:
+
+- **One-time scan** (`context-scan-add channel:# seed-days:7`) — reads that
+  channel's past history back to `seed-days` (default 7) once, folds it into
+  memory, then never runs again for that channel unless you explicitly pass
+  `restart:true` (which re-reads from the seed boundary, replacing scan
+  progress; existing memories from the prior scan are not deleted).
+- **Daily consolidation** (`context-daily-add channel:#`) — summarizes each
+  day's new messages, checked hourly. Independent of the scan set; a channel
+  can be in either, both, or neither.
+
+`context-daily-remove` and `context-remove` (both scan and daily) stop future
+processing for a channel; already-written memories are kept, not bulk-deleted,
+and re-adding the channel later resumes rather than re-reading the same
+history. `context-status` shows provider availability, whether the chatbot
+feature is currently paused, and each configured channel's scan/daily
+progress, cursor, and last error.
+
+**Requirements**: a chat provider must be configured (`CHATBOT_*` or
+`UTILITY_*`, whichever this instance's scheduler prefers) that implements
+channel summarization — every built-in provider mode does. `context-scan-add`
+and `context-daily-add` reject outright, rather than silently queuing
+something that will never run, when none is configured. Disabling the guild's
+`chatbot` feature pauses all channel-context processing (no config or
+checkpoint is touched) until it's re-enabled, resuming exactly where it left
+off.
+
+**Processing model**: messages are read in bounded batches (at most 75
+messages or ~40,000 characters per model call, whichever comes first) so a
+busy channel makes steady, incremental progress across hourly ticks rather
+than one unbounded request. Each batch's outcome only advances that channel's
+saved progress after the batch's facts are successfully written to memory —
+a failed batch (provider error, database error) is retried on the next tick
+from the same starting point, never silently skipped.
+
+**Trust**: a fact about the guild, a team, or a project becomes active
+(recallable) knowledge as soon as it's extracted. A fact *about a specific
+member* only does the same when that member's own message is the evidence
+behind it (a genuine self-report); a claim one member makes about another
+stays an unconfirmed candidate, the same as it would from an ordinary chat
+turn — participating in a channel that gets summarized never lets someone
+else's claim about you become durable memory on your behalf. Extraction also
+refuses to store secrets, credentials, and medical/financial/contact/
+moderation/authority-related statements, the same content filter applied
+everywhere else guild knowledge is written.
+
+**Data retention**: channel-context memories are stored in the same unified
+memory table as every other guild-knowledge fact, and follow the same
+retention as the rest of that table — `context-remove`/`context-daily-remove`
+stop future writes but never bulk-delete what's already there (use
+`/memory forget` for a specific fact). Note that the unified memory table is
+not yet wired into the `retain-member-data-on-leave:false` cascade-delete
+path (that currently only covers the older per-feature tables: legacy chat
+memories, birthday, and customization) — a departing member's own memories,
+including any member-subject channel-context facts about them, are retained
+regardless of that setting until this is addressed.
 
 ## Configuration boundaries
 
