@@ -1,3 +1,34 @@
+# Current deployment: Yohta and Pinecone share this image, PostgreSQL database,
+# and Lavalink. Each bot loads its own env file and PostgreSQL schema.
+x-bot-environment: &bot-environment
+  NODE_ENV: production
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  LAVALINK_HOST: lavalink
+  LAVALINK_PORT: 2333
+  LAVALINK_PASSWORD: ${LAVALINK_PASSWORD:?Set LAVALINK_PASSWORD in .env}
+  LAVALINK_SECURE: "false"
+  PERSISTENCE_DRIVER: postgres
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: 5432
+  POSTGRES_DB: ${POSTGRES_DB:-fntu_bot}
+  POSTGRES_USER: ${POSTGRES_USER:-fntu_bot}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+
+x-bot-service: &bot-service
+  image: fntu-discord-bot-runtime:local
+  build:
+    context: .
+  command: node dist/scripts/start-docker-instance.js
+  restart: unless-stopped
+  depends_on:
+    postgres-setup:
+      condition: service_completed_successfully
+    lavalink:
+      condition: service_healthy
+  volumes:
+    - ./config/local:/app/config/local
+    - ${DATA_ROOT:-./data}/instances:/app/data/instances
+
 services:
   postgres:
     image: pgvector/pgvector:0.8.6-pg17
@@ -55,30 +86,20 @@ services:
       retries: 20
       start_period: 20s
 
-  bot:
-    image: fntu-discord-bot-runtime:local
-    build:
-      context: .
-    command: node dist/scripts/start-docker-instance.js
-    restart: unless-stopped
-    depends_on:
-      postgres-setup:
-        condition: service_completed_successfully
-      lavalink:
-        condition: service_healthy
+  bot-yohta:
+    <<: *bot-service
     env_file:
-      - ./config/instances/${DOCKER_INSTANCE:?Set DOCKER_INSTANCE in .env}.env
+      - ./config/instances/yohta.env
     environment:
-      NODE_ENV: production
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-      LAVALINK_HOST: lavalink
-      LAVALINK_PORT: 2333
-      LAVALINK_PASSWORD: ${LAVALINK_PASSWORD:?Set LAVALINK_PASSWORD in .env}
-      LAVALINK_SECURE: "false"
-      DATABASE_URL: postgresql://${POSTGRES_USER:-fntu_bot}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-fntu_bot}
-      PERSISTENCE_DRIVER: postgres
-      GUILD_CONFIG_DIRECTORY: /app/config/local/instances/${DOCKER_INSTANCE}/guilds
-      RUNTIME_DATA_DIRECTORY: /app/data/instances/${DOCKER_INSTANCE}
-    volumes:
-      - ./config/local:/app/config/local
-      - ${DATA_ROOT:-./data}/instances:/app/data/instances
+      <<: *bot-environment
+      GUILD_CONFIG_DIRECTORY: /app/config/local/instances/yohta/guilds
+      RUNTIME_DATA_DIRECTORY: /app/data/instances/yohta
+
+  bot-pinecone:
+    <<: *bot-service
+    env_file:
+      - ./config/instances/pinecone.env
+    environment:
+      <<: *bot-environment
+      GUILD_CONFIG_DIRECTORY: /app/config/local/instances/pinecone/guilds
+      RUNTIME_DATA_DIRECTORY: /app/data/instances/pinecone
