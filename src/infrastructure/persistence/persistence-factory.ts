@@ -26,6 +26,9 @@ import type { BirthdayStore } from "../../application/birthdays/birthday-store.j
 import { LocalBirthdayStore } from "./local-birthday-store.js";
 import { PostgresBirthdayStore } from "./postgres-birthday-store.js";
 import { GuildMemberRegistry } from "./guild-member-registry.js";
+import type { MemoryRepository } from "../../application/memory/memory.js";
+import { SqliteMemoryRepository } from "./sqlite-memory-repository.js";
+import { PostgresMemoryRepository } from "./postgres-memory-repository.js";
 
 export interface PersistenceServices {
   guildConfigurationProvider: GuildConfigurationProvider;
@@ -33,6 +36,7 @@ export interface PersistenceServices {
   chatStateStore: ChatStateStore;
   userCustomizationStore: UserCustomizationStore;
   guildKnowledgeStore: GuildKnowledgeStore;
+  memoryRepository: MemoryRepository;
   birthdayStore: BirthdayStore;
   // Null on the local (file-based) backend, which has no hub-table concept —
   // it's purely a dev/testing convenience and doesn't need it.
@@ -50,19 +54,17 @@ export async function createPersistenceServices(
   let chatStateStore: ChatStateStore;
   let userCustomizationStore: UserCustomizationStore;
   let guildKnowledgeStore: GuildKnowledgeStore;
+  let memoryRepository: MemoryRepository;
   let birthdayStore: BirthdayStore;
   let guildMemberRegistry: GuildMemberRegistry | null = null;
 
   if (configuration.persistence.driver === "postgres") {
     const databaseUrl = configuration.persistence.databaseUrl;
     if (!databaseUrl) throw new Error("PostgreSQL persistence requires DATABASE_URL.");
-    // Opt-in (persistence.schemaPerInstance, default false): omitted, this
-    // behaves exactly as before — a dedicated database, public schema. Set,
-    // multiple instances can safely share one Postgres server (see
-    // resolveInstanceSchemaName / validateInstanceIsolation).
-    const schemaName = configuration.persistence.schemaPerInstance && configuration.instanceName
-      ? resolveInstanceSchemaName(configuration.instanceName)
-      : null;
+    if (!configuration.instanceName) {
+      throw new Error("PostgreSQL persistence requires INSTANCE_NAME for schema isolation.");
+    }
+    const schemaName = resolveInstanceSchemaName(configuration.instanceName);
     connection = await createDatabaseConnection(databaseUrl, schemaName);
     guildMemberRegistry = new GuildMemberRegistry(connection.database);
     guildConfigurationProvider = new PostgresGuildConfigurationProvider(connection.database);
@@ -70,6 +72,7 @@ export async function createPersistenceServices(
     chatStateStore = new PostgresChatStateStore(connection.database, guildMemberRegistry);
     userCustomizationStore = new PostgresUserCustomizationStore(connection.database, guildMemberRegistry);
     guildKnowledgeStore = new PostgresGuildKnowledgeStore(connection.database);
+    memoryRepository = new PostgresMemoryRepository(connection.database);
     birthdayStore = new PostgresBirthdayStore(connection.database, guildMemberRegistry);
   } else {
     guildConfigurationProvider = new LocalGuildConfigurationProvider(
@@ -85,6 +88,7 @@ export async function createPersistenceServices(
     chatStateStore = new SqliteChatStateStore(sqliteConnection.database);
     userCustomizationStore = new LocalUserCustomizationStore(configuration.runtimeDataDirectory);
     guildKnowledgeStore = new SqliteGuildKnowledgeStore(sqliteConnection.database);
+    memoryRepository = new SqliteMemoryRepository(sqliteConnection.database);
     birthdayStore = new LocalBirthdayStore(configuration.runtimeDataDirectory);
   }
 
@@ -101,6 +105,7 @@ export async function createPersistenceServices(
     chatStateStore,
     userCustomizationStore,
     guildKnowledgeStore,
+    memoryRepository,
     birthdayStore,
     guildMemberRegistry,
     close: async (): Promise<void> => {

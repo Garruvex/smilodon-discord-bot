@@ -1,5 +1,6 @@
 import { ChannelType } from "discord.js";
 
+import { PANEL_LIMITS } from "../../../../../config/guild-configuration-limits.js";
 import type { MutationSettingDefinition } from "./setting-definition.js";
 import { buildProgressBarSettings } from "./settings-support.js";
 
@@ -18,7 +19,8 @@ export const panelSetting: MutationSettingDefinition = {
       { name: "Custom", value: "custom" },
       { name: "Timestamps only", value: "none" },
     ))
-    .addIntegerOption((o) => o.setName("progress-length").setDescription("Progress bar length.").setMinValue(6).setMaxValue(16))
+    .addIntegerOption((o) => o.setName("progress-length").setDescription("Progress bar length.")
+      .setMinValue(PANEL_LIMITS.progressBarLength.min).setMaxValue(PANEL_LIMITS.progressBarLength.max))
     .addStringOption((o) => o.setName("progress-completed").setDescription("Custom completed emoji; paste an emoji or enter its server name."))
     .addStringOption((o) => o.setName("progress-remaining").setDescription("Custom remaining emoji; paste an emoji or enter its server name."))
     .addStringOption((o) => o.setName("progress-playing").setDescription("Custom current-position emoji while playing."))

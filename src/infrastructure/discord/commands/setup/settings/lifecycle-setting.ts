@@ -1,3 +1,4 @@
+import { MUSIC_LIMITS } from "../../../../../config/guild-configuration-limits.js";
 import type { MutationSettingDefinition } from "./setting-definition.js";
 
 export const lifecycleSetting: MutationSettingDefinition = {
@@ -7,10 +8,12 @@ export const lifecycleSetting: MutationSettingDefinition = {
   configureOptions: (b) => b
     .addStringOption((o) => o.setName("empty-queue-action").setDescription("Action when the queue ends.")
       .addChoices({ name: "Disconnect", value: "disconnect" }, { name: "Stay connected", value: "stay_connected" }))
-    .addIntegerOption((o) => o.setName("queue-delay-seconds").setDescription("Delay before empty-queue action.").setMinValue(0).setMaxValue(86400))
+    .addIntegerOption((o) => o.setName("queue-delay-seconds").setDescription("Delay before empty-queue action.")
+      .setMinValue(MUSIC_LIMITS.emptyQueueDelayMs.min / 1000).setMaxValue(MUSIC_LIMITS.emptyQueueDelayMs.max / 1000))
     .addStringOption((o) => o.setName("empty-channel-action").setDescription("Action when everyone leaves.")
       .addChoices({ name: "Continue", value: "continue" }, { name: "Pause", value: "pause" }, { name: "Disconnect", value: "disconnect" }))
-    .addIntegerOption((o) => o.setName("channel-grace-seconds").setDescription("Grace period before action.").setMinValue(0).setMaxValue(86400))
+    .addIntegerOption((o) => o.setName("channel-grace-seconds").setDescription("Grace period before action.")
+      .setMinValue(MUSIC_LIMITS.emptyChannelGracePeriodMs.min / 1000).setMaxValue(MUSIC_LIMITS.emptyChannelGracePeriodMs.max / 1000))
     .addBooleanOption((o) => o.setName("resume-when-occupied").setDescription("Resume after an automatic pause.")),
   handle: (context, _deps, _previousProfile, input) => {
     const queueAction = context.interaction.options.getString("empty-queue-action");

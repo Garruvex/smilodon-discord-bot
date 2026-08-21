@@ -1,1 +1,0 @@
-ALTER TABLE "chat_memories" ADD COLUMN "embedding" jsonb;

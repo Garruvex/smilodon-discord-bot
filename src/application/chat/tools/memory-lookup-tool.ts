@@ -1,5 +1,4 @@
-import type { ChatStateStore } from "../chat-state-store.js";
-import type { GuildKnowledgeStore } from "../guild-knowledge-store.js";
+import type { MemoryEngine } from "../../memory/memory.js";
 import type { ChatTool, ChatToolContext, ChatToolResult } from "./chat-tool.js";
 
 interface MemoryLookupToolArgs {
@@ -9,9 +8,12 @@ interface MemoryLookupToolArgs {
 const maxResultsPerSource = 10;
 
 // Looks beyond what's already been relevance-selected into the prompt (see
-// GuildMemorySelector/UserMemorySelector) — for when the model needs to
+// MemoryEngine.recall, called for every turn) — for when the model needs to
 // explicitly answer "what do you remember about X" rather than relying on
-// whatever was ambiently included for this turn.
+// whatever was ambiently included for this turn. Reuses recall() itself
+// (its BM25/RRF ranking against the query text is a better match signal
+// than a plain substring scan) and then filters the ranked result down to
+// entries that actually mention the needle, for precision.
 export class MemoryLookupTool implements ChatTool<MemoryLookupToolArgs> {
   public readonly name = "lookup_memory";
   public readonly description =
@@ -26,29 +28,26 @@ export class MemoryLookupTool implements ChatTool<MemoryLookupToolArgs> {
     },
   };
 
-  public constructor(
-    private readonly stateStore: ChatStateStore,
-    private readonly guildKnowledgeStore: GuildKnowledgeStore,
-  ) {}
+  public constructor(private readonly memoryEngine: MemoryEngine) {}
 
   public async execute(args: MemoryLookupToolArgs, ctx: ChatToolContext): Promise<ChatToolResult> {
     const needle = args.query.trim().toLowerCase();
     if (!needle) return { content: "Empty search query." };
-    const [state, guildKnowledge] = await Promise.all([
-      this.stateStore.load(ctx.guildId, ctx.currentUser.id, ctx.channelId, Date.now()),
-      this.guildKnowledgeStore.loadConfirmed(ctx.guildId, ctx.channelId),
-    ]);
-    const matches = (haystack: { topic: string; slot: string; statement: string }): boolean =>
-      haystack.topic.toLowerCase().includes(needle) ||
-      haystack.slot.toLowerCase().includes(needle) ||
-      haystack.statement.toLowerCase().includes(needle);
-    const memories = state.memories.filter(matches).slice(0, maxResultsPerSource)
+    const { memories } = await this.memoryEngine.recall({
+      guildId: ctx.guildId, channelId: ctx.channelId, userId: ctx.currentUser.id,
+      message: args.query, recentHistory: [], subjectIds: [ctx.currentUser.id], now: Date.now(),
+    });
+    const matches = memories.filter((memory) =>
+      memory.topic.toLowerCase().includes(needle) ||
+      memory.slot.toLowerCase().includes(needle) ||
+      memory.statement.toLowerCase().includes(needle));
+    const userMemories = matches.filter((memory) => memory.audience === "private").slice(0, maxResultsPerSource)
       .map((memory) => ({ topic: memory.topic, slot: memory.slot, statement: memory.statement }));
-    const knowledge = guildKnowledge.filter(matches).slice(0, maxResultsPerSource)
-      .map((record) => ({ topic: record.topic, slot: record.slot, statement: record.statement }));
-    if (memories.length === 0 && knowledge.length === 0) {
+    const guildKnowledge = matches.filter((memory) => memory.audience !== "private").slice(0, maxResultsPerSource)
+      .map((memory) => ({ topic: memory.topic, slot: memory.slot, statement: memory.statement }));
+    if (userMemories.length === 0 && guildKnowledge.length === 0) {
       return { content: "No matching memories or guild knowledge found." };
     }
-    return { content: JSON.stringify({ userMemories: memories, guildKnowledge: knowledge }) };
+    return { content: JSON.stringify({ userMemories, guildKnowledge }) };
   }
 }

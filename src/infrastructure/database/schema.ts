@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { boolean, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid, vector } from "drizzle-orm/pg-core";
 
 // Fixed at schema-definition time — pgvector columns can't have a variable
@@ -110,6 +111,68 @@ export const birthdayAnnouncements = pgTable("birthday_announcements", {
   date: text("date").notNull(),
   announcedAt: timestamp("announced_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [primaryKey({ columns: [table.guildId, table.date] })]);
+
+// Central memory model (Plan 1) — supersedes chatMemories/guildKnowledge.
+// audience answers "who's normally allowed to read this"; isolationChannelId
+// answers "is this forbidden from leaving one channel, regardless of
+// audience" — the two compose independently (see MemoryEngine.canRecall).
+// Legacy tables above stay in place, unused, until migration is verified.
+export const memories = pgTable("memories", {
+  id: uuid("id").primaryKey(),
+  guildId: text("guild_id").notNull(),
+  // Content shape only ("fact" | "preference" | "episode") — independent of
+  // who can see it. Never encodes audience (no "guild_fact"/"channel_episode").
+  kind: text("kind").notNull(),
+  audience: text("audience").notNull(), // "private" | "channel" | "guild"
+  ownerUserId: text("owner_user_id"),
+  channelId: text("channel_id"),
+  isolationChannelId: text("isolation_channel_id"),
+  subjectType: text("subject_type").notNull(), // "member" | "guild" | "team" | "project"
+  subjectId: text("subject_id").notNull(),
+  topic: text("topic").notNull(),
+  slot: text("slot").notNull(),
+  statement: text("statement").notNull(),
+  structuredValue: jsonb("structured_value"),
+  status: text("status").notNull(), // "candidate" | "active" | "superseded" | "expired"
+  supersededById: uuid("superseded_by_id"),
+  source: text("source").notNull(), // "live" | "explicit" | "administrator" | "consolidation"
+  confidence: integer("confidence").notNull(),
+  importance: integer("importance").notNull(),
+  embedding: vector("embedding", { dimensions: embeddingDimensions }),
+  embeddingModel: text("embedding_model"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+}, (table) => [
+  // Includes isolationChannelId: a member's public preference and their
+  // isolated-channel (e.g. D&D character) preference under the same
+  // subject/topic/slot are legitimately different rows. Partial (status =
+  // 'active' only) so conflicting claims can coexist as separate 'candidate'
+  // rows under the same identity instead of colliding — see canRecall/
+  // the plan's contradictory-claims fix. Only one *active* memory per
+  // identity is enforced at the database level.
+  uniqueIndex("memories_identity").on(
+    table.guildId, table.ownerUserId, table.channelId, table.isolationChannelId,
+    table.subjectType, table.subjectId, table.topic, table.slot,
+  ).where(sql`${table.status} = 'active'`),
+  index("memories_embedding_hnsw").using("hnsw", table.embedding.op("vector_cosine_ops")),
+  index("memories_guild_audience_status").on(table.guildId, table.audience, table.status),
+]);
+
+export const memorySources = pgTable("memory_sources", {
+  id: uuid("id").primaryKey(),
+  memoryId: uuid("memory_id").notNull().references(() => memories.id, { onDelete: "cascade" }),
+  sourceMessageId: text("source_message_id"),
+  sourceChannelId: text("source_channel_id"),
+  assertedByUserId: text("asserted_by_user_id"),
+  // What THIS source actually claimed — may differ from the canonical
+  // memory's statement once dedup/consolidation has merged multiple sources.
+  statement: text("statement").notNull(),
+  source: text("source").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("memory_sources_memory_id").on(table.memoryId),
+]);
 
 export const guildKnowledge = pgTable("guild_knowledge", {
   id: uuid("id").primaryKey(),

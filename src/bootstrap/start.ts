@@ -42,9 +42,9 @@ const dependencies = createDependencies(
   discordClient,
   persistence.chatStateStore,
   persistence.userCustomizationStore,
-  persistence.guildKnowledgeStore,
   auditLogService,
   persistence.birthdayStore,
+  persistence.memoryRepository,
 );
 const controlPanelStateStore = persistence.controlPanelStateStore;
 const controlChannelService = new ControlChannelService(

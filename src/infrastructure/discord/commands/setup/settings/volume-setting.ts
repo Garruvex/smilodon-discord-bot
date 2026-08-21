@@ -1,5 +1,6 @@
 import type { CommandContext } from "../../../../../application/commands/command.js";
 import type { UpdateGuildConfigurationInput } from "../../../../../config/guild-configuration-provider.js";
+import { MUSIC_LIMITS } from "../../../../../config/guild-configuration-limits.js";
 import type { MutationSettingDefinition } from "./setting-definition.js";
 
 function assignNumber(
@@ -17,9 +18,12 @@ export const volumeSetting: MutationSettingDefinition = {
   name: "volume",
   description: "Updates music volume limits.",
   configureOptions: (b) => b
-    .addIntegerOption((o) => o.setName("default").setDescription("Default volume.").setMinValue(0).setMaxValue(1000))
-    .addIntegerOption((o) => o.setName("maximum").setDescription("Maximum volume.").setMinValue(1).setMaxValue(1000))
-    .addIntegerOption((o) => o.setName("button-step").setDescription("Panel adjustment amount.").setMinValue(1).setMaxValue(100)),
+    .addIntegerOption((o) => o.setName("default").setDescription("Default volume.")
+      .setMinValue(MUSIC_LIMITS.volumeDefault.min).setMaxValue(MUSIC_LIMITS.volumeDefault.max))
+    .addIntegerOption((o) => o.setName("maximum").setDescription("Maximum volume.")
+      .setMinValue(MUSIC_LIMITS.volumeMaximum.min).setMaxValue(MUSIC_LIMITS.volumeMaximum.max))
+    .addIntegerOption((o) => o.setName("button-step").setDescription("Panel adjustment amount.")
+      .setMinValue(MUSIC_LIMITS.volumeButtonStep.min).setMaxValue(MUSIC_LIMITS.volumeButtonStep.max)),
   handle: (context, _deps, _previousProfile, input) => {
     assignNumber(context, input, "default", "defaultVolume");
     assignNumber(context, input, "maximum", "maximumVolume");

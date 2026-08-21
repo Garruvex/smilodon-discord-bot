@@ -18,31 +18,25 @@ export function resolveInstanceSchemaName(instanceName: string): string {
   return instanceName.replaceAll("-", "_");
 }
 
-// `schemaName` is optional and purely additive: omitted (or null), this
-// behaves exactly as before — a plain connection against the database's
-// default (public) schema, one database per instance. Passed, every query
-// on this connection resolves against that schema instead, letting multiple
-// instances share one Postgres server without losing isolation from each
-// other (see docs/launch-cheatsheet.md).
+// Every application connection resolves its instance schema first. `public`
+// remains second only so database-wide extension objects such as pgvector's
+// `vector` type and operator classes are visible to migrations and queries.
 export async function createDatabaseConnection(
   databaseUrl: string,
-  schemaName?: string | null,
+  schemaName: string,
 ): Promise<DatabaseConnection> {
-  if (schemaName) {
-    const bootstrapClient = postgres(databaseUrl, { max: 1 });
-    try {
-      // `sql(name)` is postgres-js's identifier-safe interpolation (distinct
-      // from a parameterized value) — required here since schema names
-      // can't be bound as a query parameter. `schemaName` is additionally
-      // already restricted to [a-z0-9_] by resolveInstanceSchemaName.
-      await bootstrapClient`CREATE SCHEMA IF NOT EXISTS ${bootstrapClient(schemaName)}`;
-    } finally {
-      await bootstrapClient.end();
-    }
+  const bootstrapClient = postgres(databaseUrl, { max: 1 });
+  try {
+    // `sql(name)` is postgres-js's identifier-safe interpolation (distinct
+    // from a parameterized value). Instance names are restricted to a safe
+    // character set before being converted by resolveInstanceSchemaName.
+    await bootstrapClient`CREATE SCHEMA IF NOT EXISTS ${bootstrapClient(schemaName)}`;
+  } finally {
+    await bootstrapClient.end();
   }
   const client: Sql = postgres(databaseUrl, {
     max: 5,
-    ...(schemaName ? { connection: { search_path: schemaName } } : {}),
+    connection: { search_path: `${schemaName},public` },
   });
   return {
     database: drizzle(client, { schema }),

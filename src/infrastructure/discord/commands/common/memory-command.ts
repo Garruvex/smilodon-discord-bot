@@ -4,6 +4,7 @@ import { CommandModule, type BotCommand, type CommandContext } from "../../../..
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
 import type { ChatStateStore } from "../../../../application/chat/chat-state-store.js";
 import type { MemberProfileService } from "../../../../application/members/member-profile-service.js";
+import type { MemoryEngine } from "../../../../application/memory/memory.js";
 
 const monthNames = [
   "January", "February", "March", "April", "May", "June",
@@ -39,6 +40,7 @@ export class MemoryCommand implements BotCommand {
   public constructor(
     private readonly chatStateStore: ChatStateStore,
     private readonly memberProfileService: MemberProfileService,
+    private readonly memoryEngine: MemoryEngine,
   ) {}
 
   public async execute(context: CommandContext): Promise<void> {
@@ -79,7 +81,7 @@ export class MemoryCommand implements BotCommand {
   }
 
   private async list(context: CommandContext, guildId: string, userId: string): Promise<void> {
-    const profile = await this.memberProfileService.load(guildId, userId, Date.now());
+    const profile = await this.memberProfileService.load(guildId, userId);
     if (profile.memories.length === 0 && !profile.birthday && !profile.customization) {
       await context.responses.reply("I don't have anything remembered about you in this server yet.");
       return;
@@ -111,7 +113,7 @@ export class MemoryCommand implements BotCommand {
     const all = context.interaction.options.getBoolean("all");
 
     if (all === true) {
-      const count = await this.chatStateStore.forgetAllMemories(guildId, userId);
+      const count = await this.memoryEngine.forget({ guildId, ownerUserId: userId });
       await context.responses.reply(
         count > 0 ? `Forgot ${count} ${count === 1 ? "memory" : "memories"}.` : "There was nothing to forget.",
       );
@@ -123,18 +125,16 @@ export class MemoryCommand implements BotCommand {
       return;
     }
 
-    // Only `.memories` is used below — see MemberProfileService.load for why
-    // an empty channelId is safe here (this view isn't tied to any channel).
-    const state = await this.chatStateStore.load(guildId, userId, "", Date.now());
-    const match = state.memories.find((memory) => memory.id === id || memory.id.startsWith(id));
+    const memories = await this.memoryEngine.listUserMemories(guildId, userId);
+    const match = memories.find((memory) => memory.id === id || memory.id.startsWith(id));
     if (!match) {
       await context.responses.reply("I couldn't find a memory with that ID. Check `/memory list`.");
       return;
     }
 
-    const forgotten = await this.chatStateStore.forgetMemory(guildId, userId, match.id);
+    const forgotten = await this.memoryEngine.forget({ guildId, ownerUserId: userId, memoryId: match.id });
     await context.responses.reply(
-      forgotten ? `Forgot: ${match.topic}.${match.slot}.` : "I couldn't find a memory with that ID.",
+      forgotten > 0 ? `Forgot: ${match.topic}.${match.slot}.` : "I couldn't find a memory with that ID.",
     );
   }
 }

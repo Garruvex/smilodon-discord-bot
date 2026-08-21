@@ -1,3 +1,4 @@
+import { CHAT_LIMITS } from "../../../../../config/guild-configuration-limits.js";
 import type { MutationSettingDefinition } from "./setting-definition.js";
 
 export const channelHistorySetting: MutationSettingDefinition = {
@@ -6,7 +7,8 @@ export const channelHistorySetting: MutationSettingDefinition = {
   description: "Controls whether the bot includes recent channel messages (from anyone) as ambient chat context.",
   configureOptions: (b) => b
     .addBooleanOption((o) => o.setName("enabled").setDescription("Whether ambient channel history is on."))
-    .addIntegerOption((o) => o.setName("limit").setDescription("How many recent channel messages to include.").setMinValue(1).setMaxValue(25)),
+    .addIntegerOption((o) => o.setName("limit").setDescription("How many recent channel messages to include.")
+      .setMinValue(CHAT_LIMITS.channelHistoryLimit.min).setMaxValue(CHAT_LIMITS.channelHistoryLimit.max)),
   handle: (context, _deps, _previousProfile, input) => {
     const enabled = context.interaction.options.getBoolean("enabled");
     const limit = context.interaction.options.getInteger("limit");

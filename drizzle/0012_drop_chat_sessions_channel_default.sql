@@ -1,1 +1,0 @@
-ALTER TABLE "chat_sessions" ALTER COLUMN "channel_id" DROP DEFAULT;
