@@ -12,7 +12,7 @@ branding:
 
 panel:
   progressBar:
-    # standard, yohta, custom, or none. Configure custom emojis with /settings music panel.
+    # standard, custom, or none. Configure custom emojis with /settings music panel.
     style: standard
     length: 12
 

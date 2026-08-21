@@ -225,12 +225,12 @@ expand only when asked.
 
 ## Notes on scope
 
-`config/examples/personality.example.md` is a full worked example (Yohta, a
+`config/examples/personality.example.md` is a full worked example (ExampleBot, a
 furry mascot character) rather than a blank form — it shows every section
 above filled in at the level of detail that actually works, so you can see
 the structure in practice instead of inferring it from a checklist. Copy it
 and replace the character, name, species, and voice with your own; don't
-ship it as-is for a guild that isn't Yohta's.
+ship it as-is for a guild that isn't using the example persona.
 
 Uploaded personality files (`/settings chat chatbot personality:<file>`) are
 guild content, not part of this repository — write your character's actual

@@ -177,7 +177,7 @@ describe("ChatConversationService", () => {
     await repository.ingest({
       guildId: "guild", kind: "fact", audience: "guild", ownerUserId: null, channelId: null,
       isolationChannelId: null, subjectType: "guild", subjectId: "guild", topic: "community", slot: "mascot",
-      statement: "Pinecone is the mascot", status: "active", source: "administrator", confidence: 1, importance: 1,
+      statement: "ExampleBot is the mascot", status: "active", source: "administrator", confidence: 1, importance: 1,
       embedding: null, embeddingModel: null, expiresAt: null, now: 0,
       sourceMessageId: null, sourceChannelId: null, assertedByUserId: null,
     });

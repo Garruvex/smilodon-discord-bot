@@ -249,12 +249,13 @@ services in the same private network. Database and Lavalink ports are bound
 only to Windows localhost, not to the public network.
 
 [`compose.example.yaml`](compose.example.yaml) is the generic copy-and-edit
-template. The repository's [`compose.yaml`](compose.yaml) is the current
-Yohta + Pinecone deployment.
+template. Copy it to `compose.yaml` and replace the `myinstance` placeholders
+with the instance names used in your own deployment.
 
 1. Install Docker Desktop and start its Linux container engine.
 2. Set `DATA_ROOT`, `POSTGRES_PASSWORD`, and `LAVALINK_PASSWORD` in `.env`.
-   Bot services and their instance files are listed directly in `compose.yaml`.
+  The bot services and their instance files are listed directly in your local
+  `compose.yaml`.
 3. Validate the configured instances:
 
 ```powershell
@@ -267,11 +268,11 @@ npm.cmd run instances:validate
 npm.cmd run stack:up
 ```
 
-`stack:up` builds one production bot image and starts both `bot-yohta` and
-`bot-pinecone` after healthy infrastructure. Each bot migrates its own schema,
-registers its Discord commands, and then starts. Add another bot by copying one
-short bot service entry and changing its env file and data paths; no generated
-Compose overlay is involved.
+`stack:up` builds one production bot image and starts the declared bot services
+after healthy infrastructure. Each bot migrates its own schema, registers its
+Discord commands, and then starts. Add another bot by copying one short bot
+service entry and changing its env file and data paths; no generated Compose
+overlay is involved.
 
 Docker startup registers commands automatically. To register them again without
 restarting the running bots:
