@@ -59,6 +59,20 @@ describe("RelevantPersonaLoreSelector", () => {
     expect(selected[0]).toEqual(backstory);
   });
 
+  it("skips the per-turn embed call when no chunk carries an embedding", async () => {
+    const embed = vi.fn(() => Promise.resolve([1, 0]));
+    const selector = new RelevantPersonaLoreSelector({ embed });
+
+    await selector.select({
+      chunks: [chunk({ heading: "Backstory", text: "Born in a forest." })],
+      recentHistory: [],
+      message: "where were you born",
+      now: 1_000,
+    });
+
+    expect(embed).not.toHaveBeenCalled();
+  });
+
   it("embeds the current message against a configured embeddings client", async () => {
     const embed = vi.fn(() => Promise.resolve([1, 0]));
     const selector = new RelevantPersonaLoreSelector({ embed });

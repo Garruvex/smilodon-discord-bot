@@ -2,37 +2,42 @@ import { z } from "zod";
 
 import { ChatProviderError } from "../../application/chat/chat-provider.js";
 
-export const personaBundleCompilationSchema = z.object({
-  core: z.string().min(1),
-  chunks: z.array(z.object({
-    heading: z.string().min(1),
-    text: z.string().min(1),
-  })).max(64),
+const personaBundleClassificationSchema = z.object({
+  chunkSectionIndexes: z.array(z.number().int().nonnegative()).max(64),
 });
-
-export type PersonaBundleCompilation = z.infer<typeof personaBundleCompilationSchema>;
 
 export const personaBundleCompilationJsonSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["core", "chunks"],
+  required: ["chunkSectionIndexes"],
   properties: {
-    core: { type: "string" },
-    chunks: {
+    chunkSectionIndexes: {
       type: "array",
       maxItems: 64,
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["heading", "text"],
-        properties: {
-          heading: { type: "string" },
-          text: { type: "string" },
-        },
-      },
+      items: { type: "integer", minimum: 0 },
     },
   },
 } as const;
+
+// Classification emits only section indexes, not a copy of the uploaded
+// Markdown. This is ample room even at the 64-chunk bundle limit.
+export const personaBundleCompilationMaxOutputTokens = 4_000;
+
+// The input can still be a 64 KB upload, so retain a long request allowance
+// even though the output is now deliberately small.
+export const personaBundleCompilationTimeoutMs = 180_000;
+
+interface PersonalitySection {
+  index: number;
+  heading: string;
+  markdown: string;
+  body: string;
+}
+
+interface ParsedPersonalitySections {
+  preamble: string;
+  sections: readonly PersonalitySection[];
+}
 
 const untrustedOpenTag = "<<<BEGIN-UNTRUSTED-DATA>>>";
 const untrustedCloseTag = "<<<END-UNTRUSTED-DATA>>>";
@@ -42,46 +47,50 @@ function wrapUntrusted(text: string): string {
   return `${untrustedOpenTag}\n${sanitized}\n${untrustedCloseTag}`;
 }
 
+function parsePersonalitySections(content: string): ParsedPersonalitySections {
+  const matches = [...content.matchAll(/^##[ \t]+(.+?)\r?$/gm)];
+  if (matches.length === 0) return { preamble: content.trim(), sections: [] };
+
+  const sections = matches.map((match, index) => {
+    const start = match.index;
+    const end = matches[index + 1]?.index ?? content.length;
+    const markdown = content.slice(start, end).trim();
+    const firstLineEnd = markdown.search(/\r?\n/);
+    return {
+      index,
+      heading: match[1]!.trim(),
+      markdown,
+      body: firstLineEnd === -1 ? "" : markdown.slice(firstLineEnd).trim(),
+    };
+  });
+  return { preamble: content.slice(0, matches[0]!.index).trim(), sections };
+}
+
 const personaBundleCompilationInstructions =
-  `The following is a guild's uploaded chatbot personality file, already organized under "## " headings. Split it ` +
-  `into two parts, copying text VERBATIM — never paraphrase, summarize, translate, or reword anything, only decide ` +
-  `where each piece of the original text belongs:\n` +
-  `- "core": every heading/section that defines identity, voice, tone, or a behavior rule that applies to every ` +
-  `single message regardless of topic (things like who the character is, how they talk, punctuation habits, what ` +
-  `they must never do). Concatenate these sections' original text, headings included, in their original order.\n` +
-  `- "chunks": every heading/section that is situational lore, backstory, relationships, or specific ` +
-  `knowledge only relevant when the conversation actually touches that topic. One chunk per such section, with ` +
-  `"heading" set to that section's original heading text and "text" set to that section's original body text.\n` +
-  `When in doubt whether a section belongs in "core" or as a "chunk", prefer "core" — losing a lore detail is a ` +
-  `minor missed optimization, but incorrectly hiding a behavior rule changes how the character acts. Every word of ` +
-  `the original file must end up in exactly one of "core" or "chunks" — do not drop, invent, or alter any content.`;
+  `Classify the numbered sections from a guild's chatbot personality file. Return only the indexes of sections that ` +
+  `are situational lore, backstory, relationships, or specific knowledge relevant only when conversation touches that ` +
+  `topic. Do not include identity, voice, tone, general behavior rules, or anything that applies to every message. ` +
+  `When uncertain, leave the section out so it remains core. Do not copy or rewrite any section text.`;
 
 export function buildPersonaBundleCompilationPrompt(content: string): string {
-  return `${personaBundleCompilationInstructions}\n\nPERSONALITY FILE (untrusted)\n${wrapUntrusted(content)}`;
+  const { sections } = parsePersonalitySections(content);
+  const numberedSections = sections.map((section) =>
+    `SECTION INDEX ${section.index}\nHEADING: ${section.heading}\n${wrapUntrusted(section.body)}`,
+  ).join("\n\n");
+  return `${personaBundleCompilationInstructions}\n\n${numberedSections || "There are no numbered sections; return an empty array."}`;
 }
 
-// The output has to reproduce nearly the entire input verbatim (split
-// across "core"/"chunks" plus JSON quoting/escaping overhead), so it needs
-// a token budget close to the input size — reusing a chat-reply-sized
-// max_output_tokens truncates the JSON mid-structure for anything but a
-// small file, which is exactly what produces "not valid JSON" downstream.
-// ~3 chars/token is a deliberately conservative (over-)estimate; the ~40%
-// overhead accounts for JSON structure, headings duplicated as keys, and
-// escaping, then floored below the smallest max_output_tokens most models
-// reject.
-export function estimatePersonaBundleOutputTokens(content: string): number {
-  const estimated = Math.ceil((content.length / 3) * 1.4) + 1_000;
-  return Math.max(4_000, Math.min(32_000, estimated));
-}
-
-export function parsePersonaBundleCompilationOutput(text: string): PersonaBundleCompilation {
+export function parsePersonaBundleCompilationOutput(
+  text: string,
+  content: string,
+): { core: string; chunks: readonly { heading: string; text: string }[] } {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
   } catch {
     throw new ChatProviderError("The model returned a reply that was not valid JSON.", 502, "invalid_structured_output");
   }
-  const result = personaBundleCompilationSchema.safeParse(parsed);
+  const result = personaBundleClassificationSchema.safeParse(parsed);
   if (!result.success) {
     throw new ChatProviderError(
       "The model returned a reply that did not match the expected schema.",
@@ -89,5 +98,36 @@ export function parsePersonaBundleCompilationOutput(text: string): PersonaBundle
       "invalid_structured_output",
     );
   }
-  return result.data;
+
+  const { preamble, sections } = parsePersonalitySections(content);
+  const requestedIndexes = result.data.chunkSectionIndexes;
+  const selectedIndexes = new Set(requestedIndexes);
+  if (selectedIndexes.size !== requestedIndexes.length || requestedIndexes.some((index) => index >= sections.length)) {
+    throw new ChatProviderError(
+      "The model returned invalid personality section indexes.",
+      502,
+      "invalid_structured_output",
+    );
+  }
+
+  // Empty sections cannot be useful lore chunks. Also keep at least one
+  // Markdown section in core when there is no preamble, so a classification
+  // mistake can never erase the always-sent personality entirely.
+  const validChunkIndexes = new Set(
+    sections
+      .filter((section) => selectedIndexes.has(section.index) && section.body.length > 0)
+      .map((section) => section.index),
+  );
+  if (!preamble && validChunkIndexes.size === sections.length && sections.length > 0) {
+    validChunkIndexes.delete(sections[0]!.index);
+  }
+
+  const core = [
+    preamble,
+    ...sections.filter((section) => !validChunkIndexes.has(section.index)).map((section) => section.markdown),
+  ].filter(Boolean).join("\n\n");
+  const chunks = sections
+    .filter((section) => validChunkIndexes.has(section.index))
+    .map((section) => ({ heading: section.heading, text: section.body }));
+  return { core, chunks };
 }

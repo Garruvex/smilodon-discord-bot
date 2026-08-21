@@ -14,7 +14,7 @@ export const exampleExchangeLimits = {
   maxSerializedChars: 16_000,
 } as const;
 
-const headingPattern = /^### /m;
+const headingPattern = /^###[ \t]+Example(?:[ \t]+.*)?\r?$/gm;
 // [ \t]* (not \s*) after the label — \s matches \n, which would otherwise
 // swallow the line break itself and pull the next line's content up into
 // this capture group.
@@ -34,10 +34,8 @@ const characterLinePattern = /^Character:[ \t]*([\s\S]*)$/m;
 export function parseExampleExchanges(
   content: string,
 ): { exchanges: ExampleExchange[] } | { error: string } {
-  if (!headingPattern.test(content)) {
-    return { error: "No \"### Example\" blocks found." };
-  }
-  const blocks = content.split(headingPattern).map((block) => block.trim()).filter((block) => block.length > 0);
+  const blocks = content.split(headingPattern).slice(1).map((block) => block.trim()).filter((block) => block.length > 0);
+  if (blocks.length === 0) return { error: "No \"### Example\" blocks found." };
   if (blocks.length > exampleExchangeLimits.maxExamples) {
     return { error: `Too many examples (${blocks.length}); the limit is ${exampleExchangeLimits.maxExamples}.` };
   }

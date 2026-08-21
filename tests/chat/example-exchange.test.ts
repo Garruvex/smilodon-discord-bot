@@ -52,6 +52,25 @@ Character: 喔那合理（
     expect(result).toEqual({ error: 'No "### Example" blocks found.' });
   });
 
+  it("does not split an example on other level-three Markdown headings", () => {
+    const content = `Introductory text is ignored.
+
+### Example
+User: show me the notes
+Character: here they are
+
+### Notes
+- first note`;
+
+    const result = parseExampleExchanges(content);
+
+    expect(result).toEqual({ exchanges: [{
+      tags: "",
+      user: "show me the notes",
+      character: "here they are\n\n### Notes\n- first note",
+    }] });
+  });
+
   it("rejects a file exceeding the example count limit", () => {
     const blocks = Array.from(
       { length: exampleExchangeLimits.maxExamples + 1 },

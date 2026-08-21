@@ -71,7 +71,7 @@ function profile(overrides: Partial<GuildConfiguration["chat"]> = {}): GuildConf
       includeSources: true,
       maxImagesPerRequest: 2,
       ambientCooldownSeconds: 20,
-      channelHistoryLimit: 8, channelMemoryModes: {}, personaDriftEnabled: false,
+      channelHistoryLimit: 8, channelMemoryModes: {}, personaDriftEnabled: false, contextScanChannelIds: [], contextDailyChannelIds: [], contextSeedDays: 7,
       ...overrides,
     },
     sourceFile: "test.yaml",

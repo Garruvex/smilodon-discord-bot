@@ -4,6 +4,7 @@ import { hashContent } from "../assets/content-hash.js";
 import type { ChatProvider } from "./chat-provider.js";
 import type { PersonaBundle } from "./persona-bundle.js";
 import type { EmbeddingsClient } from "../../infrastructure/chat/openai-embeddings-client.js";
+import { embedTextsBestEffort } from "./embedding-batch.js";
 
 /**
  * Compiles an uploaded personality.md into a PersonaBundle: an always-sent
@@ -28,11 +29,21 @@ export class PersonaBundleCompiler {
     if (!this.provider.compilePersonaBundle) return null;
     try {
       const result = await this.provider.compilePersonaBundle(content);
-      const chunks = await Promise.all(result.chunks.map(async (chunk) => ({
+      const embeddings = this.embeddingsClient
+        ? await embedTextsBestEffort(result.chunks.map((chunk) => chunk.text), this.embeddingsClient)
+        : result.chunks.map(() => null);
+      const failedEmbeddingCount = embeddings.filter((embedding) => embedding === null).length;
+      if (this.embeddingsClient && failedEmbeddingCount > 0) {
+        this.logger?.warn(
+          { failedEmbeddingCount, chunkCount: result.chunks.length },
+          "Embedding persona lore chunks partially failed; those chunks will be retrievable lexically",
+        );
+      }
+      const chunks = result.chunks.map((chunk, index) => ({
         heading: chunk.heading,
         text: chunk.text,
-        embedding: await this.embedChunk(chunk.text),
-      })));
+        embedding: embeddings[index] ?? null,
+      }));
       return {
         sourceHash: hashContent(content),
         core: result.core,
@@ -45,13 +56,4 @@ export class PersonaBundleCompiler {
     }
   }
 
-  private async embedChunk(text: string): Promise<number[] | null> {
-    if (!this.embeddingsClient) return null;
-    try {
-      return await this.embeddingsClient.embed(text);
-    } catch (error) {
-      this.logger?.warn({ error }, "Embedding a persona lore chunk failed; it will only be retrievable lexically");
-      return null;
-    }
-  }
 }

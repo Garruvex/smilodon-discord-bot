@@ -3,6 +3,7 @@ import { z } from "zod";
 import { hashContent } from "../assets/content-hash.js";
 import type { ExampleExchange } from "./example-exchange.js";
 import type { EmbeddingsClient } from "../../infrastructure/chat/openai-embeddings-client.js";
+import { embedTextsBestEffort } from "./embedding-batch.js";
 
 // Sidecar JSON written next to an uploaded examples.md
 // (guild-assets/{guildId}/examples.bundle.json), self-contained (not
@@ -54,11 +55,12 @@ export async function buildExampleExchangeBundle(
   exchanges: readonly ExampleExchange[],
   embeddingsClient: EmbeddingsClient,
 ): Promise<ExampleExchangeBundle> {
-  const embedded = await Promise.all(exchanges.map(async (exchange) => ({
+  const embeddings = await embedTextsBestEffort(exchanges.map(embeddingText), embeddingsClient);
+  const embedded = exchanges.map((exchange, index) => ({
     tags: exchange.tags,
     user: exchange.user,
     character: exchange.character,
-    embedding: await embeddingsClient.embed(embeddingText(exchange)).catch(() => null),
-  })));
+    embedding: embeddings[index] ?? null,
+  }));
   return { sourceHash: hashContent(content), exchanges: embedded };
 }

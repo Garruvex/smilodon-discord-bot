@@ -217,11 +217,11 @@ export class ChatConversationService {
     // of one must never block the other. See ChatProvider.evolvePersonaDrift.
     if (personaDriftEnabled && this.personaDriftStore && summarizer.evolvePersonaDrift) {
       try {
-        const current = await this.personaDriftStore.get(guildId);
-        const nextText = (await summarizer.evolvePersonaDrift(current?.text ?? "", exchangePairs)).trim();
-        if (nextText && nextText !== current?.text) {
-          await this.personaDriftStore.evolve(guildId, nextText);
-        }
+        const evolvePersonaDrift = summarizer.evolvePersonaDrift.bind(summarizer);
+        await this.personaDriftStore.evolveFrom(
+          guildId,
+          (currentText) => evolvePersonaDrift(currentText, exchangePairs),
+        );
       } catch (error) {
         this.logger?.warn({ error, guildId, channelId }, "Persona drift evolution failed; drift stays at its previous value");
       }

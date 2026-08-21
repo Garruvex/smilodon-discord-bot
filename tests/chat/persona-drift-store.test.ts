@@ -50,6 +50,36 @@ describe("PersonaDriftStore", () => {
     expect(state?.history[0]?.text).toBe("First mood.");
   });
 
+  it("serializes read-transform-write evolution for the same guild", async () => {
+    const { store: driftStore } = store();
+    let releaseFirst!: () => void;
+    let markFirstStarted!: () => void;
+    const firstStarted = new Promise<void>((resolve) => { markFirstStarted = resolve; });
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const seenCurrentTexts: string[] = [];
+
+    const first = driftStore.evolveFrom(guildId, async (currentText) => {
+      seenCurrentTexts.push(currentText);
+      markFirstStarted();
+      await firstGate;
+      return "First mood.";
+    });
+    await firstStarted;
+    const second = driftStore.evolveFrom(guildId, (currentText) => {
+      seenCurrentTexts.push(currentText);
+      return Promise.resolve("Second mood.");
+    });
+
+    releaseFirst();
+    await Promise.all([first, second]);
+
+    expect(seenCurrentTexts).toEqual(["", "First mood."]);
+    await expect(driftStore.get(guildId)).resolves.toMatchObject({
+      text: "Second mood.",
+      history: [{ text: "First mood." }],
+    });
+  });
+
   it("clears both text and history on reset", async () => {
     const { store: driftStore } = store();
     await driftStore.evolve(guildId, "First mood.");

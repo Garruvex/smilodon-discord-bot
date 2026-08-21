@@ -103,10 +103,15 @@ describe("memory-relevance", () => {
     expect([...items].sort((x, y) => fused.get(y)! - fused.get(x)!)[2]).toBe("c");
   });
 
-  it("always keeps at least the top-ranked record even if it alone exceeds the char budget", () => {
-    const records = [{ statement: "x".repeat(10_000) }];
-    const selected = selectByRelevance(records, () => 1, 100);
-    expect(selected).toHaveLength(1);
+  it("skips an oversized record and continues looking for records that fit", () => {
+    const oversized = { id: "oversized", statement: "x".repeat(10_000) };
+    const fitting = { id: "fitting", statement: "small" };
+    const selected = selectByRelevance(
+      [oversized, fitting],
+      (record) => record === oversized ? 2 : 1,
+      100,
+    );
+    expect(selected).toEqual([fitting]);
   });
 
   it("stops adding records once the char budget is exhausted", () => {

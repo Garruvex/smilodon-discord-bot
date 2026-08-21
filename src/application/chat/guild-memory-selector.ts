@@ -99,11 +99,14 @@ export class EmbeddingGuildMemorySelector implements GuildMemorySelector {
     // A failed query embedding degrades to lexical-only ranking (RRF over a
     // single list is just that list's order) rather than failing the turn.
     const queryEmbedding = await this.embeddingsClient.embed(input.message).catch(() => null);
-    const embeddingOrder = queryEmbedding
-      ? [...input.records].sort((a, b) =>
-          cosineSimilarity(b.embedding ?? [], queryEmbedding) - cosineSimilarity(a.embedding ?? [], queryEmbedding))
-      : lexicalOrder;
-    const fused = reciprocalRankFusion([lexicalOrder, embeddingOrder]);
+    const compatible = queryEmbedding
+      ? input.records.filter((record) => record.embedding?.length === queryEmbedding.length)
+      : [];
+    const embeddingOrder = queryEmbedding && compatible.length > 0
+      ? [...compatible].sort((a, b) =>
+          cosineSimilarity(b.embedding!, queryEmbedding) - cosineSimilarity(a.embedding!, queryEmbedding))
+      : null;
+    const fused = reciprocalRankFusion(embeddingOrder ? [lexicalOrder, embeddingOrder] : [lexicalOrder]);
     const selected = selectByRelevance(
       input.records,
       (record) => fused.get(record) ?? 0,

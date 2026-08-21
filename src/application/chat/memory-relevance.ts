@@ -191,7 +191,7 @@ export function selectByRelevance<T>(
   let serializedChars = 0;
   for (const record of ranked) {
     const size = JSON.stringify(promptProjection(record)).length;
-    if (selected.length > 0 && serializedChars + size > maxSerializedChars) break;
+    if (serializedChars + size > maxSerializedChars) continue;
     selected.push(record);
     serializedChars += size;
   }

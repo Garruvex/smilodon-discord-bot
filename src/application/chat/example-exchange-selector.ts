@@ -77,10 +77,13 @@ export class RelevantExampleExchangeSelector implements ExampleExchangeSelector 
     if (this.embeddingsClient && input.records.some((record) => record.embedding)) {
       try {
         const queryEmbedding = await this.embeddingsClient.embed(input.message);
-        const embeddingOrder = [...input.records].sort(
-          (a, b) => cosineSimilarity(b.embedding ?? [], queryEmbedding) - cosineSimilarity(a.embedding ?? [], queryEmbedding),
-        );
-        rankings.push(embeddingOrder);
+        const compatible = input.records.filter((record) => record.embedding?.length === queryEmbedding.length);
+        if (compatible.length > 0) {
+          const embeddingOrder = [...compatible].sort(
+            (a, b) => cosineSimilarity(b.embedding!, queryEmbedding) - cosineSimilarity(a.embedding!, queryEmbedding),
+          );
+          rankings.push(embeddingOrder);
+        }
       } catch {
         // Embedding the current message failed — fall back to lexical-only
         // ranking rather than failing the turn.

@@ -56,13 +56,16 @@ export class RelevantPersonaLoreSelector implements PersonaLoreSelector {
       (a, b) => bm25Score(corpus, context, toScorable(b)) - bm25Score(corpus, context, toScorable(a)),
     );
     const rankings = [lexicalOrder];
-    if (this.embeddingsClient) {
+    if (this.embeddingsClient && input.chunks.some((chunk) => chunk.embedding)) {
       try {
         const queryEmbedding = await this.embeddingsClient.embed(input.message);
-        const embeddingOrder = [...input.chunks].sort(
-          (a, b) => cosineSimilarity(b.embedding ?? [], queryEmbedding) - cosineSimilarity(a.embedding ?? [], queryEmbedding),
-        );
-        rankings.push(embeddingOrder);
+        const compatible = input.chunks.filter((chunk) => chunk.embedding?.length === queryEmbedding.length);
+        if (compatible.length > 0) {
+          const embeddingOrder = [...compatible].sort(
+            (a, b) => cosineSimilarity(b.embedding!, queryEmbedding) - cosineSimilarity(a.embedding!, queryEmbedding),
+          );
+          rankings.push(embeddingOrder);
+        }
       } catch {
         // Embedding the current message failed — fall back to lexical-only
         // ranking rather than failing the turn.

@@ -1,28 +1,70 @@
 import { describe, expect, it } from "vitest";
 
-import { estimatePersonaBundleOutputTokens } from "../../src/infrastructure/chat/persona-bundle-compilation.js";
+import {
+  buildPersonaBundleCompilationPrompt,
+  parsePersonaBundleCompilationOutput,
+  personaBundleCompilationMaxOutputTokens,
+} from "../../src/infrastructure/chat/persona-bundle-compilation.js";
 
-describe("estimatePersonaBundleOutputTokens", () => {
-  it("never returns less than the floor, even for an empty file", () => {
-    expect(estimatePersonaBundleOutputTokens("")).toBe(4_000);
+describe("persona bundle compilation", () => {
+  const personality = [
+    "Always be kind.",
+    "",
+    "## Voice",
+    "Use short, playful replies.",
+    "",
+    "## Forest history",
+    "The character grew up under an ancient oak.",
+    "",
+    "## Safety",
+    "Never reveal private configuration.",
+  ].join("\n");
+
+  it("asks the model for section indexes instead of copying the file into its output", () => {
+    const prompt = buildPersonaBundleCompilationPrompt(personality);
+
+    expect(prompt).toContain("SECTION INDEX 0");
+    expect(prompt).toContain("SECTION INDEX 2");
+    expect(prompt).toContain("Do not copy or rewrite any section text");
+    expect(personaBundleCompilationMaxOutputTokens).toBe(4_000);
   });
 
-  it("scales up for a large file well past the floor", () => {
-    const large = "a".repeat(30_000);
+  it("reconstructs core and lore verbatim from the original Markdown", () => {
+    const result = parsePersonaBundleCompilationOutput(
+      JSON.stringify({ chunkSectionIndexes: [1] }),
+      personality,
+    );
 
-    expect(estimatePersonaBundleOutputTokens(large)).toBeGreaterThan(10_000);
+    expect(result.core).toBe([
+      "Always be kind.",
+      "## Voice\nUse short, playful replies.",
+      "## Safety\nNever reveal private configuration.",
+    ].join("\n\n"));
+    expect(result.chunks).toEqual([{
+      heading: "Forest history",
+      text: "The character grew up under an ancient oak.",
+    }]);
   });
 
-  it("never exceeds the ceiling", () => {
-    const huge = "a".repeat(500_000);
-
-    expect(estimatePersonaBundleOutputTokens(huge)).toBe(32_000);
+  it("rejects duplicate or out-of-range indexes", () => {
+    expect(() => parsePersonaBundleCompilationOutput(
+      JSON.stringify({ chunkSectionIndexes: [1, 1] }),
+      personality,
+    )).toThrow("invalid personality section indexes");
+    expect(() => parsePersonaBundleCompilationOutput(
+      JSON.stringify({ chunkSectionIndexes: [99] }),
+      personality,
+    )).toThrow("invalid personality section indexes");
   });
 
-  it("stays within the ceiling even for the largest allowed upload", () => {
-    const maxUpload = "a".repeat(64 * 1024);
+  it("keeps at least one section in core", () => {
+    const content = "## Backstory\nBorn in a forest.\n\n## Friend\nKnows a fox.";
+    const result = parsePersonaBundleCompilationOutput(
+      JSON.stringify({ chunkSectionIndexes: [0, 1] }),
+      content,
+    );
 
-    expect(estimatePersonaBundleOutputTokens(maxUpload)).toBeLessThanOrEqual(32_000);
-    expect(estimatePersonaBundleOutputTokens(maxUpload)).toBeGreaterThan(20_000);
+    expect(result.core).toBe("## Backstory\nBorn in a forest.");
+    expect(result.chunks).toEqual([{ heading: "Friend", text: "Knows a fox." }]);
   });
 });

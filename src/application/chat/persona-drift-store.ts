@@ -4,6 +4,8 @@ import { resolve } from "node:path";
 import type { Logger } from "pino";
 import { z } from "zod";
 
+import { KeyedSerialQueue } from "../concurrency/keyed-serial-queue.js";
+
 // A small, additive "current mood/quirk" layer that evolves slightly over
 // time from actual conversation activity (see ChatConversationService's
 // consolidation hook) — never the admin-authored personality.md, lore
@@ -30,6 +32,8 @@ const maxHistoryEntries = 50;
  * directory rather than depending on one already existing.
  */
 export class PersonaDriftStore {
+  private readonly queue = new KeyedSerialQueue();
+
   public constructor(
     private readonly runtimeDataDirectory: string,
     private readonly logger: Logger | null = null,
@@ -61,8 +65,31 @@ export class PersonaDriftStore {
   // simply doesn't update this cycle, same fail-safe posture as
   // ChatConversationService's other consolidation-triggered writes.
   public async evolve(guildId: string, nextText: string): Promise<void> {
-    try {
+    await this.queue.run(guildId, () => this.persistEvolution(guildId, nextText));
+  }
+
+  // Serializes the entire read → model transform → write transaction per
+  // guild. Chat turns are queued per guild+user, so different users can
+  // otherwise evolve the same guild-wide drift from the same stale value.
+  public async evolveFrom(
+    guildId: string,
+    transform: (currentText: string) => Promise<string>,
+  ): Promise<void> {
+    await this.queue.run(guildId, async () => {
       const current = await this.get(guildId);
+      const nextText = (await transform(current?.text ?? "")).trim();
+      if (!nextText || nextText === current?.text) return;
+      await this.persistEvolution(guildId, nextText, current);
+    });
+  }
+
+  private async persistEvolution(
+    guildId: string,
+    nextText: string,
+    knownCurrent?: PersonaDriftState | null,
+  ): Promise<void> {
+    try {
+      const current = knownCurrent === undefined ? await this.get(guildId) : knownCurrent;
       const now = Date.now();
       const history = current
         ? [...current.history, { text: current.text, changedAt: current.updatedAt }].slice(-maxHistoryEntries)
@@ -78,7 +105,7 @@ export class PersonaDriftStore {
   // guild's persona-drift toggle, which only pauses evolution/injection
   // without touching this file.
   public async reset(guildId: string): Promise<void> {
-    await rm(this.path(guildId), { force: true });
+    await this.queue.run(guildId, () => rm(this.path(guildId), { force: true }));
   }
 
   private async write(guildId: string, state: PersonaDriftState): Promise<void> {
