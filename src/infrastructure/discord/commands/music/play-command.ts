@@ -1,5 +1,3 @@
-import { SlashCommandBuilder } from "discord.js";
-
 import { CommandModule, type BotCommand, type ChatToolBinding, type CommandContext } from "../../../../application/commands/command.js";
 import type { ChatToolContext, ChatToolResult } from "../../../../application/chat/tools/chat-tool.js";
 import { evaluateMusicToolAccess, formatMusicError, musicPermissionDeniedMessage } from "../../../../application/chat/tools/music-tool-support.js";
@@ -19,15 +17,13 @@ interface PlayMusicToolArgs {
 }
 
 export class PlayCommand implements BotCommand {
-  public readonly definition = new SlashCommandBuilder()
-    .setName("play")
-    .setDescription("Plays a track or adds it to the queue.")
-    .addStringOption((option) =>
-      option
-        .setName("query")
-        .setDescription("A song name or supported URL.")
-        .setRequired(true),
-    );
+  public readonly definition = {
+    name: "play",
+    description: "Plays a track or adds it to the queue.",
+    options: [
+      { type: "string", name: "query", description: "A song name or supported URL.", required: true },
+    ],
+  } satisfies BotCommand["definition"];
 
   public readonly module = CommandModule.Music;
   public readonly access = musicPlaybackAccessPolicy;

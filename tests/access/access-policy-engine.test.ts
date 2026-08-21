@@ -1,4 +1,3 @@
-import type { GuildMember } from "discord.js";
 import { describe, expect, it } from "vitest";
 
 import { AccessPolicyEngine } from "../../src/application/access/access-policy-engine.js";
@@ -19,20 +18,14 @@ const guildId = "123456789012345678";
 const musicRoleId = "234567890123456789";
 const channelId = "345678901234567890";
 
-function fakeMember(roleIds: readonly string[]): GuildMember {
-  return {
-    roles: { cache: new Map(roleIds.map((roleId) => [roleId, {}])) },
-    permissions: { has: () => true },
-  } as unknown as GuildMember;
-}
-
 function subject(overrides: Partial<AccessSubject> = {}): AccessSubject {
   return {
     guildId,
     channelId,
     userId: "456789012345678901",
-    member: fakeMember([musicRoleId]),
-    botMember: { permissions: { has: () => true } } as unknown as GuildMember,
+    roleIds: [musicRoleId],
+    memberPermissions: -1n, // all bits set — "has every permission"
+    botPermissions: -1n,
     isOwner: false,
     ...overrides,
   };
@@ -77,7 +70,7 @@ function guildConfiguration(overrides: Partial<GuildConfiguration> = {}): GuildC
       cooldownSeconds: 30, deniedMessage: "Premium required.", deniedLinkUrl: null, deniedLinkLabel: null,
       webSearchMode: "off", toolCallingEnabled: true, disabledTools: [],
       imageInputEnabled: false, imageGenerationEnabled: false, includeSources: true,
-      maxImagesPerRequest: 2, ambientCooldownSeconds: 20, channelHistoryLimit: 8, channelMemoryModes: {}, personaDriftEnabled: false,
+      maxImagesPerRequest: 2, ambientCooldownSeconds: 20, channelHistoryLimit: 8, channelMemoryModes: {}, personaDriftEnabled: false, contextScanChannelIds: [], contextDailyChannelIds: [], contextSeedDays: 7,
     },
     sourceFile: "test.yaml",
     ...overrides,
@@ -111,15 +104,16 @@ describe("AccessPolicyEngine (standalone AccessSubject)", () => {
 
   it("denies a subject without the required role group", () => {
     const engine = new AccessPolicyEngine();
-    const denied = subject({ member: fakeMember(["unrelated-role"]) });
+    const denied = subject({ roleIds: ["unrelated-role"] });
     expect(engine.evaluate(denied, musicPolicy, CommandModule.Music, guildConfiguration()))
       .toEqual({ allowed: false, reason: AccessDenialReason.MissingRequiredRole });
   });
 
   it("denies when the bot itself lacks the required permission, even with an owner bypass", () => {
     const engine = new AccessPolicyEngine();
-    const owner = subject({ isOwner: true, botMember: { permissions: { has: () => false } } as unknown as GuildMember });
-    expect(engine.evaluate(owner, musicPolicy, CommandModule.Music, guildConfiguration()))
+    const policy = { ...musicPolicy, requiredBotPermissions: [1n] };
+    const owner = subject({ isOwner: true, botPermissions: 0n });
+    expect(engine.evaluate(owner, policy, CommandModule.Music, guildConfiguration()))
       .toEqual({ allowed: false, reason: AccessDenialReason.BotMissingPermission });
   });
 
@@ -129,7 +123,7 @@ describe("AccessPolicyEngine (standalone AccessSubject)", () => {
     const configuration = guildConfiguration({
       roles: { ...guildConfiguration().roles, restricted: new Set([restrictedRoleId]) },
     });
-    const restricted = subject({ member: fakeMember([musicRoleId, restrictedRoleId]) });
+    const restricted = subject({ roleIds: [musicRoleId, restrictedRoleId] });
     expect(engine.evaluate(restricted, musicPolicy, CommandModule.Music, configuration))
       .toEqual({ allowed: false, reason: AccessDenialReason.RestrictedRole });
   });

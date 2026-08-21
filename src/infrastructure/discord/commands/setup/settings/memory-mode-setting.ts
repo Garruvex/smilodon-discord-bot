@@ -1,5 +1,3 @@
-import { ChannelType } from "discord.js";
-
 import type { MutationSettingDefinition } from "./setting-definition.js";
 
 const memoryModeChoices = [
@@ -18,10 +16,10 @@ export const memoryModeSetting: MutationSettingDefinition = {
   kind: "mutation",
   name: "memory-mode",
   description: "Sets a channel's memory isolation mode (shared/isolated/session_only/disabled).",
-  configureOptions: (b) => b
-    .addChannelOption((o) => o.setName("channel").setDescription("The channel to configure.").setRequired(true).addChannelTypes(ChannelType.GuildText))
-    .addStringOption((o) => o.setName("mode").setDescription("The memory mode for this channel.").setRequired(true)
-      .addChoices(...memoryModeChoices)),
+  configureOptions: () => [
+    { type: "channel", name: "channel", description: "The channel to configure.", required: true, guildTextOnly: true },
+    { type: "string", name: "mode", description: "The memory mode for this channel.", required: true, choices: memoryModeChoices },
+  ],
   handle: (context, _deps, previousProfile, input) => {
     const channel = context.interaction.options.getChannel("channel", true);
     const mode = context.interaction.options.getString("mode", true) as (typeof memoryModeChoices)[number]["value"];

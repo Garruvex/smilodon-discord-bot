@@ -1,5 +1,3 @@
-import type { GuildMember } from "discord.js";
-
 import {
   MusicPlayerNotFoundError,
   MusicRateLimitError,
@@ -20,7 +18,7 @@ export interface PlaybackActor {
   guildId: string;
   textChannelId: string;
   userId: string;
-  member: GuildMember;
+  voiceChannelId: string | null;
 }
 
 export class PlaybackService {
@@ -167,7 +165,7 @@ export class PlaybackService {
   }
 
   private requireVoiceChannel(actor: PlaybackActor): string {
-    const voiceChannelId = actor.member.voice.channelId;
+    const voiceChannelId = actor.voiceChannelId;
     if (!voiceChannelId) {
       throw new MusicVoiceChannelRequiredError();
     }

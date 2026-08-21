@@ -1,12 +1,11 @@
-import { SlashCommandBuilder } from "discord.js";
-
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
 
 export class PingCommand implements BotCommand {
-  public readonly definition = new SlashCommandBuilder()
-    .setName("ping")
-    .setDescription("Checks whether the bot is responding.");
+  public readonly definition = {
+    name: "ping",
+    description: "Checks whether the bot is responding.",
+  };
 
   public readonly module = CommandModule.Common;
   public readonly access = publicAccessPolicy;

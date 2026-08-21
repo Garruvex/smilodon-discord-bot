@@ -1,19 +1,17 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { EmbedBuilder } from "discord.js";
 
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import type { GuildConfigurationProvider } from "../../../../config/guild-configuration-provider.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
 
 export class UserInfoCommand implements BotCommand {
-  public readonly definition = new SlashCommandBuilder()
-    .setName("userinfo")
-    .setDescription("Shows information about a member.")
-    .addUserOption((option) =>
-      option
-        .setName("user")
-        .setDescription("The member to look up; defaults to you.")
-        .setRequired(false),
-    );
+  public readonly definition = {
+    name: "userinfo",
+    description: "Shows information about a member.",
+    options: [
+      { type: "user", name: "user", description: "The member to look up; defaults to you.", required: false },
+    ],
+  } satisfies BotCommand["definition"];
 
   public readonly module = CommandModule.Common;
   public readonly access = publicAccessPolicy;

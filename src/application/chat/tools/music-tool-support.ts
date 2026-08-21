@@ -27,12 +27,14 @@ export function evaluateMusicToolAccess(
   music: NonNullable<ChatToolContext["music"]>,
   profiles: GuildConfigurationProvider,
 ): AccessDecision {
+  const { roleIds, memberPermissions, botPermissions } = music.resolveAccessSubjectFields();
   const subject: AccessSubject = {
     guildId: ctx.guildId,
     channelId: ctx.channelId,
     userId: ctx.currentUser.id,
-    member: music.actor.member,
-    botMember: music.actor.member.guild.members.me,
+    roleIds,
+    memberPermissions,
+    botPermissions,
     isOwner: ctx.isOwner,
   };
   return accessPolicyEngine.evaluate(

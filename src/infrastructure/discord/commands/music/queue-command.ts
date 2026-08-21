@@ -1,4 +1,4 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { EmbedBuilder } from "discord.js";
 
 import { CommandModule, type BotCommand, type ChatToolBinding, type CommandContext } from "../../../../application/commands/command.js";
 import type { ChatToolContext, ChatToolResult } from "../../../../application/chat/tools/chat-tool.js";
@@ -10,16 +10,22 @@ import { createPlaybackActor, musicPlaybackAccessPolicy } from "./music-command-
 const maxQueueTracksReturnedToTool = 10;
 
 export class QueueCommand implements BotCommand {
-  public readonly definition = new SlashCommandBuilder()
-    .setName("queue")
-    .setDescription("Views or manages the music queue.")
-    .addSubcommand((command) => command.setName("show").setDescription("Shows queued tracks."))
-    .addSubcommand((command) => command
-      .setName("remove")
-      .setDescription("Removes a queued track by position.")
-      .addIntegerOption((option) => option.setName("position").setDescription("Queue position, starting at 1.").setMinValue(1).setRequired(true)))
-    .addSubcommand((command) => command.setName("clear").setDescription("Clears every upcoming track."))
-    .addSubcommand((command) => command.setName("history").setDescription("Shows recently played tracks."));
+  public readonly definition = {
+    name: "queue",
+    description: "Views or manages the music queue.",
+    subcommands: [
+      { name: "show", description: "Shows queued tracks." },
+      {
+        name: "remove",
+        description: "Removes a queued track by position.",
+        options: [
+          { type: "integer", name: "position", description: "Queue position, starting at 1.", minValue: 1, required: true },
+        ],
+      },
+      { name: "clear", description: "Clears every upcoming track." },
+      { name: "history", description: "Shows recently played tracks." },
+    ],
+  } satisfies BotCommand["definition"];
 
   public readonly module = CommandModule.Music;
   public readonly access = musicPlaybackAccessPolicy;

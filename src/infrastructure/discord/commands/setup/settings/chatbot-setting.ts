@@ -1,5 +1,3 @@
-import { ChannelType } from "discord.js";
-
 import {
   formatRoleGroupList,
   roleGroupDescriptions,
@@ -11,28 +9,33 @@ export const chatbotSetting: MutationSettingDefinition = {
   kind: "mutation",
   name: "chatbot",
   description: "Configures mention-based AI replies.",
-  configureOptions: (b) => b
-    .addBooleanOption((o) => o.setName("enabled").setDescription("Reply when permitted users mention the bot."))
-    .addRoleOption((o) => o.setName("role").setDescription("Adds a role allowed to use mention chat."))
-    .addChannelOption((o) => o.setName("channel").setDescription("Adds a text channel where mention chat is allowed.").addChannelTypes(ChannelType.GuildText))
-    .addIntegerOption((o) => o.setName("cooldown-seconds").setDescription("Per-user delay between requests.")
-      .setMinValue(CHAT_LIMITS.cooldownSeconds.min).setMaxValue(CHAT_LIMITS.cooldownSeconds.max))
-    .addStringOption((o) => o.setName("denied-message").setDescription("Playful response shown to users without access.").setMaxLength(500))
-    .addStringOption((o) => o.setName("denied-link-url").setDescription("Optional link button URL shown with the denied message. Use \"none\" to remove it."))
-    .addStringOption((o) => o.setName("denied-link-label").setDescription("Label for the denied-message link button.").setMaxLength(80))
-    .addBooleanOption((o) => o.setName("web-search").setDescription("Allow the model to search the public web when needed."))
-    .addBooleanOption((o) => o.setName("tool-calling").setDescription("Allow the model to call bot functions mid-reply (dice, 8-ball, booru, lookups)."))
-    .addBooleanOption((o) => o.setName("image-input").setDescription("Allow bounded image attachments from Discord."))
-    .addBooleanOption((o) => o.setName("image-generation").setDescription("Allow the model to generate images in mention chat."))
-    .addBooleanOption((o) => o.setName("include-sources").setDescription("Include web citation links in replies."))
-    .addIntegerOption((o) => o.setName("max-images").setDescription("Maximum images accepted per request.")
-      .setMinValue(CHAT_LIMITS.maxImagesPerRequest.min).setMaxValue(CHAT_LIMITS.maxImagesPerRequest.max))
-    .addAttachmentOption((o) => o.setName("personality").setDescription("Upload the guild personality as a Markdown file."))
-    .addBooleanOption((o) => o.setName("use-default-personality").setDescription("Remove the uploaded personality and use the built-in/default file."))
-    .addAttachmentOption((o) => o.setName("examples").setDescription("Upload example character exchanges as a Markdown file."))
-    .addBooleanOption((o) => o.setName("use-default-examples").setDescription("Remove the uploaded examples file."))
-    .addBooleanOption((o) => o.setName("persona-drift").setDescription("Experimental: let the character's mood/quirks slowly evolve from conversation activity."))
-    .addBooleanOption((o) => o.setName("reset-persona-drift").setDescription("Wipe the character's evolved mood/quirk history and start over.")),
+  configureOptions: () => [
+    { type: "boolean", name: "enabled", description: "Reply when permitted users mention the bot." },
+    { type: "role", name: "role", description: "Adds a role allowed to use mention chat." },
+    { type: "channel", name: "channel", description: "Adds a text channel where mention chat is allowed.", guildTextOnly: true },
+    {
+      type: "integer", name: "cooldown-seconds", description: "Per-user delay between requests.",
+      minValue: CHAT_LIMITS.cooldownSeconds.min, maxValue: CHAT_LIMITS.cooldownSeconds.max,
+    },
+    { type: "string", name: "denied-message", description: "Playful response shown to users without access.", maxLength: 500 },
+    { type: "string", name: "denied-link-url", description: "Optional link button URL shown with the denied message. Use \"none\" to remove it." },
+    { type: "string", name: "denied-link-label", description: "Label for the denied-message link button.", maxLength: 80 },
+    { type: "boolean", name: "web-search", description: "Allow the model to search the public web when needed." },
+    { type: "boolean", name: "tool-calling", description: "Allow the model to call bot functions mid-reply (dice, 8-ball, booru, lookups)." },
+    { type: "boolean", name: "image-input", description: "Allow bounded image attachments from Discord." },
+    { type: "boolean", name: "image-generation", description: "Allow the model to generate images in mention chat." },
+    { type: "boolean", name: "include-sources", description: "Include web citation links in replies." },
+    {
+      type: "integer", name: "max-images", description: "Maximum images accepted per request.",
+      minValue: CHAT_LIMITS.maxImagesPerRequest.min, maxValue: CHAT_LIMITS.maxImagesPerRequest.max,
+    },
+    { type: "attachment", name: "personality", description: "Upload the guild personality as a Markdown file." },
+    { type: "boolean", name: "use-default-personality", description: "Remove the uploaded personality and use the built-in/default file." },
+    { type: "attachment", name: "examples", description: "Upload example character exchanges as a Markdown file." },
+    { type: "boolean", name: "use-default-examples", description: "Remove the uploaded examples file." },
+    { type: "boolean", name: "persona-drift", description: "Experimental: let the character's mood/quirks slowly evolve from conversation activity." },
+    { type: "boolean", name: "reset-persona-drift", description: "Wipe the character's evolved mood/quirk history and start over." },
+  ],
   handle: async (context, deps, previousProfile, input) => {
     const enabled = context.interaction.options.getBoolean("enabled");
     const role = context.interaction.options.getRole("role");

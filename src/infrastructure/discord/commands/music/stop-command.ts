@@ -1,5 +1,3 @@
-import { SlashCommandBuilder } from "discord.js";
-
 import { CommandModule, type BotCommand, type ChatToolBinding, type CommandContext } from "../../../../application/commands/command.js";
 import type { ChatToolContext, ChatToolResult } from "../../../../application/chat/tools/chat-tool.js";
 import { evaluateMusicToolAccess, formatMusicError, musicPermissionDeniedMessage } from "../../../../application/chat/tools/music-tool-support.js";
@@ -11,9 +9,10 @@ import {
 } from "./music-command-support.js";
 
 export class StopCommand implements BotCommand {
-  public readonly definition = new SlashCommandBuilder()
-    .setName("stop")
-    .setDescription("Stops playback, clears the queue, and disconnects the bot.");
+  public readonly definition = {
+    name: "stop",
+    description: "Stops playback, clears the queue, and disconnects the bot.",
+  };
 
   public readonly module = CommandModule.Music;
   public readonly access = musicPlaybackAccessPolicy;

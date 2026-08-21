@@ -27,14 +27,15 @@ export const templateSetting: ReadOnlySettingDefinition = {
   kind: "readOnly",
   name: "template",
   description: "Sends a starter personality.md or examples.md to edit and upload.",
-  configureOptions: (b) => b.addStringOption((o) => o
-    .setName("kind")
-    .setDescription("Which starter file to send.")
-    .setRequired(true)
-    .addChoices(
-      { name: "Personality", value: "personality" satisfies TemplateKind },
-      { name: "Examples", value: "examples" satisfies TemplateKind },
-    )),
+  configureOptions: () => [
+    {
+      type: "string", name: "kind", description: "Which starter file to send.", required: true,
+      choices: [
+        { name: "Personality", value: "personality" satisfies TemplateKind },
+        { name: "Examples", value: "examples" satisfies TemplateKind },
+      ],
+    },
+  ],
   run: (context): Promise<InteractionEditReplyOptions> => {
     const kind = context.interaction.options.getString("kind", true) as TemplateKind;
     const template = templates[kind];

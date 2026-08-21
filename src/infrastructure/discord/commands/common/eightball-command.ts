@@ -1,4 +1,4 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { EmbedBuilder } from "discord.js";
 
 import { CommandModule, CommandResponseVisibility, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
@@ -7,14 +7,13 @@ import { pickEightBallAnswer } from "../../../../domain/games/eightball.js";
 const eightBallImageUrl = "https://cdn.jsdelivr.net/gh/jdecked/twemoji@latest/assets/72x72/1f3b1.png";
 
 export class EightBallCommand implements BotCommand {
-  public readonly definition = new SlashCommandBuilder()
-    .setName("8ball")
-    .setDescription("Ask the magic 8-ball a question.")
-    .addStringOption((option) => option
-      .setName("question")
-      .setDescription("What do you want to ask?")
-      .setMaxLength(500)
-      .setRequired(true));
+  public readonly definition = {
+    name: "8ball",
+    description: "Ask the magic 8-ball a question.",
+    options: [
+      { type: "string", name: "question", description: "What do you want to ask?", maxLength: 500, required: true },
+    ],
+  } satisfies BotCommand["definition"];
 
   public readonly module = CommandModule.Common;
   public readonly access = publicAccessPolicy;

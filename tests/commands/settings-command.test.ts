@@ -77,7 +77,7 @@ function profile(): GuildConfiguration {
       includeSources: true,
       maxImagesPerRequest: 2,
       ambientCooldownSeconds: 20,
-      channelHistoryLimit: 8, channelMemoryModes: {}, personaDriftEnabled: false,
+      channelHistoryLimit: 8, channelMemoryModes: {}, personaDriftEnabled: false, contextScanChannelIds: [], contextDailyChannelIds: [], contextSeedDays: 7,
     },
     sourceFile: "test.yaml",
   };
@@ -135,6 +135,12 @@ function providerWith(current: GuildConfiguration): GuildConfigurationProvider {
           ...stored.chat,
           ...(input.chatbotCooldownSeconds !== undefined ? { cooldownSeconds: input.chatbotCooldownSeconds } : {}),
           ...(input.chatbotDisabledToolNames !== undefined ? { disabledTools: [...input.chatbotDisabledToolNames] } : {}),
+          ...(input.contextScanAddChannelId !== undefined
+            ? { contextScanChannelIds: [...new Set([...stored.chat.contextScanChannelIds, input.contextScanAddChannelId])] }
+            : {}),
+          ...(input.contextDailyAddChannelId !== undefined
+            ? { contextDailyChannelIds: [...new Set([...stored.chat.contextDailyChannelIds, input.contextDailyAddChannelId])] }
+            : {}),
         },
       };
       return Promise.resolve(stored);
@@ -146,15 +152,11 @@ function providerWith(current: GuildConfiguration): GuildConfigurationProvider {
 describe("SettingsCommand", () => {
   it("exposes a per-guild image-generation toggle", () => {
     const command = new SettingsCommand({} as never, {} as never, applicationEmojiCatalog as never);
-    const definition = command.definition.toJSON();
-    const chatGroup = definition.options?.find((option) => option.name === "chat");
-    const chatbot = chatGroup && "options" in chatGroup
-      ? chatGroup.options?.find((option: { name: string }) => option.name === "chatbot")
-      : undefined;
+    const definition = command.definition;
+    const chatGroup = definition.subcommandGroups?.find((group) => group.name === "chat");
+    const chatbot = chatGroup?.subcommands.find((subcommand) => subcommand.name === "chatbot");
 
-    expect(chatbot && "options" in chatbot
-      ? chatbot.options?.map((option: { name: string }) => option.name)
-      : []).toContain("image-generation");
+    expect(chatbot?.options?.map((option) => option.name) ?? []).toContain("image-generation");
   });
 
   it("rejects removing the last music-controller role while music is enabled", () => {
@@ -229,6 +231,43 @@ describe("SettingsCommand", () => {
 
     expect(edited.text).toContain("🟢 **play_music**");
     expect(edited.text).toContain("🔴 **roll_dice**");
+  });
+
+  it("rejects context-scan-add when no chat provider supports channel summarization", async () => {
+    const command = new SettingsCommand(
+      providerWith(profile()), {} as never, applicationEmojiCatalog as never,
+      undefined, undefined, undefined, false,
+    );
+    const { context, edited } = fakeContext("context-scan-add", { channel: { id: "999888777666555444" } });
+
+    await command.execute(context);
+
+    expect(edited.text).toContain("can't be queued");
+  });
+
+  it("rejects context-daily-add when no chat provider supports channel summarization", async () => {
+    const command = new SettingsCommand(
+      providerWith(profile()), {} as never, applicationEmojiCatalog as never,
+      undefined, undefined, undefined, false,
+    );
+    const { context, edited } = fakeContext("context-daily-add", { channel: { id: "999888777666555444" } });
+
+    await command.execute(context);
+
+    expect(edited.text).toContain("can't be queued");
+  });
+
+  it("queues context-scan-add when a summarization-capable provider is configured, noting the paused chatbot feature", async () => {
+    const command = new SettingsCommand(
+      providerWith(profile()), {} as never, applicationEmojiCatalog as never,
+      undefined, undefined, undefined, true,
+    );
+    const { context, edited } = fakeContext("context-scan-add", { channel: { id: "999888777666555444" } });
+
+    await command.execute(context);
+
+    expect(edited.text).toContain("queued for a one-time history scan");
+    expect(edited.text).toContain("currently disabled");
   });
 
   it("resolves custom emojis by mention or local name", () => {

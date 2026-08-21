@@ -1,5 +1,3 @@
-import type { GuildMember } from "discord.js";
-
 import type { GuildConfiguration } from "../../config/guild-configuration.js";
 import type { CommandModule } from "../../application/commands/command.js";
 import type { AccessDecision } from "./access-decision.js";
@@ -13,8 +11,12 @@ export interface AccessSubject {
   guildId: string;
   channelId: string;
   userId: string;
-  member: GuildMember;
-  botMember: GuildMember | null;
+  roleIds: readonly string[];
+  // Combined Discord permission bitfield (a plain bigint — see
+  // access-policy.ts's CommandAccessPolicy for why). Null botPermissions
+  // means the bot's own member couldn't be resolved (see botPermissionRule).
+  memberPermissions: bigint;
+  botPermissions: bigint | null;
   isOwner: boolean;
 }
 

@@ -25,8 +25,9 @@ export const auditSetting: ReadOnlySettingDefinition = {
   kind: "readOnly",
   name: "audit",
   description: "Shows recent settings/setup change log entries.",
-  configureOptions: (b) => b.addIntegerOption((o) =>
-    o.setName("count").setDescription("How many recent entries to show (default 10).").setMinValue(1).setMaxValue(20)),
+  configureOptions: () => [
+    { type: "integer", name: "count", description: "How many recent entries to show (default 10).", minValue: 1, maxValue: 20 },
+  ],
   run: (context, deps) => formatAuditSummary(
     deps.auditLogService,
     context.interaction.guildId!,

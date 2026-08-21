@@ -1,4 +1,4 @@
-import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "discord.js";
 
 import { CommandModule, CommandResponseVisibility, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
@@ -31,15 +31,20 @@ export class BooruSearchCommand implements BotCommand {
     private readonly nsfw: boolean,
   ) {
     this.module = nsfw ? CommandModule.Nsfw : CommandModule.Common;
-    this.definition = new SlashCommandBuilder()
-      .setName(site)
-      .setDescription(`Searches for images on ${site}.`)
-      .setNSFW(nsfw)
-      .addStringOption((option) =>
-        option.setName("query").setDescription("Tags to search for (e.g. wolf, dragon, solo). Leave empty for a random post."),
-      )
-      .addStringOption((option) => option.setName("type").setDescription("File type.").addChoices(...typeChoices))
-      .addStringOption((option) => option.setName("order").setDescription("Sort order.").addChoices(...orderChoices));
+    this.definition = {
+      name: site,
+      description: `Searches for images on ${site}.`,
+      nsfw,
+      options: [
+        {
+          type: "string",
+          name: "query",
+          description: "Tags to search for (e.g. wolf, dragon, solo). Leave empty for a random post.",
+        },
+        { type: "string", name: "type", description: "File type.", choices: typeChoices },
+        { type: "string", name: "order", description: "Sort order.", choices: orderChoices },
+      ],
+    };
   }
 
   public async execute(context: CommandContext): Promise<void> {

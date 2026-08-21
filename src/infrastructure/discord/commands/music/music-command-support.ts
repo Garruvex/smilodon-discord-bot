@@ -11,7 +11,7 @@ export function createPlaybackActor(
     guildId: interaction.guildId,
     textChannelId: interaction.channelId,
     userId: interaction.user.id,
-    member: interaction.member,
+    voiceChannelId: interaction.member.voice.channelId,
   };
 }
 
@@ -27,7 +27,7 @@ export function createPlaybackActorFromMember(
     guildId,
     textChannelId,
     userId: member.id,
-    member,
+    voiceChannelId: member.voice.channelId,
   };
 }
 

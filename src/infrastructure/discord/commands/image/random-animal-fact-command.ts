@@ -1,4 +1,4 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { EmbedBuilder } from "discord.js";
 import { z } from "zod";
 
 import { CommandModule, CommandResponseVisibility, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
@@ -17,9 +17,10 @@ export class RandomAnimalFactCommand implements BotCommand {
     private readonly emoji: string,
     private readonly footer: string,
   ) {
-    this.definition = new SlashCommandBuilder()
-      .setName(species)
-      .setDescription(`Gets a random ${species} image and fact.`);
+    this.definition = {
+      name: species,
+      description: `Gets a random ${species} image and fact.`,
+    };
   }
 
   public async execute(context: CommandContext): Promise<void> {

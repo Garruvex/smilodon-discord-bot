@@ -1,19 +1,12 @@
-import type {
-  ChatInputCommandInteraction,
-  SlashCommandBuilder,
-  SlashCommandOptionsOnlyBuilder,
-  SlashCommandSubcommandsOnlyBuilder,
-} from "discord.js";
+import type { ChatInputCommandInteraction } from "discord.js";
 import type { Logger } from "pino";
 
 import type { CommandAccessPolicy } from "../../domain/access/access-policy.js";
 import type { CommandResponses } from "./command-responses.js";
 import type { ChatToolContext, ChatToolParameterSchema, ChatToolResult } from "../chat/tools/chat-tool.js";
+import type { CommandMetadata } from "./command-metadata.js";
 
-export type CommandDefinition =
-  | SlashCommandBuilder
-  | SlashCommandOptionsOnlyBuilder
-  | SlashCommandSubcommandsOnlyBuilder;
+export type CommandDefinition = CommandMetadata;
 
 export enum CommandModule {
   Bootstrap = "bootstrap",

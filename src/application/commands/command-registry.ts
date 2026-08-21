@@ -1,5 +1,3 @@
-import type { RESTPostAPIChatInputApplicationCommandsJSONBody } from "discord.js";
-
 import type { BotCommand } from "./command.js";
 import type { CommandModule } from "./command.js";
 import { RoleMatchMode } from "../../domain/access/access-policy.js";
@@ -44,18 +42,6 @@ export class CommandRegistry {
     enabledModules: ReadonlySet<CommandModule>,
   ): readonly BotCommand[] {
     return this.getAll().filter((command) => enabledModules.has(command.module));
-  }
-
-  public toApplicationCommandData(): RESTPostAPIChatInputApplicationCommandsJSONBody[] {
-    return this.getAll().map((command) => command.definition.toJSON());
-  }
-
-  public toApplicationCommandDataForModules(
-    enabledModules: ReadonlySet<CommandModule>,
-  ): RESTPostAPIChatInputApplicationCommandsJSONBody[] {
-    return this.getByEnabledModules(enabledModules).map((command) =>
-      command.definition.toJSON(),
-    );
   }
 
   private validate(command: BotCommand): void {

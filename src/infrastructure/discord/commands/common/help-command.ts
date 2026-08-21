@@ -1,6 +1,6 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { EmbedBuilder } from "discord.js";
 
-import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
+import { CommandModule, type BotCommand, type CommandContext, type CommandDefinition } from "../../../../application/commands/command.js";
 import type { CommandRegistry } from "../../../../application/commands/command-registry.js";
 import type { AccessPolicyService } from "../../../../application/access/access-policy-service.js";
 import type { GuildConfigurationProvider } from "../../../../config/guild-configuration-provider.js";
@@ -16,12 +16,13 @@ const moduleLabels: Record<CommandModule, string> = {
 };
 
 export class HelpCommand implements BotCommand {
-  public readonly definition = new SlashCommandBuilder()
-    .setName("help")
-    .setDescription("Lists available commands, or shows details for one.")
-    .addStringOption((option) =>
-      option.setName("command").setDescription("A command name to view details for.").setRequired(false),
-    );
+  public readonly definition = {
+    name: "help",
+    description: "Lists available commands, or shows details for one.",
+    options: [
+      { type: "string", name: "command", description: "A command name to view details for.", required: false },
+    ],
+  } satisfies CommandDefinition;
 
   public readonly module = CommandModule.Common;
   public readonly access = publicAccessPolicy;
@@ -48,13 +49,13 @@ export class HelpCommand implements BotCommand {
         return;
       }
 
-      const usage = [
-        `/${command.definition.name}`,
-        ...(command.definition.options ?? []).map((option) => {
-          const json = option.toJSON();
-          return json.required ? `<${json.name}>` : `[${json.name}]`;
-        }),
-      ].join(" ");
+      const usageTokens = [
+        ...(command.definition.options ?? []).map((option) =>
+          option.required ? `<${option.name}>` : `[${option.name}]`),
+        ...(command.definition.subcommands ?? []).map((subcommand) => `[${subcommand.name}]`),
+        ...(command.definition.subcommandGroups ?? []).map((group) => `[${group.name}]`),
+      ];
+      const usage = [`/${command.definition.name}`, ...usageTokens].join(" ");
 
       const embed = new EmbedBuilder()
         .setColor(embedColor)

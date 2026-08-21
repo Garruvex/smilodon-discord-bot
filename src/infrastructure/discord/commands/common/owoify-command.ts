@@ -1,14 +1,17 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { EmbedBuilder } from "discord.js";
 
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import { owoify } from "../../../../application/text/owoifier.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
 
 export class OwoifyCommand implements BotCommand {
-  public readonly definition = new SlashCommandBuilder()
-    .setName("owoify")
-    .setDescription("Twanswates a sentence into owo speak.")
-    .addStringOption((option) => option.setName("text").setDescription("The sentence to owoify.").setMaxLength(1_000).setRequired(true));
+  public readonly definition = {
+    name: "owoify",
+    description: "Twanswates a sentence into owo speak.",
+    options: [
+      { type: "string", name: "text", description: "The sentence to owoify.", maxLength: 1_000, required: true },
+    ],
+  } satisfies BotCommand["definition"];
 
   public readonly module = CommandModule.Common;
   public readonly access = publicAccessPolicy;

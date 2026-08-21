@@ -1,5 +1,3 @@
-import { SlashCommandBuilder } from "discord.js";
-
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import type { PlaybackService } from "../../../../application/music/playback-service.js";
 import { createPlaybackActor, musicPlaybackAccessPolicy } from "./music-command-support.js";
@@ -45,13 +43,13 @@ function formatDuration(milliseconds: number): string {
 }
 
 export class SeekCommand implements BotCommand {
-  public readonly definition = new SlashCommandBuilder()
-    .setName("seek")
-    .setDescription("Seeks to a specific time in the current track.")
-    .addStringOption((option) => option
-      .setName("time")
-      .setDescription("Time to seek to, e.g. 90, 1:30, or 1h2m3s.")
-      .setRequired(true));
+  public readonly definition = {
+    name: "seek",
+    description: "Seeks to a specific time in the current track.",
+    options: [
+      { type: "string", name: "time", description: "Time to seek to, e.g. 90, 1:30, or 1h2m3s.", required: true },
+    ],
+  } satisfies BotCommand["definition"];
   public readonly module = CommandModule.Music;
   public readonly access = musicPlaybackAccessPolicy;
 

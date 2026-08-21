@@ -9,6 +9,13 @@ import type { AccessRule } from "../../domain/access/access-rule.js";
 // a live Discord interaction (AccessPolicyService) or a chat-tool invocation
 // (music-tool-support.ts) via AccessPolicyEngine — see access-policy-engine.ts.
 
+// Mirrors discord.js PermissionsBitField.has()'s AND semantics — every
+// listed permission must be granted, not just one of them.
+function hasAllPermissions(granted: bigint, required: readonly bigint[]): boolean {
+  const mask = required.reduce((acc, bit) => acc | bit, 0n);
+  return (granted & mask) === mask;
+}
+
 function hasAnyRole(memberRoleIds: ReadonlySet<string>, configuredRoleIds: ReadonlySet<string>): boolean {
   for (const roleId of configuredRoleIds) {
     if (memberRoleIds.has(roleId)) return true;
@@ -72,7 +79,7 @@ export const controlPanelChannelRule: AccessRule = (subject, _policy, _module, g
 
 export const restrictedRoleRule: AccessRule = (subject, policy, _module, guildConfiguration) => {
   if (!guildConfiguration) return null;
-  const memberRoleIds = new Set(subject.member.roles.cache.keys());
+  const memberRoleIds = new Set(subject.roleIds);
   if (hasAnyRole(memberRoleIds, guildConfiguration.roles.restricted) && !(subject.isOwner && policy.ownerBypass)) {
     return { allowed: false, reason: AccessDenialReason.RestrictedRole };
   }
@@ -109,7 +116,7 @@ export const musicChannelRule: AccessRule = (subject, policy, commandModule, gui
 
 export const requiredRoleGroupRule: AccessRule = (subject, policy, _module, guildConfiguration) => {
   if (subject.isOwner && policy.ownerBypass) return null;
-  const memberRoleIds = new Set(subject.member.roles.cache.keys());
+  const memberRoleIds = new Set(subject.roleIds);
   if (!guildConfiguration && policy.roles.match !== RoleMatchMode.None) {
     return { allowed: false, reason: AccessDenialReason.MissingRequiredRole };
   }
@@ -121,7 +128,7 @@ export const requiredRoleGroupRule: AccessRule = (subject, policy, _module, guil
 
 export const memberPermissionRule: AccessRule = (subject, policy) => {
   if (subject.isOwner && policy.ownerBypass) return null;
-  if (!subject.member.permissions.has(policy.requiredMemberPermissions)) {
+  if (!hasAllPermissions(subject.memberPermissions, policy.requiredMemberPermissions)) {
     return { allowed: false, reason: AccessDenialReason.MissingMemberPermission };
   }
   return null;
@@ -131,7 +138,7 @@ export const memberPermissionRule: AccessRule = (subject, policy) => {
 // them would let a command report "allowed" while the bot itself can't
 // execute it in Discord.
 export const botPermissionRule: AccessRule = (subject, policy) => {
-  if (!subject.botMember || !subject.botMember.permissions.has(policy.requiredBotPermissions)) {
+  if (subject.botPermissions === null || !hasAllPermissions(subject.botPermissions, policy.requiredBotPermissions)) {
     return { allowed: false, reason: AccessDenialReason.BotMissingPermission };
   }
   return null;

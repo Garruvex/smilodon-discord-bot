@@ -40,6 +40,7 @@ function applicationConfiguration(): ApplicationConfiguration {
     },
     chat: null,
     utilityChat: null,
+    embeddings: null,
   };
 }
 
@@ -106,7 +107,7 @@ function guildConfiguration(): GuildConfiguration {
       includeSources: true,
       maxImagesPerRequest: 2,
       ambientCooldownSeconds: 20,
-      channelHistoryLimit: 8, channelMemoryModes: {}, personaDriftEnabled: false,
+      channelHistoryLimit: 8, channelMemoryModes: {}, personaDriftEnabled: false, contextScanChannelIds: [], contextDailyChannelIds: [], contextSeedDays: 7,
     },
     sourceFile: "test.yaml",
   };
@@ -140,11 +141,11 @@ function interaction(
     user: { id: userId },
     member: {
       roles: { cache: new Map(roleIds.map((roleId) => [roleId, {}])) },
-      permissions: { has: () => true },
+      permissions: { bitfield: -1n },
     },
     guild: {
       members: {
-        me: { permissions: { has: () => botHasPermissions } },
+        me: { permissions: { bitfield: botHasPermissions ? -1n : 0n } },
       },
     },
   } as unknown as ChatInputCommandInteraction;
@@ -287,10 +288,11 @@ describe("AccessPolicyService", () => {
       applicationConfiguration(),
       provider(guildConfiguration()),
     );
+    const policy = { ...controllerPolicy, requiredBotPermissions: [1n] };
 
     expect(
       service.evaluate(
-        controllerPolicy,
+        policy,
         CommandModule.Music,
         interaction([], ownerId, musicChannelId, false),
       ),

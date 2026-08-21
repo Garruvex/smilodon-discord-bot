@@ -1,6 +1,5 @@
 import type { GuildConfiguration } from "../../../src/config/guild-configuration.js";
 import type { GuildConfigurationProvider } from "../../../src/config/guild-configuration-provider.js";
-import type { GuildMember } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ChatToolContext } from "../../../src/application/chat/tools/chat-tool.js";
@@ -15,14 +14,10 @@ import { VolumeCommand } from "../../../src/infrastructure/discord/commands/musi
 // music-tool-support.ts's evaluateMusicToolAccess), rather than a bespoke
 // role-only check.
 
-function fakeMember(roleIds: readonly string[]): GuildMember {
-  const cache = new Map(roleIds.map((id) => [id, { id }]));
-  return {
-    id: "user-1",
-    roles: { cache },
-    permissions: { has: () => true },
-    guild: { members: { me: { permissions: { has: () => true } } } },
-  } as unknown as GuildMember;
+function resolveAccessSubjectFields(
+  roleIds: readonly string[],
+): () => { roleIds: readonly string[]; memberPermissions: bigint; botPermissions: bigint | null } {
+  return () => ({ roleIds, memberPermissions: -1n, botPermissions: -1n });
 }
 
 function fakeProfiles(overrides: Partial<{
@@ -62,7 +57,8 @@ function contextWithMusic(roleIds: readonly string[] = ["role-controller"]): Cha
     channelIsNsfw: false,
     isOwner: false,
     music: {
-      actor: { guildId: "guild-1", textChannelId: "channel-1", userId: "user-1", member: fakeMember(roleIds) },
+      actor: { guildId: "guild-1", textChannelId: "channel-1", userId: "user-1", voiceChannelId: null },
+      resolveAccessSubjectFields: resolveAccessSubjectFields(roleIds),
       volumeMaximum: 150,
       musicControllerRoleIds: new Set(["role-controller"]),
       botAdministratorRoleIds: new Set(),

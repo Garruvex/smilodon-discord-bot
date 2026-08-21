@@ -32,12 +32,14 @@ export class AccessPolicyService {
     }
 
     const guildConfiguration = this.guildConfigurationProvider.find(interaction.guildId);
+    const botMember = interaction.guild.members.me;
     const subject: AccessSubject = {
       guildId: interaction.guildId,
       channelId: interaction.channelId,
       userId: interaction.user.id,
-      member: interaction.member,
-      botMember: interaction.guild.members.me,
+      roleIds: [...interaction.member.roles.cache.keys()],
+      memberPermissions: interaction.member.permissions.bitfield,
+      botPermissions: botMember?.permissions.bitfield ?? null,
       isOwner: this.configuration.ownerUserIds.has(interaction.user.id),
     };
 

@@ -1,14 +1,13 @@
-import type { Guild, GuildMember, Role, TextChannel } from "discord.js";
-
 export interface GuildSetupInitializeRequest {
-  guild: Guild;
-  initializedBy: GuildMember;
+  guildId: string;
+  guildName: string;
+  initializedByUserId: string;
   displayName: string;
   idleImageUrl: string | null;
-  controlChannel: TextChannel | null;
-  botAdministratorRole: Role | null;
-  musicControllerRole: Role | null;
-  restrictedRole: Role | null;
+  controlChannelId: string | null;
+  botAdministratorRoleId: string | null;
+  musicControllerRoleId: string | null;
+  restrictedRoleId: string | null;
 }
 
 export interface GuildSetupResult {
@@ -39,12 +38,12 @@ export interface GuildSetupStatus {
     restricted: ReadonlySet<string>;
     chatbot: ReadonlySet<string>;
   } | null;
-  botPermissions: GuildSetupBotPermissionStatus | null;
+  botPermissions: GuildSetupBotPermissionStatus;
 }
 
 export interface GuildSetupService {
   initialize(request: GuildSetupInitializeRequest): Promise<GuildSetupResult>;
-  status(guildId: string, guild?: Guild): GuildSetupStatus;
+  status(guildId: string): Promise<GuildSetupStatus>;
 }
 
 export class DeferredGuildSetupService implements GuildSetupService {
@@ -59,8 +58,8 @@ export class DeferredGuildSetupService implements GuildSetupService {
     return this.requireService().initialize(request);
   }
 
-  public status(guildId: string, guild?: Guild): GuildSetupStatus {
-    return this.requireService().status(guildId, guild);
+  public status(guildId: string): Promise<GuildSetupStatus> {
+    return this.requireService().status(guildId);
   }
 
   private requireService(): GuildSetupService {

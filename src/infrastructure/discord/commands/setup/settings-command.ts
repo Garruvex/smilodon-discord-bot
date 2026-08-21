@@ -1,6 +1,5 @@
-import { SlashCommandBuilder, type SlashCommandSubcommandsOnlyBuilder } from "discord.js";
-
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
+import type { CommandMetadata, SubcommandGroupMetadata } from "../../../../application/commands/command-metadata.js";
 import type { ChatToolRegistry } from "../../../../application/chat/tools/chat-tool-registry.js";
 import type { UpdateGuildConfigurationInput, GuildConfigurationProvider } from "../../../../config/guild-configuration-provider.js";
 import type { GuildConfiguration } from "../../../../config/guild-configuration.js";
@@ -10,6 +9,7 @@ import type { ControlChannelService } from "../../../../application/control-pane
 import type { ApplicationEmojiCatalog } from "../../application-emoji-catalog.js";
 import type { AuditLogService } from "../../../../application/audit/audit-log-service.js";
 import type { PersonaDriftStore } from "../../../../application/chat/persona-drift-store.js";
+import type { ChannelSummaryCheckpointStore } from "../../../../application/context/channel-summary-checkpoint-store.js";
 import {
   settingDefinitionsByName,
   settingGroups,
@@ -19,23 +19,21 @@ import {
 } from "./settings/index.js";
 import { renderProgressPreview } from "./settings/settings-support.js";
 
-function buildDefinition(): SlashCommandSubcommandsOnlyBuilder {
-  let builder: SlashCommandSubcommandsOnlyBuilder = new SlashCommandBuilder()
-    .setName("settings")
-    .setDescription("Updates this server's bot configuration.");
-  for (const group of settingGroups) {
-    builder = builder.addSubcommandGroup((g) => {
-      g.setName(group.name).setDescription(group.description);
-      for (const setting of group.settings) {
-        g.addSubcommand((sub) => {
-          const named = sub.setName(setting.name).setDescription(setting.description);
-          return setting.configureOptions ? setting.configureOptions(named) : named;
-        });
-      }
-      return g;
-    });
-  }
-  return builder;
+function buildDefinition(): CommandMetadata {
+  const subcommandGroups: SubcommandGroupMetadata[] = settingGroups.map((group) => ({
+    name: group.name,
+    description: group.description,
+    subcommands: group.settings.map((setting) => ({
+      name: setting.name,
+      description: setting.description,
+      options: setting.configureOptions?.() ?? [],
+    })),
+  }));
+  return {
+    name: "settings",
+    description: "Updates this server's bot configuration.",
+    subcommandGroups,
+  };
 }
 
 // The slash-command definition, per-subcommand dispatch, and confirmation
@@ -62,10 +60,13 @@ export class SettingsCommand implements BotCommand {
     private readonly applicationEmojiCatalog: ApplicationEmojiCatalog,
     private readonly auditLogService?: AuditLogService,
     personaDriftStore?: PersonaDriftStore,
+    channelSummaryCheckpointStore?: ChannelSummaryCheckpointStore,
+    channelSummaryProviderAvailable = false,
   ) {
-    this.deps = { assets, applicationEmojiCatalog };
+    this.deps = { assets, applicationEmojiCatalog, channelSummaryProviderAvailable };
     if (auditLogService) this.deps.auditLogService = auditLogService;
     if (personaDriftStore) this.deps.personaDriftStore = personaDriftStore;
+    if (channelSummaryCheckpointStore) this.deps.channelSummaryCheckpointStore = channelSummaryCheckpointStore;
   }
 
   public bindControlChannelService(service: ControlChannelService): void {

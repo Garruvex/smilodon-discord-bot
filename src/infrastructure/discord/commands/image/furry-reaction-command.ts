@@ -1,4 +1,4 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { EmbedBuilder } from "discord.js";
 import { z } from "zod";
 
 import { CommandModule, CommandResponseVisibility, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
@@ -21,10 +21,11 @@ export class FurryReactionCommand implements BotCommand {
     nsfw: boolean,
   ) {
     this.module = nsfw ? CommandModule.Nsfw : CommandModule.Common;
-    this.definition = new SlashCommandBuilder()
-      .setName(key)
-      .setDescription(description)
-      .setNSFW(nsfw);
+    this.definition = {
+      name: key,
+      description,
+      nsfw,
+    };
   }
 
   public async execute(context: CommandContext): Promise<void> {

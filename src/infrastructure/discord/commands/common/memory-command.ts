@@ -1,5 +1,3 @@
-import { SlashCommandBuilder } from "discord.js";
-
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
 import type { ChatStateStore } from "../../../../application/chat/chat-state-store.js";
@@ -12,27 +10,28 @@ const monthNames = [
 ];
 
 export class MemoryCommand implements BotCommand {
-  public readonly definition = new SlashCommandBuilder()
-    .setName("memory")
-    .setDescription("View or clear what the bot remembers about you from chat.")
-    .addSubcommand((command) =>
-      command.setName("list").setDescription("Lists what the bot remembers about you in this server."),
-    )
-    .addSubcommand((command) =>
-      command.setName("forget").setDescription("Deletes something the bot remembers about you.")
-        .addStringOption((option) =>
-          option.setName("id").setDescription("The memory ID to forget, from /memory list."),
-        )
-        .addBooleanOption((option) =>
-          option.setName("all").setDescription("Forget everything the bot remembers about you in this server."),
-        ),
-    )
-    .addSubcommand((command) =>
-      command.setName("notes").setDescription("Controls whether the bot DMs you extra notes about your chat requests.")
-        .addBooleanOption((option) =>
-          option.setName("dm").setDescription("Send notes like dropped images or truncated replies as a DM. Omit to check the current setting."),
-        ),
-    );
+  public readonly definition = {
+    name: "memory",
+    description: "View or clear what the bot remembers about you from chat.",
+    subcommands: [
+      { name: "list", description: "Lists what the bot remembers about you in this server." },
+      {
+        name: "forget",
+        description: "Deletes something the bot remembers about you.",
+        options: [
+          { type: "string", name: "id", description: "The memory ID to forget, from /memory list." },
+          { type: "boolean", name: "all", description: "Forget everything the bot remembers about you in this server." },
+        ],
+      },
+      {
+        name: "notes",
+        description: "Controls whether the bot DMs you extra notes about your chat requests.",
+        options: [
+          { type: "boolean", name: "dm", description: "Send notes like dropped images or truncated replies as a DM. Omit to check the current setting." },
+        ],
+      },
+    ],
+  } satisfies BotCommand["definition"];
 
   public readonly module = CommandModule.Common;
   public readonly access = publicAccessPolicy;

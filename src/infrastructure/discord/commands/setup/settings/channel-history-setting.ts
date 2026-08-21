@@ -5,10 +5,13 @@ export const channelHistorySetting: MutationSettingDefinition = {
   kind: "mutation",
   name: "channel-history",
   description: "Controls whether the bot includes recent channel messages (from anyone) as ambient chat context.",
-  configureOptions: (b) => b
-    .addBooleanOption((o) => o.setName("enabled").setDescription("Whether ambient channel history is on."))
-    .addIntegerOption((o) => o.setName("limit").setDescription("How many recent channel messages to include.")
-      .setMinValue(CHAT_LIMITS.channelHistoryLimit.min).setMaxValue(CHAT_LIMITS.channelHistoryLimit.max)),
+  configureOptions: () => [
+    { type: "boolean", name: "enabled", description: "Whether ambient channel history is on." },
+    {
+      type: "integer", name: "limit", description: "How many recent channel messages to include.",
+      minValue: CHAT_LIMITS.channelHistoryLimit.min, maxValue: CHAT_LIMITS.channelHistoryLimit.max,
+    },
+  ],
   handle: (context, _deps, _previousProfile, input) => {
     const enabled = context.interaction.options.getBoolean("enabled");
     const limit = context.interaction.options.getInteger("limit");

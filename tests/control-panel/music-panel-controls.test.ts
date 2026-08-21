@@ -8,12 +8,12 @@ import type { MusicPlayerGateway } from "../../src/application/music/music-playe
 import type { PlaybackActor, PlaybackService } from "../../src/application/music/playback-service.js";
 import type { GuildConfiguration } from "../../src/config/guild-configuration.js";
 
-const actor = {
+const actor: PlaybackActor = {
   guildId: "123456789012345678",
   textChannelId: "234567890123456789",
   userId: "345678901234567890",
-  member: {},
-} as PlaybackActor;
+  voiceChannelId: null,
+};
 
 const profile = {
   music: {

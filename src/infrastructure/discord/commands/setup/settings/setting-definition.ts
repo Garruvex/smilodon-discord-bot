@@ -1,10 +1,12 @@
-import type { InteractionEditReplyOptions, SlashCommandSubcommandBuilder } from "discord.js";
+import type { InteractionEditReplyOptions } from "discord.js";
 
 import type { CommandContext } from "../../../../../application/commands/command.js";
+import type { CommandOptionMetadata } from "../../../../../application/commands/command-metadata.js";
 import type { GuildAssetStore } from "../../../../../application/assets/guild-asset-store.js";
 import type { AuditLogService } from "../../../../../application/audit/audit-log-service.js";
 import type { ChatToolRegistry } from "../../../../../application/chat/tools/chat-tool-registry.js";
 import type { PersonaDriftStore } from "../../../../../application/chat/persona-drift-store.js";
+import type { ChannelSummaryCheckpointStore } from "../../../../../application/context/channel-summary-checkpoint-store.js";
 import type { GuildConfiguration } from "../../../../../config/guild-configuration.js";
 import type { UpdateGuildConfigurationInput } from "../../../../../config/guild-configuration-provider.js";
 import type { ApplicationEmojiCatalog } from "../../../application-emoji-catalog.js";
@@ -25,6 +27,16 @@ export interface SettingDeps {
   // bootstrap/dependencies.ts. chatbot-setting.ts's reset-persona-drift
   // option no-ops in that case, same as any other chat feature would.
   personaDriftStore?: PersonaDriftStore;
+  // Used by channel-context-setting.ts's context-status to show per-channel
+  // scan/daily run state (last run time, cursor, lastError) alongside the
+  // config lists — checkpoints live outside GuildConfiguration.
+  channelSummaryCheckpointStore?: ChannelSummaryCheckpointStore;
+  // False (or absent) when no chat provider is configured, or the
+  // configured one doesn't implement summarizeChannelMessages — see
+  // bootstrap/dependencies.ts's channelSummaryScheduler wiring. context-scan-add
+  // and context-daily-add reject up front in that case instead of claiming a
+  // channel is queued when nothing will ever process it.
+  channelSummaryProviderAvailable?: boolean;
 }
 
 export interface FieldChange {
@@ -35,7 +47,7 @@ export interface FieldChange {
 interface BaseSettingDefinition {
   name: string;
   description: string;
-  configureOptions?(builder: SlashCommandSubcommandBuilder): SlashCommandSubcommandBuilder;
+  configureOptions?(): readonly CommandOptionMetadata[];
 }
 
 // A setting that patches the guild config. `handle` mutates `input` in place

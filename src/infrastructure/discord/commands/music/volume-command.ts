@@ -1,5 +1,3 @@
-import { SlashCommandBuilder } from "discord.js";
-
 import { CommandModule, type BotCommand, type ChatToolBinding, type CommandContext } from "../../../../application/commands/command.js";
 import type { ChatToolContext, ChatToolResult } from "../../../../application/chat/tools/chat-tool.js";
 import { evaluateMusicToolAccess, formatMusicError, musicPermissionDeniedMessage } from "../../../../application/chat/tools/music-tool-support.js";
@@ -12,8 +10,13 @@ interface SetMusicVolumeToolArgs {
 }
 
 export class VolumeCommand implements BotCommand {
-  public readonly definition = new SlashCommandBuilder().setName("volume").setDescription("Sets playback volume.")
-    .addIntegerOption((option) => option.setName("level").setDescription("Volume percentage.").setMinValue(0).setMaxValue(1000).setRequired(true));
+  public readonly definition = {
+    name: "volume",
+    description: "Sets playback volume.",
+    options: [
+      { type: "integer", name: "level", description: "Volume percentage.", minValue: 0, maxValue: 1000, required: true },
+    ],
+  } satisfies BotCommand["definition"];
   public readonly module = CommandModule.Music;
   public readonly access = musicPlaybackAccessPolicy;
 

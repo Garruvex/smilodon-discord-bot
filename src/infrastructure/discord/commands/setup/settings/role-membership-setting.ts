@@ -1,14 +1,13 @@
-import type { SlashCommandSubcommandBuilder } from "discord.js";
-
 import {
   formatRoleGroupList,
   roleGroupDescriptions,
 } from "../../../../../application/access/role-group-descriptions.js";
 import type { CommandContext } from "../../../../../application/commands/command.js";
+import type { CommandOptionMetadata } from "../../../../../application/commands/command-metadata.js";
 import type { GuildConfiguration } from "../../../../../config/guild-configuration.js";
 import type { UpdateGuildConfigurationInput } from "../../../../../config/guild-configuration-provider.js";
 import type { MutationSettingDefinition, SettingDeps, SettingHandlerResult } from "./setting-definition.js";
-import { addRoleGroupChoices, validateRoleGroupUpdate } from "./settings-support.js";
+import { roleGroupChoices, validateRoleGroupUpdate } from "./settings-support.js";
 
 type RoleGroup = "botAdministrator" | "musicController" | "restricted" | "chatbot";
 
@@ -40,20 +39,18 @@ function describeRoleMembership(_previous: GuildConfiguration, updated: GuildCon
   ].join("\n");
 }
 
-function configureRoleMembershipOptions(
-  b: SlashCommandSubcommandBuilder,
-  roleActionDescription: string,
-): SlashCommandSubcommandBuilder {
-  return b
-    .addStringOption((o) => addRoleGroupChoices(o.setName("group").setDescription("Access group.").setRequired(true)))
-    .addRoleOption((o) => o.setName("role").setDescription(roleActionDescription).setRequired(true));
+function configureRoleMembershipOptions(roleActionDescription: string): readonly CommandOptionMetadata[] {
+  return [
+    { type: "string", name: "group", description: "Access group.", required: true, choices: roleGroupChoices },
+    { type: "role", name: "role", description: roleActionDescription, required: true },
+  ];
 }
 
 export const roleAddSetting: MutationSettingDefinition = {
   kind: "mutation",
   name: "role-add",
   description: "Adds a role to an access group.",
-  configureOptions: (b) => configureRoleMembershipOptions(b, "Role to add."),
+  configureOptions: () => configureRoleMembershipOptions("Role to add."),
   handle: (context, _deps: SettingDeps, previousProfile, input) =>
     Promise.resolve(handleRoleMembership("add", context, previousProfile, input)),
   describe: describeRoleMembership,
@@ -63,7 +60,7 @@ export const roleRemoveSetting: MutationSettingDefinition = {
   kind: "mutation",
   name: "role-remove",
   description: "Removes a role from an access group.",
-  configureOptions: (b) => configureRoleMembershipOptions(b, "Role to remove."),
+  configureOptions: () => configureRoleMembershipOptions("Role to remove."),
   handle: (context, _deps: SettingDeps, previousProfile, input) =>
     Promise.resolve(handleRoleMembership("remove", context, previousProfile, input)),
   describe: describeRoleMembership,

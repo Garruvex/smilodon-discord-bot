@@ -82,7 +82,7 @@ function guildConfiguration(chatbotEnabled: boolean): GuildConfiguration {
       includeSources: true,
       maxImagesPerRequest: 2,
       ambientCooldownSeconds: 20,
-      channelHistoryLimit: 8, channelMemoryModes: {}, personaDriftEnabled: false,
+      channelHistoryLimit: 8, channelMemoryModes: {}, personaDriftEnabled: false, contextScanChannelIds: [], contextDailyChannelIds: [], contextSeedDays: 7,
     },
     sourceFile: "test.yaml",
   };
@@ -160,7 +160,7 @@ function mentionMessage(): Message<true> {
     webhookId: null,
     content: `<@${botUserId}> what is 2+2?`,
     mentions: { users: new Map([[botUserId, {}]]) },
-    member: { roles: { cache: new Map([[musicControllerRoleId, {}]]) } },
+    member: { roles: { cache: new Map([[musicControllerRoleId, {}]]) }, voice: { channelId: null } },
     reply: vi.fn().mockResolvedValue(statusMessage),
     delete: vi.fn().mockResolvedValue(undefined),
   } as unknown as Message<true>;
@@ -187,7 +187,7 @@ describe("ControlChannelService", () => {
       guildId,
       channelId: controlPanelChannelId,
       message: { id: "panel-message" },
-      member: { roles: { cache: new Map([[musicControllerRoleId, {}]]) } },
+      member: { roles: { cache: new Map([[musicControllerRoleId, {}]]) }, voice: { channelId: null } },
       user: { id: "345678901234567890" },
       deferUpdate: vi.fn().mockResolvedValue(undefined),
       editReply: vi.fn().mockResolvedValue(undefined),
@@ -250,7 +250,7 @@ describe("ControlChannelService", () => {
       guildId,
       channelId: controlPanelChannelId,
       message: { id: "panel-message" },
-      member: { roles: { cache: new Map([[musicControllerRoleId, {}]]) } },
+      member: { roles: { cache: new Map([[musicControllerRoleId, {}]]) }, voice: { channelId: null } },
       user: { id: "345678901234567890" },
       deferUpdate: vi.fn().mockResolvedValue(undefined),
       editReply,
@@ -317,7 +317,7 @@ describe("ControlChannelService", () => {
       guildId,
       channelId: controlPanelChannelId,
       message: { id: "panel-message" },
-      member: { roles: { cache: new Map([[musicControllerRoleId, {}]]) } },
+      member: { roles: { cache: new Map([[musicControllerRoleId, {}]]) }, voice: { channelId: null } },
       user: { id: "345678901234567890" },
       deferUpdate: vi.fn().mockResolvedValue(undefined),
       editReply,
@@ -716,7 +716,7 @@ describe("ControlChannelService", () => {
       ...mentionMessage(),
       content: "song name",
       mentions: { users: new Map() },
-      member: { roles: { cache: new Map() } },
+      member: { roles: { cache: new Map() }, voice: { channelId: null } },
       reply,
     } as unknown as Message<true>;
 

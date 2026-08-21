@@ -1,5 +1,3 @@
-import { SlashCommandBuilder } from "discord.js";
-
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
 import type { UserCustomizationStore } from "../../../../application/chat/user-customization-store.js";
@@ -7,21 +5,21 @@ import type { ChatProvider } from "../../../../application/chat/chat-provider.js
 import { userCustomizationLimits, validateUserCustomization } from "../../../../application/chat/user-customization-policy.js";
 
 export class CustomizeCommand implements BotCommand {
-  public readonly definition = new SlashCommandBuilder()
-    .setName("customize")
-    .setDescription("Customize how the chatbot interacts with you specifically. Its identity and rules stay the same.")
-    .addSubcommand((command) =>
-      command.setName("set").setDescription("Sets or replaces your customization from a Markdown file.")
-        .addAttachmentOption((option) =>
-          option.setName("file").setDescription("A .md file describing how you'd like the bot to interact with you.").setRequired(true),
-        ),
-    )
-    .addSubcommand((command) =>
-      command.setName("view").setDescription("Shows your current customization in this server."),
-    )
-    .addSubcommand((command) =>
-      command.setName("clear").setDescription("Clears your customization in this server. Does not affect memory."),
-    );
+  public readonly definition = {
+    name: "customize",
+    description: "Customize how the chatbot interacts with you specifically. Its identity and rules stay the same.",
+    subcommands: [
+      {
+        name: "set",
+        description: "Sets or replaces your customization from a Markdown file.",
+        options: [
+          { type: "attachment", name: "file", description: "A .md file describing how you'd like the bot to interact with you.", required: true },
+        ],
+      },
+      { name: "view", description: "Shows your current customization in this server." },
+      { name: "clear", description: "Clears your customization in this server. Does not affect memory." },
+    ],
+  } satisfies BotCommand["definition"];
 
   public readonly module = CommandModule.Common;
   public readonly access = publicAccessPolicy;

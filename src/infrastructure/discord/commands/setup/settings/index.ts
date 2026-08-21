@@ -4,6 +4,13 @@ import { auditSetting } from "./audit-setting.js";
 import { auditLogSetting } from "./audit-log-setting.js";
 import { birthdaysSetting } from "./birthdays-setting.js";
 import { channelHistorySetting } from "./channel-history-setting.js";
+import {
+  contextDailyAddSetting,
+  contextDailyRemoveSetting,
+  contextRemoveSetting,
+  contextScanAddSetting,
+  contextStatusSetting,
+} from "./channel-context-setting.js";
 import { chatbotSetting } from "./chatbot-setting.js";
 import { lifecycleSetting } from "./lifecycle-setting.js";
 import { linkFixSetting } from "./link-fix-setting.js";
@@ -57,6 +64,11 @@ export const settingGroups: readonly SettingGroup[] = [
       ambientRepliesSetting,
       channelHistorySetting,
       memoryModeSetting,
+      contextScanAddSetting,
+      contextDailyAddSetting,
+      contextDailyRemoveSetting,
+      contextRemoveSetting,
+      contextStatusSetting,
       templateSetting,
       toolsEnableSetting,
       toolsDisableSetting,

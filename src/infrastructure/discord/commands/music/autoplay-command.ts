@@ -1,9 +1,11 @@
-import { SlashCommandBuilder } from "discord.js";
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import type { PlaybackService } from "../../../../application/music/playback-service.js";
 import { createPlaybackActor, musicPlaybackAccessPolicy } from "./music-command-support.js";
 export class AutoplayCommand implements BotCommand {
-  public readonly definition = new SlashCommandBuilder().setName("autoplay").setDescription("Toggles automatic related-track queueing.");
+  public readonly definition = {
+    name: "autoplay",
+    description: "Toggles automatic related-track queueing.",
+  };
   public readonly module = CommandModule.Music;
   public readonly access = musicPlaybackAccessPolicy;
   public constructor(private readonly playbackService: PlaybackService) {}

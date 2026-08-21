@@ -1,5 +1,3 @@
-import { SlashCommandBuilder } from "discord.js";
-
 import { CommandModule, type BotCommand, type ChatToolBinding, type CommandContext } from "../../../../application/commands/command.js";
 import type { ChatToolContext, ChatToolResult } from "../../../../application/chat/tools/chat-tool.js";
 import { evaluateMusicToolAccess, formatMusicError, musicPermissionDeniedMessage } from "../../../../application/chat/tools/music-tool-support.js";
@@ -11,9 +9,10 @@ import {
 } from "./music-command-support.js";
 
 export class ResumeCommand implements BotCommand {
-  public readonly definition = new SlashCommandBuilder()
-    .setName("resume")
-    .setDescription("Resumes the paused track.");
+  public readonly definition = {
+    name: "resume",
+    description: "Resumes the paused track.",
+  };
 
   public readonly module = CommandModule.Music;
   public readonly access = musicPlaybackAccessPolicy;

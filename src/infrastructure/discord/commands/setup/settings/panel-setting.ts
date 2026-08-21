@@ -1,5 +1,3 @@
-import { ChannelType } from "discord.js";
-
 import { PANEL_LIMITS } from "../../../../../config/guild-configuration-limits.js";
 import type { MutationSettingDefinition } from "./setting-definition.js";
 import { buildProgressBarSettings } from "./settings-support.js";
@@ -8,24 +6,30 @@ export const panelSetting: MutationSettingDefinition = {
   kind: "mutation",
   name: "panel",
   description: "Updates the music panel.",
-  configureOptions: (b) => b
-    .addChannelOption((o) => o.setName("channel").setDescription("Music control channel.").addChannelTypes(ChannelType.GuildText))
-    .addStringOption((o) => o.setName("idle-image-url").setDescription("Stable HTTPS idle image URL."))
-    .addAttachmentOption((o) => o.setName("idle-image").setDescription("Upload a persistent PNG, JPEG, WebP, or GIF idle image."))
-    .addBooleanOption((o) => o.setName("use-default-image").setDescription("Use the bundled Smilodon idle image."))
-    .addStringOption((o) => o.setName("progress-style").setDescription("Progress bar appearance.").addChoices(
-      { name: "Standard", value: "standard" },
-      { name: "Yohta", value: "yohta" },
-      { name: "Custom", value: "custom" },
-      { name: "Timestamps only", value: "none" },
-    ))
-    .addIntegerOption((o) => o.setName("progress-length").setDescription("Progress bar length.")
-      .setMinValue(PANEL_LIMITS.progressBarLength.min).setMaxValue(PANEL_LIMITS.progressBarLength.max))
-    .addStringOption((o) => o.setName("progress-completed").setDescription("Custom completed emoji; paste an emoji or enter its server name."))
-    .addStringOption((o) => o.setName("progress-remaining").setDescription("Custom remaining emoji; paste an emoji or enter its server name."))
-    .addStringOption((o) => o.setName("progress-playing").setDescription("Custom current-position emoji while playing."))
-    .addStringOption((o) => o.setName("progress-paused").setDescription("Custom current-position emoji while paused."))
-    .addStringOption((o) => o.setName("progress-ending").setDescription("Optional ending emoji, or 'none' to remove it.")),
+  configureOptions: () => [
+    { type: "channel", name: "channel", description: "Music control channel.", guildTextOnly: true },
+    { type: "string", name: "idle-image-url", description: "Stable HTTPS idle image URL." },
+    { type: "attachment", name: "idle-image", description: "Upload a persistent PNG, JPEG, WebP, or GIF idle image." },
+    { type: "boolean", name: "use-default-image", description: "Use the bundled Smilodon idle image." },
+    {
+      type: "string", name: "progress-style", description: "Progress bar appearance.",
+      choices: [
+        { name: "Standard", value: "standard" },
+        { name: "Yohta", value: "yohta" },
+        { name: "Custom", value: "custom" },
+        { name: "Timestamps only", value: "none" },
+      ],
+    },
+    {
+      type: "integer", name: "progress-length", description: "Progress bar length.",
+      minValue: PANEL_LIMITS.progressBarLength.min, maxValue: PANEL_LIMITS.progressBarLength.max,
+    },
+    { type: "string", name: "progress-completed", description: "Custom completed emoji; paste an emoji or enter its server name." },
+    { type: "string", name: "progress-remaining", description: "Custom remaining emoji; paste an emoji or enter its server name." },
+    { type: "string", name: "progress-playing", description: "Custom current-position emoji while playing." },
+    { type: "string", name: "progress-paused", description: "Custom current-position emoji while paused." },
+    { type: "string", name: "progress-ending", description: "Optional ending emoji, or 'none' to remove it." },
+  ],
   handle: async (context, deps, previousProfile, input) => {
     const channel = context.interaction.options.getChannel("channel");
     const url = context.interaction.options.getString("idle-image-url");

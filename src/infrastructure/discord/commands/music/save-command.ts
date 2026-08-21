@@ -1,13 +1,12 @@
-import { SlashCommandBuilder } from "discord.js";
-
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import type { PlaybackService } from "../../../../application/music/playback-service.js";
 import { musicPlaybackAccessPolicy } from "./music-command-support.js";
 
 export class SaveCommand implements BotCommand {
-  public readonly definition = new SlashCommandBuilder()
-    .setName("save")
-    .setDescription("DMs you a link to the currently playing track.");
+  public readonly definition = {
+    name: "save",
+    description: "DMs you a link to the currently playing track.",
+  };
 
   public readonly module = CommandModule.Music;
   public readonly access = musicPlaybackAccessPolicy;
