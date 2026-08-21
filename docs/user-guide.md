@@ -139,8 +139,19 @@ If you don't have chatbot access, mentioning the bot returns a configurable
 Chatbot role group.
 
 Every server can have a custom **personality** (uploaded by an admin via
-`/settings chat chatbot personality:<file>`) that changes how the bot talks —
-see the [personality guide](personality-guide.md) if you're writing one.
+`/settings chat chatbot personality:<file>`) that changes how the bot talks,
+plus an optional set of **example exchanges**
+(`/settings chat chatbot examples:<file>`) that teach it the character's
+actual voice — see the [personality guide](personality-guide.md) if you're
+writing either.
+
+Admins can also turn on **persona drift** (`/settings chat chatbot
+persona-drift:true`), an experimental, off-by-default feature that lets a
+small "current mood/quirk" layer evolve slightly over time from real
+conversation activity — it only ever adds a light overlay on top of the
+personality/lore above, never rewrites them. Turning it off just pauses
+evolution (nothing is lost, turning it back on resumes where it left off);
+`reset-persona-drift:true` wipes it and starts the character over.
 
 ## Setting up a new server
 
@@ -173,19 +184,19 @@ log a diff of what changed.
 
 | Subcommand | What it does |
 | --- | --- |
-| `/settings access` | Shows the current role assignments for every group. |
-| `/settings roles [administrator] [music-controller] [restricted]` | Adds a role to a group (doesn't remove existing ones). |
-| `/settings role-add <group> <role>` / `role-remove <group> <role>` | Adds or removes one role from one group. |
-| `/settings audit-log [channel] [disable]` | Sets or disables the audit-log channel. |
-| `/settings audit [count]` | Shows recent audit-log entries inline. |
+| `/settings access access` | Shows the current role assignments for every group. |
+| `/settings access roles [administrator] [music-controller] [restricted]` | Adds a role to a group (doesn't remove existing ones). |
+| `/settings access role-add <group> <role>` / `role-remove <group> <role>` | Adds or removes one role from one group. |
+| `/settings access audit-log [channel] [disable]` | Sets or disables the audit-log channel. |
+| `/settings access audit [count]` | Shows recent audit-log entries inline. |
 
 ### Music
 
 | Subcommand | What it does |
 | --- | --- |
-| `/settings panel [channel] [idle-image-url] [idle-image] [use-default-image] [progress-style] [progress-length] [progress-completed/remaining/playing/paused] [progress-ending]` | Configures the control channel and the now-playing panel's look — including uploading a persistent idle image directly (`idle-image`), no external hosting needed. |
-| `/settings volume [default] [maximum] [button-step]` | Sets default/maximum volume and the panel button's volume step. |
-| `/settings lifecycle [empty-queue-action] [queue-delay-seconds] [empty-channel-action] [channel-grace-seconds] [resume-when-occupied]` | Controls what happens when the queue empties or everyone leaves voice. |
+| `/settings music panel [channel] [idle-image-url] [idle-image] [use-default-image] [progress-style] [progress-length] [progress-completed/remaining/playing/paused] [progress-ending]` | Configures the control channel and the now-playing panel's look — including uploading a persistent idle image directly (`idle-image`), no external hosting needed. |
+| `/settings music volume [default] [maximum] [button-step]` | Sets default/maximum volume and the panel button's volume step. |
+| `/settings music lifecycle [empty-queue-action] [queue-delay-seconds] [empty-channel-action] [channel-grace-seconds] [resume-when-occupied]` | Controls what happens when the queue empties or everyone leaves voice. |
 
 Panel progress styles: **Standard** (plain bar), **Yohta** (bot-owned emoji
 preset, works in any server the bot is in once provisioned), **Custom** (your
@@ -195,22 +206,23 @@ own emoji for each segment), or **Timestamps only**.
 
 | Subcommand | What it does |
 | --- | --- |
-| `/settings chatbot [enabled] [role] [channel] [cooldown-seconds] [denied-message] [denied-link-url] [denied-link-label] [web-search] [tool-calling] [image-input] [image-generation] [include-sources] [max-images] [personality] [use-default-personality]` | The main mention-chat switchboard: who can use it, where, how often, and which capabilities are on. |
-| `/settings ambient-replies [enabled] [cooldown-seconds]` | Turns on ambient (non-mention) chat and its per-channel cooldown. |
-| `/settings channel-history [enabled] [limit]` | Includes recent messages from anyone as extra context for ambient chat. |
+| `/settings chat chatbot [enabled] [role] [channel] [cooldown-seconds] [denied-message] [denied-link-url] [denied-link-label] [web-search] [tool-calling] [image-input] [image-generation] [include-sources] [max-images] [personality] [use-default-personality] [examples] [use-default-examples] [persona-drift] [reset-persona-drift]` | The main mention-chat switchboard: who can use it, where, how often, and which capabilities are on. |
+| `/settings chat ambient-replies [enabled] [cooldown-seconds]` | Turns on ambient (non-mention) chat and its per-channel cooldown. |
+| `/settings chat channel-history [enabled] [limit]` | Includes recent messages from anyone as extra context for ambient chat. |
+| `/settings chat template <kind>` | Sends a starter `personality.md` or `examples.md` file to download, edit, and upload back via `/settings chat chatbot`. |
 
-An empty channel list on `/settings chatbot` means mention chat is allowed in
-every channel. Use `/settings role-add`/`role-remove` with the `Chatbot`
-group to manage multiple allowed roles at once.
+An empty channel list on `/settings chat chatbot` means mention chat is
+allowed in every channel. Use `/settings access role-add`/`role-remove` with
+the `Chatbot` group to manage multiple allowed roles at once.
 
 ### Community
 
 | Subcommand | What it does |
 | --- | --- |
-| `/settings birthdays [enabled] [channel]` | Turns on birthday announcements and sets the announcement channel (required before enabling). |
-| `/settings nsfw <enabled>` | Allows NSFW image commands server-wide (still needs an age-restricted channel per use). |
-| `/settings link-fix [enabled] [channel] [remove-channel]` | Rewrites Twitter/X, Threads, Instagram, Bilibili, TikTok, and Reddit links for better embeds in watched channels. |
-| `/settings member-data <retain>` | Whether a departing member's chat memories, birthday, and customization are kept (`true`) or deleted (`false`) if they leave. |
+| `/settings community birthdays [enabled] [channel]` | Turns on birthday announcements and sets the announcement channel (required before enabling). |
+| `/settings community nsfw <enabled>` | Allows NSFW image commands server-wide (still needs an age-restricted channel per use). |
+| `/settings community link-fix [enabled] [channel] [remove-channel]` | Rewrites Twitter/X, Threads, Instagram, Bilibili, TikTok, and Reddit links for better embeds in watched channels. |
+| `/settings community member-data <retain>` | Whether a departing member's chat memories, birthday, and customization are kept (`true`) or deleted (`false`) if they leave. |
 
 ## Troubleshooting
 

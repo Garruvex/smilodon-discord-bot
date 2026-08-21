@@ -22,6 +22,16 @@ import {
 } from "./dropped-exchange-consolidation.js";
 import { ModelFallbackChain } from "./model-fallback-chain.js";
 import {
+  buildPersonaBundleCompilationPrompt,
+  personaBundleCompilationJsonSchema,
+  parsePersonaBundleCompilationOutput,
+} from "./persona-bundle-compilation.js";
+import {
+  buildPersonaDriftEvolutionPrompt,
+  personaDriftEvolutionJsonSchema,
+  parsePersonaDriftEvolutionOutput,
+} from "./persona-drift-evolution.js";
+import {
   buildUserCustomizationAnalysisPrompt,
   parseUserCustomizationAnalysisOutput,
   userCustomizationAnalysisJsonSchema,
@@ -75,6 +85,7 @@ export class GeminiChatProvider implements ChatProvider {
       channelId: request.channelId,
       currentUser: request.currentUser,
       channelIsNsfw: request.channelIsNsfw ?? false,
+      isOwner: request.isOwner ?? false,
       music: request.musicActor
         ? {
             actor: request.musicActor,
@@ -308,6 +319,29 @@ export class GeminiChatProvider implements ChatProvider {
       droppedExchangeConsolidationJsonSchema,
     ));
     return parseDroppedExchangeConsolidationOutput((response.text ?? "").trim()).facts;
+  }
+
+  public async compilePersonaBundle(
+    content: string,
+  ): Promise<{ core: string; chunks: readonly { heading: string; text: string }[] }> {
+    const response = await this.summaryModelChain.run((model) => this.generateStructured(
+      model,
+      buildPersonaBundleCompilationPrompt(content),
+      personaBundleCompilationJsonSchema,
+    ));
+    return parsePersonaBundleCompilationOutput((response.text ?? "").trim());
+  }
+
+  public async evolvePersonaDrift(
+    currentText: string,
+    exchanges: readonly { user: string; assistant: string }[],
+  ): Promise<string> {
+    const response = await this.summaryModelChain.run((model) => this.generateStructured(
+      model,
+      buildPersonaDriftEvolutionPrompt(currentText, exchanges),
+      personaDriftEvolutionJsonSchema,
+    ));
+    return parsePersonaDriftEvolutionOutput((response.text ?? "").trim()).text;
   }
 
   // Shared by the two standalone structured-output calls (own prompt/schema,

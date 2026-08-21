@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { CHAT_LIMITS, MUSIC_LIMITS, PANEL_LIMITS } from "./guild-configuration-limits.js";
+
 const snowflake = z.string().regex(/^\d{17,20}$/);
 const snowflakeList = z.array(snowflake).default([]);
 
@@ -14,18 +16,27 @@ const guildChatSchema = z.preprocess((value) => {
   personalityAsset: z.string().regex(/^guild-assets\/\d{17,20}\/personality\.md$/).nullable().default(null),
   examplesFile: z.string().trim().min(1).nullable().default(null),
   examplesAsset: z.string().regex(/^guild-assets\/\d{17,20}\/examples\.md$/).nullable().default(null),
-  cooldownSeconds: z.number().int().min(0).max(86_400).default(30),
+  cooldownSeconds: z.number().int().min(CHAT_LIMITS.cooldownSeconds.min).max(CHAT_LIMITS.cooldownSeconds.max).default(CHAT_LIMITS.cooldownSeconds.default),
   deniedMessage: z.string().trim().min(1).max(500).default("This feature requires a premium subscription. Try looking richer and ask again."),
   deniedLinkUrl: z.string().trim().url().nullable().default(null),
   deniedLinkLabel: z.string().trim().min(1).max(80).nullable().default(null),
   webSearchMode: z.enum(["off", "auto"]).default("off"),
   toolCallingEnabled: z.boolean().default(false),
+  // Deny-list within toolCallingEnabled's master switch — a tool name here
+  // (see ChatToolRegistry, matched against ChatTool.name) is withheld from
+  // the model even when tool calling is otherwise on. Unknown names (a tool
+  // renamed/removed since this was set) are simply ignored, not errors.
+  disabledTools: z.array(z.string()).default([]),
   imageInputEnabled: z.boolean().default(false),
   imageGenerationEnabled: z.boolean().default(false),
   includeSources: z.boolean().default(true),
-  maxImagesPerRequest: z.number().int().min(0).max(4).default(2),
-  ambientCooldownSeconds: z.number().int().min(0).max(86_400).default(20),
-  channelHistoryLimit: z.number().int().min(1).max(25).default(8),
+  maxImagesPerRequest: z.number().int().min(CHAT_LIMITS.maxImagesPerRequest.min).max(CHAT_LIMITS.maxImagesPerRequest.max).default(CHAT_LIMITS.maxImagesPerRequest.default),
+  ambientCooldownSeconds: z.number().int().min(CHAT_LIMITS.ambientCooldownSeconds.min).max(CHAT_LIMITS.ambientCooldownSeconds.max).default(CHAT_LIMITS.ambientCooldownSeconds.default),
+  channelHistoryLimit: z.number().int().min(CHAT_LIMITS.channelHistoryLimit.min).max(CHAT_LIMITS.channelHistoryLimit.max).default(CHAT_LIMITS.channelHistoryLimit.default),
+  // Per-channel memory isolation mode (see src/application/memory/memory-channel-policy.ts).
+  // Unlisted channels default to "shared" — today's behavior, unchanged.
+  channelMemoryModes: z.record(snowflake, z.enum(["shared", "isolated", "session_only", "disabled"])).default({}),
+  personaDriftEnabled: z.boolean().default(false),
 }));
 
 const progressBarEmojiBase = {
@@ -86,7 +97,7 @@ export const guildConfigurationFileSchema = z
         progressBar: z
           .object({
             style: z.enum(["standard", "yohta", "custom", "none"]).default("standard"),
-            length: z.number().int().min(6).max(16).default(12),
+            length: z.number().int().min(PANEL_LIMITS.progressBarLength.min).max(PANEL_LIMITS.progressBarLength.max).default(PANEL_LIMITS.progressBarLength.default),
             customTheme: customProgressBarThemeSchema.nullable().default(null),
           })
           .default(defaultProgressBar),
@@ -160,21 +171,21 @@ export const guildConfigurationFileSchema = z
       .object({
         volume: z
           .object({
-            default: z.number().int().min(0).max(1_000).default(75),
-            maximum: z.number().int().min(1).max(1_000).default(150),
-            buttonStep: z.number().int().min(1).max(100).default(10),
+            default: z.number().int().min(MUSIC_LIMITS.volumeDefault.min).max(MUSIC_LIMITS.volumeDefault.max).default(MUSIC_LIMITS.volumeDefault.default),
+            maximum: z.number().int().min(MUSIC_LIMITS.volumeMaximum.min).max(MUSIC_LIMITS.volumeMaximum.max).default(MUSIC_LIMITS.volumeMaximum.default),
+            buttonStep: z.number().int().min(MUSIC_LIMITS.volumeButtonStep.min).max(MUSIC_LIMITS.volumeButtonStep.max).default(MUSIC_LIMITS.volumeButtonStep.default),
           })
           .default({ default: 75, maximum: 150, buttonStep: 10 }),
         emptyQueue: z
           .object({
             action: z.enum(["disconnect", "stay_connected"]).default("disconnect"),
-            delayMs: z.number().int().min(0).max(86_400_000).default(120_000),
+            delayMs: z.number().int().min(MUSIC_LIMITS.emptyQueueDelayMs.min).max(MUSIC_LIMITS.emptyQueueDelayMs.max).default(MUSIC_LIMITS.emptyQueueDelayMs.default),
           })
           .default({ action: "disconnect", delayMs: 120_000 }),
         emptyChannel: z
           .object({
             action: z.enum(["continue", "pause", "disconnect"]).default("pause"),
-            gracePeriodMs: z.number().int().min(0).max(86_400_000).default(30_000),
+            gracePeriodMs: z.number().int().min(MUSIC_LIMITS.emptyChannelGracePeriodMs.min).max(MUSIC_LIMITS.emptyChannelGracePeriodMs.max).default(MUSIC_LIMITS.emptyChannelGracePeriodMs.default),
             resumeWhenOccupied: z.boolean().default(true),
           })
           .default({

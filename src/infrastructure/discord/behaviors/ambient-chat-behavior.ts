@@ -6,6 +6,7 @@ import { BehaviorEvent, BehaviorResult, type BotBehavior } from "../../../applic
 import { chatMemoryLimits } from "../../../application/chat/chat-memory-policy.js";
 import type { ChannelHistoryMessage, ReplyChainMessage } from "../../../application/chat/chat-provider.js";
 import type { ChatConversationService } from "../../../application/chat/chat-conversation-service.js";
+import type { PersonaSource } from "../../../application/chat/persona-source.js";
 import type { ApplicationConfiguration } from "../../../config/configuration.js";
 import type { GuildConfigurationProvider } from "../../../config/guild-configuration-provider.js";
 import { containsBotName } from "../../../domain/chat/name-mention.js";
@@ -33,6 +34,7 @@ export class AmbientChatBehavior implements BotBehavior<Message> {
     private readonly configuration: ApplicationConfiguration,
     private readonly profiles: GuildConfigurationProvider,
     private readonly conversation: ChatConversationService | null,
+    private readonly personaSource: PersonaSource,
     private readonly logger: Logger,
   ) {
     this.chatAccess = new ChatAccessService(configuration);
@@ -130,11 +132,15 @@ export class AmbientChatBehavior implements BotBehavior<Message> {
     try {
       const { images } = await this.turnSupport.loadImages(imageAttachments);
       const musicActor = this.turnSupport.resolveMusicActor(message, profile);
+      const persona = await this.personaSource.resolve(profile);
       const response = await this.conversation.run({
         guildId: message.guildId,
         channelId: message.channelId,
-        personality: this.turnSupport.loadPersonality(profile, this.configuration),
-        examplePool: this.turnSupport.loadExampleExchanges(profile, this.configuration),
+        personality: persona.personality,
+        examplePool: persona.examplePool,
+        loreChunks: persona.loreChunks,
+        personaDrift: persona.personaDrift,
+        personaDriftEnabled: profile.chat.personaDriftEnabled,
         currentUser: {
           id: message.author.id,
           displayName: message.member?.displayName ?? message.author.username,
@@ -153,6 +159,9 @@ export class AmbientChatBehavior implements BotBehavior<Message> {
         includeSources: profile.chat.includeSources,
         triggerMode: "ambient",
         toolsEnabled: profile.chat.toolCallingEnabled,
+        disabledToolNames: new Set(profile.chat.disabledTools),
+        channelMemoryModes: profile.chat.channelMemoryModes,
+        isOwner: this.configuration.ownerUserIds.has(message.author.id),
         channelIsNsfw: "nsfw" in message.channel ? Boolean(message.channel.nsfw) : false,
         musicActor: musicActor?.actor ?? null,
         musicVolumeMaximum: musicActor?.volumeMaximum,

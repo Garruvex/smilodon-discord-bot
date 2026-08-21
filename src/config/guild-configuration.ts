@@ -49,6 +49,7 @@ export interface GuildChatConfiguration {
   deniedLinkLabel: string | null;
   webSearchMode: "off" | "auto";
   toolCallingEnabled: boolean;
+  disabledTools: readonly string[];
   imageInputEnabled: boolean;
   imageGenerationEnabled: boolean;
   includeSources: boolean;
@@ -61,6 +62,15 @@ export interface GuildChatConfiguration {
   // features.channelHistory is on. A hard cap independent of the char
   // budget in chatMemoryLimits.maxChannelHistoryChars.
   channelHistoryLimit: number;
+  // Per-channel memory isolation mode, keyed by channel id — see
+  // src/application/memory/memory-channel-policy.ts. Unlisted channels
+  // default to "shared".
+  channelMemoryModes: Readonly<Record<string, "shared" | "isolated" | "session_only" | "disabled">>;
+  // Experimental, off by default — see persona-drift-store.ts. Toggling
+  // this off only pauses evolution/injection; it never deletes the guild's
+  // accumulated persona-drift.json (see PersonaDriftStore.reset for the
+  // explicit wipe action).
+  personaDriftEnabled: boolean;
 }
 
 export interface GuildMusicConfiguration {

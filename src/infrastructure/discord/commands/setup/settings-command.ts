@@ -1,6 +1,7 @@
 import { SlashCommandBuilder, type SlashCommandSubcommandsOnlyBuilder } from "discord.js";
 
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
+import type { ChatToolRegistry } from "../../../../application/chat/tools/chat-tool-registry.js";
 import type { UpdateGuildConfigurationInput, GuildConfigurationProvider } from "../../../../config/guild-configuration-provider.js";
 import type { GuildConfiguration } from "../../../../config/guild-configuration.js";
 import { RoleMatchMode, publicAccessPolicy } from "../../../../domain/access/access-policy.js";
@@ -8,6 +9,7 @@ import type { GuildAssetStore } from "../../../../application/assets/guild-asset
 import type { ControlChannelService } from "../../../../application/control-panel/control-channel-service.js";
 import type { ApplicationEmojiCatalog } from "../../application-emoji-catalog.js";
 import type { AuditLogService } from "../../../../application/audit/audit-log-service.js";
+import type { PersonaDriftStore } from "../../../../application/chat/persona-drift-store.js";
 import {
   settingDefinitionsByName,
   settingGroups,
@@ -59,14 +61,21 @@ export class SettingsCommand implements BotCommand {
     private readonly assets: GuildAssetStore,
     private readonly applicationEmojiCatalog: ApplicationEmojiCatalog,
     private readonly auditLogService?: AuditLogService,
+    personaDriftStore?: PersonaDriftStore,
   ) {
-    this.deps = auditLogService
-      ? { assets, applicationEmojiCatalog, auditLogService }
-      : { assets, applicationEmojiCatalog };
+    this.deps = { assets, applicationEmojiCatalog };
+    if (auditLogService) this.deps.auditLogService = auditLogService;
+    if (personaDriftStore) this.deps.personaDriftStore = personaDriftStore;
   }
 
   public bindControlChannelService(service: ControlChannelService): void {
     this.controlChannelService = service;
+  }
+
+  // See SettingDeps.chatToolRegistry — called once dependencies.ts has
+  // derived the registry from every registered command's toolBinding.
+  public bindChatToolRegistry(chatToolRegistry: ChatToolRegistry): void {
+    this.deps.chatToolRegistry = chatToolRegistry;
   }
 
   public async execute(context: CommandContext): Promise<void> {

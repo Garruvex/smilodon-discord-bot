@@ -5,9 +5,12 @@ import {
   bm25Score,
   buildBm25Corpus,
   buildRelevanceContext,
+  cosineSimilarity,
+  reciprocalRankFusion,
   selectByRelevance,
   type ScorableRecord,
 } from "./memory-relevance.js";
+import type { EmbeddingsClient } from "../../infrastructure/chat/openai-embeddings-client.js";
 
 export interface ExampleExchangeSelectionInput {
   records: readonly ExampleExchange[];
@@ -26,20 +29,15 @@ export interface ExampleExchangeSelector {
 // content, not per-user records — so subjectId/updatedAt are neutral values
 // that never trigger the subject/recency boosts in bm25Score. Only the
 // lexical term match (tags + user + character) actually differentiates them.
-//
-// No embedding-based selector: examples.md is re-read and re-parsed on every
-// turn (no persisted store, unlike guild knowledge), so there's nowhere to
-// cache a per-example embedding — computing one via API call per example on
-// every single chat message would be a latency/cost problem, not an
-// optimization. BM25 over the admin-supplied `tags` plus the exchange text
-// is cheap and, since tags exist specifically to aid retrieval, effective
-// enough without it.
 function toScorable(exchange: ExampleExchange): ScorableRecord {
   return { subjectId: "", topic: exchange.tags, slot: "", statement: `${exchange.user} ${exchange.character}`, updatedAt: 0 };
 }
 
+// Excludes `embedding` — a record loaded from a compiled bundle (see
+// example-exchange-bundle.ts) carries a large float vector that's never
+// sent to the model and would otherwise dominate the char-budget check.
 function exampleExchangePromptProjection(exchange: ExampleExchange): unknown {
-  return exchange;
+  return { tags: exchange.tags, user: exchange.user, character: exchange.character };
 }
 
 /** Sends every configured example every turn. Kept as an explicit opt-out for guilds with a small example set. */
@@ -51,12 +49,20 @@ export class FullExampleExchangeSelector implements ExampleExchangeSelector {
 
 /**
  * Ranks example exchanges by BM25 lexical overlap (over tags + user text +
- * character text) with the current turn, then keeps as many as fit under a
+ * character text) with the current turn, fused (via reciprocal rank fusion)
+ * with embedding cosine similarity when the records carry embeddings — see
+ * example-exchange-bundle.ts, which compiles those embeddings once at
+ * upload time rather than per turn (the reason a plain BM25-only selector
+ * was originally the only viable option here). Falls back to BM25-only when
+ * no embeddings client is configured, records have no embeddings, or the
+ * per-turn message embed call fails. Keeps as many exchanges as fit under a
  * char budget instead of injecting the full example set unconditionally.
  */
 export class RelevantExampleExchangeSelector implements ExampleExchangeSelector {
-  public select(input: ExampleExchangeSelectionInput): Promise<readonly ExampleExchange[]> {
-    if (input.records.length === 0) return Promise.resolve(input.records);
+  public constructor(private readonly embeddingsClient: EmbeddingsClient | null = null) {}
+
+  public async select(input: ExampleExchangeSelectionInput): Promise<readonly ExampleExchange[]> {
+    if (input.records.length === 0) return input.records;
     const context = buildRelevanceContext({
       message: input.message,
       recentHistory: input.recentHistory,
@@ -64,12 +70,28 @@ export class RelevantExampleExchangeSelector implements ExampleExchangeSelector 
       now: input.now,
     });
     const corpus = buildBm25Corpus(input.records.map(toScorable));
-    const selected = selectByRelevance(
+    const lexicalOrder = [...input.records].sort(
+      (a, b) => bm25Score(corpus, context, toScorable(b)) - bm25Score(corpus, context, toScorable(a)),
+    );
+    const rankings = [lexicalOrder];
+    if (this.embeddingsClient && input.records.some((record) => record.embedding)) {
+      try {
+        const queryEmbedding = await this.embeddingsClient.embed(input.message);
+        const embeddingOrder = [...input.records].sort(
+          (a, b) => cosineSimilarity(b.embedding ?? [], queryEmbedding) - cosineSimilarity(a.embedding ?? [], queryEmbedding),
+        );
+        rankings.push(embeddingOrder);
+      } catch {
+        // Embedding the current message failed — fall back to lexical-only
+        // ranking rather than failing the turn.
+      }
+    }
+    const fusedScore = reciprocalRankFusion(rankings);
+    return selectByRelevance(
       input.records,
-      (exchange) => bm25Score(corpus, context, toScorable(exchange)),
+      (exchange) => fusedScore.get(exchange) ?? 0,
       exampleExchangeLimits.maxSerializedChars,
       exampleExchangePromptProjection,
     );
-    return Promise.resolve(selected);
   }
 }

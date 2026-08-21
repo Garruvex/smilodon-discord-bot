@@ -24,6 +24,8 @@ const baseRequest = {
   channelId: "77777777777777777",
   personality: "Be helpful.",
   exampleExchanges: [],
+  personaLore: [],
+  personaDrift: null,
   userCustomization: null,
   currentUser: { id: "11111111111111111", displayName: "Tester", roleNames: [] },
   mentionedUsers: [],

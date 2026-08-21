@@ -1,0 +1,91 @@
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
+
+import type { Logger } from "pino";
+import { z } from "zod";
+
+// A small, additive "current mood/quirk" layer that evolves slightly over
+// time from actual conversation activity (see ChatConversationService's
+// consolidation hook) — never the admin-authored personality.md, lore
+// bundle, or examples.md, all of which stay untouched. Capped hard so no
+// single cycle can swing the character far; `history` exists purely for
+// admin auditability, not read at chat time.
+const personaDriftStateSchema = z.object({
+  text: z.string(),
+  updatedAt: z.number(),
+  history: z.array(z.object({ text: z.string(), changedAt: z.number() })),
+});
+
+export type PersonaDriftState = z.infer<typeof personaDriftStateSchema>;
+
+// Bounds how large persona-drift.json's audit trail can grow — old entries
+// are dropped, not the recent ones, since only the tail is ever useful for
+// "what changed recently."
+const maxHistoryEntries = 50;
+
+/**
+ * Reads/writes guild-assets/{guildId}/persona-drift.json — a sidecar in the
+ * same directory convention GuildAssetStore already uses, but app-managed
+ * state rather than an admin-uploaded asset, so it creates its own
+ * directory rather than depending on one already existing.
+ */
+export class PersonaDriftStore {
+  public constructor(
+    private readonly runtimeDataDirectory: string,
+    private readonly logger: Logger | null = null,
+  ) {}
+
+  private path(guildId: string): string {
+    return resolve(this.runtimeDataDirectory, "guild-assets", guildId, "persona-drift.json");
+  }
+
+  public async get(guildId: string): Promise<PersonaDriftState | null> {
+    let raw: string;
+    try {
+      raw = await readFile(this.path(guildId), "utf8");
+    } catch {
+      return null;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+    const result = personaDriftStateSchema.safeParse(parsed);
+    return result.success ? result.data : null;
+  }
+
+  // Appends `nextText` as the new current drift, keeping the prior text as
+  // a history entry. Never throws — a write failure is logged and the drift
+  // simply doesn't update this cycle, same fail-safe posture as
+  // ChatConversationService's other consolidation-triggered writes.
+  public async evolve(guildId: string, nextText: string): Promise<void> {
+    try {
+      const current = await this.get(guildId);
+      const now = Date.now();
+      const history = current
+        ? [...current.history, { text: current.text, changedAt: current.updatedAt }].slice(-maxHistoryEntries)
+        : [];
+      await this.write(guildId, { text: nextText, updatedAt: now, history });
+    } catch (error) {
+      this.logger?.warn({ error, guildId }, "Persisting evolved persona drift failed; drift stays at its previous value");
+    }
+  }
+
+  // Explicit, admin-initiated "start the character over" — clears both the
+  // current text and the audit history. Distinct from disabling the
+  // guild's persona-drift toggle, which only pauses evolution/injection
+  // without touching this file.
+  public async reset(guildId: string): Promise<void> {
+    await rm(this.path(guildId), { force: true });
+  }
+
+  private async write(guildId: string, state: PersonaDriftState): Promise<void> {
+    const target = this.path(guildId);
+    await mkdir(resolve(this.runtimeDataDirectory, "guild-assets", guildId), { recursive: true });
+    const temporary = `${target}.tmp`;
+    await writeFile(temporary, JSON.stringify(state), "utf8");
+    await rename(temporary, target);
+  }
+}

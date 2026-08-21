@@ -20,6 +20,16 @@ import {
 } from "./dropped-exchange-consolidation.js";
 import { ModelFallbackChain } from "./model-fallback-chain.js";
 import {
+  buildPersonaBundleCompilationPrompt,
+  personaBundleCompilationJsonSchema,
+  parsePersonaBundleCompilationOutput,
+} from "./persona-bundle-compilation.js";
+import {
+  buildPersonaDriftEvolutionPrompt,
+  personaDriftEvolutionJsonSchema,
+  parsePersonaDriftEvolutionOutput,
+} from "./persona-drift-evolution.js";
+import {
   buildUserCustomizationAnalysisPrompt,
   parseUserCustomizationAnalysisOutput,
   userCustomizationAnalysisJsonSchema,
@@ -139,6 +149,7 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
       channelId: request.channelId,
       currentUser: request.currentUser,
       channelIsNsfw: request.channelIsNsfw ?? false,
+      isOwner: request.isOwner ?? false,
       music: request.musicActor
         ? {
             actor: request.musicActor,
@@ -397,6 +408,103 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
       }
     }
     return parseDroppedExchangeConsolidationOutput(texts.join("\n").trim()).facts;
+  }
+
+  public async compilePersonaBundle(
+    content: string,
+  ): Promise<{ core: string; chunks: readonly { heading: string; text: string }[] }> {
+    const body = await this.summaryModelChain.run(async (model) => {
+      const response = await fetch(`${this.baseUrl}/responses`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          instructions: buildPersonaBundleCompilationPrompt(content),
+          input: [{ role: "user", content: [{ type: "input_text", text: "Split the file per the instructions." }] }],
+          reasoning: { effort: this.generation.reasoningEffort },
+          text: {
+            verbosity: this.generation.verbosity,
+            format: { type: "json_schema", name: "persona_bundle_compilation", strict: true, schema: personaBundleCompilationJsonSchema },
+          },
+          max_output_tokens: this.generation.maxOutputTokens,
+        }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!response.ok) {
+        const errorBody: unknown = await response.json().catch(() => null);
+        const parsedError = errorResponseSchema.safeParse(errorBody);
+        const code = parsedError.success
+          ? (parsedError.data.error.code ?? parsedError.data.error.type ?? null)
+          : null;
+        throw new ChatProviderError(
+          `Chat provider returned HTTP ${response.status}${code ? ` (${code})` : ""}.`,
+          response.status,
+          code,
+        );
+      }
+      return response.json();
+    });
+    const parsed = responseSchema.parse(body);
+    const texts: string[] = [];
+    for (const item of parsed.output) {
+      if (item.type !== "message") continue;
+      for (const part of item.content ?? []) {
+        if (part.type === "output_text" && part.text) texts.push(part.text);
+      }
+    }
+    return parsePersonaBundleCompilationOutput(texts.join("\n").trim());
+  }
+
+  public async evolvePersonaDrift(
+    currentText: string,
+    exchanges: readonly { user: string; assistant: string }[],
+  ): Promise<string> {
+    const body = await this.summaryModelChain.run(async (model) => {
+      const response = await fetch(`${this.baseUrl}/responses`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          instructions: buildPersonaDriftEvolutionPrompt(currentText, exchanges),
+          input: [{ role: "user", content: [{ type: "input_text", text: "Revise the drift text per the instructions." }] }],
+          reasoning: { effort: this.generation.reasoningEffort },
+          text: {
+            verbosity: this.generation.verbosity,
+            format: { type: "json_schema", name: "persona_drift_evolution", strict: true, schema: personaDriftEvolutionJsonSchema },
+          },
+          max_output_tokens: this.generation.maxOutputTokens,
+        }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!response.ok) {
+        const errorBody: unknown = await response.json().catch(() => null);
+        const parsedError = errorResponseSchema.safeParse(errorBody);
+        const code = parsedError.success
+          ? (parsedError.data.error.code ?? parsedError.data.error.type ?? null)
+          : null;
+        throw new ChatProviderError(
+          `Chat provider returned HTTP ${response.status}${code ? ` (${code})` : ""}.`,
+          response.status,
+          code,
+        );
+      }
+      return response.json();
+    });
+    const parsed = responseSchema.parse(body);
+    const texts: string[] = [];
+    for (const item of parsed.output) {
+      if (item.type !== "message") continue;
+      for (const part of item.content ?? []) {
+        if (part.type === "output_text" && part.text) texts.push(part.text);
+      }
+    }
+    return parsePersonaDriftEvolutionOutput(texts.join("\n").trim()).text;
   }
 
   private async readStream(

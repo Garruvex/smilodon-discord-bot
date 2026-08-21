@@ -3,6 +3,8 @@ import type { InteractionEditReplyOptions, SlashCommandSubcommandBuilder } from 
 import type { CommandContext } from "../../../../../application/commands/command.js";
 import type { GuildAssetStore } from "../../../../../application/assets/guild-asset-store.js";
 import type { AuditLogService } from "../../../../../application/audit/audit-log-service.js";
+import type { ChatToolRegistry } from "../../../../../application/chat/tools/chat-tool-registry.js";
+import type { PersonaDriftStore } from "../../../../../application/chat/persona-drift-store.js";
 import type { GuildConfiguration } from "../../../../../config/guild-configuration.js";
 import type { UpdateGuildConfigurationInput } from "../../../../../config/guild-configuration-provider.js";
 import type { ApplicationEmojiCatalog } from "../../../application-emoji-catalog.js";
@@ -13,6 +15,16 @@ export interface SettingDeps {
   assets: GuildAssetStore;
   applicationEmojiCatalog: ApplicationEmojiCatalog;
   auditLogService?: AuditLogService;
+  // Bound after construction (see SettingsCommand.bindChatToolRegistry) —
+  // the registry can't exist until every command (including music's
+  // toolBinding-carrying ones) is registered, which happens after
+  // SettingsCommand itself is constructed. Used by tools-setting.ts to
+  // validate/list tool names against the live registry.
+  chatToolRegistry?: ChatToolRegistry;
+  // Absent when no chat provider is configured at all — see
+  // bootstrap/dependencies.ts. chatbot-setting.ts's reset-persona-drift
+  // option no-ops in that case, same as any other chat feature would.
+  personaDriftStore?: PersonaDriftStore;
 }
 
 export interface FieldChange {

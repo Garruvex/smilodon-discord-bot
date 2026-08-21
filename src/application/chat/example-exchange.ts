@@ -2,6 +2,11 @@ export interface ExampleExchange {
   tags: string;
   user: string;
   character: string;
+  // Present only when loaded from a compiled examples.bundle.json sidecar
+  // (see example-exchange-bundle.ts) — null/undefined for exchanges parsed
+  // straight from examples.md, which RelevantExampleExchangeSelector treats
+  // as a 0 similarity contribution, same convention as ChatMemoryRecord.embedding.
+  embedding?: readonly number[] | null;
 }
 
 export const exampleExchangeLimits = {

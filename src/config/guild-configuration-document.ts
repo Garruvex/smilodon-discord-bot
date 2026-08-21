@@ -26,6 +26,7 @@ export interface UpdateGuildConfigurationInput {
   chatbotDeniedLinkLabel?: string | null;
   chatbotWebSearchMode?: "off" | "auto";
   chatbotToolCallingEnabled?: boolean;
+  chatbotDisabledToolNames?: readonly string[];
   chatbotImageInputEnabled?: boolean;
   chatbotImageGenerationEnabled?: boolean;
   chatbotIncludeSources?: boolean;
@@ -34,6 +35,10 @@ export interface UpdateGuildConfigurationInput {
   ambientCooldownSeconds?: number;
   channelHistory?: boolean;
   channelHistoryLimit?: number;
+  // Merged into the existing map (per-channel entries added/overwritten,
+  // never wholesale-replaced) — same "add" semantics as chatbotChannelIds.
+  chatbotChannelMemoryModes?: Readonly<Record<string, "shared" | "isolated" | "session_only" | "disabled">>;
+  chatbotPersonaDriftEnabled?: boolean;
   birthdaysEnabled?: boolean;
   birthdayAnnouncementsChannelId?: string | null;
   nsfwEnabled?: boolean;
@@ -206,6 +211,11 @@ export function applyGuildConfigurationUpdate(
   if (input.chatbotDeniedLinkLabel !== undefined) next.chat.deniedLinkLabel = input.chatbotDeniedLinkLabel;
   if (input.chatbotWebSearchMode !== undefined) next.chat.webSearchMode = input.chatbotWebSearchMode;
   if (input.chatbotToolCallingEnabled !== undefined) next.chat.toolCallingEnabled = input.chatbotToolCallingEnabled;
+  if (input.chatbotChannelMemoryModes !== undefined) {
+    next.chat.channelMemoryModes = { ...next.chat.channelMemoryModes, ...input.chatbotChannelMemoryModes };
+  }
+  if (input.chatbotDisabledToolNames !== undefined) next.chat.disabledTools = [...input.chatbotDisabledToolNames];
+  if (input.chatbotPersonaDriftEnabled !== undefined) next.chat.personaDriftEnabled = input.chatbotPersonaDriftEnabled;
   if (input.chatbotImageInputEnabled !== undefined) next.chat.imageInputEnabled = input.chatbotImageInputEnabled;
   if (input.chatbotImageGenerationEnabled !== undefined) next.chat.imageGenerationEnabled = input.chatbotImageGenerationEnabled;
   if (input.chatbotIncludeSources !== undefined) next.chat.includeSources = input.chatbotIncludeSources;

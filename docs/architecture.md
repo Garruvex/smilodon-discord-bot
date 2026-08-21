@@ -110,11 +110,46 @@ chatbot behaviors remain Phase 2 work.
 
 ## Chat memory boundaries
 
+Persona loading is exposed through the application-layer `PersonaSource`
+interface. Mention and ambient chat share one injected implementation. The
+default `FilePersonaSource` resolves the existing guild `personality.md` and
+`examples.md` files; another stable source can replace it without changing
+Discord behaviors or the conversation service.
+
+An uploaded `personality.md` is also compiled once at upload time (see
+`PersonaBundleCompiler`, `GuildAssetStore.savePersonality`) into a JSON
+sidecar (`personality.bundle.json`) holding an always-sent "core" (identity,
+voice, behavior rules) plus embedded "lore" chunks (backstory, relationships,
+situational knowledge). `FilePersonaSource` reads this bundle when its stored
+content hash matches the current file, and falls back to sending the whole
+file — today's original behavior — when no bundle exists, it's stale, or
+compilation failed. Lore chunks are narrowed to a relevance-selected subset
+per turn by `PersonaLoreSelector`, using the same BM25 + embedding + RRF
+fusion as the memory engine, so most of a large personality file's lore only
+costs prompt tokens on the turns that actually need it.
+
 Mention chat is orchestrated by an application service rather than the Discord
-adapter. The service loads three deliberately separate inputs: the configured
-personality, bounded confirmed guild knowledge, and only the current user's
-bounded private state. Live Discord identities and role assignments are request
-context and are not copied into learned memory as an authority source.
+adapter. The service loads five layers: the configured personality core
+(guild, static), a relevance-selected subset of persona lore (guild, static
+pool but selected per turn, see above), a relevance-selected subset of the
+guild's optional example exchanges (guild, static pool but selected per turn
+— see below), bounded confirmed guild knowledge (channel-scoped, see below),
+and only the current user's bounded private state (portable across
+channels). Live Discord identities and role assignments are request context
+and are not copied into learned memory as an authority source.
+
+Guilds may also opt into an experimental **persona drift** layer
+(`profile.chat.personaDriftEnabled`, off by default) — a small "current
+mood/quirk" overlay, stored in `persona-drift.json` (`PersonaDriftStore`),
+that nudges slightly each time channel history ages out and gets summarized
+(same `ChatConversationService.consolidateDroppedExchanges` hook that already
+writes episodic guild knowledge — see `ChatProvider.evolvePersonaDrift`).
+It's additive only: the model is instructed never to let it contradict or
+override the personality/lore above it, and every nudge is hard-capped in
+size. Disabling the guild setting stops both evolution and prompt injection
+without deleting the stored state, so re-enabling resumes where it left off;
+an explicit reset (`/settings chat chatbot reset-persona-drift:true`) is the
+only thing that clears it.
 
 Normal chat remains one provider call. Its structured result contains the reply,
 private user-memory actions, and proposed guild-knowledge candidates. The
@@ -124,27 +159,47 @@ knowledge. Third-party claims remain expiring candidates and are excluded from
 normal prompts until the subject or a future administrative workflow confirms
 them.
 
-File persistence is isolated by instance runtime directory and then by guild and
-user:
+Guild knowledge and the recent-exchange session are each scoped by
+`(guildId, channelId)` in addition to their existing keys — a channel only ever
+sees guild-wide facts (`channelId IS NULL`) plus its own, so one channel's
+scene/context can't leak into another's, and the model is instructed to say it
+doesn't know rather than guess when nothing relevant was supplied. When a
+session's recent-exchange window ages out (past the count/char caps below), the
+dropped exchanges aren't just discarded — they're summarized by a standalone
+provider call into channel-scoped guild-knowledge candidates (`source:
+"consolidation"`) so long-running channel continuity isn't silently lost. Guild
+knowledge relevance ranking uses BM25 (rare-term-weighted, length-normalized)
+fused with embedding similarity via Reciprocal Rank Fusion when embeddings are
+configured, rather than flat keyword-overlap counting. Example-exchange
+selection reuses the same BM25 scorer, but always lexical-only — the pool is
+re-read from the guild's `examples.md` fresh every turn (no persisted store to
+cache an embedding against), so an embedding variant would mean one API call
+per example per message. The shared tokenizer segments CJK text (Han/Kana/
+Hangul) via `Intl.Segmenter`, not just whitespace-delimited words, so Chinese/
+Japanese/Korean content scores meaningfully instead of contributing no terms.
 
-```text
-chat/<guildId>/guild-knowledge.json
-chat/<guildId>/users/<userId>.json
-```
+Persistence is isolated by instance runtime directory and then by guild, user,
+and (for sessions/knowledge) channel. Two backends implement the same
+application-layer store interfaces:
 
-Each user document atomically contains that user's recent session and private
-memories. Guild knowledge is maintained independently with its own smaller hard
-bounds and deterministic topic/slot upserts. A one-time idempotent migration
-copies the earlier aggregate `chat-state.json` into per-user documents and
-retains the source file. PostgreSQL adapters implement the same application
-interfaces with separate session, user-memory, and guild-knowledge tables.
+- **PostgreSQL** — `chat_sessions`, `chat_memories`, `dm_notes_preferences`,
+  and `guild_knowledge` tables (Drizzle). Every instance is scoped to a schema
+  derived from `INSTANCE_NAME`, allowing multiple instances to share one
+  server and database without sharing tables. The application never uses the
+  `public` schema.
+- **Local (dev-only)** — the same four tables in a single SQLite file
+  (`<runtimeDataDirectory>/chat.sqlite`, via `better-sqlite3`), migrated
+  automatically on first run. User customization, birthdays, the control
+  panel, and guild configuration remain plain JSON/YAML files on this
+  backend — only chat/knowledge state moved to SQLite, to fix a lost-update
+  race the JSON-file read-modify-write pattern had under concurrent writers.
 
 Session persistence stores the exact Discord-visible assistant text, not the raw
 unbounded provider output. Individual user messages are capped at 1,000
 characters and Discord replies at 2,000 characters. Up to eight complete recent
 exchanges are retained within a 16,000-character serialized budget; when the
-budget is exceeded, whole oldest exchanges are removed rather than leaving
-mid-sentence fragments.
+budget is exceeded, whole oldest exchanges are removed (and consolidated, see
+above) rather than leaving mid-sentence fragments.
 
 Persistence bounds are separate from provider-context bounds. The replaceable
 `RecentPromptHistorySelector` sends at most the newest four complete exchanges
@@ -162,7 +217,7 @@ birth year is stored.
 `BirthdayAnnouncer` checks hourly, using a per-guild-per-date record in the
 store to avoid re-posting after a same-day restart. Announcements require both
 `features.birthdays` and a configured `channels.birthdayAnnouncements`, enforced
-at the schema level. `/settings birthdays` manages both; `/birthday set|view|remove`
+at the schema level. `/settings community birthdays` manages both; `/birthday set|view|remove`
 is user-facing.
 
 ## NSFW image commands
@@ -181,7 +236,8 @@ Guild-memory selection is an application interface. The current
 normal path to one provider round trip. Up to 100 confirmed records and 16,000
 serialized characters may be included. Record and character counts are logged
 with chat request metadata. Logs also report content-free sizes for personality,
-application security/memory instructions, selected history, private memory,
-replied-to content, and the current message. A future semantic or model-based
+selected example exchanges, application security/memory instructions, selected
+history, private memory, replied-to content, and the current message. A future
+semantic or model-based
 selector can replace this implementation without changing Discord, persistence,
 or provider adapters.

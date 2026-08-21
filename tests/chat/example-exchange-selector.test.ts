@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { RelevantExampleExchangeSelector } from "../../src/application/chat/example-exchange-selector.js";
 import type { ExampleExchange } from "../../src/application/chat/example-exchange.js";
+import type { EmbeddingsClient } from "../../src/infrastructure/chat/openai-embeddings-client.js";
 
 function exchange(overrides: Partial<ExampleExchange> = {}): ExampleExchange {
   return { tags: "", user: "placeholder", character: "placeholder", ...overrides };
@@ -89,5 +90,57 @@ describe("RelevantExampleExchangeSelector", () => {
 
     expect(selected.length).toBeGreaterThan(0);
     expect(selected.length).toBeLessThanOrEqual(many.length);
+  });
+
+  it("skips the per-turn embed call when no record carries an embedding, staying lexical-only", async () => {
+    const embed = vi.fn(() => Promise.resolve([1, 0]));
+    const examTalk = exchange({ tags: "exam", user: "my exam went badly", character: "rip" });
+    const selector = new RelevantExampleExchangeSelector({ embed });
+
+    await selector.select({
+      records: [examTalk],
+      currentUser: { id: "user", displayName: "User", roleNames: [] },
+      mentionedUsers: [],
+      recentHistory: [],
+      message: "my exam today was a disaster",
+      now: 1_000,
+    });
+
+    expect(embed).not.toHaveBeenCalled();
+  });
+
+  it("embeds the current message when at least one record carries an embedding", async () => {
+    const embed = vi.fn(() => Promise.resolve([1, 0]));
+    const examTalk = exchange({ tags: "exam", user: "my exam went badly", character: "rip", embedding: [1, 0] });
+    const selector = new RelevantExampleExchangeSelector({ embed });
+
+    await selector.select({
+      records: [examTalk],
+      currentUser: { id: "user", displayName: "User", roleNames: [] },
+      mentionedUsers: [],
+      recentHistory: [],
+      message: "my exam today was a disaster",
+      now: 1_000,
+    });
+
+    expect(embed).toHaveBeenCalledWith("my exam today was a disaster");
+  });
+
+  it("excludes embedding from the serialized prompt-budget projection", async () => {
+    const bigEmbedding = Array.from({ length: 1_536 }, () => 0.123456789);
+    const withEmbedding = exchange({ tags: "a", user: "hello", character: "hi", embedding: bigEmbedding });
+    const failingClient: EmbeddingsClient = { embed: () => Promise.reject(new Error("down")) };
+    const selector = new RelevantExampleExchangeSelector(failingClient);
+
+    const selected = await selector.select({
+      records: [withEmbedding],
+      currentUser: { id: "user", displayName: "User", roleNames: [] },
+      mentionedUsers: [],
+      recentHistory: [],
+      message: "hello",
+      now: 1_000,
+    });
+
+    expect(selected).toHaveLength(1);
   });
 });

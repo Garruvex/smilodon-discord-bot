@@ -26,7 +26,22 @@ export interface ChatRequest {
   musicVolumeMaximum?: number | undefined;
   musicControllerRoleIds?: ReadonlySet<string> | undefined;
   musicBotAdministratorRoleIds?: ReadonlySet<string> | undefined;
+  // Whether the invoking user is a configured bot owner — passed through to
+  // ChatToolContext.isOwner so a tool binding's access check (see
+  // AccessPolicyEngine) can grant the same owner bypass a slash command
+  // would. Defaults to false when omitted.
+  isOwner?: boolean;
   personality: string;
+  // Relevance-selected subset of the guild's persona lore chunks (see
+  // persona-lore-selector.ts) — empty for guilds without a compiled
+  // personality bundle (uncompiled, stale, or failed compile all fall back
+  // to sending the whole file as `personality` above instead).
+  personaLore: readonly PersonaLoreEntry[];
+  // The guild's current evolved "mood/quirk" overlay text (see
+  // persona-drift-store.ts), or null when the guild has the feature
+  // disabled or nothing has evolved yet. Never populated from anything
+  // other than PersonaDriftStore — the model never writes this directly.
+  personaDrift: string | null;
   // Relevance-selected subset of the guild's uploaded example exchanges
   // (see example-exchange-selector.ts) — empty for guilds that haven't
   // uploaded an examples.md.
@@ -57,6 +72,11 @@ export interface ChatRequest {
   // message, not @mentioned — the model judges whether to ignore, react
   // with an emoji, or reply (see ChatResponse.ambientAction).
   triggerMode: "direct" | "ambient";
+}
+
+export interface PersonaLoreEntry {
+  heading: string;
+  text: string;
 }
 
 export interface ChatUser {
@@ -176,6 +196,7 @@ export interface ChatResponse {
   reactionEmoji: string | null;
   contextUsage?: {
     personalityChars: number;
+    personaLoreChars: number;
     userCustomizationChars: number;
     securityInstructionChars: number;
     memoryInstructionChars: number;
@@ -223,6 +244,22 @@ export interface ChatProvider {
   summarizeDroppedExchanges?(
     exchanges: readonly { user: string; assistant: string }[],
   ): Promise<readonly DroppedExchangeFact[]>;
+  // Standalone call splitting an uploaded personality.md into an
+  // always-sent "core" (identity/voice/behavior rules) and retrievable
+  // "chunks" (situational lore) — see persona-bundle-compiler.ts. Called
+  // once at upload time, never per turn.
+  compilePersonaBundle?(
+    content: string,
+  ): Promise<{ core: string; chunks: readonly { heading: string; text: string }[] }>;
+  // Standalone call nudging the guild's persona-drift overlay from recent
+  // conversation activity — see persona-drift-store.ts. Called from the
+  // same off-critical-path hook as summarizeDroppedExchanges, only when the
+  // guild has the feature enabled. Returns the revised drift text (may be
+  // unchanged, or empty to mean "nothing worth noting yet").
+  evolvePersonaDrift?(
+    currentText: string,
+    exchanges: readonly { user: string; assistant: string }[],
+  ): Promise<string>;
 }
 
 export interface ChatResponseObserver {

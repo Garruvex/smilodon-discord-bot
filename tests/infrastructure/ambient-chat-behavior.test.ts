@@ -21,7 +21,7 @@ function configuration(): ApplicationConfiguration {
     ownerUserIds: new Set([ownerId]),
     guildConfigurationDirectory: "unused",
     runtimeDataDirectory: "unused",
-    persistence: { driver: "file", databaseUrl: null, schemaPerInstance: false },
+    persistence: { driver: "file", databaseUrl: null },
     lavalink: { host: "localhost", port: 2333, password: "test-password", secure: false },
     chat: null,
     utilityChat: null,
@@ -66,9 +66,9 @@ function profile(overrides: { ambientReplies?: boolean } = {}): GuildConfigurati
     chat: {
       personalityFile: null, personalityAsset: null, examplesFile: null, examplesAsset: null, cooldownSeconds: 30,
       deniedMessage: "Premium required.", deniedLinkUrl: null, deniedLinkLabel: null,
-      webSearchMode: "off", toolCallingEnabled: false, imageInputEnabled: false, imageGenerationEnabled: false,
+      webSearchMode: "off", toolCallingEnabled: false, disabledTools: [], imageInputEnabled: false, imageGenerationEnabled: false,
       includeSources: true, maxImagesPerRequest: 2, ambientCooldownSeconds: 20,
-      channelHistoryLimit: 8,
+      channelHistoryLimit: 8, channelMemoryModes: {}, personaDriftEnabled: false,
     },
     sourceFile: "test.yaml",
   };
@@ -107,6 +107,7 @@ function behavior(profileValue: GuildConfiguration | null, conversation: ChatCon
     configuration(),
     provider(profileValue),
     conversation,
+    { resolve: () => Promise.resolve({ personality: "Test persona", loreChunks: [], examplePool: [], personaDrift: null }) },
     { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } as never,
   );
 }

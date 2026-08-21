@@ -4,6 +4,7 @@ import {
   formatRoleGroupList,
   roleGroupDescriptions,
 } from "../../../../../application/access/role-group-descriptions.js";
+import { CHAT_LIMITS } from "../../../../../config/guild-configuration-limits.js";
 import type { MutationSettingDefinition } from "./setting-definition.js";
 
 export const chatbotSetting: MutationSettingDefinition = {
@@ -14,7 +15,8 @@ export const chatbotSetting: MutationSettingDefinition = {
     .addBooleanOption((o) => o.setName("enabled").setDescription("Reply when permitted users mention the bot."))
     .addRoleOption((o) => o.setName("role").setDescription("Adds a role allowed to use mention chat."))
     .addChannelOption((o) => o.setName("channel").setDescription("Adds a text channel where mention chat is allowed.").addChannelTypes(ChannelType.GuildText))
-    .addIntegerOption((o) => o.setName("cooldown-seconds").setDescription("Per-user delay between requests.").setMinValue(0).setMaxValue(86400))
+    .addIntegerOption((o) => o.setName("cooldown-seconds").setDescription("Per-user delay between requests.")
+      .setMinValue(CHAT_LIMITS.cooldownSeconds.min).setMaxValue(CHAT_LIMITS.cooldownSeconds.max))
     .addStringOption((o) => o.setName("denied-message").setDescription("Playful response shown to users without access.").setMaxLength(500))
     .addStringOption((o) => o.setName("denied-link-url").setDescription("Optional link button URL shown with the denied message. Use \"none\" to remove it."))
     .addStringOption((o) => o.setName("denied-link-label").setDescription("Label for the denied-message link button.").setMaxLength(80))
@@ -23,11 +25,14 @@ export const chatbotSetting: MutationSettingDefinition = {
     .addBooleanOption((o) => o.setName("image-input").setDescription("Allow bounded image attachments from Discord."))
     .addBooleanOption((o) => o.setName("image-generation").setDescription("Allow the model to generate images in mention chat."))
     .addBooleanOption((o) => o.setName("include-sources").setDescription("Include web citation links in replies."))
-    .addIntegerOption((o) => o.setName("max-images").setDescription("Maximum images accepted per request.").setMinValue(0).setMaxValue(4))
+    .addIntegerOption((o) => o.setName("max-images").setDescription("Maximum images accepted per request.")
+      .setMinValue(CHAT_LIMITS.maxImagesPerRequest.min).setMaxValue(CHAT_LIMITS.maxImagesPerRequest.max))
     .addAttachmentOption((o) => o.setName("personality").setDescription("Upload the guild personality as a Markdown file."))
     .addBooleanOption((o) => o.setName("use-default-personality").setDescription("Remove the uploaded personality and use the built-in/default file."))
     .addAttachmentOption((o) => o.setName("examples").setDescription("Upload example character exchanges as a Markdown file."))
-    .addBooleanOption((o) => o.setName("use-default-examples").setDescription("Remove the uploaded examples file.")),
+    .addBooleanOption((o) => o.setName("use-default-examples").setDescription("Remove the uploaded examples file."))
+    .addBooleanOption((o) => o.setName("persona-drift").setDescription("Experimental: let the character's mood/quirks slowly evolve from conversation activity."))
+    .addBooleanOption((o) => o.setName("reset-persona-drift").setDescription("Wipe the character's evolved mood/quirk history and start over.")),
   handle: async (context, deps, previousProfile, input) => {
     const enabled = context.interaction.options.getBoolean("enabled");
     const role = context.interaction.options.getRole("role");
@@ -87,6 +92,11 @@ export const chatbotSetting: MutationSettingDefinition = {
       input.chatbotExamplesAsset = null;
       input.chatbotExamplesFile = null;
     }
+    const personaDrift = context.interaction.options.getBoolean("persona-drift");
+    if (personaDrift !== null) input.chatbotPersonaDriftEnabled = personaDrift;
+    if (context.interaction.options.getBoolean("reset-persona-drift") === true) {
+      await deps.personaDriftStore?.reset(context.interaction.guildId!);
+    }
     return { ok: true };
   },
   describe: (previous, updated) => {
@@ -111,5 +121,6 @@ export const chatbotSetting: MutationSettingDefinition = {
     { label: "Chatbot image generation", read: (p) => p.chat.imageGenerationEnabled },
     { label: "Chatbot include sources", read: (p) => p.chat.includeSources },
     { label: "Chatbot max images per request", read: (p) => p.chat.maxImagesPerRequest },
+    { label: "Chatbot persona drift (experimental)", read: (p) => p.chat.personaDriftEnabled },
   ],
 };

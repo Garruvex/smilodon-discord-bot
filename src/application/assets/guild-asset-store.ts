@@ -2,8 +2,13 @@ import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { extname, resolve } from "node:path";
 
 import type { Attachment } from "discord.js";
+import type { Logger } from "pino";
 
+import { buildExampleExchangeBundle, serializeExampleExchangeBundle } from "../chat/example-exchange-bundle.js";
 import { parseExampleExchanges } from "../chat/example-exchange.js";
+import type { PersonaBundleCompiler } from "../chat/persona-bundle-compiler.js";
+import { serializePersonaBundle } from "../chat/persona-bundle.js";
+import type { EmbeddingsClient } from "../../infrastructure/chat/openai-embeddings-client.js";
 
 export class GuildAssetError extends Error {
   public constructor(message: string) {
@@ -20,7 +25,19 @@ const allowedTypes = new Map([
 ]);
 
 export class GuildAssetStore {
-  public constructor(private readonly runtimeDirectory: string) {}
+  public constructor(
+    private readonly runtimeDirectory: string,
+    // Optional — when absent, personality uploads simply never get a
+    // compiled bundle and always fall back to sending the full file (see
+    // FilePersonaSource). Kept optional so tests and deployments without an
+    // embeddings-capable provider configured don't need a stub.
+    private readonly personaBundleCompiler: PersonaBundleCompiler | null = null,
+    // Optional — when absent, examples uploads never get embeddings and
+    // RelevantExampleExchangeSelector stays lexical-only (its long-standing
+    // default; see example-exchange-selector.ts).
+    private readonly embeddingsClient: EmbeddingsClient | null = null,
+    private readonly logger: Logger | null = null,
+  ) {}
 
   public async saveIdleImage(guildId: string, attachment: Attachment): Promise<string> {
     const extension = attachment.contentType ? allowedTypes.get(attachment.contentType) : undefined;
@@ -77,7 +94,25 @@ export class GuildAssetStore {
     const temporary = `${target}.tmp`;
     await writeFile(temporary, `${content}\n`, "utf8");
     await rename(temporary, target);
+    await this.compilePersonalityBundle(directory, guildId, content);
     return `${relativeDirectory}/personality.md`;
+  }
+
+  // Best-effort — a compilation failure must never fail the upload itself,
+  // it just means this guild keeps sending the full personality file until
+  // the next successful upload (see PersonaBundleCompiler, FilePersonaSource).
+  private async compilePersonalityBundle(directory: string, guildId: string, content: string): Promise<void> {
+    if (!this.personaBundleCompiler) return;
+    try {
+      const bundle = await this.personaBundleCompiler.compile(content);
+      if (!bundle) return;
+      const target = resolve(directory, "personality.bundle.json");
+      const temporary = `${target}.tmp`;
+      await writeFile(temporary, serializePersonaBundle(bundle), "utf8");
+      await rename(temporary, target);
+    } catch (error) {
+      this.logger?.warn({ error, guildId }, "Writing the compiled personality bundle failed; the full file will be sent as-is");
+    }
   }
 
   public async removePersonality(asset: string | null): Promise<void> {
@@ -86,6 +121,7 @@ export class GuildAssetStore {
     const root = resolve(this.runtimeDirectory, "guild-assets");
     if (!target.startsWith(`${root}\\`) && !target.startsWith(`${root}/`)) return;
     await rm(target, { force: true });
+    await rm(`${target.slice(0, -".md".length)}.bundle.json`, { force: true });
   }
 
   public async saveExamples(guildId: string, attachment: Attachment): Promise<string> {
@@ -111,7 +147,26 @@ export class GuildAssetStore {
     const temporary = `${target}.tmp`;
     await writeFile(temporary, `${content}\n`, "utf8");
     await rename(temporary, target);
+    await this.embedExamplesBundle(directory, guildId, content, parsed.exchanges);
     return `${relativeDirectory}/examples.md`;
+  }
+
+  // Best-effort — an embedding failure must never fail the upload itself, it
+  // just means this guild's example selection stays lexical-only until the
+  // next successful upload (see RelevantExampleExchangeSelector, FilePersonaSource).
+  private async embedExamplesBundle(
+    directory: string, guildId: string, content: string, exchanges: readonly { tags: string; user: string; character: string }[],
+  ): Promise<void> {
+    if (!this.embeddingsClient) return;
+    try {
+      const bundle = await buildExampleExchangeBundle(content, exchanges, this.embeddingsClient);
+      const target = resolve(directory, "examples.bundle.json");
+      const temporary = `${target}.tmp`;
+      await writeFile(temporary, serializeExampleExchangeBundle(bundle), "utf8");
+      await rename(temporary, target);
+    } catch (error) {
+      this.logger?.warn({ error, guildId }, "Embedding the examples bundle failed; example selection will stay lexical-only");
+    }
   }
 
   public async removeExamples(asset: string | null): Promise<void> {
@@ -120,5 +175,6 @@ export class GuildAssetStore {
     const root = resolve(this.runtimeDirectory, "guild-assets");
     if (!target.startsWith(`${root}\\`) && !target.startsWith(`${root}/`)) return;
     await rm(target, { force: true });
+    await rm(`${target.slice(0, -".md".length)}.bundle.json`, { force: true });
   }
 }
