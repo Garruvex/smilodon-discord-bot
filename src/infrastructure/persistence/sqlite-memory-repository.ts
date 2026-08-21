@@ -78,7 +78,7 @@ export class SqliteMemoryRepository implements MemoryRepository {
       // without merging different users' differing claims into one row.
       const existing = input.status === "active"
         ? transaction.select().from(schema.memories).where(and(identity, eq(schema.memories.status, "active"))).get()
-        : (() => {
+        : ((): typeof schema.memories.$inferSelect | undefined => {
             const ownSourceMatch = transaction.select({ id: schema.memories.id })
               .from(schema.memories)
               .innerJoin(schema.memorySources, eq(schema.memorySources.memoryId, schema.memories.id))
@@ -128,16 +128,25 @@ export class SqliteMemoryRepository implements MemoryRepository {
           expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
         }).where(eq(schema.memories.id, existing.id)).run();
       }
-      transaction.insert(schema.memorySources).values({
-        id: randomUUID(),
-        memoryId: row.id,
-        sourceMessageId: input.sourceMessageId,
-        sourceChannelId: input.sourceChannelId,
-        assertedByUserId: input.assertedByUserId,
-        statement: input.statement,
-        source: input.source,
-        createdAt: new Date(input.now),
-      }).run();
+      // Idempotent retry guard — see postgres-memory-repository.ts's ingest
+      // for the rationale (stable batch-derived sourceMessageId from
+      // ChannelSummaryScheduler must not duplicate provenance on retry).
+      const alreadyRecorded = input.sourceMessageId !== null && transaction.select({ id: schema.memorySources.id })
+        .from(schema.memorySources)
+        .where(and(eq(schema.memorySources.memoryId, row.id), eq(schema.memorySources.sourceMessageId, input.sourceMessageId)))
+        .get() !== undefined;
+      if (!alreadyRecorded) {
+        transaction.insert(schema.memorySources).values({
+          id: randomUUID(),
+          memoryId: row.id,
+          sourceMessageId: input.sourceMessageId,
+          sourceChannelId: input.sourceChannelId,
+          assertedByUserId: input.assertedByUserId,
+          statement: input.statement,
+          source: input.source,
+          createdAt: new Date(input.now),
+        }).run();
+      }
       return existing ? { ...row, statement: input.statement, confidence: input.confidence, importance: input.importance, embedding: input.embedding ? [...input.embedding] : null, updatedAt: new Date(input.now) } : row;
     });
     return Promise.resolve(toMemory(result));

@@ -10,16 +10,16 @@ import {
   type ChatResponseObserver,
   type ChatSource,
   type DroppedExchangeFact,
-  type ProposedGuildKnowledgeCandidate,
   type UserCustomizationAnalysisResult,
 } from "../../application/chat/chat-provider.js";
 import type { ChatImage } from "../../application/chat/chat-provider.js";
+import type { ChannelSummaryFact, ChannelSummaryMessage } from "../../application/context/channel-message-summarizer.js";
 import type { ChatTool, ChatToolContext, ChatToolResult } from "../../application/chat/tools/chat-tool.js";
 import { buildChatContext, buildChatInstructions, chatModelJsonSchema, parseChatModelOutput } from "./chat-structured-output.js";
 import {
-  buildChannelMessageSummaryPrompt,
+  channelMessageSummaryMaxOutputTokens,
   channelMessageSummaryJsonSchema,
-  parseChannelMessageSummaryOutput,
+  prepareChannelMessageSummary,
 } from "./channel-message-summarization.js";
 import {
   buildDroppedExchangeConsolidationPrompt,
@@ -29,8 +29,9 @@ import {
 import { ModelFallbackChain } from "./model-fallback-chain.js";
 import {
   buildPersonaBundleCompilationPrompt,
-  estimatePersonaBundleOutputTokens,
   personaBundleCompilationJsonSchema,
+  personaBundleCompilationMaxOutputTokens,
+  personaBundleCompilationTimeoutMs,
   parsePersonaBundleCompilationOutput,
 } from "./persona-bundle-compilation.js";
 import {
@@ -73,6 +74,7 @@ export class GeminiChatProvider implements ChatProvider {
       maxOutputTokens: number;
       thinkingBudget: number | null;
       summaryModels?: readonly string[];
+      summaryMaxOutputTokens?: number;
     },
   ) {
     this.modelChain = new ModelFallbackChain(models);
@@ -96,6 +98,9 @@ export class GeminiChatProvider implements ChatProvider {
       music: request.musicActor
         ? {
             actor: request.musicActor,
+            resolveAccessSubjectFields: request.musicResolveAccessSubjectFields
+              ?? ((): { roleIds: readonly string[]; memberPermissions: bigint; botPermissions: bigint | null } =>
+                ({ roleIds: [], memberPermissions: 0n, botPermissions: null })),
             volumeMaximum: request.musicVolumeMaximum ?? 150,
             musicControllerRoleIds: request.musicControllerRoleIds ?? new Set(),
             botAdministratorRoleIds: request.musicBotAdministratorRoleIds ?? new Set(),
@@ -335,9 +340,10 @@ export class GeminiChatProvider implements ChatProvider {
       model,
       buildPersonaBundleCompilationPrompt(content),
       personaBundleCompilationJsonSchema,
-      estimatePersonaBundleOutputTokens(content),
+      personaBundleCompilationMaxOutputTokens,
+      personaBundleCompilationTimeoutMs,
     ));
-    return parsePersonaBundleCompilationOutput((response.text ?? "").trim());
+    return parsePersonaBundleCompilationOutput((response.text ?? "").trim(), content);
   }
 
   public async evolvePersonaDrift(
@@ -354,14 +360,16 @@ export class GeminiChatProvider implements ChatProvider {
 
   public async summarizeChannelMessages(
     guildId: string,
-    messages: readonly { authorId: string; authorDisplayName: string; content: string }[],
-  ): Promise<readonly Omit<ProposedGuildKnowledgeCandidate, "channelScoped">[]> {
+    messages: readonly ChannelSummaryMessage[],
+  ): Promise<readonly ChannelSummaryFact[]> {
+    const summary = prepareChannelMessageSummary(guildId, messages);
     const response = await this.summaryModelChain.run((model) => this.generateStructured(
       model,
-      buildChannelMessageSummaryPrompt(guildId, messages),
+      summary.prompt,
       channelMessageSummaryJsonSchema,
+      this.generation.summaryMaxOutputTokens ?? channelMessageSummaryMaxOutputTokens,
     ));
-    return parseChannelMessageSummaryOutput((response.text ?? "").trim()).facts;
+    return summary.parse((response.text ?? "").trim()).facts;
   }
 
   // Shared by the two standalone structured-output calls (own prompt/schema,
@@ -372,13 +380,14 @@ export class GeminiChatProvider implements ChatProvider {
     prompt: string,
     jsonSchema: Record<string, unknown>,
     maxOutputTokens: number = this.generation.maxOutputTokens,
+    timeoutMs = 30_000,
   ): Promise<GenerateContentResponse> {
     try {
       return await this.client.models.generateContent({
         model,
         contents: [{ role: "user", parts: [{ text: "Follow the instructions above." }] }],
         config: {
-          abortSignal: AbortSignal.timeout(30_000),
+          abortSignal: AbortSignal.timeout(timeoutMs),
           systemInstruction: prompt,
           maxOutputTokens,
           responseMimeType: "application/json",

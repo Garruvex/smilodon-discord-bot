@@ -9,15 +9,15 @@ import {
   type ChatResponseObserver,
   type ChatSource,
   type DroppedExchangeFact,
-  type ProposedGuildKnowledgeCandidate,
   type UserCustomizationAnalysisResult,
 } from "../../application/chat/chat-provider.js";
+import type { ChannelSummaryFact, ChannelSummaryMessage } from "../../application/context/channel-message-summarizer.js";
 import type { ChatTool, ChatToolContext, ChatToolResult } from "../../application/chat/tools/chat-tool.js";
 import { buildChatContext, buildChatInstructions, chatModelJsonSchema, parseChatModelOutput } from "./chat-structured-output.js";
 import {
-  buildChannelMessageSummaryPrompt,
+  channelMessageSummaryMaxOutputTokens,
   channelMessageSummaryJsonSchema,
-  parseChannelMessageSummaryOutput,
+  prepareChannelMessageSummary,
 } from "./channel-message-summarization.js";
 import {
   buildDroppedExchangeConsolidationPrompt,
@@ -27,8 +27,9 @@ import {
 import { ModelFallbackChain } from "./model-fallback-chain.js";
 import {
   buildPersonaBundleCompilationPrompt,
-  estimatePersonaBundleOutputTokens,
   personaBundleCompilationJsonSchema,
+  personaBundleCompilationMaxOutputTokens,
+  personaBundleCompilationTimeoutMs,
   parsePersonaBundleCompilationOutput,
 } from "./persona-bundle-compilation.js";
 import {
@@ -43,6 +44,8 @@ import {
 } from "./user-customization-analysis.js";
 
 const responseSchema = z.object({
+  status: z.enum(["completed", "failed", "in_progress", "cancelled", "queued", "incomplete"]).optional(),
+  incomplete_details: z.object({ reason: z.string() }).nullable().optional(),
   output: z.array(z.object({
     type: z.string(),
     result: z.string().optional(),
@@ -127,6 +130,8 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
       verbosity: "low" | "medium" | "high";
       maxOutputTokens: number;
       summaryModels?: readonly string[];
+      summaryMaxOutputTokens?: number;
+      summaryReasoningEffort?: "minimal" | "low" | "medium" | "high";
     },
   ) {
     this.modelChain = new ModelFallbackChain(models);
@@ -160,6 +165,9 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
       music: request.musicActor
         ? {
             actor: request.musicActor,
+            resolveAccessSubjectFields: request.musicResolveAccessSubjectFields
+              ?? ((): { roleIds: readonly string[]; memberPermissions: bigint; botPermissions: bigint | null } =>
+                ({ roleIds: [], memberPermissions: 0n, botPermissions: null })),
             volumeMaximum: request.musicVolumeMaximum ?? 150,
             musicControllerRoleIds: request.musicControllerRoleIds ?? new Set(),
             botAdministratorRoleIds: request.musicBotAdministratorRoleIds ?? new Set(),
@@ -436,9 +444,9 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
             verbosity: this.generation.verbosity,
             format: { type: "json_schema", name: "persona_bundle_compilation", strict: true, schema: personaBundleCompilationJsonSchema },
           },
-          max_output_tokens: estimatePersonaBundleOutputTokens(content),
+          max_output_tokens: personaBundleCompilationMaxOutputTokens,
         }),
-        signal: AbortSignal.timeout(30_000),
+        signal: AbortSignal.timeout(personaBundleCompilationTimeoutMs),
       });
       if (!response.ok) {
         const errorBody: unknown = await response.json().catch(() => null);
@@ -462,7 +470,7 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
         if (part.type === "output_text" && part.text) texts.push(part.text);
       }
     }
-    return parsePersonaBundleCompilationOutput(texts.join("\n").trim());
+    return parsePersonaBundleCompilationOutput(texts.join("\n").trim(), content);
   }
 
   public async evolvePersonaDrift(
@@ -516,9 +524,10 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
 
   public async summarizeChannelMessages(
     guildId: string,
-    messages: readonly { authorId: string; authorDisplayName: string; content: string }[],
-  ): Promise<readonly Omit<ProposedGuildKnowledgeCandidate, "channelScoped">[]> {
-    const body = await this.summaryModelChain.run(async (model) => {
+    messages: readonly ChannelSummaryMessage[],
+  ): Promise<readonly ChannelSummaryFact[]> {
+    const summary = prepareChannelMessageSummary(guildId, messages);
+    return this.summaryModelChain.run(async (model) => {
       const response = await fetch(`${this.baseUrl}/responses`, {
         method: "POST",
         headers: {
@@ -527,14 +536,14 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
         },
         body: JSON.stringify({
           model,
-          instructions: buildChannelMessageSummaryPrompt(guildId, messages),
+          instructions: summary.prompt,
           input: [{ role: "user", content: [{ type: "input_text", text: "Extract facts per the instructions." }] }],
-          reasoning: { effort: this.generation.reasoningEffort },
+          reasoning: { effort: this.generation.summaryReasoningEffort ?? this.generation.reasoningEffort },
           text: {
             verbosity: this.generation.verbosity,
             format: { type: "json_schema", name: "channel_message_summary", strict: true, schema: channelMessageSummaryJsonSchema },
           },
-          max_output_tokens: this.generation.maxOutputTokens,
+          max_output_tokens: this.generation.summaryMaxOutputTokens ?? channelMessageSummaryMaxOutputTokens,
         }),
         signal: AbortSignal.timeout(30_000),
       });
@@ -550,17 +559,24 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
           code,
         );
       }
-      return response.json();
-    });
-    const parsed = responseSchema.parse(body);
-    const texts: string[] = [];
-    for (const item of parsed.output) {
-      if (item.type !== "message") continue;
-      for (const part of item.content ?? []) {
-        if (part.type === "output_text" && part.text) texts.push(part.text);
+      const parsed = responseSchema.parse(await response.json());
+      if (parsed.status === "incomplete") {
+        const reason = parsed.incomplete_details?.reason ?? "unknown";
+        throw new ChatProviderError(
+          `Chat provider returned an incomplete structured response (${reason}).`,
+          502,
+          "incomplete_response",
+        );
       }
-    }
-    return parseChannelMessageSummaryOutput(texts.join("\n").trim()).facts;
+      const texts: string[] = [];
+      for (const item of parsed.output) {
+        if (item.type !== "message") continue;
+        for (const part of item.content ?? []) {
+          if (part.type === "output_text" && part.text) texts.push(part.text);
+        }
+      }
+      return summary.parse(texts.join("\n").trim()).facts;
+    });
   }
 
   private async readStream(

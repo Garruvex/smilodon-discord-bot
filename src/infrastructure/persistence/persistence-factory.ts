@@ -29,6 +29,9 @@ import { GuildMemberRegistry } from "./guild-member-registry.js";
 import type { MemoryRepository } from "../../application/memory/memory.js";
 import { SqliteMemoryRepository } from "./sqlite-memory-repository.js";
 import { PostgresMemoryRepository } from "./postgres-memory-repository.js";
+import type { ChannelSummaryCheckpointStore } from "../../application/context/channel-summary-checkpoint-store.js";
+import { SqliteChannelSummaryCheckpointStore } from "./sqlite-channel-summary-checkpoint-store.js";
+import { PostgresChannelSummaryCheckpointStore } from "./postgres-channel-summary-checkpoint-store.js";
 
 export interface PersistenceServices {
   guildConfigurationProvider: GuildConfigurationProvider;
@@ -37,6 +40,7 @@ export interface PersistenceServices {
   userCustomizationStore: UserCustomizationStore;
   guildKnowledgeStore: GuildKnowledgeStore;
   memoryRepository: MemoryRepository;
+  channelSummaryCheckpointStore: ChannelSummaryCheckpointStore;
   birthdayStore: BirthdayStore;
   // Null on the local (file-based) backend, which has no hub-table concept —
   // it's purely a dev/testing convenience and doesn't need it.
@@ -55,6 +59,7 @@ export async function createPersistenceServices(
   let userCustomizationStore: UserCustomizationStore;
   let guildKnowledgeStore: GuildKnowledgeStore;
   let memoryRepository: MemoryRepository;
+  let channelSummaryCheckpointStore: ChannelSummaryCheckpointStore;
   let birthdayStore: BirthdayStore;
   let guildMemberRegistry: GuildMemberRegistry | null = null;
 
@@ -73,6 +78,7 @@ export async function createPersistenceServices(
     userCustomizationStore = new PostgresUserCustomizationStore(connection.database, guildMemberRegistry);
     guildKnowledgeStore = new PostgresGuildKnowledgeStore(connection.database);
     memoryRepository = new PostgresMemoryRepository(connection.database);
+    channelSummaryCheckpointStore = new PostgresChannelSummaryCheckpointStore(connection.database);
     birthdayStore = new PostgresBirthdayStore(connection.database, guildMemberRegistry);
   } else {
     guildConfigurationProvider = new LocalGuildConfigurationProvider(
@@ -89,6 +95,7 @@ export async function createPersistenceServices(
     userCustomizationStore = new LocalUserCustomizationStore(configuration.runtimeDataDirectory);
     guildKnowledgeStore = new SqliteGuildKnowledgeStore(sqliteConnection.database);
     memoryRepository = new SqliteMemoryRepository(sqliteConnection.database);
+    channelSummaryCheckpointStore = new SqliteChannelSummaryCheckpointStore(sqliteConnection.database);
     birthdayStore = new LocalBirthdayStore(configuration.runtimeDataDirectory);
   }
 
@@ -97,6 +104,7 @@ export async function createPersistenceServices(
   await chatStateStore.initialize();
   await userCustomizationStore.initialize();
   await guildKnowledgeStore.initialize();
+  await channelSummaryCheckpointStore.initialize();
   await birthdayStore.initialize();
 
   return {
@@ -106,6 +114,7 @@ export async function createPersistenceServices(
     userCustomizationStore,
     guildKnowledgeStore,
     memoryRepository,
+    channelSummaryCheckpointStore,
     birthdayStore,
     guildMemberRegistry,
     close: async (): Promise<void> => {

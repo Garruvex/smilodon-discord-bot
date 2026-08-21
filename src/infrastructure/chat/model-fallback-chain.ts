@@ -34,9 +34,15 @@ export class ModelFallbackChain {
         return await this.attemptWithStreamRetry(attempt, model);
       } catch (error) {
         lastError = error;
-        if (error instanceof ChatProviderError && error.status === 429) {
-          this.cooldownUntil.set(model, Date.now() + this.cooldownMs);
-          continue;
+        if (error instanceof ChatProviderError) {
+          if (error.status === 429) {
+            this.cooldownUntil.set(model, Date.now() + this.cooldownMs);
+            continue;
+          }
+          // Structured-output calls validate inside the attempt so an
+          // incomplete or malformed result can use the configured fallback
+          // model instead of permanently failing the background batch.
+          if (error.code === "incomplete_response" || error.code === "invalid_structured_output") continue;
         }
         throw error;
       }

@@ -33,6 +33,11 @@ export class ChatTurnSupport {
     profile: GuildConfiguration,
   ): {
     actor: PlaybackActor;
+    resolveAccessSubjectFields: () => {
+      roleIds: readonly string[];
+      memberPermissions: bigint;
+      botPermissions: bigint | null;
+    };
     volumeMaximum: number;
     musicControllerRoleIds: ReadonlySet<string>;
     botAdministratorRoleIds: ReadonlySet<string>;
@@ -45,8 +50,18 @@ export class ChatTurnSupport {
     // channel instead of the one the panel and its "up next"/now-playing
     // state are anchored to.
     const musicTextChannelId = profile.channels.controlPanel ?? message.channelId;
+    const member = message.member;
     return {
-      actor: createPlaybackActorFromMember(message.guildId, musicTextChannelId, message.member),
+      actor: createPlaybackActorFromMember(message.guildId, musicTextChannelId, member),
+      // Closes over the live `member` so each tool call (see
+      // ChatToolContext.music's own comment) reads current roles/permissions
+      // at call time — this can span multiple LLM round-trips within one
+      // turn, during which the member's roles can change.
+      resolveAccessSubjectFields: () => ({
+        roleIds: [...member.roles.cache.keys()],
+        memberPermissions: member.permissions.bitfield,
+        botPermissions: member.guild.members.me?.permissions.bitfield ?? null,
+      }),
       volumeMaximum: profile.music.maximumVolume,
       musicControllerRoleIds: profile.roles.musicController,
       botAdministratorRoleIds: profile.roles.botAdministrator,

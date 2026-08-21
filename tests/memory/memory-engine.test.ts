@@ -143,6 +143,44 @@ describe("DefaultMemoryEngine.ingest — consolidation self-activates", () => {
     });
     expect(result.ingested[0]!.status).toBe("candidate");
   });
+
+  it("a consolidation-sourced member-subject fact with no self-report evidence starts as a candidate, not active", async () => {
+    // Regression for the trust loophole: consolidation used to blanket-
+    // activate every proposal (source === "consolidation" short-circuited
+    // before the subject/asserter check), so a third-party claim about a
+    // member — captured verbatim from a channel summary — would become
+    // durable, active guild knowledge without the subject ever confirming
+    // it. See memory-engine.ts's resolveInitialStatus consolidation branch.
+    const memoryEngine = engine();
+    const result = await memoryEngine.ingest({
+      guildId: "guild", channelId: "general", channelMode: "shared",
+      assertedByUserId: null, sourceMessageId: "batch:daily:guild:general:x-y", source: "consolidation", now: 100,
+      proposals: [{
+        action: "upsert", audience: "guild", kind: "fact", ownerUserId: null,
+        subjectType: "member", subjectId: "alice", topic: "activity", slot: "raid.friday",
+        statement: "alice organizes Friday raids", channelScoped: false,
+      }],
+    });
+    expect(result.ingested[0]!.status).toBe("candidate");
+  });
+
+  it("a consolidation-sourced member-subject fact self-activates when the proposal's own assertedByUserId names the subject", async () => {
+    // ChannelSummaryScheduler resolves this per-fact from evidence (the
+    // subject's own message among the batch) and sets it on the proposal —
+    // the ingest-level assertedByUserId stays null (no single batch asserter).
+    const memoryEngine = engine();
+    const result = await memoryEngine.ingest({
+      guildId: "guild", channelId: "general", channelMode: "shared",
+      assertedByUserId: null, sourceMessageId: "batch:daily:guild:general:x-y", source: "consolidation", now: 100,
+      proposals: [{
+        action: "upsert", audience: "guild", kind: "fact", ownerUserId: null,
+        subjectType: "member", subjectId: "alice", topic: "activity", slot: "raid.friday",
+        statement: "alice organizes Friday raids", channelScoped: false,
+        assertedByUserId: "alice",
+      }],
+    });
+    expect(result.ingested[0]!.status).toBe("active");
+  });
 });
 
 describe("DefaultMemoryEngine.forget", () => {

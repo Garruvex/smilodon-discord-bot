@@ -90,6 +90,29 @@ export const memorySources = sqliteTable("memory_sources", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 });
 
+// Plan 2 (channel context) — mirrors schema.ts's channelSummaryCheckpoints.
+export const channelSummaryCheckpoints = sqliteTable("channel_summary_checkpoints", {
+  guildId: text("guild_id").notNull(),
+  channelId: text("channel_id").notNull(),
+  lastMessageId: text("last_message_id"),
+  scanCompletedAt: integer("scan_completed_at", { mode: "timestamp_ms" }),
+  // Daily's in-progress resume cursor — non-null means a capped daily batch
+  // stopped partway and should resume `before` this id next tick, instead of
+  // re-fetching from the newest message.
+  dailyCursor: text("daily_cursor"),
+  // Lower boundary for the next daily cycle — null means "use now - 24h".
+  // Advances to the completion tick's timestamp once a cycle fully reaches
+  // its boundary, so downtime longer than a day (or a multi-tick capped
+  // run) never silently loses messages between cycles.
+  dailyHighWaterMarkAt: integer("daily_high_water_mark_at", { mode: "timestamp_ms" }),
+  lastRunAt: integer("last_run_at", { mode: "timestamp_ms" }),
+  lastError: text("last_error"),
+  lastErrorCode: text("last_error_code"),
+  lastSuccessAt: integer("last_success_at", { mode: "timestamp_ms" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+}, (table) => [primaryKey({ columns: [table.guildId, table.channelId] })]);
+
 export const guildKnowledge = sqliteTable("guild_knowledge", {
   id: text("id").primaryKey(),
   guildId: text("guild_id").notNull(),

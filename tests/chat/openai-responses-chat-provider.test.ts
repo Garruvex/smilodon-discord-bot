@@ -5,6 +5,7 @@ import type { ChatTool } from "../../src/application/chat/tools/chat-tool.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -433,12 +434,58 @@ describe("OpenAiResponsesChatProvider", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("sizes compilePersonaBundle's output budget off the input length instead of the chat-reply budget", async () => {
-    // A file well past the small maxOutputTokens configured below — if the
-    // request budget were reused verbatim from chat replies, this personality
-    // would truncate mid-JSON and fail to parse (the bug this test guards).
-    const largePersonality = "## Voice\n".repeat(2_000);
+  it("uses the channel-summary budget and falls back after an incomplete structured response", async () => {
+    const requests: Array<Record<string, unknown>> = [];
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+      if (typeof init?.body !== "string") throw new Error("Expected a JSON request body.");
+      const body = JSON.parse(init.body) as Record<string, unknown>;
+      requests.push(body);
+      if (requests.length === 1) {
+        return Promise.resolve(new Response(JSON.stringify({
+          status: "incomplete",
+          incomplete_details: { reason: "max_output_tokens" },
+          output: [],
+        }), { status: 200, headers: { "Content-Type": "application/json" } }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({
+        status: "completed",
+        output: [{
+          type: "message",
+          content: [{
+            type: "output_text",
+            text: JSON.stringify({ facts: [{
+              subjectType: "member", subjectId: "a1", topic: "nickname", slot: "nickname",
+              statement: "Member goes by Red.", evidenceMessageIds: ["m1"],
+            }] }),
+          }],
+        }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = new OpenAiResponsesChatProvider(
+      "https://api.openai.com/v1",
+      "secret",
+      ["gpt-5.6-luna"],
+      {
+        reasoningEffort: "medium", verbosity: "low", maxOutputTokens: 2_048,
+        summaryModels: ["gpt-5-nano", "gpt-5.6-luna"],
+        summaryReasoningEffort: "low", summaryMaxOutputTokens: 4_096,
+      },
+    );
+    const facts = await provider.summarizeChannelMessages("99999999999999999", [{
+      id: "11111111111111111", authorId: "22222222222222222", authorDisplayName: "Red", content: "Call me Red.",
+    }]);
+
+    expect(requests.map((request) => request.model)).toEqual(["gpt-5-nano", "gpt-5.6-luna"]);
+    expect(requests[0]).toMatchObject({ reasoning: { effort: "low" }, max_output_tokens: 4_096 });
+    expect(facts[0]).toMatchObject({ subjectId: "22222222222222222", evidenceMessageIds: ["11111111111111111"] });
+  });
+
+  it("classifies persona sections with a small output budget and reconstructs the original text", async () => {
+    const largePersonality = `## Voice\n${"Always playful. ".repeat(2_000)}\n\n## Backstory\nBorn in a forest.`;
     let capturedMaxOutputTokens = 0;
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
     const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
       if (typeof init?.body !== "string") throw new Error("Expected a JSON request body.");
       const body = JSON.parse(init.body) as Record<string, unknown>;
@@ -446,7 +493,7 @@ describe("OpenAiResponsesChatProvider", () => {
       return Promise.resolve(new Response(JSON.stringify({
         output: [{
           type: "message",
-          content: [{ type: "output_text", text: JSON.stringify({ core: largePersonality, chunks: [] }) }],
+          content: [{ type: "output_text", text: JSON.stringify({ chunkSectionIndexes: [1] }) }],
         }],
       }), { status: 200, headers: { "Content-Type": "application/json" } }));
     });
@@ -460,7 +507,9 @@ describe("OpenAiResponsesChatProvider", () => {
     );
     const result = await provider.compilePersonaBundle(largePersonality);
 
-    expect(capturedMaxOutputTokens).toBeGreaterThan(2_048);
-    expect(result.core).toBe(largePersonality);
+    expect(capturedMaxOutputTokens).toBe(4_000);
+    expect(timeoutSpy).toHaveBeenCalledWith(180_000);
+    expect(result.core).toContain("## Voice\nAlways playful.");
+    expect(result.chunks).toEqual([{ heading: "Backstory", text: "Born in a forest." }]);
   });
 });

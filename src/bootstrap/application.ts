@@ -69,6 +69,7 @@ export class Application {
     this.controlChannelService.stop();
     this.musicPresenceService.stop();
     this.birthdayAnnouncer.stop();
+    this.dependencies.channelSummaryScheduler?.stop();
     this.dependencies.pollService.stop();
     await this.client.destroy();
   }
@@ -126,6 +127,7 @@ export class Application {
       });
       this.musicPresenceService.start();
       this.birthdayAnnouncer.start();
+      this.dependencies.channelSummaryScheduler?.start();
     });
 
     this.client.on(Events.Raw, (payload) => {

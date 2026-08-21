@@ -6,7 +6,7 @@
 // authorization, isolation, and lifecycle semantics.
 import { describe, expect, it } from "vitest";
 
-import type { Memory, MemoryRepository, RepositoryIngestInput } from "../../src/application/memory/memory.js";
+import type { MemoryRepository, RepositoryIngestInput } from "../../src/application/memory/memory.js";
 import { canRecall } from "../../src/application/memory/memory.js";
 
 function ingestInput(overrides: Partial<RepositoryIngestInput> = {}): RepositoryIngestInput {
@@ -199,7 +199,7 @@ export function memoryRepositoryContract(
         subjectType: "guild", subjectId: "guild",
       }));
       const context = { guildId: "guild", channelId: "dnd", userId: "alice" };
-      const predicate = canRecall(memory as Memory, context, 2_000);
+      const predicate = canRecall(memory, context, 2_000);
       const candidates = await repository.findRecallCandidates({ ...context, now: 2_000 });
       expect(candidates.memories.some((m) => m.id === memory.id)).toBe(predicate);
     });

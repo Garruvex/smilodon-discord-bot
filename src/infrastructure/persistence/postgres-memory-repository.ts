@@ -156,16 +156,28 @@ export class PostgresMemoryRepository implements MemoryRepository {
         }).returning();
         row = inserted[0]!;
       }
-      await transaction.insert(schema.memorySources).values({
-        id: randomUUID(),
-        memoryId: row.id,
-        sourceMessageId: input.sourceMessageId,
-        sourceChannelId: input.sourceChannelId,
-        assertedByUserId: input.assertedByUserId,
-        statement: input.statement,
-        source: input.source,
-        createdAt: new Date(input.now),
-      });
+      // Idempotent retry guard: a background batch (see
+      // ChannelSummaryScheduler) passes a stable batch-derived id as
+      // sourceMessageId, so retrying the same batch after a partial failure
+      // re-upserts the memory in place but must not add a second provenance
+      // row for it. Live-chat sourceMessageId (a real Discord message id)
+      // is naturally unique per call, so this is a no-op there.
+      const alreadyRecorded = input.sourceMessageId !== null && (await transaction.select({ id: schema.memorySources.id })
+        .from(schema.memorySources)
+        .where(and(eq(schema.memorySources.memoryId, row.id), eq(schema.memorySources.sourceMessageId, input.sourceMessageId)))
+        .limit(1)).length > 0;
+      if (!alreadyRecorded) {
+        await transaction.insert(schema.memorySources).values({
+          id: randomUUID(),
+          memoryId: row.id,
+          sourceMessageId: input.sourceMessageId,
+          sourceChannelId: input.sourceChannelId,
+          assertedByUserId: input.assertedByUserId,
+          statement: input.statement,
+          source: input.source,
+          createdAt: new Date(input.now),
+        });
+      }
       return toMemory(row);
     });
   }

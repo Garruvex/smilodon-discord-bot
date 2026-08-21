@@ -174,6 +174,43 @@ export const memorySources = pgTable("memory_sources", {
   index("memory_sources_memory_id").on(table.memoryId),
 ]);
 
+// Plan 2 (channel context) — drives both the one-time scan
+// (contextScanChannelIds, via lastMessageId as a resumable cursor) and the
+// daily consolidation (contextDailyChannelIds, via lastRunAt as an
+// once-per-day gate). See channel-summary-scheduler.ts.
+export const channelSummaryCheckpoints = pgTable("channel_summary_checkpoints", {
+  guildId: text("guild_id").notNull(),
+  channelId: text("channel_id").notNull(),
+  // Scan's resumability cursor — null means the scan has never run for this
+  // channel; non-null with scanCompletedAt still null means a capped run
+  // stopped partway and should resume from here next tick. Not used by the
+  // daily path.
+  lastMessageId: text("last_message_id"),
+  // Set once the scan reaches the seed-day boundary (or the channel's
+  // start) without hitting the per-tick cap — the channel is then never
+  // scheduled again by the scan path, regardless of lastMessageId.
+  scanCompletedAt: timestamp("scan_completed_at", { withTimezone: true }),
+  // Daily's in-progress resume cursor — non-null means a capped daily batch
+  // stopped partway and should resume `before` this id next tick, instead of
+  // re-fetching from the newest message.
+  dailyCursor: text("daily_cursor"),
+  // Lower boundary for the next daily cycle — null means "use now - 24h".
+  // Advances to the completion tick's timestamp once a cycle fully reaches
+  // its boundary, so downtime longer than a day (or a multi-tick capped
+  // run) never silently loses messages between cycles.
+  dailyHighWaterMarkAt: timestamp("daily_high_water_mark_at", { withTimezone: true }),
+  // Daily's "have I already run today" gate — null means never run.
+  lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+  // Surfaced by /settings chat context-status; cleared on next success.
+  lastError: text("last_error"),
+  lastErrorCode: text("last_error_code"),
+  lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.guildId, table.channelId] }),
+]);
+
 export const guildKnowledge = pgTable("guild_knowledge", {
   id: uuid("id").primaryKey(),
   guildId: text("guild_id").notNull(),

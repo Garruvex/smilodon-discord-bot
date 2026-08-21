@@ -164,6 +164,7 @@ export class AmbientChatBehavior implements BotBehavior<Message> {
         isOwner: this.configuration.ownerUserIds.has(message.author.id),
         channelIsNsfw: "nsfw" in message.channel ? Boolean(message.channel.nsfw) : false,
         musicActor: musicActor?.actor ?? null,
+        musicResolveAccessSubjectFields: musicActor?.resolveAccessSubjectFields,
         musicVolumeMaximum: musicActor?.volumeMaximum,
         musicControllerRoleIds: musicActor?.musicControllerRoleIds,
         musicBotAdministratorRoleIds: musicActor?.botAdministratorRoleIds,

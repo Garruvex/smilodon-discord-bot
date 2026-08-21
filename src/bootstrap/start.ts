@@ -7,6 +7,7 @@ import { MusicEventBus } from "../application/music/music-event-bus.js";
 import { ControlChannelService } from "../application/control-panel/control-channel-service.js";
 import { DeferredGuildSetupService } from "../application/setup/guild-setup-service.js";
 import { LocalGuildSetupService } from "../application/setup/local-guild-setup-service.js";
+import { DiscordGuildResourceGateway } from "../infrastructure/discord/setup/discord-guild-resource-gateway.js";
 import { DiscordGuildCommandDeploymentService } from "../infrastructure/discord/commands/discord-guild-command-deployment-service.js";
 import { createPersistenceServices } from "../infrastructure/persistence/persistence-factory.js";
 import { MusicPresenceService } from "../application/music/music-presence-service.js";
@@ -45,6 +46,7 @@ const dependencies = createDependencies(
   auditLogService,
   persistence.birthdayStore,
   persistence.memoryRepository,
+  persistence.channelSummaryCheckpointStore,
 );
 const controlPanelStateStore = persistence.controlPanelStateStore;
 const controlChannelService = new ControlChannelService(
@@ -85,6 +87,7 @@ deferredGuildSetupService.setService(
     guildConfigurationProvider,
     commandDeploymentService,
     controlChannelService,
+    new DiscordGuildResourceGateway(discordClient),
     logger.child({ component: "guild-setup" }),
     auditLogService,
   ),

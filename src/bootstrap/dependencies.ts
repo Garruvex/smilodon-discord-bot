@@ -79,8 +79,12 @@ import { PersonaBundleCompiler } from "../application/chat/persona-bundle-compil
 import { PersonaDriftStore } from "../application/chat/persona-drift-store.js";
 import type { MemoryRepository } from "../application/memory/memory.js";
 import { DefaultMemoryEngine } from "../application/memory/memory-engine.js";
+import type { ChannelSummaryCheckpointStore } from "../application/context/channel-summary-checkpoint-store.js";
+import { ChannelSummaryScheduler } from "../application/context/channel-summary-scheduler.js";
+import { DiscordChannelHistoryReader } from "../infrastructure/discord/context/discord-channel-history-reader.js";
 import { FilePersonaSource } from "../infrastructure/chat/file-persona-source.js";
 import { OpenAiEmbeddingsClient } from "../infrastructure/chat/openai-embeddings-client.js";
+import { GeminiEmbeddingsClient } from "../infrastructure/chat/gemini-embeddings-client.js";
 import { ApplicationEmojiCatalog } from "../infrastructure/discord/application-emoji-catalog.js";
 import type { AuditLogService } from "../application/audit/audit-log-service.js";
 import { MemberProfileService } from "../application/members/member-profile-service.js";
@@ -98,6 +102,8 @@ type ProviderConfig =
       verbosity: "low" | "medium" | "high";
       maxOutputTokens: number;
       summaryModels?: readonly string[];
+      summaryMaxOutputTokens?: number;
+      summaryReasoningEffort?: "minimal" | "low" | "medium" | "high";
     }
   | {
       provider: "openai-compatible";
@@ -106,6 +112,7 @@ type ProviderConfig =
       models: readonly string[];
       maxOutputTokens: number;
       summaryModels?: readonly string[];
+      summaryMaxOutputTokens?: number;
     }
   | {
       provider: "gemini";
@@ -114,6 +121,7 @@ type ProviderConfig =
       maxOutputTokens: number;
       thinkingBudget: number | null;
       summaryModels?: readonly string[];
+      summaryMaxOutputTokens?: number;
     };
 
 // Shared by both the main chatbot provider (configuration.chat) and the
@@ -133,6 +141,12 @@ function createChatProviderFromConfig(config: ProviderConfig, logger: Logger): C
         verbosity: config.verbosity,
         maxOutputTokens: config.maxOutputTokens,
         summaryModels,
+        ...(config.summaryMaxOutputTokens !== undefined
+          ? { summaryMaxOutputTokens: config.summaryMaxOutputTokens }
+          : {}),
+        ...(config.summaryReasoningEffort !== undefined
+          ? { summaryReasoningEffort: config.summaryReasoningEffort }
+          : {}),
       },
     );
   }
@@ -144,6 +158,9 @@ function createChatProviderFromConfig(config: ProviderConfig, logger: Logger): C
         maxOutputTokens: config.maxOutputTokens,
         thinkingBudget: config.thinkingBudget,
         summaryModels,
+        ...(config.summaryMaxOutputTokens !== undefined
+          ? { summaryMaxOutputTokens: config.summaryMaxOutputTokens }
+          : {}),
       },
     );
   }
@@ -153,6 +170,7 @@ function createChatProviderFromConfig(config: ProviderConfig, logger: Logger): C
     config.models,
     summaryModels,
     logger.child({ component: "chat-provider" }),
+    config.summaryMaxOutputTokens,
   );
 }
 
@@ -166,6 +184,10 @@ export interface ApplicationDependencies {
   pollService: PollService;
   behaviorDispatcher: BehaviorDispatcher;
   settingsCommand: SettingsCommand;
+  // Null when no chat provider is configured — there's nothing to
+  // summarize channel messages with, same condition chatConversationService
+  // already checks.
+  channelSummaryScheduler: ChannelSummaryScheduler | null;
   applicationEmojiCatalog: ApplicationEmojiCatalog;
 }
 
@@ -181,6 +203,7 @@ export function createDependencies(
   auditLogService: AuditLogService,
   birthdayStore: BirthdayStore,
   memoryRepository: MemoryRepository,
+  channelSummaryCheckpointStore: ChannelSummaryCheckpointStore,
 ): ApplicationDependencies {
   const commandRegistry = new CommandRegistry();
   const pollService = new PollService();
@@ -191,14 +214,14 @@ export function createDependencies(
   commandRegistry.register(new DiagnosticCommand());
   commandRegistry.register(new SetupCommand(guildSetupService));
   commandRegistry.register(new VoteCommand(pollService));
-  // Gemini has no embeddings client wired yet — embeddingModel is only
-  // consumed for the two OpenAI-shaped providers, which both carry baseUrl.
-  const embeddingsClient = configuration.chat?.embeddingModel && configuration.chat.provider !== "gemini"
-    ? new OpenAiEmbeddingsClient(
-        configuration.chat.baseUrl,
-        configuration.chat.apiKey,
-        configuration.chat.embeddingModel,
-      )
+  const embeddingsClient = configuration.embeddings
+    ? configuration.embeddings.provider === "gemini"
+      ? new GeminiEmbeddingsClient(configuration.embeddings.apiKey, configuration.embeddings.model)
+      : new OpenAiEmbeddingsClient(
+          configuration.embeddings.baseUrl,
+          configuration.embeddings.apiKey,
+          configuration.embeddings.model,
+        )
     : null;
   const memoryEngine = new DefaultMemoryEngine(
     memoryRepository, embeddingsClient, logger.child({ component: "memory-engine" }),
@@ -313,8 +336,23 @@ export function createDependencies(
     applicationEmojiCatalog,
     auditLogService,
     personaDriftStore,
+    channelSummaryCheckpointStore,
+    utilityProvider?.summarizeChannelMessages !== undefined,
   );
   commandRegistry.register(settingsCommand);
+  // Prefers the cheaper utility model when configured, same preference as
+  // ChatConversationService's own consolidation call. Null when no chat
+  // provider is configured, or the configured one doesn't implement
+  // summarizeChannelMessages — narrowing to ChannelMessageSummarizer here
+  // (rather than passing the full ChatProvider) makes that a wiring-time
+  // check instead of the scheduler probing an optional method at runtime.
+  const channelSummaryScheduler = utilityProvider?.summarizeChannelMessages
+    ? new ChannelSummaryScheduler(
+        new DiscordChannelHistoryReader(discordClient), guildConfigurationProvider, memoryEngine, channelSummaryCheckpointStore,
+        { summarizeChannelMessages: utilityProvider.summarizeChannelMessages.bind(utilityProvider) },
+        logger.child({ component: "channel-summary-scheduler" }),
+      )
+    : null;
   commandRegistry.register(new CustomizeCommand(userCustomizationStore, utilityProvider));
   // Derived from CommandRegistry rather than hand-listed: any BotCommand
   // that sets `toolBinding` (see command.ts) is automatically offered to the
@@ -384,6 +422,7 @@ export function createDependencies(
     pollService,
     behaviorDispatcher: new BehaviorDispatcher(behaviorRegistry),
     settingsCommand,
+    channelSummaryScheduler,
     applicationEmojiCatalog,
   };
 }

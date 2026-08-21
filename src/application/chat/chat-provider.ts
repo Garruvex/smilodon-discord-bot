@@ -1,6 +1,7 @@
 import type { ChatTool } from "./tools/chat-tool.js";
 import type { ExampleExchange } from "./example-exchange.js";
 import type { PlaybackActor } from "../music/playback-service.js";
+import type { ChannelMessageSummarizer } from "../context/channel-message-summarizer.js";
 
 export interface ChatRequest {
   guildId: string;
@@ -23,6 +24,14 @@ export interface ChatRequest {
   // resolvable member — see ChatTurnSupport.resolveMusicActor and
   // ChatToolContext.music for why the role gate itself isn't checked here.
   musicActor?: PlaybackActor | null;
+  // See ChatToolContext.music's resolveAccessSubjectFields — threaded
+  // through as a plain callback so it's still resolved fresh per tool call,
+  // not snapshotted here.
+  musicResolveAccessSubjectFields?: (() => {
+    roleIds: readonly string[];
+    memberPermissions: bigint;
+    botPermissions: bigint | null;
+  }) | undefined;
   musicVolumeMaximum?: number | undefined;
   musicControllerRoleIds?: ReadonlySet<string> | undefined;
   musicBotAdministratorRoleIds?: ReadonlySet<string> | undefined;
@@ -233,34 +242,61 @@ export interface DroppedExchangeFact {
   statement: string;
 }
 
-export interface ChatProvider {
+export interface ChatReplyProvider {
   reply(request: ChatRequest, observer?: ChatResponseObserver): Promise<ChatResponse>;
-  analyzeUserCustomization?(rawText: string): Promise<UserCustomizationAnalysisResult>;
-  // Standalone call (own prompt/schema, outside the main reply turn — same
-  // shape as analyzeUserCustomization) asking the model to extract 0-2
-  // durable facts from exchanges about to be evicted from a channel's
-  // recent-history window, so they aren't silently lost. Returns an empty
-  // array when nothing in the exchanges was worth keeping.
-  summarizeDroppedExchanges?(
+}
+
+export interface UserCustomizationAnalyzer {
+  analyzeUserCustomization(rawText: string): Promise<UserCustomizationAnalysisResult>;
+}
+
+// Standalone call (own prompt/schema, outside the main reply turn — same
+// shape as analyzeUserCustomization) asking the model to extract 0-2
+// durable facts from exchanges about to be evicted from a channel's
+// recent-history window, so they aren't silently lost. Returns an empty
+// array when nothing in the exchanges was worth keeping.
+export interface ConversationConsolidator {
+  summarizeDroppedExchanges(
     exchanges: readonly { user: string; assistant: string }[],
   ): Promise<readonly DroppedExchangeFact[]>;
-  // Standalone call splitting an uploaded personality.md into an
-  // always-sent "core" (identity/voice/behavior rules) and retrievable
-  // "chunks" (situational lore) — see persona-bundle-compiler.ts. Called
-  // once at upload time, never per turn.
-  compilePersonaBundle?(
+}
+
+// Standalone call splitting an uploaded personality.md into an
+// always-sent "core" (identity/voice/behavior rules) and retrievable
+// "chunks" (situational lore) — see persona-bundle-compiler.ts. Called
+// once at upload time, never per turn.
+export interface PersonaCompiler {
+  compilePersonaBundle(
     content: string,
   ): Promise<{ core: string; chunks: readonly { heading: string; text: string }[] }>;
-  // Standalone call nudging the guild's persona-drift overlay from recent
-  // conversation activity — see persona-drift-store.ts. Called from the
-  // same off-critical-path hook as summarizeDroppedExchanges, only when the
-  // guild has the feature enabled. Returns the revised drift text (may be
-  // unchanged, or empty to mean "nothing worth noting yet").
-  evolvePersonaDrift?(
+}
+
+// Standalone call nudging the guild's persona-drift overlay from recent
+// conversation activity — see persona-drift-store.ts. Called from the
+// same off-critical-path hook as summarizeDroppedExchanges, only when the
+// guild has the feature enabled. Returns the revised drift text (may be
+// unchanged, or empty to mean "nothing worth noting yet").
+export interface PersonaDriftEvolver {
+  evolvePersonaDrift(
     currentText: string,
     exchanges: readonly { user: string; assistant: string }[],
   ): Promise<string>;
 }
+
+// A ChatProvider is always a ChatReplyProvider; the rest are standalone
+// capabilities a given provider implementation may or may not support.
+// Kept optional here (rather than requiring callers to hold a narrower
+// capability type) because most call sites already branch on `chatProvider`
+// vs `utilityProvider` being configured at all — ChannelSummaryScheduler is
+// the one exception that depends on ChannelMessageSummarizer directly,
+// specifically so a provider missing that capability is a wiring-time type
+// error instead of a silent runtime no-op (see bootstrap/dependencies.ts).
+export type ChatProvider = ChatReplyProvider &
+  Partial<UserCustomizationAnalyzer> &
+  Partial<ConversationConsolidator> &
+  Partial<PersonaCompiler> &
+  Partial<PersonaDriftEvolver> &
+  Partial<ChannelMessageSummarizer>;
 
 export interface ChatResponseObserver {
   onImagePreview(image: GeneratedChatImage): Promise<void>;

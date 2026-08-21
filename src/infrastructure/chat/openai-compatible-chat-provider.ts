@@ -9,6 +9,12 @@ import {
   type ChatResponse,
   type UserCustomizationAnalysisResult,
 } from "../../application/chat/chat-provider.js";
+import type { ChannelSummaryFact, ChannelSummaryMessage } from "../../application/context/channel-message-summarizer.js";
+import {
+  channelMessageSummaryMaxOutputTokens,
+  channelMessageSummaryJsonSchema,
+  prepareChannelMessageSummary,
+} from "./channel-message-summarization.js";
 import { buildChatContext, buildChatInstructions, chatModelJsonSchema, parseChatModelOutput } from "./chat-structured-output.js";
 import { ModelFallbackChain } from "./model-fallback-chain.js";
 import {
@@ -48,6 +54,7 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
     models: readonly string[],
     summaryModels: readonly string[] | null,
     private readonly logger?: Logger,
+    private readonly summaryMaxOutputTokens = channelMessageSummaryMaxOutputTokens,
   ) {
     this.modelChain = new ModelFallbackChain(models);
     this.summaryModelChain = new ModelFallbackChain(summaryModels ?? models);
@@ -172,6 +179,47 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
       return { ok: false, reason: "No usable style preferences were found in that file." };
     }
     return { ok: true, markdown };
+  }
+
+  public async summarizeChannelMessages(
+    guildId: string,
+    messages: readonly ChannelSummaryMessage[],
+  ): Promise<readonly ChannelSummaryFact[]> {
+    const summary = prepareChannelMessageSummary(guildId, messages);
+    const body = await this.summaryModelChain.run(async (model) => {
+      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "system", content: summary.prompt }],
+          response_format: {
+            type: "json_schema",
+            json_schema: { name: "channel_message_summary", strict: true, schema: channelMessageSummaryJsonSchema },
+          },
+          max_tokens: this.summaryMaxOutputTokens,
+        }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!response.ok) {
+        const errorBody: unknown = await response.json().catch(() => null);
+        const parsedError = errorResponseSchema.safeParse(errorBody);
+        const providerCode = parsedError.success
+          ? (parsedError.data.error.code ?? parsedError.data.error.type ?? null)
+          : null;
+        throw new ChatProviderError(
+          `Chat provider returned HTTP ${response.status}${providerCode ? ` (${providerCode})` : ""}.`,
+          response.status,
+          providerCode,
+        );
+      }
+      return response.json();
+    });
+    const parsed = responseSchema.parse(body);
+    return summary.parse(parsed.choices[0]!.message.content).facts;
   }
 
   // The chat_completions API this provider targets has no equivalent for web

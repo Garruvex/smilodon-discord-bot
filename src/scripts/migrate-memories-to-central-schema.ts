@@ -99,7 +99,7 @@ export async function migratePostgres(databaseUrl: string, instanceName: string)
   await connection.close();
 }
 
-export async function migrateSqlite(runtimeDataDirectory: string): Promise<void> {
+export function migrateSqlite(runtimeDataDirectory: string): void {
   const connection = createSqliteDatabaseConnection(runtimeDataDirectory);
   const db = connection.database;
   const now = Date.now();
@@ -174,6 +174,6 @@ if (isMainModule) {
     if (!configuration.instanceName) throw new Error("INSTANCE_NAME is required for PostgreSQL schema isolation.");
     await migratePostgres(configuration.persistence.databaseUrl, configuration.instanceName);
   } else {
-    await migrateSqlite(configuration.runtimeDataDirectory);
+    migrateSqlite(configuration.runtimeDataDirectory);
   }
 }
