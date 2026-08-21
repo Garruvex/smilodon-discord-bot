@@ -10,11 +10,17 @@ import {
   type ChatResponseObserver,
   type ChatSource,
   type DroppedExchangeFact,
+  type ProposedGuildKnowledgeCandidate,
   type UserCustomizationAnalysisResult,
 } from "../../application/chat/chat-provider.js";
 import type { ChatImage } from "../../application/chat/chat-provider.js";
 import type { ChatTool, ChatToolContext, ChatToolResult } from "../../application/chat/tools/chat-tool.js";
 import { buildChatContext, buildChatInstructions, chatModelJsonSchema, parseChatModelOutput } from "./chat-structured-output.js";
+import {
+  buildChannelMessageSummaryPrompt,
+  channelMessageSummaryJsonSchema,
+  parseChannelMessageSummaryOutput,
+} from "./channel-message-summarization.js";
 import {
   buildDroppedExchangeConsolidationPrompt,
   droppedExchangeConsolidationJsonSchema,
@@ -23,6 +29,7 @@ import {
 import { ModelFallbackChain } from "./model-fallback-chain.js";
 import {
   buildPersonaBundleCompilationPrompt,
+  estimatePersonaBundleOutputTokens,
   personaBundleCompilationJsonSchema,
   parsePersonaBundleCompilationOutput,
 } from "./persona-bundle-compilation.js";
@@ -328,6 +335,7 @@ export class GeminiChatProvider implements ChatProvider {
       model,
       buildPersonaBundleCompilationPrompt(content),
       personaBundleCompilationJsonSchema,
+      estimatePersonaBundleOutputTokens(content),
     ));
     return parsePersonaBundleCompilationOutput((response.text ?? "").trim());
   }
@@ -344,6 +352,18 @@ export class GeminiChatProvider implements ChatProvider {
     return parsePersonaDriftEvolutionOutput((response.text ?? "").trim()).text;
   }
 
+  public async summarizeChannelMessages(
+    guildId: string,
+    messages: readonly { authorId: string; authorDisplayName: string; content: string }[],
+  ): Promise<readonly Omit<ProposedGuildKnowledgeCandidate, "channelScoped">[]> {
+    const response = await this.summaryModelChain.run((model) => this.generateStructured(
+      model,
+      buildChannelMessageSummaryPrompt(guildId, messages),
+      channelMessageSummaryJsonSchema,
+    ));
+    return parseChannelMessageSummaryOutput((response.text ?? "").trim()).facts;
+  }
+
   // Shared by the two standalone structured-output calls (own prompt/schema,
   // outside the main reply turn) — the main reply() path stays separate
   // since it also needs tool round-trips and image parts.
@@ -351,6 +371,7 @@ export class GeminiChatProvider implements ChatProvider {
     model: string,
     prompt: string,
     jsonSchema: Record<string, unknown>,
+    maxOutputTokens: number = this.generation.maxOutputTokens,
   ): Promise<GenerateContentResponse> {
     try {
       return await this.client.models.generateContent({
@@ -359,7 +380,7 @@ export class GeminiChatProvider implements ChatProvider {
         config: {
           abortSignal: AbortSignal.timeout(30_000),
           systemInstruction: prompt,
-          maxOutputTokens: this.generation.maxOutputTokens,
+          maxOutputTokens,
           responseMimeType: "application/json",
           responseJsonSchema: jsonSchema,
         },

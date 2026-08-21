@@ -432,4 +432,35 @@ describe("OpenAiResponsesChatProvider", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it("sizes compilePersonaBundle's output budget off the input length instead of the chat-reply budget", async () => {
+    // A file well past the small maxOutputTokens configured below — if the
+    // request budget were reused verbatim from chat replies, this personality
+    // would truncate mid-JSON and fail to parse (the bug this test guards).
+    const largePersonality = "## Voice\n".repeat(2_000);
+    let capturedMaxOutputTokens = 0;
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+      if (typeof init?.body !== "string") throw new Error("Expected a JSON request body.");
+      const body = JSON.parse(init.body) as Record<string, unknown>;
+      capturedMaxOutputTokens = body.max_output_tokens as number;
+      return Promise.resolve(new Response(JSON.stringify({
+        output: [{
+          type: "message",
+          content: [{ type: "output_text", text: JSON.stringify({ core: largePersonality, chunks: [] }) }],
+        }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = new OpenAiResponsesChatProvider(
+      "https://api.openai.com/v1",
+      "secret",
+      ["gpt-5-nano"],
+      { reasoningEffort: "low", verbosity: "low", maxOutputTokens: 2_048 },
+    );
+    const result = await provider.compilePersonaBundle(largePersonality);
+
+    expect(capturedMaxOutputTokens).toBeGreaterThan(2_048);
+    expect(result.core).toBe(largePersonality);
+  });
 });

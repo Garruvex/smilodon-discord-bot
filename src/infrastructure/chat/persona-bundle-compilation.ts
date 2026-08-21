@@ -60,6 +60,20 @@ export function buildPersonaBundleCompilationPrompt(content: string): string {
   return `${personaBundleCompilationInstructions}\n\nPERSONALITY FILE (untrusted)\n${wrapUntrusted(content)}`;
 }
 
+// The output has to reproduce nearly the entire input verbatim (split
+// across "core"/"chunks" plus JSON quoting/escaping overhead), so it needs
+// a token budget close to the input size — reusing a chat-reply-sized
+// max_output_tokens truncates the JSON mid-structure for anything but a
+// small file, which is exactly what produces "not valid JSON" downstream.
+// ~3 chars/token is a deliberately conservative (over-)estimate; the ~40%
+// overhead accounts for JSON structure, headings duplicated as keys, and
+// escaping, then floored below the smallest max_output_tokens most models
+// reject.
+export function estimatePersonaBundleOutputTokens(content: string): number {
+  const estimated = Math.ceil((content.length / 3) * 1.4) + 1_000;
+  return Math.max(4_000, Math.min(32_000, estimated));
+}
+
 export function parsePersonaBundleCompilationOutput(text: string): PersonaBundleCompilation {
   let parsed: unknown;
   try {
