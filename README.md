@@ -25,10 +25,12 @@ the [user guide](docs/user-guide.md). For internal architecture, see
 - Fun and utility commands: dice, 8-ball, polls, Q&A embeds, birthdays,
   furry/animal image commands, and more — see the
   [command reference](docs/user-guide.md#commands).
-- A mention-based AI chatbot (any OpenAI-compatible provider) with optional
-  ambient replies, per-guild personality files, per-user memory and
-  customization, image input/generation, web search, and tool calling into
-  bot features like dice rolls and image search.
+- A mention-based AI chatbot (any OpenAI-compatible provider, or Google
+  Gemini natively) with optional ambient replies, per-guild personality and
+  example-exchange files (with in-Discord starter templates via
+  `/settings chat template`), per-user memory and customization, image
+  input/generation, web search, and tool calling into bot features like dice
+  rolls and image search.
 - A global `/setup` bootstrap command gated by Discord's Manage Server
   permission, and repository-backed `/settings` for everything else — no
   file editing required to run a guild.
@@ -73,6 +75,7 @@ Keep shared infrastructure in `.env`:
 ```env
 DEFAULT_INSTANCE=myinstance
 LAVALINK_PASSWORD=choose_a_private_lavalink_password
+POSTGRES_PASSWORD=choose_a_private_database_password
 ```
 
 Put Discord identity and application persistence in
@@ -87,6 +90,12 @@ PERSISTENCE_DRIVER=file
 GUILD_CONFIG_DIRECTORY=./config/local/instances/myinstance/guilds
 RUNTIME_DATA_DIRECTORY=./data/instances/myinstance
 ```
+
+The root file is shared infrastructure only. Discord credentials, persistence,
+storage paths, and optional AI provider settings belong to the selected
+instance file. `DEFAULT_INSTANCE` is the filename stem used by native commands
+that do not receive an explicit instance name. `DOCKER_INSTANCE` selects the
+single instance file loaded by Docker Compose.
 
 Enable Discord Developer Mode and use **Copy User ID** on your account to obtain
 `BOT_OWNER_IDS`. Multiple application operators can be provided as comma-separated
@@ -161,16 +170,18 @@ restart it; a valid saved token prevents a new device authorization prompt.
 
 ### 6. Start and initialize the server
 
-On Windows without Docker, set `PERSISTENCE_DRIVER=file` in the default
-instance file and run:
+On Windows without Docker, select either `PERSISTENCE_DRIVER=file` or
+`PERSISTENCE_DRIVER=postgres` in the default instance file and run:
 
 ```powershell
 npm.cmd run local:setup
 npm.cmd run local:start
 ```
 
-`local:setup` is safe to rerun and installs the workspace-local Java, Lavalink,
-and plugins required by `local:start`. After inviting the bot, the server owner
+`local:setup` is safe to rerun and installs workspace-local Java, Lavalink,
+PostgreSQL, and the required plugins. `local:start` automatically starts
+PostgreSQL and applies migrations when the selected instance uses the
+`postgres` driver. After inviting the bot, the server owner
 or a member with Discord's **Manage Server** permission can run
 `/setup initialize`. A configured `BOT_OWNER_IDS` operator can also bootstrap or
 recover setup through the owner-bypass policy.
@@ -228,62 +239,95 @@ commands from leaking into every server.
 For a compact list of native, Docker, deployment, and multi-instance commands,
 see the [launch command cheatsheet](docs/launch-cheatsheet.md).
 
-Docker Compose runs the bot, PostgreSQL, and Lavalink in the same private
-network. Database and Lavalink ports are bound only to Windows localhost, not
-to the public network.
+Docker Compose runs PostgreSQL 17 with pgvector, Lavalink, and one selected bot
+instance in the same private network. Database and Lavalink ports are bound
+only to Windows localhost, not to the public network.
 
 1. Install Docker Desktop and start its Linux container engine.
-2. Fill in `.env`; `LAVALINK_PASSWORD` is shared automatically with Lavalink.
-3. Build and start the bot, PostgreSQL, and Lavalink:
+2. Set `DATA_ROOT`, `POSTGRES_PASSWORD`, `LAVALINK_PASSWORD`, and the instance
+   name in `.env`, then create its matching instance file:
+
+```env
+DOCKER_INSTANCE=pinecone
+```
+3. Validate the selected instance:
+
+```powershell
+npm.cmd run instance:config:validate -- pinecone
+```
+
+4. Build and start the complete stack:
 
 ```powershell
 npm.cmd run stack:up
 ```
 
+`stack:up` loads `config/instances/<DOCKER_INSTANCE>.env`, builds one production
+bot image, waits for healthy infrastructure, migrates that instance's schema,
+and starts the bot. Inspect the stack with `npm.cmd run stack:logs`.
+
+Compose intentionally defines one bot service and does not generate an overlay.
+For multiple simultaneous bots, duplicate the `bot` service in your own Compose
+file and give each copy a different instance env file. They may share this same
+PostgreSQL database because each `INSTANCE_NAME` maps to an isolated schema.
+
 In another terminal, register Discord commands without restarting the running
 bot:
 
 ```powershell
-docker compose run --rm bot node dist/scripts/deploy-commands.js
+npm.cmd run stack:deploy
 ```
 
-Stop the local stack with `Ctrl+C`, or use `docker compose down` after starting
-it in detached mode. The guild profiles and runtime state are bind-mounted and
-survive container replacement. Only one bot replica should run at a time.
+Stop the stack with `npm.cmd run stack:down`. Persistent Docker state is
+organized below `DATA_ROOT` (default `./data`): PostgreSQL under `postgres/`,
+Lavalink under `lavalink/`, and bot runtime state under `instances/<name>/`.
+Guild configuration remains under `config/local/instances/<name>/`.
+
+To deliberately discard the shared PostgreSQL cluster and rebuild the selected
+instance schema from the current baseline, run `npm.cmd run stack:reset`. This
+stops the stack and permanently removes only `${DATA_ROOT}/postgres` before
+starting again; instance files and runtime assets are preserved.
 
 For native TypeScript hot reload backed by containerized infrastructure, start
 the infrastructure services in one terminal and the bot in another:
 
 ```powershell
-npm.cmd run dev:services
+npm.cmd run services:start:docker
 npm.cmd run dev
 ```
 
 PostgreSQL and Lavalink bind only to Windows localhost for native development;
 containers reach them through the private Compose network. PostgreSQL data is
-stored in the `postgres-data` named volume. Compose runs Drizzle migrations
-before starting the bot and selects PostgreSQL persistence automatically.
+stored under `${DATA_ROOT}/postgres`. Compose always selects PostgreSQL
+persistence, creates one schema per instance, and runs Drizzle migrations
+before starting each bot.
 
 Native execution supports either persistence driver:
 
 ```env
-# YAML guild profiles and JSON control-panel state
+# YAML guild profiles, JSON control-panel state, and a local SQLite database
+# for chat sessions/memory/guild knowledge
 PERSISTENCE_DRIVER=file
 
-# PostgreSQL guild profiles and control-panel state
+# PostgreSQL guild profiles, control-panel state, and chat/knowledge tables
 PERSISTENCE_DRIVER=postgres
 DATABASE_URL=postgresql://fntu_bot:password@127.0.0.1:5432/fntu_bot
 ```
 
-Run native PostgreSQL migrations with `npm.cmd run db:migrate`. PostgreSQL
+Run native PostgreSQL migrations with
+`npm.cmd run instance:db:migrate -- myinstance`. PostgreSQL
 configuration reads are cached in process after startup, while setup and panel
-writes are persisted transactionally through their repository adapters.
+writes are persisted transactionally through their repository adapters. Under
+`PERSISTENCE_DRIVER=file`, chat/knowledge state lives in a single SQLite file
+(`<runtimeDataDirectory>/chat.sqlite`), created and migrated automatically on
+first run — this is a dev-only backend, kept separate from the YAML/JSON
+guild config and panel state.
 
 To switch an existing file-backed installation, run the migration and then the
 non-destructive importer before selecting the PostgreSQL driver:
 
 ```powershell
-npm.cmd run db:migrate
+npm.cmd run instance:db:migrate -- myinstance
 npm.cmd run db:import-files
 ```
 
@@ -310,17 +354,17 @@ npm.cmd run local:start
 ```
 
 `local:setup` downloads Eclipse Temurin JRE 21 and Lavalink into the ignored
-`tools/local` directory. `local:start` launches Lavalink, waits for port 2333,
-then starts one stable TypeScript bot process. Set `PERSISTENCE_DRIVER=file` in
-the default instance `.env` for this workflow. Stop both processes with `Ctrl+C`.
+`tools/local` directory. `local:start` launches Lavalink and, when selected,
+PostgreSQL; waits for their configured ports; applies database migrations; then
+starts one stable TypeScript bot process. Stop the process group with `Ctrl+C`.
 Use `npm.cmd run dev` separately only when intentional TypeScript hot reload is
 needed; do not run it alongside `local:start` for the same Discord application.
 
 ### Multiple Discord applications
 
 The root `.env` contains shared infrastructure values such as Lavalink,
-Spotify, YouTube OAuth, PostgreSQL administration, and an optional shared chat
-provider. Each Discord application overlays it with
+Spotify, YouTube OAuth, and PostgreSQL administration. Each Discord application
+and its optional chat providers are defined in
 `config/instances/<instance>.env`. The command argument must exactly match that
 filename: `myinstance` loads `config/instances/myinstance.env`.
 
@@ -335,7 +379,7 @@ npm.cmd run instance:promote-default -- myinstance
 The initializer refuses to overwrite an existing file. `promote-default` moves
 application ownership out of the root `.env` by removing Discord, persistence,
 database URL, guild-directory, and runtime-directory values after verifying the
-instance overlay. It leaves `DEFAULT_INSTANCE=myinstance`, so legacy commands such
+instance overlay. It leaves `DEFAULT_INSTANCE=myinstance`, so default commands such
 as `local:start`, `local:check-token`, and `deploy:commands` continue resolving
 `myinstance` automatically. For another application,
 copy `config/instances/bot.env.example` to `otherinstance.env` and give it a
@@ -378,66 +422,124 @@ To start the workspace-local Lavalink service and every discovered bot with one
 native command, run:
 
 ```powershell
-npm.cmd run all:start
+npm.cmd run instances:start:local
 ```
 
-Names may be supplied to `all:start` to launch only those bots. This path does
-not require Docker when file persistence is selected. With PostgreSQL
-persistence, start PostgreSQL separately and point every instance at a different
-logical database. Legacy `local:start` and `deploy:commands` continue to use the
-root `.env` unchanged.
+Names may be supplied to `instances:start:local` to launch only those bots. It
+starts the workspace-local PostgreSQL and Lavalink services before launching
+the selected instances. Each PostgreSQL-backed instance must point at an
+existing logical database, or instances may share a database with isolated
+schemas. `local:start` and `deploy:commands` use the instance selected by
+`DEFAULT_INSTANCE`.
+
+PostgreSQL schema isolation is automatic. Every PostgreSQL instance uses a
+schema derived from `INSTANCE_NAME` (`my-bot` becomes `my_bot`), so instances
+can share the same `DATABASE_URL` without sharing tables. There is no
+configuration flag and no application fallback to the `public` schema.
 
 ## Configuring the AI chatbot
 
 Mention chat uses any provider exposing an OpenAI-compatible
-`/chat/completions` endpoint. Configure all three values together in `.env`:
+`/chat/completions` endpoint, or Google's Gemini API natively. One API key per
+supported vendor is configured once and shared by both the main chat task and
+the optional utility task below — each task just picks a provider/model and
+draws its credential from whichever key matches, so using the same vendor for
+both never means pasting the same key twice:
 
 ```env
-CHAT_API_KEY=your_private_provider_key
-CHAT_BASE_URL=https://your-provider.example/v1
-CHAT_MODEL=your-provider-model-name
-CHAT_API_MODE=chat_completions
+OPENAI_API_KEY=your_private_provider_key
+OPENAI_BASE_URL=https://your-provider.example/v1
+GOOGLE_API_KEY=your_google_api_key
 ```
 
-Use `CHAT_API_MODE=responses` with OpenAI's Responses API to enable guarded
-image input, optional model-selected web search, and LLM tool calling (dice,
-8-ball, booru search, memory/birthday lookup, music control — see
-`/settings chat chatbot tool-calling`). Keep `chat_completions` for generic
-OpenAI-compatible providers that do not implement Responses.
+`OPENAI_BASE_URL` defaults to `https://api.openai.com/v1` and only needs
+overriding for a third-party OpenAI-compatible endpoint (OpenRouter,
+self-hosted, etc.) — xAI, OpenAI, and any such endpoint all use
+`OPENAI_API_KEY`. There's one `OPENAI_BASE_URL` per instance, not one per
+task, so a task that needs a genuinely different OpenAI-compatible endpoint
+than the other task isn't representable this way.
 
-Optional: `CHAT_FALLBACK_MODELS` (comma-separated) walks an ordered list of
+Main chat is then just:
+
+```env
+CHATBOT_MODEL=your-provider-model-name
+CHATBOT_PROVIDER=openai
+CHATBOT_MODE=chat_completions
+```
+
+`CHATBOT_PROVIDER` picks which key above this task uses: `openai` (default)
+or `gemini`. Within `openai`, `CHATBOT_MODE` picks the wire variant —
+`chat_completions` (default) for generic OpenAI-compatible providers, or
+`responses` for OpenAI's own Responses API to enable guarded image input,
+optional model-selected web search, and LLM tool calling (dice, 8-ball, booru
+search, memory/birthday lookup, music control — see
+`/settings chat chatbot tool-calling`).
+
+`CHATBOT_PROVIDER=gemini` gets the same image input, tool calling, and web
+search feature set, backed by Gemini's own `googleSearch` grounding tool and
+native multimodal image output rather than OpenAI's. `CHATBOT_MODE` doesn't
+apply in this mode — Gemini has no chat_completions/responses split, so
+setting it is rejected at startup rather than silently ignored.
+`CHATBOT_GEMINI_THINKING_BUDGET` (tokens; `0` disables thinking, `-1` is
+automatic) is optional and Gemini-only.
+
+Optional: `CHATBOT_FALLBACK_MODELS` (comma-separated) walks an ordered list of
 backup models on a 429/quota error instead of failing the turn outright.
-`CHAT_EMBEDDING_MODEL` (e.g. `text-embedding-3-small`) enables vector-assisted
+`CHATBOT_EMBEDDING_MODEL` (e.g. `text-embedding-3-small`) enables vector-assisted
 guild-knowledge recall — semantic search over confirmed guild facts, additive
 to the existing keyword-overlap ranking. Both are opt-in; leaving them unset
-keeps today's single-model, keyword-only behavior.
+keeps today's single-model, keyword-only behavior. `CHATBOT_EMBEDDING_MODEL` is
+not yet wired up for `CHATBOT_PROVIDER=gemini`.
+
+Optional: `CHATBOT_SUMMARY_MODEL` (+ `CHATBOT_SUMMARY_FALLBACK_MODELS`, same
+comma-separated shape as above) points the two standalone structured-output
+calls that aren't a chat reply — customization-file analysis and dropped-
+exchange consolidation — at a separate, typically cheaper/smaller model on
+the **same provider/key** as `CHATBOT_*`, since those are low-stakes extraction
+tasks that don't need the primary reply model's quality. Leave unset to keep
+using `CHATBOT_MODEL`/`CHATBOT_FALLBACK_MODELS` for those calls too.
+
+For a genuinely independent model for those same two calls — own provider,
+even a different vendor entirely (e.g. main chat on OpenAI, utility calls on
+Gemini) — use the `UTILITY_*` namespace instead, same shape as `CHATBOT_*`
+(`UTILITY_MODEL`/`UTILITY_PROVIDER`/`UTILITY_MODE`/`UTILITY_FALLBACK_MODELS`/
+`UTILITY_GEMINI_THINKING_BUDGET`). It supersedes `CHATBOT_SUMMARY_MODEL`
+entirely when set. Both are optional — leaving everything unset keeps the two
+calls on the primary `CHATBOT_MODEL` chain, same as before either of these
+existed. Since credentials come from the shared `OPENAI_API_KEY`/
+`GOOGLE_API_KEY` pool above rather than a per-task key, pointing `UTILITY_*`
+at the same vendor as `CHATBOT_*` is free — only pointing it at a
+*different* vendor needs a second key configured.
 
 Responses generation settings belong to each bot instance:
 
 ```env
-CHAT_REASONING_EFFORT=low
-CHAT_VERBOSITY=low
-CHAT_MAX_OUTPUT_TOKENS=2048
+CHATBOT_REASONING_EFFORT=low
+CHATBOT_VERBOSITY=low
+CHATBOT_MAX_OUTPUT_TOKENS=2048
 ```
 
 Supported reasoning values remain model-dependent. These settings are ignored
 by the generic Chat Completions provider.
 
-All `CHAT_*` values, including provider credentials, base URL, model, and API
-mode, are instance-owned and must be placed in `config/instances/<name>.env`.
-Named instances deliberately do not inherit `CHAT_*` values from the shared
-`.env`, allowing separate projects, keys, model choices, and usage accounting.
-The API key is a secret.
+`OPENAI_*`/`GOOGLE_*`, `CHATBOT_*`, and `UTILITY_*` — every value covered
+above — are all instance-owned and must be placed in
+`config/instances/<name>.env`. Named instances deliberately do not inherit
+these values from the shared `.env`, allowing separate projects, keys, model
+choices, and usage accounting. API keys are secrets.
 
 To enable the behavior for a guild and assign its initial access policy, run
-`/settings chatbot` — see the
+`/settings chat chatbot` — see the
 [chat settings reference](docs/user-guide.md#chat) for every option
-(web search, image input/generation, tool calling, personality upload, and
-more). Advanced self-hosted installations may still set `chat.personalityFile`
+(web search, image input/generation, tool calling, personality and
+example-exchange upload, and more). `/settings chat template` sends a starter
+`personality.md` or `examples.md` file to download, edit, and upload back.
+Advanced self-hosted installations may still set `chat.personalityFile`
 directly in guild YAML; an uploaded personality takes precedence. See
 [`docs/personality-guide.md`](docs/personality-guide.md) for how to write a
-character personality file that reads like a real chat participant instead of
-an assistant.
+character personality file — and an optional example-exchanges file to teach
+its actual voice — that reads like a real chat participant instead of an
+assistant.
 
 Every provider call emits content-free usage logs. The start record includes
 the model, API mode, generation settings, Discord identifiers, image count, and

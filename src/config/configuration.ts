@@ -57,12 +57,6 @@ export interface ApplicationConfiguration {
   persistence: {
     driver: "file" | "postgres";
     databaseUrl: string | null;
-    // Opt-in only (default false) — when true, this instance's Postgres
-    // connection is scoped to a schema derived from its instance name
-    // instead of the database's default (public) schema, so multiple
-    // instances can safely share one DATABASE_URL. Unset/false is byte-for-
-    // byte the existing behavior; no deployment needs to change anything.
-    schemaPerInstance: boolean;
   };
   lavalink: LavalinkConfiguration;
   // The main chatbot persona/reply model (CHATBOT_* env vars). Keyed by

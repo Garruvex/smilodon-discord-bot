@@ -8,7 +8,7 @@ instead of `npm` if the execution policy blocks `npm.ps1`.
 | Configuration | Launch command | What it starts |
 | --- | --- | --- |
 | Default/single instance | `npm.cmd run local:start` | One Lavalink process and the default bot instance |
-| Complete native multi-instance stack | `npm.cmd run all:start` | Workspace-local Lavalink and every `config/instances/*.env` bot |
+| Complete native multi-instance stack | `npm.cmd run instances:start:local` | PostgreSQL, Lavalink, and every `config/instances/*.env` bot |
 | Every configured instance, infrastructure already running | `npm.cmd run instances:start` | Every configured bot only |
 | Selected instances, infrastructure already running | `npm.cmd run instances:start -- myinstance otherinstance` | Only the named bots |
 | One instance, infrastructure already running | `npm.cmd run instance:start -- myinstance` | Only the named bot; no Lavalink or PostgreSQL |
@@ -18,12 +18,13 @@ only the default instance.
 
 ## Native Windows (single instance)
 
-Set `PERSISTENCE_DRIVER=file` in `.env`, then:
+Set the desired `PERSISTENCE_DRIVER` in the instance selected by
+`DEFAULT_INSTANCE`, then:
 
 | Goal | Command |
 | --- | --- |
 | One-time local Java and Lavalink setup | `npm.cmd run local:setup` |
-| Start Lavalink and the bot | `npm.cmd run local:start` |
+| Start Lavalink, the selected bot, and PostgreSQL when configured | `npm.cmd run local:start` |
 | Stop both processes | Press `Ctrl+C` |
 | Check the Discord token | `npm.cmd run local:check-token` |
 | Start Lavalink only | `npm.cmd run local:lavalink` |
@@ -37,18 +38,28 @@ same Discord application.
 
 | Goal | Command |
 | --- | --- |
-| Build and start bot, PostgreSQL, and Lavalink | `npm.cmd run stack:up` |
-| Start PostgreSQL and Lavalink only (foreground) | `npm.cmd run dev:services` |
-| Start PostgreSQL and Lavalink only (detached/readiness wait) | `npm.cmd run services:docker` |
+| Validate the selected instance file | `npm.cmd run instance:config:validate -- INSTANCE` |
+| Build and start the selected bot, PostgreSQL, and Lavalink | `npm.cmd run stack:up` |
+| Start native PostgreSQL and Lavalink together | `npm.cmd run services:start` |
+| Start PostgreSQL and Lavalink in Docker (detached) | `npm.cmd run services:start:docker` |
 | Follow stack logs | `npm.cmd run stack:logs` |
-| Restart the stack | `npm.cmd run stack:restart` |
+| Restart the bot container | `npm.cmd run stack:restart:bot` |
 | Stop and remove the stack containers | `npm.cmd run stack:down` |
-| Deploy commands inside Compose | `docker compose run --rm bot node dist/scripts/deploy-commands.js` |
+| Erase PostgreSQL and rebuild from the baseline | `npm.cmd run stack:reset` |
+| Deploy commands for the selected Docker instance | `npm.cmd run stack:deploy` |
+| Render the effective Compose configuration | `npm.cmd run stack:config` |
 
-For native file-backed development, `npm.cmd run services:start` runs only the
-workspace-local Lavalink service. For PostgreSQL-backed development, use
-`dev:services` in one terminal or `services:docker` for detached containers,
-then run the bot separately.
+`DOCKER_INSTANCE=pinecone` in `.env` selects
+`config/instances/pinecone.env`. Compose waits for PostgreSQL and Lavalink,
+migrates the instance schema, and then starts the bot. Persistent state lives
+under `DATA_ROOT` (default `./data`). Compose contains no generated services.
+If you need multiple Docker bots, duplicate the bot service in your own Compose
+file with a different instance env file; all copies can share PostgreSQL because
+each instance uses its own schema.
+
+`services:start` runs the workspace-local PostgreSQL and Lavalink processes in
+one foreground terminal. Use `services:start:docker` for the same two services
+in detached containers, then run the bot separately.
 
 ## Discord command registration
 
@@ -69,8 +80,8 @@ For example, `myinstance` loads `config/instances/myinstance.env`.
 | Goal | Command |
 | --- | --- |
 | Validate all instance definitions | `npm.cmd run instances:validate` |
-| Start local Lavalink and every configured instance | `npm.cmd run all:start` |
-| Start local Lavalink and selected instances | `npm.cmd run all:start -- myinstance otherinstance` |
+| Start local services and every configured instance | `npm.cmd run instances:start:local` |
+| Start local services and selected instances | `npm.cmd run instances:start:local -- myinstance otherinstance` |
 | Start every configured instance | `npm.cmd run instances:start` |
 | Start selected instances | `npm.cmd run instances:start -- myinstance otherinstance` |
 | Start one instance | `npm.cmd run instance:start -- INSTANCE` |
@@ -82,8 +93,8 @@ For example, `myinstance` loads `config/instances/myinstance.env`.
 | Synchronize selected instances' bundled application emojis | `npm.cmd run instance:emojis:sync -- INSTANCE...` |
 
 Both `instance:start` and `instances:start` expect Lavalink and PostgreSQL (when
-selected) to already be running. Native `all:start` supplies Lavalink; a selected
-PostgreSQL persistence driver still requires PostgreSQL to be started separately.
+selected) to already be running. `instances:start:local` supplies both
+infrastructure services before launching the selected bots.
 
 ## Before a release or troubleshooting
 
@@ -93,7 +104,7 @@ PostgreSQL persistence driver still requires PostgreSQL to be started separately
 | Build production JavaScript | `npm.cmd run build` |
 | Run tests once | `npm.cmd run test` |
 | Validate guild profiles | `npm.cmd run config:validate` |
-| Apply PostgreSQL migrations | `npm.cmd run db:migrate` |
+| Apply one instance's PostgreSQL migrations | `npm.cmd run instance:db:migrate -- INSTANCE` |
 
 ## First launch: single instance
 
@@ -121,15 +132,22 @@ npm.cmd run instance:check-token -- myinstance
 npm.cmd run instance:check-token -- otherinstance
 npm.cmd run instance:deploy -- myinstance
 npm.cmd run instance:deploy -- otherinstance
-npm.cmd run all:start -- myinstance otherinstance
+npm.cmd run instances:start:local -- myinstance otherinstance
 ```
 
 To launch every discovered instance, omit the names from the last command:
 
 ```powershell
-npm.cmd run all:start
+npm.cmd run instances:start:local
 ```
 
 Each instance needs a unique Discord application ID and isolated persistence,
 guild configuration, and runtime directories. If an instance uses PostgreSQL,
-start PostgreSQL separately and give each instance a different logical database.
+start PostgreSQL separately and give each instance a different logical database
+(`DATABASE_URL`) by default.
+
+Every PostgreSQL instance automatically gets its own schema derived from its
+instance name (`my-bot` becomes `my_bot`). Instances can therefore share one
+server, database, and `DATABASE_URL` without sharing tables. The application
+never falls back to the `public` schema. `npm run instance:db:migrate -- <name>`
+creates and migrates the correct schema.

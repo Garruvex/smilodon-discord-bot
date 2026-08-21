@@ -187,12 +187,14 @@ describe("LocalGuildConfigurationProvider", () => {
       maximumVolume: 180,
       emptyQueueAction: "stay_connected",
       chatbotImageGenerationEnabled: true,
+      chatbotDisabledToolNames: ["play_music", "view_music_queue"],
     });
 
     expect(updated.idleImageUrl).toBe("https://example.com/idle.png");
     expect(updated.music.maximumVolume).toBe(180);
     expect(updated.music.emptyQueueAction).toBe("stay_connected");
     expect(updated.chat.imageGenerationEnabled).toBe(true);
+    expect(updated.chat.disabledTools).toEqual(["play_music", "view_music_queue"]);
     expect(provider.require(updated.guildId)).toEqual(updated);
   });
 

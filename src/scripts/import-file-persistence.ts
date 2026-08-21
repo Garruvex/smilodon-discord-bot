@@ -6,8 +6,12 @@ import { resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 
+import { loadConfiguration } from "../config/environment.js";
 import { guildConfigurationFileSchema } from "../config/guild-configuration-schema.js";
-import { createDatabaseConnection } from "../infrastructure/database/database.js";
+import {
+  createDatabaseConnection,
+  resolveInstanceSchemaName,
+} from "../infrastructure/database/database.js";
 import * as schema from "../infrastructure/database/schema.js";
 
 const panelStateSchema = z.record(
@@ -15,14 +19,18 @@ const panelStateSchema = z.record(
   z.object({ guildId: z.string(), channelId: z.string(), messageId: z.string() }),
 );
 
-const databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl) throw new Error("DATABASE_URL is required for file import.");
+const configuration = loadConfiguration();
+const databaseUrl = configuration.persistence.databaseUrl;
+if (configuration.persistence.driver !== "postgres" || !databaseUrl) {
+  throw new Error("PostgreSQL persistence and DATABASE_URL are required for file import.");
+}
+if (!configuration.instanceName) {
+  throw new Error("INSTANCE_NAME is required for PostgreSQL schema isolation.");
+}
 
-const guildDirectory = resolve(
-  process.env.GUILD_CONFIG_DIRECTORY ?? "./config/local/guilds",
-);
+const guildDirectory = resolve(configuration.guildConfigurationDirectory);
 const panelStateFile = resolve(
-  process.env.RUNTIME_DATA_DIRECTORY ?? "./data/local",
+  configuration.runtimeDataDirectory,
   "control-panels.json",
 );
 
@@ -37,7 +45,10 @@ const panelStates = existsSync(panelStateFile)
   ? Object.values(panelStateSchema.parse(JSON.parse(readFileSync(panelStateFile, "utf8"))))
   : [];
 
-const connection = await createDatabaseConnection(databaseUrl);
+const connection = await createDatabaseConnection(
+  databaseUrl,
+  resolveInstanceSchemaName(configuration.instanceName),
+);
 try {
   await connection.database.transaction(async (transaction) => {
     for (const document of guildDocuments) {

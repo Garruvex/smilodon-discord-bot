@@ -23,37 +23,40 @@ function Test-TcpPort {
 }
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$environmentFile = Join-Path $projectRoot ".env"
-$persistenceDriver = "file"
-if (Test-Path -LiteralPath $environmentFile) {
-  foreach ($line in Get-Content -LiteralPath $environmentFile) {
-    $trimmed = $line.Trim()
-    if (-not $trimmed -or $trimmed.StartsWith("#") -or -not $trimmed.Contains("=")) {
-      continue
-    }
-    $parts = $trimmed.Split("=", 2)
-    if ($parts[0].Trim() -eq "PERSISTENCE_DRIVER" -and $parts[1].Trim()) {
-      $persistenceDriver = $parts[1].Trim()
-    }
-  }
-}
+$persistenceDriver = if ($env:PERSISTENCE_DRIVER) { $env:PERSISTENCE_DRIVER } else { "file" }
+$lavalinkHost = if ($env:LAVALINK_HOST) { $env:LAVALINK_HOST } else { "127.0.0.1" }
+$lavalinkPort = if ($env:LAVALINK_PORT) { [int]$env:LAVALINK_PORT } else { 2333 }
 
-$requiredPorts = @{ "Lavalink" = 2333 }
+$requiredPorts = @{ "Lavalink" = @{ Host = $lavalinkHost; Port = $lavalinkPort } }
 if ($persistenceDriver -eq "postgres") {
-  $requiredPorts["PostgreSQL"] = 5432
+  if (-not $env:DATABASE_URL) {
+    throw "DATABASE_URL is required when PERSISTENCE_DRIVER=postgres."
+  }
+  $databaseUri = [Uri]$env:DATABASE_URL
+  $databasePort = if ($databaseUri.Port -gt 0) { $databaseUri.Port } else { 5432 }
+  $requiredPorts["PostgreSQL"] = @{ Host = $databaseUri.Host; Port = $databasePort }
 }
 
 $deadline = (Get-Date).AddMinutes(3)
-Write-Host ("Waiting for " + (($requiredPorts.Keys | ForEach-Object { "$_ on 127.0.0.1:$($requiredPorts[$_])" }) -join " and ") + "...")
+Write-Host ("Waiting for " + (($requiredPorts.Keys | ForEach-Object { "$_ on $($requiredPorts[$_].Host):$($requiredPorts[$_].Port)" }) -join " and ") + "...")
 while ((Get-Date) -lt $deadline) {
   $allReady = $true
   foreach ($name in $requiredPorts.Keys) {
-    if (-not (Test-TcpPort -HostName "127.0.0.1" -Port $requiredPorts[$name])) {
+    $endpoint = $requiredPorts[$name]
+    if (-not (Test-TcpPort -HostName $endpoint.Host -Port $endpoint.Port)) {
       $allReady = $false
     }
   }
   if ($allReady) {
-    Write-Host "Required services are accepting connections. Starting the bot..."
+    Write-Host "Required services are accepting connections."
+    if ($persistenceDriver -eq "postgres") {
+      Write-Host "Applying PostgreSQL migrations..."
+      npm.cmd run db:migrate:active
+      if ($LASTEXITCODE -ne 0) {
+        throw "PostgreSQL migration failed."
+      }
+    }
+    Write-Host "Starting the bot..."
     npm.cmd run local:check-token
     if ($LASTEXITCODE -ne 0) {
       throw "Discord token validation failed. Update DISCORD_TOKEN in .env."
