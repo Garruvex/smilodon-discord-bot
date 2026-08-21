@@ -1,19 +1,8 @@
 import type { ChatInputCommandInteraction, GuildMember } from "discord.js";
 
 import type { PlaybackActor } from "../../../../application/music/playback-service.js";
-import {
-  RoleMatchMode,
-  publicAccessPolicy,
-  type CommandAccessPolicy,
-} from "../../../../domain/access/access-policy.js";
 
-export const musicPlaybackAccessPolicy: CommandAccessPolicy = {
-  ...publicAccessPolicy,
-  roles: {
-    match: RoleMatchMode.Any,
-    requiredGroups: ["musicController"],
-  },
-};
+export { musicPlaybackAccessPolicy } from "../../../../application/music/music-access-policy.js";
 
 export function createPlaybackActor(
   interaction: ChatInputCommandInteraction<"cached">,
@@ -42,10 +31,10 @@ export function createPlaybackActorFromMember(
   };
 }
 
-// Whether a member is allowed to invoke music tools via chat — the same role
-// gate musicPlaybackAccessPolicy applies to /play etc. (musicController or
-// botAdministrator), since chat-invoked tools bypass the normal command
-// access-policy pipeline entirely.
+// Narrower musicController/botAdministrator role check, same semantics as
+// the roles clause of musicPlaybackAccessPolicy. The chat-tool path now runs
+// the full policy via AccessPolicyEngine (see music-tool-support.ts's
+// evaluateMusicToolAccess) rather than this narrower check.
 export function memberCanControlMusic(
   member: GuildMember,
   musicControllerRoleIds: ReadonlySet<string>,

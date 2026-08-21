@@ -25,7 +25,7 @@ describe("QueueCommand", () => {
       { identifier: "b", title: "Track B", author: "Artist B", uri: "https://example.com/b", artworkUrl: null, durationMs: 1000, isStream: false, requestedByUserId: "user", playedAt: 50 },
     ]);
     const playbackService = { getPlayHistory } as unknown as PlaybackService;
-    const command = new QueueCommand(playbackService);
+    const command = new QueueCommand(playbackService, {} as never);
     const { context, reply } = makeContext("history");
 
     await command.execute(context);
@@ -39,7 +39,7 @@ describe("QueueCommand", () => {
 
   it("reports when nothing has played yet", async () => {
     const playbackService = { getPlayHistory: vi.fn().mockReturnValue([]) } as unknown as PlaybackService;
-    const command = new QueueCommand(playbackService);
+    const command = new QueueCommand(playbackService, {} as never);
     const { context, reply } = makeContext("history");
 
     await command.execute(context);

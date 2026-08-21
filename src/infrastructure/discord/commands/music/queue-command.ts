@@ -1,8 +1,13 @@
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 
-import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
+import { CommandModule, type BotCommand, type ChatToolBinding, type CommandContext } from "../../../../application/commands/command.js";
+import type { ChatToolContext, ChatToolResult } from "../../../../application/chat/tools/chat-tool.js";
+import { evaluateMusicToolAccess, musicPermissionDeniedMessage } from "../../../../application/chat/tools/music-tool-support.js";
 import type { PlaybackService } from "../../../../application/music/playback-service.js";
+import type { GuildConfigurationProvider } from "../../../../config/guild-configuration-provider.js";
 import { createPlaybackActor, musicPlaybackAccessPolicy } from "./music-command-support.js";
+
+const maxQueueTracksReturnedToTool = 10;
 
 export class QueueCommand implements BotCommand {
   public readonly definition = new SlashCommandBuilder()
@@ -19,7 +24,17 @@ export class QueueCommand implements BotCommand {
   public readonly module = CommandModule.Music;
   public readonly access = musicPlaybackAccessPolicy;
 
-  public constructor(private readonly playbackService: PlaybackService) {}
+  public readonly toolBinding: ChatToolBinding<Record<string, never>> = {
+    name: "view_music_queue",
+    description: "Shows what's currently playing and what's queued up next.",
+    parameters: { type: "object", additionalProperties: false, required: [], properties: {} },
+    execute: (_args, ctx) => this.executeAsTool(ctx),
+  };
+
+  public constructor(
+    private readonly playbackService: PlaybackService,
+    private readonly profiles: GuildConfigurationProvider,
+  ) {}
 
   public async execute(context: CommandContext): Promise<void> {
     if (!context.interaction.inCachedGuild()) return;
@@ -54,5 +69,26 @@ export class QueueCommand implements BotCommand {
     const embed = new EmbedBuilder().setTitle("Music queue").setDescription(description);
     if (tracks.length > 20) embed.setFooter({ text: `Showing 20 of ${tracks.length} tracks` });
     await context.responses.reply({ embeds: [embed] });
+  }
+
+  private executeAsTool(ctx: ChatToolContext): Promise<ChatToolResult> {
+    if (!ctx.music) return Promise.resolve({ content: musicPermissionDeniedMessage });
+    const decision = evaluateMusicToolAccess(ctx, ctx.music, this.profiles);
+    if (!decision.allowed) return Promise.resolve({ content: musicPermissionDeniedMessage });
+    const snapshot = this.playbackService.getSnapshot(ctx.music.actor.guildId);
+    if (!snapshot) return Promise.resolve({ content: "Nothing is playing right now." });
+    const queue = this.playbackService.getQueue(ctx.music.actor.guildId).slice(0, maxQueueTracksReturnedToTool);
+    return Promise.resolve({
+      content: JSON.stringify({
+        playing: snapshot.playing,
+        paused: snapshot.paused,
+        volume: snapshot.volume,
+        currentTrack: snapshot.currentTrack
+          ? { title: snapshot.currentTrack.title, author: snapshot.currentTrack.author }
+          : null,
+        queueLength: snapshot.queueLength,
+        upNext: queue.map((track) => ({ title: track.title, author: track.author })),
+      }),
+    });
   }
 }
