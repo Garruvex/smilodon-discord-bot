@@ -10,7 +10,7 @@ import type {
   GuildSetupStatus,
 } from "./guild-setup-service.js";
 import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
-import type { GuildConfiguration } from "../../config/guild-configuration.js";
+import type { GuildConfiguration, GuildFeatureName } from "../../config/guild-configuration.js";
 import type { AuditLogService } from "../audit/audit-log-service.js";
 
 interface CreatedResources {
@@ -183,24 +183,31 @@ export class LocalGuildSetupService implements GuildSetupService {
         profileFile: null,
         controlPanelChannelId: null,
         enabledFeatures: [],
+        featureStates: [],
         access: null,
+        music: null,
+        chat: null,
+        panel: null,
         botPermissions,
       };
     }
 
+    const featureEntries = Object.entries(profile.features) as [GuildFeatureName, boolean][];
     return {
       configured: true,
       profileFile: profile.sourceFile,
       controlPanelChannelId: profile.channels.controlPanel,
-      enabledFeatures: Object.entries(profile.features)
-        .filter(([, enabled]) => enabled)
-        .map(([feature]) => feature),
+      enabledFeatures: featureEntries.filter(([, enabled]) => enabled).map(([feature]) => feature),
+      featureStates: featureEntries.map(([name, enabled]) => ({ name, enabled })),
       access: {
         botAdministrator: profile.roles.botAdministrator,
         musicController: profile.roles.musicController,
         restricted: profile.roles.restricted,
         chatbot: profile.roles.chatbot,
       },
+      music: profile.music,
+      chat: profile.chat,
+      panel: profile.panel,
       botPermissions,
     };
   }

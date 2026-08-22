@@ -1,3 +1,10 @@
+import type {
+  GuildFeatureName,
+  GuildChatConfiguration,
+  GuildMusicConfiguration,
+  GuildPanelConfiguration,
+} from "../../config/guild-configuration.js";
+
 export interface GuildSetupInitializeRequest {
   guildId: string;
   guildName: string;
@@ -27,17 +34,28 @@ export interface GuildSetupBotPermissionStatus {
   missing: readonly string[];
 }
 
+export interface GuildSetupFeatureState {
+  name: GuildFeatureName;
+  enabled: boolean;
+}
+
 export interface GuildSetupStatus {
   configured: boolean;
   profileFile: string | null;
   controlPanelChannelId: string | null;
   enabledFeatures: readonly string[];
+  // Every feature flag (not just the enabled ones), so /setup status can show
+  // what's flipped and what's not at a glance instead of only the on set.
+  featureStates: readonly GuildSetupFeatureState[];
   access: {
     botAdministrator: ReadonlySet<string>;
     musicController: ReadonlySet<string>;
     restricted: ReadonlySet<string>;
     chatbot: ReadonlySet<string>;
   } | null;
+  music: GuildMusicConfiguration | null;
+  chat: GuildChatConfiguration | null;
+  panel: GuildPanelConfiguration | null;
   botPermissions: GuildSetupBotPermissionStatus;
 }
 

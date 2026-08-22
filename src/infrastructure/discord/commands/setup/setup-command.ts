@@ -137,8 +137,10 @@ export class SetupCommand implements BotCommand {
       "This server is configured.",
       `Profile: ${status.profileFile ?? "unknown"}`,
       `Control panel: ${status.controlPanelChannelId ? `<#${status.controlPanelChannelId}>` : "disabled"}`,
-      `Features: ${status.enabledFeatures.join(", ")}`,
       ...permissionLines,
+      "",
+      "Features:",
+      ...status.featureStates.map((feature) => `${feature.enabled ? "✅" : "❌"} ${feature.name}`),
     ];
 
     if (status.access) {
@@ -155,6 +157,41 @@ export class SetupCommand implements BotCommand {
         `- Music controller: ${roleGroupDescriptions.musicController}`,
         `- Restricted: ${roleGroupDescriptions.restricted}`,
         `- Chatbot: ${roleGroupDescriptions.chatbot}`,
+      );
+    }
+
+    if (status.music) {
+      lines.push(
+        "",
+        "Music:",
+        `Default volume: ${status.music.defaultVolume} (max ${status.music.maximumVolume}, step ${status.music.volumeButtonStep})`,
+        `Empty queue: ${status.music.emptyQueueAction} after ${status.music.emptyQueueDelayMs}ms`,
+        `Empty channel: ${status.music.emptyChannelAction} after ${status.music.emptyChannelGracePeriodMs}ms grace`,
+        `Resume when occupied: ${status.music.resumeWhenOccupied ? "on" : "off"}`,
+      );
+    }
+
+    if (status.chat) {
+      lines.push(
+        "",
+        "Chat:",
+        `Cooldown: ${status.chat.cooldownSeconds}s (ambient: ${status.chat.ambientCooldownSeconds}s)`,
+        `Web search: ${status.chat.webSearchMode}`,
+        `Tool calling: ${status.chat.toolCallingEnabled ? "on" : "off"}${status.chat.disabledTools.length > 0 ? ` (${status.chat.disabledTools.length} tool(s) disabled)` : ""}`,
+        `Image input: ${status.chat.imageInputEnabled ? "on" : "off"}`,
+        `Image generation: ${status.chat.imageGenerationEnabled ? "on" : "off"}`,
+        `Include sources: ${status.chat.includeSources ? "on" : "off"}`,
+        `Persona drift: ${status.chat.personaDriftEnabled ? "on" : "off"}`,
+        `Channel history: limit ${status.chat.channelHistoryLimit}`,
+        `Context scan channels: ${status.chat.contextScanChannelIds.length}, daily: ${status.chat.contextDailyChannelIds.length}`,
+      );
+    }
+
+    if (status.panel) {
+      lines.push(
+        "",
+        "Panel:",
+        `Progress bar: ${status.panel.progressBar.style} (length ${status.panel.progressBar.length})`,
       );
     }
 
