@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { and, eq, gt, isNull, ne, or, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
 import type {
@@ -211,6 +211,12 @@ export class PostgresMemoryRepository implements MemoryRepository {
   }
 
   public async findRecallCandidates(query: CandidateQuery): Promise<RecallCandidates> {
+    // subjectIds, when given, is applied in SQL alongside the other filters
+    // — not as a post-fetch JS filter — so it narrows what the LIMIT below
+    // bounds rather than being applied after it. Filtering after a LIMIT
+    // would silently drop a requested subject's memories whenever the
+    // unfiltered eligible set exceeds maxEligibleCandidates and happens to
+    // sort the requested subject's rows past the cutoff.
     const rows = await this.database.select().from(schema.memories).where(and(
       eq(schema.memories.guildId, query.guildId),
       eq(schema.memories.status, "active"),
@@ -221,11 +227,9 @@ export class PostgresMemoryRepository implements MemoryRepository {
         and(eq(schema.memories.audience, "channel"), eq(schema.memories.channelId, query.channelId)),
         eq(schema.memories.audience, "guild"),
       ),
+      query.subjectIds && query.subjectIds.length > 0 ? inArray(schema.memories.subjectId, [...query.subjectIds]) : undefined,
     )).limit(maxEligibleCandidates);
-    const filtered = query.subjectIds && query.subjectIds.length > 0
-      ? rows.filter((row) => query.subjectIds!.includes(row.subjectId))
-      : rows;
-    return { memories: filtered.map(toMemory) };
+    return { memories: rows.map(toMemory) };
   }
 
   public async findById(guildId: string, id: string): Promise<Memory | null> {

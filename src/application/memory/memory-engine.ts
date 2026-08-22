@@ -76,6 +76,18 @@ export const defaultMemoryEngineLimits: MemoryEngineLimits = {
   ...memoryValidationLimits,
 };
 
+// Caps how many conflict-classifier calls (see shouldSupersede) a single
+// ingested memory can trigger. findActiveBySubject can return up to 50
+// same-scope candidates, and every one clearing the similarity threshold
+// would otherwise get its own classifier round-trip — for a busy subject
+// (or a consolidation batch ingesting many proposals about the same
+// subject at once) that fans out into dozens-to-hundreds of extra LLM
+// calls per ingest. Only the most-similar candidates are worth spending
+// that budget on; the rest fall back to the pre-classifier, safe-by-default
+// behavior (coexist rather than supersede) same as when no classifier is
+// configured at all.
+const maxConflictClassificationsPerMemory = 5;
+
 function toScorable(memory: Memory): ScorableRecord {
   return { subjectId: memory.subjectId, topic: memory.topic, slot: memory.slot, statement: memory.statement, updatedAt: memory.updatedAt };
 }
@@ -144,18 +156,19 @@ export class DefaultMemoryEngine implements MemoryEngine {
     const lexicalOrder = [...candidates.memories].sort(
       (a, b) => bm25Score(corpus, context, scorableByMemory.get(b)!) - bm25Score(corpus, context, scorableByMemory.get(a)!),
     );
-    // Only memories that actually have an embedding participate in this
-    // ranking. cosineSimilarity([], queryEmbedding) is 0 for the rest, so
-    // without this filter they'd all tie at the bottom and get spread across
-    // consecutive ranks by array order alone — handing some of them RRF
-    // credit they didn't earn on relevance, and it varying by candidate
-    // order rather than content.
+    // Only memories with an embedding comparable to the query's participate
+    // in this ranking. cosineSimilarity returns 0 for a missing embedding
+    // AND for a dimension mismatch (e.g. a memory stored under a previous,
+    // differently-sized embedding model) — neither is a real "not similar"
+    // signal. Without this filter they'd all tie at the bottom and get
+    // spread across consecutive ranks by array order alone, handing some of
+    // them RRF credit they didn't earn on relevance.
     let embeddingOrder: readonly Memory[] = [];
     if (this.embeddingsClient) {
       const queryEmbedding = await this.embeddingsClient.embed(input.message).catch(() => null);
       if (queryEmbedding) {
         embeddingOrder = candidates.memories
-          .filter((memory) => memory.embedding)
+          .filter((memory) => memory.embedding && memory.embedding.length === queryEmbedding.length)
           .sort((a, b) => cosineSimilarity(b.embedding!, queryEmbedding) - cosineSimilarity(a.embedding!, queryEmbedding));
       }
     }
@@ -282,6 +295,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
       return;
     }
     const embedding = memory.embedding!;
+    const aboveThreshold: { candidate: Memory; similarity: number }[] = [];
     for (const candidate of related) {
       if (!candidate.embedding) continue;
       // Deterministic tie-break, evaluated identically from either side:
@@ -296,7 +310,21 @@ export class DefaultMemoryEngine implements MemoryEngine {
         ? memory.createdAt > candidate.createdAt
         : memory.id > candidate.id;
       if (!memoryIsLater) continue;
-      if (cosineSimilarity(embedding, candidate.embedding) < this.limits.conflictSimilarityThreshold) continue;
+      const similarity = cosineSimilarity(embedding, candidate.embedding);
+      if (similarity < this.limits.conflictSimilarityThreshold) continue;
+      aboveThreshold.push({ candidate, similarity });
+    }
+    // Only classify the most-similar candidates — see
+    // maxConflictClassificationsPerMemory's comment. Anything beyond the cap
+    // is left alone rather than classified, the same safe-by-default outcome
+    // as a classifier declining to confirm a conflict. No cap when there's
+    // no classifier to fan out calls to in the first place — the pure
+    // similarity-threshold path was never the expensive one.
+    aboveThreshold.sort((a, b) => b.similarity - a.similarity);
+    const toEvaluate = this.conflictClassifier?.classifyMemoryConflict
+      ? aboveThreshold.slice(0, maxConflictClassificationsPerMemory)
+      : aboveThreshold;
+    for (const { candidate } of toEvaluate) {
       if (!(await this.shouldSupersede(candidate, memory))) continue;
       try {
         await this.repository.supersede({ guildId: memory.guildId, memoryId: candidate.id, supersededById: memory.id, now });
