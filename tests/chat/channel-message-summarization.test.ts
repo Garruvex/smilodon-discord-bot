@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { prepareChannelMessageSummary } from "../../src/infrastructure/chat/channel-message-summarization.js";
+import { prepareChannelMessageSummary } from "../../src/application/chat/channel-message-summarization.js";
 
 describe("prepareChannelMessageSummary", () => {
   it("uses compact aliases and resolves them locally after extraction", () => {
@@ -28,6 +28,28 @@ describe("prepareChannelMessageSummary", () => {
       slot: "friday_raids",
       statement: "Runs Friday raids.",
       evidenceMessageIds: ["message-1", "message-2"],
-    }] });
+    }], relations: [] });
+  });
+
+  it("resolves author references on both ends of an extracted relation", () => {
+    const prepared = prepareChannelMessageSummary("guild-123", [
+      { id: "message-1", authorId: "author-1", authorDisplayName: "Fox", content: "I owe Bob a favor." },
+      { id: "message-2", authorId: "author-2", authorDisplayName: "Bob", content: "Fox owes me one." },
+    ]);
+
+    const result = prepared.parse(JSON.stringify({
+      facts: [],
+      relations: [{
+        fromSubjectType: "member", fromSubjectId: "a1",
+        predicate: "owes", kind: "association",
+        toSubjectType: "member", toSubjectId: "a2",
+      }],
+    }));
+
+    expect(result.relations).toEqual([{
+      fromSubjectType: "member", fromSubjectId: "author-1",
+      predicate: "owes", kind: "association",
+      toSubjectType: "member", toSubjectId: "author-2",
+    }]);
   });
 });

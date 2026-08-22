@@ -73,8 +73,8 @@ export class ChatTurnSupport {
   // verbose chain can't blow up prompt size. Returns ancestors oldest-first,
   // ending just before `message`. A broken link (deleted/inaccessible
   // message) stops the walk cleanly rather than throwing.
-  public async resolveReplyChain(message: Message): Promise<Message[]> {
-    const chain: Message[] = [];
+  public async resolveReplyChain(message: Message): Promise<{ kept: Message[]; overflow: Message[] }> {
+    const kept: Message[] = [];
     let current: Message = message;
     let remainingChars = chatMemoryLimits.maxReplyChainChars;
     for (let depth = 0; depth < chatMemoryLimits.maxReplyChainDepth; depth++) {
@@ -85,12 +85,33 @@ export class ChatTurnSupport {
       const contentLength = Math.min(parent.content.length, chatMemoryLimits.maxUserMessageChars);
       // Always keep at least the immediate parent even if it alone exceeds
       // the budget; only stop *extending further* once the next hop won't fit.
-      if (chain.length > 0 && contentLength > remainingChars) break;
+      if (kept.length > 0 && contentLength > remainingChars) break;
       remainingChars -= contentLength;
-      chain.push(parent);
+      kept.push(parent);
       current = parent;
     }
-    return chain.reverse();
+    // `current` is now the oldest hop actually kept. If it's still a reply
+    // itself, the thread genuinely continues further back than the kept
+    // window reaches (depth cap or char budget stopped us, not a broken
+    // link or the real start of the thread) — walk further, bounded more
+    // loosely, purely as raw input for an on-demand overflow summary. This
+    // never fetches anything when the whole thread already fit in `kept`
+    // (the very next reference-id check fails immediately, no request
+    // made), so a normal shallow reply chain pays nothing extra.
+    const overflow: Message[] = [];
+    let overflowChars = chatMemoryLimits.maxReplyChainOverflowChars;
+    for (let depth = 0; depth < chatMemoryLimits.maxReplyChainOverflowDepth; depth++) {
+      const referenceId = current.reference?.messageId;
+      if (!referenceId) break;
+      const parent = await current.channel.messages.fetch(referenceId).catch(() => null);
+      if (!parent) break;
+      const contentLength = Math.min(parent.content.length, chatMemoryLimits.maxUserMessageChars);
+      if (overflow.length > 0 && contentLength > overflowChars) break;
+      overflowChars -= contentLength;
+      overflow.push(parent);
+      current = parent;
+    }
+    return { kept: kept.reverse(), overflow: overflow.reverse() };
   }
 
   // Fetches the last `limit` messages in the channel before `message`, from
@@ -106,19 +127,42 @@ export class ChatTurnSupport {
     limit: number,
     excludeIds: ReadonlySet<string>,
   ): Promise<Message[]> {
-    const fetched = await message.channel.messages.fetch({ limit, before: message.id }).catch(() => null);
+    // Oversample the raw fetch (Discord's own per-request cap is 100, so
+    // this never costs an extra round trip) — a flat "last `limit` from
+    // anyone" fetch lets our own replies, which appear after nearly every
+    // human turn in a busy channel, eat half or more of a small window,
+    // leaving too few distinct human messages for the model to reliably
+    // track who said what across several people talking at once.
+    const fetchLimit = Math.min(limit * 4, 100);
+    const fetched = await message.channel.messages.fetch({ limit: fetchLimit, before: message.id }).catch(() => null);
     if (!fetched) return [];
+    const selfId = message.client.user?.id ?? null;
+    // Budgeted separately from human messages: our own recent replies are
+    // still valuable context (a human often reacts to what we just said),
+    // so they're not dropped outright — just capped at half the human
+    // budget so they can never crowd human speakers out of the window
+    // entirely. A third-party bot (e.g. a leveling bot) gets neither
+    // budget — noise, not conversational context.
+    const humanBudget = limit;
+    const selfBudget = Math.max(1, Math.ceil(limit / 2));
+    let humanKept = 0;
+    let selfKept = 0;
     let remainingChars = chatMemoryLimits.maxChannelHistoryChars;
     const kept: Message[] = [];
     // Discord returns newest-first; walk nearest-to-current first so
-    // recency wins once the char budget is hit, then reverse for
-    // oldest-first display (matching resolveReplyChain's convention).
+    // recency wins once a budget is hit, then reverse for oldest-first
+    // display (matching resolveReplyChain's convention).
     for (const candidate of fetched.values()) {
       if (excludeIds.has(candidate.id)) continue;
+      if (candidate.author.bot && candidate.author.id !== selfId) continue;
+      const isSelf = candidate.author.id === selfId;
+      if (isSelf ? selfKept >= selfBudget : humanKept >= humanBudget) continue;
       const contentLength = Math.min(candidate.content.length, chatMemoryLimits.maxUserMessageChars);
       if (kept.length > 0 && contentLength > remainingChars) break;
       remainingChars -= contentLength;
       kept.push(candidate);
+      if (isSelf) selfKept++; else humanKept++;
+      if (humanKept >= humanBudget && selfKept >= selfBudget) break;
     }
     return kept.reverse();
   }

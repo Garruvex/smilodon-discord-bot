@@ -39,11 +39,11 @@ describe("OpenAiCompatibleChatProvider — summarizeChannelMessages", () => {
     const provider = new OpenAiCompatibleChatProvider(
       "https://api.example.com/v1", "secret", ["main-model"], ["summary-model"],
     );
-    const facts = await provider.summarizeChannelMessages("99999999999999999", [
+    const summary = await provider.summarizeChannelMessages("99999999999999999", [
       { id: "m1", authorId: "alice", authorDisplayName: "Alice", content: "hello there" },
     ]);
 
-    expect(facts).toEqual([{
+    expect(summary.facts).toEqual([{
       subjectType: "member", subjectId: "alice", topic: "community_activity",
       slot: "raid.friday", statement: "organizes raids", evidenceMessageIds: ["m1"],
     }]);

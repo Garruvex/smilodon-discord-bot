@@ -13,24 +13,24 @@ import {
   type UserCustomizationAnalysisResult,
 } from "../../application/chat/chat-provider.js";
 import type { ChatImage } from "../../application/chat/chat-provider.js";
-import type { ChannelSummaryFact, ChannelSummaryMessage } from "../../application/context/channel-message-summarizer.js";
+import type { ChannelSummaryMessage, ChannelSummaryResult } from "../../application/context/channel-message-summarizer.js";
 import type { ChatTool, ChatToolContext, ChatToolResult } from "../../application/chat/tools/chat-tool.js";
 import { buildChatContext, buildChatInstructions, chatModelJsonSchema, parseChatModelOutput } from "./chat-structured-output.js";
 import {
   channelMessageSummaryMaxOutputTokens,
   channelMessageSummaryJsonSchema,
   prepareChannelMessageSummary,
-} from "./channel-message-summarization.js";
+} from "../../application/chat/channel-message-summarization.js";
 import {
   buildDroppedExchangeConsolidationPrompt,
   droppedExchangeConsolidationJsonSchema,
   parseDroppedExchangeConsolidationOutput,
-} from "./dropped-exchange-consolidation.js";
+} from "../../application/chat/dropped-exchange-consolidation.js";
 import {
   buildMemoryConflictClassificationPrompt,
   memoryConflictClassificationJsonSchema,
   parseMemoryConflictClassificationOutput,
-} from "./memory-conflict-classification.js";
+} from "../../application/chat/memory-conflict-classification.js";
 import { ModelFallbackChain } from "./model-fallback-chain.js";
 import {
   buildPersonaBundleCompilationPrompt,
@@ -38,17 +38,22 @@ import {
   personaBundleCompilationMaxOutputTokens,
   personaBundleCompilationTimeoutMs,
   parsePersonaBundleSectionSelection,
-} from "./persona-bundle-compilation.js";
+} from "../../application/chat/persona-bundle-compilation.js";
 import {
   buildPersonaDriftEvolutionPrompt,
   personaDriftEvolutionJsonSchema,
   parsePersonaDriftEvolutionOutput,
-} from "./persona-drift-evolution.js";
+} from "../../application/chat/persona-drift-evolution.js";
+import {
+  buildReplyChainOverflowSummaryPrompt,
+  replyChainOverflowSummaryJsonSchema,
+  parseReplyChainOverflowSummaryOutput,
+} from "../../application/chat/reply-chain-overflow-summary.js";
 import {
   buildUserCustomizationAnalysisPrompt,
   parseUserCustomizationAnalysisOutput,
   userCustomizationAnalysisJsonSchema,
-} from "./user-customization-analysis.js";
+} from "../../application/chat/user-customization-analysis.js";
 
 const maximumGeneratedImageBytes = 10 * 1024 * 1024;
 const maximumGeneratedImagesPerReply = 4;
@@ -143,9 +148,14 @@ export class GeminiChatProvider implements ChatProvider {
         return this.parseResponse(finalizeResponse, request);
       }
 
-      const results = await Promise.all(
-        functionCalls.map((call) => this.executeToolCall(call, customTools, toolContext)),
-      );
+      // Sequential, not Promise.all — see openai-responses-chat-provider.ts's
+      // executeToolCall loop for why: several tools are stateful, and
+      // running them concurrently would apply them out of the order the
+      // model intended.
+      const results: ChatToolResult[] = [];
+      for (const call of functionCalls) {
+        results.push(await this.executeToolCall(call, customTools, toolContext));
+      }
       contents = [
         ...contents,
         this.modelTurn(response),
@@ -247,15 +257,23 @@ export class GeminiChatProvider implements ChatProvider {
   ): Promise<ChatToolResult> {
     const tool = tools.find((candidate) => candidate.name === call.name);
     if (!tool) return { content: `Unknown tool "${call.name}".` };
+    // Racing a timer can't actually cancel tool.execute() — the loser keeps
+    // running after this returns. The AbortController at least lets a
+    // side-effecting tool (see ChatToolContext.signal) notice and bail out
+    // right before it would otherwise mutate anything.
+    const timeoutController = new AbortController();
+    const timer = setTimeout(() => timeoutController.abort(), toolExecutionTimeoutMs);
     try {
       return await Promise.race([
-        tool.execute(call.args ?? {}, ctx),
+        tool.execute(call.args ?? {}, { ...ctx, signal: timeoutController.signal }),
         new Promise<ChatToolResult>((_, reject) => {
-          setTimeout(() => reject(new Error("tool_timeout")), toolExecutionTimeoutMs);
+          timeoutController.signal.addEventListener("abort", () => reject(new Error("tool_timeout")));
         }),
       ]);
     } catch {
       return { content: "That tool failed to run right now — treat it as unavailable for this reply." };
+    } finally {
+      clearTimeout(timer);
     }
   }
 
@@ -329,10 +347,11 @@ export class GeminiChatProvider implements ChatProvider {
 
   public async summarizeDroppedExchanges(
     exchanges: readonly { user: string; assistant: string }[],
+    speaker: { id: string; displayName: string },
   ): Promise<readonly DroppedExchangeFact[]> {
     const response = await this.summaryModelChain.run((model) => this.generateStructured(
       model,
-      buildDroppedExchangeConsolidationPrompt(exchanges),
+      buildDroppedExchangeConsolidationPrompt(exchanges, speaker),
       droppedExchangeConsolidationJsonSchema,
     ));
     return parseDroppedExchangeConsolidationOutput((response.text ?? "").trim()).facts;
@@ -345,6 +364,17 @@ export class GeminiChatProvider implements ChatProvider {
       memoryConflictClassificationJsonSchema,
     ));
     return parseMemoryConflictClassificationOutput((response.text ?? "").trim()).related;
+  }
+
+  public async summarizeReplyChainOverflow(
+    hops: readonly { authorDisplayName: string; content: string }[],
+  ): Promise<string> {
+    const response = await this.summaryModelChain.run((model) => this.generateStructured(
+      model,
+      buildReplyChainOverflowSummaryPrompt(hops),
+      replyChainOverflowSummaryJsonSchema,
+    ));
+    return parseReplyChainOverflowSummaryOutput((response.text ?? "").trim()).summary;
   }
 
   public async compilePersonaBundle(content: string): Promise<readonly number[]> {
@@ -373,7 +403,7 @@ export class GeminiChatProvider implements ChatProvider {
   public async summarizeChannelMessages(
     guildId: string,
     messages: readonly ChannelSummaryMessage[],
-  ): Promise<readonly ChannelSummaryFact[]> {
+  ): Promise<ChannelSummaryResult> {
     const summary = prepareChannelMessageSummary(guildId, messages);
     const response = await this.summaryModelChain.run((model) => this.generateStructured(
       model,
@@ -381,7 +411,7 @@ export class GeminiChatProvider implements ChatProvider {
       channelMessageSummaryJsonSchema,
       this.generation.summaryMaxOutputTokens ?? channelMessageSummaryMaxOutputTokens,
     ));
-    return summary.parse((response.text ?? "").trim()).facts;
+    return summary.parse((response.text ?? "").trim());
   }
 
   // Shared by the two standalone structured-output calls (own prompt/schema,

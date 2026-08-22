@@ -67,6 +67,8 @@ describe("OpenAiResponsesChatProvider", () => {
       recentHistory: [],
       memories: [],
       guildKnowledge: [],
+      causalChains: [],
+      replyChainSummary: null,
       message: "Is this true?",
       replyChain: [{
         authorId: "22222222222222222", authorDisplayName: "Other", content: "A claim", imageCount: 1,
@@ -156,6 +158,8 @@ describe("OpenAiResponsesChatProvider", () => {
       recentHistory: [],
       memories: [],
       guildKnowledge: [],
+      causalChains: [],
+      replyChainSummary: null,
       message: "Draw a cat",
       replyChain: [], channelHistory: [], birthday: null,
       images: [],
@@ -210,6 +214,8 @@ describe("OpenAiResponsesChatProvider", () => {
       recentHistory: [],
       memories: [],
       guildKnowledge: [],
+      causalChains: [],
+      replyChainSummary: null,
       message: "Draw two cats",
       replyChain: [], channelHistory: [], birthday: null,
       images: [],
@@ -286,6 +292,8 @@ describe("OpenAiResponsesChatProvider", () => {
       recentHistory: [],
       memories: [],
       guildKnowledge: [],
+      causalChains: [],
+      replyChainSummary: null,
       message: "Roll a d20",
       replyChain: [], channelHistory: [], birthday: null,
       images: [],
@@ -304,6 +312,7 @@ describe("OpenAiResponsesChatProvider", () => {
       channelIsNsfw: false,
       isOwner: false,
       music: null,
+      signal: expect.any(AbortSignal) as AbortSignal,
     });
     expect(response.text).toBe("You rolled a 4.");
   });
@@ -362,6 +371,8 @@ describe("OpenAiResponsesChatProvider", () => {
       recentHistory: [],
       memories: [],
       guildKnowledge: [],
+      causalChains: [],
+      replyChainSummary: null,
       message: "Do the thing",
       replyChain: [], channelHistory: [], birthday: null,
       images: [],
@@ -434,6 +445,47 @@ describe("OpenAiResponsesChatProvider", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("summarizeReplyChainOverflow sends the thread transcript and returns the recap", async () => {
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+      if (typeof init?.body !== "string") throw new Error("Expected a JSON request body.");
+      const body = JSON.parse(init.body) as Record<string, unknown>;
+      expect(body.instructions).toContain("Alice: I like apple");
+      expect(body.text).toMatchObject({ format: { name: "reply_chain_overflow_summary", strict: true } });
+      return Promise.resolve(new Response(JSON.stringify({
+        output: [{
+          type: "message",
+          content: [{ type: "output_text", text: JSON.stringify({ summary: "Alice mentioned liking apples earlier." }) }],
+        }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = new OpenAiResponsesChatProvider(
+      "https://api.openai.com/v1", "secret", ["gpt-5-nano"],
+      { reasoningEffort: "low", verbosity: "low", maxOutputTokens: 2_048 },
+    );
+    const summary = await provider.summarizeReplyChainOverflow([
+      { authorDisplayName: "Alice", content: "I like apple" },
+    ]);
+
+    expect(summary).toBe("Alice mentioned liking apples earlier.");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("classifyMemoryConflict parses the related flag via the shared structured-output path", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response(JSON.stringify({
+      output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify({ related: true }) }] }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }))));
+
+    const provider = new OpenAiResponsesChatProvider(
+      "https://api.openai.com/v1", "secret", ["gpt-5-nano"],
+      { reasoningEffort: "low", verbosity: "low", maxOutputTokens: 2_048 },
+    );
+    const related = await provider.classifyMemoryConflict("likes apples", "loves apples");
+
+    expect(related).toBe(true);
+  });
+
   it("uses the channel-summary budget and falls back after an incomplete structured response", async () => {
     const requests: Array<Record<string, unknown>> = [];
     const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
@@ -473,13 +525,13 @@ describe("OpenAiResponsesChatProvider", () => {
         summaryReasoningEffort: "low", summaryMaxOutputTokens: 4_096,
       },
     );
-    const facts = await provider.summarizeChannelMessages("99999999999999999", [{
+    const summary = await provider.summarizeChannelMessages("99999999999999999", [{
       id: "11111111111111111", authorId: "22222222222222222", authorDisplayName: "Red", content: "Call me Red.",
     }]);
 
     expect(requests.map((request) => request.model)).toEqual(["gpt-5-nano", "gpt-5.6-luna"]);
     expect(requests[0]).toMatchObject({ reasoning: { effort: "low" }, max_output_tokens: 4_096 });
-    expect(facts[0]).toMatchObject({ subjectId: "22222222222222222", evidenceMessageIds: ["11111111111111111"] });
+    expect(summary.facts[0]).toMatchObject({ subjectId: "22222222222222222", evidenceMessageIds: ["11111111111111111"] });
   });
 
   it("classifies persona sections with a small output budget, returning validated section indexes", async () => {

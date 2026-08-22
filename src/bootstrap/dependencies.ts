@@ -79,6 +79,7 @@ import { PersonaBundleCompiler } from "../application/chat/persona-bundle-compil
 import { PersonaDriftStore } from "../application/chat/persona-drift-store.js";
 import type { MemoryRepository } from "../application/memory/memory.js";
 import { DefaultMemoryEngine } from "../application/memory/memory-engine.js";
+import type { MemoryEngine } from "../application/memory/memory.js";
 import type { ChannelSummaryCheckpointStore } from "../application/context/channel-summary-checkpoint-store.js";
 import { ChannelSummaryScheduler } from "../application/context/channel-summary-scheduler.js";
 import { DiscordChannelHistoryReader } from "../infrastructure/discord/context/discord-channel-history-reader.js";
@@ -190,6 +191,7 @@ export interface ApplicationDependencies {
   // already checks.
   channelSummaryScheduler: ChannelSummaryScheduler | null;
   applicationEmojiCatalog: ApplicationEmojiCatalog;
+  memoryEngine: MemoryEngine;
 }
 
 export function createDependencies(
@@ -431,5 +433,6 @@ export function createDependencies(
     settingsCommand,
     channelSummaryScheduler,
     applicationEmojiCatalog,
+    memoryEngine,
   };
 }

@@ -1,4 +1,5 @@
 import type { ProposedGuildKnowledgeCandidate } from "../chat/chat-provider.js";
+import type { MemoryRelationKind, MemoryRelationPredicate, MemorySubjectType } from "../memory/memory.js";
 
 export interface ChannelSummaryMessage {
   id: string;
@@ -23,10 +24,36 @@ export interface ChannelSummaryFact extends Omit<ProposedGuildKnowledgeCandidate
   evidenceMessageIds: readonly string[];
 }
 
+// Bounded multi-hop relational retrieval's write path (see
+// DefaultMemoryEngine.recall) — general-purpose, no domain-specific
+// concept. Subject ids are already resolved (author references expanded)
+// by the time this reaches the caller, same as ChannelSummaryFact.
+// Provenance (which fact/evidence backs this relation) isn't carried here —
+// the scheduler attaches a single supportingMemoryId for the whole batch,
+// not per-relation.
+export interface ChannelSummaryRelation {
+  fromSubjectType: MemorySubjectType;
+  fromSubjectId: string;
+  predicate: MemoryRelationPredicate;
+  kind: MemoryRelationKind;
+  toSubjectType: MemorySubjectType;
+  toSubjectId: string;
+}
+
+// Named distinctly from channel-message-summarization.ts's own
+// ChannelMessageSummary (the raw zod-inferred model output shape, still
+// keyed by author/message references) — this is the resolved shape after
+// prepareChannelMessageSummary's parse() has expanded those references,
+// same relationship ChannelSummaryFact already has to the raw fact shape.
+export interface ChannelSummaryResult {
+  facts: readonly ChannelSummaryFact[];
+  relations: readonly ChannelSummaryRelation[];
+}
+
 /** Focused model capability consumed by channel-context processing. */
 export interface ChannelMessageSummarizer {
   summarizeChannelMessages(
     guildId: string,
     messages: readonly ChannelSummaryMessage[],
-  ): Promise<readonly ChannelSummaryFact[]>;
+  ): Promise<ChannelSummaryResult>;
 }

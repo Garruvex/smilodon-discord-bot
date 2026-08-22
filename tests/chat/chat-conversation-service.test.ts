@@ -405,22 +405,124 @@ describe("ChatConversationService", () => {
         droppedExchanges: [{ user: { content: "old question", createdAt: 0 }, assistant: { content: "old answer", createdAt: 0 } }],
       }),
     });
-    const summarizeDroppedExchanges = vi.fn(() => Promise.resolve([{ slot: "scene.discovery", statement: "the party found a hidden door" }]));
+    const summarizeDroppedExchanges = vi.fn(() => Promise.resolve([
+      { slot: "scene.discovery", statement: "the party found a hidden door", subjectType: "guild" as const },
+    ]));
     const provider: ChatProvider = { reply: () => Promise.resolve(response("ok")), summarizeDroppedExchanges };
     const { engine } = testMemoryEngine();
     const ingestSpy = vi.spyOn(engine, "ingest");
     const service = new ChatConversationService(provider, store, engine);
 
     await service.run(input("what happened earlier"), (reply) => Promise.resolve(reply.text));
-    expect(summarizeDroppedExchanges).toHaveBeenCalledWith([{ user: "old question", assistant: "old answer" }]);
+    // Consolidation runs off the queue lock now (fire-and-forget after the
+    // turn resolves — see chat-conversation-service.ts's run()), so it isn't
+    // necessarily done yet when run() returns.
+    await vi.waitFor(() => expect(summarizeDroppedExchanges).toHaveBeenCalled());
+    expect(summarizeDroppedExchanges).toHaveBeenCalledWith(
+      [{ user: "old question", assistant: "old answer" }],
+      { id: "user", displayName: "User" },
+    );
     // The turn itself proposes nothing (response("ok") has no candidates),
     // so only consolidation's ingest call happens.
-    expect(ingestSpy).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(ingestSpy).toHaveBeenCalledOnce());
     expect(ingestSpy).toHaveBeenCalledWith(expect.objectContaining({
-      guildId: "guild", channelId: "channel", assertedByUserId: null, source: "consolidation",
+      guildId: "guild", channelId: "channel", assertedByUserId: "user", source: "consolidation",
       proposals: [expect.objectContaining({
         action: "upsert", subjectType: "guild", subjectId: "guild",
         topic: "scene_summary", slot: "scene.discovery", channelScoped: true,
+      })],
+    }));
+  });
+
+  it("condenses replyChainOverflow into replyChainSummary before asking the provider to reply", async () => {
+    const store = baseStore();
+    const summarizeReplyChainOverflow = vi.fn(() => Promise.resolve("Alice mentioned liking apples earlier."));
+    const reply = vi.fn(() => Promise.resolve(response("ok")));
+    const provider: ChatProvider = { reply, summarizeReplyChainOverflow };
+    const service = new ChatConversationService(provider, store, testMemoryEngine().engine);
+
+    await service.run({
+      ...input("what did she say"),
+      replyChainOverflow: [{ authorId: "authorA", authorDisplayName: "Alice", content: "I like apple", imageCount: 0 }],
+    }, (r) => Promise.resolve(r.text));
+
+    expect(summarizeReplyChainOverflow).toHaveBeenCalledWith([{ authorDisplayName: "Alice", content: "I like apple" }]);
+    expect(reply).toHaveBeenCalledWith(
+      expect.objectContaining({ replyChainSummary: "Alice mentioned liking apples earlier." }),
+      undefined,
+    );
+  });
+
+  it("leaves replyChainSummary null when there's no overflow, without calling the summarizer", async () => {
+    const store = baseStore();
+    const summarizeReplyChainOverflow = vi.fn(() => Promise.resolve("should not be called"));
+    const reply = vi.fn(() => Promise.resolve(response("ok")));
+    const provider: ChatProvider = { reply, summarizeReplyChainOverflow };
+    const service = new ChatConversationService(provider, store, testMemoryEngine().engine);
+
+    await service.run(input("hi"), (r) => Promise.resolve(r.text));
+
+    expect(summarizeReplyChainOverflow).not.toHaveBeenCalled();
+    expect(reply).toHaveBeenCalledWith(expect.objectContaining({ replyChainSummary: null }), undefined);
+  });
+
+  it("continues without a reply-chain summary when the summarizer call fails", async () => {
+    const store = baseStore();
+    const summarizeReplyChainOverflow = vi.fn(() => Promise.reject(new Error("provider down")));
+    const reply = vi.fn(() => Promise.resolve(response("ok")));
+    const provider: ChatProvider = { reply, summarizeReplyChainOverflow };
+    const service = new ChatConversationService(provider, store, testMemoryEngine().engine);
+
+    await service.run({
+      ...input("what did she say"),
+      replyChainOverflow: [{ authorId: "authorA", authorDisplayName: "Alice", content: "I like apple", imageCount: 0 }],
+    }, (r) => Promise.resolve(r.text));
+
+    expect(reply).toHaveBeenCalledWith(expect.objectContaining({ replyChainSummary: null }), undefined);
+  });
+
+  it("keeps a guild-knowledge candidate about a reply-chain author, not just the current user or an @mention", async () => {
+    const store = baseStore();
+    const candidates: ChatResponse["guildKnowledgeCandidates"] = [
+      {
+        subjectType: "member", subjectId: "authorA", topic: "community_activity",
+        slot: "fruit.orange", statement: "likes orange", channelScoped: false,
+      },
+    ];
+    const provider: ChatProvider = { reply: () => Promise.resolve(response("ok", [], candidates)) };
+    const service = new ChatConversationService(provider, store, testMemoryEngine().engine);
+
+    const result = await service.run({
+      ...input("i think he likes orange"),
+      replyChain: [{ authorId: "authorA", authorDisplayName: "A", content: "i like apple", imageCount: 0 }],
+    }, (reply) => Promise.resolve(reply.text));
+
+    expect(result.guildKnowledgeCandidates).toEqual([
+      expect.objectContaining({ subjectType: "member", subjectId: "authorA", statement: "likes orange" }),
+    ]);
+  });
+
+  it("attributes a member-subject consolidation fact to the actual speaker, not the guild", async () => {
+    const store = baseStore({
+      commitSuccessfulExchange: () => Promise.resolve({
+        droppedExchanges: [{ user: { content: "I'll take the Friday raid lead", createdAt: 0 }, assistant: { content: "Got it.", createdAt: 0 } }],
+      }),
+    });
+    const summarizeDroppedExchanges = vi.fn(() => Promise.resolve([
+      { slot: "raid.friday_lead", statement: "volunteered to lead Friday raids", subjectType: "member" as const },
+    ]));
+    const provider: ChatProvider = { reply: () => Promise.resolve(response("ok")), summarizeDroppedExchanges };
+    const { engine } = testMemoryEngine();
+    const ingestSpy = vi.spyOn(engine, "ingest");
+    const service = new ChatConversationService(provider, store, engine);
+
+    await service.run(input("what happened earlier"), (reply) => Promise.resolve(reply.text));
+    await vi.waitFor(() => expect(ingestSpy).toHaveBeenCalledOnce());
+    expect(ingestSpy).toHaveBeenCalledWith(expect.objectContaining({
+      assertedByUserId: "user",
+      proposals: [expect.objectContaining({
+        action: "upsert", subjectType: "member", subjectId: "user",
+        topic: "scene_summary", slot: "raid.friday_lead",
       })],
     }));
   });
@@ -465,8 +567,14 @@ describe("ChatConversationService", () => {
 
     await service.run({ ...input("what happened earlier"), personaDriftEnabled: true }, (reply) => Promise.resolve(reply.text));
 
+    // Consolidation runs off the queue lock now (fire-and-forget after the
+    // turn resolves — see chat-conversation-service.ts's run()), so it isn't
+    // necessarily done yet when run() returns.
+    await vi.waitFor(() => expect(evolvePersonaDrift).toHaveBeenCalled());
     expect(evolvePersonaDrift).toHaveBeenCalledWith("", [{ user: "old question", assistant: "old answer" }]);
-    await expect(driftStore.get("guild")).resolves.toMatchObject({ text: "A little more playful lately." });
+    await vi.waitFor(async () => {
+      await expect(driftStore.get("guild")).resolves.toMatchObject({ text: "A little more playful lately." });
+    });
     rmSync(driftDirectory, { recursive: true, force: true });
   });
 

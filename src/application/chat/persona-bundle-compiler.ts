@@ -3,7 +3,7 @@ import type { Logger } from "pino";
 import { hashContent } from "../assets/content-hash.js";
 import type { ChatProvider } from "./chat-provider.js";
 import type { PersonaBundle } from "./persona-bundle.js";
-import { assemblePersonaBundle } from "../../infrastructure/chat/persona-bundle-compilation.js";
+import { assemblePersonaBundle } from "./persona-bundle-compilation.js";
 import type { EmbeddingsClient } from "../../infrastructure/chat/openai-embeddings-client.js";
 import { embedTextsBestEffort } from "./embedding-batch.js";
 

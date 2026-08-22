@@ -11,24 +11,29 @@ import {
   type DroppedExchangeFact,
   type UserCustomizationAnalysisResult,
 } from "../../application/chat/chat-provider.js";
-import type { ChannelSummaryFact, ChannelSummaryMessage } from "../../application/context/channel-message-summarizer.js";
+import type { ChannelSummaryMessage, ChannelSummaryResult } from "../../application/context/channel-message-summarizer.js";
 import type { ChatTool, ChatToolContext, ChatToolResult } from "../../application/chat/tools/chat-tool.js";
 import { buildChatContext, buildChatInstructions, chatModelJsonSchema, parseChatModelOutput } from "./chat-structured-output.js";
 import {
   channelMessageSummaryMaxOutputTokens,
   channelMessageSummaryJsonSchema,
   prepareChannelMessageSummary,
-} from "./channel-message-summarization.js";
+} from "../../application/chat/channel-message-summarization.js";
 import {
   buildDroppedExchangeConsolidationPrompt,
   droppedExchangeConsolidationJsonSchema,
   parseDroppedExchangeConsolidationOutput,
-} from "./dropped-exchange-consolidation.js";
+} from "../../application/chat/dropped-exchange-consolidation.js";
 import {
   buildMemoryConflictClassificationPrompt,
   memoryConflictClassificationJsonSchema,
   parseMemoryConflictClassificationOutput,
-} from "./memory-conflict-classification.js";
+} from "../../application/chat/memory-conflict-classification.js";
+import {
+  buildReplyChainOverflowSummaryPrompt,
+  replyChainOverflowSummaryJsonSchema,
+  parseReplyChainOverflowSummaryOutput,
+} from "../../application/chat/reply-chain-overflow-summary.js";
 import { ModelFallbackChain } from "./model-fallback-chain.js";
 import {
   buildPersonaBundleCompilationPrompt,
@@ -36,17 +41,17 @@ import {
   personaBundleCompilationMaxOutputTokens,
   personaBundleCompilationTimeoutMs,
   parsePersonaBundleSectionSelection,
-} from "./persona-bundle-compilation.js";
+} from "../../application/chat/persona-bundle-compilation.js";
 import {
   buildPersonaDriftEvolutionPrompt,
   personaDriftEvolutionJsonSchema,
   parsePersonaDriftEvolutionOutput,
-} from "./persona-drift-evolution.js";
+} from "../../application/chat/persona-drift-evolution.js";
 import {
   buildUserCustomizationAnalysisPrompt,
   parseUserCustomizationAnalysisOutput,
   userCustomizationAnalysisJsonSchema,
-} from "./user-customization-analysis.js";
+} from "../../application/chat/user-customization-analysis.js";
 
 const responseSchema = z.object({
   status: z.enum(["completed", "failed", "in_progress", "cancelled", "queued", "incomplete"]).optional(),
@@ -220,12 +225,16 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
         return this.parseResponse(responseSchema.parse(finalizeBody), request);
       }
 
-      const results = await Promise.all(
-        functionCalls.map(async (call) => ({
-          call,
-          result: await this.executeToolCall(call, customTools, toolContext),
-        })),
-      );
+      // Sequential, not Promise.all: several tools (music playback chief
+      // among them — see ChatToolContext.music) are stateful, and the model
+      // emits function calls in the order it expects them applied (e.g.
+      // skip_track then pause). Running them concurrently would let a
+      // slower earlier call finish after a later one, applying them out of
+      // the order the model intended and racing on shared playback state.
+      const results: { call: FunctionCallOutputItem; result: ChatToolResult }[] = [];
+      for (const call of functionCalls) {
+        results.push({ call, result: await this.executeToolCall(call, customTools, toolContext) });
+      }
       input = [
         ...input,
         ...functionCalls.map((call) => ({
@@ -316,19 +325,41 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
     } catch {
       return { content: "Invalid tool arguments — could not parse as JSON." };
     }
+    // Racing a timer can't actually cancel tool.execute() — the loser keeps
+    // running after this returns. The AbortController at least lets a
+    // side-effecting tool (see ChatToolContext.signal) notice and bail out
+    // right before it would otherwise mutate anything.
+    const timeoutController = new AbortController();
+    const timer = setTimeout(() => timeoutController.abort(), toolExecutionTimeoutMs);
     try {
       return await Promise.race([
-        tool.execute(args, ctx),
+        tool.execute(args, { ...ctx, signal: timeoutController.signal }),
         new Promise<ChatToolResult>((_, reject) => {
-          setTimeout(() => reject(new Error("tool_timeout")), toolExecutionTimeoutMs);
+          timeoutController.signal.addEventListener("abort", () => reject(new Error("tool_timeout")));
         }),
       ]);
     } catch {
       return { content: "That tool failed to run right now — treat it as unavailable for this reply." };
+    } finally {
+      clearTimeout(timer);
     }
   }
 
-  public async analyzeUserCustomization(rawText: string): Promise<UserCustomizationAnalysisResult> {
+  // Shared by every standalone structured-output capability below (own
+  // prompt/schema, outside the main reply turn) — factors out the fetch/
+  // error-handling/text-extraction boilerplate each one used to repeat, the
+  // same way Gemini's generateStructured already does for that provider.
+  // Deliberately NOT used by summarizeChannelMessages: that method's
+  // model-fallback retry has to wrap schema *validation* too (a fact-parse
+  // failure should try the next model, not just an HTTP failure), whereas
+  // every method here only retries the raw call and parses after — a real
+  // behavioral difference, not just unfactored duplication.
+  private async callStructuredOutput(
+    instructions: string,
+    schemaName: string,
+    jsonSchema: object,
+    options?: { maxOutputTokens?: number; timeoutMs?: number },
+  ): Promise<string> {
     const body = await this.summaryModelChain.run(async (model) => {
       const response = await fetch(`${this.baseUrl}/responses`, {
         method: "POST",
@@ -338,16 +369,16 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
         },
         body: JSON.stringify({
           model,
-          instructions: buildUserCustomizationAnalysisPrompt(rawText),
-          input: [{ role: "user", content: [{ type: "input_text", text: "Analyze the submitted text per the instructions." }] }],
+          instructions,
+          input: [{ role: "user", content: [{ type: "input_text", text: "Follow the instructions." }] }],
           reasoning: { effort: this.generation.reasoningEffort },
           text: {
             verbosity: this.generation.verbosity,
-            format: { type: "json_schema", name: "user_customization_analysis", strict: true, schema: userCustomizationAnalysisJsonSchema },
+            format: { type: "json_schema", name: schemaName, strict: true, schema: jsonSchema },
           },
-          max_output_tokens: this.generation.maxOutputTokens,
+          max_output_tokens: options?.maxOutputTokens ?? this.generation.maxOutputTokens,
         }),
-        signal: AbortSignal.timeout(30_000),
+        signal: AbortSignal.timeout(options?.timeoutMs ?? 30_000),
       });
       if (!response.ok) {
         const errorBody: unknown = await response.json().catch(() => null);
@@ -371,7 +402,16 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
         if (part.type === "output_text" && part.text) texts.push(part.text);
       }
     }
-    const analysis = parseUserCustomizationAnalysisOutput(texts.join("\n").trim());
+    return texts.join("\n").trim();
+  }
+
+  public async analyzeUserCustomization(rawText: string): Promise<UserCustomizationAnalysisResult> {
+    const text = await this.callStructuredOutput(
+      buildUserCustomizationAnalysisPrompt(rawText),
+      "user_customization_analysis",
+      userCustomizationAnalysisJsonSchema,
+    );
+    const analysis = parseUserCustomizationAnalysisOutput(text);
     if (!analysis.ok) {
       return { ok: false, reason: analysis.reason ?? "That file couldn't be accepted as a customization." };
     }
@@ -384,197 +424,62 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
 
   public async summarizeDroppedExchanges(
     exchanges: readonly { user: string; assistant: string }[],
+    speaker: { id: string; displayName: string },
   ): Promise<readonly DroppedExchangeFact[]> {
-    const body = await this.summaryModelChain.run(async (model) => {
-      const response = await fetch(`${this.baseUrl}/responses`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model,
-          instructions: buildDroppedExchangeConsolidationPrompt(exchanges),
-          input: [{ role: "user", content: [{ type: "input_text", text: "Extract facts per the instructions." }] }],
-          reasoning: { effort: this.generation.reasoningEffort },
-          text: {
-            verbosity: this.generation.verbosity,
-            format: { type: "json_schema", name: "dropped_exchange_consolidation", strict: true, schema: droppedExchangeConsolidationJsonSchema },
-          },
-          max_output_tokens: this.generation.maxOutputTokens,
-        }),
-        signal: AbortSignal.timeout(30_000),
-      });
-      if (!response.ok) {
-        const errorBody: unknown = await response.json().catch(() => null);
-        const parsedError = errorResponseSchema.safeParse(errorBody);
-        const code = parsedError.success
-          ? (parsedError.data.error.code ?? parsedError.data.error.type ?? null)
-          : null;
-        throw new ChatProviderError(
-          `Chat provider returned HTTP ${response.status}${code ? ` (${code})` : ""}.`,
-          response.status,
-          code,
-        );
-      }
-      return response.json();
-    });
-    const parsed = responseSchema.parse(body);
-    const texts: string[] = [];
-    for (const item of parsed.output) {
-      if (item.type !== "message") continue;
-      for (const part of item.content ?? []) {
-        if (part.type === "output_text" && part.text) texts.push(part.text);
-      }
-    }
-    return parseDroppedExchangeConsolidationOutput(texts.join("\n").trim()).facts;
+    const text = await this.callStructuredOutput(
+      buildDroppedExchangeConsolidationPrompt(exchanges, speaker),
+      "dropped_exchange_consolidation",
+      droppedExchangeConsolidationJsonSchema,
+    );
+    return parseDroppedExchangeConsolidationOutput(text).facts;
   }
 
   public async classifyMemoryConflict(existingStatement: string, newStatement: string): Promise<boolean> {
-    const body = await this.summaryModelChain.run(async (model) => {
-      const response = await fetch(`${this.baseUrl}/responses`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model,
-          instructions: buildMemoryConflictClassificationPrompt(existingStatement, newStatement),
-          input: [{ role: "user", content: [{ type: "input_text", text: "Classify per the instructions." }] }],
-          reasoning: { effort: this.generation.reasoningEffort },
-          text: {
-            verbosity: this.generation.verbosity,
-            format: { type: "json_schema", name: "memory_conflict_classification", strict: true, schema: memoryConflictClassificationJsonSchema },
-          },
-          max_output_tokens: this.generation.maxOutputTokens,
-        }),
-        signal: AbortSignal.timeout(30_000),
-      });
-      if (!response.ok) {
-        const errorBody: unknown = await response.json().catch(() => null);
-        const parsedError = errorResponseSchema.safeParse(errorBody);
-        const code = parsedError.success
-          ? (parsedError.data.error.code ?? parsedError.data.error.type ?? null)
-          : null;
-        throw new ChatProviderError(
-          `Chat provider returned HTTP ${response.status}${code ? ` (${code})` : ""}.`,
-          response.status,
-          code,
-        );
-      }
-      return response.json();
-    });
-    const parsed = responseSchema.parse(body);
-    const texts: string[] = [];
-    for (const item of parsed.output) {
-      if (item.type !== "message") continue;
-      for (const part of item.content ?? []) {
-        if (part.type === "output_text" && part.text) texts.push(part.text);
-      }
-    }
-    return parseMemoryConflictClassificationOutput(texts.join("\n").trim()).related;
+    const text = await this.callStructuredOutput(
+      buildMemoryConflictClassificationPrompt(existingStatement, newStatement),
+      "memory_conflict_classification",
+      memoryConflictClassificationJsonSchema,
+    );
+    return parseMemoryConflictClassificationOutput(text).related;
+  }
+
+  public async summarizeReplyChainOverflow(
+    hops: readonly { authorDisplayName: string; content: string }[],
+  ): Promise<string> {
+    const text = await this.callStructuredOutput(
+      buildReplyChainOverflowSummaryPrompt(hops),
+      "reply_chain_overflow_summary",
+      replyChainOverflowSummaryJsonSchema,
+    );
+    return parseReplyChainOverflowSummaryOutput(text).summary;
   }
 
   public async compilePersonaBundle(content: string): Promise<readonly number[]> {
-    const body = await this.summaryModelChain.run(async (model) => {
-      const response = await fetch(`${this.baseUrl}/responses`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model,
-          instructions: buildPersonaBundleCompilationPrompt(content),
-          input: [{ role: "user", content: [{ type: "input_text", text: "Split the file per the instructions." }] }],
-          reasoning: { effort: this.generation.reasoningEffort },
-          text: {
-            verbosity: this.generation.verbosity,
-            format: { type: "json_schema", name: "persona_bundle_compilation", strict: true, schema: personaBundleCompilationJsonSchema },
-          },
-          max_output_tokens: personaBundleCompilationMaxOutputTokens,
-        }),
-        signal: AbortSignal.timeout(personaBundleCompilationTimeoutMs),
-      });
-      if (!response.ok) {
-        const errorBody: unknown = await response.json().catch(() => null);
-        const parsedError = errorResponseSchema.safeParse(errorBody);
-        const code = parsedError.success
-          ? (parsedError.data.error.code ?? parsedError.data.error.type ?? null)
-          : null;
-        throw new ChatProviderError(
-          `Chat provider returned HTTP ${response.status}${code ? ` (${code})` : ""}.`,
-          response.status,
-          code,
-        );
-      }
-      return response.json();
-    });
-    const parsed = responseSchema.parse(body);
-    const texts: string[] = [];
-    for (const item of parsed.output) {
-      if (item.type !== "message") continue;
-      for (const part of item.content ?? []) {
-        if (part.type === "output_text" && part.text) texts.push(part.text);
-      }
-    }
-    return [...parsePersonaBundleSectionSelection(texts.join("\n").trim(), content)];
+    const text = await this.callStructuredOutput(
+      buildPersonaBundleCompilationPrompt(content),
+      "persona_bundle_compilation",
+      personaBundleCompilationJsonSchema,
+      { maxOutputTokens: personaBundleCompilationMaxOutputTokens, timeoutMs: personaBundleCompilationTimeoutMs },
+    );
+    return [...parsePersonaBundleSectionSelection(text, content)];
   }
 
   public async evolvePersonaDrift(
     currentText: string,
     exchanges: readonly { user: string; assistant: string }[],
   ): Promise<string> {
-    const body = await this.summaryModelChain.run(async (model) => {
-      const response = await fetch(`${this.baseUrl}/responses`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model,
-          instructions: buildPersonaDriftEvolutionPrompt(currentText, exchanges),
-          input: [{ role: "user", content: [{ type: "input_text", text: "Revise the drift text per the instructions." }] }],
-          reasoning: { effort: this.generation.reasoningEffort },
-          text: {
-            verbosity: this.generation.verbosity,
-            format: { type: "json_schema", name: "persona_drift_evolution", strict: true, schema: personaDriftEvolutionJsonSchema },
-          },
-          max_output_tokens: this.generation.maxOutputTokens,
-        }),
-        signal: AbortSignal.timeout(30_000),
-      });
-      if (!response.ok) {
-        const errorBody: unknown = await response.json().catch(() => null);
-        const parsedError = errorResponseSchema.safeParse(errorBody);
-        const code = parsedError.success
-          ? (parsedError.data.error.code ?? parsedError.data.error.type ?? null)
-          : null;
-        throw new ChatProviderError(
-          `Chat provider returned HTTP ${response.status}${code ? ` (${code})` : ""}.`,
-          response.status,
-          code,
-        );
-      }
-      return response.json();
-    });
-    const parsed = responseSchema.parse(body);
-    const texts: string[] = [];
-    for (const item of parsed.output) {
-      if (item.type !== "message") continue;
-      for (const part of item.content ?? []) {
-        if (part.type === "output_text" && part.text) texts.push(part.text);
-      }
-    }
-    return parsePersonaDriftEvolutionOutput(texts.join("\n").trim()).text;
+    const text = await this.callStructuredOutput(
+      buildPersonaDriftEvolutionPrompt(currentText, exchanges),
+      "persona_drift_evolution",
+      personaDriftEvolutionJsonSchema,
+    );
+    return parsePersonaDriftEvolutionOutput(text).text;
   }
 
   public async summarizeChannelMessages(
     guildId: string,
     messages: readonly ChannelSummaryMessage[],
-  ): Promise<readonly ChannelSummaryFact[]> {
+  ): Promise<ChannelSummaryResult> {
     const summary = prepareChannelMessageSummary(guildId, messages);
     return this.summaryModelChain.run(async (model) => {
       const response = await fetch(`${this.baseUrl}/responses`, {
@@ -624,7 +529,7 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
           if (part.type === "output_text" && part.text) texts.push(part.text);
         }
       }
-      return summary.parse(texts.join("\n").trim()).facts;
+      return summary.parse(texts.join("\n").trim());
     });
   }
 

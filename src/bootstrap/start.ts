@@ -81,6 +81,7 @@ const birthdayAnnouncer = new BirthdayAnnouncer(
 const memberDepartureService = new MemberDepartureService(
   guildConfigurationProvider,
   persistence.guildMemberRegistry,
+  dependencies.memoryEngine,
 );
 deferredGuildSetupService.setService(
   new LocalGuildSetupService(

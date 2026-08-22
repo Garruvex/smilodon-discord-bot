@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildUserCustomizationAnalysisPrompt,
   parseUserCustomizationAnalysisOutput,
-} from "../../src/infrastructure/chat/user-customization-analysis.js";
+} from "../../src/application/chat/user-customization-analysis.js";
 import { ChatProviderError } from "../../src/application/chat/chat-provider.js";
 
 describe("parseUserCustomizationAnalysisOutput", () => {

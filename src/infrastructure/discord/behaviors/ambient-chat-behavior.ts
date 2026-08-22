@@ -91,12 +91,18 @@ export class AmbientChatBehavior implements BotBehavior<Message> {
       Date.now() + profile.chat.ambientCooldownSeconds * 1_000,
     );
 
-    const replyChainMessages = await this.turnSupport.resolveReplyChain(message);
+    const { kept: replyChainMessages, overflow: replyChainOverflowMessages } = await this.turnSupport.resolveReplyChain(message);
     const replyChain: ReplyChainMessage[] = replyChainMessages.map((hop) => ({
       authorId: hop.author.id,
       authorDisplayName: hop.member?.displayName ?? hop.author.displayName,
       content: hop.content.slice(0, chatMemoryLimits.maxUserMessageChars),
       imageCount: [...hop.attachments.values()].filter((attachment) => attachment.contentType?.startsWith("image/")).length,
+    }));
+    const replyChainOverflow: ReplyChainMessage[] = replyChainOverflowMessages.map((hop) => ({
+      authorId: hop.author.id,
+      authorDisplayName: hop.member?.displayName ?? hop.author.displayName,
+      content: hop.content.slice(0, chatMemoryLimits.maxUserMessageChars),
+      imageCount: 0,
     }));
     const channelHistory: ChannelHistoryMessage[] = profile.features.channelHistory
       ? (await this.turnSupport.resolveChannelHistory(
@@ -152,6 +158,7 @@ export class AmbientChatBehavior implements BotBehavior<Message> {
         mentionedUsers,
         message: message.content,
         replyChain,
+        replyChainOverflow,
         channelHistory,
         images,
         webSearchMode: profile.chat.webSearchMode,

@@ -107,6 +107,6 @@ export const guildKnowledgeInstructions = `Shared guild knowledge rules:
 - Do not turn ordinary one-off actions into guild knowledge.
 - A claim about another member remains a candidate and must not be presented as confirmed truth.
 - A statement one member makes about another member's preferences, habits, or traits belongs here as a member-subject candidate, not as the asserting user's private memory.
-- Use only supplied member IDs. For guild subjects, use the supplied guild ID.
+- Use only a supplied member ID: the current user, an explicitly @mentioned user, or a reply-chain author shown in <reply_chain>. For guild subjects, use the supplied guild ID.
 - Set channelScoped=true when the fact describes something specific to what's happening in this channel/scene right now (a location, an in-progress event, a temporary state) rather than a durable fact true anywhere in the guild. Most nickname/community/team-membership candidates should stay channelScoped=false (guild-wide).
 - When uncertain, propose no guild candidates.`;

@@ -76,12 +76,23 @@ export class MentionChatBehavior implements BotBehavior<Message> {
       ? message.content.replace(new RegExp(`<@!?${botId}>`, "g"), "").trim()
       : message.content.trim();
     // Oldest ancestor first, ending just before `message` itself.
-    const replyChainMessages = await this.turnSupport.resolveReplyChain(message);
+    const { kept: replyChainMessages, overflow: replyChainOverflowMessages } = await this.turnSupport.resolveReplyChain(message);
     const replyChain: ReplyChainMessage[] = replyChainMessages.map((hop) => ({
       authorId: hop.author.id,
       authorDisplayName: hop.member?.displayName ?? hop.author.displayName,
       content: hop.content.slice(0, chatMemoryLimits.maxUserMessageChars),
       imageCount: [...hop.attachments.values()].filter((attachment) => attachment.contentType?.startsWith("image/")).length,
+    }));
+    // Older hops beyond replyChain's kept window — condensed into a recap
+    // by ChatConversationService before this turn's reply is generated (see
+    // ChatConversationInput.replyChainOverflow). No image handling here:
+    // by the time content is old enough to be summarized away, its images
+    // aren't worth the extra fetch/attach cost.
+    const replyChainOverflow: ReplyChainMessage[] = replyChainOverflowMessages.map((hop) => ({
+      authorId: hop.author.id,
+      authorDisplayName: hop.member?.displayName ?? hop.author.displayName,
+      content: hop.content.slice(0, chatMemoryLimits.maxUserMessageChars),
+      imageCount: 0,
     }));
     const channelHistory: ChannelHistoryMessage[] = profile.features.channelHistory
       ? (await this.turnSupport.resolveChannelHistory(
@@ -186,6 +197,7 @@ export class MentionChatBehavior implements BotBehavior<Message> {
         mentionedUsers,
         message: prompt,
         replyChain,
+        replyChainOverflow,
         channelHistory,
         images,
         webSearchMode: profile.chat.webSearchMode,

@@ -13,7 +13,7 @@ import { createSqliteDatabaseConnection } from "../../src/infrastructure/databas
 import type {
   ChannelHistoryMessage, ChannelHistoryReadRequest, ChannelHistoryReadResult,
 } from "../../src/application/context/channel-history-reader.js";
-import type { ChannelMessageSummarizer, ChannelSummaryFact } from "../../src/application/context/channel-message-summarizer.js";
+import type { ChannelMessageSummarizer, ChannelSummaryFact, ChannelSummaryRelation } from "../../src/application/context/channel-message-summarizer.js";
 import type { GuildConfiguration } from "../../src/config/guild-configuration.js";
 import type { GuildConfigurationProvider } from "../../src/config/guild-configuration-provider.js";
 import type { MemoryEngine } from "../../src/application/memory/memory.js";
@@ -141,8 +141,11 @@ function fakeProfileProvider(profiles: readonly GuildConfiguration[]): GuildConf
   return { getAll: () => profiles } as unknown as GuildConfigurationProvider;
 }
 
-function stubSummarizer(facts: readonly ChannelSummaryFact[]): ChannelMessageSummarizer {
-  return { summarizeChannelMessages: vi.fn(() => Promise.resolve(facts)) };
+function stubSummarizer(
+  facts: readonly ChannelSummaryFact[],
+  relations: readonly ChannelSummaryRelation[] = [],
+): ChannelMessageSummarizer {
+  return { summarizeChannelMessages: vi.fn(() => Promise.resolve({ facts, relations })) };
 }
 
 const silentLogger = { error: () => undefined, warn: () => undefined } as unknown as Logger;
@@ -450,7 +453,7 @@ describe("ChannelSummaryScheduler — daily high-water mark and capped resumptio
     const summarizer: ChannelMessageSummarizer = {
       summarizeChannelMessages: vi.fn((_guildId: string, batch: readonly { id: string }[]) => {
         for (const message of batch) seenIds.add(message.id);
-        return Promise.resolve([]);
+        return Promise.resolve({ facts: [], relations: [] });
       }),
     };
     const scheduler = new ChannelSummaryScheduler(
@@ -530,6 +533,7 @@ describe("ChannelSummaryScheduler — strict ingestion for background jobs", () 
     const failingEngine: MemoryEngine = {
       recall: () => Promise.reject(new Error("not used")),
       ingest: () => Promise.resolve({ ingested: [], removed: 0, rejected: 0, failed: 1 }),
+      ingestRelations: () => Promise.resolve({ created: 0, rejected: 0 }),
       listUserMemories: () => Promise.reject(new Error("not used")),
       forget: () => Promise.reject(new Error("not used")),
     };
