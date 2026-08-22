@@ -233,6 +233,12 @@ export class SqliteMemoryRepository implements MemoryRepository {
       eq(schema.memories.subjectId, query.subjectId),
       eq(schema.memories.status, "active"),
       ne(schema.memories.id, query.excludeMemoryId),
+      eq(schema.memories.audience, query.audience),
+      query.ownerUserId === null ? isNull(schema.memories.ownerUserId) : eq(schema.memories.ownerUserId, query.ownerUserId),
+      query.channelId === null ? isNull(schema.memories.channelId) : eq(schema.memories.channelId, query.channelId),
+      query.isolationChannelId === null
+        ? isNull(schema.memories.isolationChannelId)
+        : eq(schema.memories.isolationChannelId, query.isolationChannelId),
     )).limit(50).all();
     return Promise.resolve(rows.map(toMemory));
   }

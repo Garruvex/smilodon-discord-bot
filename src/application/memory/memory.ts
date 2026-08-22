@@ -143,6 +143,17 @@ export interface ActiveSubjectQuery {
   // the isRevision branch in both repository implementations). This query
   // is only for finding OTHER active memories about the same subject.
   excludeMemoryId: string;
+  // Scope of the memory that triggered this lookup — candidates outside
+  // this scope must never be returned, or conflict detection ends up
+  // comparing (and potentially superseding) memories across the same
+  // privacy boundary canRecall enforces on read. Mirrors canRecall's
+  // per-audience rule: private only conflicts within the same owner,
+  // channel only within the same channel, guild only against other guild
+  // memories; isolationChannelId must match exactly on top of that.
+  audience: MemoryAudience;
+  ownerUserId: string | null;
+  channelId: string | null;
+  isolationChannelId: string | null;
 }
 
 export interface SupersedeCommand {

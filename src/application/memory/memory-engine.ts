@@ -1,5 +1,6 @@
 import type { Logger } from "pino";
 
+import type { MemoryConflictClassifier } from "../chat/chat-provider.js";
 import type { EmbeddingsClient } from "../../infrastructure/chat/openai-embeddings-client.js";
 import { allowsDurableWrites, resolveMemoryScope } from "./memory-channel-policy.js";
 import type {
@@ -124,6 +125,11 @@ export class DefaultMemoryEngine implements MemoryEngine {
     private readonly embeddingsClient: EmbeddingsClient | null = null,
     private readonly logger: Logger | null = null,
     private readonly limits: MemoryEngineLimits = defaultMemoryEngineLimits,
+    // Optional: a provider may not implement this capability (see
+    // Partial<MemoryConflictClassifier> on ChatProvider) — checkForConflicts
+    // falls back to the similarity threshold alone when absent, same
+    // behavior as before this existed.
+    private readonly conflictClassifier: Partial<MemoryConflictClassifier> | null = null,
   ) {}
 
   public async recall(input: MemoryRecallInput): Promise<MemoryContext> {
@@ -138,15 +144,22 @@ export class DefaultMemoryEngine implements MemoryEngine {
     const lexicalOrder = [...candidates.memories].sort(
       (a, b) => bm25Score(corpus, context, scorableByMemory.get(b)!) - bm25Score(corpus, context, scorableByMemory.get(a)!),
     );
-    let embeddingOrder = lexicalOrder;
+    // Only memories that actually have an embedding participate in this
+    // ranking. cosineSimilarity([], queryEmbedding) is 0 for the rest, so
+    // without this filter they'd all tie at the bottom and get spread across
+    // consecutive ranks by array order alone — handing some of them RRF
+    // credit they didn't earn on relevance, and it varying by candidate
+    // order rather than content.
+    let embeddingOrder: readonly Memory[] = [];
     if (this.embeddingsClient) {
       const queryEmbedding = await this.embeddingsClient.embed(input.message).catch(() => null);
       if (queryEmbedding) {
-        embeddingOrder = [...candidates.memories].sort((a, b) =>
-          cosineSimilarity(b.embedding ?? [], queryEmbedding) - cosineSimilarity(a.embedding ?? [], queryEmbedding));
+        embeddingOrder = candidates.memories
+          .filter((memory) => memory.embedding)
+          .sort((a, b) => cosineSimilarity(b.embedding!, queryEmbedding) - cosineSimilarity(a.embedding!, queryEmbedding));
       }
     }
-    const fused = reciprocalRankFusion([lexicalOrder, embeddingOrder]);
+    const fused = reciprocalRankFusion(embeddingOrder.length > 0 ? [lexicalOrder, embeddingOrder] : [lexicalOrder]);
     const selected = selectByRelevance(
       candidates.memories,
       (memory) => fused.get(memory) ?? 0,
@@ -166,7 +179,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
       const validated = validateProposal(proposal, this.limits);
       if (!validated) { rejected += 1; continue; }
       if (validated.proposal.action === "remove") {
-        removed += await this.removeOne(input.guildId, validated.proposal);
+        removed += await this.removeOne(input.guildId, validated.proposal, validated.topic, validated.slot);
         continue;
       }
       const memory = await this.upsertOne(input, validated.proposal, validated.topic, validated.slot, validated.statement!);
@@ -176,12 +189,22 @@ export class DefaultMemoryEngine implements MemoryEngine {
     return { ingested, removed, rejected, failed };
   }
 
-  private async removeOne(guildId: string, proposal: Extract<ProposedMemory, { action: "remove" }>): Promise<number> {
+  private async removeOne(
+    guildId: string,
+    proposal: Extract<ProposedMemory, { action: "remove" }>,
+    topic: string,
+    slot: string,
+  ): Promise<number> {
     if (proposal.ownerUserId === null) return 0;
     const owned = await this.repository.listByUser(guildId, proposal.ownerUserId);
+    // Compare against the normalized topic/slot (validateProposal's output),
+    // not proposal.topic/proposal.slot directly — ingested memories are
+    // always stored normalized (see upsertOne), so matching on the raw,
+    // un-normalized proposal fields would silently miss any casing/
+    // whitespace difference and discard the removal.
     const match = owned.find((memory) =>
       memory.subjectType === proposal.subjectType && memory.subjectId === proposal.subjectId &&
-      memory.topic === proposal.topic && memory.slot === proposal.slot);
+      memory.topic === topic && memory.slot === slot);
     if (!match) return 0;
     return this.repository.forget({ guildId, memoryId: match.id });
   }
@@ -251,6 +274,8 @@ export class DefaultMemoryEngine implements MemoryEngine {
       related = await this.repository.findActiveBySubject({
         guildId: memory.guildId, subjectType: memory.subjectType, subjectId: memory.subjectId,
         excludeMemoryId: memory.id,
+        audience: memory.audience, ownerUserId: memory.ownerUserId, channelId: memory.channelId,
+        isolationChannelId: memory.isolationChannelId,
       });
     } catch (error) {
       this.logger?.warn({ error, guildId: memory.guildId }, "Conflict lookup failed; leaving related memories as-is");
@@ -259,12 +284,45 @@ export class DefaultMemoryEngine implements MemoryEngine {
     const embedding = memory.embedding!;
     for (const candidate of related) {
       if (!candidate.embedding) continue;
+      // Deterministic tie-break, evaluated identically from either side:
+      // only the side that sorts later (by createdAt, then id) may
+      // supersede the other. Without this, two memories ingested
+      // concurrently can each see the other as still-active and both call
+      // supersede on each other — leaving neither active. Comparing the
+      // same two values in both directions means exactly one direction
+      // ever proceeds, regardless of which one's checkForConflicts runs
+      // first.
+      const memoryIsLater = memory.createdAt !== candidate.createdAt
+        ? memory.createdAt > candidate.createdAt
+        : memory.id > candidate.id;
+      if (!memoryIsLater) continue;
       if (cosineSimilarity(embedding, candidate.embedding) < this.limits.conflictSimilarityThreshold) continue;
+      if (!(await this.shouldSupersede(candidate, memory))) continue;
       try {
         await this.repository.supersede({ guildId: memory.guildId, memoryId: candidate.id, supersededById: memory.id, now });
       } catch (error) {
         this.logger?.warn({ error, guildId: memory.guildId }, "Failed to supersede a conflicting memory");
       }
+    }
+  }
+
+  // The embedding threshold above is only a pre-filter — it can't tell a
+  // restatement/contradiction of the same fact apart from a merely
+  // topically-similar, unrelated one. Two different fallbacks, deliberately
+  // not the same value: no classifier configured is a normal, static
+  // deployment state, so it behaves exactly as this feature did before the
+  // classifier existed (trust the threshold, supersede). An actual
+  // classification failure is an unexpected runtime error, so it fails safe
+  // toward NOT superseding — an uncertain guess shouldn't silently hide a
+  // memory the classifier never actually confirmed was the same fact; the
+  // worst case is two memories coexisting a bit longer, not one disappearing.
+  private async shouldSupersede(candidate: Memory, memory: Memory): Promise<boolean> {
+    if (!this.conflictClassifier?.classifyMemoryConflict) return true;
+    try {
+      return await this.conflictClassifier.classifyMemoryConflict(candidate.statement, memory.statement);
+    } catch (error) {
+      this.logger?.warn({ error, guildId: memory.guildId }, "Conflict classification failed; leaving both memories active rather than guessing");
+      return false;
     }
   }
 

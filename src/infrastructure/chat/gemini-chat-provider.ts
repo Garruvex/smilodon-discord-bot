@@ -26,6 +26,11 @@ import {
   droppedExchangeConsolidationJsonSchema,
   parseDroppedExchangeConsolidationOutput,
 } from "./dropped-exchange-consolidation.js";
+import {
+  buildMemoryConflictClassificationPrompt,
+  memoryConflictClassificationJsonSchema,
+  parseMemoryConflictClassificationOutput,
+} from "./memory-conflict-classification.js";
 import { ModelFallbackChain } from "./model-fallback-chain.js";
 import {
   buildPersonaBundleCompilationPrompt,
@@ -331,6 +336,15 @@ export class GeminiChatProvider implements ChatProvider {
       droppedExchangeConsolidationJsonSchema,
     ));
     return parseDroppedExchangeConsolidationOutput((response.text ?? "").trim()).facts;
+  }
+
+  public async classifyMemoryConflict(existingStatement: string, newStatement: string): Promise<boolean> {
+    const response = await this.summaryModelChain.run((model) => this.generateStructured(
+      model,
+      buildMemoryConflictClassificationPrompt(existingStatement, newStatement),
+      memoryConflictClassificationJsonSchema,
+    ));
+    return parseMemoryConflictClassificationOutput((response.text ?? "").trim()).related;
   }
 
   public async compilePersonaBundle(content: string): Promise<readonly number[]> {

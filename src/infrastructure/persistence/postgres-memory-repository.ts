@@ -20,12 +20,17 @@ import type {
 } from "../../application/memory/memory.js";
 import * as schema from "../database/schema.js";
 
-// Postgres has pgvector + HNSW (see schema.ts's memories_embedding_hnsw
-// index), so unlike SqliteMemoryRepository this has no candidate-count
-// ceiling — the index bounds the cost. Verified against a real pgvector-
-// enabled Postgres 16 instance (isolation, forget, and concurrent-ingest
-// scenarios). Logic deliberately mirrors sqlite-memory-repository.ts's
-// structure so any future fix can be ported between the two symmetrically.
+// Verified against a real pgvector-enabled Postgres 16 instance (isolation,
+// forget, and concurrent-ingest scenarios). Logic deliberately mirrors
+// sqlite-memory-repository.ts's structure so any future fix can be ported
+// between the two symmetrically.
+
+// findRecallCandidates below is a plain filtered SELECT — it doesn't do a
+// vector-distance ORDER BY, so pgvector's HNSW index (memories_embedding_
+// hnsw in schema.ts) never comes into play here and doesn't bound its cost.
+// Ranking happens in the engine, over whatever this returns, so this still
+// needs the same candidate-count ceiling as SqliteMemoryRepository.
+const maxEligibleCandidates = 2_000;
 
 // Postgres unique indexes treat NULL as distinct from NULL by default (no
 // NULLS NOT DISTINCT support in this drizzle-orm version's index builder),
@@ -216,7 +221,7 @@ export class PostgresMemoryRepository implements MemoryRepository {
         and(eq(schema.memories.audience, "channel"), eq(schema.memories.channelId, query.channelId)),
         eq(schema.memories.audience, "guild"),
       ),
-    ));
+    )).limit(maxEligibleCandidates);
     const filtered = query.subjectIds && query.subjectIds.length > 0
       ? rows.filter((row) => query.subjectIds!.includes(row.subjectId))
       : rows;
@@ -264,6 +269,12 @@ export class PostgresMemoryRepository implements MemoryRepository {
       eq(schema.memories.subjectId, query.subjectId),
       eq(schema.memories.status, "active"),
       ne(schema.memories.id, query.excludeMemoryId),
+      eq(schema.memories.audience, query.audience),
+      query.ownerUserId === null ? isNull(schema.memories.ownerUserId) : eq(schema.memories.ownerUserId, query.ownerUserId),
+      query.channelId === null ? isNull(schema.memories.channelId) : eq(schema.memories.channelId, query.channelId),
+      query.isolationChannelId === null
+        ? isNull(schema.memories.isolationChannelId)
+        : eq(schema.memories.isolationChannelId, query.isolationChannelId),
     )).limit(50);
     return rows.map(toMemory);
   }

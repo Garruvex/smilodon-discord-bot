@@ -284,6 +284,19 @@ export interface PersonaDriftEvolver {
   ): Promise<string>;
 }
 
+// Standalone call (own prompt/schema) asked only when the memory engine's
+// cheap embedding-similarity pre-filter already found a candidate worth
+// checking — see DefaultMemoryEngine.checkForConflicts and
+// memory-conflict-classification.ts for why cosine similarity alone can't
+// make this call. Rare in practice (most turns propose no memory writes,
+// and most of those don't collide with an existing one), off the reply
+// critical path (memory ingest runs after the reply is delivered — see
+// ChatConversationService), and intentionally answers just one question:
+// same underlying fact as the existing statement, or not.
+export interface MemoryConflictClassifier {
+  classifyMemoryConflict(existingStatement: string, newStatement: string): Promise<boolean>;
+}
+
 // A ChatProvider is always a ChatReplyProvider; the rest are standalone
 // capabilities a given provider implementation may or may not support.
 // Kept optional here (rather than requiring callers to hold a narrower
@@ -297,7 +310,8 @@ export type ChatProvider = ChatReplyProvider &
   Partial<ConversationConsolidator> &
   Partial<PersonaCompiler> &
   Partial<PersonaDriftEvolver> &
-  Partial<ChannelMessageSummarizer>;
+  Partial<ChannelMessageSummarizer> &
+  Partial<MemoryConflictClassifier>;
 
 export interface ChatResponseObserver {
   onImagePreview(image: GeneratedChatImage): Promise<void>;

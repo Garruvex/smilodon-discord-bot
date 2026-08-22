@@ -85,6 +85,7 @@ import { DiscordChannelHistoryReader } from "../infrastructure/discord/context/d
 import { FilePersonaSource } from "../infrastructure/chat/file-persona-source.js";
 import { OpenAiEmbeddingsClient } from "../infrastructure/chat/openai-embeddings-client.js";
 import { GeminiEmbeddingsClient } from "../infrastructure/chat/gemini-embeddings-client.js";
+import { embeddingDimensions } from "../infrastructure/database/schema.js";
 import { ApplicationEmojiCatalog } from "../infrastructure/discord/application-emoji-catalog.js";
 import type { AuditLogService } from "../application/audit/audit-log-service.js";
 import { MemberProfileService } from "../application/members/member-profile-service.js";
@@ -216,18 +217,13 @@ export function createDependencies(
   commandRegistry.register(new VoteCommand(pollService));
   const embeddingsClient = configuration.embeddings
     ? configuration.embeddings.provider === "gemini"
-      ? new GeminiEmbeddingsClient(configuration.embeddings.apiKey, configuration.embeddings.model)
+      ? new GeminiEmbeddingsClient(configuration.embeddings.apiKey, configuration.embeddings.model, embeddingDimensions)
       : new OpenAiEmbeddingsClient(
           configuration.embeddings.baseUrl,
           configuration.embeddings.apiKey,
           configuration.embeddings.model,
         )
     : null;
-  const memoryEngine = new DefaultMemoryEngine(
-    memoryRepository, embeddingsClient, logger.child({ component: "memory-engine" }), configuration.memory,
-  );
-  const memberProfileService = new MemberProfileService(memoryEngine, birthdayStore, userCustomizationStore);
-  commandRegistry.register(new MemoryCommand(chatStateStore, memberProfileService, memoryEngine));
   commandRegistry.register(new BirthdayCommand(birthdayStore));
   commandRegistry.register(new OwoifyCommand());
   commandRegistry.register(new WolfyCommand());
@@ -309,6 +305,17 @@ export function createDependencies(
   const utilityProvider = configuration.utilityChat
     ? createChatProviderFromConfig(configuration.utilityChat, logger)
     : chatProvider;
+  // Conflict-at-write classification (see MemoryConflictClassifier on
+  // ChatProvider) prefers the cheaper utility model, same as every other
+  // standalone structured-output call — DefaultMemoryEngine treats a
+  // provider that doesn't implement the capability the same as no provider
+  // at all (falls back to the similarity threshold alone).
+  const memoryEngine = new DefaultMemoryEngine(
+    memoryRepository, embeddingsClient, logger.child({ component: "memory-engine" }), configuration.memory,
+    utilityProvider,
+  );
+  const memberProfileService = new MemberProfileService(memoryEngine, birthdayStore, userCustomizationStore);
+  commandRegistry.register(new MemoryCommand(chatStateStore, memberProfileService, memoryEngine));
   // Personality-bundle compilation is a standalone structured-output call
   // (same shape as summarizeDroppedExchanges) — prefers the cheaper
   // utility model when one is configured, same as ChatConversationService's
