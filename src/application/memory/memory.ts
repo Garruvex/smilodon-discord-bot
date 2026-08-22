@@ -38,6 +38,11 @@ export interface Memory {
   createdAt: number;
   updatedAt: number;
   expiresAt: number | null;
+  // Bi-temporal history — see schema.ts's memories table for the rationale.
+  // validUntil is null exactly when this row is the current one for its
+  // identity (independent of status: "candidate" rows are also current).
+  validFrom: number;
+  validUntil: number | null;
 }
 
 export interface MemorySource {
@@ -129,12 +134,42 @@ export interface ForgetQuery {
   ownerUserId?: string;
 }
 
+export interface ActiveSubjectQuery {
+  guildId: string;
+  subjectType: MemorySubjectType;
+  subjectId: string;
+  // Excludes the row just written by the current ingest call — that
+  // identity's own revision is already handled inside ingest() itself (see
+  // the isRevision branch in both repository implementations). This query
+  // is only for finding OTHER active memories about the same subject.
+  excludeMemoryId: string;
+}
+
+export interface SupersedeCommand {
+  guildId: string;
+  memoryId: string;
+  supersededById: string;
+  now: number;
+}
+
 export interface MemoryRepository {
   ingest(input: RepositoryIngestInput): Promise<Memory>;
   findRecallCandidates(input: CandidateQuery): Promise<RecallCandidates>;
   findById(guildId: string, id: string): Promise<Memory | null>;
   listByUser(guildId: string, userId: string): Promise<Memory[]>;
   forget(input: ForgetQuery): Promise<number>;
+  // Conflict-at-write support (MOSAIC-style, simplified — see
+  // memory-engine.ts's checkForConflicts): every other currently-active
+  // memory about the same subject, regardless of topic/slot, so the engine
+  // can compare embeddings against a statement that just got written under
+  // a different identity than an existing, semantically overlapping one.
+  findActiveBySubject(query: ActiveSubjectQuery): Promise<readonly Memory[]>;
+  // Closes out a memory found to conflict with a newly-ingested one — same
+  // status/validUntil/supersededById transition as ingest()'s own
+  // same-identity revision path, just applied across a different identity.
+  // Returns false (no-op) if the row was already non-active by the time
+  // this runs (e.g. concurrently superseded by something else).
+  supersede(command: SupersedeCommand): Promise<boolean>;
 }
 
 // --- Engine contract -----------------------------------------------------

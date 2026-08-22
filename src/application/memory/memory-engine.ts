@@ -14,7 +14,7 @@ import type {
   ProposedMemory,
 } from "./memory.js";
 import { canRecall } from "./memory.js";
-import { validateProposal } from "./memory-validation.js";
+import { memoryValidationLimits, validateProposal, type MemoryValidationLimits } from "./memory-validation.js";
 import {
   bm25Score,
   buildBm25Corpus,
@@ -25,13 +25,55 @@ import {
   type ScorableRecord,
 } from "../chat/memory-relevance.js";
 
-// Shared prompt-injection budget across every memory kind/audience — the
-// legacy split (chatMemoryLimits.maxSelectedChars for private,
-// guildKnowledgeLimits.maxSerializedChars for guild) collapses into one
-// budget now that recall goes through a single ranked list.
-export const memoryRecallLimits = {
+export interface MemoryEngineLimits extends MemoryValidationLimits {
+  // Shared prompt-injection budget across every memory kind/audience — the
+  // legacy split (chatMemoryLimits.maxSelectedChars for private,
+  // guildKnowledgeLimits.maxSerializedChars for guild) collapses into one
+  // budget now that recall goes through a single ranked list.
+  maxSelectedChars: number;
+  // Conflict-at-write (MOSAIC, arXiv:2607.16211, simplified — see
+  // checkForConflicts below): cosine-similarity cutoff above which a new
+  // active memory is treated as superseding an existing one about the same
+  // subject. This is a proxy for "probably the same underlying fact stated
+  // under a different topic/slot," not real contradiction detection —
+  // cosine similarity alone can't distinguish a restatement from a negation
+  // ("likes apples" vs "hates apples" score similarly high, since they're
+  // the same topic/lexical field).
+  //
+  // MUST be tuned to the actual configured embedding model — cosine-
+  // similarity baselines are not portable across embedding models.
+  // Published/community-reported ranges as of this writing (not measured
+  // against this app's own data — treat as a starting point):
+  //   - OpenAI text-embedding-3-small/large (this app's documented default,
+  //     see schema.ts's embeddingDimensions comment): a much lower, more
+  //     spread-out baseline than older OpenAI models — community guidance
+  //     puts ~0.45 as a reasonable "related" cutoff (e.g. "apple"/"orange"
+  //     score ~0.45-0.47), so a near-duplicate/same-fact threshold should
+  //     sit well above that but is very unlikely to reach the 0.9+ range
+  //     that older-model intuition suggests.
+  //   - OpenAI text-embedding-ada-002 (legacy): high baseline anisotropy —
+  //     even unrelated sentence pairs commonly score >0.68, reportedly up to
+  //     ~0.82 for some unrelated pairs — so a 0.9+ threshold is closer to
+  //     right for this model, but false positives are still a real risk.
+  //   - Gemini gemini-embedding-001/text-embedding-004 (this app's other
+  //     supported provider, see gemini-embeddings-client.ts's
+  //     SEMANTIC_SIMILARITY task type): normalized, MRL-based vectors
+  //     explicitly tuned for this kind of comparison; no reliable published
+  //     baseline was found during this review, so the default below is a
+  //     conservative guess, not a sourced number.
+  // The default here targets text-embedding-3-small (the app's documented
+  // default) at a conservative multiple of the "related" baseline —
+  // recalibrate via MEMORY_CONFLICT_SIMILARITY_THRESHOLD if the deployment
+  // uses a different model, and prefer measuring actual same-fact vs.
+  // different-fact pairs from real data over trusting this number.
+  conflictSimilarityThreshold: number;
+}
+
+export const defaultMemoryEngineLimits: MemoryEngineLimits = {
   maxSelectedChars: 8_000,
-} as const;
+  conflictSimilarityThreshold: 0.75,
+  ...memoryValidationLimits,
+};
 
 function toScorable(memory: Memory): ScorableRecord {
   return { subjectId: memory.subjectId, topic: memory.topic, slot: memory.slot, statement: memory.statement, updatedAt: memory.updatedAt };
@@ -81,6 +123,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
     private readonly repository: MemoryRepository,
     private readonly embeddingsClient: EmbeddingsClient | null = null,
     private readonly logger: Logger | null = null,
+    private readonly limits: MemoryEngineLimits = defaultMemoryEngineLimits,
   ) {}
 
   public async recall(input: MemoryRecallInput): Promise<MemoryContext> {
@@ -107,7 +150,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
     const selected = selectByRelevance(
       candidates.memories,
       (memory) => fused.get(memory) ?? 0,
-      memoryRecallLimits.maxSelectedChars,
+      this.limits.maxSelectedChars,
       memoryPromptProjection,
     );
     return { memories: selected };
@@ -120,7 +163,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
     let rejected = 0;
     let failed = 0;
     for (const proposal of input.proposals) {
-      const validated = validateProposal(proposal);
+      const validated = validateProposal(proposal, this.limits);
       if (!validated) { rejected += 1; continue; }
       if (validated.proposal.action === "remove") {
         removed += await this.removeOne(input.guildId, validated.proposal);
@@ -161,8 +204,9 @@ export class DefaultMemoryEngine implements MemoryEngine {
     const assertedByUserId = proposal.assertedByUserId !== undefined ? proposal.assertedByUserId : input.assertedByUserId;
     const status = resolveInitialStatus(scope.audience, proposal.subjectType, proposal.subjectId, assertedByUserId, input.source);
     const embedding = this.embeddingsClient ? await this.embeddingsClient.embed(statement).catch(() => null) : null;
+    let memory: Memory;
     try {
-      return await this.repository.ingest({
+      memory = await this.repository.ingest({
         guildId: input.guildId,
         kind: proposal.kind,
         audience: scope.audience,
@@ -189,6 +233,38 @@ export class DefaultMemoryEngine implements MemoryEngine {
     } catch (error) {
       this.logger?.warn({ error, guildId: input.guildId }, "Memory ingest failed for one proposal");
       return null;
+    }
+    if (memory.status === "active" && memory.embedding) {
+      await this.checkForConflicts(memory, input.now);
+    }
+    return memory;
+  }
+
+  // Only reached for a freshly-active memory with an embedding — a
+  // "candidate" (unconfirmed third-party claim) intentionally coexists with
+  // others under the same subject until someone confirms it, so it's never
+  // compared here. See conflictDetection's threshold comment for what this
+  // heuristic can and can't tell apart.
+  private async checkForConflicts(memory: Memory, now: number): Promise<void> {
+    let related: readonly Memory[];
+    try {
+      related = await this.repository.findActiveBySubject({
+        guildId: memory.guildId, subjectType: memory.subjectType, subjectId: memory.subjectId,
+        excludeMemoryId: memory.id,
+      });
+    } catch (error) {
+      this.logger?.warn({ error, guildId: memory.guildId }, "Conflict lookup failed; leaving related memories as-is");
+      return;
+    }
+    const embedding = memory.embedding!;
+    for (const candidate of related) {
+      if (!candidate.embedding) continue;
+      if (cosineSimilarity(embedding, candidate.embedding) < this.limits.conflictSimilarityThreshold) continue;
+      try {
+        await this.repository.supersede({ guildId: memory.guildId, memoryId: candidate.id, supersededById: memory.id, now });
+      } catch (error) {
+        this.logger?.warn({ error, guildId: memory.guildId }, "Failed to supersede a conflicting memory");
+      }
     }
   }
 

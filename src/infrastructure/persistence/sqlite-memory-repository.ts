@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 
-import { and, eq, gt, isNull, or } from "drizzle-orm";
+import { and, eq, gt, isNull, ne, or } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 
 import type {
+  ActiveSubjectQuery,
   CandidateQuery,
   ForgetQuery,
   Memory,
@@ -15,6 +16,7 @@ import type {
   MemorySubjectType,
   RecallCandidates,
   RepositoryIngestInput,
+  SupersedeCommand,
 } from "../../application/memory/memory.js";
 import * as schema from "../database/sqlite-schema.js";
 
@@ -49,6 +51,8 @@ function toMemory(row: typeof schema.memories.$inferSelect): Memory {
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
     expiresAt: row.expiresAt ? row.expiresAt.getTime() : null,
+    validFrom: row.validFrom.getTime(),
+    validUntil: row.validUntil ? row.validUntil.getTime() : null,
   };
 }
 
@@ -92,7 +96,15 @@ export class SqliteMemoryRepository implements MemoryRepository {
               ? transaction.select().from(schema.memories).where(eq(schema.memories.id, ownSourceMatch.id)).get()
               : undefined;
           })();
-      const row = existing ?? transaction.insert(schema.memories).values({
+      // Once a claim is "active", a genuinely changed statement gets a new
+      // row (close the old one out with validUntil/supersededById, insert a
+      // fresh one) instead of mutating it in place — otherwise the prior
+      // value is unrecoverable the moment it's corrected. An unchanged
+      // restatement (reinforcement) and the still-unconfirmed "candidate"
+      // dedup path both update in place; neither represents a value actually
+      // changing. See memory.ts's Memory.validFrom/validUntil doc comment.
+      const isRevision = existing !== undefined && input.status === "active" && existing.statement !== input.statement;
+      const row = existing && !isRevision ? existing : transaction.insert(schema.memories).values({
         id: randomUUID(),
         guildId: input.guildId,
         kind: input.kind,
@@ -115,8 +127,10 @@ export class SqliteMemoryRepository implements MemoryRepository {
         createdAt: new Date(input.now),
         updatedAt: new Date(input.now),
         expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
+        validFrom: new Date(input.now),
+        validUntil: null,
       }).returning().get();
-      if (existing) {
+      if (existing && !isRevision) {
         transaction.update(schema.memories).set({
           statement: input.statement,
           structuredValue: input.structuredValue ?? null,
@@ -126,6 +140,14 @@ export class SqliteMemoryRepository implements MemoryRepository {
           embeddingModel: input.embeddingModel,
           updatedAt: new Date(input.now),
           expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
+        }).where(eq(schema.memories.id, existing.id)).run();
+      }
+      if (existing && isRevision) {
+        transaction.update(schema.memories).set({
+          status: "superseded",
+          supersededById: row.id,
+          validUntil: new Date(input.now),
+          updatedAt: new Date(input.now),
         }).where(eq(schema.memories.id, existing.id)).run();
       }
       // Idempotent retry guard — see postgres-memory-repository.ts's ingest
@@ -147,7 +169,9 @@ export class SqliteMemoryRepository implements MemoryRepository {
           createdAt: new Date(input.now),
         }).run();
       }
-      return existing ? { ...row, statement: input.statement, confidence: input.confidence, importance: input.importance, embedding: input.embedding ? [...input.embedding] : null, updatedAt: new Date(input.now) } : row;
+      return existing && !isRevision
+        ? { ...row, statement: input.statement, confidence: input.confidence, importance: input.importance, embedding: input.embedding ? [...input.embedding] : null, updatedAt: new Date(input.now) }
+        : row;
     });
     return Promise.resolve(toMemory(result));
   }
@@ -199,5 +223,31 @@ export class SqliteMemoryRepository implements MemoryRepository {
       return Promise.resolve(result.changes);
     }
     return Promise.resolve(0);
+  }
+
+  // See PostgresMemoryRepository.findActiveBySubject for the bound rationale.
+  public findActiveBySubject(query: ActiveSubjectQuery): Promise<readonly Memory[]> {
+    const rows = this.database.select().from(schema.memories).where(and(
+      eq(schema.memories.guildId, query.guildId),
+      eq(schema.memories.subjectType, query.subjectType),
+      eq(schema.memories.subjectId, query.subjectId),
+      eq(schema.memories.status, "active"),
+      ne(schema.memories.id, query.excludeMemoryId),
+    )).limit(50).all();
+    return Promise.resolve(rows.map(toMemory));
+  }
+
+  public supersede(command: SupersedeCommand): Promise<boolean> {
+    const result = this.database.update(schema.memories).set({
+      status: "superseded",
+      supersededById: command.supersededById,
+      validUntil: new Date(command.now),
+      updatedAt: new Date(command.now),
+    }).where(and(
+      eq(schema.memories.guildId, command.guildId),
+      eq(schema.memories.id, command.memoryId),
+      eq(schema.memories.status, "active"),
+    )).run();
+    return Promise.resolve(result.changes > 0);
   }
 }

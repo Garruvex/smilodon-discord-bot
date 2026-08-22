@@ -143,6 +143,16 @@ export const memories = pgTable("memories", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   expiresAt: timestamp("expires_at", { withTimezone: true }),
+  // Bi-temporal history (Zep-style): the interval during which this row was
+  // the current value for its identity. validFrom defaults to createdAt.
+  // validUntil is null while the row is current — set once, at the moment a
+  // replacement row is inserted for the same identity (see
+  // PostgresMemoryRepository.ingest), never mutated again. Distinct from
+  // status: an "active" row is also the current row (validUntil null); a
+  // "superseded" row keeps its validUntil timestamp permanently as the
+  // historical record of when it stopped being true.
+  validFrom: timestamp("valid_from", { withTimezone: true }).defaultNow().notNull(),
+  validUntil: timestamp("valid_until", { withTimezone: true }),
 }, (table) => [
   // Includes isolationChannelId: a member's public preference and their
   // isolated-channel (e.g. D&D character) preference under the same

@@ -71,6 +71,9 @@ export const memories = sqliteTable("memories", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   expiresAt: integer("expires_at", { mode: "timestamp_ms" }),
+  // See schema.ts's memories table for the bi-temporal rationale.
+  validFrom: integer("valid_from", { mode: "timestamp_ms" }).notNull(),
+  validUntil: integer("valid_until", { mode: "timestamp_ms" }),
 }, (table) => [
   // Partial (status = 'active' only) — see schema.ts's memories table for why.
   uniqueIndex("memories_identity").on(

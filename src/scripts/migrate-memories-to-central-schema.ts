@@ -48,7 +48,7 @@ export async function migratePostgres(databaseUrl: string, instanceName: string)
       subjectType: "member", subjectId: row.subjectUserId, topic: row.topic, slot: row.slot,
       statement: row.statement, status: "active", source: "live", confidence: 1, importance: 1,
       embedding: row.embedding, embeddingModel: row.embedding ? "legacy" : null,
-      createdAt: row.createdAt, updatedAt: row.updatedAt, expiresAt: null,
+      createdAt: row.createdAt, updatedAt: row.updatedAt, expiresAt: null, validFrom: row.createdAt, validUntil: null,
     }).onConflictDoNothing({ target: pgSchema.memories.id }).returning({ id: pgSchema.memories.id });
     if (inserted.length === 0) continue;
     migratedMemories++;
@@ -74,7 +74,7 @@ export async function migratePostgres(databaseUrl: string, instanceName: string)
       statement: row.statement, status, source: row.source === "self_report" ? "explicit"
         : row.source === "consolidation" ? "consolidation" : row.source === "administrator" ? "administrator" : "live",
       confidence: 1, importance: 1, embedding: row.embedding, embeddingModel: row.embedding ? "legacy" : null,
-      createdAt: row.createdAt, updatedAt: row.updatedAt, expiresAt: expiresAt ?? row.expiresAt,
+      createdAt: row.createdAt, updatedAt: row.updatedAt, expiresAt: expiresAt ?? row.expiresAt, validFrom: row.createdAt, validUntil: null,
     }).onConflictDoNothing({ target: pgSchema.memories.id }).returning({ id: pgSchema.memories.id });
     if (inserted.length === 0) continue;
     migratedMemories++;
@@ -115,7 +115,7 @@ export function migrateSqlite(runtimeDataDirectory: string): void {
       subjectType: "member", subjectId: row.subjectUserId, topic: row.topic, slot: row.slot,
       statement: row.statement, status: "active", source: "live", confidence: 1, importance: 1,
       embedding: row.embedding, embeddingModel: row.embedding ? "legacy" : null,
-      createdAt: row.createdAt, updatedAt: row.updatedAt, expiresAt: null,
+      createdAt: row.createdAt, updatedAt: row.updatedAt, expiresAt: null, validFrom: row.createdAt, validUntil: null,
     }).run();
     db.insert(sqliteSchema.memorySources).values({
       id: crypto.randomUUID(), memoryId: row.id, sourceMessageId: null, sourceChannelId: null,
@@ -138,7 +138,7 @@ export function migrateSqlite(runtimeDataDirectory: string): void {
       statement: row.statement, status, source: row.source === "self_report" ? "explicit"
         : row.source === "consolidation" ? "consolidation" : row.source === "administrator" ? "administrator" : "live",
       confidence: 1, importance: 1, embedding: row.embedding, embeddingModel: row.embedding ? "legacy" : null,
-      createdAt: row.createdAt, updatedAt: row.updatedAt, expiresAt: expiresAt ?? row.expiresAt,
+      createdAt: row.createdAt, updatedAt: row.updatedAt, expiresAt: expiresAt ?? row.expiresAt, validFrom: row.createdAt, validUntil: null,
     }).run();
     migratedMemories++;
     const assertedBy = Array.isArray(row.assertedByUserIds) ? row.assertedByUserIds as string[] : [];

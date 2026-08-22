@@ -38,16 +38,44 @@ export function memoryRepositoryContract(
       expect(await repository.findById("other-guild", memory.id)).toBeNull();
     });
 
-    it("re-ingesting the same active identity updates in place rather than duplicating", async () => {
+    it("re-ingesting the same active identity with an unchanged statement reinforces in place", async () => {
       const repository = await createRepository();
       const first = await repository.ingest(ingestInput({ statement: "likes apples", now: 1_000 }));
-      const second = await repository.ingest(ingestInput({ statement: "likes green apples", now: 2_000 }));
+      const second = await repository.ingest(ingestInput({ statement: "likes apples", now: 2_000, confidence: 2 }));
       expect(second.id).toBe(first.id);
-      expect(second.statement).toBe("likes green apples");
+      expect(second.confidence).toBe(2);
       const candidates = await repository.findRecallCandidates({
         guildId: "guild", channelId: "general", userId: "alice", now: 3_000,
       });
       expect(candidates.memories).toHaveLength(1);
+    });
+
+    it("re-ingesting the same active identity with a changed statement supersedes rather than mutates the old row", async () => {
+      const repository = await createRepository();
+      const first = await repository.ingest(ingestInput({ statement: "likes apples", now: 1_000 }));
+      const second = await repository.ingest(ingestInput({ statement: "likes green apples", now: 2_000 }));
+      // A new row, not the same one mutated — the old value stays intact
+      // under its own id with its own history, per the bi-temporal model
+      // (see memory.ts's Memory.validFrom/validUntil).
+      expect(second.id).not.toBe(first.id);
+      expect(second.statement).toBe("likes green apples");
+      expect(second.status).toBe("active");
+      expect(second.validFrom).toBe(2_000);
+      expect(second.validUntil).toBeNull();
+
+      const oldRow = await repository.findById("guild", first.id);
+      expect(oldRow).not.toBeNull();
+      expect(oldRow!.statement).toBe("likes apples");
+      expect(oldRow!.status).toBe("superseded");
+      expect(oldRow!.supersededById).toBe(second.id);
+      expect(oldRow!.validUntil).toBe(2_000);
+
+      // Only the current row is recall-eligible.
+      const candidates = await repository.findRecallCandidates({
+        guildId: "guild", channelId: "general", userId: "alice", now: 3_000,
+      });
+      expect(candidates.memories).toHaveLength(1);
+      expect(candidates.memories[0]!.id).toBe(second.id);
     });
 
     it("candidate status: different asserters produce separate rows under the same identity (no lost contradiction)", async () => {

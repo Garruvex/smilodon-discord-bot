@@ -9,7 +9,7 @@ function memory(overrides: Partial<Memory>): Memory {
     subjectType: "member", subjectId: "alice", topic: "preference", slot: "food.fruit",
     statement: "likes apples", structuredValue: null, status: "active", supersededById: null,
     source: "live", confidence: 1, importance: 1, embedding: null, embeddingModel: null,
-    createdAt: 0, updatedAt: 0, expiresAt: null,
+    createdAt: 0, updatedAt: 0, expiresAt: null, validFrom: 0, validUntil: null,
     ...overrides,
   };
 }

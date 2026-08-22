@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 
-import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, ne, or, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
 import type {
+  ActiveSubjectQuery,
   CandidateQuery,
   ForgetQuery,
   Memory,
@@ -15,6 +16,7 @@ import type {
   MemorySubjectType,
   RecallCandidates,
   RepositoryIngestInput,
+  SupersedeCommand,
 } from "../../application/memory/memory.js";
 import * as schema from "../database/schema.js";
 
@@ -75,6 +77,8 @@ function toMemory(row: typeof schema.memories.$inferSelect): Memory {
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
     expiresAt: row.expiresAt ? row.expiresAt.getTime() : null,
+    validFrom: row.validFrom.getTime(),
+    validUntil: row.validUntil ? row.validUntil.getTime() : null,
   };
 }
 
@@ -116,8 +120,16 @@ export class PostgresMemoryRepository implements MemoryRepository {
           )).limit(1);
         existing = rows[0]?.memory;
       }
+      // Once a claim is "active", a genuinely changed statement gets a new
+      // row (close the old one out with validUntil/supersededById, insert a
+      // fresh one) instead of mutating it in place — otherwise the prior
+      // value is unrecoverable the moment it's corrected. An unchanged
+      // restatement (reinforcement) and the still-unconfirmed "candidate"
+      // dedup path both update in place; neither represents a value actually
+      // changing. See memory.ts's Memory.validFrom/validUntil doc comment.
+      const isRevision = existing !== undefined && input.status === "active" && existing.statement !== input.statement;
       let row: typeof schema.memories.$inferSelect;
-      if (existing) {
+      if (existing && !isRevision) {
         const updated = await transaction.update(schema.memories).set({
           statement: input.statement,
           structuredValue: input.structuredValue ?? null,
@@ -130,8 +142,17 @@ export class PostgresMemoryRepository implements MemoryRepository {
         }).where(eq(schema.memories.id, existing.id)).returning();
         row = updated[0]!;
       } else {
+        const newId = randomUUID();
+        if (existing && isRevision) {
+          await transaction.update(schema.memories).set({
+            status: "superseded",
+            supersededById: newId,
+            validUntil: new Date(input.now),
+            updatedAt: new Date(input.now),
+          }).where(eq(schema.memories.id, existing.id));
+        }
         const inserted = await transaction.insert(schema.memories).values({
-          id: randomUUID(),
+          id: newId,
           guildId: input.guildId,
           kind: input.kind,
           audience: input.audience,
@@ -153,6 +174,8 @@ export class PostgresMemoryRepository implements MemoryRepository {
           createdAt: new Date(input.now),
           updatedAt: new Date(input.now),
           expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
+          validFrom: new Date(input.now),
+          validUntil: null,
         }).returning();
         row = inserted[0]!;
       }
@@ -229,5 +252,33 @@ export class PostgresMemoryRepository implements MemoryRepository {
       return deleted.length;
     }
     return 0;
+  }
+
+  // Bounded — a subject shouldn't realistically accumulate more than a few
+  // dozen active memories; the limit protects the conflict check from
+  // scanning an unbounded set rather than reflecting an expected scale.
+  public async findActiveBySubject(query: ActiveSubjectQuery): Promise<readonly Memory[]> {
+    const rows = await this.database.select().from(schema.memories).where(and(
+      eq(schema.memories.guildId, query.guildId),
+      eq(schema.memories.subjectType, query.subjectType),
+      eq(schema.memories.subjectId, query.subjectId),
+      eq(schema.memories.status, "active"),
+      ne(schema.memories.id, query.excludeMemoryId),
+    )).limit(50);
+    return rows.map(toMemory);
+  }
+
+  public async supersede(command: SupersedeCommand): Promise<boolean> {
+    const updated = await this.database.update(schema.memories).set({
+      status: "superseded",
+      supersededById: command.supersededById,
+      validUntil: new Date(command.now),
+      updatedAt: new Date(command.now),
+    }).where(and(
+      eq(schema.memories.guildId, command.guildId),
+      eq(schema.memories.id, command.memoryId),
+      eq(schema.memories.status, "active"),
+    )).returning({ id: schema.memories.id });
+    return updated.length > 0;
   }
 }

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { AccessPolicyService } from "../../src/application/access/access-policy-service.js";
 import { CommandModule } from "../../src/application/commands/command.js";
+import { defaultMemoryEngineLimits } from "../../src/application/memory/memory-engine.js";
 import type { ApplicationConfiguration } from "../../src/config/configuration.js";
 import type { GuildConfiguration } from "../../src/config/guild-configuration.js";
 import type { GuildConfigurationProvider } from "../../src/config/guild-configuration-provider.js";
@@ -41,6 +42,7 @@ function applicationConfiguration(): ApplicationConfiguration {
     chat: null,
     utilityChat: null,
     embeddings: null,
+    memory: defaultMemoryEngineLimits,
   };
 }
 

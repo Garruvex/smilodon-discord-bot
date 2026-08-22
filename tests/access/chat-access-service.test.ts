@@ -2,6 +2,7 @@ import type { GuildMember } from "discord.js";
 import { describe, expect, it } from "vitest";
 
 import { ChatAccessService } from "../../src/application/access/chat-access-service.js";
+import { defaultMemoryEngineLimits } from "../../src/application/memory/memory-engine.js";
 import type { ApplicationConfiguration } from "../../src/config/configuration.js";
 import type { GuildConfiguration } from "../../src/config/guild-configuration.js";
 
@@ -32,6 +33,7 @@ function configuration(): ApplicationConfiguration {
     chat: null,
     utilityChat: null,
     embeddings: null,
+    memory: defaultMemoryEngineLimits,
   };
 }
 
