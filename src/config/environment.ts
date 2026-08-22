@@ -139,6 +139,10 @@ const environmentSchema = z.object({
     .default(defaultMemoryEngineLimits.maxTopicChars),
   MEMORY_CONFLICT_SIMILARITY_THRESHOLD: z.coerce.number().min(0).max(1)
     .default(defaultMemoryEngineLimits.conflictSimilarityThreshold),
+  MEMORY_MAX_RELATION_HOPS: z.coerce.number().int().min(0).max(5)
+    .default(defaultMemoryEngineLimits.maxRelationHops),
+  MEMORY_RELATION_HOP_BOOST_BASE: z.coerce.number().min(0).max(50)
+    .default(defaultMemoryEngineLimits.relationHopBoostBase),
 });
 
 export function loadConfiguration(
@@ -240,6 +244,8 @@ export function loadConfiguration(
       maxSlotChars: parsed.data.MEMORY_MAX_SLOT_CHARS,
       maxTopicChars: parsed.data.MEMORY_MAX_TOPIC_CHARS,
       conflictSimilarityThreshold: parsed.data.MEMORY_CONFLICT_SIMILARITY_THRESHOLD,
+      maxRelationHops: parsed.data.MEMORY_MAX_RELATION_HOPS,
+      relationHopBoostBase: parsed.data.MEMORY_RELATION_HOP_BOOST_BASE,
     },
   };
 }

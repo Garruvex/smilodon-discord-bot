@@ -138,6 +138,7 @@ export const memberPermissionRule: AccessRule = (subject, policy) => {
 // them would let a command report "allowed" while the bot itself can't
 // execute it in Discord.
 export const botPermissionRule: AccessRule = (subject, policy) => {
+  if (policy.requiredBotPermissions.length === 0) return null;
   if (subject.botPermissions === null || !hasAllPermissions(subject.botPermissions, policy.requiredBotPermissions)) {
     return { allowed: false, reason: AccessDenialReason.BotMissingPermission };
   }

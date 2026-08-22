@@ -1,6 +1,12 @@
 import { CommandModule, type BotCommand, type ChatToolBinding, type CommandContext } from "../../../../application/commands/command.js";
 import type { ChatToolContext, ChatToolResult } from "../../../../application/chat/tools/chat-tool.js";
-import { evaluateMusicToolAccess, formatMusicError, musicPermissionDeniedMessage } from "../../../../application/chat/tools/music-tool-support.js";
+import {
+  evaluateMusicToolAccess,
+  formatMusicError,
+  musicPermissionDeniedMessage,
+  musicToolTimedOutMessage,
+  musicToolWasCancelled,
+} from "../../../../application/chat/tools/music-tool-support.js";
 import type { PlaybackService } from "../../../../application/music/playback-service.js";
 import {
   createPlaybackActor,
@@ -76,6 +82,7 @@ export class PlayCommand implements BotCommand {
     if (!ctx.music) return { content: musicPermissionDeniedMessage };
     const decision = evaluateMusicToolAccess(ctx, ctx.music, this.profiles);
     if (!decision.allowed) return { content: musicPermissionDeniedMessage };
+    if (musicToolWasCancelled(ctx)) return { content: musicToolTimedOutMessage };
     try {
       const result = await this.playbackService.enqueue(ctx.music.actor, args.query);
       return {

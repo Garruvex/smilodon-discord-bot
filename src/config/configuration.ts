@@ -59,6 +59,8 @@ export interface MemoryConfiguration {
   maxSlotChars: number;
   maxTopicChars: number;
   conflictSimilarityThreshold: number;
+  maxRelationHops: number;
+  relationHopBoostBase: number;
 }
 
 export interface ApplicationConfiguration {
