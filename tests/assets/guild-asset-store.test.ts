@@ -41,15 +41,13 @@ describe("GuildAssetStore.savePersonality", () => {
     stubDownload("## Voice\nAlways playful.\n\n## Backstory\nBorn in a forest.");
     const provider: ChatProvider = {
       reply: () => Promise.reject(new Error("not used")),
-      compilePersonaBundle: () => Promise.resolve({
-        core: "## Voice\nAlways playful.",
-        chunks: [{ heading: "Backstory", text: "Born in a forest." }],
-      }),
+      compilePersonaBundle: () => Promise.resolve([1]),
     };
     const store = new GuildAssetStore(runtimeDirectory, new PersonaBundleCompiler(provider, null));
 
-    await store.savePersonality(guildId, personalityAttachment());
+    const { loreHeadings } = await store.savePersonality(guildId, personalityAttachment());
 
+    expect(loreHeadings).toEqual(["Backstory"]);
     const bundlePath = join(runtimeDirectory, "guild-assets", guildId, "personality.bundle.json");
     expect(existsSync(bundlePath)).toBe(true);
     const bundle = parsePersonaBundle(readFileSync(bundlePath, "utf8"));
@@ -67,11 +65,35 @@ describe("GuildAssetStore.savePersonality", () => {
     };
     const store = new GuildAssetStore(runtimeDirectory, new PersonaBundleCompiler(provider, null));
 
-    const asset = await store.savePersonality(guildId, personalityAttachment());
+    const { assetPath, loreHeadings } = await store.savePersonality(guildId, personalityAttachment());
 
-    expect(asset).toBe(`guild-assets/${guildId}/personality.md`);
+    expect(assetPath).toBe(`guild-assets/${guildId}/personality.md`);
+    expect(loreHeadings).toEqual([]);
     const bundlePath = join(runtimeDirectory, "guild-assets", guildId, "personality.bundle.json");
     expect(existsSync(bundlePath)).toBe(false);
+  });
+
+  it("passes the guild's existing bundle to the compiler on reupload, so unchanged chunks can reuse their embedding", async () => {
+    const runtimeDirectory = mkdtempSync(join(tmpdir(), "guild-asset-store-"));
+    temporaryDirectories.push(runtimeDirectory);
+    stubDownload("## Voice\nAlways playful.\n\n## Backstory\nBorn in a forest.");
+    const embed = vi.fn(() => Promise.resolve([9, 9]));
+    const provider: ChatProvider = {
+      reply: () => Promise.reject(new Error("not used")),
+      compilePersonaBundle: () => Promise.resolve([1]),
+    };
+    const store = new GuildAssetStore(
+      runtimeDirectory,
+      new PersonaBundleCompiler(provider, { embed }),
+    );
+    await store.savePersonality(guildId, personalityAttachment());
+    expect(embed).toHaveBeenCalledTimes(1);
+
+    // Reuploading identical content should reuse the "Backstory" chunk's
+    // embedding from the bundle just written, rather than embedding again.
+    await store.savePersonality(guildId, personalityAttachment());
+
+    expect(embed).toHaveBeenCalledTimes(1);
   });
 
   it("skips compilation entirely (no bundle, no error) when no compiler is configured", async () => {

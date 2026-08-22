@@ -1,5 +1,6 @@
 import type { Logger } from "pino";
 
+import { hashContent } from "../assets/content-hash.js";
 import { chatMemoryInstructions, chatMemoryLimits, validateMemoryActions } from "./chat-memory-policy.js";
 import { chatSafetyGuard, type ChatProvider, type ChatRequest, type ChatResponse, type ChatResponseObserver } from "./chat-provider.js";
 import type { ChatSessionExchange, ChatStateStore } from "./chat-state-store.js";
@@ -182,6 +183,7 @@ export class ChatConversationService {
     channelMode: ChannelMemoryMode,
     droppedExchanges: readonly ChatSessionExchange[],
     personaDriftEnabled: boolean,
+    personality: string,
   ): Promise<void> {
     if (droppedExchanges.length === 0) return;
     const summarizer = this.utilityProvider ?? this.provider;
@@ -220,6 +222,7 @@ export class ChatConversationService {
         const evolvePersonaDrift = summarizer.evolvePersonaDrift.bind(summarizer);
         await this.personaDriftStore.evolveFrom(
           guildId,
+          hashContent(personality),
           (currentText) => evolvePersonaDrift(currentText, exchangePairs),
         );
       } catch (error) {
@@ -415,7 +418,7 @@ export class ChatConversationService {
         }
       }
       await this.consolidateDroppedExchanges(
-        input.guildId, input.channelId, channelMode, droppedExchanges, input.personaDriftEnabled ?? false,
+        input.guildId, input.channelId, channelMode, droppedExchanges, input.personaDriftEnabled ?? false, input.personality,
       );
       return validatedResponse;
     });

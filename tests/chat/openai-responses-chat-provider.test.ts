@@ -482,7 +482,7 @@ describe("OpenAiResponsesChatProvider", () => {
     expect(facts[0]).toMatchObject({ subjectId: "22222222222222222", evidenceMessageIds: ["11111111111111111"] });
   });
 
-  it("classifies persona sections with a small output budget and reconstructs the original text", async () => {
+  it("classifies persona sections with a small output budget, returning validated section indexes", async () => {
     const largePersonality = `## Voice\n${"Always playful. ".repeat(2_000)}\n\n## Backstory\nBorn in a forest.`;
     let capturedMaxOutputTokens = 0;
     const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
@@ -509,7 +509,6 @@ describe("OpenAiResponsesChatProvider", () => {
 
     expect(capturedMaxOutputTokens).toBe(4_000);
     expect(timeoutSpy).toHaveBeenCalledWith(180_000);
-    expect(result.core).toContain("## Voice\nAlways playful.");
-    expect(result.chunks).toEqual([{ heading: "Backstory", text: "Born in a forest." }]);
+    expect(result).toEqual([1]);
   });
 });

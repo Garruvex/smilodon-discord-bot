@@ -261,14 +261,15 @@ export interface ConversationConsolidator {
   ): Promise<readonly DroppedExchangeFact[]>;
 }
 
-// Standalone call splitting an uploaded personality.md into an
-// always-sent "core" (identity/voice/behavior rules) and retrievable
-// "chunks" (situational lore) — see persona-bundle-compiler.ts. Called
-// once at upload time, never per turn.
+// One classification sample over an uploaded personality.md's `##`
+// sections — returns the section indexes that sample judged to be
+// situational lore rather than always-sent core identity/voice/behavior
+// rules. Called several times per upload (self-consistency: PersonaBundleCompiler
+// majority-votes the samples before splitting the file), never per turn —
+// see persona-bundle-compiler.ts, which owns turning the merged vote into
+// the final core/chunks split.
 export interface PersonaCompiler {
-  compilePersonaBundle(
-    content: string,
-  ): Promise<{ core: string; chunks: readonly { heading: string; text: string }[] }>;
+  compilePersonaBundle(content: string): Promise<readonly number[]>;
 }
 
 // Standalone call nudging the guild's persona-drift overlay from recent

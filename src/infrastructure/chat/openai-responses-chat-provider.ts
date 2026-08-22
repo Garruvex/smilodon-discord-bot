@@ -30,7 +30,7 @@ import {
   personaBundleCompilationJsonSchema,
   personaBundleCompilationMaxOutputTokens,
   personaBundleCompilationTimeoutMs,
-  parsePersonaBundleCompilationOutput,
+  parsePersonaBundleSectionSelection,
 } from "./persona-bundle-compilation.js";
 import {
   buildPersonaDriftEvolutionPrompt,
@@ -425,9 +425,7 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
     return parseDroppedExchangeConsolidationOutput(texts.join("\n").trim()).facts;
   }
 
-  public async compilePersonaBundle(
-    content: string,
-  ): Promise<{ core: string; chunks: readonly { heading: string; text: string }[] }> {
+  public async compilePersonaBundle(content: string): Promise<readonly number[]> {
     const body = await this.summaryModelChain.run(async (model) => {
       const response = await fetch(`${this.baseUrl}/responses`, {
         method: "POST",
@@ -470,7 +468,7 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
         if (part.type === "output_text" && part.text) texts.push(part.text);
       }
     }
-    return parsePersonaBundleCompilationOutput(texts.join("\n").trim(), content);
+    return [...parsePersonaBundleSectionSelection(texts.join("\n").trim(), content)];
   }
 
   public async evolvePersonaDrift(

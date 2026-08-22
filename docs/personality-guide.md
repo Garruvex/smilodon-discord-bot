@@ -30,15 +30,28 @@ and retrievable "lore" chunks (backstory, relationships, specific
 knowledge — only sent when the current conversation actually touches that
 topic). This happens once per upload, not per message, and never rewrites
 your text — the model only decides where each `##` section belongs, it
-copies the original wording verbatim. You don't need to do anything
-differently: write clean `##` sections like always, and the split happens
-automatically. If analysis fails for any reason (or for the older
-filesystem-path `personalityFile` configuration, which isn't uploaded
-through Discord), the whole file is simply sent every turn like before —
-this is purely a cost optimization with a safe fallback, never something you
-need to configure. Two headers worth calling out specifically, since they
-map to the "core character → speech rules → relationships" split mentioned
-elsewhere in this doc:
+copies the original wording verbatim. Classification runs 3 times and a
+section only becomes lore if at least 2 of the 3 agree, so one unstable
+call can't move something load-bearing out of core on its own. You don't
+need to do anything differently: write clean `##` sections like always,
+and the split happens automatically. If analysis fails for any reason (or
+for the older filesystem-path `personalityFile` configuration, which isn't
+uploaded through Discord), the whole file is simply sent every turn like
+before — this is purely a cost optimization with a safe fallback, never
+something you need to configure.
+
+Uploading `personality:<file>` replies with which sections (if any) got
+classified as lore, so you can catch a bad split immediately instead of
+noticing weeks later that the character "forgot" something in an unrelated
+conversation. If a section is misclassified, or you just want a section to
+always apply no matter what, add `{core}` to the end of its heading line —
+`## Relationships {core}` — and it's pinned to core, skipping
+classification for that section entirely. The marker itself is stripped
+before anything reaches the model; it's upload-authoring syntax only.
+
+Two headers worth calling out specifically, since they map to the "core
+character → speech rules → relationships" split mentioned elsewhere in this
+doc:
 
 - **Default Chat Style** — where personality traits (section 2) end and voice
   mechanics begin: default reply length, punctuation habits, sentence shape.

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  assemblePersonaBundle,
   buildPersonaBundleCompilationPrompt,
   parsePersonaBundleCompilationOutput,
+  parsePersonaBundleSectionSelection,
   personaBundleCompilationMaxOutputTokens,
 } from "../../src/infrastructure/chat/persona-bundle-compilation.js";
 
@@ -66,5 +68,32 @@ describe("persona bundle compilation", () => {
 
     expect(result.core).toBe("## Backstory\nBorn in a forest.");
     expect(result.chunks).toEqual([{ heading: "Friend", text: "Knows a fox." }]);
+  });
+
+  describe("{core} override marker", () => {
+    const pinnedContent = [
+      "## Voice {core}",
+      "Use short, playful replies.",
+      "",
+      "## Forest history",
+      "The character grew up under an ancient oak.",
+    ].join("\n");
+
+    it("omits a {core}-marked section from the classification prompt", () => {
+      const prompt = buildPersonaBundleCompilationPrompt(pinnedContent);
+
+      expect(prompt).not.toContain("Use short, playful replies.");
+      expect(prompt).toContain("The character grew up under an ancient oak.");
+    });
+
+    it("strips the marker from the heading and keeps the section in core even if the model selects it", () => {
+      // Section 0 is "Voice" ({core}-pinned), section 1 is "Forest history".
+      // A hallucinating model naming index 0 anyway must not move it to lore.
+      const selection = parsePersonaBundleSectionSelection(JSON.stringify({ chunkSectionIndexes: [0, 1] }), pinnedContent);
+      const result = assemblePersonaBundle(pinnedContent, selection);
+
+      expect(result.core).toBe("## Voice\nUse short, playful replies.");
+      expect(result.chunks).toEqual([{ heading: "Forest history", text: "The character grew up under an ancient oak." }]);
+    });
   });
 });

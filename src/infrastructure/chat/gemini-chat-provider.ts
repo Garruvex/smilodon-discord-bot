@@ -32,7 +32,7 @@ import {
   personaBundleCompilationJsonSchema,
   personaBundleCompilationMaxOutputTokens,
   personaBundleCompilationTimeoutMs,
-  parsePersonaBundleCompilationOutput,
+  parsePersonaBundleSectionSelection,
 } from "./persona-bundle-compilation.js";
 import {
   buildPersonaDriftEvolutionPrompt,
@@ -333,9 +333,7 @@ export class GeminiChatProvider implements ChatProvider {
     return parseDroppedExchangeConsolidationOutput((response.text ?? "").trim()).facts;
   }
 
-  public async compilePersonaBundle(
-    content: string,
-  ): Promise<{ core: string; chunks: readonly { heading: string; text: string }[] }> {
+  public async compilePersonaBundle(content: string): Promise<readonly number[]> {
     const response = await this.summaryModelChain.run((model) => this.generateStructured(
       model,
       buildPersonaBundleCompilationPrompt(content),
@@ -343,7 +341,7 @@ export class GeminiChatProvider implements ChatProvider {
       personaBundleCompilationMaxOutputTokens,
       personaBundleCompilationTimeoutMs,
     ));
-    return parsePersonaBundleCompilationOutput((response.text ?? "").trim(), content);
+    return [...parsePersonaBundleSectionSelection((response.text ?? "").trim(), content)];
   }
 
   public async evolvePersonaDrift(

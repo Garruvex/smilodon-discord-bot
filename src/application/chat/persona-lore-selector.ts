@@ -1,3 +1,5 @@
+import type { Logger } from "pino";
+
 import { personaLoreLimits } from "./persona-lore-policy.js";
 import type { PersonaLoreChunk } from "./persona-source.js";
 import type { ChatHistoryMessage } from "./chat-provider.js";
@@ -41,7 +43,10 @@ function loreChunkPromptProjection(chunk: PersonaLoreChunk): unknown {
  * embedding the current message once.
  */
 export class RelevantPersonaLoreSelector implements PersonaLoreSelector {
-  public constructor(private readonly embeddingsClient: EmbeddingsClient | null = null) {}
+  public constructor(
+    private readonly embeddingsClient: EmbeddingsClient | null = null,
+    private readonly logger: Logger | null = null,
+  ) {}
 
   public async select(input: PersonaLoreSelectionInput): Promise<readonly PersonaLoreChunk[]> {
     if (input.chunks.length === 0) return input.chunks;
@@ -66,9 +71,8 @@ export class RelevantPersonaLoreSelector implements PersonaLoreSelector {
           );
           rankings.push(embeddingOrder);
         }
-      } catch {
-        // Embedding the current message failed — fall back to lexical-only
-        // ranking rather than failing the turn.
+      } catch (error) {
+        this.logger?.debug({ error }, "Embedding the current message failed; persona lore selection falling back to lexical-only ranking");
       }
     }
     const fusedScore = reciprocalRankFusion(rankings);

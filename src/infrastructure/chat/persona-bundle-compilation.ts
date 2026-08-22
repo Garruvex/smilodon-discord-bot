@@ -32,6 +32,14 @@ interface PersonalitySection {
   heading: string;
   markdown: string;
   body: string;
+  // Set by a trailing `{core}` marker on the `##` heading line — an
+  // explicit admin override that skips classification for this section
+  // entirely, the escape hatch for a section that keeps getting classified
+  // as lore even though it should always be sent. Never offered to the
+  // model as a choice (see buildPersonaBundleCompilationPrompt) and always
+  // excluded from the lore set (see parsePersonaBundleSectionSelection),
+  // so it can't be overridden by a classification result either.
+  forcedCore: boolean;
 }
 
 interface ParsedPersonalitySections {
@@ -47,6 +55,8 @@ function wrapUntrusted(text: string): string {
   return `${untrustedOpenTag}\n${sanitized}\n${untrustedCloseTag}`;
 }
 
+const forcedCoreMarker = /^(.*?)\s*\{core\}$/i;
+
 function parsePersonalitySections(content: string): ParsedPersonalitySections {
   const matches = [...content.matchAll(/^##[ \t]+(.+?)\r?$/gm)];
   if (matches.length === 0) return { preamble: content.trim(), sections: [] };
@@ -55,12 +65,20 @@ function parsePersonalitySections(content: string): ParsedPersonalitySections {
     const start = match.index;
     const end = matches[index + 1]?.index ?? content.length;
     const markdown = content.slice(start, end).trim();
+    const rawHeading = match[1]!.trim();
     const firstLineEnd = markdown.search(/\r?\n/);
+    const body = firstLineEnd === -1 ? "" : markdown.slice(firstLineEnd).trim();
+    const forcedCoreMatch = rawHeading.match(forcedCoreMarker);
+    const forcedCore = forcedCoreMatch !== null;
+    const heading = forcedCoreMatch ? forcedCoreMatch[1]!.trim() : rawHeading;
+    // Strip the marker from the persisted text — it's upload-authoring
+    // syntax, never meant to reach the model as part of the character.
     return {
       index,
-      heading: match[1]!.trim(),
-      markdown,
-      body: firstLineEnd === -1 ? "" : markdown.slice(firstLineEnd).trim(),
+      heading,
+      markdown: forcedCore ? (body ? `## ${heading}\n${body}` : `## ${heading}`) : markdown,
+      body,
+      forcedCore,
     };
   });
   return { preamble: content.slice(0, matches[0]!.index).trim(), sections };
@@ -73,17 +91,25 @@ const personaBundleCompilationInstructions =
   `When uncertain, leave the section out so it remains core. Do not copy or rewrite any section text.`;
 
 export function buildPersonaBundleCompilationPrompt(content: string): string {
-  const { sections } = parsePersonalitySections(content);
-  const numberedSections = sections.map((section) =>
+  // Sections pinned with a trailing `{core}` on their heading are already
+  // decided — they're left out of the prompt entirely rather than offered
+  // as a choice, both to save tokens and so the model can't override an
+  // explicit admin decision.
+  const classifiableSections = parsePersonalitySections(content).sections.filter((section) => !section.forcedCore);
+  const numberedSections = classifiableSections.map((section) =>
     `SECTION INDEX ${section.index}\nHEADING: ${section.heading}\n${wrapUntrusted(section.body)}`,
   ).join("\n\n");
   return `${personaBundleCompilationInstructions}\n\n${numberedSections || "There are no numbered sections; return an empty array."}`;
 }
 
-export function parsePersonaBundleCompilationOutput(
-  text: string,
-  content: string,
-): { core: string; chunks: readonly { heading: string; text: string }[] } {
+// Validates one classification sample against the section list and returns
+// the section indexes it selected as lore — never including a forced-core
+// or empty-body section, even if a hallucinating model names one. This is
+// a single sample; PersonaBundleCompiler runs several and merges them by
+// majority vote before calling assemblePersonaBundle with the result (see
+// persona-bundle-compiler.ts). Kept separate from assembly so voting can
+// operate on plain index sets instead of reconstructed Markdown.
+export function parsePersonaBundleSectionSelection(text: string, content: string): ReadonlySet<number> {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -99,7 +125,7 @@ export function parsePersonaBundleCompilationOutput(
     );
   }
 
-  const { preamble, sections } = parsePersonalitySections(content);
+  const { sections } = parsePersonalitySections(content);
   const requestedIndexes = result.data.chunkSectionIndexes;
   const selectedIndexes = new Set(requestedIndexes);
   if (selectedIndexes.size !== requestedIndexes.length || requestedIndexes.some((index) => index >= sections.length)) {
@@ -110,13 +136,29 @@ export function parsePersonaBundleCompilationOutput(
     );
   }
 
-  // Empty sections cannot be useful lore chunks. Also keep at least one
-  // Markdown section in core when there is no preamble, so a classification
-  // mistake can never erase the always-sent personality entirely.
-  const validChunkIndexes = new Set(
+  return new Set(
     sections
-      .filter((section) => selectedIndexes.has(section.index) && section.body.length > 0)
+      .filter((section) => selectedIndexes.has(section.index) && section.body.length > 0 && !section.forcedCore)
       .map((section) => section.index),
+  );
+}
+
+// Builds the final { core, chunks } split from an already-decided lore set
+// (typically the majority-vote merge of several parsePersonaBundleSectionSelection
+// calls — see PersonaBundleCompiler.compile). Pure reconstruction: never
+// rewrites section text, only decides which side of the split each section
+// lands on.
+export function assemblePersonaBundle(
+  content: string,
+  loreIndexes: ReadonlySet<number>,
+): { core: string; chunks: readonly { heading: string; text: string }[] } {
+  const { preamble, sections } = parsePersonalitySections(content);
+
+  // Keep at least one Markdown section in core when there is no preamble,
+  // so a classification mistake can never erase the always-sent
+  // personality entirely.
+  const validChunkIndexes = new Set(
+    sections.filter((section) => loreIndexes.has(section.index) && !section.forcedCore).map((section) => section.index),
   );
   if (!preamble && validChunkIndexes.size === sections.length && sections.length > 0) {
     validChunkIndexes.delete(sections[0]!.index);
@@ -130,4 +172,12 @@ export function parsePersonaBundleCompilationOutput(
     .filter((section) => validChunkIndexes.has(section.index))
     .map((section) => ({ heading: section.heading, text: section.body }));
   return { core, chunks };
+}
+
+/** Single-sample convenience wrapper (parse + assemble in one call) — kept for callers that don't need self-consistency voting. */
+export function parsePersonaBundleCompilationOutput(
+  text: string,
+  content: string,
+): { core: string; chunks: readonly { heading: string; text: string }[] } {
+  return assemblePersonaBundle(content, parsePersonaBundleSectionSelection(text, content));
 }

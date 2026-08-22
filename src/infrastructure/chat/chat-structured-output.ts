@@ -150,11 +150,10 @@ function buildPersonaDriftSection(personaDrift: ChatRequest["personaDrift"]): st
 }
 
 function buildExampleExchangesSection(exchanges: ChatRequest["exampleExchanges"]): string {
-  const body = exchanges.length > 0
-    ? exchanges.map((exchange, index) =>
-        `${index + 1}. user: ${wrapUntrusted(exchange.user)}\n   character: ${wrapUntrusted(exchange.character)}`,
-      ).join("\n")
-    : "none";
+  if (exchanges.length === 0) return "";
+  const body = exchanges.map((exchange, index) =>
+    `${index + 1}. user: ${wrapUntrusted(exchange.user)}\n   character: ${wrapUntrusted(exchange.character)}`,
+  ).join("\n");
   return `\n\n# Example exchanges\n\nThe following are real example exchanges showing how this character actually ` +
     `talks — imitate their cadence, punctuation, vocabulary, emoji usage, joke structure, response length, and ` +
     `code-switching, not just the topics. Don't quote or repeat them verbatim; match the voice, not the content.\n\n` +

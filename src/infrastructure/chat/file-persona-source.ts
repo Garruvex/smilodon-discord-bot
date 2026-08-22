@@ -29,7 +29,7 @@ export class FilePersonaSource implements PersonaSource {
   public async resolve(profile: GuildConfiguration): Promise<ResolvedPersona> {
     const { personality, loreChunks } = this.loadPersonaMaterial(profile);
     const personaDrift = profile.chat.personaDriftEnabled && this.personaDriftStore
-      ? (await this.personaDriftStore.get(profile.guildId))?.text.trim() || null
+      ? await this.resolvePersonaDrift(profile.guildId, personality)
       : null;
     return {
       personality,
@@ -37,6 +37,16 @@ export class FilePersonaSource implements PersonaSource {
       examplePool: this.loadExampleExchanges(profile),
       personaDrift,
     };
+  }
+
+  // A drift entry evolved against a since-edited personality can no longer
+  // be trusted to agree with the character (see PersonaDriftStore's
+  // personalitySourceHash) — hash mismatch means discard it, same as a
+  // guild that never had any drift.
+  private async resolvePersonaDrift(guildId: string, personality: string): Promise<string | null> {
+    const stored = await this.personaDriftStore?.get(guildId);
+    if (!stored || stored.personalitySourceHash !== hashContent(personality)) return null;
+    return stored.text.trim() || null;
   }
 
   private loadPersonaMaterial(profile: GuildConfiguration): { personality: string; loreChunks: readonly PersonaLoreChunk[] } {

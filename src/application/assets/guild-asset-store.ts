@@ -1,4 +1,4 @@
-import { mkdir, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { extname, resolve } from "node:path";
 
 import type { Attachment } from "discord.js";
@@ -7,7 +7,7 @@ import type { Logger } from "pino";
 import { buildExampleExchangeBundle, serializeExampleExchangeBundle } from "../chat/example-exchange-bundle.js";
 import { parseExampleExchanges } from "../chat/example-exchange.js";
 import type { PersonaBundleCompiler } from "../chat/persona-bundle-compiler.js";
-import { serializePersonaBundle } from "../chat/persona-bundle.js";
+import { parsePersonaBundle, serializePersonaBundle } from "../chat/persona-bundle.js";
 import type { EmbeddingsClient } from "../../infrastructure/chat/openai-embeddings-client.js";
 
 export class GuildAssetError extends Error {
@@ -71,7 +71,10 @@ export class GuildAssetStore {
     await rm(target, { force: true });
   }
 
-  public async savePersonality(guildId: string, attachment: Attachment): Promise<string> {
+  public async savePersonality(
+    guildId: string,
+    attachment: Attachment,
+  ): Promise<{ assetPath: string; loreHeadings: readonly string[] }> {
     // Discord may report Markdown attachments as application/octet-stream.
     // The extension, bounded download size, and decoded non-empty text are the
     // dependable validation signals here.
@@ -94,24 +97,34 @@ export class GuildAssetStore {
     const temporary = `${target}.tmp`;
     await writeFile(temporary, `${content}\n`, "utf8");
     await rename(temporary, target);
-    await this.compilePersonalityBundle(directory, guildId, content);
-    return `${relativeDirectory}/personality.md`;
+    const loreHeadings = await this.compilePersonalityBundle(directory, guildId, content);
+    return { assetPath: `${relativeDirectory}/personality.md`, loreHeadings };
   }
 
   // Best-effort — a compilation failure must never fail the upload itself,
   // it just means this guild keeps sending the full personality file until
   // the next successful upload (see PersonaBundleCompiler, FilePersonaSource).
-  private async compilePersonalityBundle(directory: string, guildId: string, content: string): Promise<void> {
-    if (!this.personaBundleCompiler) return;
+  // Returns the headings the classifier moved out of the always-sent core
+  // into situational lore, so the admin who just uploaded this file can see
+  // which sections are no longer sent on every turn (see chatbot-setting.ts) —
+  // otherwise a misclassified identity section only silently shows up some
+  // turns, with nothing surfacing the split at upload time.
+  private async compilePersonalityBundle(directory: string, guildId: string, content: string): Promise<readonly string[]> {
+    if (!this.personaBundleCompiler) return [];
     try {
-      const bundle = await this.personaBundleCompiler.compile(content);
-      if (!bundle) return;
+      const previousBundle = parsePersonaBundle(
+        await readFile(resolve(directory, "personality.bundle.json"), "utf8").catch(() => "null"),
+      );
+      const bundle = await this.personaBundleCompiler.compile(content, previousBundle);
+      if (!bundle) return [];
       const target = resolve(directory, "personality.bundle.json");
       const temporary = `${target}.tmp`;
       await writeFile(temporary, serializePersonaBundle(bundle), "utf8");
       await rename(temporary, target);
+      return bundle.chunks.map((chunk) => chunk.heading);
     } catch (error) {
       this.logger?.warn({ error, guildId }, "Writing the compiled personality bundle failed; the full file will be sent as-is");
+      return [];
     }
   }
 

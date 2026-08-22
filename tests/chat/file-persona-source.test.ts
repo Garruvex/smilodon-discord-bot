@@ -158,7 +158,8 @@ describe("FilePersonaSource", () => {
     const runtimeDirectory = mkdtempSync(join(tmpdir(), "persona-source-"));
     temporaryDirectories.push(runtimeDirectory);
     const driftStore = new PersonaDriftStore(runtimeDirectory);
-    await driftStore.evolve(guildId, "A little more playful lately.");
+    const personalityHash = createHash("sha256").update(defaultPersonality, "utf8").digest("hex");
+    await driftStore.evolve(guildId, "A little more playful lately.", personalityHash);
     const source = new FilePersonaSource(runtimeDirectory, logger(), driftStore);
 
     const resolved = await source.resolve(profile({ personaDriftEnabled: true }));
@@ -170,10 +171,23 @@ describe("FilePersonaSource", () => {
     const runtimeDirectory = mkdtempSync(join(tmpdir(), "persona-source-"));
     temporaryDirectories.push(runtimeDirectory);
     const driftStore = new PersonaDriftStore(runtimeDirectory);
-    await driftStore.evolve(guildId, "A little more playful lately.");
+    const personalityHash = createHash("sha256").update(defaultPersonality, "utf8").digest("hex");
+    await driftStore.evolve(guildId, "A little more playful lately.", personalityHash);
     const source = new FilePersonaSource(runtimeDirectory, logger(), driftStore);
 
     const resolved = await source.resolve(profile({ personaDriftEnabled: false }));
+
+    expect(resolved.personaDrift).toBeNull();
+  });
+
+  it("discards persona drift whose personalitySourceHash no longer matches the current personality content", async () => {
+    const runtimeDirectory = mkdtempSync(join(tmpdir(), "persona-source-"));
+    temporaryDirectories.push(runtimeDirectory);
+    const driftStore = new PersonaDriftStore(runtimeDirectory);
+    await driftStore.evolve(guildId, "A little more playful lately.", "stale-personality-hash");
+    const source = new FilePersonaSource(runtimeDirectory, logger(), driftStore);
+
+    const resolved = await source.resolve(profile({ personaDriftEnabled: true }));
 
     expect(resolved.personaDrift).toBeNull();
   });

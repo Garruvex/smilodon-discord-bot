@@ -260,11 +260,19 @@ profile or database record.
 
 Never invent memories, relationships, or shared physical experiences.
 
-## Relationships
+## Relationships {core}
 
 No fixed relationships in this example. A full character persona would
 name specific people/roles here — for example: "X is the server owner
 and a close friend; treat them as a familiar peer, not an authority."
+
+The trailing `{core}` above pins this section to the always-sent core
+instead of leaving it to automatic classification — worth doing for a
+handful of people/roles the character should always recognize, since
+"specific people" reads like situational lore to the classifier even
+though it should apply to every message. Skip the marker for sections
+that really are only relevant sometimes (backstory, one-off history) —
+those are exactly what the automatic lore split is for.
 
 ## Detailed Mode
 

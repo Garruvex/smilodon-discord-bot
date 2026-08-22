@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { PersonaDriftStore } from "../../src/application/chat/persona-drift-store.js";
 
 const guildId = "123456789012345678";
+const personalityHash = "hash-v1";
 const temporaryDirectories: string[] = [];
 
 afterEach(() => {
@@ -31,7 +32,7 @@ describe("PersonaDriftStore", () => {
   it("persists and reads back an evolved drift text", async () => {
     const { store: driftStore } = store();
 
-    await driftStore.evolve(guildId, "A little more playful lately.");
+    await driftStore.evolve(guildId, "A little more playful lately.", personalityHash);
     const state = await driftStore.get(guildId);
 
     expect(state?.text).toBe("A little more playful lately.");
@@ -41,8 +42,8 @@ describe("PersonaDriftStore", () => {
   it("appends the previous text to history on each subsequent evolve", async () => {
     const { store: driftStore } = store();
 
-    await driftStore.evolve(guildId, "First mood.");
-    await driftStore.evolve(guildId, "Second mood.");
+    await driftStore.evolve(guildId, "First mood.", personalityHash);
+    await driftStore.evolve(guildId, "Second mood.", personalityHash);
     const state = await driftStore.get(guildId);
 
     expect(state?.text).toBe("Second mood.");
@@ -58,14 +59,14 @@ describe("PersonaDriftStore", () => {
     const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
     const seenCurrentTexts: string[] = [];
 
-    const first = driftStore.evolveFrom(guildId, async (currentText) => {
+    const first = driftStore.evolveFrom(guildId, personalityHash, async (currentText) => {
       seenCurrentTexts.push(currentText);
       markFirstStarted();
       await firstGate;
       return "First mood.";
     });
     await firstStarted;
-    const second = driftStore.evolveFrom(guildId, (currentText) => {
+    const second = driftStore.evolveFrom(guildId, personalityHash, (currentText) => {
       seenCurrentTexts.push(currentText);
       return Promise.resolve("Second mood.");
     });
@@ -80,10 +81,27 @@ describe("PersonaDriftStore", () => {
     });
   });
 
+  it("evolveFrom starts fresh (empty currentText) when the stored drift's personalitySourceHash no longer matches", async () => {
+    const { store: driftStore } = store();
+    await driftStore.evolve(guildId, "Old mood from the old personality.", "hash-v1");
+
+    const seenCurrentTexts: string[] = [];
+    await driftStore.evolveFrom(guildId, "hash-v2", (currentText) => {
+      seenCurrentTexts.push(currentText);
+      return Promise.resolve("New mood.");
+    });
+
+    expect(seenCurrentTexts).toEqual([""]);
+    await expect(driftStore.get(guildId)).resolves.toMatchObject({
+      text: "New mood.",
+      personalitySourceHash: "hash-v2",
+    });
+  });
+
   it("clears both text and history on reset", async () => {
     const { store: driftStore } = store();
-    await driftStore.evolve(guildId, "First mood.");
-    await driftStore.evolve(guildId, "Second mood.");
+    await driftStore.evolve(guildId, "First mood.", personalityHash);
+    await driftStore.evolve(guildId, "Second mood.", personalityHash);
 
     await driftStore.reset(guildId);
 

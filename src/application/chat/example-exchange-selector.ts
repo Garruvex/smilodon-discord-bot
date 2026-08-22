@@ -1,3 +1,5 @@
+import type { Logger } from "pino";
+
 import { exampleExchangeLimits } from "./example-exchange.js";
 import type { ExampleExchange } from "./example-exchange.js";
 import type { ChatHistoryMessage, ChatUser } from "./chat-provider.js";
@@ -59,7 +61,10 @@ export class FullExampleExchangeSelector implements ExampleExchangeSelector {
  * char budget instead of injecting the full example set unconditionally.
  */
 export class RelevantExampleExchangeSelector implements ExampleExchangeSelector {
-  public constructor(private readonly embeddingsClient: EmbeddingsClient | null = null) {}
+  public constructor(
+    private readonly embeddingsClient: EmbeddingsClient | null = null,
+    private readonly logger: Logger | null = null,
+  ) {}
 
   public async select(input: ExampleExchangeSelectionInput): Promise<readonly ExampleExchange[]> {
     if (input.records.length === 0) return input.records;
@@ -84,9 +89,8 @@ export class RelevantExampleExchangeSelector implements ExampleExchangeSelector 
           );
           rankings.push(embeddingOrder);
         }
-      } catch {
-        // Embedding the current message failed — fall back to lexical-only
-        // ranking rather than failing the turn.
+      } catch (error) {
+        this.logger?.debug({ error }, "Embedding the current message failed; example exchange selection falling back to lexical-only ranking");
       }
     }
     const fusedScore = reciprocalRankFusion(rankings);
