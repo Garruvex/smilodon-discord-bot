@@ -1,5 +1,10 @@
 # Architecture
 
+For concrete, step-by-step traces of how a request actually moves through the
+code (command dispatch, music playback, guild setup, mention chat, and
+channel-context memory), see [System Flows](system-flows.md). This document
+covers boundaries and invariants; that one covers call order.
+
 ## Dependency direction
 
 The project uses explicit boundaries so Discord and Lavalink remain adapters,
