@@ -1,16 +1,19 @@
-import { AttachmentBuilder, EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { AttachmentBuilder, EmbedBuilder } from "discord.js";
 
 import { CommandModule, CommandResponseVisibility, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
 
 export class QaCommand implements BotCommand {
-  public readonly definition = new SlashCommandBuilder()
-    .setName("qa")
-    .setDescription("Posts a question-and-answer embed.")
-    .addStringOption((option) => option.setName("question").setDescription("The question.").setMaxLength(256).setRequired(true))
-    .addStringOption((option) => option.setName("answer").setDescription("The answer.").setMaxLength(1_000).setRequired(true))
-    .addAttachmentOption((option) => option.setName("image").setDescription("An image to attach."))
-    .addBooleanOption((option) => option.setName("spoiler").setDescription("Hide the answer and image behind a spoiler."));
+  public readonly definition = {
+    name: "qa",
+    description: "Posts a question-and-answer embed.",
+    options: [
+      { type: "string", name: "question", description: "The question.", maxLength: 256, required: true },
+      { type: "string", name: "answer", description: "The answer.", maxLength: 1_000, required: true },
+      { type: "attachment", name: "image", description: "An image to attach." },
+      { type: "boolean", name: "spoiler", description: "Hide the answer and image behind a spoiler." },
+    ],
+  } satisfies BotCommand["definition"];
 
   public readonly module = CommandModule.Common;
   public readonly access = publicAccessPolicy;

@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { loadInstanceEnvironment } from "../config/instance-environment.js";
 
 const name = process.argv[2];
-if (!name) throw new Error("Provide the default instance name, for example: pinecone");
+if (!name) throw new Error("Provide the default instance name, for example: myinstance");
 const instance = loadInstanceEnvironment(name);
 for (const key of ["DISCORD_TOKEN", "DISCORD_APPLICATION_ID", "BOT_OWNER_IDS"] as const) {
   if (!instance.environment[key]) throw new Error(`Instance "${name}" is missing ${key}.`);

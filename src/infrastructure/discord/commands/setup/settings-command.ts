@@ -1,6 +1,6 @@
-import { SlashCommandBuilder, type SlashCommandSubcommandsOnlyBuilder } from "discord.js";
-
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
+import type { CommandMetadata, SubcommandGroupMetadata } from "../../../../application/commands/command-metadata.js";
+import type { ChatToolRegistry } from "../../../../application/chat/tools/chat-tool-registry.js";
 import type { UpdateGuildConfigurationInput, GuildConfigurationProvider } from "../../../../config/guild-configuration-provider.js";
 import type { GuildConfiguration } from "../../../../config/guild-configuration.js";
 import { RoleMatchMode, publicAccessPolicy } from "../../../../domain/access/access-policy.js";
@@ -8,6 +8,8 @@ import type { GuildAssetStore } from "../../../../application/assets/guild-asset
 import type { ControlChannelService } from "../../../../application/control-panel/control-channel-service.js";
 import type { ApplicationEmojiCatalog } from "../../application-emoji-catalog.js";
 import type { AuditLogService } from "../../../../application/audit/audit-log-service.js";
+import type { PersonaDriftStore } from "../../../../application/chat/persona-drift-store.js";
+import type { ChannelSummaryCheckpointStore } from "../../../../application/context/channel-summary-checkpoint-store.js";
 import {
   settingDefinitionsByName,
   settingGroups,
@@ -17,23 +19,21 @@ import {
 } from "./settings/index.js";
 import { renderProgressPreview } from "./settings/settings-support.js";
 
-function buildDefinition(): SlashCommandSubcommandsOnlyBuilder {
-  let builder: SlashCommandSubcommandsOnlyBuilder = new SlashCommandBuilder()
-    .setName("settings")
-    .setDescription("Updates this server's bot configuration.");
-  for (const group of settingGroups) {
-    builder = builder.addSubcommandGroup((g) => {
-      g.setName(group.name).setDescription(group.description);
-      for (const setting of group.settings) {
-        g.addSubcommand((sub) => {
-          const named = sub.setName(setting.name).setDescription(setting.description);
-          return setting.configureOptions ? setting.configureOptions(named) : named;
-        });
-      }
-      return g;
-    });
-  }
-  return builder;
+function buildDefinition(): CommandMetadata {
+  const subcommandGroups: SubcommandGroupMetadata[] = settingGroups.map((group) => ({
+    name: group.name,
+    description: group.description,
+    subcommands: group.settings.map((setting) => ({
+      name: setting.name,
+      description: setting.description,
+      options: setting.configureOptions?.() ?? [],
+    })),
+  }));
+  return {
+    name: "settings",
+    description: "Updates this server's bot configuration.",
+    subcommandGroups,
+  };
 }
 
 // The slash-command definition, per-subcommand dispatch, and confirmation
@@ -59,14 +59,24 @@ export class SettingsCommand implements BotCommand {
     private readonly assets: GuildAssetStore,
     private readonly applicationEmojiCatalog: ApplicationEmojiCatalog,
     private readonly auditLogService?: AuditLogService,
+    personaDriftStore?: PersonaDriftStore,
+    channelSummaryCheckpointStore?: ChannelSummaryCheckpointStore,
+    channelSummaryProviderAvailable = false,
   ) {
-    this.deps = auditLogService
-      ? { assets, applicationEmojiCatalog, auditLogService }
-      : { assets, applicationEmojiCatalog };
+    this.deps = { assets, applicationEmojiCatalog, channelSummaryProviderAvailable };
+    if (auditLogService) this.deps.auditLogService = auditLogService;
+    if (personaDriftStore) this.deps.personaDriftStore = personaDriftStore;
+    if (channelSummaryCheckpointStore) this.deps.channelSummaryCheckpointStore = channelSummaryCheckpointStore;
   }
 
   public bindControlChannelService(service: ControlChannelService): void {
     this.controlChannelService = service;
+  }
+
+  // See SettingDeps.chatToolRegistry — called once dependencies.ts has
+  // derived the registry from every registered command's toolBinding.
+  public bindChatToolRegistry(chatToolRegistry: ChatToolRegistry): void {
+    this.deps.chatToolRegistry = chatToolRegistry;
   }
 
   public async execute(context: CommandContext): Promise<void> {
@@ -107,7 +117,13 @@ export class SettingsCommand implements BotCommand {
     ) {
       await this.assets.removePersonality(previousProfile.chat.personalityAsset);
     }
-    const description = this.describeUpdate(setting, previousProfile, updatedProfile, input);
+    if (
+      previousProfile.chat.examplesAsset &&
+      previousProfile.chat.examplesAsset !== updatedProfile.chat.examplesAsset
+    ) {
+      await this.assets.removeExamples(previousProfile.chat.examplesAsset);
+    }
+    const description = this.describeUpdate(setting, previousProfile, updatedProfile, input, result.extraLines ?? []);
     await this.auditLogService?.log(
       context.interaction.guildId,
       context.interaction.user.id,
@@ -156,12 +172,14 @@ export class SettingsCommand implements BotCommand {
     previousProfile: GuildConfiguration,
     updatedProfile: GuildConfiguration,
     input: UpdateGuildConfigurationInput,
+    handlerExtraLines: readonly string[],
   ): string {
     const custom = setting.describe?.(previousProfile, updatedProfile, input) ?? null;
-    if (custom !== null) return custom;
+    if (custom !== null) return handlerExtraLines.length > 0 ? [custom, ...handlerExtraLines].join("\n") : custom;
     const diffLines = [
       ...this.describeFieldChanges(previousProfile, updatedProfile, setting.fieldChanges ?? []),
       ...(setting.extraLines?.(previousProfile, updatedProfile) ?? []),
+      ...handlerExtraLines,
     ];
     if (diffLines.length === 0) return "Server settings updated.";
     const lines = ["Server settings updated.", ...diffLines];

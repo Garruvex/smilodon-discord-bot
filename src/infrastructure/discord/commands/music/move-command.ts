@@ -1,23 +1,16 @@
-import { SlashCommandBuilder } from "discord.js";
-
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import type { PlaybackService } from "../../../../application/music/playback-service.js";
 import { createPlaybackActor, musicPlaybackAccessPolicy } from "./music-command-support.js";
 
 export class MoveCommand implements BotCommand {
-  public readonly definition = new SlashCommandBuilder()
-    .setName("move")
-    .setDescription("Moves a queued track to a different position.")
-    .addIntegerOption((option) => option
-      .setName("track")
-      .setDescription("The queue position of the track to move, starting at 1.")
-      .setMinValue(1)
-      .setRequired(true))
-    .addIntegerOption((option) => option
-      .setName("position")
-      .setDescription("The queue position to move it to, starting at 1.")
-      .setMinValue(1)
-      .setRequired(true));
+  public readonly definition = {
+    name: "move",
+    description: "Moves a queued track to a different position.",
+    options: [
+      { type: "integer", name: "track", description: "The queue position of the track to move, starting at 1.", minValue: 1, required: true },
+      { type: "integer", name: "position", description: "The queue position to move it to, starting at 1.", minValue: 1, required: true },
+    ],
+  } satisfies BotCommand["definition"];
   public readonly module = CommandModule.Music;
   public readonly access = musicPlaybackAccessPolicy;
 

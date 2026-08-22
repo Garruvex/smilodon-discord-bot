@@ -1,18 +1,15 @@
-import { SlashCommandBuilder } from "discord.js";
-
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import type { PlaybackService } from "../../../../application/music/playback-service.js";
 import { createPlaybackActor, musicPlaybackAccessPolicy } from "./music-command-support.js";
 
 export class SkipToCommand implements BotCommand {
-  public readonly definition = new SlashCommandBuilder()
-    .setName("skipto")
-    .setDescription("Skips ahead to a specific track in the queue.")
-    .addIntegerOption((option) => option
-      .setName("position")
-      .setDescription("Queue position, starting at 1.")
-      .setMinValue(1)
-      .setRequired(true));
+  public readonly definition = {
+    name: "skipto",
+    description: "Skips ahead to a specific track in the queue.",
+    options: [
+      { type: "integer", name: "position", description: "Queue position, starting at 1.", minValue: 1, required: true },
+    ],
+  } satisfies BotCommand["definition"];
   public readonly module = CommandModule.Music;
   public readonly access = musicPlaybackAccessPolicy;
 

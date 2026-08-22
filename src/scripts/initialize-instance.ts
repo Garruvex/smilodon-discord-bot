@@ -5,7 +5,7 @@ import { loadSharedEnvironment } from "../config/instance-environment.js";
 
 const name = process.argv[2];
 if (!name || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(name)) {
-  throw new Error("Provide a safe instance name, for example: pinecone");
+  throw new Error("Provide a safe instance name, for example: myinstance");
 }
 const source = loadSharedEnvironment();
 const required = ["DISCORD_TOKEN", "DISCORD_APPLICATION_ID", "BOT_OWNER_IDS"] as const;
@@ -23,7 +23,6 @@ const values = [
   `BOT_OWNER_IDS=${source.BOT_OWNER_IDS}`,
   "",
   `PERSISTENCE_DRIVER=${source.PERSISTENCE_DRIVER ?? "file"}`,
-  `DATABASE_URL=${source.DATABASE_URL ?? ""}`,
   `GUILD_CONFIG_DIRECTORY=${source.GUILD_CONFIG_DIRECTORY ?? "./config/local/guilds"}`,
   `RUNTIME_DATA_DIRECTORY=${source.RUNTIME_DATA_DIRECTORY ?? "./data/local"}`,
   "",

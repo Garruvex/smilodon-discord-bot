@@ -1,4 +1,3 @@
-import type { PermissionResolvable } from "discord.js";
 import type { RoleGroupName } from "../../config/guild-configuration.js";
 
 export enum RoleMatchMode {
@@ -17,8 +16,12 @@ export interface CommandAccessPolicy {
   ownerOnly: boolean;
   ownerBypass: boolean;
   roles: RoleAccessPolicy;
-  requiredMemberPermissions: readonly PermissionResolvable[];
-  requiredBotPermissions: readonly PermissionResolvable[];
+  // Discord permission bitflags (e.g. PermissionFlagsBits.ManageGuild) — a
+  // plain bigint, not the discord.js PermissionResolvable type, so this
+  // domain type carries no discord.js dependency. All must be granted (AND,
+  // not OR) — see access-rules.ts's hasAllPermissions.
+  requiredMemberPermissions: readonly bigint[];
+  requiredBotPermissions: readonly bigint[];
   allowedChannelIds: readonly string[];
 }
 

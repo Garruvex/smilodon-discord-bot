@@ -1,0 +1,41 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1787211472243,
+      "tag": "0000_rainy_eddie_brock",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1787257002564,
+      "tag": "0001_groovy_jimmy_woo",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1787310660671,
+      "tag": "0002_blue_multiple_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1787329296946,
+      "tag": "0003_bored_the_captain",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1787375568596,
+      "tag": "0004_familiar_lethal_legion",
+      "breakpoints": true
+    }
+  ]
+}

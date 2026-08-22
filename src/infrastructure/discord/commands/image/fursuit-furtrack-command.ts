@@ -1,4 +1,4 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { EmbedBuilder } from "discord.js";
 import { z } from "zod";
 
 import { CommandModule, CommandResponseVisibility, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
@@ -45,13 +45,18 @@ function shuffled<T>(items: readonly T[]): T[] {
 }
 
 export class FursuitFurtrackCommand implements BotCommand {
-  public readonly definition = new SlashCommandBuilder()
-    .setName("fursuit-furtrack")
-    .setDescription("Gets a random fursuit photo from furtrack.com.")
-    .addStringOption((option) => option
-      .setName("tag")
-      .setDescription("Tag to search for (default: fursuit).")
-      .setMaxLength(100));
+  public readonly definition = {
+    name: "fursuit-furtrack",
+    description: "Gets a random fursuit photo from furtrack.com.",
+    options: [
+      {
+        type: "string",
+        name: "tag",
+        description: "Tag to search for (default: fursuit).",
+        maxLength: 100,
+      },
+    ],
+  } satisfies BotCommand["definition"];
 
   public readonly module = CommandModule.Common;
   public readonly access = publicAccessPolicy;

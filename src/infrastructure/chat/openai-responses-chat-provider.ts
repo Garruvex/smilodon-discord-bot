@@ -8,19 +8,49 @@ import {
   type ChatResponse,
   type ChatResponseObserver,
   type ChatSource,
+  type DroppedExchangeFact,
   type UserCustomizationAnalysisResult,
 } from "../../application/chat/chat-provider.js";
+import type { ChannelSummaryFact, ChannelSummaryMessage } from "../../application/context/channel-message-summarizer.js";
 import type { ChatTool, ChatToolContext, ChatToolResult } from "../../application/chat/tools/chat-tool.js";
 import { buildChatContext, buildChatInstructions, chatModelJsonSchema, parseChatModelOutput } from "./chat-structured-output.js";
+import {
+  channelMessageSummaryMaxOutputTokens,
+  channelMessageSummaryJsonSchema,
+  prepareChannelMessageSummary,
+} from "./channel-message-summarization.js";
+import {
+  buildDroppedExchangeConsolidationPrompt,
+  droppedExchangeConsolidationJsonSchema,
+  parseDroppedExchangeConsolidationOutput,
+} from "./dropped-exchange-consolidation.js";
+import {
+  buildMemoryConflictClassificationPrompt,
+  memoryConflictClassificationJsonSchema,
+  parseMemoryConflictClassificationOutput,
+} from "./memory-conflict-classification.js";
 import { ModelFallbackChain } from "./model-fallback-chain.js";
+import {
+  buildPersonaBundleCompilationPrompt,
+  personaBundleCompilationJsonSchema,
+  personaBundleCompilationMaxOutputTokens,
+  personaBundleCompilationTimeoutMs,
+  parsePersonaBundleSectionSelection,
+} from "./persona-bundle-compilation.js";
+import {
+  buildPersonaDriftEvolutionPrompt,
+  personaDriftEvolutionJsonSchema,
+  parsePersonaDriftEvolutionOutput,
+} from "./persona-drift-evolution.js";
 import {
   buildUserCustomizationAnalysisPrompt,
   parseUserCustomizationAnalysisOutput,
-  renderUserCustomizationMarkdown,
   userCustomizationAnalysisJsonSchema,
 } from "./user-customization-analysis.js";
 
 const responseSchema = z.object({
+  status: z.enum(["completed", "failed", "in_progress", "cancelled", "queued", "incomplete"]).optional(),
+  incomplete_details: z.object({ reason: z.string() }).nullable().optional(),
   output: z.array(z.object({
     type: z.string(),
     result: z.string().optional(),
@@ -76,7 +106,7 @@ const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a
 // Bounds how many times a single reply can round-trip through the model to
 // execute tool calls before forcing a final answer, so a model stuck calling
 // tools in a loop can't run away on latency/cost.
-const maxToolRoundTrips = 3;
+const maxToolRoundTrips = 6;
 const toolExecutionTimeoutMs = 10_000;
 const toolBudgetExhaustedMessage = JSON.stringify({
   error: "Tool call budget exhausted. Do not call any more tools — answer now with what you already have, noting any gaps.",
@@ -91,6 +121,10 @@ interface FunctionCallOutputItem {
 
 export class OpenAiResponsesChatProvider implements ChatProvider {
   private readonly modelChain: ModelFallbackChain;
+  // Separate chain for the two standalone structured-output calls (own
+  // prompt/schema, outside the main reply turn) — falls back to the primary
+  // chain when the caller doesn't configure a cheaper summary model.
+  private readonly summaryModelChain: ModelFallbackChain;
 
   public constructor(
     private readonly baseUrl: string,
@@ -100,9 +134,13 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
       reasoningEffort: "minimal" | "low" | "medium" | "high";
       verbosity: "low" | "medium" | "high";
       maxOutputTokens: number;
+      summaryModels?: readonly string[];
+      summaryMaxOutputTokens?: number;
+      summaryReasoningEffort?: "minimal" | "low" | "medium" | "high";
     },
   ) {
     this.modelChain = new ModelFallbackChain(models);
+    this.summaryModelChain = new ModelFallbackChain(generation.summaryModels ?? models);
   }
 
   public async reply(
@@ -125,11 +163,16 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
     const customTools = request.enabledTools ?? [];
     const toolContext: ChatToolContext = {
       guildId: request.guildId,
+      channelId: request.channelId,
       currentUser: request.currentUser,
       channelIsNsfw: request.channelIsNsfw ?? false,
+      isOwner: request.isOwner ?? false,
       music: request.musicActor
         ? {
             actor: request.musicActor,
+            resolveAccessSubjectFields: request.musicResolveAccessSubjectFields
+              ?? ((): { roleIds: readonly string[]; memberPermissions: bigint; botPermissions: bigint | null } =>
+                ({ roleIds: [], memberPermissions: 0n, botPermissions: null })),
             volumeMaximum: request.musicVolumeMaximum ?? 150,
             musicControllerRoleIds: request.musicControllerRoleIds ?? new Set(),
             botAdministratorRoleIds: request.musicBotAdministratorRoleIds ?? new Set(),
@@ -286,7 +329,7 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
   }
 
   public async analyzeUserCustomization(rawText: string): Promise<UserCustomizationAnalysisResult> {
-    const body = await this.modelChain.run(async (model) => {
+    const body = await this.summaryModelChain.run(async (model) => {
       const response = await fetch(`${this.baseUrl}/responses`, {
         method: "POST",
         headers: {
@@ -332,11 +375,257 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
     if (!analysis.ok) {
       return { ok: false, reason: analysis.reason ?? "That file couldn't be accepted as a customization." };
     }
-    const markdown = renderUserCustomizationMarkdown(analysis);
+    const markdown = analysis.cleanedMarkdown?.trim();
     if (!markdown) {
       return { ok: false, reason: "No usable style preferences were found in that file." };
     }
     return { ok: true, markdown };
+  }
+
+  public async summarizeDroppedExchanges(
+    exchanges: readonly { user: string; assistant: string }[],
+  ): Promise<readonly DroppedExchangeFact[]> {
+    const body = await this.summaryModelChain.run(async (model) => {
+      const response = await fetch(`${this.baseUrl}/responses`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          instructions: buildDroppedExchangeConsolidationPrompt(exchanges),
+          input: [{ role: "user", content: [{ type: "input_text", text: "Extract facts per the instructions." }] }],
+          reasoning: { effort: this.generation.reasoningEffort },
+          text: {
+            verbosity: this.generation.verbosity,
+            format: { type: "json_schema", name: "dropped_exchange_consolidation", strict: true, schema: droppedExchangeConsolidationJsonSchema },
+          },
+          max_output_tokens: this.generation.maxOutputTokens,
+        }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!response.ok) {
+        const errorBody: unknown = await response.json().catch(() => null);
+        const parsedError = errorResponseSchema.safeParse(errorBody);
+        const code = parsedError.success
+          ? (parsedError.data.error.code ?? parsedError.data.error.type ?? null)
+          : null;
+        throw new ChatProviderError(
+          `Chat provider returned HTTP ${response.status}${code ? ` (${code})` : ""}.`,
+          response.status,
+          code,
+        );
+      }
+      return response.json();
+    });
+    const parsed = responseSchema.parse(body);
+    const texts: string[] = [];
+    for (const item of parsed.output) {
+      if (item.type !== "message") continue;
+      for (const part of item.content ?? []) {
+        if (part.type === "output_text" && part.text) texts.push(part.text);
+      }
+    }
+    return parseDroppedExchangeConsolidationOutput(texts.join("\n").trim()).facts;
+  }
+
+  public async classifyMemoryConflict(existingStatement: string, newStatement: string): Promise<boolean> {
+    const body = await this.summaryModelChain.run(async (model) => {
+      const response = await fetch(`${this.baseUrl}/responses`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          instructions: buildMemoryConflictClassificationPrompt(existingStatement, newStatement),
+          input: [{ role: "user", content: [{ type: "input_text", text: "Classify per the instructions." }] }],
+          reasoning: { effort: this.generation.reasoningEffort },
+          text: {
+            verbosity: this.generation.verbosity,
+            format: { type: "json_schema", name: "memory_conflict_classification", strict: true, schema: memoryConflictClassificationJsonSchema },
+          },
+          max_output_tokens: this.generation.maxOutputTokens,
+        }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!response.ok) {
+        const errorBody: unknown = await response.json().catch(() => null);
+        const parsedError = errorResponseSchema.safeParse(errorBody);
+        const code = parsedError.success
+          ? (parsedError.data.error.code ?? parsedError.data.error.type ?? null)
+          : null;
+        throw new ChatProviderError(
+          `Chat provider returned HTTP ${response.status}${code ? ` (${code})` : ""}.`,
+          response.status,
+          code,
+        );
+      }
+      return response.json();
+    });
+    const parsed = responseSchema.parse(body);
+    const texts: string[] = [];
+    for (const item of parsed.output) {
+      if (item.type !== "message") continue;
+      for (const part of item.content ?? []) {
+        if (part.type === "output_text" && part.text) texts.push(part.text);
+      }
+    }
+    return parseMemoryConflictClassificationOutput(texts.join("\n").trim()).related;
+  }
+
+  public async compilePersonaBundle(content: string): Promise<readonly number[]> {
+    const body = await this.summaryModelChain.run(async (model) => {
+      const response = await fetch(`${this.baseUrl}/responses`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          instructions: buildPersonaBundleCompilationPrompt(content),
+          input: [{ role: "user", content: [{ type: "input_text", text: "Split the file per the instructions." }] }],
+          reasoning: { effort: this.generation.reasoningEffort },
+          text: {
+            verbosity: this.generation.verbosity,
+            format: { type: "json_schema", name: "persona_bundle_compilation", strict: true, schema: personaBundleCompilationJsonSchema },
+          },
+          max_output_tokens: personaBundleCompilationMaxOutputTokens,
+        }),
+        signal: AbortSignal.timeout(personaBundleCompilationTimeoutMs),
+      });
+      if (!response.ok) {
+        const errorBody: unknown = await response.json().catch(() => null);
+        const parsedError = errorResponseSchema.safeParse(errorBody);
+        const code = parsedError.success
+          ? (parsedError.data.error.code ?? parsedError.data.error.type ?? null)
+          : null;
+        throw new ChatProviderError(
+          `Chat provider returned HTTP ${response.status}${code ? ` (${code})` : ""}.`,
+          response.status,
+          code,
+        );
+      }
+      return response.json();
+    });
+    const parsed = responseSchema.parse(body);
+    const texts: string[] = [];
+    for (const item of parsed.output) {
+      if (item.type !== "message") continue;
+      for (const part of item.content ?? []) {
+        if (part.type === "output_text" && part.text) texts.push(part.text);
+      }
+    }
+    return [...parsePersonaBundleSectionSelection(texts.join("\n").trim(), content)];
+  }
+
+  public async evolvePersonaDrift(
+    currentText: string,
+    exchanges: readonly { user: string; assistant: string }[],
+  ): Promise<string> {
+    const body = await this.summaryModelChain.run(async (model) => {
+      const response = await fetch(`${this.baseUrl}/responses`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          instructions: buildPersonaDriftEvolutionPrompt(currentText, exchanges),
+          input: [{ role: "user", content: [{ type: "input_text", text: "Revise the drift text per the instructions." }] }],
+          reasoning: { effort: this.generation.reasoningEffort },
+          text: {
+            verbosity: this.generation.verbosity,
+            format: { type: "json_schema", name: "persona_drift_evolution", strict: true, schema: personaDriftEvolutionJsonSchema },
+          },
+          max_output_tokens: this.generation.maxOutputTokens,
+        }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!response.ok) {
+        const errorBody: unknown = await response.json().catch(() => null);
+        const parsedError = errorResponseSchema.safeParse(errorBody);
+        const code = parsedError.success
+          ? (parsedError.data.error.code ?? parsedError.data.error.type ?? null)
+          : null;
+        throw new ChatProviderError(
+          `Chat provider returned HTTP ${response.status}${code ? ` (${code})` : ""}.`,
+          response.status,
+          code,
+        );
+      }
+      return response.json();
+    });
+    const parsed = responseSchema.parse(body);
+    const texts: string[] = [];
+    for (const item of parsed.output) {
+      if (item.type !== "message") continue;
+      for (const part of item.content ?? []) {
+        if (part.type === "output_text" && part.text) texts.push(part.text);
+      }
+    }
+    return parsePersonaDriftEvolutionOutput(texts.join("\n").trim()).text;
+  }
+
+  public async summarizeChannelMessages(
+    guildId: string,
+    messages: readonly ChannelSummaryMessage[],
+  ): Promise<readonly ChannelSummaryFact[]> {
+    const summary = prepareChannelMessageSummary(guildId, messages);
+    return this.summaryModelChain.run(async (model) => {
+      const response = await fetch(`${this.baseUrl}/responses`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          instructions: summary.prompt,
+          input: [{ role: "user", content: [{ type: "input_text", text: "Extract facts per the instructions." }] }],
+          reasoning: { effort: this.generation.summaryReasoningEffort ?? this.generation.reasoningEffort },
+          text: {
+            verbosity: this.generation.verbosity,
+            format: { type: "json_schema", name: "channel_message_summary", strict: true, schema: channelMessageSummaryJsonSchema },
+          },
+          max_output_tokens: this.generation.summaryMaxOutputTokens ?? channelMessageSummaryMaxOutputTokens,
+        }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!response.ok) {
+        const errorBody: unknown = await response.json().catch(() => null);
+        const parsedError = errorResponseSchema.safeParse(errorBody);
+        const code = parsedError.success
+          ? (parsedError.data.error.code ?? parsedError.data.error.type ?? null)
+          : null;
+        throw new ChatProviderError(
+          `Chat provider returned HTTP ${response.status}${code ? ` (${code})` : ""}.`,
+          response.status,
+          code,
+        );
+      }
+      const parsed = responseSchema.parse(await response.json());
+      if (parsed.status === "incomplete") {
+        const reason = parsed.incomplete_details?.reason ?? "unknown";
+        throw new ChatProviderError(
+          `Chat provider returned an incomplete structured response (${reason}).`,
+          502,
+          "incomplete_response",
+        );
+      }
+      const texts: string[] = [];
+      for (const item of parsed.output) {
+        if (item.type !== "message") continue;
+        for (const part of item.content ?? []) {
+          if (part.type === "output_text" && part.text) texts.push(part.text);
+        }
+      }
+      return summary.parse(texts.join("\n").trim()).facts;
+    });
   }
 
   private async readStream(

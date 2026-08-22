@@ -1,13 +1,12 @@
-import { SlashCommandBuilder } from "discord.js";
-
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import type { PlaybackService } from "../../../../application/music/playback-service.js";
 import { createPlaybackActor, musicPlaybackAccessPolicy } from "./music-command-support.js";
 
 export class ReplayCommand implements BotCommand {
-  public readonly definition = new SlashCommandBuilder()
-    .setName("replay")
-    .setDescription("Restarts the current track from the beginning.");
+  public readonly definition = {
+    name: "replay",
+    description: "Restarts the current track from the beginning.",
+  };
   public readonly module = CommandModule.Music;
   public readonly access = musicPlaybackAccessPolicy;
 

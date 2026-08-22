@@ -1,4 +1,3 @@
-import type { GuildMember } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -113,9 +112,7 @@ function createActor(voiceChannelId: string | null = "voice-id"): PlaybackActor 
     guildId: "guild-id",
     textChannelId: "text-id",
     userId: "user-id",
-    member: {
-      voice: { channelId: voiceChannelId },
-    } as GuildMember,
+    voiceChannelId,
   };
 }
 

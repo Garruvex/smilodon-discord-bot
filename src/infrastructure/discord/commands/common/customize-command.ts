@@ -1,5 +1,3 @@
-import { SlashCommandBuilder } from "discord.js";
-
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
 import type { UserCustomizationStore } from "../../../../application/chat/user-customization-store.js";
@@ -7,28 +5,33 @@ import type { ChatProvider } from "../../../../application/chat/chat-provider.js
 import { userCustomizationLimits, validateUserCustomization } from "../../../../application/chat/user-customization-policy.js";
 
 export class CustomizeCommand implements BotCommand {
-  public readonly definition = new SlashCommandBuilder()
-    .setName("customize")
-    .setDescription("Customize how the chatbot interacts with you specifically. Its identity and rules stay the same.")
-    .addSubcommand((command) =>
-      command.setName("set").setDescription("Sets or replaces your customization from a Markdown file.")
-        .addAttachmentOption((option) =>
-          option.setName("file").setDescription("A .md file describing how you'd like the bot to interact with you.").setRequired(true),
-        ),
-    )
-    .addSubcommand((command) =>
-      command.setName("view").setDescription("Shows your current customization in this server."),
-    )
-    .addSubcommand((command) =>
-      command.setName("clear").setDescription("Clears your customization in this server. Does not affect memory."),
-    );
+  public readonly definition = {
+    name: "customize",
+    description: "Customize how the chatbot interacts with you specifically. Its identity and rules stay the same.",
+    subcommands: [
+      {
+        name: "set",
+        description: "Sets or replaces your customization from a Markdown file.",
+        options: [
+          { type: "attachment", name: "file", description: "A .md file describing how you'd like the bot to interact with you.", required: true },
+        ],
+      },
+      { name: "view", description: "Shows your current customization in this server." },
+      { name: "clear", description: "Clears your customization in this server. Does not affect memory." },
+    ],
+  } satisfies BotCommand["definition"];
 
   public readonly module = CommandModule.Common;
   public readonly access = publicAccessPolicy;
 
   public constructor(
     private readonly store: UserCustomizationStore,
-    private readonly chatProvider: ChatProvider | null,
+    // The utility provider (own credentials/model when UTILITY_* is
+    // configured, else the main chatbot provider as a fallback — see
+    // dependencies.ts) — analysis of a customization submission is exactly
+    // the kind of cheap structured-extraction task the utility split exists
+    // for, not the main persona model.
+    private readonly utilityProvider: ChatProvider | null,
   ) {}
 
   public async execute(context: CommandContext): Promise<void> {
@@ -96,13 +99,13 @@ export class CustomizeCommand implements BotCommand {
     // plain style-preference fields and strips anything that reads as an
     // attempt to redefine identity or override rules, rather than storing
     // the user's raw text verbatim.
-    if (!this.chatProvider?.analyzeUserCustomization) {
+    if (!this.utilityProvider?.analyzeUserCustomization) {
       await context.responses.edit("Chat isn't configured on this bot, so customization can't be reviewed right now.");
       return;
     }
     let markdown: string;
     try {
-      const analysis = await this.chatProvider.analyzeUserCustomization(validation.value);
+      const analysis = await this.utilityProvider.analyzeUserCustomization(validation.value);
       if (!analysis.ok) {
         await context.responses.edit(`That customization wasn't accepted: ${analysis.reason}`);
         return;

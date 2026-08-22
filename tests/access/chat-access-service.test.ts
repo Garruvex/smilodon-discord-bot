@@ -2,6 +2,7 @@ import type { GuildMember } from "discord.js";
 import { describe, expect, it } from "vitest";
 
 import { ChatAccessService } from "../../src/application/access/chat-access-service.js";
+import { defaultMemoryEngineLimits } from "../../src/application/memory/memory-engine.js";
 import type { ApplicationConfiguration } from "../../src/config/configuration.js";
 import type { GuildConfiguration } from "../../src/config/guild-configuration.js";
 
@@ -30,6 +31,9 @@ function configuration(): ApplicationConfiguration {
       secure: false,
     },
     chat: null,
+    utilityChat: null,
+    embeddings: null,
+    memory: defaultMemoryEngineLimits,
   };
 }
 
@@ -84,17 +88,19 @@ function profile(): GuildConfiguration {
     chat: {
       personalityFile: null,
       personalityAsset: null,
+      examplesFile: null,
+      examplesAsset: null,
       cooldownSeconds: 30,
       deniedMessage: "Premium required.",
       deniedLinkUrl: null,
       deniedLinkLabel: null,
-      webSearchMode: "off", toolCallingEnabled: false,
+      webSearchMode: "off", toolCallingEnabled: false, disabledTools: [],
       imageInputEnabled: false,
       imageGenerationEnabled: false,
       includeSources: true,
       maxImagesPerRequest: 2,
       ambientCooldownSeconds: 20,
-      channelHistoryLimit: 8,
+      channelHistoryLimit: 8, channelMemoryModes: {}, personaDriftEnabled: false, contextScanChannelIds: [], contextDailyChannelIds: [], contextSeedDays: 7,
     },
     sourceFile: "test.yaml",
   };

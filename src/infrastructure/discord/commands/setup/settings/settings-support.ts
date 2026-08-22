@@ -1,6 +1,7 @@
 import type { Guild, GuildEmoji } from "discord.js";
 
 import type { CommandContext } from "../../../../../application/commands/command.js";
+import type { CommandOptionChoice } from "../../../../../application/commands/command-metadata.js";
 import { renderProgressBar } from "../../../../../application/control-panel/progress-bar-renderer.js";
 import type {
   CustomProgressBarTheme,
@@ -23,16 +24,14 @@ export function setsDiffer(previous: ReadonlySet<string>, updated: ReadonlySet<s
   return previous.size !== updated.size || [...previous].some((id) => !updated.has(id));
 }
 
-export function addRoleGroupChoices<T extends { addChoices: (...choices: { name: string; value: string }[]) => T }>(
-  option: T,
-): T {
-  return option.addChoices(
-    { name: "Bot administrator (/settings)", value: "botAdministrator" },
-    { name: "Music controller (/play, panel, control channel)", value: "musicController" },
-    { name: "Restricted (deny music and chatbot)", value: "restricted" },
-    { name: "Chatbot (mention replies)", value: "chatbot" },
-  );
-}
+// Shared choice set for the "which role group" string option — reused by
+// role-membership-setting.ts's role-add/role-remove.
+export const roleGroupChoices: readonly CommandOptionChoice[] = [
+  { name: "Bot administrator (/settings)", value: "botAdministrator" },
+  { name: "Music controller (/play, panel, control channel)", value: "musicController" },
+  { name: "Restricted (deny music and chatbot)", value: "restricted" },
+  { name: "Chatbot (mention replies)", value: "chatbot" },
+];
 
 export function validateRoleGroupUpdate(
   profile: GuildConfiguration,

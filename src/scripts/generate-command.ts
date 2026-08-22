@@ -42,15 +42,14 @@ const accessExpression = moduleName === "music"
     : "publicAccessPolicy";
 const commandModule = `${moduleName[0]!.toUpperCase()}${moduleName.slice(1)}`;
 
-const source = `import { SlashCommandBuilder } from "discord.js";
-
-import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
+const source = `import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 ${accessImport}
 
 export class ${className} implements BotCommand {
-  public readonly definition = new SlashCommandBuilder()
-    .setName("${rawName}")
-    .setDescription(${JSON.stringify(description)});
+  public readonly definition = {
+    name: "${rawName}",
+    description: ${JSON.stringify(description)},
+  };
 
   public readonly module = CommandModule.${commandModule};
   public readonly access = ${accessExpression};

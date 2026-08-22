@@ -33,11 +33,15 @@ export class Application {
       chat: this.configuration.chat
         ? {
             configured: true,
-            apiMode: this.configuration.chat.mode,
+            provider: this.configuration.chat.provider,
             models: this.configuration.chat.models,
-            reasoningEffort: this.configuration.chat.reasoningEffort,
-            verbosity: this.configuration.chat.verbosity,
             maxOutputTokens: this.configuration.chat.maxOutputTokens,
+            ...(this.configuration.chat.provider === "openai-responses"
+              ? { reasoningEffort: this.configuration.chat.reasoningEffort, verbosity: this.configuration.chat.verbosity }
+              : {}),
+            ...(this.configuration.chat.provider === "gemini"
+              ? { thinkingBudget: this.configuration.chat.thinkingBudget }
+              : {}),
           }
         : { configured: false },
       guilds: profiles.map((profile) => ({
@@ -65,6 +69,7 @@ export class Application {
     this.controlChannelService.stop();
     this.musicPresenceService.stop();
     this.birthdayAnnouncer.stop();
+    this.dependencies.channelSummaryScheduler?.stop();
     this.dependencies.pollService.stop();
     await this.client.destroy();
   }
@@ -122,6 +127,7 @@ export class Application {
       });
       this.musicPresenceService.start();
       this.birthdayAnnouncer.start();
+      this.dependencies.channelSummaryScheduler?.start();
     });
 
     this.client.on(Events.Raw, (payload) => {

@@ -1,8 +1,16 @@
 import type { ChatTool } from "./tools/chat-tool.js";
+import type { ExampleExchange } from "./example-exchange.js";
 import type { PlaybackActor } from "../music/playback-service.js";
+import type { ChannelMessageSummarizer } from "../context/channel-message-summarizer.js";
 
 export interface ChatRequest {
   guildId: string;
+  // The Discord channel this turn is happening in — scopes guild-knowledge
+  // read/write and the recent-exchange session to this channel (see
+  // guild-knowledge-store.ts / chat-state-store.ts), and is surfaced to the
+  // model in <guild_context> so it can judge whether a proposed fact is
+  // durable/guild-wide or specific to this channel/scene.
+  channelId: string;
   // Optional: when non-empty, the provider offers these as callable
   // functions and executes them mid-turn (see ChatToolRegistry). Omitted
   // (or empty) means no tool calling for this turn — existing callers that
@@ -16,10 +24,37 @@ export interface ChatRequest {
   // resolvable member — see ChatTurnSupport.resolveMusicActor and
   // ChatToolContext.music for why the role gate itself isn't checked here.
   musicActor?: PlaybackActor | null;
+  // See ChatToolContext.music's resolveAccessSubjectFields — threaded
+  // through as a plain callback so it's still resolved fresh per tool call,
+  // not snapshotted here.
+  musicResolveAccessSubjectFields?: (() => {
+    roleIds: readonly string[];
+    memberPermissions: bigint;
+    botPermissions: bigint | null;
+  }) | undefined;
   musicVolumeMaximum?: number | undefined;
   musicControllerRoleIds?: ReadonlySet<string> | undefined;
   musicBotAdministratorRoleIds?: ReadonlySet<string> | undefined;
+  // Whether the invoking user is a configured bot owner — passed through to
+  // ChatToolContext.isOwner so a tool binding's access check (see
+  // AccessPolicyEngine) can grant the same owner bypass a slash command
+  // would. Defaults to false when omitted.
+  isOwner?: boolean;
   personality: string;
+  // Relevance-selected subset of the guild's persona lore chunks (see
+  // persona-lore-selector.ts) — empty for guilds without a compiled
+  // personality bundle (uncompiled, stale, or failed compile all fall back
+  // to sending the whole file as `personality` above instead).
+  personaLore: readonly PersonaLoreEntry[];
+  // The guild's current evolved "mood/quirk" overlay text (see
+  // persona-drift-store.ts), or null when the guild has the feature
+  // disabled or nothing has evolved yet. Never populated from anything
+  // other than PersonaDriftStore — the model never writes this directly.
+  personaDrift: string | null;
+  // Relevance-selected subset of the guild's uploaded example exchanges
+  // (see example-exchange-selector.ts) — empty for guilds that haven't
+  // uploaded an examples.md.
+  exampleExchanges: readonly ExampleExchange[];
   userCustomization: string | null;
   currentUser: ChatUser;
   mentionedUsers: readonly ChatUser[];
@@ -46,6 +81,11 @@ export interface ChatRequest {
   // message, not @mentioned — the model judges whether to ignore, react
   // with an emoji, or reply (see ChatResponse.ambientAction).
   triggerMode: "direct" | "ambient";
+}
+
+export interface PersonaLoreEntry {
+  heading: string;
+  text: string;
 }
 
 export interface ChatUser {
@@ -87,6 +127,10 @@ export interface ChatMemoryRecord {
   slot: string;
   statement: string;
   updatedAt: number;
+  // Null for a record written before vector recall was enabled, or when an
+  // embeddings call failed at write time — EmbeddingUserMemorySelector
+  // treats that as a 0 similarity contribution rather than an error.
+  embedding: number[] | null;
 }
 
 export interface ProposedMemoryAction {
@@ -106,7 +150,7 @@ export interface GuildKnowledgeRecord {
   topic: string;
   slot: string;
   statement: string;
-  source: "self_report" | "community" | "administrator";
+  source: "self_report" | "community" | "administrator" | "consolidation";
   updatedAt: number;
   // Null for a record written before vector recall was enabled, or when an
   // embeddings call failed at write time — EmbeddingGuildMemorySelector
@@ -120,6 +164,10 @@ export interface ProposedGuildKnowledgeCandidate {
   topic: string;
   slot: string;
   statement: string;
+  // Raw, model-authored signal — resolved into the real stored `channelId`
+  // by validateGuildKnowledgeCandidates, which is the only place that knows
+  // the current turn's actual channel.
+  channelScoped: boolean;
 }
 
 export interface ChatImage {
@@ -157,6 +205,7 @@ export interface ChatResponse {
   reactionEmoji: string | null;
   contextUsage?: {
     personalityChars: number;
+    personaLoreChars: number;
     userCustomizationChars: number;
     securityInstructionChars: number;
     memoryInstructionChars: number;
@@ -166,6 +215,8 @@ export interface ChatResponse {
     memoryChars: number;
     guildKnowledgeRecords: number;
     guildKnowledgeChars: number;
+    exampleExchangeRecords: number;
+    exampleExchangeChars: number;
     replyChainMessages: number;
     replyChainChars: number;
     channelHistoryMessages: number;
@@ -186,10 +237,81 @@ export type UserCustomizationAnalysisResult =
   | { ok: true; markdown: string }
   | { ok: false; reason: string };
 
-export interface ChatProvider {
-  reply(request: ChatRequest, observer?: ChatResponseObserver): Promise<ChatResponse>;
-  analyzeUserCustomization?(rawText: string): Promise<UserCustomizationAnalysisResult>;
+export interface DroppedExchangeFact {
+  slot: string;
+  statement: string;
 }
+
+export interface ChatReplyProvider {
+  reply(request: ChatRequest, observer?: ChatResponseObserver): Promise<ChatResponse>;
+}
+
+export interface UserCustomizationAnalyzer {
+  analyzeUserCustomization(rawText: string): Promise<UserCustomizationAnalysisResult>;
+}
+
+// Standalone call (own prompt/schema, outside the main reply turn — same
+// shape as analyzeUserCustomization) asking the model to extract 0-2
+// durable facts from exchanges about to be evicted from a channel's
+// recent-history window, so they aren't silently lost. Returns an empty
+// array when nothing in the exchanges was worth keeping.
+export interface ConversationConsolidator {
+  summarizeDroppedExchanges(
+    exchanges: readonly { user: string; assistant: string }[],
+  ): Promise<readonly DroppedExchangeFact[]>;
+}
+
+// One classification sample over an uploaded personality.md's `##`
+// sections — returns the section indexes that sample judged to be
+// situational lore rather than always-sent core identity/voice/behavior
+// rules. Called several times per upload (self-consistency: PersonaBundleCompiler
+// majority-votes the samples before splitting the file), never per turn —
+// see persona-bundle-compiler.ts, which owns turning the merged vote into
+// the final core/chunks split.
+export interface PersonaCompiler {
+  compilePersonaBundle(content: string): Promise<readonly number[]>;
+}
+
+// Standalone call nudging the guild's persona-drift overlay from recent
+// conversation activity — see persona-drift-store.ts. Called from the
+// same off-critical-path hook as summarizeDroppedExchanges, only when the
+// guild has the feature enabled. Returns the revised drift text (may be
+// unchanged, or empty to mean "nothing worth noting yet").
+export interface PersonaDriftEvolver {
+  evolvePersonaDrift(
+    currentText: string,
+    exchanges: readonly { user: string; assistant: string }[],
+  ): Promise<string>;
+}
+
+// Standalone call (own prompt/schema) asked only when the memory engine's
+// cheap embedding-similarity pre-filter already found a candidate worth
+// checking — see DefaultMemoryEngine.checkForConflicts and
+// memory-conflict-classification.ts for why cosine similarity alone can't
+// make this call. Rare in practice (most turns propose no memory writes,
+// and most of those don't collide with an existing one), off the reply
+// critical path (memory ingest runs after the reply is delivered — see
+// ChatConversationService), and intentionally answers just one question:
+// same underlying fact as the existing statement, or not.
+export interface MemoryConflictClassifier {
+  classifyMemoryConflict(existingStatement: string, newStatement: string): Promise<boolean>;
+}
+
+// A ChatProvider is always a ChatReplyProvider; the rest are standalone
+// capabilities a given provider implementation may or may not support.
+// Kept optional here (rather than requiring callers to hold a narrower
+// capability type) because most call sites already branch on `chatProvider`
+// vs `utilityProvider` being configured at all — ChannelSummaryScheduler is
+// the one exception that depends on ChannelMessageSummarizer directly,
+// specifically so a provider missing that capability is a wiring-time type
+// error instead of a silent runtime no-op (see bootstrap/dependencies.ts).
+export type ChatProvider = ChatReplyProvider &
+  Partial<UserCustomizationAnalyzer> &
+  Partial<ConversationConsolidator> &
+  Partial<PersonaCompiler> &
+  Partial<PersonaDriftEvolver> &
+  Partial<ChannelMessageSummarizer> &
+  Partial<MemoryConflictClassifier>;
 
 export interface ChatResponseObserver {
   onImagePreview(image: GeneratedChatImage): Promise<void>;

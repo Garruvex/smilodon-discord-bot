@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import type { ChatToolRegistry } from "../../src/application/chat/tools/chat-tool-registry.js";
 import type { ControlChannelService } from "../../src/application/control-panel/control-channel-service.js";
 import { SettingsCommand } from "../../src/infrastructure/discord/commands/setup/settings-command.js";
 import { formatAuditSummary } from "../../src/infrastructure/discord/commands/setup/settings/audit-setting.js";
@@ -64,17 +65,19 @@ function profile(): GuildConfiguration {
     chat: {
       personalityFile: null,
       personalityAsset: null,
+      examplesFile: null,
+      examplesAsset: null,
       cooldownSeconds: 30,
       deniedMessage: "Denied",
       deniedLinkUrl: null,
       deniedLinkLabel: null,
-      webSearchMode: "off", toolCallingEnabled: false,
+      webSearchMode: "off", toolCallingEnabled: false, disabledTools: [],
       imageInputEnabled: false,
       imageGenerationEnabled: false,
       includeSources: true,
       maxImagesPerRequest: 2,
       ambientCooldownSeconds: 20,
-      channelHistoryLimit: 8,
+      channelHistoryLimit: 8, channelMemoryModes: {}, personaDriftEnabled: false, contextScanChannelIds: [], contextDailyChannelIds: [], contextSeedDays: 7,
     },
     sourceFile: "test.yaml",
   };
@@ -128,7 +131,17 @@ function providerWith(current: GuildConfiguration): GuildConfigurationProvider {
       stored = {
         ...stored,
         music: { ...stored.music, ...(input.defaultVolume !== undefined ? { defaultVolume: input.defaultVolume } : {}) },
-        chat: { ...stored.chat, ...(input.chatbotCooldownSeconds !== undefined ? { cooldownSeconds: input.chatbotCooldownSeconds } : {}) },
+        chat: {
+          ...stored.chat,
+          ...(input.chatbotCooldownSeconds !== undefined ? { cooldownSeconds: input.chatbotCooldownSeconds } : {}),
+          ...(input.chatbotDisabledToolNames !== undefined ? { disabledTools: [...input.chatbotDisabledToolNames] } : {}),
+          ...(input.contextScanAddChannelId !== undefined
+            ? { contextScanChannelIds: [...new Set([...stored.chat.contextScanChannelIds, input.contextScanAddChannelId])] }
+            : {}),
+          ...(input.contextDailyAddChannelId !== undefined
+            ? { contextDailyChannelIds: [...new Set([...stored.chat.contextDailyChannelIds, input.contextDailyAddChannelId])] }
+            : {}),
+        },
       };
       return Promise.resolve(stored);
     },
@@ -139,15 +152,11 @@ function providerWith(current: GuildConfiguration): GuildConfigurationProvider {
 describe("SettingsCommand", () => {
   it("exposes a per-guild image-generation toggle", () => {
     const command = new SettingsCommand({} as never, {} as never, applicationEmojiCatalog as never);
-    const definition = command.definition.toJSON();
-    const chatGroup = definition.options?.find((option) => option.name === "chat");
-    const chatbot = chatGroup && "options" in chatGroup
-      ? chatGroup.options?.find((option: { name: string }) => option.name === "chatbot")
-      : undefined;
+    const definition = command.definition;
+    const chatGroup = definition.subcommandGroups?.find((group) => group.name === "chat");
+    const chatbot = chatGroup?.subcommands.find((subcommand) => subcommand.name === "chatbot");
 
-    expect(chatbot && "options" in chatbot
-      ? chatbot.options?.map((option: { name: string }) => option.name)
-      : []).toContain("image-generation");
+    expect(chatbot?.options?.map((option) => option.name) ?? []).toContain("image-generation");
   });
 
   it("rejects removing the last music-controller role while music is enabled", () => {
@@ -175,6 +184,89 @@ describe("SettingsCommand", () => {
 
     await command.execute(context);
     expect(edited.text).toContain("Chatbot cooldown (seconds): 30 → 60");
+    expect(edited.text).toContain("currently disabled");
+  });
+
+  it("rejects disabling an unknown tool name", async () => {
+    const chatToolRegistry = { list: () => [{ name: "play_music", description: "Plays music." }] } as unknown as ChatToolRegistry;
+    const command = new SettingsCommand(providerWith(profile()), {} as never, applicationEmojiCatalog as never);
+    command.bindChatToolRegistry(chatToolRegistry);
+    const { context, edited } = fakeContext("tools-disable", { name: "unknown_tool" });
+
+    await command.execute(context);
+
+    expect(edited.text).toContain("Unknown tool");
+    expect(edited.text).toContain("play_music");
+  });
+
+  it("disables and re-enables a chat tool by name, validated against the live registry", async () => {
+    const chatToolRegistry = {
+      list: () => [{ name: "play_music", description: "Plays music." }],
+    } as unknown as ChatToolRegistry;
+    const provider = providerWith(profile());
+    const command = new SettingsCommand(provider, {} as never, applicationEmojiCatalog as never);
+    command.bindChatToolRegistry(chatToolRegistry);
+
+    const disable = fakeContext("tools-disable", { name: "play_music" });
+    await command.execute(disable.context);
+    expect(disable.edited.text).toContain("Disabled chat tools: play_music");
+    expect(provider.require("").chat.disabledTools).toEqual(["play_music"]);
+
+    const enable = fakeContext("tools-enable", { name: "play_music" });
+    await command.execute(enable.context);
+    expect(enable.edited.text).toContain("Disabled chat tools: none");
+    expect(provider.require("").chat.disabledTools).toEqual([]);
+  });
+
+  it("lists registered chat tools and whether each is enabled for the guild", async () => {
+    const chatToolRegistry = {
+      list: () => [{ name: "play_music", description: "Plays a song." }, { name: "roll_dice", description: "Rolls dice." }],
+    } as unknown as ChatToolRegistry;
+    const disabledProfile = { ...profile(), chat: { ...profile().chat, disabledTools: ["roll_dice"] } };
+    const command = new SettingsCommand(providerWith(disabledProfile), {} as never, applicationEmojiCatalog as never);
+    command.bindChatToolRegistry(chatToolRegistry);
+    const { context, edited } = fakeContext("tools-list");
+
+    await command.execute(context);
+
+    expect(edited.text).toContain("🟢 **play_music**");
+    expect(edited.text).toContain("🔴 **roll_dice**");
+  });
+
+  it("rejects context-scan-add when no chat provider supports channel summarization", async () => {
+    const command = new SettingsCommand(
+      providerWith(profile()), {} as never, applicationEmojiCatalog as never,
+      undefined, undefined, undefined, false,
+    );
+    const { context, edited } = fakeContext("context-scan-add", { channel: { id: "999888777666555444" } });
+
+    await command.execute(context);
+
+    expect(edited.text).toContain("can't be queued");
+  });
+
+  it("rejects context-daily-add when no chat provider supports channel summarization", async () => {
+    const command = new SettingsCommand(
+      providerWith(profile()), {} as never, applicationEmojiCatalog as never,
+      undefined, undefined, undefined, false,
+    );
+    const { context, edited } = fakeContext("context-daily-add", { channel: { id: "999888777666555444" } });
+
+    await command.execute(context);
+
+    expect(edited.text).toContain("can't be queued");
+  });
+
+  it("queues context-scan-add when a summarization-capable provider is configured, noting the paused chatbot feature", async () => {
+    const command = new SettingsCommand(
+      providerWith(profile()), {} as never, applicationEmojiCatalog as never,
+      undefined, undefined, undefined, true,
+    );
+    const { context, edited } = fakeContext("context-scan-add", { channel: { id: "999888777666555444" } });
+
+    await command.execute(context);
+
+    expect(edited.text).toContain("queued for a one-time history scan");
     expect(edited.text).toContain("currently disabled");
   });
 

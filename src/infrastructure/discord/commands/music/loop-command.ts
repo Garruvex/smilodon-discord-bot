@@ -1,16 +1,26 @@
-import { SlashCommandBuilder } from "discord.js";
-
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import type { MusicRepeatMode } from "../../../../application/music/music-player-gateway.js";
 import type { PlaybackService } from "../../../../application/music/playback-service.js";
 import { createPlaybackActor, musicPlaybackAccessPolicy } from "./music-command-support.js";
 
 export class LoopCommand implements BotCommand {
-  public readonly definition = new SlashCommandBuilder()
-    .setName("loop")
-    .setDescription("Sets the playback repeat mode.")
-    .addStringOption((option) => option.setName("mode").setDescription("Repeat mode.").setRequired(true)
-      .addChoices({ name: "Off", value: "off" }, { name: "Current track", value: "track" }, { name: "Queue", value: "queue" }));
+  public readonly definition = {
+    name: "loop",
+    description: "Sets the playback repeat mode.",
+    options: [
+      {
+        type: "string",
+        name: "mode",
+        description: "Repeat mode.",
+        required: true,
+        choices: [
+          { name: "Off", value: "off" },
+          { name: "Current track", value: "track" },
+          { name: "Queue", value: "queue" },
+        ],
+      },
+    ],
+  } satisfies BotCommand["definition"];
   public readonly module = CommandModule.Music;
   public readonly access = musicPlaybackAccessPolicy;
   public constructor(private readonly playbackService: PlaybackService) {}

@@ -1,4 +1,10 @@
-import type { Player, Track, UnresolvedTrack } from "lavalink-client";
+import type {
+  Player,
+  SearchResult,
+  Track,
+  UnresolvedSearchResult,
+  UnresolvedTrack,
+} from "lavalink-client";
 
 export type AutoQueueOutcome =
   | { status: "queued"; trackIdentifier: string }
@@ -32,7 +38,7 @@ export class LavalinkAutoQueue {
 
     for (const query of this.buildQueries(sourceTrack)) {
       try {
-        const result = await player.search({ query }, { userId: "autoqueue" });
+        const result = await this.searchWithFallback(player, query);
         completedSearch = true;
         const recommendation = result.tracks.find(
           (track) => !excludedIdentifiers.has(this.identifier(track)),
@@ -61,6 +67,23 @@ export class LavalinkAutoQueue {
 
   public clear(guildId: string): void {
     this.recentTracksByGuild.delete(guildId);
+  }
+
+  private async searchWithFallback(
+    player: Player,
+    query: string,
+  ): Promise<SearchResult | UnresolvedSearchResult> {
+    try {
+      const primary = await player.search(
+        { query, source: "spsearch" },
+        { userId: "autoqueue" },
+      );
+      if (primary.tracks.length > 0) return primary;
+    } catch {
+      // Spotify search failed; fall through to YouTube below.
+    }
+
+    return player.search({ query, source: "ytsearch" }, { userId: "autoqueue" });
   }
 
   private buildQueries(sourceTrack: Track | UnresolvedTrack): string[] {

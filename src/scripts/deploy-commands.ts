@@ -55,9 +55,10 @@ const dependencies = createDependencies(
   discordClient,
   persistence.chatStateStore,
   persistence.userCustomizationStore,
-  persistence.guildKnowledgeStore,
   auditLogService,
   persistence.birthdayStore,
+  persistence.memoryRepository,
+  persistence.channelSummaryCheckpointStore,
 );
 const deploymentService = new DiscordGuildCommandDeploymentService(
   configuration,

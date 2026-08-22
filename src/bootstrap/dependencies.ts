@@ -56,8 +56,10 @@ import { MentionChatBehavior } from "../infrastructure/discord/behaviors/mention
 import { AmbientChatBehavior } from "../infrastructure/discord/behaviors/ambient-chat-behavior.js";
 import { LinkFixBehavior } from "../infrastructure/discord/behaviors/link-fix-behavior.js";
 import { BilibiliEmbedService } from "../infrastructure/links/bilibili-embed-service.js";
+import type { ChatProvider } from "../application/chat/chat-provider.js";
 import { OpenAiCompatibleChatProvider } from "../infrastructure/chat/openai-compatible-chat-provider.js";
 import { OpenAiResponsesChatProvider } from "../infrastructure/chat/openai-responses-chat-provider.js";
+import { GeminiChatProvider } from "../infrastructure/chat/gemini-chat-provider.js";
 import type { Client } from "discord.js";
 import { GuildAssetStore } from "../application/assets/guild-asset-store.js";
 import { ComponentRegistry } from "../application/components/component-registry.js";
@@ -65,22 +67,113 @@ import { ComponentDispatcher } from "../application/components/component-dispatc
 import { PollComponentHandler } from "../infrastructure/discord/components/poll-component-handler.js";
 import type { ChatStateStore } from "../application/chat/chat-state-store.js";
 import { ChatConversationService } from "../application/chat/chat-conversation-service.js";
-import type { GuildKnowledgeStore } from "../application/chat/guild-knowledge-store.js";
 import { ChatToolRegistry } from "../application/chat/tools/chat-tool-registry.js";
 import { DiceRollTool } from "../application/chat/tools/dice-tool.js";
 import { EightBallTool } from "../application/chat/tools/eightball-tool.js";
 import { BooruSearchTool } from "../application/chat/tools/booru-search-tool.js";
 import { MemoryLookupTool } from "../application/chat/tools/memory-lookup-tool.js";
 import { BirthdayLookupTool } from "../application/chat/tools/birthday-lookup-tool.js";
-import { MusicPlayTool } from "../application/chat/tools/music-play-tool.js";
-import { MusicControlTool } from "../application/chat/tools/music-control-tool.js";
-import { MusicVolumeTool } from "../application/chat/tools/music-volume-tool.js";
-import { MusicQueueTool } from "../application/chat/tools/music-queue-tool.js";
-import { EmbeddingGuildMemorySelector, RelevantGuildMemorySelector } from "../application/chat/guild-memory-selector.js";
+import { RelevantExampleExchangeSelector } from "../application/chat/example-exchange-selector.js";
+import { RelevantPersonaLoreSelector } from "../application/chat/persona-lore-selector.js";
+import { PersonaBundleCompiler } from "../application/chat/persona-bundle-compiler.js";
+import { PersonaDriftStore } from "../application/chat/persona-drift-store.js";
+import type { MemoryRepository } from "../application/memory/memory.js";
+import { DefaultMemoryEngine } from "../application/memory/memory-engine.js";
+import type { ChannelSummaryCheckpointStore } from "../application/context/channel-summary-checkpoint-store.js";
+import { ChannelSummaryScheduler } from "../application/context/channel-summary-scheduler.js";
+import { DiscordChannelHistoryReader } from "../infrastructure/discord/context/discord-channel-history-reader.js";
+import { FilePersonaSource } from "../infrastructure/chat/file-persona-source.js";
 import { OpenAiEmbeddingsClient } from "../infrastructure/chat/openai-embeddings-client.js";
+import { GeminiEmbeddingsClient } from "../infrastructure/chat/gemini-embeddings-client.js";
+import { embeddingDimensions } from "../infrastructure/database/schema.js";
 import { ApplicationEmojiCatalog } from "../infrastructure/discord/application-emoji-catalog.js";
 import type { AuditLogService } from "../application/audit/audit-log-service.js";
 import { MemberProfileService } from "../application/members/member-profile-service.js";
+
+// Shape common to both configuration.chat and configuration.utilityChat —
+// summaryModels is optional here since only `chat` carries it (utilityChat
+// IS the summary/utility model already, see configuration.ts).
+type ProviderConfig =
+  | {
+      provider: "openai-responses";
+      apiKey: string;
+      baseUrl: string;
+      models: readonly string[];
+      reasoningEffort: "minimal" | "low" | "medium" | "high";
+      verbosity: "low" | "medium" | "high";
+      maxOutputTokens: number;
+      summaryModels?: readonly string[];
+      summaryMaxOutputTokens?: number;
+      summaryReasoningEffort?: "minimal" | "low" | "medium" | "high";
+    }
+  | {
+      provider: "openai-compatible";
+      apiKey: string;
+      baseUrl: string;
+      models: readonly string[];
+      maxOutputTokens: number;
+      summaryModels?: readonly string[];
+      summaryMaxOutputTokens?: number;
+    }
+  | {
+      provider: "gemini";
+      apiKey: string;
+      models: readonly string[];
+      maxOutputTokens: number;
+      thinkingBudget: number | null;
+      summaryModels?: readonly string[];
+      summaryMaxOutputTokens?: number;
+    };
+
+// Shared by both the main chatbot provider (configuration.chat) and the
+// optional fully-independent utility provider (configuration.utilityChat) —
+// same 3-way branch, just parameterized on which config block it's building
+// from. summaryModels defaults to the provider's own `models` when omitted
+// (utilityChat never sets it — it IS the summary/utility model already).
+function createChatProviderFromConfig(config: ProviderConfig, logger: Logger): ChatProvider {
+  const summaryModels = config.summaryModels ?? config.models;
+  if (config.provider === "openai-responses") {
+    return new OpenAiResponsesChatProvider(
+      config.baseUrl,
+      config.apiKey,
+      config.models,
+      {
+        reasoningEffort: config.reasoningEffort,
+        verbosity: config.verbosity,
+        maxOutputTokens: config.maxOutputTokens,
+        summaryModels,
+        ...(config.summaryMaxOutputTokens !== undefined
+          ? { summaryMaxOutputTokens: config.summaryMaxOutputTokens }
+          : {}),
+        ...(config.summaryReasoningEffort !== undefined
+          ? { summaryReasoningEffort: config.summaryReasoningEffort }
+          : {}),
+      },
+    );
+  }
+  if (config.provider === "gemini") {
+    return new GeminiChatProvider(
+      config.apiKey,
+      config.models,
+      {
+        maxOutputTokens: config.maxOutputTokens,
+        thinkingBudget: config.thinkingBudget,
+        summaryModels,
+        ...(config.summaryMaxOutputTokens !== undefined
+          ? { summaryMaxOutputTokens: config.summaryMaxOutputTokens }
+          : {}),
+      },
+    );
+  }
+  return new OpenAiCompatibleChatProvider(
+    config.baseUrl,
+    config.apiKey,
+    config.models,
+    summaryModels,
+    logger.child({ component: "chat-provider" }),
+    config.summaryMaxOutputTokens,
+  );
+}
 
 export interface ApplicationDependencies {
   commandRegistry: CommandRegistry;
@@ -92,6 +185,10 @@ export interface ApplicationDependencies {
   pollService: PollService;
   behaviorDispatcher: BehaviorDispatcher;
   settingsCommand: SettingsCommand;
+  // Null when no chat provider is configured — there's nothing to
+  // summarize channel messages with, same condition chatConversationService
+  // already checks.
+  channelSummaryScheduler: ChannelSummaryScheduler | null;
   applicationEmojiCatalog: ApplicationEmojiCatalog;
 }
 
@@ -104,33 +201,29 @@ export function createDependencies(
   discordClient: Client,
   chatStateStore: ChatStateStore,
   userCustomizationStore: UserCustomizationStore,
-  guildKnowledgeStore: GuildKnowledgeStore,
   auditLogService: AuditLogService,
   birthdayStore: BirthdayStore,
+  memoryRepository: MemoryRepository,
+  channelSummaryCheckpointStore: ChannelSummaryCheckpointStore,
 ): ApplicationDependencies {
   const commandRegistry = new CommandRegistry();
   const pollService = new PollService();
   const componentRegistry = new ComponentRegistry();
   componentRegistry.register(new PollComponentHandler(pollService));
-  const guildAssetStore = new GuildAssetStore(configuration.runtimeDataDirectory);
-  const applicationEmojiCatalog = new ApplicationEmojiCatalog(
-    discordClient,
-    logger.child({ component: "emoji-catalog" }),
-  );
-  const settingsCommand = new SettingsCommand(
-    guildConfigurationProvider,
-    guildAssetStore,
-    applicationEmojiCatalog,
-    auditLogService,
-  );
   commandRegistry.register(new PingCommand());
   commandRegistry.register(new UserInfoCommand(guildConfigurationProvider));
   commandRegistry.register(new DiagnosticCommand());
   commandRegistry.register(new SetupCommand(guildSetupService));
-  commandRegistry.register(settingsCommand);
   commandRegistry.register(new VoteCommand(pollService));
-  const memberProfileService = new MemberProfileService(chatStateStore, birthdayStore, userCustomizationStore);
-  commandRegistry.register(new MemoryCommand(chatStateStore, memberProfileService));
+  const embeddingsClient = configuration.embeddings
+    ? configuration.embeddings.provider === "gemini"
+      ? new GeminiEmbeddingsClient(configuration.embeddings.apiKey, configuration.embeddings.model, embeddingDimensions)
+      : new OpenAiEmbeddingsClient(
+          configuration.embeddings.baseUrl,
+          configuration.embeddings.apiKey,
+          configuration.embeddings.model,
+        )
+    : null;
   commandRegistry.register(new BirthdayCommand(birthdayStore));
   commandRegistry.register(new OwoifyCommand());
   commandRegistry.register(new WolfyCommand());
@@ -165,14 +258,14 @@ export function createDependencies(
   const playbackService = new PlaybackService(musicPlayerGateway);
   commandRegistry.register(new PlayCommand(playbackService, guildConfigurationProvider));
   commandRegistry.register(new PlayNextCommand(playbackService, guildConfigurationProvider));
-  commandRegistry.register(new PauseCommand(playbackService));
-  commandRegistry.register(new ResumeCommand(playbackService));
-  commandRegistry.register(new StopCommand(playbackService));
-  commandRegistry.register(new SkipCommand(playbackService));
+  commandRegistry.register(new PauseCommand(playbackService, guildConfigurationProvider));
+  commandRegistry.register(new ResumeCommand(playbackService, guildConfigurationProvider));
+  commandRegistry.register(new StopCommand(playbackService, guildConfigurationProvider));
+  commandRegistry.register(new SkipCommand(playbackService, guildConfigurationProvider));
   commandRegistry.register(new SkipToCommand(playbackService));
-  commandRegistry.register(new PreviousCommand(playbackService));
-  commandRegistry.register(new ShuffleCommand(playbackService));
-  commandRegistry.register(new QueueCommand(playbackService));
+  commandRegistry.register(new PreviousCommand(playbackService, guildConfigurationProvider));
+  commandRegistry.register(new ShuffleCommand(playbackService, guildConfigurationProvider));
+  commandRegistry.register(new QueueCommand(playbackService, guildConfigurationProvider));
   commandRegistry.register(new LoopCommand(playbackService));
   commandRegistry.register(new VolumeCommand(playbackService, guildConfigurationProvider));
   commandRegistry.register(new AutoplayCommand(playbackService));
@@ -200,63 +293,116 @@ export function createDependencies(
     logger.child({ component: "components" }),
   );
   const behaviorRegistry = new BehaviorRegistry();
-  const chatProvider = configuration.chat
-    ? configuration.chat.mode === "responses"
-      ? new OpenAiResponsesChatProvider(
-          configuration.chat.baseUrl,
-          configuration.chat.apiKey,
-          configuration.chat.models,
-          {
-            reasoningEffort: configuration.chat.reasoningEffort,
-            verbosity: configuration.chat.verbosity,
-            maxOutputTokens: configuration.chat.maxOutputTokens,
-          },
-        )
-      : new OpenAiCompatibleChatProvider(
-          configuration.chat.baseUrl,
-          configuration.chat.apiKey,
-          configuration.chat.models,
-          logger.child({ component: "chat-provider" }),
-        )
+  const chatProvider = configuration.chat ? createChatProviderFromConfig(configuration.chat, logger) : null;
+  // Fully independent provider for the two standalone structured-output
+  // calls (analyzeUserCustomization, summarizeDroppedExchanges) when
+  // configuration.utilityChat is set (own credentials/model, can be a
+  // different provider type entirely). Falls back to `chatProvider` itself
+  // when unset — which already does its own same-credentials summary-model
+  // routing internally (configuration.chat.summaryModels) — so this adds a
+  // layer on top rather than replacing it, and requires no config change
+  // for anyone not using UTILITY_*.
+  const utilityProvider = configuration.utilityChat
+    ? createChatProviderFromConfig(configuration.utilityChat, logger)
+    : chatProvider;
+  // Conflict-at-write classification (see MemoryConflictClassifier on
+  // ChatProvider) prefers the cheaper utility model, same as every other
+  // standalone structured-output call — DefaultMemoryEngine treats a
+  // provider that doesn't implement the capability the same as no provider
+  // at all (falls back to the similarity threshold alone).
+  const memoryEngine = new DefaultMemoryEngine(
+    memoryRepository, embeddingsClient, logger.child({ component: "memory-engine" }), configuration.memory,
+    utilityProvider,
+  );
+  const memberProfileService = new MemberProfileService(memoryEngine, birthdayStore, userCustomizationStore);
+  commandRegistry.register(new MemoryCommand(chatStateStore, memberProfileService, memoryEngine));
+  // Personality-bundle compilation is a standalone structured-output call
+  // (same shape as summarizeDroppedExchanges) — prefers the cheaper
+  // utility model when one is configured, same as ChatConversationService's
+  // own consolidation call below.
+  const personaBundleCompiler = utilityProvider
+    ? new PersonaBundleCompiler(utilityProvider, embeddingsClient, logger.child({ component: "persona-bundle-compiler" }))
     : null;
-  commandRegistry.register(new CustomizeCommand(userCustomizationStore, chatProvider));
+  const guildAssetStore = new GuildAssetStore(
+    configuration.runtimeDataDirectory,
+    personaBundleCompiler,
+    embeddingsClient,
+    logger.child({ component: "guild-assets" }),
+  );
+  const personaDriftStore = new PersonaDriftStore(
+    configuration.runtimeDataDirectory,
+    logger.child({ component: "persona-drift" }),
+  );
+  const applicationEmojiCatalog = new ApplicationEmojiCatalog(
+    discordClient,
+    logger.child({ component: "emoji-catalog" }),
+  );
+  const settingsCommand = new SettingsCommand(
+    guildConfigurationProvider,
+    guildAssetStore,
+    applicationEmojiCatalog,
+    auditLogService,
+    personaDriftStore,
+    channelSummaryCheckpointStore,
+    utilityProvider?.summarizeChannelMessages !== undefined,
+  );
+  commandRegistry.register(settingsCommand);
+  // Prefers the cheaper utility model when configured, same preference as
+  // ChatConversationService's own consolidation call. Null when no chat
+  // provider is configured, or the configured one doesn't implement
+  // summarizeChannelMessages — narrowing to ChannelMessageSummarizer here
+  // (rather than passing the full ChatProvider) makes that a wiring-time
+  // check instead of the scheduler probing an optional method at runtime.
+  const channelSummaryScheduler = utilityProvider?.summarizeChannelMessages
+    ? new ChannelSummaryScheduler(
+        new DiscordChannelHistoryReader(discordClient), guildConfigurationProvider, memoryEngine, channelSummaryCheckpointStore,
+        { summarizeChannelMessages: utilityProvider.summarizeChannelMessages.bind(utilityProvider) },
+        logger.child({ component: "channel-summary-scheduler" }),
+      )
+    : null;
+  commandRegistry.register(new CustomizeCommand(userCustomizationStore, utilityProvider));
+  // Derived from CommandRegistry rather than hand-listed: any BotCommand
+  // that sets `toolBinding` (see command.ts) is automatically offered to the
+  // model, so a command's LLM exposure has one source of truth — the
+  // command file itself — instead of a second array to keep in sync here.
+  const commandToolBindings = commandRegistry.getAll().flatMap((command) =>
+    command.toolBinding ? [command.toolBinding] : []);
   const chatToolRegistry = new ChatToolRegistry([
     new DiceRollTool(),
     new EightBallTool(),
     new BooruSearchTool(),
-    new MemoryLookupTool(chatStateStore, guildKnowledgeStore),
+    new MemoryLookupTool(memoryEngine),
     new BirthdayLookupTool(birthdayStore),
-    new MusicPlayTool(playbackService),
-    new MusicControlTool(playbackService),
-    new MusicVolumeTool(playbackService),
-    new MusicQueueTool(playbackService),
+    ...commandToolBindings,
   ]);
-  const embeddingsClient = configuration.chat?.embeddingModel
-    ? new OpenAiEmbeddingsClient(
-        configuration.chat.baseUrl,
-        configuration.chat.apiKey,
-        configuration.chat.embeddingModel,
-      )
-    : null;
+  settingsCommand.bindChatToolRegistry(chatToolRegistry);
   const chatConversationService = chatProvider
     ? new ChatConversationService(
         chatProvider,
         chatStateStore,
-        guildKnowledgeStore,
-        embeddingsClient ? new EmbeddingGuildMemorySelector(embeddingsClient) : new RelevantGuildMemorySelector(),
+        memoryEngine,
         undefined,
+        new RelevantExampleExchangeSelector(embeddingsClient, logger.child({ component: "example-exchange-selector" })),
+        new RelevantPersonaLoreSelector(embeddingsClient, logger.child({ component: "persona-lore-selector" })),
         userCustomizationStore,
-        undefined,
         birthdayStore,
         chatToolRegistry,
-        embeddingsClient,
+        logger.child({ component: "chat-conversation" }),
+        utilityProvider,
+        personaDriftStore,
       )
     : null;
+  const personaSource = new FilePersonaSource(
+    configuration.runtimeDataDirectory,
+    logger.child({ component: "persona-source" }),
+    personaDriftStore,
+  );
   behaviorRegistry.register(new MentionChatBehavior(
     () => discordClient.user?.id ?? null,
     configuration,
     guildConfigurationProvider,
     chatConversationService,
+    personaSource,
     logger.child({ component: "chat" }),
   ));
   behaviorRegistry.register(new AmbientChatBehavior(
@@ -264,6 +410,7 @@ export function createDependencies(
     configuration,
     guildConfigurationProvider,
     chatConversationService,
+    personaSource,
     logger.child({ component: "ambient-chat" }),
   ));
   behaviorRegistry.register(new LinkFixBehavior(
@@ -282,6 +429,7 @@ export function createDependencies(
     pollService,
     behaviorDispatcher: new BehaviorDispatcher(behaviorRegistry),
     settingsCommand,
+    channelSummaryScheduler,
     applicationEmojiCatalog,
   };
 }

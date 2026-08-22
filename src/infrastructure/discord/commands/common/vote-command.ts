@@ -1,16 +1,17 @@
-import { SlashCommandBuilder } from "discord.js";
-
 import { CommandModule, CommandResponseVisibility, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import type { PollService } from "../../../../application/polls/poll-service.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
 
 export class VoteCommand implements BotCommand {
-  public readonly definition = new SlashCommandBuilder()
-    .setName("vote")
-    .setDescription("Creates a Yes/No poll.")
-    .addStringOption((option) => option.setName("title").setDescription("Poll title.").setMaxLength(200).setRequired(true))
-    .addStringOption((option) => option.setName("description").setDescription("What members are voting on.").setMaxLength(2_000).setRequired(true))
-    .addIntegerOption((option) => option.setName("duration").setDescription("Seconds before the poll closes; omit to keep it open.").setMinValue(10).setMaxValue(86_400));
+  public readonly definition = {
+    name: "vote",
+    description: "Creates a Yes/No poll.",
+    options: [
+      { type: "string", name: "title", description: "Poll title.", maxLength: 200, required: true },
+      { type: "string", name: "description", description: "What members are voting on.", maxLength: 2_000, required: true },
+      { type: "integer", name: "duration", description: "Seconds before the poll closes; omit to keep it open.", minValue: 10, maxValue: 86_400 },
+    ],
+  } satisfies BotCommand["definition"];
 
   public readonly module = CommandModule.Common;
   public readonly access = publicAccessPolicy;

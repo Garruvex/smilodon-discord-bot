@@ -1,8 +1,4 @@
-import {
-  ChannelType,
-  PermissionFlagsBits,
-  SlashCommandBuilder,
-} from "discord.js";
+import { ChannelType, PermissionFlagsBits } from "discord.js";
 
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import {
@@ -13,52 +9,33 @@ import type { GuildSetupService } from "../../../../application/setup/guild-setu
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
 
 export class SetupCommand implements BotCommand {
-  public readonly definition = new SlashCommandBuilder()
-    .setName("setup")
-    .setDescription("Configures this server for the bot.")
-    .setDMPermission(false)
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName("initialize")
-        .setDescription("Creates or adopts roles and a persistent music channel.")
-        .addStringOption((option) =>
-          option
-            .setName("display-name")
-            .setDescription("Display name used by this server profile.")
-            .setMaxLength(80),
-        )
-        .addStringOption((option) =>
-          option
-            .setName("idle-image-url")
-            .setDescription("Stable HTTPS image URL shown when nothing is playing."),
-        )
-        .addChannelOption((option) =>
-          option
-            .setName("control-channel")
-            .setDescription("Existing music control channel; one is created if omitted.")
-            .addChannelTypes(ChannelType.GuildText),
-        )
-        .addRoleOption((option) =>
-          option
-            .setName("administrator-role")
-            .setDescription("Existing bot administrator role; one is created if omitted."),
-        )
-        .addRoleOption((option) =>
-          option
-            .setName("music-controller-role")
-            .setDescription(
-              "Role for /play, queue commands, panel controls, and typed control-channel requests.",
-            ),
-        )
-        .addRoleOption((option) =>
-          option
-            .setName("restricted-role")
-            .setDescription("Role denied from music and chatbot unless bot-owner bypass applies."),
-        ),
-    )
-    .addSubcommand((subcommand) =>
-      subcommand.setName("status").setDescription("Shows this server's setup status."),
-    );
+  public readonly definition = {
+    name: "setup",
+    description: "Configures this server for the bot.",
+    dmPermission: false,
+    subcommands: [
+      {
+        name: "initialize",
+        description: "Creates or adopts roles and a persistent music channel.",
+        options: [
+          { type: "string", name: "display-name", description: "Display name used by this server profile.", maxLength: 80 },
+          { type: "string", name: "idle-image-url", description: "Stable HTTPS image URL shown when nothing is playing." },
+          {
+            type: "channel", name: "control-channel",
+            description: "Existing music control channel; one is created if omitted.",
+            guildTextOnly: true,
+          },
+          { type: "role", name: "administrator-role", description: "Existing bot administrator role; one is created if omitted." },
+          {
+            type: "role", name: "music-controller-role",
+            description: "Role for /play, queue commands, panel controls, and typed control-channel requests.",
+          },
+          { type: "role", name: "restricted-role", description: "Role denied from music and chatbot unless bot-owner bypass applies." },
+        ],
+      },
+      { name: "status", description: "Shows this server's setup status." },
+    ],
+  } satisfies BotCommand["definition"];
 
   public readonly module = CommandModule.Bootstrap;
   public readonly access = {
@@ -98,18 +75,19 @@ export class SetupCommand implements BotCommand {
       : null;
 
     const result = await this.setupService.initialize({
-      guild: context.interaction.guild,
-      initializedBy: context.interaction.member,
+      guildId: context.interaction.guild.id,
+      guildName: context.interaction.guild.name,
+      initializedByUserId: context.interaction.member.id,
       displayName:
         context.interaction.options.getString("display-name") ??
         context.interaction.client.user.username,
       idleImageUrl: context.interaction.options.getString("idle-image-url"),
-      controlChannel,
-      botAdministratorRole:
-        context.interaction.options.getRole("administrator-role"),
-      musicControllerRole:
-        context.interaction.options.getRole("music-controller-role"),
-      restrictedRole: context.interaction.options.getRole("restricted-role"),
+      controlChannelId: controlChannel?.id ?? null,
+      botAdministratorRoleId:
+        context.interaction.options.getRole("administrator-role")?.id ?? null,
+      musicControllerRoleId:
+        context.interaction.options.getRole("music-controller-role")?.id ?? null,
+      restrictedRoleId: context.interaction.options.getRole("restricted-role")?.id ?? null,
     });
 
     const lines = [
@@ -139,16 +117,11 @@ export class SetupCommand implements BotCommand {
 
   private async status(context: CommandContext): Promise<void> {
     if (!context.interaction.guildId) return;
-    const status = this.setupService.status(
-      context.interaction.guildId,
-      context.interaction.inCachedGuild() ? context.interaction.guild : undefined,
-    );
+    const status = await this.setupService.status(context.interaction.guildId);
 
-    const permissionLines = status.botPermissions
-      ? status.botPermissions.ok
-        ? ["Bot permissions: OK"]
-        : [`Bot permissions: MISSING — ${status.botPermissions.missing.join(", ")}`]
-      : [];
+    const permissionLines = status.botPermissions.ok
+      ? ["Bot permissions: OK"]
+      : [`Bot permissions: MISSING — ${status.botPermissions.missing.join(", ")}`];
 
     if (!status.configured) {
       await context.responses.reply({
@@ -164,8 +137,10 @@ export class SetupCommand implements BotCommand {
       "This server is configured.",
       `Profile: ${status.profileFile ?? "unknown"}`,
       `Control panel: ${status.controlPanelChannelId ? `<#${status.controlPanelChannelId}>` : "disabled"}`,
-      `Features: ${status.enabledFeatures.join(", ")}`,
       ...permissionLines,
+      "",
+      "Features:",
+      ...status.featureStates.map((feature) => `${feature.enabled ? "✅" : "❌"} ${feature.name}`),
     ];
 
     if (status.access) {
@@ -182,6 +157,41 @@ export class SetupCommand implements BotCommand {
         `- Music controller: ${roleGroupDescriptions.musicController}`,
         `- Restricted: ${roleGroupDescriptions.restricted}`,
         `- Chatbot: ${roleGroupDescriptions.chatbot}`,
+      );
+    }
+
+    if (status.music) {
+      lines.push(
+        "",
+        "Music:",
+        `Default volume: ${status.music.defaultVolume} (max ${status.music.maximumVolume}, step ${status.music.volumeButtonStep})`,
+        `Empty queue: ${status.music.emptyQueueAction} after ${status.music.emptyQueueDelayMs}ms`,
+        `Empty channel: ${status.music.emptyChannelAction} after ${status.music.emptyChannelGracePeriodMs}ms grace`,
+        `Resume when occupied: ${status.music.resumeWhenOccupied ? "on" : "off"}`,
+      );
+    }
+
+    if (status.chat) {
+      lines.push(
+        "",
+        "Chat:",
+        `Cooldown: ${status.chat.cooldownSeconds}s (ambient: ${status.chat.ambientCooldownSeconds}s)`,
+        `Web search: ${status.chat.webSearchMode}`,
+        `Tool calling: ${status.chat.toolCallingEnabled ? "on" : "off"}${status.chat.disabledTools.length > 0 ? ` (${status.chat.disabledTools.length} tool(s) disabled)` : ""}`,
+        `Image input: ${status.chat.imageInputEnabled ? "on" : "off"}`,
+        `Image generation: ${status.chat.imageGenerationEnabled ? "on" : "off"}`,
+        `Include sources: ${status.chat.includeSources ? "on" : "off"}`,
+        `Persona drift: ${status.chat.personaDriftEnabled ? "on" : "off"}`,
+        `Channel history: limit ${status.chat.channelHistoryLimit}`,
+        `Context scan channels: ${status.chat.contextScanChannelIds.length}, daily: ${status.chat.contextDailyChannelIds.length}`,
+      );
+    }
+
+    if (status.panel) {
+      lines.push(
+        "",
+        "Panel:",
+        `Progress bar: ${status.panel.progressBar.style} (length ${status.panel.progressBar.length})`,
       );
     }
 

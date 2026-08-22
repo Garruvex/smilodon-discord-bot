@@ -1,5 +1,3 @@
-import { SlashCommandBuilder } from "discord.js";
-
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import type { PlaybackService } from "../../../../application/music/playback-service.js";
 import {
@@ -13,13 +11,13 @@ import {
 } from "../../music/queued-track-card.js";
 
 export class PlayNextCommand implements BotCommand {
-  public readonly definition = new SlashCommandBuilder()
-    .setName("playnext")
-    .setDescription("Plays a track or adds it to the front of the queue.")
-    .addStringOption((option) => option
-      .setName("query")
-      .setDescription("A song name or supported URL.")
-      .setRequired(true));
+  public readonly definition = {
+    name: "playnext",
+    description: "Plays a track or adds it to the front of the queue.",
+    options: [
+      { type: "string", name: "query", description: "A song name or supported URL.", required: true },
+    ],
+  } satisfies BotCommand["definition"];
 
   public readonly module = CommandModule.Music;
   public readonly access = musicPlaybackAccessPolicy;

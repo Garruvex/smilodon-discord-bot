@@ -1,17 +1,29 @@
+import { MUSIC_LIMITS } from "../../../../../config/guild-configuration-limits.js";
 import type { MutationSettingDefinition } from "./setting-definition.js";
 
 export const lifecycleSetting: MutationSettingDefinition = {
   kind: "mutation",
   name: "lifecycle",
   description: "Updates empty queue/channel behavior.",
-  configureOptions: (b) => b
-    .addStringOption((o) => o.setName("empty-queue-action").setDescription("Action when the queue ends.")
-      .addChoices({ name: "Disconnect", value: "disconnect" }, { name: "Stay connected", value: "stay_connected" }))
-    .addIntegerOption((o) => o.setName("queue-delay-seconds").setDescription("Delay before empty-queue action.").setMinValue(0).setMaxValue(86400))
-    .addStringOption((o) => o.setName("empty-channel-action").setDescription("Action when everyone leaves.")
-      .addChoices({ name: "Continue", value: "continue" }, { name: "Pause", value: "pause" }, { name: "Disconnect", value: "disconnect" }))
-    .addIntegerOption((o) => o.setName("channel-grace-seconds").setDescription("Grace period before action.").setMinValue(0).setMaxValue(86400))
-    .addBooleanOption((o) => o.setName("resume-when-occupied").setDescription("Resume after an automatic pause.")),
+  configureOptions: () => [
+    {
+      type: "string", name: "empty-queue-action", description: "Action when the queue ends.",
+      choices: [{ name: "Disconnect", value: "disconnect" }, { name: "Stay connected", value: "stay_connected" }],
+    },
+    {
+      type: "integer", name: "queue-delay-seconds", description: "Delay before empty-queue action.",
+      minValue: MUSIC_LIMITS.emptyQueueDelayMs.min / 1000, maxValue: MUSIC_LIMITS.emptyQueueDelayMs.max / 1000,
+    },
+    {
+      type: "string", name: "empty-channel-action", description: "Action when everyone leaves.",
+      choices: [{ name: "Continue", value: "continue" }, { name: "Pause", value: "pause" }, { name: "Disconnect", value: "disconnect" }],
+    },
+    {
+      type: "integer", name: "channel-grace-seconds", description: "Grace period before action.",
+      minValue: MUSIC_LIMITS.emptyChannelGracePeriodMs.min / 1000, maxValue: MUSIC_LIMITS.emptyChannelGracePeriodMs.max / 1000,
+    },
+    { type: "boolean", name: "resume-when-occupied", description: "Resume after an automatic pause." },
+  ],
   handle: (context, _deps, _previousProfile, input) => {
     const queueAction = context.interaction.options.getString("empty-queue-action");
     const channelAction = context.interaction.options.getString("empty-channel-action");

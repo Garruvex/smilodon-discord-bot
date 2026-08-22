@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { AccessPolicyService } from "../../src/application/access/access-policy-service.js";
 import { CommandModule } from "../../src/application/commands/command.js";
+import { defaultMemoryEngineLimits } from "../../src/application/memory/memory-engine.js";
 import type { ApplicationConfiguration } from "../../src/config/configuration.js";
 import type { GuildConfiguration } from "../../src/config/guild-configuration.js";
 import type { GuildConfigurationProvider } from "../../src/config/guild-configuration-provider.js";
@@ -39,6 +40,9 @@ function applicationConfiguration(): ApplicationConfiguration {
       secure: false,
     },
     chat: null,
+    utilityChat: null,
+    embeddings: null,
+    memory: defaultMemoryEngineLimits,
   };
 }
 
@@ -93,17 +97,19 @@ function guildConfiguration(): GuildConfiguration {
     chat: {
       personalityFile: null,
       personalityAsset: null,
+      examplesFile: null,
+      examplesAsset: null,
       cooldownSeconds: 30,
       deniedMessage: "Premium required.",
       deniedLinkUrl: null,
       deniedLinkLabel: null,
-      webSearchMode: "off", toolCallingEnabled: false,
+      webSearchMode: "off", toolCallingEnabled: false, disabledTools: [],
       imageInputEnabled: false,
       imageGenerationEnabled: false,
       includeSources: true,
       maxImagesPerRequest: 2,
       ambientCooldownSeconds: 20,
-      channelHistoryLimit: 8,
+      channelHistoryLimit: 8, channelMemoryModes: {}, personaDriftEnabled: false, contextScanChannelIds: [], contextDailyChannelIds: [], contextSeedDays: 7,
     },
     sourceFile: "test.yaml",
   };
@@ -137,11 +143,11 @@ function interaction(
     user: { id: userId },
     member: {
       roles: { cache: new Map(roleIds.map((roleId) => [roleId, {}])) },
-      permissions: { has: () => true },
+      permissions: { bitfield: -1n },
     },
     guild: {
       members: {
-        me: { permissions: { has: () => botHasPermissions } },
+        me: { permissions: { bitfield: botHasPermissions ? -1n : 0n } },
       },
     },
   } as unknown as ChatInputCommandInteraction;
@@ -284,10 +290,11 @@ describe("AccessPolicyService", () => {
       applicationConfiguration(),
       provider(guildConfiguration()),
     );
+    const policy = { ...controllerPolicy, requiredBotPermissions: [1n] };
 
     expect(
       service.evaluate(
-        controllerPolicy,
+        policy,
         CommandModule.Music,
         interaction([], ownerId, musicChannelId, false),
       ),

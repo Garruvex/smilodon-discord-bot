@@ -1,4 +1,4 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { EmbedBuilder } from "discord.js";
 
 import { CommandModule, CommandResponseVisibility, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
@@ -18,19 +18,14 @@ function diceFaceImageUrl(roll: number): string {
 const maxImageDice = 10;
 
 export class DiceCommand implements BotCommand {
-  public readonly definition = new SlashCommandBuilder()
-    .setName("dice")
-    .setDescription("Rolls one or more dice.")
-    .addIntegerOption((option) => option
-      .setName("sides")
-      .setDescription("Number of sides per die (default 6).")
-      .setMinValue(2)
-      .setMaxValue(1_000))
-    .addIntegerOption((option) => option
-      .setName("count")
-      .setDescription("Number of dice to roll (default 1).")
-      .setMinValue(1)
-      .setMaxValue(20));
+  public readonly definition = {
+    name: "dice",
+    description: "Rolls one or more dice.",
+    options: [
+      { type: "integer", name: "sides", description: "Number of sides per die (default 6).", minValue: 2, maxValue: 1_000 },
+      { type: "integer", name: "count", description: "Number of dice to roll (default 1).", minValue: 1, maxValue: 20 },
+    ],
+  } satisfies BotCommand["definition"];
 
   public readonly module = CommandModule.Common;
   public readonly access = publicAccessPolicy;

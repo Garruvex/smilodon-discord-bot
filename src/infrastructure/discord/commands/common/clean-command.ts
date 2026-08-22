@@ -1,4 +1,4 @@
-import { PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
+import { PermissionFlagsBits } from "discord.js";
 
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
@@ -6,10 +6,13 @@ import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
 const defaultMessageCount = 100;
 
 export class CleanCommand implements BotCommand {
-  public readonly definition = new SlashCommandBuilder()
-    .setName("clean")
-    .setDescription("Deletes the bot's recent messages in this channel.")
-    .addIntegerOption((option) => option.setName("count").setDescription("How many recent messages to scan (default 100).").setMinValue(2).setMaxValue(100));
+  public readonly definition = {
+    name: "clean",
+    description: "Deletes the bot's recent messages in this channel.",
+    options: [
+      { type: "integer", name: "count", description: "How many recent messages to scan (default 100).", minValue: 2, maxValue: 100 },
+    ],
+  } satisfies BotCommand["definition"];
 
   public readonly module = CommandModule.Common;
   public readonly access = {

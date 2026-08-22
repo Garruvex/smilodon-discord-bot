@@ -40,8 +40,11 @@ describe("LavalinkAutoQueue", () => {
       new LavalinkAutoQueue().enqueueNext(player as never, source as never),
     ).resolves.toEqual({ status: "queued", trackIdentifier: "next1234567" });
 
+    // searchWithFallback tries Spotify (spsearch) first, per query — this
+    // one succeeds immediately (non-empty tracks), so YouTube fallback for
+    // this query is never reached.
     expect(search).toHaveBeenCalledWith(
-      { query: "https://www.youtube.com/watch?v=source12345&list=RDsource12345" },
+      { query: "https://www.youtube.com/watch?v=source12345&list=RDsource12345", source: "spsearch" },
       { userId: "autoqueue" },
     );
     expect(add).toHaveBeenCalledWith(recommendation);
@@ -61,7 +64,11 @@ describe("LavalinkAutoQueue", () => {
     );
 
     expect(result.status).toBe("failed");
-    expect(player.search).toHaveBeenCalledTimes(2);
+    // buildQueries produces 2 queries for a youtube-sourced track (the
+    // direct-URL query and the text query), and searchWithFallback tries
+    // both spsearch and ytsearch per query when spsearch fails — 2 queries
+    // x 2 sources = 4 calls, all rejecting.
+    expect(player.search).toHaveBeenCalledTimes(4);
   });
 
   it("distinguishes a valid search with no unplayed results from a failure", async () => {

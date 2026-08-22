@@ -1,32 +1,29 @@
-import {
-  ChannelType,
-  PermissionFlagsBits,
-  PermissionsBitField,
-  type Guild,
-  type GuildMember,
-  type Role,
-  type TextChannel,
-} from "discord.js";
 import type { Logger } from "pino";
 
 import type { ControlChannelService } from "../control-panel/control-channel-service.js";
 import type { GuildCommandDeploymentService } from "../commands/guild-command-deployment-service.js";
+import type { GuildResourceGateway, GuildRoleHandle } from "./guild-resource-gateway.js";
 import type {
-  GuildSetupBotPermissionStatus,
   GuildSetupInitializeRequest,
   GuildSetupResult,
   GuildSetupService,
   GuildSetupStatus,
 } from "./guild-setup-service.js";
 import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
-import type { GuildConfiguration } from "../../config/guild-configuration.js";
+import type { GuildConfiguration, GuildFeatureName } from "../../config/guild-configuration.js";
 import type { AuditLogService } from "../audit/audit-log-service.js";
+
+interface CreatedResources {
+  roleIds: string[];
+  channelId: string | null;
+}
 
 export class LocalGuildSetupService implements GuildSetupService {
   public constructor(
     private readonly guildConfigurationProvider: GuildConfigurationProvider,
     private readonly commandDeploymentService: GuildCommandDeploymentService,
     private readonly controlChannelService: ControlChannelService,
+    private readonly resourceGateway: GuildResourceGateway,
     private readonly logger: Logger,
     private readonly auditLogService?: AuditLogService,
   ) {}
@@ -34,39 +31,43 @@ export class LocalGuildSetupService implements GuildSetupService {
   public async initialize(
     request: GuildSetupInitializeRequest,
   ): Promise<GuildSetupResult> {
-    const existingProfile = this.guildConfigurationProvider.find(request.guild.id);
+    const existingProfile = this.guildConfigurationProvider.find(request.guildId);
     if (existingProfile) {
-      return this.completeSetup(request.guild, existingProfile, false);
+      return this.completeSetup(request.guildId, existingProfile, false);
     }
 
-    this.assertBotPermissions(request.guild);
+    await this.assertBotPermissions(request.guildId);
 
     // Track only the resources *this run* creates (not ones the caller
     // already supplied), so a failure partway through can clean them up
     // instead of leaving orphaned roles/channels behind on retry.
-    const created: { roles: Role[]; channel: TextChannel | null } = { roles: [], channel: null };
+    const created: CreatedResources = { roleIds: [], channelId: null };
     let profile: GuildConfiguration;
     try {
-      const botAdministratorRole = request.botAdministratorRole ??
-        await this.createTrackedRole(request.guild, "Bot Administrator", created);
-      const musicControllerRole = request.musicControllerRole ??
-        await this.createTrackedRole(request.guild, "Music Controller", created);
-      const restrictedRole = request.restrictedRole ??
-        await this.createTrackedRole(request.guild, "Bot Restricted", created);
-      const controlChannel = request.controlChannel ?? await (async (): Promise<TextChannel> => {
-        const channel = await this.createControlChannel(request.guild);
-        created.channel = channel;
-        return channel;
+      const botAdministratorRoleId = request.botAdministratorRoleId ??
+        (await this.createTrackedRole(request.guildId, "Bot Administrator", created)).id;
+      const musicControllerRoleId = request.musicControllerRoleId ??
+        (await this.createTrackedRole(request.guildId, "Music Controller", created)).id;
+      const restrictedRoleId = request.restrictedRoleId ??
+        (await this.createTrackedRole(request.guildId, "Bot Restricted", created)).id;
+      const controlChannelId = request.controlChannelId ?? await (async (): Promise<string> => {
+        const channel = await this.resourceGateway.createTextChannel(
+          request.guildId, "music-control", "Persistent music control channel", "Initial bot guild setup",
+        );
+        created.channelId = channel.id;
+        return channel.id;
       })();
 
-      await this.grantRoleIfMissing(
-        request.initializedBy,
-        botAdministratorRole,
+      await this.resourceGateway.grantRoleIfMissing(
+        request.guildId,
+        request.initializedByUserId,
+        botAdministratorRoleId,
         "Granted during initial bot guild setup",
       );
-      await this.grantRoleIfMissing(
-        request.initializedBy,
-        musicControllerRole,
+      await this.resourceGateway.grantRoleIfMissing(
+        request.guildId,
+        request.initializedByUserId,
+        musicControllerRoleId,
         "Granted during initial bot guild setup",
       );
 
@@ -76,58 +77,58 @@ export class LocalGuildSetupService implements GuildSetupService {
       // so nothing below this point should roll back the roles/channel the
       // persisted profile now points to.
       profile = await this.guildConfigurationProvider.create({
-        guildId: request.guild.id,
-        guildName: request.guild.name,
+        guildId: request.guildId,
+        guildName: request.guildName,
         displayName: request.displayName,
         embedColor: "#3B82F6",
         idleImageUrl: request.idleImageUrl,
-        botAdministratorRoleIds: [botAdministratorRole.id],
-        musicControllerRoleIds: [musicControllerRole.id],
-        restrictedRoleIds: [restrictedRole.id],
-        controlPanelChannelId: controlChannel.id,
+        botAdministratorRoleIds: [botAdministratorRoleId],
+        musicControllerRoleIds: [musicControllerRoleId],
+        restrictedRoleIds: [restrictedRoleId],
+        controlPanelChannelId: controlChannelId,
       });
     } catch (error) {
-      await this.rollbackCreatedResources(request.guild.id, created);
+      await this.rollbackCreatedResources(request.guildId, created);
       throw error;
     }
 
-    const result = await this.completeSetup(request.guild, profile, true);
+    const result = await this.completeSetup(request.guildId, profile, true);
     await this.auditLogService?.log(
-      request.guild.id,
-      request.initializedBy.id,
+      request.guildId,
+      request.initializedByUserId,
       "**/setup initialize** — first-time server setup completed.",
     );
     return result;
   }
 
   private async createTrackedRole(
-    guild: Guild,
+    guildId: string,
     name: string,
-    created: { roles: Role[]; channel: TextChannel | null },
-  ): Promise<Role> {
-    const role = await this.createRole(guild, name);
-    created.roles.push(role);
+    created: CreatedResources,
+  ): Promise<GuildRoleHandle> {
+    const role = await this.resourceGateway.createRole(guildId, name, "Initial bot guild setup");
+    created.roleIds.push(role.id);
     return role;
   }
 
   private async rollbackCreatedResources(
     guildId: string,
-    created: { roles: Role[]; channel: TextChannel | null },
+    created: CreatedResources,
   ): Promise<void> {
-    for (const role of created.roles) {
-      await role.delete("Rolling back a failed bot guild setup").catch((error: unknown) => {
-        this.logger.warn({ error, guildId, roleId: role.id }, "Unable to roll back a role created during failed setup");
+    for (const roleId of created.roleIds) {
+      await this.resourceGateway.deleteRole(guildId, roleId, "Rolling back a failed bot guild setup").catch((error: unknown) => {
+        this.logger.warn({ error, guildId, roleId }, "Unable to roll back a role created during failed setup");
       });
     }
-    if (created.channel) {
-      await created.channel.delete("Rolling back a failed bot guild setup").catch((error: unknown) => {
-        this.logger.warn({ error, guildId, channelId: created.channel?.id }, "Unable to roll back a channel created during failed setup");
+    if (created.channelId) {
+      await this.resourceGateway.deleteChannel(guildId, created.channelId, "Rolling back a failed bot guild setup").catch((error: unknown) => {
+        this.logger.warn({ error, guildId, channelId: created.channelId }, "Unable to roll back a channel created during failed setup");
       });
     }
   }
 
   private async completeSetup(
-    guild: Guild,
+    guildId: string,
     profile: GuildConfiguration,
     wasFreshSetup: boolean,
   ): Promise<GuildSetupResult> {
@@ -136,8 +137,8 @@ export class LocalGuildSetupService implements GuildSetupService {
       throw new Error("The existing guild profile has no music control channel.");
     }
 
-    const controlChannel = await guild.channels.fetch(controlChannelId);
-    if (!controlChannel || controlChannel.type !== ChannelType.GuildText) {
+    const controlChannel = await this.resourceGateway.fetchTextChannel(guildId, controlChannelId);
+    if (!controlChannel) {
       throw new Error("The configured music control channel is missing or is not a text channel.");
     }
 
@@ -173,8 +174,8 @@ export class LocalGuildSetupService implements GuildSetupService {
     };
   }
 
-  public status(guildId: string, guild?: Guild): GuildSetupStatus {
-    const botPermissions = guild ? this.checkBotPermissions(guild) : null;
+  public async status(guildId: string): Promise<GuildSetupStatus> {
+    const botPermissions = await this.resourceGateway.checkBotPermissions(guildId);
     const profile = this.guildConfigurationProvider.find(guildId);
     if (!profile) {
       return {
@@ -182,77 +183,42 @@ export class LocalGuildSetupService implements GuildSetupService {
         profileFile: null,
         controlPanelChannelId: null,
         enabledFeatures: [],
+        featureStates: [],
         access: null,
+        music: null,
+        chat: null,
+        panel: null,
         botPermissions,
       };
     }
 
+    const featureEntries = Object.entries(profile.features) as [GuildFeatureName, boolean][];
     return {
       configured: true,
       profileFile: profile.sourceFile,
       controlPanelChannelId: profile.channels.controlPanel,
-      enabledFeatures: Object.entries(profile.features)
-        .filter(([, enabled]) => enabled)
-        .map(([feature]) => feature),
+      enabledFeatures: featureEntries.filter(([, enabled]) => enabled).map(([feature]) => feature),
+      featureStates: featureEntries.map(([name, enabled]) => ({ name, enabled })),
       access: {
         botAdministrator: profile.roles.botAdministrator,
         musicController: profile.roles.musicController,
         restricted: profile.roles.restricted,
         chatbot: profile.roles.chatbot,
       },
+      music: profile.music,
+      chat: profile.chat,
+      panel: profile.panel,
       botPermissions,
     };
   }
 
-  private static readonly requiredBotPermissions = [
-    PermissionFlagsBits.ManageChannels,
-    PermissionFlagsBits.ManageMessages,
-    PermissionFlagsBits.ManageRoles,
-    PermissionFlagsBits.SendMessages,
-    PermissionFlagsBits.EmbedLinks,
-    PermissionFlagsBits.ReadMessageHistory,
-  ];
-
-  private checkBotPermissions(guild: Guild): GuildSetupBotPermissionStatus {
-    const botMember = guild.members.me;
-    const missingFlags = LocalGuildSetupService.requiredBotPermissions.filter(
-      (flag) => !botMember?.permissions.has(flag),
-    );
-    const missing = new PermissionsBitField(missingFlags).toArray();
-    return { ok: missing.length === 0, missing };
-  }
-
-  private assertBotPermissions(guild: Guild): void {
-    const status = this.checkBotPermissions(guild);
+  private async assertBotPermissions(guildId: string): Promise<void> {
+    const status = await this.resourceGateway.checkBotPermissions(guildId);
     if (!status.ok) {
       throw new Error(
         `The bot is missing required permissions: ${status.missing.join(", ")}.`,
       );
     }
-  }
-
-  private createRole(guild: Guild, name: string): Promise<Role> {
-    return guild.roles.create({ name, reason: "Initial bot guild setup" });
-  }
-
-  private async grantRoleIfMissing(
-    member: GuildMember,
-    role: Role,
-    reason: string,
-  ): Promise<void> {
-    if (!member.roles.cache.has(role.id)) {
-      await member.roles.add(role, reason);
-    }
-  }
-
-  private async createControlChannel(guild: Guild): Promise<TextChannel> {
-    const channel = await guild.channels.create({
-      name: "music-control",
-      type: ChannelType.GuildText,
-      topic: "Persistent music control channel",
-      reason: "Initial bot guild setup",
-    });
-    return channel;
   }
 
   private firstRoleId(roleIds: ReadonlySet<string>, label: string): string {

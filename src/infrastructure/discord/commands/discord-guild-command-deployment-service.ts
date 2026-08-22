@@ -1,10 +1,11 @@
-import { REST, Routes } from "discord.js";
+import { REST, Routes, type RESTPostAPIChatInputApplicationCommandsJSONBody } from "discord.js";
 
 import { CommandModule } from "../../../application/commands/command.js";
 import type { GuildCommandDeploymentService } from "../../../application/commands/guild-command-deployment-service.js";
 import type { CommandRegistry } from "../../../application/commands/command-registry.js";
 import type { ApplicationConfiguration } from "../../../config/configuration.js";
 import type { GuildConfiguration } from "../../../config/guild-configuration.js";
+import { buildSlashCommandBuilder } from "./command-metadata-builder.js";
 
 export class DiscordGuildCommandDeploymentService
   implements GuildCommandDeploymentService
@@ -19,9 +20,7 @@ export class DiscordGuildCommandDeploymentService
   }
 
   public async deploy(profile: GuildConfiguration): Promise<number> {
-    const commandData = this.commandRegistry.toApplicationCommandDataForModules(
-      this.enabledModules(profile),
-    );
+    const commandData = this.commandJsonForModules(this.enabledModules(profile));
 
     await this.rest.put(
       Routes.applicationGuildCommands(
@@ -35,9 +34,7 @@ export class DiscordGuildCommandDeploymentService
   }
 
   public async deployBootstrap(): Promise<number> {
-    const commandData = this.commandRegistry.toApplicationCommandDataForModules(
-      new Set([CommandModule.Bootstrap]),
-    );
+    const commandData = this.commandJsonForModules(new Set([CommandModule.Bootstrap]));
 
     await this.rest.put(
       Routes.applicationCommands(this.configuration.discord.applicationId),
@@ -45,6 +42,14 @@ export class DiscordGuildCommandDeploymentService
     );
 
     return commandData.length;
+  }
+
+  private commandJsonForModules(
+    enabledModules: ReadonlySet<CommandModule>,
+  ): RESTPostAPIChatInputApplicationCommandsJSONBody[] {
+    return this.commandRegistry
+      .getByEnabledModules(enabledModules)
+      .map((command) => buildSlashCommandBuilder(command.definition).toJSON());
   }
 
   private enabledModules(profile: GuildConfiguration): ReadonlySet<CommandModule> {

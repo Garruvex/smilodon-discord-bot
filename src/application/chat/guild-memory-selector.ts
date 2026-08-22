@@ -4,7 +4,14 @@ import type {
   ChatUser,
   GuildKnowledgeRecord,
 } from "./chat-provider.js";
-import { buildRelevanceContext, cosineSimilarity, scoreRecord, selectByRelevance } from "./memory-relevance.js";
+import {
+  bm25Score,
+  buildBm25Corpus,
+  buildRelevanceContext,
+  cosineSimilarity,
+  reciprocalRankFusion,
+  selectByRelevance,
+} from "./memory-relevance.js";
 import type { EmbeddingsClient } from "../../infrastructure/chat/openai-embeddings-client.js";
 
 export interface GuildMemorySelectionInput {
@@ -53,9 +60,10 @@ export class RelevantGuildMemorySelector implements GuildMemorySelector {
       subjectIds,
       now: input.now,
     });
+    const corpus = buildBm25Corpus(input.records);
     const selected = selectByRelevance(
       input.records,
-      (record) => scoreRecord(context, record),
+      (record) => bm25Score(corpus, context, record),
       guildKnowledgeLimits.maxSerializedChars,
       guildKnowledgePromptProjection,
     );
@@ -63,20 +71,14 @@ export class RelevantGuildMemorySelector implements GuildMemorySelector {
   }
 }
 
-// How much a cosine-similarity point of 1.0 (identical embeddings) is worth
-// relative to the lexical scorer's terms — tuned so a strong semantic match
-// with zero literal keyword overlap can still outrank a weak literal match,
-// without letting similarity alone drown out the subject-ID boost (which
-// should always win on a record about the exact person being discussed).
-const similarityWeight = 4;
-
 /**
- * Same ranking as RelevantGuildMemorySelector, plus a cosine-similarity term
- * between the record's stored embedding and the current turn's embedded
- * query — additive, not a replacement, so the subject/recency/keyword
- * signals still apply. A record with no stored embedding (pre-upgrade, or a
- * failed write-time embed) contributes 0 to the similarity term and is
- * ranked purely on the lexical score, same as RelevantGuildMemorySelector.
+ * Fuses two independently-ranked lists — BM25 lexical order and
+ * cosine-similarity order between the record's stored embedding and the
+ * current turn's embedded query — via Reciprocal Rank Fusion (see
+ * reciprocalRankFusion), rather than adding the two scores directly (their
+ * scales aren't comparable). A record with no stored embedding (pre-upgrade,
+ * or a failed write-time embed) sorts to the bottom of the embedding
+ * ranking, so it's still surfaced by BM25 order alone if lexically relevant.
  */
 export class EmbeddingGuildMemorySelector implements GuildMemorySelector {
   public constructor(private readonly embeddingsClient: EmbeddingsClient) {}
@@ -90,16 +92,24 @@ export class EmbeddingGuildMemorySelector implements GuildMemorySelector {
       subjectIds,
       now: input.now,
     });
-    // A failed query embedding degrades to the lexical-only score for every
-    // record (queryEmbedding null) rather than failing the whole turn.
+    const corpus = buildBm25Corpus(input.records);
+    const lexicalOrder = [...input.records].sort(
+      (a, b) => bm25Score(corpus, context, b) - bm25Score(corpus, context, a),
+    );
+    // A failed query embedding degrades to lexical-only ranking (RRF over a
+    // single list is just that list's order) rather than failing the turn.
     const queryEmbedding = await this.embeddingsClient.embed(input.message).catch(() => null);
+    const compatible = queryEmbedding
+      ? input.records.filter((record) => record.embedding?.length === queryEmbedding.length)
+      : [];
+    const embeddingOrder = queryEmbedding && compatible.length > 0
+      ? [...compatible].sort((a, b) =>
+          cosineSimilarity(b.embedding!, queryEmbedding) - cosineSimilarity(a.embedding!, queryEmbedding))
+      : null;
+    const fused = reciprocalRankFusion(embeddingOrder ? [lexicalOrder, embeddingOrder] : [lexicalOrder]);
     const selected = selectByRelevance(
       input.records,
-      (record) => {
-        const lexicalScore = scoreRecord(context, record);
-        if (!queryEmbedding || !record.embedding) return lexicalScore;
-        return lexicalScore + similarityWeight * cosineSimilarity(record.embedding, queryEmbedding);
-      },
+      (record) => fused.get(record) ?? 0,
       guildKnowledgeLimits.maxSerializedChars,
       guildKnowledgePromptProjection,
     );

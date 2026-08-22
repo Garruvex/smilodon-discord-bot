@@ -8,6 +8,7 @@ import { chatMemoryLimits } from "../../../application/chat/chat-memory-policy.j
 import { ChatProviderError, type ChannelHistoryMessage, type ReplyChainMessage } from "../../../application/chat/chat-provider.js";
 import { ChatStateCommitError, type ChatConversationService } from "../../../application/chat/chat-conversation-service.js";
 import { ChannelTypingManager } from "../../../application/chat/channel-typing-manager.js";
+import type { PersonaSource } from "../../../application/chat/persona-source.js";
 import type { ApplicationConfiguration } from "../../../config/configuration.js";
 import type { GuildConfigurationProvider } from "../../../config/guild-configuration-provider.js";
 import { ChatTurnSupport } from "./chat-turn-support.js";
@@ -35,6 +36,7 @@ export class MentionChatBehavior implements BotBehavior<Message> {
     private readonly configuration: ApplicationConfiguration,
     private readonly profiles: GuildConfigurationProvider,
     private readonly conversation: ChatConversationService | null,
+    private readonly personaSource: PersonaSource,
     private readonly logger: Logger,
   ) {
     this.chatAccess = new ChatAccessService(configuration);
@@ -101,7 +103,12 @@ export class MentionChatBehavior implements BotBehavior<Message> {
           profile.chat.maxImagesPerRequest,
         )
       : { selected: [], droppedUnsupported: 0, droppedOverLimit: 0 };
-    if (!prompt && imageAttachments.length === 0) {
+    // An empty tag is still a valid request when it's a reply — "@bot" on
+    // its own replying to someone else's message means "look at this", with
+    // the replied-to message standing in for the question (see the reply
+    // chain instructions in buildChatInstructions). Only bail out empty-
+    // handed when there's truly nothing to go on.
+    if (!prompt && imageAttachments.length === 0 && replyChainMessages.length === 0) {
       await message.reply({ content: "Mention me with a question or supported image and I'll try to help.", allowedMentions: { repliedUser: false } });
       return BehaviorResult.StopPropagation;
     }
@@ -142,9 +149,7 @@ export class MentionChatBehavior implements BotBehavior<Message> {
         messageId: message.id,
         userId: message.author.id,
         model: this.configuration.chat?.models[0],
-        apiMode: this.configuration.chat?.mode,
-        reasoningEffort: this.configuration.chat?.reasoningEffort,
-        verbosity: this.configuration.chat?.verbosity,
+        provider: this.configuration.chat?.provider,
         maxOutputTokens: this.configuration.chat?.maxOutputTokens,
         imageCount: images.length,
         droppedImageCount,
@@ -161,9 +166,15 @@ export class MentionChatBehavior implements BotBehavior<Message> {
             .slice(0, 10) ?? [],
         }));
       const musicActor = this.turnSupport.resolveMusicActor(message, profile);
+      const persona = await this.personaSource.resolve(profile);
       const response = await this.conversation.run({
         guildId: message.guildId,
-        personality: this.turnSupport.loadPersonality(profile, this.configuration),
+        channelId: message.channelId,
+        personality: persona.personality,
+        examplePool: persona.examplePool,
+        loreChunks: persona.loreChunks,
+        personaDrift: persona.personaDrift,
+        personaDriftEnabled: profile.chat.personaDriftEnabled,
         currentUser: {
           id: message.author.id,
           displayName: message.member?.displayName ?? message.author.username,
@@ -182,8 +193,12 @@ export class MentionChatBehavior implements BotBehavior<Message> {
         includeSources: profile.chat.includeSources,
         triggerMode: "direct",
         toolsEnabled: profile.chat.toolCallingEnabled,
+        disabledToolNames: new Set(profile.chat.disabledTools),
+        channelMemoryModes: profile.chat.channelMemoryModes,
+        isOwner: this.configuration.ownerUserIds.has(message.author.id),
         channelIsNsfw: "nsfw" in message.channel ? Boolean(message.channel.nsfw) : false,
         musicActor: musicActor?.actor ?? null,
+        musicResolveAccessSubjectFields: musicActor?.resolveAccessSubjectFields,
         musicVolumeMaximum: musicActor?.volumeMaximum,
         musicControllerRoleIds: musicActor?.musicControllerRoleIds,
         musicBotAdministratorRoleIds: musicActor?.botAdministratorRoleIds,

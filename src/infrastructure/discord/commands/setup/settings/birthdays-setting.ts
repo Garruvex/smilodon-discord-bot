@@ -1,14 +1,13 @@
-import { ChannelType } from "discord.js";
-
 import type { MutationSettingDefinition } from "./setting-definition.js";
 
 export const birthdaysSetting: MutationSettingDefinition = {
   kind: "mutation",
   name: "birthdays",
   description: "Configures automatic birthday announcements.",
-  configureOptions: (b) => b
-    .addBooleanOption((o) => o.setName("enabled").setDescription("Turn birthday announcements on or off."))
-    .addChannelOption((o) => o.setName("channel").setDescription("Text channel where birthday announcements are posted.").addChannelTypes(ChannelType.GuildText)),
+  configureOptions: () => [
+    { type: "boolean", name: "enabled", description: "Turn birthday announcements on or off." },
+    { type: "channel", name: "channel", description: "Text channel where birthday announcements are posted.", guildTextOnly: true },
+  ],
   handle: (context, _deps, previousProfile, input) => {
     const enabled = context.interaction.options.getBoolean("enabled");
     const channel = context.interaction.options.getChannel("channel");

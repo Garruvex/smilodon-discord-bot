@@ -1,9 +1,8 @@
-import { SlashCommandBuilder } from "discord.js";
-
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
 import type { ChatStateStore } from "../../../../application/chat/chat-state-store.js";
 import type { MemberProfileService } from "../../../../application/members/member-profile-service.js";
+import type { MemoryEngine } from "../../../../application/memory/memory.js";
 
 const monthNames = [
   "January", "February", "March", "April", "May", "June",
@@ -11,27 +10,28 @@ const monthNames = [
 ];
 
 export class MemoryCommand implements BotCommand {
-  public readonly definition = new SlashCommandBuilder()
-    .setName("memory")
-    .setDescription("View or clear what the bot remembers about you from chat.")
-    .addSubcommand((command) =>
-      command.setName("list").setDescription("Lists what the bot remembers about you in this server."),
-    )
-    .addSubcommand((command) =>
-      command.setName("forget").setDescription("Deletes something the bot remembers about you.")
-        .addStringOption((option) =>
-          option.setName("id").setDescription("The memory ID to forget, from /memory list."),
-        )
-        .addBooleanOption((option) =>
-          option.setName("all").setDescription("Forget everything the bot remembers about you in this server."),
-        ),
-    )
-    .addSubcommand((command) =>
-      command.setName("notes").setDescription("Controls whether the bot DMs you extra notes about your chat requests.")
-        .addBooleanOption((option) =>
-          option.setName("dm").setDescription("Send notes like dropped images or truncated replies as a DM. Omit to check the current setting."),
-        ),
-    );
+  public readonly definition = {
+    name: "memory",
+    description: "View or clear what the bot remembers about you from chat.",
+    subcommands: [
+      { name: "list", description: "Lists what the bot remembers about you in this server." },
+      {
+        name: "forget",
+        description: "Deletes something the bot remembers about you.",
+        options: [
+          { type: "string", name: "id", description: "The memory ID to forget, from /memory list." },
+          { type: "boolean", name: "all", description: "Forget everything the bot remembers about you in this server." },
+        ],
+      },
+      {
+        name: "notes",
+        description: "Controls whether the bot DMs you extra notes about your chat requests.",
+        options: [
+          { type: "boolean", name: "dm", description: "Send notes like dropped images or truncated replies as a DM. Omit to check the current setting." },
+        ],
+      },
+    ],
+  } satisfies BotCommand["definition"];
 
   public readonly module = CommandModule.Common;
   public readonly access = publicAccessPolicy;
@@ -39,6 +39,7 @@ export class MemoryCommand implements BotCommand {
   public constructor(
     private readonly chatStateStore: ChatStateStore,
     private readonly memberProfileService: MemberProfileService,
+    private readonly memoryEngine: MemoryEngine,
   ) {}
 
   public async execute(context: CommandContext): Promise<void> {
@@ -79,7 +80,7 @@ export class MemoryCommand implements BotCommand {
   }
 
   private async list(context: CommandContext, guildId: string, userId: string): Promise<void> {
-    const profile = await this.memberProfileService.load(guildId, userId, Date.now());
+    const profile = await this.memberProfileService.load(guildId, userId);
     if (profile.memories.length === 0 && !profile.birthday && !profile.customization) {
       await context.responses.reply("I don't have anything remembered about you in this server yet.");
       return;
@@ -111,7 +112,7 @@ export class MemoryCommand implements BotCommand {
     const all = context.interaction.options.getBoolean("all");
 
     if (all === true) {
-      const count = await this.chatStateStore.forgetAllMemories(guildId, userId);
+      const count = await this.memoryEngine.forget({ guildId, ownerUserId: userId });
       await context.responses.reply(
         count > 0 ? `Forgot ${count} ${count === 1 ? "memory" : "memories"}.` : "There was nothing to forget.",
       );
@@ -123,16 +124,16 @@ export class MemoryCommand implements BotCommand {
       return;
     }
 
-    const state = await this.chatStateStore.load(guildId, userId, Date.now());
-    const match = state.memories.find((memory) => memory.id === id || memory.id.startsWith(id));
+    const memories = await this.memoryEngine.listUserMemories(guildId, userId);
+    const match = memories.find((memory) => memory.id === id || memory.id.startsWith(id));
     if (!match) {
       await context.responses.reply("I couldn't find a memory with that ID. Check `/memory list`.");
       return;
     }
 
-    const forgotten = await this.chatStateStore.forgetMemory(guildId, userId, match.id);
+    const forgotten = await this.memoryEngine.forget({ guildId, ownerUserId: userId, memoryId: match.id });
     await context.responses.reply(
-      forgotten ? `Forgot: ${match.topic}.${match.slot}.` : "I couldn't find a memory with that ID.",
+      forgotten > 0 ? `Forgot: ${match.topic}.${match.slot}.` : "I couldn't find a memory with that ID.",
     );
   }
 }

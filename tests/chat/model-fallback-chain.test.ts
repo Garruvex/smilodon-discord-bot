@@ -56,4 +56,37 @@ describe("ModelFallbackChain", () => {
     await expect(chain.run(attempt)).rejects.toThrow("server error");
     expect(fallbackCalled).toBe(false);
   });
+
+  it("retries the same model once on a dropped stream", async () => {
+    const chain = new ModelFallbackChain(["primary", "fallback"]);
+    let primaryCalls = 0;
+    const attempt = (model: string): Promise<string> => {
+      if (model === "primary") {
+        primaryCalls += 1;
+        return primaryCalls === 1
+          ? Promise.reject(new ChatProviderError("dropped", 502, "incomplete_stream"))
+          : Promise.resolve("ok:retry");
+      }
+      return Promise.resolve("ok:fallback");
+    };
+    await expect(chain.run(attempt)).resolves.toBe("ok:retry");
+    expect(primaryCalls).toBe(2);
+  });
+
+  it("does not fall through the chain when a dropped stream persists across the retry", async () => {
+    const chain = new ModelFallbackChain(["primary", "fallback"]);
+    let primaryCalls = 0;
+    let fallbackCalled = false;
+    const attempt = (model: string): Promise<string> => {
+      if (model === "primary") {
+        primaryCalls += 1;
+        return Promise.reject(new ChatProviderError("dropped", 502, "incomplete_stream"));
+      }
+      fallbackCalled = true;
+      return Promise.resolve("ok");
+    };
+    await expect(chain.run(attempt)).rejects.toThrow("dropped");
+    expect(primaryCalls).toBe(2);
+    expect(fallbackCalled).toBe(false);
+  });
 });

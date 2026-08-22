@@ -31,16 +31,37 @@ export class ModelFallbackChain {
     let lastError: unknown;
     for (const model of candidates) {
       try {
-        return await attempt(model);
+        return await this.attemptWithStreamRetry(attempt, model);
       } catch (error) {
         lastError = error;
-        if (error instanceof ChatProviderError && error.status === 429) {
-          this.cooldownUntil.set(model, Date.now() + this.cooldownMs);
-          continue;
+        if (error instanceof ChatProviderError) {
+          if (error.status === 429) {
+            this.cooldownUntil.set(model, Date.now() + this.cooldownMs);
+            continue;
+          }
+          // Structured-output calls validate inside the attempt so an
+          // incomplete or malformed result can use the configured fallback
+          // model instead of permanently failing the background batch.
+          if (error.code === "incomplete_response" || error.code === "invalid_structured_output") continue;
         }
         throw error;
       }
     }
     throw lastError instanceof Error ? lastError : new ChatModelFallbackExhaustedError();
+  }
+
+  // A stream that closes with no response.completed and no explicit error
+  // event is a dropped connection, not a quota or capability signal — retried
+  // once on the same model before falling into the normal (non-retrying)
+  // error path above.
+  private async attemptWithStreamRetry<T>(attempt: (model: string) => Promise<T>, model: string): Promise<T> {
+    try {
+      return await attempt(model);
+    } catch (error) {
+      if (error instanceof ChatProviderError && error.code === "incomplete_stream") {
+        return await attempt(model);
+      }
+      throw error;
+    }
   }
 }

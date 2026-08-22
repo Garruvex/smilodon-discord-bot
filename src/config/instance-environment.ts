@@ -4,7 +4,11 @@ import { basename, resolve } from "node:path";
 import { parse } from "dotenv";
 
 const instanceNamePattern = /^[a-z0-9][a-z0-9_-]{0,63}$/;
-const instanceOwnedEnvironmentPrefixes = ["CHAT_"] as const;
+// CHATBOT_* (main chatbot persona/reply model), UTILITY_* (fully independent
+// task for standalone structured-output calls), and OPENAI_*/GOOGLE_* (the
+// shared per-vendor API key pool both tasks draw from) — all instance-owned,
+// none inherited from the shared root .env.
+const instanceOwnedEnvironmentPrefixes = ["CHATBOT_", "UTILITY_", "OPENAI_", "GOOGLE_"] as const;
 
 export interface LoadedInstanceEnvironment {
   name: string;
@@ -35,14 +39,28 @@ export function loadInstanceEnvironment(
       `INSTANCE_NAME "${values.INSTANCE_NAME}" does not match filename "${name}.env".`,
     );
   }
+  const shared = withoutInstanceOwnedValues(loadSharedEnvironment(root));
+  const environment: NodeJS.ProcessEnv = {
+    ...shared,
+    ...values,
+    INSTANCE_NAME: name,
+  };
   return {
     name,
     file,
-    environment: {
-      ...withoutInstanceOwnedValues(loadSharedEnvironment(root)),
-      ...values,
-      INSTANCE_NAME: name,
-    },
+    environment: resolveSharedPostgresEnvironment(environment),
+  };
+}
+
+export function resolveSharedPostgresEnvironment(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  if (source.PERSISTENCE_DRIVER !== "postgres" || !source.POSTGRES_PASSWORD) return source;
+  const host = source.POSTGRES_HOST?.trim() || "127.0.0.1";
+  const port = source.POSTGRES_PORT?.trim() || "5432";
+  const database = source.POSTGRES_DB?.trim() || "fntu_bot";
+  const user = source.POSTGRES_USER?.trim() || "fntu_bot";
+  return {
+    ...source,
+    DATABASE_URL: `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(source.POSTGRES_PASSWORD)}@${host}:${port}/${encodeURIComponent(database)}`,
   };
 }
 
@@ -86,11 +104,26 @@ export function validateInstanceIsolation(
   requireUnique(instances, "DISCORD_APPLICATION_ID", true);
   requireUnique(instances, "RUNTIME_DATA_DIRECTORY", true);
   requireUnique(instances, "GUILD_CONFIG_DIRECTORY", true);
-  requireUnique(
-    instances.filter((instance) => instance.environment.PERSISTENCE_DRIVER === "postgres"),
-    "DATABASE_URL",
-    true,
-  );
+  // PostgreSQL always derives an isolated schema from INSTANCE_NAME. Sharing
+  // DATABASE_URL is therefore safe unless two differently formatted instance
+  // names fold to the same PostgreSQL identifier (for example, a-b and a_b).
+  const postgresInstances = instances.filter((instance) => instance.environment.PERSISTENCE_DRIVER === "postgres");
+  const schemaOwnersByDatabaseUrl = new Map<string, Map<string, string>>();
+  for (const instance of postgresInstances) {
+    const databaseUrl = instance.environment.DATABASE_URL?.trim();
+    if (!databaseUrl) throw new Error(`Instance "${instance.name}" is missing DATABASE_URL.`);
+    const effectiveSchema = instance.name.replaceAll("-", "_");
+    const schemaOwners = schemaOwnersByDatabaseUrl.get(databaseUrl) ?? new Map<string, string>();
+    schemaOwnersByDatabaseUrl.set(databaseUrl, schemaOwners);
+    const existing = schemaOwners.get(effectiveSchema);
+    if (existing) {
+      throw new Error(
+        `Instances "${existing}" and "${instance.name}" share DATABASE_URL and resolve to the same schema ` +
+        `("${effectiveSchema}"); rename one instance to preserve isolation.`,
+      );
+    }
+    schemaOwners.set(effectiveSchema, instance.name);
+  }
 }
 
 function validateInstanceName(name: string): void {

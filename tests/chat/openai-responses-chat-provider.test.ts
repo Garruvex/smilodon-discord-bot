@@ -5,6 +5,7 @@ import type { ChatTool } from "../../src/application/chat/tools/chat-tool.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -55,7 +56,11 @@ describe("OpenAiResponsesChatProvider", () => {
     );
     const response = await provider.reply({
       guildId: "99999999999999999",
+      channelId: "77777777777777777",
       personality: "Be helpful.",
+      exampleExchanges: [],
+      personaLore: [],
+      personaDrift: null,
       userCustomization: null,
       currentUser: { id: "11111111111111111", displayName: "Tester", roleNames: [] },
       mentionedUsers: [],
@@ -140,7 +145,11 @@ describe("OpenAiResponsesChatProvider", () => {
 
     const response = await provider.reply({
       guildId: "99999999999999999",
+      channelId: "77777777777777777",
       personality: "Be helpful.",
+      exampleExchanges: [],
+      personaLore: [],
+      personaDrift: null,
       userCustomization: null,
       currentUser: { id: "11111111111111111", displayName: "Tester", roleNames: [] },
       mentionedUsers: [],
@@ -190,7 +199,11 @@ describe("OpenAiResponsesChatProvider", () => {
     );
     const response = await provider.reply({
       guildId: "99999999999999999",
+      channelId: "77777777777777777",
       personality: "Be helpful.",
+      exampleExchanges: [],
+      personaLore: [],
+      personaDrift: null,
       userCustomization: null,
       currentUser: { id: "11111111111111111", displayName: "Tester", roleNames: [] },
       mentionedUsers: [],
@@ -262,7 +275,11 @@ describe("OpenAiResponsesChatProvider", () => {
     );
     const response = await provider.reply({
       guildId: "99999999999999999",
+      channelId: "77777777777777777",
       personality: "Be helpful.",
+      exampleExchanges: [],
+      personaLore: [],
+      personaDrift: null,
       userCustomization: null,
       currentUser: { id: "11111111111111111", displayName: "Tester", roleNames: [] },
       mentionedUsers: [],
@@ -282,8 +299,10 @@ describe("OpenAiResponsesChatProvider", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(executeRollDice).toHaveBeenCalledWith({ sides: 20 }, {
       guildId: "99999999999999999",
+      channelId: "77777777777777777",
       currentUser: { id: "11111111111111111", displayName: "Tester", roleNames: [] },
       channelIsNsfw: false,
+      isOwner: false,
       music: null,
     });
     expect(response.text).toBe("You rolled a 4.");
@@ -301,9 +320,11 @@ describe("OpenAiResponsesChatProvider", () => {
       callCount += 1;
       if (typeof init?.body !== "string") throw new Error("Expected a JSON request body.");
       const body = JSON.parse(init.body) as { input: Array<Record<string, unknown>>; tools: unknown[] };
-      // The 5th request is the forced finalize round: no tools offered, and
-      // the last function_call_output must carry the budget-exhausted note.
-      if (callCount === 5) {
+      // maxToolRoundTrips is 6, so requests 1-7 all call the stuck tool
+      // (round-trips 0-6) and the 8th request is the forced finalize round:
+      // no tools offered, and the last function_call_output must carry the
+      // budget-exhausted note.
+      if (callCount === 8) {
         expect(body.tools).toEqual([]);
         const lastInputItem = body.input.at(-1);
         expect(lastInputItem).toMatchObject({ type: "function_call_output", call_id: "call_x" });
@@ -330,7 +351,11 @@ describe("OpenAiResponsesChatProvider", () => {
 
     const response = await provider.reply({
       guildId: "99999999999999999",
+      channelId: "77777777777777777",
       personality: "Be helpful.",
+      exampleExchanges: [],
+      personaLore: [],
+      personaDrift: null,
       userCustomization: null,
       currentUser: { id: "11111111111111111", displayName: "Tester", roleNames: [] },
       mentionedUsers: [],
@@ -347,8 +372,143 @@ describe("OpenAiResponsesChatProvider", () => {
       enabledTools: [stuckTool],
     });
 
-    // Initial request + 3 tool round-trips + 1 forced finalize round = 5.
-    expect(fetchMock).toHaveBeenCalledTimes(5);
+    // Initial request + 6 tool round-trips + 1 forced finalize round = 8.
+    expect(fetchMock).toHaveBeenCalledTimes(8);
     expect(response.text).toBe("Here's what I found so far.");
+  });
+
+  it("uses the configured summary model for analyzeUserCustomization, not the primary reply model", async () => {
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+      if (typeof init?.body !== "string") throw new Error("Expected a JSON request body.");
+      const body = JSON.parse(init.body) as Record<string, unknown>;
+      expect(body.model).toBe("gpt-5-nano-cheap");
+      return Promise.resolve(new Response(JSON.stringify({
+        output: [{
+          type: "message",
+          content: [{
+            type: "output_text",
+            text: JSON.stringify({ ok: true, reason: null, cleanedMarkdown: "- Call me Red\n- Keep it casual" }),
+          }],
+        }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = new OpenAiResponsesChatProvider(
+      "https://api.openai.com/v1",
+      "secret",
+      ["gpt-5-nano"],
+      { reasoningEffort: "low", verbosity: "low", maxOutputTokens: 2_048, summaryModels: ["gpt-5-nano-cheap"] },
+    );
+    const result = await provider.analyzeUserCustomization("call me Red, keep it casual");
+
+    expect(result).toEqual({ ok: true, markdown: "- Call me Red\n- Keep it casual" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to the primary model for analyzeUserCustomization when no summary model is configured", async () => {
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+      if (typeof init?.body !== "string") throw new Error("Expected a JSON request body.");
+      const body = JSON.parse(init.body) as Record<string, unknown>;
+      expect(body.model).toBe("gpt-5-nano");
+      return Promise.resolve(new Response(JSON.stringify({
+        output: [{
+          type: "message",
+          content: [{
+            type: "output_text",
+            text: JSON.stringify({ ok: true, reason: null, cleanedMarkdown: "- Keep it casual" }),
+          }],
+        }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = new OpenAiResponsesChatProvider(
+      "https://api.openai.com/v1",
+      "secret",
+      ["gpt-5-nano"],
+      { reasoningEffort: "low", verbosity: "low", maxOutputTokens: 2_048 },
+    );
+    await provider.analyzeUserCustomization("keep it casual");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the channel-summary budget and falls back after an incomplete structured response", async () => {
+    const requests: Array<Record<string, unknown>> = [];
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+      if (typeof init?.body !== "string") throw new Error("Expected a JSON request body.");
+      const body = JSON.parse(init.body) as Record<string, unknown>;
+      requests.push(body);
+      if (requests.length === 1) {
+        return Promise.resolve(new Response(JSON.stringify({
+          status: "incomplete",
+          incomplete_details: { reason: "max_output_tokens" },
+          output: [],
+        }), { status: 200, headers: { "Content-Type": "application/json" } }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({
+        status: "completed",
+        output: [{
+          type: "message",
+          content: [{
+            type: "output_text",
+            text: JSON.stringify({ facts: [{
+              subjectType: "member", subjectId: "a1", topic: "nickname", slot: "nickname",
+              statement: "Member goes by Red.", evidenceMessageIds: ["m1"],
+            }] }),
+          }],
+        }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = new OpenAiResponsesChatProvider(
+      "https://api.openai.com/v1",
+      "secret",
+      ["gpt-5.6-luna"],
+      {
+        reasoningEffort: "medium", verbosity: "low", maxOutputTokens: 2_048,
+        summaryModels: ["gpt-5-nano", "gpt-5.6-luna"],
+        summaryReasoningEffort: "low", summaryMaxOutputTokens: 4_096,
+      },
+    );
+    const facts = await provider.summarizeChannelMessages("99999999999999999", [{
+      id: "11111111111111111", authorId: "22222222222222222", authorDisplayName: "Red", content: "Call me Red.",
+    }]);
+
+    expect(requests.map((request) => request.model)).toEqual(["gpt-5-nano", "gpt-5.6-luna"]);
+    expect(requests[0]).toMatchObject({ reasoning: { effort: "low" }, max_output_tokens: 4_096 });
+    expect(facts[0]).toMatchObject({ subjectId: "22222222222222222", evidenceMessageIds: ["11111111111111111"] });
+  });
+
+  it("classifies persona sections with a small output budget, returning validated section indexes", async () => {
+    const largePersonality = `## Voice\n${"Always playful. ".repeat(2_000)}\n\n## Backstory\nBorn in a forest.`;
+    let capturedMaxOutputTokens = 0;
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+      if (typeof init?.body !== "string") throw new Error("Expected a JSON request body.");
+      const body = JSON.parse(init.body) as Record<string, unknown>;
+      capturedMaxOutputTokens = body.max_output_tokens as number;
+      return Promise.resolve(new Response(JSON.stringify({
+        output: [{
+          type: "message",
+          content: [{ type: "output_text", text: JSON.stringify({ chunkSectionIndexes: [1] }) }],
+        }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = new OpenAiResponsesChatProvider(
+      "https://api.openai.com/v1",
+      "secret",
+      ["gpt-5-nano"],
+      { reasoningEffort: "low", verbosity: "low", maxOutputTokens: 2_048 },
+    );
+    const result = await provider.compilePersonaBundle(largePersonality);
+
+    expect(capturedMaxOutputTokens).toBe(4_000);
+    expect(timeoutSpy).toHaveBeenCalledWith(180_000);
+    expect(result).toEqual([1]);
   });
 });

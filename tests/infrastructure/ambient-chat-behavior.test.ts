@@ -2,6 +2,7 @@ import type { GuildMember, Message } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { AmbientChatBehavior } from "../../src/infrastructure/discord/behaviors/ambient-chat-behavior.js";
+import { defaultMemoryEngineLimits } from "../../src/application/memory/memory-engine.js";
 import type { ApplicationConfiguration } from "../../src/config/configuration.js";
 import type { GuildConfiguration } from "../../src/config/guild-configuration.js";
 import type { GuildConfigurationProvider } from "../../src/config/guild-configuration-provider.js";
@@ -24,6 +25,9 @@ function configuration(): ApplicationConfiguration {
     persistence: { driver: "file", databaseUrl: null },
     lavalink: { host: "localhost", port: 2333, password: "test-password", secure: false },
     chat: null,
+    utilityChat: null,
+    embeddings: null,
+    memory: defaultMemoryEngineLimits,
   };
 }
 
@@ -63,11 +67,11 @@ function profile(overrides: { ambientReplies?: boolean } = {}): GuildConfigurati
       emptyChannelAction: "pause", emptyChannelGracePeriodMs: 30_000, resumeWhenOccupied: true,
     },
     chat: {
-      personalityFile: null, personalityAsset: null, cooldownSeconds: 30,
+      personalityFile: null, personalityAsset: null, examplesFile: null, examplesAsset: null, cooldownSeconds: 30,
       deniedMessage: "Premium required.", deniedLinkUrl: null, deniedLinkLabel: null,
-      webSearchMode: "off", toolCallingEnabled: false, imageInputEnabled: false, imageGenerationEnabled: false,
+      webSearchMode: "off", toolCallingEnabled: false, disabledTools: [], imageInputEnabled: false, imageGenerationEnabled: false,
       includeSources: true, maxImagesPerRequest: 2, ambientCooldownSeconds: 20,
-      channelHistoryLimit: 8,
+      channelHistoryLimit: 8, channelMemoryModes: {}, personaDriftEnabled: false, contextScanChannelIds: [], contextDailyChannelIds: [], contextSeedDays: 7,
     },
     sourceFile: "test.yaml",
   };
@@ -106,6 +110,7 @@ function behavior(profileValue: GuildConfiguration | null, conversation: ChatCon
     configuration(),
     provider(profileValue),
     conversation,
+    { resolve: () => Promise.resolve({ personality: "Test persona", loreChunks: [], examplePool: [], personaDrift: null }) },
     { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } as never,
   );
 }

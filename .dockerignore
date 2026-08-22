@@ -5,6 +5,6 @@ coverage
 .git
 *.log
 config/local
-data/local
+data
 lavalink/plugins
 lavalink/logs

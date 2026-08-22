@@ -171,7 +171,7 @@ export class ControlChannelService {
           guildId: message.guildId,
           textChannelId: message.channelId,
           userId: message.author.id,
-          member: message.member,
+          voiceChannelId: message.member.voice.channelId,
         },
         query,
       );
@@ -253,7 +253,7 @@ export class ControlChannelService {
       guildId: interaction.guildId,
       textChannelId: interaction.channelId,
       userId: interaction.user.id,
-      member: interaction.member,
+      voiceChannelId: interaction.member.voice.channelId,
     };
 
     // Optimistic instant feedback: render the predicted post-action state

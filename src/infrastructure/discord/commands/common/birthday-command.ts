@@ -1,5 +1,3 @@
-import { SlashCommandBuilder } from "discord.js";
-
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import type { BirthdayStore } from "../../../../application/birthdays/birthday-store.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
@@ -11,15 +9,28 @@ const monthNames = [
 const daysInMonth = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] as const;
 
 export class BirthdayCommand implements BotCommand {
-  public readonly definition = new SlashCommandBuilder()
-    .setName("birthday")
-    .setDescription("Manages birthdays for this server's announcements.")
-    .addSubcommand((command) => command.setName("set").setDescription("Sets your birthday.")
-      .addIntegerOption((option) => option.setName("month").setDescription("Birth month.").setMinValue(1).setMaxValue(12).setRequired(true))
-      .addIntegerOption((option) => option.setName("day").setDescription("Birth day.").setMinValue(1).setMaxValue(31).setRequired(true)))
-    .addSubcommand((command) => command.setName("view").setDescription("Shows a member's birthday.")
-      .addUserOption((option) => option.setName("user").setDescription("The member to look up; defaults to you.").setRequired(false)))
-    .addSubcommand((command) => command.setName("remove").setDescription("Removes your birthday."));
+  public readonly definition = {
+    name: "birthday",
+    description: "Manages birthdays for this server's announcements.",
+    subcommands: [
+      {
+        name: "set",
+        description: "Sets your birthday.",
+        options: [
+          { type: "integer", name: "month", description: "Birth month.", minValue: 1, maxValue: 12, required: true },
+          { type: "integer", name: "day", description: "Birth day.", minValue: 1, maxValue: 31, required: true },
+        ],
+      },
+      {
+        name: "view",
+        description: "Shows a member's birthday.",
+        options: [
+          { type: "user", name: "user", description: "The member to look up; defaults to you.", required: false },
+        ],
+      },
+      { name: "remove", description: "Removes your birthday." },
+    ],
+  } satisfies BotCommand["definition"];
 
   public readonly module = CommandModule.Birthdays;
   public readonly access = publicAccessPolicy;

@@ -1,12 +1,11 @@
-import { SlashCommandBuilder } from "discord.js";
-
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
 
 export class DiagnosticCommand implements BotCommand {
-  public readonly definition = new SlashCommandBuilder()
-    .setName("diagnostic")
-    .setDescription("Displays owner-only runtime diagnostics.");
+  public readonly definition = {
+    name: "diagnostic",
+    description: "Displays owner-only runtime diagnostics.",
+  };
 
   public readonly module = CommandModule.Diagnostics;
   public readonly access = {

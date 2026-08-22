@@ -1,15 +1,19 @@
-import { type Guild, type GuildMember, type TextChannel } from "discord.js";
 import type { Logger } from "pino";
 import { describe, expect, it, vi } from "vitest";
 
 import { LocalGuildSetupService } from "../../src/application/setup/local-guild-setup-service.js";
 import type { ControlChannelService } from "../../src/application/control-panel/control-channel-service.js";
 import type { GuildCommandDeploymentService } from "../../src/application/commands/guild-command-deployment-service.js";
+import type {
+  GuildChannelHandle, GuildRoleHandle,
+} from "../../src/application/setup/guild-resource-gateway.js";
+import type { GuildSetupBotPermissionStatus, GuildSetupInitializeRequest } from "../../src/application/setup/guild-setup-service.js";
 import type { GuildConfiguration } from "../../src/config/guild-configuration.js";
 import type { GuildConfigurationProvider } from "../../src/config/guild-configuration-provider.js";
 
 const guildId = "123456789012345678";
 const channelId = "234567890123456789";
+const initializedByUserId = "111111111111111111";
 
 function profile(): GuildConfiguration {
   return {
@@ -51,38 +55,75 @@ function profile(): GuildConfiguration {
     chat: {
       personalityFile: null,
       personalityAsset: null,
+      examplesFile: null,
+      examplesAsset: null,
       cooldownSeconds: 30,
       deniedMessage: "Denied",
       deniedLinkUrl: null,
       deniedLinkLabel: null,
-      webSearchMode: "off", toolCallingEnabled: false,
+      webSearchMode: "off", toolCallingEnabled: false, disabledTools: [],
       imageInputEnabled: false,
       imageGenerationEnabled: false,
       includeSources: true,
       maxImagesPerRequest: 2,
       ambientCooldownSeconds: 20,
-      channelHistoryLimit: 8,
+      channelHistoryLimit: 8, channelMemoryModes: {}, personaDriftEnabled: false, contextScanChannelIds: [], contextDailyChannelIds: [], contextSeedDays: 7,
     },
     sourceFile: "test.yaml",
+  };
+}
+
+// Plain function-property shape rather than `GuildResourceGateway` directly
+// — the interface declares its methods with method syntax, which trips
+// @typescript-eslint/unbound-method wherever a test reads e.g.
+// `gateway.createRole` for assertions. Still structurally assignable to
+// GuildResourceGateway at the LocalGuildSetupService constructor call site.
+type FakeGuildResourceGateway = {
+  createRole: (guildId: string, name: string, reason: string) => Promise<GuildRoleHandle>;
+  deleteRole: (guildId: string, roleId: string, reason: string) => Promise<void>;
+  createTextChannel: (guildId: string, name: string, topic: string, reason: string) => Promise<GuildChannelHandle>;
+  deleteChannel: (guildId: string, channelId: string, reason: string) => Promise<void>;
+  fetchTextChannel: (guildId: string, channelId: string) => Promise<GuildChannelHandle | null>;
+  grantRoleIfMissing: (guildId: string, memberId: string, roleId: string, reason: string) => Promise<void>;
+  checkBotPermissions: (guildId: string) => Promise<GuildSetupBotPermissionStatus>;
+};
+
+// Every gateway method resolves permissively by default (bot has all
+// permissions, created roles/channels get incrementing fake ids); each test
+// overrides only the calls whose return value or side effect it cares about.
+function fakeGateway(overrides: Partial<FakeGuildResourceGateway> = {}): FakeGuildResourceGateway {
+  let nextId = 1;
+  return {
+    createRole: vi.fn().mockImplementation(() => Promise.resolve({ id: `role-${nextId++}` })),
+    deleteRole: vi.fn().mockResolvedValue(undefined),
+    createTextChannel: vi.fn().mockImplementation(() => Promise.resolve({ id: channelId })),
+    deleteChannel: vi.fn().mockResolvedValue(undefined),
+    fetchTextChannel: vi.fn().mockResolvedValue({ id: channelId }),
+    grantRoleIfMissing: vi.fn().mockResolvedValue(undefined),
+    checkBotPermissions: vi.fn().mockResolvedValue({ ok: true, missing: [] }),
+    ...overrides,
+  };
+}
+
+function baseRequest(overrides: Partial<GuildSetupInitializeRequest> = {}): GuildSetupInitializeRequest {
+  return {
+    guildId,
+    guildName: "Test Guild",
+    initializedByUserId,
+    displayName: "Test Bot",
+    idleImageUrl: null,
+    controlChannelId: null,
+    botAdministratorRoleId: null,
+    musicControllerRoleId: null,
+    restrictedRoleId: null,
+    ...overrides,
   };
 }
 
 describe("LocalGuildSetupService", () => {
   it("resumes an existing profile without creating duplicate Discord resources", async () => {
     const configuredProfile = profile();
-    const editPermissions = vi.fn().mockResolvedValue(undefined);
-    const controlChannel = {
-      id: channelId,
-      type: 0,
-      guild: { roles: { everyone: { id: guildId } } },
-      permissionOverwrites: { edit: editPermissions },
-    } as unknown as TextChannel;
-    const createRole = vi.fn();
-    const guild = {
-      id: guildId,
-      channels: { fetch: vi.fn().mockResolvedValue(controlChannel) },
-      roles: { everyone: { id: guildId }, create: createRole },
-    } as unknown as Guild;
+    const gateway = fakeGateway();
     const provider = {
       find: vi.fn().mockReturnValue(configuredProfile),
     } as unknown as GuildConfigurationProvider;
@@ -91,59 +132,20 @@ describe("LocalGuildSetupService", () => {
     const ensureGuildPanel = vi.fn().mockResolvedValue(undefined);
     const panels = { ensureGuildPanel } as unknown as ControlChannelService;
     const logger = { info: vi.fn() } as unknown as Logger;
-    const service = new LocalGuildSetupService(provider, deployment, panels, logger);
+    const service = new LocalGuildSetupService(provider, deployment, panels, gateway, logger);
 
-    const result = await service.initialize({
-      guild,
-      initializedBy: {} as GuildMember,
-      displayName: "Ignored while resuming",
-      idleImageUrl: null,
-      controlChannel: null,
-      botAdministratorRole: null,
-      musicControllerRole: null,
-      restrictedRole: null,
-    });
+    const result = await service.initialize(baseRequest());
 
     expect(ensureGuildPanel).toHaveBeenCalledWith(guildId);
     expect(deploy).toHaveBeenCalledWith(configuredProfile);
     expect(result.guildId).toBe(guildId);
     expect(result.controlChannelId).toBe(channelId);
     expect(result.deployedCommandCount).toBe(12);
-    expect(createRole).not.toHaveBeenCalled();
+    expect(gateway.createRole).not.toHaveBeenCalled();
   });
 
   it("grants bot administrator and music controller roles during first-time setup", async () => {
-    const add = vi.fn().mockResolvedValue(undefined);
-    const botAdministratorRole = { id: "345678901234567890" };
-    const musicControllerRole = { id: "456789012345678901" };
-    const restrictedRole = { id: "567890123456789012" };
-    const controlChannel = {
-      id: channelId,
-      type: 0,
-      guild: { roles: { everyone: { id: guildId } } },
-      permissionOverwrites: { edit: vi.fn().mockResolvedValue(undefined) },
-    };
-    const createRole = vi
-      .fn()
-      .mockResolvedValueOnce(botAdministratorRole)
-      .mockResolvedValueOnce(musicControllerRole)
-      .mockResolvedValueOnce(restrictedRole);
-    const guild = {
-      id: guildId,
-      name: "Test Guild",
-      channels: {
-        create: vi.fn().mockResolvedValue(controlChannel),
-        fetch: vi.fn().mockResolvedValue(controlChannel),
-      },
-      roles: { create: createRole },
-      members: {
-        me: {
-          permissions: {
-            has: () => true,
-          },
-        },
-      },
-    } as unknown as Guild;
+    const gateway = fakeGateway();
     const provider = {
       find: vi.fn().mockReturnValue(null),
       create: vi.fn().mockImplementation((input: { guildId: string }) =>
@@ -157,55 +159,21 @@ describe("LocalGuildSetupService", () => {
       ensureGuildPanel: vi.fn().mockResolvedValue(undefined),
     } as unknown as ControlChannelService;
     const logger = { info: vi.fn() } as unknown as Logger;
-    const service = new LocalGuildSetupService(provider, deployment, panels, logger);
-    const initializedBy = {
-      roles: {
-        cache: new Map(),
-        add,
-      },
-    } as unknown as GuildMember;
+    const service = new LocalGuildSetupService(provider, deployment, panels, gateway, logger);
 
-    await service.initialize({
-      guild,
-      initializedBy,
-      displayName: "Test Bot",
-      idleImageUrl: null,
-      controlChannel: null,
-      botAdministratorRole: null,
-      musicControllerRole: null,
-      restrictedRole: null,
-    });
+    await service.initialize(baseRequest());
 
-    expect(add).toHaveBeenCalledTimes(2);
-    expect(add).toHaveBeenCalledWith(
-      botAdministratorRole,
-      "Granted during initial bot guild setup",
+    expect(gateway.grantRoleIfMissing).toHaveBeenCalledTimes(2);
+    expect(gateway.grantRoleIfMissing).toHaveBeenCalledWith(
+      guildId, initializedByUserId, "role-1", "Granted during initial bot guild setup",
     );
-    expect(add).toHaveBeenCalledWith(
-      musicControllerRole,
-      "Granted during initial bot guild setup",
+    expect(gateway.grantRoleIfMissing).toHaveBeenCalledWith(
+      guildId, initializedByUserId, "role-2", "Granted during initial bot guild setup",
     );
   });
 
   it("marks first-time setup as fresh and resumed setup as not fresh", async () => {
-    const controlChannel = {
-      id: channelId,
-      type: 0,
-      guild: { roles: { everyone: { id: guildId } } },
-      permissionOverwrites: { edit: vi.fn().mockResolvedValue(undefined) },
-    };
-    const createRole = vi
-      .fn()
-      .mockResolvedValueOnce({ id: "345678901234567890" })
-      .mockResolvedValueOnce({ id: "456789012345678901" })
-      .mockResolvedValueOnce({ id: "567890123456789012" });
-    const guild = {
-      id: guildId,
-      name: "Test Guild",
-      channels: { create: vi.fn().mockResolvedValue(controlChannel), fetch: vi.fn().mockResolvedValue(controlChannel) },
-      roles: { create: createRole },
-      members: { me: { permissions: { has: () => true } } },
-    } as unknown as Guild;
+    const gateway = fakeGateway();
     const provider = {
       find: vi.fn().mockReturnValue(null),
       create: vi.fn().mockImplementation((input: { guildId: string }) =>
@@ -215,58 +183,18 @@ describe("LocalGuildSetupService", () => {
     const deployment = { deploy: vi.fn().mockResolvedValue(12) } as unknown as GuildCommandDeploymentService;
     const panels = { ensureGuildPanel: vi.fn().mockResolvedValue(undefined) } as unknown as ControlChannelService;
     const logger = { info: vi.fn() } as unknown as Logger;
-    const service = new LocalGuildSetupService(provider, deployment, panels, logger);
-    const initializedBy = { id: "111111111111111111", roles: { cache: new Map(), add: vi.fn().mockResolvedValue(undefined) } } as unknown as GuildMember;
+    const service = new LocalGuildSetupService(provider, deployment, panels, gateway, logger);
 
-    const freshResult = await service.initialize({
-      guild,
-      initializedBy,
-      displayName: "Test Bot",
-      idleImageUrl: null,
-      controlChannel: null,
-      botAdministratorRole: null,
-      musicControllerRole: null,
-      restrictedRole: null,
-    });
+    const freshResult = await service.initialize(baseRequest());
     expect(freshResult.wasFreshSetup).toBe(true);
 
     provider.find = vi.fn().mockReturnValue(profile());
-    const resumedResult = await service.initialize({
-      guild,
-      initializedBy,
-      displayName: "Test Bot",
-      idleImageUrl: null,
-      controlChannel: null,
-      botAdministratorRole: null,
-      musicControllerRole: null,
-      restrictedRole: null,
-    });
+    const resumedResult = await service.initialize(baseRequest());
     expect(resumedResult.wasFreshSetup).toBe(false);
   });
 
   it("rolls back roles and channel it created when setup fails before the profile is persisted", async () => {
-    const botAdministratorRole = { id: "345678901234567890", delete: vi.fn().mockResolvedValue(undefined) };
-    const musicControllerRole = { id: "456789012345678901", delete: vi.fn().mockResolvedValue(undefined) };
-    const restrictedRole = { id: "567890123456789012", delete: vi.fn().mockResolvedValue(undefined) };
-    const controlChannel = {
-      id: channelId,
-      type: 0,
-      guild: { roles: { everyone: { id: guildId } } },
-      permissionOverwrites: { edit: vi.fn().mockResolvedValue(undefined) },
-      delete: vi.fn().mockResolvedValue(undefined),
-    };
-    const createRole = vi
-      .fn()
-      .mockResolvedValueOnce(botAdministratorRole)
-      .mockResolvedValueOnce(musicControllerRole)
-      .mockResolvedValueOnce(restrictedRole);
-    const guild = {
-      id: guildId,
-      name: "Test Guild",
-      channels: { create: vi.fn().mockResolvedValue(controlChannel) },
-      roles: { create: createRole },
-      members: { me: { permissions: { has: () => true } } },
-    } as unknown as Guild;
+    const gateway = fakeGateway();
     const createError = new Error("persistence failed");
     const provider = {
       find: vi.fn().mockReturnValue(null),
@@ -275,44 +203,20 @@ describe("LocalGuildSetupService", () => {
     const deployment = {} as unknown as GuildCommandDeploymentService;
     const panels = {} as unknown as ControlChannelService;
     const logger = { info: vi.fn(), warn: vi.fn() } as unknown as Logger;
-    const service = new LocalGuildSetupService(provider, deployment, panels, logger);
-    const initializedBy = { id: "111111111111111111", roles: { cache: new Map(), add: vi.fn().mockResolvedValue(undefined) } } as unknown as GuildMember;
+    const service = new LocalGuildSetupService(provider, deployment, panels, gateway, logger);
 
-    await expect(service.initialize({
-      guild,
-      initializedBy,
-      displayName: "Test Bot",
-      idleImageUrl: null,
-      controlChannel: null,
-      botAdministratorRole: null,
-      musicControllerRole: null,
-      restrictedRole: null,
-    })).rejects.toBe(createError);
+    await expect(service.initialize(baseRequest())).rejects.toBe(createError);
 
-    expect(botAdministratorRole.delete).toHaveBeenCalledOnce();
-    expect(musicControllerRole.delete).toHaveBeenCalledOnce();
-    expect(restrictedRole.delete).toHaveBeenCalledOnce();
-    expect(controlChannel.delete).toHaveBeenCalledOnce();
+    expect(gateway.deleteRole).toHaveBeenCalledTimes(3);
+    expect(gateway.deleteRole).toHaveBeenCalledWith(guildId, "role-1", "Rolling back a failed bot guild setup");
+    expect(gateway.deleteRole).toHaveBeenCalledWith(guildId, "role-2", "Rolling back a failed bot guild setup");
+    expect(gateway.deleteRole).toHaveBeenCalledWith(guildId, "role-3", "Rolling back a failed bot guild setup");
+    expect(gateway.deleteChannel).toHaveBeenCalledWith(guildId, channelId, "Rolling back a failed bot guild setup");
   });
 
   it("does not roll back resources it did not create itself", async () => {
-    const providedRole = { id: "999999999999999999", delete: vi.fn().mockResolvedValue(undefined) };
-    const createdRole = { id: "345678901234567890", delete: vi.fn().mockResolvedValue(undefined) };
-    const controlChannel = {
-      id: channelId,
-      type: 0,
-      guild: { roles: { everyone: { id: guildId } } },
-      permissionOverwrites: { edit: vi.fn().mockResolvedValue(undefined) },
-      delete: vi.fn().mockResolvedValue(undefined),
-    };
-    const createRole = vi.fn().mockResolvedValue(createdRole);
-    const guild = {
-      id: guildId,
-      name: "Test Guild",
-      channels: { create: vi.fn().mockResolvedValue(controlChannel) },
-      roles: { create: createRole },
-      members: { me: { permissions: { has: () => true } } },
-    } as unknown as Guild;
+    const providedRoleId = "999999999999999999";
+    const gateway = fakeGateway();
     const createError = new Error("persistence failed");
     const provider = {
       find: vi.fn().mockReturnValue(null),
@@ -321,62 +225,43 @@ describe("LocalGuildSetupService", () => {
     const deployment = {} as unknown as GuildCommandDeploymentService;
     const panels = {} as unknown as ControlChannelService;
     const logger = { info: vi.fn(), warn: vi.fn() } as unknown as Logger;
-    const service = new LocalGuildSetupService(provider, deployment, panels, logger);
-    const initializedBy = { id: "111111111111111111", roles: { cache: new Map(), add: vi.fn().mockResolvedValue(undefined) } } as unknown as GuildMember;
+    const service = new LocalGuildSetupService(provider, deployment, panels, gateway, logger);
 
-    await expect(service.initialize({
-      guild,
-      initializedBy,
-      displayName: "Test Bot",
-      idleImageUrl: null,
-      controlChannel: null,
-      botAdministratorRole: providedRole as never,
-      musicControllerRole: null,
-      restrictedRole: null,
-    })).rejects.toBe(createError);
+    await expect(service.initialize(baseRequest({ botAdministratorRoleId: providedRoleId })))
+      .rejects.toBe(createError);
 
-    expect(providedRole.delete).not.toHaveBeenCalled();
+    expect(gateway.deleteRole).not.toHaveBeenCalledWith(guildId, providedRoleId, expect.anything());
   });
 
-  it("reports missing bot permissions when checking status with a guild", () => {
+  it("reports missing bot permissions when checking status", async () => {
+    const gateway = fakeGateway({
+      checkBotPermissions: vi.fn().mockResolvedValue({ ok: false, missing: ["ManageChannels"] }),
+    });
     const provider = {
       find: vi.fn().mockReturnValue(null),
     } as unknown as GuildConfigurationProvider;
     const deployment = {} as unknown as GuildCommandDeploymentService;
     const panels = {} as unknown as ControlChannelService;
     const logger = { info: vi.fn() } as unknown as Logger;
-    const service = new LocalGuildSetupService(provider, deployment, panels, logger);
-    const guild = {
-      id: guildId,
-      members: {
-        me: {
-          permissions: {
-            has: (flag: bigint) => flag !== 0x10n, // missing ManageChannels
-          },
-        },
-      },
-    } as unknown as Guild;
+    const service = new LocalGuildSetupService(provider, deployment, panels, gateway, logger);
 
-    const status = service.status(guildId, guild);
+    const status = await service.status(guildId);
 
-    expect(status.botPermissions?.ok).toBe(false);
-    expect(status.botPermissions?.missing).toContain("ManageChannels");
+    expect(status.botPermissions.ok).toBe(false);
+    expect(status.botPermissions.missing).toContain("ManageChannels");
   });
 
-  it("reports bot permissions as ok when the bot has everything it needs", () => {
+  it("reports bot permissions as ok when the bot has everything it needs", async () => {
+    const gateway = fakeGateway();
     const provider = {
       find: vi.fn().mockReturnValue(null),
     } as unknown as GuildConfigurationProvider;
     const deployment = {} as unknown as GuildCommandDeploymentService;
     const panels = {} as unknown as ControlChannelService;
     const logger = { info: vi.fn() } as unknown as Logger;
-    const service = new LocalGuildSetupService(provider, deployment, panels, logger);
-    const guild = {
-      id: guildId,
-      members: { me: { permissions: { has: () => true } } },
-    } as unknown as Guild;
+    const service = new LocalGuildSetupService(provider, deployment, panels, gateway, logger);
 
-    const status = service.status(guildId, guild);
+    const status = await service.status(guildId);
 
     expect(status.botPermissions).toEqual({ ok: true, missing: [] });
   });

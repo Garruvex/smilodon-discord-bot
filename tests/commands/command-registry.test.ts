@@ -1,4 +1,3 @@
-import { SlashCommandBuilder } from "discord.js";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -16,9 +15,10 @@ import {
 } from "../../src/domain/access/access-policy.js";
 
 class TestCommand implements BotCommand {
-  public readonly definition = new SlashCommandBuilder()
-    .setName("test")
-    .setDescription("A test command.");
+  public readonly definition: BotCommand["definition"] = {
+    name: "test",
+    description: "A test command.",
+  };
 
   public readonly module: CommandModule = CommandModule.Common;
   public readonly access = publicAccessPolicy;
@@ -29,9 +29,10 @@ class TestCommand implements BotCommand {
 }
 
 class MusicTestCommand extends TestCommand {
-  public override readonly definition = new SlashCommandBuilder()
-    .setName("music-test")
-    .setDescription("A music test command.");
+  public override readonly definition: BotCommand["definition"] = {
+    name: "music-test",
+    description: "A music test command.",
+  };
 
   public override readonly module = CommandModule.Music;
 }
@@ -44,7 +45,7 @@ describe("CommandRegistry", () => {
     registry.register(command);
 
     expect(registry.find("test")).toBe(command);
-    expect(registry.toApplicationCommandData()).toHaveLength(1);
+    expect(registry.getAll()).toEqual([command]);
   });
 
   it("rejects duplicate command names", () => {
@@ -72,15 +73,15 @@ describe("CommandRegistry", () => {
     expect(() => registry.register(invalidCommand)).toThrow(InvalidCommandError);
   });
 
-  it("builds a command manifest from enabled modules", () => {
+  it("returns commands from enabled modules", () => {
     const registry = new CommandRegistry();
     registry.register(new TestCommand());
     registry.register(new MusicTestCommand());
 
-    const commandData = registry.toApplicationCommandDataForModules(
+    const commands = registry.getByEnabledModules(
       new Set([CommandModule.Common]),
     );
 
-    expect(commandData.map((command) => command.name)).toEqual(["test"]);
+    expect(commands.map((command) => command.definition.name)).toEqual(["test"]);
   });
 });

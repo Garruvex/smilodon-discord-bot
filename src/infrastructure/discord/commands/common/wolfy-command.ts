@@ -1,4 +1,4 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { EmbedBuilder } from "discord.js";
 
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
@@ -9,10 +9,13 @@ const dogNoises = [
 ] as const;
 
 export class WolfyCommand implements BotCommand {
-  public readonly definition = new SlashCommandBuilder()
-    .setName("wolfy")
-    .setDescription("Turns a sentence into dog noises.")
-    .addStringOption((option) => option.setName("text").setDescription("The sentence to translate.").setMaxLength(1_000).setRequired(true));
+  public readonly definition = {
+    name: "wolfy",
+    description: "Turns a sentence into dog noises.",
+    options: [
+      { type: "string", name: "text", description: "The sentence to translate.", maxLength: 1_000, required: true },
+    ],
+  } satisfies BotCommand["definition"];
 
   public readonly module = CommandModule.Common;
   public readonly access = publicAccessPolicy;

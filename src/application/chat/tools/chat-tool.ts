@@ -10,23 +10,41 @@ export type ChatToolParameterSchema = Record<string, unknown>;
 
 export interface ChatToolContext {
   guildId: string;
+  channelId: string;
   currentUser: ChatUser;
   // Whether the Discord channel the turn is happening in is age-restricted.
   // Tools that can return adult content (e.g. booru search) must gate on
   // this rather than trusting anything the model passes as an argument.
   channelIsNsfw: boolean;
+  // Whether the invoking user is a configured bot owner — mirrors what
+  // AccessPolicyService resolves for a live interaction, so a tool's access
+  // check (see AccessPolicyEngine) can grant the same owner-bypass a slash
+  // command would.
+  isOwner: boolean;
   // Null unless the guild has music enabled and the message has a
   // resolvable GuildMember. Non-null does NOT by itself mean the member is
-  // allowed to control music — `actor.member` and the two role-id sets are
-  // provided so each music tool rechecks membership in
-  // musicControllerRoleIds/botAdministratorRoleIds itself on every call
-  // (see memberCanControlMusic), rather than trusting a single check made
-  // once before the LLM call. Mirrors the same gate music slash commands
-  // enforce via musicPlaybackAccessPolicy (see AccessPolicyService), since
-  // tool calls bypass that pipeline entirely. Actual voice-channel
-  // presence/match is still enforced by PlaybackService itself.
+  // allowed to control music — `resolveAccessSubjectFields()` is used to
+  // build an AccessSubject and rechecked against the full
+  // musicPlaybackAccessPolicy on every call via AccessPolicyEngine (see
+  // music-tool-support.ts's evaluateMusicToolAccess), rather than trusting a
+  // single check made once before the LLM call — the same engine and policy
+  // /pause, /play, etc. run through via AccessPolicyService, so a channel
+  // restriction or owner bypass can't diverge between the two paths. Actual
+  // voice-channel presence/match is still enforced by PlaybackService itself.
   music: {
     actor: PlaybackActor;
+    // A function rather than precomputed fields so each tool call reads the
+    // live Discord member's current roles/permissions (see
+    // chat-turn-support.ts's resolveMusicActor) — a turn can span multiple
+    // tool round-trips, and roles can change between them. Kept as a plain
+    // callback (no discord.js type here) so this application-layer type
+    // stays Discord-independent; the Discord-facing behavior that
+    // constructs this closes over the live GuildMember.
+    resolveAccessSubjectFields: () => {
+      roleIds: readonly string[];
+      memberPermissions: bigint;
+      botPermissions: bigint | null;
+    };
     volumeMaximum: number;
     musicControllerRoleIds: ReadonlySet<string>;
     botAdministratorRoleIds: ReadonlySet<string>;

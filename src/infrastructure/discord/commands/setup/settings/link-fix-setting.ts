@@ -1,5 +1,3 @@
-import { ChannelType } from "discord.js";
-
 import type { MutationSettingDefinition } from "./setting-definition.js";
 import { formatChannelList, setsDiffer } from "./settings-support.js";
 
@@ -7,10 +5,11 @@ export const linkFixSetting: MutationSettingDefinition = {
   kind: "mutation",
   name: "link-fix",
   description: "Configures automatic link previews (Twitter/X, Threads, Instagram, Bilibili, TikTok, Reddit).",
-  configureOptions: (b) => b
-    .addBooleanOption((o) => o.setName("enabled").setDescription("Turn automatic link rewriting on or off."))
-    .addChannelOption((o) => o.setName("channel").setDescription("Adds a text channel to watch for rewritable links.").addChannelTypes(ChannelType.GuildText))
-    .addChannelOption((o) => o.setName("remove-channel").setDescription("Removes a text channel from the watched list.").addChannelTypes(ChannelType.GuildText)),
+  configureOptions: () => [
+    { type: "boolean", name: "enabled", description: "Turn automatic link rewriting on or off." },
+    { type: "channel", name: "channel", description: "Adds a text channel to watch for rewritable links.", guildTextOnly: true },
+    { type: "channel", name: "remove-channel", description: "Removes a text channel from the watched list.", guildTextOnly: true },
+  ],
   handle: (context, _deps, previousProfile, input) => {
     const enabled = context.interaction.options.getBoolean("enabled");
     const channel = context.interaction.options.getChannel("channel");

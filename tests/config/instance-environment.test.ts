@@ -48,23 +48,55 @@ describe("instance environment", () => {
     expect(instance.environment.INSTANCE_NAME).toBe("one");
   });
 
-  it("does not inherit instance-owned chat settings from the shared environment", () => {
+  it("does not inherit instance-owned chatbot settings from the shared environment", () => {
     const root = workspace();
     writeFileSync(
       join(root, ".env"),
-      "LAVALINK_HOST=shared-host\nCHAT_MODEL=shared-model\nCHAT_API_KEY=shared-key\n",
+      "LAVALINK_HOST=shared-host\nCHATBOT_MODEL=shared-model\nOPENAI_API_KEY=shared-key\n",
       "utf8",
     );
-    writeInstance(root, "one", "CHAT_MODEL=instance-model\nCHAT_API_KEY=instance-key");
+    writeInstance(root, "one", "CHATBOT_MODEL=instance-model\nOPENAI_API_KEY=instance-key");
 
     const instance = loadInstanceEnvironment("one", root);
-    expect(instance.environment.CHAT_MODEL).toBe("instance-model");
-    expect(instance.environment.CHAT_API_KEY).toBe("instance-key");
+    expect(instance.environment.CHATBOT_MODEL).toBe("instance-model");
+    expect(instance.environment.OPENAI_API_KEY).toBe("instance-key");
 
     writeInstance(root, "two");
     const second = loadInstanceEnvironment("two", root);
-    expect(second.environment.CHAT_MODEL).toBeUndefined();
-    expect(second.environment.CHAT_API_KEY).toBeUndefined();
+    expect(second.environment.CHATBOT_MODEL).toBeUndefined();
+    expect(second.environment.OPENAI_API_KEY).toBeUndefined();
+  });
+
+  it("does not inherit the shared OPENAI_*/GOOGLE_* provider key pool from the shared environment", () => {
+    const root = workspace();
+    writeFileSync(
+      join(root, ".env"),
+      "OPENAI_API_KEY=shared-openai-key\nGOOGLE_API_KEY=shared-google-key\n",
+      "utf8",
+    );
+    writeInstance(root, "one", "OPENAI_API_KEY=instance-openai-key\nGOOGLE_API_KEY=instance-google-key");
+
+    const instance = loadInstanceEnvironment("one", root);
+    expect(instance.environment.OPENAI_API_KEY).toBe("instance-openai-key");
+    expect(instance.environment.GOOGLE_API_KEY).toBe("instance-google-key");
+
+    writeInstance(root, "two");
+    const second = loadInstanceEnvironment("two", root);
+    expect(second.environment.OPENAI_API_KEY).toBeUndefined();
+    expect(second.environment.GOOGLE_API_KEY).toBeUndefined();
+  });
+
+  it("does not inherit instance-owned utility-provider settings from the shared environment", () => {
+    const root = workspace();
+    writeFileSync(join(root, ".env"), "UTILITY_MODEL=shared-utility-model\n", "utf8");
+    writeInstance(root, "one", "UTILITY_MODEL=instance-utility-model");
+
+    const instance = loadInstanceEnvironment("one", root);
+    expect(instance.environment.UTILITY_MODEL).toBe("instance-utility-model");
+
+    writeInstance(root, "two");
+    const second = loadInstanceEnvironment("two", root);
+    expect(second.environment.UTILITY_MODEL).toBeUndefined();
   });
 
   it("discovers only real instance env files", () => {
@@ -91,4 +123,41 @@ describe("instance environment", () => {
       loadInstanceEnvironment("two", root),
     ])).toThrow("share RUNTIME_DATA_DIRECTORY");
   });
+
+  it("allows instances to share a DATABASE_URL because schemas are automatic", () => {
+    const root = workspace();
+    writeInstance(root, "one", "PERSISTENCE_DRIVER=postgres\nDATABASE_URL=postgres://localhost/db");
+    writeInstance(root, "two", "PERSISTENCE_DRIVER=postgres\nDATABASE_URL=postgres://localhost/db");
+    expect(() => validateInstanceIsolation([
+      loadInstanceEnvironment("one", root),
+      loadInstanceEnvironment("two", root),
+    ])).not.toThrow();
+  });
+
+  it("uses distinct instance names as distinct schemas", () => {
+    const root = workspace();
+    writeInstance(root, "one", "PERSISTENCE_DRIVER=postgres\nDATABASE_URL=postgres://localhost/db");
+    writeInstance(root, "two", "PERSISTENCE_DRIVER=postgres\nDATABASE_URL=postgres://localhost/db");
+    expect(() => validateInstanceIsolation([
+      loadInstanceEnvironment("one", root),
+      loadInstanceEnvironment("two", root),
+    ])).not.toThrow();
+  });
+
+  it("rejects two instance names that fold to the same schema", () => {
+    const root = workspace();
+    writeInstance(
+      root, "my-bot",
+      "PERSISTENCE_DRIVER=postgres\nDATABASE_URL=postgres://localhost/db\nDISCORD_APPLICATION_ID=323456789012345678",
+    );
+    writeInstance(
+      root, "my_bot",
+      "PERSISTENCE_DRIVER=postgres\nDATABASE_URL=postgres://localhost/db\nDISCORD_APPLICATION_ID=423456789012345678",
+    );
+    expect(() => validateInstanceIsolation([
+      loadInstanceEnvironment("my-bot", root),
+      loadInstanceEnvironment("my_bot", root),
+    ])).toThrow(/resolve to the same schema \("my_bot"\)/);
+  });
+
 });
