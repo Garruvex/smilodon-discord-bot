@@ -50,6 +50,17 @@ export type EmbeddingConfiguration =
   | { provider: "openai"; apiKey: string; baseUrl: string; model: string }
   | { provider: "gemini"; apiKey: string; model: string };
 
+// Tunables for DefaultMemoryEngine (see MemoryEngineLimits in
+// memory-engine.ts, which documents what each value actually controls and
+// why the conflict threshold's default is only a starting estimate).
+export interface MemoryConfiguration {
+  maxSelectedChars: number;
+  maxStatementChars: number;
+  maxSlotChars: number;
+  maxTopicChars: number;
+  conflictSimilarityThreshold: number;
+}
+
 export interface ApplicationConfiguration {
   instanceName?: string | null;
   environment: "development" | "test" | "production";
@@ -84,4 +95,5 @@ export interface ApplicationConfiguration {
   // Independent of chat/utility generation: either vendor can provide
   // vectors regardless of which provider produces replies or summaries.
   embeddings: EmbeddingConfiguration | null;
+  memory: MemoryConfiguration;
 }

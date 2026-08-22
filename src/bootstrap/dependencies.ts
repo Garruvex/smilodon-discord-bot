@@ -224,7 +224,7 @@ export function createDependencies(
         )
     : null;
   const memoryEngine = new DefaultMemoryEngine(
-    memoryRepository, embeddingsClient, logger.child({ component: "memory-engine" }),
+    memoryRepository, embeddingsClient, logger.child({ component: "memory-engine" }), configuration.memory,
   );
   const memberProfileService = new MemberProfileService(memoryEngine, birthdayStore, userCustomizationStore);
   commandRegistry.register(new MemoryCommand(chatStateStore, memberProfileService, memoryEngine));
@@ -375,8 +375,8 @@ export function createDependencies(
         chatStateStore,
         memoryEngine,
         undefined,
-        new RelevantExampleExchangeSelector(embeddingsClient),
-        new RelevantPersonaLoreSelector(embeddingsClient),
+        new RelevantExampleExchangeSelector(embeddingsClient, logger.child({ component: "example-exchange-selector" })),
+        new RelevantPersonaLoreSelector(embeddingsClient, logger.child({ component: "persona-lore-selector" })),
         userCustomizationStore,
         birthdayStore,
         chatToolRegistry,

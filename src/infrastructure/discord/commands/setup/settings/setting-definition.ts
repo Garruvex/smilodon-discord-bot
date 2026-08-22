@@ -11,7 +11,11 @@ import type { GuildConfiguration } from "../../../../../config/guild-configurati
 import type { UpdateGuildConfigurationInput } from "../../../../../config/guild-configuration-provider.js";
 import type { ApplicationEmojiCatalog } from "../../../application-emoji-catalog.js";
 
-export type SettingHandlerResult = { ok: true } | { ok: false; message: string };
+// extraLines here is for confirmation content only `handle` can know (e.g.
+// GuildAssetStore.savePersonality's lore-classification summary) — distinct
+// from MutationSettingDefinition.extraLines, which is a pure function of
+// previous/updated config and can't see handle-time results like this.
+export type SettingHandlerResult = { ok: true; extraLines?: readonly string[] } | { ok: false; message: string };
 
 export interface SettingDeps {
   assets: GuildAssetStore;

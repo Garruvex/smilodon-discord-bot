@@ -2,6 +2,7 @@ import "dotenv/config";
 
 import { z } from "zod";
 
+import { defaultMemoryEngineLimits } from "../application/memory/memory-engine.js";
 import type { ApplicationConfiguration } from "./configuration.js";
 import {
   resolveDefaultInstanceEnvironment,
@@ -123,6 +124,21 @@ const environmentSchema = z.object({
   UTILITY_VERBOSITY: z.enum(["low", "medium", "high"]).default("low"),
   UTILITY_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(1).max(128_000).default(2_048),
   UTILITY_GEMINI_THINKING_BUDGET: z.coerce.number().int().min(-1).max(32_768).optional(),
+
+  // See MemoryEngineLimits in memory-engine.ts for what each of these
+  // actually gates and the reasoning behind the defaults — the similarity
+  // threshold in particular is model-dependent and should be recalibrated
+  // if EMBEDDING_MODEL/EMBEDDING_PROVIDER isn't OpenAI text-embedding-3-small.
+  MEMORY_MAX_SELECTED_CHARS: z.coerce.number().int().min(500).max(50_000)
+    .default(defaultMemoryEngineLimits.maxSelectedChars),
+  MEMORY_MAX_STATEMENT_CHARS: z.coerce.number().int().min(20).max(2_000)
+    .default(defaultMemoryEngineLimits.maxStatementChars),
+  MEMORY_MAX_SLOT_CHARS: z.coerce.number().int().min(5).max(200)
+    .default(defaultMemoryEngineLimits.maxSlotChars),
+  MEMORY_MAX_TOPIC_CHARS: z.coerce.number().int().min(5).max(200)
+    .default(defaultMemoryEngineLimits.maxTopicChars),
+  MEMORY_CONFLICT_SIMILARITY_THRESHOLD: z.coerce.number().min(0).max(1)
+    .default(defaultMemoryEngineLimits.conflictSimilarityThreshold),
 });
 
 export function loadConfiguration(
@@ -218,6 +234,13 @@ export function loadConfiguration(
             model: embeddingModel,
           }
       : null,
+    memory: {
+      maxSelectedChars: parsed.data.MEMORY_MAX_SELECTED_CHARS,
+      maxStatementChars: parsed.data.MEMORY_MAX_STATEMENT_CHARS,
+      maxSlotChars: parsed.data.MEMORY_MAX_SLOT_CHARS,
+      maxTopicChars: parsed.data.MEMORY_MAX_TOPIC_CHARS,
+      conflictSimilarityThreshold: parsed.data.MEMORY_CONFLICT_SIMILARITY_THRESHOLD,
+    },
   };
 }
 

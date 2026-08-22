@@ -123,7 +123,7 @@ export class SettingsCommand implements BotCommand {
     ) {
       await this.assets.removeExamples(previousProfile.chat.examplesAsset);
     }
-    const description = this.describeUpdate(setting, previousProfile, updatedProfile, input);
+    const description = this.describeUpdate(setting, previousProfile, updatedProfile, input, result.extraLines ?? []);
     await this.auditLogService?.log(
       context.interaction.guildId,
       context.interaction.user.id,
@@ -172,12 +172,14 @@ export class SettingsCommand implements BotCommand {
     previousProfile: GuildConfiguration,
     updatedProfile: GuildConfiguration,
     input: UpdateGuildConfigurationInput,
+    handlerExtraLines: readonly string[],
   ): string {
     const custom = setting.describe?.(previousProfile, updatedProfile, input) ?? null;
-    if (custom !== null) return custom;
+    if (custom !== null) return handlerExtraLines.length > 0 ? [custom, ...handlerExtraLines].join("\n") : custom;
     const diffLines = [
       ...this.describeFieldChanges(previousProfile, updatedProfile, setting.fieldChanges ?? []),
       ...(setting.extraLines?.(previousProfile, updatedProfile) ?? []),
+      ...handlerExtraLines,
     ];
     if (diffLines.length === 0) return "Server settings updated.";
     const lines = ["Server settings updated.", ...diffLines];

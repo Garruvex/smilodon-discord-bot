@@ -79,9 +79,12 @@ export const chatbotSetting: MutationSettingDefinition = {
     if (imageGeneration !== null) input.chatbotImageGenerationEnabled = imageGeneration;
     if (includeSources !== null) input.chatbotIncludeSources = includeSources;
     if (maxImages !== null) input.chatbotMaxImagesPerRequest = maxImages;
+    let personalityLoreHeadings: readonly string[] = [];
     if (personality) {
-      input.chatbotPersonalityAsset = await deps.assets.savePersonality(context.interaction.guildId!, personality);
+      const saved = await deps.assets.savePersonality(context.interaction.guildId!, personality);
+      input.chatbotPersonalityAsset = saved.assetPath;
       input.chatbotPersonalityFile = null;
+      personalityLoreHeadings = saved.loreHeadings;
     }
     if (useDefaultPersonality === true) {
       input.chatbotPersonalityAsset = null;
@@ -100,7 +103,17 @@ export const chatbotSetting: MutationSettingDefinition = {
     if (context.interaction.options.getBoolean("reset-persona-drift") === true) {
       await deps.personaDriftStore?.reset(context.interaction.guildId!);
     }
-    return { ok: true };
+    return {
+      ok: true,
+      extraLines: personalityLoreHeadings.length > 0
+        ? [
+            `Personality compiled: ${personalityLoreHeadings.length} section(s) classified as situational lore ` +
+            `(sent only when relevant, not on every turn) — ${personalityLoreHeadings.join(", ")}. ` +
+            `If any of those should always apply, keep them out of a \`##\` section or move the heading's content ` +
+            `into the file's intro.`,
+          ]
+        : [],
+    };
   },
   describe: (previous, updated) => {
     if (updated.roles.chatbot.size !== previous.roles.chatbot.size) {
