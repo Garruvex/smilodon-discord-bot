@@ -4,6 +4,7 @@ import type { MemoryConflictClassifier } from "../chat/chat-provider.js";
 import type { EmbeddingsClient } from "../../infrastructure/chat/openai-embeddings-client.js";
 import { allowsDurableWrites, resolveMemoryScope } from "./memory-channel-policy.js";
 import type {
+  CausalChainLink,
   Memory,
   MemoryContext,
   MemoryEngine,
@@ -11,8 +12,11 @@ import type {
   MemoryIngestInput,
   MemoryIngestResult,
   MemoryRecallInput,
+  MemoryRelationIngestInput,
+  MemoryRelationIngestResult,
   MemoryRepository,
   ProposedMemory,
+  RelationCreateInput,
 } from "./memory.js";
 import { canRecall } from "./memory.js";
 import { memoryValidationLimits, validateProposal, type MemoryValidationLimits } from "./memory-validation.js";
@@ -68,11 +72,23 @@ export interface MemoryEngineLimits extends MemoryValidationLimits {
   // uses a different model, and prefer measuring actual same-fact vs.
   // different-fact pairs from real data over trusting this number.
   conflictSimilarityThreshold: number;
+  // Bounded relational retrieval (see recall's relatedSubjectBoosts) — how
+  // many hops out from the turn's subjectIds to search. The worked example
+  // that motivated this (a fact tying a character to a consequence two
+  // relations away) needed 2; kept small and tunable rather than hardcoded
+  // to 1, since a flat single-hop expansion demonstrably wasn't enough for
+  // its own justifying example. Each hop's boost contribution is decayed
+  // (relationHopBoostBase / hopDistance) so distant connections don't
+  // flood the ranking the way an undecayed expansion would.
+  maxRelationHops: number;
+  relationHopBoostBase: number;
 }
 
 export const defaultMemoryEngineLimits: MemoryEngineLimits = {
   maxSelectedChars: 8_000,
   conflictSimilarityThreshold: 0.75,
+  maxRelationHops: 2,
+  relationHopBoostBase: 3,
   ...memoryValidationLimits,
 };
 
@@ -148,7 +164,8 @@ export class DefaultMemoryEngine implements MemoryEngine {
     const candidates = await this.repository.findRecallCandidates({
       guildId: input.guildId, channelId: input.channelId, userId: input.userId, now: input.now,
     });
-    if (candidates.memories.length === 0) return { memories: [] };
+    if (candidates.memories.length === 0) return { memories: [], causalChains: [] };
+    const { boostBySubjectId, causalChains } = await this.expandRelatedSubjects(input);
     const subjectIds = new Set(input.subjectIds);
     const context = buildRelevanceContext({ message: input.message, recentHistory: input.recentHistory, subjectIds, now: input.now });
     const scorableByMemory = new Map(candidates.memories.map((memory) => [memory, toScorable(memory)] as const));
@@ -173,13 +190,63 @@ export class DefaultMemoryEngine implements MemoryEngine {
       }
     }
     const fused = reciprocalRankFusion(embeddingOrder.length > 0 ? [lexicalOrder, embeddingOrder] : [lexicalOrder]);
+    // Relational boost is additive on top of the fused RRF score, not part
+    // of the fusion itself — it's a separate signal (graph connectivity),
+    // not a third ranking to reciprocal-rank against. Only "association"
+    // relations reach here; "consequence" relations feed causalChains
+    // instead (see expandRelatedSubjects), since a causal chain needs to be
+    // read in order, not just used to nudge a score.
+    if (boostBySubjectId.size > 0) {
+      for (const memory of candidates.memories) {
+        const boost = boostBySubjectId.get(memory.subjectId);
+        if (boost) fused.set(memory, (fused.get(memory) ?? 0) + boost);
+      }
+    }
     const selected = selectByRelevance(
       candidates.memories,
       (memory) => fused.get(memory) ?? 0,
       this.limits.maxSelectedChars,
       memoryPromptProjection,
     );
-    return { memories: selected };
+    return { memories: selected, causalChains };
+  }
+
+  // Bounded multi-hop expansion out from the turn's subjectIds — see
+  // MemoryEngineLimits.maxRelationHops. "association" relations become a
+  // decayed ranking boost (closer connections weighted higher);
+  // "consequence" relations become an explicit ordered chain instead,
+  // since the point of a causal link is the sequence, not just relatedness.
+  // Never a second, separately-authorized fetch: this only influences
+  // ranking/annotation of memories findRecallCandidates already authorized
+  // — it can't surface a memory that call wouldn't already have allowed.
+  private async expandRelatedSubjects(
+    input: MemoryRecallInput,
+  ): Promise<{ boostBySubjectId: Map<string, number>; causalChains: readonly CausalChainLink[] }> {
+    const boostBySubjectId = new Map<string, number>();
+    const causalChains: CausalChainLink[] = [];
+    if (input.subjectIds.length === 0) return { boostBySubjectId, causalChains };
+    let related: readonly Awaited<ReturnType<MemoryRepository["findRelatedSubjects"]>>[number][];
+    try {
+      related = await this.repository.findRelatedSubjects({
+        guildId: input.guildId, channelId: input.channelId, subjectIds: input.subjectIds,
+        maxHops: this.limits.maxRelationHops,
+      });
+    } catch (error) {
+      this.logger?.warn({ error, guildId: input.guildId }, "Related-subject lookup failed; recall proceeds without relational boost");
+      return { boostBySubjectId, causalChains };
+    }
+    for (const subject of related) {
+      if (subject.kind === "consequence") {
+        causalChains.push({
+          fromSubjectType: subject.viaSubjectType, fromSubjectId: subject.viaSubjectId,
+          predicate: subject.predicate,
+          toSubjectType: subject.subjectType, toSubjectId: subject.subjectId,
+        });
+        continue;
+      }
+      boostBySubjectId.set(subject.subjectId, this.limits.relationHopBoostBase / subject.hopDistance);
+    }
+    return { boostBySubjectId, causalChains };
   }
 
   public async ingest(input: MemoryIngestInput): Promise<MemoryIngestResult> {
@@ -200,6 +267,45 @@ export class DefaultMemoryEngine implements MemoryEngine {
       else failed += 1;
     }
     return { ingested, removed, rejected, failed };
+  }
+
+  // Relation-specific ingest, separate from ingest() above — relations
+  // aren't Memory rows (no statement/status/embedding lifecycle), so they
+  // don't fit MemoryIngestInput's proposal shape. Scope resolution (guild
+  // audience, isolation) reuses the exact same resolveMemoryScope logic
+  // regular facts already go through, so a relation extracted from the same
+  // consolidation batch as a fact gets the same isolation boundary.
+  public async ingestRelations(input: MemoryRelationIngestInput): Promise<MemoryRelationIngestResult> {
+    if (!allowsDurableWrites(input.channelMode)) return { created: 0, rejected: input.proposals.length };
+    const scope = resolveMemoryScope(input.channelMode, input.channelId, { audience: "guild", channelScoped: true });
+    const valid: RelationCreateInput[] = [];
+    let rejected = 0;
+    for (const proposal of input.proposals) {
+      if (!proposal.fromSubjectId || !proposal.toSubjectId) { rejected += 1; continue; }
+      if (proposal.fromSubjectType === proposal.toSubjectType && proposal.fromSubjectId === proposal.toSubjectId) {
+        rejected += 1; continue; // a relation to itself carries no information
+      }
+      valid.push({
+        guildId: input.guildId,
+        fromSubjectType: proposal.fromSubjectType,
+        fromSubjectId: proposal.fromSubjectId,
+        predicate: proposal.predicate,
+        kind: proposal.kind,
+        toSubjectType: proposal.toSubjectType,
+        toSubjectId: proposal.toSubjectId,
+        isolationChannelId: scope.isolationChannelId,
+        supportingMemoryId: input.supportingMemoryId,
+        now: input.now,
+      });
+    }
+    if (valid.length === 0) return { created: 0, rejected };
+    try {
+      await this.repository.createRelations(valid);
+    } catch (error) {
+      this.logger?.warn({ error, guildId: input.guildId }, "Relation ingest failed");
+      return { created: 0, rejected: rejected + valid.length };
+    }
+    return { created: valid.length, rejected };
   }
 
   private async removeOne(

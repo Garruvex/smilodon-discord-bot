@@ -10,11 +10,16 @@ import type {
   Memory,
   MemoryAudience,
   MemoryKind,
+  MemoryRelationKind,
+  MemoryRelationPredicate,
   MemoryRepository,
   MemorySourceKind,
   MemoryStatus,
   MemorySubjectType,
   RecallCandidates,
+  RelatedSubject,
+  RelatedSubjectsQuery,
+  RelationCreateInput,
   RepositoryIngestInput,
   SupersedeCommand,
 } from "../../application/memory/memory.js";
@@ -259,5 +264,60 @@ export class SqliteMemoryRepository implements MemoryRepository {
       eq(schema.memories.status, "active"),
     )).run();
     return Promise.resolve(result.changes > 0);
+  }
+
+  public createRelations(inputs: readonly RelationCreateInput[]): Promise<void> {
+    if (inputs.length === 0) return Promise.resolve();
+    this.database.insert(schema.memoryRelations).values(inputs.map((input) => ({
+      id: randomUUID(),
+      guildId: input.guildId,
+      fromSubjectType: input.fromSubjectType,
+      fromSubjectId: input.fromSubjectId,
+      predicate: input.predicate,
+      kind: input.kind,
+      toSubjectType: input.toSubjectType,
+      toSubjectId: input.toSubjectId,
+      isolationChannelId: input.isolationChannelId,
+      supportingMemoryId: input.supportingMemoryId,
+      createdAt: new Date(input.now),
+    }))).run();
+    return Promise.resolve();
+  }
+
+  // See PostgresMemoryRepository.findRelatedSubjects for the BFS rationale
+  // (bounded iterative, not a recursive SQL CTE).
+  public findRelatedSubjects(query: RelatedSubjectsQuery): Promise<readonly RelatedSubject[]> {
+    const visited = new Set<string>(query.subjectIds);
+    const results = new Map<string, RelatedSubject>();
+    let frontier = [...query.subjectIds];
+    for (let hop = 1; hop <= query.maxHops && frontier.length > 0; hop++) {
+      const rows = this.database.select().from(schema.memoryRelations).where(and(
+        eq(schema.memoryRelations.guildId, query.guildId),
+        or(inArray(schema.memoryRelations.fromSubjectId, frontier), inArray(schema.memoryRelations.toSubjectId, frontier)),
+        or(isNull(schema.memoryRelations.isolationChannelId), eq(schema.memoryRelations.isolationChannelId, query.channelId)),
+      )).all();
+      const nextFrontier: string[] = [];
+      for (const row of rows) {
+        const fromInFrontier = frontier.includes(row.fromSubjectId);
+        const otherSubjectType = fromInFrontier ? row.toSubjectType : row.fromSubjectType;
+        const otherSubjectId = fromInFrontier ? row.toSubjectId : row.fromSubjectId;
+        const viaSubjectType = fromInFrontier ? row.fromSubjectType : row.toSubjectType;
+        const viaSubjectId = fromInFrontier ? row.fromSubjectId : row.toSubjectId;
+        if (visited.has(otherSubjectId)) continue;
+        visited.add(otherSubjectId);
+        nextFrontier.push(otherSubjectId);
+        results.set(otherSubjectId, {
+          subjectType: otherSubjectType as MemorySubjectType,
+          subjectId: otherSubjectId,
+          hopDistance: hop,
+          kind: row.kind as MemoryRelationKind,
+          predicate: row.predicate as MemoryRelationPredicate,
+          viaSubjectId,
+          viaSubjectType: viaSubjectType as MemorySubjectType,
+        });
+      }
+      frontier = nextFrontier;
+    }
+    return Promise.resolve([...results.values()]);
   }
 }

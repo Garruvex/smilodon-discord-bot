@@ -150,6 +150,13 @@ function interaction(
         me: { permissions: { bitfield: botHasPermissions ? -1n : 0n } },
       },
     },
+    // Discord computes these directly for the channel the interaction fired
+    // in (channel overwrites already folded in), separate from
+    // member.permissions/guild.members.me.permissions which are guild-role-
+    // only — see access-policy-service.ts. Mirrored here so the fixture
+    // matches what a real interaction actually carries.
+    memberPermissions: { bitfield: -1n },
+    appPermissions: { bitfield: botHasPermissions ? -1n : 0n },
   } as unknown as ChatInputCommandInteraction;
 }
 

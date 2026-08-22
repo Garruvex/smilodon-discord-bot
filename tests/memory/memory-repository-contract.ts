@@ -6,7 +6,7 @@
 // authorization, isolation, and lifecycle semantics.
 import { describe, expect, it } from "vitest";
 
-import type { MemoryRepository, RepositoryIngestInput } from "../../src/application/memory/memory.js";
+import type { MemoryRepository, RelationCreateInput, RepositoryIngestInput } from "../../src/application/memory/memory.js";
 import { canRecall } from "../../src/application/memory/memory.js";
 
 function ingestInput(overrides: Partial<RepositoryIngestInput> = {}): RepositoryIngestInput {
@@ -16,6 +16,16 @@ function ingestInput(overrides: Partial<RepositoryIngestInput> = {}): Repository
     statement: "likes apples", status: "active", source: "live", confidence: 1, importance: 1,
     embedding: null, embeddingModel: null, expiresAt: null, now: 1_000,
     sourceMessageId: null, sourceChannelId: null, assertedByUserId: "alice",
+    ...overrides,
+  };
+}
+
+function relationInput(overrides: Partial<RelationCreateInput> = {}): RelationCreateInput {
+  return {
+    guildId: "guild", fromSubjectType: "member", fromSubjectId: "alice",
+    predicate: "allied_with", kind: "association",
+    toSubjectType: "member", toSubjectId: "bob",
+    isolationChannelId: null, supportingMemoryId: null, now: 1_000,
     ...overrides,
   };
 }
@@ -230,6 +240,64 @@ export function memoryRepositoryContract(
       const predicate = canRecall(memory, context, 2_000);
       const candidates = await repository.findRecallCandidates({ ...context, now: 2_000 });
       expect(candidates.memories.some((m) => m.id === memory.id)).toBe(predicate);
+    });
+
+    it("findRelatedSubjects: a direct relation is found at hop 1, bidirectionally", async () => {
+      const repository = await createRepository();
+      await repository.createRelations([relationInput({ fromSubjectId: "alice", toSubjectId: "bob" })]);
+      const fromAlice = await repository.findRelatedSubjects({
+        guildId: "guild", channelId: "general", subjectIds: ["alice"], maxHops: 2,
+      });
+      expect(fromAlice).toEqual([expect.objectContaining({ subjectId: "bob", hopDistance: 1, viaSubjectId: "alice" })]);
+      const fromBob = await repository.findRelatedSubjects({
+        guildId: "guild", channelId: "general", subjectIds: ["bob"], maxHops: 2,
+      });
+      expect(fromBob).toEqual([expect.objectContaining({ subjectId: "alice", hopDistance: 1, viaSubjectId: "bob" })]);
+    });
+
+    it("findRelatedSubjects: a chain is reachable at hop 2, respecting maxHops", async () => {
+      const repository = await createRepository();
+      await repository.createRelations([
+        relationInput({ fromSubjectId: "alice", toSubjectId: "guild-x", predicate: "member_of" }),
+        relationInput({ fromSubjectId: "guild-x", toSubjectId: "watch", predicate: "hostile_to" }),
+      ]);
+      const hop1Only = await repository.findRelatedSubjects({
+        guildId: "guild", channelId: "general", subjectIds: ["alice"], maxHops: 1,
+      });
+      expect(hop1Only.map((r) => r.subjectId)).toEqual(["guild-x"]);
+      const hop2 = await repository.findRelatedSubjects({
+        guildId: "guild", channelId: "general", subjectIds: ["alice"], maxHops: 2,
+      });
+      expect(hop2).toEqual(expect.arrayContaining([
+        expect.objectContaining({ subjectId: "guild-x", hopDistance: 1 }),
+        expect.objectContaining({ subjectId: "watch", hopDistance: 2, viaSubjectId: "guild-x" }),
+      ]));
+      expect(hop2).toHaveLength(2);
+    });
+
+    it("findRelatedSubjects: an isolated-channel relation only expands in its own channel", async () => {
+      const repository = await createRepository();
+      await repository.createRelations([relationInput({ isolationChannelId: "dnd-table" })]);
+      const inDnd = await repository.findRelatedSubjects({
+        guildId: "guild", channelId: "dnd-table", subjectIds: ["alice"], maxHops: 1,
+      });
+      expect(inDnd).toHaveLength(1);
+      const inGeneral = await repository.findRelatedSubjects({
+        guildId: "guild", channelId: "general", subjectIds: ["alice"], maxHops: 1,
+      });
+      expect(inGeneral).toHaveLength(0);
+    });
+
+    it("findRelatedSubjects: never returns one of the query's own subjectIds, even if reachable via a cycle", async () => {
+      const repository = await createRepository();
+      await repository.createRelations([
+        relationInput({ fromSubjectId: "alice", toSubjectId: "bob" }),
+        relationInput({ fromSubjectId: "bob", toSubjectId: "alice" }),
+      ]);
+      const related = await repository.findRelatedSubjects({
+        guildId: "guild", channelId: "general", subjectIds: ["alice"], maxHops: 3,
+      });
+      expect(related.map((r) => r.subjectId)).toEqual(["bob"]);
     });
   });
 }

@@ -184,6 +184,42 @@ export const memorySources = pgTable("memory_sources", {
   index("memory_sources_memory_id").on(table.memoryId),
 ]);
 
+// One-hop relational retrieval (see memory-engine.ts's DefaultMemoryEngine.
+// recall) — a small, closed-vocabulary graph edge between two memory
+// subjects, e.g. (elara, "owes", thieves-guild). Deliberately NOT a general
+// entity/relationship system: predicate is validated at the app layer
+// against a fixed vocabulary (see memory-relations.ts), and both ends
+// reference subjects the same way `memories` does (subjectType/subjectId),
+// not a separate entity table — there's no independent "entity" concept
+// here, just an edge between two (subjectType, subjectId) pairs that may or
+// may not have memories of their own.
+export const memoryRelations = pgTable("memory_relations", {
+  id: uuid("id").primaryKey(),
+  guildId: text("guild_id").notNull(),
+  fromSubjectType: text("from_subject_type").notNull(),
+  fromSubjectId: text("from_subject_id").notNull(),
+  predicate: text("predicate").notNull(),
+  // "association" (semantic relatedness — feeds the hop-weighted recall
+  // boost only) vs "consequence" (directional causal succession — from led
+  // to to; additionally rendered as an ordered chain in recall context, not
+  // just a ranking nudge). See DefaultMemoryEngine.recall.
+  kind: text("kind").notNull().default("association"),
+  toSubjectType: text("to_subject_type").notNull(),
+  toSubjectId: text("to_subject_id").notNull(),
+  // Same semantics as memories.isolationChannelId — a relation asserted in
+  // an isolated-channel campaign must not expand recall in a different
+  // channel's campaign. Enforced in findRelatedSubjects, not just recorded.
+  isolationChannelId: text("isolation_channel_id"),
+  // The fact whose extraction produced this relation — provenance, and
+  // nullable because a relation created outside consolidation (e.g. a
+  // future manual/admin path) may have no single supporting memory.
+  supportingMemoryId: uuid("supporting_memory_id").references(() => memories.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("memory_relations_guild_from").on(table.guildId, table.fromSubjectType, table.fromSubjectId),
+  index("memory_relations_guild_to").on(table.guildId, table.toSubjectType, table.toSubjectId),
+]);
+
 // Plan 2 (channel context) — drives both the one-time scan
 // (contextScanChannelIds, via lastMessageId as a resumable cursor) and the
 // daily consolidation (contextDailyChannelIds, via lastRunAt as an
