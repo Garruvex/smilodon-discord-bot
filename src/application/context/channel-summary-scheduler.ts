@@ -4,9 +4,9 @@ import type { GuildConfigurationProvider } from "../../config/guild-configuratio
 import type { GuildConfiguration } from "../../config/guild-configuration.js";
 import { guildKnowledgeLimits, validateGuildKnowledgeCandidates } from "../chat/guild-knowledge-policy.js";
 import { resolveChannelMemoryMode } from "../memory/memory-channel-policy.js";
-import type { MemoryEngine, ProposedMemory } from "../memory/memory.js";
+import type { MemoryEngine, ProposedMemory, ProposedRelation } from "../memory/memory.js";
 import type { ChannelHistoryMessage, ChannelHistoryReader } from "./channel-history-reader.js";
-import type { ChannelMessageSummarizer, ChannelSummaryFact } from "./channel-message-summarizer.js";
+import type { ChannelMessageSummarizer, ChannelSummaryFact, ChannelSummaryRelation } from "./channel-message-summarizer.js";
 import type { ChannelSummaryCheckpointStore } from "./channel-summary-checkpoint-store.js";
 
 // Hourly — same cadence as BirthdayAnnouncer. Daily's own once-per-~24h
@@ -214,8 +214,23 @@ export class ChannelSummaryScheduler {
       await this.checkpointStore.recordSuccess({ guildId: profile.guildId, channelId, now, dailyComplete: true });
     } else if (result.oldestSeenMessageId) {
       // Capped mid-cycle — resume from here next tick, still same cycle
-      // (lastRunAt/dailyHighWaterMarkAt only advance on dailyComplete).
-      await this.checkpointStore.recordSuccess({ guildId: profile.guildId, channelId, now, dailyCursor: result.oldestSeenMessageId });
+      // (lastRunAt only advances on dailyComplete). Persist the boundary
+      // this batch actually used, not just the cursor: when highWaterMarkAt
+      // came in null (the channel's very first daily cycle), boundaryMs was
+      // computed as `now - dayMs` using THIS tick's `now`. Leaving it
+      // unpersisted meant the next tick would recompute it from a later
+      // `now`, drifting the boundary forward every tick a capped cycle
+      // spans — silently narrowing (and, once reachedBoundary fired against
+      // the drifted value, permanently skipping) the window of messages
+      // between the original and drifted boundaries. Pinning it here keeps
+      // every batch of this cycle reading against the same boundary; it's
+      // superseded by the real completion timestamp once dailyComplete
+      // fires above.
+      await this.checkpointStore.recordSuccess({
+        guildId: profile.guildId, channelId, now,
+        dailyCursor: result.oldestSeenMessageId,
+        dailyHighWaterMarkAt: boundaryMs,
+      });
     }
   }
 
@@ -232,17 +247,20 @@ export class ChannelSummaryScheduler {
 
     const authorIds = new Set(messages.map((message) => message.authorId));
     let facts: readonly ChannelSummaryFact[];
+    let relations: readonly ChannelSummaryRelation[];
     try {
-      facts = await this.summarizer.summarizeChannelMessages(profile.guildId, messages.map((message) => ({
+      const summary = await this.summarizer.summarizeChannelMessages(profile.guildId, messages.map((message) => ({
         id: message.id, authorId: message.authorId, authorDisplayName: message.authorDisplayName, content: message.content,
       })));
+      facts = summary.facts;
+      relations = summary.relations;
     } catch (error) {
       await this.checkpointStore.recordError(
         profile.guildId, channelId, "summarization_failed", error instanceof Error ? error.message : "Summarization failed.", now,
       );
       return false;
     }
-    if (facts.length === 0) return true;
+    if (facts.length === 0 && relations.length === 0) return true;
 
     // Resolved per-fact, before validation normalizes topic/slot casing —
     // factIdentityKey re-normalizes the same way so the lookup after
@@ -269,54 +287,91 @@ export class ChannelSummaryScheduler {
         maxCandidates: guildKnowledgeLimits.maxChannelSummaryCandidates,
       },
     );
-    if (validated.length === 0) return true;
-
     const mode = resolveChannelMemoryMode(profile.chat.channelMemoryModes, channelId);
-    const proposals: ProposedMemory[] = validated.map((candidate) => ({
-      action: "upsert", audience: "guild", kind: toKind(candidate.topic),
-      ownerUserId: null, subjectType: candidate.subjectType, subjectId: candidate.subjectId,
-      topic: candidate.topic,
-      // Daily's slot combines the date with the model's own slot — see
-      // dailySlot's own comment for why a date-only slot would collide.
-      slot: path === "daily" ? dailySlot(now, candidate.slot) : candidate.slot,
-      statement: candidate.statement,
-      channelScoped: true,
-      // Per-fact trust (Plan 2, Phase 5): only a member-subject fact backed
-      // by the subject's own message self-activates; a third-party claim
-      // has no matching asserter here (undefined key falls back to null)
-      // and stays a "candidate" — see resolveInitialStatus.
-      assertedByUserId: asserterByIdentity.get(factIdentityKey(candidate.subjectType, candidate.subjectId, candidate.topic, candidate.slot)) ?? null,
-    }));
 
-    let result;
-    try {
-      result = await this.memoryEngine.ingest({
-        guildId: profile.guildId, channelId, channelMode: mode,
-        // Stable per-batch id (mode + guild + channel + cursor range) — a
-        // retry of the exact same batch (e.g. after a partial failure)
-        // reuses this same id, which the repository uses to skip inserting
-        // a duplicate memory_sources provenance row. Not a real Discord
-        // message id, but sourceMessageId has no other use for a
-        // consolidation batch spanning many messages.
-        assertedByUserId: null, sourceMessageId: batchId, source: "consolidation", now, proposals,
-      });
-    } catch (error) {
-      await this.checkpointStore.recordError(
-        profile.guildId, channelId, "memory_ingest_failed", error instanceof Error ? error.message : "Memory ingest failed.", now,
-      );
-      return false;
+    if (validated.length > 0) {
+      const proposals: ProposedMemory[] = validated.map((candidate) => ({
+        action: "upsert", audience: "guild", kind: toKind(candidate.topic),
+        ownerUserId: null, subjectType: candidate.subjectType, subjectId: candidate.subjectId,
+        topic: candidate.topic,
+        // Daily's slot combines the date with the model's own slot — see
+        // dailySlot's own comment for why a date-only slot would collide.
+        slot: path === "daily" ? dailySlot(now, candidate.slot) : candidate.slot,
+        statement: candidate.statement,
+        channelScoped: true,
+        // Per-fact trust (Plan 2, Phase 5): only a member-subject fact backed
+        // by the subject's own message self-activates; a third-party claim
+        // has no matching asserter here (undefined key falls back to null)
+        // and stays a "candidate" — see resolveInitialStatus.
+        assertedByUserId: asserterByIdentity.get(factIdentityKey(candidate.subjectType, candidate.subjectId, candidate.topic, candidate.slot)) ?? null,
+      }));
+
+      let result;
+      try {
+        result = await this.memoryEngine.ingest({
+          guildId: profile.guildId, channelId, channelMode: mode,
+          // Stable per-batch id (mode + guild + channel + cursor range) — a
+          // retry of the exact same batch (e.g. after a partial failure)
+          // reuses this same id, which the repository uses to skip inserting
+          // a duplicate memory_sources provenance row. Not a real Discord
+          // message id, but sourceMessageId has no other use for a
+          // consolidation batch spanning many messages.
+          assertedByUserId: null, sourceMessageId: batchId, source: "consolidation", now, proposals,
+        });
+      } catch (error) {
+        await this.checkpointStore.recordError(
+          profile.guildId, channelId, "memory_ingest_failed", error instanceof Error ? error.message : "Memory ingest failed.", now,
+        );
+        return false;
+      }
+      // A background job must not advance its checkpoint on a partial
+      // failure — unlike interactive chat (which logs and continues), a
+      // silently-dropped memory here would never be retried once the cursor
+      // moves past it.
+      if (result.failed > 0) {
+        await this.checkpointStore.recordError(
+          profile.guildId, channelId, "memory_ingest_partial_failure",
+          `${result.failed} of ${validated.length} proposed ${validated.length === 1 ? "memory" : "memories"} failed to persist.`, now,
+        );
+        return false;
+      }
     }
-    // A background job must not advance its checkpoint on a partial
-    // failure — unlike interactive chat (which logs and continues), a
-    // silently-dropped memory here would never be retried once the cursor
-    // moves past it.
-    if (result.failed > 0) {
-      await this.checkpointStore.recordError(
-        profile.guildId, channelId, "memory_ingest_partial_failure",
-        `${result.failed} of ${validated.length} proposed ${validated.length === 1 ? "memory" : "memories"} failed to persist.`, now,
-      );
-      return false;
+
+    if (relations.length > 0) {
+      // Reject a relation referencing a subject nothing else in this batch
+      // establishes — same spirit as validateGuildKnowledgeCandidates'
+      // allowedMemberIds check, applied to relations' two endpoints instead
+      // of one subjectId. Checked against `validated` (facts that actually
+      // passed policy validation), not the raw model output, so a relation
+      // can't piggyback a subject that was itself rejected.
+      const knownSubjectIds = new Set<string>([profile.guildId, ...authorIds, ...validated.map((v) => v.subjectId)]);
+      const validRelations = relations.filter((relation) =>
+        knownSubjectIds.has(relation.fromSubjectId) && knownSubjectIds.has(relation.toSubjectId));
+      if (validRelations.length > 0) {
+        const proposals: ProposedRelation[] = validRelations.map((relation) => ({
+          fromSubjectType: relation.fromSubjectType, fromSubjectId: relation.fromSubjectId,
+          predicate: relation.predicate, kind: relation.kind,
+          toSubjectType: relation.toSubjectType, toSubjectId: relation.toSubjectId,
+        }));
+        try {
+          // supportingMemoryId is null: a consolidation batch produces
+          // several facts/memories, not one, so there's no single memory
+          // row that's uniquely "the" support for a relation extracted
+          // from the same batch — provenance here is the batch, not a row.
+          await this.memoryEngine.ingestRelations({
+            guildId: profile.guildId, channelId, channelMode: mode,
+            proposals, supportingMemoryId: null, now,
+          });
+        } catch (error) {
+          await this.checkpointStore.recordError(
+            profile.guildId, channelId, "relation_ingest_failed",
+            error instanceof Error ? error.message : "Relation ingest failed.", now,
+          );
+          return false;
+        }
+      }
     }
+
     return true;
   }
 }

@@ -52,6 +52,7 @@ function isFeatureEnabled(guildConfiguration: GuildConfiguration, commandModule:
     case CommandModule.Diagnostics: return guildConfiguration.features.diagnostics;
     case CommandModule.Music: return guildConfiguration.features.music;
     case CommandModule.Birthdays: return guildConfiguration.features.birthdays;
+    case CommandModule.Reminders: return guildConfiguration.features.reminders;
     case CommandModule.Nsfw: return guildConfiguration.features.nsfw;
   }
 }
@@ -138,6 +139,7 @@ export const memberPermissionRule: AccessRule = (subject, policy) => {
 // them would let a command report "allowed" while the bot itself can't
 // execute it in Discord.
 export const botPermissionRule: AccessRule = (subject, policy) => {
+  if (policy.requiredBotPermissions.length === 0) return null;
   if (subject.botPermissions === null || !hasAllPermissions(subject.botPermissions, policy.requiredBotPermissions)) {
     return { allowed: false, reason: AccessDenialReason.BotMissingPermission };
   }

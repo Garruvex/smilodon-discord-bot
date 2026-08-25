@@ -51,3 +51,14 @@ export function evaluateMusicToolAccess(
 export function formatMusicError(error: unknown, fallback: string): string {
   return error instanceof MusicError ? error.message : fallback;
 }
+
+export const musicToolTimedOutMessage =
+  "That took too long — treat this action as not having happened.";
+
+// Every mutating music tool binding (pause/resume/stop/skip/previous/
+// shuffle/volume/play) must call this immediately before its actual
+// playback-mutating call, not just at entry — see ChatToolContext.signal's
+// comment for why the check has to sit right at the point of mutation.
+export function musicToolWasCancelled(ctx: ChatToolContext): boolean {
+  return ctx.signal?.aborted ?? false;
+}

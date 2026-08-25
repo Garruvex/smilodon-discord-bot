@@ -112,6 +112,40 @@ export const birthdayAnnouncements = pgTable("birthday_announcements", {
   announcedAt: timestamp("announced_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [primaryKey({ columns: [table.guildId, table.date] })]);
 
+// No memberId FK — unlike birthdays/chat data, reminders don't need the
+// guildMembers hub (nothing else cascades from a reminder, and no other
+// feature joins against it).
+export const reminders = pgTable("reminders", {
+  id: uuid("id").primaryKey(),
+  guildId: text("guild_id").notNull(),
+  userId: text("user_id").notNull(),
+  channelId: text("channel_id").notNull(),
+  message: text("message").notNull(),
+  dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  // Null = still pending. Set once delivered (or permanently undeliverable)
+  // so the scheduler's listDue never retries it again.
+  firedAt: timestamp("fired_at", { withTimezone: true }),
+}, (table) => [
+  index("reminders_due_at").on(table.dueAt),
+  index("reminders_guild_user").on(table.guildId, table.userId),
+]);
+
+// Keyed by messageId (not a synthetic uuid) — a role menu is 1:1 with the
+// Discord message that carries its select-menu component, and messageId is
+// already globally unique, so there's no reason for a second id.
+export const roleMenus = pgTable("role_menus", {
+  messageId: text("message_id").primaryKey(),
+  guildId: text("guild_id").notNull(),
+  channelId: text("channel_id").notNull(),
+  // Array of { roleId, label } — the full set of roles this menu offers,
+  // diffed against a user's submitted selection in RoleMenuService.
+  options: jsonb("options").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("role_menus_guild").on(table.guildId),
+]);
+
 // Central memory model (Plan 1) — supersedes chatMemories/guildKnowledge.
 // audience answers "who's normally allowed to read this"; isolationChannelId
 // answers "is this forbidden from leaving one channel, regardless of
@@ -182,6 +216,42 @@ export const memorySources = pgTable("memory_sources", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index("memory_sources_memory_id").on(table.memoryId),
+]);
+
+// One-hop relational retrieval (see memory-engine.ts's DefaultMemoryEngine.
+// recall) — a small, closed-vocabulary graph edge between two memory
+// subjects, e.g. (elara, "owes", thieves-guild). Deliberately NOT a general
+// entity/relationship system: predicate is validated at the app layer
+// against a fixed vocabulary (see memory-relations.ts), and both ends
+// reference subjects the same way `memories` does (subjectType/subjectId),
+// not a separate entity table — there's no independent "entity" concept
+// here, just an edge between two (subjectType, subjectId) pairs that may or
+// may not have memories of their own.
+export const memoryRelations = pgTable("memory_relations", {
+  id: uuid("id").primaryKey(),
+  guildId: text("guild_id").notNull(),
+  fromSubjectType: text("from_subject_type").notNull(),
+  fromSubjectId: text("from_subject_id").notNull(),
+  predicate: text("predicate").notNull(),
+  // "association" (semantic relatedness — feeds the hop-weighted recall
+  // boost only) vs "consequence" (directional causal succession — from led
+  // to to; additionally rendered as an ordered chain in recall context, not
+  // just a ranking nudge). See DefaultMemoryEngine.recall.
+  kind: text("kind").notNull().default("association"),
+  toSubjectType: text("to_subject_type").notNull(),
+  toSubjectId: text("to_subject_id").notNull(),
+  // Same semantics as memories.isolationChannelId — a relation asserted in
+  // an isolated-channel campaign must not expand recall in a different
+  // channel's campaign. Enforced in findRelatedSubjects, not just recorded.
+  isolationChannelId: text("isolation_channel_id"),
+  // The fact whose extraction produced this relation — provenance, and
+  // nullable because a relation created outside consolidation (e.g. a
+  // future manual/admin path) may have no single supporting memory.
+  supportingMemoryId: uuid("supporting_memory_id").references(() => memories.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("memory_relations_guild_from").on(table.guildId, table.fromSubjectType, table.fromSubjectId),
+  index("memory_relations_guild_to").on(table.guildId, table.toSubjectType, table.toSubjectId),
 ]);
 
 // Plan 2 (channel context) — drives both the one-time scan

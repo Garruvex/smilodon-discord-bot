@@ -10,11 +10,16 @@ import type {
   Memory,
   MemoryAudience,
   MemoryKind,
+  MemoryRelationKind,
+  MemoryRelationPredicate,
   MemoryRepository,
   MemorySourceKind,
   MemoryStatus,
   MemorySubjectType,
   RecallCandidates,
+  RelatedSubject,
+  RelatedSubjectsQuery,
+  RelationCreateInput,
   RepositoryIngestInput,
   SupersedeCommand,
 } from "../../application/memory/memory.js";
@@ -295,5 +300,62 @@ export class PostgresMemoryRepository implements MemoryRepository {
       eq(schema.memories.status, "active"),
     )).returning({ id: schema.memories.id });
     return updated.length > 0;
+  }
+
+  public async createRelations(inputs: readonly RelationCreateInput[]): Promise<void> {
+    if (inputs.length === 0) return;
+    await this.database.insert(schema.memoryRelations).values(inputs.map((input) => ({
+      id: randomUUID(),
+      guildId: input.guildId,
+      fromSubjectType: input.fromSubjectType,
+      fromSubjectId: input.fromSubjectId,
+      predicate: input.predicate,
+      kind: input.kind,
+      toSubjectType: input.toSubjectType,
+      toSubjectId: input.toSubjectId,
+      isolationChannelId: input.isolationChannelId,
+      supportingMemoryId: input.supportingMemoryId,
+      createdAt: new Date(input.now),
+    })));
+  }
+
+  // Bounded iterative BFS, not a recursive SQL CTE — see
+  // RelatedSubjectsQuery's doc comment in memory.ts for why (drizzle-orm
+  // has no withRecursive support). Level-synchronous: each round's query
+  // scans only the previous round's newly-discovered subjects, not every
+  // visited subject, so a node already fully expanded is never re-queried.
+  public async findRelatedSubjects(query: RelatedSubjectsQuery): Promise<readonly RelatedSubject[]> {
+    const visited = new Set<string>(query.subjectIds);
+    const results = new Map<string, RelatedSubject>();
+    let frontier = [...query.subjectIds];
+    for (let hop = 1; hop <= query.maxHops && frontier.length > 0; hop++) {
+      const rows = await this.database.select().from(schema.memoryRelations).where(and(
+        eq(schema.memoryRelations.guildId, query.guildId),
+        or(inArray(schema.memoryRelations.fromSubjectId, frontier), inArray(schema.memoryRelations.toSubjectId, frontier)),
+        or(isNull(schema.memoryRelations.isolationChannelId), eq(schema.memoryRelations.isolationChannelId, query.channelId)),
+      ));
+      const nextFrontier: string[] = [];
+      for (const row of rows) {
+        const fromInFrontier = frontier.includes(row.fromSubjectId);
+        const otherSubjectType = fromInFrontier ? row.toSubjectType : row.fromSubjectType;
+        const otherSubjectId = fromInFrontier ? row.toSubjectId : row.fromSubjectId;
+        const viaSubjectType = fromInFrontier ? row.fromSubjectType : row.toSubjectType;
+        const viaSubjectId = fromInFrontier ? row.fromSubjectId : row.toSubjectId;
+        if (visited.has(otherSubjectId)) continue;
+        visited.add(otherSubjectId);
+        nextFrontier.push(otherSubjectId);
+        results.set(otherSubjectId, {
+          subjectType: otherSubjectType as MemorySubjectType,
+          subjectId: otherSubjectId,
+          hopDistance: hop,
+          kind: row.kind as MemoryRelationKind,
+          predicate: row.predicate as MemoryRelationPredicate,
+          viaSubjectId,
+          viaSubjectType: viaSubjectType as MemorySubjectType,
+        });
+      }
+      frontier = nextFrontier;
+    }
+    return [...results.values()];
   }
 }

@@ -36,6 +36,20 @@
       "when": 1787375568596,
       "tag": "0004_familiar_lethal_legion",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1787380541232,
+      "tag": "0005_third_jetstream",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1787381038510,
+      "tag": "0006_hard_gauntlet",
+      "breakpoints": true
     }
   ]
 }

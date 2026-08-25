@@ -12,6 +12,7 @@ const moduleLabels: Record<CommandModule, string> = {
   [CommandModule.Diagnostics]: "Diagnostics",
   [CommandModule.Music]: "Music",
   [CommandModule.Birthdays]: "Birthdays",
+  [CommandModule.Reminders]: "Reminders",
   [CommandModule.Nsfw]: "NSFW",
 };
 
@@ -46,6 +47,16 @@ export class HelpCommand implements BotCommand {
       const command = visibleCommands.find((candidate) => candidate.definition.name === commandName);
       if (!command) {
         await context.responses.reply(`No command named \`${commandName}\` is available to you here.`);
+        return;
+      }
+
+      if (command.definition.type === "messageContextMenu") {
+        const embed = new EmbedBuilder()
+          .setColor(embedColor)
+          .setTitle(command.definition.name)
+          .setDescription("Right-click a message → Apps → " + command.definition.name)
+          .addFields({ name: "Category", value: moduleLabels[command.module], inline: true });
+        await context.responses.reply({ embeds: [embed] });
         return;
       }
 

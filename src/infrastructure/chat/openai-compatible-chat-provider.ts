@@ -9,19 +9,19 @@ import {
   type ChatResponse,
   type UserCustomizationAnalysisResult,
 } from "../../application/chat/chat-provider.js";
-import type { ChannelSummaryFact, ChannelSummaryMessage } from "../../application/context/channel-message-summarizer.js";
+import type { ChannelSummaryMessage, ChannelSummaryResult } from "../../application/context/channel-message-summarizer.js";
 import {
   channelMessageSummaryMaxOutputTokens,
   channelMessageSummaryJsonSchema,
   prepareChannelMessageSummary,
-} from "./channel-message-summarization.js";
+} from "../../application/chat/channel-message-summarization.js";
 import { buildChatContext, buildChatInstructions, chatModelJsonSchema, parseChatModelOutput } from "./chat-structured-output.js";
 import { ModelFallbackChain } from "./model-fallback-chain.js";
 import {
   buildUserCustomizationAnalysisPrompt,
   parseUserCustomizationAnalysisOutput,
   userCustomizationAnalysisJsonSchema,
-} from "./user-customization-analysis.js";
+} from "../../application/chat/user-customization-analysis.js";
 
 const responseSchema = z.object({
   choices: z.array(z.object({ message: z.object({ content: z.string() }) })).min(1),
@@ -184,7 +184,7 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
   public async summarizeChannelMessages(
     guildId: string,
     messages: readonly ChannelSummaryMessage[],
-  ): Promise<readonly ChannelSummaryFact[]> {
+  ): Promise<ChannelSummaryResult> {
     const summary = prepareChannelMessageSummary(guildId, messages);
     const body = await this.summaryModelChain.run(async (model) => {
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
@@ -219,7 +219,7 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
       return response.json();
     });
     const parsed = responseSchema.parse(body);
-    return summary.parse(parsed.choices[0]!.message.content).facts;
+    return summary.parse(parsed.choices[0]!.message.content);
   }
 
   // The chat_completions API this provider targets has no equivalent for web

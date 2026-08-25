@@ -1,7 +1,7 @@
 import { z } from "zod";
 
-import { ChatProviderError } from "../../application/chat/chat-provider.js";
-import { userCustomizationLimits } from "../../application/chat/user-customization-policy.js";
+import { ChatProviderError } from "./chat-provider.js";
+import { userCustomizationLimits } from "./user-customization-policy.js";
 
 export const userCustomizationAnalysisSchema = z.object({
   ok: z.boolean(),

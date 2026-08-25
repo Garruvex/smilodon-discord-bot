@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { ChatProviderError } from "../../application/chat/chat-provider.js";
+import { ChatProviderError } from "./chat-provider.js";
 
 // Only reached after the cheap embedding-similarity pre-filter already found
 // a candidate (see DefaultMemoryEngine.checkForConflicts) — this call exists

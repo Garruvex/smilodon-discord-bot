@@ -223,7 +223,18 @@ export class ControlChannelService {
 
     const profile = this.guildConfigurationProvider.find(interaction.guildId);
     const panelState = this.stateStore.find(interaction.guildId);
+    // The stateStore match alone isn't enough to prove this panel is still
+    // current: it's only ever overwritten when ensurePanel() creates a
+    // replacement (see ensurePanel), never cleared when an admin disables
+    // the music feature or reassigns channels.controlPanel to somewhere
+    // else without a replacement panel being created there. Re-checking
+    // against the live guild configuration here closes that gap — a panel
+    // left behind by a config change stops being authorized even though
+    // stateStore still (harmlessly, until now) points at it.
     if (
+      !profile ||
+      !profile.features.music ||
+      profile.channels.controlPanel !== interaction.channelId ||
       !panelState ||
       panelState.channelId !== interaction.channelId ||
       panelState.messageId !== interaction.message.id

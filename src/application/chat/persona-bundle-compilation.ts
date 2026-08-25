@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { ChatProviderError } from "../../application/chat/chat-provider.js";
+import { ChatProviderError } from "./chat-provider.js";
 
 const personaBundleClassificationSchema = z.object({
   chunkSectionIndexes: z.array(z.number().int().nonnegative()).max(64),

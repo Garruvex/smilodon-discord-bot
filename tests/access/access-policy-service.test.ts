@@ -64,6 +64,7 @@ function guildConfiguration(): GuildConfiguration {
       music: true,
       chatbot: false,
       birthdays: false,
+      reminders: false,
       nsfw: false,
       linkFix: false,
       retainMemberDataOnLeave: true,
@@ -82,6 +83,8 @@ function guildConfiguration(): GuildConfiguration {
       auditLog: null,
       chatbot: new Set(),
       birthdayAnnouncements: null,
+      joinAnnouncements: null,
+      leaveAnnouncements: null,
       linkFix: new Set(),
     },
     music: {
@@ -150,6 +153,13 @@ function interaction(
         me: { permissions: { bitfield: botHasPermissions ? -1n : 0n } },
       },
     },
+    // Discord computes these directly for the channel the interaction fired
+    // in (channel overwrites already folded in), separate from
+    // member.permissions/guild.members.me.permissions which are guild-role-
+    // only — see access-policy-service.ts. Mirrored here so the fixture
+    // matches what a real interaction actually carries.
+    memberPermissions: { bitfield: -1n },
+    appPermissions: { bitfield: botHasPermissions ? -1n : 0n },
   } as unknown as ChatInputCommandInteraction;
 }
 

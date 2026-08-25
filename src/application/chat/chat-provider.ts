@@ -2,6 +2,7 @@ import type { ChatTool } from "./tools/chat-tool.js";
 import type { ExampleExchange } from "./example-exchange.js";
 import type { PlaybackActor } from "../music/playback-service.js";
 import type { ChannelMessageSummarizer } from "../context/channel-message-summarizer.js";
+import type { CausalChainLink } from "../memory/memory.js";
 
 export interface ChatRequest {
   guildId: string;
@@ -61,8 +62,24 @@ export interface ChatRequest {
   recentHistory: readonly ChatHistoryMessage[];
   memories: readonly ChatMemoryRecord[];
   guildKnowledge: readonly GuildKnowledgeRecord[];
+  // Consequence-kind relations surfaced by MemoryEngine.recall's relation
+  // expansion (see MemoryContext.causalChains) — resolved subject pairs the
+  // model can draw on as established causal/sequential history, not raw
+  // free text, so unlike memories/guildKnowledge these need no untrusted
+  // fencing. Empty when the memory engine found no relevant "consequence"
+  // relations, or was never asked (channelScoped recall paths that don't
+  // call MemoryEngine.recall at all).
+  causalChains: readonly CausalChainLink[];
   message: string;
   replyChain: readonly ReplyChainMessage[];
+  // Set only when the actual reply chain extends further back than what's
+  // included in replyChain above (past maxReplyChainDepth/maxReplyChainChars
+  // — see ChatTurnSupport.resolveReplyChain) — a short recap of the
+  // truncated older portion, synthesized on demand by
+  // ReplyChainSummarizer so a deep thread doesn't just silently lose its
+  // earlier context. Null when the whole thread already fit in replyChain,
+  // or a summarizer wasn't available/the call failed.
+  replyChainSummary: string | null;
   // Recent channel messages from anyone, not reply-linked — ambient context
   // for a turn that isn't itself a Discord reply. Only populated when the
   // guild has features.channelHistory on; empty otherwise. Excludes any
@@ -141,7 +158,11 @@ export interface ProposedMemoryAction {
   statement: string | null;
 }
 
-export type GuildKnowledgeSubjectType = "guild" | "member" | "team" | "project";
+// Mirrors memory.ts's MemorySubjectType — toGuildKnowledgeRecord (see
+// chat-conversation-service.ts) maps a Memory straight into this shape, so
+// the two must carry the same subject-type vocabulary or that mapping stops
+// typechecking whenever one is extended without the other.
+export type GuildKnowledgeSubjectType = "guild" | "member" | "team" | "project" | "npc" | "faction" | "location";
 
 export interface GuildKnowledgeRecord {
   id: string;
@@ -240,6 +261,9 @@ export type UserCustomizationAnalysisResult =
 export interface DroppedExchangeFact {
   slot: string;
   statement: string;
+  // "member": resolved by the caller to the speaker's Discord id. "guild":
+  // resolved to the guild id. See ConversationConsolidator.
+  subjectType: "member" | "guild";
 }
 
 export interface ChatReplyProvider {
@@ -258,6 +282,12 @@ export interface UserCustomizationAnalyzer {
 export interface ConversationConsolidator {
   summarizeDroppedExchanges(
     exchanges: readonly { user: string; assistant: string }[],
+    // Every "user" turn in a dropped-exchange batch comes from this one
+    // Discord user — see ChatStateStore.load, which scopes the session
+    // transcript per (guild, user, channel) — so a single speaker identity
+    // covers the whole batch. Passed through so the model can attribute
+    // extracted facts to them instead of only ever writing guild-level facts.
+    speaker: { id: string; displayName: string },
   ): Promise<readonly DroppedExchangeFact[]>;
 }
 
@@ -297,6 +327,19 @@ export interface MemoryConflictClassifier {
   classifyMemoryConflict(existingStatement: string, newStatement: string): Promise<boolean>;
 }
 
+// Standalone call (own prompt/schema) condensing the portion of a Discord
+// reply chain that falls beyond maxReplyChainDepth/maxReplyChainChars into
+// one short recap — see ChatTurnSupport.resolveReplyChain's `overflow` and
+// ChatConversationService.run(). Unlike summarizeDroppedExchanges/
+// evolvePersonaDrift, this runs on the critical path (its output has to be
+// in the prompt for the reply this turn generates), but only on the rare
+// turn where a reply chain actually goes past the kept-window depth.
+export interface ReplyChainSummarizer {
+  summarizeReplyChainOverflow(
+    hops: readonly { authorDisplayName: string; content: string }[],
+  ): Promise<string>;
+}
+
 // A ChatProvider is always a ChatReplyProvider; the rest are standalone
 // capabilities a given provider implementation may or may not support.
 // Kept optional here (rather than requiring callers to hold a narrower
@@ -311,7 +354,8 @@ export type ChatProvider = ChatReplyProvider &
   Partial<PersonaCompiler> &
   Partial<PersonaDriftEvolver> &
   Partial<ChannelMessageSummarizer> &
-  Partial<MemoryConflictClassifier>;
+  Partial<MemoryConflictClassifier> &
+  Partial<ReplyChainSummarizer>;
 
 export interface ChatResponseObserver {
   onImagePreview(image: GeneratedChatImage): Promise<void>;

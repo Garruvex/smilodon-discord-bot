@@ -398,4 +398,49 @@ describe("Multi-hop / relational retrieval", () => {
     expect(statements.some((statement) => statement.includes("blood feud"))).toBe(true);
     expect(statements.some((statement) => statement.includes("aggressively questions"))).toBe(true);
   });
+
+  // The real fix, tested end to end (memory_relations + findRelatedSubjects
+  // + DefaultMemoryEngine.recall's boost merge) — not simulated. Uses a
+  // query with ZERO word overlap with the target fact, unlike the test
+  // above (which happened to share "ravenport" with two of its three
+  // facts). This is the case pure BM25/embeddings structurally cannot
+  // solve regardless of tuning, and the one that actually isolates whether
+  // relation-based hop expansion works.
+  it("a fact reachable only via a relation (zero query/fact vocabulary overlap) is recalled once expansion is wired in", async () => {
+    const memoryEngine = engine();
+    const now = 100;
+    async function note(subjectId: string, statement: string): Promise<void> {
+      await memoryEngine.ingest({
+        guildId: "guild", channelId: "table", channelMode: "shared",
+        assertedByUserId: null, sourceMessageId: null, source: "consolidation", now,
+        proposals: [{
+          action: "upsert", audience: "guild", kind: "fact", ownerUserId: null,
+          subjectType: "guild", subjectId, topic: "lore", slot: "trivia", channelScoped: false,
+          statement,
+        }],
+      });
+    }
+    // Deliberately zero shared tokens with the query below.
+    await note("thieves-guild", "membership dues increased again this season");
+    for (let i = 0; i < 50; i++) {
+      await note(`npc-${i}`, `npc number ${i} runs an unrelated shop selling assorted goods in a different town entirely`);
+    }
+    await memoryEngine.ingestRelations({
+      guildId: "guild", channelId: "table", channelMode: "shared", now, supportingMemoryId: null,
+      proposals: [{
+        fromSubjectType: "member", fromSubjectId: "elara",
+        predicate: "member_of", kind: "association",
+        toSubjectType: "guild", toSubjectId: "thieves-guild",
+      }],
+    });
+
+    const query = {
+      guildId: "guild", channelId: "table", userId: "player1",
+      message: "what's weighing on elara's mind lately",
+      recentHistory: [], subjectIds: ["elara"], now: 200,
+    };
+    const recalled = await memoryEngine.recall(query);
+    const statements = recalled.memories.map((memory) => (memory as { statement: string }).statement);
+    expect(statements.some((statement) => statement.includes("membership dues"))).toBe(true);
+  });
 });

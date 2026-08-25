@@ -8,6 +8,7 @@ import { BehaviorEvent } from "../application/behaviors/behavior.js";
 import type { MusicPresenceService } from "../application/music/music-presence-service.js";
 import type { BirthdayAnnouncer } from "../application/birthdays/birthday-announcer.js";
 import type { MemberDepartureService } from "../application/members/member-departure-service.js";
+import type { MemberWelcomeService } from "../application/members/member-welcome-service.js";
 
 export class Application {
   public constructor(
@@ -18,6 +19,7 @@ export class Application {
     private readonly musicPresenceService: MusicPresenceService,
     private readonly birthdayAnnouncer: BirthdayAnnouncer,
     private readonly memberDepartureService: MemberDepartureService,
+    private readonly memberWelcomeService: MemberWelcomeService,
     private readonly logger: Logger,
     private readonly onFatalError?: (reason: string) => void,
   ) {
@@ -70,6 +72,7 @@ export class Application {
     this.musicPresenceService.stop();
     this.birthdayAnnouncer.stop();
     this.dependencies.channelSummaryScheduler?.stop();
+    this.dependencies.reminderScheduler.stop();
     this.dependencies.pollService.stop();
     await this.client.destroy();
   }
@@ -128,6 +131,7 @@ export class Application {
       this.musicPresenceService.start();
       this.birthdayAnnouncer.start();
       this.dependencies.channelSummaryScheduler?.start();
+      this.dependencies.reminderScheduler.start();
     });
 
     this.client.on(Events.Raw, (payload) => {
@@ -145,7 +149,14 @@ export class Application {
         return;
       }
 
-      if (!interaction.isChatInputCommand()) {
+      if (interaction.isStringSelectMenu()) {
+        void this.dependencies.componentDispatcher.dispatch(interaction).catch((error: unknown) => {
+          this.logger.error({ error }, "Select menu dispatch failed");
+        });
+        return;
+      }
+
+      if (!interaction.isChatInputCommand() && !interaction.isMessageContextMenuCommand()) {
         return;
       }
 
@@ -198,9 +209,18 @@ export class Application {
       });
     });
 
+    this.client.on(Events.GuildMemberAdd, (member) => {
+      void this.memberWelcomeService.handleMemberJoin(member).catch((error: unknown) => {
+        this.logger.error({ error, guildId: member.guild.id, userId: member.id }, "Unable to process member join");
+      });
+    });
+
     this.client.on(Events.GuildMemberRemove, (member) => {
       void this.memberDepartureService.handleMemberLeave(member.guild.id, member.id).catch((error: unknown) => {
         this.logger.error({ error, guildId: member.guild.id, userId: member.id }, "Unable to process member departure");
+      });
+      void this.memberWelcomeService.handleMemberLeave(member).catch((error: unknown) => {
+        this.logger.error({ error, guildId: member.guild.id, userId: member.id }, "Unable to process leave announcement");
       });
     });
 

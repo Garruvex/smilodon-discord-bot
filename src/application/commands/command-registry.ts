@@ -1,5 +1,4 @@
-import type { BotCommand } from "./command.js";
-import type { CommandModule } from "./command.js";
+import type { AnyCommandInteraction, BotCommand } from "./command.js";
 import { RoleMatchMode } from "../../domain/access/access-policy.js";
 
 export class DuplicateCommandError extends Error {
@@ -17,9 +16,9 @@ export class InvalidCommandError extends Error {
 }
 
 export class CommandRegistry {
-  private readonly commands = new Map<string, BotCommand>();
+  private readonly commands = new Map<string, BotCommand<AnyCommandInteraction>>();
 
-  public register(command: BotCommand): void {
+  public register(command: BotCommand<AnyCommandInteraction>): void {
     const commandName = command.definition.name;
 
     if (this.commands.has(commandName)) {
@@ -30,21 +29,15 @@ export class CommandRegistry {
     this.commands.set(commandName, command);
   }
 
-  public find(commandName: string): BotCommand | null {
+  public find(commandName: string): BotCommand<AnyCommandInteraction> | null {
     return this.commands.get(commandName) ?? null;
   }
 
-  public getAll(): readonly BotCommand[] {
+  public getAll(): readonly BotCommand<AnyCommandInteraction>[] {
     return [...this.commands.values()];
   }
 
-  public getByEnabledModules(
-    enabledModules: ReadonlySet<CommandModule>,
-  ): readonly BotCommand[] {
-    return this.getAll().filter((command) => enabledModules.has(command.module));
-  }
-
-  private validate(command: BotCommand): void {
+  private validate(command: BotCommand<AnyCommandInteraction>): void {
     const commandName = command.definition.name;
     const rolePolicy = command.access.roles;
 

@@ -6,7 +6,7 @@ import {
   parsePersonaBundleCompilationOutput,
   parsePersonaBundleSectionSelection,
   personaBundleCompilationMaxOutputTokens,
-} from "../../src/infrastructure/chat/persona-bundle-compilation.js";
+} from "../../src/application/chat/persona-bundle-compilation.js";
 
 describe("persona bundle compilation", () => {
   const personality = [

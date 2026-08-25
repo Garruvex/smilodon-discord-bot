@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
 import type { GuildConfiguration } from "../../config/guild-configuration.js";
@@ -72,13 +72,33 @@ export class PostgresGuildConfigurationProvider implements GuildConfigurationPro
   }
 
   public async update(guildId: string, input: UpdateGuildConfigurationInput): Promise<GuildConfiguration> {
-    const current = this.require(guildId);
-    const document = applyGuildConfigurationUpdate(toGuildConfigurationDocument(current), input);
-    await this.database
-      .update(schema.guildConfigurations)
-      .set({ configuration: document, updatedAt: new Date() })
-      .where(eq(schema.guildConfigurations.guildId, guildId));
-    const configuration = toGuildConfiguration(document, `postgres:${guildId}`);
+    // this.configurations is a process-local cache — reading `current` from
+    // it and writing `document` back unconditionally is a read-modify-write
+    // race: two concurrent update() calls (two admins, or two settings
+    // fields saved back-to-back) can both read the same stale base and the
+    // second write clobbers the first's change instead of building on it.
+    // The advisory lock + in-transaction re-read below serializes updates
+    // for this guild (same technique PostgresMemoryRepository.ingest uses
+    // for its own identity-scoped race), so the second update always
+    // applies its delta on top of the first's committed result.
+    const configuration = await this.database.transaction(async (transaction) => {
+      await transaction.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${guildId}))`);
+      const rows = await transaction.select().from(schema.guildConfigurations)
+        .where(eq(schema.guildConfigurations.guildId, guildId)).limit(1);
+      const row = rows[0];
+      if (!row) throw new Error(`Guild "${guildId}" is not configured.`);
+      const parsed = guildConfigurationFileSchema.safeParse(row.configuration);
+      if (!parsed.success) {
+        throw new Error(`Invalid PostgreSQL guild configuration "${guildId}": ${parsed.error.message}`);
+      }
+      const current = toGuildConfiguration(parsed.data, `postgres:${guildId}`);
+      const document = applyGuildConfigurationUpdate(toGuildConfigurationDocument(current), input);
+      await transaction
+        .update(schema.guildConfigurations)
+        .set({ configuration: document, updatedAt: new Date() })
+        .where(eq(schema.guildConfigurations.guildId, guildId));
+      return toGuildConfiguration(document, `postgres:${guildId}`);
+    });
     this.configurations.set(guildId, configuration);
     return configuration;
   }

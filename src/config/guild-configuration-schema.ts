@@ -116,6 +116,7 @@ export const guildConfigurationFileSchema = z
         music: z.boolean().default(false),
         chatbot: z.boolean().default(false),
         birthdays: z.boolean().default(false),
+        reminders: z.boolean().default(false),
         nsfw: z.boolean().default(false),
         linkFix: z.boolean().default(false),
         retainMemberDataOnLeave: z.boolean().default(true),
@@ -124,7 +125,7 @@ export const guildConfigurationFileSchema = z
       })
       .default({
         common: true, diagnostics: true, music: false, chatbot: false, birthdays: false,
-        nsfw: false, linkFix: false, retainMemberDataOnLeave: true, ambientReplies: false,
+        reminders: false, nsfw: false, linkFix: false, retainMemberDataOnLeave: true, ambientReplies: false,
         channelHistory: false,
       }),
     roles: z
@@ -148,6 +149,8 @@ export const guildConfigurationFileSchema = z
         chatbot: snowflakeList,
         birthdayAnnouncements: snowflake.nullable().default(null),
         linkFix: snowflakeList,
+        joinAnnouncements: snowflake.nullable().default(null),
+        leaveAnnouncements: snowflake.nullable().default(null),
       })
       .default({
         musicCommands: [],
@@ -156,6 +159,8 @@ export const guildConfigurationFileSchema = z
         chatbot: [],
         birthdayAnnouncements: null,
         linkFix: [],
+        joinAnnouncements: null,
+        leaveAnnouncements: null,
       }),
     chat: guildChatSchema
       .default({

@@ -30,10 +30,17 @@ export class AuditLogService {
 
     try {
       const channel = await this.client.channels.fetch(channelId);
+      // client.channels.fetch is global, not guild-scoped — without the
+      // guildId check a stale/misconfigured channels.auditLog id (left over
+      // from a deleted channel, or copy-pasted from another guild's config)
+      // could resolve to a channel in a different guild and write this
+      // guild's admin-action log — including the acting user's mention —
+      // into it.
       if (
         !channel?.isTextBased() ||
         channel.type === ChannelType.DM ||
-        channel.type === ChannelType.GroupDM
+        channel.type === ChannelType.GroupDM ||
+        channel.guildId !== guildId
       ) {
         return;
       }
@@ -57,10 +64,16 @@ export class AuditLogService {
 
     try {
       const channel = await this.client.channels.fetch(channelId);
+      // Same cross-guild concern as log() above: without the guildId check,
+      // a stale/misconfigured channels.auditLog id could read back another
+      // guild's channel messages and present them to this guild's admins as
+      // "this guild's audit history" — an unauthenticated read from
+      // whatever channel that id happens to resolve to.
       if (
         !channel?.isTextBased() ||
         channel.type === ChannelType.DM ||
-        channel.type === ChannelType.GroupDM
+        channel.type === ChannelType.GroupDM ||
+        channel.guildId !== guildId
       ) {
         return { configured: true, entries: [] };
       }

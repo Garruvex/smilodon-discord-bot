@@ -1,4 +1,4 @@
-export type GuildFeatureName = "common" | "diagnostics" | "music" | "chatbot" | "birthdays" | "nsfw" | "linkFix";
+export type GuildFeatureName = "common" | "diagnostics" | "music" | "chatbot" | "birthdays" | "reminders" | "nsfw" | "linkFix";
 export type RoleGroupName = "botAdministrator" | "musicController" | "chatbot";
 
 export interface GuildFeatureConfiguration {
@@ -7,6 +7,7 @@ export interface GuildFeatureConfiguration {
   music: boolean;
   chatbot: boolean;
   birthdays: boolean;
+  reminders: boolean;
   nsfw: boolean;
   linkFix: boolean;
   // Whether a departing member's chat memories/birthday/customization are
@@ -36,6 +37,10 @@ export interface GuildChannelConfiguration {
   chatbot: ReadonlySet<string>;
   birthdayAnnouncements: string | null;
   linkFix: ReadonlySet<string>;
+  // Two independent, optional channels — no separate enabled flag. An unset
+  // channel means that event doesn't notify; see MemberWelcomeService.
+  joinAnnouncements: string | null;
+  leaveAnnouncements: string | null;
 }
 
 export interface GuildChatConfiguration {

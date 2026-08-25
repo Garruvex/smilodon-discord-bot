@@ -1,4 +1,4 @@
-import type { ChatInputCommandInteraction } from "discord.js";
+import type { ChatInputCommandInteraction, MessageContextMenuCommandInteraction } from "discord.js";
 import type { Logger } from "pino";
 
 import type { AccessPolicyService } from "../access/access-policy-service.js";
@@ -15,7 +15,9 @@ export class CommandDispatcher {
     private readonly logger: Logger,
   ) {}
 
-  public async dispatch(interaction: ChatInputCommandInteraction): Promise<void> {
+  public async dispatch(
+    interaction: ChatInputCommandInteraction | MessageContextMenuCommandInteraction,
+  ): Promise<void> {
     const command = this.registry.find(interaction.commandName);
 
     if (!command) {

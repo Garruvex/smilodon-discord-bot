@@ -7,7 +7,12 @@ import type { ChannelMemoryMode } from "./memory-channel-policy.js";
 
 export type MemoryKind = "fact" | "preference" | "episode";
 export type MemoryAudience = "private" | "channel" | "guild";
-export type MemorySubjectType = "member" | "guild" | "team" | "project";
+// npc/faction/location: campaign-lore entities (D&D bot use case) — they
+// have no self-report path (see resolveInitialStatus in memory-engine.ts),
+// so a live-chat-sourced fact about one stays "candidate" the same way
+// team/project facts already do; only consolidation-sourced facts about
+// them auto-activate.
+export type MemorySubjectType = "member" | "guild" | "team" | "project" | "npc" | "faction" | "location";
 export type MemoryStatus = "candidate" | "active" | "superseded" | "expired";
 export type MemorySourceKind = "live" | "explicit" | "administrator" | "consolidation";
 
@@ -56,6 +61,87 @@ export interface MemorySource {
   statement: string;
   source: MemorySourceKind;
   createdAt: number;
+}
+
+// Bounded multi-hop relational retrieval (see DefaultMemoryEngine.recall in
+// memory-engine.ts). Deliberately a small closed predicate vocabulary, not
+// model-invented predicates — validated at the app layer, not a DB
+// constraint, matching how kind/status/source are already
+// free-text-with-TS-enum rather than DB-enum. General-purpose: connects any
+// two existing subjects (member/guild/team/project), nothing here is
+// domain-specific.
+export type MemoryRelationPredicate =
+  | "member_of" | "allied_with" | "hostile_to" | "owes" | "controls" | "located_in" | "owns";
+
+// "association": semantic relatedness only — feeds the hop-weighted recall
+// boost. "consequence": directional causal succession (from led to to) —
+// additionally rendered as an ordered chain in recall context, not just a
+// ranking nudge, since the point of a causal chain is the order. Both use
+// the same predicate vocabulary; kind is set at extraction time based on
+// whether the source judged the relationship causal or merely associative.
+export type MemoryRelationKind = "association" | "consequence";
+
+export interface MemoryRelation {
+  id: string;
+  guildId: string;
+  fromSubjectType: MemorySubjectType;
+  fromSubjectId: string;
+  predicate: MemoryRelationPredicate;
+  kind: MemoryRelationKind;
+  toSubjectType: MemorySubjectType;
+  toSubjectId: string;
+  // Same semantics as Memory.isolationChannelId — see canRecall.
+  isolationChannelId: string | null;
+  supportingMemoryId: string | null;
+  createdAt: number;
+}
+
+export interface RelationCreateInput {
+  guildId: string;
+  fromSubjectType: MemorySubjectType;
+  fromSubjectId: string;
+  predicate: MemoryRelationPredicate;
+  kind: MemoryRelationKind;
+  toSubjectType: MemorySubjectType;
+  toSubjectId: string;
+  isolationChannelId: string | null;
+  supportingMemoryId: string | null;
+  now: number;
+}
+
+export interface RelatedSubjectsQuery {
+  guildId: string;
+  // The current channel the recall is happening in — matches canRecall's
+  // isolationChannelId rule exactly: a relation is visible when its own
+  // isolationChannelId is null (global) OR equals this channel. This is
+  // NOT the relation's isolationChannelId; it's what gets compared against it.
+  channelId: string;
+  subjectIds: readonly string[];
+  // Bounded iterative BFS depth — see DefaultMemoryEngine's
+  // maxRelationHops. Not a recursive SQL CTE (drizzle-orm has no
+  // withRecursive support); the repository walks this many rounds of plain
+  // per-hop queries in application code instead.
+  maxHops: number;
+}
+
+export interface RelatedSubject {
+  subjectType: MemorySubjectType;
+  subjectId: string;
+  // 1 = directly connected to one of the query's subjectIds, 2 = connected
+  // through one intermediate subject, etc. — used to decay the recall boost
+  // the further out a connection is (see checkForConflicts's sibling logic
+  // in memory-engine.ts for the general pattern of distance-based weighting
+  // in this codebase).
+  hopDistance: number;
+  kind: MemoryRelationKind;
+  predicate: MemoryRelationPredicate;
+  // The subject on the other end of the edge that discovered this one —
+  // one of query.subjectIds when hopDistance is 1, an intermediate subject
+  // otherwise. Lets a caller render the last link of a causal chain
+  // ("viaSubjectId --predicate--> subjectId") even though this type doesn't
+  // carry the full path back to the original query subjects.
+  viaSubjectId: string;
+  viaSubjectType: MemorySubjectType;
 }
 
 // One-way leak boundary + read audience together decide recall eligibility.
@@ -181,6 +267,18 @@ export interface MemoryRepository {
   // Returns false (no-op) if the row was already non-active by the time
   // this runs (e.g. concurrently superseded by something else).
   supersede(command: SupersedeCommand): Promise<boolean>;
+  // Bounded multi-hop relational retrieval support — see memory-engine.ts's
+  // DefaultMemoryEngine.recall. Batch, not one-at-a-time: a single
+  // consolidation call may extract several relations from one batch of
+  // messages.
+  createRelations(inputs: readonly RelationCreateInput[]): Promise<void>;
+  // Bidirectional bounded BFS out from query.subjectIds, up to
+  // query.maxHops rounds — see RelatedSubjectsQuery's doc comment for why
+  // this isn't a recursive SQL CTE. Never returns a subject reachable only
+  // through a relation whose isolationChannelId doesn't match
+  // query.channelId (checked at every hop, not just the final result) —
+  // the same privacy boundary canRecall enforces on memories themselves.
+  findRelatedSubjects(query: RelatedSubjectsQuery): Promise<readonly RelatedSubject[]>;
 }
 
 // --- Engine contract -----------------------------------------------------
@@ -195,8 +293,29 @@ export interface MemoryRecallInput {
   now: number;
 }
 
+// A 2-node causal chain surfaced by a "consequence" relation reachable
+// within one hop of the turn's subjectIds — see DefaultMemoryEngine.recall.
+// Deliberately limited to single-hop chains for now: rendering a genuine
+// multi-hop chain (origin -> intermediate -> discovered) needs path
+// tracking through the relation BFS, which findRelatedSubjects doesn't do
+// yet (it returns each subject's closest discovering edge, not the full
+// path back to the query's subjectIds) — a scoped-out follow-up, not
+// silently dropped.
+export interface CausalChainLink {
+  fromSubjectType: MemorySubjectType;
+  fromSubjectId: string;
+  predicate: MemoryRelationPredicate;
+  toSubjectType: MemorySubjectType;
+  toSubjectId: string;
+}
+
 export interface MemoryContext {
   memories: readonly Memory[];
+  // Not yet wired into the actual prompt text (buildChatContext/ChatRequest
+  // don't consume this) — the data is here for a follow-up to render, not a
+  // finished feature. See CausalChainLink's doc comment for the hop-depth
+  // limitation.
+  causalChains: readonly CausalChainLink[];
 }
 
 export type ProposedMemory =
@@ -278,9 +397,44 @@ export interface MemoryForgetInput {
   memoryId?: string;
 }
 
+// A relation proposal from an extraction call (currently: channel-summary
+// consolidation only — see the plan's deliberate scope decision against
+// continuous per-turn extraction). Subject ids are expected to already be
+// resolved (author references etc. expanded), same expectation as
+// ProposedMemory's subjectId — the engine validates existence/vocabulary,
+// it doesn't resolve references.
+export interface ProposedRelation {
+  fromSubjectType: MemorySubjectType;
+  fromSubjectId: string;
+  predicate: MemoryRelationPredicate;
+  kind: MemoryRelationKind;
+  toSubjectType: MemorySubjectType;
+  toSubjectId: string;
+}
+
+export interface MemoryRelationIngestInput {
+  guildId: string;
+  channelId: string;
+  channelMode: ChannelMemoryMode;
+  proposals: readonly ProposedRelation[];
+  // The single fact whose extraction produced this batch of relations —
+  // provenance, same sourceMessageId/batch concept as MemoryIngestInput.
+  supportingMemoryId: string | null;
+  now: number;
+}
+
+export interface MemoryRelationIngestResult {
+  created: number;
+  // Proposals with a dangling subject reference (neither side resolves to
+  // a subject id present in this same batch/known to the caller) or an
+  // invalid predicate — see channel-summary-scheduler.ts's validation.
+  rejected: number;
+}
+
 export interface MemoryEngine {
   recall(input: MemoryRecallInput): Promise<MemoryContext>;
   ingest(input: MemoryIngestInput): Promise<MemoryIngestResult>;
+  ingestRelations(input: MemoryRelationIngestInput): Promise<MemoryRelationIngestResult>;
   listUserMemories(guildId: string, userId: string): Promise<readonly Memory[]>;
   forget(input: MemoryForgetInput): Promise<number>;
 }

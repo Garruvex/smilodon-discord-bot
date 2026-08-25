@@ -25,6 +25,12 @@ import { PostgresGuildKnowledgeStore } from "./postgres-guild-knowledge-store.js
 import type { BirthdayStore } from "../../application/birthdays/birthday-store.js";
 import { LocalBirthdayStore } from "./local-birthday-store.js";
 import { PostgresBirthdayStore } from "./postgres-birthday-store.js";
+import type { ReminderStore } from "../../application/reminders/reminder-store.js";
+import { LocalReminderStore } from "./local-reminder-store.js";
+import { PostgresReminderStore } from "./postgres-reminder-store.js";
+import type { RoleMenuStore } from "../../application/roles/role-menu-store.js";
+import { LocalRoleMenuStore } from "./local-role-menu-store.js";
+import { PostgresRoleMenuStore } from "./postgres-role-menu-store.js";
 import { GuildMemberRegistry } from "./guild-member-registry.js";
 import type { MemoryRepository } from "../../application/memory/memory.js";
 import { SqliteMemoryRepository } from "./sqlite-memory-repository.js";
@@ -42,6 +48,8 @@ export interface PersistenceServices {
   memoryRepository: MemoryRepository;
   channelSummaryCheckpointStore: ChannelSummaryCheckpointStore;
   birthdayStore: BirthdayStore;
+  reminderStore: ReminderStore;
+  roleMenuStore: RoleMenuStore;
   // Null on the local (file-based) backend, which has no hub-table concept —
   // it's purely a dev/testing convenience and doesn't need it.
   guildMemberRegistry: GuildMemberRegistry | null;
@@ -61,6 +69,8 @@ export async function createPersistenceServices(
   let memoryRepository: MemoryRepository;
   let channelSummaryCheckpointStore: ChannelSummaryCheckpointStore;
   let birthdayStore: BirthdayStore;
+  let reminderStore: ReminderStore;
+  let roleMenuStore: RoleMenuStore;
   let guildMemberRegistry: GuildMemberRegistry | null = null;
 
   if (configuration.persistence.driver === "postgres") {
@@ -80,6 +90,8 @@ export async function createPersistenceServices(
     memoryRepository = new PostgresMemoryRepository(connection.database);
     channelSummaryCheckpointStore = new PostgresChannelSummaryCheckpointStore(connection.database);
     birthdayStore = new PostgresBirthdayStore(connection.database, guildMemberRegistry);
+    reminderStore = new PostgresReminderStore(connection.database);
+    roleMenuStore = new PostgresRoleMenuStore(connection.database);
   } else {
     guildConfigurationProvider = new LocalGuildConfigurationProvider(
       configuration.guildConfigurationDirectory,
@@ -97,6 +109,8 @@ export async function createPersistenceServices(
     memoryRepository = new SqliteMemoryRepository(sqliteConnection.database);
     channelSummaryCheckpointStore = new SqliteChannelSummaryCheckpointStore(sqliteConnection.database);
     birthdayStore = new LocalBirthdayStore(configuration.runtimeDataDirectory);
+    reminderStore = new LocalReminderStore(configuration.runtimeDataDirectory);
+    roleMenuStore = new LocalRoleMenuStore(configuration.runtimeDataDirectory);
   }
 
   await guildConfigurationProvider.initialize();
@@ -106,6 +120,8 @@ export async function createPersistenceServices(
   await guildKnowledgeStore.initialize();
   await channelSummaryCheckpointStore.initialize();
   await birthdayStore.initialize();
+  await reminderStore.initialize();
+  await roleMenuStore.initialize();
 
   return {
     guildConfigurationProvider,
@@ -116,6 +132,8 @@ export async function createPersistenceServices(
     memoryRepository,
     channelSummaryCheckpointStore,
     birthdayStore,
+    reminderStore,
+    roleMenuStore,
     guildMemberRegistry,
     close: async (): Promise<void> => {
       await connection?.close();

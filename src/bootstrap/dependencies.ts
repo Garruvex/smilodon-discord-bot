@@ -9,9 +9,18 @@ import type { MusicPlayerGateway } from "../application/music/music-player-gatew
 import type { GuildConfigurationProvider } from "../config/guild-configuration-provider.js";
 import { PingCommand } from "../infrastructure/discord/commands/common/ping-command.js";
 import { UserInfoCommand } from "../infrastructure/discord/commands/common/userinfo-command.js";
+import { QuoteCommand } from "../infrastructure/discord/commands/common/quote-command.js";
+import { QuoteContextCommand } from "../infrastructure/discord/commands/common/quote-context-command.js";
 import { HelpCommand } from "../infrastructure/discord/commands/common/help-command.js";
 import { BirthdayCommand } from "../infrastructure/discord/commands/common/birthday-command.js";
 import type { BirthdayStore } from "../application/birthdays/birthday-store.js";
+import { RemindCommand } from "../infrastructure/discord/commands/common/remind-command.js";
+import { ReactionRolesCommand } from "../infrastructure/discord/commands/common/reaction-roles-command.js";
+import { RoleMenuComponentHandler } from "../infrastructure/discord/components/role-menu-component-handler.js";
+import { RoleMenuService } from "../application/roles/role-menu-service.js";
+import type { RoleMenuStore } from "../application/roles/role-menu-store.js";
+import type { ReminderStore } from "../application/reminders/reminder-store.js";
+import { ReminderScheduler } from "../application/reminders/reminder-scheduler.js";
 import { OwoifyCommand } from "../infrastructure/discord/commands/common/owoify-command.js";
 import { WolfyCommand } from "../infrastructure/discord/commands/common/wolfy-command.js";
 import { QaCommand } from "../infrastructure/discord/commands/common/qa-command.js";
@@ -79,6 +88,7 @@ import { PersonaBundleCompiler } from "../application/chat/persona-bundle-compil
 import { PersonaDriftStore } from "../application/chat/persona-drift-store.js";
 import type { MemoryRepository } from "../application/memory/memory.js";
 import { DefaultMemoryEngine } from "../application/memory/memory-engine.js";
+import type { MemoryEngine } from "../application/memory/memory.js";
 import type { ChannelSummaryCheckpointStore } from "../application/context/channel-summary-checkpoint-store.js";
 import { ChannelSummaryScheduler } from "../application/context/channel-summary-scheduler.js";
 import { DiscordChannelHistoryReader } from "../infrastructure/discord/context/discord-channel-history-reader.js";
@@ -189,7 +199,9 @@ export interface ApplicationDependencies {
   // summarize channel messages with, same condition chatConversationService
   // already checks.
   channelSummaryScheduler: ChannelSummaryScheduler | null;
+  reminderScheduler: ReminderScheduler;
   applicationEmojiCatalog: ApplicationEmojiCatalog;
+  memoryEngine: MemoryEngine;
 }
 
 export function createDependencies(
@@ -205,13 +217,19 @@ export function createDependencies(
   birthdayStore: BirthdayStore,
   memoryRepository: MemoryRepository,
   channelSummaryCheckpointStore: ChannelSummaryCheckpointStore,
+  reminderStore: ReminderStore,
+  roleMenuStore: RoleMenuStore,
 ): ApplicationDependencies {
   const commandRegistry = new CommandRegistry();
   const pollService = new PollService();
   const componentRegistry = new ComponentRegistry();
   componentRegistry.register(new PollComponentHandler(pollService));
+  const roleMenuService = new RoleMenuService(roleMenuStore, logger.child({ component: "role-menu" }));
+  componentRegistry.register(new RoleMenuComponentHandler(roleMenuService));
   commandRegistry.register(new PingCommand());
   commandRegistry.register(new UserInfoCommand(guildConfigurationProvider));
+  commandRegistry.register(new QuoteCommand());
+  commandRegistry.register(new QuoteContextCommand());
   commandRegistry.register(new DiagnosticCommand());
   commandRegistry.register(new SetupCommand(guildSetupService));
   commandRegistry.register(new VoteCommand(pollService));
@@ -224,7 +242,12 @@ export function createDependencies(
           configuration.embeddings.model,
         )
     : null;
-  commandRegistry.register(new BirthdayCommand(birthdayStore));
+  commandRegistry.register(new BirthdayCommand(birthdayStore, guildConfigurationProvider));
+  commandRegistry.register(new RemindCommand(reminderStore));
+  commandRegistry.register(new ReactionRolesCommand(roleMenuService));
+  const reminderScheduler = new ReminderScheduler(
+    discordClient, reminderStore, logger.child({ component: "reminders" }),
+  );
   commandRegistry.register(new OwoifyCommand());
   commandRegistry.register(new WolfyCommand());
   commandRegistry.register(new QaCommand());
@@ -430,6 +453,8 @@ export function createDependencies(
     behaviorDispatcher: new BehaviorDispatcher(behaviorRegistry),
     settingsCommand,
     channelSummaryScheduler,
+    reminderScheduler,
     applicationEmojiCatalog,
+    memoryEngine,
   };
 }

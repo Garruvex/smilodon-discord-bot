@@ -2,7 +2,7 @@ import type { Logger } from "pino";
 
 import { hashContent } from "../assets/content-hash.js";
 import { chatMemoryInstructions, chatMemoryLimits, validateMemoryActions } from "./chat-memory-policy.js";
-import { chatSafetyGuard, type ChatProvider, type ChatRequest, type ChatResponse, type ChatResponseObserver } from "./chat-provider.js";
+import { chatSafetyGuard, type ChatProvider, type ChatRequest, type ChatResponse, type ChatResponseObserver, type ReplyChainMessage } from "./chat-provider.js";
 import type { ChatSessionExchange, ChatStateStore } from "./chat-state-store.js";
 import type { UserCustomizationStore } from "./user-customization-store.js";
 import { KeyedSerialQueue } from "../concurrency/keyed-serial-queue.js";
@@ -67,7 +67,7 @@ function memoryKindForTopic(topic: string): "fact" | "preference" | "episode" {
 }
 
 export interface ChatConversationInput
-  extends Omit<ChatRequest, "recentHistory" | "memories" | "guildKnowledge" | "userCustomization" | "birthday" | "enabledTools" | "exampleExchanges" | "personaLore"> {
+  extends Omit<ChatRequest, "recentHistory" | "memories" | "guildKnowledge" | "causalChains" | "replyChainSummary" | "userCustomization" | "birthday" | "enabledTools" | "exampleExchanges" | "personaLore"> {
   guildId: string;
   // Per-guild opt-in (profile.chat.toolCallingEnabled) — whether the
   // registered tools are offered to the model for this turn at all.
@@ -75,6 +75,13 @@ export interface ChatConversationInput
   // Per-guild deny-list (profile.chat.disabledTools) — tool names withheld
   // from the model even when toolsEnabled is true.
   disabledToolNames?: ReadonlySet<string>;
+  // Older reply-chain hops beyond what ChatTurnSupport.resolveReplyChain
+  // kept in `replyChain` — see its `overflow` return value. Condensed into
+  // ChatRequest.replyChainSummary here (not by the caller) before the
+  // provider is asked to reply, since it needs an LLM call resolved first.
+  // Empty when the whole thread already fit, or the current turn isn't a
+  // reply at all.
+  replyChainOverflow?: readonly ReplyChainMessage[];
   // Full unfiltered pool of the resolved guild persona's example exchanges — narrowed to the relevant subset
   // by exampleExchangeSelector inside run(), same as guildKnowledge/memories.
   examplePool: readonly ExampleExchange[];
@@ -184,30 +191,31 @@ export class ChatConversationService {
     droppedExchanges: readonly ChatSessionExchange[],
     personaDriftEnabled: boolean,
     personality: string,
+    speaker: { id: string; displayName: string },
   ): Promise<void> {
     if (droppedExchanges.length === 0) return;
     const summarizer = this.utilityProvider ?? this.provider;
     const exchangePairs = droppedExchanges.map((exchange) => ({ user: exchange.user.content, assistant: exchange.assistant.content }));
     if (summarizer.summarizeDroppedExchanges) {
       try {
-        const facts = await summarizer.summarizeDroppedExchanges(exchangePairs);
+        const facts = await summarizer.summarizeDroppedExchanges(exchangePairs, speaker);
         if (facts.length > 0) {
           const candidates = validateGuildKnowledgeCandidates(
             facts.map((fact) => ({
-              subjectType: "guild" as const,
-              subjectId: guildId,
+              subjectType: fact.subjectType,
+              subjectId: fact.subjectType === "member" ? speaker.id : guildId,
               topic: "scene_summary",
               slot: fact.slot,
               statement: fact.statement,
               channelScoped: true,
             })),
-            { guildId, currentChannelId: channelId, currentUserId: "", allowedMemberIds: new Set() },
+            { guildId, currentChannelId: channelId, currentUserId: speaker.id, allowedMemberIds: new Set([speaker.id]) },
           );
           if (candidates.length > 0) {
             await this.memoryEngine.ingest({
-              guildId, channelId, channelMode, assertedByUserId: null, sourceMessageId: null,
+              guildId, channelId, channelMode, assertedByUserId: speaker.id, sourceMessageId: null,
               source: "consolidation", now: Date.now(),
-              proposals: this.toProposals([], candidates, ""),
+              proposals: this.toProposals([], candidates, speaker.id),
             });
           }
         }
@@ -228,6 +236,34 @@ export class ChatConversationService {
       } catch (error) {
         this.logger?.warn({ error, guildId, channelId }, "Persona drift evolution failed; drift stays at its previous value");
       }
+    }
+  }
+
+  // Condenses reply-chain hops that fell past the kept-window depth/char
+  // cap (see ChatTurnSupport.resolveReplyChain's `overflow`) into one short
+  // recap. Runs on the critical path — unlike consolidateDroppedExchanges,
+  // this turn's reply needs the result — but only does real work on the
+  // rare turn where a reply chain actually goes that deep; an empty
+  // overflow or a provider without the capability both resolve to null
+  // immediately. Failures are logged and swallowed rather than failing the
+  // turn: losing the deep-thread recap is a quality regression, not a
+  // reason to not reply at all.
+  private async resolveReplyChainSummary(
+    overflow: readonly ReplyChainMessage[],
+    guildId: string,
+    channelId: string,
+  ): Promise<string | null> {
+    if (overflow.length === 0) return null;
+    const summarizer = this.utilityProvider ?? this.provider;
+    if (!summarizer.summarizeReplyChainOverflow) return null;
+    try {
+      const summary = await summarizer.summarizeReplyChainOverflow(
+        overflow.map((hop) => ({ authorDisplayName: hop.authorDisplayName, content: hop.content })),
+      );
+      return summary.trim() || null;
+    } catch (error) {
+      this.logger?.warn({ error, guildId, channelId }, "Reply-chain overflow summarization failed; continuing without it");
+      return null;
     }
   }
 
@@ -259,7 +295,7 @@ export class ChatConversationService {
       // (private memory reads go through memoryEngine.recall below).
       const state = await this.stateStore.load(input.guildId, input.currentUser.id, input.channelId, now);
       const recentHistory = this.promptHistorySelector.select(state.exchanges);
-      const [memoryContext, userCustomization, birthday] = await Promise.all([
+      const [memoryContext, userCustomization, birthday, replyChainSummary] = await Promise.all([
         this.memoryEngine.recall({
           guildId: input.guildId,
           channelId: input.channelId,
@@ -271,6 +307,7 @@ export class ChatConversationService {
         }),
         this.userCustomizationStore?.load(input.guildId, input.currentUser.id) ?? Promise.resolve(null),
         this.birthdayStore?.getBirthday(input.guildId, input.currentUser.id) ?? Promise.resolve(null),
+        this.resolveReplyChainSummary(input.replyChainOverflow ?? [], input.guildId, input.channelId),
       ]);
       const selectedMemories = memoryContext.memories.filter((memory) => memory.audience === "private").map(toChatMemoryRecord);
       const selectedGuildKnowledge = memoryContext.memories.filter((memory) => memory.audience !== "private").map(toGuildKnowledgeRecord);
@@ -292,15 +329,18 @@ export class ChatConversationService {
       // their selector-narrowed results belong in the request, so they're
       // destructured out here purely to keep them off requestInput's spread
       // below.
-      const { toolsEnabled, disabledToolNames, examplePool, loreChunks, personaDriftEnabled, ...requestInput } = input;
+      const { toolsEnabled, disabledToolNames, examplePool, loreChunks, personaDriftEnabled, replyChainOverflow, ...requestInput } = input;
       void personaDriftEnabled;
       void examplePool;
       void loreChunks;
+      void replyChainOverflow;
       const response = await this.provider.reply({
         ...requestInput,
         recentHistory,
         memories: selectedMemories,
+        replyChainSummary,
         guildKnowledge: selectedGuildKnowledge,
+        causalChains: memoryContext.causalChains,
         exampleExchanges: selectedExampleExchanges.map((exchange) => (
           { tags: exchange.tags, user: exchange.user, character: exchange.character }
         )),
@@ -311,9 +351,20 @@ export class ChatConversationService {
           ? this.toolRegistry.list().filter((tool) => !disabledToolNames?.has(tool.name))
           : [],
       }, observer);
+      // Includes reply-chain authors, not just explicit @mentions — the
+      // prompt (see buildChatInstructions' replyChainSection) tells the
+      // model to treat the message it's replying to as the subject when the
+      // current message is a bare reaction/comment ("i think he likes
+      // orange" replying to A's message). Without their id in this set, a
+      // correctly-attributed candidate about A would be silently dropped by
+      // validateMemoryActions/validateGuildKnowledgeCandidates below, even
+      // though the model did exactly what it was told. May also include the
+      // bot's own id if a reply chain hop was the bot's prior turn — benign,
+      // since no real member record ever collides with it.
       const allowedSubjects = new Set([
         input.currentUser.id,
         ...input.mentionedUsers.map((user) => user.id),
+        ...input.replyChain.map((hop) => hop.authorId),
       ]);
       const validatedResponse = {
         ...response,
@@ -417,9 +468,21 @@ export class ChatConversationService {
           throw new ChatStateCommitError(error);
         }
       }
-      await this.consolidateDroppedExchanges(
+      // Not awaited: this.queue is keyed per guildId+userId (see isBusy),
+      // and consolidateDroppedExchanges is genuinely off the user-visible
+      // critical path (per its own doc comment) — an LLM summarization call
+      // that has nothing left to report back to this turn's caller. Awaiting
+      // it here would hold that same key's lock until it finishes, so the
+      // user's very next message queues behind invisible post-processing of
+      // a reply they already received. It already catches and logs its own
+      // failures internally and never throws; the .catch below is only a
+      // backstop against something unexpected escaping that.
+      void this.consolidateDroppedExchanges(
         input.guildId, input.channelId, channelMode, droppedExchanges, input.personaDriftEnabled ?? false, input.personality,
-      );
+        { id: input.currentUser.id, displayName: input.currentUser.displayName },
+      ).catch((error: unknown) => {
+        this.logger?.warn({ error, guildId: input.guildId, channelId: input.channelId }, "Dropped-exchange consolidation failed unexpectedly");
+      });
       return validatedResponse;
     });
   }

@@ -1,11 +1,12 @@
-import { REST, Routes, type RESTPostAPIChatInputApplicationCommandsJSONBody } from "discord.js";
+import { REST, Routes, type RESTPostAPIApplicationCommandsJSONBody } from "discord.js";
 
 import { CommandModule } from "../../../application/commands/command.js";
 import type { GuildCommandDeploymentService } from "../../../application/commands/guild-command-deployment-service.js";
+import type { AnyCommandInteraction, BotCommand } from "../../../application/commands/command.js";
 import type { CommandRegistry } from "../../../application/commands/command-registry.js";
 import type { ApplicationConfiguration } from "../../../config/configuration.js";
 import type { GuildConfiguration } from "../../../config/guild-configuration.js";
-import { buildSlashCommandBuilder } from "./command-metadata-builder.js";
+import { buildMessageContextMenuCommandBuilder, buildSlashCommandBuilder } from "./command-metadata-builder.js";
 
 export class DiscordGuildCommandDeploymentService
   implements GuildCommandDeploymentService
@@ -19,8 +20,14 @@ export class DiscordGuildCommandDeploymentService
     this.rest = new REST({ version: "10" }).setToken(configuration.discord.token);
   }
 
+  // Every non-Bootstrap command is always deployed, regardless of which
+  // features a guild has enabled — feature-gating is enforced at runtime by
+  // AccessPolicyService (see featureEnabledRule), so a `/settings` toggle
+  // takes effect immediately without needing a redeploy.
   public async deploy(profile: GuildConfiguration): Promise<number> {
-    const commandData = this.commandJsonForModules(this.enabledModules(profile));
+    const commandData = this.commandJson(
+      this.commandRegistry.getAll().filter((command) => command.module !== CommandModule.Bootstrap),
+    );
 
     await this.rest.put(
       Routes.applicationGuildCommands(
@@ -33,8 +40,12 @@ export class DiscordGuildCommandDeploymentService
     return commandData.length;
   }
 
+  // Bootstrap commands (e.g. /setup) are the only ones deployed globally,
+  // since they need to work in a guild that has no profile yet.
   public async deployBootstrap(): Promise<number> {
-    const commandData = this.commandJsonForModules(new Set([CommandModule.Bootstrap]));
+    const commandData = this.commandJson(
+      this.commandRegistry.getAll().filter((command) => command.module === CommandModule.Bootstrap),
+    );
 
     await this.rest.put(
       Routes.applicationCommands(this.configuration.discord.applicationId),
@@ -44,21 +55,13 @@ export class DiscordGuildCommandDeploymentService
     return commandData.length;
   }
 
-  private commandJsonForModules(
-    enabledModules: ReadonlySet<CommandModule>,
-  ): RESTPostAPIChatInputApplicationCommandsJSONBody[] {
-    return this.commandRegistry
-      .getByEnabledModules(enabledModules)
-      .map((command) => buildSlashCommandBuilder(command.definition).toJSON());
-  }
-
-  private enabledModules(profile: GuildConfiguration): ReadonlySet<CommandModule> {
-    const modules = new Set<CommandModule>();
-    if (profile.features.common) modules.add(CommandModule.Common);
-    if (profile.features.diagnostics) modules.add(CommandModule.Diagnostics);
-    if (profile.features.music) modules.add(CommandModule.Music);
-    if (profile.features.nsfw) modules.add(CommandModule.Nsfw);
-    if (profile.features.birthdays) modules.add(CommandModule.Birthdays);
-    return modules;
+  private commandJson(
+    commands: readonly BotCommand<AnyCommandInteraction>[],
+  ): RESTPostAPIApplicationCommandsJSONBody[] {
+    return commands.map((command) =>
+      command.definition.type === "messageContextMenu"
+        ? buildMessageContextMenuCommandBuilder(command.definition).toJSON()
+        : buildSlashCommandBuilder(command.definition).toJSON(),
+    );
   }
 }

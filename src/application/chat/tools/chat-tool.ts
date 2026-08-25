@@ -49,6 +49,16 @@ export interface ChatToolContext {
     musicControllerRoleIds: ReadonlySet<string>;
     botAdministratorRoleIds: ReadonlySet<string>;
   } | null;
+  // Set by the chat provider's per-call timeout race (see executeToolCall in
+  // openai-responses-chat-provider.ts / gemini-chat-provider.ts) and aborted
+  // the instant that timeout fires. A losing tool.execute() call keeps
+  // running after the model has already been told it timed out — there's no
+  // way to truly cancel an in-flight async call from the outside — so any
+  // tool about to perform a real side effect (music playback control, chief
+  // among them) should check `signal?.aborted` immediately before making
+  // that mutating call and bail out instead, rather than applying an action
+  // the model (and the user watching its reply) has already moved on from.
+  signal?: AbortSignal;
 }
 
 export interface ChatToolResult {

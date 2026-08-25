@@ -44,10 +44,16 @@ export class BirthdayAnnouncer {
         if (userIds.length === 0) continue;
 
         const channel = await this.client.channels.fetch(profile.channels.birthdayAnnouncements).catch(() => null);
-        if (!channel?.isTextBased() || channel.isDMBased()) {
+        // client.channels.fetch is global — it doesn't scope to this guild
+        // on its own, so a stale/misconfigured channel id (e.g. left over
+        // from a channel that got recreated, or copy-pasted from another
+        // guild's config) could otherwise resolve to a channel in a
+        // completely different guild and leak this guild's members'
+        // birthdays into it.
+        if (!channel?.isTextBased() || channel.isDMBased() || channel.guildId !== profile.guildId) {
           this.logger.warn(
             { guildId: profile.guildId, channelId: profile.channels.birthdayAnnouncements },
-            "Birthday announcement channel is not a usable text channel",
+            "Birthday announcement channel is not a usable text channel in this guild",
           );
           continue;
         }

@@ -37,6 +37,7 @@ function guildConfiguration(chatbotEnabled: boolean): GuildConfiguration {
       music: true,
       chatbot: chatbotEnabled,
       birthdays: false,
+      reminders: false,
       nsfw: false,
       linkFix: false,
       retainMemberDataOnLeave: true,
@@ -55,6 +56,8 @@ function guildConfiguration(chatbotEnabled: boolean): GuildConfiguration {
       auditLog: null,
       chatbot: new Set(),
       birthdayAnnouncements: null,
+      joinAnnouncements: null,
+      leaveAnnouncements: null,
       linkFix: new Set(),
     },
     music: {

@@ -37,31 +37,43 @@ function turnSupport(): ChatTurnSupport {
   return new ChatTurnSupport({ warn: vi.fn(), error: vi.fn(), info: vi.fn() } as never);
 }
 
-function resolveReplyChain(support: ChatTurnSupport, message: FakeMessage): Promise<FakeMessage[]> {
-  return support.resolveReplyChain(message as never) as unknown as Promise<FakeMessage[]>;
+function resolveReplyChain(
+  support: ChatTurnSupport,
+  message: FakeMessage,
+): Promise<{ kept: FakeMessage[]; overflow: FakeMessage[] }> {
+  return support.resolveReplyChain(message as never) as unknown as Promise<{ kept: FakeMessage[]; overflow: FakeMessage[] }>;
 }
 
 interface FakeChannelMessage {
   id: string;
   content: string;
+  author?: { id: string; bot: boolean };
 }
 
 // Discord's channel.messages.fetch({ limit, before }) returns a
 // Collection (Map-like) ordered newest-first — this fake mirrors that.
+// Each entry defaults to a distinct non-bot author (its own id) unless
+// overridden, so pre-existing tests that never specify `author` stay under
+// the human budget exactly as before this fake grew author-awareness.
 function fakeChannelMessage(
   historyNewestFirst: readonly FakeChannelMessage[],
   fetchError = false,
+  selfId: string | null = "self-bot",
 ): FakeMessage {
   const fetch = vi.fn(() => {
     if (fetchError) return Promise.reject(new Error("channel unavailable"));
-    const map = new Map(historyNewestFirst.map((entry) => [entry.id, entry]));
+    const map = new Map(historyNewestFirst.map((entry) => [
+      entry.id,
+      { ...entry, author: entry.author ?? { id: entry.id, bot: false } },
+    ]));
     return Promise.resolve(map);
   });
   return {
     id: "current",
     content: "current message",
     channel: { messages: { fetch: fetch as never } },
-  };
+    client: { user: selfId ? { id: selfId } : null },
+  } as unknown as FakeMessage;
 }
 
 function resolveChannelHistory(
@@ -77,19 +89,19 @@ describe("ChatTurnSupport reply chain resolution", () => {
   it("stops at the depth cap, returning ancestors oldest-first", async () => {
     const messages = chainOf(chatMemoryLimits.maxReplyChainDepth + 5);
     const current = messages.at(-1)!;
-    const chain = await resolveReplyChain(turnSupport(), current);
-    expect(chain).toHaveLength(chatMemoryLimits.maxReplyChainDepth);
+    const { kept } = await resolveReplyChain(turnSupport(), current);
+    expect(kept).toHaveLength(chatMemoryLimits.maxReplyChainDepth);
     // Oldest-first: the last entry should be the immediate parent of `current`.
-    expect(chain.at(-1)?.id).toBe(messages.at(-2)?.id);
+    expect(kept.at(-1)?.id).toBe(messages.at(-2)?.id);
   });
 
   it("stops early once the char budget is exhausted, even under the depth cap", async () => {
     const bigContent = "x".repeat(chatMemoryLimits.maxUserMessageChars);
     const messages = chainOf(chatMemoryLimits.maxReplyChainDepth, () => bigContent);
     const current = messages.at(-1)!;
-    const chain = await resolveReplyChain(turnSupport(), current);
-    expect(chain.length).toBeLessThan(chatMemoryLimits.maxReplyChainDepth);
-    const budgetUsed = chain.reduce((sum, hop) => sum + Math.min(hop.content.length, chatMemoryLimits.maxUserMessageChars), 0);
+    const { kept } = await resolveReplyChain(turnSupport(), current);
+    expect(kept.length).toBeLessThan(chatMemoryLimits.maxReplyChainDepth);
+    const budgetUsed = kept.reduce((sum, hop) => sum + Math.min(hop.content.length, chatMemoryLimits.maxUserMessageChars), 0);
     expect(budgetUsed).toBeLessThanOrEqual(chatMemoryLimits.maxReplyChainChars);
   });
 
@@ -97,15 +109,34 @@ describe("ChatTurnSupport reply chain resolution", () => {
     // 3-hop chain where fetching m0 (from m1) fails, e.g. a deleted message.
     const messages = chainOf(3, undefined, new Set(["m0"]));
     const current = messages.at(-1)!;
-    const chain = await resolveReplyChain(turnSupport(), current);
-    expect(chain).toHaveLength(1);
-    expect(chain[0]?.id).toBe("m1");
+    const { kept } = await resolveReplyChain(turnSupport(), current);
+    expect(kept).toHaveLength(1);
+    expect(kept[0]?.id).toBe("m1");
   });
 
   it("returns an empty chain when the current message isn't a reply", async () => {
     const [onlyMessage] = chainOf(1);
-    const chain = await resolveReplyChain(turnSupport(), onlyMessage!);
-    expect(chain).toHaveLength(0);
+    const { kept, overflow } = await resolveReplyChain(turnSupport(), onlyMessage!);
+    expect(kept).toHaveLength(0);
+    expect(overflow).toHaveLength(0);
+  });
+
+  it("gathers overflow beyond the depth cap, without fetching anything extra for a shallow chain", async () => {
+    // Total ancestors above `current` = maxReplyChainDepth (kept) + 3 (overflow).
+    const messages = chainOf(chatMemoryLimits.maxReplyChainDepth + 4);
+    const current = messages.at(-1)!;
+    const { kept, overflow } = await resolveReplyChain(turnSupport(), current);
+    expect(kept).toHaveLength(chatMemoryLimits.maxReplyChainDepth);
+    // The 3 hops older than the kept window, oldest-first.
+    expect(overflow.map((m) => m.id)).toEqual(["m0", "m1", "m2"]);
+  });
+
+  it("returns empty overflow, with zero extra fetches, when the whole thread already fit in `kept`", async () => {
+    const messages = chainOf(chatMemoryLimits.maxReplyChainDepth - 1);
+    const current = messages.at(-1)!;
+    const { kept, overflow } = await resolveReplyChain(turnSupport(), current);
+    expect(kept.length).toBe(messages.length - 1);
+    expect(overflow).toHaveLength(0);
   });
 });
 
@@ -148,6 +179,42 @@ describe("ChatTurnSupport channel history resolution", () => {
     expect(history.at(-1)?.id).toBe("c5");
     const budgetUsed = history.reduce((sum, m) => sum + Math.min(m.content.length, chatMemoryLimits.maxUserMessageChars), 0);
     expect(budgetUsed).toBeLessThanOrEqual(chatMemoryLimits.maxChannelHistoryChars);
+  });
+
+  it("budgets its own replies separately so they don't crowd out human speakers", async () => {
+    // A busy channel where the bot (self-bot) replies after nearly every
+    // human message — interleaved newest-first, as Discord returns it.
+    const history = await resolveChannelHistory(
+      turnSupport(),
+      fakeChannelMessage([
+        { id: "b4", content: "self reply 4", author: { id: "self-bot", bot: true } },
+        { id: "h4", content: "human 4", author: { id: "human", bot: false } },
+        { id: "b3", content: "self reply 3", author: { id: "self-bot", bot: true } },
+        { id: "h3", content: "human 3", author: { id: "human", bot: false } },
+        { id: "b2", content: "self reply 2", author: { id: "self-bot", bot: true } },
+        { id: "h2", content: "human 2", author: { id: "human", bot: false } },
+        { id: "b1", content: "self reply 1", author: { id: "self-bot", bot: true } },
+        { id: "h1", content: "human 1", author: { id: "human", bot: false } },
+      ]),
+      4,
+    );
+    // humanBudget = limit (4): all 4 human messages survive. selfBudget =
+    // ceil(4/2) = 2: only the 2 most recent of the bot's own replies do —
+    // a flat "last 4" fetch would have kept only b4/h4/b3/h3, losing h1/h2.
+    expect(history.filter((m) => m.author?.bot).map((m) => m.id)).toEqual(["b3", "b4"]);
+    expect(history.filter((m) => !m.author?.bot).map((m) => m.id)).toEqual(["h1", "h2", "h3", "h4"]);
+  });
+
+  it("excludes third-party bot messages entirely (noise, not conversational context)", async () => {
+    const history = await resolveChannelHistory(
+      turnSupport(),
+      fakeChannelMessage([
+        { id: "m2", content: "level up!", author: { id: "leveling-bot", bot: true } },
+        { id: "m1", content: "hello", author: { id: "human", bot: false } },
+      ]),
+      8,
+    );
+    expect(history.map((m) => m.id)).toEqual(["m1"]);
   });
 
   it("returns an empty list when the fetch fails, instead of throwing", async () => {

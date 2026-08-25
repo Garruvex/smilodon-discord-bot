@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 // Local (dev-only) backend equivalent of schema.ts's Postgres tables, for
 // exactly the two chat/knowledge stores that need it (SqliteChatStateStore/
@@ -92,6 +92,25 @@ export const memorySources = sqliteTable("memory_sources", {
   source: text("source").notNull(),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 });
+
+// See schema.ts's memoryRelations for the design rationale.
+export const memoryRelations = sqliteTable("memory_relations", {
+  id: text("id").primaryKey(),
+  guildId: text("guild_id").notNull(),
+  fromSubjectType: text("from_subject_type").notNull(),
+  fromSubjectId: text("from_subject_id").notNull(),
+  predicate: text("predicate").notNull(),
+  // See schema.ts's memoryRelations.kind comment.
+  kind: text("kind").notNull().default("association"),
+  toSubjectType: text("to_subject_type").notNull(),
+  toSubjectId: text("to_subject_id").notNull(),
+  isolationChannelId: text("isolation_channel_id"),
+  supportingMemoryId: text("supporting_memory_id").references(() => memories.id, { onDelete: "set null" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+}, (table) => [
+  index("memory_relations_guild_from").on(table.guildId, table.fromSubjectType, table.fromSubjectId),
+  index("memory_relations_guild_to").on(table.guildId, table.toSubjectType, table.toSubjectId),
+]);
 
 // Plan 2 (channel context) — mirrors schema.ts's channelSummaryCheckpoints.
 export const channelSummaryCheckpoints = sqliteTable("channel_summary_checkpoints", {

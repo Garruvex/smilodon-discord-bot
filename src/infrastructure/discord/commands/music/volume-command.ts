@@ -1,6 +1,12 @@
 import { CommandModule, type BotCommand, type ChatToolBinding, type CommandContext } from "../../../../application/commands/command.js";
 import type { ChatToolContext, ChatToolResult } from "../../../../application/chat/tools/chat-tool.js";
-import { evaluateMusicToolAccess, formatMusicError, musicPermissionDeniedMessage } from "../../../../application/chat/tools/music-tool-support.js";
+import {
+  evaluateMusicToolAccess,
+  formatMusicError,
+  musicPermissionDeniedMessage,
+  musicToolTimedOutMessage,
+  musicToolWasCancelled,
+} from "../../../../application/chat/tools/music-tool-support.js";
 import type { PlaybackService } from "../../../../application/music/playback-service.js";
 import type { GuildConfigurationProvider } from "../../../../config/guild-configuration-provider.js";
 import { createPlaybackActor, musicPlaybackAccessPolicy } from "./music-command-support.js";
@@ -51,6 +57,7 @@ export class VolumeCommand implements BotCommand {
     if (!decision.allowed) return { content: musicPermissionDeniedMessage };
     const maximumVolume = this.profiles.require(ctx.guildId).music.maximumVolume;
     const volume = Math.min(Math.max(Math.round(args.volume), 0), maximumVolume);
+    if (musicToolWasCancelled(ctx)) return { content: musicToolTimedOutMessage };
     try {
       await this.playbackService.setVolume(ctx.music.actor, volume, maximumVolume);
       return { content: `Volume set to ${volume}.` };

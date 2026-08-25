@@ -17,6 +17,8 @@ function baseRequest(overrides: Partial<ChatRequest> = {}): ChatRequest {
     recentHistory: [],
     memories: [],
     guildKnowledge: [],
+    causalChains: [],
+    replyChainSummary: null,
     message: "hello",
     replyChain: [],
     channelHistory: [],
@@ -120,7 +122,7 @@ describe("buildChatContext", () => {
     const context = buildChatContext(baseRequest());
     for (const tag of [
       "guild_context", "current_user", "mentioned_users", "conversation_history",
-      "guild_knowledge", "user_memories", "reply_chain", "current_message",
+      "guild_knowledge", "user_memories", "causal_chains", "reply_chain", "current_message",
     ]) {
       expect(context).toContain(`<${tag}`);
       expect(context).toContain(`</${tag}>`);
@@ -180,5 +182,18 @@ describe("buildChatContext", () => {
 
     const without = buildChatContext(baseRequest());
     expect(without).toContain("<channel_history>\nnone\n</channel_history>");
+  });
+
+  it("renders surfaced consequence relations as an ordered causal_chains section", () => {
+    const withChains = buildChatContext(baseRequest({
+      causalChains: [
+        { fromSubjectType: "member", fromSubjectId: "elara", predicate: "member_of", toSubjectType: "guild", toSubjectId: "thieves_guild" },
+      ],
+    }));
+    expect(withChains).toContain("<causal_chains>");
+    expect(withChains).toContain("1. member:elara member_of guild:thieves_guild");
+
+    const without = buildChatContext(baseRequest());
+    expect(without).toContain("<causal_chains>\nnone\n</causal_chains>");
   });
 });

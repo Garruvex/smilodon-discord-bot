@@ -28,6 +28,10 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/assets ./assets
 COPY --from=build /app/drizzle ./drizzle
+# Repo-committed starter templates (config/examples/*) read at runtime by
+# /settings chat template — see template-setting.ts. config/local (per-
+# deployment guild data, not a template) stays excluded via .dockerignore.
+COPY config ./config
 
 USER node
 CMD ["node", "dist/bootstrap/start.js"]

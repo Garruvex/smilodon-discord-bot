@@ -1,6 +1,7 @@
 import type {
   ChatInputCommandInteraction,
   MessageComponentInteraction,
+  MessageContextMenuCommandInteraction,
 } from "discord.js";
 
 import type { ApplicationConfiguration } from "../../config/configuration.js";
@@ -21,7 +22,7 @@ export class AccessPolicyService {
   public evaluate(
     policy: CommandAccessPolicy,
     commandModule: CommandModule,
-    interaction: ChatInputCommandInteraction | MessageComponentInteraction,
+    interaction: ChatInputCommandInteraction | MessageComponentInteraction | MessageContextMenuCommandInteraction,
   ): AccessDecision {
     // Interaction validity (is there even a cached guild/member to build a
     // subject from) is specific to a live Discord interaction, so it stays
@@ -32,14 +33,18 @@ export class AccessPolicyService {
     }
 
     const guildConfiguration = this.guildConfigurationProvider.find(interaction.guildId);
-    const botMember = interaction.guild.members.me;
     const subject: AccessSubject = {
       guildId: interaction.guildId,
       channelId: interaction.channelId,
       userId: interaction.user.id,
       roleIds: [...interaction.member.roles.cache.keys()],
-      memberPermissions: interaction.member.permissions.bitfield,
-      botPermissions: botMember?.permissions.bitfield ?? null,
+      // interaction.member(/app)Permissions are computed by Discord itself
+      // for the channel the interaction was triggered in, so channel
+      // permission overwrites are already folded in — unlike
+      // interaction.member.permissions / guild.members.me.permissions,
+      // which are guild-role-only and ignore per-channel overwrites entirely.
+      memberPermissions: interaction.memberPermissions.bitfield,
+      botPermissions: interaction.appPermissions.bitfield,
       isOwner: this.configuration.ownerUserIds.has(interaction.user.id),
     };
 

@@ -20,6 +20,15 @@ export function formatChannelList(channelIds: ReadonlySet<string>): string {
   return channelIds.size === 0 ? "none" : [...channelIds].map((id) => `<#${id}>`).join(", ");
 }
 
+// SettingsCommand.describeFieldChanges renders a FieldChange's `read()`
+// result with a plain String(...) — a raw channel id would show as an
+// unlinked number instead of a clickable channel mention, so a single
+// optional-channel FieldChange should format through this rather than
+// returning the raw id/null directly.
+export function formatChannelMention(channelId: string | null): string {
+  return channelId ? `<#${channelId}>` : "none";
+}
+
 export function setsDiffer(previous: ReadonlySet<string>, updated: ReadonlySet<string>): boolean {
   return previous.size !== updated.size || [...previous].some((id) => !updated.has(id));
 }

@@ -27,7 +27,7 @@ function profile(): GuildConfiguration {
     panel: {
       progressBar: { style: "standard", length: 12, customTheme: null },
     },
-    features: { common: true, diagnostics: true, music: true, chatbot: false, birthdays: false, nsfw: false, linkFix: false, retainMemberDataOnLeave: true, ambientReplies: false, channelHistory: false },
+    features: { common: true, diagnostics: true, music: true, chatbot: false, birthdays: false, reminders: false, nsfw: false, linkFix: false, retainMemberDataOnLeave: true, ambientReplies: false, channelHistory: false },
     roles: {
       botAdministrator: new Set(["345678901234567890"]),
       musicController: new Set(["456789012345678901"]),
@@ -40,6 +40,8 @@ function profile(): GuildConfiguration {
       auditLog: null,
       chatbot: new Set(),
       birthdayAnnouncements: null,
+      joinAnnouncements: null,
+      leaveAnnouncements: null,
       linkFix: new Set(),
     },
     music: {

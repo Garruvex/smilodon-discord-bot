@@ -32,6 +32,8 @@ const baseRequest = {
   recentHistory: [],
   memories: [],
   guildKnowledge: [],
+  causalChains: [],
+  replyChainSummary: null,
   message: "Is this true?",
   replyChain: [],
   channelHistory: [],
@@ -220,7 +222,7 @@ describe("GeminiChatProvider", () => {
 
   it("summarizeDroppedExchanges parses extracted facts", async () => {
     generateContentMock.mockResolvedValue({
-      text: JSON.stringify({ facts: [{ slot: "scene.tavern_fire", statement: "The tavern burned down." }] }),
+      text: JSON.stringify({ facts: [{ slot: "scene.tavern_fire", statement: "The tavern burned down.", subjectType: "guild" }] }),
       functionCalls: undefined,
       candidates: [],
       usageMetadata: undefined,
@@ -228,9 +230,27 @@ describe("GeminiChatProvider", () => {
 
     const { GeminiChatProvider } = await import("../../src/infrastructure/chat/gemini-chat-provider.js");
     const provider = new GeminiChatProvider("secret", ["gemini-3.6-flash"], { maxOutputTokens: 2_048, thinkingBudget: null });
-    const facts = await provider.summarizeDroppedExchanges?.([{ user: "the tavern is on fire", assistant: "oh no" }]);
+    const facts = await provider.summarizeDroppedExchanges?.(
+      [{ user: "the tavern is on fire", assistant: "oh no" }],
+      { id: "11111111111111111", displayName: "Tester" },
+    );
 
-    expect(facts).toEqual([{ slot: "scene.tavern_fire", statement: "The tavern burned down." }]);
+    expect(facts).toEqual([{ slot: "scene.tavern_fire", statement: "The tavern burned down.", subjectType: "guild" }]);
+  });
+
+  it("summarizeReplyChainOverflow parses the recap", async () => {
+    generateContentMock.mockResolvedValue({
+      text: JSON.stringify({ summary: "Alice mentioned liking apples earlier." }),
+      functionCalls: undefined,
+      candidates: [],
+      usageMetadata: undefined,
+    });
+
+    const { GeminiChatProvider } = await import("../../src/infrastructure/chat/gemini-chat-provider.js");
+    const provider = new GeminiChatProvider("secret", ["gemini-3.6-flash"], { maxOutputTokens: 2_048, thinkingBudget: null });
+    const summary = await provider.summarizeReplyChainOverflow?.([{ authorDisplayName: "Alice", content: "I like apple" }]);
+
+    expect(summary).toBe("Alice mentioned liking apples earlier.");
   });
 
   it("sets thinkingConfig only when a thinkingBudget is configured", async () => {

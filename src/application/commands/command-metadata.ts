@@ -33,9 +33,10 @@ export interface BooleanOptionMetadata extends BaseOptionMetadata {
 
 export interface ChannelOptionMetadata extends BaseOptionMetadata {
   type: "channel";
-  // Every channel option in this codebase restricts to guild text channels —
-  // kept as an explicit flag (rather than a general channel-types array)
-  // since no other channel type is used anywhere; extend if that changes.
+  // Every channel option in this codebase restricts to sendable text
+  // channels (regular + announcement) — kept as an explicit flag (rather
+  // than a general channel-types array) since no other channel type is
+  // used anywhere; extend if that changes.
   guildTextOnly?: boolean;
 }
 
@@ -75,7 +76,8 @@ export interface SubcommandGroupMetadata {
 // A command has either flat `options`, `subcommands`, `subcommandGroups`, or
 // none of the three (a no-arg command) — never a mix, mirroring discord.js's
 // own SlashCommandBuilder/SlashCommandSubcommandsOnlyBuilder split.
-export interface CommandMetadata {
+export interface ChatInputCommandMetadata {
+  type?: "chatInput";
   name: string;
   description: string;
   dmPermission?: boolean;
@@ -84,3 +86,13 @@ export interface CommandMetadata {
   subcommands?: readonly SubcommandMetadata[];
   subcommandGroups?: readonly SubcommandGroupMetadata[];
 }
+
+// A right-click "Apps" entry on a message — Discord forbids a description on
+// these, unlike chat-input commands.
+export interface MessageContextMenuCommandMetadata {
+  type: "messageContextMenu";
+  name: string;
+  dmPermission?: boolean;
+}
+
+export type CommandMetadata = ChatInputCommandMetadata | MessageContextMenuCommandMetadata;

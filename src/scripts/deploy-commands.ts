@@ -59,6 +59,8 @@ const dependencies = createDependencies(
   persistence.birthdayStore,
   persistence.memoryRepository,
   persistence.channelSummaryCheckpointStore,
+  persistence.reminderStore,
+  persistence.roleMenuStore,
 );
 const deploymentService = new DiscordGuildCommandDeploymentService(
   configuration,
