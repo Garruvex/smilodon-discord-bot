@@ -8,7 +8,7 @@ export class QuoteContextCommand implements BotCommand<MessageContextMenuCommand
   public readonly definition = {
     type: "messageContextMenu",
     name: "Quote",
-  } satisfies BotCommand["definition"];
+  } satisfies BotCommand<MessageContextMenuCommandInteraction>["definition"];
 
   public readonly module = CommandModule.Common;
   public readonly access = publicAccessPolicy;

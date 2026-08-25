@@ -4,9 +4,10 @@ import type { Logger } from "pino";
 import type { CommandAccessPolicy } from "../../domain/access/access-policy.js";
 import type { CommandResponses } from "./command-responses.js";
 import type { ChatToolContext, ChatToolParameterSchema, ChatToolResult } from "../chat/tools/chat-tool.js";
-import type { CommandMetadata } from "./command-metadata.js";
-
-export type CommandDefinition = CommandMetadata;
+import type {
+  ChatInputCommandMetadata,
+  MessageContextMenuCommandMetadata,
+} from "./command-metadata.js";
 
 export enum CommandModule {
   Bootstrap = "bootstrap",
@@ -24,6 +25,12 @@ export enum CommandResponseVisibility {
 }
 
 export type AnyCommandInteraction = ChatInputCommandInteraction | MessageContextMenuCommandInteraction;
+
+export type CommandDefinition<
+  TInteraction extends AnyCommandInteraction = ChatInputCommandInteraction,
+> = TInteraction extends MessageContextMenuCommandInteraction
+  ? MessageContextMenuCommandMetadata
+  : ChatInputCommandMetadata;
 
 // Generic over the interaction kind, defaulting to chat-input, so the ~30
 // existing chat-input commands (which access `interaction.options` without
@@ -53,7 +60,7 @@ export interface ChatToolBinding<TArgs = unknown> {
 }
 
 export interface BotCommand<TInteraction extends AnyCommandInteraction = ChatInputCommandInteraction> {
-  readonly definition: CommandDefinition;
+  readonly definition: CommandDefinition<TInteraction>;
   readonly module: CommandModule;
   readonly access: CommandAccessPolicy;
   readonly responseVisibility?: CommandResponseVisibility;

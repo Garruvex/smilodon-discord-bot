@@ -7,6 +7,7 @@ import { MusicError } from "../music/music-errors.js";
 import { GuildAssetError } from "../assets/guild-asset-store.js";
 import { CommandResponseVisibility } from "./command.js";
 import { CommandResponses } from "./command-responses.js";
+import type { CommandType } from "./command-metadata.js";
 
 export class CommandDispatcher {
   public constructor(
@@ -18,7 +19,10 @@ export class CommandDispatcher {
   public async dispatch(
     interaction: ChatInputCommandInteraction | MessageContextMenuCommandInteraction,
   ): Promise<void> {
-    const command = this.registry.find(interaction.commandName);
+    const commandType: CommandType = interaction.isMessageContextMenuCommand()
+      ? "messageContextMenu"
+      : "chatInput";
+    const command = this.registry.find(interaction.commandName, commandType);
 
     if (!command) {
       const responses = new CommandResponses(interaction, CommandResponseVisibility.Ephemeral);

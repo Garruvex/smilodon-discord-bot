@@ -1,4 +1,5 @@
 import type { AnyCommandInteraction, BotCommand } from "./command.js";
+import { commandTypeOf, type CommandType } from "./command-metadata.js";
 import { RoleMatchMode } from "../../domain/access/access-policy.js";
 
 export class DuplicateCommandError extends Error {
@@ -20,17 +21,22 @@ export class CommandRegistry {
 
   public register(command: BotCommand<AnyCommandInteraction>): void {
     const commandName = command.definition.name;
+    const commandType = commandTypeOf(command.definition);
+    const commandKey = this.key(commandType, commandName);
 
-    if (this.commands.has(commandName)) {
+    if (this.commands.has(commandKey)) {
       throw new DuplicateCommandError(commandName);
     }
 
     this.validate(command);
-    this.commands.set(commandName, command);
+    this.commands.set(commandKey, command);
   }
 
-  public find(commandName: string): BotCommand<AnyCommandInteraction> | null {
-    return this.commands.get(commandName) ?? null;
+  public find(
+    commandName: string,
+    commandType: CommandType = "chatInput",
+  ): BotCommand<AnyCommandInteraction> | null {
+    return this.commands.get(this.key(commandType, commandName)) ?? null;
   }
 
   public getAll(): readonly BotCommand<AnyCommandInteraction>[] {
@@ -60,5 +66,9 @@ export class CommandRegistry {
         "role groups cannot be required when role matching is disabled",
       );
     }
+  }
+
+  private key(commandType: CommandType, commandName: string): string {
+    return `${commandType}:${commandName}`;
   }
 }

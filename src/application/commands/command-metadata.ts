@@ -95,4 +95,9 @@ export interface MessageContextMenuCommandMetadata {
   dmPermission?: boolean;
 }
 
+export type CommandType = "chatInput" | "messageContextMenu";
 export type CommandMetadata = ChatInputCommandMetadata | MessageContextMenuCommandMetadata;
+
+export function commandTypeOf(metadata: CommandMetadata): CommandType {
+  return metadata.type ?? "chatInput";
+}
