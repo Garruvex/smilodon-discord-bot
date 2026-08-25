@@ -51,6 +51,9 @@ export interface UpdateGuildConfigurationInput {
   contextSeedDays?: number;
   birthdaysEnabled?: boolean;
   birthdayAnnouncementsChannelId?: string | null;
+  remindersEnabled?: boolean;
+  joinAnnouncementsChannelId?: string | null;
+  leaveAnnouncementsChannelId?: string | null;
   nsfwEnabled?: boolean;
   retainMemberDataOnLeave?: boolean;
   linkFixEnabled?: boolean;
@@ -90,7 +93,7 @@ export function createGuildConfigurationDocument(input: CreateGuildConfiguration
     panel: {},
     features: {
       common: true, diagnostics: true, music: true, chatbot: false, birthdays: false,
-      nsfw: false, linkFix: false, retainMemberDataOnLeave: true, ambientReplies: false,
+      reminders: false, nsfw: false, linkFix: false, retainMemberDataOnLeave: true, ambientReplies: false,
       channelHistory: false,
     },
     roles: {
@@ -106,6 +109,8 @@ export function createGuildConfigurationDocument(input: CreateGuildConfiguration
       chatbot: [],
       birthdayAnnouncements: null,
       linkFix: [],
+      joinAnnouncements: null,
+      leaveAnnouncements: null,
     },
     music: {},
     chat: {},
@@ -136,6 +141,8 @@ export function toGuildConfiguration(parsed: ParsedGuildConfigurationFile, sourc
       chatbot: new Set(parsed.channels.chatbot),
       birthdayAnnouncements: parsed.channels.birthdayAnnouncements,
       linkFix: new Set(parsed.channels.linkFix),
+      joinAnnouncements: parsed.channels.joinAnnouncements,
+      leaveAnnouncements: parsed.channels.leaveAnnouncements,
     },
     music: {
       defaultVolume: parsed.music.volume.default,
@@ -177,6 +184,8 @@ export function toGuildConfigurationDocument(configuration: GuildConfiguration):
       chatbot: [...configuration.channels.chatbot],
       birthdayAnnouncements: configuration.channels.birthdayAnnouncements,
       linkFix: [...configuration.channels.linkFix],
+      joinAnnouncements: configuration.channels.joinAnnouncements,
+      leaveAnnouncements: configuration.channels.leaveAnnouncements,
     },
     music: {
       volume: {
@@ -253,6 +262,9 @@ export function applyGuildConfigurationUpdate(
   if (input.channelHistoryLimit !== undefined) next.chat.channelHistoryLimit = input.channelHistoryLimit;
   if (input.birthdaysEnabled !== undefined) next.features.birthdays = input.birthdaysEnabled;
   if (input.birthdayAnnouncementsChannelId !== undefined) next.channels.birthdayAnnouncements = input.birthdayAnnouncementsChannelId;
+  if (input.remindersEnabled !== undefined) next.features.reminders = input.remindersEnabled;
+  if (input.joinAnnouncementsChannelId !== undefined) next.channels.joinAnnouncements = input.joinAnnouncementsChannelId;
+  if (input.leaveAnnouncementsChannelId !== undefined) next.channels.leaveAnnouncements = input.leaveAnnouncementsChannelId;
   if (input.nsfwEnabled !== undefined) next.features.nsfw = input.nsfwEnabled;
   if (input.retainMemberDataOnLeave !== undefined) next.features.retainMemberDataOnLeave = input.retainMemberDataOnLeave;
   if (input.linkFixEnabled !== undefined) next.features.linkFix = input.linkFixEnabled;

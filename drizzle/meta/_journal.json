@@ -43,6 +43,20 @@
       "when": 1787381044745,
       "tag": "0005_early_vulture",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787678012017,
+      "tag": "0006_natural_guardsmen",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1787682986277,
+      "tag": "0007_certain_mac_gargan",
+      "breakpoints": true
     }
   ]
 }

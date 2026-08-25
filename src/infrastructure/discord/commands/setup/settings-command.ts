@@ -1,5 +1,5 @@
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
-import type { CommandMetadata, SubcommandGroupMetadata } from "../../../../application/commands/command-metadata.js";
+import type { ChatInputCommandMetadata, SubcommandGroupMetadata } from "../../../../application/commands/command-metadata.js";
 import type { ChatToolRegistry } from "../../../../application/chat/tools/chat-tool-registry.js";
 import type { UpdateGuildConfigurationInput, GuildConfigurationProvider } from "../../../../config/guild-configuration-provider.js";
 import type { GuildConfiguration } from "../../../../config/guild-configuration.js";
@@ -19,7 +19,7 @@ import {
 } from "./settings/index.js";
 import { renderProgressPreview } from "./settings/settings-support.js";
 
-function buildDefinition(): CommandMetadata {
+function buildDefinition(): ChatInputCommandMetadata {
   const subcommandGroups: SubcommandGroupMetadata[] = settingGroups.map((group) => ({
     name: group.name,
     description: group.description,

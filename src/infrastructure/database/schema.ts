@@ -112,6 +112,40 @@ export const birthdayAnnouncements = pgTable("birthday_announcements", {
   announcedAt: timestamp("announced_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [primaryKey({ columns: [table.guildId, table.date] })]);
 
+// No memberId FK — unlike birthdays/chat data, reminders don't need the
+// guildMembers hub (nothing else cascades from a reminder, and no other
+// feature joins against it).
+export const reminders = pgTable("reminders", {
+  id: uuid("id").primaryKey(),
+  guildId: text("guild_id").notNull(),
+  userId: text("user_id").notNull(),
+  channelId: text("channel_id").notNull(),
+  message: text("message").notNull(),
+  dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  // Null = still pending. Set once delivered (or permanently undeliverable)
+  // so the scheduler's listDue never retries it again.
+  firedAt: timestamp("fired_at", { withTimezone: true }),
+}, (table) => [
+  index("reminders_due_at").on(table.dueAt),
+  index("reminders_guild_user").on(table.guildId, table.userId),
+]);
+
+// Keyed by messageId (not a synthetic uuid) — a role menu is 1:1 with the
+// Discord message that carries its select-menu component, and messageId is
+// already globally unique, so there's no reason for a second id.
+export const roleMenus = pgTable("role_menus", {
+  messageId: text("message_id").primaryKey(),
+  guildId: text("guild_id").notNull(),
+  channelId: text("channel_id").notNull(),
+  // Array of { roleId, label } — the full set of roles this menu offers,
+  // diffed against a user's submitted selection in RoleMenuService.
+  options: jsonb("options").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("role_menus_guild").on(table.guildId),
+]);
+
 // Central memory model (Plan 1) — supersedes chatMemories/guildKnowledge.
 // audience answers "who's normally allowed to read this"; isolationChannelId
 // answers "is this forbidden from leaving one channel, regardless of

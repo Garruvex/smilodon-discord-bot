@@ -17,6 +17,7 @@ import { linkFixSetting } from "./link-fix-setting.js";
 import { memoryModeSetting } from "./memory-mode-setting.js";
 import { nsfwSetting } from "./nsfw-setting.js";
 import { panelSetting } from "./panel-setting.js";
+import { remindersSetting } from "./reminders-setting.js";
 import { retainMemberDataSetting } from "./retain-member-data-setting.js";
 import { roleAddSetting, roleRemoveSetting } from "./role-membership-setting.js";
 import { rolesSetting } from "./roles-setting.js";
@@ -24,6 +25,7 @@ import type { SettingDefinition } from "./setting-definition.js";
 import { templateSetting } from "./template-setting.js";
 import { toolsDisableSetting, toolsEnableSetting, toolsListSetting } from "./tools-setting.js";
 import { volumeSetting } from "./volume-setting.js";
+import { welcomeSetting } from "./welcome-setting.js";
 
 export type {
   FieldChange,
@@ -78,7 +80,7 @@ export const settingGroups: readonly SettingGroup[] = [
   {
     name: "community",
     description: "Standalone community features.",
-    settings: [birthdaysSetting, nsfwSetting, linkFixSetting, retainMemberDataSetting],
+    settings: [birthdaysSetting, remindersSetting, welcomeSetting, nsfwSetting, linkFixSetting, retainMemberDataSetting],
   },
 ];
 

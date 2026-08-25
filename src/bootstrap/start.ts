@@ -14,6 +14,7 @@ import { MusicPresenceService } from "../application/music/music-presence-servic
 import { AuditLogService } from "../application/audit/audit-log-service.js";
 import { BirthdayAnnouncer } from "../application/birthdays/birthday-announcer.js";
 import { MemberDepartureService } from "../application/members/member-departure-service.js";
+import { MemberWelcomeService } from "../application/members/member-welcome-service.js";
 
 const configuration = loadConfiguration();
 const logger = createLogger(configuration);
@@ -47,6 +48,8 @@ const dependencies = createDependencies(
   persistence.birthdayStore,
   persistence.memoryRepository,
   persistence.channelSummaryCheckpointStore,
+  persistence.reminderStore,
+  persistence.roleMenuStore,
 );
 const controlPanelStateStore = persistence.controlPanelStateStore;
 const controlChannelService = new ControlChannelService(
@@ -83,6 +86,10 @@ const memberDepartureService = new MemberDepartureService(
   persistence.guildMemberRegistry,
   dependencies.memoryEngine,
 );
+const memberWelcomeService = new MemberWelcomeService(
+  guildConfigurationProvider,
+  logger.child({ component: "member-welcome" }),
+);
 deferredGuildSetupService.setService(
   new LocalGuildSetupService(
     guildConfigurationProvider,
@@ -101,6 +108,7 @@ const application = new Application(
   musicPresenceService,
   birthdayAnnouncer,
   memberDepartureService,
+  memberWelcomeService,
   logger.child({ component: "application" }),
   (reason) => {
     void shutdown(reason, 1);
