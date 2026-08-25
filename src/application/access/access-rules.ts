@@ -52,6 +52,7 @@ function isFeatureEnabled(guildConfiguration: GuildConfiguration, commandModule:
     case CommandModule.Diagnostics: return guildConfiguration.features.diagnostics;
     case CommandModule.Music: return guildConfiguration.features.music;
     case CommandModule.Birthdays: return guildConfiguration.features.birthdays;
+    case CommandModule.Reminders: return guildConfiguration.features.reminders;
     case CommandModule.Nsfw: return guildConfiguration.features.nsfw;
   }
 }

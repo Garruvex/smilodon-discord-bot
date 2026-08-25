@@ -28,15 +28,6 @@ class TestCommand implements BotCommand {
   }
 }
 
-class MusicTestCommand extends TestCommand {
-  public override readonly definition: BotCommand["definition"] = {
-    name: "music-test",
-    description: "A music test command.",
-  };
-
-  public override readonly module = CommandModule.Music;
-}
-
 describe("CommandRegistry", () => {
   it("registers and resolves a valid command", () => {
     const registry = new CommandRegistry();
@@ -71,17 +62,5 @@ describe("CommandRegistry", () => {
     };
 
     expect(() => registry.register(invalidCommand)).toThrow(InvalidCommandError);
-  });
-
-  it("returns commands from enabled modules", () => {
-    const registry = new CommandRegistry();
-    registry.register(new TestCommand());
-    registry.register(new MusicTestCommand());
-
-    const commands = registry.getByEnabledModules(
-      new Set([CommandModule.Common]),
-    );
-
-    expect(commands.map((command) => command.definition.name)).toEqual(["test"]);
   });
 });

@@ -42,7 +42,7 @@ function profile(overrides: { ambientReplies?: boolean } = {}): GuildConfigurati
     idleImageAsset: null,
     panel: { progressBar: { style: "standard", length: 12, customTheme: null } },
     features: {
-      common: true, diagnostics: true, music: true, chatbot: true, birthdays: false,
+      common: true, diagnostics: true, music: true, chatbot: true, birthdays: false, reminders: false,
       nsfw: false, linkFix: false, retainMemberDataOnLeave: true,
       ambientReplies: overrides.ambientReplies ?? true,
       channelHistory: false,
@@ -59,6 +59,8 @@ function profile(overrides: { ambientReplies?: boolean } = {}): GuildConfigurati
       auditLog: null,
       chatbot: new Set([chatChannelId]),
       birthdayAnnouncements: null,
+      joinAnnouncements: null,
+      leaveAnnouncements: null,
       linkFix: new Set(),
     },
     music: {

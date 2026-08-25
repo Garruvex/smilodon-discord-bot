@@ -1,4 +1,5 @@
 import type { MutationSettingDefinition } from "./setting-definition.js";
+import { formatChannelMention } from "./settings-support.js";
 
 export const auditLogSetting: MutationSettingDefinition = {
   kind: "mutation",
@@ -15,5 +16,5 @@ export const auditLogSetting: MutationSettingDefinition = {
     if (disable === true) input.auditLogChannelId = null;
     return Promise.resolve({ ok: true });
   },
-  fieldChanges: [{ label: "Audit log channel", read: (p) => p.channels.auditLog }],
+  fieldChanges: [{ label: "Audit log channel", read: (p) => formatChannelMention(p.channels.auditLog) }],
 };

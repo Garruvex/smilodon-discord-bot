@@ -1,13 +1,16 @@
 import {
+  ApplicationCommandType,
   ChannelType,
+  ContextMenuCommandBuilder,
   SlashCommandBuilder,
   type SlashCommandSubcommandBuilder,
   type SlashCommandSubcommandGroupBuilder,
 } from "discord.js";
 
 import type {
-  CommandMetadata,
+  ChatInputCommandMetadata,
   CommandOptionMetadata,
+  MessageContextMenuCommandMetadata,
   SubcommandGroupMetadata,
   SubcommandMetadata,
 } from "../../../application/commands/command-metadata.js";
@@ -46,7 +49,12 @@ function addOption(
       builder.addChannelOption((o) => {
         o.setName(option.name).setDescription(option.description);
         if (option.required !== undefined) o.setRequired(option.required);
-        if (option.guildTextOnly) o.addChannelTypes(ChannelType.GuildText);
+        // Announcement channels are still normal sendable text channels
+        // (NewsChannel is text-based, .send() works the same way) — they
+        // were previously excluded from the picker entirely, which hid
+        // real channels (e.g. an announcements channel) from every command
+        // using this option.
+        if (option.guildTextOnly) o.addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement);
         return o;
       });
       return;
@@ -96,7 +104,7 @@ function addSubcommandGroup(builder: SlashCommandBuilder, group: SubcommandGroup
 // Converts application-layer command metadata into a live discord.js
 // builder, for registration/deploy (CommandRegistry.toApplicationCommandData)
 // — the one place a real SlashCommandBuilder is still needed.
-export function buildSlashCommandBuilder(metadata: CommandMetadata): SlashCommandBuilder {
+export function buildSlashCommandBuilder(metadata: ChatInputCommandMetadata): SlashCommandBuilder {
   const builder = new SlashCommandBuilder()
     .setName(metadata.name)
     .setDescription(metadata.description);
@@ -105,5 +113,15 @@ export function buildSlashCommandBuilder(metadata: CommandMetadata): SlashComman
   for (const option of metadata.options ?? []) addOption(builder, option);
   for (const subcommand of metadata.subcommands ?? []) addSubcommand(builder, subcommand);
   for (const group of metadata.subcommandGroups ?? []) addSubcommandGroup(builder, group);
+  return builder;
+}
+
+export function buildMessageContextMenuCommandBuilder(
+  metadata: MessageContextMenuCommandMetadata,
+): ContextMenuCommandBuilder {
+  const builder = new ContextMenuCommandBuilder()
+    .setName(metadata.name)
+    .setType(ApplicationCommandType.Message);
+  if (metadata.dmPermission !== undefined) builder.setDMPermission(metadata.dmPermission);
   return builder;
 }

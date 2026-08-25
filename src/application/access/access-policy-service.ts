@@ -1,6 +1,7 @@
 import type {
   ChatInputCommandInteraction,
   MessageComponentInteraction,
+  MessageContextMenuCommandInteraction,
 } from "discord.js";
 
 import type { ApplicationConfiguration } from "../../config/configuration.js";
@@ -21,7 +22,7 @@ export class AccessPolicyService {
   public evaluate(
     policy: CommandAccessPolicy,
     commandModule: CommandModule,
-    interaction: ChatInputCommandInteraction | MessageComponentInteraction,
+    interaction: ChatInputCommandInteraction | MessageComponentInteraction | MessageContextMenuCommandInteraction,
   ): AccessDecision {
     // Interaction validity (is there even a cached guild/member to build a
     // subject from) is specific to a live Discord interaction, so it stays

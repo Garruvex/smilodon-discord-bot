@@ -1,4 +1,4 @@
-import type { ChatInputCommandInteraction } from "discord.js";
+import type { ChatInputCommandInteraction, MessageContextMenuCommandInteraction } from "discord.js";
 import type { Logger } from "pino";
 
 import type { CommandAccessPolicy } from "../../domain/access/access-policy.js";
@@ -14,6 +14,7 @@ export enum CommandModule {
   Diagnostics = "diagnostics",
   Music = "music",
   Birthdays = "birthdays",
+  Reminders = "reminders",
   Nsfw = "nsfw",
 }
 
@@ -22,8 +23,14 @@ export enum CommandResponseVisibility {
   Public = "public",
 }
 
-export interface CommandContext {
-  interaction: ChatInputCommandInteraction;
+export type AnyCommandInteraction = ChatInputCommandInteraction | MessageContextMenuCommandInteraction;
+
+// Generic over the interaction kind, defaulting to chat-input, so the ~30
+// existing chat-input commands (which access `interaction.options` without
+// narrowing) are unaffected — only a command that opts into a different
+// interaction kind (e.g. a message context-menu command) needs to say so.
+export interface CommandContext<TInteraction extends AnyCommandInteraction = ChatInputCommandInteraction> {
+  interaction: TInteraction;
   logger: Logger;
   responses: CommandResponses;
 }
@@ -45,12 +52,12 @@ export interface ChatToolBinding<TArgs = unknown> {
   execute(args: TArgs, ctx: ChatToolContext): Promise<ChatToolResult>;
 }
 
-export interface BotCommand {
+export interface BotCommand<TInteraction extends AnyCommandInteraction = ChatInputCommandInteraction> {
   readonly definition: CommandDefinition;
   readonly module: CommandModule;
   readonly access: CommandAccessPolicy;
   readonly responseVisibility?: CommandResponseVisibility;
   readonly toolBinding?: ChatToolBinding;
 
-  execute(context: CommandContext): Promise<void>;
+  execute(context: CommandContext<TInteraction>): Promise<void>;
 }

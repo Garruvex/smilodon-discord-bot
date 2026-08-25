@@ -55,6 +55,7 @@ function profile(): GuildConfiguration {
       music: true,
       chatbot: true,
       birthdays: false,
+      reminders: false,
       nsfw: false,
       linkFix: false,
       retainMemberDataOnLeave: true,
@@ -73,6 +74,8 @@ function profile(): GuildConfiguration {
       auditLog: null,
       chatbot: new Set([chatChannelId]),
       birthdayAnnouncements: null,
+      joinAnnouncements: null,
+      leaveAnnouncements: null,
       linkFix: new Set(),
     },
     music: {

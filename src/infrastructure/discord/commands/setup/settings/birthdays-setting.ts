@@ -1,4 +1,5 @@
 import type { MutationSettingDefinition } from "./setting-definition.js";
+import { formatChannelMention } from "./settings-support.js";
 
 export const birthdaysSetting: MutationSettingDefinition = {
   kind: "mutation",
@@ -25,6 +26,6 @@ export const birthdaysSetting: MutationSettingDefinition = {
   },
   fieldChanges: [
     { label: "Birthdays enabled", read: (p) => p.features.birthdays },
-    { label: "Birthday announcements channel", read: (p) => p.channels.birthdayAnnouncements },
+    { label: "Birthday announcements channel", read: (p) => formatChannelMention(p.channels.birthdayAnnouncements) },
   ],
 };

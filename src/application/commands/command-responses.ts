@@ -4,13 +4,14 @@ import {
   type ChatInputCommandInteraction,
   type InteractionEditReplyOptions,
   type InteractionReplyOptions,
+  type MessageContextMenuCommandInteraction,
 } from "discord.js";
 
 import { CommandResponseVisibility } from "./command.js";
 
 export class CommandResponses {
   public constructor(
-    private readonly interaction: ChatInputCommandInteraction,
+    private readonly interaction: ChatInputCommandInteraction | MessageContextMenuCommandInteraction,
     private readonly visibility: CommandResponseVisibility,
   ) {}
 

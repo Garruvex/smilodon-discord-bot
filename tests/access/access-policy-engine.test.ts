@@ -42,7 +42,7 @@ function guildConfiguration(overrides: Partial<GuildConfiguration> = {}): GuildC
     idleImageAsset: null,
     panel: { progressBar: { style: "standard", length: 12, customTheme: null } },
     features: {
-      common: true, diagnostics: true, music: true, chatbot: false, birthdays: false,
+      common: true, diagnostics: true, music: true, chatbot: false, birthdays: false, reminders: false,
       nsfw: false, linkFix: false, retainMemberDataOnLeave: true, ambientReplies: false,
       channelHistory: false,
     },
@@ -58,6 +58,8 @@ function guildConfiguration(overrides: Partial<GuildConfiguration> = {}): GuildC
       auditLog: null,
       chatbot: new Set(),
       birthdayAnnouncements: null,
+      joinAnnouncements: null,
+      leaveAnnouncements: null,
       linkFix: new Set(),
     },
     music: {
