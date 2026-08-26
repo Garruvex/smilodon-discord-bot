@@ -1,9 +1,15 @@
+// "dm": try a DM first, falling back to the origin channel only if DMs are
+// closed (the historical default). "channel": always deliver in the origin
+// channel — the user has explicitly opted into a visible reminder there.
+export type ReminderDelivery = "dm" | "channel";
+
 export interface ReminderRecord {
   id: string;
   guildId: string;
   userId: string;
   channelId: string;
   message: string;
+  delivery: ReminderDelivery;
   // Absolute epoch-ms due time, not a countdown — computed once at creation
   // (now + duration) so a reminder set while the bot is offline for its
   // dueAt isn't lost: the scheduler's next tick after restart sees

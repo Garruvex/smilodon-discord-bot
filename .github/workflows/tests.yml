@@ -1,0 +1,55 @@
+# A second push to the same branch makes an in-progress run's answer
+# irrelevant, so it's cancelled rather than left to finish.
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Matches the Dockerfile's runtime image (node:22-alpine) rather than
+      # just satisfying package.json's >=20 floor, so CI runs the same major
+      # version that actually ships.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: install
+        run: npm ci
+
+      # Run separately (not `npm run check` as one line) so a failure in any
+      # one stage is immediately obvious from the job summary instead of
+      # needing the log opened to see which sub-step actually broke.
+      - name: typecheck
+        run: npm run typecheck
+
+      - name: lint
+        run: npm run lint
+
+      # Pure file-content check (drizzle migration files must be
+      # instance-schema portable) — no database involved.
+      - name: migrations check
+        run: npm run migrations:check
+
+      # No Postgres service is provisioned here: the Postgres-backed
+      # repository contract tests (tests/memory/postgres-memory-repository.
+      # contract.test.ts and the checkpoint-store equivalent) self-skip via
+      # describe.skip when no live connection is configured, and everything
+      # else runs against a self-contained temp-file SQLite database.
+      - name: test
+        run: npm test

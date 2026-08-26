@@ -27,15 +27,15 @@ plugins:
     allowDirectPlaylistIds: true
 
     clients:
-    - MUSIC
-    - WEBEMBEDDED
-    - ANDROID_VR
-    - ANDROID_MUSIC
-    - TVHTML5EMBEDDED
-    - TV
-    - IOS
-    - WEB
-    - MWEB
+     - TV
+     - TVHTML5_SIMPLY
+     - WEB
+     - ANDROID_VR
+     - ANDROID
+     - MUSIC
+     - WEBEMBEDDED
+     - MWEB
+
 
     clientOptions:
       TVHTML5_SIMPLY:
@@ -92,10 +92,11 @@ plugins:
 lavalink:
   plugins:
     # - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.2"
-    - dependency: "dev.lavalink.youtube:youtube-plugin:f45bbb7aebfcbc1c553769e04af6cd43afa8b7c3"
+    - dependency: "dev.lavalink.youtube:youtube-plugin:42cc5a2042f31dba3fdc523618ef380a1a8bb79d"
       snapshot: true
       repository: "https://maven.lavalink.dev/snapshots"
     - dependency: "com.github.topi314.lavasrc:lavasrc-plugin:4.8.3"
+      snapshot: true
   pluginsDir: "./plugins"
   server:
     password: "${LAVALINK_PASSWORD}"

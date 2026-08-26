@@ -57,6 +57,13 @@
       "when": 1787682986277,
       "tag": "0007_certain_mac_gargan",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787750571782,
+      "tag": "0008_jittery_kree",
+      "breakpoints": true
     }
   ]
 }

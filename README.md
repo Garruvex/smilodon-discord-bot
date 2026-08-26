@@ -23,7 +23,9 @@ the [user guide](docs/user-guide.md). For internal architecture, see
   autoplay, 24/7 mode, shuffle, filters, seeking, and a persistent two-row
   control panel with song requests typed directly into the control channel.
 - Fun and utility commands: dice, 8-ball, polls, Q&A embeds, birthdays,
-  furry/animal image commands, and more — see the
+  personal reminders, quote cards (right-click a message, or `/quote`),
+  join announcement cards, leave announcements, reaction-role menus, furry/animal image
+  commands, and more — see the
   [command reference](docs/user-guide.md#commands).
 - A mention-based AI chatbot (any OpenAI-compatible provider, or Google
   Gemini natively) with optional ambient replies, per-guild personality and
@@ -203,8 +205,12 @@ created automatically. It then:
 - synchronizes that guild's enabled slash commands.
 
 Use `/setup status` to inspect onboarding. Run `npm run deploy:commands` after
-changing command definitions or enabled feature modules. All setup responses
-are private. Existing profiles are never overwritten by `/setup initialize`.
+changing a command's definition (name, description, or options) or after a
+guild is newly configured. Toggling a feature module on or off through
+`/settings` takes effect immediately and needs no redeploy — every command is
+always registered, and a disabled feature's commands are rejected at runtime
+instead of being hidden from the picker. All setup responses are private.
+Existing profiles are never overwritten by `/setup initialize`.
 
 After setup, join a voice channel and use `/play`, or type a song name or
 supported URL directly into the configured control channel. For every other
@@ -232,12 +238,14 @@ Deploy only one configured guild when iterating locally:
 npm run deploy:commands -- --guild 123456789012345678
 ```
 
-Commands are always registered as guild commands. Each profile's `features`
-section determines which command modules are visible in that server. Running
-the deployment without `--guild` updates every locally configured guild. The
-sole global command is `/setup`. Synchronizing bootstrap commands replaces
-the application's global command manifest, preventing legacy global music
-commands from leaking into every server.
+Commands are always registered as guild commands, and every command is always
+deployed to every configured guild regardless of that profile's `features`
+section — a disabled feature's commands are rejected at runtime instead of
+being left off the guild's command list. Running the deployment without
+`--guild` updates every locally configured guild. The sole global command is
+`/setup`. Synchronizing bootstrap commands replaces the application's global
+command manifest, preventing legacy global music commands from leaking into
+every server.
 
 ### Local Docker Compose
 

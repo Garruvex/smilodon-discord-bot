@@ -1,0 +1,1 @@
+ALTER TABLE "reminders" ADD COLUMN "delivery" text DEFAULT 'dm' NOT NULL;
