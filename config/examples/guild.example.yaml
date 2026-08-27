@@ -70,6 +70,17 @@ channels:
   # Channels watched for rewritable links. Required (non-empty) if features.linkFix is true.
   linkFix: []
 
+# Per-service toggles underneath features.linkFix — turn off individual link-fix
+# services without disabling the whole feature. Configure with /settings community
+# link-fix (twitter/threads/tiktok/instagram/reddit/bilibili options).
+linkFixPlatforms:
+  twitter: true
+  threads: true
+  tiktok: true
+  instagram: true
+  reddit: true
+  bilibili: true
+
 chat:
   # Null loads config/local/personalities/<guild-id>.md when present.
   personalityFile: null

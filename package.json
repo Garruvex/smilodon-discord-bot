@@ -55,7 +55,6 @@
   },
   "dependencies": {
     "@google/genai": "^2.18.0",
-    "@napi-rs/canvas": "^0.1.65",
     "better-sqlite3": "^13.0.3",
     "discord.js": "^14.16.0",
     "dotenv": "^16.4.7",

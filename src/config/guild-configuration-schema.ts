@@ -162,6 +162,18 @@ export const guildConfigurationFileSchema = z
         joinAnnouncements: null,
         leaveAnnouncements: null,
       }),
+    linkFixPlatforms: z
+      .object({
+        twitter: z.boolean().default(true),
+        threads: z.boolean().default(true),
+        tiktok: z.boolean().default(true),
+        instagram: z.boolean().default(true),
+        reddit: z.boolean().default(true),
+        bilibili: z.boolean().default(true),
+      })
+      .default({
+        twitter: true, threads: true, tiktok: true, instagram: true, reddit: true, bilibili: true,
+      }),
     chat: guildChatSchema
       .default({
         personalityFile: null,

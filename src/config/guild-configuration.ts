@@ -1,6 +1,14 @@
 export type GuildFeatureName = "common" | "diagnostics" | "music" | "chatbot" | "birthdays" | "reminders" | "nsfw" | "linkFix";
 export type RoleGroupName = "botAdministrator" | "musicController" | "chatbot";
 
+// The individual services link-fix can rewrite/embed. features.linkFix is
+// the master switch (and gates whether the behavior runs at all); these are
+// per-service toggles underneath it — see LinkFixBehavior and
+// domain/links/link-rewrite.ts.
+export type LinkFixPlatform = "twitter" | "threads" | "tiktok" | "instagram" | "reddit" | "bilibili";
+
+export type GuildLinkFixPlatformConfiguration = Readonly<Record<LinkFixPlatform, boolean>>;
+
 export interface GuildFeatureConfiguration {
   common: boolean;
   diagnostics: boolean;
@@ -154,6 +162,7 @@ export interface GuildConfiguration {
   features: GuildFeatureConfiguration;
   roles: GuildRoleConfiguration;
   channels: GuildChannelConfiguration;
+  linkFixPlatforms: GuildLinkFixPlatformConfiguration;
   music: GuildMusicConfiguration;
   chat: GuildChatConfiguration;
   sourceFile: string;

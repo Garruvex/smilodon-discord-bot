@@ -238,7 +238,7 @@ section for the full processing model and trust rules.
 | `/settings community reminders [enabled]` | Turns `/remind` on or off for this server. |
 | `/settings community welcome [join-channel] [leave-channel]` | Sets the join/leave announcement channels. Each is independent — leaving one unset just means that event stays silent, no separate enable toggle. Join posts a generated welcome card; leave is a plain text line. |
 | `/settings community nsfw <enabled>` | Allows NSFW image commands server-wide (still needs an age-restricted channel per use). |
-| `/settings community link-fix [enabled] [channel] [remove-channel]` | Rewrites Twitter/X, Threads, Instagram, Bilibili, TikTok, and Reddit links for better embeds in watched channels. |
+| `/settings community link-fix [enabled] [channel] [remove-channel] [twitter] [threads] [tiktok] [instagram] [reddit] [bilibili]` | Rewrites Twitter/X, Threads, Instagram, Bilibili, TikTok, and Reddit links for better embeds in watched channels. Each service can be toggled on/off independently of the overall `enabled` switch. |
 | `/settings community member-data <retain>` | Whether a departing member's chat memories, birthday, and customization are kept (`true`) or deleted (`false`) if they leave. |
 
 ## Troubleshooting

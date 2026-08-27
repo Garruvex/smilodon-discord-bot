@@ -1,4 +1,4 @@
-import type { GuildConfiguration, ProgressBarSettings } from "./guild-configuration.js";
+import type { GuildConfiguration, LinkFixPlatform, ProgressBarSettings } from "./guild-configuration.js";
 import {
   guildConfigurationFileSchema,
   type ParsedGuildConfigurationFile,
@@ -58,6 +58,9 @@ export interface UpdateGuildConfigurationInput {
   retainMemberDataOnLeave?: boolean;
   linkFixEnabled?: boolean;
   linkFixChannelIds?: readonly string[];
+  // Per-service toggle underneath features.linkFix — a platform false here
+  // stops matching/rewriting even while the master feature is on.
+  linkFixPlatformOverrides?: Readonly<Partial<Record<LinkFixPlatform, boolean>>>;
   defaultVolume?: number;
   maximumVolume?: number;
   volumeButtonStep?: number;
@@ -112,6 +115,7 @@ export function createGuildConfigurationDocument(input: CreateGuildConfiguration
       joinAnnouncements: null,
       leaveAnnouncements: null,
     },
+    linkFixPlatforms: {},
     music: {},
     chat: {},
   });
@@ -144,6 +148,7 @@ export function toGuildConfiguration(parsed: ParsedGuildConfigurationFile, sourc
       joinAnnouncements: parsed.channels.joinAnnouncements,
       leaveAnnouncements: parsed.channels.leaveAnnouncements,
     },
+    linkFixPlatforms: parsed.linkFixPlatforms,
     music: {
       defaultVolume: parsed.music.volume.default,
       maximumVolume: parsed.music.volume.maximum,
@@ -187,6 +192,7 @@ export function toGuildConfigurationDocument(configuration: GuildConfiguration):
       joinAnnouncements: configuration.channels.joinAnnouncements,
       leaveAnnouncements: configuration.channels.leaveAnnouncements,
     },
+    linkFixPlatforms: configuration.linkFixPlatforms,
     music: {
       volume: {
         default: configuration.music.defaultVolume,
@@ -269,6 +275,9 @@ export function applyGuildConfigurationUpdate(
   if (input.retainMemberDataOnLeave !== undefined) next.features.retainMemberDataOnLeave = input.retainMemberDataOnLeave;
   if (input.linkFixEnabled !== undefined) next.features.linkFix = input.linkFixEnabled;
   if (input.linkFixChannelIds !== undefined) next.channels.linkFix = [...input.linkFixChannelIds];
+  if (input.linkFixPlatformOverrides !== undefined) {
+    next.linkFixPlatforms = { ...next.linkFixPlatforms, ...input.linkFixPlatformOverrides };
+  }
   if (input.defaultVolume !== undefined) next.music.volume.default = input.defaultVolume;
   if (input.maximumVolume !== undefined) next.music.volume.maximum = input.maximumVolume;
   if (input.volumeButtonStep !== undefined) next.music.volume.buttonStep = input.volumeButtonStep;
