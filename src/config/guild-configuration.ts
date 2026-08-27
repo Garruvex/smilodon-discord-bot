@@ -18,8 +18,8 @@ export interface GuildFeatureConfiguration {
   reminders: boolean;
   nsfw: boolean;
   linkFix: boolean;
-  // Whether a departing member's chat memories/birthday/customization are
-  // kept (true, default) or deleted (false) when they leave the guild.
+  // Whether a departing member's private, user-owned data is kept (true,
+  // default) or deleted (false). Shared guild/channel memories remain.
   retainMemberDataOnLeave: boolean;
   // Whether the bot may judge (via LLM call) and react/reply to messages
   // that merely name it without an explicit @mention. Off by default.

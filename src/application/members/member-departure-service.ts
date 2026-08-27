@@ -1,11 +1,10 @@
 import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
 import type { MemberDataPurger } from "./member-data-purger.js";
 
-// Reacts to a member leaving a guild. Deletes their chat memories/birthday/
-// customization/reminders only when the guild has explicitly opted out of
-// retention (features.retainMemberDataOnLeave === false); the default is to
-// keep the data so a returning member doesn't lose their whole relationship
-// with the bot.
+// Reacts to a member leaving a guild. Deletes their private, user-owned data
+// only when the guild has explicitly opted out of retention
+// (features.retainMemberDataOnLeave === false). Shared guild/channel memories
+// remain community history; the default keeps everything for returning users.
 export class MemberDepartureService {
   public constructor(
     private readonly guildConfigurationProvider: GuildConfigurationProvider,

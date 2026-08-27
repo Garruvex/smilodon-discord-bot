@@ -1,5 +1,6 @@
 import type { MemberDataPurger } from "../../application/members/member-data-purger.js";
 import type { BirthdayStore } from "../../application/birthdays/birthday-store.js";
+import type { ChatStateStore } from "../../application/chat/chat-state-store.js";
 import type { MemoryRepository } from "../../application/memory/memory.js";
 import type { ReminderStore } from "../../application/reminders/reminder-store.js";
 import type { UserCustomizationStore } from "../../application/chat/user-customization-store.js";
@@ -12,17 +13,32 @@ export class LocalMemberDataPurger implements MemberDataPurger {
     private readonly userCustomizationStore: UserCustomizationStore,
     private readonly birthdayStore: BirthdayStore,
     private readonly reminderStore: ReminderStore,
+    private readonly chatStateStore: ChatStateStore,
   ) {}
 
   public async purge(guildId: string, userId: string): Promise<void> {
-    await this.memoryRepository.forget({ guildId, ownerUserId: userId });
-    await this.userCustomizationStore.clear(guildId, userId);
-    await this.birthdayStore.removeBirthday(guildId, userId);
-    // ReminderStore has no bulk "delete all for user" — list then cancel
-    // each one individually.
-    const reminders = await this.reminderStore.listForUser(guildId, userId);
-    for (const reminder of reminders) {
-      await this.reminderStore.cancel(reminder.id, userId);
+    // No shared transaction across these independent stores (see class
+    // comment), so a failure in one must not skip the rest — otherwise a
+    // single store error would silently leave later stores unpurged with no
+    // Discord event to retry against. Attempt all, then surface every
+    // failure together.
+    // Wrap every call in a microtask so a synchronous adapter exception
+    // becomes a rejected promise instead of aborting construction of the
+    // array before the remaining stores have even been attempted.
+    const operations: readonly (() => Promise<unknown>)[] = [
+      (): Promise<unknown> => this.memoryRepository.forget({ guildId, ownerUserId: userId }),
+      (): Promise<unknown> => this.userCustomizationStore.clear(guildId, userId),
+      (): Promise<unknown> => this.birthdayStore.removeBirthday(guildId, userId),
+      (): Promise<unknown> => this.reminderStore.deleteForUser(guildId, userId),
+      (): Promise<unknown> => this.chatStateStore.purgeUser(guildId, userId),
+    ];
+    const results = await Promise.allSettled(
+      operations.map((operation) => Promise.resolve().then(() => operation())),
+    );
+    const failures = results.filter((result) => result.status === "rejected")
+      .map((result) => result.reason as unknown);
+    if (failures.length > 0) {
+      throw new AggregateError(failures, `Member data purge failed for ${failures.length} of ${results.length} stores`);
     }
   }
 }

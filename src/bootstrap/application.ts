@@ -1,4 +1,4 @@
-import { Client, Events, GatewayIntentBits, MessageFlags } from "discord.js";
+import { Client, Events, GatewayIntentBits, MessageFlags, type Message } from "discord.js";
 import type { Logger } from "pino";
 
 import type { ApplicationDependencies } from "./dependencies.js";
@@ -110,6 +110,10 @@ export class Application {
         );
       }
 
+      // Required for music features: on failure this rethrows (after
+      // triggering shutdown/onFatalError) so the Promise.all below rejects
+      // instead of quietly treating a failed Lavalink connection as
+      // successful critical initialization.
       const musicInitPromise = this.dependencies.musicPlayerGateway
         .initialize({
           id: readyClient.user.id,
@@ -119,31 +123,49 @@ export class Application {
           this.logger.fatal({ error }, "Lavalink initialization failed");
           if (this.onFatalError) {
             this.onFatalError("lavalink-init-failed");
-            return;
+          } else {
+            void this.stop("lavalink-init-failed").catch((stopError: unknown) => {
+              this.logger.error({ error: stopError }, "Failed to stop application after fatal Lavalink error");
+            });
           }
-          void this.stop("lavalink-init-failed");
+          throw error;
         });
 
+      // Optional/degradable: a failure here is logged but still resolves —
+      // non-music commands and chat should still work with a degraded
+      // control panel, so this must not fail the Promise.all below.
       const controlPanelInitPromise = (async (): Promise<void> => {
         try {
           await this.dependencies.applicationEmojiCatalog.initialize();
         } catch (error) {
           this.logger.error({ error }, "Application emoji catalog initialization failed");
         }
-        await this.controlChannelService.initialize();
-      })().catch((error: unknown) => {
-        this.logger.error({ error }, "Control-channel initialization failed");
-      });
+        try {
+          await this.controlChannelService.initialize();
+        } catch (error) {
+          this.logger.error({ error }, "Control-channel initialization failed — control panel may be degraded");
+        }
+      })();
 
-      void Promise.all([musicInitPromise, controlPanelInitPromise]).then(() => {
-        this.ready = true;
-        this.logger.info("Critical startup initialization complete; accepting interactions");
-      });
+      void Promise.all([musicInitPromise, controlPanelInitPromise])
+        .then(() => {
+          this.ready = true;
+          this.logger.info("Critical startup initialization complete; accepting interactions");
 
-      this.musicPresenceService.start();
-      this.birthdayAnnouncer.start();
-      this.dependencies.channelSummaryScheduler?.start();
-      this.dependencies.reminderScheduler.start();
+          // Started only on successful critical init — starting these
+          // unconditionally would let them fire (and even restart) while
+          // stop() is tearing persistence down after a fatal Lavalink error.
+          this.musicPresenceService.start();
+          this.birthdayAnnouncer.start();
+          this.dependencies.channelSummaryScheduler?.start();
+          this.dependencies.reminderScheduler.start();
+        })
+        .catch(() => {
+          // musicInitPromise already logged fatal and triggered shutdown
+          // above — `ready` intentionally stays false so nothing gets
+          // dispatched to a handler backed by an uninitialized Lavalink
+          // manager while the process is stopping.
+        });
     });
 
     this.client.on(Events.Raw, (payload) => {
@@ -198,6 +220,13 @@ export class Application {
     });
 
     this.client.on(Events.MessageCreate, (message) => {
+      if (!this.ready) {
+        void this.replyStartingUpIfControlChannelMessage(message).catch((error: unknown) => {
+          this.logger.error({ error }, "Failed to reply during startup gate");
+        });
+        return;
+      }
+
       void (async (): Promise<void> => {
         if (await this.controlChannelService.handleMessage(message)) return;
         await this.dependencies.behaviorDispatcher.dispatch(BehaviorEvent.MessageCreated, message);
@@ -263,6 +292,20 @@ export class Application {
     this.client.on(Events.Warn, (message) => {
       this.logger.warn({ message }, "Discord client warning");
     });
+  }
+
+  // Mirrors ControlChannelService.handleMessage's own "is this message
+  // meant for a music control panel" check — that's what a message typed
+  // during startup would otherwise silently fall into (e.g. a play command
+  // reaching PlaybackService.enqueue() before Lavalink finishes
+  // initializing). Silently dropping such a message would look like the bot
+  // ignored the user, so it gets an explicit reply instead. Any other
+  // message during startup is dropped without a reply.
+  private async replyStartingUpIfControlChannelMessage(message: Message): Promise<void> {
+    if (!message.inGuild() || message.author.bot || message.webhookId) return;
+    const profile = this.dependencies.guildConfigurationProvider.find(message.guildId);
+    if (!profile?.features.music || profile.channels.controlPanel !== message.channelId) return;
+    await message.reply("I'm still starting up — please try again in a moment.");
   }
 }
 

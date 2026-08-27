@@ -110,6 +110,17 @@ export class LocalReminderStore implements ReminderStore {
     return Promise.resolve();
   }
 
+  // Unlike listForUser (which excludes fired reminders), this removes every
+  // reminder for the user regardless of firedAt — used by member-data purge,
+  // where a fired-but-not-yet-pruned reminder must not survive.
+  public deleteForUser(guildId: string, userId: string): Promise<number> {
+    const document = this.read();
+    const before = document.reminders.length;
+    document.reminders = document.reminders.filter((r) => !(r.guildId === guildId && r.userId === userId));
+    this.write(document);
+    return Promise.resolve(before - document.reminders.length);
+  }
+
   private read(): Document {
     if (!existsSync(this.file)) return { version: 1, reminders: [] };
     try {

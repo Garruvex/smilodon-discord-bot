@@ -99,6 +99,7 @@ import { embeddingDimensions } from "../infrastructure/database/schema.js";
 import { ApplicationEmojiCatalog } from "../infrastructure/discord/application-emoji-catalog.js";
 import type { AuditLogService } from "../application/audit/audit-log-service.js";
 import { MemberProfileService } from "../application/members/member-profile-service.js";
+import type { EmbeddingsClient } from "../application/chat/embeddings-client.js";
 
 // Shape common to both configuration.chat and configuration.utilityChat —
 // summaryModels is optional here since only `chat` carries it (utilityChat
@@ -204,7 +205,37 @@ export interface ApplicationDependencies {
   memoryEngine: MemoryEngine;
 }
 
-export function createDependencies(
+// Everything registerCommands() builds that createDependencies() (or any
+// other caller that only wants live command/component instances — see
+// scripts/deploy-commands.ts) needs, either as its own return value or to
+// keep building the surrounding chat/behavior/scheduler runtime on top of.
+export interface CommandRegistrationResult {
+  commandRegistry: CommandRegistry;
+  componentRegistry: ComponentRegistry;
+  accessPolicyService: AccessPolicyService;
+  playbackService: PlaybackService;
+  pollService: PollService;
+  settingsCommand: SettingsCommand;
+  applicationEmojiCatalog: ApplicationEmojiCatalog;
+  memoryEngine: MemoryEngine;
+  guildAssetStore: GuildAssetStore;
+  personaDriftStore: PersonaDriftStore;
+  // Null unless an embeddings provider is configured at all.
+  embeddingsClient: EmbeddingsClient | null;
+  // Both null when no chat provider is configured at all.
+  chatProvider: ChatProvider | null;
+  utilityProvider: ChatProvider | null;
+}
+
+// Constructs the CommandRegistry with every command (and the
+// ComponentRegistry with every component) registered, plus the handful of
+// supporting services their constructors need — nothing dispatch-, behavior-,
+// or scheduler-related. This is the one piece scripts/deploy-commands.ts
+// actually needs (just commandRegistry.getAll() for command metadata) — it
+// used to go through the full createDependencies() below, constructing a
+// chat conversation service, behavior registry, and channel-summary
+// scheduler it would then immediately discard.
+export function registerCommands(
   configuration: ApplicationConfiguration,
   logger: Logger,
   musicPlayerGateway: MusicPlayerGateway,
@@ -219,7 +250,7 @@ export function createDependencies(
   channelSummaryCheckpointStore: ChannelSummaryCheckpointStore,
   reminderStore: ReminderStore,
   roleMenuStore: RoleMenuStore,
-): ApplicationDependencies {
+): CommandRegistrationResult {
   const commandRegistry = new CommandRegistry();
   const pollService = new PollService();
   const componentRegistry = new ComponentRegistry();
@@ -245,9 +276,6 @@ export function createDependencies(
   commandRegistry.register(new BirthdayCommand(birthdayStore, guildConfigurationProvider));
   commandRegistry.register(new RemindCommand(reminderStore));
   commandRegistry.register(new ReactionRolesCommand(roleMenuService));
-  const reminderScheduler = new ReminderScheduler(
-    discordClient, reminderStore, logger.child({ component: "reminders" }),
-  );
   commandRegistry.register(new OwoifyCommand());
   commandRegistry.register(new WolfyCommand());
   commandRegistry.register(new QaCommand());
@@ -305,17 +333,6 @@ export function createDependencies(
   );
   commandRegistry.register(new HelpCommand(commandRegistry, accessPolicyService, guildConfigurationProvider));
 
-  const commandDispatcher = new CommandDispatcher(
-    commandRegistry,
-    accessPolicyService,
-    logger.child({ component: "commands" }),
-  );
-  const componentDispatcher = new ComponentDispatcher(
-    componentRegistry,
-    accessPolicyService,
-    logger.child({ component: "components" }),
-  );
-  const behaviorRegistry = new BehaviorRegistry();
   const chatProvider = configuration.chat ? createChatProviderFromConfig(configuration.chat, logger) : null;
   // Fully independent provider for the two standalone structured-output
   // calls (analyzeUserCustomization, summarizeDroppedExchanges) when
@@ -370,6 +387,76 @@ export function createDependencies(
     utilityProvider?.summarizeChannelMessages !== undefined,
   );
   commandRegistry.register(settingsCommand);
+  commandRegistry.register(new CustomizeCommand(userCustomizationStore, utilityProvider));
+
+  return {
+    commandRegistry,
+    componentRegistry,
+    accessPolicyService,
+    playbackService,
+    pollService,
+    settingsCommand,
+    applicationEmojiCatalog,
+    memoryEngine,
+    guildAssetStore,
+    personaDriftStore,
+    embeddingsClient,
+    chatProvider,
+    utilityProvider,
+  };
+}
+
+export function createDependencies(
+  configuration: ApplicationConfiguration,
+  logger: Logger,
+  musicPlayerGateway: MusicPlayerGateway,
+  guildConfigurationProvider: GuildConfigurationProvider,
+  guildSetupService: GuildSetupService,
+  discordClient: Client,
+  chatStateStore: ChatStateStore,
+  userCustomizationStore: UserCustomizationStore,
+  auditLogService: AuditLogService,
+  birthdayStore: BirthdayStore,
+  memoryRepository: MemoryRepository,
+  channelSummaryCheckpointStore: ChannelSummaryCheckpointStore,
+  reminderStore: ReminderStore,
+  roleMenuStore: RoleMenuStore,
+): ApplicationDependencies {
+  const {
+    commandRegistry,
+    componentRegistry,
+    accessPolicyService,
+    playbackService,
+    pollService,
+    settingsCommand,
+    applicationEmojiCatalog,
+    memoryEngine,
+    personaDriftStore,
+    embeddingsClient,
+    chatProvider,
+    utilityProvider,
+  } = registerCommands(
+    configuration, logger, musicPlayerGateway, guildConfigurationProvider, guildSetupService,
+    discordClient, chatStateStore, userCustomizationStore, auditLogService, birthdayStore,
+    memoryRepository, channelSummaryCheckpointStore, reminderStore, roleMenuStore,
+  );
+
+  const reminderScheduler = new ReminderScheduler(
+    discordClient, reminderStore, logger.child({ component: "reminders" }),
+  );
+
+  const commandDispatcher = new CommandDispatcher(
+    commandRegistry,
+    accessPolicyService,
+    logger.child({ component: "commands" }),
+  );
+  const componentDispatcher = new ComponentDispatcher(
+    componentRegistry,
+    accessPolicyService,
+    logger.child({ component: "components" }),
+  );
+  const behaviorRegistry = new BehaviorRegistry();
+
   // Prefers the cheaper utility model when configured, same preference as
   // ChatConversationService's own consolidation call. Null when no chat
   // provider is configured, or the configured one doesn't implement
@@ -383,7 +470,6 @@ export function createDependencies(
         logger.child({ component: "channel-summary-scheduler" }),
       )
     : null;
-  commandRegistry.register(new CustomizeCommand(userCustomizationStore, utilityProvider));
   // Derived from CommandRegistry rather than hand-listed: any BotCommand
   // that sets `toolBinding` (see command.ts) is automatically offered to the
   // model, so a command's LLM exposure has one source of truth — the

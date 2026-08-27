@@ -67,6 +67,21 @@ export class SqliteChatStateStore implements ChatStateStore {
     return Promise.resolve(result.length);
   }
 
+  public purgeUser(guildId: string, userId: string): Promise<void> {
+    this.database.transaction((transaction) => {
+      transaction.delete(schema.chatSessions).where(and(
+        eq(schema.chatSessions.guildId, guildId), eq(schema.chatSessions.userId, userId),
+      )).run();
+      transaction.delete(schema.dmNotesPreferences).where(and(
+        eq(schema.dmNotesPreferences.guildId, guildId), eq(schema.dmNotesPreferences.userId, userId),
+      )).run();
+      transaction.delete(schema.chatMemories).where(and(
+        eq(schema.chatMemories.guildId, guildId), eq(schema.chatMemories.assertedByUserId, userId),
+      )).run();
+    });
+    return Promise.resolve();
+  }
+
   public getDmNotesEnabled(guildId: string, userId: string): Promise<boolean> {
     const preference = this.database.select({ dmNotesEnabled: schema.dmNotesPreferences.dmNotesEnabled })
       .from(schema.dmNotesPreferences)

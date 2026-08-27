@@ -647,12 +647,15 @@ everywhere else guild knowledge is written.
 memory table as every other guild-knowledge fact, and follow the same
 retention as the rest of that table — `context-remove`/`context-daily-remove`
 stop future writes but never bulk-delete what's already there (use
-`/memory forget` for a specific fact). Note that the unified memory table is
-not yet wired into the `retain-member-data-on-leave:false` cascade-delete
-path (that currently only covers the older per-feature tables: legacy chat
-memories, birthday, and customization) — a departing member's own memories,
-including any member-subject channel-context facts about them, are retained
-regardless of that setting until this is addressed.
+`/memory forget` for a specific fact). The `retain-member-data-on-leave:false`
+purge (see `MemberDataPurger`) only deletes a departing member's own
+*private*, user-owned data: their private memories (`ownerUserId` matches
+them), legacy chat memories, chat session transcripts, DM-notes preference,
+birthday, customization, and reminders. Shared guild/channel-audience
+memories are community knowledge, not the member's data — this includes any
+member-subject fact extracted from channel context (e.g. "Alice prefers
+async standups") — so those are retained even after the subject leaves,
+the same as anything a member ever said publicly in the guild.
 
 ## Configuration boundaries
 

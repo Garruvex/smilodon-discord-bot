@@ -69,4 +69,12 @@ export class PostgresReminderStore implements ReminderStore {
       .set({ firedAt: new Date() })
       .where(eq(schema.reminders.id, id));
   }
+
+  public async deleteForUser(guildId: string, userId: string): Promise<number> {
+    const result = await this.database.delete(schema.reminders).where(and(
+      eq(schema.reminders.guildId, guildId),
+      eq(schema.reminders.userId, userId),
+    )).returning({ id: schema.reminders.id });
+    return result.length;
+  }
 }

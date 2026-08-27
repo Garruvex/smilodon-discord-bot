@@ -56,6 +56,11 @@ export interface UserChatStateStore {
   // are DMed to them. Defaults to true when never set.
   getDmNotesEnabled(guildId: string, userId: string): Promise<boolean>;
   setDmNotesEnabled(guildId: string, userId: string, enabled: boolean): Promise<void>;
+  // Deletes every per-user row this store holds for a guild member: session
+  // transcripts (all channels), the DM-notes preference, and legacy
+  // chat_memories (superseded by the unified `memories` table, but still
+  // written/read by this store — see class-level comments).
+  purgeUser(guildId: string, userId: string): Promise<void>;
 }
 
 // Transitional alias for adapters compiled against the first memory iteration.

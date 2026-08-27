@@ -119,6 +119,7 @@ export async function createPersistenceServices(
       userCustomizationStore,
       birthdayStore,
       reminderStore,
+      chatStateStore,
     );
   }
 

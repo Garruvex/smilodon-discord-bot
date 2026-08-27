@@ -71,6 +71,7 @@ function baseStore(overrides: Partial<ChatStateStore> = {}): ChatStateStore {
     forgetAllMemories: () => Promise.resolve(0),
     getDmNotesEnabled: () => Promise.resolve(true),
     setDmNotesEnabled: () => Promise.resolve(),
+    purgeUser: () => Promise.resolve(),
     ...overrides,
   };
 }

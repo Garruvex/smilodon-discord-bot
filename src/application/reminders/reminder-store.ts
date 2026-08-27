@@ -27,4 +27,9 @@ export interface ReminderStore {
   cancel(id: string, userId: string): Promise<boolean>;
   listDue(now: number): Promise<readonly ReminderRecord[]>;
   markFired(id: string): Promise<void>;
+  // Unlike listForUser/cancel (which only see/act on not-yet-fired
+  // reminders), this deletes every reminder for the user regardless of
+  // fired state — for member-data purge, where a fired-but-not-yet-pruned
+  // reminder must not be left behind.
+  deleteForUser(guildId: string, userId: string): Promise<number>;
 }

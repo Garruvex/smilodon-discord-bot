@@ -1,4 +1,4 @@
-import { createDependencies } from "../bootstrap/dependencies.js";
+import { registerCommands } from "../bootstrap/dependencies.js";
 import { loadConfiguration } from "../config/environment.js";
 import { createLogger } from "../infrastructure/logging/logger.js";
 import type { MusicPlayerGateway } from "../application/music/music-player-gateway.js";
@@ -46,7 +46,10 @@ const unavailableMusicGateway: MusicPlayerGateway = {
   getVoiceChannelId: () => null,
   getSnapshot: () => null,
 };
-const dependencies = createDependencies(
+// Only the command registry is needed to deploy — registerCommands() builds
+// just that (and its supporting services), not the full chat/behavior/
+// scheduler runtime createDependencies() assembles for the live bot.
+const { commandRegistry } = registerCommands(
   configuration,
   logger,
   unavailableMusicGateway,
@@ -64,7 +67,7 @@ const dependencies = createDependencies(
 );
 const deploymentService = new DiscordGuildCommandDeploymentService(
   configuration,
-  dependencies.commandRegistry,
+  commandRegistry,
 );
 
 const bootstrapCommandCount = await deploymentService.deployBootstrap();
