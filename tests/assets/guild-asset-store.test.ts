@@ -10,7 +10,7 @@ import { PersonaBundleCompiler } from "../../src/application/chat/persona-bundle
 import { parsePersonaBundle } from "../../src/application/chat/persona-bundle.js";
 import { parseExampleExchangeBundle } from "../../src/application/chat/example-exchange-bundle.js";
 import type { ChatProvider } from "../../src/application/chat/chat-provider.js";
-import type { EmbeddingsClient } from "../../src/infrastructure/chat/openai-embeddings-client.js";
+import type { EmbeddingsClient } from "../../src/application/chat/embeddings-client.js";
 
 const guildId = "123456789012345678";
 const temporaryDirectories: string[] = [];

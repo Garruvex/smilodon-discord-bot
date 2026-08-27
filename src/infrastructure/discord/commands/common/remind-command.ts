@@ -1,5 +1,5 @@
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
-import type { ReminderStore } from "../../../../application/reminders/reminder-store.js";
+import type { ReminderDelivery, ReminderStore } from "../../../../application/reminders/reminder-store.js";
 import { parseDurationMs } from "../../../../domain/time/duration.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
 
@@ -21,6 +21,13 @@ export class RemindCommand implements BotCommand {
         options: [
           { type: "string", name: "duration", description: "e.g. 30m, 2h, 1d, or 1d12h.", required: true },
           { type: "string", name: "message", description: "What to remind you about.", required: true, maxLength: maxMessageLength },
+          {
+            type: "string", name: "delivery", description: "Where to send it (default: DM).",
+            choices: [
+              { name: "DM (private)", value: "dm" },
+              { name: "This channel", value: "channel" },
+            ],
+          },
         ],
       },
       { name: "list", description: "Lists your pending reminders." },
@@ -51,6 +58,7 @@ export class RemindCommand implements BotCommand {
     if (subcommand === "set") {
       const durationInput = context.interaction.options.getString("duration", true);
       const message = context.interaction.options.getString("message", true);
+      const delivery = (context.interaction.options.getString("delivery") ?? "dm") as ReminderDelivery;
       const durationMs = parseDurationMs(durationInput);
 
       if (durationMs === null || durationMs <= 0) {
@@ -64,10 +72,11 @@ export class RemindCommand implements BotCommand {
 
       const dueAt = Date.now() + durationMs;
       const reminder = await this.reminderStore.create({
-        guildId, userId, channelId: context.interaction.channelId, message, dueAt,
+        guildId, userId, channelId: context.interaction.channelId, message, delivery, dueAt,
       });
+      const deliveryNote = delivery === "channel" ? " in this channel" : " by DM";
       await context.responses.reply(
-        `Okay, I'll remind you ${discordTimestamp(reminder.dueAt)}: ${message}`,
+        `Okay, I'll remind you${deliveryNote} ${discordTimestamp(reminder.dueAt)}: ${message}`,
       );
       return;
     }

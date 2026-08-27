@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { and, asc, eq, isNull, lte } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
-import type { ReminderRecord, ReminderStore } from "../../application/reminders/reminder-store.js";
+import type { ReminderDelivery, ReminderRecord, ReminderStore } from "../../application/reminders/reminder-store.js";
 import * as schema from "../database/schema.js";
 
 function toRecord(row: typeof schema.reminders.$inferSelect): ReminderRecord {
@@ -13,6 +13,7 @@ function toRecord(row: typeof schema.reminders.$inferSelect): ReminderRecord {
     userId: row.userId,
     channelId: row.channelId,
     message: row.message,
+    delivery: row.delivery as ReminderDelivery,
     dueAt: row.dueAt.getTime(),
     createdAt: row.createdAt.getTime(),
   };
@@ -32,6 +33,7 @@ export class PostgresReminderStore implements ReminderStore {
       userId: record.userId,
       channelId: record.channelId,
       message: record.message,
+      delivery: record.delivery,
       dueAt: new Date(record.dueAt),
     }).returning();
     return toRecord(rows[0]!);
@@ -66,5 +68,13 @@ export class PostgresReminderStore implements ReminderStore {
     await this.database.update(schema.reminders)
       .set({ firedAt: new Date() })
       .where(eq(schema.reminders.id, id));
+  }
+
+  public async deleteForUser(guildId: string, userId: string): Promise<number> {
+    const result = await this.database.delete(schema.reminders).where(and(
+      eq(schema.reminders.guildId, guildId),
+      eq(schema.reminders.userId, userId),
+    )).returning({ id: schema.reminders.id });
+    return result.length;
   }
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { EmbeddingGuildMemorySelector } from "../../src/application/chat/guild-memory-selector.js";
 import type { GuildKnowledgeRecord } from "../../src/application/chat/chat-provider.js";
-import type { EmbeddingsClient } from "../../src/infrastructure/chat/openai-embeddings-client.js";
+import type { EmbeddingsClient } from "../../src/application/chat/embeddings-client.js";
 
 function record(overrides: Partial<GuildKnowledgeRecord>): GuildKnowledgeRecord {
   return {

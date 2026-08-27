@@ -49,11 +49,13 @@ export class ComponentDispatcher {
       await handler.execute({ interaction, logger: componentLogger });
     } catch (error) {
       componentLogger.error({ err: error }, "Component execution failed");
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({
-          content: "The control could not be completed. The error has been logged.",
-          flags: MessageFlags.Ephemeral,
-        });
+      const content = "The control could not be completed. The error has been logged.";
+      if (interaction.deferred && !interaction.replied) {
+        await interaction.editReply({ content });
+      } else if (interaction.replied) {
+        await interaction.followUp({ content, flags: MessageFlags.Ephemeral });
+      } else {
+        await interaction.reply({ content, flags: MessageFlags.Ephemeral });
       }
     }
   }

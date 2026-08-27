@@ -1,4 +1,4 @@
-import type { EmbeddingsClient } from "../../infrastructure/chat/openai-embeddings-client.js";
+import type { EmbeddingsClient } from "./embeddings-client.js";
 import { mapWithConcurrency } from "../concurrency/map-with-concurrency.js";
 
 // Embedding inputs are limited individually, and OpenAI also caps aggregate

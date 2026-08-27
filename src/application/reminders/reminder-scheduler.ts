@@ -65,27 +65,38 @@ export class ReminderScheduler {
       .setTitle("⏰ Reminder")
       .setDescription(reminder.message);
 
-    try {
-      const user = await this.client.users.fetch(reminder.userId);
-      await user.send({ embeds: [embed] });
-      return;
-    } catch {
-      // DMs closed (or the user is no longer reachable) — fall back to the
-      // channel the reminder was created in.
+    if (reminder.delivery === "dm") {
+      try {
+        const user = await this.client.users.fetch(reminder.userId);
+        await user.send({ embeds: [embed] });
+        return;
+      } catch {
+        // DMs closed (or the user is no longer reachable) — fall back to
+        // the channel the reminder was created in.
+      }
     }
 
+    const delivered = await this.deliverToChannel(reminder, embed);
+    if (!delivered) {
+      this.logger.warn(
+        { reminderId: reminder.id, guildId: reminder.guildId, channelId: reminder.channelId },
+        reminder.delivery === "dm"
+          ? "Reminder undeliverable — DMs closed and origin channel unusable"
+          : "Reminder undeliverable — origin channel unusable",
+      );
+    }
+  }
+
+  private async deliverToChannel(reminder: ReminderRecord, embed: EmbedBuilder): Promise<boolean> {
     const channel = await this.client.channels.fetch(reminder.channelId).catch(() => null);
     // Same guild-scoping care BirthdayAnnouncer.checkNow takes: channels.fetch
     // is global, so a stale channel id could otherwise resolve to a channel
     // in a completely different guild.
     if (!channel?.isTextBased() || channel.isDMBased() || channel.guildId !== reminder.guildId) {
-      this.logger.warn(
-        { reminderId: reminder.id, guildId: reminder.guildId, channelId: reminder.channelId },
-        "Reminder undeliverable — DMs closed and origin channel unusable",
-      );
-      return;
+      return false;
     }
 
     await (channel as TextChannel).send({ content: `<@${reminder.userId}>`, embeds: [embed] });
+    return true;
   }
 }

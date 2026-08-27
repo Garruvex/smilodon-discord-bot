@@ -70,6 +70,26 @@ export class PostgresChatStateStore implements ChatStateStore {
     return result.length;
   }
 
+  // Not strictly required on this backend — deleting the guild_members hub
+  // row (see GuildMemberRegistry) already cascades chat_sessions/
+  // dm_notes_preferences/chat_memories away via their memberId FK. Still
+  // implemented directly (not relying on that cascade) so this store
+  // satisfies ChatStateStore's contract on its own, the same as the local
+  // backend has to.
+  public async purgeUser(guildId: string, userId: string): Promise<void> {
+    await this.database.transaction(async (transaction) => {
+      await transaction.delete(schema.chatSessions).where(and(
+        eq(schema.chatSessions.guildId, guildId), eq(schema.chatSessions.userId, userId),
+      ));
+      await transaction.delete(schema.dmNotesPreferences).where(and(
+        eq(schema.dmNotesPreferences.guildId, guildId), eq(schema.dmNotesPreferences.userId, userId),
+      ));
+      await transaction.delete(schema.chatMemories).where(and(
+        eq(schema.chatMemories.guildId, guildId), eq(schema.chatMemories.assertedByUserId, userId),
+      ));
+    });
+  }
+
   public async getDmNotesEnabled(guildId: string, userId: string): Promise<boolean> {
     const preferences = await this.database.select({ dmNotesEnabled: schema.dmNotesPreferences.dmNotesEnabled })
       .from(schema.dmNotesPreferences)

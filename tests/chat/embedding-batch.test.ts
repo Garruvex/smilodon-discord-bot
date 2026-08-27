@@ -4,7 +4,7 @@ import {
   embeddingBatchSize,
   embedTextsBestEffort,
 } from "../../src/application/chat/embedding-batch.js";
-import type { EmbeddingsClient } from "../../src/infrastructure/chat/openai-embeddings-client.js";
+import type { EmbeddingsClient } from "../../src/application/chat/embeddings-client.js";
 
 describe("embedTextsBestEffort", () => {
   it("embeds inputs in bounded batches and preserves their order", async () => {

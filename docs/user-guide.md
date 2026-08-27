@@ -42,9 +42,14 @@ group. `/help` only lists commands you're currently allowed to use.
 | `/qa <question> <answer> [image] [spoiler]` | Posts a Q&A embed, optionally with an image and spoiler-hidden answer. |
 | `/owoify <text>` | Twanslates youw text into owo speak. |
 | `/wolfy <text>` | Turns a sentence into random dog noises. |
-| `/birthday set <month> <day>` | Saves your birthday for the server's birthday announcements. |
+| `/birthday set <month> <day> [user]` | Saves your birthday for the server's birthday announcements. Bot administrators can pass `user` to set someone else's. |
 | `/birthday view [user]` | Shows a member's saved birthday. |
-| `/birthday remove` | Removes your saved birthday. |
+| `/birthday remove [user]` | Removes your saved birthday. Bot administrators can pass `user` to remove someone else's. |
+| Right-click a message → Apps → **Quote**, or `/quote message:<link or ID>` | Generates an image quote card from that message — greyscale avatar, wrapped quote text, author name and handle. |
+| `/remind set <duration> <message> [delivery]` | Sets a personal reminder (e.g. `30m`, `2h`, `1d`, or `1d12h`). `delivery` picks **DM** (default — private, falls back to the channel it was set in if your DMs are closed) or **This channel** (always posts there, visible to everyone). |
+| `/remind list` | Shows your pending reminders and their IDs. |
+| `/remind cancel <id>` | Cancels one of your reminders. |
+| `/reactionroles create <channel> <title> <role1> [role2-5]` | Posts a dropdown role-picker menu (needs Manage Roles). Members pick roles from it to self-assign. |
 | `/clean [count]` | Deletes the bot's own recent messages in the channel (needs Manage Messages). |
 
 ### AI memory & personalization
@@ -230,15 +235,20 @@ section for the full processing model and trust rules.
 | Subcommand | What it does |
 | --- | --- |
 | `/settings community birthdays [enabled] [channel]` | Turns on birthday announcements and sets the announcement channel (required before enabling). |
+| `/settings community reminders [enabled]` | Turns `/remind` on or off for this server. |
+| `/settings community welcome [join-channel] [leave-channel]` | Sets the join/leave announcement channels. Each is independent — leaving one unset just means that event stays silent, no separate enable toggle. Join posts a generated welcome card; leave is a plain text line. |
 | `/settings community nsfw <enabled>` | Allows NSFW image commands server-wide (still needs an age-restricted channel per use). |
-| `/settings community link-fix [enabled] [channel] [remove-channel]` | Rewrites Twitter/X, Threads, Instagram, Bilibili, TikTok, and Reddit links for better embeds in watched channels. |
-| `/settings community member-data <retain>` | Whether a departing member's chat memories, birthday, and customization are kept (`true`) or deleted (`false`) if they leave. |
+| `/settings community link-fix [enabled] [channel] [remove-channel] [twitter] [threads] [tiktok] [instagram] [reddit] [bilibili]` | Rewrites Twitter/X, Threads, Instagram, Bilibili, TikTok, and Reddit links for better embeds in watched channels. Each service can be toggled on/off independently of the overall `enabled` switch. |
+| `/settings community member-data <retain>` | Whether a departing member's private memories, chat sessions/preferences, birthday, customization, and reminders are retained. Shared guild/channel memories remain community history. |
+| `/settings community timezone <zone>` | Sets the IANA time zone (e.g. `America/New_York`) birthday announcements are computed in. Defaults to UTC. |
 
 ## Troubleshooting
 
 | Symptom | Likely cause |
 | --- | --- |
-| A command doesn't appear in `/help` or Discord's command list | You lack the required role, or the server admin hasn't run `deploy:commands` after enabling that feature — ask an admin. |
+| A command doesn't appear in `/help` | You lack the required role, or the feature it belongs to is disabled — ask a bot administrator to check with `/settings`. |
+| A command shows up in Discord's own command list but says "you are not allowed to use this command here" when run | The feature it belongs to is disabled for this server — every command is always registered, so a disabled feature rejects it at runtime instead of hiding it from the picker. An admin can turn it on via `/settings`; no redeploy needed. |
+| A command doesn't appear in Discord's command list at all | This server has no bot profile yet — a member with Manage Server needs to run `/setup initialize`. |
 | Mentioning the bot gets a "no access" message | You're missing the Chatbot role, or you have the Restricted role. |
 | `/play` or panel typing does nothing | You need the Music Controller role and must be in the bot's voice channel for pause/skip/stop. |
 | NSFW commands say they're unavailable | The channel isn't age-restricted, or `/settings community nsfw` is off. |

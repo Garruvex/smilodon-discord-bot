@@ -12,7 +12,7 @@ import {
   reciprocalRankFusion,
   selectByRelevance,
 } from "./memory-relevance.js";
-import type { EmbeddingsClient } from "../../infrastructure/chat/openai-embeddings-client.js";
+import type { EmbeddingsClient } from "./embeddings-client.js";
 
 export interface GuildMemorySelectionInput {
   records: readonly GuildKnowledgeRecord[];

@@ -22,7 +22,7 @@ function createChatAccessDeniedLinkButton(url: string, label: string | null): Ac
   );
 }
 
-export class MentionChatBehavior implements BotBehavior<Message> {
+export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCreated> {
   public readonly id = "mention-chat";
   public readonly event = BehaviorEvent.MessageCreated;
   public readonly priority = 100;

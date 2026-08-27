@@ -1,6 +1,14 @@
 export type GuildFeatureName = "common" | "diagnostics" | "music" | "chatbot" | "birthdays" | "reminders" | "nsfw" | "linkFix";
 export type RoleGroupName = "botAdministrator" | "musicController" | "chatbot";
 
+// The individual services link-fix can rewrite/embed. features.linkFix is
+// the master switch (and gates whether the behavior runs at all); these are
+// per-service toggles underneath it — see LinkFixBehavior and
+// domain/links/link-rewrite.ts.
+export type LinkFixPlatform = "twitter" | "threads" | "tiktok" | "instagram" | "reddit" | "bilibili";
+
+export type GuildLinkFixPlatformConfiguration = Readonly<Record<LinkFixPlatform, boolean>>;
+
 export interface GuildFeatureConfiguration {
   common: boolean;
   diagnostics: boolean;
@@ -10,8 +18,8 @@ export interface GuildFeatureConfiguration {
   reminders: boolean;
   nsfw: boolean;
   linkFix: boolean;
-  // Whether a departing member's chat memories/birthday/customization are
-  // kept (true, default) or deleted (false) when they leave the guild.
+  // Whether a departing member's private, user-owned data is kept (true,
+  // default) or deleted (false). Shared guild/channel memories remain.
   retainMemberDataOnLeave: boolean;
   // Whether the bot may judge (via LLM call) and react/reply to messages
   // that merely name it without an explicit @mention. Off by default.
@@ -154,6 +162,11 @@ export interface GuildConfiguration {
   features: GuildFeatureConfiguration;
   roles: GuildRoleConfiguration;
   channels: GuildChannelConfiguration;
+  // IANA time zone name (e.g. "America/New_York") this guild's "today" is
+  // computed in — used by BirthdayAnnouncer so a UTC day boundary doesn't
+  // shift a guild's birthdays to the wrong calendar day for its members.
+  timezone: string;
+  linkFixPlatforms: GuildLinkFixPlatformConfiguration;
   music: GuildMusicConfiguration;
   chat: GuildChatConfiguration;
   sourceFile: string;

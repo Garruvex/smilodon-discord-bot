@@ -181,7 +181,7 @@ export class SettingsCommand implements BotCommand {
       ...(setting.extraLines?.(previousProfile, updatedProfile) ?? []),
       ...handlerExtraLines,
     ];
-    if (diffLines.length === 0) return "Server settings updated.";
+    if (diffLines.length === 0) return "No changes — those settings already match the requested values.";
     const lines = ["Server settings updated.", ...diffLines];
     if (
       diffLines.some((line) => line.startsWith("Chatbot")) &&

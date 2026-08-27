@@ -121,6 +121,9 @@ export const reminders = pgTable("reminders", {
   userId: text("user_id").notNull(),
   channelId: text("channel_id").notNull(),
   message: text("message").notNull(),
+  // "dm" (try a DM first, fall back to the channel if closed) or "channel"
+  // (always deliver in the origin channel) — see ReminderDelivery.
+  delivery: text("delivery").notNull().default("dm"),
   dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   // Null = still pending. Set once delivered (or permanently undeliverable)

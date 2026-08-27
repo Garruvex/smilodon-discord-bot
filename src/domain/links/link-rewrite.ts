@@ -1,3 +1,5 @@
+import type { LinkFixPlatform } from "../../config/guild-configuration.js";
+
 export interface LinkRewriteMatch {
   readonly platform: string;
   readonly originalUrl: string;
@@ -5,6 +7,7 @@ export interface LinkRewriteMatch {
 }
 
 interface LinkRewriteRule {
+  readonly key: LinkFixPlatform;
   readonly platform: string;
   readonly hostnames: ReadonlySet<string>;
   readonly rewriteHostname: string;
@@ -17,26 +20,31 @@ interface LinkRewriteRule {
 // own API instead of depending on a third-party domain.
 const rewriteRules: readonly LinkRewriteRule[] = [
   {
+    key: "twitter",
     platform: "Twitter/X",
     hostnames: new Set(["twitter.com", "x.com"]),
     rewriteHostname: "fxtwitter.com",
   },
   {
+    key: "threads",
     platform: "Threads",
     hostnames: new Set(["threads.net", "threads.com"]),
-    rewriteHostname: "fixthreads.net",
+    rewriteHostname: "vxthreads.com",
   },
   {
+    key: "tiktok",
     platform: "TikTok",
     hostnames: new Set(["tiktok.com", "vm.tiktok.com", "vt.tiktok.com"]),
-    rewriteHostname: "vxtiktok.com",
+    rewriteHostname: "tnktok.com",
   },
   {
+    key: "instagram",
     platform: "Instagram",
     hostnames: new Set(["instagram.com"]),
-    rewriteHostname: "ddinstagram.com",
+    rewriteHostname: "uuinstagram.com",
   },
   {
+    key: "reddit",
     platform: "Reddit",
     hostnames: new Set(["reddit.com"]),
     rewriteHostname: "rxddit.com",
@@ -55,7 +63,10 @@ function findRule(hostname: string): LinkRewriteRule | undefined {
   return rewriteRules.find((rule) => rule.hostnames.has(normalized));
 }
 
-export function extractLinkRewrites(content: string): LinkRewriteMatch[] {
+export function extractLinkRewrites(
+  content: string,
+  enabledPlatforms: ReadonlySet<LinkFixPlatform>,
+): LinkRewriteMatch[] {
   const matches: LinkRewriteMatch[] = [];
   const seen = new Set<string>();
 
@@ -71,7 +82,7 @@ export function extractLinkRewrites(content: string): LinkRewriteMatch[] {
     }
 
     const rule = findRule(url.hostname);
-    if (!rule) continue;
+    if (!rule || !enabledPlatforms.has(rule.key)) continue;
     seen.add(trimmedUrl);
 
     url.hostname = rule.rewriteHostname;

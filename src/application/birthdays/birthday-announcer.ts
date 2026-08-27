@@ -6,6 +6,21 @@ import type { BirthdayStore } from "./birthday-store.js";
 
 const checkIntervalMs = 60 * 60 * 1_000;
 
+// Computes "today" in the guild's configured time zone rather than UTC, so a
+// guild several hours behind/ahead of UTC doesn't have its birthday roll
+// over at the wrong local moment (and, combined with the hourly check
+// interval, doesn't risk processing yesterday's date after a restart).
+function resolveGuildDate(now: Date, timeZone: string): { month: number; day: number; date: string } {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const lookup = Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
+  return { month: Number(lookup.month), day: Number(lookup.day), date: `${lookup.year}-${lookup.month}-${lookup.day}` };
+}
+
 export class BirthdayAnnouncer {
   private checkTimer: NodeJS.Timeout | null = null;
 
@@ -30,14 +45,11 @@ export class BirthdayAnnouncer {
   }
 
   public async checkNow(now: Date): Promise<void> {
-    const month = now.getUTCMonth() + 1;
-    const day = now.getUTCDate();
-    const date = `${now.getUTCFullYear()}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-
     for (const profile of this.profiles.getAll()) {
       if (!profile.features.birthdays || !profile.channels.birthdayAnnouncements) continue;
 
       try {
+        const { month, day, date } = resolveGuildDate(now, profile.timezone);
         if (await this.birthdayStore.hasAnnounced(profile.guildId, date)) continue;
 
         const userIds = await this.birthdayStore.listForGuildOnDate(profile.guildId, month, day);

@@ -31,10 +31,11 @@ features:
   # embed built from Bilibili's API. Requires channels.linkFix to be set. Configure with
   # /settings community link-fix.
   linkFix: false
-  # Whether a departing member's chat memories, birthday, and customization are
-  # kept (true, default) or deleted (false) when they leave the guild. Requires
-  # the bot's "Server Members Intent" to be enabled in the Discord Developer
-  # Portal to detect departures at all. Configure with /settings community member-data.
+  # Whether a departing member's private memories, chat sessions/preferences,
+  # birthday, customization, and reminders are kept (true, default) or deleted
+  # (false). Shared guild/channel memories remain community history. Requires
+  # the bot's "Server Members Intent" in the Discord Developer Portal.
+  # Configure with /settings community member-data.
   retainMemberDataOnLeave: true
   # Whether the bot may judge (via an LLM call) and react or reply to messages that name
   # it (matches branding.displayName) without an explicit @mention. Off by default since
@@ -69,6 +70,22 @@ channels:
   birthdayAnnouncements: null
   # Channels watched for rewritable links. Required (non-empty) if features.linkFix is true.
   linkFix: []
+
+# IANA time zone name (e.g. "America/New_York", "Asia/Taipei") this guild's
+# "today" is computed in — currently only affects birthday announcements.
+# Defaults to UTC. Configure with /settings community timezone.
+timezone: "UTC"
+
+# Per-service toggles underneath features.linkFix — turn off individual link-fix
+# services without disabling the whole feature. Configure with /settings community
+# link-fix (twitter/threads/tiktok/instagram/reddit/bilibili options).
+linkFixPlatforms:
+  twitter: true
+  threads: true
+  tiktok: true
+  instagram: true
+  reddit: true
+  bilibili: true
 
 chat:
   # Null loads config/local/personalities/<guild-id>.md when present.

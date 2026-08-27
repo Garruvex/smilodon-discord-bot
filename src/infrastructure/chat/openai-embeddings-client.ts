@@ -1,13 +1,10 @@
 import { z } from "zod";
 
+import type { EmbeddingsClient } from "../../application/chat/embeddings-client.js";
+
 const embeddingsResponseSchema = z.object({
   data: z.array(z.object({ index: z.number().int().nonnegative(), embedding: z.array(z.number()) })).min(1),
 });
-
-export interface EmbeddingsClient {
-  embed(text: string): Promise<number[]>;
-  embedMany?(texts: readonly string[]): Promise<number[][]>;
-}
 
 export class OpenAiEmbeddingsClient implements EmbeddingsClient {
   public constructor(

@@ -83,8 +83,7 @@ const birthdayAnnouncer = new BirthdayAnnouncer(
 );
 const memberDepartureService = new MemberDepartureService(
   guildConfigurationProvider,
-  persistence.guildMemberRegistry,
-  dependencies.memoryEngine,
+  persistence.memberDataPurger,
 );
 const memberWelcomeService = new MemberWelcomeService(
   guildConfigurationProvider,

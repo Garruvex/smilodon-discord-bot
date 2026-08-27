@@ -12,6 +12,7 @@ const reminderSchema = z.object({
   userId: z.string(),
   channelId: z.string(),
   message: z.string(),
+  delivery: z.enum(["dm", "channel"]).default("dm"),
   dueAt: z.number(),
   createdAt: z.number(),
   firedAt: z.number().nullable(),
@@ -31,6 +32,7 @@ function toRecord(stored: StoredReminder): ReminderRecord {
     userId: stored.userId,
     channelId: stored.channelId,
     message: stored.message,
+    delivery: stored.delivery,
     dueAt: stored.dueAt,
     createdAt: stored.createdAt,
   };
@@ -60,6 +62,7 @@ export class LocalReminderStore implements ReminderStore {
       userId: record.userId,
       channelId: record.channelId,
       message: record.message,
+      delivery: record.delivery,
       dueAt: record.dueAt,
       createdAt: Date.now(),
       firedAt: null,
@@ -105,6 +108,17 @@ export class LocalReminderStore implements ReminderStore {
       this.write(document);
     }
     return Promise.resolve();
+  }
+
+  // Unlike listForUser (which excludes fired reminders), this removes every
+  // reminder for the user regardless of firedAt — used by member-data purge,
+  // where a fired-but-not-yet-pruned reminder must not survive.
+  public deleteForUser(guildId: string, userId: string): Promise<number> {
+    const document = this.read();
+    const before = document.reminders.length;
+    document.reminders = document.reminders.filter((r) => !(r.guildId === guildId && r.userId === userId));
+    this.write(document);
+    return Promise.resolve(before - document.reminders.length);
   }
 
   private read(): Document {

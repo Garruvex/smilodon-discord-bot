@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { PersonaBundleCompiler } from "../../src/application/chat/persona-bundle-compiler.js";
 import type { ChatProvider } from "../../src/application/chat/chat-provider.js";
 import type { PersonaBundle } from "../../src/application/chat/persona-bundle.js";
-import type { EmbeddingsClient } from "../../src/infrastructure/chat/openai-embeddings-client.js";
+import type { EmbeddingsClient } from "../../src/application/chat/embeddings-client.js";
 
 const content = "## Voice\nAlways playful.\n\n## Backstory\nBorn in a forest.\n\n## Rivalry\nDislikes the mod team.";
 
