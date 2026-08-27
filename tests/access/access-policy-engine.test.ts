@@ -62,6 +62,7 @@ function guildConfiguration(overrides: Partial<GuildConfiguration> = {}): GuildC
       leaveAnnouncements: null,
       linkFix: new Set(),
     },
+    timezone: "UTC",
     linkFixPlatforms: {
       twitter: true, threads: true, tiktok: true, instagram: true, reddit: true, bilibili: true,
     },

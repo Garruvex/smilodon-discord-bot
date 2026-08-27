@@ -56,6 +56,7 @@ export interface UpdateGuildConfigurationInput {
   leaveAnnouncementsChannelId?: string | null;
   nsfwEnabled?: boolean;
   retainMemberDataOnLeave?: boolean;
+  timezone?: string;
   linkFixEnabled?: boolean;
   linkFixChannelIds?: readonly string[];
   // Per-service toggle underneath features.linkFix — a platform false here
@@ -148,6 +149,7 @@ export function toGuildConfiguration(parsed: ParsedGuildConfigurationFile, sourc
       joinAnnouncements: parsed.channels.joinAnnouncements,
       leaveAnnouncements: parsed.channels.leaveAnnouncements,
     },
+    timezone: parsed.timezone,
     linkFixPlatforms: parsed.linkFixPlatforms,
     music: {
       defaultVolume: parsed.music.volume.default,
@@ -192,6 +194,7 @@ export function toGuildConfigurationDocument(configuration: GuildConfiguration):
       joinAnnouncements: configuration.channels.joinAnnouncements,
       leaveAnnouncements: configuration.channels.leaveAnnouncements,
     },
+    timezone: configuration.timezone,
     linkFixPlatforms: configuration.linkFixPlatforms,
     music: {
       volume: {
@@ -273,6 +276,7 @@ export function applyGuildConfigurationUpdate(
   if (input.leaveAnnouncementsChannelId !== undefined) next.channels.leaveAnnouncements = input.leaveAnnouncementsChannelId;
   if (input.nsfwEnabled !== undefined) next.features.nsfw = input.nsfwEnabled;
   if (input.retainMemberDataOnLeave !== undefined) next.features.retainMemberDataOnLeave = input.retainMemberDataOnLeave;
+  if (input.timezone !== undefined) next.timezone = input.timezone;
   if (input.linkFixEnabled !== undefined) next.features.linkFix = input.linkFixEnabled;
   if (input.linkFixChannelIds !== undefined) next.channels.linkFix = [...input.linkFixChannelIds];
   if (input.linkFixPlatformOverrides !== undefined) {

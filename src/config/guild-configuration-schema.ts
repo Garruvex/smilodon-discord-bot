@@ -5,6 +5,20 @@ import { CHAT_LIMITS, MUSIC_LIMITS, PANEL_LIMITS } from "./guild-configuration-l
 const snowflake = z.string().regex(/^\d{17,20}$/);
 const snowflakeList = z.array(snowflake).default([]);
 
+export function isValidTimeZone(value: string): boolean {
+  try {
+    // Constructed purely to throw RangeError on an invalid IANA name.
+    new Intl.DateTimeFormat("en-US", { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const timezoneSchema = z.string().trim().min(1).refine(isValidTimeZone, {
+  message: "Must be a valid IANA time zone name (e.g. \"America/New_York\").",
+}).default("UTC");
+
 const guildChatSchema = z.preprocess((value) => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
   const chat = value as Record<string, unknown>;
@@ -162,6 +176,7 @@ export const guildConfigurationFileSchema = z
         joinAnnouncements: null,
         leaveAnnouncements: null,
       }),
+    timezone: timezoneSchema,
     linkFixPlatforms: z
       .object({
         twitter: z.boolean().default(true),

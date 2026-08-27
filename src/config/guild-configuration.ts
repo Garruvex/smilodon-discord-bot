@@ -162,6 +162,10 @@ export interface GuildConfiguration {
   features: GuildFeatureConfiguration;
   roles: GuildRoleConfiguration;
   channels: GuildChannelConfiguration;
+  // IANA time zone name (e.g. "America/New_York") this guild's "today" is
+  // computed in — used by BirthdayAnnouncer so a UTC day boundary doesn't
+  // shift a guild's birthdays to the wrong calendar day for its members.
+  timezone: string;
   linkFixPlatforms: GuildLinkFixPlatformConfiguration;
   music: GuildMusicConfiguration;
   chat: GuildChatConfiguration;
