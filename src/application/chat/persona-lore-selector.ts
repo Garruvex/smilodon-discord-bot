@@ -3,7 +3,7 @@ import type { Logger } from "pino";
 import { personaLoreLimits } from "./persona-lore-policy.js";
 import type { PersonaLoreChunk } from "./persona-source.js";
 import type { ChatHistoryMessage } from "./chat-provider.js";
-import type { EmbeddingsClient } from "../../infrastructure/chat/openai-embeddings-client.js";
+import type { EmbeddingsClient } from "./embeddings-client.js";
 import {
   bm25Score,
   buildBm25Corpus,

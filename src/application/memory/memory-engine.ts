@@ -1,7 +1,7 @@
 import type { Logger } from "pino";
 
 import type { MemoryConflictClassifier } from "../chat/chat-provider.js";
-import type { EmbeddingsClient } from "../../infrastructure/chat/openai-embeddings-client.js";
+import type { EmbeddingsClient } from "../chat/embeddings-client.js";
 import { allowsDurableWrites, resolveMemoryScope } from "./memory-channel-policy.js";
 import type {
   CausalChainLink,

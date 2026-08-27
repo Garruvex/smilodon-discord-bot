@@ -35,6 +35,9 @@ import { GuildMemberRegistry } from "./guild-member-registry.js";
 import type { MemoryRepository } from "../../application/memory/memory.js";
 import { SqliteMemoryRepository } from "./sqlite-memory-repository.js";
 import { PostgresMemoryRepository } from "./postgres-memory-repository.js";
+import type { MemberDataPurger } from "../../application/members/member-data-purger.js";
+import { LocalMemberDataPurger } from "./local-member-data-purger.js";
+import { PostgresMemberDataPurger } from "./postgres-member-data-purger.js";
 import type { ChannelSummaryCheckpointStore } from "../../application/context/channel-summary-checkpoint-store.js";
 import { SqliteChannelSummaryCheckpointStore } from "./sqlite-channel-summary-checkpoint-store.js";
 import { PostgresChannelSummaryCheckpointStore } from "./postgres-channel-summary-checkpoint-store.js";
@@ -50,9 +53,7 @@ export interface PersistenceServices {
   birthdayStore: BirthdayStore;
   reminderStore: ReminderStore;
   roleMenuStore: RoleMenuStore;
-  // Null on the local (file-based) backend, which has no hub-table concept —
-  // it's purely a dev/testing convenience and doesn't need it.
-  guildMemberRegistry: GuildMemberRegistry | null;
+  memberDataPurger: MemberDataPurger;
   close(): Promise<void>;
 }
 
@@ -72,6 +73,7 @@ export async function createPersistenceServices(
   let reminderStore: ReminderStore;
   let roleMenuStore: RoleMenuStore;
   let guildMemberRegistry: GuildMemberRegistry | null = null;
+  let memberDataPurger: MemberDataPurger;
 
   if (configuration.persistence.driver === "postgres") {
     const databaseUrl = configuration.persistence.databaseUrl;
@@ -92,6 +94,7 @@ export async function createPersistenceServices(
     birthdayStore = new PostgresBirthdayStore(connection.database, guildMemberRegistry);
     reminderStore = new PostgresReminderStore(connection.database);
     roleMenuStore = new PostgresRoleMenuStore(connection.database);
+    memberDataPurger = new PostgresMemberDataPurger(connection.database);
   } else {
     guildConfigurationProvider = new LocalGuildConfigurationProvider(
       configuration.guildConfigurationDirectory,
@@ -111,6 +114,12 @@ export async function createPersistenceServices(
     birthdayStore = new LocalBirthdayStore(configuration.runtimeDataDirectory);
     reminderStore = new LocalReminderStore(configuration.runtimeDataDirectory);
     roleMenuStore = new LocalRoleMenuStore(configuration.runtimeDataDirectory);
+    memberDataPurger = new LocalMemberDataPurger(
+      memoryRepository,
+      userCustomizationStore,
+      birthdayStore,
+      reminderStore,
+    );
   }
 
   await guildConfigurationProvider.initialize();
@@ -134,7 +143,7 @@ export async function createPersistenceServices(
     birthdayStore,
     reminderStore,
     roleMenuStore,
-    guildMemberRegistry,
+    memberDataPurger,
     close: async (): Promise<void> => {
       await connection?.close();
       sqliteConnection?.close();

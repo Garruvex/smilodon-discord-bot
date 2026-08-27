@@ -18,7 +18,7 @@ import { ChatTurnSupport } from "./chat-turn-support.js";
 // whether to reply, react with an emoji, both, or neither — see triggerMode
 // "ambient" on ChatRequest and ChatConversationService's short-circuit for
 // non-"reply" outcomes. Opt-in per guild via features.ambientReplies.
-export class AmbientChatBehavior implements BotBehavior<Message> {
+export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCreated> {
   public readonly id = "ambient-chat";
   public readonly event = BehaviorEvent.MessageCreated;
   // Lower than MentionChatBehavior's 100, so an explicit @mention always

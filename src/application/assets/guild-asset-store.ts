@@ -8,7 +8,7 @@ import { buildExampleExchangeBundle, serializeExampleExchangeBundle } from "../c
 import { parseExampleExchanges } from "../chat/example-exchange.js";
 import type { PersonaBundleCompiler } from "../chat/persona-bundle-compiler.js";
 import { parsePersonaBundle, serializePersonaBundle } from "../chat/persona-bundle.js";
-import type { EmbeddingsClient } from "../../infrastructure/chat/openai-embeddings-client.js";
+import type { EmbeddingsClient } from "../chat/embeddings-client.js";
 
 export class GuildAssetError extends Error {
   public constructor(message: string) {

@@ -36,7 +36,7 @@ function buildRewriteContent(rewrites: readonly LinkRewriteMatch[]): string | nu
   return content.length > 0 ? content : null;
 }
 
-export class LinkFixBehavior implements BotBehavior<Message> {
+export class LinkFixBehavior implements BotBehavior<BehaviorEvent.MessageCreated> {
   public readonly id = "link-fix";
   public readonly event = BehaviorEvent.MessageCreated;
   public readonly priority = 50;

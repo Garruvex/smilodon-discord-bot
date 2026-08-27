@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { RelevantExampleExchangeSelector } from "../../src/application/chat/example-exchange-selector.js";
 import type { ExampleExchange } from "../../src/application/chat/example-exchange.js";
-import type { EmbeddingsClient } from "../../src/infrastructure/chat/openai-embeddings-client.js";
+import type { EmbeddingsClient } from "../../src/application/chat/embeddings-client.js";
 
 function exchange(overrides: Partial<ExampleExchange> = {}): ExampleExchange {
   return { tags: "", user: "placeholder", character: "placeholder", ...overrides };

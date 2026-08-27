@@ -9,7 +9,7 @@ import {
   selectByRelevance,
   type ScorableRecord,
 } from "./memory-relevance.js";
-import type { EmbeddingsClient } from "../../infrastructure/chat/openai-embeddings-client.js";
+import type { EmbeddingsClient } from "./embeddings-client.js";
 
 export interface UserMemorySelectionInput {
   records: readonly ChatMemoryRecord[];

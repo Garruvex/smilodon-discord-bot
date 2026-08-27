@@ -13,7 +13,7 @@ import { createSqliteDatabaseConnection } from "../../src/infrastructure/databas
 import { SqliteMemoryRepository } from "../../src/infrastructure/persistence/sqlite-memory-repository.js";
 import { DefaultMemoryEngine } from "../../src/application/memory/memory-engine.js";
 import type { MemoryEngine, MemoryRepository } from "../../src/application/memory/memory.js";
-import type { EmbeddingsClient } from "../../src/infrastructure/chat/openai-embeddings-client.js";
+import type { EmbeddingsClient } from "../../src/application/chat/embeddings-client.js";
 import { PersonaDriftStore } from "../../src/application/chat/persona-drift-store.js";
 
 function response(

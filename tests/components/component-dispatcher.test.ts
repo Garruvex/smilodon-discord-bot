@@ -114,4 +114,74 @@ describe("ComponentDispatcher", () => {
       expect.objectContaining({ content: "The control could not be completed. The error has been logged." }),
     );
   });
+
+  it("edits the deferred reply (not reply()) when a handler throws after deferring", async () => {
+    const execute = vi.fn().mockRejectedValue(new Error("boom"));
+    const handler: ComponentHandler = {
+      customIdPrefix: "test",
+      module: CommandModule.Common,
+      access: publicAccessPolicy,
+      execute,
+    };
+    const registry = new ComponentRegistry();
+    registry.register(handler);
+    const access = {
+      evaluate: vi.fn().mockReturnValue({ allowed: true }),
+    } as unknown as AccessPolicyService;
+    const error = vi.fn();
+    const child = vi.fn().mockReturnValue({ error });
+    const logger = { child, warn: vi.fn() } as unknown as Logger;
+    const dispatcher = new ComponentDispatcher(registry, access, logger);
+    const reply = vi.fn().mockResolvedValue(undefined);
+    const editReply = vi.fn().mockResolvedValue(undefined);
+    const componentInteraction = {
+      ...interaction(),
+      replied: false,
+      deferred: true,
+      reply,
+      editReply,
+    } as unknown as MessageComponentInteraction;
+
+    await dispatcher.dispatch(componentInteraction);
+
+    expect(reply).not.toHaveBeenCalled();
+    expect(editReply).toHaveBeenCalledWith(
+      expect.objectContaining({ content: "The control could not be completed. The error has been logged." }),
+    );
+  });
+
+  it("follows up (not reply()) when a handler throws after already replying", async () => {
+    const execute = vi.fn().mockRejectedValue(new Error("boom"));
+    const handler: ComponentHandler = {
+      customIdPrefix: "test",
+      module: CommandModule.Common,
+      access: publicAccessPolicy,
+      execute,
+    };
+    const registry = new ComponentRegistry();
+    registry.register(handler);
+    const access = {
+      evaluate: vi.fn().mockReturnValue({ allowed: true }),
+    } as unknown as AccessPolicyService;
+    const error = vi.fn();
+    const child = vi.fn().mockReturnValue({ error });
+    const logger = { child, warn: vi.fn() } as unknown as Logger;
+    const dispatcher = new ComponentDispatcher(registry, access, logger);
+    const reply = vi.fn().mockResolvedValue(undefined);
+    const followUp = vi.fn().mockResolvedValue(undefined);
+    const componentInteraction = {
+      ...interaction(),
+      replied: true,
+      deferred: false,
+      reply,
+      followUp,
+    } as unknown as MessageComponentInteraction;
+
+    await dispatcher.dispatch(componentInteraction);
+
+    expect(reply).not.toHaveBeenCalled();
+    expect(followUp).toHaveBeenCalledWith(
+      expect.objectContaining({ content: "The control could not be completed. The error has been logged." }),
+    );
+  });
 });

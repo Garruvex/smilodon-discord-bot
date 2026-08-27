@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { hashContent } from "../assets/content-hash.js";
 import type { ExampleExchange } from "./example-exchange.js";
-import type { EmbeddingsClient } from "../../infrastructure/chat/openai-embeddings-client.js";
+import type { EmbeddingsClient } from "./embeddings-client.js";
 import { embedTextsBestEffort } from "./embedding-batch.js";
 
 // Sidecar JSON written next to an uploaded examples.md

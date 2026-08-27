@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 
-import type { EmbeddingsClient } from "./openai-embeddings-client.js";
+import type { EmbeddingsClient } from "../../application/chat/embeddings-client.js";
 
 export class GeminiEmbeddingsClient implements EmbeddingsClient {
   private readonly client: GoogleGenAI;

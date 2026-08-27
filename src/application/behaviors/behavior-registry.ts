@@ -4,7 +4,7 @@ export class BehaviorRegistry {
   private readonly behaviors = new Map<BehaviorEvent, BotBehavior[]>();
   private readonly behaviorIds = new Set<string>();
 
-  public register(behavior: BotBehavior): void {
+  public register<TEvent extends BehaviorEvent>(behavior: BotBehavior<TEvent>): void {
     if (this.behaviorIds.has(behavior.id)) {
       throw new Error(`Behavior "${behavior.id}" is already registered.`);
     }
@@ -21,7 +21,11 @@ export class BehaviorRegistry {
     this.behaviors.set(behavior.event, eventBehaviors);
   }
 
-  public findByEvent(event: BehaviorEvent): readonly BotBehavior[] {
-    return [...(this.behaviors.get(event) ?? [])];
+  public findByEvent<TEvent extends BehaviorEvent>(event: TEvent): readonly BotBehavior<TEvent>[] {
+    // Safe by construction: register() above only ever stores a behavior
+    // under its own `event` key, so everything under this key was
+    // registered as BotBehavior<TEvent>. A single Map can't express that
+    // per-key invariant in its value type, hence the cast.
+    return [...(this.behaviors.get(event) ?? [])] as unknown as readonly BotBehavior<TEvent>[];
   }
 }

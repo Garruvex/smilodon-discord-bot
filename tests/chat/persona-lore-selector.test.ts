@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { RelevantPersonaLoreSelector } from "../../src/application/chat/persona-lore-selector.js";
 import type { PersonaLoreChunk } from "../../src/application/chat/persona-source.js";
-import type { EmbeddingsClient } from "../../src/infrastructure/chat/openai-embeddings-client.js";
+import type { EmbeddingsClient } from "../../src/application/chat/embeddings-client.js";
 
 function chunk(overrides: Partial<PersonaLoreChunk> = {}): PersonaLoreChunk {
   return { heading: "Untitled", text: "placeholder", embedding: null, ...overrides };

@@ -1,4 +1,4 @@
-import { Client, Events, GatewayIntentBits } from "discord.js";
+import { Client, Events, GatewayIntentBits, MessageFlags } from "discord.js";
 import type { Logger } from "pino";
 
 import type { ApplicationDependencies } from "./dependencies.js";
@@ -11,6 +11,12 @@ import type { MemberDepartureService } from "../application/members/member-depar
 import type { MemberWelcomeService } from "../application/members/member-welcome-service.js";
 
 export class Application {
+  // Flips true once Lavalink and the control-panel (emoji catalog +
+  // control-channel) have finished initializing after ClientReady. Until
+  // then, interactions are rejected with a "still starting up" reply instead
+  // of reaching a music/control-panel handler that isn't ready yet.
+  private ready = false;
+
   public constructor(
     private readonly client: Client,
     private readonly configuration: ApplicationConfiguration,
@@ -104,7 +110,7 @@ export class Application {
         );
       }
 
-      void this.dependencies.musicPlayerGateway
+      const musicInitPromise = this.dependencies.musicPlayerGateway
         .initialize({
           id: readyClient.user.id,
           username: readyClient.user.username,
@@ -118,7 +124,7 @@ export class Application {
           void this.stop("lavalink-init-failed");
         });
 
-      void (async (): Promise<void> => {
+      const controlPanelInitPromise = (async (): Promise<void> => {
         try {
           await this.dependencies.applicationEmojiCatalog.initialize();
         } catch (error) {
@@ -128,6 +134,12 @@ export class Application {
       })().catch((error: unknown) => {
         this.logger.error({ error }, "Control-channel initialization failed");
       });
+
+      void Promise.all([musicInitPromise, controlPanelInitPromise]).then(() => {
+        this.ready = true;
+        this.logger.info("Critical startup initialization complete; accepting interactions");
+      });
+
       this.musicPresenceService.start();
       this.birthdayAnnouncer.start();
       this.dependencies.channelSummaryScheduler?.start();
@@ -139,6 +151,26 @@ export class Application {
     });
 
     this.client.on(Events.InteractionCreate, (interaction) => {
+      if (
+        !this.ready &&
+        (interaction.isButton() ||
+          interaction.isStringSelectMenu() ||
+          interaction.isChatInputCommand() ||
+          interaction.isMessageContextMenuCommand())
+      ) {
+        if (interaction.isRepliable()) {
+          void interaction
+            .reply({
+              content: "I'm still starting up — please try again in a moment.",
+              flags: MessageFlags.Ephemeral,
+            })
+            .catch((error: unknown) => {
+              this.logger.error({ error }, "Failed to reply during startup gate");
+            });
+        }
+        return;
+      }
+
       if (interaction.isButton()) {
         void (async (): Promise<void> => {
           if (await this.controlChannelService.handleButton(interaction)) return;
