@@ -4,6 +4,7 @@ import type { EmbeddingsClient } from "../../application/chat/embeddings-client.
 
 export class GeminiEmbeddingsClient implements EmbeddingsClient {
   private readonly client: GoogleGenAI;
+  public readonly modelId: string;
 
   // outputDimensionality is required, not optional, deliberately — without
   // it, Gemini's MRL models return their own native size (gemini-embedding-
@@ -27,6 +28,7 @@ export class GeminiEmbeddingsClient implements EmbeddingsClient {
     client?: GoogleGenAI,
   ) {
     this.client = client ?? new GoogleGenAI({ apiKey });
+    this.modelId = `gemini:${model}:${outputDimensionality}`;
   }
 
   public async embed(text: string): Promise<number[]> {

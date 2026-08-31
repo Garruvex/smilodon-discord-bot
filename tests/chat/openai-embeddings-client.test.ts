@@ -62,4 +62,11 @@ describe("OpenAiEmbeddingsClient", () => {
 
     await expect(client.embedMany(["first", "second"])).rejects.toThrow("incomplete batch");
   });
+
+  it("distinguishes two OpenAI-compatible deployments serving the same model name via baseUrl", () => {
+    const official = new OpenAiEmbeddingsClient("https://api.openai.com/v1", "secret", "text-embedding-3-small");
+    const selfHosted = new OpenAiEmbeddingsClient("https://embeddings.internal/v1", "secret", "text-embedding-3-small");
+
+    expect(official.modelId).not.toBe(selfHosted.modelId);
+  });
 });
