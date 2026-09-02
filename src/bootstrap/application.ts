@@ -237,18 +237,16 @@ export class Application {
 
     this.client.on(Events.VoiceStateUpdate, (oldState, newState) => {
       const guildId = newState.guild.id;
-      if (
-        newState.id === this.client.user?.id &&
-        oldState.channelId !== null &&
-        newState.channelId !== oldState.channelId &&
-        this.dependencies.musicPlayerGateway.hasPlayer(guildId)
-      ) {
+      if (newState.id === this.client.user?.id) {
+        // Invariant-based, not transition-based: check the bot's *current*
+        // voice state against the Lavalink player regardless of what
+        // oldState.channelId was (it can legitimately be null on a cache
+        // miss, which previously let a real disconnect slip past uncleaned).
         void this.dependencies.musicPlayerGateway
-          .handleBotVoiceDisconnect(guildId)
+          .reconcileVoiceState(guildId)
           .catch((error: unknown) => {
-            this.logger.error({ error, guildId }, "Unable to clean up disconnected voice player");
+            this.logger.error({ error, guildId }, "Unable to reconcile voice state after update");
           });
-        return;
       }
 
       const playerChannelId = this.dependencies.musicPlayerGateway.getVoiceChannelId(guildId);

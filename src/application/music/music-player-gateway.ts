@@ -46,6 +46,12 @@ export interface MusicPlayerGateway {
   toggleAutoQueue(guildId: string): Promise<boolean>;
   toggleTwentyFourSeven(guildId: string): Promise<boolean>;
   handleBotVoiceDisconnect(guildId: string): Promise<void>;
+  // Verifies the invariant "bot's actual Discord voice channel === the
+  // Lavalink player's recorded voice channel" and destroys the player (via
+  // the same cleanup as handleBotVoiceDisconnect) if it no longer holds.
+  // Returns true when a stale player was found and destroyed, false when
+  // there is no player or it's still healthy.
+  reconcileVoiceState(guildId: string): Promise<boolean>;
   handleVoiceChannelOccupancy(guildId: string, humanMemberCount: number): void;
   handleGuildRemoved(guildId: string): Promise<void>;
   hasPlayer(guildId: string): boolean;

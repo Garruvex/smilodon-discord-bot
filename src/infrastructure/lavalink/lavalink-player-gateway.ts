@@ -479,6 +479,23 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     await player.destroy("Bot was disconnected or moved from its voice channel");
   }
 
+  public async reconcileVoiceState(guildId: string): Promise<boolean> {
+    const player = this.manager.getPlayer(guildId);
+    if (!player) return false;
+
+    const guild = this.client.guilds.cache.get(guildId);
+    // Without a cached guild there's no way to verify the bot's actual voice
+    // state, so don't risk destroying a healthy player on a transient cache
+    // gap — treat it as unverifiable rather than stale.
+    if (!guild) return false;
+
+    const actualVoiceChannelId = guild.members.me?.voice.channelId ?? null;
+    if (actualVoiceChannelId === player.voiceChannelId) return false;
+
+    await this.handleBotVoiceDisconnect(guildId);
+    return true;
+  }
+
   // Called when the bot leaves a guild, so per-guild timers/caches don't grow
   // unbounded across many join/leave cycles.
   public async handleGuildRemoved(guildId: string): Promise<void> {
