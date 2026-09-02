@@ -514,6 +514,7 @@ export function createDependencies(
     configuration.runtimeDataDirectory,
     logger.child({ component: "persona-source" }),
     personaDriftStore,
+    embeddingsClient,
   );
   behaviorRegistry.register(new MentionChatBehavior(
     () => discordClient.user?.id ?? null,

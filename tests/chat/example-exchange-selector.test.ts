@@ -95,7 +95,7 @@ describe("RelevantExampleExchangeSelector", () => {
   it("skips the per-turn embed call when no record carries an embedding, staying lexical-only", async () => {
     const embed = vi.fn(() => Promise.resolve([1, 0]));
     const examTalk = exchange({ tags: "exam", user: "my exam went badly", character: "rip" });
-    const selector = new RelevantExampleExchangeSelector({ embed });
+    const selector = new RelevantExampleExchangeSelector({ embed, modelId: "test-model" });
 
     await selector.select({
       records: [examTalk],
@@ -112,7 +112,7 @@ describe("RelevantExampleExchangeSelector", () => {
   it("embeds the current message when at least one record carries an embedding", async () => {
     const embed = vi.fn(() => Promise.resolve([1, 0]));
     const examTalk = exchange({ tags: "exam", user: "my exam went badly", character: "rip", embedding: [1, 0] });
-    const selector = new RelevantExampleExchangeSelector({ embed });
+    const selector = new RelevantExampleExchangeSelector({ embed, modelId: "test-model" });
 
     await selector.select({
       records: [examTalk],
@@ -129,7 +129,7 @@ describe("RelevantExampleExchangeSelector", () => {
   it("excludes embedding from the serialized prompt-budget projection", async () => {
     const bigEmbedding = Array.from({ length: 1_536 }, () => 0.123456789);
     const withEmbedding = exchange({ tags: "a", user: "hello", character: "hi", embedding: bigEmbedding });
-    const failingClient: EmbeddingsClient = { embed: () => Promise.reject(new Error("down")) };
+    const failingClient: EmbeddingsClient = { embed: () => Promise.reject(new Error("down")), modelId: "test-model" };
     const selector = new RelevantExampleExchangeSelector(failingClient);
 
     const selected = await selector.select({
@@ -142,5 +142,52 @@ describe("RelevantExampleExchangeSelector", () => {
     });
 
     expect(selected).toHaveLength(1);
+  });
+
+  it("excludes examples with zero lexical overlap and no meaningfully similar embedding", async () => {
+    const unrelated = exchange({ tags: "music", user: "recommend me a song", character: "listen to this one" });
+    const selector = new RelevantExampleExchangeSelector();
+
+    const selected = await selector.select({
+      records: [unrelated],
+      currentUser: { id: "user", displayName: "User", roleNames: [] },
+      mentionedUsers: [],
+      recentHistory: [],
+      message: "what's the weather like on mars",
+      // Real (Date.now()-scale) `now` — with updatedAt hardcoded to 0 for
+      // every example (see toScorable), a small `now` makes bm25Score's
+      // recency term dominate and masks the zero-lexical-overlap case this
+      // test targets. At real epoch scale that recency term is always ~0,
+      // same as production.
+      now: Date.now(),
+    });
+
+    expect(selected).toHaveLength(0);
+  });
+
+  it("requires embedding similarity to clear a real threshold, not just be above zero", async () => {
+    // Barely-positive cosine similarity (0.05) is the kind of noise
+    // unrelated vectors commonly produce in a real embedding space — not a
+    // genuine relevance signal, so it should not be enough on its own.
+    const unrelated = exchange({ tags: "music", user: "recommend me a song", character: "listen to this one", embedding: [1, 0] });
+    // A unit vector with cosine similarity ~0.05 against [1, 0].
+    const embed = vi.fn(() => Promise.resolve([0.05, Math.sqrt(1 - 0.05 ** 2)]));
+    const selector = new RelevantExampleExchangeSelector({ embed, modelId: "test-model" });
+
+    const selected = await selector.select({
+      records: [unrelated],
+      currentUser: { id: "user", displayName: "User", roleNames: [] },
+      mentionedUsers: [],
+      recentHistory: [],
+      message: "what's the weather like on mars",
+      // Real (Date.now()-scale) `now` — with updatedAt hardcoded to 0 for
+      // every example (see toScorable), a small `now` makes bm25Score's
+      // recency term dominate and masks the zero-lexical-overlap case this
+      // test targets. At real epoch scale that recency term is always ~0,
+      // same as production.
+      now: Date.now(),
+    });
+
+    expect(selected).toHaveLength(0);
   });
 });

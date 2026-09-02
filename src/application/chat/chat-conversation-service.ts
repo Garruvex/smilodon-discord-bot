@@ -105,6 +105,13 @@ export interface ChatConversationInput
   // already gated on this same flag — this field only controls the write
   // side.
   personaDriftEnabled?: boolean;
+  // Hash of the complete uploaded personality source (see
+  // ResolvedPersona.personalitySourceHash) — used to pin persona-drift
+  // evolution instead of hashing `personality` directly, since a compiled
+  // bundle's `personality` is only the always-sent core and would miss a
+  // lore-only edit. Falls back to hashing `personality` when omitted, for
+  // callers that don't go through a compiled bundle at all.
+  personalitySourceHash?: string;
 }
 
 export class ChatStateCommitError extends Error {
@@ -190,7 +197,7 @@ export class ChatConversationService {
     channelMode: ChannelMemoryMode,
     droppedExchanges: readonly ChatSessionExchange[],
     personaDriftEnabled: boolean,
-    personality: string,
+    personalitySourceHash: string,
     speaker: { id: string; displayName: string },
   ): Promise<void> {
     if (droppedExchanges.length === 0) return;
@@ -225,12 +232,16 @@ export class ChatConversationService {
     }
     // Independent of the summarization block above — a failure or absence
     // of one must never block the other. See ChatProvider.evolvePersonaDrift.
-    if (personaDriftEnabled && this.personaDriftStore && summarizer.evolvePersonaDrift) {
+    // Gated to "shared" channels only: drift is one guild-wide overlay
+    // (see PersonaDriftStore), so letting an "isolated"/"session_only"
+    // channel's exchanges evolve it would leak that channel's content into
+    // the persona shown everywhere else — a channel-isolation violation.
+    if (personaDriftEnabled && channelMode === "shared" && this.personaDriftStore && summarizer.evolvePersonaDrift) {
       try {
         const evolvePersonaDrift = summarizer.evolvePersonaDrift.bind(summarizer);
         await this.personaDriftStore.evolveFrom(
           guildId,
-          hashContent(personality),
+          personalitySourceHash,
           (currentText) => evolvePersonaDrift(currentText, exchangePairs),
         );
       } catch (error) {
@@ -324,16 +335,22 @@ export class ChatConversationService {
         recentHistory,
         message: input.message,
         now,
+        replyChain: input.replyChain,
+        replyChainSummary,
       });
       // examplePool/loreChunks are the unfiltered candidate lists — only
       // their selector-narrowed results belong in the request, so they're
       // destructured out here purely to keep them off requestInput's spread
       // below.
-      const { toolsEnabled, disabledToolNames, examplePool, loreChunks, personaDriftEnabled, replyChainOverflow, ...requestInput } = input;
+      const {
+        toolsEnabled, disabledToolNames, examplePool, loreChunks, personaDriftEnabled, replyChainOverflow,
+        personalitySourceHash, ...requestInput
+      } = input;
       void personaDriftEnabled;
       void examplePool;
       void loreChunks;
       void replyChainOverflow;
+      void personalitySourceHash;
       const response = await this.provider.reply({
         ...requestInput,
         recentHistory,
@@ -478,7 +495,8 @@ export class ChatConversationService {
       // failures internally and never throws; the .catch below is only a
       // backstop against something unexpected escaping that.
       void this.consolidateDroppedExchanges(
-        input.guildId, input.channelId, channelMode, droppedExchanges, input.personaDriftEnabled ?? false, input.personality,
+        input.guildId, input.channelId, channelMode, droppedExchanges, input.personaDriftEnabled ?? false,
+        input.personalitySourceHash ?? hashContent(input.personality),
         { id: input.currentUser.id, displayName: input.currentUser.displayName },
       ).catch((error: unknown) => {
         this.logger?.warn({ error, guildId: input.guildId, channelId: input.channelId }, "Dropped-exchange consolidation failed unexpectedly");

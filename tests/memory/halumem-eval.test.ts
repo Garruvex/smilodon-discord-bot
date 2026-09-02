@@ -38,7 +38,10 @@ function engine(): MemoryEngine {
 function engineWithEmbeddings(vectors: Record<string, readonly number[]>): MemoryEngine {
   const directory = mkdtempSync(join(tmpdir(), "halumem-eval-embed-"));
   const connection = createSqliteDatabaseConnection(directory);
-  const embeddingsClient = { embed: (text: string): Promise<number[]> => Promise.resolve([...(vectors[text] ?? [0, 0, 1])]) };
+  const embeddingsClient = {
+    embed: (text: string): Promise<number[]> => Promise.resolve([...(vectors[text] ?? [0, 0, 1])]),
+    modelId: "test-model",
+  };
   return new DefaultMemoryEngine(new SqliteMemoryRepository(connection.database), embeddingsClient);
 }
 

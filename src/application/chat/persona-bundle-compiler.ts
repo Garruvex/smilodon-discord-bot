@@ -55,11 +55,18 @@ export class PersonaBundleCompiler {
       );
       const result = assemblePersonaBundle(content, loreIndexes);
 
-      const previousEmbeddingByText = new Map(
-        (previousBundle?.chunks ?? [])
-          .filter((chunk) => chunk.embedding !== null)
-          .map((chunk) => [chunk.text, chunk.embedding] as const),
-      );
+      // Only reuse a previous chunk's cached vector when it came from the
+      // same embeddings provider+model+dimensionality as this compile —
+      // otherwise switching providers could reuse vectors from an
+      // incompatible semantic space (see EmbeddingsClient.modelId).
+      const embeddingModel = this.embeddingsClient?.modelId ?? null;
+      const previousEmbeddingByText = previousBundle?.embeddingModel === embeddingModel
+        ? new Map(
+            previousBundle.chunks
+              .filter((chunk) => chunk.embedding !== null)
+              .map((chunk) => [chunk.text, chunk.embedding] as const),
+          )
+        : new Map<string, number[] | null>();
       const textsNeedingEmbedding = result.chunks
         .map((chunk) => chunk.text)
         .filter((text) => !previousEmbeddingByText.has(text));
@@ -85,6 +92,7 @@ export class PersonaBundleCompiler {
         core: result.core,
         chunks,
         compiledAt: Date.now(),
+        embeddingModel,
       };
     } catch (error) {
       this.logger?.warn({ error }, "Personality bundle compilation failed; the full file will be sent as-is");

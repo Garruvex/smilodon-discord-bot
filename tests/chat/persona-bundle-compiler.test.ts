@@ -51,13 +51,14 @@ describe("PersonaBundleCompiler.compile — embedding cache across reuploads", (
   it("reuses a previous bundle's embedding for a chunk whose text is unchanged, without calling embed again", async () => {
     const provider = providerReturning([[1], [1], [1]]);
     const embed = vi.fn(() => Promise.resolve([9, 9]));
-    const embeddingsClient: EmbeddingsClient = { embed };
+    const embeddingsClient: EmbeddingsClient = { embed, modelId: "test-model" };
     const compiler = new PersonaBundleCompiler(provider, embeddingsClient);
     const previousBundle: PersonaBundle = {
       sourceHash: "irrelevant",
       core: "irrelevant",
       chunks: [{ heading: "Backstory", text: "Born in a forest.", embedding: [1, 2] }],
       compiledAt: 0,
+      embeddingModel: "test-model",
     };
 
     const bundle = await compiler.compile(content, previousBundle);
@@ -69,18 +70,41 @@ describe("PersonaBundleCompiler.compile — embedding cache across reuploads", (
   it("embeds fresh when the chunk text differs from anything in the previous bundle", async () => {
     const provider = providerReturning([[1], [1], [1]]);
     const embed = vi.fn(() => Promise.resolve([9, 9]));
-    const embeddingsClient: EmbeddingsClient = { embed };
+    const embeddingsClient: EmbeddingsClient = { embed, modelId: "test-model" };
     const compiler = new PersonaBundleCompiler(provider, embeddingsClient);
     const previousBundle: PersonaBundle = {
       sourceHash: "irrelevant",
       core: "irrelevant",
       chunks: [{ heading: "Backstory", text: "A completely different old backstory.", embedding: [1, 2] }],
       compiledAt: 0,
+      embeddingModel: "test-model",
     };
 
     const bundle = await compiler.compile(content, previousBundle);
 
     expect(embed).toHaveBeenCalledWith("Born in a forest.");
     expect(bundle?.chunks).toEqual([{ heading: "Backstory", text: "Born in a forest.", embedding: [9, 9] }]);
+  });
+
+  it("re-embeds instead of reusing a cached vector from a different embeddings model, even for unchanged text", async () => {
+    const provider = providerReturning([[1], [1], [1]]);
+    const embed = vi.fn(() => Promise.resolve([9, 9]));
+    const embeddingsClient: EmbeddingsClient = { embed, modelId: "openai:text-embedding-3-small" };
+    const compiler = new PersonaBundleCompiler(provider, embeddingsClient);
+    const previousBundle: PersonaBundle = {
+      sourceHash: "irrelevant",
+      core: "irrelevant",
+      // Same text, same dimensionality — but embedded by a different model,
+      // so its vector lives in a different (incompatible) semantic space.
+      chunks: [{ heading: "Backstory", text: "Born in a forest.", embedding: [1, 2] }],
+      compiledAt: 0,
+      embeddingModel: "gemini:text-embedding-004:2",
+    };
+
+    const bundle = await compiler.compile(content, previousBundle);
+
+    expect(embed).toHaveBeenCalledWith("Born in a forest.");
+    expect(bundle?.chunks).toEqual([{ heading: "Backstory", text: "Born in a forest.", embedding: [9, 9] }]);
+    expect(bundle?.embeddingModel).toBe("openai:text-embedding-3-small");
   });
 });

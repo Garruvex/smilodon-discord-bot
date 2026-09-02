@@ -98,6 +98,40 @@ describe("PersonaDriftStore", () => {
     });
   });
 
+  it("evolveFrom persists an explicit empty-string result as clearing the current drift", async () => {
+    const { store: driftStore } = store();
+    await driftStore.evolve(guildId, "An established mood.", personalityHash);
+
+    await driftStore.evolveFrom(guildId, personalityHash, () => Promise.resolve(""));
+
+    // Persisted (not left at the old text) — see PersonaDriftEvolver's doc
+    // comment: "" means "nothing worth noting yet," an explicit clear, not
+    // "no change." The old text moves to history like any other transition.
+    await expect(driftStore.get(guildId)).resolves.toMatchObject({
+      text: "",
+      history: [{ text: "An established mood." }],
+    });
+  });
+
+  it("evolveFrom is a true no-op when the result is unchanged from the current text", async () => {
+    const { store: driftStore } = store();
+    await driftStore.evolve(guildId, "Steady mood.", personalityHash);
+
+    await driftStore.evolveFrom(guildId, personalityHash, (currentText) => Promise.resolve(currentText));
+
+    const state = await driftStore.get(guildId);
+    expect(state?.text).toBe("Steady mood.");
+    expect(state?.history).toEqual([]);
+  });
+
+  it("evolveFrom does not write when there is no current drift and the result is also empty", async () => {
+    const { runtimeDirectory, store: driftStore } = store();
+
+    await driftStore.evolveFrom(guildId, personalityHash, () => Promise.resolve(""));
+
+    expect(existsSync(join(runtimeDirectory, "guild-assets", guildId, "persona-drift.json"))).toBe(false);
+  });
+
   it("clears both text and history on reset", async () => {
     const { store: driftStore } = store();
     await driftStore.evolve(guildId, "First mood.", personalityHash);
