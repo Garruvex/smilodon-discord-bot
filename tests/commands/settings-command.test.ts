@@ -412,7 +412,10 @@ describe("SettingsCommand", () => {
       profile(),
     );
 
-    expect(refreshPanel).toHaveBeenCalledWith(profile().guildId, { forceIdleImage: true });
+    expect(refreshPanel).toHaveBeenCalledWith(profile().guildId, {
+      forceIdleImage: true,
+      immediate: true,
+    });
     expect(ensureGuildPanel).not.toHaveBeenCalled();
   });
 
@@ -442,6 +445,7 @@ describe("SettingsCommand", () => {
 
     expect(refreshPanel).toHaveBeenCalledWith(profile().guildId, {
       forceIdleImage: false,
+      immediate: true,
     });
   });
 });

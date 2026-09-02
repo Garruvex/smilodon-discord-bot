@@ -39,6 +39,13 @@ export interface MusicPanelControl {
   // self-corrects on the very next render. Controls without a predictor still
   // get the clicked button disabled instantly, just without a state change.
   predictSnapshot?: (snapshot: MusicPlayerSnapshot) => MusicPlayerSnapshot | null;
+  // False skips the optimistic pending-state render entirely: the control
+  // just executes and the authoritative refresh shows the real result. Use
+  // this for controls whose "action" is already an instant local toggle
+  // (24/7, autoqueue) — there's no meaningful round trip to mask, so a
+  // disabled/predicted flash before the real color lands is just noise.
+  // Defaults to true (show the optimistic pending state).
+  showPendingState?: boolean;
 }
 
 function controlButton(id: string): ButtonBuilder {
@@ -131,6 +138,7 @@ const musicPanelControls: readonly MusicPanelControl[] = [
       await playbackService.toggleAutoQueue(actor);
     },
     predictSnapshot: (snapshot) => ({ ...snapshot, autoQueue: !snapshot.autoQueue }),
+    showPendingState: false,
   },
   {
     id: "24-7",
@@ -144,6 +152,7 @@ const musicPanelControls: readonly MusicPanelControl[] = [
       await playbackService.toggleTwentyFourSeven(actor);
     },
     predictSnapshot: (snapshot) => ({ ...snapshot, twentyFourSeven: !snapshot.twentyFourSeven }),
+    showPendingState: false,
   },
   {
     id: "shuffle",

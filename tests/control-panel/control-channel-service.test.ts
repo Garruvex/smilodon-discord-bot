@@ -1,4 +1,4 @@
-import { ButtonStyle, type Message } from "discord.js";
+import { ButtonStyle, ChannelType, type Message } from "discord.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ControlChannelService } from "../../src/application/control-panel/control-channel-service.js";
@@ -117,6 +117,7 @@ function createService(chatbotEnabled: boolean): {
   const getSnapshot = vi.fn(() => null);
   const playerGateway = {
     getSnapshot,
+    reconcileVoiceState: vi.fn(() => Promise.resolve(false)),
   } as unknown as MusicPlayerGateway;
   const enqueue = vi.fn().mockResolvedValue({
     firstTrack: {
@@ -135,7 +136,9 @@ function createService(chatbotEnabled: boolean): {
   });
   const playbackService = { enqueue } as unknown as PlaybackService;
   const logger = { error: vi.fn(), warn: vi.fn() };
-  const eventBus = { subscribe: vi.fn() } as unknown as MusicEventBus;
+  const eventBus = {
+    subscribe: vi.fn((): (() => void) => () => undefined),
+  } as unknown as MusicEventBus;
 
   return {
     service: new ControlChannelService(
@@ -187,7 +190,10 @@ describe("ControlChannelService", () => {
         }),
       },
     });
-    const refreshPanel = vi.spyOn(service, "refreshPanel").mockResolvedValue(undefined);
+    const writePanel = vi.spyOn(
+      service as unknown as { writePanel: (...args: unknown[]) => Promise<void> },
+      "writePanel",
+    ).mockResolvedValue(undefined);
     const interaction = {
       customId: "music-panel:v1:24-7",
       inCachedGuild: (): boolean => true,
@@ -210,10 +216,65 @@ describe("ControlChannelService", () => {
     expect(interaction.reply).not.toHaveBeenCalled();
     expect(interaction.followUp).not.toHaveBeenCalled();
     expect(toggleTwentyFourSeven).toHaveBeenCalledOnce();
-    expect(refreshPanel).toHaveBeenCalledWith(guildId);
+    // The authoritative render always runs after the action, bypassing the
+    // background debounce so the real result lands immediately.
+    expect(writePanel).toHaveBeenCalledWith(guildId, expect.anything(), {});
   });
 
-  it("optimistically flips and disables a toggle button before the real result lands", async () => {
+  it("recovers a stale player instead of erroring when 24/7 is disabled after a voice disconnect", async () => {
+    const { service } = createService(false);
+    const toggleTwentyFourSeven = vi.fn().mockResolvedValue(false);
+    const reconcileVoiceState = vi.fn().mockResolvedValue(true);
+    Object.assign(service, {
+      playbackService: { toggleTwentyFourSeven },
+      playerGateway: { getSnapshot: () => null, reconcileVoiceState },
+      stateStore: {
+        find: () => ({
+          guildId,
+          channelId: controlPanelChannelId,
+          messageId: "panel-message",
+        }),
+      },
+    });
+    const writePanel = vi.spyOn(
+      service as unknown as { writePanel: (...args: unknown[]) => Promise<void> },
+      "writePanel",
+    ).mockResolvedValue(undefined);
+    const interaction = {
+      customId: "music-panel:v1:24-7",
+      inCachedGuild: (): boolean => true,
+      guildId,
+      channelId: controlPanelChannelId,
+      message: { id: "panel-message" },
+      // The controller is not in the (stale) player's recorded voice
+      // channel — exactly the deadlock scenario: this must still succeed.
+      member: { roles: { cache: new Map([[musicControllerRoleId, {}]]) }, voice: { channelId: null } },
+      user: { id: "345678901234567890" },
+      deferUpdate: vi.fn().mockResolvedValue(undefined),
+      editReply: vi.fn().mockResolvedValue(undefined),
+      reply: vi.fn().mockResolvedValue(undefined),
+      followUp: vi.fn().mockResolvedValue(undefined),
+      replied: false,
+      deferred: true,
+    };
+
+    await expect(service.handleButton(interaction as never)).resolves.toBe(true);
+
+    expect(reconcileVoiceState).toHaveBeenCalledWith(guildId);
+    // The stale session was reset by reconciliation; the 24/7 toggle itself
+    // must not run (there's no player left to toggle) and must not error.
+    expect(toggleTwentyFourSeven).not.toHaveBeenCalled();
+    expect(interaction.followUp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining("reset") as string,
+      }),
+    );
+    // The panel is refreshed to idle (snapshot is now null, so every
+    // control renders disabled) rather than left showing the stale player.
+    expect(writePanel).toHaveBeenCalledWith(guildId, expect.anything(), {});
+  });
+
+  it("skips the optimistic pending state for instant local toggles (autoqueue, 24/7)", async () => {
     const { service, getSnapshot } = createService(false);
     const toggleAutoQueue = vi.fn().mockResolvedValue(true);
     getSnapshot.mockReturnValue({
@@ -249,7 +310,10 @@ describe("ControlChannelService", () => {
         }),
       },
     });
-    vi.spyOn(service, "refreshPanel").mockResolvedValue(undefined);
+    const writePanel = vi.spyOn(
+      service as unknown as { writePanel: (...args: unknown[]) => Promise<void> },
+      "writePanel",
+    ).mockResolvedValue(undefined);
     const editReply = vi.fn().mockResolvedValue(undefined);
     const interaction = {
       customId: "music-panel:v1:autoqueue",
@@ -269,15 +333,82 @@ describe("ControlChannelService", () => {
 
     await service.handleButton(interaction as never);
 
+    // No predicted/disabled intermediate render — the toggle is already an
+    // instant local state change, so there's no round trip worth masking.
+    expect(editReply).not.toHaveBeenCalled();
+    expect(toggleAutoQueue).toHaveBeenCalledOnce();
+    // The authoritative render still runs immediately after, showing the
+    // real (not predicted) result.
+    expect(writePanel).toHaveBeenCalledWith(guildId, expect.anything(), {});
+  });
+
+  it("still shows the optimistic disabled prediction for controls that keep a pending phase", async () => {
+    const { service, getSnapshot } = createService(false);
+    const skip = vi.fn().mockResolvedValue(undefined);
+    getSnapshot.mockReturnValue({
+      guildId,
+      voiceChannelId: "111111111111111111",
+      paused: false,
+      playing: true,
+      volume: 75,
+      queueLength: 1,
+      previousTrackCount: 0,
+      repeatMode: "off",
+      autoQueue: false,
+      autoQueueIssue: false,
+      twentyFourSeven: false,
+      currentTrack: {
+        title: "Track",
+        author: "Artist",
+        uri: "https://example.com/track",
+        artworkUrl: null,
+        durationMs: 60_000,
+        positionMs: 1_000,
+        isStream: false,
+        requestedByUserId: null,
+      },
+    });
+    Object.assign(service, {
+      playbackService: { skip },
+      stateStore: {
+        find: () => ({
+          guildId,
+          channelId: controlPanelChannelId,
+          messageId: "panel-message",
+        }),
+      },
+    });
+    vi.spyOn(
+      service as unknown as { writePanel: (...args: unknown[]) => Promise<void> },
+      "writePanel",
+    ).mockResolvedValue(undefined);
+    const editReply = vi.fn().mockResolvedValue(undefined);
+    const interaction = {
+      customId: "music-panel:v1:skip",
+      inCachedGuild: (): boolean => true,
+      guildId,
+      channelId: controlPanelChannelId,
+      message: { id: "panel-message" },
+      member: { roles: { cache: new Map([[musicControllerRoleId, {}]]) }, voice: { channelId: null } },
+      user: { id: "345678901234567890" },
+      deferUpdate: vi.fn().mockResolvedValue(undefined),
+      editReply,
+      reply: vi.fn().mockResolvedValue(undefined),
+      followUp: vi.fn().mockResolvedValue(undefined),
+      replied: false,
+      deferred: true,
+    };
+
+    await service.handleButton(interaction as never);
+
     expect(editReply).toHaveBeenCalledOnce();
-    const [{ components }] = editReply.mock.calls[0] as [{ components: Array<{ components: Array<{ toJSON: () => { custom_id: string; style: number; disabled?: boolean } }> }> }];
-    const autoqueueButton = components
+    const [{ components }] = editReply.mock.calls[0] as [{ components: Array<{ components: Array<{ toJSON: () => { custom_id: string; disabled?: boolean } }> }> }];
+    const skipButton = components
       .flatMap((row) => row.components)
       .map((component) => component.toJSON())
-      .find((button) => button.custom_id === "music-panel:v1:autoqueue");
-    expect(autoqueueButton?.style).toBe(ButtonStyle.Success);
-    expect(autoqueueButton?.disabled).toBe(true);
-    expect(toggleAutoQueue).toHaveBeenCalledOnce();
+      .find((button) => button.custom_id === "music-panel:v1:skip");
+    expect(skipButton?.disabled).toBe(true);
+    expect(skip).toHaveBeenCalledOnce();
   });
 
   it("optimistically disables every control instantly when stop is pressed", async () => {
@@ -733,5 +864,227 @@ describe("ControlChannelService", () => {
       "You need a music-controller role to request songs.",
     );
     expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("restores the old panel channel's permissions when the panel moves to a new channel", async () => {
+    const oldChannelId = "111111111111111111";
+    const oldMessageId = "222222222222222222";
+    const everyoneRole = { id: "everyone-role" };
+
+    const oldMessage = {
+      author: { id: botUserId },
+      delete: vi.fn().mockResolvedValue(undefined),
+    };
+    const oldChannel = {
+      id: oldChannelId,
+      type: ChannelType.GuildText,
+      isTextBased: (): boolean => true,
+      isDMBased: (): boolean => false,
+      permissionOverwrites: { edit: vi.fn().mockResolvedValue(undefined) },
+      messages: { fetch: vi.fn().mockResolvedValue(oldMessage) },
+    };
+    const newChannel = {
+      id: controlPanelChannelId,
+      type: ChannelType.GuildText,
+      permissionOverwrites: { edit: vi.fn().mockResolvedValue(undefined) },
+      messages: { fetch: vi.fn() },
+      send: vi.fn().mockResolvedValue({ id: "333333333333333333" }),
+    };
+    const guild = {
+      id: guildId,
+      roles: { everyone: everyoneRole },
+      channels: {
+        fetch: vi.fn((id: string) =>
+          Promise.resolve(id === oldChannelId ? oldChannel : newChannel)),
+      },
+    };
+
+    const client = { user: { id: botUserId }, guilds: { cache: new Map([[guildId, guild]]) } };
+    const configuration = {
+      ownerUserIds: new Set<string>(),
+      runtimeDataDirectory: "./data/local",
+    } as unknown as ApplicationConfiguration;
+    const provider = {
+      find: () => guildConfiguration(false),
+      getAll: () => [guildConfiguration(false)],
+    } as unknown as GuildConfigurationProvider;
+    const stateStore = {
+      initialize: vi.fn(),
+      find: vi.fn(() => ({ guildId, channelId: oldChannelId, messageId: oldMessageId })),
+      save: vi.fn(),
+    } as unknown as ControlPanelStateStore;
+    const playerGateway = { getSnapshot: vi.fn(() => null) } as unknown as MusicPlayerGateway;
+    const logger = { error: vi.fn(), warn: vi.fn() };
+    const eventBus = {
+      subscribe: vi.fn((): (() => void) => () => undefined),
+    } as unknown as MusicEventBus;
+
+    const service = new ControlChannelService(
+      client as never,
+      configuration,
+      provider,
+      stateStore,
+      playerGateway,
+      { enqueue: vi.fn() } as unknown as PlaybackService,
+      { getYohtaTheme: () => null, hasEmoji: () => false } as never,
+      logger as never,
+      eventBus,
+    );
+
+    const ensurePanel = (
+      service as unknown as {
+        ensurePanel: (profile: GuildConfiguration) => Promise<Message>;
+      }
+    ).ensurePanel.bind(service);
+
+    await ensurePanel(guildConfiguration(false));
+
+    expect(newChannel.permissionOverwrites.edit).toHaveBeenCalledWith(
+      everyoneRole,
+      { UseApplicationCommands: false },
+      { reason: "Reserve the music control channel for panel controls and song requests" },
+    );
+    expect(oldChannel.permissionOverwrites.edit).toHaveBeenCalledWith(
+      everyoneRole,
+      { UseApplicationCommands: null },
+      { reason: "Music control channel is no longer reserved for the panel" },
+    );
+    expect(oldMessage.delete).toHaveBeenCalledOnce();
+  });
+
+  it("serializes an in-flight background refresh against a button's optimistic edit, so an older write can't land after a newer one", async () => {
+    const messageId = "444444444444444444";
+    const order: string[] = [];
+
+    let releaseBackgroundEdit!: () => void;
+    const backgroundEditGate = new Promise<void>((resolve) => { releaseBackgroundEdit = resolve; });
+
+    const message = {
+      id: messageId,
+      pinned: true,
+      author: { id: botUserId },
+      attachments: { some: (): boolean => false },
+      edit: vi.fn(async (): Promise<void> => {
+        order.push("background-edit-start");
+        await backgroundEditGate;
+        order.push("background-edit-done");
+      }),
+    };
+    const channel = {
+      id: controlPanelChannelId,
+      type: ChannelType.GuildText,
+      permissionOverwrites: { edit: vi.fn().mockResolvedValue(undefined) },
+      messages: { fetch: vi.fn().mockResolvedValue(message) },
+    };
+    const guild = {
+      id: guildId,
+      roles: { everyone: { id: "everyone-role" } },
+      channels: { fetch: vi.fn().mockResolvedValue(channel) },
+    };
+
+    const client = { user: { id: botUserId }, guilds: { cache: new Map([[guildId, guild]]) } };
+    const configuration = {
+      ownerUserIds: new Set<string>(),
+      runtimeDataDirectory: "./data/local",
+    } as unknown as ApplicationConfiguration;
+    const profile = guildConfiguration(false);
+    const provider = {
+      find: () => profile,
+      getAll: () => [profile],
+    } as unknown as GuildConfigurationProvider;
+    const stateStore = {
+      initialize: vi.fn(),
+      find: vi.fn(() => ({ guildId, channelId: controlPanelChannelId, messageId })),
+      save: vi.fn(),
+    } as unknown as ControlPanelStateStore;
+    const snapshot = {
+      guildId,
+      voiceChannelId: "111111111111111111",
+      paused: false,
+      playing: true,
+      volume: 75,
+      queueLength: 1,
+      previousTrackCount: 0,
+      repeatMode: "off" as const,
+      autoQueue: false,
+      autoQueueIssue: false,
+      twentyFourSeven: false,
+      currentTrack: {
+        title: "Track",
+        author: "Artist",
+        uri: "https://example.com/track",
+        artworkUrl: null,
+        durationMs: 60_000,
+        positionMs: 1_000,
+        isStream: false,
+        requestedByUserId: null,
+      },
+    };
+    const skip = vi.fn().mockResolvedValue(undefined);
+    const playerGateway = {
+      getSnapshot: vi.fn(() => snapshot),
+      reconcileVoiceState: vi.fn(() => Promise.resolve(false)),
+      getQueue: vi.fn(() => []),
+      getPlayHistory: vi.fn(() => []),
+    } as unknown as MusicPlayerGateway;
+    const logger = { error: vi.fn(), warn: vi.fn() };
+    const eventBus = {
+      subscribe: vi.fn((): (() => void) => () => undefined),
+    } as unknown as MusicEventBus;
+
+    const service = new ControlChannelService(
+      client as never,
+      configuration,
+      provider,
+      stateStore,
+      playerGateway,
+      { skip } as unknown as PlaybackService,
+      { getYohtaTheme: () => null, hasEmoji: () => false } as never,
+      logger as never,
+      eventBus,
+    );
+
+    // Kick off a background refresh (e.g. a trackStart event elsewhere) and
+    // let it get as far as an in-flight, not-yet-resolved message.edit call.
+    const backgroundRefresh = service.refreshPanel(guildId, { immediate: true });
+    await vi.waitFor(() => expect(message.edit).toHaveBeenCalledOnce());
+
+    const editReply = vi.fn((): Promise<void> => {
+      order.push("optimistic-editReply");
+      return Promise.resolve();
+    });
+    const interaction = {
+      customId: "music-panel:v1:skip",
+      inCachedGuild: (): boolean => true,
+      guildId,
+      channelId: controlPanelChannelId,
+      message: { id: messageId },
+      member: { roles: { cache: new Map([[musicControllerRoleId, {}]]) }, voice: { channelId: null } },
+      user: { id: "345678901234567890" },
+      deferUpdate: vi.fn().mockResolvedValue(undefined),
+      editReply,
+      reply: vi.fn().mockResolvedValue(undefined),
+      followUp: vi.fn().mockResolvedValue(undefined),
+      replied: false,
+      deferred: true,
+    };
+
+    // The click happens while the background write is still in flight.
+    const buttonHandled = service.handleButton(interaction as never);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // The optimistic write must not have jumped the queue while the older
+    // background write is still pending.
+    expect(order).toEqual(["background-edit-start"]);
+
+    releaseBackgroundEdit();
+    await backgroundRefresh;
+    await buttonHandled;
+
+    expect(order[0]).toBe("background-edit-start");
+    expect(order[1]).toBe("background-edit-done");
+    expect(order[2]).toBe("optimistic-editReply");
+    expect(skip).toHaveBeenCalledOnce();
   });
 });
