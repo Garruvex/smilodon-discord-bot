@@ -134,6 +134,12 @@ export interface ChannelHistoryMessage {
   authorDisplayName: string;
   content: string;
   imageCount: number;
+  // Discord reply target, when the referenced message was available in the
+  // fetched channel window/cache. This is important for bot-authored lines:
+  // the author alone says "the bot said X", but not which member X was said
+  // to, which can make a later speaker inherit somebody else's exchange.
+  replyToAuthorId?: string | null;
+  replyToAuthorDisplayName?: string | null;
 }
 
 export interface ChatMemoryRecord {

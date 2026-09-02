@@ -28,6 +28,7 @@ function configuration(): ApplicationConfiguration {
     utilityChat: null,
     embeddings: null,
     memory: defaultMemoryEngineLimits,
+    chatDelivery: { maxGeneratedImageAggregateBytes: 10 * 1024 * 1024 },
   };
 }
 
@@ -116,7 +117,7 @@ function behavior(profileValue: GuildConfiguration | null, conversation: ChatCon
     configuration(),
     provider(profileValue),
     conversation,
-    { resolve: () => Promise.resolve({ personality: "Test persona", loreChunks: [], examplePool: [], personaDrift: null }) },
+    { resolve: () => Promise.resolve({ personality: "Test persona", loreChunks: [], examplePool: [], personaDrift: null, personalitySourceHash: "test-hash" }) },
     { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } as never,
   );
 }

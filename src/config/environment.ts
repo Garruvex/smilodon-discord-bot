@@ -3,6 +3,7 @@ import "dotenv/config";
 import { z } from "zod";
 
 import { defaultMemoryEngineLimits } from "../application/memory/memory-engine.js";
+import { generatedImageLimits } from "../application/chat/generated-image-limits.js";
 import type { ApplicationConfiguration } from "./configuration.js";
 import {
   resolveDefaultInstanceEnvironment,
@@ -141,6 +142,14 @@ const environmentSchema = z.object({
     .default(defaultMemoryEngineLimits.conflictSimilarityThreshold),
   MEMORY_MAX_RELATION_HOPS: z.coerce.number().int().min(0).max(5)
     .default(defaultMemoryEngineLimits.maxRelationHops),
+  // Aggregate byte cap for all generated images attached across one Discord
+  // delivery (one reply, possibly split into several messages — see
+  // planImageDelivery). Discord's real per-request attachment limit varies
+  // by server boost tier; this default is conservative enough for every
+  // guild regardless of boost level. Raise it for a deployment where every
+  // guild is known to be boosted.
+  CHATBOT_MAX_GENERATED_IMAGE_BYTES: z.coerce.number().int().min(1).max(100 * 1024 * 1024)
+    .default(generatedImageLimits.defaultMaxAggregateBytes),
   MEMORY_RELATION_HOP_BOOST_BASE: z.coerce.number().min(0).max(50)
     .default(defaultMemoryEngineLimits.relationHopBoostBase),
 });
@@ -228,6 +237,9 @@ export function loadConfiguration(
     },
     chat: buildChatConfiguration(parsed.data),
     utilityChat: buildUtilityChatConfiguration(parsed.data),
+    chatDelivery: {
+      maxGeneratedImageAggregateBytes: parsed.data.CHATBOT_MAX_GENERATED_IMAGE_BYTES,
+    },
     embeddings: embeddingModel
       ? embeddingProvider === "gemini"
         ? { provider: "gemini", apiKey: parsed.data.GOOGLE_API_KEY as string, model: embeddingModel }

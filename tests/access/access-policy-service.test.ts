@@ -43,6 +43,7 @@ function applicationConfiguration(): ApplicationConfiguration {
     utilityChat: null,
     embeddings: null,
     memory: defaultMemoryEngineLimits,
+    chatDelivery: { maxGeneratedImageAggregateBytes: 10 * 1024 * 1024 },
   };
 }
 
