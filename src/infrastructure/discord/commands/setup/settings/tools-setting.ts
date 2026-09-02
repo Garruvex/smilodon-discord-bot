@@ -63,6 +63,22 @@ export const toolsDisableSetting: MutationSettingDefinition = {
   describe: (previous, updated) => describeDisabledTools(previous, updated),
 };
 
+// Descriptions are written for the model, not this listing, and keep
+// growing as tools gain more nuance — left unbounded, enough registered
+// tools push the whole message past Discord's 2000-char content limit and
+// the command fails outright (see incident: read_link's description was the
+// one that finally tipped it over). Truncating each one to a single
+// scannable line keeps this listing's size bounded by tool *count* rather
+// than by how verbose each description happens to be.
+const maxDescriptionLength = 100;
+
+function summarizeToolDescription(description: string): string {
+  if (description.length <= maxDescriptionLength) return description;
+  const truncated = description.slice(0, maxDescriptionLength);
+  const lastSpace = truncated.lastIndexOf(" ");
+  return `${truncated.slice(0, lastSpace > 0 ? lastSpace : maxDescriptionLength)}…`;
+}
+
 export const toolsListSetting: ReadOnlySettingDefinition = {
   kind: "readOnly",
   name: "tools-list",
@@ -72,7 +88,8 @@ export const toolsListSetting: ReadOnlySettingDefinition = {
     if (tools.length === 0) return Promise.resolve("No chat tools are registered.");
     const disabled = new Set(profile.chat.disabledTools);
     const lines = tools
-      .map((tool) => `${disabled.has(tool.name) ? "🔴" : "🟢"} **${tool.name}** — ${tool.description}`)
+      .map((tool) =>
+        `${disabled.has(tool.name) ? "🔴" : "🟢"} **${tool.name}** — ${summarizeToolDescription(tool.description)}`)
       .join("\n");
     return Promise.resolve(`Chat tools (🟢 enabled, 🔴 disabled for this server):\n${lines}`);
   },

@@ -240,6 +240,23 @@ describe("SettingsCommand", () => {
     expect(edited.text).toContain("🔴 **roll_dice**");
   });
 
+  it("truncates long tool descriptions so the listing stays under Discord's 2000-char message limit", async () => {
+    const chatToolRegistry = {
+      list: () => Array.from({ length: 15 }, (_, index) => ({
+        name: `tool_${index}`,
+        description: "A very long description that keeps going on and on to describe exactly what this tool does ".repeat(3),
+      })),
+    } as unknown as ChatToolRegistry;
+    const command = new SettingsCommand(providerWith(profile()), {} as never, applicationEmojiCatalog as never);
+    command.bindChatToolRegistry(chatToolRegistry);
+    const { context, edited } = fakeContext("tools-list");
+
+    await command.execute(context);
+
+    expect(edited.text?.length).toBeLessThanOrEqual(2000);
+    expect(edited.text).toContain("🟢 **tool_0**");
+  });
+
   it("rejects context-scan-add when no chat provider supports channel summarization", async () => {
     const command = new SettingsCommand(
       providerWith(profile()), {} as never, applicationEmojiCatalog as never,
