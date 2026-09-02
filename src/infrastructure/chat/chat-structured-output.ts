@@ -107,7 +107,11 @@ const entityDisambiguationInstruction = "Multiple different people can be discus
   "named recently, resolve it to whoever was most recently and explicitly named, @mentioned, or replied to in " +
   "<reply_chain>/<channel_history> — not to whichever name you already happen to have stored facts about. " +
   "Getting two people's names crossed is worse than asking; if it's still genuinely ambiguous after that, ask " +
-  "which person is meant rather than guessing.";
+  "which person is meant rather than guessing. This applies just as much to attributing past statements: before " +
+  "saying something like \"you asked/said X earlier,\" check that the authorId on that <reply_chain>/" +
+  "<channel_history> line actually matches <current_user>'s id. A busy channel has several people talking at " +
+  "once — a question or remark from one person is never something a different person said or asked, even if " +
+  "they replied right after it or the topic carried over.";
 
 const epistemicHonestyInstruction = "Everything you know about this guild, channel, and these users comes only " +
   "from what's explicitly included in this prompt. If something isn't there — another channel's events, a fact " +
