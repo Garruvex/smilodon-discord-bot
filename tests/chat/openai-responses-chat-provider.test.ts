@@ -312,6 +312,7 @@ describe("OpenAiResponsesChatProvider", () => {
       channelIsNsfw: false,
       isOwner: false,
       music: null,
+      pendingGeneratedImages: [],
       signal: expect.any(AbortSignal) as AbortSignal,
     });
     expect(response.text).toBe("You rolled a 4.");

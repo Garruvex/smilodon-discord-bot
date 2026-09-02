@@ -340,6 +340,21 @@ export interface ReplyChainSummarizer {
   ): Promise<string>;
 }
 
+// A standalone, isolated one-shot image-generation call — deliberately not
+// part of the main reply turn's request/response shape. Used by
+// GenerateSelfImageTool: the model calls that tool explicitly (rather than
+// the reference image being stuffed into every turn's prompt), and only then
+// does this fire a dedicated request carrying the reference image alongside
+// the model's own prompt. Optional because OpenAiCompatibleChatProvider has
+// no image-generation path at all — the tool reports "not supported" when
+// absent, same as any other optional capability here.
+export interface ReferenceImageGenerator {
+  generateReferenceImage(
+    prompt: string,
+    reference: { data: Buffer; contentType: string },
+  ): Promise<{ ok: true; images: readonly GeneratedChatImage[] } | { ok: false; reason: string }>;
+}
+
 // A ChatProvider is always a ChatReplyProvider; the rest are standalone
 // capabilities a given provider implementation may or may not support.
 // Kept optional here (rather than requiring callers to hold a narrower
@@ -355,7 +370,8 @@ export type ChatProvider = ChatReplyProvider &
   Partial<PersonaDriftEvolver> &
   Partial<ChannelMessageSummarizer> &
   Partial<MemoryConflictClassifier> &
-  Partial<ReplyChainSummarizer>;
+  Partial<ReplyChainSummarizer> &
+  Partial<ReferenceImageGenerator>;
 
 export interface ChatResponseObserver {
   onImagePreview(image: GeneratedChatImage): Promise<void>;

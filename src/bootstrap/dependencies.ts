@@ -83,6 +83,7 @@ import { BooruSearchTool } from "../application/chat/tools/booru-search-tool.js"
 import { MemoryLookupTool } from "../application/chat/tools/memory-lookup-tool.js";
 import { BirthdayLookupTool } from "../application/chat/tools/birthday-lookup-tool.js";
 import { ReadLinkTool } from "../application/chat/tools/read-link-tool.js";
+import { GenerateSelfImageTool } from "../application/chat/tools/generate-self-image-tool.js";
 import { RelevantExampleExchangeSelector } from "../application/chat/example-exchange-selector.js";
 import { RelevantPersonaLoreSelector } from "../application/chat/persona-lore-selector.js";
 import { PersonaBundleCompiler } from "../application/chat/persona-bundle-compiler.js";
@@ -432,6 +433,7 @@ export function createDependencies(
     settingsCommand,
     applicationEmojiCatalog,
     memoryEngine,
+    guildAssetStore,
     personaDriftStore,
     embeddingsClient,
     chatProvider,
@@ -484,6 +486,11 @@ export function createDependencies(
     new MemoryLookupTool(memoryEngine),
     new BirthdayLookupTool(birthdayStore),
     new ReadLinkTool(),
+    // Needs a real ChatProvider to make its own isolated image-generation
+    // request (see ChatProvider.generateReferenceImage) — omitted entirely
+    // when no chat provider is configured, same as chatConversationService
+    // below being skipped in that case.
+    ...(chatProvider ? [new GenerateSelfImageTool(guildAssetStore, guildConfigurationProvider, chatProvider)] : []),
     ...commandToolBindings,
   ]);
   settingsCommand.bindChatToolRegistry(chatToolRegistry);

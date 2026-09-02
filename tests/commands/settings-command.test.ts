@@ -80,7 +80,7 @@ function profile(): GuildConfiguration {
       deniedLinkLabel: null,
       webSearchMode: "off", toolCallingEnabled: false, disabledTools: [],
       imageInputEnabled: false,
-      imageGenerationEnabled: false,
+      imageGenerationEnabled: false, selfReferenceImageAsset: null,
       includeSources: true,
       maxImagesPerRequest: 2,
       ambientCooldownSeconds: 20,
@@ -109,7 +109,7 @@ function fakeContext(subcommand: string, options: Record<string, unknown> = {}):
         getBoolean: (name: string) => (options[name] as boolean | undefined) ?? null,
         getChannel: (name: string) => (options[name] as { id: string } | undefined) ?? null,
         getRole: (name: string) => (options[name] as { id: string } | undefined) ?? null,
-        getAttachment: () => null,
+        getAttachment: (name: string) => (options[name] as { url: string } | undefined) ?? null,
       },
       guild: null,
     },
@@ -142,6 +142,9 @@ function providerWith(current: GuildConfiguration): GuildConfigurationProvider {
           ...stored.chat,
           ...(input.chatbotCooldownSeconds !== undefined ? { cooldownSeconds: input.chatbotCooldownSeconds } : {}),
           ...(input.chatbotDisabledToolNames !== undefined ? { disabledTools: [...input.chatbotDisabledToolNames] } : {}),
+          ...(input.chatbotSelfReferenceImageAsset !== undefined
+            ? { selfReferenceImageAsset: input.chatbotSelfReferenceImageAsset }
+            : {}),
           ...(input.contextScanAddChannelId !== undefined
             ? { contextScanChannelIds: [...new Set([...stored.chat.contextScanChannelIds, input.contextScanAddChannelId])] }
             : {}),
@@ -255,6 +258,51 @@ describe("SettingsCommand", () => {
 
     expect(edited.text?.length).toBeLessThanOrEqual(2000);
     expect(edited.text).toContain("🟢 **tool_0**");
+  });
+
+  it("uploads a self-reference image and stores its asset path", async () => {
+    const saveSelfReferenceImage = vi.fn(() => Promise.resolve("guild-assets/123456789012345678/self-reference.png"));
+    const assets = { saveSelfReferenceImage, removeSelfReferenceImage: vi.fn() };
+    const provider = providerWith(profile());
+    const command = new SettingsCommand(provider, assets as never, applicationEmojiCatalog as never);
+    const { context, edited } = fakeContext("chatbot", { "self-reference-image": { url: "https://example.com/ref.png" } });
+
+    await command.execute(context);
+
+    expect(saveSelfReferenceImage).toHaveBeenCalledWith(profile().guildId, { url: "https://example.com/ref.png" });
+    expect(provider.require("").chat.selfReferenceImageAsset).toBe("guild-assets/123456789012345678/self-reference.png");
+    expect(edited.text).toContain("Chatbot self-reference image");
+  });
+
+  it("removes the self-reference image and deletes the old file", async () => {
+    const removeSelfReferenceImage = vi.fn(() => Promise.resolve());
+    const assets = { saveSelfReferenceImage: vi.fn(), removeSelfReferenceImage };
+    const existingProfile = {
+      ...profile(),
+      chat: { ...profile().chat, selfReferenceImageAsset: "guild-assets/123456789012345678/self-reference.png" },
+    };
+    const provider = providerWith(existingProfile);
+    const command = new SettingsCommand(provider, assets as never, applicationEmojiCatalog as never);
+    const { context } = fakeContext("chatbot", { "remove-self-reference-image": true });
+
+    await command.execute(context);
+
+    expect(provider.require("").chat.selfReferenceImageAsset).toBeNull();
+    expect(removeSelfReferenceImage).toHaveBeenCalledWith("guild-assets/123456789012345678/self-reference.png");
+  });
+
+  it("rejects providing both a self-reference upload and its removal", async () => {
+    const assets = { saveSelfReferenceImage: vi.fn(), removeSelfReferenceImage: vi.fn() };
+    const command = new SettingsCommand(providerWith(profile()), assets as never, applicationEmojiCatalog as never);
+    const { context, edited } = fakeContext("chatbot", {
+      "self-reference-image": { url: "https://example.com/ref.png" },
+      "remove-self-reference-image": true,
+    });
+
+    await command.execute(context);
+
+    expect(edited.text).toContain("either a self-reference image upload or removing it");
+    expect(assets.saveSelfReferenceImage).not.toHaveBeenCalled();
   });
 
   it("rejects context-scan-add when no chat provider supports channel summarization", async () => {

@@ -75,7 +75,7 @@ function guildConfiguration(overrides: Partial<GuildConfiguration> = {}): GuildC
       personalityFile: null, personalityAsset: null, examplesFile: null, examplesAsset: null,
       cooldownSeconds: 30, deniedMessage: "Premium required.", deniedLinkUrl: null, deniedLinkLabel: null,
       webSearchMode: "off", toolCallingEnabled: true, disabledTools: [],
-      imageInputEnabled: false, imageGenerationEnabled: false, includeSources: true,
+      imageInputEnabled: false, imageGenerationEnabled: false, selfReferenceImageAsset: null, includeSources: true,
       maxImagesPerRequest: 2, ambientCooldownSeconds: 20, channelHistoryLimit: 8, channelMemoryModes: {}, personaDriftEnabled: false, contextScanChannelIds: [], contextDailyChannelIds: [], contextSeedDays: 7,
     },
     sourceFile: "test.yaml",

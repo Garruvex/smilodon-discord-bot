@@ -112,7 +112,7 @@ function guildConfiguration(): GuildConfiguration {
       deniedLinkLabel: null,
       webSearchMode: "off", toolCallingEnabled: false, disabledTools: [],
       imageInputEnabled: false,
-      imageGenerationEnabled: false,
+      imageGenerationEnabled: false, selfReferenceImageAsset: null,
       includeSources: true,
       maxImagesPerRequest: 2,
       ambientCooldownSeconds: 20,

@@ -123,6 +123,12 @@ export class SettingsCommand implements BotCommand {
     ) {
       await this.assets.removeExamples(previousProfile.chat.examplesAsset);
     }
+    if (
+      previousProfile.chat.selfReferenceImageAsset &&
+      previousProfile.chat.selfReferenceImageAsset !== updatedProfile.chat.selfReferenceImageAsset
+    ) {
+      await this.assets.removeSelfReferenceImage(previousProfile.chat.selfReferenceImageAsset);
+    }
     const description = this.describeUpdate(setting, previousProfile, updatedProfile, input, result.extraLines ?? []);
     await this.auditLogService?.log(
       context.interaction.guildId,
@@ -163,6 +169,7 @@ export class SettingsCommand implements BotCommand {
         forceIdleImage:
           input.idleImageAsset !== undefined ||
           (input.idleImageUrl === null && input.idleImageAsset === null),
+        immediate: true,
       });
     }
   }

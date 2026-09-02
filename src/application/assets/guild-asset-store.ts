@@ -10,6 +10,13 @@ import type { PersonaBundleCompiler } from "../chat/persona-bundle-compiler.js";
 import { parsePersonaBundle, serializePersonaBundle } from "../chat/persona-bundle.js";
 import type { EmbeddingsClient } from "../chat/embeddings-client.js";
 
+// The uploaded-personality.md size cap — also reused by FilePersonaSource as
+// the char-truncation limit for the content it sends, so that limit can
+// never truncate an actual upload (bytes >= chars for UTF-8 text) and only
+// ever bounds a pathologically large admin-configured `personalityFile`
+// that bypasses this upload check entirely.
+export const personalityUploadMaxBytes = 64 * 1024;
+
 export class GuildAssetError extends Error {
   public constructor(message: string) {
     super(message);
@@ -71,6 +78,58 @@ export class GuildAssetStore {
     await rm(target, { force: true });
   }
 
+  public async saveSelfReferenceImage(guildId: string, attachment: Attachment): Promise<string> {
+    const extension = attachment.contentType ? allowedTypes.get(attachment.contentType) : undefined;
+    if (!extension) throw new Error("Self-reference image must be a PNG, JPEG, WebP, or GIF file.");
+    if (attachment.size > 8 * 1024 * 1024) throw new Error("Self-reference image must be 8 MB or smaller.");
+
+    const response = await fetch(attachment.url, { signal: AbortSignal.timeout(30_000) });
+    if (!response.ok) throw new Error(`Discord image download failed with HTTP ${response.status}.`);
+    const data = Buffer.from(await response.arrayBuffer());
+    if (data.length > 8 * 1024 * 1024) throw new Error("Downloaded self-reference image exceeded 8 MB.");
+
+    const relativeDirectory = `guild-assets/${guildId}`;
+    const directory = resolve(this.runtimeDirectory, relativeDirectory);
+    await mkdir(directory, { recursive: true });
+    const target = resolve(directory, `self-reference${extension}`);
+    const temporary = `${target}.tmp`;
+    await writeFile(temporary, data);
+    await rename(temporary, target);
+
+    for (const oldExtension of [".png", ".jpg", ".webp", ".gif"]) {
+      if (oldExtension !== extension) await rm(resolve(directory, `self-reference${oldExtension}`), { force: true });
+    }
+    return `${relativeDirectory}/self-reference${extension}`;
+  }
+
+  public async removeSelfReferenceImage(asset: string | null): Promise<void> {
+    if (!asset || !extname(asset)) return;
+    const target = resolve(this.runtimeDirectory, asset);
+    const root = resolve(this.runtimeDirectory, "guild-assets");
+    if (!target.startsWith(`${root}\\`) && !target.startsWith(`${root}/`)) return;
+    await rm(target, { force: true });
+  }
+
+  // Generic byte-reader for assets a tool needs to load at call time (e.g. the
+  // self-reference image, read fresh on every generate_self_image call rather
+  // than cached, since it can be replaced between calls). Content type is
+  // inferred from the stored extension, not re-detected from magic bytes —
+  // these are our own files, written by saveSelfReferenceImage above, which
+  // already validated the content type at upload time.
+  public async readAsset(assetPath: string): Promise<{ data: Buffer; contentType: string } | null> {
+    const target = resolve(this.runtimeDirectory, assetPath);
+    const root = resolve(this.runtimeDirectory, "guild-assets");
+    if (!target.startsWith(`${root}\\`) && !target.startsWith(`${root}/`)) return null;
+    const extension = extname(assetPath).toLowerCase();
+    const contentType = [...allowedTypes.entries()].find(([, ext]) => ext === extension)?.[0];
+    if (!contentType) return null;
+    try {
+      return { data: await readFile(target), contentType };
+    } catch {
+      return null;
+    }
+  }
+
   public async savePersonality(
     guildId: string,
     attachment: Attachment,
@@ -81,12 +140,12 @@ export class GuildAssetStore {
     if (!attachment.name.toLowerCase().endsWith(".md")) {
       throw new GuildAssetError("Chatbot personality must be uploaded as a Markdown (.md) file.");
     }
-    if (attachment.size > 64 * 1024) throw new GuildAssetError("Chatbot personality must be 64 KB or smaller.");
+    if (attachment.size > personalityUploadMaxBytes) throw new GuildAssetError("Chatbot personality must be 64 KB or smaller.");
 
     const response = await fetch(attachment.url, { signal: AbortSignal.timeout(30_000) });
     if (!response.ok) throw new GuildAssetError(`Discord personality download failed with HTTP ${response.status}.`);
     const data = Buffer.from(await response.arrayBuffer());
-    if (data.length > 64 * 1024) throw new GuildAssetError("Downloaded personality exceeded 64 KB.");
+    if (data.length > personalityUploadMaxBytes) throw new GuildAssetError("Downloaded personality exceeded 64 KB.");
     const content = data.toString("utf8").trim();
     if (!content) throw new GuildAssetError("Chatbot personality cannot be empty.");
 

@@ -43,6 +43,7 @@ const guildChatSchema = z.preprocess((value) => {
   disabledTools: z.array(z.string()).default([]),
   imageInputEnabled: z.boolean().default(false),
   imageGenerationEnabled: z.boolean().default(false),
+  selfReferenceImageAsset: z.string().regex(/^guild-assets\/\d{17,20}\/self-reference\.(png|jpg|webp|gif)$/).nullable().default(null),
   includeSources: z.boolean().default(true),
   maxImagesPerRequest: z.number().int().min(CHAT_LIMITS.maxImagesPerRequest.min).max(CHAT_LIMITS.maxImagesPerRequest.max).default(CHAT_LIMITS.maxImagesPerRequest.default),
   ambientCooldownSeconds: z.number().int().min(CHAT_LIMITS.ambientCooldownSeconds.min).max(CHAT_LIMITS.ambientCooldownSeconds.max).default(CHAT_LIMITS.ambientCooldownSeconds.default),

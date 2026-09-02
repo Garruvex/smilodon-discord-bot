@@ -24,6 +24,8 @@ export const chatbotSetting: MutationSettingDefinition = {
     { type: "boolean", name: "tool-calling", description: "Allow the model to call bot functions mid-reply (dice, 8-ball, booru, lookups)." },
     { type: "boolean", name: "image-input", description: "Allow bounded image attachments from Discord." },
     { type: "boolean", name: "image-generation", description: "Allow the model to generate images in mention chat." },
+    { type: "attachment", name: "self-reference-image", description: "Character reference image used automatically when the bot draws itself." },
+    { type: "boolean", name: "remove-self-reference-image", description: "Remove the self-reference image." },
     { type: "boolean", name: "include-sources", description: "Include web citation links in replies." },
     {
       type: "integer", name: "max-images", description: "Maximum images accepted per request.",
@@ -59,6 +61,11 @@ export const chatbotSetting: MutationSettingDefinition = {
     const useDefaultExamples = context.interaction.options.getBoolean("use-default-examples");
     if (examples && useDefaultExamples === true) {
       return { ok: false, message: "Choose either an examples upload or removing examples, not both." };
+    }
+    const selfReferenceImage = context.interaction.options.getAttachment("self-reference-image");
+    const removeSelfReferenceImage = context.interaction.options.getBoolean("remove-self-reference-image");
+    if (selfReferenceImage && removeSelfReferenceImage === true) {
+      return { ok: false, message: "Choose either a self-reference image upload or removing it, not both." };
     }
     if (enabled !== null) input.chatbotEnabled = enabled;
     if (role) {
@@ -98,6 +105,12 @@ export const chatbotSetting: MutationSettingDefinition = {
       input.chatbotExamplesAsset = null;
       input.chatbotExamplesFile = null;
     }
+    if (selfReferenceImage) {
+      input.chatbotSelfReferenceImageAsset = await deps.assets.saveSelfReferenceImage(
+        context.interaction.guildId!, selfReferenceImage,
+      );
+    }
+    if (removeSelfReferenceImage === true) input.chatbotSelfReferenceImageAsset = null;
     const personaDrift = context.interaction.options.getBoolean("persona-drift");
     if (personaDrift !== null) input.chatbotPersonaDriftEnabled = personaDrift;
     if (context.interaction.options.getBoolean("reset-persona-drift") === true) {
@@ -135,6 +148,7 @@ export const chatbotSetting: MutationSettingDefinition = {
     { label: "Chatbot tool calling", read: (p) => p.chat.toolCallingEnabled },
     { label: "Chatbot image input", read: (p) => p.chat.imageInputEnabled },
     { label: "Chatbot image generation", read: (p) => p.chat.imageGenerationEnabled },
+    { label: "Chatbot self-reference image", read: (p) => p.chat.selfReferenceImageAsset },
     { label: "Chatbot include sources", read: (p) => p.chat.includeSources },
     { label: "Chatbot max images per request", read: (p) => p.chat.maxImagesPerRequest },
     { label: "Chatbot persona drift (experimental)", read: (p) => p.chat.personaDriftEnabled },

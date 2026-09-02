@@ -75,7 +75,7 @@ function profile(overrides: { ambientReplies?: boolean } = {}): GuildConfigurati
     chat: {
       personalityFile: null, personalityAsset: null, examplesFile: null, examplesAsset: null, cooldownSeconds: 30,
       deniedMessage: "Premium required.", deniedLinkUrl: null, deniedLinkLabel: null,
-      webSearchMode: "off", toolCallingEnabled: false, disabledTools: [], imageInputEnabled: false, imageGenerationEnabled: false,
+      webSearchMode: "off", toolCallingEnabled: false, disabledTools: [], imageInputEnabled: false, imageGenerationEnabled: false, selfReferenceImageAsset: null,
       includeSources: true, maxImagesPerRequest: 2, ambientCooldownSeconds: 20,
       channelHistoryLimit: 8, channelMemoryModes: {}, personaDriftEnabled: false, contextScanChannelIds: [], contextDailyChannelIds: [], contextSeedDays: 7,
     },

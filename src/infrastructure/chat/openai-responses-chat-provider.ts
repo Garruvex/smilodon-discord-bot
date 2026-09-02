@@ -9,8 +9,10 @@ import {
   type ChatResponseObserver,
   type ChatSource,
   type DroppedExchangeFact,
+  type GeneratedChatImage,
   type UserCustomizationAnalysisResult,
 } from "../../application/chat/chat-provider.js";
+import { generatedImageLimits } from "../../application/chat/generated-image-limits.js";
 import type { ChannelSummaryMessage, ChannelSummaryResult } from "../../application/context/channel-message-summarizer.js";
 import type { ChatTool, ChatToolContext, ChatToolResult } from "../../application/chat/tools/chat-tool.js";
 import { buildChatContext, buildChatInstructions, chatModelJsonSchema, parseChatModelOutput } from "./chat-structured-output.js";
@@ -105,14 +107,18 @@ const streamEventSchema = z.object({
   }).optional(),
 });
 
-const maximumGeneratedImageBytes = 10 * 1024 * 1024;
-const maximumGeneratedImagesPerReply = 4;
+const maximumGeneratedImageBytes = generatedImageLimits.maxBytesPerImage;
+const maximumGeneratedImagesPerReply = generatedImageLimits.maxImagesPerReply;
 const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 // Bounds how many times a single reply can round-trip through the model to
 // execute tool calls before forcing a final answer, so a model stuck calling
 // tools in a loop can't run away on latency/cost.
 const maxToolRoundTrips = 6;
-const toolExecutionTimeoutMs = 10_000;
+// GenerateSelfImageTool's own image-generation request routinely takes
+// longer than a text tool call — 10s was too tight for it to ever succeed.
+// Every other existing tool finishes in well under a second, so this is safe
+// headroom, not a meaningful latency regression for them.
+const toolExecutionTimeoutMs = 60_000;
 const toolBudgetExhaustedMessage = JSON.stringify({
   error: "Tool call budget exhausted. Do not call any more tools — answer now with what you already have, noting any gaps.",
 });
@@ -183,6 +189,7 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
             botAdministratorRoleIds: request.musicBotAdministratorRoleIds ?? new Set(),
           }
         : null,
+      pendingGeneratedImages: [],
     };
     let input: unknown[] = [{ role: "user", content }];
     // Only the first request can stream (for image-generation previews) — a
@@ -197,7 +204,7 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
         item.type === "function_call" && Boolean(item.call_id) && Boolean(item.name) && item.arguments !== undefined);
 
       if (functionCalls.length === 0) {
-        return this.parseResponse(parsed, request);
+        return this.mergePendingImages(this.parseResponse(parsed, request), toolContext.pendingGeneratedImages);
       }
 
       if (roundTrip >= maxToolRoundTrips) {
@@ -222,7 +229,10 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
         ];
         const finalizeBody = await this.modelChain.run((model) =>
           this.postResponses(model, request, finalizeInput, [], false, observer));
-        return this.parseResponse(responseSchema.parse(finalizeBody), request);
+        return this.mergePendingImages(
+          this.parseResponse(responseSchema.parse(finalizeBody), request),
+          toolContext.pendingGeneratedImages,
+        );
       }
 
       // Sequential, not Promise.all: several tools (music playback chief
@@ -638,5 +648,71 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
     if (data.length === 0 || data.length > maximumGeneratedImageBytes) return null;
     if (!data.subarray(0, 8).equals(pngSignature)) return null;
     return { data, contentType: "image/png", filename };
+  }
+
+  private mergePendingImages(response: ChatResponse, pending: readonly GeneratedChatImage[]): ChatResponse {
+    if (pending.length === 0) return response;
+    return { ...response, generatedImages: [...response.generatedImages, ...pending] };
+  }
+
+  // Isolated, one-shot request for GenerateSelfImageTool — deliberately not
+  // built via postResponses/buildChatContext, which are coupled to the full
+  // conversational turn (persona instructions, structured-output schema,
+  // tool loop). This just asks for one image, given a prompt and a reference
+  // image to keep the character consistent, and forces the model to
+  // actually generate (tool_choice: "required") since that's the only
+  // reason this request exists.
+  public async generateReferenceImage(
+    prompt: string,
+    reference: { data: Buffer; contentType: string },
+  ): Promise<{ ok: true; images: readonly GeneratedChatImage[] } | { ok: false; reason: string }> {
+    const referenceDataUrl = `data:${reference.contentType};base64,${reference.data.toString("base64")}`;
+    try {
+      const body = await this.modelChain.run(async (model) => {
+        const response = await fetch(`${this.baseUrl}/responses`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model,
+            input: [{
+              role: "user",
+              content: [
+                { type: "input_text", text: prompt },
+                { type: "input_image", image_url: referenceDataUrl, detail: "auto" },
+              ],
+            }],
+            tools: [{ type: "image_generation" }],
+            tool_choice: "required",
+          }),
+          signal: AbortSignal.timeout(50_000),
+        });
+        if (!response.ok) {
+          const errorBody: unknown = await response.json().catch(() => null);
+          const parsedError = errorResponseSchema.safeParse(errorBody);
+          const code = parsedError.success
+            ? (parsedError.data.error.code ?? parsedError.data.error.type ?? null)
+            : null;
+          throw new ChatProviderError(
+            `Chat provider returned HTTP ${response.status}${code ? ` (${code})` : ""}.`,
+            response.status,
+            code,
+          );
+        }
+        return response.json();
+      });
+      const parsed = responseSchema.parse(body);
+      const images = parsed.output
+        .filter((item) => item.type === "image_generation_call" && item.result)
+        .slice(0, maximumGeneratedImagesPerReply)
+        .map((item, index) => this.decodeGeneratedImage(item.result!, `self-image-${index + 1}.png`))
+        .filter((image): image is NonNullable<typeof image> => image !== null);
+      if (images.length === 0) return { ok: false, reason: "no image came back from the model." };
+      return { ok: true, images };
+    } catch (error) {
+      return { ok: false, reason: error instanceof Error ? error.message : "the request failed." };
+    }
   }
 }
