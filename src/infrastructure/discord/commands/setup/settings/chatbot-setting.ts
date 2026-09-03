@@ -5,6 +5,13 @@ import {
 import { CHAT_LIMITS } from "../../../../../config/guild-configuration-limits.js";
 import type { MutationSettingDefinition } from "./setting-definition.js";
 
+const memoryModeChoices = [
+  { name: "shared — durable memory writes normally, scoped by the model", value: "shared" },
+  { name: "isolated — everything durable stays sealed to this channel, regardless of what the model claims", value: "isolated" },
+  { name: "session_only — short-term reply context only, nothing durable is written", value: "session_only" },
+  { name: "disabled — no memory reads or writes at all in this channel", value: "disabled" },
+] as const;
+
 export const chatbotSetting: MutationSettingDefinition = {
   kind: "mutation",
   name: "chatbot",
@@ -13,6 +20,10 @@ export const chatbotSetting: MutationSettingDefinition = {
     { type: "boolean", name: "enabled", description: "Reply when permitted users mention the bot." },
     { type: "role", name: "role", description: "Adds a role allowed to use mention chat." },
     { type: "channel", name: "channel", description: "Adds a text channel where mention chat is allowed.", guildTextOnly: true },
+    {
+      type: "string", name: "memory-mode", description: "Sets `channel`'s memory isolation mode (defaults to shared if never set).",
+      choices: memoryModeChoices,
+    },
     {
       type: "integer", name: "cooldown-seconds", description: "Per-user delay between requests.",
       minValue: CHAT_LIMITS.cooldownSeconds.min, maxValue: CHAT_LIMITS.cooldownSeconds.max,
@@ -42,6 +53,10 @@ export const chatbotSetting: MutationSettingDefinition = {
     const enabled = context.interaction.options.getBoolean("enabled");
     const role = context.interaction.options.getRole("role");
     const channel = context.interaction.options.getChannel("channel");
+    const memoryMode = context.interaction.options.getString("memory-mode") as (typeof memoryModeChoices)[number]["value"] | null;
+    if (memoryMode && !channel) {
+      return { ok: false, message: "memory-mode requires channel — it sets that channel's memory isolation mode." };
+    }
     const cooldown = context.interaction.options.getInteger("cooldown-seconds");
     const deniedMessage = context.interaction.options.getString("denied-message");
     const deniedLinkUrl = context.interaction.options.getString("denied-link-url");
@@ -73,6 +88,9 @@ export const chatbotSetting: MutationSettingDefinition = {
     }
     if (channel) {
       input.chatbotChannelIds = [...new Set([...previousProfile.channels.chatbot, channel.id])];
+    }
+    if (memoryMode && channel) {
+      input.chatbotChannelMemoryModes = { ...previousProfile.chat.channelMemoryModes, [channel.id]: memoryMode };
     }
     if (cooldown !== null) input.chatbotCooldownSeconds = cooldown;
     if (deniedMessage) input.chatbotDeniedMessage = deniedMessage;
@@ -116,17 +134,19 @@ export const chatbotSetting: MutationSettingDefinition = {
     if (context.interaction.options.getBoolean("reset-persona-drift") === true) {
       await deps.personaDriftStore?.reset(context.interaction.guildId!);
     }
-    return {
-      ok: true,
-      extraLines: personalityLoreHeadings.length > 0
-        ? [
-            `Personality compiled: ${personalityLoreHeadings.length} section(s) classified as situational lore ` +
-            `(sent only when relevant, not on every turn) — ${personalityLoreHeadings.join(", ")}. ` +
-            `If any of those should always apply, keep them out of a \`##\` section or move the heading's content ` +
-            `into the file's intro.`,
-          ]
-        : [],
-    };
+    const extraLines: string[] = [];
+    if (personalityLoreHeadings.length > 0) {
+      extraLines.push(
+        `Personality compiled: ${personalityLoreHeadings.length} section(s) classified as situational lore ` +
+        `(sent only when relevant, not on every turn) — ${personalityLoreHeadings.join(", ")}. ` +
+        `If any of those should always apply, keep them out of a \`##\` section or move the heading's content ` +
+        `into the file's intro.`,
+      );
+    }
+    if (memoryMode && channel) {
+      extraLines.push(`<#${channel.id}> memory mode set to \`${memoryMode}\`.`);
+    }
+    return { ok: true, extraLines };
   },
   describe: (previous, updated) => {
     if (updated.roles.chatbot.size !== previous.roles.chatbot.size) {

@@ -14,7 +14,6 @@ import {
 import { chatbotSetting } from "./chatbot-setting.js";
 import { lifecycleSetting } from "./lifecycle-setting.js";
 import { linkFixSetting } from "./link-fix-setting.js";
-import { memoryModeSetting } from "./memory-mode-setting.js";
 import { nsfwSetting } from "./nsfw-setting.js";
 import { panelSetting } from "./panel-setting.js";
 import { remindersSetting } from "./reminders-setting.js";
@@ -66,7 +65,6 @@ export const settingGroups: readonly SettingGroup[] = [
       chatbotSetting,
       ambientRepliesSetting,
       channelHistorySetting,
-      memoryModeSetting,
       contextScanAddSetting,
       contextDailyAddSetting,
       contextDailyRemoveSetting,

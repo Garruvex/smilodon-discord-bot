@@ -18,7 +18,7 @@ import type { BirthdayStore } from "../birthdays/birthday-store.js";
 import type { ChatToolRegistry } from "./tools/chat-tool-registry.js";
 import { resolveChannelMemoryMode, type ChannelMemoryMode } from "../memory/memory-channel-policy.js";
 import type { ChatMemoryRecord, GuildKnowledgeRecord } from "./chat-provider.js";
-import type { Memory, MemoryEngine, ProposedMemory } from "../memory/memory.js";
+import type { Memory, MemoryEngine, MemoryIngestResult, ProposedMemory } from "../memory/memory.js";
 
 // Adapts a unified Memory back into the legacy prompt-facing record shapes
 // (ChatRequest still expects `memories`/`guildKnowledge` in their original
@@ -278,6 +278,28 @@ export class ChatConversationService {
     }
   }
 
+  // memoryEngine.ingest() reports rejected (permanently invalid proposals —
+  // bad topic/slot, secret content) and failed (transient repository/embedding
+  // errors) counts rather than throwing, so a reply can otherwise succeed
+  // while its memories silently disappear. Surface that here so it shows up
+  // in logs/telemetry instead of vanishing.
+  private logMemoryIngestIssues(
+    result: MemoryIngestResult,
+    guildId: string,
+    channelId: string,
+    userId: string,
+  ): void {
+    if (result.rejected === 0 && result.failed === 0) return;
+    this.logger?.warn(
+      {
+        guildId, channelId, userId,
+        ingested: result.ingested.length, removed: result.removed,
+        rejected: result.rejected, failed: result.failed,
+      },
+      "Memory ingest had rejected/failed proposals",
+    );
+  }
+
   // True while a previous request from this same guild+user is still being
   // processed (or queued behind one that is), so callers can tell the user
   // their new message will be handled after the current one instead of
@@ -442,11 +464,12 @@ export class ChatConversationService {
       if (input.triggerMode === "ambient" && validatedResponse.ambientAction !== "reply") {
         if (validatedResponse.reactionEmoji && proposals.length > 0) {
           try {
-            await this.memoryEngine.ingest({
+            const result = await this.memoryEngine.ingest({
               guildId: input.guildId, channelId: input.channelId, channelMode,
               assertedByUserId: input.currentUser.id, sourceMessageId: null,
               source: "live", now, proposals,
             });
+            this.logMemoryIngestIssues(result, input.guildId, input.channelId, input.currentUser.id);
           } catch (error) {
             throw new ChatStateCommitError(error);
           }
@@ -476,11 +499,12 @@ export class ChatConversationService {
       }
       if (proposals.length > 0) {
         try {
-          await this.memoryEngine.ingest({
+          const result = await this.memoryEngine.ingest({
             guildId: input.guildId, channelId: input.channelId, channelMode,
             assertedByUserId: input.currentUser.id, sourceMessageId: null,
             source: "live", now, proposals,
           });
+          this.logMemoryIngestIssues(result, input.guildId, input.channelId, input.currentUser.id);
         } catch (error) {
           throw new ChatStateCommitError(error);
         }
