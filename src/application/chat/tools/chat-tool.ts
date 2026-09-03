@@ -1,4 +1,4 @@
-import type { ChatUser } from "../chat-provider.js";
+import type { ChatUser, GeneratedChatImage } from "../chat-provider.js";
 import type { PlaybackActor } from "../../music/playback-service.js";
 
 // A JSON Schema object describing a tool's arguments, sent to the model
@@ -59,6 +59,13 @@ export interface ChatToolContext {
   // that mutating call and bail out instead, rather than applying an action
   // the model (and the user watching its reply) has already moved on from.
   signal?: AbortSignal;
+  // A ChatToolResult is text-only and can't carry an attachable image — a
+  // tool that generates one (currently just GenerateSelfImageTool) pushes it
+  // here instead. The same array instance is passed to every tool call
+  // within one turn (see reply() in gemini-chat-provider.ts /
+  // openai-responses-chat-provider.ts), and is concatenated into the turn's
+  // final ChatResponse.generatedImages once every round trip finishes.
+  pendingGeneratedImages: GeneratedChatImage[];
 }
 
 export interface ChatToolResult {

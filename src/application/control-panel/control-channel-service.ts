@@ -57,10 +57,22 @@ export class ControlChannelService {
   private readonly progressRefreshTimers = new Map<string, NodeJS.Timeout>();
   private readonly configuredChannelPermissions = new Set<string>();
   private readonly refreshCoordinator: PanelRefreshCoordinator;
-  // Serializes per-guild button actions (so a double-click can't race the same
-  // toggle twice) and ensurePanel() calls (so startup init and an event-driven
-  // refresh can't both send a fresh panel message for the same guild).
+  // The action queue: serializes per-guild playbackService/playerGateway
+  // mutations (button clicks, voice-state reconciliation) so a double-click
+  // can't race the same toggle twice, and so a queued second click always
+  // captures/predicts from the first click's *actual* post-execution state
+  // rather than a snapshot read before either ran.
   private readonly guildLocks = new KeyedSerialQueue();
+  // The write queue: serializes every actual Discord write to the panel
+  // message per guild — both the button handler's optimistic edit and the
+  // authoritative ensurePanel()/message.edit() render, regardless of which
+  // path triggered it (a click, a background event, the progress timer, or
+  // ensureGuildPanel()). Without this, an optimistic edit and an in-flight
+  // authoritative edit can complete out of order over the network, making an
+  // older render visually stomp a newer one.
+  private readonly panelWriteQueue = new KeyedSerialQueue();
+  private readonly unsubscribeEventBus: () => void;
+  private stopped = false;
 
   public constructor(
     private readonly client: Client,
@@ -76,7 +88,8 @@ export class ControlChannelService {
     this.refreshCoordinator = new PanelRefreshCoordinator(
       async (guildId, options) => this.performPanelRefresh(guildId, options),
     );
-    eventBus.subscribe(async (event) => {
+    this.unsubscribeEventBus = eventBus.subscribe(async (event) => {
+      if (this.stopped) return;
       await this.refreshPanel(event.guildId);
     });
   }
@@ -100,6 +113,9 @@ export class ControlChannelService {
   }
 
   public stop(): void {
+    this.stopped = true;
+    this.unsubscribeEventBus();
+    this.refreshCoordinator.stop();
     for (const timer of this.progressRefreshTimers.values()) clearTimeout(timer);
     this.progressRefreshTimers.clear();
   }
@@ -108,6 +124,7 @@ export class ControlChannelService {
   // caches don't grow unbounded across many join/leave cycles.
   public handleGuildRemoved(guildId: string): void {
     this.clearProgressRefreshTimer(guildId);
+    this.refreshCoordinator.stopGuild(guildId);
     const profile = this.guildConfigurationProvider.find(guildId);
     if (profile?.channels.controlPanel) {
       this.configuredChannelPermissions.delete(profile.channels.controlPanel);
@@ -116,7 +133,7 @@ export class ControlChannelService {
 
   public async ensureGuildPanel(guildId: string): Promise<Message> {
     const profile = this.guildConfigurationProvider.require(guildId);
-    const message = await this.guildLocks.run(guildId, () => this.ensurePanel(profile));
+    const message = await this.panelWriteQueue.run(guildId, () => this.ensurePanel(profile));
     if (!message.pinned) {
       await message.pin("Persistent music control panel").catch((error: unknown) => {
         this.logger.warn({ error, guildId }, "Unable to pin music control panel");
@@ -267,41 +284,84 @@ export class ControlChannelService {
       voiceChannelId: interaction.member.voice.channelId,
     };
 
-    // Optimistic instant feedback: render the predicted post-action state
-    // (or, for controls without a predictor, just the clicked button
-    // disabled) immediately, rather than leaving the panel looking
-    // unresponsive for the duration of the Lavalink round trip. The
-    // unconditional refresh below always reconciles with ground truth
-    // afterward, so a failed/incorrect prediction self-corrects on the very
-    // next render.
-    const currentSnapshot = this.playerGateway.getSnapshot(interaction.guildId);
-    const predictedSnapshot = currentSnapshot && control.predictSnapshot
-      ? control.predictSnapshot(currentSnapshot)
-      : currentSnapshot;
-    // Components only: the embed (track title/art/idle image) depends on
-    // attachment bookkeeping handled by the real refresh below, so predicting
-    // it here risks a broken image reference. Buttons are self-contained and
-    // safe to render optimistically.
-    const pendingRows = createMusicPanelControlRows(profile, predictedSnapshot, control.id);
-    await interaction.editReply({ components: pendingRows }).catch(() => undefined);
+    let staleRecovered = false;
+    let executionError: unknown;
+    // The whole capture → predict → optimistic-write → execute → authoritative
+    // write pipeline runs as one action-queue turn. That's what makes the
+    // prediction correct (a queued second click reads state *after* this
+    // click's execute() actually ran, not a snapshot taken before either
+    // ran) and what makes the write ordering correct (this click's
+    // authoritative write is fully submitted to the write queue before a
+    // queued second click's own optimistic write can be submitted, so a
+    // newer render can never be stomped by an older one arriving late).
+    await this.guildLocks.run(interaction.guildId, async () => {
+      // The bot's actual Discord voice connection is authoritative over
+      // whatever channel the Lavalink player still thinks it's in. A
+      // mismatch (kick, channel deletion, a missed VoiceStateUpdate) means
+      // the player is stale — destroy it now rather than let
+      // channel-mismatch checks (e.g. 24/7's assertControllablePlayer)
+      // permanently block every control, including the one that would have
+      // turned the stale session off.
+      staleRecovered = await this.playerGateway.reconcileVoiceState(interaction.guildId);
+      try {
+        if (!staleRecovered) {
+          // Optimistic instant feedback: render the predicted post-action
+          // state (or, for controls without a predictor, just the clicked
+          // button disabled) immediately, rather than leaving the panel
+          // looking unresponsive for the duration of the Lavalink round
+          // trip. The authoritative write below always reconciles with
+          // ground truth afterward, so a failed/incorrect prediction
+          // self-corrects immediately. Controls whose result is already a
+          // local, instant toggle (24/7, autoqueue) skip this phase
+          // entirely and go straight to the authoritative color — there's
+          // no round trip worth masking, so a disabled flash would only be
+          // visual noise.
+          if (control.showPendingState !== false) {
+            const currentSnapshot = this.playerGateway.getSnapshot(interaction.guildId);
+            const predictedSnapshot = currentSnapshot && control.predictSnapshot
+              ? control.predictSnapshot(currentSnapshot)
+              : currentSnapshot;
+            // Components only: the embed (track title/art/idle image)
+            // depends on attachment bookkeeping handled by the authoritative
+            // write below, so predicting it here risks a broken image
+            // reference. Buttons are self-contained and safe to predict.
+            const pendingRows = createMusicPanelControlRows(profile, predictedSnapshot, control.id);
+            await this.panelWriteQueue.run(interaction.guildId, () =>
+              interaction.editReply({ components: pendingRows }).catch(() => undefined));
+          }
+          await control.execute({
+            actor,
+            profile,
+            playbackService: this.playbackService,
+            playerGateway: this.playerGateway,
+          });
+        }
+      } catch (error) {
+        executionError = error;
+      } finally {
+        // Always reconcile the panel with ground truth, success or failure,
+        // so a failed action (or a failed ephemeral reply right after it)
+        // can never leave the optimistic prediction stuck on screen. This
+        // bypasses the background debounce scheduler entirely — user
+        // interaction feedback goes straight into the write queue with
+        // immediate priority — but still funnels through the *same* queue
+        // as background/event-driven writes, so it can't race them either.
+        await this.writePanel(interaction.guildId, profile, {});
+      }
+    });
 
-    try {
-      // Serialize per guild so rapid double-clicks (e.g. play/pause, volume)
-      // can't both read the same pre-action state and race each other.
-      await this.guildLocks.run(interaction.guildId, () => control.execute({
-        actor,
-        profile,
-        playbackService: this.playbackService,
-        playerGateway: this.playerGateway,
-      }));
-    } catch (error) {
+    if (staleRecovered) {
       await this.replyEphemeral(
         interaction,
-        error instanceof MusicError ? error.message : "The control failed.",
+        "The bot's voice connection was out of sync with the player, so the session was reset.",
+      );
+    } else if (executionError) {
+      await this.replyEphemeral(
+        interaction,
+        executionError instanceof MusicError ? executionError.message : "The control failed.",
       );
     }
 
-    await this.refreshPanel(interaction.guildId);
     return true;
   }
 
@@ -322,19 +382,39 @@ export class ControlChannelService {
       return;
     }
 
-    try {
-      const message = await this.guildLocks.run(guildId, () => this.ensurePanel(profile));
-      const snapshot = this.playerGateway.getSnapshot(profile.guildId);
-      const payload = this.createPanelPayload(profile, snapshot);
-      // Arm the next update from player state, not from the success of the
-      // Discord edit. A transient API failure must not permanently stop the
-      // panel, and Lavalink may report `playing = false` briefly while a new
-      // current track is starting.
-      this.resetProgressRefreshTimer(guildId, snapshot);
-      await message.edit(this.createPanelEditOptions(message, profile, snapshot, payload, options));
-    } catch (error) {
-      this.logger.error({ error, guildId }, "Unable to refresh music control panel");
-    }
+    // Self-healing fallback: catches a stale player left behind by a missed
+    // VoiceStateUpdate (see reconcileVoiceState) even when no button click
+    // triggers the check first. Goes through the action queue since it
+    // mutates playerGateway state; not needed when called from handleButton,
+    // which already reconciles under its own action-queue turn before
+    // reaching writePanel directly.
+    await this.guildLocks.run(guildId, () => this.playerGateway.reconcileVoiceState(guildId));
+    await this.writePanel(guildId, profile, options);
+  }
+
+  // The single choke point for every actual Discord write to the panel
+  // message — see panelWriteQueue's field comment for why this can't be
+  // skipped for any caller, optimistic or authoritative.
+  private async writePanel(
+    guildId: string,
+    profile: GuildConfiguration,
+    options: PanelRefreshOptions,
+  ): Promise<void> {
+    await this.panelWriteQueue.run(guildId, async () => {
+      try {
+        const message = await this.ensurePanel(profile);
+        const snapshot = this.playerGateway.getSnapshot(profile.guildId);
+        const payload = this.createPanelPayload(profile, snapshot);
+        // Arm the next update from player state, not from the success of the
+        // Discord edit. A transient API failure must not permanently stop the
+        // panel, and Lavalink may report `playing = false` briefly while a new
+        // current track is starting.
+        this.resetProgressRefreshTimer(guildId, snapshot);
+        await message.edit(this.createPanelEditOptions(message, profile, snapshot, payload, options));
+      } catch (error) {
+        this.logger.error({ error, guildId }, "Unable to refresh music control panel");
+      }
+    });
   }
 
   private async ensurePanel(profile: GuildConfiguration): Promise<Message> {
@@ -437,12 +517,34 @@ export class ControlChannelService {
     const guild = this.client.guilds.cache.get(guildId);
     const oldChannel = await guild?.channels.fetch(channelId).catch(() => null);
     if (!oldChannel?.isTextBased() || oldChannel.isDMBased()) return;
+
+    if (guild && oldChannel.type === ChannelType.GuildText) {
+      await this.restoreChannelPermissions(oldChannel, guild);
+    }
+
     const oldMessage = await oldChannel.messages.fetch(messageId).catch(() => null);
     if (!oldMessage || oldMessage.author.id !== this.client.user?.id) return;
     await oldMessage.delete().catch((error: unknown) => {
       this.logger.warn(
         { error, guildId, channelId, messageId },
         "Unable to delete obsolete music control panel",
+      );
+    });
+  }
+
+  // Reverses ensureChannelPermissions(): resets the UseApplicationCommands
+  // overwrite back to inherited rather than deleting the whole @everyone
+  // overwrite, so any unrelated overwrites the guild had configured survive.
+  private async restoreChannelPermissions(channel: TextChannel, guild: Guild): Promise<void> {
+    this.configuredChannelPermissions.delete(channel.id);
+    await channel.permissionOverwrites.edit(
+      guild.roles.everyone,
+      { UseApplicationCommands: null },
+      { reason: "Music control channel is no longer reserved for the panel" },
+    ).catch((error: unknown) => {
+      this.logger.warn(
+        { error, guildId: guild.id, channelId: channel.id },
+        "Unable to restore music control channel permissions",
       );
     });
   }
@@ -581,7 +683,7 @@ export class ControlChannelService {
     snapshot: MusicPlayerSnapshot | null,
   ): void {
     this.clearProgressRefreshTimer(guildId);
-    if (!snapshot?.currentTrack || snapshot.paused) return;
+    if (this.stopped || !snapshot?.currentTrack || snapshot.paused) return;
 
     const timer = setTimeout(() => {
       this.progressRefreshTimers.delete(guildId);

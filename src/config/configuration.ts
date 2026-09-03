@@ -98,4 +98,10 @@ export interface ApplicationConfiguration {
   // vectors regardless of which provider produces replies or summaries.
   embeddings: EmbeddingConfiguration | null;
   memory: MemoryConfiguration;
+  // Bounds for delivering a chat reply back to Discord — independent of
+  // which chat provider produced it. See chat-message-chunker.ts and
+  // chat-image-delivery.ts.
+  chatDelivery: {
+    maxGeneratedImageAggregateBytes: number;
+  };
 }

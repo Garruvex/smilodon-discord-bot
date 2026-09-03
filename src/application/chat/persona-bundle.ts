@@ -13,6 +13,15 @@ export const personaBundleSchema = z.object({
     embedding: z.array(z.number()).nullable(),
   })),
   compiledAt: z.number(),
+  // Fingerprint (provider+model+dimensionality — see EmbeddingsClient.modelId)
+  // of whatever embeddings client produced this bundle's chunk vectors, or
+  // null when none was configured at compile time. PersonaBundleCompiler
+  // only reuses a chunk's cached vector on a reupload when this matches the
+  // current embeddings client's modelId — otherwise a provider/model switch
+  // could silently mix vectors from incompatible semantic spaces, even at
+  // matching dimensionality. Defaults to null so bundles written before this
+  // field existed still parse (as "unknown", never reused).
+  embeddingModel: z.string().nullable().default(null),
 });
 
 export type PersonaBundle = z.infer<typeof personaBundleSchema>;

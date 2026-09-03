@@ -115,6 +115,28 @@ describe("buildChatInstructions", () => {
     const withoutDrift = buildChatInstructions(baseRequest({ personaDrift: null }), chatSafetyGuard);
     expect(withoutDrift).not.toContain("<persona_drift>");
   });
+
+  it("warns against treating unrelated channel history as the current message's topic, and omits it entirely when empty", () => {
+    const withHistory = buildChatInstructions(baseRequest({
+      channelHistory: [{ authorId: "user2", authorDisplayName: "Other", content: "some earlier topic", imageCount: 0 }],
+    }), chatSafetyGuard);
+    expect(withHistory).toContain("# Channel history");
+    expect(withHistory).toMatch(/not necessarily connected to <current_message>/);
+    expect(withHistory).toMatch(/several unrelated conversations interleaved/);
+    expect(withHistory).toMatch(/never treat a bot reply directed at somebody else/);
+
+    const withoutHistory = buildChatInstructions(baseRequest({ channelHistory: [] }), chatSafetyGuard);
+    expect(withoutHistory).not.toContain("# Channel history");
+  });
+
+  it("states that reply_chain overrides channel_history rather than blending with it, when both are present", () => {
+    const withBoth = buildChatInstructions(baseRequest({
+      channelHistory: [{ authorId: "user2", authorDisplayName: "Other", content: "some earlier topic", imageCount: 0 }],
+      replyChain: [{ authorId: "user3", authorDisplayName: "Asker", content: "what do you think of this", imageCount: 0 }],
+    }), chatSafetyGuard);
+    expect(withBoth).toMatch(/it — not <channel_history> — determines the subject/);
+    expect(withBoth).not.toMatch(/prefer whichever thread in <channel_history>/);
+  });
 });
 
 describe("buildChatContext", () => {
@@ -177,11 +199,40 @@ describe("buildChatContext", () => {
       ],
     }));
     expect(withHistory).toContain("<channel_history>");
-    expect(withHistory).toContain("1. Casey (333):");
+    expect(withHistory).toContain("1. Casey (333) [sameAsCurrentUser=no]:");
     expect(withHistory).toContain("<<<BEGIN-UNTRUSTED-DATA>>>\nwhat a day\n<<<END-UNTRUSTED-DATA>>>");
 
     const without = buildChatContext(baseRequest());
     expect(without).toContain("<channel_history>\nnone\n</channel_history>");
+  });
+
+  it("marks who a bot history reply targeted so another user does not inherit that exchange", () => {
+    const context = buildChatContext(baseRequest({
+      currentUser: { id: "quail", displayName: "Quail", roleNames: [] },
+      message: "comfort me",
+      channelHistory: [
+        {
+          authorId: "fluffy", authorDisplayName: "Fluffy", content: "Is it not very big?", imageCount: 0,
+          replyToAuthorId: null, replyToAuthorDisplayName: null,
+        },
+        {
+          authorId: "bot", authorDisplayName: "Pinecone", content: "Punctuation, help me.", imageCount: 0,
+          replyToAuthorId: "fluffy", replyToAuthorDisplayName: "Fluffy",
+        },
+        {
+          authorId: "quail", authorDisplayName: "Quail", content: "Yes, comfort me.", imageCount: 0,
+          replyToAuthorId: "bot", replyToAuthorDisplayName: "Pinecone",
+        },
+      ],
+    }));
+
+    expect(context).toContain("Fluffy (fluffy) [sameAsCurrentUser=no]");
+    expect(context).toContain(
+      "Pinecone (bot) [sameAsCurrentUser=no; replyingTo=Fluffy (fluffy); replyTargetSameAsCurrentUser=no]",
+    );
+    expect(context).toContain(
+      "Quail (quail) [sameAsCurrentUser=yes; replyingTo=Pinecone (bot); replyTargetSameAsCurrentUser=no]",
+    );
   });
 
   it("renders surfaced consequence relations as an ordered causal_chains section", () => {

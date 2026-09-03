@@ -65,6 +65,7 @@ export interface GuildChatConfiguration {
   disabledTools: readonly string[];
   imageInputEnabled: boolean;
   imageGenerationEnabled: boolean;
+  selfReferenceImageAsset: string | null;
   includeSources: boolean;
   maxImagesPerRequest: number;
   // Minimum seconds between ambient (name-mention, non-@mention) LLM

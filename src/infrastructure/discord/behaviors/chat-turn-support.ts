@@ -2,7 +2,9 @@ import type { Attachment, Message } from "discord.js";
 import type { Logger } from "pino";
 
 import { chatMemoryLimits } from "../../../application/chat/chat-memory-policy.js";
-import type { ChatImage, ChatSource } from "../../../application/chat/chat-provider.js";
+import type { ChannelHistoryMessage, ChatImage, ChatSource, GeneratedChatImage } from "../../../application/chat/chat-provider.js";
+import { planChatDelivery } from "../../../application/chat/chat-message-chunker.js";
+import { planImageDelivery } from "../../../application/chat/chat-image-delivery.js";
 import type { GuildConfiguration } from "../../../config/guild-configuration.js";
 import type { PlaybackActor } from "../../../application/music/playback-service.js";
 import { createPlaybackActorFromMember } from "../commands/music/music-command-support.js";
@@ -10,6 +12,45 @@ import { createPlaybackActorFromMember } from "../commands/music/music-command-s
 const supportedImageTypes = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 const allowedDiscordImageHosts = new Set(["cdn.discordapp.com", "media.discordapp.net"]);
 const maximumImageBytes = 8 * 1024 * 1024;
+
+export interface ChatDeliveryPayload {
+  content: string;
+  files: readonly { attachment: Buffer; name: string }[];
+}
+
+export interface ChatDeliverySender {
+  // Sends the very first message of the reply — usually message.reply(...),
+  // or editing an existing "thinking…"/image-generation-preview placeholder.
+  // A failure here (after retries) propagates to the caller: nothing was
+  // delivered at all, so the caller's normal top-level error handling is
+  // the correct response.
+  first(payload: ChatDeliveryPayload): Promise<Message>;
+  // Sends every subsequent message — usually message.channel.send(...). A
+  // failure here (after retries) is handled internally by
+  // deliverChatResponse: it stops sending further messages and posts a
+  // short partial-delivery notice instead of throwing, since some of the
+  // reply already reached the channel and a generic top-level error would
+  // be misleading at that point.
+  rest(payload: ChatDeliveryPayload): Promise<Message>;
+}
+
+const deliveryRetryAttempts = 3;
+const deliveryRetryDelayMs = 500;
+
+async function sendWithRetry<T>(send: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= deliveryRetryAttempts; attempt++) {
+    try {
+      return await send();
+    } catch (error) {
+      lastError = error;
+      if (attempt < deliveryRetryAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, deliveryRetryDelayMs * attempt));
+      }
+    }
+  }
+  throw lastError;
+}
 
 // Reply-chain resolution, image selection/loading, and reply formatting used
 // by both a direct-mention/reply turn and an ambient (name-mention) turn —
@@ -167,6 +208,34 @@ export class ChatTurnSupport {
     return kept.reverse();
   }
 
+  // Preserve not only who wrote each ambient-history message, but also who
+  // it was replying to. A bot reply's authorId is always the bot, so without
+  // the target the model can easily attach that reply to the wrong nearby
+  // human in a busy channel. Discord populates the message cache from the
+  // history fetch above; falling back to the selected window also keeps this
+  // deterministic in tests and in partial-cache situations.
+  public toChannelHistoryMessages(messages: readonly Message[]): ChannelHistoryMessage[] {
+    const selectedById = new Map(messages.map((message) => [message.id, message]));
+    return messages.map((message) => {
+      const referenceId = message.reference?.messageId;
+      const target = referenceId
+        ? selectedById.get(referenceId) ?? message.channel.messages.cache.get(referenceId)
+        : undefined;
+      return {
+        authorId: message.author.id,
+        authorDisplayName: message.member?.displayName ?? message.author.displayName,
+        content: message.content.slice(0, chatMemoryLimits.maxUserMessageChars),
+        imageCount: [...message.attachments.values()].filter((attachment) =>
+          attachment.contentType?.startsWith("image/"),
+        ).length,
+        replyToAuthorId: target?.author.id ?? null,
+        replyToAuthorDisplayName: target
+          ? target.member?.displayName ?? target.author.displayName
+          : null,
+      };
+    });
+  }
+
   public selectImageAttachments(
     current: readonly Attachment[],
     // Reply-chain attachments grouped by hop, nearest-to-current hop first.
@@ -308,16 +377,84 @@ export class ChatTurnSupport {
     return null;
   }
 
-  public formatResponse(
-    text: string,
-    sources: readonly ChatSource[],
-  ): { content: string; truncated: boolean } {
-    const sourceBlock = sources.length > 0
-      ? `\n\nSources:\n${sources.map((source) => `- [${source.title.replaceAll("[", "").replaceAll("]", "")}](${source.url})`).join("\n")}`
-      : "";
-    const budgetForText = Math.max(0, 2_000 - sourceBlock.length);
-    const truncated = text.length > budgetForText;
-    const content = `${text.slice(0, budgetForText)}${sourceBlock}`.slice(0, 2_000);
-    return { content, truncated };
+  // Delivers one chat reply as a bounded sequence of Discord messages —
+  // splitting at paragraph/code-fence-safe boundaries (see
+  // chat-message-chunker.ts) rather than the destructive single-message
+  // truncation this replaced, falling back to a .txt attachment for replies
+  // too long to chunk at all. Generated images are packed into their own
+  // aggregate-byte-bounded groups (chat-image-delivery.ts) and appended to
+  // the tail of the message sequence; any image too large to ever deliver
+  // is reported rather than silently dropped. A mid-sequence Discord send
+  // failure (after retries) stops further sends and posts a short notice
+  // instead of the caller's generic top-level error, so a partially
+  // delivered reply is never followed by a misleading "that failed" message.
+  public async deliverChatResponse(params: {
+    sender: ChatDeliverySender;
+    text: string;
+    sources: readonly ChatSource[];
+    images: readonly GeneratedChatImage[];
+    emptyFallbackContent: string;
+    maxImageAggregateBytes: number;
+  }): Promise<{ deliveredText: string }> {
+    const plan = planChatDelivery(params.text, params.sources);
+    const imagePlan = planImageDelivery(params.images, params.maxImageAggregateBytes);
+
+    const sends: { content: string; files: { attachment: Buffer; name: string }[] }[] = plan.mode === "attachment"
+      ? [{
+          content: plan.note,
+          files: [{ attachment: Buffer.from(plan.attachmentText, "utf8"), name: plan.attachmentFilename }],
+        }]
+      : plan.chunks.map((chunk) => ({ content: chunk, files: [] }));
+
+    // The first image group rides along with the last already-planned
+    // message (so a short reply plus one small image doesn't need an extra
+    // message of its own); any further groups become their own image-only
+    // messages, each within the aggregate byte cap.
+    const [firstImageGroup, ...restImageGroups] = imagePlan.groups;
+    if (firstImageGroup) {
+      const attachments = firstImageGroup.map((image) => ({ attachment: image.data, name: image.filename }));
+      const lastSend = sends.at(-1);
+      if (lastSend) {
+        lastSend.files.push(...attachments);
+      } else {
+        sends.push({ content: params.emptyFallbackContent, files: attachments });
+      }
+    }
+    for (const group of restImageGroups) {
+      sends.push({ content: "", files: group.map((image) => ({ attachment: image.data, name: image.filename })) });
+    }
+
+    if (imagePlan.undeliverable.length > 0) {
+      const count = imagePlan.undeliverable.length;
+      const note = `(${count} image${count > 1 ? "s" : ""} couldn't be delivered — too large.)`;
+      const lastSend = sends.at(-1);
+      if (lastSend && lastSend.content.length + note.length + 2 <= 2_000) {
+        lastSend.content = lastSend.content ? `${lastSend.content}\n\n${note}` : note;
+      } else {
+        sends.push({ content: note, files: [] });
+      }
+    }
+
+    if (sends.length === 0) {
+      sends.push({ content: params.emptyFallbackContent, files: [] });
+    } else if (sends[0]!.content.length === 0 && sends[0]!.files.length === 0) {
+      sends[0]!.content = params.emptyFallbackContent;
+    }
+
+    const [firstSend, ...restSends] = sends;
+    await sendWithRetry(() => params.sender.first(firstSend!));
+    for (const send of restSends) {
+      try {
+        await sendWithRetry(() => params.sender.rest(send));
+      } catch (error) {
+        this.logger.warn({ error }, "Chat reply delivery failed partway through a multi-message response");
+        await params.sender.rest({
+          content: "(The rest of that reply couldn't be delivered — please try again.)",
+          files: [],
+        }).catch(() => undefined);
+        break;
+      }
+    }
+    return { deliveredText: params.text };
   }
 }

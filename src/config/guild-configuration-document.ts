@@ -29,6 +29,7 @@ export interface UpdateGuildConfigurationInput {
   chatbotDisabledToolNames?: readonly string[];
   chatbotImageInputEnabled?: boolean;
   chatbotImageGenerationEnabled?: boolean;
+  chatbotSelfReferenceImageAsset?: string | null;
   chatbotIncludeSources?: boolean;
   chatbotMaxImagesPerRequest?: number;
   ambientReplies?: boolean;
@@ -263,6 +264,7 @@ export function applyGuildConfigurationUpdate(
   if (input.contextSeedDays !== undefined) next.chat.contextSeedDays = input.contextSeedDays;
   if (input.chatbotImageInputEnabled !== undefined) next.chat.imageInputEnabled = input.chatbotImageInputEnabled;
   if (input.chatbotImageGenerationEnabled !== undefined) next.chat.imageGenerationEnabled = input.chatbotImageGenerationEnabled;
+  if (input.chatbotSelfReferenceImageAsset !== undefined) next.chat.selfReferenceImageAsset = input.chatbotSelfReferenceImageAsset;
   if (input.chatbotIncludeSources !== undefined) next.chat.includeSources = input.chatbotIncludeSources;
   if (input.chatbotMaxImagesPerRequest !== undefined) next.chat.maxImagesPerRequest = input.chatbotMaxImagesPerRequest;
   if (input.ambientReplies !== undefined) next.features.ambientReplies = input.ambientReplies;

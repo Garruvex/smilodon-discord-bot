@@ -51,6 +51,15 @@ export class PostgresBirthdayStore implements BirthdayStore {
     return rows.map((row) => row.userId);
   }
 
+  public async listAllForGuild(guildId: string): Promise<readonly BirthdayRecord[]> {
+    const rows = await this.database.select({
+      userId: schema.birthdays.userId,
+      month: schema.birthdays.month,
+      day: schema.birthdays.day,
+    }).from(schema.birthdays).where(eq(schema.birthdays.guildId, guildId));
+    return rows;
+  }
+
   public async hasAnnounced(guildId: string, date: string): Promise<boolean> {
     const rows = await this.database.select({ date: schema.birthdayAnnouncements.date })
       .from(schema.birthdayAnnouncements)

@@ -88,8 +88,13 @@ export class PersonaDriftStore {
     await this.queue.run(guildId, async () => {
       const stored = await this.get(guildId);
       const current = stored && stored.personalitySourceHash === personalitySourceHash ? stored : null;
-      const nextText = (await transform(current?.text ?? "")).trim();
-      if (!nextText || nextText === current?.text) return;
+      const currentText = current?.text ?? "";
+      const nextText = (await transform(currentText)).trim();
+      // "" is a valid, meaningful result — see PersonaDriftEvolver's doc
+      // comment: it means "nothing worth noting yet," i.e. clear the
+      // current mood, not "leave it as it is." Only skip the write when
+      // nothing actually changed (including both being "").
+      if (nextText === currentText) return;
       await this.persistEvolution(guildId, nextText, personalitySourceHash, current);
     });
   }

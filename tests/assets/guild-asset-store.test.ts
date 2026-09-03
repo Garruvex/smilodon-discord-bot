@@ -26,6 +26,22 @@ function stubDownload(content: string): void {
   vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response(content, { status: 200 }))));
 }
 
+const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+function stubImageDownload(bytes: Buffer = pngSignature): void {
+  vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response(bytes, { status: 200 }))));
+}
+
+function imageAttachment(overrides: Partial<Attachment> = {}): Attachment {
+  return {
+    name: "reference.png",
+    size: 1024,
+    url: "https://example.com/reference.png",
+    contentType: "image/png",
+    ...overrides,
+  } as Attachment;
+}
+
 function personalityAttachment(): Attachment {
   return { name: "personality.md", size: 1024, url: "https://example.com/personality.md" } as Attachment;
 }
@@ -84,7 +100,7 @@ describe("GuildAssetStore.savePersonality", () => {
     };
     const store = new GuildAssetStore(
       runtimeDirectory,
-      new PersonaBundleCompiler(provider, { embed }),
+      new PersonaBundleCompiler(provider, { embed, modelId: "test-model" }),
     );
     await store.savePersonality(guildId, personalityAttachment());
     expect(embed).toHaveBeenCalledTimes(1);
@@ -114,7 +130,7 @@ describe("GuildAssetStore.saveExamples", () => {
     const runtimeDirectory = mkdtempSync(join(tmpdir(), "guild-asset-store-"));
     temporaryDirectories.push(runtimeDirectory);
     stubDownload("### Example\nTags: greeting\nUser: hi\nCharacter: hey there");
-    const embeddingsClient: EmbeddingsClient = { embed: () => Promise.resolve([1, 0]) };
+    const embeddingsClient: EmbeddingsClient = { embed: () => Promise.resolve([1, 0]), modelId: "test-model" };
     const store = new GuildAssetStore(runtimeDirectory, null, embeddingsClient);
 
     await store.saveExamples(guildId, examplesAttachment());
@@ -129,7 +145,7 @@ describe("GuildAssetStore.saveExamples", () => {
     const runtimeDirectory = mkdtempSync(join(tmpdir(), "guild-asset-store-"));
     temporaryDirectories.push(runtimeDirectory);
     stubDownload("### Example\nTags: greeting\nUser: hi\nCharacter: hey there");
-    const embeddingsClient: EmbeddingsClient = { embed: () => Promise.reject(new Error("down")) };
+    const embeddingsClient: EmbeddingsClient = { embed: () => Promise.reject(new Error("down")), modelId: "test-model" };
     const store = new GuildAssetStore(runtimeDirectory, null, embeddingsClient);
 
     const asset = await store.saveExamples(guildId, examplesAttachment());
@@ -151,5 +167,70 @@ describe("GuildAssetStore.saveExamples", () => {
 
     const bundlePath = join(runtimeDirectory, "guild-assets", guildId, "examples.bundle.json");
     expect(existsSync(bundlePath)).toBe(false);
+  });
+});
+
+describe("GuildAssetStore self-reference image", () => {
+  it("saves, reads back, and removes a self-reference image", async () => {
+    const runtimeDirectory = mkdtempSync(join(tmpdir(), "guild-asset-store-"));
+    temporaryDirectories.push(runtimeDirectory);
+    stubImageDownload();
+    const store = new GuildAssetStore(runtimeDirectory);
+
+    const assetPath = await store.saveSelfReferenceImage(guildId, imageAttachment());
+    expect(assetPath).toBe(`guild-assets/${guildId}/self-reference.png`);
+    expect(existsSync(join(runtimeDirectory, assetPath))).toBe(true);
+
+    const read = await store.readAsset(assetPath);
+    expect(read?.contentType).toBe("image/png");
+    expect(read?.data.equals(pngSignature)).toBe(true);
+
+    await store.removeSelfReferenceImage(assetPath);
+    expect(existsSync(join(runtimeDirectory, assetPath))).toBe(false);
+  });
+
+  it("rejects an unsupported content type", async () => {
+    const runtimeDirectory = mkdtempSync(join(tmpdir(), "guild-asset-store-"));
+    temporaryDirectories.push(runtimeDirectory);
+    const store = new GuildAssetStore(runtimeDirectory);
+
+    await expect(store.saveSelfReferenceImage(guildId, imageAttachment({ contentType: "application/pdf" })))
+      .rejects.toThrow(/PNG, JPEG, WebP, or GIF/);
+  });
+
+  it("rejects an attachment over the size cap", async () => {
+    const runtimeDirectory = mkdtempSync(join(tmpdir(), "guild-asset-store-"));
+    temporaryDirectories.push(runtimeDirectory);
+    const store = new GuildAssetStore(runtimeDirectory);
+
+    await expect(store.saveSelfReferenceImage(guildId, imageAttachment({ size: 9 * 1024 * 1024 })))
+      .rejects.toThrow(/8 MB/);
+  });
+
+  it("replaces a stale extension when the content type changes on re-upload", async () => {
+    const runtimeDirectory = mkdtempSync(join(tmpdir(), "guild-asset-store-"));
+    temporaryDirectories.push(runtimeDirectory);
+    const store = new GuildAssetStore(runtimeDirectory);
+
+    stubImageDownload();
+    await store.saveSelfReferenceImage(guildId, imageAttachment());
+    expect(existsSync(join(runtimeDirectory, "guild-assets", guildId, "self-reference.png"))).toBe(true);
+
+    stubImageDownload();
+    const newPath = await store.saveSelfReferenceImage(
+      guildId, imageAttachment({ name: "reference.jpg", url: "https://example.com/reference.jpg", contentType: "image/jpeg" }),
+    );
+    expect(newPath).toBe(`guild-assets/${guildId}/self-reference.jpg`);
+    expect(existsSync(join(runtimeDirectory, "guild-assets", guildId, "self-reference.png"))).toBe(false);
+    expect(existsSync(join(runtimeDirectory, newPath))).toBe(true);
+  });
+
+  it("readAsset refuses a path outside the guild-assets root", async () => {
+    const runtimeDirectory = mkdtempSync(join(tmpdir(), "guild-asset-store-"));
+    temporaryDirectories.push(runtimeDirectory);
+    const store = new GuildAssetStore(runtimeDirectory);
+
+    expect(await store.readAsset("../outside.png")).toBeNull();
+    expect(await store.readAsset(`guild-assets/${guildId}/self-reference.png`)).toBeNull();
   });
 });

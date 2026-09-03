@@ -10,6 +10,7 @@ export interface BirthdayStore {
   removeBirthday(guildId: string, userId: string): Promise<boolean>;
   getBirthday(guildId: string, userId: string): Promise<BirthdayRecord | null>;
   listForGuildOnDate(guildId: string, month: number, day: number): Promise<readonly string[]>;
+  listAllForGuild(guildId: string): Promise<readonly BirthdayRecord[]>;
   hasAnnounced(guildId: string, date: string): Promise<boolean>;
   markAnnounced(guildId: string, date: string): Promise<void>;
 }

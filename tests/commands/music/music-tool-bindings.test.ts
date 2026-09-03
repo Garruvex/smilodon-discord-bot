@@ -46,6 +46,7 @@ function contextWithoutMusic(): ChatToolContext {
     channelIsNsfw: false,
     isOwner: false,
     music: null,
+    pendingGeneratedImages: [],
   };
 }
 
@@ -63,6 +64,7 @@ function contextWithMusic(roleIds: readonly string[] = ["role-controller"]): Cha
       musicControllerRoleIds: new Set(["role-controller"]),
       botAdministratorRoleIds: new Set(),
     },
+    pendingGeneratedImages: [],
   };
 }
 

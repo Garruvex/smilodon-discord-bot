@@ -53,6 +53,13 @@ export class LocalBirthdayStore implements BirthdayStore {
     );
   }
 
+  public listAllForGuild(guildId: string): Promise<readonly BirthdayRecord[]> {
+    const document = this.read(guildId);
+    return Promise.resolve(
+      Object.entries(document.users).map(([userId, birthday]) => ({ userId, ...birthday })),
+    );
+  }
+
   public hasAnnounced(guildId: string, date: string): Promise<boolean> {
     return Promise.resolve(this.read(guildId).announcedDates.includes(date));
   }

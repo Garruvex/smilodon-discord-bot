@@ -28,6 +28,7 @@ function configuration(): ApplicationConfiguration {
     utilityChat: null,
     embeddings: null,
     memory: defaultMemoryEngineLimits,
+    chatDelivery: { maxGeneratedImageAggregateBytes: 10 * 1024 * 1024 },
   };
 }
 
@@ -75,7 +76,7 @@ function profile(overrides: { ambientReplies?: boolean } = {}): GuildConfigurati
     chat: {
       personalityFile: null, personalityAsset: null, examplesFile: null, examplesAsset: null, cooldownSeconds: 30,
       deniedMessage: "Premium required.", deniedLinkUrl: null, deniedLinkLabel: null,
-      webSearchMode: "off", toolCallingEnabled: false, disabledTools: [], imageInputEnabled: false, imageGenerationEnabled: false,
+      webSearchMode: "off", toolCallingEnabled: false, disabledTools: [], imageInputEnabled: false, imageGenerationEnabled: false, selfReferenceImageAsset: null,
       includeSources: true, maxImagesPerRequest: 2, ambientCooldownSeconds: 20,
       channelHistoryLimit: 8, channelMemoryModes: {}, personaDriftEnabled: false, contextScanChannelIds: [], contextDailyChannelIds: [], contextSeedDays: 7,
     },
@@ -116,7 +117,7 @@ function behavior(profileValue: GuildConfiguration | null, conversation: ChatCon
     configuration(),
     provider(profileValue),
     conversation,
-    { resolve: () => Promise.resolve({ personality: "Test persona", loreChunks: [], examplePool: [], personaDrift: null }) },
+    { resolve: () => Promise.resolve({ personality: "Test persona", loreChunks: [], examplePool: [], personaDrift: null, personalitySourceHash: "test-hash" }) },
     { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } as never,
   );
 }

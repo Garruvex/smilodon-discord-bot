@@ -34,6 +34,7 @@ describe("MemberProfileService", () => {
       removeBirthday: () => Promise.resolve(false),
       getBirthday: () => Promise.resolve({ userId: "user", month: 3, day: 5 }),
       listForGuildOnDate: () => Promise.resolve([]),
+      listAllForGuild: () => Promise.resolve([]),
       hasAnnounced: () => Promise.resolve(false),
       markAnnounced: () => Promise.resolve(),
     };

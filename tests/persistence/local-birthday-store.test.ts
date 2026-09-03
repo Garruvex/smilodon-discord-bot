@@ -23,6 +23,20 @@ describe("LocalBirthdayStore", () => {
     expect(await store.listForGuildOnDate("guild", 1, 1)).toEqual([]);
   });
 
+  it("lists every birthday set for a guild", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "birthdays-"));
+    const store = new LocalBirthdayStore(directory);
+    await store.setBirthday("guild", "userA", 3, 14);
+    await store.setBirthday("guild", "userB", 6, 1);
+    await store.setBirthday("other-guild", "userC", 1, 1);
+
+    expect(await store.listAllForGuild("guild")).toEqual([
+      { userId: "userA", month: 3, day: 14 },
+      { userId: "userB", month: 6, day: 1 },
+    ]);
+    expect(await store.listAllForGuild("empty-guild")).toEqual([]);
+  });
+
   it("overwrites an existing birthday on re-set", async () => {
     const directory = mkdtempSync(join(tmpdir(), "birthdays-"));
     const store = new LocalBirthdayStore(directory);

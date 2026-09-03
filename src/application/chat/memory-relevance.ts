@@ -217,3 +217,20 @@ export function cosineSimilarity(a: readonly number[], b: readonly number[]): nu
   const similarity = dot / (Math.sqrt(normA) * Math.sqrt(normB));
   return Math.max(0, Math.min(1, similarity));
 }
+
+// Default floor a cosine-similarity pair must clear to count as "this
+// candidate is actually relevant" (as opposed to merely ranking candidates
+// against each other, where similarity > 0 alone admits nearly everything —
+// unrelated short passages routinely land above 0 purely from shared
+// language/embedding-space geometry, not real semantic relation).
+//
+// UNCALIBRATED: this number has not been validated against production
+// embeddings from any specific provider/model. Cosine-similarity
+// distributions differ meaningfully by embedding model — a value that's
+// conservative for one model's geometry may be too strict or too loose for
+// another's. Callers that gate real decisions on this threshold (selectors
+// below) accept it as a constructor parameter specifically so it can be
+// overridden per deployment without a code change once real embeddings
+// data is available to tune it; treat this exported constant as a
+// starting-point default, not a validated value.
+export const minRelevantCosineSimilarity = 0.15;

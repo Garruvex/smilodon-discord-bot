@@ -105,16 +105,11 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
       imageCount: 0,
     }));
     const channelHistory: ChannelHistoryMessage[] = profile.features.channelHistory
-      ? (await this.turnSupport.resolveChannelHistory(
+      ? this.turnSupport.toChannelHistoryMessages(await this.turnSupport.resolveChannelHistory(
           message,
           profile.chat.channelHistoryLimit,
           new Set(replyChainMessages.map((hop) => hop.id)),
-        )).map((hop) => ({
-          authorId: hop.author.id,
-          authorDisplayName: hop.member?.displayName ?? hop.author.displayName,
-          content: hop.content.slice(0, chatMemoryLimits.maxUserMessageChars),
-          imageCount: [...hop.attachments.values()].filter((attachment) => attachment.contentType?.startsWith("image/")).length,
-        }))
+        ))
       : [];
     const { selected: imageAttachments, droppedUnsupported, droppedOverLimit } = profile.chat.imageInputEnabled
       ? this.turnSupport.selectImageAttachments(
@@ -147,6 +142,7 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         loreChunks: persona.loreChunks,
         personaDrift: persona.personaDrift,
         personaDriftEnabled: profile.chat.personaDriftEnabled,
+        personalitySourceHash: persona.personalitySourceHash,
         currentUser: {
           id: message.author.id,
           displayName: message.member?.displayName ?? message.author.username,
@@ -176,13 +172,29 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         musicControllerRoleIds: musicActor?.musicControllerRoleIds,
         musicBotAdministratorRoleIds: musicActor?.botAdministratorRoleIds,
       }, async (deliveredResponse) => {
-        const formatted = this.turnSupport.formatResponse(deliveredResponse.text, deliveredResponse.sources);
-        const content = formatted.content || "I ran out of words. Very premium of me.";
-        await message.reply({
-          content,
-          allowedMentions: { repliedUser: false, parse: [] },
+        const emptyFallbackContent = deliveredResponse.generatedImages.length > 0
+          ? "Here you go!"
+          : "I ran out of words. Very premium of me.";
+        const { deliveredText } = await this.turnSupport.deliverChatResponse({
+          sender: {
+            first: (payload) => message.reply({
+              content: payload.content,
+              files: [...payload.files],
+              allowedMentions: { repliedUser: false, parse: [] },
+            }),
+            rest: (payload) => message.channel.send({
+              content: payload.content,
+              files: [...payload.files],
+              allowedMentions: { repliedUser: false, parse: [] },
+            }),
+          },
+          text: deliveredResponse.text,
+          sources: deliveredResponse.sources,
+          images: deliveredResponse.generatedImages,
+          emptyFallbackContent,
+          maxImageAggregateBytes: this.configuration.chatDelivery.maxGeneratedImageAggregateBytes,
         });
-        return content;
+        return deliveredText;
       });
 
       if (response.reactionEmoji) {

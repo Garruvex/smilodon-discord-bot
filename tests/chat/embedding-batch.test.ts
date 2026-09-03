@@ -13,7 +13,7 @@ describe("embedTextsBestEffort", () => {
       Promise.resolve(texts.map((text) => [Number(text)])));
     const texts = Array.from({ length: embeddingBatchSize * 2 + 6 }, (_, index) => String(index));
 
-    const result = await embedTextsBestEffort(texts, { embed, embedMany });
+    const result = await embedTextsBestEffort(texts, { embed, embedMany, modelId: "test-model" });
 
     expect(embedMany.mock.calls.map(([batch]) => batch.length)).toEqual([32, 32, 6]);
     expect(embed).not.toHaveBeenCalled();
@@ -26,6 +26,7 @@ describe("embedTextsBestEffort", () => {
       embed: (text) => text === "bad"
         ? Promise.reject(new Error("input rejected"))
         : Promise.resolve([text.length]),
+      modelId: "test-model",
     };
 
     await expect(embedTextsBestEffort(["ok", "bad", "fine"], client)).resolves.toEqual([

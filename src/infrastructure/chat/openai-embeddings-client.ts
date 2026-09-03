@@ -7,11 +7,20 @@ const embeddingsResponseSchema = z.object({
 });
 
 export class OpenAiEmbeddingsClient implements EmbeddingsClient {
+  public readonly modelId: string;
+
   public constructor(
     private readonly baseUrl: string,
     private readonly apiKey: string,
     private readonly model: string,
-  ) {}
+  ) {
+    // Includes baseUrl, not just the model name — two OpenAI-compatible
+    // deployments (e.g. switching from OpenAI itself to a self-hosted or
+    // third-party compatible endpoint) can serve the same model name with
+    // different underlying weights/versions, which would otherwise let a
+    // cached vector from one survive a switch to the other.
+    this.modelId = `openai:${baseUrl}:${model}`;
+  }
 
   public async embed(text: string): Promise<number[]> {
     return (await this.request(text, 1))[0]!;

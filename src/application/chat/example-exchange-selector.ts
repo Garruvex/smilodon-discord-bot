@@ -8,6 +8,7 @@ import {
   buildBm25Corpus,
   buildRelevanceContext,
   cosineSimilarity,
+  minRelevantCosineSimilarity,
   reciprocalRankFusion,
   selectByRelevance,
   type ScorableRecord,
@@ -64,6 +65,11 @@ export class RelevantExampleExchangeSelector implements ExampleExchangeSelector 
   public constructor(
     private readonly embeddingsClient: EmbeddingsClient | null = null,
     private readonly logger: Logger | null = null,
+    // See memory-relevance.ts's minRelevantCosineSimilarity doc comment and
+    // RelevantPersonaLoreSelector's matching parameter — an uncalibrated
+    // starting-point default, overridable per deployment without touching
+    // this selector's logic.
+    private readonly minCosineSimilarity: number = minRelevantCosineSimilarity,
   ) {}
 
   public async select(input: ExampleExchangeSelectionInput): Promise<readonly ExampleExchange[]> {
@@ -75,27 +81,37 @@ export class RelevantExampleExchangeSelector implements ExampleExchangeSelector 
       now: input.now,
     });
     const corpus = buildBm25Corpus(input.records.map(toScorable));
-    const lexicalOrder = [...input.records].sort(
-      (a, b) => bm25Score(corpus, context, toScorable(b)) - bm25Score(corpus, context, toScorable(a)),
+    const lexicalScores = new Map(
+      input.records.map((record) => [record, bm25Score(corpus, context, toScorable(record))] as const),
     );
+    const lexicalOrder = [...input.records].sort((a, b) => lexicalScores.get(b)! - lexicalScores.get(a)!);
     const rankings = [lexicalOrder];
+    const cosineScores = new Map<ExampleExchange, number>();
     if (this.embeddingsClient && input.records.some((record) => record.embedding)) {
       try {
         const queryEmbedding = await this.embeddingsClient.embed(input.message);
         const compatible = input.records.filter((record) => record.embedding?.length === queryEmbedding.length);
         if (compatible.length > 0) {
-          const embeddingOrder = [...compatible].sort(
-            (a, b) => cosineSimilarity(b.embedding!, queryEmbedding) - cosineSimilarity(a.embedding!, queryEmbedding),
-          );
+          for (const record of compatible) cosineScores.set(record, cosineSimilarity(record.embedding!, queryEmbedding));
+          const embeddingOrder = [...compatible].sort((a, b) => cosineScores.get(b)! - cosineScores.get(a)!);
           rankings.push(embeddingOrder);
         }
       } catch (error) {
         this.logger?.debug({ error }, "Embedding the current message failed; example exchange selection falling back to lexical-only ranking");
       }
     }
+    // Same relevance floor as RelevantPersonaLoreSelector: a record with no
+    // lexical overlap and no meaningfully similar embedding has no actual
+    // signal behind it — without this, RRF's small positive score for
+    // merely being ranked somewhere let every example compete for the
+    // char budget regardless of relevance.
+    const relevant = input.records.filter(
+      (record) => (lexicalScores.get(record) ?? 0) > 0 || (cosineScores.get(record) ?? 0) >= this.minCosineSimilarity,
+    );
+    if (relevant.length === 0) return [];
     const fusedScore = reciprocalRankFusion(rankings);
     return selectByRelevance(
-      input.records,
+      relevant,
       (exchange) => fusedScore.get(exchange) ?? 0,
       exampleExchangeLimits.maxSerializedChars,
       exampleExchangePromptProjection,

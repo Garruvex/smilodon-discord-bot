@@ -98,6 +98,7 @@ function createGateway(): MusicPlayerGateway {
     toggleAutoQueue: vi.fn(() => Promise.resolve(true)),
     toggleTwentyFourSeven: vi.fn(() => Promise.resolve(true)),
     handleBotVoiceDisconnect: vi.fn(() => Promise.resolve()),
+    reconcileVoiceState: vi.fn(() => Promise.resolve(false)),
     handleVoiceChannelOccupancy: vi.fn(),
     handleGuildRemoved: vi.fn(() => Promise.resolve()),
     hasPlayer: vi.fn(() => true),

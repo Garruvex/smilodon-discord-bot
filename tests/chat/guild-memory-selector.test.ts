@@ -16,7 +16,7 @@ describe("EmbeddingGuildMemorySelector", () => {
   it("ranks a semantically similar record above a lexically-matching but less similar one", async () => {
     const raidRecord = record({ id: "raid", statement: "organizes the weekend raid", embedding: [1, 0] });
     const unrelatedRecord = record({ id: "unrelated", statement: "collects vintage stamps", embedding: [0, 1] });
-    const embeddingsClient: EmbeddingsClient = { embed: () => Promise.resolve([1, 0]) };
+    const embeddingsClient: EmbeddingsClient = { embed: () => Promise.resolve([1, 0]), modelId: "test-model" };
     const selector = new EmbeddingGuildMemorySelector(embeddingsClient);
 
     const selected = await selector.select({
@@ -33,7 +33,7 @@ describe("EmbeddingGuildMemorySelector", () => {
 
   it("treats a record with no stored embedding as 0 similarity instead of erroring", async () => {
     const legacyRecord = record({ id: "legacy", statement: "some old fact", embedding: null });
-    const embeddingsClient: EmbeddingsClient = { embed: () => Promise.resolve([1, 0]) };
+    const embeddingsClient: EmbeddingsClient = { embed: () => Promise.resolve([1, 0]), modelId: "test-model" };
     const selector = new EmbeddingGuildMemorySelector(embeddingsClient);
 
     const selected = await selector.select({
@@ -50,7 +50,7 @@ describe("EmbeddingGuildMemorySelector", () => {
 
   it("degrades to lexical-only scoring when the query embed call fails", async () => {
     const knownRecord = record({ id: "known", statement: "organizes Friday raids", embedding: [1, 0] });
-    const embeddingsClient: EmbeddingsClient = { embed: () => Promise.reject(new Error("network error")) };
+    const embeddingsClient: EmbeddingsClient = { embed: () => Promise.reject(new Error("network error")), modelId: "test-model" };
     const selector = new EmbeddingGuildMemorySelector(embeddingsClient);
 
     await expect(selector.select({

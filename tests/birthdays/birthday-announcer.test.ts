@@ -39,6 +39,7 @@ function stubStore(): { store: BirthdayStore; hasAnnounced: ReturnType<typeof vi
     removeBirthday: vi.fn().mockResolvedValue(true),
     getBirthday: vi.fn().mockResolvedValue(null),
     listForGuildOnDate,
+    listAllForGuild: vi.fn().mockResolvedValue([]),
     hasAnnounced,
     markAnnounced: vi.fn().mockResolvedValue(undefined),
   };

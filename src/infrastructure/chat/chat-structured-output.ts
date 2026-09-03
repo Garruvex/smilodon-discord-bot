@@ -107,7 +107,11 @@ const entityDisambiguationInstruction = "Multiple different people can be discus
   "named recently, resolve it to whoever was most recently and explicitly named, @mentioned, or replied to in " +
   "<reply_chain>/<channel_history> — not to whichever name you already happen to have stored facts about. " +
   "Getting two people's names crossed is worse than asking; if it's still genuinely ambiguous after that, ask " +
-  "which person is meant rather than guessing.";
+  "which person is meant rather than guessing. This applies just as much to attributing past statements: before " +
+  "saying something like \"you asked/said X earlier,\" check that the authorId on that <reply_chain>/" +
+  "<channel_history> line actually matches <current_user>'s id. A busy channel has several people talking at " +
+  "once — a question or remark from one person is never something a different person said or asked, even if " +
+  "they replied right after it or the topic carried over.";
 
 const epistemicHonestyInstruction = "Everything you know about this guild, channel, and these users comes only " +
   "from what's explicitly included in this prompt. If something isn't there — another channel's events, a fact " +
@@ -212,6 +216,34 @@ export function buildChatInstructions(request: ChatRequest, safetyGuard: string)
           `what was condensed out of the earlier part; treat it as established background, not something to quote.`
         : "")
     : "";
+  // Without this, nothing tells the model that <channel_history> can hold
+  // several unrelated conversations interleaved between different people —
+  // it will otherwise happily answer a short/ambiguous <current_message>
+  // using whatever topic is most recent or most detailed in channel history
+  // (e.g. answering a joke about someone with unrelated PC-troubleshooting
+  // advice pulled from a different conversation earlier in the same
+  // channel), even when reply_chain is empty and nothing actually connects
+  // them. reply_chain's own instructions above already establish the
+  // stronger signal when a real Discord reply exists; this only governs the
+  // weaker, ambient channel_history case.
+  const channelHistorySection = request.channelHistory.length > 0
+    ? `\n\n# Channel history\n\n<channel_history> is ambient recent chatter from the whole channel — not a ` +
+      `conversation you were part of, and not necessarily connected to <current_message>. Discord channels ` +
+      `routinely have several unrelated conversations interleaved between different people at the same time. Do ` +
+      `not assume <current_message> continues whatever topic is most recent or most detailed in ` +
+      `<channel_history>; only treat a channel-history topic as the subject when <current_message> actually ` +
+      `continues it (same people involved, an explicit follow-up, a pronoun or reference that only makes sense ` +
+      `against it). Each line states whether its author is the current user. When a line also has replyingTo and ` +
+      `replyTargetSameAsCurrentUser, those fields identify who that message was directed at; never treat a bot ` +
+      `reply directed at somebody else as something the bot said to the current user.` +
+      (request.replyChain.length > 0
+        ? ` <reply_chain> exists for this turn, so it — not <channel_history> — determines the subject per the ` +
+          `Reply chain instructions above; use channel history only for tone/background color, never to override ` +
+          `or blend into what the reply chain already established as the topic.`
+        : ` When <current_message> is short or ambiguous, prefer whichever thread in <channel_history> its author ` +
+          `was actually part of over a different, unrelated conversation that merely happens to be more recent ` +
+          `or information-dense.`)
+    : "";
   const noInlineCitationInstruction = `\n\n# No inline citations\n\nNever write inline citation links, footnote ` +
     `markers, bracketed source names, or a bare domain/URL (including in parentheses, e.g. "(example.com)") in ` +
     `the response text — that reads like a search engine or Wikipedia footnote, not a person. This applies to ` +
@@ -247,6 +279,7 @@ export function buildChatInstructions(request: ChatRequest, safetyGuard: string)
     toolsSection +
     causalChainsSection +
     replyChainSection +
+    channelHistorySection +
     webSearchSection +
     ambientSection;
 }
@@ -301,7 +334,15 @@ export function buildChatContext(request: ChatRequest): string {
   const channelHistory = request.channelHistory.length > 0
     ? request.channelHistory.map((hop, index) => {
         const imageNote = hop.imageCount > 0 ? ` [${hop.imageCount} image${hop.imageCount > 1 ? "s" : ""} attached]` : "";
-        return `${index + 1}. ${hop.authorDisplayName} (${hop.authorId}): ${wrapUntrusted(hop.content)}${imageNote}`;
+        const currentUserNote = hop.authorId === request.currentUser.id
+          ? "sameAsCurrentUser=yes"
+          : "sameAsCurrentUser=no";
+        const replyTargetNote = hop.replyToAuthorId
+          ? `; replyingTo=${hop.replyToAuthorDisplayName ?? "unknown"} (${hop.replyToAuthorId}); ` +
+            `replyTargetSameAsCurrentUser=${hop.replyToAuthorId === request.currentUser.id ? "yes" : "no"}`
+          : "";
+        return `${index + 1}. ${hop.authorDisplayName} (${hop.authorId}) [${currentUserNote}${replyTargetNote}]: ` +
+          `${wrapUntrusted(hop.content)}${imageNote}`;
       }).join("\n")
     : "none";
   // Explicit, structured, user-supplied facts (currently just birthday) —

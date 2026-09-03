@@ -17,6 +17,15 @@ export const exampleExchangeBundleSchema = z.object({
     character: z.string(),
     embedding: z.array(z.number()).nullable(),
   })),
+  // Fingerprint (see EmbeddingsClient.modelId) of whatever embeddings client
+  // produced these exchanges' vectors, or null when none was configured at
+  // build time — same convention as PersonaBundle.embeddingModel. Read back
+  // and compared against the active client at load time (see
+  // FilePersonaSource), not just when rebuilding, so a provider/model
+  // switch can't compare vectors from incompatible semantic spaces just
+  // because nobody reuploaded examples.md since. Defaults to null so
+  // bundles written before this field existed still parse.
+  embeddingModel: z.string().nullable().default(null),
 });
 
 export type ExampleExchangeBundle = z.infer<typeof exampleExchangeBundleSchema>;
@@ -62,5 +71,5 @@ export async function buildExampleExchangeBundle(
     character: exchange.character,
     embedding: embeddings[index] ?? null,
   }));
-  return { sourceHash: hashContent(content), exchanges: embedded };
+  return { sourceHash: hashContent(content), exchanges: embedded, embeddingModel: embeddingsClient.modelId };
 }

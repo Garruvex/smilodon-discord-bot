@@ -28,6 +28,13 @@ export interface ResolvedPersona {
   // persona-drift-store.ts), or null when the guild has the feature
   // disabled, nothing has evolved yet, or the file is missing/unreadable.
   personaDrift: string | null;
+  // Hash identifying the complete uploaded personality source this persona
+  // was resolved from — the whole file (lore included), not just
+  // `personality`'s always-sent core. A compiled bundle sends only the core
+  // as `personality`, so hashing `personality` alone would miss a lore-only
+  // edit and let stale persona-drift survive against contradicted lore; use
+  // this hash for drift invalidation instead. See FilePersonaSource.
+  personalitySourceHash: string;
 }
 
 /** Resolves the configured persona independently of the chat transport. */

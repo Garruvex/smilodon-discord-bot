@@ -10,6 +10,7 @@ import {
   type ChatResponseObserver,
   type ChatSource,
   type DroppedExchangeFact,
+  type GeneratedChatImage,
   type UserCustomizationAnalysisResult,
 } from "../../application/chat/chat-provider.js";
 import type { ChatImage } from "../../application/chat/chat-provider.js";
@@ -54,14 +55,17 @@ import {
   parseUserCustomizationAnalysisOutput,
   userCustomizationAnalysisJsonSchema,
 } from "../../application/chat/user-customization-analysis.js";
+import { generatedImageLimits } from "../../application/chat/generated-image-limits.js";
 
-const maximumGeneratedImageBytes = 10 * 1024 * 1024;
-const maximumGeneratedImagesPerReply = 4;
+const maximumGeneratedImageBytes = generatedImageLimits.maxBytesPerImage;
+const maximumGeneratedImagesPerReply = generatedImageLimits.maxImagesPerReply;
 const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 // Same bound as OpenAiResponsesChatProvider — a model stuck calling tools in
 // a loop can't run away on latency/cost.
 const maxToolRoundTrips = 6;
-const toolExecutionTimeoutMs = 10_000;
+// Same reasoning as OpenAiResponsesChatProvider: GenerateSelfImageTool's own
+// image-generation request routinely takes longer than a text tool call.
+const toolExecutionTimeoutMs = 60_000;
 const toolBudgetExhaustedMessage = "Tool call budget exhausted. Do not call any more tools — answer now with what you already have, noting any gaps.";
 // Gemini's image-capable models are addressed like any other model in the
 // fallback list — this provider doesn't pick a separate model for image
@@ -116,6 +120,7 @@ export class GeminiChatProvider implements ChatProvider {
             botAdministratorRoleIds: request.musicBotAdministratorRoleIds ?? new Set(),
           }
         : null,
+      pendingGeneratedImages: [],
     };
 
     let contents: Content[] = [{
@@ -132,7 +137,7 @@ export class GeminiChatProvider implements ChatProvider {
       const functionCalls = response.functionCalls ?? [];
 
       if (functionCalls.length === 0) {
-        return this.parseResponse(response, request);
+        return this.mergePendingImages(this.parseResponse(response, request), toolContext.pendingGeneratedImages);
       }
 
       if (roundTrip >= maxToolRoundTrips) {
@@ -145,7 +150,10 @@ export class GeminiChatProvider implements ChatProvider {
         ];
         const finalizeResponse = await this.modelChain.run((model) =>
           this.generateContent(model, systemInstruction, contents, undefined));
-        return this.parseResponse(finalizeResponse, request);
+        return this.mergePendingImages(
+          this.parseResponse(finalizeResponse, request),
+          toolContext.pendingGeneratedImages,
+        );
       }
 
       // Sequential, not Promise.all — see openai-responses-chat-provider.ts's
@@ -326,6 +334,51 @@ export class GeminiChatProvider implements ChatProvider {
     if (data.length === 0 || data.length > maximumGeneratedImageBytes) return null;
     if (!data.subarray(0, 8).equals(pngSignature)) return null;
     return { data, contentType: "image/png", filename };
+  }
+
+  private mergePendingImages(response: ChatResponse, pending: readonly GeneratedChatImage[]): ChatResponse {
+    if (pending.length === 0) return response;
+    return { ...response, generatedImages: [...response.generatedImages, ...pending] };
+  }
+
+  // Isolated, one-shot request for GenerateSelfImageTool — deliberately not
+  // built via the main reply()/generateContent path, which is coupled to the
+  // full conversational turn (persona instructions, structured-output
+  // schema, tool loop). Sets responseModalities explicitly since this call
+  // exists for no other reason than to get an image back (unlike the main
+  // flow's generateContent, which doesn't set it at all today — seemingly a
+  // pre-existing gap there, left alone since fixing the main flow's image
+  // generation is out of scope here).
+  public async generateReferenceImage(
+    prompt: string,
+    reference: { data: Buffer; contentType: string },
+  ): Promise<{ ok: true; images: readonly GeneratedChatImage[] } | { ok: false; reason: string }> {
+    try {
+      const response = await this.modelChain.run((model) => this.client.models.generateContent({
+        model,
+        contents: [{
+          role: "user",
+          parts: [
+            { text: prompt },
+            { inlineData: { mimeType: reference.contentType, data: reference.data.toString("base64") } },
+          ],
+        }],
+        config: {
+          abortSignal: AbortSignal.timeout(50_000),
+          responseModalities: ["TEXT", "IMAGE"],
+        },
+      }));
+      const images = (response.candidates?.[0]?.content?.parts ?? [])
+        .filter((part): part is Part & { inlineData: { data: string; mimeType?: string } } =>
+          Boolean(part.inlineData?.data))
+        .slice(0, maximumGeneratedImagesPerReply)
+        .map((part, index) => this.decodeGeneratedImage(part.inlineData.data, `self-image-${index + 1}.png`))
+        .filter((image): image is NonNullable<typeof image> => image !== null);
+      if (images.length === 0) return { ok: false, reason: "no image came back from the model." };
+      return { ok: true, images };
+    } catch (error) {
+      return { ok: false, reason: error instanceof Error ? error.message : "the request failed." };
+    }
   }
 
   public async analyzeUserCustomization(rawText: string): Promise<UserCustomizationAnalysisResult> {

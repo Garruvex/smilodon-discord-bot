@@ -34,6 +34,7 @@ function configuration(): ApplicationConfiguration {
     utilityChat: null,
     embeddings: null,
     memory: defaultMemoryEngineLimits,
+    chatDelivery: { maxGeneratedImageAggregateBytes: 10 * 1024 * 1024 },
   };
 }
 
@@ -103,7 +104,7 @@ function profile(): GuildConfiguration {
       deniedLinkLabel: null,
       webSearchMode: "off", toolCallingEnabled: false, disabledTools: [],
       imageInputEnabled: false,
-      imageGenerationEnabled: false,
+      imageGenerationEnabled: false, selfReferenceImageAsset: null,
       includeSources: true,
       maxImagesPerRequest: 2,
       ambientCooldownSeconds: 20,

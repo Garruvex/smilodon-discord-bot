@@ -205,6 +205,7 @@ describe("ChatConversationService", () => {
     };
     const embeddingsClient: EmbeddingsClient = {
       embed: (text: string): Promise<number[]> => Promise.resolve(text.length % 2 === 0 ? [1, 0] : [0, 1]),
+      modelId: "test-model",
     };
     const { engine } = testMemoryEngine(embeddingsClient);
     const service = new ChatConversationService(provider, store, engine);
@@ -227,6 +228,7 @@ describe("ChatConversationService", () => {
     };
     const embeddingsClient: EmbeddingsClient = {
       embed: (): Promise<number[]> => Promise.reject(new Error("embeddings provider down")),
+      modelId: "test-model",
     };
     const { engine } = testMemoryEngine(embeddingsClient);
     const service = new ChatConversationService(provider, store, engine);
@@ -575,6 +577,66 @@ describe("ChatConversationService", () => {
     expect(evolvePersonaDrift).toHaveBeenCalledWith("", [{ user: "old question", assistant: "old answer" }]);
     await vi.waitFor(async () => {
       await expect(driftStore.get("guild")).resolves.toMatchObject({ text: "A little more playful lately." });
+    });
+    rmSync(driftDirectory, { recursive: true, force: true });
+  });
+
+  it("does not evolve the guild-wide persona drift from an isolated channel's dropped exchanges", async () => {
+    const store = baseStore({
+      commitSuccessfulExchange: () => Promise.resolve({
+        droppedExchanges: [{ user: { content: "secret channel stuff", createdAt: 0 }, assistant: { content: "noted", createdAt: 0 } }],
+      }),
+    });
+    const evolvePersonaDrift = vi.fn(() => Promise.resolve("Leaked from the isolated channel."));
+    const provider: ChatProvider = { reply: () => Promise.resolve(response("ok")), evolvePersonaDrift };
+    const driftDirectory = mkdtempSync(join(tmpdir(), "chat-conversation-drift-"));
+    const driftStore = new PersonaDriftStore(driftDirectory);
+    const service = new ChatConversationService(
+      provider, store, testMemoryEngine().engine, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      undefined, driftStore,
+    );
+
+    await service.run({
+      ...input("what happened earlier"),
+      personaDriftEnabled: true,
+      channelMemoryModes: { channel: "isolated" },
+    }, (reply) => Promise.resolve(reply.text));
+
+    // Give the fire-and-forget consolidation a turn to run, then assert it
+    // never touched the guild-wide drift overlay from this isolated channel.
+    await new Promise((resolveTick) => setTimeout(resolveTick, 20));
+    expect(evolvePersonaDrift).not.toHaveBeenCalled();
+    await expect(driftStore.get("guild")).resolves.toBeNull();
+    rmSync(driftDirectory, { recursive: true, force: true });
+  });
+
+  it("pins evolved persona drift to personalitySourceHash, not a hash of the compiled personality core", async () => {
+    const store = baseStore({
+      commitSuccessfulExchange: () => Promise.resolve({
+        droppedExchanges: [{ user: { content: "old question", createdAt: 0 }, assistant: { content: "old answer", createdAt: 0 } }],
+      }),
+    });
+    const evolvePersonaDrift = vi.fn(() => Promise.resolve("A little more playful lately."));
+    const provider: ChatProvider = { reply: () => Promise.resolve(response("ok")), evolvePersonaDrift };
+    const driftDirectory = mkdtempSync(join(tmpdir(), "chat-conversation-drift-"));
+    const driftStore = new PersonaDriftStore(driftDirectory);
+    const service = new ChatConversationService(
+      provider, store, testMemoryEngine().engine, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      undefined, driftStore,
+    );
+
+    await service.run({
+      ...input("what happened earlier"),
+      personaDriftEnabled: true,
+      // Simulates a compiled bundle: `personality` is only the always-sent
+      // core, but the full uploaded file (lore included) hashes differently
+      // — evolveFrom must be pinned to that full-file hash, not
+      // hashContent("Friendly").
+      personalitySourceHash: "full-file-hash-including-lore",
+    }, (reply) => Promise.resolve(reply.text));
+
+    await vi.waitFor(async () => {
+      await expect(driftStore.get("guild")).resolves.toMatchObject({ personalitySourceHash: "full-file-hash-including-lore" });
     });
     rmSync(driftDirectory, { recursive: true, force: true });
   });
