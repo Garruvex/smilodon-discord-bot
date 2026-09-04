@@ -3,6 +3,7 @@ import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
 import type { ChatStateStore } from "../../../../application/chat/chat-state-store.js";
 import type { MemberProfileService } from "../../../../application/members/member-profile-service.js";
 import type { MemoryEngine } from "../../../../application/memory/memory.js";
+import type { PersonalMemoryExtractionQueueStore } from "../../../../application/context/personal-memory-extraction-queue.js";
 
 const monthNames = [
   "January", "February", "March", "April", "May", "June",
@@ -40,6 +41,11 @@ export class MemoryCommand implements BotCommand {
     private readonly chatStateStore: ChatStateStore,
     private readonly memberProfileService: MemberProfileService,
     private readonly memoryEngine: MemoryEngine,
+    // Optional: only wired when the personal-memory extraction queue exists
+    // for this persistence backend (it always does — see
+    // persistence-factory.ts — but keeping this optional avoids a hard
+    // coupling for any future backend/test double that omits it).
+    private readonly personalMemoryExtractionQueueStore?: PersonalMemoryExtractionQueueStore,
   ) {}
 
   public async execute(context: CommandContext): Promise<void> {
@@ -113,6 +119,12 @@ export class MemoryCommand implements BotCommand {
 
     if (all === true) {
       const count = await this.memoryEngine.forget({ guildId, ownerUserId: userId });
+      // A still-queued (or already-succeeded-but-not-yet-cleaned-up, see
+      // PersonalMemoryExtractionQueueStore.markSucceeded) extraction job
+      // holds this user's own raw message text and can later (re)create a
+      // private memory for them — "forget everything" must remove that
+      // too, or it's not actually forgotten.
+      await this.personalMemoryExtractionQueueStore?.deleteForSubject(guildId, userId);
       await context.responses.reply(
         count > 0 ? `Forgot ${count} ${count === 1 ? "memory" : "memories"}.` : "There was nothing to forget.",
       );

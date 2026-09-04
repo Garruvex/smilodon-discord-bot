@@ -50,6 +50,20 @@
       "when": 1787381038510,
       "tag": "0006_hard_gauntlet",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1788488422314,
+      "tag": "0007_soft_the_leader",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1788539517183,
+      "tag": "0008_worthless_squirrel_girl",
+      "breakpoints": true
     }
   ]
 }

@@ -7,9 +7,10 @@ import * as schema from "../database/schema.js";
 // Deleting the guild_members hub row cascades away every table with a
 // memberId FK (chat_sessions, dm_notes_preferences, chat_memories,
 // user_customizations, birthdays — see schema.ts). The unified `memories`
-// table and `reminders` have no such FK (see their schema.ts comments), so
-// they're deleted explicitly here. All three deletes run in one transaction
-// so a mid-purge failure can't leave any of this behind.
+// table, `reminders`, and `personal_memory_extraction_jobs` have no such FK
+// (see their schema.ts comments), so they're deleted explicitly here. All
+// deletes run in one transaction so a mid-purge failure can't leave any of
+// this behind.
 export class PostgresMemberDataPurger implements MemberDataPurger {
   public constructor(private readonly database: PostgresJsDatabase<typeof schema>) {}
 
@@ -22,6 +23,14 @@ export class PostgresMemberDataPurger implements MemberDataPurger {
       await tx.delete(schema.reminders).where(and(
         eq(schema.reminders.guildId, guildId),
         eq(schema.reminders.userId, userId),
+      ));
+      // A still-queued (or already-succeeded-but-not-yet-cleaned-up, see
+      // PersonalMemoryExtractionQueueStore.markSucceeded) extraction job
+      // holds this member's own raw message text and can later (re)create a
+      // private memory for them after they've left, if left unpurged.
+      await tx.delete(schema.personalMemoryExtractionJobs).where(and(
+        eq(schema.personalMemoryExtractionJobs.guildId, guildId),
+        eq(schema.personalMemoryExtractionJobs.subjectId, userId),
       ));
       await tx.delete(schema.guildMembers).where(and(
         eq(schema.guildMembers.guildId, guildId),

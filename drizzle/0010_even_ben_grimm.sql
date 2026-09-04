@@ -1,0 +1,1 @@
+CREATE INDEX "personal_memory_extraction_jobs_terminal" ON "personal_memory_extraction_jobs" USING btree ("status","updated_at");

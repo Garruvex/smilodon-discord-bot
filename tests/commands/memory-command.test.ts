@@ -10,14 +10,22 @@ import type { CommandContext } from "../../src/application/commands/command.js";
 import { MemberProfileService } from "../../src/application/members/member-profile-service.js";
 import { createSqliteDatabaseConnection } from "../../src/infrastructure/database/sqlite-database.js";
 import { SqliteMemoryRepository } from "../../src/infrastructure/persistence/sqlite-memory-repository.js";
+import { SqlitePersonalMemoryExtractionQueueStore } from "../../src/infrastructure/persistence/sqlite-personal-memory-extraction-queue-store.js";
 import { DefaultMemoryEngine } from "../../src/application/memory/memory-engine.js";
 import type { MemoryEngine, MemoryRepository } from "../../src/application/memory/memory.js";
 
-function testMemoryEngine(): { engine: MemoryEngine; repository: MemoryRepository } {
+function testMemoryEngine(): {
+  engine: MemoryEngine;
+  repository: MemoryRepository;
+  extractionQueue: SqlitePersonalMemoryExtractionQueueStore;
+} {
   const directory = mkdtempSync(join(tmpdir(), "memory-command-"));
   const connection = createSqliteDatabaseConnection(directory);
   const repository = new SqliteMemoryRepository(connection.database);
-  return { engine: new DefaultMemoryEngine(repository), repository };
+  return {
+    engine: new DefaultMemoryEngine(repository), repository,
+    extractionQueue: new SqlitePersonalMemoryExtractionQueueStore(connection.database),
+  };
 }
 
 async function seedActiveMemory(repository: MemoryRepository): Promise<void> {
@@ -115,6 +123,28 @@ describe("MemoryCommand", () => {
     await command.execute(context);
     expect(reply).toHaveBeenCalledWith("Forgot 1 memory.");
     expect(await engine.listUserMemories("guild", "user")).toHaveLength(0);
+  });
+
+  it("forget all:true also clears any queued personal-memory extraction jobs for the user, not just existing memories", async () => {
+    // A still-queued (or already-succeeded-but-not-yet-cleaned-up) job
+    // holds this user's own raw message text and can later (re)create a
+    // private memory for them — see ChannelSummaryScheduler's personal-
+    // memory extraction queue. "Forget everything" must clear this too.
+    const { engine, repository, extractionQueue } = testMemoryEngine();
+    await seedActiveMemory(repository);
+    await extractionQueue.enqueueMany([{
+      guildId: "guild", channelId: "channel", batchId: "batch-1", subjectId: "user",
+      displayName: "User", content: "I like green apples",
+    }], 0);
+    const store = baseStore();
+    const command = new MemoryCommand(store, new MemberProfileService(engine, null, null), engine, extractionQueue);
+    const { context, reply } = makeContext({ subcommand: "forget", all: true });
+
+    await command.execute(context);
+
+    expect(reply).toHaveBeenCalledWith("Forgot 1 memory.");
+    expect(await engine.listUserMemories("guild", "user")).toHaveLength(0);
+    await expect(extractionQueue.dequeueDue(10, 0)).resolves.toHaveLength(0);
   });
 
   it("reports the current dm-notes setting when no value is given", async () => {

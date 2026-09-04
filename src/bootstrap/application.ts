@@ -80,7 +80,21 @@ export class Application {
     this.dependencies.channelSummaryScheduler?.stop();
     this.dependencies.reminderScheduler.stop();
     this.dependencies.pollService.stop();
+    // Destroyed before draining, not after — this stops new Discord
+    // messages (and so new chat turns) from arriving while we wait for
+    // whatever background memory writes (dedicated extraction,
+    // dropped-exchange consolidation) are still in flight from turns that
+    // already replied. Without this drain, a SIGTERM right after a reply
+    // was delivered could kill one of those writes mid-flight with nothing
+    // having waited for it — see ChatConversationService.drain.
     await this.client.destroy();
+    await Promise.all([
+      this.dependencies.chatConversationService?.drain(),
+      // .stop() above only clears the interval — a tick already in flight
+      // (now potentially long, see ChannelSummaryScheduler.drain's own
+      // comment) keeps running until this resolves.
+      this.dependencies.channelSummaryScheduler?.drain(),
+    ]);
   }
 
   private registerDiscordEvents(): void {

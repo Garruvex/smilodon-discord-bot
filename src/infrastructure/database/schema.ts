@@ -294,6 +294,37 @@ export const channelSummaryCheckpoints = pgTable("channel_summary_checkpoints", 
   primaryKey({ columns: [table.guildId, table.channelId] }),
 ]);
 
+// Durable per-author dedicated personal-memory extraction jobs. See
+// channel-summary-scheduler.ts: one row per (guildId, channelId, batchId,
+// subjectId) rather than doing the extraction inline while summarizing a
+// batch, so a member's promotion check survives a process restart, isn't
+// lost by an unrelated ingest failure elsewhere in the same batch, and can
+// retry with real backoff independently of the channel's own scan/daily
+// cursor — which no longer needs to be held back waiting on it.
+export const personalMemoryExtractionJobs = pgTable("personal_memory_extraction_jobs", {
+  guildId: text("guild_id").notNull(),
+  channelId: text("channel_id").notNull(),
+  batchId: text("batch_id").notNull(),
+  subjectId: text("subject_id").notNull(),
+  displayName: text("display_name").notNull(),
+  content: text("content").notNull(),
+  attempts: integer("attempts").notNull().default(0),
+  nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull(),
+  lastError: text("last_error"),
+  // "dead_letter" once attempts exhausts maxPersonalMemoryExtractionAttempts
+  // — excluded from dequeueDue, kept (not deleted) so it's visible/countable
+  // rather than silently vanishing.
+  status: text("status").notNull().default("pending"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.guildId, table.channelId, table.batchId, table.subjectId] }),
+  index("personal_memory_extraction_jobs_due").on(table.status, table.nextAttemptAt),
+  // Backs deleteTerminalOlderThan's periodic backstop cleanup of aged
+  // succeeded/dead_letter tombstones (see the store interface).
+  index("personal_memory_extraction_jobs_terminal").on(table.status, table.updatedAt),
+]);
+
 export const guildKnowledge = pgTable("guild_knowledge", {
   id: uuid("id").primaryKey(),
   guildId: text("guild_id").notNull(),

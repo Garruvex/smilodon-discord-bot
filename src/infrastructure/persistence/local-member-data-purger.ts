@@ -4,6 +4,7 @@ import type { ChatStateStore } from "../../application/chat/chat-state-store.js"
 import type { MemoryRepository } from "../../application/memory/memory.js";
 import type { ReminderStore } from "../../application/reminders/reminder-store.js";
 import type { UserCustomizationStore } from "../../application/chat/user-customization-store.js";
+import type { PersonalMemoryExtractionQueueStore } from "../../application/context/personal-memory-extraction-queue.js";
 
 // No guild_members hub table on this backend (see persistence-factory.ts),
 // so each per-user store is purged directly instead of relying on a cascade.
@@ -14,6 +15,11 @@ export class LocalMemberDataPurger implements MemberDataPurger {
     private readonly birthdayStore: BirthdayStore,
     private readonly reminderStore: ReminderStore,
     private readonly chatStateStore: ChatStateStore,
+    // A still-queued (or already-succeeded-but-not-yet-cleaned-up, see
+    // PersonalMemoryExtractionQueueStore.markSucceeded) extraction job holds
+    // this member's own raw message text and can later (re)create a private
+    // memory for them after they've left, if left unpurged.
+    private readonly personalMemoryExtractionQueueStore: PersonalMemoryExtractionQueueStore,
   ) {}
 
   public async purge(guildId: string, userId: string): Promise<void> {
@@ -31,6 +37,7 @@ export class LocalMemberDataPurger implements MemberDataPurger {
       (): Promise<unknown> => this.birthdayStore.removeBirthday(guildId, userId),
       (): Promise<unknown> => this.reminderStore.deleteForUser(guildId, userId),
       (): Promise<unknown> => this.chatStateStore.purgeUser(guildId, userId),
+      (): Promise<unknown> => this.personalMemoryExtractionQueueStore.deleteForSubject(guildId, userId),
     ];
     const results = await Promise.allSettled(
       operations.map((operation) => Promise.resolve().then(() => operation())),

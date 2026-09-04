@@ -56,6 +56,7 @@ import { SetupCommand } from "../infrastructure/discord/commands/setup/setup-com
 import { SettingsCommand } from "../infrastructure/discord/commands/setup/settings-command.js";
 import { VoteCommand } from "../infrastructure/discord/commands/common/vote-command.js";
 import { MemoryCommand } from "../infrastructure/discord/commands/common/memory-command.js";
+import { MemoryEvalCommand } from "../infrastructure/discord/commands/diagnostics/memory-eval-command.js";
 import { CustomizeCommand } from "../infrastructure/discord/commands/common/customize-command.js";
 import type { UserCustomizationStore } from "../application/chat/user-customization-store.js";
 import { PollService } from "../application/polls/poll-service.js";
@@ -93,6 +94,7 @@ import { DefaultMemoryEngine } from "../application/memory/memory-engine.js";
 import type { MemoryEngine } from "../application/memory/memory.js";
 import type { ChannelSummaryCheckpointStore } from "../application/context/channel-summary-checkpoint-store.js";
 import { ChannelSummaryScheduler } from "../application/context/channel-summary-scheduler.js";
+import type { PersonalMemoryExtractionQueueStore } from "../application/context/personal-memory-extraction-queue.js";
 import { DiscordChannelHistoryReader } from "../infrastructure/discord/context/discord-channel-history-reader.js";
 import { FilePersonaSource } from "../infrastructure/chat/file-persona-source.js";
 import { OpenAiEmbeddingsClient } from "../infrastructure/chat/openai-embeddings-client.js";
@@ -102,6 +104,7 @@ import { ApplicationEmojiCatalog } from "../infrastructure/discord/application-e
 import type { AuditLogService } from "../application/audit/audit-log-service.js";
 import { MemberProfileService } from "../application/members/member-profile-service.js";
 import type { EmbeddingsClient } from "../application/chat/embeddings-client.js";
+import { FileMemoryRelevanceTraceCollector } from "../infrastructure/persistence/file-memory-relevance-trace-collector.js";
 
 // Shape common to both configuration.chat and configuration.utilityChat —
 // summaryModels is optional here since only `chat` carries it (utilityChat
@@ -205,6 +208,11 @@ export interface ApplicationDependencies {
   reminderScheduler: ReminderScheduler;
   applicationEmojiCatalog: ApplicationEmojiCatalog;
   memoryEngine: MemoryEngine;
+  // Null under the same condition as channelSummaryScheduler above — no
+  // chat provider configured. Exposed so Application.stop() can drain its
+  // fire-and-forget background writes (dedicated extraction, dropped-
+  // exchange consolidation) before the process exits.
+  chatConversationService: ChatConversationService | null;
 }
 
 // Everything registerCommands() builds that createDependencies() (or any
@@ -250,6 +258,7 @@ export function registerCommands(
   birthdayStore: BirthdayStore,
   memoryRepository: MemoryRepository,
   channelSummaryCheckpointStore: ChannelSummaryCheckpointStore,
+  personalMemoryExtractionQueueStore: PersonalMemoryExtractionQueueStore,
   reminderStore: ReminderStore,
   roleMenuStore: RoleMenuStore,
 ): CommandRegistrationResult {
@@ -352,12 +361,22 @@ export function registerCommands(
   // standalone structured-output call — DefaultMemoryEngine treats a
   // provider that doesn't implement the capability the same as no provider
   // at all (falls back to the similarity threshold alone).
+  const relevanceEvalSampleRate = configuration.memory.relevanceEvalSampleRate ?? 0;
+  const relevanceTraceCollector = relevanceEvalSampleRate > 0
+    ? new FileMemoryRelevanceTraceCollector(
+        configuration.runtimeDataDirectory,
+        relevanceEvalSampleRate,
+        configuration.memory.relevanceEvalIncludePrivate ?? false,
+      )
+    : null;
   const memoryEngine = new DefaultMemoryEngine(
     memoryRepository, embeddingsClient, logger.child({ component: "memory-engine" }), configuration.memory,
     utilityProvider,
+    relevanceTraceCollector,
   );
   const memberProfileService = new MemberProfileService(memoryEngine, birthdayStore, userCustomizationStore);
-  commandRegistry.register(new MemoryCommand(chatStateStore, memberProfileService, memoryEngine));
+  commandRegistry.register(new MemoryCommand(chatStateStore, memberProfileService, memoryEngine, personalMemoryExtractionQueueStore));
+  if (relevanceTraceCollector) commandRegistry.register(new MemoryEvalCommand(relevanceTraceCollector));
   // Personality-bundle compilation is a standalone structured-output call
   // (same shape as summarizeDroppedExchanges) — prefers the cheaper
   // utility model when one is configured, same as ChatConversationService's
@@ -421,6 +440,7 @@ export function createDependencies(
   birthdayStore: BirthdayStore,
   memoryRepository: MemoryRepository,
   channelSummaryCheckpointStore: ChannelSummaryCheckpointStore,
+  personalMemoryExtractionQueueStore: PersonalMemoryExtractionQueueStore,
   reminderStore: ReminderStore,
   roleMenuStore: RoleMenuStore,
 ): ApplicationDependencies {
@@ -441,7 +461,7 @@ export function createDependencies(
   } = registerCommands(
     configuration, logger, musicPlayerGateway, guildConfigurationProvider, guildSetupService,
     discordClient, chatStateStore, userCustomizationStore, auditLogService, birthdayStore,
-    memoryRepository, channelSummaryCheckpointStore, reminderStore, roleMenuStore,
+    memoryRepository, channelSummaryCheckpointStore, personalMemoryExtractionQueueStore, reminderStore, roleMenuStore,
   );
 
   const reminderScheduler = new ReminderScheduler(
@@ -468,8 +488,19 @@ export function createDependencies(
   // check instead of the scheduler probing an optional method at runtime.
   const channelSummaryScheduler = utilityProvider?.summarizeChannelMessages
     ? new ChannelSummaryScheduler(
-        new DiscordChannelHistoryReader(discordClient), guildConfigurationProvider, memoryEngine, channelSummaryCheckpointStore,
-        { summarizeChannelMessages: utilityProvider.summarizeChannelMessages.bind(utilityProvider) },
+        new DiscordChannelHistoryReader(discordClient), guildConfigurationProvider, memoryEngine,
+        channelSummaryCheckpointStore, personalMemoryExtractionQueueStore,
+        {
+          summarizeChannelMessages: utilityProvider.summarizeChannelMessages.bind(utilityProvider),
+          // Optional — see ChannelSummaryScheduler's own promotion-path
+          // comment. Bound only when the provider actually implements it
+          // (omitted entirely, not set to undefined, per
+          // exactOptionalPropertyTypes), same narrowing rationale as
+          // summarizeChannelMessages above.
+          ...(utilityProvider.extractPersonalMemories
+            ? { extractPersonalMemories: utilityProvider.extractPersonalMemories.bind(utilityProvider) }
+            : {}),
+        },
         logger.child({ component: "channel-summary-scheduler" }),
       )
     : null;
@@ -552,5 +583,6 @@ export function createDependencies(
     reminderScheduler,
     applicationEmojiCatalog,
     memoryEngine,
+    chatConversationService,
   };
 }

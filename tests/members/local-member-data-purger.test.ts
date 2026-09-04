@@ -11,6 +11,7 @@ import { LocalUserCustomizationStore } from "../../src/infrastructure/persistenc
 import { LocalBirthdayStore } from "../../src/infrastructure/persistence/local-birthday-store.js";
 import { LocalReminderStore } from "../../src/infrastructure/persistence/local-reminder-store.js";
 import { LocalMemberDataPurger } from "../../src/infrastructure/persistence/local-member-data-purger.js";
+import { SqlitePersonalMemoryExtractionQueueStore } from "../../src/infrastructure/persistence/sqlite-personal-memory-extraction-queue-store.js";
 import type { MemoryRepository, RepositoryIngestInput } from "../../src/application/memory/memory.js";
 
 function ingestInput(overrides: Partial<RepositoryIngestInput> = {}): RepositoryIngestInput {
@@ -37,6 +38,7 @@ describe("LocalMemberDataPurger", () => {
     const birthdayStore = new LocalBirthdayStore(directory);
     const reminderStore = new LocalReminderStore(directory);
     const chatStateStore = new SqliteChatStateStore(connection.database);
+    const extractionQueueStore = new SqlitePersonalMemoryExtractionQueueStore(connection.database);
     await userCustomizationStore.initialize();
     await birthdayStore.initialize();
     await reminderStore.initialize();
@@ -46,6 +48,13 @@ describe("LocalMemberDataPurger", () => {
       audience: "guild", ownerUserId: null, channelId: null,
       slot: "shared_favorite_color", source: "consolidation",
     }));
+    // Still holds this user's own raw message text — must be purged too,
+    // or it can later (re)create a private memory for someone who asked to
+    // be forgotten (see PersonalMemoryExtractionQueueStore).
+    await extractionQueueStore.enqueueMany([{
+      guildId: "guild", channelId: "channel", batchId: "batch-1", subjectId: "user",
+      displayName: "User", content: "I like blue",
+    }], 1_000);
     await userCustomizationStore.save("guild", "user", "loves markdown");
     await birthdayStore.setBirthday("guild", "user", 3, 14);
     await chatStateStore.commitSuccessfulExchange({
@@ -66,7 +75,9 @@ describe("LocalMemberDataPurger", () => {
     });
     await reminderStore.markFired(fired.id);
 
-    const purger = new LocalMemberDataPurger(memoryRepository, userCustomizationStore, birthdayStore, reminderStore, chatStateStore);
+    const purger = new LocalMemberDataPurger(
+      memoryRepository, userCustomizationStore, birthdayStore, reminderStore, chatStateStore, extractionQueueStore,
+    );
     await purger.purge("guild", "user");
 
     expect(await memoryRepository.listByUser("guild", "user")).toHaveLength(0);
@@ -82,6 +93,7 @@ describe("LocalMemberDataPurger", () => {
     // purge, not just excluded from listForUser's active-only view.
     expect(active.id).not.toBe(fired.id);
     expect(await reminderStore.deleteForUser("guild", "user")).toBe(0);
+    await expect(extractionQueueStore.dequeueDue(10, 1_000)).resolves.toHaveLength(0);
   });
 
   it("leaves other users' data untouched", async () => {
@@ -92,6 +104,7 @@ describe("LocalMemberDataPurger", () => {
     const birthdayStore = new LocalBirthdayStore(directory);
     const reminderStore = new LocalReminderStore(directory);
     const chatStateStore = new SqliteChatStateStore(connection.database);
+    const extractionQueueStore = new SqlitePersonalMemoryExtractionQueueStore(connection.database);
     await userCustomizationStore.initialize();
     await birthdayStore.initialize();
     await reminderStore.initialize();
@@ -99,13 +112,20 @@ describe("LocalMemberDataPurger", () => {
     await memoryRepository.ingest(ingestInput({ ownerUserId: "otherUser", subjectId: "otherUser", assertedByUserId: "otherUser" }));
     await birthdayStore.setBirthday("guild", "otherUser", 6, 1);
     await chatStateStore.setDmNotesEnabled("guild", "otherUser", false);
+    await extractionQueueStore.enqueueMany([{
+      guildId: "guild", channelId: "channel", batchId: "batch-1", subjectId: "otherUser",
+      displayName: "Other User", content: "hello",
+    }], 1_000);
 
-    const purger = new LocalMemberDataPurger(memoryRepository, userCustomizationStore, birthdayStore, reminderStore, chatStateStore);
+    const purger = new LocalMemberDataPurger(
+      memoryRepository, userCustomizationStore, birthdayStore, reminderStore, chatStateStore, extractionQueueStore,
+    );
     await purger.purge("guild", "user");
 
     expect(await memoryRepository.listByUser("guild", "otherUser")).toHaveLength(1);
     expect(await birthdayStore.getBirthday("guild", "otherUser")).toEqual({ userId: "otherUser", month: 6, day: 1 });
     expect(await chatStateStore.getDmNotesEnabled("guild", "otherUser")).toBe(false);
+    await expect(extractionQueueStore.dequeueDue(10, 1_000)).resolves.toHaveLength(1);
   });
 
   // Regression coverage for a P2 finding: purge used to await each store
@@ -118,12 +138,17 @@ describe("LocalMemberDataPurger", () => {
     const birthdayStore = new LocalBirthdayStore(directory);
     const reminderStore = new LocalReminderStore(directory);
     const chatStateStore = new SqliteChatStateStore(connection.database);
+    const extractionQueueStore = new SqlitePersonalMemoryExtractionQueueStore(connection.database);
     await userCustomizationStore.initialize();
     await birthdayStore.initialize();
     await reminderStore.initialize();
 
     await userCustomizationStore.save("guild", "user", "loves markdown");
     await birthdayStore.setBirthday("guild", "user", 3, 14);
+    await extractionQueueStore.enqueueMany([{
+      guildId: "guild", channelId: "channel", batchId: "batch-1", subjectId: "user",
+      displayName: "User", content: "I like blue",
+    }], 1_000);
 
     const failingMemoryRepository = {
       // Local adapters can throw before returning a promise (for example, a
@@ -131,10 +156,13 @@ describe("LocalMemberDataPurger", () => {
       forget: () => { throw new Error("disk full"); },
     } as unknown as MemoryRepository;
 
-    const purger = new LocalMemberDataPurger(failingMemoryRepository, userCustomizationStore, birthdayStore, reminderStore, chatStateStore);
+    const purger = new LocalMemberDataPurger(
+      failingMemoryRepository, userCustomizationStore, birthdayStore, reminderStore, chatStateStore, extractionQueueStore,
+    );
 
-    await expect(purger.purge("guild", "user")).rejects.toThrow(/1 of 5 stores/);
+    await expect(purger.purge("guild", "user")).rejects.toThrow(/1 of 6 stores/);
     expect(await userCustomizationStore.load("guild", "user")).toBeNull();
     expect(await birthdayStore.getBirthday("guild", "user")).toBeNull();
+    await expect(extractionQueueStore.dequeueDue(10, 1_000)).resolves.toHaveLength(0);
   });
 });

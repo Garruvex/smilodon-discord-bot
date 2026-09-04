@@ -48,6 +48,7 @@ const dependencies = createDependencies(
   persistence.birthdayStore,
   persistence.memoryRepository,
   persistence.channelSummaryCheckpointStore,
+  persistence.personalMemoryExtractionQueueStore,
   persistence.reminderStore,
   persistence.roleMenuStore,
 );
