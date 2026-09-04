@@ -11,6 +11,7 @@ import {
   type ChatSource,
   type DroppedExchangeFact,
   type GeneratedChatImage,
+  type PersonalMemoryExtractionAction,
   type UserCustomizationAnalysisResult,
 } from "../../application/chat/chat-provider.js";
 import type { ChatImage } from "../../application/chat/chat-provider.js";
@@ -50,6 +51,11 @@ import {
   replyChainOverflowSummaryJsonSchema,
   parseReplyChainOverflowSummaryOutput,
 } from "../../application/chat/reply-chain-overflow-summary.js";
+import {
+  buildPersonalMemoryExtractionPrompt,
+  personalMemoryExtractionJsonSchema,
+  parsePersonalMemoryExtractionOutput,
+} from "../../application/chat/personal-memory-extraction.js";
 import {
   buildUserCustomizationAnalysisPrompt,
   parseUserCustomizationAnalysisOutput,
@@ -108,6 +114,7 @@ export class GeminiChatProvider implements ChatProvider {
       channelId: request.channelId,
       currentUser: request.currentUser,
       channelIsNsfw: request.channelIsNsfw ?? false,
+      channelMode: request.channelMode ?? "shared",
       isOwner: request.isOwner ?? false,
       music: request.musicActor
         ? {
@@ -428,6 +435,25 @@ export class GeminiChatProvider implements ChatProvider {
       replyChainOverflowSummaryJsonSchema,
     ));
     return parseReplyChainOverflowSummaryOutput((response.text ?? "").trim()).summary;
+  }
+
+  // Parses inside the retried callback (not after summaryModelChain.run
+  // resolves) so a model that returns malformed JSON falls back to the next
+  // configured model instead of permanently failing — see
+  // ModelFallbackChain.run's invalid_structured_output handling.
+  public async extractPersonalMemories(
+    userMessage: string,
+    assistantReply: string,
+    speaker: { id: string; displayName: string },
+  ): Promise<readonly PersonalMemoryExtractionAction[]> {
+    return this.summaryModelChain.run(async (model) => {
+      const response = await this.generateStructured(
+        model,
+        buildPersonalMemoryExtractionPrompt(userMessage, assistantReply, speaker),
+        personalMemoryExtractionJsonSchema,
+      );
+      return parsePersonalMemoryExtractionOutput((response.text ?? "").trim()).actions;
+    });
   }
 
   public async compilePersonaBundle(content: string): Promise<readonly number[]> {

@@ -44,6 +44,7 @@ function contextWithoutMusic(): ChatToolContext {
     channelId: "channel-1",
     currentUser: { id: "user-1", displayName: "Tester", roleNames: [] },
     channelIsNsfw: false,
+    channelMode: "shared",
     isOwner: false,
     music: null,
     pendingGeneratedImages: [],
@@ -56,6 +57,7 @@ function contextWithMusic(roleIds: readonly string[] = ["role-controller"]): Cha
     channelId: "channel-1",
     currentUser: { id: "user-1", displayName: "Tester", roleNames: [] },
     channelIsNsfw: false,
+    channelMode: "shared",
     isOwner: false,
     music: {
       actor: { guildId: "guild-1", textChannelId: "channel-1", userId: "user-1", voiceChannelId: null },

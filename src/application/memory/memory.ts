@@ -291,6 +291,34 @@ export interface MemoryRecallInput {
   recentHistory: readonly { content: string }[];
   subjectIds: readonly string[];
   now: number;
+  // "disabled" means no memory reads or writes at all in this channel (see
+  // ChannelMemoryMode) — omitted/other modes recall normally. Optional
+  // rather than required so existing callers/tests that don't care about
+  // channel isolation aren't forced to thread a mode through.
+  channelMode?: ChannelMemoryMode;
+  // When true, only memories with a genuine textual/semantic match to
+  // `message` are eligible — see DefaultMemoryEngine.recall's
+  // topicalMatchMinCosine gate. Ordinary ambient recall (the default,
+  // false/omitted) doesn't need this: a little topically-loose extra
+  // context in the prompt is harmless. A caller that surfaces results
+  // directly as "here's what I found" (see MemoryLookupTool) does — without
+  // it, an unrelated query can return the subject's most recent memories
+  // purely on recency/subject boost and present them as matches.
+  requireTopicalMatch?: boolean;
+  // When true, only the caller's own private memories about themselves
+  // (audience "private", ownerUserId AND subjectId both userId) are
+  // eligible — applied before ranking/budgeting, not as a post-hoc filter
+  // on the result. Without this, a broad "what do you remember about me"
+  // (see MemoryLookupTool's "list" scope, the only caller) shares the same
+  // maxSelectedChars budget as every other eligible guild/channel memory
+  // and private note about someone else; those can rank higher (recency,
+  // subject boost) and consume the whole budget, crowding out the
+  // caller's own memories before a post-hoc filter ever gets a chance to
+  // discard them. Scoping the candidate set itself, before
+  // selectByRelevance runs, is the only way to guarantee the budget is
+  // spent exclusively on memories that were even eligible to answer the
+  // question.
+  onlySelfPrivateMemories?: boolean;
 }
 
 // A 2-node causal chain surfaced by a "consequence" relation reachable

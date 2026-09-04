@@ -7,6 +7,7 @@ import {
   type ChatProvider,
   type ChatRequest,
   type ChatResponse,
+  type PersonalMemoryExtractionAction,
   type UserCustomizationAnalysisResult,
 } from "../../application/chat/chat-provider.js";
 import type { ChannelSummaryMessage, ChannelSummaryResult } from "../../application/context/channel-message-summarizer.js";
@@ -22,6 +23,11 @@ import {
   parseUserCustomizationAnalysisOutput,
   userCustomizationAnalysisJsonSchema,
 } from "../../application/chat/user-customization-analysis.js";
+import {
+  buildPersonalMemoryExtractionPrompt,
+  personalMemoryExtractionJsonSchema,
+  parsePersonalMemoryExtractionOutput,
+} from "../../application/chat/personal-memory-extraction.js";
 
 const responseSchema = z.object({
   choices: z.array(z.object({ message: z.object({ content: z.string() }) })).min(1),
@@ -179,6 +185,53 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
       return { ok: false, reason: "No usable style preferences were found in that file." };
     }
     return { ok: true, markdown };
+  }
+
+  // See ChatProvider.extractPersonalMemories — chat_completions is the
+  // default provider mode (CHATBOT_MODE/UTILITY_MODE both default to it,
+  // see environment.ts), so this must exist here too or dedicated
+  // extraction silently never runs for anyone on default configuration.
+  // Domain-schema parsing runs inside the retried callback (not after
+  // summaryModelChain.run resolves) so a model that returns malformed JSON
+  // falls back to the next configured model instead of permanently failing
+  // — see ModelFallbackChain.run's invalid_structured_output handling.
+  public async extractPersonalMemories(
+    userMessage: string,
+    assistantReply: string,
+    speaker: { id: string; displayName: string },
+  ): Promise<readonly PersonalMemoryExtractionAction[]> {
+    return this.summaryModelChain.run(async (model) => {
+      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "system", content: buildPersonalMemoryExtractionPrompt(userMessage, assistantReply, speaker) }],
+          response_format: {
+            type: "json_schema",
+            json_schema: { name: "personal_memory_extraction", strict: true, schema: personalMemoryExtractionJsonSchema },
+          },
+        }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!response.ok) {
+        const errorBody: unknown = await response.json().catch(() => null);
+        const parsedError = errorResponseSchema.safeParse(errorBody);
+        const providerCode = parsedError.success
+          ? (parsedError.data.error.code ?? parsedError.data.error.type ?? null)
+          : null;
+        throw new ChatProviderError(
+          `Chat provider returned HTTP ${response.status}${providerCode ? ` (${providerCode})` : ""}.`,
+          response.status,
+          providerCode,
+        );
+      }
+      const parsed = responseSchema.parse(await response.json());
+      return parsePersonalMemoryExtractionOutput(parsed.choices[0]!.message.content).actions;
+    });
   }
 
   public async summarizeChannelMessages(

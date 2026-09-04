@@ -176,6 +176,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
       const response = await this.conversation.run({
         guildId: message.guildId,
         channelId: message.channelId,
+        sourceMessageId: message.id,
         personality: persona.personality,
         examplePool: persona.examplePool,
         loreChunks: persona.loreChunks,

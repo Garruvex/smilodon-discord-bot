@@ -159,6 +159,20 @@ describe("ChatConversationService", () => {
     expect(stored).toMatchObject([{ subjectId: "user", topic: "preference", slot: "food.fruit", statement: "likes green apples" }]);
   });
 
+  it("threads the originating Discord message id into a live memory write", async () => {
+    const store = baseStore();
+    const memoryActions: ChatResponse["userMemoryActions"] = [
+      { action: "upsert", subjectUserId: "user", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
+    ];
+    const provider: ChatProvider = { reply: () => Promise.resolve(response("ok", memoryActions)) };
+    const { engine } = testMemoryEngine();
+    const ingestSpy = vi.spyOn(engine, "ingest");
+    const service = new ChatConversationService(provider, store, engine);
+
+    await service.run({ ...input("remember this"), sourceMessageId: "msg-123" }, (reply) => Promise.resolve(reply.text));
+    expect(ingestSpy).toHaveBeenCalledWith(expect.objectContaining({ sourceMessageId: "msg-123" }));
+  });
+
   it("loads confirmed guild knowledge and submits validated candidates after delivery", async () => {
     const store = baseStore();
     let receivedKnowledgeCount = -1;
@@ -351,6 +365,354 @@ describe("ChatConversationService", () => {
     expect(ingestSpy).toHaveBeenCalledOnce();
     const stored = await engine.listUserMemories("guild", "user");
     expect(stored).toMatchObject([{ statement: "likes green apples" }]);
+  });
+
+  it("runs a dedicated post-reply extraction pass and ingests what it finds, even when the reply model itself returned no memory actions", async () => {
+    const store = baseStore();
+    const extractPersonalMemories = vi.fn(() => Promise.resolve([
+      { action: "upsert" as const, aboutSpeaker: true, sourceQuote: "I like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
+    ]));
+    const provider: ChatProvider = {
+      reply: () => Promise.resolve(response("Noted!")), // no userMemoryActions from the reply model
+      extractPersonalMemories,
+    };
+    const { engine } = testMemoryEngine();
+    const service = new ChatConversationService(provider, store, engine);
+    const deliver = vi.fn((reply: ChatResponse) => Promise.resolve(reply.text));
+
+    await service.run(input("I like green apples"), deliver);
+
+    // The extraction+ingest pair is queued onto this user's own key (see
+    // run()'s this.queue.run call) rather than started synchronously, so it
+    // isn't done — or even called yet — by the time run() itself resolves.
+    // Wait for both instead of asserting synchronously.
+    await vi.waitFor(() => {
+      expect(extractPersonalMemories).toHaveBeenCalledWith(
+        "I like green apples", "Noted!", { id: "user", displayName: "User", roleNames: [] },
+      );
+    });
+    await vi.waitFor(async () => {
+      const stored = await engine.listUserMemories("guild", "user");
+      expect(stored).toMatchObject([{ statement: "likes green apples" }]);
+    });
+  });
+
+  // This only proves the structural half of the defense: a candidate can
+  // never land on Bob's OWN profile (subjectId "bob"), because the
+  // extractor's return type has no subjectUserId field for the model to
+  // set — every candidate is stamped with the speaker's id by construction,
+  // regardless of what the model intended. It does NOT prove the model
+  // can't mislabel a third-party fact as the speaker's own — a model that
+  // (incorrectly) sets aboutSpeaker: true for "Bob likes green apples"
+  // still gets written under the speaker here, same as this test asserts.
+  // Preventing THAT is aboutSpeaker's job (the model's own explicit
+  // self-check, enforced by dropping — not relabeling — anything false) —
+  // see the next test, and its own residual-risk note.
+  it("a candidate about a mentioned user is stamped with the speaker's id, never the mentioned user's — subjectUserId isn't a field the model controls", async () => {
+    const store = baseStore();
+    const extractPersonalMemories = vi.fn(() => Promise.resolve([
+      { action: "upsert" as const, aboutSpeaker: true, sourceQuote: "Bob likes green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
+    ]));
+    const provider: ChatProvider = { reply: () => Promise.resolve(response("Noted!")), extractPersonalMemories };
+    const { engine } = testMemoryEngine();
+    const service = new ChatConversationService(provider, store, engine);
+    const deliver = vi.fn((reply: ChatResponse) => Promise.resolve(reply.text));
+
+    await service.run({ ...input("Bob likes green apples"), mentionedUsers: [{ id: "bob", displayName: "Bob", roleNames: [] }] }, deliver);
+
+    await vi.waitFor(async () => {
+      const stored = await engine.listUserMemories("guild", "user");
+      expect(stored).toMatchObject([{ subjectId: "user", statement: "likes green apples" }]);
+    });
+    // Never Bob's profile — that's the one thing this design guarantees
+    // structurally. Whether it should have been written at all (it
+    // shouldn't — the mock here incorrectly claims aboutSpeaker: true) is
+    // a model-correctness question the next test covers, not this one.
+    await expect(engine.listUserMemories("guild", "bob")).resolves.toHaveLength(0);
+  });
+
+  // A model that correctly recognizes "Bob likes pizza" isn't about the
+  // speaker, per the prompt's subject rule — the app must respect
+  // aboutSpeaker: false and drop this rather than writing it under the
+  // speaker as though it were their own fact. This is the actual
+  // misattribution defense (the previous test only covers the narrower,
+  // structural "can't target Bob's own profile" guarantee) — and it's an
+  // inherent, unclosed limit: it depends entirely on the model setting the
+  // field correctly. A model that gets the judgment call wrong the other
+  // way (aboutSpeaker: true for a fact that isn't) has no further app-side
+  // check catching it, same residual risk any LLM-based self-check carries.
+  it("drops (never force-relabels) an action the model itself flags as not about the speaker", async () => {
+    const store = baseStore();
+    const extractPersonalMemories = vi.fn(() => Promise.resolve([
+      { action: "upsert" as const, aboutSpeaker: false, sourceQuote: "Bob likes pizza", topic: "preference", slot: "food.pizza", statement: "likes pizza" },
+    ]));
+    const provider: ChatProvider = { reply: () => Promise.resolve(response("Noted!")), extractPersonalMemories };
+    const { engine } = testMemoryEngine();
+    const service = new ChatConversationService(provider, store, engine);
+    const deliver = vi.fn((reply: ChatResponse) => Promise.resolve(reply.text));
+
+    await service.run({ ...input("Bob likes pizza"), mentionedUsers: [{ id: "bob", displayName: "Bob", roleNames: [] }] }, deliver);
+
+    await vi.waitFor(() => {
+      expect(extractPersonalMemories).toHaveBeenCalled();
+    });
+    await expect(engine.listUserMemories("guild", "user")).resolves.toHaveLength(0);
+    await expect(engine.listUserMemories("guild", "bob")).resolves.toHaveLength(0);
+  });
+
+  it("drops an action whose sourceQuote isn't actually in the user's message, even though aboutSpeaker is true — grounding, not just the model's self-check", async () => {
+    const store = baseStore();
+    // "you probably love jazz" is grounded in nothing the user actually
+    // said — a sourceQuote that doesn't appear in the real message text
+    // means the app can't verify it traces back to the user at all (see
+    // personal-memory-extraction.ts's evidence rule).
+    const extractPersonalMemories = vi.fn(() => Promise.resolve([
+      { action: "upsert" as const, aboutSpeaker: true, sourceQuote: "you probably love jazz", topic: "preference", slot: "music.genre", statement: "loves jazz" },
+    ]));
+    const provider: ChatProvider = { reply: () => Promise.resolve(response("Interesting!")), extractPersonalMemories };
+    const { engine } = testMemoryEngine();
+    const service = new ChatConversationService(provider, store, engine);
+    const deliver = vi.fn((reply: ChatResponse) => Promise.resolve(reply.text));
+
+    await service.run(input("hmm maybe"), deliver);
+
+    await vi.waitFor(() => {
+      expect(extractPersonalMemories).toHaveBeenCalled();
+    });
+    await expect(engine.listUserMemories("guild", "user")).resolves.toHaveLength(0);
+  });
+
+  it("keeps a slow background extraction from clobbering a later turn's correction — memory writes for one user stay ordered even though the reply doesn't wait for extraction", async () => {
+    const store = baseStore();
+    let resolveSlowExtraction!: (actions: readonly { action: "upsert"; aboutSpeaker: boolean; sourceQuote: string; topic: string; slot: string; statement: string }[]) => void;
+    const slowExtraction = new Promise<readonly { action: "upsert"; aboutSpeaker: boolean; sourceQuote: string; topic: string; slot: string; statement: string }[]>((resolve) => {
+      resolveSlowExtraction = resolve;
+    });
+    let replyCall = 0;
+    const provider: ChatProvider = {
+      reply: () => {
+        replyCall += 1;
+        // Turn 1 ("I like apples") relies entirely on the slow dedicated
+        // extractor. Turn 2 ("actually I hate apples") is caught directly
+        // by the reply model, the fast path.
+        if (replyCall === 1) return Promise.resolve(response("Noted!"));
+        return Promise.resolve(response("Got it!", [
+          { action: "upsert", subjectUserId: "user", topic: "preference", slot: "food.fruit", statement: "hates apples" },
+        ]));
+      },
+      extractPersonalMemories: () => slowExtraction,
+    };
+    const { engine } = testMemoryEngine();
+    const service = new ChatConversationService(provider, store, engine);
+    const deliver = vi.fn((reply: ChatResponse) => Promise.resolve(reply.text));
+
+    // Turn 1's reply is delivered — extraction is still pending in the
+    // background at this point.
+    await service.run(input("I like apples"), deliver);
+    // Turn 2 is queued behind turn 1's still-pending extraction (see
+    // isBusy) rather than racing it.
+    const turn2 = service.run(input("actually I hate apples"), deliver);
+    // Only now does the slow extraction resolve, with the stale statement.
+    resolveSlowExtraction([{ action: "upsert", aboutSpeaker: true, sourceQuote: "I like apples", topic: "preference", slot: "food.fruit", statement: "likes apples" }]);
+    await turn2;
+
+    // If extraction and turn 2 could race, "likes apples" landing after
+    // "hates apples" would silently resurrect the stale fact. Serialized,
+    // the correction always wins.
+    await vi.waitFor(async () => {
+      const stored = await engine.listUserMemories("guild", "user");
+      expect(stored).toMatchObject([{ statement: "hates apples" }]);
+    });
+  });
+
+  it("reserves the extraction queue slot before delivery — a turn 2 arriving mid-commit still queues behind turn 1's extraction", async () => {
+    // Reproduces the exact interleaving a post-delivery reservation would
+    // miss: turn 2 is dispatched while turn 1 is still inside its own
+    // callback (state-commit in progress, well before turn 1's run()
+    // promise resolves) — the window where, if the extraction slot were
+    // only reserved near the end of turn 1, turn 2 could capture turn 1's
+    // own (still-open) queue tail and never end up ordered behind
+    // extraction at all.
+    let resolveCommit!: () => void;
+    const commitGate = new Promise<void>((resolve) => { resolveCommit = resolve; });
+    const commitSuccessfulExchange = vi.fn(async () => {
+      await commitGate;
+      return { droppedExchanges: [] };
+    });
+    const store = baseStore({ commitSuccessfulExchange });
+    let resolveSlowExtraction!: (actions: readonly { action: "upsert"; aboutSpeaker: boolean; sourceQuote: string; topic: string; slot: string; statement: string }[]) => void;
+    const slowExtraction = new Promise<readonly { action: "upsert"; aboutSpeaker: boolean; sourceQuote: string; topic: string; slot: string; statement: string }[]>((resolve) => {
+      resolveSlowExtraction = resolve;
+    });
+    let replyCall = 0;
+    const provider: ChatProvider = {
+      reply: () => {
+        replyCall += 1;
+        if (replyCall === 1) return Promise.resolve(response("Noted!"));
+        return Promise.resolve(response("Got it!", [
+          { action: "upsert", subjectUserId: "user", topic: "preference", slot: "food.fruit", statement: "hates apples" },
+        ]));
+      },
+      extractPersonalMemories: () => slowExtraction,
+    };
+    const { engine } = testMemoryEngine();
+    const service = new ChatConversationService(provider, store, engine);
+    const deliver = vi.fn((reply: ChatResponse) => Promise.resolve(reply.text));
+
+    const turn1 = service.run(input("I like apples"), deliver);
+    // Turn 1 has been delivered and is now stalled inside commit — its own
+    // run() promise has NOT resolved yet.
+    await vi.waitFor(() => {
+      expect(commitSuccessfulExchange).toHaveBeenCalled();
+    });
+    const turn2 = service.run(input("actually I hate apples"), deliver);
+    resolveCommit();
+    await turn1;
+    resolveSlowExtraction([{ action: "upsert", aboutSpeaker: true, sourceQuote: "I like apples", topic: "preference", slot: "food.fruit", statement: "likes apples" }]);
+    await turn2;
+
+    await vi.waitFor(async () => {
+      const stored = await engine.listUserMemories("guild", "user");
+      expect(stored).toMatchObject([{ statement: "hates apples" }]);
+    });
+  });
+
+  it("does not run the dedicated extraction pass in a channel where durable writes are rejected anyway", async () => {
+    const store = baseStore();
+    const extractPersonalMemories = vi.fn(() => Promise.resolve([]));
+    const provider: ChatProvider = { reply: () => Promise.resolve(response("Noted!")), extractPersonalMemories };
+    const { engine } = testMemoryEngine();
+    const service = new ChatConversationService(provider, store, engine);
+    const deliver = vi.fn((reply: ChatResponse) => Promise.resolve(reply.text));
+
+    await service.run({ ...input("I like green apples"), channelMemoryModes: { channel: "disabled" } }, deliver);
+
+    expect(extractPersonalMemories).not.toHaveBeenCalled();
+  });
+
+  it("swallows a dedicated-extraction failure instead of failing the turn", async () => {
+    const store = baseStore();
+    const extractPersonalMemories = vi.fn(() => Promise.reject(new Error("extractor down")));
+    const provider: ChatProvider = { reply: () => Promise.resolve(response("Noted!")), extractPersonalMemories };
+    const service = new ChatConversationService(provider, store, testMemoryEngine().engine);
+    const deliver = vi.fn((reply: ChatResponse) => Promise.resolve(reply.text));
+
+    await expect(service.run(input("I like green apples"), deliver)).resolves.toMatchObject({ text: "Noted!" });
+    await vi.waitFor(() => {
+      expect(extractPersonalMemories).toHaveBeenCalledOnce();
+    });
+  });
+
+  it("drain() waits for a pending background extraction instead of racing shutdown against it", async () => {
+    const store = baseStore();
+    let resolveExtraction!: () => void;
+    const slowExtraction = new Promise<readonly { action: "upsert"; aboutSpeaker: boolean; sourceQuote: string; topic: string; slot: string; statement: string }[]>((resolve) => {
+      resolveExtraction = (): void => resolve([
+        { action: "upsert", aboutSpeaker: true, sourceQuote: "I like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
+      ]);
+    });
+    const provider: ChatProvider = {
+      reply: () => Promise.resolve(response("Noted!")),
+      extractPersonalMemories: () => slowExtraction,
+    };
+    const { engine } = testMemoryEngine();
+    const service = new ChatConversationService(provider, store, engine);
+    const deliver = vi.fn((reply: ChatResponse) => Promise.resolve(reply.text));
+
+    await service.run(input("I like green apples"), deliver);
+    // Reply already delivered — extraction is still pending in the
+    // background. A shutdown right now (simulated by calling drain())
+    // must not proceed until it's done.
+    const drained = service.drain();
+    let drainedYet = false;
+    void drained.then(() => { drainedYet = true; });
+    await Promise.resolve(); // let any already-settled microtasks flush
+    expect(drainedYet).toBe(false);
+
+    resolveExtraction();
+    await drained;
+    expect(drainedYet).toBe(true);
+    const stored = await engine.listUserMemories("guild", "user");
+    expect(stored).toMatchObject([{ statement: "likes green apples" }]);
+  });
+
+  it("drain() keeps waiting when a later background task is registered after its snapshot, before the first one settles", async () => {
+    // Reproduces the exact race: the dedicated-extraction sub-task is
+    // reserved (trackBackground'd) as the very first statement in run(),
+    // before deliver() — but its underlying queue entry can't actually
+    // start doing work until this whole turn's own callback returns (see
+    // run()'s own comment on the reservation). Dropped-exchange
+    // consolidation is only tracked later, near the end of the same turn,
+    // after commit. So if drain() is called while the turn is still
+    // in-flight — after the reservation, before commit — its first
+    // snapshot sees only the extraction entry. A one-shot
+    // Promise.allSettled([...pendingBackgroundWork]) captured at that
+    // moment would resolve as soon as extraction alone settles, even
+    // though consolidation (registered afterward, still pending) hasn't.
+    let resolveExtraction!: (value: readonly { action: "upsert"; aboutSpeaker: boolean; sourceQuote: string; topic: string; slot: string; statement: string }[]) => void;
+    const extraction = new Promise<readonly { action: "upsert"; aboutSpeaker: boolean; sourceQuote: string; topic: string; slot: string; statement: string }[]>((resolve) => {
+      resolveExtraction = resolve;
+    });
+    let resolveCommit!: () => void;
+    const commitGate = new Promise<void>((resolve) => { resolveCommit = resolve; });
+    let resolveConsolidation!: () => void;
+    const consolidationGate = new Promise<void>((resolve) => { resolveConsolidation = resolve; });
+    const extractPersonalMemories = vi.fn(() => extraction);
+    const summarizeDroppedExchanges = vi.fn(() => consolidationGate.then(() => []));
+    const commitSuccessfulExchange = vi.fn(async () => {
+      await commitGate;
+      return { droppedExchanges: [{ user: { content: "hi", createdAt: 0 }, assistant: { content: "hello", createdAt: 0 } }] };
+    });
+    const store = baseStore({ commitSuccessfulExchange });
+    const provider: ChatProvider = {
+      reply: () => Promise.resolve(response("Noted!")),
+      extractPersonalMemories,
+      summarizeDroppedExchanges,
+    };
+    const { engine } = testMemoryEngine();
+    const service = new ChatConversationService(provider, store, engine);
+    const deliver = vi.fn((reply: ChatResponse) => Promise.resolve(reply.text));
+
+    const run = service.run(input("I like green apples"), deliver);
+    // The extraction reservation happens before deliver() — wait for
+    // deliver() itself to confirm we're mid-turn, past the reservation,
+    // with commit (and therefore consolidation, tracked after it) still
+    // gated.
+    await vi.waitFor(() => {
+      expect(deliver).toHaveBeenCalled();
+    });
+
+    const drained = service.drain();
+    let drainedYet = false;
+    void drained.then(() => { drainedYet = true; });
+    await Promise.resolve();
+
+    // Let commit proceed now that drain's first snapshot has already been
+    // taken — this registers the consolidation background task afterward,
+    // and lets the turn's own run() promise (and therefore the extraction
+    // queue entry) actually resolve/start.
+    resolveCommit();
+    await run;
+    await vi.waitFor(() => {
+      expect(extractPersonalMemories).toHaveBeenCalled();
+    });
+    expect(summarizeDroppedExchanges).toHaveBeenCalled();
+
+    // Settle the one piece of work drain's first snapshot actually knew
+    // about. A single-snapshot drain() would resolve here even though
+    // consolidation (registered after the snapshot) is still pending. Real
+    // timers (not just microtask flushes) give the extraction promise's own
+    // chain — task() completion, the queue's release/cleanup, the real
+    // SQLite-backed ingest call inside extractAndIngestPersonalMemories —
+    // room to fully settle, so this genuinely distinguishes "still waiting
+    // on consolidation" from "just hasn't flushed yet".
+    resolveExtraction([]);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(drainedYet).toBe(false);
+
+    resolveConsolidation();
+    await drained;
+    expect(drainedYet).toBe(true);
   });
 
   it("delivers a reply and reacts in the same ambient turn when both are set", async () => {

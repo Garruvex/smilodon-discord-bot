@@ -13,6 +13,7 @@ function fakeContext(): ChatToolContext {
     channelId: "channel-1",
     currentUser: { id: "user-1", displayName: "Tester", roleNames: [] },
     channelIsNsfw: false,
+    channelMode: "shared",
     isOwner: false,
     music: null,
     pendingGeneratedImages: [],

@@ -6,13 +6,16 @@ import { describe, expect, it } from "vitest";
 
 import { createSqliteDatabaseConnection } from "../../src/infrastructure/database/sqlite-database.js";
 import { SqliteMemoryRepository } from "../../src/infrastructure/persistence/sqlite-memory-repository.js";
-import { DefaultMemoryEngine } from "../../src/application/memory/memory-engine.js";
+import { DefaultMemoryEngine, defaultMemoryEngineLimits, type MemoryEngineLimits } from "../../src/application/memory/memory-engine.js";
 import type { MemoryEngine } from "../../src/application/memory/memory.js";
 
-function engine(): MemoryEngine {
+function engine(limits?: Partial<MemoryEngineLimits>): MemoryEngine {
   const directory = mkdtempSync(join(tmpdir(), "sqlite-memory-engine-"));
   const connection = createSqliteDatabaseConnection(directory);
-  return new DefaultMemoryEngine(new SqliteMemoryRepository(connection.database));
+  return new DefaultMemoryEngine(
+    new SqliteMemoryRepository(connection.database), null, null,
+    limits ? { ...defaultMemoryEngineLimits, ...limits } : undefined,
+  );
 }
 
 describe("DefaultMemoryEngine.ingest — channel-mode enforcement", () => {
@@ -107,6 +110,140 @@ describe("DefaultMemoryEngine — recall respects isolation and audience", () =>
     });
     expect(inGeneral.memories).toHaveLength(0);
   });
+
+  it("disabled channel: recall returns nothing, even for memories written elsewhere", async () => {
+    const memoryEngine = engine();
+    await memoryEngine.ingest({
+      guildId: "guild", channelId: "general", channelMode: "shared",
+      assertedByUserId: "bob", sourceMessageId: null, source: "live", now: 100,
+      proposals: [{
+        action: "upsert", audience: "private", kind: "preference", ownerUserId: "bob",
+        subjectType: "member", subjectId: "bob", topic: "preference", slot: "food.fruit",
+        statement: "likes apples", channelScoped: false,
+      }],
+    });
+    const result = await memoryEngine.recall({
+      guildId: "guild", channelId: "confessional", userId: "bob", message: "apples",
+      recentHistory: [], subjectIds: ["bob"], now: 200, channelMode: "disabled",
+    });
+    expect(result.memories).toHaveLength(0);
+    expect(result.causalChains).toHaveLength(0);
+  });
+
+  it("requireTopicalMatch excludes a memory with no lexical/semantic overlap with the query, even though ordinary recall would include it on subject boost alone", async () => {
+    const memoryEngine = engine();
+    await memoryEngine.ingest({
+      guildId: "guild", channelId: "general", channelMode: "shared",
+      assertedByUserId: "bob", sourceMessageId: null, source: "live", now: 100,
+      proposals: [{
+        action: "upsert", audience: "private", kind: "preference", ownerUserId: "bob",
+        subjectType: "member", subjectId: "bob", topic: "preference", slot: "food.fruit",
+        statement: "likes green apples", channelScoped: false,
+      }],
+    });
+    // No embeddings client configured, so there's no semantic signal either
+    // — a query sharing no words with the stored statement should be
+    // excluded under requireTopicalMatch despite recall's subject boost
+    // otherwise making it eligible (see the plain recall below).
+    const gated = await memoryEngine.recall({
+      guildId: "guild", channelId: "general", userId: "bob", message: "what's the weather like",
+      recentHistory: [], subjectIds: ["bob"], now: 200, requireTopicalMatch: true,
+    });
+    expect(gated.memories).toHaveLength(0);
+    const ungated = await memoryEngine.recall({
+      guildId: "guild", channelId: "general", userId: "bob", message: "what's the weather like",
+      recentHistory: [], subjectIds: ["bob"], now: 200,
+    });
+    expect(ungated.memories).toHaveLength(1);
+    const matching = await memoryEngine.recall({
+      guildId: "guild", channelId: "general", userId: "bob", message: "what fruit do I like",
+      recentHistory: [], subjectIds: ["bob"], now: 200, requireTopicalMatch: true,
+    });
+    expect(matching.memories).toHaveLength(1);
+  });
+
+  it("onlySelfPrivateMemories narrows the candidate set before budgeting, so higher-ranked ineligible memories can't crowd out the caller's own", async () => {
+    const memoryEngine = engine({ maxSelectedChars: 900 });
+    // Ingested older, so it loses the recency tie-breaker against the
+    // guild memories below — deliberately handing them the ranking
+    // advantage, so an unnarrowed recall gives its small budget to them
+    // first if nothing stopped it from considering them at all.
+    await memoryEngine.ingest({
+      guildId: "guild", channelId: "general", channelMode: "shared",
+      assertedByUserId: "bob", sourceMessageId: null, source: "live", now: 50,
+      proposals: [{
+        action: "upsert", audience: "private", kind: "preference", ownerUserId: "bob",
+        subjectType: "member", subjectId: "bob", topic: "preference", slot: "food.fruit",
+        statement: "likes green apples", channelScoped: false,
+      }],
+    });
+    await memoryEngine.ingest({
+      guildId: "guild", channelId: "general", channelMode: "shared",
+      assertedByUserId: "bob", sourceMessageId: null, source: "live", now: 150,
+      proposals: Array.from({ length: 5 }, (_unused, i) => ({
+        action: "upsert" as const, audience: "guild" as const, kind: "fact" as const, ownerUserId: null,
+        subjectType: "member" as const, subjectId: "bob", topic: "activity", slot: `raid.${i}`,
+        statement: `bob organized raid number ${i} with a fairly long description to eat budget`, channelScoped: false,
+      })),
+    });
+    const narrowed = await memoryEngine.recall({
+      guildId: "guild", channelId: "general", userId: "bob", message: "",
+      recentHistory: [], subjectIds: ["bob"], now: 200, onlySelfPrivateMemories: true,
+    });
+    expect(narrowed.memories).toMatchObject([{ audience: "private", statement: "likes green apples" }]);
+    // Without the narrowing, the same small budget goes entirely to the
+    // more-recent guild memories instead — proving the crowding-out this
+    // option exists to prevent is real, not hypothetical.
+    const unnarrowed = await memoryEngine.recall({
+      guildId: "guild", channelId: "general", userId: "bob", message: "",
+      recentHistory: [], subjectIds: ["bob"], now: 200,
+    });
+    expect(unnarrowed.memories.length).toBeGreaterThan(0);
+    expect(unnarrowed.memories.some((memory) => memory.audience === "private")).toBe(false);
+  });
+
+  it("onlySelfPrivateMemories still finds the caller's own memory when the guild has enough other memories to fill findRecallCandidates' own row cap", async () => {
+    // findRecallCandidates (see the repository) bounds its SQL query at
+    // maxEligibleCandidates (2,000) with no ORDER BY guaranteeing the
+    // caller's own rows survive the cutoff — a guild busy enough to hit
+    // that cap could crowd bob's own private memory out of the candidate
+    // set entirely, before onlySelfPrivateMemories (or requireTopicalMatch,
+    // or the character budget) ever gets a chance to filter anything. This
+    // proves the fix bypasses that shared, capped query for onlySelfPrivateMemories
+    // rather than filtering its output.
+    const memoryEngine = engine();
+    // subjectType "guild" (not "member") so each one self-activates as
+    // "active" immediately under consolidation (see resolveInitialStatus) —
+    // findRecallCandidates only selects active rows, so a "candidate" fact
+    // wouldn't actually occupy a slot in its row cap.
+    const otherGuildMemories = Array.from({ length: 2_000 }, (_unused, i) => ({
+      action: "upsert" as const, audience: "guild" as const, kind: "fact" as const, ownerUserId: null,
+      subjectType: "guild" as const, subjectId: "guild", topic: "activity", slot: `fact.${i}`,
+      statement: `fact number ${i}`, channelScoped: false,
+    }));
+    await memoryEngine.ingest({
+      guildId: "guild", channelId: "general", channelMode: "shared",
+      assertedByUserId: null, sourceMessageId: null, source: "consolidation", now: 100,
+      proposals: otherGuildMemories,
+    });
+    // Inserted after the 2,000 above, so a naive LIMIT-2,000-no-ORDER-BY
+    // scan (what findRecallCandidates does) would not reach it.
+    await memoryEngine.ingest({
+      guildId: "guild", channelId: "general", channelMode: "shared",
+      assertedByUserId: "bob", sourceMessageId: null, source: "live", now: 150,
+      proposals: [{
+        action: "upsert", audience: "private", kind: "preference", ownerUserId: "bob",
+        subjectType: "member", subjectId: "bob", topic: "preference", slot: "food.fruit",
+        statement: "likes green apples", channelScoped: false,
+      }],
+    });
+
+    const narrowed = await memoryEngine.recall({
+      guildId: "guild", channelId: "general", userId: "bob", message: "",
+      recentHistory: [], subjectIds: ["bob"], now: 200, onlySelfPrivateMemories: true,
+    });
+    expect(narrowed.memories).toMatchObject([{ audience: "private", statement: "likes green apples" }]);
+  }, 20_000);
 });
 
 describe("DefaultMemoryEngine.ingest — consolidation self-activates", () => {

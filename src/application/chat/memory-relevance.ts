@@ -95,9 +95,20 @@ export interface ScorableRecord {
   updatedAt: number;
 }
 
-const subjectBoost = 3;
-const maxRecencyBoost = 2;
-const recencyHalfLifeMs = 30 * 24 * 60 * 60 * 1_000;
+export interface Bm25ScoreWeights {
+  subjectBoost: number;
+  maxRecencyBoost: number;
+  recencyWindowMs: number;
+}
+
+// Compatibility defaults inherited from the original flat keyword scorer.
+// They are intentionally injectable so an evaluation dataset can replace
+// these starting-point heuristics with measured values.
+export const defaultBm25ScoreWeights: Readonly<Bm25ScoreWeights> = {
+  subjectBoost: 3,
+  maxRecencyBoost: 2,
+  recencyWindowMs: 30 * 24 * 60 * 60 * 1_000,
+};
 
 function recordText(record: ScorableRecord): string {
   return `${record.topic} ${record.slot} ${record.statement}`;
@@ -135,11 +146,16 @@ export function buildBm25Corpus(records: readonly ScorableRecord[]): Bm25Corpus 
 const bm25K1 = 1.2;
 const bm25B = 0.75;
 
-// BM25 lexical score against the query keywords in `context`, plus the same
-// subject/recency adjustments the old flat scorer used — those aren't
-// lexical-overlap concerns, so they stay additive on top rather than folded
-// into the BM25 term.
-export function bm25Score(corpus: Bm25Corpus, context: RelevanceContext, record: ScorableRecord): number {
+// Pure BM25 term-overlap score against the query keywords in `context` — no
+// subject/recency adjustment. This is the only piece that actually reflects
+// whether the record's text overlaps the query at all: a record with zero
+// term overlap scores exactly 0 here, unlike bm25Score below, which adds
+// subject/recency boosts on top and so is never 0 for a record about
+// someone in the conversation, however unrelated the query. Exported
+// separately so a caller that needs a genuine "is this topically related at
+// all" signal (see MemoryRecallInput.requireTopicalMatch) isn't stuck
+// reading a score that's already been diluted with boost.
+export function bm25LexicalScore(corpus: Bm25Corpus, context: RelevanceContext, record: ScorableRecord): number {
   const termCounts = tokenizeWithCounts(recordText(record));
   const docLength = [...termCounts.values()].reduce((sum, count) => sum + count, 0);
   let score = 0;
@@ -151,9 +167,26 @@ export function bm25Score(corpus: Bm25Corpus, context: RelevanceContext, record:
       (termFrequency + bm25K1 * (1 - bm25B + bm25B * (docLength / (corpus.avgDocLength || 1))));
     score += idf * normalizedTermFrequency;
   }
-  if (context.subjectIds.has(record.subjectId)) score += subjectBoost;
+  return score;
+}
+
+// BM25 lexical score against the query keywords in `context`, plus the same
+// subject/recency adjustments the old flat scorer used — those aren't
+// lexical-overlap concerns, so they stay additive on top rather than folded
+// into the BM25 term.
+export function bm25Score(
+  corpus: Bm25Corpus,
+  context: RelevanceContext,
+  record: ScorableRecord,
+  weights: Readonly<Bm25ScoreWeights> = defaultBm25ScoreWeights,
+): number {
+  let score = bm25LexicalScore(corpus, context, record);
+  if (context.subjectIds.has(record.subjectId)) score += weights.subjectBoost;
   const ageMs = Math.max(0, context.now - record.updatedAt);
-  score += maxRecencyBoost * Math.max(0, 1 - ageMs / recencyHalfLifeMs);
+  const recencyFraction = weights.recencyWindowMs > 0
+    ? Math.max(0, 1 - ageMs / weights.recencyWindowMs)
+    : 0;
+  score += weights.maxRecencyBoost * recencyFraction;
   return score;
 }
 

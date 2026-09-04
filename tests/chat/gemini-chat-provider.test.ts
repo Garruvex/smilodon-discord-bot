@@ -253,6 +253,31 @@ describe("GeminiChatProvider", () => {
     expect(summary).toBe("Alice mentioned liking apples earlier.");
   });
 
+  it("extractPersonalMemories sends the exchange/speaker and returns the parsed actions", async () => {
+    generateContentMock.mockImplementation((params: Record<string, unknown>) => {
+      const config = params.config as Record<string, unknown>;
+      expect(config.systemInstruction).toContain("I like green apples");
+      expect(config.systemInstruction).toContain("Noted!");
+      expect(config.systemInstruction).toContain("only the USER MESSAGE is evidence");
+      return Promise.resolve({
+        text: JSON.stringify({
+          actions: [{ action: "upsert", aboutSpeaker: true, sourceQuote: "I like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" }],
+        }),
+        functionCalls: undefined,
+        candidates: [],
+        usageMetadata: undefined,
+      });
+    });
+
+    const { GeminiChatProvider } = await import("../../src/infrastructure/chat/gemini-chat-provider.js");
+    const provider = new GeminiChatProvider("secret", ["gemini-3.6-flash"], { maxOutputTokens: 2_048, thinkingBudget: null });
+    const actions = await provider.extractPersonalMemories?.(
+      "I like green apples", "Noted!", { id: "user-1", displayName: "Red" },
+    );
+
+    expect(actions).toEqual([{ action: "upsert", aboutSpeaker: true, sourceQuote: "I like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" }]);
+  });
+
   it("sets thinkingConfig only when a thinkingBudget is configured", async () => {
     generateContentMock.mockImplementation((params: Record<string, unknown>) => {
       const config = params.config as Record<string, unknown>;

@@ -1,0 +1,115 @@
+[
+  {
+    "id": "lexical-match-beats-present-subject",
+    "split": "calibration",
+    "message": "which camera model does the photography club use",
+    "subjectIds": ["alice"],
+    "now": 7776000000,
+    "candidates": [
+      { "id": "camera", "subjectId": "club", "topic": "photography", "slot": "camera.model", "statement": "the photography club uses a Fujifilm X-T5 camera", "updatedAt": 5184000000 },
+      { "id": "alice-job", "subjectId": "alice", "topic": "job", "slot": "role", "statement": "works as a backend engineer", "updatedAt": 7776000000 },
+      { "id": "fresh-game", "subjectId": "carol", "topic": "gaming", "slot": "favorite", "statement": "currently plays support", "updatedAt": 7776000000 }
+    ],
+    "relevantIds": ["camera"],
+    "maxResults": 1
+  },
+  {
+    "id": "implicit-subject-needs-prior",
+    "split": "calibration",
+    "message": "what would be a thoughtful gift for them",
+    "recentHistory": ["bob's birthday is tomorrow"],
+    "subjectIds": ["bob"],
+    "now": 7776000000,
+    "candidates": [
+      { "id": "bob-tea", "subjectId": "bob", "topic": "preference", "slot": "drink.tea", "statement": "collects rare oolong tea", "updatedAt": 5184000000 },
+      { "id": "party", "subjectId": "carol", "topic": "birthday", "slot": "party.gift", "statement": "bought a thoughtful birthday gift last year", "updatedAt": 7776000000 },
+      { "id": "noise", "subjectId": "dave", "topic": "travel", "slot": "city", "statement": "visited Osaka", "updatedAt": 7776000000 }
+    ],
+    "relevantIds": ["bob-tea"],
+    "maxResults": 1
+  },
+  {
+    "id": "new-version-wins",
+    "split": "calibration",
+    "message": "what is the current project launch date",
+    "subjectIds": ["project"],
+    "now": 7776000000,
+    "candidates": [
+      { "id": "old-date", "subjectId": "project", "topic": "project", "slot": "launch.date", "statement": "launch date is September 4", "updatedAt": 5184000000 },
+      { "id": "new-date", "subjectId": "project", "topic": "project", "slot": "launch.date", "statement": "launch date is October 12", "updatedAt": 7690000000 },
+      { "id": "other", "subjectId": "project", "topic": "project", "slot": "owner", "statement": "Mina owns the migration", "updatedAt": 7776000000 }
+    ],
+    "relevantIds": ["new-date"],
+    "maxResults": 1
+  },
+  {
+    "id": "old-specific-beats-fresh-generic",
+    "split": "calibration",
+    "message": "which database migration tool did we choose",
+    "subjectIds": ["team"],
+    "now": 7776000000,
+    "candidates": [
+      { "id": "drizzle", "subjectId": "team", "topic": "database", "slot": "migration.tool", "statement": "the database migration tool is Drizzle", "updatedAt": 2592000000 },
+      { "id": "fresh", "subjectId": "team", "topic": "database", "slot": "status", "statement": "the database work continued today", "updatedAt": 7776000000 },
+      { "id": "noise", "subjectId": "other", "topic": "music", "slot": "tool", "statement": "uses a tuning tool", "updatedAt": 7776000000 }
+    ],
+    "relevantIds": ["drizzle"],
+    "maxResults": 1
+  },
+  {
+    "id": "chinese-topic-match",
+    "split": "calibration",
+    "message": "小明最喜歡喝什麼茶",
+    "subjectIds": ["xiaoming"],
+    "now": 7776000000,
+    "candidates": [
+      { "id": "tea", "subjectId": "xiaoming", "topic": "偏好", "slot": "飲料.茶", "statement": "小明最喜歡喝烏龍茶", "updatedAt": 5184000000 },
+      { "id": "fresh", "subjectId": "xiaoming", "topic": "工作", "slot": "職位", "statement": "小明最近換了工作", "updatedAt": 7776000000 },
+      { "id": "other", "subjectId": "xiaohua", "topic": "偏好", "slot": "飲料.咖啡", "statement": "小花喜歡喝咖啡", "updatedAt": 7776000000 }
+    ],
+    "relevantIds": ["tea"],
+    "maxResults": 1
+  },
+  {
+    "id": "validation-explicit-topic",
+    "split": "validation",
+    "message": "does anyone prefer green apples",
+    "subjectIds": ["bob"],
+    "now": 7776000000,
+    "candidates": [
+      { "id": "apples", "subjectId": "alice", "topic": "preference", "slot": "food.fruit", "statement": "prefers green apples", "updatedAt": 5184000000 },
+      { "id": "bob-role", "subjectId": "bob", "topic": "identity", "slot": "role", "statement": "moderates the server", "updatedAt": 7776000000 },
+      { "id": "fresh", "subjectId": "carol", "topic": "status", "slot": "availability", "statement": "is online now", "updatedAt": 7776000000 }
+    ],
+    "relevantIds": ["apples"],
+    "maxResults": 1
+  },
+  {
+    "id": "validation-pronoun-subject",
+    "split": "validation",
+    "message": "where should we invite her for dinner",
+    "subjectIds": ["alice"],
+    "now": 7776000000,
+    "candidates": [
+      { "id": "alice-food", "subjectId": "alice", "topic": "preference", "slot": "food.cuisine", "statement": "loves Sichuan food", "updatedAt": 5184000000 },
+      { "id": "restaurant", "subjectId": "bob", "topic": "dinner", "slot": "restaurant", "statement": "visited a new dinner restaurant", "updatedAt": 7776000000 },
+      { "id": "noise", "subjectId": "carol", "topic": "travel", "slot": "city", "statement": "flew to London", "updatedAt": 7776000000 }
+    ],
+    "relevantIds": ["alice-food"],
+    "maxResults": 1
+  },
+  {
+    "id": "validation-recency",
+    "split": "validation",
+    "message": "what is the latest meeting room",
+    "subjectIds": ["team"],
+    "now": 7776000000,
+    "candidates": [
+      { "id": "old-room", "subjectId": "team", "topic": "meeting", "slot": "room", "statement": "meeting room is Birch", "updatedAt": 5184000000 },
+      { "id": "new-room", "subjectId": "team", "topic": "meeting", "slot": "room", "statement": "meeting room is Cedar", "updatedAt": 7770000000 },
+      { "id": "noise", "subjectId": "other", "topic": "office", "slot": "room", "statement": "painted a room", "updatedAt": 7776000000 }
+    ],
+    "relevantIds": ["new-room"],
+    "maxResults": 1
+  }
+]

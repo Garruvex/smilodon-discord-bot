@@ -1,5 +1,6 @@
 import type { ChatUser, GeneratedChatImage } from "../chat-provider.js";
 import type { PlaybackActor } from "../../music/playback-service.js";
+import type { ChannelMemoryMode } from "../../memory/memory-channel-policy.js";
 
 // A JSON Schema object describing a tool's arguments, sent to the model
 // as-is. Kept loose (not the full JSON Schema type) since each tool author
@@ -16,6 +17,10 @@ export interface ChatToolContext {
   // Tools that can return adult content (e.g. booru search) must gate on
   // this rather than trusting anything the model passes as an argument.
   channelIsNsfw: boolean;
+  // This turn's resolved channel memory isolation mode — lookup_memory
+  // (MemoryLookupTool) must honor "disabled" the same way turn-level recall
+  // does. See ChatRequest.channelMode for where this is resolved upstream.
+  channelMode: ChannelMemoryMode;
   // Whether the invoking user is a configured bot owner — mirrors what
   // AccessPolicyService resolves for a live interaction, so a tool's access
   // check (see AccessPolicyEngine) can grant the same owner-bypass a slash

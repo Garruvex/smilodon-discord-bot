@@ -152,6 +152,9 @@ const environmentSchema = z.object({
     .default(generatedImageLimits.defaultMaxAggregateBytes),
   MEMORY_RELATION_HOP_BOOST_BASE: z.coerce.number().min(0).max(50)
     .default(defaultMemoryEngineLimits.relationHopBoostBase),
+  MEMORY_RELEVANCE_EVAL_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(0),
+  MEMORY_RELEVANCE_EVAL_INCLUDE_PRIVATE: z.enum(["true", "false"]).default("false")
+    .transform((value) => value === "true"),
 });
 
 export function loadConfiguration(
@@ -258,6 +261,8 @@ export function loadConfiguration(
       conflictSimilarityThreshold: parsed.data.MEMORY_CONFLICT_SIMILARITY_THRESHOLD,
       maxRelationHops: parsed.data.MEMORY_MAX_RELATION_HOPS,
       relationHopBoostBase: parsed.data.MEMORY_RELATION_HOP_BOOST_BASE,
+      relevanceEvalSampleRate: parsed.data.MEMORY_RELEVANCE_EVAL_SAMPLE_RATE,
+      relevanceEvalIncludePrivate: parsed.data.MEMORY_RELEVANCE_EVAL_INCLUDE_PRIVATE,
     },
   };
 }

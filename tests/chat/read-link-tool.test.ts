@@ -21,6 +21,7 @@ function fakeContext(signal?: AbortSignal): ChatToolContext {
     channelId: "c1",
     currentUser: { id: "u1", displayName: "User" } as never,
     channelIsNsfw: false,
+    channelMode: "shared",
     isOwner: false,
     music: null,
     pendingGeneratedImages: [],

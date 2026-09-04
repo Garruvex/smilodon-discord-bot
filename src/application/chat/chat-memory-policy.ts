@@ -55,6 +55,17 @@ export const chatMemoryLimits = {
   maxChannelHistoryChars: 4_000,
 } as const;
 
+// Deliberately loose (lowercase, collapsed whitespace) rather than an exact
+// match — a model reproducing a quote with slightly different spacing or
+// case is still genuinely grounded in the real text. Loose enough to
+// tolerate that, not so loose it stops catching "this quote isn't actually
+// in there at all" — see PersonalMemoryExtractionAction.sourceQuote and its
+// two callers (ChatConversationService.extractPersonalMemories,
+// ChannelSummaryScheduler's promoteSelfReportsToPrivateMemory).
+export function normalizeForGroundingCheck(text: string): string {
+  return text.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
 export function validateMemoryActions(
   actions: readonly ProposedMemoryAction[],
   allowedSubjectUserIds: ReadonlySet<string>,

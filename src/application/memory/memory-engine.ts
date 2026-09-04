@@ -3,6 +3,7 @@ import type { Logger } from "pino";
 import type { MemoryConflictClassifier } from "../chat/chat-provider.js";
 import type { EmbeddingsClient } from "../chat/embeddings-client.js";
 import { allowsDurableWrites, resolveMemoryScope } from "./memory-channel-policy.js";
+import type { MemoryRelevanceTraceCollector } from "./memory-relevance-trace.js";
 import type {
   CausalChainLink,
   Memory,
@@ -21,6 +22,7 @@ import type {
 import { canRecall } from "./memory.js";
 import { memoryValidationLimits, validateProposal, type MemoryValidationLimits } from "./memory-validation.js";
 import {
+  bm25LexicalScore,
   bm25Score,
   buildBm25Corpus,
   buildRelevanceContext,
@@ -104,6 +106,14 @@ export const defaultMemoryEngineLimits: MemoryEngineLimits = {
 // configured at all.
 const maxConflictClassificationsPerMemory = 5;
 
+// Gate for MemoryRecallInput.requireTopicalMatch (see recall() below) — the
+// minimum cosine similarity to the query embedding that counts as a genuine
+// semantic match, when a memory has no lexical (BM25) overlap with the
+// query at all. Deliberately conservative: this only needs to exclude
+// memories recall would otherwise include purely on subject/recency boost,
+// not to second-guess embedding similarity once it clears a real floor.
+const topicalMatchMinCosine = 0.25;
+
 function toScorable(memory: Memory): ScorableRecord {
   return { subjectId: memory.subjectId, topic: memory.topic, slot: memory.slot, statement: memory.statement, updatedAt: memory.updatedAt };
 }
@@ -158,20 +168,55 @@ export class DefaultMemoryEngine implements MemoryEngine {
     // falls back to the similarity threshold alone when absent, same
     // behavior as before this existed.
     private readonly conflictClassifier: Partial<MemoryConflictClassifier> | null = null,
+    // Explicitly opt-in evaluation capture. The collector receives only the
+    // candidate set this recall was already authorized to read; failures are
+    // logged and never fail the user-facing recall.
+    private readonly relevanceTraceCollector: Pick<MemoryRelevanceTraceCollector, "record" | "includePrivate"> | null = null,
   ) {}
 
   public async recall(input: MemoryRecallInput): Promise<MemoryContext> {
-    const candidates = await this.repository.findRecallCandidates({
-      guildId: input.guildId, channelId: input.channelId, userId: input.userId, now: input.now,
-    });
+    if (input.channelMode === "disabled") return { memories: [], causalChains: [] };
+    // onlySelfPrivateMemories bypasses findRecallCandidates entirely rather
+    // than filtering its output: that query mixes every audience together
+    // (private-of-caller, channel, guild) under one shared
+    // maxEligibleCandidates cap with no ordering guarantee (see the
+    // repositories' own comments on that limit) — in a busy guild, the
+    // caller's own private memories can simply not be among the rows that
+    // cap returns, so a post-hoc filter would still come back empty even
+    // though the memories genuinely exist. repository.listByUser has no
+    // such cap: it's already scoped to one owner, so its size is bounded by
+    // that user's own memory count, not the guild's. It doesn't filter
+    // isolationChannelId/expiresAt/status itself (unlike
+    // findRecallCandidates), so those are re-applied here in JS.
+    const candidates = input.onlySelfPrivateMemories
+      ? {
+          memories: (await this.repository.listByUser(input.guildId, input.userId)).filter((memory) =>
+            memory.audience === "private" && memory.subjectId === input.userId && memory.status === "active" &&
+            (memory.isolationChannelId === null || memory.isolationChannelId === input.channelId) &&
+            (memory.expiresAt === null || memory.expiresAt > input.now)),
+        }
+      : await this.repository.findRecallCandidates({
+          guildId: input.guildId, channelId: input.channelId, userId: input.userId, now: input.now,
+        });
     if (candidates.memories.length === 0) return { memories: [], causalChains: [] };
     const { boostBySubjectId, causalChains } = await this.expandRelatedSubjects(input);
     const subjectIds = new Set(input.subjectIds);
     const context = buildRelevanceContext({ message: input.message, recentHistory: input.recentHistory, subjectIds, now: input.now });
     const scorableByMemory = new Map(candidates.memories.map((memory) => [memory, toScorable(memory)] as const));
     const corpus = buildBm25Corpus([...scorableByMemory.values()]);
+    const bm25ScoreByMemory = new Map(candidates.memories.map(
+      (memory) => [memory, bm25Score(corpus, context, scorableByMemory.get(memory)!)] as const,
+    ));
+    // Separate from bm25ScoreByMemory above: that score has subject/recency
+    // boost baked in (see bm25Score), so it's never 0 for a record about
+    // someone in the conversation, whatever the query. This is the pure
+    // term-overlap component alone — the actual "topically related at all"
+    // signal used by the requireTopicalMatch gate below.
+    const lexicalOverlapByMemory = new Map(candidates.memories.map(
+      (memory) => [memory, bm25LexicalScore(corpus, context, scorableByMemory.get(memory)!)] as const,
+    ));
     const lexicalOrder = [...candidates.memories].sort(
-      (a, b) => bm25Score(corpus, context, scorableByMemory.get(b)!) - bm25Score(corpus, context, scorableByMemory.get(a)!),
+      (a, b) => bm25ScoreByMemory.get(b)! - bm25ScoreByMemory.get(a)!,
     );
     // Only memories with an embedding comparable to the query's participate
     // in this ranking. cosineSimilarity returns 0 for a missing embedding
@@ -181,12 +226,15 @@ export class DefaultMemoryEngine implements MemoryEngine {
     // spread across consecutive ranks by array order alone, handing some of
     // them RRF credit they didn't earn on relevance.
     let embeddingOrder: readonly Memory[] = [];
+    const cosineByMemory = new Map<Memory, number>();
     if (this.embeddingsClient) {
       const queryEmbedding = await this.embeddingsClient.embed(input.message).catch(() => null);
       if (queryEmbedding) {
-        embeddingOrder = candidates.memories
+        const withCosine = candidates.memories
           .filter((memory) => memory.embedding && memory.embedding.length === queryEmbedding.length)
-          .sort((a, b) => cosineSimilarity(b.embedding!, queryEmbedding) - cosineSimilarity(a.embedding!, queryEmbedding));
+          .map((memory) => [memory, cosineSimilarity(memory.embedding!, queryEmbedding)] as const);
+        for (const [memory, score] of withCosine) cosineByMemory.set(memory, score);
+        embeddingOrder = [...withCosine].sort((a, b) => b[1] - a[1]).map(([memory]) => memory);
       }
     }
     const fused = reciprocalRankFusion(embeddingOrder.length > 0 ? [lexicalOrder, embeddingOrder] : [lexicalOrder]);
@@ -202,12 +250,53 @@ export class DefaultMemoryEngine implements MemoryEngine {
         if (boost) fused.set(memory, (fused.get(memory) ?? 0) + boost);
       }
     }
+    // requireTopicalMatch (see MemoryLookupTool) gates on a genuine textual/
+    // semantic signal rather than the fused score alone — that score folds
+    // in subject/recency boosts (buildRelevanceContext/boostBySubjectId
+    // above), which make almost any of the subject's memories nonzero
+    // regardless of whether the query is actually about them. Ordinary
+    // ambient recall doesn't opt into this: a little topically-loose extra
+    // context in the prompt is harmless, but a tool that tells the user
+    // "here's what I found" needs those results to actually be about what
+    // was asked.
+    const eligible = input.requireTopicalMatch
+      ? candidates.memories.filter((memory) =>
+          (lexicalOverlapByMemory.get(memory) ?? 0) > 0 || (cosineByMemory.get(memory) ?? 0) >= topicalMatchMinCosine)
+      : candidates.memories;
     const selected = selectByRelevance(
-      candidates.memories,
+      eligible,
       (memory) => fused.get(memory) ?? 0,
       this.limits.maxSelectedChars,
       memoryPromptProjection,
     );
+    if (this.relevanceTraceCollector) {
+      const traceableMemories = this.relevanceTraceCollector.includePrivate
+        ? candidates.memories
+        : candidates.memories.filter((memory) => memory.audience !== "private");
+      const traceableIds = new Set(traceableMemories.map((memory) => memory.id));
+      await this.relevanceTraceCollector.record({
+        guildId: input.guildId,
+        channelId: input.channelId,
+        message: input.message,
+        recentHistory: input.recentHistory.map((item) => item.content),
+        subjectIds: input.subjectIds,
+        now: input.now,
+        candidates: traceableMemories.map((memory) => ({
+          id: memory.id,
+          ...toScorable(memory),
+          serializedChars: JSON.stringify(memoryPromptProjection(memory)).length,
+          ...(cosineByMemory.has(memory) ? { cosineSimilarity: cosineByMemory.get(memory)! } : {}),
+          ...(boostBySubjectId.has(memory.subjectId)
+            ? { relationBoost: boostBySubjectId.get(memory.subjectId)! }
+            : {}),
+        })),
+        selectedIds: selected.filter((memory) => traceableIds.has(memory.id)).map((memory) => memory.id),
+        maxSerializedChars: this.limits.maxSelectedChars,
+        requireTopicalMatch: input.requireTopicalMatch ?? false,
+      }).catch((error: unknown) => {
+        this.logger?.warn({ error, guildId: input.guildId }, "Memory relevance trace collection failed");
+      });
+    }
     return { memories: selected, causalChains };
   }
 

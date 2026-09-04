@@ -61,6 +61,10 @@ export interface MemoryConfiguration {
   conflictSimilarityThreshold: number;
   maxRelationHops: number;
   relationHopBoostBase: number;
+  // Opt-in fraction of recall calls captured for human relevance labeling.
+  // Zero disables collection entirely.
+  relevanceEvalSampleRate?: number;
+  relevanceEvalIncludePrivate?: boolean;
 }
 
 export interface ApplicationConfiguration {

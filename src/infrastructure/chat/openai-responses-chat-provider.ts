@@ -10,6 +10,7 @@ import {
   type ChatSource,
   type DroppedExchangeFact,
   type GeneratedChatImage,
+  type PersonalMemoryExtractionAction,
   type UserCustomizationAnalysisResult,
 } from "../../application/chat/chat-provider.js";
 import { generatedImageLimits } from "../../application/chat/generated-image-limits.js";
@@ -36,6 +37,11 @@ import {
   replyChainOverflowSummaryJsonSchema,
   parseReplyChainOverflowSummaryOutput,
 } from "../../application/chat/reply-chain-overflow-summary.js";
+import {
+  buildPersonalMemoryExtractionPrompt,
+  personalMemoryExtractionJsonSchema,
+  parsePersonalMemoryExtractionOutput,
+} from "../../application/chat/personal-memory-extraction.js";
 import { ModelFallbackChain } from "./model-fallback-chain.js";
 import {
   buildPersonaBundleCompilationPrompt,
@@ -177,6 +183,7 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
       channelId: request.channelId,
       currentUser: request.currentUser,
       channelIsNsfw: request.channelIsNsfw ?? false,
+      channelMode: request.channelMode ?? "shared",
       isOwner: request.isOwner ?? false,
       music: request.musicActor
         ? {
@@ -462,6 +469,68 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
       replyChainOverflowSummaryJsonSchema,
     );
     return parseReplyChainOverflowSummaryOutput(text).summary;
+  }
+
+  // Deliberately NOT built on callStructuredOutput, same reason as
+  // summarizeChannelMessages above it: a malformed extraction here should
+  // fall back to the next configured model (see ModelFallbackChain.run's
+  // invalid_structured_output handling), which requires parsing inside the
+  // retried callback rather than after it resolves.
+  public async extractPersonalMemories(
+    userMessage: string,
+    assistantReply: string,
+    speaker: { id: string; displayName: string },
+  ): Promise<readonly PersonalMemoryExtractionAction[]> {
+    return this.summaryModelChain.run(async (model) => {
+      const response = await fetch(`${this.baseUrl}/responses`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          instructions: buildPersonalMemoryExtractionPrompt(userMessage, assistantReply, speaker),
+          input: [{ role: "user", content: [{ type: "input_text", text: "Follow the instructions." }] }],
+          reasoning: { effort: this.generation.reasoningEffort },
+          text: {
+            verbosity: this.generation.verbosity,
+            format: { type: "json_schema", name: "personal_memory_extraction", strict: true, schema: personalMemoryExtractionJsonSchema },
+          },
+          max_output_tokens: this.generation.maxOutputTokens,
+        }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!response.ok) {
+        const errorBody: unknown = await response.json().catch(() => null);
+        const parsedError = errorResponseSchema.safeParse(errorBody);
+        const code = parsedError.success
+          ? (parsedError.data.error.code ?? parsedError.data.error.type ?? null)
+          : null;
+        throw new ChatProviderError(
+          `Chat provider returned HTTP ${response.status}${code ? ` (${code})` : ""}.`,
+          response.status,
+          code,
+        );
+      }
+      const parsed = responseSchema.parse(await response.json());
+      if (parsed.status === "incomplete") {
+        const reason = parsed.incomplete_details?.reason ?? "unknown";
+        throw new ChatProviderError(
+          `Chat provider returned an incomplete structured response (${reason}).`,
+          502,
+          "incomplete_response",
+        );
+      }
+      const texts: string[] = [];
+      for (const item of parsed.output) {
+        if (item.type !== "message") continue;
+        for (const part of item.content ?? []) {
+          if (part.type === "output_text" && part.text) texts.push(part.text);
+        }
+      }
+      return parsePersonalMemoryExtractionOutput(texts.join("\n").trim()).actions;
+    });
   }
 
   public async compilePersonaBundle(content: string): Promise<readonly number[]> {

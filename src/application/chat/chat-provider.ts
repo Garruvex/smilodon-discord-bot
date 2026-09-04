@@ -3,6 +3,7 @@ import type { ExampleExchange } from "./example-exchange.js";
 import type { PlaybackActor } from "../music/playback-service.js";
 import type { ChannelMessageSummarizer } from "../context/channel-message-summarizer.js";
 import type { CausalChainLink } from "../memory/memory.js";
+import type { ChannelMemoryMode } from "../memory/memory-channel-policy.js";
 
 export interface ChatRequest {
   guildId: string;
@@ -21,6 +22,12 @@ export interface ChatRequest {
   // Passed through to tool execution context; unrelated to any age
   // gating already applied to the prompt/response content itself.
   channelIsNsfw?: boolean;
+  // This turn's resolved channel memory isolation mode (see
+  // resolveChannelMemoryMode) — passed through to tool execution context so
+  // a mid-turn tool that reads memory (lookup_memory) honors "disabled" the
+  // same way the turn-level recall in ChatConversationService.run does.
+  // Omitted defaults to "shared" at the point of use (today's behavior).
+  channelMode?: ChannelMemoryMode;
   // Null/omitted unless the guild has music enabled and the message has a
   // resolvable member — see ChatTurnSupport.resolveMusicActor and
   // ChatToolContext.music for why the role gate itself isn't checked here.
@@ -361,6 +368,53 @@ export interface ReferenceImageGenerator {
   ): Promise<{ ok: true; images: readonly GeneratedChatImage[] } | { ok: false; reason: string }>;
 }
 
+// Deliberately narrower than ProposedMemoryAction: no subjectUserId. This
+// extractor only ever writes about the speaker it was called with — see
+// PersonalMemoryExtractor — so the app supplies that id itself rather than
+// trusting the model to pick the right one out of several candidates.
+// `aboutSpeaker` is a separate, explicit safety net against a different
+// failure: the model correctly avoiding a made-up subject id, but still
+// mislabeling someone else's fact ("Bob likes pizza") as the speaker's own
+// since every action here ends up stamped with the speaker's id regardless.
+// The app (ChatConversationService.extractPersonalMemories) drops any
+// action where this is false rather than writing it under the speaker.
+export interface PersonalMemoryExtractionAction {
+  action: "upsert" | "remove";
+  aboutSpeaker: boolean;
+  // A verbatim (or near-verbatim) excerpt of the user message this action
+  // is grounded in — the app checks it's an actual substring of the real
+  // message before trusting the action at all (see
+  // ChatConversationService.extractPersonalMemories). Guards against the
+  // assistant-reply-hallucination vector specifically; it is not a defense
+  // against misattribution (see PersonalMemoryExtractor's own doc comment).
+  sourceQuote: string;
+  topic: string;
+  slot: string;
+  statement: string | null;
+}
+
+// Standalone call (own prompt/schema, outside the main reply turn) — a
+// dedicated second pass over the same exchange whose only job is personal-
+// memory extraction, run after the reply is delivered (see
+// ChatConversationService.run). The main reply call's userMemoryActions
+// alone under-report in practice: that call's primary job is producing a
+// reply, and its prompt explicitly tells it "when uncertain, return no
+// memory actions" so a marginal call doesn't derail the conversation. This
+// call has no reply to write and nothing to lose by extracting thoroughly.
+// Its output is merged with (not a replacement for) response.userMemoryActions
+// — both pass through the same validateMemoryActions before being ingested.
+// Scoped to private memory about `speaker` only — no mentionedUsers, no
+// subjectUserId choice, and no guild-knowledge output — a third-party claim
+// ("Bob likes pizza") is left to the main reply model, which has both
+// action types available and the schema to express the distinction.
+export interface PersonalMemoryExtractor {
+  extractPersonalMemories(
+    userMessage: string,
+    assistantReply: string,
+    speaker: { id: string; displayName: string },
+  ): Promise<readonly PersonalMemoryExtractionAction[]>;
+}
+
 // A ChatProvider is always a ChatReplyProvider; the rest are standalone
 // capabilities a given provider implementation may or may not support.
 // Kept optional here (rather than requiring callers to hold a narrower
@@ -377,7 +431,8 @@ export type ChatProvider = ChatReplyProvider &
   Partial<ChannelMessageSummarizer> &
   Partial<MemoryConflictClassifier> &
   Partial<ReplyChainSummarizer> &
-  Partial<ReferenceImageGenerator>;
+  Partial<ReferenceImageGenerator> &
+  Partial<PersonalMemoryExtractor>;
 
 export interface ChatResponseObserver {
   onImagePreview(image: GeneratedChatImage): Promise<void>;

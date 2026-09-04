@@ -1,7 +1,7 @@
 import type { Logger } from "pino";
 
 import { hashContent } from "../assets/content-hash.js";
-import { chatMemoryInstructions, chatMemoryLimits, validateMemoryActions } from "./chat-memory-policy.js";
+import { chatMemoryInstructions, chatMemoryLimits, normalizeForGroundingCheck, validateMemoryActions } from "./chat-memory-policy.js";
 import { chatSafetyGuard, type ChatProvider, type ChatRequest, type ChatResponse, type ChatResponseObserver, type ReplyChainMessage } from "./chat-provider.js";
 import type { ChatSessionExchange, ChatStateStore } from "./chat-state-store.js";
 import type { UserCustomizationStore } from "./user-customization-store.js";
@@ -16,7 +16,7 @@ import type { ExampleExchange } from "./example-exchange.js";
 import type { PersonaLoreChunk } from "./persona-source.js";
 import type { BirthdayStore } from "../birthdays/birthday-store.js";
 import type { ChatToolRegistry } from "./tools/chat-tool-registry.js";
-import { resolveChannelMemoryMode, type ChannelMemoryMode } from "../memory/memory-channel-policy.js";
+import { allowsDurableWrites, resolveChannelMemoryMode, type ChannelMemoryMode } from "../memory/memory-channel-policy.js";
 import type { ChatMemoryRecord, GuildKnowledgeRecord } from "./chat-provider.js";
 import type { Memory, MemoryEngine, MemoryIngestResult, ProposedMemory } from "../memory/memory.js";
 
@@ -69,6 +69,13 @@ function memoryKindForTopic(topic: string): "fact" | "preference" | "episode" {
 export interface ChatConversationInput
   extends Omit<ChatRequest, "recentHistory" | "memories" | "guildKnowledge" | "causalChains" | "replyChainSummary" | "userCustomization" | "birthday" | "enabledTools" | "exampleExchanges" | "personaLore"> {
   guildId: string;
+  // The Discord message id that triggered this turn, when there is a single
+  // one (mention/ambient chat always have one; other callers may not).
+  // Threaded into memoryEngine.ingest's sourceMessageId for "live"-sourced
+  // writes, so a stored memory can be traced back to the message that
+  // produced it. Omitted/null for turns with no single originating message
+  // (e.g. dropped-exchange consolidation, which spans several).
+  sourceMessageId?: string | null;
   // Per-guild opt-in (profile.chat.toolCallingEnabled) — whether the
   // registered tools are offered to the model for this turn at all.
   toolsEnabled?: boolean;
@@ -123,6 +130,13 @@ export class ChatStateCommitError extends Error {
 
 export class ChatConversationService {
   private readonly queue = new KeyedSerialQueue();
+  // Every fire-and-forget background write this service starts (dedicated
+  // personal-memory extraction, dropped-exchange consolidation) registers
+  // itself here for the duration of its own run — see trackBackground and
+  // drain. Without this, a process restart right after a reply was
+  // delivered could kill one of these mid-write with nothing having
+  // waited for it, silently losing whatever it was about to persist.
+  private readonly pendingBackgroundWork = new Set<Promise<unknown>>();
 
   public constructor(
     private readonly provider: ChatProvider,
@@ -278,6 +292,91 @@ export class ChatConversationService {
     }
   }
 
+  // Dedicated second extraction pass, run after the reply is delivered (see
+  // run() below) — see ChatProvider.extractPersonalMemories for why this
+  // exists alongside the main reply's own userMemoryActions rather than
+  // relying on those alone. Off the user-visible critical path (the reply
+  // was already sent), so failures/absence both resolve to an empty array
+  // rather than affecting the turn. Scoped to private memory about `speaker`
+  // only — the app supplies subjectUserId itself (the extractor's schema has
+  // no such field), so a candidate about a mentioned user can never be
+  // misattributed. Output still goes through the same validateMemoryActions
+  // as the reply's own actions (topic vocabulary, length, secret patterns)
+  // before reaching memoryEngine.ingest.
+  private async extractPersonalMemories(
+    userMessage: string,
+    assistantReply: string,
+    speaker: { id: string; displayName: string },
+    guildId: string,
+    channelId: string,
+  ): Promise<readonly ProposedMemoryAction[]> {
+    // Prefer utilityProvider only if it actually implements this capability
+    // — falling back to it regardless (as resolveReplyChainSummary does)
+    // would silently lose extraction if a configured utility provider lacks
+    // the capability but the main provider has it.
+    const extractor = this.utilityProvider?.extractPersonalMemories ? this.utilityProvider : this.provider;
+    if (!extractor.extractPersonalMemories) return [];
+    try {
+      const actions = await extractor.extractPersonalMemories(userMessage, assistantReply, speaker);
+      const normalizedMessage = normalizeForGroundingCheck(userMessage);
+      const proposedActions = actions
+        // Dropped, never force-relabeled: aboutSpeaker is the model's own
+        // explicit confirmation this action is about the speaker (see
+        // PersonalMemoryExtractionAction) — false means it said otherwise,
+        // most likely a third-party fact ("Bob likes pizza") it should
+        // never have surfaced from this speaker-only pass at all.
+        .filter((action) => action.aboutSpeaker)
+        // sourceQuote must be a real, non-trivial excerpt of the actual
+        // user message, not something the model traced back to the
+        // assistant's reply (or invented outright) — see
+        // PersonalMemoryExtractionAction's own doc comment for what this
+        // does and doesn't guard against. An empty/blank quote would
+        // trivially "match" any message (every string contains ""), so
+        // that's rejected too, not just a genuine mismatch.
+        .filter((action) => {
+          const normalizedQuote = normalizeForGroundingCheck(action.sourceQuote);
+          return normalizedQuote.length > 0 && normalizedMessage.includes(normalizedQuote);
+        })
+        .map((action) => ({ action: action.action, topic: action.topic, slot: action.slot, statement: action.statement, subjectUserId: speaker.id }));
+      return validateMemoryActions(proposedActions, new Set([speaker.id]));
+    } catch (error) {
+      this.logger?.warn({ error, guildId, channelId, userId: speaker.id }, "Personal-memory extraction failed; continuing without it");
+      return [];
+    }
+  }
+
+  // Runs extraction and its own ingest, called fire-and-forget from run()
+  // after the main model's own memory write has already landed. A candidate
+  // here for the same subject/topic/slot the main model already wrote
+  // simply updates that record again (ingest's normal upsert semantics) —
+  // deliberately treated as this pass getting the final, more careful say
+  // on a fact the main model also touched, rather than needing an explicit
+  // merge/precedence step against actions that were never in the same
+  // ingest batch. Never throws — logs and swallows its own failures; the
+  // caller's .catch is only a backstop against something unexpected escaping.
+  private async extractAndIngestPersonalMemories(
+    input: ChatConversationInput,
+    deliveredAssistantMessage: string,
+    channelMode: ChannelMemoryMode,
+    now: number,
+  ): Promise<void> {
+    const extractedActions = await this.extractPersonalMemories(
+      input.message, deliveredAssistantMessage, input.currentUser, input.guildId, input.channelId,
+    );
+    if (extractedActions.length === 0) return;
+    const proposals = this.toProposals(extractedActions, [], input.currentUser.id);
+    try {
+      const result = await this.memoryEngine.ingest({
+        guildId: input.guildId, channelId: input.channelId, channelMode,
+        assertedByUserId: input.currentUser.id, sourceMessageId: input.sourceMessageId ?? null,
+        source: "live", now, proposals,
+      });
+      this.logMemoryIngestIssues(result, input.guildId, input.channelId, input.currentUser.id);
+    } catch (error) {
+      this.logger?.warn({ error, guildId: input.guildId, channelId: input.channelId }, "Dedicated personal-memory ingest failed");
+    }
+  }
+
   // memoryEngine.ingest() reports rejected (permanently invalid proposals —
   // bad topic/slot, secret content) and failed (transient repository/embedding
   // errors) counts rather than throwing, so a reply can otherwise succeed
@@ -303,9 +402,75 @@ export class ChatConversationService {
   // True while a previous request from this same guild+user is still being
   // processed (or queued behind one that is), so callers can tell the user
   // their new message will be handled after the current one instead of
-  // appearing to hang silently.
+  // appearing to hang silently. Also true while that previous turn's
+  // background personal-memory extraction is still running (see run()'s
+  // fire-and-forget this.queue.run call) — the reply itself was already
+  // delivered, but the write ordering guarantee that call exists for means
+  // a new turn genuinely does wait behind it now.
   public isBusy(guildId: string, userId: string): boolean {
     return this.queue.isBusy(`${guildId}:${userId}`);
+  }
+
+  // Registers a fire-and-forget background promise so drain() can wait for
+  // it on shutdown. The promise passed in must already have its own error
+  // handling (this only tracks settlement, it doesn't swallow or log
+  // anything) — it's removed from the set once it settles, success or not.
+  private trackBackground(work: Promise<unknown>): void {
+    this.pendingBackgroundWork.add(work);
+    const stopTracking = (): void => {
+      this.pendingBackgroundWork.delete(work);
+    };
+    work.then(stopTracking, stopTracking);
+  }
+
+  // Called from Application.stop() (see bootstrap/application.ts) before
+  // the process exits — waits for whatever background writes are still in
+  // flight (dedicated extraction, dropped-exchange consolidation) rather
+  // than letting a SIGTERM kill them mid-write. Bounded by timeoutMs so a
+  // stuck call (a hung provider request, say) can't hang shutdown
+  // indefinitely — shutdown proceeds either way once the timeout elapses,
+  // logging what was still outstanding rather than losing the signal
+  // entirely. Default comfortably exceeds a single extraction provider
+  // call's own 30s request timeout (see extractPersonalMemories in each
+  // ChatProvider implementation) plus the ingest write after it — a
+  // shorter default would routinely kill a slow-but-healthy extraction
+  // right as it was about to finish. Doesn't guarantee covering a
+  // multi-model fallback chain (each retry gets its own 30s), just the
+  // common single-attempt case.
+  public async drain(timeoutMs = 40_000): Promise<void> {
+    if (this.pendingBackgroundWork.size === 0) return;
+    const pendingCount = this.pendingBackgroundWork.size;
+    const deadline = Date.now() + timeoutMs;
+    // Loops rather than a single Promise.allSettled snapshot: a turn already
+    // in flight when shutdown begins can still register a later piece of
+    // background work (e.g. consolidateDroppedExchanges, tracked only after
+    // the turn's commit/main-ingest complete — see run()) after this method
+    // is first called. A one-shot snapshot of the set at call time would
+    // resolve once the work it captured settled, without ever waiting on
+    // that later addition. Re-snapshotting each pass picks up anything
+    // registered while the previous pass was awaiting.
+    while (this.pendingBackgroundWork.size > 0) {
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) {
+        this.logger?.warn(
+          { pendingCount, remaining: this.pendingBackgroundWork.size, timeoutMs },
+          "Shutdown drain timed out with background memory writes still in flight",
+        );
+        return;
+      }
+      const allSettled = Promise.allSettled([...this.pendingBackgroundWork]);
+      const timedOut = new Promise<"timed_out">((resolve) => {
+        setTimeout(() => resolve("timed_out"), remainingMs).unref?.();
+      });
+      const result = await Promise.race([allSettled.then(() => "completed" as const), timedOut]);
+      if (result === "timed_out") {
+        this.logger?.warn(
+          { pendingCount, remaining: this.pendingBackgroundWork.size, timeoutMs },
+          "Shutdown drain timed out with background memory writes still in flight",
+        );
+        return;
+      }
+    }
   }
 
   public getDmNotesEnabled(guildId: string, userId: string): Promise<boolean> {
@@ -321,6 +486,47 @@ export class ChatConversationService {
     const channelMode = resolveChannelMemoryMode(input.channelMemoryModes ?? {}, input.channelId);
     return this.queue.run(key, async () => {
       const now = Date.now();
+      // Reserved here, at the very top — before any await in this turn,
+      // including deliver() — rather than only once deliveredAssistantMessage
+      // is known near the end. This turn's own queue.run call (the one
+      // wrapping this whole callback) already holds this key's slot, but
+      // that slot releases the moment this callback returns; a second
+      // queue.run call made *from inside* this callback only takes effect
+      // if it runs before some other run() call for the same key captures
+      // its `previous` reference. A fast follow-up message can arrive (and
+      // call service.run) at any point while this turn is still in
+      // progress — mid state-commit, mid main-model memory ingest — and if
+      // the extraction reservation hadn't happened yet, that follow-up
+      // would capture this turn's own tail and never end up ordered behind
+      // the extraction sub-task at all, defeating the whole point. Firing
+      // it immediately, synchronously, before the first await, closes that
+      // window entirely — every subsequent run() call for this key is
+      // guaranteed to see this reservation already in place.
+      //
+      // The extraction call itself still can't start until
+      // deliveredAssistantMessage exists, so the reserved sub-task blocks
+      // on resolveExtractionInput below until this turn signals it — an
+      // "abort" (null) signal on every exit path (ambient-ignore's early
+      // return, any thrown error) via the finally block, or the real
+      // message on the success path, so the reservation can never hang
+      // forever and leave this key permanently marked busy.
+      let resolveExtractionInput!: (value: { assistantMessage: string } | null) => void;
+      const extractionInput = new Promise<{ assistantMessage: string } | null>((resolve) => {
+        resolveExtractionInput = resolve;
+      });
+      if (allowsDurableWrites(channelMode)) {
+        this.trackBackground(this.queue.run(key, async () => {
+          const ready = await extractionInput;
+          if (!ready) return;
+          await this.extractAndIngestPersonalMemories(input, ready.assistantMessage, channelMode, now);
+        }).catch((error: unknown) => {
+          this.logger?.warn(
+            { error, guildId: input.guildId, channelId: input.channelId },
+            "Dedicated personal-memory extraction/ingest failed unexpectedly",
+          );
+        }));
+      }
+      try {
       // state loads first (rather than in the same Promise.all as recall)
       // so recall's relevance context can use real recentHistory instead of
       // an empty array — channelId here only scopes the session-exchange
@@ -337,6 +543,7 @@ export class ChatConversationService {
           recentHistory,
           subjectIds: [input.currentUser.id, ...input.mentionedUsers.map((user) => user.id)],
           now,
+          channelMode,
         }),
         this.userCustomizationStore?.load(input.guildId, input.currentUser.id) ?? Promise.resolve(null),
         this.birthdayStore?.getBirthday(input.guildId, input.currentUser.id) ?? Promise.resolve(null),
@@ -376,6 +583,7 @@ export class ChatConversationService {
       const response = await this.provider.reply({
         ...requestInput,
         recentHistory,
+        channelMode,
         memories: selectedMemories,
         replyChainSummary,
         guildKnowledge: selectedGuildKnowledge,
@@ -466,7 +674,7 @@ export class ChatConversationService {
           try {
             const result = await this.memoryEngine.ingest({
               guildId: input.guildId, channelId: input.channelId, channelMode,
-              assertedByUserId: input.currentUser.id, sourceMessageId: null,
+              assertedByUserId: input.currentUser.id, sourceMessageId: input.sourceMessageId ?? null,
               source: "live", now, proposals,
             });
             this.logMemoryIngestIssues(result, input.guildId, input.channelId, input.currentUser.id);
@@ -477,6 +685,10 @@ export class ChatConversationService {
         return validatedResponse;
       }
       const deliveredAssistantMessage = await deliver(validatedResponse);
+      // Signals the extraction sub-task (reserved at the very top of this
+      // callback) that it can proceed — see that reservation's own comment
+      // for why the slot is claimed before this point rather than here.
+      resolveExtractionInput(allowsDurableWrites(channelMode) ? { assistantMessage: deliveredAssistantMessage } : null);
       let droppedExchanges: readonly ChatSessionExchange[] = [];
       try {
         // actions always empty here — private-memory writes now go through
@@ -501,7 +713,7 @@ export class ChatConversationService {
         try {
           const result = await this.memoryEngine.ingest({
             guildId: input.guildId, channelId: input.channelId, channelMode,
-            assertedByUserId: input.currentUser.id, sourceMessageId: null,
+            assertedByUserId: input.currentUser.id, sourceMessageId: input.sourceMessageId ?? null,
             source: "live", now, proposals,
           });
           this.logMemoryIngestIssues(result, input.guildId, input.channelId, input.currentUser.id);
@@ -518,14 +730,24 @@ export class ChatConversationService {
       // a reply they already received. It already catches and logs its own
       // failures internally and never throws; the .catch below is only a
       // backstop against something unexpected escaping that.
-      void this.consolidateDroppedExchanges(
+      this.trackBackground(this.consolidateDroppedExchanges(
         input.guildId, input.channelId, channelMode, droppedExchanges, input.personaDriftEnabled ?? false,
         input.personalitySourceHash ?? hashContent(input.personality),
         { id: input.currentUser.id, displayName: input.currentUser.displayName },
       ).catch((error: unknown) => {
         this.logger?.warn({ error, guildId: input.guildId, channelId: input.channelId }, "Dropped-exchange consolidation failed unexpectedly");
-      });
+      }));
       return validatedResponse;
+      } finally {
+        // No-op if the success path above already resolved this (a
+        // Promise's second resolve call is ignored) — this is purely the
+        // safety net for every path that returns or throws before ever
+        // reaching that point (ambientAction "ignore"'s early return,
+        // ChatStateCommitError, a reply provider failure), so the reserved
+        // extraction sub-task is never left waiting on a promise that
+        // would otherwise never settle.
+        resolveExtractionInput(null);
+      }
     });
   }
 }

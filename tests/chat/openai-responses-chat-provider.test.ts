@@ -310,6 +310,7 @@ describe("OpenAiResponsesChatProvider", () => {
       channelId: "77777777777777777",
       currentUser: { id: "11111111111111111", displayName: "Tester", roleNames: [] },
       channelIsNsfw: false,
+      channelMode: "shared",
       isOwner: false,
       music: null,
       pendingGeneratedImages: [],
@@ -470,6 +471,40 @@ describe("OpenAiResponsesChatProvider", () => {
     ]);
 
     expect(summary).toBe("Alice mentioned liking apples earlier.");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("extractPersonalMemories sends the exchange and speaker, and returns the parsed actions", async () => {
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+      if (typeof init?.body !== "string") throw new Error("Expected a JSON request body.");
+      const body = JSON.parse(init.body) as Record<string, unknown>;
+      expect(body.instructions).toContain("I like green apples");
+      expect(body.instructions).toContain("Noted!");
+      expect(body.instructions).toContain("only the USER MESSAGE is evidence");
+      expect(body.text).toMatchObject({ format: { name: "personal_memory_extraction", strict: true } });
+      return Promise.resolve(new Response(JSON.stringify({
+        output: [{
+          type: "message",
+          content: [{
+            type: "output_text",
+            text: JSON.stringify({
+              actions: [{ action: "upsert", aboutSpeaker: true, sourceQuote: "I like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" }],
+            }),
+          }],
+        }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = new OpenAiResponsesChatProvider(
+      "https://api.openai.com/v1", "secret", ["gpt-5-nano"],
+      { reasoningEffort: "low", verbosity: "low", maxOutputTokens: 2_048 },
+    );
+    const actions = await provider.extractPersonalMemories(
+      "I like green apples", "Noted!", { id: "user-1", displayName: "Red" },
+    );
+
+    expect(actions).toEqual([{ action: "upsert", aboutSpeaker: true, sourceQuote: "I like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" }]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
