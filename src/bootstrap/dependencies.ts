@@ -539,6 +539,7 @@ export function createDependencies(
         logger.child({ component: "chat-conversation" }),
         utilityProvider,
         personaDriftStore,
+        personalMemoryExtractionQueueStore,
       )
     : null;
   const personaSource = new FilePersonaSource(

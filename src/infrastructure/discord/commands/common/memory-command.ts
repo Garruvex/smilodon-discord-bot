@@ -118,13 +118,21 @@ export class MemoryCommand implements BotCommand {
     const all = context.interaction.options.getBoolean("all");
 
     if (all === true) {
-      const count = await this.memoryEngine.forget({ guildId, ownerUserId: userId });
       // A still-queued (or already-succeeded-but-not-yet-cleaned-up, see
       // PersonalMemoryExtractionQueueStore.markSucceeded) extraction job
       // holds this user's own raw message text and can later (re)create a
       // private memory for them — "forget everything" must remove that
       // too, or it's not actually forgotten.
-      await this.personalMemoryExtractionQueueStore?.deleteForSubject(guildId, userId);
+      // The shared subject boundary waits for an already-running worker (or
+      // live chat write) before deleting its result, while a worker queued
+      // afterward observes that its durable row is gone and exits.
+      const forgetAll = async (): Promise<number> => {
+        await this.personalMemoryExtractionQueueStore?.deleteForSubject(guildId, userId);
+        return this.memoryEngine.forget({ guildId, ownerUserId: userId });
+      };
+      const count = this.personalMemoryExtractionQueueStore
+        ? await this.personalMemoryExtractionQueueStore.runForSubject(guildId, userId, forgetAll)
+        : await forgetAll();
       await context.responses.reply(
         count > 0 ? `Forgot ${count} ${count === 1 ? "memory" : "memories"}.` : "There was nothing to forget.",
       );
@@ -143,7 +151,16 @@ export class MemoryCommand implements BotCommand {
       return;
     }
 
-    const forgotten = await this.memoryEngine.forget({ guildId, ownerUserId: userId, memoryId: match.id });
+    const forgetOne = async (): Promise<number> => {
+      // Old queued source text could otherwise recreate the just-forgotten
+      // slot. Cancel this subject's not-yet-processed historical jobs; new
+      // messages after the command remain eligible for normal extraction.
+      await this.personalMemoryExtractionQueueStore?.deleteForSubject(guildId, userId);
+      return this.memoryEngine.forget({ guildId, ownerUserId: userId, memoryId: match.id });
+    };
+    const forgotten = this.personalMemoryExtractionQueueStore
+      ? await this.personalMemoryExtractionQueueStore.runForSubject(guildId, userId, forgetOne)
+      : await forgetOne();
     await context.responses.reply(
       forgotten > 0 ? `Forgot: ${match.topic}.${match.slot}.` : "I couldn't find a memory with that ID.",
     );

@@ -7,6 +7,7 @@ import type {
   PersonalMemoryExtractionQueueStore,
 } from "../../application/context/personal-memory-extraction-queue.js";
 import * as schema from "../database/schema.js";
+import { KeyedSerialQueue } from "../../application/concurrency/keyed-serial-queue.js";
 
 function toJob(row: typeof schema.personalMemoryExtractionJobs.$inferSelect): PersonalMemoryExtractionJob {
   return {
@@ -20,8 +21,13 @@ function toJob(row: typeof schema.personalMemoryExtractionJobs.$inferSelect): Pe
 const terminalStatuses = ["succeeded", "dead_letter"] as const;
 
 export class PostgresPersonalMemoryExtractionQueueStore implements PersonalMemoryExtractionQueueStore {
+  private readonly subjectQueue = new KeyedSerialQueue();
   public constructor(private readonly database: PostgresJsDatabase<typeof schema>) {}
   public initialize(): Promise<void> { return Promise.resolve(); }
+
+  public runForSubject<T>(guildId: string, subjectId: string, operation: () => Promise<T>): Promise<T> {
+    return this.subjectQueue.run(`${guildId}:${subjectId}`, operation);
+  }
 
   public async enqueueMany(jobs: readonly PersonalMemoryExtractionJobInput[], now: number): Promise<void> {
     if (jobs.length === 0) return;
@@ -40,6 +46,15 @@ export class PostgresPersonalMemoryExtractionQueueStore implements PersonalMemor
       lte(schema.personalMemoryExtractionJobs.nextAttemptAt, new Date(now)),
     )).orderBy(asc(schema.personalMemoryExtractionJobs.nextAttemptAt)).limit(limit);
     return rows.map(toJob);
+  }
+
+  public async exists(guildId: string, channelId: string, batchId: string, subjectId: string): Promise<boolean> {
+    const rows = await this.database.select({ subjectId: schema.personalMemoryExtractionJobs.subjectId })
+      .from(schema.personalMemoryExtractionJobs).where(and(
+        eq(schema.personalMemoryExtractionJobs.guildId, guildId), eq(schema.personalMemoryExtractionJobs.channelId, channelId),
+        eq(schema.personalMemoryExtractionJobs.batchId, batchId), eq(schema.personalMemoryExtractionJobs.subjectId, subjectId),
+      )).limit(1);
+    return rows.length > 0;
   }
 
   public async markSucceeded(guildId: string, channelId: string, batchId: string, subjectId: string): Promise<void> {

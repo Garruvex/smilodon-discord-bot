@@ -19,6 +19,7 @@ import type { ChatToolRegistry } from "./tools/chat-tool-registry.js";
 import { allowsDurableWrites, resolveChannelMemoryMode, type ChannelMemoryMode } from "../memory/memory-channel-policy.js";
 import type { ChatMemoryRecord, GuildKnowledgeRecord } from "./chat-provider.js";
 import type { Memory, MemoryEngine, MemoryIngestResult, ProposedMemory } from "../memory/memory.js";
+import type { PersonalMemoryExtractionQueueStore } from "../context/personal-memory-extraction-queue.js";
 
 // Adapts a unified Memory back into the legacy prompt-facing record shapes
 // (ChatRequest still expects `memories`/`guildKnowledge` in their original
@@ -156,7 +157,17 @@ export class ChatConversationService {
     // this stays optional/backward compatible.
     private readonly utilityProvider: ChatProvider | null = null,
     private readonly personaDriftStore: PersonaDriftStore | null = null,
+    // Shared with ChannelSummaryScheduler and /memory. Besides persistence,
+    // it supplies the per-subject mutation boundary that prevents a live or
+    // background write from racing an explicit forget/member purge.
+    private readonly memoryMutationCoordinator: Pick<PersonalMemoryExtractionQueueStore, "runForSubject"> | null = null,
   ) {}
+
+  private runMemoryMutation<T>(guildId: string, ownerUserId: string, operation: () => Promise<T>): Promise<T> {
+    return this.memoryMutationCoordinator
+      ? this.memoryMutationCoordinator.runForSubject(guildId, ownerUserId, operation)
+      : operation();
+  }
 
   // Converts a turn's validated private-memory actions + guild-knowledge
   // candidates into the unified proposal shape MemoryEngine.ingest expects.
@@ -233,11 +244,11 @@ export class ChatConversationService {
             { guildId, currentChannelId: channelId, currentUserId: speaker.id, allowedMemberIds: new Set([speaker.id]) },
           );
           if (candidates.length > 0) {
-            await this.memoryEngine.ingest({
+            await this.runMemoryMutation(guildId, speaker.id, () => this.memoryEngine.ingest({
               guildId, channelId, channelMode, assertedByUserId: speaker.id, sourceMessageId: null,
               source: "consolidation", now: Date.now(),
               proposals: this.toProposals([], candidates, speaker.id),
-            });
+            }));
           }
         }
       } catch (error) {
@@ -366,11 +377,11 @@ export class ChatConversationService {
     if (extractedActions.length === 0) return;
     const proposals = this.toProposals(extractedActions, [], input.currentUser.id);
     try {
-      const result = await this.memoryEngine.ingest({
+      const result = await this.runMemoryMutation(input.guildId, input.currentUser.id, () => this.memoryEngine.ingest({
         guildId: input.guildId, channelId: input.channelId, channelMode,
         assertedByUserId: input.currentUser.id, sourceMessageId: input.sourceMessageId ?? null,
         source: "live", now, proposals,
-      });
+      }));
       this.logMemoryIngestIssues(result, input.guildId, input.channelId, input.currentUser.id);
     } catch (error) {
       this.logger?.warn({ error, guildId: input.guildId, channelId: input.channelId }, "Dedicated personal-memory ingest failed");
@@ -672,11 +683,11 @@ export class ChatConversationService {
       if (input.triggerMode === "ambient" && validatedResponse.ambientAction !== "reply") {
         if (validatedResponse.reactionEmoji && proposals.length > 0) {
           try {
-            const result = await this.memoryEngine.ingest({
+            const result = await this.runMemoryMutation(input.guildId, input.currentUser.id, () => this.memoryEngine.ingest({
               guildId: input.guildId, channelId: input.channelId, channelMode,
               assertedByUserId: input.currentUser.id, sourceMessageId: input.sourceMessageId ?? null,
               source: "live", now, proposals,
-            });
+            }));
             this.logMemoryIngestIssues(result, input.guildId, input.channelId, input.currentUser.id);
           } catch (error) {
             throw new ChatStateCommitError(error);
@@ -711,11 +722,11 @@ export class ChatConversationService {
       }
       if (proposals.length > 0) {
         try {
-          const result = await this.memoryEngine.ingest({
+          const result = await this.runMemoryMutation(input.guildId, input.currentUser.id, () => this.memoryEngine.ingest({
             guildId: input.guildId, channelId: input.channelId, channelMode,
             assertedByUserId: input.currentUser.id, sourceMessageId: input.sourceMessageId ?? null,
             source: "live", now, proposals,
-          });
+          }));
           this.logMemoryIngestIssues(result, input.guildId, input.channelId, input.currentUser.id);
         } catch (error) {
           throw new ChatStateCommitError(error);

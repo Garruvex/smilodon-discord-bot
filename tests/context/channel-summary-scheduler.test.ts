@@ -856,8 +856,10 @@ describe("ChannelSummaryScheduler — durable personal-memory extraction queue",
     };
     const brokenQueue: PersonalMemoryExtractionQueueStore = {
       initialize: () => realQueue.initialize(),
+      runForSubject: (guildId, subjectId, operation) => realQueue.runForSubject(guildId, subjectId, operation),
       enqueueMany: (jobs, enqueueNow) => realQueue.enqueueMany(jobs, enqueueNow),
       dequeueDue: (limit, dequeueNow) => realQueue.dequeueDue(limit, dequeueNow),
+      exists: (guildId, channelId, batchId, subjectId) => realQueue.exists(guildId, channelId, batchId, subjectId),
       markSucceeded: (guildId, channelId, batchId, subjectId) =>
         subjectId === "bob" ? Promise.reject(new Error("queue store unavailable")) : realQueue.markSucceeded(guildId, channelId, batchId, subjectId),
       markFailed: (guildId, channelId, batchId, subjectId, attempts, nextAttemptAt, error) =>
@@ -892,6 +894,124 @@ describe("ChannelSummaryScheduler — durable personal-memory extraction queue",
 
     await expect(engine.listUserMemories("guild", "alice")).resolves.toHaveLength(1);
     await expect(engine.listUserMemories("guild", "carol")).resolves.toHaveLength(1);
+  });
+
+  it("keeps a succeeded job tombstone when checkpoint persistence fails, preventing extraction on retry", async () => {
+    const { engine, checkpointStore: realCheckpointStore, extractionQueue } = testEngine();
+    const historyReader = fakeHistoryReader(fakeChannel([
+      fakeMessage("m1", "alice", "I really like green apples", now - 1_000),
+    ]));
+    let recordAttempts = 0;
+    const checkpointStore: ChannelSummaryCheckpointStore = {
+      initialize: () => realCheckpointStore.initialize(),
+      get: (guildId, channelId) => realCheckpointStore.get(guildId, channelId),
+      recordSuccess: (input) => {
+        recordAttempts += 1;
+        if (recordAttempts === 1) return Promise.reject(new Error("checkpoint unavailable"));
+        return realCheckpointStore.recordSuccess(input);
+      },
+      recordError: (guildId, channelId, code, error, errorNow) =>
+        realCheckpointStore.recordError(guildId, channelId, code, error, errorNow),
+      resetScan: (guildId, channelId, resetNow) => realCheckpointStore.resetScan(guildId, channelId, resetNow),
+    };
+    const extractPersonalMemories = vi.fn(() => Promise.resolve<readonly PersonalMemoryExtractionAction[]>([{
+      action: "upsert", aboutSpeaker: true, sourceQuote: "I really like green apples",
+      topic: "preference", slot: "food.fruit", statement: "likes green apples",
+    }]));
+    const summarizer: ChannelMessageSummarizer & Partial<PersonalMemoryExtractor> = {
+      summarizeChannelMessages: vi.fn(() => Promise.resolve({ facts: [], relations: [] })),
+      extractPersonalMemories,
+    };
+    const scheduler = new ChannelSummaryScheduler(
+      historyReader, fakeProfileProvider([fakeProfile({ contextScanChannelIds: ["channel"] })]),
+      engine, checkpointStore, extractionQueue, summarizer, silentLogger,
+    );
+
+    await scheduler.checkNow(new Date(now));
+    expect(extractPersonalMemories).toHaveBeenCalledOnce();
+    expect(await realCheckpointStore.get("guild", "channel")).toBeNull();
+
+    await scheduler.checkNow(new Date(now));
+    expect(extractPersonalMemories).toHaveBeenCalledOnce();
+    expect((await realCheckpointStore.get("guild", "channel"))?.scanCompletedAt).not.toBeNull();
+  });
+
+  it("does not persist a dequeued job deleted while extraction is in flight", async () => {
+    const { engine, checkpointStore, extractionQueue } = testEngine();
+    const historyReader = fakeHistoryReader(fakeChannel([
+      fakeMessage("m1", "alice", "I really like green apples", now - 1_000),
+    ]));
+    let extractionStarted!: () => void;
+    let releaseExtraction!: () => void;
+    const started = new Promise<void>((resolve) => { extractionStarted = resolve; });
+    const gate = new Promise<void>((resolve) => { releaseExtraction = resolve; });
+    const summarizer: ChannelMessageSummarizer & Partial<PersonalMemoryExtractor> = {
+      summarizeChannelMessages: vi.fn(() => Promise.resolve({ facts: [], relations: [] })),
+      extractPersonalMemories: vi.fn(async () => {
+        extractionStarted();
+        await gate;
+        return [{
+          action: "upsert" as const, aboutSpeaker: true, sourceQuote: "I really like green apples",
+          topic: "preference", slot: "food.fruit", statement: "likes green apples",
+        }];
+      }),
+    };
+    const scheduler = new ChannelSummaryScheduler(
+      historyReader, fakeProfileProvider([fakeProfile({ contextScanChannelIds: ["channel"] })]),
+      engine, checkpointStore, extractionQueue, summarizer, silentLogger,
+    );
+
+    const tick = scheduler.checkNow(new Date(now));
+    await started;
+    const cancellation = extractionQueue.runForSubject("guild", "alice", async () => {
+      await extractionQueue.deleteForSubject("guild", "alice");
+      await engine.forget({ guildId: "guild", ownerUserId: "alice" });
+    });
+    releaseExtraction();
+    await Promise.all([tick, cancellation]);
+
+    await expect(engine.listUserMemories("guild", "alice")).resolves.toHaveLength(0);
+  });
+
+  it("rolls back a stale worker whose persistence finishes after the job is deleted", async () => {
+    const { engine, checkpointStore, extractionQueue } = testEngine();
+    const historyReader = fakeHistoryReader(fakeChannel([
+      fakeMessage("m1", "alice", "I really like green apples", now - 1_000),
+    ]));
+    let ingestStarted!: () => void;
+    let releaseIngest!: () => void;
+    const started = new Promise<void>((resolve) => { ingestStarted = resolve; });
+    const gate = new Promise<void>((resolve) => { releaseIngest = resolve; });
+    const gatedEngine: MemoryEngine = {
+      recall: (input) => engine.recall(input),
+      ingest: async (input) => {
+        ingestStarted();
+        await gate;
+        return engine.ingest(input);
+      },
+      ingestRelations: (input) => engine.ingestRelations(input),
+      listUserMemories: (guildId, userId) => engine.listUserMemories(guildId, userId),
+      forget: (input) => engine.forget(input),
+    };
+    const summarizer = stubSummarizer([], [], new Map([["alice", [{
+      action: "upsert", aboutSpeaker: true, sourceQuote: "I really like green apples",
+      topic: "preference", slot: "food.fruit", statement: "likes green apples",
+    }]]]));
+    const scheduler = new ChannelSummaryScheduler(
+      historyReader, fakeProfileProvider([fakeProfile({ contextScanChannelIds: ["channel"] })]),
+      gatedEngine, checkpointStore, extractionQueue, summarizer, silentLogger,
+    );
+
+    const tick = scheduler.checkNow(new Date(now));
+    await started;
+    const cancellation = extractionQueue.runForSubject("guild", "alice", async () => {
+      await extractionQueue.deleteForSubject("guild", "alice");
+      await engine.forget({ guildId: "guild", ownerUserId: "alice" });
+    });
+    releaseIngest();
+    await Promise.all([tick, cancellation]);
+
+    await expect(engine.listUserMemories("guild", "alice")).resolves.toHaveLength(0);
   });
 
   it("bounds concurrent per-author extraction calls instead of firing one provider call per author all at once", async () => {

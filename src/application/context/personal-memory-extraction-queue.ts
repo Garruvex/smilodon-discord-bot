@@ -34,6 +34,12 @@ export interface PersonalMemoryExtractionJobInput {
 
 export interface PersonalMemoryExtractionQueueStore {
   initialize(): Promise<void>;
+  // Serializes extraction and forget/purge mutations for one member within
+  // this application instance. All production callers that delete a
+  // subject's jobs use this boundary, so an already-dequeued worker either
+  // finishes before forgetting begins or observes its deleted row before
+  // starting. The durable row remains the cross-restart cancellation state.
+  runForSubject<T>(guildId: string, subjectId: string, operation: () => Promise<T>): Promise<T>;
   // Idempotent by (guildId, channelId, batchId, subjectId): a job already
   // present for that identity is left completely untouched — re-enqueuing
   // the same batch (e.g. because an unrelated guild-knowledge or relation
@@ -45,6 +51,11 @@ export interface PersonalMemoryExtractionQueueStore {
   // Pending jobs (status "pending") whose nextAttemptAt <= now, oldest
   // nextAttemptAt first, capped at limit.
   dequeueDue(limit: number, now: number): Promise<readonly PersonalMemoryExtractionJob[]>;
+  // True while this exact durable job identity still exists, regardless of
+  // pending/terminal status. Workers use this as a cancellation barrier:
+  // deleteForSubject removes the row, so a stale job object returned by an
+  // earlier dequeue can detect that forget/purge happened before it writes.
+  exists(guildId: string, channelId: string, batchId: string, subjectId: string): Promise<boolean>;
   // Job fully handled — extracted and its resulting proposal (if any)
   // durably ingested. Kept as a status "succeeded" tombstone (content
   // cleared — nothing further needs the raw message text) rather than

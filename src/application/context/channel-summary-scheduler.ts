@@ -323,6 +323,7 @@ export class ChannelSummaryScheduler {
       // this scan completion so daily's first cycle starts from here.
       ...(result.reachedBoundary && seedsDailyHighWaterMark ? { dailyHighWaterMarkAt: now } : {}),
     });
+    await this.cleanupTerminalJobs(profile.guildId, channelId, batchId);
   }
 
   private async runDaily(
@@ -343,6 +344,7 @@ export class ChannelSummaryScheduler {
     if (!ingestOk) return;
     if (result.reachedBoundary) {
       await this.checkpointStore.recordSuccess({ guildId: profile.guildId, channelId, now, dailyComplete: true });
+      await this.cleanupTerminalJobs(profile.guildId, channelId, batchId);
     } else if (result.oldestSeenMessageId) {
       // Capped mid-cycle — resume from here next tick, still same cycle
       // (lastRunAt only advances on dailyComplete). Persist the boundary
@@ -362,6 +364,7 @@ export class ChannelSummaryScheduler {
         dailyCursor: result.oldestSeenMessageId,
         dailyHighWaterMarkAt: boundaryMs,
       });
+      await this.cleanupTerminalJobs(profile.guildId, channelId, batchId);
     }
   }
 
@@ -553,24 +556,21 @@ export class ChannelSummaryScheduler {
       }
     }
 
-    // Every step that could still cause this batch to be retried (memory
-    // ingest, relation ingest) has now succeeded — this exact batchId will
-    // never be enqueued or read again, so any succeeded/dead_letter
-    // tombstones it left behind in the extraction queue (see
-    // PersonalMemoryExtractionQueueStore.markSucceeded/markDeadLettered) no
-    // longer serve any purpose. A failure here doesn't fail the batch
-    // itself — it's already conclusively done — the tombstones just live a
-    // bit longer until deleteTerminalOlderThan's backstop catches them.
+    return true;
+  }
+
+  // Must run only after recordSuccess commits the channel cursor. Deleting
+  // the idempotency tombstone before that write would let a checkpoint
+  // failure recreate and reprocess the same extraction job next tick.
+  private async cleanupTerminalJobs(guildId: string, channelId: string, batchId: string): Promise<void> {
     try {
-      await this.extractionQueue.deleteTerminalForBatch(profile.guildId, channelId, batchId);
+      await this.extractionQueue.deleteTerminalForBatch(guildId, channelId, batchId);
     } catch (error) {
       this.logger.warn(
-        { error, guildId: profile.guildId, channelId, batchId },
+        { error, guildId, channelId, batchId },
         "Failed to clean up settled personal-memory extraction jobs for a completed batch",
       );
     }
-
-    return true;
   }
 
   // Dequeues and processes due personal-memory extraction jobs across every
@@ -596,7 +596,14 @@ export class ChannelSummaryScheduler {
     // underneath it, meaning drain() no longer actually covers it and a new
     // tick could start concurrently with the old one's leftover workers.
     await mapWithConcurrency(jobs, extractionConcurrency, async (job) => {
-      try {
+      await this.extractionQueue.runForSubject(job.guildId, job.subjectId, async () => {
+        try {
+        const stillExists = (): Promise<boolean> => this.extractionQueue.exists(
+          job.guildId, job.channelId, job.batchId, job.subjectId,
+        );
+        // dequeueDue returns a snapshot. A forget/purge may delete the row
+        // before this bounded-concurrency worker actually begins.
+        if (!(await stillExists())) return;
         const fail = async (error: unknown, context: string): Promise<void> => {
           const attempts = job.attempts + 1;
           const message = error instanceof Error ? error.message : context;
@@ -621,6 +628,9 @@ export class ChannelSummaryScheduler {
           await fail(error, "Personal-memory extraction failed.");
           return;
         }
+
+        // Covers deletion while the provider call was in flight.
+        if (!(await stillExists())) return;
 
         const proposals = buildPromotionProposals(job, actions);
         if (proposals.length > 0) {
@@ -647,12 +657,13 @@ export class ChannelSummaryScheduler {
           }
         }
         await this.extractionQueue.markSucceeded(job.guildId, job.channelId, job.batchId, job.subjectId);
-      } catch (error) {
-        this.logger.error(
-          { error, guildId: job.guildId, channelId: job.channelId, subjectId: job.subjectId },
-          "Personal-memory extraction job processing failed unexpectedly outside its own error handling",
-        );
-      }
+        } catch (error) {
+          this.logger.error(
+            { error, guildId: job.guildId, channelId: job.channelId, subjectId: job.subjectId },
+            "Personal-memory extraction job processing failed unexpectedly outside its own error handling",
+          );
+        }
+      });
     });
   }
 }

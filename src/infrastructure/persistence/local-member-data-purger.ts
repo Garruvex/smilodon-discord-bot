@@ -23,29 +23,31 @@ export class LocalMemberDataPurger implements MemberDataPurger {
   ) {}
 
   public async purge(guildId: string, userId: string): Promise<void> {
-    // No shared transaction across these independent stores (see class
-    // comment), so a failure in one must not skip the rest — otherwise a
-    // single store error would silently leave later stores unpurged with no
-    // Discord event to retry against. Attempt all, then surface every
-    // failure together.
-    // Wrap every call in a microtask so a synchronous adapter exception
-    // becomes a rejected promise instead of aborting construction of the
-    // array before the remaining stores have even been attempted.
-    const operations: readonly (() => Promise<unknown>)[] = [
-      (): Promise<unknown> => this.memoryRepository.forget({ guildId, ownerUserId: userId }),
-      (): Promise<unknown> => this.userCustomizationStore.clear(guildId, userId),
-      (): Promise<unknown> => this.birthdayStore.removeBirthday(guildId, userId),
-      (): Promise<unknown> => this.reminderStore.deleteForUser(guildId, userId),
-      (): Promise<unknown> => this.chatStateStore.purgeUser(guildId, userId),
-      (): Promise<unknown> => this.personalMemoryExtractionQueueStore.deleteForSubject(guildId, userId),
-    ];
-    const results = await Promise.allSettled(
-      operations.map((operation) => Promise.resolve().then(() => operation())),
-    );
-    const failures = results.filter((result) => result.status === "rejected")
-      .map((result) => result.reason as unknown);
-    if (failures.length > 0) {
-      throw new AggregateError(failures, `Member data purge failed for ${failures.length} of ${results.length} stores`);
-    }
+    await this.personalMemoryExtractionQueueStore.runForSubject(guildId, userId, async () => {
+      // No shared transaction across these independent stores (see class
+      // comment), so a failure in one must not skip the rest — otherwise a
+      // single store error would silently leave later stores unpurged with no
+      // Discord event to retry against. Attempt all, then surface every
+      // failure together.
+      // Wrap every call in a microtask so a synchronous adapter exception
+      // becomes a rejected promise instead of aborting construction of the
+      // array before the remaining stores have even been attempted.
+      const operations: readonly (() => Promise<unknown>)[] = [
+        (): Promise<unknown> => this.memoryRepository.forget({ guildId, ownerUserId: userId }),
+        (): Promise<unknown> => this.userCustomizationStore.clear(guildId, userId),
+        (): Promise<unknown> => this.birthdayStore.removeBirthday(guildId, userId),
+        (): Promise<unknown> => this.reminderStore.deleteForUser(guildId, userId),
+        (): Promise<unknown> => this.chatStateStore.purgeUser(guildId, userId),
+        (): Promise<unknown> => this.personalMemoryExtractionQueueStore.deleteForSubject(guildId, userId),
+      ];
+      const results = await Promise.allSettled(
+        operations.map((operation) => Promise.resolve().then(() => operation())),
+      );
+      const failures = results.filter((result) => result.status === "rejected")
+        .map((result) => result.reason as unknown);
+      if (failures.length > 0) {
+        throw new AggregateError(failures, `Member data purge failed for ${failures.length} of ${results.length} stores`);
+      }
+    });
   }
 }

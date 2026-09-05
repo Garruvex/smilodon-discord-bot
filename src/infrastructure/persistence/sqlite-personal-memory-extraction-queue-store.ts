@@ -7,6 +7,7 @@ import type {
   PersonalMemoryExtractionQueueStore,
 } from "../../application/context/personal-memory-extraction-queue.js";
 import * as schema from "../database/sqlite-schema.js";
+import { KeyedSerialQueue } from "../../application/concurrency/keyed-serial-queue.js";
 
 function toJob(row: typeof schema.personalMemoryExtractionJobs.$inferSelect): PersonalMemoryExtractionJob {
   return {
@@ -20,8 +21,13 @@ function toJob(row: typeof schema.personalMemoryExtractionJobs.$inferSelect): Pe
 const terminalStatuses = ["succeeded", "dead_letter"] as const;
 
 export class SqlitePersonalMemoryExtractionQueueStore implements PersonalMemoryExtractionQueueStore {
+  private readonly subjectQueue = new KeyedSerialQueue();
   public constructor(private readonly database: BetterSQLite3Database<typeof schema>) {}
   public initialize(): Promise<void> { return Promise.resolve(); }
+
+  public runForSubject<T>(guildId: string, subjectId: string, operation: () => Promise<T>): Promise<T> {
+    return this.subjectQueue.run(`${guildId}:${subjectId}`, operation);
+  }
 
   public enqueueMany(jobs: readonly PersonalMemoryExtractionJobInput[], now: number): Promise<void> {
     if (jobs.length === 0) return Promise.resolve();
@@ -41,6 +47,15 @@ export class SqlitePersonalMemoryExtractionQueueStore implements PersonalMemoryE
       lte(schema.personalMemoryExtractionJobs.nextAttemptAt, new Date(now)),
     )).orderBy(asc(schema.personalMemoryExtractionJobs.nextAttemptAt)).limit(limit).all();
     return Promise.resolve(rows.map(toJob));
+  }
+
+  public exists(guildId: string, channelId: string, batchId: string, subjectId: string): Promise<boolean> {
+    const row = this.database.select({ subjectId: schema.personalMemoryExtractionJobs.subjectId })
+      .from(schema.personalMemoryExtractionJobs).where(and(
+        eq(schema.personalMemoryExtractionJobs.guildId, guildId), eq(schema.personalMemoryExtractionJobs.channelId, channelId),
+        eq(schema.personalMemoryExtractionJobs.batchId, batchId), eq(schema.personalMemoryExtractionJobs.subjectId, subjectId),
+      )).get();
+    return Promise.resolve(row !== undefined);
   }
 
   public markSucceeded(guildId: string, channelId: string, batchId: string, subjectId: string): Promise<void> {

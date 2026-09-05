@@ -101,16 +101,21 @@ describe("MemoryCommand", () => {
   });
 
   it("forgets a specific memory by matching id prefix", async () => {
-    const { engine, repository } = testMemoryEngine();
+    const { engine, repository, extractionQueue } = testMemoryEngine();
     await seedActiveMemory(repository);
+    await extractionQueue.enqueueMany([{
+      guildId: "guild", channelId: "channel", batchId: "batch-1", subjectId: "user",
+      displayName: "User", content: "I like green apples",
+    }], 0);
     const [seeded] = await engine.listUserMemories("guild", "user");
     const store = baseStore();
-    const command = new MemoryCommand(store, new MemberProfileService(engine, null, null), engine);
+    const command = new MemoryCommand(store, new MemberProfileService(engine, null, null), engine, extractionQueue);
     const { context, reply } = makeContext({ subcommand: "forget", id: seeded!.id.slice(0, 8) });
 
     await command.execute(context);
     expect(reply).toHaveBeenCalledWith(expect.stringContaining("Forgot: preference.food.fruit"));
     expect(await engine.listUserMemories("guild", "user")).toHaveLength(0);
+    await expect(extractionQueue.dequeueDue(10, 0)).resolves.toHaveLength(0);
   });
 
   it("forgets everything when all is true", async () => {

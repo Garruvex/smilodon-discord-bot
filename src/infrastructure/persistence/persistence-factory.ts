@@ -100,7 +100,7 @@ export async function createPersistenceServices(
     birthdayStore = new PostgresBirthdayStore(connection.database, guildMemberRegistry);
     reminderStore = new PostgresReminderStore(connection.database);
     roleMenuStore = new PostgresRoleMenuStore(connection.database);
-    memberDataPurger = new PostgresMemberDataPurger(connection.database);
+    memberDataPurger = new PostgresMemberDataPurger(connection.database, personalMemoryExtractionQueueStore);
   } else {
     guildConfigurationProvider = new LocalGuildConfigurationProvider(
       configuration.guildConfigurationDirectory,

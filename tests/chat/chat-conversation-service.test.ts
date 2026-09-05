@@ -173,6 +173,31 @@ describe("ChatConversationService", () => {
     expect(ingestSpy).toHaveBeenCalledWith(expect.objectContaining({ sourceMessageId: "msg-123" }));
   });
 
+  it("runs live memory writes inside the shared per-subject mutation boundary", async () => {
+    const store = baseStore();
+    const provider: ChatProvider = { reply: () => Promise.resolve(response("ok", [{
+      action: "upsert", subjectUserId: "user", topic: "preference",
+      slot: "food.fruit", statement: "likes green apples",
+    }])) };
+    const { engine } = testMemoryEngine();
+    const runForSubject = vi.fn();
+    const coordinator = {
+      runForSubject<T>(guildId: string, subjectId: string, operation: () => Promise<T>): Promise<T> {
+        runForSubject(guildId, subjectId, operation);
+        return operation();
+      },
+    };
+    const service = new ChatConversationService(
+      provider, store, engine, undefined, undefined, undefined, null, null, null, null, null, null,
+      coordinator,
+    );
+
+    await service.run(input("remember this"), (reply) => Promise.resolve(reply.text));
+
+    expect(runForSubject).toHaveBeenCalledWith("guild", "user", expect.any(Function));
+    await expect(engine.listUserMemories("guild", "user")).resolves.toHaveLength(1);
+  });
+
   it("loads confirmed guild knowledge and submits validated candidates after delivery", async () => {
     const store = baseStore();
     let receivedKnowledgeCount = -1;
