@@ -232,6 +232,7 @@ export const guildConfigurationFileSchema = z
             gracePeriodMs: 30_000,
             resumeWhenOccupied: true,
           }),
+        djModeEnabled: z.boolean().default(false),
       })
       .default({
         volume: { default: 75, maximum: 150, buttonStep: 10 },
@@ -241,6 +242,7 @@ export const guildConfigurationFileSchema = z
           gracePeriodMs: 30_000,
           resumeWhenOccupied: true,
         },
+        djModeEnabled: false,
       }),
   })
   .superRefine((configuration, context) => {

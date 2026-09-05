@@ -14,6 +14,7 @@ function context(kind: string): CommandContext {
     } as unknown as ChatInputCommandInteraction,
     logger: { warn: () => undefined } as never,
     responses: {} as never,
+    access: { bypassVoiceChannelCheck: false },
   };
 }
 

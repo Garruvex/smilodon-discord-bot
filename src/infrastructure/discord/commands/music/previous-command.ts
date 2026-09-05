@@ -9,7 +9,7 @@ import {
 } from "../../../../application/chat/tools/music-tool-support.js";
 import type { PlaybackService } from "../../../../application/music/playback-service.js";
 import type { GuildConfigurationProvider } from "../../../../config/guild-configuration-provider.js";
-import { createPlaybackActor, musicPlaybackAccessPolicy } from "./music-command-support.js";
+import { createPlaybackActor, musicPlaybackAccessPolicy, withDjBypass } from "./music-command-support.js";
 
 export class PreviousCommand implements BotCommand {
   public readonly definition = {
@@ -33,7 +33,7 @@ export class PreviousCommand implements BotCommand {
 
   public async execute(context: CommandContext): Promise<void> {
     if (!context.interaction.inCachedGuild()) return;
-    await this.playbackService.previous(createPlaybackActor(context.interaction));
+    await this.playbackService.previous(createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck));
     await context.responses.reply("Playing the previous track.");
   }
 
@@ -43,7 +43,7 @@ export class PreviousCommand implements BotCommand {
     if (!decision.allowed) return { content: musicPermissionDeniedMessage };
     if (musicToolWasCancelled(ctx)) return { content: musicToolTimedOutMessage };
     try {
-      await this.playbackService.previous(ctx.music.actor);
+      await this.playbackService.previous(withDjBypass(ctx.music.actor, decision.bypassVoiceChannelCheck));
       return { content: "Playing the previous track." };
     } catch (error) {
       return { content: formatMusicError(error, "Couldn't go back a track right now.") };

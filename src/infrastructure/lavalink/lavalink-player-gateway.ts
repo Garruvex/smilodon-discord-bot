@@ -1,4 +1,4 @@
-import { ChannelType, type Client } from "discord.js";
+import { ChannelType, PermissionFlagsBits, type Client } from "discord.js";
 import {
   LavalinkManager,
   type Player,
@@ -14,6 +14,7 @@ import {
 import type { Logger } from "pino";
 
 import {
+  MusicChannelAccessError,
   MusicPlayerNotFoundError,
   MusicSearchEmptyError,
 } from "../../application/music/music-errors.js";
@@ -141,6 +142,13 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
 
   public async enqueue(request: EnqueueRequest): Promise<EnqueueResult> {
     const existingPlayer = this.manager.getPlayer(request.guildId);
+    // Only a fresh join needs this — assertSameVoiceChannel (PlaybackService)
+    // already guarantees an existing player's channel can't change here, so
+    // the bot is necessarily already connected to request.voiceChannelId in
+    // that case.
+    if (!existingPlayer) {
+      this.assertBotCanJoinVoiceChannel(request.guildId, request.voiceChannelId);
+    }
     const player = this.manager.createPlayer({
       guildId: request.guildId,
       voiceChannelId: request.voiceChannelId,
@@ -638,6 +646,27 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     const timer = timers.get(guildId);
     if (timer) clearTimeout(timer);
     timers.delete(guildId);
+  }
+
+  // Gives a clear MusicChannelAccessError up front instead of a cryptic
+  // voice-gateway timeout/failure once player.connect() is already underway
+  // — matters most for /play's explicit `channel` option, which can target
+  // any voice channel in the guild, not just one the invoker is standing in.
+  private assertBotCanJoinVoiceChannel(guildId: string, voiceChannelId: string): void {
+    const guild = this.client.guilds.cache.get(guildId);
+    const me = guild?.members.me;
+    const channel = guild?.channels.cache.get(voiceChannelId);
+    if (!me || !channel?.isVoiceBased()) {
+      throw new MusicChannelAccessError();
+    }
+
+    const permissions = channel.permissionsFor(me);
+    const required = channel.type === ChannelType.GuildStageVoice
+      ? [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect]
+      : [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak];
+    if (!permissions?.has(required)) {
+      throw new MusicChannelAccessError();
+    }
   }
 
   private async prepareStageChannel(guildId: string): Promise<void> {

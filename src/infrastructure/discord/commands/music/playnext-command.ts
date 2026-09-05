@@ -35,7 +35,8 @@ export class PlayNextCommand implements BotCommand {
 
     await context.responses.defer();
     const query = context.interaction.options.getString("query", true);
-    const actor = createPlaybackActor(context.interaction);
+    const profile = this.profiles.require(context.interaction.guildId);
+    const actor = createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck);
     const result = await this.playbackService.enqueue(actor, query);
 
     if (
@@ -48,7 +49,6 @@ export class PlayNextCommand implements BotCommand {
       result.queuePosition = 1;
     }
 
-    const profile = this.profiles.require(context.interaction.guildId);
     await context.responses.edit({
       embeds: [createQueuedTrackCard(result, profile.embedColor as `#${string}`)],
     });

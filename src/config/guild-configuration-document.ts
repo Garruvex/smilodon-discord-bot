@@ -71,6 +71,7 @@ export interface UpdateGuildConfigurationInput {
   emptyChannelAction?: "continue" | "pause" | "disconnect";
   emptyChannelGracePeriodMs?: number;
   resumeWhenOccupied?: boolean;
+  djModeEnabled?: boolean;
 }
 
 export interface CreateGuildConfigurationInput {
@@ -161,6 +162,7 @@ export function toGuildConfiguration(parsed: ParsedGuildConfigurationFile, sourc
       emptyChannelAction: parsed.music.emptyChannel.action,
       emptyChannelGracePeriodMs: parsed.music.emptyChannel.gracePeriodMs,
       resumeWhenOccupied: parsed.music.emptyChannel.resumeWhenOccupied,
+      djModeEnabled: parsed.music.djModeEnabled,
     },
     chat: parsed.chat,
     sourceFile,
@@ -209,6 +211,7 @@ export function toGuildConfigurationDocument(configuration: GuildConfiguration):
         gracePeriodMs: configuration.music.emptyChannelGracePeriodMs,
         resumeWhenOccupied: configuration.music.resumeWhenOccupied,
       },
+      djModeEnabled: configuration.music.djModeEnabled,
     },
     chat: configuration.chat,
   });
@@ -292,5 +295,6 @@ export function applyGuildConfigurationUpdate(
   if (input.emptyChannelAction !== undefined) next.music.emptyChannel.action = input.emptyChannelAction;
   if (input.emptyChannelGracePeriodMs !== undefined) next.music.emptyChannel.gracePeriodMs = input.emptyChannelGracePeriodMs;
   if (input.resumeWhenOccupied !== undefined) next.music.emptyChannel.resumeWhenOccupied = input.resumeWhenOccupied;
+  if (input.djModeEnabled !== undefined) next.music.djModeEnabled = input.djModeEnabled;
   return guildConfigurationFileSchema.parse(next);
 }

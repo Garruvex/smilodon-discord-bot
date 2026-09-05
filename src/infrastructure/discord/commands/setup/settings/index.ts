@@ -12,6 +12,7 @@ import {
   contextStatusSetting,
 } from "./channel-context-setting.js";
 import { chatbotSetting } from "./chatbot-setting.js";
+import { djModeSetting } from "./dj-mode-setting.js";
 import { lifecycleSetting } from "./lifecycle-setting.js";
 import { linkFixSetting } from "./link-fix-setting.js";
 import { nsfwSetting } from "./nsfw-setting.js";
@@ -56,7 +57,7 @@ export const settingGroups: readonly SettingGroup[] = [
   {
     name: "music",
     description: "Music panel and playback behavior.",
-    settings: [panelSetting, volumeSetting, lifecycleSetting],
+    settings: [panelSetting, volumeSetting, lifecycleSetting, djModeSetting],
   },
   {
     name: "chat",

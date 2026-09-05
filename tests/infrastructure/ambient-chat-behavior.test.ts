@@ -72,6 +72,7 @@ function profile(overrides: { ambientReplies?: boolean } = {}): GuildConfigurati
       defaultVolume: 75, maximumVolume: 150, volumeButtonStep: 10,
       emptyQueueAction: "disconnect", emptyQueueDelayMs: 120_000,
       emptyChannelAction: "pause", emptyChannelGracePeriodMs: 30_000, resumeWhenOccupied: true,
+      djModeEnabled: false,
     },
     chat: {
       personalityFile: null, personalityAsset: null, examplesFile: null, examplesAsset: null, cooldownSeconds: 30,

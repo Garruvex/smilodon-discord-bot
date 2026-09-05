@@ -70,7 +70,12 @@ export class CommandDispatcher {
       userId: interaction.user.id,
     });
     try {
-      await command.execute({ interaction, logger: commandLogger, responses });
+      await command.execute({
+        interaction,
+        logger: commandLogger,
+        responses,
+        access: { bypassVoiceChannelCheck: accessDecision.bypassVoiceChannelCheck },
+      });
     } catch (error) {
       commandLogger.error({ err: error }, "Command execution failed");
 

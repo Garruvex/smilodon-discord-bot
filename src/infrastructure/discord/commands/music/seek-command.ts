@@ -64,7 +64,8 @@ export class SeekCommand implements BotCommand {
       return;
     }
 
-    const track = await this.playbackService.seek(createPlaybackActor(context.interaction), positionMs);
+    const actor = createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck);
+    const track = await this.playbackService.seek(actor, positionMs);
     await context.responses.reply(`Seeked to **${formatDuration(positionMs)}** in **${track.title}**.`);
   }
 }
