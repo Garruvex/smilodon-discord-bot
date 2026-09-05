@@ -38,6 +38,9 @@ export interface ChannelOptionMetadata extends BaseOptionMetadata {
   // than a general channel-types array) since no other channel type is
   // used anywhere; extend if that changes.
   guildTextOnly?: boolean;
+  // Restricts the picker to voice/stage channels — used by /play's optional
+  // target-channel option.
+  voiceOnly?: boolean;
 }
 
 export interface RoleOptionMetadata extends BaseOptionMetadata {

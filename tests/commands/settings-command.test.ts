@@ -68,6 +68,7 @@ function profile(): GuildConfiguration {
       emptyChannelAction: "pause",
       emptyChannelGracePeriodMs: 30_000,
       resumeWhenOccupied: true,
+      djModeEnabled: false,
     },
     chat: {
       personalityFile: null,

@@ -23,7 +23,7 @@ function hasAnyRole(memberRoleIds: ReadonlySet<string>, configuredRoleIds: Reado
   return false;
 }
 
-function resolveRoleGroup(
+export function resolveRoleGroup(
   guildConfiguration: GuildConfiguration,
   groupName: "botAdministrator" | "musicController" | "chatbot",
 ): ReadonlySet<string> {
@@ -32,6 +32,20 @@ function resolveRoleGroup(
     return new Set([...guildConfiguration.roles.chatbot, ...guildConfiguration.roles.botAdministrator]);
   }
   return new Set([...guildConfiguration.roles.musicController, ...guildConfiguration.roles.botAdministrator]);
+}
+
+// The single canonical "is this member a DJ" check — true only when the
+// guild has DJ mode on and the member holds the musicController or
+// botAdministrator role. Used by AccessPolicyEngine (below) to populate
+// AccessDecision.bypassVoiceChannelCheck for every slash command and
+// chat-tool call, and directly by ControlChannelService's bespoke
+// button/text-request gate, which doesn't go through AccessPolicyEngine.
+export function hasMusicDjPrivilege(
+  memberRoleIds: ReadonlySet<string>,
+  guildConfiguration: GuildConfiguration,
+): boolean {
+  if (!guildConfiguration.music.djModeEnabled) return false;
+  return hasAnyRole(memberRoleIds, resolveRoleGroup(guildConfiguration, "musicController"));
 }
 
 function matchesRequiredRoleGroups(

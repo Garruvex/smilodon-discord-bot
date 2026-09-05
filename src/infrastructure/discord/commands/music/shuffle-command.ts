@@ -9,7 +9,7 @@ import {
 } from "../../../../application/chat/tools/music-tool-support.js";
 import type { PlaybackService } from "../../../../application/music/playback-service.js";
 import type { GuildConfigurationProvider } from "../../../../config/guild-configuration-provider.js";
-import { createPlaybackActor, musicPlaybackAccessPolicy } from "./music-command-support.js";
+import { createPlaybackActor, musicPlaybackAccessPolicy, withDjBypass } from "./music-command-support.js";
 
 export class ShuffleCommand implements BotCommand {
   public readonly definition = {
@@ -33,7 +33,7 @@ export class ShuffleCommand implements BotCommand {
 
   public async execute(context: CommandContext): Promise<void> {
     if (!context.interaction.inCachedGuild()) return;
-    await this.playbackService.shuffle(createPlaybackActor(context.interaction));
+    await this.playbackService.shuffle(createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck));
     await context.responses.reply("The queue was shuffled.");
   }
 
@@ -43,7 +43,7 @@ export class ShuffleCommand implements BotCommand {
     if (!decision.allowed) return { content: musicPermissionDeniedMessage };
     if (musicToolWasCancelled(ctx)) return { content: musicToolTimedOutMessage };
     try {
-      await this.playbackService.shuffle(ctx.music.actor);
+      await this.playbackService.shuffle(withDjBypass(ctx.music.actor, decision.bypassVoiceChannelCheck));
       return { content: "The queue was shuffled." };
     } catch (error) {
       return { content: formatMusicError(error, "Couldn't shuffle the queue right now.") };

@@ -20,7 +20,8 @@ export class MoveCommand implements BotCommand {
     if (!context.interaction.inCachedGuild()) return;
     const from = context.interaction.options.getInteger("track", true);
     const to = context.interaction.options.getInteger("position", true);
-    const track = await this.playbackService.moveQueueTrack(createPlaybackActor(context.interaction), from, to);
+    const actor = createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck);
+    const track = await this.playbackService.moveQueueTrack(actor, from, to);
     await context.responses.reply(`Moved **${track.title}** to position **${to}**.`);
   }
 }

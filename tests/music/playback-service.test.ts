@@ -108,12 +108,13 @@ function createGateway(): MusicPlayerGateway {
   };
 }
 
-function createActor(voiceChannelId: string | null = "voice-id"): PlaybackActor {
+function createActor(voiceChannelId: string | null = "voice-id", bypassVoiceChannelCheck = false): PlaybackActor {
   return {
     guildId: "guild-id",
     textChannelId: "text-id",
     userId: "user-id",
     voiceChannelId,
+    bypassVoiceChannelCheck,
   };
 }
 
@@ -149,6 +150,38 @@ describe("PlaybackService", () => {
     const service = new PlaybackService(gateway);
 
     await expect(service.pause(createActor())).rejects.toBeInstanceOf(
+      MusicVoiceChannelMismatchError,
+    );
+  });
+
+  it("lets a bypass-flagged actor control a player from another voice channel", async () => {
+    const gateway = createGateway();
+    gateway.getVoiceChannelId = vi.fn(() => "different-voice-id");
+    const service = new PlaybackService(gateway);
+
+    await service.pause(createActor("voice-id", true));
+
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    expect(gateway.pause).toHaveBeenCalledWith("guild-id");
+  });
+
+  it("lets a bypass-flagged actor control a player while not in any voice channel", async () => {
+    const gateway = createGateway();
+    gateway.getVoiceChannelId = vi.fn(() => "different-voice-id");
+    const service = new PlaybackService(gateway);
+
+    await service.pause(createActor(null, true));
+
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    expect(gateway.pause).toHaveBeenCalledWith("guild-id");
+  });
+
+  it("still enforces the same-channel check for enqueue even when bypass-flagged", async () => {
+    const gateway = createGateway();
+    gateway.getVoiceChannelId = vi.fn(() => "different-voice-id");
+    const service = new PlaybackService(gateway);
+
+    await expect(service.enqueue(createActor("voice-id", true), "song")).rejects.toBeInstanceOf(
       MusicVoiceChannelMismatchError,
     );
   });

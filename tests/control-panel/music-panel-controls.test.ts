@@ -13,6 +13,7 @@ const actor: PlaybackActor = {
   textChannelId: "234567890123456789",
   userId: "345678901234567890",
   voiceChannelId: null,
+  bypassVoiceChannelCheck: false,
 };
 
 const profile = {

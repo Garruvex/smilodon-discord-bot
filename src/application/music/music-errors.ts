@@ -29,6 +29,12 @@ export class MusicVoiceChannelMismatchError extends MusicError {
   }
 }
 
+export class MusicChannelAccessError extends MusicError {
+  public constructor() {
+    super("I don't have permission to join that voice channel — I need View Channel, Connect, and Speak there.");
+  }
+}
+
 export class MusicRateLimitError extends MusicError {
   public constructor(remainingSeconds: number) {
     super(

@@ -9,7 +9,7 @@ import {
 } from "../../../../application/chat/tools/music-tool-support.js";
 import type { PlaybackService } from "../../../../application/music/playback-service.js";
 import type { GuildConfigurationProvider } from "../../../../config/guild-configuration-provider.js";
-import { createPlaybackActor, musicPlaybackAccessPolicy } from "./music-command-support.js";
+import { createPlaybackActor, musicPlaybackAccessPolicy, withDjBypass } from "./music-command-support.js";
 
 interface SetMusicVolumeToolArgs {
   volume: number;
@@ -47,7 +47,11 @@ export class VolumeCommand implements BotCommand {
     const profile = this.profiles.require(context.interaction.guildId);
     const requested = context.interaction.options.getInteger("level", true);
     const level = Math.min(requested, profile.music.maximumVolume);
-    await this.playbackService.setVolume(createPlaybackActor(context.interaction), level, profile.music.maximumVolume);
+    await this.playbackService.setVolume(
+      createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck),
+      level,
+      profile.music.maximumVolume,
+    );
     await context.responses.reply(`Volume set to **${level}%**.`);
   }
 
@@ -59,7 +63,7 @@ export class VolumeCommand implements BotCommand {
     const volume = Math.min(Math.max(Math.round(args.volume), 0), maximumVolume);
     if (musicToolWasCancelled(ctx)) return { content: musicToolTimedOutMessage };
     try {
-      await this.playbackService.setVolume(ctx.music.actor, volume, maximumVolume);
+      await this.playbackService.setVolume(withDjBypass(ctx.music.actor, decision.bypassVoiceChannelCheck), volume, maximumVolume);
       return { content: `Volume set to ${volume}.` };
     } catch (error) {
       return { content: formatMusicError(error, "Couldn't change the volume right now.") };

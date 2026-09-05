@@ -109,6 +109,12 @@ export interface GuildMusicConfiguration {
   emptyChannelAction: "continue" | "pause" | "disconnect";
   emptyChannelGracePeriodMs: number;
   resumeWhenOccupied: boolean;
+  // Off by default. When on, a member holding the musicController (or
+  // botAdministrator) role can control playback (skip/pause/volume/stop/
+  // etc.) without being physically present in the bot's voice channel — see
+  // PlaybackService.assertControllablePlayer and
+  // music-command-support.ts's DJ-privilege check.
+  djModeEnabled: boolean;
 }
 
 export type ProgressBarStyle = "standard" | "yohta" | "custom" | "none";

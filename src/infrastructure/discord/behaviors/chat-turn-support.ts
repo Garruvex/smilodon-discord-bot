@@ -93,7 +93,13 @@ export class ChatTurnSupport {
     const musicTextChannelId = profile.channels.controlPanel ?? message.channelId;
     const member = message.member;
     return {
-      actor: createPlaybackActorFromMember(message.guildId, musicTextChannelId, member),
+      // bypassVoiceChannelCheck is a placeholder here — false, the safe
+      // default — because DJ-mode eligibility depends on live role state,
+      // just like the role gate below. Every music tool call re-derives the
+      // real value from evaluateMusicToolAccess's fresh decision right
+      // before it touches PlaybackService (see e.g. pause-command.ts's
+      // executeAsTool), rather than trusting this turn-start snapshot.
+      actor: createPlaybackActorFromMember(message.guildId, musicTextChannelId, member, false),
       // Closes over the live `member` so each tool call (see
       // ChatToolContext.music's own comment) reads current roles/permissions
       // at call time — this can span multiple LLM round-trips within one

@@ -19,6 +19,12 @@ export interface PlaybackActor {
   textChannelId: string;
   userId: string;
   voiceChannelId: string | null;
+  // True only when DJ mode is on for the guild and this actor holds the
+  // musicController/botAdministrator role — see music-command-support.ts.
+  // Lets a privileged member control an existing player (skip/pause/volume/
+  // etc.) without being physically in its voice channel. Never applies to
+  // enqueue(), which always requires the target channel to match.
+  bypassVoiceChannelCheck: boolean;
 }
 
 export class PlaybackService {
@@ -160,6 +166,7 @@ export class PlaybackService {
       throw new MusicPlayerNotFoundError();
     }
 
+    if (actor.bypassVoiceChannelCheck) return;
     const memberVoiceChannelId = this.requireVoiceChannel(actor);
     this.assertSameVoiceChannel(actor.guildId, memberVoiceChannelId);
   }

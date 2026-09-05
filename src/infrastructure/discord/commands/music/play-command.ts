@@ -1,3 +1,5 @@
+import { PermissionFlagsBits } from "discord.js";
+
 import { CommandModule, type BotCommand, type ChatToolBinding, type CommandContext } from "../../../../application/commands/command.js";
 import type { ChatToolContext, ChatToolResult } from "../../../../application/chat/tools/chat-tool.js";
 import {
@@ -11,6 +13,7 @@ import type { PlaybackService } from "../../../../application/music/playback-ser
 import {
   createPlaybackActor,
   musicPlaybackAccessPolicy,
+  withDjBypass,
 } from "./music-command-support.js";
 import type { GuildConfigurationProvider } from "../../../../config/guild-configuration-provider.js";
 import {
@@ -28,6 +31,11 @@ export class PlayCommand implements BotCommand {
     description: "Plays a track or adds it to the queue.",
     options: [
       { type: "string", name: "query", description: "A song name or supported URL.", required: true },
+      {
+        type: "channel", name: "channel",
+        description: "Voice channel to play in (defaults to your current voice channel).",
+        voiceOnly: true,
+      },
     ],
   } satisfies BotCommand["definition"];
 
@@ -64,14 +72,27 @@ export class PlayCommand implements BotCommand {
       return;
     }
 
+    const targetChannelId = context.interaction.options.getChannel("channel")?.id;
+    if (targetChannelId) {
+      // The channel picker already hides channels the invoking member can't
+      // see, but that's a client-side courtesy, not a server-side guarantee
+      // — don't let the bot join a channel on behalf of a member who
+      // couldn't get in there themselves.
+      const memberPermissions = context.interaction.member.permissionsIn(targetChannelId);
+      if (!memberPermissions.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect])) {
+        await context.responses.reply("You don't have access to that voice channel.");
+        return;
+      }
+    }
+
     await context.responses.defer();
     const query = context.interaction.options.getString("query", true);
+    const profile = this.profiles.require(context.interaction.guildId);
     const result = await this.playbackService.enqueue(
-      createPlaybackActor(context.interaction),
+      createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck, targetChannelId),
       query,
     );
 
-    const profile = this.profiles.require(context.interaction.guildId);
     await context.responses.edit({
       embeds: [createQueuedTrackCard(result, profile.embedColor as `#${string}`)],
     });
@@ -84,7 +105,8 @@ export class PlayCommand implements BotCommand {
     if (!decision.allowed) return { content: musicPermissionDeniedMessage };
     if (musicToolWasCancelled(ctx)) return { content: musicToolTimedOutMessage };
     try {
-      const result = await this.playbackService.enqueue(ctx.music.actor, args.query);
+      const actor = withDjBypass(ctx.music.actor, decision.bypassVoiceChannelCheck);
+      const result = await this.playbackService.enqueue(actor, args.query);
       return {
         content: JSON.stringify({
           title: result.firstTrack.title,

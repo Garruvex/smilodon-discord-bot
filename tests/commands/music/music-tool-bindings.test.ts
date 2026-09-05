@@ -58,7 +58,7 @@ function contextWithMusic(roleIds: readonly string[] = ["role-controller"]): Cha
     channelIsNsfw: false,
     isOwner: false,
     music: {
-      actor: { guildId: "guild-1", textChannelId: "channel-1", userId: "user-1", voiceChannelId: null },
+      actor: { guildId: "guild-1", textChannelId: "channel-1", userId: "user-1", voiceChannelId: null, bypassVoiceChannelCheck: false },
       resolveAccessSubjectFields: resolveAccessSubjectFields(roleIds),
       volumeMaximum: 150,
       musicControllerRoleIds: new Set(["role-controller"]),

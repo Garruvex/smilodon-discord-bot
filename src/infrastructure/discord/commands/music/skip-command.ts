@@ -9,7 +9,7 @@ import {
 } from "../../../../application/chat/tools/music-tool-support.js";
 import type { PlaybackService } from "../../../../application/music/playback-service.js";
 import type { GuildConfigurationProvider } from "../../../../config/guild-configuration-provider.js";
-import { createPlaybackActor, musicPlaybackAccessPolicy } from "./music-command-support.js";
+import { createPlaybackActor, musicPlaybackAccessPolicy, withDjBypass } from "./music-command-support.js";
 
 export class SkipCommand implements BotCommand {
   public readonly definition = {
@@ -33,7 +33,7 @@ export class SkipCommand implements BotCommand {
 
   public async execute(context: CommandContext): Promise<void> {
     if (!context.interaction.inCachedGuild()) return;
-    await this.playbackService.skip(createPlaybackActor(context.interaction));
+    await this.playbackService.skip(createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck));
     await context.responses.reply("Skipped the current track.");
   }
 
@@ -43,7 +43,7 @@ export class SkipCommand implements BotCommand {
     if (!decision.allowed) return { content: musicPermissionDeniedMessage };
     if (musicToolWasCancelled(ctx)) return { content: musicToolTimedOutMessage };
     try {
-      await this.playbackService.skip(ctx.music.actor);
+      await this.playbackService.skip(withDjBypass(ctx.music.actor, decision.bypassVoiceChannelCheck));
       return { content: "Skipped the current track." };
     } catch (error) {
       return { content: formatMusicError(error, "Couldn't skip the track right now.") };

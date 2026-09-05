@@ -15,6 +15,7 @@ import { existsSync } from "node:fs";
 import { extname, resolve } from "node:path";
 import type { Logger } from "pino";
 
+import { hasMusicDjPrivilege } from "../access/access-rules.js";
 import { KeyedSerialQueue } from "../concurrency/keyed-serial-queue.js";
 import type { PlaybackService } from "../music/playback-service.js";
 import type { MusicEventBus } from "../music/music-event-bus.js";
@@ -189,6 +190,7 @@ export class ControlChannelService {
           textChannelId: message.channelId,
           userId: message.author.id,
           voiceChannelId: message.member.voice.channelId,
+          bypassVoiceChannelCheck: hasMusicDjPrivilege(new Set(message.member.roles.cache.keys()), profile),
         },
         query,
       );
@@ -282,6 +284,7 @@ export class ControlChannelService {
       textChannelId: interaction.channelId,
       userId: interaction.user.id,
       voiceChannelId: interaction.member.voice.channelId,
+      bypassVoiceChannelCheck: hasMusicDjPrivilege(new Set(interaction.member.roles.cache.keys()), profile),
     };
 
     let staleRecovered = false;

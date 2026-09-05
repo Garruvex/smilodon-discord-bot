@@ -101,6 +101,7 @@ function guildConfiguration(): GuildConfiguration {
       emptyChannelAction: "pause",
       emptyChannelGracePeriodMs: 30_000,
       resumeWhenOccupied: true,
+      djModeEnabled: false,
     },
     chat: {
       personalityFile: null,
@@ -202,7 +203,7 @@ describe("AccessPolicyService", () => {
         CommandModule.Bootstrap,
         interaction([], ownerId),
       ),
-    ).toEqual({ allowed: true });
+    ).toEqual({ allowed: true, bypassVoiceChannelCheck: false });
   });
 
   it("allows a configured music controller", () => {
@@ -213,7 +214,7 @@ describe("AccessPolicyService", () => {
 
     expect(
       service.evaluate(controllerPolicy, CommandModule.Music, interaction([musicRoleId])),
-    ).toEqual({ allowed: true });
+    ).toEqual({ allowed: true, bypassVoiceChannelCheck: false });
   });
 
   it("allows a bot administrator through music-controller inheritance", () => {
@@ -228,7 +229,7 @@ describe("AccessPolicyService", () => {
         CommandModule.Music,
         interaction([administratorRoleId]),
       ),
-    ).toEqual({ allowed: true });
+    ).toEqual({ allowed: true, bypassVoiceChannelCheck: false });
   });
 
   it("denies a restricted member even when they are a controller", () => {
@@ -261,7 +262,19 @@ describe("AccessPolicyService", () => {
         CommandModule.Music,
         interaction([restrictedRoleId], ownerId),
       ),
-    ).toEqual({ allowed: true });
+    ).toEqual({ allowed: true, bypassVoiceChannelCheck: false });
+  });
+
+  it("grants the DJ-mode voice-channel bypass to a musicController member when DJ mode is on", () => {
+    const configuration = guildConfiguration();
+    const service = new AccessPolicyService(
+      applicationConfiguration(),
+      provider({ ...configuration, music: { ...configuration.music, djModeEnabled: true } }),
+    );
+
+    expect(
+      service.evaluate(controllerPolicy, CommandModule.Music, interaction([musicRoleId])),
+    ).toEqual({ allowed: true, bypassVoiceChannelCheck: true });
   });
 
   it("denies music commands outside configured music channels", () => {

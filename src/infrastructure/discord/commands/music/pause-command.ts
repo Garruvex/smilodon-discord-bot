@@ -12,6 +12,7 @@ import type { GuildConfigurationProvider } from "../../../../config/guild-config
 import {
   createPlaybackActor,
   musicPlaybackAccessPolicy,
+  withDjBypass,
 } from "./music-command-support.js";
 
 export class PauseCommand implements BotCommand {
@@ -41,7 +42,7 @@ export class PauseCommand implements BotCommand {
       return;
     }
 
-    await this.playbackService.pause(createPlaybackActor(context.interaction));
+    await this.playbackService.pause(createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck));
     await context.responses.reply("Playback paused.");
   }
 
@@ -51,7 +52,7 @@ export class PauseCommand implements BotCommand {
     if (!decision.allowed) return { content: musicPermissionDeniedMessage };
     if (musicToolWasCancelled(ctx)) return { content: musicToolTimedOutMessage };
     try {
-      await this.playbackService.pause(ctx.music.actor);
+      await this.playbackService.pause(withDjBypass(ctx.music.actor, decision.bypassVoiceChannelCheck));
       return { content: "Playback paused." };
     } catch (error) {
       return { content: formatMusicError(error, "Couldn't pause playback right now.") };

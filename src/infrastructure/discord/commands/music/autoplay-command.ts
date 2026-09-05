@@ -11,7 +11,8 @@ export class AutoplayCommand implements BotCommand {
   public constructor(private readonly playbackService: PlaybackService) {}
   public async execute(context: CommandContext): Promise<void> {
     if (!context.interaction.inCachedGuild()) return;
-    const enabled = await this.playbackService.toggleAutoQueue(createPlaybackActor(context.interaction));
+    const actor = createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck);
+    const enabled = await this.playbackService.toggleAutoQueue(actor);
     await context.responses.reply(`Autoqueue ${enabled ? "enabled" : "disabled"}.`);
   }
 }

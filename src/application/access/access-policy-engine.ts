@@ -1,9 +1,9 @@
 import type { GuildConfiguration } from "../../config/guild-configuration.js";
-import type { CommandModule } from "../commands/command.js";
+import { CommandModule } from "../commands/command.js";
 import type { AccessDecision } from "../../domain/access/access-decision.js";
 import type { CommandAccessPolicy } from "../../domain/access/access-policy.js";
 import type { AccessRule, AccessSubject } from "../../domain/access/access-rule.js";
-import { defaultAccessRules } from "./access-rules.js";
+import { defaultAccessRules, hasMusicDjPrivilege } from "./access-rules.js";
 
 // Runs an ordered, fixed list of AccessRules against a subject built from
 // either a live Discord interaction (AccessPolicyService) or a chat-tool
@@ -24,6 +24,15 @@ export class AccessPolicyEngine {
       const decision = rule(subject, policy, commandModule, guildConfiguration);
       if (decision) return decision;
     }
-    return { allowed: true };
+
+    // DJ mode only ever relaxes the Music module's voice-channel requirement
+    // (see PlaybackService.assertControllablePlayer) — computed here, once,
+    // as the last step of the same evaluation that already checked the
+    // subject's roles, so callers never re-derive it themselves.
+    const bypassVoiceChannelCheck =
+      commandModule === CommandModule.Music && guildConfiguration
+        ? hasMusicDjPrivilege(new Set(subject.roleIds), guildConfiguration)
+        : false;
+    return { allowed: true, bypassVoiceChannelCheck };
   }
 }
