@@ -91,14 +91,18 @@ plugins:
 
 lavalink:
   plugins:
-    - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.2"
-    # Pinned snapshot builds get pruned from the snapshots repo over time and
-    # start 404ing (FileNotFoundException on startup) — if that happens again,
-    # find a current commit hash at https://maven.lavalink.dev/snapshots and
-    # swap it back in below.
-    # - dependency: "dev.lavalink.youtube:youtube-plugin:42cc5a2042f31dba3fdc523618ef380a1a8bb79d"
-    #   snapshot: true
-    #   repository: "https://maven.lavalink.dev/snapshots"
+    # The 1.18.2 stable release fails on every YouTube client
+    # (AllClientsFailedException: bot-check/login/format errors on
+    # TVHTML5/TVHTML5_SIMPLY/WEB/ANDROID_VR/ANDROID/WEB_EMBEDDED_PLAYER/MWEB)
+    # — YouTube breaks faster than stable releases ship fixes, so this stays
+    # pinned to a snapshot build. Pinned snapshot builds do get pruned from
+    # the snapshots repo over time and start 404ing (FileNotFoundException on
+    # startup); if that happens, check maven-metadata.xml for the current
+    # <latest> hash and swap it in below:
+    # curl -s https://maven.lavalink.dev/snapshots/dev/lavalink/youtube/youtube-plugin/maven-metadata.xml
+    - dependency: "dev.lavalink.youtube:youtube-plugin:f45bbb7aebfcbc1c553769e04af6cd43afa8b7c3"
+      snapshot: true
+      repository: "https://maven.lavalink.dev/snapshots"
     - dependency: "com.github.topi314.lavasrc:lavasrc-plugin:4.8.3"
       snapshot: false
   pluginsDir: "./plugins"
