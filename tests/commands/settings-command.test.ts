@@ -69,6 +69,7 @@ function profile(): GuildConfiguration {
       emptyChannelGracePeriodMs: 30_000,
       resumeWhenOccupied: true,
       djModeEnabled: false,
+    openQueueRequestsEnabled: false,
     },
     chat: {
       personalityFile: null,

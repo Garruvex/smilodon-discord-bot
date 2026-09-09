@@ -115,6 +115,15 @@ export interface GuildMusicConfiguration {
   // PlaybackService.assertControllablePlayer and
   // music-command-support.ts's DJ-privilege check.
   djModeEnabled: boolean;
+  // Off by default (abuse risk: opening this up lets anyone flood the
+  // queue from outside the bot's channel). When on: (a) any non-restricted
+  // member — not just musicController/botAdministrator — may type song
+  // requests in the control panel channel (button controls still require
+  // the controller role regardless of this setting); and (b) enqueueing a
+  // track (/play, the play_music chat tool, and panel text requests) no
+  // longer requires the requester to be in a voice channel, as long as the
+  // bot already has an active player — see PlaybackService.enqueue.
+  openQueueRequestsEnabled: boolean;
 }
 
 export type ProgressBarStyle = "standard" | "yohta" | "custom" | "none";

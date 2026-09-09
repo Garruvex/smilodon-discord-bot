@@ -18,7 +18,7 @@ export class SkipToCommand implements BotCommand {
   public async execute(context: CommandContext): Promise<void> {
     if (!context.interaction.inCachedGuild()) return;
     const position = context.interaction.options.getInteger("position", true);
-    const actor = createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck);
+    const actor = createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck, context.access.allowQueueWithoutVoiceChannel);
     const track = await this.playbackService.skipTo(actor, position);
     await context.responses.reply(`Skipped to **${track.title}** — ${track.author}.`);
   }

@@ -33,7 +33,7 @@ export class PreviousCommand implements BotCommand {
 
   public async execute(context: CommandContext): Promise<void> {
     if (!context.interaction.inCachedGuild()) return;
-    await this.playbackService.previous(createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck));
+    await this.playbackService.previous(createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck, context.access.allowQueueWithoutVoiceChannel));
     await context.responses.reply("Playing the previous track.");
   }
 
@@ -43,7 +43,7 @@ export class PreviousCommand implements BotCommand {
     if (!decision.allowed) return { content: musicPermissionDeniedMessage };
     if (musicToolWasCancelled(ctx)) return { content: musicToolTimedOutMessage };
     try {
-      await this.playbackService.previous(withDjBypass(ctx.music.actor, decision.bypassVoiceChannelCheck));
+      await this.playbackService.previous(withDjBypass(ctx.music.actor, decision.bypassVoiceChannelCheck, decision.allowQueueWithoutVoiceChannel));
       return { content: "Playing the previous track." };
     } catch (error) {
       return { content: formatMusicError(error, "Couldn't go back a track right now.") };

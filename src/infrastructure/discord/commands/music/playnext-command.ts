@@ -36,7 +36,7 @@ export class PlayNextCommand implements BotCommand {
     await context.responses.defer();
     const query = context.interaction.options.getString("query", true);
     const profile = this.profiles.require(context.interaction.guildId);
-    const actor = createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck);
+    const actor = createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck, context.access.allowQueueWithoutVoiceChannel);
     const result = await this.playbackService.enqueue(actor, query);
 
     if (

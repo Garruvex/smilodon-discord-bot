@@ -71,6 +71,7 @@ function guildConfiguration(overrides: Partial<GuildConfiguration> = {}): GuildC
       emptyQueueAction: "disconnect", emptyQueueDelayMs: 120_000,
       emptyChannelAction: "pause", emptyChannelGracePeriodMs: 30_000, resumeWhenOccupied: true,
       djModeEnabled: false,
+    openQueueRequestsEnabled: false,
     },
     chat: {
       personalityFile: null, personalityAsset: null, examplesFile: null, examplesAsset: null,
@@ -93,7 +94,7 @@ describe("AccessPolicyEngine (standalone AccessSubject)", () => {
   it("allows a subject with the required role group in a configured, feature-enabled guild", () => {
     const engine = new AccessPolicyEngine();
     expect(engine.evaluate(subject(), musicPolicy, CommandModule.Music, guildConfiguration()))
-      .toEqual({ allowed: true, bypassVoiceChannelCheck: false });
+      .toEqual({ allowed: true, bypassVoiceChannelCheck: false, allowQueueWithoutVoiceChannel: false });
   });
 
   it("grants the DJ-mode voice-channel bypass to a musicController member when DJ mode is on", () => {
@@ -102,7 +103,7 @@ describe("AccessPolicyEngine (standalone AccessSubject)", () => {
       music: { ...guildConfiguration().music, djModeEnabled: true },
     });
     expect(engine.evaluate(subject(), musicPolicy, CommandModule.Music, configuration))
-      .toEqual({ allowed: true, bypassVoiceChannelCheck: true });
+      .toEqual({ allowed: true, bypassVoiceChannelCheck: true, allowQueueWithoutVoiceChannel: false });
   });
 
   it("withholds the DJ-mode bypass from a non-musicController member even when DJ mode is on", () => {
@@ -113,7 +114,7 @@ describe("AccessPolicyEngine (standalone AccessSubject)", () => {
     });
     const policy = { ...publicAccessPolicy, roles: { match: RoleMatchMode.None, requiredGroups: [] as const } };
     expect(engine.evaluate(subject(), policy, CommandModule.Music, configuration))
-      .toEqual({ allowed: true, bypassVoiceChannelCheck: false });
+      .toEqual({ allowed: true, bypassVoiceChannelCheck: false, allowQueueWithoutVoiceChannel: false });
   });
 
   it("never grants the bypass outside the Music module, even with DJ mode on", () => {
@@ -123,7 +124,7 @@ describe("AccessPolicyEngine (standalone AccessSubject)", () => {
       features: { ...guildConfiguration().features, common: true },
     });
     expect(engine.evaluate(subject(), musicPolicy, CommandModule.Common, configuration))
-      .toEqual({ allowed: true, bypassVoiceChannelCheck: false });
+      .toEqual({ allowed: true, bypassVoiceChannelCheck: false, allowQueueWithoutVoiceChannel: false });
   });
 
   it("denies in an unconfigured guild unless the policy allows it", () => {

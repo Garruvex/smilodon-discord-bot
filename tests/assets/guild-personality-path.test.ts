@@ -63,6 +63,7 @@ function profile(overrides: Partial<GuildConfiguration["chat"]> = {}): GuildConf
       emptyChannelGracePeriodMs: 30_000,
       resumeWhenOccupied: true,
       djModeEnabled: false,
+    openQueueRequestsEnabled: false,
     },
     chat: {
       personalityFile: null,

@@ -33,6 +33,14 @@ export class AccessPolicyEngine {
       commandModule === CommandModule.Music && guildConfiguration
         ? hasMusicDjPrivilege(new Set(subject.roleIds), guildConfiguration)
         : false;
-    return { allowed: true, bypassVoiceChannelCheck };
+    // Open queue requests needs no role check — restrictedRoleRule above
+    // already filtered out anyone who shouldn't reach this point, and the
+    // setting is meant to apply to any remaining (i.e. non-restricted)
+    // member, not just musicController/botAdministrator.
+    const allowQueueWithoutVoiceChannel =
+      commandModule === CommandModule.Music && guildConfiguration
+        ? guildConfiguration.music.openQueueRequestsEnabled
+        : false;
+    return { allowed: true, bypassVoiceChannelCheck, allowQueueWithoutVoiceChannel };
   }
 }

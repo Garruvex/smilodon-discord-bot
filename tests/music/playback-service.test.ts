@@ -108,13 +108,18 @@ function createGateway(): MusicPlayerGateway {
   };
 }
 
-function createActor(voiceChannelId: string | null = "voice-id", bypassVoiceChannelCheck = false): PlaybackActor {
+function createActor(
+  voiceChannelId: string | null = "voice-id",
+  bypassVoiceChannelCheck = false,
+  allowQueueWithoutVoiceChannel = false,
+): PlaybackActor {
   return {
     guildId: "guild-id",
     textChannelId: "text-id",
     userId: "user-id",
     voiceChannelId,
     bypassVoiceChannelCheck,
+    allowQueueWithoutVoiceChannel,
   };
 }
 

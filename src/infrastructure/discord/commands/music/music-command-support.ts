@@ -14,6 +14,7 @@ export { musicPlaybackAccessPolicy } from "../../../../application/music/music-a
 export function createPlaybackActor(
   interaction: ChatInputCommandInteraction<"cached">,
   bypassVoiceChannelCheck: boolean,
+  allowQueueWithoutVoiceChannel: boolean,
   voiceChannelIdOverride?: string,
 ): PlaybackActor {
   return {
@@ -22,6 +23,7 @@ export function createPlaybackActor(
     userId: interaction.user.id,
     voiceChannelId: voiceChannelIdOverride ?? interaction.member.voice.channelId,
     bypassVoiceChannelCheck,
+    allowQueueWithoutVoiceChannel,
   };
 }
 
@@ -33,6 +35,7 @@ export function createPlaybackActorFromMember(
   textChannelId: string,
   member: GuildMember,
   bypassVoiceChannelCheck: boolean,
+  allowQueueWithoutVoiceChannel: boolean,
 ): PlaybackActor {
   return {
     guildId,
@@ -40,16 +43,22 @@ export function createPlaybackActorFromMember(
     userId: member.id,
     voiceChannelId: member.voice.channelId,
     bypassVoiceChannelCheck,
+    allowQueueWithoutVoiceChannel,
   };
 }
 
 // A chat-tool call's ChatToolContext.music.actor is a turn-start snapshot
 // (see chat-turn-support.ts's resolveMusicActor) whose bypassVoiceChannelCheck
-// is always false. Every mutating tool binding calls this right after its
-// own evaluateMusicToolAccess() check to apply that call's live decision
-// instead, so DJ-mode eligibility can't go stale across a multi-tool-call turn.
-export function withDjBypass(actor: PlaybackActor, bypassVoiceChannelCheck: boolean): PlaybackActor {
-  return { ...actor, bypassVoiceChannelCheck };
+// and allowQueueWithoutVoiceChannel are always false. Every mutating tool
+// binding calls this right after its own evaluateMusicToolAccess() check to
+// apply that call's live decision instead, so DJ-mode/open-queue eligibility
+// can't go stale across a multi-tool-call turn.
+export function withDjBypass(
+  actor: PlaybackActor,
+  bypassVoiceChannelCheck: boolean,
+  allowQueueWithoutVoiceChannel: boolean,
+): PlaybackActor {
+  return { ...actor, bypassVoiceChannelCheck, allowQueueWithoutVoiceChannel };
 }
 
 // Narrower musicController/botAdministrator role check, same semantics as

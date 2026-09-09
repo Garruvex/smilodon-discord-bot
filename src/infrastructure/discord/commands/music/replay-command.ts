@@ -14,7 +14,7 @@ export class ReplayCommand implements BotCommand {
 
   public async execute(context: CommandContext): Promise<void> {
     if (!context.interaction.inCachedGuild()) return;
-    const actor = createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck);
+    const actor = createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck, context.access.allowQueueWithoutVoiceChannel);
     const track = await this.playbackService.replay(actor);
     await context.responses.reply(`Replaying **${track.title}** — ${track.author}.`);
   }

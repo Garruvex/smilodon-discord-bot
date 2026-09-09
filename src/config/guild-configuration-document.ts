@@ -72,6 +72,7 @@ export interface UpdateGuildConfigurationInput {
   emptyChannelGracePeriodMs?: number;
   resumeWhenOccupied?: boolean;
   djModeEnabled?: boolean;
+  openQueueRequestsEnabled?: boolean;
 }
 
 export interface CreateGuildConfigurationInput {
@@ -163,6 +164,7 @@ export function toGuildConfiguration(parsed: ParsedGuildConfigurationFile, sourc
       emptyChannelGracePeriodMs: parsed.music.emptyChannel.gracePeriodMs,
       resumeWhenOccupied: parsed.music.emptyChannel.resumeWhenOccupied,
       djModeEnabled: parsed.music.djModeEnabled,
+      openQueueRequestsEnabled: parsed.music.openQueueRequestsEnabled,
     },
     chat: parsed.chat,
     sourceFile,
@@ -212,6 +214,7 @@ export function toGuildConfigurationDocument(configuration: GuildConfiguration):
         resumeWhenOccupied: configuration.music.resumeWhenOccupied,
       },
       djModeEnabled: configuration.music.djModeEnabled,
+      openQueueRequestsEnabled: configuration.music.openQueueRequestsEnabled,
     },
     chat: configuration.chat,
   });
@@ -296,5 +299,6 @@ export function applyGuildConfigurationUpdate(
   if (input.emptyChannelGracePeriodMs !== undefined) next.music.emptyChannel.gracePeriodMs = input.emptyChannelGracePeriodMs;
   if (input.resumeWhenOccupied !== undefined) next.music.emptyChannel.resumeWhenOccupied = input.resumeWhenOccupied;
   if (input.djModeEnabled !== undefined) next.music.djModeEnabled = input.djModeEnabled;
+  if (input.openQueueRequestsEnabled !== undefined) next.music.openQueueRequestsEnabled = input.openQueueRequestsEnabled;
   return guildConfigurationFileSchema.parse(next);
 }

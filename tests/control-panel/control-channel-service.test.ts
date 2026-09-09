@@ -74,6 +74,7 @@ function guildConfiguration(chatbotEnabled: boolean): GuildConfiguration {
       emptyChannelGracePeriodMs: 30_000,
       resumeWhenOccupied: true,
       djModeEnabled: false,
+    openQueueRequestsEnabled: false,
     },
     chat: {
       personalityFile: null,

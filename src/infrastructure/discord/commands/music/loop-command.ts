@@ -27,7 +27,7 @@ export class LoopCommand implements BotCommand {
   public async execute(context: CommandContext): Promise<void> {
     if (!context.interaction.inCachedGuild()) return;
     const mode = context.interaction.options.getString("mode", true) as MusicRepeatMode;
-    const actor = createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck);
+    const actor = createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck, context.access.allowQueueWithoutVoiceChannel);
     await this.playbackService.setRepeatMode(actor, mode);
     await context.responses.reply(`Repeat mode set to **${mode}**.`);
   }

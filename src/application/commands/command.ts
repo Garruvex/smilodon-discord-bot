@@ -41,9 +41,10 @@ export interface CommandContext<TInteraction extends AnyCommandInteraction = Cha
   logger: Logger;
   responses: CommandResponses;
   // The AccessPolicyEngine decision that already granted this invocation —
-  // see AccessDecision.bypassVoiceChannelCheck. Only Music-module commands
-  // read this; it's false (a no-op) for every other module.
-  access: { bypassVoiceChannelCheck: boolean };
+  // see AccessDecision.bypassVoiceChannelCheck /
+  // AccessDecision.allowQueueWithoutVoiceChannel. Only Music-module commands
+  // read these; both are false (a no-op) for every other module.
+  access: { bypassVoiceChannelCheck: boolean; allowQueueWithoutVoiceChannel: boolean };
 }
 
 // Declared next to a command's own `definition` so a command's LLM exposure

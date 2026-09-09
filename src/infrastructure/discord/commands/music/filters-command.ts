@@ -38,7 +38,7 @@ export class FiltersCommand implements BotCommand {
   public async execute(context: CommandContext): Promise<void> {
     if (!context.interaction.inCachedGuild()) return;
     const preset = context.interaction.options.getString("preset", true) as MusicFilterPreset;
-    const actor = createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck);
+    const actor = createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck, context.access.allowQueueWithoutVoiceChannel);
     await this.playbackService.setFilterPreset(actor, preset);
     await context.responses.reply(
       preset === "off" ? "Filters cleared." : `Applied the **${presetLabels[preset]}** filter.`,

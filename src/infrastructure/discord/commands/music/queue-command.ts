@@ -46,7 +46,7 @@ export class QueueCommand implements BotCommand {
     if (!context.interaction.inCachedGuild()) return;
     const action = context.interaction.options.getSubcommand(true);
     if (action === "remove") {
-      const actor = createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck);
+      const actor = createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck, context.access.allowQueueWithoutVoiceChannel);
       const track = await this.playbackService.removeQueueTrack(
         actor,
         context.interaction.options.getInteger("position", true),
@@ -55,7 +55,7 @@ export class QueueCommand implements BotCommand {
       return;
     }
     if (action === "clear") {
-      const actor = createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck);
+      const actor = createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck, context.access.allowQueueWithoutVoiceChannel);
       const count = await this.playbackService.clearQueue(actor);
       await context.responses.reply(`Cleared ${count} queued track${count === 1 ? "" : "s"}.`);
       return;

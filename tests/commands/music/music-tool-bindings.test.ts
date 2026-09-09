@@ -33,7 +33,7 @@ function fakeProfiles(overrides: Partial<{
       musicController: new Set(overrides.musicControllerRoleIds ?? ["role-controller"]),
       botAdministrator: new Set<string>(),
     },
-    music: { maximumVolume: overrides.maximumVolume ?? 150 },
+    music: { maximumVolume: overrides.maximumVolume ?? 150, openQueueRequestsEnabled: false },
   } as unknown as GuildConfiguration;
   return { find: () => profile, require: () => profile } as unknown as GuildConfigurationProvider;
 }
@@ -60,7 +60,7 @@ function contextWithMusic(roleIds: readonly string[] = ["role-controller"]): Cha
     channelMode: "shared",
     isOwner: false,
     music: {
-      actor: { guildId: "guild-1", textChannelId: "channel-1", userId: "user-1", voiceChannelId: null, bypassVoiceChannelCheck: false },
+      actor: { guildId: "guild-1", textChannelId: "channel-1", userId: "user-1", voiceChannelId: null, bypassVoiceChannelCheck: false, allowQueueWithoutVoiceChannel: false },
       resolveAccessSubjectFields: resolveAccessSubjectFields(roleIds),
       volumeMaximum: 150,
       musicControllerRoleIds: new Set(["role-controller"]),

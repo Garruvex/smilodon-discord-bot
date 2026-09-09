@@ -42,7 +42,7 @@ export class StopCommand implements BotCommand {
       return;
     }
 
-    await this.playbackService.stop(createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck));
+    await this.playbackService.stop(createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck, context.access.allowQueueWithoutVoiceChannel));
     await context.responses.reply("Playback stopped and the voice connection was closed.");
   }
 
@@ -52,7 +52,7 @@ export class StopCommand implements BotCommand {
     if (!decision.allowed) return { content: musicPermissionDeniedMessage };
     if (musicToolWasCancelled(ctx)) return { content: musicToolTimedOutMessage };
     try {
-      await this.playbackService.stop(withDjBypass(ctx.music.actor, decision.bypassVoiceChannelCheck));
+      await this.playbackService.stop(withDjBypass(ctx.music.actor, decision.bypassVoiceChannelCheck, decision.allowQueueWithoutVoiceChannel));
       return { content: "Playback stopped and the voice connection was closed." };
     } catch (error) {
       return { content: formatMusicError(error, "Couldn't stop playback right now.") };

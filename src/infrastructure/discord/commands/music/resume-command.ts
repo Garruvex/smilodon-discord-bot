@@ -42,7 +42,7 @@ export class ResumeCommand implements BotCommand {
       return;
     }
 
-    await this.playbackService.resume(createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck));
+    await this.playbackService.resume(createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck, context.access.allowQueueWithoutVoiceChannel));
     await context.responses.reply("Playback resumed.");
   }
 
@@ -52,7 +52,7 @@ export class ResumeCommand implements BotCommand {
     if (!decision.allowed) return { content: musicPermissionDeniedMessage };
     if (musicToolWasCancelled(ctx)) return { content: musicToolTimedOutMessage };
     try {
-      await this.playbackService.resume(withDjBypass(ctx.music.actor, decision.bypassVoiceChannelCheck));
+      await this.playbackService.resume(withDjBypass(ctx.music.actor, decision.bypassVoiceChannelCheck, decision.allowQueueWithoutVoiceChannel));
       return { content: "Playback resumed." };
     } catch (error) {
       return { content: formatMusicError(error, "Couldn't resume playback right now.") };

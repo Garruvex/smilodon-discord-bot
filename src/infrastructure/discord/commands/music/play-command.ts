@@ -89,7 +89,12 @@ export class PlayCommand implements BotCommand {
     const query = context.interaction.options.getString("query", true);
     const profile = this.profiles.require(context.interaction.guildId);
     const result = await this.playbackService.enqueue(
-      createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck, targetChannelId),
+      createPlaybackActor(
+        context.interaction,
+        context.access.bypassVoiceChannelCheck,
+        context.access.allowQueueWithoutVoiceChannel,
+        targetChannelId,
+      ),
       query,
     );
 
@@ -105,7 +110,7 @@ export class PlayCommand implements BotCommand {
     if (!decision.allowed) return { content: musicPermissionDeniedMessage };
     if (musicToolWasCancelled(ctx)) return { content: musicToolTimedOutMessage };
     try {
-      const actor = withDjBypass(ctx.music.actor, decision.bypassVoiceChannelCheck);
+      const actor = withDjBypass(ctx.music.actor, decision.bypassVoiceChannelCheck, decision.allowQueueWithoutVoiceChannel);
       const result = await this.playbackService.enqueue(actor, args.query);
       return {
         content: JSON.stringify({

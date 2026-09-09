@@ -14,6 +14,7 @@ const actor: PlaybackActor = {
   userId: "345678901234567890",
   voiceChannelId: null,
   bypassVoiceChannelCheck: false,
+  allowQueueWithoutVoiceChannel: false,
 };
 
 const profile = {

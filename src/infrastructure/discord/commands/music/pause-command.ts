@@ -42,7 +42,7 @@ export class PauseCommand implements BotCommand {
       return;
     }
 
-    await this.playbackService.pause(createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck));
+    await this.playbackService.pause(createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck, context.access.allowQueueWithoutVoiceChannel));
     await context.responses.reply("Playback paused.");
   }
 
@@ -52,7 +52,7 @@ export class PauseCommand implements BotCommand {
     if (!decision.allowed) return { content: musicPermissionDeniedMessage };
     if (musicToolWasCancelled(ctx)) return { content: musicToolTimedOutMessage };
     try {
-      await this.playbackService.pause(withDjBypass(ctx.music.actor, decision.bypassVoiceChannelCheck));
+      await this.playbackService.pause(withDjBypass(ctx.music.actor, decision.bypassVoiceChannelCheck, decision.allowQueueWithoutVoiceChannel));
       return { content: "Playback paused." };
     } catch (error) {
       return { content: formatMusicError(error, "Couldn't pause playback right now.") };

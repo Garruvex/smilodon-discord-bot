@@ -102,6 +102,7 @@ function guildConfiguration(): GuildConfiguration {
       emptyChannelGracePeriodMs: 30_000,
       resumeWhenOccupied: true,
       djModeEnabled: false,
+    openQueueRequestsEnabled: false,
     },
     chat: {
       personalityFile: null,
@@ -203,7 +204,7 @@ describe("AccessPolicyService", () => {
         CommandModule.Bootstrap,
         interaction([], ownerId),
       ),
-    ).toEqual({ allowed: true, bypassVoiceChannelCheck: false });
+    ).toEqual({ allowed: true, bypassVoiceChannelCheck: false, allowQueueWithoutVoiceChannel: false });
   });
 
   it("allows a configured music controller", () => {
@@ -214,7 +215,7 @@ describe("AccessPolicyService", () => {
 
     expect(
       service.evaluate(controllerPolicy, CommandModule.Music, interaction([musicRoleId])),
-    ).toEqual({ allowed: true, bypassVoiceChannelCheck: false });
+    ).toEqual({ allowed: true, bypassVoiceChannelCheck: false, allowQueueWithoutVoiceChannel: false });
   });
 
   it("allows a bot administrator through music-controller inheritance", () => {
@@ -229,7 +230,7 @@ describe("AccessPolicyService", () => {
         CommandModule.Music,
         interaction([administratorRoleId]),
       ),
-    ).toEqual({ allowed: true, bypassVoiceChannelCheck: false });
+    ).toEqual({ allowed: true, bypassVoiceChannelCheck: false, allowQueueWithoutVoiceChannel: false });
   });
 
   it("denies a restricted member even when they are a controller", () => {
@@ -262,7 +263,7 @@ describe("AccessPolicyService", () => {
         CommandModule.Music,
         interaction([restrictedRoleId], ownerId),
       ),
-    ).toEqual({ allowed: true, bypassVoiceChannelCheck: false });
+    ).toEqual({ allowed: true, bypassVoiceChannelCheck: false, allowQueueWithoutVoiceChannel: false });
   });
 
   it("grants the DJ-mode voice-channel bypass to a musicController member when DJ mode is on", () => {
@@ -274,7 +275,7 @@ describe("AccessPolicyService", () => {
 
     expect(
       service.evaluate(controllerPolicy, CommandModule.Music, interaction([musicRoleId])),
-    ).toEqual({ allowed: true, bypassVoiceChannelCheck: true });
+    ).toEqual({ allowed: true, bypassVoiceChannelCheck: true, allowQueueWithoutVoiceChannel: false });
   });
 
   it("denies music commands outside configured music channels", () => {

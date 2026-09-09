@@ -23,8 +23,15 @@ export interface PlaybackActor {
   // musicController/botAdministrator role — see music-command-support.ts.
   // Lets a privileged member control an existing player (skip/pause/volume/
   // etc.) without being physically in its voice channel. Never applies to
-  // enqueue(), which always requires the target channel to match.
+  // enqueue(), which uses allowQueueWithoutVoiceChannel below instead.
   bypassVoiceChannelCheck: boolean;
+  // True only when the guild's "open queue requests" setting is on (see
+  // GuildMusicConfiguration.openQueueRequestsEnabled) — independent of DJ
+  // mode and of this actor's roles. Lets enqueue() add a track to an
+  // *already-running* player without the requester being in its voice
+  // channel. Never applies to assertControllablePlayer()'s checks
+  // (pause/skip/stop/etc.) — those always require physical presence.
+  allowQueueWithoutVoiceChannel: boolean;
 }
 
 export class PlaybackService {
@@ -38,8 +45,7 @@ export class PlaybackService {
       throw new MusicRateLimitError(remainingSeconds);
     }
 
-    const voiceChannelId = this.requireVoiceChannel(actor);
-    this.assertSameVoiceChannel(actor.guildId, voiceChannelId);
+    const voiceChannelId = this.resolveEnqueueVoiceChannel(actor);
 
     const request: EnqueueRequest = {
       guildId: actor.guildId,
@@ -169,6 +175,23 @@ export class PlaybackService {
     if (actor.bypassVoiceChannelCheck) return;
     const memberVoiceChannelId = this.requireVoiceChannel(actor);
     this.assertSameVoiceChannel(actor.guildId, memberVoiceChannelId);
+  }
+
+  // Open queue requests only relaxes the check when the bot already has a
+  // player running somewhere in this guild — it lets a track be added to
+  // that channel without moving the bot or requiring the requester's own
+  // voice state. With no active player there's nowhere to add to, so this
+  // falls back to the normal requireVoiceChannel/assertSameVoiceChannel path
+  // (the requester's own channel, or an explicit channel override).
+  private resolveEnqueueVoiceChannel(actor: PlaybackActor): string {
+    if (actor.allowQueueWithoutVoiceChannel) {
+      const existingVoiceChannelId = this.playerGateway.getVoiceChannelId(actor.guildId);
+      if (existingVoiceChannelId) return existingVoiceChannelId;
+    }
+
+    const voiceChannelId = this.requireVoiceChannel(actor);
+    this.assertSameVoiceChannel(actor.guildId, voiceChannelId);
+    return voiceChannelId;
   }
 
   private requireVoiceChannel(actor: PlaybackActor): string {

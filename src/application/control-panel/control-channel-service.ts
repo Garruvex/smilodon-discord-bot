@@ -167,10 +167,12 @@ export class ControlChannelService {
       return true;
     }
 
-    if (
-      !message.member ||
-      !this.canControl(message.member, message.author.id, profile)
-    ) {
+    if (!message.member) {
+      await message.delete().catch(() => undefined);
+      return true;
+    }
+
+    if (!this.canRequestSongs(message.member, message.author.id, profile)) {
       const denied = await message.reply(
         "You need a music-controller role to request songs.",
       );
@@ -191,6 +193,7 @@ export class ControlChannelService {
           userId: message.author.id,
           voiceChannelId: message.member.voice.channelId,
           bypassVoiceChannelCheck: hasMusicDjPrivilege(new Set(message.member.roles.cache.keys()), profile),
+          allowQueueWithoutVoiceChannel: profile.music.openQueueRequestsEnabled,
         },
         query,
       );
@@ -285,6 +288,9 @@ export class ControlChannelService {
       userId: interaction.user.id,
       voiceChannelId: interaction.member.voice.channelId,
       bypassVoiceChannelCheck: hasMusicDjPrivilege(new Set(interaction.member.roles.cache.keys()), profile),
+      // Panel buttons only ever control an existing player (pause/skip/etc.);
+      // open queue requests never applies to them.
+      allowQueueWithoutVoiceChannel: false,
     };
 
     let staleRecovered = false;
@@ -557,9 +563,12 @@ export class ControlChannelService {
     snapshot = this.playerGateway.getSnapshot(profile.guildId),
   ): ControlPanelPayload {
     const embed = this.createPanelEmbed(profile, snapshot);
+    const requestersHint = profile.music.openQueueRequestsEnabled
+      ? "Anyone can queue songs here by name or URL."
+      : "Members with the music-controller role can queue songs here by name or URL.";
 
     return {
-      content: "Join a voice channel. Members with the music-controller role can queue songs here by name or URL.\n" +
+      content: `Join a voice channel. ${requestersHint}\n` +
         "-# ♾️ Autoqueue: automatically adds a similar track when the queue runs out.  •  🔁 24/7: keeps the bot connected instead of leaving when idle.",
       embeds: [embed],
       components: createMusicPanelControlRows(profile, snapshot),
@@ -673,6 +682,23 @@ export class ControlChannelService {
       ...profile.roles.botAdministrator,
     ]);
     return [...allowedRoles].some((roleId) => member.roles.cache.has(roleId));
+  }
+
+  // Gates song-request typing only (not button controls, which always go
+  // through canControl). When openQueueRequestsEnabled is off this is
+  // identical to canControl; when on, any non-restricted member qualifies —
+  // not just musicController/botAdministrator.
+  private canRequestSongs(
+    member: GuildMember,
+    userId: string,
+    profile: GuildConfiguration,
+  ): boolean {
+    if (!profile.music.openQueueRequestsEnabled) {
+      return this.canControl(member, userId, profile);
+    }
+
+    const isOwner = this.applicationConfiguration.ownerUserIds.has(userId);
+    return isOwner || !this.hasRestrictedRole(member, profile);
   }
 
   private scheduleDeletion(message: Message, delayMs = failedMusicRequestLifetimeMs): void {

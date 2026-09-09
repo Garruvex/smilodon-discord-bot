@@ -33,7 +33,7 @@ export class ShuffleCommand implements BotCommand {
 
   public async execute(context: CommandContext): Promise<void> {
     if (!context.interaction.inCachedGuild()) return;
-    await this.playbackService.shuffle(createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck));
+    await this.playbackService.shuffle(createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck, context.access.allowQueueWithoutVoiceChannel));
     await context.responses.reply("The queue was shuffled.");
   }
 
@@ -43,7 +43,7 @@ export class ShuffleCommand implements BotCommand {
     if (!decision.allowed) return { content: musicPermissionDeniedMessage };
     if (musicToolWasCancelled(ctx)) return { content: musicToolTimedOutMessage };
     try {
-      await this.playbackService.shuffle(withDjBypass(ctx.music.actor, decision.bypassVoiceChannelCheck));
+      await this.playbackService.shuffle(withDjBypass(ctx.music.actor, decision.bypassVoiceChannelCheck, decision.allowQueueWithoutVoiceChannel));
       return { content: "The queue was shuffled." };
     } catch (error) {
       return { content: formatMusicError(error, "Couldn't shuffle the queue right now.") };

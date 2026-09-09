@@ -74,7 +74,10 @@ export class CommandDispatcher {
         interaction,
         logger: commandLogger,
         responses,
-        access: { bypassVoiceChannelCheck: accessDecision.bypassVoiceChannelCheck },
+        access: {
+          bypassVoiceChannelCheck: accessDecision.bypassVoiceChannelCheck,
+          allowQueueWithoutVoiceChannel: accessDecision.allowQueueWithoutVoiceChannel,
+        },
       });
     } catch (error) {
       commandLogger.error({ err: error }, "Command execution failed");

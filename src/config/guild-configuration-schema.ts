@@ -233,6 +233,7 @@ export const guildConfigurationFileSchema = z
             resumeWhenOccupied: true,
           }),
         djModeEnabled: z.boolean().default(false),
+        openQueueRequestsEnabled: z.boolean().default(false),
       })
       .default({
         volume: { default: 75, maximum: 150, buttonStep: 10 },
@@ -243,6 +244,7 @@ export const guildConfigurationFileSchema = z
           resumeWhenOccupied: true,
         },
         djModeEnabled: false,
+        openQueueRequestsEnabled: false,
       }),
   })
   .superRefine((configuration, context) => {

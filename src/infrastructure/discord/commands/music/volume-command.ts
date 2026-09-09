@@ -48,7 +48,7 @@ export class VolumeCommand implements BotCommand {
     const requested = context.interaction.options.getInteger("level", true);
     const level = Math.min(requested, profile.music.maximumVolume);
     await this.playbackService.setVolume(
-      createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck),
+      createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck, context.access.allowQueueWithoutVoiceChannel),
       level,
       profile.music.maximumVolume,
     );
@@ -63,7 +63,7 @@ export class VolumeCommand implements BotCommand {
     const volume = Math.min(Math.max(Math.round(args.volume), 0), maximumVolume);
     if (musicToolWasCancelled(ctx)) return { content: musicToolTimedOutMessage };
     try {
-      await this.playbackService.setVolume(withDjBypass(ctx.music.actor, decision.bypassVoiceChannelCheck), volume, maximumVolume);
+      await this.playbackService.setVolume(withDjBypass(ctx.music.actor, decision.bypassVoiceChannelCheck, decision.allowQueueWithoutVoiceChannel), volume, maximumVolume);
       return { content: `Volume set to ${volume}.` };
     } catch (error) {
       return { content: formatMusicError(error, "Couldn't change the volume right now.") };
