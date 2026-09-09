@@ -3,9 +3,7 @@ import type { MutationSettingDefinition } from "./setting-definition.js";
 export const openQueueRequestsSetting: MutationSettingDefinition = {
   kind: "mutation",
   name: "open-queue-requests",
-  description:
-    "Lets any non-restricted member queue songs from the panel or /play without being in the bot's voice channel, " +
-    "as long as it's already playing somewhere. Off by default to avoid abuse.",
+  description: "Lets anyone queue songs without joining the bot's voice channel, if it's already playing.",
   configureOptions: () => [
     { type: "boolean", name: "enabled", description: "Whether open queue requests are on." },
   ],
