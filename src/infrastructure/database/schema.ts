@@ -112,6 +112,22 @@ export const birthdayAnnouncements = pgTable("birthday_announcements", {
   announcedAt: timestamp("announced_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [primaryKey({ columns: [table.guildId, table.date] })]);
 
+// Append-only log of Nitro boost start/stop transitions, since Discord only
+// exposes a member's *current* premiumSince — it has no memory of past boost
+// periods. memberId FK cascade handles Postgres-side purge on leave (see
+// PostgresMemberDataPurger); the local driver purges rows explicitly instead.
+export const memberBoostEvents = pgTable("member_boost_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  guildId: text("guild_id").notNull(),
+  userId: text("user_id").notNull(),
+  memberId: uuid("member_id").references(() => guildMembers.id, { onDelete: "cascade" }),
+  eventType: text("event_type").notNull(), // "started" | "ended"
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("member_boost_events_guild_user").on(table.guildId, table.userId),
+]);
+
 // No memberId FK — unlike birthdays/chat data, reminders don't need the
 // guildMembers hub (nothing else cascades from a reminder, and no other
 // feature joins against it).

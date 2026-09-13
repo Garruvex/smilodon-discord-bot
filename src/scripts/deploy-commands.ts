@@ -61,6 +61,7 @@ const { commandRegistry } = registerCommands(
   persistence.userCustomizationStore,
   auditLogService,
   persistence.birthdayStore,
+  persistence.boostHistoryStore,
   persistence.memoryRepository,
   persistence.channelSummaryCheckpointStore,
   persistence.personalMemoryExtractionQueueStore,

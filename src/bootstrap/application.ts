@@ -9,6 +9,7 @@ import type { MusicPresenceService } from "../application/music/music-presence-s
 import type { BirthdayAnnouncer } from "../application/birthdays/birthday-announcer.js";
 import type { MemberDepartureService } from "../application/members/member-departure-service.js";
 import type { MemberWelcomeService } from "../application/members/member-welcome-service.js";
+import type { BoostTrackingService } from "../application/members/boost-tracking-service.js";
 
 export class Application {
   // Flips true once Lavalink and the control-panel (emoji catalog +
@@ -26,6 +27,7 @@ export class Application {
     private readonly birthdayAnnouncer: BirthdayAnnouncer,
     private readonly memberDepartureService: MemberDepartureService,
     private readonly memberWelcomeService: MemberWelcomeService,
+    private readonly boostTrackingService: BoostTrackingService,
     private readonly logger: Logger,
     private readonly onFatalError?: (reason: string) => void,
   ) {
@@ -294,6 +296,12 @@ export class Application {
       });
       void this.memberWelcomeService.handleMemberLeave(member).catch((error: unknown) => {
         this.logger.error({ error, guildId: member.guild.id, userId: member.id }, "Unable to process leave announcement");
+      });
+    });
+
+    this.client.on(Events.GuildMemberUpdate, (oldMember, newMember) => {
+      void this.boostTrackingService.handleMemberUpdate(oldMember, newMember).catch((error: unknown) => {
+        this.logger.error({ error, guildId: newMember.guild.id, userId: newMember.id }, "Unable to process member update");
       });
     });
 

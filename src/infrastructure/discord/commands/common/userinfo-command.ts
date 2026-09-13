@@ -3,6 +3,8 @@ import { EmbedBuilder } from "discord.js";
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import type { GuildConfigurationProvider } from "../../../../config/guild-configuration-provider.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
+import type { BoostHistoryStore } from "../../../../application/members/boost-history-store.js";
+import { computeTotalBoostedMs, formatDurationMs } from "../../../../application/members/boost-duration.js";
 
 export class UserInfoCommand implements BotCommand {
   public readonly definition = {
@@ -16,7 +18,10 @@ export class UserInfoCommand implements BotCommand {
   public readonly module = CommandModule.Common;
   public readonly access = publicAccessPolicy;
 
-  public constructor(private readonly profiles: GuildConfigurationProvider) {}
+  public constructor(
+    private readonly profiles: GuildConfigurationProvider,
+    private readonly boostHistoryStore: BoostHistoryStore,
+  ) {}
 
   public async execute(context: CommandContext): Promise<void> {
     if (!context.interaction.inCachedGuild()) {
@@ -54,6 +59,19 @@ export class UserInfoCommand implements BotCommand {
         },
         { name: `Roles (${roles.length})`, value: roles.length > 0 ? roles.join(" ") : "None" },
       );
+
+    if (member.premiumSince) {
+      embed.addFields({
+        name: "Boosting since",
+        value: `<t:${Math.floor(member.premiumSinceTimestamp! / 1_000)}:R>`,
+        inline: true,
+      });
+    }
+    const boostEvents = await this.boostHistoryStore.listEvents(guild.id, targetUser.id);
+    const totalBoostedMs = computeTotalBoostedMs(boostEvents, member.premiumSince, new Date());
+    if (totalBoostedMs > 0) {
+      embed.addFields({ name: "Total time boosted", value: formatDurationMs(totalBoostedMs), inline: true });
+    }
 
     await context.responses.reply({ embeds: [embed] });
   }

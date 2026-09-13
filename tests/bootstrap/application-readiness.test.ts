@@ -121,6 +121,9 @@ function buildApplication(options: {
     handleMemberJoin: vi.fn().mockResolvedValue(undefined),
     handleMemberLeave: vi.fn().mockResolvedValue(undefined),
   } as unknown as ConstructorParameters<typeof Application>[7];
+  const boostTrackingService = {
+    handleMemberUpdate: vi.fn().mockResolvedValue(undefined),
+  } as unknown as ConstructorParameters<typeof Application>[8];
 
   const dependencies = {
     guildConfigurationProvider: stubProvider(),
@@ -148,6 +151,7 @@ function buildApplication(options: {
     birthdayAnnouncer,
     memberDepartureService,
     memberWelcomeService,
+    boostTrackingService,
     stubLogger(),
   );
 

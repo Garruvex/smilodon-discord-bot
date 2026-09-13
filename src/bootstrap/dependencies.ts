@@ -9,6 +9,8 @@ import type { MusicPlayerGateway } from "../application/music/music-player-gatew
 import type { GuildConfigurationProvider } from "../config/guild-configuration-provider.js";
 import { PingCommand } from "../infrastructure/discord/commands/common/ping-command.js";
 import { UserInfoCommand } from "../infrastructure/discord/commands/common/userinfo-command.js";
+import { BoostsCommand } from "../infrastructure/discord/commands/common/boosts-command.js";
+import type { BoostHistoryStore } from "../application/members/boost-history-store.js";
 import { QuoteCommand } from "../infrastructure/discord/commands/common/quote-command.js";
 import { QuoteContextCommand } from "../infrastructure/discord/commands/common/quote-context-command.js";
 import { HelpCommand } from "../infrastructure/discord/commands/common/help-command.js";
@@ -256,6 +258,7 @@ export function registerCommands(
   userCustomizationStore: UserCustomizationStore,
   auditLogService: AuditLogService,
   birthdayStore: BirthdayStore,
+  boostHistoryStore: BoostHistoryStore,
   memoryRepository: MemoryRepository,
   channelSummaryCheckpointStore: ChannelSummaryCheckpointStore,
   personalMemoryExtractionQueueStore: PersonalMemoryExtractionQueueStore,
@@ -269,7 +272,8 @@ export function registerCommands(
   const roleMenuService = new RoleMenuService(roleMenuStore, logger.child({ component: "role-menu" }));
   componentRegistry.register(new RoleMenuComponentHandler(roleMenuService));
   commandRegistry.register(new PingCommand());
-  commandRegistry.register(new UserInfoCommand(guildConfigurationProvider));
+  commandRegistry.register(new UserInfoCommand(guildConfigurationProvider, boostHistoryStore));
+  commandRegistry.register(new BoostsCommand(boostHistoryStore));
   commandRegistry.register(new QuoteCommand());
   commandRegistry.register(new QuoteContextCommand());
   commandRegistry.register(new DiagnosticCommand());
@@ -438,6 +442,7 @@ export function createDependencies(
   userCustomizationStore: UserCustomizationStore,
   auditLogService: AuditLogService,
   birthdayStore: BirthdayStore,
+  boostHistoryStore: BoostHistoryStore,
   memoryRepository: MemoryRepository,
   channelSummaryCheckpointStore: ChannelSummaryCheckpointStore,
   personalMemoryExtractionQueueStore: PersonalMemoryExtractionQueueStore,
@@ -460,7 +465,7 @@ export function createDependencies(
     utilityProvider,
   } = registerCommands(
     configuration, logger, musicPlayerGateway, guildConfigurationProvider, guildSetupService,
-    discordClient, chatStateStore, userCustomizationStore, auditLogService, birthdayStore,
+    discordClient, chatStateStore, userCustomizationStore, auditLogService, birthdayStore, boostHistoryStore,
     memoryRepository, channelSummaryCheckpointStore, personalMemoryExtractionQueueStore, reminderStore, roleMenuStore,
   );
 

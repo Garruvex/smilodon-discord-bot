@@ -15,6 +15,7 @@ import { AuditLogService } from "../application/audit/audit-log-service.js";
 import { BirthdayAnnouncer } from "../application/birthdays/birthday-announcer.js";
 import { MemberDepartureService } from "../application/members/member-departure-service.js";
 import { MemberWelcomeService } from "../application/members/member-welcome-service.js";
+import { BoostTrackingService } from "../application/members/boost-tracking-service.js";
 
 const configuration = loadConfiguration();
 const logger = createLogger(configuration);
@@ -46,6 +47,7 @@ const dependencies = createDependencies(
   persistence.userCustomizationStore,
   auditLogService,
   persistence.birthdayStore,
+  persistence.boostHistoryStore,
   persistence.memoryRepository,
   persistence.channelSummaryCheckpointStore,
   persistence.personalMemoryExtractionQueueStore,
@@ -90,6 +92,7 @@ const memberWelcomeService = new MemberWelcomeService(
   guildConfigurationProvider,
   logger.child({ component: "member-welcome" }),
 );
+const boostTrackingService = new BoostTrackingService(persistence.boostHistoryStore);
 deferredGuildSetupService.setService(
   new LocalGuildSetupService(
     guildConfigurationProvider,
@@ -109,6 +112,7 @@ const application = new Application(
   birthdayAnnouncer,
   memberDepartureService,
   memberWelcomeService,
+  boostTrackingService,
   logger.child({ component: "application" }),
   (reason) => {
     void shutdown(reason, 1);

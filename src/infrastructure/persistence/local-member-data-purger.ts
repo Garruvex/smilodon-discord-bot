@@ -1,5 +1,6 @@
 import type { MemberDataPurger } from "../../application/members/member-data-purger.js";
 import type { BirthdayStore } from "../../application/birthdays/birthday-store.js";
+import type { BoostHistoryStore } from "../../application/members/boost-history-store.js";
 import type { ChatStateStore } from "../../application/chat/chat-state-store.js";
 import type { MemoryRepository } from "../../application/memory/memory.js";
 import type { ReminderStore } from "../../application/reminders/reminder-store.js";
@@ -13,6 +14,7 @@ export class LocalMemberDataPurger implements MemberDataPurger {
     private readonly memoryRepository: MemoryRepository,
     private readonly userCustomizationStore: UserCustomizationStore,
     private readonly birthdayStore: BirthdayStore,
+    private readonly boostHistoryStore: BoostHistoryStore,
     private readonly reminderStore: ReminderStore,
     private readonly chatStateStore: ChatStateStore,
     // A still-queued (or already-succeeded-but-not-yet-cleaned-up, see
@@ -36,6 +38,7 @@ export class LocalMemberDataPurger implements MemberDataPurger {
         (): Promise<unknown> => this.memoryRepository.forget({ guildId, ownerUserId: userId }),
         (): Promise<unknown> => this.userCustomizationStore.clear(guildId, userId),
         (): Promise<unknown> => this.birthdayStore.removeBirthday(guildId, userId),
+        (): Promise<unknown> => this.boostHistoryStore.removeForUser(guildId, userId),
         (): Promise<unknown> => this.reminderStore.deleteForUser(guildId, userId),
         (): Promise<unknown> => this.chatStateStore.purgeUser(guildId, userId),
         (): Promise<unknown> => this.personalMemoryExtractionQueueStore.deleteForSubject(guildId, userId),
