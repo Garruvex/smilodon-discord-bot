@@ -607,9 +607,10 @@ export class ControlChannelService {
     const autoQueueNote = snapshot.autoQueue && snapshot.autoQueueIssue
       ? "  •  ⚠️ Autoqueue found nothing to add"
       : "";
+    const lyricLine = snapshot.currentLyricLine ? `\n🎤 ${snapshot.currentLyricLine}` : "";
     embed
       .setTitle(snapshot.paused ? "Playback paused" : "Now Playing")
-      .setDescription(`### ${title}\n${track.author}\n\n${progress}${requester}`)
+      .setDescription(`### ${title}\n${track.author}\n\n${progress}${requester}${lyricLine}`)
       .setFooter({
         text: `🔊 ${snapshot.volume}%  •  ${queueStatus}  •  Loop ${snapshot.repeatMode}${autoQueueNote}`,
       });

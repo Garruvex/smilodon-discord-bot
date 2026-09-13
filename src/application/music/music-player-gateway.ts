@@ -75,6 +75,10 @@ export interface MusicPlayerSnapshot {
   // the failure only in logs.
   autoQueueIssue: boolean;
   twentyFourSeven: boolean;
+  // The synced lyric line for the current playback position, if the track
+  // has synced lyrics available and the Lavalink node has the lyrics plugin
+  // installed. Null otherwise — the panel simply omits the line.
+  currentLyricLine: string | null;
   currentTrack: {
     title: string;
     author: string;

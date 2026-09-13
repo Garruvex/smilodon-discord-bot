@@ -40,6 +40,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
   private readonly emptyChannelTimers = new Map<string, NodeJS.Timeout>();
   private readonly autoQueueIssues = new Set<string>();
   private readonly playHistoryByGuild = new Map<string, PlayHistoryEntry[]>();
+  private readonly currentLyricByGuild = new Map<string, { line: string; timestamp: number }>();
 
   public constructor(
     private readonly client: Client,
@@ -110,8 +111,14 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     this.manager.on("trackStart", (player, track) => {
       this.clearTimer(this.emptyQueueTimers, player.guildId);
       this.autoQueueIssues.delete(player.guildId);
+      this.currentLyricByGuild.delete(player.guildId);
       if (track) this.recordPlayHistory(player.guildId, track);
       this.publishStateChange({ guildId: player.guildId, reason: "track_started" });
+      // Per-guild subscription that persists across tracks; re-subscribing on
+      // every track start is harmless and keeps this self-healing if the node
+      // restarted the session. No-op (rejects quietly) if the lavalyrics
+      // plugin isn't installed on the node.
+      void player.subscribeLyrics().catch(() => undefined);
     });
 
     this.manager.on("queueEnd", (player) => {
@@ -124,7 +131,23 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
       this.clearTimer(this.emptyChannelTimers, player.guildId);
       this.autoQueue.clear(player.guildId);
       this.autoQueueIssues.delete(player.guildId);
+      this.currentLyricByGuild.delete(player.guildId);
       this.publishStateChange({ guildId: player.guildId, reason: "player_destroyed" });
+    });
+
+    // Lines arrive on their own schedule (driven by the node off real
+    // playback position) — cache only, and let the panel's existing 5s
+    // repaint timer pick the change up on its next pass rather than forcing
+    // an extra Discord edit per line.
+    this.manager.on("LyricsLine", (player, _track, payload) => {
+      this.currentLyricByGuild.set(player.guildId, {
+        line: payload.line.line,
+        timestamp: payload.line.timestamp,
+      });
+    });
+
+    this.manager.on("LyricsNotFound", (player) => {
+      this.currentLyricByGuild.delete(player.guildId);
     });
   }
 
@@ -576,6 +599,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
       autoQueue: player.get<boolean>("autoQueue") ?? false,
       autoQueueIssue: this.autoQueueIssues.has(guildId),
       twentyFourSeven: player.get<boolean>("twentyFourSeven") ?? false,
+      currentLyricLine: this.currentLyricByGuild.get(guildId)?.line ?? null,
       currentTrack: current
         ? {
             title: current.info.title,

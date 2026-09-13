@@ -105,6 +105,11 @@ lavalink:
       repository: "https://maven.lavalink.dev/snapshots"
     - dependency: "com.github.topi314.lavasrc:lavasrc-plugin:4.8.3"
       snapshot: false
+    # Exposes lavasrc's lyrics providers (lrcLib, enabled above) as the
+    # /lyrics API and live per-line LyricsLine events used for the panel's
+    # synced lyrics display.
+    - dependency: "com.github.topi314.lavalyrics:lavalyrics-plugin:1.1.0"
+      snapshot: false
   pluginsDir: "./plugins"
   server:
     password: "${LAVALINK_PASSWORD}"
