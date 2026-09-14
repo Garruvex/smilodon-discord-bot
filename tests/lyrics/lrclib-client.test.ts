@@ -110,10 +110,14 @@ describe("fetchSyncedLyrics", () => {
   });
 
   it("strips a YouTube-style title suffix and derives artist/title from \"Artist - Title\"", async () => {
-    fetchMock.mockImplementation((url: unknown) => {
-      expect(requestedArtist(url)).toBe("Owl City");
-      return Promise.resolve(jsonResponse(200, [candidate({ artistName: "Owl City" })]));
-    });
+    // Every artist variant is searched concurrently (not stopped at the
+    // first confident match), so only the "Owl City" request should return
+    // the real candidate — the others (the messy channel name, and the
+    // empty-artist fallback) return nothing, same as LRCLIB genuinely would.
+    fetchMock.mockImplementation((url: unknown) => Promise.resolve(jsonResponse(
+      200,
+      requestedArtist(url) === "Owl City" ? [candidate({ artistName: "Owl City" })] : [],
+    )));
 
     const lines = await fetchSyncedLyrics(
       "Owl City - Good Time (Official Video)",
@@ -124,7 +128,7 @@ describe("fetchSyncedLyrics", () => {
       { timestampMs: 1_000, line: "First line" },
       { timestampMs: 2_500, line: "Second line" },
     ]);
-    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls.some((call) => requestedArtist(call[0]) === "Owl City")).toBe(true);
   });
 
   it("derives artist/title from \"Artist - Title\" even with no metadata suffix to strip", async () => {
@@ -132,12 +136,12 @@ describe("fetchSyncedLyrics", () => {
     // actually changed something, so a title that arrives as a clean
     // "Artist - Title" (nothing to strip) searched LRCLIB for that literal
     // string and never found the real "OneRepublic" / "Counting Stars" row.
-    fetchMock.mockImplementation((url: unknown) => {
-      expect(requestedArtist(url)).toBe("OneRepublic");
-      return Promise.resolve(jsonResponse(200, [
-        candidate({ trackName: "Counting Stars", artistName: "OneRepublic" }),
-      ]));
-    });
+    fetchMock.mockImplementation((url: unknown) => Promise.resolve(jsonResponse(
+      200,
+      requestedArtist(url) === "OneRepublic"
+        ? [candidate({ trackName: "Counting Stars", artistName: "OneRepublic" })]
+        : [],
+    )));
 
     const lines = await fetchSyncedLyrics("OneRepublic - Counting Stars", "OneRepublic - Topic");
 
@@ -145,16 +149,19 @@ describe("fetchSyncedLyrics", () => {
       { timestampMs: 1_000, line: "First line" },
       { timestampMs: 2_500, line: "Second line" },
     ]);
-    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls.some((call) => requestedArtist(call[0]) === "OneRepublic")).toBe(true);
   });
 
-  it("falls back to an individual artist name when the full multi-artist credit finds nothing", async () => {
-    fetchMock.mockImplementation((url: unknown) => {
-      const artist = requestedArtist(url);
-      if (artist === "Owl City, Carly Rae Jepsen") return Promise.resolve(jsonResponse(200, []));
-      expect(artist).toBe("Owl City");
-      return Promise.resolve(jsonResponse(200, [candidate({ artistName: "Owl City" })]));
-    });
+  it("finds a match via an individual artist name even when the full multi-artist credit finds nothing", async () => {
+    // Regression: this used to run sequentially, stopping at the first
+    // confident match — a multi-artist credit's own individual-name variants
+    // then only got tried once the full combined credit had already come
+    // back empty, adding that request's full latency before even starting
+    // the one that would actually succeed. All variants fire together now.
+    fetchMock.mockImplementation((url: unknown) => Promise.resolve(jsonResponse(
+      200,
+      requestedArtist(url) === "Owl City" ? [candidate({ artistName: "Owl City" })] : [],
+    )));
 
     const lines = await fetchSyncedLyrics("Good Time", "Owl City, Carly Rae Jepsen");
 
@@ -162,7 +169,37 @@ describe("fetchSyncedLyrics", () => {
       { timestampMs: 1_000, line: "First line" },
       { timestampMs: 2_500, line: "Second line" },
     ]);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.some((call) => requestedArtist(call[0]) === "Owl City, Carly Rae Jepsen")).toBe(true);
+    expect(fetchMock.mock.calls.some((call) => requestedArtist(call[0]) === "Owl City")).toBe(true);
+  });
+
+  it("fires every artist variant concurrently instead of waiting for each one in turn", async () => {
+    // Regression: sequential awaiting meant a slow or empty response for the
+    // first variant delayed even starting the next one — for a multi-artist
+    // credit (2-4 variants), that's their combined latency before the panel
+    // had anything to show, sometimes many seconds. All requests must be in
+    // flight together, not started one after another.
+    const pendingRequests: string[] = [];
+    fetchMock.mockImplementation((url: unknown) => {
+      const artist = requestedArtist(url) ?? "";
+      pendingRequests.push(artist);
+      return new Promise((resolve) => {
+        setTimeout(() => resolve(jsonResponse(
+          200,
+          artist === "Owl City" ? [candidate({ artistName: "Owl City" })] : [],
+        )), 0);
+      });
+    });
+
+    const lyricsPromise = fetchSyncedLyrics("Good Time", "Owl City, Carly Rae Jepsen");
+    // Before yielding to the event loop at all, every variant's request must
+    // already have been issued — proving they were fired together rather
+    // than one waiting on the previous one's response.
+    expect(pendingRequests.sort()).toEqual(
+      ["Owl City, Carly Rae Jepsen", "Owl City", "Carly Rae Jepsen", ""].sort(),
+    );
+
+    await lyricsPromise;
   });
 
   it("matches a vocalist credited as \"name from group\" against just the plain name", async () => {

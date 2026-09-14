@@ -180,12 +180,17 @@ const minimumTotalScore = 85;
 // LavaSrc's own lrcLib integration blindly trusting the first search
 // result, and what correctly skips a top-ranked instrumental/alternate
 // release in favor of a lower-ranked one that actually has synced lyrics.
+interface ScoredCandidate {
+  readonly candidate: LrcLibCandidate;
+  readonly score: number;
+}
+
 function selectBestCandidate(
   title: string,
   artist: string,
   durationMs: number | undefined,
   candidates: readonly LrcLibCandidate[],
-): LrcLibCandidate | null {
+): ScoredCandidate | null {
   let bestScore = -1;
   let best: LrcLibCandidate | null = null;
   const wantVersion = versionMarkerPattern.exec(normalizedMetadata(title))?.[0]?.toLowerCase() ?? null;
@@ -223,7 +228,7 @@ function selectBestCandidate(
     }
   }
 
-  return bestScore >= minimumTotalScore ? best : null;
+  return best && bestScore >= minimumTotalScore ? { candidate: best, score: bestScore } : null;
 }
 
 async function searchLrcLib(trackName: string, artistName: string): Promise<LrcLibCandidate[]> {
@@ -235,10 +240,15 @@ async function searchLrcLib(trackName: string, artistName: string): Promise<LrcL
   return lrcLibSearchResponseSchema.parse(await response.json());
 }
 
-// Tries each artist-name variant in turn (original metadata first, then any
-// title-derived artist, then each individual name split out of a
-// multi-artist credit), stopping as soon as a confident match is found
-// rather than always exhausting every variant.
+// Fires a search for every artist-name variant (original metadata, any
+// title-derived artist, each individual name split out of a multi-artist
+// credit) concurrently rather than one at a time. A multi-artist credit can
+// mean 2-4 variants, and this used to await them sequentially — a slow or
+// empty response for the first variant (each request carries its own 5s
+// timeout) delayed ever trying the others, so a track that only matched on
+// the third or fourth variant could take up to their combined wait before
+// the panel had anything to show. Firing them together bounds the total wait
+// to the single slowest request instead of their sum.
 export async function fetchSyncedLyrics(
   trackName: string,
   artistName: string,
@@ -261,16 +271,21 @@ export async function fetchSyncedLyrics(
     attempts.push({ searchArtist: variant, scoreArtist: normalized.artist });
   }
 
-  const triedArtists = new Set<string>();
-  const candidates: LrcLibCandidate[] = [];
-  const seenCandidateKeys = new Set<string>();
-
-  for (const attempt of attempts) {
+  const seenArtists = new Set<string>();
+  const uniqueAttempts = attempts.filter((attempt) => {
     const key = attempt.searchArtist.toLowerCase();
-    if (triedArtists.has(key)) continue;
-    triedArtists.add(key);
+    if (seenArtists.has(key)) return false;
+    seenArtists.add(key);
+    return true;
+  });
 
-    const results = await searchLrcLib(normalized.title, attempt.searchArtist);
+  const resultSets = await Promise.all(
+    uniqueAttempts.map((attempt) => searchLrcLib(normalized.title, attempt.searchArtist)),
+  );
+
+  const seenCandidateKeys = new Set<string>();
+  const candidates: LrcLibCandidate[] = [];
+  for (const results of resultSets) {
     for (const result of results) {
       // LRCLIB's own row id is the only thing that's actually guaranteed
       // unique per release — title/artist/duration alone can genuinely
@@ -286,13 +301,20 @@ export async function fetchSyncedLyrics(
       seenCandidateKeys.add(candidateKey);
       candidates.push(result);
     }
-
-    const best = selectBestCandidate(normalized.title, attempt.scoreArtist, durationMs, candidates);
-    if (best?.syncedLyrics) {
-      const lines = parseSyncedLyrics(best.syncedLyrics);
-      if (lines.length > 0) return lines;
-    }
   }
 
-  return null;
+  // Every variant scores the *same* merged candidate pool against its own
+  // notion of "the real artist" — the overall best-scoring result across
+  // all of them wins, rather than whichever variant happened to be tried
+  // first (there's no longer a "first" — they all ran together).
+  const scoreArtists = new Set(uniqueAttempts.map((attempt) => attempt.scoreArtist));
+  let best: ScoredCandidate | null = null;
+  for (const scoreArtist of scoreArtists) {
+    const result = selectBestCandidate(normalized.title, scoreArtist, durationMs, candidates);
+    if (result && (!best || result.score > best.score)) best = result;
+  }
+
+  if (!best?.candidate.syncedLyrics) return null;
+  const lines = parseSyncedLyrics(best.candidate.syncedLyrics);
+  return lines.length > 0 ? lines : null;
 }
