@@ -13,6 +13,7 @@ import {
 } from "discord.js";
 import { existsSync } from "node:fs";
 import { extname, resolve } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import type { Logger } from "pino";
 
 import { hasMusicDjPrivilege } from "../access/access-rules.js";
@@ -458,7 +459,15 @@ export class ControlChannelService {
         // panel, and Lavalink may report `playing = false` briefly while a new
         // current track is starting.
         this.resetProgressRefreshTimer(guildId, snapshot);
-        await message.edit(this.createPanelEditOptions(message, profile, snapshot, payload, options));
+        const editOptions = this.createPanelEditOptions(message, profile, snapshot, payload, options);
+        // Discord bills a no-op edit the same as one that actually changes
+        // something. Skipping it here is what collapses a button click's
+        // optimistic-then-authoritative write pair back down to a single API
+        // call whenever the optimistic prediction turned out correct, and
+        // also skips redundant background-refresh writes when the player is
+        // simply idle/paused between ticks.
+        if (this.matchesCurrentMessage(message, editOptions)) return;
+        await message.edit(editOptions);
       } catch (error) {
         this.logger.error({ error, guildId }, "Unable to refresh music control panel");
       }
@@ -547,6 +556,33 @@ export class ControlChannelService {
     // Omitting `attachments` preserves the existing idle image. Sending an
     // empty array removes it and makes the next refresh upload it again.
     return payload;
+  }
+
+  // `attachments: []` shows up on every edit while a track is playing (see
+  // above) even when nothing about the attachments actually needs to
+  // change, so its mere presence can't gate the skip — only compare it
+  // against whether the message actually has an attachment to clear.
+  private matchesCurrentMessage(
+    message: Message,
+    editOptions: ControlPanelPayload & {
+      attachments?: [];
+      files?: Array<{ attachment: string; name: string }>;
+    },
+  ): boolean {
+    if (editOptions.files) return false;
+    if (editOptions.attachments && message.attachments.size > 0) return false;
+    if (editOptions.content !== message.content) return false;
+
+    const newEmbed = editOptions.embeds[0];
+    const currentEmbed = message.embeds[0];
+    const embedsMatch = newEmbed
+      ? currentEmbed !== undefined && isDeepStrictEqual(newEmbed.toJSON(), currentEmbed.toJSON())
+      : currentEmbed === undefined;
+    if (!embedsMatch) return false;
+
+    const newComponents = editOptions.components.map((row) => row.toJSON());
+    const currentComponents = message.components.map((row) => row.toJSON());
+    return isDeepStrictEqual(newComponents, currentComponents);
   }
 
   private async replyEphemeral(interaction: ButtonInteraction, content: string): Promise<void> {

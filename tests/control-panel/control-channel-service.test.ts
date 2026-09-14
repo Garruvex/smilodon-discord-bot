@@ -1173,4 +1173,81 @@ describe("ControlChannelService", () => {
     expect(order[2]).toBe("optimistic-editReply");
     expect(skip).toHaveBeenCalledOnce();
   });
+
+  describe("matchesCurrentMessage", () => {
+    function matches(
+      service: ControlChannelService,
+      message: unknown,
+      editOptions: unknown,
+    ): boolean {
+      return (
+        service as unknown as {
+          matchesCurrentMessage: (message: unknown, editOptions: unknown) => boolean;
+        }
+      ).matchesCurrentMessage(message, editOptions);
+    }
+
+    function baseMessage(): { content: string; embeds: unknown[]; components: unknown[]; attachments: { size: number } } {
+      return {
+        content: "panel content",
+        embeds: [{ toJSON: () => ({ title: "Now Playing" }) }],
+        components: [{ toJSON: () => ({ custom_id: "pause" }) }],
+        attachments: { size: 0 },
+      };
+    }
+
+    function baseEditOptions(): { content: string; embeds: unknown[]; components: unknown[] } {
+      return {
+        content: "panel content",
+        embeds: [{ toJSON: () => ({ title: "Now Playing" }) }],
+        components: [{ toJSON: () => ({ custom_id: "pause" }) }],
+      };
+    }
+
+    it("skips when content, embed, and components are all identical", () => {
+      const { service } = createService(false);
+      expect(matches(service, baseMessage(), baseEditOptions())).toBe(true);
+    });
+
+    it("does not skip when the embed differs", () => {
+      const { service } = createService(false);
+      const editOptions = baseEditOptions();
+      editOptions.embeds = [{ toJSON: (): { title: string } => ({ title: "Playback paused" }) }];
+      expect(matches(service, baseMessage(), editOptions)).toBe(false);
+    });
+
+    it("does not skip when the components differ (e.g. a button's disabled state changed)", () => {
+      const { service } = createService(false);
+      const editOptions = baseEditOptions();
+      editOptions.components = [
+        { toJSON: (): { custom_id: string; disabled: boolean } => ({ custom_id: "pause", disabled: true }) },
+      ];
+      expect(matches(service, baseMessage(), editOptions)).toBe(false);
+    });
+
+    it("does not skip when content differs", () => {
+      const { service } = createService(false);
+      const editOptions = { ...baseEditOptions(), content: "different content" };
+      expect(matches(service, baseMessage(), editOptions)).toBe(false);
+    });
+
+    it("does not skip when a new attachment file is being uploaded", () => {
+      const { service } = createService(false);
+      const editOptions = { ...baseEditOptions(), files: [{ attachment: "path", name: "idle.png" }] };
+      expect(matches(service, baseMessage(), editOptions)).toBe(false);
+    });
+
+    it("skips a redundant attachments: [] when the message already has no attachments", () => {
+      const { service } = createService(false);
+      const editOptions = { ...baseEditOptions(), attachments: [] as const };
+      expect(matches(service, baseMessage(), editOptions)).toBe(true);
+    });
+
+    it("does not skip attachments: [] when the message actually has an attachment to clear", () => {
+      const { service } = createService(false);
+      const message = { ...baseMessage(), attachments: { size: 1 } };
+      const editOptions = { ...baseEditOptions(), attachments: [] as const };
+      expect(matches(service, message, editOptions)).toBe(false);
+    });
+  });
 });
