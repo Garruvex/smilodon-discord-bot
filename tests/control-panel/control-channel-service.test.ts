@@ -828,7 +828,10 @@ describe("ControlChannelService", () => {
   it("restarts an active guild's five-second progress countdown after a forced refresh", async () => {
     vi.useFakeTimers();
     const { service } = createService(false);
-    const refreshPanel = vi.spyOn(service, "refreshPanel").mockResolvedValue(undefined);
+    const writeTimedPanels = vi.spyOn(
+      service as unknown as { writeTimedPanels: (guildId: string) => Promise<void> },
+      "writeTimedPanels",
+    ).mockResolvedValue(undefined);
     const resetProgressRefreshTimer = (
       service as unknown as {
         resetProgressRefreshTimer: (guildId: string, snapshot: unknown) => void;
@@ -844,16 +847,19 @@ describe("ControlChannelService", () => {
     await vi.advanceTimersByTimeAsync(4_000);
     resetProgressRefreshTimer(guildId, activeSnapshot);
     await vi.advanceTimersByTimeAsync(1_000);
-    expect(refreshPanel).not.toHaveBeenCalled();
+    expect(writeTimedPanels).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(4_000);
-    expect(refreshPanel).toHaveBeenCalledOnce();
-    expect(refreshPanel).toHaveBeenCalledWith(guildId);
+    expect(writeTimedPanels).toHaveBeenCalledOnce();
+    expect(writeTimedPanels).toHaveBeenCalledWith(guildId);
   });
 
   it("cancels progress countdowns when playback becomes paused or idle", async () => {
     vi.useFakeTimers();
     const { service } = createService(false);
-    const refreshPanel = vi.spyOn(service, "refreshPanel").mockResolvedValue(undefined);
+    const writeTimedPanels = vi.spyOn(
+      service as unknown as { writeTimedPanels: (guildId: string) => Promise<void> },
+      "writeTimedPanels",
+    ).mockResolvedValue(undefined);
     const resetProgressRefreshTimer = (
       service as unknown as {
         resetProgressRefreshTimer: (guildId: string, snapshot: unknown) => void;
@@ -872,13 +878,16 @@ describe("ControlChannelService", () => {
     });
     await vi.advanceTimersByTimeAsync(10_000);
 
-    expect(refreshPanel).not.toHaveBeenCalled();
+    expect(writeTimedPanels).not.toHaveBeenCalled();
   });
 
   it("keeps refreshing while a current track is in Lavalink's start transition", async () => {
     vi.useFakeTimers();
     const { service } = createService(false);
-    const refreshPanel = vi.spyOn(service, "refreshPanel").mockResolvedValue(undefined);
+    const writeTimedPanels = vi.spyOn(
+      service as unknown as { writeTimedPanels: (guildId: string) => Promise<void> },
+      "writeTimedPanels",
+    ).mockResolvedValue(undefined);
     const resetProgressRefreshTimer = (
       service as unknown as {
         resetProgressRefreshTimer: (guildId: string, snapshot: unknown) => void;
@@ -892,8 +901,8 @@ describe("ControlChannelService", () => {
     });
     await vi.advanceTimersByTimeAsync(5_000);
 
-    expect(refreshPanel).toHaveBeenCalledOnce();
-    expect(refreshPanel).toHaveBeenCalledWith(guildId);
+    expect(writeTimedPanels).toHaveBeenCalledOnce();
+    expect(writeTimedPanels).toHaveBeenCalledWith(guildId);
   });
 
   it("preserves an existing idle image attachment during refresh", () => {
@@ -1260,6 +1269,97 @@ describe("ControlChannelService", () => {
     expect(order[1]).toBe("background-edit-done");
     expect(order[2]).toBe("optimistic-editReply");
     expect(skip).toHaveBeenCalledOnce();
+  });
+
+  it("writeTimedPanels only touches Now Playing and Lyrics, never Queue", async () => {
+    const nowPlayingMessageId = "777777777777777777";
+    const lyricsMessageId = "888888888888888888";
+    const queueMessageId = "999999999999999999";
+
+    function messageMock(): {
+      id: string; author: { id: string }; attachments: { size: number; some: () => boolean };
+      content: string; embeds: unknown[]; components: unknown[]; edit: ReturnType<typeof vi.fn>;
+    } {
+      return {
+        id: "",
+        author: { id: botUserId },
+        attachments: { size: 0, some: (): boolean => false },
+        content: "",
+        embeds: [],
+        components: [],
+        edit: vi.fn().mockResolvedValue(undefined),
+      };
+    }
+    const nowPlayingMessage = { ...messageMock(), id: nowPlayingMessageId };
+    const lyricsMessage = { ...messageMock(), id: lyricsMessageId };
+    const queueMessage = { ...messageMock(), id: queueMessageId };
+
+    const channel = {
+      id: controlPanelChannelId,
+      type: ChannelType.GuildText,
+      permissionOverwrites: { edit: vi.fn().mockResolvedValue(undefined) },
+      messages: {
+        fetch: vi.fn((id: string) => Promise.resolve(
+          id === nowPlayingMessageId ? nowPlayingMessage
+            : id === lyricsMessageId ? lyricsMessage
+              : id === queueMessageId ? queueMessage
+                : null,
+        )),
+      },
+    };
+    const guild = {
+      id: guildId,
+      roles: { everyone: { id: "everyone-role" } },
+      channels: { fetch: vi.fn().mockResolvedValue(channel) },
+    };
+    const client = { user: { id: botUserId }, guilds: { cache: new Map([[guildId, guild]]) } };
+    const configuration = {
+      ownerUserIds: new Set<string>(),
+      runtimeDataDirectory: "./data/local",
+    } as unknown as ApplicationConfiguration;
+    const profile = guildConfiguration(false);
+    const provider = {
+      find: () => profile,
+      getAll: () => [profile],
+    } as unknown as GuildConfigurationProvider;
+    const stateStore = {
+      initialize: vi.fn(),
+      find: vi.fn(() => ({
+        guildId,
+        channelId: controlPanelChannelId,
+        nowPlayingMessageId,
+        lyricsMessageId,
+        queueMessageId,
+      })),
+      save: vi.fn(),
+    } as unknown as ControlPanelStateStore;
+    const playerGateway = {
+      getSnapshot: vi.fn(() => null),
+      reconcileVoiceState: vi.fn(() => Promise.resolve(false)),
+      getQueue: vi.fn(() => []),
+    } as unknown as MusicPlayerGateway;
+    const logger = { error: vi.fn(), warn: vi.fn() };
+    const eventBus = { subscribe: vi.fn((): (() => void) => () => undefined) } as unknown as MusicEventBus;
+
+    const service = new ControlChannelService(
+      client as never,
+      configuration,
+      provider,
+      stateStore,
+      playerGateway,
+      {} as unknown as PlaybackService,
+      { getYohtaTheme: () => null, hasEmoji: () => false } as never,
+      logger as never,
+      eventBus,
+    );
+
+    await (
+      service as unknown as { writeTimedPanels: (guildId: string) => Promise<void> }
+    ).writeTimedPanels(guildId);
+
+    expect(nowPlayingMessage.edit).toHaveBeenCalledOnce();
+    expect(lyricsMessage.edit).toHaveBeenCalledOnce();
+    expect(queueMessage.edit).not.toHaveBeenCalled();
   });
 
   describe("matchesCurrentMessage", () => {

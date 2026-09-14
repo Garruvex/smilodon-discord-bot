@@ -457,51 +457,110 @@ export class ControlChannelService {
     await this.writePanel(guildId, profile, options);
   }
 
-  // The single choke point for every actual Discord write to the panel's
-  // three messages — see panelWriteQueue's field comment for why this can't
-  // be skipped for any caller, optimistic or authoritative. Each message is
-  // independently skip-checked, so an unchanged message (e.g. lyrics didn't
-  // move this tick) costs zero extra API calls.
+  // The full trio — used by every event-driven refresh (track change, queue
+  // mutation, a button's own authoritative write). The periodic progress
+  // tick uses writeTimedPanels() instead, which skips the queue message —
+  // its content only ever changes in response to a real mutation, so a
+  // time-based tick has nothing new to say there.
   private async writePanel(
     guildId: string,
     profile: GuildConfiguration,
     options: PanelRefreshOptions,
   ): Promise<void> {
     await this.panelWriteQueue.run(guildId, async () => {
-      try {
-        const messages = await this.ensurePanelMessages(profile);
-        const snapshot = this.playerGateway.getSnapshot(profile.guildId);
-        // Arm the next update from player state, not from the success of the
-        // Discord edit. A transient API failure must not permanently stop the
-        // panel, and Lavalink may report `playing = false` briefly while a new
-        // current track is starting.
-        this.resetProgressRefreshTimer(guildId, snapshot);
+      const messages = await this.ensurePanelMessages(profile).catch((error: unknown) => {
+        this.logger.error({ error, guildId }, "Unable to ensure music control panel messages");
+        return null;
+      });
+      if (!messages) return;
+      const snapshot = this.playerGateway.getSnapshot(profile.guildId);
+      // Arm the next update from player state, not from the success of the
+      // Discord edit. A transient API failure must not permanently stop the
+      // panel, and Lavalink may report `playing = false` briefly while a new
+      // current track is starting.
+      this.resetProgressRefreshTimer(guildId, snapshot);
 
-        const nowPlayingPayload = this.createNowPlayingPayload(profile, snapshot);
-        const nowPlayingEditOptions = this.createNowPlayingEditOptions(
-          messages.nowPlaying,
-          profile,
-          snapshot,
-          nowPlayingPayload,
-          options,
-        );
-        if (!this.matchesCurrentMessage(messages.nowPlaying, nowPlayingEditOptions)) {
-          await messages.nowPlaying.edit(nowPlayingEditOptions);
-        }
-
-        const lyricsPayload = this.createLyricsPayload(profile, snapshot);
-        if (!this.matchesCurrentMessage(messages.lyrics, lyricsPayload)) {
-          await messages.lyrics.edit(lyricsPayload);
-        }
-
-        const queuePayload = this.createQueueControlsPayload(profile, snapshot);
-        if (!this.matchesCurrentMessage(messages.queue, queuePayload)) {
-          await messages.queue.edit(queuePayload);
-        }
-      } catch (error) {
-        this.logger.error({ error, guildId }, "Unable to refresh music control panel");
-      }
+      // Each write is independently try/caught — one message's edit
+      // throwing (e.g. an unexpected API error) must not skip the other
+      // two for this cycle.
+      await this.writeNowPlayingMessage(messages.nowPlaying, profile, snapshot, options, guildId);
+      await this.writeLyricsMessage(messages.lyrics, profile, snapshot, guildId);
+      await this.writeQueueMessage(messages.queue, profile, snapshot, guildId);
     });
+  }
+
+  // The periodic progress-tick path: only Now Playing (the progress bar)
+  // and Lyrics are time-sensitive enough to need a tick with no triggering
+  // event. Still funnels through panelWriteQueue like every other write.
+  private async writeTimedPanels(guildId: string): Promise<void> {
+    const profile = this.guildConfigurationProvider.find(guildId);
+    if (!profile?.channels.controlPanel || !profile.features.music) {
+      this.clearProgressRefreshTimer(guildId);
+      return;
+    }
+
+    await this.guildLocks.run(guildId, () => this.playerGateway.reconcileVoiceState(guildId));
+    await this.panelWriteQueue.run(guildId, async () => {
+      const messages = await this.ensurePanelMessages(profile).catch((error: unknown) => {
+        this.logger.error({ error, guildId }, "Unable to ensure music control panel messages");
+        return null;
+      });
+      if (!messages) return;
+      const snapshot = this.playerGateway.getSnapshot(guildId);
+      this.resetProgressRefreshTimer(guildId, snapshot);
+      await this.writeNowPlayingMessage(messages.nowPlaying, profile, snapshot, {}, guildId);
+      await this.writeLyricsMessage(messages.lyrics, profile, snapshot, guildId);
+    });
+  }
+
+  private async writeNowPlayingMessage(
+    message: Message,
+    profile: GuildConfiguration,
+    snapshot: MusicPlayerSnapshot | null,
+    options: PanelRefreshOptions,
+    guildId: string,
+  ): Promise<void> {
+    try {
+      const payload = this.createNowPlayingPayload(profile, snapshot);
+      const editOptions = this.createNowPlayingEditOptions(message, profile, snapshot, payload, options);
+      if (!this.matchesCurrentMessage(message, editOptions)) {
+        await message.edit(editOptions);
+      }
+    } catch (error) {
+      this.logger.error({ error, guildId }, "Unable to refresh the Now Playing panel message");
+    }
+  }
+
+  private async writeLyricsMessage(
+    message: Message,
+    profile: GuildConfiguration,
+    snapshot: MusicPlayerSnapshot | null,
+    guildId: string,
+  ): Promise<void> {
+    try {
+      const payload = this.createLyricsPayload(profile, snapshot);
+      if (!this.matchesCurrentMessage(message, payload)) {
+        await message.edit(payload);
+      }
+    } catch (error) {
+      this.logger.error({ error, guildId }, "Unable to refresh the Lyrics panel message");
+    }
+  }
+
+  private async writeQueueMessage(
+    message: Message,
+    profile: GuildConfiguration,
+    snapshot: MusicPlayerSnapshot | null,
+    guildId: string,
+  ): Promise<void> {
+    try {
+      const payload = this.createQueueControlsPayload(profile, snapshot);
+      if (!this.matchesCurrentMessage(message, payload)) {
+        await message.edit(payload);
+      }
+    } catch (error) {
+      this.logger.error({ error, guildId }, "Unable to refresh the Queue panel message");
+    }
   }
 
   private async ensurePanelMessages(profile: GuildConfiguration): Promise<PanelMessageTrio> {
@@ -951,7 +1010,7 @@ export class ControlChannelService {
 
     const timer = setTimeout(() => {
       this.progressRefreshTimers.delete(guildId);
-      void this.refreshPanel(guildId);
+      void this.writeTimedPanels(guildId);
     }, activePlaybackRefreshIntervalMs);
     timer.unref();
     this.progressRefreshTimers.set(guildId, timer);

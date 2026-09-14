@@ -59,21 +59,28 @@ const lyricsLookaheadMs = 6_000;
 // computed.
 const editLatencyBiasMs = 500;
 
+// A fast run of lines (e.g. a rap verse) can put more than one line inside
+// this trailing window — showing all of them, not just the single most
+// recent, keeps the panel from looking like it skipped straight past the
+// others between repaints.
+const previousLineWindowMs = 1_000;
+
 // `lines` is sorted ascending by timestamp.
 function selectLyricLines(lines: readonly SyncedLyricLine[], positionMs: number): SelectedLyricLines {
   const renderPositionMs = positionMs + editLatencyBiasMs;
-  let current: string | null = null;
+  const recent: string[] = [];
   const upcoming: string[] = [];
   for (const entry of lines) {
-    if (entry.timestampMs <= renderPositionMs) {
-      current = entry.line;
-    } else if (entry.timestampMs <= renderPositionMs + lyricsLookaheadMs) {
+    if (entry.timestampMs > renderPositionMs) {
+      if (entry.timestampMs > renderPositionMs + lyricsLookaheadMs) break;
       upcoming.push(entry.line);
-    } else {
-      break;
+      continue;
+    }
+    if (entry.timestampMs >= renderPositionMs - previousLineWindowMs) {
+      recent.push(entry.line);
     }
   }
-  return { current, upcoming };
+  return { current: recent.length > 0 ? recent.join(" / ") : null, upcoming };
 }
 
 export class LavalinkPlayerGateway implements MusicPlayerGateway {
