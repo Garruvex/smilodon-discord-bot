@@ -39,21 +39,35 @@ interface SelectedLyricLines {
   readonly upcoming: readonly string[];
 }
 
-// Matches the panel's own repaint cadence (activePlaybackRefreshIntervalMs
-// in control-channel-service.ts) — every line due before the *next* repaint
-// gets bundled into this one. A single "next line" would silently skip
-// lines during a fast section (rap verses can fire several lines within one
-// repaint window), so this windows on time rather than line count.
-const lyricsLookaheadMs = 5_000;
+// A little past the panel's own repaint cadence (activePlaybackRefreshIntervalMs
+// in control-channel-service.ts, 5s) — every line due before the *next*
+// repaint gets bundled into this one. A single "next line" would silently
+// skip lines during a fast section (rap verses can fire several lines
+// within one repaint window), so this windows on time rather than line
+// count. The extra second over the nominal 5s interval is slack for a
+// cycle that runs long (a queued write, a slow edit round trip), so the
+// window still covers the real gap until the next repaint instead of
+// leaving a blind spot sized exactly to however late that cycle ran.
+const lyricsLookaheadMs = 6_000;
+
+// Selecting "current" from the raw sampled position picks the line that was
+// playing the instant we asked — but by the time that render actually
+// reaches Discord and becomes visible, playback has moved on by roughly one
+// edit's network round trip. Biasing the reference point forward by a
+// typical round-trip estimate keeps the displayed line closer to what's
+// actually playing when it's seen, rather than what was playing when it was
+// computed.
+const editLatencyBiasMs = 500;
 
 // `lines` is sorted ascending by timestamp.
 function selectLyricLines(lines: readonly SyncedLyricLine[], positionMs: number): SelectedLyricLines {
+  const renderPositionMs = positionMs + editLatencyBiasMs;
   let current: string | null = null;
   const upcoming: string[] = [];
   for (const entry of lines) {
-    if (entry.timestampMs <= positionMs) {
+    if (entry.timestampMs <= renderPositionMs) {
       current = entry.line;
-    } else if (entry.timestampMs <= positionMs + lyricsLookaheadMs) {
+    } else if (entry.timestampMs <= renderPositionMs + lyricsLookaheadMs) {
       upcoming.push(entry.line);
     } else {
       break;
