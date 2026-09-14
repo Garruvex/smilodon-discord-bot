@@ -611,9 +611,10 @@ export class ControlChannelService {
         this.resetProgressRefreshTimer(guildId, this.playerGateway.getSnapshot(guildId));
         return;
       }
-      if (Date.now() - (this.lastNowPlayingEditAt.get(guildId) ?? -Infinity) >= nowPlayingRefreshIntervalMs) {
-        await this.writeNowPlayingMessage(messages.nowPlaying, profile, this.playerGateway.getSnapshot(guildId), {}, guildId);
-      }
+      // The interval floor now lives inside writeNowPlayingMessage/
+      // writeLyricsMessage themselves (applies to every caller, not just
+      // this tick path) — no need to gate the call here too.
+      await this.writeNowPlayingMessage(messages.nowPlaying, profile, this.playerGateway.getSnapshot(guildId), {}, guildId);
       // Lyrics last, off the freshest snapshot — see the matching comment in
       // writePanel() above for why.
       await this.writeLyricsMessage(messages.lyrics, profile, this.playerGateway.getSnapshot(guildId), guildId);
@@ -629,6 +630,17 @@ export class ControlChannelService {
     guildId: string,
   ): Promise<void> {
     try {
+      // Floor applies here — not just in the periodic-tick caller — so an
+      // event-driven refresh (track_started, lyrics_loaded, queue_changed,
+      // ...) can't stack its own edit on top of one the tick just sent.
+      // Confirmed via production REST logging: real 429s from Discord's
+      // per-channel message-edit sublimit kept happening even after tuning
+      // the tick-only interval, because this path had no floor of its own
+      // at all — only a "did the content change" check, which a genuine
+      // track change always passes. A skip here isn't lost — the next
+      // scheduled tick (resetProgressRefreshTimer) or a later event picks
+      // it up.
+      if (Date.now() - (this.lastNowPlayingEditAt.get(guildId) ?? -Infinity) < nowPlayingRefreshIntervalMs) return;
       const payload = this.createNowPlayingPayload(profile, snapshot);
       const editOptions = this.createNowPlayingEditOptions(message, profile, snapshot, payload, options);
       if (!this.matchesCurrentMessage(message, editOptions)) {
@@ -647,6 +659,16 @@ export class ControlChannelService {
     guildId: string,
   ): Promise<void> {
     try {
+      // Same floor-applies-to-every-caller reasoning as writeNowPlayingMessage
+      // above — this was the dominant contributor: a track change fires
+      // track_started (writes the "Looking for lyrics..." placeholder) and
+      // then lyrics_loaded moments later (writes the real line), each an
+      // independent, fully unthrottled writePanel() cycle. For a genuinely
+      // new track the placeholder write always passes this check (the prior
+      // track's last lyrics edit is long past by then); it's specifically
+      // the *second* write, landing within the floor of the first, that
+      // this was letting through uncounted.
+      if (Date.now() - (this.lastLyricsEditAt.get(guildId) ?? -Infinity) < minimumLyricEditIntervalMs) return;
       const payload = this.createLyricsPayload(profile, snapshot);
       if (!this.matchesCurrentMessage(message, payload)) {
         this.lastLyricsEditAt.set(guildId, Date.now());

@@ -1552,51 +1552,55 @@ describe("ControlChannelService", () => {
   });
 
   it("throttles Now Playing edits on a longer interval than lyrics edits, on consecutive timed ticks", async () => {
-    // Now Playing and Lyrics used to share one throttle — split apart so
-    // lyrics can update more often without the *combined* edit volume
-    // approaching Discord's per-channel rate limit (see
-    // nowPlayingRefreshIntervalMs / minimumLyricEditIntervalMs). A second
-    // tick that arrives well after the lyrics floor but before the Now
-    // Playing floor must still skip the Now Playing write entirely.
+    // Now Playing and Lyrics have separate throttle floors, and — since a
+    // real production 429 storm proved event-driven writes need the same
+    // protection as timed ticks — those floors now live inside
+    // writeNowPlayingMessage/writeLyricsMessage themselves (see the comments
+    // there), not in a caller-side conditional. So this exercises the real
+    // methods against real message mocks instead of mocking them away,
+    // varying playback position each tick so a skip can only be the floor,
+    // never matchesCurrentMessage finding nothing changed.
     vi.useFakeTimers();
+    function messageMock(): { edit: ReturnType<typeof vi.fn>; attachments: { size: number; some: () => boolean } } {
+      return { edit: vi.fn().mockResolvedValue(undefined), attachments: { size: 0, some: (): boolean => false } };
+    }
+    const nowPlayingMessage = messageMock();
+    const lyricsMessage = messageMock();
     const { service, getSnapshot } = createService(false);
     const internals = service as unknown as {
       ensurePanelMessages: () => Promise<unknown>;
       writeTimedPanels: (id: string) => Promise<void>;
-      writeLyricsMessage: () => Promise<void>;
-      writeNowPlayingMessage: () => Promise<void>;
       resetProgressRefreshTimer: (id: string, snapshot: unknown) => void;
-      lastNowPlayingEditAt: Map<string, number>;
     };
-    getSnapshot.mockReturnValue({ currentTrack: { title: "Track" }, paused: false });
-    vi.spyOn(internals, "ensurePanelMessages").mockResolvedValue({ nowPlaying: {}, lyrics: {} });
-    const writeLyrics = vi.spyOn(internals, "writeLyricsMessage").mockResolvedValue(undefined);
-    // The real writeNowPlayingMessage records its own edit time (what the
-    // throttle actually reads) as a side effect — the mock has to reproduce
-    // that, or the throttle sees -Infinity forever and never engages.
-    const writeNowPlaying = vi.spyOn(internals, "writeNowPlayingMessage").mockImplementation(() => {
-      internals.lastNowPlayingEditAt.set(guildId, Date.now());
-      return Promise.resolve();
-    });
+    let positionMs = 0;
+    getSnapshot.mockImplementation(() => ({
+      currentTrack: { title: "Track", durationMs: 240_000, positionMs, isStream: false },
+      paused: false,
+      currentLyricLine: `Line at ${positionMs}`,
+      upcomingLyricLines: [],
+    }));
+    vi.spyOn(internals, "ensurePanelMessages").mockResolvedValue({ nowPlaying: nowPlayingMessage, lyrics: lyricsMessage });
     // This test drives writeTimedPanels explicitly to control exact timing;
     // the real internal timer chain it would otherwise (re)arm must not also
     // fire calls of its own in the background while fake time is advanced.
     vi.spyOn(internals, "resetProgressRefreshTimer").mockImplementation(() => undefined);
 
     await internals.writeTimedPanels(guildId);
-    expect(writeNowPlaying).toHaveBeenCalledOnce();
+    expect(nowPlayingMessage.edit).toHaveBeenCalledOnce();
 
-    // 4s later: past the 1.5s lyrics floor, but short of the 6s Now Playing
+    // 4s later: past the 3s lyrics floor, but short of the 6s Now Playing
     // floor — Now Playing must not have been written again.
+    positionMs = 4_000;
     await vi.advanceTimersByTimeAsync(4_000);
     await internals.writeTimedPanels(guildId);
-    expect(writeNowPlaying).toHaveBeenCalledOnce();
-    expect(writeLyrics).toHaveBeenCalledTimes(2);
+    expect(nowPlayingMessage.edit).toHaveBeenCalledOnce();
+    expect(lyricsMessage.edit).toHaveBeenCalledTimes(2);
 
     // Past the 6s floor now — Now Playing is due again.
+    positionMs = 6_500;
     await vi.advanceTimersByTimeAsync(2_500);
     await internals.writeTimedPanels(guildId);
-    expect(writeNowPlaying).toHaveBeenCalledTimes(2);
+    expect(nowPlayingMessage.edit).toHaveBeenCalledTimes(2);
     service.stop();
   });
 
