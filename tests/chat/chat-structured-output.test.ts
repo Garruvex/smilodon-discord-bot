@@ -65,6 +65,30 @@ describe("parseChatModelOutput", () => {
 });
 
 describe("buildChatInstructions", () => {
+  it("requires id-based identity resolution over display names, unconditionally", () => {
+    const instructions = buildChatInstructions(baseRequest(), chatSafetyGuard);
+    expect(instructions).toMatch(/display name is never reliable evidence of identity/);
+    expect(instructions).toMatch(/only treat two lines as the same person when their ids match/);
+  });
+
+  it("requires attributing blame/actions to a specific sourced line, not a vague reaction or another speaker's guess", () => {
+    const instructions = buildChatInstructions(baseRequest(), chatSafetyGuard);
+    expect(instructions).toMatch(/point to an actual <reply_chain>\/<channel_history> line/);
+    expect(instructions).toMatch(/vague reaction.*is not evidence of who did it/);
+  });
+
+  it("treats the assistant's own prior replies in conversation_history as past output, not established fact", () => {
+    const instructions = buildChatInstructions(baseRequest(), chatSafetyGuard);
+    expect(instructions).toMatch(/Your own prior replies also appear in <conversation_history>/);
+    expect(instructions).toMatch(/not established facts/);
+    expect(instructions).toMatch(/re-examine the actual <reply_chain>\/<channel_history> lines again/);
+  });
+
+  it("forbids inventing specific artifacts (links, quotes, exact wording) not actually present in context", () => {
+    const instructions = buildChatInstructions(baseRequest(), chatSafetyGuard);
+    expect(instructions).toMatch(/a URL, filename, quote, or\s+exact wording you did not actually see/);
+  });
+
   it("only includes ambient-judgment guidance when triggerMode is ambient", () => {
     const direct = buildChatInstructions(baseRequest({ triggerMode: "direct" }), chatSafetyGuard);
     expect(direct).not.toMatch(/not directly addressed/);
