@@ -1008,9 +1008,11 @@ export class ControlChannelService {
       // Bundling every line due before the next repaint (rather than just
       // one "next" line) is what keeps this useful during fast sections —
       // without it, lines that fire between repaints would just be
-      // silently skipped.
+      // silently skipped. One per line (not joined into a single string) so
+      // a wider window of several lines stays readable instead of running
+      // together.
       const upcoming = snapshot.upcomingLyricLines.length > 0
-        ? `\n-# ${snapshot.upcomingLyricLines.join(" / ")}`
+        ? `\n${snapshot.upcomingLyricLines.map((line) => `-# ${line}`).join("\n")}`
         : "";
       return embed.setDescription(`${snapshot.currentLyricLine}${upcoming}`);
     }
@@ -1018,7 +1020,7 @@ export class ControlChannelService {
     // is coming up within the lookahead window — show it rather than a
     // placeholder that would just get replaced a couple of seconds later.
     if (snapshot.upcomingLyricLines.length > 0) {
-      return embed.setDescription(`-# ${snapshot.upcomingLyricLines.join(" / ")}`);
+      return embed.setDescription(snapshot.upcomingLyricLines.map((line) => `-# ${line}`).join("\n"));
     }
     return embed.setDescription(
       snapshot.lyricsUnavailable ? "No lyrics found for this track." : "Looking for lyrics…",

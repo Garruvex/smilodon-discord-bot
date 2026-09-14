@@ -876,7 +876,7 @@ describe("ControlChannelService", () => {
       lyricsUnavailable: false,
     }).toJSON();
 
-    expect(embed.description).toBe("-# First line / Second line");
+    expect(embed.description).toBe("-# First line\n-# Second line");
   });
 
   it("falls back to a placeholder when there's neither a current nor an upcoming line", () => {

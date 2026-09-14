@@ -328,6 +328,30 @@ export class Application {
         "Discord REST request was rate limited",
       );
     });
+
+    // Temporary: pins down where a multi-second message.edit() delay
+    // actually comes from. This fires once the HTTP response is received —
+    // if its timestamp lands close to when the edit call started, discord.js
+    // sent and received the request fast and the delay is downstream of
+    // that; if it lands close to when the edit call *finished*, the request
+    // itself (queued send, network, or response body) is what's slow.
+    // Filtered to message routes only to avoid flooding the log with every
+    // other REST call the bot makes (interactions, commands, etc.).
+    this.client.rest.on("response", (request, response) => {
+      if (!request.route.includes("/messages/")) return;
+      this.logger.info(
+        {
+          method: request.method,
+          route: request.route,
+          status: response.status,
+          time: Date.now(),
+          remaining: response.headers.get("x-ratelimit-remaining"),
+          resetAfter: response.headers.get("x-ratelimit-reset-after"),
+          bucket: response.headers.get("x-ratelimit-bucket"),
+        },
+        "Discord REST response for a message route",
+      );
+    });
   }
 
   // Mirrors ControlChannelService.handleMessage's own "is this message
