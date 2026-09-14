@@ -148,15 +148,13 @@ export class ControlChannelService {
 
   public async ensureGuildPanel(guildId: string): Promise<Message> {
     const profile = this.guildConfigurationProvider.require(guildId);
-    // sendNowPlayingMessage() pins on creation, but that only runs when the
-    // trio doesn't already exist — an existing, somehow-unpinned message
-    // (e.g. manually unpinned) still needs catching up here.
+    // ensurePanelMessages() pins all three on creation, but that only runs
+    // when the trio doesn't already exist — existing, somehow-unpinned
+    // messages (e.g. manually unpinned) still need catching up here.
     const messages = await this.panelWriteQueue.run(guildId, () => this.ensurePanelMessages(profile));
-    if (!messages.nowPlaying.pinned) {
-      await messages.nowPlaying.pin("Persistent music control panel").catch((error: unknown) => {
-        this.logger.warn({ error, guildId }, "Unable to pin music control panel");
-      });
-    }
+    await this.pinPanelMessage(messages.nowPlaying, guildId);
+    await this.pinPanelMessage(messages.lyrics, guildId);
+    await this.pinPanelMessage(messages.queue, guildId);
     return messages.nowPlaying;
   }
 
@@ -552,7 +550,22 @@ export class ControlChannelService {
       queueMessageId: queue.id,
     });
 
+    // Pinned here (not just in ensureGuildPanel) so a mid-session trio
+    // recreation — triggered by any writePanel() call, not only the setup
+    // flow — pins the fresh messages too, instead of leaving them unpinned
+    // until someone happens to call ensureGuildPanel() again.
+    await this.pinPanelMessage(nowPlaying, profile.guildId);
+    await this.pinPanelMessage(lyrics, profile.guildId);
+    await this.pinPanelMessage(queue, profile.guildId);
+
     return { nowPlaying, lyrics, queue };
+  }
+
+  private async pinPanelMessage(message: Message, guildId: string): Promise<void> {
+    if (message.pinned) return;
+    await message.pin("Persistent music control panel").catch((error: unknown) => {
+      this.logger.warn({ error, guildId, messageId: message.id }, "Unable to pin music control panel message");
+    });
   }
 
   private async fetchExistingTrio(
@@ -605,13 +618,6 @@ export class ControlChannelService {
     const message = await channel.send(
       needsIdleAttachment ? { ...payload, files: [this.getIdleImageFile(profile)] } : payload,
     );
-    // Pinned here (not just in ensureGuildPanel) so a mid-session trio
-    // recreation — triggered by any writePanel() call, not only the setup
-    // flow — re-pins the fresh message too, instead of leaving it unpinned
-    // until someone happens to call ensureGuildPanel() again.
-    await message.pin("Persistent music control panel").catch((error: unknown) => {
-      this.logger.warn({ error, guildId: profile.guildId }, "Unable to pin music control panel");
-    });
     return message;
   }
 
