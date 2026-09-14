@@ -962,7 +962,12 @@ describe("ControlChannelService", () => {
     internals.resetProgressRefreshTimer(guildId, {
       currentTrack: { title: "Track" }, paused: false, nextLyricLineInMs: 100,
     });
-    await vi.advanceTimersByTimeAsync(999);
+    // The throttle floor matches the nominal 3s cadence (not a smaller
+    // value) precisely so a burst of close-together lines can't push total
+    // edit volume past what's safe under Discord's per-channel rate limit —
+    // a smaller floor here previously caused real 429 backoff that stalled
+    // the whole panel, including button clicks sharing the same write queue.
+    await vi.advanceTimersByTimeAsync(2_999);
     expect(refresh).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(refresh).toHaveBeenCalledOnce();

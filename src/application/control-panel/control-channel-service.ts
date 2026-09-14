@@ -54,7 +54,19 @@ const defaultIdleImageName = "music-idle.png";
 // Progress remains on a slower cadence; lyrics may wake the timer at the
 // next line boundary. Coalesce rapid lines rather than queueing every line.
 const activePlaybackRefreshIntervalMs = 3_000;
-const minimumLyricEditIntervalMs = 1_000;
+// Matches activePlaybackRefreshIntervalMs deliberately, not a smaller value.
+// A smaller floor here (this used to be 1_000) lets total edit volume for
+// this one guild alone approach Discord's ~5-edits-per-5s-per-channel
+// ceiling on lyrics edits by themselves, before the Now Playing edit or
+// anything else posted in that channel counts at all — real 429 backoff
+// then stalls panelWriteQueue for however long Discord makes it wait, and
+// since button clicks share that same queue, every control on the panel
+// goes unresponsive for the same stretch. Keeping this at the nominal
+// cadence caps combined lyrics+progress traffic at the budget this timer
+// was already sized for (see the comment above activePlaybackRefreshIntervalMs
+// history) — still snaps to the exact next line boundary within that
+// budget, just without the ability to tick faster than the safe rate.
+const minimumLyricEditIntervalMs = activePlaybackRefreshIntervalMs;
 const defaultIdleImagePath = resolve("assets/music/no_bg.png");
 // Leaves headroom under the embed description's 4096-char hard cap for the
 // header line and the "…and N more" note appended after this budget runs out.
