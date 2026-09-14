@@ -276,7 +276,46 @@ export class ControlChannelService {
       return true;
     }
 
-    await interaction.deferUpdate();
+    // Fast path: when nothing is already queued for this guild, combine
+    // "acknowledge the interaction" and "show the predicted pending state"
+    // into one interaction.update() call instead of deferUpdate() followed by
+    // a separate editReply() — that second round trip is otherwise pure
+    // added latency before the button visibly reacts at all. Requires both
+    // queues to be idle: guildLocks because update() has the same 3-second
+    // window as deferUpdate() (no time to wait behind a queued action), and
+    // panelWriteQueue because update() edits the same message outside that
+    // queue's ordering guarantee — with a background write in flight, this
+    // edit could land out of order and get stomped by an older render (see
+    // panelWriteQueue's field comment).
+    const usesPendingState = control.showPendingState !== false;
+    let shownPendingViaFastAck = false;
+    if (
+      usesPendingState &&
+      !this.guildLocks.isBusy(interaction.guildId) &&
+      !this.panelWriteQueue.isBusy(interaction.guildId)
+    ) {
+      const currentSnapshot = this.playerGateway.getSnapshot(interaction.guildId);
+      const predictedSnapshot = currentSnapshot && control.predictSnapshot
+        ? control.predictSnapshot(currentSnapshot)
+        : currentSnapshot;
+      const pendingRows = createMusicPanelControlRows(profile, predictedSnapshot, control.id);
+      try {
+        // Still routed through panelWriteQueue even though we just checked
+        // it's idle — that check only proves nothing is in flight *now*, not
+        // that nothing gets submitted during this call's own await. Queueing
+        // it keeps any such write waiting its turn behind this one instead of
+        // racing it.
+        await this.panelWriteQueue.run(interaction.guildId, () =>
+          interaction.update({ components: pendingRows }));
+        shownPendingViaFastAck = true;
+      } catch {
+        // Fall through to the slow path — deferUpdate() below will surface
+        // the same failure (e.g. an already-expired interaction) the same way.
+      }
+    }
+    if (!shownPendingViaFastAck) {
+      await interaction.deferUpdate();
+    }
     // The interaction owns the next render for this guild. Cancel its pending
     // progress tick now so it cannot race the action; the immediate refresh
     // below will arm a fresh five-second countdown from the updated state.
@@ -325,7 +364,7 @@ export class ControlChannelService {
           // entirely and go straight to the authoritative color — there's
           // no round trip worth masking, so a disabled flash would only be
           // visual noise.
-          if (control.showPendingState !== false) {
+          if (control.showPendingState !== false && !shownPendingViaFastAck) {
             const currentSnapshot = this.playerGateway.getSnapshot(interaction.guildId);
             const predictedSnapshot = currentSnapshot && control.predictSnapshot
               ? control.predictSnapshot(currentSnapshot)

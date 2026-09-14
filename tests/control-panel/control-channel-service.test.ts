@@ -413,6 +413,83 @@ describe("ControlChannelService", () => {
     expect(skip).toHaveBeenCalledOnce();
   });
 
+  it("uses the single-round-trip fast ack when nothing is queued for the guild", async () => {
+    const { service, getSnapshot } = createService(false);
+    const skip = vi.fn().mockResolvedValue(undefined);
+    getSnapshot.mockReturnValue({
+      guildId,
+      voiceChannelId: "111111111111111111",
+      paused: false,
+      playing: true,
+      volume: 75,
+      queueLength: 1,
+      previousTrackCount: 0,
+      repeatMode: "off",
+      autoQueue: false,
+      autoQueueIssue: false,
+      twentyFourSeven: false,
+      currentTrack: {
+        title: "Track",
+        author: "Artist",
+        uri: "https://example.com/track",
+        artworkUrl: null,
+        durationMs: 60_000,
+        positionMs: 1_000,
+        isStream: false,
+        requestedByUserId: null,
+      },
+    });
+    Object.assign(service, {
+      playbackService: { skip },
+      stateStore: {
+        find: () => ({
+          guildId,
+          channelId: controlPanelChannelId,
+          messageId: "panel-message",
+        }),
+      },
+    });
+    vi.spyOn(
+      service as unknown as { writePanel: (...args: unknown[]) => Promise<void> },
+      "writePanel",
+    ).mockResolvedValue(undefined);
+    const update = vi.fn().mockResolvedValue(undefined);
+    const deferUpdate = vi.fn().mockResolvedValue(undefined);
+    const editReply = vi.fn().mockResolvedValue(undefined);
+    const interaction = {
+      customId: "music-panel:v1:skip",
+      inCachedGuild: (): boolean => true,
+      guildId,
+      channelId: controlPanelChannelId,
+      message: { id: "panel-message" },
+      member: { roles: { cache: new Map([[musicControllerRoleId, {}]]) }, voice: { channelId: null } },
+      user: { id: "345678901234567890" },
+      update,
+      deferUpdate,
+      editReply,
+      reply: vi.fn().mockResolvedValue(undefined),
+      followUp: vi.fn().mockResolvedValue(undefined),
+      replied: false,
+      deferred: true,
+    };
+
+    await service.handleButton(interaction as never);
+
+    // The pending state and the interaction ack land in one call — no
+    // separate deferUpdate()/editReply() round trip when the guild's queues
+    // are idle.
+    expect(update).toHaveBeenCalledOnce();
+    expect(deferUpdate).not.toHaveBeenCalled();
+    expect(editReply).not.toHaveBeenCalled();
+    const [{ components }] = update.mock.calls[0] as [{ components: Array<{ components: Array<{ toJSON: () => { custom_id: string; disabled?: boolean } }> }> }];
+    const skipButton = components
+      .flatMap((row) => row.components)
+      .map((component) => component.toJSON())
+      .find((button) => button.custom_id === "music-panel:v1:skip");
+    expect(skipButton?.disabled).toBe(true);
+    expect(skip).toHaveBeenCalledOnce();
+  });
+
   it("optimistically disables every control instantly when stop is pressed", async () => {
     const { service, getSnapshot } = createService(false);
     const stop = vi.fn().mockResolvedValue(undefined);
@@ -1055,6 +1132,11 @@ describe("ControlChannelService", () => {
       order.push("optimistic-editReply");
       return Promise.resolve();
     });
+    // Not used — with panelWriteQueue busy, the fast-ack path must not even
+    // attempt update() (see the assertion below), falling back to
+    // deferUpdate()+editReply() so the pending write stays behind the
+    // in-flight background one instead of racing it.
+    const update = vi.fn().mockResolvedValue(undefined);
     const interaction = {
       customId: "music-panel:v1:skip",
       inCachedGuild: (): boolean => true,
@@ -1063,6 +1145,7 @@ describe("ControlChannelService", () => {
       message: { id: messageId },
       member: { roles: { cache: new Map([[musicControllerRoleId, {}]]) }, voice: { channelId: null } },
       user: { id: "345678901234567890" },
+      update,
       deferUpdate: vi.fn().mockResolvedValue(undefined),
       editReply,
       reply: vi.fn().mockResolvedValue(undefined),
@@ -1079,6 +1162,7 @@ describe("ControlChannelService", () => {
     // The optimistic write must not have jumped the queue while the older
     // background write is still pending.
     expect(order).toEqual(["background-edit-start"]);
+    expect(update).not.toHaveBeenCalled();
 
     releaseBackgroundEdit();
     await backgroundRefresh;
