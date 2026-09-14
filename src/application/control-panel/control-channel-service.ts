@@ -51,22 +51,30 @@ import {
 } from "./music-panel-controls.js";
 
 const defaultIdleImageName = "music-idle.png";
-// Progress remains on a slower cadence; lyrics may wake the timer at the
-// next line boundary. Coalesce rapid lines rather than queueing every line.
+// The wake-timer's own outer bound: how long to wait at most before
+// re-checking state, even when nothing else demands sooner (no current
+// lyrics, or the next line is far off). Merely ticking is cheap — a tick
+// with nothing new to show skips its edit entirely (matchesCurrentMessage) —
+// so this can stay reasonably tight without costing anything on its own;
+// what actually costs Discord edit budget is the two throttles below.
 const activePlaybackRefreshIntervalMs = 3_000;
-// Matches activePlaybackRefreshIntervalMs deliberately, not a smaller value.
-// A smaller floor here (this used to be 1_000) lets total edit volume for
-// this one guild alone approach Discord's ~5-edits-per-5s-per-channel
-// ceiling on lyrics edits by themselves, before the Now Playing edit or
-// anything else posted in that channel counts at all — real 429 backoff
-// then stalls panelWriteQueue for however long Discord makes it wait, and
-// since button clicks share that same queue, every control on the panel
-// goes unresponsive for the same stretch. Keeping this at the nominal
-// cadence caps combined lyrics+progress traffic at the budget this timer
-// was already sized for (see the comment above activePlaybackRefreshIntervalMs
-// history) — still snaps to the exact next line boundary within that
-// budget, just without the ability to tick faster than the safe rate.
-const minimumLyricEditIntervalMs = activePlaybackRefreshIntervalMs;
+// The progress bar's own edit throttle. Split out from the lyrics throttle
+// below (they used to share one interval) so lyrics — what's actually being
+// read line by line — can update meaningfully more often than mm:ss ticking
+// over, which doesn't need anywhere near that precision.
+const nowPlayingRefreshIntervalMs = 6_000;
+// Lyrics' own edit throttle. This used to match activePlaybackRefreshIntervalMs
+// (3s) after a smaller 1s floor let total edit volume for this guild alone
+// approach Discord's ~5-edits-per-5s-per-channel ceiling by itself — real
+// 429 backoff then stalled panelWriteQueue for however long Discord made it
+// wait, and since button clicks share that same queue, every control on the
+// panel went unresponsive for the same stretch. Worst case combined with
+// nowPlayingRefreshIntervalMs above: 1/1.5s + 1/6s ≈ 0.83 edits/s ≈ 4.2 per
+// 5s — real but tighter headroom than the old 3s+3s split, traded
+// deliberately in favor of lyrics actually looking synced. Watch the
+// rateLimited REST log (bootstrap/application.ts) after changing either of
+// these — that's the ground truth for whether there's still headroom.
+const minimumLyricEditIntervalMs = 1_500;
 const defaultIdleImagePath = resolve("assets/music/no_bg.png");
 // Leaves headroom under the embed description's 4096-char hard cap for the
 // header line and the "…and N more" note appended after this budget runs out.
@@ -579,7 +587,7 @@ export class ControlChannelService {
       }
       const snapshot = this.playerGateway.getSnapshot(guildId);
       await this.writeLyricsMessage(messages.lyrics, profile, snapshot, guildId);
-      if (Date.now() - (this.lastNowPlayingEditAt.get(guildId) ?? -Infinity) >= activePlaybackRefreshIntervalMs) {
+      if (Date.now() - (this.lastNowPlayingEditAt.get(guildId) ?? -Infinity) >= nowPlayingRefreshIntervalMs) {
         await this.writeNowPlayingMessage(messages.nowPlaying, profile, this.playerGateway.getSnapshot(guildId), {}, guildId);
       }
       this.resetProgressRefreshTimer(guildId, this.playerGateway.getSnapshot(guildId));

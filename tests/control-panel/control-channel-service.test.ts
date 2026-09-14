@@ -962,12 +962,13 @@ describe("ControlChannelService", () => {
     internals.resetProgressRefreshTimer(guildId, {
       currentTrack: { title: "Track" }, paused: false, nextLyricLineInMs: 100,
     });
-    // The throttle floor matches the nominal 3s cadence (not a smaller
-    // value) precisely so a burst of close-together lines can't push total
-    // edit volume past what's safe under Discord's per-channel rate limit —
-    // a smaller floor here previously caused real 429 backoff that stalled
-    // the whole panel, including button clicks sharing the same write queue.
-    await vi.advanceTimersByTimeAsync(2_999);
+    // The throttle floor is deliberately smaller than the Now Playing
+    // interval (split into its own nowPlayingRefreshIntervalMs) so lyrics
+    // can update meaningfully more often without the combined edit volume
+    // approaching Discord's per-channel rate limit the way a shared 1s floor
+    // for both previously did (that caused real 429 backoff that stalled the
+    // whole panel, including button clicks sharing the same write queue).
+    await vi.advanceTimersByTimeAsync(1_499);
     expect(refresh).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(refresh).toHaveBeenCalledOnce();
@@ -1540,6 +1541,55 @@ describe("ControlChannelService", () => {
     expect(nowPlayingMessage.edit).toHaveBeenCalledOnce();
     expect(lyricsMessage.edit).toHaveBeenCalledOnce();
     expect(queueMessage.edit).not.toHaveBeenCalled();
+  });
+
+  it("throttles Now Playing edits on a longer interval than lyrics edits, on consecutive timed ticks", async () => {
+    // Now Playing and Lyrics used to share one throttle — split apart so
+    // lyrics can update more often without the *combined* edit volume
+    // approaching Discord's per-channel rate limit (see
+    // nowPlayingRefreshIntervalMs / minimumLyricEditIntervalMs). A second
+    // tick that arrives well after the lyrics floor but before the Now
+    // Playing floor must still skip the Now Playing write entirely.
+    vi.useFakeTimers();
+    const { service, getSnapshot } = createService(false);
+    const internals = service as unknown as {
+      ensurePanelMessages: () => Promise<unknown>;
+      writeTimedPanels: (id: string) => Promise<void>;
+      writeLyricsMessage: () => Promise<void>;
+      writeNowPlayingMessage: () => Promise<void>;
+      resetProgressRefreshTimer: (id: string, snapshot: unknown) => void;
+      lastNowPlayingEditAt: Map<string, number>;
+    };
+    getSnapshot.mockReturnValue({ currentTrack: { title: "Track" }, paused: false });
+    vi.spyOn(internals, "ensurePanelMessages").mockResolvedValue({ nowPlaying: {}, lyrics: {} });
+    const writeLyrics = vi.spyOn(internals, "writeLyricsMessage").mockResolvedValue(undefined);
+    // The real writeNowPlayingMessage records its own edit time (what the
+    // throttle actually reads) as a side effect — the mock has to reproduce
+    // that, or the throttle sees -Infinity forever and never engages.
+    const writeNowPlaying = vi.spyOn(internals, "writeNowPlayingMessage").mockImplementation(() => {
+      internals.lastNowPlayingEditAt.set(guildId, Date.now());
+      return Promise.resolve();
+    });
+    // This test drives writeTimedPanels explicitly to control exact timing;
+    // the real internal timer chain it would otherwise (re)arm must not also
+    // fire calls of its own in the background while fake time is advanced.
+    vi.spyOn(internals, "resetProgressRefreshTimer").mockImplementation(() => undefined);
+
+    await internals.writeTimedPanels(guildId);
+    expect(writeNowPlaying).toHaveBeenCalledOnce();
+
+    // 4s later: past the 1.5s lyrics floor, but short of the 6s Now Playing
+    // floor — Now Playing must not have been written again.
+    await vi.advanceTimersByTimeAsync(4_000);
+    await internals.writeTimedPanels(guildId);
+    expect(writeNowPlaying).toHaveBeenCalledOnce();
+    expect(writeLyrics).toHaveBeenCalledTimes(2);
+
+    // Past the 6s floor now — Now Playing is due again.
+    await vi.advanceTimersByTimeAsync(2_500);
+    await internals.writeTimedPanels(guildId);
+    expect(writeNowPlaying).toHaveBeenCalledTimes(2);
+    service.stop();
   });
 
   it("writeTimedPanels doesn't reject when reconciling voice state fails, so the timer callback can't crash the process", async () => {
