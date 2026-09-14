@@ -224,3 +224,12 @@ describe("LavalinkPlayerGateway.enqueue voice-channel access gate", () => {
     expect(createPlayerSpy).toHaveBeenCalledOnce();
   });
 });
+
+describe("LavalinkPlayerGateway.getQueue", () => {
+  it("returns an empty array instead of throwing when there is no player", () => {
+    const { gateway, stubPlayer } = createGateway(null);
+    stubPlayer(null);
+
+    expect(gateway.getQueue(guildId)).toEqual([]);
+  });
+});

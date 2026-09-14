@@ -1003,7 +1003,10 @@ describe("ControlChannelService", () => {
       type: ChannelType.GuildText,
       permissionOverwrites: { edit: vi.fn().mockResolvedValue(undefined) },
       messages: { fetch: vi.fn() },
-      send: vi.fn().mockResolvedValue({ id: "333333333333333333" }),
+      send: vi.fn().mockResolvedValue({
+        id: "333333333333333333",
+        pin: vi.fn().mockResolvedValue(undefined),
+      }),
     };
     const guild = {
       id: guildId,

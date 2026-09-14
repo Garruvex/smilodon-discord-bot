@@ -23,6 +23,7 @@ import type { MusicEventBus } from "../music/music-event-bus.js";
 import { MusicError } from "../music/music-errors.js";
 import type { MusicPlayerGateway, MusicPlayerSnapshot } from "../music/music-player-gateway.js";
 import type { MusicTrack } from "../../domain/music/music-track.js";
+import { formatQueueDuration, formatQueueTrackLine, sumTrackDurations } from "../music/queue-formatting.js";
 import type { ApplicationConfiguration } from "../../config/configuration.js";
 import type { GuildConfiguration } from "../../config/guild-configuration.js";
 import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
@@ -50,7 +51,6 @@ import {
 const defaultIdleImageName = "music-idle.png";
 const activePlaybackRefreshIntervalMs = 5_000;
 const defaultIdleImagePath = resolve("assets/music/no_bg.png");
-const upNextTrackTitleMaxChars = 60;
 // Leaves headroom under the embed description's 4096-char hard cap for the
 // header line and the "…and N more" note appended after this budget runs out.
 const queueListCharBudget = 3_500;
@@ -66,18 +66,6 @@ interface PanelMessageTrio {
   nowPlaying: Message;
   lyrics: Message;
   queue: Message;
-}
-
-function formatQueueDuration(totalMs: number): string {
-  const totalSeconds = Math.max(0, Math.floor(totalMs / 1_000));
-  const hours = Math.floor(totalSeconds / 3_600);
-  const minutes = Math.floor((totalSeconds % 3_600) / 60);
-  const seconds = totalSeconds % 60;
-  const parts: string[] = [];
-  if (hours > 0) parts.push(`${hours}h`);
-  if (hours > 0 || minutes > 0) parts.push(`${minutes}m`);
-  parts.push(`${seconds}s`);
-  return parts.join("");
 }
 
 export class ControlChannelService {
@@ -160,6 +148,9 @@ export class ControlChannelService {
 
   public async ensureGuildPanel(guildId: string): Promise<Message> {
     const profile = this.guildConfigurationProvider.require(guildId);
+    // sendNowPlayingMessage() pins on creation, but that only runs when the
+    // trio doesn't already exist — an existing, somehow-unpinned message
+    // (e.g. manually unpinned) still needs catching up here.
     const messages = await this.panelWriteQueue.run(guildId, () => this.ensurePanelMessages(profile));
     if (!messages.nowPlaying.pinned) {
       await messages.nowPlaying.pin("Persistent music control panel").catch((error: unknown) => {
@@ -611,9 +602,17 @@ export class ControlChannelService {
   ): Promise<Message> {
     const payload = this.createNowPlayingPayload(profile, snapshot);
     const needsIdleAttachment = !profile.idleImageUrl && !snapshot?.currentTrack;
-    return channel.send(
+    const message = await channel.send(
       needsIdleAttachment ? { ...payload, files: [this.getIdleImageFile(profile)] } : payload,
     );
+    // Pinned here (not just in ensureGuildPanel) so a mid-session trio
+    // recreation — triggered by any writePanel() call, not only the setup
+    // flow — re-pins the fresh message too, instead of leaving it unpinned
+    // until someone happens to call ensureGuildPanel() again.
+    await message.pin("Persistent music control panel").catch((error: unknown) => {
+      this.logger.warn({ error, guildId: profile.guildId }, "Unable to pin music control panel");
+    });
+    return message;
   }
 
   private normalizeSongQuery(message: Message<true>): string {
@@ -839,7 +838,7 @@ export class ControlChannelService {
     embed.setDescription(
       queueLength === 0
         ? "Nothing queued."
-        : `**${queueLength} in queue** (total ${formatQueueDuration(this.sumTrackDurations(tracks))})\n${this.buildQueueLines(tracks)}`,
+        : `**${queueLength} in queue** (total ${formatQueueDuration(sumTrackDurations(tracks))})\n${this.buildQueueLines(tracks)}`,
     );
 
     if (snapshot?.currentTrack) {
@@ -855,10 +854,6 @@ export class ControlChannelService {
     return embed;
   }
 
-  private sumTrackDurations(tracks: readonly MusicTrack[]): number {
-    return tracks.reduce((total, track) => total + (track.isStream ? 0 : track.durationMs), 0);
-  }
-
   // Char-budgeted rather than count-capped: with a whole dedicated message
   // for the queue there's room to show far more than a handful of tracks,
   // but the exact count that fits depends on title length, so this stops
@@ -869,9 +864,7 @@ export class ControlChannelService {
     let used = 0;
     let shown = 0;
     for (const track of tracks) {
-      const label = this.truncateTrackTitle(track.title);
-      const titleText = track.uri ? `[${label}](${track.uri})` : label;
-      const line = `${shown + 1}. ${titleText}${this.formatQueueRequester(track.requestedByUserId)}`;
+      const line = formatQueueTrackLine(track, shown + 1);
       if (used + line.length + 1 > queueListCharBudget) break;
       lines.push(line);
       used += line.length + 1;
@@ -880,13 +873,6 @@ export class ControlChannelService {
     const remaining = tracks.length - shown;
     if (remaining > 0) lines.push(`…and ${remaining} more — use \`/queue show\` for the rest`);
     return lines.join("\n");
-  }
-
-  private truncateTrackTitle(title: string): string {
-    const sanitized = title.replaceAll("[", "").replaceAll("]", "");
-    return sanitized.length > upNextTrackTitleMaxChars
-      ? `${sanitized.slice(0, upNextTrackTitleMaxChars - 1)}…`
-      : sanitized;
   }
 
   private formatRequester(requestedByUserId: string | null): string {
@@ -899,13 +885,6 @@ export class ControlChannelService {
     return botUserId
       ? `\nRequested by <@${botUserId}> (Autoqueue)`
       : "\nRequested by Autoqueue";
-  }
-
-  // Compact form for the queue list — one entry per line, so a full mention
-  // phrase per track ("Requested by @x") would eat into the char budget
-  // fast. Just the mention is enough context there.
-  private formatQueueRequester(requestedByUserId: string): string {
-    return requestedByUserId === "autoqueue" ? " — Autoqueue" : ` — <@${requestedByUserId}>`;
   }
 
   private hasRestrictedRole(

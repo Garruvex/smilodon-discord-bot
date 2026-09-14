@@ -397,8 +397,15 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     this.publishStateChange({ guildId, reason: "queue_changed" });
   }
 
+  // Unlike mutating controls (pause/skip/etc.), a missing player isn't an
+  // error for a read-only listing — it just means an empty queue, the same
+  // outcome as a player that exists but has nothing queued. Every caller
+  // (the panel, /queue show, the chat tool binding) can stay unconditional
+  // this way instead of each needing its own "does a player even exist"
+  // guard before asking what's queued.
   public getQueue(guildId: string): readonly MusicTrack[] {
-    const player = this.requirePlayer(guildId);
+    const player = this.manager.getPlayer(guildId);
+    if (!player) return [];
     return player.queue.tracks.map((track) => this.toMusicTrack(
       track,
       typeof track.userData?.requestedByUserId === "string"
