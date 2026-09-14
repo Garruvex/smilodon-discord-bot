@@ -40,7 +40,10 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
   private readonly emptyChannelTimers = new Map<string, NodeJS.Timeout>();
   private readonly autoQueueIssues = new Set<string>();
   private readonly playHistoryByGuild = new Map<string, PlayHistoryEntry[]>();
-  private readonly currentLyricByGuild = new Map<string, { line: string; timestamp: number }>();
+  private readonly currentLyricByGuild = new Map<
+    string,
+    { line: string; timestamp: number } | "not-found"
+  >();
 
   public constructor(
     private readonly client: Client,
@@ -147,7 +150,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     });
 
     this.manager.on("LyricsNotFound", (player) => {
-      this.currentLyricByGuild.delete(player.guildId);
+      this.currentLyricByGuild.set(player.guildId, "not-found");
     });
   }
 
@@ -586,6 +589,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
 
     const current = player.queue.current;
     const requestedByUserId = current?.userData?.requestedByUserId;
+    const lyricState = this.currentLyricByGuild.get(guildId);
 
     return {
       guildId,
@@ -599,7 +603,9 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
       autoQueue: player.get<boolean>("autoQueue") ?? false,
       autoQueueIssue: this.autoQueueIssues.has(guildId),
       twentyFourSeven: player.get<boolean>("twentyFourSeven") ?? false,
-      currentLyricLine: this.currentLyricByGuild.get(guildId)?.line ?? null,
+      currentLyricLine:
+        typeof lyricState === "object" ? lyricState.line : null,
+      lyricsUnavailable: lyricState === "not-found",
       currentTrack: current
         ? {
             title: current.info.title,

@@ -77,8 +77,11 @@ export interface MusicPlayerSnapshot {
   twentyFourSeven: boolean;
   // The synced lyric line for the current playback position, if the track
   // has synced lyrics available and the Lavalink node has the lyrics plugin
-  // installed. Null otherwise — the panel simply omits the line.
+  // installed. Null while unknown (no line has arrived yet) or unavailable.
   currentLyricLine: string | null;
+  // True once the lyrics plugin has confirmed no synced lyrics exist for the
+  // current track, so the panel can say so instead of just staying silent.
+  lyricsUnavailable: boolean;
   currentTrack: {
     title: string;
     author: string;
