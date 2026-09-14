@@ -69,8 +69,13 @@ plugins:
     lyrics-sources:
       spotify: false
       deezer: false
-      youtube: false
+      youtube: true
       lrcLib: true
+    # Only used for the youtube lyrics source above — no OAuth/cookies
+    # needed, unlike the main youtube-plugin block.
+    youtube:
+      countryCode: "US"
+      language: "en"
     spotify:
       # Get from https://developer.spotify.com/dashboard/applications
       clientId: "${SPOTIFY_CLIENT_ID:}"
