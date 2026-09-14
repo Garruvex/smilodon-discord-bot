@@ -22,6 +22,7 @@
     "db:migrate:active": "tsx src/scripts/migrate-active-database.ts",
     "db:studio": "drizzle-kit studio",
     "lint": "eslint .",
+    "lyrics:cache:clear": "tsx src/scripts/clear-lyrics-cache.ts",
     "migrations:check": "tsx src/scripts/normalize-postgres-migrations.ts --check",
     "local:bot": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/local-bot.ps1",
     "local:check-token": "tsx src/scripts/check-discord-token.ts",

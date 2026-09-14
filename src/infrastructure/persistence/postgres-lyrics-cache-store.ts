@@ -7,6 +7,16 @@ import * as schema from "../database/schema.js";
 
 const cachedLinesSchema = z.array(z.object({ timestampMs: z.number(), line: z.string() }));
 
+// A confirmed-found result never changes — LRCLIB's data for a specific
+// release is stable. A confirmed-*not*-found one isn't nearly as trustworthy
+// indefinitely, though: LRCLIB is a growing, community-maintained database
+// (a track missing today can be added later), and a negative result can also
+// just be a bug in *our own* matching logic at the time it was cached — a
+// later fix to that logic doesn't retroactively un-cache the wrong answer it
+// produced. Re-verifying negatives periodically catches both cases; positive
+// results are exempt since there's nothing to re-verify.
+const negativeResultTtlMs = 30 * 24 * 60 * 60 * 1000;
+
 // Unlike this project's other Postgres stores, this one doesn't preload
 // everything into memory at initialize() — cached_lyrics is shared across
 // every guild and instance rather than scoped to one guild, so it can grow
@@ -23,7 +33,16 @@ export class PostgresLyricsCacheStore implements LyricsCacheStore {
       .where(eq(schema.cachedLyrics.trackKey, trackKey))
       .limit(1);
     if (!row) return undefined;
-    return row.lines === null ? null : cachedLinesSchema.parse(row.lines);
+    if (row.lines === null) {
+      const ageMs = Date.now() - row.createdAt.getTime();
+      // Treat an expired negative as a miss (undefined), not a confirmed
+      // negative (null) — the caller re-queries LRCLIB and set() below
+      // refreshes createdAt, restarting the TTL from whatever the fresh
+      // answer turns out to be.
+      if (ageMs > negativeResultTtlMs) return undefined;
+      return null;
+    }
+    return cachedLinesSchema.parse(row.lines);
   }
 
   public async set(trackKey: string, lines: readonly CachedLyricLine[] | null): Promise<void> {
@@ -32,7 +51,7 @@ export class PostgresLyricsCacheStore implements LyricsCacheStore {
       .values({ trackKey, lines })
       .onConflictDoUpdate({
         target: schema.cachedLyrics.trackKey,
-        set: { lines },
+        set: { lines, createdAt: new Date() },
       });
   }
 }
