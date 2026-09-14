@@ -192,7 +192,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
         this.currentLyricsTrackByGuild.set(player.guildId, trackId);
         this.pluginLyricsByGuild.delete(player.guildId);
         this.customLyricsByGuild.delete(player.guildId);
-        this.resolveSyncedLyrics(track.info.title, track.info.author ?? "")
+        this.resolveSyncedLyrics(track.info.title, track.info.author ?? "", track.info.duration)
           .then((lines) => {
             // Guard against a stale response landing after the track changed.
             if (this.manager.getPlayer(player.guildId)?.queue.current?.encoded !== trackId) return;
@@ -253,6 +253,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
   private async resolveSyncedLyrics(
     trackName: string,
     artistName: string,
+    durationMs?: number,
   ): Promise<SyncedLyricLine[] | null> {
     const trackKey = buildLyricsCacheKey(trackName, artistName);
     if (this.lyricsCacheStore) {
@@ -263,7 +264,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
       if (cached !== undefined) return cached as SyncedLyricLine[] | null;
     }
 
-    const lines = await fetchSyncedLyrics(trackName, artistName);
+    const lines = await fetchSyncedLyrics(trackName, artistName, durationMs);
     if (this.lyricsCacheStore) {
       void this.lyricsCacheStore.set(trackKey, lines).catch((error: unknown) => {
         this.logger.warn({ error, trackKey }, "Unable to write the lyrics cache");

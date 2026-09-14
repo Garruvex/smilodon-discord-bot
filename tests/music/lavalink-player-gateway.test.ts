@@ -304,7 +304,7 @@ describe("LavalinkPlayerGateway.resolveSyncedLyrics", () => {
     const result = await gateway.resolveSyncedLyrics("Track", "Artist");
 
     expect(result).toEqual(freshLines);
-    expect(fetchSyncedLyricsMock).toHaveBeenCalledWith("Track", "Artist");
+    expect(fetchSyncedLyricsMock).toHaveBeenCalledWith("Track", "Artist", undefined);
     await vi.waitFor(() => expect(setSpy).toHaveBeenCalledWith("track|artist", freshLines));
   });
 
@@ -315,7 +315,7 @@ describe("LavalinkPlayerGateway.resolveSyncedLyrics", () => {
     const result = await gateway.resolveSyncedLyrics("Track", "Artist");
 
     expect(result).toBeNull();
-    expect(fetchSyncedLyricsMock).toHaveBeenCalledWith("Track", "Artist");
+    expect(fetchSyncedLyricsMock).toHaveBeenCalledWith("Track", "Artist", undefined);
   });
 });
 
