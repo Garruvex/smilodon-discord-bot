@@ -10,6 +10,10 @@ import type { LyricsCacheStore } from "../../src/application/lyrics/lyrics-cache
 const fetchSyncedLyricsMock = vi.fn();
 vi.mock("../../src/infrastructure/lyrics/lrclib-client.js", () => ({
   fetchSyncedLyrics: (...args: unknown[]): unknown => fetchSyncedLyricsMock(...args),
+  // Identity passthrough — none of these fixtures need real suffix-stripping,
+  // and the cache-key tests below rely on the raw title/artist round-tripping
+  // unchanged.
+  normalizeQuery: (title: string, artist: string): unknown => ({ title, artist, extraArtist: null }),
 }));
 
 const guildId = "123456789012345678";

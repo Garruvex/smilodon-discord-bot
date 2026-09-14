@@ -30,7 +30,7 @@ import type { MusicPlayerSnapshot } from "../../application/music/music-player-g
 import type { MusicEventBus, MusicStateChangedEvent } from "../../application/music/music-event-bus.js";
 import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
 import { LavalinkAutoQueue, type AutoQueueOutcome } from "./lavalink-auto-queue.js";
-import { fetchSyncedLyrics, type SyncedLyricLine } from "../lyrics/lrclib-client.js";
+import { fetchSyncedLyrics, normalizeQuery, type SyncedLyricLine } from "../lyrics/lrclib-client.js";
 import { buildLyricsCacheKey, type LyricsCacheStore } from "../../application/lyrics/lyrics-cache-store.js";
 
 const playHistoryLimit = 20;
@@ -285,7 +285,13 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     artistName: string,
     durationMs?: number,
   ): Promise<SyncedLyricLine[] | null> {
-    const trackKey = buildLyricsCacheKey(trackName, artistName, durationMs);
+    // Normalized the same way fetchSyncedLyrics normalizes for searching
+    // (stripping "(Official Music Video)"-style suffixes and an
+    // "Artist - Title" prefix) — otherwise every differently-titled
+    // re-upload of the same song (a common YouTube reality) gets its own
+    // cache entry instead of sharing the one already resolved for it.
+    const normalized = normalizeQuery(trackName, artistName);
+    const trackKey = buildLyricsCacheKey(normalized.title, artistName, durationMs);
     if (this.lyricsCacheStore) {
       const cached = await this.lyricsCacheStore.get(trackKey).catch((error: unknown) => {
         this.logger.warn({ error, trackKey }, "Unable to read the lyrics cache");

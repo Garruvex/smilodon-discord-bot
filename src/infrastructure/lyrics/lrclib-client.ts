@@ -56,7 +56,7 @@ function stripMetadataSuffix(value: string): string {
   return value.replace(metadataSuffixPattern, " ").trim();
 }
 
-interface NormalizedQuery {
+export interface NormalizedQuery {
   readonly title: string;
   readonly artist: string;
   // A YouTube-style title ("Artist - Title (Official Video)") often carries
@@ -66,7 +66,12 @@ interface NormalizedQuery {
   readonly extraArtist: string | null;
 }
 
-function normalizeQuery(title: string, artist: string): NormalizedQuery {
+// Exported so callers building a cache key can normalize the same way
+// (stripping "(Official Video)"-style suffixes and an "Artist - Title"
+// prefix) that this module already normalizes for searching — without it,
+// re-uploads of the same song with differently-formatted video titles would
+// fragment into separate cache entries instead of sharing one.
+export function normalizeQuery(title: string, artist: string): NormalizedQuery {
   const trimmedTitle = title.trim();
   const trimmedArtist = artist.trim();
   const cleanTitle = stripMetadataSuffix(trimmedTitle);
