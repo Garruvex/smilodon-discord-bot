@@ -698,7 +698,7 @@ export class ControlChannelService {
     profile: GuildConfiguration,
     snapshot: MusicPlayerSnapshot | null,
     guildId: string,
-  ): Promise<{ message: Message; justCreated: boolean }> {
+  ): Promise<{ message: Message | null; justCreated: boolean }> {
     const trackKey = this.lyricsTrackKey(snapshot);
     const cached = this.lyricsMessageByGuild.get(guildId);
     if (cached && this.lyricsTrackKeyByGuild.get(guildId) === trackKey) {
@@ -709,7 +709,15 @@ export class ControlChannelService {
       await cached.delete().catch((error: unknown) => {
         this.logger.warn({ error, guildId, messageId: cached.id }, "Unable to delete the previous lyrics panel message");
       });
+      this.lyricsMessageByGuild.delete(guildId);
+      this.lyricsTrackKeyByGuild.delete(guildId);
     }
+    // Nothing playing (bot startup, or the previous track just ended with
+    // nothing queued next) — no lyrics message needed; creating one just to
+    // say "Nothing is playing right now" would immediately get deleted and
+    // resent again the moment a real track actually starts.
+    if (trackKey === null) return { message: null, justCreated: false };
+
     const message = await channel.send(this.createLyricsPayload(profile, snapshot));
     this.lyricsMessageByGuild.set(guildId, message);
     this.lyricsTrackKeyByGuild.set(guildId, trackKey);
@@ -732,6 +740,9 @@ export class ControlChannelService {
   ): Promise<void> {
     try {
       const { message, justCreated } = await this.ensureLyricsMessage(channel, profile, snapshot, guildId);
+      // Nothing playing, and no leftover message to clean up either (that
+      // part already happened inside ensureLyricsMessage) — nothing to do.
+      if (!message) return;
       // A just-created message was sent with this exact content, via
       // channel.send() above — nothing left to do this cycle.
       if (justCreated) return;

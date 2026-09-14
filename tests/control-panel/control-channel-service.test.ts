@@ -1093,6 +1093,47 @@ describe("ControlChannelService", () => {
     expect(send).toHaveBeenCalledTimes(2);
   });
 
+  it("doesn't create a lyrics message while nothing is playing, and cleans up a leftover one once playback stops", async () => {
+    // Regression: bot startup (and any "queue emptied, nothing next" point)
+    // used to still send a lyrics message just to say "Nothing is playing
+    // right now" — which then got immediately deleted and resent the
+    // moment a real track actually started. No message is needed while
+    // idle at all.
+    const { service } = createService(false);
+    const internals = service as unknown as {
+      ensureLyricsMessage: (
+        channel: unknown,
+        profile: unknown,
+        snapshot: unknown,
+        guildId: string,
+      ) => Promise<{ message: unknown; justCreated: boolean }>;
+    };
+    const profile = guildConfiguration(false);
+    const send = vi.fn();
+    const channel = { send };
+
+    const idleAtStartup = await internals.ensureLyricsMessage(channel, profile, null, guildId);
+    expect(idleAtStartup.message).toBeNull();
+    expect(idleAtStartup.justCreated).toBe(false);
+    expect(send).not.toHaveBeenCalled();
+
+    const track = { title: "Song", author: "Artist", uri: "https://example.com/song" };
+    const playing = { id: "lyrics-song", delete: vi.fn().mockResolvedValue(undefined) };
+    send.mockResolvedValueOnce(playing);
+    const whilePlaying = await internals.ensureLyricsMessage(
+      channel, profile, { currentTrack: track, upcomingLyricLines: [] }, guildId,
+    );
+    expect(whilePlaying.message).toBe(playing);
+    expect(whilePlaying.justCreated).toBe(true);
+
+    // Track ends, nothing queued next — the now-stale message is cleaned
+    // up, not left to show stale/wrong lyrics indefinitely.
+    const idleAfterTrackEnds = await internals.ensureLyricsMessage(channel, profile, null, guildId);
+    expect(idleAfterTrackEnds.message).toBeNull();
+    expect(playing.delete).toHaveBeenCalledOnce();
+    expect(send).toHaveBeenCalledOnce();
+  });
+
   it("sweeps the control channel of anything that isn't a known panel message", async () => {
     // Backstop for stray messages: a self-deletion timer lost to a restart,
     // a failed best-effort delete, or content from before the bot ever
@@ -1611,7 +1652,14 @@ describe("ControlChannelService", () => {
       save: vi.fn(),
     } as unknown as ControlPanelStateStore;
     const playerGateway = {
-      getSnapshot: vi.fn(() => null),
+      // A track must actually be playing for a lyrics message to get
+      // created at all (see ensureLyricsMessage) — an idle snapshot would
+      // mean nothing to send.
+      getSnapshot: vi.fn(() => ({
+        currentTrack: { title: "Track", author: "Artist", uri: "https://example.com/track", durationMs: 200_000, positionMs: 0, isStream: false },
+        paused: false,
+        upcomingLyricLines: [],
+      })),
       reconcileVoiceState: vi.fn(() => Promise.resolve(false)),
       getQueue: vi.fn(() => []),
     } as unknown as MusicPlayerGateway;
