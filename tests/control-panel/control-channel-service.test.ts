@@ -715,6 +715,39 @@ describe("ControlChannelService", () => {
     expect(embed.description).toContain("[Track B](https://example.com/b) — Autoqueue");
   });
 
+  it("caps the queue preview at 5 tracks even when well under the char budget", () => {
+    const { service } = createService(false);
+    const tracks = Array.from({ length: 8 }, (_, index) => ({
+      identifier: `track-${index}`,
+      title: `Track ${index + 1}`,
+      author: "Artist",
+      uri: `https://example.com/${index}`,
+      artworkUrl: null,
+      durationMs: 60_000,
+      isStream: false,
+      requestedByUserId: "111111111111111111",
+    }));
+    Object.assign(service, { playerGateway: { getQueue: vi.fn(() => tracks) } });
+    const embed = (
+      service as unknown as {
+        createQueueEmbed: (
+          profile: GuildConfiguration,
+          snapshot: unknown,
+        ) => { toJSON: () => { description?: string } };
+      }
+    ).createQueueEmbed(guildConfiguration(false), {
+      paused: false,
+      volume: 75,
+      queueLength: tracks.length,
+      repeatMode: "off",
+      currentTrack: null,
+    }).toJSON();
+
+    expect(embed.description).toContain("Track 5");
+    expect(embed.description).not.toContain("Track 6");
+    expect(embed.description).toContain("…and 3 more — use `/queue show` for the rest");
+  });
+
   it("truncates the queue preview with a pointer to /queue show once the char budget runs out", () => {
     const { service } = createService(false);
     const longTitleTrack = {

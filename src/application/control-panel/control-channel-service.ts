@@ -78,6 +78,10 @@ const minimumLyricEditIntervalMs = 3_000;
 // Discord history fetch allows anyway.
 const channelSweepFetchLimit = 100;
 const defaultIdleImagePath = resolve("assets/music/no_bg.png");
+// A longer queue was making the panel read as a scrollable wall of text
+// rather than an at-a-glance preview — capped to a handful of upcoming
+// tracks; the rest is always available via `/queue show`.
+const queueDisplayLimit = 5;
 // Leaves headroom under the embed description's 4096-char hard cap for the
 // header line and the "…and N more" note appended after this budget runs out.
 const queueListCharBudget = 3_500;
@@ -1227,16 +1231,17 @@ export class ControlChannelService {
     return embed;
   }
 
-  // Char-budgeted rather than count-capped: with a whole dedicated message
-  // for the queue there's room to show far more than a handful of tracks,
-  // but the exact count that fits depends on title length, so this stops
-  // adding lines once the embed description's real limit is within reach
-  // instead of guessing a fixed number up front.
+  // Capped at a handful of tracks (queueDisplayLimit) so the panel stays a
+  // glanceable preview rather than a scrollable wall of text — the full
+  // queue is always one `/queue show` away. Still char-budgeted underneath
+  // that cap in case a handful of unusually long titles would blow past the
+  // embed description's real limit on their own.
   private buildQueueLines(tracks: readonly MusicTrack[]): string {
     const lines: string[] = [];
     let used = 0;
     let shown = 0;
     for (const track of tracks) {
+      if (shown >= queueDisplayLimit) break;
       const line = formatQueueTrackLine(track, shown + 1);
       if (used + line.length + 1 > queueListCharBudget) break;
       lines.push(line);
