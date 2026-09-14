@@ -1014,7 +1014,7 @@ describe("ControlChannelService", () => {
     service.stop();
   });
 
-  it("restarts an active guild's three-second progress countdown after a forced refresh", async () => {
+  it("restarts an active guild's five-second progress countdown after a forced refresh", async () => {
     vi.useFakeTimers();
     const { service } = createService(false);
     const writeTimedPanels = vi.spyOn(
@@ -1035,11 +1035,95 @@ describe("ControlChannelService", () => {
     resetProgressRefreshTimer(guildId, activeSnapshot);
     await vi.advanceTimersByTimeAsync(2_000);
     resetProgressRefreshTimer(guildId, activeSnapshot);
-    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(4_999);
     expect(writeTimedPanels).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(1);
     expect(writeTimedPanels).toHaveBeenCalledOnce();
     expect(writeTimedPanels).toHaveBeenCalledWith(guildId);
+  });
+
+  it("recreates the lyrics message when the track changes, but reuses it while the track stays the same", async () => {
+    // The fix for a real production 429 storm: a single lyrics message,
+    // edited many times over a long session, was confirmed (via REST
+    // response logging) to trip an undocumented Discord per-message
+    // sublimit. Rotating the message per track bounds how much edit
+    // history any one message can accumulate.
+    const { service } = createService(false);
+    const internals = service as unknown as {
+      ensureLyricsMessage: (
+        channel: unknown,
+        profile: unknown,
+        snapshot: unknown,
+        guildId: string,
+      ) => Promise<{ message: unknown; justCreated: boolean }>;
+    };
+    const profile = guildConfiguration(false);
+    const trackA = { title: "Song A", author: "Artist A", uri: "https://example.com/a" };
+    const trackB = { title: "Song B", author: "Artist B", uri: "https://example.com/b" };
+    const firstMessage = { id: "lyrics-a", delete: vi.fn().mockResolvedValue(undefined) };
+    const secondMessage = { id: "lyrics-b", delete: vi.fn().mockResolvedValue(undefined) };
+    const send = vi.fn()
+      .mockResolvedValueOnce(firstMessage)
+      .mockResolvedValueOnce(secondMessage);
+    const channel = { send };
+
+    const first = await internals.ensureLyricsMessage(
+      channel, profile, { currentTrack: trackA, upcomingLyricLines: [] }, guildId,
+    );
+    expect(first.justCreated).toBe(true);
+    expect(first.message).toBe(firstMessage);
+    expect(send).toHaveBeenCalledOnce();
+
+    // Same track (position ticking, nothing else) — no recreation.
+    const second = await internals.ensureLyricsMessage(
+      channel, profile, { currentTrack: { ...trackA }, upcomingLyricLines: [] }, guildId,
+    );
+    expect(second.justCreated).toBe(false);
+    expect(second.message).toBe(firstMessage);
+    expect(send).toHaveBeenCalledOnce();
+    expect(firstMessage.delete).not.toHaveBeenCalled();
+
+    // A new track — the old message is deleted and a fresh one sent.
+    const third = await internals.ensureLyricsMessage(
+      channel, profile, { currentTrack: trackB, upcomingLyricLines: [] }, guildId,
+    );
+    expect(third.justCreated).toBe(true);
+    expect(third.message).toBe(secondMessage);
+    expect(firstMessage.delete).toHaveBeenCalledOnce();
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+
+  it("sweeps the control channel of anything that isn't a known panel message", async () => {
+    // Backstop for stray messages: a self-deletion timer lost to a restart,
+    // a failed best-effort delete, or content from before the bot ever
+    // touched the channel. Deletes regardless of author — the channel is
+    // reserved for the panel (see ensureChannelPermissions).
+    const { service } = createService(false);
+    const internals = service as unknown as {
+      sweepControlChannel: (channel: unknown, keep: ReadonlySet<string>) => Promise<void>;
+    };
+    const keep1 = { id: "keep-1", delete: vi.fn().mockResolvedValue(undefined) };
+    const keep2 = { id: "keep-2", delete: vi.fn().mockResolvedValue(undefined) };
+    const stray1 = { id: "stray-1", delete: vi.fn().mockResolvedValue(undefined) };
+    const stray2 = { id: "stray-2", delete: vi.fn().mockResolvedValue(undefined) };
+    const channel = {
+      id: controlPanelChannelId,
+      messages: {
+        fetch: vi.fn().mockResolvedValue(new Map([
+          [keep1.id, keep1],
+          [stray1.id, stray1],
+          [keep2.id, keep2],
+          [stray2.id, stray2],
+        ])),
+      },
+    };
+
+    await internals.sweepControlChannel(channel, new Set([keep1.id, keep2.id]));
+
+    expect(keep1.delete).not.toHaveBeenCalled();
+    expect(keep2.delete).not.toHaveBeenCalled();
+    expect(stray1.delete).toHaveBeenCalledOnce();
+    expect(stray2.delete).toHaveBeenCalledOnce();
   });
 
   it("cancels progress countdowns when playback becomes paused or idle", async () => {
@@ -1460,9 +1544,12 @@ describe("ControlChannelService", () => {
     expect(skip).toHaveBeenCalledOnce();
   });
 
-  it("writeTimedPanels only touches Now Playing and Lyrics, never Queue", async () => {
+  it("writeTimedPanels edits Now Playing, sends a fresh Lyrics message, never touches Queue", async () => {
+    // Lyrics is no longer part of the reused now-playing/queue pair (see
+    // ensureLyricsMessage) — a fresh service instance has nothing cached
+    // for it yet, so the first cycle sends a brand new message rather than
+    // fetching/editing one by a persisted id.
     const nowPlayingMessageId = "777777777777777777";
-    const lyricsMessageId = "888888888888888888";
     const queueMessageId = "999999999999999999";
 
     function messageMock(): {
@@ -1480,8 +1567,9 @@ describe("ControlChannelService", () => {
       };
     }
     const nowPlayingMessage = { ...messageMock(), id: nowPlayingMessageId };
-    const lyricsMessage = { ...messageMock(), id: lyricsMessageId };
     const queueMessage = { ...messageMock(), id: queueMessageId };
+    const sentLyricsMessage = { ...messageMock(), id: "new-lyrics-message-id" };
+    const send = vi.fn().mockResolvedValue(sentLyricsMessage);
 
     const channel = {
       id: controlPanelChannelId,
@@ -1490,11 +1578,11 @@ describe("ControlChannelService", () => {
       messages: {
         fetch: vi.fn((id: string) => Promise.resolve(
           id === nowPlayingMessageId ? nowPlayingMessage
-            : id === lyricsMessageId ? lyricsMessage
-              : id === queueMessageId ? queueMessage
-                : null,
+            : id === queueMessageId ? queueMessage
+              : null,
         )),
       },
+      send,
     };
     const guild = {
       id: guildId,
@@ -1517,7 +1605,7 @@ describe("ControlChannelService", () => {
         guildId,
         channelId: controlPanelChannelId,
         nowPlayingMessageId,
-        lyricsMessageId,
+        lyricsMessageId: null,
         queueMessageId,
       })),
       save: vi.fn(),
@@ -1547,7 +1635,8 @@ describe("ControlChannelService", () => {
     ).writeTimedPanels(guildId);
 
     expect(nowPlayingMessage.edit).toHaveBeenCalledOnce();
-    expect(lyricsMessage.edit).toHaveBeenCalledOnce();
+    expect(send).toHaveBeenCalledOnce();
+    expect(sentLyricsMessage.edit).not.toHaveBeenCalled();
     expect(queueMessage.edit).not.toHaveBeenCalled();
   });
 
@@ -1566,6 +1655,11 @@ describe("ControlChannelService", () => {
     }
     const nowPlayingMessage = messageMock();
     const lyricsMessage = messageMock();
+    // ensureLyricsMessage sends a fresh message the first time a track is
+    // seen, then reuses (edits) that same message for as long as the track
+    // stays the same — this mock's channel.send always returns the one
+    // lyricsMessage, since every call below keeps the same track title.
+    const channel = { send: vi.fn().mockResolvedValue(lyricsMessage) };
     const { service, getSnapshot } = createService(false);
     const internals = service as unknown as {
       ensurePanelMessages: () => Promise<unknown>;
@@ -1574,33 +1668,43 @@ describe("ControlChannelService", () => {
     };
     let positionMs = 0;
     getSnapshot.mockImplementation(() => ({
-      currentTrack: { title: "Track", durationMs: 240_000, positionMs, isStream: false },
+      currentTrack: { title: "Track", author: "Artist", uri: "https://example.com", durationMs: 240_000, positionMs, isStream: false },
       paused: false,
       currentLyricLine: `Line at ${positionMs}`,
       upcomingLyricLines: [],
     }));
-    vi.spyOn(internals, "ensurePanelMessages").mockResolvedValue({ nowPlaying: nowPlayingMessage, lyrics: lyricsMessage });
+    vi.spyOn(internals, "ensurePanelMessages").mockResolvedValue({ channel, nowPlaying: nowPlayingMessage, queue: {} });
     // This test drives writeTimedPanels explicitly to control exact timing;
     // the real internal timer chain it would otherwise (re)arm must not also
     // fire calls of its own in the background while fake time is advanced.
     vi.spyOn(internals, "resetProgressRefreshTimer").mockImplementation(() => undefined);
 
+    // First cycle: Now Playing edits (nothing edited yet, floor is wide
+    // open). Lyrics is brand new for this guild — ensureLyricsMessage sends
+    // it fresh with the current content already in the send payload, so
+    // there's nothing left to edit this cycle.
     await internals.writeTimedPanels(guildId);
     expect(nowPlayingMessage.edit).toHaveBeenCalledOnce();
+    expect(channel.send).toHaveBeenCalledOnce();
+    expect(lyricsMessage.edit).not.toHaveBeenCalled();
 
-    // 4s later: past the 3s lyrics floor, but short of the 6s Now Playing
-    // floor — Now Playing must not have been written again.
+    // 4s later: past the 3s lyrics floor (measured from the last *edit*,
+    // and there hasn't been one yet), but short of the 5s Now Playing floor
+    // — Now Playing must not have been written again, lyrics must.
     positionMs = 4_000;
     await vi.advanceTimersByTimeAsync(4_000);
     await internals.writeTimedPanels(guildId);
     expect(nowPlayingMessage.edit).toHaveBeenCalledOnce();
-    expect(lyricsMessage.edit).toHaveBeenCalledTimes(2);
+    expect(lyricsMessage.edit).toHaveBeenCalledOnce();
 
-    // Past the 6s floor now — Now Playing is due again.
+    // 2.5s after that (6.5s total): past the 5s Now Playing floor (last
+    // edited at t=0) — due again. Short of the 3s lyrics floor (last
+    // edited at t=4s, only 2.5s ago) — must not have been written again.
     positionMs = 6_500;
     await vi.advanceTimersByTimeAsync(2_500);
     await internals.writeTimedPanels(guildId);
     expect(nowPlayingMessage.edit).toHaveBeenCalledTimes(2);
+    expect(lyricsMessage.edit).toHaveBeenCalledOnce();
     service.stop();
   });
 

@@ -51,34 +51,32 @@ import {
 } from "./music-panel-controls.js";
 
 const defaultIdleImageName = "music-idle.png";
-// The wake-timer's own outer bound: how long to wait at most before
-// re-checking state, even when nothing else demands sooner (no current
-// lyrics, or the next line is far off). Merely ticking is cheap — a tick
-// with nothing new to show skips its edit entirely (matchesCurrentMessage) —
-// so this can stay reasonably tight without costing anything on its own;
-// what actually costs Discord edit budget is the two throttles below.
-const activePlaybackRefreshIntervalMs = 3_000;
-// The progress bar's own edit throttle. Split out from the lyrics throttle
-// below (they used to share one interval) so lyrics — what's actually being
-// read line by line — can update meaningfully more often than mm:ss ticking
-// over, which doesn't need anywhere near that precision.
-const nowPlayingRefreshIntervalMs = 6_000;
-// Lyrics' own edit throttle. Was tightened to 1s, then to 1.5s, chasing
-// tighter lyric sync — both times confirmed (via production REST response
-// logging, since discord.js's rateLimited event doesn't catch this case;
-// see the comment on that listener in bootstrap/application.ts) to trigger
-// real 429s from Discord's per-channel message-edit sublimit, not just the
-// theoretical ~5-edits-per-5s ceiling this constant was originally sized
-// against. That ceiling estimate undercounted real traffic: a track
-// change fires up to 3 edits (queue+nowPlaying+lyrics) in one cycle, and a
-// fast lyrics resolution used to fire a second, mostly-redundant cycle
-// moments later (see panel-refresh-coordinator.ts's debounce, also
-// widened for this reason). Back to the 3s floor this session already
-// proved safe once before, now paired with that debounce fix rather than
-// trading it away again. If you change this, watch the "Discord REST
-// response for a message route" log (bootstrap/application.ts) for status
-// 429 afterward — that's the ground truth, not the rateLimited listener.
+// The master panel (Now Playing progress bar + queue/controls) is
+// long-lived and edited in place for the whole session, unlike Lyrics (see
+// ensureLyricsMessage) — a flat, simple interval for both the wake-tick and
+// the Now Playing edit floor, replacing an earlier split between an outer
+// "how often to check" tick and an inner "how often to actually edit"
+// floor. A progress bar only needs to be roughly right; 5s granularity
+// reads fine and is one number to reason about instead of two.
+const masterPanelRefreshIntervalMs = 5_000;
+// Lyrics' own edit throttle, within one track's lyrics message. Was
+// tightened to 1s, then to 1.5s, chasing tighter lyric sync — both times
+// confirmed (via production REST response logging, since discord.js's
+// rateLimited event doesn't catch this case; see the comment on that
+// listener in bootstrap/application.ts) to trigger real 429s from
+// Discord's per-channel message-edit sublimit. Recreating the lyrics
+// message per track (see ensureLyricsMessage) bounds how much edit
+// history any single message can accumulate, but doesn't remove the need
+// for a sane floor within a track's own lifetime. If you change this,
+// watch the "Discord REST response for a message route" log
+// (bootstrap/application.ts) for status 429 afterward — that's the
+// ground truth, not the rateLimited listener.
 const minimumLyricEditIntervalMs = 3_000;
+// Upper bound on how many recent messages a channel sweep inspects (see
+// sweepControlChannel) — comfortably more than this reserved channel
+// should ever actually accumulate between sweeps, and the max a single
+// Discord history fetch allows anyway.
+const channelSweepFetchLimit = 100;
 const defaultIdleImagePath = resolve("assets/music/no_bg.png");
 // Leaves headroom under the embed description's 4096-char hard cap for the
 // header line and the "…and N more" note appended after this budget runs out.
@@ -115,10 +113,11 @@ interface ControlPanelPayload {
   components: ActionRowBuilder<ButtonBuilder>[];
 }
 
-// The three messages that make up one guild's panel, top to bottom.
-interface PanelMessageTrio {
+// The two long-lived panel messages — Lyrics is deliberately not part of
+// this pair; see ensureLyricsMessage for why it's tracked separately.
+interface PanelMessagePair {
+  channel: TextChannel;
   nowPlaying: Message;
-  lyrics: Message;
   queue: Message;
 }
 
@@ -126,6 +125,13 @@ export class ControlChannelService {
   private readonly progressRefreshTimers = new Map<string, NodeJS.Timeout>();
   private readonly lastLyricsEditAt = new Map<string, number>();
   private readonly lastNowPlayingEditAt = new Map<string, number>();
+  // The current track's lyrics message, and an identity key for the track
+  // it belongs to — see ensureLyricsMessage. Not persisted: a fresh
+  // session always starts with no lyrics message and creates one lazily on
+  // the first refresh, which sweepControlChannel relies on (nothing to
+  // preserve for it at sweep time).
+  private readonly lyricsMessageByGuild = new Map<string, Message>();
+  private readonly lyricsTrackKeyByGuild = new Map<string, string | null>();
   private readonly configuredChannelPermissions = new Set<string>();
   private readonly refreshCoordinator: PanelRefreshCoordinator;
   // The action queue: serializes per-guild playbackService/playerGateway
@@ -135,7 +141,7 @@ export class ControlChannelService {
   // rather than a snapshot read before either ran.
   private readonly guildLocks = new KeyedSerialQueue();
   // The write queue: serializes every actual Discord write to the panel's
-  // three messages per guild — both the button handler's optimistic edit and
+  // messages per guild — both the button handler's optimistic edit and
   // the authoritative ensurePanelMessages()/message.edit() render, regardless
   // of which path triggered it (a click, a background event, the progress
   // timer, or ensureGuildPanel()). Without this, an optimistic edit and an
@@ -197,6 +203,8 @@ export class ControlChannelService {
     this.progressRefreshTimers.clear();
     this.lastLyricsEditAt.clear();
     this.lastNowPlayingEditAt.clear();
+    this.lyricsMessageByGuild.clear();
+    this.lyricsTrackKeyByGuild.clear();
   }
 
   // Called when the bot leaves a guild, so its per-guild timer/permission
@@ -205,6 +213,8 @@ export class ControlChannelService {
     this.clearProgressRefreshTimer(guildId);
     this.lastLyricsEditAt.delete(guildId);
     this.lastNowPlayingEditAt.delete(guildId);
+    this.lyricsMessageByGuild.delete(guildId);
+    this.lyricsTrackKeyByGuild.delete(guildId);
     this.refreshCoordinator.stopGuild(guildId);
     const profile = this.guildConfigurationProvider.find(guildId);
     if (profile?.channels.controlPanel) {
@@ -214,13 +224,24 @@ export class ControlChannelService {
 
   public async ensureGuildPanel(guildId: string): Promise<Message> {
     const profile = this.guildConfigurationProvider.require(guildId);
-    // ensurePanelMessages() pins all three on creation, but that only runs
-    // when the trio doesn't already exist — existing, somehow-unpinned
-    // messages (e.g. manually unpinned) still need catching up here.
+    // ensurePanelMessages() pins both on creation, but that only runs when
+    // the pair doesn't already exist — existing, somehow-unpinned messages
+    // (e.g. manually unpinned) still need catching up here. Lyrics is
+    // never pinned (see ensureLyricsMessage) — it's recreated per track, so
+    // pinning it would mean re-pinning on every track change for no real
+    // benefit, since it's inherently transient/current rather than
+    // something worth being individually discoverable via the pins list.
     const messages = await this.panelWriteQueue.run(guildId, () => this.ensurePanelMessages(profile));
     await this.pinPanelMessage(messages.nowPlaying, guildId);
-    await this.pinPanelMessage(messages.lyrics, guildId);
     await this.pinPanelMessage(messages.queue, guildId);
+    // Run at every panel setup (startup, and whenever an admin
+    // reconfigures the control channel via /settings) rather than on a
+    // recurring schedule — catches anything left behind by a restart that
+    // interrupted a transient message's self-deletion timer, a failed
+    // best-effort delete, or a stray message from before the bot ever
+    // touched this channel, without adding a recurring channel-history
+    // fetch to the steady-state refresh cycle.
+    await this.sweepControlChannel(messages.channel, new Set([messages.nowPlaying.id, messages.queue.id]));
     return messages.nowPlaying;
   }
 
@@ -568,7 +589,7 @@ export class ControlChannelService {
       // before, off an older snapshot) means the line shown always reflects
       // what's truly playing right now, not what was playing when this
       // refresh started.
-      await this.writeLyricsMessage(messages.lyrics, profile, this.playerGateway.getSnapshot(guildId), guildId);
+      await this.writeLyricsMessage(messages.channel, profile, this.playerGateway.getSnapshot(guildId), guildId);
       // Slow edits must not add their elapsed time to the next line's delay.
       // Schedule from a fresh position even when a message edit failed.
       this.resetProgressRefreshTimer(guildId, this.playerGateway.getSnapshot(guildId));
@@ -617,7 +638,7 @@ export class ControlChannelService {
       await this.writeNowPlayingMessage(messages.nowPlaying, profile, this.playerGateway.getSnapshot(guildId), {}, guildId);
       // Lyrics last, off the freshest snapshot — see the matching comment in
       // writePanel() above for why.
-      await this.writeLyricsMessage(messages.lyrics, profile, this.playerGateway.getSnapshot(guildId), guildId);
+      await this.writeLyricsMessage(messages.channel, profile, this.playerGateway.getSnapshot(guildId), guildId);
       this.resetProgressRefreshTimer(guildId, this.playerGateway.getSnapshot(guildId));
     });
   }
@@ -640,7 +661,7 @@ export class ControlChannelService {
       // track change always passes. A skip here isn't lost — the next
       // scheduled tick (resetProgressRefreshTimer) or a later event picks
       // it up.
-      if (Date.now() - (this.lastNowPlayingEditAt.get(guildId) ?? -Infinity) < nowPlayingRefreshIntervalMs) return;
+      if (Date.now() - (this.lastNowPlayingEditAt.get(guildId) ?? -Infinity) < masterPanelRefreshIntervalMs) return;
       const payload = this.createNowPlayingPayload(profile, snapshot);
       const editOptions = this.createNowPlayingEditOptions(message, profile, snapshot, payload, options);
       if (!this.matchesCurrentMessage(message, editOptions)) {
@@ -652,13 +673,68 @@ export class ControlChannelService {
     }
   }
 
+  // A track identity key for ensureLyricsMessage — good enough to detect
+  // "this is a different song" for the panel's purposes without needing
+  // Lavalink's own internal track id, which isn't exposed at this layer.
+  private lyricsTrackKey(snapshot: MusicPlayerSnapshot | null): string | null {
+    const track = snapshot?.currentTrack;
+    return track ? `${track.title}|${track.author}|${track.uri}` : null;
+  }
+
+  // Recreates the lyrics message whenever the track changes, instead of
+  // editing one message for the guild's entire session. Confirmed via
+  // production REST response logging: a single lyrics message, edited
+  // roughly every few seconds for a long stretch, tripped an undocumented
+  // Discord per-message sublimit that took several real seconds to clear on
+  // every subsequent edit — and recreating that one message with a fresh
+  // one immediately cleared it. Rotating per track bounds any single
+  // message to roughly one song's worth of edits (tens, not hundreds+),
+  // keeping it well clear of whatever triggers that state. Not pinned
+  // (see ensureGuildPanel) and not persisted for cross-restart recovery —
+  // it's inherently transient, and a fresh session just creates one lazily
+  // on the first refresh (see sweepControlChannel, which relies on that).
+  private async ensureLyricsMessage(
+    channel: TextChannel,
+    profile: GuildConfiguration,
+    snapshot: MusicPlayerSnapshot | null,
+    guildId: string,
+  ): Promise<{ message: Message; justCreated: boolean }> {
+    const trackKey = this.lyricsTrackKey(snapshot);
+    const cached = this.lyricsMessageByGuild.get(guildId);
+    if (cached && this.lyricsTrackKeyByGuild.get(guildId) === trackKey) {
+      return { message: cached, justCreated: false };
+    }
+
+    if (cached) {
+      await cached.delete().catch((error: unknown) => {
+        this.logger.warn({ error, guildId, messageId: cached.id }, "Unable to delete the previous lyrics panel message");
+      });
+    }
+    const message = await channel.send(this.createLyricsPayload(profile, snapshot));
+    this.lyricsMessageByGuild.set(guildId, message);
+    this.lyricsTrackKeyByGuild.set(guildId, trackKey);
+    // Best-effort only (see the type above) — kept purely for visibility/
+    // debugging, never read back to recover or validate a lyrics message.
+    const state = this.stateStore.find(guildId);
+    if (state) {
+      await this.stateStore.save({ ...state, lyricsMessageId: message.id }).catch((error: unknown) => {
+        this.logger.warn({ error, guildId }, "Unable to record the current lyrics message id");
+      });
+    }
+    return { message, justCreated: true };
+  }
+
   private async writeLyricsMessage(
-    message: Message,
+    channel: TextChannel,
     profile: GuildConfiguration,
     snapshot: MusicPlayerSnapshot | null,
     guildId: string,
   ): Promise<void> {
     try {
+      const { message, justCreated } = await this.ensureLyricsMessage(channel, profile, snapshot, guildId);
+      // A just-created message was sent with this exact content, via
+      // channel.send() above — nothing left to do this cycle.
+      if (justCreated) return;
       // Same floor-applies-to-every-caller reasoning as writeNowPlayingMessage
       // above — this was the dominant contributor: a track change fires
       // track_started (writes the "Looking for lyrics..." placeholder) and
@@ -700,7 +776,7 @@ export class ControlChannelService {
     }
   }
 
-  private async ensurePanelMessages(profile: GuildConfiguration): Promise<PanelMessageTrio> {
+  private async ensurePanelMessages(profile: GuildConfiguration): Promise<PanelMessagePair> {
     const channelId = profile.channels.controlPanel;
     if (!channelId) throw new Error("Control panel channel is not configured.");
 
@@ -716,45 +792,56 @@ export class ControlChannelService {
 
     const state = this.stateStore.find(profile.guildId);
     if (state?.channelId === channelId) {
-      const existing = await this.fetchExistingTrio(channel, state);
-      if (existing) return existing;
-      // Same channel, but the trio is broken (one message deleted, or a
+      const existing = await this.fetchExistingPair(channel, state);
+      if (existing) return { channel, ...existing };
+      // Same channel, but the pair is broken (one message deleted, or a
       // legacy pre-split single-message row) — clean up whatever survives
       // here. No permission change: this channel stays the panel channel.
-      await this.deleteTrioMessagesBestEffort(channel, state);
+      // Any lyrics message left over is caught by sweepControlChannel
+      // (ensureGuildPanel), not handled specially here.
+      await this.deletePanelMessagesBestEffort(channel, state);
+      this.forgetLyricsMessage(profile.guildId);
     } else if (state) {
       // The panel moved to a different channel — tear down the old one,
       // including reverting its reserved-for-panel permission overwrite.
-      await this.deleteObsoletePanelTrio(profile.guildId, state);
+      // sweepControlChannel only ever runs on the *current* channel, so
+      // this is the one chance to also best-effort clean up the old
+      // channel's lyrics message.
+      await this.deleteObsoletePanelMessages(profile.guildId, state);
+      this.forgetLyricsMessage(profile.guildId);
     }
 
     const snapshot = this.playerGateway.getSnapshot(profile.guildId);
     // Created in this fixed order (top to bottom) and only ever edited in
     // place afterward, so they stay adjacent regardless of what else gets
-    // posted in the channel later — see the trio-recovery paths above for
-    // the only case that reorders them (and even then, always recreated
-    // together in this same order).
+    // posted in the channel later — see the recovery paths above for the
+    // only case that reorders them (and even then, always recreated
+    // together in this same order). Lyrics is sent separately, lazily, on
+    // the first refresh — see ensureLyricsMessage.
     const nowPlaying = await this.sendNowPlayingMessage(channel, profile, snapshot);
-    const lyrics = await channel.send(this.createLyricsPayload(profile, snapshot));
     const queue = await channel.send(this.createQueueControlsPayload(profile, snapshot));
 
     await this.stateStore.save({
       guildId: profile.guildId,
       channelId,
       nowPlayingMessageId: nowPlaying.id,
-      lyricsMessageId: lyrics.id,
+      lyricsMessageId: null,
       queueMessageId: queue.id,
     });
 
-    // Pinned here (not just in ensureGuildPanel) so a mid-session trio
+    // Pinned here (not just in ensureGuildPanel) so a mid-session
     // recreation — triggered by any writePanel() call, not only the setup
     // flow — pins the fresh messages too, instead of leaving them unpinned
     // until someone happens to call ensureGuildPanel() again.
     await this.pinPanelMessage(nowPlaying, profile.guildId);
-    await this.pinPanelMessage(lyrics, profile.guildId);
     await this.pinPanelMessage(queue, profile.guildId);
 
-    return { nowPlaying, lyrics, queue };
+    return { channel, nowPlaying, queue };
+  }
+
+  private forgetLyricsMessage(guildId: string): void {
+    this.lyricsMessageByGuild.delete(guildId);
+    this.lyricsTrackKeyByGuild.delete(guildId);
   }
 
   private async pinPanelMessage(message: Message, guildId: string): Promise<void> {
@@ -762,6 +849,44 @@ export class ControlChannelService {
     await message.pin("Persistent music control panel").catch((error: unknown) => {
       this.logger.warn({ error, guildId, messageId: message.id }, "Unable to pin music control panel message");
     });
+  }
+
+  // Backstop for the channel's whole reserved-for-panel purpose: deletes
+  // anything found that isn't one of the two known-good panel messages.
+  // Catches cases the targeted recovery paths above don't cover — a
+  // transient status/queued-track card whose self-deletion timer (an
+  // in-memory setTimeout, not persisted) never fired because the process
+  // restarted first, a best-effort delete that failed silently, a stray
+  // lyrics message left behind by ensureLyricsMessage's own delete failing,
+  // or content from before the bot ever touched this channel. Deletes
+  // regardless of author — this channel's whole point (see
+  // ensureChannelPermissions) is to be reserved for the panel, so anything
+  // else here shouldn't be either. Runs at panel setup (bot startup, and
+  // whenever an admin reconfigures the control channel), not on a
+  // recurring schedule — see ensureGuildPanel.
+  private async sweepControlChannel(channel: TextChannel, keep: ReadonlySet<string>): Promise<void> {
+    const messages = await channel.messages.fetch({ limit: channelSweepFetchLimit }).catch((error: unknown) => {
+      this.logger.warn({ error, channelId: channel.id }, "Unable to fetch channel history for the control panel sweep");
+      return null;
+    });
+    if (!messages) return;
+
+    if (messages.size >= channelSweepFetchLimit) {
+      this.logger.warn(
+        { channelId: channel.id, limit: channelSweepFetchLimit },
+        "Control panel channel sweep hit its fetch limit — there may be more stray messages left uninspected",
+      );
+    }
+
+    for (const message of messages.values()) {
+      if (keep.has(message.id)) continue;
+      await message.delete().catch((error: unknown) => {
+        this.logger.warn(
+          { error, channelId: channel.id, messageId: message.id },
+          "Unable to delete a stray message during the control panel channel sweep",
+        );
+      });
+    }
   }
 
   // Only an authoritative "this message is really gone" (Unknown Message)
@@ -779,32 +904,28 @@ export class ControlChannelService {
     }
   }
 
-  private async fetchExistingTrio(
+  private async fetchExistingPair(
     channel: TextChannel,
     state: ControlPanelRuntimeState,
-  ): Promise<PanelMessageTrio | null> {
-    if (!state.nowPlayingMessageId || !state.lyricsMessageId || !state.queueMessageId) return null;
+  ): Promise<{ nowPlaying: Message; queue: Message } | null> {
+    if (!state.nowPlayingMessageId || !state.queueMessageId) return null;
 
-    const [nowPlaying, lyrics, queue] = await Promise.all([
+    const [nowPlaying, queue] = await Promise.all([
       this.fetchPanelMessage(channel, state.nowPlayingMessageId),
-      this.fetchPanelMessage(channel, state.lyricsMessageId),
       this.fetchPanelMessage(channel, state.queueMessageId),
     ]);
     const botId = this.client.user?.id;
-    if (
-      nowPlaying && lyrics && queue &&
-      nowPlaying.author.id === botId && lyrics.author.id === botId && queue.author.id === botId
-    ) {
-      return { nowPlaying, lyrics, queue };
+    if (nowPlaying && queue && nowPlaying.author.id === botId && queue.author.id === botId) {
+      return { nowPlaying, queue };
     }
     return null;
   }
 
-  private async deleteTrioMessagesBestEffort(
+  private async deletePanelMessagesBestEffort(
     channel: TextChannel,
     state: ControlPanelRuntimeState,
   ): Promise<void> {
-    for (const messageId of [state.nowPlayingMessageId, state.lyricsMessageId, state.queueMessageId]) {
+    for (const messageId of [state.nowPlayingMessageId, state.queueMessageId]) {
       if (messageId) await this.deleteIfOwnedByBot(channel, messageId);
     }
   }
@@ -911,7 +1032,7 @@ export class ControlChannelService {
     await interaction.reply({ content, flags: MessageFlags.Ephemeral });
   }
 
-  private async deleteObsoletePanelTrio(
+  private async deleteObsoletePanelMessages(
     guildId: string,
     state: ControlPanelRuntimeState,
   ): Promise<void> {
@@ -923,6 +1044,10 @@ export class ControlChannelService {
       await this.restoreChannelPermissions(oldChannel, guild);
     }
 
+    // lyricsMessageId here is best-effort/non-authoritative (see
+    // ensureLyricsMessage) but still worth attempting — this old channel
+    // never gets a sweepControlChannel pass, so this is the only chance to
+    // clean up its lyrics message.
     for (const messageId of [state.nowPlayingMessageId, state.lyricsMessageId, state.queueMessageId]) {
       if (!messageId) continue;
       const oldMessage = await oldChannel.messages.fetch(messageId).catch(() => null);
@@ -1183,8 +1308,8 @@ export class ControlChannelService {
     const nextLine = snapshot.nextLyricLineInMs;
     const lyricDelay = typeof nextLine === "number" && Number.isFinite(nextLine)
       ? Math.max(25, nextLine, minimumLyricEditIntervalMs - (Date.now() - (this.lastLyricsEditAt.get(guildId) ?? -Infinity)))
-      : activePlaybackRefreshIntervalMs;
-    const delay = Math.min(activePlaybackRefreshIntervalMs, lyricDelay);
+      : masterPanelRefreshIntervalMs;
+    const delay = Math.min(masterPanelRefreshIntervalMs, lyricDelay);
 
     const timer = setTimeout(() => {
       this.progressRefreshTimers.delete(guildId);
