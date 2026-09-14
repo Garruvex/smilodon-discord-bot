@@ -313,10 +313,16 @@ export class Application {
       this.logger.warn({ message }, "Discord client warning");
     });
 
-    // Surfaces the actual cause when panel edits (or anything else) stall for
-    // several seconds — discord.js retries a rate-limited request
-    // automatically after waiting out `timeToReset`, silently, so without
-    // this log a stall just looks like an unexplained hang.
+    // Only catches a *proactive* wait — discord.js predicting, from its own
+    // local bucket tracking, that it needs to pause before sending a
+    // request. An unexpected 429 response (e.g. Discord's undocumented
+    // per-channel message-edit sublimit, confirmed as the real cause of a
+    // multi-second panel stall via direct REST response logging below) goes
+    // through a different internal path that retries silently and never
+    // reaches this listener — @discordjs/rest only surfaces that case if
+    // `rejectOnRateLimit` is explicitly configured, which this bot doesn't
+    // do. Kept for the proactive case it does catch; not a substitute for
+    // the response-level logging below.
     this.client.rest.on("rateLimited", (info) => {
       this.logger.warn(
         {

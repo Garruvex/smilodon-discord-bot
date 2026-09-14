@@ -9,7 +9,15 @@ interface Waiter {
   reject: (error: unknown) => void;
 }
 
-const defaultDebounceMs = 200;
+// A cache-hit lyrics resolution fires its own refresh request roughly
+// 300-400ms after the track_started refresh that immediately preceded it
+// (confirmed via production logging) — comfortably past the old 200ms
+// debounce, so the two triggered two separate render cycles (up to 6
+// Discord edits within ~1s combined) instead of coalescing into one. Real
+// 429s from Discord's per-channel message-edit sublimit were observed as a
+// direct result. 500ms reliably covers that gap while still comfortably
+// under the 900ms max wait for a genuinely sustained burst.
+const defaultDebounceMs = 500;
 const defaultMaxWaitMs = 900;
 
 /**

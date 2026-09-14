@@ -962,13 +962,12 @@ describe("ControlChannelService", () => {
     internals.resetProgressRefreshTimer(guildId, {
       currentTrack: { title: "Track" }, paused: false, nextLyricLineInMs: 100,
     });
-    // The throttle floor is deliberately smaller than the Now Playing
-    // interval (split into its own nowPlayingRefreshIntervalMs) so lyrics
-    // can update meaningfully more often without the combined edit volume
-    // approaching Discord's per-channel rate limit the way a shared 1s floor
-    // for both previously did (that caused real 429 backoff that stalled the
-    // whole panel, including button clicks sharing the same write queue).
-    await vi.advanceTimersByTimeAsync(1_499);
+    // Back at the 3s floor (matching activePlaybackRefreshIntervalMs) after
+    // two separate attempts at a smaller one (1s, then 1.5s) were each
+    // confirmed via production REST response logging to trigger real 429s
+    // from Discord's per-channel message-edit sublimit — see the comment on
+    // minimumLyricEditIntervalMs.
+    await vi.advanceTimersByTimeAsync(2_999);
     expect(refresh).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(refresh).toHaveBeenCalledOnce();

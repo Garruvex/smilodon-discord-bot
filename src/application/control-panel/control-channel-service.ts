@@ -63,18 +63,22 @@ const activePlaybackRefreshIntervalMs = 3_000;
 // read line by line — can update meaningfully more often than mm:ss ticking
 // over, which doesn't need anywhere near that precision.
 const nowPlayingRefreshIntervalMs = 6_000;
-// Lyrics' own edit throttle. This used to match activePlaybackRefreshIntervalMs
-// (3s) after a smaller 1s floor let total edit volume for this guild alone
-// approach Discord's ~5-edits-per-5s-per-channel ceiling by itself — real
-// 429 backoff then stalled panelWriteQueue for however long Discord made it
-// wait, and since button clicks share that same queue, every control on the
-// panel went unresponsive for the same stretch. Worst case combined with
-// nowPlayingRefreshIntervalMs above: 1/1.5s + 1/6s ≈ 0.83 edits/s ≈ 4.2 per
-// 5s — real but tighter headroom than the old 3s+3s split, traded
-// deliberately in favor of lyrics actually looking synced. Watch the
-// rateLimited REST log (bootstrap/application.ts) after changing either of
-// these — that's the ground truth for whether there's still headroom.
-const minimumLyricEditIntervalMs = 1_500;
+// Lyrics' own edit throttle. Was tightened to 1s, then to 1.5s, chasing
+// tighter lyric sync — both times confirmed (via production REST response
+// logging, since discord.js's rateLimited event doesn't catch this case;
+// see the comment on that listener in bootstrap/application.ts) to trigger
+// real 429s from Discord's per-channel message-edit sublimit, not just the
+// theoretical ~5-edits-per-5s ceiling this constant was originally sized
+// against. That ceiling estimate undercounted real traffic: a track
+// change fires up to 3 edits (queue+nowPlaying+lyrics) in one cycle, and a
+// fast lyrics resolution used to fire a second, mostly-redundant cycle
+// moments later (see panel-refresh-coordinator.ts's debounce, also
+// widened for this reason). Back to the 3s floor this session already
+// proved safe once before, now paired with that debounce fix rather than
+// trading it away again. If you change this, watch the "Discord REST
+// response for a message route" log (bootstrap/application.ts) for status
+// 429 afterward — that's the ground truth, not the rateLimited listener.
+const minimumLyricEditIntervalMs = 3_000;
 const defaultIdleImagePath = resolve("assets/music/no_bg.png");
 // Leaves headroom under the embed description's 4096-char hard cap for the
 // header line and the "…and N more" note appended after this budget runs out.
