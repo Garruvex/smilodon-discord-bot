@@ -276,6 +276,10 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
   // populates it after a real fetch (including a confirmed "no lyrics"
   // result) so the next server — this instance or another one entirely —
   // to play the same track never has to ask LRCLIB again.
+  //
+  // Logged at info level (cache hit/miss, live-fetch duration) specifically
+  // so a reported "lyrics took N seconds" can be checked against real
+  // numbers instead of guessed at — this path is otherwise silent.
   private async resolveSyncedLyrics(
     trackName: string,
     artistName: string,
@@ -287,10 +291,18 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
         this.logger.warn({ error, trackKey }, "Unable to read the lyrics cache");
         return undefined;
       });
-      if (cached !== undefined) return cached as SyncedLyricLine[] | null;
+      if (cached !== undefined) {
+        this.logger.info({ trackKey, cacheHit: true, found: cached !== null }, "Lyrics resolved from cache");
+        return cached as SyncedLyricLine[] | null;
+      }
     }
 
+    const startedAt = Date.now();
     const lines = await fetchSyncedLyrics(trackName, artistName, durationMs);
+    this.logger.info(
+      { trackKey, cacheHit: false, found: lines !== null, lineCount: lines?.length ?? 0, fetchMs: Date.now() - startedAt },
+      "Lyrics resolved from LRCLIB",
+    );
     if (this.lyricsCacheStore) {
       void this.lyricsCacheStore.set(trackKey, lines).catch((error: unknown) => {
         this.logger.warn({ error, trackKey }, "Unable to write the lyrics cache");
