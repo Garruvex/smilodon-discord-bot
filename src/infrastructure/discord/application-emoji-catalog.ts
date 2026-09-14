@@ -53,6 +53,16 @@ export class ApplicationEmojiCatalog {
     return [...this.emojisByName.values()].some((emoji) => emoji.id === emojiId);
   }
 
+  // Formats any application emoji by name as Discord message markup
+  // (`<a:name:id>` / `<:name:id>`), or null if it hasn't been uploaded to
+  // this bot's application emoji pool (e.g. instance:emojis:sync hasn't run
+  // yet) — callers should fall back to a plain Unicode emoji in that case.
+  public getEmojiTag(name: string): string | null {
+    const emoji = this.emojisByName.get(name);
+    if (!emoji) return null;
+    return `<${emoji.animated ? "a" : ""}:${emoji.name}:${emoji.id}>`;
+  }
+
   public getMissingYohtaEmojiNames(): string[] {
     return yohtaApplicationEmojiAssets
       .filter(({ name }) => !this.emojisByName.has(name))

@@ -2,7 +2,7 @@ import { Client, Events } from "discord.js";
 import { existsSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { yohtaApplicationEmojiAssets } from "../config/application-emoji-presets.js";
+import { applicationEmojiPresets } from "../config/application-emoji-presets.js";
 import {
   discoverInstanceNames,
   loadInstanceEnvironment,
@@ -13,8 +13,6 @@ const instanceNames = requestedNames.length > 0 ? requestedNames : discoverInsta
 if (instanceNames.length === 0) {
   throw new Error("No configured instances were found.");
 }
-
-const assetDirectory = resolve("assets", "emojis", "yohta");
 
 for (const instanceName of instanceNames) {
   await synchronizeInstance(instanceName);
@@ -38,19 +36,22 @@ async function synchronizeInstance(instanceName: string): Promise<void> {
     if (!application) throw new Error("Discord application was unavailable after login.");
     const existing = await application.emojis.fetch();
 
-    for (const asset of yohtaApplicationEmojiAssets) {
-      const present = existing.find((emoji) => emoji.name === asset.name);
-      if (present) {
-        process.stdout.write(`  kept ${asset.name} (${present.id})\n`);
-        continue;
-      }
+    for (const preset of applicationEmojiPresets) {
+      const assetDirectory = resolve("assets", "emojis", preset.directory);
+      for (const asset of preset.assets) {
+        const present = existing.find((emoji) => emoji.name === asset.name);
+        if (present) {
+          process.stdout.write(`  kept ${asset.name} (${present.id})\n`);
+          continue;
+        }
 
-      const file = resolve(assetDirectory, asset.file);
-      if (!existsSync(file) || !statSync(file).isFile()) {
-        throw new Error(`Emoji asset is missing: ${file}`);
+        const file = resolve(assetDirectory, asset.file);
+        if (!existsSync(file) || !statSync(file).isFile()) {
+          throw new Error(`Emoji asset is missing: ${file}`);
+        }
+        const created = await application.emojis.create({ attachment: file, name: asset.name });
+        process.stdout.write(`  created ${asset.name} (${created.id})\n`);
       }
-      const created = await application.emojis.create({ attachment: file, name: asset.name });
-      process.stdout.write(`  created ${asset.name} (${created.id})\n`);
     }
 
     process.stdout.write(`Synchronized "${instanceName}".\n`);

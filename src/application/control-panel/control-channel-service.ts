@@ -823,6 +823,15 @@ export class ControlChannelService {
     };
   }
 
+  // "disc_spin"/"disc_static" application emoji (see application-emoji-presets.ts)
+  // give the panel titles a visual playing/idle-or-paused cue. Falls back to
+  // a plain Unicode disc when the emoji hasn't been uploaded yet (see
+  // instance:emojis:sync) rather than showing nothing.
+  private musicDiscIcon(snapshot: MusicPlayerSnapshot | null): string {
+    const playing = Boolean(snapshot?.currentTrack) && !snapshot?.paused;
+    return this.applicationEmojiCatalog.getEmojiTag(playing ? "disc_spin" : "disc_static") ?? "💿";
+  }
+
   private createNowPlayingEmbed(
     profile: GuildConfiguration,
     snapshot: MusicPlayerSnapshot | null,
@@ -830,7 +839,7 @@ export class ControlChannelService {
     const embed = new EmbedBuilder().setColor(profile.embedColor as `#${string}`);
     if (!snapshot?.currentTrack) {
       embed
-        .setTitle("No song currently playing")
+        .setTitle(`${this.musicDiscIcon(snapshot)} No song currently playing`)
         .setDescription("The player is ready for a new request.");
       embed.setImage(profile.idleImageUrl ?? `attachment://${this.getIdleImageName(profile)}`);
       return embed;
@@ -850,7 +859,7 @@ export class ControlChannelService {
     });
     const requester = this.formatRequester(track.requestedByUserId);
     embed
-      .setTitle(snapshot.paused ? "Playback paused" : "Now Playing")
+      .setTitle(`${this.musicDiscIcon(snapshot)} ${snapshot.paused ? "Playback paused" : "Now Playing"}`)
       .setDescription(`### ${title}\n${track.author}\n\n${progress}${requester}`);
 
     if (track.artworkUrl) embed.setImage(track.artworkUrl);
@@ -868,7 +877,9 @@ export class ControlChannelService {
     profile: GuildConfiguration,
     snapshot: MusicPlayerSnapshot | null,
   ): EmbedBuilder {
-    const embed = new EmbedBuilder().setColor(profile.embedColor as `#${string}`).setTitle("🎤 Lyrics");
+    const embed = new EmbedBuilder()
+      .setColor(profile.embedColor as `#${string}`)
+      .setTitle(`${this.musicDiscIcon(snapshot)} 🎤 Lyrics`);
     if (!snapshot?.currentTrack) {
       return embed.setDescription("Nothing is playing right now.");
     }

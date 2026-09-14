@@ -151,7 +151,7 @@ function createService(chatbotEnabled: boolean): {
       stateStore,
       playerGateway,
       playbackService,
-      { getYohtaTheme: () => null, hasEmoji: () => false } as never,
+      { getYohtaTheme: () => null, hasEmoji: () => false, getEmojiTag: () => null } as never,
       logger as never,
       eventBus,
     ),
@@ -1119,7 +1119,7 @@ describe("ControlChannelService", () => {
       stateStore,
       playerGateway,
       { enqueue: vi.fn() } as unknown as PlaybackService,
-      { getYohtaTheme: () => null, hasEmoji: () => false } as never,
+      { getYohtaTheme: () => null, hasEmoji: () => false, getEmojiTag: () => null } as never,
       logger as never,
       eventBus,
     );
@@ -1272,7 +1272,7 @@ describe("ControlChannelService", () => {
       stateStore,
       playerGateway,
       { skip } as unknown as PlaybackService,
-      { getYohtaTheme: () => null, hasEmoji: () => false } as never,
+      { getYohtaTheme: () => null, hasEmoji: () => false, getEmojiTag: () => null } as never,
       logger as never,
       eventBus,
     );
@@ -1405,7 +1405,7 @@ describe("ControlChannelService", () => {
       stateStore,
       playerGateway,
       {} as unknown as PlaybackService,
-      { getYohtaTheme: () => null, hasEmoji: () => false } as never,
+      { getYohtaTheme: () => null, hasEmoji: () => false, getEmojiTag: () => null } as never,
       logger as never,
       eventBus,
     );
