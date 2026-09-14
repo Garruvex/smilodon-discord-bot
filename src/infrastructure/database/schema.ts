@@ -29,6 +29,24 @@ export const controlPanels = pgTable("control_panels", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// Deliberately NOT per-instance: a track's synced lyrics are the same
+// regardless of which guild or bot instance (yohta, pinecone) plays it, so
+// this table lives in the shared "public" schema instead of each instance's
+// isolated one — every other table here is instance-scoped, this is the one
+// exception. See its migration file, which is hand-adjusted to target
+// "public" explicitly and to be idempotent (each instance's migration
+// history is independent, so both instances "migrate" this same table), and
+// is excluded from normalize-postgres-migrations.ts's schema-qualifier
+// stripping for exactly that reason.
+export const cachedLyrics = pgTable("cached_lyrics", {
+  // Normalized "title|artist" — see lyrics-cache-store.ts.
+  trackKey: text("track_key").primaryKey(),
+  // Parsed synced lines, or null if this track is confirmed to have none —
+  // caching that negative result too avoids re-querying LRCLIB for it.
+  lines: jsonb("lines"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // Hub entity for "this Discord member in this guild." Existing guildId/userId
 // columns on the tables below are left as the source of truth for reads —
 // memberId is additive, populated on writes via GuildMemberRegistry, and

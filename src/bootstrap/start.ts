@@ -29,6 +29,7 @@ const musicPlayerGateway = new LavalinkPlayerGateway(
   logger.child({ component: "lavalink" }),
   musicEventBus,
   guildConfigurationProvider,
+  persistence.lyricsCacheStore,
 );
 const auditLogService = new AuditLogService(
   discordClient,

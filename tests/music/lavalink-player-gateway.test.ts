@@ -1,10 +1,16 @@
 import { ChannelType, PermissionsBitField, type Client, type Guild } from "discord.js";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LavalinkPlayerGateway } from "../../src/infrastructure/lavalink/lavalink-player-gateway.js";
 import { MusicChannelAccessError } from "../../src/application/music/music-errors.js";
 import type { MusicEventBus } from "../../src/application/music/music-event-bus.js";
 import type { GuildConfigurationProvider } from "../../src/config/guild-configuration-provider.js";
+import type { LyricsCacheStore } from "../../src/application/lyrics/lyrics-cache-store.js";
+
+const fetchSyncedLyricsMock = vi.fn();
+vi.mock("../../src/infrastructure/lyrics/lrclib-client.js", () => ({
+  fetchSyncedLyrics: (...args: unknown[]): unknown => fetchSyncedLyricsMock(...args),
+}));
 
 const guildId = "123456789012345678";
 
@@ -231,5 +237,84 @@ describe("LavalinkPlayerGateway.getQueue", () => {
     stubPlayer(null);
 
     expect(gateway.getQueue(guildId)).toEqual([]);
+  });
+});
+
+describe("LavalinkPlayerGateway.resolveSyncedLyrics", () => {
+  function createGatewayWithCache(cacheStore: LyricsCacheStore | null): {
+    resolveSyncedLyrics: (trackName: string, artistName: string) => Promise<unknown>;
+  } {
+    const client = { guilds: { cache: new Map<string, Guild>() } } as unknown as Client;
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const eventBus = { publish: vi.fn(() => Promise.resolve()) } as unknown as MusicEventBus;
+    const guildConfigurationProvider = { find: vi.fn(() => undefined) } as unknown as GuildConfigurationProvider;
+
+    const gateway = new LavalinkPlayerGateway(
+      client,
+      { host: "localhost", port: 2333, password: "pw", secure: false },
+      logger as never,
+      eventBus,
+      guildConfigurationProvider,
+      cacheStore,
+    );
+
+    return gateway as unknown as {
+      resolveSyncedLyrics: (trackName: string, artistName: string) => Promise<unknown>;
+    };
+  }
+
+  beforeEach(() => {
+    fetchSyncedLyricsMock.mockReset();
+  });
+
+  it("returns a cached hit without calling LRCLIB", async () => {
+    const cachedLines = [{ timestampMs: 0, line: "Cached line" }];
+    const cache = {
+      get: vi.fn().mockResolvedValue(cachedLines),
+      set: vi.fn(),
+    } as unknown as LyricsCacheStore;
+    const gateway = createGatewayWithCache(cache);
+
+    const result = await gateway.resolveSyncedLyrics("Track", "Artist");
+
+    expect(result).toEqual(cachedLines);
+    expect(fetchSyncedLyricsMock).not.toHaveBeenCalled();
+  });
+
+  it("treats a cached null as a confirmed not-found, without calling LRCLIB", async () => {
+    const cache = {
+      get: vi.fn().mockResolvedValue(null),
+      set: vi.fn(),
+    } as unknown as LyricsCacheStore;
+    const gateway = createGatewayWithCache(cache);
+
+    const result = await gateway.resolveSyncedLyrics("Track", "Artist");
+
+    expect(result).toBeNull();
+    expect(fetchSyncedLyricsMock).not.toHaveBeenCalled();
+  });
+
+  it("fetches from LRCLIB and writes the result back to the cache on a miss", async () => {
+    const freshLines = [{ timestampMs: 1000, line: "Fresh line" }];
+    fetchSyncedLyricsMock.mockResolvedValue(freshLines);
+    const setSpy = vi.fn().mockResolvedValue(undefined);
+    const cache = { get: vi.fn().mockResolvedValue(undefined), set: setSpy } as unknown as LyricsCacheStore;
+    const gateway = createGatewayWithCache(cache);
+
+    const result = await gateway.resolveSyncedLyrics("Track", "Artist");
+
+    expect(result).toEqual(freshLines);
+    expect(fetchSyncedLyricsMock).toHaveBeenCalledWith("Track", "Artist");
+    await vi.waitFor(() => expect(setSpy).toHaveBeenCalledWith("track|artist", freshLines));
+  });
+
+  it("works without a cache store at all — always fetches from LRCLIB", async () => {
+    fetchSyncedLyricsMock.mockResolvedValue(null);
+    const gateway = createGatewayWithCache(null);
+
+    const result = await gateway.resolveSyncedLyrics("Track", "Artist");
+
+    expect(result).toBeNull();
+    expect(fetchSyncedLyricsMock).toHaveBeenCalledWith("Track", "Artist");
   });
 });

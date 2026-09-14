@@ -99,6 +99,13 @@
       "when": 1789358937902,
       "tag": "0013_drop_control_panel_message_id",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1789361099171,
+      "tag": "0014_cached_lyrics",
+      "breakpoints": true
     }
   ]
 }

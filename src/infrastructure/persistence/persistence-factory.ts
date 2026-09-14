@@ -47,10 +47,16 @@ import { PostgresChannelSummaryCheckpointStore } from "./postgres-channel-summar
 import type { PersonalMemoryExtractionQueueStore } from "../../application/context/personal-memory-extraction-queue.js";
 import { SqlitePersonalMemoryExtractionQueueStore } from "./sqlite-personal-memory-extraction-queue-store.js";
 import { PostgresPersonalMemoryExtractionQueueStore } from "./postgres-personal-memory-extraction-queue-store.js";
+import type { LyricsCacheStore } from "../../application/lyrics/lyrics-cache-store.js";
+import { PostgresLyricsCacheStore } from "./postgres-lyrics-cache-store.js";
 
 export interface PersistenceServices {
   guildConfigurationProvider: GuildConfigurationProvider;
   controlPanelStateStore: ControlPanelStateStore;
+  // Only available on the postgres driver — a shared cross-instance cache
+  // needs a real shared server (see cachedLyrics in schema.ts). null on the
+  // local driver just means every lyrics lookup goes straight to LRCLIB.
+  lyricsCacheStore: LyricsCacheStore | null;
   chatStateStore: ChatStateStore;
   userCustomizationStore: UserCustomizationStore;
   guildKnowledgeStore: GuildKnowledgeStore;
@@ -84,6 +90,7 @@ export async function createPersistenceServices(
   let roleMenuStore: RoleMenuStore;
   let guildMemberRegistry: GuildMemberRegistry | null = null;
   let memberDataPurger: MemberDataPurger;
+  let lyricsCacheStore: LyricsCacheStore | null;
 
   if (configuration.persistence.driver === "postgres") {
     const databaseUrl = configuration.persistence.databaseUrl;
@@ -107,6 +114,7 @@ export async function createPersistenceServices(
     reminderStore = new PostgresReminderStore(connection.database);
     roleMenuStore = new PostgresRoleMenuStore(connection.database);
     memberDataPurger = new PostgresMemberDataPurger(connection.database, personalMemoryExtractionQueueStore);
+    lyricsCacheStore = new PostgresLyricsCacheStore(connection.database);
   } else {
     guildConfigurationProvider = new LocalGuildConfigurationProvider(
       configuration.guildConfigurationDirectory,
@@ -137,6 +145,7 @@ export async function createPersistenceServices(
       chatStateStore,
       personalMemoryExtractionQueueStore,
     );
+    lyricsCacheStore = null;
   }
 
   await guildConfigurationProvider.initialize();
@@ -154,6 +163,7 @@ export async function createPersistenceServices(
   return {
     guildConfigurationProvider,
     controlPanelStateStore,
+    lyricsCacheStore,
     chatStateStore,
     userCustomizationStore,
     guildKnowledgeStore,

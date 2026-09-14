@@ -31,6 +31,7 @@ import type { MusicEventBus, MusicStateChangedEvent } from "../../application/mu
 import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
 import { LavalinkAutoQueue, type AutoQueueOutcome } from "./lavalink-auto-queue.js";
 import { fetchSyncedLyrics, type SyncedLyricLine } from "../lyrics/lrclib-client.js";
+import { buildLyricsCacheKey, type LyricsCacheStore } from "../../application/lyrics/lyrics-cache-store.js";
 
 const playHistoryLimit = 20;
 
@@ -107,6 +108,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     private readonly logger: Logger,
     private readonly eventBus: MusicEventBus,
     private readonly guildConfigurationProvider: GuildConfigurationProvider,
+    private readonly lyricsCacheStore: LyricsCacheStore | null = null,
   ) {
     this.manager = new LavalinkManager({
       nodes: [
@@ -181,7 +183,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
       void player.subscribeLyrics().catch(() => undefined);
       if (track) {
         const trackId = track.encoded;
-        fetchSyncedLyrics(track.info.title, track.info.author ?? "")
+        this.resolveSyncedLyrics(track.info.title, track.info.author ?? "")
           .then((lines) => {
             // Guard against a stale response landing after the track changed.
             if (this.manager.getPlayer(player.guildId)?.queue.current?.encoded !== trackId) return;
@@ -222,6 +224,32 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     this.manager.on("LyricsNotFound", (player) => {
       this.pluginLyricsByGuild.set(player.guildId, "not-found");
     });
+  }
+
+  // Checks the shared cross-instance cache before ever hitting LRCLIB, and
+  // populates it after a real fetch (including a confirmed "no lyrics"
+  // result) so the next server — this instance or another one entirely —
+  // to play the same track never has to ask LRCLIB again.
+  private async resolveSyncedLyrics(
+    trackName: string,
+    artistName: string,
+  ): Promise<SyncedLyricLine[] | null> {
+    const trackKey = buildLyricsCacheKey(trackName, artistName);
+    if (this.lyricsCacheStore) {
+      const cached = await this.lyricsCacheStore.get(trackKey).catch((error: unknown) => {
+        this.logger.warn({ error, trackKey }, "Unable to read the lyrics cache");
+        return undefined;
+      });
+      if (cached !== undefined) return cached as SyncedLyricLine[] | null;
+    }
+
+    const lines = await fetchSyncedLyrics(trackName, artistName);
+    if (this.lyricsCacheStore) {
+      void this.lyricsCacheStore.set(trackKey, lines).catch((error: unknown) => {
+        this.logger.warn({ error, trackKey }, "Unable to write the lyrics cache");
+      });
+    }
+    return lines;
   }
 
   public async initialize(clientUser: { id: string; username: string }): Promise<void> {
