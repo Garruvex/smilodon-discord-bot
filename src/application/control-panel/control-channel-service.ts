@@ -406,74 +406,84 @@ export class ControlChannelService {
 
     let staleRecovered = false;
     let executionError: unknown;
-    // The whole capture → predict → optimistic-write → execute → authoritative
-    // write pipeline runs as one action-queue turn. That's what makes the
-    // prediction correct (a queued second click reads state *after* this
-    // click's execute() actually ran, not a snapshot taken before either
-    // ran) and what makes the write ordering correct (this click's
-    // authoritative write is fully submitted to the write queue before a
-    // queued second click's own optimistic write can be submitted, so a
-    // newer render can never be stomped by an older one arriving late).
-    await this.guildLocks.run(interaction.guildId, async () => {
-      try {
-        // The bot's actual Discord voice connection is authoritative over
-        // whatever channel the Lavalink player still thinks it's in. A
-        // mismatch (kick, channel deletion, a missed VoiceStateUpdate) means
-        // the player is stale — destroy it now rather than let
-        // channel-mismatch checks (e.g. 24/7's assertControllablePlayer)
-        // permanently block every control, including the one that would have
-        // turned the stale session off. Inside the try so a failure here
-        // (e.g. a transient Discord API error) still reaches the
-        // authoritative write and the user-facing error reply below, instead
-        // of leaving the button stuck in its optimistic pending state with
-        // no explanation.
-        staleRecovered = await this.playerGateway.reconcileVoiceState(interaction.guildId);
-        if (!staleRecovered) {
-          // Optimistic instant feedback: render the predicted post-action
-          // state (or, for controls without a predictor, just the clicked
-          // button disabled) immediately, rather than leaving the panel
-          // looking unresponsive for the duration of the Lavalink round
-          // trip. The authoritative write below always reconciles with
-          // ground truth afterward, so a failed/incorrect prediction
-          // self-corrects immediately. Controls whose result is already a
-          // local, instant toggle (24/7, autoqueue) skip this phase
-          // entirely and go straight to the authoritative color — there's
-          // no round trip worth masking, so a disabled flash would only be
-          // visual noise.
-          if (control.showPendingState !== false && !shownPendingViaFastAck) {
-            const currentSnapshot = this.playerGateway.getSnapshot(interaction.guildId);
-            const predictedSnapshot = currentSnapshot && control.predictSnapshot
-              ? control.predictSnapshot(currentSnapshot)
-              : currentSnapshot;
-            // Components only: the embeds (track title/art/idle image,
-            // lyrics, queue list) depend on attachment/data bookkeeping
-            // handled by the authoritative write below, so predicting them
-            // here risks a broken image reference or stale queue text.
-            // Buttons are self-contained and safe to predict.
-            const pendingRows = createMusicPanelControlRows(profile, predictedSnapshot, control.id);
-            await this.panelWriteQueue.run(interaction.guildId, () =>
-              interaction.editReply({ components: pendingRows }).catch(() => undefined));
+    // The capture → predict → optimistic-write → execute pipeline runs as
+    // one action-queue turn. That's what makes the prediction correct (a
+    // queued second click reads state *after* this click's execute()
+    // actually ran, not a snapshot taken before either ran). The
+    // authoritative write is deliberately NOT part of this turn (see below)
+    // — it only *renders* already-mutated state, so a queued second click's
+    // own guildLocks.run can safely start (and read correct, post-execute
+    // state) as soon as this click's execute() settles, without waiting for
+    // that render to actually reach Discord.
+    try {
+      await this.guildLocks.run(interaction.guildId, async () => {
+        try {
+          // The bot's actual Discord voice connection is authoritative over
+          // whatever channel the Lavalink player still thinks it's in. A
+          // mismatch (kick, channel deletion, a missed VoiceStateUpdate) means
+          // the player is stale — destroy it now rather than let
+          // channel-mismatch checks (e.g. 24/7's assertControllablePlayer)
+          // permanently block every control, including the one that would have
+          // turned the stale session off. Inside the try so a failure here
+          // (e.g. a transient Discord API error) still reaches the
+          // authoritative write and the user-facing error reply below, instead
+          // of leaving the button stuck in its optimistic pending state with
+          // no explanation.
+          staleRecovered = await this.playerGateway.reconcileVoiceState(interaction.guildId);
+          if (!staleRecovered) {
+            // Optimistic instant feedback: render the predicted post-action
+            // state (or, for controls without a predictor, just the clicked
+            // button disabled) immediately, rather than leaving the panel
+            // looking unresponsive for the duration of the Lavalink round
+            // trip. The authoritative write below always reconciles with
+            // ground truth afterward, so a failed/incorrect prediction
+            // self-corrects immediately. Controls whose result is already a
+            // local, instant toggle (24/7, autoqueue) skip this phase
+            // entirely and go straight to the authoritative color — there's
+            // no round trip worth masking, so a disabled flash would only be
+            // visual noise.
+            if (control.showPendingState !== false && !shownPendingViaFastAck) {
+              const currentSnapshot = this.playerGateway.getSnapshot(interaction.guildId);
+              const predictedSnapshot = currentSnapshot && control.predictSnapshot
+                ? control.predictSnapshot(currentSnapshot)
+                : currentSnapshot;
+              // Components only: the embeds (track title/art/idle image,
+              // lyrics, queue list) depend on attachment/data bookkeeping
+              // handled by the authoritative write below, so predicting them
+              // here risks a broken image reference or stale queue text.
+              // Buttons are self-contained and safe to predict.
+              const pendingRows = createMusicPanelControlRows(profile, predictedSnapshot, control.id);
+              // Submitted into the write queue — preserving its order relative
+              // to any write already in flight or queued — but deliberately
+              // not awaited: this is a cosmetic "button looks pressed" hint,
+              // and the actual playback command below must not sit behind a
+              // Discord round trip (or a slow, unrelated queued edit) that has
+              // nothing to do with whether playback actually happens.
+              void this.panelWriteQueue.run(interaction.guildId, () =>
+                interaction.editReply({ components: pendingRows }).catch(() => undefined));
+            }
+            await control.execute({
+              actor,
+              profile,
+              playbackService: this.playbackService,
+              playerGateway: this.playerGateway,
+            });
           }
-          await control.execute({
-            actor,
-            profile,
-            playbackService: this.playbackService,
-            playerGateway: this.playerGateway,
-          });
+        } catch (error) {
+          executionError = error;
         }
-      } catch (error) {
-        executionError = error;
-      } finally {
-        // Always reconcile the panel with ground truth, success or failure,
-        // so a failed action (or a failed ephemeral reply right after it)
-        // can never leave the optimistic prediction stuck on screen. This
-        // bypasses the background debounce scheduler entirely — user
-        // interaction feedback goes straight into the write queue with
-        // immediate priority — but still funnels through the *same* queue
-        // as background/event-driven writes, so it can't race them either.
-        await this.writePanel(interaction.guildId, profile, {});
-      }
-    });
+      });
+    } finally {
+      // Always reconcile the panel with ground truth, success or failure, so
+      // a failed action can never leave the optimistic prediction stuck on
+      // screen. Deliberately outside guildLocks — this write only reflects
+      // already-mutated state, so it doesn't need to hold up the next
+      // click's action-queue turn; it still funnels through panelWriteQueue,
+      // so it can't race a background/event-driven write either. Bypasses
+      // the background debounce scheduler entirely — user interaction
+      // feedback goes straight into the write queue with immediate priority.
+      await this.writePanel(interaction.guildId, profile, {});
+    }
 
     if (staleRecovered) {
       await this.replyEphemeral(
@@ -540,9 +550,15 @@ export class ControlChannelService {
       // Each write is independently try/caught — one message's edit
       // throwing (e.g. an unexpected API error) must not skip the other
       // two for this cycle.
-      await this.writeLyricsMessage(messages.lyrics, profile, snapshot, guildId);
       await this.writeQueueMessage(messages.queue, profile, snapshot, guildId);
       await this.writeNowPlayingMessage(messages.nowPlaying, profile, this.playerGateway.getSnapshot(guildId), options, guildId);
+      // Lyrics written last, off the freshest snapshot available — a slow
+      // Now Playing edit above must not leave the displayed line stale by
+      // however long that edit took. Writing lyrics after it (instead of
+      // before, off an older snapshot) means the line shown always reflects
+      // what's truly playing right now, not what was playing when this
+      // refresh started.
+      await this.writeLyricsMessage(messages.lyrics, profile, this.playerGateway.getSnapshot(guildId), guildId);
       // Slow edits must not add their elapsed time to the next line's delay.
       // Schedule from a fresh position even when a message edit failed.
       this.resetProgressRefreshTimer(guildId, this.playerGateway.getSnapshot(guildId));
@@ -585,11 +601,12 @@ export class ControlChannelService {
         this.resetProgressRefreshTimer(guildId, this.playerGateway.getSnapshot(guildId));
         return;
       }
-      const snapshot = this.playerGateway.getSnapshot(guildId);
-      await this.writeLyricsMessage(messages.lyrics, profile, snapshot, guildId);
       if (Date.now() - (this.lastNowPlayingEditAt.get(guildId) ?? -Infinity) >= nowPlayingRefreshIntervalMs) {
         await this.writeNowPlayingMessage(messages.nowPlaying, profile, this.playerGateway.getSnapshot(guildId), {}, guildId);
       }
+      // Lyrics last, off the freshest snapshot — see the matching comment in
+      // writePanel() above for why.
+      await this.writeLyricsMessage(messages.lyrics, profile, this.playerGateway.getSnapshot(guildId), guildId);
       this.resetProgressRefreshTimer(guildId, this.playerGateway.getSnapshot(guildId));
     });
   }

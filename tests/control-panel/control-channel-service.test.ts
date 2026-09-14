@@ -975,13 +975,19 @@ describe("ControlChannelService", () => {
     service.stop();
   });
 
-  it("writes lyrics before slow artwork and reschedules from the position after the edit", async () => {
+  it("writes lyrics after slow artwork, off the position after the edit, and reschedules from it too", async () => {
+    // Regression: lyrics used to be written BEFORE the (potentially slow)
+    // Now Playing edit, off whatever snapshot was current at the start of
+    // the cycle — so a slow artwork edit could leave the displayed lyric
+    // line stale by however long that edit took, with nothing correcting it
+    // until the next tick. Writing lyrics last, off the freshest snapshot,
+    // closes that gap.
     vi.useFakeTimers();
     const { service, getSnapshot } = createService(false);
     const internals = service as unknown as {
       ensurePanelMessages: () => Promise<unknown>;
       writeTimedPanels: (id: string) => Promise<void>;
-      writeLyricsMessage: () => Promise<void>;
+      writeLyricsMessage: (message: unknown, profile: unknown, snapshot: unknown) => Promise<void>;
       writeNowPlayingMessage: () => Promise<void>;
       resetProgressRefreshTimer: (id: string, snapshot: unknown) => void;
     };
@@ -990,8 +996,10 @@ describe("ControlChannelService", () => {
     getSnapshot.mockReturnValue(initial);
     vi.spyOn(internals, "ensurePanelMessages").mockResolvedValue({ nowPlaying: {}, lyrics: {} });
     const order: string[] = [];
-    vi.spyOn(internals, "writeLyricsMessage").mockImplementation(() => {
+    const lyricsSnapshots: unknown[] = [];
+    vi.spyOn(internals, "writeLyricsMessage").mockImplementation((_message, _profile, snapshot) => {
       order.push("lyrics");
+      lyricsSnapshots.push(snapshot);
       return Promise.resolve();
     });
     vi.spyOn(internals, "writeNowPlayingMessage").mockImplementation(async () => {
@@ -1001,7 +1009,8 @@ describe("ControlChannelService", () => {
     });
     const reset = vi.spyOn(internals, "resetProgressRefreshTimer");
     await internals.writeTimedPanels(guildId);
-    expect(order).toEqual(["lyrics", "artwork"]);
+    expect(order).toEqual(["artwork", "lyrics"]);
+    expect(lyricsSnapshots).toEqual([latest]);
     expect(reset).toHaveBeenLastCalledWith(guildId, latest);
     service.stop();
   });

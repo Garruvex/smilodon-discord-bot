@@ -252,15 +252,23 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     });
 
     // Lines arrive on their own schedule (driven by the node off real
-    // playback position) — cache only, and let the panel's existing 5s
-    // repaint timer pick the change up on its next pass rather than forcing
-    // an extra Discord edit per line.
+    // playback position), one at a time — unlike the LRCLIB path, there's no
+    // full line list to compute nextLyricLineInMs from, so the progress
+    // timer has nothing to schedule an on-time wake-up around and falls back
+    // to its default cadence. Without an explicit nudge here, a line landing
+    // just after a tick fired would otherwise sit unseen for up to that full
+    // interval plus whatever's already queued. publishStateChange goes
+    // through the panel refresh coordinator's own debounce (see
+    // panel-refresh-coordinator.ts), so a burst of lines doesn't turn into a
+    // burst of edits.
     this.manager.on("LyricsLine", (player, _track, payload) => {
       this.pluginLyricsByGuild.set(player.guildId, { line: payload.line.line });
+      this.publishStateChange({ guildId: player.guildId, reason: "lyrics_loaded" });
     });
 
     this.manager.on("LyricsNotFound", (player) => {
       this.pluginLyricsByGuild.set(player.guildId, "not-found");
+      this.publishStateChange({ guildId: player.guildId, reason: "lyrics_loaded" });
     });
   }
 
