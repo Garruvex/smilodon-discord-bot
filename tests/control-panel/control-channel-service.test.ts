@@ -931,7 +931,76 @@ describe("ControlChannelService", () => {
     expect(refreshPanel).toHaveBeenCalledWith(guildId);
   });
 
-  it("restarts an active guild's five-second progress countdown after a forced refresh", async () => {
+  it("refreshes at the next lyric boundary without waiting for the progress interval", async () => {
+    vi.useFakeTimers();
+    const { service } = createService(false);
+    const internals = service as unknown as {
+      writeTimedPanels: (id: string) => Promise<void>;
+      resetProgressRefreshTimer: (id: string, snapshot: unknown) => void;
+    };
+    const refresh = vi.spyOn(internals, "writeTimedPanels").mockResolvedValue(undefined);
+    internals.resetProgressRefreshTimer(guildId, {
+      currentTrack: { title: "Track" }, paused: false, nextLyricLineInMs: 400,
+    });
+    await vi.advanceTimersByTimeAsync(399);
+    expect(refresh).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(refresh).toHaveBeenCalledOnce();
+    service.stop();
+  });
+
+  it("coalesces rapid lyric boundaries instead of editing on every line", async () => {
+    vi.useFakeTimers();
+    const { service } = createService(false);
+    const internals = service as unknown as {
+      lastLyricsEditAt: Map<string, number>;
+      writeTimedPanels: (id: string) => Promise<void>;
+      resetProgressRefreshTimer: (id: string, snapshot: unknown) => void;
+    };
+    const refresh = vi.spyOn(internals, "writeTimedPanels").mockResolvedValue(undefined);
+    internals.lastLyricsEditAt.set(guildId, Date.now());
+    internals.resetProgressRefreshTimer(guildId, {
+      currentTrack: { title: "Track" }, paused: false, nextLyricLineInMs: 100,
+    });
+    await vi.advanceTimersByTimeAsync(999);
+    expect(refresh).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(refresh).toHaveBeenCalledOnce();
+    service.stop();
+  });
+
+  it("writes lyrics before slow artwork and reschedules from the position after the edit", async () => {
+    vi.useFakeTimers();
+    const { service, getSnapshot } = createService(false);
+    const internals = service as unknown as {
+      ensurePanelMessages: () => Promise<unknown>;
+      writeTimedPanels: (id: string) => Promise<void>;
+      writeLyricsMessage: () => Promise<void>;
+      writeNowPlayingMessage: () => Promise<void>;
+      resetProgressRefreshTimer: (id: string, snapshot: unknown) => void;
+    };
+    const initial = { currentTrack: { title: "Track" }, paused: false, nextLyricLineInMs: 3_000 };
+    const latest = { ...initial, nextLyricLineInMs: 500 };
+    getSnapshot.mockReturnValue(initial);
+    vi.spyOn(internals, "ensurePanelMessages").mockResolvedValue({ nowPlaying: {}, lyrics: {} });
+    const order: string[] = [];
+    vi.spyOn(internals, "writeLyricsMessage").mockImplementation(() => {
+      order.push("lyrics");
+      return Promise.resolve();
+    });
+    vi.spyOn(internals, "writeNowPlayingMessage").mockImplementation(async () => {
+      order.push("artwork");
+      await vi.advanceTimersByTimeAsync(2_500);
+      getSnapshot.mockReturnValue(latest);
+    });
+    const reset = vi.spyOn(internals, "resetProgressRefreshTimer");
+    await internals.writeTimedPanels(guildId);
+    expect(order).toEqual(["lyrics", "artwork"]);
+    expect(reset).toHaveBeenLastCalledWith(guildId, latest);
+    service.stop();
+  });
+
+  it("restarts an active guild's three-second progress countdown after a forced refresh", async () => {
     vi.useFakeTimers();
     const { service } = createService(false);
     const writeTimedPanels = vi.spyOn(

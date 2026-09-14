@@ -86,6 +86,8 @@ export interface MusicPlayerSnapshot {
   // lines (see LavalinkPlayerGateway) — empty on the plugin-push fallback,
   // which only ever gives us one line at a time.
   upcomingLyricLines: readonly string[];
+  // Time until the next synced line starts; absent for plugin-only lyrics.
+  nextLyricLineInMs?: number | null;
   // True once the lyrics plugin has confirmed no synced lyrics exist for the
   // current track, so the panel can say so instead of just staying silent.
   lyricsUnavailable: boolean;

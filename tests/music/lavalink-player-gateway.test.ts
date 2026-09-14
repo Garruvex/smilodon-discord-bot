@@ -429,6 +429,18 @@ describe("LavalinkPlayerGateway trackStart lyrics handling", () => {
 
     expect(snapshot?.currentLyricLine).toBe("First line");
     expect(snapshot?.lyricsUnavailable).toBe(false);
+    expect(snapshot?.nextLyricLineInMs).toBe(1_000);
+
+    // A fixed network-latency bias used to advance this line too early,
+    // even when paused. The scheduler must receive the real boundary.
+    player.position = 4_800;
+    expect(gateway.getSnapshot(guildId)?.currentLyricLine).toBe("First line");
+    expect(gateway.getSnapshot(guildId)?.nextLyricLineInMs).toBe(200);
+    player.paused = true;
+    expect(gateway.getSnapshot(guildId)?.currentLyricLine).toBe("First line");
+    player.position = 5_000;
+    expect(gateway.getSnapshot(guildId)?.currentLyricLine).toBe("Second line");
+    expect(gateway.getSnapshot(guildId)?.nextLyricLineInMs).toBeNull();
   });
 
   it("reports lyrics as unavailable once our own fetch confirms not-found, without waiting on the plugin fallback to also settle", () => {

@@ -38,6 +38,7 @@ const playHistoryLimit = 20;
 interface SelectedLyricLines {
   readonly current: string | null;
   readonly upcoming: readonly string[];
+  readonly nextLyricLineInMs: number | null;
 }
 
 // A little past the panel's own repaint cadence (activePlaybackRefreshIntervalMs
@@ -51,15 +52,6 @@ interface SelectedLyricLines {
 // leaving a blind spot sized exactly to however late that cycle ran.
 const lyricsLookaheadMs = 4_000;
 
-// Selecting "current" from the raw sampled position picks the line that was
-// playing the instant we asked — but by the time that render actually
-// reaches Discord and becomes visible, playback has moved on by roughly one
-// edit's network round trip. Biasing the reference point forward by a
-// typical round-trip estimate keeps the displayed line closer to what's
-// actually playing when it's seen, rather than what was playing when it was
-// computed.
-const editLatencyBiasMs = 500;
-
 // `lines` is sorted ascending by timestamp. "current" is always just the
 // single most recently started line, however long ago that was — no
 // grouping of nearby lines. An earlier version tried to bundle rapid-fire
@@ -69,18 +61,19 @@ const editLatencyBiasMs = 500;
 // instead of just staying on the last one. Not worth the risk for a
 // cosmetic nicety.
 function selectLyricLines(lines: readonly SyncedLyricLine[], positionMs: number): SelectedLyricLines {
-  const renderPositionMs = positionMs + editLatencyBiasMs;
   let current: string | null = null;
   const upcoming: string[] = [];
+  let nextLyricLineInMs: number | null = null;
   for (const entry of lines) {
-    if (entry.timestampMs > renderPositionMs) {
-      if (entry.timestampMs > renderPositionMs + lyricsLookaheadMs) break;
+    if (entry.timestampMs > positionMs) {
+      nextLyricLineInMs ??= entry.timestampMs - positionMs;
+      if (entry.timestampMs > positionMs + lyricsLookaheadMs) break;
       upcoming.push(entry.line);
       continue;
     }
     current = entry.line;
   }
-  return { current, upcoming };
+  return { current, upcoming, nextLyricLineInMs };
 }
 
 export class LavalinkPlayerGateway implements MusicPlayerGateway {
@@ -723,9 +716,9 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     // lines. Fall back to the plugin's push-based line (currently
     // YouTube-sourced) otherwise — that one only ever gives us the single
     // current line, so there's no upcoming-lines preview on that path.
-    const { current: currentLyricLine, upcoming: upcomingLyricLines } = Array.isArray(customLyrics)
+    const { current: currentLyricLine, upcoming: upcomingLyricLines, nextLyricLineInMs } = Array.isArray(customLyrics)
       ? selectLyricLines(customLyrics, player.position)
-      : { current: typeof pluginLyrics === "object" ? pluginLyrics.line : null, upcoming: [] };
+      : { current: typeof pluginLyrics === "object" ? pluginLyrics.line : null, upcoming: [], nextLyricLineInMs: null };
     // Our own fetch is authoritative and already gives a definitive answer
     // once it settles — waiting on the plugin fallback to *also* explicitly
     // confirm "not found" was the bug: that fallback only ever fires an
@@ -750,6 +743,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
       twentyFourSeven: player.get<boolean>("twentyFourSeven") ?? false,
       currentLyricLine,
       upcomingLyricLines,
+      nextLyricLineInMs,
       lyricsUnavailable,
       currentTrack: current
         ? {

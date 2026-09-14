@@ -51,13 +51,10 @@ import {
 } from "./music-panel-controls.js";
 
 const defaultIdleImageName = "music-idle.png";
-// Now Playing and Lyrics are the only messages this timer touches (Queue is
-// event-driven only), and each only actually edits when its own content
-// changed. Worst case — the progress bar's mm:ss ticking over AND a fast
-// lyric line change on every single tick — is ~1.67 edits/tick each, ~3.3
-// combined per 5s: real headroom under Discord's ~5-edits-per-5s-per-channel
-// ceiling, with room left for anything else posted in that channel.
+// Progress remains on a slower cadence; lyrics may wake the timer at the
+// next line boundary. Coalesce rapid lines rather than queueing every line.
 const activePlaybackRefreshIntervalMs = 3_000;
+const minimumLyricEditIntervalMs = 1_000;
 const defaultIdleImagePath = resolve("assets/music/no_bg.png");
 // Leaves headroom under the embed description's 4096-char hard cap for the
 // header line and the "…and N more" note appended after this budget runs out.
@@ -103,6 +100,8 @@ interface PanelMessageTrio {
 
 export class ControlChannelService {
   private readonly progressRefreshTimers = new Map<string, NodeJS.Timeout>();
+  private readonly lastLyricsEditAt = new Map<string, number>();
+  private readonly lastNowPlayingEditAt = new Map<string, number>();
   private readonly configuredChannelPermissions = new Set<string>();
   private readonly refreshCoordinator: PanelRefreshCoordinator;
   // The action queue: serializes per-guild playbackService/playerGateway
@@ -166,12 +165,16 @@ export class ControlChannelService {
     this.refreshCoordinator.stop();
     for (const timer of this.progressRefreshTimers.values()) clearTimeout(timer);
     this.progressRefreshTimers.clear();
+    this.lastLyricsEditAt.clear();
+    this.lastNowPlayingEditAt.clear();
   }
 
   // Called when the bot leaves a guild, so its per-guild timer/permission
   // caches don't grow unbounded across many join/leave cycles.
   public handleGuildRemoved(guildId: string): void {
     this.clearProgressRefreshTimer(guildId);
+    this.lastLyricsEditAt.delete(guildId);
+    this.lastNowPlayingEditAt.delete(guildId);
     this.refreshCoordinator.stopGuild(guildId);
     const profile = this.guildConfigurationProvider.find(guildId);
     if (profile?.channels.controlPanel) {
@@ -509,20 +512,20 @@ export class ControlChannelService {
         this.logger.error({ error, guildId }, "Unable to ensure music control panel messages");
         return null;
       });
-      if (!messages) return;
+      if (!messages) {
+        this.resetProgressRefreshTimer(guildId, this.playerGateway.getSnapshot(guildId));
+        return;
+      }
       const snapshot = this.playerGateway.getSnapshot(profile.guildId);
-      // Arm the next update from player state, not from the success of the
-      // Discord edit. A transient API failure must not permanently stop the
-      // panel, and Lavalink may report `playing = false` briefly while a new
-      // current track is starting.
-      this.resetProgressRefreshTimer(guildId, snapshot);
-
       // Each write is independently try/caught — one message's edit
       // throwing (e.g. an unexpected API error) must not skip the other
       // two for this cycle.
-      await this.writeNowPlayingMessage(messages.nowPlaying, profile, snapshot, options, guildId);
       await this.writeLyricsMessage(messages.lyrics, profile, snapshot, guildId);
       await this.writeQueueMessage(messages.queue, profile, snapshot, guildId);
+      await this.writeNowPlayingMessage(messages.nowPlaying, profile, this.playerGateway.getSnapshot(guildId), options, guildId);
+      // Slow edits must not add their elapsed time to the next line's delay.
+      // Schedule from a fresh position even when a message edit failed.
+      this.resetProgressRefreshTimer(guildId, this.playerGateway.getSnapshot(guildId));
     });
   }
 
@@ -558,11 +561,16 @@ export class ControlChannelService {
         this.logger.error({ error, guildId }, "Unable to ensure music control panel messages");
         return null;
       });
-      if (!messages) return;
+      if (!messages) {
+        this.resetProgressRefreshTimer(guildId, this.playerGateway.getSnapshot(guildId));
+        return;
+      }
       const snapshot = this.playerGateway.getSnapshot(guildId);
-      this.resetProgressRefreshTimer(guildId, snapshot);
-      await this.writeNowPlayingMessage(messages.nowPlaying, profile, snapshot, {}, guildId);
       await this.writeLyricsMessage(messages.lyrics, profile, snapshot, guildId);
+      if (Date.now() - (this.lastNowPlayingEditAt.get(guildId) ?? -Infinity) >= activePlaybackRefreshIntervalMs) {
+        await this.writeNowPlayingMessage(messages.nowPlaying, profile, this.playerGateway.getSnapshot(guildId), {}, guildId);
+      }
+      this.resetProgressRefreshTimer(guildId, this.playerGateway.getSnapshot(guildId));
     });
   }
 
@@ -577,6 +585,7 @@ export class ControlChannelService {
       const payload = this.createNowPlayingPayload(profile, snapshot);
       const editOptions = this.createNowPlayingEditOptions(message, profile, snapshot, payload, options);
       if (!this.matchesCurrentMessage(message, editOptions)) {
+        this.lastNowPlayingEditAt.set(guildId, Date.now());
         await message.edit(editOptions);
       }
     } catch (error) {
@@ -593,6 +602,7 @@ export class ControlChannelService {
     try {
       const payload = this.createLyricsPayload(profile, snapshot);
       if (!this.matchesCurrentMessage(message, payload)) {
+        this.lastLyricsEditAt.set(guildId, Date.now());
         await message.edit(payload);
       }
     } catch (error) {
@@ -1094,10 +1104,16 @@ export class ControlChannelService {
     this.clearProgressRefreshTimer(guildId);
     if (this.stopped || !snapshot?.currentTrack || snapshot.paused) return;
 
+    const nextLine = snapshot.nextLyricLineInMs;
+    const lyricDelay = typeof nextLine === "number" && Number.isFinite(nextLine)
+      ? Math.max(25, nextLine, minimumLyricEditIntervalMs - (Date.now() - (this.lastLyricsEditAt.get(guildId) ?? -Infinity)))
+      : activePlaybackRefreshIntervalMs;
+    const delay = Math.min(activePlaybackRefreshIntervalMs, lyricDelay);
+
     const timer = setTimeout(() => {
       this.progressRefreshTimers.delete(guildId);
       void this.writeTimedPanels(guildId);
-    }, activePlaybackRefreshIntervalMs);
+    }, delay);
     timer.unref();
     this.progressRefreshTimers.set(guildId, timer);
   }
