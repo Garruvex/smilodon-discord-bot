@@ -318,3 +318,64 @@ describe("LavalinkPlayerGateway.resolveSyncedLyrics", () => {
     expect(fetchSyncedLyricsMock).toHaveBeenCalledWith("Track", "Artist");
   });
 });
+
+describe("LavalinkPlayerGateway trackStart lyrics handling", () => {
+  beforeEach(() => {
+    fetchSyncedLyricsMock.mockReset();
+  });
+
+  it("doesn't re-clear or re-fetch lyrics when trackStart fires again for the same track", async () => {
+    const client = { guilds: { cache: new Map<string, Guild>() } } as unknown as Client;
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const eventBus = { publish: vi.fn(() => Promise.resolve()) } as unknown as MusicEventBus;
+    const guildConfigurationProvider = { find: vi.fn(() => undefined) } as unknown as GuildConfigurationProvider;
+    const gateway = new LavalinkPlayerGateway(
+      client,
+      { host: "localhost", port: 2333, password: "pw", secure: false },
+      logger as never,
+      eventBus,
+      guildConfigurationProvider,
+    );
+
+    const fetchedLines = [{ timestampMs: 0, line: "Hello" }];
+    fetchSyncedLyricsMock.mockResolvedValue(fetchedLines);
+
+    const track = {
+      encoded: "same-track-encoded",
+      info: { title: "Track", author: "Artist" },
+      userData: {},
+    };
+    const player = {
+      guildId,
+      position: 0,
+      queue: { current: track },
+      subscribeLyrics: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const manager = (
+      gateway as unknown as {
+        manager: {
+          getPlayer: (id: string) => typeof player | undefined;
+          emit: (event: string, ...args: unknown[]) => void;
+        };
+      }
+    ).manager;
+    manager.getPlayer = vi.fn(() => player);
+
+    const customLyricsByGuild = (
+      gateway as unknown as { customLyricsByGuild: Map<string, unknown> }
+    ).customLyricsByGuild;
+
+    manager.emit("trackStart", player, track);
+    await vi.waitFor(() => expect(customLyricsByGuild.get(guildId)).toEqual(fetchedLines));
+    expect(fetchSyncedLyricsMock).toHaveBeenCalledOnce();
+
+    // A duplicate event for the exact same track (e.g. a resolve-error retry
+    // replaying it) — must not wipe the already-resolved lyrics or re-fetch.
+    manager.emit("trackStart", player, track);
+    await Promise.resolve();
+
+    expect(fetchSyncedLyricsMock).toHaveBeenCalledOnce();
+    expect(customLyricsByGuild.get(guildId)).toEqual(fetchedLines);
+  });
+});

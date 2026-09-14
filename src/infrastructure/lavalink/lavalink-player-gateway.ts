@@ -101,6 +101,12 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
   // Synced lines fetched directly from LRCLIB, keyed off live playback
   // position ourselves rather than relying on plugin-pushed lines.
   private readonly customLyricsByGuild = new Map<string, SyncedLyricLine[] | "not-found">();
+  // Which track's lyrics are currently represented in the two maps above.
+  // Lavalink can emit a duplicate trackStart for the *same* track (a node
+  // reconnect replaying it mid-session is a known cause) — without this,
+  // that would wipe already-correct lyrics and restart the fetch, flashing
+  // "Looking for lyrics…" mid-song for no real reason.
+  private readonly currentLyricsTrackByGuild = new Map<string, string>();
 
   public constructor(
     private readonly client: Client,
@@ -172,8 +178,6 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     this.manager.on("trackStart", (player, track) => {
       this.clearTimer(this.emptyQueueTimers, player.guildId);
       this.autoQueueIssues.delete(player.guildId);
-      this.pluginLyricsByGuild.delete(player.guildId);
-      this.customLyricsByGuild.delete(player.guildId);
       if (track) this.recordPlayHistory(player.guildId, track);
       this.publishStateChange({ guildId: player.guildId, reason: "track_started" });
       // Per-guild subscription that persists across tracks; re-subscribing on
@@ -181,8 +185,14 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
       // restarted the session. No-op (rejects quietly) if the lavalyrics
       // plugin isn't installed on the node.
       void player.subscribeLyrics().catch(() => undefined);
-      if (track) {
+      if (track?.encoded) {
         const trackId = track.encoded;
+        // A duplicate event for the track already represented in the lyrics
+        // maps — nothing to redo.
+        if (this.currentLyricsTrackByGuild.get(player.guildId) === trackId) return;
+        this.currentLyricsTrackByGuild.set(player.guildId, trackId);
+        this.pluginLyricsByGuild.delete(player.guildId);
+        this.customLyricsByGuild.delete(player.guildId);
         this.resolveSyncedLyrics(track.info.title, track.info.author ?? "")
           .then((lines) => {
             // Guard against a stale response landing after the track changed.
@@ -194,7 +204,17 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
               { error, guildId: player.guildId, trackTitle: track.info.title },
               "Unable to fetch synced lyrics from LRCLIB",
             );
+            // A failed fetch must still settle the state — otherwise the
+            // panel is stuck on "Looking for lyrics…" for this track forever
+            // instead of eventually showing "No lyrics found".
+            if (this.manager.getPlayer(player.guildId)?.queue.current?.encoded === trackId) {
+              this.customLyricsByGuild.set(player.guildId, "not-found");
+            }
           });
+      } else {
+        this.currentLyricsTrackByGuild.delete(player.guildId);
+        this.pluginLyricsByGuild.delete(player.guildId);
+        this.customLyricsByGuild.delete(player.guildId);
       }
     });
 
@@ -208,6 +228,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
       this.clearTimer(this.emptyChannelTimers, player.guildId);
       this.autoQueue.clear(player.guildId);
       this.autoQueueIssues.delete(player.guildId);
+      this.currentLyricsTrackByGuild.delete(player.guildId);
       this.pluginLyricsByGuild.delete(player.guildId);
       this.customLyricsByGuild.delete(player.guildId);
       this.publishStateChange({ guildId: player.guildId, reason: "player_destroyed" });
