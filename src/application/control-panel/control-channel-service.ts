@@ -2,8 +2,10 @@ import {
   type ActionRowBuilder,
   type ButtonBuilder,
   ChannelType,
+  DiscordAPIError,
   EmbedBuilder,
   MessageFlags,
+  RESTJSONErrorCodes,
   type ButtonInteraction,
   type Client,
   type Guild,
@@ -60,6 +62,31 @@ const defaultIdleImagePath = resolve("assets/music/no_bg.png");
 // Leaves headroom under the embed description's 4096-char hard cap for the
 // header line and the "…and N more" note appended after this budget runs out.
 const queueListCharBudget = 3_500;
+
+// A message fetched back from Discord carries fields we never set ourselves
+// (e.g. `type: "rich"`, and width/height/proxy_url on images) — comparing
+// the full JSON against our own freshly-built embed would then never match,
+// even when nothing actually changed, defeating matchesCurrentMessage's
+// whole purpose and forcing a real edit (and its rate-limit cost) on every
+// single refresh. Only compare the fields we actually set.
+function normalizeEmbedForComparison(embed: {
+  title?: string | null;
+  description?: string | null;
+  color?: number | null;
+  url?: string | null;
+  image?: { url?: string | null } | null;
+  footer?: { text?: string | null } | null;
+} | undefined): unknown {
+  if (!embed) return undefined;
+  return {
+    title: embed.title ?? null,
+    description: embed.description ?? null,
+    color: embed.color ?? null,
+    url: embed.url ?? null,
+    image: embed.image?.url ?? null,
+    footer: embed.footer?.text ?? null,
+  };
+}
 
 interface ControlPanelPayload {
   content: string;
@@ -365,15 +392,19 @@ export class ControlChannelService {
     // queued second click's own optimistic write can be submitted, so a
     // newer render can never be stomped by an older one arriving late).
     await this.guildLocks.run(interaction.guildId, async () => {
-      // The bot's actual Discord voice connection is authoritative over
-      // whatever channel the Lavalink player still thinks it's in. A
-      // mismatch (kick, channel deletion, a missed VoiceStateUpdate) means
-      // the player is stale — destroy it now rather than let
-      // channel-mismatch checks (e.g. 24/7's assertControllablePlayer)
-      // permanently block every control, including the one that would have
-      // turned the stale session off.
-      staleRecovered = await this.playerGateway.reconcileVoiceState(interaction.guildId);
       try {
+        // The bot's actual Discord voice connection is authoritative over
+        // whatever channel the Lavalink player still thinks it's in. A
+        // mismatch (kick, channel deletion, a missed VoiceStateUpdate) means
+        // the player is stale — destroy it now rather than let
+        // channel-mismatch checks (e.g. 24/7's assertControllablePlayer)
+        // permanently block every control, including the one that would have
+        // turned the stale session off. Inside the try so a failure here
+        // (e.g. a transient Discord API error) still reaches the
+        // authoritative write and the user-facing error reply below, instead
+        // of leaving the button stuck in its optimistic pending state with
+        // no explanation.
+        staleRecovered = await this.playerGateway.reconcileVoiceState(interaction.guildId);
         if (!staleRecovered) {
           // Optimistic instant feedback: render the predicted post-action
           // state (or, for controls without a predictor, just the clicked
@@ -505,7 +536,23 @@ export class ControlChannelService {
       return;
     }
 
-    await this.guildLocks.run(guildId, () => this.playerGateway.reconcileVoiceState(guildId));
+    // This whole method runs detached (`void writeTimedPanels(...)` from the
+    // timer callback in resetProgressRefreshTimer) — nothing awaits it or
+    // catches a rejection, so an uncaught error here becomes an unhandled
+    // promise rejection, which crashes the whole process under Node's
+    // default unhandled-rejection behavior. A single tick failing (a
+    // transient Discord/Lavalink error) must not take the bot down; the next
+    // tick or event-driven refresh will simply pick it back up.
+    try {
+      await this.guildLocks.run(guildId, () => this.playerGateway.reconcileVoiceState(guildId));
+    } catch (error) {
+      this.logger.error({ error, guildId }, "Unable to reconcile voice state during a timed panel refresh");
+      // Re-arm the timer from current state anyway — otherwise a single
+      // transient failure silently stops the progress tick for this guild
+      // until some unrelated event happens to trigger a refresh.
+      this.resetProgressRefreshTimer(guildId, this.playerGateway.getSnapshot(guildId));
+      return;
+    }
     await this.panelWriteQueue.run(guildId, async () => {
       const messages = await this.ensurePanelMessages(profile).catch((error: unknown) => {
         this.logger.error({ error, guildId }, "Unable to ensure music control panel messages");
@@ -633,6 +680,21 @@ export class ControlChannelService {
     });
   }
 
+  // Only an authoritative "this message is really gone" (Unknown Message)
+  // should be treated as missing — anything else (a transient 500/503, a
+  // network blip) must propagate instead of being swallowed as `null`, or
+  // fetchExistingTrio would read a temporary API hiccup as "the trio is
+  // broken" and delete + recreate all three messages over a blip that would
+  // have resolved on its own by the next refresh.
+  private async fetchPanelMessage(channel: TextChannel, messageId: string): Promise<Message | null> {
+    try {
+      return await channel.messages.fetch(messageId);
+    } catch (error) {
+      if (error instanceof DiscordAPIError && error.code === RESTJSONErrorCodes.UnknownMessage) return null;
+      throw error;
+    }
+  }
+
   private async fetchExistingTrio(
     channel: TextChannel,
     state: ControlPanelRuntimeState,
@@ -640,9 +702,9 @@ export class ControlChannelService {
     if (!state.nowPlayingMessageId || !state.lyricsMessageId || !state.queueMessageId) return null;
 
     const [nowPlaying, lyrics, queue] = await Promise.all([
-      channel.messages.fetch(state.nowPlayingMessageId).catch(() => null),
-      channel.messages.fetch(state.lyricsMessageId).catch(() => null),
-      channel.messages.fetch(state.queueMessageId).catch(() => null),
+      this.fetchPanelMessage(channel, state.nowPlayingMessageId),
+      this.fetchPanelMessage(channel, state.lyricsMessageId),
+      this.fetchPanelMessage(channel, state.queueMessageId),
     ]);
     const botId = this.client.user?.id;
     if (
@@ -747,7 +809,8 @@ export class ControlChannelService {
     const newEmbed = editOptions.embeds[0];
     const currentEmbed = message.embeds[0];
     const embedsMatch = newEmbed
-      ? currentEmbed !== undefined && isDeepStrictEqual(newEmbed.toJSON(), currentEmbed.toJSON())
+      ? currentEmbed !== undefined &&
+        isDeepStrictEqual(normalizeEmbedForComparison(newEmbed.toJSON()), normalizeEmbedForComparison(currentEmbed.toJSON()))
       : currentEmbed === undefined;
     if (!embedsMatch) return false;
 

@@ -13,7 +13,10 @@ function jsonResponse(status: number, body: unknown): unknown {
   };
 }
 
+let nextCandidateId = 1;
+
 function candidate(overrides: Partial<{
+  id: number;
   trackName: string;
   artistName: string;
   duration: number | null;
@@ -21,6 +24,7 @@ function candidate(overrides: Partial<{
   plainLyrics: string | null;
 }> = {}): unknown {
   return {
+    id: nextCandidateId++,
     trackName: "Good Time",
     artistName: "Owl City, Carly Rae Jepsen",
     duration: 205,
@@ -36,6 +40,7 @@ function requestedArtist(url: unknown): string | null {
 
 beforeEach(() => {
   fetchMock.mockReset();
+  nextCandidateId = 1;
 });
 
 describe("fetchSyncedLyrics", () => {
@@ -53,11 +58,25 @@ describe("fetchSyncedLyrics", () => {
   it("skips a top-ranked result with no synced lyrics in favor of an equally-good match that has them", async () => {
     fetchMock.mockResolvedValue(
       jsonResponse(200, [
-        // Distinct albums/durations here purely so the two entries don't
-        // collapse into one under LRCLIB-search result de-duplication —
-        // real duplicate rows this identical wouldn't happen in practice.
         candidate({ duration: 205, syncedLyrics: null, plainLyrics: null }),
         candidate({ duration: 206, syncedLyrics: "[00:00.00]The real line" }),
+      ]),
+    );
+
+    const lines = await fetchSyncedLyrics("Good Time", "Owl City, Carly Rae Jepsen");
+
+    expect(lines).toEqual([{ timestampMs: 0, line: "The real line" }]);
+  });
+
+  it("keeps two distinct LRCLIB rows separate even when title/artist/duration are identical", async () => {
+    // A single re-released on a compilation at the exact same duration as
+    // the original is a real LRCLIB shape — only `id` reliably tells the
+    // rows apart. Deduping on title/artist/duration alone would discard
+    // whichever of these carries the synced lyrics the other one lacks.
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, [
+        candidate({ duration: 205, syncedLyrics: null, plainLyrics: null }),
+        candidate({ duration: 205, syncedLyrics: "[00:00.00]The real line" }),
       ]),
     );
 
@@ -100,6 +119,27 @@ describe("fetchSyncedLyrics", () => {
       "Owl City - Good Time (Official Video)",
       "OwlCityVEVO",
     );
+
+    expect(lines).toEqual([
+      { timestampMs: 1_000, line: "First line" },
+      { timestampMs: 2_500, line: "Second line" },
+    ]);
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("derives artist/title from \"Artist - Title\" even with no metadata suffix to strip", async () => {
+    // Regression: the split used to only run when stripMetadataSuffix
+    // actually changed something, so a title that arrives as a clean
+    // "Artist - Title" (nothing to strip) searched LRCLIB for that literal
+    // string and never found the real "OneRepublic" / "Counting Stars" row.
+    fetchMock.mockImplementation((url: unknown) => {
+      expect(requestedArtist(url)).toBe("OneRepublic");
+      return Promise.resolve(jsonResponse(200, [
+        candidate({ trackName: "Counting Stars", artistName: "OneRepublic" }),
+      ]));
+    });
+
+    const lines = await fetchSyncedLyrics("OneRepublic - Counting Stars", "OneRepublic - Topic");
 
     expect(lines).toEqual([
       { timestampMs: 1_000, line: "First line" },

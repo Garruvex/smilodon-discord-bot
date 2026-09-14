@@ -6,6 +6,7 @@ export interface SyncedLyricLine {
 }
 
 const lrcLibCandidateSchema = z.object({
+  id: z.number().optional(),
   trackName: z.string(),
   artistName: z.string(),
   albumName: z.string().nullable().optional(),
@@ -69,9 +70,12 @@ function normalizeQuery(title: string, artist: string): NormalizedQuery {
   const trimmedTitle = title.trim();
   const trimmedArtist = artist.trim();
   const cleanTitle = stripMetadataSuffix(trimmedTitle);
-  if (cleanTitle === trimmedTitle) {
-    return { title: trimmedTitle, artist: trimmedArtist, extraArtist: null };
-  }
+  // Try the "Artist - Title" split unconditionally — not just when a
+  // metadata suffix was also present to strip. A source can hand us a
+  // perfectly clean "Artist - Title" already (no "(Official Video)" etc. to
+  // strip at all, e.g. because the upstream plugin already stripped it), and
+  // gating the split on the suffix check meant that case searched LRCLIB for
+  // the literal, unsplit "Artist - Title" string and never found anything.
   const separatorMatch = artistTitleSeparatorPattern.exec(cleanTitle);
   if (separatorMatch) {
     const derivedArtist = cleanTitle.slice(0, separatorMatch.index).trim();
@@ -268,7 +272,16 @@ export async function fetchSyncedLyrics(
 
     const results = await searchLrcLib(normalized.title, attempt.searchArtist);
     for (const result of results) {
-      const candidateKey = `${result.trackName}|${result.artistName}|${result.duration ?? ""}`;
+      // LRCLIB's own row id is the only thing that's actually guaranteed
+      // unique per release — title/artist/duration alone can genuinely
+      // collide across two different albums (a single re-released on a
+      // compilation at the exact same duration), and deduping on that
+      // composite would then silently discard whichever of the two carries
+      // the synced lyrics the other one lacks. Only fall back to the
+      // composite key for the rare row with no id.
+      const candidateKey = result.id !== undefined
+        ? `id:${result.id}`
+        : `${result.trackName}|${result.artistName}|${result.duration ?? ""}`;
       if (seenCandidateKeys.has(candidateKey)) continue;
       seenCandidateKeys.add(candidateKey);
       candidates.push(result);

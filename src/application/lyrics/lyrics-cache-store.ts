@@ -17,6 +17,16 @@ export interface LyricsCacheStore {
 // Shared across every guild and bot instance — a track's lyrics don't
 // depend on who's playing it, so normalizing title/artist into one key
 // lets a lookup on one server benefit every other server too.
-export function buildLyricsCacheKey(trackName: string, artistName: string): string {
-  return `${trackName.trim().toLowerCase()}|${artistName.trim().toLowerCase()}`;
+//
+// Duration is part of the key (bucketed to the nearest second, so a few ms
+// of encoder jitter between plays of the same track can't split it into two
+// keys) because title/artist alone isn't unique enough: a live/remastered/
+// radio-edit recording can share the exact same title and artist text as
+// the original while actually having different, unsynced-to-it timings.
+// Without duration, whichever version got cached first — including a cached
+// "no lyrics" negative result — would incorrectly serve every other
+// same-titled recording indefinitely.
+export function buildLyricsCacheKey(trackName: string, artistName: string, durationMs?: number): string {
+  const durationBucket = durationMs !== undefined ? Math.round(durationMs / 1000) : "";
+  return `${trackName.trim().toLowerCase()}|${artistName.trim().toLowerCase()}|${durationBucket}`;
 }

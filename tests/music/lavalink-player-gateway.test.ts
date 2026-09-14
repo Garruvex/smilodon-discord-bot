@@ -305,7 +305,7 @@ describe("LavalinkPlayerGateway.resolveSyncedLyrics", () => {
 
     expect(result).toEqual(freshLines);
     expect(fetchSyncedLyricsMock).toHaveBeenCalledWith("Track", "Artist", undefined);
-    await vi.waitFor(() => expect(setSpy).toHaveBeenCalledWith("track|artist", freshLines));
+    await vi.waitFor(() => expect(setSpy).toHaveBeenCalledWith("track|artist|", freshLines));
   });
 
   it("works without a cache store at all — always fetches from LRCLIB", async () => {

@@ -255,7 +255,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     artistName: string,
     durationMs?: number,
   ): Promise<SyncedLyricLine[] | null> {
-    const trackKey = buildLyricsCacheKey(trackName, artistName);
+    const trackKey = buildLyricsCacheKey(trackName, artistName, durationMs);
     if (this.lyricsCacheStore) {
       const cached = await this.lyricsCacheStore.get(trackKey).catch((error: unknown) => {
         this.logger.warn({ error, trackKey }, "Unable to read the lyrics cache");

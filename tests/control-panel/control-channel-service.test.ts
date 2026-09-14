@@ -1,4 +1,4 @@
-import { ButtonStyle, ChannelType, type Message } from "discord.js";
+import { ButtonStyle, ChannelType, DiscordAPIError, RESTJSONErrorCodes, type Message } from "discord.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ControlChannelService } from "../../src/application/control-panel/control-channel-service.js";
@@ -274,6 +274,55 @@ describe("ControlChannelService", () => {
     );
     // The panel is refreshed to idle (snapshot is now null, so every
     // control renders disabled) rather than left showing the stale player.
+    expect(writePanel).toHaveBeenCalledWith(guildId, expect.anything(), {});
+  });
+
+  it("still reconciles the panel and replies with an error when reconcileVoiceState itself throws", async () => {
+    // Regression: reconcileVoiceState used to run outside the try/finally,
+    // so a throw there (e.g. a transient Discord API error) skipped the
+    // authoritative writePanel() and the error reply entirely — leaving the
+    // button stuck showing its optimistic "pending" state with no
+    // explanation and no way to recover except a later, unrelated refresh.
+    const { service } = createService(false);
+    const toggleTwentyFourSeven = vi.fn().mockResolvedValue(false);
+    const reconcileVoiceState = vi.fn().mockRejectedValue(new Error("guild cache miss"));
+    Object.assign(service, {
+      playbackService: { toggleTwentyFourSeven },
+      playerGateway: { getSnapshot: () => null, reconcileVoiceState },
+      stateStore: {
+        find: () => ({
+          guildId,
+          channelId: controlPanelChannelId,
+          queueMessageId: "panel-message",
+        }),
+      },
+    });
+    const writePanel = vi.spyOn(
+      service as unknown as { writePanel: (...args: unknown[]) => Promise<void> },
+      "writePanel",
+    ).mockResolvedValue(undefined);
+    const interaction = {
+      customId: "music-panel:v1:24-7",
+      inCachedGuild: (): boolean => true,
+      guildId,
+      channelId: controlPanelChannelId,
+      message: { id: "panel-message" },
+      member: { roles: { cache: new Map([[musicControllerRoleId, {}]]) }, voice: { channelId: null } },
+      user: { id: "345678901234567890" },
+      deferUpdate: vi.fn().mockResolvedValue(undefined),
+      editReply: vi.fn().mockResolvedValue(undefined),
+      reply: vi.fn().mockResolvedValue(undefined),
+      followUp: vi.fn().mockResolvedValue(undefined),
+      replied: false,
+      deferred: true,
+    };
+
+    await expect(service.handleButton(interaction as never)).resolves.toBe(true);
+
+    expect(toggleTwentyFourSeven).not.toHaveBeenCalled();
+    expect(interaction.followUp).toHaveBeenCalledWith(
+      expect.objectContaining({ content: "The control failed." }),
+    );
     expect(writePanel).toHaveBeenCalledWith(guildId, expect.anything(), {});
   });
 
@@ -1419,6 +1468,262 @@ describe("ControlChannelService", () => {
     expect(queueMessage.edit).not.toHaveBeenCalled();
   });
 
+  it("writeTimedPanels doesn't reject when reconciling voice state fails, so the timer callback can't crash the process", async () => {
+    // Regression: writeTimedPanels runs detached from a `setTimeout` callback
+    // (`void this.writeTimedPanels(guildId)`) — nothing awaits it or catches
+    // a rejection, so an uncaught error here used to become an unhandled
+    // promise rejection, which terminates the process under Node's default
+    // unhandled-rejection behavior. A single transient failure must not take
+    // the whole bot down.
+    const client = { user: { id: botUserId }, guilds: { cache: new Map() } };
+    const configuration = {
+      ownerUserIds: new Set<string>(),
+      runtimeDataDirectory: "./data/local",
+    } as unknown as ApplicationConfiguration;
+    const profile = guildConfiguration(false);
+    const provider = {
+      find: () => profile,
+      getAll: () => [profile],
+    } as unknown as GuildConfigurationProvider;
+    const stateStore = {
+      initialize: vi.fn(),
+      find: vi.fn(() => null),
+      save: vi.fn(),
+    } as unknown as ControlPanelStateStore;
+    const playerGateway = {
+      getSnapshot: vi.fn(() => null),
+      reconcileVoiceState: vi.fn(() => Promise.reject(new Error("voice state lookup failed"))),
+      getQueue: vi.fn(() => []),
+    } as unknown as MusicPlayerGateway;
+    const logger = { error: vi.fn(), warn: vi.fn() };
+    const eventBus = { subscribe: vi.fn((): (() => void) => () => undefined) } as unknown as MusicEventBus;
+
+    const service = new ControlChannelService(
+      client as never,
+      configuration,
+      provider,
+      stateStore,
+      playerGateway,
+      {} as unknown as PlaybackService,
+      { getYohtaTheme: () => null, hasEmoji: () => false, getEmojiTag: () => null } as never,
+      logger as never,
+      eventBus,
+    );
+
+    await expect(
+      (service as unknown as { writeTimedPanels: (guildId: string) => Promise<void> }).writeTimedPanels(guildId),
+    ).resolves.toBeUndefined();
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ guildId }),
+      "Unable to reconcile voice state during a timed panel refresh",
+    );
+  });
+
+  it("doesn't delete and recreate the panel trio over a transient message-fetch error", async () => {
+    // Regression: fetchExistingTrio used to treat *any* fetch failure the
+    // same as "the message is really gone" and delete + recreate all three
+    // panel messages over it — including a transient 500/503 that would have
+    // resolved on its own by the next refresh. Only an actual "Unknown
+    // Message" (10008) should be treated as missing.
+    const nowPlayingMessageId = "777777777777777777";
+    const lyricsMessageId = "888888888888888888";
+    const queueMessageId = "999999999999999999";
+
+    function messageMock(): {
+      id: string; author: { id: string }; attachments: { size: number; some: () => boolean };
+      content: string; embeds: unknown[]; components: unknown[];
+      edit: ReturnType<typeof vi.fn>; delete: ReturnType<typeof vi.fn>;
+    } {
+      return {
+        id: "",
+        author: { id: botUserId },
+        attachments: { size: 0, some: (): boolean => false },
+        content: "",
+        embeds: [],
+        components: [],
+        edit: vi.fn().mockResolvedValue(undefined),
+        delete: vi.fn().mockResolvedValue(undefined),
+      };
+    }
+    const nowPlayingMessage = { ...messageMock(), id: nowPlayingMessageId };
+    const lyricsMessage = { ...messageMock(), id: lyricsMessageId };
+    const transientError = new DiscordAPIError(
+      { message: "Internal Server Error", code: 0 },
+      0,
+      500,
+      "GET",
+      "/channels/x/messages/y",
+      { body: undefined, files: undefined },
+    );
+
+    const channel = {
+      id: controlPanelChannelId,
+      type: ChannelType.GuildText,
+      permissionOverwrites: { edit: vi.fn().mockResolvedValue(undefined) },
+      messages: {
+        fetch: vi.fn((id: string) => {
+          if (id === nowPlayingMessageId) return Promise.resolve(nowPlayingMessage);
+          if (id === lyricsMessageId) return Promise.resolve(lyricsMessage);
+          if (id === queueMessageId) return Promise.reject(transientError);
+          return Promise.resolve(null);
+        }),
+      },
+    };
+    const guild = {
+      id: guildId,
+      roles: { everyone: { id: "everyone-role" } },
+      channels: { fetch: vi.fn().mockResolvedValue(channel) },
+    };
+    const client = { user: { id: botUserId }, guilds: { cache: new Map([[guildId, guild]]) } };
+    const configuration = {
+      ownerUserIds: new Set<string>(),
+      runtimeDataDirectory: "./data/local",
+    } as unknown as ApplicationConfiguration;
+    const profile = guildConfiguration(false);
+    const provider = {
+      find: () => profile,
+      getAll: () => [profile],
+    } as unknown as GuildConfigurationProvider;
+    const stateStore = {
+      initialize: vi.fn(),
+      find: vi.fn(() => ({
+        guildId,
+        channelId: controlPanelChannelId,
+        nowPlayingMessageId,
+        lyricsMessageId,
+        queueMessageId,
+      })),
+      save: vi.fn(),
+    } as unknown as ControlPanelStateStore;
+    const playerGateway = {
+      getSnapshot: vi.fn(() => null),
+      reconcileVoiceState: vi.fn(() => Promise.resolve(false)),
+      getQueue: vi.fn(() => []),
+    } as unknown as MusicPlayerGateway;
+    const logger = { error: vi.fn(), warn: vi.fn() };
+    const eventBus = { subscribe: vi.fn((): (() => void) => () => undefined) } as unknown as MusicEventBus;
+
+    const service = new ControlChannelService(
+      client as never,
+      configuration,
+      provider,
+      stateStore,
+      playerGateway,
+      {} as unknown as PlaybackService,
+      { getYohtaTheme: () => null, hasEmoji: () => false, getEmojiTag: () => null } as never,
+      logger as never,
+      eventBus,
+    );
+
+    await (
+      service as unknown as { writeTimedPanels: (guildId: string) => Promise<void> }
+    ).writeTimedPanels(guildId);
+
+    expect(nowPlayingMessage.delete).not.toHaveBeenCalled();
+    expect(lyricsMessage.delete).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ error: transientError, guildId }),
+      "Unable to ensure music control panel messages",
+    );
+  });
+
+  it("treats an actual Unknown Message error as missing (rebuilds the trio)", async () => {
+    const nowPlayingMessageId = "777777777777777777";
+    const lyricsMessageId = "888888888888888888";
+    const queueMessageId = "999999999999999999";
+    const unknownMessageError = new DiscordAPIError(
+      { message: "Unknown Message", code: RESTJSONErrorCodes.UnknownMessage },
+      RESTJSONErrorCodes.UnknownMessage,
+      404,
+      "GET",
+      "/channels/x/messages/y",
+      { body: undefined, files: undefined },
+    );
+
+    function sentMessage(): {
+      id: string; author: { id: string }; attachments: { size: number; some: () => boolean };
+      content: string; embeds: unknown[]; components: unknown[];
+      edit: ReturnType<typeof vi.fn>; pinned: boolean; pin: ReturnType<typeof vi.fn>;
+    } {
+      return {
+        id: "new-message-id",
+        author: { id: botUserId },
+        attachments: { size: 0, some: (): boolean => false },
+        content: "",
+        embeds: [],
+        components: [],
+        edit: vi.fn().mockResolvedValue(undefined),
+        pinned: false,
+        pin: vi.fn().mockResolvedValue(undefined),
+      };
+    }
+    const channel = {
+      id: controlPanelChannelId,
+      type: ChannelType.GuildText,
+      permissionOverwrites: { edit: vi.fn().mockResolvedValue(undefined) },
+      messages: {
+        fetch: vi.fn((id: string) => (
+          id === queueMessageId ? Promise.reject(unknownMessageError) : Promise.resolve(null)
+        )),
+      },
+      send: vi.fn(() => Promise.resolve(sentMessage())),
+    };
+    const guild = {
+      id: guildId,
+      roles: { everyone: { id: "everyone-role" } },
+      channels: { fetch: vi.fn().mockResolvedValue(channel) },
+    };
+    const client = { user: { id: botUserId }, guilds: { cache: new Map([[guildId, guild]]) } };
+    const configuration = {
+      ownerUserIds: new Set<string>(),
+      runtimeDataDirectory: "./data/local",
+    } as unknown as ApplicationConfiguration;
+    const profile = guildConfiguration(false);
+    const provider = {
+      find: () => profile,
+      getAll: () => [profile],
+    } as unknown as GuildConfigurationProvider;
+    const stateStore = {
+      initialize: vi.fn(),
+      find: vi.fn(() => ({
+        guildId,
+        channelId: controlPanelChannelId,
+        nowPlayingMessageId,
+        lyricsMessageId,
+        queueMessageId,
+      })),
+      save: vi.fn().mockResolvedValue(undefined),
+    } as unknown as ControlPanelStateStore;
+    const playerGateway = {
+      getSnapshot: vi.fn(() => null),
+      reconcileVoiceState: vi.fn(() => Promise.resolve(false)),
+      getQueue: vi.fn(() => []),
+    } as unknown as MusicPlayerGateway;
+    const logger = { error: vi.fn(), warn: vi.fn() };
+    const eventBus = { subscribe: vi.fn((): (() => void) => () => undefined) } as unknown as MusicEventBus;
+
+    const service = new ControlChannelService(
+      client as never,
+      configuration,
+      provider,
+      stateStore,
+      playerGateway,
+      {} as unknown as PlaybackService,
+      { getYohtaTheme: () => null, hasEmoji: () => false, getEmojiTag: () => null } as never,
+      logger as never,
+      eventBus,
+    );
+
+    await (
+      service as unknown as { writeTimedPanels: (guildId: string) => Promise<void> }
+    ).writeTimedPanels(guildId);
+
+    // With one message genuinely missing, the whole trio is rebuilt from
+    // scratch rather than partially patched.
+    expect(channel.send).toHaveBeenCalled();
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+
   describe("matchesCurrentMessage", () => {
     function matches(
       service: ControlChannelService,
@@ -1452,6 +1757,36 @@ describe("ControlChannelService", () => {
     it("skips when content, embed, and components are all identical", () => {
       const { service } = createService(false);
       expect(matches(service, baseMessage(), baseEditOptions())).toBe(true);
+    });
+
+    it("skips when the embed is unchanged even though Discord's fetched message carries extra server-added fields", () => {
+      // Regression: a message fetched back from Discord's API includes
+      // fields we never set ourselves (type: "rich", and width/height/
+      // proxy_url on images) — comparing the full JSON directly against our
+      // own freshly-built embed would never match, forcing a real edit (and
+      // its rate-limit cost) on every single refresh even when nothing
+      // actually changed.
+      const { service } = createService(false);
+      const message = baseMessage();
+      message.embeds = [{
+        toJSON: (): Record<string, unknown> => ({
+          type: "rich",
+          title: "Now Playing",
+          description: "Counting Stars",
+          color: 123,
+          image: { url: "https://cdn.example/art.png", width: 640, height: 640, proxy_url: "https://media.example/art.png" },
+        }),
+      }];
+      const editOptions = baseEditOptions();
+      editOptions.embeds = [{
+        toJSON: (): Record<string, unknown> => ({
+          title: "Now Playing",
+          description: "Counting Stars",
+          color: 123,
+          image: { url: "https://cdn.example/art.png" },
+        }),
+      }];
+      expect(matches(service, message, editOptions)).toBe(true);
     });
 
     it("does not skip when the embed differs", () => {
