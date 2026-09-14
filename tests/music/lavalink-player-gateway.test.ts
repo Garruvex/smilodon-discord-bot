@@ -378,4 +378,56 @@ describe("LavalinkPlayerGateway trackStart lyrics handling", () => {
     expect(fetchSyncedLyricsMock).toHaveBeenCalledOnce();
     expect(customLyricsByGuild.get(guildId)).toEqual(fetchedLines);
   });
+
+  it("keeps showing the current line well past the last line's own timestamp instead of going blank", () => {
+    const client = { guilds: { cache: new Map<string, Guild>() } } as unknown as Client;
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const eventBus = { publish: vi.fn(() => Promise.resolve()) } as unknown as MusicEventBus;
+    const guildConfigurationProvider = { find: vi.fn(() => undefined) } as unknown as GuildConfigurationProvider;
+    const gateway = new LavalinkPlayerGateway(
+      client,
+      { host: "localhost", port: 2333, password: "pw", secure: false },
+      logger as never,
+      eventBus,
+      guildConfigurationProvider,
+    );
+
+    const track = {
+      encoded: "track-encoded",
+      info: { title: "Track", author: "Artist", uri: "https://example.com", duration: 240_000 },
+      userData: {},
+    };
+    // Lines 5s apart — well beyond the old 1s trailing window that used to
+    // blank "current" out between them.
+    const lines = [
+      { timestampMs: 0, line: "First line" },
+      { timestampMs: 5_000, line: "Second line" },
+    ];
+    const player = {
+      guildId,
+      // 4s past "First line" (and before "Second line" at 5s) — the exact
+      // gap the old windowed logic would have gone blank for.
+      position: 4_000,
+      paused: false,
+      playing: true,
+      volume: 75,
+      voiceChannelId: "voice-id",
+      repeatMode: "off",
+      queue: { current: track, tracks: [], previous: [] },
+      get: (): undefined => undefined,
+    };
+
+    const manager = (
+      gateway as unknown as { manager: { getPlayer: (id: string) => typeof player | undefined } }
+    ).manager;
+    manager.getPlayer = vi.fn(() => player);
+    (
+      gateway as unknown as { customLyricsByGuild: Map<string, unknown> }
+    ).customLyricsByGuild.set(guildId, lines);
+
+    const snapshot = gateway.getSnapshot(guildId);
+
+    expect(snapshot?.currentLyricLine).toBe("First line");
+    expect(snapshot?.lyricsUnavailable).toBe(false);
+  });
 });
