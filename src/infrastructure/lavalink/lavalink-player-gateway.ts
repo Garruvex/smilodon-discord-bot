@@ -273,11 +273,16 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     // burst of edits.
     this.manager.on("LyricsLine", (player, _track, payload) => {
       this.pluginLyricsByGuild.set(player.guildId, { line: payload.line.line });
+      this.logger.info(
+        { guildId: player.guildId, line: payload.line.line },
+        "Plugin (YouTube) lyrics line received",
+      );
       this.publishStateChange({ guildId: player.guildId, reason: "lyrics_loaded" });
     });
 
     this.manager.on("LyricsNotFound", (player) => {
       this.pluginLyricsByGuild.set(player.guildId, "not-found");
+      this.logger.info({ guildId: player.guildId }, "Plugin (YouTube) lyrics reported not found");
       this.publishStateChange({ guildId: player.guildId, reason: "lyrics_loaded" });
     });
   }
