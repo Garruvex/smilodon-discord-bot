@@ -49,7 +49,13 @@ import {
 } from "./music-panel-controls.js";
 
 const defaultIdleImageName = "music-idle.png";
-const activePlaybackRefreshIntervalMs = 5_000;
+// Now Playing and Lyrics are the only messages this timer touches (Queue is
+// event-driven only), and each only actually edits when its own content
+// changed. Worst case — the progress bar's mm:ss ticking over AND a fast
+// lyric line change on every single tick — is ~1.67 edits/tick each, ~3.3
+// combined per 5s: real headroom under Discord's ~5-edits-per-5s-per-channel
+// ceiling, with room left for anything else posted in that channel.
+const activePlaybackRefreshIntervalMs = 3_000;
 const defaultIdleImagePath = resolve("assets/music/no_bg.png");
 // Leaves headroom under the embed description's 4096-char hard cap for the
 // header line and the "…and N more" note appended after this budget runs out.

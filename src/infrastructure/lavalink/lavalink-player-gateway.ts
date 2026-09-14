@@ -41,15 +41,15 @@ interface SelectedLyricLines {
 }
 
 // A little past the panel's own repaint cadence (activePlaybackRefreshIntervalMs
-// in control-channel-service.ts, 5s) — every line due before the *next*
+// in control-channel-service.ts, 3s) — every line due before the *next*
 // repaint gets bundled into this one. A single "next line" would silently
 // skip lines during a fast section (rap verses can fire several lines
 // within one repaint window), so this windows on time rather than line
-// count. The extra second over the nominal 5s interval is slack for a
+// count. The extra second over the nominal 3s interval is slack for a
 // cycle that runs long (a queued write, a slow edit round trip), so the
 // window still covers the real gap until the next repaint instead of
 // leaving a blind spot sized exactly to however late that cycle ran.
-const lyricsLookaheadMs = 6_000;
+const lyricsLookaheadMs = 4_000;
 
 // Selecting "current" from the raw sampled position picks the line that was
 // playing the instant we asked — but by the time that render actually

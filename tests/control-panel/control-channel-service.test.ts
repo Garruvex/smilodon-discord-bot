@@ -844,11 +844,11 @@ describe("ControlChannelService", () => {
     };
 
     resetProgressRefreshTimer(guildId, activeSnapshot);
-    await vi.advanceTimersByTimeAsync(4_000);
+    await vi.advanceTimersByTimeAsync(2_000);
     resetProgressRefreshTimer(guildId, activeSnapshot);
     await vi.advanceTimersByTimeAsync(1_000);
     expect(writeTimedPanels).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(4_000);
+    await vi.advanceTimersByTimeAsync(2_000);
     expect(writeTimedPanels).toHaveBeenCalledOnce();
     expect(writeTimedPanels).toHaveBeenCalledWith(guildId);
   });
