@@ -379,6 +379,99 @@ describe("LavalinkPlayerGateway trackStart lyrics handling", () => {
     expect(customLyricsByGuild.get(guildId)).toEqual(fetchedLines);
   });
 
+  it("publishes a state-change event once lyrics finish loading, so the panel doesn't wait for its next unrelated tick", async () => {
+    // Regression: the panel only refreshed on its own timer, which — right
+    // after trackStart — had no lyrics yet to schedule a fast tick from, so
+    // it fell back to the full ~3s cadence. Freshly-loaded lyrics could then
+    // sit unshown for up to that whole interval on top of however long the
+    // LRCLIB fetch itself took.
+    const client = { guilds: { cache: new Map<string, Guild>() } } as unknown as Client;
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const publish = vi.fn(() => Promise.resolve());
+    const eventBus = { publish } as unknown as MusicEventBus;
+    const guildConfigurationProvider = { find: vi.fn(() => undefined) } as unknown as GuildConfigurationProvider;
+    const gateway = new LavalinkPlayerGateway(
+      client,
+      { host: "localhost", port: 2333, password: "pw", secure: false },
+      logger as never,
+      eventBus,
+      guildConfigurationProvider,
+    );
+
+    fetchSyncedLyricsMock.mockResolvedValue([{ timestampMs: 0, line: "Hello" }]);
+
+    const track = {
+      encoded: "lyrics-loaded-track",
+      info: { title: "Track", author: "Artist" },
+      userData: {},
+    };
+    const player = {
+      guildId,
+      position: 0,
+      queue: { current: track },
+      subscribeLyrics: vi.fn().mockResolvedValue(undefined),
+    };
+    const manager = (
+      gateway as unknown as {
+        manager: {
+          getPlayer: (id: string) => typeof player | undefined;
+          emit: (event: string, ...args: unknown[]) => void;
+        };
+      }
+    ).manager;
+    manager.getPlayer = vi.fn(() => player);
+
+    manager.emit("trackStart", player, track);
+
+    await vi.waitFor(() => expect(publish).toHaveBeenCalledWith(
+      expect.objectContaining({ guildId, reason: "lyrics_loaded" }),
+    ));
+  });
+
+  it("publishes a state-change event even when the LRCLIB fetch fails, so the panel still learns lyrics settled to not-found", async () => {
+    const client = { guilds: { cache: new Map<string, Guild>() } } as unknown as Client;
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const publish = vi.fn(() => Promise.resolve());
+    const eventBus = { publish } as unknown as MusicEventBus;
+    const guildConfigurationProvider = { find: vi.fn(() => undefined) } as unknown as GuildConfigurationProvider;
+    const gateway = new LavalinkPlayerGateway(
+      client,
+      { host: "localhost", port: 2333, password: "pw", secure: false },
+      logger as never,
+      eventBus,
+      guildConfigurationProvider,
+    );
+
+    fetchSyncedLyricsMock.mockRejectedValue(new Error("LRCLIB is down"));
+
+    const track = {
+      encoded: "lyrics-failed-track",
+      info: { title: "Track", author: "Artist" },
+      userData: {},
+    };
+    const player = {
+      guildId,
+      position: 0,
+      queue: { current: track },
+      subscribeLyrics: vi.fn().mockResolvedValue(undefined),
+    };
+    const manager = (
+      gateway as unknown as {
+        manager: {
+          getPlayer: (id: string) => typeof player | undefined;
+          emit: (event: string, ...args: unknown[]) => void;
+        };
+      }
+    ).manager;
+    manager.getPlayer = vi.fn(() => player);
+
+    manager.emit("trackStart", player, track);
+
+    await vi.waitFor(() => expect(publish).toHaveBeenCalledWith(
+      expect.objectContaining({ guildId, reason: "lyrics_loaded" }),
+    ));
+  });
+
   it("keeps showing the current line well past the last line's own timestamp instead of going blank", () => {
     const client = { guilds: { cache: new Map<string, Guild>() } } as unknown as Client;
     const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };

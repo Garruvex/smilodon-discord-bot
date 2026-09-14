@@ -190,6 +190,13 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
             // Guard against a stale response landing after the track changed.
             if (this.manager.getPlayer(player.guildId)?.queue.current?.encoded !== trackId) return;
             this.customLyricsByGuild.set(player.guildId, lines ?? "not-found");
+            // Without this, the panel only picks up freshly-loaded lyrics on
+            // its next unrelated timer tick — up to a full
+            // activePlaybackRefreshIntervalMs late, on top of however long
+            // the LRCLIB fetch itself took, since the tick that just ran
+            // (right after trackStart) had nothing to schedule from yet and
+            // fell back to the default cadence.
+            this.publishStateChange({ guildId: player.guildId, reason: "lyrics_loaded" });
           })
           .catch((error: unknown) => {
             this.logger.warn(
@@ -201,6 +208,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
             // instead of eventually showing "No lyrics found".
             if (this.manager.getPlayer(player.guildId)?.queue.current?.encoded === trackId) {
               this.customLyricsByGuild.set(player.guildId, "not-found");
+              this.publishStateChange({ guildId: player.guildId, reason: "lyrics_loaded" });
             }
           });
       } else {

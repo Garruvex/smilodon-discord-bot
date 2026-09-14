@@ -7,7 +7,8 @@ export interface MusicStateChangedEvent {
     | "resumed"
     | "stopped"
     | "volume_changed"
-    | "player_destroyed";
+    | "player_destroyed"
+    | "lyrics_loaded";
 }
 
 export type MusicStateChangedListener = (
