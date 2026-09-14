@@ -157,6 +157,12 @@ export class ControlChannelService {
     );
     this.unsubscribeEventBus = eventBus.subscribe(async (event) => {
       if (this.stopped) return;
+      if (event.reason === "lyrics_loaded") {
+        this.logger.info(
+          { guildId: event.guildId, reason: event.reason, time: Date.now() },
+          "Panel refresh requested for freshly-resolved lyrics",
+        );
+      }
       await this.refreshPanel(event.guildId);
     });
   }
@@ -640,7 +646,12 @@ export class ControlChannelService {
       const payload = this.createLyricsPayload(profile, snapshot);
       if (!this.matchesCurrentMessage(message, payload)) {
         this.lastLyricsEditAt.set(guildId, Date.now());
+        const startedAt = Date.now();
         await message.edit(payload);
+        this.logger.info(
+          { guildId, editMs: Date.now() - startedAt, time: Date.now(), line: snapshot?.currentLyricLine ?? null },
+          "Lyrics panel message edited",
+        );
       }
     } catch (error) {
       this.logger.error({ error, guildId }, "Unable to refresh the Lyrics panel message");

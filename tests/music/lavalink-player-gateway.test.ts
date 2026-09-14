@@ -550,6 +550,61 @@ describe("LavalinkPlayerGateway trackStart lyrics handling", () => {
     expect(gateway.getSnapshot(guildId)?.nextLyricLineInMs).toBeNull();
   });
 
+  it("previews the first line even during a long intro well past the lookahead window", () => {
+    // Regression: a first line more than lyricsLookaheadMs (4s) away used to
+    // leave "upcoming" empty, so a track with a long intro showed "Looking
+    // for lyrics…" — indistinguishable from lyrics not having loaded at all
+    // — for however long that intro lasted, even though the full line list
+    // was already resolved and sitting in memory.
+    const client = { guilds: { cache: new Map<string, Guild>() } } as unknown as Client;
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const eventBus = { publish: vi.fn(() => Promise.resolve()) } as unknown as MusicEventBus;
+    const guildConfigurationProvider = { find: vi.fn(() => undefined) } as unknown as GuildConfigurationProvider;
+    const gateway = new LavalinkPlayerGateway(
+      client,
+      { host: "localhost", port: 2333, password: "pw", secure: false },
+      logger as never,
+      eventBus,
+      guildConfigurationProvider,
+    );
+
+    const track = {
+      encoded: "track-encoded",
+      info: { title: "Track", author: "Artist", uri: "https://example.com", duration: 240_000 },
+      userData: {},
+    };
+    // A 15s intro before the first line, well past the 4s lookahead window.
+    const lines = [
+      { timestampMs: 15_000, line: "First line" },
+      { timestampMs: 20_000, line: "Second line" },
+    ];
+    const player = {
+      guildId,
+      position: 0,
+      paused: false,
+      playing: true,
+      volume: 75,
+      voiceChannelId: "voice-id",
+      repeatMode: "off",
+      queue: { current: track, tracks: [], previous: [] },
+      get: (): undefined => undefined,
+    };
+
+    const manager = (
+      gateway as unknown as { manager: { getPlayer: (id: string) => typeof player | undefined } }
+    ).manager;
+    manager.getPlayer = vi.fn(() => player);
+    (
+      gateway as unknown as { customLyricsByGuild: Map<string, unknown> }
+    ).customLyricsByGuild.set(guildId, lines);
+
+    const snapshot = gateway.getSnapshot(guildId);
+    expect(snapshot?.currentLyricLine).toBeNull();
+    expect(snapshot?.upcomingLyricLines).toEqual(["First line"]);
+    // While playing, position is biased 500ms forward (editLatencyBiasMs).
+    expect(snapshot?.nextLyricLineInMs).toBe(15_000 - 500);
+  });
+
   it("reports lyrics as unavailable once our own fetch confirms not-found, without waiting on the plugin fallback to also settle", () => {
     const client = { guilds: { cache: new Map<string, Guild>() } } as unknown as Client;
     const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };

@@ -83,7 +83,16 @@ function selectLyricLines(
   let nextLyricLineInMs: number | null = null;
   for (const entry of lines) {
     if (entry.timestampMs > renderPositionMs) {
-      nextLyricLineInMs ??= entry.timestampMs - renderPositionMs;
+      if (nextLyricLineInMs === null) {
+        // The very next line is always shown as a preview, however far off
+        // it is — a long intro (or an instrumental break mid-song) can put
+        // it well past the lookahead window below, and without this a track
+        // whose lyrics are already fully resolved looked identical to one
+        // that hadn't loaded at all, for however long that gap lasted.
+        nextLyricLineInMs = entry.timestampMs - renderPositionMs;
+        upcoming.push(entry.line);
+        continue;
+      }
       if (entry.timestampMs > renderPositionMs + lyricsLookaheadMs) break;
       upcoming.push(entry.line);
       continue;

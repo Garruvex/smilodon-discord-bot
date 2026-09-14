@@ -138,7 +138,7 @@ function createService(chatbotEnabled: boolean): {
     queuePosition: null,
   });
   const playbackService = { enqueue } as unknown as PlaybackService;
-  const logger = { error: vi.fn(), warn: vi.fn() };
+  const logger = { error: vi.fn(), warn: vi.fn(), info: vi.fn() };
   const eventBus = {
     subscribe: vi.fn((): (() => void) => () => undefined),
   } as unknown as MusicEventBus;
@@ -1240,7 +1240,7 @@ describe("ControlChannelService", () => {
       getSnapshot: vi.fn(() => null),
       getQueue: vi.fn(() => []),
     } as unknown as MusicPlayerGateway;
-    const logger = { error: vi.fn(), warn: vi.fn() };
+    const logger = { error: vi.fn(), warn: vi.fn(), info: vi.fn() };
     const eventBus = {
       subscribe: vi.fn((): (() => void) => () => undefined),
     } as unknown as MusicEventBus;
@@ -1393,7 +1393,7 @@ describe("ControlChannelService", () => {
       getQueue: vi.fn(() => []),
       getPlayHistory: vi.fn(() => []),
     } as unknown as MusicPlayerGateway;
-    const logger = { error: vi.fn(), warn: vi.fn() };
+    const logger = { error: vi.fn(), warn: vi.fn(), info: vi.fn() };
     const eventBus = {
       subscribe: vi.fn((): (() => void) => () => undefined),
     } as unknown as MusicEventBus;
@@ -1528,7 +1528,7 @@ describe("ControlChannelService", () => {
       reconcileVoiceState: vi.fn(() => Promise.resolve(false)),
       getQueue: vi.fn(() => []),
     } as unknown as MusicPlayerGateway;
-    const logger = { error: vi.fn(), warn: vi.fn() };
+    const logger = { error: vi.fn(), warn: vi.fn(), info: vi.fn() };
     const eventBus = { subscribe: vi.fn((): (() => void) => () => undefined) } as unknown as MusicEventBus;
 
     const service = new ControlChannelService(
@@ -1628,7 +1628,7 @@ describe("ControlChannelService", () => {
       reconcileVoiceState: vi.fn(() => Promise.reject(new Error("voice state lookup failed"))),
       getQueue: vi.fn(() => []),
     } as unknown as MusicPlayerGateway;
-    const logger = { error: vi.fn(), warn: vi.fn() };
+    const logger = { error: vi.fn(), warn: vi.fn(), info: vi.fn() };
     const eventBus = { subscribe: vi.fn((): (() => void) => () => undefined) } as unknown as MusicEventBus;
 
     const service = new ControlChannelService(
@@ -1733,7 +1733,7 @@ describe("ControlChannelService", () => {
       reconcileVoiceState: vi.fn(() => Promise.resolve(false)),
       getQueue: vi.fn(() => []),
     } as unknown as MusicPlayerGateway;
-    const logger = { error: vi.fn(), warn: vi.fn() };
+    const logger = { error: vi.fn(), warn: vi.fn(), info: vi.fn() };
     const eventBus = { subscribe: vi.fn((): (() => void) => () => undefined) } as unknown as MusicEventBus;
 
     const service = new ControlChannelService(
@@ -1832,7 +1832,7 @@ describe("ControlChannelService", () => {
       reconcileVoiceState: vi.fn(() => Promise.resolve(false)),
       getQueue: vi.fn(() => []),
     } as unknown as MusicPlayerGateway;
-    const logger = { error: vi.fn(), warn: vi.fn() };
+    const logger = { error: vi.fn(), warn: vi.fn(), info: vi.fn() };
     const eventBus = { subscribe: vi.fn((): (() => void) => () => undefined) } as unknown as MusicEventBus;
 
     const service = new ControlChannelService(
