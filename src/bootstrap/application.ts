@@ -312,6 +312,22 @@ export class Application {
     this.client.on(Events.Warn, (message) => {
       this.logger.warn({ message }, "Discord client warning");
     });
+
+    // Surfaces the actual cause when panel edits (or anything else) stall for
+    // several seconds — discord.js retries a rate-limited request
+    // automatically after waiting out `timeToReset`, silently, so without
+    // this log a stall just looks like an unexplained hang.
+    this.client.rest.on("rateLimited", (info) => {
+      this.logger.warn(
+        {
+          route: info.route,
+          method: info.method,
+          timeToResetMs: info.timeToReset,
+          global: info.global,
+        },
+        "Discord REST request was rate limited",
+      );
+    });
   }
 
   // Mirrors ControlChannelService.handleMessage's own "is this message

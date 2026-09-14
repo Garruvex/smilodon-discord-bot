@@ -21,6 +21,7 @@ function createFakeClient(): { client: Client; emit: (event: string, ...args: un
     },
     user: { id: "bot-id" },
     destroy: vi.fn().mockResolvedValue(undefined),
+    rest: { on: (): void => undefined },
   } as unknown as Client;
   return {
     client,
