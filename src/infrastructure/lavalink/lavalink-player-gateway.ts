@@ -30,8 +30,20 @@ import type { MusicPlayerSnapshot } from "../../application/music/music-player-g
 import type { MusicEventBus, MusicStateChangedEvent } from "../../application/music/music-event-bus.js";
 import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
 import { LavalinkAutoQueue, type AutoQueueOutcome } from "./lavalink-auto-queue.js";
+import { fetchSyncedLyrics, type SyncedLyricLine } from "../lyrics/lrclib-client.js";
 
 const playHistoryLimit = 20;
+
+// `lines` is sorted ascending by timestamp; return the latest one whose
+// timestamp has already passed, or null before the first line's cue point.
+function selectCurrentLyricLine(lines: readonly SyncedLyricLine[], positionMs: number): string | null {
+  let current: string | null = null;
+  for (const entry of lines) {
+    if (entry.timestampMs > positionMs) break;
+    current = entry.line;
+  }
+  return current;
+}
 
 export class LavalinkPlayerGateway implements MusicPlayerGateway {
   private readonly manager: LavalinkManager;
@@ -40,10 +52,16 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
   private readonly emptyChannelTimers = new Map<string, NodeJS.Timeout>();
   private readonly autoQueueIssues = new Set<string>();
   private readonly playHistoryByGuild = new Map<string, PlayHistoryEntry[]>();
-  private readonly currentLyricByGuild = new Map<
+  // Lines from the Lavalink lyrics plugin's push events (currently sourced
+  // from YouTube only — lrcLib is disabled there in favor of our own fetch
+  // below, which fixes a bug in the plugin's lrcLib integration).
+  private readonly pluginLyricsByGuild = new Map<
     string,
-    { line: string; timestamp: number } | "not-found"
+    { line: string } | "not-found"
   >();
+  // Synced lines fetched directly from LRCLIB, keyed off live playback
+  // position ourselves rather than relying on plugin-pushed lines.
+  private readonly customLyricsByGuild = new Map<string, SyncedLyricLine[] | "not-found">();
 
   public constructor(
     private readonly client: Client,
@@ -114,7 +132,8 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     this.manager.on("trackStart", (player, track) => {
       this.clearTimer(this.emptyQueueTimers, player.guildId);
       this.autoQueueIssues.delete(player.guildId);
-      this.currentLyricByGuild.delete(player.guildId);
+      this.pluginLyricsByGuild.delete(player.guildId);
+      this.customLyricsByGuild.delete(player.guildId);
       if (track) this.recordPlayHistory(player.guildId, track);
       this.publishStateChange({ guildId: player.guildId, reason: "track_started" });
       // Per-guild subscription that persists across tracks; re-subscribing on
@@ -122,6 +141,21 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
       // restarted the session. No-op (rejects quietly) if the lavalyrics
       // plugin isn't installed on the node.
       void player.subscribeLyrics().catch(() => undefined);
+      if (track) {
+        const trackId = track.encoded;
+        fetchSyncedLyrics(track.info.title, track.info.author ?? "")
+          .then((lines) => {
+            // Guard against a stale response landing after the track changed.
+            if (this.manager.getPlayer(player.guildId)?.queue.current?.encoded !== trackId) return;
+            this.customLyricsByGuild.set(player.guildId, lines ?? "not-found");
+          })
+          .catch((error: unknown) => {
+            this.logger.warn(
+              { error, guildId: player.guildId, trackTitle: track.info.title },
+              "Unable to fetch synced lyrics from LRCLIB",
+            );
+          });
+      }
     });
 
     this.manager.on("queueEnd", (player) => {
@@ -134,7 +168,8 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
       this.clearTimer(this.emptyChannelTimers, player.guildId);
       this.autoQueue.clear(player.guildId);
       this.autoQueueIssues.delete(player.guildId);
-      this.currentLyricByGuild.delete(player.guildId);
+      this.pluginLyricsByGuild.delete(player.guildId);
+      this.customLyricsByGuild.delete(player.guildId);
       this.publishStateChange({ guildId: player.guildId, reason: "player_destroyed" });
     });
 
@@ -143,14 +178,11 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     // repaint timer pick the change up on its next pass rather than forcing
     // an extra Discord edit per line.
     this.manager.on("LyricsLine", (player, _track, payload) => {
-      this.currentLyricByGuild.set(player.guildId, {
-        line: payload.line.line,
-        timestamp: payload.line.timestamp,
-      });
+      this.pluginLyricsByGuild.set(player.guildId, { line: payload.line.line });
     });
 
     this.manager.on("LyricsNotFound", (player) => {
-      this.currentLyricByGuild.set(player.guildId, "not-found");
+      this.pluginLyricsByGuild.set(player.guildId, "not-found");
     });
   }
 
@@ -589,7 +621,17 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
 
     const current = player.queue.current;
     const requestedByUserId = current?.userData?.requestedByUserId;
-    const lyricState = this.currentLyricByGuild.get(guildId);
+    const customLyrics = this.customLyricsByGuild.get(guildId);
+    const pluginLyrics = this.pluginLyricsByGuild.get(guildId);
+    // Our own LRCLIB fetch wins whenever it has something, since it fixes a
+    // bug in the plugin's own lrcLib source (see lrclib-client.ts). Fall back
+    // to the plugin's push-based line (currently YouTube-sourced) otherwise.
+    const currentLyricLine = Array.isArray(customLyrics)
+      ? selectCurrentLyricLine(customLyrics, player.position)
+      : typeof pluginLyrics === "object"
+        ? pluginLyrics.line
+        : null;
+    const lyricsUnavailable = customLyrics === "not-found" && pluginLyrics === "not-found";
 
     return {
       guildId,
@@ -603,9 +645,8 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
       autoQueue: player.get<boolean>("autoQueue") ?? false,
       autoQueueIssue: this.autoQueueIssues.has(guildId),
       twentyFourSeven: player.get<boolean>("twentyFourSeven") ?? false,
-      currentLyricLine:
-        typeof lyricState === "object" ? lyricState.line : null,
-      lyricsUnavailable: lyricState === "not-found",
+      currentLyricLine,
+      lyricsUnavailable,
       currentTrack: current
         ? {
             title: current.info.title,
