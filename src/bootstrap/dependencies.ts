@@ -19,6 +19,7 @@ import type { BirthdayStore } from "../application/birthdays/birthday-store.js";
 import { RemindCommand } from "../infrastructure/discord/commands/common/remind-command.js";
 import { ReactionRolesCommand } from "../infrastructure/discord/commands/common/reaction-roles-command.js";
 import { RoleMenuComponentHandler } from "../infrastructure/discord/components/role-menu-component-handler.js";
+import { QueuePageComponentHandler } from "../infrastructure/discord/components/queue-page-component-handler.js";
 import { RoleMenuService } from "../application/roles/role-menu-service.js";
 import type { RoleMenuStore } from "../application/roles/role-menu-store.js";
 import type { ReminderStore } from "../application/reminders/reminder-store.js";
@@ -332,6 +333,7 @@ export function registerCommands(
   commandRegistry.register(new PreviousCommand(playbackService, guildConfigurationProvider));
   commandRegistry.register(new ShuffleCommand(playbackService, guildConfigurationProvider));
   commandRegistry.register(new QueueCommand(playbackService, guildConfigurationProvider));
+  componentRegistry.register(new QueuePageComponentHandler(playbackService, guildConfigurationProvider));
   commandRegistry.register(new LoopCommand(playbackService));
   commandRegistry.register(new VolumeCommand(playbackService, guildConfigurationProvider));
   commandRegistry.register(new AutoplayCommand(playbackService));

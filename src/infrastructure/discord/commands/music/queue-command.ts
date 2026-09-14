@@ -5,6 +5,7 @@ import type { ChatToolContext, ChatToolResult } from "../../../../application/ch
 import { evaluateMusicToolAccess, musicPermissionDeniedMessage } from "../../../../application/chat/tools/music-tool-support.js";
 import type { PlaybackService } from "../../../../application/music/playback-service.js";
 import type { GuildConfigurationProvider } from "../../../../config/guild-configuration-provider.js";
+import { buildQueuePageView } from "../../music/queue-page-view.js";
 import { createPlaybackActor, musicPlaybackAccessPolicy } from "./music-command-support.js";
 
 const maxQueueTracksReturnedToTool = 10;
@@ -71,12 +72,9 @@ export class QueueCommand implements BotCommand {
     }
 
     const tracks = this.playbackService.getQueue(context.interaction.guildId);
-    const description = tracks.length === 0
-      ? "There are no upcoming tracks."
-      : tracks.slice(0, 20).map((track, index) => `${index + 1}. **${track.title}** — ${track.author}`).join("\n");
-    const embed = new EmbedBuilder().setTitle("Music queue").setDescription(description);
-    if (tracks.length > 20) embed.setFooter({ text: `Showing 20 of ${tracks.length} tracks` });
-    await context.responses.reply({ embeds: [embed] });
+    const profile = this.profiles.find(context.interaction.guildId);
+    const view = buildQueuePageView(tracks, 0, (profile?.embedColor ?? "#3B82F6") as `#${string}`);
+    await context.responses.reply({ embeds: [view.embed], components: view.components });
   }
 
   private executeAsTool(ctx: ChatToolContext): Promise<ChatToolResult> {
