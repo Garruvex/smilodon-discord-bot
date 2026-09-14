@@ -682,8 +682,14 @@ export class ControlChannelService {
     const autoQueueNote = snapshot.autoQueue && snapshot.autoQueueIssue
       ? "  •  ⚠️ Autoqueue found nothing to add"
       : "";
+    // Bundling every line due before the next repaint (rather than just one
+    // "next" line) is what keeps this useful during fast sections — without
+    // it, lines that fire between repaints would just be silently skipped.
+    const upcomingLyrics = snapshot.currentLyricLine && snapshot.upcomingLyricLines.length > 0
+      ? `\n-# ${snapshot.upcomingLyricLines.join(" / ")}`
+      : "";
     const lyricLine = snapshot.currentLyricLine
-      ? `\n🎤 ${snapshot.currentLyricLine}`
+      ? `\n🎤 ${snapshot.currentLyricLine}${upcomingLyrics}`
       : snapshot.lyricsUnavailable
         ? "\n🎤 No lyrics found"
         : "";

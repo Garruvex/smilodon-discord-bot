@@ -34,15 +34,32 @@ import { fetchSyncedLyrics, type SyncedLyricLine } from "../lyrics/lrclib-client
 
 const playHistoryLimit = 20;
 
-// `lines` is sorted ascending by timestamp; return the latest one whose
-// timestamp has already passed, or null before the first line's cue point.
-function selectCurrentLyricLine(lines: readonly SyncedLyricLine[], positionMs: number): string | null {
+interface SelectedLyricLines {
+  readonly current: string | null;
+  readonly upcoming: readonly string[];
+}
+
+// Matches the panel's own repaint cadence (activePlaybackRefreshIntervalMs
+// in control-channel-service.ts) — every line due before the *next* repaint
+// gets bundled into this one. A single "next line" would silently skip
+// lines during a fast section (rap verses can fire several lines within one
+// repaint window), so this windows on time rather than line count.
+const lyricsLookaheadMs = 5_000;
+
+// `lines` is sorted ascending by timestamp.
+function selectLyricLines(lines: readonly SyncedLyricLine[], positionMs: number): SelectedLyricLines {
   let current: string | null = null;
+  const upcoming: string[] = [];
   for (const entry of lines) {
-    if (entry.timestampMs > positionMs) break;
-    current = entry.line;
+    if (entry.timestampMs <= positionMs) {
+      current = entry.line;
+    } else if (entry.timestampMs <= positionMs + lyricsLookaheadMs) {
+      upcoming.push(entry.line);
+    } else {
+      break;
+    }
   }
-  return current;
+  return { current, upcoming };
 }
 
 export class LavalinkPlayerGateway implements MusicPlayerGateway {
@@ -624,13 +641,14 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     const customLyrics = this.customLyricsByGuild.get(guildId);
     const pluginLyrics = this.pluginLyricsByGuild.get(guildId);
     // Our own LRCLIB fetch wins whenever it has something, since it fixes a
-    // bug in the plugin's own lrcLib source (see lrclib-client.ts). Fall back
-    // to the plugin's push-based line (currently YouTube-sourced) otherwise.
-    const currentLyricLine = Array.isArray(customLyrics)
-      ? selectCurrentLyricLine(customLyrics, player.position)
-      : typeof pluginLyrics === "object"
-        ? pluginLyrics.line
-        : null;
+    // bug in the plugin's own lrcLib source (see lrclib-client.ts), and it's
+    // the only source with the full line list needed to window upcoming
+    // lines. Fall back to the plugin's push-based line (currently
+    // YouTube-sourced) otherwise — that one only ever gives us the single
+    // current line, so there's no upcoming-lines preview on that path.
+    const { current: currentLyricLine, upcoming: upcomingLyricLines } = Array.isArray(customLyrics)
+      ? selectLyricLines(customLyrics, player.position)
+      : { current: typeof pluginLyrics === "object" ? pluginLyrics.line : null, upcoming: [] };
     const lyricsUnavailable = customLyrics === "not-found" && pluginLyrics === "not-found";
 
     return {
@@ -646,6 +664,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
       autoQueueIssue: this.autoQueueIssues.has(guildId),
       twentyFourSeven: player.get<boolean>("twentyFourSeven") ?? false,
       currentLyricLine,
+      upcomingLyricLines,
       lyricsUnavailable,
       currentTrack: current
         ? {

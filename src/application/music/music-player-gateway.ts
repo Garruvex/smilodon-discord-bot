@@ -79,6 +79,13 @@ export interface MusicPlayerSnapshot {
   // has synced lyrics available and the Lavalink node has the lyrics plugin
   // installed. Null while unknown (no line has arrived yet) or unavailable.
   currentLyricLine: string | null;
+  // Every line due to start before the panel's next repaint, oldest first.
+  // A single "next line" would silently skip lines during a fast section
+  // (e.g. a rap verse can fire several lines within one repaint window), so
+  // this windows on time instead. Only populated with our own LRCLIB-fetched
+  // lines (see LavalinkPlayerGateway) — empty on the plugin-push fallback,
+  // which only ever gives us one line at a time.
+  upcomingLyricLines: readonly string[];
   // True once the lyrics plugin has confirmed no synced lyrics exist for the
   // current track, so the panel can say so instead of just staying silent.
   lyricsUnavailable: boolean;
