@@ -78,6 +78,8 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     // Oldest ancestor first, ending just before `message` itself.
     const { kept: replyChainMessages, overflow: replyChainOverflowMessages } = await this.turnSupport.resolveReplyChain(message);
     const replyChain: ReplyChainMessage[] = replyChainMessages.map((hop) => ({
+      messageId: hop.id,
+      timestampMs: hop.createdTimestamp,
       authorId: hop.author.id,
       authorDisplayName: hop.member?.displayName ?? hop.author.displayName,
       content: hop.content.slice(0, chatMemoryLimits.maxUserMessageChars),
@@ -89,6 +91,8 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     // by the time content is old enough to be summarized away, its images
     // aren't worth the extra fetch/attach cost.
     const replyChainOverflow: ReplyChainMessage[] = replyChainOverflowMessages.map((hop) => ({
+      messageId: hop.id,
+      timestampMs: hop.createdTimestamp,
       authorId: hop.author.id,
       authorDisplayName: hop.member?.displayName ?? hop.author.displayName,
       content: hop.content.slice(0, chatMemoryLimits.maxUserMessageChars),

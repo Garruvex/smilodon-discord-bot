@@ -229,12 +229,15 @@ export class ChatTurnSupport {
         ? selectedById.get(referenceId) ?? message.channel.messages.cache.get(referenceId)
         : undefined;
       return {
+        messageId: message.id,
+        timestampMs: message.createdTimestamp,
         authorId: message.author.id,
         authorDisplayName: message.member?.displayName ?? message.author.displayName,
         content: message.content.slice(0, chatMemoryLimits.maxUserMessageChars),
         imageCount: [...message.attachments.values()].filter((attachment) =>
           attachment.contentType?.startsWith("image/"),
         ).length,
+        hasReplyReference: Boolean(referenceId),
         replyToAuthorId: target?.author.id ?? null,
         replyToAuthorDisplayName: target
           ? target.member?.displayName ?? target.author.displayName

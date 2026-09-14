@@ -118,7 +118,7 @@ describe("buildChatInstructions", () => {
 
   it("warns against treating unrelated channel history as the current message's topic, and omits it entirely when empty", () => {
     const withHistory = buildChatInstructions(baseRequest({
-      channelHistory: [{ authorId: "user2", authorDisplayName: "Other", content: "some earlier topic", imageCount: 0 }],
+      channelHistory: [{ messageId: "h1", timestampMs: 0, authorId: "user2", authorDisplayName: "Other", content: "some earlier topic", imageCount: 0 }],
     }), chatSafetyGuard);
     expect(withHistory).toContain("# Channel history");
     expect(withHistory).toMatch(/not necessarily connected to <current_message>/);
@@ -131,11 +131,20 @@ describe("buildChatInstructions", () => {
 
   it("states that reply_chain overrides channel_history rather than blending with it, when both are present", () => {
     const withBoth = buildChatInstructions(baseRequest({
-      channelHistory: [{ authorId: "user2", authorDisplayName: "Other", content: "some earlier topic", imageCount: 0 }],
-      replyChain: [{ authorId: "user3", authorDisplayName: "Asker", content: "what do you think of this", imageCount: 0 }],
+      channelHistory: [{ messageId: "h1", timestampMs: 0, authorId: "user2", authorDisplayName: "Other", content: "some earlier topic", imageCount: 0 }],
+      replyChain: [{ messageId: "r1", timestampMs: 0, authorId: "user3", authorDisplayName: "Asker", content: "what do you think of this", imageCount: 0 }],
     }), chatSafetyGuard);
     expect(withBoth).toMatch(/it — not <channel_history> — determines the subject/);
     expect(withBoth).not.toMatch(/prefer whichever thread in <channel_history>/);
+  });
+
+  it("still allows an explicit question about the channel itself to scan all of channel_history, even while reply_chain governs current_message's own topic", () => {
+    const withBoth = buildChatInstructions(baseRequest({
+      channelHistory: [{ messageId: "h1", timestampMs: 0, authorId: "user2", authorDisplayName: "Other", content: "some earlier topic", imageCount: 0 }],
+      replyChain: [{ messageId: "r1", timestampMs: 0, authorId: "user3", authorDisplayName: "Asker", content: "what do you think of this", imageCount: 0 }],
+    }), chatSafetyGuard);
+    expect(withBoth).toMatch(/explicitly about the channel itself.*should be answered by scanning the/);
+    expect(withBoth).toMatch(/even when that reaches past the topic <current_message> is otherwise about/);
   });
 });
 
@@ -180,59 +189,68 @@ describe("buildChatContext", () => {
     expect(without).toContain("<user_profile>\nnone\n</user_profile>");
   });
 
-  it("attributes each reply-chain hop with author and notes attached images", () => {
+  it("attributes each reply-chain hop with author, id/timestamp, and notes attached images", () => {
     const context = buildChatContext(baseRequest({
       replyChain: [
-        { authorId: "111", authorDisplayName: "Alice", content: "first hop", imageCount: 0 },
-        { authorId: "222", authorDisplayName: "Bob", content: "second hop", imageCount: 2 },
+        { messageId: "111-msg", timestampMs: 1_700_000_000_000, authorId: "111", authorDisplayName: "Alice", content: "first hop", imageCount: 0 },
+        { messageId: "222-msg", timestampMs: 1_700_000_010_000, authorId: "222", authorDisplayName: "Bob", content: "second hop", imageCount: 2 },
       ],
     }));
-    expect(context).toContain("1. Alice (111):");
-    expect(context).toContain("2. Bob (222):");
+    expect(context).toContain(`1. [id=111-msg, t=${new Date(1_700_000_000_000).toISOString()}] Alice (111):`);
+    expect(context).toContain(`2. [id=222-msg, t=${new Date(1_700_000_010_000).toISOString()}] Bob (222):`);
     expect(context).toContain("[2 images attached]");
   });
 
   it("renders ambient channel history as its own fenced section", () => {
     const withHistory = buildChatContext(baseRequest({
       channelHistory: [
-        { authorId: "333", authorDisplayName: "Casey", content: "what a day", imageCount: 0 },
+        { messageId: "333-msg", timestampMs: 1_700_000_000_000, authorId: "333", authorDisplayName: "Casey", content: "what a day", imageCount: 0 },
       ],
     }));
     expect(withHistory).toContain("<channel_history>");
-    expect(withHistory).toContain("1. Casey (333) [sameAsCurrentUser=no]:");
+    expect(withHistory).toContain(
+      `1. [id=333-msg, t=${new Date(1_700_000_000_000).toISOString()}] Casey (333) [sameAsCurrentUser=no]:`,
+    );
     expect(withHistory).toContain("<<<BEGIN-UNTRUSTED-DATA>>>\nwhat a day\n<<<END-UNTRUSTED-DATA>>>");
 
     const without = buildChatContext(baseRequest());
     expect(without).toContain("<channel_history>\nnone\n</channel_history>");
   });
 
-  it("marks who a bot history reply targeted so another user does not inherit that exchange", () => {
+  it("marks who a bot history reply targeted so another user does not inherit that exchange, and distinguishes an unresolved reply target from no reply at all", () => {
     const context = buildChatContext(baseRequest({
       currentUser: { id: "quail", displayName: "Quail", roleNames: [] },
       message: "comfort me",
       channelHistory: [
         {
-          authorId: "fluffy", authorDisplayName: "Fluffy", content: "Is it not very big?", imageCount: 0,
+          messageId: "m-fluffy", timestampMs: 0, authorId: "fluffy", authorDisplayName: "Fluffy", content: "Is it not very big?", imageCount: 0,
           replyToAuthorId: null, replyToAuthorDisplayName: null,
         },
         {
-          authorId: "bot", authorDisplayName: "Pinecone", content: "Punctuation, help me.", imageCount: 0,
-          replyToAuthorId: "fluffy", replyToAuthorDisplayName: "Fluffy",
+          messageId: "m-bot", timestampMs: 1, authorId: "bot", authorDisplayName: "Pinecone", content: "Punctuation, help me.", imageCount: 0,
+          hasReplyReference: true, replyToAuthorId: "fluffy", replyToAuthorDisplayName: "Fluffy",
         },
         {
-          authorId: "quail", authorDisplayName: "Quail", content: "Yes, comfort me.", imageCount: 0,
-          replyToAuthorId: "bot", replyToAuthorDisplayName: "Pinecone",
+          messageId: "m-quail", timestampMs: 2, authorId: "quail", authorDisplayName: "Quail", content: "Yes, comfort me.", imageCount: 0,
+          hasReplyReference: true, replyToAuthorId: "bot", replyToAuthorDisplayName: "Pinecone",
+        },
+        {
+          messageId: "m-mystery", timestampMs: 3, authorId: "fluffy", authorDisplayName: "Fluffy", content: "wait what", imageCount: 0,
+          hasReplyReference: true, replyToAuthorId: null, replyToAuthorDisplayName: null,
         },
       ],
     }));
 
-    expect(context).toContain("Fluffy (fluffy) [sameAsCurrentUser=no]");
+    expect(context).toContain("Fluffy (fluffy) [sameAsCurrentUser=no]:");
     expect(context).toContain(
       "Pinecone (bot) [sameAsCurrentUser=no; replyingTo=Fluffy (fluffy); replyTargetSameAsCurrentUser=no]",
     );
     expect(context).toContain(
       "Quail (quail) [sameAsCurrentUser=yes; replyingTo=Pinecone (bot); replyTargetSameAsCurrentUser=no]",
     );
+    // A reply whose target fell outside the fetched window/cache still says
+    // so explicitly, instead of looking identical to a non-reply message.
+    expect(context).toContain("Fluffy (fluffy) [sameAsCurrentUser=no; replyingTo=unknown]:");
   });
 
   it("renders surfaced consequence relations as an ordered causal_chains section", () => {
@@ -246,5 +264,35 @@ describe("buildChatContext", () => {
 
     const without = buildChatContext(baseRequest());
     expect(without).toContain("<causal_chains>\nnone\n</causal_chains>");
+  });
+
+  it("gives every channel_history line its own id/timestamp so a multi-speaker exchange can be reconstructed and ordered, e.g. answering 'who talked to you recently'", () => {
+    const context = buildChatContext(baseRequest({
+      currentUser: { id: "quail", displayName: "Quail", roleNames: [] },
+      message: "who has talked to you in the last little while",
+      // Several distinct speakers taking turns, interleaved with the bot's
+      // own replies — the scenario the P1 finding called out as
+      // unanswerable when history carried no id/timestamp/reply-target.
+      channelHistory: [
+        { messageId: "1", timestampMs: 1_700_000_000_000, authorId: "raccoon", authorDisplayName: "Raccoon Dog", content: "hey bot", imageCount: 0 },
+        { messageId: "2", timestampMs: 1_700_000_001_000, authorId: "bot", authorDisplayName: "Pinecone", content: "hi!", imageCount: 0, hasReplyReference: true, replyToAuthorId: "raccoon", replyToAuthorDisplayName: "Raccoon Dog" },
+        { messageId: "3", timestampMs: 1_700_000_002_000, authorId: "fluffy", authorDisplayName: "Fluffy", content: "lol", imageCount: 0 },
+        { messageId: "4", timestampMs: 1_700_000_003_000, authorId: "bot", authorDisplayName: "Pinecone", content: "what's funny?", imageCount: 0, hasReplyReference: true, replyToAuthorId: "fluffy", replyToAuthorDisplayName: "Fluffy" },
+        { messageId: "5", timestampMs: 1_700_000_004_000, authorId: "quail", authorDisplayName: "Quail", content: "who has talked to you in the last little while", imageCount: 0 },
+      ],
+    }));
+
+    // Every line carries a distinct id and a real timestamp — enough to
+    // order and deduplicate the exchange chronologically across speakers.
+    for (const [id, timestampMs] of [
+      ["1", 1_700_000_000_000], ["2", 1_700_000_001_000], ["3", 1_700_000_002_000],
+      ["4", 1_700_000_003_000], ["5", 1_700_000_004_000],
+    ] as const) {
+      expect(context).toContain(`[id=${id}, t=${new Date(timestampMs).toISOString()}]`);
+    }
+    // Each bot reply names its actual target, so the model can attribute
+    // "the bot said X" to the right member instead of whoever spoke last.
+    expect(context).toContain("replyingTo=Raccoon Dog (raccoon)");
+    expect(context).toContain("replyingTo=Fluffy (fluffy)");
   });
 });

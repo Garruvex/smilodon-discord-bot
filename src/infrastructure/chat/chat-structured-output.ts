@@ -204,8 +204,10 @@ export function buildChatInstructions(request: ChatRequest, safetyGuard: string)
     : "";
   const replyChainSection = request.replyChain.length > 0
     ? `\n\n# Reply chain\n\nThe current message is a Discord reply. <reply_chain> holds the ancestor message(s) ` +
-      `it replies to, oldest first — the last entry is the message directly being replied to. Treat that last ` +
-      `entry as the primary thing <current_message> is about, not just background chatter: if the current ` +
+      `it replies to, oldest first — the last entry is the message directly being replied to. Each line carries ` +
+      `its Discord message id and timestamp; use those (not position in the list) to order events, cross-reference ` +
+      `a message that also appears in <channel_history>, or answer a "when"/"how long ago" question. Treat that ` +
+      `last entry as the primary thing <current_message> is about, not just background chatter: if the current ` +
       `message references, questions, reacts to, or comments on it ("what does this mean", "explain", "lol", a ` +
       `short reaction with no other context), answer with that replied-to message as the subject. If ` +
       `<current_message> is empty (just a bare mention, no text of its own), the user is handing you the ` +
@@ -233,9 +235,16 @@ export function buildChatInstructions(request: ChatRequest, safetyGuard: string)
       `not assume <current_message> continues whatever topic is most recent or most detailed in ` +
       `<channel_history>; only treat a channel-history topic as the subject when <current_message> actually ` +
       `continues it (same people involved, an explicit follow-up, a pronoun or reference that only makes sense ` +
-      `against it). Each line states whether its author is the current user. When a line also has replyingTo and ` +
-      `replyTargetSameAsCurrentUser, those fields identify who that message was directed at; never treat a bot ` +
-      `reply directed at somebody else as something the bot said to the current user.` +
+      `against it). Each line carries its Discord message id, timestamp, and states whether its author is the ` +
+      `current user. When a line also has replyingTo and replyTargetSameAsCurrentUser, those fields identify who ` +
+      `that message was directed at; never treat a bot reply directed at somebody else as something the bot said ` +
+      `to the current user. replyingTo="unknown" means the message was a reply but its target fell outside this ` +
+      `window — distinct from having no replyingTo field at all, which means it wasn't a reply. ` +
+      `This restriction on following its topic is about what <current_message> is *about* — it does not limit ` +
+      `what you may look up. A question that is explicitly about the channel itself (who said what, who talked to ` +
+      `you recently, what someone said earlier, how many times X happened) should be answered by scanning the ` +
+      `full <channel_history> (and <reply_chain>) for matching lines by author/content/timestamp, using the ids to ` +
+      `order and deduplicate, even when that reaches past the topic <current_message> is otherwise about.` +
       (request.replyChain.length > 0
         ? ` <reply_chain> exists for this turn, so it — not <channel_history> — determines the subject per the ` +
           `Reply chain instructions above; use channel history only for tone/background color, never to override ` +
@@ -295,14 +304,27 @@ export function buildChatInstructions(request: ChatRequest, safetyGuard: string)
 // need the same fencing. "confirmed" (not "trusted") reflects that these are
 // still unverified member claims that were promoted out of candidate status,
 // per guildKnowledgeInstructions — not verified truth.
+function formatTimestamp(timestampMs: number): string {
+  return new Date(timestampMs).toISOString();
+}
+
 export function buildChatContext(request: ChatRequest): string {
   const mentioned = request.mentionedUsers.length > 0
     ? request.mentionedUsers.map((user) =>
         `- ${user.id}: ${user.displayName}; live Discord roles: ${user.roleNames.join(", ") || "none"}`,
       ).join("\n")
     : "none";
+  // Private per-user exchange window: state.exchanges (see
+  // ChatConversationService.run) is scoped to guildId+currentUser.id+channelId
+  // alone, so this only ever holds this one user's own prior turns with the
+  // bot — never another member's. A question about who else has been talking
+  // needs <channel_history>/<reply_chain> instead; the scope note below is
+  // what tells the model that, rather than letting it assume these anonymous
+  // user/assistant lines are a full channel transcript.
   const history = request.recentHistory.length > 0
-    ? request.recentHistory.map((item) => `${item.role}: ${wrapUntrusted(item.content)}`).join("\n")
+    ? `[scope: your own prior exchanges with ${request.currentUser.displayName} only — not the whole channel; ` +
+      `for what other people said, use <channel_history>/<reply_chain> instead]\n` +
+      request.recentHistory.map((item) => `${item.role}: ${wrapUntrusted(item.content)}`).join("\n")
     : "none";
   const memories = request.memories.length > 0
     ? request.memories.map((memory, index) =>
@@ -327,7 +349,8 @@ export function buildChatContext(request: ChatRequest): string {
   const replyChain = request.replyChain.length > 0
     ? replyChainSummaryLine + request.replyChain.map((hop, index) => {
         const imageNote = hop.imageCount > 0 ? ` [${hop.imageCount} image${hop.imageCount > 1 ? "s" : ""} attached]` : "";
-        return `${index + 1}. ${hop.authorDisplayName} (${hop.authorId}): ${wrapUntrusted(hop.content)}${imageNote}`;
+        return `${index + 1}. [id=${hop.messageId}, t=${formatTimestamp(hop.timestampMs)}] ` +
+          `${hop.authorDisplayName} (${hop.authorId}): ${wrapUntrusted(hop.content)}${imageNote}`;
       }).join("\n")
     : "none";
   // Ambient recent channel chatter, not reply-linked — see ChatRequest.channelHistory.
@@ -337,11 +360,19 @@ export function buildChatContext(request: ChatRequest): string {
         const currentUserNote = hop.authorId === request.currentUser.id
           ? "sameAsCurrentUser=yes"
           : "sameAsCurrentUser=no";
+        // replyToAuthorId null splits two cases: hasReplyReference true means
+        // it was a reply whose target fell outside the fetched window/cache
+        // (render "unknown", not silence) — hasReplyReference false/undefined
+        // means it plainly wasn't a reply, so no replyingTo field at all. See
+        // ChannelHistoryMessage.hasReplyReference's own doc comment.
         const replyTargetNote = hop.replyToAuthorId
           ? `; replyingTo=${hop.replyToAuthorDisplayName ?? "unknown"} (${hop.replyToAuthorId}); ` +
             `replyTargetSameAsCurrentUser=${hop.replyToAuthorId === request.currentUser.id ? "yes" : "no"}`
-          : "";
-        return `${index + 1}. ${hop.authorDisplayName} (${hop.authorId}) [${currentUserNote}${replyTargetNote}]: ` +
+          : hop.hasReplyReference
+            ? `; replyingTo=unknown`
+            : "";
+        return `${index + 1}. [id=${hop.messageId}, t=${formatTimestamp(hop.timestampMs)}] ` +
+          `${hop.authorDisplayName} (${hop.authorId}) [${currentUserNote}${replyTargetNote}]: ` +
           `${wrapUntrusted(hop.content)}${imageNote}`;
       }).join("\n")
     : "none";

@@ -776,7 +776,7 @@ describe("ChatConversationService", () => {
     const provider: ChatProvider = { reply: () => Promise.resolve(response("ok")) };
     const service = new ChatConversationService(provider, store, testMemoryEngine().engine);
     const channelHistory = [
-      { authorId: "other", authorDisplayName: "Other", content: "earlier chatter", imageCount: 0 },
+      { messageId: "m1", timestampMs: 0, authorId: "other", authorDisplayName: "Other", content: "earlier chatter", imageCount: 0 },
     ];
 
     const result = await service.run(
@@ -833,7 +833,7 @@ describe("ChatConversationService", () => {
 
     await service.run({
       ...input("what did she say"),
-      replyChainOverflow: [{ authorId: "authorA", authorDisplayName: "Alice", content: "I like apple", imageCount: 0 }],
+      replyChainOverflow: [{ messageId: "m1", timestampMs: 0, authorId: "authorA", authorDisplayName: "Alice", content: "I like apple", imageCount: 0 }],
     }, (r) => Promise.resolve(r.text));
 
     expect(summarizeReplyChainOverflow).toHaveBeenCalledWith([{ authorDisplayName: "Alice", content: "I like apple" }]);
@@ -865,7 +865,7 @@ describe("ChatConversationService", () => {
 
     await service.run({
       ...input("what did she say"),
-      replyChainOverflow: [{ authorId: "authorA", authorDisplayName: "Alice", content: "I like apple", imageCount: 0 }],
+      replyChainOverflow: [{ messageId: "m1", timestampMs: 0, authorId: "authorA", authorDisplayName: "Alice", content: "I like apple", imageCount: 0 }],
     }, (r) => Promise.resolve(r.text));
 
     expect(reply).toHaveBeenCalledWith(expect.objectContaining({ replyChainSummary: null }), undefined);
@@ -884,7 +884,7 @@ describe("ChatConversationService", () => {
 
     const result = await service.run({
       ...input("i think he likes orange"),
-      replyChain: [{ authorId: "authorA", authorDisplayName: "A", content: "i like apple", imageCount: 0 }],
+      replyChain: [{ messageId: "m1", timestampMs: 0, authorId: "authorA", authorDisplayName: "A", content: "i like apple", imageCount: 0 }],
     }, (reply) => Promise.resolve(reply.text));
 
     expect(result.guildKnowledgeCandidates).toEqual([

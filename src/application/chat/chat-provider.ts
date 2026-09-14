@@ -127,6 +127,16 @@ export interface ChatHistoryMessage {
 // just before the current message (which is carried separately as
 // ChatRequest.message).
 export interface ReplyChainMessage {
+  // Discord snowflake of the message this hop represents. Lets the model
+  // (and any downstream tooling) refer to a specific line precisely instead
+  // of by position, and gives it something stable to dedupe against when
+  // the same message also appears in <channel_history>.
+  messageId: string;
+  // Unix epoch milliseconds the message was sent — Discord snowflakes are
+  // already time-ordered, but a raw timestamp is what actually lets the
+  // model reason about "recently" or reconstruct chronological order across
+  // reply_chain and channel_history without decoding a snowflake itself.
+  timestampMs: number;
   authorId: string;
   authorDisplayName: string;
   content: string;
@@ -137,10 +147,18 @@ export interface ReplyChainMessage {
 // ReplyChainMessage, but sourced from ChatTurnSupport.resolveChannelHistory
 // rather than a reply-link walk.
 export interface ChannelHistoryMessage {
+  messageId: string;
+  timestampMs: number;
   authorId: string;
   authorDisplayName: string;
   content: string;
   imageCount: number;
+  // True when this message was itself a Discord reply to something,
+  // independent of whether that target could be resolved below. Needed so
+  // "replied to something outside our fetched window/cache" (target
+  // unresolved) is never confused with "not a reply at all" — both would
+  // otherwise leave replyToAuthorId null and look identical to the model.
+  hasReplyReference?: boolean;
   // Discord reply target, when the referenced message was available in the
   // fetched channel window/cache. This is important for bot-authored lines:
   // the author alone says "the bot said X", but not which member X was said

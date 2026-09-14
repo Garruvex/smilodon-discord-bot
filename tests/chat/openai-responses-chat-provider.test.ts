@@ -71,6 +71,7 @@ describe("OpenAiResponsesChatProvider", () => {
       replyChainSummary: null,
       message: "Is this true?",
       replyChain: [{
+        messageId: "reply-1", timestampMs: 0,
         authorId: "22222222222222222", authorDisplayName: "Other", content: "A claim", imageCount: 1,
       }],
       channelHistory: [],

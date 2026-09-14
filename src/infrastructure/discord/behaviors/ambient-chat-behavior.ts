@@ -93,12 +93,16 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
 
     const { kept: replyChainMessages, overflow: replyChainOverflowMessages } = await this.turnSupport.resolveReplyChain(message);
     const replyChain: ReplyChainMessage[] = replyChainMessages.map((hop) => ({
+      messageId: hop.id,
+      timestampMs: hop.createdTimestamp,
       authorId: hop.author.id,
       authorDisplayName: hop.member?.displayName ?? hop.author.displayName,
       content: hop.content.slice(0, chatMemoryLimits.maxUserMessageChars),
       imageCount: [...hop.attachments.values()].filter((attachment) => attachment.contentType?.startsWith("image/")).length,
     }));
     const replyChainOverflow: ReplyChainMessage[] = replyChainOverflowMessages.map((hop) => ({
+      messageId: hop.id,
+      timestampMs: hop.createdTimestamp,
       authorId: hop.author.id,
       authorDisplayName: hop.member?.displayName ?? hop.author.displayName,
       content: hop.content.slice(0, chatMemoryLimits.maxUserMessageChars),
