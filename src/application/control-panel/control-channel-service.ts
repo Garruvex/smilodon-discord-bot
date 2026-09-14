@@ -952,7 +952,7 @@ export class ControlChannelService {
   ): EmbedBuilder {
     const embed = new EmbedBuilder()
       .setColor(profile.embedColor as `#${string}`)
-      .setTitle(`${this.musicDiscIcon(snapshot)} 🎤 Lyrics`);
+      .setTitle("🎤 Lyrics");
     if (!snapshot?.currentTrack) {
       return embed.setDescription("Nothing is playing right now.");
     }
