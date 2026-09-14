@@ -725,7 +725,15 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     const { current: currentLyricLine, upcoming: upcomingLyricLines } = Array.isArray(customLyrics)
       ? selectLyricLines(customLyrics, player.position)
       : { current: typeof pluginLyrics === "object" ? pluginLyrics.line : null, upcoming: [] };
-    const lyricsUnavailable = customLyrics === "not-found" && pluginLyrics === "not-found";
+    // Our own fetch is authoritative and already gives a definitive answer
+    // once it settles — waiting on the plugin fallback to *also* explicitly
+    // confirm "not found" was the bug: that fallback only ever fires an
+    // event when it actually attempts a lookup, and can stay silent forever
+    // (no found, no not-found) if it never does. Once our source says
+    // not-found, all that's left to check is whether the fallback found
+    // something in the meantime — not whether it's also reached its own
+    // definitive not-found state.
+    const lyricsUnavailable = customLyrics === "not-found" && typeof pluginLyrics !== "object";
 
     return {
       guildId,

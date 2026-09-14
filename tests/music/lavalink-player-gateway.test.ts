@@ -430,4 +430,51 @@ describe("LavalinkPlayerGateway trackStart lyrics handling", () => {
     expect(snapshot?.currentLyricLine).toBe("First line");
     expect(snapshot?.lyricsUnavailable).toBe(false);
   });
+
+  it("reports lyrics as unavailable once our own fetch confirms not-found, without waiting on the plugin fallback to also settle", () => {
+    const client = { guilds: { cache: new Map<string, Guild>() } } as unknown as Client;
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const eventBus = { publish: vi.fn(() => Promise.resolve()) } as unknown as MusicEventBus;
+    const guildConfigurationProvider = { find: vi.fn(() => undefined) } as unknown as GuildConfigurationProvider;
+    const gateway = new LavalinkPlayerGateway(
+      client,
+      { host: "localhost", port: 2333, password: "pw", secure: false },
+      logger as never,
+      eventBus,
+      guildConfigurationProvider,
+    );
+
+    const track = {
+      encoded: "track-encoded",
+      info: { title: "Track", author: "Artist", uri: "https://example.com", duration: 240_000 },
+      userData: {},
+    };
+    const player = {
+      guildId,
+      position: 1_000,
+      paused: false,
+      playing: true,
+      volume: 75,
+      voiceChannelId: "voice-id",
+      repeatMode: "off",
+      queue: { current: track, tracks: [], previous: [] },
+      get: (): undefined => undefined,
+    };
+
+    const manager = (
+      gateway as unknown as { manager: { getPlayer: (id: string) => typeof player | undefined } }
+    ).manager;
+    manager.getPlayer = vi.fn(() => player);
+    // Our own LRCLIB fetch has settled on "not-found" — the plugin fallback
+    // (pluginLyricsByGuild) is left completely unset, as it would be if it
+    // never fires any event at all for this track.
+    (
+      gateway as unknown as { customLyricsByGuild: Map<string, unknown> }
+    ).customLyricsByGuild.set(guildId, "not-found");
+
+    const snapshot = gateway.getSnapshot(guildId);
+
+    expect(snapshot?.currentLyricLine).toBeNull();
+    expect(snapshot?.lyricsUnavailable).toBe(true);
+  });
 });

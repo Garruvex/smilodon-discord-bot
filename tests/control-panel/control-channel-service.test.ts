@@ -811,6 +811,63 @@ describe("ControlChannelService", () => {
     expect(embed.footer?.text).toContain("Autoqueue found nothing to add");
   });
 
+  it("shows the upcoming lines when no line has started yet (e.g. still in the intro)", () => {
+    const { service } = createService(false);
+    const embed = (
+      service as unknown as {
+        createLyricsEmbed: (
+          profile: GuildConfiguration,
+          snapshot: unknown,
+        ) => { toJSON: () => { description?: string } };
+      }
+    ).createLyricsEmbed(guildConfiguration(false), {
+      currentTrack: { title: "Track" },
+      currentLyricLine: null,
+      upcomingLyricLines: ["First line", "Second line"],
+      lyricsUnavailable: false,
+    }).toJSON();
+
+    expect(embed.description).toBe("-# First line / Second line");
+  });
+
+  it("falls back to a placeholder when there's neither a current nor an upcoming line", () => {
+    const { service } = createService(false);
+    const embed = (
+      service as unknown as {
+        createLyricsEmbed: (
+          profile: GuildConfiguration,
+          snapshot: unknown,
+        ) => { toJSON: () => { description?: string } };
+      }
+    ).createLyricsEmbed(guildConfiguration(false), {
+      currentTrack: { title: "Track" },
+      currentLyricLine: null,
+      upcomingLyricLines: [],
+      lyricsUnavailable: false,
+    }).toJSON();
+
+    expect(embed.description).toBe("Looking for lyrics…");
+  });
+
+  it("shows the not-found placeholder once lyrics are confirmed unavailable", () => {
+    const { service } = createService(false);
+    const embed = (
+      service as unknown as {
+        createLyricsEmbed: (
+          profile: GuildConfiguration,
+          snapshot: unknown,
+        ) => { toJSON: () => { description?: string } };
+      }
+    ).createLyricsEmbed(guildConfiguration(false), {
+      currentTrack: { title: "Track" },
+      currentLyricLine: null,
+      upcomingLyricLines: [],
+      lyricsUnavailable: true,
+    }).toJSON();
+
+    expect(embed.description).toBe("No lyrics found for this track.");
+  });
+
   it("refreshes the panel to current idle state during startup", async () => {
     const { service } = createService(false);
     const ensureGuildPanel = vi

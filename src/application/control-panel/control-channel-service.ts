@@ -882,6 +882,12 @@ export class ControlChannelService {
         : "";
       return embed.setDescription(`${snapshot.currentLyricLine}${upcoming}`);
     }
+    // No line has started yet (e.g. still in the intro), but the first one
+    // is coming up within the lookahead window — show it rather than a
+    // placeholder that would just get replaced a couple of seconds later.
+    if (snapshot.upcomingLyricLines.length > 0) {
+      return embed.setDescription(`-# ${snapshot.upcomingLyricLines.join(" / ")}`);
+    }
     return embed.setDescription(
       snapshot.lyricsUnavailable ? "No lyrics found for this track." : "Looking for lyrics…",
     );
