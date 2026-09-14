@@ -19,7 +19,9 @@ export class PostgresControlPanelStateStore implements ControlPanelStateStore {
       this.states.set(row.guildId, {
         guildId: row.guildId,
         channelId: row.channelId,
-        messageId: row.messageId,
+        nowPlayingMessageId: row.nowPlayingMessageId,
+        lyricsMessageId: row.lyricsMessageId,
+        queueMessageId: row.queueMessageId,
       });
     }
   }
@@ -36,7 +38,9 @@ export class PostgresControlPanelStateStore implements ControlPanelStateStore {
         target: schema.controlPanels.guildId,
         set: {
           channelId: state.channelId,
-          messageId: state.messageId,
+          nowPlayingMessageId: state.nowPlayingMessageId,
+          lyricsMessageId: state.lyricsMessageId,
+          queueMessageId: state.queueMessageId,
           updatedAt: new Date(),
         },
       });

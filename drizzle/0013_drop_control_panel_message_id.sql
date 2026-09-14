@@ -1,0 +1,1 @@
+ALTER TABLE "control_panels" DROP COLUMN "message_id";

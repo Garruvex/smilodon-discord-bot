@@ -14,10 +14,18 @@ export const guildConfigurations = pgTable("guild_configurations", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// Three separate messages make up one guild's panel (Now Playing on top,
+// lyrics in the middle, queue + controls on the bottom — see
+// ControlChannelService). All three are nullable so a legacy single-message
+// row (pre-split) loads as "needs recreating" rather than failing outright;
+// the service's create-all-three-as-a-unit recovery path takes it from
+// there on the next refresh.
 export const controlPanels = pgTable("control_panels", {
   guildId: text("guild_id").primaryKey(),
   channelId: text("channel_id").notNull(),
-  messageId: text("message_id").notNull(),
+  nowPlayingMessageId: text("now_playing_message_id"),
+  lyricsMessageId: text("lyrics_message_id"),
+  queueMessageId: text("queue_message_id"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -27,7 +27,9 @@ describe("LocalControlPanelStateStore", () => {
     await firstStore.save({
       guildId: "guild-id",
       channelId: "channel-id",
-      messageId: "message-id",
+      nowPlayingMessageId: "now-playing-id",
+      lyricsMessageId: "lyrics-id",
+      queueMessageId: "queue-id",
     });
 
     const restoredStore = new LocalControlPanelStateStore(directory);
@@ -35,7 +37,9 @@ describe("LocalControlPanelStateStore", () => {
     expect(restoredStore.find("guild-id")).toEqual({
       guildId: "guild-id",
       channelId: "channel-id",
-      messageId: "message-id",
+      nowPlayingMessageId: "now-playing-id",
+      lyricsMessageId: "lyrics-id",
+      queueMessageId: "queue-id",
     });
   });
 
@@ -45,11 +49,13 @@ describe("LocalControlPanelStateStore", () => {
     await store.save({
       guildId: "guild-id",
       channelId: "channel-id",
-      messageId: "message-id",
+      nowPlayingMessageId: "now-playing-id",
+      lyricsMessageId: "lyrics-id",
+      queueMessageId: "queue-id",
     });
 
     const document = readFileSync(join(directory, "control-panels.json"), "utf8");
-    expect(document).toContain('"messageId": "message-id"');
+    expect(document).toContain('"nowPlayingMessageId": "now-playing-id"');
     expect(document.endsWith("\n")).toBe(true);
   });
 
@@ -59,11 +65,34 @@ describe("LocalControlPanelStateStore", () => {
     await store.save({
       guildId: "guild-id",
       channelId: "channel-id",
-      messageId: "message-id",
+      nowPlayingMessageId: "now-playing-id",
+      lyricsMessageId: "lyrics-id",
+      queueMessageId: "queue-id",
     });
 
     await store.delete("guild-id");
 
     expect(new LocalControlPanelStateStore(directory).find("guild-id")).toBeNull();
+  });
+
+  it("normalizes a legacy pre-split single-message row into a needs-recreating trio", () => {
+    const directory = temporaryDirectory();
+    writeFileSync(
+      join(directory, "control-panels.json"),
+      `${JSON.stringify({
+        "guild-id": { guildId: "guild-id", channelId: "channel-id", messageId: "old-message-id" },
+      }, null, 2)}\n`,
+      "utf8",
+    );
+
+    const store = new LocalControlPanelStateStore(directory);
+
+    expect(store.find("guild-id")).toEqual({
+      guildId: "guild-id",
+      channelId: "channel-id",
+      nowPlayingMessageId: "old-message-id",
+      lyricsMessageId: null,
+      queueMessageId: null,
+    });
   });
 });

@@ -1,7 +1,9 @@
 export interface ControlPanelRuntimeState {
   guildId: string;
   channelId: string;
-  messageId: string;
+  nowPlayingMessageId: string | null;
+  lyricsMessageId: string | null;
+  queueMessageId: string | null;
 }
 
 export interface ControlPanelStateStore {

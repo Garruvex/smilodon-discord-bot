@@ -120,6 +120,7 @@ function createService(chatbotEnabled: boolean): {
   const playerGateway = {
     getSnapshot,
     reconcileVoiceState: vi.fn(() => Promise.resolve(false)),
+    getQueue: vi.fn(() => []),
   } as unknown as MusicPlayerGateway;
   const enqueue = vi.fn().mockResolvedValue({
     firstTrack: {
@@ -188,7 +189,7 @@ describe("ControlChannelService", () => {
         find: () => ({
           guildId,
           channelId: controlPanelChannelId,
-          messageId: "panel-message",
+          queueMessageId: "panel-message",
         }),
       },
     });
@@ -234,7 +235,7 @@ describe("ControlChannelService", () => {
         find: () => ({
           guildId,
           channelId: controlPanelChannelId,
-          messageId: "panel-message",
+          queueMessageId: "panel-message",
         }),
       },
     });
@@ -308,7 +309,7 @@ describe("ControlChannelService", () => {
         find: () => ({
           guildId,
           channelId: controlPanelChannelId,
-          messageId: "panel-message",
+          queueMessageId: "panel-message",
         }),
       },
     });
@@ -376,7 +377,7 @@ describe("ControlChannelService", () => {
         find: () => ({
           guildId,
           channelId: controlPanelChannelId,
-          messageId: "panel-message",
+          queueMessageId: "panel-message",
         }),
       },
     });
@@ -445,7 +446,7 @@ describe("ControlChannelService", () => {
         find: () => ({
           guildId,
           channelId: controlPanelChannelId,
-          messageId: "panel-message",
+          queueMessageId: "panel-message",
         }),
       },
     });
@@ -522,7 +523,7 @@ describe("ControlChannelService", () => {
         find: () => ({
           guildId,
           channelId: controlPanelChannelId,
-          messageId: "panel-message",
+          queueMessageId: "panel-message",
         }),
       },
     });
@@ -559,12 +560,12 @@ describe("ControlChannelService", () => {
     const { service } = createService(false);
     const payload = (
       service as unknown as {
-        createPanelPayload: (
+        createQueueControlsPayload: (
           profile: GuildConfiguration,
           snapshot: unknown,
         ) => { components: Array<{ toJSON: () => { components: Array<{ style?: number }> } }> };
       }
-    ).createPanelPayload(guildConfiguration(false), {
+    ).createQueueControlsPayload(guildConfiguration(false), {
       guildId,
       voiceChannelId: "345678901234567890",
       paused: false,
@@ -597,12 +598,12 @@ describe("ControlChannelService", () => {
     const { service } = createService(false);
     const payload = (
       service as unknown as {
-        createPanelPayload: (
+        createQueueControlsPayload: (
           profile: GuildConfiguration,
           snapshot: unknown,
         ) => { components: Array<{ toJSON: () => { components: Array<{ disabled?: boolean }> } }> };
       }
-    ).createPanelPayload(guildConfiguration(false), {
+    ).createQueueControlsPayload(guildConfiguration(false), {
       guildId,
       voiceChannelId: "345678901234567890",
       paused: false,
@@ -627,21 +628,21 @@ describe("ControlChannelService", () => {
     expect(secondary[4]?.disabled).toBe(true);
   });
 
-  it("shows an up-next preview when the queue is non-empty", () => {
+  it("shows a queue preview with requesters and a total duration when the queue is non-empty", () => {
     const { service } = createService(false);
     const getQueue = vi.fn().mockReturnValue([
-      { identifier: "a", title: "Track A", author: "Artist A", uri: "https://example.com/a", artworkUrl: null, durationMs: 1000, isStream: false, requestedByUserId: "1" },
-      { identifier: "b", title: "Track B", author: "Artist B", uri: "https://example.com/b", artworkUrl: null, durationMs: 1000, isStream: false, requestedByUserId: "1" },
+      { identifier: "a", title: "Track A", author: "Artist A", uri: "https://example.com/a", artworkUrl: null, durationMs: 60_000, isStream: false, requestedByUserId: "111111111111111111" },
+      { identifier: "b", title: "Track B", author: "Artist B", uri: "https://example.com/b", artworkUrl: null, durationMs: 90_000, isStream: false, requestedByUserId: "autoqueue" },
     ]);
     Object.assign(service, { playerGateway: { getQueue } });
     const embed = (
       service as unknown as {
-        createPanelEmbed: (
+        createQueueEmbed: (
           profile: GuildConfiguration,
           snapshot: unknown,
-        ) => { toJSON: () => { fields?: Array<{ name: string; value: string }> } };
+        ) => { toJSON: () => { description?: string } };
       }
-    ).createPanelEmbed(guildConfiguration(false), {
+    ).createQueueEmbed(guildConfiguration(false), {
       paused: false,
       volume: 75,
       queueLength: 5,
@@ -659,17 +660,51 @@ describe("ControlChannelService", () => {
     }).toJSON();
 
     expect(getQueue).toHaveBeenCalledWith(guildId);
-    const upNext = embed.fields?.find((field) => field.name === "Up next");
-    expect(upNext?.value).toContain("[Track A](https://example.com/a)");
-    expect(upNext?.value).toContain("[Track B](https://example.com/b)");
-    expect(upNext?.value).toContain("…and 3 more");
+    expect(embed.description).toContain("5 in queue");
+    expect(embed.description).toContain("2m30s");
+    expect(embed.description).toContain("[Track A](https://example.com/a) — <@111111111111111111>");
+    expect(embed.description).toContain("[Track B](https://example.com/b) — Autoqueue");
   });
 
-  it("keeps artwork prominent and replaces diagnostic fields with compact playback details", () => {
+  it("truncates the queue preview with a pointer to /queue show once the char budget runs out", () => {
+    const { service } = createService(false);
+    const longTitleTrack = {
+      identifier: "x",
+      title: "X".repeat(60),
+      author: "Artist",
+      uri: "https://example.com/x",
+      artworkUrl: null,
+      durationMs: 60_000,
+      isStream: false,
+      requestedByUserId: "111111111111111111",
+    };
+    // Comfortably enough ~60-char lines to blow through the 3,500-char
+    // budget without needing an unreasonably large mock array.
+    const tracks = Array.from({ length: 80 }, () => longTitleTrack);
+    Object.assign(service, { playerGateway: { getQueue: vi.fn(() => tracks) } });
+    const embed = (
+      service as unknown as {
+        createQueueEmbed: (
+          profile: GuildConfiguration,
+          snapshot: unknown,
+        ) => { toJSON: () => { description?: string } };
+      }
+    ).createQueueEmbed(guildConfiguration(false), {
+      paused: false,
+      volume: 75,
+      queueLength: tracks.length,
+      repeatMode: "off",
+      currentTrack: null,
+    }).toJSON();
+
+    expect(embed.description).toMatch(/…and \d+ more — use `\/queue show` for the rest/);
+  });
+
+  it("keeps the Now Playing embed to artwork and compact playback details, with no footer or queue info", () => {
     const { service } = createService(false);
     const embed = (
       service as unknown as {
-        createPanelEmbed: (
+        createNowPlayingEmbed: (
           profile: GuildConfiguration,
           snapshot: {
             paused: boolean;
@@ -689,7 +724,7 @@ describe("ControlChannelService", () => {
           },
         ) => { toJSON: () => { description?: string; image?: { url: string }; fields?: unknown[]; footer?: { text: string } } };
       }
-    ).createPanelEmbed(guildConfiguration(false), {
+    ).createNowPlayingEmbed(guildConfiguration(false), {
       paused: false,
       volume: 75,
       queueLength: 0,
@@ -711,19 +746,19 @@ describe("ControlChannelService", () => {
     expect(embed.description).toContain("Jay Chou");
     expect(embed.description).toContain("▰");
     expect(embed.fields).toBeUndefined();
-    expect(embed.footer?.text).toContain("Queue empty");
+    expect(embed.footer).toBeUndefined();
   });
 
   it("attributes autoqueued tracks to the bot instead of creating an invalid mention", () => {
     const { service } = createService(false);
     const embed = (
       service as unknown as {
-        createPanelEmbed: (
+        createNowPlayingEmbed: (
           profile: GuildConfiguration,
           snapshot: unknown,
         ) => { toJSON: () => { description?: string } };
       }
-    ).createPanelEmbed(guildConfiguration(false), {
+    ).createNowPlayingEmbed(guildConfiguration(false), {
       paused: false,
       volume: 75,
       queueLength: 0,
@@ -744,16 +779,17 @@ describe("ControlChannelService", () => {
     expect(embed.description).not.toContain("<@autoqueue>");
   });
 
-  it("surfaces a footer note when autoqueue could not find a recommendation", () => {
+  it("surfaces a footer note on the queue embed when autoqueue could not find a recommendation", () => {
     const { service } = createService(false);
+    Object.assign(service, { playerGateway: { getQueue: vi.fn(() => []) } });
     const embed = (
       service as unknown as {
-        createPanelEmbed: (
+        createQueueEmbed: (
           profile: GuildConfiguration,
           snapshot: unknown,
         ) => { toJSON: () => { footer?: { text: string } } };
       }
-    ).createPanelEmbed(guildConfiguration(false), {
+    ).createQueueEmbed(guildConfiguration(false), {
       paused: false,
       volume: 75,
       queueLength: 0,
@@ -862,16 +898,16 @@ describe("ControlChannelService", () => {
 
   it("preserves an existing idle image attachment during refresh", () => {
     const { service } = createService(false);
-    const createPanelEditOptions = (
+    const createNowPlayingEditOptions = (
       service as unknown as {
-        createPanelEditOptions: (
+        createNowPlayingEditOptions: (
           message: Message,
           profile: GuildConfiguration,
           snapshot: null,
           payload: { content: string },
         ) => { attachments?: []; files?: unknown[] };
       }
-    ).createPanelEditOptions.bind(service);
+    ).createNowPlayingEditOptions.bind(service);
     const message = {
       attachments: {
         some: (predicate: (attachment: { name: string }) => boolean) =>
@@ -879,7 +915,7 @@ describe("ControlChannelService", () => {
       },
     } as unknown as Message;
 
-    const result = createPanelEditOptions(
+    const result = createNowPlayingEditOptions(
       message,
       guildConfiguration(false),
       null,
@@ -989,10 +1025,19 @@ describe("ControlChannelService", () => {
     } as unknown as GuildConfigurationProvider;
     const stateStore = {
       initialize: vi.fn(),
-      find: vi.fn(() => ({ guildId, channelId: oldChannelId, messageId: oldMessageId })),
+      find: vi.fn(() => ({
+        guildId,
+        channelId: oldChannelId,
+        nowPlayingMessageId: oldMessageId,
+        lyricsMessageId: null,
+        queueMessageId: null,
+      })),
       save: vi.fn(),
     } as unknown as ControlPanelStateStore;
-    const playerGateway = { getSnapshot: vi.fn(() => null) } as unknown as MusicPlayerGateway;
+    const playerGateway = {
+      getSnapshot: vi.fn(() => null),
+      getQueue: vi.fn(() => []),
+    } as unknown as MusicPlayerGateway;
     const logger = { error: vi.fn(), warn: vi.fn() };
     const eventBus = {
       subscribe: vi.fn((): (() => void) => () => undefined),
@@ -1010,13 +1055,13 @@ describe("ControlChannelService", () => {
       eventBus,
     );
 
-    const ensurePanel = (
+    const ensurePanelMessages = (
       service as unknown as {
-        ensurePanel: (profile: GuildConfiguration) => Promise<Message>;
+        ensurePanelMessages: (profile: GuildConfiguration) => Promise<unknown>;
       }
-    ).ensurePanel.bind(service);
+    ).ensurePanelMessages.bind(service);
 
-    await ensurePanel(guildConfiguration(false));
+    await ensurePanelMessages(guildConfiguration(false));
 
     expect(newChannel.permissionOverwrites.edit).toHaveBeenCalledWith(
       everyoneRole,
@@ -1032,28 +1077,62 @@ describe("ControlChannelService", () => {
   });
 
   it("serializes an in-flight background refresh against a button's optimistic edit, so an older write can't land after a newer one", async () => {
-    const messageId = "444444444444444444";
+    const nowPlayingMessageId = "444444444444444444";
+    const lyricsMessageId = "555555555555555555";
+    const queueMessageId = "666666666666666666";
     const order: string[] = [];
 
     let releaseBackgroundEdit!: () => void;
     const backgroundEditGate = new Promise<void>((resolve) => { releaseBackgroundEdit = resolve; });
 
-    const message = {
-      id: messageId,
+    // Only the Now Playing message's edit is gated — it's the first of the
+    // three writePanel() edits, so blocking it is enough to prove the whole
+    // write turn (all three messages) stays serialized against a concurrent
+    // click, without needing every message to replicate the gate.
+    const nowPlayingMessage = {
+      id: nowPlayingMessageId,
       pinned: true,
       author: { id: botUserId },
-      attachments: { some: (): boolean => false },
+      attachments: { some: (): boolean => false, size: 0 },
+      content: "",
+      embeds: [],
+      components: [],
       edit: vi.fn(async (): Promise<void> => {
         order.push("background-edit-start");
         await backgroundEditGate;
         order.push("background-edit-done");
       }),
     };
+    const lyricsMessage = {
+      id: lyricsMessageId,
+      author: { id: botUserId },
+      attachments: { size: 0 },
+      content: "",
+      embeds: [],
+      components: [],
+      edit: vi.fn().mockResolvedValue(undefined),
+    };
+    const queueMessage = {
+      id: queueMessageId,
+      author: { id: botUserId },
+      attachments: { size: 0 },
+      content: "",
+      embeds: [],
+      components: [],
+      edit: vi.fn().mockResolvedValue(undefined),
+    };
     const channel = {
       id: controlPanelChannelId,
       type: ChannelType.GuildText,
       permissionOverwrites: { edit: vi.fn().mockResolvedValue(undefined) },
-      messages: { fetch: vi.fn().mockResolvedValue(message) },
+      messages: {
+        fetch: vi.fn((id: string) => Promise.resolve(
+          id === nowPlayingMessageId ? nowPlayingMessage
+            : id === lyricsMessageId ? lyricsMessage
+              : id === queueMessageId ? queueMessage
+                : null,
+        )),
+      },
     };
     const guild = {
       id: guildId,
@@ -1073,7 +1152,13 @@ describe("ControlChannelService", () => {
     } as unknown as GuildConfigurationProvider;
     const stateStore = {
       initialize: vi.fn(),
-      find: vi.fn(() => ({ guildId, channelId: controlPanelChannelId, messageId })),
+      find: vi.fn(() => ({
+        guildId,
+        channelId: controlPanelChannelId,
+        nowPlayingMessageId,
+        lyricsMessageId,
+        queueMessageId,
+      })),
       save: vi.fn(),
     } as unknown as ControlPanelStateStore;
     const snapshot = {
@@ -1126,7 +1211,7 @@ describe("ControlChannelService", () => {
     // Kick off a background refresh (e.g. a trackStart event elsewhere) and
     // let it get as far as an in-flight, not-yet-resolved message.edit call.
     const backgroundRefresh = service.refreshPanel(guildId, { immediate: true });
-    await vi.waitFor(() => expect(message.edit).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(nowPlayingMessage.edit).toHaveBeenCalledOnce());
 
     const editReply = vi.fn((): Promise<void> => {
       order.push("optimistic-editReply");
@@ -1142,7 +1227,7 @@ describe("ControlChannelService", () => {
       inCachedGuild: (): boolean => true,
       guildId,
       channelId: controlPanelChannelId,
-      message: { id: messageId },
+      message: { id: queueMessageId },
       member: { roles: { cache: new Map([[musicControllerRoleId, {}]]) }, voice: { channelId: null } },
       user: { id: "345678901234567890" },
       update,

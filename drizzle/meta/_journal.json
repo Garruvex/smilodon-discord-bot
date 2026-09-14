@@ -85,6 +85,20 @@
       "when": 1789304079476,
       "tag": "0011_member_boost_events",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789358926145,
+      "tag": "0012_add_control_panel_message_ids",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1789358937902,
+      "tag": "0013_drop_control_panel_message_id",
+      "breakpoints": true
     }
   ]
 }

@@ -22,10 +22,14 @@ import type { PlaybackService } from "../music/playback-service.js";
 import type { MusicEventBus } from "../music/music-event-bus.js";
 import { MusicError } from "../music/music-errors.js";
 import type { MusicPlayerGateway, MusicPlayerSnapshot } from "../music/music-player-gateway.js";
+import type { MusicTrack } from "../../domain/music/music-track.js";
 import type { ApplicationConfiguration } from "../../config/configuration.js";
 import type { GuildConfiguration } from "../../config/guild-configuration.js";
 import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
-import type { ControlPanelStateStore } from "./control-panel-state-store.js";
+import type {
+  ControlPanelRuntimeState,
+  ControlPanelStateStore,
+} from "./control-panel-state-store.js";
 import { renderProgressBar } from "./progress-bar-renderer.js";
 import type { ApplicationEmojiCatalog } from "../../infrastructure/discord/application-emoji-catalog.js";
 import {
@@ -46,13 +50,34 @@ import {
 const defaultIdleImageName = "music-idle.png";
 const activePlaybackRefreshIntervalMs = 5_000;
 const defaultIdleImagePath = resolve("assets/music/no_bg.png");
-const upNextPreviewCount = 5;
 const upNextTrackTitleMaxChars = 60;
+// Leaves headroom under the embed description's 4096-char hard cap for the
+// header line and the "…and N more" note appended after this budget runs out.
+const queueListCharBudget = 3_500;
 
 interface ControlPanelPayload {
   content: string;
   embeds: EmbedBuilder[];
   components: ActionRowBuilder<ButtonBuilder>[];
+}
+
+// The three messages that make up one guild's panel, top to bottom.
+interface PanelMessageTrio {
+  nowPlaying: Message;
+  lyrics: Message;
+  queue: Message;
+}
+
+function formatQueueDuration(totalMs: number): string {
+  const totalSeconds = Math.max(0, Math.floor(totalMs / 1_000));
+  const hours = Math.floor(totalSeconds / 3_600);
+  const minutes = Math.floor((totalSeconds % 3_600) / 60);
+  const seconds = totalSeconds % 60;
+  const parts: string[] = [];
+  if (hours > 0) parts.push(`${hours}h`);
+  if (hours > 0 || minutes > 0) parts.push(`${minutes}m`);
+  parts.push(`${seconds}s`);
+  return parts.join("");
 }
 
 export class ControlChannelService {
@@ -65,13 +90,13 @@ export class ControlChannelService {
   // captures/predicts from the first click's *actual* post-execution state
   // rather than a snapshot read before either ran.
   private readonly guildLocks = new KeyedSerialQueue();
-  // The write queue: serializes every actual Discord write to the panel
-  // message per guild — both the button handler's optimistic edit and the
-  // authoritative ensurePanel()/message.edit() render, regardless of which
-  // path triggered it (a click, a background event, the progress timer, or
-  // ensureGuildPanel()). Without this, an optimistic edit and an in-flight
-  // authoritative edit can complete out of order over the network, making an
-  // older render visually stomp a newer one.
+  // The write queue: serializes every actual Discord write to the panel's
+  // three messages per guild — both the button handler's optimistic edit and
+  // the authoritative ensurePanelMessages()/message.edit() render, regardless
+  // of which path triggered it (a click, a background event, the progress
+  // timer, or ensureGuildPanel()). Without this, an optimistic edit and an
+  // in-flight authoritative edit can complete out of order over the network,
+  // making an older render visually stomp a newer one.
   private readonly panelWriteQueue = new KeyedSerialQueue();
   private readonly unsubscribeEventBus: () => void;
   private stopped = false;
@@ -135,13 +160,13 @@ export class ControlChannelService {
 
   public async ensureGuildPanel(guildId: string): Promise<Message> {
     const profile = this.guildConfigurationProvider.require(guildId);
-    const message = await this.panelWriteQueue.run(guildId, () => this.ensurePanel(profile));
-    if (!message.pinned) {
-      await message.pin("Persistent music control panel").catch((error: unknown) => {
+    const messages = await this.panelWriteQueue.run(guildId, () => this.ensurePanelMessages(profile));
+    if (!messages.nowPlaying.pinned) {
+      await messages.nowPlaying.pin("Persistent music control panel").catch((error: unknown) => {
         this.logger.warn({ error, guildId }, "Unable to pin music control panel");
       });
     }
-    return message;
+    return messages.nowPlaying;
   }
 
   public async handleMessage(message: Message): Promise<boolean> {
@@ -247,20 +272,21 @@ export class ControlChannelService {
     const profile = this.guildConfigurationProvider.find(interaction.guildId);
     const panelState = this.stateStore.find(interaction.guildId);
     // The stateStore match alone isn't enough to prove this panel is still
-    // current: it's only ever overwritten when ensurePanel() creates a
-    // replacement (see ensurePanel), never cleared when an admin disables
-    // the music feature or reassigns channels.controlPanel to somewhere
-    // else without a replacement panel being created there. Re-checking
-    // against the live guild configuration here closes that gap — a panel
-    // left behind by a config change stops being authorized even though
-    // stateStore still (harmlessly, until now) points at it.
+    // current: it's only ever overwritten when ensurePanelMessages() creates
+    // a replacement (see ensurePanelMessages), never cleared when an admin
+    // disables the music feature or reassigns channels.controlPanel to
+    // somewhere else without a replacement panel being created there.
+    // Re-checking against the live guild configuration here closes that gap
+    // — a panel left behind by a config change stops being authorized even
+    // though stateStore still (harmlessly, until now) points at it. Buttons
+    // only ever live on the queue message, so that's the one to compare.
     if (
       !profile ||
       !profile.features.music ||
       profile.channels.controlPanel !== interaction.channelId ||
       !panelState ||
       panelState.channelId !== interaction.channelId ||
-      panelState.messageId !== interaction.message.id
+      panelState.queueMessageId !== interaction.message.id
     ) {
       await interaction.reply({
         content: "This control panel is obsolete. Use the current panel message.",
@@ -370,10 +396,11 @@ export class ControlChannelService {
             const predictedSnapshot = currentSnapshot && control.predictSnapshot
               ? control.predictSnapshot(currentSnapshot)
               : currentSnapshot;
-            // Components only: the embed (track title/art/idle image)
-            // depends on attachment bookkeeping handled by the authoritative
-            // write below, so predicting it here risks a broken image
-            // reference. Buttons are self-contained and safe to predict.
+            // Components only: the embeds (track title/art/idle image,
+            // lyrics, queue list) depend on attachment/data bookkeeping
+            // handled by the authoritative write below, so predicting them
+            // here risks a broken image reference or stale queue text.
+            // Buttons are self-contained and safe to predict.
             const pendingRows = createMusicPanelControlRows(profile, predictedSnapshot, control.id);
             await this.panelWriteQueue.run(interaction.guildId, () =>
               interaction.editReply({ components: pendingRows }).catch(() => undefined));
@@ -441,9 +468,11 @@ export class ControlChannelService {
     await this.writePanel(guildId, profile, options);
   }
 
-  // The single choke point for every actual Discord write to the panel
-  // message — see panelWriteQueue's field comment for why this can't be
-  // skipped for any caller, optimistic or authoritative.
+  // The single choke point for every actual Discord write to the panel's
+  // three messages — see panelWriteQueue's field comment for why this can't
+  // be skipped for any caller, optimistic or authoritative. Each message is
+  // independently skip-checked, so an unchanged message (e.g. lyrics didn't
+  // move this tick) costs zero extra API calls.
   private async writePanel(
     guildId: string,
     profile: GuildConfiguration,
@@ -451,30 +480,42 @@ export class ControlChannelService {
   ): Promise<void> {
     await this.panelWriteQueue.run(guildId, async () => {
       try {
-        const message = await this.ensurePanel(profile);
+        const messages = await this.ensurePanelMessages(profile);
         const snapshot = this.playerGateway.getSnapshot(profile.guildId);
-        const payload = this.createPanelPayload(profile, snapshot);
         // Arm the next update from player state, not from the success of the
         // Discord edit. A transient API failure must not permanently stop the
         // panel, and Lavalink may report `playing = false` briefly while a new
         // current track is starting.
         this.resetProgressRefreshTimer(guildId, snapshot);
-        const editOptions = this.createPanelEditOptions(message, profile, snapshot, payload, options);
-        // Discord bills a no-op edit the same as one that actually changes
-        // something. Skipping it here is what collapses a button click's
-        // optimistic-then-authoritative write pair back down to a single API
-        // call whenever the optimistic prediction turned out correct, and
-        // also skips redundant background-refresh writes when the player is
-        // simply idle/paused between ticks.
-        if (this.matchesCurrentMessage(message, editOptions)) return;
-        await message.edit(editOptions);
+
+        const nowPlayingPayload = this.createNowPlayingPayload(profile, snapshot);
+        const nowPlayingEditOptions = this.createNowPlayingEditOptions(
+          messages.nowPlaying,
+          profile,
+          snapshot,
+          nowPlayingPayload,
+          options,
+        );
+        if (!this.matchesCurrentMessage(messages.nowPlaying, nowPlayingEditOptions)) {
+          await messages.nowPlaying.edit(nowPlayingEditOptions);
+        }
+
+        const lyricsPayload = this.createLyricsPayload(profile, snapshot);
+        if (!this.matchesCurrentMessage(messages.lyrics, lyricsPayload)) {
+          await messages.lyrics.edit(lyricsPayload);
+        }
+
+        const queuePayload = this.createQueueControlsPayload(profile, snapshot);
+        if (!this.matchesCurrentMessage(messages.queue, queuePayload)) {
+          await messages.queue.edit(queuePayload);
+        }
       } catch (error) {
         this.logger.error({ error, guildId }, "Unable to refresh music control panel");
       }
     });
   }
 
-  private async ensurePanel(profile: GuildConfiguration): Promise<Message> {
+  private async ensurePanelMessages(profile: GuildConfiguration): Promise<PanelMessageTrio> {
     const channelId = profile.channels.controlPanel;
     if (!channelId) throw new Error("Control panel channel is not configured.");
 
@@ -490,29 +531,89 @@ export class ControlChannelService {
 
     const state = this.stateStore.find(profile.guildId);
     if (state?.channelId === channelId) {
-      const existing = await channel.messages.fetch(state.messageId).catch(() => null);
-      if (existing && existing.author.id === this.client.user?.id) {
-        return existing;
-      }
+      const existing = await this.fetchExistingTrio(channel, state);
+      if (existing) return existing;
+      // Same channel, but the trio is broken (one message deleted, or a
+      // legacy pre-split single-message row) — clean up whatever survives
+      // here. No permission change: this channel stays the panel channel.
+      await this.deleteTrioMessagesBestEffort(channel, state);
+    } else if (state) {
+      // The panel moved to a different channel — tear down the old one,
+      // including reverting its reserved-for-panel permission overwrite.
+      await this.deleteObsoletePanelTrio(profile.guildId, state);
     }
 
     const snapshot = this.playerGateway.getSnapshot(profile.guildId);
-    const payload = this.createPanelPayload(profile, snapshot);
-    const needsIdleAttachment = !profile.idleImageUrl && !snapshot?.currentTrack;
-    const created = await channel.send(
-      needsIdleAttachment
-        ? { ...payload, files: [this.getIdleImageFile(profile)] }
-        : payload,
-    );
+    // Created in this fixed order (top to bottom) and only ever edited in
+    // place afterward, so they stay adjacent regardless of what else gets
+    // posted in the channel later — see the trio-recovery paths above for
+    // the only case that reorders them (and even then, always recreated
+    // together in this same order).
+    const nowPlaying = await this.sendNowPlayingMessage(channel, profile, snapshot);
+    const lyrics = await channel.send(this.createLyricsPayload(profile, snapshot));
+    const queue = await channel.send(this.createQueueControlsPayload(profile, snapshot));
+
     await this.stateStore.save({
       guildId: profile.guildId,
       channelId,
-      messageId: created.id,
+      nowPlayingMessageId: nowPlaying.id,
+      lyricsMessageId: lyrics.id,
+      queueMessageId: queue.id,
     });
-    if (state && (state.channelId !== channelId || state.messageId !== created.id)) {
-      await this.deleteObsoletePanel(profile.guildId, state.channelId, state.messageId);
+
+    return { nowPlaying, lyrics, queue };
+  }
+
+  private async fetchExistingTrio(
+    channel: TextChannel,
+    state: ControlPanelRuntimeState,
+  ): Promise<PanelMessageTrio | null> {
+    if (!state.nowPlayingMessageId || !state.lyricsMessageId || !state.queueMessageId) return null;
+
+    const [nowPlaying, lyrics, queue] = await Promise.all([
+      channel.messages.fetch(state.nowPlayingMessageId).catch(() => null),
+      channel.messages.fetch(state.lyricsMessageId).catch(() => null),
+      channel.messages.fetch(state.queueMessageId).catch(() => null),
+    ]);
+    const botId = this.client.user?.id;
+    if (
+      nowPlaying && lyrics && queue &&
+      nowPlaying.author.id === botId && lyrics.author.id === botId && queue.author.id === botId
+    ) {
+      return { nowPlaying, lyrics, queue };
     }
-    return created;
+    return null;
+  }
+
+  private async deleteTrioMessagesBestEffort(
+    channel: TextChannel,
+    state: ControlPanelRuntimeState,
+  ): Promise<void> {
+    for (const messageId of [state.nowPlayingMessageId, state.lyricsMessageId, state.queueMessageId]) {
+      if (messageId) await this.deleteIfOwnedByBot(channel, messageId);
+    }
+  }
+
+  private async deleteIfOwnedByBot(
+    channel: { messages: { fetch: (id: string) => Promise<Message> } },
+    messageId: string,
+  ): Promise<void> {
+    const message = await channel.messages.fetch(messageId).catch(() => null);
+    if (message && message.author.id === this.client.user?.id) {
+      await message.delete().catch(() => undefined);
+    }
+  }
+
+  private async sendNowPlayingMessage(
+    channel: TextChannel,
+    profile: GuildConfiguration,
+    snapshot: MusicPlayerSnapshot | null,
+  ): Promise<Message> {
+    const payload = this.createNowPlayingPayload(profile, snapshot);
+    const needsIdleAttachment = !profile.idleImageUrl && !snapshot?.currentTrack;
+    return channel.send(
+      needsIdleAttachment ? { ...payload, files: [this.getIdleImageFile(profile)] } : payload,
+    );
   }
 
   private normalizeSongQuery(message: Message<true>): string {
@@ -534,7 +635,7 @@ export class ControlChannelService {
     this.configuredChannelPermissions.add(channel.id);
   }
 
-  private createPanelEditOptions(
+  private createNowPlayingEditOptions(
     message: Message,
     profile: GuildConfiguration,
     snapshot: MusicPlayerSnapshot | null,
@@ -593,27 +694,29 @@ export class ControlChannelService {
     await interaction.reply({ content, flags: MessageFlags.Ephemeral });
   }
 
-  private async deleteObsoletePanel(
+  private async deleteObsoletePanelTrio(
     guildId: string,
-    channelId: string,
-    messageId: string,
+    state: ControlPanelRuntimeState,
   ): Promise<void> {
     const guild = this.client.guilds.cache.get(guildId);
-    const oldChannel = await guild?.channels.fetch(channelId).catch(() => null);
+    const oldChannel = await guild?.channels.fetch(state.channelId).catch(() => null);
     if (!oldChannel?.isTextBased() || oldChannel.isDMBased()) return;
 
     if (guild && oldChannel.type === ChannelType.GuildText) {
       await this.restoreChannelPermissions(oldChannel, guild);
     }
 
-    const oldMessage = await oldChannel.messages.fetch(messageId).catch(() => null);
-    if (!oldMessage || oldMessage.author.id !== this.client.user?.id) return;
-    await oldMessage.delete().catch((error: unknown) => {
-      this.logger.warn(
-        { error, guildId, channelId, messageId },
-        "Unable to delete obsolete music control panel",
-      );
-    });
+    for (const messageId of [state.nowPlayingMessageId, state.lyricsMessageId, state.queueMessageId]) {
+      if (!messageId) continue;
+      const oldMessage = await oldChannel.messages.fetch(messageId).catch(() => null);
+      if (!oldMessage || oldMessage.author.id !== this.client.user?.id) continue;
+      await oldMessage.delete().catch((error: unknown) => {
+        this.logger.warn(
+          { error, guildId, channelId: state.channelId, messageId },
+          "Unable to delete obsolete music control panel message",
+        );
+      });
+    }
   }
 
   // Reverses ensureChannelPermissions(): resets the UseApplicationCommands
@@ -633,11 +736,11 @@ export class ControlChannelService {
     });
   }
 
-  private createPanelPayload(
+  private createNowPlayingPayload(
     profile: GuildConfiguration,
-    snapshot = this.playerGateway.getSnapshot(profile.guildId),
+    snapshot: MusicPlayerSnapshot | null,
   ): ControlPanelPayload {
-    const embed = this.createPanelEmbed(profile, snapshot);
+    const embed = this.createNowPlayingEmbed(profile, snapshot);
     const requestersHint = profile.music.openQueueRequestsEnabled
       ? "Anyone can queue songs here by name or URL."
       : "Members with the music-controller role can queue songs here by name or URL.";
@@ -646,11 +749,11 @@ export class ControlChannelService {
       content: `Join a voice channel. ${requestersHint}\n` +
         "-# ♾️ Autoqueue: automatically adds a similar track when the queue runs out.  •  🔁 24/7: keeps the bot connected instead of leaving when idle.",
       embeds: [embed],
-      components: createMusicPanelControlRows(profile, snapshot),
+      components: [],
     };
   }
 
-  private createPanelEmbed(
+  private createNowPlayingEmbed(
     profile: GuildConfiguration,
     snapshot: MusicPlayerSnapshot | null,
   ): EmbedBuilder {
@@ -676,53 +779,107 @@ export class ControlChannelService {
         this.client.guilds.cache.some((guild) => guild.emojis.cache.has(emojiId)),
     });
     const requester = this.formatRequester(track.requestedByUserId);
-    const queueStatus = snapshot.queueLength === 0
-      ? "Queue empty"
-      : `${snapshot.queueLength} queued`;
-    const autoQueueNote = snapshot.autoQueue && snapshot.autoQueueIssue
-      ? "  •  ⚠️ Autoqueue found nothing to add"
-      : "";
-    // Bundling every line due before the next repaint (rather than just one
-    // "next" line) is what keeps this useful during fast sections — without
-    // it, lines that fire between repaints would just be silently skipped.
-    const upcomingLyrics = snapshot.currentLyricLine && snapshot.upcomingLyricLines.length > 0
-      ? `\n-# ${snapshot.upcomingLyricLines.join(" / ")}`
-      : "";
-    const lyricLine = snapshot.currentLyricLine
-      ? `\n🎤 ${snapshot.currentLyricLine}${upcomingLyrics}`
-      : snapshot.lyricsUnavailable
-        ? "\n🎤 No lyrics found"
-        : "";
     embed
       .setTitle(snapshot.paused ? "Playback paused" : "Now Playing")
-      .setDescription(`### ${title}\n${track.author}\n\n${progress}${requester}${lyricLine}`)
-      .setFooter({
-        text: `🔊 ${snapshot.volume}%  •  ${queueStatus}  •  Loop ${snapshot.repeatMode}${autoQueueNote}`,
-      });
-
-    if (snapshot.queueLength > 0) {
-      const upNextField = this.createUpNextField(profile.guildId, snapshot.queueLength);
-      if (upNextField) embed.addFields(upNextField);
-    }
+      .setDescription(`### ${title}\n${track.author}\n\n${progress}${requester}`);
 
     if (track.artworkUrl) embed.setImage(track.artworkUrl);
     return embed;
   }
 
-  private createUpNextField(
-    guildId: string,
-    queueLength: number,
-  ): { name: string; value: string } | null {
-    const upcoming = this.playerGateway.getQueue(guildId).slice(0, upNextPreviewCount);
-    if (upcoming.length === 0) return null;
+  private createLyricsPayload(
+    profile: GuildConfiguration,
+    snapshot: MusicPlayerSnapshot | null,
+  ): ControlPanelPayload {
+    return { content: "", embeds: [this.createLyricsEmbed(profile, snapshot)], components: [] };
+  }
 
-    const lines = upcoming.map((track, index) => {
+  private createLyricsEmbed(
+    profile: GuildConfiguration,
+    snapshot: MusicPlayerSnapshot | null,
+  ): EmbedBuilder {
+    const embed = new EmbedBuilder().setColor(profile.embedColor as `#${string}`).setTitle("🎤 Lyrics");
+    if (!snapshot?.currentTrack) {
+      return embed.setDescription("Nothing is playing right now.");
+    }
+    if (snapshot.currentLyricLine) {
+      // Bundling every line due before the next repaint (rather than just
+      // one "next" line) is what keeps this useful during fast sections —
+      // without it, lines that fire between repaints would just be
+      // silently skipped.
+      const upcoming = snapshot.upcomingLyricLines.length > 0
+        ? `\n-# ${snapshot.upcomingLyricLines.join(" / ")}`
+        : "";
+      return embed.setDescription(`${snapshot.currentLyricLine}${upcoming}`);
+    }
+    return embed.setDescription(
+      snapshot.lyricsUnavailable ? "No lyrics found for this track." : "Looking for lyrics…",
+    );
+  }
+
+  private createQueueControlsPayload(
+    profile: GuildConfiguration,
+    snapshot: MusicPlayerSnapshot | null,
+  ): ControlPanelPayload {
+    return {
+      content: "",
+      embeds: [this.createQueueEmbed(profile, snapshot)],
+      components: createMusicPanelControlRows(profile, snapshot),
+    };
+  }
+
+  private createQueueEmbed(
+    profile: GuildConfiguration,
+    snapshot: MusicPlayerSnapshot | null,
+  ): EmbedBuilder {
+    const embed = new EmbedBuilder().setColor(profile.embedColor as `#${string}`).setTitle("Queue");
+    const tracks = this.playerGateway.getQueue(profile.guildId);
+    const queueLength = snapshot?.queueLength ?? tracks.length;
+
+    embed.setDescription(
+      queueLength === 0
+        ? "Nothing queued."
+        : `**${queueLength} in queue** (total ${formatQueueDuration(this.sumTrackDurations(tracks))})\n${this.buildQueueLines(tracks)}`,
+    );
+
+    if (snapshot?.currentTrack) {
+      const queueStatus = queueLength === 0 ? "Queue empty" : `${queueLength} queued`;
+      const autoQueueNote = snapshot.autoQueue && snapshot.autoQueueIssue
+        ? "  •  ⚠️ Autoqueue found nothing to add"
+        : "";
+      embed.setFooter({
+        text: `🔊 ${snapshot.volume}%  •  ${queueStatus}  •  Loop ${snapshot.repeatMode}${autoQueueNote}`,
+      });
+    }
+
+    return embed;
+  }
+
+  private sumTrackDurations(tracks: readonly MusicTrack[]): number {
+    return tracks.reduce((total, track) => total + (track.isStream ? 0 : track.durationMs), 0);
+  }
+
+  // Char-budgeted rather than count-capped: with a whole dedicated message
+  // for the queue there's room to show far more than a handful of tracks,
+  // but the exact count that fits depends on title length, so this stops
+  // adding lines once the embed description's real limit is within reach
+  // instead of guessing a fixed number up front.
+  private buildQueueLines(tracks: readonly MusicTrack[]): string {
+    const lines: string[] = [];
+    let used = 0;
+    let shown = 0;
+    for (const track of tracks) {
       const label = this.truncateTrackTitle(track.title);
-      return `${index + 1}. ${track.uri ? `[${label}](${track.uri})` : label}`;
-    });
-    const remaining = queueLength - upcoming.length;
-    if (remaining > 0) lines.push(`…and ${remaining} more`);
-    return { name: "Up next", value: lines.join("\n").slice(0, 1_024) };
+      const titleText = track.uri ? `[${label}](${track.uri})` : label;
+      const line = `${shown + 1}. ${titleText}${this.formatQueueRequester(track.requestedByUserId)}`;
+      if (used + line.length + 1 > queueListCharBudget) break;
+      lines.push(line);
+      used += line.length + 1;
+      shown += 1;
+    }
+    const remaining = tracks.length - shown;
+    if (remaining > 0) lines.push(`…and ${remaining} more — use \`/queue show\` for the rest`);
+    return lines.join("\n");
   }
 
   private truncateTrackTitle(title: string): string {
@@ -742,6 +899,13 @@ export class ControlChannelService {
     return botUserId
       ? `\nRequested by <@${botUserId}> (Autoqueue)`
       : "\nRequested by Autoqueue";
+  }
+
+  // Compact form for the queue list — one entry per line, so a full mention
+  // phrase per track ("Requested by @x") would eat into the char budget
+  // fast. Just the mention is enough context there.
+  private formatQueueRequester(requestedByUserId: string): string {
+    return requestedByUserId === "autoqueue" ? " — Autoqueue" : ` — <@${requestedByUserId}>`;
   }
 
   private hasRestrictedRole(
