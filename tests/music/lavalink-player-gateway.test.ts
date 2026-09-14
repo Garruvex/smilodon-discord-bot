@@ -520,17 +520,27 @@ describe("LavalinkPlayerGateway trackStart lyrics handling", () => {
 
     const snapshot = gateway.getSnapshot(guildId);
 
+    // While playing, selection is biased 500ms forward (editLatencyBiasMs)
+    // to compensate for the edit's own network round trip — so at 4.0s the
+    // line picked is really for a render position of 4.5s.
     expect(snapshot?.currentLyricLine).toBe("First line");
     expect(snapshot?.lyricsUnavailable).toBe(false);
-    expect(snapshot?.nextLyricLineInMs).toBe(1_000);
+    expect(snapshot?.nextLyricLineInMs).toBe(500);
 
-    // A fixed network-latency bias used to advance this line too early,
-    // even when paused. The scheduler must receive the real boundary.
+    // 4.8s + the 500ms bias = past the 5s boundary — while playing, this
+    // correctly flips early (by design: the edit reaching Discord will lag
+    // behind by roughly that same amount).
     player.position = 4_800;
-    expect(gateway.getSnapshot(guildId)?.currentLyricLine).toBe("First line");
-    expect(gateway.getSnapshot(guildId)?.nextLyricLineInMs).toBe(200);
+    expect(gateway.getSnapshot(guildId)?.currentLyricLine).toBe("Second line");
+    expect(gateway.getSnapshot(guildId)?.nextLyricLineInMs).toBeNull();
+
+    // The bias must not apply while paused — nothing is advancing to "catch
+    // up" to, so biasing forward would show a line that hasn't started yet.
+    player.position = 4_800;
     player.paused = true;
     expect(gateway.getSnapshot(guildId)?.currentLyricLine).toBe("First line");
+    expect(gateway.getSnapshot(guildId)?.nextLyricLineInMs).toBe(200);
+
     player.position = 5_000;
     expect(gateway.getSnapshot(guildId)?.currentLyricLine).toBe("Second line");
     expect(gateway.getSnapshot(guildId)?.nextLyricLineInMs).toBeNull();
