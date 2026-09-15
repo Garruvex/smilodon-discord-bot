@@ -98,6 +98,15 @@ const musicPanelControls: readonly MusicPanelControl[] = [
     execute: async ({ playbackService, actor }) => playbackService.skip(actor),
   },
   {
+    id: "shuffle",
+    row: "primary",
+    render: ({ snapshot, hasActiveTrack }) => controlButton("shuffle")
+      .setEmoji("🔀")
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(!hasActiveTrack || (snapshot?.queueLength ?? 0) < 2),
+    execute: async ({ playbackService, actor }) => playbackService.shuffle(actor),
+  },
+  {
     id: "volume-down",
     row: "secondary",
     render: ({ snapshot, hasActiveTrack }) => controlButton("volume-down")
@@ -128,7 +137,7 @@ const musicPanelControls: readonly MusicPanelControl[] = [
   },
   {
     id: "autoqueue",
-    row: "secondary",
+    row: "tertiary",
     render: ({ snapshot, hasActiveTrack }) => controlButton("autoqueue")
       .setLabel("Autoqueue")
       .setEmoji("♾️")
@@ -142,7 +151,7 @@ const musicPanelControls: readonly MusicPanelControl[] = [
   },
   {
     id: "24-7",
-    row: "secondary",
+    row: "tertiary",
     render: ({ snapshot }) => controlButton("24-7")
       .setLabel("24/7")
       .setEmoji("🔁")
@@ -167,15 +176,6 @@ const musicPanelControls: readonly MusicPanelControl[] = [
     },
     predictSnapshot: (snapshot) => ({ ...snapshot, lyricsEnabled: !snapshot.lyricsEnabled }),
     showPendingState: false,
-  },
-  {
-    id: "shuffle",
-    row: "secondary",
-    render: ({ snapshot, hasActiveTrack }) => controlButton("shuffle")
-      .setEmoji("🔀")
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(!hasActiveTrack || (snapshot?.queueLength ?? 0) < 2),
-    execute: async ({ playbackService, actor }) => playbackService.shuffle(actor),
   },
 ];
 

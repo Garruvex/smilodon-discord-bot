@@ -637,10 +637,10 @@ describe("ControlChannelService", () => {
         requestedByUserId: null,
       },
     });
-    const secondary = payload.components[1]!.toJSON().components;
+    const tertiary = payload.components[2]!.toJSON().components;
 
-    expect(secondary[2]?.style).toBe(ButtonStyle.Success);
-    expect(secondary[3]?.style).toBe(ButtonStyle.Success);
+    expect(tertiary[0]?.style).toBe(ButtonStyle.Success);
+    expect(tertiary[1]?.style).toBe(ButtonStyle.Success);
   });
 
   it("disables playback controls while keeping an idle 24/7 session reversible", () => {
@@ -668,13 +668,14 @@ describe("ControlChannelService", () => {
     });
     const primary = payload.components[0]!.toJSON().components;
     const secondary = payload.components[1]!.toJSON().components;
+    const tertiary = payload.components[2]!.toJSON().components;
 
     expect(primary.every((button) => button.disabled)).toBe(true);
     expect(secondary[0]?.disabled).toBe(true);
     expect(secondary[1]?.disabled).toBe(true);
-    expect(secondary[2]?.disabled).toBe(true);
-    expect(secondary[3]?.disabled).toBe(false);
-    expect(secondary[4]?.disabled).toBe(true);
+    expect(tertiary[0]?.disabled).toBe(true);
+    expect(tertiary[1]?.disabled).toBe(false);
+    expect(tertiary[2]?.disabled).toBe(false);
   });
 
   it("shows a queue preview with requesters and a total duration when the queue is non-empty", () => {
