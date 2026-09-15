@@ -97,6 +97,7 @@ function createGateway(): MusicPlayerGateway {
     setFilterPreset: vi.fn(() => Promise.resolve()),
     toggleAutoQueue: vi.fn(() => Promise.resolve(true)),
     toggleTwentyFourSeven: vi.fn(() => Promise.resolve(true)),
+    toggleLyrics: vi.fn(() => Promise.resolve(true)),
     handleBotVoiceDisconnect: vi.fn(() => Promise.resolve()),
     reconcileVoiceState: vi.fn(() => Promise.resolve(false)),
     handleVoiceChannelOccupancy: vi.fn(),
@@ -254,6 +255,7 @@ describe("PlaybackService", () => {
     await service.setRepeatMode(actor, "queue");
     await service.toggleAutoQueue(actor);
     await service.toggleTwentyFourSeven(actor);
+    await service.toggleLyrics(actor);
     await service.clearQueue(actor);
 
     // eslint-disable-next-line @typescript-eslint/unbound-method
@@ -264,6 +266,8 @@ describe("PlaybackService", () => {
     expect(gateway.toggleAutoQueue).toHaveBeenCalledWith("guild-id");
     // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(gateway.toggleTwentyFourSeven).toHaveBeenCalledWith("guild-id");
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    expect(gateway.toggleLyrics).toHaveBeenCalledWith("guild-id");
     // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(gateway.clearQueue).toHaveBeenCalledWith("guild-id");
   });

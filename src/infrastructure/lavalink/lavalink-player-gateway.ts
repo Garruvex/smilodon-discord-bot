@@ -690,6 +690,15 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     return Promise.resolve(enabled);
   }
 
+  public toggleLyrics(guildId: string): Promise<boolean> {
+    const player = this.requirePlayer(guildId);
+    const enabled = !(player.get<boolean>("lyricsEnabled") ?? true);
+    player.set("lyricsEnabled", enabled);
+    if (!enabled) this.pluginLyricsByGuild.delete(guildId);
+    this.publishStateChange({ guildId, reason: "queue_changed" });
+    return Promise.resolve(enabled);
+  }
+
   public async handleBotVoiceDisconnect(guildId: string): Promise<void> {
     const player = this.manager.getPlayer(guildId);
     if (!player) return;
@@ -807,6 +816,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
       autoQueue: player.get<boolean>("autoQueue") ?? false,
       autoQueueIssue: this.autoQueueIssues.has(guildId),
       twentyFourSeven: player.get<boolean>("twentyFourSeven") ?? false,
+      lyricsEnabled: player.get<boolean>("lyricsEnabled") ?? true,
       currentLyricLine,
       upcomingLyricLines,
       nextLyricLineInMs,

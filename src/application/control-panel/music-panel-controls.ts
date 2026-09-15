@@ -11,7 +11,7 @@ import type { PlaybackActor, PlaybackService } from "../music/playback-service.j
 
 export const musicPanelControlIdPrefix = "music-panel:v1:";
 
-type MusicPanelControlRow = "primary" | "secondary";
+type MusicPanelControlRow = "primary" | "secondary" | "tertiary";
 
 interface MusicPanelRenderContext {
   profile: GuildConfiguration;
@@ -155,6 +155,20 @@ const musicPanelControls: readonly MusicPanelControl[] = [
     showPendingState: false,
   },
   {
+    id: "lyrics",
+    row: "tertiary",
+    render: ({ snapshot }) => controlButton("lyrics")
+      .setLabel("Lyrics")
+      .setEmoji("🎤")
+      .setStyle(snapshot?.lyricsEnabled !== false ? ButtonStyle.Success : ButtonStyle.Secondary)
+      .setDisabled(!snapshot),
+    execute: async ({ playbackService, actor }): Promise<void> => {
+      await playbackService.toggleLyrics(actor);
+    },
+    predictSnapshot: (snapshot) => ({ ...snapshot, lyricsEnabled: !snapshot.lyricsEnabled }),
+    showPendingState: false,
+  },
+  {
     id: "shuffle",
     row: "secondary",
     render: ({ snapshot, hasActiveTrack }) => controlButton("shuffle")
@@ -193,5 +207,5 @@ export function createMusicPanelControlRows(
         }),
     );
 
-  return [createRow("primary"), createRow("secondary")];
+  return [createRow("primary"), createRow("secondary"), createRow("tertiary")];
 }

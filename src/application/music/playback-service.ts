@@ -167,6 +167,11 @@ export class PlaybackService {
     return this.playerGateway.toggleTwentyFourSeven(actor.guildId);
   }
 
+  public async toggleLyrics(actor: PlaybackActor): Promise<boolean> {
+    this.assertControllablePlayer(actor);
+    return this.playerGateway.toggleLyrics(actor.guildId);
+  }
+
   private assertControllablePlayer(actor: PlaybackActor): void {
     if (!this.playerGateway.hasPlayer(actor.guildId)) {
       throw new MusicPlayerNotFoundError();

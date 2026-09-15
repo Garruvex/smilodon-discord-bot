@@ -63,4 +63,18 @@ describe("music panel controls", () => {
     expect(resume).toHaveBeenCalledWith(actor);
     expect(pause).not.toHaveBeenCalled();
   });
+
+  it("toggles lyrics through the playback service", async () => {
+    const toggleLyrics = vi.fn().mockResolvedValue(true);
+    const control = findMusicPanelControl(`${musicPanelControlIdPrefix}lyrics`);
+
+    await control?.execute({
+      actor,
+      profile,
+      playbackService: { toggleLyrics } as unknown as PlaybackService,
+      playerGateway: {} as MusicPlayerGateway,
+    });
+
+    expect(toggleLyrics).toHaveBeenCalledWith(actor);
+  });
 });

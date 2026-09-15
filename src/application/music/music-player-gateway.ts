@@ -45,6 +45,7 @@ export interface MusicPlayerGateway {
   setFilterPreset(guildId: string, preset: MusicFilterPreset): Promise<void>;
   toggleAutoQueue(guildId: string): Promise<boolean>;
   toggleTwentyFourSeven(guildId: string): Promise<boolean>;
+  toggleLyrics(guildId: string): Promise<boolean>;
   handleBotVoiceDisconnect(guildId: string): Promise<void>;
   // Verifies the invariant "bot's actual Discord voice channel === the
   // Lavalink player's recorded voice channel" and destroys the player (via
@@ -75,6 +76,10 @@ export interface MusicPlayerSnapshot {
   // the failure only in logs.
   autoQueueIssue: boolean;
   twentyFourSeven: boolean;
+  // User-controlled toggle (panel button, like autoQueue/twentyFourSeven) for
+  // whether the Lyrics panel message should exist at all. Defaults to true;
+  // when false the control panel skips creating/updating it entirely.
+  lyricsEnabled: boolean;
   // The synced lyric line for the current playback position, if the track
   // has synced lyrics available and the Lavalink node has the lyrics plugin
   // installed. Null while unknown (no line has arrived yet) or unavailable.

@@ -38,6 +38,7 @@ const unavailableMusicGateway: MusicPlayerGateway = {
   setFilterPreset: () => Promise.reject(new Error("Music is unavailable during command deployment.")),
   toggleAutoQueue: () => Promise.reject(new Error("Music is unavailable during command deployment.")),
   toggleTwentyFourSeven: () => Promise.reject(new Error("Music is unavailable during command deployment.")),
+  toggleLyrics: () => Promise.reject(new Error("Music is unavailable during command deployment.")),
   handleBotVoiceDisconnect: () => Promise.resolve(),
   reconcileVoiceState: () => Promise.resolve(false),
   handleVoiceChannelOccupancy: () => undefined,
