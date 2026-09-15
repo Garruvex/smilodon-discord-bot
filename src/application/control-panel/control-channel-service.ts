@@ -681,7 +681,7 @@ export class ControlChannelService {
   // "this is a different song" for the panel's purposes without needing
   // Lavalink's own internal track id, which isn't exposed at this layer.
   private lyricsTrackKey(snapshot: MusicPlayerSnapshot | null): string | null {
-    if (snapshot?.lyricsEnabled === false) return null;
+    if (snapshot?.lyricsEnabled !== true) return null;
     const track = snapshot?.currentTrack;
     return track ? `${track.title}|${track.author}|${track.uri}` : null;
   }

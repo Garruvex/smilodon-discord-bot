@@ -77,8 +77,8 @@ export interface MusicPlayerSnapshot {
   autoQueueIssue: boolean;
   twentyFourSeven: boolean;
   // User-controlled toggle (panel button, like autoQueue/twentyFourSeven) for
-  // whether the Lyrics panel message should exist at all. Defaults to true;
-  // when false the control panel skips creating/updating it entirely.
+  // whether the Lyrics panel message should exist at all. Defaults to false
+  // (opt-in); the control panel skips creating/updating it until enabled.
   lyricsEnabled: boolean;
   // The synced lyric line for the current playback position, if the track
   // has synced lyrics available and the Lavalink node has the lyrics plugin

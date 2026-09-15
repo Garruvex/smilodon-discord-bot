@@ -692,7 +692,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
 
   public toggleLyrics(guildId: string): Promise<boolean> {
     const player = this.requirePlayer(guildId);
-    const enabled = !(player.get<boolean>("lyricsEnabled") ?? true);
+    const enabled = !(player.get<boolean>("lyricsEnabled") ?? false);
     player.set("lyricsEnabled", enabled);
     if (!enabled) this.pluginLyricsByGuild.delete(guildId);
     this.publishStateChange({ guildId, reason: "queue_changed" });
@@ -816,7 +816,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
       autoQueue: player.get<boolean>("autoQueue") ?? false,
       autoQueueIssue: this.autoQueueIssues.has(guildId),
       twentyFourSeven: player.get<boolean>("twentyFourSeven") ?? false,
-      lyricsEnabled: player.get<boolean>("lyricsEnabled") ?? true,
+      lyricsEnabled: player.get<boolean>("lyricsEnabled") ?? false,
       currentLyricLine,
       upcomingLyricLines,
       nextLyricLineInMs,

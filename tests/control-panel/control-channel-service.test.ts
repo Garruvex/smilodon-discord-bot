@@ -1102,7 +1102,7 @@ describe("ControlChannelService", () => {
     const channel = { send };
 
     const first = await internals.ensureLyricsMessage(
-      channel, profile, { currentTrack: trackA, upcomingLyricLines: [] }, guildId,
+      channel, profile, { currentTrack: trackA, upcomingLyricLines: [], lyricsEnabled: true }, guildId,
     );
     expect(first.justCreated).toBe(true);
     expect(first.message).toBe(firstMessage);
@@ -1110,7 +1110,7 @@ describe("ControlChannelService", () => {
 
     // Same track (position ticking, nothing else) — no recreation.
     const second = await internals.ensureLyricsMessage(
-      channel, profile, { currentTrack: { ...trackA }, upcomingLyricLines: [] }, guildId,
+      channel, profile, { currentTrack: { ...trackA }, upcomingLyricLines: [], lyricsEnabled: true }, guildId,
     );
     expect(second.justCreated).toBe(false);
     expect(second.message).toBe(firstMessage);
@@ -1119,7 +1119,7 @@ describe("ControlChannelService", () => {
 
     // A new track — the old message is deleted and a fresh one sent.
     const third = await internals.ensureLyricsMessage(
-      channel, profile, { currentTrack: trackB, upcomingLyricLines: [] }, guildId,
+      channel, profile, { currentTrack: trackB, upcomingLyricLines: [], lyricsEnabled: true }, guildId,
     );
     expect(third.justCreated).toBe(true);
     expect(third.message).toBe(secondMessage);
@@ -1155,7 +1155,7 @@ describe("ControlChannelService", () => {
     const playing = { id: "lyrics-song", delete: vi.fn().mockResolvedValue(undefined) };
     send.mockResolvedValueOnce(playing);
     const whilePlaying = await internals.ensureLyricsMessage(
-      channel, profile, { currentTrack: track, upcomingLyricLines: [] }, guildId,
+      channel, profile, { currentTrack: track, upcomingLyricLines: [], lyricsEnabled: true }, guildId,
     );
     expect(whilePlaying.message).toBe(playing);
     expect(whilePlaying.justCreated).toBe(true);
@@ -1693,6 +1693,7 @@ describe("ControlChannelService", () => {
         currentTrack: { title: "Track", author: "Artist", uri: "https://example.com/track", durationMs: 200_000, positionMs: 0, isStream: false },
         paused: false,
         upcomingLyricLines: [],
+        lyricsEnabled: true,
       })),
       reconcileVoiceState: vi.fn(() => Promise.resolve(false)),
       getQueue: vi.fn(() => []),
@@ -1754,6 +1755,7 @@ describe("ControlChannelService", () => {
       paused: false,
       currentLyricLine: `Line at ${positionMs}`,
       upcomingLyricLines: [],
+      lyricsEnabled: true,
     }));
     vi.spyOn(internals, "ensurePanelMessages").mockResolvedValue({ channel, nowPlaying: nowPlayingMessage, queue: {} });
     // This test drives writeTimedPanels explicitly to control exact timing;

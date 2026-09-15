@@ -169,7 +169,7 @@ const musicPanelControls: readonly MusicPanelControl[] = [
     render: ({ snapshot }) => controlButton("lyrics")
       .setLabel("Lyrics")
       .setEmoji("🎤")
-      .setStyle(snapshot?.lyricsEnabled !== false ? ButtonStyle.Success : ButtonStyle.Secondary)
+      .setStyle(snapshot?.lyricsEnabled === true ? ButtonStyle.Success : ButtonStyle.Secondary)
       .setDisabled(!snapshot),
     execute: async ({ playbackService, actor }): Promise<void> => {
       await playbackService.toggleLyrics(actor);
