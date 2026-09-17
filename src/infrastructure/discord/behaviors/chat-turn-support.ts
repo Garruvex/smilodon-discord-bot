@@ -242,6 +242,7 @@ export class ChatTurnSupport {
         replyToAuthorDisplayName: target
           ? target.member?.displayName ?? target.author.displayName
           : null,
+        replyToMessageId: target?.id ?? null,
       };
     });
   }

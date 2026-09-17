@@ -252,11 +252,11 @@ describe("buildChatContext", () => {
         },
         {
           messageId: "m-bot", timestampMs: 1, authorId: "bot", authorDisplayName: "Pinecone", content: "Punctuation, help me.", imageCount: 0,
-          hasReplyReference: true, replyToAuthorId: "fluffy", replyToAuthorDisplayName: "Fluffy",
+          hasReplyReference: true, replyToAuthorId: "fluffy", replyToAuthorDisplayName: "Fluffy", replyToMessageId: "m-fluffy",
         },
         {
           messageId: "m-quail", timestampMs: 2, authorId: "quail", authorDisplayName: "Quail", content: "Yes, comfort me.", imageCount: 0,
-          hasReplyReference: true, replyToAuthorId: "bot", replyToAuthorDisplayName: "Pinecone",
+          hasReplyReference: true, replyToAuthorId: "bot", replyToAuthorDisplayName: "Pinecone", replyToMessageId: "m-bot",
         },
         {
           messageId: "m-mystery", timestampMs: 3, authorId: "fluffy", authorDisplayName: "Fluffy", content: "wait what", imageCount: 0,
@@ -267,10 +267,10 @@ describe("buildChatContext", () => {
 
     expect(context).toContain("Fluffy (fluffy) [sameAsCurrentUser=no]:");
     expect(context).toContain(
-      "Pinecone (bot) [sameAsCurrentUser=no; replyingTo=Fluffy (fluffy); replyTargetSameAsCurrentUser=no]",
+      "Pinecone (bot) [sameAsCurrentUser=no; replyingTo=Fluffy (fluffy, msg=m-fluffy); replyTargetSameAsCurrentUser=no]",
     );
     expect(context).toContain(
-      "Quail (quail) [sameAsCurrentUser=yes; replyingTo=Pinecone (bot); replyTargetSameAsCurrentUser=no]",
+      "Quail (quail) [sameAsCurrentUser=yes; replyingTo=Pinecone (bot, msg=m-bot); replyTargetSameAsCurrentUser=no]",
     );
     // A reply whose target fell outside the fetched window/cache still says
     // so explicitly, instead of looking identical to a non-reply message.
@@ -299,9 +299,9 @@ describe("buildChatContext", () => {
       // unanswerable when history carried no id/timestamp/reply-target.
       channelHistory: [
         { messageId: "1", timestampMs: 1_700_000_000_000, authorId: "raccoon", authorDisplayName: "Raccoon Dog", content: "hey bot", imageCount: 0 },
-        { messageId: "2", timestampMs: 1_700_000_001_000, authorId: "bot", authorDisplayName: "Pinecone", content: "hi!", imageCount: 0, hasReplyReference: true, replyToAuthorId: "raccoon", replyToAuthorDisplayName: "Raccoon Dog" },
+        { messageId: "2", timestampMs: 1_700_000_001_000, authorId: "bot", authorDisplayName: "Pinecone", content: "hi!", imageCount: 0, hasReplyReference: true, replyToAuthorId: "raccoon", replyToAuthorDisplayName: "Raccoon Dog", replyToMessageId: "1" },
         { messageId: "3", timestampMs: 1_700_000_002_000, authorId: "fluffy", authorDisplayName: "Fluffy", content: "lol", imageCount: 0 },
-        { messageId: "4", timestampMs: 1_700_000_003_000, authorId: "bot", authorDisplayName: "Pinecone", content: "what's funny?", imageCount: 0, hasReplyReference: true, replyToAuthorId: "fluffy", replyToAuthorDisplayName: "Fluffy" },
+        { messageId: "4", timestampMs: 1_700_000_003_000, authorId: "bot", authorDisplayName: "Pinecone", content: "what's funny?", imageCount: 0, hasReplyReference: true, replyToAuthorId: "fluffy", replyToAuthorDisplayName: "Fluffy", replyToMessageId: "3" },
         { messageId: "5", timestampMs: 1_700_000_004_000, authorId: "quail", authorDisplayName: "Quail", content: "who has talked to you in the last little while", imageCount: 0 },
       ],
     }));
@@ -316,7 +316,36 @@ describe("buildChatContext", () => {
     }
     // Each bot reply names its actual target, so the model can attribute
     // "the bot said X" to the right member instead of whoever spoke last.
-    expect(context).toContain("replyingTo=Raccoon Dog (raccoon)");
-    expect(context).toContain("replyingTo=Fluffy (fluffy)");
+    expect(context).toContain("replyingTo=Raccoon Dog (raccoon, msg=1)");
+    expect(context).toContain("replyingTo=Fluffy (fluffy, msg=3)");
+  });
+
+  // Regression fixture from a real production incident: the model answered
+  // "@bot is LW a ___ fan?" by quoting "friend has grey fur" and attributing
+  // it to LW — that line was actually said by Ginco several messages earlier
+  // in the same channel_history window. This test proves the *data pipeline*
+  // gives the model everything it needs to get this right (Ginco's line
+  // carries Ginco's own id, not LW's, and LW's own line is separately and
+  // correctly attributed) — it does NOT prove the model will actually use
+  // that data correctly every time. That's an LLM-compliance question this
+  // kind of test structurally cannot answer; only a live replay against the
+  // real configured provider can (see attribution-verification.ts's own
+  // prompt for the mitigation once a misattribution slips through anyway).
+  it("gives the model correctly-attributed ground truth for the Ginco/LW misattribution incident", () => {
+    const context = buildChatContext(baseRequest({
+      currentUser: { id: "raccoon-dog-user", displayName: "露奶頭的狗", roleNames: [] },
+      message: "@松果 LW是胖太控嗎",
+      channelHistory: [
+        { messageId: "m12", timestampMs: 1_700_000_000_000, authorId: "ginco-user", authorDisplayName: "Ginco", content: "朋友有灰毛", imageCount: 0 },
+        { messageId: "m13", timestampMs: 1_700_000_010_000, authorId: "fluffy-user", authorDisplayName: "章魚哥我的飛機杯", content: "操", imageCount: 0 },
+      ],
+    }));
+
+    // Ginco's own line is tagged with Ginco's id, not LW's.
+    expect(context).toContain("Ginco (ginco-user)");
+    expect(context).toContain("朋友有灰毛");
+    // Nothing in the rendered context ever pairs LW's id with that statement
+    // — the misattribution, if it happens, is not sourced from bad data.
+    expect(context).not.toMatch(/lw[^)]*\)[^\n]*朋友有灰毛/i);
   });
 });

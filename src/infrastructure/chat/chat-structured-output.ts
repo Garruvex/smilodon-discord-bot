@@ -111,7 +111,11 @@ const entityDisambiguationInstruction = "Multiple different people can be discus
   "saying something like \"you asked/said X earlier,\" check that the authorId on that <reply_chain>/" +
   "<channel_history> line actually matches <current_user>'s id. A busy channel has several people talking at " +
   "once — a question or remark from one person is never something a different person said or asked, even if " +
-  "they replied right after it or the topic carried over. A display name is never reliable evidence of identity " +
+  "they replied right after it or the topic carried over. Resolving a vague pronoun this way is a different " +
+  "operation from establishing who actually said or did something: that identity comes only from a matching id " +
+  "on the actual line, never from recency, proximity, or being the current topic — being named or asked about in " +
+  "<current_message> is not itself evidence that the person you're asked about said or did anything. A display " +
+  "name is never reliable evidence of identity " +
   "by itself: two different people can have similar, overlapping, or joke-variant names, and the same account can " +
   "change its display name mid-conversation. The id shown next to each name is the only thing that reliably says " +
   "who is who — only treat two lines as the same person when their ids match, never because the names look " +
@@ -404,7 +408,7 @@ export function buildChatContext(request: ChatRequest): string {
         // means it plainly wasn't a reply, so no replyingTo field at all. See
         // ChannelHistoryMessage.hasReplyReference's own doc comment.
         const replyTargetNote = hop.replyToAuthorId
-          ? `; replyingTo=${hop.replyToAuthorDisplayName ?? "unknown"} (${hop.replyToAuthorId}); ` +
+          ? `; replyingTo=${hop.replyToAuthorDisplayName ?? "unknown"} (${hop.replyToAuthorId}, msg=${hop.replyToMessageId ?? "unknown"}); ` +
             `replyTargetSameAsCurrentUser=${hop.replyToAuthorId === request.currentUser.id ? "yes" : "no"}`
           : hop.hasReplyReference
             ? `; replyingTo=unknown`

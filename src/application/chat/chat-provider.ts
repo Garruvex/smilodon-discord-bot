@@ -165,6 +165,12 @@ export interface ChannelHistoryMessage {
   // to, which can make a later speaker inherit somebody else's exchange.
   replyToAuthorId?: string | null;
   replyToAuthorDisplayName?: string | null;
+  // The exact message id being replied to, alongside its author above — an
+  // author can appear on several lines in the same window, so the target
+  // author alone doesn't pin down which specific one of their messages this
+  // is a reply to. Lets a precise cross-check ("does this reply actually
+  // point at THAT line") replace an author-level guess.
+  replyToMessageId?: string | null;
 }
 
 export interface ChatMemoryRecord {
