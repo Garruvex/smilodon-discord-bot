@@ -52,6 +52,11 @@ import {
   parseReplyChainOverflowSummaryOutput,
 } from "../../application/chat/reply-chain-overflow-summary.js";
 import {
+  buildAttributionVerificationPrompt,
+  attributionVerificationJsonSchema,
+  parseAttributionVerificationOutput,
+} from "../../application/chat/attribution-verification.js";
+import {
   buildPersonalMemoryExtractionPrompt,
   personalMemoryExtractionJsonSchema,
   parsePersonalMemoryExtractionOutput,
@@ -435,6 +440,18 @@ export class GeminiChatProvider implements ChatProvider {
       replyChainOverflowSummaryJsonSchema,
     ));
     return parseReplyChainOverflowSummaryOutput((response.text ?? "").trim()).summary;
+  }
+
+  public async verifyAttribution(
+    draftResponse: string,
+    context: readonly { authorId: string; authorDisplayName: string; content: string }[],
+  ): Promise<{ needsCorrection: boolean; correctedResponse: string | null }> {
+    const response = await this.summaryModelChain.run((model) => this.generateStructured(
+      model,
+      buildAttributionVerificationPrompt(draftResponse, context),
+      attributionVerificationJsonSchema,
+    ));
+    return parseAttributionVerificationOutput((response.text ?? "").trim());
   }
 
   // Parses inside the retried callback (not after summaryModelChain.run

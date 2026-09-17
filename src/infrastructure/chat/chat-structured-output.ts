@@ -128,7 +128,12 @@ const groundedAttributionInstruction = "Before saying a specific person did or s
   "blame, an accusation, or attributing an action like posting a link or spoiler — point to an actual " +
   "<reply_chain>/<channel_history> line from that person's id that shows it. A vague reaction (a laugh, an emoji, " +
   "a short exclamation) or a different speaker's guess is not evidence of who did it. If no line actually shows " +
-  "who's responsible, say that isn't clear from what you can see rather than naming someone anyway.";
+  "who's responsible, say that isn't clear from what you can see rather than naming someone anyway. This applies " +
+  "just as much when a question is about one specific named person (\"is X a ___\", \"did X say ___\", \"what has " +
+  "X been up to\"): when you find a quote or fact that seems to answer it, check that the id on the line carrying " +
+  "that quote actually equals X's id before attributing it to X — a thematically relevant line said by someone " +
+  "else is not evidence about X, however well it seems to fit the question, and attaching it to X anyway turns an " +
+  "innocent mix-up into a false claim about a real person.";
 
 // <conversation_history> holds this same speaker's own past turns with you —
 // including your own prior replies, which are past *output*, not verified

@@ -433,6 +433,25 @@ export interface PersonalMemoryExtractor {
   ): Promise<readonly PersonalMemoryExtractionAction[]>;
 }
 
+// Standalone call (own prompt/schema) run on the critical path right after
+// the main reply is generated — see ChatConversationService.run. Catches a
+// specific, repeatedly-observed failure mode the main reply prompt's own
+// entity-disambiguation/grounded-attribution instructions don't fully
+// prevent on their own: crediting a real, verbatim line to the wrong
+// person (not fabricating content, just mislabeling whose it is). Only
+// worth calling when the turn actually had other people's messages in
+// context (reply_chain/channel_history) — a turn with none of that has
+// nothing to misattribute. Returns the draft unchanged (needsCorrection
+// false) on the common path; a provider missing this capability means the
+// turn simply skips verification, same as any other optional capability
+// here.
+export interface AttributionVerifier {
+  verifyAttribution(
+    draftResponse: string,
+    context: readonly { authorId: string; authorDisplayName: string; content: string }[],
+  ): Promise<{ needsCorrection: boolean; correctedResponse: string | null }>;
+}
+
 // A ChatProvider is always a ChatReplyProvider; the rest are standalone
 // capabilities a given provider implementation may or may not support.
 // Kept optional here (rather than requiring callers to hold a narrower
@@ -450,7 +469,8 @@ export type ChatProvider = ChatReplyProvider &
   Partial<MemoryConflictClassifier> &
   Partial<ReplyChainSummarizer> &
   Partial<ReferenceImageGenerator> &
-  Partial<PersonalMemoryExtractor>;
+  Partial<PersonalMemoryExtractor> &
+  Partial<AttributionVerifier>;
 
 export interface ChatResponseObserver {
   onImagePreview(image: GeneratedChatImage): Promise<void>;

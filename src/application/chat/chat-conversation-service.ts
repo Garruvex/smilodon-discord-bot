@@ -61,6 +61,17 @@ function toGuildKnowledgeRecord(memory: Memory): GuildKnowledgeRecord {
   };
 }
 
+// Size of what the model actually receives for these records — buildChatContext
+// (chat-structured-output.ts) only ever reads subject/topic/slot/statement off
+// ChatMemoryRecord/GuildKnowledgeRecord, never `.embedding`. Used for the
+// contextUsage char-count metrics below; JSON.stringify'ing the records
+// as-is would count each record's embedding vector (thousands of characters
+// of floats) against a metric meant to reflect prompt-injection budget,
+// wildly overstating it relative to what was actually sent.
+function promptSizeOf(records: readonly { embedding: unknown }[]): number {
+  return JSON.stringify(records.map(({ embedding: _embedding, ...rest }) => rest)).length;
+}
+
 function memoryKindForTopic(topic: string): "fact" | "preference" | "episode" {
   if (topic === "scene_summary") return "episode";
   if (topic === "preference") return "preference";
@@ -300,6 +311,41 @@ export class ChatConversationService {
     } catch (error) {
       this.logger?.warn({ error, guildId, channelId }, "Reply-chain overflow summarization failed; continuing without it");
       return null;
+    }
+  }
+
+  // Catches a specific, repeatedly-observed failure the main reply prompt's
+  // own instructions don't fully prevent: crediting a real, verbatim line
+  // to the wrong person. Runs on the critical path (the corrected text is
+  // what actually gets delivered/stored), but only when there was other
+  // people's context to misattribute against in the first place — a turn
+  // with no reply_chain/channel_history has nothing to check. Failures are
+  // logged and swallowed in favor of the unverified draft: a missed
+  // correction is a quality regression, not a reason to not reply at all.
+  private async verifyAttribution(
+    draftResponse: string,
+    replyChain: readonly ReplyChainMessage[],
+    channelHistory: readonly { authorId: string; authorDisplayName: string; content: string }[],
+    guildId: string,
+    channelId: string,
+  ): Promise<string> {
+    if (replyChain.length === 0 && channelHistory.length === 0) return draftResponse;
+    const verifier = this.utilityProvider?.verifyAttribution ? this.utilityProvider : this.provider;
+    if (!verifier.verifyAttribution) return draftResponse;
+    try {
+      const context = [
+        ...replyChain.map((hop) => ({ authorId: hop.authorId, authorDisplayName: hop.authorDisplayName, content: hop.content })),
+        ...channelHistory.map((hop) => ({ authorId: hop.authorId, authorDisplayName: hop.authorDisplayName, content: hop.content })),
+      ];
+      const result = await verifier.verifyAttribution(draftResponse, context);
+      if (!result.needsCorrection) return draftResponse;
+      const corrected = result.correctedResponse?.trim();
+      if (!corrected) return draftResponse;
+      this.logger?.info({ guildId, channelId }, "Attribution verification corrected a misattributed reply");
+      return corrected;
+    } catch (error) {
+      this.logger?.warn({ error, guildId, channelId }, "Attribution verification failed; delivering the unverified draft");
+      return draftResponse;
     }
   }
 
@@ -635,9 +681,9 @@ export class ChatConversationService {
           historyMessages: recentHistory.length,
           historyChars: JSON.stringify(recentHistory).length,
           memoryRecords: selectedMemories.length,
-          memoryChars: JSON.stringify(selectedMemories).length,
+          memoryChars: promptSizeOf(selectedMemories),
           guildKnowledgeRecords: selectedGuildKnowledge.length,
-          guildKnowledgeChars: JSON.stringify(selectedGuildKnowledge).length,
+          guildKnowledgeChars: promptSizeOf(selectedGuildKnowledge),
           exampleExchangeRecords: selectedExampleExchanges.length,
           exampleExchangeChars: JSON.stringify(selectedExampleExchanges).length,
           replyChainMessages: input.replyChain.length,
@@ -695,6 +741,15 @@ export class ChatConversationService {
         }
         return validatedResponse;
       }
+      // Mutates the already-built response object in place (not a
+      // reassignment) — everything below this point (delivery, session-
+      // exchange storage, dedicated personal-memory extraction on the
+      // delivered text) reads validatedResponse.text, so correcting it here
+      // is the one place that guarantees every downstream consumer sees the
+      // corrected version rather than some seeing the draft.
+      validatedResponse.text = await this.verifyAttribution(
+        validatedResponse.text, input.replyChain, input.channelHistory, input.guildId, input.channelId,
+      );
       const deliveredAssistantMessage = await deliver(validatedResponse);
       // Signals the extraction sub-task (reserved at the very top of this
       // callback) that it can proceed — see that reservation's own comment

@@ -38,6 +38,11 @@ import {
   parseReplyChainOverflowSummaryOutput,
 } from "../../application/chat/reply-chain-overflow-summary.js";
 import {
+  buildAttributionVerificationPrompt,
+  attributionVerificationJsonSchema,
+  parseAttributionVerificationOutput,
+} from "../../application/chat/attribution-verification.js";
+import {
   buildPersonalMemoryExtractionPrompt,
   personalMemoryExtractionJsonSchema,
   parsePersonalMemoryExtractionOutput,
@@ -469,6 +474,18 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
       replyChainOverflowSummaryJsonSchema,
     );
     return parseReplyChainOverflowSummaryOutput(text).summary;
+  }
+
+  public async verifyAttribution(
+    draftResponse: string,
+    context: readonly { authorId: string; authorDisplayName: string; content: string }[],
+  ): Promise<{ needsCorrection: boolean; correctedResponse: string | null }> {
+    const text = await this.callStructuredOutput(
+      buildAttributionVerificationPrompt(draftResponse, context),
+      "attribution_verification",
+      attributionVerificationJsonSchema,
+    );
+    return parseAttributionVerificationOutput(text);
   }
 
   // Deliberately NOT built on callStructuredOutput, same reason as

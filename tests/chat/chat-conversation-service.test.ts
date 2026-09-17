@@ -871,6 +871,79 @@ describe("ChatConversationService", () => {
     expect(reply).toHaveBeenCalledWith(expect.objectContaining({ replyChainSummary: null }), undefined);
   });
 
+  it("delivers the corrected text when attribution verification finds a misattribution", async () => {
+    const store = baseStore();
+    const verifyAttribution = vi.fn(() => Promise.resolve({
+      needsCorrection: true,
+      correctedResponse: "Ginco said that, not LW.",
+    }));
+    const reply = vi.fn(() => Promise.resolve(response("LW said that.")));
+    const provider: ChatProvider = { reply, verifyAttribution };
+    const service = new ChatConversationService(provider, store, testMemoryEngine().engine);
+    const deliver = vi.fn((r: ChatResponse) => Promise.resolve(r.text));
+
+    const result = await service.run({
+      ...input("who said that"),
+      channelHistory: [
+        { messageId: "m1", timestampMs: 0, authorId: "ginco", authorDisplayName: "Ginco", content: "friend has grey fur", imageCount: 0 },
+      ],
+    }, deliver);
+
+    expect(verifyAttribution).toHaveBeenCalledWith(
+      "LW said that.",
+      [{ authorId: "ginco", authorDisplayName: "Ginco", content: "friend has grey fur" }],
+    );
+    expect(result.text).toBe("Ginco said that, not LW.");
+    expect(deliver).toHaveBeenCalledWith(expect.objectContaining({ text: "Ginco said that, not LW." }));
+  });
+
+  it("skips attribution verification entirely when there's no reply-chain or channel-history context", async () => {
+    const store = baseStore();
+    const verifyAttribution = vi.fn(() => Promise.resolve({ needsCorrection: true, correctedResponse: "should not be used" }));
+    const reply = vi.fn(() => Promise.resolve(response("ok")));
+    const provider: ChatProvider = { reply, verifyAttribution };
+    const service = new ChatConversationService(provider, store, testMemoryEngine().engine);
+
+    const result = await service.run(input("hi"), (r) => Promise.resolve(r.text));
+
+    expect(verifyAttribution).not.toHaveBeenCalled();
+    expect(result.text).toBe("ok");
+  });
+
+  it("delivers the unverified draft when attribution verification fails", async () => {
+    const store = baseStore();
+    const verifyAttribution = vi.fn(() => Promise.reject(new Error("provider down")));
+    const reply = vi.fn(() => Promise.resolve(response("LW said that.")));
+    const provider: ChatProvider = { reply, verifyAttribution };
+    const service = new ChatConversationService(provider, store, testMemoryEngine().engine);
+
+    const result = await service.run({
+      ...input("who said that"),
+      channelHistory: [
+        { messageId: "m1", timestampMs: 0, authorId: "ginco", authorDisplayName: "Ginco", content: "friend has grey fur", imageCount: 0 },
+      ],
+    }, (r) => Promise.resolve(r.text));
+
+    expect(result.text).toBe("LW said that.");
+  });
+
+  it("leaves the draft unchanged when verification reports needsCorrection false", async () => {
+    const store = baseStore();
+    const verifyAttribution = vi.fn(() => Promise.resolve({ needsCorrection: false, correctedResponse: null }));
+    const reply = vi.fn(() => Promise.resolve(response("Ginco said that.")));
+    const provider: ChatProvider = { reply, verifyAttribution };
+    const service = new ChatConversationService(provider, store, testMemoryEngine().engine);
+
+    const result = await service.run({
+      ...input("who said that"),
+      channelHistory: [
+        { messageId: "m1", timestampMs: 0, authorId: "ginco", authorDisplayName: "Ginco", content: "friend has grey fur", imageCount: 0 },
+      ],
+    }, (r) => Promise.resolve(r.text));
+
+    expect(result.text).toBe("Ginco said that.");
+  });
+
   it("keeps a guild-knowledge candidate about a reply-chain author, not just the current user or an @mention", async () => {
     const store = baseStore();
     const candidates: ChatResponse["guildKnowledgeCandidates"] = [

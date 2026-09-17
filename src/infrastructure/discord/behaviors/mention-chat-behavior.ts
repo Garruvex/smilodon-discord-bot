@@ -293,6 +293,8 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         guildKnowledgeChars: response.contextUsage?.guildKnowledgeChars,
         replyChainMessages: response.contextUsage?.replyChainMessages,
         replyChainChars: response.contextUsage?.replyChainChars,
+        channelHistoryMessages: response.contextUsage?.channelHistoryMessages,
+        channelHistoryChars: response.contextUsage?.channelHistoryChars,
         currentMessageChars: response.contextUsage?.currentMessageChars,
       }, "Chat API request completed");
     } catch (error) {
