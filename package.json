@@ -62,6 +62,7 @@
     "discord.js": "^14.16.0",
     "dotenv": "^16.4.7",
     "drizzle-orm": "^0.45.2",
+    "emoji-regex": "^10.6.0",
     "lavalink-client": "^2.9.7",
     "pino": "^9.6.0",
     "postgres": "^3.4.9",

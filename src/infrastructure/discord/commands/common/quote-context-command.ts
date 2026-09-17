@@ -2,7 +2,7 @@ import { AttachmentBuilder, MessageFlags, type MessageContextMenuCommandInteract
 
 import { CommandModule, CommandResponseVisibility, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
-import { getQuoteText, renderQuoteCard } from "./quote-card-renderer.js";
+import { hasQuotableContent, renderQuoteCard } from "./quote-card-renderer.js";
 
 export class QuoteContextCommand implements BotCommand<MessageContextMenuCommandInteraction> {
   public readonly definition = {
@@ -20,7 +20,7 @@ export class QuoteContextCommand implements BotCommand<MessageContextMenuCommand
     // Checked before deferring so this can stay a private, ephemeral reply —
     // once deferred with the command's public visibility, a reply can no
     // longer be made ephemeral.
-    if (!getQuoteText(targetMessage)) {
+    if (!hasQuotableContent(targetMessage)) {
       await context.interaction.reply({
         content: "That message has no text to quote.",
         flags: MessageFlags.Ephemeral,

@@ -2,7 +2,7 @@ import { AttachmentBuilder } from "discord.js";
 
 import { CommandModule, CommandResponseVisibility, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
-import { getQuoteText, renderQuoteCard } from "./quote-card-renderer.js";
+import { hasQuotableContent, renderQuoteCard } from "./quote-card-renderer.js";
 
 const messageLinkPattern = /^https:\/\/(?:canary\.|ptb\.)?discord\.com\/channels\/(\d+)\/(\d+)\/(\d+)$/;
 
@@ -63,7 +63,7 @@ export class QuoteCommand implements BotCommand {
       return;
     }
 
-    if (!getQuoteText(targetMessage)) {
+    if (!hasQuotableContent(targetMessage)) {
       await context.responses.edit("That message has no text to quote.");
       return;
     }
