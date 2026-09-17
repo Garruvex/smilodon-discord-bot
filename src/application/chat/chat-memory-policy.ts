@@ -66,11 +66,15 @@ export function normalizeForGroundingCheck(text: string): string {
   return text.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
-export function validateMemoryActions(
-  actions: readonly ProposedMemoryAction[],
+// Generic over the proposal shape (rather than fixed to ProposedMemoryAction)
+// so a caller with extra fields — e.g. GroundedProposedMemoryAction's
+// sourceQuote — gets them preserved on the validated result instead of
+// silently losing them to this function's own return type.
+export function validateMemoryActions<T extends ProposedMemoryAction>(
+  actions: readonly T[],
   allowedSubjectUserIds: ReadonlySet<string>,
-): ProposedMemoryAction[] {
-  const valid: ProposedMemoryAction[] = [];
+): T[] {
+  const valid: T[] = [];
   for (const action of actions.slice(0, chatMemoryLimits.maxActionsPerResponse)) {
     const topic = action.topic.trim().toLowerCase();
     const slot = action.slot.trim().toLowerCase();
@@ -101,4 +105,5 @@ export const chatMemoryInstructions = `Long-term memory rules:
 - Use a stable topic from: ${memoryTopicIds.join(", ")}.
 - Use a short lowercase semantic slot such as food.fruit, role.overwatch, or current.discord_bot.
 - Use upsert for new/corrected durable facts and remove only for an explicit forget/correction request.
+- For an upsert, sourceQuote must be a verbatim (or near-verbatim) excerpt of something the subject themselves actually said in <current_message>/<reply_chain>/<channel_history> — not a paraphrase, not something a different person said, and not something you inferred. For remove, set sourceQuote to null.
 - When uncertain, return no memory actions.`;

@@ -16,6 +16,7 @@ import type {
   MemoryRelationIngestInput,
   MemoryRelationIngestResult,
   MemoryRepository,
+  MemorySource,
   ProposedMemory,
   RelationCreateInput,
 } from "./memory.js";
@@ -553,9 +554,16 @@ export class DefaultMemoryEngine implements MemoryEngine {
     return this.repository.listByUser(guildId, userId);
   }
 
+  public listSources(memoryId: string): Promise<readonly MemorySource[]> {
+    return this.repository.findSources(memoryId);
+  }
+
   public forget(input: MemoryForgetInput): Promise<number> {
     if (input.memoryId) return this.repository.forget({ guildId: input.guildId, memoryId: input.memoryId });
-    return this.repository.forget({ guildId: input.guildId, ownerUserId: input.ownerUserId });
+    return this.repository.forget({
+      guildId: input.guildId, ownerUserId: input.ownerUserId,
+      ...(input.subjectId !== undefined ? { subjectId: input.subjectId } : {}),
+    });
   }
 }
 

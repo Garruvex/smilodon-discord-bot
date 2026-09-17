@@ -35,7 +35,11 @@ export class LocalMemberDataPurger implements MemberDataPurger {
       // becomes a rejected promise instead of aborting construction of the
       // array before the remaining stores have even been attempted.
       const operations: readonly (() => Promise<unknown>)[] = [
-        (): Promise<unknown> => this.memoryRepository.forget({ guildId, ownerUserId: userId }),
+        // subjectId as well as ownerUserId: a departing member's data purge
+        // should be at least as thorough as /memory forget all — also
+        // removes a third-party claim about them, which has no owner of its
+        // own (see ForgetQuery.subjectId).
+        (): Promise<unknown> => this.memoryRepository.forget({ guildId, ownerUserId: userId, subjectId: userId }),
         (): Promise<unknown> => this.userCustomizationStore.clear(guildId, userId),
         (): Promise<unknown> => this.birthdayStore.removeBirthday(guildId, userId),
         (): Promise<unknown> => this.boostHistoryStore.removeForUser(guildId, userId),

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
+import type { EmbedBuilder } from "discord.js";
 
 import { MemoryCommand } from "../../src/infrastructure/discord/commands/common/memory-command.js";
 import type { ChatStateStore } from "../../src/application/chat/chat-state-store.js";
@@ -85,9 +86,75 @@ describe("MemoryCommand", () => {
 
     await command.execute(context);
     expect(reply).toHaveBeenCalledOnce();
-    const [message] = reply.mock.calls[0] as [string];
-    expect(message).toContain("preference.food.fruit");
-    expect(message).toContain("likes green apples");
+    const [payload] = reply.mock.calls[0] as [{ embeds: EmbedBuilder[] }];
+    const fields = payload.embeds.flatMap((embed) => embed.toJSON().fields ?? []);
+    expect(fields).toContainEqual(expect.objectContaining({ name: "preference.food.fruit" }));
+    const field = fields.find((candidate) => candidate.name === "preference.food.fruit");
+    expect(field?.value).toContain("likes green apples");
+    expect(field?.value).toContain("private");
+    expect(field?.value).toContain("active");
+    expect(field?.value).toContain("source unavailable");
+  });
+
+  it("renders a working view-source link for a live-chat memory with a real Discord message id", async () => {
+    const { engine, repository } = testMemoryEngine();
+    await repository.ingest({
+      guildId: "guild", kind: "preference", audience: "private", ownerUserId: "user", channelId: null,
+      isolationChannelId: null, subjectType: "member", subjectId: "user", topic: "preference", slot: "food.fruit",
+      statement: "likes green apples", status: "active", source: "live", confidence: 1, importance: 1,
+      embedding: null, embeddingModel: null, expiresAt: null, now: 0,
+      sourceMessageId: "111222333", sourceChannelId: "444555666", assertedByUserId: "user",
+    });
+    const store = baseStore();
+    const command = new MemoryCommand(store, new MemberProfileService(engine, null, null), engine);
+    const { context, reply } = makeContext({ subcommand: "list" });
+
+    await command.execute(context);
+    const [payload] = reply.mock.calls[0] as [{ embeds: EmbedBuilder[] }];
+    const field = payload.embeds.flatMap((embed) => embed.toJSON().fields ?? [])[0];
+    expect(field?.value).toContain("https://discord.com/channels/guild/444555666/111222333");
+  });
+
+  it("labels a consolidation-sourced memory (synthetic batch id) as source unavailable, not a broken link", async () => {
+    const { engine, repository } = testMemoryEngine();
+    await repository.ingest({
+      guildId: "guild", kind: "episode", audience: "private", ownerUserId: "user", channelId: null,
+      isolationChannelId: null, subjectType: "member", subjectId: "user", topic: "preference", slot: "food.fruit",
+      statement: "likes green apples", status: "active", source: "consolidation", confidence: 1, importance: 1,
+      embedding: null, embeddingModel: null, expiresAt: null, now: 0,
+      sourceMessageId: "batch:daily:guild:channel:a-b", sourceChannelId: "channel", assertedByUserId: null,
+    });
+    const store = baseStore();
+    const command = new MemoryCommand(store, new MemberProfileService(engine, null, null), engine);
+    const { context, reply } = makeContext({ subcommand: "list" });
+
+    await command.execute(context);
+    const [payload] = reply.mock.calls[0] as [{ embeds: EmbedBuilder[] }];
+    const field = payload.embeds.flatMap((embed) => embed.toJSON().fields ?? [])[0];
+    expect(field?.value).toContain("source unavailable");
+    expect(field?.value).not.toContain("discord.com");
+  });
+
+  it("paginates across multiple embeds instead of silently truncating when there are many memories", async () => {
+    const { engine, repository } = testMemoryEngine();
+    for (let i = 0; i < 30; i++) {
+      await repository.ingest({
+        guildId: "guild", kind: "fact", audience: "private", ownerUserId: "user", channelId: null,
+        isolationChannelId: null, subjectType: "member", subjectId: "user", topic: "preference", slot: `slot${i}`,
+        statement: `fact ${i}`, status: "active", source: "live", confidence: 1, importance: 1,
+        embedding: null, embeddingModel: null, expiresAt: null, now: 0,
+        sourceMessageId: null, sourceChannelId: null, assertedByUserId: "user",
+      });
+    }
+    const store = baseStore();
+    const command = new MemoryCommand(store, new MemberProfileService(engine, null, null), engine);
+    const { context, reply } = makeContext({ subcommand: "list" });
+
+    await command.execute(context);
+    const [payload] = reply.mock.calls[0] as [{ embeds: EmbedBuilder[] }];
+    expect(payload.embeds.length).toBeGreaterThan(1);
+    const fields = payload.embeds.flatMap((embed) => embed.toJSON().fields ?? []);
+    expect(fields).toHaveLength(30);
   });
 
   it("reports when there is nothing remembered", async () => {
@@ -126,8 +193,32 @@ describe("MemoryCommand", () => {
     const { context, reply } = makeContext({ subcommand: "forget", all: true });
 
     await command.execute(context);
-    expect(reply).toHaveBeenCalledWith("Forgot 1 memory.");
+    expect(reply).toHaveBeenCalledWith(expect.stringContaining("Forgot 1 memory."));
     expect(await engine.listUserMemories("guild", "user")).toHaveLength(0);
+  });
+
+  it("forget all:true also clears a third-party guild-knowledge claim about the user, not just what they own", async () => {
+    const { engine, repository } = testMemoryEngine();
+    await seedActiveMemory(repository);
+    // A community claim ABOUT this user, asserted by someone else — no
+    // owner of its own (ownerUserId null), so a scope limited to ownerUserId
+    // alone would leave it behind even after "forget everything".
+    const claimAboutUser = await repository.ingest({
+      guildId: "guild", kind: "fact", audience: "guild", ownerUserId: null, channelId: null,
+      isolationChannelId: null, subjectType: "member", subjectId: "user", topic: "community_activity",
+      slot: "raid.friday", statement: "organizes Friday raids", status: "active", source: "live",
+      confidence: 1, importance: 1, embedding: null, embeddingModel: null, expiresAt: null, now: 0,
+      sourceMessageId: null, sourceChannelId: null, assertedByUserId: "someone-else",
+    });
+    const store = baseStore();
+    const command = new MemoryCommand(store, new MemberProfileService(engine, null, null), engine);
+    const { context, reply } = makeContext({ subcommand: "forget", all: true });
+
+    await command.execute(context);
+
+    expect(reply).toHaveBeenCalledWith(expect.stringContaining("Forgot 2 memories."));
+    expect(await engine.listUserMemories("guild", "user")).toHaveLength(0);
+    expect(await repository.findById("guild", claimAboutUser.id)).toBeNull();
   });
 
   it("forget all:true also clears any queued personal-memory extraction jobs for the user, not just existing memories", async () => {
@@ -147,7 +238,7 @@ describe("MemoryCommand", () => {
 
     await command.execute(context);
 
-    expect(reply).toHaveBeenCalledWith("Forgot 1 memory.");
+    expect(reply).toHaveBeenCalledWith(expect.stringContaining("Forgot 1 memory."));
     expect(await engine.listUserMemories("guild", "user")).toHaveLength(0);
     await expect(extractionQueue.dequeueDue(10, 0)).resolves.toHaveLength(0);
   });

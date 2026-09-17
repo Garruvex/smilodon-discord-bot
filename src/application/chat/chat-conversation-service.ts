@@ -2,7 +2,7 @@ import type { Logger } from "pino";
 
 import { hashContent } from "../assets/content-hash.js";
 import { chatMemoryInstructions, chatMemoryLimits, normalizeForGroundingCheck, validateMemoryActions } from "./chat-memory-policy.js";
-import { chatSafetyGuard, type ChatProvider, type ChatRequest, type ChatResponse, type ChatResponseObserver, type ReplyChainMessage } from "./chat-provider.js";
+import { chatSafetyGuard, type ChannelHistoryMessage, type ChatProvider, type ChatRequest, type ChatResponse, type ChatResponseObserver, type ReplyChainMessage } from "./chat-provider.js";
 import type { ChatSessionExchange, ChatStateStore } from "./chat-state-store.js";
 import type { UserCustomizationStore } from "./user-customization-store.js";
 import { KeyedSerialQueue } from "../concurrency/keyed-serial-queue.js";
@@ -70,6 +70,52 @@ function toGuildKnowledgeRecord(memory: Memory): GuildKnowledgeRecord {
 // wildly overstating it relative to what was actually sent.
 function promptSizeOf(records: readonly { embedding: unknown }[]): number {
   return JSON.stringify(records.map(({ embedding: _embedding, ...rest }) => rest)).length;
+}
+
+// Same grounding role as PersonalMemoryExtractionAction.sourceQuote/the
+// dedicated extractor's own check (see extractPersonalMemories below), but
+// applied to the main reply's own memory/guild-knowledge proposals — these
+// are produced in the same structured-output call as the reply text, so a
+// misattributed conclusion the model draws (see attribution-verification.ts)
+// can otherwise become a durable write even after the reply text itself
+// gets corrected, since that correction never touches these fields. Checks
+// that `quote` genuinely appears in something `speakerId` said this turn —
+// <current_message> when speakerId is the current user, or a <reply_chain>/
+// <channel_history> line actually authored by speakerId otherwise. An empty
+// or missing quote is never grounded (the model must supply one, not omit
+// it to dodge the check).
+function isGroundedForSpeaker(
+  quote: string | null,
+  speakerId: string,
+  message: string,
+  currentUserId: string,
+  replyChain: readonly ReplyChainMessage[],
+  channelHistory: readonly ChannelHistoryMessage[],
+): boolean {
+  const normalizedQuote = normalizeForGroundingCheck(quote ?? "");
+  if (!normalizedQuote) return false;
+  if (speakerId === currentUserId && normalizeForGroundingCheck(message).includes(normalizedQuote)) return true;
+  for (const hop of [...replyChain, ...channelHistory]) {
+    if (hop.authorId === speakerId && normalizeForGroundingCheck(hop.content).includes(normalizedQuote)) return true;
+  }
+  return false;
+}
+
+// Weaker variant for a guild-knowledge candidate about a non-member subject
+// (guild/team/project/npc/faction/location) — there's no single "author" to
+// check the quote against, so this only guards against outright fabrication:
+// the quote must appear somewhere in this turn's actual context, not
+// necessarily from a specific person.
+function isGroundedAnywhere(
+  quote: string,
+  message: string,
+  replyChain: readonly ReplyChainMessage[],
+  channelHistory: readonly ChannelHistoryMessage[],
+): boolean {
+  const normalizedQuote = normalizeForGroundingCheck(quote);
+  if (!normalizedQuote) return false;
+  if (normalizeForGroundingCheck(message).includes(normalizedQuote)) return true;
+  return [...replyChain, ...channelHistory].some((hop) => normalizeForGroundingCheck(hop.content).includes(normalizedQuote));
 }
 
 function memoryKindForTopic(topic: string): "fact" | "preference" | "episode" {
@@ -692,7 +738,16 @@ export class ChatConversationService {
           channelHistoryChars: JSON.stringify(input.channelHistory).length,
           currentMessageChars: input.message.length,
         },
-        userMemoryActions: validateMemoryActions(response.userMemoryActions, allowedSubjects),
+        // Grounding runs after (not instead of) the existing topic/slot/
+        // subject-authorization validation above — a proposal can pass that
+        // and still be an ungrounded misattribution, which is exactly what
+        // this catches: a "remove" action needs no grounding (nothing new to
+        // ground), an "upsert" must quote something its own subject actually
+        // said this turn.
+        userMemoryActions: validateMemoryActions(response.userMemoryActions, allowedSubjects).filter((action) =>
+          action.action === "remove" || isGroundedForSpeaker(
+            action.sourceQuote, action.subjectUserId, input.message, input.currentUser.id, input.replyChain, input.channelHistory,
+          )),
         guildKnowledgeCandidates: validateGuildKnowledgeCandidates(
           response.guildKnowledgeCandidates,
           {
@@ -701,7 +756,11 @@ export class ChatConversationService {
             currentUserId: input.currentUser.id,
             allowedMemberIds: allowedSubjects,
           },
-        ),
+        ).filter((candidate) => candidate.subjectType === "member"
+          ? isGroundedForSpeaker(
+              candidate.sourceQuote, candidate.subjectId, input.message, input.currentUser.id, input.replyChain, input.channelHistory,
+            )
+          : isGroundedAnywhere(candidate.sourceQuote, input.message, input.replyChain, input.channelHistory)),
       };
       // ambientAction "ignore" and reactionEmoji are independent signals:
       // an ambient turn can reply, react, both, or neither. No reply here

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { and, eq, gt, inArray, isNull, ne, or } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, ne, or } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 
 import type {
@@ -13,6 +13,7 @@ import type {
   MemoryRelationKind,
   MemoryRelationPredicate,
   MemoryRepository,
+  MemorySource,
   MemorySourceKind,
   MemoryStatus,
   MemorySubjectType,
@@ -218,6 +219,23 @@ export class SqliteMemoryRepository implements MemoryRepository {
     return Promise.resolve(rows.map(toMemory));
   }
 
+  public findSources(memoryId: string): Promise<readonly MemorySource[]> {
+    const rows = this.database.select().from(schema.memorySources)
+      .where(eq(schema.memorySources.memoryId, memoryId))
+      .orderBy(asc(schema.memorySources.createdAt))
+      .all();
+    return Promise.resolve(rows.map((row) => ({
+      id: row.id,
+      memoryId: row.memoryId,
+      sourceMessageId: row.sourceMessageId,
+      sourceChannelId: row.sourceChannelId,
+      assertedByUserId: row.assertedByUserId,
+      statement: row.statement,
+      source: row.source as MemorySourceKind,
+      createdAt: row.createdAt.getTime(),
+    })));
+  }
+
   public forget(query: ForgetQuery): Promise<number> {
     if (query.memoryId) {
       const result = this.database.delete(schema.memories).where(and(
@@ -225,9 +243,16 @@ export class SqliteMemoryRepository implements MemoryRepository {
       )).run();
       return Promise.resolve(result.changes);
     }
-    if (query.ownerUserId) {
+    if (query.ownerUserId || query.subjectId) {
+      // OR, not AND — see PostgresMemoryRepository.forget/ForgetQuery.subjectId
+      // for why: a "forget everything about this user" caller needs either
+      // condition to catch a row.
+      const conditions = [
+        query.ownerUserId ? eq(schema.memories.ownerUserId, query.ownerUserId) : undefined,
+        query.subjectId ? and(eq(schema.memories.subjectType, "member"), eq(schema.memories.subjectId, query.subjectId)) : undefined,
+      ].filter((condition) => condition !== undefined);
       const result = this.database.delete(schema.memories).where(and(
-        eq(schema.memories.guildId, query.guildId), eq(schema.memories.ownerUserId, query.ownerUserId),
+        eq(schema.memories.guildId, query.guildId), or(...conditions),
       )).run();
       return Promise.resolve(result.changes);
     }

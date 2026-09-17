@@ -215,9 +215,19 @@ export interface RecallCandidates {
 
 export interface ForgetQuery {
   guildId: string;
-  // Either a specific memory id, or all memories owned by a user.
+  // Either a specific memory id, or every memory matching ownerUserId and/or
+  // subjectId below (never both a memoryId and the other two at once).
   memoryId?: string;
   ownerUserId?: string;
+  // Also remove any member-subject memory where this user is the SUBJECT,
+  // not just the owner/asserter — a third-party claim about them (e.g. "Bob
+  // likes pizza", said by someone else) is guild/channel-audience with
+  // ownerUserId null, so an ownerUserId-only match never touches it even
+  // though it's just as much "about this person" as anything they said
+  // themselves. Independent of (and typically set alongside) ownerUserId:
+  // matched with OR, not AND — a caller wiping everything about a user needs
+  // either condition to catch a row, not both.
+  subjectId?: string;
 }
 
 export interface ActiveSubjectQuery {
@@ -255,6 +265,13 @@ export interface MemoryRepository {
   findById(guildId: string, id: string): Promise<Memory | null>;
   listByUser(guildId: string, userId: string): Promise<Memory[]>;
   forget(input: ForgetQuery): Promise<number>;
+  // Provenance for one memory, oldest first — every ingest() call records a
+  // row here (see RepositoryIngestInput's own sourceMessageId/sourceChannelId/
+  // assertedByUserId), but until /memory list needed to render a "view
+  // source" link nothing ever read them back. memoryId is already guild-
+  // scoped by construction (the caller looked it up via findById/listByUser
+  // first), so this doesn't take a separate guildId.
+  findSources(memoryId: string): Promise<readonly MemorySource[]>;
   // Conflict-at-write support (MOSAIC-style, simplified — see
   // memory-engine.ts's checkForConflicts): every other currently-active
   // memory about the same subject, regardless of topic/slot, so the engine
@@ -423,6 +440,10 @@ export interface MemoryForgetInput {
   guildId: string;
   ownerUserId: string;
   memoryId?: string;
+  // See ForgetQuery.subjectId — set this to ownerUserId's own value to widen
+  // a "forget everything" call to also remove third-party claims about this
+  // user, not just what they said about themselves.
+  subjectId?: string;
 }
 
 // A relation proposal from an extraction call (currently: channel-summary
@@ -465,4 +486,8 @@ export interface MemoryEngine {
   ingestRelations(input: MemoryRelationIngestInput): Promise<MemoryRelationIngestResult>;
   listUserMemories(guildId: string, userId: string): Promise<readonly Memory[]>;
   forget(input: MemoryForgetInput): Promise<number>;
+  // Provenance for one memory — see MemoryRepository.findSources. Exposed at
+  // the engine level so callers (e.g. /memory list) don't need direct
+  // repository access just to render a "view source" link.
+  listSources(memoryId: string): Promise<readonly MemorySource[]>;
 }

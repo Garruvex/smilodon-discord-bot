@@ -58,8 +58,13 @@ export interface ValidatedGuildKnowledgeCandidate extends ProposedGuildKnowledge
   channelId: string | null;
 }
 
-export function validateGuildKnowledgeCandidates(
-  candidates: readonly ProposedGuildKnowledgeCandidate[],
+// Generic over the candidate shape so a caller with extra fields — e.g.
+// GroundedProposedGuildKnowledgeCandidate's sourceQuote, or
+// ChannelSummaryFact's evidenceMessageIds — gets them preserved on the
+// validated result instead of silently losing them to this function's own
+// return type.
+export function validateGuildKnowledgeCandidates<T extends ProposedGuildKnowledgeCandidate>(
+  candidates: readonly T[],
   input: {
     guildId: string;
     currentChannelId: string;
@@ -67,8 +72,8 @@ export function validateGuildKnowledgeCandidates(
     allowedMemberIds: ReadonlySet<string>;
     maxCandidates?: number;
   },
-): ValidatedGuildKnowledgeCandidate[] {
-  const valid: ValidatedGuildKnowledgeCandidate[] = [];
+): (T & { channelId: string | null })[] {
+  const valid: (T & { channelId: string | null })[] = [];
   for (const candidate of candidates.slice(0, input.maxCandidates ?? guildKnowledgeLimits.maxCandidatesPerResponse)) {
     const topic = candidate.topic.trim().toLowerCase();
     const slot = candidate.slot.trim().toLowerCase();
@@ -109,4 +114,5 @@ export const guildKnowledgeInstructions = `Shared guild knowledge rules:
 - A statement one member makes about another member's preferences, habits, or traits belongs here as a member-subject candidate, not as the asserting user's private memory.
 - Use only a supplied member ID: the current user, an explicitly @mentioned user, or a reply-chain author shown in <reply_chain>. For guild subjects, use the supplied guild ID.
 - Set channelScoped=true when the fact describes something specific to what's happening in this channel/scene right now (a location, an in-progress event, a temporary state) rather than a durable fact true anywhere in the guild. Most nickname/community/team-membership candidates should stay channelScoped=false (guild-wide).
+- sourceQuote must be a verbatim (or near-verbatim) excerpt from <current_message>/<reply_chain>/<channel_history> supporting this claim. For a member-subject candidate, the quote must be something that specific member actually said — not something a different person said, and not something you inferred from a vague reaction or from someone else's guess.
 - When uncertain, propose no guild candidates.`;

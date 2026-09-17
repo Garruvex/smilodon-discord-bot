@@ -195,6 +195,22 @@ export interface ProposedMemoryAction {
   statement: string | null;
 }
 
+// The main reply call's own schema additionally carries sourceQuote (see
+// chatModelOutputSchema) — kept as a subtype rather than added to
+// ProposedMemoryAction itself, since that base type is also reused by
+// unrelated shapes (legacy EmbeddedMemoryAction, etc.) that have no such
+// field and shouldn't need one.
+export interface GroundedProposedMemoryAction extends ProposedMemoryAction {
+  // A verbatim (or near-verbatim) excerpt of something the subject
+  // themselves actually said — grounds the proposal against a specific
+  // <current_message>/<reply_chain>/<channel_history> line authored by
+  // subjectUserId, the same way PersonalMemoryExtractionAction.sourceQuote
+  // already grounds the dedicated extractor's output. Null for a "remove"
+  // action (nothing new to ground). See
+  // ChatConversationService's isGroundedForSpeaker for the actual check.
+  sourceQuote: string | null;
+}
+
 // Mirrors memory.ts's MemorySubjectType — toGuildKnowledgeRecord (see
 // chat-conversation-service.ts) maps a Memory straight into this shape, so
 // the two must carry the same subject-type vocabulary or that mapping stops
@@ -228,6 +244,21 @@ export interface ProposedGuildKnowledgeCandidate {
   channelScoped: boolean;
 }
 
+// See GroundedProposedMemoryAction's own comment for why this is a subtype
+// rather than a field on ProposedGuildKnowledgeCandidate itself — that base
+// type is also reused by ChannelSummaryFact (channel-message-summarizer.ts),
+// which has its own, different grounding mechanism (evidenceMessageIds).
+export interface GroundedProposedGuildKnowledgeCandidate extends ProposedGuildKnowledgeCandidate {
+  // A verbatim (or near-verbatim) excerpt supporting this claim, authored by
+  // subjectId when subjectType is "member" — same grounding role as
+  // GroundedProposedMemoryAction.sourceQuote. For a non-member subject
+  // (guild/team/project/npc/faction/location) there's no single "author" to
+  // check against, so the check only requires the quote to appear somewhere
+  // in context, not that a specific person said it — see
+  // ChatConversationService's isGroundedAnywhere.
+  sourceQuote: string;
+}
+
 export interface ChatImage {
   dataUrl: string;
   source: "current_message" | "reply_chain";
@@ -250,8 +281,8 @@ export interface GeneratedChatImage {
 
 export interface ChatResponse {
   text: string;
-  userMemoryActions: readonly ProposedMemoryAction[];
-  guildKnowledgeCandidates: readonly ProposedGuildKnowledgeCandidate[];
+  userMemoryActions: readonly GroundedProposedMemoryAction[];
+  guildKnowledgeCandidates: readonly GroundedProposedGuildKnowledgeCandidate[];
   sources: readonly ChatSource[];
   usage: ChatUsage | null;
   webSearchUsed: boolean;

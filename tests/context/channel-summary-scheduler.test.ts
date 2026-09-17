@@ -797,6 +797,7 @@ describe("ChannelSummaryScheduler — durable personal-memory extraction queue",
       },
       listUserMemories: (guildId, userId) => engine.listUserMemories(guildId, userId),
       forget: (input) => engine.forget(input),
+      listSources: (memoryId) => engine.listSources(memoryId),
     };
     const scheduler = new ChannelSummaryScheduler(
       historyReader, fakeProfileProvider([fakeProfile({ contextScanChannelIds: ["channel"] })]),
@@ -992,6 +993,7 @@ describe("ChannelSummaryScheduler — durable personal-memory extraction queue",
       ingestRelations: (input) => engine.ingestRelations(input),
       listUserMemories: (guildId, userId) => engine.listUserMemories(guildId, userId),
       forget: (input) => engine.forget(input),
+      listSources: (memoryId) => engine.listSources(memoryId),
     };
     const summarizer = stubSummarizer([], [], new Map([["alice", [{
       action: "upsert", aboutSpeaker: true, sourceQuote: "I really like green apples",
@@ -1214,6 +1216,7 @@ describe("ChannelSummaryScheduler — strict ingestion for background jobs", () 
       ingestRelations: () => Promise.resolve({ created: 0, rejected: 0 }),
       listUserMemories: () => Promise.reject(new Error("not used")),
       forget: () => Promise.reject(new Error("not used")),
+      listSources: () => Promise.reject(new Error("not used")),
     };
     const scheduler = new ChannelSummaryScheduler(
       historyReader, fakeProfileProvider([fakeProfile({ contextScanChannelIds: ["channel"] })]),

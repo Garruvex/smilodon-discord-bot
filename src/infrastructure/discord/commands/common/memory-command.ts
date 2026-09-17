@@ -1,14 +1,30 @@
+import { EmbedBuilder } from "discord.js";
+
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
 import type { ChatStateStore } from "../../../../application/chat/chat-state-store.js";
 import type { MemberProfileService } from "../../../../application/members/member-profile-service.js";
-import type { MemoryEngine } from "../../../../application/memory/memory.js";
+import type { Memory, MemoryEngine, MemorySource } from "../../../../application/memory/memory.js";
 import type { PersonalMemoryExtractionQueueStore } from "../../../../application/context/personal-memory-extraction-queue.js";
 
 const monthNames = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ];
+
+// Consolidation-sourced memories (see channel-summary-scheduler.ts's
+// computeBatchId) stamp sourceMessageId with a synthetic "batch:..." string
+// spanning many messages, not a real Discord message id — never a clickable
+// source, unlike a live-chat memory's real snowflake.
+const syntheticBatchSourcePrefix = "batch:";
+
+// Discord embeds: 25 fields/embed, 10 embeds/message — comfortably fits any
+// realistic per-user memory count without silently truncating like the old
+// flat 2000-char message did. A user with more than 250 memories still gets
+// an honest "+N more" note rather than a broken page.
+const maxFieldsPerEmbed = 25;
+const maxEmbedsPerMessage = 10;
+const maxMemoriesRendered = maxFieldsPerEmbed * maxEmbedsPerMessage;
 
 export class MemoryCommand implements BotCommand {
   public readonly definition = {
@@ -85,6 +101,31 @@ export class MemoryCommand implements BotCommand {
     );
   }
 
+  // A memory can have several sources (e.g. reinforced more than once) —
+  // shows up to a couple of the most recent real jump links rather than
+  // just one, per-request. A consolidation batch's synthetic id is never
+  // clickable, so it's excluded and, if nothing else qualifies, the entry
+  // is labeled unavailable instead of rendering a dead link.
+  private buildSourceLine(guildId: string, sources: readonly MemorySource[]): string {
+    const real = sources.filter((source) =>
+      source.sourceMessageId && source.sourceChannelId && !source.sourceMessageId.startsWith(syntheticBatchSourcePrefix));
+    if (real.length === 0) return "source unavailable (older record, or summarized from many messages)";
+    const maxLinks = 2;
+    const mostRecentFirst = [...real].reverse();
+    const links = mostRecentFirst.slice(0, maxLinks).map((source, index) =>
+      `[view${mostRecentFirst.length > 1 ? ` #${index + 1}` : ""}](https://discord.com/channels/${guildId}/${source.sourceChannelId}/${source.sourceMessageId})`);
+    const omitted = real.length - links.length;
+    return links.join(" · ") + (omitted > 0 ? ` (+${omitted} more)` : "");
+  }
+
+  private buildMemoryField(memory: Memory, sourceLine: string): { name: string; value: string } {
+    const scopeLabel = memory.audience === "private" ? "private" : memory.audience === "channel" ? "channel-shared" : "guild-shared";
+    return {
+      name: `${memory.topic}.${memory.slot}`,
+      value: `${memory.statement}\n*${memory.status} · ${scopeLabel} · id \`${memory.id.slice(0, 8)}\`*\n${sourceLine}`.slice(0, 1_024),
+    };
+  }
+
   private async list(context: CommandContext, guildId: string, userId: string): Promise<void> {
     const profile = await this.memberProfileService.load(guildId, userId);
     if (profile.memories.length === 0 && !profile.birthday && !profile.customization) {
@@ -100,17 +141,35 @@ export class MemoryCommand implements BotCommand {
     if (profile.customization) {
       profileLines.push("- [customization] set — manage with `/customize`");
     }
-    const memoryLines = profile.memories.map((memory) =>
-      `- \`${memory.id.slice(0, 8)}\` **${memory.topic}.${memory.slot}**: ${memory.statement}`,
-    );
-    const content = [
-      `Here's what I remember about you in this server:`,
-      ...profileLines,
-      ...memoryLines,
-      "",
-      "Use `/memory forget id:<id>` to remove a memory, or `/memory forget all:true` to clear all memories.",
-    ].join("\n").slice(0, 2_000);
-    await context.responses.reply(content);
+
+    const shown = profile.memories.slice(0, maxMemoriesRendered);
+    const omittedCount = profile.memories.length - shown.length;
+    const sourcesByMemoryId = new Map(await Promise.all(
+      shown.map(async (memory) => [memory.id, await this.memoryEngine.listSources(memory.id)] as const),
+    ));
+    const fields = shown.map((memory) =>
+      this.buildMemoryField(memory, this.buildSourceLine(guildId, sourcesByMemoryId.get(memory.id) ?? [])));
+
+    const embeds: EmbedBuilder[] = [];
+    for (let index = 0; index < fields.length; index += maxFieldsPerEmbed) {
+      const embed = new EmbedBuilder().addFields(fields.slice(index, index + maxFieldsPerEmbed));
+      if (index === 0) {
+        embed.setTitle("What I remember about you in this server")
+          .setDescription(profileLines.length > 0 ? profileLines.join("\n") : null);
+      }
+      embeds.push(embed);
+    }
+    if (embeds.length === 0) {
+      embeds.push(new EmbedBuilder().setTitle("What I remember about you in this server")
+        .setDescription(profileLines.join("\n") || null));
+    }
+    const footerText = [
+      omittedCount > 0 ? `+${omittedCount} more not shown.` : null,
+      "Use /memory forget id:<id> to remove one, or /memory forget all:true to clear everything.",
+    ].filter((line) => line !== null).join(" ");
+    embeds[embeds.length - 1]!.setFooter({ text: footerText });
+
+    await context.responses.reply({ embeds: embeds.slice(0, maxEmbedsPerMessage) });
   }
 
   private async forget(context: CommandContext, guildId: string, userId: string): Promise<void> {
@@ -128,13 +187,17 @@ export class MemoryCommand implements BotCommand {
       // afterward observes that its durable row is gone and exits.
       const forgetAll = async (): Promise<number> => {
         await this.personalMemoryExtractionQueueStore?.deleteForSubject(guildId, userId);
-        return this.memoryEngine.forget({ guildId, ownerUserId: userId });
+        // subjectId, not just ownerUserId: also removes a third-party claim
+        // about this user (e.g. something someone else said about them),
+        // which has no owner of its own — see ForgetQuery.subjectId.
+        return this.memoryEngine.forget({ guildId, ownerUserId: userId, subjectId: userId });
       };
       const count = this.personalMemoryExtractionQueueStore
         ? await this.personalMemoryExtractionQueueStore.runForSubject(guildId, userId, forgetAll)
         : await forgetAll();
       await context.responses.reply(
-        count > 0 ? `Forgot ${count} ${count === 1 ? "memory" : "memories"}.` : "There was nothing to forget.",
+        (count > 0 ? `Forgot ${count} ${count === 1 ? "memory" : "memories"}.` : "There was nothing to forget.") +
+          " This clears what I remember about you, including what others have said about you — it does not clear our recent conversation history.",
       );
       return;
     }

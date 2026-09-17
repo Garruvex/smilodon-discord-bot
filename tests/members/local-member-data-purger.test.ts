@@ -46,8 +46,19 @@ describe("LocalMemberDataPurger", () => {
     await reminderStore.initialize();
 
     await memoryRepository.ingest(ingestInput());
-    const sharedMemory = await memoryRepository.ingest(ingestInput({
+    // A third-party/consolidation-sourced claim ABOUT this same departing
+    // user (ownerUserId null, subjectId still "user") — purge must remove
+    // this too, not just what the user owns, or "the bot was told to forget
+    // you" wouldn't actually be true for a claim someone else made about them.
+    const sharedMemoryAboutUser = await memoryRepository.ingest(ingestInput({
       audience: "guild", ownerUserId: null, channelId: null,
+      slot: "shared_favorite_color", source: "consolidation",
+    }));
+    // A guild-audience memory about a DIFFERENT member entirely — purge must
+    // leave this alone; only this user's own data and claims about them are
+    // in scope.
+    const sharedMemoryAboutSomeoneElse = await memoryRepository.ingest(ingestInput({
+      audience: "guild", ownerUserId: null, channelId: null, subjectId: "someone-else",
       slot: "shared_favorite_color", source: "consolidation",
     }));
     // Still holds this user's own raw message text — must be purged too,
@@ -84,7 +95,8 @@ describe("LocalMemberDataPurger", () => {
     await purger.purge("guild", "user");
 
     expect(await memoryRepository.listByUser("guild", "user")).toHaveLength(0);
-    expect(await memoryRepository.findById("guild", sharedMemory.id)).not.toBeNull();
+    expect(await memoryRepository.findById("guild", sharedMemoryAboutUser.id)).toBeNull();
+    expect(await memoryRepository.findById("guild", sharedMemoryAboutSomeoneElse.id)).not.toBeNull();
     expect(await userCustomizationStore.load("guild", "user")).toBeNull();
     expect(await birthdayStore.getBirthday("guild", "user")).toBeNull();
     expect(await boostHistoryStore.listEvents("guild", "user")).toHaveLength(0);

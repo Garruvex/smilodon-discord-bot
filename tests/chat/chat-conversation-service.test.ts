@@ -145,16 +145,16 @@ describe("ChatConversationService", () => {
     const store = baseStore();
     const provider: ChatProvider = {
       reply: () => Promise.resolve(response("ok", [
-        { action: "upsert", subjectUserId: "invented", topic: "preference", slot: "food", statement: "likes apples" },
-        { action: "upsert", subjectUserId: "user", topic: "unknown", slot: "food", statement: "likes apples" },
-        { action: "upsert", subjectUserId: "user", topic: "preference", slot: "api", statement: "api_key = secret-value-123" },
-        { action: "upsert", subjectUserId: "user", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
+        { action: "upsert", subjectUserId: "invented", topic: "preference", slot: "food", statement: "likes apples", sourceQuote: null },
+        { action: "upsert", subjectUserId: "user", topic: "unknown", slot: "food", statement: "likes apples", sourceQuote: null },
+        { action: "upsert", subjectUserId: "user", topic: "preference", slot: "api", statement: "api_key = secret-value-123", sourceQuote: null },
+        { action: "upsert", subjectUserId: "user", topic: "preference", slot: "food.fruit", statement: "likes green apples", sourceQuote: "I like green apples" },
       ])),
     };
     const { engine } = testMemoryEngine();
     const service = new ChatConversationService(provider, store, engine);
 
-    await service.run(input("remember this"), (reply) => Promise.resolve(reply.text));
+    await service.run(input("I like green apples, remember this"), (reply) => Promise.resolve(reply.text));
     const stored = await engine.listUserMemories("guild", "user");
     expect(stored).toMatchObject([{ subjectId: "user", topic: "preference", slot: "food.fruit", statement: "likes green apples" }]);
   });
@@ -162,14 +162,14 @@ describe("ChatConversationService", () => {
   it("threads the originating Discord message id into a live memory write", async () => {
     const store = baseStore();
     const memoryActions: ChatResponse["userMemoryActions"] = [
-      { action: "upsert", subjectUserId: "user", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
+      { action: "upsert", subjectUserId: "user", topic: "preference", slot: "food.fruit", statement: "likes green apples", sourceQuote: "I like green apples" },
     ];
     const provider: ChatProvider = { reply: () => Promise.resolve(response("ok", memoryActions)) };
     const { engine } = testMemoryEngine();
     const ingestSpy = vi.spyOn(engine, "ingest");
     const service = new ChatConversationService(provider, store, engine);
 
-    await service.run({ ...input("remember this"), sourceMessageId: "msg-123" }, (reply) => Promise.resolve(reply.text));
+    await service.run({ ...input("I like green apples, remember this"), sourceMessageId: "msg-123" }, (reply) => Promise.resolve(reply.text));
     expect(ingestSpy).toHaveBeenCalledWith(expect.objectContaining({ sourceMessageId: "msg-123" }));
   });
 
@@ -177,7 +177,7 @@ describe("ChatConversationService", () => {
     const store = baseStore();
     const provider: ChatProvider = { reply: () => Promise.resolve(response("ok", [{
       action: "upsert", subjectUserId: "user", topic: "preference",
-      slot: "food.fruit", statement: "likes green apples",
+      slot: "food.fruit", statement: "likes green apples", sourceQuote: "I like green apples",
     }])) };
     const { engine } = testMemoryEngine();
     const runForSubject = vi.fn();
@@ -192,10 +192,74 @@ describe("ChatConversationService", () => {
       coordinator,
     );
 
-    await service.run(input("remember this"), (reply) => Promise.resolve(reply.text));
+    await service.run(input("I like green apples, remember this"), (reply) => Promise.resolve(reply.text));
 
     expect(runForSubject).toHaveBeenCalledWith("guild", "user", expect.any(Function));
     await expect(engine.listUserMemories("guild", "user")).resolves.toHaveLength(1);
+  });
+
+  it("rejects a guild-knowledge candidate whose sourceQuote was actually said by someone else, not the claimed subject", async () => {
+    // Regression for a real production incident: the model answered a
+    // question about "LW" by quoting a line Ginco actually said, and
+    // proposed a guild-knowledge candidate crediting LW with it. The
+    // attribution-verification pass (see attribution-verification.ts) fixes
+    // the reply *text* for cases like this, but does nothing about a memory/
+    // guild-knowledge proposal riding along in the same response — this is
+    // the check that catches it before it becomes a durable write.
+    const store = baseStore();
+    const candidates: ChatResponse["guildKnowledgeCandidates"] = [{
+      subjectType: "member", subjectId: "lw-user", topic: "public_interest",
+      slot: "fandom.grey_fur", statement: "is a grey-fur fan", channelScoped: false,
+      sourceQuote: "friend has grey fur",
+    }];
+    const provider: ChatProvider = { reply: () => Promise.resolve(response("ok", [], candidates)) };
+    const service = new ChatConversationService(provider, store, testMemoryEngine().engine);
+
+    const result = await service.run({
+      ...input("is LW a fan?"),
+      mentionedUsers: [{ id: "lw-user", displayName: "LW", roleNames: [] }],
+      channelHistory: [
+        { messageId: "m1", timestampMs: 0, authorId: "ginco-user", authorDisplayName: "Ginco", content: "friend has grey fur", imageCount: 0 },
+      ],
+    }, (reply) => Promise.resolve(reply.text));
+
+    expect(result.guildKnowledgeCandidates).toEqual([]);
+  });
+
+  it("keeps a guild-knowledge candidate whose sourceQuote is genuinely something the claimed subject said", async () => {
+    const store = baseStore();
+    const candidates: ChatResponse["guildKnowledgeCandidates"] = [{
+      subjectType: "member", subjectId: "ginco-user", topic: "public_interest",
+      slot: "fandom.grey_fur", statement: "is a grey-fur fan", channelScoped: false,
+      sourceQuote: "friend has grey fur",
+    }];
+    const provider: ChatProvider = { reply: () => Promise.resolve(response("ok", [], candidates)) };
+    const service = new ChatConversationService(provider, store, testMemoryEngine().engine);
+
+    const result = await service.run({
+      ...input("what is Ginco into?"),
+      mentionedUsers: [{ id: "ginco-user", displayName: "Ginco", roleNames: [] }],
+      channelHistory: [
+        { messageId: "m1", timestampMs: 0, authorId: "ginco-user", authorDisplayName: "Ginco", content: "friend has grey fur", imageCount: 0 },
+      ],
+    }, (reply) => Promise.resolve(reply.text));
+
+    expect(result.guildKnowledgeCandidates).toEqual([
+      expect.objectContaining({ subjectId: "ginco-user", statement: "is a grey-fur fan" }),
+    ]);
+  });
+
+  it("rejects a private-memory upsert whose sourceQuote doesn't actually appear anywhere in this turn", async () => {
+    const store = baseStore();
+    const provider: ChatProvider = { reply: () => Promise.resolve(response("ok", [
+      { action: "upsert", subjectUserId: "user", topic: "preference", slot: "food.fruit", statement: "likes durian", sourceQuote: "I love durian" },
+    ])) };
+    const { engine } = testMemoryEngine();
+    const service = new ChatConversationService(provider, store, engine);
+
+    await service.run(input("what's for lunch"), (reply) => Promise.resolve(reply.text));
+
+    await expect(engine.listUserMemories("guild", "user")).resolves.toHaveLength(0);
   });
 
   it("loads confirmed guild knowledge and submits validated candidates after delivery", async () => {
@@ -207,6 +271,7 @@ describe("ChatConversationService", () => {
         return Promise.resolve(response("ok", [], [{
           subjectType: "member", subjectId: "user", topic: "event_responsibility",
           slot: "raid.friday", statement: "organizes Friday raids", channelScoped: false,
+          sourceQuote: "I organize Friday raids",
         }]));
       },
     };
@@ -240,6 +305,7 @@ describe("ChatConversationService", () => {
       reply: () => Promise.resolve(response("ok", [], [{
         subjectType: "member", subjectId: "user", topic: "event_responsibility",
         slot: "raid.friday", statement: "organizes Friday raids", channelScoped: false,
+        sourceQuote: "I organize Friday raids",
       }])),
     };
     const embeddingsClient: EmbeddingsClient = {
@@ -263,6 +329,7 @@ describe("ChatConversationService", () => {
       reply: () => Promise.resolve(response("ok", [], [{
         subjectType: "member", subjectId: "user", topic: "event_responsibility",
         slot: "raid.friday", statement: "organizes Friday raids", channelScoped: false,
+        sourceQuote: "I organize Friday raids",
       }])),
     };
     const embeddingsClient: EmbeddingsClient = {
@@ -353,7 +420,7 @@ describe("ChatConversationService", () => {
     const store = baseStore({ commitSuccessfulExchange });
     const provider: ChatProvider = {
       reply: () => Promise.resolve(response("", [
-        { action: "upsert", subjectUserId: "user", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
+        { action: "upsert", subjectUserId: "user", topic: "preference", slot: "food.fruit", statement: "likes green apples", sourceQuote: null },
       ], [], { action: "ignore" })),
     };
     const { engine } = testMemoryEngine();
@@ -372,7 +439,7 @@ describe("ChatConversationService", () => {
     const commitSuccessfulExchange = vi.fn(() => Promise.resolve({ droppedExchanges: [] }));
     const store = baseStore({ commitSuccessfulExchange });
     const memoryActions: ChatResponse["userMemoryActions"] = [
-      { action: "upsert", subjectUserId: "user", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
+      { action: "upsert", subjectUserId: "user", topic: "preference", slot: "food.fruit", statement: "likes green apples", sourceQuote: "I like green apples" },
     ];
     const provider: ChatProvider = {
       reply: () => Promise.resolve(response("", memoryActions, [], { action: "ignore", emoji: "😂" })),
@@ -382,7 +449,7 @@ describe("ChatConversationService", () => {
     const service = new ChatConversationService(provider, store, engine);
     const deliver = vi.fn(() => Promise.resolve("should not be called"));
 
-    const result = await service.run({ ...input("yohta lol"), triggerMode: "ambient" }, deliver);
+    const result = await service.run({ ...input("yohta, I like green apples lol"), triggerMode: "ambient" }, deliver);
     expect(result.ambientAction).toBe("ignore");
     expect(result.reactionEmoji).toBe("😂");
     expect(deliver).not.toHaveBeenCalled();
@@ -522,7 +589,7 @@ describe("ChatConversationService", () => {
         // by the reply model, the fast path.
         if (replyCall === 1) return Promise.resolve(response("Noted!"));
         return Promise.resolve(response("Got it!", [
-          { action: "upsert", subjectUserId: "user", topic: "preference", slot: "food.fruit", statement: "hates apples" },
+          { action: "upsert", subjectUserId: "user", topic: "preference", slot: "food.fruit", statement: "hates apples", sourceQuote: "I hate apples" },
         ]));
       },
       extractPersonalMemories: () => slowExtraction,
@@ -575,7 +642,7 @@ describe("ChatConversationService", () => {
         replyCall += 1;
         if (replyCall === 1) return Promise.resolve(response("Noted!"));
         return Promise.resolve(response("Got it!", [
-          { action: "upsert", subjectUserId: "user", topic: "preference", slot: "food.fruit", statement: "hates apples" },
+          { action: "upsert", subjectUserId: "user", topic: "preference", slot: "food.fruit", statement: "hates apples", sourceQuote: "I hate apples" },
         ]));
       },
       extractPersonalMemories: () => slowExtraction,
@@ -949,7 +1016,7 @@ describe("ChatConversationService", () => {
     const candidates: ChatResponse["guildKnowledgeCandidates"] = [
       {
         subjectType: "member", subjectId: "authorA", topic: "community_activity",
-        slot: "fruit.orange", statement: "likes orange", channelScoped: false,
+        slot: "fruit.orange", statement: "likes orange", channelScoped: false, sourceQuote: "i like apple",
       },
     ];
     const provider: ChatProvider = { reply: () => Promise.resolve(response("ok", [], candidates)) };

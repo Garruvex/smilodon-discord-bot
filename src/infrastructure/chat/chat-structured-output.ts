@@ -5,8 +5,8 @@ import { guildKnowledgeInstructions } from "../../application/chat/guild-knowled
 import {
   ChatProviderError,
   type ChatRequest,
-  type ProposedGuildKnowledgeCandidate,
-  type ProposedMemoryAction,
+  type GroundedProposedGuildKnowledgeCandidate,
+  type GroundedProposedMemoryAction,
 } from "../../application/chat/chat-provider.js";
 
 export const chatModelOutputSchema = z.object({
@@ -17,6 +17,10 @@ export const chatModelOutputSchema = z.object({
     topic: z.string(),
     slot: z.string(),
     statement: z.string().nullable(),
+    // Required for "upsert" (a verbatim excerpt of subjectUserId's own
+    // words), null for "remove" — see ProposedMemoryAction's own doc
+    // comment and ChatConversationService.groundMemoryProposal.
+    sourceQuote: z.string().nullable(),
   })).max(5),
   guildKnowledgeCandidates: z.array(z.object({
     subjectType: z.enum(["guild", "member", "team", "project"]),
@@ -29,6 +33,10 @@ export const chatModelOutputSchema = z.object({
     // the model) resolves this into the actual stored channelId, see
     // validateGuildKnowledgeCandidates.
     channelScoped: z.boolean().default(false),
+    // A verbatim excerpt supporting this claim — see
+    // ProposedGuildKnowledgeCandidate's own doc comment and
+    // ChatConversationService.groundGuildKnowledgeCandidate.
+    sourceQuote: z.string(),
   })).max(3),
   // Defaulted (not just nullable) so a direct-mode response — or an older
   // test/provider payload shaped before these fields existed — still parses
@@ -52,13 +60,14 @@ export const chatModelJsonSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["action", "subjectUserId", "topic", "slot", "statement"],
+        required: ["action", "subjectUserId", "topic", "slot", "statement", "sourceQuote"],
         properties: {
           action: { type: "string", enum: ["upsert", "remove"] },
           subjectUserId: { type: "string" },
           topic: { type: "string" },
           slot: { type: "string" },
           statement: { type: ["string", "null"] },
+          sourceQuote: { type: ["string", "null"] },
         },
       },
     },
@@ -68,7 +77,7 @@ export const chatModelJsonSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["subjectType", "subjectId", "topic", "slot", "statement", "channelScoped"],
+        required: ["subjectType", "subjectId", "topic", "slot", "statement", "channelScoped", "sourceQuote"],
         properties: {
           subjectType: { type: "string", enum: ["guild", "member", "team", "project"] },
           subjectId: { type: "string" },
@@ -76,6 +85,7 @@ export const chatModelJsonSchema = {
           slot: { type: "string" },
           statement: { type: "string" },
           channelScoped: { type: "boolean" },
+          sourceQuote: { type: "string" },
         },
       },
     },
@@ -442,8 +452,8 @@ export function buildChatContext(request: ChatRequest): string {
 
 export function parseChatModelOutput(text: string): {
   response: string;
-  userMemoryActions: ProposedMemoryAction[];
-  guildKnowledgeCandidates: ProposedGuildKnowledgeCandidate[];
+  userMemoryActions: GroundedProposedMemoryAction[];
+  guildKnowledgeCandidates: GroundedProposedGuildKnowledgeCandidate[];
   ambientAction: "reply" | "ignore" | null;
   reactionEmoji: string | null;
 } {
