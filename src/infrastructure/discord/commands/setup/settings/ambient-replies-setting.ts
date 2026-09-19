@@ -4,7 +4,7 @@ import type { MutationSettingDefinition } from "./setting-definition.js";
 export const ambientRepliesSetting: MutationSettingDefinition = {
   kind: "mutation",
   name: "ambient-replies",
-  description: "Controls whether the bot may judge and react/reply to messages that name it without an @mention.",
+  description: "Lets the bot judge whether to react/reply to messages that merely name it.",
   configureOptions: () => [
     { type: "boolean", name: "enabled", description: "Whether ambient replies are on." },
     {

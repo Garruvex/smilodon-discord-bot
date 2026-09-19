@@ -46,7 +46,7 @@ function describeDisabledTools(_previous: GuildConfiguration, updated: GuildConf
 export const toolsEnableSetting: MutationSettingDefinition = {
   kind: "mutation",
   name: "tools-enable",
-  description: "Re-enables a chat tool the model can call (see /setup settings chat tools-list).",
+  description: "Re-enables a chat tool the model can call.",
   configureOptions: () => configureToolNameOption("Tool name to enable."),
   handle: (context, deps, previousProfile, input) =>
     Promise.resolve(handleToolToggle("enable", context, deps, previousProfile, input)),
@@ -56,7 +56,7 @@ export const toolsEnableSetting: MutationSettingDefinition = {
 export const toolsDisableSetting: MutationSettingDefinition = {
   kind: "mutation",
   name: "tools-disable",
-  description: "Disables a chat tool so the model can't call it (see /setup settings chat tools-list).",
+  description: "Disables a chat tool so the model can't call it.",
   configureOptions: () => configureToolNameOption("Tool name to disable."),
   handle: (context, deps, previousProfile, input) =>
     Promise.resolve(handleToolToggle("disable", context, deps, previousProfile, input)),
@@ -82,7 +82,7 @@ function summarizeToolDescription(description: string): string {
 export const toolsListSetting: ReadOnlySettingDefinition = {
   kind: "readOnly",
   name: "tools-list",
-  description: "Lists every chat tool the model can be given, and whether it's enabled here.",
+  description: "Lists every chat tool and whether it's enabled here.",
   run: (_context, deps, profile) => {
     const tools = deps.chatToolRegistry?.list() ?? [];
     if (tools.length === 0) return Promise.resolve("No chat tools are registered.");

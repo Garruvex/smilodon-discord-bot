@@ -4,7 +4,7 @@ import type { MutationSettingDefinition } from "./setting-definition.js";
 export const timezoneSetting: MutationSettingDefinition = {
   kind: "mutation",
   name: "timezone",
-  description: "Sets the IANA time zone birthdays (and other guild-local dates) are computed in. Defaults to UTC.",
+  description: "Sets the IANA time zone used for birthdays and other guild-local dates.",
   configureOptions: () => [
     { type: "string", name: "zone", description: "An IANA time zone name, e.g. \"America/New_York\" or \"Asia/Taipei\".", required: true },
   ],

@@ -16,7 +16,7 @@ const platformOptions: readonly { name: string; key: LinkFixPlatform; label: str
 export const linkFixSetting: MutationSettingDefinition = {
   kind: "mutation",
   name: "link-fix",
-  description: "Configures automatic link previews (Twitter/X, Threads, Instagram, Bilibili, TikTok, Reddit).",
+  description: "Configures automatic link previews for supported platforms.",
   configureOptions: () => [
     { type: "boolean", name: "enabled", description: "Turn automatic link rewriting on or off." },
     { type: "channel", name: "channel", description: "Adds a text channel to watch for rewritable links.", guildTextOnly: true },

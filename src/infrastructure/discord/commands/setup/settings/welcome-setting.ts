@@ -4,7 +4,7 @@ import { formatChannelMention } from "./settings-support.js";
 export const welcomeSetting: MutationSettingDefinition = {
   kind: "mutation",
   name: "welcome",
-  description: "Sets join/leave announcement channels. An unset channel means that event stays silent.",
+  description: "Sets join/leave announcement channels.",
   configureOptions: () => [
     { type: "channel", name: "join-channel", description: "Where new-member welcome cards are posted.", guildTextOnly: true },
     { type: "channel", name: "leave-channel", description: "Where member-left messages are posted.", guildTextOnly: true },

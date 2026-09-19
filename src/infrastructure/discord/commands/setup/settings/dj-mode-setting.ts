@@ -3,7 +3,7 @@ import type { MutationSettingDefinition } from "./setting-definition.js";
 export const djModeSetting: MutationSettingDefinition = {
   kind: "mutation",
   name: "dj-mode",
-  description: "Lets music-controller roles control playback from anywhere, not just the bot's voice channel.",
+  description: "Lets music-controller roles control playback from anywhere.",
   configureOptions: () => [
     { type: "boolean", name: "enabled", description: "Whether DJ mode is on." },
   ],

@@ -3,7 +3,7 @@ import type { MutationSettingDefinition } from "./setting-definition.js";
 export const retainMemberDataSetting: MutationSettingDefinition = {
   kind: "mutation",
   name: "member-data",
-  description: "Controls what happens to a member's chat memories, birthday, and customization when they leave.",
+  description: "Controls whether a departing member's data is kept or deleted.",
   configureOptions: () => [
     { type: "boolean", name: "retain", description: "true: keep their data if they return. false: delete it when they leave.", required: true },
   ],

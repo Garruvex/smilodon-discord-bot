@@ -10,7 +10,7 @@ export const rolesSetting: MutationSettingDefinition = {
   description: "Adds access roles without removing existing ones.",
   configureOptions: () => [
     { type: "role", name: "administrator", description: "Adds a bot administrator role for /settings and inherited music control." },
-    { type: "role", name: "music-controller", description: "Adds a role for /play, queue commands, panel controls, and typed song requests." },
+    { type: "role", name: "music-controller", description: "Adds a role for /play, queue commands, and panel controls." },
     { type: "role", name: "restricted", description: "Adds a role denied from music and chatbot unless bot-owner bypass applies." },
   ],
   handle: (context, _deps, previousProfile, input) => {

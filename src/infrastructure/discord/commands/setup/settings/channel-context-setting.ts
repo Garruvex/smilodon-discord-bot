@@ -17,7 +17,7 @@ const contextScanChannelOption: ChannelOptionMetadata = {
 export const contextScanAddSetting: MutationSettingDefinition = {
   kind: "mutation",
   name: "context-scan-add",
-  description: "Adds a channel for a one-time history scan into memory (runs in the background).",
+  description: "Adds a channel for a one-time history scan into memory.",
   configureOptions: () => [
     contextScanChannelOption,
     { type: "integer", name: "seed-days", description: "How many past days to read on the first run (default 7).", minValue: 1, maxValue: 90 },
@@ -93,7 +93,7 @@ export const contextDailyAddSetting: MutationSettingDefinition = {
 export const contextDailyRemoveSetting: MutationSettingDefinition = {
   kind: "mutation",
   name: "context-daily-remove",
-  description: "Stops ongoing daily summarization for a channel (existing memories are kept).",
+  description: "Stops ongoing daily summarization for a channel.",
   configureOptions: () => [contextScanChannelOption],
   handle: (context, _deps, _previousProfile, input) => {
     const channel = context.interaction.options.getChannel("channel", true);
@@ -106,7 +106,7 @@ export const contextDailyRemoveSetting: MutationSettingDefinition = {
 export const contextRemoveSetting: MutationSettingDefinition = {
   kind: "mutation",
   name: "context-remove",
-  description: "Removes a channel from both scan and daily summarization (existing memories are kept).",
+  description: "Removes a channel from both scan and daily summarization.",
   configureOptions: () => [contextScanChannelOption],
   handle: (context, _deps, _previousProfile, input) => {
     const channel = context.interaction.options.getChannel("channel", true);
@@ -170,7 +170,7 @@ function formatChannelStatus(channelId: string, inScan: boolean, inDaily: boolea
 export const contextStatusSetting: ReadOnlySettingDefinition = {
   kind: "readOnly",
   name: "context-status",
-  description: "Shows configured channel-context scan/daily channels and their last-run state.",
+  description: "Shows configured channel-context channels and their last-run state.",
   configureOptions: () => [
     { type: "channel", name: "channel", description: "Show detail for one channel only.", guildTextOnly: true },
   ],

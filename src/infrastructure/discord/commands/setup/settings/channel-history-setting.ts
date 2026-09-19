@@ -4,7 +4,7 @@ import type { MutationSettingDefinition } from "./setting-definition.js";
 export const channelHistorySetting: MutationSettingDefinition = {
   kind: "mutation",
   name: "channel-history",
-  description: "Controls whether the bot includes recent channel messages (from anyone) as ambient chat context.",
+  description: "Lets the bot use recent channel messages as ambient chat context.",
   configureOptions: () => [
     { type: "boolean", name: "enabled", description: "Whether ambient channel history is on." },
     {

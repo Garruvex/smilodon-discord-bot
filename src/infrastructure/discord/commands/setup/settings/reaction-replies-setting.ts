@@ -3,7 +3,7 @@ import type { MutationSettingDefinition } from "./setting-definition.js";
 export const reactionRepliesSetting: MutationSettingDefinition = {
   kind: "mutation",
   name: "reaction-replies",
-  description: "Controls whether the bot may judge and reply to reactions its own chat replies accumulate.",
+  description: "Lets the bot judge whether to reply to reactions on its own chat replies.",
   configureOptions: () => [
     { type: "boolean", name: "enabled", description: "Whether reaction replies are on." },
   ],
