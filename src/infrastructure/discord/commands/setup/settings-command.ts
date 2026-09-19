@@ -1,5 +1,5 @@
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
-import type { ChatInputCommandMetadata, SubcommandGroupMetadata } from "../../../../application/commands/command-metadata.js";
+import type { ChatInputCommandMetadata } from "../../../../application/commands/command-metadata.js";
 import type { ChatToolRegistry } from "../../../../application/chat/tools/chat-tool-registry.js";
 import type { UpdateGuildConfigurationInput, GuildConfigurationProvider } from "../../../../config/guild-configuration-provider.js";
 import type { GuildConfiguration } from "../../../../config/guild-configuration.js";
@@ -12,47 +12,50 @@ import type { PersonaDriftStore } from "../../../../application/chat/persona-dri
 import type { ChannelSummaryCheckpointStore } from "../../../../application/context/channel-summary-checkpoint-store.js";
 import {
   settingDefinitionsByName,
-  settingGroups,
   type FieldChange,
   type MutationSettingDefinition,
   type SettingDeps,
+  type SettingGroup,
 } from "./settings/index.js";
 import { renderProgressPreview } from "./settings/settings-support.js";
 
-// Exported for tests — buildSlashCommandBuilder(buildDefinition()) exercises
-// the exact same discord.js validation (name/description length & pattern)
-// that deploy-time registration does, without needing the whole command's
-// dependency graph. A too-long setting description here throws at bot
-// startup, in production, which is why this needs to be caught by a test
-// rather than only by the deploy call itself.
-export function buildDefinition(): ChatInputCommandMetadata {
-  const subcommandGroups: SubcommandGroupMetadata[] = settingGroups.map((group) => ({
-    name: group.name,
+// Exported for tests — buildSlashCommandBuilder(buildDefinitionForGroup(group))
+// exercises the exact same discord.js validation (name/description length &
+// pattern, and Discord's 8000-char total-size cap) that deploy-time
+// registration does, without needing the whole command's dependency graph.
+// Each settingGroups entry is now its own top-level command (see
+// SettingsCommand's own doc comment for why) rather than one shared
+// /settings command with every group nested under it — that used to mean
+// every group's descriptions ate into the SAME 8000-char budget, which is
+// exactly what crashed bot-yohta in production once already.
+export function buildDefinitionForGroup(group: SettingGroup): ChatInputCommandMetadata {
+  return {
+    name: `settings-${group.name}`,
     description: group.description,
     subcommands: group.settings.map((setting) => ({
       name: setting.name,
       description: setting.description,
       options: setting.configureOptions?.() ?? [],
     })),
-  }));
-  return {
-    name: "settings",
-    description: "Updates this server's bot configuration.",
-    subcommandGroups,
   };
 }
 
 // The slash-command definition, per-subcommand dispatch, and confirmation
-// text are all derived from settingGroups (./settings/index.ts) — to add or
-// remove a /settings <group> <setting> subcommand, add or remove one file
-// there. What remains here is genuinely cross-cutting: control-panel sync,
-// asset cleanup, audit logging, and the generic field-diff confirmation
-// renderer.
+// text are all derived from one settingGroups entry (./settings/index.ts) —
+// to add or remove a /settings-<group> <setting> subcommand, add or remove
+// one file there. What remains here is genuinely cross-cutting:
+// control-panel sync, asset cleanup, audit logging, and the generic
+// field-diff confirmation renderer. One SettingsCommand instance is
+// constructed per group (see bootstrap/dependencies.ts), each becoming its
+// own top-level Discord command — subcommand dispatch below is unaffected
+// by which group it belongs to, since getSubcommand(true) already returns
+// just the leaf subcommand name and settingDefinitionsByName is a flat,
+// globally-unique-by-name map across every group.
 export class SettingsCommand implements BotCommand {
   private controlChannelService: ControlChannelService | null = null;
   private readonly deps: SettingDeps;
 
-  public readonly definition = buildDefinition();
+  public readonly definition: ChatInputCommandMetadata;
 
   public readonly module = CommandModule.Common;
   public readonly access = {
@@ -61,6 +64,7 @@ export class SettingsCommand implements BotCommand {
   };
 
   public constructor(
+    group: SettingGroup,
     private readonly profiles: GuildConfigurationProvider,
     private readonly assets: GuildAssetStore,
     private readonly applicationEmojiCatalog: ApplicationEmojiCatalog,
@@ -69,6 +73,7 @@ export class SettingsCommand implements BotCommand {
     channelSummaryCheckpointStore?: ChannelSummaryCheckpointStore,
     channelSummaryProviderAvailable = false,
   ) {
+    this.definition = buildDefinitionForGroup(group);
     this.deps = { assets, applicationEmojiCatalog, channelSummaryProviderAvailable };
     if (auditLogService) this.deps.auditLogService = auditLogService;
     if (personaDriftStore) this.deps.personaDriftStore = personaDriftStore;
@@ -139,7 +144,7 @@ export class SettingsCommand implements BotCommand {
     await this.auditLogService?.log(
       context.interaction.guildId,
       context.interaction.user.id,
-      `**/settings ${subcommand}**\n${description}`,
+      `**/${context.interaction.commandName} ${subcommand}**\n${description}`,
     );
     await context.responses.edit(
       input.progressBar

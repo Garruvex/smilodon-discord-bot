@@ -57,6 +57,7 @@ import { PreviousCommand } from "../infrastructure/discord/commands/music/previo
 import type { GuildSetupService } from "../application/setup/guild-setup-service.js";
 import { SetupCommand } from "../infrastructure/discord/commands/setup/setup-command.js";
 import { SettingsCommand } from "../infrastructure/discord/commands/setup/settings-command.js";
+import { settingGroups } from "../infrastructure/discord/commands/setup/settings/index.js";
 import { VoteCommand } from "../infrastructure/discord/commands/common/vote-command.js";
 import { MemoryCommand } from "../infrastructure/discord/commands/common/memory-command.js";
 import { MemoryEvalCommand } from "../infrastructure/discord/commands/diagnostics/memory-eval-command.js";
@@ -206,7 +207,9 @@ export interface ApplicationDependencies {
   playbackService: PlaybackService;
   pollService: PollService;
   behaviorDispatcher: BehaviorDispatcher;
-  settingsCommand: SettingsCommand;
+  // One per settingGroups entry (see registerCommands) — each is its own
+  // top-level /settings-<group> command, not one shared /settings command.
+  settingsCommands: readonly SettingsCommand[];
   // Null when no chat provider is configured — there's nothing to
   // summarize channel messages with, same condition chatConversationService
   // already checks.
@@ -234,7 +237,7 @@ export interface CommandRegistrationResult {
   accessPolicyService: AccessPolicyService;
   playbackService: PlaybackService;
   pollService: PollService;
-  settingsCommand: SettingsCommand;
+  settingsCommands: readonly SettingsCommand[];
   applicationEmojiCatalog: ApplicationEmojiCatalog;
   memoryEngine: MemoryEngine;
   guildAssetStore: GuildAssetStore;
@@ -410,7 +413,11 @@ export function registerCommands(
     discordClient,
     logger.child({ component: "emoji-catalog" }),
   );
-  const settingsCommand = new SettingsCommand(
+  // One top-level /settings-<group> command per settingGroups entry — see
+  // SettingsCommand's own doc comment for why this isn't one shared
+  // /settings command with every group nested under it.
+  const settingsCommands = settingGroups.map((group) => new SettingsCommand(
+    group,
     guildConfigurationProvider,
     guildAssetStore,
     applicationEmojiCatalog,
@@ -418,8 +425,8 @@ export function registerCommands(
     personaDriftStore,
     channelSummaryCheckpointStore,
     utilityProvider?.summarizeChannelMessages !== undefined,
-  );
-  commandRegistry.register(settingsCommand);
+  ));
+  for (const settingsCommand of settingsCommands) commandRegistry.register(settingsCommand);
   commandRegistry.register(new CustomizeCommand(userCustomizationStore, utilityProvider));
 
   return {
@@ -428,7 +435,7 @@ export function registerCommands(
     accessPolicyService,
     playbackService,
     pollService,
-    settingsCommand,
+    settingsCommands,
     applicationEmojiCatalog,
     memoryEngine,
     guildAssetStore,
@@ -464,7 +471,7 @@ export function createDependencies(
     accessPolicyService,
     playbackService,
     pollService,
-    settingsCommand,
+    settingsCommands,
     applicationEmojiCatalog,
     memoryEngine,
     guildAssetStore,
@@ -538,7 +545,7 @@ export function createDependencies(
     ...(chatProvider ? [new GenerateSelfImageTool(guildAssetStore, guildConfigurationProvider, chatProvider)] : []),
     ...commandToolBindings,
   ]);
-  settingsCommand.bindChatToolRegistry(chatToolRegistry);
+  for (const settingsCommand of settingsCommands) settingsCommand.bindChatToolRegistry(chatToolRegistry);
   const chatConversationService = chatProvider
     ? new ChatConversationService(
         chatProvider,
@@ -606,7 +613,7 @@ export function createDependencies(
     playbackService,
     pollService,
     behaviorDispatcher: new BehaviorDispatcher(behaviorRegistry),
-    settingsCommand,
+    settingsCommands,
     channelSummaryScheduler,
     reactionReplyScheduler,
     reminderScheduler,

@@ -68,7 +68,7 @@ const controlChannelService = new ControlChannelService(
   logger.child({ component: "control-panel" }),
   musicEventBus,
 );
-dependencies.settingsCommand.bindControlChannelService(controlChannelService);
+for (const settingsCommand of dependencies.settingsCommands) settingsCommand.bindControlChannelService(controlChannelService);
 const commandDeploymentService = new DiscordGuildCommandDeploymentService(
   configuration,
   dependencies.commandRegistry,
