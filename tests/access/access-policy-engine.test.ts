@@ -44,7 +44,7 @@ function guildConfiguration(overrides: Partial<GuildConfiguration> = {}): GuildC
     features: {
       common: true, diagnostics: true, music: true, chatbot: false, birthdays: false, reminders: false,
       nsfw: false, linkFix: false, retainMemberDataOnLeave: true, ambientReplies: false,
-      channelHistory: false,
+      channelHistory: false, reactionReplies: false, historyReactions: false,
     },
     roles: {
       botAdministrator: new Set(),

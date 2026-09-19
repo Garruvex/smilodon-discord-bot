@@ -1,4 +1,4 @@
-import { Client, Events, GatewayIntentBits, MessageFlags, type Message } from "discord.js";
+import { Client, Events, GatewayIntentBits, MessageFlags, Partials, type Message } from "discord.js";
 import type { Logger } from "pino";
 
 import type { ApplicationDependencies } from "./dependencies.js";
@@ -80,6 +80,7 @@ export class Application {
     this.musicPresenceService.stop();
     this.birthdayAnnouncer.stop();
     this.dependencies.channelSummaryScheduler?.stop();
+    this.dependencies.reactionReplyScheduler?.stop();
     this.dependencies.reminderScheduler.stop();
     this.dependencies.pollService.stop();
     // Destroyed before draining, not after — this stops new Discord
@@ -96,6 +97,7 @@ export class Application {
       // (now potentially long, see ChannelSummaryScheduler.drain's own
       // comment) keeps running until this resolves.
       this.dependencies.channelSummaryScheduler?.drain(),
+      this.dependencies.reactionReplyScheduler?.drain(),
     ]);
   }
 
@@ -174,6 +176,7 @@ export class Application {
           this.musicPresenceService.start();
           this.birthdayAnnouncer.start();
           this.dependencies.channelSummaryScheduler?.start();
+          this.dependencies.reactionReplyScheduler?.start();
           this.dependencies.reminderScheduler.start();
         })
         .catch(() => {
@@ -248,6 +251,19 @@ export class Application {
         await this.dependencies.behaviorDispatcher.dispatch(BehaviorEvent.MessageCreated, message);
       })().catch((error: unknown) => {
         this.logger.error({ error }, "Message behavior dispatch failed");
+      });
+    });
+
+    this.client.on(Events.MessageReactionAdd, (reaction, user) => {
+      if (!this.ready) return;
+      void (async (): Promise<void> => {
+        const fullReaction = reaction.partial ? await reaction.fetch() : reaction;
+        if (fullReaction.message.partial) await fullReaction.message.fetch();
+        const fullUser = user.partial ? await user.fetch() : user;
+        if (!fullReaction.message.guildId) return; // DM reactions are out of scope
+        await this.dependencies.behaviorDispatcher.dispatch(BehaviorEvent.ReactionAdded, { reaction: fullReaction, user: fullUser });
+      })().catch((error: unknown) => {
+        this.logger.error({ error }, "Reaction behavior dispatch failed");
       });
     });
 
@@ -387,6 +403,15 @@ export function createDiscordClient(): Client {
       // departure cleanup). Must be enabled for this bot application in the
       // Discord Developer Portal, or the gateway connection will be rejected.
       GatewayIntentBits.GuildMembers,
+      // Non-privileged — needed for MessageReactionAdd (see the
+      // reaction-reply feature). Still must be toggled on for this bot
+      // application in the Discord Developer Portal like any other intent.
+      GatewayIntentBits.GuildMessageReactions,
     ],
+    // Reaction/message/user data for a reaction on an uncached message
+    // otherwise arrives as a partial stub with most fields null — these let
+    // the MessageReactionAdd handler below call .fetch() on each to get the
+    // real data instead of silently operating on missing content.
+    partials: [Partials.Message, Partials.Reaction, Partials.User],
   });
 }

@@ -67,6 +67,9 @@ import { BehaviorRegistry } from "../application/behaviors/behavior-registry.js"
 import { BehaviorDispatcher } from "../application/behaviors/behavior-dispatcher.js";
 import { MentionChatBehavior } from "../infrastructure/discord/behaviors/mention-chat-behavior.js";
 import { AmbientChatBehavior } from "../infrastructure/discord/behaviors/ambient-chat-behavior.js";
+import { ReactionArmBehavior } from "../infrastructure/discord/behaviors/reaction-arm-behavior.js";
+import { ReactionReplyScheduler } from "../infrastructure/discord/behaviors/reaction-reply-scheduler.js";
+import type { MessageReactionWatchStore } from "../application/chat/message-reaction-watch.js";
 import { LinkFixBehavior } from "../infrastructure/discord/behaviors/link-fix-behavior.js";
 import { BilibiliEmbedService } from "../infrastructure/links/bilibili-embed-service.js";
 import type { ChatProvider } from "../application/chat/chat-provider.js";
@@ -208,6 +211,9 @@ export interface ApplicationDependencies {
   // summarize channel messages with, same condition chatConversationService
   // already checks.
   channelSummaryScheduler: ChannelSummaryScheduler | null;
+  // Null under the same condition — see ReactionReplyScheduler's own
+  // constructor call above.
+  reactionReplyScheduler: ReactionReplyScheduler | null;
   reminderScheduler: ReminderScheduler;
   applicationEmojiCatalog: ApplicationEmojiCatalog;
   memoryEngine: MemoryEngine;
@@ -450,6 +456,7 @@ export function createDependencies(
   personalMemoryExtractionQueueStore: PersonalMemoryExtractionQueueStore,
   reminderStore: ReminderStore,
   roleMenuStore: RoleMenuStore,
+  messageReactionWatchStore: MessageReactionWatchStore,
 ): ApplicationDependencies {
   const {
     commandRegistry,
@@ -555,6 +562,12 @@ export function createDependencies(
     personaDriftStore,
     embeddingsClient,
   );
+  const reactionReplyScheduler = chatConversationService
+    ? new ReactionReplyScheduler(
+        discordClient, messageReactionWatchStore, guildConfigurationProvider, chatConversationService,
+        personaSource, logger.child({ component: "reaction-reply-scheduler" }),
+      )
+    : null;
   behaviorRegistry.register(new MentionChatBehavior(
     () => discordClient.user?.id ?? null,
     configuration,
@@ -562,6 +575,7 @@ export function createDependencies(
     chatConversationService,
     personaSource,
     logger.child({ component: "chat" }),
+    messageReactionWatchStore,
   ));
   behaviorRegistry.register(new AmbientChatBehavior(
     () => discordClient.user?.id ?? null,
@@ -570,6 +584,12 @@ export function createDependencies(
     chatConversationService,
     personaSource,
     logger.child({ component: "ambient-chat" }),
+    messageReactionWatchStore,
+  ));
+  behaviorRegistry.register(new ReactionArmBehavior(
+    () => discordClient.user?.id ?? null,
+    messageReactionWatchStore,
+    logger.child({ component: "reaction-arm" }),
   ));
   behaviorRegistry.register(new LinkFixBehavior(
     guildConfigurationProvider,
@@ -588,6 +608,7 @@ export function createDependencies(
     behaviorDispatcher: new BehaviorDispatcher(behaviorRegistry),
     settingsCommand,
     channelSummaryScheduler,
+    reactionReplyScheduler,
     reminderScheduler,
     applicationEmojiCatalog,
     memoryEngine,

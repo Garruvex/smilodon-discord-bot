@@ -54,6 +54,7 @@ const dependencies = createDependencies(
   persistence.personalMemoryExtractionQueueStore,
   persistence.reminderStore,
   persistence.roleMenuStore,
+  persistence.messageReactionWatchStore,
 );
 const controlPanelStateStore = persistence.controlPanelStateStore;
 const controlChannelService = new ControlChannelService(

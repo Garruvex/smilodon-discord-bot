@@ -31,7 +31,7 @@ function profile(overrides: Partial<GuildConfiguration["chat"]> = {}): GuildConf
       linkFix: false,
       retainMemberDataOnLeave: true,
       ambientReplies: false,
-      channelHistory: false,
+      channelHistory: false, reactionReplies: false, historyReactions: false,
     },
     roles: {
       botAdministrator: new Set(),

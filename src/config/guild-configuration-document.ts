@@ -36,6 +36,8 @@ export interface UpdateGuildConfigurationInput {
   ambientCooldownSeconds?: number;
   channelHistory?: boolean;
   channelHistoryLimit?: number;
+  reactionReplies?: boolean;
+  historyReactions?: boolean;
   // Merged into the existing map (per-channel entries added/overwritten,
   // never wholesale-replaced) — same "add" semantics as chatbotChannelIds.
   chatbotChannelMemoryModes?: Readonly<Record<string, "shared" | "isolated" | "session_only" | "disabled">>;
@@ -101,7 +103,7 @@ export function createGuildConfigurationDocument(input: CreateGuildConfiguration
     features: {
       common: true, diagnostics: true, music: true, chatbot: false, birthdays: false,
       reminders: false, nsfw: false, linkFix: false, retainMemberDataOnLeave: true, ambientReplies: false,
-      channelHistory: false,
+      channelHistory: false, reactionReplies: false, historyReactions: false,
     },
     roles: {
       botAdministrator: [...input.botAdministratorRoleIds],
@@ -277,6 +279,8 @@ export function applyGuildConfigurationUpdate(
   if (input.ambientCooldownSeconds !== undefined) next.chat.ambientCooldownSeconds = input.ambientCooldownSeconds;
   if (input.channelHistory !== undefined) next.features.channelHistory = input.channelHistory;
   if (input.channelHistoryLimit !== undefined) next.chat.channelHistoryLimit = input.channelHistoryLimit;
+  if (input.reactionReplies !== undefined) next.features.reactionReplies = input.reactionReplies;
+  if (input.historyReactions !== undefined) next.features.historyReactions = input.historyReactions;
   if (input.birthdaysEnabled !== undefined) next.features.birthdays = input.birthdaysEnabled;
   if (input.birthdayAnnouncementsChannelId !== undefined) next.channels.birthdayAnnouncements = input.birthdayAnnouncementsChannelId;
   if (input.remindersEnabled !== undefined) next.features.reminders = input.remindersEnabled;

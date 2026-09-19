@@ -167,6 +167,30 @@ export const personalMemoryExtractionJobs = sqliteTable("personal_memory_extract
   index("personal_memory_extraction_jobs_terminal").on(table.status, table.updatedAt),
 ]);
 
+// One row per bot-authored chat reply eligible for the reaction-reply
+// feature (see ReactionReplyScheduler) — registered at send time
+// (status "watching"), armed to "pending" on its first reaction (dueAt set
+// to a fixed window from then), then evaluated once and moved to "done"
+// regardless of outcome. messageId alone is the primary key: a Discord
+// message id is already a globally unique snowflake, no composite key
+// needed the way the extraction-jobs table above needs one (that table's
+// identity spans a whole batch, not a single message).
+export const messageReactionWatches = sqliteTable("message_reaction_watches", {
+  messageId: text("message_id").primaryKey(),
+  guildId: text("guild_id").notNull(),
+  channelId: text("channel_id").notNull(),
+  status: text("status").notNull().default("watching"),
+  firstReactionAt: integer("first_reaction_at", { mode: "timestamp_ms" }),
+  dueAt: integer("due_at", { mode: "timestamp_ms" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+}, (table) => [
+  index("message_reaction_watches_due").on(table.status, table.dueAt),
+  // Backs a periodic retention sweep — a "watching" row nobody ever
+  // reacted to, or a "done" row nothing will re-query, both age out.
+  index("message_reaction_watches_cleanup").on(table.status, table.updatedAt),
+]);
+
 export const guildKnowledge = sqliteTable("guild_knowledge", {
   id: text("id").primaryKey(),
   guildId: text("guild_id").notNull(),

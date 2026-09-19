@@ -105,6 +105,13 @@ export interface ChatRequest {
   // message, not @mentioned — the model judges whether to ignore, react
   // with an emoji, or reply (see ChatResponse.ambientAction).
   triggerMode: "direct" | "ambient";
+  // Per-guild opt-in (profile.features.historyReactions) — piggybacks on
+  // whatever turn is already happening (a mention/ambient reply, or a
+  // reaction-threshold turn) to let the model also drop a tasteful reaction
+  // on OTHER standout messages it can already see in <channel_history>/
+  // <reply_chain>, at zero extra LLM calls. Only meaningful when
+  // channelHistory/replyChain is non-empty; see ChatResponse.historyReactions.
+  historyReactionsEnabled?: boolean;
 }
 
 export interface PersonaLoreEntry {
@@ -292,6 +299,13 @@ export interface ChatResponse {
   // reactionEmoji — an ambient turn can reply, react, both, or neither.
   ambientAction: "reply" | "ignore" | null;
   reactionEmoji: string | null;
+  // Zero-or-more reactions on OTHER messages from <channel_history>/
+  // <reply_chain> (never the triggering message itself — that's
+  // reactionEmoji's job) — see ChatRequest.historyReactionsEnabled. Always
+  // empty when that flag was off; the caller is responsible for actually
+  // applying these against Discord and swallowing any per-message failure
+  // (a message can be deleted/uncached by the time this resolves).
+  historyReactions: readonly { messageId: string; emoji: string }[];
   contextUsage?: {
     personalityChars: number;
     personaLoreChars: number;

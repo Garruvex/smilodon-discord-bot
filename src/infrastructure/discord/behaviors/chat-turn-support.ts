@@ -406,7 +406,7 @@ export class ChatTurnSupport {
     images: readonly GeneratedChatImage[];
     emptyFallbackContent: string;
     maxImageAggregateBytes: number;
-  }): Promise<{ deliveredText: string }> {
+  }): Promise<{ deliveredText: string; firstMessageId: string }> {
     const plan = planChatDelivery(params.text, params.sources);
     const imagePlan = planImageDelivery(params.images, params.maxImageAggregateBytes);
 
@@ -453,7 +453,7 @@ export class ChatTurnSupport {
     }
 
     const [firstSend, ...restSends] = sends;
-    await sendWithRetry(() => params.sender.first(firstSend!));
+    const firstMessage = await sendWithRetry(() => params.sender.first(firstSend!));
     for (const send of restSends) {
       try {
         await sendWithRetry(() => params.sender.rest(send));
@@ -466,6 +466,29 @@ export class ChatTurnSupport {
         break;
       }
     }
-    return { deliveredText: params.text };
+    return { deliveredText: params.text, firstMessageId: firstMessage.id };
+  }
+
+  // Applies the model's spontaneous reactions on OTHER channel messages (see
+  // ChatResponse.historyReactions) — each entry is independently fetched and
+  // reacted, so one deleted/uncached message or one bad emoji never blocks
+  // the rest. Skips a message the bot has already reacted to (regardless of
+  // which emoji) so a standout message that keeps reappearing in
+  // channel_history across several turns doesn't accumulate duplicate
+  // reactions from us.
+  public async applyHistoryReactions(
+    channel: { messages: { fetch(id: string): Promise<Message> } },
+    reactions: readonly { messageId: string; emoji: string }[],
+    logContext: Record<string, unknown>,
+  ): Promise<void> {
+    for (const { messageId, emoji } of reactions) {
+      try {
+        const target = await channel.messages.fetch(messageId);
+        if (target.reactions.cache.some((reaction) => reaction.me)) continue;
+        await target.react(emoji);
+      } catch (error) {
+        this.logger.warn({ ...logContext, messageId, emoji, error }, "Failed to apply a history reaction");
+      }
+    }
   }
 }

@@ -64,6 +64,13 @@
       "when": 1788539517183,
       "tag": "0008_worthless_squirrel_girl",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1789790010376,
+      "tag": "0009_funny_george_stacy",
+      "breakpoints": true
     }
   ]
 }

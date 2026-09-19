@@ -21,10 +21,12 @@ function response(
   userMemoryActions: ChatResponse["userMemoryActions"] = [],
   guildKnowledgeCandidates: ChatResponse["guildKnowledgeCandidates"] = [],
   ambient: { action: ChatResponse["ambientAction"]; emoji?: string } | null = null,
+  historyReactions: ChatResponse["historyReactions"] = [],
 ): ChatResponse {
   return {
     text, userMemoryActions, guildKnowledgeCandidates, sources: [], usage: null, webSearchUsed: false,
     generatedImages: [], ambientAction: ambient?.action ?? null, reactionEmoji: ambient?.emoji ?? null,
+    historyReactions,
   };
 }
 
@@ -854,6 +856,56 @@ describe("ChatConversationService", () => {
       channelHistoryMessages: 1,
       channelHistoryChars: JSON.stringify(channelHistory).length,
     });
+  });
+
+  it("keeps a historyReaction whose messageId is a real channel-history line, drops one that isn't, and drops one targeting the triggering message itself", async () => {
+    const store = baseStore();
+    const channelHistory = [
+      { messageId: "real-1", timestampMs: 0, authorId: "other", authorDisplayName: "Other", content: "a funny message", imageCount: 0 },
+    ];
+    const provider: ChatProvider = {
+      reply: () => Promise.resolve(response("ok", [], [], null, [
+        { messageId: "real-1", emoji: "😂" },
+        { messageId: "made-up-id", emoji: "👀" },
+        { messageId: "trigger-message", emoji: "🙄" },
+      ])),
+    };
+    const service = new ChatConversationService(provider, store, testMemoryEngine().engine);
+
+    const result = await service.run(
+      { ...input("hi"), sourceMessageId: "trigger-message", channelHistory },
+      (reply) => Promise.resolve(reply.text),
+    );
+
+    expect(result.historyReactions).toEqual([{ messageId: "real-1", emoji: "😂" }]);
+  });
+
+  it("caps historyReactions at 3 and dedupes by messageId even if the provider returns more", async () => {
+    const store = baseStore();
+    const channelHistory = [1, 2, 3, 4].map((n) => ({
+      messageId: `m${n}`, timestampMs: 0, authorId: "other", authorDisplayName: "Other", content: `line ${n}`, imageCount: 0,
+    }));
+    const provider: ChatProvider = {
+      reply: () => Promise.resolve(response("ok", [], [], null, [
+        { messageId: "m1", emoji: "😂" },
+        { messageId: "m1", emoji: "🔥" },
+        { messageId: "m2", emoji: "👀" },
+        { messageId: "m3", emoji: "🙌" },
+        { messageId: "m4", emoji: "💀" },
+      ])),
+    };
+    const service = new ChatConversationService(provider, store, testMemoryEngine().engine);
+
+    const result = await service.run(
+      { ...input("hi"), channelHistory },
+      (reply) => Promise.resolve(reply.text),
+    );
+
+    expect(result.historyReactions).toEqual([
+      { messageId: "m1", emoji: "😂" },
+      { messageId: "m2", emoji: "👀" },
+      { messageId: "m3", emoji: "🙌" },
+    ]);
   });
 
   it("consolidates dropped exchanges into channel-scoped guild knowledge when the provider supports it", async () => {

@@ -367,6 +367,21 @@ export const personalMemoryExtractionJobs = pgTable("personal_memory_extraction_
   index("personal_memory_extraction_jobs_terminal").on(table.status, table.updatedAt),
 ]);
 
+// See sqlite-schema.ts's messageReactionWatches for the design rationale.
+export const messageReactionWatches = pgTable("message_reaction_watches", {
+  messageId: text("message_id").primaryKey(),
+  guildId: text("guild_id").notNull(),
+  channelId: text("channel_id").notNull(),
+  status: text("status").notNull().default("watching"),
+  firstReactionAt: timestamp("first_reaction_at", { withTimezone: true }),
+  dueAt: timestamp("due_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("message_reaction_watches_due").on(table.status, table.dueAt),
+  index("message_reaction_watches_cleanup").on(table.status, table.updatedAt),
+]);
+
 export const guildKnowledge = pgTable("guild_knowledge", {
   id: uuid("id").primaryKey(),
   guildId: text("guild_id").notNull(),

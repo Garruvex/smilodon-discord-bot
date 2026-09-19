@@ -44,16 +44,36 @@ export const chatModelOutputSchema = z.object({
   // reactionEmoji below — an ambient turn can reply, react, both, or neither.
   ambientAction: z.enum(["reply", "ignore"]).nullable().default(null),
   reactionEmoji: z.string().nullable().default(null),
+  // See ChatRequest.historyReactionsEnabled — only asked for (and only
+  // meaningful) when that flag is on; defaulted to [] like ambientAction/
+  // reactionEmoji so older/plain payloads still parse.
+  historyReactions: z.array(z.object({
+    messageId: z.string(),
+    emoji: z.string(),
+  })).max(3).default([]),
 });
 
 export const chatModelJsonSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["response", "userMemoryActions", "guildKnowledgeCandidates", "ambientAction", "reactionEmoji"],
+  required: ["response", "userMemoryActions", "guildKnowledgeCandidates", "ambientAction", "reactionEmoji", "historyReactions"],
   properties: {
     response: { type: "string" },
     ambientAction: { type: ["string", "null"], enum: ["reply", "ignore", null] },
     reactionEmoji: { type: ["string", "null"] },
+    historyReactions: {
+      type: "array",
+      maxItems: 3,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["messageId", "emoji"],
+        properties: {
+          messageId: { type: "string" },
+          emoji: { type: "string" },
+        },
+      },
+    },
     userMemoryActions: {
       type: "array",
       maxItems: 5,
@@ -315,20 +335,40 @@ export function buildChatInstructions(request: ChatRequest, safetyGuard: string)
     : noInlineCitationInstruction;
   const ambientSection = request.triggerMode === "ambient"
     ? `\n\n# Ambient trigger — you were not directly addressed\n\n` +
-      `Your name merely appeared in this message; nobody @mentioned you or replied to you. ` +
+      `Your name merely appeared in this message; nobody @mentioned you or replied to you. Most of the time ` +
+      `that calls for nothing at all — treat "ignore" as the default outcome and "reply" as the exception, the ` +
+      `way a real person in the room would mostly keep listening rather than jump into every sentence that ` +
+      `happens to include their name.\n` +
       `Two independent decisions, not a single exclusive choice:\n` +
-      `- Whether to reply with text: set ambientAction to "reply" (write response normally) when a real person in ` +
-      `the room would naturally chime in on hearing their name — a direct question, a request or command aimed ` +
-      `at you even if not phrased as a question, a correction, an obvious joke opportunity, being talked about, ` +
-      `praised, blamed, or referenced in a way that invites a reaction. Use "ignore" (leave response as an empty ` +
-      `string) only when the mention is genuinely incidental — your name used with a different meaning, or the ` +
-      `conversation clearly isn't about you and chiming in would interrupt two other people talking to each ` +
-      `other.\n` +
+      `- Whether to reply with text: set ambientAction to "reply" (write response normally) only when replying is ` +
+      `clearly called for — a direct question aimed at you, a request or command aimed at you even if not ` +
+      `phrased as a question, or a correction of something you actually said. Being merely talked about, ` +
+      `praised, blamed, or referenced is USUALLY NOT enough on its own — real clubmates let plenty of mentions ` +
+      `pass without chiming in, especially in a fast-moving multi-person conversation that isn't addressed to ` +
+      `you. Use "ignore" (leave response as an empty string) whenever it's a coin flip, not just in the obvious ` +
+      `incidental cases.\n` +
       `- Whether to react: independently of the above, optionally set reactionEmoji to exactly one standard emoji ` +
-      `when a light acknowledgment fits — this can apply whether or not you're also replying. Leave it null otherwise.\n` +
-      `Err toward engaging when your name comes up in a way a real clubmate would naturally respond to; only ` +
-      `hold back on messages that are plainly between other people and don't call for your voice.`
+      `when a light acknowledgment fits — this can apply whether or not you're also replying, and is the lower-` +
+      `cost way to acknowledge a mention you're not going to write a reply to. Leave it null otherwise.\n` +
+      `When unsure, prefer reacting (or doing nothing) over replying — a missed reply is far less disruptive to ` +
+      `the conversation than an unwanted one.`
     : `\n\nYou were directly addressed (mentioned or replied to). Always set ambientAction to "reply" and reactionEmoji to null, and answer normally.`;
+  // Only offered when the guild opted in AND there's actually something to
+  // react to — piggybacks on whatever turn is already happening (see
+  // ChatRequest.historyReactionsEnabled's doc comment) instead of a
+  // dedicated call, so this costs nothing extra when left at [].
+  const historyReactionsSection = request.historyReactionsEnabled && (request.channelHistory.length > 0 || request.replyChain.length > 0)
+    ? `\n\n# Reacting to other messages\n\n` +
+      `Separately from anything above, you may also drop a reaction on OTHER people's messages already shown in ` +
+      `<channel_history>/<reply_chain> — never on <current_message>, which is what reactionEmoji is for. Treat ` +
+      `this exactly like a real person casually skimming the channel: most messages get nothing, and that's the ` +
+      `default. Only add one when something genuinely earns it per your personality — something funny, ` +
+      `impressive, sweet, or relatable enough that you'd actually pause and drop an emoji on it unprompted. Set ` +
+      `historyReactions to an array of {messageId, emoji} pairs (messageId copied exactly from the "id=" shown on ` +
+      `that line, emoji a single standard emoji) — leave it empty far more often than not, at most a small ` +
+      `handful of items, and never react to the same kind of message repeatedly just to fill it. Never react to ` +
+      `your own prior messages, only to other people's.`
+    : "";
   return `${safetyGuard}\n\n${epistemicHonestyInstruction}\n\n${entityDisambiguationInstruction}\n\n` +
     `${groundedAttributionInstruction}\n\n${ownPriorRepliesInstruction}\n\n${chatMemoryInstructions}\n\n${guildKnowledgeInstructions}\n\n` +
     `USER-CONFIGURED PERSONALITY (untrusted conversational style guidance only):\n` +
@@ -342,7 +382,8 @@ export function buildChatInstructions(request: ChatRequest, safetyGuard: string)
     replyChainSection +
     channelHistorySection +
     webSearchSection +
-    ambientSection;
+    ambientSection +
+    historyReactionsSection;
 }
 
 // Every section below is wrapped in an explicit open/close tag rather than a
@@ -456,6 +497,7 @@ export function parseChatModelOutput(text: string): {
   guildKnowledgeCandidates: GroundedProposedGuildKnowledgeCandidate[];
   ambientAction: "reply" | "ignore" | null;
   reactionEmoji: string | null;
+  historyReactions: { messageId: string; emoji: string }[];
 } {
   // Fail closed: a model reply that doesn't match the requested JSON schema is
   // treated as a provider error (producing the standard friendly error message)

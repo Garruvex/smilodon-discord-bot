@@ -107,6 +107,7 @@ describe("OpenAiResponsesChatProvider", () => {
       }],
       ambientAction: null,
       reactionEmoji: null,
+      historyReactions: [],
     });
     expect(fetchMock).toHaveBeenCalledOnce();
   });

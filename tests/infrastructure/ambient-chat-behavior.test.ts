@@ -46,7 +46,7 @@ function profile(overrides: { ambientReplies?: boolean } = {}): GuildConfigurati
       common: true, diagnostics: true, music: true, chatbot: true, birthdays: false, reminders: false,
       nsfw: false, linkFix: false, retainMemberDataOnLeave: true,
       ambientReplies: overrides.ambientReplies ?? true,
-      channelHistory: false,
+      channelHistory: false, reactionReplies: false, historyReactions: false,
     },
     roles: {
       botAdministrator: new Set(),

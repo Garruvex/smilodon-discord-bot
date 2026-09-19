@@ -10,6 +10,7 @@ import type { PersonaSource } from "../../../application/chat/persona-source.js"
 import type { ApplicationConfiguration } from "../../../config/configuration.js";
 import type { GuildConfigurationProvider } from "../../../config/guild-configuration-provider.js";
 import { containsBotName } from "../../../domain/chat/name-mention.js";
+import type { MessageReactionWatchStore } from "../../../application/chat/message-reaction-watch.js";
 import { ChatTurnSupport } from "./chat-turn-support.js";
 
 // Handles messages that merely name the bot (per its configured
@@ -36,6 +37,8 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     private readonly conversation: ChatConversationService | null,
     private readonly personaSource: PersonaSource,
     private readonly logger: Logger,
+    // See MentionChatBehavior's own doc comment on this same param.
+    private readonly messageReactionWatchStore: MessageReactionWatchStore | null = null,
   ) {
     this.chatAccess = new ChatAccessService(configuration);
     this.turnSupport = new ChatTurnSupport(logger);
@@ -166,6 +169,7 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         imageGenerationEnabled: profile.chat.imageGenerationEnabled,
         includeSources: profile.chat.includeSources,
         triggerMode: "ambient",
+        historyReactionsEnabled: profile.features.historyReactions && profile.features.channelHistory,
         toolsEnabled: profile.chat.toolCallingEnabled,
         disabledToolNames: new Set(profile.chat.disabledTools),
         channelMemoryModes: profile.chat.channelMemoryModes,
@@ -180,7 +184,7 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         const emptyFallbackContent = deliveredResponse.generatedImages.length > 0
           ? "Here you go!"
           : "I ran out of words. Very premium of me.";
-        const { deliveredText } = await this.turnSupport.deliverChatResponse({
+        const { deliveredText, firstMessageId } = await this.turnSupport.deliverChatResponse({
           sender: {
             first: (payload) => message.reply({
               content: payload.content,
@@ -199,6 +203,14 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
           emptyFallbackContent,
           maxImageAggregateBytes: this.configuration.chatDelivery.maxGeneratedImageAggregateBytes,
         });
+        if (profile.features.reactionReplies && this.messageReactionWatchStore) {
+          await this.messageReactionWatchStore.register(
+            { guildId: message.guildId, channelId: message.channelId, messageId: firstMessageId },
+            Date.now(),
+          ).catch((error: unknown) => {
+            this.logger.warn({ error, guildId: message.guildId, channelId: message.channelId }, "Failed to register a message-reaction watch");
+          });
+        }
         return deliveredText;
       });
 
@@ -209,6 +221,12 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
             "Ambient chat: failed to react with the model-chosen emoji",
           );
         });
+      }
+      if (response.historyReactions.length > 0) {
+        await this.turnSupport.applyHistoryReactions(
+          message.channel, response.historyReactions,
+          { guildId: message.guildId, channelId: message.channelId, sourceMessageId: message.id },
+        );
       }
       const outcome = response.ambientAction === "reply"
         ? "replied"
@@ -222,6 +240,7 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         userId: message.author.id,
         ambientAction: response.ambientAction,
         reactionEmoji: response.reactionEmoji,
+        historyReactionCount: response.historyReactions.length,
         imageCount: images.length,
         droppedImageCount: droppedUnsupported + droppedOverLimit,
       }, `Ambient chat: ${outcome}`);

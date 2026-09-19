@@ -11,6 +11,7 @@ import { ChannelTypingManager } from "../../../application/chat/channel-typing-m
 import type { PersonaSource } from "../../../application/chat/persona-source.js";
 import type { ApplicationConfiguration } from "../../../config/configuration.js";
 import type { GuildConfigurationProvider } from "../../../config/guild-configuration-provider.js";
+import type { MessageReactionWatchStore } from "../../../application/chat/message-reaction-watch.js";
 import { ChatTurnSupport } from "./chat-turn-support.js";
 
 function createChatAccessDeniedLinkButton(url: string, label: string | null): ActionRowBuilder<ButtonBuilder> {
@@ -38,6 +39,10 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     private readonly conversation: ChatConversationService | null,
     private readonly personaSource: PersonaSource,
     private readonly logger: Logger,
+    // Optional: feature is opt-in per guild (features.reactionReplies) and
+    // this can be entirely absent for a test double / a persistence backend
+    // that hasn't wired one — registration below just no-ops without it.
+    private readonly messageReactionWatchStore: MessageReactionWatchStore | null = null,
   ) {
     this.chatAccess = new ChatAccessService(configuration);
     this.turnSupport = new ChatTurnSupport(logger);
@@ -205,6 +210,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         imageGenerationEnabled: profile.chat.imageGenerationEnabled,
         includeSources: profile.chat.includeSources,
         triggerMode: "direct",
+        historyReactionsEnabled: profile.features.historyReactions && profile.features.channelHistory,
         toolsEnabled: profile.chat.toolCallingEnabled,
         disabledToolNames: new Set(profile.chat.disabledTools),
         channelMemoryModes: profile.chat.channelMemoryModes,
@@ -219,7 +225,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         const emptyFallbackContent = deliveredResponse.generatedImages.length > 0
           ? "Here you go!"
           : "I ran out of words. Very premium of me.";
-        const { deliveredText } = await this.turnSupport.deliverChatResponse({
+        const { deliveredText, firstMessageId } = await this.turnSupport.deliverChatResponse({
           sender: {
             first: async (payload) => {
               sentMessages.delivered = sentMessages.preview
@@ -248,6 +254,14 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
           emptyFallbackContent,
           maxImageAggregateBytes: this.configuration.chatDelivery.maxGeneratedImageAggregateBytes,
         });
+        if (profile.features.reactionReplies && this.messageReactionWatchStore) {
+          await this.messageReactionWatchStore.register(
+            { guildId: message.guildId, channelId: message.channelId, messageId: firstMessageId },
+            Date.now(),
+          ).catch((error: unknown) => {
+            this.logger.warn({ error, guildId: message.guildId, channelId: message.channelId }, "Failed to register a message-reaction watch");
+          });
+        }
         return deliveredText;
       }, {
         onImagePreview: async (image) => {
@@ -281,6 +295,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         cachedInputTokens: response.usage?.cachedInputTokens,
         reasoningTokens: response.usage?.reasoningTokens,
         memoryActionCount: response.userMemoryActions.length,
+        historyReactionCount: response.historyReactions.length,
         personalityChars: response.contextUsage?.personalityChars,
         userCustomizationChars: response.contextUsage?.userCustomizationChars,
         securityInstructionChars: response.contextUsage?.securityInstructionChars,
@@ -297,6 +312,12 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         channelHistoryChars: response.contextUsage?.channelHistoryChars,
         currentMessageChars: response.contextUsage?.currentMessageChars,
       }, "Chat API request completed");
+      if (response.historyReactions.length > 0) {
+        await this.turnSupport.applyHistoryReactions(
+          message.channel, response.historyReactions,
+          { guildId: message.guildId, channelId: message.channelId, sourceMessageId: message.id },
+        );
+      }
     } catch (error) {
       this.logger.error({ error, guildId: message.guildId, channelId: message.channelId, messageId: message.id, userId: message.author.id }, "Mention chat request failed");
       if (error instanceof ChatStateCommitError) {

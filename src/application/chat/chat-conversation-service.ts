@@ -118,6 +118,30 @@ function isGroundedAnywhere(
   return [...replyChain, ...channelHistory].some((hop) => normalizeForGroundingCheck(hop.content).includes(normalizedQuote));
 }
 
+// Filters the model's proposed historyReactions down to messageIds that
+// actually exist in this turn's own <channel_history>/<reply_chain> (never
+// the triggering message itself, which reactionEmoji already covers), and
+// caps/dedupes defensively — the json schema already caps at 3, but a
+// provider payload isn't guaranteed to honor that.
+function groundHistoryReactions(
+  proposed: readonly { messageId: string; emoji: string }[],
+  triggeringMessageId: string | null | undefined,
+  replyChain: readonly ReplyChainMessage[],
+  channelHistory: readonly ChannelHistoryMessage[],
+): { messageId: string; emoji: string }[] {
+  const knownIds = new Set([...replyChain, ...channelHistory].map((hop) => hop.messageId));
+  const seen = new Set<string>();
+  const result: { messageId: string; emoji: string }[] = [];
+  for (const candidate of proposed) {
+    if (!candidate.emoji || candidate.messageId === triggeringMessageId) continue;
+    if (!knownIds.has(candidate.messageId) || seen.has(candidate.messageId)) continue;
+    seen.add(candidate.messageId);
+    result.push(candidate);
+    if (result.length >= 3) break;
+  }
+  return result;
+}
+
 function memoryKindForTopic(topic: string): "fact" | "preference" | "episode" {
   if (topic === "scene_summary") return "episode";
   if (topic === "preference") return "preference";
@@ -761,6 +785,9 @@ export class ChatConversationService {
               candidate.sourceQuote, candidate.subjectId, input.message, input.currentUser.id, input.replyChain, input.channelHistory,
             )
           : isGroundedAnywhere(candidate.sourceQuote, input.message, input.replyChain, input.channelHistory)),
+        historyReactions: groundHistoryReactions(
+          response.historyReactions, input.sourceMessageId, input.replyChain, input.channelHistory,
+        ),
       };
       // ambientAction "ignore" and reactionEmoji are independent signals:
       // an ambient turn can reply, react, both, or neither. No reply here

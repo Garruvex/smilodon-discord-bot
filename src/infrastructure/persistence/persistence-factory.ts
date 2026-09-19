@@ -47,6 +47,9 @@ import { PostgresChannelSummaryCheckpointStore } from "./postgres-channel-summar
 import type { PersonalMemoryExtractionQueueStore } from "../../application/context/personal-memory-extraction-queue.js";
 import { SqlitePersonalMemoryExtractionQueueStore } from "./sqlite-personal-memory-extraction-queue-store.js";
 import { PostgresPersonalMemoryExtractionQueueStore } from "./postgres-personal-memory-extraction-queue-store.js";
+import type { MessageReactionWatchStore } from "../../application/chat/message-reaction-watch.js";
+import { SqliteMessageReactionWatchStore } from "./sqlite-message-reaction-watch-store.js";
+import { PostgresMessageReactionWatchStore } from "./postgres-message-reaction-watch-store.js";
 import type { LyricsCacheStore } from "../../application/lyrics/lyrics-cache-store.js";
 import { PostgresLyricsCacheStore } from "./postgres-lyrics-cache-store.js";
 
@@ -63,6 +66,7 @@ export interface PersistenceServices {
   memoryRepository: MemoryRepository;
   channelSummaryCheckpointStore: ChannelSummaryCheckpointStore;
   personalMemoryExtractionQueueStore: PersonalMemoryExtractionQueueStore;
+  messageReactionWatchStore: MessageReactionWatchStore;
   birthdayStore: BirthdayStore;
   boostHistoryStore: BoostHistoryStore;
   reminderStore: ReminderStore;
@@ -84,6 +88,7 @@ export async function createPersistenceServices(
   let memoryRepository: MemoryRepository;
   let channelSummaryCheckpointStore: ChannelSummaryCheckpointStore;
   let personalMemoryExtractionQueueStore: PersonalMemoryExtractionQueueStore;
+  let messageReactionWatchStore: MessageReactionWatchStore;
   let birthdayStore: BirthdayStore;
   let boostHistoryStore: BoostHistoryStore;
   let reminderStore: ReminderStore;
@@ -109,6 +114,7 @@ export async function createPersistenceServices(
     memoryRepository = new PostgresMemoryRepository(connection.database);
     channelSummaryCheckpointStore = new PostgresChannelSummaryCheckpointStore(connection.database);
     personalMemoryExtractionQueueStore = new PostgresPersonalMemoryExtractionQueueStore(connection.database);
+    messageReactionWatchStore = new PostgresMessageReactionWatchStore(connection.database);
     birthdayStore = new PostgresBirthdayStore(connection.database, guildMemberRegistry);
     boostHistoryStore = new PostgresBoostHistoryStore(connection.database, guildMemberRegistry);
     reminderStore = new PostgresReminderStore(connection.database);
@@ -132,6 +138,7 @@ export async function createPersistenceServices(
     memoryRepository = new SqliteMemoryRepository(sqliteConnection.database);
     channelSummaryCheckpointStore = new SqliteChannelSummaryCheckpointStore(sqliteConnection.database);
     personalMemoryExtractionQueueStore = new SqlitePersonalMemoryExtractionQueueStore(sqliteConnection.database);
+    messageReactionWatchStore = new SqliteMessageReactionWatchStore(sqliteConnection.database);
     birthdayStore = new LocalBirthdayStore(configuration.runtimeDataDirectory);
     boostHistoryStore = new LocalBoostHistoryStore(configuration.runtimeDataDirectory);
     reminderStore = new LocalReminderStore(configuration.runtimeDataDirectory);
@@ -155,6 +162,7 @@ export async function createPersistenceServices(
   await guildKnowledgeStore.initialize();
   await channelSummaryCheckpointStore.initialize();
   await personalMemoryExtractionQueueStore.initialize();
+  await messageReactionWatchStore.initialize();
   await birthdayStore.initialize();
   await boostHistoryStore.initialize();
   await reminderStore.initialize();
@@ -170,6 +178,7 @@ export async function createPersistenceServices(
     memoryRepository,
     channelSummaryCheckpointStore,
     personalMemoryExtractionQueueStore,
+    messageReactionWatchStore,
     birthdayStore,
     boostHistoryStore,
     reminderStore,

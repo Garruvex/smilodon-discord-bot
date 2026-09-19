@@ -137,11 +137,13 @@ export const guildConfigurationFileSchema = z
         retainMemberDataOnLeave: z.boolean().default(true),
         ambientReplies: z.boolean().default(false),
         channelHistory: z.boolean().default(false),
+        reactionReplies: z.boolean().default(false),
+        historyReactions: z.boolean().default(false),
       })
       .default({
         common: true, diagnostics: true, music: false, chatbot: false, birthdays: false,
         reminders: false, nsfw: false, linkFix: false, retainMemberDataOnLeave: true, ambientReplies: false,
-        channelHistory: false,
+        channelHistory: false, reactionReplies: false, historyReactions: false,
       }),
     roles: z
       .object({

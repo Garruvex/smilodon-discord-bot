@@ -29,6 +29,17 @@ export interface GuildFeatureConfiguration {
   // surfaces messages from people who never addressed the bot to a
   // third-party LLM API, so it's a deliberate per-guild choice.
   channelHistory: boolean;
+  // Whether the bot may judge (via LLM call) and reply to reactions its own
+  // chat replies accumulate — see ReactionReplyScheduler. Off by default,
+  // same rationale as ambientReplies: an opt-in extra surface for an LLM
+  // call the base chatbot feature doesn't imply.
+  reactionReplies: boolean;
+  // Whether the model may also propose reactions on OTHER people's messages
+  // it can already see in channel_history/reply_chain, piggybacked onto a
+  // turn that's already running (mention/ambient/reaction-reply) — no extra
+  // LLM call. Off by default; only takes effect when channelHistory is also
+  // on (nothing to react to otherwise on most turns).
+  historyReactions: boolean;
 }
 
 export interface GuildRoleConfiguration {

@@ -722,6 +722,7 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
       generatedImages,
       ambientAction: modelOutput.ambientAction,
       reactionEmoji: modelOutput.reactionEmoji,
+      historyReactions: modelOutput.historyReactions,
     };
   }
 

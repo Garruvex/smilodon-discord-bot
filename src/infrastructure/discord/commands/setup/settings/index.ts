@@ -1,5 +1,7 @@
 import { accessSetting } from "./access-setting.js";
 import { ambientRepliesSetting } from "./ambient-replies-setting.js";
+import { reactionRepliesSetting } from "./reaction-replies-setting.js";
+import { historyReactionsSetting } from "./history-reactions-setting.js";
 import { auditSetting } from "./audit-setting.js";
 import { auditLogSetting } from "./audit-log-setting.js";
 import { birthdaysSetting } from "./birthdays-setting.js";
@@ -66,6 +68,8 @@ export const settingGroups: readonly SettingGroup[] = [
     settings: [
       chatbotSetting,
       ambientRepliesSetting,
+      reactionRepliesSetting,
+      historyReactionsSetting,
       channelHistorySetting,
       contextScanAddSetting,
       contextDailyAddSetting,
