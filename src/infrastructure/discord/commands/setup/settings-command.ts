@@ -19,7 +19,13 @@ import {
 } from "./settings/index.js";
 import { renderProgressPreview } from "./settings/settings-support.js";
 
-function buildDefinition(): ChatInputCommandMetadata {
+// Exported for tests — buildSlashCommandBuilder(buildDefinition()) exercises
+// the exact same discord.js validation (name/description length & pattern)
+// that deploy-time registration does, without needing the whole command's
+// dependency graph. A too-long setting description here throws at bot
+// startup, in production, which is why this needs to be caught by a test
+// rather than only by the deploy call itself.
+export function buildDefinition(): ChatInputCommandMetadata {
   const subcommandGroups: SubcommandGroupMetadata[] = settingGroups.map((group) => ({
     name: group.name,
     description: group.description,
