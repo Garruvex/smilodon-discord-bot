@@ -461,6 +461,19 @@ describe("ChatConversationService", () => {
     expect(stored).toMatchObject([{ statement: "likes green apples" }]);
   });
 
+  it("applies the same reply/ignore short-circuit to a reaction-triggered turn as an ambient one", async () => {
+    const commitSuccessfulExchange = vi.fn(() => Promise.resolve({ droppedExchanges: [] }));
+    const store = baseStore({ commitSuccessfulExchange });
+    const provider: ChatProvider = { reply: () => Promise.resolve(response("", [], [], { action: "ignore" })) };
+    const service = new ChatConversationService(provider, store, testMemoryEngine().engine);
+    const deliver = vi.fn(() => Promise.resolve("should not be called"));
+
+    const result = await service.run({ ...input("(5 people reacted)"), triggerMode: "reaction" }, deliver);
+    expect(result.ambientAction).toBe("ignore");
+    expect(deliver).not.toHaveBeenCalled();
+    expect(commitSuccessfulExchange).not.toHaveBeenCalled();
+  });
+
   it("runs a dedicated post-reply extraction pass and ingests what it finds, even when the reply model itself returned no memory actions", async () => {
     const store = baseStore();
     const extractPersonalMemories = vi.fn(() => Promise.resolve([

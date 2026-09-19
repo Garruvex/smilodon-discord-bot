@@ -790,29 +790,20 @@ export class ChatConversationService {
         ),
       };
       // ambientAction "ignore" and reactionEmoji are independent signals:
-      // an ambient turn can reply, react, both, or neither. No reply here
-      // (ambientAction !== "reply") means `deliver` is never called; if a
-      // reaction is still set, the model engaged (if only with an emoji)
-      // and may have picked up something memory-worthy, so persist via
-      // applyMemoryActions (no session exchange — there's no assistant
-      // reply text to record). Fully ignored (no reply, no reaction) means
-      // no reply, no memory write, no guild-knowledge write. The caller
-      // (AmbientChatBehavior) inspects ambientAction/reactionEmoji on the
-      // returned response to react or no-op.
+      // a non-direct turn (ambient or reaction) can reply, react, both, or
+      // neither. No reply here (ambientAction !== "reply") means `deliver`
+      // is never called; if a reaction is still set, the model engaged (if
+      // only with an emoji) and may have picked up something memory-worthy,
+      // so persist via memoryEngine.ingest (no session exchange — there's
+      // no assistant reply text to record). Fully ignored (no reply, no
+      // reaction) means no reply, no memory write, no guild-knowledge
+      // write. The caller (AmbientChatBehavior/ReactionReplyScheduler)
+      // inspects ambientAction/reactionEmoji on the returned response to
+      // react or no-op.
       const proposals = this.toProposals(
         validatedResponse.userMemoryActions, validatedResponse.guildKnowledgeCandidates, input.currentUser.id,
       );
-      // ambientAction "ignore" and reactionEmoji are independent signals:
-      // an ambient turn can reply, react, both, or neither. No reply here
-      // (ambientAction !== "reply") means `deliver` is never called; if a
-      // reaction is still set, the model engaged (if only with an emoji)
-      // and may have picked up something memory-worthy, so persist via
-      // memoryEngine.ingest (no session exchange — there's no assistant
-      // reply text to record). Fully ignored (no reply, no reaction) means
-      // no reply, no memory write, no guild-knowledge write. The caller
-      // (AmbientChatBehavior) inspects ambientAction/reactionEmoji on the
-      // returned response to react or no-op.
-      if (input.triggerMode === "ambient" && validatedResponse.ambientAction !== "reply") {
+      if (input.triggerMode !== "direct" && validatedResponse.ambientAction !== "reply") {
         if (validatedResponse.reactionEmoji && proposals.length > 0) {
           try {
             const result = await this.runMemoryMutation(input.guildId, input.currentUser.id, () => this.memoryEngine.ingest({

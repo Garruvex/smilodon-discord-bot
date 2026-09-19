@@ -103,8 +103,13 @@ export interface ChatRequest {
   // "direct": an explicit @mention or reply-chain continuation — always
   // produces a reply. "ambient": the bot's name was merely mentioned in a
   // message, not @mentioned — the model judges whether to ignore, react
-  // with an emoji, or reply (see ChatResponse.ambientAction).
-  triggerMode: "direct" | "ambient";
+  // with an emoji, or reply (see ChatResponse.ambientAction). "reaction":
+  // several people reacted to one of the bot's own prior replies (see
+  // ReactionReplyScheduler) — same reply/ignore/react judgment as "ambient",
+  // but the situation being judged is entirely different (a reaction burst
+  // on a past message, not the bot's name coming up in a live message), so
+  // it gets its own prompt section rather than reusing ambient's.
+  triggerMode: "direct" | "ambient" | "reaction";
   // Per-guild opt-in (profile.features.historyReactions) — piggybacks on
   // whatever turn is already happening (a mention/ambient reply, or a
   // reaction-threshold turn) to let the model also drop a tasteful reaction
@@ -294,9 +299,10 @@ export interface ChatResponse {
   usage: ChatUsage | null;
   webSearchUsed: boolean;
   generatedImages: readonly GeneratedChatImage[];
-  // Only meaningful when the request's triggerMode was "ambient"; null for
-  // direct-mode responses (treated as "reply" by callers). Independent of
-  // reactionEmoji — an ambient turn can reply, react, both, or neither.
+  // Only meaningful when the request's triggerMode was "ambient" or
+  // "reaction"; null for direct-mode responses (treated as "reply" by
+  // callers). Independent of reactionEmoji — a non-direct turn can reply,
+  // react, both, or neither.
   ambientAction: "reply" | "ignore" | null;
   reactionEmoji: string | null;
   // Zero-or-more reactions on OTHER messages from <channel_history>/

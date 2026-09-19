@@ -1,11 +1,14 @@
 import type { Client, GuildTextBasedChannel, Message } from "discord.js";
 import type { Logger } from "pino";
 
+import { ChatAccessService } from "../../../application/access/chat-access-service.js";
 import { chatMemoryLimits } from "../../../application/chat/chat-memory-policy.js";
 import type { ChannelHistoryMessage } from "../../../application/chat/chat-provider.js";
 import { ChatStateCommitError, type ChatConversationService } from "../../../application/chat/chat-conversation-service.js";
 import type { MessageReactionWatch, MessageReactionWatchStore } from "../../../application/chat/message-reaction-watch.js";
 import type { PersonaSource } from "../../../application/chat/persona-source.js";
+import type { ApplicationConfiguration } from "../../../config/configuration.js";
+import type { GuildConfiguration } from "../../../config/guild-configuration.js";
 import type { GuildConfigurationProvider } from "../../../config/guild-configuration-provider.js";
 import { KeyedSerialQueue } from "../../../application/concurrency/keyed-serial-queue.js";
 import { ChatTurnSupport } from "./chat-turn-support.js";
@@ -39,12 +42,34 @@ const watchRetentionMs = 7 * 24 * 60 * 60 * 1_000;
 // single author of its own the way a message does. Every due row is marked
 // "done" exactly once no matter the outcome — see MessageReactionWatch's
 // own doc comment for why this never re-arms.
+// A message-fetch/channel-fetch/reactor-fetch/model failure gets this many
+// total attempts (spread across scheduler ticks, ~1/minute) before the watch
+// is given up on — bounds retries without a persisted attempt counter/
+// migration: a genuine deletion (Unknown Message/Channel) is detected and
+// given up on immediately instead, since retrying that can never succeed.
+const maxAttempts = 3;
+
+// Evaluates reaction-armed chat replies once their window comes due: counts
+// unique reactors, and — only above threshold — asks the model whether the
+// reaction volume is actually worth commenting on (the same
+// reply/ignore/react judgment AmbientChatBehavior already uses, via the
+// same ChatConversationService.run call), with the original message's
+// author standing in as the turn's `currentUser` since a reaction has no
+// single author of its own the way a message does. Every due row is marked
+// "done" exactly once no matter the outcome — see MessageReactionWatch's
+// own doc comment for why this never re-arms.
 export class ReactionReplyScheduler {
   private checkTimer: NodeJS.Timeout | null = null;
   private tickInFlight = false;
   private currentTick: Promise<void> | null = null;
   private readonly perMessageQueue = new KeyedSerialQueue();
   private readonly turnSupport: ChatTurnSupport;
+  private readonly chatAccess: ChatAccessService;
+  // In-memory only — a process restart resets a watch's attempt count back
+  // to zero, which just means a couple of extra retries in the worst case,
+  // never fewer than intended. Not worth a schema migration/persisted
+  // column for a bound this small.
+  private readonly attemptsByMessageId = new Map<string, number>();
 
   public constructor(
     private readonly client: Client,
@@ -53,8 +78,29 @@ export class ReactionReplyScheduler {
     private readonly conversation: ChatConversationService,
     private readonly personaSource: PersonaSource,
     private readonly logger: Logger,
+    configuration: ApplicationConfiguration,
   ) {
     this.turnSupport = new ChatTurnSupport(logger);
+    this.chatAccess = new ChatAccessService(configuration);
+  }
+
+  // true: still has attempts left, caller should leave the watch pending
+  // for the next tick to retry (the row is already "due", so dequeueDue
+  // will just pick it up again — no separate re-arm needed). false: out of
+  // attempts, caller should give up (markDone).
+  private shouldRetry(messageId: string): boolean {
+    const attempts = (this.attemptsByMessageId.get(messageId) ?? 0) + 1;
+    if (attempts >= maxAttempts) {
+      this.attemptsByMessageId.delete(messageId);
+      return false;
+    }
+    this.attemptsByMessageId.set(messageId, attempts);
+    return true;
+  }
+
+  private async giveUp(messageId: string, now: number): Promise<void> {
+    this.attemptsByMessageId.delete(messageId);
+    await this.watchStore.markDone(messageId, now);
   }
 
   public start(): void {
@@ -84,8 +130,16 @@ export class ReactionReplyScheduler {
             try {
               await this.evaluate(watch, now);
             } catch (error) {
-              this.logger.error({ error, messageId: watch.messageId, guildId: watch.guildId }, "Reaction-reply evaluation failed unexpectedly");
-              await this.watchStore.markDone(watch.messageId, now).catch(() => undefined);
+              // Genuinely unexpected (evaluate() handles its own known
+              // failure modes internally) — still bounded-retry rather than
+              // an unconditional markDone, so a transient bug/outage here
+              // doesn't burn the watch on its very first tick either.
+              if (this.shouldRetry(watch.messageId)) {
+                this.logger.warn({ error, messageId: watch.messageId, guildId: watch.guildId }, "Reaction-reply evaluation failed unexpectedly, will retry");
+                return;
+              }
+              this.logger.error({ error, messageId: watch.messageId, guildId: watch.guildId }, "Reaction-reply evaluation failed repeatedly, giving up");
+              await this.giveUp(watch.messageId, now).catch(() => undefined);
             }
           });
         }
@@ -116,51 +170,115 @@ export class ReactionReplyScheduler {
   private async evaluate(watch: MessageReactionWatch, now: number): Promise<void> {
     const profile = this.profiles.find(watch.guildId);
     // Feature may have been turned off after this row was registered —
-    // honor the current setting, not the one at registration time.
+    // honor the current setting, not the one at registration time. Not
+    // retryable — this is a real, current decision, not a fetch failure.
     if (!profile?.features.chatbot || !profile.features.reactionReplies) {
-      await this.watchStore.markDone(watch.messageId, now);
+      await this.giveUp(watch.messageId, now);
       return;
     }
-    const channel = await this.client.channels.fetch(watch.channelId).catch(() => null);
-    if (!channel?.isTextBased() || channel.isDMBased() || channel.guildId !== watch.guildId) {
-      await this.watchStore.markDone(watch.messageId, now);
+    let channel: Awaited<ReturnType<Client["channels"]["fetch"]>>;
+    try {
+      channel = await this.client.channels.fetch(watch.channelId);
+    } catch (error) {
+      await this.handleFetchFailure(watch.messageId, now, error, "Failed to fetch the watched channel");
       return;
     }
-    const message = await channel.messages.fetch(watch.messageId).catch(() => null);
+    if (!channel || !channel.isTextBased() || channel.isDMBased() || channel.guildId !== watch.guildId) {
+      // Not a fetch failure — genuinely the wrong/unusable channel now.
+      await this.giveUp(watch.messageId, now);
+      return;
+    }
+    let message: Message | null;
+    try {
+      message = await channel.messages.fetch(watch.messageId);
+    } catch (error) {
+      await this.handleFetchFailure(watch.messageId, now, error, "Failed to fetch the watched message");
+      return;
+    }
     if (!message || message.author.id !== this.client.user?.id) {
-      // Deleted, or (shouldn't happen) somehow not our own message anymore.
-      await this.watchStore.markDone(watch.messageId, now);
+      // Deleted (resolved null instead of throwing), or — shouldn't happen
+      // — somehow not our message anymore. Not retryable either way.
+      await this.giveUp(watch.messageId, now);
       return;
     }
 
-    const reactorIds = await this.collectUniqueReactorIds(message);
+    const { reactorIds, complete } = await this.collectUniqueReactorIds(message, profile, watch.channelId);
+    if (!complete) {
+      await this.handleFetchFailure(watch.messageId, now, null, "Failed to fully fetch this message's reactor lists");
+      return;
+    }
     if (reactorIds.size < reactionReplyThreshold) {
-      await this.watchStore.markDone(watch.messageId, now);
+      // A real, current count below threshold — not a failure, so this
+      // never retries even though it superficially looks similar to one.
+      await this.giveUp(watch.messageId, now);
       return;
     }
 
     try {
       await this.replyToReactions(message, channel, profile.guildId, reactorIds);
-    } finally {
-      await this.watchStore.markDone(watch.messageId, now);
+      await this.giveUp(watch.messageId, now);
+    } catch (error) {
+      if (this.shouldRetry(watch.messageId)) {
+        this.logger.warn({ error, messageId: watch.messageId, guildId: watch.guildId }, "Reaction-reply turn failed, will retry");
+        return;
+      }
+      this.logger.error({ error, messageId: watch.messageId, guildId: watch.guildId }, "Reaction-reply turn failed repeatedly, giving up");
+      await this.giveUp(watch.messageId, now);
     }
   }
 
-  // Excludes the bot's own id (it never counts toward its own threshold)
-  // and any other bot. Fetches each emoji's reactor list rather than
-  // trusting `.count`/cache alone — a reaction on a message the bot wasn't
-  // actively watching when it landed is routinely not fully cached.
-  private async collectUniqueReactorIds(message: Message): Promise<Set<string>> {
-    const ids = new Set<string>();
+  // A DiscordAPIError for "Unknown Message"/"Unknown Channel"/"Missing
+  // Access" means the target is genuinely gone or unreachable — retrying
+  // can never succeed, so that's treated as terminal. Anything else
+  // (network blip, rate limit, a 5xx) is presumed transient and gets a
+  // bounded retry instead of permanently burning the watch on one hiccup.
+  private async handleFetchFailure(messageId: string, now: number, error: unknown, message: string): Promise<void> {
+    const code = (error as { code?: number } | null)?.code;
+    const terminal = code === 10008 || code === 10003 || code === 50001 || code === 50013;
+    if (terminal) {
+      await this.giveUp(messageId, now);
+      return;
+    }
+    if (this.shouldRetry(messageId)) {
+      this.logger.warn({ error, messageId }, `${message}, will retry`);
+      return;
+    }
+    this.logger.error({ error, messageId }, `${message} repeatedly, giving up`);
+    await this.giveUp(messageId, now);
+  }
+
+  // Excludes the bot's own id (it never counts toward its own threshold),
+  // any other bot, and anyone the guild's normal chat-access policy
+  // (role/channel allow-list) wouldn't let talk to the bot at all — a
+  // restricted member's emoji shouldn't be able to trigger or shape a
+  // reply any more than their words could. Fetches each emoji's reactor
+  // list rather than trusting `.count`/cache alone — a reaction on a
+  // message the bot wasn't actively watching when it landed is routinely
+  // not fully cached. `complete: false` means at least one emoji's reactor
+  // list couldn't be fetched — the caller treats that as a transient
+  // failure (retry) rather than evaluating a possibly-undercounted total.
+  private async collectUniqueReactorIds(
+    message: Message, profile: GuildConfiguration, channelId: string,
+  ): Promise<{ reactorIds: Set<string>; complete: boolean }> {
+    const rawIds = new Set<string>();
+    let complete = true;
     for (const reaction of message.reactions.cache.values()) {
       const users = await reaction.users.fetch().catch(() => null);
-      if (!users) continue;
+      if (!users) {
+        complete = false;
+        continue;
+      }
       for (const user of users.values()) {
         if (user.bot) continue;
-        ids.add(user.id);
+        rawIds.add(user.id);
       }
     }
-    return ids;
+    const eligibleIds = new Set<string>();
+    for (const id of rawIds) {
+      const member = await message.guild?.members.fetch(id).catch(() => null) ?? null;
+      if (this.chatAccess.canUseMentionChat(profile, member, id, channelId)) eligibleIds.add(id);
+    }
+    return { reactorIds: eligibleIds, complete };
   }
 
   private async replyToReactions(
@@ -174,9 +292,13 @@ export class ReactionReplyScheduler {
       const member = await message.guild?.members.fetch(id).catch(() => null);
       return { id, displayName: member?.displayName ?? id, roleNames: [] as string[] };
     }));
+    // `before: null` — fetch the most recent channel activity rather than
+    // "before message.id", since this turn is evaluated minutes after
+    // `message` was sent and needs to see whatever was said in between
+    // (see ChatTurnSupport.resolveChannelHistory's own doc comment).
     const channelHistory: ChannelHistoryMessage[] = profile.features.channelHistory
       ? this.turnSupport.toChannelHistoryMessages(await this.turnSupport.resolveChannelHistory(
-          message, profile.chat.channelHistoryLimit, new Set([message.id]),
+          message, profile.chat.channelHistoryLimit, new Set([message.id]), null,
         ))
       : [];
     const currentUser = {
@@ -202,7 +324,7 @@ export class ReactionReplyScheduler {
         replyChain: [], replyChainOverflow: [], channelHistory,
         images: [], webSearchMode: profile.chat.webSearchMode,
         imageGenerationEnabled: false, includeSources: profile.chat.includeSources,
-        triggerMode: "ambient",
+        triggerMode: "reaction",
         historyReactionsEnabled: profile.features.historyReactions && profile.features.channelHistory,
         toolsEnabled: false,
         channelMemoryModes: profile.chat.channelMemoryModes,
@@ -239,10 +361,17 @@ export class ReactionReplyScheduler {
       }
     } catch (error) {
       if (error instanceof ChatStateCommitError) {
+        // The reply was already delivered before the commit failed —
+        // terminal, not retryable: retrying would post a second reply for
+        // the same reaction burst. Swallowed here (not rethrown) so
+        // evaluate()'s catch doesn't apply its bounded retry to this case.
         this.logger.warn({ error, messageId: message.id, guildId }, "Reaction-reply exchange could not be saved");
         return;
       }
-      this.logger.error({ error, messageId: message.id, guildId }, "Reaction-reply request failed");
+      // Anything else (model/provider failure, a delivery error before
+      // anything was sent) is presumed transient — rethrown so evaluate()
+      // applies its bounded retry instead of burning the watch here.
+      throw error;
     }
   }
 }

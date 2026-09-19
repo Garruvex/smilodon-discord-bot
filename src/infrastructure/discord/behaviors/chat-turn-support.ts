@@ -170,10 +170,19 @@ export class ChatTurnSupport {
   // budget the same way resolveReplyChain is; a fetch failure returns an
   // empty list rather than throwing, since this is best-effort ambient
   // context, not something the turn should fail over.
+  // `before` anchors the fetch window — defaults to `message.id`, i.e. "the
+  // channel leading up to `message`" (right for a live mention/ambient
+  // turn, where `message` IS the current moment). Pass `null` explicitly to
+  // fetch the most recent channel messages instead, with no cutoff — the
+  // right anchor for a turn evaluated well after `message` was sent (e.g.
+  // ReactionReplyScheduler, evaluated minutes after its own prior reply),
+  // where "before message.id" would silently miss everything that happened
+  // in between.
   public async resolveChannelHistory(
     message: Message,
     limit: number,
     excludeIds: ReadonlySet<string>,
+    before: string | null = message.id,
   ): Promise<Message[]> {
     // Oversample the raw fetch (Discord's own per-request cap is 100, so
     // this never costs an extra round trip) — a flat "last `limit` from
@@ -182,7 +191,10 @@ export class ChatTurnSupport {
     // leaving too few distinct human messages for the model to reliably
     // track who said what across several people talking at once.
     const fetchLimit = Math.min(limit * 4, 100);
-    const fetched = await message.channel.messages.fetch({ limit: fetchLimit, before: message.id }).catch(() => null);
+    const fetched = await message.channel.messages.fetch({
+      limit: fetchLimit,
+      ...(before ? { before } : {}),
+    }).catch(() => null);
     if (!fetched) return [];
     const selfId = message.client.user?.id ?? null;
     // Budgeted separately from human messages: our own recent replies are

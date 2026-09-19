@@ -565,7 +565,7 @@ export function createDependencies(
   const reactionReplyScheduler = chatConversationService
     ? new ReactionReplyScheduler(
         discordClient, messageReactionWatchStore, guildConfigurationProvider, chatConversationService,
-        personaSource, logger.child({ component: "reaction-reply-scheduler" }),
+        personaSource, logger.child({ component: "reaction-reply-scheduler" }), configuration,
       )
     : null;
   behaviorRegistry.register(new MentionChatBehavior(

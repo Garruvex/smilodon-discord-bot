@@ -333,26 +333,48 @@ export function buildChatInstructions(request: ChatRequest, safetyGuard: string)
   const webSearchSection = request.webSearchMode === "auto"
     ? `${noInlineCitationInstruction}\n\nUse web search results to inform your answer when it helps.`
     : noInlineCitationInstruction;
-  const ambientSection = request.triggerMode === "ambient"
-    ? `\n\n# Ambient trigger — you were not directly addressed\n\n` +
-      `Your name merely appeared in this message; nobody @mentioned you or replied to you. Most of the time ` +
-      `that calls for nothing at all — treat "ignore" as the default outcome and "reply" as the exception, the ` +
-      `way a real person in the room would mostly keep listening rather than jump into every sentence that ` +
-      `happens to include their name.\n` +
-      `Two independent decisions, not a single exclusive choice:\n` +
-      `- Whether to reply with text: set ambientAction to "reply" (write response normally) only when replying is ` +
-      `clearly called for — a direct question aimed at you, a request or command aimed at you even if not ` +
-      `phrased as a question, or a correction of something you actually said. Being merely talked about, ` +
-      `praised, blamed, or referenced is USUALLY NOT enough on its own — real clubmates let plenty of mentions ` +
-      `pass without chiming in, especially in a fast-moving multi-person conversation that isn't addressed to ` +
-      `you. Use "ignore" (leave response as an empty string) whenever it's a coin flip, not just in the obvious ` +
-      `incidental cases.\n` +
-      `- Whether to react: independently of the above, optionally set reactionEmoji to exactly one standard emoji ` +
-      `when a light acknowledgment fits — this can apply whether or not you're also replying, and is the lower-` +
-      `cost way to acknowledge a mention you're not going to write a reply to. Leave it null otherwise.\n` +
-      `When unsure, prefer reacting (or doing nothing) over replying — a missed reply is far less disruptive to ` +
-      `the conversation than an unwanted one.`
-    : `\n\nYou were directly addressed (mentioned or replied to). Always set ambientAction to "reply" and reactionEmoji to null, and answer normally.`;
+  const ambientTriggerText = `\n\n# Ambient trigger — you were not directly addressed\n\n` +
+    `Your name merely appeared in this message; nobody @mentioned you or replied to you. Most of the time ` +
+    `that calls for nothing at all — treat "ignore" as the default outcome and "reply" as the exception, the ` +
+    `way a real person in the room would mostly keep listening rather than jump into every sentence that ` +
+    `happens to include their name.\n` +
+    `Two independent decisions, not a single exclusive choice:\n` +
+    `- Whether to reply with text: set ambientAction to "reply" (write response normally) only when replying is ` +
+    `clearly called for — a direct question aimed at you, a request or command aimed at you even if not ` +
+    `phrased as a question, or a correction of something you actually said. Being merely talked about, ` +
+    `praised, blamed, or referenced is USUALLY NOT enough on its own — real clubmates let plenty of mentions ` +
+    `pass without chiming in, especially in a fast-moving multi-person conversation that isn't addressed to ` +
+    `you. Use "ignore" (leave response as an empty string) whenever it's a coin flip, not just in the obvious ` +
+    `incidental cases.\n` +
+    `- Whether to react: independently of the above, optionally set reactionEmoji to exactly one standard emoji ` +
+    `when a light acknowledgment fits — this can apply whether or not you're also replying, and is the lower-` +
+    `cost way to acknowledge a mention you're not going to write a reply to. Leave it null otherwise.\n` +
+    `When unsure, prefer reacting (or doing nothing) over replying — a missed reply is far less disruptive to ` +
+    `the conversation than an unwanted one.`;
+  // Distinct from ambientTriggerText: nothing was said to/about you just
+  // now — this turn exists because several real members reacted to a
+  // message you already sent, some time ago. <current_message> here is a
+  // synthetic system note describing that reaction burst, not something a
+  // person actually said, so "your name merely appeared" framing would be
+  // actively misleading.
+  const reactionTriggerText = `\n\n# Reaction trigger — people reacted to your own message\n\n` +
+    `Nobody addressed you in words. Several real members reacted (with emoji, not text) to a message you sent ` +
+    `a while ago — <current_message> just reports how many and who; <mentioned_users> lists the reactors. Most ` +
+    `reaction bursts still don't call for a follow-up — plenty of reactions are just people enjoying what you ` +
+    `already said, not a request for more — so treat "ignore" as the default outcome here too.\n` +
+    `- Whether to reply with text: set ambientAction to "reply" only when there's something genuinely worth ` +
+    `adding — the reaction pattern implies a specific follow-up question, a joke worth riffing on, or a ` +
+    `correction; otherwise use "ignore" (leave response as an empty string) rather than manufacturing a reason ` +
+    `to speak again.\n` +
+    `- Whether to react: independently of the above, optionally set reactionEmoji to exactly one standard emoji ` +
+    `as a lightweight acknowledgment of the reactions themselves. Leave it null otherwise.\n` +
+    `Use <channel_history> (when present) to check whether the conversation has already moved on since your ` +
+    `original message — commenting on something the room has stopped talking about is worse than staying quiet.`;
+  const ambientSection = request.triggerMode === "direct"
+    ? `\n\nYou were directly addressed (mentioned or replied to). Always set ambientAction to "reply" and reactionEmoji to null, and answer normally.`
+    : request.triggerMode === "reaction"
+      ? reactionTriggerText
+      : ambientTriggerText;
   // Only offered when the guild opted in AND there's actually something to
   // react to — piggybacks on whatever turn is already happening (see
   // ChatRequest.historyReactionsEnabled's doc comment) instead of a

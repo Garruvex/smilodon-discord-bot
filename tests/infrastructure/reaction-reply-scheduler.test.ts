@@ -12,14 +12,35 @@ import { createSqliteDatabaseConnection } from "../../src/infrastructure/databas
 import type { ChatProvider, ChatResponse } from "../../src/application/chat/chat-provider.js";
 import type { ChatStateStore } from "../../src/application/chat/chat-state-store.js";
 import type { MessageReactionWatch, MessageReactionWatchStore } from "../../src/application/chat/message-reaction-watch.js";
+import type { ApplicationConfiguration } from "../../src/config/configuration.js";
 import type { GuildConfiguration } from "../../src/config/guild-configuration.js";
 import type { GuildConfigurationProvider } from "../../src/config/guild-configuration-provider.js";
 import type { PersonaSource } from "../../src/application/chat/persona-source.js";
+import { defaultMemoryEngineLimits } from "../../src/application/memory/memory-engine.js";
 
 const guildId = "guild-1";
 const channelId = "channel-1";
+
+function configuration(): ApplicationConfiguration {
+  return {
+    environment: "test",
+    logLevel: "fatal",
+    discord: { token: "test-token", applicationId: "789012345678901234" },
+    ownerUserIds: new Set(),
+    guildConfigurationDirectory: "unused",
+    runtimeDataDirectory: "unused",
+    persistence: { driver: "file", databaseUrl: null },
+    lavalink: { host: "localhost", port: 2333, password: "test-password", secure: false },
+    chat: null,
+    utilityChat: null,
+    embeddings: null,
+    memory: defaultMemoryEngineLimits,
+    chatDelivery: { maxGeneratedImageAggregateBytes: 10 * 1024 * 1024 },
+  };
+}
 const botId = "bot-1";
 const messageId = "msg-1";
+const chatbotRoleId = "chatbot-role";
 
 function profile(overrides: { reactionReplies?: boolean; chatbot?: boolean } = {}): GuildConfiguration {
   return {
@@ -32,7 +53,7 @@ function profile(overrides: { reactionReplies?: boolean; chatbot?: boolean } = {
       reminders: false, nsfw: false, linkFix: false, retainMemberDataOnLeave: true, ambientReplies: false,
       channelHistory: false, reactionReplies: overrides.reactionReplies ?? true, historyReactions: false,
     },
-    roles: { botAdministrator: new Set(), musicController: new Set(), restricted: new Set(), chatbot: new Set() },
+    roles: { botAdministrator: new Set(), musicController: new Set(), restricted: new Set(), chatbot: new Set([chatbotRoleId]) },
     channels: {
       musicCommands: new Set(), controlPanel: null, auditLog: null, chatbot: new Set([channelId]),
       birthdayAnnouncements: null, joinAnnouncements: null, leaveAnnouncements: null, linkFix: new Set(),
@@ -120,8 +141,17 @@ function watch(overrides: Partial<MessageReactionWatch> = {}): MessageReactionWa
 }
 
 // Reactor ids -> a fake reaction with a .users.fetch() returning them.
-function fakeMessage(reactorIds: readonly string[], overrides: { content?: string } = {}): unknown {
+// `noAccessIds` names reactors who lack the chatbot role (and so should be
+// filtered out by ChatAccessService before they ever count toward the
+// threshold). `reactionUsersFetch` lets a test override the per-emoji
+// users.fetch() behavior (e.g. to reject, simulating a transient failure).
+function fakeMessage(reactorIds: readonly string[], overrides: {
+  content?: string;
+  noAccessIds?: readonly string[];
+  reactionUsersFetch?: () => Promise<Map<string, { id: string; bot: boolean }>>;
+} = {}): unknown {
   const usersById = reactorIds.map((id) => ({ id, bot: false }));
+  const noAccessIds = new Set(overrides.noAccessIds ?? []);
   const sent = { id: "sent-1" };
   return {
     id: messageId,
@@ -129,22 +159,31 @@ function fakeMessage(reactorIds: readonly string[], overrides: { content?: strin
     content: overrides.content ?? "hello!",
     channelId,
     member: null,
-    guild: { members: { fetch: (id: string) => Promise.resolve({ displayName: id }) } },
+    guild: {
+      members: {
+        fetch: (id: string) => Promise.resolve({
+          displayName: id,
+          roles: { cache: new Map(noAccessIds.has(id) ? [] : [[chatbotRoleId, {}]]) },
+        }),
+      },
+    },
     reactions: {
-      cache: new Map([["😂", { users: { fetch: () => Promise.resolve(new Map(usersById.map((u) => [u.id, u]))) } }]]),
+      cache: new Map([["😂", {
+        users: { fetch: overrides.reactionUsersFetch ?? ((): Promise<Map<string, { id: string; bot: boolean }>> => Promise.resolve(new Map(usersById.map((u) => [u.id, u])))) },
+      }]]),
     },
     react: () => Promise.resolve(),
     reply: () => Promise.resolve(sent),
   };
 }
 
-function fakeClient(message: unknown): unknown {
+function fakeClient(message: unknown, overrides: { messagesFetch?: () => Promise<unknown> } = {}): unknown {
   const channel = {
     isTextBased: (): boolean => true,
     isDMBased: (): boolean => false,
     guildId,
     nsfw: false,
-    messages: { fetch: (): Promise<unknown> => Promise.resolve(message) },
+    messages: { fetch: overrides.messagesFetch ?? ((): Promise<unknown> => Promise.resolve(message)) },
     send: (): Promise<unknown> => Promise.resolve({ id: "sent-2" }),
   };
   return {
@@ -161,7 +200,7 @@ describe("ReactionReplyScheduler", () => {
     const { store, markDone } = fakeWatchStore([watch()]);
     const scheduler = new ReactionReplyScheduler(
       fakeClient(message) as never, store, providerFor(profile()), conversation, personaSource(),
-      { warn: vi.fn(), error: vi.fn(), info: vi.fn() } as never,
+      { warn: vi.fn(), error: vi.fn(), info: vi.fn() } as never, configuration(),
     );
 
     await scheduler.checkNow(2_000);
@@ -177,7 +216,7 @@ describe("ReactionReplyScheduler", () => {
     const { store, markDone } = fakeWatchStore([watch()]);
     const scheduler = new ReactionReplyScheduler(
       fakeClient(message) as never, store, providerFor(profile()), conversation, personaSource(),
-      { warn: vi.fn(), error: vi.fn(), info: vi.fn() } as never,
+      { warn: vi.fn(), error: vi.fn(), info: vi.fn() } as never, configuration(),
     );
 
     await scheduler.checkNow(2_000);
@@ -193,7 +232,7 @@ describe("ReactionReplyScheduler", () => {
     const { store, markDone } = fakeWatchStore([watch()]);
     const scheduler = new ReactionReplyScheduler(
       fakeClient(message) as never, store, providerFor(profile({ reactionReplies: false })), conversation, personaSource(),
-      { warn: vi.fn(), error: vi.fn(), info: vi.fn() } as never,
+      { warn: vi.fn(), error: vi.fn(), info: vi.fn() } as never, configuration(),
     );
 
     await scheduler.checkNow(2_000);
@@ -208,12 +247,103 @@ describe("ReactionReplyScheduler", () => {
     const { store, markDone } = fakeWatchStore([watch()]);
     const scheduler = new ReactionReplyScheduler(
       fakeClient(null) as never, store, providerFor(profile()), conversation, personaSource(),
-      { warn: vi.fn(), error: vi.fn(), info: vi.fn() } as never,
+      { warn: vi.fn(), error: vi.fn(), info: vi.fn() } as never, configuration(),
     );
 
     await scheduler.checkNow(2_000);
 
     expect(reply).not.toHaveBeenCalled();
     expect(markDone).toHaveBeenCalledWith(messageId, 2_000);
+  });
+
+  it("excludes a reactor without chatbot access from the threshold count and from mentionedUsers", async () => {
+    const reply = vi.fn(() => Promise.resolve(response("That got a reaction!", "reply")));
+    const conversation = testConversationService(reply);
+    // 5 raw reactors, but 2 lack the chatbot role — only 3 are eligible,
+    // below the threshold of 5.
+    const message = fakeMessage(["r1", "r2", "r3", "r4", "r5"], { noAccessIds: ["r4", "r5"] });
+    const { store, markDone } = fakeWatchStore([watch()]);
+    const scheduler = new ReactionReplyScheduler(
+      fakeClient(message) as never, store, providerFor(profile()), conversation, personaSource(),
+      { warn: vi.fn(), error: vi.fn(), info: vi.fn() } as never, configuration(),
+    );
+
+    await scheduler.checkNow(2_000);
+
+    expect(reply).not.toHaveBeenCalled();
+    expect(markDone).toHaveBeenCalledWith(messageId, 2_000);
+  });
+
+  it("still asks the model once enough reactors remain eligible after excluding access-denied ones", async () => {
+    const reply = vi.fn(() => Promise.resolve(response("That got a reaction!", "reply")));
+    const conversation = testConversationService(reply);
+    // 6 raw reactors, 1 lacks access — 5 remain, meeting the threshold.
+    const message = fakeMessage(["r1", "r2", "r3", "r4", "r5", "r6"], { noAccessIds: ["r6"] });
+    const { store, markDone } = fakeWatchStore([watch()]);
+    const scheduler = new ReactionReplyScheduler(
+      fakeClient(message) as never, store, providerFor(profile()), conversation, personaSource(),
+      { warn: vi.fn(), error: vi.fn(), info: vi.fn() } as never, configuration(),
+    );
+
+    await scheduler.checkNow(2_000);
+
+    expect(reply).toHaveBeenCalledOnce();
+    expect(markDone).toHaveBeenCalledWith(messageId, 2_000);
+  });
+
+  it("gives up immediately (no retry) on a terminal Discord error like an unknown/deleted message", async () => {
+    const reply = vi.fn(() => Promise.resolve(response("should not be sent")));
+    const conversation = testConversationService(reply);
+    const messagesFetch = vi.fn(() => Promise.reject(Object.assign(new Error("Unknown Message"), { code: 10008 })));
+    const { store, markDone } = fakeWatchStore([watch()]);
+    const scheduler = new ReactionReplyScheduler(
+      fakeClient(null, { messagesFetch }) as never, store, providerFor(profile()), conversation, personaSource(),
+      { warn: vi.fn(), error: vi.fn(), info: vi.fn() } as never, configuration(),
+    );
+
+    await scheduler.checkNow(2_000);
+
+    expect(reply).not.toHaveBeenCalled();
+    expect(markDone).toHaveBeenCalledWith(messageId, 2_000);
+    expect(messagesFetch).toHaveBeenCalledOnce();
+  });
+
+  it("retries a transient message-fetch failure across ticks instead of burning the watch, then gives up after repeated failures", async () => {
+    const reply = vi.fn(() => Promise.resolve(response("should not be sent")));
+    const conversation = testConversationService(reply);
+    const messagesFetch = vi.fn(() => Promise.reject(new Error("ECONNRESET")));
+    const { store, markDone } = fakeWatchStore([watch()]);
+    const scheduler = new ReactionReplyScheduler(
+      fakeClient(null, { messagesFetch }) as never, store, providerFor(profile()), conversation, personaSource(),
+      { warn: vi.fn(), error: vi.fn(), info: vi.fn() } as never, configuration(),
+    );
+
+    await scheduler.checkNow(1_000);
+    expect(markDone).not.toHaveBeenCalled();
+    await scheduler.checkNow(2_000);
+    expect(markDone).not.toHaveBeenCalled();
+    await scheduler.checkNow(3_000);
+
+    expect(reply).not.toHaveBeenCalled();
+    expect(markDone).toHaveBeenCalledWith(messageId, 3_000);
+    expect(messagesFetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("retries instead of evaluating an undercounted total when a per-emoji reactor fetch fails", async () => {
+    const reply = vi.fn(() => Promise.resolve(response("should not be sent")));
+    const conversation = testConversationService(reply);
+    const message = fakeMessage(["r1", "r2", "r3", "r4", "r5"], {
+      reactionUsersFetch: () => Promise.reject(new Error("rate limited")),
+    });
+    const { store, markDone } = fakeWatchStore([watch()]);
+    const scheduler = new ReactionReplyScheduler(
+      fakeClient(message) as never, store, providerFor(profile()), conversation, personaSource(),
+      { warn: vi.fn(), error: vi.fn(), info: vi.fn() } as never, configuration(),
+    );
+
+    await scheduler.checkNow(2_000);
+
+    expect(reply).not.toHaveBeenCalled();
+    expect(markDone).not.toHaveBeenCalled();
   });
 });
