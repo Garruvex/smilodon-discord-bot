@@ -93,12 +93,32 @@ export interface ScorableRecord {
   slot: string;
   statement: string;
   updatedAt: number;
+  // How much this fact should weigh in ranking — 1 (low) to 3 (high), set
+  // by the source that proposed it (see ProposedMemory.importance). Linear,
+  // not normalized/centered: a "low" fact contributes its base weight, not
+  // a penalty, so an unrated legacy record (also importance 1) never ranks
+  // worse than one a source explicitly rated low. Optional (defaults to 1
+  // in bm25Score — see there) because this module is shared by scorers with
+  // no importance concept at all (example exchanges, persona lore, legacy
+  // guild-knowledge/user-memory selectors) — a uniform default contributes
+  // the same constant to every candidate in one of those calls, which
+  // leaves their relative ranking exactly as it was before this field
+  // existed.
+  importance?: number;
 }
 
 export interface Bm25ScoreWeights {
   subjectBoost: number;
   maxRecencyBoost: number;
   recencyWindowMs: number;
+  // Multiplied against the record's raw importance (1-3) and added
+  // straight to the score, same additive pattern as subjectBoost/recency
+  // — not folded into BM25 itself, since importance is a property of the
+  // fact, not of how well it matches this particular query. Optional, same
+  // reasoning as ScorableRecord.importance — a caller with no importance
+  // concept (or a calibration harness sweeping only the pre-existing
+  // weights) doesn't need to know this field exists.
+  importanceBoost?: number;
 }
 
 // Compatibility defaults inherited from the original flat keyword scorer.
@@ -108,6 +128,7 @@ export const defaultBm25ScoreWeights: Readonly<Bm25ScoreWeights> = {
   subjectBoost: 3,
   maxRecencyBoost: 2,
   recencyWindowMs: 30 * 24 * 60 * 60 * 1_000,
+  importanceBoost: 1,
 };
 
 function recordText(record: ScorableRecord): string {
@@ -187,6 +208,13 @@ export function bm25Score(
     ? Math.max(0, 1 - ageMs / weights.recencyWindowMs)
     : 0;
   score += weights.maxRecencyBoost * recencyFraction;
+  // Skipped entirely (not defaulted to 1) when the record has no
+  // importance concept at all — a scorer with a zero-relevance record
+  // relies on this function returning exactly 0 for it (see
+  // ExampleExchangeSelector/PersonaLoreSelector's own zero-similarity
+  // exclusion checks); a flat default contribution would break that
+  // invariant for every caller of this shared module, not just Memory's.
+  if (record.importance !== undefined) score += (weights.importanceBoost ?? 1) * record.importance;
   return score;
 }
 

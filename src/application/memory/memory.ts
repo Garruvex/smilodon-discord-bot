@@ -36,7 +36,6 @@ export interface Memory {
   status: MemoryStatus;
   supersededById: string | null;
   source: MemorySourceKind;
-  confidence: number;
   importance: number;
   embedding: readonly number[] | null;
   embeddingModel: string | null;
@@ -182,7 +181,6 @@ export interface RepositoryIngestInput {
   structuredValue?: unknown;
   status: MemoryStatus;
   source: MemorySourceKind;
-  confidence: number;
   importance: number;
   embedding: readonly number[] | null;
   embeddingModel: string | null;
@@ -203,6 +201,16 @@ export interface CandidateQuery {
   // Optional: narrow to a specific subject (e.g. "what do we know about
   // Bob") — undefined means no subject filter.
   subjectIds?: readonly string[];
+  // Optional, and deliberately separate from subjectIds above: subjects to
+  // prefer when the result set has to be truncated at maxEligibleCandidates
+  // (see each repository's own comment) — a ranking hint, not a WHERE
+  // filter. Ambient recall (DefaultMemoryEngine.recall's main path) passes
+  // the turn's mentioned subjects here so a subject-relevant memory is
+  // never the one that gets silently dropped by the cap, while every other
+  // eligible memory (unrelated to anyone currently in the conversation)
+  // still comes back too — unlike subjectIds, which would incorrectly
+  // exclude them entirely.
+  prioritySubjectIds?: readonly string[];
 }
 
 export interface RecallCandidates {
@@ -389,6 +397,15 @@ export type ProposedMemory =
       // branch in memory-engine.ts) — null explicitly means "no self-report
       // evidence found", distinct from "not applicable".
       assertedByUserId?: string | null;
+      // How much this fact should weigh in future recall ranking (see
+      // Bm25ScoreWeights.importanceBoost in memory-relevance.ts) —
+      // 1 (low) to 3 (high). Undefined means "the source of this proposal
+      // doesn't rate importance" (e.g. the main reply model's inline
+      // userMemoryActions, as opposed to the dedicated personal-memory
+      // extraction pass, which does); DefaultMemoryEngine.upsertOne treats
+      // that the same as 1 (low), not as a higher default — an unrated
+      // proposal shouldn't outrank one a source deliberately rated low.
+      importance?: 1 | 2 | 3;
     }
   | {
       action: "remove";

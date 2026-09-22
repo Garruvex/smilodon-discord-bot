@@ -490,7 +490,7 @@ describe("OpenAiResponsesChatProvider", () => {
           content: [{
             type: "output_text",
             text: JSON.stringify({
-              actions: [{ action: "upsert", aboutSpeaker: true, sourceQuote: "I like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" }],
+              actions: [{ action: "upsert", aboutSpeaker: true, importance: "medium" as const, sourceQuote: "I like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" }],
             }),
           }],
         }],
@@ -506,7 +506,7 @@ describe("OpenAiResponsesChatProvider", () => {
       "I like green apples", "Noted!", { id: "user-1", displayName: "Red" },
     );
 
-    expect(actions).toEqual([{ action: "upsert", aboutSpeaker: true, sourceQuote: "I like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" }]);
+    expect(actions).toEqual([{ action: "upsert", aboutSpeaker: true, importance: "medium" as const, sourceQuote: "I like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" }]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

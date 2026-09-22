@@ -64,7 +64,6 @@ export const memories = sqliteTable("memories", {
   status: text("status").notNull(),
   supersededById: text("superseded_by_id"),
   source: text("source").notNull(),
-  confidence: integer("confidence").notNull(),
   importance: integer("importance").notNull(),
   embedding: text("embedding", { mode: "json" }).$type<number[] | null>(),
   embeddingModel: text("embedding_model"),

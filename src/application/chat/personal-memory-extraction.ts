@@ -36,6 +36,11 @@ export const personalMemoryExtractionSchema = z.object({
     topic: z.string(),
     slot: z.string(),
     statement: z.string().nullable(),
+    // How much this fact should weigh in future recall ranking — see the
+    // preamble's own guidance on what counts as which. Required (not
+    // defaulted) so the model makes a real judgment call per action rather
+    // than every action silently landing on one value.
+    importance: z.enum(["low", "medium", "high"]),
   })).max(5),
 });
 
@@ -52,7 +57,7 @@ export const personalMemoryExtractionJsonSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["action", "aboutSpeaker", "sourceQuote", "topic", "slot", "statement"],
+        required: ["action", "aboutSpeaker", "sourceQuote", "topic", "slot", "statement", "importance"],
         properties: {
           action: { type: "string", enum: ["upsert", "remove"] },
           aboutSpeaker: { type: "boolean" },
@@ -60,6 +65,7 @@ export const personalMemoryExtractionJsonSchema = {
           topic: { type: "string" },
           slot: { type: "string" },
           statement: { type: ["string", "null"] },
+          importance: { type: "string", enum: ["low", "medium", "high"] },
         },
       },
     },
@@ -119,7 +125,13 @@ const personalMemoryExtractionPreamble =
   `Use a stable topic from: ${memoryTopicIds.join(", ")}. Use a short lowercase semantic slot such as food.fruit, ` +
   `role.overwatch, or current.discord_bot. Use upsert for a new/corrected durable fact and remove only for an ` +
   `explicit forget/correction request. Do not store transcripts, jokes, temporary details, secrets, credentials, ` +
-  `or sensitive financial/medical data. Return an empty actions array if nothing qualifies.`;
+  `or sensitive financial/medical data. Every upsert action also carries importance: "high" for something that ` +
+  `defines who the speaker is or shapes how you should treat them going forward (their name, role, a stated ` +
+  `boundary or strong preference, a recurring relationship); "medium" for a genuine but more situational fact ` +
+  `(a hobby, a one-off preference, something they're currently doing); "low" for a minor, easily-superseded detail ` +
+  `that's still worth keeping but shouldn't crowd out more important facts when recall has to choose. A remove ` +
+  `action does not need importance to matter — pick any value; it's ignored for removals. Return an empty actions ` +
+  `array if nothing qualifies.`;
 
 export function buildPersonalMemoryExtractionPrompt(
   userMessage: string,

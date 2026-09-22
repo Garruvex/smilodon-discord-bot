@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { and, asc, eq, gt, inArray, isNull, ne, or } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 
 import type {
@@ -50,7 +50,6 @@ function toMemory(row: typeof schema.memories.$inferSelect): Memory {
     status: row.status as MemoryStatus,
     supersededById: row.supersededById,
     source: row.source as MemorySourceKind,
-    confidence: row.confidence,
     importance: row.importance,
     embedding: row.embedding ?? null,
     embeddingModel: row.embeddingModel,
@@ -126,7 +125,6 @@ export class SqliteMemoryRepository implements MemoryRepository {
         structuredValue: input.structuredValue ?? null,
         status: input.status,
         source: input.source,
-        confidence: input.confidence,
         importance: input.importance,
         embedding: input.embedding ? [...input.embedding] : null,
         embeddingModel: input.embeddingModel,
@@ -140,7 +138,6 @@ export class SqliteMemoryRepository implements MemoryRepository {
         transaction.update(schema.memories).set({
           statement: input.statement,
           structuredValue: input.structuredValue ?? null,
-          confidence: input.confidence,
           importance: input.importance,
           embedding: input.embedding ? [...input.embedding] : null,
           embeddingModel: input.embeddingModel,
@@ -176,7 +173,7 @@ export class SqliteMemoryRepository implements MemoryRepository {
         }).run();
       }
       return existing && !isRevision
-        ? { ...row, statement: input.statement, confidence: input.confidence, importance: input.importance, embedding: input.embedding ? [...input.embedding] : null, updatedAt: new Date(input.now) }
+        ? { ...row, statement: input.statement, importance: input.importance, embedding: input.embedding ? [...input.embedding] : null, updatedAt: new Date(input.now) }
         : row;
     });
     return Promise.resolve(toMemory(result));
@@ -189,6 +186,26 @@ export class SqliteMemoryRepository implements MemoryRepository {
     // would silently drop a requested subject's memories whenever the
     // unfiltered eligible set exceeds maxEligibleCandidates and happens to
     // sort the requested subject's rows past the cutoff.
+    //
+    // ORDER BY matters here for the same reason: without one, which rows
+    // survive the LIMIT once a guild's eligible set exceeds
+    // maxEligibleCandidates is implementation-defined (in practice, rowid/
+    // insertion order) — meaning newly-written, usually most-relevant
+    // memories could be silently excluded from ranking entirely while old
+    // ones always win. Ordering subject-matches first, then most-recently-
+    // updated, means the cap always drops the least-likely-relevant rows
+    // first instead of an arbitrary set.
+    // Bare integer literals here would be misread by SQLite as ORDER-BY
+    // column-position references (e.g. a literal 0/1 term means "order by
+    // the Nth selected column", not "order by this constant") — so the
+    // subject-priority term is only added to the ORDER BY at all when
+    // there's a real expression to rank by, never as a dummy placeholder.
+    // Ordered on prioritySubjectIds, NOT subjectIds — the latter already
+    // narrows the WHERE clause below, so every row that reaches ORDER BY
+    // already matches it and a priority term keyed on it would be inert.
+    const orderByTerms = query.prioritySubjectIds && query.prioritySubjectIds.length > 0
+      ? [sql`case when ${inArray(schema.memories.subjectId, [...query.prioritySubjectIds])} then 0 else 1 end`, desc(schema.memories.updatedAt)]
+      : [desc(schema.memories.updatedAt)];
     const rows = this.database.select().from(schema.memories).where(and(
       eq(schema.memories.guildId, query.guildId),
       eq(schema.memories.status, "active"),
@@ -200,7 +217,7 @@ export class SqliteMemoryRepository implements MemoryRepository {
         eq(schema.memories.audience, "guild"),
       ),
       query.subjectIds && query.subjectIds.length > 0 ? inArray(schema.memories.subjectId, [...query.subjectIds]) : undefined,
-    )).limit(maxEligibleCandidates).all();
+    )).orderBy(...orderByTerms).limit(maxEligibleCandidates).all();
     return Promise.resolve({ memories: rows.map(toMemory) });
   }
 

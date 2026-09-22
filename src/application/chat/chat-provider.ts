@@ -205,6 +205,12 @@ export interface ProposedMemoryAction {
   topic: string;
   slot: string;
   statement: string | null;
+  // See PersonalMemoryExtractionAction.importance — optional here because
+  // this base type is shared with the main reply model's inline
+  // userMemoryActions, which doesn't rate importance; undefined resolves
+  // to the same "low" default as an explicit low rating (see
+  // ProposedMemory.importance in memory.ts).
+  importance?: 1 | 2 | 3;
 }
 
 // The main reply call's own schema additionally carries sourceQuote (see
@@ -466,6 +472,11 @@ export interface PersonalMemoryExtractionAction {
   topic: string;
   slot: string;
   statement: string | null;
+  // How much this fact should weigh in future recall ranking — see the
+  // extraction prompt's own guidance (personal-memory-extraction.ts) on
+  // what counts as which. Mapped to ProposedMemoryAction's numeric
+  // importance (1/2/3) by ChatConversationService.extractPersonalMemories.
+  importance: "low" | "medium" | "high";
 }
 
 // Standalone call (own prompt/schema, outside the main reply turn) — a

@@ -8,12 +8,13 @@ import { createSqliteDatabaseConnection } from "../../src/infrastructure/databas
 import { SqliteMemoryRepository } from "../../src/infrastructure/persistence/sqlite-memory-repository.js";
 import { DefaultMemoryEngine, defaultMemoryEngineLimits, type MemoryEngineLimits } from "../../src/application/memory/memory-engine.js";
 import type { MemoryEngine } from "../../src/application/memory/memory.js";
+import type { EmbeddingsClient } from "../../src/application/chat/embeddings-client.js";
 
-function engine(limits?: Partial<MemoryEngineLimits>): MemoryEngine {
+function engine(limits?: Partial<MemoryEngineLimits>, embeddingsClient?: EmbeddingsClient): MemoryEngine {
   const directory = mkdtempSync(join(tmpdir(), "sqlite-memory-engine-"));
   const connection = createSqliteDatabaseConnection(directory);
   return new DefaultMemoryEngine(
-    new SqliteMemoryRepository(connection.database), null, null,
+    new SqliteMemoryRepository(connection.database), embeddingsClient ?? null, null,
     limits ? { ...defaultMemoryEngineLimits, ...limits } : undefined,
   );
 }
@@ -336,5 +337,129 @@ describe("DefaultMemoryEngine.forget", () => {
     const removedCount = await memoryEngine.forget({ guildId: "guild", ownerUserId: "alice", memoryId });
     expect(removedCount).toBe(1);
     expect(await memoryEngine.listUserMemories("guild", "alice")).toHaveLength(0);
+  });
+});
+
+describe("DefaultMemoryEngine.ingest — identity canonicalization prevents slot fragmentation", () => {
+  // Fixed vectors keyed on content, not a real embedding model: any
+  // statement mentioning "pizza" maps to the same vector (so two proposals
+  // about the same fact under different model-invented slots score cosine
+  // similarity 1.0 against each other), while an unrelated statement maps
+  // to an orthogonal vector (similarity 0), proving canonicalization is
+  // selective rather than merging everything under one subject.
+  const pizzaVsChessClient: EmbeddingsClient = {
+    modelId: "test-model",
+    embed: (text: string): Promise<number[]> => Promise.resolve(text.includes("pizza") ? [1, 0] : [0, 1]),
+  };
+
+  it("a second proposal about the same fact under a different model-invented slot reuses the first proposal's identity instead of fragmenting", async () => {
+    const memoryEngine = engine(undefined, pizzaVsChessClient);
+    await memoryEngine.ingest({
+      guildId: "guild", channelId: "general", channelMode: "shared",
+      assertedByUserId: "alice", sourceMessageId: "m1", source: "live", now: 100,
+      proposals: [{
+        action: "upsert", audience: "private", kind: "preference", ownerUserId: "alice",
+        subjectType: "member", subjectId: "alice", topic: "preference", slot: "food.pizza",
+        statement: "likes pizza", channelScoped: false,
+      }],
+    });
+    await memoryEngine.ingest({
+      guildId: "guild", channelId: "general", channelMode: "shared",
+      assertedByUserId: "alice", sourceMessageId: "m2", source: "live", now: 200,
+      proposals: [{
+        // Deliberately a DIFFERENT slot from the first proposal — same
+        // underlying fact, just named differently, the way independent
+        // extraction calls routinely do (see personal-memory-extraction.ts).
+        action: "upsert", audience: "private", kind: "preference", ownerUserId: "alice",
+        subjectType: "member", subjectId: "alice", topic: "preference", slot: "food.favorite",
+        statement: "really loves pizza", channelScoped: false,
+      }],
+    });
+    const memories = await memoryEngine.listUserMemories("guild", "alice");
+    // One coherent identity, not two: the second proposal's own slot
+    // ("food.favorite") never actually gets stored — it's rewritten onto
+    // the first proposal's identity ("food.pizza") before ingest, so the
+    // statement update flows through as a revision of the SAME identity
+    // rather than a second, disconnected one linked only by a post-hoc
+    // supersede. Asserting the surviving slot is the first proposal's own
+    // is what actually distinguishes this from checkForConflicts alone —
+    // that path would have left the second proposal's own slot in place.
+    expect(memories).toHaveLength(1);
+    expect(memories[0]!.slot).toBe("food.pizza");
+    expect(memories[0]!.statement).toBe("really loves pizza");
+  });
+
+  it("does not canonicalize two genuinely unrelated facts about the same subject", async () => {
+    const memoryEngine = engine(undefined, pizzaVsChessClient);
+    await memoryEngine.ingest({
+      guildId: "guild", channelId: "general", channelMode: "shared",
+      assertedByUserId: "alice", sourceMessageId: "m1", source: "live", now: 100,
+      proposals: [{
+        action: "upsert", audience: "private", kind: "preference", ownerUserId: "alice",
+        subjectType: "member", subjectId: "alice", topic: "preference", slot: "food.pizza",
+        statement: "likes pizza", channelScoped: false,
+      }],
+    });
+    await memoryEngine.ingest({
+      guildId: "guild", channelId: "general", channelMode: "shared",
+      assertedByUserId: "alice", sourceMessageId: "m2", source: "live", now: 200,
+      proposals: [{
+        action: "upsert", audience: "private", kind: "preference", ownerUserId: "alice",
+        subjectType: "member", subjectId: "alice", topic: "activity", slot: "game.chess",
+        statement: "plays chess", channelScoped: false,
+      }],
+    });
+    const memories = await memoryEngine.listUserMemories("guild", "alice");
+    expect(memories).toHaveLength(2);
+    expect(memories.map((memory) => memory.slot).sort()).toEqual(["food.pizza", "game.chess"]);
+  });
+});
+
+describe("DefaultMemoryEngine — importance affects recall ranking", () => {
+  it("a high-importance memory outranks an otherwise-equivalent low-importance one", async () => {
+    const memoryEngine = engine();
+    await memoryEngine.ingest({
+      guildId: "guild", channelId: "general", channelMode: "shared",
+      assertedByUserId: "alice", sourceMessageId: "m1", source: "live", now: 100,
+      proposals: [{
+        action: "upsert", audience: "private", kind: "preference", ownerUserId: "alice",
+        subjectType: "member", subjectId: "alice", topic: "preference", slot: "food.fruit",
+        statement: "likes apples", channelScoped: false, importance: 1,
+      }],
+    });
+    await memoryEngine.ingest({
+      guildId: "guild", channelId: "general", channelMode: "shared",
+      assertedByUserId: "alice", sourceMessageId: "m2", source: "live", now: 100,
+      proposals: [{
+        action: "upsert", audience: "private", kind: "preference", ownerUserId: "alice",
+        subjectType: "member", subjectId: "alice", topic: "preference", slot: "food.vegetable",
+        statement: "likes broccoli", channelScoped: false, importance: 3,
+      }],
+    });
+    const recalled = await memoryEngine.recall({
+      guildId: "guild", channelId: "general", userId: "alice", message: "food",
+      recentHistory: [], subjectIds: ["alice"], now: 200,
+    });
+    // Both memories share the same subject/recency/lexical footing — the
+    // only thing that should separate their rank is importance (see
+    // Bm25ScoreWeights.importanceBoost in memory-relevance.ts).
+    expect(recalled.memories.map((memory) => memory.slot)).toEqual(["food.vegetable", "food.fruit"]);
+  });
+
+  it("an unrated proposal (importance omitted) ranks the same as an explicit low rating, never higher", async () => {
+    const memoryEngine = engine();
+    await memoryEngine.ingest({
+      guildId: "guild", channelId: "general", channelMode: "shared",
+      assertedByUserId: "alice", sourceMessageId: "m1", source: "live", now: 100,
+      proposals: [{
+        action: "upsert", audience: "private", kind: "preference", ownerUserId: "alice",
+        subjectType: "member", subjectId: "alice", topic: "preference", slot: "food.fruit",
+        statement: "likes apples", channelScoped: false,
+        // importance omitted entirely — the main reply model's own
+        // userMemoryActions path never sets it (see ProposedMemoryAction).
+      }],
+    });
+    const memories = await memoryEngine.listUserMemories("guild", "alice");
+    expect(memories[0]!.importance).toBe(1);
   });
 });

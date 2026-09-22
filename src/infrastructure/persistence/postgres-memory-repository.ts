@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { and, asc, eq, gt, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
 import type {
@@ -81,7 +81,6 @@ function toMemory(row: typeof schema.memories.$inferSelect): Memory {
     status: row.status as MemoryStatus,
     supersededById: row.supersededById,
     source: row.source as MemorySourceKind,
-    confidence: row.confidence,
     importance: row.importance,
     embedding: row.embedding ?? null,
     embeddingModel: row.embeddingModel,
@@ -144,7 +143,6 @@ export class PostgresMemoryRepository implements MemoryRepository {
         const updated = await transaction.update(schema.memories).set({
           statement: input.statement,
           structuredValue: input.structuredValue ?? null,
-          confidence: input.confidence,
           importance: input.importance,
           embedding: input.embedding ? [...input.embedding] : null,
           embeddingModel: input.embeddingModel,
@@ -178,7 +176,6 @@ export class PostgresMemoryRepository implements MemoryRepository {
           structuredValue: input.structuredValue ?? null,
           status: input.status,
           source: input.source,
-          confidence: input.confidence,
           importance: input.importance,
           embedding: input.embedding ? [...input.embedding] : null,
           embeddingModel: input.embeddingModel,
@@ -223,6 +220,27 @@ export class PostgresMemoryRepository implements MemoryRepository {
     // would silently drop a requested subject's memories whenever the
     // unfiltered eligible set exceeds maxEligibleCandidates and happens to
     // sort the requested subject's rows past the cutoff.
+    //
+    // ORDER BY matters here for the same reason: without one, which rows
+    // survive the LIMIT once a guild's eligible set exceeds
+    // maxEligibleCandidates is implementation-defined — meaning newly-
+    // written, usually most-relevant memories could be silently excluded
+    // from ranking entirely while old ones always win. Ordering subject-
+    // matches first, then most-recently-updated, means the cap always
+    // drops the least-likely-relevant rows first instead of an arbitrary
+    // set. (This is a cheap, backend-uniform prefilter — not a substitute
+    // for real ANN ranking via the memories_embedding_hnsw index, which is
+    // a separate, deliberately-deferred scale optimization; see the memory
+    // recall/storage plan.)
+    // See SqliteMemoryRepository.findRecallCandidates for why the subject-
+    // priority term is only added when there's a real expression to rank
+    // by — standard SQL (Postgres included) treats a bare integer literal
+    // in ORDER BY as a column-position reference, not a constant. Ordered
+    // on prioritySubjectIds, NOT subjectIds — the latter already narrows
+    // the WHERE clause below, so a priority term keyed on it would be inert.
+    const orderByTerms = query.prioritySubjectIds && query.prioritySubjectIds.length > 0
+      ? [sql`case when ${inArray(schema.memories.subjectId, [...query.prioritySubjectIds])} then 0 else 1 end`, desc(schema.memories.updatedAt)]
+      : [desc(schema.memories.updatedAt)];
     const rows = await this.database.select().from(schema.memories).where(and(
       eq(schema.memories.guildId, query.guildId),
       eq(schema.memories.status, "active"),
@@ -234,7 +252,7 @@ export class PostgresMemoryRepository implements MemoryRepository {
         eq(schema.memories.audience, "guild"),
       ),
       query.subjectIds && query.subjectIds.length > 0 ? inArray(schema.memories.subjectId, [...query.subjectIds]) : undefined,
-    )).limit(maxEligibleCandidates);
+    )).orderBy(...orderByTerms).limit(maxEligibleCandidates);
     return { memories: rows.map(toMemory) };
   }
 

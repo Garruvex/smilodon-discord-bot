@@ -215,7 +215,6 @@ export const memories = pgTable("memories", {
   status: text("status").notNull(), // "candidate" | "active" | "superseded" | "expired"
   supersededById: uuid("superseded_by_id"),
   source: text("source").notNull(), // "live" | "explicit" | "administrator" | "consolidation"
-  confidence: integer("confidence").notNull(),
   importance: integer("importance").notNull(),
   embedding: vector("embedding", { dimensions: embeddingDimensions }),
   embeddingModel: text("embedding_model"),

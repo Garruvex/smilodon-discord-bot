@@ -26,11 +26,15 @@ describe("memory relevance calibration", () => {
       message: "unrelated query", recentHistory: [], subjectIds: new Set(["alice"]), now: 10 * dayMs,
     });
 
+    // record has no `importance` — bm25Score skips that term entirely for
+    // scorables with no importance concept (see its own doc comment), so
+    // this stays 5, unaffected by importanceBoost's new default.
     expect(bm25Score(corpus, context, record)).toBe(5);
     expect(defaultBm25ScoreWeights).toEqual({
       subjectBoost: 3,
       maxRecencyBoost: 2,
       recencyWindowMs: 30 * dayMs,
+      importanceBoost: 1,
     });
   });
 

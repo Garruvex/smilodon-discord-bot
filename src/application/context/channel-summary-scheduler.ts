@@ -2,7 +2,7 @@ import type { Logger } from "pino";
 
 import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
 import type { GuildConfiguration } from "../../config/guild-configuration.js";
-import { normalizeForGroundingCheck, validateMemoryActions } from "../chat/chat-memory-policy.js";
+import { importanceRatingToLevel, normalizeForGroundingCheck, validateMemoryActions } from "../chat/chat-memory-policy.js";
 import type { PersonalMemoryExtractionAction, PersonalMemoryExtractor, ProposedMemoryAction } from "../chat/chat-provider.js";
 import { guildKnowledgeLimits, validateGuildKnowledgeCandidates } from "../chat/guild-knowledge-policy.js";
 import { mapWithConcurrency } from "../concurrency/map-with-concurrency.js";
@@ -113,7 +113,10 @@ function buildPromotionProposals(job: PersonalMemoryExtractionJob, actions: read
       const normalizedQuote = normalizeForGroundingCheck(action.sourceQuote);
       return normalizedQuote.length > 0 && normalizedOwnMessages.includes(normalizedQuote);
     })
-    .map((action) => ({ action: action.action, topic: action.topic, slot: action.slot, statement: action.statement, subjectUserId: job.subjectId }));
+    .map((action) => ({
+      action: action.action, topic: action.topic, slot: action.slot, statement: action.statement,
+      subjectUserId: job.subjectId, importance: importanceRatingToLevel(action.importance),
+    }));
   const proposals: ProposedMemory[] = [];
   for (const action of validateMemoryActions(proposedActions, new Set([job.subjectId]))) {
     if (action.action !== "upsert") continue;
@@ -122,6 +125,10 @@ function buildPromotionProposals(job: PersonalMemoryExtractionJob, actions: read
       ownerUserId: job.subjectId, subjectType: "member", subjectId: job.subjectId,
       topic: action.topic, slot: action.slot, statement: action.statement!, channelScoped: false,
       assertedByUserId: job.subjectId,
+      // See ChatConversationService.toProposals's identical conditional
+      // spread for why: exactOptionalPropertyTypes treats an explicit
+      // `undefined` value differently from omitting the key.
+      ...(action.importance !== undefined ? { importance: action.importance } : {}),
     });
   }
   return proposals;

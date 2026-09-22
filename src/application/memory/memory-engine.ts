@@ -75,6 +75,22 @@ export interface MemoryEngineLimits extends MemoryValidationLimits {
   // uses a different model, and prefer measuring actual same-fact vs.
   // different-fact pairs from real data over trusting this number.
   conflictSimilarityThreshold: number;
+  // Identity canonicalization at write time (see upsertOne's
+  // canonicalizeIdentity) — the cosine-similarity bar a NEW proposal's
+  // embedding must clear against an existing active memory about the same
+  // subject (any topic/slot) to be treated as literally the same fact and
+  // rewritten onto that memory's identity, rather than creating a
+  // fragmented duplicate under its own model-invented slot. Deliberately
+  // well above conflictSimilarityThreshold: that threshold only asks "is
+  // this worth flagging as a possible conflict" (with an optional LLM
+  // classifier as a further check before acting); this one commits to
+  // "these ARE the same identity" with no further confirmation step, so it
+  // needs much higher confidence to avoid merging two genuinely different
+  // facts that merely share a topical/lexical field. Same embedding-model-
+  // dependent caveat as its sibling constant applies — recalibrate via
+  // MEMORY_IDENTITY_CANONICALIZATION_THRESHOLD per deployment rather than
+  // trusting this as a validated value.
+  identityCanonicalizationThreshold: number;
   // Bounded relational retrieval (see recall's relatedSubjectBoosts) — how
   // many hops out from the turn's subjectIds to search. The worked example
   // that motivated this (a fact tying a character to a consequence two
@@ -90,6 +106,7 @@ export interface MemoryEngineLimits extends MemoryValidationLimits {
 export const defaultMemoryEngineLimits: MemoryEngineLimits = {
   maxSelectedChars: 8_000,
   conflictSimilarityThreshold: 0.75,
+  identityCanonicalizationThreshold: 0.92,
   maxRelationHops: 2,
   relationHopBoostBase: 3,
   ...memoryValidationLimits,
@@ -116,7 +133,10 @@ const maxConflictClassificationsPerMemory = 5;
 const topicalMatchMinCosine = 0.25;
 
 function toScorable(memory: Memory): ScorableRecord {
-  return { subjectId: memory.subjectId, topic: memory.topic, slot: memory.slot, statement: memory.statement, updatedAt: memory.updatedAt };
+  return {
+    subjectId: memory.subjectId, topic: memory.topic, slot: memory.slot, statement: memory.statement,
+    updatedAt: memory.updatedAt, importance: memory.importance,
+  };
 }
 
 // Never sends the embedding vector itself to the model — same exclusion as
@@ -198,6 +218,11 @@ export class DefaultMemoryEngine implements MemoryEngine {
         }
       : await this.repository.findRecallCandidates({
           guildId: input.guildId, channelId: input.channelId, userId: input.userId, now: input.now,
+          // Ordering hint only (see CandidateQuery.prioritySubjectIds) —
+          // never subjectIds, which would narrow the eligible set down to
+          // just these subjects instead of merely preferring them when the
+          // cap has to drop something.
+          prioritySubjectIds: input.subjectIds,
         });
     if (candidates.memories.length === 0) return { memories: [], causalChains: [] };
     const { boostBySubjectId, causalChains } = await this.expandRelatedSubjects(input);
@@ -229,7 +254,18 @@ export class DefaultMemoryEngine implements MemoryEngine {
     let embeddingOrder: readonly Memory[] = [];
     const cosineByMemory = new Map<Memory, number>();
     if (this.embeddingsClient) {
-      const queryEmbedding = await this.embeddingsClient.embed(input.message).catch(() => null);
+      // Folds a short trailing window of recent history into the embedded
+      // text, mirroring what buildRelevanceContext already does for BM25's
+      // keyword set above — without this, a context-dependent follow-up
+      // ("what about him?") gets lexical help from prior turns but the
+      // vector-similarity ranking sees only the bare, referent-less message.
+      // Kept short (last 2 turns) rather than the full history: embedding
+      // everything would dilute the message's own topical signal, and
+      // input.recentHistory is already the caller's bounded prompt-history
+      // selection, not raw transcript.
+      const recentContext = input.recentHistory.slice(-2).map((item) => item.content);
+      const queryText = [...recentContext, input.message].join("\n");
+      const queryEmbedding = await this.embeddingsClient.embed(queryText).catch(() => null);
       if (queryEmbedding) {
         const withCosine = candidates.memories
           .filter((memory) => memory.embedding && memory.embedding.length === queryEmbedding.length)
@@ -436,24 +472,37 @@ export class DefaultMemoryEngine implements MemoryEngine {
     const assertedByUserId = proposal.assertedByUserId !== undefined ? proposal.assertedByUserId : input.assertedByUserId;
     const status = resolveInitialStatus(scope.audience, proposal.subjectType, proposal.subjectId, assertedByUserId, input.source);
     const embedding = this.embeddingsClient ? await this.embeddingsClient.embed(statement).catch(() => null) : null;
+    const ownerUserId = proposal.audience === "private" ? proposal.ownerUserId : null;
+    // Canonicalize BEFORE writing, not after: findActiveBySubject/embedding
+    // are already being computed here for the write itself, so reusing them
+    // to check "does an existing memory about this subject already mean
+    // this?" costs one extra query, not a whole extra pass. See
+    // canonicalizeIdentity's own comment for why this needs to happen
+    // pre-ingest rather than relying on checkForConflicts alone.
+    const canonical = embedding
+      ? await this.canonicalizeIdentity({
+          guildId: input.guildId, subjectType: proposal.subjectType, subjectId: proposal.subjectId,
+          audience: scope.audience, ownerUserId, channelId: scope.channelId, isolationChannelId: scope.isolationChannelId,
+          embedding, topic, slot,
+        })
+      : { topic, slot };
     let memory: Memory;
     try {
       memory = await this.repository.ingest({
         guildId: input.guildId,
         kind: proposal.kind,
         audience: scope.audience,
-        ownerUserId: proposal.audience === "private" ? proposal.ownerUserId : null,
+        ownerUserId,
         channelId: scope.channelId,
         isolationChannelId: scope.isolationChannelId,
         subjectType: proposal.subjectType,
         subjectId: proposal.subjectId,
-        topic,
-        slot,
+        topic: canonical.topic,
+        slot: canonical.slot,
         statement,
         status,
         source: input.source,
-        confidence: 1,
-        importance: 1,
+        importance: proposal.importance ?? 1,
         embedding,
         embeddingModel: embedding ? "default" : null,
         expiresAt: null,
@@ -470,6 +519,55 @@ export class DefaultMemoryEngine implements MemoryEngine {
       await this.checkForConflicts(memory, input.now);
     }
     return memory;
+  }
+
+  // Finds an existing active memory about the same subject (any topic/
+  // slot — findActiveBySubject deliberately ignores both, see its own doc
+  // comment) whose statement is close enough in embedding space to be the
+  // SAME underlying fact, just named differently by the model at
+  // extraction time (`slot` is free text the model invents per call — see
+  // MemoryEngineLimits.identityCanonicalizationThreshold). When found, the
+  // new proposal is rewritten onto that memory's (topic, slot) identity so
+  // it goes through ingest's ordinary same-identity revision path — one
+  // coherent statement history under one identity, not a fragmented
+  // duplicate that only checkForConflicts might later notice and link via
+  // supersede (a weaker outcome: two disconnected memory rows rather than
+  // one). Runs pre-ingest, so there's no real memory id yet to exclude from
+  // the lookup — excludeMemoryId: "" matches nothing, since every real id
+  // is a non-empty randomUUID.
+  private async canonicalizeIdentity(input: {
+    guildId: string;
+    subjectType: Memory["subjectType"];
+    subjectId: string;
+    audience: Memory["audience"];
+    ownerUserId: string | null;
+    channelId: string | null;
+    isolationChannelId: string | null;
+    embedding: readonly number[];
+    topic: string;
+    slot: string;
+  }): Promise<{ topic: string; slot: string }> {
+    const fallback = { topic: input.topic, slot: input.slot };
+    let candidates: readonly Memory[];
+    try {
+      candidates = await this.repository.findActiveBySubject({
+        guildId: input.guildId, subjectType: input.subjectType, subjectId: input.subjectId,
+        excludeMemoryId: "",
+        audience: input.audience, ownerUserId: input.ownerUserId, channelId: input.channelId,
+        isolationChannelId: input.isolationChannelId,
+      });
+    } catch (error) {
+      this.logger?.warn({ error, guildId: input.guildId }, "Identity canonicalization lookup failed; proceeding with the model's own topic/slot");
+      return fallback;
+    }
+    let best: { memory: Memory; similarity: number } | null = null;
+    for (const candidate of candidates) {
+      if (!candidate.embedding) continue;
+      const similarity = cosineSimilarity(input.embedding, candidate.embedding);
+      if (similarity < this.limits.identityCanonicalizationThreshold) continue;
+      if (!best || similarity > best.similarity) best = { memory: candidate, similarity };
+    }
+    return best ? { topic: best.memory.topic, slot: best.memory.slot } : fallback;
   }
 
   // Only reached for a freshly-active memory with an embedding — a

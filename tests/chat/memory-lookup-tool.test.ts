@@ -9,7 +9,7 @@ function fakeMemory(overrides: Partial<Memory>): Memory {
     id: "mem-1", guildId: "guild-1", kind: "fact", audience: "private", ownerUserId: "user-1",
     channelId: null, isolationChannelId: null, subjectType: "member", subjectId: "user-1",
     topic: "preference", slot: "food.fruit", statement: "likes apples", structuredValue: null,
-    status: "active", supersededById: null, source: "live", confidence: 1, importance: 1,
+    status: "active", supersededById: null, source: "live", importance: 1,
     embedding: null, embeddingModel: null, createdAt: 0, updatedAt: 0, expiresAt: null,
     validFrom: 0, validUntil: null,
     ...overrides,

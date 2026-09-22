@@ -13,7 +13,7 @@ function ingestInput(overrides: Partial<RepositoryIngestInput> = {}): Repository
   return {
     guildId: "guild", kind: "preference", audience: "private", ownerUserId: "alice", channelId: null,
     isolationChannelId: null, subjectType: "member", subjectId: "alice", topic: "preference", slot: "food.fruit",
-    statement: "likes apples", status: "active", source: "live", confidence: 1, importance: 1,
+    statement: "likes apples", status: "active", source: "live", importance: 1,
     embedding: null, embeddingModel: null, expiresAt: null, now: 1_000,
     sourceMessageId: null, sourceChannelId: null, assertedByUserId: "alice",
     ...overrides,
@@ -51,9 +51,9 @@ export function memoryRepositoryContract(
     it("re-ingesting the same active identity with an unchanged statement reinforces in place", async () => {
       const repository = await createRepository();
       const first = await repository.ingest(ingestInput({ statement: "likes apples", now: 1_000 }));
-      const second = await repository.ingest(ingestInput({ statement: "likes apples", now: 2_000, confidence: 2 }));
+      const second = await repository.ingest(ingestInput({ statement: "likes apples", now: 2_000, importance: 3 }));
       expect(second.id).toBe(first.id);
-      expect(second.confidence).toBe(2);
+      expect(second.importance).toBe(3);
       const candidates = await repository.findRecallCandidates({
         guildId: "guild", channelId: "general", userId: "alice", now: 3_000,
       });
@@ -228,6 +228,47 @@ export function memoryRepositoryContract(
         guildId: "guild", channelId: "general", userId: "alice", now: 5_000,
       });
       expect(candidates.memories).toHaveLength(1);
+    });
+
+    it("findRecallCandidates orders subject-matches first, then most-recently-updated — so a bounded cap never silently drops the most relevant rows", async () => {
+      const repository = await createRepository();
+      // Deliberately ingested oldest-first so an ordering bug (falling back
+      // to insertion order) would put them in this same order — the
+      // assertion below only passes if the query actually orders by
+      // subject-match then recency, not merely returns whatever it stored.
+      const oldestUnrelated = await repository.ingest(ingestInput({
+        audience: "guild", ownerUserId: null, subjectType: "member", subjectId: "carol",
+        slot: "topic.a", statement: "oldest, unrelated subject", now: 1_000,
+      }));
+      const recentUnrelated = await repository.ingest(ingestInput({
+        audience: "guild", ownerUserId: null, subjectType: "member", subjectId: "carol",
+        slot: "topic.b", statement: "newest, unrelated subject", now: 3_000,
+      }));
+      const oldMatch = await repository.ingest(ingestInput({
+        audience: "guild", ownerUserId: null, subjectType: "member", subjectId: "alice",
+        slot: "topic.c", statement: "older, matching subject", now: 2_000,
+      }));
+      const candidates = await repository.findRecallCandidates({
+        guildId: "guild", channelId: "general", userId: "alice", now: 5_000, subjectIds: ["alice"],
+      });
+      // subjectIds narrows the SQL filter itself (see the query's own
+      // comment), so only the matching-subject row comes back here — this
+      // is a different mechanism from prioritySubjectIds below, and
+      // asserted separately.
+      expect(candidates.memories.map((m) => m.id)).toEqual([oldMatch.id]);
+      const unprioritized = await repository.findRecallCandidates({
+        guildId: "guild", channelId: "general", userId: "alice", now: 5_000,
+      });
+      // With no priority hint at all, ordering falls back to recency alone.
+      expect(unprioritized.memories.map((m) => m.id)).toEqual([recentUnrelated.id, oldMatch.id, oldestUnrelated.id]);
+      const prioritized = await repository.findRecallCandidates({
+        guildId: "guild", channelId: "general", userId: "alice", now: 5_000, prioritySubjectIds: ["alice"],
+      });
+      // prioritySubjectIds is ordering-only, not a filter (unlike
+      // subjectIds above): every eligible memory still comes back, but the
+      // matching subject's row sorts first regardless of recency, and the
+      // two unrelated rows keep falling back to recency ordering.
+      expect(prioritized.memories.map((m) => m.id)).toEqual([oldMatch.id, recentUnrelated.id, oldestUnrelated.id]);
     });
 
     it("repository results agree with the canRecall predicate", async () => {

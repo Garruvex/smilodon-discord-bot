@@ -59,6 +59,7 @@ export interface MemoryConfiguration {
   maxSlotChars: number;
   maxTopicChars: number;
   conflictSimilarityThreshold: number;
+  identityCanonicalizationThreshold: number;
   maxRelationHops: number;
   relationHopBoostBase: number;
   // Opt-in fraction of recall calls captured for human relevance labeling.

@@ -1,7 +1,7 @@
 import type { Logger } from "pino";
 
 import { hashContent } from "../assets/content-hash.js";
-import { chatMemoryInstructions, chatMemoryLimits, normalizeForGroundingCheck, validateMemoryActions } from "./chat-memory-policy.js";
+import { chatMemoryInstructions, chatMemoryLimits, importanceRatingToLevel, normalizeForGroundingCheck, validateMemoryActions } from "./chat-memory-policy.js";
 import { chatSafetyGuard, type ChannelHistoryMessage, type ChatProvider, type ChatRequest, type ChatResponse, type ChatResponseObserver, type ReplyChainMessage } from "./chat-provider.js";
 import type { ChatSessionExchange, ChatStateStore } from "./chat-state-store.js";
 import type { UserCustomizationStore } from "./user-customization-store.js";
@@ -271,6 +271,14 @@ export class ChatConversationService {
           action: "upsert", audience: "private", kind: memoryKindForTopic(action.topic),
           ownerUserId: currentUserId, subjectType: "member", subjectId: action.subjectUserId,
           topic: action.topic, slot: action.slot, statement: action.statement!, channelScoped: false,
+          // exactOptionalPropertyTypes: a conditional spread, not
+          // `importance: action.importance` — that would explicitly set
+          // the key to `undefined` when action.importance is unset (the
+          // main reply model's own userMemoryActions never sets it), which
+          // is a real assignment under this tsconfig option, not the same
+          // as omitting the property the way ProposedMemory.importance's
+          // "undefined means unrated" contract expects.
+          ...(action.importance !== undefined ? { importance: action.importance } : {}),
         });
       } else {
         proposals.push({
@@ -464,7 +472,10 @@ export class ChatConversationService {
           const normalizedQuote = normalizeForGroundingCheck(action.sourceQuote);
           return normalizedQuote.length > 0 && normalizedMessage.includes(normalizedQuote);
         })
-        .map((action) => ({ action: action.action, topic: action.topic, slot: action.slot, statement: action.statement, subjectUserId: speaker.id }));
+        .map((action) => ({
+          action: action.action, topic: action.topic, slot: action.slot, statement: action.statement,
+          subjectUserId: speaker.id, importance: importanceRatingToLevel(action.importance),
+        }));
       return validateMemoryActions(proposedActions, new Set([speaker.id]));
     } catch (error) {
       this.logger?.warn({ error, guildId, channelId, userId: speaker.id }, "Personal-memory extraction failed; continuing without it");

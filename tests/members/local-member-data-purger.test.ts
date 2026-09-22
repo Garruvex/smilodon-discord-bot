@@ -19,7 +19,7 @@ function ingestInput(overrides: Partial<RepositoryIngestInput> = {}): Repository
   return {
     guildId: "guild", kind: "fact", audience: "private", ownerUserId: "user", channelId: "channel",
     isolationChannelId: null, subjectType: "member", subjectId: "user", topic: "preference", slot: "favorite_color",
-    statement: "likes blue", status: "active", source: "explicit", confidence: 1, importance: 1,
+    statement: "likes blue", status: "active", source: "explicit", importance: 1,
     embedding: null, embeddingModel: null, expiresAt: null, now: 1_000,
     sourceMessageId: "m1", sourceChannelId: "channel", assertedByUserId: "user",
     ...overrides,
