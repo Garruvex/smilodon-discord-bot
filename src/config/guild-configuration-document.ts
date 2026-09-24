@@ -10,6 +10,7 @@ export interface UpdateGuildConfigurationInput {
   idleImageAsset?: string | null;
   controlPanelChannelId?: string;
   auditLogChannelId?: string | null;
+  adminPanelChannelId?: string | null;
   progressBar?: ProgressBarSettings;
   botAdministratorRoleIds?: readonly string[];
   musicControllerRoleIds?: readonly string[];
@@ -120,6 +121,7 @@ export function createGuildConfigurationDocument(input: CreateGuildConfiguration
       musicCommands: [],
       controlPanel: input.controlPanelChannelId,
       auditLog: null,
+      adminPanel: null,
       chatbot: [],
       birthdayAnnouncements: null,
       linkFix: [],
@@ -153,6 +155,7 @@ export function toGuildConfiguration(parsed: ParsedGuildConfigurationFile, sourc
       musicCommands: new Set(parsed.channels.musicCommands),
       controlPanel: parsed.channels.controlPanel,
       auditLog: parsed.channels.auditLog,
+      adminPanel: parsed.channels.adminPanel,
       chatbot: new Set(parsed.channels.chatbot),
       birthdayAnnouncements: parsed.channels.birthdayAnnouncements,
       linkFix: new Set(parsed.channels.linkFix),
@@ -204,6 +207,7 @@ export function toGuildConfigurationDocument(configuration: GuildConfiguration):
       musicCommands: [...configuration.channels.musicCommands],
       controlPanel: configuration.channels.controlPanel,
       auditLog: configuration.channels.auditLog,
+      adminPanel: configuration.channels.adminPanel,
       chatbot: [...configuration.channels.chatbot],
       birthdayAnnouncements: configuration.channels.birthdayAnnouncements,
       linkFix: [...configuration.channels.linkFix],
@@ -246,6 +250,7 @@ export function applyGuildConfigurationUpdate(
   if (input.idleImageAsset !== undefined) next.branding.idleImageAsset = input.idleImageAsset;
   if (input.controlPanelChannelId !== undefined) next.channels.controlPanel = input.controlPanelChannelId;
   if (input.auditLogChannelId !== undefined) next.channels.auditLog = input.auditLogChannelId;
+  if (input.adminPanelChannelId !== undefined) next.channels.adminPanel = input.adminPanelChannelId;
   if (input.progressBar !== undefined) next.panel.progressBar = structuredClone(input.progressBar);
   if (input.botAdministratorRoleIds !== undefined) next.roles.botAdministrator = [...input.botAdministratorRoleIds];
   if (input.musicControllerRoleIds !== undefined) next.roles.musicController = [...input.musicControllerRoleIds];

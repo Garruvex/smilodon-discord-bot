@@ -35,11 +35,13 @@ function createFakeClient(): { client: Client; emit: (event: string, ...args: un
 
 function fakeCommandInteraction(reply: ReturnType<typeof vi.fn>): {
   isButton: () => boolean; isStringSelectMenu: () => boolean;
+  isAnySelectMenu: () => boolean; isModalSubmit: () => boolean;
   isChatInputCommand: () => boolean; isMessageContextMenuCommand: () => boolean;
   isRepliable: () => boolean; reply: typeof reply;
 } {
   return {
     isButton: () => false, isStringSelectMenu: () => false,
+    isAnySelectMenu: () => false, isModalSubmit: () => false,
     isChatInputCommand: () => true, isMessageContextMenuCommand: () => false,
     isRepliable: () => true, reply,
   };
@@ -140,6 +142,7 @@ function buildApplication(options: {
     behaviorDispatcher: { dispatch: behaviorDispatch },
     channelSummaryScheduler: { start: channelSummaryStart, stop: vi.fn() },
     reminderScheduler: { start: reminderStart, stop: vi.fn() },
+    adminPanelService: { initialize: vi.fn() },
     pollService: { stop: vi.fn() },
   } as unknown as ApplicationDependencies;
 

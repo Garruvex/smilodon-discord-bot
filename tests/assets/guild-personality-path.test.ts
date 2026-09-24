@@ -43,6 +43,7 @@ function profile(overrides: Partial<GuildConfiguration["chat"]> = {}): GuildConf
       musicCommands: new Set(),
       controlPanel: null,
       auditLog: null,
+      adminPanel: null,
       chatbot: new Set(),
       birthdayAnnouncements: null,
       joinAnnouncements: null,

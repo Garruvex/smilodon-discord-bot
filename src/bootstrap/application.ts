@@ -175,6 +175,7 @@ export class Application {
           // unconditionally would let them fire (and even restart) while
           // stop() is tearing persistence down after a fatal Lavalink error.
           this.musicPresenceService.start();
+          this.dependencies.adminPanelService.initialize();
           this.birthdayAnnouncer.start();
           this.dependencies.channelSummaryScheduler?.start();
           this.dependencies.reactionReplyScheduler?.start();
@@ -196,7 +197,8 @@ export class Application {
       if (
         !this.ready &&
         (interaction.isButton() ||
-          interaction.isStringSelectMenu() ||
+          interaction.isAnySelectMenu() ||
+          interaction.isModalSubmit() ||
           interaction.isChatInputCommand() ||
           interaction.isMessageContextMenuCommand())
       ) {
@@ -223,9 +225,16 @@ export class Application {
         return;
       }
 
-      if (interaction.isStringSelectMenu()) {
+      if (interaction.isAnySelectMenu()) {
         void this.dependencies.componentDispatcher.dispatch(interaction).catch((error: unknown) => {
           this.logger.error({ error }, "Select menu dispatch failed");
+        });
+        return;
+      }
+
+      if (interaction.isModalSubmit()) {
+        void this.dependencies.componentDispatcher.dispatchModal(interaction).catch((error: unknown) => {
+          this.logger.error({ error }, "Modal submit dispatch failed");
         });
         return;
       }

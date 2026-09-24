@@ -58,6 +58,7 @@ function profile(overrides: { ambientReplies?: boolean } = {}): GuildConfigurati
       musicCommands: new Set(),
       controlPanel: null,
       auditLog: null,
+      adminPanel: null,
       chatbot: new Set([chatChannelId]),
       birthdayAnnouncements: null,
       joinAnnouncements: null,

@@ -55,7 +55,7 @@ function profile(overrides: { reactionReplies?: boolean; chatbot?: boolean } = {
     },
     roles: { botAdministrator: new Set(), musicController: new Set(), restricted: new Set(), chatbot: new Set([chatbotRoleId]) },
     channels: {
-      musicCommands: new Set(), controlPanel: null, auditLog: null, chatbot: new Set([channelId]),
+      musicCommands: new Set(), controlPanel: null, auditLog: null, adminPanel: null, chatbot: new Set([channelId]),
       birthdayAnnouncements: null, joinAnnouncements: null, leaveAnnouncements: null, linkFix: new Set(),
     },
     timezone: "UTC",

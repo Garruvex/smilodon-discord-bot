@@ -56,6 +56,7 @@ function guildConfiguration(chatbotEnabled: boolean): GuildConfiguration {
       musicCommands: new Set(),
       controlPanel: controlPanelChannelId,
       auditLog: null,
+      adminPanel: null,
       chatbot: new Set(),
       birthdayAnnouncements: null,
       joinAnnouncements: null,

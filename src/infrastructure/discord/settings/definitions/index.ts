@@ -1,4 +1,5 @@
 import { accessSetting } from "./access-setting.js";
+import { adminPanelSetting } from "./admin-panel-setting.js";
 import { ambientRepliesSetting } from "./ambient-replies-setting.js";
 import { reactionRepliesSetting } from "./reaction-replies-setting.js";
 import { historyReactionsSetting } from "./history-reactions-setting.js";
@@ -81,7 +82,7 @@ export const settingGroups: readonly SettingGroup[] = [
     name: "access",
     title: "Access",
     description: "Roles, permissions, and audit logging.",
-    settings: [accessSetting, rolesSetting, roleAddSetting, roleRemoveSetting, auditLogSetting, auditSetting],
+    settings: [accessSetting, rolesSetting, roleAddSetting, roleRemoveSetting, auditLogSetting, auditSetting, adminPanelSetting],
   },
   {
     name: "music",

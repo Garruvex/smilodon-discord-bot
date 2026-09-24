@@ -61,6 +61,8 @@ import { SetupCommand } from "../infrastructure/discord/commands/setup/setup-com
 import { StatusCommand } from "../infrastructure/discord/commands/setup/status-command.js";
 import { SettingsCommand } from "../infrastructure/discord/commands/setup/settings-command.js";
 import { SettingsEngine } from "../infrastructure/discord/settings/settings-engine.js";
+import { AdminPanelService } from "../infrastructure/discord/admin-panel/admin-panel-service.js";
+import { AdminPanelComponentHandler } from "../infrastructure/discord/components/admin-panel-component-handler.js";
 import { settingGroups } from "../infrastructure/discord/settings/definitions/index.js";
 import { VoteCommand } from "../infrastructure/discord/commands/common/vote-command.js";
 import { MemoryCommand } from "../infrastructure/discord/commands/common/memory-command.js";
@@ -215,6 +217,7 @@ export interface ApplicationDependencies {
   behaviorDispatcher: BehaviorDispatcher;
   // Runs every setting for both surfaces (/settings-* and the admin panel).
   settingsEngine: SettingsEngine;
+  adminPanelService: AdminPanelService;
   // Null when no chat provider is configured — there's nothing to
   // summarize channel messages with, same condition chatConversationService
   // already checks.
@@ -246,6 +249,7 @@ export interface CommandRegistrationResult {
   playbackService: PlaybackService;
   pollService: PollService;
   settingsEngine: SettingsEngine;
+  adminPanelService: AdminPanelService;
   applicationEmojiCatalog: ApplicationEmojiCatalog;
   memoryEngine: MemoryEngine;
   guildAssetStore: GuildAssetStore;
@@ -456,6 +460,15 @@ export function registerCommands(
   for (const group of settingGroups) {
     commandRegistry.register(new SettingsCommand(group, settingsEngine, applicationEmojiCatalog));
   }
+  // The engine's second surface. Building it also validates the panel
+  // layout against the settings registry, so a mistake there fails startup.
+  const adminPanelService = new AdminPanelService(
+    discordClient,
+    guildConfigurationProvider,
+    settingsEngine,
+    logger.child({ component: "admin-panel" }),
+  );
+  componentRegistry.register(new AdminPanelComponentHandler(adminPanelService));
   commandRegistry.register(new CustomizeCommand(userCustomizationStore, utilityProvider));
 
   return {
@@ -465,6 +478,7 @@ export function registerCommands(
     playbackService,
     pollService,
     settingsEngine,
+    adminPanelService,
     applicationEmojiCatalog,
     memoryEngine,
     guildAssetStore,
@@ -501,6 +515,7 @@ export function createDependencies(
     playbackService,
     pollService,
     settingsEngine,
+    adminPanelService,
     applicationEmojiCatalog,
     memoryEngine,
     guildAssetStore,
@@ -646,6 +661,7 @@ export function createDependencies(
     pollService,
     behaviorDispatcher: new BehaviorDispatcher(behaviorRegistry),
     settingsEngine,
+    adminPanelService,
     channelSummaryScheduler,
     reactionReplyScheduler,
     channelEditScheduler: new ChannelEditScheduler(),

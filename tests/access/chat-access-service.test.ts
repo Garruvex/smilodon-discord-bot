@@ -73,6 +73,7 @@ function profile(): GuildConfiguration {
       musicCommands: new Set(),
       controlPanel: null,
       auditLog: null,
+      adminPanel: null,
       chatbot: new Set([chatChannelId]),
       birthdayAnnouncements: null,
       joinAnnouncements: null,

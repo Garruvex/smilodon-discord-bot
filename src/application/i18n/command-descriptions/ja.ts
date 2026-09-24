@@ -148,6 +148,9 @@ export const jaCommandDescriptions = {
   "settings-access/audit-log": "設定・セットアップの変更ログを受け取るチャンネルを設定します。", // Configures the channel that receives settings/setup change logs.
   "settings-access/audit-log:channel": "監査ログを受け取るテキストチャンネル。", // Text channel to receive audit log entries.
   "settings-access/audit-log:disable": "監査ログの送信を停止します。", // Stop sending audit log entries.
+  "settings-access/admin-panel": "管理パネルを置くチャンネルを設定します。", // Sets the channel for the admin settings panel.
+  "settings-access/admin-panel:channel": "管理パネル用のテキストチャンネル。ボット管理者だけが見られるようにしてください。", // Text channel for the admin panel; keep it visible to bot admins only.
+  "settings-access/admin-panel:disable": "管理パネルを削除します。", // Remove the admin panel.
   "settings-access/audit": "最近の設定・セットアップの変更ログを表示します。", // Shows recent settings/setup change log entries.
   "settings-access/audit:count": "表示する最近のログ件数（デフォルト10）。", // How many recent entries to show (default 10).
   "settings-music": "音楽パネルと再生の動作。", // Music panel and playback behavior.

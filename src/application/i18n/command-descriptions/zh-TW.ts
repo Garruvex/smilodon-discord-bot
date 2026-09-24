@@ -150,6 +150,9 @@ export const zhTWCommandDescriptions = {
   "settings-access/audit-log": "設定接收設定／初始設定變更紀錄的頻道", // Configures the channel that receives settings/setup change logs.
   "settings-access/audit-log:channel": "接收稽核紀錄的文字頻道", // Text channel to receive audit log entries.
   "settings-access/audit-log:disable": "停止傳送稽核紀錄", // Stop sending audit log entries.
+  "settings-access/admin-panel": "設定管理面板所在的頻道", // Sets the channel for the admin settings panel.
+  "settings-access/admin-panel:channel": "放置管理面板的文字頻道，建議只讓機器人管理員看得到", // Text channel for the admin panel; keep it visible to bot admins only.
+  "settings-access/admin-panel:disable": "移除管理面板", // Remove the admin panel.
   "settings-access/audit": "顯示最近的設定／初始化變更紀錄", // Shows recent settings/setup change log entries.
   "settings-access/audit:count": "要顯示最近幾筆紀錄（預設 10）", // How many recent entries to show (default 10).
   "settings-music": "音樂面板與播放行為", // Music panel and playback behavior.

@@ -56,6 +56,7 @@ function guildConfiguration(overrides: Partial<GuildConfiguration> = {}): GuildC
       musicCommands: new Set(),
       controlPanel: null,
       auditLog: null,
+      adminPanel: null,
       chatbot: new Set(),
       birthdayAnnouncements: null,
       joinAnnouncements: null,

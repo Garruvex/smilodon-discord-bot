@@ -49,6 +49,8 @@ export interface PanelSectionLayout {
   name: string;
   title: string;
   groupName: string;
+  // The group's description, shown under the title.
+  description: string;
   rows: readonly PanelRow[];
 }
 
@@ -60,6 +62,9 @@ export interface PanelSectionLayout {
 export function buildPanelLayout(groups: readonly SettingGroup[] = settingGroups): readonly PanelSectionLayout[] {
   const sections: PanelSectionLayout[] = [];
   const seenSections = new Set<string>();
+  // "setting:option" — each option's control lives in exactly one section,
+  // so a control id always maps back to one message.
+  const seenOptions = new Set<string>();
 
   for (const group of groups) {
     const definitions: readonly PanelSectionDefinition[] = group.panelSections ?? [{
@@ -81,10 +86,24 @@ export function buildPanelLayout(groups: readonly SettingGroup[] = settingGroups
           throw new Error(`Admin-panel section "${definition.name}" lists "${entry.setting}", which isn't a setting in group "${group.name}".`);
         }
         const row = buildRow(group.name, setting, entry.options);
-        if (row) rows.push(row);
+        if (!row) continue;
+        if (row.kind === "setting") {
+          for (const option of [...row.controls.map((control) => control.option), ...row.modalFields]) {
+            const key = `${setting.name}:${option.name}`;
+            if (seenOptions.has(key)) throw new Error(`Admin-panel option "${key}" appears in more than one section.`);
+            seenOptions.add(key);
+          }
+        }
+        rows.push(row);
       }
       if (rows.length > 0) {
-        sections.push({ name: definition.name, title: definition.title, groupName: group.name, rows });
+        sections.push({
+          name: definition.name,
+          title: definition.title,
+          groupName: group.name,
+          description: group.description,
+          rows,
+        });
       }
     }
   }

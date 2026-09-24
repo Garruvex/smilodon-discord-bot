@@ -197,6 +197,25 @@ export const en = {
   "command.failed": "The command could not be completed. The error has been logged.",
   "command.errorTitle": "Command error",
   "command.musicErrorTitle": "Music command unavailable",
+
+  // The admin settings panel (one message per settings section).
+  "admin.panel.header.title": "Server settings",
+  "admin.panel.header.intro": "Every setting for this server and its current value. Changes made here or with the /settings-… commands show up right away.",
+  "admin.panel.header.lastChange": "Last change: {change} by {user} · {time}",
+  "admin.panel.header.everyoneCanView": "⚠️ Everyone in the server can see this channel. Limit it to bot admins in the channel's permissions.",
+  "admin.panel.header.refresh": "Refresh",
+  "admin.panel.toggle.on": "On",
+  "admin.panel.toggle.off": "Off",
+  "admin.panel.edit": "Edit",
+  "admin.panel.notSet": "Not set",
+  "admin.panel.slashOnly": "Uploads and one-off actions: {command}",
+  "admin.panel.modal.title": "Edit {setting}",
+  "admin.panel.modal.notInteger": "{field} must be a whole number.",
+  "admin.panel.modal.outOfRange": "{field} must be between {min} and {max}.",
+  "admin.panel.modal.tooLong": "{field} can be at most {max} characters.",
+  "admin.panel.noChanges": "No changes.",
+  "admin.panel.stale": "That control is out of date. The panel has been refreshed; try again.",
+  "admin.panel.failed": "That change couldn't be saved: {reason}",
 } as const satisfies Record<string, string>;
 
 export type MessageKey = keyof typeof en;

@@ -55,6 +55,8 @@ export interface GuildChannelConfiguration {
   musicCommands: ReadonlySet<string>;
   controlPanel: string | null;
   auditLog: string | null;
+  // Where the admin settings panel lives — see AdminPanelService.
+  adminPanel: string | null;
   chatbot: ReadonlySet<string>;
   birthdayAnnouncements: string | null;
   linkFix: ReadonlySet<string>;
