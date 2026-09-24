@@ -9,7 +9,7 @@ export const zhTWAccess: SettingsTextCatalog = {
   },
   "access.roles.administrator": {
     label: "機器人管理員",
-    description: "可管理 /settings，並擁有所有音樂控制權限",
+    description: "可管理伺服器設定，並擁有所有音樂控制權限",
     messages: { required: "至少要保留一個機器人管理員身分組。" },
   },
   "access.roles.music-controller": {

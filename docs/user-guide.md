@@ -325,7 +325,7 @@ section for the full processing model and trust rules.
 
 | Command | What it does |
 | --- | --- |
-| `/settings-community language <language>` | Sets the language (English, 繁體中文, 日本語) for everything the bot posts in this server: the music panel, the admin panel, announcements, votes, and replies. Slash-command descriptions are separate — Discord shows those in each member's own client language. Defaults to English. |
+| `/settings-community language <language>` | Sets the language (English, 繁體中文, 日本語) for translated bot messages in this server, including the music panel, admin panel, announcements, votes, and supported command replies. Slash-command descriptions are separate — Discord shows those in each member's own client language. Defaults to English. |
 | `/settings-community timezone <zone>` | Sets the IANA time zone (e.g. `America/New_York`) birthday announcements are computed in. Defaults to UTC. |
 | `/settings-community birthdays [enabled] [channel]` | Turns on birthday announcements and sets the announcement channel (required before enabling). |
 | `/settings-community reminders [enabled]` | Turns `/remind` on or off for this server. |

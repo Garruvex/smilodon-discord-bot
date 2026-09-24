@@ -95,7 +95,7 @@ export const en = {
   "music.reply.clearedOne": "Cleared {count} queued track.",
   "music.reply.clearedMany": "Cleared {count} queued tracks.",
   "music.reply.saveSent": "Sent you a DM with the current track.",
-  "music.reply.seeked": "Seeked to **{time}** in **{title}**.",
+  "music.reply.seeked": "Jumped to **{time}** in **{title}**.",
   "music.reply.volumeSet": "Volume set to **{level}%**.",
 
   // /queue history.
@@ -245,7 +245,7 @@ export const en = {
   "admin.panel.stale": "That control is out of date. The panel has been refreshed; try again.",
   "setup.guide.notConfigured": "This server isn't set up yet. Run /setup initialize first.",
   "setup.guide.step": "Step {step} of {total} · {group}",
-  "setup.guide.intro": "## Guided setup\nThe main settings, one at a time. Changes save as soon as you make them.\n\nFirst, the server's language: the rest of this guide, the admin panel and everything the bot posts here use it. Next comes a channel for the admin panel, with every setting in one place.",
+  "setup.guide.intro": "## Guided setup\nThe main settings, one at a time. Changes save as soon as you make them.\n\nFirst, the server's language: the rest of this guide, the admin panel, and translated bot messages use it. Next comes a channel for the admin panel, with every setting in one place.",
   "setup.guide.hint": "Changes save right away. Nothing to change here? Skip it.",
   "setup.guide.back": "Back",
   "setup.guide.skip": "Skip",

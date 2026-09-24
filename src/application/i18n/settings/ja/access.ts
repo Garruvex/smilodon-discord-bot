@@ -9,7 +9,7 @@ export const jaAccess: SettingsTextCatalog = {
   },
   "access.roles.administrator": {
     label: "ボット管理者",
-    description: "/settings を管理でき、音楽コントローラーの権限もすべて持つ",
+    description: "サーバー設定を管理でき、音楽コントローラーの権限もすべて持つ",
     messages: { required: "ボット管理者ロールを少なくとも 1 つ残す必要があります。" },
   },
   "access.roles.music-controller": {

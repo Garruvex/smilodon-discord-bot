@@ -9,7 +9,7 @@ export const enAccess: SettingsTextCatalog = {
   },
   "access.roles.administrator": {
     label: "Bot administrators",
-    description: "Manage /settings and inherit every music-controller permission.",
+    description: "Manage server settings and inherit every music-controller permission.",
     messages: { required: "At least one bot-administrator role must remain configured." },
   },
   "access.roles.music-controller": {
