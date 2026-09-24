@@ -236,6 +236,13 @@ export const guildConfigurationFileSchema = z
           }),
         djModeEnabled: z.boolean().default(false),
         openQueueRequestsEnabled: z.boolean().default(false),
+        autoQueueVote: z
+          .object({
+            enabled: z.boolean().default(true),
+            barStyle: z.enum(["squares", "thin"]).default("squares"),
+            optionCount: z.number().int().min(MUSIC_LIMITS.autoQueueVoteOptionCount.min).max(MUSIC_LIMITS.autoQueueVoteOptionCount.max).default(MUSIC_LIMITS.autoQueueVoteOptionCount.default),
+          })
+          .default({ enabled: true, barStyle: "squares", optionCount: MUSIC_LIMITS.autoQueueVoteOptionCount.default }),
       })
       .default({
         volume: { default: 75, maximum: 150, buttonStep: 10 },
@@ -247,6 +254,7 @@ export const guildConfigurationFileSchema = z
         },
         djModeEnabled: false,
         openQueueRequestsEnabled: false,
+        autoQueueVote: { enabled: true, barStyle: "squares", optionCount: MUSIC_LIMITS.autoQueueVoteOptionCount.default },
       }),
   })
   .superRefine((configuration, context) => {

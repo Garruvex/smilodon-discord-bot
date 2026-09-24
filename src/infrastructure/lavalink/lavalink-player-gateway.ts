@@ -14,11 +14,17 @@ import {
 import type { Logger } from "pino";
 
 import {
+  MusicAutoQueueRerollEmptyError,
+  MusicAutoQueueRerollLimitError,
+  MusicAutoQueueVoteClosedError,
+  MusicAutoQueueVoteUnavailableError,
   MusicChannelAccessError,
   MusicPlayerNotFoundError,
   MusicSearchEmptyError,
 } from "../../application/music/music-errors.js";
 import type {
+  AutoQueueVoteRerollMode,
+  AutoQueueVoteSnapshot,
   EnqueueRequest,
   MusicFilterPreset,
   MusicRepeatMode,
@@ -30,10 +36,51 @@ import type { MusicPlayerSnapshot } from "../../application/music/music-player-g
 import type { MusicEventBus, MusicStateChangedEvent } from "../../application/music/music-event-bus.js";
 import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
 import { LavalinkAutoQueue, type AutoQueueOutcome } from "./lavalink-auto-queue.js";
+import { cleanArtistName } from "../../domain/music/artist-name.js";
 import { fetchSyncedLyrics, normalizeQuery, type SyncedLyricLine } from "../lyrics/lrclib-client.js";
 import { buildLyricsCacheKey, type LyricsCacheStore } from "../../application/lyrics/lyrics-cache-store.js";
+import { MUSIC_LIMITS } from "../../config/guild-configuration-limits.js";
 
 const playHistoryLimit = 20;
+
+// Voting locks this long before the track ends, so the winner is settled
+// (and shown) before it plays, and a last-second click can't race the
+// track ending.
+export const autoQueueVoteLockMs = 10_000;
+// A vote that would get less than this much open time isn't worth posting
+// a message for; autoqueue just picks on its own for that track.
+export const autoQueueVoteMinimumMs = 30_000;
+export const autoQueueVoteRerollLimit = 3;
+// A one-option vote isn't a choice, so rerolls need at least this many.
+const autoQueueVoteMinimumRerollOptions = 2;
+
+// One "what plays after this track" vote. Keyed to the track it follows, so
+// a track change naturally invalidates it instead of carrying stale options
+// (or someone's old vote) over to the next song.
+interface AutoQueueVoteState {
+  sourceTrackKey: string;
+  // "skipped": too little of the track was left to be worth a vote.
+  status: "loading" | "ready" | "unavailable" | "skipped";
+  candidates: (Track | UnresolvedTrack)[];
+  votesByUserId: Map<string, number>;
+  // Whether each option (by identifier) has synced lyrics; absent while
+  // still being checked.
+  lyricsAvailableById: Map<string, boolean>;
+  rerollsUsed: number;
+  lastRerolledByUserId: string | null;
+}
+
+// Most votes wins; ties, including nobody voting at all, go to the earlier
+// option, so option 1 is always the default.
+function leadingVoteIndex(state: AutoQueueVoteState): number {
+  const tallies = state.candidates.map(() => 0);
+  for (const index of state.votesByUserId.values()) tallies[index] = (tallies[index] ?? 0) + 1;
+  let leading = 0;
+  tallies.forEach((votes, index) => {
+    if (votes > tallies[leading]!) leading = index;
+  });
+  return leading;
+}
 
 interface SelectedLyricLines {
   readonly current: string | null;
@@ -109,6 +156,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
   private readonly emptyQueueTimers = new Map<string, NodeJS.Timeout>();
   private readonly emptyChannelTimers = new Map<string, NodeJS.Timeout>();
   private readonly autoQueueIssues = new Set<string>();
+  private readonly autoQueueVotes = new Map<string, AutoQueueVoteState>();
   private readonly playHistoryByGuild = new Map<string, PlayHistoryEntry[]>();
   // Lines from the Lavalink lyrics plugin's push events (currently sourced
   // from YouTube only — lrcLib is disabled there in favor of our own fetch
@@ -161,8 +209,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
         onEmptyQueue: {
           autoPlayFunction: async (player, lastTrack): Promise<void> => {
             if (!player.get<boolean>("autoQueue")) return;
-            const outcome = await this.autoQueue.enqueueNext(player, lastTrack);
-            this.logAutoQueueOutcome(player, lastTrack, outcome);
+            await this.enqueueAutoQueueNext(player, lastTrack);
           },
         },
       },
@@ -254,6 +301,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
       this.clearTimer(this.emptyQueueTimers, player.guildId);
       this.clearTimer(this.emptyChannelTimers, player.guildId);
       this.autoQueue.clear(player.guildId);
+      this.autoQueueVotes.delete(player.guildId);
       this.autoQueueIssues.delete(player.guildId);
       this.currentLyricsTrackByGuild.delete(player.guildId);
       this.pluginLyricsByGuild.delete(player.guildId);
@@ -453,8 +501,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
       player.get<boolean>("autoQueue") &&
       player.queue.tracks.length === 0
     ) {
-      const outcome = await this.autoQueue.enqueueNext(player, currentTrack);
-      this.logAutoQueueOutcome(player, currentTrack, outcome);
+      await this.enqueueAutoQueueNext(player, currentTrack);
     }
     await player.skip();
     this.publishStateChange({ guildId, reason: "queue_changed" });
@@ -473,6 +520,231 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
         ? track.userData.requestedByUserId
         : "unknown",
     );
+  }
+
+  // Closes the vote for `sourceTrack` and queues its winner. When no ready
+  // vote exists (options still loading, the lookup failed, or autoqueue was
+  // only just turned on) this is plain autoqueue: a fresh lookup whose first
+  // result is queued.
+  private async enqueueAutoQueueNext(
+    player: Player,
+    sourceTrack: Track | UnresolvedTrack,
+  ): Promise<void> {
+    const vote = this.autoQueueVotes.get(player.guildId);
+    this.autoQueueVotes.delete(player.guildId);
+    let outcome: AutoQueueOutcome | null = null;
+    if (
+      vote?.status === "ready" &&
+      vote.sourceTrackKey === this.trackKey(sourceTrack) &&
+      this.isAutoQueueVoteEnabled(player.guildId)
+    ) {
+      const winner = vote.candidates[leadingVoteIndex(vote)]!;
+      outcome = await this.autoQueue.enqueue(player, winner);
+      if (outcome.status !== "queued") {
+        this.logger.warn(
+          { guildId: player.guildId, error: outcome.status === "failed" ? outcome.error : undefined },
+          "Unable to queue the autoqueue vote winner; falling back to a fresh lookup",
+        );
+        outcome = null;
+      }
+    }
+    outcome ??= await this.autoQueue.enqueueNext(player, sourceTrack);
+    this.logAutoQueueOutcome(player, sourceTrack, outcome);
+  }
+
+  // Missing configuration (never the case for a live guild) falls back to
+  // the settings' defaults.
+  private autoQueueVoteOptionCount(guildId: string): number {
+    return this.guildConfigurationProvider.find(guildId)?.music.autoQueueVoteOptionCount
+      ?? MUSIC_LIMITS.autoQueueVoteOptionCount.default;
+  }
+
+  private isAutoQueueVoteEnabled(guildId: string): boolean {
+    return this.guildConfigurationProvider.find(guildId)?.music.autoQueueVoteEnabled ?? true;
+  }
+
+  // Keeps the vote in step with the player: opens one (fetching options in
+  // the background) once a track is playing with autoqueue and the vote
+  // setting on and nothing queued behind it, and drops it when its track is
+  // no longer current. Run on every state change so no individual mutation
+  // has to remember to. A vote survives someone queueing a track by hand
+  // (it's just hidden from the snapshot), so removing that track again
+  // brings back the same options and votes.
+  private syncAutoQueueVote(guildId: string): void {
+    const player = this.manager.getPlayer(guildId);
+    const current = player?.queue.current;
+    if (!player || !current || !player.get<boolean>("autoQueue") || !this.isAutoQueueVoteEnabled(guildId)) {
+      this.autoQueueVotes.delete(guildId);
+      return;
+    }
+    const sourceTrackKey = this.trackKey(current);
+    if (this.autoQueueVotes.get(guildId)?.sourceTrackKey === sourceTrackKey) return;
+    this.autoQueueVotes.delete(guildId);
+    if (player.queue.tracks.length > 0) return;
+
+    const remainingMs = this.remainingTrackMs(player);
+    const vote: AutoQueueVoteState = {
+      sourceTrackKey,
+      status: remainingMs !== null && remainingMs < autoQueueVoteMinimumMs ? "skipped" : "loading",
+      candidates: [],
+      votesByUserId: new Map(),
+      lyricsAvailableById: new Map(),
+      rerollsUsed: 0,
+      lastRerolledByUserId: null,
+    };
+    this.autoQueueVotes.set(guildId, vote);
+    if (vote.status === "skipped") return;
+    void this.autoQueue.findCandidates(player, current, this.autoQueueVoteOptionCount(guildId))
+      .then((outcome) => {
+        // Superseded (track changed, vote closed, or autoqueue turned off)
+        // while the lookup was in flight.
+        if (this.autoQueueVotes.get(guildId) !== vote) return;
+        if (outcome.status === "found") {
+          vote.status = "ready";
+          vote.candidates = outcome.tracks;
+          this.checkCandidateLyrics(guildId, vote);
+        } else {
+          vote.status = "unavailable";
+          this.logger.warn(
+            { guildId, trackTitle: current.info.title, error: outcome.status === "failed" ? outcome.error : undefined },
+            "Unable to find autoqueue vote options",
+          );
+        }
+        this.publishStateChange({ guildId, reason: "queue_changed" });
+      })
+      .catch((error: unknown) => {
+        if (this.autoQueueVotes.get(guildId) === vote) vote.status = "unavailable";
+        this.logger.warn({ error, guildId }, "Unable to find autoqueue vote options");
+      });
+  }
+
+  // Only exposed while autoqueue is actually going to pick the next track:
+  // with something queued, or a repeat mode on, the vote would never decide
+  // anything.
+  private getAutoQueueVoteSnapshot(player: Player): AutoQueueVoteSnapshot | null {
+    const vote = this.autoQueueVotes.get(player.guildId);
+    const current = player.queue.current;
+    if (
+      !vote ||
+      !current ||
+      vote.sourceTrackKey !== this.trackKey(current) ||
+      player.queue.tracks.length > 0 ||
+      player.repeatMode !== "off" ||
+      !player.get<boolean>("autoQueue") ||
+      !this.isAutoQueueVoteEnabled(player.guildId)
+    ) return null;
+    if (vote.status === "loading") return { status: "loading" };
+    if (vote.status !== "ready") return null;
+    const tallies = vote.candidates.map(() => 0);
+    for (const index of vote.votesByUserId.values()) tallies[index] = (tallies[index] ?? 0) + 1;
+    // Derived from playback position rather than a timer, so pausing
+    // freezes the cutoff and seeking moves it for free. Streams have no end,
+    // so they never lock; skip still closes them.
+    const remainingMs = this.remainingTrackMs(player);
+    return {
+      status: "ready",
+      locked: remainingMs !== null && remainingMs <= autoQueueVoteLockMs,
+      closesInMs: remainingMs === null ? null : Math.max(0, remainingMs - autoQueueVoteLockMs),
+      rerollsLeft: Math.max(0, autoQueueVoteRerollLimit - vote.rerollsUsed),
+      lastRerolledByUserId: vote.lastRerolledByUserId,
+      leadingIndex: leadingVoteIndex(vote),
+      options: vote.candidates.map((track, index) => ({
+        title: track.info.title,
+        author: track.info.author ?? "Unknown artist",
+        uri: track.info.uri ?? "",
+        votes: tallies[index] ?? 0,
+        lyricsAvailable: vote.lyricsAvailableById.get(this.autoQueue.identifier(track)) ?? null,
+      })),
+    };
+  }
+
+  private requireOpenAutoQueueVote(guildId: string): AutoQueueVoteState {
+    const player = this.requirePlayer(guildId);
+    const vote = this.autoQueueVotes.get(guildId);
+    const snapshot = this.getAutoQueueVoteSnapshot(player);
+    if (!vote || snapshot?.status !== "ready") throw new MusicAutoQueueVoteUnavailableError();
+    if (snapshot.locked) throw new MusicAutoQueueVoteClosedError();
+    return vote;
+  }
+
+  private remainingTrackMs(player: Player): number | null {
+    const current = player.queue.current;
+    const durationMs = current?.info.duration ?? 0;
+    if (!current || current.info.isStream || durationMs <= 0) return null;
+    return Math.max(0, durationMs - player.position);
+  }
+
+  public voteAutoQueue(guildId: string, userId: string, optionIndex: number): number | null {
+    const vote = this.requireOpenAutoQueueVote(guildId);
+    if (!vote.candidates[optionIndex]) throw new MusicAutoQueueVoteUnavailableError();
+    const withdrawn = vote.votesByUserId.get(userId) === optionIndex;
+    if (withdrawn) vote.votesByUserId.delete(userId);
+    else vote.votesByUserId.set(userId, optionIndex);
+    this.publishStateChange({ guildId, reason: "queue_changed" });
+    return withdrawn ? null : optionIndex;
+  }
+
+  // Swaps in a fresh set of options (more like the current track, or more
+  // by its artist), never repeating the ones being replaced. The old
+  // options and their votes stay put if the lookup can't produce a real
+  // choice, rather than leaving nothing to vote on. Capped per vote so one
+  // listener can't keep cycling everyone's votes away; only rerolls that
+  // actually change the options count toward the cap.
+  public async rerollAutoQueueVote(
+    guildId: string,
+    userId: string,
+    mode: AutoQueueVoteRerollMode,
+  ): Promise<void> {
+    const vote = this.requireOpenAutoQueueVote(guildId);
+    if (vote.rerollsUsed >= autoQueueVoteRerollLimit) {
+      throw new MusicAutoQueueRerollLimitError(autoQueueVoteRerollLimit);
+    }
+    const player = this.requirePlayer(guildId);
+    const current = player.queue.current!;
+    const replacing = vote.candidates.map((track) => this.autoQueue.identifier(track));
+    const limit = this.autoQueueVoteOptionCount(guildId);
+    const outcome = mode === "artist"
+      ? await this.autoQueue.findArtistCandidates(player, current, limit, replacing)
+      : await this.autoQueue.findCandidates(player, current, limit, replacing);
+    if (this.autoQueueVotes.get(guildId) !== vote) throw new MusicAutoQueueVoteUnavailableError();
+    if (outcome.status !== "found" || outcome.tracks.length < autoQueueVoteMinimumRerollOptions) {
+      throw new MusicAutoQueueRerollEmptyError(mode === "artist" ? cleanArtistName(current.info.author ?? "") : null);
+    }
+    vote.candidates = outcome.tracks;
+    vote.votesByUserId.clear();
+    vote.rerollsUsed += 1;
+    vote.lastRerolledByUserId = userId;
+    this.checkCandidateLyrics(guildId, vote);
+    this.publishStateChange({ guildId, reason: "queue_changed" });
+  }
+
+  // Looks each option up the same way playback does, so the vote can mark
+  // which ones have synced lyrics. It goes through the shared lyrics cache,
+  // which also means the winner's lyrics are usually ready the moment it
+  // starts. Only covers our own LRCLIB source: the YouTube plugin fallback
+  // can't be asked ahead of time, so a missing mark means "none found in
+  // advance", not "definitely none".
+  private checkCandidateLyrics(guildId: string, vote: AutoQueueVoteState): void {
+    for (const candidate of vote.candidates) {
+      const identifier = this.autoQueue.identifier(candidate);
+      if (vote.lyricsAvailableById.has(identifier)) continue;
+      this.resolveSyncedLyrics(candidate.info.title, candidate.info.author ?? "", candidate.info.duration)
+        .then((lines) => {
+          if (this.autoQueueVotes.get(guildId) !== vote) return;
+          vote.lyricsAvailableById.set(identifier, lines !== null);
+          this.publishStateChange({ guildId, reason: "queue_changed" });
+        })
+        .catch((error: unknown) => {
+          this.logger.warn(
+            { error, guildId, trackTitle: candidate.info.title },
+            "Unable to check lyrics for an autoqueue vote option",
+          );
+        });
+    }
+  }
+
+  private trackKey(track: Track | UnresolvedTrack): string {
+    return track.encoded ?? this.autoQueue.identifier(track);
   }
 
   private logAutoQueueOutcome(
@@ -731,6 +1003,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     this.clearTimer(this.emptyChannelTimers, guildId);
     this.autoQueueIssues.delete(guildId);
     this.autoQueue.clear(guildId);
+    this.autoQueueVotes.delete(guildId);
     this.playHistoryByGuild.delete(guildId);
     const player = this.manager.getPlayer(guildId);
     if (player) await player.destroy("Bot was removed from the guild");
@@ -815,6 +1088,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
       repeatMode: player.repeatMode,
       autoQueue: player.get<boolean>("autoQueue") ?? false,
       autoQueueIssue: this.autoQueueIssues.has(guildId),
+      autoQueueVote: this.getAutoQueueVoteSnapshot(player),
       twentyFourSeven: player.get<boolean>("twentyFourSeven") ?? false,
       lyricsEnabled: player.get<boolean>("lyricsEnabled") ?? false,
       currentLyricLine,
@@ -863,6 +1137,10 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
   }
 
   private publishStateChange(event: MusicStateChangedEvent): void {
+    // A destroyed player can still be registered with the manager while its
+    // destroy event fires, so it must not open a fresh vote.
+    if (event.reason === "player_destroyed") this.autoQueueVotes.delete(event.guildId);
+    else this.syncAutoQueueVote(event.guildId);
     void this.eventBus.publish(event).catch((error: unknown) => {
       this.logger.error({ error, event }, "Music state listener failed");
     });

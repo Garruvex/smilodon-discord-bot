@@ -42,3 +42,31 @@ export class MusicRateLimitError extends MusicError {
     );
   }
 }
+
+export class MusicAutoQueueVoteUnavailableError extends MusicError {
+  public constructor() {
+    super("There's no autoqueue vote running right now.");
+  }
+}
+
+export class MusicAutoQueueRerollEmptyError extends MusicError {
+  public constructor(artist: string | null = null) {
+    super(
+      artist
+        ? `Couldn't find enough other songs by ${artist}, so the current options stay.`
+        : "Couldn't find enough other options to reroll into, so the current ones stay.",
+    );
+  }
+}
+
+export class MusicAutoQueueVoteClosedError extends MusicError {
+  public constructor() {
+    super("Voting has closed for this song; the next track is locked in.");
+  }
+}
+
+export class MusicAutoQueueRerollLimitError extends MusicError {
+  public constructor(limit: number) {
+    super(`This vote has already been rerolled ${limit} times.`);
+  }
+}

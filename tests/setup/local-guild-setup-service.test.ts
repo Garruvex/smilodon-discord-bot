@@ -59,6 +59,8 @@ function profile(): GuildConfiguration {
       resumeWhenOccupied: true,
       djModeEnabled: false,
     openQueueRequestsEnabled: false,
+    autoQueueVoteEnabled: true,
+    autoQueueVoteBarStyle: "squares", autoQueueVoteOptionCount: 3,
     },
     chat: {
       personalityFile: null,

@@ -70,6 +70,10 @@ export interface BotCommand<TInteraction extends AnyCommandInteraction = ChatInp
   readonly access: CommandAccessPolicy;
   readonly responseVisibility?: CommandResponseVisibility;
   readonly toolBinding?: ChatToolBinding;
+  // Longer explanation shown by `/help <command>`, for behavior that doesn't
+  // fit Discord's 100-character command description. Keeps in-app messages
+  // short: they can leave the "how it works" to here.
+  readonly helpDetails?: readonly string[];
 
   execute(context: CommandContext<TInteraction>): Promise<void>;
 }

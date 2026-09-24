@@ -22,6 +22,9 @@ the [user guide](docs/user-guide.md). For internal architecture, see
 - A Lavalink v4 music player: playback, queue management, loop, volume,
   autoplay, 24/7 mode, shuffle, filters, seeking, and a persistent two-row
   control panel with song requests typed directly into the control channel.
+  With autoplay on, listeners in the voice channel vote on which related
+  song plays next (with rerolls and a lyrics hint) — see the
+  [autoqueue vote](docs/user-guide.md#autoqueue-vote).
 - Fun and utility commands: dice, 8-ball, polls, Q&A embeds, birthdays,
   personal reminders, quote cards (right-click a message, or `/quote`),
   join announcement cards, leave announcements, reaction-role menus, furry/animal image

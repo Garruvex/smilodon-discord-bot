@@ -94,6 +94,7 @@ export class HelpCommand implements BotCommand {
       ];
       if (optionLines.length > 0) embed.addFields({ name: "Options", value: truncateField(optionLines) });
       if (subcommandLines.length > 0) embed.addFields({ name: "Subcommands", value: truncateField(subcommandLines) });
+      if (command.helpDetails?.length) embed.addFields({ name: "How it works", value: truncateField(command.helpDetails) });
 
       await context.responses.reply({ embeds: [embed] });
       return;

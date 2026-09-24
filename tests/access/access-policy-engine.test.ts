@@ -72,6 +72,8 @@ function guildConfiguration(overrides: Partial<GuildConfiguration> = {}): GuildC
       emptyChannelAction: "pause", emptyChannelGracePeriodMs: 30_000, resumeWhenOccupied: true,
       djModeEnabled: false,
     openQueueRequestsEnabled: false,
+    autoQueueVoteEnabled: true,
+    autoQueueVoteBarStyle: "squares", autoQueueVoteOptionCount: 3,
     },
     chat: {
       personalityFile: null, personalityAsset: null, examplesFile: null, examplesAsset: null,

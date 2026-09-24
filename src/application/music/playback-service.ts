@@ -6,6 +6,7 @@ import {
 } from "./music-errors.js";
 import { PlaybackRateLimiter } from "./playback-rate-limiter.js";
 import type {
+  AutoQueueVoteRerollMode,
   EnqueueRequest,
   MusicFilterPreset,
   MusicPlayerSnapshot,
@@ -162,6 +163,18 @@ export class PlaybackService {
     return this.playerGateway.toggleAutoQueue(actor.guildId);
   }
 
+  // The vote is for whoever is actually listening, so unlike the other
+  // controls there's no DJ bypass: voters must be in the bot's channel.
+  public voteAutoQueue(actor: PlaybackActor, optionIndex: number): number | null {
+    this.assertListener(actor);
+    return this.playerGateway.voteAutoQueue(actor.guildId, actor.userId, optionIndex);
+  }
+
+  public async rerollAutoQueueVote(actor: PlaybackActor, mode: AutoQueueVoteRerollMode): Promise<void> {
+    this.assertListener(actor);
+    await this.playerGateway.rerollAutoQueueVote(actor.guildId, actor.userId, mode);
+  }
+
   public async toggleTwentyFourSeven(actor: PlaybackActor): Promise<boolean> {
     this.assertControllablePlayer(actor);
     return this.playerGateway.toggleTwentyFourSeven(actor.guildId);
@@ -170,6 +183,13 @@ export class PlaybackService {
   public async toggleLyrics(actor: PlaybackActor): Promise<boolean> {
     this.assertControllablePlayer(actor);
     return this.playerGateway.toggleLyrics(actor.guildId);
+  }
+
+  private assertListener(actor: PlaybackActor): void {
+    if (!this.playerGateway.hasPlayer(actor.guildId)) {
+      throw new MusicPlayerNotFoundError();
+    }
+    this.assertSameVoiceChannel(actor.guildId, this.requireVoiceChannel(actor));
   }
 
   private assertControllablePlayer(actor: PlaybackActor): void {

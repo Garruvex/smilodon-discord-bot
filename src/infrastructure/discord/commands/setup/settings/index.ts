@@ -18,6 +18,7 @@ import { djModeSetting } from "./dj-mode-setting.js";
 import { lifecycleSetting } from "./lifecycle-setting.js";
 import { linkFixSetting } from "./link-fix-setting.js";
 import { nsfwSetting } from "./nsfw-setting.js";
+import { autoQueueVoteSetting } from "./autoqueue-vote-setting.js";
 import { openQueueRequestsSetting } from "./open-queue-requests-setting.js";
 import { panelSetting } from "./panel-setting.js";
 import { remindersSetting } from "./reminders-setting.js";
@@ -60,7 +61,7 @@ export const settingGroups: readonly SettingGroup[] = [
   {
     name: "music",
     description: "Music panel and playback behavior.",
-    settings: [panelSetting, volumeSetting, lifecycleSetting, djModeSetting, openQueueRequestsSetting],
+    settings: [panelSetting, volumeSetting, lifecycleSetting, djModeSetting, openQueueRequestsSetting, autoQueueVoteSetting],
   },
   {
     name: "chat",
