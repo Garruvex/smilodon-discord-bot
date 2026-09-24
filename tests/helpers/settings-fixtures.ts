@@ -61,6 +61,7 @@ export const stubEmojiCatalog = (missingYohta = false): SettingDeps["application
 
 export interface EngineFixture {
   engine: SettingsEngine;
+  updater: SettingsUpdateService;
   profiles: ReturnType<typeof memoryProvider>;
   run(path: string, values: SettingValues, language?: Language): Promise<SettingRunResult>;
 }
@@ -74,14 +75,11 @@ export function engineFixture(options: {
 } = {}): EngineFixture {
   const profiles = memoryProvider(options.document);
   const deps: SettingDeps = { assets: {} as never, applicationEmojiCatalog: stubEmojiCatalog(), ...options.deps };
-  const engine = new SettingsEngine({
-    registry: options.registry ?? settingsRegistry,
-    profiles,
-    updater: new SettingsUpdateService(profiles, deps.assets),
-    deps,
-  });
+  const updater = new SettingsUpdateService(profiles, deps.assets);
+  const engine = new SettingsEngine({ registry: options.registry ?? settingsRegistry, profiles, updater, deps });
   return {
     engine,
+    updater,
     profiles,
     run: (path, values, language = "en"): Promise<SettingRunResult> => {
       const registered = engine.find(path);

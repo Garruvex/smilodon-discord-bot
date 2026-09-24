@@ -27,6 +27,15 @@ export const jaAccess: SettingsTextCatalog = {
   "access.admin-panel": { label: "管理パネル", description: "この設定パネルを置くチャンネル。ボット管理者だけが見られるようにしてください" },
   "access.admin-panel.channel": { label: "パネルのチャンネル", description: "管理設定パネルを置くテキストチャンネル" },
 
+  "access.repair-panel": {
+    label: "パネルを修復",
+    description: "このパネルを削除して、順番どおりに投稿し直す",
+    messages: {
+      "done": "管理パネルを投稿し直しました。",
+      "no-panel": "管理パネルのチャンネルが設定されていません。",
+    },
+  },
+
   "access.audit-log": { label: "監査ログ", description: "設定と初期設定の変更を記録するチャンネル" },
   "access.audit-log.channel": { label: "監査ログのチャンネル", description: "監査ログを受け取るテキストチャンネル" },
 

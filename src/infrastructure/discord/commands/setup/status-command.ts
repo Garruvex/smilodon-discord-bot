@@ -2,6 +2,7 @@ import { EmbedBuilder, PermissionFlagsBits } from "discord.js";
 
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import { formatRoleGroupList } from "../../../../application/access/role-group-descriptions.js";
+import type { AdminPanelHealth, AdminPanelIssue } from "../../../../application/settings/admin-panel-health.js";
 import type { GuildSetupService } from "../../../../application/setup/guild-setup-service.js";
 import type { GuildConfigurationProvider } from "../../../../config/guild-configuration-provider.js";
 import type { GuildFeatureName } from "../../../../config/guild-configuration.js";
@@ -37,6 +38,19 @@ function formatDuration(ms: number): string {
   return rest === 0 ? `${minutes}m` : `${minutes}m ${rest}s`;
 }
 
+function describePanelIssue(issue: AdminPanelIssue): string {
+  switch (issue.kind) {
+    case "missing-permissions":
+      return `⚠️ Admin panel: I'm missing ${issue.permissions.join(", ")} in <#${issue.channelId}>.`;
+    case "cannot-lock":
+      return `⚠️ Admin panel: I can't stop members posting in <#${issue.channelId}> (needs Manage Permissions).`;
+    case "healing-paused":
+      return `⚠️ Admin panel: its messages keep getting deleted, so I stopped reposting them. Run \`/settings-access repair-panel\`.`;
+    case "channel-deleted":
+      return "⚠️ Admin panel: its channel was deleted. Pick a new one with `/settings-access admin-panel`.";
+  }
+}
+
 function formatModelChain(models: readonly string[]): string {
   const [primary, ...fallbacks] = models;
   const head = `\`${primary ?? "none"}\``;
@@ -63,6 +77,7 @@ export class StatusCommand implements BotCommand {
   public constructor(
     private readonly setupService: GuildSetupService,
     private readonly profiles: GuildConfigurationProvider,
+    private readonly adminPanelHealth: AdminPanelHealth,
     private readonly models: ChatModelSummary,
   ) {}
 
@@ -89,9 +104,12 @@ export class StatusCommand implements BotCommand {
       return;
     }
 
+    const adminPanelChannelId = this.profiles.find(guildId)?.channels.adminPanel ?? null;
     embed.setDescription([
       "✅ This server is set up.",
       `Control channel: ${status.controlPanelChannelId ? `<#${status.controlPanelChannelId}>` : "none"}`,
+      `Admin panel: ${adminPanelChannelId ? `<#${adminPanelChannelId}>` : "none — set one with `/settings-access admin-panel`"}`,
+      ...this.adminPanelHealth.get(guildId).map(describePanelIssue),
       `Profile file: \`${status.profileFile ?? "unknown"}\``,
       permissions,
     ].join("\n"));

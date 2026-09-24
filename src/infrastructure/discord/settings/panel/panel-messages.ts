@@ -76,12 +76,17 @@ export interface UnitContext {
   reports: ReadonlyMap<string, string>;
 }
 
+export function unitTitle(unit: PanelUnit, text: SettingsText): string {
+  return unit.sectionPath ? `${text.title(unit.groupName)} · ${text.title(unit.sectionPath)}` : text.title(unit.groupName);
+}
+
+// The key of a unit's first message, which the header's contents link to.
+export const firstMessageKey = (unit: PanelUnit): string => `${unit.key}#0`;
+
 // A unit's messages: `## Group · Section` and its rows, divided between
 // nodes, packed into as many messages as Discord's limits need.
 export function renderUnitMessages(unit: PanelUnit, context: UnitContext): PanelMessage[] {
-  const title = unit.sectionPath
-    ? `${context.text.title(unit.groupName)} · ${context.text.title(unit.sectionPath)}`
-    : context.text.title(unit.groupName);
+  const title = unitTitle(unit, context.text);
   const description = context.text.description(unit.sectionPath ?? unit.groupName);
 
   const parts: { container: ContainerBuilder; components: number; characters: number; rows: number }[] = [];
@@ -121,7 +126,10 @@ export function renderUnitMessages(unit: PanelUnit, context: UnitContext): Panel
     part.rows += 1;
   }
 
-  return parts.map((candidate, index) => ({ key: `${unit.key}#${index}`, payload: payloadOf(candidate.container) }));
+  return parts.map((candidate, index) => ({
+    key: index === 0 ? firstMessageKey(unit) : `${unit.key}#${index}`,
+    payload: payloadOf(candidate.container),
+  }));
 }
 
 export function renderPanelHeader(input: {
@@ -130,9 +138,14 @@ export function renderPanelHeader(input: {
   ids: ControlIds;
   lastChange: PanelLastChange | null;
   everyoneCanView: boolean;
+  // Links to each section's first message, once they exist.
+  contents: readonly { title: string; url: string }[];
 }): PanelPayload {
   const { header } = input.ui.admin.panel;
   const lines = [`# ${header.title}`, header.intro];
+  if (input.contents.length > 0) {
+    lines.push(header.contents({ links: input.contents.map((entry) => `[${entry.title}](${entry.url})`).join(" · ") }));
+  }
   if (input.lastChange) {
     lines.push(`-# ${header.lastChange({
       change: input.lastChange.summary,

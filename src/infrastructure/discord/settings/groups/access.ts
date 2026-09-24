@@ -2,7 +2,7 @@ import type { SettingsText } from "../../../../application/i18n/settings/index.j
 import { texts, type Texts } from "../../../../application/i18n/texts.js";
 import type { GuildConfiguration } from "../../../../config/guild-configuration.js";
 import { formatOptionValue } from "../engine/format-option-value.js";
-import { channel, group, report, roleList, setting } from "../registry/builders.js";
+import { action, channel, group, report, roleList, setting } from "../registry/builders.js";
 import type { OptionContext, Patch, RoleListOption } from "../registry/types.js";
 
 type RoleGroup = "botAdministrator" | "musicController" | "restricted" | "chatbot";
@@ -46,6 +46,16 @@ export const access = group("access", [
       read: (p) => p.channels.adminPanel,
       write: (v) => ({ adminPanelChannelId: v }),
     }),
+  }),
+
+  // Takes the whole panel down and posts it again, in order — for a panel
+  // that's been tampered with, or one that stopped reposting itself.
+  action("repair-panel", {
+    params: {},
+    run: async ({ deps, request, text, path }) => {
+      const repaired = await deps.adminPanel?.repair(request.guildId) ?? false;
+      return { ok: repaired, message: text.message(path, repaired ? "done" : "no-panel") };
+    },
   }),
 
   setting("audit-log", {

@@ -11,7 +11,7 @@ import { registeredNodes, type RegisteredNode } from "../registry/paths.js";
 import type { NodeContext, Patch, SettingsGroup } from "../registry/types.js";
 import { assertValidRegistry } from "../registry/validate-registry.js";
 import { describeSettingChange } from "./describe-change.js";
-import type { SettingDeps, SettingRequest } from "./request.js";
+import type { AdminPanelRepair, SettingDeps, SettingRequest } from "./request.js";
 import { buildSettingPatch } from "./setting-patch.js";
 
 // Who may change settings through /settings-* and the admin panel. (Guided
@@ -73,6 +73,10 @@ export class SettingsEngine {
   // registered command's toolBinding (see SettingDeps.chatToolRegistry).
   public bindChatToolRegistry(chatToolRegistry: ChatToolRegistry): void {
     this.deps.chatToolRegistry = chatToolRegistry;
+  }
+
+  public bindAdminPanel(adminPanel: AdminPanelRepair): void {
+    this.deps.adminPanel = adminPanel;
   }
 
   public async run(registered: RegisteredNode, request: SettingRequest, source: SettingSource): Promise<SettingRunResult> {

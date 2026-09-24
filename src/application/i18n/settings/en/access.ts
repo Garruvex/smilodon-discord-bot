@@ -33,6 +33,15 @@ export const enAccess: SettingsTextCatalog = {
   },
   "access.admin-panel.channel": { label: "Panel channel", description: "Text channel for the admin settings panel." },
 
+  "access.repair-panel": {
+    label: "Repair the panel",
+    description: "Take this panel down and post it again, in order.",
+    messages: {
+      "done": "The admin panel has been posted again.",
+      "no-panel": "There's no admin panel channel set.",
+    },
+  },
+
   "access.audit-log": { label: "Audit log", description: "Where settings and setup changes are logged." },
   "access.audit-log.channel": { label: "Audit log channel", description: "Text channel that receives audit log entries." },
 

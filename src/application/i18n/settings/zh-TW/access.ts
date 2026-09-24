@@ -27,6 +27,15 @@ export const zhTWAccess: SettingsTextCatalog = {
   "access.admin-panel": { label: "管理面板", description: "這個設定面板所在的頻道，建議只讓機器人管理員看得到" },
   "access.admin-panel.channel": { label: "面板頻道", description: "放置管理設定面板的文字頻道" },
 
+  "access.repair-panel": {
+    label: "修復面板",
+    description: "移除這個面板並依順序重新發布",
+    messages: {
+      "done": "已重新發布管理面板。",
+      "no-panel": "尚未設定管理面板頻道。",
+    },
+  },
+
   "access.audit-log": { label: "稽核紀錄", description: "記錄設定與初始設定變更的頻道" },
   "access.audit-log.channel": { label: "稽核紀錄頻道", description: "接收稽核紀錄的文字頻道" },
 

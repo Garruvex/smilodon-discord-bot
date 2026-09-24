@@ -49,4 +49,12 @@ export interface SettingDeps {
   // False when no configured chat provider can summarize channels, so
   // history scans are refused up front instead of queued forever.
   channelSummaryProviderAvailable?: boolean;
+  // Bound once the admin panel exists (see SettingsEngine.bindAdminPanel),
+  // which needs the engine first.
+  adminPanel?: AdminPanelRepair;
+}
+
+export interface AdminPanelRepair {
+  // Reposts the whole panel; false when no panel channel is set.
+  repair(guildId: string): Promise<boolean>;
 }

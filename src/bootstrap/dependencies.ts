@@ -59,6 +59,7 @@ import { PreviousCommand } from "../infrastructure/discord/commands/music/previo
 import type { GuildSetupService } from "../application/setup/guild-setup-service.js";
 import { SetupCommand } from "../infrastructure/discord/commands/setup/setup-command.js";
 import { StatusCommand } from "../infrastructure/discord/commands/setup/status-command.js";
+import { AdminPanelHealth } from "../application/settings/admin-panel-health.js";
 import { SettingsUpdateService } from "../application/settings/settings-update-service.js";
 import { SettingsEngine } from "../infrastructure/discord/settings/engine/settings-engine.js";
 import { settingsRegistry } from "../infrastructure/discord/settings/groups/index.js";
@@ -221,6 +222,8 @@ export interface ApplicationDependencies {
   // admin panel, guided setup); settingsUpdater saves and notifies.
   settingsEngine: SettingsEngine;
   settingsUpdater: SettingsUpdateService;
+  // What's wrong with each guild's admin panel, if anything, for /status.
+  adminPanelHealth: AdminPanelHealth;
   // Null when no chat provider is configured — there's nothing to
   // summarize channel messages with, same condition chatConversationService
   // already checks.
@@ -253,6 +256,8 @@ export interface CommandRegistrationResult {
   pollService: PollService;
   settingsEngine: SettingsEngine;
   settingsUpdater: SettingsUpdateService;
+  // What's wrong with each guild's admin panel, if anything, for /status.
+  adminPanelHealth: AdminPanelHealth;
   applicationEmojiCatalog: ApplicationEmojiCatalog;
   memoryEngine: MemoryEngine;
   guildAssetStore: GuildAssetStore;
@@ -310,7 +315,8 @@ export function registerCommands(
   commandRegistry.register(new QuoteContextCommand());
   commandRegistry.register(new DiagnosticCommand());
   commandRegistry.register(new SetupCommand(guildSetupService));
-  commandRegistry.register(new StatusCommand(guildSetupService, guildConfigurationProvider, {
+  const adminPanelHealth = new AdminPanelHealth();
+  commandRegistry.register(new StatusCommand(guildSetupService, guildConfigurationProvider, adminPanelHealth, {
     chat: configuration.chat
       ? { provider: configuration.chat.provider, models: configuration.chat.models, summaryModels: configuration.chat.summaryModels }
       : null,
@@ -481,6 +487,7 @@ export function registerCommands(
     pollService,
     settingsEngine,
     settingsUpdater,
+    adminPanelHealth,
     applicationEmojiCatalog,
     memoryEngine,
     guildAssetStore,
@@ -518,6 +525,7 @@ export function createDependencies(
     pollService,
     settingsEngine,
     settingsUpdater,
+    adminPanelHealth,
     applicationEmojiCatalog,
     memoryEngine,
     guildAssetStore,
@@ -665,6 +673,7 @@ export function createDependencies(
     behaviorDispatcher: new BehaviorDispatcher(behaviorRegistry),
     settingsEngine,
     settingsUpdater,
+    adminPanelHealth,
     channelSummaryScheduler,
     reactionReplyScheduler,
     channelEditScheduler: new ChannelEditScheduler(),

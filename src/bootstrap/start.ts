@@ -78,6 +78,8 @@ const adminPanelService = new AdminPanelService(
   dependencies.settingsEngine,
   dependencies.settingsUpdater,
   persistence.adminPanelStateStore,
+  dependencies.adminPanelHealth,
+  auditLogService,
   logger.child({ component: "admin-panel" }),
 );
 dependencies.componentRegistry.register(new AdminPanelComponentHandler(adminPanelService));
