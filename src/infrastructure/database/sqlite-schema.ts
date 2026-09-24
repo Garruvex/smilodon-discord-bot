@@ -74,9 +74,11 @@ export const memories = sqliteTable("memories", {
   validFrom: integer("valid_from", { mode: "timestamp_ms" }).notNull(),
   validUntil: integer("valid_until", { mode: "timestamp_ms" }),
 }, (table) => [
-  // Partial (status = 'active' only) — see schema.ts's memories table for why.
+  // Partial (status = 'active' only), nullable columns COALESCEd — see
+  // schema.ts's memories table for why.
   uniqueIndex("memories_identity").on(
-    table.guildId, table.ownerUserId, table.channelId, table.isolationChannelId,
+    table.guildId, sql`coalesce(${table.ownerUserId}, '')`, sql`coalesce(${table.channelId}, '')`,
+    sql`coalesce(${table.isolationChannelId}, '')`,
     table.subjectType, table.subjectId, table.topic, table.slot,
   ).where(sql`${table.status} = 'active'`),
 ]);
@@ -109,6 +111,11 @@ export const memoryRelations = sqliteTable("memory_relations", {
 }, (table) => [
   index("memory_relations_guild_from").on(table.guildId, table.fromSubjectType, table.fromSubjectId),
   index("memory_relations_guild_to").on(table.guildId, table.toSubjectType, table.toSubjectId),
+  // See schema.ts's memory_relations_identity.
+  uniqueIndex("memory_relations_identity").on(
+    table.guildId, table.fromSubjectType, table.fromSubjectId, table.predicate, table.kind,
+    table.toSubjectType, table.toSubjectId, sql`coalesce(${table.isolationChannelId}, '')`,
+  ),
 ]);
 
 // Plan 2 (channel context) — mirrors schema.ts's channelSummaryCheckpoints.

@@ -26,9 +26,11 @@ import {
   bm25LexicalScore,
   bm25Score,
   buildBm25Corpus,
+  buildEmbeddingQueryText,
   buildRelevanceContext,
   cosineSimilarity,
   reciprocalRankFusion,
+  rrfK,
   selectByRelevance,
   type ScorableRecord,
 } from "../chat/memory-relevance.js";
@@ -96,11 +98,20 @@ export interface MemoryEngineLimits extends MemoryValidationLimits {
   // that motivated this (a fact tying a character to a consequence two
   // relations away) needed 2; kept small and tunable rather than hardcoded
   // to 1, since a flat single-hop expansion demonstrably wasn't enough for
-  // its own justifying example. Each hop's boost contribution is decayed
-  // (relationHopBoostBase / hopDistance) so distant connections don't
-  // flood the ranking the way an undecayed expansion would.
+  // its own justifying example.
   maxRelationHops: number;
-  relationHopBoostBase: number;
+  // Weight of the graph-proximity signal, in RRF units: a memory whose
+  // subject sits `hop` relations from the conversation (hop 0 = one of the
+  // turn's own subjects) gains relationBoostWeight / (k + hop + 1) — exactly
+  // what ranking #(hop + 1) in one more RRF list would earn. At the default
+  // of 1, being connected is worth about as much as topping one of the
+  // lexical/embedding rankings: enough to matter, never enough to bury a
+  // strong textual match the way an unscaled additive boost would.
+  relationBoostWeight: number;
+  // How long an unconfirmed "candidate" (a claim about someone other than
+  // the speaker) lives before it's deleted if nobody corroborates it — see
+  // corroborate().
+  candidateTtlMs: number;
 }
 
 export const defaultMemoryEngineLimits: MemoryEngineLimits = {
@@ -108,7 +119,8 @@ export const defaultMemoryEngineLimits: MemoryEngineLimits = {
   conflictSimilarityThreshold: 0.75,
   identityCanonicalizationThreshold: 0.92,
   maxRelationHops: 2,
-  relationHopBoostBase: 3,
+  relationBoostWeight: 1,
+  candidateTtlMs: 30 * 24 * 60 * 60 * 1_000,
   ...memoryValidationLimits,
 };
 
@@ -165,6 +177,10 @@ function memoryPromptProjection(memory: Memory): unknown {
 // because the subject participated somewhere in the channel would let a
 // third party's claim about someone become durable, active memory with no
 // confirmation from the subject at all.
+//
+// A candidate doesn't wait forever: it becomes active once a second,
+// independent asserter makes the same claim (see corroborate()), and is
+// deleted after limits.candidateTtlMs if nobody does.
 function resolveInitialStatus(
   audience: "private" | "channel" | "guild",
   subjectType: Memory["subjectType"],
@@ -254,17 +270,9 @@ export class DefaultMemoryEngine implements MemoryEngine {
     let embeddingOrder: readonly Memory[] = [];
     const cosineByMemory = new Map<Memory, number>();
     if (this.embeddingsClient) {
-      // Folds a short trailing window of recent history into the embedded
-      // text, mirroring what buildRelevanceContext already does for BM25's
-      // keyword set above — without this, a context-dependent follow-up
-      // ("what about him?") gets lexical help from prior turns but the
-      // vector-similarity ranking sees only the bare, referent-less message.
-      // Kept short (last 2 turns) rather than the full history: embedding
-      // everything would dilute the message's own topical signal, and
-      // input.recentHistory is already the caller's bounded prompt-history
-      // selection, not raw transcript.
-      const recentContext = input.recentHistory.slice(-2).map((item) => item.content);
-      const queryText = [...recentContext, input.message].join("\n");
+      const queryText = buildEmbeddingQueryText({
+        message: input.message, recentHistory: input.recentHistory, replyToContent: input.replyToContent,
+      });
       const queryEmbedding = await this.embeddingsClient.embed(queryText).catch(() => null);
       if (queryEmbedding) {
         const withCosine = candidates.memories
@@ -275,12 +283,11 @@ export class DefaultMemoryEngine implements MemoryEngine {
       }
     }
     const fused = reciprocalRankFusion(embeddingOrder.length > 0 ? [lexicalOrder, embeddingOrder] : [lexicalOrder]);
-    // Relational boost is additive on top of the fused RRF score, not part
-    // of the fusion itself — it's a separate signal (graph connectivity),
-    // not a third ranking to reciprocal-rank against. Only "association"
-    // relations reach here; "consequence" relations feed causalChains
-    // instead (see expandRelatedSubjects), since a causal chain needs to be
-    // read in order, not just used to nudge a score.
+    // Graph proximity, already in RRF units (see relationBoostWeight) so it
+    // adds to the fused score on the same scale instead of swamping it.
+    // Only "association" relations reach here; "consequence" relations feed
+    // causalChains instead (see expandRelatedSubjects), since a causal chain
+    // needs to be read in order, not just used to nudge a score.
     if (boostBySubjectId.size > 0) {
       for (const memory of candidates.memories) {
         const boost = boostBySubjectId.get(memory.subjectId);
@@ -363,20 +370,44 @@ export class DefaultMemoryEngine implements MemoryEngine {
     }
     for (const subject of related) {
       if (subject.kind === "consequence") {
+        // The BFS walks edges both ways; a causal link is still read in its
+        // stored direction (from led to to), whichever end found it.
+        const via = { type: subject.viaSubjectType, id: subject.viaSubjectId };
+        const found = { type: subject.subjectType, id: subject.subjectId };
+        const [from, to] = subject.edgePointsToVia ? [found, via] : [via, found];
         causalChains.push({
-          fromSubjectType: subject.viaSubjectType, fromSubjectId: subject.viaSubjectId,
+          fromSubjectType: from.type, fromSubjectId: from.id,
           predicate: subject.predicate,
-          toSubjectType: subject.subjectType, toSubjectId: subject.subjectId,
+          toSubjectType: to.type, toSubjectId: to.id,
         });
         continue;
       }
-      boostBySubjectId.set(subject.subjectId, this.limits.relationHopBoostBase / subject.hopDistance);
+      const boost = this.proximityBoost(subject.hopDistance);
+      if (boost > (boostBySubjectId.get(subject.subjectId) ?? 0)) boostBySubjectId.set(subject.subjectId, boost);
+    }
+    // The turn's own subjects are the graph's hop 0. Without this, a memory
+    // about someone merely connected to the speaker would outrank the
+    // speaker's own memories on proximity alone.
+    if (boostBySubjectId.size > 0) {
+      for (const subjectId of input.subjectIds) boostBySubjectId.set(subjectId, this.proximityBoost(0));
     }
     return { boostBySubjectId, causalChains };
   }
 
+  // See MemoryEngineLimits.relationBoostWeight.
+  private proximityBoost(hopDistance: number): number {
+    return this.limits.relationBoostWeight / (rrfK + hopDistance + 1);
+  }
+
   public async ingest(input: MemoryIngestInput): Promise<MemoryIngestResult> {
     if (!allowsDurableWrites(input.channelMode)) return { ingested: [], removed: 0, rejected: 0, failed: 0 };
+    // Candidate TTL sweep, piggybacked on writes rather than a separate
+    // scheduler: expired candidates are never read (recall only serves
+    // active rows), so they only need to be gone before the next write that
+    // might dedup or corroborate against them.
+    await this.repository.deleteExpiredCandidates(input.guildId, input.now).catch((error: unknown) => {
+      this.logger?.warn({ error, guildId: input.guildId }, "Expired-candidate sweep failed");
+    });
     const ingested: Memory[] = [];
     let removed = 0;
     let rejected = 0;
@@ -425,13 +456,16 @@ export class DefaultMemoryEngine implements MemoryEngine {
       });
     }
     if (valid.length === 0) return { created: 0, rejected };
+    let created: number;
     try {
-      await this.repository.createRelations(valid);
+      // Already-known edges are skipped by the repository, so `created`
+      // counts genuinely new ones only.
+      created = await this.repository.createRelations(valid);
     } catch (error) {
       this.logger?.warn({ error, guildId: input.guildId }, "Relation ingest failed");
       return { created: 0, rejected: rejected + valid.length };
     }
-    return { created: valid.length, rejected };
+    return { created, rejected };
   }
 
   private async removeOne(
@@ -451,7 +485,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
       memory.subjectType === proposal.subjectType && memory.subjectId === proposal.subjectId &&
       memory.topic === topic && memory.slot === slot);
     if (!match) return 0;
-    return this.repository.forget({ guildId, memoryId: match.id });
+    return this.repository.forget({ guildId, memoryId: match.id, ownerUserId: proposal.ownerUserId });
   }
 
   private async upsertOne(
@@ -505,7 +539,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
         importance: proposal.importance ?? 1,
         embedding,
         embeddingModel: embedding ? "default" : null,
-        expiresAt: null,
+        expiresAt: status === "candidate" ? input.now + this.limits.candidateTtlMs : null,
         now: input.now,
         sourceMessageId: input.sourceMessageId,
         sourceChannelId: input.channelId,
@@ -515,10 +549,55 @@ export class DefaultMemoryEngine implements MemoryEngine {
       this.logger?.warn({ error, guildId: input.guildId }, "Memory ingest failed for one proposal");
       return null;
     }
+    if (memory.status === "candidate") {
+      memory = (await this.corroborate(memory, assertedByUserId, input.now)) ?? memory;
+    }
     if (memory.status === "active" && memory.embedding) {
       await this.checkForConflicts(memory, input.now);
     }
     return memory;
+  }
+
+  // Candidate promotion: a claim about someone becomes active once a second,
+  // independent person has made the same claim under the same identity —
+  // two witnesses, rather than trusting any single third party. "Same
+  // claim" is deliberately strict (identical wording, or embeddings at the
+  // identity-canonicalization bar): corroboration commits with no further
+  // check, and a looser bar would let "likes pizza" confirm "hates pizza"
+  // (same topic, similar embedding). Returns the promoted memory, or null
+  // when there's nothing to promote.
+  private async corroborate(memory: Memory, assertedByUserId: string | null, now: number): Promise<Memory | null> {
+    if (assertedByUserId === null) return null;
+    let others: Awaited<ReturnType<MemoryRepository["findCandidatesByIdentity"]>>;
+    try {
+      others = await this.repository.findCandidatesByIdentity({
+        guildId: memory.guildId, ownerUserId: memory.ownerUserId, channelId: memory.channelId,
+        isolationChannelId: memory.isolationChannelId, subjectType: memory.subjectType, subjectId: memory.subjectId,
+        topic: memory.topic, slot: memory.slot, excludeMemoryId: memory.id, now,
+      });
+    } catch (error) {
+      this.logger?.warn({ error, guildId: memory.guildId }, "Candidate corroboration lookup failed; leaving it a candidate");
+      return null;
+    }
+    const corroborating = others.filter(({ memory: other, assertedByUserIds }) =>
+      assertedByUserIds.some((asserter) => asserter !== assertedByUserId) && this.isSameClaim(memory, other));
+    if (corroborating.length === 0) return null;
+    try {
+      return await this.repository.promoteCandidate({
+        guildId: memory.guildId, memoryId: memory.id,
+        absorbedMemoryIds: corroborating.map(({ memory: other }) => other.id), now,
+      });
+    } catch (error) {
+      this.logger?.warn({ error, guildId: memory.guildId }, "Candidate promotion failed; leaving it a candidate");
+      return null;
+    }
+  }
+
+  private isSameClaim(a: Memory, b: Memory): boolean {
+    const normalize = (statement: string): string => statement.toLowerCase().replace(/\s+/g, " ").trim();
+    if (normalize(a.statement) === normalize(b.statement)) return true;
+    return a.embedding !== null && b.embedding !== null &&
+      cosineSimilarity(a.embedding, b.embedding) >= this.limits.identityCanonicalizationThreshold;
   }
 
   // Finds an existing active memory about the same subject (any topic/
@@ -657,10 +736,13 @@ export class DefaultMemoryEngine implements MemoryEngine {
   }
 
   public forget(input: MemoryForgetInput): Promise<number> {
-    if (input.memoryId) return this.repository.forget({ guildId: input.guildId, memoryId: input.memoryId });
+    if (input.memoryId) {
+      return this.repository.forget({ guildId: input.guildId, memoryId: input.memoryId, ownerUserId: input.ownerUserId });
+    }
     return this.repository.forget({
       guildId: input.guildId, ownerUserId: input.ownerUserId,
       ...(input.subjectId !== undefined ? { subjectId: input.subjectId } : {}),
+      ...(input.assertedByUserId !== undefined ? { assertedByUserId: input.assertedByUserId } : {}),
     });
   }
 }

@@ -340,5 +340,149 @@ export function memoryRepositoryContract(
       });
       expect(related.map((r) => r.subjectId)).toEqual(["bob"]);
     });
+
+    it("a restatement never lowers importance", async () => {
+      const repository = await createRepository();
+      await repository.ingest(ingestInput({ importance: 3, now: 1_000 }));
+      const restated = await repository.ingest(ingestInput({ importance: 1, now: 2_000 }));
+      expect(restated.importance).toBe(3);
+    });
+
+    it("revises a guild-audience fact (ownerUserId null) without tripping the one-active-per-identity index", async () => {
+      const repository = await createRepository();
+      const guildFact = { audience: "guild" as const, ownerUserId: null, subjectType: "guild" as const, subjectId: "guild" };
+      const first = await repository.ingest(ingestInput({ ...guildFact, statement: "meets on fridays", now: 1_000 }));
+      const second = await repository.ingest(ingestInput({ ...guildFact, statement: "meets on saturdays", now: 2_000 }));
+      expect((await repository.findById("guild", first.id))!.status).toBe("superseded");
+      expect(second.status).toBe("active");
+    });
+
+    it("forget by memoryId also removes that fact's earlier superseded versions", async () => {
+      const repository = await createRepository();
+      const v1 = await repository.ingest(ingestInput({ statement: "likes apples", now: 1_000 }));
+      const v2 = await repository.ingest(ingestInput({ statement: "likes pears", now: 2_000 }));
+      const v3 = await repository.ingest(ingestInput({ statement: "likes plums", now: 3_000 }));
+      const unrelated = await repository.ingest(ingestInput({ slot: "food.veg", statement: "likes kale", now: 3_000 }));
+      expect(await repository.forget({ guildId: "guild", memoryId: v3.id })).toBe(3);
+      for (const id of [v1.id, v2.id, v3.id]) expect(await repository.findById("guild", id)).toBeNull();
+      expect(await repository.findById("guild", unrelated.id)).not.toBeNull();
+    });
+
+    it("forget by memoryId with an ownerUserId guard refuses someone else's memory", async () => {
+      const repository = await createRepository();
+      const memory = await repository.ingest(ingestInput({ ownerUserId: "alice" }));
+      expect(await repository.forget({ guildId: "guild", memoryId: memory.id, ownerUserId: "bob" })).toBe(0);
+      expect(await repository.findById("guild", memory.id)).not.toBeNull();
+    });
+
+    it("forget by subjectId removes relations naming that member", async () => {
+      const repository = await createRepository();
+      await repository.createRelations([
+        relationInput({ fromSubjectId: "alice", toSubjectId: "bob" }),
+        relationInput({ fromSubjectId: "carol", toSubjectId: "alice", predicate: "owes" }),
+        relationInput({ fromSubjectId: "bob", toSubjectId: "carol" }),
+      ]);
+      await repository.forget({ guildId: "guild", ownerUserId: "alice", subjectId: "alice" });
+      const fromBob = await repository.findRelatedSubjects({
+        guildId: "guild", channelId: "general", subjectIds: ["bob"], maxHops: 1,
+      });
+      expect(fromBob.map((r) => r.subjectId)).toEqual(["carol"]);
+    });
+
+    it("forget by assertedByUserId strips that user's provenance and drops candidates only they asserted", async () => {
+      const repository = await createRepository();
+      const aboutCarol = { audience: "guild" as const, ownerUserId: null, subjectType: "member" as const, subjectId: "carol" };
+      const soloClaim = await repository.ingest(ingestInput({
+        ...aboutCarol, slot: "drink.tea", status: "candidate", assertedByUserId: "alice", statement: "carol likes tea",
+      }));
+      const bobsClaim = await repository.ingest(ingestInput({
+        ...aboutCarol, slot: "drink.tea", status: "candidate", assertedByUserId: "bob", statement: "carol likes tea",
+      }));
+      const activeFact = await repository.ingest(ingestInput({
+        ...aboutCarol, slot: "game.chess", status: "active", assertedByUserId: "alice", statement: "carol plays chess",
+      }));
+      await repository.forget({ guildId: "guild", assertedByUserId: "alice" });
+      expect(await repository.findById("guild", soloClaim.id)).toBeNull();
+      expect(await repository.findById("guild", bobsClaim.id)).not.toBeNull();
+      const activeSources = await repository.findSources(activeFact.id);
+      expect(await repository.findById("guild", activeFact.id)).not.toBeNull();
+      expect(activeSources.some((source) => source.assertedByUserId === "alice")).toBe(false);
+    });
+
+    it("forgetting a memory removes its provenance rows too", async () => {
+      const repository = await createRepository();
+      const memory = await repository.ingest(ingestInput({ sourceMessageId: "m1" }));
+      await repository.forget({ guildId: "guild", memoryId: memory.id });
+      expect(await repository.findSources(memory.id)).toHaveLength(0);
+    });
+
+    it("deleteExpiredCandidates removes only candidates past their expiry", async () => {
+      const repository = await createRepository();
+      const aboutCarol = { audience: "guild" as const, ownerUserId: null, subjectType: "member" as const, subjectId: "carol" };
+      const expired = await repository.ingest(ingestInput({ ...aboutCarol, slot: "a.b", status: "candidate", expiresAt: 1_500 }));
+      const fresh = await repository.ingest(ingestInput({ ...aboutCarol, slot: "c.d", status: "candidate", expiresAt: 9_000 }));
+      const activeExpired = await repository.ingest(ingestInput({ slot: "e.f", status: "active", expiresAt: 1_500 }));
+      expect(await repository.deleteExpiredCandidates("guild", 2_000)).toBe(1);
+      expect(await repository.findById("guild", expired.id)).toBeNull();
+      expect(await repository.findById("guild", fresh.id)).not.toBeNull();
+      expect(await repository.findById("guild", activeExpired.id)).not.toBeNull();
+    });
+
+    it("promoteCandidate activates a candidate and absorbs corroborating rows and their provenance", async () => {
+      const repository = await createRepository();
+      const aboutCarol = {
+        audience: "guild" as const, ownerUserId: null, subjectType: "member" as const, subjectId: "carol",
+        slot: "drink.tea", status: "candidate" as const, statement: "carol likes tea", expiresAt: 9_000,
+      };
+      const fromAlice = await repository.ingest(ingestInput({ ...aboutCarol, assertedByUserId: "alice" }));
+      const fromBob = await repository.ingest(ingestInput({ ...aboutCarol, assertedByUserId: "bob" }));
+      const others = await repository.findCandidatesByIdentity({
+        guildId: "guild", ownerUserId: null, channelId: null, isolationChannelId: null, subjectType: "member",
+        subjectId: "carol", topic: "preference", slot: "drink.tea", excludeMemoryId: fromBob.id, now: 2_000,
+      });
+      expect(others).toEqual([expect.objectContaining({ assertedByUserIds: ["alice"] })]);
+      const promoted = await repository.promoteCandidate({
+        guildId: "guild", memoryId: fromBob.id, absorbedMemoryIds: [fromAlice.id], now: 2_000,
+      });
+      expect(promoted).toMatchObject({ id: fromBob.id, status: "active", expiresAt: null });
+      expect(await repository.findById("guild", fromAlice.id)).toBeNull();
+      const asserters = (await repository.findSources(fromBob.id)).map((source) => source.assertedByUserId).sort();
+      expect(asserters).toEqual(["alice", "bob"]);
+    });
+
+    it("promoteCandidate declines when an active memory already holds the identity", async () => {
+      const repository = await createRepository();
+      const identity = { audience: "guild" as const, ownerUserId: null, subjectType: "member" as const, subjectId: "carol", slot: "drink.tea" };
+      await repository.ingest(ingestInput({ ...identity, status: "active", assertedByUserId: "carol", statement: "likes tea" }));
+      const candidate = await repository.ingest(ingestInput({ ...identity, status: "candidate", assertedByUserId: "bob", statement: "hates tea" }));
+      expect(await repository.promoteCandidate({ guildId: "guild", memoryId: candidate.id, absorbedMemoryIds: [], now: 2_000 })).toBeNull();
+      expect((await repository.findById("guild", candidate.id))!.status).toBe("candidate");
+    });
+
+    it("createRelations skips edges that already exist", async () => {
+      const repository = await createRepository();
+      expect(await repository.createRelations([relationInput()])).toBe(1);
+      expect(await repository.createRelations([relationInput({ now: 2_000 }), relationInput({ toSubjectId: "carol" })])).toBe(1);
+      const related = await repository.findRelatedSubjects({
+        guildId: "guild", channelId: "general", subjectIds: ["alice"], maxHops: 1,
+      });
+      expect(related.map((r) => r.subjectId).sort()).toEqual(["bob", "carol"]);
+    });
+
+    it("findRelatedSubjects reports a subject once per relation kind, with edge direction", async () => {
+      const repository = await createRepository();
+      await repository.createRelations([
+        relationInput({ fromSubjectId: "alice", toSubjectId: "bob", kind: "association", now: 1_000 }),
+        relationInput({ fromSubjectId: "bob", toSubjectId: "alice", kind: "consequence", predicate: "owes", now: 2_000 }),
+      ]);
+      const related = await repository.findRelatedSubjects({
+        guildId: "guild", channelId: "general", subjectIds: ["alice"], maxHops: 1,
+      });
+      expect(related).toHaveLength(2);
+      expect(related).toEqual(expect.arrayContaining([
+        expect.objectContaining({ subjectId: "bob", kind: "association", edgePointsToVia: false }),
+        expect.objectContaining({ subjectId: "bob", kind: "consequence", edgePointsToVia: true }),
+      ]));
+    });
   });
 }

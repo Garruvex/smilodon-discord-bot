@@ -128,9 +128,10 @@ export interface RelatedSubject {
   subjectId: string;
   // 1 = directly connected to one of the query's subjectIds, 2 = connected
   // through one intermediate subject, etc. — used to decay the recall boost
-  // the further out a connection is (see checkForConflicts's sibling logic
-  // in memory-engine.ts for the general pattern of distance-based weighting
-  // in this codebase).
+  // the further out a connection is. A subject reachable through both an
+  // "association" and a "consequence" edge appears once per kind (each at
+  // the closest hop that kind was found), so neither signal is lost to
+  // whichever edge row happened to be scanned first.
   hopDistance: number;
   kind: MemoryRelationKind;
   predicate: MemoryRelationPredicate;
@@ -141,6 +142,10 @@ export interface RelatedSubject {
   // carry the full path back to the original query subjects.
   viaSubjectId: string;
   viaSubjectType: MemorySubjectType;
+  // The BFS follows edges in both directions; true when the discovering
+  // edge is stored as subject -> via (walked backwards), false when it's
+  // via -> subject. Matters for "consequence" edges, which are directional.
+  edgePointsToVia: boolean;
 }
 
 // One-way leak boundary + read audience together decide recall eligibility.
@@ -224,7 +229,11 @@ export interface RecallCandidates {
 export interface ForgetQuery {
   guildId: string;
   // Either a specific memory id, or every memory matching ownerUserId and/or
-  // subjectId below (never both a memoryId and the other two at once).
+  // subjectId below. A memoryId forget also removes that memory's earlier
+  // superseded versions (the revision/conflict history chained through
+  // supersededById) — forgetting a fact must not leave its prior values
+  // behind. When ownerUserId is given alongside memoryId it acts as an
+  // ownership guard (the row must belong to that user), not a bulk filter.
   memoryId?: string;
   ownerUserId?: string;
   // Also remove any member-subject memory where this user is the SUBJECT,
@@ -234,8 +243,51 @@ export interface ForgetQuery {
   // though it's just as much "about this person" as anything they said
   // themselves. Independent of (and typically set alongside) ownerUserId:
   // matched with OR, not AND — a caller wiping everything about a user needs
-  // either condition to catch a row, not both.
+  // either condition to catch a row, not both. Also removes every
+  // memory_relations edge with this member at either end.
   subjectId?: string;
+  // Removes this user's own provenance: every memory_sources row they
+  // asserted (their wording, their id), plus any still-unconfirmed
+  // "candidate" memory left with no remaining source once theirs is gone —
+  // it was only ever their unverified claim. Active memories that lose a
+  // source stay, now without this user's attribution. Bulk-forget only;
+  // ignored alongside memoryId.
+  assertedByUserId?: string;
+}
+
+// The natural identity a memory row is keyed by — the same tuple the
+// memories_identity unique index covers (see schema.ts).
+export interface MemoryIdentity {
+  guildId: string;
+  ownerUserId: string | null;
+  channelId: string | null;
+  isolationChannelId: string | null;
+  subjectType: MemorySubjectType;
+  subjectId: string;
+  topic: string;
+  slot: string;
+}
+
+export interface CandidateIdentityQuery extends MemoryIdentity {
+  excludeMemoryId: string;
+  now: number;
+}
+
+export interface CandidateWithAsserters {
+  memory: Memory;
+  // Distinct, non-null assertedByUserId values across the candidate's
+  // memory_sources rows.
+  assertedByUserIds: readonly string[];
+}
+
+export interface PromoteCandidateCommand {
+  guildId: string;
+  memoryId: string;
+  // Other candidate rows under the same identity that corroborated this
+  // one — merged into it (their provenance moves over, the rows are
+  // removed) so the promoted memory carries every asserter.
+  absorbedMemoryIds: readonly string[];
+  now: number;
 }
 
 export interface ActiveSubjectQuery {
@@ -292,11 +344,24 @@ export interface MemoryRepository {
   // Returns false (no-op) if the row was already non-active by the time
   // this runs (e.g. concurrently superseded by something else).
   supersede(command: SupersedeCommand): Promise<boolean>;
+  // Candidate lifecycle — see DefaultMemoryEngine's corroboration and
+  // candidateTtlMs. Deletes candidates whose expiresAt has passed.
+  deleteExpiredCandidates(guildId: string, now: number): Promise<number>;
+  // Unexpired candidates sharing this exact identity, with their asserters.
+  findCandidatesByIdentity(query: CandidateIdentityQuery): Promise<readonly CandidateWithAsserters[]>;
+  // Turns a corroborated candidate active (clearing its TTL) and absorbs the
+  // corroborating rows into it. Returns null — changing nothing — when the
+  // row is no longer a candidate or an active memory already holds this
+  // identity (an established fact isn't overwritten by corroborated
+  // hearsay; the candidates simply age out).
+  promoteCandidate(command: PromoteCandidateCommand): Promise<Memory | null>;
   // Bounded multi-hop relational retrieval support — see memory-engine.ts's
   // DefaultMemoryEngine.recall. Batch, not one-at-a-time: a single
   // consolidation call may extract several relations from one batch of
-  // messages.
-  createRelations(inputs: readonly RelationCreateInput[]): Promise<void>;
+  // messages. Idempotent: an edge that already exists (same endpoints,
+  // predicate, kind and isolation scope) is skipped, not duplicated.
+  // Returns how many new edges were actually written.
+  createRelations(inputs: readonly RelationCreateInput[]): Promise<number>;
   // Bidirectional bounded BFS out from query.subjectIds, up to
   // query.maxHops rounds — see RelatedSubjectsQuery's doc comment for why
   // this isn't a recursive SQL CTE. Never returns a subject reachable only
@@ -314,6 +379,9 @@ export interface MemoryRecallInput {
   userId: string;
   message: string;
   recentHistory: readonly { content: string }[];
+  // Content of the message this turn directly replies to, if any — folded
+  // into the query embedding (see buildEmbeddingQueryText).
+  replyToContent?: string;
   subjectIds: readonly string[];
   now: number;
   // "disabled" means no memory reads or writes at all in this channel (see
@@ -364,10 +432,8 @@ export interface CausalChainLink {
 
 export interface MemoryContext {
   memories: readonly Memory[];
-  // Not yet wired into the actual prompt text (buildChatContext/ChatRequest
-  // don't consume this) — the data is here for a follow-up to render, not a
-  // finished feature. See CausalChainLink's doc comment for the hop-depth
-  // limitation.
+  // Rendered into the prompt by chat-structured-output.ts. See
+  // CausalChainLink's doc comment for the hop-depth limitation.
   causalChains: readonly CausalChainLink[];
 }
 
@@ -461,6 +527,9 @@ export interface MemoryForgetInput {
   // a "forget everything" call to also remove third-party claims about this
   // user, not just what they said about themselves.
   subjectId?: string;
+  // See ForgetQuery.assertedByUserId — also strips this user's provenance
+  // from memories about other people. Ignored alongside memoryId.
+  assertedByUserId?: string;
 }
 
 // A relation proposal from an extraction call (currently: channel-summary

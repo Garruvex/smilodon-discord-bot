@@ -67,3 +67,16 @@ describe("SqliteMemoryRepository — idempotent batch provenance", () => {
     expect(sources).toHaveLength(2);
   });
 });
+
+describe("SqliteMemoryRepository — memories_identity index", () => {
+  it("rejects a second active row for the same identity even when nullable columns are null", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "sqlite-memory-identity-"));
+    const connection = createSqliteDatabaseConnection(directory);
+    const repository = new SqliteMemoryRepository(connection.database);
+    const existing = await repository.ingest(ingestInput({ channelId: null }));
+    const { id: _id, ...duplicate } = connection.database.select().from(schema.memories)
+      .where(eq(schema.memories.id, existing.id)).get()!;
+    expect(() => connection.database.insert(schema.memories).values({ ...duplicate, id: "duplicate" }).run())
+      .toThrow(/UNIQUE constraint failed/);
+  });
+});

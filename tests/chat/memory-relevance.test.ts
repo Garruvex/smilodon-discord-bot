@@ -11,9 +11,13 @@ import {
 } from "../../src/application/chat/memory-relevance.js";
 
 describe("tokenize", () => {
-  it("tokenizes English exactly as before CJK support was added — space-delimited words, 3+ chars, lowercased", () => {
-    expect([...tokenize("The Quick Brown fox jumps over a lazy dog42")].sort())
-      .toEqual(["brown", "dog42", "fox", "jumps", "lazy", "over", "quick", "the"]);
+  it("tokenizes English into space-delimited, 3+ char, lowercased words", () => {
+    expect([...tokenize("Quick Brown fox jumps lazily dog42")].sort())
+      .toEqual(["brown", "dog42", "fox", "jumps", "lazily", "quick"]);
+  });
+
+  it("drops English function words and chat filler so they don't count as lexical overlap", () => {
+    expect([...tokenize("What are you doing with the lazy dog lol")].sort()).toEqual(["dog", "lazy"]);
   });
 
   it("segments Chinese text into real word tokens instead of producing nothing", () => {

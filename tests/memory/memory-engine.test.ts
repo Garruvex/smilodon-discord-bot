@@ -7,16 +7,25 @@ import { describe, expect, it } from "vitest";
 import { createSqliteDatabaseConnection } from "../../src/infrastructure/database/sqlite-database.js";
 import { SqliteMemoryRepository } from "../../src/infrastructure/persistence/sqlite-memory-repository.js";
 import { DefaultMemoryEngine, defaultMemoryEngineLimits, type MemoryEngineLimits } from "../../src/application/memory/memory-engine.js";
-import type { MemoryEngine } from "../../src/application/memory/memory.js";
+import type { MemoryEngine, MemoryRepository, ProposedMemory } from "../../src/application/memory/memory.js";
 import type { EmbeddingsClient } from "../../src/application/chat/embeddings-client.js";
 
-function engine(limits?: Partial<MemoryEngineLimits>, embeddingsClient?: EmbeddingsClient): MemoryEngine {
+function engineWithRepository(
+  limits?: Partial<MemoryEngineLimits>,
+  embeddingsClient?: EmbeddingsClient,
+): { memoryEngine: MemoryEngine; repository: MemoryRepository } {
   const directory = mkdtempSync(join(tmpdir(), "sqlite-memory-engine-"));
   const connection = createSqliteDatabaseConnection(directory);
-  return new DefaultMemoryEngine(
-    new SqliteMemoryRepository(connection.database), embeddingsClient ?? null, null,
+  const repository = new SqliteMemoryRepository(connection.database);
+  const memoryEngine = new DefaultMemoryEngine(
+    repository, embeddingsClient ?? null, null,
     limits ? { ...defaultMemoryEngineLimits, ...limits } : undefined,
   );
+  return { memoryEngine, repository };
+}
+
+function engine(limits?: Partial<MemoryEngineLimits>, embeddingsClient?: EmbeddingsClient): MemoryEngine {
+  return engineWithRepository(limits, embeddingsClient).memoryEngine;
 }
 
 describe("DefaultMemoryEngine.ingest — channel-mode enforcement", () => {
@@ -461,5 +470,122 @@ describe("DefaultMemoryEngine — importance affects recall ranking", () => {
     });
     const memories = await memoryEngine.listUserMemories("guild", "alice");
     expect(memories[0]!.importance).toBe(1);
+  });
+});
+
+function upsert(overrides: Partial<Extract<ProposedMemory, { action: "upsert" }>>): ProposedMemory {
+  return {
+    action: "upsert", audience: "guild", kind: "fact", ownerUserId: null,
+    subjectType: "member", subjectId: "carol", topic: "preference", slot: "drink.tea",
+    statement: "carol likes tea", channelScoped: false,
+    ...overrides,
+  };
+}
+
+async function ingestAs(
+  memoryEngine: MemoryEngine, asserter: string, proposal: ProposedMemory, now = 100,
+): Promise<Awaited<ReturnType<MemoryEngine["ingest"]>>> {
+  return memoryEngine.ingest({
+    guildId: "guild", channelId: "general", channelMode: "shared",
+    assertedByUserId: asserter, sourceMessageId: null, source: "live", now, proposals: [proposal],
+  });
+}
+
+async function recallTea(memoryEngine: MemoryEngine, now = 200): Promise<readonly string[]> {
+  const { memories } = await memoryEngine.recall({
+    guildId: "guild", channelId: "general", userId: "erin", message: "tea",
+    recentHistory: [], subjectIds: ["erin"], now,
+  });
+  return memories.map((memory) => memory.statement);
+}
+
+describe("DefaultMemoryEngine — relation boost stays on the fused-score scale", () => {
+  it("a memory about a related subject doesn't outrank the speaker's own strongly-matching memory", async () => {
+    const memoryEngine = engine();
+    await ingestAs(memoryEngine, "alice", upsert({
+      audience: "private", ownerUserId: "alice", subjectId: "alice", slot: "food.fruit", statement: "likes apples",
+    }));
+    await ingestAs(memoryEngine, "bob", upsert({ subjectId: "bob", slot: "game.chess", statement: "plays chess" }));
+    await memoryEngine.ingestRelations({
+      guildId: "guild", channelId: "general", channelMode: "shared", supportingMemoryId: null, now: 100,
+      proposals: [{
+        fromSubjectType: "member", fromSubjectId: "alice", predicate: "allied_with", kind: "association",
+        toSubjectType: "member", toSubjectId: "bob",
+      }],
+    });
+    const { memories } = await memoryEngine.recall({
+      guildId: "guild", channelId: "general", userId: "alice", message: "apples",
+      recentHistory: [], subjectIds: ["alice"], now: 200,
+    });
+    expect(memories.map((memory) => memory.statement)).toEqual(["likes apples", "plays chess"]);
+  });
+
+  it("renders a causal chain in the edge's stored direction even when walked backwards", async () => {
+    const memoryEngine = engine();
+    await ingestAs(memoryEngine, "alice", upsert({
+      audience: "private", ownerUserId: "alice", subjectId: "alice", slot: "food.fruit", statement: "likes apples",
+    }));
+    await memoryEngine.ingestRelations({
+      guildId: "guild", channelId: "general", channelMode: "shared", supportingMemoryId: null, now: 100,
+      proposals: [{
+        fromSubjectType: "member", fromSubjectId: "carol", predicate: "owes", kind: "consequence",
+        toSubjectType: "member", toSubjectId: "alice",
+      }],
+    });
+    const { causalChains } = await memoryEngine.recall({
+      guildId: "guild", channelId: "general", userId: "alice", message: "apples",
+      recentHistory: [], subjectIds: ["alice"], now: 200,
+    });
+    expect(causalChains).toEqual([expect.objectContaining({ fromSubjectId: "carol", toSubjectId: "alice", predicate: "owes" })]);
+  });
+
+  it("re-ingesting a known relation reports it as not newly created", async () => {
+    const memoryEngine = engine();
+    const input = {
+      guildId: "guild", channelId: "general", channelMode: "shared" as const, supportingMemoryId: null, now: 100,
+      proposals: [{
+        fromSubjectType: "member" as const, fromSubjectId: "alice", predicate: "allied_with" as const,
+        kind: "association" as const, toSubjectType: "member" as const, toSubjectId: "bob",
+      }],
+    };
+    expect(await memoryEngine.ingestRelations(input)).toEqual({ created: 1, rejected: 0 });
+    expect(await memoryEngine.ingestRelations(input)).toEqual({ created: 0, rejected: 0 });
+  });
+});
+
+describe("DefaultMemoryEngine — candidate lifecycle", () => {
+  it("a third-party claim stays unrecalled until a second, independent person makes the same claim", async () => {
+    const memoryEngine = engine();
+    const first = await ingestAs(memoryEngine, "bob", upsert({}));
+    expect(first.ingested[0]!.status).toBe("candidate");
+    expect(await recallTea(memoryEngine)).toEqual([]);
+    const second = await ingestAs(memoryEngine, "dave", upsert({ statement: "Carol  likes TEA" }), 150);
+    expect(second.ingested[0]!.status).toBe("active");
+    expect(await recallTea(memoryEngine)).toHaveLength(1);
+  });
+
+  it("the same person repeating a claim doesn't corroborate it", async () => {
+    const memoryEngine = engine();
+    await ingestAs(memoryEngine, "bob", upsert({}));
+    const repeated = await ingestAs(memoryEngine, "bob", upsert({}), 150);
+    expect(repeated.ingested[0]!.status).toBe("candidate");
+  });
+
+  it("a contradicting claim from someone else doesn't corroborate it", async () => {
+    const memoryEngine = engine();
+    await ingestAs(memoryEngine, "bob", upsert({}));
+    const contradiction = await ingestAs(memoryEngine, "dave", upsert({ statement: "carol hates tea" }), 150);
+    expect(contradiction.ingested[0]!.status).toBe("candidate");
+    expect(await recallTea(memoryEngine)).toEqual([]);
+  });
+
+  it("an uncorroborated candidate expires after candidateTtlMs and is swept on a later write", async () => {
+    const { memoryEngine, repository } = engineWithRepository({ candidateTtlMs: 1_000 });
+    const claim = await ingestAs(memoryEngine, "bob", upsert({}), 100);
+    expect(claim.ingested[0]!.expiresAt).toBe(1_100);
+    await ingestAs(memoryEngine, "erin", upsert({
+      audience: "private", ownerUserId: "erin", subjectId: "erin", slot: "food.fruit", statement: "likes apples",
+    }), 2_000);
+    expect(await repository.findById("guild", claim.ingested[0]!.id)).toBeNull();
   });
 });

@@ -238,9 +238,14 @@ export const memories = pgTable("memories", {
   // 'active' only) so conflicting claims can coexist as separate 'candidate'
   // rows under the same identity instead of colliding — see canRecall/
   // the plan's contradictory-claims fix. Only one *active* memory per
-  // identity is enforced at the database level.
+  // identity is enforced at the database level. The nullable columns are
+  // COALESCEd because a unique index treats NULLs as distinct — and every
+  // row has at least one of them null (private rows have no channelId,
+  // every other row has no ownerUserId), so indexing the raw columns
+  // constrained nothing at all.
   uniqueIndex("memories_identity").on(
-    table.guildId, table.ownerUserId, table.channelId, table.isolationChannelId,
+    table.guildId, sql`coalesce(${table.ownerUserId}, '')`, sql`coalesce(${table.channelId}, '')`,
+    sql`coalesce(${table.isolationChannelId}, '')`,
     table.subjectType, table.subjectId, table.topic, table.slot,
   ).where(sql`${table.status} = 'active'`),
   index("memories_embedding_hnsw").using("hnsw", table.embedding.op("vector_cosine_ops")),
@@ -296,6 +301,14 @@ export const memoryRelations = pgTable("memory_relations", {
 }, (table) => [
   index("memory_relations_guild_from").on(table.guildId, table.fromSubjectType, table.fromSubjectId),
   index("memory_relations_guild_to").on(table.guildId, table.toSubjectType, table.toSubjectId),
+  // One edge per (endpoints, predicate, kind, isolation scope) — repeated
+  // extraction of the same relation is a no-op (createRelations inserts
+  // with ON CONFLICT DO NOTHING). COALESCE for the same NULL-distinctness
+  // reason as memories_identity.
+  uniqueIndex("memory_relations_identity").on(
+    table.guildId, table.fromSubjectType, table.fromSubjectId, table.predicate, table.kind,
+    table.toSubjectType, table.toSubjectId, sql`coalesce(${table.isolationChannelId}, '')`,
+  ),
 ]);
 
 // Plan 2 (channel context) — drives both the one-time scan

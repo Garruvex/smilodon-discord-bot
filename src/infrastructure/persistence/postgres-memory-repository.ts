@@ -1,22 +1,24 @@
 import { randomUUID } from "node:crypto";
 
-import { and, asc, desc, eq, gt, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lte, ne, notExists, or, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
 import type {
   ActiveSubjectQuery,
+  CandidateIdentityQuery,
   CandidateQuery,
+  CandidateWithAsserters,
   ForgetQuery,
   Memory,
   MemoryAudience,
+  MemoryIdentity,
   MemoryKind,
-  MemoryRelationKind,
-  MemoryRelationPredicate,
   MemoryRepository,
   MemorySource,
   MemorySourceKind,
   MemoryStatus,
   MemorySubjectType,
+  PromoteCandidateCommand,
   RecallCandidates,
   RelatedSubject,
   RelatedSubjectsQuery,
@@ -25,6 +27,9 @@ import type {
   SupersedeCommand,
 } from "../../application/memory/memory.js";
 import * as schema from "../database/schema.js";
+import {
+  assertersOf, collectRelatedSubjects, maxCandidatesPerIdentity, maxSupersedeChainDepth,
+} from "./memory-repository-shared.js";
 
 // Verified against a real pgvector-enabled Postgres 16 instance (isolation,
 // forget, and concurrent-ingest scenarios). Logic deliberately mirrors
@@ -38,29 +43,23 @@ import * as schema from "../database/schema.js";
 // needs the same candidate-count ceiling as SqliteMemoryRepository.
 const maxEligibleCandidates = 2_000;
 
-// Postgres unique indexes treat NULL as distinct from NULL by default (no
-// NULLS NOT DISTINCT support in this drizzle-orm version's index builder),
-// so the partial unique index on `memories` alone does NOT prevent two
-// concurrent transactions from both inserting an "active" row for the same
-// identity when any of ownerUserId/channelId/isolationChannelId is null —
-// which private memory (channelId/isolationChannelId null) and shared/
-// guild-wide memory (ownerUserId null) both routinely are. Confirmed by a
-// live concurrency test. An advisory transaction lock keyed by the identity
-// tuple closes this: it serializes concurrent ingests for the same identity
-// regardless of which columns are null, without depending on unique-index
-// NULL semantics at all. SQLite doesn't need this — better-sqlite3 is a
-// single, synchronous connection, so there's no true concurrent transaction
-// to race in the first place.
-// No separator between fields — every value here is drawn from a
-// restricted character set upstream (snowflakes are numeric; topic/slot/
-// subjectType are validated by memory-validation.ts's slotPattern), so
+// memories_identity (COALESCE over the nullable columns — see schema.ts)
+// rejects a second active row per identity, but two concurrent ingests that
+// both see "no active row yet" would have the loser fail on that unique
+// violation instead of updating in place. An advisory transaction lock
+// keyed by the identity tuple serializes them so the second one sees the
+// first's row and takes the ordinary update/revision path. SQLite doesn't
+// need this — better-sqlite3 is a single, synchronous connection, so
+// there's no true concurrent transaction to race in the first place.
+// Joined with a \u0001 separator — a character none of the values (numeric
+// snowflakes, slotPattern-validated topic/slot/subjectType) can contain, so
 // distinct identity tuples can't collide onto the same joined string. Only
 // used as a lock key, never persisted or parsed back.
-function identityLockKey(input: RepositoryIngestInput): string {
+function identityLockKey(identity: MemoryIdentity): string {
   return [
-    input.guildId, input.ownerUserId ?? "", input.channelId ?? "", input.isolationChannelId ?? "",
-    input.subjectType, input.subjectId, input.topic, input.slot,
-  ].join("");
+    identity.guildId, identity.ownerUserId ?? "", identity.channelId ?? "", identity.isolationChannelId ?? "",
+    identity.subjectType, identity.subjectId, identity.topic, identity.slot,
+  ].join("\u0001");
 }
 
 function toMemory(row: typeof schema.memories.$inferSelect): Memory {
@@ -92,25 +91,31 @@ function toMemory(row: typeof schema.memories.$inferSelect): Memory {
   };
 }
 
+// See SqliteMemoryRepository's identityCondition.
+function identityCondition(identity: MemoryIdentity): ReturnType<typeof and> {
+  return and(
+    eq(schema.memories.guildId, identity.guildId),
+    identity.ownerUserId === null ? isNull(schema.memories.ownerUserId) : eq(schema.memories.ownerUserId, identity.ownerUserId),
+    identity.channelId === null ? isNull(schema.memories.channelId) : eq(schema.memories.channelId, identity.channelId),
+    identity.isolationChannelId === null
+      ? isNull(schema.memories.isolationChannelId)
+      : eq(schema.memories.isolationChannelId, identity.isolationChannelId),
+    eq(schema.memories.subjectType, identity.subjectType),
+    eq(schema.memories.subjectId, identity.subjectId),
+    eq(schema.memories.topic, identity.topic),
+    eq(schema.memories.slot, identity.slot),
+  );
+}
+
 export class PostgresMemoryRepository implements MemoryRepository {
   public constructor(private readonly database: PostgresJsDatabase<typeof schema>) {}
 
   public async ingest(input: RepositoryIngestInput): Promise<Memory> {
     return this.database.transaction(async (transaction) => {
-      // Serializes concurrent ingests for this exact identity — see the
-      // NULLS NOT DISTINCT note above for why the unique index alone can't
-      // do this. Released automatically at transaction end.
+      // Serializes concurrent ingests for this exact identity — see
+      // identityLockKey. Released automatically at transaction end.
       await transaction.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${identityLockKey(input)}, 0))`);
-      const identity = and(
-        eq(schema.memories.guildId, input.guildId),
-        input.ownerUserId === null ? isNull(schema.memories.ownerUserId) : eq(schema.memories.ownerUserId, input.ownerUserId),
-        input.channelId === null ? isNull(schema.memories.channelId) : eq(schema.memories.channelId, input.channelId),
-        input.isolationChannelId === null ? isNull(schema.memories.isolationChannelId) : eq(schema.memories.isolationChannelId, input.isolationChannelId),
-        eq(schema.memories.subjectType, input.subjectType),
-        eq(schema.memories.subjectId, input.subjectId),
-        eq(schema.memories.topic, input.topic),
-        eq(schema.memories.slot, input.slot),
-      );
+      const identity = identityCondition(input);
       // See SqliteMemoryRepository.ingest for the identity/dedup rationale
       // (partial-unique "active" row vs. per-asserter "candidate" dedup).
       let existing: typeof schema.memories.$inferSelect | undefined;
@@ -143,7 +148,9 @@ export class PostgresMemoryRepository implements MemoryRepository {
         const updated = await transaction.update(schema.memories).set({
           statement: input.statement,
           structuredValue: input.structuredValue ?? null,
-          importance: input.importance,
+          // See SqliteMemoryRepository.ingest — a restatement never lowers
+          // importance.
+          importance: Math.max(existing.importance, input.importance),
           embedding: input.embedding ? [...input.embedding] : null,
           embeddingModel: input.embeddingModel,
           updatedAt: new Date(input.now),
@@ -287,14 +294,33 @@ export class PostgresMemoryRepository implements MemoryRepository {
     }));
   }
 
+  // See SqliteMemoryRepository.forget — same semantics (memoryId removes the
+  // whole supersede chain; bulk forget also clears relations about the
+  // subject and the asserter's provenance).
   public async forget(query: ForgetQuery): Promise<number> {
-    if (query.memoryId) {
-      const deleted = await this.database.delete(schema.memories).where(and(
-        eq(schema.memories.guildId, query.guildId), eq(schema.memories.id, query.memoryId),
-      )).returning({ id: schema.memories.id });
-      return deleted.length;
-    }
-    if (query.ownerUserId || query.subjectId) {
+    return this.database.transaction(async (transaction) => {
+      if (query.memoryId) {
+        const [target] = await transaction.select().from(schema.memories).where(and(
+          eq(schema.memories.guildId, query.guildId), eq(schema.memories.id, query.memoryId),
+          query.ownerUserId ? eq(schema.memories.ownerUserId, query.ownerUserId) : undefined,
+        )).limit(1);
+        if (!target) return 0;
+        const ids = [target.id];
+        let frontier = [target.id];
+        for (let depth = 0; depth < maxSupersedeChainDepth && frontier.length > 0; depth++) {
+          const predecessors = await transaction.select({ id: schema.memories.id }).from(schema.memories).where(and(
+            eq(schema.memories.guildId, query.guildId),
+            eq(schema.memories.status, "superseded"),
+            inArray(schema.memories.supersededById, frontier),
+            target.ownerUserId === null ? isNull(schema.memories.ownerUserId) : eq(schema.memories.ownerUserId, target.ownerUserId),
+          ));
+          frontier = predecessors.map((row) => row.id).filter((id) => !ids.includes(id));
+          ids.push(...frontier);
+        }
+        const deleted = await transaction.delete(schema.memories).where(inArray(schema.memories.id, ids))
+          .returning({ id: schema.memories.id });
+        return deleted.length;
+      }
       // OR, not AND — see ForgetQuery.subjectId's own comment: a "forget
       // everything about this user" caller needs either condition to catch
       // a row (their own private memories are owned by them; a third-party
@@ -303,12 +329,98 @@ export class PostgresMemoryRepository implements MemoryRepository {
         query.ownerUserId ? eq(schema.memories.ownerUserId, query.ownerUserId) : undefined,
         query.subjectId ? and(eq(schema.memories.subjectType, "member"), eq(schema.memories.subjectId, query.subjectId)) : undefined,
       ].filter((condition) => condition !== undefined);
-      const deleted = await this.database.delete(schema.memories).where(and(
-        eq(schema.memories.guildId, query.guildId), or(...conditions),
-      )).returning({ id: schema.memories.id });
-      return deleted.length;
-    }
-    return 0;
+      let removed = conditions.length > 0
+        ? (await transaction.delete(schema.memories).where(and(eq(schema.memories.guildId, query.guildId), or(...conditions)))
+            .returning({ id: schema.memories.id })).length
+        : 0;
+      if (query.subjectId) {
+        await transaction.delete(schema.memoryRelations).where(and(
+          eq(schema.memoryRelations.guildId, query.guildId),
+          or(
+            and(eq(schema.memoryRelations.fromSubjectType, "member"), eq(schema.memoryRelations.fromSubjectId, query.subjectId)),
+            and(eq(schema.memoryRelations.toSubjectType, "member"), eq(schema.memoryRelations.toSubjectId, query.subjectId)),
+          ),
+        ));
+      }
+      if (query.assertedByUserId) {
+        const touched = (await transaction.selectDistinct({ id: schema.memories.id }).from(schema.memorySources)
+          .innerJoin(schema.memories, eq(schema.memories.id, schema.memorySources.memoryId))
+          .where(and(eq(schema.memories.guildId, query.guildId), eq(schema.memorySources.assertedByUserId, query.assertedByUserId))))
+          .map((row) => row.id);
+        if (touched.length > 0) {
+          await transaction.delete(schema.memorySources).where(and(
+            inArray(schema.memorySources.memoryId, touched), eq(schema.memorySources.assertedByUserId, query.assertedByUserId),
+          ));
+          removed += (await transaction.delete(schema.memories).where(and(
+            inArray(schema.memories.id, touched), eq(schema.memories.status, "candidate"),
+            notExists(transaction.select({ id: schema.memorySources.id }).from(schema.memorySources)
+              .where(eq(schema.memorySources.memoryId, schema.memories.id))),
+          )).returning({ id: schema.memories.id })).length;
+        }
+      }
+      return removed;
+    });
+  }
+
+  public async deleteExpiredCandidates(guildId: string, now: number): Promise<number> {
+    const deleted = await this.database.delete(schema.memories).where(and(
+      eq(schema.memories.guildId, guildId), eq(schema.memories.status, "candidate"),
+      isNotNull(schema.memories.expiresAt), lte(schema.memories.expiresAt, new Date(now)),
+    )).returning({ id: schema.memories.id });
+    return deleted.length;
+  }
+
+  public async findCandidatesByIdentity(query: CandidateIdentityQuery): Promise<readonly CandidateWithAsserters[]> {
+    const rows = await this.database.select().from(schema.memories).where(and(
+      identityCondition(query),
+      eq(schema.memories.status, "candidate"),
+      ne(schema.memories.id, query.excludeMemoryId),
+      or(isNull(schema.memories.expiresAt), gt(schema.memories.expiresAt, new Date(query.now))),
+    )).limit(maxCandidatesPerIdentity);
+    if (rows.length === 0) return [];
+    const sources = await this.database.select({ memoryId: schema.memorySources.memoryId, assertedByUserId: schema.memorySources.assertedByUserId })
+      .from(schema.memorySources)
+      .where(inArray(schema.memorySources.memoryId, rows.map((row) => row.id)));
+    return rows.map((row) => ({ memory: toMemory(row), assertedByUserIds: assertersOf(row.id, sources) }));
+  }
+
+  // See SqliteMemoryRepository.promoteCandidate. Takes the same identity
+  // lock as ingest(), so a concurrent active write for this identity can't
+  // slip in between the "no active row" check and the promotion.
+  public async promoteCandidate(command: PromoteCandidateCommand): Promise<Memory | null> {
+    return this.database.transaction(async (transaction) => {
+      const [target] = await transaction.select().from(schema.memories).where(and(
+        eq(schema.memories.guildId, command.guildId), eq(schema.memories.id, command.memoryId),
+        eq(schema.memories.status, "candidate"),
+      )).limit(1);
+      if (!target) return null;
+      const targetMemory = toMemory(target);
+      await transaction.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${identityLockKey(targetMemory)}, 0))`);
+      // Re-check under the lock: a concurrent promotion may have absorbed
+      // (deleted) this row while we waited.
+      const stillCandidate = await transaction.select({ id: schema.memories.id }).from(schema.memories)
+        .where(and(eq(schema.memories.id, target.id), eq(schema.memories.status, "candidate"))).limit(1);
+      if (stillCandidate.length === 0) return null;
+      const identity = identityCondition(targetMemory);
+      const active = await transaction.select({ id: schema.memories.id }).from(schema.memories)
+        .where(and(identity, eq(schema.memories.status, "active"))).limit(1);
+      if (active.length > 0) return null;
+      const absorbed = command.absorbedMemoryIds.length > 0
+        ? (await transaction.select({ id: schema.memories.id }).from(schema.memories).where(and(
+            identity, eq(schema.memories.status, "candidate"),
+            inArray(schema.memories.id, [...command.absorbedMemoryIds]), ne(schema.memories.id, target.id),
+          ))).map((row) => row.id)
+        : [];
+      if (absorbed.length > 0) {
+        await transaction.update(schema.memorySources).set({ memoryId: target.id })
+          .where(inArray(schema.memorySources.memoryId, absorbed));
+        await transaction.delete(schema.memories).where(inArray(schema.memories.id, absorbed));
+      }
+      const [promoted] = await transaction.update(schema.memories).set({
+        status: "active", expiresAt: null, validFrom: new Date(command.now), updatedAt: new Date(command.now),
+      }).where(and(eq(schema.memories.id, target.id), eq(schema.memories.status, "candidate"))).returning();
+      return promoted ? toMemory(promoted) : null;
+    });
   }
 
   // Bounded — a subject shouldn't realistically accumulate more than a few
@@ -345,9 +457,11 @@ export class PostgresMemoryRepository implements MemoryRepository {
     return updated.length > 0;
   }
 
-  public async createRelations(inputs: readonly RelationCreateInput[]): Promise<void> {
-    if (inputs.length === 0) return;
-    await this.database.insert(schema.memoryRelations).values(inputs.map((input) => ({
+  public async createRelations(inputs: readonly RelationCreateInput[]): Promise<number> {
+    if (inputs.length === 0) return 0;
+    // ON CONFLICT DO NOTHING against memory_relations_identity — re-extracting
+    // a known edge is a no-op, not a duplicate row.
+    const inserted = await this.database.insert(schema.memoryRelations).values(inputs.map((input) => ({
       id: randomUUID(),
       guildId: input.guildId,
       fromSubjectType: input.fromSubjectType,
@@ -359,7 +473,8 @@ export class PostgresMemoryRepository implements MemoryRepository {
       isolationChannelId: input.isolationChannelId,
       supportingMemoryId: input.supportingMemoryId,
       createdAt: new Date(input.now),
-    })));
+    }))).onConflictDoNothing().returning({ id: schema.memoryRelations.id });
+    return inserted.length;
   }
 
   // Bounded iterative BFS, not a recursive SQL CTE — see
@@ -367,7 +482,10 @@ export class PostgresMemoryRepository implements MemoryRepository {
   // has no withRecursive support). Level-synchronous: each round's query
   // scans only the previous round's newly-discovered subjects, not every
   // visited subject, so a node already fully expanded is never re-queried.
+  // Rows are ordered so results don't depend on physical row order — see
+  // collectRelatedSubjects.
   public async findRelatedSubjects(query: RelatedSubjectsQuery): Promise<readonly RelatedSubject[]> {
+    const querySubjects = new Set(query.subjectIds);
     const visited = new Set<string>(query.subjectIds);
     const results = new Map<string, RelatedSubject>();
     let frontier = [...query.subjectIds];
@@ -376,28 +494,8 @@ export class PostgresMemoryRepository implements MemoryRepository {
         eq(schema.memoryRelations.guildId, query.guildId),
         or(inArray(schema.memoryRelations.fromSubjectId, frontier), inArray(schema.memoryRelations.toSubjectId, frontier)),
         or(isNull(schema.memoryRelations.isolationChannelId), eq(schema.memoryRelations.isolationChannelId, query.channelId)),
-      ));
-      const nextFrontier: string[] = [];
-      for (const row of rows) {
-        const fromInFrontier = frontier.includes(row.fromSubjectId);
-        const otherSubjectType = fromInFrontier ? row.toSubjectType : row.fromSubjectType;
-        const otherSubjectId = fromInFrontier ? row.toSubjectId : row.fromSubjectId;
-        const viaSubjectType = fromInFrontier ? row.fromSubjectType : row.toSubjectType;
-        const viaSubjectId = fromInFrontier ? row.fromSubjectId : row.toSubjectId;
-        if (visited.has(otherSubjectId)) continue;
-        visited.add(otherSubjectId);
-        nextFrontier.push(otherSubjectId);
-        results.set(otherSubjectId, {
-          subjectType: otherSubjectType as MemorySubjectType,
-          subjectId: otherSubjectId,
-          hopDistance: hop,
-          kind: row.kind as MemoryRelationKind,
-          predicate: row.predicate as MemoryRelationPredicate,
-          viaSubjectId,
-          viaSubjectType: viaSubjectType as MemorySubjectType,
-        });
-      }
-      frontier = nextFrontier;
+      )).orderBy(asc(schema.memoryRelations.createdAt), asc(schema.memoryRelations.id));
+      frontier = collectRelatedSubjects(rows, frontier, hop, querySubjects, visited, results);
     }
     return [...results.values()];
   }

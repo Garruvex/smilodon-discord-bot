@@ -61,7 +61,8 @@ export interface MemoryConfiguration {
   conflictSimilarityThreshold: number;
   identityCanonicalizationThreshold: number;
   maxRelationHops: number;
-  relationHopBoostBase: number;
+  relationBoostWeight: number;
+  candidateTtlMs: number;
   // Opt-in fraction of recall calls captured for human relevance labeling.
   // Zero disables collection entirely.
   relevanceEvalSampleRate?: number;
