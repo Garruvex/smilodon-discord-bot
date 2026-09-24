@@ -65,6 +65,33 @@ describe("fetchSyncedLyrics", () => {
       .toEqual([{ timestampMs: 1_000, line: "First line" }, { timestampMs: 2_500, line: "Second line" }]);
   });
 
+  it("treats Traditional and Simplified Chinese metadata as the same song", async () => {
+    fetchMock.mockImplementation((url: unknown) => jsonResponse(200,
+      new URL(String(url)).searchParams.get("track_name") === "说好的幸福呢"
+        ? [candidate({ trackName: "说好的幸福呢", artistName: "周杰伦" })] : [],
+    ));
+    expect(await fetchSyncedLyrics("說好的幸福呢", "周杰倫")).not.toBeNull();
+  });
+
+  it("takes a Japanese-quoted title when the text before it is the artist", async () => {
+    fetchMock.mockImplementation((url: unknown) => jsonResponse(200,
+      new URL(String(url)).searchParams.get("track_name") === "Bling-Bang-Bang-Born"
+        ? [candidate({ trackName: "Bling-Bang-Bang-Born", artistName: "Creepy Nuts" })] : [],
+    ));
+    expect(await fetchSyncedLyrics(
+      "Creepy Nuts｢Bling-Bang-Bang-Born｣ × TV Anime｢マッシュル-MASHLE-｣ Collaboration Music Video #BBBBダンス",
+      "Creepy Nuts",
+    )).not.toBeNull();
+  });
+
+  it("ignores a Japanese-quoted segment when the text before it isn't the artist", async () => {
+    fetchMock.mockImplementation((url: unknown) => jsonResponse(200,
+      new URL(String(url)).searchParams.get("track_name") === "Show"
+        ? [candidate({ trackName: "Show", artistName: "Some Artist" })] : [],
+    ));
+    expect(await fetchSyncedLyrics("TV Anime「Show」 Opening", "Some Artist")).toBeNull();
+  });
+
   it("rejects a different artist whose name merely contains the requested name", async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, [candidate({ artistName: "Heartless" })]));
     expect(await fetchSyncedLyrics("Good Time", "Heart", 205_000)).toBeNull();

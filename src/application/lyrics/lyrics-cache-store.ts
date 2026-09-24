@@ -37,5 +37,5 @@ export function buildLyricsCacheKey(trackName: string, artistName: string, durat
   if (title.includes("|") || artist.includes("|")) {
     return JSON.stringify(["v3", title, artist, durationBucket]);
   }
-  return `v2|${title}|${artist}|${durationBucket}`;
+  return `v3|${title}|${artist}|${durationBucket}`;
 }

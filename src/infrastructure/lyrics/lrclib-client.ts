@@ -1,3 +1,4 @@
+import { Converter } from "opencc-js/t2cn";
 import { z } from "zod";
 
 export interface SyncedLyricLine {
@@ -53,7 +54,21 @@ const trailingMetadataPattern = /\s*[-–—|]\s*(?:official\s+)?(?:(?:music\s+)
 const artistTitleSeparatorPattern = /\s+[-–—]\s+/;
 // "周杰倫 Jay Chou【夜曲 Nocturne】" — the CJK-upload counterpart of
 // "Artist - Title": the artist outside, the title inside the brackets.
-const bracketedTitlePattern = /^(.+?)\s*[【《「『]([^】》」』]+)[】》」』]$/;
+const bracketedTitlePattern = /^(.+?)\s*[【《]([^】》]+)[】》]$/;
+// Japanese channels publish collaboration headlines as
+// "Artist｢Track｣ × TV Anime｢Show｣ …" — the first quoted part is the track,
+// but only trusted when the text before it is the credited artist, since
+// quotes just as often wrap an anime or show name.
+const japaneseQuotedTitlePattern = /[｢「『]([^｣」』]+)[｣」』]/;
+
+// LRCLIB rows for the same Chinese song are catalogued in either
+// Traditional or Simplified script (周杰倫 vs 周杰伦); comparing everything
+// in Simplified makes the two spellings equal instead of a mismatch.
+// opencc-js ships .d.ts files with extensionless relative imports, which
+// NodeNext resolution can't follow — so its types resolve to nothing and the
+// one function used here is typed by hand.
+type TextConverterFactory = (options: { from: "t"; to: "cn" }) => (text: string) => string;
+const toSimplifiedChinese = (Converter as TextConverterFactory)({ from: "t", to: "cn" });
 const nonWordPattern = /[^\p{L}\p{N}]+/gu;
 const versionMarkerPattern = /\b(live|remix|acoustic|instrumental|karaoke|demo|edit|version|cover|sped ?up|slowed)\b/i;
 // Splits a multi-artist credit ("Owl City, Carly Rae Jepsen", "A feat. B")
@@ -87,18 +102,26 @@ function normalizeQuery(title: string, artist: string): NormalizedQuery {
   const trimmedTitle = title.trim();
   const trimmedArtist = artist.trim();
   const cleanTitle = stripMetadataSuffix(trimmedTitle);
-  // Try the "Artist - Title" split unconditionally — not just when a
-  // metadata suffix was also present to strip. A source can hand us a
-  // perfectly clean "Artist - Title" already (no "(Official Video)" etc. to
-  // strip at all, e.g. because the upstream plugin already stripped it), and
-  // gating the split on the suffix check meant that case searched LRCLIB for
-  // the literal, unsplit "Artist - Title" string and never found anything.
+  const quotedMatch = japaneseQuotedTitlePattern.exec(cleanTitle);
+  const quotedTitle = quotedMatch?.[1]?.trim();
+  if (quotedMatch && quotedTitle) {
+    const prefix = cleanTitle.slice(0, quotedMatch.index).trim();
+    if (prefix && artistMatchScore(trimmedArtist, prefix).score >= minimumArtistScore) {
+      return { title: quotedTitle, artist: trimmedArtist, extraArtist: null, unsplitTitle: cleanTitle };
+    }
+  }
   const bracketMatch = bracketedTitlePattern.exec(cleanTitle);
   const bracketArtist = bracketMatch?.[1]?.trim();
   const bracketTitle = bracketMatch?.[2]?.trim();
   if (bracketArtist && bracketTitle) {
     return { title: bracketTitle, artist: trimmedArtist, extraArtist: bracketArtist, unsplitTitle: cleanTitle };
   }
+  // Try the "Artist - Title" split unconditionally — not just when a
+  // metadata suffix was also present to strip. A source can hand us a
+  // perfectly clean "Artist - Title" already (no "(Official Video)" etc. to
+  // strip at all, e.g. because the upstream plugin already stripped it), and
+  // gating the split on the suffix check meant that case searched LRCLIB for
+  // the literal, unsplit "Artist - Title" string and never found anything.
   const separatorMatch = artistTitleSeparatorPattern.exec(cleanTitle);
   if (separatorMatch) {
     const derivedArtist = cleanTitle.slice(0, separatorMatch.index).trim();
@@ -139,7 +162,7 @@ function artistSearchVariants(artist: string): string[] {
 }
 
 function normalizedMetadata(value: string): string {
-  const lowered = stripMetadataSuffix(value.toLowerCase());
+  const lowered = stripMetadataSuffix(toSimplifiedChinese(value).toLowerCase());
   return lowered.replace(nonWordPattern, " ").trim();
 }
 
@@ -355,6 +378,13 @@ export async function fetchSyncedLyrics(
     for (const searchArtist of new Set([normalized.artist, ""])) {
       attempts.push({ title: normalized.unsplitTitle, searchArtist, scoreArtist: normalized.artist });
     }
+  }
+  // LRCLIB's search matches the script it's given, so a Traditional title
+  // never surfaces a row catalogued only in Simplified. Scoring already
+  // treats the two as equal; this just gets those rows into the pool.
+  const simplifiedTitle = toSimplifiedChinese(normalized.title);
+  if (simplifiedTitle !== normalized.title) {
+    attempts.push({ title: simplifiedTitle, searchArtist: "", scoreArtist: normalized.extraArtist ?? normalized.artist });
   }
 
   const seenAttempts = new Set<string>();
