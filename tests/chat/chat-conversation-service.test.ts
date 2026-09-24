@@ -1076,6 +1076,47 @@ describe("ChatConversationService", () => {
     expect(result.text).toBe("Ginco said that.");
   });
 
+  it("strips untrusted-data fence markers the verifier echoes into a real correction", async () => {
+    const store = baseStore();
+    const verifyAttribution = vi.fn(() => Promise.resolve({
+      needsCorrection: true,
+      correctedResponse: "<<<BEGIN-UNTRUSTED-DATA>>>\nGinco said that, not LW.\n<<<END-UNTRUSTED-DATA>>>",
+    }));
+    const reply = vi.fn(() => Promise.resolve(response("LW said that.")));
+    const provider: ChatProvider = { reply, verifyAttribution };
+    const service = new ChatConversationService(provider, store, testMemoryEngine().engine);
+
+    const result = await service.run({
+      ...input("who said that"),
+      channelHistory: [
+        { messageId: "m1", timestampMs: 0, authorId: "ginco", authorDisplayName: "Ginco", content: "friend has grey fur", imageCount: 0 },
+      ],
+    }, (r) => Promise.resolve(r.text));
+
+    expect(result.text).toBe("Ginco said that, not LW.");
+  });
+
+  it("delivers the draft untouched when the verifier's correction is just the fenced draft echoed back", async () => {
+    const store = baseStore();
+    const draft = "冰寒刺骨\n競技場中的所有人都會受到緩速 II 和挖掘疲勞 II 效果。";
+    const verifyAttribution = vi.fn(() => Promise.resolve({
+      needsCorrection: true,
+      correctedResponse: `<<<BEGIN-UNTRUSTED-DATA>>>\n${draft}\n<<<END-UNTRUSTED-DATA>>>`,
+    }));
+    const reply = vi.fn(() => Promise.resolve(response(draft)));
+    const provider: ChatProvider = { reply, verifyAttribution };
+    const service = new ChatConversationService(provider, store, testMemoryEngine().engine);
+
+    const result = await service.run({
+      ...input("翻譯"),
+      channelHistory: [
+        { messageId: "m1", timestampMs: 0, authorId: "ginco", authorDisplayName: "Ginco", content: "Bitter Cold", imageCount: 0 },
+      ],
+    }, (r) => Promise.resolve(r.text));
+
+    expect(result.text).toBe(draft);
+  });
+
   it("keeps a guild-knowledge candidate about a reply-chain author, not just the current user or an @mention", async () => {
     const store = baseStore();
     const candidates: ChatResponse["guildKnowledgeCandidates"] = [

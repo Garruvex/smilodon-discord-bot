@@ -1,6 +1,7 @@
 import type { Logger } from "pino";
 
 import { hashContent } from "../assets/content-hash.js";
+import { stripUntrustedMarkers } from "./attribution-verification.js";
 import { chatMemoryInstructions, chatMemoryLimits, importanceRatingToLevel, normalizeForGroundingCheck, validateMemoryActions } from "./chat-memory-policy.js";
 import { chatSafetyGuard, type ChannelHistoryMessage, type ChatProvider, type ChatRequest, type ChatResponse, type ChatResponseObserver, type ReplyChainMessage } from "./chat-provider.js";
 import type { ChatSessionExchange, ChatStateStore } from "./chat-state-store.js";
@@ -417,8 +418,12 @@ export class ChatConversationService {
       ];
       const result = await verifier.verifyAttribution(draftResponse, context);
       if (!result.needsCorrection) return draftResponse;
-      const corrected = result.correctedResponse?.trim();
+      const corrected = stripUntrustedMarkers(result.correctedResponse ?? "");
       if (!corrected) return draftResponse;
+      // A "correction" that is just the draft echoed back (often wrapped in
+      // the fence markers) isn't a correction — deliver the draft untouched.
+      const normalize = (text: string): string => text.replace(/\s+/g, " ").trim();
+      if (normalize(corrected) === normalize(draftResponse)) return draftResponse;
       this.logger?.info({ guildId, channelId }, "Attribution verification corrected a misattributed reply");
       return corrected;
     } catch (error) {
