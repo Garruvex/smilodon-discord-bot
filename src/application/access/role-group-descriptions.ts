@@ -1,6 +1,6 @@
 export const roleGroupDescriptions = {
   botAdministrator:
-    "Manages /settings and inherits every music-controller permission.",
+    "Manages the admin panel and /settings-… commands, and inherits every music-controller permission.",
   musicController:
     "Required for /play, queue commands, panel controls, and typed song requests in the control channel.",
   restricted:

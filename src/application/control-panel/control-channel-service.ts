@@ -289,7 +289,7 @@ export class ControlChannelService {
     await this.pinPanelMessage(messages.nowPlaying, guildId);
     await this.pinPanelMessage(messages.queue, guildId);
     // Run at every panel setup (startup, and whenever an admin
-    // reconfigures the control channel via /settings) rather than on a
+    // reconfigures the control channel via /settings-music panel) rather than on a
     // recurring schedule — catches anything left behind by a restart that
     // interrupted a transient message's self-deletion timer, a failed
     // best-effort delete, or a stray message from before the bot ever

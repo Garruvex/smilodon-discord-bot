@@ -101,6 +101,36 @@ guild command deployment service rather than duplicating those responsibilities.
 
 The bot process never overwrites registered commands while starting.
 
+## Settings
+
+Every server setting is registered once, in
+`src/infrastructure/discord/settings/groups/`, as a tree whose levels match
+Discord's: a group (`/settings-<group>`), optional sections (subcommand
+groups), nodes (subcommands) and options. A node is a `setting` (options, each
+with a `read` of the current value and a pure `write` returning a config
+patch), an `action` (does something once, may return a patch) or a `report`
+(read-only text). Everything else is derived from that registration:
+
+- the slash commands and their localized descriptions (lists become
+  `add-`/`remove-` options, clearable channels a `clear` option);
+- the admin panel — a header plus one Components V2 message per section, with
+  a control per option, packed to Discord's per-message limits;
+- the `/setup guide` walkthrough, which shows the panel's rows for the nodes
+  marked `setup`;
+- confirmations and audit entries (`label: old → new`), in the guild's
+  language.
+
+All three surfaces run a setting through one `SettingsEngine`, and every
+write goes through `SettingsUpdateService`, which saves, audits, refreshes
+the music panel and notifies listeners (the admin panel redraws from there).
+All text comes from the settings catalogs in
+`src/application/i18n/settings/<language>/`; the registry's validation (run at
+startup and in tests) checks the English text and Discord's limits.
+
+The admin panel stores its message ids (`AdminPanelStateStore`), so it edits
+in place, reposts a deleted message in order, and never scans the channel.
+Problems it can't fix are kept in `AdminPanelHealth` for `/status`.
+
 ## Version 1 music boundary
 
 Version 1 includes playback, queue viewing/removal/clearing, skip/previous,
@@ -153,7 +183,7 @@ It's additive only: the model is instructed never to let it contradict or
 override the personality/lore above it, and every nudge is hard-capped in
 size. Disabling the guild setting stops both evolution and prompt injection
 without deleting the stored state, so re-enabling resumes where it left off;
-an explicit reset (`/settings chat chatbot reset-persona-drift:true`) is the
+an explicit reset (`/settings-chat persona reset-persona-drift`) is the
 only thing that clears it.
 
 Normal chat remains one provider call. Its structured result contains the reply,
@@ -222,7 +252,7 @@ birth year is stored.
 `BirthdayAnnouncer` checks hourly, using a per-guild-per-date record in the
 store to avoid re-posting after a same-day restart. Announcements require both
 `features.birthdays` and a configured `channels.birthdayAnnouncements`, enforced
-at the schema level. `/settings community birthdays` manages both; `/birthday set|view|remove`
+at the schema level. `/settings-community birthdays` manages both; `/birthday set|view|remove`
 is user-facing.
 
 ## NSFW image commands

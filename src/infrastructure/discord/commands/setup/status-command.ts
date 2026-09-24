@@ -175,7 +175,7 @@ export class StatusCommand implements BotCommand {
       });
     }
 
-    embed.setFooter({ text: "Change these with the /settings-… commands." });
+    embed.setFooter({ text: "Change these in the admin panel or with the /settings-… commands. New here? Try /setup guide." });
     await context.responses.reply({ embeds: [embed] });
   }
 

@@ -19,7 +19,7 @@ an admin) control the rest:
 
 | Role group | Grants |
 | --- | --- |
-| **Bot Administrator** | Everything below, plus `/settings` and `/setup` |
+| **Bot Administrator** | Everything below, plus the admin panel, `/settings-…` and `/setup` |
 | **Music Controller** | `/play` and every other music command, plus the control-panel buttons |
 | **Restricted** | Explicitly *denied* music and chatbot access, even if another role would allow it |
 
@@ -75,7 +75,7 @@ group. `/help` only lists commands you're currently allowed to use.
 | `/bird`, `/cat`, `/dog`, `/fox`, `/raccoon` | Posts a random animal photo with a fact. |
 
 NSFW commands require both an age-restricted Discord channel *and* the
-server's NSFW setting to be turned on (`/settings community nsfw`).
+server's NSFW setting to be turned on (`/settings-community nsfw`).
 
 ### Music
 
@@ -171,19 +171,19 @@ If you don't have chatbot access, mentioning the bot returns a configurable
 Chatbot role group.
 
 Every server can have a custom **personality** (uploaded by an admin via
-`/settings chat chatbot personality:<file>`) that changes how the bot talks,
+`/settings-chat persona personality file:<file>`) that changes how the bot talks,
 plus an optional set of **example exchanges**
-(`/settings chat chatbot examples:<file>`) that teach it the character's
+(`/settings-chat persona examples file:<file>`) that teach it the character's
 actual voice — see the [personality guide](personality-guide.md) if you're
 writing either.
 
-Admins can also turn on **persona drift** (`/settings chat chatbot
-persona-drift:true`), an experimental, off-by-default feature that lets a
+Admins can also turn on **persona drift** (`/settings-chat persona
+persona-drift enabled:true`), an experimental, off-by-default feature that lets a
 small "current mood/quirk" layer evolve slightly over time from real
 conversation activity — it only ever adds a light overlay on top of the
 personality/lore above, never rewrites them. Turning it off just pauses
 evolution (nothing is lost, turning it back on resumes where it left off);
-`reset-persona-drift:true` wipes it and starts the character over.
+`/settings-chat persona reset-persona-drift` wipes it and starts the character over.
 
 ## Setting up a new server
 
@@ -202,34 +202,90 @@ omitted is created automatically. This:
 - creates (or adopts) the control channel and pins the control panel;
 - registers the server's enabled slash commands.
 
+Then run `/setup guide`: a private walkthrough of the main settings, one per
+step. It starts by picking a channel for the [admin panel](#the-admin-panel)
+(or creating a private one), then the server's language, then roles, music,
+chat and community basics. Every change saves the moment you make it; **Skip**
+leaves a setting as it is and **Finish later** keeps your place until the bot
+restarts. Like `/setup`, it needs Manage Server.
+
 Run `/status` afterward to confirm what got configured. `/setup
 initialize` never overwrites an existing profile — rerunning it on an
 already-configured server is a no-op check, not a reset.
 
-## Admin settings (`/settings`)
+## Admin settings
 
-Everything below requires the **Bot Administrator** role. Settings write
-straight to the server's configuration and (if an audit log channel is set)
-log a diff of what changed.
+Every setting can be changed two ways, and both do exactly the same thing:
+
+- **The admin panel** — a channel showing every setting with its description,
+  its current value and a control to change it.
+- **`/settings-<group>` commands** — `/settings-access`, `/settings-music`,
+  `/settings-chat` and `/settings-community`.
+
+Both need the **Bot Administrator** role. Changes write straight to the
+server's configuration, show up in the panel right away, and (if an audit log
+channel is set) log what changed from what to what.
+
+### The admin panel
+
+Set its channel with `/setup guide` or `/settings-access admin-panel
+channel:#channel`. The bot posts a header with links to each section, then one
+message per section: toggles are buttons, choices and channels/roles are
+menus, numbers and text open a small form (**Edit**), uploads open a form
+with a file field, and one-off actions (history scans, starter files, resets)
+are **Run** buttons — the destructive ones ask first. The panel is in the
+server's language.
+
+It looks after itself:
+
+- only the bot can post in the panel channel (it denies Send Messages to
+  @everyone there);
+- a deleted panel message is reposted after a few seconds, along with every
+  message after it so the order stays right — if messages keep getting
+  deleted (more than 3 times in 10 minutes) it stops and says so in the audit
+  log;
+- if the channel is deleted, the panel setting is turned off;
+- `/status` shows anything the bot can't fix itself, such as missing
+  permissions in the panel channel;
+- `/settings-access repair-panel` (also a button on the panel) takes the
+  whole panel down and posts it again.
+
+Keep the panel channel visible to bot admins only; the header warns you if
+everyone can see it.
+
+### Lists, clearing and the command shape
+
+A setting that holds a list — roles in an access group, watched channels —
+takes `add-…` and `remove-…` options on its command (just `add`/`remove` when
+the list is the setting's only option), and is a multi-select on the panel.
+An optional channel has a `clear` option (`clear-<name>` when the setting has
+several). Chat settings are grouped into sections, so they read
+`/settings-chat <section> <setting>`.
 
 ### Access
 
-| Subcommand | What it does |
+| Command | What it does |
 | --- | --- |
-| `/settings access access` | Shows the current role assignments for every group. |
-| `/settings access roles [administrator] [music-controller] [restricted]` | Adds a role to a group (doesn't remove existing ones). |
-| `/settings access role-add <group> <role>` / `role-remove <group> <role>` | Adds or removes one role from one group. |
-| `/settings access audit-log [channel] [disable]` | Sets or disables the audit-log channel. |
-| `/settings access audit [count]` | Shows recent audit-log entries inline. |
+| `/settings-access roles [add-/remove-administrator] [add-/remove-music-controller] [add-/remove-chatbot] [add-/remove-restricted]` | Adds or removes roles in each access group. The last bot-admin role can't be removed, nor the last music-controller or chatbot role while that feature is on. |
+| `/settings-access admin-panel [channel] [clear]` | Sets or turns off the [admin panel](#the-admin-panel) channel. |
+| `/settings-access repair-panel` | Takes the admin panel down and posts it again. |
+| `/settings-access audit-log [channel] [clear]` | Sets or turns off the audit-log channel. |
+| `/settings-access access` | Shows who holds each access group and what the group allows. |
+| `/settings-access audit [count]` | Shows recent audit-log entries inline. |
 
 ### Music
 
-| Subcommand | What it does |
+| Command | What it does |
 | --- | --- |
-| `/settings music panel [channel] [idle-image-url] [idle-image] [use-default-image] [progress-style] [progress-length] [progress-completed/remaining/playing/paused] [progress-ending]` | Configures the control channel and the now-playing panel's look — including uploading a persistent idle image directly (`idle-image`), no external hosting needed. |
-| `/settings music volume [default] [maximum] [button-step]` | Sets default/maximum volume and the panel button's volume step. |
-| `/settings music lifecycle [empty-queue-action] [queue-delay-seconds] [empty-channel-action] [channel-grace-seconds] [resume-when-occupied]` | Controls what happens when the queue empties or everyone leaves voice. |
-| `/settings music autoqueue-vote [enabled] [bar-style] [options]` | Turns the [autoqueue vote](#autoqueue-vote) on or off (on by default; off means autoqueue picks on its own), picks the bar style (colored squares or a thin bar matching the progress bar), and sets how many songs it offers (2–6, default 3). |
+| `/settings-music panel [channel] [progress-style] [progress-length]` | Sets the control channel and the now-playing panel's progress bar. |
+| `/settings-music progress-emojis <completed> <remaining> <playing> <paused> <ending>` | Sets your own emoji for each progress-bar piece and switches to the Custom style. |
+| `/settings-music idle-image [file] [url]` | Uploads the image shown when nothing is playing (no external hosting needed), or points at an https URL. |
+| `/settings-music default-idle-image` | Goes back to the bundled idle image. |
+| `/settings-music volume [default] [maximum] [button-step]` | Sets default/maximum volume and the panel button's volume step. |
+| `/settings-music lifecycle [empty-queue-action] [queue-delay-seconds] [empty-channel-action] [channel-grace-seconds] [resume-when-occupied]` | Controls what happens when the queue empties or everyone leaves voice. |
+| `/settings-music dj-mode [enabled]` | Lets music controllers control playback from anywhere. |
+| `/settings-music open-queue-requests [enabled]` | Lets anyone queue songs without joining the bot's voice channel. |
+| `/settings-music autoqueue-vote [enabled] [bar-style] [options]` | Turns the [autoqueue vote](#autoqueue-vote) on or off (on by default; off means autoqueue picks on its own), picks the bar style (colored squares or a thin bar matching the progress bar), and sets how many songs it offers (2–6, default 3). |
 
 Panel progress styles: **Standard** (plain bar), **Yohta** (bot-owned emoji
 preset, works in any server the bot is in once provisioned), **Custom** (your
@@ -237,52 +293,60 @@ own emoji for each segment), or **Timestamps only**.
 
 ### Chat
 
-| Subcommand | What it does |
+| Command | What it does |
 | --- | --- |
-| `/settings chat chatbot [enabled] [role] [channel] [cooldown-seconds] [denied-message] [denied-link-url] [denied-link-label] [web-search] [tool-calling] [image-input] [image-generation] [include-sources] [max-images] [personality] [use-default-personality] [examples] [use-default-examples] [persona-drift] [reset-persona-drift]` | The main mention-chat switchboard: who can use it, where, how often, and which capabilities are on. |
-| `/settings chat ambient-replies [enabled] [cooldown-seconds]` | Turns on ambient (non-mention) chat and its per-channel cooldown. |
-| `/settings chat channel-history [enabled] [limit]` | Includes recent messages from anyone as extra context for ambient chat. |
-| `/settings chat template <kind>` | Sends a starter `personality.md` or `examples.md` file to download, edit, and upload back via `/settings chat chatbot`. |
-| `/settings chat context-scan-add channel [seed-days] [restart]` | Queues a channel for a one-time history scan (default 7-day lookback) folded into guild-wide memory. `restart:true` re-reads a completed scan from scratch. |
-| `/settings chat context-daily-add channel` | Adds a channel to ongoing daily summarization, checked hourly. |
-| `/settings chat context-daily-remove channel` | Stops daily summarization for a channel (existing memories are kept). |
-| `/settings chat context-remove channel` | Removes a channel from both the scan and daily sets (existing memories are kept; re-adding resumes rather than re-reading history). |
-| `/settings chat context-status [channel]` | Shows provider availability, whether the chatbot feature is paused, and per-channel scan/daily progress and errors. |
+| `/settings-chat replies mention-chat [enabled] [add-/remove-channels] [cooldown-seconds]` | Turns AI chat on or off, limits it to some channels (none means everywhere), and sets the per-member cooldown. Who may chat is the Chatbot group in `/settings-access roles`. |
+| `/settings-chat replies denied-message [message] [link-url] [link-label]` | What members without access see; `link-url:none` removes the link button. |
+| `/settings-chat replies ambient-replies [enabled] [cooldown-seconds]` | Lets the bot judge whether to answer when someone names it, with a per-channel cooldown. |
+| `/settings-chat replies reaction-replies [enabled]` / `history-reactions [enabled]` | Replies to reactions on its own messages; reacts to other messages it sees. |
+| `/settings-chat abilities web-search` / `include-sources` / `tool-calling` / `image-generation [enabled]` | Turns each ability on or off. |
+| `/settings-chat abilities image-input [enabled] [max-images]` | Lets the model see attached images, and how many per request. |
+| `/settings-chat abilities tools` | Lists every chat tool and whether it's enabled here. |
+| `/settings-chat abilities tool <name> <enabled>` | Turns one chat tool on or off. |
+| `/settings-chat memory channel-history [enabled] [limit]` | Includes recent messages from anyone as extra context. |
+| `/settings-chat memory memory-mode <channel> <mode>` | Sets a channel's memory isolation: shared, isolated, session only, or disabled. |
+| `/settings-chat memory context-daily [add] [remove]` | Channels summarized into memory once a day, checked hourly. |
+| `/settings-chat memory context-scan <channel> [seed-days] [restart]` | Queues a one-time history scan (default 7-day lookback) folded into memory. `restart:true` re-reads a completed scan. |
+| `/settings-chat memory context-remove <channel>` | Takes a channel off both the scan and daily lists (existing memories are kept; re-adding resumes rather than re-reading history). |
+| `/settings-chat memory context-status [channel]` | Shows provider availability, whether the chatbot is paused, and per-channel scan/daily progress and errors. |
+| `/settings-chat persona personality [file]` / `use-default-personality` | Uploads the character's personality, or goes back to the built-in one. |
+| `/settings-chat persona examples [file]` / `use-default-examples` | Uploads example exchanges, or removes them. |
+| `/settings-chat persona template <kind>` | Sends a starter `personality.md` or `examples.md` to edit and upload. |
+| `/settings-chat persona self-reference-image [image]` / `remove-self-reference-image` | What the bot looks like when it draws itself. |
+| `/settings-chat persona persona-drift [enabled]` / `reset-persona-drift` | The experimental evolving mood layer, and wiping it. |
 
-An empty channel list on `/settings chat chatbot` means mention chat is
-allowed in every channel. Use `/settings access role-add`/`role-remove` with
-the `Chatbot` group to manage multiple allowed roles at once.
-
-The `context-*` commands require a chat provider configured with channel-
-summarization support (every built-in provider mode has it) — see the
-README's [Channel-context memory](../README.md#channel-context-memory)
+Chat settings changed while the chatbot is off say so: they take effect once
+it's turned on. The history-scan and daily-summary settings need a chat
+provider with channel summarization (every built-in provider mode has it) —
+see the README's [Channel-context memory](../README.md#channel-context-memory)
 section for the full processing model and trust rules.
 
 ### Community
 
-| Subcommand | What it does |
+| Command | What it does |
 | --- | --- |
-| `/settings community birthdays [enabled] [channel]` | Turns on birthday announcements and sets the announcement channel (required before enabling). |
-| `/settings community reminders [enabled]` | Turns `/remind` on or off for this server. |
-| `/settings community welcome [join-channel] [leave-channel]` | Sets the join/leave announcement channels. Each is independent — leaving one unset just means that event stays silent, no separate enable toggle. Join posts a generated welcome card; leave is a plain text line. |
-| `/settings community nsfw <enabled>` | Allows NSFW image commands server-wide (still needs an age-restricted channel per use). |
-| `/settings community link-fix [enabled] [channel] [remove-channel] [twitter] [threads] [tiktok] [instagram] [reddit] [bilibili]` | Rewrites Twitter/X, Threads, Instagram, Bilibili, TikTok, and Reddit links for better embeds in watched channels. Each service can be toggled on/off independently of the overall `enabled` switch. |
-| `/settings community member-data <retain>` | Whether a departing member's private memories, chat sessions/preferences, birthday, customization, and reminders are retained. Shared guild/channel memories remain community history. |
-| `/settings community timezone <zone>` | Sets the IANA time zone (e.g. `America/New_York`) birthday announcements are computed in. Defaults to UTC. |
-| `/settings community language <language>` | Sets the language (English, 繁體中文, 日本語) for everything the bot posts in this server: the music panel, announcements, votes, and replies. Slash-command descriptions are separate — Discord shows those in each member's own client language. Defaults to English. |
+| `/settings-community language <language>` | Sets the language (English, 繁體中文, 日本語) for everything the bot posts in this server: the music panel, the admin panel, announcements, votes, and replies. Slash-command descriptions are separate — Discord shows those in each member's own client language. Defaults to English. |
+| `/settings-community timezone <zone>` | Sets the IANA time zone (e.g. `America/New_York`) birthday announcements are computed in. Defaults to UTC. |
+| `/settings-community birthdays [enabled] [channel]` | Turns on birthday announcements and sets the announcement channel (required before enabling). |
+| `/settings-community reminders [enabled]` | Turns `/remind` on or off for this server. |
+| `/settings-community welcome [join-channel] [leave-channel] [clear-join-channel] [clear-leave-channel]` | Sets the join/leave announcement channels. Each is independent — leaving one unset just means that event stays silent. Join posts a generated welcome card; leave is a plain text line. |
+| `/settings-community link-fix [enabled] [add-/remove-channels] [twitter] [threads] [tiktok] [instagram] [reddit] [bilibili]` | Rewrites Twitter/X, Threads, Instagram, Bilibili, TikTok, and Reddit links for better embeds in watched channels. Each service can be toggled independently of the overall `enabled` switch. |
+| `/settings-community nsfw <enabled>` | Allows NSFW image commands server-wide (still needs an age-restricted channel per use). |
+| `/settings-community member-data <retain>` | Whether a departing member's private memories, chat sessions/preferences, birthday, customization, and reminders are retained. Shared guild/channel memories remain community history. |
 
 ## Troubleshooting
 
 | Symptom | Likely cause |
 | --- | --- |
-| A command doesn't appear in `/help` | You lack the required role, or the feature it belongs to is disabled — ask a bot administrator to check with `/settings`. |
-| A command shows up in Discord's own command list but says "you are not allowed to use this command here" when run | The feature it belongs to is disabled for this server — every command is always registered, so a disabled feature rejects it at runtime instead of hiding it from the picker. An admin can turn it on via `/settings`; no redeploy needed. |
+| A command doesn't appear in `/help` | You lack the required role, or the feature it belongs to is disabled — ask a bot administrator to check the admin panel or `/settings-…`. |
+| A command shows up in Discord's own command list but says "you are not allowed to use this command here" when run | The feature it belongs to is disabled for this server — every command is always registered, so a disabled feature rejects it at runtime instead of hiding it from the picker. An admin can turn it on from the admin panel or `/settings-…`; no redeploy needed. |
 | A command doesn't appear in Discord's command list at all | This server has no bot profile yet — a member with Manage Server needs to run `/setup initialize`. |
 | Mentioning the bot gets a "no access" message | You're missing the Chatbot role, or you have the Restricted role. |
 | `/play` or panel typing does nothing | You need the Music Controller role and must be in the bot's voice channel for pause/skip/stop. |
-| NSFW commands say they're unavailable | The channel isn't age-restricted, or `/settings community nsfw` is off. |
-| Volume caps out lower than expected | The server's configured maximum (`/settings music volume`) limits `/volume`. |
+| NSFW commands say they're unavailable | The channel isn't age-restricted, or `/settings-community nsfw` is off. |
+| Volume caps out lower than expected | The server's configured maximum (`/settings-music volume`) limits `/volume`. |
 | Control panel disappeared or looks wrong | It's restored automatically on bot restart; if the channel or message was deleted, the bot recreates it the next time it needs to render. |
+| Admin panel messages went missing or out of order | The bot reposts deleted panel messages itself; if it stopped (see `/status`), run `/settings-access repair-panel`. |
 
 For setup, hosting, and deployment topics — environment files, Lavalink,
 Docker, multiple bot instances — see the [README](../README.md) and the

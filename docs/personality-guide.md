@@ -6,7 +6,7 @@ of an assistant, distilled from what actually stops a model from sounding
 robotic in practice.
 
 Starter template: `config/examples/personality.example.md`. From Discord,
-`/settings chat template kind:personality` sends this same file as a
+`/settings-chat persona template kind:personality` sends this same file as a
 downloadable attachment — no repo access needed.
 
 ## The core failure mode
@@ -245,7 +245,7 @@ the structure in practice instead of inferring it from a checklist. Copy it
 and replace the character, name, species, and voice with your own; don't
 ship it as-is for a guild that isn't using the example persona.
 
-Uploaded personality files (`/settings chat chatbot personality:<file>`) are
+Uploaded personality files (`/settings-chat persona personality file:<file>`) are
 guild content, not part of this repository — write your character's actual
 identity and voice directly into the guild's uploaded file, not into this
 guide or the committed example template.
@@ -260,14 +260,14 @@ structure, and code-switching far better from real example exchanges than
 from a description of those traits.
 
 `examples.md` is a second, optional per-guild upload
-(`/settings chat chatbot examples:<file>`) containing real `{user, character}`
+(`/settings-chat persona examples file:<file>`) containing real `{user, character}`
 exchanges. A relevant subset is selected per turn and shown to the model
 alongside the personality file, so add examples when the personality file
 alone still isn't converging on the character's actual voice — not as a
 replacement for `personality.md`.
 
 Starter template: `config/examples/examples.example.md`. From Discord,
-`/settings chat template kind:examples` sends this same file as a
+`/settings-chat persona template kind:examples` sends this same file as a
 downloadable attachment — no repo access needed.
 
 ### Format

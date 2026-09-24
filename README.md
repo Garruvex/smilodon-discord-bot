@@ -10,7 +10,7 @@ commands; a mention-based (and optional ambient) AI chatbot with per-guild
 personality, memory, and tool calling; and a global `/setup` flow so a server
 admin can bootstrap a guild without editing any files.
 
-For a full end-user command reference and admin `/settings` walkthrough, see
+For a full end-user command reference and the admin settings walkthrough, see
 the [user guide](docs/user-guide.md). For internal architecture, see
 [Architecture](docs/architecture.md).
 
@@ -33,12 +33,14 @@ the [user guide](docs/user-guide.md). For internal architecture, see
 - A mention-based AI chatbot (any OpenAI-compatible provider, or Google
   Gemini natively) with optional ambient replies, per-guild personality and
   example-exchange files (with in-Discord starter templates via
-  `/settings chat template`), per-user memory and customization, image
+  `/settings-chat persona template`), per-user memory and customization, image
   input/generation, web search, and tool calling into bot features like dice
   rolls and image search.
 - A global `/setup` bootstrap command gated by Discord's Manage Server
-  permission, and repository-backed `/settings` for everything else — no
-  file editing required to run a guild.
+  permission, a guided `/setup guide` walkthrough, and every other setting
+  in a self-repairing admin panel channel and the matching
+  `/settings-<group>` commands — both surfaces of one settings registry, in
+  the server's language. No file editing required to run a guild.
 - Optional channel-context memory: point the bot at specific channels for a
   one-time history scan and/or ongoing daily summaries, folded into durable
   guild knowledge with per-fact trust rules — see
@@ -209,15 +211,16 @@ created automatically. It then:
 
 Use `/status` to inspect onboarding. Run `npm run deploy:commands` after
 changing a command's definition (name, description, or options) or after a
-guild is newly configured. Toggling a feature module on or off through
-`/settings` takes effect immediately and needs no redeploy — every command is
+guild is newly configured. Toggling a feature module on or off through the
+admin panel or `/settings-…` takes effect immediately and needs no redeploy — every command is
 always registered, and a disabled feature's commands are rejected at runtime
 instead of being hidden from the picker. All setup responses are private.
-Existing profiles are never overwritten by `/setup initialize`.
+Existing profiles are never overwritten by `/setup initialize`. Afterwards,
+`/setup guide` walks through the main settings and sets up the admin panel.
 
 After setup, join a voice channel and use `/play`, or type a song name or
 supported URL directly into the configured control channel. For every other
-command and every `/settings` option, see the
+command and every setting, see the
 [user guide](docs/user-guide.md).
 
 ### Manual profile setup
@@ -493,7 +496,7 @@ or `gemini`. Within `openai`, `CHATBOT_MODE` picks the wire variant —
 `responses` for OpenAI's own Responses API to enable guarded image input,
 optional model-selected web search, and LLM tool calling (dice, 8-ball, booru
 search, memory/birthday lookup, music control — see
-`/settings chat chatbot tool-calling`).
+`/settings-chat abilities tool-calling`).
 
 `CHATBOT_PROVIDER=gemini` gets the same image input, tool calling, and web
 search feature set, backed by Gemini's own `googleSearch` grounding tool and
@@ -573,12 +576,13 @@ above — are all instance-owned and must be placed in
 these values from the shared `.env`, allowing separate projects, keys, model
 choices, and usage accounting. API keys are secrets.
 
-To enable the behavior for a guild and assign its initial access policy, run
-`/settings chat chatbot` — see the
-[chat settings reference](docs/user-guide.md#chat) for every option
+To enable the behavior for a guild, turn on `/settings-chat replies
+mention-chat` and give members the Chatbot role (`/settings-access roles`) —
+see the [chat settings reference](docs/user-guide.md#chat) for every option
 (web search, image input/generation, tool calling, personality and
-example-exchange upload, and more). `/settings chat template` sends a starter
-`personality.md` or `examples.md` file to download, edit, and upload back.
+example-exchange upload, and more). `/settings-chat persona template` sends a
+starter `personality.md` or `examples.md` file to download, edit, and upload
+back.
 Advanced self-hosted installations may still set `chat.personalityFile`
 directly in guild YAML; an uploaded personality takes precedence. See
 [`docs/personality-guide.md`](docs/personality-guide.md) for how to write a
@@ -605,18 +609,19 @@ never included.
 Beyond per-conversation memory, an admin can point the bot at specific
 channels so it builds durable, guild-wide knowledge from the messages that
 happen there — without anyone needing to talk to the bot directly. Two
-independent modes, both configured with `/settings chat`:
+independent modes, both configured under `/settings-chat memory` (or the
+admin panel's Memory section):
 
-- **One-time scan** (`context-scan-add channel:# seed-days:7`) — reads that
+- **One-time scan** (`context-scan channel:# seed-days:7`) — reads that
   channel's past history back to `seed-days` (default 7) once, folds it into
   memory, then never runs again for that channel unless you explicitly pass
   `restart:true` (which re-reads from the seed boundary, replacing scan
   progress; existing memories from the prior scan are not deleted).
-- **Daily consolidation** (`context-daily-add channel:#`) — summarizes each
+- **Daily consolidation** (`context-daily add:#`) — summarizes each
   day's new messages, checked hourly. Independent of the scan set; a channel
   can be in either, both, or neither.
 
-`context-daily-remove` and `context-remove` (both scan and daily) stop future
+`context-daily remove:#` and `context-remove` (both scan and daily) stop future
 processing for a channel; already-written memories are kept, not bulk-deleted,
 and re-adding the channel later resumes rather than re-reading the same
 history. `context-status` shows provider availability, whether the chatbot
@@ -625,8 +630,8 @@ progress, cursor, and last error.
 
 **Requirements**: a chat provider must be configured (`CHATBOT_*` or
 `UTILITY_*`, whichever this instance's scheduler prefers) that implements
-channel summarization — every built-in provider mode does. `context-scan-add`
-and `context-daily-add` reject outright, rather than silently queuing
+channel summarization — every built-in provider mode does. `context-scan`
+and adding a `context-daily` channel reject outright, rather than silently queuing
 something that will never run, when none is configured. Disabling the guild's
 `chatbot` feature pauses all channel-context processing (no config or
 checkpoint is touched) until it's re-enabled, resuming exactly where it left
@@ -653,7 +658,7 @@ everywhere else guild knowledge is written.
 
 **Data retention**: channel-context memories are stored in the same unified
 memory table as every other guild-knowledge fact, and follow the same
-retention as the rest of that table — `context-remove`/`context-daily-remove`
+retention as the rest of that table — `context-remove`/`context-daily remove:`
 stop future writes but never bulk-delete what's already there (use
 `/memory forget` for a specific fact). The `retain-member-data-on-leave:false`
 purge (see `MemberDataPurger`) only deletes a departing member's own
@@ -754,7 +759,7 @@ npm.cmd run build
 ## Further documentation
 
 - [User guide](docs/user-guide.md) — every slash command, the control panel,
-  AI chat behavior, and the full `/settings` reference.
+  AI chat behavior, the admin panel, and the full settings reference.
 - [Launch command cheatsheet](docs/launch-cheatsheet.md) — native, Docker,
   deployment, and multi-instance commands at a glance.
 - [Architecture](docs/architecture.md) — dependency boundaries and
