@@ -1,13 +1,16 @@
-import { ButtonStyle, type Client } from "discord.js";
+import type { ButtonStyle, Client } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
 
 import {
   autoQueueVoteClosesAtSeconds,
   createAutoQueueVotePayload,
   parseAutoQueueVoteCustomId,
+  type ReadyAutoQueueVote,
 } from "../../src/application/control-panel/auto-queue-vote-message.js";
 import {
   MusicAutoQueueRerollEmptyError,
+  MusicAutoQueueRerollLimitError,
+  MusicAutoQueueVoteClosedError,
   MusicAutoQueueVoteUnavailableError,
 } from "../../src/application/music/music-errors.js";
 import type { MusicEventBus } from "../../src/application/music/music-event-bus.js";
@@ -33,13 +36,13 @@ interface TestTrack {
   userData?: Record<string, unknown>;
 }
 
-function track(identifier: string): TestTrack {
+function track(identifier: string, author = "Artist"): TestTrack {
   return {
     encoded: `encoded-${identifier}`,
     info: {
       identifier,
       title: `Song ${identifier}`,
-      author: "Artist",
+      author,
       uri: `https://example.com/${identifier}`,
       sourceName: "youtube",
       duration: 180_000,
@@ -137,7 +140,7 @@ describe("LavalinkPlayerGateway autoqueue vote", () => {
   });
 
   it("offers as many options as the server's setting asks for", async () => {
-    const related = ["a", "b", "c", "d", "e", "f", "g"].map(track);
+    const related = ["a", "b", "c", "d", "e", "f", "g"].map((id) => track(id));
     const five = await openVote(createGateway(createPlayer(track("source"), related), true, 5));
     const two = await openVote(createGateway(createPlayer(track("source"), related), true, 2));
 
@@ -202,7 +205,7 @@ describe("LavalinkPlayerGateway autoqueue vote", () => {
     await openVote(gateway);
     gateway.voteAutoQueue(guildId, "user-1", 1);
 
-    await gateway.rerollAutoQueueVote(guildId);
+    await gateway.rerollAutoQueueVote(guildId, "user-2", "similar");
 
     const vote = gateway.getSnapshot(guildId)?.autoQueueVote;
     expect(vote?.status === "ready" && vote.options.map((option) => option.title)).toEqual(["Song d", "Song e"]);
@@ -233,12 +236,73 @@ describe("LavalinkPlayerGateway autoqueue vote", () => {
     expect(player.queue.tracks[0]?.info.identifier).toBe("a");
   });
 
+  it("locks voting for the last 10 seconds, following playback position", async () => {
+    const player = createPlayer(track("source"), [track("a"), track("b"), track("c"), track("d"), track("e")]);
+    const gateway = createGateway(player);
+    await openVote(gateway);
+
+    player.position = 169_000;
+    const open = gateway.getSnapshot(guildId)?.autoQueueVote;
+    expect(open?.status === "ready" && [open.locked, open.closesInMs]).toEqual([false, 1_000]);
+
+    player.position = 171_000;
+    const locked = gateway.getSnapshot(guildId)?.autoQueueVote;
+    expect(locked?.status === "ready" && locked.locked).toBe(true);
+    expect(() => gateway.voteAutoQueue(guildId, "user-1", 1)).toThrow(MusicAutoQueueVoteClosedError);
+    await expect(gateway.rerollAutoQueueVote(guildId, "user-1", "similar")).rejects.toThrow(MusicAutoQueueVoteClosedError);
+
+    // Seeking back reopens it.
+    player.position = 60_000;
+    expect(() => gateway.voteAutoQueue(guildId, "user-1", 1)).not.toThrow();
+  });
+
+  it("skips the vote when under 30 seconds of the track are left, and autoqueue still picks", async () => {
+    const player = createPlayer(track("source"), [track("a"), track("b"), track("c")]);
+    player.position = 155_000;
+    const gateway = createGateway(player);
+    await gateway.toggleAutoQueue(guildId);
+
+    expect(gateway.getSnapshot(guildId)?.autoQueueVote).toBeNull();
+    expect(player.search).not.toHaveBeenCalled();
+
+    await gateway.skip(guildId);
+    expect(player.queue.tracks[0]?.info.identifier).toBe("a");
+  });
+
+  it("rerolls into other songs by the current artist, ignoring other artists", async () => {
+    const player = createPlayer(track("source", "Artist - Topic"), [
+      track("a"), track("b"), track("c"), track("x", "Someone Else"), track("d", "ArtistVEVO"), track("e"),
+    ]);
+    const gateway = createGateway(player);
+    await openVote(gateway);
+
+    await gateway.rerollAutoQueueVote(guildId, "user-2", "artist");
+
+    expect(player.search).toHaveBeenLastCalledWith({ query: "Artist", source: "spsearch" }, { userId: "autoqueue" });
+    const vote = gateway.getSnapshot(guildId)?.autoQueueVote;
+    expect(vote?.status === "ready" && vote.options.map((option) => option.title)).toEqual(["Song d", "Song e"]);
+  });
+
+  it("caps rerolls per vote and records who rerolled", async () => {
+    const related = ["a", "b", "c", "d", "e", "f", "g", "h", "i"].map((id) => track(id));
+    const player = createPlayer(track("source"), related);
+    const gateway = createGateway(player);
+    await openVote(gateway);
+
+    for (const userId of ["user-1", "user-2", "user-3"]) {
+      await gateway.rerollAutoQueueVote(guildId, userId, "similar");
+    }
+    const vote = gateway.getSnapshot(guildId)?.autoQueueVote;
+    expect(vote?.status === "ready" && [vote.rerollsLeft, vote.lastRerolledByUserId]).toEqual([0, "user-3"]);
+    await expect(gateway.rerollAutoQueueVote(guildId, "user-1", "artist")).rejects.toThrow(MusicAutoQueueRerollLimitError);
+  });
+
   it("keeps the current options when a reroll finds nothing new", async () => {
     const player = createPlayer(track("source"), [track("a"), track("b"), track("c")]);
     const gateway = createGateway(player);
     await openVote(gateway);
 
-    await expect(gateway.rerollAutoQueueVote(guildId)).rejects.toThrow(MusicAutoQueueRerollEmptyError);
+    await expect(gateway.rerollAutoQueueVote(guildId, "user-2", "similar")).rejects.toThrow(MusicAutoQueueRerollEmptyError);
 
     const vote = gateway.getSnapshot(guildId)?.autoQueueVote;
     expect(vote?.status === "ready" && vote.options.map((option) => option.title)).toEqual(["Song a", "Song b", "Song c"]);
@@ -247,51 +311,89 @@ describe("LavalinkPlayerGateway autoqueue vote", () => {
 
 describe("autoqueue vote message", () => {
   const profile = { embedColor: "#5865F2", music: { autoQueueVoteBarStyle: "squares" } } as GuildConfiguration;
+  const context = { closesAtSeconds: 1_700_000_000, paused: false, currentArtist: "Artist" };
+  const voteWith = (
+    count: number,
+    overrides: Partial<ReadyAutoQueueVote> = {},
+  ): ReadyAutoQueueVote => ({
+    status: "ready",
+    leadingIndex: 0,
+    locked: false,
+    closesInMs: 60_000,
+    rerollsLeft: 3,
+    lastRerolledByUserId: null,
+    options: Array.from({ length: count }, (_, index) => ({
+      title: `Song ${index}`, author: "Artist", uri: "", votes: 0, lyricsAvailable: null,
+    })),
+    ...overrides,
+  });
+  const buttonsOf = (payload: ReturnType<typeof createAutoQueueVotePayload>): Array<Array<{
+    style: ButtonStyle; label: string; disabled?: boolean;
+  }>> => payload.components.map((row) => row.toJSON().components as Array<{ style: ButtonStyle; label: string; disabled?: boolean }>);
 
   it("round-trips its button ids", () => {
     expect(parseAutoQueueVoteCustomId("music-vote:v1:option-2")).toEqual({ kind: "option", index: 2 });
-    expect(parseAutoQueueVoteCustomId("music-vote:v1:reroll")).toEqual({ kind: "reroll" });
+    expect(parseAutoQueueVoteCustomId("music-vote:v1:reroll")).toEqual({ kind: "reroll", mode: "similar" });
+    expect(parseAutoQueueVoteCustomId("music-vote:v1:reroll-artist")).toEqual({ kind: "reroll", mode: "artist" });
     expect(parseAutoQueueVoteCustomId("music-panel:v1:skip")).toBeNull();
   });
 
-  it("highlights the leading option and adds a reroll button", () => {
-    const payload = createAutoQueueVotePayload(profile, {
-      status: "ready",
+  it("keeps the text short: options, bars and one footer line", () => {
+    const payload = createAutoQueueVotePayload(profile, voteWith(3, {
       leadingIndex: 1,
       options: [
-        { title: "One", author: "A", uri: "", votes: 0, lyricsAvailable: false },
+        { title: "One", author: "A - Topic", uri: "", votes: 0, lyricsAvailable: false },
         { title: "Two", author: "B", uri: "", votes: 2, lyricsAvailable: true },
         { title: "Three", author: "C", uri: "", votes: 1, lyricsAvailable: null },
       ],
-    }, 1_700_000_000);
+    }), context);
 
-    const buttons = payload.components[0]!.toJSON().components as Array<{ style: ButtonStyle; label: string }>;
-    expect(buttons.map((button) => button.label)).toEqual(["0", "2", "1", "Reroll"]);
-    expect(buttons.map((button) => button.style)).toEqual([
-      ButtonStyle.Secondary, ButtonStyle.Success, ButtonStyle.Secondary, ButtonStyle.Secondary,
-    ]);
-    expect(payload.embeds[0]!.toJSON().description).toContain("<t:1700000000:R>");
-    const description = payload.embeds[0]!.toJSON().description;
-    expect(description).toContain("▶ **2️⃣ Two** — B 🎤 · up next\n🟩🟩🟩🟩🟩⬛⬛⬛  **2** votes");
-    expect(description).toContain("1️⃣ One — A\n⬛⬛⬛⬛⬛⬛⬛⬛  0 votes");
-    expect(description).toContain("3️⃣ Three — C\n🟦🟦🟦⬛⬛⬛⬛⬛  1 vote");
+    expect(payload.embeds[0]!.toJSON().title).toBe("🗳️ Up next");
+    expect(payload.embeds[0]!.toJSON().description).toBe([
+      "1️⃣ One — A",
+      "⬛⬛⬛⬛⬛⬛⬛⬛ 0",
+      "▶ **2️⃣ Two** — B 🎤",
+      "🟩🟩🟩🟩🟩⬛⬛⬛ **2**",
+      "3️⃣ Three — C",
+      "🟦🟦🟦⬛⬛⬛⬛⬛ 1",
+      "-# Closes <t:1700000000:R> · 🎲 3 left",
+    ].join("\n"));
   });
 
-  it("keeps up to 4 options and reroll on one row, wrapping 5 or 6 onto a second", () => {
-    const voteWith = (count: number): Parameters<typeof createAutoQueueVotePayload>[1] => ({
-      status: "ready",
-      leadingIndex: 0,
-      options: Array.from({ length: count }, (_, index) => ({
-        title: `Song ${index}`, author: "Artist", uri: "", votes: 0, lyricsAvailable: null,
-      })),
-    });
-    const rowSizes = (count: number): number[] => createAutoQueueVotePayload(profile, voteWith(count), null)
-      .components.map((row) => row.toJSON().components.length);
+  it("shows who rerolled, and when paused or streaming, in the footer", () => {
+    const describe = (overrides: Partial<ReadyAutoQueueVote>, paused = false, closesAtSeconds: number | null = 1): string =>
+      createAutoQueueVotePayload(profile, voteWith(2, overrides), { ...context, paused, closesAtSeconds })
+        .embeds[0]!.toJSON().description!.split("\n").at(-1)!;
 
-    expect(rowSizes(2)).toEqual([3]);
-    expect(rowSizes(4)).toEqual([5]);
-    expect(rowSizes(5)).toEqual([5, 1]);
-    expect(rowSizes(6)).toEqual([5, 2]);
+    expect(describe({ lastRerolledByUserId: "42", rerollsLeft: 2 })).toBe("-# Closes <t:1:R> · 🎲 by <@42> · 2 left");
+    expect(describe({}, true, null)).toBe("-# Paused · 🎲 3 left");
+    expect(describe({}, false, null)).toBe("-# Open until skip · 🎲 3 left");
+  });
+
+  it("puts rerolls on their own row below the options, wrapping 6 options onto two rows", () => {
+    const rowSizes = (count: number): number[] => buttonsOf(createAutoQueueVotePayload(profile, voteWith(count), context))
+      .map((row) => row.length);
+
+    expect(rowSizes(2)).toEqual([2, 2]);
+    expect(rowSizes(5)).toEqual([5, 2]);
+    expect(rowSizes(6)).toEqual([5, 1, 2]);
+    const rerollRow = buttonsOf(createAutoQueueVotePayload(profile, voteWith(3), context)).at(-1)!;
+    expect(rerollRow.map((button) => button.label)).toEqual(["Similar", "Artist"]);
+  });
+
+  it("disables everything and drops the footer once locked", () => {
+    const payload = createAutoQueueVotePayload(profile, voteWith(3, { locked: true }), context);
+
+    expect(payload.embeds[0]!.toJSON().title).toBe("🔒 Up next");
+    expect(payload.embeds[0]!.toJSON().description).not.toContain("-#");
+    expect(buttonsOf(payload).flat().every((button) => button.disabled)).toBe(true);
+  });
+
+  it("disables only the reroll row once rerolls run out", () => {
+    const rows = buttonsOf(createAutoQueueVotePayload(profile, voteWith(3, { rerollsLeft: 0 }), context));
+
+    expect(rows[0]!.some((button) => button.disabled)).toBe(false);
+    expect(rows.at(-1)!.every((button) => button.disabled)).toBe(true);
   });
 
   it("draws vote bars as a share of all votes, green for the leader", () => {
@@ -307,12 +409,10 @@ describe("autoqueue vote message", () => {
     expect(renderVoteBar(1, 2, false, "thin")).toBe("▰▰▰▰▰▰▱▱▱▱▱▱");
   });
 
-  it("has no countdown while paused", () => {
-    const snapshot = {
-      paused: true,
-      currentTrack: { durationMs: 180_000, positionMs: 60_000, isStream: false },
-    } as MusicPlayerSnapshot;
-    expect(autoQueueVoteClosesAtSeconds(snapshot, 0)).toBeNull();
-    expect(autoQueueVoteClosesAtSeconds({ ...snapshot, paused: false }, 0)).toBe(120);
+  it("counts down to the lock, with no countdown while paused, locked or streaming", () => {
+    expect(autoQueueVoteClosesAtSeconds(voteWith(2, { closesInMs: 120_000 }), false, 0)).toBe(120);
+    expect(autoQueueVoteClosesAtSeconds(voteWith(2), true, 0)).toBeNull();
+    expect(autoQueueVoteClosesAtSeconds(voteWith(2, { locked: true }), false, 0)).toBeNull();
+    expect(autoQueueVoteClosesAtSeconds(voteWith(2, { closesInMs: null }), false, 0)).toBeNull();
   });
 });

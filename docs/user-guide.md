@@ -119,6 +119,33 @@ volume, autoplay, 24/7, and shuffle. Pause/Resume, Skip, and Stop require you
 to be in the *same voice channel* as the bot and to hold the Music Controller
 role.
 
+#### Autoqueue vote
+
+With autoqueue on (`/autoplay` or the panel's ♾️ button), listeners pick what
+plays next instead of the bot. While a song plays with nothing queued after
+it, the bot posts a short **🗳️ Up next** message in the control channel with
+a few related songs (3 by default), each with a vote bar.
+
+- **Who can vote:** anyone in the bot's voice channel. You don't need the
+  Music Controller role. Voting again moves your vote; clicking your pick
+  again takes it back.
+- **Who wins:** most votes. A tie, or no votes at all, goes to the option
+  marked ▶ (the one autoqueue would have picked anyway), so ignoring the vote
+  changes nothing.
+- **Rerolls:** 🎲 **Similar** swaps in other related songs; 🎙️ ***Artist***
+  swaps in other songs by the artist playing now. Each vote allows 3 rerolls,
+  a reroll clears the votes, and the message shows who rerolled.
+- **🎤** next to a song means synced lyrics were found for it ahead of time.
+- **Timing:** the vote opens when the song starts (or as soon as autoqueue is
+  turned on) and 🔒 locks 10 seconds before the song ends, showing the winner.
+  Skipping closes it immediately with whatever is leading. Pausing freezes the
+  countdown and seeking moves it. If less than 30 seconds are left when a vote
+  would open, there's no vote for that song and autoqueue picks on its own.
+- The vote is hidden while someone has queued a song by hand, and when a
+  repeat mode is on, since autoqueue isn't picking then.
+
+`/help autoplay` shows a short version of this in Discord.
+
 ## AI chat
 
 Two separate behaviors control how the bot talks with words instead of
@@ -202,6 +229,7 @@ log a diff of what changed.
 | `/settings music panel [channel] [idle-image-url] [idle-image] [use-default-image] [progress-style] [progress-length] [progress-completed/remaining/playing/paused] [progress-ending]` | Configures the control channel and the now-playing panel's look — including uploading a persistent idle image directly (`idle-image`), no external hosting needed. |
 | `/settings music volume [default] [maximum] [button-step]` | Sets default/maximum volume and the panel button's volume step. |
 | `/settings music lifecycle [empty-queue-action] [queue-delay-seconds] [empty-channel-action] [channel-grace-seconds] [resume-when-occupied]` | Controls what happens when the queue empties or everyone leaves voice. |
+| `/settings music autoqueue-vote [enabled] [bar-style] [options]` | Turns the [autoqueue vote](#autoqueue-vote) on or off (on by default; off means autoqueue picks on its own), picks the bar style (colored squares or a thin bar matching the progress bar), and sets how many songs it offers (2–6, default 3). |
 
 Panel progress styles: **Standard** (plain bar), **Yohta** (bot-owned emoji
 preset, works in any server the bot is in once provisioned), **Custom** (your

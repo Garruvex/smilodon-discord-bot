@@ -6,6 +6,8 @@ import type {
   UnresolvedTrack,
 } from "lavalink-client";
 
+import { cleanArtistName } from "../../domain/music/artist-name.js";
+
 export type AutoQueueOutcome =
   | { status: "queued"; trackIdentifier: string }
   | { status: "empty" }
@@ -45,6 +47,38 @@ export class LavalinkAutoQueue {
     alsoExclude: Iterable<string> = [],
   ): Promise<AutoQueueCandidatesOutcome> {
     this.remember(player.guildId, sourceTrack);
+    return this.collectCandidates(player, this.buildQueries(sourceTrack), limit, alsoExclude, () => true);
+  }
+
+  // Other unplayed songs by `sourceTrack`'s artist, for the vote's "More
+  // from Artist" reroll. Results whose artist doesn't match are dropped, since
+  // a plain-text artist search also turns up covers, reactions and
+  // soundalikes.
+  public async findArtistCandidates(
+    player: Player,
+    sourceTrack: Track | UnresolvedTrack,
+    limit: number,
+    alsoExclude: Iterable<string> = [],
+  ): Promise<AutoQueueCandidatesOutcome> {
+    const artist = cleanArtistName(sourceTrack.info.author ?? "");
+    if (!artist) return { status: "empty" };
+    const wanted = artist.toLocaleLowerCase();
+    return this.collectCandidates(
+      player,
+      [artist],
+      limit,
+      alsoExclude,
+      (track) => cleanArtistName(track.info.author ?? "").toLocaleLowerCase().includes(wanted),
+    );
+  }
+
+  private async collectCandidates(
+    player: Player,
+    queries: readonly string[],
+    limit: number,
+    alsoExclude: Iterable<string>,
+    accept: (track: Track | UnresolvedTrack) => boolean,
+  ): Promise<AutoQueueCandidatesOutcome> {
     const excludedIdentifiers = new Set([
       ...(this.recentTracksByGuild.get(player.guildId) ?? []),
       ...player.queue.previous.map((track) => this.identifier(track)),
@@ -58,7 +92,7 @@ export class LavalinkAutoQueue {
     let lastError: unknown;
     let completedSearch = false;
 
-    for (const query of this.buildQueries(sourceTrack)) {
+    for (const query of queries) {
       if (candidates.length >= limit) break;
       try {
         const result = await this.searchWithFallback(player, query);
@@ -66,7 +100,7 @@ export class LavalinkAutoQueue {
         for (const track of result.tracks) {
           if (candidates.length >= limit) break;
           const identifier = this.identifier(track);
-          if (excludedIdentifiers.has(identifier)) continue;
+          if (excludedIdentifiers.has(identifier) || !accept(track)) continue;
           excludedIdentifiers.add(identifier);
           candidates.push(track);
         }

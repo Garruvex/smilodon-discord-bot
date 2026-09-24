@@ -48,7 +48,9 @@ export interface MusicPlayerGateway {
   // which autoqueue option plays next. Returns the voter's pick afterward,
   // or null once withdrawn.
   voteAutoQueue(guildId: string, userId: string, optionIndex: number): number | null;
-  rerollAutoQueueVote(guildId: string): Promise<void>;
+  // Replaces the options with more like the current track ("similar") or
+  // more by its artist ("artist").
+  rerollAutoQueueVote(guildId: string, userId: string, mode: AutoQueueVoteRerollMode): Promise<void>;
   toggleTwentyFourSeven(guildId: string): Promise<boolean>;
   toggleLyrics(guildId: string): Promise<boolean>;
   handleBotVoiceDisconnect(guildId: string): Promise<void>;
@@ -76,11 +78,25 @@ export interface AutoQueueVoteOption {
   lyricsAvailable: boolean | null;
 }
 
+export type AutoQueueVoteRerollMode = "similar" | "artist";
+
 export type AutoQueueVoteSnapshot =
   | { status: "loading" }
-  // `leadingIndex` is what plays if the track ended right now: most votes,
-  // with ties (including nobody voting) going to the earlier option.
-  | { status: "ready"; options: readonly AutoQueueVoteOption[]; leadingIndex: number };
+  | {
+    status: "ready";
+    options: readonly AutoQueueVoteOption[];
+    // What plays if the track ended right now: most votes, with ties
+    // (including nobody voting) going to the earlier option.
+    leadingIndex: number;
+    // True for the final stretch of the track, once the winner is settled
+    // and no more votes or rerolls are taken.
+    locked: boolean;
+    // Time until voting locks, at the current playback rate; null for
+    // streams, which never lock (only a skip closes them).
+    closesInMs: number | null;
+    rerollsLeft: number;
+    lastRerolledByUserId: string | null;
+  };
 
 export interface MusicPlayerSnapshot {
   guildId: string;

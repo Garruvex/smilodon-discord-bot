@@ -26,6 +26,7 @@ import { MusicError } from "../music/music-errors.js";
 import type { MusicPlayerGateway, MusicPlayerSnapshot } from "../music/music-player-gateway.js";
 import type { MusicTrack } from "../../domain/music/music-track.js";
 import { formatQueueDuration, formatQueueTrackLine, sumTrackDurations } from "../music/queue-formatting.js";
+import { cleanArtistName } from "../../domain/music/artist-name.js";
 import type { ApplicationConfiguration } from "../../config/configuration.js";
 import type { GuildConfiguration } from "../../config/guild-configuration.js";
 import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
@@ -671,6 +672,9 @@ export class ControlChannelService {
       // Lyrics last, off the freshest snapshot — see the matching comment in
       // writePanel() above for why.
       await this.writeLyricsMessage(messages.channel, profile, this.playerGateway.getSnapshot(guildId), guildId);
+      // The vote locks on playback position, not on any event, so this tick
+      // is what flips its message to the closed view in the final stretch.
+      await this.writeVoteMessage(messages.channel, profile, this.playerGateway.getSnapshot(guildId), guildId);
       this.resetProgressRefreshTimer(guildId, this.playerGateway.getSnapshot(guildId));
     });
   }
@@ -830,7 +834,7 @@ export class ControlChannelService {
       // refreshes, which would otherwise turn every vote into a pointless
       // edit just to nudge the countdown. Only move it when it's really off
       // (a seek, or pause/resume).
-      const closesAt = autoQueueVoteClosesAtSeconds(snapshot, Date.now());
+      const closesAt = autoQueueVoteClosesAtSeconds(vote, snapshot.paused, Date.now());
       const previousClosesAt = this.voteClosesAtByGuild.get(guildId);
       const stableClosesAt = previousClosesAt !== undefined &&
         previousClosesAt !== null &&
@@ -839,7 +843,11 @@ export class ControlChannelService {
         ? previousClosesAt
         : closesAt;
       this.voteClosesAtByGuild.set(guildId, stableClosesAt);
-      const payload = createAutoQueueVotePayload(profile, vote, stableClosesAt);
+      const payload = createAutoQueueVotePayload(profile, vote, {
+        closesAtSeconds: stableClosesAt,
+        paused: snapshot.paused,
+        currentArtist: cleanArtistName(snapshot.currentTrack?.author ?? ""),
+      });
 
       const existing = this.voteMessageByGuild.get(guildId);
       if (!existing) {
@@ -908,7 +916,7 @@ export class ControlChannelService {
     try {
       await this.guildLocks.run(interaction.guildId, async () => {
         try {
-          if (action.kind === "reroll") await this.playbackService.rerollAutoQueueVote(actor);
+          if (action.kind === "reroll") await this.playbackService.rerollAutoQueueVote(actor, action.mode);
           else this.playbackService.voteAutoQueue(actor, action.index);
         } catch (error) {
           executionError = error;
@@ -1257,7 +1265,7 @@ export class ControlChannelService {
 
     return {
       content: `Join a voice channel. ${requestersHint}\n` +
-        "-# ♾️ Autoqueue: automatically adds a similar track when the queue runs out, and listeners can vote on which one.  •  🔁 24/7: keeps the bot connected instead of leaving when idle.",
+        "-# ♾️ Autoqueue: automatically adds a similar track when the queue runs out.  •  🔁 24/7: keeps the bot connected instead of leaving when idle.",
       embeds: [embed],
       components: [],
     };

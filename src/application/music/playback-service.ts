@@ -6,6 +6,7 @@ import {
 } from "./music-errors.js";
 import { PlaybackRateLimiter } from "./playback-rate-limiter.js";
 import type {
+  AutoQueueVoteRerollMode,
   EnqueueRequest,
   MusicFilterPreset,
   MusicPlayerSnapshot,
@@ -169,9 +170,9 @@ export class PlaybackService {
     return this.playerGateway.voteAutoQueue(actor.guildId, actor.userId, optionIndex);
   }
 
-  public async rerollAutoQueueVote(actor: PlaybackActor): Promise<void> {
+  public async rerollAutoQueueVote(actor: PlaybackActor, mode: AutoQueueVoteRerollMode): Promise<void> {
     this.assertListener(actor);
-    await this.playerGateway.rerollAutoQueueVote(actor.guildId);
+    await this.playerGateway.rerollAutoQueueVote(actor.guildId, actor.userId, mode);
   }
 
   public async toggleTwentyFourSeven(actor: PlaybackActor): Promise<boolean> {
