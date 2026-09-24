@@ -1,10 +1,7 @@
 import { ChannelType, PermissionFlagsBits } from "discord.js";
 
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
-import {
-  formatRoleGroupList,
-  roleGroupDescriptions,
-} from "../../../../application/access/role-group-descriptions.js";
+import { roleGroupDescriptions } from "../../../../application/access/role-group-descriptions.js";
 import type { GuildSetupService } from "../../../../application/setup/guild-setup-service.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
 
@@ -33,7 +30,6 @@ export class SetupCommand implements BotCommand {
           { type: "role", name: "restricted-role", description: "Role denied from music and chatbot unless bot-owner bypass applies." },
         ],
       },
-      { name: "status", description: "Shows this server's setup status." },
     ],
   } satisfies BotCommand["definition"];
 
@@ -56,9 +52,6 @@ export class SetupCommand implements BotCommand {
     switch (subcommand) {
       case "initialize":
         await this.initialize(context);
-        return;
-      case "status":
-        await this.status(context);
         return;
       default:
         throw new Error(`Unsupported setup subcommand: ${subcommand}`);
@@ -112,90 +105,7 @@ export class SetupCommand implements BotCommand {
         `Assign <@&${result.musicControllerRoleId}> to members who should queue music.`,
       );
     }
+    lines.push("", "Run `/status` any time to check the setup.");
     await context.responses.edit(lines.join("\n"));
   }
-
-  private async status(context: CommandContext): Promise<void> {
-    if (!context.interaction.guildId) return;
-    const status = await this.setupService.status(context.interaction.guildId);
-
-    const permissionLines = status.botPermissions.ok
-      ? ["Bot permissions: OK"]
-      : [`Bot permissions: MISSING — ${status.botPermissions.missing.join(", ")}`];
-
-    if (!status.configured) {
-      await context.responses.reply({
-        content: [
-          "This server has not been configured. Run `/setup initialize`.",
-          ...permissionLines,
-        ].join("\n"),
-      });
-      return;
-    }
-
-    const lines = [
-      "This server is configured.",
-      `Profile: ${status.profileFile ?? "unknown"}`,
-      `Control panel: ${status.controlPanelChannelId ? `<#${status.controlPanelChannelId}>` : "disabled"}`,
-      ...permissionLines,
-      "",
-      "Features:",
-      ...status.featureStates.map((feature) => `${feature.enabled ? "✅" : "❌"} ${feature.name}`),
-    ];
-
-    if (status.access) {
-      lines.push(
-        "",
-        "Configured access roles:",
-        `Bot administrator: ${formatRoleGroupList(status.access.botAdministrator)}`,
-        `Music controller: ${formatRoleGroupList(status.access.musicController)}`,
-        `Restricted: ${formatRoleGroupList(status.access.restricted)}`,
-        `Chatbot: ${formatRoleGroupList(status.access.chatbot)}`,
-        "",
-        "Role purposes:",
-        `- Bot administrator: ${roleGroupDescriptions.botAdministrator}`,
-        `- Music controller: ${roleGroupDescriptions.musicController}`,
-        `- Restricted: ${roleGroupDescriptions.restricted}`,
-        `- Chatbot: ${roleGroupDescriptions.chatbot}`,
-      );
-    }
-
-    if (status.music) {
-      lines.push(
-        "",
-        "Music:",
-        `Default volume: ${status.music.defaultVolume} (max ${status.music.maximumVolume}, step ${status.music.volumeButtonStep})`,
-        `Empty queue: ${status.music.emptyQueueAction} after ${status.music.emptyQueueDelayMs}ms`,
-        `Empty channel: ${status.music.emptyChannelAction} after ${status.music.emptyChannelGracePeriodMs}ms grace`,
-        `Resume when occupied: ${status.music.resumeWhenOccupied ? "on" : "off"}`,
-      );
-    }
-
-    if (status.chat) {
-      lines.push(
-        "",
-        "Chat:",
-        `Cooldown: ${status.chat.cooldownSeconds}s (ambient: ${status.chat.ambientCooldownSeconds}s)`,
-        `Web search: ${status.chat.webSearchMode}`,
-        `Tool calling: ${status.chat.toolCallingEnabled ? "on" : "off"}${status.chat.disabledTools.length > 0 ? ` (${status.chat.disabledTools.length} tool(s) disabled)` : ""}`,
-        `Image input: ${status.chat.imageInputEnabled ? "on" : "off"}`,
-        `Image generation: ${status.chat.imageGenerationEnabled ? "on" : "off"}`,
-        `Include sources: ${status.chat.includeSources ? "on" : "off"}`,
-        `Persona drift: ${status.chat.personaDriftEnabled ? "on" : "off"}`,
-        `Channel history: limit ${status.chat.channelHistoryLimit}`,
-        `Context scan channels: ${status.chat.contextScanChannelIds.length}, daily: ${status.chat.contextDailyChannelIds.length}`,
-      );
-    }
-
-    if (status.panel) {
-      lines.push(
-        "",
-        "Panel:",
-        `Progress bar: ${status.panel.progressBar.style} (length ${status.panel.progressBar.length})`,
-      );
-    }
-
-    await context.responses.reply({ content: lines.join("\n") });
-  }
-
 }

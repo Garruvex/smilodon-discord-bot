@@ -44,7 +44,7 @@ export interface GuildSetupStatus {
   profileFile: string | null;
   controlPanelChannelId: string | null;
   enabledFeatures: readonly string[];
-  // Every feature flag (not just the enabled ones), so /setup status can show
+  // Every feature flag (not just the enabled ones), so /status can show
   // what's flipped and what's not at a glance instead of only the on set.
   featureStates: readonly GuildSetupFeatureState[];
   access: {

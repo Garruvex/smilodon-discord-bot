@@ -56,6 +56,7 @@ import { ShuffleCommand } from "../infrastructure/discord/commands/music/shuffle
 import { PreviousCommand } from "../infrastructure/discord/commands/music/previous-command.js";
 import type { GuildSetupService } from "../application/setup/guild-setup-service.js";
 import { SetupCommand } from "../infrastructure/discord/commands/setup/setup-command.js";
+import { StatusCommand } from "../infrastructure/discord/commands/setup/status-command.js";
 import { SettingsCommand } from "../infrastructure/discord/commands/setup/settings-command.js";
 import { settingGroups } from "../infrastructure/discord/commands/setup/settings/index.js";
 import { VoteCommand } from "../infrastructure/discord/commands/common/vote-command.js";
@@ -288,6 +289,17 @@ export function registerCommands(
   commandRegistry.register(new QuoteContextCommand());
   commandRegistry.register(new DiagnosticCommand());
   commandRegistry.register(new SetupCommand(guildSetupService));
+  commandRegistry.register(new StatusCommand(guildSetupService, guildConfigurationProvider, {
+    chat: configuration.chat
+      ? { provider: configuration.chat.provider, models: configuration.chat.models, summaryModels: configuration.chat.summaryModels }
+      : null,
+    utility: configuration.utilityChat
+      ? { provider: configuration.utilityChat.provider, models: configuration.utilityChat.models }
+      : null,
+    embeddings: configuration.embeddings
+      ? { provider: configuration.embeddings.provider, model: configuration.embeddings.model }
+      : null,
+  }));
   commandRegistry.register(new VoteCommand(pollService));
   const embeddingsClient = configuration.embeddings
     ? configuration.embeddings.provider === "gemini"

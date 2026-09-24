@@ -9,7 +9,7 @@ export interface GuildChannelHandle {
 }
 
 // Discord-independent port for the guild resources LocalGuildSetupService
-// creates, deletes, and inspects during /setup initialize and /setup status.
+// creates, deletes, and inspects during /setup initialize and /status.
 // The `reason` on each mutating call is an audit-log entry, chosen by the
 // application-layer caller (it knows *why*); the gateway just executes it.
 export interface GuildResourceGateway {

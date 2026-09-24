@@ -204,7 +204,7 @@ created automatically. It then:
 - creates and pins the persistent control panel;
 - synchronizes that guild's enabled slash commands.
 
-Use `/setup status` to inspect onboarding. Run `npm run deploy:commands` after
+Use `/status` to inspect onboarding. Run `npm run deploy:commands` after
 changing a command's definition (name, description, or options) or after a
 guild is newly configured. Toggling a feature module on or off through
 `/settings` takes effect immediately and needs no redeploy — every command is
