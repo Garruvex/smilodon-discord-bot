@@ -284,7 +284,7 @@ describe("ChatConversationService", () => {
     await repository.ingest({
       guildId: "guild", kind: "fact", audience: "guild", ownerUserId: null, channelId: null,
       isolationChannelId: null, subjectType: "guild", subjectId: "guild", topic: "community", slot: "mascot",
-      statement: "ExampleBot is the mascot", status: "active", source: "administrator", confidence: 1, importance: 1,
+      statement: "ExampleBot is the mascot", status: "active", source: "administrator", importance: 1,
       embedding: null, embeddingModel: null, expiresAt: null, now: 0,
       sourceMessageId: null, sourceChannelId: null, assertedByUserId: null,
     });
@@ -477,7 +477,7 @@ describe("ChatConversationService", () => {
   it("runs a dedicated post-reply extraction pass and ingests what it finds, even when the reply model itself returned no memory actions", async () => {
     const store = baseStore();
     const extractPersonalMemories = vi.fn(() => Promise.resolve([
-      { action: "upsert" as const, aboutSpeaker: true, sourceQuote: "I like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
+      { action: "upsert" as const, aboutSpeaker: true, importance: "medium" as const, sourceQuote: "I like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
     ]));
     const provider: ChatProvider = {
       reply: () => Promise.resolve(response("Noted!")), // no userMemoryActions from the reply model
@@ -518,7 +518,7 @@ describe("ChatConversationService", () => {
   it("a candidate about a mentioned user is stamped with the speaker's id, never the mentioned user's — subjectUserId isn't a field the model controls", async () => {
     const store = baseStore();
     const extractPersonalMemories = vi.fn(() => Promise.resolve([
-      { action: "upsert" as const, aboutSpeaker: true, sourceQuote: "Bob likes green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
+      { action: "upsert" as const, aboutSpeaker: true, importance: "medium" as const, sourceQuote: "Bob likes green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
     ]));
     const provider: ChatProvider = { reply: () => Promise.resolve(response("Noted!")), extractPersonalMemories };
     const { engine } = testMemoryEngine();
@@ -551,7 +551,7 @@ describe("ChatConversationService", () => {
   it("drops (never force-relabels) an action the model itself flags as not about the speaker", async () => {
     const store = baseStore();
     const extractPersonalMemories = vi.fn(() => Promise.resolve([
-      { action: "upsert" as const, aboutSpeaker: false, sourceQuote: "Bob likes pizza", topic: "preference", slot: "food.pizza", statement: "likes pizza" },
+      { action: "upsert" as const, aboutSpeaker: false, importance: "medium" as const, sourceQuote: "Bob likes pizza", topic: "preference", slot: "food.pizza", statement: "likes pizza" },
     ]));
     const provider: ChatProvider = { reply: () => Promise.resolve(response("Noted!")), extractPersonalMemories };
     const { engine } = testMemoryEngine();
@@ -574,7 +574,7 @@ describe("ChatConversationService", () => {
     // means the app can't verify it traces back to the user at all (see
     // personal-memory-extraction.ts's evidence rule).
     const extractPersonalMemories = vi.fn(() => Promise.resolve([
-      { action: "upsert" as const, aboutSpeaker: true, sourceQuote: "you probably love jazz", topic: "preference", slot: "music.genre", statement: "loves jazz" },
+      { action: "upsert" as const, aboutSpeaker: true, importance: "medium" as const, sourceQuote: "you probably love jazz", topic: "preference", slot: "music.genre", statement: "loves jazz" },
     ]));
     const provider: ChatProvider = { reply: () => Promise.resolve(response("Interesting!")), extractPersonalMemories };
     const { engine } = testMemoryEngine();
@@ -591,8 +591,8 @@ describe("ChatConversationService", () => {
 
   it("keeps a slow background extraction from clobbering a later turn's correction — memory writes for one user stay ordered even though the reply doesn't wait for extraction", async () => {
     const store = baseStore();
-    let resolveSlowExtraction!: (actions: readonly { action: "upsert"; aboutSpeaker: boolean; sourceQuote: string; topic: string; slot: string; statement: string }[]) => void;
-    const slowExtraction = new Promise<readonly { action: "upsert"; aboutSpeaker: boolean; sourceQuote: string; topic: string; slot: string; statement: string }[]>((resolve) => {
+    let resolveSlowExtraction!: (actions: readonly { action: "upsert"; aboutSpeaker: boolean; sourceQuote: string; topic: string; slot: string; statement: string; importance: "low" | "medium" | "high" }[]) => void;
+    const slowExtraction = new Promise<readonly { action: "upsert"; aboutSpeaker: boolean; sourceQuote: string; topic: string; slot: string; statement: string; importance: "low" | "medium" | "high" }[]>((resolve) => {
       resolveSlowExtraction = resolve;
     });
     let replyCall = 0;
@@ -620,7 +620,7 @@ describe("ChatConversationService", () => {
     // isBusy) rather than racing it.
     const turn2 = service.run(input("actually I hate apples"), deliver);
     // Only now does the slow extraction resolve, with the stale statement.
-    resolveSlowExtraction([{ action: "upsert", aboutSpeaker: true, sourceQuote: "I like apples", topic: "preference", slot: "food.fruit", statement: "likes apples" }]);
+    resolveSlowExtraction([{ action: "upsert", aboutSpeaker: true, importance: "medium" as const, sourceQuote: "I like apples", topic: "preference", slot: "food.fruit", statement: "likes apples" }]);
     await turn2;
 
     // If extraction and turn 2 could race, "likes apples" landing after
@@ -647,8 +647,8 @@ describe("ChatConversationService", () => {
       return { droppedExchanges: [] };
     });
     const store = baseStore({ commitSuccessfulExchange });
-    let resolveSlowExtraction!: (actions: readonly { action: "upsert"; aboutSpeaker: boolean; sourceQuote: string; topic: string; slot: string; statement: string }[]) => void;
-    const slowExtraction = new Promise<readonly { action: "upsert"; aboutSpeaker: boolean; sourceQuote: string; topic: string; slot: string; statement: string }[]>((resolve) => {
+    let resolveSlowExtraction!: (actions: readonly { action: "upsert"; aboutSpeaker: boolean; sourceQuote: string; topic: string; slot: string; statement: string; importance: "low" | "medium" | "high" }[]) => void;
+    const slowExtraction = new Promise<readonly { action: "upsert"; aboutSpeaker: boolean; sourceQuote: string; topic: string; slot: string; statement: string; importance: "low" | "medium" | "high" }[]>((resolve) => {
       resolveSlowExtraction = resolve;
     });
     let replyCall = 0;
@@ -675,7 +675,7 @@ describe("ChatConversationService", () => {
     const turn2 = service.run(input("actually I hate apples"), deliver);
     resolveCommit();
     await turn1;
-    resolveSlowExtraction([{ action: "upsert", aboutSpeaker: true, sourceQuote: "I like apples", topic: "preference", slot: "food.fruit", statement: "likes apples" }]);
+    resolveSlowExtraction([{ action: "upsert", aboutSpeaker: true, importance: "medium" as const, sourceQuote: "I like apples", topic: "preference", slot: "food.fruit", statement: "likes apples" }]);
     await turn2;
 
     await vi.waitFor(async () => {
@@ -713,9 +713,9 @@ describe("ChatConversationService", () => {
   it("drain() waits for a pending background extraction instead of racing shutdown against it", async () => {
     const store = baseStore();
     let resolveExtraction!: () => void;
-    const slowExtraction = new Promise<readonly { action: "upsert"; aboutSpeaker: boolean; sourceQuote: string; topic: string; slot: string; statement: string }[]>((resolve) => {
+    const slowExtraction = new Promise<readonly { action: "upsert"; aboutSpeaker: boolean; sourceQuote: string; topic: string; slot: string; statement: string; importance: "low" | "medium" | "high" }[]>((resolve) => {
       resolveExtraction = (): void => resolve([
-        { action: "upsert", aboutSpeaker: true, sourceQuote: "I like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
+        { action: "upsert", aboutSpeaker: true, importance: "medium" as const, sourceQuote: "I like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
       ]);
     });
     const provider: ChatProvider = {
@@ -756,8 +756,8 @@ describe("ChatConversationService", () => {
     // Promise.allSettled([...pendingBackgroundWork]) captured at that
     // moment would resolve as soon as extraction alone settles, even
     // though consolidation (registered afterward, still pending) hasn't.
-    let resolveExtraction!: (value: readonly { action: "upsert"; aboutSpeaker: boolean; sourceQuote: string; topic: string; slot: string; statement: string }[]) => void;
-    const extraction = new Promise<readonly { action: "upsert"; aboutSpeaker: boolean; sourceQuote: string; topic: string; slot: string; statement: string }[]>((resolve) => {
+    let resolveExtraction!: (value: readonly { action: "upsert"; aboutSpeaker: boolean; sourceQuote: string; topic: string; slot: string; statement: string; importance: "low" | "medium" | "high" }[]) => void;
+    const extraction = new Promise<readonly { action: "upsert"; aboutSpeaker: boolean; sourceQuote: string; topic: string; slot: string; statement: string; importance: "low" | "medium" | "high" }[]>((resolve) => {
       resolveExtraction = resolve;
     });
     let resolveCommit!: () => void;

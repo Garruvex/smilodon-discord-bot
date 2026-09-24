@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "0bbc436e-a248-4cf5-9185-0eb8753e814b",
-  "prevId": "e47c7b82-86a3-4750-95fa-264f68c08573",
+  "id": "a4176a7f-db51-4d6a-a3c5-9fb5f7cb185f",
+  "prevId": "5901cd43-0c33-4705-8d02-c08b1fe2d6ba",
   "tables": {
     "channel_summary_checkpoints": {
       "name": "channel_summary_checkpoints",
@@ -552,13 +552,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "confidence": {
-          "name": "confidence",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "importance": {
           "name": "importance",
           "type": "integer",
@@ -621,9 +614,9 @@
           "name": "memories_identity",
           "columns": [
             "guild_id",
-            "owner_user_id",
-            "channel_id",
-            "isolation_channel_id",
+            "coalesce(\"owner_user_id\", '')",
+            "coalesce(\"channel_id\", '')",
+            "coalesce(\"isolation_channel_id\", '')",
             "subject_type",
             "subject_id",
             "topic",
@@ -738,6 +731,20 @@
             "to_subject_id"
           ],
           "isUnique": false
+        },
+        "memory_relations_identity": {
+          "name": "memory_relations_identity",
+          "columns": [
+            "guild_id",
+            "from_subject_type",
+            "from_subject_id",
+            "predicate",
+            "kind",
+            "to_subject_type",
+            "to_subject_id",
+            "coalesce(\"isolation_channel_id\", '')"
+          ],
+          "isUnique": true
         }
       },
       "foreignKeys": {
@@ -838,6 +845,213 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
+    },
+    "message_reaction_watches": {
+      "name": "message_reaction_watches",
+      "columns": {
+        "message_id": {
+          "name": "message_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "guild_id": {
+          "name": "guild_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "channel_id": {
+          "name": "channel_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'watching'"
+        },
+        "first_reaction_at": {
+          "name": "first_reaction_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "due_at": {
+          "name": "due_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "message_reaction_watches_due": {
+          "name": "message_reaction_watches_due",
+          "columns": [
+            "status",
+            "due_at"
+          ],
+          "isUnique": false
+        },
+        "message_reaction_watches_cleanup": {
+          "name": "message_reaction_watches_cleanup",
+          "columns": [
+            "status",
+            "updated_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "personal_memory_extraction_jobs": {
+      "name": "personal_memory_extraction_jobs",
+      "columns": {
+        "guild_id": {
+          "name": "guild_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "channel_id": {
+          "name": "channel_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "batch_id": {
+          "name": "batch_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "subject_id": {
+          "name": "subject_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "next_attempt_at": {
+          "name": "next_attempt_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "last_error": {
+          "name": "last_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'pending'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "personal_memory_extraction_jobs_due": {
+          "name": "personal_memory_extraction_jobs_due",
+          "columns": [
+            "status",
+            "next_attempt_at"
+          ],
+          "isUnique": false
+        },
+        "personal_memory_extraction_jobs_terminal": {
+          "name": "personal_memory_extraction_jobs_terminal",
+          "columns": [
+            "status",
+            "updated_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "personal_memory_extraction_jobs_guild_id_channel_id_batch_id_subject_id_pk": {
+          "columns": [
+            "guild_id",
+            "channel_id",
+            "batch_id",
+            "subject_id"
+          ],
+          "name": "personal_memory_extraction_jobs_guild_id_channel_id_batch_id_subject_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
     }
   },
   "views": {},
@@ -848,6 +1062,27 @@
     "columns": {}
   },
   "internal": {
-    "indexes": {}
+    "indexes": {
+      "memories_identity": {
+        "columns": {
+          "coalesce(\"owner_user_id\", '')": {
+            "isExpression": true
+          },
+          "coalesce(\"channel_id\", '')": {
+            "isExpression": true
+          },
+          "coalesce(\"isolation_channel_id\", '')": {
+            "isExpression": true
+          }
+        }
+      },
+      "memory_relations_identity": {
+        "columns": {
+          "coalesce(\"isolation_channel_id\", '')": {
+            "isExpression": true
+          }
+        }
+      }
+    }
   }
 }

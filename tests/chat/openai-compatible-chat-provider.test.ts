@@ -90,7 +90,7 @@ describe("OpenAiCompatibleChatProvider — extractPersonalMemories", () => {
         choices: [{
           message: {
             content: JSON.stringify({
-              actions: [{ action: "upsert", aboutSpeaker: true, sourceQuote: "I like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" }],
+              actions: [{ action: "upsert", aboutSpeaker: true, importance: "medium" as const, sourceQuote: "I like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" }],
             }),
           },
         }],
@@ -105,7 +105,7 @@ describe("OpenAiCompatibleChatProvider — extractPersonalMemories", () => {
       "I like green apples", "Noted!", { id: "user-1", displayName: "Red" },
     );
 
-    expect(actions).toEqual([{ action: "upsert", aboutSpeaker: true, sourceQuote: "I like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" }]);
+    expect(actions).toEqual([{ action: "upsert", aboutSpeaker: true, importance: "medium" as const, sourceQuote: "I like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" }]);
   });
 
   it("throws a ChatProviderError when the model's output fails schema validation", async () => {
@@ -133,7 +133,7 @@ describe("OpenAiCompatibleChatProvider — extractPersonalMemories", () => {
         choices: [{
           message: {
             content: JSON.stringify({
-              actions: [{ action: "upsert", aboutSpeaker: true, sourceQuote: "I like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" }],
+              actions: [{ action: "upsert", aboutSpeaker: true, importance: "medium" as const, sourceQuote: "I like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" }],
             }),
           },
         }],
@@ -146,7 +146,7 @@ describe("OpenAiCompatibleChatProvider — extractPersonalMemories", () => {
     );
     const actions = await provider.extractPersonalMemories("I like green apples", "Noted!", { id: "user-1", displayName: "Red" });
 
-    expect(actions).toEqual([{ action: "upsert", aboutSpeaker: true, sourceQuote: "I like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" }]);
+    expect(actions).toEqual([{ action: "upsert", aboutSpeaker: true, importance: "medium" as const, sourceQuote: "I like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" }]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

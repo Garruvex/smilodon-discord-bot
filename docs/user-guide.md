@@ -24,7 +24,7 @@ an admin) control the rest:
 | **Restricted** | Explicitly *denied* music and chatbot access, even if another role would allow it |
 
 Bot Administrators automatically get Music Controller access too. Run
-`/setup status` at any time to see which roles are currently assigned to each
+`/status` at any time to see which roles are currently assigned to each
 group. `/help` only lists commands you're currently allowed to use.
 
 ## Commands
@@ -175,7 +175,7 @@ omitted is created automatically. This:
 - creates (or adopts) the control channel and pins the control panel;
 - registers the server's enabled slash commands.
 
-Run `/setup status` afterward to confirm what got configured. `/setup
+Run `/status` afterward to confirm what got configured. `/setup
 initialize` never overwrites an existing profile — rerunning it on an
 already-configured server is a no-op check, not a reset.
 

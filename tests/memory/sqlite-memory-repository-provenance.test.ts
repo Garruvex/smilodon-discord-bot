@@ -14,7 +14,7 @@ function ingestInput(overrides: Partial<RepositoryIngestInput> = {}): Repository
   return {
     guildId: "guild", kind: "fact", audience: "guild", ownerUserId: null, channelId: "channel",
     isolationChannelId: null, subjectType: "guild", subjectId: "guild", topic: "community_activity", slot: "raid.friday",
-    statement: "organizes raids", status: "active", source: "consolidation", confidence: 1, importance: 1,
+    statement: "organizes raids", status: "active", source: "consolidation", importance: 1,
     embedding: null, embeddingModel: null, expiresAt: null, now: 1_000,
     sourceMessageId: "batch:scan:guild:channel:m10-m1", sourceChannelId: "channel", assertedByUserId: null,
     ...overrides,
@@ -65,5 +65,18 @@ describe("SqliteMemoryRepository — idempotent batch provenance", () => {
     const sources = connection.database.select().from(schema.memorySources)
       .where(eq(schema.memorySources.memoryId, first.id)).all();
     expect(sources).toHaveLength(2);
+  });
+});
+
+describe("SqliteMemoryRepository — memories_identity index", () => {
+  it("rejects a second active row for the same identity even when nullable columns are null", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "sqlite-memory-identity-"));
+    const connection = createSqliteDatabaseConnection(directory);
+    const repository = new SqliteMemoryRepository(connection.database);
+    const existing = await repository.ingest(ingestInput({ channelId: null }));
+    const { id: _id, ...duplicate } = connection.database.select().from(schema.memories)
+      .where(eq(schema.memories.id, existing.id)).get()!;
+    expect(() => connection.database.insert(schema.memories).values({ ...duplicate, id: "duplicate" }).run())
+      .toThrow(/UNIQUE constraint failed/);
   });
 });

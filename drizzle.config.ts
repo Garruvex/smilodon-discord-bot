@@ -12,8 +12,9 @@ const schemaName = instanceName.replaceAll("-", "_");
 // Postgres' `options=-c search_path=...` connection parameter, honored by
 // every client library (not just postgres-js), so drizzle-kit's own
 // connection picks up the same schema the app runtime does. The schema
-// itself must already exist — see scripts/migrate-instance-database.ts,
-// which creates it before spawning this config.
+// itself must already exist — the app's own migrations (db:migrate:active,
+// src/scripts/migrate-active-database.ts) create it; this config is only
+// used by db:generate and db:studio.
 const scopedDatabaseUrl = `${databaseUrl}${databaseUrl.includes("?") ? "&" : "?"}options=${encodeURIComponent(`-c search_path=${schemaName},public`)}`;
 
 export default defineConfig({

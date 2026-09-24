@@ -1,5 +1,6 @@
 import concurrently, { type ConcurrentlyCommandInput } from "concurrently";
 
+import { loadConfiguration } from "../config/environment.js";
 import {
   discoverInstanceNames,
   loadInstanceEnvironment,
@@ -16,13 +17,17 @@ if (names.length === 0) {
 const instances = names.map((name) => loadInstanceEnvironment(name));
 validateInstanceIsolation(instances);
 const colors = ["cyan", "green", "yellow", "blue"] as const;
+const sharedEnvironment = loadSharedEnvironment();
+// Local PostgreSQL only starts when at least one instance actually uses it,
+// same rule as local:start for the default instance.
+const needsPostgres = instances.some(
+  (instance) => loadConfiguration(instance.environment).persistence.driver === "postgres",
+);
 const commands: ConcurrentlyCommandInput[] = [
-  {
-    command: "npm.cmd run services:start",
-    name: "lavalink",
-    prefixColor: "magenta",
-    env: loadSharedEnvironment(),
-  },
+  { command: "npm.cmd run local:lavalink", name: "lavalink", prefixColor: "magenta", env: sharedEnvironment },
+  ...(needsPostgres
+    ? [{ command: "npm.cmd run local:postgres", name: "postgres", prefixColor: "green", env: sharedEnvironment }]
+    : []),
   ...instances.map((instance, index) => ({
     command: "npm.cmd run local:bot",
     name: instance.name,

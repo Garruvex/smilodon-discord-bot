@@ -26,6 +26,10 @@ export const exampleExchangeBundleSchema = z.object({
   // because nobody reuploaded examples.md since. Defaults to null so
   // bundles written before this field existed still parse.
   embeddingModel: z.string().nullable().default(null),
+  // Which exampleExchangeEmbeddingText scheme produced these vectors — same
+  // convention as PersonaBundle.embeddingTextVersion. Bundles predating
+  // this field embedded tags + user + character.
+  embeddingTextVersion: z.number().int().default(1),
 });
 
 export type ExampleExchangeBundle = z.infer<typeof exampleExchangeBundleSchema>;
@@ -46,11 +50,15 @@ export function parseExampleExchangeBundle(raw: string): ExampleExchangeBundle |
   return result.success ? result.data : null;
 }
 
-// Same text RelevantExampleExchangeSelector's BM25 scorer concatenates
-// (tags + user + character) — embedding the identical text keeps the
-// lexical and embedding signals scoring the same underlying content.
-function embeddingText(exchange: { tags: string; user: string; character: string }): string {
-  return `${exchange.tags} ${exchange.user} ${exchange.character}`;
+export const exampleExchangeEmbeddingTextVersion = 2;
+
+// The situation an example responds to (tags + User line), not the
+// Character reply — the per-turn query is an incoming user message, so it
+// should be compared against the example's user side. Including the reply
+// diluted the match with text the query never resembles. Same fields
+// RelevantExampleExchangeSelector's BM25 scorer indexes.
+export function exampleExchangeEmbeddingText(exchange: { tags: string; user: string }): string {
+  return `${exchange.tags}\n${exchange.user}`;
 }
 
 /**
@@ -58,18 +66,35 @@ function embeddingText(exchange: { tags: string; user: string; character: string
  * effort per exchange — an embedding failure degrades that exchange to
  * `embedding: null` (lexical-only at selection time) rather than failing the
  * whole upload; see PersonaBundleCompiler for the equivalent pattern.
+ * `previousBundle`'s vectors are reused for unchanged exchanges when they
+ * came from the same model and embedding-text scheme.
  */
 export async function buildExampleExchangeBundle(
   content: string,
   exchanges: readonly ExampleExchange[],
   embeddingsClient: EmbeddingsClient,
+  previousBundle: ExampleExchangeBundle | null = null,
 ): Promise<ExampleExchangeBundle> {
-  const embeddings = await embedTextsBestEffort(exchanges.map(embeddingText), embeddingsClient);
+  const reusable = previousBundle?.embeddingModel === embeddingsClient.modelId
+    && previousBundle.embeddingTextVersion === exampleExchangeEmbeddingTextVersion
+    ? new Map(previousBundle.exchanges
+        .filter((exchange) => exchange.embedding !== null)
+        .map((exchange) => [exampleExchangeEmbeddingText(exchange), exchange.embedding] as const))
+    : new Map<string, number[] | null>();
+  const texts = exchanges.map(exampleExchangeEmbeddingText);
+  const missing = [...new Set(texts.filter((text) => !reusable.has(text)))];
+  const fresh = missing.length > 0 ? await embedTextsBestEffort(missing, embeddingsClient) : [];
+  const freshByText = new Map(missing.map((text, index) => [text, fresh[index] ?? null]));
   const embedded = exchanges.map((exchange, index) => ({
     tags: exchange.tags,
     user: exchange.user,
     character: exchange.character,
-    embedding: embeddings[index] ?? null,
+    embedding: reusable.get(texts[index]!) ?? freshByText.get(texts[index]!) ?? null,
   }));
-  return { sourceHash: hashContent(content), exchanges: embedded, embeddingModel: embeddingsClient.modelId };
+  return {
+    sourceHash: hashContent(content),
+    exchanges: embedded,
+    embeddingModel: embeddingsClient.modelId,
+    embeddingTextVersion: exampleExchangeEmbeddingTextVersion,
+  };
 }

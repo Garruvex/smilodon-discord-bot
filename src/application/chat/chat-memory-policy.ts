@@ -13,6 +13,16 @@ export const memoryTopicIds = [
   "other",
 ] as const;
 
+// Maps the dedicated extraction pass's readable rating (see
+// PersonalMemoryExtractionAction.importance in chat-provider.ts) onto
+// ProposedMemory's numeric scale (see memory.ts) — the string form is
+// easier for the model to reason about consistently; the number is what
+// actually drives ranking. Shared by both extraction call sites (live-turn
+// and channel-summary consolidation).
+export function importanceRatingToLevel(rating: "low" | "medium" | "high"): 1 | 2 | 3 {
+  return rating === "high" ? 3 : rating === "medium" ? 2 : 1;
+}
+
 const memoryTopicSet = new Set<string>(memoryTopicIds);
 const slotPattern = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const secretPatterns = [

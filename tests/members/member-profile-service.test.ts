@@ -19,7 +19,7 @@ async function seededMemoryEngine(): Promise<MemoryEngine> {
   await repository.ingest({
     guildId: "guild", kind: "preference", audience: "private", ownerUserId: "user", channelId: null,
     isolationChannelId: null, subjectType: "member", subjectId: "user", topic: "preference", slot: "food.fruit",
-    statement: "likes green apples", status: "active", source: "live", confidence: 1, importance: 1,
+    statement: "likes green apples", status: "active", source: "live", importance: 1,
     embedding: null, embeddingModel: null, expiresAt: null, now: 0,
     sourceMessageId: null, sourceChannelId: null, assertedByUserId: "user",
   });

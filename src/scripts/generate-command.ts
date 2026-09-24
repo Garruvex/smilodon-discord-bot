@@ -1,15 +1,25 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-const supportedModules = ["common", "music", "diagnostics"] as const;
+const supportedModules = ["common", "music", "diagnostics", "birthdays", "reminders", "nsfw"] as const;
 type SupportedModule = (typeof supportedModules)[number];
+// Feature-gated modules don't get their own folder — they sit beside the
+// existing commands of the same kind (see birthday-command.ts, booru-search-command.ts).
+const moduleFolders: Record<SupportedModule, string> = {
+  common: "common",
+  music: "music",
+  diagnostics: "diagnostics",
+  birthdays: "common",
+  reminders: "common",
+  nsfw: "image",
+};
 
 const [rawName, rawModule = "common", ...descriptionParts] = process.argv.slice(2);
 const description = descriptionParts.join(" ").trim() || "TODO: describe this command.";
 
 if (!rawName || !/^[a-z][a-z0-9-]{0,31}$/.test(rawName)) {
   throw new Error(
-    "Usage: npm run command:create -- <lowercase-name> [common|music|diagnostics] [description]",
+    `Usage: npm run command:create -- <lowercase-name> [${supportedModules.join("|")}] [description]`,
   );
 }
 if (!supportedModules.includes(rawModule as SupportedModule)) {
@@ -25,7 +35,8 @@ const className = `${rawName
   .map((part) => `${part[0]!.toUpperCase()}${part.slice(1)}`)
   .join("")}Command`;
 const fileName = `${rawName}-command.ts`;
-const sourcePath = resolve("src/infrastructure/discord/commands", moduleName, fileName);
+const folder = moduleFolders[moduleName];
+const sourcePath = resolve("src/infrastructure/discord/commands", folder, fileName);
 const testPath = resolve("tests/commands", `${rawName}-command.test.ts`);
 
 if (existsSync(sourcePath) || existsSync(testPath)) {
@@ -48,7 +59,7 @@ ${accessImport}
 export class ${className} implements BotCommand {
   public readonly definition = {
     name: "${rawName}",
-    description: ${JSON.stringify(description)},
+    description: ${JSON.stringify(description)},${moduleName === "nsfw" ? "\n    nsfw: true," : ""}
   };
 
   public readonly module = CommandModule.${commandModule};
@@ -63,7 +74,7 @@ export class ${className} implements BotCommand {
 const test = `import { describe, expect, it } from "vitest";
 
 import { CommandModule } from "../../src/application/commands/command.js";
-import { ${className} } from "../../src/infrastructure/discord/commands/${moduleName}/${fileName.replace(".ts", ".js")}";
+import { ${className} } from "../../src/infrastructure/discord/commands/${folder}/${fileName.replace(".ts", ".js")}";
 
 describe("${className}", () => {
   it("declares the expected command metadata", () => {

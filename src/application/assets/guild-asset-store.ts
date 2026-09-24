@@ -4,7 +4,11 @@ import { extname, resolve } from "node:path";
 import type { Attachment } from "discord.js";
 import type { Logger } from "pino";
 
-import { buildExampleExchangeBundle, serializeExampleExchangeBundle } from "../chat/example-exchange-bundle.js";
+import {
+  buildExampleExchangeBundle,
+  parseExampleExchangeBundle,
+  serializeExampleExchangeBundle,
+} from "../chat/example-exchange-bundle.js";
 import { parseExampleExchanges } from "../chat/example-exchange.js";
 import type { PersonaBundleCompiler } from "../chat/persona-bundle-compiler.js";
 import { parsePersonaBundle, serializePersonaBundle } from "../chat/persona-bundle.js";
@@ -231,8 +235,9 @@ export class GuildAssetStore {
   ): Promise<void> {
     if (!this.embeddingsClient) return;
     try {
-      const bundle = await buildExampleExchangeBundle(content, exchanges, this.embeddingsClient);
       const target = resolve(directory, "examples.bundle.json");
+      const previousBundle = parseExampleExchangeBundle(await readFile(target, "utf8").catch(() => "null"));
+      const bundle = await buildExampleExchangeBundle(content, exchanges, this.embeddingsClient, previousBundle);
       const temporary = `${target}.tmp`;
       await writeFile(temporary, serializeExampleExchangeBundle(bundle), "utf8");
       await rename(temporary, target);

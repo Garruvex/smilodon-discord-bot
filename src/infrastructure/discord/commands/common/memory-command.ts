@@ -190,7 +190,9 @@ export class MemoryCommand implements BotCommand {
         // subjectId, not just ownerUserId: also removes a third-party claim
         // about this user (e.g. something someone else said about them),
         // which has no owner of its own — see ForgetQuery.subjectId.
-        return this.memoryEngine.forget({ guildId, ownerUserId: userId, subjectId: userId });
+        // assertedByUserId: also strips their own wording/attribution from
+        // claims they made about other people (see ForgetQuery).
+        return this.memoryEngine.forget({ guildId, ownerUserId: userId, subjectId: userId, assertedByUserId: userId });
       };
       const count = this.personalMemoryExtractionQueueStore
         ? await this.personalMemoryExtractionQueueStore.runForSubject(guildId, userId, forgetAll)

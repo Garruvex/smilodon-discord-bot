@@ -39,6 +39,28 @@ const cjkStopwords = new Set([
   "但", "因為", "所以", "如果", "然後", "就是", "什麼", "怎麼", "一個",
 ]);
 
+// English counterpart of cjkStopwords (wordPattern already drops anything
+// under 3 letters). Without it, near-universal chat words like "you"/"the"/
+// "what" count as lexical overlap, so every caller's "lexical score > 0"
+// relevance floor passes for almost any record. Function words and chat
+// filler only — content-bearing verbs/nouns stay searchable.
+const englishStopwords = new Set([
+  "the", "and", "you", "your", "yours", "are", "was", "were", "what", "that", "this", "with", "for", "not",
+  "but", "have", "has", "had", "how", "why", "who", "whom", "when", "where", "which", "can", "could",
+  "would", "should", "will", "shall", "just", "about", "from", "they", "them", "their", "theirs", "there",
+  "then", "than", "its", "been", "being", "did", "does", "doing", "don", "doesn", "didn", "isn", "aren",
+  "wasn", "weren", "won", "wouldn", "couldn", "shouldn", "all", "any", "some", "out", "our", "ours", "his",
+  "her", "hers", "him", "she", "yes", "yeah", "yep", "nah", "okay", "too", "very", "really", "also",
+  "into", "onto", "over", "while", "because", "here", "now", "more", "most", "other", "only", "own", "same",
+  "such", "these", "those", "through", "off", "again", "each", "few", "both", "let", "lets", "itself",
+  "myself", "yourself", "himself", "herself", "themselves", "ourselves", "may", "might", "must", "much",
+  "many", "well", "even", "still", "yet", "ever", "never", "lol", "lmao", "haha", "hehe", "omg",
+]);
+
+function asciiTokens(text: string): string[] {
+  return (text.toLowerCase().match(wordPattern) ?? []).filter((word) => !englishStopwords.has(word));
+}
+
 function cjkTokens(text: string): string[] {
   const tokens: string[] = [];
   for (const run of text.match(cjkRunPattern) ?? []) {
@@ -51,15 +73,14 @@ function cjkTokens(text: string): string[] {
 }
 
 export function tokenize(text: string): ReadonlySet<string> {
-  const asciiWords = text.toLowerCase().match(wordPattern) ?? [];
-  return new Set([...asciiWords, ...cjkTokens(text)]);
+  return new Set([...asciiTokens(text), ...cjkTokens(text)]);
 }
 
 // Same tokenization as `tokenize`, but preserving per-term occurrence counts
 // — BM25's term-frequency component needs counts, not just membership.
 function tokenizeWithCounts(text: string): ReadonlyMap<string, number> {
   const counts = new Map<string, number>();
-  for (const word of text.toLowerCase().match(wordPattern) ?? []) {
+  for (const word of asciiTokens(text)) {
     counts.set(word, (counts.get(word) ?? 0) + 1);
   }
   for (const word of cjkTokens(text)) {
@@ -87,18 +108,55 @@ export function buildRelevanceContext(input: {
   return { keywords, subjectIds: input.subjectIds, now: input.now };
 }
 
+// The one text a chat turn embeds for vector-similarity retrieval — shared
+// by memory recall and the persona lore/example selectors so all three
+// produce the identical string, which CachingEmbeddingsClient then collapses
+// into a single embeddings API call per turn. A short trailing window (last
+// 2 history items, plus the direct reply-chain parent) gives referent-less
+// follow-ups ("what about him?") something to match on, without embedding
+// so much history that the message's own topical signal gets diluted.
+export function buildEmbeddingQueryText(input: {
+  message: string;
+  recentHistory: readonly { content: string }[];
+  replyToContent?: string | null | undefined;
+}): string {
+  return [...input.recentHistory.slice(-2).map((item) => item.content), input.replyToContent, input.message]
+    .filter((text): text is string => Boolean(text && text.trim()))
+    .join("\n");
+}
+
 export interface ScorableRecord {
   subjectId: string;
   topic: string;
   slot: string;
   statement: string;
   updatedAt: number;
+  // How much this fact should weigh in ranking — 1 (low) to 3 (high), set
+  // by the source that proposed it (see ProposedMemory.importance). Linear,
+  // not normalized/centered: a "low" fact contributes its base weight, not
+  // a penalty, so an unrated legacy record (also importance 1) never ranks
+  // worse than one a source explicitly rated low. Optional (defaults to 1
+  // in bm25Score — see there) because this module is shared by scorers with
+  // no importance concept at all (example exchanges, persona lore, legacy
+  // guild-knowledge/user-memory selectors) — a uniform default contributes
+  // the same constant to every candidate in one of those calls, which
+  // leaves their relative ranking exactly as it was before this field
+  // existed.
+  importance?: number;
 }
 
 export interface Bm25ScoreWeights {
   subjectBoost: number;
   maxRecencyBoost: number;
   recencyWindowMs: number;
+  // Multiplied against the record's raw importance (1-3) and added
+  // straight to the score, same additive pattern as subjectBoost/recency
+  // — not folded into BM25 itself, since importance is a property of the
+  // fact, not of how well it matches this particular query. Optional, same
+  // reasoning as ScorableRecord.importance — a caller with no importance
+  // concept (or a calibration harness sweeping only the pre-existing
+  // weights) doesn't need to know this field exists.
+  importanceBoost?: number;
 }
 
 // Compatibility defaults inherited from the original flat keyword scorer.
@@ -108,6 +166,7 @@ export const defaultBm25ScoreWeights: Readonly<Bm25ScoreWeights> = {
   subjectBoost: 3,
   maxRecencyBoost: 2,
   recencyWindowMs: 30 * 24 * 60 * 60 * 1_000,
+  importanceBoost: 1,
 };
 
 function recordText(record: ScorableRecord): string {
@@ -187,6 +246,13 @@ export function bm25Score(
     ? Math.max(0, 1 - ageMs / weights.recencyWindowMs)
     : 0;
   score += weights.maxRecencyBoost * recencyFraction;
+  // Skipped entirely (not defaulted to 1) when the record has no
+  // importance concept at all — a scorer with a zero-relevance record
+  // relies on this function returning exactly 0 for it (see
+  // ExampleExchangeSelector/PersonaLoreSelector's own zero-similarity
+  // exclusion checks); a flat default contribution would break that
+  // invariant for every caller of this shared module, not just Memory's.
+  if (record.importance !== undefined) score += (weights.importanceBoost ?? 1) * record.importance;
   return score;
 }
 
@@ -195,9 +261,11 @@ export function bm25Score(
 // score directly to a cosine similarity. `k = 60` is the standard RRF
 // constant. Keyed by item identity (===), so callers must rank the same
 // object references across every list passed in.
+export const rrfK = 60;
+
 export function reciprocalRankFusion<T>(
   rankings: readonly (readonly T[])[],
-  k = 60,
+  k = rrfK,
 ): Map<T, number> {
   const scores = new Map<T, number>();
   for (const ranking of rankings) {

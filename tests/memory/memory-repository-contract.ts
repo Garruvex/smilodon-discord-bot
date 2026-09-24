@@ -13,7 +13,7 @@ function ingestInput(overrides: Partial<RepositoryIngestInput> = {}): Repository
   return {
     guildId: "guild", kind: "preference", audience: "private", ownerUserId: "alice", channelId: null,
     isolationChannelId: null, subjectType: "member", subjectId: "alice", topic: "preference", slot: "food.fruit",
-    statement: "likes apples", status: "active", source: "live", confidence: 1, importance: 1,
+    statement: "likes apples", status: "active", source: "live", importance: 1,
     embedding: null, embeddingModel: null, expiresAt: null, now: 1_000,
     sourceMessageId: null, sourceChannelId: null, assertedByUserId: "alice",
     ...overrides,
@@ -51,9 +51,9 @@ export function memoryRepositoryContract(
     it("re-ingesting the same active identity with an unchanged statement reinforces in place", async () => {
       const repository = await createRepository();
       const first = await repository.ingest(ingestInput({ statement: "likes apples", now: 1_000 }));
-      const second = await repository.ingest(ingestInput({ statement: "likes apples", now: 2_000, confidence: 2 }));
+      const second = await repository.ingest(ingestInput({ statement: "likes apples", now: 2_000, importance: 3 }));
       expect(second.id).toBe(first.id);
-      expect(second.confidence).toBe(2);
+      expect(second.importance).toBe(3);
       const candidates = await repository.findRecallCandidates({
         guildId: "guild", channelId: "general", userId: "alice", now: 3_000,
       });
@@ -230,6 +230,47 @@ export function memoryRepositoryContract(
       expect(candidates.memories).toHaveLength(1);
     });
 
+    it("findRecallCandidates orders subject-matches first, then most-recently-updated — so a bounded cap never silently drops the most relevant rows", async () => {
+      const repository = await createRepository();
+      // Deliberately ingested oldest-first so an ordering bug (falling back
+      // to insertion order) would put them in this same order — the
+      // assertion below only passes if the query actually orders by
+      // subject-match then recency, not merely returns whatever it stored.
+      const oldestUnrelated = await repository.ingest(ingestInput({
+        audience: "guild", ownerUserId: null, subjectType: "member", subjectId: "carol",
+        slot: "topic.a", statement: "oldest, unrelated subject", now: 1_000,
+      }));
+      const recentUnrelated = await repository.ingest(ingestInput({
+        audience: "guild", ownerUserId: null, subjectType: "member", subjectId: "carol",
+        slot: "topic.b", statement: "newest, unrelated subject", now: 3_000,
+      }));
+      const oldMatch = await repository.ingest(ingestInput({
+        audience: "guild", ownerUserId: null, subjectType: "member", subjectId: "alice",
+        slot: "topic.c", statement: "older, matching subject", now: 2_000,
+      }));
+      const candidates = await repository.findRecallCandidates({
+        guildId: "guild", channelId: "general", userId: "alice", now: 5_000, subjectIds: ["alice"],
+      });
+      // subjectIds narrows the SQL filter itself (see the query's own
+      // comment), so only the matching-subject row comes back here — this
+      // is a different mechanism from prioritySubjectIds below, and
+      // asserted separately.
+      expect(candidates.memories.map((m) => m.id)).toEqual([oldMatch.id]);
+      const unprioritized = await repository.findRecallCandidates({
+        guildId: "guild", channelId: "general", userId: "alice", now: 5_000,
+      });
+      // With no priority hint at all, ordering falls back to recency alone.
+      expect(unprioritized.memories.map((m) => m.id)).toEqual([recentUnrelated.id, oldMatch.id, oldestUnrelated.id]);
+      const prioritized = await repository.findRecallCandidates({
+        guildId: "guild", channelId: "general", userId: "alice", now: 5_000, prioritySubjectIds: ["alice"],
+      });
+      // prioritySubjectIds is ordering-only, not a filter (unlike
+      // subjectIds above): every eligible memory still comes back, but the
+      // matching subject's row sorts first regardless of recency, and the
+      // two unrelated rows keep falling back to recency ordering.
+      expect(prioritized.memories.map((m) => m.id)).toEqual([oldMatch.id, recentUnrelated.id, oldestUnrelated.id]);
+    });
+
     it("repository results agree with the canRecall predicate", async () => {
       const repository = await createRepository();
       const memory = await repository.ingest(ingestInput({
@@ -298,6 +339,150 @@ export function memoryRepositoryContract(
         guildId: "guild", channelId: "general", subjectIds: ["alice"], maxHops: 3,
       });
       expect(related.map((r) => r.subjectId)).toEqual(["bob"]);
+    });
+
+    it("a restatement never lowers importance", async () => {
+      const repository = await createRepository();
+      await repository.ingest(ingestInput({ importance: 3, now: 1_000 }));
+      const restated = await repository.ingest(ingestInput({ importance: 1, now: 2_000 }));
+      expect(restated.importance).toBe(3);
+    });
+
+    it("revises a guild-audience fact (ownerUserId null) without tripping the one-active-per-identity index", async () => {
+      const repository = await createRepository();
+      const guildFact = { audience: "guild" as const, ownerUserId: null, subjectType: "guild" as const, subjectId: "guild" };
+      const first = await repository.ingest(ingestInput({ ...guildFact, statement: "meets on fridays", now: 1_000 }));
+      const second = await repository.ingest(ingestInput({ ...guildFact, statement: "meets on saturdays", now: 2_000 }));
+      expect((await repository.findById("guild", first.id))!.status).toBe("superseded");
+      expect(second.status).toBe("active");
+    });
+
+    it("forget by memoryId also removes that fact's earlier superseded versions", async () => {
+      const repository = await createRepository();
+      const v1 = await repository.ingest(ingestInput({ statement: "likes apples", now: 1_000 }));
+      const v2 = await repository.ingest(ingestInput({ statement: "likes pears", now: 2_000 }));
+      const v3 = await repository.ingest(ingestInput({ statement: "likes plums", now: 3_000 }));
+      const unrelated = await repository.ingest(ingestInput({ slot: "food.veg", statement: "likes kale", now: 3_000 }));
+      expect(await repository.forget({ guildId: "guild", memoryId: v3.id })).toBe(3);
+      for (const id of [v1.id, v2.id, v3.id]) expect(await repository.findById("guild", id)).toBeNull();
+      expect(await repository.findById("guild", unrelated.id)).not.toBeNull();
+    });
+
+    it("forget by memoryId with an ownerUserId guard refuses someone else's memory", async () => {
+      const repository = await createRepository();
+      const memory = await repository.ingest(ingestInput({ ownerUserId: "alice" }));
+      expect(await repository.forget({ guildId: "guild", memoryId: memory.id, ownerUserId: "bob" })).toBe(0);
+      expect(await repository.findById("guild", memory.id)).not.toBeNull();
+    });
+
+    it("forget by subjectId removes relations naming that member", async () => {
+      const repository = await createRepository();
+      await repository.createRelations([
+        relationInput({ fromSubjectId: "alice", toSubjectId: "bob" }),
+        relationInput({ fromSubjectId: "carol", toSubjectId: "alice", predicate: "owes" }),
+        relationInput({ fromSubjectId: "bob", toSubjectId: "carol" }),
+      ]);
+      await repository.forget({ guildId: "guild", ownerUserId: "alice", subjectId: "alice" });
+      const fromBob = await repository.findRelatedSubjects({
+        guildId: "guild", channelId: "general", subjectIds: ["bob"], maxHops: 1,
+      });
+      expect(fromBob.map((r) => r.subjectId)).toEqual(["carol"]);
+    });
+
+    it("forget by assertedByUserId strips that user's provenance and drops candidates only they asserted", async () => {
+      const repository = await createRepository();
+      const aboutCarol = { audience: "guild" as const, ownerUserId: null, subjectType: "member" as const, subjectId: "carol" };
+      const soloClaim = await repository.ingest(ingestInput({
+        ...aboutCarol, slot: "drink.tea", status: "candidate", assertedByUserId: "alice", statement: "carol likes tea",
+      }));
+      const bobsClaim = await repository.ingest(ingestInput({
+        ...aboutCarol, slot: "drink.tea", status: "candidate", assertedByUserId: "bob", statement: "carol likes tea",
+      }));
+      const activeFact = await repository.ingest(ingestInput({
+        ...aboutCarol, slot: "game.chess", status: "active", assertedByUserId: "alice", statement: "carol plays chess",
+      }));
+      await repository.forget({ guildId: "guild", assertedByUserId: "alice" });
+      expect(await repository.findById("guild", soloClaim.id)).toBeNull();
+      expect(await repository.findById("guild", bobsClaim.id)).not.toBeNull();
+      const activeSources = await repository.findSources(activeFact.id);
+      expect(await repository.findById("guild", activeFact.id)).not.toBeNull();
+      expect(activeSources.some((source) => source.assertedByUserId === "alice")).toBe(false);
+    });
+
+    it("forgetting a memory removes its provenance rows too", async () => {
+      const repository = await createRepository();
+      const memory = await repository.ingest(ingestInput({ sourceMessageId: "m1" }));
+      await repository.forget({ guildId: "guild", memoryId: memory.id });
+      expect(await repository.findSources(memory.id)).toHaveLength(0);
+    });
+
+    it("deleteExpiredCandidates removes only candidates past their expiry", async () => {
+      const repository = await createRepository();
+      const aboutCarol = { audience: "guild" as const, ownerUserId: null, subjectType: "member" as const, subjectId: "carol" };
+      const expired = await repository.ingest(ingestInput({ ...aboutCarol, slot: "a.b", status: "candidate", expiresAt: 1_500 }));
+      const fresh = await repository.ingest(ingestInput({ ...aboutCarol, slot: "c.d", status: "candidate", expiresAt: 9_000 }));
+      const activeExpired = await repository.ingest(ingestInput({ slot: "e.f", status: "active", expiresAt: 1_500 }));
+      expect(await repository.deleteExpiredCandidates("guild", 2_000)).toBe(1);
+      expect(await repository.findById("guild", expired.id)).toBeNull();
+      expect(await repository.findById("guild", fresh.id)).not.toBeNull();
+      expect(await repository.findById("guild", activeExpired.id)).not.toBeNull();
+    });
+
+    it("promoteCandidate activates a candidate and absorbs corroborating rows and their provenance", async () => {
+      const repository = await createRepository();
+      const aboutCarol = {
+        audience: "guild" as const, ownerUserId: null, subjectType: "member" as const, subjectId: "carol",
+        slot: "drink.tea", status: "candidate" as const, statement: "carol likes tea", expiresAt: 9_000,
+      };
+      const fromAlice = await repository.ingest(ingestInput({ ...aboutCarol, assertedByUserId: "alice" }));
+      const fromBob = await repository.ingest(ingestInput({ ...aboutCarol, assertedByUserId: "bob" }));
+      const others = await repository.findCandidatesByIdentity({
+        guildId: "guild", ownerUserId: null, channelId: null, isolationChannelId: null, subjectType: "member",
+        subjectId: "carol", topic: "preference", slot: "drink.tea", excludeMemoryId: fromBob.id, now: 2_000,
+      });
+      expect(others).toEqual([expect.objectContaining({ assertedByUserIds: ["alice"] })]);
+      const promoted = await repository.promoteCandidate({
+        guildId: "guild", memoryId: fromBob.id, absorbedMemoryIds: [fromAlice.id], now: 2_000,
+      });
+      expect(promoted).toMatchObject({ id: fromBob.id, status: "active", expiresAt: null });
+      expect(await repository.findById("guild", fromAlice.id)).toBeNull();
+      const asserters = (await repository.findSources(fromBob.id)).map((source) => source.assertedByUserId).sort();
+      expect(asserters).toEqual(["alice", "bob"]);
+    });
+
+    it("promoteCandidate declines when an active memory already holds the identity", async () => {
+      const repository = await createRepository();
+      const identity = { audience: "guild" as const, ownerUserId: null, subjectType: "member" as const, subjectId: "carol", slot: "drink.tea" };
+      await repository.ingest(ingestInput({ ...identity, status: "active", assertedByUserId: "carol", statement: "likes tea" }));
+      const candidate = await repository.ingest(ingestInput({ ...identity, status: "candidate", assertedByUserId: "bob", statement: "hates tea" }));
+      expect(await repository.promoteCandidate({ guildId: "guild", memoryId: candidate.id, absorbedMemoryIds: [], now: 2_000 })).toBeNull();
+      expect((await repository.findById("guild", candidate.id))!.status).toBe("candidate");
+    });
+
+    it("createRelations skips edges that already exist", async () => {
+      const repository = await createRepository();
+      expect(await repository.createRelations([relationInput()])).toBe(1);
+      expect(await repository.createRelations([relationInput({ now: 2_000 }), relationInput({ toSubjectId: "carol" })])).toBe(1);
+      const related = await repository.findRelatedSubjects({
+        guildId: "guild", channelId: "general", subjectIds: ["alice"], maxHops: 1,
+      });
+      expect(related.map((r) => r.subjectId).sort()).toEqual(["bob", "carol"]);
+    });
+
+    it("findRelatedSubjects reports a subject once per relation kind, with edge direction", async () => {
+      const repository = await createRepository();
+      await repository.createRelations([
+        relationInput({ fromSubjectId: "alice", toSubjectId: "bob", kind: "association", now: 1_000 }),
+        relationInput({ fromSubjectId: "bob", toSubjectId: "alice", kind: "consequence", predicate: "owes", now: 2_000 }),
+      ]);
+      const related = await repository.findRelatedSubjects({
+        guildId: "guild", channelId: "general", subjectIds: ["alice"], maxHops: 1,
+      });
+      expect(related).toHaveLength(2);
+      expect(related).toEqual(expect.arrayContaining([
+        expect.objectContaining({ subjectId: "bob", kind: "association", edgePointsToVia: false }),
+        expect.objectContaining({ subjectId: "bob", kind: "consequence", edgePointsToVia: true }),
+      ]));
     });
   });
 }

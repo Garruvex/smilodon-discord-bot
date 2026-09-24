@@ -39,10 +39,10 @@ describe("buildPersonalMemoryExtractionPrompt", () => {
 describe("parsePersonalMemoryExtractionOutput", () => {
   it("parses a well-formed actions array, without a subjectUserId field", () => {
     const result = parsePersonalMemoryExtractionOutput(JSON.stringify({
-      actions: [{ action: "upsert", aboutSpeaker: true, sourceQuote: "I like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" }],
+      actions: [{ action: "upsert", aboutSpeaker: true, importance: "medium" as const, sourceQuote: "I like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" }],
     }));
     expect(result.actions).toEqual([
-      { action: "upsert", aboutSpeaker: true, sourceQuote: "I like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
+      { action: "upsert", aboutSpeaker: true, importance: "medium" as const, sourceQuote: "I like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
     ]);
   });
 
@@ -57,5 +57,12 @@ describe("parsePersonalMemoryExtractionOutput", () => {
 
   it("throws when the payload doesn't match the schema", () => {
     expect(() => parsePersonalMemoryExtractionOutput(JSON.stringify({ actions: "nope" }))).toThrow(/did not match/);
+  });
+
+  it("requires importance on every action — a model that omits it fails validation rather than silently defaulting", () => {
+    const payload = JSON.stringify({
+      actions: [{ action: "upsert", aboutSpeaker: true, sourceQuote: "I like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" }],
+    });
+    expect(() => parsePersonalMemoryExtractionOutput(payload)).toThrow(/did not match/);
   });
 });

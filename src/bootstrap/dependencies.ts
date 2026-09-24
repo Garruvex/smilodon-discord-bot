@@ -56,6 +56,7 @@ import { ShuffleCommand } from "../infrastructure/discord/commands/music/shuffle
 import { PreviousCommand } from "../infrastructure/discord/commands/music/previous-command.js";
 import type { GuildSetupService } from "../application/setup/guild-setup-service.js";
 import { SetupCommand } from "../infrastructure/discord/commands/setup/setup-command.js";
+import { StatusCommand } from "../infrastructure/discord/commands/setup/status-command.js";
 import { SettingsCommand } from "../infrastructure/discord/commands/setup/settings-command.js";
 import { settingGroups } from "../infrastructure/discord/commands/setup/settings/index.js";
 import { VoteCommand } from "../infrastructure/discord/commands/common/vote-command.js";
@@ -92,6 +93,7 @@ import { MemoryLookupTool } from "../application/chat/tools/memory-lookup-tool.j
 import { BirthdayLookupTool } from "../application/chat/tools/birthday-lookup-tool.js";
 import { ReadLinkTool } from "../application/chat/tools/read-link-tool.js";
 import { GenerateSelfImageTool } from "../application/chat/tools/generate-self-image-tool.js";
+import { CachingEmbeddingsClient } from "../application/chat/caching-embeddings-client.js";
 import { RelevantExampleExchangeSelector } from "../application/chat/example-exchange-selector.js";
 import { RelevantPersonaLoreSelector } from "../application/chat/persona-lore-selector.js";
 import { PersonaBundleCompiler } from "../application/chat/persona-bundle-compiler.js";
@@ -288,15 +290,28 @@ export function registerCommands(
   commandRegistry.register(new QuoteContextCommand());
   commandRegistry.register(new DiagnosticCommand());
   commandRegistry.register(new SetupCommand(guildSetupService));
+  commandRegistry.register(new StatusCommand(guildSetupService, guildConfigurationProvider, {
+    chat: configuration.chat
+      ? { provider: configuration.chat.provider, models: configuration.chat.models, summaryModels: configuration.chat.summaryModels }
+      : null,
+    utility: configuration.utilityChat
+      ? { provider: configuration.utilityChat.provider, models: configuration.utilityChat.models }
+      : null,
+    embeddings: configuration.embeddings
+      ? { provider: configuration.embeddings.provider, model: configuration.embeddings.model }
+      : null,
+  }));
   commandRegistry.register(new VoteCommand(pollService));
   const embeddingsClient = configuration.embeddings
-    ? configuration.embeddings.provider === "gemini"
-      ? new GeminiEmbeddingsClient(configuration.embeddings.apiKey, configuration.embeddings.model, embeddingDimensions)
-      : new OpenAiEmbeddingsClient(
-          configuration.embeddings.baseUrl,
-          configuration.embeddings.apiKey,
-          configuration.embeddings.model,
-        )
+    ? new CachingEmbeddingsClient(
+        configuration.embeddings.provider === "gemini"
+          ? new GeminiEmbeddingsClient(configuration.embeddings.apiKey, configuration.embeddings.model, embeddingDimensions)
+          : new OpenAiEmbeddingsClient(
+              configuration.embeddings.baseUrl,
+              configuration.embeddings.apiKey,
+              configuration.embeddings.model,
+            ),
+      )
     : null;
   commandRegistry.register(new BirthdayCommand(birthdayStore, guildConfigurationProvider));
   commandRegistry.register(new RemindCommand(reminderStore));

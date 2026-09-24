@@ -7,6 +7,7 @@ import type { EmbeddingsClient } from "./embeddings-client.js";
 import {
   bm25Score,
   buildBm25Corpus,
+  buildEmbeddingQueryText,
   buildRelevanceContext,
   cosineSimilarity,
   minRelevantCosineSimilarity,
@@ -43,12 +44,10 @@ function loreChunkPromptProjection(chunk: PersonaLoreChunk): unknown {
 
 /**
  * Ranks a compiled personality bundle's lore chunks by BM25 lexical overlap
- * fused (via reciprocal rank fusion) with embedding cosine similarity — an
- * embedding-based signal is viable here, unlike RelevantExampleExchangeSelector's
- * BM25-only approach, because the compiled bundle already gives us a
- * persisted place to cache each chunk's embedding (see
- * persona-bundle-compiler.ts); there's no per-turn embedding cost beyond
- * embedding the current message once.
+ * fused (via reciprocal rank fusion) with embedding cosine similarity. Chunk
+ * embeddings are cached in the compiled bundle (see
+ * persona-bundle-compiler.ts), so the only per-turn cost is the shared
+ * query embedding.
  */
 export class RelevantPersonaLoreSelector implements PersonaLoreSelector {
   public constructor(
@@ -84,19 +83,17 @@ export class RelevantPersonaLoreSelector implements PersonaLoreSelector {
     const cosineScores = new Map<PersonaLoreChunk, number>();
     if (this.embeddingsClient && input.chunks.some((chunk) => chunk.embedding)) {
       try {
-        // A bounded projection of what this turn is actually responding to
-        // — the literal current message alone can be nearly content-free
-        // ("what do you think?"), so the direct reply-chain parent (the
-        // message right above it) and the overflow summary ride along in
-        // the same embedding call rather than being left to the lexical
-        // signal alone. Deliberately NOT the whole reply chain — bounded to
-        // just the direct parent, so a long thread doesn't dilute the query
-        // embedding with turns unrelated to what's being asked right now.
-        const directReplyMessage = input.replyChain?.at(-1)?.content ?? null;
-        const embeddingQueryText = [input.message, directReplyMessage, input.replyChainSummary]
-          .filter((text): text is string => Boolean(text && text.trim()))
-          .join("\n");
-        const queryEmbedding = await this.embeddingsClient.embed(embeddingQueryText);
+        // The shared per-turn query text (see buildEmbeddingQueryText) — the
+        // literal message alone can be nearly content-free ("what do you
+        // think?"), so the direct reply-chain parent and recent history ride
+        // along. The overflow summary stays lexical-only (in `context`
+        // above) so this string matches memory recall's and the example
+        // selector's exactly and the embedding is shared.
+        const queryEmbedding = await this.embeddingsClient.embed(buildEmbeddingQueryText({
+          message: input.message,
+          recentHistory: input.recentHistory,
+          replyToContent: input.replyChain?.at(-1)?.content,
+        }));
         const compatible = input.chunks.filter((chunk) => chunk.embedding?.length === queryEmbedding.length);
         if (compatible.length > 0) {
           for (const chunk of compatible) cosineScores.set(chunk, cosineSimilarity(chunk.embedding!, queryEmbedding));

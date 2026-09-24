@@ -261,7 +261,7 @@ describe("GeminiChatProvider", () => {
       expect(config.systemInstruction).toContain("only the USER MESSAGE is evidence");
       return Promise.resolve({
         text: JSON.stringify({
-          actions: [{ action: "upsert", aboutSpeaker: true, sourceQuote: "I like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" }],
+          actions: [{ action: "upsert", aboutSpeaker: true, importance: "medium" as const, sourceQuote: "I like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" }],
         }),
         functionCalls: undefined,
         candidates: [],
@@ -275,7 +275,7 @@ describe("GeminiChatProvider", () => {
       "I like green apples", "Noted!", { id: "user-1", displayName: "Red" },
     );
 
-    expect(actions).toEqual([{ action: "upsert", aboutSpeaker: true, sourceQuote: "I like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" }]);
+    expect(actions).toEqual([{ action: "upsert", aboutSpeaker: true, importance: "medium" as const, sourceQuote: "I like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" }]);
   });
 
   it("sets thinkingConfig only when a thinkingBudget is configured", async () => {

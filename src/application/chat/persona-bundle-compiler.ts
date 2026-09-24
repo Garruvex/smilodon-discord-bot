@@ -2,7 +2,7 @@ import type { Logger } from "pino";
 
 import { hashContent } from "../assets/content-hash.js";
 import type { ChatProvider } from "./chat-provider.js";
-import type { PersonaBundle } from "./persona-bundle.js";
+import { personaLoreEmbeddingText, personaLoreEmbeddingTextVersion, type PersonaBundle } from "./persona-bundle.js";
 import { assemblePersonaBundle } from "./persona-bundle-compilation.js";
 import type { EmbeddingsClient } from "./embeddings-client.js";
 import { embedTextsBestEffort } from "./embedding-batch.js";
@@ -61,15 +61,15 @@ export class PersonaBundleCompiler {
       // incompatible semantic space (see EmbeddingsClient.modelId).
       const embeddingModel = this.embeddingsClient?.modelId ?? null;
       const previousEmbeddingByText = previousBundle?.embeddingModel === embeddingModel
+        && previousBundle.embeddingTextVersion === personaLoreEmbeddingTextVersion
         ? new Map(
             previousBundle.chunks
               .filter((chunk) => chunk.embedding !== null)
-              .map((chunk) => [chunk.text, chunk.embedding] as const),
+              .map((chunk) => [personaLoreEmbeddingText(chunk), chunk.embedding] as const),
           )
         : new Map<string, number[] | null>();
-      const textsNeedingEmbedding = result.chunks
-        .map((chunk) => chunk.text)
-        .filter((text) => !previousEmbeddingByText.has(text));
+      const embeddingTexts = result.chunks.map(personaLoreEmbeddingText);
+      const textsNeedingEmbedding = [...new Set(embeddingTexts.filter((text) => !previousEmbeddingByText.has(text)))];
       const freshEmbeddings = this.embeddingsClient && textsNeedingEmbedding.length > 0
         ? await embedTextsBestEffort(textsNeedingEmbedding, this.embeddingsClient)
         : [];
@@ -82,10 +82,12 @@ export class PersonaBundleCompiler {
           "Embedding persona lore chunks partially failed; those chunks will be retrievable lexically",
         );
       }
-      const chunks = result.chunks.map((chunk) => ({
+      const chunks = result.chunks.map((chunk, index) => ({
         heading: chunk.heading,
         text: chunk.text,
-        embedding: previousEmbeddingByText.get(chunk.text) ?? freshEmbeddingByText.get(chunk.text) ?? null,
+        embedding: previousEmbeddingByText.get(embeddingTexts[index]!)
+          ?? freshEmbeddingByText.get(embeddingTexts[index]!)
+          ?? null,
       }));
       return {
         sourceHash: hashContent(content),
@@ -93,6 +95,7 @@ export class PersonaBundleCompiler {
         chunks,
         compiledAt: Date.now(),
         embeddingModel,
+        embeddingTextVersion: personaLoreEmbeddingTextVersion,
       };
     } catch (error) {
       this.logger?.warn({ error }, "Personality bundle compilation failed; the full file will be sent as-is");

@@ -33,7 +33,7 @@ async function seedActiveMemory(repository: MemoryRepository): Promise<void> {
   await repository.ingest({
     guildId: "guild", kind: "preference", audience: "private", ownerUserId: "user", channelId: null,
     isolationChannelId: null, subjectType: "member", subjectId: "user", topic: "preference", slot: "food.fruit",
-    statement: "likes green apples", status: "active", source: "live", confidence: 1, importance: 1,
+    statement: "likes green apples", status: "active", source: "live", importance: 1,
     embedding: null, embeddingModel: null, expiresAt: null, now: 0,
     sourceMessageId: null, sourceChannelId: null, assertedByUserId: "user",
   });
@@ -101,7 +101,7 @@ describe("MemoryCommand", () => {
     await repository.ingest({
       guildId: "guild", kind: "preference", audience: "private", ownerUserId: "user", channelId: null,
       isolationChannelId: null, subjectType: "member", subjectId: "user", topic: "preference", slot: "food.fruit",
-      statement: "likes green apples", status: "active", source: "live", confidence: 1, importance: 1,
+      statement: "likes green apples", status: "active", source: "live", importance: 1,
       embedding: null, embeddingModel: null, expiresAt: null, now: 0,
       sourceMessageId: "111222333", sourceChannelId: "444555666", assertedByUserId: "user",
     });
@@ -120,7 +120,7 @@ describe("MemoryCommand", () => {
     await repository.ingest({
       guildId: "guild", kind: "episode", audience: "private", ownerUserId: "user", channelId: null,
       isolationChannelId: null, subjectType: "member", subjectId: "user", topic: "preference", slot: "food.fruit",
-      statement: "likes green apples", status: "active", source: "consolidation", confidence: 1, importance: 1,
+      statement: "likes green apples", status: "active", source: "consolidation", importance: 1,
       embedding: null, embeddingModel: null, expiresAt: null, now: 0,
       sourceMessageId: "batch:daily:guild:channel:a-b", sourceChannelId: "channel", assertedByUserId: null,
     });
@@ -141,7 +141,7 @@ describe("MemoryCommand", () => {
       await repository.ingest({
         guildId: "guild", kind: "fact", audience: "private", ownerUserId: "user", channelId: null,
         isolationChannelId: null, subjectType: "member", subjectId: "user", topic: "preference", slot: `slot${i}`,
-        statement: `fact ${i}`, status: "active", source: "live", confidence: 1, importance: 1,
+        statement: `fact ${i}`, status: "active", source: "live", importance: 1,
         embedding: null, embeddingModel: null, expiresAt: null, now: 0,
         sourceMessageId: null, sourceChannelId: null, assertedByUserId: "user",
       });
@@ -207,7 +207,7 @@ describe("MemoryCommand", () => {
       guildId: "guild", kind: "fact", audience: "guild", ownerUserId: null, channelId: null,
       isolationChannelId: null, subjectType: "member", subjectId: "user", topic: "community_activity",
       slot: "raid.friday", statement: "organizes Friday raids", status: "active", source: "live",
-      confidence: 1, importance: 1, embedding: null, embeddingModel: null, expiresAt: null, now: 0,
+      importance: 1, embedding: null, embeddingModel: null, expiresAt: null, now: 0,
       sourceMessageId: null, sourceChannelId: null, assertedByUserId: "someone-else",
     });
     const store = baseStore();

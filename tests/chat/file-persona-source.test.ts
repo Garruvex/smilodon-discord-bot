@@ -13,6 +13,9 @@ import {
 } from "../../src/infrastructure/chat/file-persona-source.js";
 import { PersonaDriftStore } from "../../src/application/chat/persona-drift-store.js";
 import { hashContent } from "../../src/application/assets/content-hash.js";
+import { exampleExchangeEmbeddingTextVersion } from "../../src/application/chat/example-exchange-bundle.js";
+import { personaLoreEmbeddingTextVersion } from "../../src/application/chat/persona-bundle.js";
+import { personaLoreLimits } from "../../src/application/chat/persona-lore-policy.js";
 
 const guildId = "123456789012345678";
 const temporaryDirectories: string[] = [];
@@ -127,6 +130,7 @@ describe("FilePersonaSource", () => {
     writeFileSync(join(assetDirectory, "examples.bundle.json"), JSON.stringify({
       sourceHash,
       exchanges: [{ tags: "greeting", user: "hi", character: "hey there", embedding: [1, 0] }],
+      embeddingTextVersion: exampleExchangeEmbeddingTextVersion,
     }), "utf8");
     const source = new FilePersonaSource(runtimeDirectory, logger());
 
@@ -270,6 +274,7 @@ describe("FilePersonaSource", () => {
       chunks: [{ heading: "Backstory", text: "Some lore.", embedding: [1, 2, 3] }],
       compiledAt: Date.now(),
       embeddingModel: "openai:text-embedding-3-small",
+      embeddingTextVersion: personaLoreEmbeddingTextVersion,
     }), "utf8");
     const source = new FilePersonaSource(runtimeDirectory, logger(), null, {
       embed: (): Promise<number[]> => Promise.resolve([0, 0, 0]),
@@ -281,6 +286,64 @@ describe("FilePersonaSource", () => {
     }));
 
     expect(resolved.loreChunks).toEqual([{ heading: "Backstory", text: "Some lore.", embedding: [1, 2, 3] }]);
+  });
+
+  it("drops lore vectors from a bundle compiled under an older embedding-text scheme", async () => {
+    const runtimeDirectory = mkdtempSync(join(tmpdir(), "persona-source-"));
+    temporaryDirectories.push(runtimeDirectory);
+    const assetDirectory = join(runtimeDirectory, "guild-assets", guildId);
+    mkdirSync(assetDirectory, { recursive: true });
+    const content = "A stable custom persona.";
+    writeFileSync(join(assetDirectory, "personality.md"), `${content}\n`, "utf8");
+    const sourceHash = createHash("sha256").update(content, "utf8").digest("hex");
+    writeFileSync(join(assetDirectory, "personality.bundle.json"), JSON.stringify({
+      sourceHash,
+      core: "Compiled core.",
+      chunks: [{ heading: "Backstory", text: "Some lore.", embedding: [1, 2, 3] }],
+      compiledAt: Date.now(),
+      embeddingModel: "openai:text-embedding-3-small",
+    }), "utf8");
+    const source = new FilePersonaSource(runtimeDirectory, logger(), null, {
+      embed: (): Promise<number[]> => Promise.resolve([0, 0, 0]),
+      modelId: "openai:text-embedding-3-small",
+    });
+
+    const resolved = await source.resolve(profile({
+      personalityAsset: `guild-assets/${guildId}/personality.md`,
+    }));
+
+    expect(resolved.loreChunks).toEqual([{ heading: "Backstory", text: "Some lore.", embedding: null }]);
+  });
+
+  it("splits an oversized lore chunk from an older bundle into parts that fit the selection budget", async () => {
+    const runtimeDirectory = mkdtempSync(join(tmpdir(), "persona-source-"));
+    temporaryDirectories.push(runtimeDirectory);
+    const assetDirectory = join(runtimeDirectory, "guild-assets", guildId);
+    mkdirSync(assetDirectory, { recursive: true });
+    const content = "A stable custom persona.";
+    writeFileSync(join(assetDirectory, "personality.md"), `${content}\n`, "utf8");
+    const sourceHash = createHash("sha256").update(content, "utf8").digest("hex");
+    const longLore = Array.from({ length: 6 }, (_, i) => `Paragraph ${i}. ${"lore ".repeat(100)}`).join("\n\n");
+    writeFileSync(join(assetDirectory, "personality.bundle.json"), JSON.stringify({
+      sourceHash,
+      core: "Compiled core.",
+      chunks: [{ heading: "History", text: longLore, embedding: [1, 2, 3] }],
+      compiledAt: Date.now(),
+      embeddingModel: null,
+      embeddingTextVersion: personaLoreEmbeddingTextVersion,
+    }), "utf8");
+    const source = new FilePersonaSource(runtimeDirectory, logger());
+
+    const resolved = await source.resolve(profile({
+      personalityAsset: `guild-assets/${guildId}/personality.md`,
+    }));
+
+    expect(resolved.loreChunks.length).toBeGreaterThan(1);
+    for (const [index, chunk] of resolved.loreChunks.entries()) {
+      expect(chunk.text.length).toBeLessThanOrEqual(personaLoreLimits.maxChunkChars);
+      expect(chunk.heading).toBe(`History (part ${index + 1}/${resolved.loreChunks.length})`);
+      expect(chunk.embedding).toBeNull();
+    }
   });
 
   it("drops an examples bundle's cached embeddings at read time when the active embeddings client no longer matches", async () => {

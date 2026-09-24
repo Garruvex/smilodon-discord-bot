@@ -6,9 +6,17 @@ import { resolveGuildExamplesPath } from "../../application/assets/guild-example
 import { resolveGuildPersonalityPath } from "../../application/assets/guild-personality-path.js";
 import { hashContent } from "../../application/assets/content-hash.js";
 import { personalityUploadMaxBytes } from "../../application/assets/guild-asset-store.js";
-import { parseExampleExchangeBundle } from "../../application/chat/example-exchange-bundle.js";
+import {
+  exampleExchangeEmbeddingTextVersion,
+  parseExampleExchangeBundle,
+} from "../../application/chat/example-exchange-bundle.js";
 import { parseExampleExchanges, type ExampleExchange } from "../../application/chat/example-exchange.js";
-import { parsePersonaBundle, type PersonaBundle } from "../../application/chat/persona-bundle.js";
+import {
+  parsePersonaBundle,
+  personaLoreEmbeddingTextVersion,
+  type PersonaBundle,
+} from "../../application/chat/persona-bundle.js";
+import { splitLoreChunks } from "../../application/chat/persona-bundle-compilation.js";
 import type { EmbeddingsClient } from "../../application/chat/embeddings-client.js";
 import type { PersonaDriftStore } from "../../application/chat/persona-drift-store.js";
 import type { PersonaLoreChunk } from "../../application/chat/persona-source.js";
@@ -117,10 +125,21 @@ export class FilePersonaSource implements PersonaSource {
   // stays intact (that's just text), only the now-untrustworthy vectors get
   // dropped, degrading those chunks to lexical-only until the next reupload
   // recompiles them against the current provider.
+  // Also re-splits any chunk over the current part-size limit — bundles
+  // compiled before lore splitting existed can hold whole long sections that
+  // never fit the selection budget. A split part's vector is dropped (it
+  // embedded the whole section, not this part), leaving it lexical-only
+  // until the next reupload recompiles it.
   private withCurrentEmbeddingFingerprint(bundle: PersonaBundle): PersonaBundle {
     const activeModel = this.embeddingsClient?.modelId ?? null;
-    if (bundle.embeddingModel === activeModel) return bundle;
-    return { ...bundle, chunks: bundle.chunks.map((chunk) => ({ ...chunk, embedding: null })) };
+    const vectorsUsable = bundle.embeddingModel === activeModel
+      && bundle.embeddingTextVersion === personaLoreEmbeddingTextVersion;
+    const chunks = bundle.chunks.flatMap((chunk) => {
+      const parts = splitLoreChunks([chunk]);
+      if (parts.length > 1) return parts.map((part) => ({ ...part, embedding: null }));
+      return [vectorsUsable ? chunk : { ...chunk, embedding: null }];
+    });
+    return { ...bundle, chunks };
   }
 
   // Only exists for uploaded assets (see GuildAssetStore.savePersonality) —
@@ -185,7 +204,9 @@ export class FilePersonaSource implements PersonaSource {
     // Same fingerprint gate as the personality bundle's lore chunks — see
     // withCurrentEmbeddingFingerprint.
     const activeModel = this.embeddingsClient?.modelId ?? null;
-    if (bundle.embeddingModel === activeModel) return bundle.exchanges;
+    if (bundle.embeddingModel === activeModel && bundle.embeddingTextVersion === exampleExchangeEmbeddingTextVersion) {
+      return bundle.exchanges;
+    }
     return bundle.exchanges.map((exchange) => ({ ...exchange, embedding: null }));
   }
 }

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { ChatProviderError } from "./chat-provider.js";
+import { personaLoreLimits } from "./persona-lore-policy.js";
 
 const personaBundleClassificationSchema = z.object({
   chunkSectionIndexes: z.array(z.number().int().nonnegative()).max(64),
@@ -168,10 +169,61 @@ export function assemblePersonaBundle(
     preamble,
     ...sections.filter((section) => !validChunkIndexes.has(section.index)).map((section) => section.markdown),
   ].filter(Boolean).join("\n\n");
-  const chunks = sections
-    .filter((section) => validChunkIndexes.has(section.index))
-    .map((section) => ({ heading: section.heading, text: section.body }));
+  const chunks = splitLoreChunks(
+    sections
+      .filter((section) => validChunkIndexes.has(section.index))
+      .map((section) => ({ heading: section.heading, text: section.body })),
+  );
   return { core, chunks };
+}
+
+// Coarsest boundary first: paragraphs, then lines, then sentences (kept
+// with their trailing punctuation/whitespace), then a hard character cut.
+function splitTextUnits(text: string, level: number): string[] {
+  if (level === 0) return text.split(/\n\s*\n/);
+  if (level === 1) return text.split("\n");
+  return text.match(/[^.!?。！？]+[.!?。！？]*\s*/g) ?? [text];
+}
+
+const unitJoiners = ["\n\n", "\n", ""];
+
+function splitText(text: string, maxChars: number, level = 0): string[] {
+  if (text.length <= maxChars) return [text];
+  if (level >= unitJoiners.length) {
+    const slices: string[] = [];
+    for (let start = 0; start < text.length; start += maxChars) slices.push(text.slice(start, start + maxChars));
+    return slices;
+  }
+  const joiner = unitJoiners[level]!;
+  const pieces: string[] = [];
+  let current = "";
+  for (const unit of splitTextUnits(text, level).filter((part) => part.trim())) {
+    for (const piece of splitText(unit, maxChars, level + 1)) {
+      if (current && current.length + joiner.length + piece.length > maxChars) {
+        pieces.push(current);
+        current = "";
+      }
+      current = current ? `${current}${joiner}${piece}` : piece;
+    }
+  }
+  if (current) pieces.push(current);
+  return pieces;
+}
+
+/**
+ * Splits any lore chunk longer than personaLoreLimits.maxChunkChars into
+ * "Heading (part i/n)" parts on the most natural boundary that fits.
+ * Chunks already within the limit pass through unchanged.
+ */
+export function splitLoreChunks(
+  chunks: readonly { heading: string; text: string }[],
+  maxChars: number = personaLoreLimits.maxChunkChars,
+): { heading: string; text: string }[] {
+  return chunks.flatMap((chunk) => {
+    const parts = splitText(chunk.text, maxChars).map((part) => part.trim()).filter(Boolean);
+    if (parts.length <= 1) return [chunk];
+    return parts.map((text, index) => ({ heading: `${chunk.heading} (part ${index + 1}/${parts.length})`, text }));
+  });
 }
 
 /** Single-sample convenience wrapper (parse + assemble in one call) — kept for callers that don't need self-consistency voting. */

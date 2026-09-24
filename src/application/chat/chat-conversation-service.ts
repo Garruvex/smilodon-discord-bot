@@ -1,7 +1,7 @@
 import type { Logger } from "pino";
 
 import { hashContent } from "../assets/content-hash.js";
-import { chatMemoryInstructions, chatMemoryLimits, normalizeForGroundingCheck, validateMemoryActions } from "./chat-memory-policy.js";
+import { chatMemoryInstructions, chatMemoryLimits, importanceRatingToLevel, normalizeForGroundingCheck, validateMemoryActions } from "./chat-memory-policy.js";
 import { chatSafetyGuard, type ChannelHistoryMessage, type ChatProvider, type ChatRequest, type ChatResponse, type ChatResponseObserver, type ReplyChainMessage } from "./chat-provider.js";
 import type { ChatSessionExchange, ChatStateStore } from "./chat-state-store.js";
 import type { UserCustomizationStore } from "./user-customization-store.js";
@@ -271,6 +271,14 @@ export class ChatConversationService {
           action: "upsert", audience: "private", kind: memoryKindForTopic(action.topic),
           ownerUserId: currentUserId, subjectType: "member", subjectId: action.subjectUserId,
           topic: action.topic, slot: action.slot, statement: action.statement!, channelScoped: false,
+          // exactOptionalPropertyTypes: a conditional spread, not
+          // `importance: action.importance` — that would explicitly set
+          // the key to `undefined` when action.importance is unset (the
+          // main reply model's own userMemoryActions never sets it), which
+          // is a real assignment under this tsconfig option, not the same
+          // as omitting the property the way ProposedMemory.importance's
+          // "undefined means unrated" contract expects.
+          ...(action.importance !== undefined ? { importance: action.importance } : {}),
         });
       } else {
         proposals.push({
@@ -464,7 +472,10 @@ export class ChatConversationService {
           const normalizedQuote = normalizeForGroundingCheck(action.sourceQuote);
           return normalizedQuote.length > 0 && normalizedMessage.includes(normalizedQuote);
         })
-        .map((action) => ({ action: action.action, topic: action.topic, slot: action.slot, statement: action.statement, subjectUserId: speaker.id }));
+        .map((action) => ({
+          action: action.action, topic: action.topic, slot: action.slot, statement: action.statement,
+          subjectUserId: speaker.id, importance: importanceRatingToLevel(action.importance),
+        }));
       return validateMemoryActions(proposedActions, new Set([speaker.id]));
     } catch (error) {
       this.logger?.warn({ error, guildId, channelId, userId: speaker.id }, "Personal-memory extraction failed; continuing without it");
@@ -661,39 +672,52 @@ export class ChatConversationService {
       // (private memory reads go through memoryEngine.recall below).
       const state = await this.stateStore.load(input.guildId, input.currentUser.id, input.channelId, now);
       const recentHistory = this.promptHistorySelector.select(state.exchanges);
-      const [memoryContext, userCustomization, birthday, replyChainSummary] = await Promise.all([
+      const replyToContent = input.replyChain.at(-1)?.content;
+      // Never rejects (failures resolve to null), so lore selection can
+      // chain on it without risking the whole Promise.all.
+      const replyChainSummaryPromise = this.resolveReplyChainSummary(
+        input.replyChainOverflow ?? [], input.guildId, input.channelId,
+      );
+      // Recall and both persona selectors run concurrently and embed the
+      // same query text (see buildEmbeddingQueryText), which the shared
+      // CachingEmbeddingsClient collapses into one embeddings call.
+      const [
+        memoryContext, userCustomization, birthday, replyChainSummary, selectedExampleExchanges, selectedPersonaLore,
+      ] = await Promise.all([
         this.memoryEngine.recall({
           guildId: input.guildId,
           channelId: input.channelId,
           userId: input.currentUser.id,
           message: input.message,
           recentHistory,
+          ...(replyToContent !== undefined ? { replyToContent } : {}),
           subjectIds: [input.currentUser.id, ...input.mentionedUsers.map((user) => user.id)],
           now,
           channelMode,
         }),
         this.userCustomizationStore?.load(input.guildId, input.currentUser.id) ?? Promise.resolve(null),
         this.birthdayStore?.getBirthday(input.guildId, input.currentUser.id) ?? Promise.resolve(null),
-        this.resolveReplyChainSummary(input.replyChainOverflow ?? [], input.guildId, input.channelId),
+        replyChainSummaryPromise,
+        this.exampleExchangeSelector.select({
+          records: input.examplePool,
+          currentUser: input.currentUser,
+          mentionedUsers: input.mentionedUsers,
+          recentHistory,
+          message: input.message,
+          now,
+          replyChain: input.replyChain,
+        }),
+        replyChainSummaryPromise.then((summary) => this.personaLoreSelector.select({
+          chunks: input.loreChunks,
+          recentHistory,
+          message: input.message,
+          now,
+          replyChain: input.replyChain,
+          replyChainSummary: summary,
+        })),
       ]);
       const selectedMemories = memoryContext.memories.filter((memory) => memory.audience === "private").map(toChatMemoryRecord);
       const selectedGuildKnowledge = memoryContext.memories.filter((memory) => memory.audience !== "private").map(toGuildKnowledgeRecord);
-      const selectedExampleExchanges = await this.exampleExchangeSelector.select({
-        records: input.examplePool,
-        currentUser: input.currentUser,
-        mentionedUsers: input.mentionedUsers,
-        recentHistory,
-        message: input.message,
-        now,
-      });
-      const selectedPersonaLore = await this.personaLoreSelector.select({
-        chunks: input.loreChunks,
-        recentHistory,
-        message: input.message,
-        now,
-        replyChain: input.replyChain,
-        replyChainSummary,
-      });
       // examplePool/loreChunks are the unfiltered candidate lists — only
       // their selector-narrowed results belong in the request, so they're
       // destructured out here purely to keep them off requestInput's spread

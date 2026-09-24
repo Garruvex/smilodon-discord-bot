@@ -424,7 +424,7 @@ describe("ChannelSummaryScheduler — promoting self-reports to portable private
       // fact above. Jobs default to being immediately due, so this
       // resolves within the same checkNow() tick that enqueued it.
       new Map([["alice", [
-        { action: "upsert", aboutSpeaker: true, sourceQuote: "I really like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
+        { action: "upsert", aboutSpeaker: true, importance: "medium" as const, sourceQuote: "I really like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
       ]]]),
     );
     const scheduler = new ChannelSummaryScheduler(
@@ -479,7 +479,7 @@ describe("ChannelSummaryScheduler — promoting self-reports to portable private
     const summarizer = stubSummarizer(
       [], [],
       new Map([["alice", [
-        { action: "upsert", aboutSpeaker: true, sourceQuote: "I really like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
+        { action: "upsert", aboutSpeaker: true, importance: "medium" as const, sourceQuote: "I really like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
       ]]]),
     );
     const scheduler = new ChannelSummaryScheduler(
@@ -512,7 +512,7 @@ describe("ChannelSummaryScheduler — promoting self-reports to portable private
       }],
       [],
       new Map([["bob", [
-        { action: "upsert", aboutSpeaker: true, sourceQuote: "I love pizza", topic: "preference", slot: "food.pizza", statement: "loves pizza" },
+        { action: "upsert", aboutSpeaker: true, importance: "medium" as const, sourceQuote: "I love pizza", topic: "preference", slot: "food.pizza", statement: "loves pizza" },
       ]]]),
     );
     const scheduler = new ChannelSummaryScheduler(
@@ -598,7 +598,7 @@ describe("ChannelSummaryScheduler — promoting self-reports to portable private
       // sourceQuote here isn't a real excerpt of alice's own messages —
       // grounding rejects it regardless of aboutSpeaker.
       new Map([["alice", [
-        { action: "upsert", aboutSpeaker: true, sourceQuote: "alice organizes the friday raids", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
+        { action: "upsert", aboutSpeaker: true, importance: "medium" as const, sourceQuote: "alice organizes the friday raids", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
       ]]]),
     );
     const scheduler = new ChannelSummaryScheduler(
@@ -653,7 +653,7 @@ describe("ChannelSummaryScheduler — durable personal-memory extraction queue",
         calls += 1;
         if (calls === 1) return Promise.reject(new Error("transient network error"));
         return Promise.resolve([
-          { action: "upsert", aboutSpeaker: true, sourceQuote: "I really like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
+          { action: "upsert", aboutSpeaker: true, importance: "medium" as const, sourceQuote: "I really like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
         ]);
       }),
     };
@@ -726,11 +726,11 @@ describe("ChannelSummaryScheduler — durable personal-memory extraction queue",
         if (speaker.id === "bob" && bobShouldFail) return Promise.reject(new Error("still down"));
         if (speaker.id === "bob") {
           return Promise.resolve([
-            { action: "upsert", aboutSpeaker: true, sourceQuote: "I love pizza", topic: "preference", slot: "food.pizza", statement: "loves pizza" },
+            { action: "upsert", aboutSpeaker: true, importance: "medium" as const, sourceQuote: "I love pizza", topic: "preference", slot: "food.pizza", statement: "loves pizza" },
           ]);
         }
         return Promise.resolve([
-          { action: "upsert", aboutSpeaker: true, sourceQuote: "I really like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
+          { action: "upsert", aboutSpeaker: true, importance: "medium" as const, sourceQuote: "I really like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
         ]);
       },
     );
@@ -782,7 +782,7 @@ describe("ChannelSummaryScheduler — durable personal-memory extraction queue",
         if (speaker.id !== "alice") return Promise.resolve([]);
         extractCalls += 1;
         return Promise.resolve([
-          { action: "upsert", aboutSpeaker: true, sourceQuote: "I really like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
+          { action: "upsert", aboutSpeaker: true, importance: "medium" as const, sourceQuote: "I really like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
         ]);
       }),
     };
@@ -852,7 +852,7 @@ describe("ChannelSummaryScheduler — durable personal-memory extraction queue",
       extractPersonalMemories: vi.fn(async (_userMessage: string, _assistantReply: string, speaker: { id: string }): Promise<readonly PersonalMemoryExtractionAction[]> => {
         if (speaker.id !== "bob") await gate;
         const fact = factsBySpeaker[speaker.id]!;
-        return [{ action: "upsert", aboutSpeaker: true, sourceQuote: fact.sourceQuote, topic: "preference", slot: fact.slot, statement: fact.statement }];
+        return [{ action: "upsert", aboutSpeaker: true, importance: "medium" as const, sourceQuote: fact.sourceQuote, topic: "preference", slot: fact.slot, statement: fact.statement }];
       }),
     };
     const brokenQueue: PersonalMemoryExtractionQueueStore = {
@@ -916,7 +916,7 @@ describe("ChannelSummaryScheduler — durable personal-memory extraction queue",
       resetScan: (guildId, channelId, resetNow) => realCheckpointStore.resetScan(guildId, channelId, resetNow),
     };
     const extractPersonalMemories = vi.fn(() => Promise.resolve<readonly PersonalMemoryExtractionAction[]>([{
-      action: "upsert", aboutSpeaker: true, sourceQuote: "I really like green apples",
+      action: "upsert", aboutSpeaker: true, importance: "medium" as const, sourceQuote: "I really like green apples",
       topic: "preference", slot: "food.fruit", statement: "likes green apples",
     }]));
     const summarizer: ChannelMessageSummarizer & Partial<PersonalMemoryExtractor> = {
@@ -952,7 +952,7 @@ describe("ChannelSummaryScheduler — durable personal-memory extraction queue",
         extractionStarted();
         await gate;
         return [{
-          action: "upsert" as const, aboutSpeaker: true, sourceQuote: "I really like green apples",
+          action: "upsert" as const, aboutSpeaker: true, importance: "medium" as const, sourceQuote: "I really like green apples",
           topic: "preference", slot: "food.fruit", statement: "likes green apples",
         }];
       }),
@@ -996,7 +996,7 @@ describe("ChannelSummaryScheduler — durable personal-memory extraction queue",
       listSources: (memoryId) => engine.listSources(memoryId),
     };
     const summarizer = stubSummarizer([], [], new Map([["alice", [{
-      action: "upsert", aboutSpeaker: true, sourceQuote: "I really like green apples",
+      action: "upsert", aboutSpeaker: true, importance: "medium" as const, sourceQuote: "I really like green apples",
       topic: "preference", slot: "food.fruit", statement: "likes green apples",
     }]]]));
     const scheduler = new ChannelSummaryScheduler(

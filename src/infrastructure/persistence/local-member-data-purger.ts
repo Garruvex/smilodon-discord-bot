@@ -38,8 +38,11 @@ export class LocalMemberDataPurger implements MemberDataPurger {
         // subjectId as well as ownerUserId: a departing member's data purge
         // should be at least as thorough as /memory forget all — also
         // removes a third-party claim about them, which has no owner of its
-        // own (see ForgetQuery.subjectId).
-        (): Promise<unknown> => this.memoryRepository.forget({ guildId, ownerUserId: userId, subjectId: userId }),
+        // own (see ForgetQuery.subjectId), relations naming them, and their
+        // provenance on claims they made about others (assertedByUserId).
+        (): Promise<unknown> => this.memoryRepository.forget({
+          guildId, ownerUserId: userId, subjectId: userId, assertedByUserId: userId,
+        }),
         (): Promise<unknown> => this.userCustomizationStore.clear(guildId, userId),
         (): Promise<unknown> => this.birthdayStore.removeBirthday(guildId, userId),
         (): Promise<unknown> => this.boostHistoryStore.removeForUser(guildId, userId),

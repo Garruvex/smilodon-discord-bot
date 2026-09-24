@@ -22,9 +22,22 @@ export const personaBundleSchema = z.object({
   // matching dimensionality. Defaults to null so bundles written before this
   // field existed still parse (as "unknown", never reused).
   embeddingModel: z.string().nullable().default(null),
+  // Which personaLoreEmbeddingText scheme produced the chunk vectors. A
+  // mismatch means they embed different text than today's queries are
+  // compared against, so they're treated like an embeddingModel mismatch
+  // (dropped/never reused). Bundles predating this field embedded body only.
+  embeddingTextVersion: z.number().int().default(1),
 });
 
 export type PersonaBundle = z.infer<typeof personaBundleSchema>;
+
+export const personaLoreEmbeddingTextVersion = 2;
+
+// Heading included — it's often the most specific signal a section has
+// ("Relationship with Bob"), and BM25 already indexes it.
+export function personaLoreEmbeddingText(chunk: { heading: string; text: string }): string {
+  return `${chunk.heading}\n${chunk.text}`;
+}
 
 export function serializePersonaBundle(bundle: PersonaBundle): string {
   return JSON.stringify(bundle);

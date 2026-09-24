@@ -16,6 +16,12 @@ const moduleLabels: Record<CommandModule, string> = {
   [CommandModule.Nsfw]: "NSFW",
 };
 
+// Discord caps an embed field value at 1024 characters.
+function truncateField(lines: readonly string[]): string {
+  const value = lines.join("\n");
+  return value.length <= 1024 ? value : `${value.slice(0, 1021)}...`;
+}
+
 export class HelpCommand implements BotCommand {
   public readonly definition = {
     name: "help",
@@ -76,6 +82,19 @@ export class HelpCommand implements BotCommand {
           { name: "Usage", value: `\`${usage}\``, inline: true },
           { name: "Category", value: moduleLabels[command.module], inline: true },
         );
+
+      const optionLines = (command.definition.options ?? []).map((option) =>
+        `\`${option.name}\`${option.required ? "" : " (optional)"} — ${option.description}`);
+      const subcommandLines = [
+        ...(command.definition.subcommands ?? []).map((subcommand) =>
+          `\`/${command.definition.name} ${subcommand.name}\` — ${subcommand.description}`),
+        ...(command.definition.subcommandGroups ?? []).flatMap((group) =>
+          group.subcommands.map((subcommand) =>
+            `\`/${command.definition.name} ${group.name} ${subcommand.name}\` — ${subcommand.description}`)),
+      ];
+      if (optionLines.length > 0) embed.addFields({ name: "Options", value: truncateField(optionLines) });
+      if (subcommandLines.length > 0) embed.addFields({ name: "Subcommands", value: truncateField(subcommandLines) });
+
       await context.responses.reply({ embeds: [embed] });
       return;
     }

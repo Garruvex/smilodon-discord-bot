@@ -140,6 +140,8 @@ const environmentSchema = z.object({
     .default(defaultMemoryEngineLimits.maxTopicChars),
   MEMORY_CONFLICT_SIMILARITY_THRESHOLD: z.coerce.number().min(0).max(1)
     .default(defaultMemoryEngineLimits.conflictSimilarityThreshold),
+  MEMORY_IDENTITY_CANONICALIZATION_THRESHOLD: z.coerce.number().min(0).max(1)
+    .default(defaultMemoryEngineLimits.identityCanonicalizationThreshold),
   MEMORY_MAX_RELATION_HOPS: z.coerce.number().int().min(0).max(5)
     .default(defaultMemoryEngineLimits.maxRelationHops),
   // Aggregate byte cap for all generated images attached across one Discord
@@ -150,8 +152,12 @@ const environmentSchema = z.object({
   // guild is known to be boosted.
   CHATBOT_MAX_GENERATED_IMAGE_BYTES: z.coerce.number().int().min(1).max(100 * 1024 * 1024)
     .default(generatedImageLimits.defaultMaxAggregateBytes),
-  MEMORY_RELATION_HOP_BOOST_BASE: z.coerce.number().min(0).max(50)
-    .default(defaultMemoryEngineLimits.relationHopBoostBase),
+  // RRF-scale weight (see MemoryEngineLimits.relationBoostWeight). Replaces
+  // MEMORY_RELATION_HOP_BOOST_BASE, whose raw additive scale swamped ranking.
+  MEMORY_RELATION_BOOST_WEIGHT: z.coerce.number().min(0).max(10)
+    .default(defaultMemoryEngineLimits.relationBoostWeight),
+  MEMORY_CANDIDATE_TTL_DAYS: z.coerce.number().min(1).max(365)
+    .default(defaultMemoryEngineLimits.candidateTtlMs / (24 * 60 * 60 * 1_000)),
   MEMORY_RELEVANCE_EVAL_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(0),
   MEMORY_RELEVANCE_EVAL_INCLUDE_PRIVATE: z.enum(["true", "false"]).default("false")
     .transform((value) => value === "true"),
@@ -259,8 +265,10 @@ export function loadConfiguration(
       maxSlotChars: parsed.data.MEMORY_MAX_SLOT_CHARS,
       maxTopicChars: parsed.data.MEMORY_MAX_TOPIC_CHARS,
       conflictSimilarityThreshold: parsed.data.MEMORY_CONFLICT_SIMILARITY_THRESHOLD,
+      identityCanonicalizationThreshold: parsed.data.MEMORY_IDENTITY_CANONICALIZATION_THRESHOLD,
       maxRelationHops: parsed.data.MEMORY_MAX_RELATION_HOPS,
-      relationHopBoostBase: parsed.data.MEMORY_RELATION_HOP_BOOST_BASE,
+      relationBoostWeight: parsed.data.MEMORY_RELATION_BOOST_WEIGHT,
+      candidateTtlMs: parsed.data.MEMORY_CANDIDATE_TTL_DAYS * 24 * 60 * 60 * 1_000,
       relevanceEvalSampleRate: parsed.data.MEMORY_RELEVANCE_EVAL_SAMPLE_RATE,
       relevanceEvalIncludePrivate: parsed.data.MEMORY_RELEVANCE_EVAL_INCLUDE_PRIVATE,
     },

@@ -4,7 +4,7 @@
 // rows already migrated (primary-key conflict) rather than duplicating
 // them. Legacy tables are left untouched; nothing here deletes from them.
 //
-// Usage: npx tsx src/scripts/migrate-memories-to-central-schema.ts
+// Usage: npm run db:backfill-memories
 // (reads the same environment as the running bot — PERSISTENCE_DRIVER,
 // DATABASE_URL/RUNTIME_DATA_DIRECTORY, INSTANCE_NAME for Postgres.)
 import { pathToFileURL } from "node:url";
@@ -46,7 +46,7 @@ export async function migratePostgres(databaseUrl: string, instanceName: string)
       id: row.id, guildId: row.guildId, kind: deriveKind(row.topic), audience: "private",
       ownerUserId: row.assertedByUserId, channelId: null, isolationChannelId: null,
       subjectType: "member", subjectId: row.subjectUserId, topic: row.topic, slot: row.slot,
-      statement: row.statement, status: "active", source: "live", confidence: 1, importance: 1,
+      statement: row.statement, status: "active", source: "live", importance: 1,
       embedding: row.embedding, embeddingModel: row.embedding ? "legacy" : null,
       createdAt: row.createdAt, updatedAt: row.updatedAt, expiresAt: null, validFrom: row.createdAt, validUntil: null,
     }).onConflictDoNothing({ target: pgSchema.memories.id }).returning({ id: pgSchema.memories.id });
@@ -73,7 +73,7 @@ export async function migratePostgres(databaseUrl: string, instanceName: string)
       subjectType: row.subjectType, subjectId: row.subjectId, topic: row.topic, slot: row.slot,
       statement: row.statement, status, source: row.source === "self_report" ? "explicit"
         : row.source === "consolidation" ? "consolidation" : row.source === "administrator" ? "administrator" : "live",
-      confidence: 1, importance: 1, embedding: row.embedding, embeddingModel: row.embedding ? "legacy" : null,
+      importance: 1, embedding: row.embedding, embeddingModel: row.embedding ? "legacy" : null,
       createdAt: row.createdAt, updatedAt: row.updatedAt, expiresAt: expiresAt ?? row.expiresAt, validFrom: row.createdAt, validUntil: null,
     }).onConflictDoNothing({ target: pgSchema.memories.id }).returning({ id: pgSchema.memories.id });
     if (inserted.length === 0) continue;
@@ -113,7 +113,7 @@ export function migrateSqlite(runtimeDataDirectory: string): void {
       id: row.id, guildId: row.guildId, kind: deriveKind(row.topic), audience: "private",
       ownerUserId: row.assertedByUserId, channelId: null, isolationChannelId: null,
       subjectType: "member", subjectId: row.subjectUserId, topic: row.topic, slot: row.slot,
-      statement: row.statement, status: "active", source: "live", confidence: 1, importance: 1,
+      statement: row.statement, status: "active", source: "live", importance: 1,
       embedding: row.embedding, embeddingModel: row.embedding ? "legacy" : null,
       createdAt: row.createdAt, updatedAt: row.updatedAt, expiresAt: null, validFrom: row.createdAt, validUntil: null,
     }).run();
@@ -137,7 +137,7 @@ export function migrateSqlite(runtimeDataDirectory: string): void {
       subjectType: row.subjectType, subjectId: row.subjectId, topic: row.topic, slot: row.slot,
       statement: row.statement, status, source: row.source === "self_report" ? "explicit"
         : row.source === "consolidation" ? "consolidation" : row.source === "administrator" ? "administrator" : "live",
-      confidence: 1, importance: 1, embedding: row.embedding, embeddingModel: row.embedding ? "legacy" : null,
+      importance: 1, embedding: row.embedding, embeddingModel: row.embedding ? "legacy" : null,
       createdAt: row.createdAt, updatedAt: row.updatedAt, expiresAt: expiresAt ?? row.expiresAt, validFrom: row.createdAt, validUntil: null,
     }).run();
     migratedMemories++;
