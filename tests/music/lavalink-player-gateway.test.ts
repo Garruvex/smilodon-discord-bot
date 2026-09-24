@@ -262,11 +262,14 @@ describe("LavalinkPlayerGateway.getQueue", () => {
 });
 
 describe("LavalinkPlayerGateway.resolveSyncedLyrics", () => {
-  function createGatewayWithCache(cacheStore: LyricsCacheStore | null): {
+  interface CacheTestGateway {
     resolveSyncedLyrics: (trackName: string, artistName: string) => Promise<unknown>;
-  } {
+    logger: { info: ReturnType<typeof vi.fn>; warn: ReturnType<typeof vi.fn>; debug: ReturnType<typeof vi.fn> };
+  }
+
+  function createGatewayWithCache(cacheStore: LyricsCacheStore | null): CacheTestGateway {
     const client = { guilds: { cache: new Map<string, Guild>() } } as unknown as Client;
-    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
     const eventBus = { publish: vi.fn(() => Promise.resolve()) } as unknown as MusicEventBus;
     const guildConfigurationProvider = { find: vi.fn(() => undefined) } as unknown as GuildConfigurationProvider;
 
@@ -279,8 +282,15 @@ describe("LavalinkPlayerGateway.resolveSyncedLyrics", () => {
       cacheStore,
     );
 
-    return gateway as unknown as {
-      resolveSyncedLyrics: (trackName: string, artistName: string) => Promise<unknown>;
+    const internals = gateway as unknown as {
+      resolveSyncedLyrics: (track: { title: string; author: string }, context: unknown) => Promise<unknown>;
+    };
+    return {
+      resolveSyncedLyrics: (trackName, artistName) => internals.resolveSyncedLyrics(
+        { title: trackName, author: artistName },
+        { requestId: "req-1", purpose: "playback", guildId },
+      ),
+      logger,
     };
   }
 
@@ -325,8 +335,61 @@ describe("LavalinkPlayerGateway.resolveSyncedLyrics", () => {
     const result = await gateway.resolveSyncedLyrics("Track", "Artist");
 
     expect(result).toEqual({ status: "found", lines: freshLines });
-    expect(lookupSyncedLyricsMock).toHaveBeenCalledWith("Track", "Artist", undefined);
+    expect(lookupSyncedLyricsMock).toHaveBeenCalledWith("Track", "Artist", undefined, expect.anything());
     await vi.waitFor(() => expect(setSpy).toHaveBeenCalledWith("v3|track|artist|", freshLines));
+  });
+
+  it("writes one lookup report with every source's outcome and the request ID", async () => {
+    lookupSyncedLyricsMock.mockImplementation((_title: string, _artist: string, _duration: unknown, options: {
+      onCandidate: (decision: unknown) => void;
+    }) => {
+      options.onCandidate({ source: "lrclib", trackName: "Track", artistNames: ["Artist"], score: 97, verdict: "eligible" });
+      return Promise.resolve({
+        result: { status: "found", lines: [{ timestampMs: 0, line: "secret lyric" }], source: "netease" },
+        attempts: [
+          { source: "lrclib", outcome: "failed", durationMs: 5_000, errorCode: "timeout" },
+          { source: "netease", outcome: "found", durationMs: 300 },
+        ],
+      });
+    });
+    const cache = { get: vi.fn().mockResolvedValue(undefined), set: vi.fn().mockResolvedValue(undefined) };
+    const gateway = createGatewayWithCache(cache);
+
+    await gateway.resolveSyncedLyrics("Track", "Artist");
+
+    expect(gateway.logger.info).toHaveBeenCalledWith(expect.objectContaining({
+      requestId: "req-1",
+      purpose: "playback",
+      cache: "miss",
+      status: "found",
+      source: "netease",
+      lineCount: 1,
+      attempts: [
+        expect.objectContaining({ source: "lrclib", outcome: "failed", errorCode: "timeout" }),
+        expect.objectContaining({ source: "netease", outcome: "found" }),
+      ],
+    }), "Lyrics lookup finished");
+    expect(gateway.logger.debug).toHaveBeenCalledWith(
+      expect.objectContaining({ requestId: "req-1", verdict: "eligible", score: 97 }),
+      "Lyrics candidate scored",
+    );
+    // Lyric text never reaches the logs.
+    expect(JSON.stringify([gateway.logger.info.mock.calls, gateway.logger.debug.mock.calls])).not.toContain("secret lyric");
+  });
+
+  it("reports an outage at warn level with its error code", async () => {
+    lookupSyncedLyricsMock.mockResolvedValue(unavailable());
+    const gateway = createGatewayWithCache(null);
+
+    await gateway.resolveSyncedLyrics("Track", "Artist");
+
+    expect(gateway.logger.warn).toHaveBeenCalledWith(expect.objectContaining({
+      requestId: "req-1",
+      cache: "disabled",
+      status: "unavailable",
+      errorCode: "timeout",
+      retryable: true,
+    }), "Lyrics lookup finished");
   });
 
   it("caches a confirmed not-found as null", async () => {
@@ -357,7 +420,7 @@ describe("LavalinkPlayerGateway.resolveSyncedLyrics", () => {
     const result = await gateway.resolveSyncedLyrics("Track", "Artist");
 
     expect(result).toEqual({ status: "not_found" });
-    expect(lookupSyncedLyricsMock).toHaveBeenCalledWith("Track", "Artist", undefined);
+    expect(lookupSyncedLyricsMock).toHaveBeenCalledWith("Track", "Artist", undefined, expect.anything());
   });
 });
 

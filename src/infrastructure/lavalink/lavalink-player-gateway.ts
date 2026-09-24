@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { ChannelType, PermissionFlagsBits, type Client } from "discord.js";
 import {
   LavalinkManager,
@@ -89,6 +91,17 @@ type LyricsResolution =
   | { readonly status: "found"; readonly lines: SyncedLyricLine[] }
   | { readonly status: "not_found" }
   | { readonly status: "unavailable"; readonly retryable: boolean };
+
+interface LyricsRequestContext {
+  // Correlates the lookup report with cache, candidate and playback logs.
+  readonly requestId: string;
+  readonly purpose: "playback" | "vote";
+  readonly guildId: string;
+}
+
+function newLyricsRequestId(): string {
+  return randomUUID().slice(0, 8);
+}
 
 interface SelectedLyricLines {
   readonly current: string | null;
@@ -274,10 +287,17 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
           && this.manager.getPlayer(player.guildId)?.queue.current?.encoded === trackId;
         this.pluginLyricsByGuild.delete(player.guildId);
         this.customLyricsByGuild.delete(player.guildId);
-        this.resolveSyncedLyrics(track.info.title, track.info.author ?? "", track.info.duration)
+        const requestId = newLyricsRequestId();
+        this.resolveSyncedLyrics(
+          { title: track.info.title, author: track.info.author ?? "", durationMs: track.info.duration },
+          { requestId, purpose: "playback", guildId: player.guildId },
+        )
           .then((resolution) => {
             // Guard against a stale response landing after the track changed.
-            if (!isCurrentRequest()) return;
+            if (!isCurrentRequest()) {
+              this.logger.debug({ requestId, guildId: player.guildId }, "Discarded lyrics for a track no longer playing");
+              return;
+            }
             this.customLyricsByGuild.set(
               player.guildId,
               resolution.status === "found" ? resolution.lines : "not-found",
@@ -291,9 +311,11 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
             this.publishStateChange({ guildId: player.guildId, reason: "lyrics_loaded" });
           })
           .catch((error: unknown) => {
-            this.logger.warn(
-              { error, guildId: player.guildId, trackTitle: track.info.title },
-              "Unable to fetch synced lyrics from LRCLIB",
+            // Provider failures come back as "unavailable", so reaching here
+            // means something unexpected (a bug, not an outage).
+            this.logger.error(
+              { error, requestId, guildId: player.guildId, trackTitle: track.info.title },
+              "Lyrics lookup failed unexpectedly",
             );
             // A failed fetch must still settle the state — otherwise the
             // panel is stuck on "Looking for lyrics…" for this track forever
@@ -360,49 +382,72 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
   // "unavailable" result is never cached: it only means a provider couldn't
   // be reached, not that the lyrics don't exist.
   //
-  // Logged at info level (cache hit/miss, live-fetch duration) specifically
-  // so a reported "lyrics took N seconds" can be checked against real
-  // numbers instead of guessed at — this path is otherwise silent.
+  // Every lookup ends in exactly one "Lyrics lookup finished" report (info,
+  // or warn when unavailable) carrying the cache outcome, what each source
+  // did and how long it took, so a reported "lyrics took N seconds" or "no
+  // lyrics" can be checked against real numbers instead of guessed at. The
+  // request ID ties that report to the cache, candidate (debug) and
+  // playback logs for the same lookup. Lyric text and raw provider
+  // responses are deliberately never logged.
   private async resolveSyncedLyrics(
-    trackName: string,
-    artistName: string,
-    durationMs?: number,
+    track: { readonly title: string; readonly author: string; readonly durationMs?: number | undefined },
+    context: LyricsRequestContext,
   ): Promise<LyricsResolution> {
+    const startedAt = Date.now();
+    const { requestId } = context;
     // Normalized the same way the lookup normalizes for searching
     // (stripping "(Official Music Video)"-style suffixes and an
     // "Artist - Title" prefix) — otherwise every differently-titled
     // re-upload of the same song (a common YouTube reality) gets its own
     // cache entry instead of sharing the one already resolved for it.
-    const identity = lyricsCacheIdentity(trackName, artistName);
-    const trackKey = buildLyricsCacheKey(identity.title, identity.artist, durationMs);
+    const identity = lyricsCacheIdentity(track.title, track.author);
+    const trackKey = buildLyricsCacheKey(identity.title, identity.artist, track.durationMs);
+    const report = { requestId, purpose: context.purpose, guildId: context.guildId, trackKey };
+
+    let cache: "hit" | "miss" | "error" | "disabled" = "disabled";
     if (this.lyricsCacheStore) {
-      const cached = await this.lyricsCacheStore.get(trackKey).catch((error: unknown) => {
-        this.logger.warn({ error, trackKey }, "Unable to read the lyrics cache");
-        return undefined;
-      });
+      let cached: Awaited<ReturnType<LyricsCacheStore["get"]>>;
+      try {
+        cached = await this.lyricsCacheStore.get(trackKey);
+        cache = "miss";
+      } catch (error) {
+        this.logger.warn({ error, requestId, trackKey }, "Unable to read the lyrics cache");
+        cache = "error";
+      }
       if (cached !== undefined) {
-        this.logger.info({ trackKey, cacheHit: true, found: cached !== null }, "Lyrics resolved from cache");
-        return cached === null ? { status: "not_found" } : { status: "found", lines: [...cached] };
+        const resolution: LyricsResolution = cached === null
+          ? { status: "not_found" }
+          : { status: "found", lines: [...cached] };
+        this.logger.info(
+          { ...report, cache: "hit", status: resolution.status, lineCount: cached?.length ?? 0, totalMs: Date.now() - startedAt },
+          "Lyrics lookup finished",
+        );
+        return resolution;
       }
     }
 
-    const startedAt = Date.now();
-    const { result } = await lookupSyncedLyrics(trackName, artistName, durationMs);
-    this.logger.info(
+    const { result, attempts } = await lookupSyncedLyrics(track.title, track.author, track.durationMs, {
+      onCandidate: (decision) => this.logger.debug({ requestId, ...decision }, "Lyrics candidate scored"),
+    });
+    this.logger[result.status === "unavailable" ? "warn" : "info"](
       {
-        trackKey,
-        cacheHit: false,
+        ...report,
+        cache,
         status: result.status,
+        source: result.status === "not_found" ? null : result.source,
         lineCount: result.status === "found" ? result.lines.length : 0,
-        fetchMs: Date.now() - startedAt,
+        errorCode: result.status === "unavailable" ? result.errorCode : null,
+        retryable: result.status === "unavailable" ? result.retryable : null,
+        attempts,
+        totalMs: Date.now() - startedAt,
       },
-      "Lyrics resolved from providers",
+      "Lyrics lookup finished",
     );
     if (result.status === "unavailable") return { status: "unavailable", retryable: result.retryable };
     if (this.lyricsCacheStore) {
       const lines = result.status === "found" ? result.lines : null;
       void this.lyricsCacheStore.set(trackKey, lines).catch((error: unknown) => {
-        this.logger.warn({ error, trackKey }, "Unable to write the lyrics cache");
+        this.logger.warn({ error, requestId, trackKey }, "Unable to write the lyrics cache");
       });
     }
     return result.status === "found" ? { status: "found", lines: result.lines } : { status: "not_found" };
@@ -756,7 +801,11 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     for (const candidate of vote.candidates) {
       const identifier = this.autoQueue.identifier(candidate);
       if (vote.lyricsAvailableById.has(identifier)) continue;
-      this.resolveSyncedLyrics(candidate.info.title, candidate.info.author ?? "", candidate.info.duration)
+      const requestId = newLyricsRequestId();
+      this.resolveSyncedLyrics(
+        { title: candidate.info.title, author: candidate.info.author ?? "", durationMs: candidate.info.duration },
+        { requestId, purpose: "vote", guildId },
+      )
         .then((resolution) => {
           if (this.autoQueueVotes.get(guildId) !== vote) return;
           // An outage says nothing either way — leave the option unmarked.
