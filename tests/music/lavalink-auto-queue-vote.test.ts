@@ -361,7 +361,7 @@ describe("autoqueue vote message", () => {
       "🟩🟩🟩🟩🟩⬛⬛⬛ **2**",
       "3️⃣ Three — C",
       "🟦🟦🟦⬛⬛⬛⬛⬛ 1",
-      "-# Closes <t:1700000000:R> · 🎲 3 left",
+      "-# Closes at <t:1700000000:t> · 🎲 3 left",
     ].join("\n"));
   });
 
@@ -370,7 +370,7 @@ describe("autoqueue vote message", () => {
       createAutoQueueVotePayload(profile, voteWith(2, overrides), { ...context, paused, closesAtSeconds })
         .embeds[0]!.toJSON().description!.split("\n").at(-1)!;
 
-    expect(describe({ lastRerolledByUserId: "42", rerollsLeft: 2 })).toBe("-# Closes <t:1:R> · 🎲 <@42> rerolled · 2 left");
+    expect(describe({ lastRerolledByUserId: "42", rerollsLeft: 2 })).toBe("-# Closes at <t:1:t> · 🎲 <@42> rerolled · 2 left");
     expect(describe({}, true, null)).toBe("-# Paused · 🎲 3 left");
     expect(describe({}, false, null)).toBe("-# Open until skip · 🎲 3 left");
   });
@@ -382,7 +382,7 @@ describe("autoqueue vote message", () => {
     const labels = buttonsOf(payload).at(-1)!.map((button) => button.label);
 
     expect(embed.title).toBe(ja.title);
-    expect(embed.description).toContain(ja.closes({ time: "<t:1700000000:R>" }));
+    expect(embed.description).toContain(ja.closes({ time: "<t:1700000000:t>" }));
     expect(embed.description).toContain(ja.rerollsLeft({ count: 3 }));
     expect(labels).toEqual([ja.similar, ja.sameArtist]);
     expect(embed.title).not.toBe("🗳️ Up next");

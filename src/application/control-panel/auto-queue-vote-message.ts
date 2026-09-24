@@ -44,8 +44,8 @@ export function parseAutoQueueVoteCustomId(customId: string): AutoQueueVoteActio
   return match ? { kind: "option", index: Number(match[1]) } : null;
 }
 
-// When voting locks, as a Discord timestamp that counts down on its own, so
-// the message doesn't need editing every second to stay accurate.
+// When voting locks, in epoch seconds for a Discord timestamp, so the
+// message doesn't need editing to stay accurate.
 export function autoQueueVoteClosesAtSeconds(
   vote: ReadyAutoQueueVote,
   paused: boolean,
@@ -62,11 +62,14 @@ function truncate(text: string, maxLength: number): string {
 // Kept to one short line on purpose: the marker, bold and bar colour
 // already say what's up next, so this only carries timing and rerolls.
 function footerLine(vote: ReadyAutoQueueVote, context: AutoQueueVoteRenderContext, text: Texts["music"]["vote"]): string {
+  // A clock time (:t), not a countdown (:R): Discord writes "in 3 minutes"
+  // in each viewer's app language, which clashes with a translated line,
+  // while a clock time is just digits.
   const timing = context.paused
     ? text.paused
     : context.closesAtSeconds === null
       ? text.openUntilSkip
-      : text.closes({ time: `<t:${context.closesAtSeconds}:R>` });
+      : text.closes({ time: `<t:${context.closesAtSeconds}:t>` });
   // Rerolling clears everyone's votes, so say who did it; otherwise it
   // just looks like the votes vanished.
   const rerolls = vote.lastRerolledByUserId

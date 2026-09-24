@@ -125,7 +125,7 @@ export const en = {
   "music.vote.titleLocked": "🔒 Up next",
   "music.vote.paused": "Paused",
   "music.vote.openUntilSkip": "Open until skip",
-  "music.vote.closes": "Closes {time}",
+  "music.vote.closes": "Closes at {time}",
   "music.vote.rerollsLeft": "🎲 {count} left",
   "music.vote.rerolledBy": "🎲 {user} rerolled · {count} left",
   "music.vote.similar": "Similar",
