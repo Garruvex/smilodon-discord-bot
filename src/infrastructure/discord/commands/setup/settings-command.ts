@@ -6,6 +6,7 @@ import type { GuildConfiguration } from "../../../../config/guild-configuration.
 import { RoleMatchMode, publicAccessPolicy } from "../../../../domain/access/access-policy.js";
 import type { GuildAssetStore } from "../../../../application/assets/guild-asset-store.js";
 import type { ControlChannelService } from "../../../../application/control-panel/control-channel-service.js";
+import { SettingsUpdateService, type SettingsChangeListener } from "../../../../application/settings/settings-update-service.js";
 import type { ApplicationEmojiCatalog } from "../../application-emoji-catalog.js";
 import type { AuditLogService } from "../../../../application/audit/audit-log-service.js";
 import type { PersonaDriftStore } from "../../../../application/chat/persona-drift-store.js";
@@ -43,17 +44,18 @@ export function buildDefinitionForGroup(group: SettingGroup): ChatInputCommandMe
 // The slash-command definition, per-subcommand dispatch, and confirmation
 // text are all derived from one settingGroups entry (./settings/index.ts) —
 // to add or remove a /settings-<group> <setting> subcommand, add or remove
-// one file there. What remains here is genuinely cross-cutting:
-// control-panel sync, asset cleanup, audit logging, and the generic
-// field-diff confirmation renderer. One SettingsCommand instance is
+// one file there. Everything after the write (control-panel sync, asset
+// cleanup, audit logging) lives in SettingsUpdateService, shared with the
+// admin panel; what remains here is the generic field-diff confirmation
+// renderer. One SettingsCommand instance is
 // constructed per group (see bootstrap/dependencies.ts), each becoming its
 // own top-level Discord command — subcommand dispatch below is unaffected
 // by which group it belongs to, since getSubcommand(true) already returns
 // just the leaf subcommand name and settingDefinitionsByName is a flat,
 // globally-unique-by-name map across every group.
 export class SettingsCommand implements BotCommand {
-  private controlChannelService: ControlChannelService | null = null;
   private readonly deps: SettingDeps;
+  private readonly updater: SettingsUpdateService;
 
   public readonly definition: ChatInputCommandMetadata;
 
@@ -66,14 +68,15 @@ export class SettingsCommand implements BotCommand {
   public constructor(
     group: SettingGroup,
     private readonly profiles: GuildConfigurationProvider,
-    private readonly assets: GuildAssetStore,
+    assets: GuildAssetStore,
     private readonly applicationEmojiCatalog: ApplicationEmojiCatalog,
-    private readonly auditLogService?: AuditLogService,
+    auditLogService?: AuditLogService,
     personaDriftStore?: PersonaDriftStore,
     channelSummaryCheckpointStore?: ChannelSummaryCheckpointStore,
     channelSummaryProviderAvailable = false,
   ) {
     this.definition = buildDefinitionForGroup(group);
+    this.updater = new SettingsUpdateService(profiles, assets, auditLogService);
     this.deps = { assets, applicationEmojiCatalog, channelSummaryProviderAvailable };
     if (auditLogService) this.deps.auditLogService = auditLogService;
     if (personaDriftStore) this.deps.personaDriftStore = personaDriftStore;
@@ -81,7 +84,13 @@ export class SettingsCommand implements BotCommand {
   }
 
   public bindControlChannelService(service: ControlChannelService): void {
-    this.controlChannelService = service;
+    this.updater.bindControlChannelService(service);
+  }
+
+  // See SettingsChangeListener — used by the admin panel to redraw after a
+  // slash-command change.
+  public addSettingsChangeListener(listener: SettingsChangeListener): void {
+    this.updater.addListener(listener);
   }
 
   // See SettingDeps.chatToolRegistry — called once dependencies.ts has
@@ -114,80 +123,21 @@ export class SettingsCommand implements BotCommand {
       return;
     }
 
-    const updatedProfile = await this.profiles.update(context.interaction.guildId, input);
-    await this.syncControlPanel(context.interaction.guildId, subcommand, input, updatedProfile);
-    if (
-      previousProfile.idleImageAsset &&
-      previousProfile.idleImageAsset !== updatedProfile.idleImageAsset
-    ) {
-      await this.assets.removeIdleImage(previousProfile.idleImageAsset);
-    }
-    if (
-      previousProfile.chat.personalityAsset &&
-      previousProfile.chat.personalityAsset !== updatedProfile.chat.personalityAsset
-    ) {
-      await this.assets.removePersonality(previousProfile.chat.personalityAsset);
-    }
-    if (
-      previousProfile.chat.examplesAsset &&
-      previousProfile.chat.examplesAsset !== updatedProfile.chat.examplesAsset
-    ) {
-      await this.assets.removeExamples(previousProfile.chat.examplesAsset);
-    }
-    if (
-      previousProfile.chat.selfReferenceImageAsset &&
-      previousProfile.chat.selfReferenceImageAsset !== updatedProfile.chat.selfReferenceImageAsset
-    ) {
-      await this.assets.removeSelfReferenceImage(previousProfile.chat.selfReferenceImageAsset);
-    }
-    const description = this.describeUpdate(setting, previousProfile, updatedProfile, input, result.extraLines ?? []);
-    await this.auditLogService?.log(
-      context.interaction.guildId,
-      context.interaction.user.id,
-      `**/${context.interaction.commandName} ${subcommand}**\n${description}`,
-    );
+    const { description } = await this.updater.apply({
+      guildId: context.interaction.guildId,
+      actorUserId: context.interaction.user.id,
+      auditHeading: `**/${context.interaction.commandName} ${subcommand}**`,
+      input,
+      describe: (previous, updated) => this.describeUpdate(setting, previous, updated, input, result.extraLines ?? []),
+    });
     await context.responses.edit(
       input.progressBar
-        ? `${description}\n\nPreview:\n${renderProgressPreview(input.progressBar, this.applicationEmojiCatalog)}`
+        ? `${description}
+
+Preview:
+${renderProgressPreview(input.progressBar, this.applicationEmojiCatalog)}`
         : description,
     );
-  }
-
-  private async syncControlPanel(
-    guildId: string,
-    subcommand: string,
-    input: UpdateGuildConfigurationInput,
-    profile: GuildConfiguration,
-  ): Promise<void> {
-    if (!this.controlChannelService || !profile.features.music || !profile.channels.controlPanel) {
-      return;
-    }
-
-    if (input.controlPanelChannelId) {
-      await this.controlChannelService.ensureGuildPanel(guildId);
-      return;
-    }
-
-    if (input.language !== undefined) {
-      await this.controlChannelService.refreshPanel(guildId, { immediate: true });
-      return;
-    }
-
-    if (
-      subcommand === "panel" &&
-      (
-        input.idleImageUrl !== undefined ||
-        input.idleImageAsset !== undefined ||
-        input.progressBar !== undefined
-      )
-    ) {
-      await this.controlChannelService.refreshPanel(guildId, {
-        forceIdleImage:
-          input.idleImageAsset !== undefined ||
-          (input.idleImageUrl === null && input.idleImageAsset === null),
-        immediate: true,
-      });
-    }
   }
 
   private describeUpdate(

@@ -2,12 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { ChatToolRegistry } from "../../src/application/chat/tools/chat-tool-registry.js";
 import type { ControlChannelService } from "../../src/application/control-panel/control-channel-service.js";
+import { SettingsUpdateService } from "../../src/application/settings/settings-update-service.js";
 import { SettingsCommand } from "../../src/infrastructure/discord/commands/setup/settings-command.js";
 import { formatAuditSummary } from "../../src/infrastructure/discord/commands/setup/settings/audit-setting.js";
 import { resolveGuildEmoji, validateRoleGroupUpdate } from "../../src/infrastructure/discord/commands/setup/settings/settings-support.js";
 import { settingGroups } from "../../src/infrastructure/discord/commands/setup/settings/index.js";
 import type { GuildConfiguration } from "../../src/config/guild-configuration.js";
-import type { GuildConfigurationProvider } from "../../src/config/guild-configuration-provider.js";
+import type { GuildConfigurationProvider, UpdateGuildConfigurationInput } from "../../src/config/guild-configuration-provider.js";
 import type { CommandContext } from "../../src/application/commands/command.js";
 
 // SettingsCommand is now constructed once per group (each becomes its own
@@ -172,6 +173,26 @@ function providerWith(current: GuildConfiguration): GuildConfigurationProvider {
     },
     reload: () => Promise.resolve(),
   };
+}
+
+// Runs one write through SettingsUpdateService (what SettingsCommand uses
+// after a setting's handle()) with a stub control panel attached.
+async function applyWithPanel(input: UpdateGuildConfigurationInput): Promise<{
+  refreshPanel: ReturnType<typeof vi.fn>;
+  ensureGuildPanel: ReturnType<typeof vi.fn>;
+}> {
+  const refreshPanel = vi.fn().mockResolvedValue(undefined);
+  const ensureGuildPanel = vi.fn().mockResolvedValue(undefined);
+  const updater = new SettingsUpdateService(providerWith(profile()), {} as never);
+  updater.bindControlChannelService({ refreshPanel, ensureGuildPanel } as unknown as ControlChannelService);
+  await updater.apply({
+    guildId: profile().guildId,
+    actorUserId: "890123456789012345",
+    auditHeading: "test",
+    input,
+    describe: () => "",
+  });
+  return { refreshPanel, ensureGuildPanel };
 }
 
 describe("SettingsCommand", () => {
@@ -402,29 +423,7 @@ describe("SettingsCommand", () => {
   });
 
   it("refreshes the panel immediately after idle-image settings change", async () => {
-    const command = new SettingsCommand(musicGroup, {} as never, {} as never, applicationEmojiCatalog as never);
-    const refreshPanel = vi.fn().mockResolvedValue(undefined);
-    const ensureGuildPanel = vi.fn().mockResolvedValue(undefined);
-    command.bindControlChannelService({
-      refreshPanel,
-      ensureGuildPanel,
-    } as unknown as ControlChannelService);
-
-    await (
-      command as unknown as {
-        syncControlPanel: (
-          guildId: string,
-          subcommand: string,
-          input: { idleImageAsset?: string },
-          profile: GuildConfiguration,
-        ) => Promise<void>;
-      }
-    ).syncControlPanel(
-      profile().guildId,
-      "panel",
-      { idleImageAsset: "guild-assets/123456789012345678/idle.png" },
-      profile(),
-    );
+    const { refreshPanel, ensureGuildPanel } = await applyWithPanel({ idleImageAsset: "guild-assets/123456789012345678/idle.png" });
 
     expect(refreshPanel).toHaveBeenCalledWith(profile().guildId, {
       forceIdleImage: true,
@@ -434,28 +433,7 @@ describe("SettingsCommand", () => {
   });
 
   it("refreshes the panel immediately after progress settings change", async () => {
-    const command = new SettingsCommand(musicGroup, {} as never, {} as never, applicationEmojiCatalog as never);
-    const refreshPanel = vi.fn().mockResolvedValue(undefined);
-    command.bindControlChannelService({
-      refreshPanel,
-      ensureGuildPanel: vi.fn(),
-    } as unknown as ControlChannelService);
-
-    await (
-      command as unknown as {
-        syncControlPanel: (
-          guildId: string,
-          subcommand: string,
-          input: { progressBar?: GuildConfiguration["panel"]["progressBar"] },
-          profile: GuildConfiguration,
-        ) => Promise<void>;
-      }
-    ).syncControlPanel(
-      profile().guildId,
-      "panel",
-      { progressBar: { style: "yohta", length: 12, customTheme: null } },
-      profile(),
-    );
+    const { refreshPanel } = await applyWithPanel({ progressBar: { style: "yohta", length: 12, customTheme: null } });
 
     expect(refreshPanel).toHaveBeenCalledWith(profile().guildId, {
       forceIdleImage: false,
@@ -495,23 +473,7 @@ describe("SettingsCommand", () => {
     });
 
     it("refreshes the panel immediately so it switches language without waiting for playback", async () => {
-      const command = new SettingsCommand(communityGroup, {} as never, {} as never, applicationEmojiCatalog as never);
-      const refreshPanel = vi.fn().mockResolvedValue(undefined);
-      command.bindControlChannelService({
-        refreshPanel,
-        ensureGuildPanel: vi.fn(),
-      } as unknown as ControlChannelService);
-
-      await (
-        command as unknown as {
-          syncControlPanel: (
-            guildId: string,
-            subcommand: string,
-            input: { language?: "ja" },
-            profile: GuildConfiguration,
-          ) => Promise<void>;
-        }
-      ).syncControlPanel(profile().guildId, "language", { language: "ja" }, profile());
+      const { refreshPanel } = await applyWithPanel({ language: "ja" });
 
       expect(refreshPanel).toHaveBeenCalledWith(profile().guildId, { immediate: true });
     });
