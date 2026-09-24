@@ -277,4 +277,6 @@ export const zhTWCommandDescriptions = {
   "e621:query": "要搜尋的標籤（例如 wolf、dragon、solo）。留空則隨機取得一篇。", // Tags to search for (e.g. wolf, dragon, solo). Leave empty for a random post.
   "e621:type": "檔案類型。", // File type.
   "e621:order": "排序方式。", // Sort order.
+  "settings-community/language": "設定機器人在此伺服器的面板、公告與回覆所使用的語言。", // Sets the language the bot uses for this server's panels, announcements, and replies.
+  "settings-community/language:language": "要使用的語言。", // The language to use.
 } as const satisfies CommandDescriptionCatalog<keyof typeof jaCommandDescriptions>;

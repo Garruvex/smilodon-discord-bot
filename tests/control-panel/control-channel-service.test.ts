@@ -61,6 +61,7 @@ function guildConfiguration(chatbotEnabled: boolean): GuildConfiguration {
       linkFix: new Set(),
     },
     timezone: "UTC",
+    language: "en",
     linkFixPlatforms: {
       twitter: true, threads: true, tiktok: true, instagram: true, reddit: true, bilibili: true,
     },
@@ -2199,5 +2200,136 @@ describe("ControlChannelService", () => {
       const editOptions = { ...baseEditOptions(), attachments: [] as const };
       expect(matches(service, message, editOptions)).toBe(false);
     });
+  });
+});
+
+// The panel is one message everyone in the server sees, so it follows the
+// guild's language setting (not any viewer's Discord locale).
+describe("ControlChannelService panel language", () => {
+  type EmbedJson = { title?: string; description?: string; footer?: { text: string } };
+  type PanelPrivates = {
+    createQueueEmbed: (profile: GuildConfiguration, snapshot: unknown) => { toJSON: () => EmbedJson };
+    createNowPlayingEmbed: (profile: GuildConfiguration, snapshot: unknown) => { toJSON: () => EmbedJson };
+    createLyricsEmbed: (profile: GuildConfiguration, snapshot: unknown) => { toJSON: () => EmbedJson };
+    createNowPlayingPayload: (profile: GuildConfiguration, snapshot: unknown) => { content: string };
+    createQueueControlsPayload: (
+      profile: GuildConfiguration,
+      snapshot: unknown,
+    ) => { components: { toJSON: () => { components: { label?: string }[] } }[] };
+  };
+
+  const track = {
+    identifier: "x",
+    title: "Rice Field",
+    author: "Jay Chou",
+    uri: "https://example.com/rice-field",
+    artworkUrl: null,
+    durationMs: 224_000,
+    positionMs: 10_000,
+    isStream: false,
+    requestedByUserId: "345678901234567890",
+  };
+  const playingSnapshot = {
+    paused: false,
+    volume: 75,
+    queueLength: 0,
+    repeatMode: "off",
+    autoQueue: false,
+    twentyFourSeven: false,
+    lyricsEnabled: false,
+    currentLyricLine: null,
+    upcomingLyricLines: [] as string[],
+    currentTrack: track,
+  };
+  const idleSnapshot = { ...playingSnapshot, currentTrack: null };
+
+  function inLanguage(language: "zh-TW" | "ja"): { service: PanelPrivates; profile: GuildConfiguration } {
+    const { service } = createService(false);
+    return {
+      service: service as unknown as PanelPrivates,
+      profile: { ...guildConfiguration(false), language },
+    };
+  }
+
+  it("renders the queue embed in Japanese, including the footer, repeat mode and overflow line", () => {
+    const { service, profile } = inLanguage("ja");
+    const tracks = Array.from({ length: 8 }, (_, index) => ({ ...track, title: `Track ${index + 1}` }));
+    Object.assign(service, { playerGateway: { getQueue: vi.fn(() => tracks) } });
+
+    const embed = service.createQueueEmbed(profile, {
+      ...playingSnapshot,
+      queueLength: tracks.length,
+      repeatMode: "queue",
+    }).toJSON();
+
+    expect(embed.title).toBe("キュー");
+    expect(embed.description).toContain("キュー内 8 曲");
+    expect(embed.description).toContain("ほか 3 曲。残りは `/queue show` で確認できます");
+    expect(embed.footer?.text).toContain("待機中 8 曲");
+    expect(embed.footer?.text).toContain("リピート：キュー全体");
+    expect(embed.description).not.toContain("in queue");
+  });
+
+  it("renders the Now Playing embed and requester line in Traditional Chinese", () => {
+    const { service, profile } = inLanguage("zh-TW");
+
+    const playing = service.createNowPlayingEmbed(profile, playingSnapshot).toJSON();
+    const paused = service.createNowPlayingEmbed(profile, { ...playingSnapshot, paused: true }).toJSON();
+    const idle = service.createNowPlayingEmbed(profile, idleSnapshot).toJSON();
+
+    expect(playing.title).toContain("正在播放");
+    expect(playing.description).toContain("點歌者：<@345678901234567890>");
+    expect(paused.title).toContain("播放已暫停");
+    expect(idle.title).toContain("目前沒有播放歌曲");
+    expect(idle.description).toBe("播放器已準備好接受新的點歌。");
+  });
+
+  it("labels an autoqueued track's requester in the guild language", () => {
+    const { service, profile } = inLanguage("ja");
+    const autoqueued = { ...track, requestedByUserId: "autoqueue" };
+
+    const embed = service.createNowPlayingEmbed(profile, {
+      ...playingSnapshot,
+      currentTrack: autoqueued,
+    }).toJSON();
+
+    expect(embed.description).toContain(`リクエスト：<@${botUserId}>（オートキュー）`);
+  });
+
+  it("renders the lyrics embed and the request hint in the guild language", () => {
+    const { service, profile } = inLanguage("ja");
+
+    const lyrics = service.createLyricsEmbed(profile, { ...playingSnapshot, lyricsUnavailable: true }).toJSON();
+    const searching = service.createLyricsEmbed(profile, playingSnapshot).toJSON();
+    const idle = service.createLyricsEmbed(profile, idleSnapshot).toJSON();
+    const hint = service.createNowPlayingPayload(profile, idleSnapshot).content;
+
+    expect(lyrics.description).toBe("この曲の歌詞は見つかりませんでした。");
+    expect(searching.description).toBe("歌詞を探しています…");
+    expect(idle.description).toBe("現在再生中の曲はありません。");
+    expect(hint).toContain("ボイスチャンネルに参加してください。");
+    expect(hint).toContain("オートキュー：");
+    expect(hint).not.toContain("Join a voice channel");
+  });
+
+  it("labels the panel's text buttons in the guild language", () => {
+    const { service, profile } = inLanguage("zh-TW");
+
+    const rows = service.createQueueControlsPayload(profile, playingSnapshot).components;
+    const labels = rows.flatMap((row) => row.toJSON().components.map((button) => button.label));
+
+    expect(labels).toContain("自動佇列");
+    expect(labels).toContain("歌詞");
+    expect(labels).toContain("24/7");
+    expect(labels).not.toContain("Autoqueue");
+  });
+
+  it("keeps English when the guild language is English", () => {
+    const { service } = createService(false);
+    const embed = (service as unknown as PanelPrivates)
+      .createNowPlayingEmbed(guildConfiguration(false), idleSnapshot)
+      .toJSON();
+
+    expect(embed.title).toContain("No song currently playing");
   });
 });

@@ -168,6 +168,11 @@ export class SettingsCommand implements BotCommand {
       return;
     }
 
+    if (input.language !== undefined) {
+      await this.controlChannelService.refreshPanel(guildId, { immediate: true });
+      return;
+    }
+
     if (
       subcommand === "panel" &&
       (

@@ -28,12 +28,12 @@ export function truncateTrackTitle(title: string): string {
 // Compact form — one entry per line in a queue list, so a full mention
 // phrase per track ("Requested by @x") would eat into the available space
 // fast. Just the mention is enough context there.
-export function formatQueueTrackRequester(requestedByUserId: string): string {
-  return requestedByUserId === "autoqueue" ? " — Autoqueue" : ` — <@${requestedByUserId}>`;
+export function formatQueueTrackRequester(requestedByUserId: string, autoqueueLabel = "Autoqueue"): string {
+  return requestedByUserId === "autoqueue" ? ` — ${autoqueueLabel}` : ` — <@${requestedByUserId}>`;
 }
 
-export function formatQueueTrackLine(track: MusicTrack, position: number): string {
+export function formatQueueTrackLine(track: MusicTrack, position: number, autoqueueLabel = "Autoqueue"): string {
   const label = truncateTrackTitle(track.title);
   const titleText = track.uri ? `[${label}](${track.uri})` : label;
-  return `${position}. ${titleText}${formatQueueTrackRequester(track.requestedByUserId)}`;
+  return `${position}. ${titleText}${formatQueueTrackRequester(track.requestedByUserId, autoqueueLabel)}`;
 }

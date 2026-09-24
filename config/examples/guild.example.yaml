@@ -76,6 +76,11 @@ channels:
 # Defaults to UTC. Configure with /settings community timezone.
 timezone: "UTC"
 
+# Language the bot uses for everything it posts in this guild (music panel,
+# announcements, votes, replies): "en", "zh-TW" or "ja". Defaults to "en".
+# Configure with /settings community language.
+language: "en"
+
 # Per-service toggles underneath features.linkFix — turn off individual link-fix
 # services without disabling the whole feature. Configure with /settings community
 # link-fix (twitter/threads/tiktok/instagram/reddit/bilibili options).

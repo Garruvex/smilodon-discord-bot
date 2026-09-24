@@ -59,6 +59,7 @@ function profile(overrides: { reactionReplies?: boolean; chatbot?: boolean } = {
       birthdayAnnouncements: null, joinAnnouncements: null, leaveAnnouncements: null, linkFix: new Set(),
     },
     timezone: "UTC",
+    language: "en",
     linkFixPlatforms: { twitter: true, threads: true, tiktok: true, instagram: true, reddit: true, bilibili: true },
     music: {
       defaultVolume: 75, maximumVolume: 150, volumeButtonStep: 10,

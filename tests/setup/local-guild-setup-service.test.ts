@@ -45,6 +45,7 @@ function profile(): GuildConfiguration {
       linkFix: new Set(),
     },
     timezone: "UTC",
+    language: "en",
     linkFixPlatforms: {
       twitter: true, threads: true, tiktok: true, instagram: true, reddit: true, bilibili: true,
     },

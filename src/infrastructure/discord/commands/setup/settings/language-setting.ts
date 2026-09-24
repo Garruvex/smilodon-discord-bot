@@ -1,0 +1,26 @@
+import { isLanguage, languageDisplayNames, languages } from "../../../../../application/i18n/language.js";
+import type { MutationSettingDefinition } from "./setting-definition.js";
+
+export const languageSetting: MutationSettingDefinition = {
+  kind: "mutation",
+  name: "language",
+  description: "Sets the language the bot uses for this server's panels, announcements, and replies.",
+  configureOptions: () => [
+    {
+      type: "string",
+      name: "language",
+      description: "The language to use.",
+      required: true,
+      choices: languages.map((language) => ({ name: languageDisplayNames[language], value: language })),
+    },
+  ],
+  handle: (context, _deps, _previousProfile, input) => {
+    const language = context.interaction.options.getString("language", true);
+    if (!isLanguage(language)) {
+      return Promise.resolve({ ok: false, message: `"${language}" isn't a supported language.` });
+    }
+    input.language = language;
+    return Promise.resolve({ ok: true });
+  },
+  fieldChanges: [{ label: "Language", read: (p) => languageDisplayNames[p.language] }],
+};

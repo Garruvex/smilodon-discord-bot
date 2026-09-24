@@ -1,3 +1,5 @@
+import type { Language } from "../application/i18n/language.js";
+
 export type GuildFeatureName = "common" | "diagnostics" | "music" | "chatbot" | "birthdays" | "reminders" | "nsfw" | "linkFix";
 export type RoleGroupName = "botAdministrator" | "musicController" | "chatbot";
 
@@ -204,6 +206,9 @@ export interface GuildConfiguration {
   // computed in — used by BirthdayAnnouncer so a UTC day boundary doesn't
   // shift a guild's birthdays to the wrong calendar day for its members.
   timezone: string;
+  // Language for everything the bot posts in this guild — the music panel,
+  // announcements, votes, command replies. See application/i18n.
+  language: Language;
   linkFixPlatforms: GuildLinkFixPlatformConfiguration;
   music: GuildMusicConfiguration;
   chat: GuildChatConfiguration;

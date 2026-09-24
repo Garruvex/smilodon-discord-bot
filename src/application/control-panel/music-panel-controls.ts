@@ -5,6 +5,7 @@ import {
 } from "discord.js";
 
 import type { GuildConfiguration } from "../../config/guild-configuration.js";
+import { translate } from "../i18n/translate.js";
 import { MusicPlayerNotFoundError } from "../music/music-errors.js";
 import type { MusicPlayerGateway, MusicPlayerSnapshot } from "../music/music-player-gateway.js";
 import type { PlaybackActor, PlaybackService } from "../music/playback-service.js";
@@ -138,8 +139,8 @@ const musicPanelControls: readonly MusicPanelControl[] = [
   {
     id: "autoqueue",
     row: "tertiary",
-    render: ({ snapshot, hasActiveTrack }) => controlButton("autoqueue")
-      .setLabel("Autoqueue")
+    render: ({ snapshot, profile, hasActiveTrack }) => controlButton("autoqueue")
+      .setLabel(translate(profile.language, "music.autoqueue"))
       .setEmoji("♾️")
       .setStyle(snapshot?.autoQueue ? ButtonStyle.Success : ButtonStyle.Secondary)
       .setDisabled(!hasActiveTrack),
@@ -166,8 +167,8 @@ const musicPanelControls: readonly MusicPanelControl[] = [
   {
     id: "lyrics",
     row: "tertiary",
-    render: ({ snapshot }) => controlButton("lyrics")
-      .setLabel("Lyrics")
+    render: ({ snapshot, profile }) => controlButton("lyrics")
+      .setLabel(translate(profile.language, "music.lyrics"))
       .setEmoji("🎤")
       .setStyle(snapshot?.lyricsEnabled === true ? ButtonStyle.Success : ButtonStyle.Secondary)
       .setDisabled(!snapshot),

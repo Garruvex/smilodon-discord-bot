@@ -276,4 +276,6 @@ export const jaCommandDescriptions = {
   "e621:query": "検索するタグ（例：wolf, dragon, solo）。空欄ならランダムな投稿を取得します。", // Tags to search for (e.g. wolf, dragon, solo). Leave empty for a random post.
   "e621:type": "ファイルの種類。", // File type.
   "e621:order": "並び順。", // Sort order.
+  "settings-community/language": "このサーバーのパネル・告知・返信でボットが使う言語を設定します。", // Sets the language the bot uses for this server's panels, announcements, and replies.
+  "settings-community/language:language": "使用する言語。", // The language to use.
 } as const satisfies CommandDescriptionCatalog;

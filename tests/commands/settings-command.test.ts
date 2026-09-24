@@ -16,6 +16,7 @@ import type { CommandContext } from "../../src/application/commands/command.js";
 // real group that setting actually lives in.
 const chatGroup = settingGroups.find((group) => group.name === "chat")!;
 const musicGroup = settingGroups.find((group) => group.name === "music")!;
+const communityGroup = settingGroups.find((group) => group.name === "community")!;
 
 const applicationEmojiCatalog = {
   getYohtaTheme: (): null => null,
@@ -64,6 +65,7 @@ function profile(): GuildConfiguration {
       linkFix: new Set(),
     },
     timezone: "UTC",
+    language: "en",
     linkFixPlatforms: {
       twitter: true, threads: true, tiktok: true, instagram: true, reddit: true, bilibili: true,
     },
@@ -149,6 +151,7 @@ function providerWith(current: GuildConfiguration): GuildConfigurationProvider {
     update: (_guildId: string, input): Promise<GuildConfiguration> => {
       stored = {
         ...stored,
+        ...(input.language !== undefined ? { language: input.language } : {}),
         music: { ...stored.music, ...(input.defaultVolume !== undefined ? { defaultVolume: input.defaultVolume } : {}) },
         chat: {
           ...stored.chat,
@@ -457,6 +460,60 @@ describe("SettingsCommand", () => {
     expect(refreshPanel).toHaveBeenCalledWith(profile().guildId, {
       forceIdleImage: false,
       immediate: true,
+    });
+  });
+
+  describe("language", () => {
+    it("switches the guild language and confirms it by its display name", async () => {
+      const command = new SettingsCommand(communityGroup, providerWith(profile()), {} as never, applicationEmojiCatalog as never);
+      const { context, edited } = fakeContext("language", { language: "ja" });
+
+      await command.execute(context);
+
+      expect(edited.text).toContain("Language: English → 日本語");
+    });
+
+    it("rejects a language the bot doesn't support, without saving anything", async () => {
+      const provider = providerWith(profile());
+      const update = vi.spyOn(provider, "update");
+      const command = new SettingsCommand(communityGroup, provider, {} as never, applicationEmojiCatalog as never);
+      const { context, edited } = fakeContext("language", { language: "fr" });
+
+      await command.execute(context);
+
+      expect(edited.text).toContain("isn't a supported language");
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it("offers exactly the supported languages as choices", () => {
+      const setting = communityGroup.settings.find((candidate) => candidate.name === "language")!;
+      const option = setting.configureOptions?.().find((candidate) => candidate.name === "language");
+
+      expect(option).toMatchObject({ type: "string", required: true });
+      const choices = option?.type === "string" ? (option.choices ?? []) : [];
+      expect(choices.map((choice) => choice.value)).toEqual(["en", "zh-TW", "ja"]);
+    });
+
+    it("refreshes the panel immediately so it switches language without waiting for playback", async () => {
+      const command = new SettingsCommand(communityGroup, {} as never, {} as never, applicationEmojiCatalog as never);
+      const refreshPanel = vi.fn().mockResolvedValue(undefined);
+      command.bindControlChannelService({
+        refreshPanel,
+        ensureGuildPanel: vi.fn(),
+      } as unknown as ControlChannelService);
+
+      await (
+        command as unknown as {
+          syncControlPanel: (
+            guildId: string,
+            subcommand: string,
+            input: { language?: "ja" },
+            profile: GuildConfiguration,
+          ) => Promise<void>;
+        }
+      ).syncControlPanel(profile().guildId, "language", { language: "ja" }, profile());
+
+      expect(refreshPanel).toHaveBeenCalledWith(profile().guildId, { immediate: true });
     });
   });
 });

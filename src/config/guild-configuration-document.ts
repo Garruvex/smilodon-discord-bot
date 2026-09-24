@@ -1,3 +1,4 @@
+import type { Language } from "../application/i18n/language.js";
 import type { GuildConfiguration, LinkFixPlatform, ProgressBarSettings } from "./guild-configuration.js";
 import {
   guildConfigurationFileSchema,
@@ -60,6 +61,7 @@ export interface UpdateGuildConfigurationInput {
   nsfwEnabled?: boolean;
   retainMemberDataOnLeave?: boolean;
   timezone?: string;
+  language?: Language;
   linkFixEnabled?: boolean;
   linkFixChannelIds?: readonly string[];
   // Per-service toggle underneath features.linkFix — a platform false here
@@ -158,6 +160,7 @@ export function toGuildConfiguration(parsed: ParsedGuildConfigurationFile, sourc
       leaveAnnouncements: parsed.channels.leaveAnnouncements,
     },
     timezone: parsed.timezone,
+    language: parsed.language,
     linkFixPlatforms: parsed.linkFixPlatforms,
     music: {
       defaultVolume: parsed.music.volume.default,
@@ -208,6 +211,7 @@ export function toGuildConfigurationDocument(configuration: GuildConfiguration):
       leaveAnnouncements: configuration.channels.leaveAnnouncements,
     },
     timezone: configuration.timezone,
+    language: configuration.language,
     linkFixPlatforms: configuration.linkFixPlatforms,
     music: {
       volume: {
@@ -300,6 +304,7 @@ export function applyGuildConfigurationUpdate(
   if (input.nsfwEnabled !== undefined) next.features.nsfw = input.nsfwEnabled;
   if (input.retainMemberDataOnLeave !== undefined) next.features.retainMemberDataOnLeave = input.retainMemberDataOnLeave;
   if (input.timezone !== undefined) next.timezone = input.timezone;
+  if (input.language !== undefined) next.language = input.language;
   if (input.linkFixEnabled !== undefined) next.features.linkFix = input.linkFixEnabled;
   if (input.linkFixChannelIds !== undefined) next.channels.linkFix = [...input.linkFixChannelIds];
   if (input.linkFixPlatformOverrides !== undefined) {
