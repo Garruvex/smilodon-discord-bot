@@ -1,3 +1,4 @@
+import { defaultLanguage } from "../application/i18n/language.js";
 import { catalogIssues } from "../application/i18n/texts.js";
 import type { Logger } from "pino";
 
@@ -514,6 +515,9 @@ export function createDependencies(
     commandRegistry,
     accessPolicyService,
     logger.child({ component: "commands" }),
+    // Read per interaction, so a /settings language change applies to the
+    // very next command.
+    (guildId) => (guildId ? guildConfigurationProvider.find(guildId)?.language : undefined) ?? defaultLanguage,
   );
   const componentDispatcher = new ComponentDispatcher(
     componentRegistry,

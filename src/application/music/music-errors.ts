@@ -1,3 +1,7 @@
+import type { Texts } from "../i18n/texts.js";
+
+// `message` is English and stays that way: logs and the chat model read it.
+// Wherever one of these reaches a user, render it with musicErrorText.
 export class MusicError extends Error {
   public constructor(message: string) {
     super(message);
@@ -36,7 +40,7 @@ export class MusicChannelAccessError extends MusicError {
 }
 
 export class MusicRateLimitError extends MusicError {
-  public constructor(remainingSeconds: number) {
+  public constructor(public readonly remainingSeconds: number) {
     super(
       `You're sending requests too quickly. Try again in ${remainingSeconds} second${remainingSeconds === 1 ? "" : "s"}.`,
     );
@@ -69,4 +73,21 @@ export class MusicAutoQueueRerollLimitError extends MusicError {
   public constructor(limit: number) {
     super(`This vote has already been rerolled ${limit} times.`);
   }
+}
+
+// The user-facing text for a music failure, in the server's language. A
+// MusicError subclass without its own message here falls back to its
+// English `message`.
+export function musicErrorText(error: MusicError, text: Texts): string {
+  const errors = text.music.error;
+  if (error instanceof MusicPlayerNotFoundError) return errors.playerNotFound;
+  if (error instanceof MusicSearchEmptyError) return errors.searchEmpty;
+  if (error instanceof MusicVoiceChannelRequiredError) return errors.voiceRequired;
+  if (error instanceof MusicVoiceChannelMismatchError) return errors.voiceMismatch;
+  if (error instanceof MusicChannelAccessError) return errors.channelAccess;
+  if (error instanceof MusicRateLimitError) {
+    const seconds = error.remainingSeconds;
+    return seconds === 1 ? errors.rateLimitOne({ seconds }) : errors.rateLimitMany({ seconds });
+  }
+  return error.message;
 }

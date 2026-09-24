@@ -34,7 +34,7 @@ export class SkipCommand implements BotCommand {
   public async execute(context: CommandContext): Promise<void> {
     if (!context.interaction.inCachedGuild()) return;
     await this.playbackService.skip(createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck, context.access.allowQueueWithoutVoiceChannel));
-    await context.responses.reply("Skipped the current track.");
+    await context.responses.reply(context.text.music.reply.skipped);
   }
 
   private async executeAsTool(ctx: ChatToolContext): Promise<ChatToolResult> {

@@ -1,5 +1,6 @@
 import { EmbedBuilder } from "discord.js";
 
+import { texts, type Texts } from "../../../application/i18n/texts.js";
 import type { EnqueueResult } from "../../../domain/music/music-track.js";
 
 export const queuedTrackCardLifetimeMs = 30_000;
@@ -8,38 +9,40 @@ export const failedMusicRequestLifetimeMs = 15_000;
 export function createQueuedTrackCard(
   result: EnqueueResult,
   embedColor?: `#${string}`,
+  text: Texts = texts.en,
 ): EmbedBuilder {
+  const card = text.music.card;
   const track = result.firstTrack;
   const title = track.uri ? `[${track.title}](${track.uri})` : track.title;
   const embed = new EmbedBuilder()
     .setTitle(
       result.addedTrackCount > 1
-        ? "Playlist added"
+        ? card.playlistAdded
         : result.startedPlayback
-          ? "Now playing"
-          : "Added to queue",
+          ? card.nowPlaying
+          : card.addedToQueue,
     )
     .setDescription(title)
     .addFields(
-      { name: "Artist", value: track.author || "Unknown artist", inline: true },
+      { name: card.artist, value: track.author || card.unknownArtist, inline: true },
       {
-        name: "Duration",
+        name: card.duration,
         value: track.isStream ? "`LIVE 🔴`" : `\`${formatDuration(track.durationMs)}\``,
         inline: true,
       },
-      { name: "Requested by", value: `<@${track.requestedByUserId}>`, inline: true },
+      { name: card.requestedBy, value: `<@${track.requestedByUserId}>`, inline: true },
     );
 
   if (result.addedTrackCount > 1) {
     embed.addFields({
-      name: "Tracks added",
+      name: card.tracksAdded,
       value: String(result.addedTrackCount),
       inline: true,
     });
   }
   if (result.queuePosition !== null) {
     embed.addFields({
-      name: "Position in queue",
+      name: card.positionInQueue,
       value: String(result.queuePosition),
       inline: true,
     });

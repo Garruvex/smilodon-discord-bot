@@ -2,6 +2,7 @@ import { PermissionsBitField } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
 
 import type { CommandContext } from "../../src/application/commands/command.js";
+import { texts } from "../../src/application/i18n/texts.js";
 import type { PlaybackService } from "../../src/application/music/playback-service.js";
 import { RoleMatchMode } from "../../src/domain/access/access-policy.js";
 import { PlayCommand } from "../../src/infrastructure/discord/commands/music/play-command.js";
@@ -31,6 +32,7 @@ function buildContext(memberPermissionBits: bigint): {
       },
     },
     responses: { reply, defer, edit: vi.fn(), deleteAfter: vi.fn() },
+    text: texts.en,
     access: { bypassVoiceChannelCheck: false },
   } as unknown as CommandContext;
   return { context, reply, defer };

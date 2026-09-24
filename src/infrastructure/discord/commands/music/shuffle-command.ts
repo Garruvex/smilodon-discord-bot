@@ -34,7 +34,7 @@ export class ShuffleCommand implements BotCommand {
   public async execute(context: CommandContext): Promise<void> {
     if (!context.interaction.inCachedGuild()) return;
     await this.playbackService.shuffle(createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck, context.access.allowQueueWithoutVoiceChannel));
-    await context.responses.reply("The queue was shuffled.");
+    await context.responses.reply(context.text.music.reply.shuffled);
   }
 
   private async executeAsTool(ctx: ChatToolContext): Promise<ChatToolResult> {

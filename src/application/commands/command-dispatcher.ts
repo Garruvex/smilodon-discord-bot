@@ -2,8 +2,10 @@ import type { ChatInputCommandInteraction, MessageContextMenuCommandInteraction 
 import type { Logger } from "pino";
 
 import type { AccessPolicyService } from "../access/access-policy-service.js";
+import { defaultLanguage, type Language } from "../i18n/language.js";
+import { texts } from "../i18n/texts.js";
 import type { CommandRegistry } from "./command-registry.js";
-import { MusicError } from "../music/music-errors.js";
+import { musicErrorText, MusicError } from "../music/music-errors.js";
 import { GuildAssetError } from "../assets/guild-asset-store.js";
 import { CommandResponseVisibility } from "./command.js";
 import { CommandResponses } from "./command-responses.js";
@@ -14,6 +16,9 @@ export class CommandDispatcher {
     private readonly registry: CommandRegistry,
     private readonly accessPolicyService: AccessPolicyService,
     private readonly logger: Logger,
+    // The server's configured language. Defaults to English when not wired
+    // up (tests) or when there's no server (DMs).
+    private readonly languageFor: (guildId: string | null) => Language = () => defaultLanguage,
   ) {}
 
   public async dispatch(
@@ -23,13 +28,11 @@ export class CommandDispatcher {
       ? "messageContextMenu"
       : "chatInput";
     const command = this.registry.find(interaction.commandName, commandType);
+    const text = texts[this.languageFor(interaction.guildId)];
 
     if (!command) {
       const responses = new CommandResponses(interaction, CommandResponseVisibility.Ephemeral);
-      await responses.error(
-        "This command is not available. It may have been removed or replaced.",
-        "Command unavailable",
-      );
+      await responses.error(text.command.unavailable, text.command.unavailableTitle);
       return;
     }
 
@@ -56,10 +59,7 @@ export class CommandDispatcher {
         "Command access denied",
       );
 
-      await responses.error(
-        "You are not allowed to use this command here.",
-        "Permission denied",
-      );
+      await responses.error(text.command.denied, text.command.deniedTitle);
       return;
     }
 
@@ -74,6 +74,7 @@ export class CommandDispatcher {
         interaction,
         logger: commandLogger,
         responses,
+        text,
         access: {
           bypassVoiceChannelCheck: accessDecision.bypassVoiceChannelCheck,
           allowQueueWithoutVoiceChannel: accessDecision.allowQueueWithoutVoiceChannel,
@@ -85,10 +86,12 @@ export class CommandDispatcher {
       const userFacingError = error instanceof MusicError || error instanceof GuildAssetError;
 
       await responses.error(
-        userFacingError
-          ? error.message
-          : "The command could not be completed. The error has been logged.",
-        error instanceof MusicError ? "Music command unavailable" : "Command error",
+        error instanceof MusicError
+          ? musicErrorText(error, text)
+          : userFacingError
+            ? error.message
+            : text.command.failed,
+        error instanceof MusicError ? text.command.musicErrorTitle : text.command.errorTitle,
       );
     }
   }

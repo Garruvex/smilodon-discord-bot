@@ -57,6 +57,76 @@ export const en = {
   "music.panel.queue.footerCount": "{count} queued",
   "music.panel.queue.footerLoop": "Loop {mode}",
   "music.panel.queue.autoqueueIssue": "⚠️ Autoqueue found nothing to add",
+
+  // Music failures — MusicError subclasses (see musicErrorText) and
+  // command-level checks.
+  "music.error.playerNotFound": "There is no active music player in this server.",
+  "music.error.searchEmpty": "No playable tracks were found for that query.",
+  "music.error.voiceRequired": "You're not in a voice channel! Join one, then try this command again.",
+  "music.error.voiceMismatch": "You must be in the same voice channel as the bot.",
+  "music.error.channelAccess": "I don't have permission to join that voice channel — I need View Channel, Connect, and Speak there.",
+  "music.error.rateLimitOne": "You're sending requests too quickly. Try again in {seconds} second.",
+  "music.error.rateLimitMany": "You're sending requests too quickly. Try again in {seconds} seconds.",
+  "music.error.guildOnly": "Music commands are only available in a server.",
+  "music.error.noVoiceAccess": "You don't have access to that voice channel.",
+  "music.error.nothingPlaying": "Nothing is playing right now.",
+  "music.error.dmFailed": "Couldn't DM you — check that your DMs are open for this server.",
+  "music.error.seekParse": "Couldn't parse that time. Try `90`, `1:30`, or `1h2m3s`.",
+
+  // Music command replies.
+  "music.reply.autoqueueEnabled": "Autoqueue enabled.",
+  "music.reply.autoqueueDisabled": "Autoqueue disabled.",
+  "music.reply.twentyFourSevenEnabled": "24/7 mode enabled.",
+  "music.reply.twentyFourSevenDisabled": "24/7 mode disabled.",
+  "music.reply.filtersCleared": "Filters cleared.",
+  "music.reply.filterApplied": "Applied the **{filter}** filter.",
+  "music.reply.repeatSet": "Repeat mode set to **{mode}**.",
+  "music.reply.moved": "Moved **{title}** to position **{position}**.",
+  "music.reply.paused": "Playback paused.",
+  "music.reply.resumed": "Playback resumed.",
+  "music.reply.stopped": "Playback stopped and the voice connection was closed.",
+  "music.reply.previous": "Playing the previous track.",
+  "music.reply.skipped": "Skipped the current track.",
+  "music.reply.skippedTo": "Skipped to **{title}** — {author}.",
+  "music.reply.shuffled": "The queue was shuffled.",
+  "music.reply.replaying": "Replaying **{title}** — {author}.",
+  "music.reply.removed": "Removed **{title}** from the queue.",
+  "music.reply.clearedOne": "Cleared {count} queued track.",
+  "music.reply.clearedMany": "Cleared {count} queued tracks.",
+  "music.reply.saveSent": "Sent you a DM with the current track.",
+  "music.reply.seeked": "Seeked to **{time}** in **{title}**.",
+  "music.reply.volumeSet": "Volume set to **{level}%**.",
+
+  // /queue history.
+  "music.history.title": "Recently played",
+  "music.history.empty": "Nothing has played in this server yet.",
+
+  // /queue show — the paginated view (the panel's own queue is music.panel.queue.*).
+  "music.queue.title": "Music queue",
+  "music.queue.empty": "There are no upcoming tracks.",
+  "music.queue.footer": "Page {page}/{pages}  •  {count} in queue  •  total {duration}",
+  "music.queue.previousPage": "◀ Prev",
+  "music.queue.nextPage": "Next ▶",
+
+  // The card shown after a track is queued.
+  "music.card.playlistAdded": "Playlist added",
+  "music.card.nowPlaying": "Now playing",
+  "music.card.addedToQueue": "Added to queue",
+  "music.card.artist": "Artist",
+  "music.card.unknownArtist": "Unknown artist",
+  "music.card.duration": "Duration",
+  "music.card.requestedBy": "Requested by",
+  "music.card.tracksAdded": "Tracks added",
+  "music.card.positionInQueue": "Position in queue",
+
+  // Failures shown by the command dispatcher, for any command.
+  "command.unavailable": "This command is not available. It may have been removed or replaced.",
+  "command.unavailableTitle": "Command unavailable",
+  "command.denied": "You are not allowed to use this command here.",
+  "command.deniedTitle": "Permission denied",
+  "command.failed": "The command could not be completed. The error has been logged.",
+  "command.errorTitle": "Command error",
+  "command.musicErrorTitle": "Music command unavailable",
 } as const satisfies Record<string, string>;
 
 export type MessageKey = keyof typeof en;

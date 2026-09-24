@@ -68,7 +68,7 @@ export class PlayCommand implements BotCommand {
 
   public async execute(context: CommandContext): Promise<void> {
     if (!context.interaction.inCachedGuild()) {
-      await context.responses.reply("Music commands are only available in a server.");
+      await context.responses.reply(context.text.music.error.guildOnly);
       return;
     }
 
@@ -80,7 +80,7 @@ export class PlayCommand implements BotCommand {
       // couldn't get in there themselves.
       const memberPermissions = context.interaction.member.permissionsIn(targetChannelId);
       if (!memberPermissions.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect])) {
-        await context.responses.reply("You don't have access to that voice channel.");
+        await context.responses.reply(context.text.music.error.noVoiceAccess);
         return;
       }
     }
@@ -99,7 +99,7 @@ export class PlayCommand implements BotCommand {
     );
 
     await context.responses.edit({
-      embeds: [createQueuedTrackCard(result, profile.embedColor as `#${string}`)],
+      embeds: [createQueuedTrackCard(result, profile.embedColor as `#${string}`, context.text)],
     });
     context.responses.deleteAfter(queuedTrackCardLifetimeMs);
   }

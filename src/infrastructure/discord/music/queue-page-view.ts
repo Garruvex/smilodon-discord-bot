@@ -1,5 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "discord.js";
 
+import { texts, type Texts } from "../../../application/i18n/texts.js";
 import {
   formatQueueDuration,
   formatQueueTrackLine,
@@ -19,21 +20,30 @@ export function buildQueuePageView(
   tracks: readonly MusicTrack[],
   page: number,
   embedColor: `#${string}`,
+  text: Texts = texts.en,
 ): QueuePageView {
+  const queue = text.music.queue;
   const pageCount = Math.max(1, Math.ceil(tracks.length / queuePageSize));
   const clampedPage = Math.min(Math.max(page, 0), pageCount - 1);
   const start = clampedPage * queuePageSize;
   const pageTracks = tracks.slice(start, start + queuePageSize);
 
-  const embed = new EmbedBuilder().setColor(embedColor).setTitle("Music queue");
+  const embed = new EmbedBuilder().setColor(embedColor).setTitle(queue.title);
   embed.setDescription(
     tracks.length === 0
-      ? "There are no upcoming tracks."
-      : pageTracks.map((track, index) => formatQueueTrackLine(track, start + index + 1)).join("\n"),
+      ? queue.empty
+      : pageTracks
+        .map((track, index) => formatQueueTrackLine(track, start + index + 1, text.music.label.autoqueue))
+        .join("\n"),
   );
   if (tracks.length > 0) {
     embed.setFooter({
-      text: `Page ${clampedPage + 1}/${pageCount}  •  ${tracks.length} in queue  •  total ${formatQueueDuration(sumTrackDurations(tracks))}`,
+      text: queue.footer({
+        page: clampedPage + 1,
+        pages: pageCount,
+        count: tracks.length,
+        duration: formatQueueDuration(sumTrackDurations(tracks)),
+      }),
     });
   }
 
@@ -44,12 +54,12 @@ export function buildQueuePageView(
         new ActionRowBuilder<ButtonBuilder>().addComponents(
           new ButtonBuilder()
             .setCustomId(`${queuePageComponentIdPrefix}:${clampedPage - 1}`)
-            .setLabel("◀ Prev")
+            .setLabel(queue.previousPage)
             .setStyle(ButtonStyle.Secondary)
             .setDisabled(clampedPage <= 0),
           new ButtonBuilder()
             .setCustomId(`${queuePageComponentIdPrefix}:${clampedPage + 1}`)
-            .setLabel("Next ▶")
+            .setLabel(queue.nextPage)
             .setStyle(ButtonStyle.Secondary)
             .setDisabled(clampedPage >= pageCount - 1),
         ),

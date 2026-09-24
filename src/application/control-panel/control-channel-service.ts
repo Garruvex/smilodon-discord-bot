@@ -22,7 +22,7 @@ import { hasMusicDjPrivilege } from "../access/access-rules.js";
 import { KeyedSerialQueue } from "../concurrency/keyed-serial-queue.js";
 import type { PlaybackService } from "../music/playback-service.js";
 import type { MusicEventBus } from "../music/music-event-bus.js";
-import { MusicError } from "../music/music-errors.js";
+import { musicErrorText, MusicError } from "../music/music-errors.js";
 import type { MusicPlayerGateway, MusicPlayerSnapshot } from "../music/music-player-gateway.js";
 import type { MusicTrack } from "../../domain/music/music-track.js";
 import { formatQueueDuration, formatQueueTrackLine, sumTrackDurations } from "../music/queue-formatting.js";
@@ -332,7 +332,7 @@ export class ControlChannelService {
 
       await statusMessage.edit({
         content: null,
-        embeds: [createQueuedTrackCard(result, profile.embedColor as `#${string}`)],
+        embeds: [createQueuedTrackCard(result, profile.embedColor as `#${string}`, text)],
       });
       this.scheduleDeletion(statusMessage, queuedTrackCardLifetimeMs);
     } catch (error) {
@@ -342,7 +342,7 @@ export class ControlChannelService {
       );
       await statusMessage.edit(
         error instanceof MusicError
-          ? error.message
+          ? musicErrorText(error, text)
           : text.music.panel.request.failed,
       );
       this.scheduleDeletion(statusMessage, failedMusicRequestLifetimeMs);
@@ -564,7 +564,7 @@ export class ControlChannelService {
     } else if (executionError) {
       await this.replyEphemeral(
         interaction,
-        executionError instanceof MusicError ? executionError.message : text.music.panel.control.failed,
+        executionError instanceof MusicError ? musicErrorText(executionError, text) : text.music.panel.control.failed,
       );
     }
 

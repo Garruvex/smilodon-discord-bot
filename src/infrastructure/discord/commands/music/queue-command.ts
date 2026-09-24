@@ -52,28 +52,30 @@ export class QueueCommand implements BotCommand {
         actor,
         context.interaction.options.getInteger("position", true),
       );
-      await context.responses.reply(`Removed **${track.title}** from the queue.`);
+      await context.responses.reply(context.text.music.reply.removed({ title: track.title }));
       return;
     }
     if (action === "clear") {
       const actor = createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck, context.access.allowQueueWithoutVoiceChannel);
       const count = await this.playbackService.clearQueue(actor);
-      await context.responses.reply(`Cleared ${count} queued track${count === 1 ? "" : "s"}.`);
+      await context.responses.reply(
+        count === 1 ? context.text.music.reply.clearedOne({ count }) : context.text.music.reply.clearedMany({ count }),
+      );
       return;
     }
     if (action === "history") {
       const history = this.playbackService.getPlayHistory(context.interaction.guildId);
       const description = history.length === 0
-        ? "Nothing has played in this server yet."
+        ? context.text.music.history.empty
         : history.map((track, index) => `${index + 1}. **${track.title}** — ${track.author}`).join("\n");
-      const embed = new EmbedBuilder().setTitle("Recently played").setDescription(description);
+      const embed = new EmbedBuilder().setTitle(context.text.music.history.title).setDescription(description);
       await context.responses.reply({ embeds: [embed] });
       return;
     }
 
     const tracks = this.playbackService.getQueue(context.interaction.guildId);
     const profile = this.profiles.find(context.interaction.guildId);
-    const view = buildQueuePageView(tracks, 0, (profile?.embedColor ?? "#3B82F6") as `#${string}`);
+    const view = buildQueuePageView(tracks, 0, (profile?.embedColor ?? "#3B82F6") as `#${string}`, context.text);
     await context.responses.reply({ embeds: [view.embed], components: view.components });
   }
 

@@ -60,12 +60,12 @@ export class SeekCommand implements BotCommand {
     const rawTime = context.interaction.options.getString("time", true);
     const positionMs = parseTimeToMs(rawTime);
     if (positionMs === null) {
-      await context.responses.reply("Couldn't parse that time. Try `90`, `1:30`, or `1h2m3s`.");
+      await context.responses.reply(context.text.music.error.seekParse);
       return;
     }
 
     const actor = createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck, context.access.allowQueueWithoutVoiceChannel);
     const track = await this.playbackService.seek(actor, positionMs);
-    await context.responses.reply(`Seeked to **${formatDuration(positionMs)}** in **${track.title}**.`);
+    await context.responses.reply(context.text.music.reply.seeked({ time: formatDuration(positionMs), title: track.title }));
   }
 }

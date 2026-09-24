@@ -1,4 +1,6 @@
 import { CommandModule } from "../../../application/commands/command.js";
+import { defaultLanguage } from "../../../application/i18n/language.js";
+import { texts } from "../../../application/i18n/texts.js";
 import type { ComponentContext, ComponentHandler } from "../../../application/components/component-handler.js";
 import { musicPlaybackAccessPolicy } from "../../../application/music/music-access-policy.js";
 import type { PlaybackService } from "../../../application/music/playback-service.js";
@@ -26,6 +28,7 @@ export class QueuePageComponentHandler implements ComponentHandler {
       tracks,
       Number.isFinite(page) ? page : 0,
       (profile?.embedColor ?? "#3B82F6") as `#${string}`,
+      texts[profile?.language ?? defaultLanguage],
     );
     await interaction.update({ embeds: [view.embed], components: view.components });
   }

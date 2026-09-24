@@ -20,6 +20,6 @@ export class SkipToCommand implements BotCommand {
     const position = context.interaction.options.getInteger("position", true);
     const actor = createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck, context.access.allowQueueWithoutVoiceChannel);
     const track = await this.playbackService.skipTo(actor, position);
-    await context.responses.reply(`Skipped to **${track.title}** — ${track.author}.`);
+    await context.responses.reply(context.text.music.reply.skippedTo({ title: track.title, author: track.author }));
   }
 }
