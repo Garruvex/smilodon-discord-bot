@@ -153,16 +153,46 @@ export function lyricsCacheIdentity(title: string, artist: string): { title: str
   };
 }
 
+const cjkCharacter = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+const latinLetter = /\p{Script=Latin}/u;
+
+// Asian label uploads write names bilingually — "周杰倫 Jay Chou",
+// "髮如雪 Hair White as Snow" — while LRCLIB usually has only one of the
+// two ("髮如雪" by "周杰倫"). Splits such a value into its CJK and Latin
+// halves; anything else (one script, or the scripts interleaved) yields
+// nothing.
+function bilingualParts(value: string): string[] {
+  const groups: { script: "cjk" | "latin"; words: string[] }[] = [];
+  for (const word of value.trim().split(/\s+/)) {
+    const hasCjk = cjkCharacter.test(word);
+    const hasLatin = latinLetter.test(word);
+    if (hasCjk && hasLatin) return [];
+    const script = hasCjk ? "cjk" : hasLatin ? "latin" : null;
+    const last = groups[groups.length - 1];
+    if (script === null || script === last?.script) {
+      // Digits and punctuation stay with the half they sit in.
+      if (last) last.words.push(word);
+      else if (script === null) return [];
+      else groups.push({ script, words: [word] });
+    } else {
+      groups.push({ script, words: [word] });
+    }
+  }
+  return groups.length === 2 ? groups.map((group) => group.words.join(" ")) : [];
+}
+
 function artistSearchVariants(artist: string): string[] {
   const trimmed = artist.trim();
   const variants = [trimmed];
   const seen = new Set([trimmed.toLowerCase()]);
   for (const part of trimmed.split(artistSeparatorPattern)) {
-    const cleaned = part.trim();
-    const key = cleaned.toLowerCase();
-    if (cleaned && !seen.has(key)) {
-      seen.add(key);
-      variants.push(cleaned);
+    for (const name of [part, ...bilingualParts(part)]) {
+      const cleaned = name.trim();
+      const key = cleaned.toLowerCase();
+      if (cleaned && !seen.has(key)) {
+        seen.add(key);
+        variants.push(cleaned);
+      }
     }
   }
   if (!seen.has("")) variants.push("");
@@ -438,6 +468,15 @@ function buildLookupPlan(trackName: string, artistName: string): LookupPlan {
   const simplifiedTitle = toSimplifiedChinese(normalized.title);
   if (simplifiedTitle !== normalized.title) {
     attempts.push({ title: simplifiedTitle, searchArtist: "", scoreArtist: normalized.extraArtist ?? normalized.artist });
+  }
+  // A bilingual title ("髮如雪 Hair White as Snow") is usually catalogued
+  // under just one of its halves. Artist-less searches, scored against every
+  // artist credit we have (the bilingual artist splits the same way inside
+  // artistMatchScore).
+  for (const titlePart of bilingualParts(normalized.title)) {
+    for (const scoreArtist of new Set([normalized.extraArtist ?? normalized.artist, normalized.artist])) {
+      attempts.push({ title: titlePart, searchArtist: "", scoreArtist });
+    }
   }
 
   const searches = new Map<string, { title: string; artist: string }>();

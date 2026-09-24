@@ -162,6 +162,25 @@ describe("fetchSyncedLyrics", () => {
       .toEqual([{ timestampMs: 1_000, line: "First line" }, { timestampMs: 2_500, line: "Second line" }]);
   });
 
+  it("matches a bilingual title and artist against the one-language row LRCLIB has", async () => {
+    fetchMock.mockImplementation((url: unknown) => jsonResponse(200,
+      new URL(String(url)).searchParams.get("track_name") === "髮如雪" && requestedArtist(url) === null
+        ? [candidate({ trackName: "髮如雪", artistName: "周杰倫", duration: 302 })] : [],
+    ));
+    expect(await fetchLines("周杰倫 Jay Chou【髮如雪 Hair White as Snow】-Official Music Video", "JVR Music", 305_000))
+      .not.toBeNull();
+  });
+
+  it("matches the Latin half of a bilingual artist credit", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, [candidate({ trackName: "晴天", artistName: "Jay Chou" })]));
+    expect(await fetchLines("晴天", "周杰倫 Jay Chou")).not.toBeNull();
+  });
+
+  it("doesn't treat an ordinary multi-word artist as bilingual", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, [candidate({ trackName: "Good Time", artistName: "Owl" })]));
+    expect(await fetchLines("Good Time", "Owl City")).toBeNull();
+  });
+
   it("treats Traditional and Simplified Chinese metadata as the same song", async () => {
     fetchMock.mockImplementation((url: unknown) => jsonResponse(200,
       new URL(String(url)).searchParams.get("track_name") === "说好的幸福呢"
