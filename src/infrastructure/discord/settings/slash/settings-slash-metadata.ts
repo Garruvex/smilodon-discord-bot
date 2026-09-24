@@ -12,7 +12,7 @@ import {
   type SettingsTextCatalogs,
 } from "../../../../application/i18n/settings/index.js";
 import { texts } from "../../../../application/i18n/texts.js";
-import { commandNameFor, listSlashOptionNames, optionPath, sectionPath } from "../registry/paths.js";
+import { clearSlashOptionName, commandNameFor, listSlashOptionNames, optionPath, sectionPath } from "../registry/paths.js";
 import type { ActionParam, SettingOption, SettingsGroup, SettingsNode } from "../registry/types.js";
 
 type Described = { description: string; descriptionLocalizations?: Localizations };
@@ -65,13 +65,18 @@ function nodeOptions(
 ): CommandOptionMetadata[] {
   switch (node.kind) {
     case "report":
-      return [];
     case "action":
-      return Object.entries(node.params).map(([name, param]) =>
+      return Object.entries(node.params ?? {}).map(([name, param]) =>
         slashOption(name, optionPath(path, name), param, catalogs, described));
     case "setting":
       return Object.entries(node.options).flatMap(([name, option]) => {
         const key = optionPath(path, name);
+        if (option.kind === "channel" && option.clearable) {
+          return [
+            slashOption(name, key, option, catalogs, described),
+            { type: "boolean" as const, name: clearSlashOptionName(node, name), ...derivedDescription(key, "clear", catalogs) },
+          ];
+        }
         if (option.kind !== "channelList" && option.kind !== "roleList") {
           return [slashOption(name, key, option, catalogs, described)];
         }
@@ -79,8 +84,8 @@ function nodeOptions(
         const type = option.kind === "channelList" ? "channel" as const : "role" as const;
         const textOnly = option.kind === "channelList" && option.textOnly;
         return [
-          { type, name: names.add, ...listDescription(key, "add", catalogs), ...(textOnly ? { guildTextOnly: true } : {}) },
-          { type, name: names.remove, ...listDescription(key, "remove", catalogs), ...(textOnly ? { guildTextOnly: true } : {}) },
+          { type, name: names.add, ...derivedDescription(key, "add", catalogs), ...(textOnly ? { guildTextOnly: true } : {}) },
+          { type, name: names.remove, ...derivedDescription(key, "remove", catalogs), ...(textOnly ? { guildTextOnly: true } : {}) },
         ];
       });
   }
@@ -126,13 +131,21 @@ function slashOption(
   }
 }
 
-// "Add to: Allowed channels" — built from the list's own label in each
-// language, so the derived options are translated wherever the label is.
-function listDescription(path: string, operation: "add" | "remove", catalogs: SettingsTextCatalogs): Described {
+// "Add to: Allowed channels", "Clear: Audit log channel" — the options a
+// list or clearable channel derives, described from the option's own label
+// in each language, so they're translated wherever the label is.
+function derivedDescription(path: string, operation: "add" | "remove" | "clear", catalogs: SettingsTextCatalogs): Described {
   const describe = (language: (typeof languages)[number]): string => {
     const label = settingsText(language, catalogs).label(path);
     const slash = texts[language].settings.slash;
-    return operation === "add" ? slash.listAdd({ label }) : slash.listRemove({ label });
+    switch (operation) {
+      case "add":
+        return slash.listAdd({ label });
+      case "remove":
+        return slash.listRemove({ label });
+      case "clear":
+        return slash.clear({ label });
+    }
   };
   const localizations: Record<string, string> = {};
   for (const language of languages) {

@@ -12,6 +12,10 @@ export interface UpdateGuildConfigurationInput {
   auditLogChannelId?: string | null;
   adminPanelChannelId?: string | null;
   progressBar?: ProgressBarSettings;
+  // Single fields of the progress bar, for settings that change one without
+  // the other (applied after progressBar).
+  progressBarStyle?: ProgressBarSettings["style"];
+  progressBarLength?: number;
   botAdministratorRoleIds?: readonly string[];
   musicControllerRoleIds?: readonly string[];
   restrictedRoleIds?: readonly string[];
@@ -252,6 +256,8 @@ export function applyGuildConfigurationUpdate(
   if (input.auditLogChannelId !== undefined) next.channels.auditLog = input.auditLogChannelId;
   if (input.adminPanelChannelId !== undefined) next.channels.adminPanel = input.adminPanelChannelId;
   if (input.progressBar !== undefined) next.panel.progressBar = structuredClone(input.progressBar);
+  if (input.progressBarStyle !== undefined) next.panel.progressBar = { ...next.panel.progressBar, style: input.progressBarStyle };
+  if (input.progressBarLength !== undefined) next.panel.progressBar = { ...next.panel.progressBar, length: input.progressBarLength };
   if (input.botAdministratorRoleIds !== undefined) next.roles.botAdministrator = [...input.botAdministratorRoleIds];
   if (input.musicControllerRoleIds !== undefined) next.roles.musicController = [...input.musicControllerRoleIds];
   if (input.restrictedRoleIds !== undefined) next.roles.restricted = [...input.restrictedRoleIds];

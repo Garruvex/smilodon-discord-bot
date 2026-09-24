@@ -97,7 +97,9 @@ export class SettingsUpdateService {
     if (
       input.idleImageUrl !== undefined ||
       input.idleImageAsset !== undefined ||
-      input.progressBar !== undefined
+      input.progressBar !== undefined ||
+      input.progressBarStyle !== undefined ||
+      input.progressBarLength !== undefined
     ) {
       await this.controlChannelService.refreshPanel(guildId, {
         forceIdleImage:

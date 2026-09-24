@@ -11,8 +11,10 @@ import { buildSlashCommandBuilder } from "../../src/infrastructure/discord/comma
 import { BooruSearchCommand } from "../../src/infrastructure/discord/commands/image/booru-search-command.js";
 import { FurryReactionCommand } from "../../src/infrastructure/discord/commands/image/furry-reaction-command.js";
 import { RandomAnimalFactCommand } from "../../src/infrastructure/discord/commands/image/random-animal-fact-command.js";
-import { buildDefinitionForGroup } from "../../src/infrastructure/discord/commands/setup/settings-command.js";
+import { buildDefinitionForGroup } from "../../src/infrastructure/discord/settings/legacy-settings-command.js";
 import { settingGroups } from "../../src/infrastructure/discord/settings/definitions/index.js";
+import { settingsRegistry } from "../../src/infrastructure/discord/settings/groups/index.js";
+import { buildSettingsCommandMetadata } from "../../src/infrastructure/discord/settings/slash/settings-slash-metadata.js";
 
 // Every command module under commands/, loaded eagerly so a newly added
 // command is covered without editing this test.
@@ -59,6 +61,7 @@ function allDefinitions(): ChatInputCommandMetadata[] {
   definitions.push(new BooruSearchCommand("e926", "#66FF33", false).definition);
   definitions.push(new BooruSearchCommand("e621", "#09CDE2", true).definition);
   for (const group of settingGroups) definitions.push(buildDefinitionForGroup(group));
+  for (const group of settingsRegistry) definitions.push(buildSettingsCommandMetadata(group));
   return definitions;
 }
 

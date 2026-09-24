@@ -1,18 +1,20 @@
-import type { Attachment } from "discord.js";
+import type { Attachment, AttachmentBuilder, Guild } from "discord.js";
 
 import type { SettingsText } from "../../../../application/i18n/settings/index.js";
 import type { GuildConfiguration } from "../../../../config/guild-configuration.js";
 import type { UpdateGuildConfigurationInput } from "../../../../config/guild-configuration-provider.js";
-import type { SettingDeps, SettingRequest, SettingValues } from "../definitions/index.js";
+import type { SettingDeps, SettingRequest, SettingValues } from "../engine/request.js";
 
 // What one option contributes to a settings write. Options are pure: they
 // describe a change, SettingsEngine applies it.
 export type Patch = Partial<UpdateGuildConfigurationInput>;
 
-// What an option's validate() sees. `error` returns a translated message
-// from the option's `errors` text (see SettingsNodeText.errors).
+// What an option's (or node's) validate() sees. `error` returns a
+// translated message from its `messages` text (see SettingsNodeText).
 export interface OptionContext {
   profile: GuildConfiguration;
+  deps: SettingDeps;
+  guild: Guild | null;
   error(name: string, params?: Readonly<Record<string, string | number>>): string;
 }
 
@@ -37,7 +39,10 @@ export interface ChoiceOption<Choice extends string = string> extends ValueOptio
 }
 export interface IntegerOption extends ValueOption<number> { kind: "integer"; min: number; max: number }
 export interface TextOption extends ValueOption<string> { kind: "text"; maxLength: number }
-export interface ChannelOption extends ValueOption<string> { kind: "channel"; textOnly: boolean }
+// `clearable` lets the channel be unset: the panel allows an empty
+// selection and the slash command gets a `clear` option; write then
+// receives null.
+export interface ChannelOption extends ValueOption<string | null> { kind: "channel"; textOnly: boolean; clearable?: boolean }
 export interface RoleOption extends ValueOption<string> { kind: "role" }
 // A list owns the whole list: the panel sends it whole (a multi-select),
 // the slash surface derives add/remove options and rebuilds it from read().
@@ -57,7 +62,9 @@ export interface UploadOption {
   required?: boolean;
   // What's stored now (an asset path), shown as uploaded / not set.
   read(profile: GuildConfiguration): string | null;
-  save(attachment: Attachment, context: UploadContext): Promise<Patch>;
+  // `notes` are added to the confirmation (e.g. how a personality file was
+  // compiled).
+  save(attachment: Attachment, context: UploadContext): Promise<{ patch: Patch; notes?: readonly string[] }>;
 }
 
 export type ListOption = ChannelListOption | RoleListOption;
@@ -92,7 +99,14 @@ export interface SettingNode {
   // A rule across options, checked on the combined patch.
   validate?(patch: Patch, context: OptionContext): string | null;
   // Extra confirmation lines for what a value diff can't show.
-  extraLines?(previous: GuildConfiguration, updated: GuildConfiguration, text: SettingsText): readonly string[];
+  extraLines?(change: ChangeContext): readonly string[];
+}
+
+export interface ChangeContext {
+  previous: GuildConfiguration;
+  updated: GuildConfiguration;
+  text: SettingsText;
+  deps: SettingDeps;
 }
 
 // An action's parameters: the same kinds as options, without read/write.
@@ -106,7 +120,7 @@ export type ActionParam =
   | Pick<UploadOption, "kind" | "required">;
 
 export type ActionResult =
-  | { ok: true; message: string; patch?: Patch }
+  | { ok: true; message: string; patch?: Patch; files?: readonly AttachmentBuilder[] }
   | { ok: false; message: string };
 
 // Does something once (reset persona drift, queue a history scan, send a
@@ -121,11 +135,13 @@ export interface ActionNode {
   run(context: NodeContext & { values: SettingValues }): Promise<ActionResult>;
 }
 
-// Read-only text (access summary, audit log, tools list).
+// Read-only text (access summary, audit log, tools list). Optional params
+// narrow it on the slash surface; the panel renders it without any.
 export interface ReportNode {
   kind: "report";
   name: string;
-  render(context: NodeContext): Promise<string>;
+  params?: Readonly<Record<string, ActionParam>>;
+  render(context: NodeContext & { values: SettingValues }): Promise<string>;
 }
 
 export type SettingsNode = SettingNode | ActionNode | ReportNode;

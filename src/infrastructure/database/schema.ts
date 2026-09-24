@@ -29,6 +29,15 @@ export const controlPanels = pgTable("control_panels", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// Where each guild's admin settings panel lives — see AdminPanelStateStore.
+export const adminPanels = pgTable("admin_panels", {
+  guildId: text("guild_id").primaryKey(),
+  channelId: text("channel_id").notNull(),
+  // Panel message key ("header", "music#0") → message id.
+  messages: jsonb("messages").$type<Record<string, string>>().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // Deliberately NOT per-instance: a track's synced lyrics are the same
 // regardless of which guild or bot instance (yohta, pinecone) plays it, so
 // this table lives in the shared "public" schema instead of each instance's

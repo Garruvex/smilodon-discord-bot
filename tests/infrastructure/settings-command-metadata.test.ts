@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildSlashCommandBuilder } from "../../src/infrastructure/discord/commands/command-metadata-builder.js";
-import { buildDefinitionForGroup } from "../../src/infrastructure/discord/commands/setup/settings-command.js";
+import { buildDefinitionForGroup } from "../../src/infrastructure/discord/settings/legacy-settings-command.js";
 import { settingDefinitions, settingGroups } from "../../src/infrastructure/discord/settings/definitions/index.js";
 
 // Discord rejects any chat-input command/subcommand/group/option name or

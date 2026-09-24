@@ -10,7 +10,7 @@ import type { ParsedGuildConfigurationFile } from "../../src/config/guild-config
 import { buildSlashCommandBuilder } from "../../src/infrastructure/discord/commands/command-metadata-builder.js";
 import { describeSettingChange } from "../../src/infrastructure/discord/settings/engine/describe-change.js";
 import { buildSettingPatch, type PatchResult } from "../../src/infrastructure/discord/settings/engine/setting-patch.js";
-import { panelValues, type PanelScalar } from "../../src/infrastructure/discord/settings/panel-values.js";
+import { panelValues, type PanelScalar } from "../../src/infrastructure/discord/settings/panel/panel-values.js";
 import {
   choice,
   group,
@@ -96,7 +96,7 @@ const catalogs: SettingsTextCatalogs = {
     "access.roles.administrators.roles": {
       label: "Administrator roles",
       description: "Roles that can change settings.",
-      errors: { "last-role": "Keep at least one administrator role." },
+      messages: { "last-role": "Keep at least one administrator role." },
     },
   },
   "zh-TW": {},
@@ -109,12 +109,14 @@ const catalogs: SettingsTextCatalogs = {
 const settingsUi = texts.en.settings;
 
 function patchFor(node: SettingNode, path: string, scalars: Record<string, PanelScalar>, lists: Record<string, string[]> = {}): Promise<PatchResult> {
-  return buildSettingPatch(node, panelValues(scalars, lists), {
+  return buildSettingPatch(node, panelValues({ scalars, lists }), {
     path,
+    guildId: profile().guildId,
+    guild: null,
     profile: profile(),
+    deps: {} as never,
     text: settingsText("en", catalogs),
     ui: settingsUi,
-    uploads: { guildId: profile().guildId, deps: {} as never },
   });
 }
 
@@ -204,12 +206,12 @@ describe("settings slash commands", () => {
 
 describe("settings patches", () => {
   it("writes a toggle", async () => {
-    expect(await patchFor(djMode, "music.dj-mode", { enabled: true })).toEqual({ kind: "patch", patch: { djModeEnabled: true } });
+    expect(await patchFor(djMode, "music.dj-mode", { enabled: true })).toEqual({ kind: "patch", patch: { djModeEnabled: true }, notes: [] });
   });
 
   it("converts units through the option's own write", async () => {
     expect(await patchFor(lifecycle, "music.lifecycle", { "queue-delay-seconds": 30 }))
-      .toEqual({ kind: "patch", patch: { emptyQueueDelayMs: 30_000 } });
+      .toEqual({ kind: "patch", patch: { emptyQueueDelayMs: 30_000 }, notes: [] });
   });
 
   it("refuses a value outside the option's limits", async () => {
@@ -225,7 +227,11 @@ describe("settings patches", () => {
       roles: ["200000000000000001", "200000000000000002"],
     });
 
-    expect(viaSlash).toEqual({ kind: "patch", patch: { botAdministratorRoleIds: ["200000000000000001", "200000000000000002"] } });
+    expect(viaSlash).toEqual({
+      kind: "patch",
+      patch: { botAdministratorRoleIds: ["200000000000000001", "200000000000000002"] },
+      notes: [],
+    });
     expect(viaPanel).toEqual(viaSlash);
   });
 
@@ -246,9 +252,9 @@ describe("settings confirmations", () => {
     const before = profile();
     const after = applied({ djModeEnabled: true, emptyQueueAction: "stay_connected" });
 
-    expect(describeSettingChange(djMode, "music.dj-mode", before, after, text, settingsUi))
+    expect(describeSettingChange(djMode, "music.dj-mode", before, after, text, settingsUi, {} as never))
       .toBe("Settings updated.\nDJ mode: Off → On");
-    expect(describeSettingChange(lifecycle, "music.lifecycle", before, after, text, settingsUi))
+    expect(describeSettingChange(lifecycle, "music.lifecycle", before, after, text, settingsUi, {} as never))
       .toBe("Settings updated.\nWhen the queue ends: Disconnect → Stay connected");
   });
 
@@ -256,13 +262,13 @@ describe("settings confirmations", () => {
     const before = profile();
     const after = applied({ botAdministratorRoleIds: ["200000000000000002"] });
 
-    expect(describeSettingChange(administrators, "access.roles.administrators", before, after, text, settingsUi)).toBe(
+    expect(describeSettingChange(administrators, "access.roles.administrators", before, after, text, settingsUi, {} as never)).toBe(
       "Settings updated.\nAdministrator roles: added <@&200000000000000002>; removed <@&200000000000000001>",
     );
   });
 
   it("says so when nothing changed", () => {
-    expect(describeSettingChange(djMode, "music.dj-mode", profile(), profile(), text, settingsUi))
+    expect(describeSettingChange(djMode, "music.dj-mode", profile(), profile(), text, settingsUi, {} as never))
       .toBe("No changes — those settings already match.");
   });
 });

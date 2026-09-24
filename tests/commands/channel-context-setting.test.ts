@@ -11,6 +11,7 @@ function fakeContext(options: { channel?: { id: string } | null; seedDays?: numb
     guildId: "guild",
     guild: null,
     actorUserId: "user",
+    language: "en",
     values: {
       getChannel: () => (options.channel === undefined ? { id: "channel" } : options.channel),
       getInteger: () => options.seedDays ?? null,

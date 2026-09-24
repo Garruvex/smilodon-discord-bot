@@ -215,8 +215,14 @@ export const en = {
   "settings.error.notAChoice": "{value} isn't one of the choices for {label}.",
   "settings.error.outOfRange": "{label} must be between {min} and {max}.",
   "settings.error.tooLong": "{label} can be at most {max} characters.",
+  "settings.error.notInteger": "{label} must be a whole number.",
+  "settings.error.nothingGiven": "Give at least one option to change.",
   "settings.slash.listAdd": "Add to: {label}",
   "settings.slash.listRemove": "Remove from: {label}",
+  "settings.slash.clear": "Clear: {label}",
+  "settings.error.saveFailed": "That change couldn't be saved: {reason}",
+  "settings.audit.panel": "Admin panel · {setting}",
+  "settings.audit.setup": "Guided setup · {setting}",
 
   // The admin settings panel (one message per settings section).
   "admin.panel.header.title": "Server settings",
@@ -224,18 +230,12 @@ export const en = {
   "admin.panel.header.lastChange": "Last change: {change} by {user} · {time}",
   "admin.panel.header.everyoneCanView": "⚠️ Everyone in the server can see this channel. Limit it to bot admins in the channel's permissions.",
   "admin.panel.header.refresh": "Refresh",
-  "admin.panel.toggle.on": "On",
-  "admin.panel.toggle.off": "Off",
   "admin.panel.edit": "Edit",
-  "admin.panel.notSet": "Not set",
-  "admin.panel.slashOnly": "Uploads and one-off actions: {command}",
-  "admin.panel.modal.title": "Edit {setting}",
-  "admin.panel.modal.notInteger": "{field} must be a whole number.",
-  "admin.panel.modal.outOfRange": "{field} must be between {min} and {max}.",
-  "admin.panel.modal.tooLong": "{field} can be at most {max} characters.",
-  "admin.panel.noChanges": "No changes.",
+  "admin.panel.run": "Run",
+  "admin.panel.continued": "{title} (continued)",
+  "admin.panel.confirm": "Run “{setting}”? This can't be undone.",
+  "admin.panel.confirmButton": "Yes, run it",
   "admin.panel.stale": "That control is out of date. The panel has been refreshed; try again.",
-  "admin.panel.failed": "That change couldn't be saved: {reason}",
 } as const satisfies Record<string, string>;
 
 export type MessageKey = keyof typeof en;

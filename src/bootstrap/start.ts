@@ -5,6 +5,8 @@ import { createLogger } from "../infrastructure/logging/logger.js";
 import { LavalinkPlayerGateway } from "../infrastructure/lavalink/lavalink-player-gateway.js";
 import { MusicEventBus } from "../application/music/music-event-bus.js";
 import { ControlChannelService } from "../application/control-panel/control-channel-service.js";
+import { AdminPanelComponentHandler } from "../infrastructure/discord/components/admin-panel-component-handler.js";
+import { AdminPanelService } from "../infrastructure/discord/settings/panel/admin-panel-service.js";
 import { DeferredGuildSetupService } from "../application/setup/guild-setup-service.js";
 import { LocalGuildSetupService } from "../application/setup/local-guild-setup-service.js";
 import { DiscordGuildResourceGateway } from "../infrastructure/discord/setup/discord-guild-resource-gateway.js";
@@ -69,7 +71,16 @@ const controlChannelService = new ControlChannelService(
   musicEventBus,
   dependencies.channelEditScheduler,
 );
-dependencies.settingsEngine.bindControlChannelService(controlChannelService);
+dependencies.settingsUpdater.bindControlChannelService(controlChannelService);
+const adminPanelService = new AdminPanelService(
+  discordClient,
+  guildConfigurationProvider,
+  dependencies.settingsEngine,
+  dependencies.settingsUpdater,
+  persistence.adminPanelStateStore,
+  logger.child({ component: "admin-panel" }),
+);
+dependencies.componentRegistry.register(new AdminPanelComponentHandler(adminPanelService));
 const commandDeploymentService = new DiscordGuildCommandDeploymentService(
   configuration,
   dependencies.commandRegistry,
@@ -111,6 +122,7 @@ const application = new Application(
   configuration,
   dependencies,
   controlChannelService,
+  adminPanelService,
   musicPresenceService,
   birthdayAnnouncer,
   memberDepartureService,

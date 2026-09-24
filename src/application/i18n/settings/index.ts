@@ -1,9 +1,9 @@
 import { defaultLanguage, languages, type Language } from "../language.js";
 import type { Localizations } from "../../commands/command-metadata.js";
 import type { SettingsNodeText, SettingsTextCatalogs } from "./catalog.js";
-import { enSettingsText } from "./en.js";
-import { jaSettingsText } from "./ja.js";
-import { zhTWSettingsText } from "./zh-TW.js";
+import { enSettingsText } from "./en/index.js";
+import { jaSettingsText } from "./ja/index.js";
+import { zhTWSettingsText } from "./zh-TW/index.js";
 
 export type { SettingsNodeText, SettingsTextCatalog, SettingsTextCatalogs } from "./catalog.js";
 
@@ -25,14 +25,14 @@ export interface SettingsText {
   label(path: string): string;
   description(path: string): string;
   choice(path: string, value: string): string;
-  error(path: string, name: string, params?: Readonly<Record<string, string | number>>): string;
+  message(path: string, name: string, params?: Readonly<Record<string, string | number>>): string;
 }
 
 export function settingsText(language: Language, catalogs: SettingsTextCatalogs = settingsTextCatalogs): SettingsText {
   const own = catalogs[language];
   const english = catalogs[defaultLanguage];
   const field = (path: string, name: TextField): string => own[path]?.[name] ?? english[path]?.[name] ?? path;
-  const entry = (path: string, name: "choices" | "errors", key: string): string =>
+  const entry = (path: string, name: "choices" | "messages", key: string): string =>
     own[path]?.[name]?.[key] ?? english[path]?.[name]?.[key] ?? key;
   return {
     language,
@@ -40,8 +40,8 @@ export function settingsText(language: Language, catalogs: SettingsTextCatalogs 
     label: (path) => field(path, "label"),
     description: (path) => field(path, "description"),
     choice: (path, value) => entry(path, "choices", value),
-    error: (path, name, params = {}) =>
-      entry(path, "errors", name).replace(/\{(\w+)\}/g, (placeholder, key: string) =>
+    message: (path, name, params = {}) =>
+      entry(path, "messages", name).replace(/\{(\w+)\}/g, (placeholder, key: string) =>
         key in params ? String(params[key]) : placeholder),
   };
 }

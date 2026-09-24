@@ -1,11 +1,10 @@
 import { CommandModule } from "../../../application/commands/command.js";
 import type { ComponentContext, ComponentHandler, ModalContext } from "../../../application/components/component-handler.js";
-import { adminPanelPrefix } from "../admin-panel/admin-panel-ids.js";
-import type { AdminPanelService } from "../admin-panel/admin-panel-service.js";
-import { settingsAccessPolicy } from "../settings/settings-engine.js";
+import { settingsAccessPolicy } from "../settings/engine/settings-engine.js";
+import { adminPanelPrefix, type AdminPanelService } from "../settings/panel/admin-panel-service.js";
 
-// Every admin-panel control, and its Edit modals. Same access as the
-// /settings-* commands — both surfaces use settingsAccessPolicy.
+// Every admin-panel control and form. Same access as the /settings-*
+// commands — both surfaces use settingsAccessPolicy.
 export class AdminPanelComponentHandler implements ComponentHandler {
   public readonly customIdPrefix = adminPanelPrefix;
   public readonly module = CommandModule.Common;

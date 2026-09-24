@@ -4,6 +4,7 @@ import type { Logger } from "pino";
 import type { ApplicationDependencies } from "./dependencies.js";
 import type { ApplicationConfiguration } from "../config/configuration.js";
 import type { ControlChannelService } from "../application/control-panel/control-channel-service.js";
+import type { AdminPanelService } from "../infrastructure/discord/settings/panel/admin-panel-service.js";
 import { BehaviorEvent } from "../application/behaviors/behavior.js";
 import type { MusicPresenceService } from "../application/music/music-presence-service.js";
 import type { BirthdayAnnouncer } from "../application/birthdays/birthday-announcer.js";
@@ -23,6 +24,7 @@ export class Application {
     private readonly configuration: ApplicationConfiguration,
     private readonly dependencies: ApplicationDependencies,
     private readonly controlChannelService: ControlChannelService,
+    private readonly adminPanelService: AdminPanelService,
     private readonly musicPresenceService: MusicPresenceService,
     private readonly birthdayAnnouncer: BirthdayAnnouncer,
     private readonly memberDepartureService: MemberDepartureService,
@@ -175,7 +177,7 @@ export class Application {
           // unconditionally would let them fire (and even restart) while
           // stop() is tearing persistence down after a fatal Lavalink error.
           this.musicPresenceService.start();
-          this.dependencies.adminPanelService.initialize();
+          this.adminPanelService.initialize();
           this.birthdayAnnouncer.start();
           this.dependencies.channelSummaryScheduler?.start();
           this.dependencies.reactionReplyScheduler?.start();

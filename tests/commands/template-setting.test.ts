@@ -12,6 +12,7 @@ function context(kind: string): SettingRequest {
     guildId: "guild",
     guild: null,
     actorUserId: "user",
+    language: "en",
     values: { getString: () => kind } as unknown as SettingValues,
   };
 }

@@ -11,9 +11,9 @@ export interface SettingsNodeText {
   description?: string;
   // Choice value → display name.
   choices?: Readonly<Record<string, string>>;
-  // Error name → message, for a setting's own validation. `{name}`
-  // placeholders are filled in by SettingsText.error.
-  errors?: Readonly<Record<string, string>>;
+  // A setting's own messages (validation errors, confirmation notes), by
+  // name. `{name}` placeholders are filled in by SettingsText.message.
+  messages?: Readonly<Record<string, string>>;
 }
 
 export type SettingsTextCatalog = Readonly<Record<string, SettingsNodeText>>;

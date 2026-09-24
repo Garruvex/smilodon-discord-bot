@@ -1,29 +1,32 @@
+import type { Guild } from "discord.js";
+
 import type { SettingsText } from "../../../../application/i18n/settings/index.js";
 import type { Texts } from "../../../../application/i18n/texts.js";
 import type { GuildConfiguration } from "../../../../config/guild-configuration.js";
-import type { SettingValues } from "../definitions/index.js";
-import { listSlashOptionNames, optionPath } from "../registry/paths.js";
+import { clearSlashOptionName, listSlashOptionNames, optionPath } from "../registry/paths.js";
 import type {
   ListOption,
   OptionContext,
   Patch,
   SettingNode,
   SettingOption,
-  UploadContext,
   ValueOption,
 } from "../registry/types.js";
+import type { SettingDeps, SettingValues } from "./request.js";
 
 export type PatchResult =
-  | { kind: "patch"; patch: Patch }
+  | { kind: "patch"; patch: Patch; notes: readonly string[] }
   | { kind: "rejected"; message: string }
   | { kind: "empty" };
 
 export interface PatchContext {
   path: string;
+  guildId: string;
+  guild: Guild | null;
   profile: GuildConfiguration;
+  deps: SettingDeps;
   text: SettingsText;
   ui: Texts["settings"];
-  uploads: UploadContext;
 }
 
 // Turns the values a surface collected (slash options, a panel control, a
@@ -37,20 +40,31 @@ export async function buildSettingPatch(
   context: PatchContext,
 ): Promise<PatchResult> {
   let patch: Patch = {};
+  const notes: string[] = [];
   let provided = false;
+  const optionContext = (errorPath: string): OptionContext => ({
+    profile: context.profile,
+    deps: context.deps,
+    guild: context.guild,
+    error: (errorName, params) => context.text.message(errorPath, errorName, params),
+  });
 
   for (const [name, option] of Object.entries(node.options)) {
     const path = optionPath(context.path, name);
-    const optionContext: OptionContext = {
-      profile: context.profile,
-      error: (errorName, params) => context.text.error(path, errorName, params),
-    };
 
     if (option.kind === "upload") {
       const attachment = values.getAttachment(name);
       if (!attachment) continue;
       provided = true;
-      patch = { ...patch, ...await option.save(attachment, context.uploads) };
+      let saved: Awaited<ReturnType<typeof option.save>>;
+      try {
+        saved = await option.save(attachment, { guildId: context.guildId, deps: context.deps });
+      } catch (error) {
+        // The asset store explains what's wrong with a file (type, size).
+        return { kind: "rejected", message: error instanceof Error ? error.message : String(error) };
+      }
+      patch = mergePatch(patch, saved.patch);
+      notes.push(...(saved.notes ?? []));
       continue;
     }
 
@@ -58,18 +72,31 @@ export async function buildSettingPatch(
     if (!given) continue;
     provided = true;
 
-    const error = checkRange(option, path, given.value, context) ?? given.validate(optionContext);
+    const error = checkRange(option, path, given.value, context) ?? given.validate(optionContext(path));
     if (error) return { kind: "rejected", message: error };
-    patch = { ...patch, ...given.write(context.profile) };
+    patch = mergePatch(patch, given.write(context.profile));
   }
 
   if (!provided) return { kind: "empty" };
 
-  const nodeError = node.validate?.(patch, {
-    profile: context.profile,
-    error: (errorName, params) => context.text.error(context.path, errorName, params),
-  });
-  return nodeError ? { kind: "rejected", message: nodeError } : { kind: "patch", patch };
+  const nodeError = node.validate?.(patch, optionContext(context.path));
+  return nodeError ? { kind: "rejected", message: nodeError } : { kind: "patch", patch, notes };
+}
+
+// Later options win, except that map fields (per-platform link-fix
+// overrides, per-channel memory modes) combine — several toggles can each
+// write their own key of the same map.
+export function mergePatch(base: Patch, next: Patch): Patch {
+  const merged: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(next)) {
+    const previous = merged[key];
+    merged[key] = isPlainObject(previous) && isPlainObject(value) ? { ...previous, ...value } : value;
+  }
+  return merged;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 // A value an option was given, paired with that option's own validate and
@@ -80,8 +107,8 @@ interface GivenValue {
   write(profile: GuildConfiguration): Patch;
 }
 
-function given<Value>(option: ValueOption<Value>, value: Value | null | undefined): GivenValue | null {
-  if (value === null || value === undefined) return null;
+function given<Value>(option: ValueOption<Value>, value: Value | undefined): GivenValue | null {
+  if (value === undefined) return null;
   return {
     value,
     validate: (context) => option.validate?.(value, context) ?? null,
@@ -89,9 +116,10 @@ function given<Value>(option: ValueOption<Value>, value: Value | null | undefine
   };
 }
 
-// What an option was given, or null when it wasn't. A list option is given
-// either whole (the panel's multi-select) or as slash add/remove, which
-// rebuild the list from its current value.
+// What an option was given, or null when it wasn't. A list is given either
+// whole (the panel's multi-select) or as slash add/remove, which rebuild it
+// from its current value. A clearable channel is cleared by an empty panel
+// selection or the slash `clear` option.
 function givenValue(
   node: SettingNode,
   name: string,
@@ -101,14 +129,18 @@ function givenValue(
 ): GivenValue | null {
   switch (option.kind) {
     case "toggle":
-      return given(option, values.getBoolean(name));
+      return given(option, values.getBoolean(name) ?? undefined);
     case "choice":
     case "text":
-      return given(option, values.getString(name));
+      return given(option, values.getString(name) ?? undefined);
     case "integer":
-      return given(option, values.getInteger(name));
-    case "channel":
-      return given(option, values.getChannel(name)?.id);
+      return given(option, values.getInteger(name) ?? undefined);
+    case "channel": {
+      const id = values.getChannel(name)?.id;
+      if (id !== undefined) return given(option, id);
+      const cleared = values.getIdList?.(name)?.length === 0 || values.getBoolean(clearSlashOptionName(node, name)) === true;
+      return option.clearable && cleared ? given(option, null) : null;
+    }
     case "role":
       return given(option, values.getRole(name)?.id);
     case "channelList":

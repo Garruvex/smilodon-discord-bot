@@ -1,4 +1,5 @@
 import type { ControlPanelStateStore } from "../../application/control-panel/control-panel-state-store.js";
+import type { AdminPanelStateStore } from "../../application/settings/admin-panel-state-store.js";
 import type { ChatStateStore } from "../../application/chat/chat-state-store.js";
 import type { ApplicationConfiguration } from "../../config/configuration.js";
 import {
@@ -11,7 +12,9 @@ import {
   type DatabaseConnection,
 } from "../database/database.js";
 import { createSqliteDatabaseConnection, type SqliteDatabaseConnection } from "../database/sqlite-database.js";
+import { LocalAdminPanelStateStore } from "./local-admin-panel-state-store.js";
 import { LocalControlPanelStateStore } from "./local-control-panel-state-store.js";
+import { PostgresAdminPanelStateStore } from "./postgres-admin-panel-state-store.js";
 import { PostgresControlPanelStateStore } from "./postgres-control-panel-state-store.js";
 import { PostgresGuildConfigurationProvider } from "./postgres-guild-configuration-provider.js";
 import { SqliteChatStateStore } from "./sqlite-chat-state-store.js";
@@ -56,6 +59,7 @@ import { PostgresLyricsCacheStore } from "./postgres-lyrics-cache-store.js";
 export interface PersistenceServices {
   guildConfigurationProvider: GuildConfigurationProvider;
   controlPanelStateStore: ControlPanelStateStore;
+  adminPanelStateStore: AdminPanelStateStore;
   // Only available on the postgres driver — a shared cross-instance cache
   // needs a real shared server (see cachedLyrics in schema.ts). null on the
   // local driver just means every lyrics lookup goes straight to LRCLIB.
@@ -82,6 +86,7 @@ export async function createPersistenceServices(
   let sqliteConnection: SqliteDatabaseConnection | null = null;
   let guildConfigurationProvider: GuildConfigurationProvider;
   let controlPanelStateStore: ControlPanelStateStore;
+  let adminPanelStateStore: AdminPanelStateStore;
   let chatStateStore: ChatStateStore;
   let userCustomizationStore: UserCustomizationStore;
   let guildKnowledgeStore: GuildKnowledgeStore;
@@ -108,6 +113,7 @@ export async function createPersistenceServices(
     guildMemberRegistry = new GuildMemberRegistry(connection.database);
     guildConfigurationProvider = new PostgresGuildConfigurationProvider(connection.database);
     controlPanelStateStore = new PostgresControlPanelStateStore(connection.database);
+    adminPanelStateStore = new PostgresAdminPanelStateStore(connection.database);
     chatStateStore = new PostgresChatStateStore(connection.database, guildMemberRegistry);
     userCustomizationStore = new PostgresUserCustomizationStore(connection.database, guildMemberRegistry);
     guildKnowledgeStore = new PostgresGuildKnowledgeStore(connection.database);
@@ -128,6 +134,7 @@ export async function createPersistenceServices(
     controlPanelStateStore = new LocalControlPanelStateStore(
       configuration.runtimeDataDirectory,
     );
+    adminPanelStateStore = new LocalAdminPanelStateStore(configuration.runtimeDataDirectory);
     // SQLite (not raw JSON files) for exactly these two — see
     // sqlite-schema.ts's header comment. Everything else on this backend
     // stays JSON/YAML, unaffected.
@@ -157,6 +164,7 @@ export async function createPersistenceServices(
 
   await guildConfigurationProvider.initialize();
   await controlPanelStateStore.initialize();
+  await adminPanelStateStore.initialize();
   await chatStateStore.initialize();
   await userCustomizationStore.initialize();
   await guildKnowledgeStore.initialize();
@@ -171,6 +179,7 @@ export async function createPersistenceServices(
   return {
     guildConfigurationProvider,
     controlPanelStateStore,
+    adminPanelStateStore,
     lyricsCacheStore,
     chatStateStore,
     userCustomizationStore,

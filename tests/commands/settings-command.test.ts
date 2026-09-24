@@ -3,23 +3,19 @@ import { describe, expect, it, vi } from "vitest";
 import type { ChatToolRegistry } from "../../src/application/chat/tools/chat-tool-registry.js";
 import type { ControlChannelService } from "../../src/application/control-panel/control-channel-service.js";
 import { SettingsUpdateService } from "../../src/application/settings/settings-update-service.js";
-import { SettingsCommand } from "../../src/infrastructure/discord/commands/setup/settings-command.js";
+import { LegacySettingsCommand } from "../../src/infrastructure/discord/settings/legacy-settings-command.js";
 import { formatAuditSummary } from "../../src/infrastructure/discord/settings/definitions/audit-setting.js";
-import { resolveGuildEmoji, validateRoleGroupUpdate } from "../../src/infrastructure/discord/settings/definitions/settings-support.js";
+import { validateRoleGroupUpdate } from "../../src/infrastructure/discord/settings/definitions/settings-support.js";
 import { settingGroups, type SettingGroup } from "../../src/infrastructure/discord/settings/definitions/index.js";
 import type { GuildAssetStore } from "../../src/application/assets/guild-asset-store.js";
-import { SettingsEngine } from "../../src/infrastructure/discord/settings/settings-engine.js";
+import { LegacySettingsEngine } from "../../src/infrastructure/discord/settings/legacy-settings-engine.js";
 import type { GuildConfiguration } from "../../src/config/guild-configuration.js";
 import type { GuildConfigurationProvider, UpdateGuildConfigurationInput } from "../../src/config/guild-configuration-provider.js";
 import type { CommandContext } from "../../src/application/commands/command.js";
 
-// SettingsCommand is now constructed once per group (each becomes its own
-// top-level /settings-<group> command — see settings-command.ts's own doc
-// comment) — these tests exercise specific settings, so each grabs the
-// real group that setting actually lives in.
+// The groups still run by the legacy engine; music and community are in
+// the settings registry (see settings-groups.test.ts).
 const chatGroup = settingGroups.find((group) => group.name === "chat")!;
-const musicGroup = settingGroups.find((group) => group.name === "music")!;
-const communityGroup = settingGroups.find((group) => group.name === "community")!;
 
 const applicationEmojiCatalog = {
   getYohtaTheme: (): null => null,
@@ -111,21 +107,22 @@ function profile(): GuildConfiguration {
 // Minimal fake CommandContext for exercising SettingsCommand.execute() end to
 // end — options() returns the requested option values, responses.edit
 // captures the final message.
-// A SettingsCommand over its own engine, wired the way dependencies.ts does.
+// A legacy /settings-<group> command over its own engine, wired the way
+// dependencies.ts does.
 function settingsCommand(
   group: SettingGroup,
   profiles: GuildConfigurationProvider,
   assets: GuildAssetStore,
   options: { chatToolRegistry?: ChatToolRegistry; channelSummaryProviderAvailable?: boolean } = {},
-): SettingsCommand {
-  const engine = new SettingsEngine({
+): LegacySettingsCommand {
+  const engine = new LegacySettingsEngine({
     profiles,
     assets,
     applicationEmojiCatalog: applicationEmojiCatalog as never,
     channelSummaryProviderAvailable: options.channelSummaryProviderAvailable ?? false,
-  });
+  }, new SettingsUpdateService(profiles, assets));
   if (options.chatToolRegistry) engine.bindChatToolRegistry(options.chatToolRegistry);
-  return new SettingsCommand(group, engine, applicationEmojiCatalog as never);
+  return new LegacySettingsCommand(group, engine);
 }
 
 function fakeContext(subcommand: string, options: Record<string, unknown> = {}): {
@@ -235,13 +232,6 @@ describe("SettingsCommand", () => {
     expect(validation).toContain("chatbot");
   });
 
-  it("describes a specific field change instead of a generic confirmation", async () => {
-    const command = settingsCommand(musicGroup, providerWith(profile()), {} as never);
-    const { context, edited } = fakeContext("volume", { default: 90 });
-
-    await command.execute(context);
-    expect(edited.text).toContain("Default volume: 75 → 90");
-  });
 
   it("warns when a chatbot setting changes while the chatbot feature is disabled", async () => {
     const command = settingsCommand(chatGroup, providerWith(profile()), {} as never);
@@ -384,26 +374,6 @@ describe("SettingsCommand", () => {
     expect(edited.text).toContain("currently disabled");
   });
 
-  it("resolves custom emojis by mention or local name", () => {
-    const guildId = profile().guildId;
-    const emoji = {
-      id: "777777777777777777",
-      name: "runner",
-      animated: true,
-      available: true,
-      guild: { id: guildId },
-    };
-
-    expect(resolveGuildEmoji(guildId, [emoji].values() as never, "runner")).toEqual({
-      id: emoji.id,
-      name: "runner",
-      animated: true,
-      scope: "guild",
-      guildId,
-    });
-    expect(resolveGuildEmoji(guildId, [emoji].values() as never, `<a:runner:${emoji.id}>`))
-      .toEqual(expect.objectContaining({ id: emoji.id, animated: true }));
-  });
 
   it("tells the admin to configure a channel when audit logging isn't set up", async () => {
     const auditLogService = { fetchRecent: vi.fn().mockResolvedValue({ configured: false, entries: [] }) };
@@ -449,35 +419,8 @@ describe("SettingsCommand", () => {
   });
 
   describe("language", () => {
-    it("switches the guild language and confirms it by its display name", async () => {
-      const command = settingsCommand(communityGroup, providerWith(profile()), {} as never);
-      const { context, edited } = fakeContext("language", { language: "ja" });
 
-      await command.execute(context);
 
-      expect(edited.text).toContain("Language: English → 日本語");
-    });
-
-    it("rejects a language the bot doesn't support, without saving anything", async () => {
-      const provider = providerWith(profile());
-      const update = vi.spyOn(provider, "update");
-      const command = settingsCommand(communityGroup, provider, {} as never);
-      const { context, edited } = fakeContext("language", { language: "fr" });
-
-      await command.execute(context);
-
-      expect(edited.text).toContain("isn't a supported language");
-      expect(update).not.toHaveBeenCalled();
-    });
-
-    it("offers exactly the supported languages as choices", () => {
-      const setting = communityGroup.settings.find((candidate) => candidate.name === "language")!;
-      const option = setting.configureOptions?.().find((candidate) => candidate.name === "language");
-
-      expect(option).toMatchObject({ type: "string", required: true });
-      const choices = option?.type === "string" ? (option.choices ?? []) : [];
-      expect(choices.map((choice) => choice.value)).toEqual(["en", "zh-TW", "ja"]);
-    });
 
     it("refreshes the panel immediately so it switches language without waiting for playback", async () => {
       const { refreshPanel } = await applyWithPanel({ language: "ja" });

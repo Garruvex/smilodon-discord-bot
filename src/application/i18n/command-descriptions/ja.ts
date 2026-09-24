@@ -153,33 +153,6 @@ export const jaCommandDescriptions = {
   "settings-access/admin-panel:disable": "管理パネルを削除します。", // Remove the admin panel.
   "settings-access/audit": "最近の設定・セットアップの変更ログを表示します。", // Shows recent settings/setup change log entries.
   "settings-access/audit:count": "表示する最近のログ件数（デフォルト10）。", // How many recent entries to show (default 10).
-  "settings-music": "音楽パネルと再生の動作。", // Music panel and playback behavior.
-  "settings-music/panel": "音楽パネルを更新します。", // Updates the music panel.
-  "settings-music/panel:channel": "音楽コントロールチャンネル。", // Music control channel.
-  "settings-music/panel:idle-image-url": "固定のHTTPSアイドル画像URL。", // Stable HTTPS idle image URL.
-  "settings-music/panel:idle-image": "保存して使うPNG、JPEG、WebP、GIFの待機画像をアップロードします。", // Upload a persistent PNG, JPEG, WebP, or GIF idle image.
-  "settings-music/panel:use-default-image": "内蔵のSmilodonアイドル画像を使用します。", // Use the bundled Smilodon idle image.
-  "settings-music/panel:progress-style": "プログレスバーの見た目。", // Progress bar appearance.
-  "settings-music/panel:progress-length": "プログレスバーの長さ。", // Progress bar length.
-  "settings-music/panel:progress-completed": "再生済み部分に使うカスタム絵文字。絵文字を貼り付けるか、サーバー内の名前を入力します。", // Custom completed emoji; paste an emoji or enter its server name.
-  "settings-music/panel:progress-remaining": "未再生部分に使うカスタム絵文字。絵文字を貼り付けるか、サーバー内の名前を入力します。", // Custom remaining emoji; paste an emoji or enter its server name.
-  "settings-music/panel:progress-playing": "再生中の現在位置に使うカスタム絵文字。", // Custom current-position emoji while playing.
-  "settings-music/panel:progress-paused": "一時停止中の現在位置に使うカスタム絵文字。", // Custom current-position emoji while paused.
-  "settings-music/panel:progress-ending": "終端用の絵文字（任意）。削除するには 'none' を入力します。", // Optional ending emoji, or 'none' to remove it.
-  "settings-music/volume": "音量の上限などを更新します。", // Updates music volume limits.
-  "settings-music/volume:default": "デフォルトの音量。", // Default volume.
-  "settings-music/volume:maximum": "最大音量。", // Maximum volume.
-  "settings-music/volume:button-step": "パネルのボタン1回あたりの調整量。", // Panel adjustment amount.
-  "settings-music/lifecycle": "キューやチャンネルが空になったときの動作を更新します。", // Updates empty queue/channel behavior.
-  "settings-music/lifecycle:empty-queue-action": "キューが終わったときの動作。", // Action when the queue ends.
-  "settings-music/lifecycle:queue-delay-seconds": "キューが空になってから動作するまでの待ち時間。", // Delay before empty-queue action.
-  "settings-music/lifecycle:empty-channel-action": "全員が退出したときの動作。", // Action when everyone leaves.
-  "settings-music/lifecycle:channel-grace-seconds": "動作するまでの猶予時間。", // Grace period before action.
-  "settings-music/lifecycle:resume-when-occupied": "自動一時停止のあと、誰かが戻ってきたときに再開するかどうか。", // Resume after an automatic pause.
-  "settings-music/dj-mode": "ミュージックコントローラーのロールがどこからでも再生を操作できるようにします。", // Lets music-controller roles control playback from anywhere.
-  "settings-music/dj-mode:enabled": "DJモードを有効にするかどうか。", // Whether DJ mode is on.
-  "settings-music/open-queue-requests": "ボットのボイスチャンネルに参加していなくても、誰でも曲をキューに追加できるようにします。", // Lets anyone queue songs without joining the bot's voice channel.
-  "settings-music/open-queue-requests:enabled": "ボイスチャンネルに参加していなくても曲を追加できるようにするかどうか。", // Whether open queue requests are on.
   "settings-chat": "AIチャットの動作。", // AI chat behavior.
   "settings-chat/chatbot": "メンションに対するAI返信を設定します。", // Configures mention-based AI replies.
   "settings-chat/chatbot:enabled": "権限のあるユーザーがボットにメンションしたときに返信します。", // Reply when permitted users mention the bot.
@@ -233,31 +206,6 @@ export const jaCommandDescriptions = {
   "settings-chat/tools-disable": "チャットツールを無効にし、モデルが呼び出せないようにします。", // Disables a chat tool so the model can't call it.
   "settings-chat/tools-disable:name": "無効にするツール名。", // Tool name to disable.
   "settings-chat/tools-list": "すべてのチャットツールと、このサーバーでの有効／無効の状態を一覧表示します。", // Lists every chat tool and whether it's enabled here.
-  "settings-community": "独立したコミュニティ機能。", // Standalone community features.
-  "settings-community/birthdays": "誕生日の自動告知を設定します。", // Configures automatic birthday announcements.
-  "settings-community/birthdays:enabled": "誕生日の告知をオン／オフします。", // Turn birthday announcements on or off.
-  "settings-community/birthdays:channel": "誕生日の告知を投稿するテキストチャンネル。", // Text channel where birthday announcements are posted.
-  "settings-community/reminders": "メンバーが個人用リマインダーを設定できるかどうかを設定します。", // Configures whether members can set personal reminders.
-  "settings-community/reminders:enabled": "/remind コマンドをオン／オフします。", // Turn the /remind command on or off.
-  "settings-community/welcome": "メンバーの参加・退出を告知するチャンネルを設定します。", // Sets join/leave announcement channels.
-  "settings-community/welcome:join-channel": "新メンバーのウェルカムカードを投稿する場所。", // Where new-member welcome cards are posted.
-  "settings-community/welcome:leave-channel": "メンバー退出のメッセージを投稿する場所。", // Where member-left messages are posted.
-  "settings-community/nsfw": "このサーバーでのNSFW画像コマンドをオン／オフします。", // Turns NSFW image commands on or off for this server.
-  "settings-community/nsfw:enabled": "NSFW画像コマンドを許可します（年齢制限チャンネルでのみ使用可能）。", // Allow NSFW image commands (still requires an age-restricted channel).
-  "settings-community/link-fix": "対応プラットフォームのリンクを自動で書き換える設定をします。", // Configures automatic link previews for supported platforms.
-  "settings-community/link-fix:enabled": "リンクの自動書き換えをオン／オフします。", // Turn automatic link rewriting on or off.
-  "settings-community/link-fix:channel": "書き換え可能なリンクを監視するテキストチャンネルを追加します。", // Adds a text channel to watch for rewritable links.
-  "settings-community/link-fix:remove-channel": "監視リストからテキストチャンネルを削除します。", // Removes a text channel from the watched list.
-  "settings-community/link-fix:twitter": "Twitter/Xのリンク修正をオン／オフします。", // Turn Twitter/X link fixing on or off.
-  "settings-community/link-fix:threads": "Threadsのリンク修正をオン／オフします。", // Turn Threads link fixing on or off.
-  "settings-community/link-fix:tiktok": "TikTokのリンク修正をオン／オフします。", // Turn TikTok link fixing on or off.
-  "settings-community/link-fix:instagram": "Instagramのリンク修正をオン／オフします。", // Turn Instagram link fixing on or off.
-  "settings-community/link-fix:reddit": "Redditのリンク修正をオン／オフします。", // Turn Reddit link fixing on or off.
-  "settings-community/link-fix:bilibili": "Bilibiliのリンク修正をオン／オフします。", // Turn Bilibili link fixing on or off.
-  "settings-community/member-data": "メンバーが退出したあと、そのデータを保持するか削除するかを設定します。", // Controls whether a departing member's data is kept or deleted.
-  "settings-community/member-data:retain": "true：メンバーが戻ったときのためにデータを保持します。false：退出時に削除します。", // true: keep their data if they return. false: delete it when they leave.
-  "settings-community/timezone": "誕生日など、このサーバーの日付に使うIANAタイムゾーンを設定します。", // Sets the IANA time zone used for birthdays and other guild-local dates.
-  "settings-community/timezone:zone": "IANAタイムゾーン名。例：\"America/New_York\"、\"Asia/Taipei\"。", // An IANA time zone name, e.g. "America/New_York" or "Asia/Taipei".
   "bird": "ランダムな鳥の画像と豆知識を取得します。", // Gets a random bird image and fact.
   "cat": "ランダムな猫の画像と豆知識を取得します。", // Gets a random cat image and fact.
   "dog": "ランダムな犬の画像と豆知識を取得します。", // Gets a random dog image and fact.
@@ -279,15 +227,9 @@ export const jaCommandDescriptions = {
   "e621:query": "検索するタグ（例：wolf, dragon, solo）。空欄ならランダムな投稿を取得します。", // Tags to search for (e.g. wolf, dragon, solo). Leave empty for a random post.
   "e621:type": "ファイルの種類。", // File type.
   "e621:order": "並び順。", // Sort order.
-  "settings-community/language": "このサーバーで翻訳に対応しているボットのメッセージに使う言語を設定します。", // Sets the language for translated bot messages in this server.
-  "settings-community/language:language": "使用する言語。", // The language to use.
   "vote:option1": "選択肢1。2つ以上指定するか、「はい／いいえ」にする場合はすべて空欄にします。", // Choice 1; give at least two choices, or none for Yes/No.
   "vote:option2": "選択肢2。2つ以上指定するか、「はい／いいえ」にする場合はすべて空欄にします。", // Choice 2; give at least two choices, or none for Yes/No.
   "vote:option3": "選択肢3。2つ以上指定するか、「はい／いいえ」にする場合はすべて空欄にします。", // Choice 3; give at least two choices, or none for Yes/No.
   "vote:option4": "選択肢4。2つ以上指定するか、「はい／いいえ」にする場合はすべて空欄にします。", // Choice 4; give at least two choices, or none for Yes/No.
   "vote:option5": "選択肢5。2つ以上指定するか、「はい／いいえ」にする場合はすべて空欄にします。", // Choice 5; give at least two choices, or none for Yes/No.
-  "settings-music/autoqueue-vote": "オートキューが次に再生する曲をリスナーの投票で決められるようにします。", // Lets listeners vote on which song autoqueue plays next.
-  "settings-music/autoqueue-vote:enabled": "リスナーが投票するかどうか。オフの場合はオートキューが自動で選びます。", // Whether listeners vote; off means autoqueue picks on its own.
-  "settings-music/autoqueue-vote:bar-style": "投票バーの見た目。", // How vote bars look.
-  "settings-music/autoqueue-vote:options": "候補にする曲の数。", // How many songs to pick from.
 } as const satisfies CommandDescriptionCatalog;

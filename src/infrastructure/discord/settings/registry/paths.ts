@@ -53,6 +53,11 @@ export function isListOption(option: SettingNode["options"][string]): option is 
   return option.kind === "channelList" || option.kind === "roleList";
 }
 
+// The slash option that clears a clearable channel option.
+export function clearSlashOptionName(node: SettingNode, optionName: string): string {
+  return Object.keys(node.options).length === 1 ? "clear" : `clear-${optionName}`;
+}
+
 // The slash options a list option becomes. A node whose only option is the
 // list gets plain `add` / `remove`; otherwise they're named after the list.
 export function listSlashOptionNames(node: SettingNode, optionName: string): { add: string; remove: string } {

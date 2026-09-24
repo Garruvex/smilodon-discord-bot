@@ -53,8 +53,12 @@ export function action(name: string, spec: Omit<ActionNode, "kind" | "name">): A
   return { kind: "action", name, ...spec };
 }
 
-export function report(name: string, render: ReportNode["render"]): ReportNode {
-  return { kind: "report", name, render };
+export function report(
+  name: string,
+  render: ReportNode["render"],
+  params: NonNullable<ReportNode["params"]> = {},
+): ReportNode {
+  return { kind: "report", name, params, render };
 }
 
 export const toggle = (spec: Spec<ToggleOption>): ToggleOption => ({ kind: "toggle", ...spec });

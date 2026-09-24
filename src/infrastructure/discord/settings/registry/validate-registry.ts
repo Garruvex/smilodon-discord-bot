@@ -4,7 +4,7 @@ import {
   type SettingsNodeText,
   type SettingsTextCatalogs,
 } from "../../../../application/i18n/settings/index.js";
-import { commandNameFor, listSlashOptionNames, optionPath, sectionPath } from "./paths.js";
+import { clearSlashOptionName, commandNameFor, listSlashOptionNames, optionPath, sectionPath } from "./paths.js";
 import type { SettingsGroup, SettingsNode } from "./types.js";
 
 // Discord's limits on what the registry turns into slash commands and panel
@@ -51,9 +51,8 @@ export function registryProblems(
   const checkNode = (path: string, node: SettingsNode): void => {
     checkName(node.name, "Setting");
     required.push({ path, fields: node.kind === "report" ? ["description"] : ["label", "description"] });
-    if (node.kind === "report") return;
 
-    const entries = node.kind === "setting" ? Object.entries(node.options) : Object.entries(node.params);
+    const entries = node.kind === "setting" ? Object.entries(node.options) : Object.entries(node.params ?? {});
     let slashOptions = 0;
     let formFields = 0;
     for (const [name, option] of entries) {
@@ -73,6 +72,9 @@ export function registryProblems(
         const names = listSlashOptionNames(node, name);
         checkName(names.add, "Option");
         checkName(names.remove, "Option");
+        slashOptions += 2;
+      } else if (node.kind === "setting" && option.kind === "channel" && option.clearable) {
+        checkName(clearSlashOptionName(node, name), "Option");
         slashOptions += 2;
       } else {
         slashOptions += 1;

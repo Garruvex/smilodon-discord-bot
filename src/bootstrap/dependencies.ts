@@ -59,11 +59,13 @@ import { PreviousCommand } from "../infrastructure/discord/commands/music/previo
 import type { GuildSetupService } from "../application/setup/guild-setup-service.js";
 import { SetupCommand } from "../infrastructure/discord/commands/setup/setup-command.js";
 import { StatusCommand } from "../infrastructure/discord/commands/setup/status-command.js";
-import { SettingsCommand } from "../infrastructure/discord/commands/setup/settings-command.js";
-import { SettingsEngine } from "../infrastructure/discord/settings/settings-engine.js";
-import { AdminPanelService } from "../infrastructure/discord/admin-panel/admin-panel-service.js";
-import { AdminPanelComponentHandler } from "../infrastructure/discord/components/admin-panel-component-handler.js";
+import { SettingsUpdateService } from "../application/settings/settings-update-service.js";
 import { settingGroups } from "../infrastructure/discord/settings/definitions/index.js";
+import { SettingsEngine } from "../infrastructure/discord/settings/engine/settings-engine.js";
+import { settingsRegistry } from "../infrastructure/discord/settings/groups/index.js";
+import { LegacySettingsCommand } from "../infrastructure/discord/settings/legacy-settings-command.js";
+import { LegacySettingsEngine } from "../infrastructure/discord/settings/legacy-settings-engine.js";
+import { SettingsCommand } from "../infrastructure/discord/settings/slash/settings-command.js";
 import { VoteCommand } from "../infrastructure/discord/commands/common/vote-command.js";
 import { MemoryCommand } from "../infrastructure/discord/commands/common/memory-command.js";
 import { MemoryEvalCommand } from "../infrastructure/discord/commands/diagnostics/memory-eval-command.js";
@@ -209,15 +211,20 @@ function createChatProviderFromConfig(config: ProviderConfig, logger: Logger): C
 export interface ApplicationDependencies {
   commandRegistry: CommandRegistry;
   commandDispatcher: CommandDispatcher;
+  // Services built after dependencies (the admin panel) register their
+  // component handlers here.
+  componentRegistry: ComponentRegistry;
   componentDispatcher: ComponentDispatcher;
   musicPlayerGateway: MusicPlayerGateway;
   guildConfigurationProvider: GuildConfigurationProvider;
   playbackService: PlaybackService;
   pollService: PollService;
   behaviorDispatcher: BehaviorDispatcher;
-  // Runs every setting for both surfaces (/settings-* and the admin panel).
+  // Runs every registered setting, for every surface (/settings-*, the
+  // admin panel, guided setup); settingsUpdater saves and notifies for both
+  // engines while the legacy groups remain.
   settingsEngine: SettingsEngine;
-  adminPanelService: AdminPanelService;
+  settingsUpdater: SettingsUpdateService;
   // Null when no chat provider is configured — there's nothing to
   // summarize channel messages with, same condition chatConversationService
   // already checks.
@@ -249,7 +256,8 @@ export interface CommandRegistrationResult {
   playbackService: PlaybackService;
   pollService: PollService;
   settingsEngine: SettingsEngine;
-  adminPanelService: AdminPanelService;
+  legacySettingsEngine: LegacySettingsEngine;
+  settingsUpdater: SettingsUpdateService;
   applicationEmojiCatalog: ApplicationEmojiCatalog;
   memoryEngine: MemoryEngine;
   guildAssetStore: GuildAssetStore;
@@ -445,30 +453,36 @@ export function registerCommands(
     discordClient,
     logger.child({ component: "emoji-catalog" }),
   );
-  const settingsEngine = new SettingsEngine({
-    profiles: guildConfigurationProvider,
+  const settingsUpdater = new SettingsUpdateService(guildConfigurationProvider, guildAssetStore, auditLogService);
+  const settingsDeps = {
     assets: guildAssetStore,
     applicationEmojiCatalog,
     auditLogService,
     personaDriftStore,
     ...(channelSummaryCheckpointStore ? { channelSummaryCheckpointStore } : {}),
     channelSummaryProviderAvailable: utilityProvider?.summarizeChannelMessages !== undefined,
+  };
+  // Building the engine validates the settings registry and its text, so a
+  // registration mistake fails startup rather than a deploy.
+  const settingsEngine = new SettingsEngine({
+    registry: settingsRegistry,
+    profiles: guildConfigurationProvider,
+    updater: settingsUpdater,
+    deps: settingsDeps,
   });
-  // One top-level /settings-<group> command per settingGroups entry, rather
-  // than one shared /settings command: every group's descriptions would
-  // otherwise share Discord's 8000-char per-command budget.
-  for (const group of settingGroups) {
-    commandRegistry.register(new SettingsCommand(group, settingsEngine, applicationEmojiCatalog));
-  }
-  // The engine's second surface. Building it also validates the panel
-  // layout against the settings registry, so a mistake there fails startup.
-  const adminPanelService = new AdminPanelService(
-    discordClient,
-    guildConfigurationProvider,
-    settingsEngine,
-    logger.child({ component: "admin-panel" }),
+  const legacySettingsEngine = new LegacySettingsEngine(
+    { profiles: guildConfigurationProvider, ...settingsDeps },
+    settingsUpdater,
   );
-  componentRegistry.register(new AdminPanelComponentHandler(adminPanelService));
+  // One top-level /settings-<group> command per group, rather than one
+  // shared /settings command: every group's descriptions would otherwise
+  // share Discord's 8000-char per-command budget.
+  for (const group of settingsRegistry) {
+    commandRegistry.register(new SettingsCommand(group, settingsEngine, guildConfigurationProvider));
+  }
+  for (const group of settingGroups) {
+    commandRegistry.register(new LegacySettingsCommand(group, legacySettingsEngine));
+  }
   commandRegistry.register(new CustomizeCommand(userCustomizationStore, utilityProvider));
 
   return {
@@ -478,7 +492,8 @@ export function registerCommands(
     playbackService,
     pollService,
     settingsEngine,
-    adminPanelService,
+    legacySettingsEngine,
+    settingsUpdater,
     applicationEmojiCatalog,
     memoryEngine,
     guildAssetStore,
@@ -515,7 +530,8 @@ export function createDependencies(
     playbackService,
     pollService,
     settingsEngine,
-    adminPanelService,
+    legacySettingsEngine,
+    settingsUpdater,
     applicationEmojiCatalog,
     memoryEngine,
     guildAssetStore,
@@ -593,6 +609,7 @@ export function createDependencies(
     ...commandToolBindings,
   ]);
   settingsEngine.bindChatToolRegistry(chatToolRegistry);
+  legacySettingsEngine.bindChatToolRegistry(chatToolRegistry);
   const chatConversationService = chatProvider
     ? new ChatConversationService(
         chatProvider,
@@ -654,6 +671,7 @@ export function createDependencies(
   return {
     commandRegistry,
     commandDispatcher,
+    componentRegistry,
     componentDispatcher,
     musicPlayerGateway,
     guildConfigurationProvider,
@@ -661,7 +679,7 @@ export function createDependencies(
     pollService,
     behaviorDispatcher: new BehaviorDispatcher(behaviorRegistry),
     settingsEngine,
-    adminPanelService,
+    settingsUpdater,
     channelSummaryScheduler,
     reactionReplyScheduler,
     channelEditScheduler: new ChannelEditScheduler(),

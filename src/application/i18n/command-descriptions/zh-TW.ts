@@ -155,33 +155,6 @@ export const zhTWCommandDescriptions = {
   "settings-access/admin-panel:disable": "移除管理面板", // Remove the admin panel.
   "settings-access/audit": "顯示最近的設定／初始化變更紀錄", // Shows recent settings/setup change log entries.
   "settings-access/audit:count": "要顯示最近幾筆紀錄（預設 10）", // How many recent entries to show (default 10).
-  "settings-music": "音樂面板與播放行為", // Music panel and playback behavior.
-  "settings-music/panel": "更新音樂面板", // Updates the music panel.
-  "settings-music/panel:channel": "音樂控制頻道", // Music control channel.
-  "settings-music/panel:idle-image-url": "固定的 HTTPS 待機圖片網址", // Stable HTTPS idle image URL.
-  "settings-music/panel:idle-image": "上傳長期保存的 PNG、JPEG、WebP 或 GIF 待機圖片", // Upload a persistent PNG, JPEG, WebP, or GIF idle image.
-  "settings-music/panel:use-default-image": "使用內建的 Smilodon 待機圖片", // Use the bundled Smilodon idle image.
-  "settings-music/panel:progress-style": "進度條外觀", // Progress bar appearance.
-  "settings-music/panel:progress-length": "進度條長度", // Progress bar length.
-  "settings-music/panel:progress-completed": "自訂已完成部分的表情符號；貼上表情符號或輸入其伺服器名稱", // Custom completed emoji; paste an emoji or enter its server name.
-  "settings-music/panel:progress-remaining": "自訂剩餘部分的表情符號；貼上表情符號或輸入其伺服器名稱", // Custom remaining emoji; paste an emoji or enter its server name.
-  "settings-music/panel:progress-playing": "播放中目前位置的自訂表情符號", // Custom current-position emoji while playing.
-  "settings-music/panel:progress-paused": "暫停時目前位置的自訂表情符號", // Custom current-position emoji while paused.
-  "settings-music/panel:progress-ending": "選填的結尾表情符號，或輸入 'none' 移除", // Optional ending emoji, or 'none' to remove it.
-  "settings-music/volume": "更新音量限制", // Updates music volume limits.
-  "settings-music/volume:default": "預設音量", // Default volume.
-  "settings-music/volume:maximum": "最大音量", // Maximum volume.
-  "settings-music/volume:button-step": "面板按鈕每次調整的幅度", // Panel adjustment amount.
-  "settings-music/lifecycle": "設定待播歌曲播完或語音頻道無人時的行為", // Updates empty queue/channel behavior.
-  "settings-music/lifecycle:empty-queue-action": "待播歌曲播完時的動作", // Action when the queue ends.
-  "settings-music/lifecycle:queue-delay-seconds": "待播清單清空後，執行動作前的等待時間", // Delay before empty-queue action.
-  "settings-music/lifecycle:empty-channel-action": "所有人離開時的動作", // Action when everyone leaves.
-  "settings-music/lifecycle:channel-grace-seconds": "執行動作前的寬限時間", // Grace period before action.
-  "settings-music/lifecycle:resume-when-occupied": "自動暫停後，有人回來時是否恢復播放", // Resume after an automatic pause.
-  "settings-music/dj-mode": "讓音樂控制身分組能在任何地方控制播放", // Lets music-controller roles control playback from anywhere.
-  "settings-music/dj-mode:enabled": "是否開啟 DJ 模式", // Whether DJ mode is on.
-  "settings-music/open-queue-requests": "讓任何人不必加入機器人所在的語音頻道也能點歌", // Lets anyone queue songs without joining the bot's voice channel.
-  "settings-music/open-queue-requests:enabled": "是否開啟開放點歌", // Whether open queue requests are on.
   "settings-chat": "AI 聊天行為", // AI chat behavior.
   "settings-chat/chatbot": "設定提及機器人時觸發的 AI 回覆", // Configures mention-based AI replies.
   "settings-chat/chatbot:enabled": "有權限的使用者提及機器人時進行回覆", // Reply when permitted users mention the bot.
@@ -235,31 +208,6 @@ export const zhTWCommandDescriptions = {
   "settings-chat/tools-disable": "停用聊天工具，讓模型無法呼叫", // Disables a chat tool so the model can't call it.
   "settings-chat/tools-disable:name": "要停用的工具名稱", // Tool name to disable.
   "settings-chat/tools-list": "列出所有聊天工具，以及它們在此是否啟用", // Lists every chat tool and whether it's enabled here.
-  "settings-community": "獨立的社群功能", // Standalone community features.
-  "settings-community/birthdays": "設定自動生日公告", // Configures automatic birthday announcements.
-  "settings-community/birthdays:enabled": "開啟或關閉生日公告", // Turn birthday announcements on or off.
-  "settings-community/birthdays:channel": "發布生日公告的文字頻道", // Text channel where birthday announcements are posted.
-  "settings-community/reminders": "設定成員是否能設定個人提醒", // Configures whether members can set personal reminders.
-  "settings-community/reminders:enabled": "開啟或關閉 /remind 指令", // Turn the /remind command on or off.
-  "settings-community/welcome": "設定成員加入／離開公告的頻道", // Sets join/leave announcement channels.
-  "settings-community/welcome:join-channel": "發布新成員歡迎卡片的位置", // Where new-member welcome cards are posted.
-  "settings-community/welcome:leave-channel": "發布成員離開訊息的位置", // Where member-left messages are posted.
-  "settings-community/nsfw": "開啟或關閉此伺服器的 NSFW 圖片指令", // Turns NSFW image commands on or off for this server.
-  "settings-community/nsfw:enabled": "允許 NSFW 圖片指令（仍須在年齡限制頻道中使用）", // Allow NSFW image commands (still requires an age-restricted channel).
-  "settings-community/link-fix": "設定支援平台的連結自動改寫", // Configures automatic link previews for supported platforms.
-  "settings-community/link-fix:enabled": "開啟或關閉連結自動改寫", // Turn automatic link rewriting on or off.
-  "settings-community/link-fix:channel": "新增要監看可改寫連結的文字頻道", // Adds a text channel to watch for rewritable links.
-  "settings-community/link-fix:remove-channel": "將文字頻道從監看清單移除", // Removes a text channel from the watched list.
-  "settings-community/link-fix:twitter": "開啟或關閉 Twitter/X 連結修正", // Turn Twitter/X link fixing on or off.
-  "settings-community/link-fix:threads": "開啟或關閉 Threads 連結修正", // Turn Threads link fixing on or off.
-  "settings-community/link-fix:tiktok": "開啟或關閉 TikTok 連結修正", // Turn TikTok link fixing on or off.
-  "settings-community/link-fix:instagram": "開啟或關閉 Instagram 連結修正", // Turn Instagram link fixing on or off.
-  "settings-community/link-fix:reddit": "開啟或關閉 Reddit 連結修正", // Turn Reddit link fixing on or off.
-  "settings-community/link-fix:bilibili": "開啟或關閉 Bilibili 連結修正", // Turn Bilibili link fixing on or off.
-  "settings-community/member-data": "控制成員離開後其資料要保留還是刪除", // Controls whether a departing member's data is kept or deleted.
-  "settings-community/member-data:retain": "true：保留資料，供成員回來時使用；false：成員離開時刪除資料", // true: keep their data if they return. false: delete it when they leave.
-  "settings-community/timezone": "設定生日及其他伺服器當地日期使用的 IANA 時區", // Sets the IANA time zone used for birthdays and other guild-local dates.
-  "settings-community/timezone:zone": "IANA 時區名稱，例如 \"America/New_York\" 或 \"Asia/Taipei\"", // An IANA time zone name, e.g. "America/New_York" or "Asia/Taipei".
   "bird": "取得隨機鳥類圖片與小知識", // Gets a random bird image and fact.
   "cat": "取得隨機貓咪圖片與小知識", // Gets a random cat image and fact.
   "dog": "取得隨機狗狗圖片與小知識", // Gets a random dog image and fact.
@@ -281,15 +229,9 @@ export const zhTWCommandDescriptions = {
   "e621:query": "要搜尋的標籤（例如 wolf、dragon、solo）；留空則隨機取得一則貼文", // Tags to search for (e.g. wolf, dragon, solo). Leave empty for a random post.
   "e621:type": "檔案類型", // File type.
   "e621:order": "排序方式", // Sort order.
-  "settings-community/language": "設定此伺服器已支援翻譯的機器人訊息所使用的語言", // Sets the language for translated bot messages in this server.
-  "settings-community/language:language": "要使用的語言", // The language to use.
   "vote:option1": "選項 1；至少提供兩個選項，或全部留空以使用是／否", // Choice 1; give at least two choices, or none for Yes/No.
   "vote:option2": "選項 2；至少提供兩個選項，或全部留空以使用是／否", // Choice 2; give at least two choices, or none for Yes/No.
   "vote:option3": "選項 3；至少提供兩個選項，或全部留空以使用是／否", // Choice 3; give at least two choices, or none for Yes/No.
   "vote:option4": "選項 4；至少提供兩個選項，或全部留空以使用是／否", // Choice 4; give at least two choices, or none for Yes/No.
   "vote:option5": "選項 5；至少提供兩個選項，或全部留空以使用是／否", // Choice 5; give at least two choices, or none for Yes/No.
-  "settings-music/autoqueue-vote": "讓聽眾投票決定自動續播的下一首歌", // Lets listeners vote on which song autoqueue plays next.
-  "settings-music/autoqueue-vote:enabled": "是否讓聽眾投票；關閉時由自動續播自行選歌", // Whether listeners vote; off means autoqueue picks on its own.
-  "settings-music/autoqueue-vote:bar-style": "投票長條的外觀", // How vote bars look.
-  "settings-music/autoqueue-vote:options": "可供選擇的歌曲數量", // How many songs to pick from.
 } as const satisfies CommandDescriptionCatalog<keyof typeof jaCommandDescriptions>;
