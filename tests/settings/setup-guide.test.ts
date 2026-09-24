@@ -63,10 +63,10 @@ function guide(fixture: EngineFixture = engineFixture()): SetupGuide {
 }
 
 describe("SetupGuide", () => {
-  it("starts with the panel channel and the language, then the settings marked for setup", () => {
+  it("starts with the language and the panel channel, then the settings marked for setup", () => {
     const paths = guide().steps().map((step) => step.path);
 
-    expect(paths.slice(0, 2)).toEqual(["access.admin-panel", "community.language"]);
+    expect(paths.slice(0, 2)).toEqual(["community.language", "access.admin-panel"]);
     expect(paths).toContain("access.roles");
     expect(paths).toContain("chat.replies.mention-chat");
     expect(paths).not.toContain("chat.persona.persona-drift");

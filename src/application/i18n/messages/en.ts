@@ -245,7 +245,7 @@ export const en = {
   "admin.panel.stale": "That control is out of date. The panel has been refreshed; try again.",
   "setup.guide.notConfigured": "This server isn't set up yet. Run /setup initialize first.",
   "setup.guide.step": "Step {step} of {total} · {group}",
-  "setup.guide.intro": "## Guided setup\nThe main settings, one at a time. Changes save as soon as you make them.\n\nFirst, a channel for the admin panel: every setting in one place, including the ones this guide skips. Keep it private to bot admins.",
+  "setup.guide.intro": "## Guided setup\nThe main settings, one at a time. Changes save as soon as you make them.\n\nFirst, the server's language: the rest of this guide, the admin panel and everything the bot posts here use it. Next comes a channel for the admin panel, with every setting in one place.",
   "setup.guide.hint": "Changes save right away. Nothing to change here? Skip it.",
   "setup.guide.back": "Back",
   "setup.guide.skip": "Skip",

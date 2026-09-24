@@ -203,9 +203,9 @@ omitted is created automatically. This:
 - registers the server's enabled slash commands.
 
 Then run `/setup guide`: a private walkthrough of the main settings, one per
-step. It starts by picking a channel for the [admin panel](#the-admin-panel)
-(or creating a private one), then the server's language, then roles, music,
-chat and community basics. Every change saves the moment you make it; **Skip**
+step. It starts with the server's language, so the rest of the guide is in it,
+then a channel for the [admin panel](#the-admin-panel) (or creating a private
+one), then roles, music, chat and community basics. Every change saves the moment you make it; **Skip**
 leaves a setting as it is and **Finish later** keeps your place until the bot
 restarts. Like `/setup`, it needs Manage Server.
 

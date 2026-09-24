@@ -31,8 +31,9 @@ import type { RegisteredNode } from "../registry/paths.js";
 
 export const setupGuidePrefix = "wiz";
 
-// The guide opens on the panel's channel (so everything it skips has a home)
-// and asks for the language next, so the rest reads in the language picked.
+// The guide opens on the language, so the rest of it (and the panel) reads in
+// the language picked, then asks for the panel's channel, so everything it
+// skips has a home.
 const panelChannelPath = "access.admin-panel";
 const languagePath = "community.language";
 
@@ -61,10 +62,10 @@ export class SetupGuide {
     private readonly logger: Logger,
   ) {}
 
-  // The steps: the panel channel, the language, then every other setting
+  // The steps: the language, the panel channel, then every other setting
   // marked for setup in registry order.
   public steps(): RegisteredNode[] {
-    const first = [panelChannelPath, languagePath].flatMap((path) => this.engine.find(path) ?? []);
+    const first = [languagePath, panelChannelPath].flatMap((path) => this.engine.find(path) ?? []);
     const rest = this.engine.registered().filter((registered) =>
       registered.node.kind === "setting" && registered.node.setup === true && !first.includes(registered));
     return [...first, ...rest];

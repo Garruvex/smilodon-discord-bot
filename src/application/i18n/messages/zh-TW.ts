@@ -214,7 +214,7 @@ export const zhTW = {
   "admin.panel.stale": "這個控制項已過期。面板已重新整理，請再試一次。",
   "setup.guide.notConfigured": "這個伺服器還沒設定。請先執行 /setup initialize。",
   "setup.guide.step": "第 {step} 步，共 {total} 步 · {group}",
-  "setup.guide.intro": "## 引導設定\n一次一項，帶你看過主要設定。變更會立即儲存。\n\n首先，為管理面板選一個頻道：所有設定都在那裡，包括這個引導略過的。請只讓機器人管理員看得到。",
+  "setup.guide.intro": "## 引導設定\n一次一項，帶你看過主要設定。變更會立即儲存。\n\n首先，選擇伺服器的語言：這個引導接下來的內容、管理面板，以及機器人在這裡發的所有訊息都會使用它。接著為管理面板選一個頻道，所有設定都集中在那裡。",
   "setup.guide.hint": "變更會立即儲存。這裡不需要改？直接略過。",
   "setup.guide.back": "上一步",
   "setup.guide.skip": "略過",
