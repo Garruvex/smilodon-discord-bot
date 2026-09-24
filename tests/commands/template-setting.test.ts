@@ -1,22 +1,18 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import type { ChatInputCommandInteraction, InteractionEditReplyOptions } from "discord.js";
+import type { InteractionEditReplyOptions } from "discord.js";
 import { describe, expect, it } from "vitest";
 
-import { templateSetting } from "../../src/infrastructure/discord/commands/setup/settings/template-setting.js";
-import type { CommandContext } from "../../src/application/commands/command.js";
-import { texts } from "../../src/application/i18n/texts.js";
+import { templateSetting } from "../../src/infrastructure/discord/settings/definitions/template-setting.js";
+import type { SettingRequest, SettingValues } from "../../src/infrastructure/discord/settings/definitions/setting-definition.js";
 
-function context(kind: string): CommandContext {
+function context(kind: string): SettingRequest {
   return {
-    interaction: {
-      options: { getString: () => kind },
-    } as unknown as ChatInputCommandInteraction,
-    logger: { warn: () => undefined } as never,
-    responses: {} as never,
-    text: texts.en,
-    access: { bypassVoiceChannelCheck: false, allowQueueWithoutVoiceChannel: false },
+    guildId: "guild",
+    guild: null,
+    actorUserId: "user",
+    values: { getString: () => kind } as unknown as SettingValues,
   };
 }
 

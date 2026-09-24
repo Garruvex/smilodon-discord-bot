@@ -1,23 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { contextScanAddSetting, contextStatusSetting } from "../../src/infrastructure/discord/commands/setup/settings/channel-context-setting.js";
-import type { SettingDeps } from "../../src/infrastructure/discord/commands/setup/settings/setting-definition.js";
-import type { CommandContext } from "../../src/application/commands/command.js";
+import { contextScanAddSetting, contextStatusSetting } from "../../src/infrastructure/discord/settings/definitions/channel-context-setting.js";
+import type { SettingDeps, SettingRequest, SettingValues } from "../../src/infrastructure/discord/settings/definitions/setting-definition.js";
 import type { GuildConfiguration } from "../../src/config/guild-configuration.js";
 import type { UpdateGuildConfigurationInput } from "../../src/config/guild-configuration-provider.js";
 import type { ChannelSummaryCheckpoint, ChannelSummaryCheckpointStore } from "../../src/application/context/channel-summary-checkpoint-store.js";
 
-function fakeContext(options: { channel?: { id: string } | null; seedDays?: number; restart?: boolean } = {}): CommandContext {
+function fakeContext(options: { channel?: { id: string } | null; seedDays?: number; restart?: boolean } = {}): SettingRequest {
   return {
-    interaction: {
-      guildId: "guild",
-      options: {
-        getChannel: () => (options.channel === undefined ? { id: "channel" } : options.channel),
-        getInteger: () => options.seedDays ?? null,
-        getBoolean: () => options.restart ?? null,
-      },
-    },
-  } as unknown as CommandContext;
+    guildId: "guild",
+    guild: null,
+    actorUserId: "user",
+    values: {
+      getChannel: () => (options.channel === undefined ? { id: "channel" } : options.channel),
+      getInteger: () => options.seedDays ?? null,
+      getBoolean: () => options.restart ?? null,
+    } as unknown as SettingValues,
+  };
 }
 
 function fakeProfile(

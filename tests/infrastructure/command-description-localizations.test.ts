@@ -12,7 +12,7 @@ import { BooruSearchCommand } from "../../src/infrastructure/discord/commands/im
 import { FurryReactionCommand } from "../../src/infrastructure/discord/commands/image/furry-reaction-command.js";
 import { RandomAnimalFactCommand } from "../../src/infrastructure/discord/commands/image/random-animal-fact-command.js";
 import { buildDefinitionForGroup } from "../../src/infrastructure/discord/commands/setup/settings-command.js";
-import { settingGroups } from "../../src/infrastructure/discord/commands/setup/settings/index.js";
+import { settingGroups } from "../../src/infrastructure/discord/settings/definitions/index.js";
 
 // Every command module under commands/, loaded eagerly so a newly added
 // command is covered without editing this test.

@@ -1,0 +1,176 @@
+import {
+  formatRoleGroupList,
+  roleGroupDescriptions,
+} from "../../../../application/access/role-group-descriptions.js";
+import { CHAT_LIMITS } from "../../../../config/guild-configuration-limits.js";
+import type { MutationSettingDefinition } from "./setting-definition.js";
+
+const memoryModeChoices = [
+  { name: "shared — durable memory writes normally, scoped by the model", value: "shared" },
+  { name: "isolated — everything durable stays sealed to this channel, regardless of what the model claims", value: "isolated" },
+  { name: "session_only — short-term reply context only, nothing durable is written", value: "session_only" },
+  { name: "disabled — no memory reads or writes at all in this channel", value: "disabled" },
+] as const;
+
+export const chatbotSetting: MutationSettingDefinition = {
+  kind: "mutation",
+  name: "chatbot",
+  description: "Configures mention-based AI replies.",
+  configureOptions: () => [
+    { type: "boolean", name: "enabled", description: "Reply when permitted users mention the bot." },
+    { type: "role", name: "role", description: "Adds a role allowed to use mention chat." },
+    { type: "channel", name: "channel", description: "Adds a text channel where mention chat is allowed.", guildTextOnly: true },
+    {
+      type: "string", name: "memory-mode", description: "Sets `channel`'s memory isolation mode (defaults to shared if never set).",
+      choices: memoryModeChoices,
+    },
+    {
+      type: "integer", name: "cooldown-seconds", description: "Per-user delay between requests.",
+      minValue: CHAT_LIMITS.cooldownSeconds.min, maxValue: CHAT_LIMITS.cooldownSeconds.max,
+    },
+    { type: "string", name: "denied-message", description: "Playful response shown to users without access.", maxLength: 500 },
+    { type: "string", name: "denied-link-url", description: "Link button URL shown with the denied message. \"none\" removes it." },
+    { type: "string", name: "denied-link-label", description: "Label for the denied-message link button.", maxLength: 80 },
+    { type: "boolean", name: "web-search", description: "Allow the model to search the public web when needed." },
+    { type: "boolean", name: "tool-calling", description: "Allow the model to call bot functions mid-reply." },
+    { type: "boolean", name: "image-input", description: "Allow bounded image attachments from Discord." },
+    { type: "boolean", name: "image-generation", description: "Allow the model to generate images in mention chat." },
+    { type: "attachment", name: "self-reference-image", description: "Reference image used when the bot draws itself." },
+    { type: "boolean", name: "remove-self-reference-image", description: "Remove the self-reference image." },
+    { type: "boolean", name: "include-sources", description: "Include web citation links in replies." },
+    {
+      type: "integer", name: "max-images", description: "Maximum images accepted per request.",
+      minValue: CHAT_LIMITS.maxImagesPerRequest.min, maxValue: CHAT_LIMITS.maxImagesPerRequest.max,
+    },
+    { type: "attachment", name: "personality", description: "Upload the guild personality as a Markdown file." },
+    { type: "boolean", name: "use-default-personality", description: "Remove the uploaded personality and use the built-in/default file." },
+    { type: "attachment", name: "examples", description: "Upload example character exchanges as a Markdown file." },
+    { type: "boolean", name: "use-default-examples", description: "Remove the uploaded examples file." },
+    { type: "boolean", name: "persona-drift", description: "Experimental: let the character's mood/quirks slowly evolve." },
+    { type: "boolean", name: "reset-persona-drift", description: "Wipe the character's evolved mood/quirk history and start over." },
+  ],
+  handle: async (request, deps, previousProfile, input) => {
+    const enabled = request.values.getBoolean("enabled");
+    const role = request.values.getRole("role");
+    const channel = request.values.getChannel("channel");
+    const memoryMode = request.values.getString("memory-mode") as (typeof memoryModeChoices)[number]["value"] | null;
+    if (memoryMode && !channel) {
+      return { ok: false, message: "memory-mode requires channel — it sets that channel's memory isolation mode." };
+    }
+    const cooldown = request.values.getInteger("cooldown-seconds");
+    const deniedMessage = request.values.getString("denied-message");
+    const deniedLinkUrl = request.values.getString("denied-link-url");
+    const deniedLinkLabel = request.values.getString("denied-link-label");
+    const webSearch = request.values.getBoolean("web-search");
+    const toolCalling = request.values.getBoolean("tool-calling");
+    const imageInput = request.values.getBoolean("image-input");
+    const imageGeneration = request.values.getBoolean("image-generation");
+    const includeSources = request.values.getBoolean("include-sources");
+    const maxImages = request.values.getInteger("max-images");
+    const personality = request.values.getAttachment("personality");
+    const useDefaultPersonality = request.values.getBoolean("use-default-personality");
+    if (personality && useDefaultPersonality === true) {
+      return { ok: false, message: "Choose either a personality upload or the default personality, not both." };
+    }
+    const examples = request.values.getAttachment("examples");
+    const useDefaultExamples = request.values.getBoolean("use-default-examples");
+    if (examples && useDefaultExamples === true) {
+      return { ok: false, message: "Choose either an examples upload or removing examples, not both." };
+    }
+    const selfReferenceImage = request.values.getAttachment("self-reference-image");
+    const removeSelfReferenceImage = request.values.getBoolean("remove-self-reference-image");
+    if (selfReferenceImage && removeSelfReferenceImage === true) {
+      return { ok: false, message: "Choose either a self-reference image upload or removing it, not both." };
+    }
+    if (enabled !== null) input.chatbotEnabled = enabled;
+    if (role) {
+      input.chatbotRoleIds = [...new Set([...previousProfile.roles.chatbot, role.id])];
+    }
+    if (channel) {
+      input.chatbotChannelIds = [...new Set([...previousProfile.channels.chatbot, channel.id])];
+    }
+    if (memoryMode && channel) {
+      input.chatbotChannelMemoryModes = { ...previousProfile.chat.channelMemoryModes, [channel.id]: memoryMode };
+    }
+    if (cooldown !== null) input.chatbotCooldownSeconds = cooldown;
+    if (deniedMessage) input.chatbotDeniedMessage = deniedMessage;
+    if (deniedLinkUrl !== null) {
+      input.chatbotDeniedLinkUrl = deniedLinkUrl.trim().toLowerCase() === "none" ? null : deniedLinkUrl;
+    }
+    if (deniedLinkLabel !== null) input.chatbotDeniedLinkLabel = deniedLinkLabel;
+    if (webSearch !== null) input.chatbotWebSearchMode = webSearch ? "auto" : "off";
+    if (toolCalling !== null) input.chatbotToolCallingEnabled = toolCalling;
+    if (imageInput !== null) input.chatbotImageInputEnabled = imageInput;
+    if (imageGeneration !== null) input.chatbotImageGenerationEnabled = imageGeneration;
+    if (includeSources !== null) input.chatbotIncludeSources = includeSources;
+    if (maxImages !== null) input.chatbotMaxImagesPerRequest = maxImages;
+    let personalityLoreHeadings: readonly string[] = [];
+    if (personality) {
+      const saved = await deps.assets.savePersonality(request.guildId, personality);
+      input.chatbotPersonalityAsset = saved.assetPath;
+      input.chatbotPersonalityFile = null;
+      personalityLoreHeadings = saved.loreHeadings;
+    }
+    if (useDefaultPersonality === true) {
+      input.chatbotPersonalityAsset = null;
+      input.chatbotPersonalityFile = null;
+    }
+    if (examples) {
+      input.chatbotExamplesAsset = await deps.assets.saveExamples(request.guildId, examples);
+      input.chatbotExamplesFile = null;
+    }
+    if (useDefaultExamples === true) {
+      input.chatbotExamplesAsset = null;
+      input.chatbotExamplesFile = null;
+    }
+    if (selfReferenceImage) {
+      input.chatbotSelfReferenceImageAsset = await deps.assets.saveSelfReferenceImage(
+        request.guildId, selfReferenceImage,
+      );
+    }
+    if (removeSelfReferenceImage === true) input.chatbotSelfReferenceImageAsset = null;
+    const personaDrift = request.values.getBoolean("persona-drift");
+    if (personaDrift !== null) input.chatbotPersonaDriftEnabled = personaDrift;
+    if (request.values.getBoolean("reset-persona-drift") === true) {
+      await deps.personaDriftStore?.reset(request.guildId);
+    }
+    const extraLines: string[] = [];
+    if (personalityLoreHeadings.length > 0) {
+      extraLines.push(
+        `Personality compiled: ${personalityLoreHeadings.length} section(s) classified as situational lore ` +
+        `(sent only when relevant, not on every turn) — ${personalityLoreHeadings.join(", ")}. ` +
+        `If any of those should always apply, keep them out of a \`##\` section or move the heading's content ` +
+        `into the file's intro.`,
+      );
+    }
+    if (memoryMode && channel) {
+      extraLines.push(`<#${channel.id}> memory mode set to \`${memoryMode}\`.`);
+    }
+    return { ok: true, extraLines };
+  },
+  describe: (previous, updated) => {
+    if (updated.roles.chatbot.size !== previous.roles.chatbot.size) {
+      return [
+        "Chatbot settings updated.",
+        `Chatbot roles: ${formatRoleGroupList(updated.roles.chatbot)}`,
+        roleGroupDescriptions.chatbot,
+      ].join("\n");
+    }
+    return null;
+  },
+  fieldChanges: [
+    { label: "Chatbot enabled", read: (p) => p.features.chatbot },
+    { label: "Chatbot cooldown (seconds)", read: (p) => p.chat.cooldownSeconds },
+    { label: "Chatbot denied message", read: (p) => p.chat.deniedMessage },
+    { label: "Chatbot denied-message link URL", read: (p) => p.chat.deniedLinkUrl },
+    { label: "Chatbot denied-message link label", read: (p) => p.chat.deniedLinkLabel },
+    { label: "Chatbot web search mode", read: (p) => p.chat.webSearchMode },
+    { label: "Chatbot tool calling", read: (p) => p.chat.toolCallingEnabled },
+    { label: "Chatbot image input", read: (p) => p.chat.imageInputEnabled },
+    { label: "Chatbot image generation", read: (p) => p.chat.imageGenerationEnabled },
+    { label: "Chatbot self-reference image", read: (p) => p.chat.selfReferenceImageAsset },
+    { label: "Chatbot include sources", read: (p) => p.chat.includeSources },
+    { label: "Chatbot max images per request", read: (p) => p.chat.maxImagesPerRequest },
+    { label: "Chatbot persona drift (experimental)", read: (p) => p.chat.personaDriftEnabled },
+  ],
+};

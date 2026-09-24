@@ -1,24 +1,9 @@
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import type { ChatInputCommandMetadata } from "../../../../application/commands/command-metadata.js";
-import type { ChatToolRegistry } from "../../../../application/chat/tools/chat-tool-registry.js";
-import type { UpdateGuildConfigurationInput, GuildConfigurationProvider } from "../../../../config/guild-configuration-provider.js";
-import type { GuildConfiguration } from "../../../../config/guild-configuration.js";
-import { RoleMatchMode, publicAccessPolicy } from "../../../../domain/access/access-policy.js";
-import type { GuildAssetStore } from "../../../../application/assets/guild-asset-store.js";
-import type { ControlChannelService } from "../../../../application/control-panel/control-channel-service.js";
-import { SettingsUpdateService, type SettingsChangeListener } from "../../../../application/settings/settings-update-service.js";
 import type { ApplicationEmojiCatalog } from "../../application-emoji-catalog.js";
-import type { AuditLogService } from "../../../../application/audit/audit-log-service.js";
-import type { PersonaDriftStore } from "../../../../application/chat/persona-drift-store.js";
-import type { ChannelSummaryCheckpointStore } from "../../../../application/context/channel-summary-checkpoint-store.js";
-import {
-  settingDefinitionsByName,
-  type FieldChange,
-  type MutationSettingDefinition,
-  type SettingDeps,
-  type SettingGroup,
-} from "./settings/index.js";
-import { renderProgressPreview } from "./settings/settings-support.js";
+import type { SettingGroup, SettingRequest } from "../../settings/definitions/index.js";
+import { renderProgressPreview } from "../../settings/definitions/settings-support.js";
+import { settingsAccessPolicy, type SettingsEngine } from "../../settings/settings-engine.js";
 
 // Exported for tests — buildSlashCommandBuilder(buildDefinitionForGroup(group))
 // exercises the exact same discord.js validation (name/description length &
@@ -41,137 +26,61 @@ export function buildDefinitionForGroup(group: SettingGroup): ChatInputCommandMe
   };
 }
 
-// The slash-command definition, per-subcommand dispatch, and confirmation
-// text are all derived from one settingGroups entry (./settings/index.ts) —
-// to add or remove a /settings-<group> <setting> subcommand, add or remove
-// one file there. Everything after the write (control-panel sync, asset
-// cleanup, audit logging) lives in SettingsUpdateService, shared with the
-// admin panel; what remains here is the generic field-diff confirmation
-// renderer. One SettingsCommand instance is
-// constructed per group (see bootstrap/dependencies.ts), each becoming its
-// own top-level Discord command — subcommand dispatch below is unaffected
-// by which group it belongs to, since getSubcommand(true) already returns
-// just the leaf subcommand name and settingDefinitionsByName is a flat,
-// globally-unique-by-name map across every group.
+// The slash surface of the settings engine: one instance per settingGroups
+// entry (see bootstrap/dependencies.ts), each its own top-level
+// /settings-<group> command. It only turns the interaction into a
+// SettingRequest and the engine's result into a reply — running, validating,
+// saving, auditing and describing a change all happen in SettingsEngine,
+// shared with the admin panel. Subcommand dispatch is unaffected by which
+// group a command belongs to: getSubcommand(true) returns just the leaf
+// name, and setting names are unique across every group.
 export class SettingsCommand implements BotCommand {
-  private readonly deps: SettingDeps;
-  private readonly updater: SettingsUpdateService;
-
   public readonly definition: ChatInputCommandMetadata;
 
   public readonly module = CommandModule.Common;
-  public readonly access = {
-    ...publicAccessPolicy,
-    roles: { match: RoleMatchMode.Any, requiredGroups: ["botAdministrator" as const] },
-  };
+  public readonly access = settingsAccessPolicy;
 
   public constructor(
     group: SettingGroup,
-    private readonly profiles: GuildConfigurationProvider,
-    assets: GuildAssetStore,
+    private readonly engine: SettingsEngine,
     private readonly applicationEmojiCatalog: ApplicationEmojiCatalog,
-    auditLogService?: AuditLogService,
-    personaDriftStore?: PersonaDriftStore,
-    channelSummaryCheckpointStore?: ChannelSummaryCheckpointStore,
-    channelSummaryProviderAvailable = false,
   ) {
     this.definition = buildDefinitionForGroup(group);
-    this.updater = new SettingsUpdateService(profiles, assets, auditLogService);
-    this.deps = { assets, applicationEmojiCatalog, channelSummaryProviderAvailable };
-    if (auditLogService) this.deps.auditLogService = auditLogService;
-    if (personaDriftStore) this.deps.personaDriftStore = personaDriftStore;
-    if (channelSummaryCheckpointStore) this.deps.channelSummaryCheckpointStore = channelSummaryCheckpointStore;
-  }
-
-  public bindControlChannelService(service: ControlChannelService): void {
-    this.updater.bindControlChannelService(service);
-  }
-
-  // See SettingsChangeListener — used by the admin panel to redraw after a
-  // slash-command change.
-  public addSettingsChangeListener(listener: SettingsChangeListener): void {
-    this.updater.addListener(listener);
-  }
-
-  // See SettingDeps.chatToolRegistry — called once dependencies.ts has
-  // derived the registry from every registered command's toolBinding.
-  public bindChatToolRegistry(chatToolRegistry: ChatToolRegistry): void {
-    this.deps.chatToolRegistry = chatToolRegistry;
   }
 
   public async execute(context: CommandContext): Promise<void> {
-    if (!context.interaction.guildId) return;
+    const { interaction } = context;
+    if (!interaction.guildId) return;
     await context.responses.defer();
-    const previousProfile = this.profiles.require(context.interaction.guildId);
-    const subcommand = context.interaction.options.getSubcommand(true);
-    const setting = settingDefinitionsByName.get(subcommand);
+    const setting = this.engine.find(interaction.options.getSubcommand(true));
     if (!setting) return;
 
-    if (setting.kind === "readOnly") {
-      await context.responses.edit(await setting.run(context, this.deps, previousProfile));
-      return;
-    }
-
-    const input: UpdateGuildConfigurationInput = {};
-    const result = await setting.handle(context, this.deps, previousProfile, input);
-    if (!result.ok) {
-      await context.responses.edit(result.message);
-      return;
-    }
-    if (Object.keys(input).length === 0) {
-      await context.responses.edit("Provide at least one setting to change.");
-      return;
-    }
-
-    const { description } = await this.updater.apply({
-      guildId: context.interaction.guildId,
-      actorUserId: context.interaction.user.id,
-      auditHeading: `**/${context.interaction.commandName} ${subcommand}**`,
-      input,
-      describe: (previous, updated) => this.describeUpdate(setting, previous, updated, input, result.extraLines ?? []),
-    });
-    await context.responses.edit(
-      input.progressBar
-        ? `${description}
+    const request: SettingRequest = {
+      guildId: interaction.guildId,
+      guild: interaction.guild ?? null,
+      actorUserId: interaction.user.id,
+      values: interaction.options,
+    };
+    const result = await this.engine.run(setting, request, { kind: "slash", commandName: interaction.commandName });
+    switch (result.kind) {
+      case "report":
+        await context.responses.edit(result.reply);
+        return;
+      case "rejected":
+        await context.responses.edit(result.message);
+        return;
+      case "empty":
+        await context.responses.edit("Provide at least one setting to change.");
+        return;
+      case "updated":
+        await context.responses.edit(
+          result.input.progressBar
+            ? `${result.description}
 
 Preview:
-${renderProgressPreview(input.progressBar, this.applicationEmojiCatalog)}`
-        : description,
-    );
-  }
-
-  private describeUpdate(
-    setting: MutationSettingDefinition,
-    previousProfile: GuildConfiguration,
-    updatedProfile: GuildConfiguration,
-    input: UpdateGuildConfigurationInput,
-    handlerExtraLines: readonly string[],
-  ): string {
-    const custom = setting.describe?.(previousProfile, updatedProfile, input) ?? null;
-    if (custom !== null) return handlerExtraLines.length > 0 ? [custom, ...handlerExtraLines].join("\n") : custom;
-    const diffLines = [
-      ...this.describeFieldChanges(previousProfile, updatedProfile, setting.fieldChanges ?? []),
-      ...(setting.extraLines?.(previousProfile, updatedProfile) ?? []),
-      ...handlerExtraLines,
-    ];
-    if (diffLines.length === 0) return "No changes — those settings already match the requested values.";
-    const lines = ["Server settings updated.", ...diffLines];
-    if (
-      diffLines.some((line) => line.startsWith("Chatbot")) &&
-      !updatedProfile.features.chatbot
-    ) {
-      lines.push("Note: the chatbot feature is currently disabled, so this has no effect until it's enabled.");
+${renderProgressPreview(result.input.progressBar, this.applicationEmojiCatalog)}`
+            : result.description,
+        );
     }
-    return lines.join("\n");
-  }
-
-  private describeFieldChanges(
-    previous: GuildConfiguration,
-    updated: GuildConfiguration,
-    fields: readonly FieldChange[],
-  ): string[] {
-    return fields
-      .filter((field) => field.read(previous) !== field.read(updated))
-      .map((field) => `${field.label}: ${String(field.read(previous))} → ${String(field.read(updated))}`);
   }
 }

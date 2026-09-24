@@ -4,9 +4,11 @@ import type { ChatToolRegistry } from "../../src/application/chat/tools/chat-too
 import type { ControlChannelService } from "../../src/application/control-panel/control-channel-service.js";
 import { SettingsUpdateService } from "../../src/application/settings/settings-update-service.js";
 import { SettingsCommand } from "../../src/infrastructure/discord/commands/setup/settings-command.js";
-import { formatAuditSummary } from "../../src/infrastructure/discord/commands/setup/settings/audit-setting.js";
-import { resolveGuildEmoji, validateRoleGroupUpdate } from "../../src/infrastructure/discord/commands/setup/settings/settings-support.js";
-import { settingGroups } from "../../src/infrastructure/discord/commands/setup/settings/index.js";
+import { formatAuditSummary } from "../../src/infrastructure/discord/settings/definitions/audit-setting.js";
+import { resolveGuildEmoji, validateRoleGroupUpdate } from "../../src/infrastructure/discord/settings/definitions/settings-support.js";
+import { settingGroups, type SettingGroup } from "../../src/infrastructure/discord/settings/definitions/index.js";
+import type { GuildAssetStore } from "../../src/application/assets/guild-asset-store.js";
+import { SettingsEngine } from "../../src/infrastructure/discord/settings/settings-engine.js";
 import type { GuildConfiguration } from "../../src/config/guild-configuration.js";
 import type { GuildConfigurationProvider, UpdateGuildConfigurationInput } from "../../src/config/guild-configuration-provider.js";
 import type { CommandContext } from "../../src/application/commands/command.js";
@@ -108,6 +110,23 @@ function profile(): GuildConfiguration {
 // Minimal fake CommandContext for exercising SettingsCommand.execute() end to
 // end — options() returns the requested option values, responses.edit
 // captures the final message.
+// A SettingsCommand over its own engine, wired the way dependencies.ts does.
+function settingsCommand(
+  group: SettingGroup,
+  profiles: GuildConfigurationProvider,
+  assets: GuildAssetStore,
+  options: { chatToolRegistry?: ChatToolRegistry; channelSummaryProviderAvailable?: boolean } = {},
+): SettingsCommand {
+  const engine = new SettingsEngine({
+    profiles,
+    assets,
+    applicationEmojiCatalog: applicationEmojiCatalog as never,
+    channelSummaryProviderAvailable: options.channelSummaryProviderAvailable ?? false,
+  });
+  if (options.chatToolRegistry) engine.bindChatToolRegistry(options.chatToolRegistry);
+  return new SettingsCommand(group, engine, applicationEmojiCatalog as never);
+}
+
 function fakeContext(subcommand: string, options: Record<string, unknown> = {}): {
   context: CommandContext;
   edited: { text: string | null };
@@ -197,7 +216,7 @@ async function applyWithPanel(input: UpdateGuildConfigurationInput): Promise<{
 
 describe("SettingsCommand", () => {
   it("exposes a per-guild image-generation toggle", () => {
-    const command = new SettingsCommand(chatGroup, {} as never, {} as never, applicationEmojiCatalog as never);
+    const command = settingsCommand(chatGroup, {} as never, {} as never);
     const definition = command.definition;
     const chatbot = definition.subcommands?.find((subcommand) => subcommand.name === "chatbot");
 
@@ -216,7 +235,7 @@ describe("SettingsCommand", () => {
   });
 
   it("describes a specific field change instead of a generic confirmation", async () => {
-    const command = new SettingsCommand(musicGroup, providerWith(profile()), {} as never, applicationEmojiCatalog as never);
+    const command = settingsCommand(musicGroup, providerWith(profile()), {} as never);
     const { context, edited } = fakeContext("volume", { default: 90 });
 
     await command.execute(context);
@@ -224,7 +243,7 @@ describe("SettingsCommand", () => {
   });
 
   it("warns when a chatbot setting changes while the chatbot feature is disabled", async () => {
-    const command = new SettingsCommand(chatGroup, providerWith(profile()), {} as never, applicationEmojiCatalog as never);
+    const command = settingsCommand(chatGroup, providerWith(profile()), {} as never);
     const { context, edited } = fakeContext("chatbot", { "cooldown-seconds": 60 });
 
     await command.execute(context);
@@ -234,8 +253,7 @@ describe("SettingsCommand", () => {
 
   it("rejects disabling an unknown tool name", async () => {
     const chatToolRegistry = { list: () => [{ name: "play_music", description: "Plays music." }] } as unknown as ChatToolRegistry;
-    const command = new SettingsCommand(chatGroup, providerWith(profile()), {} as never, applicationEmojiCatalog as never);
-    command.bindChatToolRegistry(chatToolRegistry);
+    const command = settingsCommand(chatGroup, providerWith(profile()), {} as never, { chatToolRegistry: chatToolRegistry });
     const { context, edited } = fakeContext("tools-disable", { name: "unknown_tool" });
 
     await command.execute(context);
@@ -249,8 +267,7 @@ describe("SettingsCommand", () => {
       list: () => [{ name: "play_music", description: "Plays music." }],
     } as unknown as ChatToolRegistry;
     const provider = providerWith(profile());
-    const command = new SettingsCommand(chatGroup, provider, {} as never, applicationEmojiCatalog as never);
-    command.bindChatToolRegistry(chatToolRegistry);
+    const command = settingsCommand(chatGroup, provider, {} as never, { chatToolRegistry: chatToolRegistry });
 
     const disable = fakeContext("tools-disable", { name: "play_music" });
     await command.execute(disable.context);
@@ -268,8 +285,7 @@ describe("SettingsCommand", () => {
       list: () => [{ name: "play_music", description: "Plays a song." }, { name: "roll_dice", description: "Rolls dice." }],
     } as unknown as ChatToolRegistry;
     const disabledProfile = { ...profile(), chat: { ...profile().chat, disabledTools: ["roll_dice"] } };
-    const command = new SettingsCommand(chatGroup, providerWith(disabledProfile), {} as never, applicationEmojiCatalog as never);
-    command.bindChatToolRegistry(chatToolRegistry);
+    const command = settingsCommand(chatGroup, providerWith(disabledProfile), {} as never, { chatToolRegistry: chatToolRegistry });
     const { context, edited } = fakeContext("tools-list");
 
     await command.execute(context);
@@ -285,8 +301,7 @@ describe("SettingsCommand", () => {
         description: "A very long description that keeps going on and on to describe exactly what this tool does ".repeat(3),
       })),
     } as unknown as ChatToolRegistry;
-    const command = new SettingsCommand(chatGroup, providerWith(profile()), {} as never, applicationEmojiCatalog as never);
-    command.bindChatToolRegistry(chatToolRegistry);
+    const command = settingsCommand(chatGroup, providerWith(profile()), {} as never, { chatToolRegistry: chatToolRegistry });
     const { context, edited } = fakeContext("tools-list");
 
     await command.execute(context);
@@ -299,7 +314,7 @@ describe("SettingsCommand", () => {
     const saveSelfReferenceImage = vi.fn(() => Promise.resolve("guild-assets/123456789012345678/self-reference.png"));
     const assets = { saveSelfReferenceImage, removeSelfReferenceImage: vi.fn() };
     const provider = providerWith(profile());
-    const command = new SettingsCommand(chatGroup, provider, assets as never, applicationEmojiCatalog as never);
+    const command = settingsCommand(chatGroup, provider, assets as never);
     const { context, edited } = fakeContext("chatbot", { "self-reference-image": { url: "https://example.com/ref.png" } });
 
     await command.execute(context);
@@ -317,7 +332,7 @@ describe("SettingsCommand", () => {
       chat: { ...profile().chat, selfReferenceImageAsset: "guild-assets/123456789012345678/self-reference.png" },
     };
     const provider = providerWith(existingProfile);
-    const command = new SettingsCommand(chatGroup, provider, assets as never, applicationEmojiCatalog as never);
+    const command = settingsCommand(chatGroup, provider, assets as never);
     const { context } = fakeContext("chatbot", { "remove-self-reference-image": true });
 
     await command.execute(context);
@@ -328,7 +343,7 @@ describe("SettingsCommand", () => {
 
   it("rejects providing both a self-reference upload and its removal", async () => {
     const assets = { saveSelfReferenceImage: vi.fn(), removeSelfReferenceImage: vi.fn() };
-    const command = new SettingsCommand(chatGroup, providerWith(profile()), assets as never, applicationEmojiCatalog as never);
+    const command = settingsCommand(chatGroup, providerWith(profile()), assets as never);
     const { context, edited } = fakeContext("chatbot", {
       "self-reference-image": { url: "https://example.com/ref.png" },
       "remove-self-reference-image": true,
@@ -341,10 +356,7 @@ describe("SettingsCommand", () => {
   });
 
   it("rejects context-scan-add when no chat provider supports channel summarization", async () => {
-    const command = new SettingsCommand(
-      chatGroup, providerWith(profile()), {} as never, applicationEmojiCatalog as never,
-      undefined, undefined, undefined, false,
-    );
+    const command = settingsCommand(chatGroup, providerWith(profile()), {} as never, { channelSummaryProviderAvailable: false });
     const { context, edited } = fakeContext("context-scan-add", { channel: { id: "999888777666555444" } });
 
     await command.execute(context);
@@ -353,10 +365,7 @@ describe("SettingsCommand", () => {
   });
 
   it("rejects context-daily-add when no chat provider supports channel summarization", async () => {
-    const command = new SettingsCommand(
-      chatGroup, providerWith(profile()), {} as never, applicationEmojiCatalog as never,
-      undefined, undefined, undefined, false,
-    );
+    const command = settingsCommand(chatGroup, providerWith(profile()), {} as never, { channelSummaryProviderAvailable: false });
     const { context, edited } = fakeContext("context-daily-add", { channel: { id: "999888777666555444" } });
 
     await command.execute(context);
@@ -365,10 +374,7 @@ describe("SettingsCommand", () => {
   });
 
   it("queues context-scan-add when a summarization-capable provider is configured, noting the paused chatbot feature", async () => {
-    const command = new SettingsCommand(
-      chatGroup, providerWith(profile()), {} as never, applicationEmojiCatalog as never,
-      undefined, undefined, undefined, true,
-    );
+    const command = settingsCommand(chatGroup, providerWith(profile()), {} as never, { channelSummaryProviderAvailable: true });
     const { context, edited } = fakeContext("context-scan-add", { channel: { id: "999888777666555444" } });
 
     await command.execute(context);
@@ -443,7 +449,7 @@ describe("SettingsCommand", () => {
 
   describe("language", () => {
     it("switches the guild language and confirms it by its display name", async () => {
-      const command = new SettingsCommand(communityGroup, providerWith(profile()), {} as never, applicationEmojiCatalog as never);
+      const command = settingsCommand(communityGroup, providerWith(profile()), {} as never);
       const { context, edited } = fakeContext("language", { language: "ja" });
 
       await command.execute(context);
@@ -454,7 +460,7 @@ describe("SettingsCommand", () => {
     it("rejects a language the bot doesn't support, without saving anything", async () => {
       const provider = providerWith(profile());
       const update = vi.spyOn(provider, "update");
-      const command = new SettingsCommand(communityGroup, provider, {} as never, applicationEmojiCatalog as never);
+      const command = settingsCommand(communityGroup, provider, {} as never);
       const { context, edited } = fakeContext("language", { language: "fr" });
 
       await command.execute(context);

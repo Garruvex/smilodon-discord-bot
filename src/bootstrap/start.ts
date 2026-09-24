@@ -69,7 +69,7 @@ const controlChannelService = new ControlChannelService(
   musicEventBus,
   dependencies.channelEditScheduler,
 );
-for (const settingsCommand of dependencies.settingsCommands) settingsCommand.bindControlChannelService(controlChannelService);
+dependencies.settingsEngine.bindControlChannelService(controlChannelService);
 const commandDeploymentService = new DiscordGuildCommandDeploymentService(
   configuration,
   dependencies.commandRegistry,

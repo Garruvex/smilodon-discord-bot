@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildSlashCommandBuilder } from "../../src/infrastructure/discord/commands/command-metadata-builder.js";
 import { buildDefinitionForGroup } from "../../src/infrastructure/discord/commands/setup/settings-command.js";
-import { settingDefinitions, settingGroups } from "../../src/infrastructure/discord/commands/setup/settings/index.js";
+import { settingDefinitions, settingGroups } from "../../src/infrastructure/discord/settings/definitions/index.js";
 
 // Discord rejects any chat-input command/subcommand/group/option name or
 // description over 100 characters — discord.js validates this locally (via
