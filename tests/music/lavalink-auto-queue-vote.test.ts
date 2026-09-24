@@ -26,7 +26,7 @@ import { LavalinkPlayerGateway } from "../../src/infrastructure/lavalink/lavalin
 vi.mock("../../src/infrastructure/lyrics/lrclib-client.js", () => ({
   fetchSyncedLyrics: (title: string): Promise<unknown> =>
     Promise.resolve(title === "Song a" ? [{ timestampMs: 0, line: "la" }] : null),
-  normalizeQuery: (title: string, artist: string): unknown => ({ title, artist, extraArtist: null }),
+  lyricsCacheIdentity: (title: string, artist: string): unknown => ({ title, artist }),
 }));
 
 const guildId = "123456789012345678";

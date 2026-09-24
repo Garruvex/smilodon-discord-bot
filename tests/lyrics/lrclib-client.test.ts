@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { fetchSyncedLyrics } from "../../src/infrastructure/lyrics/lrclib-client.js";
+import { fetchSyncedLyrics, lyricsCacheIdentity } from "../../src/infrastructure/lyrics/lrclib-client.js";
+import { buildLyricsCacheKey } from "../../src/application/lyrics/lyrics-cache-store.js";
 
 const fetchMock = vi.fn();
 vi.stubGlobal("fetch", (...args: unknown[]): Promise<unknown> => Promise.resolve(fetchMock(...args) as unknown));
@@ -44,6 +45,56 @@ beforeEach(() => {
 });
 
 describe("fetchSyncedLyrics", () => {
+  it("keeps a legitimate hyphenated title as a search hypothesis", async () => {
+    fetchMock.mockImplementation((url: unknown) => jsonResponse(200,
+      new URL(String(url)).searchParams.get("track_name") === "Good Time - Live"
+        ? [candidate({ trackName: "Good Time - Live" })] : [],
+    ));
+
+    expect(await fetchSyncedLyrics("Good Time - Live", "Owl City, Carly Rae Jepsen"))
+      .toEqual([{ timestampMs: 1_000, line: "First line" }, { timestampMs: 2_500, line: "Second line" }]);
+  });
+
+  it("rejects a different artist whose name merely contains the requested name", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, [candidate({ artistName: "Heartless" })]));
+    expect(await fetchSyncedLyrics("Good Time", "Heart", 205_000)).toBeNull();
+  });
+
+  it("keeps a song title that begins with the artist's name", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, [candidate({ trackName: "Talk Talk", artistName: "Talk" })]));
+    expect(await fetchSyncedLyrics("Talk Talk", "Talk")).not.toBeNull();
+  });
+
+  it("does not discard a usable release when row IDs are absent", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, [
+      { trackName: "Good Time", artistName: "Owl City", duration: 205, syncedLyrics: null },
+      { trackName: "Good Time", artistName: "Owl City", duration: 205, syncedLyrics: "[00:01.00]Found" },
+    ]));
+    expect(await fetchSyncedLyrics("Good Time", "Owl City"))
+      .toEqual([{ timestampMs: 1_000, line: "Found" }]);
+  });
+
+  it("expands repeated timestamps instead of displaying the extra timestamp as text", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, [candidate({ artistName: "Owl City", syncedLyrics: "[00:01.00][00:03.00]Chorus" })]));
+    expect(await fetchSyncedLyrics("Good Time", "Owl City"))
+      .toEqual([{ timestampMs: 1_000, line: "Chorus" }, { timestampMs: 3_000, line: "Chorus" }]);
+  });
+
+  it("does not merge lookups with different scoring artists in the cache", async () => {
+    fetchMock.mockImplementation((url: unknown) => {
+      const artist = requestedArtist(url);
+      return jsonResponse(200, artist === "Artist B" || artist === "Artist C"
+        ? [candidate({ trackName: "Home", artistName: artist, syncedLyrics: `[00:01.00]${artist}` })] : []);
+    });
+    const first = lyricsCacheIdentity("Artist A - Home", "Artist B");
+    const second = lyricsCacheIdentity("Artist A - Home", "Artist C");
+    const firstLines = await fetchSyncedLyrics("Artist A - Home", "Artist B", 200_000);
+    const secondLines = await fetchSyncedLyrics("Artist A - Home", "Artist C", 200_000);
+    expect(firstLines).not.toEqual(secondLines);
+    expect(buildLyricsCacheKey(first.title, first.artist, 200_000))
+      .not.toBe(buildLyricsCacheKey(second.title, second.artist, 200_000));
+  });
+
   it("matches a clean title/artist and returns its parsed lines", async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, [candidate()]));
 

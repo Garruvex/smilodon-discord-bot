@@ -37,7 +37,7 @@ import type { MusicEventBus, MusicStateChangedEvent } from "../../application/mu
 import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
 import { LavalinkAutoQueue, type AutoQueueOutcome } from "./lavalink-auto-queue.js";
 import { cleanArtistName } from "../../domain/music/artist-name.js";
-import { fetchSyncedLyrics, normalizeQuery, type SyncedLyricLine } from "../lyrics/lrclib-client.js";
+import { fetchSyncedLyrics, lyricsCacheIdentity, type SyncedLyricLine } from "../lyrics/lrclib-client.js";
 import { buildLyricsCacheKey, type LyricsCacheStore } from "../../application/lyrics/lyrics-cache-store.js";
 import { MUSIC_LIMITS } from "../../config/guild-configuration-limits.js";
 
@@ -172,8 +172,11 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
   // Lavalink can emit a duplicate trackStart for the *same* track (a node
   // reconnect replaying it mid-session is a known cause) — without this,
   // that would wipe already-correct lyrics and restart the fetch, flashing
-  // "Looking for lyrics…" mid-song for no real reason.
-  private readonly currentLyricsTrackByGuild = new Map<string, string>();
+  // "Looking for lyrics…" mid-song for no real reason. Each trackStart gets a
+  // fresh entry object, and a fetch only lands if its entry is still the
+  // current one — comparing track ids alone would let a slow request from an
+  // earlier play of the same track (A → B → A) overwrite the newer result.
+  private readonly currentLyricsTrackByGuild = new Map<string, { readonly trackId: string }>();
 
   public constructor(
     private readonly client: Client,
@@ -255,14 +258,18 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
         const trackId = track.encoded;
         // A duplicate event for the track already represented in the lyrics
         // maps — nothing to redo.
-        if (this.currentLyricsTrackByGuild.get(player.guildId) === trackId) return;
-        this.currentLyricsTrackByGuild.set(player.guildId, trackId);
+        if (this.currentLyricsTrackByGuild.get(player.guildId)?.trackId === trackId) return;
+        const lyricsRequest = { trackId };
+        this.currentLyricsTrackByGuild.set(player.guildId, lyricsRequest);
+        const isCurrentRequest = (): boolean =>
+          this.currentLyricsTrackByGuild.get(player.guildId) === lyricsRequest
+          && this.manager.getPlayer(player.guildId)?.queue.current?.encoded === trackId;
         this.pluginLyricsByGuild.delete(player.guildId);
         this.customLyricsByGuild.delete(player.guildId);
         this.resolveSyncedLyrics(track.info.title, track.info.author ?? "", track.info.duration)
           .then((lines) => {
             // Guard against a stale response landing after the track changed.
-            if (this.manager.getPlayer(player.guildId)?.queue.current?.encoded !== trackId) return;
+            if (!isCurrentRequest()) return;
             this.customLyricsByGuild.set(player.guildId, lines ?? "not-found");
             // Without this, the panel only picks up freshly-loaded lyrics on
             // its next unrelated timer tick — up to a full
@@ -280,7 +287,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
             // A failed fetch must still settle the state — otherwise the
             // panel is stuck on "Looking for lyrics…" for this track forever
             // instead of eventually showing "No lyrics found".
-            if (this.manager.getPlayer(player.guildId)?.queue.current?.encoded === trackId) {
+            if (isCurrentRequest()) {
               this.customLyricsByGuild.set(player.guildId, "not-found");
               this.publishStateChange({ guildId: player.guildId, reason: "lyrics_loaded" });
             }
@@ -353,8 +360,8 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     // "Artist - Title" prefix) — otherwise every differently-titled
     // re-upload of the same song (a common YouTube reality) gets its own
     // cache entry instead of sharing the one already resolved for it.
-    const normalized = normalizeQuery(trackName, artistName);
-    const trackKey = buildLyricsCacheKey(normalized.title, artistName, durationMs);
+    const identity = lyricsCacheIdentity(trackName, artistName);
+    const trackKey = buildLyricsCacheKey(identity.title, identity.artist, durationMs);
     if (this.lyricsCacheStore) {
       const cached = await this.lyricsCacheStore.get(trackKey).catch((error: unknown) => {
         this.logger.warn({ error, trackKey }, "Unable to read the lyrics cache");

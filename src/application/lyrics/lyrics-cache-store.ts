@@ -28,5 +28,7 @@ export interface LyricsCacheStore {
 // same-titled recording indefinitely.
 export function buildLyricsCacheKey(trackName: string, artistName: string, durationMs?: number): string {
   const durationBucket = durationMs !== undefined ? Math.round(durationMs / 1000) : "";
-  return `${trackName.trim().toLowerCase()}|${artistName.trim().toLowerCase()}|${durationBucket}`;
+  // Version the matcher result so previously cached false negatives are
+  // rechecked after search and ranking changes.
+  return `v2|${trackName.trim().toLowerCase()}|${artistName.trim().toLowerCase()}|${durationBucket}`;
 }

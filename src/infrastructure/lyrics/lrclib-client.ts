@@ -14,21 +14,25 @@ const lrcLibCandidateSchema = z.object({
   syncedLyrics: z.string().nullable().optional(),
   plainLyrics: z.string().nullable().optional(),
 });
-const lrcLibSearchResponseSchema = z.array(lrcLibCandidateSchema);
 type LrcLibCandidate = z.infer<typeof lrcLibCandidateSchema>;
 
-const lrcLineExpression = /^\[(\d+):(\d+(?:\.\d+)?)\](.*)$/;
+// A line can carry several timestamps ("[00:01.00][00:31.00]Chorus") when
+// the same lyric repeats — each one is its own occurrence of that line.
+const lrcLineExpression = /^((?:\[\d+:\d+(?:\.\d+)?\])+)(.*)$/;
+const lrcTimestampExpression = /\[(\d+):(\d+(?:\.\d+)?)\]/g;
 
 function parseSyncedLyrics(syncedLyrics: string): SyncedLyricLine[] {
   const lines: SyncedLyricLine[] = [];
   for (const rawLine of syncedLyrics.split("\n")) {
     const match = lrcLineExpression.exec(rawLine.trim());
-    if (!match) continue;
-    const text = match[3]?.trim();
+    if (!match?.[1]) continue;
+    const text = match[2]?.trim();
     if (!text) continue;
-    const minutes = Number(match[1]);
-    const seconds = Number(match[2]);
-    lines.push({ timestampMs: Math.round((minutes * 60 + seconds) * 1000), line: text });
+    for (const timestamp of match[1].matchAll(lrcTimestampExpression)) {
+      const minutes = Number(timestamp[1]);
+      const seconds = Number(timestamp[2]);
+      lines.push({ timestampMs: Math.round((minutes * 60 + seconds) * 1000), line: text });
+    }
   }
   return lines.sort((a, b) => a.timestampMs - b.timestampMs);
 }
@@ -56,7 +60,7 @@ function stripMetadataSuffix(value: string): string {
   return value.replace(metadataSuffixPattern, " ").trim();
 }
 
-export interface NormalizedQuery {
+interface NormalizedQuery {
   readonly title: string;
   readonly artist: string;
   // A YouTube-style title ("Artist - Title (Official Video)") often carries
@@ -64,14 +68,16 @@ export interface NormalizedQuery {
   // as an extra candidate rather than replacing the original outright, so a
   // bad split can't make matching strictly worse than not normalizing at all.
   readonly extraArtist: string | null;
+  // The unsplit title, kept whenever the "Artist - Title" split fired — a
+  // real title can contain " - " itself ("Good Time - Live"), and searching
+  // only the split halves would then never look for it at all.
+  readonly unsplitTitle: string | null;
 }
 
-// Exported so callers building a cache key can normalize the same way
-// (stripping "(Official Video)"-style suffixes and an "Artist - Title"
-// prefix) that this module already normalizes for searching — without it,
-// re-uploads of the same song with differently-formatted video titles would
-// fragment into separate cache entries instead of sharing one.
-export function normalizeQuery(title: string, artist: string): NormalizedQuery {
+// Strips "(Official Video)"-style suffixes and splits an "Artist - Title"
+// prefix. lyricsCacheIdentity reuses it so re-uploads of the same song with
+// differently-formatted video titles share one cache entry.
+function normalizeQuery(title: string, artist: string): NormalizedQuery {
   const trimmedTitle = title.trim();
   const trimmedArtist = artist.trim();
   const cleanTitle = stripMetadataSuffix(trimmedTitle);
@@ -86,10 +92,22 @@ export function normalizeQuery(title: string, artist: string): NormalizedQuery {
     const derivedArtist = cleanTitle.slice(0, separatorMatch.index).trim();
     const derivedTitle = cleanTitle.slice(separatorMatch.index + separatorMatch[0].length).trim();
     if (derivedArtist && derivedTitle) {
-      return { title: derivedTitle, artist: trimmedArtist, extraArtist: derivedArtist };
+      return { title: derivedTitle, artist: trimmedArtist, extraArtist: derivedArtist, unsplitTitle: cleanTitle };
     }
   }
-  return { title: cleanTitle, artist: trimmedArtist, extraArtist: null };
+  return { title: cleanTitle, artist: trimmedArtist, extraArtist: null, unsplitTitle: null };
+}
+
+// The title/artist a cache entry is keyed on. Both the title-derived artist
+// and the original artist feed into matching, so both belong in the key —
+// keying on only one lets two lookups that can resolve to different lyrics
+// share (and overwrite) a single entry.
+export function lyricsCacheIdentity(title: string, artist: string): { title: string; artist: string } {
+  const normalized = normalizeQuery(title, artist);
+  return {
+    title: normalized.title,
+    artist: normalized.extraArtist ? `${normalized.extraArtist} | ${normalized.artist}` : normalized.artist,
+  };
 }
 
 function artistSearchVariants(artist: string): string[] {
@@ -118,13 +136,34 @@ interface MatchResult {
   readonly match: boolean;
 }
 
+// Scripts written with spaces between words. Inside them a containment
+// match must land on word boundaries ("Heart" is not "Heartless"); scripts
+// like Japanese or Chinese have no spaces to find a boundary at, so a plain
+// substring is the best signal available there.
+const spacedScriptCharacter = /[\p{Script=Latin}\p{Script=Cyrillic}\p{Script=Greek}\p{N}]/u;
+
+function containsAsWords(haystack: string, needle: string): boolean {
+  for (let index = haystack.indexOf(needle); index !== -1; index = haystack.indexOf(needle, index + 1)) {
+    const before = haystack[index - 1];
+    const after = haystack[index + needle.length];
+    const first = needle[0] ?? "";
+    const last = needle[needle.length - 1] ?? "";
+    const leftOk = before === undefined || before === " "
+      || !spacedScriptCharacter.test(before) || !spacedScriptCharacter.test(first);
+    const rightOk = after === undefined || after === " "
+      || !spacedScriptCharacter.test(after) || !spacedScriptCharacter.test(last);
+    if (leftOk && rightOk) return true;
+  }
+  return false;
+}
+
 function metadataMatchScore(want: string, got: string): MatchResult {
   const normalizedWant = normalizedMetadata(want);
   const normalizedGot = normalizedMetadata(got);
   if (normalizedWant === "") return { score: 0, match: true };
   if (normalizedGot === "") return { score: 0, match: false };
   if (normalizedWant === normalizedGot) return { score: 1, match: true };
-  if (normalizedWant.includes(normalizedGot) || normalizedGot.includes(normalizedWant)) {
+  if (containsAsWords(normalizedWant, normalizedGot) || containsAsWords(normalizedGot, normalizedWant)) {
     const shorter = Math.min(normalizedWant.length, normalizedGot.length);
     const longer = Math.max(normalizedWant.length, normalizedGot.length);
     return { score: 0.7 + 0.2 * (shorter / longer), match: true };
@@ -161,16 +200,26 @@ function artistMatchScore(want: string, got: string): MatchResult {
   return direct;
 }
 
-// Some providers prefix the track title with the artist name; strip it so
-// title comparison isn't penalized for a prefix that isn't really part of
-// the title.
-function candidateTitle(candidate: LrcLibCandidate): string {
+// Some providers prefix the track title with the artist name; also try it
+// stripped so title comparison isn't penalized for a prefix that isn't
+// really part of the title. The unstripped title stays a candidate too —
+// a title can genuinely start with the artist's name ("Talk Talk" by Talk).
+function candidateTitles(candidate: LrcLibCandidate): string[] {
   const title = normalizedMetadata(candidate.trackName);
   const artist = normalizedMetadata(candidate.artistName);
   if (artist && title.startsWith(`${artist} `)) {
-    return title.slice(artist.length).trim();
+    return [title, title.slice(artist.length).trim()];
   }
-  return title;
+  return [title];
+}
+
+function titleMatchScore(want: string, candidate: LrcLibCandidate): MatchResult {
+  let best: MatchResult = { score: 0, match: false };
+  for (const title of candidateTitles(candidate)) {
+    const result = metadataMatchScore(want, title);
+    if (result.match && (!best.match || result.score > best.score)) best = result;
+  }
+  return best;
 }
 
 const minimumTitleScore = 0.85;
@@ -186,7 +235,7 @@ const minimumTotalScore = 85;
 // result, and what correctly skips a top-ranked instrumental/alternate
 // release in favor of a lower-ranked one that actually has synced lyrics.
 interface ScoredCandidate {
-  readonly candidate: LrcLibCandidate;
+  readonly lines: SyncedLyricLine[];
   readonly score: number;
 }
 
@@ -197,12 +246,17 @@ function selectBestCandidate(
   candidates: readonly LrcLibCandidate[],
 ): ScoredCandidate | null {
   let bestScore = -1;
-  let best: LrcLibCandidate | null = null;
+  let bestLines: SyncedLyricLine[] | null = null;
   const wantVersion = versionMarkerPattern.exec(normalizedMetadata(title))?.[0]?.toLowerCase() ?? null;
   const durationSeconds = durationMs !== undefined ? durationMs / 1000 : undefined;
 
   for (const candidate of candidates) {
-    const titleResult = metadataMatchScore(title, candidateTitle(candidate));
+    // Only usable synced results can win. A plain-only row can otherwise
+    // outscore a synced row on duration, and malformed LRC can win the
+    // ranking only to parse into an empty result afterward.
+    const lines = candidate.syncedLyrics ? parseSyncedLyrics(candidate.syncedLyrics) : [];
+    if (lines.length === 0) continue;
+    const titleResult = titleMatchScore(title, candidate);
     if (!titleResult.match || titleResult.score < minimumTitleScore) continue;
 
     const artistResult = artistMatchScore(artist, candidate.artistName);
@@ -221,19 +275,13 @@ function selectBestCandidate(
       score += Math.max(0, 20 - difference / 1.5);
     }
 
-    if (candidate.syncedLyrics?.trim()) {
-      score += 8;
-    } else if (candidate.plainLyrics?.trim()) {
-      score += 2;
-    }
-
     if (score > bestScore) {
       bestScore = score;
-      best = candidate;
+      bestLines = lines;
     }
   }
 
-  return best && bestScore >= minimumTotalScore ? { candidate: best, score: bestScore } : null;
+  return bestLines && bestScore >= minimumTotalScore ? { lines: bestLines, score: bestScore } : null;
 }
 
 async function searchLrcLib(trackName: string, artistName: string): Promise<LrcLibCandidate[]> {
@@ -242,7 +290,19 @@ async function searchLrcLib(trackName: string, artistName: string): Promise<LrcL
   if (artistName) url.searchParams.set("artist_name", artistName);
   const response = await fetch(url, { signal: AbortSignal.timeout(5_000) });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return lrcLibSearchResponseSchema.parse(await response.json());
+  const payload: unknown = await response.json();
+  if (!Array.isArray(payload)) throw new Error("Invalid LRCLIB search response");
+  const candidates: LrcLibCandidate[] = [];
+  for (const entry of payload) {
+    const parsed = lrcLibCandidateSchema.safeParse(entry);
+    if (parsed.success) candidates.push(parsed.data);
+  }
+  // A single malformed row should not discard valid rows, but a wholly
+  // invalid response is an upstream error, not a cacheable "no lyrics".
+  if (payload.length > 0 && candidates.length === 0) {
+    throw new Error("Invalid LRCLIB search candidates");
+  }
+  return candidates;
 }
 
 // Fires a search for every artist-name variant (original metadata, any
@@ -268,25 +328,42 @@ export async function fetchSyncedLyrics(
   // reject it. Every other variant is still scored against the original
   // artist string, since artistMatchScore already knows how to split *that*
   // into its own individual-name variants internally.
-  const attempts: { searchArtist: string; scoreArtist: string }[] = [];
+  const attempts: { title: string; searchArtist: string; scoreArtist: string }[] = [];
   if (normalized.extraArtist) {
-    attempts.push({ searchArtist: normalized.extraArtist, scoreArtist: normalized.extraArtist });
+    attempts.push({ title: normalized.title, searchArtist: normalized.extraArtist, scoreArtist: normalized.extraArtist });
   }
   for (const variant of artistSearchVariants(normalized.artist)) {
-    attempts.push({ searchArtist: variant, scoreArtist: normalized.artist });
+    attempts.push({ title: normalized.title, searchArtist: variant, scoreArtist: normalized.artist });
+  }
+  // The split may have been wrong ("Good Time - Live" is a title, not
+  // "Good Time" the artist) — also look up the unsplit title under the
+  // original artist, plus an artist-less search that the multi-artist
+  // scoring can still sort through.
+  if (normalized.unsplitTitle) {
+    for (const searchArtist of new Set([normalized.artist, ""])) {
+      attempts.push({ title: normalized.unsplitTitle, searchArtist, scoreArtist: normalized.artist });
+    }
   }
 
-  const seenArtists = new Set<string>();
+  const seenAttempts = new Set<string>();
   const uniqueAttempts = attempts.filter((attempt) => {
-    const key = attempt.searchArtist.toLowerCase();
-    if (seenArtists.has(key)) return false;
-    seenArtists.add(key);
+    const key = `${attempt.title}|${attempt.searchArtist}`.toLowerCase();
+    if (seenAttempts.has(key)) return false;
+    seenAttempts.add(key);
     return true;
   });
 
-  const resultSets = await Promise.all(
-    uniqueAttempts.map((attempt) => searchLrcLib(normalized.title, attempt.searchArtist)),
+  const settledResults = await Promise.allSettled(
+    uniqueAttempts.map((attempt) => searchLrcLib(attempt.title, attempt.searchArtist)),
   );
+  const resultSets = settledResults.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+  const failure = settledResults.find((result) => result.status === "rejected");
+  // A partial outage must not hide a result from another variant. If every
+  // request failed, propagate the failure so the caller won't cache a false
+  // "no lyrics" result.
+  if (resultSets.length === 0) {
+    throw failure?.reason ?? new Error("LRCLIB search failed");
+  }
 
   const seenCandidateKeys = new Set<string>();
   const candidates: LrcLibCandidate[] = [];
@@ -297,11 +374,12 @@ export async function fetchSyncedLyrics(
       // collide across two different albums (a single re-released on a
       // compilation at the exact same duration), and deduping on that
       // composite would then silently discard whichever of the two carries
-      // the synced lyrics the other one lacks. Only fall back to the
-      // composite key for the rare row with no id.
+      // the synced lyrics the other one lacks. The rare row with no id falls
+      // back to a composite key that includes the lyrics themselves for
+      // exactly that reason.
       const candidateKey = result.id !== undefined
         ? `id:${result.id}`
-        : `${result.trackName}|${result.artistName}|${result.duration ?? ""}`;
+        : JSON.stringify([result.trackName, result.artistName, result.duration ?? null, result.syncedLyrics ?? null]);
       if (seenCandidateKeys.has(candidateKey)) continue;
       seenCandidateKeys.add(candidateKey);
       candidates.push(result);
@@ -312,14 +390,20 @@ export async function fetchSyncedLyrics(
   // notion of "the real artist" — the overall best-scoring result across
   // all of them wins, rather than whichever variant happened to be tried
   // first (there's no longer a "first" — they all ran together).
-  const scoreArtists = new Set(uniqueAttempts.map((attempt) => attempt.scoreArtist));
+  const scoringPairs = new Map(uniqueAttempts.map((attempt) => [
+    `${attempt.title}|${attempt.scoreArtist}`,
+    { title: attempt.title, artist: attempt.scoreArtist },
+  ]));
   let best: ScoredCandidate | null = null;
-  for (const scoreArtist of scoreArtists) {
-    const result = selectBestCandidate(normalized.title, scoreArtist, durationMs, candidates);
+  for (const { title, artist } of scoringPairs.values()) {
+    const result = selectBestCandidate(title, artist, durationMs, candidates);
     if (result && (!best || result.score > best.score)) best = result;
   }
 
-  if (!best?.candidate.syncedLyrics) return null;
-  const lines = parseSyncedLyrics(best.candidate.syncedLyrics);
-  return lines.length > 0 ? lines : null;
+  if (best) return best.lines;
+  // An empty result from the surviving variants is inconclusive when any
+  // variant failed. Let playback use its plugin fallback, but do not persist
+  // a negative cache entry that would suppress future retries.
+  if (failure) throw failure.reason;
+  return null;
 }

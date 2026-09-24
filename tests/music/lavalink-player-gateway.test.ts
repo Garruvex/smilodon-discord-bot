@@ -13,7 +13,7 @@ vi.mock("../../src/infrastructure/lyrics/lrclib-client.js", () => ({
   // Identity passthrough — none of these fixtures need real suffix-stripping,
   // and the cache-key tests below rely on the raw title/artist round-tripping
   // unchanged.
-  normalizeQuery: (title: string, artist: string): unknown => ({ title, artist, extraArtist: null }),
+  lyricsCacheIdentity: (title: string, artist: string): unknown => ({ title, artist }),
 }));
 
 const guildId = "123456789012345678";
@@ -309,7 +309,7 @@ describe("LavalinkPlayerGateway.resolveSyncedLyrics", () => {
 
     expect(result).toEqual(freshLines);
     expect(fetchSyncedLyricsMock).toHaveBeenCalledWith("Track", "Artist", undefined);
-    await vi.waitFor(() => expect(setSpy).toHaveBeenCalledWith("track|artist|", freshLines));
+    await vi.waitFor(() => expect(setSpy).toHaveBeenCalledWith("v2|track|artist|", freshLines));
   });
 
   it("works without a cache store at all — always fetches from LRCLIB", async () => {
@@ -326,6 +326,37 @@ describe("LavalinkPlayerGateway.resolveSyncedLyrics", () => {
 describe("LavalinkPlayerGateway trackStart lyrics handling", () => {
   beforeEach(() => {
     fetchSyncedLyricsMock.mockReset();
+  });
+
+  it("ignores an old failed request after returning to the same track", async () => {
+    const { gateway } = createGateway(null);
+    let rejectFirst!: (error: Error) => void;
+    fetchSyncedLyricsMock
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectFirst = reject; }))
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce([{ timestampMs: 0, line: "Fresh lyrics" }]);
+    const first = { encoded: "track-a", info: { title: "A", author: "Artist" }, userData: {} };
+    const second = { encoded: "track-b", info: { title: "B", author: "Artist" }, userData: {} };
+    const player = {
+      guildId, position: 0, queue: { current: first },
+      subscribeLyrics: vi.fn().mockResolvedValue(undefined), get: vi.fn(),
+    };
+    const internals = gateway as unknown as {
+      manager: { getPlayer: () => typeof player; emit: (event: string, ...args: unknown[]) => void };
+      customLyricsByGuild: Map<string, unknown>;
+    };
+    internals.manager.getPlayer = (): typeof player => player;
+    internals.manager.emit("trackStart", player, first);
+    player.queue.current = second;
+    internals.manager.emit("trackStart", player, second);
+    player.queue.current = first;
+    internals.manager.emit("trackStart", player, first);
+    await vi.waitFor(() => expect(internals.customLyricsByGuild.get(guildId))
+      .toEqual([{ timestampMs: 0, line: "Fresh lyrics" }]));
+    rejectFirst(new Error("Old request failed"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(internals.customLyricsByGuild.get(guildId))
+      .toEqual([{ timestampMs: 0, line: "Fresh lyrics" }]);
   });
 
   it("doesn't re-clear or re-fetch lyrics when trackStart fires again for the same track", async () => {
