@@ -15,9 +15,9 @@ export const zhTW = {
   "music.panel.request.searching": "搜尋中…",
   "music.panel.request.failed": "無法完成此請求",
 
-  "music.panel.control.unsupported": "此控制項已不再支援",
+  "music.panel.control.unsupported": "這個按鈕已不再支援",
   "music.panel.control.guildOnly": "此控制項僅能在伺服器中使用",
-  "music.panel.control.obsolete": "此控制面板已過期，請使用目前的面板訊息",
+  "music.panel.control.obsolete": "這個控制面板已過期，請使用最新的面板訊息",
   "music.panel.control.denied": "你需要音樂控制身分組才能使用此控制項",
   "music.panel.control.staleReset": "機器人的語音連線與播放器不同步，因此已重設播放狀態",
   "music.panel.control.failed": "控制項執行失敗",
@@ -26,7 +26,7 @@ export const zhTW = {
   "music.panel.hint.controllersOnly": "-# 只有擁有音樂控制身分組的成員可以點歌",
   "music.panel.hint.help": "-# 按鈕說明：`/help autoplay` · `/help 247`",
 
-  "music.panel.nowPlaying.idleTitle": "目前沒有播放歌曲",
+  "music.panel.nowPlaying.idleTitle": "目前沒有播放中的歌曲",
   "music.panel.nowPlaying.idleDescription": "現在可以點歌了",
   "music.panel.nowPlaying.titlePaused": "播放已暫停",
   "music.panel.nowPlaying.titlePlaying": "正在播放",
@@ -36,21 +36,21 @@ export const zhTW = {
 
   "music.panel.lyrics.title": "🎤 歌詞",
   "music.panel.lyrics.idle": "目前沒有播放中的歌曲",
-  "music.panel.lyrics.notFound": "找不到這首曲目的歌詞",
+  "music.panel.lyrics.notFound": "找不到這首歌的歌詞",
   "music.panel.lyrics.searching": "正在尋找歌詞…",
 
   "music.panel.queue.title": "待播清單",
   "music.panel.queue.empty": "目前沒有待播歌曲",
-  "music.panel.queue.summary": "**待播 {count} 首**（總長 {duration}）",
+  "music.panel.queue.summary": "**待播 {count} 首**（總時長 {duration}）",
   "music.panel.queue.more": "…還有 {count} 首，用 `/queue show` 查看",
   "music.panel.queue.footerEmpty": "沒有待播歌曲",
   "music.panel.queue.footerCount": "待播 {count} 首",
   "music.panel.queue.footerLoop": "重複：{mode}",
   "music.panel.queue.autoqueueIssue": "⚠️ 自動續播找不到可加入的歌曲",
 
-  "music.error.playerNotFound": "此伺服器目前沒有啟用中的音樂播放器",
+  "music.error.playerNotFound": "這個伺服器目前沒有可用的音樂播放器",
   "music.error.searchEmpty": "找不到符合搜尋條件且可播放的曲目",
-  "music.error.voiceRequired": "你目前不在語音頻道中！請加入語音頻道後再試一次",
+  "music.error.voiceRequired": "你目前不在語音頻道，加入後再試一次",
   "music.error.voiceMismatch": "你必須與機器人在同一個語音頻道",
   "music.error.channelAccess": "我沒有權限加入該語音頻道，需要檢視頻道、連線和發話權限",
   "music.error.rateLimitOne": "你的請求太頻繁了，請在 {seconds} 秒後再試",
@@ -89,7 +89,7 @@ export const zhTW = {
 
   "music.queue.title": "待播清單",
   "music.queue.empty": "目前沒有待播歌曲",
-  "music.queue.footer": "第 {page}/{pages} 頁  •  待播 {count} 首  •  總長 {duration}",
+  "music.queue.footer": "第 {page}/{pages} 頁  •  待播 {count} 首  •  總時長 {duration}",
   "music.queue.previousPage": "◀ 上一頁",
   "music.queue.nextPage": "下一頁 ▶",
 

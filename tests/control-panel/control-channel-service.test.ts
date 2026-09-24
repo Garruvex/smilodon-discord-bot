@@ -2281,7 +2281,7 @@ describe("ControlChannelService panel language", () => {
     expect(playing.title).toContain("正在播放");
     expect(playing.description).toContain("點歌者：<@345678901234567890>");
     expect(paused.title).toContain("播放已暫停");
-    expect(idle.title).toContain("目前沒有播放歌曲");
+    expect(idle.title).toContain("目前沒有播放中的歌曲");
     expect(idle.description).toBe("現在可以點歌了");
   });
 

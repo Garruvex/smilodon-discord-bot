@@ -1,8 +1,8 @@
-// The languages the bot can speak. A server picks one (GuildConfiguration
-// .language, set via /settings-community language) and everything the bot
-// posts for that server follows it — the music panel, announcements, votes,
-// and replies alike. Values are Discord locale codes, so they line up with
-// the slash-command description catalogs (./command-descriptions).
+// Languages available to translated bot messages. A server picks one
+// (GuildConfiguration.language, set via /settings-community language).
+// Values are Discord locale codes, so they line up with the slash-command
+// description catalogs (./command-descriptions). Features without runtime
+// translations continue to use their own English copy.
 export const languages = ["en", "zh-TW", "ja"] as const;
 
 export type Language = (typeof languages)[number];

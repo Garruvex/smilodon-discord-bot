@@ -38,11 +38,11 @@ export const zhTWCommandDescriptions = {
   "8ball:question": "你想問什麼？", // What do you want to ask?
   "help": "列出可用指令，或顯示單一指令的詳細說明", // Lists available commands, or shows details for one.
   "help:command": "要查看詳細說明的指令名稱", // A command name to view details for.
-  "memory": "檢視或清除機器人從聊天中記住的關於你的內容", // View or clear what the bot remembers about you from chat.
+  "memory": "檢視或清除機器人在聊天中記住的你的資訊", // View or clear what the bot remembers about you from chat.
   "memory/list": "列出機器人在這個伺服器記住的你的資訊", // Lists what the bot remembers about you in this server.
-  "memory/forget": "刪除機器人記住的關於你的某項內容", // Deletes something the bot remembers about you.
+  "memory/forget": "刪除機器人記住的一項關於你的資訊", // Deletes something the bot remembers about you.
   "memory/forget:id": "要刪除的記憶 ID，可從 /memory list 取得", // The memory ID to forget, from /memory list.
-  "memory/forget:all": "清除機器人在這個伺服器記住的所有你的資訊", // Forget everything the bot remembers about you in this server.
+  "memory/forget:all": "清除機器人在這個伺服器記住的關於你的所有資訊", // Forget everything the bot remembers about you in this server.
   "memory/notes": "設定機器人是否私訊你聊天時的補充說明", // Controls whether the bot DMs you extra notes about your chat requests.
   "memory/notes:dm": "例如圖片未能附上的情況或回覆遭截斷時，以私訊傳送補充說明；不填則查看目前設定", // Send notes like dropped images or truncated replies as a DM. Omit to check the current setting.
   "owoify": "把句子改寫成 owo 風格", // Transforms a sentence into owo speak.
@@ -204,12 +204,12 @@ export const zhTWCommandDescriptions = {
   "settings-chat/chatbot:persona-drift": "實驗性功能：讓角色的心情與小習慣慢慢演變", // Experimental: let the character's mood/quirks slowly evolve.
   "settings-chat/chatbot:reset-persona-drift": "清除角色已演變的心情與習慣紀錄並重新開始", // Wipe the character's evolved mood/quirk history and start over.
   "settings-chat/ambient-replies": "讓機器人自行判斷是否要對只是提到它名字的訊息做出反應或回覆", // Lets the bot judge whether to react/reply to messages that merely name it.
-  "settings-chat/ambient-replies:enabled": "是否開啟自動判斷回覆", // Whether ambient replies are on.
+  "settings-chat/ambient-replies:enabled": "是否讓機器人自行判斷要不要回應只提到它名字的訊息", // Whether ambient replies are on.
   "settings-chat/ambient-replies:cooldown-seconds": "每個頻道兩次自然回覆判斷之間的最短秒數", // Minimum seconds between ambient judgment calls per channel.
-  "settings-chat/reaction-replies": "讓機器人自行判斷是否要回應對它聊天回覆的表情反應", // Lets the bot judge whether to reply to reactions on its own chat replies.
+  "settings-chat/reaction-replies": "讓機器人自行判斷是否回覆別人對它聊天訊息加的表情反應", // Lets the bot judge whether to reply to reactions on its own chat replies.
   "settings-chat/reaction-replies:enabled": "是否開啟表情反應回覆", // Whether reaction replies are on.
   "settings-chat/history-reactions": "讓機器人在聊天時對它已看到的其他人訊息加上表情反應", // Lets the bot react to other people's messages it already sees during a chat turn.
-  "settings-chat/history-reactions:enabled": "是否開啟歷史訊息表情反應", // Whether history reactions are on.
+  "settings-chat/history-reactions:enabled": "是否讓機器人對先前的訊息加表情反應", // Whether history reactions are on.
   "settings-chat/channel-history": "讓機器人把頻道最近的訊息當作聊天參考", // Lets the bot use recent channel messages as ambient chat context.
   "settings-chat/channel-history:enabled": "是否把頻道近期訊息當作聊天參考", // Whether ambient channel history is on.
   "settings-chat/channel-history:limit": "要納入的頻道近期訊息數量", // How many recent channel messages to include.
@@ -278,7 +278,7 @@ export const zhTWCommandDescriptions = {
   "e621:query": "要搜尋的標籤（例如 wolf、dragon、solo）；留空則隨機取得一則貼文", // Tags to search for (e.g. wolf, dragon, solo). Leave empty for a random post.
   "e621:type": "檔案類型", // File type.
   "e621:order": "排序方式", // Sort order.
-  "settings-community/language": "設定機器人在此伺服器的面板、公告與回覆所使用的語言", // Sets the language the bot uses for this server's panels, announcements, and replies.
+  "settings-community/language": "設定此伺服器已支援翻譯的機器人訊息所使用的語言", // Sets the language for translated bot messages in this server.
   "settings-community/language:language": "要使用的語言", // The language to use.
   "vote:option1": "選項 1；至少提供兩個選項，或全部留空以使用是／否", // Choice 1; give at least two choices, or none for Yes/No.
   "vote:option2": "選項 2；至少提供兩個選項，或全部留空以使用是／否", // Choice 2; give at least two choices, or none for Yes/No.

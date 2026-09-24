@@ -40,7 +40,7 @@ export const jaCommandDescriptions = {
   "memory/list": "このサーバーでボットがあなたについて覚えている内容を一覧表示します。", // Lists what the bot remembers about you in this server.
   "memory/forget": "ボットが覚えているあなたについての内容を削除します。", // Deletes something the bot remembers about you.
   "memory/forget:id": "削除する記憶のID（/memory list で確認できます）。", // The memory ID to forget, from /memory list.
-  "memory/forget:all": "このサーバーでボットが覚えているあなたについての内容をすべて忘れさせます。", // Forget everything the bot remembers about you in this server.
+  "memory/forget:all": "このサーバーでボットが覚えたあなたの情報をすべて削除します。", // Forget everything the bot remembers about you in this server.
   "memory/notes": "チャットのリクエストに関する補足メモをボットがDMで送るかどうかを設定します。", // Controls whether the bot DMs you extra notes about your chat requests.
   "memory/notes:dm": "画像が添付されなかった場合や返信が途中で切れた場合などに、DMで補足メモを送ります。省略すると現在の設定を確認できます。", // Send notes like dropped images or truncated replies as a DM. Omit to check the current setting.
   "owoify": "文章を owo 風に変換します。", // Transforms a sentence into owo speak.
@@ -88,7 +88,7 @@ export const jaCommandDescriptions = {
   "memory-eval/skip": "使えない、または曖昧なサンプルをスキップします。", // Skips an unusable or ambiguous sample.
   "memory-eval/skip:trace": "/memory-eval pending に表示されるトレースID。", // Trace ID shown by /memory-eval pending.
   "memory-eval/export": "レビュー済みのケースを調整用データセットとしてダウンロードします。", // Downloads reviewed cases as a calibration dataset.
-  "fursuit-furtrack": "furtrack.com からランダムなフルスーツの写真を取得します。", // Gets a random fursuit photo from furtrack.com.
+  "fursuit-furtrack": "furtrack.com からランダムなファースーツの写真を取得します。", // Gets a random fursuit photo from furtrack.com.
   "fursuit-furtrack:tag": "検索するタグ（デフォルト：fursuit）。", // Tag to search for (default: fursuit).
   "autoplay": "関連する曲を自動でキューに追加する機能を切り替えます。", // Toggles automatic related-track queueing.
   "filters": "再生にオーディオフィルターのプリセットを適用します。", // Applies an audio filter preset to playback.
@@ -154,7 +154,7 @@ export const jaCommandDescriptions = {
   "settings-music/panel": "音楽パネルを更新します。", // Updates the music panel.
   "settings-music/panel:channel": "音楽コントロールチャンネル。", // Music control channel.
   "settings-music/panel:idle-image-url": "固定のHTTPSアイドル画像URL。", // Stable HTTPS idle image URL.
-  "settings-music/panel:idle-image": "永続的に保存するPNG、JPEG、WebP、GIFのアイドル画像をアップロードします。", // Upload a persistent PNG, JPEG, WebP, or GIF idle image.
+  "settings-music/panel:idle-image": "保存して使うPNG、JPEG、WebP、GIFの待機画像をアップロードします。", // Upload a persistent PNG, JPEG, WebP, or GIF idle image.
   "settings-music/panel:use-default-image": "内蔵のSmilodonアイドル画像を使用します。", // Use the bundled Smilodon idle image.
   "settings-music/panel:progress-style": "プログレスバーの見た目。", // Progress bar appearance.
   "settings-music/panel:progress-length": "プログレスバーの長さ。", // Progress bar length.
@@ -176,7 +176,7 @@ export const jaCommandDescriptions = {
   "settings-music/dj-mode": "ミュージックコントローラーのロールがどこからでも再生を操作できるようにします。", // Lets music-controller roles control playback from anywhere.
   "settings-music/dj-mode:enabled": "DJモードを有効にするかどうか。", // Whether DJ mode is on.
   "settings-music/open-queue-requests": "ボットのボイスチャンネルに参加していなくても、誰でも曲をキューに追加できるようにします。", // Lets anyone queue songs without joining the bot's voice channel.
-  "settings-music/open-queue-requests:enabled": "オープンなキューリクエストを有効にするかどうか。", // Whether open queue requests are on.
+  "settings-music/open-queue-requests:enabled": "ボイスチャンネルに参加していなくても曲を追加できるようにするかどうか。", // Whether open queue requests are on.
   "settings-chat": "AIチャットの動作。", // AI chat behavior.
   "settings-chat/chatbot": "メンションに対するAI返信を設定します。", // Configures mention-based AI replies.
   "settings-chat/chatbot:enabled": "権限のあるユーザーがボットにメンションしたときに返信します。", // Reply when permitted users mention the bot.
@@ -192,7 +192,7 @@ export const jaCommandDescriptions = {
   "settings-chat/chatbot:image-input": "Discordの画像添付を受け付けます（枚数に上限があります）。", // Allow bounded image attachments from Discord.
   "settings-chat/chatbot:image-generation": "メンションチャットでモデルが画像を生成できるようにします。", // Allow the model to generate images in mention chat.
   "settings-chat/chatbot:self-reference-image": "ボットが自分の姿を描くときに使う参照画像。", // Reference image used when the bot draws itself.
-  "settings-chat/chatbot:remove-self-reference-image": "自己参照画像を削除します。", // Remove the self-reference image.
+  "settings-chat/chatbot:remove-self-reference-image": "ボットが自分の姿を描くときに使う参照画像を削除します。", // Remove the self-reference image.
   "settings-chat/chatbot:include-sources": "返信にWebの出典リンクを含めます。", // Include web citation links in replies.
   "settings-chat/chatbot:max-images": "1回のリクエストで受け付ける画像の最大数。", // Maximum images accepted per request.
   "settings-chat/chatbot:personality": "サーバーのキャラクター設定をMarkdownファイルでアップロードします。", // Upload the guild personality as a Markdown file.
@@ -202,8 +202,8 @@ export const jaCommandDescriptions = {
   "settings-chat/chatbot:persona-drift": "実験的機能：キャラクターの気分や癖が少しずつ変化するようにします。", // Experimental: let the character's mood/quirks slowly evolve.
   "settings-chat/chatbot:reset-persona-drift": "キャラクターの変化した気分や癖の履歴を消去し、最初からやり直します。", // Wipe the character's evolved mood/quirk history and start over.
   "settings-chat/ambient-replies": "名前が出ただけのメッセージにボットがリアクションや返信をするか、自分で判断できるようにします。", // Lets the bot judge whether to react/reply to messages that merely name it.
-  "settings-chat/ambient-replies:enabled": "アンビエント返信を有効にするかどうか。", // Whether ambient replies are on.
-  "settings-chat/ambient-replies:cooldown-seconds": "チャンネルごとのアンビエント判定の最小間隔（秒）。", // Minimum seconds between ambient judgment calls per channel.
+  "settings-chat/ambient-replies:enabled": "名前が出ただけのメッセージへの自動返信を有効にするかどうか。", // Whether ambient replies are on.
+  "settings-chat/ambient-replies:cooldown-seconds": "チャンネルごとに、自動返信を判断する最短間隔（秒）。", // Minimum seconds between ambient judgment calls per channel.
   "settings-chat/reaction-replies": "自分のチャット返信に付いたリアクションに返信するかどうかをボットが判断できるようにします。", // Lets the bot judge whether to reply to reactions on its own chat replies.
   "settings-chat/reaction-replies:enabled": "リアクション返信を有効にするかどうか。", // Whether reaction replies are on.
   "settings-chat/history-reactions": "チャット中に見えている他の人のメッセージに、ボットがリアクションを付けられるようにします。", // Lets the bot react to other people's messages it already sees during a chat turn.
@@ -221,7 +221,7 @@ export const jaCommandDescriptions = {
   "settings-chat/context-daily-remove:channel": "設定するチャンネル。", // The channel to configure.
   "settings-chat/context-remove": "チャンネルをスキャンと毎日の要約の両方から削除します。", // Removes a channel from both scan and daily summarization.
   "settings-chat/context-remove:channel": "設定するチャンネル。", // The channel to configure.
-  "settings-chat/context-status": "チャンネルコンテキストが設定されたチャンネルと、前回の実行状況を表示します。", // Shows configured channel-context channels and their last-run state.
+  "settings-chat/context-status": "履歴の取り込みや日次要約を設定したチャンネルと、前回の実行状況を表示します。", // Shows configured channel-context channels and their last-run state.
   "settings-chat/context-status:channel": "指定したチャンネルの詳細のみ表示します。", // Show detail for one channel only.
   "settings-chat/template": "編集してアップロードするための、personality.md または examples.md のひな形を送信します。", // Sends a starter personality.md or examples.md to edit and upload.
   "settings-chat/template:kind": "送信するひな形の種類。", // Which starter file to send.
@@ -276,7 +276,7 @@ export const jaCommandDescriptions = {
   "e621:query": "検索するタグ（例：wolf, dragon, solo）。空欄ならランダムな投稿を取得します。", // Tags to search for (e.g. wolf, dragon, solo). Leave empty for a random post.
   "e621:type": "ファイルの種類。", // File type.
   "e621:order": "並び順。", // Sort order.
-  "settings-community/language": "このサーバーのパネル・告知・返信でボットが使う言語を設定します。", // Sets the language the bot uses for this server's panels, announcements, and replies.
+  "settings-community/language": "このサーバーで翻訳に対応しているボットのメッセージに使う言語を設定します。", // Sets the language for translated bot messages in this server.
   "settings-community/language:language": "使用する言語。", // The language to use.
   "vote:option1": "選択肢1。2つ以上指定するか、「はい／いいえ」にする場合はすべて空欄にします。", // Choice 1; give at least two choices, or none for Yes/No.
   "vote:option2": "選択肢2。2つ以上指定するか、「はい／いいえ」にする場合はすべて空欄にします。", // Choice 2; give at least two choices, or none for Yes/No.

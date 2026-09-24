@@ -4,7 +4,7 @@ import type { MutationSettingDefinition } from "./setting-definition.js";
 export const languageSetting: MutationSettingDefinition = {
   kind: "mutation",
   name: "language",
-  description: "Sets the language the bot uses for this server's panels, announcements, and replies.",
+  description: "Sets the language for translated bot messages in this server.",
   configureOptions: () => [
     {
       type: "string",
