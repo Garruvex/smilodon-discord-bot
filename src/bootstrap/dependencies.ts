@@ -60,6 +60,8 @@ import type { GuildSetupService } from "../application/setup/guild-setup-service
 import { SetupCommand } from "../infrastructure/discord/commands/setup/setup-command.js";
 import { StatusCommand } from "../infrastructure/discord/commands/setup/status-command.js";
 import { AdminPanelHealth } from "../application/settings/admin-panel-health.js";
+import { SetupGuide } from "../infrastructure/discord/settings/setup/setup-guide.js";
+import { SetupGuideComponentHandler } from "../infrastructure/discord/components/setup-guide-component-handler.js";
 import { SettingsUpdateService } from "../application/settings/settings-update-service.js";
 import { SettingsEngine } from "../infrastructure/discord/settings/engine/settings-engine.js";
 import { settingsRegistry } from "../infrastructure/discord/settings/groups/index.js";
@@ -314,7 +316,8 @@ export function registerCommands(
   commandRegistry.register(new QuoteCommand());
   commandRegistry.register(new QuoteContextCommand());
   commandRegistry.register(new DiagnosticCommand());
-  commandRegistry.register(new SetupCommand(guildSetupService));
+  const setupCommand = new SetupCommand(guildSetupService);
+  commandRegistry.register(setupCommand);
   const adminPanelHealth = new AdminPanelHealth();
   commandRegistry.register(new StatusCommand(guildSetupService, guildConfigurationProvider, adminPanelHealth, {
     chat: configuration.chat
@@ -471,6 +474,9 @@ export function registerCommands(
     updater: settingsUpdater,
     deps: settingsDeps,
   });
+  const setupGuide = new SetupGuide(settingsEngine, guildConfigurationProvider, logger.child({ component: "setup-guide" }));
+  setupCommand.bindGuide(setupGuide);
+  componentRegistry.register(new SetupGuideComponentHandler(setupGuide));
   // One top-level /settings-<group> command per group, rather than one
   // shared /settings command: every group's descriptions would otherwise
   // share Discord's 8000-char per-command budget.

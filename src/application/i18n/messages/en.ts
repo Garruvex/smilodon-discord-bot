@@ -243,6 +243,22 @@ export const en = {
   "admin.panel.confirm": "Run “{setting}”? This can't be undone.",
   "admin.panel.confirmButton": "Yes, run it",
   "admin.panel.stale": "That control is out of date. The panel has been refreshed; try again.",
+  "setup.guide.notConfigured": "This server isn't set up yet. Run /setup initialize first.",
+  "setup.guide.step": "Step {step} of {total} · {group}",
+  "setup.guide.intro": "## Guided setup\nThe main settings, one at a time. Changes save as soon as you make them.\n\nFirst, a channel for the admin panel: every setting in one place, including the ones this guide skips. Keep it private to bot admins.",
+  "setup.guide.hint": "Changes save right away. Nothing to change here? Skip it.",
+  "setup.guide.back": "Back",
+  "setup.guide.skip": "Skip",
+  "setup.guide.next": "Next",
+  "setup.guide.finishLater": "Finish later",
+  "setup.guide.finish": "Finish",
+  "setup.guide.createChannel": "Create a private channel",
+  "setup.guide.channelName": "bot-settings",
+  "setup.guide.createFailed": "I couldn't create the channel: {reason}",
+  "setup.guide.later": "Your place is saved. Run /setup guide to pick up where you left off.",
+  "setup.guide.finished": "Guided setup finished. Run /setup guide any time to go through it again.",
+  "setup.guide.done": "## All set\nThe admin panel in {channel} has every setting, including the ones this guide skipped. Change anything there or with the /settings-… commands.",
+  "setup.guide.doneWithoutPanel": "## All set\nChange anything later with the /settings-… commands, or pick an admin panel channel with /settings-access admin-panel.",
 } as const satisfies Record<string, string>;
 
 export type MessageKey = keyof typeof en;

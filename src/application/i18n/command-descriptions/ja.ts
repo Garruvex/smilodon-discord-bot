@@ -132,6 +132,7 @@ export const jaCommandDescriptions = {
   "setup/initialize:administrator-role": "既存のボット管理者ロール。省略すると新規作成します。", // Existing bot administrator role; one is created if omitted.
   "setup/initialize:music-controller-role": "/play、キュー関連コマンド、パネル操作、コントロールチャンネルでのリクエストを使えるロール。", // Role for /play, queue commands, panel controls, and typed control-channel requests.
   "setup/initialize:restricted-role": "音楽とチャットボットの利用を禁止するロール（ボットオーナーは除く）。", // Role denied from music and chatbot unless bot-owner bypass applies.
+  "setup/guide": "主な設定を 1 つずつ、自分だけに見える形で案内します。", // Walks through the main settings one at a time, privately.
   "status": "このサーバーでのボットの設定状況（現在のチャットモデルを含む）を表示します。", // Shows how the bot is set up in this server, including the current chat model.
   "bird": "ランダムな鳥の画像と豆知識を取得します。", // Gets a random bird image and fact.
   "cat": "ランダムな猫の画像と豆知識を取得します。", // Gets a random cat image and fact.

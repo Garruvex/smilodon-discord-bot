@@ -134,6 +134,7 @@ export const zhTWCommandDescriptions = {
   "setup/initialize:administrator-role": "既有的機器人管理員身分組；未指定則自動建立", // Existing bot administrator role; one is created if omitted.
   "setup/initialize:music-controller-role": "可使用 /play、管理待播歌曲的指令、面板控制，以及在控制頻道輸入文字點歌的身分組", // Role for /play, queue commands, panel controls, and typed control-channel requests.
   "setup/initialize:restricted-role": "禁止使用音樂與聊天機器人的身分組（機器人擁有者例外）", // Role denied from music and chatbot unless bot-owner bypass applies.
+  "setup/guide": "一次一項、私下帶你看過主要設定", // Walks through the main settings one at a time, privately.
   "status": "顯示機器人在此伺服器的設定狀況，包含目前的聊天模型", // Shows how the bot is set up in this server, including the current chat model.
   "bird": "取得隨機鳥類圖片與小知識", // Gets a random bird image and fact.
   "cat": "取得隨機貓咪圖片與小知識", // Gets a random cat image and fact.
