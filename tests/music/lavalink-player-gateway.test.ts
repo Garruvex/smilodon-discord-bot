@@ -1,5 +1,5 @@
 import { ChannelType, PermissionsBitField, type Client, type Guild } from "discord.js";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LavalinkPlayerGateway } from "../../src/infrastructure/lavalink/lavalink-player-gateway.js";
 import { MusicChannelAccessError } from "../../src/application/music/music-errors.js";
@@ -64,7 +64,7 @@ function createGateway(botVoiceChannelId: string | null | typeof uncachedGuild):
         : new Map<string, Guild>([[guildId, guild]]),
     },
   } as unknown as Client;
-  const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+  const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
   const eventBus = { publish: vi.fn(() => Promise.resolve()) } as unknown as MusicEventBus;
   const guildConfigurationProvider = {
     find: vi.fn(() => undefined),
@@ -175,7 +175,7 @@ function createGatewayForEnqueue(channelPermissionBits: bigint | null): {
   const client = {
     guilds: { cache: new Map([[guildId, guild]]) },
   } as unknown as Client;
-  const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+  const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
   const eventBus = { publish: vi.fn(() => Promise.resolve()) } as unknown as MusicEventBus;
   const guildConfigurationProvider = {
     find: vi.fn(() => undefined),
@@ -429,17 +429,14 @@ describe("LavalinkPlayerGateway trackStart lyrics handling", () => {
     lookupSyncedLyricsMock.mockReset();
   });
 
-  it("ignores an old failed request after returning to the same track", async () => {
+  function createLyricsPlaybackHarness(): {
+    player: { guildId: string; position: number; queue: { current: unknown } };
+    start: (track: unknown) => void;
+    lyrics: () => unknown;
+  } {
     const { gateway } = createGateway(null);
-    let rejectFirst!: (error: Error) => void;
-    lookupSyncedLyricsMock
-      .mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectFirst = reject; }))
-      .mockResolvedValueOnce(notFound())
-      .mockResolvedValueOnce(found([{ timestampMs: 0, line: "Fresh lyrics" }]));
-    const first = { encoded: "track-a", info: { title: "A", author: "Artist" }, userData: {} };
-    const second = { encoded: "track-b", info: { title: "B", author: "Artist" }, userData: {} };
     const player = {
-      guildId, position: 0, queue: { current: first },
+      guildId, position: 0, queue: { current: null as unknown },
       subscribeLyrics: vi.fn().mockResolvedValue(undefined), get: vi.fn(),
     };
     const internals = gateway as unknown as {
@@ -447,22 +444,136 @@ describe("LavalinkPlayerGateway trackStart lyrics handling", () => {
       customLyricsByGuild: Map<string, unknown>;
     };
     internals.manager.getPlayer = (): typeof player => player;
-    internals.manager.emit("trackStart", player, first);
-    player.queue.current = second;
-    internals.manager.emit("trackStart", player, second);
-    player.queue.current = first;
-    internals.manager.emit("trackStart", player, first);
-    await vi.waitFor(() => expect(internals.customLyricsByGuild.get(guildId))
-      .toEqual([{ timestampMs: 0, line: "Fresh lyrics" }]));
-    rejectFirst(new Error("Old request failed"));
+    return {
+      player,
+      start: (track): void => {
+        player.queue.current = track;
+        internals.manager.emit("trackStart", player, track);
+      },
+      lyrics: (): unknown => internals.customLyricsByGuild.get(guildId),
+    };
+  }
+
+  const trackA = { encoded: "track-a", info: { title: "A", author: "Artist" }, userData: {} };
+  const trackB = { encoded: "track-b", info: { title: "B", author: "Artist" }, userData: {} };
+
+  it("ignores a slow lookup for a track that is no longer playing", async () => {
+    let resolveA!: (value: unknown) => void;
+    lookupSyncedLyricsMock
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveA = resolve; }))
+      .mockResolvedValueOnce(found([{ timestampMs: 0, line: "B lyrics" }]));
+    const harness = createLyricsPlaybackHarness();
+
+    harness.start(trackA);
+    harness.start(trackB);
+    await vi.waitFor(() => expect(harness.lyrics()).toEqual([{ timestampMs: 0, line: "B lyrics" }]));
+    resolveA(found([{ timestampMs: 0, line: "A lyrics" }]));
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(internals.customLyricsByGuild.get(guildId))
-      .toEqual([{ timestampMs: 0, line: "Fresh lyrics" }]);
+
+    expect(harness.lyrics()).toEqual([{ timestampMs: 0, line: "B lyrics" }]);
+  });
+
+  it("joins the lookup still in flight when returning to the same track (A → B → A)", async () => {
+    let resolveA!: (value: unknown) => void;
+    lookupSyncedLyricsMock
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveA = resolve; }))
+      .mockResolvedValueOnce(notFound());
+    const harness = createLyricsPlaybackHarness();
+
+    harness.start(trackA);
+    harness.start(trackB);
+    await vi.waitFor(() => expect(harness.lyrics()).toBe("not-found"));
+    harness.start(trackA);
+    resolveA(found([{ timestampMs: 0, line: "A lyrics" }]));
+
+    await vi.waitFor(() => expect(harness.lyrics()).toEqual([{ timestampMs: 0, line: "A lyrics" }]));
+    expect(lookupSyncedLyricsMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("shares one provider lookup between the vote check and playback", async () => {
+    let resolveLookup!: (value: unknown) => void;
+    lookupSyncedLyricsMock.mockImplementationOnce(() => new Promise((resolve) => { resolveLookup = resolve; }));
+    const { gateway } = createGateway(null);
+    const internals = gateway as unknown as {
+      resolveSyncedLyrics: (track: { title: string; author: string }, context: unknown) => Promise<unknown>;
+    };
+    const track = { title: "A", author: "Artist" };
+
+    const forVote = internals.resolveSyncedLyrics(track, { requestId: "vote", purpose: "vote", guildId, retry: 0 });
+    const forPlayback = internals.resolveSyncedLyrics(track, { requestId: "play", purpose: "playback", guildId, retry: 0 });
+    resolveLookup(found([{ timestampMs: 0, line: "A lyrics" }]));
+
+    expect(await forVote).toEqual({ status: "found", lines: [{ timestampMs: 0, line: "A lyrics" }] });
+    expect(await forPlayback).toEqual({ status: "found", lines: [{ timestampMs: 0, line: "A lyrics" }] });
+    expect(lookupSyncedLyricsMock).toHaveBeenCalledOnce();
+  });
+
+  describe("when the lyrics services are unreachable", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("shows a retrying state, then succeeds on a scheduled retry", async () => {
+      lookupSyncedLyricsMock
+        .mockResolvedValueOnce(unavailable())
+        .mockResolvedValueOnce(found([{ timestampMs: 0, line: "A lyrics" }]));
+      const harness = createLyricsPlaybackHarness();
+
+      harness.start(trackA);
+      await vi.waitFor(() => expect(harness.lyrics()).toBe("retrying"));
+      await vi.advanceTimersByTimeAsync(15_000);
+
+      await vi.waitFor(() => expect(harness.lyrics()).toEqual([{ timestampMs: 0, line: "A lyrics" }]));
+      expect(lookupSyncedLyricsMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("gives up after the bounded retries", async () => {
+      lookupSyncedLyricsMock.mockResolvedValue(unavailable());
+      const harness = createLyricsPlaybackHarness();
+
+      harness.start(trackA);
+      await vi.waitFor(() => expect(harness.lyrics()).toBe("retrying"));
+      await vi.advanceTimersByTimeAsync(15_000);
+      await vi.advanceTimersByTimeAsync(45_000);
+      await vi.waitFor(() => expect(harness.lyrics()).toBe("unavailable"));
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+
+      expect(lookupSyncedLyricsMock).toHaveBeenCalledTimes(3);
+    });
+
+    it("doesn't retry a failure that won't succeed on retry", async () => {
+      lookupSyncedLyricsMock.mockResolvedValue(unavailable(false));
+      const harness = createLyricsPlaybackHarness();
+
+      harness.start(trackA);
+      await vi.waitFor(() => expect(harness.lyrics()).toBe("unavailable"));
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+
+      expect(lookupSyncedLyricsMock).toHaveBeenCalledOnce();
+    });
+
+    it("cancels a pending retry once the track changes", async () => {
+      lookupSyncedLyricsMock
+        .mockResolvedValueOnce(unavailable())
+        .mockResolvedValueOnce(notFound());
+      const harness = createLyricsPlaybackHarness();
+
+      harness.start(trackA);
+      await vi.waitFor(() => expect(harness.lyrics()).toBe("retrying"));
+      harness.start(trackB);
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+
+      expect(lookupSyncedLyricsMock).toHaveBeenCalledTimes(2);
+      expect(harness.lyrics()).toBe("not-found");
+    });
   });
 
   it("doesn't re-clear or re-fetch lyrics when trackStart fires again for the same track", async () => {
     const client = { guilds: { cache: new Map<string, Guild>() } } as unknown as Client;
-    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
     const eventBus = { publish: vi.fn(() => Promise.resolve()) } as unknown as MusicEventBus;
     const guildConfigurationProvider = { find: vi.fn(() => undefined) } as unknown as GuildConfigurationProvider;
     const gateway = new LavalinkPlayerGateway(
@@ -523,7 +634,7 @@ describe("LavalinkPlayerGateway trackStart lyrics handling", () => {
     // sit unshown for up to that whole interval on top of however long the
     // LRCLIB fetch itself took.
     const client = { guilds: { cache: new Map<string, Guild>() } } as unknown as Client;
-    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
     const publish = vi.fn(() => Promise.resolve());
     const eventBus = { publish } as unknown as MusicEventBus;
     const guildConfigurationProvider = { find: vi.fn(() => undefined) } as unknown as GuildConfigurationProvider;
@@ -568,7 +679,7 @@ describe("LavalinkPlayerGateway trackStart lyrics handling", () => {
 
   it("publishes a state-change event even when the LRCLIB fetch fails, so the panel still learns lyrics settled to not-found", async () => {
     const client = { guilds: { cache: new Map<string, Guild>() } } as unknown as Client;
-    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
     const publish = vi.fn(() => Promise.resolve());
     const eventBus = { publish } as unknown as MusicEventBus;
     const guildConfigurationProvider = { find: vi.fn(() => undefined) } as unknown as GuildConfigurationProvider;
@@ -613,7 +724,7 @@ describe("LavalinkPlayerGateway trackStart lyrics handling", () => {
 
   it("keeps showing the current line well past the last line's own timestamp instead of going blank", () => {
     const client = { guilds: { cache: new Map<string, Guild>() } } as unknown as Client;
-    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
     const eventBus = { publish: vi.fn(() => Promise.resolve()) } as unknown as MusicEventBus;
     const guildConfigurationProvider = { find: vi.fn(() => undefined) } as unknown as GuildConfigurationProvider;
     const gateway = new LavalinkPlayerGateway(
@@ -692,7 +803,7 @@ describe("LavalinkPlayerGateway trackStart lyrics handling", () => {
     // — for however long that intro lasted, even though the full line list
     // was already resolved and sitting in memory.
     const client = { guilds: { cache: new Map<string, Guild>() } } as unknown as Client;
-    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
     const eventBus = { publish: vi.fn(() => Promise.resolve()) } as unknown as MusicEventBus;
     const guildConfigurationProvider = { find: vi.fn(() => undefined) } as unknown as GuildConfigurationProvider;
     const gateway = new LavalinkPlayerGateway(
@@ -742,7 +853,7 @@ describe("LavalinkPlayerGateway trackStart lyrics handling", () => {
 
   it("reports lyrics as unavailable once our own fetch confirms not-found, without waiting on the plugin fallback to also settle", () => {
     const client = { guilds: { cache: new Map<string, Guild>() } } as unknown as Client;
-    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
     const eventBus = { publish: vi.fn(() => Promise.resolve()) } as unknown as MusicEventBus;
     const guildConfigurationProvider = { find: vi.fn(() => undefined) } as unknown as GuildConfigurationProvider;
     const gateway = new LavalinkPlayerGateway(

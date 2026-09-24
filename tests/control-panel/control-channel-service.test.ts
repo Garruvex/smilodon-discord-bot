@@ -955,6 +955,29 @@ describe("ControlChannelService", () => {
     expect(embed.description).toBe("No lyrics found for this track.");
   });
 
+  it.each([
+    ["retrying", "Couldn't reach the lyrics services. Trying again shortly…"],
+    ["gave_up", "Couldn't reach the lyrics services for this track."],
+  ])("says the lyrics services are unreachable (%s) instead of \"no lyrics\"", (lyricsOutage, expected) => {
+    const { service } = createService(false);
+    const embed = (
+      service as unknown as {
+        createLyricsEmbed: (
+          profile: GuildConfiguration,
+          snapshot: unknown,
+        ) => { toJSON: () => { description?: string } };
+      }
+    ).createLyricsEmbed(guildConfiguration(false), {
+      currentTrack: { title: "Track" },
+      currentLyricLine: null,
+      upcomingLyricLines: [],
+      lyricsUnavailable: false,
+      lyricsOutage,
+    }).toJSON();
+
+    expect(embed.description).toBe(expected);
+  });
+
   it("refreshes the panel to current idle state during startup", async () => {
     const { service } = createService(false);
     const ensureGuildPanel = vi
@@ -2304,11 +2327,13 @@ describe("ControlChannelService panel language", () => {
 
     const lyrics = service.createLyricsEmbed(profile, { ...playingSnapshot, lyricsUnavailable: true }).toJSON();
     const searching = service.createLyricsEmbed(profile, playingSnapshot).toJSON();
+    const retrying = service.createLyricsEmbed(profile, { ...playingSnapshot, lyricsOutage: "retrying" }).toJSON();
     const idle = service.createLyricsEmbed(profile, idleSnapshot).toJSON();
     const hint = service.createNowPlayingPayload(profile, idleSnapshot).content;
 
     expect(lyrics.description).toBe("この曲の歌詞は見つかりませんでした。");
     expect(searching.description).toBe("歌詞を探しています…");
+    expect(retrying.description).toBe(texts.ja.music.panel.lyrics.retrying);
     expect(idle.description).toBe("現在再生中の曲はありません。");
     expect(hint.split("\n")).toEqual([
       texts.ja.music.panel.hint.request,

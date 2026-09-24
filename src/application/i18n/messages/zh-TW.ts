@@ -38,6 +38,8 @@ export const zhTW = {
   "music.panel.lyrics.idle": "目前沒有播放中的歌曲",
   "music.panel.lyrics.notFound": "找不到這首歌的歌詞",
   "music.panel.lyrics.searching": "正在尋找歌詞…",
+  "music.panel.lyrics.retrying": "暫時無法連上歌詞服務，稍後會自動重試…",
+  "music.panel.lyrics.unreachable": "目前無法連上歌詞服務，這首歌暫時沒有歌詞",
 
   "music.panel.queue.title": "待播清單",
   "music.panel.queue.empty": "目前沒有待播歌曲",

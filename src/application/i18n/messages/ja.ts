@@ -37,6 +37,8 @@ export const ja = {
   "music.panel.lyrics.idle": "現在再生中の曲はありません。",
   "music.panel.lyrics.notFound": "この曲の歌詞は見つかりませんでした。",
   "music.panel.lyrics.searching": "歌詞を探しています…",
+  "music.panel.lyrics.retrying": "歌詞サービスに接続できませんでした。まもなく再試行します…",
+  "music.panel.lyrics.unreachable": "歌詞サービスに接続できないため、この曲の歌詞を表示できません。",
 
   "music.panel.queue.title": "キュー",
   "music.panel.queue.empty": "キューに曲はありません。",

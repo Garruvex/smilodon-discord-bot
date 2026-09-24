@@ -1366,9 +1366,10 @@ export class ControlChannelService {
     if (snapshot.upcomingLyricLines.length > 0) {
       return embed.setDescription(snapshot.upcomingLyricLines.map((line) => `-# ${line}`).join("\n"));
     }
-    return embed.setDescription(
-      snapshot.lyricsUnavailable ? text.music.panel.lyrics.notFound : text.music.panel.lyrics.searching,
-    );
+    if (snapshot.lyricsUnavailable) return embed.setDescription(text.music.panel.lyrics.notFound);
+    if (snapshot.lyricsOutage === "retrying") return embed.setDescription(text.music.panel.lyrics.retrying);
+    if (snapshot.lyricsOutage === "gave_up") return embed.setDescription(text.music.panel.lyrics.unreachable);
+    return embed.setDescription(text.music.panel.lyrics.searching);
   }
 
   private createQueueControlsPayload(

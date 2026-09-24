@@ -46,6 +46,8 @@ export const en = {
   "music.panel.lyrics.idle": "Nothing is playing right now.",
   "music.panel.lyrics.notFound": "No lyrics found for this track.",
   "music.panel.lyrics.searching": "Looking for lyrics…",
+  "music.panel.lyrics.retrying": "Couldn't reach the lyrics services. Trying again shortly…",
+  "music.panel.lyrics.unreachable": "Couldn't reach the lyrics services for this track.",
 
   // Queue embed on the panel (the paginated /queue show view is music.queue.*).
   "music.panel.queue.title": "Queue",
