@@ -30,5 +30,12 @@ export function buildLyricsCacheKey(trackName: string, artistName: string, durat
   const durationBucket = durationMs !== undefined ? Math.round(durationMs / 1000) : "";
   // Version the matcher result so previously cached false negatives are
   // rechecked after search and ranking changes.
-  return `v2|${trackName.trim().toLowerCase()}|${artistName.trim().toLowerCase()}|${durationBucket}`;
+  const title = trackName.trim().toLowerCase();
+  const artist = artistName.trim().toLowerCase();
+  // Keep ordinary keys stable. A literal separator in either field needs an
+  // encoded key so two different title/artist pairs cannot collide.
+  if (title.includes("|") || artist.includes("|")) {
+    return JSON.stringify(["v3", title, artist, durationBucket]);
+  }
+  return `v2|${title}|${artist}|${durationBucket}`;
 }
