@@ -7,14 +7,31 @@ import type { MusicEventBus } from "../../src/application/music/music-event-bus.
 import type { GuildConfigurationProvider } from "../../src/config/guild-configuration-provider.js";
 import type { LyricsCacheStore } from "../../src/application/lyrics/lyrics-cache-store.js";
 
-const fetchSyncedLyricsMock = vi.fn();
+const lookupSyncedLyricsMock = vi.fn();
 vi.mock("../../src/infrastructure/lyrics/synced-lyrics-client.js", () => ({
-  fetchSyncedLyrics: (...args: unknown[]): unknown => fetchSyncedLyricsMock(...args),
+  lookupSyncedLyrics: (...args: unknown[]): unknown => lookupSyncedLyricsMock(...args),
   // Identity passthrough — none of these fixtures need real suffix-stripping,
   // and the cache-key tests below rely on the raw title/artist round-tripping
   // unchanged.
   lyricsCacheIdentity: (title: string, artist: string): unknown => ({ title, artist }),
 }));
+
+interface TestLyricLine { timestampMs: number; line: string }
+
+function found(lines: TestLyricLine[]): unknown {
+  return { result: { status: "found", lines, source: "lrclib" }, attempts: [] };
+}
+
+function notFound(): unknown {
+  return { result: { status: "not_found" }, attempts: [] };
+}
+
+function unavailable(retryable = true): unknown {
+  return {
+    result: { status: "unavailable", source: "lrclib", errorCode: "timeout", retryable },
+    attempts: [{ source: "lrclib", outcome: "failed", durationMs: 5_000, errorCode: "timeout" }],
+  };
+}
 
 const guildId = "123456789012345678";
 
@@ -268,7 +285,7 @@ describe("LavalinkPlayerGateway.resolveSyncedLyrics", () => {
   }
 
   beforeEach(() => {
-    fetchSyncedLyricsMock.mockReset();
+    lookupSyncedLyricsMock.mockReset();
   });
 
   it("returns a cached hit without calling LRCLIB", async () => {
@@ -281,8 +298,8 @@ describe("LavalinkPlayerGateway.resolveSyncedLyrics", () => {
 
     const result = await gateway.resolveSyncedLyrics("Track", "Artist");
 
-    expect(result).toEqual(cachedLines);
-    expect(fetchSyncedLyricsMock).not.toHaveBeenCalled();
+    expect(result).toEqual({ status: "found", lines: cachedLines });
+    expect(lookupSyncedLyricsMock).not.toHaveBeenCalled();
   });
 
   it("treats a cached null as a confirmed not-found, without calling LRCLIB", async () => {
@@ -294,47 +311,68 @@ describe("LavalinkPlayerGateway.resolveSyncedLyrics", () => {
 
     const result = await gateway.resolveSyncedLyrics("Track", "Artist");
 
-    expect(result).toBeNull();
-    expect(fetchSyncedLyricsMock).not.toHaveBeenCalled();
+    expect(result).toEqual({ status: "not_found" });
+    expect(lookupSyncedLyricsMock).not.toHaveBeenCalled();
   });
 
   it("fetches from LRCLIB and writes the result back to the cache on a miss", async () => {
     const freshLines = [{ timestampMs: 1000, line: "Fresh line" }];
-    fetchSyncedLyricsMock.mockResolvedValue(freshLines);
+    lookupSyncedLyricsMock.mockResolvedValue(found(freshLines));
     const setSpy = vi.fn().mockResolvedValue(undefined);
     const cache = { get: vi.fn().mockResolvedValue(undefined), set: setSpy } as unknown as LyricsCacheStore;
     const gateway = createGatewayWithCache(cache);
 
     const result = await gateway.resolveSyncedLyrics("Track", "Artist");
 
-    expect(result).toEqual(freshLines);
-    expect(fetchSyncedLyricsMock).toHaveBeenCalledWith("Track", "Artist", undefined);
+    expect(result).toEqual({ status: "found", lines: freshLines });
+    expect(lookupSyncedLyricsMock).toHaveBeenCalledWith("Track", "Artist", undefined);
     await vi.waitFor(() => expect(setSpy).toHaveBeenCalledWith("v3|track|artist|", freshLines));
   });
 
+  it("caches a confirmed not-found as null", async () => {
+    lookupSyncedLyricsMock.mockResolvedValue(notFound());
+    const setSpy = vi.fn().mockResolvedValue(undefined);
+    const cache = { get: vi.fn().mockResolvedValue(undefined), set: setSpy } as unknown as LyricsCacheStore;
+    const gateway = createGatewayWithCache(cache);
+
+    expect(await gateway.resolveSyncedLyrics("Track", "Artist")).toEqual({ status: "not_found" });
+    await vi.waitFor(() => expect(setSpy).toHaveBeenCalledWith("v3|track|artist|", null));
+  });
+
+  it("never caches an outage as \"no lyrics\"", async () => {
+    lookupSyncedLyricsMock.mockResolvedValue(unavailable());
+    const setSpy = vi.fn().mockResolvedValue(undefined);
+    const cache = { get: vi.fn().mockResolvedValue(undefined), set: setSpy } as unknown as LyricsCacheStore;
+    const gateway = createGatewayWithCache(cache);
+
+    expect(await gateway.resolveSyncedLyrics("Track", "Artist")).toEqual({ status: "unavailable", retryable: true });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(setSpy).not.toHaveBeenCalled();
+  });
+
   it("works without a cache store at all — always fetches from LRCLIB", async () => {
-    fetchSyncedLyricsMock.mockResolvedValue(null);
+    lookupSyncedLyricsMock.mockResolvedValue(notFound());
     const gateway = createGatewayWithCache(null);
 
     const result = await gateway.resolveSyncedLyrics("Track", "Artist");
 
-    expect(result).toBeNull();
-    expect(fetchSyncedLyricsMock).toHaveBeenCalledWith("Track", "Artist", undefined);
+    expect(result).toEqual({ status: "not_found" });
+    expect(lookupSyncedLyricsMock).toHaveBeenCalledWith("Track", "Artist", undefined);
   });
 });
 
 describe("LavalinkPlayerGateway trackStart lyrics handling", () => {
   beforeEach(() => {
-    fetchSyncedLyricsMock.mockReset();
+    lookupSyncedLyricsMock.mockReset();
   });
 
   it("ignores an old failed request after returning to the same track", async () => {
     const { gateway } = createGateway(null);
     let rejectFirst!: (error: Error) => void;
-    fetchSyncedLyricsMock
+    lookupSyncedLyricsMock
       .mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectFirst = reject; }))
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce([{ timestampMs: 0, line: "Fresh lyrics" }]);
+      .mockResolvedValueOnce(notFound())
+      .mockResolvedValueOnce(found([{ timestampMs: 0, line: "Fresh lyrics" }]));
     const first = { encoded: "track-a", info: { title: "A", author: "Artist" }, userData: {} };
     const second = { encoded: "track-b", info: { title: "B", author: "Artist" }, userData: {} };
     const player = {
@@ -373,7 +411,7 @@ describe("LavalinkPlayerGateway trackStart lyrics handling", () => {
     );
 
     const fetchedLines = [{ timestampMs: 0, line: "Hello" }];
-    fetchSyncedLyricsMock.mockResolvedValue(fetchedLines);
+    lookupSyncedLyricsMock.mockResolvedValue(found(fetchedLines));
 
     const track = {
       encoded: "same-track-encoded",
@@ -404,14 +442,14 @@ describe("LavalinkPlayerGateway trackStart lyrics handling", () => {
 
     manager.emit("trackStart", player, track);
     await vi.waitFor(() => expect(customLyricsByGuild.get(guildId)).toEqual(fetchedLines));
-    expect(fetchSyncedLyricsMock).toHaveBeenCalledOnce();
+    expect(lookupSyncedLyricsMock).toHaveBeenCalledOnce();
 
     // A duplicate event for the exact same track (e.g. a resolve-error retry
     // replaying it) — must not wipe the already-resolved lyrics or re-fetch.
     manager.emit("trackStart", player, track);
     await Promise.resolve();
 
-    expect(fetchSyncedLyricsMock).toHaveBeenCalledOnce();
+    expect(lookupSyncedLyricsMock).toHaveBeenCalledOnce();
     expect(customLyricsByGuild.get(guildId)).toEqual(fetchedLines);
   });
 
@@ -434,7 +472,7 @@ describe("LavalinkPlayerGateway trackStart lyrics handling", () => {
       guildConfigurationProvider,
     );
 
-    fetchSyncedLyricsMock.mockResolvedValue([{ timestampMs: 0, line: "Hello" }]);
+    lookupSyncedLyricsMock.mockResolvedValue(found([{ timestampMs: 0, line: "Hello" }]));
 
     const track = {
       encoded: "lyrics-loaded-track",
@@ -479,7 +517,7 @@ describe("LavalinkPlayerGateway trackStart lyrics handling", () => {
       guildConfigurationProvider,
     );
 
-    fetchSyncedLyricsMock.mockRejectedValue(new Error("LRCLIB is down"));
+    lookupSyncedLyricsMock.mockResolvedValue(unavailable());
 
     const track = {
       encoded: "lyrics-failed-track",

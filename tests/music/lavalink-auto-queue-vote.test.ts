@@ -24,8 +24,12 @@ import { LavalinkPlayerGateway } from "../../src/infrastructure/lavalink/lavalin
 
 // Only "Song a" has synced lyrics.
 vi.mock("../../src/infrastructure/lyrics/synced-lyrics-client.js", () => ({
-  fetchSyncedLyrics: (title: string): Promise<unknown> =>
-    Promise.resolve(title === "Song a" ? [{ timestampMs: 0, line: "la" }] : null),
+  lookupSyncedLyrics: (title: string): Promise<unknown> => Promise.resolve({
+    result: title === "Song a"
+      ? { status: "found", lines: [{ timestampMs: 0, line: "la" }], source: "lrclib" }
+      : { status: "not_found" },
+    attempts: [],
+  }),
   lyricsCacheIdentity: (title: string, artist: string): unknown => ({ title, artist }),
 }));
 

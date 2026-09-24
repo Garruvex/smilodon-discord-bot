@@ -37,7 +37,7 @@ import type { MusicEventBus, MusicStateChangedEvent } from "../../application/mu
 import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
 import { LavalinkAutoQueue, type AutoQueueOutcome } from "./lavalink-auto-queue.js";
 import { cleanArtistName } from "../../domain/music/artist-name.js";
-import { fetchSyncedLyrics, lyricsCacheIdentity, type SyncedLyricLine } from "../lyrics/synced-lyrics-client.js";
+import { lookupSyncedLyrics, lyricsCacheIdentity, type SyncedLyricLine } from "../lyrics/synced-lyrics-client.js";
 import { buildLyricsCacheKey, type LyricsCacheStore } from "../../application/lyrics/lyrics-cache-store.js";
 import { MUSIC_LIMITS } from "../../config/guild-configuration-limits.js";
 
@@ -81,6 +81,14 @@ function leadingVoteIndex(state: AutoQueueVoteState): number {
   });
   return leading;
 }
+
+// What playback and the vote need from a lyrics lookup, without any
+// provider detail. "unavailable" is inconclusive: a provider couldn't be
+// asked, so it's neither shown nor cached as "no lyrics".
+type LyricsResolution =
+  | { readonly status: "found"; readonly lines: SyncedLyricLine[] }
+  | { readonly status: "not_found" }
+  | { readonly status: "unavailable"; readonly retryable: boolean };
 
 interface SelectedLyricLines {
   readonly current: string | null;
@@ -267,10 +275,13 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
         this.pluginLyricsByGuild.delete(player.guildId);
         this.customLyricsByGuild.delete(player.guildId);
         this.resolveSyncedLyrics(track.info.title, track.info.author ?? "", track.info.duration)
-          .then((lines) => {
+          .then((resolution) => {
             // Guard against a stale response landing after the track changed.
             if (!isCurrentRequest()) return;
-            this.customLyricsByGuild.set(player.guildId, lines ?? "not-found");
+            this.customLyricsByGuild.set(
+              player.guildId,
+              resolution.status === "found" ? resolution.lines : "not-found",
+            );
             // Without this, the panel only picks up freshly-loaded lyrics on
             // its next unrelated timer tick — up to a full
             // activePlaybackRefreshIntervalMs late, on top of however long
@@ -342,10 +353,12 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     });
   }
 
-  // Checks the shared cross-instance cache before ever hitting LRCLIB, and
-  // populates it after a real fetch (including a confirmed "no lyrics"
-  // result) so the next server — this instance or another one entirely —
-  // to play the same track never has to ask LRCLIB again.
+  // Checks the shared cross-instance cache before ever hitting a provider,
+  // and populates it after a conclusive fetch (including a confirmed "no
+  // lyrics" result) so the next server — this instance or another one
+  // entirely — to play the same track never has to ask again. An
+  // "unavailable" result is never cached: it only means a provider couldn't
+  // be reached, not that the lyrics don't exist.
   //
   // Logged at info level (cache hit/miss, live-fetch duration) specifically
   // so a reported "lyrics took N seconds" can be checked against real
@@ -354,8 +367,8 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     trackName: string,
     artistName: string,
     durationMs?: number,
-  ): Promise<SyncedLyricLine[] | null> {
-    // Normalized the same way fetchSyncedLyrics normalizes for searching
+  ): Promise<LyricsResolution> {
+    // Normalized the same way the lookup normalizes for searching
     // (stripping "(Official Music Video)"-style suffixes and an
     // "Artist - Title" prefix) — otherwise every differently-titled
     // re-upload of the same song (a common YouTube reality) gets its own
@@ -369,22 +382,30 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
       });
       if (cached !== undefined) {
         this.logger.info({ trackKey, cacheHit: true, found: cached !== null }, "Lyrics resolved from cache");
-        return cached as SyncedLyricLine[] | null;
+        return cached === null ? { status: "not_found" } : { status: "found", lines: [...cached] };
       }
     }
 
     const startedAt = Date.now();
-    const lines = await fetchSyncedLyrics(trackName, artistName, durationMs);
+    const { result } = await lookupSyncedLyrics(trackName, artistName, durationMs);
     this.logger.info(
-      { trackKey, cacheHit: false, found: lines !== null, lineCount: lines?.length ?? 0, fetchMs: Date.now() - startedAt },
-      "Lyrics resolved from LRCLIB",
+      {
+        trackKey,
+        cacheHit: false,
+        status: result.status,
+        lineCount: result.status === "found" ? result.lines.length : 0,
+        fetchMs: Date.now() - startedAt,
+      },
+      "Lyrics resolved from providers",
     );
+    if (result.status === "unavailable") return { status: "unavailable", retryable: result.retryable };
     if (this.lyricsCacheStore) {
+      const lines = result.status === "found" ? result.lines : null;
       void this.lyricsCacheStore.set(trackKey, lines).catch((error: unknown) => {
         this.logger.warn({ error, trackKey }, "Unable to write the lyrics cache");
       });
     }
-    return lines;
+    return result.status === "found" ? { status: "found", lines: result.lines } : { status: "not_found" };
   }
 
   public async initialize(clientUser: { id: string; username: string }): Promise<void> {
@@ -736,9 +757,11 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
       const identifier = this.autoQueue.identifier(candidate);
       if (vote.lyricsAvailableById.has(identifier)) continue;
       this.resolveSyncedLyrics(candidate.info.title, candidate.info.author ?? "", candidate.info.duration)
-        .then((lines) => {
+        .then((resolution) => {
           if (this.autoQueueVotes.get(guildId) !== vote) return;
-          vote.lyricsAvailableById.set(identifier, lines !== null);
+          // An outage says nothing either way — leave the option unmarked.
+          if (resolution.status === "unavailable") return;
+          vote.lyricsAvailableById.set(identifier, resolution.status === "found");
           this.publishStateChange({ guildId, reason: "queue_changed" });
         })
         .catch((error: unknown) => {

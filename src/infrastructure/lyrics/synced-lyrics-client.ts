@@ -1,6 +1,14 @@
 import { Converter } from "opencc-js/t2cn";
 import { z } from "zod";
 
+import {
+  LyricsProviderError,
+  requestProviderJson,
+  toLyricsProviderError,
+  type LyricsErrorCode,
+  type LyricsSource,
+} from "./lyrics-provider-error.js";
+
 export interface SyncedLyricLine {
   readonly timestampMs: number;
   readonly line: string;
@@ -330,16 +338,22 @@ function selectBestLrcLibLines(
   targets: readonly ScoringTarget[],
   durationMs: number | undefined,
   candidates: readonly LrcLibCandidate[],
+  onCandidate: CandidateListener | undefined,
 ): SyncedLyricLine[] | null {
   let best: { lines: SyncedLyricLine[]; score: number } | null = null;
   for (const candidate of candidates) {
-    const lines = candidate.syncedLyrics ? parseSyncedLyrics(candidate.syncedLyrics) : [];
-    if (lines.length === 0) continue;
-    const score = bestScore(targets, durationMs, {
+    const match: MatchCandidate = {
       trackName: candidate.trackName,
       artistNames: [candidate.artistName],
       duration: candidate.duration,
-    });
+    };
+    const lines = candidate.syncedLyrics ? parseSyncedLyrics(candidate.syncedLyrics) : [];
+    if (lines.length === 0) {
+      onCandidate?.({ source: "lrclib", ...match, score: null, verdict: "no_synced_lyrics" });
+      continue;
+    }
+    const score = bestScore(targets, durationMs, match);
+    onCandidate?.({ source: "lrclib", ...match, score, verdict: score === null ? "rejected" : "eligible" });
     if (score !== null && (!best || score > best.score)) best = { lines, score };
   }
   return best?.lines ?? null;
@@ -349,10 +363,10 @@ async function searchLrcLib(trackName: string, artistName: string): Promise<LrcL
   const url = new URL("https://lrclib.net/api/search");
   url.searchParams.set("track_name", trackName);
   if (artistName) url.searchParams.set("artist_name", artistName);
-  const response = await fetch(url, { signal: AbortSignal.timeout(5_000) });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const payload: unknown = await response.json();
-  if (!Array.isArray(payload)) throw new Error("Invalid LRCLIB search response");
+  const payload = await requestProviderJson("lrclib", url);
+  if (!Array.isArray(payload)) {
+    throw new LyricsProviderError("lrclib", "invalid_response", false, "Search response was not an array");
+  }
   const candidates: LrcLibCandidate[] = [];
   for (const entry of payload) {
     const parsed = lrcLibCandidateSchema.safeParse(entry);
@@ -361,7 +375,7 @@ async function searchLrcLib(trackName: string, artistName: string): Promise<LrcL
   // A single malformed row should not discard valid rows, but a wholly
   // invalid response is an upstream error, not a cacheable "no lyrics".
   if (payload.length > 0 && candidates.length === 0) {
-    throw new Error("Invalid LRCLIB search candidates");
+    throw new LyricsProviderError("lrclib", "invalid_response", false, "No search row matched the expected shape");
   }
   return candidates;
 }
@@ -438,7 +452,11 @@ function buildLookupPlan(trackName: string, artistName: string): LookupPlan {
 // the third or fourth variant could take up to their combined wait before
 // the panel had anything to show. Firing them together bounds the total wait
 // to the single slowest request instead of their sum.
-async function fetchFromLrcLib(plan: LookupPlan, durationMs: number | undefined): Promise<SyncedLyricLine[] | null> {
+async function fetchFromLrcLib(
+  plan: LookupPlan,
+  durationMs: number | undefined,
+  onCandidate: CandidateListener | undefined,
+): Promise<SyncedLyricLine[] | null> {
   const settledResults = await Promise.allSettled(
     plan.searches.map((search) => searchLrcLib(search.title, search.artist)),
   );
@@ -448,7 +466,7 @@ async function fetchFromLrcLib(plan: LookupPlan, durationMs: number | undefined)
   // request failed, propagate the failure so the caller won't cache a false
   // "no lyrics" result.
   if (resultSets.length === 0) {
-    throw failure?.reason ?? new Error("LRCLIB search failed");
+    throw toLyricsProviderError("lrclib", failure?.reason);
   }
 
   const seenCandidateKeys = new Set<string>();
@@ -476,12 +494,12 @@ async function fetchFromLrcLib(plan: LookupPlan, durationMs: number | undefined)
   // notion of "the real artist" — the overall best-scoring result across
   // all of them wins, rather than whichever variant happened to be tried
   // first (there's no longer a "first" — they all ran together).
-  const lines = selectBestLrcLibLines(plan.targets, durationMs, candidates);
+  const lines = selectBestLrcLibLines(plan.targets, durationMs, candidates, onCandidate);
   if (lines) return lines;
   // An empty result from the surviving variants is inconclusive when any
   // variant failed — do not persist a negative cache entry that would
   // suppress future retries.
-  if (failure) throw failure.reason;
+  if (failure) throw toLyricsProviderError("lrclib", failure.reason);
   return null;
 }
 
@@ -503,10 +521,26 @@ const netEaseLyricResponseSchema = z.object({
 });
 type NetEaseSong = z.infer<typeof netEaseSongSchema>;
 
-async function fetchNetEaseJson(url: URL): Promise<unknown> {
-  const response = await fetch(url, { headers: netEaseHeaders, signal: AbortSignal.timeout(5_000) });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return response.json();
+// NetEase reports throttling and anti-bot blocks in the body's code with an
+// HTTP 200: -460/-462 when it flags the caller, 405 for "too frequent".
+const netEaseThrottleCodes = new Set([-460, -462, 405]);
+
+async function fetchNetEaseJson<T>(url: URL, schema: z.ZodType<T, z.ZodTypeDef, unknown>): Promise<T & { code: number }> {
+  const parsed = schema.safeParse(await requestProviderJson("netease", url, netEaseHeaders));
+  if (!parsed.success) {
+    throw new LyricsProviderError("netease", "invalid_response", false, "Response didn't match the expected shape");
+  }
+  const payload = parsed.data as T & { code: number };
+  if (payload.code !== 200) {
+    const throttled = netEaseThrottleCodes.has(payload.code);
+    throw new LyricsProviderError(
+      "netease",
+      throttled ? "rate_limited" : "provider_error",
+      throttled,
+      `NetEase code ${payload.code}`,
+    );
+  }
+  return payload;
 }
 
 async function searchNetEase(query: string): Promise<NetEaseSong[]> {
@@ -514,10 +548,7 @@ async function searchNetEase(query: string): Promise<NetEaseSong[]> {
   url.searchParams.set("s", query);
   url.searchParams.set("type", "1");
   url.searchParams.set("limit", "10");
-  const payload = netEaseSearchResponseSchema.parse(await fetchNetEaseJson(url));
-  // NetEase reports throttling and blocks in the body's code (e.g. -460)
-  // alongside an HTTP 200 — an error, not a cacheable "no lyrics".
-  if (payload.code !== 200) throw new Error(`NetEase search code ${payload.code}`);
+  const payload = await fetchNetEaseJson(url, netEaseSearchResponseSchema);
   const songs: NetEaseSong[] = [];
   for (const entry of payload.result?.songs ?? []) {
     const parsed = netEaseSongSchema.safeParse(entry);
@@ -530,8 +561,7 @@ async function fetchNetEaseLyrics(songId: number): Promise<SyncedLyricLine[]> {
   const url = new URL("https://music.163.com/api/song/lyric");
   url.searchParams.set("id", String(songId));
   url.searchParams.set("lv", "1");
-  const payload = netEaseLyricResponseSchema.parse(await fetchNetEaseJson(url));
-  if (payload.code !== 200) throw new Error(`NetEase lyric code ${payload.code}`);
+  const payload = await fetchNetEaseJson(url, netEaseLyricResponseSchema);
   return parseSyncedLyrics(payload.lrc?.lyric ?? "");
 }
 
@@ -540,20 +570,28 @@ async function fetchNetEaseLyrics(songId: number): Promise<SyncedLyricLine[]> {
 // and "type beats" (Jay Chou's own catalogue isn't on NetEase at all), so
 // the same strict scoring decides — and only the best one or two matches
 // cost a lyrics request.
-async function fetchFromNetEase(plan: LookupPlan, durationMs: number | undefined): Promise<SyncedLyricLine[] | null> {
+async function fetchFromNetEase(
+  plan: LookupPlan,
+  durationMs: number | undefined,
+  onCandidate: CandidateListener | undefined,
+): Promise<SyncedLyricLine[] | null> {
   const settledResults = await Promise.allSettled(plan.netEaseQueries.map((query) => searchNetEase(query)));
   const resultSets = settledResults.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
   const failure = settledResults.find((result) => result.status === "rejected");
-  if (resultSets.length === 0) throw failure?.reason ?? new Error("NetEase search failed");
+  if (resultSets.length === 0) throw toLyricsProviderError("netease", failure?.reason);
 
+  const seenSongIds = new Set<number>();
   const scoresBySongId = new Map<number, number>();
   for (const song of resultSets.flat()) {
-    if (scoresBySongId.has(song.id)) continue;
-    const score = bestScore(plan.targets, durationMs, {
+    if (seenSongIds.has(song.id)) continue;
+    seenSongIds.add(song.id);
+    const match: MatchCandidate = {
       trackName: song.name,
       artistNames: song.artists.map((artist) => artist.name),
       duration: song.duration !== undefined ? song.duration / 1000 : null,
-    });
+    };
+    const score = bestScore(plan.targets, durationMs, match);
+    onCandidate?.({ source: "netease", ...match, score, verdict: score === null ? "rejected" : "eligible" });
     if (score !== null) scoresBySongId.set(song.id, score);
   }
 
@@ -562,36 +600,89 @@ async function fetchFromNetEase(plan: LookupPlan, durationMs: number | undefined
     const lines = await fetchNetEaseLyrics(songId);
     if (lines.length > 0) return lines;
   }
-  if (failure) throw failure.reason;
+  if (failure) throw toLyricsProviderError("netease", failure.reason);
   return null;
 }
 
-function toError(error: unknown): Error {
-  return error instanceof Error ? error : new Error(String(error));
+// "found" and "not_found" are both conclusive and safe to cache; only
+// "unavailable" means a source couldn't be asked, so a miss proves nothing.
+export type LyricsLookupResult =
+  | { readonly status: "found"; readonly lines: SyncedLyricLine[]; readonly source: LyricsSource }
+  | { readonly status: "not_found" }
+  | {
+    readonly status: "unavailable";
+    // The first failure; `retryable` is true if any failure was.
+    readonly source: LyricsSource;
+    readonly errorCode: LyricsErrorCode;
+    readonly retryable: boolean;
+  };
+
+export interface LyricsSourceAttempt {
+  readonly source: LyricsSource;
+  readonly outcome: "found" | "not_found" | "failed";
+  readonly durationMs: number;
+  readonly errorCode?: LyricsErrorCode;
 }
 
+export interface LyricsLookup {
+  readonly result: LyricsLookupResult;
+  readonly attempts: readonly LyricsSourceAttempt[];
+}
+
+export interface CandidateDecision extends MatchCandidate {
+  readonly source: LyricsSource;
+  readonly score: number | null;
+  readonly verdict: "eligible" | "rejected" | "no_synced_lyrics";
+}
+type CandidateListener = (decision: CandidateDecision) => void;
+
+export interface LyricsLookupOptions {
+  // Called for every search result scored, for debug-level tracing.
+  readonly onCandidate?: CandidateListener;
+}
+
+const providers: readonly {
+  readonly source: LyricsSource;
+  readonly fetch: typeof fetchFromLrcLib;
+}[] = [
+  { source: "lrclib", fetch: fetchFromLrcLib },
+  { source: "netease", fetch: fetchFromNetEase },
+];
+
 // LRCLIB first, NetEase only when LRCLIB has nothing — the same order the
-// companion app uses. A failure on either side makes a miss inconclusive,
-// so it's rethrown rather than returned as a cacheable "no lyrics".
-export async function fetchSyncedLyrics(
+// companion app uses. Never throws for a provider problem: a failure on
+// either side comes back as "unavailable", because it makes a miss
+// inconclusive and it must not be cached as "no lyrics".
+export async function lookupSyncedLyrics(
   trackName: string,
   artistName: string,
   durationMs?: number,
-): Promise<SyncedLyricLine[] | null> {
+  options: LyricsLookupOptions = {},
+): Promise<LyricsLookup> {
   const plan = buildLookupPlan(trackName, artistName);
-  let firstError: Error | null = null;
-  try {
-    const lines = await fetchFromLrcLib(plan, durationMs);
-    if (lines) return lines;
-  } catch (error) {
-    firstError = toError(error);
+  const attempts: LyricsSourceAttempt[] = [];
+  const failures: LyricsProviderError[] = [];
+  for (const provider of providers) {
+    const startedAt = Date.now();
+    try {
+      const lines = await provider.fetch(plan, durationMs, options.onCandidate);
+      attempts.push({ source: provider.source, outcome: lines ? "found" : "not_found", durationMs: Date.now() - startedAt });
+      if (lines) return { result: { status: "found", lines, source: provider.source }, attempts };
+    } catch (error) {
+      const failure = toLyricsProviderError(provider.source, error);
+      failures.push(failure);
+      attempts.push({ source: provider.source, outcome: "failed", durationMs: Date.now() - startedAt, errorCode: failure.code });
+    }
   }
-  try {
-    const lines = await fetchFromNetEase(plan, durationMs);
-    if (lines) return lines;
-  } catch (error) {
-    firstError ??= toError(error);
-  }
-  if (firstError !== null) throw firstError;
-  return null;
+  const [firstFailure] = failures;
+  if (!firstFailure) return { result: { status: "not_found" }, attempts };
+  return {
+    result: {
+      status: "unavailable",
+      source: firstFailure.source,
+      errorCode: firstFailure.code,
+      retryable: failures.some((failure) => failure.retryable),
+    },
+    attempts,
+  };
 }

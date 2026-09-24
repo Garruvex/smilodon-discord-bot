@@ -1,7 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { fetchSyncedLyrics, lyricsCacheIdentity } from "../../src/infrastructure/lyrics/synced-lyrics-client.js";
+import {
+  lookupSyncedLyrics,
+  lyricsCacheIdentity,
+  type SyncedLyricLine,
+} from "../../src/infrastructure/lyrics/synced-lyrics-client.js";
 import { buildLyricsCacheKey } from "../../src/application/lyrics/lyrics-cache-store.js";
+
+// Most tests only care which lines were matched: lines for "found", null for
+// "not_found", and a rejection naming the error code for "unavailable".
+async function fetchLines(trackName: string, artistName: string, durationMs?: number): Promise<SyncedLyricLine[] | null> {
+  const { result } = await lookupSyncedLyrics(trackName, artistName, durationMs);
+  if (result.status === "found") return result.lines;
+  if (result.status === "not_found") return null;
+  throw new Error(`${result.source}: ${result.errorCode}`);
+}
 
 // LRCLIB and the NetEase fallback get separate mocks, so LRCLIB-focused
 // tests keep asserting on LRCLIB traffic alone. NetEase finds nothing
@@ -75,7 +88,7 @@ describe("NetEase fallback", () => {
       return jsonResponse(200, { code: 200, lrc: { lyric: `[00:01.00]from ${parsed.searchParams.get("id")}` } });
     });
 
-    expect(await fetchSyncedLyrics("Bling-Bang-Bang-Born", "Creepy Nuts", 168_000))
+    expect(await fetchLines("Bling-Bang-Bang-Born", "Creepy Nuts", 168_000))
       .toEqual([{ timestampMs: 1_000, line: "from 8" }]);
   });
 
@@ -83,21 +96,47 @@ describe("NetEase fallback", () => {
     netEaseFetchMock.mockImplementation((url: unknown) => new URL(String(url)).pathname === "/api/search/get"
       ? jsonResponse(200, { code: 200, result: { songs: [netEaseSong({ artists: ["Creepy Nuts", "Guest"] })] } })
       : jsonResponse(200, { code: 200, lrc: { lyric: "[00:01.00]Found" } }));
-    expect(await fetchSyncedLyrics("Bling-Bang-Bang-Born", "Creepy Nuts")).not.toBeNull();
+    expect(await fetchLines("Bling-Bang-Bang-Born", "Creepy Nuts")).not.toBeNull();
   });
 
-  it("treats a NetEase block code as a failure rather than a cacheable miss", async () => {
+  it("treats a NetEase block code as a retryable throttle rather than a cacheable miss", async () => {
     netEaseFetchMock.mockReturnValue(jsonResponse(200, { code: -460, msg: "Cheating" }));
-    await expect(fetchSyncedLyrics("Bling-Bang-Bang-Born", "Creepy Nuts")).rejects.toThrow("-460");
+    const { result, attempts } = await lookupSyncedLyrics("Bling-Bang-Bang-Born", "Creepy Nuts");
+    expect(result).toEqual({ status: "unavailable", source: "netease", errorCode: "rate_limited", retryable: true });
+    expect(attempts.map(({ source, outcome, errorCode }) => ({ source, outcome, errorCode }))).toEqual([
+      { source: "lrclib", outcome: "not_found", errorCode: undefined },
+      { source: "netease", outcome: "failed", errorCode: "rate_limited" },
+    ]);
+  });
+
+  it("maps an unknown NetEase code to a non-retryable provider error", async () => {
+    netEaseFetchMock.mockReturnValue(jsonResponse(200, { code: 400 }));
+    expect((await lookupSyncedLyrics("Bling-Bang-Bang-Born", "Creepy Nuts")).result)
+      .toMatchObject({ status: "unavailable", errorCode: "provider_error", retryable: false });
+  });
+
+  it("finds lyrics on NetEase after LRCLIB fails outright", async () => {
+    fetchMock.mockReturnValue(jsonResponse(503, "Service Unavailable"));
+    netEaseFetchMock.mockImplementation((url: unknown) => new URL(String(url)).pathname === "/api/search/get"
+      ? jsonResponse(200, { code: 200, result: { songs: [netEaseSong()] } })
+      : jsonResponse(200, { code: 200, lrc: { lyric: "[00:01.00]Found" } }));
+
+    const { result, attempts } = await lookupSyncedLyrics("Bling-Bang-Bang-Born", "Creepy Nuts");
+
+    expect(result).toEqual({ status: "found", source: "netease", lines: [{ timestampMs: 1_000, line: "Found" }] });
+    expect(attempts.map(({ source, outcome, errorCode }) => ({ source, outcome, errorCode }))).toEqual([
+      { source: "lrclib", outcome: "failed", errorCode: "http_error" },
+      { source: "netease", outcome: "found", errorCode: undefined },
+    ]);
   });
 
   it("returns null when neither provider has a confident match", async () => {
-    expect(await fetchSyncedLyrics("Bling-Bang-Bang-Born", "Creepy Nuts")).toBeNull();
+    expect(await fetchLines("Bling-Bang-Bang-Born", "Creepy Nuts")).toBeNull();
   });
 
   it("never asks NetEase when LRCLIB already found lyrics", async () => {
     fetchMock.mockReturnValue(jsonResponse(200, [candidate()]));
-    expect(await fetchSyncedLyrics("Good Time", "Owl City, Carly Rae Jepsen")).not.toBeNull();
+    expect(await fetchLines("Good Time", "Owl City, Carly Rae Jepsen")).not.toBeNull();
     expect(netEaseFetchMock).not.toHaveBeenCalled();
   });
 });
@@ -109,7 +148,7 @@ describe("fetchSyncedLyrics", () => {
         ? [candidate({ trackName: "Good Time - Live" })] : [],
     ));
 
-    expect(await fetchSyncedLyrics("Good Time - Live", "Owl City, Carly Rae Jepsen"))
+    expect(await fetchLines("Good Time - Live", "Owl City, Carly Rae Jepsen"))
       .toEqual([{ timestampMs: 1_000, line: "First line" }, { timestampMs: 2_500, line: "Second line" }]);
   });
 
@@ -119,7 +158,7 @@ describe("fetchSyncedLyrics", () => {
       return jsonResponse(200, params.get("track_name") === "夜曲 Nocturne" && params.get("artist_name") === "周杰倫 Jay Chou"
         ? [candidate({ trackName: "夜曲 Nocturne", artistName: "周杰倫 Jay Chou", duration: 222 })] : []);
     });
-    expect(await fetchSyncedLyrics("周杰倫 Jay Chou【夜曲 Nocturne】-Official Music Video", "JVR Music"))
+    expect(await fetchLines("周杰倫 Jay Chou【夜曲 Nocturne】-Official Music Video", "JVR Music"))
       .toEqual([{ timestampMs: 1_000, line: "First line" }, { timestampMs: 2_500, line: "Second line" }]);
   });
 
@@ -128,7 +167,7 @@ describe("fetchSyncedLyrics", () => {
       new URL(String(url)).searchParams.get("track_name") === "说好的幸福呢"
         ? [candidate({ trackName: "说好的幸福呢", artistName: "周杰伦" })] : [],
     ));
-    expect(await fetchSyncedLyrics("說好的幸福呢", "周杰倫")).not.toBeNull();
+    expect(await fetchLines("說好的幸福呢", "周杰倫")).not.toBeNull();
   });
 
   it("takes a Japanese-quoted title when the text before it is the artist", async () => {
@@ -136,7 +175,7 @@ describe("fetchSyncedLyrics", () => {
       new URL(String(url)).searchParams.get("track_name") === "Bling-Bang-Bang-Born"
         ? [candidate({ trackName: "Bling-Bang-Bang-Born", artistName: "Creepy Nuts" })] : [],
     ));
-    expect(await fetchSyncedLyrics(
+    expect(await fetchLines(
       "Creepy Nuts｢Bling-Bang-Bang-Born｣ × TV Anime｢マッシュル-MASHLE-｣ Collaboration Music Video #BBBBダンス",
       "Creepy Nuts",
     )).not.toBeNull();
@@ -147,17 +186,17 @@ describe("fetchSyncedLyrics", () => {
       new URL(String(url)).searchParams.get("track_name") === "Show"
         ? [candidate({ trackName: "Show", artistName: "Some Artist" })] : [],
     ));
-    expect(await fetchSyncedLyrics("TV Anime「Show」 Opening", "Some Artist")).toBeNull();
+    expect(await fetchLines("TV Anime「Show」 Opening", "Some Artist")).toBeNull();
   });
 
   it("rejects a different artist whose name merely contains the requested name", async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, [candidate({ artistName: "Heartless" })]));
-    expect(await fetchSyncedLyrics("Good Time", "Heart", 205_000)).toBeNull();
+    expect(await fetchLines("Good Time", "Heart", 205_000)).toBeNull();
   });
 
   it("keeps a song title that begins with the artist's name", async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, [candidate({ trackName: "Talk Talk", artistName: "Talk" })]));
-    expect(await fetchSyncedLyrics("Talk Talk", "Talk")).not.toBeNull();
+    expect(await fetchLines("Talk Talk", "Talk")).not.toBeNull();
   });
 
   it("does not discard a usable release when row IDs are absent", async () => {
@@ -165,13 +204,13 @@ describe("fetchSyncedLyrics", () => {
       { trackName: "Good Time", artistName: "Owl City", duration: 205, syncedLyrics: null },
       { trackName: "Good Time", artistName: "Owl City", duration: 205, syncedLyrics: "[00:01.00]Found" },
     ]));
-    expect(await fetchSyncedLyrics("Good Time", "Owl City"))
+    expect(await fetchLines("Good Time", "Owl City"))
       .toEqual([{ timestampMs: 1_000, line: "Found" }]);
   });
 
   it("expands repeated timestamps instead of displaying the extra timestamp as text", async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, [candidate({ artistName: "Owl City", syncedLyrics: "[00:01.00][00:03.00]Chorus" })]));
-    expect(await fetchSyncedLyrics("Good Time", "Owl City"))
+    expect(await fetchLines("Good Time", "Owl City"))
       .toEqual([{ timestampMs: 1_000, line: "Chorus" }, { timestampMs: 3_000, line: "Chorus" }]);
   });
 
@@ -183,8 +222,8 @@ describe("fetchSyncedLyrics", () => {
     });
     const first = lyricsCacheIdentity("Artist A - Home", "Artist B");
     const second = lyricsCacheIdentity("Artist A - Home", "Artist C");
-    const firstLines = await fetchSyncedLyrics("Artist A - Home", "Artist B", 200_000);
-    const secondLines = await fetchSyncedLyrics("Artist A - Home", "Artist C", 200_000);
+    const firstLines = await fetchLines("Artist A - Home", "Artist B", 200_000);
+    const secondLines = await fetchLines("Artist A - Home", "Artist C", 200_000);
     expect(firstLines).not.toEqual(secondLines);
     expect(buildLyricsCacheKey(first.title, first.artist, 200_000))
       .not.toBe(buildLyricsCacheKey(second.title, second.artist, 200_000));
@@ -193,7 +232,7 @@ describe("fetchSyncedLyrics", () => {
   it("matches a clean title/artist and returns its parsed lines", async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, [candidate()]));
 
-    const lines = await fetchSyncedLyrics("Good Time", "Owl City, Carly Rae Jepsen");
+    const lines = await fetchLines("Good Time", "Owl City, Carly Rae Jepsen");
 
     expect(lines).toEqual([
       { timestampMs: 1_000, line: "First line" },
@@ -209,7 +248,7 @@ describe("fetchSyncedLyrics", () => {
       ]),
     );
 
-    const lines = await fetchSyncedLyrics("Good Time", "Owl City, Carly Rae Jepsen");
+    const lines = await fetchLines("Good Time", "Owl City, Carly Rae Jepsen");
 
     expect(lines).toEqual([{ timestampMs: 0, line: "The real line" }]);
   });
@@ -226,7 +265,7 @@ describe("fetchSyncedLyrics", () => {
       ]),
     );
 
-    const lines = await fetchSyncedLyrics("Good Time", "Owl City, Carly Rae Jepsen");
+    const lines = await fetchLines("Good Time", "Owl City, Carly Rae Jepsen");
 
     expect(lines).toEqual([{ timestampMs: 0, line: "The real line" }]);
   });
@@ -236,13 +275,13 @@ describe("fetchSyncedLyrics", () => {
       jsonResponse(200, [candidate({ trackName: "A Completely Different Song" })]),
     );
 
-    expect(await fetchSyncedLyrics("Good Time", "Owl City, Carly Rae Jepsen")).toBeNull();
+    expect(await fetchLines("Good Time", "Owl City, Carly Rae Jepsen")).toBeNull();
   });
 
   it("rejects a candidate whose duration is too far off", async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, [candidate({ duration: 400 })]));
 
-    expect(await fetchSyncedLyrics("Good Time", "Owl City, Carly Rae Jepsen", 205_000)).toBeNull();
+    expect(await fetchLines("Good Time", "Owl City, Carly Rae Jepsen", 205_000)).toBeNull();
   });
 
   it("prefers a matching version over a live/remix candidate with the same title", async () => {
@@ -252,7 +291,7 @@ describe("fetchSyncedLyrics", () => {
       ]),
     );
 
-    expect(await fetchSyncedLyrics("Good Time", "Owl City, Carly Rae Jepsen")).toBeNull();
+    expect(await fetchLines("Good Time", "Owl City, Carly Rae Jepsen")).toBeNull();
   });
 
   it("strips a YouTube-style title suffix and derives artist/title from \"Artist - Title\"", async () => {
@@ -265,7 +304,7 @@ describe("fetchSyncedLyrics", () => {
       requestedArtist(url) === "Owl City" ? [candidate({ artistName: "Owl City" })] : [],
     )));
 
-    const lines = await fetchSyncedLyrics(
+    const lines = await fetchLines(
       "Owl City - Good Time (Official Video)",
       "OwlCityVEVO",
     );
@@ -289,7 +328,7 @@ describe("fetchSyncedLyrics", () => {
         : [],
     )));
 
-    const lines = await fetchSyncedLyrics("OneRepublic - Counting Stars", "OneRepublic - Topic");
+    const lines = await fetchLines("OneRepublic - Counting Stars", "OneRepublic - Topic");
 
     expect(lines).toEqual([
       { timestampMs: 1_000, line: "First line" },
@@ -309,7 +348,7 @@ describe("fetchSyncedLyrics", () => {
       requestedArtist(url) === "Owl City" ? [candidate({ artistName: "Owl City" })] : [],
     )));
 
-    const lines = await fetchSyncedLyrics("Good Time", "Owl City, Carly Rae Jepsen");
+    const lines = await fetchLines("Good Time", "Owl City, Carly Rae Jepsen");
 
     expect(lines).toEqual([
       { timestampMs: 1_000, line: "First line" },
@@ -337,7 +376,7 @@ describe("fetchSyncedLyrics", () => {
       });
     });
 
-    const lyricsPromise = fetchSyncedLyrics("Good Time", "Owl City, Carly Rae Jepsen");
+    const lyricsPromise = fetchLines("Good Time", "Owl City, Carly Rae Jepsen");
     // Before yielding to the event loop at all, every variant's request must
     // already have been issued — proving they were fired together rather
     // than one waiting on the previous one's response.
@@ -359,7 +398,7 @@ describe("fetchSyncedLyrics", () => {
       ]),
     );
 
-    const lines = await fetchSyncedLyrics("Neko Hi", "suis");
+    const lines = await fetchLines("Neko Hi", "suis");
 
     expect(lines).toEqual([{ timestampMs: 0, line: "Only line" }]);
   });
@@ -367,7 +406,7 @@ describe("fetchSyncedLyrics", () => {
   it("returns null when no artist variant finds a confident match", async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, []));
 
-    expect(await fetchSyncedLyrics("Nothing", "Nobody")).toBeNull();
+    expect(await fetchLines("Nothing", "Nobody")).toBeNull();
   });
 
   it("sorts parsed lines by timestamp even if the source text is out of order", async () => {
@@ -375,14 +414,30 @@ describe("fetchSyncedLyrics", () => {
       jsonResponse(200, [candidate({ syncedLyrics: "[01:00.00]Later\n[00:00.00]Earlier" })]),
     );
 
-    const lines = await fetchSyncedLyrics("Good Time", "Owl City, Carly Rae Jepsen");
+    const lines = await fetchLines("Good Time", "Owl City, Carly Rae Jepsen");
 
     expect(lines?.map((line) => line.line)).toEqual(["Earlier", "Later"]);
   });
 
-  it("throws on a non-OK response", async () => {
+  it("reports a server error as a retryable outage", async () => {
     fetchMock.mockResolvedValue(jsonResponse(500, []));
 
-    await expect(fetchSyncedLyrics("Track", "Artist")).rejects.toThrow("HTTP 500");
+    expect((await lookupSyncedLyrics("Track", "Artist")).result)
+      .toEqual({ status: "unavailable", source: "lrclib", errorCode: "http_error", retryable: true });
+  });
+});
+
+describe("provider error codes", () => {
+  it.each([
+    ["a timeout", (): Promise<never> => Promise.reject(Object.assign(new Error("aborted"), { name: "TimeoutError" })), "timeout", true],
+    ["a network failure", (): Promise<never> => Promise.reject(new TypeError("fetch failed")), "network", true],
+    ["HTTP 429", (): unknown => jsonResponse(429, {}), "rate_limited", true],
+    ["HTTP 404", (): unknown => jsonResponse(404, {}), "http_error", false],
+    ["a non-JSON body", (): unknown => ({ ok: true, status: 200, json: (): Promise<never> => Promise.reject(new SyntaxError("Unexpected token <")) }), "invalid_response", true],
+    ["a non-array body", (): unknown => jsonResponse(200, { error: "nope" }), "invalid_response", false],
+  ])("classifies %s from LRCLIB", async (_label, respond, errorCode, retryable) => {
+    fetchMock.mockImplementation(respond);
+    expect((await lookupSyncedLyrics("Track", "Artist")).result)
+      .toEqual({ status: "unavailable", source: "lrclib", errorCode, retryable });
   });
 });
