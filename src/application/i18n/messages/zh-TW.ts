@@ -22,10 +22,9 @@ export const zhTW = {
   "music.panel.control.staleReset": "機器人的語音連線與播放器不同步，因此已重設播放狀態",
   "music.panel.control.failed": "控制項執行失敗",
 
-  "music.panel.hint.join": "加入語音頻道{requesters}",
-  "music.panel.hint.requestersOpen": "任何人都可以在這裡輸入歌名或網址來點歌",
-  "music.panel.hint.requestersRestricted": "擁有音樂控制身分組的成員可以在這裡輸入歌名或網址來點歌",
-  "music.panel.hint.legend": "-# ♾️ 自動續播：待播歌曲播完時自動加入相似曲目  •  🔁 24/7：閒置時仍保持連線",
+  "music.panel.hint.request": "🎧 加入語音頻道，然後在這裡輸入歌名或連結",
+  "music.panel.hint.controllersOnly": "-# 只有擁有音樂控制身分組的成員可以點歌",
+  "music.panel.hint.help": "-# 按鈕說明：`/help autoplay` · `/help 247`",
 
   "music.panel.nowPlaying.idleTitle": "目前沒有播放歌曲",
   "music.panel.nowPlaying.idleDescription": "現在可以點歌了",

@@ -6,6 +6,10 @@ export class TwentyFourSevenCommand implements BotCommand {
     name: "247",
     description: "Toggles persistent voice-channel mode.",
   };
+  public readonly helpDetails = [
+    "Keeps the bot in its voice channel instead of leaving (or pausing) when the queue runs out or everyone leaves.",
+    "Same as the panel's 🔁 24/7 button. Run it again to turn it off.",
+  ];
   public readonly module = CommandModule.Music;
   public readonly access = musicPlaybackAccessPolicy;
   public constructor(private readonly playbackService: PlaybackService) {}

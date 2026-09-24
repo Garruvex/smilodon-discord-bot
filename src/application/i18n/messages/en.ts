@@ -28,10 +28,9 @@ export const en = {
   "music.panel.control.failed": "The control failed.",
 
   // Text above the Now Playing embed.
-  "music.panel.hint.join": "Join a voice channel. {requesters}",
-  "music.panel.hint.requestersOpen": "Anyone can queue songs here by name or URL.",
-  "music.panel.hint.requestersRestricted": "Members with the music-controller role can queue songs here by name or URL.",
-  "music.panel.hint.legend": "-# ♾️ Autoqueue: automatically adds a similar track when the queue runs out.  •  🔁 24/7: keeps the bot connected instead of leaving when idle.",
+  "music.panel.hint.request": "🎧 Join a voice channel, then type a song name or link here.",
+  "music.panel.hint.controllersOnly": "-# Only members with the music-controller role can request songs.",
+  "music.panel.hint.help": "-# What the buttons do: `/help autoplay` · `/help 247`",
 
   // Now Playing embed.
   "music.panel.nowPlaying.idleTitle": "No song currently playing",

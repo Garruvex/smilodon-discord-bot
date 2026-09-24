@@ -1268,12 +1268,17 @@ export class ControlChannelService {
   ): ControlPanelPayload {
     const text = texts[profile.language];
     const embed = this.createNowPlayingEmbed(profile, snapshot);
-    const requestersHint = profile.music.openQueueRequestsEnabled
-      ? text.music.panel.hint.requestersOpen
-      : text.music.panel.hint.requestersRestricted;
+    // Kept to what someone needs in the moment; what the buttons do lives in
+    // /help, so the panel doesn't have to explain it.
+    const hint = text.music.panel.hint;
+    const lines = [
+      hint.request,
+      ...(profile.music.openQueueRequestsEnabled ? [] : [hint.controllersOnly]),
+      hint.help,
+    ];
 
     return {
-      content: `${text.music.panel.hint.join({ requesters: requestersHint })}\n${text.music.panel.hint.legend}`,
+      content: lines.join("\n"),
       embeds: [embed],
       components: [],
     };

@@ -2310,9 +2310,11 @@ describe("ControlChannelService panel language", () => {
     expect(lyrics.description).toBe("この曲の歌詞は見つかりませんでした。");
     expect(searching.description).toBe("歌詞を探しています…");
     expect(idle.description).toBe("現在再生中の曲はありません。");
-    expect(hint).toContain("ボイスチャンネルに参加してください。");
-    expect(hint).toContain("オートキュー：");
-    expect(hint).not.toContain("Join a voice channel");
+    expect(hint.split("\n")).toEqual([
+      texts.ja.music.panel.hint.request,
+      texts.ja.music.panel.hint.controllersOnly,
+      texts.ja.music.panel.hint.help,
+    ]);
   });
 
   it("labels the panel's text buttons in the guild language", () => {
@@ -2334,5 +2336,19 @@ describe("ControlChannelService panel language", () => {
       .toJSON();
 
     expect(embed.title).toContain("No song currently playing");
+  });
+});
+
+describe("ControlChannelService panel hint", () => {
+  it("keeps the hint to short lines and drops the role line when anyone can queue", () => {
+    const { service } = createService(false);
+    const base = guildConfiguration(false);
+    const open = { ...base, music: { ...base.music, openQueueRequestsEnabled: true } };
+
+    const content = (service as unknown as {
+      createNowPlayingPayload: (profile: GuildConfiguration, snapshot: unknown) => { content: string };
+    }).createNowPlayingPayload(open, null).content;
+
+    expect(content.split("\n")).toEqual([texts.en.music.panel.hint.request, texts.en.music.panel.hint.help]);
   });
 });

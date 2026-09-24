@@ -21,10 +21,9 @@ export const ja = {
   "music.panel.control.staleReset": "ボットのボイス接続がプレイヤーと同期していなかったため、再生状態をリセットしました。",
   "music.panel.control.failed": "コントロールの実行に失敗しました。",
 
-  "music.panel.hint.join": "ボイスチャンネルに参加してください。{requesters}",
-  "music.panel.hint.requestersOpen": "ここに曲名またはURLを入力すれば、誰でも曲をキューに追加できます。",
-  "music.panel.hint.requestersRestricted": "ミュージックコントローラーのロールを持つメンバーは、ここに曲名またはURLを入力して曲をキューに追加できます。",
-  "music.panel.hint.legend": "-# ♾️ オートキュー：キューが終わると似た曲を自動で追加します。  •  🔁 24/7：待機中も切断せず接続を維持します。",
+  "music.panel.hint.request": "🎧 ボイスチャンネルに参加して、ここに曲名またはリンクを入力してください。",
+  "music.panel.hint.controllersOnly": "-# 曲をリクエストできるのは、ミュージックコントローラーのロールを持つメンバーだけです。",
+  "music.panel.hint.help": "-# ボタンの説明：`/help autoplay` · `/help 247`",
 
   "music.panel.nowPlaying.idleTitle": "再生中の曲はありません",
   "music.panel.nowPlaying.idleDescription": "プレイヤーは新しいリクエストを受け付けられます。",
