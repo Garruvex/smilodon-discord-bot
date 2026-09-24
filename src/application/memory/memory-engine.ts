@@ -612,8 +612,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
   // duplicate that only checkForConflicts might later notice and link via
   // supersede (a weaker outcome: two disconnected memory rows rather than
   // one). Runs pre-ingest, so there's no real memory id yet to exclude from
-  // the lookup — excludeMemoryId: "" matches nothing, since every real id
-  // is a non-empty randomUUID.
+  // the lookup.
   private async canonicalizeIdentity(input: {
     guildId: string;
     subjectType: Memory["subjectType"];
@@ -631,7 +630,6 @@ export class DefaultMemoryEngine implements MemoryEngine {
     try {
       candidates = await this.repository.findActiveBySubject({
         guildId: input.guildId, subjectType: input.subjectType, subjectId: input.subjectId,
-        excludeMemoryId: "",
         audience: input.audience, ownerUserId: input.ownerUserId, channelId: input.channelId,
         isolationChannelId: input.isolationChannelId,
       });
