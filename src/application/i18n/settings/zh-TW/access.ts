@@ -37,7 +37,7 @@ export const zhTWAccess: SettingsTextCatalog = {
   },
 
   "access.audit-log": { label: "稽核紀錄", description: "記錄設定與初始設定變更的頻道" },
-  "access.audit-log.channel": { label: "稽核紀錄頻道", description: "接收稽核紀錄的文字頻道" },
+  "access.audit-log.channel": { label: "稽核紀錄頻道", description: "接收稽核紀錄的文字頻道；留空則關閉稽核紀錄" },
 
   "access.access": { label: "存取權限摘要", description: "各存取群組的身分組，以及群組可以做什麼" },
 

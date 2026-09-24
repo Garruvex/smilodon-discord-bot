@@ -36,8 +36,8 @@ export const enCommunity: SettingsTextCatalog = {
   "community.reminders.enabled": { label: "Reminders", description: "Turn the /remind command on or off." },
 
   "community.welcome": { label: "Join and leave messages", description: "Sets join/leave announcement channels." },
-  "community.welcome.join-channel": { label: "Welcome channel", description: "Where new-member welcome cards are posted." },
-  "community.welcome.leave-channel": { label: "Leave channel", description: "Where member-left messages are posted." },
+  "community.welcome.join-channel": { label: "Welcome channel", description: "Where new-member welcome cards are posted. Empty turns them off." },
+  "community.welcome.leave-channel": { label: "Leave channel", description: "Where member-left messages are posted. Empty turns them off." },
 
   "community.link-fix": {
     label: "Link fixing",

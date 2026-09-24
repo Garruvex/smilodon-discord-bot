@@ -43,7 +43,7 @@ export const enAccess: SettingsTextCatalog = {
   },
 
   "access.audit-log": { label: "Audit log", description: "Where settings and setup changes are logged." },
-  "access.audit-log.channel": { label: "Audit log channel", description: "Text channel that receives audit log entries." },
+  "access.audit-log.channel": { label: "Audit log channel", description: "Text channel that receives audit log entries. Empty turns the audit log off." },
 
   "access.access": { label: "Access summary", description: "Who holds each access group and what the group allows." },
 

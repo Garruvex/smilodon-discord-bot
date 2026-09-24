@@ -20,7 +20,7 @@ export const enChat: SettingsTextCatalog = {
   "chat.replies.mention-chat.enabled": { label: "Chatbot", description: "Turn AI chat on or off for this server." },
   "chat.replies.mention-chat.channels": {
     label: "Chat channels",
-    description: "Text channels where mention chat is allowed.",
+    description: "Channels where mention chat works; empty means all.",
   },
   "chat.replies.mention-chat.cooldown-seconds": { label: "Cooldown (seconds)", description: "Per-member delay between requests." },
 

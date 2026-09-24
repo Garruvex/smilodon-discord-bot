@@ -25,8 +25,8 @@ export const zhTWCommunity: SettingsTextCatalog = {
   "community.reminders.enabled": { label: "提醒", description: "開啟或關閉 /remind 指令" },
 
   "community.welcome": { label: "加入與離開訊息", description: "設定成員加入／離開公告的頻道" },
-  "community.welcome.join-channel": { label: "歡迎頻道", description: "發布新成員歡迎卡片的位置" },
-  "community.welcome.leave-channel": { label: "離開頻道", description: "發布成員離開訊息的位置" },
+  "community.welcome.join-channel": { label: "歡迎頻道", description: "發布新成員歡迎卡片的位置；留空則關閉" },
+  "community.welcome.leave-channel": { label: "離開頻道", description: "發布成員離開訊息的位置；留空則關閉" },
 
   "community.link-fix": {
     label: "連結修正",

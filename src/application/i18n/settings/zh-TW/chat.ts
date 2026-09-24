@@ -17,7 +17,7 @@ export const zhTWChat: SettingsTextCatalog = {
   "chat.replies": { title: "回覆", description: "機器人什麼時候回應，以及如何婉拒" },
   "chat.replies.mention-chat": { label: "提及聊天", description: "擁有 AI 聊天身分組的成員提及機器人時回覆" },
   "chat.replies.mention-chat.enabled": { label: "聊天機器人", description: "開啟或關閉這個伺服器的 AI 聊天" },
-  "chat.replies.mention-chat.channels": { label: "聊天頻道", description: "允許提及聊天的文字頻道" },
+  "chat.replies.mention-chat.channels": { label: "聊天頻道", description: "允許提及聊天的文字頻道；留空表示所有頻道" },
   "chat.replies.mention-chat.cooldown-seconds": { label: "冷卻時間（秒）", description: "每位成員兩次請求之間的間隔" },
 
   "chat.replies.denied-message": { label: "拒絕訊息", description: "沒有權限的成員提及機器人時看到的內容" },

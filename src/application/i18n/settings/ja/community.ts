@@ -31,8 +31,8 @@ export const jaCommunity: SettingsTextCatalog = {
   "community.reminders.enabled": { label: "リマインダー", description: "/remind コマンドをオン／オフします。" },
 
   "community.welcome": { label: "参加・退出メッセージ", description: "メンバーの参加・退出を告知するチャンネルを設定します。" },
-  "community.welcome.join-channel": { label: "ウェルカムチャンネル", description: "新メンバーのウェルカムカードを投稿する場所。" },
-  "community.welcome.leave-channel": { label: "退出チャンネル", description: "メンバー退出のメッセージを投稿する場所。" },
+  "community.welcome.join-channel": { label: "ウェルカムチャンネル", description: "新メンバーのウェルカムカードを投稿する場所。空ならオフ。" },
+  "community.welcome.leave-channel": { label: "退出チャンネル", description: "メンバー退出のメッセージを投稿する場所。空ならオフ。" },
 
   "community.link-fix": {
     label: "リンク修正",

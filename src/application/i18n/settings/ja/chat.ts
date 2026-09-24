@@ -17,7 +17,7 @@ export const jaChat: SettingsTextCatalog = {
   "chat.replies": { title: "返信", description: "ボットがいつ返事をし、どう断るか" },
   "chat.replies.mention-chat": { label: "メンションチャット", description: "AI チャットのロールを持つメンバーにメンションされたら返信する" },
   "chat.replies.mention-chat.enabled": { label: "チャットボット", description: "このサーバーの AI チャットをオンまたはオフにする" },
-  "chat.replies.mention-chat.channels": { label: "チャットのチャンネル", description: "メンションチャットを許可するテキストチャンネル" },
+  "chat.replies.mention-chat.channels": { label: "チャットのチャンネル", description: "メンションチャットを許可するテキストチャンネル。空ならすべてのチャンネル" },
   "chat.replies.mention-chat.cooldown-seconds": { label: "クールダウン（秒）", description: "メンバーごとのリクエスト間隔" },
 
   "chat.replies.denied-message": { label: "拒否メッセージ", description: "権限のないメンバーがボットにメンションしたときの返事" },

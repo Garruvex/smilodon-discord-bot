@@ -37,7 +37,7 @@ export const jaAccess: SettingsTextCatalog = {
   },
 
   "access.audit-log": { label: "監査ログ", description: "設定と初期設定の変更を記録するチャンネル" },
-  "access.audit-log.channel": { label: "監査ログのチャンネル", description: "監査ログを受け取るテキストチャンネル" },
+  "access.audit-log.channel": { label: "監査ログのチャンネル", description: "監査ログを受け取るテキストチャンネル。空なら監査ログはオフ" },
 
   "access.access": { label: "アクセスの概要", description: "各アクセスグループのロールと、そのグループでできること" },
 
