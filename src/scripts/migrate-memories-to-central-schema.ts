@@ -4,7 +4,7 @@
 // rows already migrated (primary-key conflict) rather than duplicating
 // them. Legacy tables are left untouched; nothing here deletes from them.
 //
-// Usage: npx tsx src/scripts/migrate-memories-to-central-schema.ts
+// Usage: npm run db:backfill-memories
 // (reads the same environment as the running bot — PERSISTENCE_DRIVER,
 // DATABASE_URL/RUNTIME_DATA_DIRECTORY, INSTANCE_NAME for Postgres.)
 import { pathToFileURL } from "node:url";

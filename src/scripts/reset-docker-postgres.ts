@@ -11,6 +11,16 @@ if (relative(dataRoot, postgresDirectory) !== "postgres") {
   throw new Error(`Refusing to reset unexpected PostgreSQL path: ${postgresDirectory}`);
 }
 
+// Wipes every instance's database — require an explicit opt-in so a stray
+// `npm run stack:reset` from shell history can't destroy data.
+if (!process.argv.includes("--yes")) {
+  process.stderr.write(
+    `This permanently deletes all PostgreSQL data in ${postgresDirectory} and rebuilds the stack.\n` +
+      "Re-run with: npm.cmd run stack:reset -- --yes\n",
+  );
+  process.exit(1);
+}
+
 runDocker(["compose", "down", "--remove-orphans"]);
 rmSync(postgresDirectory, { recursive: true, force: true });
 mkdirSync(postgresDirectory, { recursive: true });

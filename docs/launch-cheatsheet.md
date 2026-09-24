@@ -8,7 +8,7 @@ instead of `npm` if the execution policy blocks `npm.ps1`.
 | Configuration | Launch command | What it starts |
 | --- | --- | --- |
 | Default/single instance | `npm.cmd run local:start` | One Lavalink process and the default bot instance |
-| Complete native multi-instance stack | `npm.cmd run instances:start:local` | PostgreSQL, Lavalink, and every `config/instances/*.env` bot |
+| Complete native multi-instance stack | `npm.cmd run instances:start:local` | Lavalink, PostgreSQL (if any instance uses it), and every `config/instances/*.env` bot |
 | Every configured instance, infrastructure already running | `npm.cmd run instances:start` | Every configured bot only |
 | Selected instances, infrastructure already running | `npm.cmd run instances:start -- myinstance otherinstance` | Only the named bots |
 | One instance, infrastructure already running | `npm.cmd run instance:start -- myinstance` | Only the named bot; no Lavalink or PostgreSQL |
@@ -43,10 +43,10 @@ same Discord application.
 | Start native PostgreSQL and Lavalink together | `npm.cmd run services:start` |
 | Start PostgreSQL and Lavalink in Docker (detached) | `npm.cmd run services:start:docker` |
 | Follow stack logs | `npm.cmd run stack:logs` |
-| Restart both bot containers | `npm.cmd run stack:restart:bot` |
+| Restart every bot container (or named ones) | `npm.cmd run stack:restart:bot [-- INSTANCE...]` |
 | Stop and remove the stack containers | `npm.cmd run stack:down` |
-| Erase PostgreSQL and rebuild from the baseline | `npm.cmd run stack:reset` |
-| Deploy commands for both Docker instances | `npm.cmd run stack:deploy` |
+| Erase PostgreSQL and rebuild from the baseline | `npm.cmd run stack:reset -- --yes` |
+| Deploy commands for every Docker instance (or named ones) | `npm.cmd run stack:deploy [-- INSTANCE...]` |
 | Render the effective Compose configuration | `npm.cmd run stack:config` |
 
 The root `.env` contains shared infrastructure values only. `compose.yaml`
@@ -105,6 +105,8 @@ infrastructure services before launching the selected bots.
 | Run tests once | `npm.cmd run test` |
 | Validate guild profiles | `npm.cmd run config:validate` |
 | Apply one instance's PostgreSQL migrations | `npm.cmd run instance:db:migrate -- INSTANCE` |
+| Generate a PostgreSQL migration after a schema change | `npm.cmd run db:generate` |
+| Generate a SQLite migration after a schema change | `npm.cmd run db:generate:sqlite` |
 
 ## First launch: single instance
 

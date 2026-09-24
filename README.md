@@ -289,13 +289,17 @@ restarting the running bots:
 npm.cmd run stack:deploy
 ```
 
+This deploys for every `bot-*` service in `compose.yaml`; pass instance names
+(`npm.cmd run stack:deploy -- myinstance`) to target only those.
+`stack:restart:bot` works the same way.
+
 Stop the stack with `npm.cmd run stack:down`. Persistent Docker state is
 organized below `DATA_ROOT` (default `./data`): PostgreSQL under `postgres/`,
 Lavalink under `lavalink/`, and bot runtime state under `instances/<name>/`.
 Guild configuration remains under `config/local/instances/<name>/`.
 
 To deliberately discard the shared PostgreSQL cluster and rebuild all declared
-instance schemas from the current baseline, run `npm.cmd run stack:reset`. This
+instance schemas from the current baseline, run `npm.cmd run stack:reset -- --yes`. This
 stops the stack and permanently removes only `${DATA_ROOT}/postgres` before
 starting again; instance files and runtime assets are preserved.
 
@@ -437,7 +441,8 @@ npm.cmd run instances:start:local
 ```
 
 Names may be supplied to `instances:start:local` to launch only those bots. It
-starts the workspace-local PostgreSQL and Lavalink services before launching
+starts workspace-local Lavalink (and PostgreSQL, when any selected instance
+uses it) before launching
 the selected instances. Each PostgreSQL-backed instance must point at an
 existing logical database, or instances may share a database with isolated
 schemas. `local:start` and `deploy:commands` use the instance selected by
