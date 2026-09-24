@@ -45,6 +45,7 @@ export interface UpdateGuildConfigurationInput {
   reactionReplies?: boolean;
   reactionReplyWaitMinMinutes?: number;
   reactionReplyWaitMaxMinutes?: number;
+  reactionReplyMinReactors?: number;
   historyReactions?: boolean;
   // Merged into the existing map (per-channel entries added/overwritten,
   // never wholesale-replaced) — same "add" semantics as chatbotChannelIds.
@@ -314,6 +315,7 @@ export function applyGuildConfigurationUpdate(
   if (input.reactionReplies !== undefined) next.features.reactionReplies = input.reactionReplies;
   if (input.reactionReplyWaitMinMinutes !== undefined) next.chat.reactionReplyWaitMinMinutes = input.reactionReplyWaitMinMinutes;
   if (input.reactionReplyWaitMaxMinutes !== undefined) next.chat.reactionReplyWaitMaxMinutes = input.reactionReplyWaitMaxMinutes;
+  if (input.reactionReplyMinReactors !== undefined) next.chat.reactionReplyMinReactors = input.reactionReplyMinReactors;
   if (input.historyReactions !== undefined) next.features.historyReactions = input.historyReactions;
   if (input.birthdaysEnabled !== undefined) next.features.birthdays = input.birthdaysEnabled;
   if (input.birthdayAnnouncementsChannelId !== undefined) next.channels.birthdayAnnouncements = input.birthdayAnnouncementsChannelId;

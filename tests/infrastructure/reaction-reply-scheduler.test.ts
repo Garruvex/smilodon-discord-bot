@@ -42,7 +42,7 @@ const botId = "bot-1";
 const messageId = "msg-1";
 const chatbotRoleId = "chatbot-role";
 
-function profile(overrides: { reactionReplies?: boolean; chatbot?: boolean } = {}): GuildConfiguration {
+function profile(overrides: { reactionReplies?: boolean; chatbot?: boolean; minReactors?: number } = {}): GuildConfiguration {
   return {
     schemaVersion: 1,
     guildId, guildName: "Test Guild", displayName: "Yohta",
@@ -73,7 +73,7 @@ function profile(overrides: { reactionReplies?: boolean; chatbot?: boolean } = {
       webSearchMode: "off", toolCallingEnabled: false, disabledTools: [], imageInputEnabled: false,
       imageGenerationEnabled: false, selfReferenceImageAsset: null,
       includeSources: false, maxImagesPerRequest: 2, ambientCooldownSeconds: 20,
-      channelHistoryLimit: 8, reactionReplyWaitMinMinutes: 2, reactionReplyWaitMaxMinutes: 5, channelMemoryModes: {}, personaDriftEnabled: false,
+      channelHistoryLimit: 8, reactionReplyWaitMinMinutes: 2, reactionReplyWaitMaxMinutes: 5, reactionReplyMinReactors: overrides.minReactors ?? 1, channelMemoryModes: {}, personaDriftEnabled: false,
       contextScanChannelIds: [], contextDailyChannelIds: [], contextSeedDays: 7,
     },
     sourceFile: "test.yaml",
@@ -223,6 +223,22 @@ describe("ReactionReplyScheduler", () => {
     await scheduler.checkNow(2_000);
 
     expect(reply).toHaveBeenCalledOnce();
+    expect(markDone).toHaveBeenCalledWith(messageId, 2_000);
+  });
+
+  it("holds out for the guild's minimum number of reactors", async () => {
+    const reply = vi.fn(() => Promise.resolve(response("should not be sent")));
+    const conversation = testConversationService(reply);
+    const message = fakeMessage(["r1"]); // one reactor, but this guild wants two
+    const { store, markDone } = fakeWatchStore([watch()]);
+    const scheduler = new ReactionReplyScheduler(
+      fakeClient(message) as never, store, providerFor(profile({ minReactors: 2 })), conversation, personaSource(),
+      { warn: vi.fn(), error: vi.fn(), info: vi.fn() } as never, configuration(),
+    );
+
+    await scheduler.checkNow(2_000);
+
+    expect(reply).not.toHaveBeenCalled();
     expect(markDone).toHaveBeenCalledWith(messageId, 2_000);
   });
 

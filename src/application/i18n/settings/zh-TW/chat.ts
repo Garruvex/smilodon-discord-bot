@@ -40,7 +40,8 @@ export const zhTWChat: SettingsTextCatalog = {
   },
   "chat.replies.reaction-replies.enabled": { label: "反應回覆", description: "開啟或關閉" },
   "chat.replies.reaction-replies.min-wait": { label: "最短等待（分鐘）", description: "第一次有人加上表情回應後，至少要等待多久" },
-  "chat.replies.reaction-replies.max-wait": { label: "最長等待（分鐘）", description: "最長等待時間；機器人會在兩個設定值之間隨機選擇" },
+  "chat.replies.reaction-replies.max-wait": { label: "最長等待（分鐘）", description: "最長等待；會在兩者之間隨機選擇" },
+  "chat.replies.reaction-replies.min-reactions": { label: "最少反應人數", description: "需要多少人先加上反應" },
 
   "chat.replies.history-reactions": { label: "歷史反應", description: "讓機器人對聊天時看到的其他訊息加上反應" },
   "chat.replies.history-reactions.enabled": { label: "歷史反應", description: "開啟或關閉" },

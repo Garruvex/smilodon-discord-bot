@@ -103,6 +103,7 @@ export interface GuildChatConfiguration {
   // reset by later ones — see reaction-arm-behavior.ts.
   reactionReplyWaitMinMinutes: number;
   reactionReplyWaitMaxMinutes: number;
+  reactionReplyMinReactors: number;
   // Per-channel memory isolation mode, keyed by channel id — see
   // src/application/memory/memory-channel-policy.ts. Unlisted channels
   // default to "shared".

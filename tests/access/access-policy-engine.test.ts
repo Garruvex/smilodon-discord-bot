@@ -82,7 +82,7 @@ function guildConfiguration(overrides: Partial<GuildConfiguration> = {}): GuildC
       cooldownSeconds: 30, deniedMessage: "Premium required.", deniedLinkUrl: null, deniedLinkLabel: null,
       webSearchMode: "off", toolCallingEnabled: true, disabledTools: [],
       imageInputEnabled: false, imageGenerationEnabled: false, selfReferenceImageAsset: null, includeSources: true,
-      maxImagesPerRequest: 2, ambientCooldownSeconds: 20, channelHistoryLimit: 8, reactionReplyWaitMinMinutes: 2, reactionReplyWaitMaxMinutes: 5, channelMemoryModes: {}, personaDriftEnabled: false, contextScanChannelIds: [], contextDailyChannelIds: [], contextSeedDays: 7,
+      maxImagesPerRequest: 2, ambientCooldownSeconds: 20, channelHistoryLimit: 8, reactionReplyWaitMinMinutes: 2, reactionReplyWaitMaxMinutes: 5, reactionReplyMinReactors: 1, channelMemoryModes: {}, personaDriftEnabled: false, contextScanChannelIds: [], contextDailyChannelIds: [], contextSeedDays: 7,
     },
     sourceFile: "test.yaml",
     ...overrides,

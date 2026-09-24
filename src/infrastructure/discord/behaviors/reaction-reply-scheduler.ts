@@ -22,13 +22,6 @@ const checkIntervalMs = 60 * 1_000;
 // maxJobsProcessedPerTick does — a backlog after downtime simply spreads
 // across more ticks rather than blocking the loop.
 const maxWatchesProcessedPerTick = 50;
-// Below this many distinct eligible human reactors, a watch is marked done
-// WITHOUT calling the model. One is enough — the real gate is the model's
-// own reply/react/ignore judgment; the chat.reactionReplyWait*Minutes wait
-// (see reaction-arm-behavior.ts) is what lets others pile on before evaluation.
-// Counts unique reactors across every emoji on the message, not raw
-// reaction-add events.
-const reactionReplyThreshold = 1;
 // Backstop retention — see PersonalMemoryExtractionQueueStore.deleteTerminalOlderThan
 // for the same rationale: a "watching" row nobody ever reacted to, or a
 // "done" row nothing will re-query, both eventually just age out.
@@ -214,10 +207,14 @@ export class ReactionReplyScheduler {
       await this.handleFetchFailure(watch, now, null, "Failed to fully fetch this message's reactor lists");
       return;
     }
-    if (reactorIds.size < reactionReplyThreshold) {
+    // Below chat.reactionReplyMinReactors distinct eligible human reactors,
+    // the watch is marked done WITHOUT calling the model. Counts unique
+    // reactors across every emoji on the message, not raw reaction-add events.
+    const threshold = profile.chat.reactionReplyMinReactors;
+    if (reactorIds.size < threshold) {
       // A real, current count below threshold — not a failure, so this
       // never retries even though it superficially looks similar to one.
-      await this.giveUp(watch, now, "below_threshold", { reactorCount: reactorIds.size, threshold: reactionReplyThreshold });
+      await this.giveUp(watch, now, "below_threshold", { reactorCount: reactorIds.size, threshold });
       return;
     }
 

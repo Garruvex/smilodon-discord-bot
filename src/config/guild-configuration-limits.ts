@@ -9,6 +9,7 @@ export const CHAT_LIMITS = {
   channelHistoryLimit: { min: 1, max: 100, default: 8 },
   reactionReplyWaitMinMinutes: { min: 1, max: 15, default: 2 },
   reactionReplyWaitMaxMinutes: { min: 1, max: 15, default: 5 },
+  reactionReplyMinReactors: { min: 1, max: 20, default: 1 },
 } as const;
 
 export const MUSIC_LIMITS = {

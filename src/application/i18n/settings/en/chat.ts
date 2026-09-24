@@ -48,7 +48,7 @@ export const enChat: SettingsTextCatalog = {
 
   "chat.replies.reaction-replies": {
     label: "Reaction replies",
-    description: "Let the bot decide whether to follow up when people react to its chat replies.",
+    description: "Follow up when people react to the bot's chat replies.",
     messages: { "wait-order": "The minimum wait ({min} min) can't be longer than the maximum ({max} min)." },
   },
   "chat.replies.reaction-replies.enabled": { label: "Reaction replies", description: "On or off." },
@@ -60,10 +60,14 @@ export const enChat: SettingsTextCatalog = {
     label: "Max wait (minutes)",
     description: "Longest wait; a random time in between is used.",
   },
+  "chat.replies.reaction-replies.min-reactions": {
+    label: "Min reactions",
+    description: "People who must react first.",
+  },
 
   "chat.replies.history-reactions": {
     label: "History reactions",
-    description: "Let the bot react to other messages it already sees during a chat turn.",
+    description: "React to other messages seen during a chat turn.",
   },
   "chat.replies.history-reactions.enabled": { label: "History reactions", description: "On or off." },
 

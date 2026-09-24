@@ -51,6 +51,7 @@ const guildChatSchema = z.preprocess((value) => {
   channelHistoryLimit: z.number().int().min(CHAT_LIMITS.channelHistoryLimit.min).max(CHAT_LIMITS.channelHistoryLimit.max).default(CHAT_LIMITS.channelHistoryLimit.default),
   reactionReplyWaitMinMinutes: z.number().int().min(CHAT_LIMITS.reactionReplyWaitMinMinutes.min).max(CHAT_LIMITS.reactionReplyWaitMinMinutes.max).default(CHAT_LIMITS.reactionReplyWaitMinMinutes.default),
   reactionReplyWaitMaxMinutes: z.number().int().min(CHAT_LIMITS.reactionReplyWaitMaxMinutes.min).max(CHAT_LIMITS.reactionReplyWaitMaxMinutes.max).default(CHAT_LIMITS.reactionReplyWaitMaxMinutes.default),
+  reactionReplyMinReactors: z.number().int().min(CHAT_LIMITS.reactionReplyMinReactors.min).max(CHAT_LIMITS.reactionReplyMinReactors.max).default(CHAT_LIMITS.reactionReplyMinReactors.default),
   // Per-channel memory isolation mode (see src/application/memory/memory-channel-policy.ts).
   // Unlisted channels default to "shared" — today's behavior, unchanged.
   channelMemoryModes: z.record(snowflake, z.enum(["shared", "isolated", "session_only", "disabled"])).default({}),
@@ -215,6 +216,7 @@ export const guildConfigurationFileSchema = z
         channelHistoryLimit: 8,
         reactionReplyWaitMinMinutes: 2,
         reactionReplyWaitMaxMinutes: 5,
+        reactionReplyMinReactors: 1,
       }),
     music: z
       .object({

@@ -298,7 +298,7 @@ own emoji for each segment), or **Timestamps only**.
 | `/settings-chat replies mention-chat [enabled] [add-/remove-channels] [cooldown-seconds]` | Turns AI chat on or off, limits it to some channels (none means everywhere), and sets the per-member cooldown. Who may chat is the Chatbot group in `/settings-access roles`. |
 | `/settings-chat replies denied-message [message] [link-url] [link-label]` | What members without access see; `link-url:none` removes the link button. |
 | `/settings-chat replies ambient-replies [enabled] [cooldown-seconds]` | Lets the bot judge whether to answer when someone names it, with a per-channel cooldown. |
-| `/settings-chat replies reaction-replies [enabled] [min-wait] [max-wait]` / `history-reactions [enabled]` | May follow up when someone reacts to one of its chat replies (waits a random `min-wait`–`max-wait` minutes, default 2–5, after the first reaction so others can join in); reacts to other messages it sees. |
+| `/settings-chat replies reaction-replies [enabled] [min-wait] [max-wait] [min-reactions]` / `history-reactions [enabled]` | May follow up when someone reacts to one of its chat replies (waits a random `min-wait`–`max-wait` minutes, default 2–5, after the first reaction so others can join in, then needs at least `min-reactions` people, default 1); reacts to other messages it sees. |
 | `/settings-chat abilities web-search` / `include-sources` / `tool-calling` / `image-generation [enabled]` | Turns each ability on or off. |
 | `/settings-chat abilities image-input [enabled] [max-images]` | Lets the model see attached images, and how many per request. |
 | `/settings-chat abilities tools` | Lists every chat tool and whether it's enabled here. |

@@ -153,6 +153,12 @@ export const chat = groupWithSections("chat", [
         read: (p) => p.chat.reactionReplyWaitMaxMinutes,
         write: (v) => ({ reactionReplyWaitMaxMinutes: v }),
       }),
+      "min-reactions": integer({
+        min: CHAT_LIMITS.reactionReplyMinReactors.min,
+        max: CHAT_LIMITS.reactionReplyMinReactors.max,
+        read: (p) => p.chat.reactionReplyMinReactors,
+        write: (v) => ({ reactionReplyMinReactors: v }),
+      }),
     }, {
       validate: (patch, context) => {
         const min = patch.reactionReplyWaitMinMinutes ?? context.profile.chat.reactionReplyWaitMinMinutes;
