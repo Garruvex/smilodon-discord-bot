@@ -207,7 +207,9 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
           await this.messageReactionWatchStore.register(
             { guildId: message.guildId, channelId: message.channelId, messageId: firstMessageId },
             Date.now(),
-          ).catch((error: unknown) => {
+          ).then(() => {
+            this.logger.info({ guildId: message.guildId, channelId: message.channelId, messageId: firstMessageId }, "Reaction-reply watch registered");
+          }, (error: unknown) => {
             this.logger.warn({ error, guildId: message.guildId, channelId: message.channelId }, "Failed to register a message-reaction watch");
           });
         }

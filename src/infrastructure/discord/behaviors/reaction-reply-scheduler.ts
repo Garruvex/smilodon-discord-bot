@@ -98,9 +98,15 @@ export class ReactionReplyScheduler {
     return true;
   }
 
-  private async giveUp(messageId: string, now: number): Promise<void> {
-    this.attemptsByMessageId.delete(messageId);
-    await this.watchStore.markDone(messageId, now);
+  // Every terminal outcome goes through here with a reason, so a single
+  // "Reaction-reply watch closed" line per watched message says exactly
+  // which gate stopped it (or that it replied).
+  private async giveUp(
+    watch: Pick<MessageReactionWatch, "messageId" | "guildId">, now: number, reason: string, fields: Record<string, unknown> = {},
+  ): Promise<void> {
+    this.attemptsByMessageId.delete(watch.messageId);
+    await this.watchStore.markDone(watch.messageId, now);
+    this.logger.info({ guildId: watch.guildId, messageId: watch.messageId, reason, ...fields }, "Reaction-reply watch closed");
   }
 
   public start(): void {
@@ -139,7 +145,7 @@ export class ReactionReplyScheduler {
                 return;
               }
               this.logger.error({ error, messageId: watch.messageId, guildId: watch.guildId }, "Reaction-reply evaluation failed repeatedly, giving up");
-              await this.giveUp(watch.messageId, now).catch(() => undefined);
+              await this.giveUp(watch, now, "evaluation_failed").catch(() => undefined);
             }
           });
         }
@@ -173,57 +179,57 @@ export class ReactionReplyScheduler {
     // honor the current setting, not the one at registration time. Not
     // retryable — this is a real, current decision, not a fetch failure.
     if (!profile?.features.chatbot || !profile.features.reactionReplies) {
-      await this.giveUp(watch.messageId, now);
+      await this.giveUp(watch, now, "feature_disabled");
       return;
     }
     let channel: Awaited<ReturnType<Client["channels"]["fetch"]>>;
     try {
       channel = await this.client.channels.fetch(watch.channelId);
     } catch (error) {
-      await this.handleFetchFailure(watch.messageId, now, error, "Failed to fetch the watched channel");
+      await this.handleFetchFailure(watch, now, error, "Failed to fetch the watched channel");
       return;
     }
     if (!channel || !channel.isTextBased() || channel.isDMBased() || channel.guildId !== watch.guildId) {
       // Not a fetch failure — genuinely the wrong/unusable channel now.
-      await this.giveUp(watch.messageId, now);
+      await this.giveUp(watch, now, "channel_unusable");
       return;
     }
     let message: Message | null;
     try {
       message = await channel.messages.fetch(watch.messageId);
     } catch (error) {
-      await this.handleFetchFailure(watch.messageId, now, error, "Failed to fetch the watched message");
+      await this.handleFetchFailure(watch, now, error, "Failed to fetch the watched message");
       return;
     }
     if (!message || message.author.id !== this.client.user?.id) {
       // Deleted (resolved null instead of throwing), or — shouldn't happen
       // — somehow not our message anymore. Not retryable either way.
-      await this.giveUp(watch.messageId, now);
+      await this.giveUp(watch, now, "message_gone");
       return;
     }
 
     const { reactorIds, complete } = await this.collectUniqueReactorIds(message, profile, watch.channelId);
     if (!complete) {
-      await this.handleFetchFailure(watch.messageId, now, null, "Failed to fully fetch this message's reactor lists");
+      await this.handleFetchFailure(watch, now, null, "Failed to fully fetch this message's reactor lists");
       return;
     }
     if (reactorIds.size < reactionReplyThreshold) {
       // A real, current count below threshold — not a failure, so this
       // never retries even though it superficially looks similar to one.
-      await this.giveUp(watch.messageId, now);
+      await this.giveUp(watch, now, "below_threshold", { reactorCount: reactorIds.size, threshold: reactionReplyThreshold });
       return;
     }
 
     try {
-      await this.replyToReactions(message, channel, profile.guildId, reactorIds);
-      await this.giveUp(watch.messageId, now);
+      const outcome = await this.replyToReactions(message, channel, profile.guildId, reactorIds);
+      await this.giveUp(watch, now, outcome, { reactorCount: reactorIds.size });
     } catch (error) {
       if (this.shouldRetry(watch.messageId)) {
         this.logger.warn({ error, messageId: watch.messageId, guildId: watch.guildId }, "Reaction-reply turn failed, will retry");
         return;
       }
       this.logger.error({ error, messageId: watch.messageId, guildId: watch.guildId }, "Reaction-reply turn failed repeatedly, giving up");
-      await this.giveUp(watch.messageId, now);
+      await this.giveUp(watch, now, "turn_failed");
     }
   }
 
@@ -232,11 +238,12 @@ export class ReactionReplyScheduler {
   // can never succeed, so that's treated as terminal. Anything else
   // (network blip, rate limit, a 5xx) is presumed transient and gets a
   // bounded retry instead of permanently burning the watch on one hiccup.
-  private async handleFetchFailure(messageId: string, now: number, error: unknown, message: string): Promise<void> {
+  private async handleFetchFailure(watch: MessageReactionWatch, now: number, error: unknown, message: string): Promise<void> {
+    const messageId = watch.messageId;
     const code = (error as { code?: number } | null)?.code;
     const terminal = code === 10008 || code === 10003 || code === 50001 || code === 50013;
     if (terminal) {
-      await this.giveUp(messageId, now);
+      await this.giveUp(watch, now, "unreachable", { code });
       return;
     }
     if (this.shouldRetry(messageId)) {
@@ -244,7 +251,7 @@ export class ReactionReplyScheduler {
       return;
     }
     this.logger.error({ error, messageId }, `${message} repeatedly, giving up`);
-    await this.giveUp(messageId, now);
+    await this.giveUp(watch, now, "fetch_failed");
   }
 
   // Excludes the bot's own id (it never counts toward its own threshold),
@@ -283,9 +290,9 @@ export class ReactionReplyScheduler {
 
   private async replyToReactions(
     message: Message, channel: GuildTextBasedChannel, guildId: string, reactorIds: ReadonlySet<string>,
-  ): Promise<void> {
+  ): Promise<string> {
     const profile = this.profiles.find(guildId);
-    if (!profile) return;
+    if (!profile) return "feature_disabled";
     const author = message.author;
     const reactorList = [...reactorIds].filter((id) => id !== author.id);
     const mentionedUsers = await Promise.all(reactorList.slice(0, 20).map(async (id) => {
@@ -359,6 +366,7 @@ export class ReactionReplyScheduler {
           channel, response.historyReactions, { guildId, channelId: message.channelId, sourceMessageId: message.id },
         );
       }
+      return response.ambientAction === "reply" ? "replied" : response.reactionEmoji ? "reacted_only" : "model_ignored";
     } catch (error) {
       if (error instanceof ChatStateCommitError) {
         // The reply was already delivered before the commit failed —
@@ -366,7 +374,7 @@ export class ReactionReplyScheduler {
         // the same reaction burst. Swallowed here (not rethrown) so
         // evaluate()'s catch doesn't apply its bounded retry to this case.
         this.logger.warn({ error, messageId: message.id, guildId }, "Reaction-reply exchange could not be saved");
-        return;
+        return "replied_unsaved";
       }
       // Anything else (model/provider failure, a delivery error before
       // anything was sent) is presumed transient — rethrown so evaluate()
