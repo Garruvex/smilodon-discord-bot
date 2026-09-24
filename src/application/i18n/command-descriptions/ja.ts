@@ -133,26 +133,6 @@ export const jaCommandDescriptions = {
   "setup/initialize:music-controller-role": "/play、キュー関連コマンド、パネル操作、コントロールチャンネルでのリクエストを使えるロール。", // Role for /play, queue commands, panel controls, and typed control-channel requests.
   "setup/initialize:restricted-role": "音楽とチャットボットの利用を禁止するロール（ボットオーナーは除く）。", // Role denied from music and chatbot unless bot-owner bypass applies.
   "status": "このサーバーでのボットの設定状況（現在のチャットモデルを含む）を表示します。", // Shows how the bot is set up in this server, including the current chat model.
-  "settings-access": "ロール、権限、監査ログの設定。", // Roles, permissions, and audit logging.
-  "settings-access/access": "設定済みのアクセスロールと、各グループが制御する内容を表示します。", // Shows configured access roles and what each group controls.
-  "settings-access/roles": "既存のロールを残したまま、アクセスロールを追加します。", // Adds access roles without removing existing ones.
-  "settings-access/roles:administrator": "/settings を使え、音楽操作権限も継承するボット管理者ロールを追加します。", // Adds a bot administrator role for /settings and inherited music control.
-  "settings-access/roles:music-controller": "/play、キュー関連コマンド、パネル操作を使えるロールを追加します。", // Adds a role for /play, queue commands, and panel controls.
-  "settings-access/roles:restricted": "音楽とチャットボットの利用を禁止するロールを追加します（ボットオーナーは除く）。", // Adds a role denied from music and chatbot unless bot-owner bypass applies.
-  "settings-access/role-add": "アクセスグループにロールを追加します。", // Adds a role to an access group.
-  "settings-access/role-add:group": "アクセスグループ。", // Access group.
-  "settings-access/role-add:role": "追加するロール。", // Role to add.
-  "settings-access/role-remove": "アクセスグループからロールを削除します。", // Removes a role from an access group.
-  "settings-access/role-remove:group": "アクセスグループ。", // Access group.
-  "settings-access/role-remove:role": "削除するロール。", // Role to remove.
-  "settings-access/audit-log": "設定・セットアップの変更ログを受け取るチャンネルを設定します。", // Configures the channel that receives settings/setup change logs.
-  "settings-access/audit-log:channel": "監査ログを受け取るテキストチャンネル。", // Text channel to receive audit log entries.
-  "settings-access/audit-log:disable": "監査ログの送信を停止します。", // Stop sending audit log entries.
-  "settings-access/admin-panel": "管理パネルを置くチャンネルを設定します。", // Sets the channel for the admin settings panel.
-  "settings-access/admin-panel:channel": "管理パネル用のテキストチャンネル。ボット管理者だけが見られるようにしてください。", // Text channel for the admin panel; keep it visible to bot admins only.
-  "settings-access/admin-panel:disable": "管理パネルを削除します。", // Remove the admin panel.
-  "settings-access/audit": "最近の設定・セットアップの変更ログを表示します。", // Shows recent settings/setup change log entries.
-  "settings-access/audit:count": "表示する最近のログ件数（デフォルト10）。", // How many recent entries to show (default 10).
   "settings-chat": "AIチャットの動作。", // AI chat behavior.
   "settings-chat/chatbot": "メンションに対するAI返信を設定します。", // Configures mention-based AI replies.
   "settings-chat/chatbot:enabled": "権限のあるユーザーがボットにメンションしたときに返信します。", // Reply when permitted users mention the bot.

@@ -1,10 +1,6 @@
-import { accessSetting } from "./access-setting.js";
-import { adminPanelSetting } from "./admin-panel-setting.js";
 import { ambientRepliesSetting } from "./ambient-replies-setting.js";
 import { reactionRepliesSetting } from "./reaction-replies-setting.js";
 import { historyReactionsSetting } from "./history-reactions-setting.js";
-import { auditSetting } from "./audit-setting.js";
-import { auditLogSetting } from "./audit-log-setting.js";
 import { channelHistorySetting } from "./channel-history-setting.js";
 import {
   contextDailyAddSetting,
@@ -14,8 +10,6 @@ import {
   contextStatusSetting,
 } from "./channel-context-setting.js";
 import { chatbotSetting } from "./chatbot-setting.js";
-import { roleAddSetting, roleRemoveSetting } from "./role-membership-setting.js";
-import { rolesSetting } from "./roles-setting.js";
 import type { SettingDefinition } from "./setting-definition.js";
 import { templateSetting } from "./template-setting.js";
 import { toolsDisableSetting, toolsEnableSetting, toolsListSetting } from "./tools-setting.js";
@@ -41,11 +35,6 @@ export interface SettingGroup {
 // still run by LegacySettingsEngine. A group leaves this list when it's
 // registered there.
 export const settingGroups: readonly SettingGroup[] = [
-  {
-    name: "access",
-    description: "Roles, permissions, and audit logging.",
-    settings: [accessSetting, rolesSetting, roleAddSetting, roleRemoveSetting, auditLogSetting, auditSetting, adminPanelSetting],
-  },
   {
     name: "chat",
     description: "AI chat behavior.",

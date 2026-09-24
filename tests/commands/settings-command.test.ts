@@ -4,8 +4,6 @@ import type { ChatToolRegistry } from "../../src/application/chat/tools/chat-too
 import type { ControlChannelService } from "../../src/application/control-panel/control-channel-service.js";
 import { SettingsUpdateService } from "../../src/application/settings/settings-update-service.js";
 import { LegacySettingsCommand } from "../../src/infrastructure/discord/settings/legacy-settings-command.js";
-import { formatAuditSummary } from "../../src/infrastructure/discord/settings/definitions/audit-setting.js";
-import { validateRoleGroupUpdate } from "../../src/infrastructure/discord/settings/definitions/settings-support.js";
 import { settingGroups, type SettingGroup } from "../../src/infrastructure/discord/settings/definitions/index.js";
 import type { GuildAssetStore } from "../../src/application/assets/guild-asset-store.js";
 import { LegacySettingsEngine } from "../../src/infrastructure/discord/settings/legacy-settings-engine.js";
@@ -13,8 +11,8 @@ import type { GuildConfiguration } from "../../src/config/guild-configuration.js
 import type { GuildConfigurationProvider, UpdateGuildConfigurationInput } from "../../src/config/guild-configuration-provider.js";
 import type { CommandContext } from "../../src/application/commands/command.js";
 
-// The groups still run by the legacy engine; music and community are in
-// the settings registry (see settings-groups.test.ts).
+// The group still run by the legacy engine; the rest are in the settings
+// registry (see settings-groups.test.ts).
 const chatGroup = settingGroups.find((group) => group.name === "chat")!;
 
 const applicationEmojiCatalog = {
@@ -221,18 +219,6 @@ describe("SettingsCommand", () => {
     expect(chatbot?.options?.map((option) => option.name) ?? []).toContain("image-generation");
   });
 
-  it("rejects removing the last music-controller role while music is enabled", () => {
-    const validation = validateRoleGroupUpdate(profile(), "musicController", new Set());
-    expect(validation).toContain("music-controller");
-  });
-
-  it("rejects removing the last chatbot role while chatbot is enabled", () => {
-    const enabledProfile = { ...profile(), features: { ...profile().features, chatbot: true } };
-    const validation = validateRoleGroupUpdate(enabledProfile, "chatbot", new Set());
-    expect(validation).toContain("chatbot");
-  });
-
-
   it("warns when a chatbot setting changes while the chatbot feature is disabled", async () => {
     const command = settingsCommand(chatGroup, providerWith(profile()), {} as never);
     const { context, edited } = fakeContext("chatbot", { "cooldown-seconds": 60 });
@@ -374,30 +360,6 @@ describe("SettingsCommand", () => {
     expect(edited.text).toContain("currently disabled");
   });
 
-
-  it("tells the admin to configure a channel when audit logging isn't set up", async () => {
-    const auditLogService = { fetchRecent: vi.fn().mockResolvedValue({ configured: false, entries: [] }) };
-
-    const summary = await formatAuditSummary(auditLogService as never, "guild-id", 10);
-
-    expect(auditLogService.fetchRecent).toHaveBeenCalledWith("guild-id", 10);
-    expect(summary).toContain("No audit log channel is configured");
-  });
-
-  it("lists recent audit log entries as relative timestamps", async () => {
-    const auditLogService = {
-      fetchRecent: vi.fn().mockResolvedValue({
-        configured: true,
-        entries: [{ description: "**<@1>**\n**/settings volume**\nDefault volume: 75 → 90", createdAt: 1_700_000_000_000 }],
-      }),
-    };
-
-    const summary = await formatAuditSummary(auditLogService as never, "guild-id", 10);
-
-    expect(summary).toContain("Recent audit log entries:");
-    expect(summary).toContain("Default volume: 75 → 90");
-    expect(summary).not.toContain("\n\n");
-  });
 
   it("refreshes the panel immediately after idle-image settings change", async () => {
     const { refreshPanel, ensureGuildPanel } = await applyWithPanel({ idleImageAsset: "guild-assets/123456789012345678/idle.png" });

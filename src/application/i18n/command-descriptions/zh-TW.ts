@@ -135,26 +135,6 @@ export const zhTWCommandDescriptions = {
   "setup/initialize:music-controller-role": "可使用 /play、管理待播歌曲的指令、面板控制，以及在控制頻道輸入文字點歌的身分組", // Role for /play, queue commands, panel controls, and typed control-channel requests.
   "setup/initialize:restricted-role": "禁止使用音樂與聊天機器人的身分組（機器人擁有者例外）", // Role denied from music and chatbot unless bot-owner bypass applies.
   "status": "顯示機器人在此伺服器的設定狀況，包含目前的聊天模型", // Shows how the bot is set up in this server, including the current chat model.
-  "settings-access": "身分組、權限與稽核紀錄", // Roles, permissions, and audit logging.
-  "settings-access/access": "顯示已設定的存取身分組，以及各群組控制的範圍", // Shows configured access roles and what each group controls.
-  "settings-access/roles": "新增存取身分組，不會移除既有身分組", // Adds access roles without removing existing ones.
-  "settings-access/roles:administrator": "新增可使用 /settings，並同時取得音樂控制權的機器人管理員身分組", // Adds a bot administrator role for /settings and inherited music control.
-  "settings-access/roles:music-controller": "新增可使用 /play、管理待播歌曲的指令與面板控制的身分組", // Adds a role for /play, queue commands, and panel controls.
-  "settings-access/roles:restricted": "新增禁止使用音樂與聊天機器人的身分組（機器人擁有者例外）", // Adds a role denied from music and chatbot unless bot-owner bypass applies.
-  "settings-access/role-add": "將身分組加入存取群組", // Adds a role to an access group.
-  "settings-access/role-add:group": "存取群組", // Access group.
-  "settings-access/role-add:role": "要加入的身分組", // Role to add.
-  "settings-access/role-remove": "將身分組從存取群組移除", // Removes a role from an access group.
-  "settings-access/role-remove:group": "存取群組", // Access group.
-  "settings-access/role-remove:role": "要移除的身分組", // Role to remove.
-  "settings-access/audit-log": "設定接收設定／初始設定變更紀錄的頻道", // Configures the channel that receives settings/setup change logs.
-  "settings-access/audit-log:channel": "接收稽核紀錄的文字頻道", // Text channel to receive audit log entries.
-  "settings-access/audit-log:disable": "停止傳送稽核紀錄", // Stop sending audit log entries.
-  "settings-access/admin-panel": "設定管理面板所在的頻道", // Sets the channel for the admin settings panel.
-  "settings-access/admin-panel:channel": "放置管理面板的文字頻道，建議只讓機器人管理員看得到", // Text channel for the admin panel; keep it visible to bot admins only.
-  "settings-access/admin-panel:disable": "移除管理面板", // Remove the admin panel.
-  "settings-access/audit": "顯示最近的設定／初始化變更紀錄", // Shows recent settings/setup change log entries.
-  "settings-access/audit:count": "要顯示最近幾筆紀錄（預設 10）", // How many recent entries to show (default 10).
   "settings-chat": "AI 聊天行為", // AI chat behavior.
   "settings-chat/chatbot": "設定提及機器人時觸發的 AI 回覆", // Configures mention-based AI replies.
   "settings-chat/chatbot:enabled": "有權限的使用者提及機器人時進行回覆", // Reply when permitted users mention the bot.

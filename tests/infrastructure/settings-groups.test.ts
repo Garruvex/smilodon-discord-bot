@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { settingsRegistry } from "../../src/infrastructure/discord/settings/groups/index.js";
 import { resolveGuildEmoji } from "../../src/infrastructure/discord/settings/groups/music-progress.js";
@@ -165,5 +165,74 @@ describe("community settings", () => {
     await fixture.run("community.welcome", slashValues({ "leave-channel": { id: "600000000000000001" } }));
     await fixture.run("community.welcome", slashValues({ "clear-leave-channel": true }));
     expect(fixture.profiles.current().channels.leaveAnnouncements).toBeNull();
+  });
+});
+
+describe("access settings", () => {
+  const controller = "300000000000000001";
+
+  it("won't remove the last music-controller role while music is on", async () => {
+    const fixture = engineFixture();
+    const result = await fixture.run("access.roles", slashValues({ "remove-music-controller": { id: controller } }));
+    expect(result).toEqual({
+      kind: "rejected",
+      message: "Music is enabled, so at least one music-controller role must remain configured.",
+    });
+  });
+
+  it("won't remove the last bot-administrator role", async () => {
+    const fixture = engineFixture();
+    const result = await fixture.run("access.roles", panelValues({ lists: { administrator: [] } }));
+    expect(result).toMatchObject({ kind: "rejected", message: "At least one bot-administrator role must remain configured." });
+  });
+
+  it("adds a role the same way from slash and from the panel", async () => {
+    const viaSlash = engineFixture();
+    const viaPanel = engineFixture();
+    await viaSlash.run("access.roles", slashValues({ "add-music-controller": { id: "300000000000000002" } }));
+    await viaPanel.run("access.roles", panelValues({ lists: { "music-controller": [controller, "300000000000000002"] } }));
+
+    expect([...viaSlash.profiles.current().roles.musicController]).toEqual([controller, "300000000000000002"]);
+    expect(viaPanel.profiles.current().roles.musicController).toEqual(viaSlash.profiles.current().roles.musicController);
+  });
+
+  it("clears the audit log channel", async () => {
+    const fixture = engineFixture();
+    await fixture.run("access.audit-log", slashValues({ channel: { id: "600000000000000001" } }));
+    await fixture.run("access.audit-log", slashValues({ clear: true }));
+    expect(fixture.profiles.current().channels.auditLog).toBeNull();
+  });
+
+  it("summarizes who holds each access group", async () => {
+    const result = await engineFixture().run("access.access", slashValues({}));
+    expect(result).toMatchObject({ kind: "report", text: expect.stringContaining(`**Music controllers:** <@&${controller}>`) as string });
+  });
+
+  it("tells the admin to set a channel when audit logging isn't set up", async () => {
+    const auditLogService = { fetchRecent: vi.fn().mockResolvedValue({ configured: false, entries: [] }) };
+    const fixture = engineFixture({ deps: { auditLogService: auditLogService as never } });
+
+    const result = await fixture.run("access.audit", slashValues({ count: 5 }));
+
+    expect(auditLogService.fetchRecent).toHaveBeenCalledWith(expect.any(String), 5);
+    expect(result).toMatchObject({ kind: "report", text: expect.stringContaining("No audit log channel is set") as string });
+  });
+
+  it("lists recent audit log entries on one line each", async () => {
+    const auditLogService = {
+      fetchRecent: vi.fn().mockResolvedValue({
+        configured: true,
+        entries: [{ description: "**<@1>**\n**/settings-music volume**\nDefault volume: 75 → 90", createdAt: 1_700_000_000_000 }],
+      }),
+    };
+    const fixture = engineFixture({ deps: { auditLogService: auditLogService as never } });
+
+    const result = await fixture.run("access.audit", slashValues({}));
+
+    expect(auditLogService.fetchRecent).toHaveBeenCalledWith(expect.any(String), 10);
+    expect(result).toEqual({
+      kind: "report",
+      text: "Recent audit log entries:\n<t:1700000000:R> **<@1>** · **/settings-music volume** · Default volume: 75 → 90",
+    });
   });
 });
