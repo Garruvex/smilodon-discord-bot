@@ -1,6 +1,12 @@
 import type { Language } from "../application/i18n/language.js";
 
-export type GuildFeatureName = "common" | "diagnostics" | "music" | "chatbot" | "birthdays" | "reminders" | "nsfw" | "linkFix";
+// The top-level features, in display order. GuildFeatureConfiguration also
+// holds sub-switches (ambientReplies, channelHistory, ...) that aren't
+// features in their own right, so iterate this, not Object.keys(features).
+export const guildFeatureNames = [
+  "common", "diagnostics", "music", "chatbot", "birthdays", "reminders", "nsfw", "linkFix",
+] as const;
+export type GuildFeatureName = (typeof guildFeatureNames)[number];
 export type RoleGroupName = "botAdministrator" | "musicController" | "chatbot";
 
 // The individual services link-fix can rewrite/embed. features.linkFix is

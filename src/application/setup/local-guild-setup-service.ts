@@ -10,7 +10,7 @@ import type {
   GuildSetupStatus,
 } from "./guild-setup-service.js";
 import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
-import type { GuildConfiguration, GuildFeatureName } from "../../config/guild-configuration.js";
+import { guildFeatureNames, type GuildConfiguration } from "../../config/guild-configuration.js";
 import type { AuditLogService } from "../audit/audit-log-service.js";
 
 interface CreatedResources {
@@ -192,7 +192,7 @@ export class LocalGuildSetupService implements GuildSetupService {
       };
     }
 
-    const featureEntries = Object.entries(profile.features) as [GuildFeatureName, boolean][];
+    const featureEntries = guildFeatureNames.map((name) => [name, profile.features[name]] as const);
     return {
       configured: true,
       profileFile: profile.sourceFile,
