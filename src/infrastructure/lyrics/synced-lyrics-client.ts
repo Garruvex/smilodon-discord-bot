@@ -59,12 +59,15 @@ const metadataSuffixPattern = /\s*[[(【](?:official\s+)?(?:(?:music\s+)?video(?
 // The same suffixes without brackets, trailing after a dash or pipe — Asian
 // label uploads often write "…】-Official Music Video" or "… | Official MV".
 const trailingMetadataPattern = /\s*[-–—|]\s*(?:official\s+)?(?:(?:music\s+)?video|mv|audio|lyrics?(?:\s+video)?|visuali[sz]er)\s*$/i;
+// Some uploads attach "Official MV" directly to the closing song bracket.
+const postBracketMetadataPattern = /(?<=[】》〗〉」』〕］\]）)｣｝}⟧⟩])\s*(?:official\s+)?(?:(?:music\s+)?video|mv|audio|lyrics?(?:\s+video)?|visuali[sz]er)\s*$/i;
+const appearanceCreditPattern = /\s*[(（]\s*(?:特別演出|特别演出|special\s+appearance)\s*[:：][^)）]*[)）]\s*$/i;
 const artistTitleSeparatorPattern = /\s+[-–—]\s+/;
 // "周杰倫 Jay Chou【夜曲 Nocturne】" — the CJK-upload counterpart of
 // "Artist - Title": the artist outside, the title inside the brackets.
 // Keep opening and closing characters paired; a broad character class on
 // each side would also accept malformed titles such as "Artist【Song》".
-const bracketedTitlePattern = /^(.+?)\s*([【《〖〈「『〔［[（(｢｛{⟦⟨])(.+?)([】》〗〉」』〕］\]）)｣｝}⟧⟩])$/;
+const bracketedTitlePattern = /^(.+)\s*([【《〖〈「『〔［[（(｢｛{⟦⟨])(.+?)([】》〗〉」』〕］\]）)｣｝}⟧⟩])$/;
 const bracketClosers: Readonly<Record<string, string>> = {
   "【": "】", "《": "》", "〖": "〗", "〈": "〉", "「": "」", "『": "』",
   "〔": "〕", "［": "］", "[": "]", "（": "）", "(": ")", "｢": "｣",
@@ -93,7 +96,12 @@ const versionMarkerPattern = /\b(live|remix|acoustic|instrumental|karaoke|demo|e
 const artistSeparatorPattern = /\s*(?:,|&|\/|;|、|，|\bfeat(?:uring)?\.?\b|\bft\.?\b|和|與|与)\s*/gi;
 
 function stripMetadataSuffix(value: string): string {
-  return value.replace(metadataSuffixPattern, " ").trim().replace(trailingMetadataPattern, "").trim();
+  return value.replace(metadataSuffixPattern, " ").trim()
+    .replace(trailingMetadataPattern, "").replace(postBracketMetadataPattern, "").trim();
+}
+
+function stripAppearanceCredit(value: string): string {
+  return value.replace(appearanceCreditPattern, "").trim();
 }
 
 interface NormalizedQuery {
@@ -126,7 +134,7 @@ function normalizeQuery(title: string, artist: string): NormalizedQuery {
     }
   }
   const bracketMatch = bracketedTitlePattern.exec(cleanTitle);
-  const bracketArtist = bracketMatch?.[1]?.trim();
+  const bracketArtist = stripAppearanceCredit(bracketMatch?.[1] ?? "");
   const bracketTitle = bracketMatch?.[3]?.trim();
   if (bracketMatch && bracketArtist && bracketTitle && bracketClosers[bracketMatch[2] ?? ""] === bracketMatch[4]) {
     return { title: bracketTitle, artist: trimmedArtist, extraArtist: bracketArtist, unsplitTitle: cleanTitle };

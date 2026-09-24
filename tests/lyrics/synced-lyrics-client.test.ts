@@ -172,6 +172,20 @@ describe("fetchSyncedLyrics", () => {
       .not.toBeNull();
   });
 
+  it("finds 告白氣球 when Official MV follows the bracket and the artist has a cameo credit", async () => {
+    fetchMock.mockImplementation((url: unknown) => {
+      const params = new URL(String(url)).searchParams;
+      return jsonResponse(200, params.get("track_name") === "告白氣球" && params.get("artist_name") === null
+        ? [candidate({ trackName: "告白氣球", artistName: "周杰倫", duration: 215 })] : []);
+    });
+    const title = "周杰倫 Jay Chou (特別演出: 派偉俊)〖告白氣球 Love Confession〗Official MV";
+    expect(lyricsCacheIdentity(title, "JVR Music")).toEqual({
+      title: "告白氣球 Love Confession",
+      artist: "周杰倫 Jay Chou | JVR Music",
+    });
+    expect(await fetchLines(title, "JVR Music")).not.toBeNull();
+  });
+
   it.each([
     ["【", "】"], ["《", "》"], ["〖", "〗"], ["〈", "〉"],
     ["「", "」"], ["『", "』"], ["〔", "〕"], ["［", "］"],
@@ -231,6 +245,16 @@ describe("fetchSyncedLyrics", () => {
       "Creepy Nuts｢Bling-Bang-Bang-Born｣ × TV Anime｢マッシュル-MASHLE-｣ Collaboration Music Video #BBBBダンス",
       "Creepy Nuts",
     )).not.toBeNull();
+  });
+
+  it("finds YOASOBI's 怪物 from the linked music video's metadata", async () => {
+    fetchMock.mockImplementation((url: unknown) => {
+      const params = new URL(String(url)).searchParams;
+      return jsonResponse(200, params.get("track_name") === "怪物" && params.get("artist_name") === "YOASOBI"
+        ? [candidate({ trackName: "怪物", artistName: "YOASOBI", duration: 206 })] : []);
+    });
+    expect(await fetchLines("YOASOBI「怪物」Official Music Video　(YOASOBI - Monster)", "Ayase / YOASOBI", 209_000))
+      .not.toBeNull();
   });
 
   it("ignores a Japanese-quoted segment when the text before it isn't the artist", async () => {
