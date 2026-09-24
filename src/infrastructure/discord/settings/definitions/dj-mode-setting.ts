@@ -5,7 +5,7 @@ export const djModeSetting: MutationSettingDefinition = {
   name: "dj-mode",
   description: "Lets music-controller roles control playback from anywhere.",
   configureOptions: () => [
-    { type: "boolean", name: "enabled", description: "Whether DJ mode is on." },
+    { type: "boolean", name: "enabled", description: "Whether DJ mode is on.", panel: { label: "DJ mode", read: (p) => p.music.djModeEnabled } },
   ],
   handle: (request, _deps, _previousProfile, input) => {
     const enabled = request.values.getBoolean("enabled");

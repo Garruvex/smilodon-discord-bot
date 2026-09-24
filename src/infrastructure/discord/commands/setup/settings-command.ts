@@ -1,7 +1,7 @@
 import { CommandModule, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import type { ChatInputCommandMetadata } from "../../../../application/commands/command-metadata.js";
 import type { ApplicationEmojiCatalog } from "../../application-emoji-catalog.js";
-import type { SettingGroup, SettingRequest } from "../../settings/definitions/index.js";
+import { slashOptionsOf, type SettingGroup, type SettingRequest } from "../../settings/definitions/index.js";
 import { renderProgressPreview } from "../../settings/definitions/settings-support.js";
 import { settingsAccessPolicy, type SettingsEngine } from "../../settings/settings-engine.js";
 
@@ -21,7 +21,7 @@ export function buildDefinitionForGroup(group: SettingGroup): ChatInputCommandMe
     subcommands: group.settings.map((setting) => ({
       name: setting.name,
       description: setting.description,
-      options: setting.configureOptions?.() ?? [],
+      options: slashOptionsOf(setting),
     })),
   };
 }

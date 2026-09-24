@@ -7,12 +7,13 @@ export const panelSetting: MutationSettingDefinition = {
   name: "panel",
   description: "Updates the music panel.",
   configureOptions: () => [
-    { type: "channel", name: "channel", description: "Music control channel.", guildTextOnly: true },
+    { type: "channel", name: "channel", description: "Music control channel.", guildTextOnly: true, panel: { label: "Music panel channel", read: (p) => p.channels.controlPanel } },
     { type: "string", name: "idle-image-url", description: "Stable HTTPS idle image URL." },
     { type: "attachment", name: "idle-image", description: "Upload a persistent PNG, JPEG, WebP, or GIF idle image." },
     { type: "boolean", name: "use-default-image", description: "Use the bundled Smilodon idle image." },
     {
       type: "string", name: "progress-style", description: "Progress bar appearance.",
+      panel: { label: "Progress bar", read: (p) => p.panel.progressBar.style },
       choices: [
         { name: "Standard", value: "standard" },
         { name: "Yohta", value: "yohta" },
@@ -22,6 +23,7 @@ export const panelSetting: MutationSettingDefinition = {
     },
     {
       type: "integer", name: "progress-length", description: "Progress bar length.",
+      panel: { label: "Progress bar length", read: (p) => p.panel.progressBar.length },
       minValue: PANEL_LIMITS.progressBarLength.min, maxValue: PANEL_LIMITS.progressBarLength.max,
     },
     { type: "string", name: "progress-completed", description: "Custom completed emoji; paste an emoji or enter its server name." },

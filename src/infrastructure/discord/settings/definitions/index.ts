@@ -40,14 +40,34 @@ export type {
   SettingDefinition,
   SettingDeps,
   SettingHandlerResult,
+  OptionPanelMetadata,
+  PanelListOptionMetadata,
+  SettingOptionMetadata,
   SettingRequest,
   SettingValues,
+  SlashSettingOptionMetadata,
 } from "./setting-definition.js";
+export { isPanelListOption, slashOptionsOf } from "./setting-definition.js";
+
+// One admin-panel message. `entries` lists settings in display order;
+// `options` narrows a setting that spans several sections (chatbot) to the
+// options shown in this one.
+export interface PanelSectionDefinition {
+  // Stable id — part of every control id on the section's message.
+  name: string;
+  title: string;
+  entries: readonly { setting: string; options?: readonly string[] }[];
+}
 
 export interface SettingGroup {
   name: string;
+  // Heading on the admin panel.
+  title: string;
   description: string;
   settings: readonly SettingDefinition[];
+  // How the group splits into admin-panel messages. Omitted means one
+  // section showing every panel-capable setting in `settings` order.
+  panelSections?: readonly PanelSectionDefinition[];
 }
 
 // Adding a setting: write one file next to these exporting a
@@ -59,16 +79,19 @@ export interface SettingGroup {
 export const settingGroups: readonly SettingGroup[] = [
   {
     name: "access",
+    title: "Access",
     description: "Roles, permissions, and audit logging.",
     settings: [accessSetting, rolesSetting, roleAddSetting, roleRemoveSetting, auditLogSetting, auditSetting],
   },
   {
     name: "music",
+    title: "Music",
     description: "Music panel and playback behavior.",
     settings: [panelSetting, volumeSetting, lifecycleSetting, djModeSetting, openQueueRequestsSetting, autoQueueVoteSetting],
   },
   {
     name: "chat",
+    title: "Chat",
     description: "AI chat behavior.",
     settings: [
       chatbotSetting,
@@ -89,6 +112,7 @@ export const settingGroups: readonly SettingGroup[] = [
   },
   {
     name: "community",
+    title: "Community",
     description: "Standalone community features.",
     settings: [birthdaysSetting, remindersSetting, welcomeSetting, nsfwSetting, linkFixSetting, retainMemberDataSetting, timezoneSetting, languageSetting],
   },

@@ -6,9 +6,10 @@ export const autoQueueVoteSetting: MutationSettingDefinition = {
   name: "autoqueue-vote",
   description: "Lets listeners vote on which song autoqueue plays next.",
   configureOptions: () => [
-    { type: "boolean", name: "enabled", description: "Whether listeners vote; off means autoqueue picks on its own." },
+    { type: "boolean", name: "enabled", description: "Whether listeners vote; off means autoqueue picks on its own.", panel: { label: "Up-next vote", read: (p) => p.music.autoQueueVoteEnabled } },
     {
       type: "string", name: "bar-style", description: "How vote bars look.",
+      panel: { label: "Vote bar style", read: (p) => p.music.autoQueueVoteBarStyle },
       choices: [
         { name: "Colored squares", value: "squares" },
         { name: "Thin bar (matches the progress bar)", value: "thin" },
@@ -16,6 +17,7 @@ export const autoQueueVoteSetting: MutationSettingDefinition = {
     },
     {
       type: "integer", name: "options", description: "How many songs to pick from.",
+      panel: { label: "Songs to choose from", read: (p) => p.music.autoQueueVoteOptionCount },
       minValue: MUSIC_LIMITS.autoQueueVoteOptionCount.min, maxValue: MUSIC_LIMITS.autoQueueVoteOptionCount.max,
     },
   ],

@@ -20,14 +20,17 @@ export const volumeSetting: MutationSettingDefinition = {
   configureOptions: () => [
     {
       type: "integer", name: "default", description: "Default volume.",
+      panel: { label: "Default volume", read: (p) => p.music.defaultVolume },
       minValue: MUSIC_LIMITS.volumeDefault.min, maxValue: MUSIC_LIMITS.volumeDefault.max,
     },
     {
       type: "integer", name: "maximum", description: "Maximum volume.",
+      panel: { label: "Maximum volume", read: (p) => p.music.maximumVolume },
       minValue: MUSIC_LIMITS.volumeMaximum.min, maxValue: MUSIC_LIMITS.volumeMaximum.max,
     },
     {
       type: "integer", name: "button-step", description: "Panel adjustment amount.",
+      panel: { label: "Volume button step", read: (p) => p.music.volumeButtonStep },
       minValue: MUSIC_LIMITS.volumeButtonStep.min, maxValue: MUSIC_LIMITS.volumeButtonStep.max,
     },
   ],

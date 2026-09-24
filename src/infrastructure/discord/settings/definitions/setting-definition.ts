@@ -18,7 +18,12 @@ import type { ApplicationEmojiCatalog } from "../../application-emoji-catalog.js
 export type SettingValues = Pick<
   ChatInputCommandInteraction["options"],
   "getBoolean" | "getInteger" | "getString" | "getChannel" | "getRole" | "getAttachment"
->;
+> & {
+  // Whole-list values from the panel's multi-selects (see
+  // PanelListOptionMetadata). Absent on the slash surface, which never has
+  // list options — handlers read it as `values.getIdList?.(name) ?? null`.
+  getIdList?(name: string): readonly string[] | null;
+};
 
 export interface SettingRequest {
   guildId: string;
@@ -66,10 +71,54 @@ export interface FieldChange {
   read(profile: GuildConfiguration): unknown;
 }
 
+// How an option appears on the admin panel. `read` returns the current value
+// in the option's own terms — what you'd pass to the slash option to leave
+// things as they are (seconds rather than stored ms, a choice's value, a
+// channel id) — so the panel can show it and pre-fill edits from it. Options
+// without `panel` stay slash-only (attachments, one-shot flags such as
+// use-default-image or reset-persona-drift).
+export interface OptionPanelMetadata {
+  // Short row label, e.g. "DJ mode". The option's description is the
+  // row's explanation.
+  label: string;
+  read(profile: GuildConfiguration): string | number | boolean | null;
+}
+
+export type SlashSettingOptionMetadata = CommandOptionMetadata & { panel?: OptionPanelMetadata };
+
+// A list the slash side edits one item at a time (add/remove options) but
+// the panel shows whole, as a multi-select. Never registered as a slash
+// option; the handler reads it with values.getIdList, next to its
+// add/remove logic and through the same validation.
+export interface PanelListOptionMetadata {
+  type: "channelList" | "roleList";
+  name: string;
+  description: string;
+  guildTextOnly?: boolean;
+  panel: {
+    label: string;
+    read(profile: GuildConfiguration): readonly string[];
+  };
+}
+
+export type SettingOptionMetadata = SlashSettingOptionMetadata | PanelListOptionMetadata;
+
+export function isPanelListOption(option: SettingOptionMetadata): option is PanelListOptionMetadata {
+  return option.type === "channelList" || option.type === "roleList";
+}
+
+// The options the /settings-* command registers: panel-only list options
+// dropped, panel metadata stripped.
+export function slashOptionsOf(setting: SettingDefinition): readonly CommandOptionMetadata[] {
+  return (setting.configureOptions?.() ?? [])
+    .filter((option): option is SlashSettingOptionMetadata => !isPanelListOption(option))
+    .map(({ panel: _panel, ...option }) => option);
+}
+
 interface BaseSettingDefinition {
   name: string;
   description: string;
-  configureOptions?(): readonly CommandOptionMetadata[];
+  configureOptions?(): readonly SettingOptionMetadata[];
 }
 
 // A setting that patches the guild config. `handle` mutates `input` in place
@@ -103,6 +152,9 @@ export interface ReadOnlySettingDefinition extends BaseSettingDefinition {
   // starter personality.md/examples.md — see template-setting.ts) without
   // every other readOnly setting needing to know about that shape.
   run(request: SettingRequest, deps: SettingDeps, profile: GuildConfiguration): Promise<string | InteractionEditReplyOptions>;
+  // Show run()'s output (with no option values) as a text block on the
+  // admin panel. Only for settings whose output is a plain string.
+  panelReport?: boolean;
 }
 
 export type SettingDefinition = MutationSettingDefinition | ReadOnlySettingDefinition;
