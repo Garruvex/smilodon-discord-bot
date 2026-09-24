@@ -609,7 +609,7 @@ never included.
 Beyond per-conversation memory, an admin can point the bot at specific
 channels so it builds durable, guild-wide knowledge from the messages that
 happen there — without anyone needing to talk to the bot directly. Two
-independent modes, both configured under `/settings-chat memory` (or the
+independent modes, both configured under `/settings-memory` (or the
 admin panel's Memory section):
 
 - **One-time scan** (`context-scan channel:# seed-days:7`) — reads that

@@ -220,7 +220,7 @@ Every setting can be changed two ways, and both do exactly the same thing:
 - **The admin panel** — a channel showing every setting with its description,
   its current value and a control to change it.
 - **`/settings-<group>` commands** — `/settings-access`, `/settings-music`,
-  `/settings-chat` and `/settings-community`.
+  `/settings-chat`, `/settings-memory` and `/settings-community`.
 
 Both need the **Bot Administrator** role. Changes write straight to the
 server's configuration, show up in the panel right away, and (if an audit log
@@ -303,12 +303,6 @@ own emoji for each segment), or **Timestamps only**.
 | `/settings-chat abilities image-input [enabled] [max-images]` | Lets the model see attached images, and how many per request. |
 | `/settings-chat abilities tools` | Lists every chat tool and whether it's enabled here. |
 | `/settings-chat abilities tool <name> <enabled>` | Turns one chat tool on or off. |
-| `/settings-chat memory channel-history [enabled] [limit]` | Includes recent messages from anyone as extra context. |
-| `/settings-chat memory memory-mode <channel> <mode>` | Sets a channel's memory isolation: shared, isolated, session only, or disabled. |
-| `/settings-chat memory context-daily [add] [remove]` | Channels summarized into memory once a day, checked hourly. |
-| `/settings-chat memory context-scan <channel> [seed-days] [restart]` | Queues a one-time history scan (default 7-day lookback) folded into memory. `restart:true` re-reads a completed scan. |
-| `/settings-chat memory context-remove <channel>` | Takes a channel off both the scan and daily lists (existing memories are kept; re-adding resumes rather than re-reading history). |
-| `/settings-chat memory context-status [channel]` | Shows provider availability, whether the chatbot is paused, and per-channel scan/daily progress and errors. |
 | `/settings-chat persona personality [file]` / `use-default-personality` | Uploads the character's personality, or goes back to the built-in one. |
 | `/settings-chat persona examples [file]` / `use-default-examples` | Uploads example exchanges, or removes them. |
 | `/settings-chat persona template <kind>` | Sends a starter `personality.md` or `examples.md` to edit and upload. |
@@ -316,10 +310,26 @@ own emoji for each segment), or **Timestamps only**.
 | `/settings-chat persona persona-drift [enabled]` / `reset-persona-drift` | The experimental evolving mood layer, and wiping it. |
 
 Chat settings changed while the chatbot is off say so: they take effect once
-it's turned on. The history-scan and daily-summary settings need a chat
-provider with channel summarization (every built-in provider mode has it) —
-see the README's [Channel-context memory](../README.md#channel-context-memory)
-section for the full processing model and trust rules.
+it's turned on.
+
+### Memory
+
+What the chatbot reads back and remembers.
+
+| Command | What it does |
+| --- | --- |
+| `/settings-memory channel-history [enabled] [limit]` | Includes recent messages from anyone as extra context. |
+| `/settings-memory memory-mode <channel> <mode>` | Sets a channel's memory isolation: shared, isolated, session only, or disabled. |
+| `/settings-memory context-daily [add] [remove]` | Channels summarized into memory once a day, checked hourly. |
+| `/settings-memory context-scan <channel> [seed-days] [restart]` | Queues a one-time history scan (default 7-day lookback) folded into memory. `restart:true` re-reads a completed scan. |
+| `/settings-memory context-remove <channel>` | Takes a channel off both the scan and daily lists (existing memories are kept; re-adding resumes rather than re-reading history). |
+| `/settings-memory context-status [channel]` | Shows provider availability, whether the chatbot is paused, and per-channel scan/daily progress and errors. |
+
+Like chat settings, these say so when changed while the chatbot is off. The
+history-scan and daily-summary settings need a chat provider with channel
+summarization (every built-in provider mode has it) — see the README's
+[Channel-context memory](../README.md#channel-context-memory) section for the
+full processing model and trust rules.
 
 ### Community
 

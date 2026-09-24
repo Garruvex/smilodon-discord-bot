@@ -318,7 +318,7 @@ describe("chat settings", () => {
 
   it("sets a channel's memory mode", async () => {
     const fixture = engineFixture();
-    const result = await fixture.run("chat.memory.memory-mode", slashValues({ channel: { id: channelId }, mode: "isolated" }));
+    const result = await fixture.run("memory.memory-mode", slashValues({ channel: { id: channelId }, mode: "isolated" }));
 
     expect(result).toMatchObject({
       kind: "done",
@@ -330,8 +330,8 @@ describe("chat settings", () => {
   describe("history scans", () => {
     it("won't queue anything without a provider that can summarize", async () => {
       const fixture = engineFixture({ deps: { channelSummaryProviderAvailable: false } });
-      const scan = await fixture.run("chat.memory.context-scan", slashValues({ channel: { id: channelId } }));
-      const daily = await fixture.run("chat.memory.context-daily", slashValues({ add: { id: channelId } }));
+      const scan = await fixture.run("memory.context-scan", slashValues({ channel: { id: channelId } }));
+      const daily = await fixture.run("memory.context-daily", slashValues({ add: { id: channelId } }));
 
       expect(scan).toMatchObject({ kind: "rejected", message: expect.stringContaining("can't be queued") as string });
       expect(daily).toMatchObject({ kind: "rejected", message: expect.stringContaining("can't be turned on") as string });
@@ -339,7 +339,7 @@ describe("chat settings", () => {
 
     it("queues a new channel, noting the chatbot is off", async () => {
       const fixture = engineFixture({ deps: { channelSummaryProviderAvailable: true } });
-      const result = await fixture.run("chat.memory.context-scan", slashValues({ channel: { id: channelId }, "seed-days": 14 }));
+      const result = await fixture.run("memory.context-scan", slashValues({ channel: { id: channelId }, "seed-days": 14 }));
 
       expect(result).toMatchObject({ kind: "done", message: expect.stringContaining("queued for a one-time history scan") as string });
       expect(result).toMatchObject({ message: expect.stringContaining("the chatbot is turned off") as string });
@@ -350,8 +350,8 @@ describe("chat settings", () => {
       const fixture = engineFixture({
         deps: { channelSummaryProviderAvailable: true, channelSummaryCheckpointStore: checkpoints({ lastMessageId: "m1" }).store },
       });
-      await fixture.run("chat.memory.context-scan", slashValues({ channel: { id: channelId } }));
-      const again = await fixture.run("chat.memory.context-scan", slashValues({ channel: { id: channelId } }));
+      await fixture.run("memory.context-scan", slashValues({ channel: { id: channelId } }));
+      const again = await fixture.run("memory.context-scan", slashValues({ channel: { id: channelId } }));
 
       expect(again).toMatchObject({ kind: "rejected", message: expect.stringContaining("already queued or running") as string });
     });
@@ -359,10 +359,10 @@ describe("chat settings", () => {
     it("re-runs a finished scan only when asked to restart", async () => {
       const { store, resetScan } = checkpoints({ scanCompletedAt: 123 });
       const fixture = engineFixture({ deps: { channelSummaryProviderAvailable: true, channelSummaryCheckpointStore: store } });
-      await fixture.run("chat.memory.context-scan", slashValues({ channel: { id: channelId } }));
+      await fixture.run("memory.context-scan", slashValues({ channel: { id: channelId } }));
 
-      const refused = await fixture.run("chat.memory.context-scan", slashValues({ channel: { id: channelId } }));
-      const restarted = await fixture.run("chat.memory.context-scan", slashValues({ channel: { id: channelId }, restart: true }));
+      const refused = await fixture.run("memory.context-scan", slashValues({ channel: { id: channelId } }));
+      const restarted = await fixture.run("memory.context-scan", slashValues({ channel: { id: channelId }, restart: true }));
 
       expect(refused).toMatchObject({ kind: "rejected", message: expect.stringContaining("already finished") as string });
       expect(restarted).toMatchObject({ kind: "done", message: expect.stringContaining("scan restarted") as string });
@@ -371,10 +371,10 @@ describe("chat settings", () => {
 
     it("stops summarizing a channel on both lists", async () => {
       const fixture = engineFixture({ deps: { channelSummaryProviderAvailable: true } });
-      await fixture.run("chat.memory.context-scan", slashValues({ channel: { id: channelId } }));
-      await fixture.run("chat.memory.context-daily", slashValues({ add: { id: channelId } }));
+      await fixture.run("memory.context-scan", slashValues({ channel: { id: channelId } }));
+      await fixture.run("memory.context-daily", slashValues({ add: { id: channelId } }));
 
-      await fixture.run("chat.memory.context-remove", slashValues({ channel: { id: channelId } }));
+      await fixture.run("memory.context-remove", slashValues({ channel: { id: channelId } }));
 
       expect(fixture.profiles.current().chat).toMatchObject({ contextScanChannelIds: [], contextDailyChannelIds: [] });
     });
@@ -385,10 +385,10 @@ describe("chat settings", () => {
         lastError: "Missing Read Message History.", lastErrorCode: "missing_history_permission", lastSuccessAt: 1_000,
       });
       const fixture = engineFixture({ deps: { channelSummaryProviderAvailable: true, channelSummaryCheckpointStore: store } });
-      await fixture.run("chat.memory.context-scan", slashValues({ channel: { id: channelId } }));
-      await fixture.run("chat.memory.context-daily", slashValues({ add: { id: channelId } }));
+      await fixture.run("memory.context-scan", slashValues({ channel: { id: channelId } }));
+      await fixture.run("memory.context-daily", slashValues({ add: { id: channelId } }));
 
-      const result = await fixture.run("chat.memory.context-status", slashValues({}));
+      const result = await fixture.run("memory.context-status", slashValues({}));
 
       const text = result.kind === "report" ? result.text : "";
       expect(text).toContain("Provider: available");

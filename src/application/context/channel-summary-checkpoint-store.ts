@@ -23,7 +23,7 @@ export interface ChannelSummaryCheckpoint {
   lastError: string | null;
   // Bounded, machine-readable companion to lastError (e.g. "guild_mismatch",
   // "missing_view_permission", "summarization_failed") — lets
-  // /settings-chat memory context-status and future retry logic branch on error
+  // /settings-memory context-status and future retry logic branch on error
   // class without parsing the free-text message.
   lastErrorCode: string | null;
   // Last time any batch (scan or daily) ingested successfully — distinct

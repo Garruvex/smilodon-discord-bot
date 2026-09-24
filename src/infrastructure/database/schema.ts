@@ -347,7 +347,7 @@ export const channelSummaryCheckpoints = pgTable("channel_summary_checkpoints", 
   dailyHighWaterMarkAt: timestamp("daily_high_water_mark_at", { withTimezone: true }),
   // Daily's "have I already run today" gate — null means never run.
   lastRunAt: timestamp("last_run_at", { withTimezone: true }),
-  // Surfaced by /settings-chat memory context-status; cleared on next success.
+  // Surfaced by /settings-memory context-status; cleared on next success.
   lastError: text("last_error"),
   lastErrorCode: text("last_error_code"),
   lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
