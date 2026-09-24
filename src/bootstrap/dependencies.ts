@@ -1,3 +1,4 @@
+import { catalogIssues } from "../application/i18n/texts.js";
 import type { Logger } from "pino";
 
 import { AccessPolicyService } from "../application/access/access-policy-service.js";
@@ -277,6 +278,11 @@ export function registerCommands(
   reminderStore: ReminderStore,
   roleMenuStore: RoleMenuStore,
 ): CommandRegistrationResult {
+  // Invalid translations already fell back to English (see i18n/texts.ts);
+  // surface them so they get fixed rather than silently shipping English.
+  for (const issue of catalogIssues) {
+    logger.warn(issue, "Translation catalog problem; using English for this message");
+  }
   const commandRegistry = new CommandRegistry();
   const pollService = new PollService(guildConfigurationProvider);
   const componentRegistry = new ComponentRegistry();

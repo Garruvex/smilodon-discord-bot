@@ -13,6 +13,7 @@
     "command:create": "tsx src/scripts/generate-command.ts",
     "config:validate": "tsx src/scripts/validate-guild-config.ts",
     "deploy:commands": "tsx src/scripts/deploy-commands.ts",
+    "i18n:coverage": "tsx src/scripts/i18n-coverage.ts",
     "eval:memory-relevance": "tsx src/scripts/calibrate-memory-relevance.ts",
     "dev": "tsx watch src/bootstrap/start.ts",
     "dev:once": "tsx src/bootstrap/start.ts",

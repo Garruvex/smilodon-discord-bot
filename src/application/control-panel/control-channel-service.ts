@@ -35,7 +35,7 @@ import type {
   ControlPanelStateStore,
 } from "./control-panel-state-store.js";
 import { defaultLanguage } from "../i18n/language.js";
-import { translator, type Translate } from "../i18n/translate.js";
+import { texts, type Texts } from "../i18n/texts.js";
 import { renderProgressBar } from "./progress-bar-renderer.js";
 import type { ApplicationEmojiCatalog } from "../../infrastructure/discord/application-emoji-catalog.js";
 import {
@@ -294,7 +294,7 @@ export class ControlChannelService {
       return false;
     }
 
-    const t = translator(profile.language);
+    const text = texts[profile.language];
     const query = this.normalizeSongQuery(message);
     if (query.length === 0) {
       await message.delete().catch(() => undefined);
@@ -307,13 +307,13 @@ export class ControlChannelService {
     }
 
     if (!this.canRequestSongs(message.member, message.author.id, profile)) {
-      const denied = await message.reply(t("panel.request.denied"));
+      const denied = await message.reply(text.music.panel.request.denied);
       this.scheduleDeletion(denied);
       await message.delete().catch(() => undefined);
       return true;
     }
 
-    const statusMessage = await message.reply(t("panel.request.searching"));
+    const statusMessage = await message.reply(text.music.panel.request.searching);
 
     await message.delete().catch(() => undefined);
 
@@ -343,7 +343,7 @@ export class ControlChannelService {
       await statusMessage.edit(
         error instanceof MusicError
           ? error.message
-          : t("panel.request.failed"),
+          : text.music.panel.request.failed,
       );
       this.scheduleDeletion(statusMessage, failedMusicRequestLifetimeMs);
     } finally {
@@ -364,14 +364,14 @@ export class ControlChannelService {
     // The guild's language, or English when the press isn't in a (known)
     // guild — these replies are the only text a button press can produce
     // before the guild profile is looked up below.
-    const t = translator(
+    const text = texts[
       (interaction.guildId ? this.guildConfigurationProvider.find(interaction.guildId)?.language : undefined) ??
-        defaultLanguage,
-    );
+        defaultLanguage
+    ];
     const control = findMusicPanelControl(interaction.customId);
     if (!control) {
       await interaction.reply({
-        content: t("panel.control.unsupported"),
+        content: text.music.panel.control.unsupported,
         flags: MessageFlags.Ephemeral,
       });
       return true;
@@ -379,7 +379,7 @@ export class ControlChannelService {
 
     if (!interaction.inCachedGuild()) {
       await interaction.reply({
-        content: t("panel.control.guildOnly"),
+        content: text.music.panel.control.guildOnly,
         flags: MessageFlags.Ephemeral,
       });
       return true;
@@ -405,7 +405,7 @@ export class ControlChannelService {
       panelState.queueMessageId !== interaction.message.id
     ) {
       await interaction.reply({
-        content: t("panel.control.obsolete"),
+        content: text.music.panel.control.obsolete,
         flags: MessageFlags.Ephemeral,
       });
       return true;
@@ -413,7 +413,7 @@ export class ControlChannelService {
 
     if (!profile || !this.canControl(interaction.member, interaction.user.id, profile)) {
       await interaction.reply({
-        content: t("panel.control.denied"),
+        content: text.music.panel.control.denied,
         flags: MessageFlags.Ephemeral,
       });
       return true;
@@ -559,12 +559,12 @@ export class ControlChannelService {
     if (staleRecovered) {
       await this.replyEphemeral(
         interaction,
-        t("panel.control.staleReset"),
+        text.music.panel.control.staleReset,
       );
     } else if (executionError) {
       await this.replyEphemeral(
         interaction,
-        executionError instanceof MusicError ? executionError.message : t("panel.control.failed"),
+        executionError instanceof MusicError ? executionError.message : text.music.panel.control.failed,
       );
     }
 
@@ -1266,14 +1266,14 @@ export class ControlChannelService {
     profile: GuildConfiguration,
     snapshot: MusicPlayerSnapshot | null,
   ): ControlPanelPayload {
-    const t = translator(profile.language);
+    const text = texts[profile.language];
     const embed = this.createNowPlayingEmbed(profile, snapshot);
     const requestersHint = profile.music.openQueueRequestsEnabled
-      ? t("panel.hint.requestersOpen")
-      : t("panel.hint.requestersRestricted");
+      ? text.music.panel.hint.requestersOpen
+      : text.music.panel.hint.requestersRestricted;
 
     return {
-      content: `${t("panel.hint.join", { requesters: requestersHint })}\n${t("panel.hint.legend")}`,
+      content: `${text.music.panel.hint.join({ requesters: requestersHint })}\n${text.music.panel.hint.legend}`,
       embeds: [embed],
       components: [],
     };
@@ -1292,12 +1292,12 @@ export class ControlChannelService {
     profile: GuildConfiguration,
     snapshot: MusicPlayerSnapshot | null,
   ): EmbedBuilder {
-    const t = translator(profile.language);
+    const text = texts[profile.language];
     const embed = new EmbedBuilder().setColor(profile.embedColor as `#${string}`);
     if (!snapshot?.currentTrack) {
       embed
-        .setTitle(`${this.musicDiscIcon(snapshot)} ${t("panel.nowPlaying.idleTitle")}`)
-        .setDescription(t("panel.nowPlaying.idleDescription"));
+        .setTitle(`${this.musicDiscIcon(snapshot)} ${text.music.panel.nowPlaying.idleTitle}`)
+        .setDescription(text.music.panel.nowPlaying.idleDescription);
       embed.setImage(profile.idleImageUrl ?? `attachment://${this.getIdleImageName(profile)}`);
       return embed;
     }
@@ -1314,9 +1314,9 @@ export class ControlChannelService {
       isEmojiAvailable: (emojiId) => this.applicationEmojiCatalog.hasEmoji(emojiId) ||
         this.client.guilds.cache.some((guild) => guild.emojis.cache.has(emojiId)),
     });
-    const requester = this.formatRequester(track.requestedByUserId, t);
+    const requester = this.formatRequester(track.requestedByUserId, text);
     embed
-      .setTitle(`${this.musicDiscIcon(snapshot)} ${t(snapshot.paused ? "panel.nowPlaying.titlePaused" : "panel.nowPlaying.titlePlaying")}`)
+      .setTitle(`${this.musicDiscIcon(snapshot)} ${snapshot.paused ? text.music.panel.nowPlaying.titlePaused : text.music.panel.nowPlaying.titlePlaying}`)
       .setDescription(`### ${title}\n${track.author}\n\n${progress}${requester}`);
 
     if (track.artworkUrl) embed.setImage(track.artworkUrl);
@@ -1334,12 +1334,12 @@ export class ControlChannelService {
     profile: GuildConfiguration,
     snapshot: MusicPlayerSnapshot | null,
   ): EmbedBuilder {
-    const t = translator(profile.language);
+    const text = texts[profile.language];
     const embed = new EmbedBuilder()
       .setColor(profile.embedColor as `#${string}`)
-      .setTitle(t("panel.lyrics.title"));
+      .setTitle(text.music.panel.lyrics.title);
     if (!snapshot?.currentTrack) {
-      return embed.setDescription(t("panel.lyrics.idle"));
+      return embed.setDescription(text.music.panel.lyrics.idle);
     }
     if (snapshot.currentLyricLine) {
       // Bundling every line due before the next repaint (rather than just
@@ -1360,7 +1360,7 @@ export class ControlChannelService {
       return embed.setDescription(snapshot.upcomingLyricLines.map((line) => `-# ${line}`).join("\n"));
     }
     return embed.setDescription(
-      t(snapshot.lyricsUnavailable ? "panel.lyrics.notFound" : "panel.lyrics.searching"),
+      snapshot.lyricsUnavailable ? text.music.panel.lyrics.notFound : text.music.panel.lyrics.searching,
     );
   }
 
@@ -1379,23 +1379,23 @@ export class ControlChannelService {
     profile: GuildConfiguration,
     snapshot: MusicPlayerSnapshot | null,
   ): EmbedBuilder {
-    const t = translator(profile.language);
-    const embed = new EmbedBuilder().setColor(profile.embedColor as `#${string}`).setTitle(t("panel.queue.title"));
+    const text = texts[profile.language];
+    const embed = new EmbedBuilder().setColor(profile.embedColor as `#${string}`).setTitle(text.music.panel.queue.title);
     const tracks = this.playerGateway.getQueue(profile.guildId);
     const queueLength = snapshot?.queueLength ?? tracks.length;
 
     embed.setDescription(
       queueLength === 0
-        ? t("panel.queue.empty")
-        : `${t("panel.queue.summary", { count: queueLength, duration: formatQueueDuration(sumTrackDurations(tracks)) })}\n${this.buildQueueLines(tracks, t)}`,
+        ? text.music.panel.queue.empty
+        : `${text.music.panel.queue.summary({ count: queueLength, duration: formatQueueDuration(sumTrackDurations(tracks)) })}\n${this.buildQueueLines(tracks, text)}`,
     );
 
     if (snapshot?.currentTrack) {
-      const queueStatus = queueLength === 0 ? t("panel.queue.footerEmpty") : t("panel.queue.footerCount", { count: queueLength });
+      const queueStatus = queueLength === 0 ? text.music.panel.queue.footerEmpty : text.music.panel.queue.footerCount({ count: queueLength });
       const autoQueueNote = snapshot.autoQueue && snapshot.autoQueueIssue
-        ? `  •  ${t("panel.queue.autoqueueIssue")}`
+        ? `  •  ${text.music.panel.queue.autoqueueIssue}`
         : "";
-      const loop = t("panel.queue.footerLoop", { mode: t(`panel.repeat.${snapshot.repeatMode}`) });
+      const loop = text.music.panel.queue.footerLoop({ mode: text.music.label.repeat[snapshot.repeatMode] });
       embed.setFooter({
         text: `🔊 ${snapshot.volume}%  •  ${queueStatus}  •  ${loop}${autoQueueNote}`,
       });
@@ -1409,33 +1409,33 @@ export class ControlChannelService {
   // queue is always one `/queue show` away. Still char-budgeted underneath
   // that cap in case a handful of unusually long titles would blow past the
   // embed description's real limit on their own.
-  private buildQueueLines(tracks: readonly MusicTrack[], t: Translate): string {
+  private buildQueueLines(tracks: readonly MusicTrack[], text: Texts): string {
     const lines: string[] = [];
     let used = 0;
     let shown = 0;
     for (const track of tracks) {
       if (shown >= queueDisplayLimit) break;
-      const line = formatQueueTrackLine(track, shown + 1, t("music.autoqueue"));
+      const line = formatQueueTrackLine(track, shown + 1, text.music.label.autoqueue);
       if (used + line.length + 1 > queueListCharBudget) break;
       lines.push(line);
       used += line.length + 1;
       shown += 1;
     }
     const remaining = tracks.length - shown;
-    if (remaining > 0) lines.push(t("panel.queue.more", { count: remaining }));
+    if (remaining > 0) lines.push(text.music.panel.queue.more({ count: remaining }));
     return lines.join("\n");
   }
 
-  private formatRequester(requestedByUserId: string | null, t: Translate): string {
+  private formatRequester(requestedByUserId: string | null, text: Texts): string {
     if (!requestedByUserId) return "";
     if (requestedByUserId !== "autoqueue") {
-      return `\n${t("panel.nowPlaying.requestedBy", { user: `<@${requestedByUserId}>` })}`;
+      return `\n${text.music.panel.nowPlaying.requestedBy({ user: `<@${requestedByUserId}>` })}`;
     }
 
     const botUserId = this.client.user?.id;
     return botUserId
-      ? `\n${t("panel.nowPlaying.requestedByAutoqueue", { user: `<@${botUserId}>` })}`
-      : `\n${t("panel.nowPlaying.requestedByAutoqueueUnknownBot")}`;
+      ? `\n${text.music.panel.nowPlaying.requestedByAutoqueue({ user: `<@${botUserId}>` })}`
+      : `\n${text.music.panel.nowPlaying.requestedByAutoqueueUnknownBot}`;
   }
 
   private hasRestrictedRole(
