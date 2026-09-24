@@ -13,6 +13,8 @@ import {
 } from "discord.js";
 
 import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
+import { textForGuild } from "../i18n/guild-text.js";
+import type { Texts } from "../i18n/texts.js";
 import { renderVoteBar } from "./vote-bar.js";
 
 export const maxPollChoices = 5;
@@ -59,8 +61,9 @@ export class PollService {
   public async create(interaction: ChatInputCommandInteraction, input: CreatePollInput): Promise<void> {
     const id = randomUUID().replaceAll("-", "").slice(0, 16);
     const closesAt = input.durationSeconds === null ? null : Date.now() + input.durationSeconds * 1_000;
+    const text = textForGuild(this.guildConfigurations, interaction.guildId).poll;
     const choices: PollChoice[] = input.options === null
-      ? [{ label: "Yes", emoji: "✅" }, { label: "No", emoji: "❌" }]
+      ? [{ label: text.yes, emoji: "✅" }, { label: text.no, emoji: "❌" }]
       : input.options.map((label, index) => ({ label, emoji: numberEmojis[index]! }));
     const draft: Omit<ActivePoll, "message"> = {
       id,
@@ -87,8 +90,9 @@ export class PollService {
     if (!interaction.customId.startsWith("poll:")) return false;
     const [, id, action] = interaction.customId.split(":");
     const poll = id ? this.polls.get(id) : undefined;
+    const text = textForGuild(this.guildConfigurations, interaction.guildId).poll;
     if (!poll || poll.message.id !== interaction.message.id) {
-      await interaction.reply({ content: "This poll is no longer active.", flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: text.inactive, flags: MessageFlags.Ephemeral });
       return true;
     }
 
@@ -97,7 +101,7 @@ export class PollService {
         || interaction.memberPermissions?.has(PermissionFlagsBits.ManageMessages) === true;
       if (!allowed) {
         await interaction.reply({
-          content: "Only the poll creator or a moderator can end this poll.",
+          content: text.endDenied,
           flags: MessageFlags.Ephemeral,
         });
         return true;
@@ -140,6 +144,7 @@ export class PollService {
 
   private createPayload(poll: Omit<ActivePoll, "message">, closed: boolean): PollPayload {
     const configuration = poll.guildId ? this.guildConfigurations.find(poll.guildId) : null;
+    const text = textForGuild(this.guildConfigurations, poll.guildId).poll;
     const barStyle = configuration?.music.autoQueueVoteBarStyle ?? "squares";
     const counts = poll.choices.map(() => 0);
     for (const index of poll.votes.values()) counts[index] = (counts[index] ?? 0) + 1;
@@ -152,7 +157,10 @@ export class PollService {
     const lines = poll.choices.map((choice, index) => {
       const count = counts[index]!;
       const share = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
-      const tally = `${leading[index] ? `**${count}**` : count} vote${count === 1 ? "" : "s"} · ${share}%`;
+      const shownCount = leading[index] ? `**${count}**` : count;
+      const tally = count === 1
+        ? text.tallyOne({ count: shownCount, share })
+        : text.tallyMany({ count: shownCount, share });
       const heading = leading[index]
         ? `▶ **${choice.emoji} ${choice.label}**`
         : `${choice.emoji} ${choice.label}`;
@@ -162,13 +170,13 @@ export class PollService {
     const sections = [
       ...(poll.description ? [poll.description] : []),
       lines.join("\n\n"),
-      closed ? this.describeResult(poll.choices, counts, totalVotes) : this.describeTiming(poll.closesAt, totalVotes),
+      closed ? this.describeResult(poll.choices, counts, totalVotes, text) : this.describeTiming(poll.closesAt, totalVotes, text),
     ];
     const embed = new EmbedBuilder()
       .setColor(closed ? endedEmbedColor : (configuration?.embedColor as `#${string}` | undefined) ?? defaultEmbedColor)
-      .setTitle(`🗳️ ${poll.title}${closed ? " — ended" : ""}`)
+      .setTitle(closed ? text.titleEnded({ title: poll.title }) : text.title({ title: poll.title }))
       .setDescription(sections.join("\n\n"))
-      .setFooter({ text: `Poll by ${poll.authorName}` });
+      .setFooter({ text: text.footer({ name: poll.authorName }) });
 
     const choiceRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
       poll.choices.map((choice, index) => new ButtonBuilder()
@@ -182,27 +190,37 @@ export class PollService {
     const components = closed
       ? [choiceRow]
       : [choiceRow, new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(`poll:${poll.id}:end`).setLabel("End poll").setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId(`poll:${poll.id}:end`).setLabel(text.endButton).setStyle(ButtonStyle.Danger),
       )];
     return { embeds: [embed], components };
   }
 
-  private describeTiming(closesAt: number | null, totalVotes: number): string {
+  private describeTiming(closesAt: number | null, totalVotes: number, text: Texts["poll"]): string {
     const closes = closesAt === null
-      ? "Open until the creator ends it."
-      : `Closes <t:${Math.floor(closesAt / 1_000)}:R>.`;
-    return `${closes} ${totalVotes} vote${totalVotes === 1 ? "" : "s"} so far.\n` +
-      "-# Click your pick again to take your vote back.";
+      ? text.openUntilEnded
+      : text.closes({ time: `<t:${Math.floor(closesAt / 1_000)}:R>` });
+    const soFar = totalVotes === 1 ? text.soFarOne({ count: totalVotes }) : text.soFarMany({ count: totalVotes });
+    return `${closes} ${soFar}\n${text.retractHint}`;
   }
 
-  private describeResult(choices: readonly PollChoice[], counts: readonly number[], totalVotes: number): string {
-    if (totalVotes === 0) return "**Poll ended with no votes.**";
+  private describeResult(
+    choices: readonly PollChoice[],
+    counts: readonly number[],
+    totalVotes: number,
+    text: Texts["poll"],
+  ): string {
+    if (totalVotes === 0) return text.noVotes;
     const topVotes = Math.max(...counts);
     const winners = choices.filter((_, index) => counts[index] === topVotes);
     if (winners.length === 1) {
-      return `🏆 **Winner: ${winners[0]!.emoji} ${winners[0]!.label}** (${topVotes} of ${totalVotes} vote${totalVotes === 1 ? "" : "s"})`;
+      const choice = `${winners[0]!.emoji} ${winners[0]!.label}`;
+      return totalVotes === 1
+        ? text.winnerOne({ choice, top: topVotes, total: totalVotes })
+        : text.winnerMany({ choice, top: topVotes, total: totalVotes });
     }
     const tied = winners.map((choice) => `${choice.emoji} ${choice.label}`).join(", ");
-    return `🤝 **Tie between ${tied}** (${topVotes} vote${topVotes === 1 ? "" : "s"} each, ${totalVotes} total)`;
+    return topVotes === 1
+      ? text.tieOne({ choices: tied, top: topVotes, total: totalVotes })
+      : text.tieMany({ choices: tied, top: topVotes, total: totalVotes });
   }
 }

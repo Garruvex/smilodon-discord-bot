@@ -2,6 +2,7 @@ import { AttachmentBuilder, type GuildMember, type PartialGuildMember } from "di
 import type { Logger } from "pino";
 
 import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
+import { textForGuild } from "../i18n/guild-text.js";
 import { renderWelcomeCard } from "../../infrastructure/discord/members/welcome-card-renderer.js";
 
 // Two independent, optional channels — no separate enabled/disabled flag.
@@ -29,7 +30,7 @@ export class MemberWelcomeService {
     }
 
     try {
-      const buffer = await renderWelcomeCard(member);
+      const buffer = await renderWelcomeCard(member, textForGuild(this.guildConfigurationProvider, member.guild.id));
       const attachment = new AttachmentBuilder(buffer, { name: "welcome.png" });
       await channel.send({ files: [attachment] });
     } catch (error) {
@@ -52,7 +53,7 @@ export class MemberWelcomeService {
 
     const tag = member.user?.tag ?? member.id;
     try {
-      await channel.send(`👋 **${tag}** has left the server.`);
+      await channel.send(textForGuild(this.guildConfigurationProvider, member.guild.id).member.leave({ tag }));
     } catch (error) {
       this.logger.error({ error, guildId: member.guild.id, userId: member.id }, "Leave announcement failed");
     }

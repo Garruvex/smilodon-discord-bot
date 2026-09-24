@@ -288,7 +288,9 @@ export function registerCommands(
   const pollService = new PollService(guildConfigurationProvider);
   const componentRegistry = new ComponentRegistry();
   componentRegistry.register(new PollComponentHandler(pollService));
-  const roleMenuService = new RoleMenuService(roleMenuStore, logger.child({ component: "role-menu" }));
+  const roleMenuService = new RoleMenuService(
+    roleMenuStore, logger.child({ component: "role-menu" }), guildConfigurationProvider,
+  );
   componentRegistry.register(new RoleMenuComponentHandler(roleMenuService));
   commandRegistry.register(new PingCommand());
   commandRegistry.register(new UserInfoCommand(guildConfigurationProvider, boostHistoryStore));
@@ -508,7 +510,7 @@ export function createDependencies(
   );
 
   const reminderScheduler = new ReminderScheduler(
-    discordClient, reminderStore, logger.child({ component: "reminders" }),
+    discordClient, reminderStore, logger.child({ component: "reminders" }), guildConfigurationProvider,
   );
 
   const commandDispatcher = new CommandDispatcher(

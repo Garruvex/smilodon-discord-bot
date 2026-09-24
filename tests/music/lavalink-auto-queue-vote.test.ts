@@ -17,6 +17,7 @@ import type { MusicEventBus } from "../../src/application/music/music-event-bus.
 import type { MusicPlayerSnapshot } from "../../src/application/music/music-player-gateway.js";
 import type { GuildConfiguration } from "../../src/config/guild-configuration.js";
 import type { GuildConfigurationProvider } from "../../src/config/guild-configuration-provider.js";
+import { texts } from "../../src/application/i18n/texts.js";
 import { renderVoteBar } from "../../src/application/polls/vote-bar.js";
 import { LavalinkAutoQueue } from "../../src/infrastructure/lavalink/lavalink-auto-queue.js";
 import { LavalinkPlayerGateway } from "../../src/infrastructure/lavalink/lavalink-player-gateway.js";
@@ -310,7 +311,7 @@ describe("LavalinkPlayerGateway autoqueue vote", () => {
 });
 
 describe("autoqueue vote message", () => {
-  const profile = { embedColor: "#5865F2", music: { autoQueueVoteBarStyle: "squares" } } as GuildConfiguration;
+  const profile = { embedColor: "#5865F2", language: "en", music: { autoQueueVoteBarStyle: "squares" } } as GuildConfiguration;
   const context = { closesAtSeconds: 1_700_000_000, paused: false, currentArtist: "Artist" };
   const voteWith = (
     count: number,
@@ -368,6 +369,19 @@ describe("autoqueue vote message", () => {
     expect(describe({ lastRerolledByUserId: "42", rerollsLeft: 2 })).toBe("-# Closes <t:1:R> · 🎲 by <@42> · 2 left");
     expect(describe({}, true, null)).toBe("-# Paused · 🎲 3 left");
     expect(describe({}, false, null)).toBe("-# Open until skip · 🎲 3 left");
+  });
+
+  it("renders in the server language", () => {
+    const ja = texts.ja.music.vote;
+    const payload = createAutoQueueVotePayload({ ...profile, language: "ja" }, voteWith(2), { ...context, currentArtist: "" });
+    const embed = payload.embeds[0]!.toJSON();
+    const labels = buttonsOf(payload).at(-1)!.map((button) => button.label);
+
+    expect(embed.title).toBe(ja.title);
+    expect(embed.description).toContain(ja.closes({ time: "<t:1700000000:R>" }));
+    expect(embed.description).toContain(ja.rerollsLeft({ count: 3 }));
+    expect(labels).toEqual([ja.similar, ja.sameArtist]);
+    expect(embed.title).not.toBe("🗳️ Up next");
   });
 
   it("puts rerolls on their own row below the options, wrapping 6 options onto two rows", () => {

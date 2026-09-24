@@ -1,6 +1,8 @@
 import { EmbedBuilder, type Client, type TextChannel } from "discord.js";
 import type { Logger } from "pino";
 
+import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
+import { textForGuild } from "../i18n/guild-text.js";
 import type { ReminderRecord, ReminderStore } from "./reminder-store.js";
 
 // Finer-grained than BirthdayAnnouncer/ChannelSummaryScheduler's hourly
@@ -19,6 +21,7 @@ export class ReminderScheduler {
     private readonly client: Client,
     private readonly reminderStore: ReminderStore,
     private readonly logger: Logger,
+    private readonly configurations: Pick<GuildConfigurationProvider, "find">,
   ) {}
 
   public start(): void {
@@ -62,7 +65,7 @@ export class ReminderScheduler {
   private async deliver(reminder: ReminderRecord): Promise<void> {
     const embed = new EmbedBuilder()
       .setColor("#3B82F6")
-      .setTitle("⏰ Reminder")
+      .setTitle(textForGuild(this.configurations, reminder.guildId).reminder.title)
       .setDescription(reminder.message);
 
     if (reminder.delivery === "dm") {

@@ -7,6 +7,7 @@ import {
 
 import type { GuildConfiguration } from "../../config/guild-configuration.js";
 import { cleanArtistName } from "../../domain/music/artist-name.js";
+import { texts, type Texts } from "../i18n/texts.js";
 import type { AutoQueueVoteRerollMode, AutoQueueVoteSnapshot } from "../music/music-player-gateway.js";
 import { renderVoteBar } from "../polls/vote-bar.js";
 
@@ -60,17 +61,17 @@ function truncate(text: string, maxLength: number): string {
 
 // Kept to one short line on purpose: the marker, bold and bar colour
 // already say what's up next, so this only carries timing and rerolls.
-function footerLine(vote: ReadyAutoQueueVote, context: AutoQueueVoteRenderContext): string {
+function footerLine(vote: ReadyAutoQueueVote, context: AutoQueueVoteRenderContext, text: Texts["music"]["vote"]): string {
   const timing = context.paused
-    ? "Paused"
+    ? text.paused
     : context.closesAtSeconds === null
-      ? "Open until skip"
-      : `Closes <t:${context.closesAtSeconds}:R>`;
+      ? text.openUntilSkip
+      : text.closes({ time: `<t:${context.closesAtSeconds}:R>` });
   // Rerolling clears everyone's votes, so say who did it; otherwise it
   // just looks like the votes vanished.
   const rerolls = vote.lastRerolledByUserId
-    ? `🎲 by <@${vote.lastRerolledByUserId}> · ${vote.rerollsLeft} left`
-    : `🎲 ${vote.rerollsLeft} left`;
+    ? text.rerolledBy({ user: `<@${vote.lastRerolledByUserId}>`, count: vote.rerollsLeft })
+    : text.rerollsLeft({ count: vote.rerollsLeft });
   return `-# ${timing} · ${rerolls}`;
 }
 
@@ -79,6 +80,7 @@ export function createAutoQueueVotePayload(
   vote: ReadyAutoQueueVote,
   context: AutoQueueVoteRenderContext,
 ): { content: string; embeds: EmbedBuilder[]; components: ActionRowBuilder<ButtonBuilder>[] } {
+  const text = texts[profile.language].music.vote;
   const totalVotes = vote.options.reduce((sum, option) => sum + option.votes, 0);
   const lines = vote.options.map((option, index) => {
     const leading = index === vote.leadingIndex;
@@ -98,8 +100,8 @@ export function createAutoQueueVotePayload(
   // reroll count no longer apply.
   const embed = new EmbedBuilder()
     .setColor(profile.embedColor as `#${string}`)
-    .setTitle(vote.locked ? "🔒 Up next" : "🗳️ Up next")
-    .setDescription(vote.locked ? lines.join("\n") : `${lines.join("\n")}\n${footerLine(vote, context)}`);
+    .setTitle(vote.locked ? text.titleLocked : text.title)
+    .setDescription(vote.locked ? lines.join("\n") : `${lines.join("\n")}\n${footerLine(vote, context, text)}`);
 
   const optionButtons = vote.options.map((option, index) => new ButtonBuilder()
     .setCustomId(`${autoQueueVoteIdPrefix}option-${index}`)
@@ -120,13 +122,13 @@ export function createAutoQueueVotePayload(
     new ButtonBuilder()
       .setCustomId(`${autoQueueVoteIdPrefix}reroll`)
       .setEmoji("🎲")
-      .setLabel("Similar")
+      .setLabel(text.similar)
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(rerollDisabled),
     new ButtonBuilder()
       .setCustomId(`${autoQueueVoteIdPrefix}reroll-artist`)
       .setEmoji("🎙️")
-      .setLabel(artist ? truncate(artist, 60) : "Same artist")
+      .setLabel(artist ? truncate(artist, 60) : text.sameArtist)
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(rerollDisabled),
   ));

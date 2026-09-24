@@ -3,6 +3,10 @@ import { describe, expect, it } from "vitest";
 import { en } from "../../src/application/i18n/messages/en.js";
 import { buildTexts, texts, type Texts } from "../../src/application/i18n/texts.js";
 import {
+  MusicAutoQueueRerollEmptyError,
+  MusicAutoQueueRerollLimitError,
+  MusicAutoQueueVoteClosedError,
+  MusicAutoQueueVoteUnavailableError,
   MusicChannelAccessError,
   MusicError,
   MusicPlayerNotFoundError,
@@ -33,9 +37,23 @@ describe("musicErrorText", () => {
       new MusicChannelAccessError(),
       new MusicRateLimitError(1),
       new MusicRateLimitError(5),
+      new MusicAutoQueueVoteUnavailableError(),
+      new MusicAutoQueueRerollEmptyError(),
+      new MusicAutoQueueRerollEmptyError("Jay Chou"),
+      new MusicAutoQueueVoteClosedError(),
+      new MusicAutoQueueRerollLimitError(3),
     ]) {
       expect(musicErrorText(error, texts.en), error.name).toBe(error.message);
     }
+  });
+
+  it("renders the autoqueue vote failures in the server language, with their values", () => {
+    const errors = texts.ja.music.error;
+    expect(musicErrorText(new MusicAutoQueueVoteUnavailableError(), texts.ja)).toBe(errors.voteUnavailable);
+    expect(musicErrorText(new MusicAutoQueueRerollEmptyError(), texts.ja)).toBe(errors.rerollEmpty);
+    expect(musicErrorText(new MusicAutoQueueRerollEmptyError("Jay Chou"), texts.ja)).toBe(errors.rerollEmptyArtist({ artist: "Jay Chou" }));
+    expect(musicErrorText(new MusicAutoQueueVoteClosedError(), texts.ja)).toBe(errors.voteClosed);
+    expect(musicErrorText(new MusicAutoQueueRerollLimitError(3), texts.ja)).toBe(errors.rerollLimit({ limit: 3 }));
   });
 
   it("picks the singular or plural rate-limit message", () => {

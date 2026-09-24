@@ -35,6 +35,7 @@ import type {
   ControlPanelStateStore,
 } from "./control-panel-state-store.js";
 import { defaultLanguage } from "../i18n/language.js";
+import { textForGuild } from "../i18n/guild-text.js";
 import { texts, type Texts } from "../i18n/texts.js";
 import { renderProgressBar } from "./progress-bar-renderer.js";
 import type { ApplicationEmojiCatalog } from "../../infrastructure/discord/application-emoji-catalog.js";
@@ -885,9 +886,10 @@ export class ControlChannelService {
   }
 
   private async handleVoteButton(interaction: ButtonInteraction): Promise<boolean> {
+    const text = textForGuild(this.guildConfigurationProvider, interaction.guildId);
     const action = parseAutoQueueVoteCustomId(interaction.customId);
     if (!action || !interaction.inCachedGuild()) {
-      await interaction.reply({ content: "This vote has ended.", flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: text.music.vote.ended, flags: MessageFlags.Ephemeral });
       return true;
     }
     const profile = this.guildConfigurationProvider.find(interaction.guildId);
@@ -896,7 +898,7 @@ export class ControlChannelService {
       profile.channels.controlPanel !== interaction.channelId ||
       this.voteMessageByGuild.get(interaction.guildId)?.id !== interaction.message.id
     ) {
-      await interaction.reply({ content: "This vote has ended.", flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: text.music.vote.ended, flags: MessageFlags.Ephemeral });
       return true;
     }
     // Voting is open to every listener rather than just music controllers,
@@ -905,7 +907,7 @@ export class ControlChannelService {
       this.hasRestrictedRole(interaction.member, profile) &&
       !this.applicationConfiguration.ownerUserIds.has(interaction.user.id)
     ) {
-      await interaction.reply({ content: "You can't vote on the music queue.", flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: text.music.vote.restricted, flags: MessageFlags.Ephemeral });
       return true;
     }
 
@@ -936,7 +938,7 @@ export class ControlChannelService {
     if (executionError) {
       await this.replyEphemeral(
         interaction,
-        executionError instanceof MusicError ? executionError.message : "The vote failed.",
+        executionError instanceof MusicError ? musicErrorText(executionError, text) : text.music.vote.failed,
       );
     }
     return true;

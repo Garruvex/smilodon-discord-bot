@@ -2,6 +2,7 @@ import { EmbedBuilder, type Client, type TextChannel } from "discord.js";
 import type { Logger } from "pino";
 
 import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
+import { texts } from "../i18n/texts.js";
 import type { BirthdayStore } from "./birthday-store.js";
 
 const checkIntervalMs = 60 * 60 * 1_000;
@@ -70,13 +71,14 @@ export class BirthdayAnnouncer {
           continue;
         }
 
+        const text = texts[profile.language].birthday.announce;
         const embed = new EmbedBuilder()
           .setColor(profile.embedColor as `#${string}`)
-          .setTitle("🎂 Happy Birthday!")
+          .setTitle(text.title)
           .setDescription(
             userIds.length === 1
-              ? `Everyone wish <@${userIds[0]}> a happy birthday today!`
-              : `Everyone wish these members a happy birthday today!\n${userIds.map((userId) => `<@${userId}>`).join("\n")}`,
+              ? text.one({ user: `<@${userIds[0]}>` })
+              : text.many({ users: userIds.map((userId) => `<@${userId}>`).join("\n") }),
           );
         await (channel as TextChannel).send({ embeds: [embed] });
         await this.birthdayStore.markAnnounced(profile.guildId, date);

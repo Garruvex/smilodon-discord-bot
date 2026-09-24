@@ -54,7 +54,7 @@ export class MusicAutoQueueVoteUnavailableError extends MusicError {
 }
 
 export class MusicAutoQueueRerollEmptyError extends MusicError {
-  public constructor(artist: string | null = null) {
+  public constructor(public readonly artist: string | null = null) {
     super(
       artist
         ? `Couldn't find enough other songs by ${artist}, so the current options stay.`
@@ -70,7 +70,7 @@ export class MusicAutoQueueVoteClosedError extends MusicError {
 }
 
 export class MusicAutoQueueRerollLimitError extends MusicError {
-  public constructor(limit: number) {
+  public constructor(public readonly limit: number) {
     super(`This vote has already been rerolled ${limit} times.`);
   }
 }
@@ -89,5 +89,11 @@ export function musicErrorText(error: MusicError, text: Texts): string {
     const seconds = error.remainingSeconds;
     return seconds === 1 ? errors.rateLimitOne({ seconds }) : errors.rateLimitMany({ seconds });
   }
+  if (error instanceof MusicAutoQueueVoteUnavailableError) return errors.voteUnavailable;
+  if (error instanceof MusicAutoQueueRerollEmptyError) {
+    return error.artist ? errors.rerollEmptyArtist({ artist: error.artist }) : errors.rerollEmpty;
+  }
+  if (error instanceof MusicAutoQueueVoteClosedError) return errors.voteClosed;
+  if (error instanceof MusicAutoQueueRerollLimitError) return errors.rerollLimit({ limit: error.limit });
   return error.message;
 }

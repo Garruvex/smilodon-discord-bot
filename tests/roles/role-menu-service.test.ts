@@ -5,6 +5,9 @@ import { describe, expect, it, vi } from "vitest";
 import { RoleMenuService } from "../../src/application/roles/role-menu-service.js";
 import type { RoleMenuStore } from "../../src/application/roles/role-menu-store.js";
 
+// No server profile, so every message is English.
+const noConfigurations = { find: (): null => null };
+
 function fakeLogger(): Logger {
   const noop = (): void => undefined;
   const logger = { info: noop, warn: noop, error: noop, child: (): Logger => fakeLogger() };
@@ -63,7 +66,7 @@ function fakeRole(id: string, position: number, overrides: Partial<{ managed: bo
 
 describe("RoleMenuService.createMenu", () => {
   it("rejects a role positioned above the bot's own highest role", async () => {
-    const service = new RoleMenuService(fakeStore().store, fakeLogger());
+    const service = new RoleMenuService(fakeStore().store, fakeLogger(), noConfigurations);
     const channel = fakeChannel(5);
     const role = fakeRole("role1", 10);
 
@@ -77,7 +80,7 @@ describe("RoleMenuService.createMenu", () => {
   });
 
   it("rejects a managed (integration-owned) role", async () => {
-    const service = new RoleMenuService(fakeStore().store, fakeLogger());
+    const service = new RoleMenuService(fakeStore().store, fakeLogger(), noConfigurations);
     const channel = fakeChannel(10);
     const role = fakeRole("role1", 1, { managed: true });
 
@@ -88,7 +91,7 @@ describe("RoleMenuService.createMenu", () => {
   });
 
   it("rejects the @everyone role", async () => {
-    const service = new RoleMenuService(fakeStore().store, fakeLogger());
+    const service = new RoleMenuService(fakeStore().store, fakeLogger(), noConfigurations);
     const channel = fakeChannel(10);
     const role = fakeRole("guild1", 0, { guildId: "guild1" });
 
@@ -100,7 +103,7 @@ describe("RoleMenuService.createMenu", () => {
 
   it("posts the menu and persists it when every role is manageable", async () => {
     const { store, create } = fakeStore();
-    const service = new RoleMenuService(store, fakeLogger());
+    const service = new RoleMenuService(store, fakeLogger(), noConfigurations);
     const channel = fakeChannel(10);
     const role = fakeRole("role1", 1);
 

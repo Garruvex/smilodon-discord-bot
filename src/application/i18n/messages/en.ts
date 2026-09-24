@@ -118,6 +118,75 @@ export const en = {
   "music.card.tracksAdded": "Tracks added",
   "music.card.positionInQueue": "Position in queue",
 
+  // The "Up next" vote autoqueue posts in the music control channel.
+  "music.vote.title": "🗳️ Up next",
+  "music.vote.titleLocked": "🔒 Up next",
+  "music.vote.paused": "Paused",
+  "music.vote.openUntilSkip": "Open until skip",
+  "music.vote.closes": "Closes {time}",
+  "music.vote.rerollsLeft": "🎲 {count} left",
+  "music.vote.rerolledBy": "🎲 by {user} · {count} left",
+  "music.vote.similar": "Similar",
+  "music.vote.sameArtist": "Same artist",
+  "music.vote.ended": "This vote has ended.",
+  "music.vote.restricted": "You can't vote on the music queue.",
+  "music.vote.failed": "The vote failed.",
+  "music.error.voteUnavailable": "There's no autoqueue vote running right now.",
+  "music.error.rerollEmpty": "Couldn't find enough other options to reroll into, so the current ones stay.",
+  "music.error.rerollEmptyArtist": "Couldn't find enough other songs by {artist}, so the current options stay.",
+  "music.error.voteClosed": "Voting has closed for this song; the next track is locked in.",
+  "music.error.rerollLimit": "This vote has already been rerolled {limit} times.",
+
+  // /vote polls.
+  "poll.yes": "Yes",
+  "poll.no": "No",
+  "poll.title": "🗳️ {title}",
+  "poll.titleEnded": "🗳️ {title} — ended",
+  "poll.footer": "Poll by {name}",
+  "poll.endButton": "End poll",
+  "poll.tallyOne": "{count} vote · {share}%",
+  "poll.tallyMany": "{count} votes · {share}%",
+  "poll.openUntilEnded": "Open until the creator ends it.",
+  "poll.closes": "Closes {time}.",
+  "poll.soFarOne": "{count} vote so far.",
+  "poll.soFarMany": "{count} votes so far.",
+  "poll.retractHint": "-# Click your pick again to take your vote back.",
+  "poll.noVotes": "**Poll ended with no votes.**",
+  "poll.winnerOne": "🏆 **Winner: {choice}** ({top} of {total} vote)",
+  "poll.winnerMany": "🏆 **Winner: {choice}** ({top} of {total} votes)",
+  "poll.tieOne": "🤝 **Tie between {choices}** ({top} vote each, {total} total)",
+  "poll.tieMany": "🤝 **Tie between {choices}** ({top} votes each, {total} total)",
+  "poll.inactive": "This poll is no longer active.",
+  "poll.endDenied": "Only the poll creator or a moderator can end this poll.",
+  "poll.needTwoChoices": "Give at least two choices, or none for a Yes/No poll.",
+  "poll.duplicateChoices": "Each choice needs to be different.",
+
+  // Birthday announcements.
+  "birthday.announce.title": "🎂 Happy Birthday!",
+  "birthday.announce.one": "Everyone wish {user} a happy birthday today!",
+  "birthday.announce.many": "Everyone wish these members a happy birthday today!\n{users}",
+
+  // Join card and leave message.
+  "member.welcome.title": "Welcome, {name}!",
+  "member.welcome.subtitle": "Glad you found {server}",
+  "member.welcome.number": "Member #{number}",
+  "member.leave": "👋 **{tag}** has left the server.",
+
+  // Delivered reminders.
+  "reminder.title": "⏰ Reminder",
+
+  // Role picker menus.
+  "roleMenu.placeholder": "Choose your roles",
+  "roleMenu.everyoneRole": "{role} is the @everyone role and can't be assigned.",
+  "roleMenu.managedRole": "{role} is managed by an integration and can't be assigned manually.",
+  "roleMenu.cannotManage": "I can't manage {role} — move my role above it in Server Settings → Roles.",
+  "roleMenu.noBotMember": "Couldn't resolve my own member in this server.",
+  "roleMenu.notConfigured": "This role menu is no longer configured.",
+  "roleMenu.guildOnly": "This only works in a server.",
+  "roleMenu.added": "Added: {roles}",
+  "roleMenu.removed": "Removed: {roles}",
+  "roleMenu.noChanges": "No changes.",
+
   // Failures shown by the command dispatcher, for any command.
   "command.unavailable": "This command is not available. It may have been removed or replaced.",
   "command.unavailableTitle": "Command unavailable",

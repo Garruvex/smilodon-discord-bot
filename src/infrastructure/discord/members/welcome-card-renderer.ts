@@ -2,6 +2,7 @@ import { createCanvas, loadImage } from "@napi-rs/canvas";
 import type { GuildMember } from "discord.js";
 
 import { extractAvatarPalette } from "../canvas/avatar-palette.js";
+import { texts, type Texts } from "../../../application/i18n/texts.js";
 import { fontFamily } from "../canvas/card-font.js";
 
 const width = 1000;
@@ -10,7 +11,8 @@ const avatarRadius = 100;
 const avatarCenterX = width / 2;
 const avatarCenterY = 185;
 
-export async function renderWelcomeCard(member: GuildMember): Promise<Buffer> {
+export async function renderWelcomeCard(member: GuildMember, text: Texts = texts.en): Promise<Buffer> {
+  const welcome = text.member.welcome;
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext("2d");
 
@@ -78,13 +80,13 @@ export async function renderWelcomeCard(member: GuildMember): Promise<Buffer> {
   ctx.textAlign = "center";
   ctx.fillStyle = "#FFFFFF";
   ctx.font = `bold 44px "${fontFamily}"`;
-  ctx.fillText(`Welcome, ${displayName}!`, avatarCenterX, 345);
+  ctx.fillText(welcome.title({ name: displayName }), avatarCenterX, 345);
 
   ctx.fillStyle = "#A9A6B8";
   ctx.font = `23px "${fontFamily}"`;
-  ctx.fillText(`Glad you found ${member.guild.name}`, avatarCenterX, 382);
+  ctx.fillText(welcome.subtitle({ server: member.guild.name }), avatarCenterX, 382);
 
-  const pillText = `Member #${member.guild.memberCount}`;
+  const pillText = welcome.number({ number: member.guild.memberCount });
   ctx.font = `600 19px "${fontFamily}"`;
   const pillWidth = ctx.measureText(pillText).width + 44;
   const pillX = avatarCenterX - pillWidth / 2;
