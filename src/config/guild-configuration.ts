@@ -141,6 +141,8 @@ export interface GuildMusicConfiguration {
   // autoqueue with no vote message.
   autoQueueVoteEnabled: boolean;
   autoQueueVoteBarStyle: AutoQueueVoteBarStyle;
+  // How many songs the vote offers (2-6).
+  autoQueueVoteOptionCount: number;
 }
 
 // "squares" is colored emoji squares; "thin" matches the panel progress bar.

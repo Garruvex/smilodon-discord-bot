@@ -75,7 +75,7 @@ function profile(overrides: { ambientReplies?: boolean } = {}): GuildConfigurati
       djModeEnabled: false,
     openQueueRequestsEnabled: false,
     autoQueueVoteEnabled: true,
-    autoQueueVoteBarStyle: "squares",
+    autoQueueVoteBarStyle: "squares", autoQueueVoteOptionCount: 3,
     },
     chat: {
       personalityFile: null, personalityAsset: null, examplesFile: null, examplesAsset: null, cooldownSeconds: 30,

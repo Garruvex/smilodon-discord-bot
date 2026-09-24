@@ -80,13 +80,17 @@ function createPlayer(current: TestTrack, related: TestTrack[]): Record<string, 
   };
 }
 
-function createGateway(player: ReturnType<typeof createPlayer>, voteEnabled = true): LavalinkPlayerGateway {
+function createGateway(
+  player: ReturnType<typeof createPlayer>,
+  voteEnabled = true,
+  optionCount = 3,
+): LavalinkPlayerGateway {
   const gateway = new LavalinkPlayerGateway(
     { guilds: { cache: new Map() } } as unknown as Client,
     { host: "localhost", port: 2333, password: "pw", secure: false },
     { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
     { publish: vi.fn(() => Promise.resolve()) } as unknown as MusicEventBus,
-    { find: vi.fn(() => ({ music: { autoQueueVoteEnabled: voteEnabled } })) } as unknown as GuildConfigurationProvider,
+    { find: vi.fn(() => ({ music: { autoQueueVoteEnabled: voteEnabled, autoQueueVoteOptionCount: optionCount } })) } as unknown as GuildConfigurationProvider,
   );
   (gateway as unknown as { manager: { getPlayer: () => unknown } }).manager.getPlayer = vi.fn(() => player);
   return gateway;
@@ -130,6 +134,15 @@ describe("LavalinkPlayerGateway autoqueue vote", () => {
 
     expect(vote.options.map((option) => option.title)).toEqual(["Song a", "Song b", "Song c"]);
     expect(vote.leadingIndex).toBe(0);
+  });
+
+  it("offers as many options as the server's setting asks for", async () => {
+    const related = ["a", "b", "c", "d", "e", "f", "g"].map(track);
+    const five = await openVote(createGateway(createPlayer(track("source"), related), true, 5));
+    const two = await openVote(createGateway(createPlayer(track("source"), related), true, 2));
+
+    expect(five.options).toHaveLength(5);
+    expect(two.options.map((option) => option.title)).toEqual(["Song a", "Song b"]);
   });
 
   it("queues option 1 on skip when nobody voted", async () => {
@@ -262,6 +275,23 @@ describe("autoqueue vote message", () => {
     expect(description).toContain("▶ **2️⃣ Two** — B 🎤 · up next\n🟩🟩🟩🟩🟩⬛⬛⬛  **2** votes");
     expect(description).toContain("1️⃣ One — A\n⬛⬛⬛⬛⬛⬛⬛⬛  0 votes");
     expect(description).toContain("3️⃣ Three — C\n🟦🟦🟦⬛⬛⬛⬛⬛  1 vote");
+  });
+
+  it("keeps up to 4 options and reroll on one row, wrapping 5 or 6 onto a second", () => {
+    const voteWith = (count: number): Parameters<typeof createAutoQueueVotePayload>[1] => ({
+      status: "ready",
+      leadingIndex: 0,
+      options: Array.from({ length: count }, (_, index) => ({
+        title: `Song ${index}`, author: "Artist", uri: "", votes: 0, lyricsAvailable: null,
+      })),
+    });
+    const rowSizes = (count: number): number[] => createAutoQueueVotePayload(profile, voteWith(count), null)
+      .components.map((row) => row.toJSON().components.length);
+
+    expect(rowSizes(2)).toEqual([3]);
+    expect(rowSizes(4)).toEqual([5]);
+    expect(rowSizes(5)).toEqual([5, 1]);
+    expect(rowSizes(6)).toEqual([5, 2]);
   });
 
   it("draws vote bars as a share of all votes, green for the leader", () => {

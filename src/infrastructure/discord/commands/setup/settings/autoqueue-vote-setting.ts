@@ -1,3 +1,4 @@
+import { MUSIC_LIMITS } from "../../../../../config/guild-configuration-limits.js";
 import type { MutationSettingDefinition } from "./setting-definition.js";
 
 export const autoQueueVoteSetting: MutationSettingDefinition = {
@@ -13,16 +14,23 @@ export const autoQueueVoteSetting: MutationSettingDefinition = {
         { name: "Thin bar (matches the progress bar)", value: "thin" },
       ],
     },
+    {
+      type: "integer", name: "options", description: "How many songs to pick from.",
+      minValue: MUSIC_LIMITS.autoQueueVoteOptionCount.min, maxValue: MUSIC_LIMITS.autoQueueVoteOptionCount.max,
+    },
   ],
   handle: (context, _deps, _previousProfile, input) => {
     const enabled = context.interaction.options.getBoolean("enabled");
     const barStyle = context.interaction.options.getString("bar-style");
+    const optionCount = context.interaction.options.getInteger("options");
     if (enabled !== null) input.autoQueueVoteEnabled = enabled;
     if (barStyle === "squares" || barStyle === "thin") input.autoQueueVoteBarStyle = barStyle;
+    if (optionCount !== null) input.autoQueueVoteOptionCount = optionCount;
     return Promise.resolve({ ok: true });
   },
   fieldChanges: [
     { label: "Autoqueue vote enabled", read: (p) => p.music.autoQueueVoteEnabled },
     { label: "Autoqueue vote bar style", read: (p) => p.music.autoQueueVoteBarStyle },
+    { label: "Autoqueue vote options", read: (p) => p.music.autoQueueVoteOptionCount },
   ],
 };

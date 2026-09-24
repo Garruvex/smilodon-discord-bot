@@ -15,6 +15,7 @@ export const MUSIC_LIMITS = {
   volumeButtonStep: { min: 1, max: 100, default: 10 },
   emptyQueueDelayMs: { min: 0, max: 86_400_000, default: 120_000 },
   emptyChannelGracePeriodMs: { min: 0, max: 86_400_000, default: 30_000 },
+  autoQueueVoteOptionCount: { min: 2, max: 6, default: 3 },
 } as const;
 
 export const PANEL_LIMITS = {

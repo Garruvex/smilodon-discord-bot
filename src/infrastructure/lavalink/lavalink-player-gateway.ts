@@ -35,9 +35,9 @@ import type { GuildConfigurationProvider } from "../../config/guild-configuratio
 import { LavalinkAutoQueue, type AutoQueueOutcome } from "./lavalink-auto-queue.js";
 import { fetchSyncedLyrics, normalizeQuery, type SyncedLyricLine } from "../lyrics/lrclib-client.js";
 import { buildLyricsCacheKey, type LyricsCacheStore } from "../../application/lyrics/lyrics-cache-store.js";
+import { MUSIC_LIMITS } from "../../config/guild-configuration-limits.js";
 
 const playHistoryLimit = 20;
-export const autoQueueVoteOptionCount = 3;
 
 // One "what plays after this track" vote. Keyed to the track it follows, so
 // a track change naturally invalidates it instead of carrying stale options
@@ -535,7 +535,12 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
   }
 
   // Missing configuration (never the case for a live guild) falls back to
-  // the setting's default, on.
+  // the settings' defaults.
+  private autoQueueVoteOptionCount(guildId: string): number {
+    return this.guildConfigurationProvider.find(guildId)?.music.autoQueueVoteOptionCount
+      ?? MUSIC_LIMITS.autoQueueVoteOptionCount.default;
+  }
+
   private isAutoQueueVoteEnabled(guildId: string): boolean {
     return this.guildConfigurationProvider.find(guildId)?.music.autoQueueVoteEnabled ?? true;
   }
@@ -567,7 +572,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
       lyricsAvailableById: new Map(),
     };
     this.autoQueueVotes.set(guildId, vote);
-    void this.autoQueue.findCandidates(player, current, autoQueueVoteOptionCount)
+    void this.autoQueue.findCandidates(player, current, this.autoQueueVoteOptionCount(guildId))
       .then((outcome) => {
         // Superseded (track changed, vote closed, or autoqueue turned off)
         // while the lookup was in flight.
@@ -652,7 +657,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     const outcome = await this.autoQueue.findCandidates(
       player,
       current,
-      autoQueueVoteOptionCount,
+      this.autoQueueVoteOptionCount(guildId),
       vote.candidates.map((track) => this.autoQueue.identifier(track)),
     );
     if (this.autoQueueVotes.get(guildId) !== vote) throw new MusicAutoQueueVoteUnavailableError();

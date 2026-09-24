@@ -73,7 +73,7 @@ function guildConfiguration(overrides: Partial<GuildConfiguration> = {}): GuildC
       djModeEnabled: false,
     openQueueRequestsEnabled: false,
     autoQueueVoteEnabled: true,
-    autoQueueVoteBarStyle: "squares",
+    autoQueueVoteBarStyle: "squares", autoQueueVoteOptionCount: 3,
     },
     chat: {
       personalityFile: null, personalityAsset: null, examplesFile: null, examplesAsset: null,

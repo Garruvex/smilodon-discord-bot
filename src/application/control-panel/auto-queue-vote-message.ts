@@ -14,7 +14,9 @@ import { renderVoteBar } from "../polls/vote-bar.js";
 // are validated against.
 export const autoQueueVoteIdPrefix = "music-vote:v1:";
 
-const optionEmojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"];
+// Enough for the largest vote the setting allows (see MUSIC_LIMITS).
+const optionEmojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣"];
+const maxButtonsPerRow = 5;
 
 export type AutoQueueVoteAction =
   | { kind: "option"; index: number }
@@ -74,7 +76,7 @@ export function createAutoQueueVotePayload(
       "-# 🎤 has synced lyrics. Only listeners in the voice channel can vote. Click your pick again to take your vote back.",
     );
 
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+  const buttons = [
     ...vote.options.map((option, index) => new ButtonBuilder()
       .setCustomId(`${autoQueueVoteIdPrefix}option-${index}`)
       .setEmoji(optionEmojis[index]!)
@@ -85,7 +87,13 @@ export function createAutoQueueVotePayload(
       .setEmoji("🎲")
       .setLabel("Reroll")
       .setStyle(ButtonStyle.Secondary),
-  );
+  ];
+  // Discord allows at most 5 buttons per row, so 5 or 6 options wrap onto a
+  // second row, with reroll always last.
+  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+  for (let start = 0; start < buttons.length; start += maxButtonsPerRow) {
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(buttons.slice(start, start + maxButtonsPerRow)));
+  }
 
-  return { content: "", embeds: [embed], components: [row] };
+  return { content: "", embeds: [embed], components: rows };
 }

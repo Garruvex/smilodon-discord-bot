@@ -77,6 +77,7 @@ export interface UpdateGuildConfigurationInput {
   openQueueRequestsEnabled?: boolean;
   autoQueueVoteEnabled?: boolean;
   autoQueueVoteBarStyle?: "squares" | "thin";
+  autoQueueVoteOptionCount?: number;
 }
 
 export interface CreateGuildConfigurationInput {
@@ -171,6 +172,7 @@ export function toGuildConfiguration(parsed: ParsedGuildConfigurationFile, sourc
       openQueueRequestsEnabled: parsed.music.openQueueRequestsEnabled,
       autoQueueVoteEnabled: parsed.music.autoQueueVote.enabled,
       autoQueueVoteBarStyle: parsed.music.autoQueueVote.barStyle,
+      autoQueueVoteOptionCount: parsed.music.autoQueueVote.optionCount,
     },
     chat: parsed.chat,
     sourceFile,
@@ -224,6 +226,7 @@ export function toGuildConfigurationDocument(configuration: GuildConfiguration):
       autoQueueVote: {
         enabled: configuration.music.autoQueueVoteEnabled,
         barStyle: configuration.music.autoQueueVoteBarStyle,
+        optionCount: configuration.music.autoQueueVoteOptionCount,
       },
     },
     chat: configuration.chat,
@@ -314,5 +317,6 @@ export function applyGuildConfigurationUpdate(
   if (input.openQueueRequestsEnabled !== undefined) next.music.openQueueRequestsEnabled = input.openQueueRequestsEnabled;
   if (input.autoQueueVoteEnabled !== undefined) next.music.autoQueueVote.enabled = input.autoQueueVoteEnabled;
   if (input.autoQueueVoteBarStyle !== undefined) next.music.autoQueueVote.barStyle = input.autoQueueVoteBarStyle;
+  if (input.autoQueueVoteOptionCount !== undefined) next.music.autoQueueVote.optionCount = input.autoQueueVoteOptionCount;
   return guildConfigurationFileSchema.parse(next);
 }

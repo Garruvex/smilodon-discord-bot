@@ -76,7 +76,7 @@ function guildConfiguration(chatbotEnabled: boolean): GuildConfiguration {
       djModeEnabled: false,
     openQueueRequestsEnabled: false,
     autoQueueVoteEnabled: true,
-    autoQueueVoteBarStyle: "squares",
+    autoQueueVoteBarStyle: "squares", autoQueueVoteOptionCount: 3,
     },
     chat: {
       personalityFile: null,
