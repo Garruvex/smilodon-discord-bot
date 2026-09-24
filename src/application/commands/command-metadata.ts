@@ -4,14 +4,22 @@
 // application-layer code (CommandRegistry, HelpCommand) reads this shape
 // directly instead of a builder instance.
 
+// Discord locale → text. A command normally leaves these out and gets its
+// translations from the description catalogs by path (see
+// i18n/command-descriptions); a command that owns its text — the settings
+// commands, built from the settings registry — embeds them instead.
+export type Localizations = Readonly<Record<string, string>>;
+
 export interface CommandOptionChoice {
   name: string;
   value: string;
+  nameLocalizations?: Localizations;
 }
 
 interface BaseOptionMetadata {
   name: string;
   description: string;
+  descriptionLocalizations?: Localizations;
   required?: boolean;
 }
 
@@ -67,12 +75,14 @@ export type CommandOptionMetadata =
 export interface SubcommandMetadata {
   name: string;
   description: string;
+  descriptionLocalizations?: Localizations;
   options?: readonly CommandOptionMetadata[];
 }
 
 export interface SubcommandGroupMetadata {
   name: string;
   description: string;
+  descriptionLocalizations?: Localizations;
   subcommands: readonly SubcommandMetadata[];
 }
 
@@ -83,6 +93,7 @@ export interface ChatInputCommandMetadata {
   type?: "chatInput";
   name: string;
   description: string;
+  descriptionLocalizations?: Localizations;
   dmPermission?: boolean;
   nsfw?: boolean;
   options?: readonly CommandOptionMetadata[];

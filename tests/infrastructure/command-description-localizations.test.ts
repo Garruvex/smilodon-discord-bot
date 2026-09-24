@@ -113,6 +113,30 @@ function totalSize(node: unknown): number {
   return total;
 }
 
+interface DescribedNode {
+  name: string;
+  type?: number;
+  description_localizations?: Record<string, string> | null;
+  options?: readonly DescribedNode[];
+}
+
+// Discord's option types for a subcommand and a subcommand group.
+const subcommandTypes = new Set([1, 2]);
+
+// Paths ("settings-music/dj-mode:enabled") of every node in a built command
+// without a description in `locale`.
+function untranslatedNodes(json: DescribedNode, locale: string): string[] {
+  const missing: string[] = [];
+  const visit = (node: DescribedNode, path: string): void => {
+    if (!node.description_localizations?.[locale]) missing.push(path);
+    for (const child of node.options ?? []) {
+      visit(child, subcommandTypes.has(child.type ?? 0) ? `${path}/${child.name}` : `${path}:${child.name}`);
+    }
+  };
+  visit(json, json.name);
+  return missing;
+}
+
 describe("slash-command description localizations", () => {
   const locales = Object.keys(commandDescriptionCatalogs);
   const definitions = allDefinitions();
@@ -134,8 +158,12 @@ describe("slash-command description localizations", () => {
     describe(locale, () => {
       const catalog = commandDescriptionCatalogs[locale]!;
 
+      // Checked on the built JSON, so it covers both sources of translations:
+      // the catalogs (looked up by path) and text a command embeds itself
+      // (the settings commands, built from the settings registry).
       it("translates every command, subcommand and option description", () => {
-        const untranslated = [...realKeys].filter((key) => catalog[key] === undefined);
+        const untranslated = definitions.flatMap((definition) =>
+          untranslatedNodes(buildSlashCommandBuilder(definition).toJSON() as DescribedNode, locale));
         expect(untranslated).toEqual([]);
       });
 

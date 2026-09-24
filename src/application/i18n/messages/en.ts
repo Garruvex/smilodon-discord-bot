@@ -198,6 +198,26 @@ export const en = {
   "command.errorTitle": "Command error",
   "command.musicErrorTitle": "Music command unavailable",
 
+  // Settings, shared by every surface (slash commands, admin panel, guided
+  // setup). Labels and descriptions of individual settings live in the
+  // settings catalogs (../settings), keyed by registry path.
+  "settings.updated": "Settings updated.",
+  "settings.noChanges": "No changes — those settings already match.",
+  "settings.change.value": "{label}: {from} → {to}",
+  "settings.change.list": "{label}: {changes}",
+  "settings.change.added": "added {items}",
+  "settings.change.removed": "removed {items}",
+  "settings.value.on": "On",
+  "settings.value.off": "Off",
+  "settings.value.notSet": "Not set",
+  "settings.value.none": "None",
+  "settings.value.uploaded": "Uploaded",
+  "settings.error.notAChoice": "{value} isn't one of the choices for {label}.",
+  "settings.error.outOfRange": "{label} must be between {min} and {max}.",
+  "settings.error.tooLong": "{label} can be at most {max} characters.",
+  "settings.slash.listAdd": "Add to: {label}",
+  "settings.slash.listRemove": "Remove from: {label}",
+
   // The admin settings panel (one message per settings section).
   "admin.panel.header.title": "Server settings",
   "admin.panel.header.intro": "Every setting for this server and its current value. Changes made here or with the /settings-… commands show up right away.",
