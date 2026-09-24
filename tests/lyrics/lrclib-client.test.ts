@@ -3,8 +3,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchSyncedLyrics, lyricsCacheIdentity } from "../../src/infrastructure/lyrics/lrclib-client.js";
 import { buildLyricsCacheKey } from "../../src/application/lyrics/lyrics-cache-store.js";
 
+// LRCLIB and the NetEase fallback get separate mocks, so LRCLIB-focused
+// tests keep asserting on LRCLIB traffic alone. NetEase finds nothing
+// unless a test says otherwise.
 const fetchMock = vi.fn();
-vi.stubGlobal("fetch", (...args: unknown[]): Promise<unknown> => Promise.resolve(fetchMock(...args) as unknown));
+const netEaseFetchMock = vi.fn();
+vi.stubGlobal("fetch", (...args: unknown[]): Promise<unknown> => {
+  const mock = new URL(String(args[0])).hostname === "music.163.com" ? netEaseFetchMock : fetchMock;
+  return Promise.resolve(mock(...args) as unknown);
+});
 
 function jsonResponse(status: number, body: unknown): unknown {
   return {
@@ -39,9 +46,60 @@ function requestedArtist(url: unknown): string | null {
   return new URL(String(url)).searchParams.get("artist_name");
 }
 
+function netEaseSong(overrides: Partial<{ id: number; name: string; duration: number; artists: string[] }> = {}): unknown {
+  const { artists = ["Creepy Nuts"], ...rest } = overrides;
+  return { id: 1, name: "Bling-Bang-Bang-Born", duration: 168_205, ...rest, artists: artists.map((name) => ({ name })) };
+}
+
 beforeEach(() => {
   fetchMock.mockReset();
+  netEaseFetchMock.mockReset();
+  netEaseFetchMock.mockReturnValue(jsonResponse(200, { code: 200, result: { songs: [] } }));
   nextCandidateId = 1;
+});
+
+describe("NetEase fallback", () => {
+  beforeEach(() => {
+    fetchMock.mockReturnValue(jsonResponse(200, []));
+  });
+
+  it("uses NetEase lyrics when LRCLIB has no match, skipping covers", async () => {
+    netEaseFetchMock.mockImplementation((url: unknown) => {
+      const parsed = new URL(String(url));
+      if (parsed.pathname === "/api/search/get") {
+        return jsonResponse(200, { code: 200, result: { songs: [
+          netEaseSong({ id: 7, artists: ["Some Cover Singer"] }),
+          netEaseSong({ id: 8 }),
+        ] } });
+      }
+      return jsonResponse(200, { code: 200, lrc: { lyric: `[00:01.00]from ${parsed.searchParams.get("id")}` } });
+    });
+
+    expect(await fetchSyncedLyrics("Bling-Bang-Bang-Born", "Creepy Nuts", 168_000))
+      .toEqual([{ timestampMs: 1_000, line: "from 8" }]);
+  });
+
+  it("matches one credited artist out of several", async () => {
+    netEaseFetchMock.mockImplementation((url: unknown) => new URL(String(url)).pathname === "/api/search/get"
+      ? jsonResponse(200, { code: 200, result: { songs: [netEaseSong({ artists: ["Creepy Nuts", "Guest"] })] } })
+      : jsonResponse(200, { code: 200, lrc: { lyric: "[00:01.00]Found" } }));
+    expect(await fetchSyncedLyrics("Bling-Bang-Bang-Born", "Creepy Nuts")).not.toBeNull();
+  });
+
+  it("treats a NetEase block code as a failure rather than a cacheable miss", async () => {
+    netEaseFetchMock.mockReturnValue(jsonResponse(200, { code: -460, msg: "Cheating" }));
+    await expect(fetchSyncedLyrics("Bling-Bang-Bang-Born", "Creepy Nuts")).rejects.toThrow("-460");
+  });
+
+  it("returns null when neither provider has a confident match", async () => {
+    expect(await fetchSyncedLyrics("Bling-Bang-Bang-Born", "Creepy Nuts")).toBeNull();
+  });
+
+  it("never asks NetEase when LRCLIB already found lyrics", async () => {
+    fetchMock.mockReturnValue(jsonResponse(200, [candidate()]));
+    expect(await fetchSyncedLyrics("Good Time", "Owl City, Carly Rae Jepsen")).not.toBeNull();
+    expect(netEaseFetchMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("fetchSyncedLyrics", () => {

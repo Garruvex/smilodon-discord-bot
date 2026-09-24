@@ -40,7 +40,7 @@ function parseSyncedLyrics(syncedLyrics: string): SyncedLyricLine[] {
 
 // Ported from a sibling project's battle-tested lyrics matcher (a Go
 // service that resolves LRCLIB/NetEase lyrics for a wallpaper companion
-// app) — ours is the LRCLIB-only subset of that pipeline. See that
+// app): LRCLIB first, NetEase Cloud Music as the fallback. See that
 // project's internal/lyrics/lyrics.go for the original.
 
 // Strips YouTube/video-style suffixes — "(Official Video)", "[Official
@@ -239,16 +239,17 @@ function artistMatchScore(want: string, got: string): MatchResult {
 // stripped so title comparison isn't penalized for a prefix that isn't
 // really part of the title. The unstripped title stays a candidate too —
 // a title can genuinely start with the artist's name ("Talk Talk" by Talk).
-function candidateTitles(candidate: LrcLibCandidate): string[] {
+function candidateTitles(candidate: MatchCandidate): string[] {
   const title = normalizedMetadata(candidate.trackName);
-  const artist = normalizedMetadata(candidate.artistName);
-  if (artist && title.startsWith(`${artist} `)) {
-    return [title, title.slice(artist.length).trim()];
+  const titles = [title];
+  for (const artistName of candidate.artistNames) {
+    const artist = normalizedMetadata(artistName);
+    if (artist && title.startsWith(`${artist} `)) titles.push(title.slice(artist.length).trim());
   }
-  return [title];
+  return titles;
 }
 
-function titleMatchScore(want: string, candidate: LrcLibCandidate): MatchResult {
+function titleMatchScore(want: string, candidate: MatchCandidate): MatchResult {
   let best: MatchResult = { score: 0, match: false };
   for (const title of candidateTitles(candidate)) {
     const result = metadataMatchScore(want, title);
@@ -261,62 +262,87 @@ const minimumTitleScore = 0.85;
 const minimumArtistScore = 0.8;
 const minimumTotalScore = 85;
 
-// Scores every candidate on title/artist similarity, agreement on
-// "live"/"remix"/"acoustic"-style version markers (so a live recording's
-// lyrics don't get matched to the studio track or vice versa), duration
-// proximity, and whether it actually has synced lyrics at all — then picks
-// the best-scoring one above a confidence floor. This is what replaces
-// LavaSrc's own lrcLib integration blindly trusting the first search
-// result, and what correctly skips a top-ranked instrumental/alternate
-// release in favor of a lower-ranked one that actually has synced lyrics.
-interface ScoredCandidate {
-  readonly lines: SyncedLyricLine[];
-  readonly score: number;
+// The provider-independent shape a search result is scored as. NetEase
+// credits each artist separately, so a song can carry several names.
+interface MatchCandidate {
+  readonly trackName: string;
+  readonly artistNames: readonly string[];
+  readonly duration?: number | null | undefined;
 }
 
-function selectBestCandidate(
-  title: string,
-  artist: string,
-  durationMs: number | undefined,
-  candidates: readonly LrcLibCandidate[],
-): ScoredCandidate | null {
-  let bestScore = -1;
-  let bestLines: SyncedLyricLine[] | null = null;
-  const wantVersion = versionMarkerPattern.exec(normalizedMetadata(title))?.[0]?.toLowerCase() ?? null;
-  const durationSeconds = durationMs !== undefined ? durationMs / 1000 : undefined;
+interface ScoringTarget {
+  readonly title: string;
+  readonly artist: string;
+}
 
-  for (const candidate of candidates) {
-    // Only usable synced results can win. A plain-only row can otherwise
-    // outscore a synced row on duration, and malformed LRC can win the
-    // ranking only to parse into an empty result afterward.
-    const lines = candidate.syncedLyrics ? parseSyncedLyrics(candidate.syncedLyrics) : [];
-    if (lines.length === 0) continue;
-    const titleResult = titleMatchScore(title, candidate);
-    if (!titleResult.match || titleResult.score < minimumTitleScore) continue;
+// Scores a candidate on title/artist similarity, agreement on
+// "live"/"remix"/"acoustic"-style version markers (so a live recording's
+// lyrics don't get matched to the studio track or vice versa) and duration
+// proximity — or null when it falls below any confidence floor. This is
+// what replaces LavaSrc's own lrcLib integration blindly trusting the first
+// search result.
+function scoreCandidate(target: ScoringTarget, durationMs: number | undefined, candidate: MatchCandidate): number | null {
+  const titleResult = titleMatchScore(target.title, candidate);
+  if (!titleResult.match || titleResult.score < minimumTitleScore) return null;
 
-    const artistResult = artistMatchScore(artist, candidate.artistName);
-    if (!artistResult.match) continue;
-    if (artist !== "" && artistResult.score < minimumArtistScore) continue;
+  let artistResult: MatchResult = { score: 0, match: false };
+  const artistCredits = candidate.artistNames.length > 1
+    ? [...candidate.artistNames, candidate.artistNames.join(", ")]
+    : candidate.artistNames;
+  for (const artistName of artistCredits) {
+    const result = artistMatchScore(target.artist, artistName);
+    if (result.match && (!artistResult.match || result.score > artistResult.score)) artistResult = result;
+  }
+  if (!artistResult.match) return null;
+  if (target.artist !== "" && artistResult.score < minimumArtistScore) return null;
 
-    let score = titleResult.score * 60 + artistResult.score * 40;
+  let score = titleResult.score * 60 + artistResult.score * 40;
 
-    const gotVersion = versionMarkerPattern.exec(normalizedMetadata(candidate.trackName))?.[0]?.toLowerCase() ?? null;
-    if (wantVersion !== gotVersion) continue;
-    score += 12;
+  const wantVersion = versionMarkerPattern.exec(normalizedMetadata(target.title))?.[0]?.toLowerCase() ?? null;
+  const gotVersion = versionMarkerPattern.exec(normalizedMetadata(candidate.trackName))?.[0]?.toLowerCase() ?? null;
+  if (wantVersion !== gotVersion) return null;
+  score += 12;
 
-    if (durationSeconds !== undefined && candidate.duration) {
-      const difference = Math.abs(durationSeconds - candidate.duration);
-      if (difference > 20) continue;
-      score += Math.max(0, 20 - difference / 1.5);
-    }
-
-    if (score > bestScore) {
-      bestScore = score;
-      bestLines = lines;
-    }
+  if (durationMs !== undefined && candidate.duration) {
+    const difference = Math.abs(durationMs / 1000 - candidate.duration);
+    if (difference > 20) return null;
+    score += Math.max(0, 20 - difference / 1.5);
   }
 
-  return bestLines && bestScore >= minimumTotalScore ? { lines: bestLines, score: bestScore } : null;
+  return score >= minimumTotalScore ? score : null;
+}
+
+function bestScore(targets: readonly ScoringTarget[], durationMs: number | undefined, candidate: MatchCandidate): number | null {
+  let best: number | null = null;
+  for (const target of targets) {
+    const score = scoreCandidate(target, durationMs, candidate);
+    if (score !== null && (best === null || score > best)) best = score;
+  }
+  return best;
+}
+
+// Picks the best-scoring LRCLIB row that actually has usable synced lyrics.
+// A plain-only row can otherwise outscore a synced row on duration, and
+// malformed LRC can win the ranking only to parse into an empty result
+// afterward — this correctly skips a top-ranked instrumental/alternate
+// release in favor of a lower-ranked one that has synced lyrics.
+function selectBestLrcLibLines(
+  targets: readonly ScoringTarget[],
+  durationMs: number | undefined,
+  candidates: readonly LrcLibCandidate[],
+): SyncedLyricLine[] | null {
+  let best: { lines: SyncedLyricLine[]; score: number } | null = null;
+  for (const candidate of candidates) {
+    const lines = candidate.syncedLyrics ? parseSyncedLyrics(candidate.syncedLyrics) : [];
+    if (lines.length === 0) continue;
+    const score = bestScore(targets, durationMs, {
+      trackName: candidate.trackName,
+      artistNames: [candidate.artistName],
+      duration: candidate.duration,
+    });
+    if (score !== null && (!best || score > best.score)) best = { lines, score };
+  }
+  return best?.lines ?? null;
 }
 
 async function searchLrcLib(trackName: string, artistName: string): Promise<LrcLibCandidate[]> {
@@ -340,20 +366,15 @@ async function searchLrcLib(trackName: string, artistName: string): Promise<LrcL
   return candidates;
 }
 
-// Fires a search for every artist-name variant (original metadata, any
-// title-derived artist, each individual name split out of a multi-artist
-// credit) concurrently rather than one at a time. A multi-artist credit can
-// mean 2-4 variants, and this used to await them sequentially — a slow or
-// empty response for the first variant (each request carries its own 5s
-// timeout) delayed ever trying the others, so a track that only matched on
-// the third or fourth variant could take up to their combined wait before
-// the panel had anything to show. Firing them together bounds the total wait
-// to the single slowest request instead of their sum.
-export async function fetchSyncedLyrics(
-  trackName: string,
-  artistName: string,
-  durationMs?: number,
-): Promise<SyncedLyricLine[] | null> {
+interface LookupPlan {
+  readonly searches: readonly { readonly title: string; readonly artist: string }[];
+  readonly targets: readonly ScoringTarget[];
+  // NetEase takes one free-text query rather than separate title and artist
+  // fields.
+  readonly netEaseQueries: readonly string[];
+}
+
+function buildLookupPlan(trackName: string, artistName: string): LookupPlan {
   const normalized = normalizeQuery(trackName, artistName);
   // Each search variant carries its own "want" artist to score against.
   // The title-derived artist (e.g. "Owl City" split out of a YouTube title)
@@ -387,16 +408,39 @@ export async function fetchSyncedLyrics(
     attempts.push({ title: simplifiedTitle, searchArtist: "", scoreArtist: normalized.extraArtist ?? normalized.artist });
   }
 
-  const seenAttempts = new Set<string>();
-  const uniqueAttempts = attempts.filter((attempt) => {
-    const key = `${attempt.title}|${attempt.searchArtist}`.toLowerCase();
-    if (seenAttempts.has(key)) return false;
-    seenAttempts.add(key);
-    return true;
-  });
+  const searches = new Map<string, { title: string; artist: string }>();
+  const targets = new Map<string, ScoringTarget>();
+  for (const attempt of attempts) {
+    searches.set(`${attempt.title}|${attempt.searchArtist}`.toLowerCase(), { title: attempt.title, artist: attempt.searchArtist });
+    targets.set(`${attempt.title}|${attempt.scoreArtist}`, { title: attempt.title, artist: attempt.scoreArtist });
+  }
 
+  // NetEase catalogues in Simplified Chinese. Capped at three queries
+  // because it's an unofficial API that rate-limits aggressively.
+  const netEaseQueries = new Set<string>();
+  for (const artist of [normalized.extraArtist ?? "", ...artistSearchVariants(normalized.artist)]) {
+    netEaseQueries.add(toSimplifiedChinese(`${normalized.title} ${artist}`).trim());
+  }
+
+  return {
+    searches: [...searches.values()],
+    targets: [...targets.values()],
+    netEaseQueries: [...netEaseQueries].slice(0, 3),
+  };
+}
+
+// Fires a search for every artist-name variant (original metadata, any
+// title-derived artist, each individual name split out of a multi-artist
+// credit) concurrently rather than one at a time. A multi-artist credit can
+// mean 2-4 variants, and this used to await them sequentially — a slow or
+// empty response for the first variant (each request carries its own 5s
+// timeout) delayed ever trying the others, so a track that only matched on
+// the third or fourth variant could take up to their combined wait before
+// the panel had anything to show. Firing them together bounds the total wait
+// to the single slowest request instead of their sum.
+async function fetchFromLrcLib(plan: LookupPlan, durationMs: number | undefined): Promise<SyncedLyricLine[] | null> {
   const settledResults = await Promise.allSettled(
-    uniqueAttempts.map((attempt) => searchLrcLib(attempt.title, attempt.searchArtist)),
+    plan.searches.map((search) => searchLrcLib(search.title, search.artist)),
   );
   const resultSets = settledResults.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
   const failure = settledResults.find((result) => result.status === "rejected");
@@ -432,20 +476,122 @@ export async function fetchSyncedLyrics(
   // notion of "the real artist" — the overall best-scoring result across
   // all of them wins, rather than whichever variant happened to be tried
   // first (there's no longer a "first" — they all ran together).
-  const scoringPairs = new Map(uniqueAttempts.map((attempt) => [
-    `${attempt.title}|${attempt.scoreArtist}`,
-    { title: attempt.title, artist: attempt.scoreArtist },
-  ]));
-  let best: ScoredCandidate | null = null;
-  for (const { title, artist } of scoringPairs.values()) {
-    const result = selectBestCandidate(title, artist, durationMs, candidates);
-    if (result && (!best || result.score > best.score)) best = result;
+  const lines = selectBestLrcLibLines(plan.targets, durationMs, candidates);
+  if (lines) return lines;
+  // An empty result from the surviving variants is inconclusive when any
+  // variant failed — do not persist a negative cache entry that would
+  // suppress future retries.
+  if (failure) throw failure.reason;
+  return null;
+}
+
+const netEaseHeaders = { "User-Agent": "Mozilla/5.0", Referer: "https://music.163.com/" };
+
+const netEaseSearchResponseSchema = z.object({
+  code: z.number(),
+  result: z.object({ songs: z.array(z.unknown()).optional() }).optional(),
+});
+const netEaseSongSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  duration: z.number().optional(),
+  artists: z.array(z.object({ name: z.string() })).default([]),
+});
+const netEaseLyricResponseSchema = z.object({
+  code: z.number(),
+  lrc: z.object({ lyric: z.string().nullable().optional() }).optional(),
+});
+type NetEaseSong = z.infer<typeof netEaseSongSchema>;
+
+async function fetchNetEaseJson(url: URL): Promise<unknown> {
+  const response = await fetch(url, { headers: netEaseHeaders, signal: AbortSignal.timeout(5_000) });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
+}
+
+async function searchNetEase(query: string): Promise<NetEaseSong[]> {
+  const url = new URL("https://music.163.com/api/search/get");
+  url.searchParams.set("s", query);
+  url.searchParams.set("type", "1");
+  url.searchParams.set("limit", "10");
+  const payload = netEaseSearchResponseSchema.parse(await fetchNetEaseJson(url));
+  // NetEase reports throttling and blocks in the body's code (e.g. -460)
+  // alongside an HTTP 200 — an error, not a cacheable "no lyrics".
+  if (payload.code !== 200) throw new Error(`NetEase search code ${payload.code}`);
+  const songs: NetEaseSong[] = [];
+  for (const entry of payload.result?.songs ?? []) {
+    const parsed = netEaseSongSchema.safeParse(entry);
+    if (parsed.success) songs.push(parsed.data);
+  }
+  return songs;
+}
+
+async function fetchNetEaseLyrics(songId: number): Promise<SyncedLyricLine[]> {
+  const url = new URL("https://music.163.com/api/song/lyric");
+  url.searchParams.set("id", String(songId));
+  url.searchParams.set("lv", "1");
+  const payload = netEaseLyricResponseSchema.parse(await fetchNetEaseJson(url));
+  if (payload.code !== 200) throw new Error(`NetEase lyric code ${payload.code}`);
+  return parseSyncedLyrics(payload.lrc?.lyric ?? "");
+}
+
+// LRCLIB's coverage of Chinese and Japanese releases is thin; NetEase's is
+// far better. Its search has no artist filter and happily returns covers
+// and "type beats" (Jay Chou's own catalogue isn't on NetEase at all), so
+// the same strict scoring decides — and only the best one or two matches
+// cost a lyrics request.
+async function fetchFromNetEase(plan: LookupPlan, durationMs: number | undefined): Promise<SyncedLyricLine[] | null> {
+  const settledResults = await Promise.allSettled(plan.netEaseQueries.map((query) => searchNetEase(query)));
+  const resultSets = settledResults.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+  const failure = settledResults.find((result) => result.status === "rejected");
+  if (resultSets.length === 0) throw failure?.reason ?? new Error("NetEase search failed");
+
+  const scoresBySongId = new Map<number, number>();
+  for (const song of resultSets.flat()) {
+    if (scoresBySongId.has(song.id)) continue;
+    const score = bestScore(plan.targets, durationMs, {
+      trackName: song.name,
+      artistNames: song.artists.map((artist) => artist.name),
+      duration: song.duration !== undefined ? song.duration / 1000 : null,
+    });
+    if (score !== null) scoresBySongId.set(song.id, score);
   }
 
-  if (best) return best.lines;
-  // An empty result from the surviving variants is inconclusive when any
-  // variant failed. Let playback use its plugin fallback, but do not persist
-  // a negative cache entry that would suppress future retries.
+  const bestSongIds = [...scoresBySongId.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([id]) => id);
+  for (const songId of bestSongIds) {
+    const lines = await fetchNetEaseLyrics(songId);
+    if (lines.length > 0) return lines;
+  }
   if (failure) throw failure.reason;
+  return null;
+}
+
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+// LRCLIB first, NetEase only when LRCLIB has nothing — the same order the
+// companion app uses. A failure on either side makes a miss inconclusive,
+// so it's rethrown rather than returned as a cacheable "no lyrics".
+export async function fetchSyncedLyrics(
+  trackName: string,
+  artistName: string,
+  durationMs?: number,
+): Promise<SyncedLyricLine[] | null> {
+  const plan = buildLookupPlan(trackName, artistName);
+  let firstError: Error | null = null;
+  try {
+    const lines = await fetchFromLrcLib(plan, durationMs);
+    if (lines) return lines;
+  } catch (error) {
+    firstError = toError(error);
+  }
+  try {
+    const lines = await fetchFromNetEase(plan, durationMs);
+    if (lines) return lines;
+  } catch (error) {
+    firstError ??= toError(error);
+  }
+  if (firstError !== null) throw firstError;
   return null;
 }
