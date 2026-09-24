@@ -14,15 +14,30 @@ import type {
   SubcommandGroupMetadata,
   SubcommandMetadata,
 } from "../../../application/commands/command-metadata.js";
+import { commandDescriptionKey, localizedDescriptionsFor } from "../../../application/i18n/command-descriptions/index.js";
+
+// Attaches every translated description the catalogs have for `key` — the
+// command/subcommand/option is left with just its English description when
+// there are none. Only descriptions are localized; names stay as-is.
+function localizeDescription(
+  target: { setDescriptionLocalizations(localizations: Record<string, string>): unknown },
+  key: string,
+): void {
+  const localizations = localizedDescriptionsFor(key);
+  if (localizations) target.setDescriptionLocalizations(localizations);
+}
 
 function addOption(
   builder: SlashCommandBuilder | SlashCommandSubcommandBuilder,
   option: CommandOptionMetadata,
+  path: readonly string[],
 ): void {
+  const key = commandDescriptionKey(path, option.name);
   switch (option.type) {
     case "string":
       builder.addStringOption((o) => {
         o.setName(option.name).setDescription(option.description);
+        localizeDescription(o, key);
         if (option.required !== undefined) o.setRequired(option.required);
         if (option.maxLength !== undefined) o.setMaxLength(option.maxLength);
         if (option.choices) o.addChoices(...option.choices);
@@ -32,6 +47,7 @@ function addOption(
     case "integer":
       builder.addIntegerOption((o) => {
         o.setName(option.name).setDescription(option.description);
+        localizeDescription(o, key);
         if (option.required !== undefined) o.setRequired(option.required);
         if (option.minValue !== undefined) o.setMinValue(option.minValue);
         if (option.maxValue !== undefined) o.setMaxValue(option.maxValue);
@@ -41,6 +57,7 @@ function addOption(
     case "boolean":
       builder.addBooleanOption((o) => {
         o.setName(option.name).setDescription(option.description);
+        localizeDescription(o, key);
         if (option.required !== undefined) o.setRequired(option.required);
         return o;
       });
@@ -48,6 +65,7 @@ function addOption(
     case "channel":
       builder.addChannelOption((o) => {
         o.setName(option.name).setDescription(option.description);
+        localizeDescription(o, key);
         if (option.required !== undefined) o.setRequired(option.required);
         // Announcement channels are still normal sendable text channels
         // (NewsChannel is text-based, .send() works the same way) — they
@@ -62,6 +80,7 @@ function addOption(
     case "role":
       builder.addRoleOption((o) => {
         o.setName(option.name).setDescription(option.description);
+        localizeDescription(o, key);
         if (option.required !== undefined) o.setRequired(option.required);
         return o;
       });
@@ -69,6 +88,7 @@ function addOption(
     case "user":
       builder.addUserOption((o) => {
         o.setName(option.name).setDescription(option.description);
+        localizeDescription(o, key);
         if (option.required !== undefined) o.setRequired(option.required);
         return o;
       });
@@ -76,6 +96,7 @@ function addOption(
     case "attachment":
       builder.addAttachmentOption((o) => {
         o.setName(option.name).setDescription(option.description);
+        localizeDescription(o, key);
         if (option.required !== undefined) o.setRequired(option.required);
         return o;
       });
@@ -86,18 +107,27 @@ function addOption(
 function addSubcommand(
   builder: SlashCommandBuilder | SlashCommandSubcommandGroupBuilder,
   subcommand: SubcommandMetadata,
+  parentPath: readonly string[],
 ): void {
+  const path = [...parentPath, subcommand.name];
   builder.addSubcommand((sub) => {
     sub.setName(subcommand.name).setDescription(subcommand.description);
-    for (const option of subcommand.options ?? []) addOption(sub, option);
+    localizeDescription(sub, commandDescriptionKey(path));
+    for (const option of subcommand.options ?? []) addOption(sub, option, path);
     return sub;
   });
 }
 
-function addSubcommandGroup(builder: SlashCommandBuilder, group: SubcommandGroupMetadata): void {
+function addSubcommandGroup(
+  builder: SlashCommandBuilder,
+  group: SubcommandGroupMetadata,
+  parentPath: readonly string[],
+): void {
+  const path = [...parentPath, group.name];
   builder.addSubcommandGroup((g) => {
     g.setName(group.name).setDescription(group.description);
-    for (const subcommand of group.subcommands) addSubcommand(g, subcommand);
+    localizeDescription(g, commandDescriptionKey(path));
+    for (const subcommand of group.subcommands) addSubcommand(g, subcommand, path);
     return g;
   });
 }
@@ -109,11 +139,13 @@ export function buildSlashCommandBuilder(metadata: ChatInputCommandMetadata): Sl
   const builder = new SlashCommandBuilder()
     .setName(metadata.name)
     .setDescription(metadata.description);
+  const path = [metadata.name];
+  localizeDescription(builder, commandDescriptionKey(path));
   if (metadata.dmPermission !== undefined) builder.setDMPermission(metadata.dmPermission);
   if (metadata.nsfw !== undefined) builder.setNSFW(metadata.nsfw);
-  for (const option of metadata.options ?? []) addOption(builder, option);
-  for (const subcommand of metadata.subcommands ?? []) addSubcommand(builder, subcommand);
-  for (const group of metadata.subcommandGroups ?? []) addSubcommandGroup(builder, group);
+  for (const option of metadata.options ?? []) addOption(builder, option, path);
+  for (const subcommand of metadata.subcommands ?? []) addSubcommand(builder, subcommand, path);
+  for (const group of metadata.subcommandGroups ?? []) addSubcommandGroup(builder, group, path);
   return builder;
 }
 
