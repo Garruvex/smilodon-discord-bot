@@ -91,6 +91,12 @@ export interface GuildChatConfiguration {
   // features.channelHistory is on. A hard cap independent of the char
   // budget in chatMemoryLimits.maxChannelHistoryChars.
   channelHistoryLimit: number;
+  // How long after the first reaction on a watched reply the bot waits
+  // before judging the reactions, so others have time to join in: a random
+  // time between min and max, picked when the first reaction lands and not
+  // reset by later ones — see reaction-arm-behavior.ts.
+  reactionReplyWaitMinMinutes: number;
+  reactionReplyWaitMaxMinutes: number;
   // Per-channel memory isolation mode, keyed by channel id — see
   // src/application/memory/memory-channel-policy.ts. Unlisted channels
   // default to "shared".

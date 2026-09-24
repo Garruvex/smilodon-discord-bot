@@ -33,8 +33,14 @@ export const jaChat: SettingsTextCatalog = {
   "chat.replies.ambient-replies.enabled": { label: "アンビエント返信", description: "アンビエント返信をオンまたはオフにする" },
   "chat.replies.ambient-replies.cooldown-seconds": { label: "クールダウン（秒）", description: "チャンネルごとの判断の最短間隔" },
 
-  "chat.replies.reaction-replies": { label: "リアクション返信", description: "自分の返信に付いたリアクションへ返信するかボットが判断する" },
+  "chat.replies.reaction-replies": {
+    label: "リアクション返信",
+    description: "ボットのチャット返信にリアクションが付いたとき、追加で返信するか判断する",
+    messages: { "wait-order": "最短の待ち時間（{min}分）は最長（{max}分）より長くできません。" },
+  },
   "chat.replies.reaction-replies.enabled": { label: "リアクション返信", description: "オンまたはオフ" },
+  "chat.replies.reaction-replies.min-wait": { label: "最短待ち時間（分）", description: "最初のリアクション後の最短の待ち時間" },
+  "chat.replies.reaction-replies.max-wait": { label: "最長待ち時間（分）", description: "最長の待ち時間。間のランダムな時間で判断" },
 
   "chat.replies.history-reactions": { label: "履歴リアクション", description: "会話中に見える他のメッセージにボットがリアクションする" },
   "chat.replies.history-reactions.enabled": { label: "履歴リアクション", description: "オンまたはオフ" },

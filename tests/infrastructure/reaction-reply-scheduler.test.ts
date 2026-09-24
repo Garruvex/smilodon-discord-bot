@@ -73,7 +73,7 @@ function profile(overrides: { reactionReplies?: boolean; chatbot?: boolean } = {
       webSearchMode: "off", toolCallingEnabled: false, disabledTools: [], imageInputEnabled: false,
       imageGenerationEnabled: false, selfReferenceImageAsset: null,
       includeSources: false, maxImagesPerRequest: 2, ambientCooldownSeconds: 20,
-      channelHistoryLimit: 8, channelMemoryModes: {}, personaDriftEnabled: false,
+      channelHistoryLimit: 8, reactionReplyWaitMinMinutes: 2, reactionReplyWaitMaxMinutes: 5, channelMemoryModes: {}, personaDriftEnabled: false,
       contextScanChannelIds: [], contextDailyChannelIds: [], contextSeedDays: 7,
     },
     sourceFile: "test.yaml",
@@ -197,7 +197,7 @@ describe("ReactionReplyScheduler", () => {
   it("marks a watch done without ever calling the model when unique reactors stay below threshold", async () => {
     const reply = vi.fn(() => Promise.resolve(response("should not be sent")));
     const conversation = testConversationService(reply);
-    const message = fakeMessage(["r1", "r2"]); // below the default threshold of 5
+    const message = fakeMessage([]); // no human reactors left (e.g. all removed) — below the threshold of 1
     const { store, markDone } = fakeWatchStore([watch()]);
     const scheduler = new ReactionReplyScheduler(
       fakeClient(message) as never, store, providerFor(profile()), conversation, personaSource(),
@@ -213,7 +213,7 @@ describe("ReactionReplyScheduler", () => {
   it("asks the model and delivers its reply once unique reactors meet the threshold", async () => {
     const reply = vi.fn(() => Promise.resolve(response("That got a reaction!", "reply")));
     const conversation = testConversationService(reply);
-    const message = fakeMessage(["r1", "r2", "r3", "r4", "r5"]);
+    const message = fakeMessage(["r1"]); // a single reactor meets the threshold
     const { store, markDone } = fakeWatchStore([watch()]);
     const scheduler = new ReactionReplyScheduler(
       fakeClient(message) as never, store, providerFor(profile()), conversation, personaSource(),
@@ -260,9 +260,9 @@ describe("ReactionReplyScheduler", () => {
   it("excludes a reactor without chatbot access from the threshold count and from mentionedUsers", async () => {
     const reply = vi.fn(() => Promise.resolve(response("That got a reaction!", "reply")));
     const conversation = testConversationService(reply);
-    // 5 raw reactors, but 2 lack the chatbot role — only 3 are eligible,
-    // below the threshold of 5.
-    const message = fakeMessage(["r1", "r2", "r3", "r4", "r5"], { noAccessIds: ["r4", "r5"] });
+    // 2 raw reactors, but both lack the chatbot role — none are eligible,
+    // below the threshold of 1.
+    const message = fakeMessage(["r1", "r2"], { noAccessIds: ["r1", "r2"] });
     const { store, markDone } = fakeWatchStore([watch()]);
     const scheduler = new ReactionReplyScheduler(
       fakeClient(message) as never, store, providerFor(profile()), conversation, personaSource(),
@@ -278,8 +278,8 @@ describe("ReactionReplyScheduler", () => {
   it("still asks the model once enough reactors remain eligible after excluding access-denied ones", async () => {
     const reply = vi.fn(() => Promise.resolve(response("That got a reaction!", "reply")));
     const conversation = testConversationService(reply);
-    // 6 raw reactors, 1 lacks access — 5 remain, meeting the threshold.
-    const message = fakeMessage(["r1", "r2", "r3", "r4", "r5", "r6"], { noAccessIds: ["r6"] });
+    // 2 raw reactors, 1 lacks access — 1 remains, meeting the threshold.
+    const message = fakeMessage(["r1", "r2"], { noAccessIds: ["r2"] });
     const { store, markDone } = fakeWatchStore([watch()]);
     const scheduler = new ReactionReplyScheduler(
       fakeClient(message) as never, store, providerFor(profile()), conversation, personaSource(),

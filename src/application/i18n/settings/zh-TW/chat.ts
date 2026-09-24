@@ -33,8 +33,14 @@ export const zhTWChat: SettingsTextCatalog = {
   "chat.replies.ambient-replies.enabled": { label: "環境回覆", description: "開啟或關閉環境回覆" },
   "chat.replies.ambient-replies.cooldown-seconds": { label: "冷卻時間（秒）", description: "每個頻道兩次判斷之間的最短秒數" },
 
-  "chat.replies.reaction-replies": { label: "反應回覆", description: "由機器人判斷是否回覆自己訊息上的反應" },
+  "chat.replies.reaction-replies": {
+    label: "反應回覆",
+    description: "機器人的聊天回覆收到表情回應時，判斷是否要再次回覆",
+    messages: { "wait-order": "最短等待時間（{min} 分鐘）不能比最長（{max} 分鐘）還長。" },
+  },
   "chat.replies.reaction-replies.enabled": { label: "反應回覆", description: "開啟或關閉" },
+  "chat.replies.reaction-replies.min-wait": { label: "最短等待（分鐘）", description: "第一次有人加上表情回應後，至少要等待多久" },
+  "chat.replies.reaction-replies.max-wait": { label: "最長等待（分鐘）", description: "最長等待時間；機器人會在兩個設定值之間隨機選擇" },
 
   "chat.replies.history-reactions": { label: "歷史反應", description: "讓機器人對聊天時看到的其他訊息加上反應" },
   "chat.replies.history-reactions.enabled": { label: "歷史反應", description: "開啟或關閉" },

@@ -14,20 +14,21 @@ import { KeyedSerialQueue } from "../../../application/concurrency/keyed-serial-
 import { ChatTurnSupport } from "./chat-turn-support.js";
 
 // Polled far more often than ChannelSummaryScheduler's hourly cadence —
-// reactionReplyWindowMs (5 minutes, see reaction-arm-behavior.ts) needs a
-// tick granularity well under that or "due" rows would routinely wait much
-// longer than the window actually promises.
+// the reaction-reply wait (chat.reactionReplyWaitMinMinutes, at least 1 minute,
+// see reaction-arm-behavior.ts) needs a tick granularity no coarser than
+// that, or "due" rows would routinely wait much longer than promised.
 const checkIntervalMs = 60 * 1_000;
 // Bounds one tick's own runtime the same way ChannelSummaryScheduler's
 // maxJobsProcessedPerTick does — a backlog after downtime simply spreads
 // across more ticks rather than blocking the loop.
 const maxWatchesProcessedPerTick = 50;
-// Below this many distinct human reactors, a watch is evaluated and marked
-// done WITHOUT ever calling the model — most messages get a handful of
-// ordinary reactions and should cost nothing. Counts unique reactors across
-// every emoji on the message, not raw reaction-add events, so one person
-// reacting with several different emoji can't cross this alone.
-const reactionReplyThreshold = 5;
+// Below this many distinct eligible human reactors, a watch is marked done
+// WITHOUT calling the model. One is enough — the real gate is the model's
+// own reply/react/ignore judgment; the chat.reactionReplyWait*Minutes wait
+// (see reaction-arm-behavior.ts) is what lets others pile on before evaluation.
+// Counts unique reactors across every emoji on the message, not raw
+// reaction-add events.
+const reactionReplyThreshold = 1;
 // Backstop retention — see PersonalMemoryExtractionQueueStore.deleteTerminalOlderThan
 // for the same rationale: a "watching" row nobody ever reacted to, or a
 // "done" row nothing will re-query, both eventually just age out.
@@ -316,7 +317,7 @@ export class ReactionReplyScheduler {
         .map((role) => role.name.slice(0, 50))
         .slice(0, 10) ?? [],
     };
-    const syntheticPrompt = `(${reactorIds.size} people reacted to your message: ` +
+    const syntheticPrompt = `(${reactorIds.size} ${reactorIds.size === 1 ? "person" : "people"} reacted to your message: ` +
       `${message.content.slice(0, chatMemoryLimits.maxUserMessageChars)})`;
     const persona = await this.personaSource.resolve(profile);
 

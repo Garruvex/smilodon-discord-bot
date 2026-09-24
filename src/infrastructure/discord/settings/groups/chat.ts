@@ -139,7 +139,27 @@ export const chat = groupWithSections("chat", [
       }),
     }),
 
-    chatSetting("reaction-replies", enabledToggle((p) => p.features.reactionReplies, (v) => ({ reactionReplies: v }))),
+    chatSetting("reaction-replies", {
+      enabled: toggle({ read: (p) => p.features.reactionReplies, write: (v) => ({ reactionReplies: v }) }),
+      "min-wait": integer({
+        min: CHAT_LIMITS.reactionReplyWaitMinMinutes.min,
+        max: CHAT_LIMITS.reactionReplyWaitMinMinutes.max,
+        read: (p) => p.chat.reactionReplyWaitMinMinutes,
+        write: (v) => ({ reactionReplyWaitMinMinutes: v }),
+      }),
+      "max-wait": integer({
+        min: CHAT_LIMITS.reactionReplyWaitMaxMinutes.min,
+        max: CHAT_LIMITS.reactionReplyWaitMaxMinutes.max,
+        read: (p) => p.chat.reactionReplyWaitMaxMinutes,
+        write: (v) => ({ reactionReplyWaitMaxMinutes: v }),
+      }),
+    }, {
+      validate: (patch, context) => {
+        const min = patch.reactionReplyWaitMinMinutes ?? context.profile.chat.reactionReplyWaitMinMinutes;
+        const max = patch.reactionReplyWaitMaxMinutes ?? context.profile.chat.reactionReplyWaitMaxMinutes;
+        return min > max ? context.error("wait-order", { min, max }) : null;
+      },
+    }),
     chatSetting("history-reactions", enabledToggle((p) => p.features.historyReactions, (v) => ({ historyReactions: v }))),
   ]),
 

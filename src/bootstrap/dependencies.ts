@@ -659,6 +659,7 @@ export function createDependencies(
   behaviorRegistry.register(new ReactionArmBehavior(
     () => discordClient.user?.id ?? null,
     messageReactionWatchStore,
+    guildConfigurationProvider,
     logger.child({ component: "reaction-arm" }),
   ));
   behaviorRegistry.register(new LinkFixBehavior(
