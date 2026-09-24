@@ -46,8 +46,14 @@ function parseSyncedLyrics(syncedLyrics: string): SyncedLyricLine[] {
 // Music Video]", "(Lyrics)", "(Audio)", "(Visualizer)" — that Lavalink's
 // track title carries verbatim when a track was resolved via YouTube search
 // rather than Spotify, and which LRCLIB's own titles never include.
-const metadataSuffixPattern = /\s*[[(](?:official\s+)?(?:(?:music\s+)?video(?:\s+clip)?|audio|lyrics?|lyric\s+video|visuali[sz]er)[\])]/gi;
+const metadataSuffixPattern = /\s*[[(【](?:official\s+)?(?:(?:music\s+)?video(?:\s+clip)?|mv|audio|lyrics?|lyric\s+video|visuali[sz]er)[\])】]/gi;
+// The same suffixes without brackets, trailing after a dash or pipe — Asian
+// label uploads often write "…】-Official Music Video" or "… | Official MV".
+const trailingMetadataPattern = /\s*[-–—|]\s*(?:official\s+)?(?:(?:music\s+)?video|mv|audio|lyrics?(?:\s+video)?|visuali[sz]er)\s*$/i;
 const artistTitleSeparatorPattern = /\s+[-–—]\s+/;
+// "周杰倫 Jay Chou【夜曲 Nocturne】" — the CJK-upload counterpart of
+// "Artist - Title": the artist outside, the title inside the brackets.
+const bracketedTitlePattern = /^(.+?)\s*[【《「『]([^】》」』]+)[】》」』]$/;
 const nonWordPattern = /[^\p{L}\p{N}]+/gu;
 const versionMarkerPattern = /\b(live|remix|acoustic|instrumental|karaoke|demo|edit|version|cover|sped ?up|slowed)\b/i;
 // Splits a multi-artist credit ("Owl City, Carly Rae Jepsen", "A feat. B")
@@ -57,7 +63,7 @@ const versionMarkerPattern = /\b(live|remix|acoustic|instrumental|karaoke|demo|e
 const artistSeparatorPattern = /\s*(?:,|&|\/|;|、|，|\bfeat(?:uring)?\.?\b|\bft\.?\b|和|與|与)\s*/gi;
 
 function stripMetadataSuffix(value: string): string {
-  return value.replace(metadataSuffixPattern, " ").trim();
+  return value.replace(metadataSuffixPattern, " ").trim().replace(trailingMetadataPattern, "").trim();
 }
 
 interface NormalizedQuery {
@@ -87,6 +93,12 @@ function normalizeQuery(title: string, artist: string): NormalizedQuery {
   // strip at all, e.g. because the upstream plugin already stripped it), and
   // gating the split on the suffix check meant that case searched LRCLIB for
   // the literal, unsplit "Artist - Title" string and never found anything.
+  const bracketMatch = bracketedTitlePattern.exec(cleanTitle);
+  const bracketArtist = bracketMatch?.[1]?.trim();
+  const bracketTitle = bracketMatch?.[2]?.trim();
+  if (bracketArtist && bracketTitle) {
+    return { title: bracketTitle, artist: trimmedArtist, extraArtist: bracketArtist, unsplitTitle: cleanTitle };
+  }
   const separatorMatch = artistTitleSeparatorPattern.exec(cleanTitle);
   if (separatorMatch) {
     const derivedArtist = cleanTitle.slice(0, separatorMatch.index).trim();

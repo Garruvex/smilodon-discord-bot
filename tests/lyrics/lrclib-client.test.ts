@@ -55,6 +55,16 @@ describe("fetchSyncedLyrics", () => {
       .toEqual([{ timestampMs: 1_000, line: "First line" }, { timestampMs: 2_500, line: "Second line" }]);
   });
 
+  it("splits a CJK-bracketed title and strips an unbracketed video suffix", async () => {
+    fetchMock.mockImplementation((url: unknown) => {
+      const params = new URL(String(url)).searchParams;
+      return jsonResponse(200, params.get("track_name") === "夜曲 Nocturne" && params.get("artist_name") === "周杰倫 Jay Chou"
+        ? [candidate({ trackName: "夜曲 Nocturne", artistName: "周杰倫 Jay Chou", duration: 222 })] : []);
+    });
+    expect(await fetchSyncedLyrics("周杰倫 Jay Chou【夜曲 Nocturne】-Official Music Video", "JVR Music"))
+      .toEqual([{ timestampMs: 1_000, line: "First line" }, { timestampMs: 2_500, line: "Second line" }]);
+  });
+
   it("rejects a different artist whose name merely contains the requested name", async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, [candidate({ artistName: "Heartless" })]));
     expect(await fetchSyncedLyrics("Good Time", "Heart", 205_000)).toBeNull();
