@@ -2282,7 +2282,7 @@ describe("ControlChannelService panel language", () => {
     expect(playing.description).toContain("點歌者：<@345678901234567890>");
     expect(paused.title).toContain("播放已暫停");
     expect(idle.title).toContain("目前沒有播放歌曲");
-    expect(idle.description).toBe("播放器已準備好接受新的點歌。");
+    expect(idle.description).toBe("現在可以點歌了");
   });
 
   it("labels an autoqueued track's requester in the guild language", () => {
@@ -2321,7 +2321,7 @@ describe("ControlChannelService panel language", () => {
     const rows = service.createQueueControlsPayload(profile, playingSnapshot).components;
     const labels = rows.flatMap((row) => row.toJSON().components.map((button) => button.label));
 
-    expect(labels).toContain("自動佇列");
+    expect(labels).toContain("自動續播");
     expect(labels).toContain("歌詞");
     expect(labels).toContain("24/7");
     expect(labels).not.toContain("Autoqueue");

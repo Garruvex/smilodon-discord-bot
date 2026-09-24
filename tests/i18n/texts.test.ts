@@ -59,7 +59,7 @@ describe("the bot's catalogs", () => {
     expect(typeof texts.ja.music.panel.queue.footerCount).toBe("function");
     expect(texts.en.music.panel.queue.summary({ count: 3, duration: "1m5s" })).toBe("**3 in queue** (total 1m5s)");
     expect(texts.ja.music.panel.queue.summary({ count: 3, duration: "1m5s" })).toBe("**キュー内 3 曲**（合計 1m5s）");
-    expect(texts["zh-TW"].music.label.repeat.queue).toBe("整個佇列");
+    expect(texts["zh-TW"].music.label.repeat.queue).toBe("待播清單");
   });
 
   it("are frozen, so no caller can change another server's text", () => {
