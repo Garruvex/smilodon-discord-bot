@@ -192,7 +192,7 @@ export class ControlChannelService {
     this.unsubscribeEventBus = eventBus.subscribe(async (event) => {
       if (this.stopped) return;
       if (event.reason === "lyrics_loaded") {
-        this.logger.info(
+        this.logger.trace(
           { guildId: event.guildId, reason: event.reason, time: Date.now() },
           "Panel refresh requested for freshly-resolved lyrics",
         );
@@ -807,7 +807,7 @@ export class ControlChannelService {
         this.lastLyricsEditAt.set(guildId, Date.now());
         const startedAt = Date.now();
         await message.edit(payload);
-        this.logger.info(
+        this.logger.debug(
           { guildId, editMs: Date.now() - startedAt, time: Date.now(), line: snapshot?.currentLyricLine ?? null },
           "Lyrics panel message edited",
         );

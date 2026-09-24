@@ -64,7 +64,7 @@ function createGateway(botVoiceChannelId: string | null | typeof uncachedGuild):
         : new Map<string, Guild>([[guildId, guild]]),
     },
   } as unknown as Client;
-  const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+  const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), trace: vi.fn() };
   const eventBus = { publish: vi.fn(() => Promise.resolve()) } as unknown as MusicEventBus;
   const guildConfigurationProvider = {
     find: vi.fn(() => undefined),
@@ -175,7 +175,7 @@ function createGatewayForEnqueue(channelPermissionBits: bigint | null): {
   const client = {
     guilds: { cache: new Map([[guildId, guild]]) },
   } as unknown as Client;
-  const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+  const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), trace: vi.fn() };
   const eventBus = { publish: vi.fn(() => Promise.resolve()) } as unknown as MusicEventBus;
   const guildConfigurationProvider = {
     find: vi.fn(() => undefined),
@@ -264,12 +264,12 @@ describe("LavalinkPlayerGateway.getQueue", () => {
 describe("LavalinkPlayerGateway.resolveSyncedLyrics", () => {
   interface CacheTestGateway {
     resolveSyncedLyrics: (trackName: string, artistName: string) => Promise<unknown>;
-    logger: { info: ReturnType<typeof vi.fn>; warn: ReturnType<typeof vi.fn>; debug: ReturnType<typeof vi.fn> };
+    logger: { info: ReturnType<typeof vi.fn>; warn: ReturnType<typeof vi.fn>; debug: ReturnType<typeof vi.fn>; trace: ReturnType<typeof vi.fn> };
   }
 
   function createGatewayWithCache(cacheStore: LyricsCacheStore | null): CacheTestGateway {
     const client = { guilds: { cache: new Map<string, Guild>() } } as unknown as Client;
-    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), trace: vi.fn() };
     const eventBus = { publish: vi.fn(() => Promise.resolve()) } as unknown as MusicEventBus;
     const guildConfigurationProvider = { find: vi.fn(() => undefined) } as unknown as GuildConfigurationProvider;
 
@@ -369,12 +369,12 @@ describe("LavalinkPlayerGateway.resolveSyncedLyrics", () => {
         expect.objectContaining({ source: "netease", outcome: "found" }),
       ],
     }), "Lyrics lookup finished");
-    expect(gateway.logger.debug).toHaveBeenCalledWith(
+    expect(gateway.logger.trace).toHaveBeenCalledWith(
       expect.objectContaining({ requestId: "req-1", verdict: "eligible", score: 97 }),
       "Lyrics candidate scored",
     );
     // Lyric text never reaches the logs.
-    expect(JSON.stringify([gateway.logger.info.mock.calls, gateway.logger.debug.mock.calls])).not.toContain("secret lyric");
+    expect(JSON.stringify([gateway.logger.info.mock.calls, gateway.logger.trace.mock.calls])).not.toContain("secret lyric");
   });
 
   it("reports an outage at warn level with its error code", async () => {
@@ -573,7 +573,7 @@ describe("LavalinkPlayerGateway trackStart lyrics handling", () => {
 
   it("doesn't re-clear or re-fetch lyrics when trackStart fires again for the same track", async () => {
     const client = { guilds: { cache: new Map<string, Guild>() } } as unknown as Client;
-    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), trace: vi.fn() };
     const eventBus = { publish: vi.fn(() => Promise.resolve()) } as unknown as MusicEventBus;
     const guildConfigurationProvider = { find: vi.fn(() => undefined) } as unknown as GuildConfigurationProvider;
     const gateway = new LavalinkPlayerGateway(
@@ -634,7 +634,7 @@ describe("LavalinkPlayerGateway trackStart lyrics handling", () => {
     // sit unshown for up to that whole interval on top of however long the
     // LRCLIB fetch itself took.
     const client = { guilds: { cache: new Map<string, Guild>() } } as unknown as Client;
-    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), trace: vi.fn() };
     const publish = vi.fn(() => Promise.resolve());
     const eventBus = { publish } as unknown as MusicEventBus;
     const guildConfigurationProvider = { find: vi.fn(() => undefined) } as unknown as GuildConfigurationProvider;
@@ -679,7 +679,7 @@ describe("LavalinkPlayerGateway trackStart lyrics handling", () => {
 
   it("publishes a state-change event even when the LRCLIB fetch fails, so the panel still learns lyrics settled to not-found", async () => {
     const client = { guilds: { cache: new Map<string, Guild>() } } as unknown as Client;
-    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), trace: vi.fn() };
     const publish = vi.fn(() => Promise.resolve());
     const eventBus = { publish } as unknown as MusicEventBus;
     const guildConfigurationProvider = { find: vi.fn(() => undefined) } as unknown as GuildConfigurationProvider;
@@ -724,7 +724,7 @@ describe("LavalinkPlayerGateway trackStart lyrics handling", () => {
 
   it("keeps showing the current line well past the last line's own timestamp instead of going blank", () => {
     const client = { guilds: { cache: new Map<string, Guild>() } } as unknown as Client;
-    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), trace: vi.fn() };
     const eventBus = { publish: vi.fn(() => Promise.resolve()) } as unknown as MusicEventBus;
     const guildConfigurationProvider = { find: vi.fn(() => undefined) } as unknown as GuildConfigurationProvider;
     const gateway = new LavalinkPlayerGateway(
@@ -803,7 +803,7 @@ describe("LavalinkPlayerGateway trackStart lyrics handling", () => {
     // — for however long that intro lasted, even though the full line list
     // was already resolved and sitting in memory.
     const client = { guilds: { cache: new Map<string, Guild>() } } as unknown as Client;
-    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), trace: vi.fn() };
     const eventBus = { publish: vi.fn(() => Promise.resolve()) } as unknown as MusicEventBus;
     const guildConfigurationProvider = { find: vi.fn(() => undefined) } as unknown as GuildConfigurationProvider;
     const gateway = new LavalinkPlayerGateway(
@@ -853,7 +853,7 @@ describe("LavalinkPlayerGateway trackStart lyrics handling", () => {
 
   it("reports lyrics as unavailable once our own fetch confirms not-found, without waiting on the plugin fallback to also settle", () => {
     const client = { guilds: { cache: new Map<string, Guild>() } } as unknown as Client;
-    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), trace: vi.fn() };
     const eventBus = { publish: vi.fn(() => Promise.resolve()) } as unknown as MusicEventBus;
     const guildConfigurationProvider = { find: vi.fn(() => undefined) } as unknown as GuildConfigurationProvider;
     const gateway = new LavalinkPlayerGateway(

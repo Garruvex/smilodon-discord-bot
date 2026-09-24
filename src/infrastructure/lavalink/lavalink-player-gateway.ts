@@ -341,7 +341,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     // burst of edits.
     this.manager.on("LyricsLine", (player, _track, payload) => {
       this.pluginLyricsByGuild.set(player.guildId, { line: payload.line.line });
-      this.logger.info(
+      this.logger.trace(
         { guildId: player.guildId, line: payload.line.line },
         "Plugin (YouTube) lyrics line received",
       );
@@ -495,7 +495,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     }
 
     const { result, attempts } = await lookupSyncedLyrics(track.title, track.author, track.durationMs, {
-      onCandidate: (decision) => this.logger.debug({ requestId, ...decision }, "Lyrics candidate scored"),
+      onCandidate: (decision) => this.logger.trace({ requestId, ...decision }, "Lyrics candidate scored"),
     });
     this.logger[result.status === "unavailable" ? "warn" : "info"](
       {
