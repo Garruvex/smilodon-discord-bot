@@ -2,21 +2,17 @@ import { ActivityType, type Client } from "discord.js";
 import type { Logger } from "pino";
 
 import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
+import { nextIdleStatus, type IdleStatus } from "./idle-statuses.js";
 import type { MusicEventBus } from "./music-event-bus.js";
 import type { MusicPlayerGateway, MusicPlayerSnapshot } from "./music-player-gateway.js";
 
-const idleActivityNames = [
-  "your next questionable song choice 🎶",
-  "the queue warming up 🔥",
-  "your next song request 🎧",
-  "someone typing a song name…",
-  "the sound of an empty queue 👀",
-  "requests—surprise me!",
-] as const;
+// How long an idle status stays up before another one replaces it.
+const idleRotationMs = 10 * 60_000;
 
 export class MusicPresenceService {
   private refreshTimer: NodeJS.Timeout | null = null;
-  private readonly idleActivityName: string;
+  private idleStatus: IdleStatus | null = null;
+  private idleStatusSince = 0;
 
   public constructor(
     private readonly client: Client,
@@ -25,9 +21,6 @@ export class MusicPresenceService {
     private readonly logger: Logger,
     eventBus: MusicEventBus,
   ) {
-    this.idleActivityName = idleActivityNames[
-      Math.floor(Math.random() * idleActivityNames.length)
-    ]!;
     eventBus.subscribe(async () => this.refresh());
   }
 
@@ -56,7 +49,7 @@ export class MusicPresenceService {
       if (active.length === 0) {
         user.setPresence({
           status: "online",
-          activities: [{ name: this.idleActivityName, type: ActivityType.Listening }],
+          activities: [{ ...this.currentIdleStatus() }],
         });
       } else if (active.length > 1) {
         user.setPresence({
@@ -84,6 +77,15 @@ export class MusicPresenceService {
       this.logger.warn({ error }, "Unable to update Discord music presence");
     }
     return Promise.resolve();
+  }
+
+  private currentIdleStatus(): IdleStatus {
+    const now = Date.now();
+    if (!this.idleStatus || now - this.idleStatusSince >= idleRotationMs) {
+      this.idleStatus = nextIdleStatus(this.idleStatus);
+      this.idleStatusSince = now;
+    }
+    return this.idleStatus;
   }
 
   private formatDuration(milliseconds: number): string {
