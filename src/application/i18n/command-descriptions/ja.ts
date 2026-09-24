@@ -72,7 +72,7 @@ export const jaCommandDescriptions = {
   "remind/cancel:id": "リマインダーID。/remind list で確認できます。", // The reminder id (from /remind list).
   "userinfo": "メンバーの情報を表示します。", // Shows information about a member.
   "userinfo:user": "調べるメンバー。省略すると自分になります。", // The member to look up; defaults to you.
-  "vote": "はい／いいえの投票を作成します。", // Creates a Yes/No poll.
+  "vote": "投票を作成します。デフォルトは「はい／いいえ」、または最大5つの選択肢を自分で設定できます。", // Creates a poll: Yes/No by default, or up to five choices of your own.
   "vote:title": "投票のタイトル。", // Poll title.
   "vote:description": "メンバーが投票する内容。", // What members are voting on.
   "vote:duration": "投票が締め切られるまでの秒数。省略すると開いたままになります。", // Seconds before the poll closes; omit to keep it open.
@@ -278,4 +278,13 @@ export const jaCommandDescriptions = {
   "e621:order": "並び順。", // Sort order.
   "settings-community/language": "このサーバーのパネル・告知・返信でボットが使う言語を設定します。", // Sets the language the bot uses for this server's panels, announcements, and replies.
   "settings-community/language:language": "使用する言語。", // The language to use.
+  "vote:option1": "選択肢1。2つ以上指定するか、「はい／いいえ」にする場合はすべて空欄にします。", // Choice 1; give at least two choices, or none for Yes/No.
+  "vote:option2": "選択肢2。2つ以上指定するか、「はい／いいえ」にする場合はすべて空欄にします。", // Choice 2; give at least two choices, or none for Yes/No.
+  "vote:option3": "選択肢3。2つ以上指定するか、「はい／いいえ」にする場合はすべて空欄にします。", // Choice 3; give at least two choices, or none for Yes/No.
+  "vote:option4": "選択肢4。2つ以上指定するか、「はい／いいえ」にする場合はすべて空欄にします。", // Choice 4; give at least two choices, or none for Yes/No.
+  "vote:option5": "選択肢5。2つ以上指定するか、「はい／いいえ」にする場合はすべて空欄にします。", // Choice 5; give at least two choices, or none for Yes/No.
+  "settings-music/autoqueue-vote": "オートキューが次に再生する曲をリスナーの投票で決められるようにします。", // Lets listeners vote on which song autoqueue plays next.
+  "settings-music/autoqueue-vote:enabled": "リスナーが投票するかどうか。オフの場合はオートキューが自動で選びます。", // Whether listeners vote; off means autoqueue picks on its own.
+  "settings-music/autoqueue-vote:bar-style": "投票バーの見た目。", // How vote bars look.
+  "settings-music/autoqueue-vote:options": "候補にする曲の数。", // How many songs to pick from.
 } as const satisfies CommandDescriptionCatalog;

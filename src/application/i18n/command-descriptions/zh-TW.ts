@@ -73,7 +73,7 @@ export const zhTWCommandDescriptions = {
   "remind/cancel:id": "提醒 ID，可從 /remind list 取得。", // The reminder id (from /remind list).
   "userinfo": "顯示成員的資訊。", // Shows information about a member.
   "userinfo:user": "要查詢的成員，預設為你自己。", // The member to look up; defaults to you.
-  "vote": "建立是／否投票。", // Creates a Yes/No poll.
+  "vote": "建立投票：預設為是／否，也可以自訂最多五個選項。", // Creates a poll: Yes/No by default, or up to five choices of your own.
   "vote:title": "投票標題。", // Poll title.
   "vote:description": "成員要投票的內容。", // What members are voting on.
   "vote:duration": "投票幾秒後結束；不填則一直開放。", // Seconds before the poll closes; omit to keep it open.
@@ -279,4 +279,13 @@ export const zhTWCommandDescriptions = {
   "e621:order": "排序方式。", // Sort order.
   "settings-community/language": "設定機器人在此伺服器的面板、公告與回覆所使用的語言。", // Sets the language the bot uses for this server's panels, announcements, and replies.
   "settings-community/language:language": "要使用的語言。", // The language to use.
+  "vote:option1": "選項 1；至少提供兩個選項，或全部留空以使用是／否。", // Choice 1; give at least two choices, or none for Yes/No.
+  "vote:option2": "選項 2；至少提供兩個選項，或全部留空以使用是／否。", // Choice 2; give at least two choices, or none for Yes/No.
+  "vote:option3": "選項 3；至少提供兩個選項，或全部留空以使用是／否。", // Choice 3; give at least two choices, or none for Yes/No.
+  "vote:option4": "選項 4；至少提供兩個選項，或全部留空以使用是／否。", // Choice 4; give at least two choices, or none for Yes/No.
+  "vote:option5": "選項 5；至少提供兩個選項，或全部留空以使用是／否。", // Choice 5; give at least two choices, or none for Yes/No.
+  "settings-music/autoqueue-vote": "讓聽眾投票決定自動佇列接下來播放哪首歌。", // Lets listeners vote on which song autoqueue plays next.
+  "settings-music/autoqueue-vote:enabled": "是否讓聽眾投票；關閉時由自動佇列自行選歌。", // Whether listeners vote; off means autoqueue picks on its own.
+  "settings-music/autoqueue-vote:bar-style": "投票長條的外觀。", // How vote bars look.
+  "settings-music/autoqueue-vote:options": "可供選擇的歌曲數量。", // How many songs to pick from.
 } as const satisfies CommandDescriptionCatalog<keyof typeof jaCommandDescriptions>;

@@ -2,6 +2,7 @@ import { ButtonStyle, ChannelType, DiscordAPIError, RESTJSONErrorCodes, type Mes
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ControlChannelService } from "../../src/application/control-panel/control-channel-service.js";
+import { texts } from "../../src/application/i18n/texts.js";
 import type { PlaybackService } from "../../src/application/music/playback-service.js";
 import type { MusicEventBus } from "../../src/application/music/music-event-bus.js";
 import type { MusicPlayerGateway } from "../../src/application/music/music-player-gateway.js";
@@ -2293,7 +2294,9 @@ describe("ControlChannelService panel language", () => {
       currentTrack: autoqueued,
     }).toJSON();
 
-    expect(embed.description).toContain(`リクエスト：<@${botUserId}>（オートキュー）`);
+    expect(embed.description).toContain(
+      texts.ja.music.panel.nowPlaying.requestedByAutoqueue({ user: `<@${botUserId}>` }),
+    );
   });
 
   it("renders the lyrics embed and the request hint in the guild language", () => {
