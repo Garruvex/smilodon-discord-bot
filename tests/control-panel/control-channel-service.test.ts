@@ -2,6 +2,7 @@ import { ButtonStyle, ChannelType, DiscordAPIError, RESTJSONErrorCodes, type Mes
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ControlChannelService } from "../../src/application/control-panel/control-channel-service.js";
+import { ChannelEditScheduler } from "../../src/application/concurrency/channel-edit-scheduler.js";
 import { texts } from "../../src/application/i18n/texts.js";
 import type { PlaybackService } from "../../src/application/music/playback-service.js";
 import type { MusicEventBus } from "../../src/application/music/music-event-bus.js";
@@ -1035,42 +1036,51 @@ describe("ControlChannelService", () => {
     service.stop();
   });
 
-  it("writes lyrics after slow artwork, off the position after the edit, and reschedules from it too", async () => {
-    // Regression: lyrics used to be written BEFORE the (potentially slow)
-    // Now Playing edit, off whatever snapshot was current at the start of
-    // the cycle — so a slow artwork edit could leave the displayed lyric
-    // line stale by however long that edit took, with nothing correcting it
-    // until the next tick. Writing lyrics last, off the freshest snapshot,
-    // closes that gap.
+  it("doesn't hold lyrics behind a slow Now Playing edit, and reschedules from the position after it", async () => {
+    // Regression: lyrics used to be written off whatever snapshot was
+    // current at the start of the cycle, so a slow artwork edit could leave
+    // the displayed line stale. Lyrics now outrank Now Playing in the edit
+    // scheduler and each write reads the snapshot when its turn comes; the
+    // next tick is still aimed from the position after the slowest write.
     vi.useFakeTimers();
     const { service, getSnapshot } = createService(false);
     const internals = service as unknown as {
       ensurePanelMessages: () => Promise<unknown>;
       writeTimedPanels: (id: string) => Promise<void>;
-      writeLyricsMessage: (message: unknown, profile: unknown, snapshot: unknown) => Promise<void>;
-      writeNowPlayingMessage: () => Promise<void>;
+      createLyricsPayload: (profile: unknown, snapshot: unknown) => unknown;
+      createNowPlayingPayload: (profile: unknown, snapshot: unknown) => unknown;
+      matchesCurrentMessage: () => boolean;
       resetProgressRefreshTimer: (id: string, snapshot: unknown) => void;
     };
-    const initial = { currentTrack: { title: "Track" }, paused: false, nextLyricLineInMs: 3_000 };
+    const track = { title: "Track", author: "Artist", uri: "https://example.com/track" };
+    const initial = { currentTrack: track, lyricsEnabled: true, upcomingLyricLines: [], paused: false, nextLyricLineInMs: 3_000 };
     const latest = { ...initial, nextLyricLineInMs: 500 };
     getSnapshot.mockReturnValue(initial);
-    vi.spyOn(internals, "ensurePanelMessages").mockResolvedValue({ nowPlaying: {}, lyrics: {} });
     const order: string[] = [];
-    const lyricsSnapshots: unknown[] = [];
-    vi.spyOn(internals, "writeLyricsMessage").mockImplementation((_message, _profile, snapshot) => {
-      order.push("lyrics");
-      lyricsSnapshots.push(snapshot);
-      return Promise.resolve();
-    });
-    vi.spyOn(internals, "writeNowPlayingMessage").mockImplementation(async () => {
-      order.push("artwork");
-      await vi.advanceTimersByTimeAsync(2_500);
-      getSnapshot.mockReturnValue(latest);
-    });
-    const reset = vi.spyOn(internals, "resetProgressRefreshTimer");
+    const lyricsMessage = { id: "lyrics", edit: vi.fn(() => { order.push("lyrics"); return Promise.resolve(); }) };
+    const nowPlaying = {
+      id: "now-playing",
+      attachments: { some: (): boolean => false, size: 0 },
+      edit: vi.fn(async () => {
+        order.push("artwork");
+        await vi.advanceTimersByTimeAsync(2_500);
+        getSnapshot.mockReturnValue(latest);
+      }),
+    };
+    const channel = { id: "control-channel", send: vi.fn().mockResolvedValue(lyricsMessage) };
+    vi.spyOn(internals, "ensurePanelMessages").mockResolvedValue({ channel, nowPlaying, queue: {} });
+    vi.spyOn(internals, "matchesCurrentMessage").mockReturnValue(false);
+    // Stubbed so the progress tick doesn't start extra cycles while fake
+    // time is advanced below.
+    const reset = vi.spyOn(internals, "resetProgressRefreshTimer").mockImplementation(() => undefined);
+
+    // First cycle creates this track's lyrics message; the second edits it.
     await internals.writeTimedPanels(guildId);
-    expect(order).toEqual(["artwork", "lyrics"]);
-    expect(lyricsSnapshots).toEqual([latest]);
+    await vi.advanceTimersByTimeAsync(5_000);
+    order.length = 0;
+    await internals.writeTimedPanels(guildId);
+
+    expect(order).toEqual(["lyrics", "artwork"]);
     expect(reset).toHaveBeenLastCalledWith(guildId, latest);
     service.stop();
   });
@@ -1155,9 +1165,9 @@ describe("ControlChannelService", () => {
   });
 
   it("posts the autoqueue vote as its own message, edits it in place, and deletes it once the vote closes", async () => {
-    const { service } = createService(false);
+    const { service, getSnapshot } = createService(false);
     const internals = service as unknown as {
-      writeVoteMessage: (channel: unknown, profile: unknown, snapshot: unknown, guildId: string) => Promise<void>;
+      writeVoteMessage: (messages: unknown, profile: unknown, guildId: string) => Promise<void>;
     };
     const profile = guildConfiguration(false);
     const voteMessage = {
@@ -1170,8 +1180,13 @@ describe("ControlChannelService", () => {
       delete: vi.fn().mockResolvedValue(undefined),
     };
     const send = vi.fn().mockResolvedValue(voteMessage);
-    const channel = { send };
+    const channel = { id: "control-channel", send };
+    const messages = { channel, nowPlaying: {}, queue: {} };
     const option = (title: string, votes: number): unknown => ({ title, author: "Artist", uri: "", votes });
+    const writeVote = (snapshot: unknown): Promise<void> => {
+      getSnapshot.mockReturnValue(snapshot);
+      return internals.writeVoteMessage(messages, profile, guildId);
+    };
     const snapshotWith = (autoQueueVote: unknown): unknown => ({
       paused: false,
       currentTrack: { title: "Song", author: "Artist", uri: "https://example.com/song", durationMs: 180_000, positionMs: 0, isStream: false },
@@ -1179,22 +1194,22 @@ describe("ControlChannelService", () => {
     });
 
     // Still looking up options: nothing to post yet.
-    await internals.writeVoteMessage(channel, profile, snapshotWith({ status: "loading" }), guildId);
+    await writeVote(snapshotWith({ status: "loading" }));
     expect(send).not.toHaveBeenCalled();
 
-    await internals.writeVoteMessage(channel, profile, snapshotWith({
+    await writeVote(snapshotWith({
       status: "ready", leadingIndex: 0, options: [option("A", 0), option("B", 0), option("C", 0)],
-    }), guildId);
+    }));
     expect(send).toHaveBeenCalledOnce();
 
-    await internals.writeVoteMessage(channel, profile, snapshotWith({
+    await writeVote(snapshotWith({
       status: "ready", leadingIndex: 1, options: [option("A", 0), option("B", 1), option("C", 0)],
-    }), guildId);
+    }));
     expect(send).toHaveBeenCalledOnce();
     expect(voteMessage.edit).toHaveBeenCalledOnce();
 
     // Someone queued a track by hand, so autoqueue won't pick: the vote closes.
-    await internals.writeVoteMessage(channel, profile, snapshotWith(null), guildId);
+    await writeVote(snapshotWith(null));
     expect(voteMessage.delete).toHaveBeenCalledOnce();
   });
 
@@ -1637,6 +1652,8 @@ describe("ControlChannelService", () => {
       { getYohtaTheme: () => null, hasEmoji: () => false, getEmojiTag: () => null } as never,
       logger as never,
       eventBus,
+      // Ordering, not the edit budget, is under test here.
+      new ChannelEditScheduler({ maxEdits: 100 }),
     );
 
     // Kick off a background refresh (e.g. a trackStart event elsewhere) and

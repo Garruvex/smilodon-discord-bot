@@ -81,6 +81,7 @@ export class Application {
     this.birthdayAnnouncer.stop();
     this.dependencies.channelSummaryScheduler?.stop();
     this.dependencies.reactionReplyScheduler?.stop();
+    this.dependencies.channelEditScheduler.stop();
     this.dependencies.reminderScheduler.stop();
     this.dependencies.pollService.stop();
     // Destroyed before draining, not after — this stops new Discord

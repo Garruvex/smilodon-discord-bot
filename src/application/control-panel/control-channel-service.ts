@@ -20,6 +20,7 @@ import type { Logger } from "pino";
 
 import { hasMusicDjPrivilege } from "../access/access-rules.js";
 import { KeyedSerialQueue } from "../concurrency/keyed-serial-queue.js";
+import { ChannelEditScheduler, type ChannelEditSlot, type ChannelEditWrite } from "../concurrency/channel-edit-scheduler.js";
 import type { PlaybackService } from "../music/playback-service.js";
 import type { MusicEventBus } from "../music/music-event-bus.js";
 import { musicErrorText, MusicError } from "../music/music-errors.js";
@@ -138,6 +139,20 @@ interface PanelMessagePair {
   queue: Message;
 }
 
+// Every panel message's edits go through the shared ChannelEditScheduler,
+// which keeps the control channel under Discord's per-channel edit limit.
+// When the budget is tight the queue (only edited after a button press or
+// request, so a person is waiting on it) goes first, then lyrics (timing
+// matters), then the vote, then the Now Playing progress bar (it only needs
+// to be roughly right, and its next edit carries the latest position anyway).
+const panelEditPriority = { queue: 0, lyrics: 1, vote: 2, nowPlaying: 3 } as const;
+type PanelEditSlotName = keyof typeof panelEditPriority;
+
+interface GuildPanelEditSlots {
+  channelId: string;
+  slots: Record<PanelEditSlotName, ChannelEditSlot>;
+}
+
 export class ControlChannelService {
   private readonly progressRefreshTimers = new Map<string, NodeJS.Timeout>();
   private readonly lastLyricsEditAt = new Map<string, number>();
@@ -172,6 +187,7 @@ export class ControlChannelService {
   // in-flight authoritative edit can complete out of order over the network,
   // making an older render visually stomp a newer one.
   private readonly panelWriteQueue = new KeyedSerialQueue();
+  private readonly editSlotsByGuild = new Map<string, GuildPanelEditSlots>();
   private readonly unsubscribeEventBus: () => void;
   private stopped = false;
 
@@ -185,6 +201,9 @@ export class ControlChannelService {
     private readonly applicationEmojiCatalog: ApplicationEmojiCatalog,
     private readonly logger: Logger,
     eventBus: MusicEventBus,
+    // Shared with any other feature that edits messages repeatedly; a
+    // private instance is enough for tests and single-feature setups.
+    private readonly editScheduler: ChannelEditScheduler = new ChannelEditScheduler(),
   ) {
     this.refreshCoordinator = new PanelRefreshCoordinator(
       async (guildId, options) => this.performPanelRefresh(guildId, options),
@@ -194,8 +213,13 @@ export class ControlChannelService {
       if (event.reason === "lyrics_loaded") {
         this.logger.trace(
           { guildId: event.guildId, reason: event.reason, time: Date.now() },
-          "Panel refresh requested for freshly-resolved lyrics",
+          "Lyrics refresh requested for a new lyric line or lookup result",
         );
+        // Lyrics only ever appear on the lyrics message, and this event
+        // fires for every lyric line — refreshing the whole panel for it
+        // spent three edits where one was needed.
+        await this.writeLyricsPanel(event.guildId);
+        return;
       }
       await this.refreshPanel(event.guildId);
     });
@@ -232,6 +256,7 @@ export class ControlChannelService {
     this.voteMessageByGuild.clear();
     this.voteTrackKeyByGuild.clear();
     this.voteClosesAtByGuild.clear();
+    for (const guildId of [...this.editSlotsByGuild.keys()]) this.releaseEditSlots(guildId);
   }
 
   // Called when the bot leaves a guild, so its per-guild timer/permission
@@ -243,6 +268,7 @@ export class ControlChannelService {
     this.lyricsMessageByGuild.delete(guildId);
     this.lyricsTrackKeyByGuild.delete(guildId);
     this.forgetVoteMessage(guildId);
+    this.releaseEditSlots(guildId);
     this.refreshCoordinator.stopGuild(guildId);
     const profile = this.guildConfigurationProvider.find(guildId);
     if (profile?.channels.controlPanel) {
@@ -618,20 +644,16 @@ export class ControlChannelService {
         this.resetProgressRefreshTimer(guildId, this.playerGateway.getSnapshot(guildId));
         return;
       }
-      const snapshot = this.playerGateway.getSnapshot(profile.guildId);
-      // Each write is independently try/caught — one message's edit
-      // throwing (e.g. an unexpected API error) must not skip the other
-      // two for this cycle.
-      await this.writeQueueMessage(messages.queue, profile, snapshot, guildId);
-      await this.writeNowPlayingMessage(messages.nowPlaying, profile, this.playerGateway.getSnapshot(guildId), options, guildId);
-      // Lyrics written last, off the freshest snapshot available — a slow
-      // Now Playing edit above must not leave the displayed line stale by
-      // however long that edit took. Writing lyrics after it (instead of
-      // before, off an older snapshot) means the line shown always reflects
-      // what's truly playing right now, not what was playing when this
-      // refresh started.
-      await this.writeLyricsMessage(messages.channel, profile, this.playerGateway.getSnapshot(guildId), guildId);
-      await this.writeVoteMessage(messages.channel, profile, this.playerGateway.getSnapshot(guildId), guildId);
+      // Scheduled together so the edit scheduler can order them by priority.
+      // Each write renders from the snapshot current when its turn comes,
+      // and is independently try/caught — one message's edit throwing (e.g.
+      // an unexpected API error) must not skip the others this cycle.
+      await Promise.all([
+        this.writeQueueMessage(messages, profile, guildId),
+        this.writeNowPlayingMessage(messages, profile, options, guildId),
+        this.writeLyricsMessage(messages, profile, guildId),
+        this.writeVoteMessage(messages, profile, guildId),
+      ]);
       // Slow edits must not add their elapsed time to the next line's delay.
       // Schedule from a fresh position even when a message edit failed.
       this.resetProgressRefreshTimer(guildId, this.playerGateway.getSnapshot(guildId));
@@ -677,45 +699,95 @@ export class ControlChannelService {
       // The interval floor now lives inside writeNowPlayingMessage/
       // writeLyricsMessage themselves (applies to every caller, not just
       // this tick path) — no need to gate the call here too.
-      await this.writeNowPlayingMessage(messages.nowPlaying, profile, this.playerGateway.getSnapshot(guildId), {}, guildId);
-      // Lyrics last, off the freshest snapshot — see the matching comment in
-      // writePanel() above for why.
-      await this.writeLyricsMessage(messages.channel, profile, this.playerGateway.getSnapshot(guildId), guildId);
       // The vote locks on playback position, not on any event, so this tick
       // is what flips its message to the closed view in the final stretch.
-      await this.writeVoteMessage(messages.channel, profile, this.playerGateway.getSnapshot(guildId), guildId);
+      await Promise.all([
+        this.writeNowPlayingMessage(messages, profile, {}, guildId),
+        this.writeLyricsMessage(messages, profile, guildId),
+        this.writeVoteMessage(messages, profile, guildId),
+      ]);
       this.resetProgressRefreshTimer(guildId, this.playerGateway.getSnapshot(guildId));
     });
   }
 
-  private async writeNowPlayingMessage(
-    message: Message,
+  // The lyric-line path: a new line (or a finished lookup) changes only the
+  // lyrics message, so only that one is written.
+  private async writeLyricsPanel(guildId: string): Promise<void> {
+    const profile = this.guildConfigurationProvider.find(guildId);
+    if (!profile?.channels.controlPanel || !profile.features.music) return;
+    await this.panelWriteQueue.run(guildId, async () => {
+      const messages = await this.ensurePanelMessages(profile).catch((error: unknown) => {
+        this.logger.error({ error, guildId }, "Unable to ensure music control panel messages");
+        return null;
+      });
+      if (!messages) return;
+      await this.writeLyricsMessage(messages, profile, guildId);
+      // The next lyric line's timing moved, so re-aim the tick at it.
+      this.resetProgressRefreshTimer(guildId, this.playerGateway.getSnapshot(guildId));
+    });
+  }
+
+  // One registered slot per panel message, re-registered if the control
+  // channel changes.
+  private editSlots(guildId: string, channelId: string): Record<PanelEditSlotName, ChannelEditSlot> {
+    const existing = this.editSlotsByGuild.get(guildId);
+    if (existing && existing.channelId === channelId) return existing.slots;
+    if (existing) this.releaseEditSlots(guildId);
+    const register = (name: PanelEditSlotName): ChannelEditSlot => this.editScheduler.register({
+      channelId, key: `control-panel:${guildId}:${name}`, priority: panelEditPriority[name],
+    });
+    const slots = {
+      queue: register("queue"), lyrics: register("lyrics"), vote: register("vote"), nowPlaying: register("nowPlaying"),
+    };
+    this.editSlotsByGuild.set(guildId, { channelId, slots });
+    return slots;
+  }
+
+  private releaseEditSlots(guildId: string): void {
+    const existing = this.editSlotsByGuild.get(guildId);
+    if (!existing) return;
+    for (const slot of Object.values(existing.slots)) slot.unregister();
+    this.editSlotsByGuild.delete(guildId);
+  }
+
+  private scheduleEdit(
+    guildId: string, messages: PanelMessagePair, name: PanelEditSlotName, write: ChannelEditWrite,
+  ): Promise<void> {
+    return this.editSlots(guildId, messages.channel.id)[name].schedule(write);
+  }
+
+  private writeNowPlayingMessage(
+    messages: PanelMessagePair,
     profile: GuildConfiguration,
-    snapshot: MusicPlayerSnapshot | null,
     options: PanelRefreshOptions,
     guildId: string,
   ): Promise<void> {
-    try {
-      // Floor applies here — not just in the periodic-tick caller — so an
-      // event-driven refresh (track_started, lyrics_loaded, queue_changed,
-      // ...) can't stack its own edit on top of one the tick just sent.
-      // Confirmed via production REST logging: real 429s from Discord's
-      // per-channel message-edit sublimit kept happening even after tuning
-      // the tick-only interval, because this path had no floor of its own
-      // at all — only a "did the content change" check, which a genuine
-      // track change always passes. A skip here isn't lost — the next
-      // scheduled tick (resetProgressRefreshTimer) or a later event picks
-      // it up.
-      if (Date.now() - (this.lastNowPlayingEditAt.get(guildId) ?? -Infinity) < masterPanelRefreshIntervalMs) return;
-      const payload = this.createNowPlayingPayload(profile, snapshot);
-      const editOptions = this.createNowPlayingEditOptions(message, profile, snapshot, payload, options);
-      if (!this.matchesCurrentMessage(message, editOptions)) {
+    return this.scheduleEdit(guildId, messages, "nowPlaying", async () => {
+      const message = messages.nowPlaying;
+      const snapshot = this.playerGateway.getSnapshot(guildId);
+      try {
+        // Floor applies here — not just in the periodic-tick caller — so an
+        // event-driven refresh (track_started, lyrics_loaded, queue_changed,
+        // ...) can't stack its own edit on top of one the tick just sent.
+        // Confirmed via production REST logging: real 429s from Discord's
+        // per-channel message-edit sublimit kept happening even after tuning
+        // the tick-only interval, because this path had no floor of its own
+        // at all — only a "did the content change" check, which a genuine
+        // track change always passes. A skip here isn't lost — the next
+        // scheduled tick (resetProgressRefreshTimer) or a later event picks
+        // it up.
+        if (Date.now() - (this.lastNowPlayingEditAt.get(guildId) ?? -Infinity) < masterPanelRefreshIntervalMs) return false;
+        const payload = this.createNowPlayingPayload(profile, snapshot);
+        const editOptions = this.createNowPlayingEditOptions(message, profile, snapshot, payload, options);
+        if (this.matchesCurrentMessage(message, editOptions)) return false;
         this.lastNowPlayingEditAt.set(guildId, Date.now());
         await message.edit(editOptions);
+        return true;
+      } catch (error) {
+        this.logger.error({ error, guildId }, "Unable to refresh the Now Playing panel message");
+        return true;
       }
-    } catch (error) {
-      this.logger.error({ error, guildId }, "Unable to refresh the Now Playing panel message");
-    }
+    });
   }
 
   // A track identity key for ensureLyricsMessage — good enough to detect
@@ -778,32 +850,36 @@ export class ControlChannelService {
     return { message, justCreated: true };
   }
 
-  private async writeLyricsMessage(
-    channel: TextChannel,
+  // A new track's send/delete goes through the slot too, so it stays ordered
+  // with this message's edits, but doesn't count against the edit budget —
+  // those are different Discord routes.
+  private writeLyricsMessage(
+    messages: PanelMessagePair,
     profile: GuildConfiguration,
-    snapshot: MusicPlayerSnapshot | null,
     guildId: string,
   ): Promise<void> {
-    try {
-      const { message, justCreated } = await this.ensureLyricsMessage(channel, profile, snapshot, guildId);
-      // Nothing playing, and no leftover message to clean up either (that
-      // part already happened inside ensureLyricsMessage) — nothing to do.
-      if (!message) return;
-      // A just-created message was sent with this exact content, via
-      // channel.send() above — nothing left to do this cycle.
-      if (justCreated) return;
-      // Same floor-applies-to-every-caller reasoning as writeNowPlayingMessage
-      // above — this was the dominant contributor: a track change fires
-      // track_started (writes the "Looking for lyrics..." placeholder) and
-      // then lyrics_loaded moments later (writes the real line), each an
-      // independent, fully unthrottled writePanel() cycle. For a genuinely
-      // new track the placeholder write always passes this check (the prior
-      // track's last lyrics edit is long past by then); it's specifically
-      // the *second* write, landing within the floor of the first, that
-      // this was letting through uncounted.
-      if (Date.now() - (this.lastLyricsEditAt.get(guildId) ?? -Infinity) < minimumLyricEditIntervalMs) return;
-      const payload = this.createLyricsPayload(profile, snapshot);
-      if (!this.matchesCurrentMessage(message, payload)) {
+    return this.scheduleEdit(guildId, messages, "lyrics", async () => {
+      const snapshot = this.playerGateway.getSnapshot(guildId);
+      try {
+        const { message, justCreated } = await this.ensureLyricsMessage(messages.channel, profile, snapshot, guildId);
+        // Nothing playing, and no leftover message to clean up either (that
+        // part already happened inside ensureLyricsMessage) — nothing to do.
+        if (!message) return false;
+        // A just-created message was sent with this exact content, via
+        // channel.send() above — nothing left to do this cycle.
+        if (justCreated) return false;
+        // Same floor-applies-to-every-caller reasoning as writeNowPlayingMessage
+        // above — this was the dominant contributor: a track change fires
+        // track_started (writes the "Looking for lyrics..." placeholder) and
+        // then lyrics_loaded moments later (writes the real line), each an
+        // independent, fully unthrottled writePanel() cycle. For a genuinely
+        // new track the placeholder write always passes this check (the prior
+        // track's last lyrics edit is long past by then); it's specifically
+        // the *second* write, landing within the floor of the first, that
+        // this was letting through uncounted.
+        if (Date.now() - (this.lastLyricsEditAt.get(guildId) ?? -Infinity) < minimumLyricEditIntervalMs) return false;
+        const payload = this.createLyricsPayload(profile, snapshot);
+        if (this.matchesCurrentMessage(message, payload)) return false;
         this.lastLyricsEditAt.set(guildId, Date.now());
         const startedAt = Date.now();
         await message.edit(payload);
@@ -811,10 +887,12 @@ export class ControlChannelService {
           { guildId, editMs: Date.now() - startedAt, time: Date.now(), line: snapshot?.currentLyricLine ?? null },
           "Lyrics panel message edited",
         );
+        return true;
+      } catch (error) {
+        this.logger.error({ error, guildId }, "Unable to refresh the Lyrics panel message");
+        return true;
       }
-    } catch (error) {
-      this.logger.error({ error, guildId }, "Unable to refresh the Lyrics panel message");
-    }
+    });
   }
 
   // Keeps the vote message's existence in step with the snapshot: posted
@@ -822,57 +900,63 @@ export class ControlChannelService {
   // deleted the moment it closes. A new track's vote replaces the previous
   // message outright, so each vote is a fresh post at the bottom of the
   // channel rather than one message edited for the whole session.
-  private async writeVoteMessage(
-    channel: TextChannel,
+  private writeVoteMessage(
+    messages: PanelMessagePair,
     profile: GuildConfiguration,
-    snapshot: MusicPlayerSnapshot | null,
     guildId: string,
   ): Promise<void> {
-    try {
-      const vote = snapshot?.autoQueueVote;
-      const trackKey = snapshot?.currentTrack && vote?.status === "ready"
-        ? `${snapshot.currentTrack.title}|${snapshot.currentTrack.author}|${snapshot.currentTrack.uri}`
-        : null;
-      const cached = this.voteMessageByGuild.get(guildId);
-      if (cached && this.voteTrackKeyByGuild.get(guildId) !== trackKey) {
-        this.forgetVoteMessage(guildId);
-      }
-      if (!snapshot || !trackKey || vote?.status !== "ready") return;
+    return this.scheduleEdit(guildId, messages, "vote", async () => {
+      const channel = messages.channel;
+      const snapshot = this.playerGateway.getSnapshot(guildId);
+      try {
+        const vote = snapshot?.autoQueueVote;
+        const trackKey = snapshot?.currentTrack && vote?.status === "ready"
+          ? `${snapshot.currentTrack.title}|${snapshot.currentTrack.author}|${snapshot.currentTrack.uri}`
+          : null;
+        const cached = this.voteMessageByGuild.get(guildId);
+        if (cached && this.voteTrackKeyByGuild.get(guildId) !== trackKey) {
+          this.forgetVoteMessage(guildId);
+        }
+        if (!snapshot || !trackKey || vote?.status !== "ready") return false;
 
-      // Sampled playback position jitters by a second or so between
-      // refreshes, which would otherwise turn every vote into a pointless
-      // edit just to nudge the countdown. Only move it when it's really off
-      // (a seek, or pause/resume).
-      const closesAt = autoQueueVoteClosesAtSeconds(vote, snapshot.paused, Date.now());
-      const previousClosesAt = this.voteClosesAtByGuild.get(guildId);
-      const stableClosesAt = previousClosesAt !== undefined &&
-        previousClosesAt !== null &&
-        closesAt !== null &&
-        Math.abs(previousClosesAt - closesAt) <= voteCountdownToleranceSeconds
-        ? previousClosesAt
-        : closesAt;
-      this.voteClosesAtByGuild.set(guildId, stableClosesAt);
-      const payload = createAutoQueueVotePayload(profile, vote, {
-        closesAtSeconds: stableClosesAt,
-        paused: snapshot.paused,
-        currentArtist: cleanArtistName(snapshot.currentTrack?.author ?? ""),
-      });
+        // Sampled playback position jitters by a second or so between
+        // refreshes, which would otherwise turn every vote into a pointless
+        // edit just to nudge the countdown. Only move it when it's really off
+        // (a seek, or pause/resume).
+        const closesAt = autoQueueVoteClosesAtSeconds(vote, snapshot.paused, Date.now());
+        const previousClosesAt = this.voteClosesAtByGuild.get(guildId);
+        const stableClosesAt = previousClosesAt !== undefined &&
+          previousClosesAt !== null &&
+          closesAt !== null &&
+          Math.abs(previousClosesAt - closesAt) <= voteCountdownToleranceSeconds
+          ? previousClosesAt
+          : closesAt;
+        this.voteClosesAtByGuild.set(guildId, stableClosesAt);
+        const payload = createAutoQueueVotePayload(profile, vote, {
+          closesAtSeconds: stableClosesAt,
+          paused: snapshot.paused,
+          currentArtist: cleanArtistName(snapshot.currentTrack?.author ?? ""),
+        });
 
-      const existing = this.voteMessageByGuild.get(guildId);
-      if (!existing) {
-        const message = await channel.send(payload);
-        this.voteMessageByGuild.set(guildId, message);
-        this.voteTrackKeyByGuild.set(guildId, trackKey);
-        return;
+        const existing = this.voteMessageByGuild.get(guildId);
+        if (!existing) {
+          const message = await channel.send(payload);
+          this.voteMessageByGuild.set(guildId, message);
+          this.voteTrackKeyByGuild.set(guildId, trackKey);
+          return false;
+        }
+        if (this.matchesCurrentMessage(existing, payload)) return false;
+        await existing.edit(payload);
+        return true;
+      } catch (error) {
+        // Most likely the message was deleted out from under us; forgetting it
+        // lets the next refresh post a replacement.
+        this.voteMessageByGuild.delete(guildId);
+        this.voteTrackKeyByGuild.delete(guildId);
+        this.logger.error({ error, guildId }, "Unable to refresh the autoqueue vote message");
+        return true;
       }
-      if (!this.matchesCurrentMessage(existing, payload)) await existing.edit(payload);
-    } catch (error) {
-      // Most likely the message was deleted out from under us; forgetting it
-      // lets the next refresh post a replacement.
-      this.voteMessageByGuild.delete(guildId);
-      this.voteTrackKeyByGuild.delete(guildId);
-      this.logger.error({ error, guildId }, "Unable to refresh the autoqueue vote message");
-    }
+    });
   }
 
   private forgetVoteMessage(guildId: string): void {
@@ -944,20 +1028,22 @@ export class ControlChannelService {
     return true;
   }
 
-  private async writeQueueMessage(
-    message: Message,
+  private writeQueueMessage(
+    messages: PanelMessagePair,
     profile: GuildConfiguration,
-    snapshot: MusicPlayerSnapshot | null,
     guildId: string,
   ): Promise<void> {
-    try {
-      const payload = this.createQueueControlsPayload(profile, snapshot);
-      if (!this.matchesCurrentMessage(message, payload)) {
-        await message.edit(payload);
+    return this.scheduleEdit(guildId, messages, "queue", async () => {
+      try {
+        const payload = this.createQueueControlsPayload(profile, this.playerGateway.getSnapshot(guildId));
+        if (this.matchesCurrentMessage(messages.queue, payload)) return false;
+        await messages.queue.edit(payload);
+        return true;
+      } catch (error) {
+        this.logger.error({ error, guildId }, "Unable to refresh the Queue panel message");
+        return true;
       }
-    } catch (error) {
-      this.logger.error({ error, guildId }, "Unable to refresh the Queue panel message");
-    }
+    });
   }
 
   private async ensurePanelMessages(profile: GuildConfiguration): Promise<PanelMessagePair> {

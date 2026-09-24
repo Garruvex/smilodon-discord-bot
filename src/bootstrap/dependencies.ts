@@ -73,6 +73,7 @@ import { MentionChatBehavior } from "../infrastructure/discord/behaviors/mention
 import { AmbientChatBehavior } from "../infrastructure/discord/behaviors/ambient-chat-behavior.js";
 import { ReactionArmBehavior } from "../infrastructure/discord/behaviors/reaction-arm-behavior.js";
 import { ReactionReplyScheduler } from "../infrastructure/discord/behaviors/reaction-reply-scheduler.js";
+import { ChannelEditScheduler } from "../application/concurrency/channel-edit-scheduler.js";
 import type { MessageReactionWatchStore } from "../application/chat/message-reaction-watch.js";
 import { LinkFixBehavior } from "../infrastructure/discord/behaviors/link-fix-behavior.js";
 import { BilibiliEmbedService } from "../infrastructure/links/bilibili-embed-service.js";
@@ -221,6 +222,9 @@ export interface ApplicationDependencies {
   // Null under the same condition — see ReactionReplyScheduler's own
   // constructor call above.
   reactionReplyScheduler: ReactionReplyScheduler | null;
+  // One per bot: every feature that edits the same messages repeatedly
+  // registers its slots here, so they share each channel's edit budget.
+  channelEditScheduler: ChannelEditScheduler;
   reminderScheduler: ReminderScheduler;
   applicationEmojiCatalog: ApplicationEmojiCatalog;
   memoryEngine: MemoryEngine;
@@ -643,6 +647,7 @@ export function createDependencies(
     settingsCommands,
     channelSummaryScheduler,
     reactionReplyScheduler,
+    channelEditScheduler: new ChannelEditScheduler(),
     reminderScheduler,
     applicationEmojiCatalog,
     memoryEngine,
