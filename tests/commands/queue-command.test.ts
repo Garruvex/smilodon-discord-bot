@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { QueueCommand } from "../../src/infrastructure/discord/commands/music/queue-command.js";
+import { texts } from "../../src/application/i18n/texts.js";
 import type { PlaybackService } from "../../src/application/music/playback-service.js";
 import type { CommandContext } from "../../src/application/commands/command.js";
 
@@ -14,6 +15,7 @@ function makeContext(subcommand: string): { context: CommandContext; reply: Retu
     },
     logger: {} as never,
     responses: { reply } as never,
+    text: texts.en,
   } as unknown as CommandContext;
   return { context, reply };
 }

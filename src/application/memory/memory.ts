@@ -294,11 +294,9 @@ export interface ActiveSubjectQuery {
   guildId: string;
   subjectType: MemorySubjectType;
   subjectId: string;
-  // Excludes the row just written by the current ingest call — that
-  // identity's own revision is already handled inside ingest() itself (see
-  // the isRevision branch in both repository implementations). This query
-  // is only for finding OTHER active memories about the same subject.
-  excludeMemoryId: string;
+  // When supplied, excludes the row just written by the current ingest
+  // call. A pre-ingest canonicalization lookup has no row to exclude.
+  excludeMemoryId?: string;
   // Scope of the memory that triggered this lookup — candidates outside
   // this scope must never be returned, or conflict detection ends up
   // comparing (and potentially superseding) memories across the same

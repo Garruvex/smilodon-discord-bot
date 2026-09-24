@@ -38,12 +38,12 @@ export class StopCommand implements BotCommand {
 
   public async execute(context: CommandContext): Promise<void> {
     if (!context.interaction.inCachedGuild()) {
-      await context.responses.reply("Music commands are only available in a server.");
+      await context.responses.reply(context.text.music.error.guildOnly);
       return;
     }
 
     await this.playbackService.stop(createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck, context.access.allowQueueWithoutVoiceChannel));
-    await context.responses.reply("Playback stopped and the voice connection was closed.");
+    await context.responses.reply(context.text.music.reply.stopped);
   }
 
   private async executeAsTool(ctx: ChatToolContext): Promise<ChatToolResult> {

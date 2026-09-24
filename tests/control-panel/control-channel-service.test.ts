@@ -2,6 +2,8 @@ import { ButtonStyle, ChannelType, DiscordAPIError, RESTJSONErrorCodes, type Mes
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ControlChannelService } from "../../src/application/control-panel/control-channel-service.js";
+import { ChannelEditScheduler } from "../../src/application/concurrency/channel-edit-scheduler.js";
+import { texts } from "../../src/application/i18n/texts.js";
 import type { PlaybackService } from "../../src/application/music/playback-service.js";
 import type { MusicEventBus } from "../../src/application/music/music-event-bus.js";
 import type { MusicPlayerGateway } from "../../src/application/music/music-player-gateway.js";
@@ -61,6 +63,7 @@ function guildConfiguration(chatbotEnabled: boolean): GuildConfiguration {
       linkFix: new Set(),
     },
     timezone: "UTC",
+    language: "en",
     linkFixPlatforms: {
       twitter: true, threads: true, tiktok: true, instagram: true, reddit: true, bilibili: true,
     },
@@ -953,6 +956,29 @@ describe("ControlChannelService", () => {
     expect(embed.description).toBe("No lyrics found for this track.");
   });
 
+  it.each([
+    ["retrying", "Couldn't reach the lyrics services. Trying again shortly…"],
+    ["gave_up", "Couldn't reach the lyrics services for this track."],
+  ])("says the lyrics services are unreachable (%s) instead of \"no lyrics\"", (lyricsOutage, expected) => {
+    const { service } = createService(false);
+    const embed = (
+      service as unknown as {
+        createLyricsEmbed: (
+          profile: GuildConfiguration,
+          snapshot: unknown,
+        ) => { toJSON: () => { description?: string } };
+      }
+    ).createLyricsEmbed(guildConfiguration(false), {
+      currentTrack: { title: "Track" },
+      currentLyricLine: null,
+      upcomingLyricLines: [],
+      lyricsUnavailable: false,
+      lyricsOutage,
+    }).toJSON();
+
+    expect(embed.description).toBe(expected);
+  });
+
   it("refreshes the panel to current idle state during startup", async () => {
     const { service } = createService(false);
     const ensureGuildPanel = vi
@@ -1010,42 +1036,51 @@ describe("ControlChannelService", () => {
     service.stop();
   });
 
-  it("writes lyrics after slow artwork, off the position after the edit, and reschedules from it too", async () => {
-    // Regression: lyrics used to be written BEFORE the (potentially slow)
-    // Now Playing edit, off whatever snapshot was current at the start of
-    // the cycle — so a slow artwork edit could leave the displayed lyric
-    // line stale by however long that edit took, with nothing correcting it
-    // until the next tick. Writing lyrics last, off the freshest snapshot,
-    // closes that gap.
+  it("doesn't hold lyrics behind a slow Now Playing edit, and reschedules from the position after it", async () => {
+    // Regression: lyrics used to be written off whatever snapshot was
+    // current at the start of the cycle, so a slow artwork edit could leave
+    // the displayed line stale. Lyrics now outrank Now Playing in the edit
+    // scheduler and each write reads the snapshot when its turn comes; the
+    // next tick is still aimed from the position after the slowest write.
     vi.useFakeTimers();
     const { service, getSnapshot } = createService(false);
     const internals = service as unknown as {
       ensurePanelMessages: () => Promise<unknown>;
       writeTimedPanels: (id: string) => Promise<void>;
-      writeLyricsMessage: (message: unknown, profile: unknown, snapshot: unknown) => Promise<void>;
-      writeNowPlayingMessage: () => Promise<void>;
+      createLyricsPayload: (profile: unknown, snapshot: unknown) => unknown;
+      createNowPlayingPayload: (profile: unknown, snapshot: unknown) => unknown;
+      matchesCurrentMessage: () => boolean;
       resetProgressRefreshTimer: (id: string, snapshot: unknown) => void;
     };
-    const initial = { currentTrack: { title: "Track" }, paused: false, nextLyricLineInMs: 3_000 };
+    const track = { title: "Track", author: "Artist", uri: "https://example.com/track" };
+    const initial = { currentTrack: track, lyricsEnabled: true, upcomingLyricLines: [], paused: false, nextLyricLineInMs: 3_000 };
     const latest = { ...initial, nextLyricLineInMs: 500 };
     getSnapshot.mockReturnValue(initial);
-    vi.spyOn(internals, "ensurePanelMessages").mockResolvedValue({ nowPlaying: {}, lyrics: {} });
     const order: string[] = [];
-    const lyricsSnapshots: unknown[] = [];
-    vi.spyOn(internals, "writeLyricsMessage").mockImplementation((_message, _profile, snapshot) => {
-      order.push("lyrics");
-      lyricsSnapshots.push(snapshot);
-      return Promise.resolve();
-    });
-    vi.spyOn(internals, "writeNowPlayingMessage").mockImplementation(async () => {
-      order.push("artwork");
-      await vi.advanceTimersByTimeAsync(2_500);
-      getSnapshot.mockReturnValue(latest);
-    });
-    const reset = vi.spyOn(internals, "resetProgressRefreshTimer");
+    const lyricsMessage = { id: "lyrics", edit: vi.fn(() => { order.push("lyrics"); return Promise.resolve(); }) };
+    const nowPlaying = {
+      id: "now-playing",
+      attachments: { some: (): boolean => false, size: 0 },
+      edit: vi.fn(async () => {
+        order.push("artwork");
+        await vi.advanceTimersByTimeAsync(2_500);
+        getSnapshot.mockReturnValue(latest);
+      }),
+    };
+    const channel = { id: "control-channel", send: vi.fn().mockResolvedValue(lyricsMessage) };
+    vi.spyOn(internals, "ensurePanelMessages").mockResolvedValue({ channel, nowPlaying, queue: {} });
+    vi.spyOn(internals, "matchesCurrentMessage").mockReturnValue(false);
+    // Stubbed so the progress tick doesn't start extra cycles while fake
+    // time is advanced below.
+    const reset = vi.spyOn(internals, "resetProgressRefreshTimer").mockImplementation(() => undefined);
+
+    // First cycle creates this track's lyrics message; the second edits it.
     await internals.writeTimedPanels(guildId);
-    expect(order).toEqual(["artwork", "lyrics"]);
-    expect(lyricsSnapshots).toEqual([latest]);
+    await vi.advanceTimersByTimeAsync(5_000);
+    order.length = 0;
+    await internals.writeTimedPanels(guildId);
+
+    expect(order).toEqual(["lyrics", "artwork"]);
     expect(reset).toHaveBeenLastCalledWith(guildId, latest);
     service.stop();
   });
@@ -1130,9 +1165,9 @@ describe("ControlChannelService", () => {
   });
 
   it("posts the autoqueue vote as its own message, edits it in place, and deletes it once the vote closes", async () => {
-    const { service } = createService(false);
+    const { service, getSnapshot } = createService(false);
     const internals = service as unknown as {
-      writeVoteMessage: (channel: unknown, profile: unknown, snapshot: unknown, guildId: string) => Promise<void>;
+      writeVoteMessage: (messages: unknown, profile: unknown, guildId: string) => Promise<void>;
     };
     const profile = guildConfiguration(false);
     const voteMessage = {
@@ -1145,8 +1180,13 @@ describe("ControlChannelService", () => {
       delete: vi.fn().mockResolvedValue(undefined),
     };
     const send = vi.fn().mockResolvedValue(voteMessage);
-    const channel = { send };
+    const channel = { id: "control-channel", send };
+    const messages = { channel, nowPlaying: {}, queue: {} };
     const option = (title: string, votes: number): unknown => ({ title, author: "Artist", uri: "", votes });
+    const writeVote = (snapshot: unknown): Promise<void> => {
+      getSnapshot.mockReturnValue(snapshot);
+      return internals.writeVoteMessage(messages, profile, guildId);
+    };
     const snapshotWith = (autoQueueVote: unknown): unknown => ({
       paused: false,
       currentTrack: { title: "Song", author: "Artist", uri: "https://example.com/song", durationMs: 180_000, positionMs: 0, isStream: false },
@@ -1154,22 +1194,22 @@ describe("ControlChannelService", () => {
     });
 
     // Still looking up options: nothing to post yet.
-    await internals.writeVoteMessage(channel, profile, snapshotWith({ status: "loading" }), guildId);
+    await writeVote(snapshotWith({ status: "loading" }));
     expect(send).not.toHaveBeenCalled();
 
-    await internals.writeVoteMessage(channel, profile, snapshotWith({
+    await writeVote(snapshotWith({
       status: "ready", leadingIndex: 0, options: [option("A", 0), option("B", 0), option("C", 0)],
-    }), guildId);
+    }));
     expect(send).toHaveBeenCalledOnce();
 
-    await internals.writeVoteMessage(channel, profile, snapshotWith({
+    await writeVote(snapshotWith({
       status: "ready", leadingIndex: 1, options: [option("A", 0), option("B", 1), option("C", 0)],
-    }), guildId);
+    }));
     expect(send).toHaveBeenCalledOnce();
     expect(voteMessage.edit).toHaveBeenCalledOnce();
 
     // Someone queued a track by hand, so autoqueue won't pick: the vote closes.
-    await internals.writeVoteMessage(channel, profile, snapshotWith(null), guildId);
+    await writeVote(snapshotWith(null));
     expect(voteMessage.delete).toHaveBeenCalledOnce();
   });
 
@@ -1612,6 +1652,8 @@ describe("ControlChannelService", () => {
       { getYohtaTheme: () => null, hasEmoji: () => false, getEmojiTag: () => null } as never,
       logger as never,
       eventBus,
+      // Ordering, not the edit budget, is under test here.
+      new ChannelEditScheduler({ maxEdits: 100 }),
     );
 
     // Kick off a background refresh (e.g. a trackStart event elsewhere) and
@@ -2199,5 +2241,156 @@ describe("ControlChannelService", () => {
       const editOptions = { ...baseEditOptions(), attachments: [] as const };
       expect(matches(service, message, editOptions)).toBe(false);
     });
+  });
+});
+
+// The panel is one message everyone in the server sees, so it follows the
+// guild's language setting (not any viewer's Discord locale).
+describe("ControlChannelService panel language", () => {
+  type EmbedJson = { title?: string; description?: string; footer?: { text: string } };
+  type PanelPrivates = {
+    createQueueEmbed: (profile: GuildConfiguration, snapshot: unknown) => { toJSON: () => EmbedJson };
+    createNowPlayingEmbed: (profile: GuildConfiguration, snapshot: unknown) => { toJSON: () => EmbedJson };
+    createLyricsEmbed: (profile: GuildConfiguration, snapshot: unknown) => { toJSON: () => EmbedJson };
+    createNowPlayingPayload: (profile: GuildConfiguration, snapshot: unknown) => { content: string };
+    createQueueControlsPayload: (
+      profile: GuildConfiguration,
+      snapshot: unknown,
+    ) => { components: { toJSON: () => { components: { label?: string }[] } }[] };
+  };
+
+  const track = {
+    identifier: "x",
+    title: "Rice Field",
+    author: "Jay Chou",
+    uri: "https://example.com/rice-field",
+    artworkUrl: null,
+    durationMs: 224_000,
+    positionMs: 10_000,
+    isStream: false,
+    requestedByUserId: "345678901234567890",
+  };
+  const playingSnapshot = {
+    paused: false,
+    volume: 75,
+    queueLength: 0,
+    repeatMode: "off",
+    autoQueue: false,
+    twentyFourSeven: false,
+    lyricsEnabled: false,
+    currentLyricLine: null,
+    upcomingLyricLines: [] as string[],
+    currentTrack: track,
+  };
+  const idleSnapshot = { ...playingSnapshot, currentTrack: null };
+
+  function inLanguage(language: "zh-TW" | "ja"): { service: PanelPrivates; profile: GuildConfiguration } {
+    const { service } = createService(false);
+    return {
+      service: service as unknown as PanelPrivates,
+      profile: { ...guildConfiguration(false), language },
+    };
+  }
+
+  it("renders the queue embed in Japanese, including the footer, repeat mode and overflow line", () => {
+    const { service, profile } = inLanguage("ja");
+    const tracks = Array.from({ length: 8 }, (_, index) => ({ ...track, title: `Track ${index + 1}` }));
+    Object.assign(service, { playerGateway: { getQueue: vi.fn(() => tracks) } });
+
+    const embed = service.createQueueEmbed(profile, {
+      ...playingSnapshot,
+      queueLength: tracks.length,
+      repeatMode: "queue",
+    }).toJSON();
+
+    expect(embed.title).toBe("キュー");
+    expect(embed.description).toContain("キュー内 8 曲");
+    expect(embed.description).toContain("ほか 3 曲。残りは `/queue show` で確認できます");
+    expect(embed.footer?.text).toContain("待機中 8 曲");
+    expect(embed.footer?.text).toContain("リピート：キュー全体");
+    expect(embed.description).not.toContain("in queue");
+  });
+
+  it("renders the Now Playing embed and requester line in Traditional Chinese", () => {
+    const { service, profile } = inLanguage("zh-TW");
+
+    const playing = service.createNowPlayingEmbed(profile, playingSnapshot).toJSON();
+    const paused = service.createNowPlayingEmbed(profile, { ...playingSnapshot, paused: true }).toJSON();
+    const idle = service.createNowPlayingEmbed(profile, idleSnapshot).toJSON();
+
+    expect(playing.title).toContain("正在播放");
+    expect(playing.description).toContain("點歌者：<@345678901234567890>");
+    expect(paused.title).toContain("播放已暫停");
+    expect(idle.title).toContain("目前沒有播放中的歌曲");
+    expect(idle.description).toBe("現在可以點歌了");
+  });
+
+  it("labels an autoqueued track's requester in the guild language", () => {
+    const { service, profile } = inLanguage("ja");
+    const autoqueued = { ...track, requestedByUserId: "autoqueue" };
+
+    const embed = service.createNowPlayingEmbed(profile, {
+      ...playingSnapshot,
+      currentTrack: autoqueued,
+    }).toJSON();
+
+    expect(embed.description).toContain(
+      texts.ja.music.panel.nowPlaying.requestedByAutoqueue({ user: `<@${botUserId}>` }),
+    );
+  });
+
+  it("renders the lyrics embed and the request hint in the guild language", () => {
+    const { service, profile } = inLanguage("ja");
+
+    const lyrics = service.createLyricsEmbed(profile, { ...playingSnapshot, lyricsUnavailable: true }).toJSON();
+    const searching = service.createLyricsEmbed(profile, playingSnapshot).toJSON();
+    const retrying = service.createLyricsEmbed(profile, { ...playingSnapshot, lyricsOutage: "retrying" }).toJSON();
+    const idle = service.createLyricsEmbed(profile, idleSnapshot).toJSON();
+    const hint = service.createNowPlayingPayload(profile, idleSnapshot).content;
+
+    expect(lyrics.description).toBe("この曲の歌詞は見つかりませんでした。");
+    expect(searching.description).toBe("歌詞を探しています…");
+    expect(retrying.description).toBe(texts.ja.music.panel.lyrics.retrying);
+    expect(idle.description).toBe("現在再生中の曲はありません。");
+    expect(hint.split("\n")).toEqual([
+      texts.ja.music.panel.hint.request,
+      texts.ja.music.panel.hint.controllersOnly,
+      texts.ja.music.panel.hint.help,
+    ]);
+  });
+
+  it("labels the panel's text buttons in the guild language", () => {
+    const { service, profile } = inLanguage("zh-TW");
+
+    const rows = service.createQueueControlsPayload(profile, playingSnapshot).components;
+    const labels = rows.flatMap((row) => row.toJSON().components.map((button) => button.label));
+
+    expect(labels).toContain("自動續播");
+    expect(labels).toContain("歌詞");
+    expect(labels).toContain("24/7");
+    expect(labels).not.toContain("Autoqueue");
+  });
+
+  it("keeps English when the guild language is English", () => {
+    const { service } = createService(false);
+    const embed = (service as unknown as PanelPrivates)
+      .createNowPlayingEmbed(guildConfiguration(false), idleSnapshot)
+      .toJSON();
+
+    expect(embed.title).toContain("No song currently playing");
+  });
+});
+
+describe("ControlChannelService panel hint", () => {
+  it("keeps the hint to short lines and drops the role line when anyone can queue", () => {
+    const { service } = createService(false);
+    const base = guildConfiguration(false);
+    const open = { ...base, music: { ...base.music, openQueueRequestsEnabled: true } };
+
+    const content = (service as unknown as {
+      createNowPlayingPayload: (profile: GuildConfiguration, snapshot: unknown) => { content: string };
+    }).createNowPlayingPayload(open, null).content;
+
+    expect(content.split("\n")).toEqual([texts.en.music.panel.hint.request, texts.en.music.panel.hint.help]);
   });
 });

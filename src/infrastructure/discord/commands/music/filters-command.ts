@@ -41,7 +41,9 @@ export class FiltersCommand implements BotCommand {
     const actor = createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck, context.access.allowQueueWithoutVoiceChannel);
     await this.playbackService.setFilterPreset(actor, preset);
     await context.responses.reply(
-      preset === "off" ? "Filters cleared." : `Applied the **${presetLabels[preset]}** filter.`,
+      preset === "off"
+        ? context.text.music.reply.filtersCleared
+        : context.text.music.reply.filterApplied({ filter: presetLabels[preset] }),
     );
   }
 }

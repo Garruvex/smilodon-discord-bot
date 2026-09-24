@@ -1,6 +1,8 @@
 import type { ButtonInteraction, ChatInputCommandInteraction, Message } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
 
+import { texts } from "../../src/application/i18n/texts.js";
+import type { Language } from "../../src/application/i18n/language.js";
 import { PollService, type CreatePollInput } from "../../src/application/polls/poll-service.js";
 
 interface Payload {
@@ -20,7 +22,7 @@ interface PollHarness {
   edit: ReturnType<typeof vi.fn>;
 }
 
-async function createPoll(input: Partial<CreatePollInput> = {}): Promise<PollHarness> {
+async function createPoll(input: Partial<CreatePollInput> = {}, language: Language = "en"): Promise<PollHarness> {
   const edit = vi.fn().mockResolvedValue(undefined);
   const message = { id: "poll-message", edit } as unknown as Message;
   let initial: Payload | undefined;
@@ -33,7 +35,7 @@ async function createPoll(input: Partial<CreatePollInput> = {}): Promise<PollHar
     }),
     fetchReply: vi.fn().mockResolvedValue(message),
   } as unknown as ChatInputCommandInteraction;
-  const find = vi.fn().mockReturnValue({ embedColor: "#123456", music: { autoQueueVoteBarStyle: "thin" } });
+  const find = vi.fn().mockReturnValue({ embedColor: "#123456", language, music: { autoQueueVoteBarStyle: "thin" } });
   const polls = new PollService({ find });
   await polls.create(command, { title: "Lunch", description: "What to order?", options: null, durationSeconds: null, ...input });
   const pollId = initial!.components[0]!.components[0]!.data.custom_id.split(":")[1]!;
@@ -55,6 +57,19 @@ async function createPoll(input: Partial<CreatePollInput> = {}): Promise<PollHar
 }
 
 describe("PollService", () => {
+  it("writes a Yes/No poll in the server language", async () => {
+    const ja = texts.ja.poll;
+    const { initial } = await createPoll({}, "ja");
+    const embed = initial.embeds[0]!.data;
+
+    expect(embed.title).toBe(ja.title({ title: "Lunch" }));
+    expect(embed.description).toContain(`✅ ${ja.yes}`);
+    expect(embed.description).toContain(`❌ ${ja.no}`);
+    expect(embed.description).toContain(ja.openUntilEnded);
+    expect(embed.description).toContain(ja.retractHint);
+    expect(initial.components[1]!.components[0]!.data.label).toBe(ja.endButton);
+  });
+
   it("starts a Yes/No poll with the guild's color and an end button", async () => {
     const { initial } = await createPoll();
 

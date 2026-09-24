@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { defaultLanguage, languages } from "../application/i18n/language.js";
 import { CHAT_LIMITS, MUSIC_LIMITS, PANEL_LIMITS } from "./guild-configuration-limits.js";
 
 const snowflake = z.string().regex(/^\d{17,20}$/);
@@ -180,6 +181,7 @@ export const guildConfigurationFileSchema = z
         leaveAnnouncements: null,
       }),
     timezone: timezoneSchema,
+    language: z.enum(languages).default(defaultLanguage),
     linkFixPlatforms: z
       .object({
         twitter: z.boolean().default(true),

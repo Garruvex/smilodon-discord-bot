@@ -8,18 +8,20 @@ import {
 } from "discord.js";
 import type { Logger } from "pino";
 
+import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
+import { textForGuild } from "../i18n/guild-text.js";
+import type { Texts } from "../i18n/texts.js";
 import type { RoleMenuStore } from "./role-menu-store.js";
 
 export type CreateRoleMenuResult = { ok: true } | { ok: false; message: string };
 
 const selectMenuCustomId = "rolemenu:pick";
 
-function validateRole(role: Role, botHighestPosition: number): string | null {
-  if (role.id === role.guild.id) return `<@&${role.id}> is the @everyone role and can't be assigned.`;
-  if (role.managed) return `<@&${role.id}> is managed by an integration and can't be assigned manually.`;
-  if (botHighestPosition <= role.position) {
-    return `I can't manage <@&${role.id}> — move my role above it in Server Settings → Roles.`;
-  }
+function validateRole(role: Role, botHighestPosition: number, text: Texts["roleMenu"]): string | null {
+  const mention = `<@&${role.id}>`;
+  if (role.id === role.guild.id) return text.everyoneRole({ role: mention });
+  if (role.managed) return text.managedRole({ role: mention });
+  if (botHighestPosition <= role.position) return text.cannotManage({ role: mention });
   return null;
 }
 
@@ -27,23 +29,25 @@ export class RoleMenuService {
   public constructor(
     private readonly store: RoleMenuStore,
     private readonly logger: Logger,
+    private readonly configurations: Pick<GuildConfigurationProvider, "find">,
   ) {}
 
   public async createMenu(
     channel: GuildTextBasedChannel, title: string, roles: readonly Role[],
   ): Promise<CreateRoleMenuResult> {
+    const text = textForGuild(this.configurations, channel.guild.id).roleMenu;
     const botMember = channel.guild.members.me;
-    if (!botMember) return { ok: false, message: "Couldn't resolve my own member in this server." };
+    if (!botMember) return { ok: false, message: text.noBotMember };
     const botHighestPosition = botMember.roles.highest.position;
 
     for (const role of roles) {
-      const error = validateRole(role, botHighestPosition);
+      const error = validateRole(role, botHighestPosition, text);
       if (error) return { ok: false, message: error };
     }
 
     const menu = new StringSelectMenuBuilder()
       .setCustomId(selectMenuCustomId)
-      .setPlaceholder("Choose your roles")
+      .setPlaceholder(text.placeholder)
       .setMinValues(0)
       .setMaxValues(roles.length)
       .addOptions(roles.map((role) => ({ label: role.name, value: role.id })));
@@ -62,13 +66,14 @@ export class RoleMenuService {
   }
 
   public async handleSelect(interaction: StringSelectMenuInteraction): Promise<void> {
+    const text = textForGuild(this.configurations, interaction.guildId).roleMenu;
     const menu = await this.store.find(interaction.message.id);
     if (!menu) {
-      await interaction.reply({ content: "This role menu is no longer configured.", flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: text.notConfigured, flags: MessageFlags.Ephemeral });
       return;
     }
     if (!interaction.inCachedGuild()) {
-      await interaction.reply({ content: "This only works in a server.", flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: text.guildOnly, flags: MessageFlags.Ephemeral });
       return;
     }
 
@@ -99,10 +104,10 @@ export class RoleMenuService {
     }
 
     const lines = [
-      added.length > 0 ? `Added: ${added.join(", ")}` : null,
-      removed.length > 0 ? `Removed: ${removed.join(", ")}` : null,
+      added.length > 0 ? text.added({ roles: added.join(", ") }) : null,
+      removed.length > 0 ? text.removed({ roles: removed.join(", ") }) : null,
     ].filter((line): line is string => line !== null);
 
-    await interaction.editReply(lines.length > 0 ? lines.join("\n") : "No changes.");
+    await interaction.editReply(lines.length > 0 ? lines.join("\n") : text.noChanges);
   }
 }

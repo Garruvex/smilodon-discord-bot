@@ -29,7 +29,7 @@ export class PlayNextCommand implements BotCommand {
 
   public async execute(context: CommandContext): Promise<void> {
     if (!context.interaction.inCachedGuild()) {
-      await context.responses.reply("Music commands are only available in a server.");
+      await context.responses.reply(context.text.music.error.guildOnly);
       return;
     }
 
@@ -50,7 +50,7 @@ export class PlayNextCommand implements BotCommand {
     }
 
     await context.responses.edit({
-      embeds: [createQueuedTrackCard(result, profile.embedColor as `#${string}`)],
+      embeds: [createQueuedTrackCard(result, profile.embedColor as `#${string}`, context.text)],
     });
     context.responses.deleteAfter(queuedTrackCardLifetimeMs);
   }

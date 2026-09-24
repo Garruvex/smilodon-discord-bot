@@ -1,6 +1,7 @@
 import type { ChatInputCommandInteraction, MessageContextMenuCommandInteraction } from "discord.js";
 import type { Logger } from "pino";
 
+import type { Texts } from "../i18n/texts.js";
 import type { CommandAccessPolicy } from "../../domain/access/access-policy.js";
 import type { CommandResponses } from "./command-responses.js";
 import type { ChatToolContext, ChatToolParameterSchema, ChatToolResult } from "../chat/tools/chat-tool.js";
@@ -40,6 +41,10 @@ export interface CommandContext<TInteraction extends AnyCommandInteraction = Cha
   interaction: TInteraction;
   logger: Logger;
   responses: CommandResponses;
+  // Every user-facing message, in the server's configured language (English
+  // in DMs or a server without a profile). Chosen per interaction by the
+  // dispatcher, so a language change applies from the next command on.
+  text: Texts;
   // The AccessPolicyEngine decision that already granted this invocation —
   // see AccessDecision.bypassVoiceChannelCheck /
   // AccessDecision.allowQueueWithoutVoiceChannel. Only Music-module commands

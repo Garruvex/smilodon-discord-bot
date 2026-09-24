@@ -1,3 +1,7 @@
+import type { Texts } from "../i18n/texts.js";
+
+// `message` is English and stays that way: logs and the chat model read it.
+// Wherever one of these reaches a user, render it with musicErrorText.
 export class MusicError extends Error {
   public constructor(message: string) {
     super(message);
@@ -36,7 +40,7 @@ export class MusicChannelAccessError extends MusicError {
 }
 
 export class MusicRateLimitError extends MusicError {
-  public constructor(remainingSeconds: number) {
+  public constructor(public readonly remainingSeconds: number) {
     super(
       `You're sending requests too quickly. Try again in ${remainingSeconds} second${remainingSeconds === 1 ? "" : "s"}.`,
     );
@@ -50,7 +54,7 @@ export class MusicAutoQueueVoteUnavailableError extends MusicError {
 }
 
 export class MusicAutoQueueRerollEmptyError extends MusicError {
-  public constructor(artist: string | null = null) {
+  public constructor(public readonly artist: string | null = null) {
     super(
       artist
         ? `Couldn't find enough other songs by ${artist}, so the current options stay.`
@@ -66,7 +70,30 @@ export class MusicAutoQueueVoteClosedError extends MusicError {
 }
 
 export class MusicAutoQueueRerollLimitError extends MusicError {
-  public constructor(limit: number) {
+  public constructor(public readonly limit: number) {
     super(`This vote has already been rerolled ${limit} times.`);
   }
+}
+
+// The user-facing text for a music failure, in the server's language. A
+// MusicError subclass without its own message here falls back to its
+// English `message`.
+export function musicErrorText(error: MusicError, text: Texts): string {
+  const errors = text.music.error;
+  if (error instanceof MusicPlayerNotFoundError) return errors.playerNotFound;
+  if (error instanceof MusicSearchEmptyError) return errors.searchEmpty;
+  if (error instanceof MusicVoiceChannelRequiredError) return errors.voiceRequired;
+  if (error instanceof MusicVoiceChannelMismatchError) return errors.voiceMismatch;
+  if (error instanceof MusicChannelAccessError) return errors.channelAccess;
+  if (error instanceof MusicRateLimitError) {
+    const seconds = error.remainingSeconds;
+    return seconds === 1 ? errors.rateLimitOne({ seconds }) : errors.rateLimitMany({ seconds });
+  }
+  if (error instanceof MusicAutoQueueVoteUnavailableError) return errors.voteUnavailable;
+  if (error instanceof MusicAutoQueueRerollEmptyError) {
+    return error.artist ? errors.rerollEmptyArtist({ artist: error.artist }) : errors.rerollEmpty;
+  }
+  if (error instanceof MusicAutoQueueVoteClosedError) return errors.voteClosed;
+  if (error instanceof MusicAutoQueueRerollLimitError) return errors.rerollLimit({ limit: error.limit });
+  return error.message;
 }

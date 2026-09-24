@@ -48,6 +48,17 @@ export function memoryRepositoryContract(
       expect(await repository.findById("other-guild", memory.id)).toBeNull();
     });
 
+    it("findActiveBySubject accepts a lookup without an existing memory id to exclude", async () => {
+      const repository = await createRepository();
+      const memory = await repository.ingest(ingestInput());
+      const query = {
+        guildId: "guild", subjectType: "member" as const, subjectId: "alice",
+        audience: "private" as const, ownerUserId: "alice", channelId: null, isolationChannelId: null,
+      };
+      expect(await repository.findActiveBySubject(query)).toEqual([expect.objectContaining({ id: memory.id })]);
+      expect(await repository.findActiveBySubject({ ...query, excludeMemoryId: memory.id })).toEqual([]);
+    });
+
     it("re-ingesting the same active identity with an unchanged statement reinforces in place", async () => {
       const repository = await createRepository();
       const first = await repository.ingest(ingestInput({ statement: "likes apples", now: 1_000 }));

@@ -52,7 +52,7 @@ export class VolumeCommand implements BotCommand {
       level,
       profile.music.maximumVolume,
     );
-    await context.responses.reply(`Volume set to **${level}%**.`);
+    await context.responses.reply(context.text.music.reply.volumeSet({ level }));
   }
 
   private async executeAsTool(args: SetMusicVolumeToolArgs, ctx: ChatToolContext): Promise<ChatToolResult> {

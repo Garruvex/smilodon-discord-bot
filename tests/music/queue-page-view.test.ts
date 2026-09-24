@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { en } from "../../src/application/i18n/messages/en.js";
+import { buildTexts, type Texts } from "../../src/application/i18n/texts.js";
 import { buildQueuePageView, queuePageComponentIdPrefix } from "../../src/infrastructure/discord/music/queue-page-view.js";
 import type { MusicTrack } from "../../src/domain/music/music-track.js";
 
@@ -14,6 +16,10 @@ function track(index: number): MusicTrack {
     isStream: false,
     requestedByUserId: "111111111111111111",
   };
+}
+
+function translatedText(messages: Record<string, string>): Texts {
+  return buildTexts(en, { xx: messages }).texts.xx as Texts;
 }
 
 describe("buildQueuePageView", () => {
@@ -55,5 +61,24 @@ describe("buildQueuePageView", () => {
 
     expect(buttons.find((b) => b.custom_id === `${queuePageComponentIdPrefix}:-1`)?.disabled).toBe(true);
     expect(buttons.find((b) => b.custom_id === `${queuePageComponentIdPrefix}:1`)?.disabled).toBe(false);
+  });
+});
+
+describe("buildQueuePageView language", () => {
+  it("renders its title, footer and buttons from the text it is given", () => {
+    const text = translatedText({
+      "music.queue.title": "音樂佇列",
+      "music.queue.footer": "第 {page}/{pages} 頁 • {count} 首 • 共 {duration}",
+      "music.queue.nextPage": "下一頁 ▶",
+    });
+    const tracks = Array.from({ length: 12 }, (_, i) => track(i));
+
+    const view = buildQueuePageView(tracks, 0, "#3B82F6", text);
+    const embed = view.embed.toJSON();
+    const labels = view.components[0]!.toJSON().components.map((button) => (button as { label?: string }).label);
+
+    expect(embed.title).toBe("音樂佇列");
+    expect(embed.footer?.text).toBe("第 1/2 頁 • 12 首 • 共 12m0s");
+    expect(labels).toEqual(["◀ Prev", "下一頁 ▶"]);
   });
 });

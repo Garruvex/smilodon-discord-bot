@@ -62,7 +62,7 @@ describe("BirthdayCommand next", () => {
 
     await command.execute(context);
     expect(reply).toHaveBeenCalledWith(expect.objectContaining({
-      content: expect.stringContaining("No one has set a birthday"),
+      content: expect.stringContaining("No one has set a birthday") as string,
     }));
   });
 

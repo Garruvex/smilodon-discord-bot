@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { en } from "../../src/application/i18n/messages/en.js";
+import { buildTexts, type Texts } from "../../src/application/i18n/texts.js";
 import { createQueuedTrackCard } from "../../src/infrastructure/discord/music/queued-track-card.js";
 import type { EnqueueResult } from "../../src/domain/music/music-track.js";
 
@@ -20,6 +22,10 @@ function result(overrides: Partial<EnqueueResult> = {}): EnqueueResult {
     queuePosition: 3,
     ...overrides,
   };
+}
+
+function translatedText(messages: Record<string, string>): Texts {
+  return buildTexts(en, { xx: messages }).texts.xx as Texts;
 }
 
 describe("createQueuedTrackCard", () => {
@@ -58,5 +64,22 @@ describe("createQueuedTrackCard", () => {
       name: "Duration",
       value: "`LIVE 🔴`",
     }));
+  });
+});
+
+describe("createQueuedTrackCard language", () => {
+  it("renders its title and field names from the text it is given", () => {
+    const text = translatedText({
+      "music.card.addedToQueue": "キューに追加",
+      "music.card.artist": "アーティスト",
+      "music.card.positionInQueue": "キュー内の位置",
+    });
+
+    const card = createQueuedTrackCard(result(), "#3B82F6", text).toJSON();
+
+    expect(card.title).toBe("キューに追加");
+    expect(card.fields?.map((field) => field.name)).toEqual(
+      expect.arrayContaining(["アーティスト", "キュー内の位置", "Duration"]),
+    );
   });
 });

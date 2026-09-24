@@ -67,6 +67,7 @@ const controlChannelService = new ControlChannelService(
   dependencies.applicationEmojiCatalog,
   logger.child({ component: "control-panel" }),
   musicEventBus,
+  dependencies.channelEditScheduler,
 );
 for (const settingsCommand of dependencies.settingsCommands) settingsCommand.bindControlChannelService(controlChannelService);
 const commandDeploymentService = new DiscordGuildCommandDeploymentService(

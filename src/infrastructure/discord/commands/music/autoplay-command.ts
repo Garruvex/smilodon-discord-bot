@@ -23,6 +23,6 @@ export class AutoplayCommand implements BotCommand {
     if (!context.interaction.inCachedGuild()) return;
     const actor = createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck, context.access.allowQueueWithoutVoiceChannel);
     const enabled = await this.playbackService.toggleAutoQueue(actor);
-    await context.responses.reply(`Autoqueue ${enabled ? "enabled" : "disabled"}.`);
+    await context.responses.reply(enabled ? context.text.music.reply.autoqueueEnabled : context.text.music.reply.autoqueueDisabled);
   }
 }

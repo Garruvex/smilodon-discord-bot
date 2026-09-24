@@ -28,5 +28,14 @@ export interface LyricsCacheStore {
 // same-titled recording indefinitely.
 export function buildLyricsCacheKey(trackName: string, artistName: string, durationMs?: number): string {
   const durationBucket = durationMs !== undefined ? Math.round(durationMs / 1000) : "";
-  return `${trackName.trim().toLowerCase()}|${artistName.trim().toLowerCase()}|${durationBucket}`;
+  // Version the matcher result so previously cached false negatives are
+  // rechecked after search and ranking changes.
+  const title = trackName.trim().toLowerCase();
+  const artist = artistName.trim().toLowerCase();
+  // Keep ordinary keys stable. A literal separator in either field needs an
+  // encoded key so two different title/artist pairs cannot collide.
+  if (title.includes("|") || artist.includes("|")) {
+    return JSON.stringify(["v3", title, artist, durationBucket]);
+  }
+  return `v3|${title}|${artist}|${durationBucket}`;
 }

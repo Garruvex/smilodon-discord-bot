@@ -35,9 +35,9 @@ export class VoteCommand implements BotCommand {
       .map((name) => interaction.options.getString(name)?.trim())
       .filter((option): option is string => !!option);
     const problem = options.length === 1
-      ? "Give at least two choices, or none for a Yes/No poll."
+      ? context.text.poll.needTwoChoices
       : new Set(options.map((option) => option.toLowerCase())).size !== options.length
-        ? "Each choice needs to be different."
+        ? context.text.poll.duplicateChoices
         : null;
     if (problem) {
       await interaction.reply({ content: problem, flags: MessageFlags.Ephemeral });

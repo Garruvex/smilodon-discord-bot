@@ -18,7 +18,7 @@ export class SaveCommand implements BotCommand {
     const snapshot = this.playbackService.getSnapshot(context.interaction.guildId);
     const track = snapshot?.currentTrack;
     if (!track) {
-      await context.responses.reply("Nothing is playing right now.");
+      await context.responses.reply(context.text.music.error.nothingPlaying);
       return;
     }
 
@@ -26,9 +26,9 @@ export class SaveCommand implements BotCommand {
       await context.interaction.user.send(
         `🎵 **${track.title}** — ${track.author}\n${track.uri}`,
       );
-      await context.responses.reply("Sent you a DM with the current track.");
+      await context.responses.reply(context.text.music.reply.saveSent);
     } catch {
-      await context.responses.reply("Couldn't DM you — check that your DMs are open for this server.");
+      await context.responses.reply(context.text.music.error.dmFailed);
     }
   }
 }

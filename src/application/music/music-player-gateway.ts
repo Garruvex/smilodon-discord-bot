@@ -137,6 +137,10 @@ export interface MusicPlayerSnapshot {
   // True once the lyrics plugin has confirmed no synced lyrics exist for the
   // current track, so the panel can say so instead of just staying silent.
   lyricsUnavailable: boolean;
+  // Set when the lyrics services couldn't be reached (as opposed to
+  // answering "no lyrics"): "retrying" while a bounded retry is scheduled,
+  // "gave_up" once it's exhausted or the failure isn't worth retrying.
+  lyricsOutage?: "retrying" | "gave_up" | null;
   currentTrack: {
     title: string;
     author: string;

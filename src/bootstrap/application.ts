@@ -81,6 +81,7 @@ export class Application {
     this.birthdayAnnouncer.stop();
     this.dependencies.channelSummaryScheduler?.stop();
     this.dependencies.reactionReplyScheduler?.stop();
+    this.dependencies.channelEditScheduler.stop();
     this.dependencies.reminderScheduler.stop();
     this.dependencies.pollService.stop();
     // Destroyed before draining, not after — this stops new Discord
@@ -358,10 +359,14 @@ export class Application {
     // that; if it lands close to when the edit call *finished*, the request
     // itself (queued send, network, or response body) is what's slow.
     // Filtered to message routes only to avoid flooding the log with every
-    // other REST call the bot makes (interactions, commands, etc.).
+    // other REST call the bot makes (interactions, commands, etc.). Even so,
+    // the lyrics panel alone makes one of these every second or two, so
+    // successes are trace-only and 429s debug — set LOG_LEVEL accordingly
+    // when chasing edit latency or rate limits.
     this.client.rest.on("response", (request, response) => {
       if (!request.route.includes("/messages/")) return;
-      this.logger.info(
+      const level = response.status === 429 ? "debug" : "trace";
+      this.logger[level](
         {
           method: request.method,
           route: request.route,

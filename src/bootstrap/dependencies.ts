@@ -1,3 +1,5 @@
+import { defaultLanguage } from "../application/i18n/language.js";
+import { catalogIssues } from "../application/i18n/texts.js";
 import type { Logger } from "pino";
 
 import { AccessPolicyService } from "../application/access/access-policy-service.js";
@@ -71,6 +73,7 @@ import { MentionChatBehavior } from "../infrastructure/discord/behaviors/mention
 import { AmbientChatBehavior } from "../infrastructure/discord/behaviors/ambient-chat-behavior.js";
 import { ReactionArmBehavior } from "../infrastructure/discord/behaviors/reaction-arm-behavior.js";
 import { ReactionReplyScheduler } from "../infrastructure/discord/behaviors/reaction-reply-scheduler.js";
+import { ChannelEditScheduler } from "../application/concurrency/channel-edit-scheduler.js";
 import type { MessageReactionWatchStore } from "../application/chat/message-reaction-watch.js";
 import { LinkFixBehavior } from "../infrastructure/discord/behaviors/link-fix-behavior.js";
 import { BilibiliEmbedService } from "../infrastructure/links/bilibili-embed-service.js";
@@ -219,6 +222,9 @@ export interface ApplicationDependencies {
   // Null under the same condition — see ReactionReplyScheduler's own
   // constructor call above.
   reactionReplyScheduler: ReactionReplyScheduler | null;
+  // One per bot: every feature that edits the same messages repeatedly
+  // registers its slots here, so they share each channel's edit budget.
+  channelEditScheduler: ChannelEditScheduler;
   reminderScheduler: ReminderScheduler;
   applicationEmojiCatalog: ApplicationEmojiCatalog;
   memoryEngine: MemoryEngine;
@@ -277,11 +283,18 @@ export function registerCommands(
   reminderStore: ReminderStore,
   roleMenuStore: RoleMenuStore,
 ): CommandRegistrationResult {
+  // Invalid translations already fell back to English (see i18n/texts.ts);
+  // surface them so they get fixed rather than silently shipping English.
+  for (const issue of catalogIssues) {
+    logger.warn(issue, "Translation catalog problem; using English for this message");
+  }
   const commandRegistry = new CommandRegistry();
   const pollService = new PollService(guildConfigurationProvider);
   const componentRegistry = new ComponentRegistry();
   componentRegistry.register(new PollComponentHandler(pollService));
-  const roleMenuService = new RoleMenuService(roleMenuStore, logger.child({ component: "role-menu" }));
+  const roleMenuService = new RoleMenuService(
+    roleMenuStore, logger.child({ component: "role-menu" }), guildConfigurationProvider,
+  );
   componentRegistry.register(new RoleMenuComponentHandler(roleMenuService));
   commandRegistry.register(new PingCommand());
   commandRegistry.register(new UserInfoCommand(guildConfigurationProvider, boostHistoryStore));
@@ -501,13 +514,16 @@ export function createDependencies(
   );
 
   const reminderScheduler = new ReminderScheduler(
-    discordClient, reminderStore, logger.child({ component: "reminders" }),
+    discordClient, reminderStore, logger.child({ component: "reminders" }), guildConfigurationProvider,
   );
 
   const commandDispatcher = new CommandDispatcher(
     commandRegistry,
     accessPolicyService,
     logger.child({ component: "commands" }),
+    // Read per interaction, so a /settings language change applies to the
+    // very next command.
+    (guildId) => (guildId ? guildConfigurationProvider.find(guildId)?.language : undefined) ?? defaultLanguage,
   );
   const componentDispatcher = new ComponentDispatcher(
     componentRegistry,
@@ -631,6 +647,7 @@ export function createDependencies(
     settingsCommands,
     channelSummaryScheduler,
     reactionReplyScheduler,
+    channelEditScheduler: new ChannelEditScheduler(),
     reminderScheduler,
     applicationEmojiCatalog,
     memoryEngine,

@@ -22,6 +22,6 @@ export class MoveCommand implements BotCommand {
     const to = context.interaction.options.getInteger("position", true);
     const actor = createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck, context.access.allowQueueWithoutVoiceChannel);
     const track = await this.playbackService.moveQueueTrack(actor, from, to);
-    await context.responses.reply(`Moved **${track.title}** to position **${to}**.`);
+    await context.responses.reply(context.text.music.reply.moved({ title: track.title, position: to }));
   }
 }

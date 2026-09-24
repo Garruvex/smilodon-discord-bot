@@ -37,7 +37,18 @@ export class ReactionArmBehavior implements BotBehavior<BehaviorEvent.ReactionAd
   public async execute(context: ReactionAddedContext): Promise<BehaviorResult> {
     const messageId = context.reaction.message.id;
     try {
-      await this.watchStore.armOnFirstReaction(messageId, Date.now(), reactionReplyWindowMs);
+      const now = Date.now();
+      const armed = await this.watchStore.armOnFirstReaction(messageId, now, reactionReplyWindowMs);
+      // Only the arming reaction is worth an info line; every other reaction
+      // (unwatched message, already armed/closed) is routine.
+      if (armed) {
+        this.logger.info(
+          { guildId: context.reaction.message.guildId, messageId, dueAt: new Date(now + reactionReplyWindowMs).toISOString() },
+          "Reaction-reply window armed",
+        );
+      } else {
+        this.logger.debug({ messageId }, "Reaction ignored: message is not a watching reaction-reply target");
+      }
     } catch (error) {
       this.logger.warn({ error, messageId }, "Failed to arm a message-reaction watch");
     }

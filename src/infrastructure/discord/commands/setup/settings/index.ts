@@ -15,6 +15,7 @@ import {
 } from "./channel-context-setting.js";
 import { chatbotSetting } from "./chatbot-setting.js";
 import { djModeSetting } from "./dj-mode-setting.js";
+import { languageSetting } from "./language-setting.js";
 import { lifecycleSetting } from "./lifecycle-setting.js";
 import { linkFixSetting } from "./link-fix-setting.js";
 import { nsfwSetting } from "./nsfw-setting.js";
@@ -86,7 +87,7 @@ export const settingGroups: readonly SettingGroup[] = [
   {
     name: "community",
     description: "Standalone community features.",
-    settings: [birthdaysSetting, remindersSetting, welcomeSetting, nsfwSetting, linkFixSetting, retainMemberDataSetting, timezoneSetting],
+    settings: [birthdaysSetting, remindersSetting, welcomeSetting, nsfwSetting, linkFixSetting, retainMemberDataSetting, timezoneSetting, languageSetting],
   },
 ];
 

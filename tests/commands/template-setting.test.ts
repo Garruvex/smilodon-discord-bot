@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { templateSetting } from "../../src/infrastructure/discord/commands/setup/settings/template-setting.js";
 import type { CommandContext } from "../../src/application/commands/command.js";
+import { texts } from "../../src/application/i18n/texts.js";
 
 function context(kind: string): CommandContext {
   return {
@@ -14,6 +15,7 @@ function context(kind: string): CommandContext {
     } as unknown as ChatInputCommandInteraction,
     logger: { warn: () => undefined } as never,
     responses: {} as never,
+    text: texts.en,
     access: { bypassVoiceChannelCheck: false, allowQueueWithoutVoiceChannel: false },
   };
 }

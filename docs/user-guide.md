@@ -269,6 +269,7 @@ section for the full processing model and trust rules.
 | `/settings community link-fix [enabled] [channel] [remove-channel] [twitter] [threads] [tiktok] [instagram] [reddit] [bilibili]` | Rewrites Twitter/X, Threads, Instagram, Bilibili, TikTok, and Reddit links for better embeds in watched channels. Each service can be toggled on/off independently of the overall `enabled` switch. |
 | `/settings community member-data <retain>` | Whether a departing member's private memories, chat sessions/preferences, birthday, customization, and reminders are retained. Shared guild/channel memories remain community history. |
 | `/settings community timezone <zone>` | Sets the IANA time zone (e.g. `America/New_York`) birthday announcements are computed in. Defaults to UTC. |
+| `/settings community language <language>` | Sets the language (English, 繁體中文, 日本語) for everything the bot posts in this server: the music panel, announcements, votes, and replies. Slash-command descriptions are separate — Discord shows those in each member's own client language. Defaults to English. |
 
 ## Troubleshooting
 

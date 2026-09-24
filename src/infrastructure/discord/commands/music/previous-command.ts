@@ -34,7 +34,7 @@ export class PreviousCommand implements BotCommand {
   public async execute(context: CommandContext): Promise<void> {
     if (!context.interaction.inCachedGuild()) return;
     await this.playbackService.previous(createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck, context.access.allowQueueWithoutVoiceChannel));
-    await context.responses.reply("Playing the previous track.");
+    await context.responses.reply(context.text.music.reply.previous);
   }
 
   private async executeAsTool(ctx: ChatToolContext): Promise<ChatToolResult> {

@@ -6,6 +6,10 @@ export class TwentyFourSevenCommand implements BotCommand {
     name: "247",
     description: "Toggles persistent voice-channel mode.",
   };
+  public readonly helpDetails = [
+    "Keeps the bot in its voice channel instead of leaving (or pausing) when the queue runs out or everyone leaves.",
+    "Same as the panel's 🔁 24/7 button. Run it again to turn it off.",
+  ];
   public readonly module = CommandModule.Music;
   public readonly access = musicPlaybackAccessPolicy;
   public constructor(private readonly playbackService: PlaybackService) {}
@@ -13,6 +17,8 @@ export class TwentyFourSevenCommand implements BotCommand {
     if (!context.interaction.inCachedGuild()) return;
     const actor = createPlaybackActor(context.interaction, context.access.bypassVoiceChannelCheck, context.access.allowQueueWithoutVoiceChannel);
     const enabled = await this.playbackService.toggleTwentyFourSeven(actor);
-    await context.responses.reply(`24/7 mode ${enabled ? "enabled" : "disabled"}.`);
+    await context.responses.reply(
+      enabled ? context.text.music.reply.twentyFourSevenEnabled : context.text.music.reply.twentyFourSevenDisabled,
+    );
   }
 }
