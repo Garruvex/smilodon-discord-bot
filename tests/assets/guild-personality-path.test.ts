@@ -64,6 +64,8 @@ function profile(overrides: Partial<GuildConfiguration["chat"]> = {}): GuildConf
       resumeWhenOccupied: true,
       djModeEnabled: false,
     openQueueRequestsEnabled: false,
+    autoQueueVoteEnabled: true,
+    autoQueueVoteBarStyle: "squares",
     },
     chat: {
       personalityFile: null,

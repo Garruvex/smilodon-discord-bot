@@ -75,6 +75,8 @@ function guildConfiguration(chatbotEnabled: boolean): GuildConfiguration {
       resumeWhenOccupied: true,
       djModeEnabled: false,
     openQueueRequestsEnabled: false,
+    autoQueueVoteEnabled: true,
+    autoQueueVoteBarStyle: "squares",
     },
     chat: {
       personalityFile: null,
@@ -1125,6 +1127,50 @@ describe("ControlChannelService", () => {
     expect(third.message).toBe(secondMessage);
     expect(firstMessage.delete).toHaveBeenCalledOnce();
     expect(send).toHaveBeenCalledTimes(2);
+  });
+
+  it("posts the autoqueue vote as its own message, edits it in place, and deletes it once the vote closes", async () => {
+    const { service } = createService(false);
+    const internals = service as unknown as {
+      writeVoteMessage: (channel: unknown, profile: unknown, snapshot: unknown, guildId: string) => Promise<void>;
+    };
+    const profile = guildConfiguration(false);
+    const voteMessage = {
+      id: "vote-message",
+      content: "",
+      embeds: [],
+      components: [],
+      attachments: { size: 0 },
+      edit: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(undefined),
+    };
+    const send = vi.fn().mockResolvedValue(voteMessage);
+    const channel = { send };
+    const option = (title: string, votes: number): unknown => ({ title, author: "Artist", uri: "", votes });
+    const snapshotWith = (autoQueueVote: unknown): unknown => ({
+      paused: false,
+      currentTrack: { title: "Song", author: "Artist", uri: "https://example.com/song", durationMs: 180_000, positionMs: 0, isStream: false },
+      autoQueueVote,
+    });
+
+    // Still looking up options: nothing to post yet.
+    await internals.writeVoteMessage(channel, profile, snapshotWith({ status: "loading" }), guildId);
+    expect(send).not.toHaveBeenCalled();
+
+    await internals.writeVoteMessage(channel, profile, snapshotWith({
+      status: "ready", leadingIndex: 0, options: [option("A", 0), option("B", 0), option("C", 0)],
+    }), guildId);
+    expect(send).toHaveBeenCalledOnce();
+
+    await internals.writeVoteMessage(channel, profile, snapshotWith({
+      status: "ready", leadingIndex: 1, options: [option("A", 0), option("B", 1), option("C", 0)],
+    }), guildId);
+    expect(send).toHaveBeenCalledOnce();
+    expect(voteMessage.edit).toHaveBeenCalledOnce();
+
+    // Someone queued a track by hand, so autoqueue won't pick: the vote closes.
+    await internals.writeVoteMessage(channel, profile, snapshotWith(null), guildId);
+    expect(voteMessage.delete).toHaveBeenCalledOnce();
   });
 
   it("doesn't create a lyrics message while nothing is playing, and cleans up a leftover one once playback stops", async () => {

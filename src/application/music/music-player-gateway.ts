@@ -44,6 +44,11 @@ export interface MusicPlayerGateway {
   setRepeatMode(guildId: string, mode: MusicRepeatMode): Promise<void>;
   setFilterPreset(guildId: string, preset: MusicFilterPreset): Promise<void>;
   toggleAutoQueue(guildId: string): Promise<boolean>;
+  // Casts (or, when it's already the voter's pick, withdraws) a vote for
+  // which autoqueue option plays next. Returns the voter's pick afterward,
+  // or null once withdrawn.
+  voteAutoQueue(guildId: string, userId: string, optionIndex: number): number | null;
+  rerollAutoQueueVote(guildId: string): Promise<void>;
   toggleTwentyFourSeven(guildId: string): Promise<boolean>;
   toggleLyrics(guildId: string): Promise<boolean>;
   handleBotVoiceDisconnect(guildId: string): Promise<void>;
@@ -61,6 +66,22 @@ export interface MusicPlayerGateway {
   getSnapshot(guildId: string): MusicPlayerSnapshot | null;
 }
 
+export interface AutoQueueVoteOption {
+  title: string;
+  author: string;
+  uri: string;
+  votes: number;
+  // True when synced lyrics were found for this option ahead of time; null
+  // while that lookup is still running.
+  lyricsAvailable: boolean | null;
+}
+
+export type AutoQueueVoteSnapshot =
+  | { status: "loading" }
+  // `leadingIndex` is what plays if the track ended right now: most votes,
+  // with ties (including nobody voting) going to the earlier option.
+  | { status: "ready"; options: readonly AutoQueueVoteOption[]; leadingIndex: number };
+
 export interface MusicPlayerSnapshot {
   guildId: string;
   voiceChannelId: string;
@@ -75,6 +96,10 @@ export interface MusicPlayerSnapshot {
   // unplayed recommendation, so the panel can surface it instead of leaving
   // the failure only in logs.
   autoQueueIssue: boolean;
+  // The "what plays next" vote. Only present while autoqueue is on, a track
+  // is playing and nothing is queued behind it, which is exactly when
+  // autoqueue is about to pick the next track itself.
+  autoQueueVote: AutoQueueVoteSnapshot | null;
   twentyFourSeven: boolean;
   // User-controlled toggle (panel button, like autoQueue/twentyFourSeven) for
   // whether the Lyrics panel message should exist at all. Defaults to false

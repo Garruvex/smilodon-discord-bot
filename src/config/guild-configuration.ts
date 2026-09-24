@@ -135,7 +135,16 @@ export interface GuildMusicConfiguration {
   // longer requires the requester to be in a voice channel, as long as the
   // bot already has an active player — see PlaybackService.enqueue.
   openQueueRequestsEnabled: boolean;
+  // On by default. While autoqueue is picking the next track, listeners
+  // vote between a few recommendations instead of the bot taking the first
+  // one (see the autoqueue vote in LavalinkPlayerGateway). Off means plain
+  // autoqueue with no vote message.
+  autoQueueVoteEnabled: boolean;
+  autoQueueVoteBarStyle: AutoQueueVoteBarStyle;
 }
+
+// "squares" is colored emoji squares; "thin" matches the panel progress bar.
+export type AutoQueueVoteBarStyle = "squares" | "thin";
 
 export type ProgressBarStyle = "standard" | "yohta" | "custom" | "none";
 

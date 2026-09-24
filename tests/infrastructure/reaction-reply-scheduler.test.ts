@@ -64,7 +64,7 @@ function profile(overrides: { reactionReplies?: boolean; chatbot?: boolean } = {
       defaultVolume: 75, maximumVolume: 150, volumeButtonStep: 10,
       emptyQueueAction: "disconnect", emptyQueueDelayMs: 120_000,
       emptyChannelAction: "pause", emptyChannelGracePeriodMs: 30_000, resumeWhenOccupied: true,
-      djModeEnabled: false, openQueueRequestsEnabled: false,
+      djModeEnabled: false, openQueueRequestsEnabled: false, autoQueueVoteEnabled: true, autoQueueVoteBarStyle: "squares",
     },
     chat: {
       personalityFile: null, personalityAsset: null, examplesFile: null, examplesAsset: null, cooldownSeconds: 30,

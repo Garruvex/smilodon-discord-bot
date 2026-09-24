@@ -75,6 +75,8 @@ export interface UpdateGuildConfigurationInput {
   resumeWhenOccupied?: boolean;
   djModeEnabled?: boolean;
   openQueueRequestsEnabled?: boolean;
+  autoQueueVoteEnabled?: boolean;
+  autoQueueVoteBarStyle?: "squares" | "thin";
 }
 
 export interface CreateGuildConfigurationInput {
@@ -167,6 +169,8 @@ export function toGuildConfiguration(parsed: ParsedGuildConfigurationFile, sourc
       resumeWhenOccupied: parsed.music.emptyChannel.resumeWhenOccupied,
       djModeEnabled: parsed.music.djModeEnabled,
       openQueueRequestsEnabled: parsed.music.openQueueRequestsEnabled,
+      autoQueueVoteEnabled: parsed.music.autoQueueVote.enabled,
+      autoQueueVoteBarStyle: parsed.music.autoQueueVote.barStyle,
     },
     chat: parsed.chat,
     sourceFile,
@@ -217,6 +221,10 @@ export function toGuildConfigurationDocument(configuration: GuildConfiguration):
       },
       djModeEnabled: configuration.music.djModeEnabled,
       openQueueRequestsEnabled: configuration.music.openQueueRequestsEnabled,
+      autoQueueVote: {
+        enabled: configuration.music.autoQueueVoteEnabled,
+        barStyle: configuration.music.autoQueueVoteBarStyle,
+      },
     },
     chat: configuration.chat,
   });
@@ -304,5 +312,7 @@ export function applyGuildConfigurationUpdate(
   if (input.resumeWhenOccupied !== undefined) next.music.emptyChannel.resumeWhenOccupied = input.resumeWhenOccupied;
   if (input.djModeEnabled !== undefined) next.music.djModeEnabled = input.djModeEnabled;
   if (input.openQueueRequestsEnabled !== undefined) next.music.openQueueRequestsEnabled = input.openQueueRequestsEnabled;
+  if (input.autoQueueVoteEnabled !== undefined) next.music.autoQueueVote.enabled = input.autoQueueVoteEnabled;
+  if (input.autoQueueVoteBarStyle !== undefined) next.music.autoQueueVote.barStyle = input.autoQueueVoteBarStyle;
   return guildConfigurationFileSchema.parse(next);
 }

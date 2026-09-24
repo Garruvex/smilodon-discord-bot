@@ -49,6 +49,12 @@ import {
   findMusicPanelControl,
   musicPanelControlIdPrefix,
 } from "./music-panel-controls.js";
+import {
+  autoQueueVoteClosesAtSeconds,
+  autoQueueVoteIdPrefix,
+  createAutoQueueVotePayload,
+  parseAutoQueueVoteCustomId,
+} from "./auto-queue-vote-message.js";
 
 const defaultIdleImageName = "music-idle.png";
 // The master panel (Now Playing progress bar + queue/controls) is
@@ -85,6 +91,9 @@ const queueDisplayLimit = 5;
 // Leaves headroom under the embed description's 4096-char hard cap for the
 // header line and the "…and N more" note appended after this budget runs out.
 const queueListCharBudget = 3_500;
+// How far the vote countdown may drift before the vote message is edited
+// just to correct it (see writeVoteMessage).
+const voteCountdownToleranceSeconds = 5;
 
 // A message fetched back from Discord carries fields we never set ourselves
 // (e.g. `type: "rich"`, and width/height/proxy_url on images) — comparing
@@ -136,6 +145,13 @@ export class ControlChannelService {
   // preserve for it at sweep time).
   private readonly lyricsMessageByGuild = new Map<string, Message>();
   private readonly lyricsTrackKeyByGuild = new Map<string, string | null>();
+  // The "what plays next" vote message: posted when a vote opens, deleted
+  // when it closes, and replaced (so it lands at the bottom of the channel)
+  // for each new track. Transient like the lyrics message, so it is
+  // likewise not persisted; a leftover one is swept at the next panel setup.
+  private readonly voteMessageByGuild = new Map<string, Message>();
+  private readonly voteTrackKeyByGuild = new Map<string, string>();
+  private readonly voteClosesAtByGuild = new Map<string, number | null>();
   private readonly configuredChannelPermissions = new Set<string>();
   private readonly refreshCoordinator: PanelRefreshCoordinator;
   // The action queue: serializes per-guild playbackService/playerGateway
@@ -209,6 +225,9 @@ export class ControlChannelService {
     this.lastNowPlayingEditAt.clear();
     this.lyricsMessageByGuild.clear();
     this.lyricsTrackKeyByGuild.clear();
+    this.voteMessageByGuild.clear();
+    this.voteTrackKeyByGuild.clear();
+    this.voteClosesAtByGuild.clear();
   }
 
   // Called when the bot leaves a guild, so its per-guild timer/permission
@@ -219,6 +238,7 @@ export class ControlChannelService {
     this.lastNowPlayingEditAt.delete(guildId);
     this.lyricsMessageByGuild.delete(guildId);
     this.lyricsTrackKeyByGuild.delete(guildId);
+    this.forgetVoteMessage(guildId);
     this.refreshCoordinator.stopGuild(guildId);
     const profile = this.guildConfigurationProvider.find(guildId);
     if (profile?.channels.controlPanel) {
@@ -245,7 +265,11 @@ export class ControlChannelService {
     // best-effort delete, or a stray message from before the bot ever
     // touched this channel, without adding a recurring channel-history
     // fetch to the steady-state refresh cycle.
-    await this.sweepControlChannel(messages.channel, new Set([messages.nowPlaying.id, messages.queue.id]));
+    const voteMessageId = this.voteMessageByGuild.get(guildId)?.id;
+    await this.sweepControlChannel(
+      messages.channel,
+      new Set([messages.nowPlaying.id, messages.queue.id, ...(voteMessageId ? [voteMessageId] : [])]),
+    );
     return messages.nowPlaying;
   }
 
@@ -328,6 +352,9 @@ export class ControlChannelService {
   }
 
   public async handleButton(interaction: ButtonInteraction): Promise<boolean> {
+    if (interaction.customId.startsWith(autoQueueVoteIdPrefix)) {
+      return this.handleVoteButton(interaction);
+    }
     if (!interaction.customId.startsWith(musicPanelControlIdPrefix)) {
       return false;
     }
@@ -594,6 +621,7 @@ export class ControlChannelService {
       // what's truly playing right now, not what was playing when this
       // refresh started.
       await this.writeLyricsMessage(messages.channel, profile, this.playerGateway.getSnapshot(guildId), guildId);
+      await this.writeVoteMessage(messages.channel, profile, this.playerGateway.getSnapshot(guildId), guildId);
       // Slow edits must not add their elapsed time to the next line's delay.
       // Schedule from a fresh position even when a message edit failed.
       this.resetProgressRefreshTimer(guildId, this.playerGateway.getSnapshot(guildId));
@@ -776,6 +804,128 @@ export class ControlChannelService {
     }
   }
 
+  // Keeps the vote message's existence in step with the snapshot: posted
+  // once a vote has options, edited as votes come in (or on a reroll),
+  // deleted the moment it closes. A new track's vote replaces the previous
+  // message outright, so each vote is a fresh post at the bottom of the
+  // channel rather than one message edited for the whole session.
+  private async writeVoteMessage(
+    channel: TextChannel,
+    profile: GuildConfiguration,
+    snapshot: MusicPlayerSnapshot | null,
+    guildId: string,
+  ): Promise<void> {
+    try {
+      const vote = snapshot?.autoQueueVote;
+      const trackKey = snapshot?.currentTrack && vote?.status === "ready"
+        ? `${snapshot.currentTrack.title}|${snapshot.currentTrack.author}|${snapshot.currentTrack.uri}`
+        : null;
+      const cached = this.voteMessageByGuild.get(guildId);
+      if (cached && this.voteTrackKeyByGuild.get(guildId) !== trackKey) {
+        this.forgetVoteMessage(guildId);
+      }
+      if (!snapshot || !trackKey || vote?.status !== "ready") return;
+
+      // Sampled playback position jitters by a second or so between
+      // refreshes, which would otherwise turn every vote into a pointless
+      // edit just to nudge the countdown. Only move it when it's really off
+      // (a seek, or pause/resume).
+      const closesAt = autoQueueVoteClosesAtSeconds(snapshot, Date.now());
+      const previousClosesAt = this.voteClosesAtByGuild.get(guildId);
+      const stableClosesAt = previousClosesAt !== undefined &&
+        previousClosesAt !== null &&
+        closesAt !== null &&
+        Math.abs(previousClosesAt - closesAt) <= voteCountdownToleranceSeconds
+        ? previousClosesAt
+        : closesAt;
+      this.voteClosesAtByGuild.set(guildId, stableClosesAt);
+      const payload = createAutoQueueVotePayload(profile, vote, stableClosesAt);
+
+      const existing = this.voteMessageByGuild.get(guildId);
+      if (!existing) {
+        const message = await channel.send(payload);
+        this.voteMessageByGuild.set(guildId, message);
+        this.voteTrackKeyByGuild.set(guildId, trackKey);
+        return;
+      }
+      if (!this.matchesCurrentMessage(existing, payload)) await existing.edit(payload);
+    } catch (error) {
+      // Most likely the message was deleted out from under us; forgetting it
+      // lets the next refresh post a replacement.
+      this.voteMessageByGuild.delete(guildId);
+      this.voteTrackKeyByGuild.delete(guildId);
+      this.logger.error({ error, guildId }, "Unable to refresh the autoqueue vote message");
+    }
+  }
+
+  private forgetVoteMessage(guildId: string): void {
+    const message = this.voteMessageByGuild.get(guildId);
+    this.voteMessageByGuild.delete(guildId);
+    this.voteTrackKeyByGuild.delete(guildId);
+    this.voteClosesAtByGuild.delete(guildId);
+    void message?.delete().catch((error: unknown) => {
+      this.logger.warn({ error, guildId, messageId: message.id }, "Unable to delete the autoqueue vote message");
+    });
+  }
+
+  private async handleVoteButton(interaction: ButtonInteraction): Promise<boolean> {
+    const action = parseAutoQueueVoteCustomId(interaction.customId);
+    if (!action || !interaction.inCachedGuild()) {
+      await interaction.reply({ content: "This vote has ended.", flags: MessageFlags.Ephemeral });
+      return true;
+    }
+    const profile = this.guildConfigurationProvider.find(interaction.guildId);
+    if (
+      !profile?.features.music ||
+      profile.channels.controlPanel !== interaction.channelId ||
+      this.voteMessageByGuild.get(interaction.guildId)?.id !== interaction.message.id
+    ) {
+      await interaction.reply({ content: "This vote has ended.", flags: MessageFlags.Ephemeral });
+      return true;
+    }
+    // Voting is open to every listener rather than just music controllers,
+    // but a restricted member is still kept out, as everywhere else.
+    if (
+      this.hasRestrictedRole(interaction.member, profile) &&
+      !this.applicationConfiguration.ownerUserIds.has(interaction.user.id)
+    ) {
+      await interaction.reply({ content: "You can't vote on the music queue.", flags: MessageFlags.Ephemeral });
+      return true;
+    }
+
+    // Acknowledged up front: a reroll runs a fresh search, which can take
+    // longer than Discord's 3-second interaction window.
+    await interaction.deferUpdate();
+    const actor = {
+      guildId: interaction.guildId,
+      textChannelId: interaction.channelId,
+      userId: interaction.user.id,
+      voiceChannelId: interaction.member.voice.channelId,
+      bypassVoiceChannelCheck: false,
+      allowQueueWithoutVoiceChannel: false,
+    };
+    let executionError: unknown;
+    try {
+      await this.guildLocks.run(interaction.guildId, async () => {
+        try {
+          if (action.kind === "reroll") await this.playbackService.rerollAutoQueueVote(actor);
+          else this.playbackService.voteAutoQueue(actor, action.index);
+        } catch (error) {
+          executionError = error;
+        }
+      });
+    } finally {
+      await this.writePanel(interaction.guildId, profile, {});
+    }
+    if (executionError) {
+      await this.replyEphemeral(
+        interaction,
+        executionError instanceof MusicError ? executionError.message : "The vote failed.",
+      );
+    }
+    return true;
+  }
+
   private async writeQueueMessage(
     message: Message,
     profile: GuildConfiguration,
@@ -817,6 +967,7 @@ export class ControlChannelService {
       // (ensureGuildPanel), not handled specially here.
       await this.deletePanelMessagesBestEffort(channel, state);
       this.forgetLyricsMessage(profile.guildId);
+      this.forgetVoteMessage(profile.guildId);
     } else if (state) {
       // The panel moved to a different channel — tear down the old one,
       // including reverting its reserved-for-panel permission overwrite.
@@ -825,6 +976,7 @@ export class ControlChannelService {
       // channel's lyrics message.
       await this.deleteObsoletePanelMessages(profile.guildId, state);
       this.forgetLyricsMessage(profile.guildId);
+      this.forgetVoteMessage(profile.guildId);
     }
 
     const snapshot = this.playerGateway.getSnapshot(profile.guildId);
@@ -1105,7 +1257,7 @@ export class ControlChannelService {
 
     return {
       content: `Join a voice channel. ${requestersHint}\n` +
-        "-# ♾️ Autoqueue: automatically adds a similar track when the queue runs out.  •  🔁 24/7: keeps the bot connected instead of leaving when idle.",
+        "-# ♾️ Autoqueue: automatically adds a similar track when the queue runs out, and listeners can vote on which one.  •  🔁 24/7: keeps the bot connected instead of leaving when idle.",
       embeds: [embed],
       components: [],
     };

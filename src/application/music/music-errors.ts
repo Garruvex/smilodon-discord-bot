@@ -42,3 +42,15 @@ export class MusicRateLimitError extends MusicError {
     );
   }
 }
+
+export class MusicAutoQueueVoteUnavailableError extends MusicError {
+  public constructor() {
+    super("There's no autoqueue vote running right now.");
+  }
+}
+
+export class MusicAutoQueueRerollEmptyError extends MusicError {
+  public constructor() {
+    super("Couldn't find any other options to reroll into, so the current ones stay.");
+  }
+}

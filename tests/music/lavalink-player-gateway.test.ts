@@ -354,6 +354,7 @@ describe("LavalinkPlayerGateway trackStart lyrics handling", () => {
       position: 0,
       queue: { current: track },
       subscribeLyrics: vi.fn().mockResolvedValue(undefined),
+      get: vi.fn(() => undefined),
     };
 
     const manager = (
@@ -414,6 +415,7 @@ describe("LavalinkPlayerGateway trackStart lyrics handling", () => {
       position: 0,
       queue: { current: track },
       subscribeLyrics: vi.fn().mockResolvedValue(undefined),
+      get: vi.fn(() => undefined),
     };
     const manager = (
       gateway as unknown as {
@@ -458,6 +460,7 @@ describe("LavalinkPlayerGateway trackStart lyrics handling", () => {
       position: 0,
       queue: { current: track },
       subscribeLyrics: vi.fn().mockResolvedValue(undefined),
+      get: vi.fn(() => undefined),
     };
     const manager = (
       gateway as unknown as {

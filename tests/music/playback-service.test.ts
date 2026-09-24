@@ -96,6 +96,8 @@ function createGateway(): MusicPlayerGateway {
     setRepeatMode: vi.fn(() => Promise.resolve()),
     setFilterPreset: vi.fn(() => Promise.resolve()),
     toggleAutoQueue: vi.fn(() => Promise.resolve(true)),
+    voteAutoQueue: vi.fn(() => 0),
+    rerollAutoQueueVote: vi.fn(() => Promise.resolve()),
     toggleTwentyFourSeven: vi.fn(() => Promise.resolve(true)),
     toggleLyrics: vi.fn(() => Promise.resolve(true)),
     handleBotVoiceDisconnect: vi.fn(() => Promise.resolve()),
