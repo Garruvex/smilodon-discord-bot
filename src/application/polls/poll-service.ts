@@ -6,52 +6,78 @@ import {
   ButtonStyle,
   EmbedBuilder,
   MessageFlags,
+  PermissionFlagsBits,
   type ButtonInteraction,
   type ChatInputCommandInteraction,
   type Message,
 } from "discord.js";
 
-export type PollChoice = "yes" | "no";
+import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
+import { renderVoteBar } from "./vote-bar.js";
+
+export const maxPollChoices = 5;
+
+const numberEmojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"];
+const defaultEmbedColor = "#22C55E";
+const endedEmbedColor = "#6B7280";
+
+export interface PollChoice {
+  label: string;
+  emoji: string;
+}
+
+export interface CreatePollInput {
+  title: string;
+  description: string | null;
+  // Two to five labels; null makes a Yes/No poll.
+  options: readonly string[] | null;
+  durationSeconds: number | null;
+}
 
 interface ActivePoll {
   id: string;
+  guildId: string | null;
   title: string;
-  description: string;
+  description: string | null;
+  choices: PollChoice[];
+  creatorId: string;
   authorName: string;
   message: Message;
-  votes: Map<string, PollChoice>;
+  // One vote per user, as an index into `choices`.
+  votes: Map<string, number>;
   closesAt: number | null;
   timer: NodeJS.Timeout | null;
 }
 
+type PollPayload = { embeds: EmbedBuilder[]; components: ActionRowBuilder<ButtonBuilder>[] };
+
 export class PollService {
   private readonly polls = new Map<string, ActivePoll>();
 
-  public async create(
-    interaction: ChatInputCommandInteraction,
-    title: string,
-    description: string,
-    durationSeconds: number | null,
-  ): Promise<void> {
+  public constructor(private readonly guildConfigurations: Pick<GuildConfigurationProvider, "find">) {}
+
+  public async create(interaction: ChatInputCommandInteraction, input: CreatePollInput): Promise<void> {
     const id = randomUUID().replaceAll("-", "").slice(0, 16);
-    const closesAt = durationSeconds === null ? null : Date.now() + durationSeconds * 1_000;
-    await interaction.reply({
-      embeds: [this.createEmbed(title, description, interaction.user.username, 0, 0, closesAt, false)],
-      components: [this.createButtons(id, false)],
-    });
-    const message = await interaction.fetchReply();
-    const poll: ActivePoll = {
+    const closesAt = input.durationSeconds === null ? null : Date.now() + input.durationSeconds * 1_000;
+    const choices: PollChoice[] = input.options === null
+      ? [{ label: "Yes", emoji: "✅" }, { label: "No", emoji: "❌" }]
+      : input.options.map((label, index) => ({ label, emoji: numberEmojis[index]! }));
+    const draft: Omit<ActivePoll, "message"> = {
       id,
-      title,
-      description,
+      guildId: interaction.guildId,
+      title: input.title,
+      description: input.description,
+      choices,
+      creatorId: interaction.user.id,
       authorName: interaction.user.username,
-      message,
       votes: new Map(),
       closesAt,
       timer: null,
     };
-    if (durationSeconds !== null) {
-      poll.timer = setTimeout(() => void this.close(id), durationSeconds * 1_000);
+    await interaction.reply(this.createPayload(draft, false));
+    const poll: ActivePoll = { ...draft, message: await interaction.fetchReply() };
+    if (input.durationSeconds !== null) {
+      poll.timer = setTimeout(() => void this.close(id), input.durationSeconds * 1_000);
       poll.timer.unref();
     }
     this.polls.set(id, poll);
@@ -59,17 +85,36 @@ export class PollService {
 
   public async handle(interaction: ButtonInteraction): Promise<boolean> {
     if (!interaction.customId.startsWith("poll:")) return false;
-    const [, id, rawChoice] = interaction.customId.split(":");
-    if (!id || (rawChoice !== "yes" && rawChoice !== "no")) return false;
-    const poll = this.polls.get(id);
+    const [, id, action] = interaction.customId.split(":");
+    const poll = id ? this.polls.get(id) : undefined;
     if (!poll || poll.message.id !== interaction.message.id) {
       await interaction.reply({ content: "This poll is no longer active.", flags: MessageFlags.Ephemeral });
       return true;
     }
 
-    poll.votes.set(interaction.user.id, rawChoice);
-    await interaction.reply({ content: `Vote recorded: ${rawChoice}.`, flags: MessageFlags.Ephemeral });
-    await this.render(poll, false);
+    if (action === "end") {
+      const allowed = interaction.user.id === poll.creatorId
+        || interaction.memberPermissions?.has(PermissionFlagsBits.ManageMessages) === true;
+      if (!allowed) {
+        await interaction.reply({
+          content: "Only the poll creator or a moderator can end this poll.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return true;
+      }
+      this.forget(poll);
+      await interaction.update(this.createPayload(poll, true));
+      return true;
+    }
+
+    const index = Number(action);
+    if (!Number.isInteger(index) || index < 0 || index >= poll.choices.length) return false;
+    // Clicking your current pick again takes the vote back.
+    if (poll.votes.get(interaction.user.id) === index) poll.votes.delete(interaction.user.id);
+    else poll.votes.set(interaction.user.id, index);
+    // Updating the poll message itself acknowledges the click, so voting
+    // doesn't leave a trail of "vote recorded" replies.
+    await interaction.update(this.createPayload(poll, false));
     return true;
   }
 
@@ -83,52 +128,81 @@ export class PollService {
   private async close(id: string): Promise<void> {
     const poll = this.polls.get(id);
     if (!poll) return;
-    this.polls.delete(id);
-    await this.render(poll, true).catch(() => undefined);
+    this.forget(poll);
+    await poll.message.edit(this.createPayload(poll, true)).catch(() => undefined);
   }
 
-  private async render(poll: ActivePoll, closed: boolean): Promise<void> {
-    let yes = 0;
-    let no = 0;
-    for (const choice of poll.votes.values()) {
-      if (choice === "yes") yes++;
-      else no++;
-    }
-    await poll.message.edit({
-      embeds: [this.createEmbed(poll.title, poll.description, poll.authorName, yes, no, poll.closesAt, closed)],
-      components: [this.createButtons(poll.id, closed)],
+  private forget(poll: ActivePoll): void {
+    if (poll.timer) clearTimeout(poll.timer);
+    poll.timer = null;
+    this.polls.delete(poll.id);
+  }
+
+  private createPayload(poll: Omit<ActivePoll, "message">, closed: boolean): PollPayload {
+    const configuration = poll.guildId ? this.guildConfigurations.find(poll.guildId) : null;
+    const barStyle = configuration?.music.autoQueueVoteBarStyle ?? "squares";
+    const counts = poll.choices.map(() => 0);
+    for (const index of poll.votes.values()) counts[index] = (counts[index] ?? 0) + 1;
+    const totalVotes = poll.votes.size;
+    const topVotes = Math.max(...counts);
+    // Every choice tied for the most votes counts as leading; nothing leads
+    // before the first vote.
+    const leading = counts.map((count) => topVotes > 0 && count === topVotes);
+
+    const lines = poll.choices.map((choice, index) => {
+      const count = counts[index]!;
+      const share = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
+      const tally = `${leading[index] ? `**${count}**` : count} vote${count === 1 ? "" : "s"} · ${share}%`;
+      const heading = leading[index]
+        ? `▶ **${choice.emoji} ${choice.label}**`
+        : `${choice.emoji} ${choice.label}`;
+      return `${heading}\n${renderVoteBar(count, totalVotes, leading[index]!, barStyle)}  ${tally}`;
     });
-  }
 
-  private createEmbed(
-    title: string,
-    description: string,
-    authorName: string,
-    yes: number,
-    no: number,
-    closesAt: number | null,
-    closed: boolean,
-  ): EmbedBuilder {
-    const total = yes + no;
-    const status = closed ? "Ended" : "Live";
-    const timing = closesAt === null ? "No automatic closing time" : `<t:${Math.floor(closesAt / 1_000)}:R>`;
-    return new EmbedBuilder()
-      .setColor(closed ? "#EF4444" : "#22C55E")
-      .setTitle(`[${status}] Poll: ${title}`)
-      .setDescription(description)
-      .addFields(
-        { name: "Yes", value: String(yes), inline: true },
-        { name: "No", value: String(no), inline: true },
-        { name: "Total", value: String(total), inline: true },
-        { name: closed ? "Closed" : "Closes", value: timing },
-      )
-      .setFooter({ text: `Created by ${authorName}` });
-  }
+    const sections = [
+      ...(poll.description ? [poll.description] : []),
+      lines.join("\n\n"),
+      closed ? this.describeResult(poll.choices, counts, totalVotes) : this.describeTiming(poll.closesAt, totalVotes),
+    ];
+    const embed = new EmbedBuilder()
+      .setColor(closed ? endedEmbedColor : (configuration?.embedColor as `#${string}` | undefined) ?? defaultEmbedColor)
+      .setTitle(`🗳️ ${poll.title}${closed ? " — ended" : ""}`)
+      .setDescription(sections.join("\n\n"))
+      .setFooter({ text: `Poll by ${poll.authorName}` });
 
-  private createButtons(id: string, disabled: boolean): ActionRowBuilder<ButtonBuilder> {
-    return new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(`poll:${id}:yes`).setLabel("Yes").setEmoji("✅").setStyle(ButtonStyle.Success).setDisabled(disabled),
-      new ButtonBuilder().setCustomId(`poll:${id}:no`).setLabel("No").setEmoji("❌").setStyle(ButtonStyle.Danger).setDisabled(disabled),
+    const choiceRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      poll.choices.map((choice, index) => new ButtonBuilder()
+        .setCustomId(`poll:${poll.id}:${index}`)
+        .setEmoji(choice.emoji)
+        .setLabel(String(counts[index]))
+        .setStyle(leading[index] ? ButtonStyle.Success : ButtonStyle.Secondary)
+        .setDisabled(closed)),
     );
+    // Discord allows five buttons per row, so ending the poll gets its own.
+    const components = closed
+      ? [choiceRow]
+      : [choiceRow, new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId(`poll:${poll.id}:end`).setLabel("End poll").setStyle(ButtonStyle.Danger),
+      )];
+    return { embeds: [embed], components };
+  }
+
+  private describeTiming(closesAt: number | null, totalVotes: number): string {
+    const closes = closesAt === null
+      ? "Open until the creator ends it."
+      : `Closes <t:${Math.floor(closesAt / 1_000)}:R>.`;
+    return `${closes} ${totalVotes} vote${totalVotes === 1 ? "" : "s"} so far.\n` +
+      "-# Click your pick again to take your vote back.";
+  }
+
+  private describeResult(choices: readonly PollChoice[], counts: readonly number[], totalVotes: number): string {
+    if (totalVotes === 0) return "**Poll ended with no votes.**";
+    const topVotes = Math.max(...counts);
+    const winners = choices.filter((_, index) => counts[index] === topVotes);
+    if (winners.length === 1) {
+      return `🏆 **Winner: ${winners[0]!.emoji} ${winners[0]!.label}** (${topVotes} of ${totalVotes} vote${totalVotes === 1 ? "" : "s"})`;
+    }
+    const tied = winners.map((choice) => `${choice.emoji} ${choice.label}`).join(", ");
+    return `🤝 **Tie between ${tied}** (${topVotes} vote${topVotes === 1 ? "" : "s"} each, ${totalVotes} total)`;
   }
 }

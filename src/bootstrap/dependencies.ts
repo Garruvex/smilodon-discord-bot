@@ -278,7 +278,7 @@ export function registerCommands(
   roleMenuStore: RoleMenuStore,
 ): CommandRegistrationResult {
   const commandRegistry = new CommandRegistry();
-  const pollService = new PollService();
+  const pollService = new PollService(guildConfigurationProvider);
   const componentRegistry = new ComponentRegistry();
   componentRegistry.register(new PollComponentHandler(pollService));
   const roleMenuService = new RoleMenuService(roleMenuStore, logger.child({ component: "role-menu" }));
