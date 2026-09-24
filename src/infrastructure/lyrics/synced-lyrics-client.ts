@@ -62,7 +62,14 @@ const trailingMetadataPattern = /\s*[-–—|]\s*(?:official\s+)?(?:(?:music\s+)
 const artistTitleSeparatorPattern = /\s+[-–—]\s+/;
 // "周杰倫 Jay Chou【夜曲 Nocturne】" — the CJK-upload counterpart of
 // "Artist - Title": the artist outside, the title inside the brackets.
-const bracketedTitlePattern = /^(.+?)\s*[【《]([^】》]+)[】》]$/;
+// Keep opening and closing characters paired; a broad character class on
+// each side would also accept malformed titles such as "Artist【Song》".
+const bracketedTitlePattern = /^(.+?)\s*([【《〖〈「『〔［[（(｢｛{⟦⟨])(.+?)([】》〗〉」』〕］\]）)｣｝}⟧⟩])$/;
+const bracketClosers: Readonly<Record<string, string>> = {
+  "【": "】", "《": "》", "〖": "〗", "〈": "〉", "「": "」", "『": "』",
+  "〔": "〕", "［": "］", "[": "]", "（": "）", "(": ")", "｢": "｣",
+  "｛": "｝", "{": "}", "⟦": "⟧", "⟨": "⟩",
+};
 // Japanese channels publish collaboration headlines as
 // "Artist｢Track｣ × TV Anime｢Show｣ …" — the first quoted part is the track,
 // but only trusted when the text before it is the credited artist, since
@@ -120,8 +127,8 @@ function normalizeQuery(title: string, artist: string): NormalizedQuery {
   }
   const bracketMatch = bracketedTitlePattern.exec(cleanTitle);
   const bracketArtist = bracketMatch?.[1]?.trim();
-  const bracketTitle = bracketMatch?.[2]?.trim();
-  if (bracketArtist && bracketTitle) {
+  const bracketTitle = bracketMatch?.[3]?.trim();
+  if (bracketMatch && bracketArtist && bracketTitle && bracketClosers[bracketMatch[2] ?? ""] === bracketMatch[4]) {
     return { title: bracketTitle, artist: trimmedArtist, extraArtist: bracketArtist, unsplitTitle: cleanTitle };
   }
   // Try the "Artist - Title" split unconditionally — not just when a

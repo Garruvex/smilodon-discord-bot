@@ -162,6 +162,39 @@ describe("fetchSyncedLyrics", () => {
       .toEqual([{ timestampMs: 1_000, line: "First line" }, { timestampMs: 2_500, line: "Second line" }]);
   });
 
+  it("finds the linked Jay Chou video using its 〖song〗 title", async () => {
+    fetchMock.mockImplementation((url: unknown) => {
+      const params = new URL(String(url)).searchParams;
+      return jsonResponse(200, params.get("track_name") === "晴天" && params.get("artist_name") === null
+        ? [candidate({ trackName: "晴天", artistName: "周杰倫", duration: 269 })] : []);
+    });
+    expect(await fetchLines("周杰倫 Jay Chou〖晴天 Sunny Day〗-Official Music Video", "JVR Music"))
+      .not.toBeNull();
+  });
+
+  it.each([
+    ["【", "】"], ["《", "》"], ["〖", "〗"], ["〈", "〉"],
+    ["「", "」"], ["『", "』"], ["〔", "〕"], ["［", "］"],
+    ["[", "]"], ["（", "）"], ["(", ")"], ["｢", "｣"],
+    ["｛", "｝"], ["{", "}"], ["⟦", "⟧"], ["⟨", "⟩"],
+  ])("extracts a song from paired %s%s brackets", async (open, close) => {
+    fetchMock.mockImplementation((url: unknown) => {
+      const params = new URL(String(url)).searchParams;
+      return jsonResponse(200, params.get("track_name") === "晴天" && params.get("artist_name") === "周杰倫"
+        ? [candidate({ trackName: "晴天", artistName: "周杰倫" })] : []);
+    });
+    expect(await fetchLines(`周杰倫${open}晴天${close}-Official Music Video`, "JVR Music"))
+      .not.toBeNull();
+  });
+
+  it("does not extract a title from mismatched brackets", async () => {
+    fetchMock.mockImplementation((url: unknown) => jsonResponse(200,
+      new URL(String(url)).searchParams.get("track_name") === "晴天"
+        ? [candidate({ trackName: "晴天", artistName: "周杰倫" })] : [],
+    ));
+    expect(await fetchLines("周杰倫【晴天》-Official Music Video", "JVR Music")).toBeNull();
+  });
+
   it("matches a bilingual title and artist against the one-language row LRCLIB has", async () => {
     fetchMock.mockImplementation((url: unknown) => jsonResponse(200,
       new URL(String(url)).searchParams.get("track_name") === "髮如雪" && requestedArtist(url) === null
