@@ -58,7 +58,7 @@ export async function buildSettingPatch(
       provided = true;
       let saved: Awaited<ReturnType<typeof option.save>>;
       try {
-        saved = await option.save(attachment, { guildId: context.guildId, deps: context.deps });
+        saved = await option.save(attachment, { guildId: context.guildId, deps: context.deps, text: context.text, path });
       } catch (error) {
         // The asset store explains what's wrong with a file (type, size).
         return { kind: "rejected", message: error instanceof Error ? error.message : String(error) };

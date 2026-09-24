@@ -53,6 +53,9 @@ export interface RoleListOption extends ValueOption<readonly string[]> { kind: "
 export interface UploadContext {
   guildId: string;
   deps: SettingDeps;
+  text: SettingsText;
+  // The option's own path, for its text.
+  path: string;
 }
 
 // A file, saved through the asset store. Slash-only: the panel can't

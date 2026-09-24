@@ -73,11 +73,12 @@ export function engineFixture(options: {
   document?: ParsedGuildConfigurationFile;
 } = {}): EngineFixture {
   const profiles = memoryProvider(options.document);
+  const deps: SettingDeps = { assets: {} as never, applicationEmojiCatalog: stubEmojiCatalog(), ...options.deps };
   const engine = new SettingsEngine({
     registry: options.registry ?? settingsRegistry,
     profiles,
-    updater: new SettingsUpdateService(profiles, {} as never),
-    deps: { assets: {} as never, applicationEmojiCatalog: stubEmojiCatalog(), ...options.deps },
+    updater: new SettingsUpdateService(profiles, deps.assets),
+    deps,
   });
   return {
     engine,

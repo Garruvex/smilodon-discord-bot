@@ -60,11 +60,8 @@ import type { GuildSetupService } from "../application/setup/guild-setup-service
 import { SetupCommand } from "../infrastructure/discord/commands/setup/setup-command.js";
 import { StatusCommand } from "../infrastructure/discord/commands/setup/status-command.js";
 import { SettingsUpdateService } from "../application/settings/settings-update-service.js";
-import { settingGroups } from "../infrastructure/discord/settings/definitions/index.js";
 import { SettingsEngine } from "../infrastructure/discord/settings/engine/settings-engine.js";
 import { settingsRegistry } from "../infrastructure/discord/settings/groups/index.js";
-import { LegacySettingsCommand } from "../infrastructure/discord/settings/legacy-settings-command.js";
-import { LegacySettingsEngine } from "../infrastructure/discord/settings/legacy-settings-engine.js";
 import { SettingsCommand } from "../infrastructure/discord/settings/slash/settings-command.js";
 import { VoteCommand } from "../infrastructure/discord/commands/common/vote-command.js";
 import { MemoryCommand } from "../infrastructure/discord/commands/common/memory-command.js";
@@ -221,8 +218,7 @@ export interface ApplicationDependencies {
   pollService: PollService;
   behaviorDispatcher: BehaviorDispatcher;
   // Runs every registered setting, for every surface (/settings-*, the
-  // admin panel, guided setup); settingsUpdater saves and notifies for both
-  // engines while the legacy groups remain.
+  // admin panel, guided setup); settingsUpdater saves and notifies.
   settingsEngine: SettingsEngine;
   settingsUpdater: SettingsUpdateService;
   // Null when no chat provider is configured — there's nothing to
@@ -256,7 +252,6 @@ export interface CommandRegistrationResult {
   playbackService: PlaybackService;
   pollService: PollService;
   settingsEngine: SettingsEngine;
-  legacySettingsEngine: LegacySettingsEngine;
   settingsUpdater: SettingsUpdateService;
   applicationEmojiCatalog: ApplicationEmojiCatalog;
   memoryEngine: MemoryEngine;
@@ -470,18 +465,11 @@ export function registerCommands(
     updater: settingsUpdater,
     deps: settingsDeps,
   });
-  const legacySettingsEngine = new LegacySettingsEngine(
-    { profiles: guildConfigurationProvider, ...settingsDeps },
-    settingsUpdater,
-  );
   // One top-level /settings-<group> command per group, rather than one
   // shared /settings command: every group's descriptions would otherwise
   // share Discord's 8000-char per-command budget.
   for (const group of settingsRegistry) {
     commandRegistry.register(new SettingsCommand(group, settingsEngine, guildConfigurationProvider));
-  }
-  for (const group of settingGroups) {
-    commandRegistry.register(new LegacySettingsCommand(group, legacySettingsEngine));
   }
   commandRegistry.register(new CustomizeCommand(userCustomizationStore, utilityProvider));
 
@@ -492,7 +480,6 @@ export function registerCommands(
     playbackService,
     pollService,
     settingsEngine,
-    legacySettingsEngine,
     settingsUpdater,
     applicationEmojiCatalog,
     memoryEngine,
@@ -530,7 +517,6 @@ export function createDependencies(
     playbackService,
     pollService,
     settingsEngine,
-    legacySettingsEngine,
     settingsUpdater,
     applicationEmojiCatalog,
     memoryEngine,
@@ -609,7 +595,6 @@ export function createDependencies(
     ...commandToolBindings,
   ]);
   settingsEngine.bindChatToolRegistry(chatToolRegistry);
-  legacySettingsEngine.bindChatToolRegistry(chatToolRegistry);
   const chatConversationService = chatProvider
     ? new ChatConversationService(
         chatProvider,

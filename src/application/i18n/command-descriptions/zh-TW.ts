@@ -135,59 +135,6 @@ export const zhTWCommandDescriptions = {
   "setup/initialize:music-controller-role": "可使用 /play、管理待播歌曲的指令、面板控制，以及在控制頻道輸入文字點歌的身分組", // Role for /play, queue commands, panel controls, and typed control-channel requests.
   "setup/initialize:restricted-role": "禁止使用音樂與聊天機器人的身分組（機器人擁有者例外）", // Role denied from music and chatbot unless bot-owner bypass applies.
   "status": "顯示機器人在此伺服器的設定狀況，包含目前的聊天模型", // Shows how the bot is set up in this server, including the current chat model.
-  "settings-chat": "AI 聊天行為", // AI chat behavior.
-  "settings-chat/chatbot": "設定提及機器人時觸發的 AI 回覆", // Configures mention-based AI replies.
-  "settings-chat/chatbot:enabled": "有權限的使用者提及機器人時進行回覆", // Reply when permitted users mention the bot.
-  "settings-chat/chatbot:role": "新增可使用提及聊天的身分組", // Adds a role allowed to use mention chat.
-  "settings-chat/chatbot:channel": "新增允許提及聊天的文字頻道", // Adds a text channel where mention chat is allowed.
-  "settings-chat/chatbot:memory-mode": "設定 `channel` 的記憶隔離模式（未設定時預設為共用）", // Sets `channel`'s memory isolation mode (defaults to shared if never set).
-  "settings-chat/chatbot:cooldown-seconds": "每位使用者兩次請求之間的間隔", // Per-user delay between requests.
-  "settings-chat/chatbot:denied-message": "對沒有權限的使用者顯示的俏皮回應", // Playful response shown to users without access.
-  "settings-chat/chatbot:denied-link-url": "隨拒絕訊息顯示的連結按鈕網址；輸入 \"none\" 可移除", // Link button URL shown with the denied message. "none" removes it.
-  "settings-chat/chatbot:denied-link-label": "拒絕訊息連結按鈕的標籤", // Label for the denied-message link button.
-  "settings-chat/chatbot:web-search": "允許模型在需要時搜尋公開網路", // Allow the model to search the public web when needed.
-  "settings-chat/chatbot:tool-calling": "允許模型在回覆過程中呼叫機器人的功能", // Allow the model to call bot functions mid-reply.
-  "settings-chat/chatbot:image-input": "允許接收 Discord 圖片附件（每次請求有數量上限）", // Allow bounded image attachments from Discord.
-  "settings-chat/chatbot:image-generation": "允許模型在提及聊天中產生圖片", // Allow the model to generate images in mention chat.
-  "settings-chat/chatbot:self-reference-image": "機器人畫自己時使用的參考圖片", // Reference image used when the bot draws itself.
-  "settings-chat/chatbot:remove-self-reference-image": "移除自我參考圖片", // Remove the self-reference image.
-  "settings-chat/chatbot:include-sources": "在回覆中附上網路引用連結", // Include web citation links in replies.
-  "settings-chat/chatbot:max-images": "每次請求可接受的最大圖片數量", // Maximum images accepted per request.
-  "settings-chat/chatbot:personality": "以 Markdown 檔案上傳伺服器的角色設定", // Upload the guild personality as a Markdown file.
-  "settings-chat/chatbot:use-default-personality": "移除已上傳的角色設定，改用內建或預設檔案", // Remove the uploaded personality and use the built-in/default file.
-  "settings-chat/chatbot:examples": "以 Markdown 檔案上傳角色對話範例", // Upload example character exchanges as a Markdown file.
-  "settings-chat/chatbot:use-default-examples": "移除已上傳的範例檔案，改用內建範例", // Remove the uploaded examples file.
-  "settings-chat/chatbot:persona-drift": "實驗性功能：讓角色的心情與小習慣慢慢演變", // Experimental: let the character's mood/quirks slowly evolve.
-  "settings-chat/chatbot:reset-persona-drift": "清除角色已演變的心情與習慣紀錄並重新開始", // Wipe the character's evolved mood/quirk history and start over.
-  "settings-chat/ambient-replies": "讓機器人自行判斷是否要對只是提到它名字的訊息做出反應或回覆", // Lets the bot judge whether to react/reply to messages that merely name it.
-  "settings-chat/ambient-replies:enabled": "是否讓機器人自行判斷要不要回應只提到它名字的訊息", // Whether ambient replies are on.
-  "settings-chat/ambient-replies:cooldown-seconds": "每個頻道兩次自然回覆判斷之間的最短秒數", // Minimum seconds between ambient judgment calls per channel.
-  "settings-chat/reaction-replies": "讓機器人自行判斷是否回覆別人對它聊天訊息加的表情反應", // Lets the bot judge whether to reply to reactions on its own chat replies.
-  "settings-chat/reaction-replies:enabled": "是否開啟表情反應回覆", // Whether reaction replies are on.
-  "settings-chat/history-reactions": "讓機器人在聊天時對它已看到的其他人訊息加上表情反應", // Lets the bot react to other people's messages it already sees during a chat turn.
-  "settings-chat/history-reactions:enabled": "是否讓機器人對先前的訊息加表情反應", // Whether history reactions are on.
-  "settings-chat/channel-history": "讓機器人把頻道最近的訊息當作聊天參考", // Lets the bot use recent channel messages as ambient chat context.
-  "settings-chat/channel-history:enabled": "是否把頻道近期訊息當作聊天參考", // Whether ambient channel history is on.
-  "settings-chat/channel-history:limit": "要納入的頻道近期訊息數量", // How many recent channel messages to include.
-  "settings-chat/context-scan-add": "新增頻道，將其歷史訊息掃描一次並存入記憶", // Adds a channel for a one-time history scan into memory.
-  "settings-chat/context-scan-add:channel": "要設定的頻道", // The channel to configure.
-  "settings-chat/context-scan-add:seed-days": "首次執行要讀取過去幾天（預設 7）", // How many past days to read on the first run (default 7).
-  "settings-chat/context-scan-add:restart": "從頭重新執行已完成的掃描（預設 false）", // Re-run a completed scan from scratch (default false).
-  "settings-chat/context-daily-add": "新增頻道，持續將每日摘要存入記憶", // Adds a channel for an ongoing daily summary into memory.
-  "settings-chat/context-daily-add:channel": "要設定的頻道", // The channel to configure.
-  "settings-chat/context-daily-remove": "停止對頻道的持續每日摘要", // Stops ongoing daily summarization for a channel.
-  "settings-chat/context-daily-remove:channel": "要設定的頻道", // The channel to configure.
-  "settings-chat/context-remove": "將頻道從掃描與每日摘要中移除", // Removes a channel from both scan and daily summarization.
-  "settings-chat/context-remove:channel": "要設定的頻道", // The channel to configure.
-  "settings-chat/context-status": "顯示已設定歷史掃描或每日摘要的頻道，以及上次執行狀態", // Shows configured channel-context channels and their last-run state.
-  "settings-chat/context-status:channel": "只顯示單一頻道的詳細資訊", // Show detail for one channel only.
-  "settings-chat/template": "傳送起始用的 personality.md 或 examples.md，供你編輯後上傳", // Sends a starter personality.md or examples.md to edit and upload.
-  "settings-chat/template:kind": "要傳送哪一種起始檔案", // Which starter file to send.
-  "settings-chat/tools-enable": "重新啟用模型可呼叫的聊天工具", // Re-enables a chat tool the model can call.
-  "settings-chat/tools-enable:name": "要啟用的工具名稱", // Tool name to enable.
-  "settings-chat/tools-disable": "停用聊天工具，讓模型無法呼叫", // Disables a chat tool so the model can't call it.
-  "settings-chat/tools-disable:name": "要停用的工具名稱", // Tool name to disable.
-  "settings-chat/tools-list": "列出所有聊天工具，以及它們在此是否啟用", // Lists every chat tool and whether it's enabled here.
   "bird": "取得隨機鳥類圖片與小知識", // Gets a random bird image and fact.
   "cat": "取得隨機貓咪圖片與小知識", // Gets a random cat image and fact.
   "dog": "取得隨機狗狗圖片與小知識", // Gets a random dog image and fact.

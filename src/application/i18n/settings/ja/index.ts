@@ -1,5 +1,6 @@
 import type { SettingsTextCatalog } from "../catalog.js";
 import { jaAccess } from "./access.js";
+import { jaChat } from "./chat.js";
 import { jaCommunity } from "./community.js";
 import { jaMusic } from "./music.js";
 
@@ -7,5 +8,6 @@ import { jaMusic } from "./music.js";
 export const jaSettingsText: SettingsTextCatalog = {
   ...jaAccess,
   ...jaMusic,
+  ...jaChat,
   ...jaCommunity,
 };

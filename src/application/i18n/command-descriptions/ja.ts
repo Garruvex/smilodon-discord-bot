@@ -133,59 +133,6 @@ export const jaCommandDescriptions = {
   "setup/initialize:music-controller-role": "/play、キュー関連コマンド、パネル操作、コントロールチャンネルでのリクエストを使えるロール。", // Role for /play, queue commands, panel controls, and typed control-channel requests.
   "setup/initialize:restricted-role": "音楽とチャットボットの利用を禁止するロール（ボットオーナーは除く）。", // Role denied from music and chatbot unless bot-owner bypass applies.
   "status": "このサーバーでのボットの設定状況（現在のチャットモデルを含む）を表示します。", // Shows how the bot is set up in this server, including the current chat model.
-  "settings-chat": "AIチャットの動作。", // AI chat behavior.
-  "settings-chat/chatbot": "メンションに対するAI返信を設定します。", // Configures mention-based AI replies.
-  "settings-chat/chatbot:enabled": "権限のあるユーザーがボットにメンションしたときに返信します。", // Reply when permitted users mention the bot.
-  "settings-chat/chatbot:role": "メンションチャットを使えるロールを追加します。", // Adds a role allowed to use mention chat.
-  "settings-chat/chatbot:channel": "メンションチャットを許可するテキストチャンネルを追加します。", // Adds a text channel where mention chat is allowed.
-  "settings-chat/chatbot:memory-mode": "`channel` の記憶を分離するモードを設定します（未設定の場合は共有）。", // Sets `channel`'s memory isolation mode (defaults to shared if never set).
-  "settings-chat/chatbot:cooldown-seconds": "ユーザーごとのリクエスト間隔。", // Per-user delay between requests.
-  "settings-chat/chatbot:denied-message": "権限のないユーザーに表示する、ちょっとしたユーモアのある返答。", // Playful response shown to users without access.
-  "settings-chat/chatbot:denied-link-url": "拒否メッセージと一緒に表示するリンクボタンのURL。\"none\" で削除します。", // Link button URL shown with the denied message. "none" removes it.
-  "settings-chat/chatbot:denied-link-label": "拒否メッセージのリンクボタンのラベル。", // Label for the denied-message link button.
-  "settings-chat/chatbot:web-search": "必要に応じてモデルが公開Web検索を行えるようにします。", // Allow the model to search the public web when needed.
-  "settings-chat/chatbot:tool-calling": "返信の途中でモデルがボットの機能を呼び出せるようにします。", // Allow the model to call bot functions mid-reply.
-  "settings-chat/chatbot:image-input": "Discordの画像添付を受け付けます（枚数に上限があります）。", // Allow bounded image attachments from Discord.
-  "settings-chat/chatbot:image-generation": "メンションチャットでモデルが画像を生成できるようにします。", // Allow the model to generate images in mention chat.
-  "settings-chat/chatbot:self-reference-image": "ボットが自分の姿を描くときに使う参照画像。", // Reference image used when the bot draws itself.
-  "settings-chat/chatbot:remove-self-reference-image": "ボットが自分の姿を描くときに使う参照画像を削除します。", // Remove the self-reference image.
-  "settings-chat/chatbot:include-sources": "返信にWebの出典リンクを含めます。", // Include web citation links in replies.
-  "settings-chat/chatbot:max-images": "1回のリクエストで受け付ける画像の最大数。", // Maximum images accepted per request.
-  "settings-chat/chatbot:personality": "サーバーのキャラクター設定をMarkdownファイルでアップロードします。", // Upload the guild personality as a Markdown file.
-  "settings-chat/chatbot:use-default-personality": "アップロード済みのキャラクター設定を削除し、内蔵またはデフォルトのファイルを使います。", // Remove the uploaded personality and use the built-in/default file.
-  "settings-chat/chatbot:examples": "キャラクターの会話例をMarkdownファイルでアップロードします。", // Upload example character exchanges as a Markdown file.
-  "settings-chat/chatbot:use-default-examples": "アップロード済みの会話例ファイルを削除します。", // Remove the uploaded examples file.
-  "settings-chat/chatbot:persona-drift": "実験的機能：キャラクターの気分や癖が少しずつ変化するようにします。", // Experimental: let the character's mood/quirks slowly evolve.
-  "settings-chat/chatbot:reset-persona-drift": "キャラクターの変化した気分や癖の履歴を消去し、最初からやり直します。", // Wipe the character's evolved mood/quirk history and start over.
-  "settings-chat/ambient-replies": "名前が出ただけのメッセージにボットがリアクションや返信をするか、自分で判断できるようにします。", // Lets the bot judge whether to react/reply to messages that merely name it.
-  "settings-chat/ambient-replies:enabled": "名前が出ただけのメッセージへの自動返信を有効にするかどうか。", // Whether ambient replies are on.
-  "settings-chat/ambient-replies:cooldown-seconds": "チャンネルごとに、自動返信を判断する最短間隔（秒）。", // Minimum seconds between ambient judgment calls per channel.
-  "settings-chat/reaction-replies": "自分のチャット返信に付いたリアクションに返信するかどうかをボットが判断できるようにします。", // Lets the bot judge whether to reply to reactions on its own chat replies.
-  "settings-chat/reaction-replies:enabled": "リアクション返信を有効にするかどうか。", // Whether reaction replies are on.
-  "settings-chat/history-reactions": "チャット中に見えている他の人のメッセージに、ボットがリアクションを付けられるようにします。", // Lets the bot react to other people's messages it already sees during a chat turn.
-  "settings-chat/history-reactions:enabled": "履歴メッセージへのリアクションを有効にするかどうか。", // Whether history reactions are on.
-  "settings-chat/channel-history": "チャンネルの最近のメッセージをチャットの文脈として使えるようにします。", // Lets the bot use recent channel messages as ambient chat context.
-  "settings-chat/channel-history:enabled": "チャンネル履歴の文脈利用を有効にするかどうか。", // Whether ambient channel history is on.
-  "settings-chat/channel-history:limit": "含めるチャンネルの最近のメッセージ数。", // How many recent channel messages to include.
-  "settings-chat/context-scan-add": "チャンネルを追加し、履歴を一度だけスキャンして記憶に取り込みます。", // Adds a channel for a one-time history scan into memory.
-  "settings-chat/context-scan-add:channel": "設定するチャンネル。", // The channel to configure.
-  "settings-chat/context-scan-add:seed-days": "初回に読み込む過去の日数（デフォルト7）。", // How many past days to read on the first run (default 7).
-  "settings-chat/context-scan-add:restart": "完了済みのスキャンを最初からやり直します（デフォルト false）。", // Re-run a completed scan from scratch (default false).
-  "settings-chat/context-daily-add": "チャンネルを追加し、継続的に毎日の要約を記憶に保存します。", // Adds a channel for an ongoing daily summary into memory.
-  "settings-chat/context-daily-add:channel": "設定するチャンネル。", // The channel to configure.
-  "settings-chat/context-daily-remove": "チャンネルの継続的な日次要約を停止します。", // Stops ongoing daily summarization for a channel.
-  "settings-chat/context-daily-remove:channel": "設定するチャンネル。", // The channel to configure.
-  "settings-chat/context-remove": "チャンネルをスキャンと毎日の要約の両方から削除します。", // Removes a channel from both scan and daily summarization.
-  "settings-chat/context-remove:channel": "設定するチャンネル。", // The channel to configure.
-  "settings-chat/context-status": "履歴の取り込みや日次要約を設定したチャンネルと、前回の実行状況を表示します。", // Shows configured channel-context channels and their last-run state.
-  "settings-chat/context-status:channel": "指定したチャンネルの詳細のみ表示します。", // Show detail for one channel only.
-  "settings-chat/template": "編集してアップロードするための、personality.md または examples.md のひな形を送信します。", // Sends a starter personality.md or examples.md to edit and upload.
-  "settings-chat/template:kind": "送信するひな形の種類。", // Which starter file to send.
-  "settings-chat/tools-enable": "モデルが呼び出せるチャットツールを再び有効にします。", // Re-enables a chat tool the model can call.
-  "settings-chat/tools-enable:name": "有効にするツール名。", // Tool name to enable.
-  "settings-chat/tools-disable": "チャットツールを無効にし、モデルが呼び出せないようにします。", // Disables a chat tool so the model can't call it.
-  "settings-chat/tools-disable:name": "無効にするツール名。", // Tool name to disable.
-  "settings-chat/tools-list": "すべてのチャットツールと、このサーバーでの有効／無効の状態を一覧表示します。", // Lists every chat tool and whether it's enabled here.
   "bird": "ランダムな鳥の画像と豆知識を取得します。", // Gets a random bird image and fact.
   "cat": "ランダムな猫の画像と豆知識を取得します。", // Gets a random cat image and fact.
   "dog": "ランダムな犬の画像と豆知識を取得します。", // Gets a random dog image and fact.

@@ -1,12 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
+import type { ChatToolRegistry } from "../../src/application/chat/tools/chat-tool-registry.js";
+import type { ChannelSummaryCheckpoint, ChannelSummaryCheckpointStore } from "../../src/application/context/channel-summary-checkpoint-store.js";
 import { settingsRegistry } from "../../src/infrastructure/discord/settings/groups/index.js";
 import { resolveGuildEmoji } from "../../src/infrastructure/discord/settings/groups/music-progress.js";
 import { panelValues, type PanelScalar } from "../../src/infrastructure/discord/settings/panel/panel-values.js";
 import { registeredNodes } from "../../src/infrastructure/discord/settings/registry/paths.js";
 import type { SettingOption } from "../../src/infrastructure/discord/settings/registry/types.js";
 import { registryProblems } from "../../src/infrastructure/discord/settings/registry/validate-registry.js";
-import { engineFixture, slashValues, stubEmojiCatalog } from "../helpers/settings-fixtures.js";
+import { engineFixture, guildId, slashValues, stubEmojiCatalog } from "../helpers/settings-fixtures.js";
 
 const settingNodes = registeredNodes(settingsRegistry).flatMap((registered) =>
   registered.node.kind === "setting" ? [{ path: registered.path, options: Object.entries(registered.node.options) }] : []);
@@ -234,5 +236,177 @@ describe("access settings", () => {
       kind: "report",
       text: "Recent audit log entries:\n<t:1700000000:R> **<@1>** · **/settings-music volume** · Default volume: 75 → 90",
     });
+  });
+});
+
+describe("chat settings", () => {
+  const channelId = "600000000000000001";
+  const tools = (list: { name: string; description: string }[]): ChatToolRegistry =>
+    ({ list: () => list }) as unknown as ChatToolRegistry;
+
+  function checkpoints(checkpoint: Partial<ChannelSummaryCheckpoint> | null): {
+    store: ChannelSummaryCheckpointStore;
+    resetScan: ReturnType<typeof vi.fn>;
+  } {
+    const resetScan = vi.fn(() => Promise.resolve());
+    return {
+      resetScan,
+      store: {
+        initialize: () => Promise.resolve(),
+        get: () => Promise.resolve(checkpoint as ChannelSummaryCheckpoint | null),
+        recordSuccess: () => Promise.resolve(),
+        recordError: () => Promise.resolve(),
+        resetScan,
+      },
+    };
+  }
+
+  it("notes that a change has no effect while the chatbot is off", async () => {
+    const fixture = engineFixture();
+    const result = await fixture.run("chat.abilities.web-search", slashValues({ enabled: true }));
+    expect(result).toMatchObject({ kind: "updated", description: expect.stringContaining("the chatbot is turned off") as string });
+  });
+
+  it("disables and re-enables a tool by name, checked against the live registry", async () => {
+    const fixture = engineFixture({ deps: { chatToolRegistry: tools([{ name: "play_music", description: "Plays music." }]) } });
+
+    const disabled = await fixture.run("chat.abilities.tool", slashValues({ name: "play_music", enabled: false }));
+    expect(disabled).toMatchObject({ kind: "done", message: "Disabled chat tools: play_music." });
+    expect(fixture.profiles.current().chat.disabledTools).toEqual(["play_music"]);
+
+    await fixture.run("chat.abilities.tool", slashValues({ name: "play_music", enabled: true }));
+    expect(fixture.profiles.current().chat.disabledTools).toEqual([]);
+  });
+
+  it("refuses an unknown tool and names the real ones", async () => {
+    const fixture = engineFixture({ deps: { chatToolRegistry: tools([{ name: "play_music", description: "Plays music." }]) } });
+    const result = await fixture.run("chat.abilities.tool", slashValues({ name: "nope", enabled: false }));
+    expect(result).toEqual({ kind: "rejected", message: "Unknown tool \"nope\". Available tools: play_music." });
+  });
+
+  it("lists tools with their state, one short line each", async () => {
+    const long = "A very long description that keeps going on and on to describe exactly what this tool does ".repeat(3);
+    const fixture = engineFixture({
+      deps: { chatToolRegistry: tools(Array.from({ length: 15 }, (_, index) => ({ name: `tool_${index}`, description: long }))) },
+    });
+    await fixture.run("chat.abilities.tool", slashValues({ name: "tool_1", enabled: false }));
+
+    const result = await fixture.run("chat.abilities.tools", slashValues({}));
+
+    const text = result.kind === "report" ? result.text : "";
+    expect(text).toContain("🟢 **tool_0**");
+    expect(text).toContain("🔴 **tool_1**");
+    expect(text.length).toBeLessThanOrEqual(2000);
+  });
+
+  it("stores an uploaded self-reference image, and removing it deletes the file", async () => {
+    const saved = `guild-assets/${guildId}/self-reference.png`;
+    const assets = {
+      saveSelfReferenceImage: vi.fn(() => Promise.resolve(saved)),
+      removeSelfReferenceImage: vi.fn(() => Promise.resolve()),
+    };
+    const fixture = engineFixture({ deps: { assets: assets as never } });
+
+    await fixture.run("chat.persona.self-reference-image", slashValues({ image: { id: "attachment" } }));
+    expect(fixture.profiles.current().chat.selfReferenceImageAsset).toBe(saved);
+
+    const removed = await fixture.run("chat.persona.remove-self-reference-image", slashValues({}));
+    expect(removed).toMatchObject({ kind: "done", message: "Self-reference image removed." });
+    expect(fixture.profiles.current().chat.selfReferenceImageAsset).toBeNull();
+    expect(assets.removeSelfReferenceImage).toHaveBeenCalledWith(saved);
+  });
+
+  it("sets a channel's memory mode", async () => {
+    const fixture = engineFixture();
+    const result = await fixture.run("chat.memory.memory-mode", slashValues({ channel: { id: channelId }, mode: "isolated" }));
+
+    expect(result).toMatchObject({
+      kind: "done",
+      message: `<#${channelId}> memory mode set to Isolated — memory stays in this channel.`,
+    });
+    expect(fixture.profiles.current().chat.channelMemoryModes[channelId]).toBe("isolated");
+  });
+
+  describe("history scans", () => {
+    it("won't queue anything without a provider that can summarize", async () => {
+      const fixture = engineFixture({ deps: { channelSummaryProviderAvailable: false } });
+      const scan = await fixture.run("chat.memory.context-scan", slashValues({ channel: { id: channelId } }));
+      const daily = await fixture.run("chat.memory.context-daily", slashValues({ add: { id: channelId } }));
+
+      expect(scan).toMatchObject({ kind: "rejected", message: expect.stringContaining("can't be queued") as string });
+      expect(daily).toMatchObject({ kind: "rejected", message: expect.stringContaining("can't be turned on") as string });
+    });
+
+    it("queues a new channel, noting the chatbot is off", async () => {
+      const fixture = engineFixture({ deps: { channelSummaryProviderAvailable: true } });
+      const result = await fixture.run("chat.memory.context-scan", slashValues({ channel: { id: channelId }, "seed-days": 14 }));
+
+      expect(result).toMatchObject({ kind: "done", message: expect.stringContaining("queued for a one-time history scan") as string });
+      expect(result).toMatchObject({ message: expect.stringContaining("the chatbot is turned off") as string });
+      expect(fixture.profiles.current().chat).toMatchObject({ contextScanChannelIds: [channelId], contextSeedDays: 14 });
+    });
+
+    it("reports a scan that's still running instead of queueing it again", async () => {
+      const fixture = engineFixture({
+        deps: { channelSummaryProviderAvailable: true, channelSummaryCheckpointStore: checkpoints({ lastMessageId: "m1" }).store },
+      });
+      await fixture.run("chat.memory.context-scan", slashValues({ channel: { id: channelId } }));
+      const again = await fixture.run("chat.memory.context-scan", slashValues({ channel: { id: channelId } }));
+
+      expect(again).toMatchObject({ kind: "rejected", message: expect.stringContaining("already queued or running") as string });
+    });
+
+    it("re-runs a finished scan only when asked to restart", async () => {
+      const { store, resetScan } = checkpoints({ scanCompletedAt: 123 });
+      const fixture = engineFixture({ deps: { channelSummaryProviderAvailable: true, channelSummaryCheckpointStore: store } });
+      await fixture.run("chat.memory.context-scan", slashValues({ channel: { id: channelId } }));
+
+      const refused = await fixture.run("chat.memory.context-scan", slashValues({ channel: { id: channelId } }));
+      const restarted = await fixture.run("chat.memory.context-scan", slashValues({ channel: { id: channelId }, restart: true }));
+
+      expect(refused).toMatchObject({ kind: "rejected", message: expect.stringContaining("already finished") as string });
+      expect(restarted).toMatchObject({ kind: "done", message: expect.stringContaining("scan restarted") as string });
+      expect(resetScan).toHaveBeenCalledWith(guildId, channelId, expect.any(Number));
+    });
+
+    it("stops summarizing a channel on both lists", async () => {
+      const fixture = engineFixture({ deps: { channelSummaryProviderAvailable: true } });
+      await fixture.run("chat.memory.context-scan", slashValues({ channel: { id: channelId } }));
+      await fixture.run("chat.memory.context-daily", slashValues({ add: { id: channelId } }));
+
+      await fixture.run("chat.memory.context-remove", slashValues({ channel: { id: channelId } }));
+
+      expect(fixture.profiles.current().chat).toMatchObject({ contextScanChannelIds: [], contextDailyChannelIds: [] });
+    });
+
+    it("reports each channel's scan and daily state", async () => {
+      const { store } = checkpoints({
+        lastMessageId: "m9", scanCompletedAt: 1_000, dailyCursor: null, dailyHighWaterMarkAt: 1_000,
+        lastError: "Missing Read Message History.", lastErrorCode: "missing_history_permission", lastSuccessAt: 1_000,
+      });
+      const fixture = engineFixture({ deps: { channelSummaryProviderAvailable: true, channelSummaryCheckpointStore: store } });
+      await fixture.run("chat.memory.context-scan", slashValues({ channel: { id: channelId } }));
+      await fixture.run("chat.memory.context-daily", slashValues({ add: { id: channelId } }));
+
+      const result = await fixture.run("chat.memory.context-status", slashValues({}));
+
+      const text = result.kind === "report" ? result.text : "";
+      expect(text).toContain("Provider: available");
+      expect(text).toContain("Chatbot: off");
+      expect(text).toContain("Scan: complete");
+      expect(text).toContain("Daily: failed");
+      expect(text).toContain("missing_history_permission");
+    });
+  });
+
+  it("sends a starter file to edit", async () => {
+    const result = await engineFixture().run("chat.persona.template", slashValues({ kind: "examples" }));
+
+    expect(result).toMatchObject({
+      kind: "done",
+      message: expect.stringContaining("/settings-chat persona examples file:<file>") as string,
+    });
+    const files = result.kind === "done" ? result.files : [];
+    expect(files.map((file) => file.name)).toEqual(["examples.md"]);
   });
 });

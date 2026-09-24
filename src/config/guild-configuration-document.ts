@@ -48,6 +48,9 @@ export interface UpdateGuildConfigurationInput {
   // never wholesale-replaced) — same "add" semantics as chatbotChannelIds.
   chatbotChannelMemoryModes?: Readonly<Record<string, "shared" | "isolated" | "session_only" | "disabled">>;
   chatbotPersonaDriftEnabled?: boolean;
+  // The whole daily-summary list, as a settings list option sends it;
+  // applied before the single-channel operations below.
+  contextDailyChannelIds?: readonly string[];
   // Explicit single-channel operations (not a list to merge/replace) — each
   // is applied centrally in applyGuildConfigurationUpdate, idempotently:
   // adding an already-present id or removing an absent one is a no-op.
@@ -279,6 +282,7 @@ export function applyGuildConfigurationUpdate(
   }
   if (input.chatbotDisabledToolNames !== undefined) next.chat.disabledTools = [...input.chatbotDisabledToolNames];
   if (input.chatbotPersonaDriftEnabled !== undefined) next.chat.personaDriftEnabled = input.chatbotPersonaDriftEnabled;
+  if (input.contextDailyChannelIds !== undefined) next.chat.contextDailyChannelIds = [...new Set(input.contextDailyChannelIds)];
   if (input.contextScanAddChannelId !== undefined && !next.chat.contextScanChannelIds.includes(input.contextScanAddChannelId)) {
     next.chat.contextScanChannelIds = [...next.chat.contextScanChannelIds, input.contextScanAddChannelId];
   }
