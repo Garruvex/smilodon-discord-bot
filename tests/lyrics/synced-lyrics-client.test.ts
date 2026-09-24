@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { fetchSyncedLyrics, lyricsCacheIdentity } from "../../src/infrastructure/lyrics/lrclib-client.js";
+import { fetchSyncedLyrics, lyricsCacheIdentity } from "../../src/infrastructure/lyrics/synced-lyrics-client.js";
 import { buildLyricsCacheKey } from "../../src/application/lyrics/lyrics-cache-store.js";
 
 // LRCLIB and the NetEase fallback get separate mocks, so LRCLIB-focused

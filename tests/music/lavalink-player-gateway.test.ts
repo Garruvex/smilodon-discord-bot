@@ -8,7 +8,7 @@ import type { GuildConfigurationProvider } from "../../src/config/guild-configur
 import type { LyricsCacheStore } from "../../src/application/lyrics/lyrics-cache-store.js";
 
 const fetchSyncedLyricsMock = vi.fn();
-vi.mock("../../src/infrastructure/lyrics/lrclib-client.js", () => ({
+vi.mock("../../src/infrastructure/lyrics/synced-lyrics-client.js", () => ({
   fetchSyncedLyrics: (...args: unknown[]): unknown => fetchSyncedLyricsMock(...args),
   // Identity passthrough — none of these fixtures need real suffix-stripping,
   // and the cache-key tests below rely on the raw title/artist round-tripping

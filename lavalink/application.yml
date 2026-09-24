@@ -73,8 +73,8 @@ plugins:
       # Disabled here: this plugin's lrcLib integration always uses LRCLIB's
       # first search result even when that entry has no synced lyrics, which
       # silently fails on tracks with several LRCLIB entries (e.g.
-      # multi-artist credits). The bot queries LRCLIB directly instead (see
-      # src/infrastructure/lyrics/lrclib-client.ts) and only falls back to
+      # multi-artist credits). The bot queries LRCLIB (then NetEase) directly (see
+      # src/infrastructure/lyrics/synced-lyrics-client.ts) and only falls back to
       # this plugin's YouTube source if that comes up empty.
       lrcLib: false
     # Only used for the youtube lyrics source above — no OAuth/cookies

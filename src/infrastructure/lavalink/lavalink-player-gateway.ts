@@ -37,7 +37,7 @@ import type { MusicEventBus, MusicStateChangedEvent } from "../../application/mu
 import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
 import { LavalinkAutoQueue, type AutoQueueOutcome } from "./lavalink-auto-queue.js";
 import { cleanArtistName } from "../../domain/music/artist-name.js";
-import { fetchSyncedLyrics, lyricsCacheIdentity, type SyncedLyricLine } from "../lyrics/lrclib-client.js";
+import { fetchSyncedLyrics, lyricsCacheIdentity, type SyncedLyricLine } from "../lyrics/synced-lyrics-client.js";
 import { buildLyricsCacheKey, type LyricsCacheStore } from "../../application/lyrics/lyrics-cache-store.js";
 import { MUSIC_LIMITS } from "../../config/guild-configuration-limits.js";
 
@@ -1065,12 +1065,13 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     const requestedByUserId = current?.userData?.requestedByUserId;
     const customLyrics = this.customLyricsByGuild.get(guildId);
     const pluginLyrics = this.pluginLyricsByGuild.get(guildId);
-    // Our own LRCLIB fetch wins whenever it has something, since it fixes a
-    // bug in the plugin's own lrcLib source (see lrclib-client.ts), and it's
-    // the only source with the full line list needed to window upcoming
-    // lines. Fall back to the plugin's push-based line (currently
-    // YouTube-sourced) otherwise — that one only ever gives us the single
-    // current line, so there's no upcoming-lines preview on that path.
+    // Our own LRCLIB/NetEase fetch wins whenever it has something, since it
+    // fixes a bug in the plugin's own lrcLib source (see
+    // synced-lyrics-client.ts), and it's the only source with the full line
+    // list needed to window upcoming lines. Fall back to the plugin's
+    // push-based line (currently YouTube-sourced) otherwise — that one only
+    // ever gives us the single current line, so there's no upcoming-lines
+    // preview on that path.
     const { current: currentLyricLine, upcoming: upcomingLyricLines, nextLyricLineInMs } = Array.isArray(customLyrics)
       ? selectLyricLines(customLyrics, player.position, player.paused)
       : { current: typeof pluginLyrics === "object" ? pluginLyrics.line : null, upcoming: [], nextLyricLineInMs: null };

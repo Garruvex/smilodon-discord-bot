@@ -23,7 +23,7 @@ import { LavalinkAutoQueue } from "../../src/infrastructure/lavalink/lavalink-au
 import { LavalinkPlayerGateway } from "../../src/infrastructure/lavalink/lavalink-player-gateway.js";
 
 // Only "Song a" has synced lyrics.
-vi.mock("../../src/infrastructure/lyrics/lrclib-client.js", () => ({
+vi.mock("../../src/infrastructure/lyrics/synced-lyrics-client.js", () => ({
   fetchSyncedLyrics: (title: string): Promise<unknown> =>
     Promise.resolve(title === "Song a" ? [{ timestampMs: 0, line: "la" }] : null),
   lyricsCacheIdentity: (title: string, artist: string): unknown => ({ title, artist }),
