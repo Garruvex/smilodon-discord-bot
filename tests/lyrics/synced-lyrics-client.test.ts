@@ -427,6 +427,65 @@ describe("fetchSyncedLyrics", () => {
   });
 });
 
+describe("settling early on a confident LRCLIB match", () => {
+  // A search that never answers on its own — only cancellation ends it.
+  function hangingResponse(init: unknown): Promise<unknown> {
+    const signal = (init as { signal: AbortSignal }).signal;
+    return new Promise((_resolve, reject) => {
+      signal.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })));
+    });
+  }
+
+  it("returns an exact match without waiting for slower searches, and cancels them", async () => {
+    const signals: AbortSignal[] = [];
+    fetchMock.mockImplementation((url: unknown, init: unknown) => {
+      signals.push((init as { signal: AbortSignal }).signal);
+      return requestedArtist(url) === "Owl City, Carly Rae Jepsen"
+        ? jsonResponse(200, [candidate({ duration: 205 })])
+        : hangingResponse(init);
+    });
+
+    expect(await fetchLines("Good Time", "Owl City, Carly Rae Jepsen", 205_000))
+      .toEqual([{ timestampMs: 1_000, line: "First line" }, { timestampMs: 2_500, line: "Second line" }]);
+    expect(signals.length).toBeGreaterThan(1);
+    expect(signals.every((signal) => signal.aborted)).toBe(true);
+  });
+
+  it("waits for every search when the first match isn't confident, so a better one can win", async () => {
+    fetchMock.mockImplementation((url: unknown) => {
+      if (requestedArtist(url) === "Owl City, Carly Rae Jepsen") {
+        // 10s off the track's duration: a valid match, but not a confident one.
+        return jsonResponse(200, [candidate({ duration: 215, syncedLyrics: "[00:01.00]Radio edit" })]);
+      }
+      if (requestedArtist(url) === null) {
+        return new Promise((resolve) => setTimeout(() => resolve(jsonResponse(200, [
+          candidate({ duration: 205, syncedLyrics: "[00:01.00]Album version" }),
+        ])), 20));
+      }
+      return jsonResponse(200, []);
+    });
+
+    expect(await fetchLines("Good Time", "Owl City, Carly Rae Jepsen", 205_000))
+      .toEqual([{ timestampMs: 1_000, line: "Album version" }]);
+  });
+
+  it("settles on a weaker match after a short grace period instead of waiting on a hanging search", async () => {
+    vi.useFakeTimers();
+    try {
+      fetchMock.mockImplementation((url: unknown, init: unknown) => requestedArtist(url) === "Owl City, Carly Rae Jepsen"
+        ? jsonResponse(200, [candidate({ duration: 215, syncedLyrics: "[00:01.00]Radio edit" })])
+        : hangingResponse(init));
+
+      const lines = fetchLines("Good Time", "Owl City, Carly Rae Jepsen", 205_000);
+      await vi.advanceTimersByTimeAsync(1_500);
+
+      expect(await lines).toEqual([{ timestampMs: 1_000, line: "Radio edit" }]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("provider error codes", () => {
   it.each([
     ["a timeout", (): Promise<never> => Promise.reject(Object.assign(new Error("aborted"), { name: "TimeoutError" })), "timeout", true],

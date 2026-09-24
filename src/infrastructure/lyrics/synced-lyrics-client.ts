@@ -339,8 +339,8 @@ function selectBestLrcLibLines(
   durationMs: number | undefined,
   candidates: readonly LrcLibCandidate[],
   onCandidate: CandidateListener | undefined,
-): SyncedLyricLine[] | null {
-  let best: { lines: SyncedLyricLine[]; score: number } | null = null;
+): ScoredLines | null {
+  let best: ScoredLines | null = null;
   for (const candidate of candidates) {
     const match: MatchCandidate = {
       trackName: candidate.trackName,
@@ -356,14 +356,32 @@ function selectBestLrcLibLines(
     onCandidate?.({ source: "lrclib", ...match, score, verdict: score === null ? "rejected" : "eligible" });
     if (score !== null && (!best || score > best.score)) best = { lines, score };
   }
-  return best?.lines ?? null;
+  return best;
 }
 
-async function searchLrcLib(trackName: string, artistName: string): Promise<LrcLibCandidate[]> {
+interface ScoredLines {
+  readonly lines: SyncedLyricLine[];
+  readonly score: number;
+}
+
+// A match this good can't meaningfully be beaten by a row that hasn't
+// arrived yet: exact title and artist after normalization with the same
+// version marker (60 + 40 + 12), plus — when the track has a duration — a
+// duration within 3s (at least 18 of the 20 duration points). Anything
+// weaker waits for every search, so a better row still gets its chance.
+const exactMetadataScore = 112;
+const confidentDurationBonus = 18;
+// Once any acceptable (but not confident) match is in hand, the searches
+// still running get this long to offer a better one. Music videos often run
+// longer than the release LRCLIB has, so their best match is rarely
+// "confident" — without this cap the lookup would wait on the slowest search.
+const betterMatchGraceMs = 1_500;
+
+async function searchLrcLib(trackName: string, artistName: string, signal: AbortSignal): Promise<LrcLibCandidate[]> {
   const url = new URL("https://lrclib.net/api/search");
   url.searchParams.set("track_name", trackName);
   if (artistName) url.searchParams.set("artist_name", artistName);
-  const payload = await requestProviderJson("lrclib", url);
+  const payload = await requestProviderJson("lrclib", url, { signal });
   if (!Array.isArray(payload)) {
     throw new LyricsProviderError("lrclib", "invalid_response", false, "Search response was not an array");
   }
@@ -451,55 +469,82 @@ function buildLookupPlan(trackName: string, artistName: string): LookupPlan {
 // timeout) delayed ever trying the others, so a track that only matched on
 // the third or fourth variant could take up to their combined wait before
 // the panel had anything to show. Firing them together bounds the total wait
-// to the single slowest request instead of their sum.
+// to the single slowest request instead of their sum — and a match ends the
+// wait early, cancelling the searches still running: immediately if it's
+// confident (see exactMetadataScore), otherwise after betterMatchGraceMs.
+// LRCLIB's artist-less search in particular can take several seconds.
 async function fetchFromLrcLib(
   plan: LookupPlan,
   durationMs: number | undefined,
   onCandidate: CandidateListener | undefined,
 ): Promise<SyncedLyricLine[] | null> {
-  const settledResults = await Promise.allSettled(
-    plan.searches.map((search) => searchLrcLib(search.title, search.artist)),
-  );
-  const resultSets = settledResults.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
-  const failure = settledResults.find((result) => result.status === "rejected");
+  const confidentScore = exactMetadataScore + (durationMs === undefined ? 0 : confidentDurationBonus);
+  const cancelRemaining = new AbortController();
+  const seenCandidateKeys = new Set<string>();
+  // Every variant's rows are scored as one pool against every target's
+  // notion of "the real artist" — the overall best-scoring row wins, rather
+  // than whichever variant happened to answer first.
+  const state: { best: ScoredLines | null; succeeded: number; failures: unknown[]; done: boolean } = {
+    best: null,
+    succeeded: 0,
+    failures: [],
+    done: false,
+  };
+
+  let graceTimer: NodeJS.Timeout | undefined;
+  await new Promise<void>((resolve) => {
+    const finish = (): void => {
+      state.done = true;
+      clearTimeout(graceTimer);
+      resolve();
+    };
+    let pending = plan.searches.length;
+    if (pending === 0) finish();
+    for (const search of plan.searches) {
+      searchLrcLib(search.title, search.artist, cancelRemaining.signal)
+        .then((results) => {
+          if (state.done) return;
+          state.succeeded += 1;
+          const fresh = results.filter((result) => {
+            // LRCLIB's own row id is the only thing that's actually
+            // guaranteed unique per release — title/artist/duration alone
+            // can genuinely collide across two different albums (a single
+            // re-released on a compilation at the exact same duration), and
+            // deduping on that composite would then silently discard
+            // whichever of the two carries the synced lyrics the other one
+            // lacks. The rare row with no id falls back to a composite key
+            // that includes the lyrics themselves for exactly that reason.
+            const candidateKey = result.id !== undefined
+              ? `id:${result.id}`
+              : JSON.stringify([result.trackName, result.artistName, result.duration ?? null, result.syncedLyrics ?? null]);
+            if (seenCandidateKeys.has(candidateKey)) return false;
+            seenCandidateKeys.add(candidateKey);
+            return true;
+          });
+          const scored = selectBestLrcLibLines(plan.targets, durationMs, fresh, onCandidate);
+          if (scored && (!state.best || scored.score > state.best.score)) state.best = scored;
+          if (state.best && state.best.score >= confidentScore) finish();
+          else if (state.best && graceTimer === undefined) graceTimer = setTimeout(finish, betterMatchGraceMs);
+        }, (error: unknown) => {
+          if (!state.done) state.failures.push(error);
+        })
+        .finally(() => {
+          pending -= 1;
+          if (pending === 0) finish();
+        });
+    }
+  });
+  cancelRemaining.abort();
+
   // A partial outage must not hide a result from another variant. If every
   // request failed, propagate the failure so the caller won't cache a false
   // "no lyrics" result.
-  if (resultSets.length === 0) {
-    throw toLyricsProviderError("lrclib", failure?.reason);
-  }
-
-  const seenCandidateKeys = new Set<string>();
-  const candidates: LrcLibCandidate[] = [];
-  for (const results of resultSets) {
-    for (const result of results) {
-      // LRCLIB's own row id is the only thing that's actually guaranteed
-      // unique per release — title/artist/duration alone can genuinely
-      // collide across two different albums (a single re-released on a
-      // compilation at the exact same duration), and deduping on that
-      // composite would then silently discard whichever of the two carries
-      // the synced lyrics the other one lacks. The rare row with no id falls
-      // back to a composite key that includes the lyrics themselves for
-      // exactly that reason.
-      const candidateKey = result.id !== undefined
-        ? `id:${result.id}`
-        : JSON.stringify([result.trackName, result.artistName, result.duration ?? null, result.syncedLyrics ?? null]);
-      if (seenCandidateKeys.has(candidateKey)) continue;
-      seenCandidateKeys.add(candidateKey);
-      candidates.push(result);
-    }
-  }
-
-  // Every variant scores the *same* merged candidate pool against its own
-  // notion of "the real artist" — the overall best-scoring result across
-  // all of them wins, rather than whichever variant happened to be tried
-  // first (there's no longer a "first" — they all ran together).
-  const lines = selectBestLrcLibLines(plan.targets, durationMs, candidates, onCandidate);
-  if (lines) return lines;
+  if (state.best) return state.best.lines;
+  if (state.succeeded === 0) throw toLyricsProviderError("lrclib", state.failures[0]);
   // An empty result from the surviving variants is inconclusive when any
   // variant failed — do not persist a negative cache entry that would
   // suppress future retries.
-  if (failure) throw toLyricsProviderError("lrclib", failure.reason);
+  if (state.failures.length > 0) throw toLyricsProviderError("lrclib", state.failures[0]);
   return null;
 }
 
@@ -526,7 +571,7 @@ type NetEaseSong = z.infer<typeof netEaseSongSchema>;
 const netEaseThrottleCodes = new Set([-460, -462, 405]);
 
 async function fetchNetEaseJson<T>(url: URL, schema: z.ZodType<T, z.ZodTypeDef, unknown>): Promise<T & { code: number }> {
-  const parsed = schema.safeParse(await requestProviderJson("netease", url, netEaseHeaders));
+  const parsed = schema.safeParse(await requestProviderJson("netease", url, { headers: netEaseHeaders }));
   if (!parsed.success) {
     throw new LyricsProviderError("netease", "invalid_response", false, "Response didn't match the expected shape");
   }

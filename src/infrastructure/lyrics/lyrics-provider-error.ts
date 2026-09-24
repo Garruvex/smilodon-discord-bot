@@ -37,14 +37,18 @@ const requestTimeoutMs = 5_000;
 
 // One HTTP GET + JSON decode, with every failure mode translated into a
 // LyricsProviderError.
+// `signal` lets a caller cancel a request it no longer needs, on top of the
+// per-request timeout.
 export async function requestProviderJson(
   source: LyricsSource,
   url: URL,
-  headers?: Record<string, string>,
+  options: { readonly headers?: Record<string, string>; readonly signal?: AbortSignal } = {},
 ): Promise<unknown> {
+  const timeout = AbortSignal.timeout(requestTimeoutMs);
+  const signal = options.signal ? AbortSignal.any([timeout, options.signal]) : timeout;
   let response: Response;
   try {
-    response = await fetch(url, { ...(headers ? { headers } : {}), signal: AbortSignal.timeout(requestTimeoutMs) });
+    response = await fetch(url, { ...(options.headers ? { headers: options.headers } : {}), signal });
   } catch (error) {
     const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
     throw new LyricsProviderError(source, timedOut ? "timeout" : "network", true, String(error), { cause: error });
