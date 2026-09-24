@@ -87,13 +87,17 @@ describe("RelevantPersonaLoreSelector", () => {
     expect(embed).toHaveBeenCalledWith("where were you born");
   });
 
-  it("embeds the direct reply-chain message and its summary alongside the current message", async () => {
+  it("embeds the shared query text — recent history and the direct reply-chain parent before the message", async () => {
     const embed = vi.fn(() => Promise.resolve([1, 0]));
     const selector = new RelevantPersonaLoreSelector({ embed, modelId: "test-model" });
 
     await selector.select({
       chunks: [chunk({ embedding: [1, 0] })],
-      recentHistory: [],
+      recentHistory: [
+        { role: "user", content: "oldest turn" },
+        { role: "user", content: "we were talking about rivers" },
+        { role: "assistant", content: "yeah the big one up north" },
+      ],
       message: "what do you think?",
       now: 1_000,
       replyChain: [{ content: "older hop" }, { content: "have you ever been near the river" }],
@@ -101,7 +105,7 @@ describe("RelevantPersonaLoreSelector", () => {
     });
 
     expect(embed).toHaveBeenCalledWith(
-      "what do you think?\nhave you ever been near the river\nearlier: discussed the old mill",
+      "we were talking about rivers\nyeah the big one up north\nhave you ever been near the river\nwhat do you think?",
     );
   });
 

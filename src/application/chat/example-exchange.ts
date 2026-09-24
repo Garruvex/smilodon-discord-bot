@@ -12,6 +12,17 @@ export interface ExampleExchange {
 export const exampleExchangeLimits = {
   maxExamples: 200,
   maxSerializedChars: 16_000,
+  // Per-turn selection bounds (see RelevantExampleExchangeSelector). Examples
+  // set voice rather than supply facts, so a handful is enough; the minimum
+  // is topped up from the start of examples.md so an off-topic turn never
+  // loses its voice reference entirely.
+  maxSelected: 8,
+  minSelected: 3,
+  // Cosine similarity at or above which two examples' situations count as
+  // near-duplicates, so only the higher-ranked one is sent. Uncalibrated
+  // starting point — embedding-model-dependent like every other threshold
+  // in memory-relevance.ts.
+  nearDuplicateSimilarity: 0.9,
 } as const;
 
 const headingPattern = /^###[ \t]+Example(?:[ \t]+.*)?\r?$/gm;

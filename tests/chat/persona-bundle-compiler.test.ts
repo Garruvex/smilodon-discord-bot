@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { PersonaBundleCompiler } from "../../src/application/chat/persona-bundle-compiler.js";
 import type { ChatProvider } from "../../src/application/chat/chat-provider.js";
-import type { PersonaBundle } from "../../src/application/chat/persona-bundle.js";
+import { personaLoreEmbeddingTextVersion, type PersonaBundle } from "../../src/application/chat/persona-bundle.js";
 import type { EmbeddingsClient } from "../../src/application/chat/embeddings-client.js";
 
 const content = "## Voice\nAlways playful.\n\n## Backstory\nBorn in a forest.\n\n## Rivalry\nDislikes the mod team.";
@@ -59,6 +59,7 @@ describe("PersonaBundleCompiler.compile — embedding cache across reuploads", (
       chunks: [{ heading: "Backstory", text: "Born in a forest.", embedding: [1, 2] }],
       compiledAt: 0,
       embeddingModel: "test-model",
+      embeddingTextVersion: personaLoreEmbeddingTextVersion,
     };
 
     const bundle = await compiler.compile(content, previousBundle);
@@ -78,11 +79,12 @@ describe("PersonaBundleCompiler.compile — embedding cache across reuploads", (
       chunks: [{ heading: "Backstory", text: "A completely different old backstory.", embedding: [1, 2] }],
       compiledAt: 0,
       embeddingModel: "test-model",
+      embeddingTextVersion: personaLoreEmbeddingTextVersion,
     };
 
     const bundle = await compiler.compile(content, previousBundle);
 
-    expect(embed).toHaveBeenCalledWith("Born in a forest.");
+    expect(embed).toHaveBeenCalledWith("Backstory\nBorn in a forest.");
     expect(bundle?.chunks).toEqual([{ heading: "Backstory", text: "Born in a forest.", embedding: [9, 9] }]);
   });
 
@@ -99,12 +101,33 @@ describe("PersonaBundleCompiler.compile — embedding cache across reuploads", (
       chunks: [{ heading: "Backstory", text: "Born in a forest.", embedding: [1, 2] }],
       compiledAt: 0,
       embeddingModel: "gemini:text-embedding-004:2",
+      embeddingTextVersion: personaLoreEmbeddingTextVersion,
     };
 
     const bundle = await compiler.compile(content, previousBundle);
 
-    expect(embed).toHaveBeenCalledWith("Born in a forest.");
+    expect(embed).toHaveBeenCalledWith("Backstory\nBorn in a forest.");
     expect(bundle?.chunks).toEqual([{ heading: "Backstory", text: "Born in a forest.", embedding: [9, 9] }]);
     expect(bundle?.embeddingModel).toBe("openai:text-embedding-3-small");
+  });
+
+  it("re-embeds instead of reusing a vector produced under an older embedding-text scheme", async () => {
+    const provider = providerReturning([[1], [1], [1]]);
+    const embed = vi.fn(() => Promise.resolve([9, 9]));
+    const compiler = new PersonaBundleCompiler(provider, { embed, modelId: "test-model" });
+    const previousBundle: PersonaBundle = {
+      sourceHash: "irrelevant",
+      core: "irrelevant",
+      chunks: [{ heading: "Backstory", text: "Born in a forest.", embedding: [1, 2] }],
+      compiledAt: 0,
+      embeddingModel: "test-model",
+      embeddingTextVersion: 1,
+    };
+
+    const bundle = await compiler.compile(content, previousBundle);
+
+    expect(embed).toHaveBeenCalledWith("Backstory\nBorn in a forest.");
+    expect(bundle?.chunks[0]?.embedding).toEqual([9, 9]);
+    expect(bundle?.embeddingTextVersion).toBe(personaLoreEmbeddingTextVersion);
   });
 });

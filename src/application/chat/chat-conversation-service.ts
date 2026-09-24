@@ -672,39 +672,52 @@ export class ChatConversationService {
       // (private memory reads go through memoryEngine.recall below).
       const state = await this.stateStore.load(input.guildId, input.currentUser.id, input.channelId, now);
       const recentHistory = this.promptHistorySelector.select(state.exchanges);
-      const [memoryContext, userCustomization, birthday, replyChainSummary] = await Promise.all([
+      const replyToContent = input.replyChain.at(-1)?.content;
+      // Never rejects (failures resolve to null), so lore selection can
+      // chain on it without risking the whole Promise.all.
+      const replyChainSummaryPromise = this.resolveReplyChainSummary(
+        input.replyChainOverflow ?? [], input.guildId, input.channelId,
+      );
+      // Recall and both persona selectors run concurrently and embed the
+      // same query text (see buildEmbeddingQueryText), which the shared
+      // CachingEmbeddingsClient collapses into one embeddings call.
+      const [
+        memoryContext, userCustomization, birthday, replyChainSummary, selectedExampleExchanges, selectedPersonaLore,
+      ] = await Promise.all([
         this.memoryEngine.recall({
           guildId: input.guildId,
           channelId: input.channelId,
           userId: input.currentUser.id,
           message: input.message,
           recentHistory,
+          ...(replyToContent !== undefined ? { replyToContent } : {}),
           subjectIds: [input.currentUser.id, ...input.mentionedUsers.map((user) => user.id)],
           now,
           channelMode,
         }),
         this.userCustomizationStore?.load(input.guildId, input.currentUser.id) ?? Promise.resolve(null),
         this.birthdayStore?.getBirthday(input.guildId, input.currentUser.id) ?? Promise.resolve(null),
-        this.resolveReplyChainSummary(input.replyChainOverflow ?? [], input.guildId, input.channelId),
+        replyChainSummaryPromise,
+        this.exampleExchangeSelector.select({
+          records: input.examplePool,
+          currentUser: input.currentUser,
+          mentionedUsers: input.mentionedUsers,
+          recentHistory,
+          message: input.message,
+          now,
+          replyChain: input.replyChain,
+        }),
+        replyChainSummaryPromise.then((summary) => this.personaLoreSelector.select({
+          chunks: input.loreChunks,
+          recentHistory,
+          message: input.message,
+          now,
+          replyChain: input.replyChain,
+          replyChainSummary: summary,
+        })),
       ]);
       const selectedMemories = memoryContext.memories.filter((memory) => memory.audience === "private").map(toChatMemoryRecord);
       const selectedGuildKnowledge = memoryContext.memories.filter((memory) => memory.audience !== "private").map(toGuildKnowledgeRecord);
-      const selectedExampleExchanges = await this.exampleExchangeSelector.select({
-        records: input.examplePool,
-        currentUser: input.currentUser,
-        mentionedUsers: input.mentionedUsers,
-        recentHistory,
-        message: input.message,
-        now,
-      });
-      const selectedPersonaLore = await this.personaLoreSelector.select({
-        chunks: input.loreChunks,
-        recentHistory,
-        message: input.message,
-        now,
-        replyChain: input.replyChain,
-        replyChainSummary,
-      });
       // examplePool/loreChunks are the unfiltered candidate lists — only
       // their selector-narrowed results belong in the request, so they're
       // destructured out here purely to keep them off requestInput's spread

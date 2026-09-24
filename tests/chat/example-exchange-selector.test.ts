@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { RelevantExampleExchangeSelector } from "../../src/application/chat/example-exchange-selector.js";
-import type { ExampleExchange } from "../../src/application/chat/example-exchange.js";
+import { exampleExchangeLimits, type ExampleExchange } from "../../src/application/chat/example-exchange.js";
 import type { EmbeddingsClient } from "../../src/application/chat/embeddings-client.js";
 
 function exchange(overrides: Partial<ExampleExchange> = {}): ExampleExchange {
@@ -144,50 +144,107 @@ describe("RelevantExampleExchangeSelector", () => {
     expect(selected).toHaveLength(1);
   });
 
-  it("excludes examples with zero lexical overlap and no meaningfully similar embedding", async () => {
-    const unrelated = exchange({ tags: "music", user: "recommend me a song", character: "listen to this one" });
+  // Real (Date.now()-scale) `now` for the tests below — with updatedAt
+  // hardcoded to 0 for every example (see toScorable), a small `now` makes
+  // bm25Score's recency term dominate and masks the zero-lexical-overlap
+  // cases they target. At real epoch scale that recency term is always ~0,
+  // same as production.
+  const realisticNow = Date.now();
+  const baseInput = {
+    currentUser: { id: "user", displayName: "User", roleNames: [] },
+    mentionedUsers: [],
+    recentHistory: [],
+    now: realisticNow,
+  };
+
+  it("gives relevance slots only to examples that clear the floor, then tops up to the baseline in file order", async () => {
+    const unrelated = ["music song", "cooking pasta", "gaming controller", "weather forecast"].map((topic) =>
+      exchange({ tags: topic, user: `talk about ${topic}`, character: "sure" }));
+    const examTalk = exchange({ tags: "exam", user: "my exam went badly", character: "rip" });
     const selector = new RelevantExampleExchangeSelector();
 
     const selected = await selector.select({
-      records: [unrelated],
-      currentUser: { id: "user", displayName: "User", roleNames: [] },
-      mentionedUsers: [],
-      recentHistory: [],
-      message: "what's the weather like on mars",
-      // Real (Date.now()-scale) `now` — with updatedAt hardcoded to 0 for
-      // every example (see toScorable), a small `now` makes bm25Score's
-      // recency term dominate and masks the zero-lexical-overlap case this
-      // test targets. At real epoch scale that recency term is always ~0,
-      // same as production.
-      now: Date.now(),
+      ...baseInput,
+      records: [...unrelated, examTalk],
+      message: "my exam today was a disaster",
     });
 
-    expect(selected).toHaveLength(0);
+    expect(selected).toEqual([examTalk, unrelated[0], unrelated[1]]);
+  });
+
+  it("still sends a baseline of examples when nothing is relevant, rather than none", async () => {
+    const records = ["music song", "cooking pasta", "gaming controller", "weather forecast"].map((topic) =>
+      exchange({ tags: topic, user: `talk about ${topic}`, character: "sure" }));
+    const selector = new RelevantExampleExchangeSelector();
+
+    const selected = await selector.select({ ...baseInput, records, message: "mars rover landing" });
+
+    expect(selected).toEqual(records.slice(0, exampleExchangeLimits.minSelected));
   });
 
   it("requires embedding similarity to clear a real threshold, not just be above zero", async () => {
     // Barely-positive cosine similarity (0.05) is the kind of noise
     // unrelated vectors commonly produce in a real embedding space — not a
-    // genuine relevance signal, so it should not be enough on its own.
-    const unrelated = exchange({ tags: "music", user: "recommend me a song", character: "listen to this one", embedding: [1, 0] });
-    // A unit vector with cosine similarity ~0.05 against [1, 0].
-    const embed = vi.fn(() => Promise.resolve([0.05, Math.sqrt(1 - 0.05 ** 2)]));
+    // genuine relevance signal, so it must not win a relevance slot.
+    const noise = exchange({ tags: "a", user: "alpha", character: "x", embedding: [1, 0, 0, 0] });
+    const first = exchange({ tags: "b", user: "bravo", character: "x", embedding: [0, 1, 0, 0] });
+    const second = exchange({ tags: "c", user: "charlie", character: "x", embedding: [0, 0, 1, 0] });
+    const match = exchange({ tags: "d", user: "delta", character: "x", embedding: [0, 0, 0, 1] });
+    const embed = vi.fn(() => Promise.resolve([0.05, 0, 0, Math.sqrt(1 - 0.05 ** 2)]));
     const selector = new RelevantExampleExchangeSelector({ embed, modelId: "test-model" });
 
     const selected = await selector.select({
-      records: [unrelated],
-      currentUser: { id: "user", displayName: "User", roleNames: [] },
-      mentionedUsers: [],
-      recentHistory: [],
-      message: "what's the weather like on mars",
-      // Real (Date.now()-scale) `now` — with updatedAt hardcoded to 0 for
-      // every example (see toScorable), a small `now` makes bm25Score's
-      // recency term dominate and masks the zero-lexical-overlap case this
-      // test targets. At real epoch scale that recency term is always ~0,
-      // same as production.
-      now: Date.now(),
+      ...baseInput,
+      records: [first, second, noise, match],
+      message: "nothing lexically shared",
     });
 
-    expect(selected).toHaveLength(0);
+    expect(selected).toEqual([match, first, second]);
+  });
+
+  it("caps the selection at maxSelected even when more examples are relevant and fit the budget", async () => {
+    const many = Array.from({ length: 20 }, (_, i) => exchange({ tags: `exam${i}`, user: "exam stress", character: `reply ${i}` }));
+    const selector = new RelevantExampleExchangeSelector();
+
+    const selected = await selector.select({ ...baseInput, records: many, message: "exam" });
+
+    expect(selected).toHaveLength(exampleExchangeLimits.maxSelected);
+  });
+
+  it("skips an example whose situation is a near-duplicate of one already selected", async () => {
+    const original = exchange({ tags: "exam", user: "my exam went badly", character: "rip", embedding: [1, 0] });
+    const duplicate = exchange({ tags: "exam", user: "my exam went badly again", character: "oof", embedding: [1, 0.01] });
+    const different = exchange({ tags: "exam", user: "exam results are out", character: "nice", embedding: [0, 1] });
+    const selector = new RelevantExampleExchangeSelector({ embed: (): Promise<number[]> => Promise.resolve([1, 0]), modelId: "test-model" });
+
+    const selected = await selector.select({ ...baseInput, records: [original, duplicate, different], message: "exam" });
+
+    expect(selected).toContain(original);
+    expect(selected).toContain(different);
+    expect(selected).not.toContain(duplicate);
+  });
+
+  it("matches on the example's situation (tags + User line), not the Character reply", async () => {
+    const replyMentions = exchange({ tags: "greeting", user: "hello there", character: "want to talk about pizza?" });
+    const situationMatches = exchange({ tags: "food", user: "what pizza should I order", character: "pineapple, obviously" });
+    const selector = new RelevantExampleExchangeSelector();
+
+    const selected = await selector.select({ ...baseInput, records: [replyMentions, situationMatches], message: "pizza" });
+
+    expect(selected[0]).toEqual(situationMatches);
+  });
+
+  it("embeds the direct reply-chain parent alongside the current message", async () => {
+    const embed = vi.fn(() => Promise.resolve([1, 0]));
+    const selector = new RelevantExampleExchangeSelector({ embed, modelId: "test-model" });
+
+    await selector.select({
+      ...baseInput,
+      records: [exchange({ embedding: [1, 0] })],
+      message: "what do you think?",
+      replyChain: [{ content: "is pineapple on pizza okay" }],
+    });
+
+    expect(embed).toHaveBeenCalledWith("is pineapple on pizza okay\nwhat do you think?");
   });
 });
