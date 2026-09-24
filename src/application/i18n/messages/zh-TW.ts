@@ -120,7 +120,7 @@ export const zhTW = {
   "music.vote.openUntilSkip": "目前這首歌被跳過前都可投票",
   "music.vote.closes": "投票截止：{time}",
   "music.vote.rerollsLeft": "🎲 剩 {count} 次",
-  "music.vote.rerolledBy": "🎲 {user} 換了一批 · 剩 {count} 次",
+  "music.vote.rerolledBy": "🎲 {user} 擲了骰子 · 剩 {count} 次",
   "music.vote.similar": "相似歌曲",
   "music.vote.sameArtist": "同歌手",
   "music.vote.ended": "這次投票已結束",

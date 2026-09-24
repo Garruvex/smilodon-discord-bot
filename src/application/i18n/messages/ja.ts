@@ -119,7 +119,7 @@ export const ja = {
   "music.vote.openUntilSkip": "現在の曲がスキップされるまで投票できます",
   "music.vote.closes": "投票締め切り：{time}",
   "music.vote.rerollsLeft": "🎲 残り{count}回",
-  "music.vote.rerolledBy": "🎲 {user} が候補を入れ替え · 残り{count}回",
+  "music.vote.rerolledBy": "🎲 {user} がサイコロを振った · 残り{count}回",
   "music.vote.similar": "似た曲",
   "music.vote.sameArtist": "同じアーティスト",
   "music.vote.ended": "この投票は終了しました。",
