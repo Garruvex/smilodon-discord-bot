@@ -170,6 +170,7 @@ function fakeMessage(reactorIds: readonly string[], overrides: {
     },
     reactions: {
       cache: new Map([["😂", {
+        emoji: { id: null, name: "😂" },
         users: { fetch: overrides.reactionUsersFetch ?? ((): Promise<Map<string, { id: string; bot: boolean }>> => Promise.resolve(new Map(usersById.map((u) => [u.id, u])))) },
       }]]),
     },
@@ -305,6 +306,10 @@ describe("ReactionReplyScheduler", () => {
     await scheduler.checkNow(2_000);
 
     expect(reply).toHaveBeenCalledOnce();
+    // The model sees which emoji, and who used it — only the eligible reactor.
+    const request = JSON.stringify((reply.mock.calls as unknown[][])[0]);
+    expect(request).toContain("reacted to your message \\\"hello!\\\": 😂 r1)");
+    expect(request).not.toContain("r2");
     expect(markDone).toHaveBeenCalledWith(messageId, 2_000);
   });
 

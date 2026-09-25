@@ -352,24 +352,34 @@ export function buildChatInstructions(request: ChatRequest, safetyGuard: string)
     `When unsure, prefer reacting (or doing nothing) over replying — a missed reply is far less disruptive to ` +
     `the conversation than an unwanted one.`;
   // Distinct from ambientTriggerText: nothing was said to/about you just
-  // now — this turn exists because several real members reacted to a
-  // message you already sent, some time ago. <current_message> here is a
-  // synthetic system note describing that reaction burst, not something a
+  // now — this turn exists because members reacted to a message you
+  // already sent, a few minutes ago. <current_message> here is a synthetic
+  // system note listing the emoji and who used each, not something a
   // person actually said, so "your name merely appeared" framing would be
-  // actively misleading.
+  // actively misleading. Leans toward answering (at least with an emoji):
+  // noticing a reaction the way a friend would is what makes the
+  // character feel present.
   const reactionTriggerText = `\n\n# Reaction trigger — people reacted to your own message\n\n` +
-    `Nobody addressed you in words. Several real members reacted (with emoji, not text) to a message you sent ` +
-    `a while ago — <current_message> just reports how many and who; <mentioned_users> lists the reactors. Most ` +
-    `reaction bursts still don't call for a follow-up — plenty of reactions are just people enjoying what you ` +
-    `already said, not a request for more — so treat "ignore" as the default outcome here too.\n` +
-    `- Whether to reply with text: set ambientAction to "reply" only when there's something genuinely worth ` +
-    `adding — the reaction pattern implies a specific follow-up question, a joke worth riffing on, or a ` +
-    `correction; otherwise use "ignore" (leave response as an empty string) rather than manufacturing a reason ` +
-    `to speak again.\n` +
-    `- Whether to react: independently of the above, optionally set reactionEmoji to exactly one standard emoji ` +
-    `as a lightweight acknowledgment of the reactions themselves. Leave it null otherwise.\n` +
-    `Use <channel_history> (when present) to check whether the conversation has already moved on since your ` +
-    `original message — commenting on something the room has stopped talking about is worse than staying quiet.`;
+    `Nobody addressed you in words. A few minutes ago you sent a message, and members have since reacted to it ` +
+    `with emoji — <current_message> lists each emoji and who used it; <mentioned_users> lists the reactors. ` +
+    `A real person in a group chat notices when friends react to what they said, and sometimes answers it. ` +
+    `That's what makes you feel present rather than like a bot, so respond the way you (in character) ` +
+    `naturally would:\n` +
+    `- Read the emoji. A laugh (😂🤣💀) invites riffing on the joke or being pleased it landed; a question ` +
+    `or confusion (❓🤔😳) invites a short clarification; affection (❤️🥺🥰) invites a warm or flustered ` +
+    `reaction; disagreement or mock outrage (👎😠🙄) invites a playful defense. A plain 👍 or ✅ usually needs ` +
+    `nothing more than an emoji back, if that.\n` +
+    `- Whether to reply with text: set ambientAction to "reply" when a short, in-character follow-up fits what ` +
+    `the emoji say — you can name the person who reacted. Keep it to a line or two, like a quick message to ` +
+    `a friend; never thank people for reacting, describe the reactions back to them ("I see you reacted ` +
+    `with 😂"), or repeat your original message. Use "ignore" (leave response as an empty string) when a ` +
+    `reply would add nothing.\n` +
+    `- Whether to react: independently of the above, set reactionEmoji to exactly one standard emoji when a ` +
+    `light acknowledgment fits — prefer this to doing nothing at all. Leave it null only when even that ` +
+    `would feel out of place.\n` +
+    `Use <channel_history> (when present) to check whether the conversation has moved on since your ` +
+    `original message — if the room is now on something else, especially something serious, a quiet emoji ` +
+    `or nothing is better than pulling everyone back.`;
   const ambientSection = request.triggerMode === "direct"
     ? `\n\nYou were directly addressed (mentioned or replied to). Always set ambientAction to "reply" and reactionEmoji to null, and answer normally.`
     : request.triggerMode === "reaction"

@@ -27,6 +27,24 @@ const maxWatchesProcessedPerTick = 50;
 // "done" row nothing will re-query, both eventually just age out.
 const watchRetentionMs = 7 * 24 * 60 * 60 * 1_000;
 
+// One emoji on the watched message and the eligible people who used it.
+interface EmojiReaction {
+  emoji: string;
+  userIds: readonly string[];
+}
+
+// A custom server emoji can't be written as text, so the model gets its
+// name instead; a standard emoji is itself.
+function emojiLabel(emoji: { id: string | null; name: string | null }): string {
+  return emoji.id ? `:${emoji.name ?? "custom"}:` : emoji.name ?? "?";
+}
+
+// "😂 Alice, Bob · ❤️ Carol" — which emoji, and who used each, so the
+// model can answer a laugh differently from a question mark or a heart.
+function describeReactions(reactions: readonly EmojiReaction[], nameOf: (id: string) => string): string {
+  return reactions.map((reaction) => `${reaction.emoji} ${reaction.userIds.map(nameOf).join(", ")}`).join(" · ");
+}
+
 // Evaluates reaction-armed chat replies once their window comes due: counts
 // unique reactors, and — only above threshold — asks the model whether the
 // reaction volume is actually worth commenting on (the same
@@ -202,7 +220,7 @@ export class ReactionReplyScheduler {
       return;
     }
 
-    const { reactorIds, complete } = await this.collectUniqueReactorIds(message, profile, watch.channelId);
+    const { reactorIds, reactions, complete } = await this.collectUniqueReactorIds(message, profile, watch.channelId);
     if (!complete) {
       await this.handleFetchFailure(watch, now, null, "Failed to fully fetch this message's reactor lists");
       return;
@@ -219,7 +237,7 @@ export class ReactionReplyScheduler {
     }
 
     try {
-      const outcome = await this.replyToReactions(message, channel, profile.guildId, reactorIds);
+      const outcome = await this.replyToReactions(message, channel, profile.guildId, reactorIds, reactions);
       await this.giveUp(watch, now, outcome, { reactorCount: reactorIds.size });
     } catch (error) {
       if (this.shouldRetry(watch.messageId)) {
@@ -264,8 +282,9 @@ export class ReactionReplyScheduler {
   // failure (retry) rather than evaluating a possibly-undercounted total.
   private async collectUniqueReactorIds(
     message: Message, profile: GuildConfiguration, channelId: string,
-  ): Promise<{ reactorIds: Set<string>; complete: boolean }> {
+  ): Promise<{ reactorIds: Set<string>; reactions: EmojiReaction[]; complete: boolean }> {
     const rawIds = new Set<string>();
+    const rawReactions: EmojiReaction[] = [];
     let complete = true;
     for (const reaction of message.reactions.cache.values()) {
       const users = await reaction.users.fetch().catch(() => null);
@@ -273,21 +292,28 @@ export class ReactionReplyScheduler {
         complete = false;
         continue;
       }
+      const userIds: string[] = [];
       for (const user of users.values()) {
         if (user.bot) continue;
         rawIds.add(user.id);
+        userIds.push(user.id);
       }
+      rawReactions.push({ emoji: emojiLabel(reaction.emoji), userIds });
     }
     const eligibleIds = new Set<string>();
     for (const id of rawIds) {
       const member = await message.guild?.members.fetch(id).catch(() => null) ?? null;
       if (this.chatAccess.canUseMentionChat(profile, member, id, channelId)) eligibleIds.add(id);
     }
-    return { reactorIds: eligibleIds, complete };
+    const reactions = rawReactions
+      .map((reaction) => ({ emoji: reaction.emoji, userIds: reaction.userIds.filter((id) => eligibleIds.has(id)) }))
+      .filter((reaction) => reaction.userIds.length > 0);
+    return { reactorIds: eligibleIds, reactions, complete };
   }
 
   private async replyToReactions(
     message: Message, channel: GuildTextBasedChannel, guildId: string, reactorIds: ReadonlySet<string>,
+    reactions: readonly EmojiReaction[],
   ): Promise<string> {
     const profile = this.profiles.find(guildId);
     if (!profile) return "feature_disabled";
@@ -314,8 +340,10 @@ export class ReactionReplyScheduler {
         .map((role) => role.name.slice(0, 50))
         .slice(0, 10) ?? [],
     };
-    const syntheticPrompt = `(${reactorIds.size} ${reactorIds.size === 1 ? "person" : "people"} reacted to your message: ` +
-      `${message.content.slice(0, chatMemoryLimits.maxUserMessageChars)})`;
+    const displayNames = new Map(mentionedUsers.map((user) => [user.id, user.displayName]));
+    const syntheticPrompt = `(${reactorIds.size} ${reactorIds.size === 1 ? "person" : "people"} reacted to your message ` +
+      `"${message.content.slice(0, chatMemoryLimits.maxUserMessageChars)}": ` +
+      `${describeReactions(reactions, (id) => displayNames.get(id) ?? id)})`;
     const persona = await this.personaSource.resolve(profile);
 
     try {
