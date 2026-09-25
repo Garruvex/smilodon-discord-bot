@@ -42,7 +42,7 @@ const botId = "bot-1";
 const messageId = "msg-1";
 const chatbotRoleId = "chatbot-role";
 
-function profile(overrides: { reactionReplies?: boolean; chatbot?: boolean } = {}): GuildConfiguration {
+function profile(overrides: { reactionReplies?: boolean; chatbot?: boolean; minReactors?: number } = {}): GuildConfiguration {
   return {
     schemaVersion: 1,
     guildId, guildName: "Test Guild", displayName: "Yohta",
@@ -55,7 +55,7 @@ function profile(overrides: { reactionReplies?: boolean; chatbot?: boolean } = {
     },
     roles: { botAdministrator: new Set(), musicController: new Set(), restricted: new Set(), chatbot: new Set([chatbotRoleId]) },
     channels: {
-      musicCommands: new Set(), controlPanel: null, auditLog: null, chatbot: new Set([channelId]),
+      musicCommands: new Set(), controlPanel: null, auditLog: null, adminPanel: null, chatbot: new Set([channelId]),
       birthdayAnnouncements: null, joinAnnouncements: null, leaveAnnouncements: null, linkFix: new Set(),
     },
     timezone: "UTC",
@@ -73,7 +73,7 @@ function profile(overrides: { reactionReplies?: boolean; chatbot?: boolean } = {
       webSearchMode: "off", toolCallingEnabled: false, disabledTools: [], imageInputEnabled: false,
       imageGenerationEnabled: false, selfReferenceImageAsset: null,
       includeSources: false, maxImagesPerRequest: 2, ambientCooldownSeconds: 20,
-      channelHistoryLimit: 8, channelMemoryModes: {}, personaDriftEnabled: false,
+      channelHistoryLimit: 8, reactionReplyWaitMinMinutes: 2, reactionReplyWaitMaxMinutes: 5, reactionReplyMinReactors: overrides.minReactors ?? 1, channelMemoryModes: {}, personaDriftEnabled: false,
       contextScanChannelIds: [], contextDailyChannelIds: [], contextSeedDays: 7,
     },
     sourceFile: "test.yaml",
@@ -170,6 +170,7 @@ function fakeMessage(reactorIds: readonly string[], overrides: {
     },
     reactions: {
       cache: new Map([["😂", {
+        emoji: { id: null, name: "😂" },
         users: { fetch: overrides.reactionUsersFetch ?? ((): Promise<Map<string, { id: string; bot: boolean }>> => Promise.resolve(new Map(usersById.map((u) => [u.id, u])))) },
       }]]),
     },
@@ -197,7 +198,7 @@ describe("ReactionReplyScheduler", () => {
   it("marks a watch done without ever calling the model when unique reactors stay below threshold", async () => {
     const reply = vi.fn(() => Promise.resolve(response("should not be sent")));
     const conversation = testConversationService(reply);
-    const message = fakeMessage(["r1", "r2"]); // below the default threshold of 5
+    const message = fakeMessage([]); // no human reactors left (e.g. all removed) — below the threshold of 1
     const { store, markDone } = fakeWatchStore([watch()]);
     const scheduler = new ReactionReplyScheduler(
       fakeClient(message) as never, store, providerFor(profile()), conversation, personaSource(),
@@ -213,7 +214,7 @@ describe("ReactionReplyScheduler", () => {
   it("asks the model and delivers its reply once unique reactors meet the threshold", async () => {
     const reply = vi.fn(() => Promise.resolve(response("That got a reaction!", "reply")));
     const conversation = testConversationService(reply);
-    const message = fakeMessage(["r1", "r2", "r3", "r4", "r5"]);
+    const message = fakeMessage(["r1"]); // a single reactor meets the threshold
     const { store, markDone } = fakeWatchStore([watch()]);
     const scheduler = new ReactionReplyScheduler(
       fakeClient(message) as never, store, providerFor(profile()), conversation, personaSource(),
@@ -223,6 +224,22 @@ describe("ReactionReplyScheduler", () => {
     await scheduler.checkNow(2_000);
 
     expect(reply).toHaveBeenCalledOnce();
+    expect(markDone).toHaveBeenCalledWith(messageId, 2_000);
+  });
+
+  it("holds out for the guild's minimum number of reactors", async () => {
+    const reply = vi.fn(() => Promise.resolve(response("should not be sent")));
+    const conversation = testConversationService(reply);
+    const message = fakeMessage(["r1"]); // one reactor, but this guild wants two
+    const { store, markDone } = fakeWatchStore([watch()]);
+    const scheduler = new ReactionReplyScheduler(
+      fakeClient(message) as never, store, providerFor(profile({ minReactors: 2 })), conversation, personaSource(),
+      { warn: vi.fn(), error: vi.fn(), info: vi.fn() } as never, configuration(),
+    );
+
+    await scheduler.checkNow(2_000);
+
+    expect(reply).not.toHaveBeenCalled();
     expect(markDone).toHaveBeenCalledWith(messageId, 2_000);
   });
 
@@ -260,9 +277,9 @@ describe("ReactionReplyScheduler", () => {
   it("excludes a reactor without chatbot access from the threshold count and from mentionedUsers", async () => {
     const reply = vi.fn(() => Promise.resolve(response("That got a reaction!", "reply")));
     const conversation = testConversationService(reply);
-    // 5 raw reactors, but 2 lack the chatbot role — only 3 are eligible,
-    // below the threshold of 5.
-    const message = fakeMessage(["r1", "r2", "r3", "r4", "r5"], { noAccessIds: ["r4", "r5"] });
+    // 2 raw reactors, but both lack the chatbot role — none are eligible,
+    // below the threshold of 1.
+    const message = fakeMessage(["r1", "r2"], { noAccessIds: ["r1", "r2"] });
     const { store, markDone } = fakeWatchStore([watch()]);
     const scheduler = new ReactionReplyScheduler(
       fakeClient(message) as never, store, providerFor(profile()), conversation, personaSource(),
@@ -278,8 +295,8 @@ describe("ReactionReplyScheduler", () => {
   it("still asks the model once enough reactors remain eligible after excluding access-denied ones", async () => {
     const reply = vi.fn(() => Promise.resolve(response("That got a reaction!", "reply")));
     const conversation = testConversationService(reply);
-    // 6 raw reactors, 1 lacks access — 5 remain, meeting the threshold.
-    const message = fakeMessage(["r1", "r2", "r3", "r4", "r5", "r6"], { noAccessIds: ["r6"] });
+    // 2 raw reactors, 1 lacks access — 1 remains, meeting the threshold.
+    const message = fakeMessage(["r1", "r2"], { noAccessIds: ["r2"] });
     const { store, markDone } = fakeWatchStore([watch()]);
     const scheduler = new ReactionReplyScheduler(
       fakeClient(message) as never, store, providerFor(profile()), conversation, personaSource(),
@@ -289,6 +306,10 @@ describe("ReactionReplyScheduler", () => {
     await scheduler.checkNow(2_000);
 
     expect(reply).toHaveBeenCalledOnce();
+    // The model sees which emoji, and who used it — only the eligible reactor.
+    const request = JSON.stringify((reply.mock.calls as unknown[][])[0]);
+    expect(request).toContain("reacted to your message \\\"hello!\\\": 😂 r1)");
+    expect(request).not.toContain("r2");
     expect(markDone).toHaveBeenCalledWith(messageId, 2_000);
   });
 

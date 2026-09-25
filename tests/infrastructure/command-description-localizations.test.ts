@@ -11,8 +11,8 @@ import { buildSlashCommandBuilder } from "../../src/infrastructure/discord/comma
 import { BooruSearchCommand } from "../../src/infrastructure/discord/commands/image/booru-search-command.js";
 import { FurryReactionCommand } from "../../src/infrastructure/discord/commands/image/furry-reaction-command.js";
 import { RandomAnimalFactCommand } from "../../src/infrastructure/discord/commands/image/random-animal-fact-command.js";
-import { buildDefinitionForGroup } from "../../src/infrastructure/discord/commands/setup/settings-command.js";
-import { settingGroups } from "../../src/infrastructure/discord/commands/setup/settings/index.js";
+import { settingsRegistry } from "../../src/infrastructure/discord/settings/groups/index.js";
+import { buildSettingsCommandMetadata } from "../../src/infrastructure/discord/settings/slash/settings-slash-metadata.js";
 
 // Every command module under commands/, loaded eagerly so a newly added
 // command is covered without editing this test.
@@ -58,7 +58,7 @@ function allDefinitions(): ChatInputCommandMetadata[] {
   }
   definitions.push(new BooruSearchCommand("e926", "#66FF33", false).definition);
   definitions.push(new BooruSearchCommand("e621", "#09CDE2", true).definition);
-  for (const group of settingGroups) definitions.push(buildDefinitionForGroup(group));
+  for (const group of settingsRegistry) definitions.push(buildSettingsCommandMetadata(group));
   return definitions;
 }
 
@@ -113,6 +113,30 @@ function totalSize(node: unknown): number {
   return total;
 }
 
+interface DescribedNode {
+  name: string;
+  type?: number;
+  description_localizations?: Record<string, string> | null;
+  options?: readonly DescribedNode[];
+}
+
+// Discord's option types for a subcommand and a subcommand group.
+const subcommandTypes = new Set([1, 2]);
+
+// Paths ("settings-music/dj-mode:enabled") of every node in a built command
+// without a description in `locale`.
+function untranslatedNodes(json: DescribedNode, locale: string): string[] {
+  const missing: string[] = [];
+  const visit = (node: DescribedNode, path: string): void => {
+    if (!node.description_localizations?.[locale]) missing.push(path);
+    for (const child of node.options ?? []) {
+      visit(child, subcommandTypes.has(child.type ?? 0) ? `${path}/${child.name}` : `${path}:${child.name}`);
+    }
+  };
+  visit(json, json.name);
+  return missing;
+}
+
 describe("slash-command description localizations", () => {
   const locales = Object.keys(commandDescriptionCatalogs);
   const definitions = allDefinitions();
@@ -125,7 +149,7 @@ describe("slash-command description localizations", () => {
   it("finds the bot's commands (guards the discovery above)", () => {
     expect(realKeys.has("ping")).toBe(true);
     expect(realKeys.has("play:query")).toBe(true);
-    expect(realKeys.has("settings-chat/chatbot:enabled")).toBe(true);
+    expect(realKeys.has("settings-chat/replies/mention-chat:enabled")).toBe(true);
     expect(realKeys.has("cat")).toBe(true);
     expect(realKeys.has("e621:order")).toBe(true);
   });
@@ -134,8 +158,12 @@ describe("slash-command description localizations", () => {
     describe(locale, () => {
       const catalog = commandDescriptionCatalogs[locale]!;
 
+      // Checked on the built JSON, so it covers both sources of translations:
+      // the catalogs (looked up by path) and text a command embeds itself
+      // (the settings commands, built from the settings registry).
       it("translates every command, subcommand and option description", () => {
-        const untranslated = [...realKeys].filter((key) => catalog[key] === undefined);
+        const untranslated = definitions.flatMap((definition) =>
+          untranslatedNodes(buildSlashCommandBuilder(definition).toJSON() as DescribedNode, locale));
         expect(untranslated).toEqual([]);
       });
 

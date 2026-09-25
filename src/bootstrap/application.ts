@@ -4,6 +4,7 @@ import type { Logger } from "pino";
 import type { ApplicationDependencies } from "./dependencies.js";
 import type { ApplicationConfiguration } from "../config/configuration.js";
 import type { ControlChannelService } from "../application/control-panel/control-channel-service.js";
+import type { AdminPanelService } from "../infrastructure/discord/settings/panel/admin-panel-service.js";
 import { BehaviorEvent } from "../application/behaviors/behavior.js";
 import type { MusicPresenceService } from "../application/music/music-presence-service.js";
 import type { BirthdayAnnouncer } from "../application/birthdays/birthday-announcer.js";
@@ -23,6 +24,7 @@ export class Application {
     private readonly configuration: ApplicationConfiguration,
     private readonly dependencies: ApplicationDependencies,
     private readonly controlChannelService: ControlChannelService,
+    private readonly adminPanelService: AdminPanelService,
     private readonly musicPresenceService: MusicPresenceService,
     private readonly birthdayAnnouncer: BirthdayAnnouncer,
     private readonly memberDepartureService: MemberDepartureService,
@@ -175,6 +177,7 @@ export class Application {
           // unconditionally would let them fire (and even restart) while
           // stop() is tearing persistence down after a fatal Lavalink error.
           this.musicPresenceService.start();
+          this.adminPanelService.initialize();
           this.birthdayAnnouncer.start();
           this.dependencies.channelSummaryScheduler?.start();
           this.dependencies.reactionReplyScheduler?.start();
@@ -196,7 +199,8 @@ export class Application {
       if (
         !this.ready &&
         (interaction.isButton() ||
-          interaction.isStringSelectMenu() ||
+          interaction.isAnySelectMenu() ||
+          interaction.isModalSubmit() ||
           interaction.isChatInputCommand() ||
           interaction.isMessageContextMenuCommand())
       ) {
@@ -223,9 +227,16 @@ export class Application {
         return;
       }
 
-      if (interaction.isStringSelectMenu()) {
+      if (interaction.isAnySelectMenu()) {
         void this.dependencies.componentDispatcher.dispatch(interaction).catch((error: unknown) => {
           this.logger.error({ error }, "Select menu dispatch failed");
+        });
+        return;
+      }
+
+      if (interaction.isModalSubmit()) {
+        void this.dependencies.componentDispatcher.dispatchModal(interaction).catch((error: unknown) => {
+          this.logger.error({ error }, "Modal submit dispatch failed");
         });
         return;
       }
@@ -292,6 +303,20 @@ export class Application {
         guildId,
         humanMemberCount,
       );
+    });
+
+    // The admin panel repairs itself when its messages or channel go away.
+    this.client.on(Events.MessageDelete, (message) => {
+      this.adminPanelService.handleMessagesDeleted(message.guildId, message.channelId, [message.id]);
+    });
+    this.client.on(Events.MessageBulkDelete, (messages, channel) => {
+      this.adminPanelService.handleMessagesDeleted(channel.guildId, channel.id, [...messages.keys()]);
+    });
+    this.client.on(Events.ChannelDelete, (channel) => {
+      if (channel.isDMBased()) return;
+      void this.adminPanelService.handleChannelDeleted(channel.guildId, channel.id).catch((error: unknown) => {
+        this.logger.error({ error, guildId: channel.guildId, channelId: channel.id }, "Unable to handle a deleted admin panel channel");
+      });
     });
 
     this.client.on(Events.GuildDelete, (guild) => {

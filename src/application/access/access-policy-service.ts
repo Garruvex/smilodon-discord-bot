@@ -2,6 +2,7 @@ import type {
   ChatInputCommandInteraction,
   MessageComponentInteraction,
   MessageContextMenuCommandInteraction,
+  ModalSubmitInteraction,
 } from "discord.js";
 
 import type { ApplicationConfiguration } from "../../config/configuration.js";
@@ -22,13 +23,18 @@ export class AccessPolicyService {
   public evaluate(
     policy: CommandAccessPolicy,
     commandModule: CommandModule,
-    interaction: ChatInputCommandInteraction | MessageComponentInteraction | MessageContextMenuCommandInteraction,
+    interaction:
+      | ChatInputCommandInteraction
+      | MessageComponentInteraction
+      | MessageContextMenuCommandInteraction
+      | ModalSubmitInteraction,
   ): AccessDecision {
     // Interaction validity (is there even a cached guild/member to build a
     // subject from) is specific to a live Discord interaction, so it stays
     // here rather than in the shared rule chain — a chat-tool invocation
     // always has a resolved member by construction (see music-tool-support.ts).
-    if (!interaction.inCachedGuild()) {
+    // A modal submit may carry no channel; every rule here is per-channel.
+    if (!interaction.inCachedGuild() || interaction.channelId === null) {
       return { allowed: false, reason: AccessDenialReason.GuildRequired };
     }
 

@@ -10,21 +10,24 @@ import {
 import type {
   ChatInputCommandMetadata,
   CommandOptionMetadata,
+  Localizations,
   MessageContextMenuCommandMetadata,
   SubcommandGroupMetadata,
   SubcommandMetadata,
 } from "../../../application/commands/command-metadata.js";
 import { commandDescriptionKey, localizedDescriptionsFor } from "../../../application/i18n/command-descriptions/index.js";
 
-// Attaches every translated description the catalogs have for `key` — the
-// command/subcommand/option is left with just its English description when
-// there are none. Only descriptions are localized; names stay as-is.
+// Attaches the node's translated descriptions: its own embedded ones when it
+// has them, otherwise whatever the catalogs have for `key`. A node with
+// neither keeps just its English description. Only descriptions (and choice
+// names) are localized; command, subcommand and option names stay as-is.
 function localizeDescription(
   target: { setDescriptionLocalizations(localizations: Record<string, string>): unknown },
   key: string,
+  embedded: Localizations | undefined,
 ): void {
-  const localizations = localizedDescriptionsFor(key);
-  if (localizations) target.setDescriptionLocalizations(localizations);
+  const localizations = embedded ?? localizedDescriptionsFor(key);
+  if (localizations) target.setDescriptionLocalizations({ ...localizations });
 }
 
 function addOption(
@@ -37,17 +40,23 @@ function addOption(
     case "string":
       builder.addStringOption((o) => {
         o.setName(option.name).setDescription(option.description);
-        localizeDescription(o, key);
+        localizeDescription(o, key, option.descriptionLocalizations);
         if (option.required !== undefined) o.setRequired(option.required);
         if (option.maxLength !== undefined) o.setMaxLength(option.maxLength);
-        if (option.choices) o.addChoices(...option.choices);
+        if (option.choices) {
+          o.addChoices(...option.choices.map((choice) => ({
+            name: choice.name,
+            value: choice.value,
+            ...(choice.nameLocalizations ? { name_localizations: { ...choice.nameLocalizations } } : {}),
+          })));
+        }
         return o;
       });
       return;
     case "integer":
       builder.addIntegerOption((o) => {
         o.setName(option.name).setDescription(option.description);
-        localizeDescription(o, key);
+        localizeDescription(o, key, option.descriptionLocalizations);
         if (option.required !== undefined) o.setRequired(option.required);
         if (option.minValue !== undefined) o.setMinValue(option.minValue);
         if (option.maxValue !== undefined) o.setMaxValue(option.maxValue);
@@ -57,7 +66,7 @@ function addOption(
     case "boolean":
       builder.addBooleanOption((o) => {
         o.setName(option.name).setDescription(option.description);
-        localizeDescription(o, key);
+        localizeDescription(o, key, option.descriptionLocalizations);
         if (option.required !== undefined) o.setRequired(option.required);
         return o;
       });
@@ -65,7 +74,7 @@ function addOption(
     case "channel":
       builder.addChannelOption((o) => {
         o.setName(option.name).setDescription(option.description);
-        localizeDescription(o, key);
+        localizeDescription(o, key, option.descriptionLocalizations);
         if (option.required !== undefined) o.setRequired(option.required);
         // Announcement channels are still normal sendable text channels
         // (NewsChannel is text-based, .send() works the same way) — they
@@ -80,7 +89,7 @@ function addOption(
     case "role":
       builder.addRoleOption((o) => {
         o.setName(option.name).setDescription(option.description);
-        localizeDescription(o, key);
+        localizeDescription(o, key, option.descriptionLocalizations);
         if (option.required !== undefined) o.setRequired(option.required);
         return o;
       });
@@ -88,7 +97,7 @@ function addOption(
     case "user":
       builder.addUserOption((o) => {
         o.setName(option.name).setDescription(option.description);
-        localizeDescription(o, key);
+        localizeDescription(o, key, option.descriptionLocalizations);
         if (option.required !== undefined) o.setRequired(option.required);
         return o;
       });
@@ -96,7 +105,7 @@ function addOption(
     case "attachment":
       builder.addAttachmentOption((o) => {
         o.setName(option.name).setDescription(option.description);
-        localizeDescription(o, key);
+        localizeDescription(o, key, option.descriptionLocalizations);
         if (option.required !== undefined) o.setRequired(option.required);
         return o;
       });
@@ -112,7 +121,7 @@ function addSubcommand(
   const path = [...parentPath, subcommand.name];
   builder.addSubcommand((sub) => {
     sub.setName(subcommand.name).setDescription(subcommand.description);
-    localizeDescription(sub, commandDescriptionKey(path));
+    localizeDescription(sub, commandDescriptionKey(path), subcommand.descriptionLocalizations);
     for (const option of subcommand.options ?? []) addOption(sub, option, path);
     return sub;
   });
@@ -126,7 +135,7 @@ function addSubcommandGroup(
   const path = [...parentPath, group.name];
   builder.addSubcommandGroup((g) => {
     g.setName(group.name).setDescription(group.description);
-    localizeDescription(g, commandDescriptionKey(path));
+    localizeDescription(g, commandDescriptionKey(path), group.descriptionLocalizations);
     for (const subcommand of group.subcommands) addSubcommand(g, subcommand, path);
     return g;
   });
@@ -140,7 +149,7 @@ export function buildSlashCommandBuilder(metadata: ChatInputCommandMetadata): Sl
     .setName(metadata.name)
     .setDescription(metadata.description);
   const path = [metadata.name];
-  localizeDescription(builder, commandDescriptionKey(path));
+  localizeDescription(builder, commandDescriptionKey(path), metadata.descriptionLocalizations);
   if (metadata.dmPermission !== undefined) builder.setDMPermission(metadata.dmPermission);
   if (metadata.nsfw !== undefined) builder.setNSFW(metadata.nsfw);
   for (const option of metadata.options ?? []) addOption(builder, option, path);

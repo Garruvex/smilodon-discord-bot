@@ -56,7 +56,7 @@ export class AuditLogService {
 
   // Reads back the most recent entries directly from Discord (the channel is
   // the only store — there's no separate database table to query), for a
-  // `/settings audit` view command.
+  // `/settings-access audit` report.
   public async fetchRecent(guildId: string, limit: number): Promise<AuditLogFetchResult> {
     const profile = this.guildConfigurationProvider.find(guildId);
     const channelId = profile?.channels.auditLog;

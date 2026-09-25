@@ -3,6 +3,7 @@ import type { Logger } from "pino";
 import { describe, expect, it, vi } from "vitest";
 
 import { Application } from "../../src/bootstrap/application.js";
+import type { AdminPanelService } from "../../src/infrastructure/discord/settings/panel/admin-panel-service.js";
 import type { ApplicationDependencies } from "../../src/bootstrap/dependencies.js";
 import type { ApplicationConfiguration } from "../../src/config/configuration.js";
 import type { GuildConfigurationProvider } from "../../src/config/guild-configuration-provider.js";
@@ -35,11 +36,13 @@ function createFakeClient(): { client: Client; emit: (event: string, ...args: un
 
 function fakeCommandInteraction(reply: ReturnType<typeof vi.fn>): {
   isButton: () => boolean; isStringSelectMenu: () => boolean;
+  isAnySelectMenu: () => boolean; isModalSubmit: () => boolean;
   isChatInputCommand: () => boolean; isMessageContextMenuCommand: () => boolean;
   isRepliable: () => boolean; reply: typeof reply;
 } {
   return {
     isButton: () => false, isStringSelectMenu: () => false,
+    isAnySelectMenu: () => false, isModalSubmit: () => false,
     isChatInputCommand: () => true, isMessageContextMenuCommand: () => false,
     isRepliable: () => true, reply,
   };
@@ -115,16 +118,16 @@ function buildApplication(options: {
   const birthdayStart = vi.fn();
   const channelSummaryStart = vi.fn();
   const reminderStart = vi.fn();
-  const musicPresenceService = { start: musicPresenceStart, stop: vi.fn() } as unknown as ConstructorParameters<typeof Application>[4];
-  const birthdayAnnouncer = { start: birthdayStart, stop: vi.fn() } as unknown as ConstructorParameters<typeof Application>[5];
-  const memberDepartureService = { handleMemberLeave: vi.fn().mockResolvedValue(undefined) } as unknown as ConstructorParameters<typeof Application>[6];
+  const musicPresenceService = { start: musicPresenceStart, stop: vi.fn() } as unknown as ConstructorParameters<typeof Application>[5];
+  const birthdayAnnouncer = { start: birthdayStart, stop: vi.fn() } as unknown as ConstructorParameters<typeof Application>[6];
+  const memberDepartureService = { handleMemberLeave: vi.fn().mockResolvedValue(undefined) } as unknown as ConstructorParameters<typeof Application>[7];
   const memberWelcomeService = {
     handleMemberJoin: vi.fn().mockResolvedValue(undefined),
     handleMemberLeave: vi.fn().mockResolvedValue(undefined),
-  } as unknown as ConstructorParameters<typeof Application>[7];
+  } as unknown as ConstructorParameters<typeof Application>[8];
   const boostTrackingService = {
     handleMemberUpdate: vi.fn().mockResolvedValue(undefined),
-  } as unknown as ConstructorParameters<typeof Application>[8];
+  } as unknown as ConstructorParameters<typeof Application>[9];
 
   const dependencies = {
     guildConfigurationProvider: stubProvider(),
@@ -148,6 +151,7 @@ function buildApplication(options: {
     {} as ApplicationConfiguration,
     dependencies,
     controlChannelService,
+    { initialize: vi.fn() } as unknown as AdminPanelService,
     musicPresenceService,
     birthdayAnnouncer,
     memberDepartureService,

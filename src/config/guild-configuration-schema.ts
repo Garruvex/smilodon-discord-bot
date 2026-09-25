@@ -49,6 +49,9 @@ const guildChatSchema = z.preprocess((value) => {
   maxImagesPerRequest: z.number().int().min(CHAT_LIMITS.maxImagesPerRequest.min).max(CHAT_LIMITS.maxImagesPerRequest.max).default(CHAT_LIMITS.maxImagesPerRequest.default),
   ambientCooldownSeconds: z.number().int().min(CHAT_LIMITS.ambientCooldownSeconds.min).max(CHAT_LIMITS.ambientCooldownSeconds.max).default(CHAT_LIMITS.ambientCooldownSeconds.default),
   channelHistoryLimit: z.number().int().min(CHAT_LIMITS.channelHistoryLimit.min).max(CHAT_LIMITS.channelHistoryLimit.max).default(CHAT_LIMITS.channelHistoryLimit.default),
+  reactionReplyWaitMinMinutes: z.number().int().min(CHAT_LIMITS.reactionReplyWaitMinMinutes.min).max(CHAT_LIMITS.reactionReplyWaitMinMinutes.max).default(CHAT_LIMITS.reactionReplyWaitMinMinutes.default),
+  reactionReplyWaitMaxMinutes: z.number().int().min(CHAT_LIMITS.reactionReplyWaitMaxMinutes.min).max(CHAT_LIMITS.reactionReplyWaitMaxMinutes.max).default(CHAT_LIMITS.reactionReplyWaitMaxMinutes.default),
+  reactionReplyMinReactors: z.number().int().min(CHAT_LIMITS.reactionReplyMinReactors.min).max(CHAT_LIMITS.reactionReplyMinReactors.max).default(CHAT_LIMITS.reactionReplyMinReactors.default),
   // Per-channel memory isolation mode (see src/application/memory/memory-channel-policy.ts).
   // Unlisted channels default to "shared" — today's behavior, unchanged.
   channelMemoryModes: z.record(snowflake, z.enum(["shared", "isolated", "session_only", "disabled"])).default({}),
@@ -164,6 +167,7 @@ export const guildConfigurationFileSchema = z
         musicCommands: snowflakeList,
         controlPanel: snowflake.nullable().default(null),
         auditLog: snowflake.nullable().default(null),
+        adminPanel: snowflake.nullable().default(null),
         chatbot: snowflakeList,
         birthdayAnnouncements: snowflake.nullable().default(null),
         linkFix: snowflakeList,
@@ -174,6 +178,7 @@ export const guildConfigurationFileSchema = z
         musicCommands: [],
         controlPanel: null,
         auditLog: null,
+        adminPanel: null,
         chatbot: [],
         birthdayAnnouncements: null,
         linkFix: [],
@@ -209,6 +214,9 @@ export const guildConfigurationFileSchema = z
         maxImagesPerRequest: 2,
         ambientCooldownSeconds: 20,
         channelHistoryLimit: 8,
+        reactionReplyWaitMinMinutes: 2,
+        reactionReplyWaitMaxMinutes: 5,
+        reactionReplyMinReactors: 1,
       }),
     music: z
       .object({

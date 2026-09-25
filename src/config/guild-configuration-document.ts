@@ -10,7 +10,12 @@ export interface UpdateGuildConfigurationInput {
   idleImageAsset?: string | null;
   controlPanelChannelId?: string;
   auditLogChannelId?: string | null;
+  adminPanelChannelId?: string | null;
   progressBar?: ProgressBarSettings;
+  // Single fields of the progress bar, for settings that change one without
+  // the other (applied after progressBar).
+  progressBarStyle?: ProgressBarSettings["style"];
+  progressBarLength?: number;
   botAdministratorRoleIds?: readonly string[];
   musicControllerRoleIds?: readonly string[];
   restrictedRoleIds?: readonly string[];
@@ -38,11 +43,17 @@ export interface UpdateGuildConfigurationInput {
   channelHistory?: boolean;
   channelHistoryLimit?: number;
   reactionReplies?: boolean;
+  reactionReplyWaitMinMinutes?: number;
+  reactionReplyWaitMaxMinutes?: number;
+  reactionReplyMinReactors?: number;
   historyReactions?: boolean;
   // Merged into the existing map (per-channel entries added/overwritten,
   // never wholesale-replaced) — same "add" semantics as chatbotChannelIds.
   chatbotChannelMemoryModes?: Readonly<Record<string, "shared" | "isolated" | "session_only" | "disabled">>;
   chatbotPersonaDriftEnabled?: boolean;
+  // The whole daily-summary list, as a settings list option sends it;
+  // applied before the single-channel operations below.
+  contextDailyChannelIds?: readonly string[];
   // Explicit single-channel operations (not a list to merge/replace) — each
   // is applied centrally in applyGuildConfigurationUpdate, idempotently:
   // adding an already-present id or removing an absent one is a no-op.
@@ -120,6 +131,7 @@ export function createGuildConfigurationDocument(input: CreateGuildConfiguration
       musicCommands: [],
       controlPanel: input.controlPanelChannelId,
       auditLog: null,
+      adminPanel: null,
       chatbot: [],
       birthdayAnnouncements: null,
       linkFix: [],
@@ -153,6 +165,7 @@ export function toGuildConfiguration(parsed: ParsedGuildConfigurationFile, sourc
       musicCommands: new Set(parsed.channels.musicCommands),
       controlPanel: parsed.channels.controlPanel,
       auditLog: parsed.channels.auditLog,
+      adminPanel: parsed.channels.adminPanel,
       chatbot: new Set(parsed.channels.chatbot),
       birthdayAnnouncements: parsed.channels.birthdayAnnouncements,
       linkFix: new Set(parsed.channels.linkFix),
@@ -204,6 +217,7 @@ export function toGuildConfigurationDocument(configuration: GuildConfiguration):
       musicCommands: [...configuration.channels.musicCommands],
       controlPanel: configuration.channels.controlPanel,
       auditLog: configuration.channels.auditLog,
+      adminPanel: configuration.channels.adminPanel,
       chatbot: [...configuration.channels.chatbot],
       birthdayAnnouncements: configuration.channels.birthdayAnnouncements,
       linkFix: [...configuration.channels.linkFix],
@@ -246,7 +260,10 @@ export function applyGuildConfigurationUpdate(
   if (input.idleImageAsset !== undefined) next.branding.idleImageAsset = input.idleImageAsset;
   if (input.controlPanelChannelId !== undefined) next.channels.controlPanel = input.controlPanelChannelId;
   if (input.auditLogChannelId !== undefined) next.channels.auditLog = input.auditLogChannelId;
+  if (input.adminPanelChannelId !== undefined) next.channels.adminPanel = input.adminPanelChannelId;
   if (input.progressBar !== undefined) next.panel.progressBar = structuredClone(input.progressBar);
+  if (input.progressBarStyle !== undefined) next.panel.progressBar = { ...next.panel.progressBar, style: input.progressBarStyle };
+  if (input.progressBarLength !== undefined) next.panel.progressBar = { ...next.panel.progressBar, length: input.progressBarLength };
   if (input.botAdministratorRoleIds !== undefined) next.roles.botAdministrator = [...input.botAdministratorRoleIds];
   if (input.musicControllerRoleIds !== undefined) next.roles.musicController = [...input.musicControllerRoleIds];
   if (input.restrictedRoleIds !== undefined) next.roles.restricted = [...input.restrictedRoleIds];
@@ -268,6 +285,7 @@ export function applyGuildConfigurationUpdate(
   }
   if (input.chatbotDisabledToolNames !== undefined) next.chat.disabledTools = [...input.chatbotDisabledToolNames];
   if (input.chatbotPersonaDriftEnabled !== undefined) next.chat.personaDriftEnabled = input.chatbotPersonaDriftEnabled;
+  if (input.contextDailyChannelIds !== undefined) next.chat.contextDailyChannelIds = [...new Set(input.contextDailyChannelIds)];
   if (input.contextScanAddChannelId !== undefined && !next.chat.contextScanChannelIds.includes(input.contextScanAddChannelId)) {
     next.chat.contextScanChannelIds = [...next.chat.contextScanChannelIds, input.contextScanAddChannelId];
   }
@@ -295,6 +313,9 @@ export function applyGuildConfigurationUpdate(
   if (input.channelHistory !== undefined) next.features.channelHistory = input.channelHistory;
   if (input.channelHistoryLimit !== undefined) next.chat.channelHistoryLimit = input.channelHistoryLimit;
   if (input.reactionReplies !== undefined) next.features.reactionReplies = input.reactionReplies;
+  if (input.reactionReplyWaitMinMinutes !== undefined) next.chat.reactionReplyWaitMinMinutes = input.reactionReplyWaitMinMinutes;
+  if (input.reactionReplyWaitMaxMinutes !== undefined) next.chat.reactionReplyWaitMaxMinutes = input.reactionReplyWaitMaxMinutes;
+  if (input.reactionReplyMinReactors !== undefined) next.chat.reactionReplyMinReactors = input.reactionReplyMinReactors;
   if (input.historyReactions !== undefined) next.features.historyReactions = input.historyReactions;
   if (input.birthdaysEnabled !== undefined) next.features.birthdays = input.birthdaysEnabled;
   if (input.birthdayAnnouncementsChannelId !== undefined) next.channels.birthdayAnnouncements = input.birthdayAnnouncementsChannelId;

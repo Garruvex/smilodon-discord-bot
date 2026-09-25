@@ -58,6 +58,7 @@ function profile(overrides: { ambientReplies?: boolean } = {}): GuildConfigurati
       musicCommands: new Set(),
       controlPanel: null,
       auditLog: null,
+      adminPanel: null,
       chatbot: new Set([chatChannelId]),
       birthdayAnnouncements: null,
       joinAnnouncements: null,
@@ -83,7 +84,7 @@ function profile(overrides: { ambientReplies?: boolean } = {}): GuildConfigurati
       deniedMessage: "Premium required.", deniedLinkUrl: null, deniedLinkLabel: null,
       webSearchMode: "off", toolCallingEnabled: false, disabledTools: [], imageInputEnabled: false, imageGenerationEnabled: false, selfReferenceImageAsset: null,
       includeSources: true, maxImagesPerRequest: 2, ambientCooldownSeconds: 20,
-      channelHistoryLimit: 8, channelMemoryModes: {}, personaDriftEnabled: false, contextScanChannelIds: [], contextDailyChannelIds: [], contextSeedDays: 7,
+      channelHistoryLimit: 8, reactionReplyWaitMinMinutes: 2, reactionReplyWaitMaxMinutes: 5, reactionReplyMinReactors: 1, channelMemoryModes: {}, personaDriftEnabled: false, contextScanChannelIds: [], contextDailyChannelIds: [], contextSeedDays: 7,
     },
     sourceFile: "test.yaml",
   };

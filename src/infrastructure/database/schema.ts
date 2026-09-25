@@ -29,6 +29,15 @@ export const controlPanels = pgTable("control_panels", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// Where each guild's admin settings panel lives — see AdminPanelStateStore.
+export const adminPanels = pgTable("admin_panels", {
+  guildId: text("guild_id").primaryKey(),
+  channelId: text("channel_id").notNull(),
+  // Panel message key ("header", "music#0") → message id.
+  messages: jsonb("messages").$type<Record<string, string>>().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // Deliberately NOT per-instance: a track's synced lyrics are the same
 // regardless of which guild or bot instance (yohta, pinecone) plays it, so
 // this table lives in the shared "public" schema instead of each instance's
@@ -338,7 +347,7 @@ export const channelSummaryCheckpoints = pgTable("channel_summary_checkpoints", 
   dailyHighWaterMarkAt: timestamp("daily_high_water_mark_at", { withTimezone: true }),
   // Daily's "have I already run today" gate — null means never run.
   lastRunAt: timestamp("last_run_at", { withTimezone: true }),
-  // Surfaced by /settings chat context-status; cleared on next success.
+  // Surfaced by /settings-memory context-status; cleared on next success.
   lastError: text("last_error"),
   lastErrorCode: text("last_error_code"),
   lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),

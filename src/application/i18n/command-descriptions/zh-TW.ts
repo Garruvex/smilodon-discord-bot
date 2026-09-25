@@ -134,129 +134,8 @@ export const zhTWCommandDescriptions = {
   "setup/initialize:administrator-role": "既有的機器人管理員身分組；未指定則自動建立", // Existing bot administrator role; one is created if omitted.
   "setup/initialize:music-controller-role": "可使用 /play、管理待播歌曲的指令、面板控制，以及在控制頻道輸入文字點歌的身分組", // Role for /play, queue commands, panel controls, and typed control-channel requests.
   "setup/initialize:restricted-role": "禁止使用音樂與聊天機器人的身分組（機器人擁有者例外）", // Role denied from music and chatbot unless bot-owner bypass applies.
+  "setup/guide": "一次一項、私下帶你看過主要設定", // Walks through the main settings one at a time, privately.
   "status": "顯示機器人在此伺服器的設定狀況，包含目前的聊天模型", // Shows how the bot is set up in this server, including the current chat model.
-  "settings-access": "身分組、權限與稽核紀錄", // Roles, permissions, and audit logging.
-  "settings-access/access": "顯示已設定的存取身分組，以及各群組控制的範圍", // Shows configured access roles and what each group controls.
-  "settings-access/roles": "新增存取身分組，不會移除既有身分組", // Adds access roles without removing existing ones.
-  "settings-access/roles:administrator": "新增可使用 /settings，並同時取得音樂控制權的機器人管理員身分組", // Adds a bot administrator role for /settings and inherited music control.
-  "settings-access/roles:music-controller": "新增可使用 /play、管理待播歌曲的指令與面板控制的身分組", // Adds a role for /play, queue commands, and panel controls.
-  "settings-access/roles:restricted": "新增禁止使用音樂與聊天機器人的身分組（機器人擁有者例外）", // Adds a role denied from music and chatbot unless bot-owner bypass applies.
-  "settings-access/role-add": "將身分組加入存取群組", // Adds a role to an access group.
-  "settings-access/role-add:group": "存取群組", // Access group.
-  "settings-access/role-add:role": "要加入的身分組", // Role to add.
-  "settings-access/role-remove": "將身分組從存取群組移除", // Removes a role from an access group.
-  "settings-access/role-remove:group": "存取群組", // Access group.
-  "settings-access/role-remove:role": "要移除的身分組", // Role to remove.
-  "settings-access/audit-log": "設定接收設定／初始設定變更紀錄的頻道", // Configures the channel that receives settings/setup change logs.
-  "settings-access/audit-log:channel": "接收稽核紀錄的文字頻道", // Text channel to receive audit log entries.
-  "settings-access/audit-log:disable": "停止傳送稽核紀錄", // Stop sending audit log entries.
-  "settings-access/audit": "顯示最近的設定／初始化變更紀錄", // Shows recent settings/setup change log entries.
-  "settings-access/audit:count": "要顯示最近幾筆紀錄（預設 10）", // How many recent entries to show (default 10).
-  "settings-music": "音樂面板與播放行為", // Music panel and playback behavior.
-  "settings-music/panel": "更新音樂面板", // Updates the music panel.
-  "settings-music/panel:channel": "音樂控制頻道", // Music control channel.
-  "settings-music/panel:idle-image-url": "固定的 HTTPS 待機圖片網址", // Stable HTTPS idle image URL.
-  "settings-music/panel:idle-image": "上傳長期保存的 PNG、JPEG、WebP 或 GIF 待機圖片", // Upload a persistent PNG, JPEG, WebP, or GIF idle image.
-  "settings-music/panel:use-default-image": "使用內建的 Smilodon 待機圖片", // Use the bundled Smilodon idle image.
-  "settings-music/panel:progress-style": "進度條外觀", // Progress bar appearance.
-  "settings-music/panel:progress-length": "進度條長度", // Progress bar length.
-  "settings-music/panel:progress-completed": "自訂已完成部分的表情符號；貼上表情符號或輸入其伺服器名稱", // Custom completed emoji; paste an emoji or enter its server name.
-  "settings-music/panel:progress-remaining": "自訂剩餘部分的表情符號；貼上表情符號或輸入其伺服器名稱", // Custom remaining emoji; paste an emoji or enter its server name.
-  "settings-music/panel:progress-playing": "播放中目前位置的自訂表情符號", // Custom current-position emoji while playing.
-  "settings-music/panel:progress-paused": "暫停時目前位置的自訂表情符號", // Custom current-position emoji while paused.
-  "settings-music/panel:progress-ending": "選填的結尾表情符號，或輸入 'none' 移除", // Optional ending emoji, or 'none' to remove it.
-  "settings-music/volume": "更新音量限制", // Updates music volume limits.
-  "settings-music/volume:default": "預設音量", // Default volume.
-  "settings-music/volume:maximum": "最大音量", // Maximum volume.
-  "settings-music/volume:button-step": "面板按鈕每次調整的幅度", // Panel adjustment amount.
-  "settings-music/lifecycle": "設定待播歌曲播完或語音頻道無人時的行為", // Updates empty queue/channel behavior.
-  "settings-music/lifecycle:empty-queue-action": "待播歌曲播完時的動作", // Action when the queue ends.
-  "settings-music/lifecycle:queue-delay-seconds": "待播清單清空後，執行動作前的等待時間", // Delay before empty-queue action.
-  "settings-music/lifecycle:empty-channel-action": "所有人離開時的動作", // Action when everyone leaves.
-  "settings-music/lifecycle:channel-grace-seconds": "執行動作前的寬限時間", // Grace period before action.
-  "settings-music/lifecycle:resume-when-occupied": "自動暫停後，有人回來時是否恢復播放", // Resume after an automatic pause.
-  "settings-music/dj-mode": "讓音樂控制身分組能在任何地方控制播放", // Lets music-controller roles control playback from anywhere.
-  "settings-music/dj-mode:enabled": "是否開啟 DJ 模式", // Whether DJ mode is on.
-  "settings-music/open-queue-requests": "讓任何人不必加入機器人所在的語音頻道也能點歌", // Lets anyone queue songs without joining the bot's voice channel.
-  "settings-music/open-queue-requests:enabled": "是否開啟開放點歌", // Whether open queue requests are on.
-  "settings-chat": "AI 聊天行為", // AI chat behavior.
-  "settings-chat/chatbot": "設定提及機器人時觸發的 AI 回覆", // Configures mention-based AI replies.
-  "settings-chat/chatbot:enabled": "有權限的使用者提及機器人時進行回覆", // Reply when permitted users mention the bot.
-  "settings-chat/chatbot:role": "新增可使用提及聊天的身分組", // Adds a role allowed to use mention chat.
-  "settings-chat/chatbot:channel": "新增允許提及聊天的文字頻道", // Adds a text channel where mention chat is allowed.
-  "settings-chat/chatbot:memory-mode": "設定 `channel` 的記憶隔離模式（未設定時預設為共用）", // Sets `channel`'s memory isolation mode (defaults to shared if never set).
-  "settings-chat/chatbot:cooldown-seconds": "每位使用者兩次請求之間的間隔", // Per-user delay between requests.
-  "settings-chat/chatbot:denied-message": "對沒有權限的使用者顯示的俏皮回應", // Playful response shown to users without access.
-  "settings-chat/chatbot:denied-link-url": "隨拒絕訊息顯示的連結按鈕網址；輸入 \"none\" 可移除", // Link button URL shown with the denied message. "none" removes it.
-  "settings-chat/chatbot:denied-link-label": "拒絕訊息連結按鈕的標籤", // Label for the denied-message link button.
-  "settings-chat/chatbot:web-search": "允許模型在需要時搜尋公開網路", // Allow the model to search the public web when needed.
-  "settings-chat/chatbot:tool-calling": "允許模型在回覆過程中呼叫機器人的功能", // Allow the model to call bot functions mid-reply.
-  "settings-chat/chatbot:image-input": "允許接收 Discord 圖片附件（每次請求有數量上限）", // Allow bounded image attachments from Discord.
-  "settings-chat/chatbot:image-generation": "允許模型在提及聊天中產生圖片", // Allow the model to generate images in mention chat.
-  "settings-chat/chatbot:self-reference-image": "機器人畫自己時使用的參考圖片", // Reference image used when the bot draws itself.
-  "settings-chat/chatbot:remove-self-reference-image": "移除自我參考圖片", // Remove the self-reference image.
-  "settings-chat/chatbot:include-sources": "在回覆中附上網路引用連結", // Include web citation links in replies.
-  "settings-chat/chatbot:max-images": "每次請求可接受的最大圖片數量", // Maximum images accepted per request.
-  "settings-chat/chatbot:personality": "以 Markdown 檔案上傳伺服器的角色設定", // Upload the guild personality as a Markdown file.
-  "settings-chat/chatbot:use-default-personality": "移除已上傳的角色設定，改用內建或預設檔案", // Remove the uploaded personality and use the built-in/default file.
-  "settings-chat/chatbot:examples": "以 Markdown 檔案上傳角色對話範例", // Upload example character exchanges as a Markdown file.
-  "settings-chat/chatbot:use-default-examples": "移除已上傳的範例檔案，改用內建範例", // Remove the uploaded examples file.
-  "settings-chat/chatbot:persona-drift": "實驗性功能：讓角色的心情與小習慣慢慢演變", // Experimental: let the character's mood/quirks slowly evolve.
-  "settings-chat/chatbot:reset-persona-drift": "清除角色已演變的心情與習慣紀錄並重新開始", // Wipe the character's evolved mood/quirk history and start over.
-  "settings-chat/ambient-replies": "讓機器人自行判斷是否要對只是提到它名字的訊息做出反應或回覆", // Lets the bot judge whether to react/reply to messages that merely name it.
-  "settings-chat/ambient-replies:enabled": "是否讓機器人自行判斷要不要回應只提到它名字的訊息", // Whether ambient replies are on.
-  "settings-chat/ambient-replies:cooldown-seconds": "每個頻道兩次自然回覆判斷之間的最短秒數", // Minimum seconds between ambient judgment calls per channel.
-  "settings-chat/reaction-replies": "讓機器人自行判斷是否回覆別人對它聊天訊息加的表情反應", // Lets the bot judge whether to reply to reactions on its own chat replies.
-  "settings-chat/reaction-replies:enabled": "是否開啟表情反應回覆", // Whether reaction replies are on.
-  "settings-chat/history-reactions": "讓機器人在聊天時對它已看到的其他人訊息加上表情反應", // Lets the bot react to other people's messages it already sees during a chat turn.
-  "settings-chat/history-reactions:enabled": "是否讓機器人對先前的訊息加表情反應", // Whether history reactions are on.
-  "settings-chat/channel-history": "讓機器人把頻道最近的訊息當作聊天參考", // Lets the bot use recent channel messages as ambient chat context.
-  "settings-chat/channel-history:enabled": "是否把頻道近期訊息當作聊天參考", // Whether ambient channel history is on.
-  "settings-chat/channel-history:limit": "要納入的頻道近期訊息數量", // How many recent channel messages to include.
-  "settings-chat/context-scan-add": "新增頻道，將其歷史訊息掃描一次並存入記憶", // Adds a channel for a one-time history scan into memory.
-  "settings-chat/context-scan-add:channel": "要設定的頻道", // The channel to configure.
-  "settings-chat/context-scan-add:seed-days": "首次執行要讀取過去幾天（預設 7）", // How many past days to read on the first run (default 7).
-  "settings-chat/context-scan-add:restart": "從頭重新執行已完成的掃描（預設 false）", // Re-run a completed scan from scratch (default false).
-  "settings-chat/context-daily-add": "新增頻道，持續將每日摘要存入記憶", // Adds a channel for an ongoing daily summary into memory.
-  "settings-chat/context-daily-add:channel": "要設定的頻道", // The channel to configure.
-  "settings-chat/context-daily-remove": "停止對頻道的持續每日摘要", // Stops ongoing daily summarization for a channel.
-  "settings-chat/context-daily-remove:channel": "要設定的頻道", // The channel to configure.
-  "settings-chat/context-remove": "將頻道從掃描與每日摘要中移除", // Removes a channel from both scan and daily summarization.
-  "settings-chat/context-remove:channel": "要設定的頻道", // The channel to configure.
-  "settings-chat/context-status": "顯示已設定歷史掃描或每日摘要的頻道，以及上次執行狀態", // Shows configured channel-context channels and their last-run state.
-  "settings-chat/context-status:channel": "只顯示單一頻道的詳細資訊", // Show detail for one channel only.
-  "settings-chat/template": "傳送起始用的 personality.md 或 examples.md，供你編輯後上傳", // Sends a starter personality.md or examples.md to edit and upload.
-  "settings-chat/template:kind": "要傳送哪一種起始檔案", // Which starter file to send.
-  "settings-chat/tools-enable": "重新啟用模型可呼叫的聊天工具", // Re-enables a chat tool the model can call.
-  "settings-chat/tools-enable:name": "要啟用的工具名稱", // Tool name to enable.
-  "settings-chat/tools-disable": "停用聊天工具，讓模型無法呼叫", // Disables a chat tool so the model can't call it.
-  "settings-chat/tools-disable:name": "要停用的工具名稱", // Tool name to disable.
-  "settings-chat/tools-list": "列出所有聊天工具，以及它們在此是否啟用", // Lists every chat tool and whether it's enabled here.
-  "settings-community": "獨立的社群功能", // Standalone community features.
-  "settings-community/birthdays": "設定自動生日公告", // Configures automatic birthday announcements.
-  "settings-community/birthdays:enabled": "開啟或關閉生日公告", // Turn birthday announcements on or off.
-  "settings-community/birthdays:channel": "發布生日公告的文字頻道", // Text channel where birthday announcements are posted.
-  "settings-community/reminders": "設定成員是否能設定個人提醒", // Configures whether members can set personal reminders.
-  "settings-community/reminders:enabled": "開啟或關閉 /remind 指令", // Turn the /remind command on or off.
-  "settings-community/welcome": "設定成員加入／離開公告的頻道", // Sets join/leave announcement channels.
-  "settings-community/welcome:join-channel": "發布新成員歡迎卡片的位置", // Where new-member welcome cards are posted.
-  "settings-community/welcome:leave-channel": "發布成員離開訊息的位置", // Where member-left messages are posted.
-  "settings-community/nsfw": "開啟或關閉此伺服器的 NSFW 圖片指令", // Turns NSFW image commands on or off for this server.
-  "settings-community/nsfw:enabled": "允許 NSFW 圖片指令（仍須在年齡限制頻道中使用）", // Allow NSFW image commands (still requires an age-restricted channel).
-  "settings-community/link-fix": "設定支援平台的連結自動改寫", // Configures automatic link previews for supported platforms.
-  "settings-community/link-fix:enabled": "開啟或關閉連結自動改寫", // Turn automatic link rewriting on or off.
-  "settings-community/link-fix:channel": "新增要監看可改寫連結的文字頻道", // Adds a text channel to watch for rewritable links.
-  "settings-community/link-fix:remove-channel": "將文字頻道從監看清單移除", // Removes a text channel from the watched list.
-  "settings-community/link-fix:twitter": "開啟或關閉 Twitter/X 連結修正", // Turn Twitter/X link fixing on or off.
-  "settings-community/link-fix:threads": "開啟或關閉 Threads 連結修正", // Turn Threads link fixing on or off.
-  "settings-community/link-fix:tiktok": "開啟或關閉 TikTok 連結修正", // Turn TikTok link fixing on or off.
-  "settings-community/link-fix:instagram": "開啟或關閉 Instagram 連結修正", // Turn Instagram link fixing on or off.
-  "settings-community/link-fix:reddit": "開啟或關閉 Reddit 連結修正", // Turn Reddit link fixing on or off.
-  "settings-community/link-fix:bilibili": "開啟或關閉 Bilibili 連結修正", // Turn Bilibili link fixing on or off.
-  "settings-community/member-data": "控制成員離開後其資料要保留還是刪除", // Controls whether a departing member's data is kept or deleted.
-  "settings-community/member-data:retain": "true：保留資料，供成員回來時使用；false：成員離開時刪除資料", // true: keep their data if they return. false: delete it when they leave.
-  "settings-community/timezone": "設定生日及其他伺服器當地日期使用的 IANA 時區", // Sets the IANA time zone used for birthdays and other guild-local dates.
-  "settings-community/timezone:zone": "IANA 時區名稱，例如 \"America/New_York\" 或 \"Asia/Taipei\"", // An IANA time zone name, e.g. "America/New_York" or "Asia/Taipei".
   "bird": "取得隨機鳥類圖片與小知識", // Gets a random bird image and fact.
   "cat": "取得隨機貓咪圖片與小知識", // Gets a random cat image and fact.
   "dog": "取得隨機狗狗圖片與小知識", // Gets a random dog image and fact.
@@ -278,15 +157,9 @@ export const zhTWCommandDescriptions = {
   "e621:query": "要搜尋的標籤（例如 wolf、dragon、solo）；留空則隨機取得一則貼文", // Tags to search for (e.g. wolf, dragon, solo). Leave empty for a random post.
   "e621:type": "檔案類型", // File type.
   "e621:order": "排序方式", // Sort order.
-  "settings-community/language": "設定此伺服器已支援翻譯的機器人訊息所使用的語言", // Sets the language for translated bot messages in this server.
-  "settings-community/language:language": "要使用的語言", // The language to use.
   "vote:option1": "選項 1；至少提供兩個選項，或全部留空以使用是／否", // Choice 1; give at least two choices, or none for Yes/No.
   "vote:option2": "選項 2；至少提供兩個選項，或全部留空以使用是／否", // Choice 2; give at least two choices, or none for Yes/No.
   "vote:option3": "選項 3；至少提供兩個選項，或全部留空以使用是／否", // Choice 3; give at least two choices, or none for Yes/No.
   "vote:option4": "選項 4；至少提供兩個選項，或全部留空以使用是／否", // Choice 4; give at least two choices, or none for Yes/No.
   "vote:option5": "選項 5；至少提供兩個選項，或全部留空以使用是／否", // Choice 5; give at least two choices, or none for Yes/No.
-  "settings-music/autoqueue-vote": "讓聽眾投票決定自動續播的下一首歌", // Lets listeners vote on which song autoqueue plays next.
-  "settings-music/autoqueue-vote:enabled": "是否讓聽眾投票；關閉時由自動續播自行選歌", // Whether listeners vote; off means autoqueue picks on its own.
-  "settings-music/autoqueue-vote:bar-style": "投票長條的外觀", // How vote bars look.
-  "settings-music/autoqueue-vote:options": "可供選擇的歌曲數量", // How many songs to pick from.
 } as const satisfies CommandDescriptionCatalog<keyof typeof jaCommandDescriptions>;

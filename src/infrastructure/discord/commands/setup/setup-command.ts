@@ -4,6 +4,7 @@ import { CommandModule, type BotCommand, type CommandContext } from "../../../..
 import { roleGroupDescriptions } from "../../../../application/access/role-group-descriptions.js";
 import type { GuildSetupService } from "../../../../application/setup/guild-setup-service.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
+import type { SetupGuide } from "../../settings/setup/setup-guide.js";
 
 export class SetupCommand implements BotCommand {
   public readonly definition = {
@@ -30,6 +31,10 @@ export class SetupCommand implements BotCommand {
           { type: "role", name: "restricted-role", description: "Role denied from music and chatbot unless bot-owner bypass applies." },
         ],
       },
+      {
+        name: "guide",
+        description: "Walks through the main settings one at a time, privately.",
+      },
     ],
   } satisfies BotCommand["definition"];
 
@@ -40,7 +45,15 @@ export class SetupCommand implements BotCommand {
     requiredMemberPermissions: [PermissionFlagsBits.ManageGuild],
   };
 
+  // Bound once the settings engine exists (see dependencies.ts), which is
+  // built after the commands it's registered alongside.
+  private guide: SetupGuide | null = null;
+
   public constructor(private readonly setupService: GuildSetupService) {}
+
+  public bindGuide(guide: SetupGuide): void {
+    this.guide = guide;
+  }
 
   public async execute(context: CommandContext): Promise<void> {
     if (!context.interaction.inCachedGuild()) {
@@ -52,6 +65,10 @@ export class SetupCommand implements BotCommand {
     switch (subcommand) {
       case "initialize":
         await this.initialize(context);
+        return;
+      case "guide":
+        if (!this.guide) throw new Error("The setup guide isn't bound.");
+        await this.guide.start(context.interaction);
         return;
       default:
         throw new Error(`Unsupported setup subcommand: ${subcommand}`);
@@ -105,7 +122,11 @@ export class SetupCommand implements BotCommand {
         `Assign <@&${result.musicControllerRoleId}> to members who should queue music.`,
       );
     }
-    lines.push("", "Run `/status` any time to check the setup.");
+    lines.push(
+      "",
+      "Next, run `/setup guide` to go through the main settings one at a time.",
+      "Run `/status` any time to check the setup.",
+    );
     await context.responses.edit(lines.join("\n"));
   }
 }

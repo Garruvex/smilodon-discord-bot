@@ -3,8 +3,7 @@
 // falls back to the English description Discord already has.
 export type CommandDescriptionCatalog<Keys extends string = string> = Readonly<Record<Keys, string>>;
 
-// "birthday" (a command), "birthday/set" (a subcommand),
-// "settings-chat/chatbot" (a subcommand of a settings group) and
+// "birthday" (a command), "birthday/set" (a subcommand) and
 // "birthday/set:month" (an option, after the ":") are all keys. A
 // subcommand group adds one more "/" segment.
 export function commandDescriptionKey(

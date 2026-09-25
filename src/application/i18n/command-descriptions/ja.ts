@@ -132,129 +132,8 @@ export const jaCommandDescriptions = {
   "setup/initialize:administrator-role": "既存のボット管理者ロール。省略すると新規作成します。", // Existing bot administrator role; one is created if omitted.
   "setup/initialize:music-controller-role": "/play、キュー関連コマンド、パネル操作、コントロールチャンネルでのリクエストを使えるロール。", // Role for /play, queue commands, panel controls, and typed control-channel requests.
   "setup/initialize:restricted-role": "音楽とチャットボットの利用を禁止するロール（ボットオーナーは除く）。", // Role denied from music and chatbot unless bot-owner bypass applies.
+  "setup/guide": "主な設定を 1 つずつ、自分だけに見える形で案内します。", // Walks through the main settings one at a time, privately.
   "status": "このサーバーでのボットの設定状況（現在のチャットモデルを含む）を表示します。", // Shows how the bot is set up in this server, including the current chat model.
-  "settings-access": "ロール、権限、監査ログの設定。", // Roles, permissions, and audit logging.
-  "settings-access/access": "設定済みのアクセスロールと、各グループが制御する内容を表示します。", // Shows configured access roles and what each group controls.
-  "settings-access/roles": "既存のロールを残したまま、アクセスロールを追加します。", // Adds access roles without removing existing ones.
-  "settings-access/roles:administrator": "/settings を使え、音楽操作権限も継承するボット管理者ロールを追加します。", // Adds a bot administrator role for /settings and inherited music control.
-  "settings-access/roles:music-controller": "/play、キュー関連コマンド、パネル操作を使えるロールを追加します。", // Adds a role for /play, queue commands, and panel controls.
-  "settings-access/roles:restricted": "音楽とチャットボットの利用を禁止するロールを追加します（ボットオーナーは除く）。", // Adds a role denied from music and chatbot unless bot-owner bypass applies.
-  "settings-access/role-add": "アクセスグループにロールを追加します。", // Adds a role to an access group.
-  "settings-access/role-add:group": "アクセスグループ。", // Access group.
-  "settings-access/role-add:role": "追加するロール。", // Role to add.
-  "settings-access/role-remove": "アクセスグループからロールを削除します。", // Removes a role from an access group.
-  "settings-access/role-remove:group": "アクセスグループ。", // Access group.
-  "settings-access/role-remove:role": "削除するロール。", // Role to remove.
-  "settings-access/audit-log": "設定・セットアップの変更ログを受け取るチャンネルを設定します。", // Configures the channel that receives settings/setup change logs.
-  "settings-access/audit-log:channel": "監査ログを受け取るテキストチャンネル。", // Text channel to receive audit log entries.
-  "settings-access/audit-log:disable": "監査ログの送信を停止します。", // Stop sending audit log entries.
-  "settings-access/audit": "最近の設定・セットアップの変更ログを表示します。", // Shows recent settings/setup change log entries.
-  "settings-access/audit:count": "表示する最近のログ件数（デフォルト10）。", // How many recent entries to show (default 10).
-  "settings-music": "音楽パネルと再生の動作。", // Music panel and playback behavior.
-  "settings-music/panel": "音楽パネルを更新します。", // Updates the music panel.
-  "settings-music/panel:channel": "音楽コントロールチャンネル。", // Music control channel.
-  "settings-music/panel:idle-image-url": "固定のHTTPSアイドル画像URL。", // Stable HTTPS idle image URL.
-  "settings-music/panel:idle-image": "保存して使うPNG、JPEG、WebP、GIFの待機画像をアップロードします。", // Upload a persistent PNG, JPEG, WebP, or GIF idle image.
-  "settings-music/panel:use-default-image": "内蔵のSmilodonアイドル画像を使用します。", // Use the bundled Smilodon idle image.
-  "settings-music/panel:progress-style": "プログレスバーの見た目。", // Progress bar appearance.
-  "settings-music/panel:progress-length": "プログレスバーの長さ。", // Progress bar length.
-  "settings-music/panel:progress-completed": "再生済み部分に使うカスタム絵文字。絵文字を貼り付けるか、サーバー内の名前を入力します。", // Custom completed emoji; paste an emoji or enter its server name.
-  "settings-music/panel:progress-remaining": "未再生部分に使うカスタム絵文字。絵文字を貼り付けるか、サーバー内の名前を入力します。", // Custom remaining emoji; paste an emoji or enter its server name.
-  "settings-music/panel:progress-playing": "再生中の現在位置に使うカスタム絵文字。", // Custom current-position emoji while playing.
-  "settings-music/panel:progress-paused": "一時停止中の現在位置に使うカスタム絵文字。", // Custom current-position emoji while paused.
-  "settings-music/panel:progress-ending": "終端用の絵文字（任意）。削除するには 'none' を入力します。", // Optional ending emoji, or 'none' to remove it.
-  "settings-music/volume": "音量の上限などを更新します。", // Updates music volume limits.
-  "settings-music/volume:default": "デフォルトの音量。", // Default volume.
-  "settings-music/volume:maximum": "最大音量。", // Maximum volume.
-  "settings-music/volume:button-step": "パネルのボタン1回あたりの調整量。", // Panel adjustment amount.
-  "settings-music/lifecycle": "キューやチャンネルが空になったときの動作を更新します。", // Updates empty queue/channel behavior.
-  "settings-music/lifecycle:empty-queue-action": "キューが終わったときの動作。", // Action when the queue ends.
-  "settings-music/lifecycle:queue-delay-seconds": "キューが空になってから動作するまでの待ち時間。", // Delay before empty-queue action.
-  "settings-music/lifecycle:empty-channel-action": "全員が退出したときの動作。", // Action when everyone leaves.
-  "settings-music/lifecycle:channel-grace-seconds": "動作するまでの猶予時間。", // Grace period before action.
-  "settings-music/lifecycle:resume-when-occupied": "自動一時停止のあと、誰かが戻ってきたときに再開するかどうか。", // Resume after an automatic pause.
-  "settings-music/dj-mode": "ミュージックコントローラーのロールがどこからでも再生を操作できるようにします。", // Lets music-controller roles control playback from anywhere.
-  "settings-music/dj-mode:enabled": "DJモードを有効にするかどうか。", // Whether DJ mode is on.
-  "settings-music/open-queue-requests": "ボットのボイスチャンネルに参加していなくても、誰でも曲をキューに追加できるようにします。", // Lets anyone queue songs without joining the bot's voice channel.
-  "settings-music/open-queue-requests:enabled": "ボイスチャンネルに参加していなくても曲を追加できるようにするかどうか。", // Whether open queue requests are on.
-  "settings-chat": "AIチャットの動作。", // AI chat behavior.
-  "settings-chat/chatbot": "メンションに対するAI返信を設定します。", // Configures mention-based AI replies.
-  "settings-chat/chatbot:enabled": "権限のあるユーザーがボットにメンションしたときに返信します。", // Reply when permitted users mention the bot.
-  "settings-chat/chatbot:role": "メンションチャットを使えるロールを追加します。", // Adds a role allowed to use mention chat.
-  "settings-chat/chatbot:channel": "メンションチャットを許可するテキストチャンネルを追加します。", // Adds a text channel where mention chat is allowed.
-  "settings-chat/chatbot:memory-mode": "`channel` の記憶を分離するモードを設定します（未設定の場合は共有）。", // Sets `channel`'s memory isolation mode (defaults to shared if never set).
-  "settings-chat/chatbot:cooldown-seconds": "ユーザーごとのリクエスト間隔。", // Per-user delay between requests.
-  "settings-chat/chatbot:denied-message": "権限のないユーザーに表示する、ちょっとしたユーモアのある返答。", // Playful response shown to users without access.
-  "settings-chat/chatbot:denied-link-url": "拒否メッセージと一緒に表示するリンクボタンのURL。\"none\" で削除します。", // Link button URL shown with the denied message. "none" removes it.
-  "settings-chat/chatbot:denied-link-label": "拒否メッセージのリンクボタンのラベル。", // Label for the denied-message link button.
-  "settings-chat/chatbot:web-search": "必要に応じてモデルが公開Web検索を行えるようにします。", // Allow the model to search the public web when needed.
-  "settings-chat/chatbot:tool-calling": "返信の途中でモデルがボットの機能を呼び出せるようにします。", // Allow the model to call bot functions mid-reply.
-  "settings-chat/chatbot:image-input": "Discordの画像添付を受け付けます（枚数に上限があります）。", // Allow bounded image attachments from Discord.
-  "settings-chat/chatbot:image-generation": "メンションチャットでモデルが画像を生成できるようにします。", // Allow the model to generate images in mention chat.
-  "settings-chat/chatbot:self-reference-image": "ボットが自分の姿を描くときに使う参照画像。", // Reference image used when the bot draws itself.
-  "settings-chat/chatbot:remove-self-reference-image": "ボットが自分の姿を描くときに使う参照画像を削除します。", // Remove the self-reference image.
-  "settings-chat/chatbot:include-sources": "返信にWebの出典リンクを含めます。", // Include web citation links in replies.
-  "settings-chat/chatbot:max-images": "1回のリクエストで受け付ける画像の最大数。", // Maximum images accepted per request.
-  "settings-chat/chatbot:personality": "サーバーのキャラクター設定をMarkdownファイルでアップロードします。", // Upload the guild personality as a Markdown file.
-  "settings-chat/chatbot:use-default-personality": "アップロード済みのキャラクター設定を削除し、内蔵またはデフォルトのファイルを使います。", // Remove the uploaded personality and use the built-in/default file.
-  "settings-chat/chatbot:examples": "キャラクターの会話例をMarkdownファイルでアップロードします。", // Upload example character exchanges as a Markdown file.
-  "settings-chat/chatbot:use-default-examples": "アップロード済みの会話例ファイルを削除します。", // Remove the uploaded examples file.
-  "settings-chat/chatbot:persona-drift": "実験的機能：キャラクターの気分や癖が少しずつ変化するようにします。", // Experimental: let the character's mood/quirks slowly evolve.
-  "settings-chat/chatbot:reset-persona-drift": "キャラクターの変化した気分や癖の履歴を消去し、最初からやり直します。", // Wipe the character's evolved mood/quirk history and start over.
-  "settings-chat/ambient-replies": "名前が出ただけのメッセージにボットがリアクションや返信をするか、自分で判断できるようにします。", // Lets the bot judge whether to react/reply to messages that merely name it.
-  "settings-chat/ambient-replies:enabled": "名前が出ただけのメッセージへの自動返信を有効にするかどうか。", // Whether ambient replies are on.
-  "settings-chat/ambient-replies:cooldown-seconds": "チャンネルごとに、自動返信を判断する最短間隔（秒）。", // Minimum seconds between ambient judgment calls per channel.
-  "settings-chat/reaction-replies": "自分のチャット返信に付いたリアクションに返信するかどうかをボットが判断できるようにします。", // Lets the bot judge whether to reply to reactions on its own chat replies.
-  "settings-chat/reaction-replies:enabled": "リアクション返信を有効にするかどうか。", // Whether reaction replies are on.
-  "settings-chat/history-reactions": "チャット中に見えている他の人のメッセージに、ボットがリアクションを付けられるようにします。", // Lets the bot react to other people's messages it already sees during a chat turn.
-  "settings-chat/history-reactions:enabled": "履歴メッセージへのリアクションを有効にするかどうか。", // Whether history reactions are on.
-  "settings-chat/channel-history": "チャンネルの最近のメッセージをチャットの文脈として使えるようにします。", // Lets the bot use recent channel messages as ambient chat context.
-  "settings-chat/channel-history:enabled": "チャンネル履歴の文脈利用を有効にするかどうか。", // Whether ambient channel history is on.
-  "settings-chat/channel-history:limit": "含めるチャンネルの最近のメッセージ数。", // How many recent channel messages to include.
-  "settings-chat/context-scan-add": "チャンネルを追加し、履歴を一度だけスキャンして記憶に取り込みます。", // Adds a channel for a one-time history scan into memory.
-  "settings-chat/context-scan-add:channel": "設定するチャンネル。", // The channel to configure.
-  "settings-chat/context-scan-add:seed-days": "初回に読み込む過去の日数（デフォルト7）。", // How many past days to read on the first run (default 7).
-  "settings-chat/context-scan-add:restart": "完了済みのスキャンを最初からやり直します（デフォルト false）。", // Re-run a completed scan from scratch (default false).
-  "settings-chat/context-daily-add": "チャンネルを追加し、継続的に毎日の要約を記憶に保存します。", // Adds a channel for an ongoing daily summary into memory.
-  "settings-chat/context-daily-add:channel": "設定するチャンネル。", // The channel to configure.
-  "settings-chat/context-daily-remove": "チャンネルの継続的な日次要約を停止します。", // Stops ongoing daily summarization for a channel.
-  "settings-chat/context-daily-remove:channel": "設定するチャンネル。", // The channel to configure.
-  "settings-chat/context-remove": "チャンネルをスキャンと毎日の要約の両方から削除します。", // Removes a channel from both scan and daily summarization.
-  "settings-chat/context-remove:channel": "設定するチャンネル。", // The channel to configure.
-  "settings-chat/context-status": "履歴の取り込みや日次要約を設定したチャンネルと、前回の実行状況を表示します。", // Shows configured channel-context channels and their last-run state.
-  "settings-chat/context-status:channel": "指定したチャンネルの詳細のみ表示します。", // Show detail for one channel only.
-  "settings-chat/template": "編集してアップロードするための、personality.md または examples.md のひな形を送信します。", // Sends a starter personality.md or examples.md to edit and upload.
-  "settings-chat/template:kind": "送信するひな形の種類。", // Which starter file to send.
-  "settings-chat/tools-enable": "モデルが呼び出せるチャットツールを再び有効にします。", // Re-enables a chat tool the model can call.
-  "settings-chat/tools-enable:name": "有効にするツール名。", // Tool name to enable.
-  "settings-chat/tools-disable": "チャットツールを無効にし、モデルが呼び出せないようにします。", // Disables a chat tool so the model can't call it.
-  "settings-chat/tools-disable:name": "無効にするツール名。", // Tool name to disable.
-  "settings-chat/tools-list": "すべてのチャットツールと、このサーバーでの有効／無効の状態を一覧表示します。", // Lists every chat tool and whether it's enabled here.
-  "settings-community": "独立したコミュニティ機能。", // Standalone community features.
-  "settings-community/birthdays": "誕生日の自動告知を設定します。", // Configures automatic birthday announcements.
-  "settings-community/birthdays:enabled": "誕生日の告知をオン／オフします。", // Turn birthday announcements on or off.
-  "settings-community/birthdays:channel": "誕生日の告知を投稿するテキストチャンネル。", // Text channel where birthday announcements are posted.
-  "settings-community/reminders": "メンバーが個人用リマインダーを設定できるかどうかを設定します。", // Configures whether members can set personal reminders.
-  "settings-community/reminders:enabled": "/remind コマンドをオン／オフします。", // Turn the /remind command on or off.
-  "settings-community/welcome": "メンバーの参加・退出を告知するチャンネルを設定します。", // Sets join/leave announcement channels.
-  "settings-community/welcome:join-channel": "新メンバーのウェルカムカードを投稿する場所。", // Where new-member welcome cards are posted.
-  "settings-community/welcome:leave-channel": "メンバー退出のメッセージを投稿する場所。", // Where member-left messages are posted.
-  "settings-community/nsfw": "このサーバーでのNSFW画像コマンドをオン／オフします。", // Turns NSFW image commands on or off for this server.
-  "settings-community/nsfw:enabled": "NSFW画像コマンドを許可します（年齢制限チャンネルでのみ使用可能）。", // Allow NSFW image commands (still requires an age-restricted channel).
-  "settings-community/link-fix": "対応プラットフォームのリンクを自動で書き換える設定をします。", // Configures automatic link previews for supported platforms.
-  "settings-community/link-fix:enabled": "リンクの自動書き換えをオン／オフします。", // Turn automatic link rewriting on or off.
-  "settings-community/link-fix:channel": "書き換え可能なリンクを監視するテキストチャンネルを追加します。", // Adds a text channel to watch for rewritable links.
-  "settings-community/link-fix:remove-channel": "監視リストからテキストチャンネルを削除します。", // Removes a text channel from the watched list.
-  "settings-community/link-fix:twitter": "Twitter/Xのリンク修正をオン／オフします。", // Turn Twitter/X link fixing on or off.
-  "settings-community/link-fix:threads": "Threadsのリンク修正をオン／オフします。", // Turn Threads link fixing on or off.
-  "settings-community/link-fix:tiktok": "TikTokのリンク修正をオン／オフします。", // Turn TikTok link fixing on or off.
-  "settings-community/link-fix:instagram": "Instagramのリンク修正をオン／オフします。", // Turn Instagram link fixing on or off.
-  "settings-community/link-fix:reddit": "Redditのリンク修正をオン／オフします。", // Turn Reddit link fixing on or off.
-  "settings-community/link-fix:bilibili": "Bilibiliのリンク修正をオン／オフします。", // Turn Bilibili link fixing on or off.
-  "settings-community/member-data": "メンバーが退出したあと、そのデータを保持するか削除するかを設定します。", // Controls whether a departing member's data is kept or deleted.
-  "settings-community/member-data:retain": "true：メンバーが戻ったときのためにデータを保持します。false：退出時に削除します。", // true: keep their data if they return. false: delete it when they leave.
-  "settings-community/timezone": "誕生日など、このサーバーの日付に使うIANAタイムゾーンを設定します。", // Sets the IANA time zone used for birthdays and other guild-local dates.
-  "settings-community/timezone:zone": "IANAタイムゾーン名。例：\"America/New_York\"、\"Asia/Taipei\"。", // An IANA time zone name, e.g. "America/New_York" or "Asia/Taipei".
   "bird": "ランダムな鳥の画像と豆知識を取得します。", // Gets a random bird image and fact.
   "cat": "ランダムな猫の画像と豆知識を取得します。", // Gets a random cat image and fact.
   "dog": "ランダムな犬の画像と豆知識を取得します。", // Gets a random dog image and fact.
@@ -276,15 +155,9 @@ export const jaCommandDescriptions = {
   "e621:query": "検索するタグ（例：wolf, dragon, solo）。空欄ならランダムな投稿を取得します。", // Tags to search for (e.g. wolf, dragon, solo). Leave empty for a random post.
   "e621:type": "ファイルの種類。", // File type.
   "e621:order": "並び順。", // Sort order.
-  "settings-community/language": "このサーバーで翻訳に対応しているボットのメッセージに使う言語を設定します。", // Sets the language for translated bot messages in this server.
-  "settings-community/language:language": "使用する言語。", // The language to use.
   "vote:option1": "選択肢1。2つ以上指定するか、「はい／いいえ」にする場合はすべて空欄にします。", // Choice 1; give at least two choices, or none for Yes/No.
   "vote:option2": "選択肢2。2つ以上指定するか、「はい／いいえ」にする場合はすべて空欄にします。", // Choice 2; give at least two choices, or none for Yes/No.
   "vote:option3": "選択肢3。2つ以上指定するか、「はい／いいえ」にする場合はすべて空欄にします。", // Choice 3; give at least two choices, or none for Yes/No.
   "vote:option4": "選択肢4。2つ以上指定するか、「はい／いいえ」にする場合はすべて空欄にします。", // Choice 4; give at least two choices, or none for Yes/No.
   "vote:option5": "選択肢5。2つ以上指定するか、「はい／いいえ」にする場合はすべて空欄にします。", // Choice 5; give at least two choices, or none for Yes/No.
-  "settings-music/autoqueue-vote": "オートキューが次に再生する曲をリスナーの投票で決められるようにします。", // Lets listeners vote on which song autoqueue plays next.
-  "settings-music/autoqueue-vote:enabled": "リスナーが投票するかどうか。オフの場合はオートキューが自動で選びます。", // Whether listeners vote; off means autoqueue picks on its own.
-  "settings-music/autoqueue-vote:bar-style": "投票バーの見た目。", // How vote bars look.
-  "settings-music/autoqueue-vote:options": "候補にする曲の数。", // How many songs to pick from.
 } as const satisfies CommandDescriptionCatalog;

@@ -1,6 +1,12 @@
 import type { Language } from "../application/i18n/language.js";
 
-export type GuildFeatureName = "common" | "diagnostics" | "music" | "chatbot" | "birthdays" | "reminders" | "nsfw" | "linkFix";
+// The top-level features, in display order. GuildFeatureConfiguration also
+// holds sub-switches (ambientReplies, channelHistory, ...) that aren't
+// features in their own right, so iterate this, not Object.keys(features).
+export const guildFeatureNames = [
+  "common", "diagnostics", "music", "chatbot", "birthdays", "reminders", "nsfw", "linkFix",
+] as const;
+export type GuildFeatureName = (typeof guildFeatureNames)[number];
 export type RoleGroupName = "botAdministrator" | "musicController" | "chatbot";
 
 // The individual services link-fix can rewrite/embed. features.linkFix is
@@ -55,6 +61,8 @@ export interface GuildChannelConfiguration {
   musicCommands: ReadonlySet<string>;
   controlPanel: string | null;
   auditLog: string | null;
+  // Where the admin settings panel lives — see AdminPanelService.
+  adminPanel: string | null;
   chatbot: ReadonlySet<string>;
   birthdayAnnouncements: string | null;
   linkFix: ReadonlySet<string>;
@@ -89,6 +97,13 @@ export interface GuildChatConfiguration {
   // features.channelHistory is on. A hard cap independent of the char
   // budget in chatMemoryLimits.maxChannelHistoryChars.
   channelHistoryLimit: number;
+  // How long after the first reaction on a watched reply the bot waits
+  // before judging the reactions, so others have time to join in: a random
+  // time between min and max, picked when the first reaction lands and not
+  // reset by later ones — see reaction-arm-behavior.ts.
+  reactionReplyWaitMinMinutes: number;
+  reactionReplyWaitMaxMinutes: number;
+  reactionReplyMinReactors: number;
   // Per-channel memory isolation mode, keyed by channel id — see
   // src/application/memory/memory-channel-policy.ts. Unlisted channels
   // default to "shared".
