@@ -47,6 +47,9 @@ export const campaignActions = [
   "rulePreset",
   "ruleOption",
   "ruleValue",
+  // Saved characters: confirm playing one, and save a hero's progress back.
+  "useSaved",
+  "saveProgress",
 ] as const;
 export type CampaignAction = (typeof campaignActions)[number];
 

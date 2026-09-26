@@ -1,6 +1,7 @@
 
 import { StaticAdventureLibrary } from "../../../src/application/campaign/adventures/static-adventure-library.js";
 import { CampaignCommandBus } from "../../../src/application/campaign/campaign-command-bus.js";
+import { CharacterLibrary } from "../../../src/application/campaign/library/character-library.js";
 import { CampaignLobbyService } from "../../../src/application/campaign/campaign-lobby-service.js";
 import { CampaignRuntime, type RuntimeLogger } from "../../../src/application/campaign/campaign-runtime.js";
 import { ScriptedNarrator, ScriptedPlanner, type ScriptedProposal } from "../../../src/application/campaign/dm/scripted-dm.js";
@@ -42,6 +43,7 @@ export interface Rig {
   clock: ManualClock;
   bus: CampaignCommandBus;
   service: CampaignLobbyService;
+  library: CharacterLibrary;
   presenter: Recording;
   plannerScript: ScriptedProposal[];
   runtime: (bootId?: string) => CampaignRuntime;
@@ -58,12 +60,15 @@ export function rig(store = new InMemoryCampaignStore(), clock = new ManualClock
   const plannerScript: ScriptedProposal[] = [];
   const planner = new ScriptedPlanner(plannerScript);
   const narrator = new ScriptedNarrator(Array.from({ length: 5 }, () => ({ text: "The night air stirs." })));
+  const library = new CharacterLibrary({ unitOfWork: store, clock, content, rulesetVersion: content.version });
   const service = new CampaignLobbyService({
     unitOfWork: store,
     bus,
     adventures,
     clock,
     ruleset: { rulesetId: content.rulesetId, rulesetVersion: content.version, houseRules: {} },
+    library,
+    rulesets,
   });
   const dm = new DmJobWorker({
     unitOfWork: store,
@@ -78,6 +83,7 @@ export function rig(store = new InMemoryCampaignStore(), clock = new ManualClock
     clock,
     bus,
     service,
+    library,
     presenter,
     plannerScript,
     rulesets,

@@ -178,6 +178,9 @@ export const zhTWCommandDescriptions = {
   "dnd/rest": "讓隊伍在戰鬥之間休息（主辦人）", // Has the party take a rest between fights (organizer).
   "dnd/rest:type": "休息的長度", // How long the rest is.
   "dnd/retry": "請地下城主重新結算被擱置的回合（主辦人）", // Asks the DM to try the held round again (organizer).
+  "dnd/characters": "開啟你的角色庫：建立、檢視、匯出與刪除角色", // Opens your character library: build, view, export and delete characters.
+  "dnd/import-character": "從匯出的檔案把角色加入你的角色庫", // Adds a character from an exported file to your library.
+  "dnd/import-character:file": "從「我的角色」匯出的角色檔案（.json）", // The character file (.json) exported from My Characters.
   "dnd/repair": "檢查這場團務的頻道並重新繪製卡片（主辦人）", // Checks this game's channels and redraws its cards (organizer).
   "dnd/reopen": "重新開啟已結束的團務，並暫停在結束的地方（主辦人）", // Opens a finished game again, paused where it stopped (organizer).
 } as const satisfies CommandDescriptionCatalog<keyof typeof jaCommandDescriptions>;

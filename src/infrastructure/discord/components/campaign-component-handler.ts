@@ -40,6 +40,9 @@ import { classLabel } from "../campaign/text-keys.js";
 import { giveMenu, packMenu, parseGift, parsePackChoice } from "../campaign/pack-menu.js";
 import { CampaignCardService } from "../campaign/campaign-card-service.js";
 import { renderHeroSheet } from "../campaign/hero-sheet.js";
+import type { CharacterLibrary } from "../../../application/campaign/library/character-library.js";
+import { libraryHeroRef, savedSnapshotIdOf } from "../../../application/campaign/library/library-types.js";
+import { conflictLines } from "./character-library-component-handler.js";
 import { renderRulesScreen, ruleLines } from "../campaign/rules-screen.js";
 import { houseRulePresets } from "../../../domain/campaign/rules/house-rules.js";
 import { refusalText } from "../campaign/refusal-text.js";
@@ -52,6 +55,8 @@ export interface CampaignComponentDependencies {
   readonly rulesets: RulesetCatalog;
   readonly adventures: AdventureLibrary;
   readonly glossaries: Readonly<Record<string, Glossary>>;
+  // Saved characters: without it the hero picker offers only the adventure's presets.
+  readonly library?: CharacterLibrary;
 }
 
 const maxActionLength = 500;
@@ -138,6 +143,8 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "rulePreset":
     case "ruleOption":
     case "ruleValue":
+    case "useSaved":
+    case "saveProgress":
       return [];
   }
 }
@@ -260,6 +267,18 @@ export class CampaignComponentHandler implements ComponentHandler {
         const said = answer === "accept" ? text.campaign.reply.offerAccepted : answer === "decline" ? text.campaign.reply.offerDeclined : text.campaign.reply.offerCancelled;
         return void (await this.outcome(await this.deps.play.answerOffer(key, userId, parsed.argument ?? "", answer, interaction.id), said, reply, text));
       }
+      case "useSaved": {
+        const chosen = await this.deps.lobby.chooseSaved(key, userId, parsed.argument ?? "");
+        if (chosen.kind === "conflicts") {
+          return void (await reply([text.campaign.chars.previewConflicts, ...conflictLines(chosen.conflicts, text).map((line) => `• ${line}`)].join("\n")));
+        }
+        if (chosen.kind === "refused") return void (await reply(refusalText(text, chosen.reason)));
+        this.deps.cards.refresh(key);
+        const label = chosen.value.lobby.members.find((member) => member.userId === userId)?.label;
+        return void (await reply(text.campaign.chars.chosen({ hero: label?.name ?? "" })));
+      }
+      case "saveProgress":
+        return void (await reply(await this.saveProgress(record, userId, text)));
       case "safety":
         await interaction.editReply({
           content: text.campaign.reply.safetyAsk,
@@ -293,7 +312,8 @@ export class CampaignComponentHandler implements ComponentHandler {
         const sheet = await this.heroSheet(record, text, parsed.action === "details" ? parsed.argument : null, userId);
         // Only the player's own hero gets the gear controls.
         const gear = parsed.action === "myHero" ? await this.heroMenus(record, text, userId) : [];
-        await interaction.editReply({ content: sheet, components: gear });
+        const save = parsed.action === "myHero" ? await this.saveRow(record, text, userId) : [];
+        await interaction.editReply({ content: sheet, components: [...gear, ...save] });
         return;
       }
       default:
@@ -377,7 +397,10 @@ export class CampaignComponentHandler implements ComponentHandler {
     const own = lobby.members.find((member) => member.userId === interaction.user.id)?.heroId ?? null;
     const heroes = document?.heroes ?? [];
     const available = new Set([...freeHeroes(lobby, heroes.map((hero) => hero.id)), ...(own === null ? [] : [own])]);
-    const options = heroes.filter((hero) => available.has(hero.id)).map((hero) => ({ label: text.campaign.pick.option({ hero: hero.name, class: classLabel(text, hero.class) }).slice(0, 100), value: hero.id, default: hero.id === own }));
+    const presetOptions = heroes.filter((hero) => available.has(hero.id)).map((hero) => ({ label: text.campaign.pick.option({ hero: hero.name, class: classLabel(text, hero.class) }).slice(0, 100), value: hero.id, default: hero.id === own }));
+    // The player's saved characters come after the adventure's own heroes.
+    const saved = this.deps.library === undefined ? [] : await this.savedOptions(interaction.user.id, text, own);
+    const options = [...presetOptions, ...saved].slice(0, 25);
     if (options.length === 0) {
       await interaction.editReply({ content: text.campaign.pick.none, components: [] });
       return;
@@ -422,8 +445,61 @@ export class CampaignComponentHandler implements ComponentHandler {
     await interaction.update({ content: text.campaign.reply.newHero({ hero: hero?.name ?? presetId }), components: [] });
   }
 
+  // Every saved version of the player's characters, newest first, as picker options.
+  private async savedOptions(userId: string, text: Texts, own: string | null): Promise<{ label: string; value: string; default: boolean }[]> {
+    const entries = (await this.deps.library?.list(userId)) ?? [];
+    return entries.flatMap((entry) =>
+      [...entry.snapshots].reverse().map((snapshot) => {
+        const value = libraryHeroRef(snapshot.id);
+        return {
+          label: text.campaign.chars.savedOption({ name: entry.character.name, class: classLabel(text, entry.character.className), revision: snapshot.revision }).slice(0, 100),
+          value,
+          default: value === own,
+        };
+      }),
+    );
+  }
+
+  // What a saved character would bring, and what stands in the way, before they are seated.
+  private async previewSaved(interaction: StringSelectMenuInteraction, record: CampaignRecord, text: Texts, snapshotId: string): Promise<void> {
+    await interaction.deferUpdate();
+    const preview = await this.deps.lobby.previewSaved(record.key, interaction.user.id, snapshotId);
+    if (preview.kind === "refused") {
+      await interaction.editReply({ content: refusalText(text, preview.reason), components: [] });
+      return;
+    }
+    const t = text.campaign.chars;
+    const glossary = this.deps.glossaries[record.language];
+    const hero = preview.hero;
+    const lines = hero === null ? [] : [t.previewTitle({ name: hero.name, class: classLabel(text, hero.className ?? ""), level: hero.level }), t.previewLine({ hp: hero.maxHp, gear: hero.equipment.map((id) => glossary?.names[id] ?? id).join(", ") })];
+    if (preview.conflicts.length > 0) {
+      await interaction.editReply({ content: [...lines, "", t.previewConflicts, ...conflictLines(preview.conflicts, text).map((line) => `• ${line}`)].join("\n"), components: [] });
+      return;
+    }
+    await interaction.editReply({
+      content: [...lines, "", t.previewOk].join("\n"),
+      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(campaignCustomId("useSaved", record.key.campaignId, snapshotId)).setLabel(t.useButton).setStyle(ButtonStyle.Success))],
+    });
+  }
+
+  // Saves the hero's progress back to the player's library.
+  private async saveProgress(record: CampaignRecord, userId: string, text: Texts): Promise<string> {
+    const t = text.campaign.chars;
+    const library = this.deps.library;
+    if (library === undefined) return refusalText(text, "libraryUnavailable");
+    const result = await library.saveProgress(userId, record.key);
+    if (result.kind === "refused") return (t.saveRefused as Readonly<Record<string, string>>)[result.reason] ?? text.campaign.refusal.generic;
+    if (!result.created) return t.progressAlready;
+    return t.progressSaved({ name: result.snapshot.build.name, revision: result.snapshot.revision });
+  }
+
   private async chooseHero(interaction: StringSelectMenuInteraction, record: CampaignRecord, text: Texts): Promise<void> {
     const heroId = interaction.values[0] ?? "";
+    const savedId = savedSnapshotIdOf(heroId);
+    if (savedId !== null) {
+      await this.previewSaved(interaction, record, text, savedId);
+      return;
+    }
     const result = await this.deps.lobby.chooseHero(record.key, interaction.user.id, heroId);
     if (result.kind === "refused") {
       await interaction.update({ content: refusalText(text, result.reason), components: [] });
@@ -581,6 +657,17 @@ export class CampaignComponentHandler implements ComponentHandler {
       content: `${text.campaign.reply.gearChanged}\n\n${await this.heroSheet(record, text, null, interaction.user.id)}`,
       components: await this.heroMenus(record, text, interaction.user.id),
     });
+  }
+
+  // Save progress, for a hero that came from the player's library.
+  private async saveRow(record: CampaignRecord, text: Texts, userId: string): Promise<ActionRowBuilder<ButtonBuilder>[]> {
+    if (this.deps.library === undefined) return [];
+    const loaded = await this.deps.unitOfWork.transaction((tx) => tx.loadCampaign(record.key));
+    const heroId = loaded?.state.members[userId]?.characterId ?? null;
+    if (heroId === null || loaded?.state.characters[heroId]?.origin === undefined) return [];
+    return [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(campaignCustomId("saveProgress", record.key.campaignId)).setLabel(text.campaign.button.saveProgress).setStyle(ButtonStyle.Secondary)),
+    ];
   }
 
   // The Table rules screen's menus: pick a bundle, pick an option, or pick a

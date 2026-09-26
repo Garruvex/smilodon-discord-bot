@@ -10,6 +10,7 @@ import type { AccessPolicyService } from "../application/access/access-policy-se
 import { StaticAdventureLibrary } from "../application/campaign/adventures/static-adventure-library.js";
 import { CampaignCommandBus } from "../application/campaign/campaign-command-bus.js";
 import { CampaignIssues } from "../application/campaign/campaign-issues.js";
+import { CharacterLibrary } from "../application/campaign/library/character-library.js";
 import { CampaignLobbyService } from "../application/campaign/campaign-lobby-service.js";
 import { CampaignPlayController } from "../application/campaign/campaign-play-controller.js";
 import { CampaignRuntime } from "../application/campaign/campaign-runtime.js";
@@ -46,6 +47,7 @@ import { organizerNotice } from "../infrastructure/discord/campaign/issue-notifi
 import { DndCommand } from "../infrastructure/discord/commands/campaign/dnd-command.js";
 import { CampaignComponentHandler } from "../infrastructure/discord/components/campaign-component-handler.js";
 import { CampaignHubComponentHandler } from "../infrastructure/discord/components/campaign-hub-component-handler.js";
+import { CharacterLibraryComponentHandler } from "../infrastructure/discord/components/character-library-component-handler.js";
 import { SqliteCampaignStore } from "../infrastructure/persistence/campaign/sqlite-campaign-store.js";
 
 export interface CampaignModule {
@@ -53,6 +55,8 @@ export interface CampaignModule {
   readonly handler: CampaignComponentHandler;
   // The hub's Create game wizard and Manage views.
   readonly hubHandler: CampaignHubComponentHandler;
+  // My Characters: the character library's private screens and builder.
+  readonly libraryHandler: CharacterLibraryComponentHandler;
   // What the admin panel's D&D settings read and change.
   readonly settings: CampaignSettingsAccess;
   // Discord events that can take a card or a place away: a message was
@@ -106,8 +110,11 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
   const issues = new CampaignIssues({ unitOfWork, clock, notify: organizerNotice(messages) });
   const cards = new CampaignCardService({ unitOfWork, rulesets, adventures, messages, glossaries, logger, issues });
   const presenter = new DiscordCampaignPresenter({ unitOfWork, messages, cards, adventures, glossaries, revealDelayMs: 1_200 });
+  const library = new CharacterLibrary({ unitOfWork, clock, content, rulesetVersion: content.version });
   const lobby = new CampaignLobbyService({
     unitOfWork,
+    library,
+    rulesets,
     bus,
     adventures,
     clock,
@@ -144,8 +151,9 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
 
   const authority = new CampaignAuthority(input.accessPolicyService, unitOfWork);
   const creator = new CampaignGameCreator({ lobby, setup, defaultAdventureId: starterAdventureId, modelConfigured: model !== null });
-  const command = new DndCommand({ lobby, play, setup, cards, creator, authority });
-  const handler = new CampaignComponentHandler({ lobby, play, cards, unitOfWork, rulesets, adventures, glossaries });
+  const libraryHandler = new CharacterLibraryComponentHandler({ library, content, glossaries });
+  const command = new DndCommand({ lobby, play, setup, cards, creator, authority, library, libraryScreens: libraryHandler });
+  const handler = new CampaignComponentHandler({ lobby, play, cards, unitOfWork, rulesets, adventures, glossaries, library });
   const hubHandler = new CampaignHubComponentHandler({ lobby, play, setup, cards, creator, authority });
 
   // A deleted hub channel, game channel or Table Talk thread is made again
@@ -161,6 +169,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
     command,
     handler,
     hubHandler,
+    libraryHandler,
     settings: new CampaignSettingsAccess({ unitOfWork, lobby, setup, modelConfigured: model !== null }),
     handleMessagesDeleted: (guildId, channelId, messageIds): void => {
       void cards.handleMessagesDeleted(guildId, channelId, messageIds).catch(logFailure("Campaign card recovery after a deleted message failed", guildId));

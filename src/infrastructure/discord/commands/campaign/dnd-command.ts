@@ -10,6 +10,11 @@ import type { CampaignAuthority } from "../../campaign/campaign-authority.js";
 import type { CampaignGameCreator } from "../../campaign/campaign-game-creator.js";
 import { createGameText } from "../../campaign/campaign-game-creator.js";
 import type { CampaignCardService } from "../../campaign/campaign-card-service.js";
+import type { CharacterLibrary } from "../../../../application/campaign/library/character-library.js";
+import { maxImportBytes } from "../../../../application/campaign/library/character-library.js";
+import { fetchLinkContent } from "../../../net/safe-url-fetch.js";
+import { conflictLines, languageOf, type CharacterLibraryComponentHandler } from "../../components/character-library-component-handler.js";
+import { texts } from "../../../../application/i18n/texts.js";
 import type { CampaignSetupService } from "../../campaign/campaign-setup-service.js";
 import { refusalText } from "../../campaign/refusal-text.js";
 import { repairText } from "../../campaign/repair-text.js";
@@ -21,6 +26,9 @@ export interface DndCommandDependencies {
   readonly cards: CampaignCardService;
   readonly creator: CampaignGameCreator;
   readonly authority: CampaignAuthority;
+  // The character library and its opening screen (My Characters).
+  readonly library: CharacterLibrary;
+  readonly libraryScreens: Pick<CharacterLibraryComponentHandler, "homeScreen" | "sheetLine">;
 }
 
 // Setting up a server is for bot administrators (plan §3, Server setup).
@@ -72,6 +80,12 @@ export class DndCommand implements BotCommand {
           },
         ],
       },
+      { name: "characters", description: "Opens your character library: build, view, export and delete characters." },
+      {
+        name: "import-character",
+        description: "Adds a character from an exported file to your library.",
+        options: [{ type: "attachment", name: "file", description: "The character file (.json) exported from My Characters.", required: true }],
+      },
       { name: "status", description: "Shows the state of this channel's game." },
       { name: "pause", description: "Pauses this game (organizer)." },
       { name: "resume", description: "Resumes a paused game (organizer)." },
@@ -120,12 +134,64 @@ export class DndCommand implements BotCommand {
       return;
     }
     switch (subcommand) {
+      case "characters":
+        return this.characters(interaction);
+      case "import-character":
+        return this.importCharacter(interaction);
       case "setup":
         return this.setup(interaction, text, responses);
       case "new":
         return this.create(interaction, text, responses);
       default:
         return this.inGame(interaction, subcommand, text, responses);
+    }
+  }
+
+  // My Characters: a private screen for the person who asked, in their own client's language.
+  private async characters(interaction: ChatInputCommandInteraction<"cached">): Promise<void> {
+    const screen = await this.deps.libraryScreens.homeScreen(interaction.user.id, languageOf(interaction));
+    await interaction.editReply({ content: screen.content, components: screen.components });
+  }
+
+  // Reads an uploaded character file as data and makes it a new character in
+  // the asker's library, or says exactly why it cannot.
+  private async importCharacter(interaction: ChatInputCommandInteraction<"cached">): Promise<void> {
+    const words = texts[languageOf(interaction)].campaign.chars;
+    const file = interaction.options.getAttachment("file");
+    if (file === null) {
+      await interaction.editReply({ content: words.importNeedsFile });
+      return;
+    }
+    // Only a file uploaded to Discord, and only a small one.
+    if (file.size > maxImportBytes) {
+      await interaction.editReply({ content: words.importUnreadable.tooLarge });
+      return;
+    }
+    const host = new URL(file.url).hostname;
+    if (host !== "cdn.discordapp.com" && host !== "media.discordapp.net") {
+      await interaction.editReply({ content: words.importBadLink });
+      return;
+    }
+    const fetched = await fetchLinkContent(file.url);
+    if (!fetched.ok) {
+      await interaction.editReply({ content: words.importUnreadable.notJson });
+      return;
+    }
+    const result = await this.deps.library.import(interaction.user.id, fetched.text);
+    const text = texts[languageOf(interaction)];
+    switch (result.kind) {
+      case "ok":
+        await interaction.editReply({ content: words.imported({ name: result.character.name, sheet: this.deps.libraryScreens.sheetLine(result.snapshot, text) }) });
+        return;
+      case "unreadable":
+        await interaction.editReply({ content: words.importUnreadable[result.reason] });
+        return;
+      case "conflicts":
+        await interaction.editReply({ content: [words.importConflicts, ...conflictLines(result.conflicts, text).map((line) => `• ${line}`)].join("\n") });
+        return;
+      case "full":
+        await interaction.editReply({ content: words.full({ max: 20 }) });
+        return;
     }
   }
 

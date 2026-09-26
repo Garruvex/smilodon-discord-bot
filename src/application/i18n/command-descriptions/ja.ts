@@ -176,6 +176,9 @@ export const jaCommandDescriptions = {
   "dnd/rest": "戦闘の合間にパーティを休ませます（主催者）", // Has the party take a rest between fights (organizer).
   "dnd/rest:type": "休憩の長さ", // How long the rest is.
   "dnd/retry": "保留になったラウンドを DM にやり直させます（主催者）", // Asks the DM to try the held round again (organizer).
+  "dnd/characters": "あなたのキャラクターライブラリを開きます（作成・表示・書き出し・削除）", // Opens your character library: build, view, export and delete characters.
+  "dnd/import-character": "書き出したファイルからキャラクターをライブラリに追加します", // Adds a character from an exported file to your library.
+  "dnd/import-character:file": "My Characters から書き出したキャラクターファイル（.json）", // The character file (.json) exported from My Characters.
   "dnd/repair": "このゲームのチャンネルを確認しカードを描き直します（主催者）", // Checks this game's channels and redraws its cards (organizer).
   "dnd/reopen": "終了したゲームを、止まった場所で一時停止したまま再開できる状態にします（主催者）", // Opens a finished game again, paused where it stopped (organizer).
 } as const satisfies CommandDescriptionCatalog;

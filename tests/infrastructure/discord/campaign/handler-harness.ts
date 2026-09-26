@@ -18,13 +18,14 @@ export interface Sent {
 }
 
 // Just enough of a Discord interaction to drive the handler.
-export function fakeInteraction(input: { customId: string; userId: string; messageId?: string; values?: string[]; fields?: Record<string, string>; kind: "button" | "select" | "modal" }): {
+export function fakeInteraction(input: { customId: string; userId: string; messageId?: string; values?: string[]; fields?: Record<string, string>; locale?: string; kind: "button" | "select" | "modal" }): {
   interaction: never;
   sent: Sent[];
 } {
   const sent: Sent[] = [];
   const interaction = {
     customId: input.customId,
+    locale: input.locale ?? "en-US",
     guildId,
     id: `i-${Math.random()}`,
     user: { id: input.userId },
@@ -90,6 +91,7 @@ export async function harness(language: "en" | "zh-TW" = "en"): Promise<Harness>
     rulesets: r.rulesets,
     adventures: r.adventures,
     glossaries,
+    library: r.library,
   });
   const created = await r.service.create({ guildId, organizerId: "u-org", name: "Moonlit Ruins", language, adventureId: starterAdventureId, pacing: { preset: "live" } });
   if (created.kind !== "ok") throw new Error("create");
