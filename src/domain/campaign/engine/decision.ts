@@ -28,6 +28,7 @@ export type DecideResult =
 export class Decision {
   private readonly emitted: CampaignEvent[] = [];
   private readonly requested: EngineRequest[] = [];
+  private turnStarts = 0;
 
   public constructor(
     private current: CampaignState,
@@ -45,6 +46,13 @@ export class Decision {
 
   public request(request: EngineRequest): void {
     this.requested.push(request);
+  }
+
+  // Combat turns started in this decision; the engine uses it to stop a
+  // runaway chain of engine-played turns.
+  public countTurnStart(): number {
+    this.turnStarts += 1;
+    return this.turnStarts;
   }
 
   public result(): DecideResult {

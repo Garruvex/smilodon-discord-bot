@@ -1,7 +1,10 @@
 import type { CampaignCommand } from "../commands/campaign-command.js";
 import { assertNever } from "../core/assert-never.js";
+import type { RollId } from "../core/ids.js";
+import type { RollResult } from "../dice/roll-spec.js";
 import type { CampaignState } from "../state/campaign-state.js";
-import { recordRoll, requestRoll, rollTimerExpired } from "./checks.js";
+import { recordCheckRoll, requestRoll, rollTimerExpired } from "./checks.js";
+import { handleCombatCommand, recordCombatRoll } from "./combat.js";
 import { Decision, type DecideResult, type EngineContext } from "./decision.js";
 import { recordLedgerFact, recordNarration, reportPlannerFailure, retryPlan } from "./dm.js";
 import { continueCampaign, markAway, markReturned } from "./members.js";
@@ -37,7 +40,7 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
     case "rollTimerExpired":
       return rollTimerExpired(decision, command.checkId);
     case "recordRoll":
-      return recordRoll(decision, command.rollId, command.roll);
+      return recordRoll(decision, command.rollId, command.result);
     case "markAway":
       return markAway(decision, command.userId);
     case "markReturned":
@@ -52,7 +55,26 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
       return recordNarration(decision, command.roundNumber, command.text);
     case "recordLedgerFact":
       return recordLedgerFact(decision, command);
+    case "startEncounter":
+    case "combatMove":
+    case "combatEngage":
+    case "combatWithdraw":
+    case "combatAttack":
+    case "combatDash":
+    case "combatDodge":
+    case "endTurn":
+    case "turnTimerExpired":
+      return handleCombatCommand(decision, command);
     default:
       return assertNever(command);
   }
+}
+
+// The roll worker saved a result: route it to the check or combat stage
+// waiting for it. Re-recording a resolved check is a no-op.
+function recordRoll(decision: Decision, rollId: RollId, result: RollResult): Rejection | null {
+  if (decision.ctx.actor.kind !== "system") return { code: "systemOnly" };
+  const check = Object.values(decision.state.checks).find((candidate) => candidate.rollId === rollId);
+  if (check !== undefined) return recordCheckRoll(decision, check, result);
+  return recordCombatRoll(decision, rollId, result);
 }

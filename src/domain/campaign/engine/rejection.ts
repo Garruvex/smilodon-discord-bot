@@ -24,6 +24,21 @@ export type Rejection =
   | { readonly code: "staleNarration" }
   | { readonly code: "emptyNarration" }
   | { readonly code: "invalidLedgerFact"; readonly problem: string }
-  | { readonly code: "canonicalNameLocked"; readonly canonicalName: string };
+  | { readonly code: "canonicalNameLocked"; readonly canonicalName: string }
+  | { readonly code: "unknownRoll" }
+  | { readonly code: "inCombat" }
+  | { readonly code: "notInCombat" }
+  | { readonly code: "roundInProgress" }
+  | { readonly code: "invalidEncounter"; readonly problems: readonly string[] }
+  | { readonly code: "notYourTurn" }
+  | { readonly code: "attackInProgress" }
+  | { readonly code: "noActionLeft" }
+  | { readonly code: "notEnoughMovement"; readonly needed: number; readonly left: number }
+  | { readonly code: "notAdjacent" }
+  | { readonly code: "notEngaged" }
+  | { readonly code: "alreadyEngaged" }
+  | { readonly code: "outOfRange" }
+  | { readonly code: "invalidTarget" }
+  | { readonly code: "unknownWeapon" };
 
 export type RejectionCode = Rejection["code"];

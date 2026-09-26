@@ -16,6 +16,7 @@ export function openRound(decision: Decision): Rejection | null {
     if (member !== undefined && member.availability === "away") return { code: "memberAway" };
   }
   if (state.status === "waitingForPlayers") return { code: "campaignWaiting" };
+  if (state.encounter !== null && state.encounter.status !== "ended") return { code: "inCombat" };
   if (state.round !== null) return { code: "roundAlreadyOpen" };
 
   const participants = participantsFor(state);

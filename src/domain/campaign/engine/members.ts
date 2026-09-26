@@ -3,6 +3,7 @@ import { presentMembers } from "../state/campaign-state.js";
 import { deadlineAfter, type Decision } from "./decision.js";
 import { rollTimerId } from "./ids.js";
 import type { Rejection } from "./rejection.js";
+import { resumeCombat } from "./combat.js";
 import { closeIfEveryoneResponded, enterWaiting, finishRoundIfResolved, openRound } from "./rounds.js";
 
 // A player marks themselves away, or the organizer marks them. An open
@@ -66,6 +67,11 @@ export function continueCampaign(decision: Decision): Rejection | null {
     }
   }
 
+  const encounter = decision.state.encounter;
+  if (encounter !== null && encounter.status !== "ended") {
+    resumeCombat(decision);
+    return null;
+  }
   const round = decision.state.round;
   if (round === null) return openRound(decision);
   if (round.status === "planning") decision.request({ kind: "plan", roundNumber: round.number });

@@ -1,4 +1,5 @@
 import type { CharacterId, UserId } from "../core/ids.js";
+import type { ContentId } from "../rules/content-id.js";
 import type { Ability } from "../rules/effects.js";
 
 // SRD 5.1 skills and the ability each one uses.
@@ -43,6 +44,12 @@ export interface CharacterSheet {
   readonly proficiencyBonus: number;
   readonly skills: Readonly<Partial<Record<Skill, SkillProficiency>>>;
   readonly savingThrows: readonly Ability[];
+  // Combat: armor and shield are already folded into armorClass. Heroes are
+  // proficient with the weapons they carry.
+  readonly armorClass: number;
+  readonly maxHp: number;
+  readonly speed: number;
+  readonly weapons: readonly ContentId<"item">[];
 }
 
 // An ability check, optionally using a skill.

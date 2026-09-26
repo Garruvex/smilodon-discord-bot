@@ -235,7 +235,7 @@ describe("RollWorker", () => {
     expect(random.calls).toBe(1);
 
     const check = (await load(harness.store))?.state.checks["r1:c-mira"];
-    expect(check?.result?.roll).toEqual(saved?.roll);
+    expect(saved?.result).toEqual({ kind: "d20Test", roll: check?.result?.roll });
   });
 });
 

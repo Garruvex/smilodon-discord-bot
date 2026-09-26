@@ -37,6 +37,10 @@ export const mira: CharacterSheet = {
   proficiencyBonus: 2,
   skills: { stealth: "expertise", perception: "proficient" },
   savingThrows: ["dex", "int"],
+  armorClass: 14,
+  maxHp: 9,
+  speed: 30,
+  weapons: ["item:shortsword", "item:shortbow"],
 };
 
 // Level-1 Fighter: STR 16 (+3), Athletics proficient, so +5.
@@ -48,9 +52,13 @@ export const borin: CharacterSheet = {
   proficiencyBonus: 2,
   skills: { athletics: "proficient" },
   savingThrows: ["str", "con"],
+  armorClass: 18,
+  maxHp: 12,
+  speed: 30,
+  weapons: ["item:longsword"],
 };
 
-export const livePacing: Pacing = { roundSeconds: 300, rollSeconds: 120, awayAfterMisses: 2 };
+export const livePacing: Pacing = { roundSeconds: 300, rollSeconds: 120, turnSeconds: 180, awayAfterMisses: 2 };
 
 export function newCampaign(pacing: Pacing = livePacing): CampaignState {
   return {
@@ -70,6 +78,8 @@ export function newCampaign(pacing: Pacing = livePacing): CampaignState {
     lastNarratedRound: 0,
     checks: {},
     ledger: {},
+    encounter: null,
+    heroHp: {},
   };
 }
 

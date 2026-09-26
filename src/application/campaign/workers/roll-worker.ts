@@ -1,4 +1,4 @@
-import { rollD20Test } from "../../../domain/campaign/dice/d20-test.js";
+import { performRoll } from "../../../domain/campaign/dice/roll-spec.js";
 import type { RandomSource } from "../../../domain/campaign/dice/random-source.js";
 import type { CampaignCommandBus } from "../campaign-command-bus.js";
 import type { CampaignUnitOfWork, OutboxItem, SavedRoll } from "../ports/campaign-store.js";
@@ -47,13 +47,13 @@ export class RollWorker {
       return tx.saveRoll({
         key: item.key,
         rollId: request.rollId,
-        roll: rollD20Test(request.spec, this.random),
+        result: performRoll(request.spec, this.random),
         rolledAt: this.clock.now(),
       });
     });
     const outcome = await this.bus.execute(
       item.key,
-      { kind: "recordRoll", rollId: request.rollId, roll: saved.roll },
+      { kind: "recordRoll", rollId: request.rollId, result: saved.result },
       { commandId: `record-roll:${request.rollId}`, actor: { kind: "system" } },
     );
     if (outcome.kind === "rejected") {

@@ -16,5 +16,16 @@ export const zhTwSrd51Glossary: Glossary = {
     "spell:cure-wounds": "治療傷勢",
     "spell:healing-word": "治療真言",
     "spell:bless": "祝福術",
+    // Weapon and monster names are drafts until the terminology survey covers them.
+    "item:longsword": "長劍",
+    "item:shortsword": "短劍",
+    "item:scimitar": "彎刀",
+    "item:mace": "硬頭錘",
+    "item:morningstar": "釘頭錘",
+    "item:shortbow": "短弓",
+    "item:bite": "啃咬",
+    "monster:goblin": "哥布林",
+    "monster:wolf": "狼",
+    "monster:bugbear": "熊地精",
   },
 };

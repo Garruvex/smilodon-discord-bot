@@ -62,6 +62,10 @@ heroes:
     proficiencyBonus: 2
     skills: { athletics: proficient, perception: proficient, intimidation: proficient, survival: proficient }
     savingThrows: [str, con]
+    armorClass: 18 # chain mail and shield
+    maxHp: 12
+    speed: 30
+    weapons: [item:longsword]
   - id: c-mira
     name: 米拉
     class: rogue
@@ -70,6 +74,10 @@ heroes:
     skills:
       { stealth: expertise, perception: expertise, acrobatics: proficient, deception: proficient, investigation: proficient, persuasion: proficient }
     savingThrows: [dex, int]
+    armorClass: 14 # leather armor
+    maxHp: 9
+    speed: 30
+    weapons: [item:shortsword, item:shortbow]
   - id: c-elspeth
     name: 艾絲佩絲
     class: cleric
@@ -77,3 +85,7 @@ heroes:
     proficiencyBonus: 2
     skills: { insight: proficient, medicine: proficient, religion: proficient, persuasion: proficient }
     savingThrows: [wis, cha]
+    armorClass: 18 # chain mail and shield (Life Domain heavy armor)
+    maxHp: 9
+    speed: 30
+    weapons: [item:mace]

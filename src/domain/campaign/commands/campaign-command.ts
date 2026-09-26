@@ -1,7 +1,8 @@
 import type { CheckTest } from "../character/character-sheet.js";
 import type { CharacterId, CheckId, RollId, UserId } from "../core/ids.js";
-import type { D20TestRoll } from "../dice/d20-test.js";
+import type { RollResult } from "../dice/roll-spec.js";
 import type { LedgerVisibility } from "../ledger/ledger.js";
+import type { ContentId } from "../rules/content-id.js";
 import type { DcTier, RollModeReason } from "../rules/difficulty.js";
 
 // Who issued a command. Users are checked against saved campaign state
@@ -20,7 +21,7 @@ export type CampaignCommand =
   | { readonly kind: "applyRoundPlan"; readonly proposal: RoundPlanProposal }
   | { readonly kind: "requestRoll"; readonly checkId: CheckId }
   | { readonly kind: "rollTimerExpired"; readonly checkId: CheckId }
-  | { readonly kind: "recordRoll"; readonly rollId: RollId; readonly roll: D20TestRoll }
+  | { readonly kind: "recordRoll"; readonly rollId: RollId; readonly result: RollResult }
   | { readonly kind: "markAway"; readonly userId: UserId }
   | { readonly kind: "markReturned"; readonly userId: UserId }
   // Resumes a campaign that was waiting for players.
@@ -30,7 +31,37 @@ export type CampaignCommand =
   // The organizer asks the Planner to try the held round again.
   | { readonly kind: "retryPlan" }
   | { readonly kind: "recordNarration"; readonly roundNumber: number; readonly text: string }
-  | RecordLedgerFactCommand;
+  | RecordLedgerFactCommand
+  | CombatCommand;
+
+// Combat. Hero commands name the acting combatant (the hero's character ID)
+// so a stale button for another turn is refused rather than misapplied.
+export type CombatCommand =
+  | { readonly kind: "startEncounter"; readonly spec: EncounterSpec }
+  | { readonly kind: "combatMove"; readonly combatantId: string; readonly zoneId: string }
+  | { readonly kind: "combatEngage"; readonly combatantId: string; readonly targetId: string }
+  | { readonly kind: "combatWithdraw"; readonly combatantId: string }
+  | { readonly kind: "combatAttack"; readonly combatantId: string; readonly targetId: string; readonly weapon: ContentId<"item"> }
+  | { readonly kind: "combatDash"; readonly combatantId: string }
+  | { readonly kind: "combatDodge"; readonly combatantId: string }
+  | { readonly kind: "endTurn"; readonly combatantId: string }
+  | { readonly kind: "turnTimerExpired"; readonly encounterId: string; readonly turnNumber: number };
+
+export interface EncounterSpec {
+  readonly id: string;
+  readonly zones: readonly { readonly id: string; readonly name: string }[];
+  readonly edges: readonly { readonly from: string; readonly to: string; readonly feet: number }[];
+  readonly partyZoneId: string;
+  readonly monsters: readonly EncounterMonster[];
+}
+
+export interface EncounterMonster {
+  readonly monsterId: ContentId<"monster">;
+  readonly zoneId: string;
+  // A named NPC this monster plays, e.g. npc:skarn.
+  readonly npcId: string | null;
+  readonly fleeBelowHpFraction: number | null;
+}
 
 export interface RecordLedgerFactCommand {
   readonly kind: "recordLedgerFact";

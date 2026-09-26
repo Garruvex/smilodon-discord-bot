@@ -1,6 +1,6 @@
 import type { Actor, CampaignCommandKind } from "../../../domain/campaign/commands/campaign-command.js";
 import type { CampaignId, Instant, RollId, TimerId } from "../../../domain/campaign/core/ids.js";
-import type { D20TestRoll } from "../../../domain/campaign/dice/d20-test.js";
+import type { RollResult } from "../../../domain/campaign/dice/roll-spec.js";
 import type { EngineRequest, TimerSpec } from "../../../domain/campaign/engine/engine-request.js";
 import type { Rejection } from "../../../domain/campaign/engine/rejection.js";
 import type { CampaignEvent } from "../../../domain/campaign/events/campaign-event.js";
@@ -74,7 +74,7 @@ export interface TimerRecord {
 export interface SavedRoll {
   readonly key: CampaignKey;
   readonly rollId: RollId;
-  readonly roll: D20TestRoll;
+  readonly result: RollResult;
   readonly rolledAt: Instant;
 }
 

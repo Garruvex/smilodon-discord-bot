@@ -1,7 +1,8 @@
 import { assertNever } from "../core/assert-never.js";
 import type { Capability } from "./capabilities.js";
 import type { ContentId, ContentKind } from "./content-id.js";
-import type { Effect, ResolutionPlan } from "./effects.js";
+import type { DiceExpression } from "../dice/dice-expression.js";
+import type { Ability, DamageType, Effect, ResolutionPlan } from "./effects.js";
 
 interface DefinitionBase<K extends ContentKind> {
   readonly id: ContentId<K>;
@@ -48,7 +49,55 @@ export interface SpellDefinition extends DefinitionBase<"spell"> {
   plan(context: SpellCastContext): ResolutionPlan;
 }
 
-export type ContentDefinition = ConditionDefinition | SpellDefinition;
+// Melee weapons reach 5 feet (no reach weapons in the milestone 0 catalog);
+// ranged weapons have a normal and a long range in feet.
+export type WeaponRange = { readonly kind: "melee" } | { readonly kind: "ranged"; readonly normal: number; readonly long: number };
+
+export interface WeaponDefinition extends DefinitionBase<"item"> {
+  readonly itemType: "weapon";
+  readonly damage: DiceExpression;
+  readonly damageType: DamageType;
+  readonly range: WeaponRange;
+  // Finesse: the wielder may use Dexterity instead of Strength.
+  readonly finesse: boolean;
+  // Natural weapons (bite, claws) belong to monsters and are never carried.
+  readonly natural: boolean;
+}
+
+export type ItemDefinition = WeaponDefinition;
+
+// How an ordinary monster fights without a model call (plan §6, NPCs and
+// monsters in combat). brute: close in and hit the nearest hero.
+// skirmisher: shoot from range when not engaged, otherwise fight in melee.
+export type MonsterTactic = "brute" | "skirmisher";
+
+// A stat-block attack: to-hit and damage are fixed by the stat block and
+// already include the monster's modifiers.
+export interface MonsterAttack {
+  readonly weapon: ContentId<"item">;
+  readonly toHit: number;
+  readonly damage: DiceExpression;
+}
+
+// Rules a creature has, whatever it is. A closed union the combat engine
+// applies with an exhaustive switch, so heroes, monsters, and NPCs share
+// one implementation of each trait.
+export type CreatureTrait =
+  // Advantage on attacks while an ally is engaged with the target.
+  { readonly kind: "packTactics" };
+
+export interface MonsterDefinition extends DefinitionBase<"monster"> {
+  readonly armorClass: number;
+  // The stat block's average hit points.
+  readonly maxHp: number;
+  readonly speed: number;
+  readonly abilityScores: Readonly<Record<Ability, number>>;
+  readonly attacks: readonly MonsterAttack[];
+  readonly tactic: MonsterTactic;
+  readonly traits: readonly CreatureTrait[];
+}
+
+export type ContentDefinition = ConditionDefinition | SpellDefinition | ItemDefinition | MonsterDefinition;
 
 export type DefinitionOf<K extends ContentKind> = Extract<ContentDefinition, { kind: K }>;
 
@@ -58,6 +107,14 @@ export function defineCondition(definition: Omit<ConditionDefinition, "kind">): 
 
 export function defineSpell(definition: Omit<SpellDefinition, "kind">): SpellDefinition {
   return { ...definition, kind: "spell" };
+}
+
+export function defineWeapon(definition: Omit<WeaponDefinition, "kind" | "itemType">): WeaponDefinition {
+  return { ...definition, kind: "item", itemType: "weapon" };
+}
+
+export function defineMonster(definition: Omit<MonsterDefinition, "kind">): MonsterDefinition {
+  return { ...definition, kind: "monster" };
 }
 
 export const maxSpellLevel = 9;
@@ -91,6 +148,11 @@ export function requiredCapabilities(definition: ContentDefinition): ReadonlySet
         for (const effect of [...plan.onLand, ...plan.onAvoid]) required.add(capabilityFor(effect));
       }
       break;
+    case "item":
+    case "monster":
+      required.add("attack-rolls");
+      required.add("damage");
+      break;
     default:
       assertNever(definition);
   }
@@ -107,6 +169,10 @@ export function referencedContent(definition: ContentDefinition): readonly Conte
           effect.kind === "applyCondition" ? [effect.condition] : [],
         ),
       );
+    case "item":
+      return [];
+    case "monster":
+      return definition.attacks.map((attack) => attack.weapon);
     default:
       return assertNever(definition);
   }

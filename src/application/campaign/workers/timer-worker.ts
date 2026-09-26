@@ -43,6 +43,8 @@ function commandFor(timer: TimerSpec): CampaignCommand {
       return { kind: "roundTimerExpired", roundNumber: timer.roundNumber };
     case "roll":
       return { kind: "rollTimerExpired", checkId: timer.checkId };
+    case "combatTurn":
+      return { kind: "turnTimerExpired", encounterId: timer.encounterId, turnNumber: timer.turnNumber };
     default:
       return assertNever(timer);
   }

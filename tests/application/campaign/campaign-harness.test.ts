@@ -66,6 +66,10 @@ heroes:
     proficiencyBonus: 2
     skills: { flying: proficient }
     savingThrows: [str]
+    armorClass: 10
+    maxHp: 8
+    speed: 30
+    weapons: [item:mace]
 `;
     try {
       parseAdventureDocument(source);

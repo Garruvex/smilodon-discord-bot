@@ -1,6 +1,8 @@
 import { assertNever } from "../core/assert-never.js";
 import type { CharacterId, UserId } from "../core/ids.js";
 import type { CampaignState, CheckState, MemberState, RoundState, Submission } from "../state/campaign-state.js";
+import type { CombatEvent } from "../combat/combat-events.js";
+import { evolveEncounter } from "../combat/evolve-combat.js";
 import type { CampaignEvent } from "./campaign-event.js";
 
 // Applies one event. Pure: never validates and never fails. decide() is the
@@ -95,9 +97,41 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
         active,
       );
     }
+    case "encounterStarted":
+    case "initiativeRolled":
+    case "turnOrderSet":
+    case "turnStarted":
+    case "combatantMoved":
+    case "combatantEngaged":
+    case "combatantWithdrew":
+    case "actionTaken":
+    case "attackDeclared":
+    case "attackRolled":
+    case "damageRollRequested":
+    case "damageRolled":
+    case "combatantHpChanged":
+    case "attackFinished":
+    case "deathSaveRequested":
+    case "deathSaveRolled":
+    case "combatantFled":
+    case "turnEnded":
+    case "turnDeferred":
+    case "encounterEnded":
+      return evolveCombat(state, event);
     default:
       return assertNever(event);
   }
+}
+
+// A finished fight writes the heroes' HP back to the campaign.
+function evolveCombat(state: CampaignState, event: CombatEvent): CampaignState {
+  const encounter = evolveEncounter(state.encounter, event);
+  if (event.kind !== "encounterEnded" || encounter === null) return { ...state, encounter };
+  const heroHp: Record<CharacterId, number> = { ...state.heroHp };
+  for (const combatant of Object.values(encounter.combatants)) {
+    if (combatant.source.kind === "hero") heroHp[combatant.source.characterId] = combatant.hp;
+  }
+  return { ...state, encounter, heroHp };
 }
 
 export function replay(initial: CampaignState, events: readonly CampaignEvent[]): CampaignState {

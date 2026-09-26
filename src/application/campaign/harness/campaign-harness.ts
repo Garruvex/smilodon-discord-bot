@@ -70,7 +70,7 @@ export interface HarnessRun {
   readonly stoppedBecause: "roundLimit" | "waitingForPlayers" | "stalled";
 }
 
-const harnessPacing: Pacing = { roundSeconds: 300, rollSeconds: 120, awayAfterMisses: 2 };
+const harnessPacing: Pacing = { roundSeconds: 300, rollSeconds: 120, turnSeconds: 180, awayAfterMisses: 2 };
 const campaignKey: CampaignKey = { guildId: "harness", campaignId: "harness-campaign" };
 const system: Actor = { kind: "system" };
 
@@ -246,6 +246,8 @@ function initialState(options: HarnessOptions, pacing: Pacing): CampaignState {
     lastNarratedRound: 0,
     checks: {},
     ledger: {},
+    encounter: null,
+    heroHp: {},
   };
 }
 

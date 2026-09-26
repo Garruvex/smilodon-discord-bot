@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import type { AdventureBible, NpcId, SceneId } from "../../../domain/campaign/adventure/adventure-bible.js";
 import { isSkill, type CharacterSheet, type Skill, type SkillProficiency } from "../../../domain/campaign/character/character-sheet.js";
+import type { ContentId } from "../../../domain/campaign/rules/content-id.js";
 import { abilities } from "../../../domain/campaign/rules/effects.js";
 
 // A ready-made hero shipped with an adventure. The owner is assigned when a
@@ -45,6 +46,10 @@ const documentSchema = z
             proficiencyBonus: z.number().int().min(2).max(6),
             skills: z.record(z.string(), z.enum(["proficient", "expertise"])),
             savingThrows: z.array(z.enum(abilities)),
+            armorClass: z.number().int().min(5).max(30),
+            maxHp: z.number().int().min(1),
+            speed: z.number().int().min(0),
+            weapons: z.array(z.string().regex(/^item:[a-z0-9-]+$/) as unknown as z.ZodType<ContentId<"item">>).min(1),
           })
           .strict(),
       )

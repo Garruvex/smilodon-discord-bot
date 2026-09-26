@@ -248,14 +248,14 @@ describe("round plans and checks", () => {
     expect(clicked.events).toEqual([{ kind: "checkRollStarted", checkId: "r1:c-mira", rollId: "r1:c-mira:roll", timedOut: false }]);
     expect(clicked.requests).toEqual([
       { kind: "cancelTimer", timerId: "roll:r1:c-mira" },
-      { kind: "roll", rollId: "r1:c-mira:roll", spec: { mode: "advantage", modifier: 7, bonusDice: [] } },
+      { kind: "roll", rollId: "r1:c-mira:roll", spec: { kind: "d20Test", spec: { mode: "advantage", modifier: 7, bonusDice: [] } } },
       { kind: "deliver", delivery: { kind: "rollStarted", checkId: "r1:c-mira" } },
     ]);
     expect(reject(clicked.state, alex, { kind: "requestRoll", checkId: "r1:c-mira" })).toEqual({ code: "checkNotPending" });
 
     // Advantage kept the 8; the 3 alone would have failed (3 + 7 = 10 < 15).
     const roll = d20Roll("advantage", [3, 8], 7);
-    const recorded = run(clicked.state, system, { kind: "recordRoll", rollId: "r1:c-mira:roll", roll });
+    const recorded = run(clicked.state, system, { kind: "recordRoll", rollId: "r1:c-mira:roll", result: { kind: "d20Test", roll } });
     expect(recorded.events).toEqual([
       {
         kind: "checkResolved",
@@ -270,16 +270,16 @@ describe("round plans and checks", () => {
     ]);
 
     // A redelivered roll job changes nothing.
-    const resolvedCheck = run(clicked.state, system, { kind: "recordRoll", rollId: "r1:c-mira:roll", roll }).state;
-    expect(run(resolvedCheck, system, { kind: "recordRoll", rollId: "r1:c-mira:roll", roll }).events).toEqual([]);
+    const resolvedCheck = run(clicked.state, system, { kind: "recordRoll", rollId: "r1:c-mira:roll", result: { kind: "d20Test", roll } }).state;
+    expect(run(resolvedCheck, system, { kind: "recordRoll", rollId: "r1:c-mira:roll", result: { kind: "d20Test", roll } }).events).toEqual([]);
   });
 
   it("refuses a recorded roll that does not match the saved check", () => {
     const clicked = run(plannedRound(), alex, { kind: "requestRoll", checkId: "r1:c-mira" }).state;
-    expect(reject(clicked, system, { kind: "recordRoll", rollId: "r1:c-mira:roll", roll: d20Roll("normal", [12], 7) })).toEqual({
+    expect(reject(clicked, system, { kind: "recordRoll", rollId: "r1:c-mira:roll", result: { kind: "d20Test", roll: d20Roll("normal", [12], 7) } })).toEqual({
       code: "rollMismatch",
     });
-    expect(reject(clicked, alex, { kind: "recordRoll", rollId: "r1:c-mira:roll", roll: d20Roll("advantage", [3, 8], 7) })).toEqual({
+    expect(reject(clicked, alex, { kind: "recordRoll", rollId: "r1:c-mira:roll", result: { kind: "d20Test", roll: d20Roll("advantage", [3, 8], 7) } })).toEqual({
       code: "systemOnly",
     });
   });
@@ -296,11 +296,11 @@ describe("round plans and checks", () => {
   it("applies the natural-roll house rule to check outcomes", () => {
     const clicked = run(plannedRound(), alex, { kind: "requestRoll", checkId: "r1:c-mira" }).state;
     const roll = d20Roll("advantage", [1, 1], 7);
-    const rulesAsWritten = run(clicked, system, { kind: "recordRoll", rollId: "r1:c-mira:roll", roll });
+    const rulesAsWritten = run(clicked, system, { kind: "recordRoll", rollId: "r1:c-mira:roll", result: { kind: "d20Test", roll } });
     expect(rulesAsWritten.events[0]).toMatchObject({ result: { success: false, moments: { headline: { kind: "natural1" } } } });
 
     const high = d20Roll("advantage", [20, 2], 7);
-    const houseRule = run(clicked, system, { kind: "recordRoll", rollId: "r1:c-mira:roll", roll: high }, {
+    const houseRule = run(clicked, system, { kind: "recordRoll", rollId: "r1:c-mira:roll", result: { kind: "d20Test", roll: high } }, {
       rules: ruleset({ "natural-rolls-on-checks": "automatic" }),
     });
     expect(houseRule.events[0]).toMatchObject({ result: { success: true, moments: { headline: { kind: "natural20" } } } });
