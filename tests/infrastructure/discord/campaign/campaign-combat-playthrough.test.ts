@@ -30,7 +30,7 @@ function menuOf(sent: readonly Sent[]): Menu {
   for (const row of payload?.components ?? []) {
     for (const component of row.toJSON().components) {
       if (Array.isArray(component.options)) selects.push({ id: String(component.custom_id), options: component.options as { value: string; label: string }[] });
-      else buttons.push({ id: String(component.custom_id ?? ""), label: String(component.label) });
+      else buttons.push({ id: typeof component.custom_id === "string" ? component.custom_id : "", label: String(component.label) });
     }
   }
   return { selects, buttons, content: payload?.content ?? "" };
