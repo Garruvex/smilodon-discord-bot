@@ -16,13 +16,14 @@ import {
 } from "../../../application/campaign/ports/campaign-store.js";
 import type { CampaignLifecycle, CampaignRecord, GuildCampaignSettings, StoredRecord } from "../../../application/campaign/ports/campaign-record.js";
 import type { LibraryCharacter, LibrarySnapshot } from "../../../application/campaign/library/library-types.js";
+import type { StoredAdventure } from "../../../application/campaign/adventures/stored-adventure.js";
 import type { TimerSpec } from "../../../domain/campaign/engine/engine-request.js";
 import type { CampaignState } from "../../../domain/campaign/state/campaign-state.js";
 
 // Bumped when a table changes shape. Milestone 0 keeps the campaign tables
 // self-contained (JSON payloads for events, state, and requests); they move
 // under the Drizzle migrations when the Discord milestone adds its own tables.
-const schemaVersion = 4;
+const schemaVersion = 5;
 
 const schema = `
 CREATE TABLE IF NOT EXISTS campaign_meta (version INTEGER NOT NULL);
@@ -65,6 +66,10 @@ CREATE TABLE IF NOT EXISTS library_snapshots (
   UNIQUE (character_id, source_key)
 );
 CREATE INDEX IF NOT EXISTS library_snapshots_by_character ON library_snapshots (character_id, revision);
+CREATE TABLE IF NOT EXISTS campaign_adventures (
+  entry_key TEXT PRIMARY KEY, guild_id TEXT NOT NULL, status TEXT NOT NULL, adventure TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS campaign_adventures_by_guild ON campaign_adventures (guild_id, status);
 CREATE TABLE IF NOT EXISTS campaign_rolls (
   guild_id TEXT NOT NULL, campaign_id TEXT NOT NULL, roll_id TEXT NOT NULL, result TEXT NOT NULL, rolled_at INTEGER NOT NULL,
   PRIMARY KEY (guild_id, campaign_id, roll_id)
@@ -86,7 +91,7 @@ export class SqliteCampaignStore implements CampaignUnitOfWork {
     const row = database.prepare("SELECT version FROM campaign_meta").get() as { version: number } | undefined;
     if (row === undefined) database.prepare("INSERT INTO campaign_meta (version) VALUES (?)").run(schemaVersion);
     // Version 1 only lacked the record table, which the schema above just added.
-    else if (row.version === 1 || row.version === 2 || row.version === 3) {
+    else if (row.version >= 1 && row.version < schemaVersion) {
       // Version 2 lacked the outbox's retry time.
       const columns = database.prepare("PRAGMA table_info(campaign_outbox)").all() as { name: string }[];
       if (!columns.some((column) => column.name === "not_before")) database.exec("ALTER TABLE campaign_outbox ADD COLUMN not_before INTEGER NOT NULL DEFAULT 0");
@@ -353,6 +358,32 @@ class SqliteTransaction implements CampaignTransaction {
   public findLibrarySnapshotBySourceKey(characterId: string, sourceKey: string): Promise<LibrarySnapshot | undefined> {
     const row = this.db.prepare("SELECT snapshot FROM library_snapshots WHERE character_id = ? AND source_key = ?").get(characterId, sourceKey) as Row | undefined;
     return Promise.resolve(row === undefined ? undefined : parse<LibrarySnapshot>(row.snapshot));
+  }
+
+  public saveAdventure(adventure: StoredAdventure): Promise<void> {
+    this.db
+      .prepare("INSERT INTO campaign_adventures (entry_key, guild_id, status, adventure) VALUES (?, ?, ?, ?) ON CONFLICT (entry_key) DO UPDATE SET status = excluded.status, adventure = excluded.adventure")
+      .run(adventure.key, adventure.guildId, adventure.status, json(adventure));
+    return Promise.resolve();
+  }
+
+  public loadAdventure(key: string): Promise<StoredAdventure | undefined> {
+    const row = this.db.prepare("SELECT adventure FROM campaign_adventures WHERE entry_key = ?").get(key) as Row | undefined;
+    return Promise.resolve(row === undefined ? undefined : parse<StoredAdventure>(row.adventure));
+  }
+
+  public listAdventures(guildId: string, status?: StoredAdventure["status"]): Promise<readonly StoredAdventure[]> {
+    const rows = (
+      status === undefined
+        ? this.db.prepare("SELECT adventure FROM campaign_adventures WHERE guild_id = ? ORDER BY rowid").all(guildId)
+        : this.db.prepare("SELECT adventure FROM campaign_adventures WHERE guild_id = ? AND status = ? ORDER BY rowid").all(guildId, status)
+    ) as Row[];
+    return Promise.resolve(rows.map((row) => parse<StoredAdventure>(row.adventure)));
+  }
+
+  public listAdventuresByStatus(status: StoredAdventure["status"]): Promise<readonly StoredAdventure[]> {
+    const rows = this.db.prepare("SELECT adventure FROM campaign_adventures WHERE status = ? ORDER BY rowid").all(status) as Row[];
+    return Promise.resolve(rows.map((row) => parse<StoredAdventure>(row.adventure)));
   }
 
   public findRoll(key: CampaignKey, rollId: string): Promise<SavedRoll | undefined> {

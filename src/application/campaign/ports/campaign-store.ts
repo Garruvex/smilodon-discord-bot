@@ -1,5 +1,6 @@
 import type { CampaignLifecycle, CampaignRecord, GuildCampaignSettings, StoredRecord } from "./campaign-record.js";
 import type { LibraryCharacter, LibrarySnapshot } from "../library/library-types.js";
+import type { StoredAdventure } from "../adventures/stored-adventure.js";
 import type { Actor, CampaignCommandKind } from "../../../domain/campaign/commands/campaign-command.js";
 import type { CampaignId, Instant, RollId, TimerId } from "../../../domain/campaign/core/ids.js";
 import type { RollResult } from "../../../domain/campaign/dice/roll-spec.js";
@@ -140,6 +141,14 @@ export interface CampaignTransaction {
   // In revision order.
   listLibrarySnapshots(characterId: string): Promise<readonly LibrarySnapshot[]>;
   findLibrarySnapshotBySourceKey(characterId: string, sourceKey: string): Promise<LibrarySnapshot | undefined>;
+
+  // Uploaded and authored adventures, from pending review to approved.
+  saveAdventure(adventure: StoredAdventure): Promise<void>;
+  loadAdventure(key: string): Promise<StoredAdventure | undefined>;
+  // A server's own, oldest first, optionally of one status.
+  listAdventures(guildId: string, status?: StoredAdventure["status"]): Promise<readonly StoredAdventure[]>;
+  // Every server's approved ones: what startup loads into the library.
+  listAdventuresByStatus(status: StoredAdventure["status"]): Promise<readonly StoredAdventure[]>;
 
   findRoll(key: CampaignKey, rollId: RollId): Promise<SavedRoll | undefined>;
   // Written once; saving an existing roll ID keeps the first result.

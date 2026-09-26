@@ -344,7 +344,7 @@ describe("sqlite campaign store on disk", () => {
     const upgraded = new SqliteCampaignStore(raw);
     expect(await upgraded.transaction((tx) => tx.loadCampaign(key))).toBeDefined();
     await upgraded.transaction((tx) => tx.createRecord(record()));
-    expect(raw.prepare("SELECT version FROM campaign_meta").get()).toEqual({ version: 4 });
+    expect(raw.prepare("SELECT version FROM campaign_meta").get()).toEqual({ version: 5 });
   });
 
   it("adds the outbox retry time to a version 2 database", async () => {
@@ -356,7 +356,7 @@ describe("sqlite campaign store on disk", () => {
     raw.prepare("UPDATE campaign_meta SET version = 2").run();
     const upgraded = new SqliteCampaignStore(raw);
     expect(await upgraded.transaction((tx) => tx.pendingOutbox("narrate"))).toMatchObject([{ id: "job-1", notBefore: 0 }]);
-    expect(raw.prepare("SELECT version FROM campaign_meta").get()).toEqual({ version: 4 });
+    expect(raw.prepare("SELECT version FROM campaign_meta").get()).toEqual({ version: 5 });
     // The library tables came with the upgrade.
     await upgraded.transaction((tx) => tx.saveLibraryCharacter({ id: "lc-1", ownerUserId: "u-1", name: "A", className: "fighter", createdAt: 1 }));
     expect(await upgraded.transaction((tx) => tx.loadLibraryCharacter("lc-1"))).toBeDefined();

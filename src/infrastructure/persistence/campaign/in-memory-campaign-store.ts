@@ -14,6 +14,7 @@ import {
 } from "../../../application/campaign/ports/campaign-store.js";
 import type { CampaignLifecycle, CampaignRecord, GuildCampaignSettings, StoredRecord } from "../../../application/campaign/ports/campaign-record.js";
 import type { LibraryCharacter, LibrarySnapshot } from "../../../application/campaign/library/library-types.js";
+import type { StoredAdventure } from "../../../application/campaign/adventures/stored-adventure.js";
 import type { CampaignState } from "../../../domain/campaign/state/campaign-state.js";
 import type { TimerSpec } from "../../../domain/campaign/engine/engine-request.js";
 
@@ -28,6 +29,7 @@ interface CampaignData {
   rolls: Map<string, SavedRoll>;
   libraryCharacters: Map<string, LibraryCharacter>;
   librarySnapshots: Map<string, LibrarySnapshot>;
+  adventures: Map<string, StoredAdventure>;
 }
 
 // The campaign store for the headless harness and application tests. Each
@@ -45,6 +47,7 @@ export class InMemoryCampaignStore implements CampaignUnitOfWork {
     rolls: new Map(),
     libraryCharacters: new Map(),
     librarySnapshots: new Map(),
+    adventures: new Map(),
   };
   private readonly lock = new KeyedSerialQueue();
 
@@ -251,6 +254,23 @@ class InMemoryTransaction implements CampaignTransaction {
 
   public findLibrarySnapshotBySourceKey(characterId: string, sourceKey: string): Promise<LibrarySnapshot | undefined> {
     return Promise.resolve([...this.data.librarySnapshots.values()].find((snapshot) => snapshot.characterId === characterId && snapshot.sourceKey === sourceKey));
+  }
+
+  public saveAdventure(adventure: StoredAdventure): Promise<void> {
+    this.data.adventures.set(adventure.key, adventure);
+    return Promise.resolve();
+  }
+
+  public loadAdventure(key: string): Promise<StoredAdventure | undefined> {
+    return Promise.resolve(this.data.adventures.get(key));
+  }
+
+  public listAdventures(guildId: string, status?: StoredAdventure["status"]): Promise<readonly StoredAdventure[]> {
+    return Promise.resolve([...this.data.adventures.values()].filter((adventure) => adventure.guildId === guildId && (status === undefined || adventure.status === status)));
+  }
+
+  public listAdventuresByStatus(status: StoredAdventure["status"]): Promise<readonly StoredAdventure[]> {
+    return Promise.resolve([...this.data.adventures.values()].filter((adventure) => adventure.status === status));
   }
 
   public findRoll(key: CampaignKey, rollId: string): Promise<SavedRoll | undefined> {
