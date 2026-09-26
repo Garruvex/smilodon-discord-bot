@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { EncounterSpec, PlannedEffect, RoundPlanProposal } from "../../../src/domain/campaign/commands/campaign-command.js";
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
 import { alex, d20Roll, jamie, kinds, newCampaign, organizer, reject, run, system } from "./campaign-fixtures.js";
+import { replay } from "../../../src/domain/campaign/events/evolve.js";
 import { Fight, skirmish } from "./combat-fixtures.js";
 
 const ambush: EncounterSpec = { ...skirmish, id: "encounter:gate-ambush" };
@@ -151,5 +152,23 @@ describe("combat narration", () => {
     expect(fight.events.at(-2)).toMatchObject({ final: true });
     // The unnarrated round 1 flourish arriving late is dropped.
     expect(fight.reject(system, { kind: "recordCombatNarration", encounterId: "enc-1", round: 1, text: "Late." })).toEqual({ code: "staleNarration" });
+  });
+});
+
+describe("after a fight", () => {
+  it("brings heroes at 0 HP back with 1 HP after a victory, but not after a defeat", () => {
+    const won = new Fight().rolls([20, 15, 5, 4]).run(organizer, { kind: "startEncounter", spec: skirmish });
+    const fought = won.encounter;
+    const downed = {
+      ...fought,
+      combatants: Object.fromEntries(
+        Object.entries(fought.combatants).map(([id, combatant]) => [id, id === "c-borin" ? { ...combatant, hp: 0, condition: "unconscious" as const } : combatant]),
+      ),
+    };
+    const ended = (outcome: "victory" | "defeat"): CampaignState =>
+      replay({ ...won.state, encounter: downed }, [{ kind: "encounterEnded", outcome }]);
+    expect(ended("victory").heroStatus["c-borin"]?.hp).toBe(1);
+    expect(ended("victory").heroStatus["c-mira"]?.hp).toBe(9);
+    expect(ended("defeat").heroStatus["c-borin"]?.hp).toBe(0);
   });
 });

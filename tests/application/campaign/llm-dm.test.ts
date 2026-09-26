@@ -202,7 +202,7 @@ describe("LLM DM", () => {
       outcome: null,
     };
     const prompt = buildCombatNarratorPrompt(request);
-    expect(prompt.system).toContain("25-50 words");
+    expect(prompt.system).toContain("at most 45 words");
     expect(prompt.user).toContain("Borin uses Longsword on Goblin A, critical, hurt, now dead (moment: criticalHit).");
     expect(prompt.user).toContain("Skarn flees the fight.");
     expect(prompt.user).not.toContain("12");
@@ -214,7 +214,7 @@ describe("LLM DM", () => {
       },
     });
     expect(await narrator.narrateCombat(request)).toEqual({ text: "Borin's blade flashes." });
-    expect(observed).toMatchObject([{ call: "flourish", promptVersion: "flourish-1" }]);
+    expect(observed).toMatchObject([{ call: "flourish", promptVersion: "flourish-2" }]);
     expect(buildCombatNarratorPrompt({ ...request, final: true, outcome: "victory", language: "zh-TW" }).system).toContain("100-200 Traditional Chinese");
   });
 });

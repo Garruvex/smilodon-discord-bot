@@ -21,8 +21,8 @@ import type { ModelUsage, StructuredModelClient } from "../ports/structured-mode
 // Prompt and schema versions are recorded with each call so harness results
 // and bug reports stay comparable (code structure §8).
 export const plannerPromptVersion = "planner-2";
-export const narratorPromptVersion = "narrator-2";
-export const flourishPromptVersion = "flourish-1";
+export const narratorPromptVersion = "narrator-3";
+export const flourishPromptVersion = "flourish-2";
 
 export type ModelCallKind = "planner" | "narrator" | "flourish";
 
@@ -224,7 +224,7 @@ export function buildNarratorPrompt(request: NarratorRequest): { system: string;
     "Narrate every outcome below faithfully, in a natural order. Successes succeed and failures fail; never soften or reverse a result.",
     "Do not repeat dice numbers or DCs; the table already sees them. A headline moment (a natural 20, a clutch save) deserves a vivid beat.",
     "Never write dialogue, choices, or feelings for the heroes; describe what they did and what the world does in response. NPCs may speak in their voice.",
-    "End on a hook or a question. Address the listed quiet heroes by name to invite them in.",
+    "End on a hook or a question, but a hook may only point at things named in the adventure text above or in the outcomes; never invent new threats, places, passages, or characters. Address the listed quiet heroes by name to invite them in.",
   ].join("\n");
   const outcomes = request.outcomes.map((outcome) => `- ${describeOutcome(outcome)}`).join("\n");
   const spotlight = request.spotlight.length > 0 ? `\nQuiet heroes to invite: ${request.spotlight.join(", ")}.` : "";
@@ -288,7 +288,7 @@ export function buildCombatNarratorPrompt(request: CombatNarratorRequest): { sys
       : "Write 50-100 words of English"
     : zh
       ? "Write 40-100 Traditional Chinese characters (Taiwan usage)"
-      : "Write 25-50 words of English";
+      : "Write at most 45 words of English, two or three sentences";
   const rules = [
     "## Output rules",
     `${length} in the narration field.`,
@@ -297,7 +297,7 @@ export function buildCombatNarratorPrompt(request: CombatNarratorRequest): { sys
       : "This is a quick flourish between combat rounds. The table already saw every roll as a template line; add color, not a recap. Pick the one or two most dramatic beats.",
     "Never change a result: hits hit, misses miss, and nobody falls, dies, or recovers unless the beats say so. Do not mention numbers.",
     "A headline moment (a critical hit, a natural 1, a hero dropping or getting back up, a foe fleeing) deserves the vivid line.",
-    "Never write dialogue, choices, or feelings for the heroes. Foes and named NPCs may shout in their voice.",
+    "Never write dialogue, choices, or feelings for the heroes. Foes and named NPCs may shout in their voice. Do not invent new threats, places, or passages.",
   ].join("\n");
   const beats = request.beats.map((beat) => `- ${describeBeat(beat)}`).join("\n");
   const heading = request.final ? `The fight ended (${request.outcome ?? "over"}). Final beats:` : `Combat round ${request.round}:`;

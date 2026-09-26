@@ -144,6 +144,8 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
 }
 
 // A finished fight writes the heroes' HP and spent resources back to the campaign.
+// After a victory the party binds each other's wounds: anyone at 0 HP is back
+// on their feet with 1 HP (a stand-in until the death rules are decided).
 function evolveCombat(state: CampaignState, event: CombatEvent): CampaignState {
   const encounter = evolveEncounter(state.encounter, event);
   if (event.kind === "encounterStarted") {
@@ -152,7 +154,10 @@ function evolveCombat(state: CampaignState, event: CombatEvent): CampaignState {
   if (event.kind !== "encounterEnded" || encounter === null) return { ...state, encounter };
   const heroStatus: Record<CharacterId, HeroStatus> = { ...state.heroStatus };
   for (const combatant of Object.values(encounter.combatants)) {
-    if (combatant.source.kind === "hero") heroStatus[combatant.source.characterId] = { hp: combatant.hp, resources: combatant.resources };
+    if (combatant.source.kind === "hero") heroStatus[combatant.source.characterId] = {
+        hp: encounter.outcome === "victory" ? Math.max(1, combatant.hp) : combatant.hp,
+        resources: combatant.resources,
+      };
   }
   return { ...state, encounter, heroStatus };
 }
