@@ -12,6 +12,11 @@ import type { AdventurePin, CampaignKey } from "./campaign-store.js";
 // or a restart is waiting for recovery. archived: finished; read-only.
 export type CampaignLifecycle = "lobby" | "active" | "paused" | "archived";
 
+// Who can see a game's channels once it starts: anyone who can see the D&D
+// category (open), or only the players and whoever the organizer adds to the
+// game's role (membersOnly). Games saved before this existed are open.
+export type CampaignVisibility = "open" | "membersOnly";
+
 export type PacingPresetId = "live" | "playByPost" | "custom";
 
 // Discord places, filled in as setup creates them (all null until then).
@@ -100,6 +105,7 @@ export interface CampaignRecord {
   readonly startedAt: Instant | null;
   // Problems waiting for the organizer; records saved before this existed have none.
   readonly issues?: readonly CampaignIssue[];
+  readonly visibility?: CampaignVisibility;
 }
 
 export interface StoredRecord {

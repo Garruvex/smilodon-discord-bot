@@ -170,6 +170,7 @@ export const zhTWCommandDescriptions = {
   "dnd/new:language": "遊玩語言（預設：English）", // The language the game is played in (default: English).
   "dnd/new:pacing": "回合節奏（預設：即時）", // How fast rounds go (default: live).
   "dnd/new:players": "桌上最多玩家數（預設 3）", // Most players at the table (default: 3).
+  "dnd/new:visibility": "遊戲開始後誰可以觀看（預設為看得到分類的所有人）", // Who can watch once the game starts (default: everyone).
   "dnd/status": "顯示這個頻道團務的狀態", // Shows the state of this channel's game.
   "dnd/pause": "暫停這場團務（主辦人）", // Pauses this game (organizer).
   "dnd/resume": "繼續已暫停的團務（主辦人）", // Resumes a paused game (organizer).
@@ -178,4 +179,5 @@ export const zhTWCommandDescriptions = {
   "dnd/rest:type": "休息的長度", // How long the rest is.
   "dnd/retry": "請地下城主重新結算被擱置的回合（主辦人）", // Asks the DM to try the held round again (organizer).
   "dnd/repair": "檢查這場團務的頻道並重新繪製卡片（主辦人）", // Checks this game's channels and redraws its cards (organizer).
+  "dnd/reopen": "重新開啟已結束的團務，並暫停在結束的地方（主辦人）", // Opens a finished game again, paused where it stopped (organizer).
 } as const satisfies CommandDescriptionCatalog<keyof typeof jaCommandDescriptions>;

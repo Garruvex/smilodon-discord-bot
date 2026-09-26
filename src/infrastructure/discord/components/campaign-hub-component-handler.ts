@@ -79,6 +79,9 @@ export class CampaignHubComponentHandler implements ComponentHandler {
       case "wizLoot":
         if (interaction.isStringSelectMenu()) await this.chooseOption(interaction, parsed.action, first);
         return;
+      case "wizVisibility":
+        if (interaction.isButton()) await this.toggleVisibility(interaction, first);
+        return;
       case "wizNext":
         if (interaction.isButton()) await this.askName(interaction, first);
         return;
@@ -118,6 +121,7 @@ export class CampaignHubComponentHandler implements ComponentHandler {
       pacing: choices.pacing,
       players: choices.players,
       lootGold: choices.loot,
+      visibility: choices.visibility,
     });
     await interaction.editReply({ content: createGameText(result, text) });
   }
@@ -153,6 +157,15 @@ export class CampaignHubComponentHandler implements ComponentHandler {
             ? { ...current, loot: value === "split" ? "split" : "pooled" }
             : { ...current, players: parseWizardState(`en.live.${value}`).players };
     await interaction.update(wizardScreen(next));
+  }
+
+  private async toggleVisibility(interaction: ButtonInteraction<"cached">, state: string | undefined): Promise<void> {
+    const current = parseWizardState(state);
+    if (!(await this.deps.authority.isAdmin(interaction))) {
+      await interaction.update({ content: texts[current.language].campaign.wizard.notAllowed, components: [] });
+      return;
+    }
+    await interaction.update(wizardScreen({ ...current, visibility: current.visibility === "open" ? "membersOnly" : "open" }));
   }
 
   private async askName(interaction: ButtonInteraction<"cached">, state: string | undefined): Promise<void> {
@@ -337,7 +350,7 @@ function wizardScreen(choices: WizardChoices): Screen {
   const language = choices.language === "en" ? text.campaign.language.en : text.campaign.language.zhTW;
   const pacing = choices.pacing === "live" ? text.campaign.pacing.live : text.campaign.pacing.playByPost;
   return {
-    content: `**${t.title}**\n${t.intro}\n\n${t.summary({ language, pacing, count: choices.players, loot: choices.loot === "split" ? t.lootSplit : t.lootPooled })}`,
+    content: `**${t.title}**\n${t.intro}\n\n${t.summary({ language, pacing, count: choices.players, loot: choices.loot === "split" ? t.lootSplit : t.lootPooled })}\n${t.visibilityLine({ who: choices.visibility === "membersOnly" ? t.visibilityPlayers : t.visibilityOpen })}`,
     components: [
       select("wizLanguage", t.languagePlaceholder, [
         { label: text.campaign.language.en, value: "en", selected: choices.language === "en" },
@@ -356,7 +369,13 @@ function wizardScreen(choices: WizardChoices): Screen {
         { label: t.lootPooled, value: "pooled", selected: choices.loot === "pooled" },
         { label: t.lootSplit, value: "split", selected: choices.loot === "split" },
       ]),
-      row(new ButtonBuilder().setCustomId(hubCustomId("wizNext", state)).setLabel(t.next).setStyle(ButtonStyle.Primary)),
+      row(
+        new ButtonBuilder().setCustomId(hubCustomId("wizNext", state)).setLabel(t.next).setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+          .setCustomId(hubCustomId("wizVisibility", state))
+          .setLabel(choices.visibility === "membersOnly" ? t.visibilityButtonPlayers : t.visibilityButtonOpen)
+          .setStyle(ButtonStyle.Secondary),
+      ),
     ],
   };
 }

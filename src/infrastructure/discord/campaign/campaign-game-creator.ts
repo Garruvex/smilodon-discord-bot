@@ -1,5 +1,5 @@
 import type { CampaignLobbyService, ServiceRefusal } from "../../../application/campaign/campaign-lobby-service.js";
-import type { CampaignRecord, PendingResource } from "../../../application/campaign/ports/campaign-record.js";
+import type { CampaignRecord, CampaignVisibility, PendingResource } from "../../../application/campaign/ports/campaign-record.js";
 import type { CampaignLanguage } from "../../../domain/campaign/adventure/adventure-bible.js";
 import type { Texts } from "../../../application/i18n/texts.js";
 import type { CampaignSetupService } from "./campaign-setup-service.js";
@@ -14,6 +14,8 @@ export interface NewGame {
   readonly players: number;
   // Where a fight's gold goes (the "loot-gold" house rule); pooled when absent.
   readonly lootGold?: "pooled" | "split";
+  // Who can see the game's channels once it starts; open when absent.
+  readonly visibility?: CampaignVisibility;
 }
 
 export type CreateGameResult =
@@ -53,6 +55,7 @@ export class CampaignGameCreator {
       adventureId: this.options.defaultAdventureId,
       pacing: { preset: game.pacing },
       maxPlayers: game.players,
+      visibility: game.visibility ?? "open",
       // Players take their heroes' turns in a fight; an away hero is played on cautious autopilot.
       houseRules: { "combat-mode": "players", "loot-gold": game.lootGold ?? "pooled" },
     });

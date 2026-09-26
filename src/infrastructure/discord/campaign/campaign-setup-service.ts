@@ -3,6 +3,7 @@ import type { CampaignIssues } from "../../../application/campaign/campaign-issu
 import type { RuntimeLogger } from "../../../application/campaign/campaign-runtime.js";
 import type { CampaignRecord, GuildCampaignSettings, PendingResource } from "../../../application/campaign/ports/campaign-record.js";
 import { RevisionConflictError, type CampaignKey, type CampaignUnitOfWork } from "../../../application/campaign/ports/campaign-store.js";
+import { activeMembers } from "../../../domain/campaign/lobby/lobby.js";
 import { gameChannelNames, resourceMarker } from "../../../application/campaign/setup/channel-names.js";
 import { texts } from "../../../application/i18n/texts.js";
 import type { CampaignCardService } from "./campaign-card-service.js";
@@ -18,6 +19,11 @@ export type ProvisionResult =
   | { readonly kind: "notSetup" }
   | { readonly kind: "missingPermissions"; readonly missing: readonly string[] }
   | { readonly kind: "failed"; readonly step: PendingResource["kind"] };
+
+export type VisibilityResult =
+  | { readonly kind: "open" }
+  | { readonly kind: "applied"; readonly roleId: string }
+  | { readonly kind: "failed" };
 
 export type RepairResult =
   | { readonly kind: "ok"; readonly requeued: number }
@@ -128,7 +134,7 @@ export class CampaignSetupService {
           create: () =>
             resources.createTextChannel(
               key.guildId,
-              { name: planned("partyChannel").name, topic: `${text.campaign.card.party} · ${record.name} · ${marker("partyChannel")}`, parentId: categoryId, playersReadOnly: true, allowThreadMessages: true },
+              { name: planned("partyChannel").name, topic: `${text.campaign.card.party} · ${record.name} · ${marker("partyChannel")}`, parentId: categoryId, playersReadOnly: true, allowThreadMessages: true, viewerRoleId: viewerRole(record) },
               reasonFor(`Party channel for ${record.name}`),
             ),
         },
@@ -139,7 +145,7 @@ export class CampaignSetupService {
           create: () =>
             resources.createTextChannel(
               key.guildId,
-              { name: planned("adventureChannel").name, topic: `${record.name} · ${marker("adventureChannel")}`, parentId: categoryId, playersReadOnly: true, allowThreadMessages: false },
+              { name: planned("adventureChannel").name, topic: `${record.name} · ${marker("adventureChannel")}`, parentId: categoryId, playersReadOnly: true, allowThreadMessages: false, viewerRoleId: viewerRole(record) },
               reasonFor(`Adventure channel for ${record.name}`),
             ),
         },
@@ -179,6 +185,45 @@ export class CampaignSetupService {
     });
   }
 
+  // A players-only game hides its channels when it starts: the game's role is
+  // made (once), every player at the table is given it, and both channels are
+  // shown to that role alone. Membership in the game, not the role, decides who
+  // may act; the role only mirrors it so the channels can be seen. Safe to run
+  // again (Repair does): a player who lacks the role gets it back, and a
+  // spectator an administrator added by hand is left alone. A finished game
+  // keeps its role so past players can still read the story.
+  public applyVisibility(key: CampaignKey): Promise<VisibilityResult> {
+    return this.queue.run(`campaign:${key.guildId}:${key.campaignId}`, async () => {
+      const { resources, unitOfWork, issues } = this.options;
+      const stored = await unitOfWork.transaction((tx) => tx.loadRecord(key));
+      if (stored === undefined || stored.record.visibility !== "membersOnly" || stored.record.lifecycle === "lobby") return { kind: "open" };
+      let record = stored.record;
+      try {
+        let roleId = record.channels.roleId;
+        if (roleId === null || !(await resources.roleExists(key.guildId, roleId))) {
+          const name = `🎲 ${record.name}`.slice(0, 100);
+          const created = await resources.createRole(key.guildId, name, reasonFor(`role for ${record.name}`));
+          roleId = created;
+          record = await this.update(key, (latest) => ({
+            ...latest,
+            channels: { ...latest.channels, roleId: created },
+            pendingResources: [...latest.pendingResources.filter((resource) => resource.kind !== "role"), { kind: "role", marker: resourceMarker(key.campaignId, "role"), name, resourceId: created }],
+          }));
+        }
+        const players = [...new Set([record.organizerId, ...activeMembers(record.lobby).map((member) => member.userId)])];
+        for (const userId of players) await resources.grantRole(key.guildId, roleId, userId);
+        const { partyChannelId, adventureChannelId } = record.channels;
+        if (partyChannelId !== null) await resources.restrictToRole(key.guildId, partyChannelId, roleId, true);
+        if (adventureChannelId !== null) await resources.restrictToRole(key.guildId, adventureChannelId, roleId, false);
+        return { kind: "applied", roleId };
+      } catch (error) {
+        this.options.logger.error({ err: error, guildId: key.guildId, campaignId: key.campaignId }, "Campaign visibility could not be applied");
+        await issues?.raise(key, "permissions", "role");
+        return { kind: "failed" };
+      }
+    });
+  }
+
   // Repair: makes any missing channel or thread again, sends what had been
   // given up on, redraws every card against what Discord really has, and clears
   // the problems that are now fixed. A finished game is left as it is.
@@ -203,6 +248,9 @@ export class CampaignSetupService {
     }
     const requeued = await unitOfWork.transaction((tx) => tx.requeueFailedOutbox(key));
     await issues?.clear(key, ["deliveryFailed", "permissions", "channelMissing"]);
+    // A players-only game's role and channel overwrites are put right too; a
+    // failure there raises the permissions issue again.
+    await this.applyVisibility(key);
     // Draws every card again; a card that still cannot be drawn raises its own issue.
     await cards.sync(key, true);
     return { kind: "ok", requeued };
@@ -224,6 +272,11 @@ export class CampaignSetupService {
       }
     }
   }
+}
+
+// The role a players-only game's channels are shown to, once it has one.
+function viewerRole(record: CampaignRecord): string | null {
+  return record.visibility === "membersOnly" && record.lifecycle !== "lobby" ? record.channels.roleId : null;
 }
 
 function withChannel(record: CampaignRecord, kind: PendingResource["kind"], id: string): CampaignRecord {

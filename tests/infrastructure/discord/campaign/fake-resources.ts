@@ -71,15 +71,34 @@ export class FakeResources implements CampaignResourceGateway {
     return Promise.resolve(this.threads.some((thread) => thread.id === threadId));
   }
 
-  public createRole(): Promise<string> {
+  public readonly roleNames: string[] = [];
+
+  public createRole(_guildId?: string, name?: string): Promise<string> {
     this.next += 1;
     const id = `role${this.next}`;
     this.roles.add(id);
+    if (name !== undefined) this.roleNames.push(name);
     return Promise.resolve(id);
   }
 
   public roleExists(_guildId: string, roleId: string): Promise<boolean> {
     return Promise.resolve(this.roles.has(roleId));
+  }
+
+  public readonly grants: { roleId: string; userId: string }[] = [];
+  public readonly restricted: { channelId: string; roleId: string; allowThreadMessages: boolean }[] = [];
+  public failGrants = false;
+
+  public grantRole(_guildId: string, roleId: string, userId: string): Promise<void> {
+    if (this.failGrants) return Promise.reject(new Error("Missing Permissions"));
+    if (!this.grants.some((grant) => grant.roleId === roleId && grant.userId === userId)) this.grants.push({ roleId, userId });
+    return Promise.resolve();
+  }
+
+  public restrictToRole(_guildId: string, channelId: string, roleId: string, allowThreadMessages: boolean): Promise<void> {
+    if (this.failGrants) return Promise.reject(new Error("Missing Permissions"));
+    this.restricted.push({ channelId, roleId, allowThreadMessages });
+    return Promise.resolve();
   }
 
   public missingPermissions(): Promise<readonly string[]> {

@@ -168,6 +168,7 @@ export const jaCommandDescriptions = {
   "dnd/new:language": "プレイする言語（既定: English）", // The language the game is played in (default: English).
   "dnd/new:pacing": "ラウンドの進み方（既定: ライブ）", // How fast rounds go (default: live).
   "dnd/new:players": "卓の最大人数（既定 3）", // Most players at the table (default: 3).
+  "dnd/new:visibility": "開始後に誰が観戦できるか（既定はカテゴリを見られる全員）", // Who can watch once the game starts (default: everyone).
   "dnd/status": "このチャンネルのゲームの状態を表示します", // Shows the state of this channel's game.
   "dnd/pause": "このゲームを一時停止します（主催者）", // Pauses this game (organizer).
   "dnd/resume": "一時停止したゲームを再開します（主催者）", // Resumes a paused game (organizer).
@@ -176,4 +177,5 @@ export const jaCommandDescriptions = {
   "dnd/rest:type": "休憩の長さ", // How long the rest is.
   "dnd/retry": "保留になったラウンドを DM にやり直させます（主催者）", // Asks the DM to try the held round again (organizer).
   "dnd/repair": "このゲームのチャンネルを確認しカードを描き直します（主催者）", // Checks this game's channels and redraws its cards (organizer).
+  "dnd/reopen": "終了したゲームを、止まった場所で一時停止したまま再開できる状態にします（主催者）", // Opens a finished game again, paused where it stopped (organizer).
 } as const satisfies CommandDescriptionCatalog;

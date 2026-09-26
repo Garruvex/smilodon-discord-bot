@@ -112,6 +112,10 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
     adventures,
     clock,
     ruleset: { rulesetId: content.rulesetId, rulesetVersion: content.version, houseRules: {} },
+    // A players-only game hides its channels once it starts.
+    onStarted: (key): void => {
+      void setup.applyVisibility(key).catch(logFailure("Campaign visibility could not be applied", key.guildId));
+    },
   });
   const play = new CampaignPlayController({ unitOfWork, bus, refresher: cards, adventures });
   const setup = new CampaignSetupService({ unitOfWork, resources: new DiscordResourceGateway(client), cards, logger, issues });

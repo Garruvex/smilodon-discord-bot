@@ -7,7 +7,7 @@ import type { LobbyRefusal, LobbyResult } from "../../domain/campaign/lobby/lobb
 import { HouseRuleError, resolveHouseRules } from "../../domain/campaign/rules/house-rules.js";
 import { KeyedSerialQueue } from "../concurrency/keyed-serial-queue.js";
 import type { CampaignCommandBus } from "./campaign-command-bus.js";
-import { emptyChannels, type CampaignRecord, type StoredRecord } from "./ports/campaign-record.js";
+import { emptyChannels, type CampaignRecord, type CampaignVisibility, type StoredRecord } from "./ports/campaign-record.js";
 import type { AdventureLibrary } from "./ports/adventure-library.js";
 import {
   RevisionConflictError,
@@ -30,6 +30,7 @@ export interface CreateCampaignInput {
   readonly houseRules?: Readonly<Record<string, string>>;
   readonly minPlayers?: number;
   readonly maxPlayers?: number;
+  readonly visibility?: CampaignVisibility;
 }
 
 export type ServiceRefusal =
@@ -55,6 +56,9 @@ export interface CampaignLobbyServiceOptions {
   // The ruleset new campaigns are pinned to, with its default house rules.
   readonly ruleset: RulesetPin;
   readonly newId?: () => string;
+  // Called after a game starts, so the places it lives in can be adjusted (a
+  // players-only game hides its channels then).
+  readonly onStarted?: (key: CampaignKey) => void;
 }
 
 export const nameLimits = { min: 2, max: 60 } as const;
@@ -101,6 +105,7 @@ export class CampaignLobbyService {
       lobby: lobby.lobby,
       channels: emptyChannels,
       pendingResources: [],
+      visibility: input.visibility ?? "open",
       cards: {},
       createdAt: this.options.clock.now(),
       startedAt: null,
@@ -234,6 +239,7 @@ export class CampaignLobbyService {
       });
       if (started.kind === "refused") return started;
       // The Narrator tells the opening first; the first round opens when it lands.
+      this.options.onStarted?.(key);
       const firstRound = await this.options.bus.execute(key, { kind: "beginAdventure" }, { commandId: `start:${key.campaignId}`, actor: { kind: "system" } });
       return ok({ record: started.value, firstRound });
     });

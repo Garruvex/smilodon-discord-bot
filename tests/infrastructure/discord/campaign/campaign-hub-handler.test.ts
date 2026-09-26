@@ -145,11 +145,15 @@ async function activeGame(t: Harness): Promise<{ key: CampaignKey; hubMessageId:
 
 describe("hub custom IDs", () => {
   it("round-trips the wizard choices and falls back per field when they are tampered with", () => {
-    const choices = { language: "zh-TW", pacing: "playByPost", players: 5, loot: "split" } as const;
+    const choices = { language: "zh-TW", pacing: "playByPost", players: 5, loot: "split", visibility: "open" } as const;
     expect(parseWizardState(wizardState(choices))).toEqual(choices);
+    // Players-only is a fifth field, and a control made without it still parses as open.
+    expect(wizardState({ ...choices, visibility: "membersOnly" })).toBe("zh-TW.playByPost.5.split.players");
+    expect(parseWizardState("zh-TW.playByPost.5.split.players")).toEqual({ ...choices, visibility: "membersOnly" });
+    expect(parseWizardState("zh-TW.playByPost.5.split")).toEqual(choices);
     expect(parseWizardState("fr.hourly.99")).toEqual(defaultWizardChoices);
     expect(parseWizardState(undefined)).toEqual(defaultWizardChoices);
-    expect(parseWizardState("zh-TW.live.x")).toEqual({ language: "zh-TW", pacing: "live", players: 3, loot: "pooled" });
+    expect(parseWizardState("zh-TW.live.x")).toEqual({ language: "zh-TW", pacing: "live", players: 3, loot: "pooled", visibility: "open" });
   });
 
   it("parses only the hub's own IDs", () => {
@@ -191,6 +195,22 @@ describe("the Create game wizard", () => {
     expect(contentOf(loot)).toContain("由英雄平分");
   });
 
+  it("switches between open and players-only with a button, and remembers it in the controls", async () => {
+    const t = harness();
+    await withSettings(t);
+    const start = wizardState(defaultWizardChoices);
+    expect(contentOf(await t.click(hubCustomId("wizLanguage", start), { userId: "u-a", admin: true }, { values: ["en"] }))).toContain("Who can watch: everyone");
+    const toggled = await t.click(hubCustomId("wizVisibility", start), { userId: "u-a", admin: true });
+    expect(contentOf(toggled)).toContain("Who can watch: players only");
+    const rows = rowsOf(toggled);
+    expect(rows.at(-1)?.map((button) => button.customId)).toEqual(["dndhub:wizNext:en.live.3.pooled.players", "dndhub:wizVisibility:en.live.3.pooled.players"]);
+    // And back again.
+    const back = await t.click("dndhub:wizVisibility:en.live.3.pooled.players", { userId: "u-a", admin: true });
+    expect(rowsOf(back).at(-1)?.[0]?.customId).toBe("dndhub:wizNext:en.live.3.pooled");
+    // Not for players.
+    expect(contentOf(await t.click(hubCustomId("wizVisibility", start), { userId: "u-x" }))).toBe("Only DnD Admins can create games.");
+  });
+
   it("opens the name form from Next and creates the game from it with the chosen settings", async () => {
     const t = harness();
     await withSettings(t);
@@ -199,7 +219,7 @@ describe("the Create game wizard", () => {
     expect(JSON.stringify((modal[0]?.payload as { toJSON(): unknown }).toJSON())).toContain("dndhub:wizName:zh-TW.playByPost.4.split");
 
     await t.submit("dndhub:wizName:zh-TW.playByPost.4.split", { userId: "u-a", admin: true }, "月光遺跡");
-    expect(t.createCalls).toEqual([{ guildId, organizerId: "u-a", name: "月光遺跡", language: "zh-TW", pacing: "playByPost", players: 4, lootGold: "split" }]);
+    expect(t.createCalls).toEqual([{ guildId, organizerId: "u-a", name: "月光遺跡", language: "zh-TW", pacing: "playByPost", players: 4, lootGold: "split", visibility: "open" }]);
   });
 
   it("creates nothing for someone who is not an admin, even with a valid form", async () => {

@@ -61,6 +61,15 @@ export class DndCommand implements BotCommand {
             ],
           },
           { type: "integer", name: "players", description: "Most players at the table (default: 3).", minValue: 1, maxValue: 6 },
+          {
+            type: "string",
+            name: "visibility",
+            description: "Who can watch once the game starts (default: everyone).",
+            choices: [
+              { name: "Everyone who can see the category", value: "open" },
+              { name: "Players only", value: "membersOnly" },
+            ],
+          },
         ],
       },
       { name: "status", description: "Shows the state of this channel's game." },
@@ -140,6 +149,7 @@ export class DndCommand implements BotCommand {
       language: interaction.options.getString("language") === "zh-TW" ? "zh-TW" : "en",
       pacing: interaction.options.getString("pacing") === "playByPost" ? "playByPost" : "live",
       players: interaction.options.getInteger("players") ?? 3,
+      visibility: interaction.options.getString("visibility") === "membersOnly" ? "membersOnly" : "open",
     });
     await responses.edit(createGameText(result, text));
   }

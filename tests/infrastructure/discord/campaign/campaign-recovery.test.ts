@@ -51,6 +51,8 @@ async function table(language: "en" | "zh-TW" = "en"): Promise<Table> {
   return { r, messages, resources, setup, cards, issues, recovery, clock, key };
 }
 
+const gameRoles = (t: Table): string[] => t.resources.roleNames.filter((name) => name.startsWith("🎲"));
+
 const recordOf = async (t: Table): Promise<NonNullable<Awaited<ReturnType<Table["r"]["service"]["get"]>>>["record"]> => {
   const stored = await t.r.service.get(t.key);
   if (stored === undefined) throw new Error("record");
@@ -147,6 +149,94 @@ describe("Repair", () => {
     await t.r.service.cancel(t.key, "u-org");
     expect(await t.setup.repair(t.key)).toEqual({ kind: "archived" });
     expect(await t.setup.repair({ guildId, campaignId: "nope" })).toEqual({ kind: "notFound" });
+  });
+});
+
+describe("a players-only game", () => {
+  const started = async (): Promise<Table> => {
+    const t = await table();
+    await t.r.store.transaction(async (tx) => {
+      const stored = await tx.loadRecord(t.key);
+      if (stored === undefined) throw new Error("record");
+      await tx.saveRecord({ ...stored.record, visibility: "membersOnly" }, stored.revision);
+    });
+    await t.r.service.join(t.key, "u-org");
+    await t.r.service.chooseHero(t.key, "u-org", "c-mira");
+    await t.r.service.join(t.key, "u-two");
+    await t.r.service.chooseHero(t.key, "u-two", "c-borin");
+    return t;
+  };
+
+  it("stays open while people are joining, and hides both channels from everyone but the role once it starts", async () => {
+    const t = await started();
+    // The lobby is open: nobody has to be invited to press Join.
+    expect(await t.setup.applyVisibility(t.key)).toEqual({ kind: "open" });
+    expect(t.resources.restricted).toEqual([]);
+
+    await t.r.service.start(t.key, "u-org");
+    const result = await t.setup.applyVisibility(t.key);
+    if (result.kind !== "applied") throw new Error("visibility");
+    const record = await recordOf(t);
+    expect(record.channels.roleId).toBe(result.roleId);
+    expect(gameRoles(t)).toEqual(["🎲 Moonlit Ruins"]);
+    expect(t.resources.restricted).toEqual([
+      { channelId: record.channels.partyChannelId, roleId: result.roleId, allowThreadMessages: true },
+      { channelId: record.channels.adventureChannelId, roleId: result.roleId, allowThreadMessages: false },
+    ]);
+    // The organizer and every player at the table hold the role.
+    expect(new Set(t.resources.grants.map((grant) => grant.userId))).toEqual(new Set(["u-org", "u-two"]));
+  });
+
+  it("makes the role once, gives it back to a player who lost it on Repair, and keeps it when the game ends", async () => {
+    const t = await started();
+    await t.r.service.start(t.key, "u-org");
+    await t.setup.applyVisibility(t.key);
+    t.resources.grants.length = 0;
+    expect(await t.setup.repair(t.key)).toEqual({ kind: "ok", requeued: 0 });
+    expect(gameRoles(t)).toHaveLength(1);
+    expect(t.resources.grants).toHaveLength(2);
+    await t.r.service.end(t.key);
+    expect((await recordOf(t)).channels.roleId).not.toBeNull();
+    expect(await t.setup.applyVisibility(t.key)).toMatchObject({ kind: "applied" });
+    expect(gameRoles(t)).toHaveLength(1);
+  });
+
+  it("makes a role that was deleted again", async () => {
+    const t = await started();
+    await t.r.service.start(t.key, "u-org");
+    await t.setup.applyVisibility(t.key);
+    t.resources.roles.clear();
+    await t.setup.applyVisibility(t.key);
+    expect(gameRoles(t)).toHaveLength(2);
+  });
+
+  it("reports a missing permission as an organizer issue instead of leaving the game half hidden", async () => {
+    const t = await started();
+    await t.r.service.start(t.key, "u-org");
+    t.resources.failGrants = true;
+    expect(await t.setup.applyVisibility(t.key)).toEqual({ kind: "failed" });
+    expect((await recordOf(t)).issues).toMatchObject([{ code: "permissions", detail: "role" }]);
+  });
+
+  it("makes a channel deleted later already hidden from everyone but the role", async () => {
+    const t = await started();
+    await t.r.service.start(t.key, "u-org");
+    const applied = await t.setup.applyVisibility(t.key);
+    if (applied.kind !== "applied") throw new Error("visibility");
+    const gone = (await recordOf(t)).channels.adventureChannelId ?? "";
+    t.resources.channels.splice(t.resources.channels.findIndex((channel) => channel.id === gone), 1);
+    await t.recovery.channelDeleted(guildId, gone);
+    const made = t.resources.channels.find((channel) => channel.id === (t.resources.channels.at(-1)?.id ?? ""));
+    expect(made?.options.viewerRoleId).toBe(applied.roleId);
+  });
+
+  it("does nothing for an open game", async () => {
+    const t = await table();
+    await t.r.service.join(t.key, "u-org");
+    await t.r.service.chooseHero(t.key, "u-org", "c-mira");
+    await t.r.service.start(t.key, "u-org");
+    expect(await t.setup.applyVisibility(t.key)).toEqual({ kind: "open" });
+    expect(gameRoles(t)).toEqual([]);
   });
 });
 

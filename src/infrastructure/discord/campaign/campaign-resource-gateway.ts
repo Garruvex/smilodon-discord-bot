@@ -19,6 +19,10 @@ export interface CampaignResourceGateway {
   // The "DnD Admin" role: a plain role with no permissions of its own.
   createRole(guildId: string, name: string, reason: string): Promise<string>;
   roleExists(guildId: string, roleId: string): Promise<boolean>;
+  // Gives a member the game's role (a member who has left the server is skipped).
+  grantRole(guildId: string, roleId: string, userId: string): Promise<void>;
+  // Hides a channel from everyone except the role (a players-only game).
+  restrictToRole(guildId: string, channelId: string, roleId: string, allowThreadMessages: boolean): Promise<void>;
   // The permissions the bot lacks (empty when it can set everything up).
   missingPermissions(guildId: string, categoryId: string | null): Promise<readonly string[]>;
 }
@@ -31,6 +35,8 @@ export interface TextChannelOptions {
   readonly playersReadOnly: boolean;
   // Players may write in threads under this channel (the Table Talk thread).
   readonly allowThreadMessages: boolean;
+  // A players-only game's role: the channel is made visible to it alone.
+  readonly viewerRoleId?: string | null;
 }
 
 const botPermissions = [
@@ -45,6 +51,12 @@ const botPermissions = [
   PermissionFlagsBits.PinMessages,
   PermissionFlagsBits.EmbedLinks,
   PermissionFlagsBits.ReadMessageHistory,
+];
+
+const viewerAllowed = (allowThreadMessages: boolean): bigint[] => [
+  PermissionFlagsBits.ViewChannel,
+  PermissionFlagsBits.ReadMessageHistory,
+  ...(allowThreadMessages ? [PermissionFlagsBits.SendMessagesInThreads] : []),
 ];
 
 const playerDenied = [PermissionFlagsBits.SendMessages, PermissionFlagsBits.CreatePublicThreads, PermissionFlagsBits.CreatePrivateThreads];
@@ -71,12 +83,15 @@ export class DiscordResourceGateway implements CampaignResourceGateway {
       topic: options.topic,
       ...(options.parentId === null ? {} : { parent: options.parentId }),
       permissionOverwrites: [
-        {
-          id: guild.roles.everyone.id,
-          ...(options.playersReadOnly
-            ? { deny: playerDenied, ...(options.allowThreadMessages ? { allow: [PermissionFlagsBits.SendMessagesInThreads] } : {}) }
-            : {}),
-        },
+        options.viewerRoleId === undefined || options.viewerRoleId === null
+          ? {
+              id: guild.roles.everyone.id,
+              ...(options.playersReadOnly
+                ? { deny: playerDenied, ...(options.allowThreadMessages ? { allow: [PermissionFlagsBits.SendMessagesInThreads] } : {}) }
+                : {}),
+            }
+          : { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel, ...playerDenied] },
+        ...(options.viewerRoleId === undefined || options.viewerRoleId === null ? [] : [{ id: options.viewerRoleId, allow: viewerAllowed(options.allowThreadMessages) }]),
         { id: me.id, allow: botPermissions },
       ],
       reason,
@@ -127,6 +142,26 @@ export class DiscordResourceGateway implements CampaignResourceGateway {
 
   public async roleExists(guildId: string, roleId: string): Promise<boolean> {
     return (await (await this.guild(guildId)).roles.fetch(roleId).catch(() => null)) !== null;
+  }
+
+  public async grantRole(guildId: string, roleId: string, userId: string): Promise<void> {
+    const guild = await this.guild(guildId);
+    const member = await guild.members.fetch(userId).catch(() => null);
+    if (member === null) return;
+    await member.roles.add(roleId, "D&D campaign: player role");
+  }
+
+  public async restrictToRole(guildId: string, channelId: string, roleId: string, allowThreadMessages: boolean): Promise<void> {
+    const guild = await this.guild(guildId);
+    const channel = await guild.channels.fetch(channelId);
+    if (channel?.type !== ChannelType.GuildText) throw new Error(`Channel ${channelId} is not a text channel.`);
+    const reason = "D&D campaign: players-only game";
+    await channel.permissionOverwrites.edit(guild.roles.everyone.id, { ViewChannel: false }, { reason });
+    await channel.permissionOverwrites.edit(
+      roleId,
+      { ViewChannel: true, ReadMessageHistory: true, ...(allowThreadMessages ? { SendMessagesInThreads: true } : {}) },
+      { reason },
+    );
   }
 
   public async missingPermissions(guildId: string, categoryId: string | null): Promise<readonly string[]> {
