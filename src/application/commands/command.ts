@@ -17,6 +17,7 @@ export enum CommandModule {
   Music = "music",
   Birthdays = "birthdays",
   Reminders = "reminders",
+  Campaign = "campaign",
   Nsfw = "nsfw",
 }
 

@@ -42,7 +42,7 @@ function guildConfiguration(overrides: Partial<GuildConfiguration> = {}): GuildC
     idleImageAsset: null,
     panel: { progressBar: { style: "standard", length: 12, customTheme: null } },
     features: {
-      common: true, diagnostics: true, music: true, chatbot: false, birthdays: false, reminders: false,
+      common: true, diagnostics: true, music: true, chatbot: false, birthdays: false, reminders: false, campaign: false,
       nsfw: false, linkFix: false, retainMemberDataOnLeave: true, ambientReplies: false,
       channelHistory: false, reactionReplies: false, historyReactions: false,
     },

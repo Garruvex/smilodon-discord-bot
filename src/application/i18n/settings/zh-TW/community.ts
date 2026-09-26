@@ -23,6 +23,8 @@ export const zhTWCommunity: SettingsTextCatalog = {
 
   "community.reminders": { label: "提醒", description: "設定成員是否能設定個人提醒" },
   "community.reminders.enabled": { label: "提醒", description: "開啟或關閉 /remind 指令" },
+  "community.campaign": { label: "D&D 團務", description: "設定伺服器是否能進行由 AI 主持的 D&D 團務" },
+  "community.campaign.enabled": { label: "D&D 團務", description: "開啟或關閉 /dnd 指令" },
 
   "community.welcome": { label: "加入與離開訊息", description: "設定成員加入／離開公告的頻道" },
   "community.welcome.join-channel": { label: "歡迎頻道", description: "發布新成員歡迎卡片的位置；留空則關閉" },

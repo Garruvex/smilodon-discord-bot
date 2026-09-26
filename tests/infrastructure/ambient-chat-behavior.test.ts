@@ -43,7 +43,7 @@ function profile(overrides: { ambientReplies?: boolean } = {}): GuildConfigurati
     idleImageAsset: null,
     panel: { progressBar: { style: "standard", length: 12, customTheme: null } },
     features: {
-      common: true, diagnostics: true, music: true, chatbot: true, birthdays: false, reminders: false,
+      common: true, diagnostics: true, music: true, chatbot: true, birthdays: false, reminders: false, campaign: false,
       nsfw: false, linkFix: false, retainMemberDataOnLeave: true,
       ambientReplies: overrides.ambientReplies ?? true,
       channelHistory: false, reactionReplies: false, historyReactions: false,

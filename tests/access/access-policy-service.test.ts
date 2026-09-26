@@ -65,7 +65,7 @@ function guildConfiguration(): GuildConfiguration {
       music: true,
       chatbot: false,
       birthdays: false,
-      reminders: false,
+      reminders: false, campaign: false,
       nsfw: false,
       linkFix: false,
       retainMemberDataOnLeave: true,

@@ -34,6 +34,8 @@ export const enCommunity: SettingsTextCatalog = {
 
   "community.reminders": { label: "Reminders", description: "Configures whether members can set personal reminders." },
   "community.reminders.enabled": { label: "Reminders", description: "Turn the /remind command on or off." },
+  "community.campaign": { label: "D&D campaigns", description: "Configures whether the server can run AI-hosted D&D campaigns." },
+  "community.campaign.enabled": { label: "D&D campaigns", description: "Turn the /dnd command on or off." },
 
   "community.welcome": { label: "Join and leave messages", description: "Sets join/leave announcement channels." },
   "community.welcome.join-channel": { label: "Welcome channel", description: "Where new-member welcome cards are posted. Empty turns them off." },

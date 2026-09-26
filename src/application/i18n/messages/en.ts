@@ -284,6 +284,7 @@ export const en = {
   "setup.status.feature.chatbot": "AI chat",
   "setup.status.feature.birthdays": "Birthdays",
   "setup.status.feature.reminders": "Reminders",
+  "setup.status.feature.campaign": "D&D campaigns",
   "setup.status.feature.nsfw": "NSFW",
   "setup.status.feature.linkFix": "Link fixing",
   "setup.status.roles": "Roles",

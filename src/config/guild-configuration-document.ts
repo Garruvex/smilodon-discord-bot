@@ -67,6 +67,7 @@ export interface UpdateGuildConfigurationInput {
   birthdaysEnabled?: boolean;
   birthdayAnnouncementsChannelId?: string | null;
   remindersEnabled?: boolean;
+  campaignEnabled?: boolean;
   joinAnnouncementsChannelId?: string | null;
   leaveAnnouncementsChannelId?: string | null;
   nsfwEnabled?: boolean;
@@ -118,7 +119,7 @@ export function createGuildConfigurationDocument(input: CreateGuildConfiguration
     panel: {},
     features: {
       common: true, diagnostics: true, music: true, chatbot: false, birthdays: false,
-      reminders: false, nsfw: false, linkFix: false, retainMemberDataOnLeave: true, ambientReplies: false,
+      reminders: false, campaign: false, nsfw: false, linkFix: false, retainMemberDataOnLeave: true, ambientReplies: false,
       channelHistory: false, reactionReplies: false, historyReactions: false,
     },
     roles: {
@@ -320,6 +321,7 @@ export function applyGuildConfigurationUpdate(
   if (input.birthdaysEnabled !== undefined) next.features.birthdays = input.birthdaysEnabled;
   if (input.birthdayAnnouncementsChannelId !== undefined) next.channels.birthdayAnnouncements = input.birthdayAnnouncementsChannelId;
   if (input.remindersEnabled !== undefined) next.features.reminders = input.remindersEnabled;
+  if (input.campaignEnabled !== undefined) next.features.campaign = input.campaignEnabled;
   if (input.joinAnnouncementsChannelId !== undefined) next.channels.joinAnnouncements = input.joinAnnouncementsChannelId;
   if (input.leaveAnnouncementsChannelId !== undefined) next.channels.leaveAnnouncements = input.leaveAnnouncementsChannelId;
   if (input.nsfwEnabled !== undefined) next.features.nsfw = input.nsfwEnabled;

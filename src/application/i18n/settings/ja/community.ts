@@ -29,6 +29,8 @@ export const jaCommunity: SettingsTextCatalog = {
 
   "community.reminders": { label: "リマインダー", description: "メンバーが個人用リマインダーを設定できるかどうかを設定します。" },
   "community.reminders.enabled": { label: "リマインダー", description: "/remind コマンドをオン／オフします。" },
+  "community.campaign": { label: "D&D キャンペーン", description: "サーバーで AI が進行する D&D キャンペーンを実行できるかどうかを設定します。" },
+  "community.campaign.enabled": { label: "D&D キャンペーン", description: "/dnd コマンドをオン／オフします。" },
 
   "community.welcome": { label: "参加・退出メッセージ", description: "メンバーの参加・退出を告知するチャンネルを設定します。" },
   "community.welcome.join-channel": { label: "ウェルカムチャンネル", description: "新メンバーのウェルカムカードを投稿する場所。空ならオフ。" },

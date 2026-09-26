@@ -252,6 +252,7 @@ export const zhTW = {
   "setup.status.feature.chatbot": "AI 聊天",
   "setup.status.feature.birthdays": "生日",
   "setup.status.feature.reminders": "提醒",
+  "setup.status.feature.campaign": "D&D 團務",
   "setup.status.feature.nsfw": "NSFW",
   "setup.status.feature.linkFix": "連結修正",
   "setup.status.roles": "身分組",
