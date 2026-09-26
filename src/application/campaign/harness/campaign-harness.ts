@@ -163,10 +163,10 @@ export async function runHarness(options: HarnessOptions): Promise<HarnessRun> {
     for (const player of players) {
       const preset = adventure.heroes.find((candidate) => candidate.id === player.heroId);
       if (preset === undefined || state.heroStatus[heroOf(player)]?.dead !== true) continue;
-      const { class: _class, ...sheet } = preset;
+      const { class: className, ...sheet } = preset;
       replacements += 1;
       const id = `${preset.id}-${replacements + 1}`;
-      const outcome = await execute({ kind: "joinHero", sheet: { ...sheet, id, ownerUserId: player.userId, name: `${preset.name} II` } }, user(player));
+      const outcome = await execute({ kind: "joinHero", sheet: { ...sheet, className, id, ownerUserId: player.userId, name: `${preset.name} II` } }, user(player));
       if (outcome.kind !== "rejected") heroes.set(player.userId, id);
     }
   };

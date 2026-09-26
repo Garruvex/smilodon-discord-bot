@@ -40,6 +40,8 @@ export interface CharacterSheet {
   readonly id: CharacterId;
   readonly ownerUserId: UserId;
   readonly name: string;
+  // The class as the table reads it, in the campaign's language (display only).
+  readonly className?: string;
   readonly abilityScores: Readonly<Record<Ability, number>>;
   readonly proficiencyBonus: number;
   readonly skills: Readonly<Partial<Record<Skill, SkillProficiency>>>;

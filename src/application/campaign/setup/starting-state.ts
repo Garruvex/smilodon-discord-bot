@@ -35,8 +35,8 @@ export function buildStartingState(input: {
     if (hero === undefined) throw new StartingStateError(`The adventure has no hero ${seat.heroId}.`);
     if (characters[hero.id] !== undefined) throw new StartingStateError(`Hero ${hero.id} is chosen twice.`);
     if (members[seat.userId] !== undefined) throw new StartingStateError(`Player ${seat.userId} has two seats.`);
-    const { class: _class, ...sheet } = hero;
-    characters[hero.id] = { ...sheet, ownerUserId: seat.userId };
+    const { class: className, ...sheet } = hero;
+    characters[hero.id] = { ...sheet, className, ownerUserId: seat.userId };
     members[seat.userId] = { userId: seat.userId, characterId: hero.id, availability: "present", consecutiveMisses: 0 };
   }
   return {

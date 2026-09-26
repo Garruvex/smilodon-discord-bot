@@ -29,7 +29,17 @@ export const healingPotionCost: HouseRuleOption<"action" | "bonus-action"> = {
   defaultValue: "action",
 };
 
-export const houseRuleOptions: readonly HouseRuleOption<string>[] = [naturalRollsOnChecks, awaySafety, healingPotionCost];
+// Who plays the heroes in a fight. "players": each present player takes their
+// hero's turns. "autopilot": the engine plays every hero on cautious autopilot
+// (Dodge, or a basic attack on a foe already engaging them; no limited
+// resources), for tables that want the story without the tactics.
+export const combatMode: HouseRuleOption<"players" | "autopilot"> = {
+  id: "combat-mode",
+  values: ["players", "autopilot"],
+  defaultValue: "players",
+};
+
+export const houseRuleOptions: readonly HouseRuleOption<string>[] = [naturalRollsOnChecks, awaySafety, healingPotionCost, combatMode];
 
 // The option values a campaign saved, validated and with defaults filled in.
 export interface HouseRules {

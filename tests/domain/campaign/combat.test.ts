@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { EncounterSpec } from "../../../src/domain/campaign/commands/campaign-command.js";
-import { alex, jamie, newCampaign, organizer, system } from "./campaign-fixtures.js";
+import { alex, jamie, newCampaign, organizer, ruleset, system } from "./campaign-fixtures.js";
 import { Fight, declared, heroHp, skirmish, startedFight } from "./combat-fixtures.js";
 
 describe("combat profiles", () => {
@@ -271,5 +271,14 @@ describe("away heroes and timers", () => {
     fight.rolls([2, 2]).run(alex, { kind: "continue" });
     expect(fight.state.status).toBe("active");
     expect(fight.current).toBe("c-mira");
+  });
+});
+
+describe("autopilot combat mode", () => {
+  it("plays every hero through the engine, so a fight needs nothing but dice", () => {
+    const fight = new Fight(undefined, ruleset({ "combat-mode": "autopilot" }))
+      .rolls([20, 15, 5, 4, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15], [6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6])
+      .run(organizer, { kind: "startEncounter", spec: skirmish });
+    expect(fight.encounter.status).toBe("ended");
   });
 });

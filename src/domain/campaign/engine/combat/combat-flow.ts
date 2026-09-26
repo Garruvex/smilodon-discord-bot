@@ -25,7 +25,7 @@ import { resolveD20Test, type D20TestSpec } from "../../dice/d20-test.js";
 import { classifyRollMoments } from "../../dice/roll-moments.js";
 import { resultMatchesSpec, type RollResult } from "../../dice/roll-spec.js";
 import type { ContentId } from "../../rules/content-id.js";
-import { awaySafety } from "../../rules/house-rules.js";
+import { awaySafety, combatMode } from "../../rules/house-rules.js";
 import { deadlineAfter, type Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { maxNarrationLength } from "../narration-limits.js";
@@ -718,6 +718,7 @@ export function withHeroTurn(
 // A present player drives their hero; everything else is engine-played.
 function isPlayerControlled(decision: Decision, combatant: Combatant): boolean {
   if (combatant.source.kind !== "hero") return false;
+  if (decision.ctx.rules.houseRules.option(combatMode) === "autopilot") return false;
   const ownerId = decision.state.characters[combatant.source.characterId]?.ownerUserId;
   return ownerId !== undefined && decision.state.members[ownerId]?.availability === "present";
 }
