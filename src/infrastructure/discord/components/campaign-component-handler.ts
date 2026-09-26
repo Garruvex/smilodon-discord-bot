@@ -17,6 +17,9 @@ import type { CampaignLobbyService } from "../../../application/campaign/campaig
 import type { CampaignPlayController, PlayResult } from "../../../application/campaign/campaign-play-controller.js";
 import type { CampaignRecord } from "../../../application/campaign/ports/campaign-record.js";
 import type { CampaignKey, CampaignUnitOfWork } from "../../../application/campaign/ports/campaign-store.js";
+import type { AdventureBible } from "../../../domain/campaign/adventure/adventure-bible.js";
+import type { CampaignEvent } from "../../../domain/campaign/events/campaign-event.js";
+import type { CampaignState } from "../../../domain/campaign/state/campaign-state.js";
 import type { RulesetCatalog } from "../../../application/campaign/rules/ruleset-catalog.js";
 import { buildHeroView } from "../../../application/campaign/views/campaign-views.js";
 import { CommandModule } from "../../../application/commands/command.js";
@@ -43,9 +46,18 @@ import { renderHeroSheet } from "../campaign/hero-sheet.js";
 import type { CharacterLibrary } from "../../../application/campaign/library/character-library.js";
 import { libraryHeroRef, savedSnapshotIdOf } from "../../../application/campaign/library/library-types.js";
 import { conflictLines } from "./character-library-component-handler.js";
+import { buildJournal, buildRecap } from "../../../application/campaign/views/story-views.js";
 import { renderRulesScreen, ruleLines } from "../campaign/rules-screen.js";
 import { houseRulePresets } from "../../../domain/campaign/rules/house-rules.js";
 import { refusalText } from "../campaign/refusal-text.js";
+
+// Joins lines, dropping the earliest content lines when they do not fit, so the latest news survives.
+function fit(lines: readonly string[], limit: number): string {
+  const kept = [...lines];
+  while (kept.join("\n").length > limit && kept.length > 3) kept.splice(2, 1);
+  const joined = kept.join("\n");
+  return joined.length <= limit ? joined : `${joined.slice(0, limit - 1)}…`;
+}
 
 export interface CampaignComponentDependencies {
   readonly lobby: CampaignLobbyService;
@@ -145,6 +157,8 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "ruleValue":
     case "useSaved":
     case "saveProgress":
+    case "journal":
+    case "recap":
       return [];
   }
 }
@@ -252,8 +266,15 @@ export class CampaignComponentHandler implements ComponentHandler {
         return void (await this.outcome(await this.deps.play.roll(key, userId, interaction.id), text.campaign.reply.rolled, reply, text));
       case "away":
         return void (await this.outcome(await this.deps.play.away(key, userId, interaction.id), text.campaign.reply.away, reply, text));
-      case "back":
-        return void (await this.outcome(await this.deps.play.back(key, userId, interaction.id), text.campaign.reply.back, reply, text));
+      case "back": {
+        const returned = await this.deps.play.back(key, userId, interaction.id);
+        // Someone coming back is caught up on what they missed.
+        return void (await reply(returned.kind === "ok" ? `${text.campaign.reply.back}\n\n${await this.recapText(record, text)}` : refusalText(text, returned.reason)));
+      }
+      case "journal":
+        return void (await reply(await this.journalText(record, text)));
+      case "recap":
+        return void (await reply(await this.recapText(record, text)));
       case "continue":
         return void (await this.outcome(await this.deps.play.continue(key, userId, interaction.id), text.campaign.reply.continued, reply, text));
       case "ready":
@@ -290,7 +311,10 @@ export class CampaignComponentHandler implements ComponentHandler {
         });
         return;
       case "more":
-        await interaction.editReply({ content: `${text.campaign.more.help}\n\n**${text.campaign.rules.title}**\n${ruleLines(text, record.houseRules).join("\n")}`, components: this.linkRow(record, text) });
+        await interaction.editReply({
+          content: `${text.campaign.more.help}\n\n**${text.campaign.rules.title}**\n${ruleLines(text, record.houseRules).join("\n")}`,
+          components: [this.storyRow(record, text), ...this.linkRow(record, text)],
+        });
         return;
       case "rules":
         await interaction.editReply(renderRulesScreen({ campaignId: key.campaignId, houseRules: record.houseRules, editable: record.lifecycle === "lobby" && record.organizerId === userId, selected: null, text }));
@@ -657,6 +681,49 @@ export class CampaignComponentHandler implements ComponentHandler {
       content: `${text.campaign.reply.gearChanged}\n\n${await this.heroSheet(record, text, null, interaction.user.id)}`,
       components: await this.heroMenus(record, text, interaction.user.id),
     });
+  }
+
+  private storyRow(record: CampaignRecord, text: Texts): ActionRowBuilder<ButtonBuilder> {
+    const id = record.key.campaignId;
+    return new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(campaignCustomId("journal", id)).setLabel(text.campaign.button.journal).setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(campaignCustomId("recap", id)).setLabel(text.campaign.button.recap).setStyle(ButtonStyle.Secondary),
+    );
+  }
+
+  private async story(record: CampaignRecord): Promise<{ state: CampaignState; events: readonly CampaignEvent[]; bible: AdventureBible } | null> {
+    const loaded = await this.deps.unitOfWork.transaction(async (tx) => ({ stored: await tx.loadCampaign(record.key), envelopes: await tx.readEvents(record.key) }));
+    const bible = this.deps.adventures.find(record.adventure.adventureId, record.adventure.version, record.language);
+    if (loaded.stored === undefined || bible === undefined) return null;
+    return { state: loaded.stored.state, events: loaded.envelopes.map((envelope) => envelope.event), bible };
+  }
+
+  // The public journal: chapters, people and places remembered, clues found.
+  private async journalText(record: CampaignRecord, text: Texts): Promise<string> {
+    const t = text.campaign.journal;
+    const story = await this.story(record);
+    if (story === null) return t.empty;
+    const journal = buildJournal(story.state, story.bible);
+    const lines = [`**${t.title}**`, journal.sceneTitle === null ? "" : t.where({ scene: journal.sceneTitle })].filter((line) => line !== "");
+    if (journal.chapters.length > 0) lines.push("", t.chapters, ...journal.chapters.map((chapter) => t.chapter({ from: chapter.fromRound, through: chapter.throughRound, text: chapter.text })));
+    if (journal.people.length > 0) lines.push("", t.people, ...journal.people.map((person) => `• **${person.name}:** ${person.facts.join(" ")}`));
+    if (journal.clues.length > 0) lines.push("", t.clues, ...journal.clues.map((clue) => `• ${clue}`));
+    if (journal.chapters.length === 0 && journal.people.length === 0 && journal.clues.length === 0) lines.push("", t.nothingYet);
+    return fit(lines, 1900);
+  }
+
+  // A catch-up: where the party is, the latest chapter, the last things told.
+  private async recapText(record: CampaignRecord, text: Texts): Promise<string> {
+    const t = text.campaign.journal;
+    const story = await this.story(record);
+    if (story === null) return t.empty;
+    const recap = buildRecap(story.state, story.events, story.bible);
+    const lines = [`**${t.recapTitle}**`, recap.sceneTitle === null ? "" : t.where({ scene: recap.sceneTitle })].filter((line) => line !== "");
+    if (recap.latestChapter !== null) lines.push(recap.latestChapter);
+    if (recap.recent.length > 0) lines.push("", t.lately, ...recap.recent.map((told) => `> ${told.replace(/\n+/g, " ")}`));
+    if (recap.clues.length > 0) lines.push("", t.clues, ...recap.clues.map((clue) => `• ${clue}`));
+    if (recap.latestChapter === null && recap.recent.length === 0) lines.push("", t.nothingYet);
+    return fit(lines, 1900);
   }
 
   // Save progress, for a hero that came from the player's library.

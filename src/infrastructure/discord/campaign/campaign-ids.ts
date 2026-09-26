@@ -50,6 +50,9 @@ export const campaignActions = [
   // Saved characters: confirm playing one, and save a hero's progress back.
   "useSaved",
   "saveProgress",
+  // The story so far, and a catch-up for someone coming back.
+  "journal",
+  "recap",
 ] as const;
 export type CampaignAction = (typeof campaignActions)[number];
 

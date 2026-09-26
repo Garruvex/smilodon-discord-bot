@@ -206,3 +206,28 @@ describe("a campaign over three sessions", () => {
     expect(input).toBeNull();
   });
 });
+
+describe("a large ledger", () => {
+  it("shows only the entities in the scene or named lately, keeps secrets from the Narrator, and says how many it left out", async () => {
+    const c = await campaign();
+    await playRound(c, 1);
+    for (let index = 0; index < 30; index += 1) {
+      await c.r.bus.execute(
+        c.key,
+        { kind: "recordLedgerFact", entityId: `npc:extra-${index}`, canonicalName: `Extra Person ${index}`, fact: index === 7 ? "Sells rope." : "Stands about.", visibility: index === 8 ? "secret" : "public" },
+        { commandId: `fact-${index}`, actor: { kind: "system" } },
+      );
+    }
+    await c.r.bus.execute(c.key, { kind: "recordLedgerFact", entityId: "npc:garrick", canonicalName: "Garrick", fact: "Keeps the inn.", visibility: "public" }, { commandId: "garrick", actor: { kind: "system" } });
+    const narrator = await contextFor(c, "narrator");
+    // Garrick is in the scene; the rest are not, unless somebody mentions them.
+    expect(narrator.text).toContain("npc:garrick Garrick: Keeps the inn.");
+    expect(narrator.text).not.toContain("Extra Person 3:");
+    expect(narrator.text).toMatch(/\d+ more remembered entries are not relevant right now\./);
+    await c.r.bus.execute(c.key, { kind: "submitAction", characterId: hero, text: "I ask Extra Person 7 about rope." }, { commandId: "ask", actor: player });
+    const named = await contextFor(c, "narrator");
+    expect(named.text).toContain("Extra Person 7");
+    // A secret entity is never in the Narrator's ledger, and the DM sees it when it matters.
+    expect(named.text).not.toContain("Extra Person 8");
+  });
+});

@@ -81,7 +81,10 @@ describe("the play controls", () => {
     const t = await harness();
     await started(t);
     expect(contentOf(await t.press("away", "u-org"))).toBe("You are away. The party will carry on without you.");
-    expect(contentOf(await t.press("back", "u-org"))).toBe("Welcome back. You rejoin at the next round.");
+    // Coming back also catches you up.
+    const back = contentOf(await t.press("back", "u-org"));
+    expect(back).toContain("Welcome back. You rejoin at the next round.");
+    expect(back).toContain("**Story so far**");
   });
 
   it("shows a hero's sheet privately, from My Hero or a hero card", async () => {
@@ -391,7 +394,7 @@ describe("speaking, the safety pause, and the help menu", () => {
     await started(t);
     const more = await t.press("more", "u-org");
     expect(contentOf(more)).toContain("How to play");
-    expect(buttonIds(more)).toEqual([`https://discord.com/channels/g-1/chan-party`]);
+    expect(buttonIds(more)).toEqual([`dnd:journal:${t.key.campaignId}`, `dnd:recap:${t.key.campaignId}`, `https://discord.com/channels/g-1/chan-party`]);
   });
 
   it("keeps Safety and More on the panel in every running state", async () => {
