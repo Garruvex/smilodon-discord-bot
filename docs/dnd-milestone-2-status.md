@@ -27,6 +27,10 @@ New games use the `combat-mode: players` house rule (older games keep whatever t
 - **Safety** (second row of the panel in every state until the game ends): a private explanation and a **Pause the game** confirm. It stops play for everyone at once, with every timer cancelled and held work waiting, and posts a neutral notice that names nobody. Only the organizer (or a DnD Admin, from Manage) resumes. The text says plainly that the server’s admins can still see the bot’s logs. Removing or skipping content afterwards, and a private note to the organizer, are not built.
 - **More…**: a short how-to-play, and buttons that link to the Table Talk thread and the Party channel. Journal (milestone 5) and Rules pages are not built.
 
+## Tested without Discord
+
+The milestone’s exit criterion (the party completes the starter encounter without duplicate rolls, unauthorized actions, or lost resources, including with an away player) is exercised by scripted players who fight the chapel fight through the real menus and handlers: a party that fights to the end, a party that never acts (defeat, everyone wakes with 1 HP, then the organizer retries the fight and the party is restored), and a party with one player away (their hero is played on autopilot). Each checks that the fight ends, no roll is used twice, nothing is left mid-resolution, and no HP or resource is negative. That does not replace a real table: it cannot tell whether the menus feel good.
+
 ## Not yet exercised at a real table
 
 - [ ] Start a game, reach a fight, and see the encounter reveal, then the panel with zones and the turn ping for the first hero.
