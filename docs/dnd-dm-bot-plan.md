@@ -118,6 +118,8 @@ D&D  (category)
 | Adventure | Narration, scene art, attributed player actions, visible rolls, outcomes | Current action panel; ordinary messages disabled by default |
 | Table Talk thread (under Party) | Coordination and social conversation | Members can send messages in the thread; discussion never automatically changes game state |
 
+Setup idea to settle in milestone 1: an organizer runs `/dnd setup` once in a main channel, which becomes the hub that tracks ongoing games with a card or thread per game. Each game gets its own two channels, named from the game (for example `<name>-stats` for the Party dashboard and `<name>` for the Adventure), matching the Party/Adventure split above. Open questions: whether the hub is per server or per category, and what the hub cards show.
+
 Create or bind only these two text channels and one discussion thread. Pin the campaign dashboard and keep its hero and Table Talk links current after repair. Keep Party cards in place and route discussion into Table Talk. My Hero on the Adventure panel provides direct private access without searching. Thread messages are table discussion, not submitted actions, and are excluded from automatic campaign-state or generic-chat-memory ingestion. Configure Send Messages in Threads separately from the parent channel's Send Messages permission; test both access paths.
 
 Optional setting: allow in-character messages in Adventure, each treated as a Speak action for its author's hero. Default off, so every gameplay input goes through attributed controls.

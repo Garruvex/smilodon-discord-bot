@@ -20,6 +20,9 @@ import { GeminiStructuredClient } from "../infrastructure/campaign/llm/gemini-st
 import { OpenAiCompatibleStructuredClient } from "../infrastructure/campaign/llm/openai-compatible-structured-client.js";
 import { OpenAiResponsesStructuredClient } from "../infrastructure/campaign/llm/openai-responses-structured-client.js";
 import { loadStarterAdventure } from "../infrastructure/campaign/starter-adventures.js";
+import Database from "better-sqlite3";
+
+import { SqliteCampaignStore } from "../infrastructure/persistence/campaign/sqlite-campaign-store.js";
 import { InMemoryCampaignStore } from "../infrastructure/persistence/campaign/in-memory-campaign-store.js";
 
 // Plays the starter adventure headlessly and prints a report (plan §12).
@@ -33,6 +36,7 @@ const usage =
   "Usage: campaign-harness [--language en|zh-TW|both] [--rounds N] [--seed N] [--out file.md]\n" +
   "  [--dm offline|openai-responses|openai-compatible|gemini] [--model a,b] [--narrator-model a,b]\n" +
   "  [--reasoning-effort minimal|low|medium|high] [--thinking-budget N]\n" +
+  "  [--db file.sqlite]  (store the game in a SQLite file; one file per language run, the language is added to the name)\n" +
   "  [--input-price USD/M] [--cached-price USD/M] [--output-price USD/M]\n";
 
 const { values } = parseArgs({
@@ -41,6 +45,7 @@ const { values } = parseArgs({
     rounds: { type: "string", default: "8" },
     seed: { type: "string", default: "1" },
     out: { type: "string" },
+    db: { type: "string" },
     dm: { type: "string", default: "offline" },
     model: { type: "string" },
     "narrator-model": { type: "string" },
@@ -122,6 +127,11 @@ function pricing(): TokenPricing | undefined {
   return parsed;
 }
 
+function store(language: string): InMemoryCampaignStore | SqliteCampaignStore {
+  if (values.db === undefined) return new InMemoryCampaignStore();
+  return new SqliteCampaignStore(new Database(values.db.replace(/(.sqlite)?$/, `-${language}$1`)));
+}
+
 const glossaries = { en: enSrd51Glossary, "zh-TW": zhTwSrd51Glossary } as const;
 const content = buildSrd51({ capabilities: milestone0Capabilities, glossaries: [enSrd51Glossary, zhTwSrd51Glossary] });
 const adventure = loadStarterAdventure();
@@ -139,7 +149,7 @@ for (const language of languages) {
     rulesets: new RulesetCatalog([content]),
     rulesetPin: { rulesetId: content.rulesetId, rulesetVersion: content.version, houseRules: {} },
     glossary: glossaries[language],
-    unitOfWork: new InMemoryCampaignStore(),
+    unitOfWork: store(language),
     rounds,
   });
   const report = summarizeRun(run, prices);
