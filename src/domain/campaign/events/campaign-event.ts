@@ -61,7 +61,14 @@ export type CampaignEvent =
       readonly visibility: LedgerVisibility;
     }
   // Pending checks get fresh roll deadlines; timers were cancelled while waiting.
-  | { readonly kind: "resumed"; readonly checkDeadlines: Readonly<Record<CheckId, Instant | null>> }
+  | {
+      readonly kind: "resumed";
+      readonly checkDeadlines: Readonly<Record<CheckId, Instant | null>>;
+      // Fresh windows for the round and the current player's turn, when they had one.
+      readonly roundClosesAt?: Instant;
+      readonly turnEndsAt?: Instant;
+    }
+  | { readonly kind: "campaignPaused"; readonly reason: "organizer" | "recovery" }
   | { readonly kind: "restTaken"; readonly rest: "short" | "long"; readonly heroStatus: Readonly<Record<CharacterId, HeroStatus>> }
   | { readonly kind: "itemOffered"; readonly offer: ItemOffer }
   // The offer was accepted: the items change hands.

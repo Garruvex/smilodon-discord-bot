@@ -27,6 +27,10 @@ export type CampaignCommand =
   | { readonly kind: "markReturned"; readonly userId: UserId }
   // Resumes a campaign that was waiting for players.
   | { readonly kind: "continue" }
+  // Stops play: every timer is cancelled and no round, roll, or model work
+  // runs until the organizer resumes (with continue). "recovery" is the
+  // system pausing timed campaigns after a restart.
+  | { readonly kind: "pauseCampaign"; readonly reason: "organizer" | "recovery" }
   // The Planner could not produce a valid proposal after its retry.
   | { readonly kind: "reportPlannerFailure"; readonly roundNumber: number; readonly problems: readonly string[] }
   // The organizer asks the Planner to try the held round again.

@@ -53,7 +53,13 @@ export interface CampaignState {
   readonly offerCount: number;
   // The party as it stood when the current fight began; a retry restores it.
   readonly fightCheckpoint: FightCheckpoint | null;
+  // Why play is stopped, when it is stopped on purpose: the organizer paused,
+  // or the bot restarted and waits for the organizer to resume. Null while
+  // playing, and while merely waiting for players to come back.
+  readonly pausedBy: PauseReason | null;
 }
+
+export type PauseReason = "organizer" | "recovery";
 
 export interface FightCheckpoint {
   readonly characters: Readonly<Record<CharacterId, CharacterSheet>>;

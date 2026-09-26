@@ -11,6 +11,7 @@ import { takeRest } from "./rest.js";
 import { Decision, type DecideResult, type EngineContext } from "./decision.js";
 import { recordLedgerFact, recordNarration, reportPlannerFailure, retryPlan } from "./dm.js";
 import { continueCampaign, joinHero, markAway, markReturned } from "./members.js";
+import { pauseCampaign } from "./pause.js";
 import type { Rejection } from "./rejection.js";
 import { applyRoundPlan } from "./round-plan.js";
 import { closeRoundByOrganizer, openRound, pass, roundTimerExpired, submitAction } from "./rounds.js";
@@ -50,6 +51,8 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
       return markReturned(decision, command.userId);
     case "continue":
       return continueCampaign(decision);
+    case "pauseCampaign":
+      return pauseCampaign(decision, command.reason);
     case "reportPlannerFailure":
       return reportPlannerFailure(decision, command.roundNumber, command.problems);
     case "retryPlan":

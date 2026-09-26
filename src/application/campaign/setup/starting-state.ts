@@ -62,6 +62,7 @@ export function buildStartingState(input: {
     offers: {},
     offerCount: 0,
     fightCheckpoint: null,
+    pausedBy: null,
     clocks: {},
     clues: [],
   };

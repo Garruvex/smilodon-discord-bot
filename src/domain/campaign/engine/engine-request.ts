@@ -27,6 +27,8 @@ export type DeliverySpec =
   // Everyone passed or missed: a template waiting status, no model call.
   | { readonly kind: "quietRound"; readonly roundNumber: number }
   | { readonly kind: "waitingForPlayers" }
+  // Play was paused on purpose; the organizer resumes it.
+  | { readonly kind: "campaignPaused"; readonly reason: "organizer" | "recovery" }
   | { readonly kind: "narration"; readonly roundNumber: number }
   // "The DM considers…": the round is held after the Planner failed.
   | { readonly kind: "dmHolding"; readonly roundNumber: number }

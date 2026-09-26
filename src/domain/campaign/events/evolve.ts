@@ -80,7 +80,9 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     case "memberReturned":
       return updateMember(state, event.userId, (member) => ({ ...member, availability: "present", consecutiveMisses: 0 }));
     case "waitingForPlayers":
-      return { ...state, status: "waitingForPlayers" };
+      return { ...state, status: "waitingForPlayers", pausedBy: null };
+    case "campaignPaused":
+      return { ...state, status: "waitingForPlayers", pausedBy: event.reason };
     case "plannerFailed":
     case "planRetryRequested":
       // History only: the round stays in planning until the next command.
@@ -103,10 +105,15 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       };
     }
     case "resumed": {
-      const active: CampaignState = { ...state, status: "active" };
+      const reopened: CampaignState = { ...state, status: "active", pausedBy: null };
+      const withRound = event.roundClosesAt === undefined ? reopened : updateRound(reopened, (round) => ({ ...round, closesAt: event.roundClosesAt ?? null }));
+      const withTurn =
+        event.turnEndsAt === undefined || withRound.encounter === null
+          ? withRound
+          : { ...withRound, encounter: { ...withRound.encounter, turnEndsAt: event.turnEndsAt } };
       return Object.entries(event.checkDeadlines).reduce(
         (next, [checkId, deadline]) => updateCheck(next, checkId, (check) => ({ ...check, deadline })),
-        active,
+        withTurn,
       );
     }
     case "encounterStarted":

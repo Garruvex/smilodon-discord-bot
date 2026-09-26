@@ -2,9 +2,9 @@ import type { CharacterSheet } from "../character/character-sheet.js";
 import type { CheckId, Instant, UserId } from "../core/ids.js";
 import { isFallen, presentMembers, type CampaignState } from "../state/campaign-state.js";
 import { deadlineAfter, type Decision } from "./decision.js";
-import { rollTimerId } from "./ids.js";
+import { rollTimerId, roundTimerId } from "./ids.js";
 import type { Rejection } from "./rejection.js";
-import { awayRestriction, beginEncounter, onMemberAway, resumeCombat } from "./combat/combat-flow.js";
+import { awayRestriction, beginEncounter, onMemberAway, rearmedTurnDeadline, resumeCombat, turnTimerId } from "./combat/combat-flow.js";
 import { closeIfEveryoneResponded, enterWaiting, finishRoundIfResolved, openRound } from "./rounds.js";
 
 // A player marks themselves away, or the organizer marks them. An open
@@ -60,13 +60,31 @@ export function continueCampaign(decision: Decision): Rejection | null {
   if (member === undefined && ctx.actor.userId !== state.organizerId) return { code: "notMember" };
   if (member?.availability === "away") return { code: "memberAway" };
   if (state.status !== "waitingForPlayers") return { code: "campaignNotWaiting" };
+  // A deliberate pause is the organizer's to lift.
+  if (state.pausedBy !== null && ctx.actor.userId !== state.organizerId) return { code: "notOrganizer" };
   if (presentMembers(state).length === 0) return { code: "nobodyPresent" };
 
   const checkDeadlines: Record<CheckId, Instant | null> = {};
   for (const check of Object.values(state.checks)) {
     if (check.status === "pending") checkDeadlines[check.id] = deadlineAfter(ctx.now, state.pacing.rollSeconds);
   }
-  decision.emit({ kind: "resumed", checkDeadlines });
+  const roundClosesAt = state.round?.status === "collecting" && state.round.closesAt !== null ? deadlineAfter(ctx.now, state.pacing.roundSeconds) : null;
+  const turnEndsAt = rearmedTurnDeadline(decision);
+  decision.emit({
+    kind: "resumed",
+    checkDeadlines,
+    ...(roundClosesAt === null ? {} : { roundClosesAt }),
+    ...(turnEndsAt === null ? {} : { turnEndsAt }),
+  });
+  if (roundClosesAt !== null && state.round !== null) {
+    decision.request({ kind: "startTimer", timer: { kind: "roundWindow", timerId: roundTimerId(state.round.number), dueAt: roundClosesAt, roundNumber: state.round.number } });
+  }
+  if (turnEndsAt !== null && state.encounter !== null) {
+    decision.request({
+      kind: "startTimer",
+      timer: { kind: "combatTurn", timerId: turnTimerId(state.encounter.id, state.encounter.turnNumber), dueAt: turnEndsAt, encounterId: state.encounter.id, turnNumber: state.encounter.turnNumber },
+    });
+  }
   for (const [checkId, dueAt] of Object.entries(checkDeadlines)) {
     if (dueAt !== null) {
       decision.request({ kind: "startTimer", timer: { kind: "roll", timerId: rollTimerId(checkId), dueAt, checkId } });

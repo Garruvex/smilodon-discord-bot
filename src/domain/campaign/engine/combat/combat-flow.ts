@@ -468,6 +468,13 @@ function resolveDeathSave(
 
 // --------------------------------------------------------------- Turns
 
+// A player's turn that had a timer before the pause gets a fresh full one.
+export function rearmedTurnDeadline(decision: Decision): number | null {
+  const encounter = activeEncounter(decision);
+  if (encounter === null || encounter.status !== "active" || encounter.turnEndsAt === null) return null;
+  return deadlineAfter(decision.ctx.now, decision.state.pacing.turnSeconds);
+}
+
 // Starts the turn that was due when the table emptied.
 export function resumeCombat(decision: Decision): void {
   const deferred = activeEncounter(decision)?.deferredTurn;
