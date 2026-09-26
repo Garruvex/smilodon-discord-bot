@@ -65,6 +65,26 @@ npcs:
     voice: Sly and boastful; speaks of himself in the third person.
     publicDescription: A goblin in a patched wolf-fur cloak with a rusted crown.
     secret: He only wants the silver bell and would leave the region with it.
+clocks:
+  - id: clock:scouts-return
+    sceneId: scene:old-watchtower
+    name: The scouts return
+    segments: 4
+    onFull: encounter:watchtower-scouts
+    dmNotes: >-
+      Advance by 1 whenever a hero fails a check in the watchtower or does
+      something loud. When it fills, the scouts arrive and the fight begins.
+clues:
+  - id: clue:tribute-ledger
+    sceneId: scene:old-watchtower
+    publicText: A ledger in the hidden cellar lists tribute payments, each signed by Garrick.
+    dmNotes: >-
+      Reveal after the party has succeeded at three checks in the watchtower
+      (climbing, searching, or staying quiet).
+  - id: clue:chapel-map
+    sceneId: scene:old-watchtower
+    publicText: A rough map in the cellar marks the ruined chapel as the raiders' camp.
+    dmNotes: Reveal together with the ledger.
 encounters:
   - id: encounter:watchtower-scouts
     sceneId: scene:old-watchtower

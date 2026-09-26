@@ -1,7 +1,7 @@
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 
-import type { AdventureBible, EncounterId, NpcId, SceneId } from "../../../domain/campaign/adventure/adventure-bible.js";
+import type { AdventureBible, ClockId, ClueId, EncounterId, NpcId, SceneId } from "../../../domain/campaign/adventure/adventure-bible.js";
 import { isSkill, type CharacterSheet, type Skill, type SkillProficiency } from "../../../domain/campaign/character/character-sheet.js";
 import type { ContentId } from "../../../domain/campaign/rules/content-id.js";
 import { abilities } from "../../../domain/campaign/rules/effects.js";
@@ -18,6 +18,8 @@ export interface AdventureDocument {
 const sceneId = z.string().regex(/^scene:[a-z0-9-]+$/) as unknown as z.ZodType<SceneId>;
 const npcId = z.string().regex(/^npc:[a-z0-9-]+$/) as unknown as z.ZodType<NpcId>;
 const encounterId = z.string().regex(/^encounter:[a-z0-9-]+$/) as unknown as z.ZodType<EncounterId>;
+const clockId = z.string().regex(/^clock:[a-z0-9-]+$/) as unknown as z.ZodType<ClockId>;
+const clueId = z.string().regex(/^clue:[a-z0-9-]+$/) as unknown as z.ZodType<ClueId>;
 const zoneId = z.string().regex(/^[a-z0-9-]+$/);
 const text = z.string().trim().min(1);
 function contentId<K extends "item" | "feature" | "spell" | "monster">(kind: K): z.ZodType<ContentId<K>> {
@@ -40,6 +42,14 @@ const documentSchema = z
       )
       .min(1),
     npcs: z.array(z.object({ id: npcId, name: text, voice: text, publicDescription: text, secret: text }).strict()),
+    clocks: z
+      .array(
+        z
+          .object({ id: clockId, sceneId, name: text, segments: z.number().int().min(2).max(12), dmNotes: text, onFull: encounterId.nullable().default(null) })
+          .strict(),
+      )
+      .default([]),
+    clues: z.array(z.object({ id: clueId, sceneId, publicText: text, dmNotes: text }).strict()).default([]),
     encounters: z
       .array(
         z
@@ -135,6 +145,16 @@ export function parseAdventureDocument(source: string): AdventureDocument {
   // harness and the starter-adventure tests start every authored encounter.
   problems.push(...duplicates("encounter", data.encounters.map((encounter) => encounter.id)));
   const sceneIds = new Set(data.scenes.map((scene) => scene.id));
+  const encounterIds = new Set(data.encounters.map((encounter) => encounter.id));
+  problems.push(...duplicates("clock", data.clocks.map((clock) => clock.id)));
+  problems.push(...duplicates("clue", data.clues.map((clue) => clue.id)));
+  for (const clock of data.clocks) {
+    if (!sceneIds.has(clock.sceneId)) problems.push(`${clock.id} is in unknown ${clock.sceneId}.`);
+    if (clock.onFull !== null && !encounterIds.has(clock.onFull)) problems.push(`${clock.id} starts unknown ${clock.onFull} when it fills.`);
+  }
+  for (const clue of data.clues) {
+    if (!sceneIds.has(clue.sceneId)) problems.push(`${clue.id} is in unknown ${clue.sceneId}.`);
+  }
   for (const encounter of data.encounters) {
     if (!sceneIds.has(encounter.sceneId)) problems.push(`${encounter.id} is in unknown ${encounter.sceneId}.`);
     const zones = new Set(encounter.zones.map((zone) => zone.id));
@@ -177,6 +197,8 @@ export function checkEditionsMatch(editions: readonly AdventureDocument[]): read
       startScene: document.bible.startScene,
       scenes: document.bible.scenes.map((scene) => [scene.id, scene.npcIds]),
       npcs: document.bible.npcs.map((npc) => npc.id),
+      clocks: document.bible.clocks.map((clock) => [clock.id, clock.sceneId, clock.segments, clock.onFull]),
+      clues: document.bible.clues.map((clue) => [clue.id, clue.sceneId]),
       encounters: document.bible.encounters.map((encounter) => ({
         ...encounter,
         publicDescription: null,

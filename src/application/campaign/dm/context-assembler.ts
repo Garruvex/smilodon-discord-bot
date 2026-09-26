@@ -109,10 +109,12 @@ function adventure(input: ContextInput): ContextSection {
       });
       return `${encounter.id} in ${encounter.sceneId}${fought}: ${encounter.publicDescription}\nFoes: ${foes.join(", ")}\nDM notes: ${encounter.dmNotes}`;
     });
+    const clocks = bible.clocks.map((clock) => `${clock.id} "${clock.name}" (${clock.segments} segments, in ${clock.sceneId}): ${clock.dmNotes}`);
+    const clues = bible.clues.map((clue) => `${clue.id} in ${clue.sceneId}: ${clue.publicText}\nDM notes: ${clue.dmNotes}`);
     return {
       layer: "B",
       title: "Adventure bible",
-      text: [bible.title, bible.premise, `DM overview: ${bible.dmOverview}`, ...scenes, ...npcs, ...encounters].join("\n"),
+      text: [bible.title, bible.premise, `DM overview: ${bible.dmOverview}`, ...scenes, ...npcs, ...encounters, ...clocks, ...clues].join("\n"),
     };
   }
   const scene = findScene(bible, state.sceneId);
@@ -145,6 +147,10 @@ function liveState(input: ContextInput): ContextSection {
   const scene = findScene(input.bible, state.sceneId);
   const lines = [`Scene: ${scene === undefined ? "none" : `${scene.title}`}.`];
   lines.push(state.round === null ? "Between rounds." : `Round ${state.round.number}: ${state.round.status}.`);
+  if (input.audience === "planner") {
+    for (const clock of input.bible.clocks) lines.push(`Clock ${clock.id}: ${state.clocks[clock.id]?.filled ?? 0}/${clock.segments}.`);
+  }
+  if (state.clues.length > 0) lines.push(`Revealed clues: ${state.clues.map((clue) => clue.text).join(" ")}`);
   if (encounter !== null) {
     const foes = Object.values(encounter.combatants)
       .filter((combatant) => combatant.side === "foes")

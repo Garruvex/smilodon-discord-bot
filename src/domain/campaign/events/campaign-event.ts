@@ -43,6 +43,8 @@ export type CampaignEvent =
   // Story effects that fired when a round resolved.
   | { readonly kind: "sceneTransitioned"; readonly roundNumber: number; readonly sceneId: SceneId }
   | { readonly kind: "encounterQueued"; readonly roundNumber: number; readonly encounter: EncounterSpec }
+  | { readonly kind: "clockAdvanced"; readonly roundNumber: number; readonly clockId: string; readonly segments: number; readonly filled: number }
+  | { readonly kind: "clueRevealed"; readonly roundNumber: number; readonly clueId: string; readonly text: string }
   | { readonly kind: "memberMarkedAway"; readonly userId: UserId; readonly reason: AwayReason }
   | { readonly kind: "memberReturned"; readonly userId: UserId }
   | { readonly kind: "waitingForPlayers" }

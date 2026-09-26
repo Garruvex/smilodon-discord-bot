@@ -110,7 +110,17 @@ export interface PlannedEffect {
 // before the proposal reaches the engine, which validates the result.
 export type StoryEffect =
   | { readonly kind: "transitionScene"; readonly sceneId: SceneId }
-  | { readonly kind: "startEncounter"; readonly encounter: EncounterSpec };
+  | { readonly kind: "startEncounter"; readonly encounter: EncounterSpec }
+  // Ticks a skill-challenge clock. The application resolves the clock's
+  // size and the fight it starts when full from the adventure.
+  | {
+      readonly kind: "advanceClock";
+      readonly clockId: string;
+      readonly segments: number;
+      readonly by: number;
+      readonly onFull: EncounterSpec | null;
+    }
+  | { readonly kind: "revealClue"; readonly clueId: string; readonly text: string };
 
 export type EffectCondition =
   | { readonly kind: "always" }

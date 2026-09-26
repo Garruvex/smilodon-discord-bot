@@ -106,6 +106,63 @@ describe("story effects", () => {
   });
 });
 
+describe("clocks and clues", () => {
+  const tick = (by: number, onFull: EncounterSpec | null = null): PlannedEffect => ({
+    effect: { kind: "advanceClock", clockId: "clock:scouts", segments: 3, by, onFull },
+    when: { kind: "always" },
+  });
+  const learn: PlannedEffect = { effect: { kind: "revealClue", clueId: "clue:map", text: "A map marks the chapel." }, when: { kind: "always" } };
+
+  // Plays round 1 with the effects and resolves Mira's check with the given d20.
+  function afterRound(state: CampaignState, effects: readonly PlannedEffect[], d20 = 3): CampaignState {
+    const planned = run(closedRound(state), system, { kind: "applyRoundPlan", proposal: sneaking(effects) }).state;
+    return rollStealth(planned, d20).state;
+  }
+
+  it("fills a clock over rounds, and starts its fight when it fills", () => {
+    const first = afterRound(newCampaign(), [tick(2, ambush)]);
+    expect(first.clocks["clock:scouts"]).toEqual({ segments: 3, filled: 2 });
+    expect(first.pendingEncounter).toBeNull();
+
+    // The next round carries on from the saved progress and caps at the size.
+    let state = run(first, system, { kind: "recordNarration", roundNumber: 1, text: "Footsteps below." }).state;
+    state = run(state, alex, { kind: "submitAction", characterId: "c-mira", text: "I sneak." }).state;
+    state = run(state, jamie, { kind: "pass", characterId: "c-borin" }).state;
+    state = run(state, system, { kind: "applyRoundPlan", proposal: { ...sneaking([tick(3, ambush)]), roundNumber: 2 } }).state;
+    state = run(state, alex, { kind: "requestRoll", checkId: "r2:c-mira" }).state;
+    const filled = run(state, system, { kind: "recordRoll", rollId: "r2:c-mira:roll", result: { kind: "d20Test", roll: d20Roll("normal", [15], 7) } });
+    expect(kinds(filled.events)).toEqual(["checkResolved", "clockAdvanced", "encounterQueued", "roundResolved"]);
+    expect(filled.state.clocks["clock:scouts"]).toEqual({ segments: 3, filled: 3 });
+    expect(filled.state.pendingEncounter?.id).toBe("encounter:gate-ambush");
+  });
+
+  it("queues only one fight, ignores a full clock, and reveals each clue once", () => {
+    const both = afterRound(newCampaign(), [ambushIfSpotted, tick(3, { ...ambush, id: "encounter:other" })]);
+    expect(both.pendingEncounter?.id).toBe("encounter:gate-ambush");
+    expect(both.clocks["clock:scouts"]?.filled).toBe(3);
+
+    const learned = afterRound(newCampaign(), [learn]);
+    expect(learned.clues).toEqual([{ id: "clue:map", text: "A map marks the chapel." }]);
+    const twice = afterRound({ ...newCampaign(), clues: learned.clues, clocks: { "clock:scouts": { segments: 3, filled: 3 } } }, [learn, tick(1)]);
+    expect(twice.clues).toHaveLength(1);
+    expect(twice.clocks["clock:scouts"]?.filled).toBe(3);
+  });
+
+  it("refuses bad advances and repeated clocks in one round", () => {
+    const blank: PlannedEffect = { effect: { kind: "revealClue", clueId: "clue:map", text: " " }, when: { kind: "always" } };
+    const rejection = reject(closedRound(), system, { kind: "applyRoundPlan", proposal: sneaking([tick(0), tick(5), blank]) });
+    expect(rejection).toEqual({
+      code: "invalidPlan",
+      problems: [
+        "Advance each clock at most once per round.",
+        "Clock clock:scouts may advance by 1 to 3 segments.",
+        "Clock clock:scouts may advance by 1 to 3 segments.",
+        "Clue clue:map needs text.",
+      ],
+    });
+  });
+});
+
 describe("combat narration", () => {
   // Initiative: Mira 20, Borin 15, goblins 5 and 4; every attack misses (d20 2).
   function roundTwo(): Fight {

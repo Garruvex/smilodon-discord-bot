@@ -1,3 +1,5 @@
+import type { EncounterSpec, PlannedEffect } from "../commands/campaign-command.js";
+import { assertNever } from "../core/assert-never.js";
 import type { CharacterId } from "../core/ids.js";
 import type { RoundCloseReason } from "../events/campaign-event.js";
 import { presentMembers, type CampaignState, type RoundState } from "../state/campaign-state.js";
@@ -129,15 +131,45 @@ export function finishRoundIfResolved(decision: Decision): void {
   if (checks.some((check) => check.status !== "resolved")) return;
   // Scene first, so the Narrator describes the round in the scene it leads to.
   const fired = [...firedEffects(state, round)].sort((a, b) => effectOrder[a.effect.kind] - effectOrder[b.effect.kind]);
-  for (const { effect } of fired) {
-    if (effect.kind === "transitionScene") decision.emit({ kind: "sceneTransitioned", roundNumber: round.number, sceneId: effect.sceneId });
-    else decision.emit({ kind: "encounterQueued", roundNumber: round.number, encounter: effect.encounter });
-  }
+  for (const { effect } of fired) applyStoryEffect(decision, round.number, effect);
   decision.emit({ kind: "roundResolved", roundNumber: round.number, quiet: false });
   decision.request({ kind: "narrate", roundNumber: round.number });
 }
 
-const effectOrder = { transitionScene: 0, startEncounter: 1 } as const;
+const effectOrder = { transitionScene: 0, revealClue: 1, startEncounter: 2, advanceClock: 3 } as const;
+
+// One fired effect. A fight can be queued only once at a time, and one that
+// was already fought is not queued again (a filled clock may name it).
+function applyStoryEffect(decision: Decision, roundNumber: number, effect: PlannedEffect["effect"]): void {
+  const { state } = decision;
+  switch (effect.kind) {
+    case "transitionScene":
+      decision.emit({ kind: "sceneTransitioned", roundNumber, sceneId: effect.sceneId });
+      return;
+    case "revealClue":
+      if (!state.clues.some((clue) => clue.id === effect.clueId)) decision.emit({ kind: "clueRevealed", roundNumber, clueId: effect.clueId, text: effect.text });
+      return;
+    case "advanceClock": {
+      const before = state.clocks[effect.clockId]?.filled ?? 0;
+      const filled = Math.min(effect.segments, before + effect.by);
+      if (filled === before) return;
+      decision.emit({ kind: "clockAdvanced", roundNumber, clockId: effect.clockId, segments: effect.segments, filled });
+      if (filled === effect.segments && effect.onFull !== null) queueEncounter(decision, roundNumber, effect.onFull);
+      return;
+    }
+    case "startEncounter":
+      queueEncounter(decision, roundNumber, effect.encounter);
+      return;
+    default:
+      assertNever(effect);
+  }
+}
+
+function queueEncounter(decision: Decision, roundNumber: number, encounter: EncounterSpec): void {
+  const { state } = decision;
+  if (state.pendingEncounter !== null || state.encounterHistory.includes(encounter.id)) return;
+  decision.emit({ kind: "encounterQueued", roundNumber, encounter });
+}
 
 // Nobody is present: suspend all timers and hold pending work until a
 // returning player explicitly continues.

@@ -35,6 +35,9 @@ export interface PlannerRequest {
     readonly sceneIds: readonly string[];
     // Encounters not yet fought, with the scene each belongs to.
     readonly encounters: readonly { readonly id: string; readonly sceneId: string }[];
+    // Clocks with their progress, and clues not yet revealed.
+    readonly clocks: readonly { readonly id: string; readonly sceneId: string; readonly filled: number; readonly segments: number }[];
+    readonly clues: readonly { readonly id: string; readonly sceneId: string }[];
   };
   // Validation problems from the previous attempt, for the one retry.
   readonly previousProblems: readonly string[];
@@ -51,7 +54,9 @@ export interface PlannerProposal {
 
 export type PlannerEffect =
   | { readonly kind: "transitionScene"; readonly sceneId: string; readonly when: EffectCondition }
-  | { readonly kind: "startEncounter"; readonly encounterId: string; readonly when: EffectCondition };
+  | { readonly kind: "startEncounter"; readonly encounterId: string; readonly when: EffectCondition }
+  | { readonly kind: "advanceClock"; readonly clockId: string; readonly by: number; readonly when: EffectCondition }
+  | { readonly kind: "revealClue"; readonly clueId: string; readonly when: EffectCondition };
 
 // Narrow, per-purpose model calls (plan §6, DM call pipeline). Adapters
 // parse the provider's structured output; the engine validates it.

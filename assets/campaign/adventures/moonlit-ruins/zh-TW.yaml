@@ -54,6 +54,24 @@ npcs:
     voice: 狡猾又愛吹噓，總是用第三人稱稱呼自己。
     publicDescription: 一名披著補丁狼皮斗篷、戴著生鏽王冠的哥布林。
     secret: 他只想要銀鐘，拿到後願意離開這片地區。
+clocks:
+  - id: clock:scouts-return
+    sceneId: scene:old-watchtower
+    name: 斥候折返
+    segments: 4
+    onFull: encounter:watchtower-scouts
+    dmNotes: >-
+      隊伍在瞭望塔內任一英雄檢定失敗，或做出吵鬧的舉動時，時鐘加 1。時鐘填滿時，斥候
+      抵達，戰鬥開始。
+clues:
+  - id: clue:tribute-ledger
+    sceneId: scene:old-watchtower
+    publicText: 隱藏地窖裡的帳本記錄著保護費的款項，每一筆都有蓋瑞克的簽名。
+    dmNotes: 隊伍在瞭望塔累積三次成功檢定（攀爬、搜索或保持安靜）後揭露。
+  - id: clue:chapel-map
+    sceneId: scene:old-watchtower
+    publicText: 地窖裡一張粗略的地圖，把廢棄禮拜堂標為劫掠者的營地。
+    dmNotes: 與帳本一同揭露。
 encounters:
   - id: encounter:watchtower-scouts
     sceneId: scene:old-watchtower

@@ -69,6 +69,10 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       return { ...state, sceneId: event.sceneId };
     case "encounterQueued":
       return { ...state, pendingEncounter: event.encounter };
+    case "clockAdvanced":
+      return { ...state, clocks: { ...state.clocks, [event.clockId]: { segments: event.segments, filled: event.filled } } };
+    case "clueRevealed":
+      return { ...state, clues: [...state.clues, { id: event.clueId, text: event.text }] };
     case "memberMarkedAway":
       return updateMember(state, event.userId, (member) => ({ ...member, availability: "away", consecutiveMisses: 0 }));
     case "memberReturned":

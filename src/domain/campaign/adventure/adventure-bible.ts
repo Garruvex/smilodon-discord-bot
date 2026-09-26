@@ -8,6 +8,8 @@ export type CampaignLanguage = "en" | "zh-TW";
 export type SceneId = `scene:${string}`;
 export type NpcId = `npc:${string}`;
 export type EncounterId = `encounter:${string}`;
+export type ClockId = `clock:${string}`;
+export type ClueId = `clue:${string}`;
 
 export interface AdventureBible {
   readonly id: string;
@@ -20,6 +22,29 @@ export interface AdventureBible {
   readonly scenes: readonly BibleScene[];
   readonly npcs: readonly BibleNpc[];
   readonly encounters: readonly BibleEncounter[];
+  readonly clocks: readonly BibleClock[];
+  readonly clues: readonly BibleClue[];
+}
+
+// A skill-challenge clock (plan §5): the Planner advances it when failure or
+// noise costs the party time; when it fills, the authored fight begins.
+export interface BibleClock {
+  readonly id: ClockId;
+  readonly sceneId: SceneId;
+  readonly name: string;
+  readonly segments: number;
+  // When and why to advance it; Planner only.
+  readonly dmNotes: string;
+  readonly onFull: EncounterId | null;
+}
+
+// Something the party can learn. The public text may reach narration once
+// the clue is revealed; the notes say when to reveal it.
+export interface BibleClue {
+  readonly id: ClueId;
+  readonly sceneId: SceneId;
+  readonly publicText: string;
+  readonly dmNotes: string;
 }
 
 export interface BibleScene {
@@ -61,6 +86,14 @@ export function findScene(bible: AdventureBible, sceneId: string | null): BibleS
 
 export function findEncounter(bible: AdventureBible, encounterId: string | null): BibleEncounter | undefined {
   return bible.encounters.find((encounter) => encounter.id === encounterId);
+}
+
+export function findClock(bible: AdventureBible, clockId: string): BibleClock | undefined {
+  return bible.clocks.find((clock) => clock.id === clockId);
+}
+
+export function findClue(bible: AdventureBible, clueId: string): BibleClue | undefined {
+  return bible.clues.find((clue) => clue.id === clueId);
 }
 
 export function encounterSpec(encounter: BibleEncounter): EncounterSpec {

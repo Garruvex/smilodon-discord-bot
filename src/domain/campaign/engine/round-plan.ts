@@ -101,6 +101,8 @@ function effectProblems(decision: Decision, proposal: RoundPlanProposal): readon
   const count = (kind: PlannedEffect["effect"]["kind"]): number => effects.filter((planned) => planned.effect.kind === kind).length;
   if (count("transitionScene") > 1) problems.push("Only one scene transition per round.");
   if (count("startEncounter") > 1) problems.push("Only one encounter per round.");
+  const clocks = effects.flatMap(({ effect }) => (effect.kind === "advanceClock" ? [effect.clockId] : []));
+  if (new Set(clocks).size !== clocks.length) problems.push("Advance each clock at most once per round.");
   for (const { effect, when } of effects) {
     if (when.kind === "checkOutcome") {
       const action = proposal.actions.find((candidate) => candidate.characterId === when.characterId);
@@ -112,6 +114,14 @@ function effectProblems(decision: Decision, proposal: RoundPlanProposal): readon
         break;
       case "startEncounter":
         problems.push(...encounterProblems(decision, effect.encounter).map((problem) => `Encounter ${effect.encounter.id}: ${problem}`));
+        break;
+      case "advanceClock":
+        if (!Number.isInteger(effect.by) || effect.by < 1 || effect.by > 3) problems.push(`Clock ${effect.clockId} may advance by 1 to 3 segments.`);
+        if (!Number.isInteger(effect.segments) || effect.segments < 2) problems.push(`Clock ${effect.clockId} needs at least 2 segments.`);
+        if (effect.onFull !== null) problems.push(...encounterProblems(decision, effect.onFull).map((problem) => `Clock ${effect.clockId} encounter ${effect.onFull?.id ?? ""}: ${problem}`));
+        break;
+      case "revealClue":
+        if (effect.text.trim().length === 0) problems.push(`Clue ${effect.clueId} needs text.`);
         break;
       default:
         problems.push("Unknown story effect.");

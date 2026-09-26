@@ -1,4 +1,4 @@
-import { encounterSpec, findEncounter, type AdventureBible } from "../../../domain/campaign/adventure/adventure-bible.js";
+import { encounterSpec, findClock, findClue, findEncounter, type AdventureBible } from "../../../domain/campaign/adventure/adventure-bible.js";
 import type { PlannedEffect, RoundPlanProposal } from "../../../domain/campaign/commands/campaign-command.js";
 import type { CampaignState } from "../../../domain/campaign/state/campaign-state.js";
 import type { PlannerProposal, PlannerRequest } from "../ports/dm-ports.js";
@@ -11,6 +11,13 @@ export function plannerStory(bible: AdventureBible, state: CampaignState): Plann
     encounters: bible.encounters
       .filter((encounter) => !state.encounterHistory.includes(encounter.id))
       .map((encounter) => ({ id: encounter.id, sceneId: encounter.sceneId })),
+    clocks: bible.clocks.map((clock) => ({
+      id: clock.id,
+      sceneId: clock.sceneId,
+      filled: state.clocks[clock.id]?.filled ?? 0,
+      segments: clock.segments,
+    })),
+    clues: bible.clues.filter((clue) => !state.clues.some((known) => known.id === clue.id)).map((clue) => ({ id: clue.id, sceneId: clue.sceneId })),
   };
 }
 
@@ -44,6 +51,26 @@ export function resolveStoryEffects(
         else if (state.encounterHistory.includes(encounter.id)) problems.push(`${encounter.id} has already been fought.`);
         else if (!reachable.has(encounter.sceneId)) problems.push(`${encounter.id} belongs to ${encounter.sceneId}, where the party is not.`);
         else effects.push({ effect: { kind: "startEncounter", encounter: encounterSpec(encounter) }, when: effect.when });
+        break;
+      }
+      case "advanceClock": {
+        const clock = findClock(bible, effect.clockId);
+        if (clock === undefined) problems.push(`Unknown clock "${effect.clockId}".`);
+        else if (!reachable.has(clock.sceneId)) problems.push(`${clock.id} belongs to ${clock.sceneId}, where the party is not.`);
+        else if (!Number.isInteger(effect.by) || effect.by < 1 || effect.by > 3) problems.push(`${clock.id} may advance by 1 to 3 segments.`);
+        else {
+          const fight = findEncounter(bible, clock.onFull);
+          const onFull = fight === undefined || state.encounterHistory.includes(fight.id) ? null : encounterSpec(fight);
+          effects.push({ effect: { kind: "advanceClock", clockId: clock.id, segments: clock.segments, by: effect.by, onFull }, when: effect.when });
+        }
+        break;
+      }
+      case "revealClue": {
+        const clue = findClue(bible, effect.clueId);
+        if (clue === undefined) problems.push(`Unknown clue "${effect.clueId}".`);
+        else if (state.clues.some((known) => known.id === clue.id)) problems.push(`${clue.id} was already revealed.`);
+        else if (!reachable.has(clue.sceneId)) problems.push(`${clue.id} belongs to ${clue.sceneId}, where the party is not.`);
+        else effects.push({ effect: { kind: "revealClue", clueId: clue.id, text: clue.publicText }, when: effect.when });
         break;
       }
       default:

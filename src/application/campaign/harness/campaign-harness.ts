@@ -295,6 +295,8 @@ function initialState(options: HarnessOptions, pacing: Pacing): CampaignState {
     heroStatus: {},
     pendingEncounter: null,
     encounterHistory: [],
+    clocks: {},
+    clues: [],
   };
 }
 

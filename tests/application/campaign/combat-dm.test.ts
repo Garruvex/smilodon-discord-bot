@@ -122,6 +122,8 @@ describe("story effects from the Planner", () => {
       sceneId: "scene:tavern",
       sceneIds: ["scene:tavern"],
       encounters: [{ id: "encounter:cellar-goblins", sceneId: "scene:tavern" }],
+      clocks: [{ id: "clock:guards-return", sceneId: "scene:tavern", filled: 0, segments: 3 }],
+      clues: [{ id: "clue:cellar-key", sceneId: "scene:tavern" }],
     });
     await worker.runOnce(); // narrate
     expect(narrator.requests[0]?.threat).toBe("Goblins burst up through the cellar trapdoor.");
@@ -131,6 +133,75 @@ describe("story effects from the Planner", () => {
     const state = await load();
     expect(state.encounter?.id).toBe("encounter:cellar-goblins");
     expect(state.encounterHistory).toEqual(["encounter:cellar-goblins"]);
+  });
+});
+
+describe("clocks and clues from the Planner", () => {
+  const ticking: PlannerProposal = {
+    ...trapdoorFight,
+    effects: [
+      { kind: "advanceClock", clockId: "clock:guards-return", by: 2, when: { kind: "always" } },
+      { kind: "revealClue", clueId: "clue:cellar-key", when: { kind: "checkOutcome", characterId: "c-mira", success: true } },
+    ],
+  };
+
+  it("resolves a clock with its size and the fight it starts, and a clue with its public text", () => {
+    expect(resolveStoryEffects(ticking, testBible, tavern)).toMatchObject({
+      kind: "resolved",
+      proposal: {
+        effects: [
+          { effect: { kind: "advanceClock", clockId: "clock:guards-return", segments: 3, by: 2, onFull: { id: "encounter:cellar-goblins" } } },
+          { effect: { kind: "revealClue", clueId: "clue:cellar-key", text: "A brass key hangs behind the bar." } },
+        ],
+      },
+    });
+    const fought = { ...tavern, encounterHistory: ["encounter:cellar-goblins"] };
+    expect(resolveStoryEffects(ticking, testBible, fought)).toMatchObject({
+      proposal: { effects: [{ effect: { kind: "advanceClock", onFull: null } }, { effect: { kind: "revealClue" } }] },
+    });
+  });
+
+  it("refuses unknown, out-of-place, or repeated clocks and clues, and absurd advances", () => {
+    const bad: PlannerProposal = {
+      ...trapdoorFight,
+      effects: [
+        { kind: "advanceClock", clockId: "clock:nope", by: 1, when: { kind: "always" } },
+        { kind: "advanceClock", clockId: "clock:guards-return", by: 9, when: { kind: "always" } },
+        { kind: "revealClue", clueId: "clue:nope", when: { kind: "always" } },
+        { kind: "revealClue", clueId: "clue:cellar-key", when: { kind: "always" } },
+      ],
+    };
+    const known = { ...tavern, clues: [{ id: "clue:cellar-key", text: "A brass key hangs behind the bar." }] };
+    expect(resolveStoryEffects(bad, testBible, known)).toEqual({
+      kind: "invalid",
+      problems: [
+        'Unknown clock "clock:nope".',
+        "clock:guards-return may advance by 1 to 3 segments.",
+        'Unknown clue "clue:nope".',
+        "clue:cellar-key was already revealed.",
+      ],
+    });
+    expect(resolveStoryEffects(ticking, testBible, { ...tavern, sceneId: null })).toMatchObject({
+      problems: ["clock:guards-return belongs to scene:tavern, where the party is not.", "clue:cellar-key belongs to scene:tavern, where the party is not."],
+    });
+  });
+
+  it("shows the Planner the clock and clue notes, and the Narrator only what was revealed", () => {
+    const state = {
+      ...tavern,
+      clocks: { "clock:guards-return": { segments: 3, filled: 2 } },
+      clues: [{ id: "clue:cellar-key", text: "A brass key hangs behind the bar." }],
+    };
+    const base = { state, events: [], bible: testBible, glossary: enSrd51Glossary, budgetTokens: 30_000 };
+    const text = (audience: "planner" | "narrator"): string =>
+      assembleContext({ ...base, audience }).sections.map((section) => section.text).join("\n");
+    expect(text("planner")).toContain(secrets.clock);
+    expect(text("planner")).toContain(secrets.clue);
+    expect(text("planner")).toContain("Clock clock:guards-return: 2/3.");
+    expect(text("narrator")).not.toContain(secrets.clock);
+    expect(text("narrator")).not.toContain(secrets.clue);
+    expect(text("narrator")).not.toContain("clock:guards-return");
+    expect(text("narrator")).toContain("Revealed clues: A brass key hangs behind the bar.");
   });
 });
 

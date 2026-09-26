@@ -35,6 +35,8 @@ const plannerRequest: PlannerRequest = {
     sceneId: "scene:crossroads-inn",
     sceneIds: ["scene:crossroads-inn", "scene:ruined-chapel"],
     encounters: [{ id: "encounter:chapel-fight", sceneId: "scene:ruined-chapel" }],
+    clocks: [{ id: "clock:scouts-return", sceneId: "scene:old-watchtower", filled: 1, segments: 4 }],
+    clues: [{ id: "clue:chapel-map", sceneId: "scene:old-watchtower" }],
   },
   previousProblems: [],
 };
@@ -107,9 +109,10 @@ describe("planner prompt and schema", () => {
     const schema = plannerJsonSchema(plannerRequest) as { properties: { effects: { items: { properties: Record<string, unknown> } } } };
     expect(schema.properties.effects.items.properties.target).toEqual({
       type: "string",
-      enum: ["scene:crossroads-inn", "scene:ruined-chapel", "encounter:chapel-fight"],
+      enum: ["scene:crossroads-inn", "scene:ruined-chapel", "encounter:chapel-fight", "clock:scouts-return", "clue:chapel-map"],
     });
     expect(buildPlannerPrompt(plannerRequest).system).toContain("Encounters not yet fought: encounter:chapel-fight (scene:ruined-chapel).");
+    expect(buildPlannerPrompt(plannerRequest).system).toContain("clock:scouts-return 1/4 (scene:old-watchtower)");
   });
 });
 
@@ -130,14 +133,18 @@ describe("parsePlannerOutput", () => {
   it("maps story effects, keyed to a check outcome when asked", () => {
     const plan = JSON.parse(validPlan) as Record<string, unknown>;
     plan.effects = [
-      { kind: "transitionScene", target: "scene:ruined-chapel", when: "always", characterId: null },
-      { kind: "startEncounter", target: "encounter:chapel-fight", when: "onFailure", characterId: "c-mira" },
+      { kind: "transitionScene", target: "scene:ruined-chapel", amount: null, when: "always", characterId: null },
+      { kind: "startEncounter", target: "encounter:chapel-fight", amount: null, when: "onFailure", characterId: "c-mira" },
+      { kind: "advanceClock", target: "clock:scouts-return", amount: 2, when: "onFailure", characterId: "c-mira" },
+      { kind: "revealClue", target: "clue:chapel-map", amount: null, when: "onSuccess", characterId: "c-mira" },
     ];
     expect(parsePlannerOutput(JSON.stringify(plan), 3).effects).toEqual([
       { kind: "transitionScene", sceneId: "scene:ruined-chapel", when: { kind: "always" } },
       { kind: "startEncounter", encounterId: "encounter:chapel-fight", when: { kind: "checkOutcome", characterId: "c-mira", success: false } },
+      { kind: "advanceClock", clockId: "clock:scouts-return", by: 2, when: { kind: "checkOutcome", characterId: "c-mira", success: false } },
+      { kind: "revealClue", clueId: "clue:chapel-map", when: { kind: "checkOutcome", characterId: "c-mira", success: true } },
     ]);
-    plan.effects = [{ kind: "startEncounter", target: "encounter:chapel-fight", when: "onSuccess", characterId: null }];
+    plan.effects = [{ kind: "startEncounter", target: "encounter:chapel-fight", amount: null, when: "onSuccess", characterId: null }];
     expect(() => parsePlannerOutput(JSON.stringify(plan), 3)).toThrow("needs the characterId whose check decides it");
   });
 
@@ -160,7 +167,7 @@ describe("LLM DM", () => {
     expect(proposal.actions).toHaveLength(1);
     expect(client.requests[0]?.schemaName).toBe("campaign_round_plan");
     expect(observed).toEqual([
-      { call: "planner", model: "fake-model", promptVersion: "planner-2", usage: { inputTokens: 100, outputTokens: 20, cachedInputTokens: 60 } },
+      { call: "planner", model: "fake-model", promptVersion: "planner-3", usage: { inputTokens: 100, outputTokens: 20, cachedInputTokens: 60 } },
     ]);
   });
 

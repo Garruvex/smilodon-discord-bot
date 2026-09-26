@@ -35,6 +35,10 @@ export interface CampaignState {
   readonly pendingEncounter: EncounterSpec | null;
   // Every encounter ID started in this campaign; each runs once.
   readonly encounterHistory: readonly string[];
+  // Skill-challenge clocks by ID, created the first time they advance.
+  readonly clocks: Readonly<Record<string, ClockState>>;
+  // Clues the party has learned, in the order revealed.
+  readonly clues: readonly RevealedClue[];
   // Heroes' HP and limited resources between fights; a hero missing here is
   // fresh (full HP, every slot and use).
   readonly heroStatus: Readonly<Record<CharacterId, HeroStatus>>;
@@ -110,6 +114,16 @@ export interface CheckResult {
   readonly roll: D20TestRoll;
   readonly success: boolean;
   readonly moments: RollMoments;
+}
+
+export interface ClockState {
+  readonly segments: number;
+  readonly filled: number;
+}
+
+export interface RevealedClue {
+  readonly id: string;
+  readonly text: string;
 }
 
 export function presentMembers(state: CampaignState): readonly MemberState[] {

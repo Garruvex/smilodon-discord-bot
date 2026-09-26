@@ -49,6 +49,11 @@ const sceneWords: Readonly<Record<string, readonly string[]>> = {
 };
 const fightWords = ["attack", "charge", "fight", "攻擊", "衝向", "開戰"];
 
+function rulesFor(text: string): KeywordRule | undefined {
+  const lower = text.toLowerCase();
+  return rules.find((candidate) => candidate.words.some((word) => lower.includes(word)));
+}
+
 export class RuleBasedPlanner implements CampaignPlanner {
   public plan(request: PlannerRequest): Promise<PlannerProposal> {
     return Promise.resolve({
@@ -74,6 +79,21 @@ function storyEffects(request: PlannerRequest): readonly PlannerEffect[] {
   const destination = request.story.sceneIds.find((sceneId) => sceneId !== request.story.sceneId && mentions(sceneWords[sceneId] ?? []));
   if (destination !== undefined) effects.push({ kind: "transitionScene", sceneId: destination, when: always });
   const scene = destination ?? request.story.sceneId;
+  // A skill challenge in the scene's clock: failed checks cost time, and
+  // the first success turns up the scene's clue.
+  const clock = request.story.clocks.find((candidate) => candidate.sceneId === scene && candidate.filled < candidate.segments);
+  const clue = request.story.clues.find((candidate) => candidate.sceneId === scene);
+  if (scene === request.story.sceneId) {
+    for (const action of request.actions) {
+      if (clock !== undefined && rulesFor(action.text) !== undefined) {
+        effects.push({ kind: "advanceClock", clockId: clock.id, by: 1, when: { kind: "checkOutcome", characterId: action.characterId, success: false } });
+      }
+    }
+    const first = request.actions.find((action) => rulesFor(action.text) !== undefined);
+    if (clue !== undefined && first !== undefined) {
+      effects.push({ kind: "revealClue", clueId: clue.id, when: { kind: "checkOutcome", characterId: first.characterId, success: true } });
+    }
+  }
   const fight = request.story.encounters.find((encounter) => encounter.sceneId === scene);
   if (fight !== undefined && mentions(fightWords)) effects.push({ kind: "startEncounter", encounterId: fight.id, when: always });
   return effects;
