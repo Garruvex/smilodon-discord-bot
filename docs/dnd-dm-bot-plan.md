@@ -624,6 +624,8 @@ Persist engine capability and house-rule option versions. An engine upgrade must
 
 No calendar estimate is committed before milestone 0 fixes content scope.
 
+Status: milestone 0 is built (see the [milestone 0 report](dnd-milestone-0-report.md)); milestone 1 is built and awaiting its real-table playtest (see the [milestone 1 status](dnd-milestone-1-status.md)).
+
 ### Milestone 0 content proposal
 
 To confirm before authoring; chosen to exercise each core mechanic once, including concentration (required by the Life Domain's Bless), without summons or reach weapons.
