@@ -13,6 +13,7 @@ import {
   type TimerRecord,
 } from "../../../application/campaign/ports/campaign-store.js";
 import type { CampaignLifecycle, CampaignRecord, GuildCampaignSettings, StoredRecord } from "../../../application/campaign/ports/campaign-record.js";
+import type { LibraryCharacter, LibrarySnapshot } from "../../../application/campaign/library/library-types.js";
 import type { CampaignState } from "../../../domain/campaign/state/campaign-state.js";
 import type { TimerSpec } from "../../../domain/campaign/engine/engine-request.js";
 
@@ -25,6 +26,8 @@ interface CampaignData {
   outbox: Map<string, OutboxItem>;
   timers: Map<string, TimerRecord>;
   rolls: Map<string, SavedRoll>;
+  libraryCharacters: Map<string, LibraryCharacter>;
+  librarySnapshots: Map<string, LibrarySnapshot>;
 }
 
 // The campaign store for the headless harness and application tests. Each
@@ -40,6 +43,8 @@ export class InMemoryCampaignStore implements CampaignUnitOfWork {
     outbox: new Map(),
     timers: new Map(),
     rolls: new Map(),
+    libraryCharacters: new Map(),
+    librarySnapshots: new Map(),
   };
   private readonly lock = new KeyedSerialQueue();
 
@@ -209,6 +214,43 @@ class InMemoryTransaction implements CampaignTransaction {
   public saveGuildSettings(settings: GuildCampaignSettings): Promise<void> {
     this.data.guildSettings.set(settings.guildId, settings);
     return Promise.resolve();
+  }
+
+  public saveLibraryCharacter(character: LibraryCharacter): Promise<void> {
+    this.data.libraryCharacters.set(character.id, character);
+    return Promise.resolve();
+  }
+
+  public loadLibraryCharacter(id: string): Promise<LibraryCharacter | undefined> {
+    return Promise.resolve(this.data.libraryCharacters.get(id));
+  }
+
+  public listLibraryCharacters(ownerUserId: string): Promise<readonly LibraryCharacter[]> {
+    return Promise.resolve([...this.data.libraryCharacters.values()].filter((character) => character.ownerUserId === ownerUserId));
+  }
+
+  public deleteLibraryCharacter(id: string): Promise<void> {
+    this.data.libraryCharacters.delete(id);
+    for (const [snapshotId, snapshot] of this.data.librarySnapshots) if (snapshot.characterId === id) this.data.librarySnapshots.delete(snapshotId);
+    return Promise.resolve();
+  }
+
+  // Written once: an existing ID keeps the first snapshot.
+  public saveLibrarySnapshot(snapshot: LibrarySnapshot): Promise<void> {
+    if (!this.data.librarySnapshots.has(snapshot.id)) this.data.librarySnapshots.set(snapshot.id, snapshot);
+    return Promise.resolve();
+  }
+
+  public loadLibrarySnapshot(id: string): Promise<LibrarySnapshot | undefined> {
+    return Promise.resolve(this.data.librarySnapshots.get(id));
+  }
+
+  public listLibrarySnapshots(characterId: string): Promise<readonly LibrarySnapshot[]> {
+    return Promise.resolve([...this.data.librarySnapshots.values()].filter((snapshot) => snapshot.characterId === characterId).sort((a, b) => a.revision - b.revision));
+  }
+
+  public findLibrarySnapshotBySourceKey(characterId: string, sourceKey: string): Promise<LibrarySnapshot | undefined> {
+    return Promise.resolve([...this.data.librarySnapshots.values()].find((snapshot) => snapshot.characterId === characterId && snapshot.sourceKey === sourceKey));
   }
 
   public findRoll(key: CampaignKey, rollId: string): Promise<SavedRoll | undefined> {

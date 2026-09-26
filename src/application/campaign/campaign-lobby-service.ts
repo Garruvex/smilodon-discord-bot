@@ -18,7 +18,13 @@ import {
 } from "./ports/campaign-store.js";
 import type { Clock } from "./ports/clock.js";
 import { resolvePacing, type PacingChoice } from "./setup/pacing-presets.js";
-import { buildStartingState, StartingStateError } from "./setup/starting-state.js";
+import { checkCompatibility, type ImportConflict } from "./library/compatibility.js";
+import type { CharacterLibrary } from "./library/character-library.js";
+import { instantiateHero } from "./library/instantiate.js";
+import { libraryHeroRef, savedSnapshotIdOf, type LibrarySnapshot } from "./library/library-types.js";
+import type { DerivedSheet } from "../../domain/campaign/character/character-build.js";
+import type { RulesetCatalog } from "./rules/ruleset-catalog.js";
+import { buildStartingState, StartingStateError, type Seat } from "./setup/starting-state.js";
 
 export interface CreateCampaignInput {
   readonly guildId: string;
@@ -44,7 +50,17 @@ export type ServiceRefusal =
   | "invalidName"
   | "nameTaken"
   | "invalidPacing"
-  | "invalidHouseRules";
+  | "invalidHouseRules"
+  | "libraryUnavailable"
+  | "savedCharacterMissing"
+  | "savedCharacterProblem";
+
+// What choosing a saved character would bring, and what stands in the way.
+export type SavedPreview =
+  | { readonly kind: "ok"; readonly snapshot: LibrarySnapshot; readonly hero: DerivedSheet | null; readonly conflicts: readonly ImportConflict[] }
+  | { readonly kind: "refused"; readonly reason: ServiceRefusal };
+
+export type ChooseSavedResult = ServiceResult<CampaignRecord> | { readonly kind: "conflicts"; readonly conflicts: readonly ImportConflict[] };
 
 export type ServiceResult<T> = { readonly kind: "ok"; readonly value: T } | { readonly kind: "refused"; readonly reason: ServiceRefusal };
 
@@ -56,6 +72,10 @@ export interface CampaignLobbyServiceOptions {
   // The ruleset new campaigns are pinned to, with its default house rules.
   readonly ruleset: RulesetPin;
   readonly newId?: () => string;
+  // The character library and the rulesets it is checked against: without
+  // them a saved character cannot be chosen.
+  readonly library?: CharacterLibrary;
+  readonly rulesets?: RulesetCatalog;
   // Called after a game starts, so the places it lives in can be adjusted (a
   // players-only game hides its channels then).
   readonly onStarted?: (key: CampaignKey) => void;
@@ -182,6 +202,45 @@ export class CampaignLobbyService {
     });
   }
 
+  // What a saved character would bring into this game, and every conflict
+  // that stops it. The owner sees this before confirming; only their own
+  // characters can be previewed.
+  public async previewSaved(key: CampaignKey, userId: UserId, snapshotId: string): Promise<SavedPreview> {
+    const { library, rulesets } = this.options;
+    if (library === undefined || rulesets === undefined) return { kind: "refused", reason: "libraryUnavailable" };
+    const stored = await this.options.unitOfWork.transaction((tx) => tx.loadRecord(key));
+    if (stored === undefined) return { kind: "refused", reason: "notFound" };
+    if (stored.record.lifecycle !== "lobby") return { kind: "refused", reason: "notLobby" };
+    const snapshot = await library.snapshot(userId, snapshotId);
+    if (snapshot === undefined) return { kind: "refused", reason: "savedCharacterMissing" };
+    const content = rulesets.resolve({ ...this.options.ruleset, houseRules: stored.record.houseRules }).content;
+    const conflicts = checkCompatibility(snapshot, content);
+    // A build with a problem has no hero to show.
+    const broken = conflicts.some((conflict) => conflict.code === "invalidBuild");
+    return { kind: "ok", snapshot, hero: broken ? null : instantiateHero(snapshot, stored.record.houseRules), conflicts };
+  }
+
+  // Seats the player with a saved character, when nothing stands in the way.
+  public chooseSaved(key: CampaignKey, userId: UserId, snapshotId: string): Promise<ChooseSavedResult> {
+    return this.queue.run(queueKey(key), async () => {
+      const preview = await this.previewSaved(key, userId, snapshotId);
+      if (preview.kind === "refused") return refused(preview.reason);
+      if (preview.conflicts.length > 0 || preview.hero === null) return { kind: "conflicts", conflicts: preview.conflicts };
+      const ref = libraryHeroRef(snapshotId);
+      const label = { name: preview.hero.name, className: preview.hero.className ?? "" };
+      return this.options.unitOfWork.transaction(async (tx): Promise<ServiceResult<CampaignRecord>> => {
+        const stored = await tx.loadRecord(key);
+        if (stored === undefined) return refused("notFound");
+        if (stored.record.lifecycle !== "lobby") return refused("notLobby");
+        const result = lobbyRules.chooseHero(stored.record.lobby, userId, ref, [ref], label);
+        if (!result.ok) return refused(result.reason);
+        const next: CampaignRecord = { ...stored.record, lobby: result.lobby };
+        await tx.saveRecord(next, stored.revision);
+        return ok(next);
+      });
+    });
+  }
+
   // Changes house-rule options while the game is still in its lobby, for the
   // organizer only. Every value is checked against the options the engine
   // implements; nothing else can be saved.
@@ -244,7 +303,24 @@ export class CampaignLobbyService {
         if (!result.ok) return refused(result.reason);
         const document = this.options.adventures.document(record.adventure.adventureId, record.language);
         if (document === undefined) return refused("unknownAdventure");
-        const seats = lobbyRules.activeMembers(result.lobby).flatMap((member) => (member.heroId === null ? [] : [{ userId: member.userId, heroId: member.heroId }]));
+        const seats: Seat[] = [];
+        for (const member of lobbyRules.activeMembers(result.lobby)) {
+          if (member.heroId === null) continue;
+          const snapshotId = savedSnapshotIdOf(member.heroId);
+          if (snapshotId === null) {
+            seats.push({ userId: member.userId, heroId: member.heroId });
+            continue;
+          }
+          // A saved character is checked again at the start: it may have been
+          // deleted, or the rules changed, since it was chosen.
+          const snapshot = await tx.loadLibrarySnapshot(snapshotId);
+          const rulesets = this.options.rulesets;
+          if (snapshot === undefined || snapshot.ownerUserId !== member.userId || rulesets === undefined) return refused("savedCharacterProblem");
+          const content = rulesets.resolve({ ...this.options.ruleset, houseRules: record.houseRules }).content;
+          if (checkCompatibility(snapshot, content).length > 0) return refused("savedCharacterProblem");
+          const sheet = instantiateHero(snapshot, record.houseRules);
+          seats.push({ userId: member.userId, heroId: sheet.id, sheet });
+        }
         let state;
         try {
           state = buildStartingState({ campaignId: key.campaignId, organizerId: record.organizerId, adventure: document, seats, pacing: record.pacing });

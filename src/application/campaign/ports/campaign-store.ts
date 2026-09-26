@@ -1,4 +1,5 @@
 import type { CampaignLifecycle, CampaignRecord, GuildCampaignSettings, StoredRecord } from "./campaign-record.js";
+import type { LibraryCharacter, LibrarySnapshot } from "../library/library-types.js";
 import type { Actor, CampaignCommandKind } from "../../../domain/campaign/commands/campaign-command.js";
 import type { CampaignId, Instant, RollId, TimerId } from "../../../domain/campaign/core/ids.js";
 import type { RollResult } from "../../../domain/campaign/dice/roll-spec.js";
@@ -127,6 +128,18 @@ export interface CampaignTransaction {
   listGuildSettings(): Promise<readonly GuildCampaignSettings[]>;
   // Replaces the server's settings (one row per server; last write wins).
   saveGuildSettings(settings: GuildCampaignSettings): Promise<void>;
+
+  // The character library. Snapshots are written once and never changed.
+  saveLibraryCharacter(character: LibraryCharacter): Promise<void>;
+  loadLibraryCharacter(id: string): Promise<LibraryCharacter | undefined>;
+  listLibraryCharacters(ownerUserId: string): Promise<readonly LibraryCharacter[]>;
+  // Removes the character and every snapshot of it.
+  deleteLibraryCharacter(id: string): Promise<void>;
+  saveLibrarySnapshot(snapshot: LibrarySnapshot): Promise<void>;
+  loadLibrarySnapshot(id: string): Promise<LibrarySnapshot | undefined>;
+  // In revision order.
+  listLibrarySnapshots(characterId: string): Promise<readonly LibrarySnapshot[]>;
+  findLibrarySnapshotBySourceKey(characterId: string, sourceKey: string): Promise<LibrarySnapshot | undefined>;
 
   findRoll(key: CampaignKey, rollId: RollId): Promise<SavedRoll | undefined>;
   // Written once; saving an existing roll ID keeps the first result.

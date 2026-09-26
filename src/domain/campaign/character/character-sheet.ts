@@ -61,6 +61,10 @@ export interface CharacterSheet {
   readonly worn?: readonly ContentId<"item">[];
   readonly features: readonly ContentId<"feature">[];
   readonly spellcasting: Spellcasting | null;
+  // A hero brought from the character library: the library character and the
+  // exact snapshot this campaign's copy was made from. Progress saved from
+  // this campaign continues from that snapshot on its own branch.
+  readonly origin?: { readonly libraryCharacterId: string; readonly snapshotId: string };
 }
 
 export interface Spellcasting {

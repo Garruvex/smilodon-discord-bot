@@ -159,7 +159,7 @@ export function buildLobbyView(record: CampaignRecord, adventureTitle: string, p
     pacingPreset: record.pacingPreset,
     members: active.map((member) => {
       const preset = presets.find((candidate) => candidate.id === member.heroId);
-      return { userId: member.userId, status: member.status, heroName: preset?.name ?? null, className: preset?.className ?? null };
+      return { userId: member.userId, status: member.status, heroName: member.label?.name ?? preset?.name ?? null, className: member.label?.className ?? preset?.className ?? null };
     }),
     minPlayers: lobby.minPlayers,
     maxPlayers: lobby.maxPlayers,

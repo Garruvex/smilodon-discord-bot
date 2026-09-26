@@ -12,8 +12,10 @@ export type LobbyMemberStatus = "creating" | "ready" | "withdrawn";
 export interface LobbyMember {
   readonly userId: UserId;
   readonly status: LobbyMemberStatus;
-  // A preset hero of the adventure.
+  // A preset hero of the adventure, or a saved character ("lib:<snapshot>").
   readonly heroId: string | null;
+  // What the lobby card shows for a saved character (a preset is looked up by ID).
+  readonly label?: { readonly name: string; readonly className: string };
 }
 
 export interface LobbyState {
@@ -80,13 +82,20 @@ export function remove(lobby: LobbyState, actorId: UserId, organizerId: UserId, 
   return leave(lobby, userId);
 }
 
-export function chooseHero(lobby: LobbyState, userId: UserId, heroId: string, availableHeroIds: readonly string[]): LobbyResult {
+export function chooseHero(
+  lobby: LobbyState,
+  userId: UserId,
+  heroId: string,
+  availableHeroIds: readonly string[],
+  label?: NonNullable<LobbyMember["label"]>,
+): LobbyResult {
   if (lobby.status !== "open") return refuse("closed");
   const member = lobby.members.find((candidate) => candidate.userId === userId);
   if (member === undefined || member.status === "withdrawn") return refuse("notMember");
   if (!availableHeroIds.includes(heroId)) return refuse("unknownHero");
   if (heroTaken(lobby, heroId, userId)) return refuse("heroTaken");
-  return accept(lobby, replace(lobby, userId, { ...member, status: "ready", heroId }));
+  const { label: _previous, ...rest } = member;
+  return accept(lobby, replace(lobby, userId, { ...rest, status: "ready", heroId, ...(label === undefined ? {} : { label }) }));
 }
 
 // Preset heroes nobody holds yet, in the adventure's order.

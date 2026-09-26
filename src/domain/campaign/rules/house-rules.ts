@@ -67,6 +67,14 @@ export const itemTrading: HouseRuleOption<"consent" | "off"> = {
   defaultValue: "consent",
 };
 
+// Plan §3, Discord-owned character library: whether a saved character brings
+// the gear it earned ("kept") or starts with its class's starting kit ("starter").
+export const importedGear: HouseRuleOption<"kept" | "starter"> = {
+  id: "imported-gear",
+  values: ["kept", "starter"],
+  defaultValue: "kept",
+};
+
 export const houseRuleOptions: readonly HouseRuleOption<string>[] = [
   naturalRollsOnChecks,
   awaySafety,
@@ -75,6 +83,7 @@ export const houseRuleOptions: readonly HouseRuleOption<string>[] = [
   lootGold,
   criticalHits,
   itemTrading,
+  importedGear,
 ];
 
 // A named bundle of option values (plan §4). Applying one sets exactly the

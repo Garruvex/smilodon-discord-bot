@@ -11,6 +11,7 @@ import {
   type CampaignUnitOfWork,
   type StoredCampaign,
 } from "../../../src/application/campaign/ports/campaign-store.js";
+import type { LibrarySnapshot } from "../../../src/application/campaign/library/library-types.js";
 import type { CampaignRecord } from "../../../src/application/campaign/ports/campaign-record.js";
 import { emptyChannels } from "../../../src/application/campaign/ports/campaign-record.js";
 import { openLobby } from "../../../src/domain/campaign/lobby/lobby.js";
@@ -228,6 +229,44 @@ describe.each(stores)("campaign store contract: $name", ({ create }) => {
     expect(await store.transaction((tx) => tx.requeueFailedOutbox(key))).toBe(0);
   });
 
+  it("keeps library characters per owner, snapshots immutable and in order, and deletes a character with its snapshots", async () => {
+    const store = create();
+    const build = { class: "fighter", kit: "knight", abilities: { str: 15, dex: 12, con: 14, int: 8, wis: 13, cha: 10 }, skills: ["athletics", "perception"], expertise: [], name: "A", appearance: "", backstory: "" } as const;
+    const snapshot = (id: string, revision: number, sourceKey: string): LibrarySnapshot => ({
+      id,
+      characterId: "lc-1",
+      ownerUserId: "u-1",
+      revision,
+      branch: "main",
+      parentSnapshotId: null,
+      source: { kind: "builder" },
+      sourceKey,
+      rulesetId: "srd-5.1",
+      rulesetVersion: "1",
+      createdAt: revision,
+      build,
+      gear: { equipment: ["item:longsword"] },
+    });
+    await store.transaction(async (tx) => {
+      await tx.saveLibraryCharacter({ id: "lc-1", ownerUserId: "u-1", name: "A", className: "fighter", createdAt: 1 });
+      await tx.saveLibraryCharacter({ id: "lc-2", ownerUserId: "u-2", name: "B", className: "rogue", createdAt: 2 });
+      await tx.saveLibrarySnapshot(snapshot("ls-2", 2, "campaign:c:h:5"));
+      await tx.saveLibrarySnapshot(snapshot("ls-1", 1, "builder"));
+      // Written once: a second write with the same ID keeps the first.
+      await tx.saveLibrarySnapshot({ ...snapshot("ls-1", 1, "builder"), gear: { equipment: ["item:mace"] } });
+    });
+    expect((await store.transaction((tx) => tx.listLibraryCharacters("u-1"))).map((character) => character.id)).toEqual(["lc-1"]);
+    expect((await store.transaction((tx) => tx.listLibrarySnapshots("lc-1"))).map((entry) => entry.id)).toEqual(["ls-1", "ls-2"]);
+    expect((await store.transaction((tx) => tx.loadLibrarySnapshot("ls-1")))?.gear.equipment).toEqual(["item:longsword"]);
+    expect((await store.transaction((tx) => tx.findLibrarySnapshotBySourceKey("lc-1", "campaign:c:h:5")))?.id).toBe("ls-2");
+    expect(await store.transaction((tx) => tx.findLibrarySnapshotBySourceKey("lc-1", "nope"))).toBeUndefined();
+
+    await store.transaction((tx) => tx.deleteLibraryCharacter("lc-1"));
+    expect(await store.transaction((tx) => tx.loadLibraryCharacter("lc-1"))).toBeUndefined();
+    expect(await store.transaction((tx) => tx.listLibrarySnapshots("lc-1"))).toEqual([]);
+    expect(await store.transaction((tx) => tx.loadLibraryCharacter("lc-2"))).toBeDefined();
+  });
+
   it("returns only due, pending timers, and lets a reschedule replace one", async () => {
     const store = create();
     const timer = (timerId: string, dueAt: number): { kind: "roundWindow"; timerId: string; dueAt: number; roundNumber: number } => ({
@@ -305,7 +344,7 @@ describe("sqlite campaign store on disk", () => {
     const upgraded = new SqliteCampaignStore(raw);
     expect(await upgraded.transaction((tx) => tx.loadCampaign(key))).toBeDefined();
     await upgraded.transaction((tx) => tx.createRecord(record()));
-    expect(raw.prepare("SELECT version FROM campaign_meta").get()).toEqual({ version: 3 });
+    expect(raw.prepare("SELECT version FROM campaign_meta").get()).toEqual({ version: 4 });
   });
 
   it("adds the outbox retry time to a version 2 database", async () => {
@@ -317,7 +356,10 @@ describe("sqlite campaign store on disk", () => {
     raw.prepare("UPDATE campaign_meta SET version = 2").run();
     const upgraded = new SqliteCampaignStore(raw);
     expect(await upgraded.transaction((tx) => tx.pendingOutbox("narrate"))).toMatchObject([{ id: "job-1", notBefore: 0 }]);
-    expect(raw.prepare("SELECT version FROM campaign_meta").get()).toEqual({ version: 3 });
+    expect(raw.prepare("SELECT version FROM campaign_meta").get()).toEqual({ version: 4 });
+    // The library tables came with the upgrade.
+    await upgraded.transaction((tx) => tx.saveLibraryCharacter({ id: "lc-1", ownerUserId: "u-1", name: "A", className: "fighter", createdAt: 1 }));
+    expect(await upgraded.transaction((tx) => tx.loadLibraryCharacter("lc-1"))).toBeDefined();
   });
 
   it("refuses a database written by a different schema version", () => {

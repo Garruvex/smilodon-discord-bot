@@ -1,12 +1,15 @@
 import type { CharacterSheet } from "../../../domain/campaign/character/character-sheet.js";
 import type { CampaignId, UserId } from "../../../domain/campaign/core/ids.js";
 import type { CampaignState, MemberState, Pacing } from "../../../domain/campaign/state/campaign-state.js";
-import type { AdventureDocument } from "../adventures/adventure-document.js";
+import type { AdventureDocument, PresetHero } from "../adventures/adventure-document.js";
 
 // A player and the preset hero they play.
 export interface Seat {
   readonly userId: UserId;
   readonly heroId: string;
+  // A hero brought from the character library, already derived and checked:
+  // used instead of a preset of the adventure.
+  readonly sheet?: Omit<CharacterSheet, "ownerUserId">;
 }
 
 export class StartingStateError extends Error {
@@ -31,12 +34,15 @@ export function buildStartingState(input: {
   const members: Record<UserId, MemberState> = {};
   const characters: Record<string, CharacterSheet> = {};
   for (const seat of seats) {
-    const hero = adventure.heroes.find((candidate) => candidate.id === seat.heroId);
+    const hero = seat.sheet ?? adventure.heroes.find((candidate) => candidate.id === seat.heroId);
     if (hero === undefined) throw new StartingStateError(`The adventure has no hero ${seat.heroId}.`);
     if (characters[hero.id] !== undefined) throw new StartingStateError(`Hero ${hero.id} is chosen twice.`);
     if (members[seat.userId] !== undefined) throw new StartingStateError(`Player ${seat.userId} has two seats.`);
-    const { class: className, ...sheet } = hero;
-    characters[hero.id] = { ...sheet, className, ownerUserId: seat.userId };
+    if (seat.sheet !== undefined) characters[hero.id] = { ...seat.sheet, ownerUserId: seat.userId };
+    else {
+      const { class: className, ...sheet } = hero as PresetHero;
+      characters[hero.id] = { ...sheet, className, ownerUserId: seat.userId };
+    }
     members[seat.userId] = { userId: seat.userId, characterId: hero.id, availability: "present", consecutiveMisses: 0 };
   }
   return {

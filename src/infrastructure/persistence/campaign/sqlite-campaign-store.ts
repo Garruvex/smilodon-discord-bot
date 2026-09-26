@@ -15,13 +15,14 @@ import {
   type TimerRecord,
 } from "../../../application/campaign/ports/campaign-store.js";
 import type { CampaignLifecycle, CampaignRecord, GuildCampaignSettings, StoredRecord } from "../../../application/campaign/ports/campaign-record.js";
+import type { LibraryCharacter, LibrarySnapshot } from "../../../application/campaign/library/library-types.js";
 import type { TimerSpec } from "../../../domain/campaign/engine/engine-request.js";
 import type { CampaignState } from "../../../domain/campaign/state/campaign-state.js";
 
 // Bumped when a table changes shape. Milestone 0 keeps the campaign tables
 // self-contained (JSON payloads for events, state, and requests); they move
 // under the Drizzle migrations when the Discord milestone adds its own tables.
-const schemaVersion = 3;
+const schemaVersion = 4;
 
 const schema = `
 CREATE TABLE IF NOT EXISTS campaign_meta (version INTEGER NOT NULL);
@@ -55,6 +56,15 @@ CREATE TABLE IF NOT EXISTS campaign_timers (
   PRIMARY KEY (guild_id, campaign_id, timer_id)
 );
 CREATE INDEX IF NOT EXISTS campaign_timers_due ON campaign_timers (status, due_at);
+CREATE TABLE IF NOT EXISTS library_characters (
+  id TEXT PRIMARY KEY, owner_user_id TEXT NOT NULL, character TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS library_characters_by_owner ON library_characters (owner_user_id);
+CREATE TABLE IF NOT EXISTS library_snapshots (
+  id TEXT PRIMARY KEY, character_id TEXT NOT NULL, revision INTEGER NOT NULL, source_key TEXT NOT NULL, snapshot TEXT NOT NULL,
+  UNIQUE (character_id, source_key)
+);
+CREATE INDEX IF NOT EXISTS library_snapshots_by_character ON library_snapshots (character_id, revision);
 CREATE TABLE IF NOT EXISTS campaign_rolls (
   guild_id TEXT NOT NULL, campaign_id TEXT NOT NULL, roll_id TEXT NOT NULL, result TEXT NOT NULL, rolled_at INTEGER NOT NULL,
   PRIMARY KEY (guild_id, campaign_id, roll_id)
@@ -76,7 +86,7 @@ export class SqliteCampaignStore implements CampaignUnitOfWork {
     const row = database.prepare("SELECT version FROM campaign_meta").get() as { version: number } | undefined;
     if (row === undefined) database.prepare("INSERT INTO campaign_meta (version) VALUES (?)").run(schemaVersion);
     // Version 1 only lacked the record table, which the schema above just added.
-    else if (row.version === 1 || row.version === 2) {
+    else if (row.version === 1 || row.version === 2 || row.version === 3) {
       // Version 2 lacked the outbox's retry time.
       const columns = database.prepare("PRAGMA table_info(campaign_outbox)").all() as { name: string }[];
       if (!columns.some((column) => column.name === "not_before")) database.exec("ALTER TABLE campaign_outbox ADD COLUMN not_before INTEGER NOT NULL DEFAULT 0");
@@ -298,6 +308,51 @@ class SqliteTransaction implements CampaignTransaction {
       .prepare("INSERT INTO campaign_guild_settings (guild_id, settings) VALUES (?, ?) ON CONFLICT (guild_id) DO UPDATE SET settings = excluded.settings")
       .run(settings.guildId, json(settings));
     return Promise.resolve();
+  }
+
+  public saveLibraryCharacter(character: LibraryCharacter): Promise<void> {
+    this.db
+      .prepare("INSERT INTO library_characters (id, owner_user_id, character) VALUES (?, ?, ?) ON CONFLICT (id) DO UPDATE SET character = excluded.character")
+      .run(character.id, character.ownerUserId, json(character));
+    return Promise.resolve();
+  }
+
+  public loadLibraryCharacter(id: string): Promise<LibraryCharacter | undefined> {
+    const row = this.db.prepare("SELECT character FROM library_characters WHERE id = ?").get(id) as Row | undefined;
+    return Promise.resolve(row === undefined ? undefined : parse<LibraryCharacter>(row.character));
+  }
+
+  public listLibraryCharacters(ownerUserId: string): Promise<readonly LibraryCharacter[]> {
+    const rows = this.db.prepare("SELECT character FROM library_characters WHERE owner_user_id = ? ORDER BY rowid").all(ownerUserId) as Row[];
+    return Promise.resolve(rows.map((row) => parse<LibraryCharacter>(row.character)));
+  }
+
+  public deleteLibraryCharacter(id: string): Promise<void> {
+    this.db.prepare("DELETE FROM library_snapshots WHERE character_id = ?").run(id);
+    this.db.prepare("DELETE FROM library_characters WHERE id = ?").run(id);
+    return Promise.resolve();
+  }
+
+  public saveLibrarySnapshot(snapshot: LibrarySnapshot): Promise<void> {
+    this.db
+      .prepare("INSERT OR IGNORE INTO library_snapshots (id, character_id, revision, source_key, snapshot) VALUES (?, ?, ?, ?, ?)")
+      .run(snapshot.id, snapshot.characterId, snapshot.revision, snapshot.sourceKey, json(snapshot));
+    return Promise.resolve();
+  }
+
+  public loadLibrarySnapshot(id: string): Promise<LibrarySnapshot | undefined> {
+    const row = this.db.prepare("SELECT snapshot FROM library_snapshots WHERE id = ?").get(id) as Row | undefined;
+    return Promise.resolve(row === undefined ? undefined : parse<LibrarySnapshot>(row.snapshot));
+  }
+
+  public listLibrarySnapshots(characterId: string): Promise<readonly LibrarySnapshot[]> {
+    const rows = this.db.prepare("SELECT snapshot FROM library_snapshots WHERE character_id = ? ORDER BY revision").all(characterId) as Row[];
+    return Promise.resolve(rows.map((row) => parse<LibrarySnapshot>(row.snapshot)));
+  }
+
+  public findLibrarySnapshotBySourceKey(characterId: string, sourceKey: string): Promise<LibrarySnapshot | undefined> {
+    const row = this.db.prepare("SELECT snapshot FROM library_snapshots WHERE character_id = ? AND source_key = ?").get(characterId, sourceKey) as Row | undefined;
+    return Promise.resolve(row === undefined ? undefined : parse<LibrarySnapshot>(row.snapshot));
   }
 
   public findRoll(key: CampaignKey, rollId: string): Promise<SavedRoll | undefined> {
