@@ -104,6 +104,7 @@ export const enChat: SettingsTextCatalog = {
     label: "Personality file",
     description: "Upload personality.md (get a starter with the template action).",
     messages: {
+      saved: "Personality file saved and now in use.",
       lore: "Personality compiled: {count} section(s) kept as situational lore, sent only when relevant — {headings}. Move anything that should always apply out of a `##` section.",
     },
   },
@@ -113,7 +114,11 @@ export const enChat: SettingsTextCatalog = {
     messages: { done: "Using the default personality." },
   },
   "chat.persona.examples": { label: "Example exchanges", description: "Sample conversations in the character's voice." },
-  "chat.persona.examples.file": { label: "Examples file", description: "Upload examples.md (get a starter with the template action)." },
+  "chat.persona.examples.file": {
+    label: "Examples file",
+    description: "Upload examples.md (get a starter with the template action).",
+    messages: { saved: "Examples file saved and now in use." },
+  },
   "chat.persona.use-default-examples": {
     label: "Remove examples",
     description: "Remove the uploaded example exchanges.",

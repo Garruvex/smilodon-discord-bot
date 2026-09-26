@@ -77,6 +77,7 @@ export const zhTWChat: SettingsTextCatalog = {
     label: "個性檔案",
     description: "上傳 personality.md（範本可用範本動作取得）",
     messages: {
+      saved: "個性檔案已儲存並立即生效。",
       lore: "個性已編譯：{count} 個段落被歸為情境背景，只在相關時送出——{headings}。需要一直套用的內容請移出 `##` 段落。",
     },
   },
@@ -86,7 +87,11 @@ export const zhTWChat: SettingsTextCatalog = {
     messages: { done: "已改用預設個性。" },
   },
   "chat.persona.examples": { label: "對話範例", description: "以角色口吻寫的範例對話" },
-  "chat.persona.examples.file": { label: "範例檔案", description: "上傳 examples.md（範本可用範本動作取得）" },
+  "chat.persona.examples.file": {
+    label: "範例檔案",
+    description: "上傳 examples.md（範本可用範本動作取得）",
+    messages: { saved: "範例檔案已儲存並立即生效。" },
+  },
   "chat.persona.use-default-examples": {
     label: "移除範例",
     description: "移除上傳的對話範例",
