@@ -17,6 +17,8 @@ export interface ExpressionRoll {
 
 export interface ExpressionRollOptions {
   readonly critical?: boolean;
+  // How a critical hit changes the roll; the 2014 doubling when absent.
+  readonly criticalRule?: "max-first-die";
 }
 
 export function rollExpression(
@@ -24,10 +26,13 @@ export function rollExpression(
   source: RandomSource,
   options: ExpressionRollOptions = {},
 ): ExpressionRoll {
-  const rolled = options.critical === true ? multiplyDice(expression, 2) : expression;
-  const terms = rolled.terms.map((term) => ({
+  const maxFirst = options.critical === true && options.criticalRule === "max-first-die";
+  const rolled = options.critical === true && !maxFirst ? multiplyDice(expression, 2) : expression;
+  const terms = rolled.terms.map((term, termIndex) => ({
     sides: term.sides,
-    values: Array.from({ length: term.count }, () => rollDie(term.sides, source)),
+    // The first die of a critical under "max-first-die" is the die's maximum
+    // and uses no randomness; every other die is rolled once.
+    values: Array.from({ length: term.count }, (_, dieIndex) => (maxFirst && termIndex === 0 && dieIndex === 0 ? term.sides : rollDie(term.sides, source))),
   }));
   const diceTotal = terms.reduce((sum, term) => sum + term.values.reduce((a, b) => a + b, 0), 0);
   return { expression: rolled, terms, modifier: rolled.modifier, total: diceTotal + rolled.modifier };

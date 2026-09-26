@@ -111,11 +111,15 @@ export class Fight {
         },
       };
     }
-    return { kind: "dice", roll: this.expression(spec.critical ? multiplyDice(spec.expression, 2) : spec.expression) };
+    const maxFirst = spec.critical && spec.criticalRule === "max-first-die";
+    return { kind: "dice", roll: this.expression(spec.critical && !maxFirst ? multiplyDice(spec.expression, 2) : spec.expression, maxFirst) };
   }
 
-  private expression(expression: DiceExpression): ExpressionRoll {
-    const terms = expression.terms.map((term) => ({ sides: term.sides, values: Array.from({ length: term.count }, () => this.dice.shift() ?? 1) }));
+  private expression(expression: DiceExpression, maxFirst = false): ExpressionRoll {
+    const terms = expression.terms.map((term, termIndex) => ({
+      sides: term.sides,
+      values: Array.from({ length: term.count }, (_, dieIndex) => (maxFirst && termIndex === 0 && dieIndex === 0 ? term.sides : (this.dice.shift() ?? 1))),
+    }));
     const total = expression.modifier + terms.reduce((sum, term) => sum + term.values.reduce((a, b) => a + b, 0), 0);
     return { expression, terms, modifier: expression.modifier, total };
   }
@@ -135,6 +139,6 @@ export function heroHp(fight: Fight): Record<string, number> {
 }
 
 // Initiative order used by most tests: Mira 20, Borin 15, goblins 5 and 4.
-export function startedFight(state?: CampaignState): Fight {
-  return new Fight(state).rolls([20, 15, 5, 4]).run(organizer, { kind: "startEncounter", spec: skirmish });
+export function startedFight(state?: CampaignState, rules?: SealedRuleset): Fight {
+  return new Fight(state, rules).rolls([20, 15, 5, 4]).run(organizer, { kind: "startEncounter", spec: skirmish });
 }

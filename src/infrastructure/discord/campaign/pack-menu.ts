@@ -44,6 +44,8 @@ export function packMenu(
   text: Texts,
   campaignId: string,
   characterId: string,
+  // The table turned item trading off: no Give.
+  tradingOff = false,
 ): ActionRowBuilder<StringSelectMenuBuilder> | null {
   const sheet = state.characters[characterId];
   if (sheet === undefined || isFallen(state, characterId)) return null;
@@ -55,7 +57,7 @@ export function packMenu(
   const others = Object.values(state.characters).some((other) => other.id !== characterId && !isFallen(state, other.id));
   const options = [
     ...carried.filter((id) => potionFor(state, content, characterId, id) !== null).map((id) => ({ label: t.use({ item: name(id) }), value: `use|${id}` })),
-    ...(others ? carried.map((id) => ({ label: t.give({ item: name(id) }), value: `give|${id}` })) : []),
+    ...(others && !tradingOff ? carried.map((id) => ({ label: t.give({ item: name(id) }), value: `give|${id}` })) : []),
     ...carried.map((id) => ({ label: t.stash({ item: name(id) }), value: `stash|${id}` })),
     ...[...new Set(state.stash)].map((id) => ({ label: t.take({ item: name(id) }), value: `take|${id}` })),
   ]

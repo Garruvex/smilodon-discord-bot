@@ -25,7 +25,7 @@ import { resolveRollMode } from "../../dice/roll.js";
 import { classifyRollMoments } from "../../dice/roll-moments.js";
 import { resultMatchesSpec, type RollResult, type RollSpec } from "../../dice/roll-spec.js";
 import type { Effect, ResolutionPlan } from "../../rules/effects.js";
-import { naturalRollsOnChecks } from "../../rules/house-rules.js";
+import { criticalHits, naturalRollsOnChecks } from "../../rules/house-rules.js";
 import type { Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { activeEncounter, afterResolution, endIfDecided, isProtected } from "./combat-flow.js";
@@ -197,7 +197,13 @@ function proceedToEffects(decision: Decision): void {
             sneakAdded = true;
           }
         }
-        const spec: RollSpec = { kind: "dice", expression, critical: effect.kind === "damage" && anyCritical };
+        const critical = effect.kind === "damage" && anyCritical;
+        const spec: RollSpec = {
+          kind: "dice",
+          expression,
+          critical,
+          ...(critical && decision.ctx.rules.houseRules.option(criticalHits) === "max-first-die" ? { criticalRule: "max-first-die" as const } : {}),
+        };
         rolls[`${encounter.id}:roll:${++sequence}`] = { effectKey: key, targetId: null, spec };
       }
       if (effect.kind === "conditionUnlessSave") {

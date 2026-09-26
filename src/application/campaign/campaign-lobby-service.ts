@@ -182,6 +182,31 @@ export class CampaignLobbyService {
     });
   }
 
+  // Changes house-rule options while the game is still in its lobby, for the
+  // organizer only. Every value is checked against the options the engine
+  // implements; nothing else can be saved.
+  public setHouseRules(key: CampaignKey, actorId: UserId, changes: Readonly<Record<string, string>>): Promise<ServiceResult<CampaignRecord>> {
+    return this.queue.run(queueKey(key), () =>
+      this.options.unitOfWork.transaction(async (tx): Promise<ServiceResult<CampaignRecord>> => {
+        const stored = await tx.loadRecord(key);
+        if (stored === undefined) return refused("notFound");
+        const { record } = stored;
+        if (record.lifecycle !== "lobby") return refused("notLobby");
+        if (record.organizerId !== actorId) return refused("notOrganizer");
+        const houseRules = { ...record.houseRules, ...changes };
+        try {
+          resolveHouseRules(houseRules);
+        } catch (error) {
+          if (error instanceof HouseRuleError) return refused("invalidHouseRules");
+          throw error;
+        }
+        const next: CampaignRecord = { ...record, houseRules };
+        await tx.saveRecord(next, stored.revision);
+        return ok(next);
+      }),
+    );
+  }
+
   // Opens an ended game again (the organizer, or a DnD Admin, has been checked
   // by the caller). The game comes back paused, exactly where it stopped; the
   // organizer resumes it. A game cancelled in its lobby never began, and a

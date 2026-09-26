@@ -108,7 +108,7 @@ export async function harness(language: "en" | "zh-TW" = "en"): Promise<Harness>
     handler,
     key,
     press: async (action, userId, options = {}): Promise<Sent[]> => {
-      const card = options.onCard ?? (["join", "pickHero", "leave", "start"].includes(action) ? ((await r.service.get(key))?.record.lifecycle === "lobby" ? "lobby" : "party") : "adventure");
+      const card = options.onCard ?? (["join", "pickHero", "leave", "start", "rules"].includes(action) ? ((await r.service.get(key))?.record.lifecycle === "lobby" ? "lobby" : "party") : "adventure");
       const argument = options.argument === undefined ? "" : `:${options.argument}`;
       const { interaction, sent } = fakeInteraction({ customId: `dnd:${action}:${key.campaignId}${argument}`, userId, messageId: await messageFor(card), kind: "button" });
       await handler.execute({ interaction, logger: quiet as never });

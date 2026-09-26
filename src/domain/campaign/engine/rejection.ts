@@ -50,6 +50,7 @@ export type Rejection =
   | { readonly code: "unknownOffer" }
   | { readonly code: "invalidOffer" }
   | { readonly code: "itemNotHeld" }
+  | { readonly code: "tradingOff" }
   | { readonly code: "notWearable" }
   | { readonly code: "alreadyWorn" }
   | { readonly code: "notWorn" }

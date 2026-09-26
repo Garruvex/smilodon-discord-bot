@@ -41,6 +41,12 @@ export const campaignActions = [
   "safety",
   "safetyPause",
   "more",
+  // The Table rules screen (a private view): open it, pick a bundle, pick an
+  // option, pick its value.
+  "rules",
+  "rulePreset",
+  "ruleOption",
+  "ruleValue",
 ] as const;
 export type CampaignAction = (typeof campaignActions)[number];
 

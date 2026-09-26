@@ -48,6 +48,7 @@ export function renderLobbyCard(view: LobbyView, text: Texts, campaignId: string
         button("pickHero", campaignId, t.button.chooseHero, ButtonStyle.Primary, !view.open),
         button("leave", campaignId, t.button.leave, ButtonStyle.Secondary, !view.open),
         button("start", campaignId, t.button.start, ButtonStyle.Primary, !view.open || view.missing !== null),
+        button("rules", campaignId, t.button.rules, ButtonStyle.Secondary, !view.open),
       ),
     );
   return cardPayload(container);

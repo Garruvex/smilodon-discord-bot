@@ -49,6 +49,7 @@ describe("the lobby card", () => {
       { id: "dnd:pickHero:camp-1", label: "My Hero", disabled: false },
       { id: "dnd:leave:camp-1", label: "Leave", disabled: false },
       { id: "dnd:start:camp-1", label: "Start Adventure", disabled: true },
+      { id: "dnd:rules:camp-1", label: "Table rules", disabled: false },
     ]);
     expect(card.componentCount).toBeLessThan(cardLimits.components);
   });
@@ -61,6 +62,7 @@ describe("the lobby card", () => {
       ["My Hero", false],
       ["Leave", false],
       ["Start Adventure", false],
+      ["Table rules", false],
     ]);
   });
 
@@ -76,7 +78,7 @@ describe("the lobby card", () => {
     expect(card.text).toContain("Moonlit Ruins — 大廳");
     expect(card.text).toContain("論壇式");
     expect(card.text).toContain("<@222> — 正在選擇英雄");
-    expect(card.buttons.map((button) => button.label)).toEqual(["加入", "我的英雄", "離開", "開始冒險"]);
+    expect(card.buttons.map((button) => button.label)).toEqual(["加入", "我的英雄", "離開", "開始冒險", "桌規"]);
     expect(card.buttons.every((button) => [...button.label].length <= 6)).toBe(true);
   });
 

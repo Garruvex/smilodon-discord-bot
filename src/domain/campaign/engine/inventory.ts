@@ -1,6 +1,7 @@
 import type { InventoryCommand } from "../commands/campaign-command.js";
 import type { CharacterId } from "../core/ids.js";
 import type { ContentId } from "../rules/content-id.js";
+import { itemTrading } from "../rules/house-rules.js";
 import { isFallen, type CampaignState, type ItemOffer } from "../state/campaign-state.js";
 import { isWorn } from "../combat/combatant-profile.js";
 import { canHandOver, refreshGear, startHandOver } from "./combat/combat-gear.js";
@@ -53,6 +54,7 @@ export function handleInventoryCommand(decision: Decision, command: InventoryCom
 
 function offerItem(decision: Decision, command: Extract<InventoryCommand, { kind: "offerItem" }>): Rejection | null {
   const { state } = decision;
+  if (decision.ctx.rules.houseRules.option(itemTrading) === "off") return { code: "tradingOff" };
   const { fromCharacterId, toCharacterId, give, want } = command;
   const refusal = mayHandle(decision, fromCharacterId, false);
   if (refusal !== null) return refusal;

@@ -8,14 +8,14 @@ import { rollExpression, type ExpressionRoll } from "./roll.js";
 // result shape means every roll goes through the same roll-once path.
 export type RollSpec =
   | { readonly kind: "d20Test"; readonly spec: D20TestSpec }
-  | { readonly kind: "dice"; readonly expression: DiceExpression; readonly critical: boolean };
+  | { readonly kind: "dice"; readonly expression: DiceExpression; readonly critical: boolean; readonly criticalRule?: "max-first-die" };
 
 export type RollResult = { readonly kind: "d20Test"; readonly roll: D20TestRoll } | { readonly kind: "dice"; readonly roll: ExpressionRoll };
 
 export function performRoll(spec: RollSpec, source: RandomSource): RollResult {
   return spec.kind === "d20Test"
     ? { kind: "d20Test", roll: rollD20Test(spec.spec, source) }
-    : { kind: "dice", roll: rollExpression(spec.expression, source, { critical: spec.critical }) };
+    : { kind: "dice", roll: rollExpression(spec.expression, source, { critical: spec.critical, ...(spec.criticalRule === undefined ? {} : { criticalRule: spec.criticalRule }) }) };
 }
 
 // Whether a recorded result could have come from this spec, so a result
@@ -23,7 +23,8 @@ export function performRoll(spec: RollSpec, source: RandomSource): RollResult {
 export function resultMatchesSpec(result: RollResult, spec: RollSpec): boolean {
   if (result.kind === "d20Test" && spec.kind === "d20Test") return rollMatchesSpec(result.roll, spec.spec);
   if (result.kind !== "dice" || spec.kind !== "dice") return false;
-  const expected = spec.critical ? spec.expression.terms.map((term) => ({ ...term, count: term.count * 2 })) : spec.expression.terms;
+  const maxFirst = spec.critical && spec.criticalRule === "max-first-die";
+  const expected = spec.critical && !maxFirst ? spec.expression.terms.map((term) => ({ ...term, count: term.count * 2 })) : spec.expression.terms;
   const roll = result.roll;
   if (roll.modifier !== spec.expression.modifier || roll.terms.length !== expected.length) return false;
   let total = roll.modifier;
@@ -31,6 +32,8 @@ export function resultMatchesSpec(result: RollResult, spec: RollSpec): boolean {
     const wanted = expected[index];
     if (wanted === undefined || term.sides !== wanted.sides || term.values.length !== wanted.count) return false;
     if (term.values.some((value) => !Number.isInteger(value) || value < 1 || value > term.sides)) return false;
+    // Under "max-first-die" the first die of a critical must be the maximum.
+    if (maxFirst && index === 0 && term.values[0] !== term.sides) return false;
     total += term.values.reduce((sum, value) => sum + value, 0);
   }
   return roll.total === total;

@@ -49,7 +49,51 @@ export const lootGold: HouseRuleOption<"pooled" | "split"> = {
   defaultValue: "pooled",
 };
 
-export const houseRuleOptions: readonly HouseRuleOption<string>[] = [naturalRollsOnChecks, awaySafety, healingPotionCost, combatMode, lootGold];
+// Plan §4, Critical hits. "double-dice" is the 2014 rule (every damage die is
+// rolled twice). "max-first-die" takes the maximum on the first damage die and
+// rolls the rest once: a critical that never rolls low, with less swing.
+export const criticalHits: HouseRuleOption<"double-dice" | "max-first-die"> = {
+  id: "critical-hits",
+  values: ["double-dice", "max-first-die"],
+  defaultValue: "double-dice",
+};
+
+// Plan §4, Item trading. "consent": heroes give or swap items with the
+// receiver's yes (the party stash always works). "off": nobody hands items to
+// another hero; the stash is the way to share.
+export const itemTrading: HouseRuleOption<"consent" | "off"> = {
+  id: "item-trading",
+  values: ["consent", "off"],
+  defaultValue: "consent",
+};
+
+export const houseRuleOptions: readonly HouseRuleOption<string>[] = [
+  naturalRollsOnChecks,
+  awaySafety,
+  healingPotionCost,
+  combatMode,
+  lootGold,
+  criticalHits,
+  itemTrading,
+];
+
+// A named bundle of option values (plan §4). Applying one sets exactly the
+// options it lists and leaves the others as they are.
+export interface HouseRulePreset {
+  readonly id: string;
+  readonly values: Readonly<Record<string, string>>;
+}
+
+// "standard" is every 2014 rule at its default. "bg3" is only what the
+// plan documents for Baldur's Gate 3 and the engine implements: drinking a
+// potion as a bonus action. More of it waits for the rules to be confirmed.
+export const houseRulePresets: readonly HouseRulePreset[] = [
+  {
+    id: "standard",
+    values: { [naturalRollsOnChecks.id]: "no-effect", [healingPotionCost.id]: "action", [criticalHits.id]: "double-dice", [itemTrading.id]: "consent" },
+  },
+  { id: "bg3", values: { [healingPotionCost.id]: "bonus-action" } },
+];
 
 // The option values a campaign saved, validated and with defaults filled in.
 export interface HouseRules {

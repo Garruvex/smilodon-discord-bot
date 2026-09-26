@@ -40,6 +40,8 @@ import { classLabel } from "../campaign/text-keys.js";
 import { giveMenu, packMenu, parseGift, parsePackChoice } from "../campaign/pack-menu.js";
 import { CampaignCardService } from "../campaign/campaign-card-service.js";
 import { renderHeroSheet } from "../campaign/hero-sheet.js";
+import { renderRulesScreen, ruleLines } from "../campaign/rules-screen.js";
+import { houseRulePresets } from "../../../domain/campaign/rules/house-rules.js";
 import { refusalText } from "../campaign/refusal-text.js";
 
 export interface CampaignComponentDependencies {
@@ -97,6 +99,7 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "leave":
     case "pickHero":
     case "start":
+    case "rules":
       return ["lobby"];
     case "act":
     case "pass":
@@ -132,6 +135,9 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "pack":
     case "giveTo":
     case "safetyPause":
+    case "rulePreset":
+    case "ruleOption":
+    case "ruleValue":
       return [];
   }
 }
@@ -167,6 +173,7 @@ export class CampaignComponentHandler implements ComponentHandler {
       else if (parsed.action === "giveTo") await this.giveItem(interaction, record, text);
       else if (parsed.action === "pick") await this.pickTurnAction(interaction, record, text);
       else if (parsed.action === "aim") await this.aimTurnAction(interaction, record, text);
+      else if (parsed.action === "rulePreset" || parsed.action === "ruleOption" || parsed.action === "ruleValue") await this.changeRules(interaction, record, text, parsed.action, parsed.argument);
       else await this.chooseHero(interaction, record, text);
       return;
     }
@@ -264,7 +271,10 @@ export class CampaignComponentHandler implements ComponentHandler {
         });
         return;
       case "more":
-        await interaction.editReply({ content: text.campaign.more.help, components: this.linkRow(record, text) });
+        await interaction.editReply({ content: `${text.campaign.more.help}\n\n**${text.campaign.rules.title}**\n${ruleLines(text, record.houseRules).join("\n")}`, components: this.linkRow(record, text) });
+        return;
+      case "rules":
+        await interaction.editReply(renderRulesScreen({ campaignId: key.campaignId, houseRules: record.houseRules, editable: record.lifecycle === "lobby" && record.organizerId === userId, selected: null, text }));
         return;
       case "turn":
         await this.showTurn(interaction, record, text, null);
@@ -573,6 +583,27 @@ export class CampaignComponentHandler implements ComponentHandler {
     });
   }
 
+  // The Table rules screen's menus: pick a bundle, pick an option, or pick a
+  // value. Only the organizer, only in the lobby (the service checks again).
+  private async changeRules(interaction: StringSelectMenuInteraction, record: CampaignRecord, text: Texts, action: "rulePreset" | "ruleOption" | "ruleValue", argument: string | null): Promise<void> {
+    await interaction.deferUpdate();
+    const value = interaction.values[0] ?? "";
+    const userId = interaction.user.id;
+    let selected: string | null = action === "ruleOption" ? value : action === "ruleValue" ? argument : null;
+    let latest = record;
+    if (action !== "ruleOption") {
+      const changes = action === "rulePreset" ? houseRulePresets.find((preset) => preset.id === value)?.values : argument === null ? undefined : { [argument]: value };
+      const saved = changes === undefined ? null : await this.deps.lobby.setHouseRules(record.key, userId, changes);
+      if (saved === null || saved.kind === "refused") {
+        await interaction.editReply({ content: refusalText(text, saved?.reason ?? "generic"), components: [] });
+        return;
+      }
+      latest = saved.value;
+    }
+    if (action === "rulePreset") selected = null;
+    await interaction.editReply(renderRulesScreen({ campaignId: record.key.campaignId, houseRules: latest.houseRules, editable: latest.lifecycle === "lobby" && latest.organizerId === userId, selected, text }));
+  }
+
   // Everything My Hero lets the player change: worn gear, then the pack.
   private async heroMenus(record: CampaignRecord, text: Texts, userId: string): Promise<ActionRowBuilder<StringSelectMenuBuilder>[]> {
     const gear = await this.gearControls(record, text, userId);
@@ -580,7 +611,7 @@ export class CampaignComponentHandler implements ComponentHandler {
     const heroId = loaded?.state.members[userId]?.characterId ?? null;
     const glossary = this.deps.glossaries[record.language];
     if (loaded === undefined || heroId === null || glossary === undefined) return gear;
-    const pack = packMenu(loaded.state, this.deps.rulesets.resolve(loaded.ruleset).content, glossary, text, record.key.campaignId, heroId);
+    const pack = packMenu(loaded.state, this.deps.rulesets.resolve(loaded.ruleset).content, glossary, text, record.key.campaignId, heroId, loaded.ruleset.houseRules["item-trading"] === "off");
     return pack === null ? gear : [...gear, pack];
   }
 
