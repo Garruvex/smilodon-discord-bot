@@ -614,17 +614,33 @@ Persist engine capability and house-rule option versions. An engine upgrade must
 | Milestone | Deliverable | Exit criterion |
 | --- | --- | --- |
 | 0. Headless DM harness | Mechanics for the curated subset in TypeScript, three preset heroes, starter adventure in `en` and `zh-TW`, glossary, round resolution, **minimal headless combat** (initiative, action budgets, zones and engagement, the attack sequence, damage and healing, spell slots, concentration, the catalog's conditions, death saves, opportunity attacks, monster tactic profiles), context layers A–F with basic ledger, scripted and simulated players | Scripted playthroughs in both languages meet latency, length, and spotlight targets; internal playtest rubric passes; cost per session is known |
-| 1. Discord play slice | Lobby with presets, baseline public/private panels from the panel specification, round-based exploration and checks, pacing presets with timers, away mode (background), SQLite/PostgreSQL state, pause/resume | A real group plays a one-hour Live session in each language; a restart preserves a pending roll and pauses timers for explicit recovery |
+| 1. Discord play slice | Lobby with presets, baseline public/private panels from the panel specification, round-based exploration and checks, pacing presets with timers, away mode (background), SQLite state (PostgreSQL parity is milestone 6), pause/resume | A real group plays a one-hour Live session in each language; a restart preserves a pending roll and pauses timers for explicit recovery |
 | 2. Discord combat | Discord combat controls on top of the milestone 0 engine: encounter reveal, turn view, target menus, reaction prompts, turn timers, autopilot, proxy play, pre-declared reactions, and broader reaction support | Party completes the starter encounter without duplicate rolls, unauthorized actions, or lost resources, including with an away player |
 | 3. Reliability hardening | Complete card reconciliation, durable delivery queue, permission checks, recovery paths | Acceptance scenarios for recovery and permissions pass; authorization, idempotency, and saved state already exist in earlier milestones |
 | 4. Creation, house rules, and art | Adventure upload and the Adventure Author (convert and generate within the ruleset catalog, validated), guided builder, house-rule option cards, scene images with budgets | Selected options change actual mechanics; image failures leave text play working |
 | 5. Multi-session continuity | Budget-driven compaction, chapter summaries, entity-keyed retrieval, recaps, public journal, play-by-post pacing pilot | A three-session campaign keeps established facts and names consistent; secrets stay private |
-| 6. Release verification | Database parity, documentation, pilot playtest | Acceptance scenarios pass; pilot issues affecting play are resolved; fun rubric meets the agreed bar |
+| 6. Release verification | PostgreSQL parity for campaign data (SQLite is the store until then), documentation, pilot playtest | Acceptance scenarios pass; pilot issues affecting play are resolved; fun rubric meets the agreed bar |
 | Later | LLM rules importer, `ja`, embedding recall | Separate plans |
 
 No calendar estimate is committed before milestone 0 fixes content scope.
 
-Status: milestone 0 is built (see the [milestone 0 report](dnd-milestone-0-report.md)); milestone 1 is built and awaiting its real-table playtest (see the [milestone 1 status](dnd-milestone-1-status.md)).
+Status: milestone 0 is built but **not signed off**: its report still needs two human ratings per transcript and a dollar cost at the chosen model's prices (see the [milestone 0 report](dnd-milestone-0-report.md)). Milestone 1 is built, and its exit criterion is **not yet met**: a real group has not played an hour in each language or restarted the bot with a roll pending (see the [milestone 1 status](dnd-milestone-1-status.md)). Both gates are recorded at the same real-table playtest, which comes before milestone 2 work.
+
+### Owners for the deferred items
+
+Nothing visible in the intended play flow is left without an owner, so a milestone's exit criterion cannot pass while a planned part of the experience is missing.
+
+| Item | Owner | Note |
+| --- | --- | --- |
+| Speak (in-character lines as the hero), Safety, the More… menu | Milestone 2 | Part of the play flow; the menu also holds the buttons below. Safety must exist before public playtests. |
+| Inventory, trade, and retry-a-lost-fight buttons | Milestone 2 | The engine has all three; fights are where they matter. |
+| Skarn flee rule, bugbear Surprise Attack, spider poison | Milestone 2 | Monster tactics for the starter encounters; part of the combat acceptance run. |
+| Timer reminders at 50%, the staged dice reveal | Milestone 3 | Delivery and timer polish. |
+| Reopening an ended game, automatic recovery of a deleted Table Talk thread, members-only visibility with a campaign role | Milestone 3 | Recovery and permissions. |
+| Portraits and scene images | Milestone 4 | With budgets and a text-only fallback. |
+| Public Journal | Milestone 5 | Built on the chapter summaries. |
+| Leveling, terrain, shops, broader conditions, resistances, further monster refinements | **Deferred: rules-depth track** | The engine covers the curated starter rules and encounters only. Each needs its own content scope and acceptance criteria before it is scheduled; it does not gate milestones 0-6. |
+
 
 ### Milestone 0 content proposal
 
