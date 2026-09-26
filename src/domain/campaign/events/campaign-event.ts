@@ -53,6 +53,7 @@ export type CampaignEvent =
   | { readonly kind: "plannerFailed"; readonly roundNumber: number; readonly problems: readonly string[] }
   | { readonly kind: "planRetryRequested"; readonly roundNumber: number }
   | { readonly kind: "narrationRecorded"; readonly roundNumber: number; readonly text: string }
+  | { readonly kind: "summaryRecorded"; readonly throughRound: number; readonly visibility: "public" | "private"; readonly text: string }
   | { readonly kind: "adventureBegan" }
   | { readonly kind: "openingRecorded"; readonly text: string }
   | { readonly kind: "memberReadied"; readonly userId: UserId }

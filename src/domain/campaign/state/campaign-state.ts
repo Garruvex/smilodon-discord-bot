@@ -34,6 +34,12 @@ export interface CampaignState {
   readonly openingReady?: readonly UserId[];
   // The last round the Narrator described; guards against narrating twice.
   readonly lastNarratedRound: number;
+  // What the Chronicler condensed, oldest first (plan §6, Context layers D).
+  // Each covers the rounds after the previous one of its kind, through its own
+  // round. Absent in games that started before summaries existed.
+  readonly summaries?: readonly StorySummary[];
+  // The round in which the party last changed scene: the moment a chapter closes.
+  readonly sceneChangedRound?: number;
   // Checks of the current round only; earlier ones live in the event log.
   readonly checks: Readonly<Record<CheckId, CheckState>>;
   readonly ledger: Readonly<Record<string, LedgerEntry>>;
@@ -139,6 +145,14 @@ export type Resolution =
   | { readonly kind: "automatic"; readonly reason: string }
   | { readonly kind: "impossible"; readonly reason: string }
   | { readonly kind: "check"; readonly checkId: CheckId };
+
+// public: written from what the table saw, so anyone may read it. private:
+// written for the DM from everything it knows, so only the Planner gets it.
+export interface StorySummary {
+  readonly throughRound: number;
+  readonly visibility: "public" | "private";
+  readonly text: string;
+}
 
 export interface CheckState {
   readonly id: CheckId;

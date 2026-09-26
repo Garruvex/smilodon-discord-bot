@@ -54,6 +54,8 @@ export type CampaignCommand =
   // The Narrator's flourish for a combat round, or the fight's closing line.
   | { readonly kind: "recordCombatNarration"; readonly encounterId: string; readonly round: number; readonly text: string }
   | RecordLedgerFactCommand
+  // The Chronicler's condensed account of the rounds through `throughRound`.
+  | { readonly kind: "recordSummary"; readonly throughRound: number; readonly visibility: "public" | "private"; readonly text: string }
   // Organizer, outside combat. Short: limited features recharge. Long: HP,
   // spell slots, and every feature recharge.
   | { readonly kind: "takeRest"; readonly rest: "short" | "long" }

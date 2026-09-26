@@ -113,6 +113,26 @@ export interface CampaignNarrator {
   narrateCombat(request: CombatNarratorRequest): Promise<{ readonly text: string }>;
 }
 
+// The background call that condenses rounds already told (plan §6, Chronicler).
+export interface ChronicleRequest {
+  readonly audience: "public" | "private";
+  readonly language: CampaignLanguage;
+  // The rounds since the last summary, as this audience may read them.
+  readonly transcript: string;
+  readonly previousSummary: string | null;
+  // Entities already in the ledger this audience may see: their IDs and locked names.
+  readonly knownEntities: readonly { readonly entityId: string; readonly canonicalName: string }[];
+}
+
+export interface ChronicleResult {
+  readonly summary: string;
+  readonly facts: readonly { readonly entityId: string; readonly canonicalName: string; readonly fact: string }[];
+}
+
+export interface CampaignChronicler {
+  chronicle(request: ChronicleRequest): Promise<ChronicleResult>;
+}
+
 export interface AdventureCatalog {
   // A campaign plays one language edition of an adventure.
   find(adventureId: string, version: string, language: AdventureBible["language"]): AdventureBible | undefined;

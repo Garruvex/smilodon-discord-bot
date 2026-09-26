@@ -17,6 +17,7 @@ import { CharacterLibrary } from "../application/campaign/library/character-libr
 import { CampaignLobbyService } from "../application/campaign/campaign-lobby-service.js";
 import { CampaignPlayController } from "../application/campaign/campaign-play-controller.js";
 import { CampaignRuntime } from "../application/campaign/campaign-runtime.js";
+import { LlmCampaignChronicler } from "../application/campaign/dm/llm-chronicler.js";
 import { LlmCampaignNarrator, LlmCampaignPlanner } from "../application/campaign/dm/llm-dm.js";
 import type { CampaignNarrator, CampaignPlanner } from "../application/campaign/ports/dm-ports.js";
 import type { CampaignTransaction, CampaignUnitOfWork } from "../application/campaign/ports/campaign-store.js";
@@ -148,7 +149,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
     bus,
     rolls: new RollWorker(unitOfWork, bus, new CryptoRandomSource(), clock),
     timers: new TimerWorker(unitOfWork, bus, clock),
-    dm: new DmJobWorker({ unitOfWork, bus, planner, narrator, adventures, glossaries }),
+    dm: new DmJobWorker({ unitOfWork, bus, planner, narrator, ...(model === null ? {} : { chronicler: new LlmCampaignChronicler({ client: model, cacheKey }) }), adventures, glossaries }),
     delivery: new DeliveryWorker(unitOfWork, presenter, {
       clock,
       onAbandoned: async (key, item): Promise<void> => {

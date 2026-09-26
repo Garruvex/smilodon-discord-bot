@@ -10,6 +10,8 @@ export type EngineRequest =
   | { readonly kind: "narrate"; readonly roundNumber: number }
   // The adventure's opening scene, told before the first round.
   | { readonly kind: "narrateOpening" }
+  // Condense the rounds through this one (background; a scene just closed, or enough rounds piled up).
+  | { readonly kind: "chronicle"; readonly throughRound: number }
   // A combat round's flourish, or (final) the fight's closing narration.
   | { readonly kind: "narrateCombat"; readonly encounterId: string; readonly round: number; readonly final: boolean }
   // A picture for a scene the party just entered; made in the background and never awaited.

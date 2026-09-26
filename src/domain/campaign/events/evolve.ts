@@ -68,7 +68,9 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     case "roundResolved":
       return state.round?.number === event.roundNumber ? { ...state, round: null } : state;
     case "sceneTransitioned":
-      return { ...state, sceneId: event.sceneId };
+      return { ...state, sceneId: event.sceneId, sceneChangedRound: event.roundNumber };
+    case "summaryRecorded":
+      return { ...state, summaries: [...(state.summaries ?? []), { throughRound: event.throughRound, visibility: event.visibility, text: event.text }] };
     case "encounterQueued":
       return { ...state, pendingEncounter: event.encounter };
     case "clockAdvanced":

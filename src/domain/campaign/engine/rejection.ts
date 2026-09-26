@@ -24,6 +24,8 @@ export type Rejection =
   | { readonly code: "staleNarration" }
   | { readonly code: "notAwaitingReady" }
   | { readonly code: "emptyNarration" }
+  | { readonly code: "staleSummary" }
+  | { readonly code: "invalidSummary"; readonly problem: "text" | "numbers" }
   | { readonly code: "invalidLedgerFact"; readonly problem: string }
   | { readonly code: "canonicalNameLocked"; readonly canonicalName: string }
   | { readonly code: "unknownRoll" }

@@ -22,6 +22,13 @@ export interface ContextInput {
 
 export const defaultContextBudget = 30_000;
 
+// Rounds this recent stay word for word even when a summary covers them, so
+// the table's latest choices are never only a paraphrase.
+const keepVerbatimRounds = 2;
+// Past this many ledger entries only the ones that matter now are shown.
+const ledgerFullLimit = 25;
+const ledgerFactsPerEntry = 5;
+
 const maxSpeechLinesPerHero = 3;
 
 export class ContextBudgetError extends Error {
@@ -39,12 +46,20 @@ export class ContextBudgetError extends Error {
 // the latest round is never dropped. If even that cannot fit, fail with a
 // diagnostic rather than cut rules or pending work.
 export function assembleContext(input: ContextInput): DmContext {
-  const fixed = [instructions(input), adventure(input), ledger(input), liveState(input)];
+  // Summaries this audience may read; the Narrator only ever gets public ones.
+  const summaries = (input.state.summaries ?? []).filter((summary) => input.audience === "planner" || summary.visibility === "public");
+  const covered = summaries.reduce((latest, summary) => Math.max(latest, summary.throughRound), 0);
+  const records = roundRecords(input.events);
+  const lastNumber = records.at(-1)?.number ?? 0;
+  const fixed = [instructions(input), adventure(input), ledger(input, records), liveState(input)];
   // Each fight is told right after the round that led into it.
   const fights = encounterRecords(input.events, input);
-  const rounds = roundRecords(input.events).map((record) =>
+  // Rounds a summary already covers are replaced by it, except the latest few.
+  const shown = records.filter((record) => record.number > covered || record.number > lastNumber - keepVerbatimRounds);
+  const rounds = shown.map((record) =>
     [renderRound(record, input), ...fights.filter((fight) => fight.afterRound === record.number).map(renderFight)].join("\n\n"),
   );
+  const replaced = records.length - shown.length;
   const fixedTokens = fixed.reduce((sum, section) => sum + estimateTokens(section.text), 0);
 
   let kept = rounds;
@@ -56,12 +71,26 @@ export function assembleContext(input: ContextInput): DmContext {
   const omittedRounds = rounds.length - kept.length;
   const [layerA, layerB, layerC, layerF] = fixed as [ContextSection, ContextSection, ContextSection, ContextSection];
   const sections: ContextSection[] = [layerA, layerB, layerC];
-  if (omittedRounds > 0) {
-    sections.push({ layer: "D", title: "Story so far", text: `${omittedRounds} earlier round(s) are not shown; summaries are pending.` });
-  }
+  // Layer D: what the summaries say, oldest first; the oldest go first if even they do not fit.
+  const summaryLines = summaries.map((summary) => (summary.visibility === "private" ? `(DM only) ${summary.text}` : summary.text));
+  const note =
+    omittedRounds > 0
+      ? summaries.length === 0
+        ? `${omittedRounds} earlier round(s) are not shown.`
+        : `${omittedRounds} earlier round(s) between the summaries and the rounds below are not shown.`
+      : replaced > 0 && summaries.length === 0
+        ? `${replaced} earlier round(s) are not shown.`
+        : "";
+  const room = input.budgetTokens - tokensFor(kept);
+  let usedSummaries = summaryLines;
+  while (usedSummaries.length > 0 && estimateTokens([...usedSummaries, note].join("\n")) > room) usedSummaries = usedSummaries.slice(1);
+  const layerD: string[] = [...usedSummaries, ...(note === "" ? [] : [note])];
+  if (layerD.length > 0) sections.push({ layer: "D", title: "Story so far", text: layerD.join("\n") });
+  const estimatedWithSummaries = estimatedTokens + estimateTokens(layerD.join("\n"));
+  if (estimatedWithSummaries > input.budgetTokens) throw new ContextBudgetError(estimatedWithSummaries, input.budgetTokens);
   sections.push({ layer: "E", title: "Current scene", text: kept.length > 0 ? kept.join("\n\n") : "No rounds played yet." });
   sections.push(layerF);
-  return { sections, estimatedTokens, omittedRounds };
+  return { sections, estimatedTokens: estimatedWithSummaries, omittedRounds };
 }
 
 // Rough, deliberately conservative: CJK characters are about one token
@@ -127,14 +156,46 @@ function adventure(input: ContextInput): ContextSection {
   return { layer: "B", title: "Adventure", text: [bible.title, bible.premise, ...sceneText, ...npcs].join("\n") };
 }
 
-function ledger(input: ContextInput): ContextSection {
-  const lines = Object.values(input.state.ledger).flatMap((entry) => {
+// The ledger, entity by entity. A small one is shown whole. A large one is
+// narrowed to the entities that matter now: those present in the scene, and
+// those named in the latest rounds or the actions being resolved. Names are
+// locked, so the DM keeps spelling each one the same way.
+function ledger(input: ContextInput, records: readonly RoundRecord[]): ContextSection {
+  const visible = Object.values(input.state.ledger).flatMap((entry) => {
     const facts = entry.facts.filter((fact) => input.audience === "planner" || fact.visibility === "public");
-    if (facts.length === 0) return [];
-    const marked = facts.map((fact) => (fact.visibility === "secret" ? `${fact.text} (secret)` : fact.text));
-    return [`${entry.entityId} ${entry.canonicalName}: ${marked.join("; ")}`];
+    return facts.length === 0 ? [] : [{ entry, facts }];
   });
+  let chosen = visible;
+  let hidden = 0;
+  if (visible.length > ledgerFullLimit) {
+    const scene = findScene(input.bible, input.state.sceneId);
+    const recent = records.slice(-3);
+    const haystack = [
+      ...recent.flatMap((record) => [...record.actions.values(), record.narration ?? ""]),
+      ...(input.state.round === null ? [] : Object.values(input.state.round.submissions).flatMap((submission) => (submission.kind === "action" ? [submission.text] : []))),
+    ]
+      .join(" ")
+      .toLowerCase();
+    const present = new Set(scene?.npcIds ?? []);
+    chosen = visible.filter(({ entry }) => present.has(entry.entityId as never) || haystack.includes(entry.canonicalName.toLowerCase()));
+    hidden = visible.length - chosen.length;
+  }
+  const lines = chosen.map(({ entry, facts }) => {
+    const marked = facts.slice(-ledgerFactsPerEntry).map((fact) => (fact.visibility === "secret" ? `${fact.text} (secret)` : fact.text));
+    return `${entry.entityId} ${entry.canonicalName}: ${marked.join("; ")}`;
+  });
+  if (hidden > 0) lines.push(`${hidden} more remembered entries are not relevant right now.`);
   return { layer: "C", title: "Campaign ledger", text: lines.length > 0 ? lines.join("\n") : "Nothing recorded yet." };
+}
+
+// The rounds after `fromRound` through `throughRound` as one transcript, the
+// way the Narrator or Planner would read them; what the Chronicler condenses.
+export function renderTranscript(input: ContextInput, fromRound: number, throughRound: number): string {
+  const fights = encounterRecords(input.events, input);
+  return roundRecords(input.events)
+    .filter((record) => record.number > fromRound && record.number <= throughRound)
+    .map((record) => [renderRound(record, input), ...fights.filter((fight) => fight.afterRound === record.number).map(renderFight)].join("\n\n"))
+    .join("\n\n");
 }
 
 function liveState(input: ContextInput): ContextSection {

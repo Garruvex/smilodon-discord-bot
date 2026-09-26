@@ -5,13 +5,15 @@ import { dcLadder, rollModeReasons } from "../../../domain/campaign/rules/diffic
 import { abilities } from "../../../domain/campaign/rules/effects.js";
 import type { Glossary } from "../../../domain/campaign/rules/content-registry.js";
 import type { CampaignCommandBus } from "../campaign-command-bus.js";
-import { assembleContext, defaultContextBudget, type ContextAudience } from "../dm/context-assembler.js";
+import { assembleContext, defaultContextBudget, renderTranscript, type ContextAudience } from "../dm/context-assembler.js";
+import { latestSummaryRound } from "../../../domain/campaign/engine/dm.js";
 import { encounterRecords } from "../dm/combat-records.js";
 import { checkLabel, roundRecords } from "../dm/round-records.js";
 import { plannerStory, resolveStoryEffects } from "../dm/story-effects.js";
 import type { CampaignKey, CampaignUnitOfWork, OutboxItem, StoredCampaign } from "../ports/campaign-store.js";
 import type {
   AdventureCatalog,
+  CampaignChronicler,
   CampaignNarrator,
   CampaignPlanner,
   CombatNarratorRequest,
@@ -26,6 +28,8 @@ export interface DmJobWorkerOptions {
   readonly bus: CampaignCommandBus;
   readonly planner: CampaignPlanner;
   readonly narrator: CampaignNarrator;
+  // Condenses rounds in the background; without one, summaries are simply not made.
+  readonly chronicler?: CampaignChronicler;
   readonly adventures: AdventureCatalog;
   readonly glossaries: Readonly<Record<string, Glossary>>;
   readonly budgetTokens?: number;
@@ -47,6 +51,7 @@ export class DmJobWorker {
       ...(await tx.pendingOutbox("narrateOpening")),
       ...(await tx.pendingOutbox("narrate")),
       ...(await tx.pendingOutbox("narrateCombat")),
+      ...(await tx.pendingOutbox("chronicle")),
     ]);
     const failed: { id: string; error: string }[] = [];
     for (const item of items) {
@@ -55,6 +60,7 @@ export class DmJobWorker {
         if (item.request.kind === "narrateOpening") await this.narrateOpening(item);
         if (item.request.kind === "narrate") await this.narrate(item, item.request.roundNumber);
         if (item.request.kind === "narrateCombat") await this.narrateCombat(item, item.request.encounterId, item.request.round, item.request.final);
+        if (item.request.kind === "chronicle") await this.chronicle(item, item.request.throughRound);
         await unitOfWork.transaction((tx) => tx.completeOutbox(item.id));
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -139,6 +145,41 @@ export class DmJobWorker {
       { kind: "recordNarration", roundNumber, text },
       { commandId: `${item.id}:narration`, actor: system },
     );
+  }
+
+  // Condenses the rounds since the last summary, once for the table (from what
+  // it saw) and once for the DM (from everything), then keeps the ledger facts
+  // they name. A public summary is written from the public transcript alone, so
+  // it cannot hold a secret. The engine refuses a late or number-filled
+  // summary; a fact that renames a known entity is dropped, not forced.
+  private async chronicle(item: OutboxItem, throughRound: number): Promise<void> {
+    const { chronicler, bus } = this.options;
+    if (chronicler === undefined) return;
+    const loaded = await this.load(item.key);
+    const { state } = loaded.stored;
+    for (const audience of ["public", "private"] as const) {
+      const visibility = audience;
+      const from = latestSummaryRound(state.summaries, visibility);
+      if (from >= throughRound) continue;
+      const input = { audience: audience === "public" ? ("narrator" as const) : ("planner" as const), state, events: loaded.events, bible: loaded.bible, glossary: this.glossary(loaded), budgetTokens: this.options.budgetTokens ?? defaultContextBudget };
+      const transcript = renderTranscript(input, from, throughRound);
+      if (transcript.trim() === "") continue;
+      const previous = [...(state.summaries ?? [])].reverse().find((summary) => summary.visibility === visibility)?.text ?? null;
+      const known = Object.values(state.ledger).flatMap((entry) =>
+        audience === "private" || entry.facts.some((fact) => fact.visibility === "public") ? [{ entityId: entry.entityId, canonicalName: entry.canonicalName }] : [],
+      );
+      const result = await chronicler.chronicle({ audience, language: state.language, transcript, previousSummary: previous, knownEntities: known });
+      const summary = await bus.execute(item.key, { kind: "recordSummary", throughRound, visibility, text: result.summary }, { commandId: `${item.id}:summary:${audience}`, actor: system });
+      // A refused summary (late, or stating numbers) is not retried: the rounds stay in the transcript.
+      if (summary.kind === "rejected") continue;
+      for (const [index, fact] of result.facts.entries()) {
+        await bus.execute(
+          item.key,
+          { kind: "recordLedgerFact", entityId: fact.entityId, canonicalName: fact.canonicalName, fact: fact.fact, visibility: audience === "public" ? "public" : "secret" },
+          { commandId: `${item.id}:fact:${audience}:${index}`, actor: system },
+        );
+      }
+    }
   }
 
   // The opening scene, told before the first round. Like a round's narration,

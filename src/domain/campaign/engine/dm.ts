@@ -1,4 +1,4 @@
-import type { RecordLedgerFactCommand } from "../commands/campaign-command.js";
+import type { CampaignCommand, RecordLedgerFactCommand } from "../commands/campaign-command.js";
 import { isLedgerEntityId } from "../ledger/ledger.js";
 import { beginEncounter } from "./combat/combat-flow.js";
 import type { Decision } from "./decision.js";
@@ -7,6 +7,17 @@ import type { Rejection } from "./rejection.js";
 import { finishReadyCheck, openRound } from "./rounds.js";
 
 export const maxLedgerFactLength = 300;
+export const maxSummaryLength = 1_500;
+// A summary is asked for at a scene change, or after this many narrated rounds without one.
+export const chronicleEveryRounds = 6;
+
+// Numbers such as hit points, slots and gold change all the time; a summary
+// that states them would go stale and contradict the live state.
+const vitalNumbers = /\b\d+\s*(?:hp|hit points?|hit dice|slots?|gp|gold|coins?)\b|\b(?:hp|gold|slots?)\s*[:=]?\s*\d+|\d+\s*(?:點生命|生命值?|金幣|法術位)/i;
+
+export function latestSummaryRound(summaries: readonly { readonly throughRound: number; readonly visibility: string }[] | undefined, visibility: "public" | "private"): number {
+  return (summaries ?? []).filter((summary) => summary.visibility === visibility).reduce((latest, summary) => Math.max(latest, summary.throughRound), 0);
+}
 
 // The Planner failed validation twice: hold the round with a neutral line
 // and tell the organizer. Submissions are kept for a retry.
@@ -96,6 +107,10 @@ export function recordNarration(decision: Decision, roundNumber: number, text: s
   }
   decision.emit({ kind: "narrationRecorded", roundNumber, text: trimmed });
   decision.request({ kind: "deliver", delivery: { kind: "narration", roundNumber } });
+  // A chapter closed, or enough rounds piled up: the Chronicler condenses them in the background.
+  if (state.sceneChangedRound === roundNumber || roundNumber - latestSummaryRound(state.summaries, "public") >= chronicleEveryRounds) {
+    decision.request({ kind: "chronicle", throughRound: roundNumber });
+  }
   if (decision.state.status !== "active") return null;
   const pending = decision.state.pendingEncounter;
   if (pending !== null) {
@@ -103,6 +118,22 @@ export function recordNarration(decision: Decision, roundNumber: number, text: s
     return null;
   }
   return openRound(decision);
+}
+
+// Keeps the Chronicler's summary of the rounds through `throughRound`. A late
+// one, made before newer rounds were summarized, is refused rather than
+// overwriting what is already there; a summary stating hit points, slots or
+// gold is refused because those come from live state only.
+export function recordSummary(decision: Decision, command: Extract<CampaignCommand, { kind: "recordSummary" }>): Rejection | null {
+  const { state, ctx } = decision;
+  if (ctx.actor.kind !== "system") return { code: "systemOnly" };
+  const text = command.text.trim();
+  if (text.length === 0 || text.length > maxSummaryLength) return { code: "invalidSummary", problem: "text" };
+  if (vitalNumbers.test(text)) return { code: "invalidSummary", problem: "numbers" };
+  if (!Number.isInteger(command.throughRound) || command.throughRound < 1 || command.throughRound > state.lastNarratedRound) return { code: "staleSummary" };
+  if (command.throughRound <= latestSummaryRound(state.summaries, command.visibility)) return { code: "staleSummary" };
+  decision.emit({ kind: "summaryRecorded", throughRound: command.throughRound, visibility: command.visibility, text });
+  return null;
 }
 
 // Adds a fact to an entity's ledger entry. The first recorded name is the
