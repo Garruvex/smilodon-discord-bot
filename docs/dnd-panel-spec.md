@@ -195,7 +195,7 @@ First click on Join opens a private hub, not a forced popup for other users. A r
 
 ## Private character creator
 
-Private hub: **Use Preset · Create Character · Resume Draft · Withdraw** (show relevant choices only). Saved-character reuse can join this flow when supported; revalidate the copy under current campaign rules.
+Private hub: **Use Saved Character · Use Preset · Create Character · Resume Draft · Withdraw** (show relevant choices only). Use Saved Character lists only the clicking Discord user's library characters and saved progression branches. Choosing one shows its source, level, build, portrait, approved public history, and a destination-rules comparison before **Use in This Campaign**. If it is incompatible, show specific conflicts and an explicit legal rebuild path. Import creates a campaign copy, then the ordinary Review and Mark Ready steps apply; reopening the hub never imports twice.
 
 Wizard steps:
 
@@ -239,7 +239,7 @@ The public card shows portrait, public identity, level/class labels, HP, defense
 - **My Actions:** owner opens their legal choices, pending roll/reaction, or submitted action. An authorized proxy may use the granted action controls; proxy authority does not imply access to private notes.
 - **Inventory:** owner sees their items and resource availability. Selecting Use produces a proposed gameplay action with target/cost preview; viewing never consumes an item. Other users receive a public equipment summary, with private fields excluded.
 
-The common **My Hero** button opens the clicking user's character, rather than the hero belonging to whoever last edited the shared panel. Its private view includes Overview, Actions, Inventory, Notes, and Availability. Grant/revoke proxy access is an explicit owner action scoped to a named user, character, permitted resource use, and away status.
+The common **My Hero** button opens the clicking user's character, rather than the hero belonging to whoever last edited the shared panel. Its private view includes Overview, Actions, Inventory, Notes, Availability, and **Save Progress** when the campaign is at a stable session boundary. Save Progress previews the portable build, advancement, eligible gear, source campaign, and excluded temporary/secret state before the owner confirms a new library snapshot. **My Characters** is reachable privately from the lobby hub and My Hero; it lists snapshots and branches without exposing them on public hero cards. Grant/revoke proxy access is an explicit owner action scoped to a named user, character, permitted resource use, and away status.
 
 Recheck a proxy grant on submit, not just on view open. Owner return/revocation immediately removes proxy authority, including for already-open forms.
 
