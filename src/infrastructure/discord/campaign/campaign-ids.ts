@@ -11,6 +11,14 @@ export const campaignActions = [
   "pickHero",
   "heroChoice",
   "start",
+  "act",
+  "pass",
+  "roll",
+  "myHero",
+  "away",
+  "back",
+  "continue",
+  "details",
 ] as const;
 export type CampaignAction = (typeof campaignActions)[number];
 
