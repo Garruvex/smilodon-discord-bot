@@ -11,7 +11,7 @@ export const zhTWDnd: SettingsTextCatalog = {
     messages: {
       unavailable: "這個機器人無法使用 D&D",
       setUp: "**已設定完成。** 遊戲會顯示在大廳。",
-      notSetUp: "**尚未設定。** 請在下方選擇大廳頻道（或在想用的頻道執行 /dnd setup）",
+      notSetUp: "**尚未設定。** 請使用下方的「設定 D&D」，它會建立 D&D 分類與 #dnd-games 大廳",
       none: "未設定",
       hub: "大廳頻道：{channel}",
       role: "DnD Admin 身分組：{role}",
@@ -21,9 +21,19 @@ export const zhTWDnd: SettingsTextCatalog = {
     },
   },
 
+  "dnd.setup": {
+    label: "設定 D&D",
+    description: "建立 D&D 分類、#dnd-games 大廳與 DnD Admin 身分組，或檢查並修復它們",
+    messages: {
+      unavailable: "這個機器人無法使用 D&D",
+      permissions: "機器人缺少 D&D 所需的權限：{missing}",
+      done: "D&D 已設定完成，遊戲大廳是 {channel}，缺少的部分都已重新建立",
+    },
+  },
+
   "dnd.hub-channel": {
-    label: "大廳頻道",
-    description: "設定 D&D 分類，並把遊戲大廳與「建立遊戲」按鈕放在這個頻道",
+    label: "移動大廳",
+    description: "把遊戲大廳與「建立遊戲」按鈕放到你選的頻道，而不是 #dnd-games",
     messages: {
       unavailable: "這個機器人無法使用 D&D",
       permissions: "機器人缺少 D&D 所需的權限：{missing}",
@@ -37,19 +47,10 @@ export const zhTWDnd: SettingsTextCatalog = {
     description: "選擇可以建立並管理所有遊戲的身分組",
     messages: {
       unavailable: "這個機器人無法使用 D&D",
-      notSetUp: "請先設定大廳（大廳頻道），再選擇身分組",
+      notSetUp: "請先執行「設定 D&D」，再選擇身分組",
       done: "{role} 的成員現在可以建立並管理遊戲",
     },
   },
   "dnd.admin-role.role": { label: "身分組", description: "在這個伺服器主持 D&D 的身分組" },
 
-  "dnd.repair": {
-    label: "修復 D&D",
-    description: "檢查分類、大廳、DnD Admin 身分組與每個遊戲的卡片，並補回缺少的部分",
-    messages: {
-      unavailable: "這個機器人無法使用 D&D",
-      permissions: "機器人缺少 D&D 所需的權限：{missing}",
-      done: "已檢查 D&D，缺少的部分都已重新建立",
-    },
-  },
 };

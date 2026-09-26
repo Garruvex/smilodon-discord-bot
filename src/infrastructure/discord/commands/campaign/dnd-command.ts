@@ -33,8 +33,8 @@ export class DndCommand implements BotCommand {
     subcommands: [
       {
         name: "setup",
-        description: "Sets this server up for D&D games and makes this channel the hub.",
-        options: [{ type: "channel", name: "hub", description: "The hub channel (default: this one).", guildTextOnly: true }],
+        description: "Sets this server up for D&D: a D&D category with a games hub channel.",
+        options: [{ type: "channel", name: "hub", description: "Use this channel as the hub (default: a new #dnd-games).", guildTextOnly: true }],
       },
       {
         name: "new",
@@ -91,7 +91,7 @@ export class DndCommand implements BotCommand {
   public readonly access = publicAccessPolicy;
   public readonly responseVisibility = CommandResponseVisibility.Ephemeral;
   public readonly helpDetails = [
-    "/dnd setup makes this channel the hub, creates the D&D category and the DnD Admin role, and posts the hub's Create game button.",
+    "/dnd setup creates the D&D category with a #dnd-games hub channel (or uses the channel you give it) and the DnD Admin role, and posts the hub's Create game button.",
     "The hub lists each live game with a Manage button. /dnd new does the same as Create game: its adventure channel, a -stats channel for the party, and a Table Talk thread.",
     "Everything else is run inside a game's channels: players use the buttons, and the organizer or a DnD Admin uses /dnd pause, resume, close-round, rest, retry, and repair.",
   ];
@@ -120,7 +120,8 @@ export class DndCommand implements BotCommand {
 
   private async setup(interaction: ChatInputCommandInteraction<"cached">, text: Texts, responses: CommandContext["responses"]): Promise<void> {
     const chosen = interaction.options.getChannel("hub");
-    const hub = chosen !== null && chosen.type === ChannelType.GuildText ? chosen.id : interaction.channel?.type === ChannelType.GuildText ? interaction.channelId : null;
+    // No channel given: the hub is a new #dnd-games in the D&D category (or the one already there).
+    const hub = chosen !== null && chosen.type === ChannelType.GuildText ? chosen.id : null;
     const result = await this.deps.setup.setupGuild(interaction.guildId, hub);
     if (result.kind === "missingPermissions") {
       await responses.edit(text.campaign.cmd.setupMissing({ permissions: result.missing.join(", ") }));

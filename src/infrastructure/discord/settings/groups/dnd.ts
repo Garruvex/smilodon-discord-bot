@@ -3,7 +3,8 @@ import { action, group, report, setting, toggle } from "../registry/builders.js"
 // Everything about D&D on a server, in one place: the on/off switch first,
 // then where the games are shown and who runs them. The hub channel, category
 // and DnD Admin role live with the campaign data (setup makes and repairs
-// them), so those rows are actions that go through deps.campaign.
+// them), so those rows are actions that go through deps.campaign. Set up D&D
+// makes the category with a default #dnd-games hub; Hub channel moves it.
 export const dnd = group("dnd", [
   setting("campaigns", {
     enabled: toggle({ read: (p) => p.features.campaign, write: (v) => ({ campaignEnabled: v }) }),
@@ -20,6 +21,18 @@ export const dnd = group("dnd", [
       text.message(path, "games", { count: status.liveGames }),
       text.message(path, status.modelConfigured ? "modelReady" : "modelMissing"),
     ].join("\n");
+  }),
+
+  action("setup", {
+    params: {},
+    run: async ({ deps, request, text, path }) => {
+      if (deps.campaign === undefined) return { ok: false, message: text.message(path, "unavailable") };
+      const result = await deps.campaign.setUp(request.guildId, null);
+      if (result.kind === "missingPermissions") {
+        return { ok: false, message: text.message(path, "permissions", { missing: result.missing.join(", ") }) };
+      }
+      return { ok: true, message: text.message(path, "done", { channel: result.kind === "ok" && result.settings.hubChannelId !== null ? `<#${result.settings.hubChannelId}>` : "" }) };
+    },
   }),
 
   action("hub-channel", {
@@ -44,18 +57,6 @@ export const dnd = group("dnd", [
       return changed
         ? { ok: true, message: text.message(path, "done", { role: `<@&${roleId}>` }) }
         : { ok: false, message: text.message(path, "notSetUp") };
-    },
-  }),
-
-  action("repair", {
-    params: {},
-    run: async ({ deps, request, text, path }) => {
-      if (deps.campaign === undefined) return { ok: false, message: text.message(path, "unavailable") };
-      const result = await deps.campaign.setUp(request.guildId, null);
-      if (result.kind === "missingPermissions") {
-        return { ok: false, message: text.message(path, "permissions", { missing: result.missing.join(", ") }) };
-      }
-      return { ok: true, message: text.message(path, "done") };
     },
   }),
 ]);

@@ -11,7 +11,7 @@ export const jaDnd: SettingsTextCatalog = {
     messages: {
       unavailable: "このボットでは D&D を利用できません。",
       setUp: "**設定済みです。** ゲームはハブに表示されます。",
-      notSetUp: "**まだ設定されていません。** 下でハブのチャンネルを選ぶか、使いたいチャンネルで /dnd setup を実行してください。",
+      notSetUp: "**まだ設定されていません。** 下の「D&D を設定」を使うと、D&D カテゴリと #dnd-games のハブが作られます。",
       none: "未設定",
       hub: "ハブのチャンネル：{channel}",
       role: "DnD Admin ロール：{role}",
@@ -21,9 +21,19 @@ export const jaDnd: SettingsTextCatalog = {
     },
   },
 
+  "dnd.setup": {
+    label: "D&D を設定",
+    description: "D&D カテゴリ、#dnd-games のハブ、DnD Admin ロールを作るか、確認して修復します。",
+    messages: {
+      unavailable: "このボットでは D&D を利用できません。",
+      permissions: "D&D に必要な権限がボットにありません：{missing}。",
+      done: "D&D を設定しました。ゲームのハブは {channel} です。足りないものは作り直しました。",
+    },
+  },
+
   "dnd.hub-channel": {
-    label: "ハブのチャンネル",
-    description: "D&D カテゴリを設定し、ゲームのハブと「ゲームを作成」ボタンをこのチャンネルに置きます。",
+    label: "ハブを移す",
+    description: "ゲームのハブと「ゲームを作成」ボタンを、#dnd-games ではなく選んだチャンネルに置きます。",
     messages: {
       unavailable: "このボットでは D&D を利用できません。",
       permissions: "D&D に必要な権限がボットにありません：{missing}。",
@@ -37,19 +47,10 @@ export const jaDnd: SettingsTextCatalog = {
     description: "すべてのゲームを作成・管理できるロールを選びます。",
     messages: {
       unavailable: "このボットでは D&D を利用できません。",
-      notSetUp: "先にハブ（ハブのチャンネル）を設定してから、ロールを選んでください。",
+      notSetUp: "先に「D&D を設定」を実行してから、ロールを選んでください。",
       done: "{role} のメンバーがゲームを作成・管理できるようになりました。",
     },
   },
   "dnd.admin-role.role": { label: "ロール", description: "このサーバーで D&D を運営するロール。" },
 
-  "dnd.repair": {
-    label: "D&D を修復",
-    description: "カテゴリ、ハブ、DnD Admin ロール、各ゲームのカードを確認し、足りないものを作り直します。",
-    messages: {
-      unavailable: "このボットでは D&D を利用できません。",
-      permissions: "D&D に必要な権限がボットにありません：{missing}。",
-      done: "D&D を確認し、足りないものを作り直しました。",
-    },
-  },
 };

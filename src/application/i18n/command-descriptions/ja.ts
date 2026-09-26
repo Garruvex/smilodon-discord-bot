@@ -161,8 +161,8 @@ export const jaCommandDescriptions = {
   "vote:option4": "選択肢4。2つ以上指定するか、「はい／いいえ」にする場合はすべて空欄にします。", // Choice 4; give at least two choices, or none for Yes/No.
   "vote:option5": "選択肢5。2つ以上指定するか、「はい／いいえ」にする場合はすべて空欄にします。", // Choice 5; give at least two choices, or none for Yes/No.
   "dnd": "AI が進行する D&D キャンペーンを行います", // Runs AI-hosted D&D campaigns.
-  "dnd/setup": "このサーバーを D&D 用に設定し、このチャンネルを一覧チャンネルにします", // Sets this server up for D&D games and makes this channel the hub.
-  "dnd/setup:hub": "一覧チャンネル（既定: このチャンネル）", // The hub channel (default: this one).
+  "dnd/setup": "このサーバーを D&D 用に設定し、D&D カテゴリと一覧チャンネルを作ります", // Sets this server up for D&D: a D&D category with a games hub channel.
+  "dnd/setup:hub": "このチャンネルを一覧チャンネルにする（既定: 新しい #dnd-games）", // Use this channel as the hub (default: a new #dnd-games).
   "dnd/new": "専用チャンネル付きで新しいゲームを作成します", // Creates a new game with its own channels.
   "dnd/new:name": "ゲーム名", // The game's name.
   "dnd/new:language": "プレイする言語（既定: English）", // The language the game is played in (default: English).

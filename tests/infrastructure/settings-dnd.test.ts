@@ -83,16 +83,16 @@ describe("D&D settings", () => {
     const unset = engineFixture({ deps: { campaign: access({ setAdminRole: false }).campaign } });
     const refused = await unset.run("dnd.admin-role", slashValues({ role: { id: "700000000000000009" } }));
     expect(refused.kind).toBe("rejected");
-    expect(messageOf(refused as { kind: string; message?: string })).toContain("Set up the hub first");
+    expect(messageOf(refused as { kind: string; message?: string })).toContain("Set up D&D first");
   });
 
-  it("repairs in place, and is unavailable without the campaign module", async () => {
+  it("sets up with a default hub (no channel given), and is unavailable without the campaign module", async () => {
     const fake = access();
-    const repaired = await engineFixture({ deps: { campaign: fake.campaign } }).run("dnd.repair", slashValues({}));
+    const repaired = await engineFixture({ deps: { campaign: fake.campaign } }).run("dnd.setup", slashValues({}));
     expect(fake.setUp).toHaveBeenCalledWith(guildId, null);
     expect(repaired.kind).toBe("done");
 
-    const missing = await engineFixture().run("dnd.repair", slashValues({}));
+    const missing = await engineFixture().run("dnd.setup", slashValues({}));
     expect(missing).toMatchObject({ kind: "rejected" });
   });
 });

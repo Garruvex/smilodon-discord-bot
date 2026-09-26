@@ -163,8 +163,8 @@ export const zhTWCommandDescriptions = {
   "vote:option4": "選項 4；至少提供兩個選項，或全部留空以使用是／否", // Choice 4; give at least two choices, or none for Yes/No.
   "vote:option5": "選項 5；至少提供兩個選項，或全部留空以使用是／否", // Choice 5; give at least two choices, or none for Yes/No.
   "dnd": "進行由 AI 主持的 D&D 團務", // Runs AI-hosted D&D campaigns.
-  "dnd/setup": "設定這個伺服器的 D&D，並把這個頻道當作總覽頻道", // Sets this server up for D&D games and makes this channel the hub.
-  "dnd/setup:hub": "總覽頻道（預設為目前的頻道）", // The hub channel (default: this one).
+  "dnd/setup": "設定這個伺服器的 D&D：建立 D&D 分類與總覽頻道", // Sets this server up for D&D: a D&D category with a games hub channel.
+  "dnd/setup:hub": "指定這個頻道當作總覽頻道（預設：新的 #dnd-games）", // Use this channel as the hub (default: a new #dnd-games).
   "dnd/new": "建立新團務與專屬頻道", // Creates a new game with its own channels.
   "dnd/new:name": "團務名稱", // The game's name.
   "dnd/new:language": "遊玩語言（預設：English）", // The language the game is played in (default: English).

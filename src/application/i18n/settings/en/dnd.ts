@@ -11,7 +11,7 @@ export const enDnd: SettingsTextCatalog = {
     messages: {
       unavailable: "D&D is not available on this bot.",
       setUp: "**Set up.** Games are shown in the hub.",
-      notSetUp: "**Not set up yet.** Pick a hub channel below (or run /dnd setup in the channel you want).",
+      notSetUp: "**Not set up yet.** Use **Set up D&D** below: it makes a D&D category with a #dnd-games hub.",
       none: "not set",
       hub: "Hub channel: {channel}",
       role: "DnD Admin role: {role}",
@@ -21,9 +21,19 @@ export const enDnd: SettingsTextCatalog = {
     },
   },
 
+  "dnd.setup": {
+    label: "Set up D&D",
+    description: "Makes the D&D category with a #dnd-games hub and the DnD Admin role, or checks and repairs them.",
+    messages: {
+      unavailable: "D&D is not available on this bot.",
+      permissions: "The bot is missing permissions it needs for D&D: {missing}.",
+      done: "D&D is set up. The games hub is {channel}; anything missing was made again.",
+    },
+  },
+
   "dnd.hub-channel": {
-    label: "Hub channel",
-    description: "Sets up the D&D category and puts the games hub, with its Create game button, in this channel.",
+    label: "Move the hub",
+    description: "Puts the games hub, with its Create game button, in a channel you pick instead of #dnd-games.",
     messages: {
       unavailable: "D&D is not available on this bot.",
       permissions: "The bot is missing permissions it needs for D&D: {missing}.",
@@ -37,19 +47,10 @@ export const enDnd: SettingsTextCatalog = {
     description: "Picks the role whose members can create and manage every game.",
     messages: {
       unavailable: "D&D is not available on this bot.",
-      notSetUp: "Set up the hub first (Hub channel), then pick a role.",
+      notSetUp: "Set up D&D first, then pick a role.",
       done: "Members of {role} can now create and manage games.",
     },
   },
   "dnd.admin-role.role": { label: "Role", description: "The role that runs D&D on this server." },
 
-  "dnd.repair": {
-    label: "Repair D&D",
-    description: "Checks the category, hub, DnD Admin role and every game's cards, and makes what is missing again.",
-    messages: {
-      unavailable: "D&D is not available on this bot.",
-      permissions: "The bot is missing permissions it needs for D&D: {missing}.",
-      done: "D&D was checked and anything missing was made again.",
-    },
-  },
 };
