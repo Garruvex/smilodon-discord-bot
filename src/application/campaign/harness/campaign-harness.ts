@@ -22,11 +22,19 @@ import { chooseHeroCommand, type HarnessCombatRole } from "./harness-tactics.js"
 // What a scripted player does in a given round.
 export type HarnessMove = { readonly kind: "act"; readonly text: string } | { readonly kind: "pass" } | { readonly kind: "silent" };
 
+// What a player can see when choosing an action.
+export interface RoundView {
+  readonly heroName: string;
+  readonly sceneTitle: string;
+  // The latest public narration, if any.
+  readonly narration: string | null;
+}
+
 export interface HarnessPlayer {
   readonly userId: UserId;
   readonly heroId: string;
   readonly persona: string;
-  move(roundNumber: number, language: CampaignLanguage): HarnessMove;
+  move(roundNumber: number, language: CampaignLanguage, view: RoundView): HarnessMove | Promise<HarnessMove>;
   // Clicks Roll on their checks; otherwise the roll timer auto-rolls.
   readonly clicksRoll: boolean;
   // Comes back the round after being marked away.
@@ -144,6 +152,15 @@ export async function runHarness(options: HarnessOptions): Promise<HarnessRun> {
     if (stored === undefined) throw new Error("The harness campaign disappeared.");
     return stored.state;
   };
+  const viewFor = async (player: HarnessPlayer, state: CampaignState): Promise<RoundView> => {
+    const log = await unitOfWork.transaction((tx) => tx.readEvents(campaignKey));
+    const narration = log.map((envelope) => envelope.event).findLast((event) => event.kind === "narrationRecorded");
+    return {
+      heroName: state.characters[player.heroId]?.name ?? player.heroId,
+      sceneTitle: adventure.bible.scenes.find((scene) => scene.id === state.sceneId)?.title ?? "",
+      narration: narration?.kind === "narrationRecorded" ? narration.text : null,
+    };
+  };
   const drainDm = async (): Promise<void> => {
     // A failed call stays pending with a bounded retry count; keep running
     // until the job completes or gives up.
@@ -212,7 +229,7 @@ export async function runHarness(options: HarnessOptions): Promise<HarnessRun> {
 
     for (const player of players) {
       if (!round.participants.includes(player.heroId)) continue;
-      const move = player.move(round.number, adventure.bible.language);
+      const move = await player.move(round.number, adventure.bible.language, await viewFor(player, state));
       if (move.kind === "act") await execute({ kind: "submitAction", characterId: player.heroId, text: move.text }, user(player));
       if (move.kind === "pass") await execute({ kind: "pass", characterId: player.heroId }, user(player));
     }

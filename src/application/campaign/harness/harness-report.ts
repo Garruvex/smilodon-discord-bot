@@ -30,6 +30,10 @@ export interface HarnessReport {
   readonly cost: { readonly total: number; readonly perRound: number; readonly perLiveHour: number } | null;
   // Exact secret text found in anything the Narrator received or wrote.
   readonly leaks: readonly string[];
+  // Digits the Narrator wrote. Committed numbers (HP, DCs, rolls) come from the
+  // game state and the table already sees them, so narration should carry none;
+  // any digit is a candidate for a number that disagrees with the state.
+  readonly numbersInNarration: readonly string[];
   // zh-TW only: Simplified-only characters found in narration.
   readonly simplifiedCharacters: readonly string[];
 }
@@ -117,6 +121,7 @@ export function summarizeRun(run: HarnessRun, pricing?: TokenPricing): HarnessRe
     promptVersions: [...new Set(run.calls.flatMap((call) => (call.promptVersion === null ? [] : [call.promptVersion])))],
     cost: costOf(run.calls, pricing, rounds.length),
     leaks,
+    numbersInNarration: [...new Set(narrations.flatMap((text) => text.match(/\d+/g) ?? []))],
     simplifiedCharacters,
   };
 }
@@ -160,6 +165,11 @@ export function renderReport(run: HarnessRun, report: HarnessReport): string {
   lines.push(`Narration: ${report.narration.count} passages, average ${average.toFixed(0)} ${unit}, longest ${Math.max(0, ...lengths)}.`, "");
   lines.push("## Checks against the plan", "");
   lines.push(report.leaks.length === 0 ? "- Secret leak scan: clean." : `- Secret leak scan: **${report.leaks.length} leaked**: ${report.leaks.join(" | ")}`);
+  lines.push(
+    report.numbersInNarration.length === 0
+      ? "- Numbers in narration: none."
+      : `- Numbers in narration: **${report.numbersInNarration.join(", ")}** (check each against the state)`,
+  );
   if (run.language === "zh-TW") {
     lines.push(
       report.simplifiedCharacters.length === 0
