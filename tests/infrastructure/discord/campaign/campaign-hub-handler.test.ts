@@ -145,7 +145,7 @@ async function activeGame(t: Harness): Promise<{ key: CampaignKey; hubMessageId:
 
 describe("hub custom IDs", () => {
   it("round-trips the wizard choices and falls back per field when they are tampered with", () => {
-    const choices = { language: "zh-TW", pacing: "playByPost", players: 5, loot: "split", visibility: "open" } as const;
+    const choices = { language: "zh-TW", pacing: "playByPost", players: 5, loot: "split", visibility: "open", adventure: null } as const;
     expect(parseWizardState(wizardState(choices))).toEqual(choices);
     // Players-only is a fifth field, and a control made without it still parses as open.
     expect(wizardState({ ...choices, visibility: "membersOnly" })).toBe("zh-TW.playByPost.5.split.players");
@@ -153,7 +153,12 @@ describe("hub custom IDs", () => {
     expect(parseWizardState("zh-TW.playByPost.5.split")).toEqual(choices);
     expect(parseWizardState("fr.hourly.99")).toEqual(defaultWizardChoices);
     expect(parseWizardState(undefined)).toEqual(defaultWizardChoices);
-    expect(parseWizardState("zh-TW.live.x")).toEqual({ language: "zh-TW", pacing: "live", players: 3, loot: "pooled", visibility: "open" });
+    expect(parseWizardState("zh-TW.live.x")).toEqual({ language: "zh-TW", pacing: "live", players: 3, loot: "pooled", visibility: "open", adventure: null });
+    // A chosen adventure is a sixth field, which needs the fifth in front of it.
+    const chosen = { ...choices, adventure: "g6d5494-harbor-heist" } as const;
+    expect(wizardState(chosen)).toBe("zh-TW.playByPost.5.split.open.g6d5494-harbor-heist");
+    expect(parseWizardState(wizardState(chosen))).toEqual(chosen);
+    expect(parseWizardState("en.live.3.pooled.open.BAD ID")).toMatchObject({ adventure: null });
   });
 
   it("parses only the hub's own IDs", () => {

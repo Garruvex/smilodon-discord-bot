@@ -7,7 +7,10 @@ import type { Client } from "discord.js";
 import type { Logger } from "pino";
 
 import type { AccessPolicyService } from "../application/access/access-policy-service.js";
+import { AdventureAuthor } from "../application/campaign/adventures/adventure-author.js";
+import { AdventureCatalog } from "../application/campaign/adventures/adventure-catalog.js";
 import { StaticAdventureLibrary } from "../application/campaign/adventures/static-adventure-library.js";
+import { UploadedAdventureLibrary } from "../application/campaign/adventures/uploaded-adventure-library.js";
 import { CampaignCommandBus } from "../application/campaign/campaign-command-bus.js";
 import { CampaignIssues } from "../application/campaign/campaign-issues.js";
 import { CharacterLibrary } from "../application/campaign/library/character-library.js";
@@ -46,6 +49,8 @@ import { CampaignSetupService } from "../infrastructure/discord/campaign/campaig
 import { organizerNotice } from "../infrastructure/discord/campaign/issue-notifier.js";
 import { DndCommand } from "../infrastructure/discord/commands/campaign/dnd-command.js";
 import { CampaignComponentHandler } from "../infrastructure/discord/components/campaign-component-handler.js";
+import { AdventureIntake } from "../infrastructure/discord/campaign/adventure-intake.js";
+import { AdventureComponentHandler } from "../infrastructure/discord/components/adventure-component-handler.js";
 import { CampaignHubComponentHandler } from "../infrastructure/discord/components/campaign-hub-component-handler.js";
 import { CharacterLibraryComponentHandler } from "../infrastructure/discord/components/character-library-component-handler.js";
 import { SqliteCampaignStore } from "../infrastructure/persistence/campaign/sqlite-campaign-store.js";
@@ -57,6 +62,8 @@ export interface CampaignModule {
   readonly hubHandler: CampaignHubComponentHandler;
   // My Characters: the character library's private screens and builder.
   readonly libraryHandler: CharacterLibraryComponentHandler;
+  // Approve or Discard on an uploaded or authored adventure's review.
+  readonly adventureHandler: AdventureComponentHandler;
   // What the admin panel's D&D settings read and change.
   readonly settings: CampaignSettingsAccess;
   // Discord events that can take a card or a place away: a message was
@@ -100,7 +107,9 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
   const content = buildSrd51({ capabilities: milestone0Capabilities, glossaries: [enSrd51Glossary, zhTwSrd51Glossary] });
   const rulesets = new RulesetCatalog([content]);
   const glossaries = { en: enSrd51Glossary, "zh-TW": zhTwSrd51Glossary };
-  const adventures = new StaticAdventureLibrary([{ id: starterAdventureId, editions: loadStarterAdventure() }]);
+  const starter = loadStarterAdventure();
+  // The bundled adventure plus every adventure a server approved.
+  const adventures = new UploadedAdventureLibrary(new StaticAdventureLibrary([{ id: starterAdventureId, editions: starter }]));
   const clock = new SystemClock();
 
   let runtime: CampaignRuntime | null = null;
@@ -150,11 +159,16 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
   const running = runtime;
 
   const authority = new CampaignAuthority(input.accessPolicyService, unitOfWork);
-  const creator = new CampaignGameCreator({ lobby, setup, defaultAdventureId: starterAdventureId, modelConfigured: model !== null });
+  const creator = new CampaignGameCreator({ lobby, setup, defaultAdventureId: starterAdventureId, modelConfigured: model !== null, adventures });
   const libraryHandler = new CharacterLibraryComponentHandler({ library, content, glossaries });
-  const command = new DndCommand({ lobby, play, setup, cards, creator, authority, library, libraryScreens: libraryHandler });
+  const catalog = new AdventureCatalog({ unitOfWork, clock, content, library: adventures });
+  // The Author never writes heroes: it borrows the bundled adventure's, in the language asked for.
+  const author = model === null ? null : new AdventureAuthor({ client: model, content, heroesFor: (language): typeof starter.en.heroes => starter[language].heroes });
+  const intake = new AdventureIntake({ catalog, author, glossaries });
+  const adventureHandler = new AdventureComponentHandler({ catalog, authority });
+  const command = new DndCommand({ lobby, play, setup, cards, creator, authority, library, libraryScreens: libraryHandler, intake });
   const handler = new CampaignComponentHandler({ lobby, play, cards, unitOfWork, rulesets, adventures, glossaries, library });
-  const hubHandler = new CampaignHubComponentHandler({ lobby, play, setup, cards, creator, authority });
+  const hubHandler = new CampaignHubComponentHandler({ lobby, play, setup, cards, creator, authority, adventures });
 
   // A deleted hub channel, game channel or Table Talk thread is made again
   // (its cards are drawn into the new one), within limits; a deleted message is
@@ -170,6 +184,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
     handler,
     hubHandler,
     libraryHandler,
+    adventureHandler,
     settings: new CampaignSettingsAccess({ unitOfWork, lobby, setup, modelConfigured: model !== null }),
     handleMessagesDeleted: (guildId, channelId, messageIds): void => {
       void cards.handleMessagesDeleted(guildId, channelId, messageIds).catch(logFailure("Campaign card recovery after a deleted message failed", guildId));
@@ -179,6 +194,9 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
     },
     start: async (): Promise<void> => {
       openStore();
+      // Adventures a server approved are readable again before any game needs them.
+      const loaded = await catalog.load();
+      if (loaded.skipped.length > 0) logger.warn({ skipped: loaded.skipped }, "Some approved adventures no longer parse and were skipped");
       const report = await running.start();
       logger.info({ modelConfigured: model !== null, paused: report.paused.length, firstRoundsOpened: report.firstRoundsOpened.length, roundsReopened: report.roundsReopened.length }, "Campaign runtime started");
       // Cards deleted while the bot was away come back; this needs Discord, so it does not hold up startup.

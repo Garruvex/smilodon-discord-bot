@@ -65,6 +65,7 @@ function limitProblems(document: AdventureDocument): readonly string[] {
   const { bible } = document;
   const problems: string[] = [];
   // The version is part of the key an approval names, so it stays short and plain.
+  if (bible.id.length > 40) problems.push("The adventure's id may be at most 40 characters.");
   if (!/^[A-Za-z0-9._-]{1,20}$/.test(bible.version)) problems.push("The version must be 1 to 20 letters, digits, dots, dashes or underscores.");
   if (bible.scenes.length > adventureLimits.maxScenes) problems.push(`An adventure may have at most ${adventureLimits.maxScenes} scenes.`);
   if (bible.npcs.length > adventureLimits.maxNpcs) problems.push(`An adventure may have at most ${adventureLimits.maxNpcs} NPCs.`);

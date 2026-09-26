@@ -13,6 +13,7 @@ export const hubActions = [
   "wizPlayers",
   "wizLoot",
   "wizVisibility",
+  "wizAdventure",
   "wizNext",
   "wizName",
   "manage",
@@ -40,9 +41,11 @@ export interface WizardChoices {
   readonly loot: "pooled" | "split";
   // Who can see the game's channels once it starts.
   readonly visibility: "open" | "membersOnly";
+  // An adventure the server added (its ID); null is the bundled one.
+  readonly adventure: string | null;
 }
 
-export const defaultWizardChoices: WizardChoices = { language: "en", pacing: "live", players: 3, loot: "pooled", visibility: "open" };
+export const defaultWizardChoices: WizardChoices = { language: "en", pacing: "live", players: 3, loot: "pooled", visibility: "open", adventure: null };
 
 const maxLength = 100;
 
@@ -58,16 +61,17 @@ export function parseHubId(customId: string): ParsedHubId | null {
   return { action: action as HubAction, parts };
 }
 
-// The players-only choice is a fifth field, left out when it is the default, so
-// a control made before it existed still parses.
+// Players-only is a fifth field and a chosen adventure a sixth, each left out
+// when it is the default, so a control made before they existed still parses.
 export function wizardState(choices: WizardChoices): string {
   const base = `${choices.language}.${choices.pacing}.${choices.players}.${choices.loot}`;
-  return choices.visibility === "membersOnly" ? `${base}.players` : base;
+  const withVisibility = choices.visibility === "membersOnly" || choices.adventure !== null ? `${base}.${choices.visibility === "membersOnly" ? "players" : "open"}` : base;
+  return choices.adventure === null ? withVisibility : `${withVisibility}.${choices.adventure}`;
 }
 
 // A malformed or tampered state falls back to the defaults, field by field.
 export function parseWizardState(state: string | undefined): WizardChoices {
-  const [language, pacing, players, loot, visibility] = (state ?? "").split(".");
+  const [language, pacing, players, loot, visibility, adventure] = (state ?? "").split(".");
   const count = Number(players);
   return {
     language: language === "zh-TW" ? "zh-TW" : "en",
@@ -75,6 +79,7 @@ export function parseWizardState(state: string | undefined): WizardChoices {
     players: Number.isInteger(count) && count >= 1 && count <= 6 ? count : defaultWizardChoices.players,
     loot: loot === "split" ? "split" : "pooled",
     visibility: visibility === "players" ? "membersOnly" : "open",
+    adventure: adventure !== undefined && /^[a-z0-9-]{1,50}$/.test(adventure) ? adventure : null,
   };
 }
 

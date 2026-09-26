@@ -411,6 +411,7 @@ export function registerCommands(
   componentRegistry.register(campaign.handler);
   componentRegistry.register(campaign.hubHandler);
   componentRegistry.register(campaign.libraryHandler);
+  componentRegistry.register(campaign.adventureHandler);
 
   const chatProvider = configuration.chat ? createChatProviderFromConfig(configuration.chat, logger) : null;
   // Fully independent provider for the two standalone structured-output

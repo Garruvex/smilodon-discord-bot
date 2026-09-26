@@ -45,6 +45,8 @@ export interface CampaignHubDependencies {
   readonly cards: CampaignCardService;
   readonly creator: CampaignGameCreator;
   readonly authority: CampaignAuthority;
+  // The adventures this server can start from; without it the wizard offers only the bundled one.
+  readonly adventures?: { listForGuild(guildId: string): readonly { readonly id: string; readonly titles: Readonly<Partial<Record<"en" | "zh-TW", string>>> }[] };
 }
 
 interface Screen {
@@ -81,6 +83,9 @@ export class CampaignHubComponentHandler implements ComponentHandler {
         return;
       case "wizVisibility":
         if (interaction.isButton()) await this.toggleVisibility(interaction, first);
+        return;
+      case "wizAdventure":
+        if (interaction.isButton()) await this.cycleAdventure(interaction, first);
         return;
       case "wizNext":
         if (interaction.isButton()) await this.askName(interaction, first);
@@ -122,6 +127,7 @@ export class CampaignHubComponentHandler implements ComponentHandler {
       players: choices.players,
       lootGold: choices.loot,
       visibility: choices.visibility,
+      ...(choices.adventure === null ? {} : { adventureId: choices.adventure }),
     });
     await interaction.editReply({ content: createGameText(result, text) });
   }
@@ -138,7 +144,7 @@ export class CampaignHubComponentHandler implements ComponentHandler {
       await interaction.reply({ content: text.campaign.cmd.noModel, flags: MessageFlags.Ephemeral });
       return;
     }
-    await interaction.reply({ ...wizardScreen(defaultWizardChoices), flags: MessageFlags.Ephemeral });
+    await interaction.reply({ ...this.screen(defaultWizardChoices, interaction.guildId), flags: MessageFlags.Ephemeral });
   }
 
   private async chooseOption(interaction: StringSelectMenuInteraction<"cached">, action: "wizLanguage" | "wizPacing" | "wizPlayers" | "wizLoot", state: string | undefined): Promise<void> {
@@ -156,7 +162,7 @@ export class CampaignHubComponentHandler implements ComponentHandler {
           : action === "wizLoot"
             ? { ...current, loot: value === "split" ? "split" : "pooled" }
             : { ...current, players: parseWizardState(`en.live.${value}`).players };
-    await interaction.update(wizardScreen(next));
+    await interaction.update(this.screen(next, interaction.guildId));
   }
 
   private async toggleVisibility(interaction: ButtonInteraction<"cached">, state: string | undefined): Promise<void> {
@@ -165,7 +171,30 @@ export class CampaignHubComponentHandler implements ComponentHandler {
       await interaction.update({ content: texts[current.language].campaign.wizard.notAllowed, components: [] });
       return;
     }
-    await interaction.update(wizardScreen({ ...current, visibility: current.visibility === "open" ? "membersOnly" : "open" }));
+    await interaction.update(this.screen({ ...current, visibility: current.visibility === "open" ? "membersOnly" : "open" }, interaction.guildId));
+  }
+
+  // Steps through the adventures the server can start from, the bundled one first.
+  private async cycleAdventure(interaction: ButtonInteraction<"cached">, state: string | undefined): Promise<void> {
+    const current = parseWizardState(state);
+    if (!(await this.deps.authority.isAdmin(interaction))) {
+      await interaction.update({ content: texts[current.language].campaign.wizard.notAllowed, components: [] });
+      return;
+    }
+    const ids = (this.deps.adventures?.listForGuild(interaction.guildId) ?? []).map((entry) => entry.id);
+    const at = ids.indexOf(current.adventure ?? ids[0] ?? "");
+    const next = ids[(at + 1) % Math.max(ids.length, 1)];
+    await interaction.update(this.screen({ ...current, adventure: next === undefined || next === ids[0] ? null : next }, interaction.guildId));
+  }
+
+  // The wizard, with the adventure's title and a way to change it when the server has more than one.
+  private screen(choices: WizardChoices, guildId: string): Screen {
+    const list = this.deps.adventures?.listForGuild(guildId) ?? [];
+    const titleOf = (id: string | null): string | null => {
+      const entry = list.find((candidate) => candidate.id === (id ?? list[0]?.id));
+      return entry === undefined ? null : (entry.titles[choices.language] ?? entry.titles.en ?? entry.titles["zh-TW"] ?? entry.id);
+    };
+    return wizardScreen(choices, list.length > 1 ? titleOf(choices.adventure) : null);
   }
 
   private async askName(interaction: ButtonInteraction<"cached">, state: string | undefined): Promise<void> {
@@ -336,7 +365,8 @@ function successText(verb: ManageVerb, text: Texts): string {
 }
 
 // The wizard: the choices so far live in each control's custom ID.
-function wizardScreen(choices: WizardChoices): Screen {
+// `adventureTitle` is null when there is only the bundled adventure to choose.
+function wizardScreen(choices: WizardChoices, adventureTitle: string | null): Screen {
   const text = texts[choices.language];
   const t = text.campaign.wizard;
   const state = wizardState(choices);
@@ -350,7 +380,7 @@ function wizardScreen(choices: WizardChoices): Screen {
   const language = choices.language === "en" ? text.campaign.language.en : text.campaign.language.zhTW;
   const pacing = choices.pacing === "live" ? text.campaign.pacing.live : text.campaign.pacing.playByPost;
   return {
-    content: `**${t.title}**\n${t.intro}\n\n${t.summary({ language, pacing, count: choices.players, loot: choices.loot === "split" ? t.lootSplit : t.lootPooled })}\n${t.visibilityLine({ who: choices.visibility === "membersOnly" ? t.visibilityPlayers : t.visibilityOpen })}`,
+    content: `**${t.title}**\n${t.intro}\n\n${t.summary({ language, pacing, count: choices.players, loot: choices.loot === "split" ? t.lootSplit : t.lootPooled })}\n${t.visibilityLine({ who: choices.visibility === "membersOnly" ? t.visibilityPlayers : t.visibilityOpen })}${adventureTitle === null ? "" : `\n${text.campaign.adventure.wizardLine({ title: adventureTitle })}`}`,
     components: [
       select("wizLanguage", t.languagePlaceholder, [
         { label: text.campaign.language.en, value: "en", selected: choices.language === "en" },
@@ -375,6 +405,9 @@ function wizardScreen(choices: WizardChoices): Screen {
           .setCustomId(hubCustomId("wizVisibility", state))
           .setLabel(choices.visibility === "membersOnly" ? t.visibilityButtonPlayers : t.visibilityButtonOpen)
           .setStyle(ButtonStyle.Secondary),
+        ...(adventureTitle === null
+          ? []
+          : [new ButtonBuilder().setCustomId(hubCustomId("wizAdventure", state)).setLabel(text.campaign.adventure.wizardButton({ title: adventureTitle }).slice(0, 80)).setStyle(ButtonStyle.Secondary)]),
       ),
     ],
   };

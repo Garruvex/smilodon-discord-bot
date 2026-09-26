@@ -12,7 +12,8 @@ import { createGameText } from "../../campaign/campaign-game-creator.js";
 import type { CampaignCardService } from "../../campaign/campaign-card-service.js";
 import type { CharacterLibrary } from "../../../../application/campaign/library/character-library.js";
 import { maxImportBytes } from "../../../../application/campaign/library/character-library.js";
-import { fetchLinkContent } from "../../../net/safe-url-fetch.js";
+import { downloadAttachmentText } from "../../campaign/attachment-download.js";
+import type { AdventureIntake } from "../../campaign/adventure-intake.js";
 import { conflictLines, languageOf, type CharacterLibraryComponentHandler } from "../../components/character-library-component-handler.js";
 import { texts } from "../../../../application/i18n/texts.js";
 import type { CampaignSetupService } from "../../campaign/campaign-setup-service.js";
@@ -29,6 +30,8 @@ export interface DndCommandDependencies {
   // The character library and its opening screen (My Characters).
   readonly library: CharacterLibrary;
   readonly libraryScreens: Pick<CharacterLibraryComponentHandler, "homeScreen" | "sheetLine">;
+  // Uploading an adventure file and the Adventure Author.
+  readonly intake: AdventureIntake;
 }
 
 // Setting up a server is for bot administrators (plan §3, Server setup).
@@ -86,6 +89,28 @@ export class DndCommand implements BotCommand {
         description: "Adds a character from an exported file to your library.",
         options: [{ type: "attachment", name: "file", description: "The character file (.json) exported from My Characters.", required: true }],
       },
+      {
+        name: "upload-adventure",
+        description: "Adds an adventure from a file to this server, after checks and your approval.",
+        options: [{ type: "attachment", name: "file", description: "The adventure file (YAML or JSON).", required: true }],
+      },
+      {
+        name: "author",
+        description: "Has the Adventure Author write an adventure from an idea or your notes.",
+        options: [
+          { type: "string", name: "idea", description: "What the adventure is about.", maxLength: 1000 },
+          {
+            type: "string",
+            name: "language",
+            description: "The language to write it in (default: English).",
+            choices: [
+              { name: "English", value: "en" },
+              { name: "繁體中文", value: "zh-TW" },
+            ],
+          },
+          { type: "attachment", name: "notes", description: "Your own notes to build from (text or Markdown)." },
+        ],
+      },
       { name: "status", description: "Shows the state of this channel's game." },
       { name: "pause", description: "Pauses this game (organizer)." },
       { name: "resume", description: "Resumes a paused game (organizer)." },
@@ -128,7 +153,12 @@ export class DndCommand implements BotCommand {
     if (!interaction.inCachedGuild()) return;
     await responses.defer();
     const subcommand = interaction.options.getSubcommand();
-    const allowed = subcommand === "setup" ? this.deps.authority.isBotAdministrator(interaction) : subcommand === "new" ? await this.deps.authority.isAdmin(interaction) : true;
+    const allowed =
+      subcommand === "setup"
+        ? this.deps.authority.isBotAdministrator(interaction)
+        : subcommand === "new" || subcommand === "upload-adventure" || subcommand === "author"
+          ? await this.deps.authority.isAdmin(interaction)
+          : true;
     if (!allowed) {
       await responses.edit(text.campaign.cmd.adminOnly);
       return;
@@ -138,6 +168,10 @@ export class DndCommand implements BotCommand {
         return this.characters(interaction);
       case "import-character":
         return this.importCharacter(interaction);
+      case "upload-adventure":
+        return this.deps.intake.upload(interaction);
+      case "author":
+        return this.deps.intake.author(interaction);
       case "setup":
         return this.setup(interaction, text, responses);
       case "new":
@@ -167,14 +201,9 @@ export class DndCommand implements BotCommand {
       await interaction.editReply({ content: words.importUnreadable.tooLarge });
       return;
     }
-    const host = new URL(file.url).hostname;
-    if (host !== "cdn.discordapp.com" && host !== "media.discordapp.net") {
-      await interaction.editReply({ content: words.importBadLink });
-      return;
-    }
-    const fetched = await fetchLinkContent(file.url);
+    const fetched = await downloadAttachmentText(file.url, maxImportBytes);
     if (!fetched.ok) {
-      await interaction.editReply({ content: words.importUnreadable.notJson });
+      await interaction.editReply({ content: fetched.reason === "notDiscord" ? words.importBadLink : fetched.reason === "tooLarge" ? words.importUnreadable.tooLarge : words.importUnreadable.notJson });
       return;
     }
     const result = await this.deps.library.import(interaction.user.id, fetched.text);

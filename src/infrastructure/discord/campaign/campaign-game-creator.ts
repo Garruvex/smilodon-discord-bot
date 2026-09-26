@@ -16,6 +16,8 @@ export interface NewGame {
   readonly lootGold?: "pooled" | "split";
   // Who can see the game's channels once it starts; open when absent.
   readonly visibility?: CampaignVisibility;
+  // An adventure the server added; the bundled one when absent.
+  readonly adventureId?: string;
 }
 
 export type CreateGameResult =
@@ -38,6 +40,8 @@ export class CampaignGameCreator {
       readonly defaultAdventureId: string;
       // False when no CAMPAIGN_MODEL is set: a game could not be run, so none is started.
       readonly modelConfigured: boolean;
+      // The adventures a server may start from (its own and the bundled one).
+      readonly adventures?: { listForGuild(guildId: string): readonly { readonly id: string }[] };
     },
   ) {}
 
@@ -47,12 +51,16 @@ export class CampaignGameCreator {
 
   public async create(game: NewGame): Promise<CreateGameResult> {
     if (!this.options.modelConfigured) return { kind: "noModel" };
+    const adventureId = game.adventureId ?? this.options.defaultAdventureId;
+    // Only the bundled adventure, or one this server itself approved.
+    const allowed = adventureId === this.options.defaultAdventureId || this.options.adventures?.listForGuild(game.guildId).some((entry) => entry.id === adventureId) === true;
+    if (!allowed) return { kind: "refused", reason: "unknownAdventure" };
     const created = await this.options.lobby.create({
       guildId: game.guildId,
       organizerId: game.organizerId,
       name: game.name,
       language: game.language,
-      adventureId: this.options.defaultAdventureId,
+      adventureId,
       pacing: { preset: game.pacing },
       maxPlayers: game.players,
       visibility: game.visibility ?? "open",
