@@ -1,12 +1,14 @@
 import { ChannelType, type ChatInputCommandInteraction } from "discord.js";
 
-import type { AccessPolicyService } from "../../../../application/access/access-policy-service.js";
 import { CommandModule, CommandResponseVisibility, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import type { CampaignLobbyService } from "../../../../application/campaign/campaign-lobby-service.js";
-import type { CampaignPlayController, PlayResult } from "../../../../application/campaign/campaign-play-controller.js";
+import type { CampaignPlayController, ManageAction, PlayResult } from "../../../../application/campaign/campaign-play-controller.js";
 import type { StoredRecord } from "../../../../application/campaign/ports/campaign-record.js";
 import type { Texts } from "../../../../application/i18n/texts.js";
-import { publicAccessPolicy, RoleMatchMode, type CommandAccessPolicy } from "../../../../domain/access/access-policy.js";
+import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
+import type { CampaignAuthority } from "../../campaign/campaign-authority.js";
+import type { CampaignGameCreator } from "../../campaign/campaign-game-creator.js";
+import { createGameText } from "../../campaign/campaign-game-creator.js";
 import type { CampaignCardService } from "../../campaign/campaign-card-service.js";
 import type { CampaignSetupService } from "../../campaign/campaign-setup-service.js";
 import { refusalText } from "../../campaign/refusal-text.js";
@@ -16,17 +18,13 @@ export interface DndCommandDependencies {
   readonly play: CampaignPlayController;
   readonly setup: CampaignSetupService;
   readonly cards: CampaignCardService;
-  readonly access: AccessPolicyService;
-  // The adventure a new game starts from (the bundled default for now).
-  readonly defaultAdventureId: string;
-  // False when no CAMPAIGN_MODEL is set: a game could not be run, so none is started.
-  readonly modelConfigured: boolean;
+  readonly creator: CampaignGameCreator;
+  readonly authority: CampaignAuthority;
 }
 
-// Setting up a server and creating games are for bot administrators (plan §3,
-// Server setup: default is administrators only). The rest of /dnd is for the
-// organizer of the game whose channel it is run in, and the engine enforces that.
-const adminPolicy: CommandAccessPolicy = { ...publicAccessPolicy, roles: { match: RoleMatchMode.Any, requiredGroups: ["botAdministrator"] } };
+// Setting up a server is for bot administrators (plan §3, Server setup).
+// Creating games is for them and the server's DnD Admin role. The rest of /dnd
+// is for the organizer of the game whose channel it is run in, or a DnD Admin.
 
 export class DndCommand implements BotCommand {
   public readonly definition = {
@@ -93,9 +91,9 @@ export class DndCommand implements BotCommand {
   public readonly access = publicAccessPolicy;
   public readonly responseVisibility = CommandResponseVisibility.Ephemeral;
   public readonly helpDetails = [
-    "/dnd setup makes this channel the hub that lists every game, and creates the D&D category.",
-    "/dnd new creates a game: its adventure channel, a -stats channel for the party, and a Table Talk thread.",
-    "Everything else is run inside a game's channels: players use the buttons, and the organizer uses /dnd pause, resume, close-round, rest, retry, and repair.",
+    "/dnd setup makes this channel the hub, creates the D&D category and the DnD Admin role, and posts the hub's Create game button.",
+    "The hub lists each live game with a Manage button. /dnd new does the same as Create game: its adventure channel, a -stats channel for the party, and a Table Talk thread.",
+    "Everything else is run inside a game's channels: players use the buttons, and the organizer or a DnD Admin uses /dnd pause, resume, close-round, rest, retry, and repair.",
   ];
 
   public constructor(private readonly deps: DndCommandDependencies) {}
@@ -105,7 +103,8 @@ export class DndCommand implements BotCommand {
     if (!interaction.inCachedGuild()) return;
     await responses.defer();
     const subcommand = interaction.options.getSubcommand();
-    if ((subcommand === "setup" || subcommand === "new") && !this.deps.access.evaluate(adminPolicy, CommandModule.Campaign, interaction).allowed) {
+    const allowed = subcommand === "setup" ? this.deps.authority.isBotAdministrator(interaction) : subcommand === "new" ? await this.deps.authority.isAdmin(interaction) : true;
+    if (!allowed) {
       await responses.edit(text.campaign.cmd.adminOnly);
       return;
     }
@@ -131,52 +130,15 @@ export class DndCommand implements BotCommand {
   }
 
   private async create(interaction: ChatInputCommandInteraction<"cached">, text: Texts, responses: CommandContext["responses"]): Promise<void> {
-    if (!this.deps.modelConfigured) {
-      await responses.edit(text.campaign.cmd.noModel);
-      return;
-    }
-    const pacing = interaction.options.getString("pacing") === "playByPost" ? ("playByPost" as const) : ("live" as const);
-    const language = interaction.options.getString("language") === "zh-TW" ? ("zh-TW" as const) : ("en" as const);
-    const created = await this.deps.lobby.create({
+    const result = await this.deps.creator.create({
       guildId: interaction.guildId,
       organizerId: interaction.user.id,
       name: interaction.options.getString("name", true),
-      language,
-      adventureId: this.deps.defaultAdventureId,
-      pacing: { preset: pacing },
-      maxPlayers: interaction.options.getInteger("players") ?? 3,
-      // No combat controls on Discord yet: fights play themselves on cautious autopilot.
-      houseRules: { "combat-mode": "autopilot" },
+      language: interaction.options.getString("language") === "zh-TW" ? "zh-TW" : "en",
+      pacing: interaction.options.getString("pacing") === "playByPost" ? "playByPost" : "live",
+      players: interaction.options.getInteger("players") ?? 3,
     });
-    if (created.kind === "refused") {
-      await responses.edit(refusalText(text, created.reason));
-      return;
-    }
-    const { key, name } = { key: created.value.key, name: created.value.name };
-    const provisioned = await this.deps.setup.provision(key);
-    switch (provisioned.kind) {
-      case "ok":
-        await responses.edit(
-          text.campaign.cmd.created({
-            name,
-            party: provisioned.record.channels.partyChannelId ?? "",
-            adventure: provisioned.record.channels.adventureChannelId ?? "",
-          }),
-        );
-        return;
-      case "notSetup":
-        await responses.edit(text.campaign.cmd.notSetup);
-        return;
-      case "missingPermissions":
-        await responses.edit(text.campaign.cmd.setupMissing({ permissions: provisioned.missing.join(", ") }));
-        return;
-      case "failed":
-        await responses.edit(text.campaign.cmd.createdNoChannels({ name, step: provisioned.step }));
-        return;
-      case "notFound":
-        await responses.edit(text.campaign.refusal.notFound);
-        return;
-    }
+    await responses.edit(createGameText(result, text));
   }
 
   private async inGame(
@@ -198,26 +160,31 @@ export class DndCommand implements BotCommand {
     const done = async (result: PlayResult, success: string): Promise<void> => {
       await responses.edit(result.kind === "ok" ? success : refusalText(text, result.reason));
     };
+    // The organizer, and a DnD Admin acting for them; the engine still refuses anyone else.
+    const manager = subcommand === "status" ? false : await this.deps.authority.canManage(interaction, found.record);
+    const control = (action: ManageAction, ownRight: () => Promise<PlayResult>): Promise<PlayResult> => (manager ? this.deps.play.manage(key, action, id) : ownRight());
     switch (subcommand) {
       case "status":
         return responses.edit(await this.status(found, text));
       case "pause":
-        return done(await this.deps.play.pause(key, userId, id), text.campaign.cmd.paused);
+        return done(await control("pause", () => this.deps.play.pause(key, userId, id)), text.campaign.cmd.paused);
       case "resume":
-        return done(await this.deps.play.continue(key, userId, id), text.campaign.cmd.resumed);
+        return done(await control("resume", () => this.deps.play.continue(key, userId, id)), text.campaign.cmd.resumed);
       case "close-round":
-        return done(await this.deps.play.closeRound(key, userId, id), text.campaign.cmd.roundClosed);
-      case "rest":
-        return done(await this.deps.play.rest(key, userId, interaction.options.getString("type", true) === "long" ? "long" : "short", id), text.campaign.cmd.rested);
+        return done(await control("closeRound", () => this.deps.play.closeRound(key, userId, id)), text.campaign.cmd.roundClosed);
+      case "rest": {
+        const long = interaction.options.getString("type", true) === "long";
+        return done(await control(long ? "longRest" : "shortRest", () => this.deps.play.rest(key, userId, long ? "long" : "short", id)), text.campaign.cmd.rested);
+      }
       case "retry":
-        return done(await this.deps.play.retryPlan(key, userId, id), text.campaign.cmd.retried);
+        return done(await control("retry", () => this.deps.play.retryPlan(key, userId, id)), text.campaign.cmd.retried);
       case "repair": {
-        if (found.record.organizerId !== userId) {
+        if (!manager) {
           await responses.edit(text.campaign.refusal.notOrganizer);
           return;
         }
         await this.deps.setup.provision(key);
-        await this.deps.cards.sync(key);
+        await this.deps.cards.sync(key, true);
         await responses.edit(text.campaign.cmd.repaired);
         return;
       }

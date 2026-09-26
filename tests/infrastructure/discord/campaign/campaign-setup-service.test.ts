@@ -19,6 +19,7 @@ class FakeResources implements CampaignResourceGateway {
   public readonly categories = new Set<string>();
   public readonly channels: FakeChannel[] = [];
   public readonly threads: { id: string; channelId: string; name: string }[] = [];
+  public readonly roles = new Set<string>();
   public missing: string[] = [];
   public failCreates = 0;
   public failThreads = 0;
@@ -80,6 +81,17 @@ class FakeResources implements CampaignResourceGateway {
     return Promise.resolve(this.threads.some((thread) => thread.id === threadId));
   }
 
+  public createRole(): Promise<string> {
+    this.next += 1;
+    const id = `role${this.next}`;
+    this.roles.add(id);
+    return Promise.resolve(id);
+  }
+
+  public roleExists(_guildId: string, roleId: string): Promise<boolean> {
+    return Promise.resolve(this.roles.has(roleId));
+  }
+
   public missingPermissions(): Promise<readonly string[]> {
     return Promise.resolve(this.missing);
   }
@@ -116,6 +128,26 @@ describe("server setup", () => {
     expect(resources.channels[0]?.options).toMatchObject({ name: "dnd-games", playersReadOnly: true });
     expect(result.settings).toMatchObject({ categoryId: "cat1", hubChannelId: "ch2" });
     expect(flatten(messages.live("ch2")[0]!.payload).text).toContain("No games yet");
+    expect(messages.pinned).toContain(messages.live("ch2")[0]!.messageId);
+  });
+
+  it("creates the DnD Admin role once and makes it again when it was deleted", async () => {
+    const r = rig();
+    const { service, resources } = setup(r);
+    const first = await service.setupGuild(guildId, null);
+    if (first.kind !== "ok") throw new Error("setup");
+    const roleId = first.settings.adminRoleId;
+    expect(roleId).toBeTruthy();
+    expect(resources.roles.size).toBe(1);
+
+    const again = await service.setupGuild(guildId, null);
+    expect(again.kind === "ok" && again.settings.adminRoleId).toBe(roleId);
+    expect(resources.roles.size).toBe(1);
+
+    resources.roles.clear();
+    const repaired = await service.setupGuild(guildId, null);
+    expect(repaired.kind === "ok" && repaired.settings.adminRoleId).not.toBe(roleId);
+    expect(resources.roles.size).toBe(1);
   });
 
   it("uses the channel the organizer ran it in as the hub, and keeps the category on a repeat", async () => {

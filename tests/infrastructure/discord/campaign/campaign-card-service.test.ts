@@ -104,7 +104,7 @@ describe("the card service", () => {
     expect(messages.live(adventure)).toHaveLength(1);
     expect(flatten(only(messages.live(adventure)).payload).text).toContain("Round 1");
     const record = (await r.service.get(key))?.record;
-    expect(Object.keys(record?.cards ?? {}).sort()).toEqual(["adventure", `hero:${firstHero}`, "party"]);
+    expect(Object.keys(record?.cards ?? {}).sort()).toEqual(["adventure", `hero:${firstHero}`, "hub", "party"]);
   });
 
   it("replaces the adventure panel at the next round and retires the old one", async () => {
@@ -154,7 +154,8 @@ describe("the card service", () => {
     const key = await lobby(r);
     messages.failSends = 1;
     await cards.sync(key);
-    expect((await r.service.get(key))?.record.cards).toEqual({});
+    // Nothing was saved for the card that failed to draw.
+    expect(Object.keys((await r.service.get(key))?.record.cards ?? {})).not.toContain("lobby");
     await cards.sync(key);
     expect(messages.live(party)).toHaveLength(1);
   });
@@ -171,19 +172,123 @@ describe("the card service", () => {
     expect(() => cards.refresh({ guildId, campaignId: "missing" })).not.toThrow();
   });
 
-  it("lists every game on the hub in one message that is edited in place", async () => {
-    const r = rig();
-    const messages = new FakeMessages();
-    const cards = serviceFor(r, messages);
-    const key = await lobby(r);
-    await cards.sync(key);
-    expect(messages.live(hub)).toHaveLength(1);
-    expect(flatten(only(messages.live(hub)).payload).text).toContain("Moonlit Ruins — lobby, 0 / 3 players");
-    expect(flatten(only(messages.live(hub)).payload).text).toContain(`<#${party}>`);
-    await r.service.join(key, "u-org");
-    await cards.sync(key);
-    expect(messages.live(hub)).toHaveLength(1);
-    expect(flatten(only(messages.live(hub)).payload).text).toContain("1 / 3 players");
-    expect((await r.store.transaction((tx) => tx.loadGuildSettings(guildId)))?.hubCard?.messageId).toBe(only(messages.live(hub)).messageId);
+  describe("the hub", () => {
+    const texts = (messages: readonly Sent[]): string[] => messages.map((message) => flatten(message.payload).text);
+
+    async function twoGames(r: Rig, messages: FakeMessages): Promise<{ cards: CampaignCardService; first: CampaignKey; second: CampaignKey }> {
+      const cards = serviceFor(r, messages);
+      const first = await lobby(r);
+      const created = await r.service.create({ guildId, organizerId: "u-org", name: "Second Game", language: "en", adventureId: starterAdventureId, pacing: { preset: "live" } });
+      if (created.kind !== "ok") throw new Error("create");
+      const second = created.value.key;
+      await r.store.transaction(async (tx) => {
+        const stored = await tx.loadRecord(second);
+        if (stored === undefined) throw new Error("record");
+        await tx.saveRecord({ ...stored.record, channels: { ...stored.record.channels, partyChannelId: "chan-party-2", adventureChannelId: "chan-adventure-2" } }, stored.revision);
+      });
+      await cards.sync(first);
+      await cards.sync(second);
+      return { cards, first, second };
+    }
+
+    it("posts a pinned control message first, then one message per game, each edited in place", async () => {
+      const r = rig();
+      const messages = new FakeMessages();
+      const { cards, first } = await twoGames(r, messages);
+      const live = messages.live(hub);
+      expect(live).toHaveLength(3);
+      const [control, one, two] = live;
+      expect(flatten(control!.payload).buttons.map((button) => button.label)).toEqual(["Create game"]);
+      expect(flatten(control!.payload).buttons.map((button) => button.id)).toEqual(["dndhub:create"]);
+      expect(messages.pinned).toContain(control!.messageId);
+      expect(flatten(one!.payload).text).toContain("Moonlit Ruins");
+      expect(flatten(one!.payload).text).toContain("Lobby · 0 / 3 players");
+      expect(flatten(one!.payload).text).toContain(`<#${party}>`);
+      expect(flatten(two!.payload).text).toContain("Second Game");
+      expect(flatten(one!.payload).buttons.map((button) => button.id)).toEqual([`dndhub:manage:${first.campaignId}`]);
+
+      await r.service.join(first, "u-org");
+      await cards.sync(first);
+      expect(messages.live(hub).map((message) => message.messageId)).toEqual(live.map((message) => message.messageId));
+      expect(flatten(messages.live(hub)[1]!.payload).text).toContain("1 / 3 players");
+      expect((await r.store.transaction((tx) => tx.loadGuildSettings(guildId)))?.hubCard?.messageId).toBe(control!.messageId);
+      expect((await r.service.get(first))?.record.cards.hub?.messageId).toBe(one!.messageId);
+    });
+
+    it("takes a finished game's message off the hub", async () => {
+      const r = rig();
+      const messages = new FakeMessages();
+      const { cards, first } = await twoGames(r, messages);
+      await r.service.end(first);
+      await cards.sync(first);
+      expect(texts(messages.live(hub)).some((text) => text.includes("Moonlit Ruins"))).toBe(false);
+      expect(texts(messages.live(hub)).some((text) => text.includes("Second Game"))).toBe(true);
+      expect((await r.service.get(first))?.record.cards.hub).toBeUndefined();
+    });
+
+    it("draws the control and the games again, in order, when the control message is deleted", async () => {
+      const r = rig();
+      const messages = new FakeMessages();
+      const { cards } = await twoGames(r, messages);
+      const control = messages.live(hub)[0]!;
+      messages.deleted.add(control.messageId);
+      await cards.handleMessagesDeleted(guildId, hub, [control.messageId]);
+      const live = messages.live(hub);
+      expect(live).toHaveLength(3);
+      expect(flatten(live[0]!.payload).buttons.map((button) => button.label)).toEqual(["Create game"]);
+      expect(texts(live.slice(1))).toEqual([expect.stringContaining("Moonlit Ruins"), expect.stringContaining("Second Game")]);
+      expect(live[0]!.messageId).not.toBe(control.messageId);
+      expect(messages.pinned).toContain(live[0]!.messageId);
+    });
+
+    it("draws a game's hub message again when only that message is deleted", async () => {
+      const r = rig();
+      const messages = new FakeMessages();
+      const { cards, first } = await twoGames(r, messages);
+      const gone = messages.live(hub)[1]!;
+      messages.deleted.add(gone.messageId);
+      await cards.handleMessagesDeleted(guildId, hub, [gone.messageId]);
+      expect(messages.live(hub)).toHaveLength(3);
+      expect(texts(messages.live(hub)).filter((text) => text.includes("Moonlit Ruins"))).toHaveLength(1);
+      expect((await r.service.get(first))?.record.cards.hub?.messageId).not.toBe(gone.messageId);
+    });
+
+    it("draws a deleted game card again and ignores messages it deleted itself", async () => {
+      const r = rig();
+      const messages = new FakeMessages();
+      const { cards, first } = await twoGames(r, messages);
+      const lobbyCard = (await r.service.get(first))?.record.cards.lobby;
+      if (lobbyCard === undefined) throw new Error("lobby card");
+      messages.deleted.add(lobbyCard.messageId);
+      await cards.handleMessagesDeleted(guildId, party, [lobbyCard.messageId]);
+      await cards.sync(first);
+      expect(messages.live(party)).toHaveLength(1);
+      expect(messages.live(party)[0]!.messageId).not.toBe(lobbyCard.messageId);
+
+      // The card the bot replaced is not a player deleting something.
+      const before = messages.sent.length;
+      const replaced = messages.sent.find((message) => message.removed);
+      if (replaced !== undefined) await cards.handleMessagesDeleted(guildId, replaced.channelId, [replaced.messageId]);
+      await cards.sync(first);
+      expect(messages.sent.length).toBe(before);
+    });
+
+    it("checks each card against Discord on a repair and at startup, and draws a missing one", async () => {
+      const r = rig();
+      const messages = new FakeMessages();
+      const { cards, first } = await twoGames(r, messages);
+      const lobbyCard = (await r.service.get(first))?.record.cards.lobby;
+      const hubCard = (await r.service.get(first))?.record.cards.hub;
+      if (lobbyCard === undefined || hubCard === undefined) throw new Error("cards");
+      // Deleted while nobody was listening: the content is unchanged, so a plain sync does not notice.
+      messages.deleted.add(lobbyCard.messageId);
+      messages.deleted.add(hubCard.messageId);
+      await cards.sync(first);
+      expect(messages.live(party)).toHaveLength(0);
+
+      await cards.recoverAll();
+      expect(messages.live(party)).toHaveLength(1);
+      expect(texts(messages.live(hub)).filter((text) => text.includes("Moonlit Ruins"))).toHaveLength(1);
+    });
   });
 });

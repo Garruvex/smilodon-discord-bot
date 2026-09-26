@@ -27,6 +27,7 @@ export interface CampaignSetupServiceOptions {
 
 const categoryName = "D&D";
 const hubChannelName = "dnd-games";
+export const adminRoleName = "DnD Admin";
 const reasonFor = (what: string): string => `D&D campaign: ${what}`;
 
 // Sets up a server for campaigns and creates each game's places on Discord
@@ -60,12 +61,16 @@ export class CampaignSetupService {
           reasonFor("hub channel"),
         );
       }
+      let adminRoleId = existing?.adminRoleId ?? null;
+      if (adminRoleId !== null && !(await resources.roleExists(guildId, adminRoleId))) adminRoleId = null;
+      adminRoleId ??= await resources.createRole(guildId, adminRoleName, reasonFor("admin role"));
       const settings: GuildCampaignSettings = {
         guildId,
         categoryId,
         hubChannelId,
         // A new hub channel needs a new card.
         hubCard: existing?.hubChannelId === hubChannelId ? (existing?.hubCard ?? null) : null,
+        adminRoleId,
       };
       await unitOfWork.transaction((tx) => tx.saveGuildSettings(settings));
       await this.options.cards.syncHub(guildId);

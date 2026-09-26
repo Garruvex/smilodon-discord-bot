@@ -57,8 +57,12 @@ export interface GuildCampaignSettings {
   readonly guildId: string;
   readonly categoryId: string | null;
   readonly hubChannelId: string | null;
-  // The hub's one message listing every game.
+  // The hub's pinned control message (Create game). Each game's own hub
+  // message is the "hub" card on its record.
   readonly hubCard: CardReference | null;
+  // The "DnD Admin" role: its holders can create and manage every game.
+  // Settings saved before the role existed have no value, read as null.
+  readonly adminRoleId?: string | null;
 }
 
 export interface CampaignRecord {

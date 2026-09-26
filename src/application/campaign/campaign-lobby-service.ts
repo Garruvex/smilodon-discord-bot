@@ -155,6 +155,26 @@ export class CampaignLobbyService {
     return this.change(key, (lobby, record) => lobbyRules.cancel(lobby, actorId, record.organizerId), "archived");
   }
 
+  // Ends a game for good: the record is archived and, if it was being played,
+  // the engine is paused so no timer or DM job runs on it. The caller has
+  // already checked the actor may (the organizer, or a DnD Admin).
+  public end(key: CampaignKey): Promise<ServiceResult<CampaignRecord>> {
+    return this.queue.run(queueKey(key), async () => {
+      const ended = await this.options.unitOfWork.transaction(async (tx): Promise<ServiceResult<CampaignRecord>> => {
+        const stored = await tx.loadRecord(key);
+        if (stored === undefined) return refused("notFound");
+        if (stored.record.lifecycle === "archived") return ok(stored.record);
+        const next: CampaignRecord = { ...stored.record, lifecycle: "archived" };
+        await tx.saveRecord(next, stored.revision);
+        return ok(next);
+      });
+      if (ended.kind === "refused") return ended;
+      // Stops the clock. Refused when it is already paused or never started, which is fine.
+      await this.options.bus.execute(key, { kind: "pauseCampaign", reason: "organizer" }, { commandId: `end:${key.campaignId}`, actor: { kind: "system" } });
+      return ended;
+    });
+  }
+
   // Starts play: the engine campaign is created from the lobby's seats and the
   // record moves to active in one transaction, then the first round opens. If
   // the process stops between the two, the campaign is active with no round

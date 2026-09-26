@@ -16,6 +16,9 @@ export interface CampaignResourceGateway {
   createDiscussionThread(channelId: string, name: string, reason: string): Promise<string>;
   findThreadByName(channelId: string, name: string): Promise<string | null>;
   threadExists(threadId: string): Promise<boolean>;
+  // The "DnD Admin" role: a plain role with no permissions of its own.
+  createRole(guildId: string, name: string, reason: string): Promise<string>;
+  roleExists(guildId: string, roleId: string): Promise<boolean>;
   // The permissions the bot lacks (empty when it can set everything up).
   missingPermissions(guildId: string, categoryId: string | null): Promise<readonly string[]>;
 }
@@ -115,6 +118,15 @@ export class DiscordResourceGateway implements CampaignResourceGateway {
   public async threadExists(threadId: string): Promise<boolean> {
     const channel = await this.client.channels.fetch(threadId).catch(() => null);
     return channel?.isThread() === true;
+  }
+
+  public async createRole(guildId: string, name: string, reason: string): Promise<string> {
+    const guild = await this.guild(guildId);
+    return (await guild.roles.create({ name, mentionable: false, permissions: [], reason })).id;
+  }
+
+  public async roleExists(guildId: string, roleId: string): Promise<boolean> {
+    return (await (await this.guild(guildId)).roles.fetch(roleId).catch(() => null)) !== null;
   }
 
   public async missingPermissions(guildId: string, categoryId: string | null): Promise<readonly string[]> {

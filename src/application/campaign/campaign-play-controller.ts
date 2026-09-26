@@ -12,6 +12,9 @@ import type { CampaignKey, CampaignUnitOfWork } from "./ports/campaign-store.js"
 // the controller's own. The Discord layer turns each into a private message.
 export type PlayRefusal = RejectionCode | "notFound" | "notActive" | "noHero" | "noPendingRoll";
 
+// What a manager can do to a game from the hub.
+export type ManageAction = "pause" | "resume" | "closeRound" | "retry" | "shortRest" | "longRest";
+
 export type PlayResult = { readonly kind: "ok" } | { readonly kind: "refused"; readonly reason: PlayRefusal };
 
 // What a Discord button or form does to a running campaign: it finds the
@@ -114,6 +117,23 @@ export class CampaignPlayController {
     return this.perform(key, userId, interactionId, () => ({ kind: "takeRest", rest }));
   }
 
+  // A DnD Admin (checked by the caller, which knows the server's role) runs
+  // an organizer control on a game they do not organize. The engine still
+  // sees the organizer's own rights, so it decides exactly as it would for them.
+  public manage(key: CampaignKey, verb: ManageAction, interactionId: string): Promise<PlayResult> {
+    const command: CampaignCommand =
+      verb === "pause"
+        ? { kind: "pauseCampaign", reason: "organizer" }
+        : verb === "resume"
+          ? { kind: "continue" }
+          : verb === "closeRound"
+            ? { kind: "closeRound" }
+            : verb === "retry"
+              ? { kind: "retryPlan" }
+              : { kind: "takeRest", rest: verb === "longRest" ? "long" : "short" };
+    return this.perform(key, null, interactionId, () => command);
+  }
+
   private asHero(key: CampaignKey, userId: UserId, interactionId: string, command: (characterId: CharacterId) => CampaignCommand): Promise<PlayResult> {
     return this.perform(key, userId, interactionId, (state) => {
       const heroId = state.members[userId]?.characterId;
@@ -123,7 +143,7 @@ export class CampaignPlayController {
 
   private async perform(
     key: CampaignKey,
-    userId: UserId,
+    userId: UserId | null,
     interactionId: string,
     build: (state: CampaignState) => CampaignCommand | PlayRefusal,
   ): Promise<PlayResult> {
@@ -132,7 +152,8 @@ export class CampaignPlayController {
     if (loaded.record.record.lifecycle === "archived" || loaded.record.record.lifecycle === "lobby") return { kind: "refused", reason: "notActive" };
     const command = build(loaded.stored.state);
     if (typeof command === "string") return { kind: "refused", reason: command };
-    const outcome = await this.options.bus.execute(key, command, { commandId: `dnd:${interactionId}`, actor: { kind: "user", userId } });
+    const actor = userId ?? loaded.stored.state.organizerId;
+    const outcome = await this.options.bus.execute(key, command, { commandId: `dnd:${interactionId}`, actor: { kind: "user", userId: actor } });
     if (outcome.kind === "notFound") return { kind: "refused", reason: "notFound" };
     if (outcome.kind === "rejected") return { kind: "refused", reason: outcome.rejection.code };
     this.options.refresher.refresh(key);

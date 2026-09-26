@@ -409,6 +409,7 @@ export function registerCommands(
   const campaign = createCampaignModule({ configuration, logger, client: discordClient, accessPolicyService });
   commandRegistry.register(campaign.command);
   componentRegistry.register(campaign.handler);
+  componentRegistry.register(campaign.hubHandler);
 
   const chatProvider = configuration.chat ? createChatProviderFromConfig(configuration.chat, logger) : null;
   // Fully independent provider for the two standalone structured-output

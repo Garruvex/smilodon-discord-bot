@@ -316,12 +316,15 @@ export class Application {
     // The admin panel repairs itself when its messages or channel go away.
     this.client.on(Events.MessageDelete, (message) => {
       this.adminPanelService.handleMessagesDeleted(message.guildId, message.channelId, [message.id]);
+      if (message.guildId !== null) this.dependencies.campaign.handleMessagesDeleted(message.guildId, message.channelId, [message.id]);
     });
     this.client.on(Events.MessageBulkDelete, (messages, channel) => {
       this.adminPanelService.handleMessagesDeleted(channel.guildId, channel.id, [...messages.keys()]);
+      this.dependencies.campaign.handleMessagesDeleted(channel.guildId, channel.id, [...messages.keys()]);
     });
     this.client.on(Events.ChannelDelete, (channel) => {
       if (channel.isDMBased()) return;
+      this.dependencies.campaign.handleChannelDeleted(channel.guildId, channel.id);
       void this.adminPanelService.handleChannelDeleted(channel.guildId, channel.id).catch((error: unknown) => {
         this.logger.error({ error, guildId: channel.guildId, channelId: channel.id }, "Unable to handle a deleted admin panel channel");
       });

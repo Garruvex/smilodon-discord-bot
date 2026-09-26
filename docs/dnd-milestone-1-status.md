@@ -8,11 +8,14 @@ What is built, how to turn it on, what still needs a real table, and what was le
 2. Enable the feature for the server: the `campaign` switch (admin panel, `/settings-community`, or `features.campaign: true` in the guild profile).
 3. Run `npm run deploy:commands` so Discord knows `/dnd`.
 4. Give the bot the permissions it will list if any are missing: View Channel, Send Messages, Send Messages in Threads, Manage Channels, Manage Roles, Create Public Threads, Manage Threads, Manage Messages, Pin Messages, Embed Links, Read Message History.
-5. A bot administrator runs `/dnd setup` in the channel that should be the hub, then `/dnd new name:<game>` to create a game. Data lives in `<RUNTIME_DATA_DIRECTORY>/campaign.sqlite`.
+5. A bot administrator runs `/dnd setup` in the channel that should be the hub. It makes the D&D category, a **DnD Admin** role, and the hub's pinned control message. Give the role to whoever should run games. Then press **Create game** in the hub (or run `/dnd new name:<game>`). Data lives in `<RUNTIME_DATA_DIRECTORY>/campaign.sqlite`.
 
 ## What a table sees
 
-- **Hub** (the channel `/dnd setup` ran in): one message listing every game with links to its channels.
+- **Hub** (the channel `/dnd setup` ran in): a pinned control message first, with **Create game**, then one message per unfinished game (state, links to its channels, **Manage**). Finished games leave the hub.
+- **Create game** opens a private wizard: language, pace and most players in menus, then **Next** asks for the name. Nothing is created until the name is submitted. The choices live in the controls' IDs, so an old wizard still works after a restart.
+- **Manage** (private, for the game's organizer and DnD Admins): Pause or Resume, Close round, Retry the DM, Short rest, Long rest, Repair cards, and **End game** (asks first; the game is archived, its clock stops, its channels stay as a record). DnD Admins can also run the `/dnd` organizer commands in any game's channels.
+- **If someone deletes a post**: deleting the hub control, a game's hub message, or any of a game's cards draws it again at once (the hub control first, with the games re-posted below it). Deleting the hub channel or a game's channel makes it again and redraws its cards. At startup every card is checked against Discord, so anything deleted while the bot was away comes back. `/dnd repair` (or **Repair cards**) does the same check on demand.
 - **Each game** gets `<name>` (the Adventure channel) and `<name>-stats` (the Party channel), read-only for players, plus a Table Talk thread under the Party channel.
 - **Lobby card** in the Party channel: Join, My Hero, Leave, Start Adventure. Players pick a preset hero; the organizer starts once enough players are ready. The same message turns into the campaign card when play starts, followed by one card per hero.
 - **Adventure panel**: one live control message under the latest narration, replaced each round. Act / Edit (a form), Pass, Roll, My Hero (private sheet), Away, I'm back, Continue.
@@ -50,9 +53,13 @@ Tested with fakes for Discord and the model: the lobby (including simultaneous j
 - [ ] Away and I'm back; everyone away puts play on hold and Continue resumes it.
 - [ ] Restart the bot with a roll pending: the game shows "paused after a restart"; `/dnd resume` continues and the roll resolves once.
 - [ ] Delete the panel message: it comes back after `/dnd repair` or the next round.
+- [ ] Delete the hub control message, then a game's hub message, then a game's stats card: each comes back by itself, the control first with the games below it.
+- [ ] Delete the hub channel, then a game's adventure channel: each is made again with its cards. Stop the bot, delete a card, start it: the card is back.
+- [ ] Create a game with the wizard in each language, as a DnD Admin; a member without the role gets a private refusal on Create game and on Manage.
+- [ ] A DnD Admin who is not the organizer pauses and resumes a game from Manage; End game asks first, then the hub message goes and the game stops.
 - [ ] Repeat in Traditional Chinese.
 - [ ] Rate each transcript with the rubric in the [milestone 0 report](dnd-milestone-0-report.md).
 
 ## Left for later milestones
 
-Speak (in-character lines as the hero), Journal, Safety, and the More… menu; reminders at 50% of a timer; the staged dice reveal (a result line is posted at once); portraits and images; the inventory and trade screens and the retry-a-lost-fight command (the engine has both; no buttons yet); reaction prompts and combat controls (milestone 2); members-only visibility with a campaign role; the guided character builder (milestone 4); PostgreSQL for campaign data (milestone 6); uploads and the Adventure Author (milestone 4).
+Reopening an ended game; a deleted Table Talk thread is only recreated by `/dnd repair`; Speak (in-character lines as the hero), Journal, Safety, and the More… menu; reminders at 50% of a timer; the staged dice reveal (a result line is posted at once); portraits and images; the inventory and trade screens and the retry-a-lost-fight command (the engine has both; no buttons yet); reaction prompts and combat controls (milestone 2); members-only visibility with a campaign role; the guided character builder (milestone 4); PostgreSQL for campaign data (milestone 6); uploads and the Adventure Author (milestone 4).

@@ -192,6 +192,10 @@ class InMemoryTransaction implements CampaignTransaction {
     return Promise.resolve(this.data.guildSettings.get(guildId));
   }
 
+  public listGuildSettings(): Promise<readonly GuildCampaignSettings[]> {
+    return Promise.resolve([...this.data.guildSettings.values()]);
+  }
+
   public saveGuildSettings(settings: GuildCampaignSettings): Promise<void> {
     this.data.guildSettings.set(settings.guildId, settings);
     return Promise.resolve();

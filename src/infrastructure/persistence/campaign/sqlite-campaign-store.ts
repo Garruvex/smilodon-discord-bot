@@ -275,6 +275,11 @@ class SqliteTransaction implements CampaignTransaction {
     return Promise.resolve(row === undefined ? undefined : parse<GuildCampaignSettings>(row.settings));
   }
 
+  public listGuildSettings(): Promise<readonly GuildCampaignSettings[]> {
+    const rows = this.db.prepare("SELECT settings FROM campaign_guild_settings ORDER BY rowid").all() as Row[];
+    return Promise.resolve(rows.map((row) => parse<GuildCampaignSettings>(row.settings)));
+  }
+
   public saveGuildSettings(settings: GuildCampaignSettings): Promise<void> {
     this.db
       .prepare("INSERT INTO campaign_guild_settings (guild_id, settings) VALUES (?, ?) ON CONFLICT (guild_id) DO UPDATE SET settings = excluded.settings")

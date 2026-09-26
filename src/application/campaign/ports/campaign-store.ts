@@ -117,6 +117,8 @@ export interface CampaignTransaction {
   listRecordsByLifecycle(lifecycles: readonly CampaignLifecycle[]): Promise<readonly StoredRecord[]>;
 
   loadGuildSettings(guildId: string): Promise<GuildCampaignSettings | undefined>;
+  // Every server that has been set up: what the startup redraw walks.
+  listGuildSettings(): Promise<readonly GuildCampaignSettings[]>;
   // Replaces the server's settings (one row per server; last write wins).
   saveGuildSettings(settings: GuildCampaignSettings): Promise<void>;
 

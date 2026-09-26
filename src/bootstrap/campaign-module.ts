@@ -32,18 +32,27 @@ import { GeminiStructuredClient } from "../infrastructure/campaign/llm/gemini-st
 import { OpenAiCompatibleStructuredClient } from "../infrastructure/campaign/llm/openai-compatible-structured-client.js";
 import { OpenAiResponsesStructuredClient } from "../infrastructure/campaign/llm/openai-responses-structured-client.js";
 import { loadStarterAdventure, starterAdventureId } from "../infrastructure/campaign/starter-adventures.js";
+import { CampaignAuthority } from "../infrastructure/discord/campaign/campaign-authority.js";
 import { CampaignCardService } from "../infrastructure/discord/campaign/campaign-card-service.js";
+import { CampaignGameCreator } from "../infrastructure/discord/campaign/campaign-game-creator.js";
 import { DiscordMessageGateway } from "../infrastructure/discord/campaign/campaign-message-gateway.js";
 import { DiscordCampaignPresenter } from "../infrastructure/discord/campaign/campaign-presenter.js";
 import { DiscordResourceGateway } from "../infrastructure/discord/campaign/campaign-resource-gateway.js";
 import { CampaignSetupService } from "../infrastructure/discord/campaign/campaign-setup-service.js";
 import { DndCommand } from "../infrastructure/discord/commands/campaign/dnd-command.js";
 import { CampaignComponentHandler } from "../infrastructure/discord/components/campaign-component-handler.js";
+import { CampaignHubComponentHandler } from "../infrastructure/discord/components/campaign-hub-component-handler.js";
 import { SqliteCampaignStore } from "../infrastructure/persistence/campaign/sqlite-campaign-store.js";
 
 export interface CampaignModule {
   readonly command: DndCommand;
   readonly handler: CampaignComponentHandler;
+  // The hub's Create game wizard and Manage views.
+  readonly hubHandler: CampaignHubComponentHandler;
+  // Discord events that can take a card or a place away: a message was
+  // deleted (or many at once), or a channel was. Each puts things back.
+  handleMessagesDeleted(guildId: string, channelId: string, messageIds: readonly string[]): void;
+  handleChannelDeleted(guildId: string, channelId: string): void;
   // Recovers after a restart and starts the background workers. Call once
   // the Discord client is ready.
   start(): Promise<void>;
@@ -117,16 +126,45 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
   });
   const running = runtime;
 
-  const command = new DndCommand({ lobby, play, setup, cards, access: input.accessPolicyService, defaultAdventureId: starterAdventureId, modelConfigured: model !== null });
+  const authority = new CampaignAuthority(input.accessPolicyService, unitOfWork);
+  const creator = new CampaignGameCreator({ lobby, setup, defaultAdventureId: starterAdventureId, modelConfigured: model !== null });
+  const command = new DndCommand({ lobby, play, setup, cards, creator, authority });
   const handler = new CampaignComponentHandler({ lobby, play, cards, unitOfWork, rulesets, adventures, glossaries });
+  const hubHandler = new CampaignHubComponentHandler({ lobby, play, setup, cards, creator, authority });
+
+  // A deleted hub channel or game channel is made again (its cards are drawn
+  // into the new one); a deleted message is drawn again by the card service.
+  const recoverChannel = async (guildId: string, channelId: string): Promise<void> => {
+    const settings = await unitOfWork.transaction((tx) => tx.loadGuildSettings(guildId));
+    if (settings?.hubChannelId === channelId) {
+      await setup.setupGuild(guildId, null);
+      return;
+    }
+    const found = await lobby.findByChannel(guildId, [channelId]);
+    if (found === undefined || found.record.lifecycle === "archived") return;
+    await setup.provision(found.record.key);
+    await cards.sync(found.record.key, true);
+  };
+  const logFailure = (what: string, guildId: string): ((error: unknown) => void) => (error): void => {
+    logger.error({ err: error, guildId }, what);
+  };
 
   return {
     command,
     handler,
+    hubHandler,
+    handleMessagesDeleted: (guildId, channelId, messageIds): void => {
+      void cards.handleMessagesDeleted(guildId, channelId, messageIds).catch(logFailure("Campaign card recovery after a deleted message failed", guildId));
+    },
+    handleChannelDeleted: (guildId, channelId): void => {
+      void recoverChannel(guildId, channelId).catch(logFailure("Campaign channel recovery failed", guildId));
+    },
     start: async (): Promise<void> => {
       openStore();
       const report = await running.start();
       logger.info({ modelConfigured: model !== null, paused: report.paused.length, firstRoundsOpened: report.firstRoundsOpened.length }, "Campaign runtime started");
+      // Cards deleted while the bot was away come back; this needs Discord, so it does not hold up startup.
+      void cards.recoverAll().catch((error: unknown) => logger.error({ err: error }, "Campaign card recovery at startup failed"));
     },
     stop: async (): Promise<void> => {
       await running.stop();
