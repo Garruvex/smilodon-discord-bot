@@ -51,10 +51,6 @@ export const community = group("community", [
     enabled: toggle({ read: (p) => p.features.reminders, write: (v) => ({ remindersEnabled: v }) }),
   }, { setup: true }),
 
-  setting("campaign", {
-    enabled: toggle({ read: (p) => p.features.campaign, write: (v) => ({ campaignEnabled: v }) }),
-  }),
-
   setting("welcome", {
     "join-channel": channel({
       textOnly: true,

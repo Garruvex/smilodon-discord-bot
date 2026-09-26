@@ -3,6 +3,7 @@ import { jaAccess } from "./access.js";
 import { jaChat } from "./chat.js";
 import { jaMemory } from "./memory.js";
 import { jaCommunity } from "./community.js";
+import { jaDnd } from "./dnd.js";
 import { jaMusic } from "./music.js";
 
 // Every registered setting's text, one spread per settings group.
@@ -11,5 +12,6 @@ export const jaSettingsText: SettingsTextCatalog = {
   ...jaMusic,
   ...jaChat,
   ...jaMemory,
+  ...jaDnd,
   ...jaCommunity,
 };

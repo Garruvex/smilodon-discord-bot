@@ -5,7 +5,7 @@ What is built, how to turn it on, what still needs a real table, and what was le
 ## Turning it on
 
 1. Set the AI dungeon master in the instance env file (see `config/instances/bot.env.example`): `CAMPAIGN_MODEL` (and `CAMPAIGN_PROVIDER`, `CAMPAIGN_FALLBACK_MODELS`, `CAMPAIGN_REASONING_EFFORT`). Keys come from the shared `OPENAI_API_KEY` or `GOOGLE_API_KEY`. Reasoning effort `none` met the latency targets. Without `CAMPAIGN_MODEL`, `/dnd new` says so and starts nothing.
-2. Enable the feature for the server: the `campaign` switch (admin panel, `/settings-community`, or `features.campaign: true` in the guild profile).
+2. Enable the feature for the server in the admin panel's **D&D** group (or `/settings-dnd campaigns enabled:true`, or `features.campaign: true` in the guild profile). The same group sets up and moves the games hub (**Hub channel**), picks the **DnD Admin role**, shows a status summary, and repairs the setup.
 3. Run `npm run deploy:commands` so Discord knows `/dnd`.
 4. Give the bot the permissions it will list if any are missing: View Channel, Send Messages, Send Messages in Threads, Manage Channels, Manage Roles, Create Public Threads, Manage Threads, Manage Messages, Pin Messages, Embed Links, Read Message History.
 5. A bot administrator runs `/dnd setup` in the channel that should be the hub. It makes the D&D category, a **DnD Admin** role, and the hub's pinned control message. Give the role to whoever should run games. Then press **Create game** in the hub (or run `/dnd new name:<game>`). Data lives in `<RUNTIME_DATA_DIRECTORY>/campaign.sqlite`.

@@ -471,6 +471,7 @@ export function registerCommands(
     applicationEmojiCatalog,
     auditLogService,
     personaDriftStore,
+    campaign: campaign.settings,
     ...(channelSummaryCheckpointStore ? { channelSummaryCheckpointStore } : {}),
     channelSummaryProviderAvailable: utilityProvider?.summarizeChannelMessages !== undefined,
   };

@@ -34,6 +34,7 @@ import { OpenAiResponsesStructuredClient } from "../infrastructure/campaign/llm/
 import { loadStarterAdventure, starterAdventureId } from "../infrastructure/campaign/starter-adventures.js";
 import { CampaignAuthority } from "../infrastructure/discord/campaign/campaign-authority.js";
 import { CampaignCardService } from "../infrastructure/discord/campaign/campaign-card-service.js";
+import { CampaignSettingsAccess } from "../infrastructure/discord/campaign/campaign-settings-access.js";
 import { CampaignGameCreator } from "../infrastructure/discord/campaign/campaign-game-creator.js";
 import { DiscordMessageGateway } from "../infrastructure/discord/campaign/campaign-message-gateway.js";
 import { DiscordCampaignPresenter } from "../infrastructure/discord/campaign/campaign-presenter.js";
@@ -49,6 +50,8 @@ export interface CampaignModule {
   readonly handler: CampaignComponentHandler;
   // The hub's Create game wizard and Manage views.
   readonly hubHandler: CampaignHubComponentHandler;
+  // What the admin panel's D&D settings read and change.
+  readonly settings: CampaignSettingsAccess;
   // Discord events that can take a card or a place away: a message was
   // deleted (or many at once), or a channel was. Each puts things back.
   handleMessagesDeleted(guildId: string, channelId: string, messageIds: readonly string[]): void;
@@ -153,6 +156,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
     command,
     handler,
     hubHandler,
+    settings: new CampaignSettingsAccess({ unitOfWork, lobby, setup, modelConfigured: model !== null }),
     handleMessagesDeleted: (guildId, channelId, messageIds): void => {
       void cards.handleMessagesDeleted(guildId, channelId, messageIds).catch(logFailure("Campaign card recovery after a deleted message failed", guildId));
     },
