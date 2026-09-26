@@ -1,3 +1,4 @@
+import { campaignEn } from "./campaign-en.js";
 // The English source of every user-facing runtime message, and the fallback
 // for any message a language hasn't translated yet. Keys are dotted paths:
 // "music.panel.queue.title" becomes `text.music.panel.queue.title` (see
@@ -325,6 +326,7 @@ export const en = {
   "setup.status.duration.minutes": "{minutes}m",
   "setup.status.duration.minutesSeconds": "{minutes}m {seconds}s",
   "setup.status.footer": "Change these in the admin panel or with the /settings-… commands. New here? Try /setup guide.",
+  ...campaignEn,
 } as const satisfies Record<string, string>;
 
 export type MessageKey = keyof typeof en;

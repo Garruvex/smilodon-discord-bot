@@ -1,3 +1,4 @@
+import { campaignZhTW } from "./campaign-zh-TW.js";
 import type { TranslationCatalog } from "./en.js";
 
 // Traditional Chinese (zh-TW). DRAFT — pending review by a native speaker.
@@ -293,4 +294,5 @@ export const zhTW = {
   "setup.status.duration.minutes": "{minutes} 分鐘",
   "setup.status.duration.minutesSeconds": "{minutes} 分 {seconds} 秒",
   "setup.status.footer": "可以在管理面板或用 /settings-… 指令修改。第一次使用？試試 /setup guide",
+  ...campaignZhTW,
 } as const satisfies TranslationCatalog;
