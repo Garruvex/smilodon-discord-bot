@@ -1,5 +1,5 @@
 import { ButtonStyle, ChannelType, DiscordAPIError, RESTJSONErrorCodes, type Message } from "discord.js";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import { ControlChannelService } from "../../src/application/control-panel/control-channel-service.js";
 import { ChannelEditScheduler } from "../../src/application/concurrency/channel-edit-scheduler.js";
@@ -1212,6 +1212,58 @@ describe("ControlChannelService", () => {
     // Someone queued a track by hand, so autoqueue won't pick: the vote closes.
     await writeVote(snapshotWith(null));
     expect(voteMessage.delete).toHaveBeenCalledOnce();
+  });
+
+  it("deletes a vote message whose edit failed, and retries a delete that never reached Discord", async () => {
+    // Regression: a failed edit used to just forget the message, so the next
+    // refresh posted a replacement and the old one sat in the channel for good.
+    const { service, getSnapshot } = createService(false);
+    const internals = service as unknown as {
+      writeVoteMessage: (messages: unknown, profile: unknown, guildId: string) => Promise<void>;
+    };
+    const profile = guildConfiguration(false);
+    const voteMessage = (id: string): Record<string, unknown> & { edit: Mock; delete: Mock } => ({
+      id,
+      content: "",
+      embeds: [],
+      components: [],
+      attachments: { size: 0 },
+      edit: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(undefined),
+    });
+    const first = voteMessage("vote-1");
+    const second = voteMessage("vote-2");
+    first.edit.mockRejectedValue(new Error("socket hang up"));
+    first.delete.mockRejectedValueOnce(new Error("socket hang up"));
+    const send = vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+    const messages = { channel: { id: "control-channel", send }, nowPlaying: {}, queue: {} };
+    const option = (title: string, votes: number): unknown => ({ title, author: "Artist", uri: "", votes });
+    const writeVote = (leadingIndex: number): Promise<void> => {
+      getSnapshot.mockReturnValue({
+        paused: false,
+        currentTrack: { title: "Song", author: "Artist", uri: "https://example.com/song", durationMs: 180_000, positionMs: 0, isStream: false },
+        autoQueueVote: {
+          status: "ready", leadingIndex, options: [option("A", leadingIndex === 0 ? 1 : 0), option("B", leadingIndex === 1 ? 1 : 0)],
+        },
+      });
+      return internals.writeVoteMessage(messages, profile, guildId);
+    };
+    const flush = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+
+    await writeVote(0);
+    await writeVote(1); // edit fails: the message is forgotten and a delete is attempted
+    await flush();
+    expect(first.delete).toHaveBeenCalledOnce();
+
+    await writeVote(1); // posts the replacement and retries the failed delete
+    await flush();
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(first.delete).toHaveBeenCalledTimes(2);
+
+    await writeVote(0); // the retry succeeded, so nothing is attempted again
+    await flush();
+    expect(first.delete).toHaveBeenCalledTimes(2);
+    expect(second.delete).not.toHaveBeenCalled();
   });
 
   it("doesn't create a lyrics message while nothing is playing, and cleans up a leftover one once playback stops", async () => {
