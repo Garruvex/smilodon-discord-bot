@@ -12,12 +12,13 @@ import {
   type StoredCampaign,
   type TimerRecord,
 } from "../../../application/campaign/ports/campaign-store.js";
-import type { CampaignLifecycle, CampaignRecord, StoredRecord } from "../../../application/campaign/ports/campaign-record.js";
+import type { CampaignLifecycle, CampaignRecord, GuildCampaignSettings, StoredRecord } from "../../../application/campaign/ports/campaign-record.js";
 import type { CampaignState } from "../../../domain/campaign/state/campaign-state.js";
 import type { TimerSpec } from "../../../domain/campaign/engine/engine-request.js";
 
 interface CampaignData {
   records: Map<string, StoredRecord>;
+  guildSettings: Map<string, GuildCampaignSettings>;
   campaigns: Map<string, StoredCampaign>;
   events: Map<string, EventEnvelope[]>;
   processed: Map<string, CommandOutcome>;
@@ -32,6 +33,7 @@ interface CampaignData {
 export class InMemoryCampaignStore implements CampaignUnitOfWork {
   private data: CampaignData = {
     records: new Map(),
+    guildSettings: new Map(),
     campaigns: new Map(),
     events: new Map(),
     processed: new Map(),
@@ -184,6 +186,15 @@ class InMemoryTransaction implements CampaignTransaction {
 
   public listRecordsByLifecycle(lifecycles: readonly CampaignLifecycle[]): Promise<readonly StoredRecord[]> {
     return Promise.resolve([...this.data.records.values()].filter((stored) => lifecycles.includes(stored.record.lifecycle)));
+  }
+
+  public loadGuildSettings(guildId: string): Promise<GuildCampaignSettings | undefined> {
+    return Promise.resolve(this.data.guildSettings.get(guildId));
+  }
+
+  public saveGuildSettings(settings: GuildCampaignSettings): Promise<void> {
+    this.data.guildSettings.set(settings.guildId, settings);
+    return Promise.resolve();
   }
 
   public findRoll(key: CampaignKey, rollId: string): Promise<SavedRoll | undefined> {

@@ -1,4 +1,4 @@
-import type { CampaignLifecycle, CampaignRecord, StoredRecord } from "./campaign-record.js";
+import type { CampaignLifecycle, CampaignRecord, GuildCampaignSettings, StoredRecord } from "./campaign-record.js";
 import type { Actor, CampaignCommandKind } from "../../../domain/campaign/commands/campaign-command.js";
 import type { CampaignId, Instant, RollId, TimerId } from "../../../domain/campaign/core/ids.js";
 import type { RollResult } from "../../../domain/campaign/dice/roll-spec.js";
@@ -115,6 +115,10 @@ export interface CampaignTransaction {
   listRecords(guildId: string, lifecycles?: readonly CampaignLifecycle[]): Promise<readonly StoredRecord[]>;
   // Across every server: what the startup recovery walks.
   listRecordsByLifecycle(lifecycles: readonly CampaignLifecycle[]): Promise<readonly StoredRecord[]>;
+
+  loadGuildSettings(guildId: string): Promise<GuildCampaignSettings | undefined>;
+  // Replaces the server's settings (one row per server; last write wins).
+  saveGuildSettings(settings: GuildCampaignSettings): Promise<void>;
 
   findRoll(key: CampaignKey, rollId: RollId): Promise<SavedRoll | undefined>;
   // Written once; saving an existing roll ID keeps the first result.

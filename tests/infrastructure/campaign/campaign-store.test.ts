@@ -47,6 +47,7 @@ function record(campaignKey: CampaignKey = key, lifecycle: CampaignRecord["lifec
     lobby: lobby.lobby,
     channels: emptyChannels,
     pendingResources: [],
+    cards: {},
     createdAt: 1,
     startedAt: null,
   };
@@ -141,6 +142,18 @@ describe.each(stores)("campaign store contract: $name", ({ create }) => {
     });
     expect((await store.transaction((tx) => tx.listRecordsByLifecycle(["active"]))).map((stored) => stored.record.key.guildId)).toEqual(["g-1", "g-2"]);
     expect(await store.transaction((tx) => tx.listRecordsByLifecycle(["paused"]))).toEqual([]);
+  });
+
+  it("keeps one settings row per server, replacing it on save", async () => {
+    const store = create();
+    expect(await store.transaction((tx) => tx.loadGuildSettings("g-1"))).toBeUndefined();
+    await store.transaction(async (tx) => {
+      await tx.saveGuildSettings({ guildId: "g-1", categoryId: "cat-1", hubChannelId: null });
+      await tx.saveGuildSettings({ guildId: "g-1", categoryId: "cat-1", hubChannelId: "hub-1" });
+      await tx.saveGuildSettings({ guildId: "g-2", categoryId: null, hubChannelId: "hub-2" });
+    });
+    expect(await store.transaction((tx) => tx.loadGuildSettings("g-1"))).toEqual({ guildId: "g-1", categoryId: "cat-1", hubChannelId: "hub-1" });
+    expect((await store.transaction((tx) => tx.loadGuildSettings("g-2")))?.hubChannelId).toBe("hub-2");
   });
 
   it("rolls a record back with the rest of a failed transaction", async () => {

@@ -14,7 +14,7 @@ import {
   type StoredCampaign,
   type TimerRecord,
 } from "../../../application/campaign/ports/campaign-store.js";
-import type { CampaignLifecycle, CampaignRecord, StoredRecord } from "../../../application/campaign/ports/campaign-record.js";
+import type { CampaignLifecycle, CampaignRecord, GuildCampaignSettings, StoredRecord } from "../../../application/campaign/ports/campaign-record.js";
 import type { TimerSpec } from "../../../domain/campaign/engine/engine-request.js";
 import type { CampaignState } from "../../../domain/campaign/state/campaign-state.js";
 
@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS campaign_records (
   PRIMARY KEY (guild_id, campaign_id)
 );
 CREATE INDEX IF NOT EXISTS campaign_records_by_guild ON campaign_records (guild_id, lifecycle);
+CREATE TABLE IF NOT EXISTS campaign_guild_settings (guild_id TEXT PRIMARY KEY, settings TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS campaign_events (
   guild_id TEXT NOT NULL, campaign_id TEXT NOT NULL, sequence INTEGER NOT NULL, envelope TEXT NOT NULL,
   PRIMARY KEY (guild_id, campaign_id, sequence)
@@ -267,6 +268,18 @@ class SqliteTransaction implements CampaignTransaction {
   public listRecordsByLifecycle(lifecycles: readonly CampaignLifecycle[]): Promise<readonly StoredRecord[]> {
     const rows = this.db.prepare("SELECT * FROM campaign_records ORDER BY rowid").all() as Row[];
     return Promise.resolve(rows.map(toStoredRecord).filter((stored) => lifecycles.includes(stored.record.lifecycle)));
+  }
+
+  public loadGuildSettings(guildId: string): Promise<GuildCampaignSettings | undefined> {
+    const row = this.db.prepare("SELECT settings FROM campaign_guild_settings WHERE guild_id = ?").get(guildId) as Row | undefined;
+    return Promise.resolve(row === undefined ? undefined : parse<GuildCampaignSettings>(row.settings));
+  }
+
+  public saveGuildSettings(settings: GuildCampaignSettings): Promise<void> {
+    this.db
+      .prepare("INSERT INTO campaign_guild_settings (guild_id, settings) VALUES (?, ?) ON CONFLICT (guild_id) DO UPDATE SET settings = excluded.settings")
+      .run(settings.guildId, json(settings));
+    return Promise.resolve();
   }
 
   public findRoll(key: CampaignKey, rollId: string): Promise<SavedRoll | undefined> {

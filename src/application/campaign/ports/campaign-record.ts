@@ -33,6 +33,25 @@ export interface PendingResource {
   readonly resourceId: string | null;
 }
 
+// A logical card (or panel) and the Discord message that currently shows it.
+// Controls from any other message are obsolete and refused (panel spec,
+// Update, replacement, and restart contract).
+export interface CardReference {
+  readonly channelId: string;
+  readonly messageId: string;
+  // A fingerprint of what was last drawn, so an unchanged card is not re-sent.
+  readonly renderedHash: string;
+}
+
+// The server-wide campaign setup (/dnd setup): where games live and where the
+// hub lists them. Bot-managed identifiers, so they are kept here and never
+// written back into the human-managed guild profile.
+export interface GuildCampaignSettings {
+  readonly guildId: string;
+  readonly categoryId: string | null;
+  readonly hubChannelId: string | null;
+}
+
 export interface CampaignRecord {
   readonly key: CampaignKey;
   readonly name: string;
@@ -47,6 +66,8 @@ export interface CampaignRecord {
   readonly lobby: LobbyState;
   readonly channels: CampaignChannels;
   readonly pendingResources: readonly PendingResource[];
+  // Logical card key ("lobby", "party", "hero:<id>", "adventure", "hub") to its message.
+  readonly cards: Readonly<Record<string, CardReference>>;
   readonly createdAt: Instant;
   readonly startedAt: Instant | null;
 }

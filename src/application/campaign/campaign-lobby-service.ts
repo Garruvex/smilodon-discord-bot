@@ -99,6 +99,7 @@ export class CampaignLobbyService {
       lobby: lobby.lobby,
       channels: emptyChannels,
       pendingResources: [],
+      cards: {},
       createdAt: this.options.clock.now(),
       startedAt: null,
     };

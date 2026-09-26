@@ -44,6 +44,7 @@ function record(lobby: LobbyState, overrides: Partial<CampaignRecord> = {}): Cam
     lobby,
     channels: emptyChannels,
     pendingResources: [],
+    cards: {},
     createdAt: 0,
     startedAt: 0,
     ...overrides,
