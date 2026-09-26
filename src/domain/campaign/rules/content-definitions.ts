@@ -1,3 +1,4 @@
+import { assertNever } from "../core/assert-never.js";
 import type { Capability } from "./capabilities.js";
 import type { ContentId, ContentKind } from "./content-id.js";
 import type { Effect, ResolutionPlan } from "./effects.js";
@@ -124,8 +125,4 @@ function capabilityFor(effect: Effect): Capability {
     default:
       return assertNever(effect);
   }
-}
-
-function assertNever(value: never): never {
-  throw new Error(`Unhandled content variant: ${JSON.stringify(value)}`);
 }
