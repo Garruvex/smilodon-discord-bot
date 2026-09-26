@@ -1,3 +1,4 @@
+import type { EncounterSpec } from "../commands/campaign-command.js";
 import type { CharacterId, Instant, RollId } from "../core/ids.js";
 import type { D20TestSpec } from "../dice/d20-test.js";
 import type { DiceExpression } from "../dice/dice-expression.js";
@@ -235,6 +236,8 @@ export interface EncounterState {
   // Found by the party if it wins.
   readonly loot: readonly ContentId<"item">[];
   readonly gold: number;
+  // What the fight was started from, so the organizer can retry it.
+  readonly spec: EncounterSpec;
 }
 
 export function currentCombatant(encounter: EncounterState): Combatant | undefined {

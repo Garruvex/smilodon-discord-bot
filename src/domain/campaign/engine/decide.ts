@@ -4,6 +4,7 @@ import type { RollId } from "../core/ids.js";
 import type { RollResult } from "../dice/roll-spec.js";
 import type { CampaignState } from "../state/campaign-state.js";
 import { recordCheckRoll, requestRoll, rollTimerExpired } from "./checks.js";
+import { retryEncounter } from "./combat/combat-retry.js";
 import { handleCombatCommand, recordCombatNarration, recordCombatRoll } from "./combat/combat-flow.js";
 import { handleInventoryCommand } from "./inventory.js";
 import { takeRest } from "./rest.js";
@@ -68,6 +69,8 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
     case "takeFromStash":
     case "useItem":
       return handleInventoryCommand(decision, command);
+    case "retryEncounter":
+      return retryEncounter(decision);
     case "joinHero":
       return joinHero(decision, command.sheet);
     case "startEncounter":

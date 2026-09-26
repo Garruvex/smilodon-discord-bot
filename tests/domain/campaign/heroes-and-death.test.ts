@@ -106,3 +106,40 @@ describe("loot", () => {
     expect(reject(newCampaign(), organizer, { kind: "startEncounter", spec: { ...skirmish, loot: ["item:vorpal-sword"] } })).toMatchObject({ code: "invalidEncounter" });
   });
 });
+
+describe("retrying a lost fight", () => {
+  const lost = (): Fight => new Fight().rolls([5, 4, 20, 19, 20, 20], [6, 6, 6, 6]).run(organizer, { kind: "startEncounter", spec: skirmish });
+
+  it("restores the party and plays the fight again under a new ID", () => {
+    const fight = lost();
+    expect(fight.state.heroStatus["c-mira"]?.hp).toBe(1);
+    fight.rolls([20, 15, 5, 4]).run(organizer, { kind: "retryEncounter" });
+    expect(kinds(fight.events)).toContain("encounterRetried");
+    expect(fight.encounter.id).toBe("enc-1~2");
+    expect(fight.encounter.status).toBe("active");
+    expect(fight.encounter.combatants["c-mira"]?.hp).toBe(9);
+    expect(fight.encounter.combatants["c-borin"]?.hp).toBe(12);
+    expect(fight.state.encounterHistory).toEqual(["enc-1"]);
+    expect(fight.state.round).toBeNull();
+  });
+
+  it("can be retried again, and drops the round that opened after the defeat", () => {
+    const fight = lost();
+    fight.run(system, { kind: "openRound" });
+    expect(fight.state.round?.status).toBe("collecting");
+    fight.rolls([5, 4, 20, 19, 20, 20], [6, 6, 6, 6]).run(organizer, { kind: "retryEncounter" });
+    expect(fight.state.round).toBeNull();
+    expect(fight.encounter.id).toBe("enc-1~2");
+    if (fight.encounter.status === "ended") fight.rolls([20, 15, 5, 4]).run(organizer, { kind: "retryEncounter" });
+    expect(fight.encounter.id).toBe("enc-1~3");
+  });
+
+  it("is refused for anyone but the organizer, after a win, or once players have acted", () => {
+    const fight = lost();
+    expect(reject(fight.state, alex, { kind: "retryEncounter" })).toEqual({ code: "notOrganizer" });
+    const opened = run(fight.state, system, { kind: "openRound" }).state;
+    const acted = run(opened, alex, { kind: "submitAction", characterId: "c-mira", text: "I flee." }).state;
+    expect(reject(acted, organizer, { kind: "retryEncounter" })).toEqual({ code: "roundInProgress" });
+    expect(reject(newCampaign(), organizer, { kind: "retryEncounter" })).toEqual({ code: "notRetryable" });
+  });
+});

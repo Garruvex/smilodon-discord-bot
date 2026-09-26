@@ -50,6 +50,7 @@ export type Rejection =
   | { readonly code: "invalidOffer" }
   | { readonly code: "itemNotHeld" }
   | { readonly code: "notUsable" }
+  | { readonly code: "notRetryable" }
   | { readonly code: "heroFallen" }
   | { readonly code: "invalidHero"; readonly problems: readonly string[] }
   | { readonly code: "heroNotReplaceable" }

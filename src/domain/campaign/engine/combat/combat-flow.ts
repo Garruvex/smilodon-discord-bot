@@ -175,6 +175,7 @@ export function beginEncounter(decision: Decision, spec: EncounterSpec): void {
     outcome: null,
     deferredTurn: null,
     narratedRound: 0,
+    spec,
     loot: spec.loot ?? [],
     gold: spec.gold ?? 0,
   };

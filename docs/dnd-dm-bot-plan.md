@@ -175,7 +175,7 @@ Implement the curated SRD subset as ordinary, tested TypeScript in `src/domain/c
 | Critical hits | Double dice, max first die + roll |
 | Natural 20/1 on ability checks and saves | No effect (2014 rules), automatic success/failure |
 | Resting | Standard, gritty, heroic |
-| Death | Standard death saves, no death while away, lingering injuries off/on. A fallen hero stays dead and their gear goes to the party stash. The player joins a new hero at the party's level with starting gear and no loot. A lost fight is a story defeat: the heroes who are down but not dead wake with 1 HP, and the story goes on (built in milestone 0). Optional later: retry a fight from its start (replay to the encounter's first event, with fresh dice) |
+| Death | Standard death saves, no death while away, lingering injuries off/on. A fallen hero stays dead and their gear goes to the party stash. The player joins a new hero at the party's level with starting gear and no loot. A lost fight is a story defeat: the heroes who are down but not dead wake with 1 HP, and the story goes on (built in milestone 0). The organizer can retry a lost fight from its start with fresh dice (a saved checkpoint of the party, not an event-log rewind) |
 | Item trading | Heroes can give or swap items outside combat with the receiving player's consent, and use a shared party stash. Items cannot be invented by player text (built in milestone 0) |
 | Healing potions | Action, bonus action |
 | Encumbrance | Off, simple |

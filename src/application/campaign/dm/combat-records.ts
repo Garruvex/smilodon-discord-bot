@@ -111,6 +111,13 @@ export function encounterRecords(events: readonly CampaignEvent[], names: Combat
         round = 1;
         records.push(current);
         break;
+      case "encounterRetried": {
+        // The set-aside attempt never happened as far as the story goes.
+        const index = records.findIndex((record) => record.id === event.encounterId);
+        if (index >= 0) records.splice(index, 1);
+        current = null;
+        break;
+      }
       case "turnStarted":
         round = event.round;
         break;

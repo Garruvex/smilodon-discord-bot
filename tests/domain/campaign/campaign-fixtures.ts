@@ -126,6 +126,7 @@ export function newCampaign(pacing: Pacing = livePacing): CampaignState {
     gold: 0,
     offers: {},
     offerCount: 0,
+    fightCheckpoint: null,
     clocks: {},
     clues: [],
   };

@@ -51,6 +51,17 @@ export interface CampaignState {
   readonly offers: Readonly<Record<string, ItemOffer>>;
   // Numbers offer IDs deterministically.
   readonly offerCount: number;
+  // The party as it stood when the current fight began; a retry restores it.
+  readonly fightCheckpoint: FightCheckpoint | null;
+}
+
+export interface FightCheckpoint {
+  readonly characters: Readonly<Record<CharacterId, CharacterSheet>>;
+  readonly heroStatus: Readonly<Record<CharacterId, HeroStatus>>;
+  readonly stash: readonly ContentId<"item">[];
+  readonly gold: number;
+  readonly offers: Readonly<Record<string, ItemOffer>>;
+  readonly offerCount: number;
 }
 
 // One hero offers an item, optionally for one of the other hero's in return.

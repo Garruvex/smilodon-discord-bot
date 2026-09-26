@@ -75,6 +75,8 @@ export type CampaignEvent =
   | { readonly kind: "itemUsed"; readonly characterId: CharacterId; readonly itemId: ContentId<"item">; readonly healed: number }
   // The player has this hero from now on (a new player, or a replacement).
   | { readonly kind: "heroJoined"; readonly sheet: CharacterSheet }
+  // The lost fight is set aside and the party is back as it stood at its start.
+  | { readonly kind: "encounterRetried"; readonly encounterId: string }
   | CombatEvent;
 
 export type OfferClosedReason = "declined" | "cancelled" | "unavailable";

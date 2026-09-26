@@ -4,6 +4,7 @@ import type { CharacterId, UserId } from "../core/ids.js";
 import type { CampaignState, CheckState, ItemOffer, MemberState, RoundState, Submission } from "../state/campaign-state.js";
 import type { CombatEvent } from "../combat/combat-events.js";
 import type { HeroStatus } from "../combat/combatant-profile.js";
+import { baseEncounterId } from "../engine/ids.js";
 import { evolveEncounter } from "../combat/evolve-combat.js";
 import type { CampaignEvent } from "./campaign-event.js";
 
@@ -165,6 +166,11 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       if (status === undefined || (state.encounter !== null && state.encounter.status !== "ended")) return used;
       return { ...used, heroStatus: { ...used.heroStatus, [sheet.id]: { ...status, hp: Math.min(sheet.maxHp, status.hp + event.healed) } } };
     }
+    case "encounterRetried": {
+      const checkpoint = state.fightCheckpoint;
+      if (checkpoint === null) return state;
+      return { ...state, ...checkpoint, encounter: null, pendingEncounter: null, round: null, checks: {} };
+    }
     case "heroJoined": {
       const sheet = event.sheet;
       const member = state.members[sheet.ownerUserId];
@@ -184,7 +190,15 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
 function evolveCombat(state: CampaignState, event: CombatEvent): CampaignState {
   const encounter = evolveEncounter(state.encounter, event);
   if (event.kind === "encounterStarted") {
-    return { ...state, encounter, pendingEncounter: null, encounterHistory: [...state.encounterHistory, event.encounter.id] };
+    const { characters, heroStatus, stash, gold, offers, offerCount } = state;
+    const baseId = baseEncounterId(event.encounter.id);
+    return {
+      ...state,
+      encounter,
+      pendingEncounter: null,
+      encounterHistory: state.encounterHistory.includes(baseId) ? state.encounterHistory : [...state.encounterHistory, baseId],
+      fightCheckpoint: { characters, heroStatus, stash, gold, offers, offerCount },
+    };
   }
   if (event.kind !== "encounterEnded" || encounter === null) return { ...state, encounter };
   const heroStatus: Record<CharacterId, HeroStatus> = { ...state.heroStatus };
