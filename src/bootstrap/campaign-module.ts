@@ -105,7 +105,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
   const messages = new DiscordMessageGateway(client);
   const issues = new CampaignIssues({ unitOfWork, clock, notify: organizerNotice(messages) });
   const cards = new CampaignCardService({ unitOfWork, rulesets, adventures, messages, glossaries, logger, issues });
-  const presenter = new DiscordCampaignPresenter({ unitOfWork, messages, cards, adventures, glossaries });
+  const presenter = new DiscordCampaignPresenter({ unitOfWork, messages, cards, adventures, glossaries, revealDelayMs: 1_200 });
   const lobby = new CampaignLobbyService({
     unitOfWork,
     bus,

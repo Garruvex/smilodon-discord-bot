@@ -22,6 +22,9 @@ export interface PresenterOptions {
   readonly cards: CampaignCardService;
   readonly adventures: AdventureLibrary;
   readonly glossaries: Readonly<Record<string, Glossary>>;
+  // How long the "rolls…" line stays before the result replaces it (the
+  // staged dice reveal). 0 posts the result at once.
+  readonly revealDelayMs?: number;
 }
 
 // Puts what the engine decided on the table (plan §6, Combat presentation;
@@ -47,20 +50,32 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
     // A delivery's posts carry the same nonces on every retry, so a message
     // that did go out before the failure is not posted twice.
     let posted = 0;
-    const say = async (channelId: string | null, content: string | null, mentions: readonly string[] = []): Promise<void> => {
-      if (channelId === null || content === null || content.trim() === "") return;
+    const say = async (channelId: string | null, content: string | null, mentions: readonly string[] = []): Promise<string | null> => {
+      if (channelId === null || content === null || content.trim() === "") return null;
       posted += 1;
       const nonce = deliveryId === undefined ? undefined : createHash("sha1").update(`${deliveryId}#${posted}`).digest("base64url").slice(0, 25);
-      await this.options.messages.post(channelId, truncate(content), mentions, nonce);
+      return this.options.messages.post(channelId, truncate(content), mentions, nonce);
     };
     // Fights the players play get a template line for every action; on autopilot the round flourish is enough.
     const playersFight = record.houseRules[combatMode.id] !== "autopilot";
     const combat = state === undefined ? null : this.combatText(record, state, events, text);
 
     switch (delivery.kind) {
-      case "rollResult":
-        await say(adventureChannelId, state === undefined ? null : rollLine(events, state, delivery.checkId, text));
+      case "rollResult": {
+        const line = state === undefined ? null : rollLine(events, state, delivery.checkId, text);
+        const delay = this.options.revealDelayMs ?? 0;
+        const check = line === null ? undefined : checkOf(events, delivery.checkId);
+        if (line === null || check === undefined || delay <= 0 || adventureChannelId === null) {
+          await say(adventureChannelId, line);
+          break;
+        }
+        // The staged reveal: the die is thrown, a moment passes, the result lands.
+        const rolling = await say(adventureChannelId, text.campaign.msg.rolling({ hero: state?.characters[check.characterId]?.name ?? check.characterId, check: checkLabel(check.test, text) }));
+        await new Promise<void>((resolve) => setTimeout(resolve, delay));
+        if (rolling === null) await say(adventureChannelId, line);
+        else await this.options.messages.editText(adventureChannelId, rolling, truncate(line));
         break;
+      }
       case "narration":
         await say(adventureChannelId, narration(events, delivery.roundNumber));
         break;

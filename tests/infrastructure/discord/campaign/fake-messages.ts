@@ -49,6 +49,15 @@ export class FakeMessages implements CampaignMessageGateway {
     return Promise.resolve(`p${this.next}`);
   }
 
+  public readonly textEdits: { messageId: string; content: string }[] = [];
+
+  public editText(_channelId: string, messageId: string, content: string): Promise<void> {
+    const post = this.posts.find((candidate) => `p${candidate.order}` === messageId);
+    if (post !== undefined) post.content = content;
+    this.textEdits.push({ messageId, content });
+    return Promise.resolve();
+  }
+
   public pin(_channelId: string, messageId: string): Promise<void> {
     this.pinned.push(messageId);
     return Promise.resolve();

@@ -226,6 +226,7 @@ export const campaignZhTW = {
   "campaign.skill.stealth": "隱匿",
   "campaign.skill.survival": "求生",
 
+  "campaign.msg.rolling": "🎲 **{hero}**擲{check}…",
   "campaign.msg.roll": "🎲 **{hero}** · {check}：d20 **{natural}** {modifier} = **{total}**，難度 {dc} — {outcome}",
   "campaign.msg.rollSuccess": "成功",
   "campaign.msg.rollFailure": "失敗",

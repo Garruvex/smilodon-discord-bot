@@ -16,6 +16,9 @@ export interface CampaignMessageGateway {
   // `nonce` (at most 25 characters) makes Discord drop a repeat of the same
   // message sent within a few minutes, so a retry after an unsure send does not double-post.
   post(channelId: string, content: string, mentionUserIds?: readonly string[], nonce?: string): Promise<string>;
+  // Rewrites a message made with post (the staged dice reveal); a message
+  // that is gone is fine.
+  editText(channelId: string, messageId: string, content: string): Promise<void>;
   pin(channelId: string, messageId: string): Promise<void>;
 }
 
@@ -57,6 +60,16 @@ export class DiscordMessageGateway implements CampaignMessageGateway {
       ...(nonce === undefined ? {} : { nonce, enforceNonce: true }),
     });
     return message.id;
+  }
+
+  public async editText(channelId: string, messageId: string, content: string): Promise<void> {
+    try {
+      const channel = await this.channel(channelId);
+      await channel.messages.edit(messageId, { content, allowedMentions: { parse: [] } });
+    } catch (error) {
+      if (error instanceof DiscordAPIError && missingCodes.includes(Number(error.code))) return;
+      throw error;
+    }
   }
 
   public async pin(channelId: string, messageId: string): Promise<void> {

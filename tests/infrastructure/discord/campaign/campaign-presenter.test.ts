@@ -122,6 +122,29 @@ describe("the presenter", () => {
     expect(t.messages.posts.slice(before).filter((post) => post.content.startsWith("⏰"))).toEqual([]);
   });
 
+  it("stages the dice reveal: the die is thrown, then the same message shows the result", async () => {
+    const t = await table();
+    const presenter = new DiscordCampaignPresenter({ unitOfWork: t.r.store, messages: t.messages, cards: t.cards, adventures: t.r.adventures, glossaries, revealDelayMs: 5 });
+    t.r.plannerScript.push({
+      roundNumber: 1,
+      actions: [{ characterId: t.hero, resolution: { kind: "check", test: { kind: "skill", skill: "stealth" }, dcTier: "medium", rollModeReasons: [] } }],
+    });
+    await t.r.bus.execute(t.key, { kind: "submitAction", characterId: t.hero, text: "I sneak in." }, { commandId: "a", actor });
+    await t.runtime.runOnce();
+    const state = (await t.r.store.transaction((tx) => tx.loadCampaign(t.key)))?.state;
+    const checkId = Object.keys(state?.checks ?? {})[0] ?? "";
+    await t.r.bus.execute(t.key, { kind: "requestRoll", checkId }, { commandId: "b", actor });
+    await t.runtime.runOnce();
+    const before = t.messages.posts.length;
+    await presenter.present(t.key, { kind: "rollResult", checkId });
+    const added = t.messages.posts.slice(before);
+    // One message, first "rolls…", then rewritten to the result.
+    expect(added).toHaveLength(1);
+    expect(t.messages.textEdits).toHaveLength(1);
+    expect(t.messages.textEdits[0]?.content).toMatch(/^🎲 \*\*.+\*\* · Stealth \(DEX\): d20/);
+    expect(added[0]?.content).toBe(t.messages.textEdits[0]?.content);
+  });
+
   it("says so when nobody acts in a round", async () => {
     const t = await table();
     await t.r.bus.execute(t.key, { kind: "pass", characterId: t.hero }, { commandId: "a", actor });

@@ -226,6 +226,7 @@ export const campaignEn = {
   "campaign.skill.stealth": "Stealth",
   "campaign.skill.survival": "Survival",
 
+  "campaign.msg.rolling": "🎲 **{hero}** rolls {check}…",
   "campaign.msg.roll": "🎲 **{hero}** · {check}: d20 **{natural}** {modifier} = **{total}** vs DC {dc} — {outcome}",
   "campaign.msg.rollSuccess": "success",
   "campaign.msg.rollFailure": "failure",
