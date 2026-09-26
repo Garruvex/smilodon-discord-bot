@@ -53,6 +53,8 @@ export const campaignActions = [
   // The story so far, and a catch-up for someone coming back.
   "journal",
   "recap",
+  // Naming a proxy for fights while away (a menu on My Hero).
+  "proxy",
 ] as const;
 export type CampaignAction = (typeof campaignActions)[number];
 

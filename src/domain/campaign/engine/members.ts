@@ -11,6 +11,31 @@ import { closeIfEveryoneResponded, enterWaiting, finishReadyCheck, finishRoundIf
 // A player marks themselves away, or the organizer marks them. An open
 // window's unanswered slot is excused rather than counted as a miss; a
 // submitted action stands.
+// Whether the actor may act for this hero's owner in a fight: the owner, or
+// the player they named while they are away (plan §5, Away mode: proxy play).
+export function actsForOwner(state: CampaignState, actorUserId: UserId, ownerUserId: UserId): boolean {
+  if (actorUserId === ownerUserId) return true;
+  return state.proxies?.[ownerUserId] === actorUserId && state.members[ownerUserId]?.availability === "away" && state.members[actorUserId]?.availability === "present";
+}
+
+// The owner names a proxy (or takes the grant back). Only for one's own hero,
+// only another member of the table, and never the organizer's say over it.
+export function grantProxy(decision: Decision, proxyUserId: UserId): Rejection | null {
+  const { state, ctx } = decision;
+  if (ctx.actor.kind !== "user" || state.members[ctx.actor.userId] === undefined) return { code: "notMember" };
+  if (proxyUserId === ctx.actor.userId || state.members[proxyUserId] === undefined) return { code: "invalidProxy" };
+  if (state.proxies?.[ctx.actor.userId] === proxyUserId) return null;
+  decision.emit({ kind: "proxyGranted", ownerUserId: ctx.actor.userId, proxyUserId });
+  return null;
+}
+
+export function revokeProxy(decision: Decision): Rejection | null {
+  const { state, ctx } = decision;
+  if (ctx.actor.kind !== "user" || state.members[ctx.actor.userId] === undefined) return { code: "notMember" };
+  if (state.proxies?.[ctx.actor.userId] !== undefined) decision.emit({ kind: "proxyRevoked", ownerUserId: ctx.actor.userId });
+  return null;
+}
+
 export function markAway(decision: Decision, userId: UserId): Rejection | null {
   const refusal = checkSelfOrOrganizer(decision, userId);
   if (refusal !== null) return refusal;

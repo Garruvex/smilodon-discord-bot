@@ -38,6 +38,10 @@ export interface CampaignState {
   // Each covers the rounds after the previous one of its kind, through its own
   // round. Absent in games that started before summaries existed.
   readonly summaries?: readonly StorySummary[];
+  // Who may play a hero in a fight while its owner is away: owner -> proxy.
+  // A grant does nothing while the owner is present, and only reaches turns
+  // (never the owner's items, story choices or anything outside a fight).
+  readonly proxies?: Readonly<Record<UserId, UserId>>;
   // The round in which the party last changed scene: the moment a chapter closes.
   readonly sceneChangedRound?: number;
   // Checks of the current round only; earlier ones live in the event log.

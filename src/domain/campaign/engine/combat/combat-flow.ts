@@ -2,6 +2,7 @@ import type { CombatCommand, EncounterSpec } from "../../commands/campaign-comma
 import { assertNever } from "../../core/assert-never.js";
 import type { RollId, UserId } from "../../core/ids.js";
 import { scheduleReminder } from "../reminders.js";
+import { actsForOwner } from "../members.js";
 import { isFallen } from "../../state/campaign-state.js";
 import type { ActionCost } from "../../combat/combat-events.js";
 import {
@@ -701,7 +702,8 @@ export function withHeroTurn(
   if (state.status !== "active") return { code: "campaignWaiting" };
   const hero = encounter.combatants[combatantId];
   if (hero?.source.kind !== "hero") return { code: "notYourCharacter" };
-  if (ctx.actor.kind !== "user" || state.characters[hero.source.characterId]?.ownerUserId !== ctx.actor.userId) {
+  const owner = state.characters[hero.source.characterId]?.ownerUserId;
+  if (ctx.actor.kind !== "user" || owner === undefined || !actsForOwner(state, ctx.actor.userId, owner)) {
     return { code: "notYourCharacter" };
   }
   if (currentCombatant(encounter)?.id !== hero.id || !isActive(hero)) return { code: "notYourTurn" };
@@ -714,7 +716,11 @@ function isPlayerControlled(decision: Decision, combatant: Combatant): boolean {
   if (combatant.source.kind !== "hero") return false;
   if (decision.ctx.rules.houseRules.option(combatMode) === "autopilot") return false;
   const ownerId = decision.state.characters[combatant.source.characterId]?.ownerUserId;
-  return ownerId !== undefined && decision.state.members[ownerId]?.availability === "present";
+  if (ownerId === undefined) return false;
+  if (decision.state.members[ownerId]?.availability === "present") return true;
+  // An away owner's hero is driven by the proxy they named, when that player is at the table.
+  const proxy = decision.state.proxies?.[ownerId];
+  return proxy !== undefined && decision.state.members[proxy]?.availability === "present";
 }
 
 // An even share of the gold for each hero still standing, in party order; the

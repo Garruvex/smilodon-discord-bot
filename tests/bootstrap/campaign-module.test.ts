@@ -18,7 +18,7 @@ afterEach(() => {
 function build(model: ApplicationConfiguration["campaign"]): { module: ReturnType<typeof createCampaignModule>; directory: string } {
   const directory = mkdtempSync(join(tmpdir(), "campaign-module-"));
   directories.push(directory);
-  const configuration = { runtimeDataDirectory: directory, campaign: model, logLevel: "fatal", environment: "test" } as unknown as ApplicationConfiguration;
+  const configuration = { runtimeDataDirectory: directory, persistence: { driver: "file", databaseUrl: null }, campaign: model, logLevel: "fatal", environment: "test" } as unknown as ApplicationConfiguration;
   const module = createCampaignModule({
     configuration,
     logger: createLogger(configuration),

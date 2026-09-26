@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import Database from "better-sqlite3";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import {
   RevisionConflictError,
@@ -17,6 +17,8 @@ import { emptyChannels } from "../../../src/application/campaign/ports/campaign-
 import { openLobby } from "../../../src/domain/campaign/lobby/lobby.js";
 import type { RollResult } from "../../../src/domain/campaign/dice/roll-spec.js";
 import { InMemoryCampaignStore } from "../../../src/infrastructure/persistence/campaign/in-memory-campaign-store.js";
+import { postgresTestDatabase } from "./postgres-test-database.js";
+import { PostgresCampaignStore } from "../../../src/infrastructure/persistence/campaign/postgres-campaign-store.js";
 import { SqliteCampaignStore } from "../../../src/infrastructure/persistence/campaign/sqlite-campaign-store.js";
 import { newCampaign, ruleset } from "../../domain/campaign/campaign-fixtures.js";
 
@@ -80,7 +82,7 @@ function fileDatabase(): { path: string; open: () => Database.Database } {
   };
 }
 
-const stores: readonly { name: string; create: () => CampaignUnitOfWork }[] = [
+const stores: { name: string; create: () => CampaignUnitOfWork | Promise<CampaignUnitOfWork> }[] = [
   { name: "in-memory", create: () => new InMemoryCampaignStore() },
   {
     name: "sqlite",
@@ -92,11 +94,26 @@ const stores: readonly { name: string; create: () => CampaignUnitOfWork }[] = [
   },
 ];
 
+// PostgreSQL joins the contract when CAMPAIGN_TEST_DATABASE_URL names a
+// database to use (see postgres-test-database.ts); without it the run stays local.
+const postgres = await postgresTestDatabase("campaign_contract");
+if (postgres !== null) {
+  const connection = await postgres.connect();
+  stores.push({
+    name: "postgres",
+    create: async (): Promise<CampaignUnitOfWork> => {
+      await postgres.clear(connection);
+      return new PostgresCampaignStore(() => Promise.resolve(connection.database));
+    },
+  });
+  afterAll(() => connection.close());
+}
+
 // One behavior contract, run against every store, so the in-memory store the
 // tests use stays a faithful stand-in for the durable one.
 describe.each(stores)("campaign store contract: $name", ({ create }) => {
   it("creates, loads, and saves with a compare-and-set revision", async () => {
-    const store = create();
+    const store = await create();
     await store.transaction((tx) => tx.createCampaign(key, campaign()));
     await expect(store.transaction((tx) => tx.createCampaign(key, campaign()))).rejects.toThrow("already exists");
 
@@ -109,7 +126,7 @@ describe.each(stores)("campaign store contract: $name", ({ create }) => {
   });
 
   it("keeps campaign records with their own compare-and-set revision", async () => {
-    const store = create();
+    const store = await create();
     await store.transaction((tx) => tx.createRecord(record()));
     await expect(store.transaction((tx) => tx.createRecord(record()))).rejects.toThrow("already exists");
     expect(await store.transaction((tx) => tx.loadRecord(key))).toMatchObject({ revision: 0, record: { name: "Moonlit Ruins", lifecycle: "lobby" } });
@@ -122,7 +139,7 @@ describe.each(stores)("campaign store contract: $name", ({ create }) => {
   });
 
   it("lists one guild's records in creation order, optionally by lifecycle", async () => {
-    const store = create();
+    const store = await create();
     const second: CampaignKey = { guildId: "g-1", campaignId: "camp-2" };
     await store.transaction(async (tx) => {
       await tx.createRecord(record(key, "active"));
@@ -135,7 +152,7 @@ describe.each(stores)("campaign store contract: $name", ({ create }) => {
   });
 
   it("finds records by lifecycle across servers", async () => {
-    const store = create();
+    const store = await create();
     await store.transaction(async (tx) => {
       await tx.createRecord(record(key, "active"));
       await tx.createRecord(record(other, "active"));
@@ -146,7 +163,7 @@ describe.each(stores)("campaign store contract: $name", ({ create }) => {
   });
 
   it("keeps one settings row per server, replacing it on save", async () => {
-    const store = create();
+    const store = await create();
     expect(await store.transaction((tx) => tx.loadGuildSettings("g-1"))).toBeUndefined();
     await store.transaction(async (tx) => {
       await tx.saveGuildSettings({ guildId: "g-1", categoryId: "cat-1", hubChannelId: null, hubCard: null });
@@ -158,7 +175,7 @@ describe.each(stores)("campaign store contract: $name", ({ create }) => {
   });
 
   it("rolls a record back with the rest of a failed transaction", async () => {
-    const store = create();
+    const store = await create();
     await expect(
       store.transaction(async (tx) => {
         await tx.createRecord(record());
@@ -169,7 +186,7 @@ describe.each(stores)("campaign store contract: $name", ({ create }) => {
   });
 
   it("numbers events per campaign and keeps them in order", async () => {
-    const store = create();
+    const store = await create();
     const envelope = { campaignId: "camp-1", causationId: "c", commandKind: "openRound", actor: { kind: "system" }, rulesRevision: "r", recordedAt: 5 } as const;
     await store.transaction(async (tx) => {
       await tx.appendEvents(key, [{ ...envelope, event: { kind: "waitingForPlayers" } }]);
@@ -186,14 +203,14 @@ describe.each(stores)("campaign store contract: $name", ({ create }) => {
   });
 
   it("remembers processed commands per campaign", async () => {
-    const store = create();
+    const store = await create();
     await store.transaction((tx) => tx.recordProcessedCommand(key, "cmd-1", { kind: "accepted", revision: 1, eventCount: 2 }));
     expect(await store.transaction((tx) => tx.findProcessedCommand(key, "cmd-1"))).toEqual({ kind: "accepted", revision: 1, eventCount: 2 });
     expect(await store.transaction((tx) => tx.findProcessedCommand(other, "cmd-1"))).toBeUndefined();
   });
 
   it("queues work once, retries with a bound, and skips finished items", async () => {
-    const store = create();
+    const store = await create();
     const request = { kind: "narrate", roundNumber: 1 } as const;
     await store.transaction(async (tx) => {
       await tx.enqueue(key, "job-1", request, 10);
@@ -213,7 +230,7 @@ describe.each(stores)("campaign store contract: $name", ({ create }) => {
   });
 
   it("holds a failed item back until its retry time and puts given-up work back on request", async () => {
-    const store = create();
+    const store = await create();
     await store.transaction(async (tx) => {
       await tx.enqueue(key, "job-1", { kind: "narrate", roundNumber: 1 }, 10);
       await tx.enqueue(other, "job-9", { kind: "narrate", roundNumber: 1 }, 10);
@@ -230,7 +247,7 @@ describe.each(stores)("campaign store contract: $name", ({ create }) => {
   });
 
   it("keeps library characters per owner, snapshots immutable and in order, and deletes a character with its snapshots", async () => {
-    const store = create();
+    const store = await create();
     const build = { class: "fighter", kit: "knight", abilities: { str: 15, dex: 12, con: 14, int: 8, wis: 13, cha: 10 }, skills: ["athletics", "perception"], expertise: [], name: "A", appearance: "", backstory: "" } as const;
     const snapshot = (id: string, revision: number, sourceKey: string): LibrarySnapshot => ({
       id,
@@ -268,7 +285,7 @@ describe.each(stores)("campaign store contract: $name", ({ create }) => {
   });
 
   it("returns only due, pending timers, and lets a reschedule replace one", async () => {
-    const store = create();
+    const store = await create();
     const timer = (timerId: string, dueAt: number): { kind: "roundWindow"; timerId: string; dueAt: number; roundNumber: number } => ({
       kind: "roundWindow",
       timerId,
@@ -291,7 +308,7 @@ describe.each(stores)("campaign store contract: $name", ({ create }) => {
   });
 
   it("keeps the first saved roll for an ID", async () => {
-    const store = create();
+    const store = await create();
     const first = await store.transaction((tx) => tx.saveRoll({ key, rollId: "r1", result: roll, rolledAt: 1 }));
     const again = await store.transaction((tx) =>
       tx.saveRoll({ key, rollId: "r1", result: { ...roll, roll: { ...roll.roll, total: 6 } }, rolledAt: 2 }),
@@ -302,7 +319,7 @@ describe.each(stores)("campaign store contract: $name", ({ create }) => {
   });
 
   it("rolls back everything when a transaction fails part-way", async () => {
-    const store = create();
+    const store = await create();
     await store.transaction((tx) => tx.createCampaign(key, campaign()));
     await expect(
       store.transaction(async (tx) => {

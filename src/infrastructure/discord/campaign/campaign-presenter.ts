@@ -184,7 +184,13 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
     const combatant = encounter.combatants[combatantId];
     if (combatant?.condition !== "active" || combatant.source.kind !== "hero") return null;
     const sheet = state.characters[combatant.source.characterId];
-    if (sheet === undefined || state.members[sheet.ownerUserId]?.availability !== "present") return null;
+    if (sheet === undefined) return null;
+    if (state.members[sheet.ownerUserId]?.availability !== "present") {
+      // An away owner's hero waits for the player they named, when that player is here.
+      const proxy = state.proxies?.[sheet.ownerUserId];
+      if (proxy === undefined || state.members[proxy]?.availability !== "present") return null;
+      return { content: text.campaign.msg.proxyTurn({ user: proxy, hero: sheet.name, owner: sheet.ownerUserId }), userId: proxy };
+    }
     return { content: text.campaign.msg.yourTurn({ user: sheet.ownerUserId, hero: sheet.name }), userId: sheet.ownerUserId };
   }
 

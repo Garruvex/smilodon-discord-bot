@@ -36,6 +36,9 @@ export type CampaignCommand =
   | { readonly kind: "recordRoll"; readonly rollId: RollId; readonly result: RollResult }
   | { readonly kind: "markAway"; readonly userId: UserId }
   | { readonly kind: "markReturned"; readonly userId: UserId }
+  // The owner lets another player at the table play their hero in fights while they are away, or takes it back.
+  | { readonly kind: "grantProxy"; readonly proxyUserId: UserId }
+  | { readonly kind: "revokeProxy" }
   // Resumes a campaign that was waiting for players.
   | { readonly kind: "continue" }
   // Stops play: every timer is cancelled and no round, roll, or model work

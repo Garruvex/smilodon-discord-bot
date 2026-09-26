@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid, vector } from "drizzle-orm/pg-core";
+import { bigint, boolean, index, integer, json, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid, vector } from "drizzle-orm/pg-core";
 
 // Fixed at schema-definition time — pgvector columns can't have a variable
 // dimension. Matches OpenAI's text-embedding-3-small, the default/most
@@ -434,3 +434,143 @@ export const guildKnowledge = pgTable("guild_knowledge", {
   ),
   index("guild_knowledge_embedding_hnsw").using("hnsw", table.embedding.op("vector_cosine_ops")),
 ]);
+
+// ---------------------------------------------------------------------------
+// D&D campaigns (plan §9). The same tables as the SQLite campaign store, with
+// the payloads as jsonb. Rows that are read in creation order carry an
+// identity "position", the counterpart of SQLite's rowid. Instants are epoch
+// milliseconds (bigint, read as numbers: a millisecond timestamp fits a double).
+// ---------------------------------------------------------------------------
+
+export const campaignCampaigns = pgTable(
+  "campaign_campaigns",
+  {
+    guildId: text("guild_id").notNull(),
+    campaignId: text("campaign_id").notNull(),
+    revision: integer("revision").notNull(),
+    state: json("state").notNull(),
+    ruleset: json("ruleset").notNull(),
+    adventure: json("adventure").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.guildId, table.campaignId] })],
+);
+
+export const campaignRecords = pgTable(
+  "campaign_records",
+  {
+    guildId: text("guild_id").notNull(),
+    campaignId: text("campaign_id").notNull(),
+    position: bigint("position", { mode: "number" }).generatedAlwaysAsIdentity().notNull(),
+    revision: integer("revision").notNull(),
+    lifecycle: text("lifecycle").notNull(),
+    record: json("record").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.guildId, table.campaignId] }), index("campaign_records_by_guild").on(table.guildId, table.lifecycle)],
+);
+
+export const campaignGuildSettings = pgTable("campaign_guild_settings", {
+  guildId: text("guild_id").primaryKey(),
+  position: bigint("position", { mode: "number" }).generatedAlwaysAsIdentity().notNull(),
+  settings: json("settings").notNull(),
+});
+
+export const campaignEvents = pgTable(
+  "campaign_events",
+  {
+    guildId: text("guild_id").notNull(),
+    campaignId: text("campaign_id").notNull(),
+    sequence: integer("sequence").notNull(),
+    envelope: json("envelope").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.guildId, table.campaignId, table.sequence] })],
+);
+
+export const campaignProcessedCommands = pgTable(
+  "campaign_processed_commands",
+  {
+    guildId: text("guild_id").notNull(),
+    campaignId: text("campaign_id").notNull(),
+    commandId: text("command_id").notNull(),
+    outcome: json("outcome").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.guildId, table.campaignId, table.commandId] })],
+);
+
+export const campaignOutbox = pgTable(
+  "campaign_outbox",
+  {
+    id: text("id").primaryKey(),
+    position: bigint("position", { mode: "number" }).generatedAlwaysAsIdentity().notNull(),
+    guildId: text("guild_id").notNull(),
+    campaignId: text("campaign_id").notNull(),
+    kind: text("kind").notNull(),
+    request: json("request").notNull(),
+    status: text("status").notNull(),
+    attempts: integer("attempts").notNull(),
+    createdAt: bigint("created_at", { mode: "number" }).notNull(),
+    lastError: text("last_error"),
+    notBefore: bigint("not_before", { mode: "number" }).default(0).notNull(),
+  },
+  (table) => [index("campaign_outbox_pending").on(table.status, table.kind)],
+);
+
+export const campaignTimers = pgTable(
+  "campaign_timers",
+  {
+    guildId: text("guild_id").notNull(),
+    campaignId: text("campaign_id").notNull(),
+    timerId: text("timer_id").notNull(),
+    position: bigint("position", { mode: "number" }).generatedAlwaysAsIdentity().notNull(),
+    dueAt: bigint("due_at", { mode: "number" }).notNull(),
+    timer: json("timer").notNull(),
+    status: text("status").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.guildId, table.campaignId, table.timerId] }), index("campaign_timers_due").on(table.status, table.dueAt)],
+);
+
+export const campaignRolls = pgTable(
+  "campaign_rolls",
+  {
+    guildId: text("guild_id").notNull(),
+    campaignId: text("campaign_id").notNull(),
+    rollId: text("roll_id").notNull(),
+    result: json("result").notNull(),
+    rolledAt: bigint("rolled_at", { mode: "number" }).notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.guildId, table.campaignId, table.rollId] })],
+);
+
+export const campaignLibraryCharacters = pgTable(
+  "campaign_library_characters",
+  {
+    id: text("id").primaryKey(),
+    position: bigint("position", { mode: "number" }).generatedAlwaysAsIdentity().notNull(),
+    ownerUserId: text("owner_user_id").notNull(),
+    character: json("character").notNull(),
+  },
+  (table) => [index("campaign_library_characters_by_owner").on(table.ownerUserId)],
+);
+
+export const campaignLibrarySnapshots = pgTable(
+  "campaign_library_snapshots",
+  {
+    id: text("id").primaryKey(),
+    characterId: text("character_id").notNull(),
+    revision: integer("revision").notNull(),
+    sourceKey: text("source_key").notNull(),
+    snapshot: json("snapshot").notNull(),
+  },
+  (table) => [uniqueIndex("campaign_library_snapshots_by_source").on(table.characterId, table.sourceKey), index("campaign_library_snapshots_by_character").on(table.characterId, table.revision)],
+);
+
+export const campaignAdventures = pgTable(
+  "campaign_adventures",
+  {
+    entryKey: text("entry_key").primaryKey(),
+    position: bigint("position", { mode: "number" }).generatedAlwaysAsIdentity().notNull(),
+    guildId: text("guild_id").notNull(),
+    status: text("status").notNull(),
+    adventure: json("adventure").notNull(),
+  },
+  (table) => [index("campaign_adventures_by_guild").on(table.guildId, table.status)],
+);

@@ -10,7 +10,7 @@ import { handleInventoryCommand } from "./inventory.js";
 import { takeRest } from "./rest.js";
 import { Decision, type DecideResult, type EngineContext } from "./decision.js";
 import { beginAdventure, beginPlay, markReady, recordLedgerFact, recordNarration, recordOpening, recordSummary, reportPlannerFailure, retryPlan } from "./dm.js";
-import { continueCampaign, joinHero, markAway, markReturned } from "./members.js";
+import { continueCampaign, grantProxy, joinHero, markAway, markReturned, revokeProxy } from "./members.js";
 import { pauseCampaign } from "./pause.js";
 import { remind } from "./reminders.js";
 import { speak } from "./speech.js";
@@ -53,6 +53,10 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
       return markAway(decision, command.userId);
     case "markReturned":
       return markReturned(decision, command.userId);
+    case "grantProxy":
+      return grantProxy(decision, command.proxyUserId);
+    case "revokeProxy":
+      return revokeProxy(decision);
     case "continue":
       return continueCampaign(decision);
     case "pauseCampaign":

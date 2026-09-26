@@ -56,6 +56,8 @@ import { AdventureIntake } from "../infrastructure/discord/campaign/adventure-in
 import { AdventureComponentHandler } from "../infrastructure/discord/components/adventure-component-handler.js";
 import { CampaignHubComponentHandler } from "../infrastructure/discord/components/campaign-hub-component-handler.js";
 import { CharacterLibraryComponentHandler } from "../infrastructure/discord/components/character-library-component-handler.js";
+import { createDatabaseConnection, resolveInstanceSchemaName, type DatabaseConnection } from "../infrastructure/database/database.js";
+import { PostgresCampaignStore } from "../infrastructure/persistence/campaign/postgres-campaign-store.js";
 import { SqliteCampaignStore } from "../infrastructure/persistence/campaign/sqlite-campaign-store.js";
 
 export interface CampaignModule {
@@ -94,10 +96,26 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
   const { configuration, client } = input;
   const logger = input.logger.child({ component: "campaign" });
 
+  // The campaign data lives where the rest of the bot keeps its own: PostgreSQL
+  // when that is the configured persistence (the tables come from the Drizzle
+  // migrations), otherwise a SQLite file in the runtime data directory. Either
+  // is opened on first use, so building the module touches nothing.
   let database: Database.Database | null = null;
-  let store: SqliteCampaignStore | null = null;
-  const openStore = (): SqliteCampaignStore => {
-    if (store === null) {
+  let postgres: DatabaseConnection | null = null;
+  let store: CampaignUnitOfWork | null = null;
+  let postgresStore: PostgresCampaignStore | null = null;
+  const openStore = (): CampaignUnitOfWork => {
+    if (store !== null) return store;
+    if (configuration.persistence.driver === "postgres") {
+      const { databaseUrl } = configuration.persistence;
+      if (!databaseUrl || !configuration.instanceName) throw new Error("PostgreSQL persistence requires DATABASE_URL and INSTANCE_NAME.");
+      const schemaName = resolveInstanceSchemaName(configuration.instanceName);
+      postgresStore = new PostgresCampaignStore(async () => {
+        postgres = await createDatabaseConnection(databaseUrl, schemaName);
+        return postgres.database;
+      });
+      store = postgresStore;
+    } else {
       const file = resolve(configuration.runtimeDataDirectory, "campaign.sqlite");
       mkdirSync(dirname(file), { recursive: true });
       database = new Database(file);
@@ -208,6 +226,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
     },
     start: async (): Promise<void> => {
       openStore();
+      await postgresStore?.ready();
       // Adventures a server approved are readable again before any game needs them.
       const loaded = await catalog.load();
       if (loaded.skipped.length > 0) logger.warn({ skipped: loaded.skipped }, "Some approved adventures no longer parse and were skipped");
@@ -219,6 +238,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
     stop: async (): Promise<void> => {
       await running.stop();
       if (database?.open === true) database.close();
+      await postgres?.close();
     },
   };
 }

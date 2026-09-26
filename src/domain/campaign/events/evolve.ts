@@ -69,6 +69,12 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       return state.round?.number === event.roundNumber ? { ...state, round: null } : state;
     case "sceneTransitioned":
       return { ...state, sceneId: event.sceneId, sceneChangedRound: event.roundNumber };
+    case "proxyGranted":
+      return { ...state, proxies: { ...(state.proxies ?? {}), [event.ownerUserId]: event.proxyUserId } };
+    case "proxyRevoked": {
+      const { [event.ownerUserId]: _gone, ...rest } = state.proxies ?? {};
+      return { ...state, proxies: rest };
+    }
     case "summaryRecorded":
       return { ...state, summaries: [...(state.summaries ?? []), { throughRound: event.throughRound, visibility: event.visibility, text: event.text }] };
     case "encounterQueued":

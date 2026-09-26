@@ -47,6 +47,7 @@ import type { CharacterLibrary } from "../../../application/campaign/library/cha
 import { libraryHeroRef, savedSnapshotIdOf } from "../../../application/campaign/library/library-types.js";
 import { conflictLines } from "./character-library-component-handler.js";
 import { buildJournal, buildRecap } from "../../../application/campaign/views/story-views.js";
+import { actsForOwner } from "../../../domain/campaign/engine/members.js";
 import { renderRulesScreen, ruleLines } from "../campaign/rules-screen.js";
 import { houseRulePresets } from "../../../domain/campaign/rules/house-rules.js";
 import { refusalText } from "../campaign/refusal-text.js";
@@ -159,6 +160,7 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "saveProgress":
     case "journal":
     case "recap":
+    case "proxy":
       return [];
   }
 }
@@ -194,6 +196,7 @@ export class CampaignComponentHandler implements ComponentHandler {
       else if (parsed.action === "giveTo") await this.giveItem(interaction, record, text);
       else if (parsed.action === "pick") await this.pickTurnAction(interaction, record, text);
       else if (parsed.action === "aim") await this.aimTurnAction(interaction, record, text);
+      else if (parsed.action === "proxy") await this.changeProxy(interaction, record, text);
       else if (parsed.action === "rulePreset" || parsed.action === "ruleOption" || parsed.action === "ruleValue") await this.changeRules(interaction, record, text, parsed.action, parsed.argument);
       else await this.chooseHero(interaction, record, text);
       return;
@@ -337,7 +340,8 @@ export class CampaignComponentHandler implements ComponentHandler {
         // Only the player's own hero gets the gear controls.
         const gear = parsed.action === "myHero" ? await this.heroMenus(record, text, userId) : [];
         const save = parsed.action === "myHero" ? await this.saveRow(record, text, userId) : [];
-        await interaction.editReply({ content: sheet, components: [...gear, ...save] });
+        const proxy = parsed.action === "myHero" ? await this.proxyMenu(record, text, userId) : [];
+        await interaction.editReply({ content: sheet, components: [...gear, ...proxy, ...save].slice(0, 5) });
         return;
       }
       default:
@@ -542,9 +546,13 @@ export class CampaignComponentHandler implements ComponentHandler {
     const bible = this.deps.adventures.find(record.adventure.adventureId, record.adventure.version, record.language);
     if (loaded === undefined || glossary === undefined || bible === undefined) return { kind: "message", content: text.campaign.refusal.notActive };
     const { state } = loaded;
-    const heroId = state.members[userId]?.characterId ?? null;
-    if (heroId === null) return { kind: "message", content: text.campaign.refusal.noHero };
+    const own = state.members[userId]?.characterId ?? null;
     const encounter = state.encounter;
+    // A player an away friend named plays that friend's hero on its turn.
+    const turnOf = encounter === null ? undefined : encounter.combatants[encounter.order[encounter.turnIndex] ?? ""];
+    const proxied = turnOf?.source.kind === "hero" ? state.characters[turnOf.source.characterId] : undefined;
+    const heroId = proxied !== undefined && proxied.id !== own && actsForOwner(state, userId, proxied.ownerUserId) ? proxied.id : own;
+    if (heroId === null) return { kind: "message", content: text.campaign.refusal.noHero };
     if (encounter === null || encounter.status !== "active") return { kind: "message", content: text.campaign.refusal.notInCombat };
     const { content, houseRules } = this.deps.rulesets.resolve(loaded.ruleset);
     const view = buildTurnView(state, content, houseRules, { state, bible, glossary }, heroId);
@@ -735,6 +743,29 @@ export class CampaignComponentHandler implements ComponentHandler {
     return [
       new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(campaignCustomId("saveProgress", record.key.campaignId)).setLabel(text.campaign.button.saveProgress).setStyle(ButtonStyle.Secondary)),
     ];
+  }
+
+  // "Let someone play my hero in fights while I am away": a menu of the other players on My Hero.
+  private async proxyMenu(record: CampaignRecord, text: Texts, userId: string): Promise<ActionRowBuilder<StringSelectMenuBuilder>[]> {
+    const loaded = await this.deps.unitOfWork.transaction((tx) => tx.loadCampaign(record.key));
+    if (loaded === undefined || loaded.state.members[userId] === undefined) return [];
+    const { state } = loaded;
+    const others = Object.values(state.members).filter((member) => member.userId !== userId && member.characterId !== null);
+    if (others.length === 0) return [];
+    const t = text.campaign.proxy;
+    const current = state.proxies?.[userId] ?? null;
+    const options = [
+      { label: t.nobody, value: "none", default: current === null },
+      ...others.map((member) => ({ label: t.player({ hero: state.characters[member.characterId ?? ""]?.name ?? "" }).slice(0, 100), value: member.userId, default: member.userId === current })),
+    ].slice(0, 25);
+    return [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(new StringSelectMenuBuilder().setCustomId(campaignCustomId("proxy", record.key.campaignId)).setPlaceholder(t.placeholder).addOptions(options))];
+  }
+
+  private async changeProxy(interaction: StringSelectMenuInteraction, record: CampaignRecord, text: Texts): Promise<void> {
+    await interaction.deferUpdate();
+    const value = interaction.values[0] ?? "none";
+    const result = await this.deps.play.proxy(record.key, interaction.user.id, value === "none" ? null : value, interaction.id);
+    await interaction.editReply({ content: result.kind === "ok" ? (value === "none" ? text.campaign.proxy.cleared : text.campaign.proxy.set) : refusalText(text, result.reason), components: [] });
   }
 
   // The Table rules screen's menus: pick a bundle, pick an option, or pick a

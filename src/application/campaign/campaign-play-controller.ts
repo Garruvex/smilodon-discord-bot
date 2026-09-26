@@ -155,6 +155,11 @@ export class CampaignPlayController {
     return this.perform(key, userId, interactionId, () => ({ kind: "continue" }));
   }
 
+  // Names another player to play this player's hero in fights while they are away, or takes it back (null).
+  public proxy(key: CampaignKey, userId: UserId, proxyUserId: UserId | null, interactionId: string): Promise<PlayResult> {
+    return this.perform(key, userId, interactionId, () => (proxyUserId === null ? { kind: "revokeProxy" } : { kind: "grantProxy", proxyUserId }));
+  }
+
   // Organizer controls; the engine refuses anyone else.
   public pause(key: CampaignKey, userId: UserId, interactionId: string): Promise<PlayResult> {
     return this.perform(key, userId, interactionId, () => ({ kind: "pauseCampaign", reason: "organizer" }));
