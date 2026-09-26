@@ -50,9 +50,10 @@ The milestone’s exit criterion (the party completes the starter encounter with
 
 | Item | State |
 | --- | --- |
-| Journal in More…, a note with a safety pause, skipping content afterwards | Not started. |
+| A note with a safety pause, skipping content afterwards | Not started. The Journal is built (milestone 5), and a safety pause now asks the next narration to be gentle without saying who asked. |
 | Item-for-item exchanges | The engine supports them; only gifts have a button. |
-| Reaction prompts, pre-declared reactions, proxy play for an away player | Not started. No starter spell or feature needs a player's reaction yet, and heroes' opportunity attacks are automatic. |
+| Reaction prompts, pre-declared reactions | Not started. No starter spell or feature needs a player's reaction yet, and heroes' opportunity attacks are automatic. |
+| Proxy play for an away player | **Built for fights** (milestone 6): My Hero has a menu to name another player who takes the away hero's turns; the turn ping goes to them. Not for exploration rounds. |
 | Preview step (to-hit formula, advantage reasons) before a choice commits | Not started. |
 | Custom action in a fight (a creative action mapped by the Planner) | Not started. |
 | Encounter reveal card with monster art | Text reveal only. Art is milestone 4. |
