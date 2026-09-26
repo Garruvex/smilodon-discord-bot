@@ -1,7 +1,7 @@
 import type { HeroView } from "../../../application/campaign/views/campaign-views.js";
 import type { Texts } from "../../../application/i18n/texts.js";
 import { skills as allSkills, type CharacterSheet, type Skill } from "../../../domain/campaign/character/character-sheet.js";
-import { skillKey } from "./text-keys.js";
+import { classLabel, skillKey } from "./text-keys.js";
 import type { Glossary } from "../../../domain/campaign/rules/content-registry.js";
 
 // A hero's public sheet as private text (panel spec, Details): identity, HP
@@ -22,7 +22,7 @@ export function renderHeroSheet(sheet: CharacterSheet, view: HeroView, text: Tex
     })
     .join(", ");
   return [
-    `**${t.sheet.title({ name: sheet.name, class: sheet.className ?? "", level: sheet.level })}**`,
+    `**${t.sheet.title({ name: sheet.name, class: classLabel(text, sheet.className ?? null), level: sheet.level })}**`,
     t.sheet.vitals({ hp: Math.max(0, view.hp), max: view.maxHp, ac: view.armorClass, speed: sheet.speed }),
     t.sheet.abilities({ str: scores.str, dex: scores.dex, con: scores.con, int: scores.int, wis: scores.wis, cha: scores.cha }),
     t.sheet.skills({ skills: skillLine === "" ? none : skillLine }),

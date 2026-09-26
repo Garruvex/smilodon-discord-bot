@@ -4,6 +4,7 @@ import type { Texts } from "../../../application/i18n/texts.js";
 import type { LobbyView } from "../../../application/campaign/views/campaign-views.js";
 import { accents, cardPayload, type CardPayload } from "./card-payload.js";
 import { campaignCustomId } from "./campaign-ids.js";
+import { classLabel } from "./text-keys.js";
 
 const mention = (userId: string): string => `<@${userId}>`;
 
@@ -17,7 +18,7 @@ export function renderLobbyCard(view: LobbyView, text: Texts, campaignId: string
   const language = view.language === "en" ? t.language.en : t.language.zhTW;
   const lines = view.members.map((member) =>
     member.status === "ready" && member.heroName !== null
-      ? t.lobby.memberReady({ user: mention(member.userId), hero: member.heroName, class: member.className ?? "" })
+      ? t.lobby.memberReady({ user: mention(member.userId), hero: member.heroName, class: classLabel(text, member.className) })
       : t.lobby.memberCreating({ user: mention(member.userId) }),
   );
   const status = !view.open

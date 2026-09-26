@@ -25,6 +25,7 @@ import { freeHeroes } from "../../../domain/campaign/lobby/lobby.js";
 import type { Glossary } from "../../../domain/campaign/rules/content-registry.js";
 import type { CampaignAction } from "../campaign/campaign-ids.js";
 import { campaignCustomId, campaignIdPrefix, parseCampaignId } from "../campaign/campaign-ids.js";
+import { classLabel } from "../campaign/text-keys.js";
 import { CampaignCardService } from "../campaign/campaign-card-service.js";
 import { renderHeroSheet } from "../campaign/hero-sheet.js";
 import { refusalText } from "../campaign/refusal-text.js";
@@ -210,7 +211,7 @@ export class CampaignComponentHandler implements ComponentHandler {
     const own = lobby.members.find((member) => member.userId === interaction.user.id)?.heroId ?? null;
     const heroes = document?.heroes ?? [];
     const available = new Set([...freeHeroes(lobby, heroes.map((hero) => hero.id)), ...(own === null ? [] : [own])]);
-    const options = heroes.filter((hero) => available.has(hero.id)).map((hero) => ({ label: text.campaign.pick.option({ hero: hero.name, class: hero.class }).slice(0, 100), value: hero.id, default: hero.id === own }));
+    const options = heroes.filter((hero) => available.has(hero.id)).map((hero) => ({ label: text.campaign.pick.option({ hero: hero.name, class: classLabel(text, hero.class) }).slice(0, 100), value: hero.id, default: hero.id === own }));
     if (options.length === 0) {
       await interaction.editReply({ content: text.campaign.pick.none, components: [] });
       return;
@@ -238,7 +239,7 @@ export class CampaignComponentHandler implements ComponentHandler {
           new StringSelectMenuBuilder()
             .setCustomId(campaignCustomId("newHero", record.key.campaignId))
             .setPlaceholder(text.campaign.pick.prompt)
-            .addOptions(options.map((option) => ({ label: text.campaign.pick.option({ hero: option.name, class: option.className }).slice(0, 100), value: option.id }))),
+            .addOptions(options.map((option) => ({ label: text.campaign.pick.option({ hero: option.name, class: classLabel(text, option.className) }).slice(0, 100), value: option.id }))),
         ),
       ],
     });

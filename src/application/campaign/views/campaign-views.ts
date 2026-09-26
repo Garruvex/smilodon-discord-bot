@@ -29,6 +29,19 @@ export interface HeroView {
   readonly presence: "present" | "away";
   readonly down: boolean;
   readonly fallen: boolean;
+  // What the hero wears and wields (weapons, armor, shields), as content IDs.
+  readonly equipped: readonly string[];
+  // Consumables carried, such as potions, with how many.
+  readonly pack: readonly { readonly id: string; readonly count: number }[];
+  // The party's shared gold and the loot it holds in common.
+  readonly gold: number;
+  readonly stash: readonly string[];
+  // Spellcasters: cantrips, prepared spells, and slots left of each level.
+  readonly cantrips: readonly string[];
+  readonly prepared: readonly string[];
+  readonly slots: readonly { readonly level: number; readonly left: number; readonly max: number }[];
+  // Limited-use features (Second Wind) with uses left.
+  readonly uses: readonly { readonly id: string; readonly left: number; readonly max: number }[];
 }
 
 export type PanelMode =
@@ -126,6 +139,31 @@ export function buildHeroView(state: CampaignState, sheet: CharacterSheet, conte
   const hp = fighter?.hp ?? state.heroStatus[sheet.id]?.hp ?? sheet.maxHp;
   const armorClass = fighter?.armorClass ?? armorClassFrom(heroTraits(sheet, content), abilityModifier(sheet.abilityScores.dex));
   const member = state.members[sheet.ownerUserId];
+  const resources = fighter?.resources ?? state.heroStatus[sheet.id]?.resources;
+
+  const equipped: string[] = [];
+  const pack = new Map<string, number>();
+  for (const id of sheet.equipment) {
+    const definition = content.find(id);
+    if (definition?.kind === "item" && definition.itemType === "potion") pack.set(id, (pack.get(id) ?? 0) + 1);
+    else equipped.push(id);
+  }
+  const cantrips: string[] = [];
+  const prepared: string[] = [];
+  for (const id of sheet.spellcasting?.spells ?? []) {
+    const definition = content.find(id);
+    (definition?.kind === "spell" && definition.level === 0 ? cantrips : prepared).push(id);
+  }
+  const slots = Object.entries(sheet.spellcasting?.slots ?? {})
+    .map(([level, max]) => ({ level: Number(level), left: Math.min(max, resources?.spellSlots[Number(level)] ?? max), max }))
+    .filter((slot) => slot.max > 0)
+    .sort((a, b) => a.level - b.level);
+  const uses = sheet.features.flatMap((id) => {
+    const definition = content.find(id);
+    if (definition?.kind !== "feature" || definition.action === null) return [];
+    const max = definition.action.uses.count;
+    return [{ id, left: Math.min(max, resources?.featureUses[id] ?? max), max }];
+  });
   return {
     characterId: sheet.id,
     ownerUserId: sheet.ownerUserId,
@@ -139,6 +177,14 @@ export function buildHeroView(state: CampaignState, sheet: CharacterSheet, conte
     presence: member?.availability ?? "away",
     down: hp <= 0,
     fallen: isFallen(state, sheet.id),
+    equipped,
+    pack: [...pack].map(([id, count]) => ({ id, count })),
+    gold: state.gold,
+    stash: state.stash,
+    cantrips,
+    prepared,
+    slots,
+    uses,
   };
 }
 

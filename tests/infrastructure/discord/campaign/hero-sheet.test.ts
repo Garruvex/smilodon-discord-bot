@@ -26,7 +26,7 @@ describe("the hero sheet", () => {
   it("speaks Traditional Chinese with English ability abbreviations", () => {
     const view = buildHeroView(newCampaign(), sheet, content);
     const text = renderHeroSheet(sheet, view, texts["zh-TW"], zhTwSrd51Glossary);
-    expect(text).toContain("Mira · Rogue · 1 級");
+    expect(text).toContain("Mira · 盜賊 · 1 級");
     expect(text).toContain("敏捷 DEX 16");
     expect(text).toContain("隱匿（專精）");
   });
