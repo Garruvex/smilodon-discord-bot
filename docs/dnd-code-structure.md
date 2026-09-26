@@ -49,7 +49,8 @@ src/infrastructure/discord/campaign/
 src/infrastructure/persistence/campaign/
   sqlite-*.ts  postgres-*.ts      repository and store adapters, one unit of work per backend
 
-src/infrastructure/chat/          existing providers gain CampaignPlanner/Narrator/Chronicler implementations
+src/infrastructure/campaign/llm/   StructuredModelClient adapters (OpenAI Responses, OpenAI-compatible, Gemini);
+                                  prompts, schemas, and parsing stay provider-neutral in application/campaign/dm/llm-dm.ts
 src/application/i18n/campaign/    UI strings and glossaries (en, zh-TW)
 src/scripts/campaign-harness.ts   CLI entry for the headless harness
 ```
@@ -91,7 +92,7 @@ type EngineRequest =
 Rules:
 
 - `CampaignCommand` and `CampaignEvent` are **discriminated unions**. `decide` and `evolve` use exhaustive `switch` with a `never` check, so adding a command or event type without handling it is a compile error.
-- **Randomness never enters the domain.** When resolution needs dice, `decide` emits a `roll` request with a stable `RollId`. The application rolls with the `RandomSource` port, records a `RollRecorded` event, and re-runs the continuation command, which reads the saved result from `ctx.rolls`. Retries find the saved roll and never reroll.
+- **Randomness never enters the domain.** When resolution needs dice, `decide` emits a `roll` request with a stable `RollId`. The roll worker rolls with the `RandomSource` port, saves the result before anything else, and sends it back in a `recordRoll` command, which the engine checks against the saved check spec. Retries re-deliver the saved roll and never reroll.
 - **Time never enters the domain implicitly.** `now` is an input, which keeps timers and deadlines testable.
 - Every event carries `campaignId`, `sequence`, `causationId` (command or event that caused it), `actor`, and `rulesRevision`.
 - `evolve` is also used to rebuild state in tests and the harness from an event list, which is how golden scenario tests work.

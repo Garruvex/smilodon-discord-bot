@@ -25,8 +25,7 @@ function options(language: CampaignLanguage, overrides: Partial<HarnessOptions> 
   return {
     adventure: starter[language],
     players: defaultHarnessPlayers,
-    planner: new RuleBasedPlanner(),
-    narrator: new TemplateNarrator(),
+    dm: () => ({ planner: new RuleBasedPlanner(), narrator: new TemplateNarrator() }),
     random: new SeededRandomSource(3),
     rulesets: new RulesetCatalog([content]),
     rulesetPin: { rulesetId: content.rulesetId, rulesetVersion: content.version, houseRules: {} },
@@ -121,7 +120,7 @@ describe("runHarness", () => {
   it("catches a narrator that leaks a secret or drifts into Simplified characters", async () => {
     const secret = starter["zh-TW"].bible.npcs[0]?.secret ?? "";
     const leaky = { narrate: (): Promise<{ text: string }> => Promise.resolve({ text: `这是秘密：${secret}` }) };
-    const report = summarizeRun(await runHarness(options("zh-TW", { narrator: leaky, rounds: 2 })));
+    const report = summarizeRun(await runHarness(options("zh-TW", { dm: () => ({ planner: new RuleBasedPlanner(), narrator: leaky }), rounds: 2 })));
     expect(report.leaks).toEqual([secret]);
     expect(report.simplifiedCharacters).toEqual(["这"]);
   });

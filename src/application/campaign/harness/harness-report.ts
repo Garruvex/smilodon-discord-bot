@@ -13,6 +13,11 @@ export interface HarnessReport {
   readonly plannerFailures: number;
   readonly latency: Readonly<Record<ModelCall["call"], { readonly p50: number; readonly p95: number; readonly calls: number }>>;
   readonly maxContextTokens: number;
+  readonly usage: Readonly<Record<ModelCall["call"], TokenTotals>>;
+  readonly models: readonly string[];
+  readonly promptVersions: readonly string[];
+  // Null when no prices were given or no call reported usage.
+  readonly cost: { readonly total: number; readonly perRound: number; readonly perLiveHour: number } | null;
   // Exact secret text found in anything the Narrator received or wrote.
   readonly leaks: readonly string[];
   // zh-TW only: Simplified-only characters found in narration.
@@ -25,7 +30,24 @@ const simplifiedOnly = new Set(
   "这们说过还进对时会个为学发与问门马见长开关头书东车国边让从气乐实现点应经没样专业电话饭钱铁银错间闻听语谁请读写买卖卫报场张强总战斗声画区医岁归兴举级极杀际陈陆阴阳龙鸟鱼觉认识钟仅决刘纪约红细终织给绝统续罗脑药虽询贵费资赵选遗邮释钥锁队阶险随难饮馆驾验鲁鲜".split(""),
 );
 
-export function summarizeRun(run: HarnessRun): HarnessReport {
+export interface TokenTotals {
+  readonly calls: number;
+  readonly inputTokens: number;
+  readonly cachedInputTokens: number;
+  readonly outputTokens: number;
+}
+
+// USD per million tokens, for the model used in the run.
+export interface TokenPricing {
+  readonly input: number;
+  readonly cachedInput: number;
+  readonly output: number;
+}
+
+// Plan §6: a Live session plays about 20-30 exploration rounds an hour.
+export const liveRoundsPerHour = 25;
+
+export function summarizeRun(run: HarnessRun, pricing?: TokenPricing): HarnessReport {
   const events = run.events.map((envelope) => envelope.event);
   const rounds = playedRounds(events);
   const names = run.finalState.characters;
@@ -66,6 +88,10 @@ export function summarizeRun(run: HarnessRun): HarnessReport {
     plannerFailures: events.filter((event) => event.kind === "plannerFailed").length,
     latency: { planner: latencyOf(run.calls, "planner"), narrator: latencyOf(run.calls, "narrator") },
     maxContextTokens: Math.max(0, ...run.calls.map((call) => call.contextTokens)),
+    usage: { planner: tokenTotals(run.calls, "planner"), narrator: tokenTotals(run.calls, "narrator") },
+    models: [...new Set(run.calls.flatMap((call) => (call.model === null ? [] : [call.model])))],
+    promptVersions: [...new Set(run.calls.flatMap((call) => (call.promptVersion === null ? [] : [call.promptVersion])))],
+    cost: costOf(run.calls, pricing, rounds.length),
     leaks,
     simplifiedCharacters,
   };
@@ -86,6 +112,19 @@ export function renderReport(run: HarnessRun, report: HarnessReport): string {
   lines.push(`Planner failures: ${report.plannerFailures}. Largest context: ~${report.maxContextTokens} tokens.`);
   for (const [call, stats] of Object.entries(report.latency)) {
     lines.push(`${call}: ${stats.calls} calls, p50 ${stats.p50.toFixed(0)} ms, p95 ${stats.p95.toFixed(0)} ms.`);
+  }
+  for (const [call, totals] of Object.entries(report.usage)) {
+    if (totals.calls === 0) continue;
+    const cached = totals.inputTokens === 0 ? 0 : (100 * totals.cachedInputTokens) / totals.inputTokens;
+    lines.push(
+      `${call} tokens: ${totals.inputTokens} in (${cached.toFixed(0)}% cached), ${totals.outputTokens} out over ${totals.calls} calls.`,
+    );
+  }
+  if (report.models.length > 0) lines.push(`Models: ${report.models.join(", ")}; prompts: ${report.promptVersions.join(", ")}.`);
+  if (report.cost !== null) {
+    lines.push(
+      `Estimated cost: ${report.cost.total.toFixed(4)} for this run, ${report.cost.perRound.toFixed(4)} per round, about ${report.cost.perLiveHour.toFixed(2)} per Live hour (${liveRoundsPerHour} rounds).`,
+    );
   }
   const { lengths, unit } = report.narration;
   const average = lengths.length === 0 ? 0 : lengths.reduce((sum, value) => sum + value, 0) / lengths.length;
@@ -145,6 +184,27 @@ function secretTexts(run: HarnessRun): readonly string[] {
     entry.facts.filter((fact) => fact.visibility === "secret").map((fact) => fact.text),
   );
   return [bible.dmOverview, ...bible.scenes.map((scene) => scene.dmNotes), ...bible.npcs.map((npc) => npc.secret), ...ledgerSecrets];
+}
+
+function tokenTotals(calls: readonly ModelCall[], call: ModelCall["call"]): TokenTotals {
+  const withUsage = calls.filter((entry) => entry.call === call && entry.usage !== null);
+  return {
+    calls: withUsage.length,
+    inputTokens: withUsage.reduce((sum, entry) => sum + (entry.usage?.inputTokens ?? 0), 0),
+    cachedInputTokens: withUsage.reduce((sum, entry) => sum + (entry.usage?.cachedInputTokens ?? 0), 0),
+    outputTokens: withUsage.reduce((sum, entry) => sum + (entry.usage?.outputTokens ?? 0), 0),
+  };
+}
+
+function costOf(calls: readonly ModelCall[], pricing: TokenPricing | undefined, roundsPlayed: number): HarnessReport["cost"] {
+  const withUsage = calls.flatMap((entry) => (entry.usage === null ? [] : [entry.usage]));
+  if (pricing === undefined || withUsage.length === 0 || roundsPlayed === 0) return null;
+  const total = withUsage.reduce((sum, usage) => {
+    const uncached = Math.max(0, usage.inputTokens - usage.cachedInputTokens);
+    return sum + (uncached * pricing.input + usage.cachedInputTokens * pricing.cachedInput + usage.outputTokens * pricing.output) / 1_000_000;
+  }, 0);
+  const perRound = total / roundsPlayed;
+  return { total, perRound, perLiveHour: perRound * liveRoundsPerHour };
 }
 
 function latencyOf(calls: readonly ModelCall[], call: ModelCall["call"]): { p50: number; p95: number; calls: number } {

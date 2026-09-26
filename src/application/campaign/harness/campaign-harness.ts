@@ -8,7 +8,9 @@ import type { CampaignState, MemberState, Pacing } from "../../../domain/campaig
 import type { AdventureDocument } from "../adventures/adventure-document.js";
 import { CampaignCommandBus } from "../campaign-command-bus.js";
 import type { CampaignKey, CampaignUnitOfWork, EventEnvelope, StoredCampaign } from "../ports/campaign-store.js";
+import type { ModelCallObserver } from "../dm/llm-dm.js";
 import type { CampaignNarrator, CampaignPlanner, NarratorRequest, PlannerRequest } from "../ports/dm-ports.js";
+import type { ModelUsage } from "../ports/structured-model-client.js";
 import type { RulesetCatalog } from "../rules/ruleset-catalog.js";
 import { ManualClock } from "../time/manual-clock.js";
 import { DmJobWorker } from "../workers/dm-job-worker.js";
@@ -32,8 +34,9 @@ export interface HarnessPlayer {
 export interface HarnessOptions {
   readonly adventure: AdventureDocument;
   readonly players: readonly HarnessPlayer[];
-  readonly planner: CampaignPlanner;
-  readonly narrator: CampaignNarrator;
+  // Builds the DM for this run. Model-backed DMs report each call to
+  // `observe` so the report can include tokens and models.
+  readonly dm: (observe: ModelCallObserver) => { readonly planner: CampaignPlanner; readonly narrator: CampaignNarrator };
   readonly random: RandomSource;
   readonly rulesets: RulesetCatalog;
   readonly rulesetPin: StoredCampaign["ruleset"];
@@ -51,6 +54,9 @@ export interface ModelCall {
   readonly milliseconds: number;
   readonly contextTokens: number;
   readonly failed: boolean;
+  readonly model: string | null;
+  readonly promptVersion: string | null;
+  readonly usage: ModelUsage | null;
 }
 
 export interface HarnessRun {
@@ -77,16 +83,25 @@ export async function runHarness(options: HarnessOptions): Promise<HarnessRun> {
   const clock = new ManualClock(Date.UTC(2026, 0, 1));
   const measure = options.measure ?? ((): number => performance.now());
   const calls: ModelCall[] = [];
+  let lastObserved: Parameters<ModelCallObserver>[0] | null = null;
+  const dmParts = options.dm((observed) => {
+    lastObserved = observed;
+  });
+  const record = (entry: Pick<ModelCall, "call" | "roundNumber" | "milliseconds" | "contextTokens" | "failed">): void => {
+    const observed = lastObserved;
+    lastObserved = null;
+    calls.push({ ...entry, model: observed?.model ?? null, promptVersion: observed?.promptVersion ?? null, usage: observed?.usage ?? null });
+  };
   const narratorRequests: NarratorRequest[] = [];
   const bus = new CampaignCommandBus({ unitOfWork, rulesets: options.rulesets, clock });
 
   const planner: CampaignPlanner = {
-    plan: (request: PlannerRequest) => timed(calls, measure, "planner", request.roundNumber, request.context.estimatedTokens, () => options.planner.plan(request)),
+    plan: (request: PlannerRequest) => timed(record, measure, "planner", request.roundNumber, request.context.estimatedTokens, () => dmParts.planner.plan(request)),
   };
   const narrator: CampaignNarrator = {
     narrate: (request: NarratorRequest) => {
       narratorRequests.push(request);
-      return timed(calls, measure, "narrator", request.roundNumber, request.context.estimatedTokens, () => options.narrator.narrate(request));
+      return timed(record, measure, "narrator", request.roundNumber, request.context.estimatedTokens, () => dmParts.narrator.narrate(request));
     },
   };
   const dm = new DmJobWorker({
@@ -235,7 +250,7 @@ function initialState(options: HarnessOptions, pacing: Pacing): CampaignState {
 }
 
 async function timed<T>(
-  calls: ModelCall[],
+  record: (entry: Pick<ModelCall, "call" | "roundNumber" | "milliseconds" | "contextTokens" | "failed">) => void,
   measure: () => number,
   call: ModelCall["call"],
   roundNumber: number,
@@ -245,10 +260,10 @@ async function timed<T>(
   const started = measure();
   try {
     const result = await work();
-    calls.push({ call, roundNumber, milliseconds: measure() - started, contextTokens, failed: false });
+    record({ call, roundNumber, milliseconds: measure() - started, contextTokens, failed: false });
     return result;
   } catch (error) {
-    calls.push({ call, roundNumber, milliseconds: measure() - started, contextTokens, failed: true });
+    record({ call, roundNumber, milliseconds: measure() - started, contextTokens, failed: true });
     throw error;
   }
 }
