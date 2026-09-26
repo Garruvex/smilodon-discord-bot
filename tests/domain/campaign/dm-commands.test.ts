@@ -119,12 +119,42 @@ describe("the opening", () => {
     expect(run(begun(), alex, { kind: "openRound" }).events).toEqual([]);
   });
 
-  it("records the opening, delivers it, and opens the first round", () => {
+  it("records the opening and delivers it, then waits for the table to be ready", () => {
     const step = run(begun(), system, { kind: "recordOpening", text: " Welcome to the inn. What do you do? " });
-    expect(kinds(step.events)).toEqual(["openingRecorded", "roundOpened"]);
+    expect(kinds(step.events)).toEqual(["openingRecorded"]);
     expect(step.events[0]).toEqual({ kind: "openingRecorded", text: "Welcome to the inn. What do you do?" });
     expect(step.requests[0]).toEqual({ kind: "deliver", delivery: { kind: "opening" } });
-    expect(step.state).toMatchObject({ opening: "done", round: { number: 1, status: "collecting" } });
+    expect(step.state).toMatchObject({ opening: "waiting", openingReady: [], round: null });
+  });
+
+  it("opens the first round when the last present player is ready", () => {
+    let state = run(begun(), system, { kind: "recordOpening", text: "Welcome." }).state;
+    const first = run(state, alex, { kind: "ready" });
+    expect(kinds(first.events)).toEqual(["memberReadied"]);
+    expect(first.state.round).toBeNull();
+    state = first.state;
+    expect(run(state, alex, { kind: "ready" }).events).toEqual([]);
+    const last = run(state, jamie, { kind: "ready" });
+    expect(kinds(last.events)).toEqual(["memberReadied", "tableReady", "roundOpened"]);
+    expect(last.state).toMatchObject({ opening: "done", round: { number: 1, status: "collecting" } });
+  });
+
+  it("does not wait for a player who is away, and opens when the rest are ready", () => {
+    let state = run(begun(), system, { kind: "recordOpening", text: "Welcome." }).state;
+    state = run(state, alex, { kind: "ready" }).state;
+    const away = run(state, jamie, { kind: "markAway", userId: "u-jamie" });
+    expect(kinds(away.events)).toContain("tableReady");
+    expect(away.state.round).toMatchObject({ number: 1 });
+  });
+
+  it("lets the organizer begin without everyone, and refuses Ready at other times", () => {
+    const told = run(begun(), system, { kind: "recordOpening", text: "Welcome." }).state;
+    expect(reject(told, alex, { kind: "beginPlay" })).toEqual({ code: "notOrganizer" });
+    const began = run(told, organizer, { kind: "beginPlay" });
+    expect(kinds(began.events)).toEqual(["tableReady", "roundOpened"]);
+    expect(reject(began.state, alex, { kind: "ready" })).toEqual({ code: "notAwaitingReady" });
+    expect(reject(begun(), alex, { kind: "ready" })).toEqual({ code: "notAwaitingReady" });
+    expect(reject(told, { kind: "user", userId: "u-stranger" }, { kind: "ready" })).toEqual({ code: "notMember" });
   });
 
   it("refuses an opening nobody asked for, twice, from a player, or empty", () => {
@@ -135,13 +165,14 @@ describe("the opening", () => {
     expect(reject(begun(), system, { kind: "recordOpening", text: "  " })).toEqual({ code: "emptyNarration" });
   });
 
-  it("keeps an opening that arrives while play is paused, and continue opens the round", () => {
+  it("keeps an opening that arrives while play is paused; players get ready once it resumes", () => {
     const paused = run(begun(), organizer, { kind: "pauseCampaign", reason: "organizer" }).state;
     const told = run(paused, system, { kind: "recordOpening", text: "The inn is warm." });
     expect(kinds(told.events)).toEqual(["openingRecorded"]);
     expect(told.state.round).toBeNull();
+    expect(reject(told.state, alex, { kind: "ready" })).toEqual({ code: "campaignWaiting" });
     const resumed = run(told.state, organizer, { kind: "continue" });
-    expect(resumed.state.round).toMatchObject({ number: 1, status: "collecting" });
+    expect(resumed.state).toMatchObject({ opening: "waiting", round: null });
   });
 
   it("does not open a round when play continues before the opening has arrived", () => {
@@ -149,6 +180,6 @@ describe("the opening", () => {
     const resumed = run(paused, organizer, { kind: "continue" });
     expect(resumed.state.round).toBeNull();
     const told = run(resumed.state, system, { kind: "recordOpening", text: "The inn is warm." });
-    expect(told.state.round).toMatchObject({ number: 1 });
+    expect(told.state).toMatchObject({ opening: "waiting", round: null });
   });
 });

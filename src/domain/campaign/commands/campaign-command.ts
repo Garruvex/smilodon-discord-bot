@@ -19,6 +19,10 @@ export type CampaignCommand =
   // opens once it is on the table.
   | { readonly kind: "beginAdventure" }
   | { readonly kind: "recordOpening"; readonly text: string }
+  // A player is ready for the first round; it opens when every present player is.
+  | { readonly kind: "ready" }
+  // The organizer opens the first round without waiting for everyone.
+  | { readonly kind: "beginPlay" }
   | { readonly kind: "submitAction"; readonly characterId: CharacterId; readonly text: string }
   | { readonly kind: "pass"; readonly characterId: CharacterId }
   | { readonly kind: "closeRound" }

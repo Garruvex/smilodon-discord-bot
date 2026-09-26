@@ -20,6 +20,9 @@ export const campaignActions = [
   "back",
   "continue",
   "details",
+  "ready",
+  "begin",
+  "gear",
 ] as const;
 export type CampaignAction = (typeof campaignActions)[number];
 

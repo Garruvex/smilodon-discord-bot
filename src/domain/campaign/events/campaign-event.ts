@@ -55,6 +55,8 @@ export type CampaignEvent =
   | { readonly kind: "narrationRecorded"; readonly roundNumber: number; readonly text: string }
   | { readonly kind: "adventureBegan" }
   | { readonly kind: "openingRecorded"; readonly text: string }
+  | { readonly kind: "memberReadied"; readonly userId: UserId }
+  | { readonly kind: "tableReady" }
   | {
       readonly kind: "ledgerFactRecorded";
       readonly entityId: string;

@@ -46,6 +46,10 @@ function fakeInteraction(input: { customId: string; userId: string; messageId?: 
       sent.push({ kind: "edit", payload });
       return Promise.resolve();
     },
+    deferUpdate: (): Promise<void> => {
+      sent.push({ kind: "defer", payload: undefined });
+      return Promise.resolve();
+    },
     update: (payload: unknown): Promise<void> => {
       sent.push({ kind: "update", payload });
       return Promise.resolve();
@@ -253,3 +257,60 @@ describe("a fallen hero", () => {
     expect(state?.members["u-b"]?.characterId).toBe(`${heroes[2]?.id}-1`);
   });
 });
+
+describe("getting ready and gear", () => {
+  const componentsOf = (sent: readonly Sent[]): unknown[] => {
+    const last = [...sent].reverse().find((entry) => entry.kind === "edit");
+    return ((last?.payload as { components?: unknown[] } | undefined)?.components ?? []);
+  };
+  const optionValues = (sent: readonly Sent[]): string[] =>
+    componentsOf(sent).flatMap((row) => {
+      const json = (row as { toJSON(): { components: { options?: { value: string; label: string }[] }[] } }).toJSON();
+      return json.components.flatMap((component) => (component.options ?? []).map((option) => `${option.value}=${option.label}`));
+    });
+
+  it("waits for the Ready button after the opening, and opens round 1 when everyone has pressed it", async () => {
+    const t = await harness();
+    await t.press("join", "u-org");
+    await t.select("u-org", heroes[0]?.id ?? "");
+    await t.press("start", "u-org");
+    await t.r.bus.execute(t.key, { kind: "recordOpening", text: "Welcome." }, { commandId: "op", actor: { kind: "system" } });
+    await t.cards.sync(t.key);
+    expect(flatText(t.messages.live(adventure))).toContain("Getting ready");
+
+    expect(contentOf(await t.press("begin", "u-stranger"))).toBe("Only the organizer can do that.");
+    expect(contentOf(await t.press("ready", "u-org"))).toBe("You are ready. The adventure begins when everyone is.");
+    const state = (await t.r.store.transaction((tx) => tx.loadCampaign(t.key)))?.state;
+    expect(state).toMatchObject({ opening: "done", round: { number: 1, status: "collecting" } });
+    await t.cards.sync(t.key);
+    expect(contentOf(await t.press("ready", "u-org"))).toBe("The table is not waiting for anyone to get ready.");
+  });
+
+  it("offers armor and shield controls on My Hero, and applies the choice", async () => {
+    const t = await harness();
+    await started(t);
+    const sheet = await t.press("myHero", "u-org");
+    expect(optionValues(sheet)).toEqual(["remove|item:chain-mail=Take off Chain Mail", "remove|item:shield=Take off Shield"]);
+
+    const { interaction, sent } = fakeInteraction({ customId: `dnd:gear:${t.key.campaignId}`, userId: "u-org", values: ["remove|item:chain-mail"], kind: "select" });
+    await t.handler.execute({ interaction, logger: quiet as never });
+    expect(contentOf(sent)).toContain("Done. Your hero card shows what you wear.");
+    expect(optionValues(sent)).toEqual(["wear|item:chain-mail=Put on Chain Mail", "remove|item:shield=Take off Shield"]);
+    expect((await t.r.store.transaction((tx) => tx.loadCampaign(t.key)))?.state.characters[heroes[0]?.id ?? ""]?.worn).toEqual(["item:shield"]);
+  });
+
+  it("refuses a forged gear choice, or gear that is not there, privately", async () => {
+    const t = await harness();
+    await started(t);
+    const forged = fakeInteraction({ customId: `dnd:gear:${t.key.campaignId}`, userId: "u-org", values: ["remove|not-an-item"], kind: "select" });
+    await t.handler.execute({ interaction: forged.interaction, logger: quiet as never });
+    expect(contentOf(forged.sent)).toBe("That is not possible right now.");
+    const missing = fakeInteraction({ customId: `dnd:gear:${t.key.campaignId}`, userId: "u-org", values: ["wear|item:shortbow"], kind: "select" });
+    await t.handler.execute({ interaction: missing.interaction, logger: quiet as never });
+    expect(contentOf(missing.sent)).not.toContain("Done");
+  });
+});
+
+function flatText(messages: readonly { payload: unknown }[]): string {
+  return messages.map((message) => JSON.stringify((message.payload as { toJSON?: () => unknown }).toJSON?.() ?? message.payload)).join(" ");
+}

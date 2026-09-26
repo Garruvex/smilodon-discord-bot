@@ -90,6 +90,10 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     case "adventureBegan":
       return { ...state, opening: "pending" };
     case "openingRecorded":
+      return { ...state, opening: "waiting", openingReady: [] };
+    case "memberReadied":
+      return { ...state, openingReady: [...(state.openingReady ?? []), event.userId] };
+    case "tableReady":
       return { ...state, opening: "done" };
     case "narrationRecorded":
       return { ...state, lastNarratedRound: Math.max(state.lastNarratedRound, event.roundNumber) };

@@ -7,6 +7,7 @@ import { accents, cardPayload, type CardPayload } from "./card-payload.js";
 
 const accentFor: Readonly<Record<PanelMode, number>> = {
   opening: accents.amber,
+  readyCheck: accents.amber,
   collecting: accents.green,
   planning: accents.amber,
   awaitingRolls: accents.amber,
@@ -22,6 +23,7 @@ const accentFor: Readonly<Record<PanelMode, number>> = {
 // again on the server, and a click that cannot apply gets a private reply.
 const controlsFor: Readonly<Record<PanelMode, readonly CampaignAction[]>> = {
   opening: ["myHero", "away"],
+  readyCheck: ["ready", "begin", "myHero", "away"],
   collecting: ["act", "pass", "myHero", "away"],
   planning: ["myHero", "away"],
   awaitingRolls: ["roll", "myHero", "away"],
@@ -63,6 +65,8 @@ function statusLine(view: PanelView, text: Texts): string {
       return `${t.collecting} ${view.closesAt === null ? t.noTimer : t.closes({ when: relative(view.closesAt) })}`;
     case "opening":
       return t.opening;
+    case "readyCheck":
+      return t.readyCheck;
     case "planning":
       return t.planning;
     case "awaitingRolls":
@@ -107,8 +111,10 @@ function controlButton(action: CampaignAction, campaignId: string, text: Texts, 
     away: t.away,
     back: t.back,
     continue: t.continue,
+    ready: t.ready,
+    begin: t.begin,
   };
-  const style = action === "act" || action === "roll" || action === "continue" ? ButtonStyle.Primary : ButtonStyle.Secondary;
+  const style = action === "act" || action === "roll" || action === "continue" || action === "ready" ? ButtonStyle.Primary : ButtonStyle.Secondary;
   // Roll is enabled while a check waits; the click still finds the clicker's own.
   const disabled = action === "roll" && view.pendingRolls.length === 0;
   return new ButtonBuilder().setCustomId(campaignCustomId(action, campaignId)).setLabel(labels[action] ?? action).setStyle(style).setDisabled(disabled);

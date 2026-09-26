@@ -4,7 +4,7 @@ import { beginEncounter } from "./combat/combat-flow.js";
 import type { Decision } from "./decision.js";
 import { maxNarrationLength } from "./narration-limits.js";
 import type { Rejection } from "./rejection.js";
-import { openRound } from "./rounds.js";
+import { finishReadyCheck, openRound } from "./rounds.js";
 
 export const maxLedgerFactLength = 300;
 
@@ -43,9 +43,8 @@ export function beginAdventure(decision: Decision): Rejection | null {
   return null;
 }
 
-// Saves the opening, then opens the first round if anyone is present. An
-// opening that arrives while the table is waiting is kept; continue opens
-// the round.
+// Saves the opening. The first round opens once every present player has
+// pressed Ready (or the organizer starts it), so nobody misses the scene.
 export function recordOpening(decision: Decision, text: string): Rejection | null {
   const { state, ctx } = decision;
   if (ctx.actor.kind !== "system") return { code: "systemOnly" };
@@ -54,8 +53,33 @@ export function recordOpening(decision: Decision, text: string): Rejection | nul
   if (state.opening !== "pending") return { code: "staleNarration" };
   decision.emit({ kind: "openingRecorded", text: trimmed });
   decision.request({ kind: "deliver", delivery: { kind: "opening" } });
-  if (decision.state.status !== "active") return null;
-  return openRound(decision);
+  if (decision.state.status === "active") finishReadyCheck(decision);
+  return null;
+}
+
+// A present player is ready for round 1.
+export function markReady(decision: Decision): Rejection | null {
+  const { state, ctx } = decision;
+  if (ctx.actor.kind !== "user") return { code: "notMember" };
+  const member = state.members[ctx.actor.userId];
+  if (member === undefined) return { code: "notMember" };
+  if (member.availability === "away") return { code: "memberAway" };
+  if (state.status === "waitingForPlayers") return { code: "campaignWaiting" };
+  if (state.opening !== "waiting") return { code: "notAwaitingReady" };
+  if (!(state.openingReady ?? []).includes(member.userId)) decision.emit({ kind: "memberReadied", userId: member.userId });
+  finishReadyCheck(decision);
+  return null;
+}
+
+// The organizer does not wait for the rest of the table.
+export function beginPlay(decision: Decision): Rejection | null {
+  const { state, ctx } = decision;
+  if (ctx.actor.kind !== "user" || ctx.actor.userId !== state.organizerId) return { code: "notOrganizer" };
+  if (state.status === "waitingForPlayers") return { code: "campaignWaiting" };
+  if (state.opening !== "waiting") return { code: "notAwaitingReady" };
+  decision.emit({ kind: "tableReady" });
+  openRound(decision, { skipActorCheck: true });
+  return null;
 }
 
 // Saves the Narrator's text for a resolved round, then starts the fight the

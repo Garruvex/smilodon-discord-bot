@@ -47,6 +47,25 @@ describe("the adventure panel", () => {
     expect(labels({ ...collecting, mode: "archived" })).toEqual([]);
   });
 
+  it("asks everyone to press Ready after the opening, showing who has", () => {
+    const view: PanelView = {
+      ...collecting,
+      mode: "readyCheck",
+      roundNumber: null,
+      closesAt: null,
+      roster: [
+        { characterId: "c-mira", userId: "1", heroName: "Mira", status: "ready" },
+        { characterId: "c-borin", userId: "2", heroName: "Borin", status: "thinking" },
+      ],
+    };
+    const card = flatten(renderAdventurePanel(view, texts.en, "camp"));
+    expect(card.text).toContain("Getting ready");
+    expect(card.text).toContain("Press Ready");
+    expect(card.text).toContain("Mira ✓ Ready · Borin … Thinking");
+    expect(card.buttons.map((button) => button.id)).toEqual(["dnd:ready:camp", "dnd:begin:camp", "dnd:myHero:camp", "dnd:away:camp"]);
+    expect(labels(view, "zh-TW")).toEqual(["準備好了", "立即開始", "我的英雄", "離開"]);
+  });
+
   it("explains a pause and a restart pause in words, on a gray card", () => {
     const paused = flatten(renderAdventurePanel({ ...collecting, mode: "paused" }, texts.en, "camp"));
     expect(paused.accent).toBe(accents.gray);

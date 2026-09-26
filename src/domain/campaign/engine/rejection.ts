@@ -22,6 +22,7 @@ export type Rejection =
   | { readonly code: "rollMismatch" }
   | { readonly code: "notPlanning" }
   | { readonly code: "staleNarration" }
+  | { readonly code: "notAwaitingReady" }
   | { readonly code: "emptyNarration" }
   | { readonly code: "invalidLedgerFact"; readonly problem: string }
   | { readonly code: "canonicalNameLocked"; readonly canonicalName: string }

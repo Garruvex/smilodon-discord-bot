@@ -25,6 +25,9 @@ import { freeHeroes } from "../../../domain/campaign/lobby/lobby.js";
 import type { Glossary } from "../../../domain/campaign/rules/content-registry.js";
 import type { CampaignAction } from "../campaign/campaign-ids.js";
 import { campaignCustomId, campaignIdPrefix, parseCampaignId } from "../campaign/campaign-ids.js";
+import type { ContentId } from "../../../domain/campaign/rules/content-id.js";
+import { isWorn } from "../../../domain/campaign/combat/combatant-profile.js";
+import { isFallen } from "../../../domain/campaign/state/campaign-state.js";
 import { classLabel } from "../campaign/text-keys.js";
 import { CampaignCardService } from "../campaign/campaign-card-service.js";
 import { renderHeroSheet } from "../campaign/hero-sheet.js";
@@ -59,6 +62,8 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "away":
     case "back":
     case "continue":
+    case "ready":
+    case "begin":
       return ["adventure"];
     case "myHero":
       return ["adventure", "party"];
@@ -66,6 +71,7 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
       return [`hero:${argument ?? ""}`];
     case "heroChoice":
     case "newHero":
+    case "gear":
       return [];
   }
 }
@@ -96,6 +102,7 @@ export class CampaignComponentHandler implements ComponentHandler {
 
     if (interaction.isStringSelectMenu()) {
       if (parsed.action === "newHero") await this.joinReplacement(interaction, record, text);
+      else if (parsed.action === "gear") await this.changeGear(interaction, record, text);
       else await this.chooseHero(interaction, record, text);
       return;
     }
@@ -150,6 +157,10 @@ export class CampaignComponentHandler implements ComponentHandler {
         return void (await this.outcome(await this.deps.play.back(key, userId, interaction.id), text.campaign.reply.back, reply, text));
       case "continue":
         return void (await this.outcome(await this.deps.play.continue(key, userId, interaction.id), text.campaign.reply.continued, reply, text));
+      case "ready":
+        return void (await this.outcome(await this.deps.play.ready(key, userId, interaction.id), text.campaign.reply.ready, reply, text));
+      case "begin":
+        return void (await this.outcome(await this.deps.play.begin(key, userId, interaction.id), text.campaign.reply.began, reply, text));
       case "myHero":
       case "details": {
         // A player whose hero fell is offered a new one instead of a sheet.
@@ -158,7 +169,10 @@ export class CampaignComponentHandler implements ComponentHandler {
           await this.showReplacementPicker(interaction, record, text, options);
           return;
         }
-        await reply(await this.heroSheet(record, text, parsed.action === "details" ? parsed.argument : null, userId));
+        const sheet = await this.heroSheet(record, text, parsed.action === "details" ? parsed.argument : null, userId);
+        // Only the player's own hero gets the gear controls.
+        const gear = parsed.action === "myHero" ? await this.gearControls(record, text, userId) : [];
+        await interaction.editReply({ content: sheet, components: gear });
         return;
       }
       default:
@@ -269,6 +283,54 @@ export class CampaignComponentHandler implements ComponentHandler {
   }
 
   // The sheet of the clicker's own hero (My Hero) or a named one (Details on a hero card).
+  // A menu of the armor and shields the player's hero carries: put on what is
+  // off, take off what is worn. Empty when the hero has none.
+  private async gearControls(record: CampaignRecord, text: Texts, userId: string): Promise<ActionRowBuilder<StringSelectMenuBuilder>[]> {
+    const loaded = await this.deps.unitOfWork.transaction((tx) => tx.loadCampaign(record.key));
+    const heroId = loaded?.state.members[userId]?.characterId ?? null;
+    const sheet = heroId === null ? undefined : loaded?.state.characters[heroId];
+    const glossary = this.deps.glossaries[record.language];
+    if (loaded === undefined || sheet === undefined || glossary === undefined || isFallen(loaded.state, sheet.id)) return [];
+    const content = this.deps.rulesets.resolve(loaded.ruleset).content;
+    const options = sheet.equipment.flatMap((id) => {
+      const definition = content.find(id);
+      if (definition?.kind !== "item" || (definition.itemType !== "armor" && definition.itemType !== "shield")) return [];
+      const name = glossary.names[id] ?? id;
+      const worn = isWorn(sheet, content, id);
+      return [{ label: (worn ? text.campaign.gear.remove({ item: name }) : text.campaign.gear.wear({ item: name })).slice(0, 100), value: `${worn ? "remove" : "wear"}|${id}` }];
+    });
+    // The same item twice would repeat an option value.
+    const unique = options.filter((option, index) => options.findIndex((other) => other.value === option.value) === index);
+    if (unique.length === 0) return [];
+    return [
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+        new StringSelectMenuBuilder().setCustomId(campaignCustomId("gear", record.key.campaignId)).setPlaceholder(text.campaign.gear.placeholder).addOptions(unique),
+      ),
+    ];
+  }
+
+  private async changeGear(interaction: StringSelectMenuInteraction, record: CampaignRecord, text: Texts): Promise<void> {
+    await interaction.deferUpdate();
+    const [verb, itemId] = (interaction.values[0] ?? "").split("|");
+    const item = typeof itemId === "string" && itemId.startsWith("item:") ? (itemId as ContentId<"item">) : null;
+    if (item === null || (verb !== "wear" && verb !== "remove")) {
+      await interaction.editReply({ content: text.campaign.refusal.generic, components: [] });
+      return;
+    }
+    const result = verb === "wear"
+      ? await this.deps.play.wear(record.key, interaction.user.id, item, interaction.id)
+      : await this.deps.play.remove(record.key, interaction.user.id, item, interaction.id);
+    if (result.kind !== "ok") {
+      await interaction.editReply({ content: refusalText(text, result.reason), components: [] });
+      return;
+    }
+    // Show the sheet again, with the menu updated for what is worn now.
+    await interaction.editReply({
+      content: `${text.campaign.reply.gearChanged}\n\n${await this.heroSheet(record, text, null, interaction.user.id)}`,
+      components: await this.gearControls(record, text, interaction.user.id),
+    });
+  }
+
   private async heroSheet(record: CampaignRecord, text: Texts, characterId: string | null, userId: string): Promise<string> {
     const loaded = await this.deps.unitOfWork.transaction((tx) => tx.loadCampaign(record.key));
     if (loaded === undefined) return text.campaign.refusal.notActive;

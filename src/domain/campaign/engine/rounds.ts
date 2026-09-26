@@ -10,9 +10,9 @@ import { firedEffects } from "./round-plan.js";
 
 export const maxActionLength = 500;
 
-export function openRound(decision: Decision): Rejection | null {
+export function openRound(decision: Decision, options: { readonly skipActorCheck?: boolean } = {}): Rejection | null {
   const { state, ctx } = decision;
-  if (ctx.actor.kind === "user") {
+  if (ctx.actor.kind === "user" && options.skipActorCheck !== true) {
     const userId = ctx.actor.userId;
     const member = state.members[userId];
     if (member === undefined && userId !== state.organizerId) return { code: "notMember" };
@@ -22,8 +22,9 @@ export function openRound(decision: Decision): Rejection | null {
   if (state.encounter !== null && state.encounter.status !== "ended") return { code: "inCombat" };
   if (state.round !== null) return { code: "roundAlreadyOpen" };
 
-  // The opening is still being told: the first round opens when it lands.
-  if (state.opening === "pending") return null;
+  // The opening is still being told, or the table is getting ready: the first
+  // round opens when everyone is.
+  if (state.opening === "pending" || state.opening === "waiting") return null;
 
   const participants = participantsFor(state);
   if (participants.length === 0) {
@@ -45,6 +46,17 @@ function beginRound(decision: Decision, participants: readonly CharacterId[]): v
       timer: { kind: "roundWindow", timerId: roundTimerId(roundNumber), dueAt: closesAt, roundNumber },
     });
   }
+}
+
+// Every present player is ready: the first round opens. Also checked when a
+// player goes away, since the rest may already all be ready.
+export function finishReadyCheck(decision: Decision): void {
+  const { state } = decision;
+  if (state.opening !== "waiting" || state.status !== "active") return;
+  const ready = state.openingReady ?? [];
+  if (!presentMembers(state).every((member) => ready.includes(member.userId))) return;
+  decision.emit({ kind: "tableReady" });
+  openRound(decision, { skipActorCheck: true });
 }
 
 export function submitAction(decision: Decision, characterId: CharacterId, text: string): Rejection | null {

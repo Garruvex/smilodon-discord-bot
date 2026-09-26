@@ -96,10 +96,15 @@ export function rig(store = new InMemoryCampaignStore(), clock = new ManualClock
   };
 }
 
-// The Narrator's opening lands, so the first round opens (a started game waits for it).
+// The Narrator's opening lands and every player presses Ready, so the first
+// round opens (a started game waits for both).
 export async function tellOpening(r: Rig, key: CampaignKey): Promise<void> {
   const told = await r.bus.execute(key, { kind: "recordOpening", text: "The night is quiet. What do you do?" }, { commandId: "opening", actor: { kind: "system" } });
   if (told.kind !== "accepted") throw new Error("opening");
+  const state = (await r.store.transaction((tx) => tx.loadCampaign(key)))?.state;
+  for (const member of Object.values(state?.members ?? {})) {
+    await r.bus.execute(key, { kind: "ready" }, { commandId: `ready:${member.userId}`, actor: { kind: "user", userId: member.userId } });
+  }
 }
 
 export async function startedCampaign(r: Rig, pacing: { preset: "live" | "playByPost" } = { preset: "live" }): Promise<CampaignKey> {

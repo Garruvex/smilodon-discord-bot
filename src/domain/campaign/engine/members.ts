@@ -5,7 +5,7 @@ import { deadlineAfter, type Decision } from "./decision.js";
 import { rollTimerId, roundTimerId } from "./ids.js";
 import type { Rejection } from "./rejection.js";
 import { awayRestriction, beginEncounter, onMemberAway, rearmedTurnDeadline, resumeCombat, turnTimerId } from "./combat/combat-flow.js";
-import { closeIfEveryoneResponded, enterWaiting, finishRoundIfResolved, openRound } from "./rounds.js";
+import { closeIfEveryoneResponded, enterWaiting, finishReadyCheck, finishRoundIfResolved, openRound } from "./rounds.js";
 
 // A player marks themselves away, or the organizer marks them. An open
 // window's unanswered slot is excused rather than counted as a miss; a
@@ -36,6 +36,7 @@ export function markAway(decision: Decision, userId: UserId): Rejection | null {
     closeIfEveryoneResponded(decision);
   }
   if (decision.state.status === "active" && presentMembers(decision.state).length === 0) enterWaiting(decision);
+  else finishReadyCheck(decision);
   return null;
 }
 

@@ -13,7 +13,7 @@ import type { CampaignRecord } from "../ports/campaign-record.js";
 // into localized messages; nothing here knows about Discord or a language, so
 // the same views serve any presentation and are easy to test.
 
-export type RosterStatus = "submitted" | "passed" | "thinking" | "away" | "missed";
+export type RosterStatus = "submitted" | "passed" | "thinking" | "away" | "missed" | "ready";
 
 export interface HeroView {
   readonly characterId: string;
@@ -48,6 +48,7 @@ export interface HeroView {
 
 export type PanelMode =
   | "opening"
+  | "readyCheck"
   | "collecting"
   | "planning"
   | "awaitingRolls"
@@ -232,6 +233,7 @@ function modeOf(record: CampaignRecord, state: CampaignState, inFight: boolean, 
   if (state.pausedBy === "organizer" || record.lifecycle === "paused") return "paused";
   if (state.status === "waitingForPlayers") return "waiting";
   if (state.opening === "pending") return "opening";
+  if (state.opening === "waiting") return "readyCheck";
   if (inFight) return "combat";
   if (state.round?.status === "collecting") return "collecting";
   if (state.round?.status === "resolving" && rollsPending) return "awaitingRolls";
@@ -245,7 +247,9 @@ function rosterOf(state: CampaignState): readonly RosterEntry[] {
     const sheet = state.characters[characterId];
     if (sheet === undefined) return [];
     const away = state.members[sheet.ownerUserId]?.availability === "away";
-    return [{ characterId, userId: sheet.ownerUserId, heroName: sheet.name, status: rosterStatus(round?.submissions[characterId], away) }];
+    const ready = state.opening === "waiting" ? (state.openingReady ?? []).includes(sheet.ownerUserId) : false;
+    const status = state.opening === "waiting" ? (away ? "away" : ready ? "ready" : "thinking") : rosterStatus(round?.submissions[characterId], away);
+    return [{ characterId, userId: sheet.ownerUserId, heroName: sheet.name, status }];
   });
 }
 

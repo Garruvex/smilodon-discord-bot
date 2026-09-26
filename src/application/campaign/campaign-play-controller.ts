@@ -1,3 +1,4 @@
+import type { ContentId } from "../../domain/campaign/rules/content-id.js";
 import type { CampaignCommand } from "../../domain/campaign/commands/campaign-command.js";
 import { isFallen } from "../../domain/campaign/state/campaign-state.js";
 import type { AdventureLibrary } from "./ports/adventure-library.js";
@@ -93,6 +94,24 @@ export class CampaignPlayController {
 
   public back(key: CampaignKey, userId: UserId, interactionId: string): Promise<PlayResult> {
     return this.perform(key, userId, interactionId, () => ({ kind: "markReturned", userId }));
+  }
+
+  // Outside a fight: put on or take off armor or a shield the hero carries.
+  public wear(key: CampaignKey, userId: UserId, itemId: ContentId<"item">, interactionId: string): Promise<PlayResult> {
+    return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "wearItem", characterId, itemId }));
+  }
+
+  public remove(key: CampaignKey, userId: UserId, itemId: ContentId<"item">, interactionId: string): Promise<PlayResult> {
+    return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "removeItem", characterId, itemId }));
+  }
+
+  public ready(key: CampaignKey, userId: UserId, interactionId: string): Promise<PlayResult> {
+    return this.perform(key, userId, interactionId, () => ({ kind: "ready" }));
+  }
+
+  // Organizer: open the first round without waiting for everyone.
+  public begin(key: CampaignKey, userId: UserId, interactionId: string): Promise<PlayResult> {
+    return this.perform(key, userId, interactionId, () => ({ kind: "beginPlay" }));
   }
 
   public continue(key: CampaignKey, userId: UserId, interactionId: string): Promise<PlayResult> {

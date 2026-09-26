@@ -26,9 +26,12 @@ export interface CampaignState {
   readonly round: RoundState | null;
   readonly lastRoundNumber: number;
   // The adventure's opening, told before the first round: pending while the
-  // Narrator writes it, done once it is on the table. Absent in games that
-  // started before openings existed, which have none to wait for.
-  readonly opening?: "pending" | "done";
+  // Narrator writes it, waiting while the table gets ready, done once the
+  // first round can open. Absent in games that started before openings
+  // existed, which have none to wait for.
+  readonly opening?: "pending" | "waiting" | "done";
+  // Who has pressed Ready while the table is waiting.
+  readonly openingReady?: readonly UserId[];
   // The last round the Narrator described; guards against narrating twice.
   readonly lastNarratedRound: number;
   // Checks of the current round only; earlier ones live in the event log.
