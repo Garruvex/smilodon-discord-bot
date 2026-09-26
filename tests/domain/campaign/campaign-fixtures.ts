@@ -123,6 +123,7 @@ export function newCampaign(pacing: Pacing = livePacing): CampaignState {
     pendingEncounter: null,
     encounterHistory: [],
     stash: [],
+    gold: 0,
     offers: {},
     offerCount: 0,
     clocks: {},

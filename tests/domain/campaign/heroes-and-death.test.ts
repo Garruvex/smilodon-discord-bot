@@ -89,7 +89,7 @@ describe("joining as a new hero", () => {
 describe("loot", () => {
   it("goes to the stash when the party wins", () => {
     const loot = ["item:scimitar", "item:javelin"] as const;
-    const fight = new Fight().rolls([20, 15, 5, 4]).run(organizer, { kind: "startEncounter", spec: { ...skirmish, loot } });
+    const fight = new Fight().rolls([20, 15, 5, 4]).run(organizer, { kind: "startEncounter", spec: { ...skirmish, loot, gold: 15 } });
     fight.rolls([15], [6]).run(alex, { kind: "combatAttack", combatantId: "c-mira", targetId: "goblin-a", weapon: "item:shortbow" });
     fight.run(alex, { kind: "endTurn", combatantId: "c-mira" });
     fight.run(jamie, { kind: "combatMove", combatantId: "c-borin", zoneId: "courtyard" });
@@ -97,6 +97,7 @@ describe("loot", () => {
     fight.rolls([15], [8]).run(jamie, { kind: "combatAttack", combatantId: "c-borin", targetId: "goblin-b", weapon: "item:longsword" });
     expect(kinds(fight.events)).toContain("lootFound");
     expect(fight.state.stash).toEqual(loot);
+    expect(fight.state.gold).toBe(15);
   });
 
   it("is not found when the party loses, and unknown loot is refused", () => {

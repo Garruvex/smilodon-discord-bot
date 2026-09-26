@@ -29,6 +29,7 @@ export const enSrd51Glossary: Glossary = {
     "item:leather-armor": "Leather Armor",
     "item:chain-mail": "Chain Mail",
     "item:shield": "Shield",
+    "item:potion-of-healing": "Potion of Healing",
     "feature:fighting-style-dueling": "Fighting Style: Dueling",
     "feature:second-wind": "Second Wind",
     "feature:sneak-attack": "Sneak Attack",

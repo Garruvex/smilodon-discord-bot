@@ -85,7 +85,8 @@ encounters:
     edges:
       - { from: tower-floor, to: stairs, feet: 15 }
     partyZoneId: tower-floor
-    loot: [item:javelin]
+    loot: [item:javelin, item:potion-of-healing]
+    gold: 10
     monsters:
       - { monsterId: monster:goblin, zoneId: stairs, fleeBelowHpFraction: 0.5 }
       - { monsterId: monster:goblin, zoneId: stairs, fleeBelowHpFraction: 0.5 }
@@ -105,6 +106,7 @@ encounters:
       - { from: nave, to: altar, feet: 15 }
     partyZoneId: doorway
     loot: [item:scimitar, item:shortbow]
+    gold: 25
     monsters:
       - { monsterId: monster:wolf, zoneId: nave }
       - { monsterId: monster:goblin, zoneId: nave }

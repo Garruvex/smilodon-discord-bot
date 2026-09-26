@@ -2,7 +2,9 @@ import type { InventoryCommand } from "../commands/campaign-command.js";
 import type { CharacterId } from "../core/ids.js";
 import type { ContentId } from "../rules/content-id.js";
 import { isFallen, type CampaignState, type ItemOffer } from "../state/campaign-state.js";
+import { canHandOver, refreshGear, startHandOver } from "./combat/combat-gear.js";
 import type { Decision } from "./decision.js";
+import { potionFor } from "./potions.js";
 import type { Rejection } from "./rejection.js";
 
 // Items move between heroes, and to and from the party stash, outside combat.
@@ -14,7 +16,11 @@ import type { Rejection } from "./rejection.js";
 export function handleInventoryCommand(decision: Decision, command: InventoryCommand): Rejection | null {
   const { state } = decision;
   if (decision.ctx.actor.kind !== "user") return { code: "notMember" };
-  if (state.encounter !== null && state.encounter.status !== "ended") return { code: "inCombat" };
+  const inCombat = state.encounter !== null && state.encounter.status !== "ended";
+  // In a fight only hand-overs between heroes standing together are allowed.
+  if (inCombat && command.kind !== "offerItem" && command.kind !== "respondToOffer" && command.kind !== "cancelOffer") {
+    return { code: "inCombat" };
+  }
   switch (command.kind) {
     case "offerItem":
       return offerItem(decision, command);
@@ -29,6 +35,8 @@ export function handleInventoryCommand(decision: Decision, command: InventoryCom
       decision.emit({ kind: "itemStashed", characterId: command.characterId, itemId: command.itemId });
       return null;
     }
+    case "useItem":
+      return useItem(decision, command.characterId, command.itemId);
     case "takeFromStash": {
       const refusal = mayHandle(decision, command.characterId, true);
       if (refusal !== null) return refusal;
@@ -48,6 +56,10 @@ function offerItem(decision: Decision, command: Extract<InventoryCommand, { kind
   if (state.characters[toCharacterId] === undefined || isFallen(state, toCharacterId)) return { code: "heroFallen" };
   if (!holds(state, fromCharacterId, give)) return { code: "itemNotHeld" };
   if (want !== null && !holds(state, toCharacterId, want)) return { code: "itemNotHeld" };
+  if (state.encounter !== null && state.encounter.status !== "ended") {
+    const handOver = startHandOver(decision, fromCharacterId, toCharacterId);
+    if (handOver !== null) return handOver;
+  }
   const offer: ItemOffer = { id: `offer:${state.offerCount + 1}`, fromCharacterId, toCharacterId, give, want };
   decision.emit({ kind: "itemOffered", offer });
   decision.request({ kind: "deliver", delivery: { kind: "itemOffered", offerId: offer.id } });
@@ -63,12 +75,30 @@ function respondToOffer(decision: Decision, offerId: string, accept: boolean): R
     decision.emit({ kind: "offerClosed", offerId, reason: "declined" });
     return null;
   }
-  // Items may have moved since the offer was made.
-  if (!holds(state, offer.fromCharacterId, offer.give) || (offer.want !== null && !holds(state, offer.toCharacterId, offer.want))) {
+  // Items may have moved since the offer was made, or the heroes parted in a fight.
+  if (
+    !holds(state, offer.fromCharacterId, offer.give) ||
+    (offer.want !== null && !holds(state, offer.toCharacterId, offer.want)) ||
+    !canHandOver(decision, offer.fromCharacterId, offer.toCharacterId)
+  ) {
     decision.emit({ kind: "offerClosed", offerId, reason: "unavailable" });
     return null;
   }
   decision.emit({ kind: "offerAccepted", offerId });
+  refreshGear(decision, [offer.fromCharacterId, offer.toCharacterId]);
+  return null;
+}
+
+function useItem(decision: Decision, characterId: CharacterId, itemId: ContentId<"item">): Rejection | null {
+  const refusal = mayHandle(decision, characterId, false);
+  if (refusal !== null) return refusal;
+  const { state } = decision;
+  const potion = potionFor(state, decision.ctx.rules.content, characterId, itemId);
+  if (potion === null) return { code: holds(state, characterId, itemId) ? "notUsable" : "itemNotHeld" };
+  const sheet = state.characters[characterId];
+  const hp = state.heroStatus[characterId]?.hp ?? sheet?.maxHp ?? 0;
+  const healed = Math.max(0, Math.min(potion.healing, (sheet?.maxHp ?? 0) - hp));
+  decision.emit({ kind: "itemUsed", characterId, itemId, healed });
   return null;
 }
 

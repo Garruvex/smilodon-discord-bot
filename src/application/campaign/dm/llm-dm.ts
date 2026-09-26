@@ -337,6 +337,8 @@ export function buildCombatNarratorPrompt(request: CombatNarratorRequest): { sys
 export function describeBeat(beat: CombatBeat): string {
   switch (beat.kind) {
     case "maneuver":
+      if (beat.maneuver === "giveItem") return `${beat.actor} hands an item to an ally.`;
+      if (beat.maneuver === "useItem") return `${beat.actor} drinks a healing potion.`;
       return `${beat.actor} takes the ${beat.maneuver} action.`;
     case "fled":
       return `${beat.actor} flees the fight.`;

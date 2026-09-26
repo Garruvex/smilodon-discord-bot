@@ -333,6 +333,7 @@ function initialState(options: HarnessOptions, pacing: Pacing): CampaignState {
     pendingEncounter: null,
     encounterHistory: [],
     stash: [],
+    gold: 0,
     offers: {},
     offerCount: 0,
     clocks: {},

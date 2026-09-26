@@ -81,6 +81,7 @@ export interface BibleEncounter {
   readonly monsters: readonly EncounterMonster[];
   // Found by the party on a victory.
   readonly loot: readonly ContentId<"item">[];
+  readonly gold: number;
 }
 
 export function findScene(bible: AdventureBible, sceneId: string | null): BibleScene | undefined {
@@ -100,6 +101,6 @@ export function findClue(bible: AdventureBible, clueId: string): BibleClue | und
 }
 
 export function encounterSpec(encounter: BibleEncounter): EncounterSpec {
-  const { id, zones, edges, partyZoneId, monsters, loot } = encounter;
-  return { id, zones, edges, partyZoneId, monsters, loot };
+  const { id, zones, edges, partyZoneId, monsters, loot, gold } = encounter;
+  return { id, zones, edges, partyZoneId, monsters, loot, gold };
 }

@@ -30,6 +30,7 @@ import { deadlineAfter, type Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { maxNarrationLength } from "../narration-limits.js";
 import { openRound } from "../rounds.js";
+import { useItemInCombat } from "./combat-gear.js";
 import { declareResolution, endConcentration, recordResolutionRoll } from "./resolution.js";
 
 // A chain of engine-played turns (monsters, autopilot, skipped heroes) must
@@ -78,6 +79,8 @@ export function handleCombatCommand(decision: Decision, command: CombatCommand):
       return withHeroTurn(decision, command.combatantId, (hero, encounter) =>
         castSpell(decision, encounter, hero, command.spellId, command.slotLevel, command.targetIds),
       );
+    case "combatUseItem":
+      return useItemInCombat(decision, command.combatantId, command.itemId);
     case "combatUseFeature":
       return withHeroTurn(decision, command.combatantId, (hero) => useFeature(decision, hero, command.featureId));
     case "combatDash":
@@ -173,6 +176,7 @@ export function beginEncounter(decision: Decision, spec: EncounterSpec): void {
     deferredTurn: null,
     narratedRound: 0,
     loot: spec.loot ?? [],
+    gold: spec.gold ?? 0,
   };
   decision.emit({ kind: "encounterStarted", encounter });
   for (const [rollId, pending] of Object.entries(pendingRolls)) {
@@ -192,6 +196,7 @@ export function encounterProblems(decision: Decision, spec: EncounterSpec): read
     if (!Number.isInteger(edge.feet) || edge.feet <= 0) problems.push(`Edge ${edge.from}-${edge.to} needs a positive distance.`);
   }
   if (spec.monsters.length === 0) problems.push("An encounter needs at least one monster.");
+  if (spec.gold !== undefined && (!Number.isInteger(spec.gold) || spec.gold < 0)) problems.push("Gold must be a whole number of zero or more.");
   for (const item of spec.loot ?? []) {
     if (decision.ctx.rules.content.find(item)?.kind !== "item") problems.push(`Unknown loot item ${item}.`);
   }
@@ -683,7 +688,7 @@ export function isProtected(decision: Decision, combatant: Combatant): boolean {
 
 // --------------------------------------------------------------- Helpers
 
-function withHeroTurn(
+export function withHeroTurn(
   decision: Decision,
   combatantId: string,
   act: (hero: Combatant, encounter: EncounterState) => Rejection | null,
@@ -718,7 +723,9 @@ export function endIfDecided(decision: Decision): boolean {
   if (foesLeft && heroesStanding) return false;
   if (encounter.turnEndsAt !== null) decision.request({ kind: "cancelTimer", timerId: turnTimerId(encounter.id, encounter.turnNumber) });
   decision.emit({ kind: "encounterEnded", outcome: foesLeft ? "defeat" : "victory" });
-  if (!foesLeft && encounter.loot.length > 0) decision.emit({ kind: "lootFound", encounterId: encounter.id, items: encounter.loot });
+  if (!foesLeft && (encounter.loot.length > 0 || encounter.gold > 0)) {
+    decision.emit({ kind: "lootFound", encounterId: encounter.id, items: encounter.loot, gold: encounter.gold });
+  }
   decision.request({ kind: "deliver", delivery: { kind: "encounterEnded", encounterId: encounter.id } });
   // The closing narration covers the last round; exploration resumes after it.
   decision.request({ kind: "narrateCombat", encounterId: encounter.id, round: encounter.round, final: true });

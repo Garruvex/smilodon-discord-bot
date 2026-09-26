@@ -3,8 +3,10 @@ import type { D20TestRoll } from "../dice/d20-test.js";
 import type { RollResult } from "../dice/roll-spec.js";
 import type { RollMoments } from "../dice/roll-moments.js";
 import type { ContentId } from "../rules/content-id.js";
+import type { Trait } from "../rules/traits.js";
 import type {
   ActiveEffect,
+  AttackOption,
   CombatantCondition,
   CombatantId,
   Concentration,
@@ -47,7 +49,7 @@ export type CombatEvent =
   | { readonly kind: "combatantWithdrew"; readonly combatantId: CombatantId; readonly feet: number }
   | { readonly kind: "moveInterrupted"; readonly move: PendingMove }
   | { readonly kind: "moveCleared" }
-  | { readonly kind: "actionTaken"; readonly combatantId: CombatantId; readonly action: "dash" | "dodge" | "disengage"; readonly bonus: boolean }
+  | { readonly kind: "actionTaken"; readonly combatantId: CombatantId; readonly action: "dash" | "dodge" | "disengage" | "giveItem" | "useItem"; readonly bonus: boolean }
   | {
       readonly kind: "resolutionDeclared";
       readonly resolution: ResolutionState;
@@ -124,6 +126,14 @@ export type CombatEvent =
   | { readonly kind: "combatantFled"; readonly combatantId: CombatantId }
   | { readonly kind: "turnEnded"; readonly combatantId: CombatantId }
   | { readonly kind: "turnDeferred"; readonly turnIndex: number; readonly round: number }
+  // A hero's gear changed mid-fight (a hand-over): armor class, attacks, and traits follow it.
+  | {
+      readonly kind: "gearChanged";
+      readonly combatantId: CombatantId;
+      readonly armorClass: number;
+      readonly attacks: readonly AttackOption[];
+      readonly traits: readonly Trait[];
+    }
   | { readonly kind: "encounterEnded"; readonly outcome: EncounterOutcome }
   // final: the fight has ended and this is its closing narration.
   | { readonly kind: "combatNarrationRecorded"; readonly round: number; readonly text: string; readonly final: boolean };
@@ -161,6 +171,7 @@ export const combatEventKinds: readonly CombatEventKind[] = [
   "combatantFled",
   "turnEnded",
   "turnDeferred",
+  "gearChanged",
   "encounterEnded",
   "combatNarrationRecorded",
 ];

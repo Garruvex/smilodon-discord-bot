@@ -75,6 +75,7 @@ const documentSchema = z
               )
               .min(1),
             loot: z.array(contentId("item")).default([]),
+            gold: z.number().int().min(0).default(0),
           })
           .strict(),
       )

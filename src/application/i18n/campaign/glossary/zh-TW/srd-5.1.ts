@@ -23,6 +23,7 @@ export const zhTwSrd51Glossary: Glossary = {
     "item:mace": "硬頭錘",
     "item:morningstar": "釘頭錘",
     "item:shortbow": "短弓",
+    "item:potion-of-healing": "治療藥水",
     "item:bite": "啃咬",
     "monster:goblin": "哥布林",
     "monster:wolf": "狼",

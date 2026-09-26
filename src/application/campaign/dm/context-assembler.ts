@@ -151,6 +151,7 @@ function liveState(input: ContextInput): ContextSection {
   if (input.audience === "planner") {
     for (const clock of input.bible.clocks) lines.push(`Clock ${clock.id}: ${state.clocks[clock.id]?.filled ?? 0}/${clock.segments}.`);
   }
+  if (state.gold > 0) lines.push(`Party gold: ${state.gold}.`);
   if (state.stash.length > 0) lines.push(`Party stash: ${state.stash.map((item) => input.glossary.names[item] ?? item).join(", ")}.`);
   if (state.clues.length > 0) lines.push(`Revealed clues: ${state.clues.map((clue) => clue.text).join(" ")}`);
   if (encounter !== null) {

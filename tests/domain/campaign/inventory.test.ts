@@ -63,9 +63,8 @@ describe("giving and trading items", () => {
     expect(step.state.characters["c-borin"]?.equipment).not.toContain("item:shortbow");
   });
 
-  it("does not change gear during a fight", () => {
+  it("does not stash or take items during a fight", () => {
     const fight = startedFight();
-    expect(reject(fight.state, alex, { kind: "offerItem", fromCharacterId: "c-mira", toCharacterId: "c-borin", give: "item:shortbow", want: null })).toEqual({ code: "inCombat" });
     expect(reject(fight.state, alex, { kind: "stashItem", characterId: "c-mira", itemId: "item:shortbow" })).toEqual({ code: "inCombat" });
   });
 });
@@ -88,5 +87,69 @@ describe("the party stash", () => {
     const fight = startedFight(stripped);
     const withShield = startedFight();
     expect(fight.encounter.combatants["c-borin"]?.armorClass).toBe((withShield.encounter.combatants["c-borin"]?.armorClass ?? 0) - 2);
+  });
+});
+
+const potion = "item:potion-of-healing" as const;
+
+// Mira holds a potion and has 3 of her 9 HP.
+function woundedMira(): CampaignState {
+  const base = newCampaign();
+  const sheet = base.characters["c-mira"];
+  if (sheet === undefined) throw new Error("fixture");
+  return {
+    ...base,
+    characters: { ...base.characters, "c-mira": { ...sheet, equipment: [...sheet.equipment, potion] } },
+    heroStatus: { "c-mira": { hp: 3, resources: { spellSlots: {}, featureUses: {} } } },
+  };
+}
+
+describe("potions", () => {
+  it("heals outside combat, up to the maximum, and is used up", () => {
+    const step = run(woundedMira(), alex, { kind: "useItem", characterId: "c-mira", itemId: potion });
+    expect(step.events).toEqual([{ kind: "itemUsed", characterId: "c-mira", itemId: potion, healed: 6 }]);
+    expect(step.state.heroStatus["c-mira"]?.hp).toBe(9);
+    expect(step.state.characters["c-mira"]?.equipment).not.toContain(potion);
+    expect(reject(step.state, alex, { kind: "useItem", characterId: "c-mira", itemId: potion })).toEqual({ code: "itemNotHeld" });
+  });
+
+  it("refuses items that are not potions and other players' heroes", () => {
+    expect(reject(woundedMira(), alex, { kind: "useItem", characterId: "c-mira", itemId: "item:shortbow" })).toEqual({ code: "notUsable" });
+    expect(reject(woundedMira(), jamie, { kind: "useItem", characterId: "c-mira", itemId: potion })).toEqual({ code: "notYourCharacter" });
+  });
+
+  it("costs an action in a fight, and heals the fighter", () => {
+    const fight = startedFight(woundedMira());
+    fight.run(alex, { kind: "combatUseItem", combatantId: "c-mira", itemId: potion });
+    expect(fight.encounter.combatants["c-mira"]?.hp).toBe(9);
+    expect(reject(fight.state, alex, { kind: "combatAttack", combatantId: "c-mira", targetId: "goblin-a", weapon: "item:shortbow" })).toEqual({ code: "noActionLeft" });
+    expect(reject(fight.state, alex, { kind: "useItem", characterId: "c-mira", itemId: potion })).toEqual({ code: "inCombat" });
+  });
+});
+
+describe("hand-overs in a fight", () => {
+  it("cost the giver's bonus action, need the receiver's yes, and change the receiver's attacks", () => {
+    const fight = startedFight();
+    fight.run(alex, { kind: "offerItem", fromCharacterId: "c-mira", toCharacterId: "c-borin", give: "item:shortbow", want: null });
+    expect(fight.encounter.combatants["c-mira"]?.budget.bonusAction).toBe(false);
+    expect(fight.encounter.combatants["c-borin"]?.attacks.map((attack) => attack.weapon)).not.toContain("item:shortbow");
+    fight.run(jamie, { kind: "respondToOffer", offerId: "offer:1", accept: true });
+    expect(fight.encounter.combatants["c-borin"]?.attacks.map((attack) => attack.weapon)).toContain("item:shortbow");
+    expect(fight.encounter.combatants["c-mira"]?.attacks.map((attack) => attack.weapon)).not.toContain("item:shortbow");
+  });
+
+  it("are refused off the giver's turn, between zones, or with no bonus action left", () => {
+    const fight = startedFight();
+    expect(reject(fight.state, jamie, { kind: "offerItem", fromCharacterId: "c-borin", toCharacterId: "c-mira", give: "item:shield", want: null })).toEqual({ code: "notYourTurn" });
+    fight.run(alex, { kind: "offerItem", fromCharacterId: "c-mira", toCharacterId: "c-borin", give: "item:shortbow", want: null });
+    expect(reject(fight.state, alex, { kind: "offerItem", fromCharacterId: "c-mira", toCharacterId: "c-borin", give: "item:shortsword", want: null })).toEqual({ code: "noActionLeft" });
+  });
+
+  it("fail when the heroes have parted before the receiver answers", () => {
+    const fight = startedFight();
+    fight.run(alex, { kind: "offerItem", fromCharacterId: "c-mira", toCharacterId: "c-borin", give: "item:shortbow", want: null });
+    fight.run(alex, { kind: "combatMove", combatantId: "c-mira", zoneId: "courtyard" });
+    fight.run(jamie, { kind: "respondToOffer", offerId: "offer:1", accept: true });
+    expect(fight.events.at(-1)).toEqual({ kind: "offerClosed", offerId: "offer:1", reason: "unavailable" });
   });
 });

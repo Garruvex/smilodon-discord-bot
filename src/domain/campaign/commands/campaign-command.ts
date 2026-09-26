@@ -58,7 +58,9 @@ export type InventoryCommand =
   | { readonly kind: "cancelOffer"; readonly offerId: string }
   | { readonly kind: "stashItem"; readonly characterId: CharacterId; readonly itemId: ContentId<"item"> }
   // The hero's owner, or the organizer, takes an item out of the stash for a hero.
-  | { readonly kind: "takeFromStash"; readonly characterId: CharacterId; readonly itemId: ContentId<"item"> };
+  | { readonly kind: "takeFromStash"; readonly characterId: CharacterId; readonly itemId: ContentId<"item"> }
+  // Outside combat: the hero drinks a potion they hold.
+  | { readonly kind: "useItem"; readonly characterId: CharacterId; readonly itemId: ContentId<"item"> };
 
 // Combat. Hero commands name the acting combatant (the hero's character ID)
 // so a stale button for another turn is refused rather than misapplied.
@@ -77,6 +79,7 @@ export type CombatCommand =
       readonly targetIds: readonly string[];
     }
   | { readonly kind: "combatUseFeature"; readonly combatantId: string; readonly featureId: ContentId<"feature"> }
+  | { readonly kind: "combatUseItem"; readonly combatantId: string; readonly itemId: ContentId<"item"> }
   | { readonly kind: "combatDisengage"; readonly combatantId: string }
   | { readonly kind: "combatDash"; readonly combatantId: string }
   | { readonly kind: "combatDodge"; readonly combatantId: string }
@@ -91,6 +94,7 @@ export interface EncounterSpec {
   readonly monsters: readonly EncounterMonster[];
   // Added to the party stash on a victory. Absent: none.
   readonly loot?: readonly ContentId<"item">[];
+  readonly gold?: number;
 }
 
 export interface EncounterMonster {

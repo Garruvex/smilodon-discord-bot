@@ -89,7 +89,14 @@ export interface ShieldDefinition extends DefinitionBase<"item"> {
   readonly armorClassBonus: number;
 }
 
-export type ItemDefinition = WeaponDefinition | ArmorDefinition | ShieldDefinition;
+// Drunk by the hero holding it. Healing is the average of the potion's dice
+// (2d4+2 is 7), so using one needs no roll, as with Hit Dice on a rest.
+export interface PotionDefinition extends DefinitionBase<"item"> {
+  readonly itemType: "potion";
+  readonly healing: number;
+}
+
+export type ItemDefinition = WeaponDefinition | ArmorDefinition | ShieldDefinition | PotionDefinition;
 
 // A limited-use action a feature grants, resolved like any other action.
 export interface FeatureAction {
@@ -156,6 +163,10 @@ export function defineShield(definition: Omit<ShieldDefinition, "kind" | "itemTy
   return { ...definition, kind: "item", itemType: "shield" };
 }
 
+export function definePotion(definition: Omit<PotionDefinition, "kind" | "itemType">): PotionDefinition {
+  return { ...definition, kind: "item", itemType: "potion" };
+}
+
 export function defineFeature(definition: Omit<FeatureDefinition, "kind">): FeatureDefinition {
   return { ...definition, kind: "feature" };
 }
@@ -174,6 +185,7 @@ export function traitsOf(definition: ContentDefinition): readonly Trait[] {
         case "shield":
           return [{ kind: "armorClassBonus", amount: definition.armorClassBonus }];
         case "weapon":
+        case "potion":
           return [];
         default:
           return assertNever(definition);

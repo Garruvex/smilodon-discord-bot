@@ -62,6 +62,8 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
         ...combatant,
         budget: { ...combatant.budget, movement: combatant.budget.movement - event.feet },
       }));
+    case "gearChanged":
+      return update(encounter, event.combatantId, (combatant) => ({ ...combatant, armorClass: event.armorClass, attacks: event.attacks, traits: event.traits }));
     case "combatNarrationRecorded":
       return { ...encounter, narratedRound: Math.max(encounter.narratedRound, event.round) };
     case "moveInterrupted":

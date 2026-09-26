@@ -66,6 +66,7 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
     case "cancelOffer":
     case "stashItem":
     case "takeFromStash":
+    case "useItem":
       return handleInventoryCommand(decision, command);
     case "joinHero":
       return joinHero(decision, command.sheet);
@@ -76,6 +77,7 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
     case "combatAttack":
     case "combatCast":
     case "combatUseFeature":
+    case "combatUseItem":
     case "combatDisengage":
     case "combatDash":
     case "combatDodge":

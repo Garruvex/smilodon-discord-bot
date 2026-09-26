@@ -22,7 +22,14 @@ export const awaySafety: HouseRuleOption<"protected" | "standard"> = {
   defaultValue: "protected",
 };
 
-export const houseRuleOptions: readonly HouseRuleOption<string>[] = [naturalRollsOnChecks, awaySafety];
+// Plan §5: drinking a healing potion takes an action (2014 rules) or a bonus action (BG3-style).
+export const healingPotionCost: HouseRuleOption<"action" | "bonus-action"> = {
+  id: "healing-potion-cost",
+  values: ["action", "bonus-action"],
+  defaultValue: "action",
+};
+
+export const houseRuleOptions: readonly HouseRuleOption<string>[] = [naturalRollsOnChecks, awaySafety, healingPotionCost];
 
 // The option values a campaign saved, validated and with defaults filled in.
 export interface HouseRules {

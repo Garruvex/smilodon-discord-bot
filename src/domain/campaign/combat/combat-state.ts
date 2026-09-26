@@ -234,6 +234,7 @@ export interface EncounterState {
   readonly narratedRound: number;
   // Found by the party if it wins.
   readonly loot: readonly ContentId<"item">[];
+  readonly gold: number;
 }
 
 export function currentCombatant(encounter: EncounterState): Combatant | undefined {

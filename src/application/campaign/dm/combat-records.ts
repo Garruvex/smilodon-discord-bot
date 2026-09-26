@@ -34,7 +34,7 @@ export type CombatBeat =
       readonly targets: CombatTargetResult[];
       headline: RollMoment | null;
     }
-  | { readonly kind: "maneuver"; readonly actor: string; readonly maneuver: "dash" | "dodge" | "disengage" }
+  | { readonly kind: "maneuver"; readonly actor: string; readonly maneuver: "dash" | "dodge" | "disengage" | "giveItem" | "useItem" }
   | { readonly kind: "fled"; readonly actor: string }
   | { readonly kind: "deathSave"; readonly actor: string; readonly condition: CombatantCondition; readonly headline: RollMoment | null };
 

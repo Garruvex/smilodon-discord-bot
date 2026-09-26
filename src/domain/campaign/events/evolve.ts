@@ -139,6 +139,7 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     case "turnEnded":
     case "turnDeferred":
     case "encounterEnded":
+    case "gearChanged":
     case "combatNarrationRecorded":
       return evolveCombat(state, event);
     case "restTaken":
@@ -154,7 +155,16 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     case "itemTaken":
       return moveItem(state, event.characterId, event.itemId, "fromStash");
     case "lootFound":
-      return { ...state, stash: [...state.stash, ...event.items] };
+      return { ...state, stash: [...state.stash, ...event.items], gold: state.gold + event.gold };
+    case "itemUsed": {
+      const sheet = state.characters[event.characterId];
+      if (sheet === undefined) return state;
+      const used: CampaignState = { ...state, characters: { ...state.characters, [sheet.id]: { ...sheet, equipment: removeFirst(sheet.equipment, event.itemId) } } };
+      // In a fight the combatant carries the HP; it is written back when the fight ends.
+      const status = state.heroStatus[sheet.id];
+      if (status === undefined || (state.encounter !== null && state.encounter.status !== "ended")) return used;
+      return { ...used, heroStatus: { ...used.heroStatus, [sheet.id]: { ...status, hp: Math.min(sheet.maxHp, status.hp + event.healed) } } };
+    }
     case "heroJoined": {
       const sheet = event.sheet;
       const member = state.members[sheet.ownerUserId];
