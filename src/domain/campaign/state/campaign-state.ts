@@ -1,7 +1,9 @@
+import type { CampaignLanguage, SceneId } from "../adventure/adventure-bible.js";
 import type { CharacterSheet, CheckTest } from "../character/character-sheet.js";
 import type { CampaignId, CharacterId, CheckId, Instant, RollId, UserId } from "../core/ids.js";
 import type { D20TestRoll, D20TestSpec } from "../dice/d20-test.js";
 import type { RollMoments } from "../dice/roll-moments.js";
+import type { LedgerEntry } from "../ledger/ledger.js";
 import type { DcTier } from "../rules/difficulty.js";
 
 // The in-memory aggregate the engine decides against. The repository
@@ -10,15 +12,20 @@ export interface CampaignState {
   readonly campaignId: CampaignId;
   readonly organizerId: UserId;
   readonly status: CampaignStatus;
+  readonly language: CampaignLanguage;
   readonly pacing: Pacing;
+  readonly sceneId: SceneId | null;
   readonly members: Readonly<Record<UserId, MemberState>>;
   readonly characters: Readonly<Record<CharacterId, CharacterSheet>>;
   // The current round, or null between rounds (after a quiet round, or
   // before the first one).
   readonly round: RoundState | null;
   readonly lastRoundNumber: number;
+  // The last round the Narrator described; guards against narrating twice.
+  readonly lastNarratedRound: number;
   // Checks of the current round only; earlier ones live in the event log.
   readonly checks: Readonly<Record<CheckId, CheckState>>;
+  readonly ledger: Readonly<Record<string, LedgerEntry>>;
 }
 
 // active: play proceeds. waitingForPlayers: nobody is present; no rounds,

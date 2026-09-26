@@ -20,11 +20,17 @@ export interface RulesetPin {
   readonly houseRules: Readonly<Record<string, string>>;
 }
 
+export interface AdventurePin {
+  readonly adventureId: string;
+  readonly version: string;
+}
+
 export interface StoredCampaign {
   readonly state: CampaignState;
   // The compare-and-set point: every accepted command moves it by one.
   readonly revision: number;
   readonly ruleset: RulesetPin;
+  readonly adventure: AdventurePin;
 }
 
 export interface EventEnvelope {

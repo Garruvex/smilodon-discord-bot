@@ -1,4 +1,5 @@
 import type { CharacterId, CheckId, Instant, RollId, UserId } from "../core/ids.js";
+import type { LedgerVisibility } from "../ledger/ledger.js";
 import type { CheckResult, CheckState, Resolution } from "../state/campaign-state.js";
 
 // Domain event payloads. The command bus wraps each in an envelope with
@@ -37,6 +38,16 @@ export type CampaignEvent =
   | { readonly kind: "memberMarkedAway"; readonly userId: UserId; readonly reason: AwayReason }
   | { readonly kind: "memberReturned"; readonly userId: UserId }
   | { readonly kind: "waitingForPlayers" }
+  | { readonly kind: "plannerFailed"; readonly roundNumber: number; readonly problems: readonly string[] }
+  | { readonly kind: "planRetryRequested"; readonly roundNumber: number }
+  | { readonly kind: "narrationRecorded"; readonly roundNumber: number; readonly text: string }
+  | {
+      readonly kind: "ledgerFactRecorded";
+      readonly entityId: string;
+      readonly canonicalName: string;
+      readonly fact: string;
+      readonly visibility: LedgerVisibility;
+    }
   // Pending checks get fresh roll deadlines; timers were cancelled while waiting.
   | { readonly kind: "resumed"; readonly checkDeadlines: Readonly<Record<CheckId, Instant | null>> };
 

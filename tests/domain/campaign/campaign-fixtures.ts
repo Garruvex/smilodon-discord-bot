@@ -57,7 +57,9 @@ export function newCampaign(pacing: Pacing = livePacing): CampaignState {
     campaignId: "camp-1",
     organizerId: "u-organizer",
     status: "active",
+    language: "en",
     pacing,
+    sceneId: null,
     members: {
       "u-alex": { userId: "u-alex", characterId: "c-mira", availability: "present", consecutiveMisses: 0 },
       "u-jamie": { userId: "u-jamie", characterId: "c-borin", availability: "present", consecutiveMisses: 0 },
@@ -65,7 +67,9 @@ export function newCampaign(pacing: Pacing = livePacing): CampaignState {
     characters: { "c-mira": mira, "c-borin": borin },
     round: null,
     lastRoundNumber: 0,
+    lastNarratedRound: 0,
     checks: {},
+    ledger: {},
   };
 }
 

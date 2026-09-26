@@ -1,6 +1,7 @@
 import type { CheckTest } from "../character/character-sheet.js";
 import type { CharacterId, CheckId, RollId, UserId } from "../core/ids.js";
 import type { D20TestRoll } from "../dice/d20-test.js";
+import type { LedgerVisibility } from "../ledger/ledger.js";
 import type { DcTier, RollModeReason } from "../rules/difficulty.js";
 
 // Who issued a command. Users are checked against saved campaign state
@@ -23,7 +24,21 @@ export type CampaignCommand =
   | { readonly kind: "markAway"; readonly userId: UserId }
   | { readonly kind: "markReturned"; readonly userId: UserId }
   // Resumes a campaign that was waiting for players.
-  | { readonly kind: "continue" };
+  | { readonly kind: "continue" }
+  // The Planner could not produce a valid proposal after its retry.
+  | { readonly kind: "reportPlannerFailure"; readonly roundNumber: number; readonly problems: readonly string[] }
+  // The organizer asks the Planner to try the held round again.
+  | { readonly kind: "retryPlan" }
+  | { readonly kind: "recordNarration"; readonly roundNumber: number; readonly text: string }
+  | RecordLedgerFactCommand;
+
+export interface RecordLedgerFactCommand {
+  readonly kind: "recordLedgerFact";
+  readonly entityId: string;
+  readonly canonicalName: string;
+  readonly fact: string;
+  readonly visibility: LedgerVisibility;
+}
 
 export type CampaignCommandKind = CampaignCommand["kind"];
 

@@ -19,6 +19,11 @@ export type Rejection =
   | { readonly code: "invalidPlan"; readonly problems: readonly string[] }
   | { readonly code: "unknownCheck" }
   | { readonly code: "checkNotPending" }
-  | { readonly code: "rollMismatch" };
+  | { readonly code: "rollMismatch" }
+  | { readonly code: "notPlanning" }
+  | { readonly code: "staleNarration" }
+  | { readonly code: "emptyNarration" }
+  | { readonly code: "invalidLedgerFact"; readonly problem: string }
+  | { readonly code: "canonicalNameLocked"; readonly canonicalName: string };
 
 export type RejectionCode = Rejection["code"];

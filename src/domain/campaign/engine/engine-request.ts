@@ -23,4 +23,8 @@ export type DeliverySpec =
   | { readonly kind: "rollResult"; readonly checkId: CheckId }
   // Everyone passed or missed: a template waiting status, no model call.
   | { readonly kind: "quietRound"; readonly roundNumber: number }
-  | { readonly kind: "waitingForPlayers" };
+  | { readonly kind: "waitingForPlayers" }
+  | { readonly kind: "narration"; readonly roundNumber: number }
+  // "The DM considers…": the round is held after the Planner failed.
+  | { readonly kind: "dmHolding"; readonly roundNumber: number }
+  | { readonly kind: "organizerNotice"; readonly notice: "plannerFailed"; readonly roundNumber: number };

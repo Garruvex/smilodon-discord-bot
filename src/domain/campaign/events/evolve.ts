@@ -67,6 +67,27 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       return updateMember(state, event.userId, (member) => ({ ...member, availability: "present", consecutiveMisses: 0 }));
     case "waitingForPlayers":
       return { ...state, status: "waitingForPlayers" };
+    case "plannerFailed":
+    case "planRetryRequested":
+      // History only: the round stays in planning until the next command.
+      return state;
+    case "narrationRecorded":
+      return { ...state, lastNarratedRound: Math.max(state.lastNarratedRound, event.roundNumber) };
+    case "ledgerFactRecorded": {
+      const entry = state.ledger[event.entityId];
+      const fact = { text: event.fact, visibility: event.visibility };
+      return {
+        ...state,
+        ledger: {
+          ...state.ledger,
+          [event.entityId]: {
+            entityId: event.entityId,
+            canonicalName: entry?.canonicalName ?? event.canonicalName,
+            facts: [...(entry?.facts ?? []), fact],
+          },
+        },
+      };
+    }
     case "resumed": {
       const active: CampaignState = { ...state, status: "active" };
       return Object.entries(event.checkDeadlines).reduce(

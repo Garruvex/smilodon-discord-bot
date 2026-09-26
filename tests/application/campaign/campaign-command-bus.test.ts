@@ -45,6 +45,7 @@ async function setup(unitOfWork?: (store: InMemoryCampaignStore) => CampaignUnit
       state: newCampaign(),
       revision: 0,
       ruleset: { rulesetId: content.rulesetId, rulesetVersion: content.version, houseRules: {} },
+      adventure: { adventureId: "test-adventure", version: "1" },
     }),
   );
   return { store, clock, bus, queued };
