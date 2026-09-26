@@ -162,4 +162,20 @@ export const zhTWCommandDescriptions = {
   "vote:option3": "選項 3；至少提供兩個選項，或全部留空以使用是／否", // Choice 3; give at least two choices, or none for Yes/No.
   "vote:option4": "選項 4；至少提供兩個選項，或全部留空以使用是／否", // Choice 4; give at least two choices, or none for Yes/No.
   "vote:option5": "選項 5；至少提供兩個選項，或全部留空以使用是／否", // Choice 5; give at least two choices, or none for Yes/No.
+  "dnd": "進行由 AI 主持的 D&D 團務", // Runs AI-hosted D&D campaigns.
+  "dnd/setup": "設定這個伺服器的 D&D，並把這個頻道當作總覽頻道", // Sets this server up for D&D games and makes this channel the hub.
+  "dnd/setup:hub": "總覽頻道（預設為目前的頻道）", // The hub channel (default: this one).
+  "dnd/new": "建立新團務與專屬頻道", // Creates a new game with its own channels.
+  "dnd/new:name": "團務名稱", // The game's name.
+  "dnd/new:language": "遊玩語言（預設：English）", // The language the game is played in (default: English).
+  "dnd/new:pacing": "回合節奏（預設：即時）", // How fast rounds go (default: live).
+  "dnd/new:players": "桌上最多玩家數（預設 3）", // Most players at the table (default: 3).
+  "dnd/status": "顯示這個頻道團務的狀態", // Shows the state of this channel's game.
+  "dnd/pause": "暫停這場團務（主辦人）", // Pauses this game (organizer).
+  "dnd/resume": "繼續已暫停的團務（主辦人）", // Resumes a paused game (organizer).
+  "dnd/close-round": "不再等待，直接結束這一回合的收件（主辦人）", // Closes the current round without waiting (organizer).
+  "dnd/rest": "讓隊伍在戰鬥之間休息（主辦人）", // Has the party take a rest between fights (organizer).
+  "dnd/rest:type": "休息的長度", // How long the rest is.
+  "dnd/retry": "請地下城主重新結算被擱置的回合（主辦人）", // Asks the DM to try the held round again (organizer).
+  "dnd/repair": "檢查這場團務的頻道並重新繪製卡片（主辦人）", // Checks this game's channels and redraws its cards (organizer).
 } as const satisfies CommandDescriptionCatalog<keyof typeof jaCommandDescriptions>;

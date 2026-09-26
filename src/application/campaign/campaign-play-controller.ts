@@ -64,6 +64,11 @@ export class CampaignPlayController {
     return this.perform(key, userId, interactionId, () => ({ kind: "closeRound" }));
   }
 
+  // The DM could not resolve a round; the organizer asks it to try again.
+  public retryPlan(key: CampaignKey, userId: UserId, interactionId: string): Promise<PlayResult> {
+    return this.perform(key, userId, interactionId, () => ({ kind: "retryPlan" }));
+  }
+
   public rest(key: CampaignKey, userId: UserId, rest: "short" | "long", interactionId: string): Promise<PlayResult> {
     return this.perform(key, userId, interactionId, () => ({ kind: "takeRest", rest }));
   }

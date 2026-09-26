@@ -9,6 +9,7 @@ import type { RuntimeLogger } from "../../../application/campaign/campaign-runti
 import type { RulesetCatalog } from "../../../application/campaign/rules/ruleset-catalog.js";
 import {
   buildLobbyView,
+  type PanelView,
   buildPanelView,
   buildPartyView,
 } from "../../../application/campaign/views/campaign-views.js";
@@ -72,6 +73,17 @@ export class CampaignCardService implements CardRefresher {
   // then the next panel) and by Repair.
   public sync(key: CampaignKey): Promise<void> {
     return this.queue.run(`${key.guildId}:${key.campaignId}`, () => this.syncNow(key));
+  }
+
+  // The campaign's record and what its adventure panel would show now.
+  public async describe(key: CampaignKey): Promise<{ readonly record: CampaignRecord; readonly panel: PanelView | null } | undefined> {
+    const loaded = await this.options.unitOfWork.transaction(async (tx) => ({ stored: await tx.loadRecord(key), campaign: await tx.loadCampaign(key) }));
+    if (loaded.stored === undefined) return undefined;
+    const { record } = loaded.stored;
+    const bible = this.options.adventures.find(record.adventure.adventureId, record.adventure.version, record.language);
+    const glossary = this.options.glossaries[record.language];
+    if (loaded.campaign === undefined || bible === undefined || glossary === undefined) return { record, panel: null };
+    return { record, panel: buildPanelView(record, loaded.campaign.state, bible, glossary) };
   }
 
   // True when this message is the campaign's current message for the card, so

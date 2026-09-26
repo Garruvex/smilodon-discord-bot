@@ -160,4 +160,20 @@ export const jaCommandDescriptions = {
   "vote:option3": "選択肢3。2つ以上指定するか、「はい／いいえ」にする場合はすべて空欄にします。", // Choice 3; give at least two choices, or none for Yes/No.
   "vote:option4": "選択肢4。2つ以上指定するか、「はい／いいえ」にする場合はすべて空欄にします。", // Choice 4; give at least two choices, or none for Yes/No.
   "vote:option5": "選択肢5。2つ以上指定するか、「はい／いいえ」にする場合はすべて空欄にします。", // Choice 5; give at least two choices, or none for Yes/No.
+  "dnd": "AI が進行する D&D キャンペーンを行います", // Runs AI-hosted D&D campaigns.
+  "dnd/setup": "このサーバーを D&D 用に設定し、このチャンネルを一覧チャンネルにします", // Sets this server up for D&D games and makes this channel the hub.
+  "dnd/setup:hub": "一覧チャンネル（既定: このチャンネル）", // The hub channel (default: this one).
+  "dnd/new": "専用チャンネル付きで新しいゲームを作成します", // Creates a new game with its own channels.
+  "dnd/new:name": "ゲーム名", // The game's name.
+  "dnd/new:language": "プレイする言語（既定: English）", // The language the game is played in (default: English).
+  "dnd/new:pacing": "ラウンドの進み方（既定: ライブ）", // How fast rounds go (default: live).
+  "dnd/new:players": "卓の最大人数（既定 3）", // Most players at the table (default: 3).
+  "dnd/status": "このチャンネルのゲームの状態を表示します", // Shows the state of this channel's game.
+  "dnd/pause": "このゲームを一時停止します（主催者）", // Pauses this game (organizer).
+  "dnd/resume": "一時停止したゲームを再開します（主催者）", // Resumes a paused game (organizer).
+  "dnd/close-round": "待たずに現在のラウンドを締め切ります（主催者）", // Closes the current round without waiting (organizer).
+  "dnd/rest": "戦闘の合間にパーティを休ませます（主催者）", // Has the party take a rest between fights (organizer).
+  "dnd/rest:type": "休憩の長さ", // How long the rest is.
+  "dnd/retry": "保留になったラウンドを DM にやり直させます（主催者）", // Asks the DM to try the held round again (organizer).
+  "dnd/repair": "このゲームのチャンネルを確認しカードを描き直します（主催者）", // Checks this game's channels and redraws its cards (organizer).
 } as const satisfies CommandDescriptionCatalog;

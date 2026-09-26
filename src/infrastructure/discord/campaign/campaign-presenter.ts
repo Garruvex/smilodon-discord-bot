@@ -2,13 +2,14 @@ import type { AdventureLibrary } from "../../../application/campaign/ports/adven
 import type { CampaignPresenter } from "../../../application/campaign/ports/campaign-presenter.js";
 import type { CampaignKey, CampaignUnitOfWork } from "../../../application/campaign/ports/campaign-store.js";
 import { texts, type Texts } from "../../../application/i18n/texts.js";
-import { abilityOf, type CheckTest, type Skill } from "../../../domain/campaign/character/character-sheet.js";
+import { abilityOf, type CheckTest } from "../../../domain/campaign/character/character-sheet.js";
 import type { DeliverySpec } from "../../../domain/campaign/engine/engine-request.js";
 import type { CampaignEvent } from "../../../domain/campaign/events/campaign-event.js";
 import type { Glossary } from "../../../domain/campaign/rules/content-registry.js";
 import type { CampaignState, CheckState } from "../../../domain/campaign/state/campaign-state.js";
 import type { CampaignCardService } from "./campaign-card-service.js";
 import type { CampaignMessageGateway } from "./campaign-message-gateway.js";
+import { skillKey } from "./text-keys.js";
 
 export interface PresenterOptions {
   readonly unitOfWork: CampaignUnitOfWork;
@@ -136,11 +137,6 @@ function checkLabel(test: CheckTest, text: Texts): string {
   const ability = abilityOf(test);
   const name = test.kind === "skill" ? text.campaign.skill[skillKey(test.skill)] : text.campaign.ability[ability];
   return `${name} (${ability.toUpperCase()})`;
-}
-
-// Message keys cannot contain hyphens, so "sleight-of-hand" is "sleightOfHand".
-function skillKey(skill: Skill): keyof Texts["campaign"]["skill"] {
-  return skill.replace(/-(w)/g, (_match, letter: string) => letter.toUpperCase()) as keyof Texts["campaign"]["skill"];
 }
 
 // Discord rejects a message over 2,000 characters.

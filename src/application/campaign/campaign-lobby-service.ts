@@ -118,6 +118,16 @@ export class CampaignLobbyService {
     return this.options.unitOfWork.transaction((tx) => tx.loadRecord(key));
   }
 
+  // The campaign a message channel belongs to: its Party or Adventure channel,
+  // or the Table Talk thread (pass the thread and its parent channel).
+  public async findByChannel(guildId: string, channelIds: readonly string[]): Promise<StoredRecord | undefined> {
+    const all = await this.list(guildId);
+    return all.find(({ record }) => {
+      const { partyChannelId, adventureChannelId, discussionThreadId } = record.channels;
+      return [partyChannelId, adventureChannelId, discussionThreadId].some((id) => id !== null && channelIds.includes(id));
+    });
+  }
+
   public list(guildId: string): Promise<readonly StoredRecord[]> {
     return this.options.unitOfWork.transaction((tx) => tx.listRecords(guildId));
   }
