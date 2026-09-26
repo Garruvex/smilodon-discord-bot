@@ -96,6 +96,12 @@ export function rig(store = new InMemoryCampaignStore(), clock = new ManualClock
   };
 }
 
+// The Narrator's opening lands, so the first round opens (a started game waits for it).
+export async function tellOpening(r: Rig, key: CampaignKey): Promise<void> {
+  const told = await r.bus.execute(key, { kind: "recordOpening", text: "The night is quiet. What do you do?" }, { commandId: "opening", actor: { kind: "system" } });
+  if (told.kind !== "accepted") throw new Error("opening");
+}
+
 export async function startedCampaign(r: Rig, pacing: { preset: "live" | "playByPost" } = { preset: "live" }): Promise<CampaignKey> {
   const created = await r.service.create({ guildId, organizerId: "u-org", name: "Moonlit Ruins", language: "en", adventureId: starterAdventureId, pacing });
   if (created.kind !== "ok") throw new Error("create");
@@ -104,6 +110,7 @@ export async function startedCampaign(r: Rig, pacing: { preset: "live" | "playBy
   await r.service.chooseHero(key, "u-org", starter.en.heroes[0]?.id ?? "");
   const started = await r.service.start(key, "u-org");
   if (started.kind !== "ok") throw new Error("start");
+  await tellOpening(r, key);
   return key;
 }
 

@@ -176,9 +176,10 @@ export class CampaignLobbyService {
   }
 
   // Starts play: the engine campaign is created from the lobby's seats and the
-  // record moves to active in one transaction, then the first round opens. If
-  // the process stops between the two, the campaign is active with no round
-  // yet, and the startup recovery opens it (the round command is idempotent).
+  // record moves to active in one transaction, then the opening is
+  // asked for (the first round follows it). If the process stops between the
+  // two, the campaign is active with nothing begun, and the startup recovery
+  // begins it (the command is idempotent).
   public start(key: CampaignKey, actorId: UserId): Promise<ServiceResult<{ readonly record: CampaignRecord; readonly firstRound: CommandOutcome }>> {
     return this.queue.run(queueKey(key), async () => {
       const started = await this.options.unitOfWork.transaction(async (tx): Promise<ServiceResult<CampaignRecord>> => {
@@ -209,7 +210,8 @@ export class CampaignLobbyService {
         return ok(next);
       });
       if (started.kind === "refused") return started;
-      const firstRound = await this.options.bus.execute(key, { kind: "openRound" }, { commandId: `start:${key.campaignId}`, actor: { kind: "system" } });
+      // The Narrator tells the opening first; the first round opens when it lands.
+      const firstRound = await this.options.bus.execute(key, { kind: "beginAdventure" }, { commandId: `start:${key.campaignId}`, actor: { kind: "system" } });
       return ok({ record: started.value, firstRound });
     });
   }

@@ -265,3 +265,33 @@ describe("DmJobWorker", () => {
     expect(log.at(-1)).toMatchObject({ kind: "roundOpened", roundNumber: 2 });
   });
 });
+
+describe("the opening", () => {
+  it("has the Narrator open the adventure with the party, then opens the first round", async () => {
+    const narrator = new ScriptedNarrator([{ text: "Welcome to the Crossroads Inn. What do you do?" }]);
+    const t = await table(new ScriptedPlanner([]), narrator);
+    await t.bus.execute(key, { kind: "beginAdventure" }, { commandId: "b1", actor: system });
+    expect(await t.worker.runOnce()).toEqual({ processed: 1, failed: [] });
+
+    expect(narrator.requests).toHaveLength(1);
+    expect(narrator.requests[0]).toMatchObject({ roundNumber: 0, outcomes: [] });
+    expect(narrator.requests[0]?.opening?.heroes.map((hero) => hero.name)).toContain("Mira");
+    const log = await events(t.store);
+    expect(log.map((event) => event.kind)).toEqual(expect.arrayContaining(["adventureBegan", "openingRecorded", "roundOpened"]));
+    const stored = await t.store.transaction((tx) => tx.loadCampaign(key));
+    expect(stored?.state).toMatchObject({ opening: "done", round: { number: 1, status: "collecting" } });
+  });
+
+  it("falls back to the adventure's own text when the Narrator keeps failing, so the table can start", async () => {
+    const narrator = new ScriptedNarrator([new Error("provider down"), new Error("provider down")]);
+    const t = await table(new ScriptedPlanner([]), narrator);
+    await t.bus.execute(key, { kind: "beginAdventure" }, { commandId: "b1", actor: system });
+    await t.worker.runOnce();
+    await t.worker.runOnce();
+    const opening = (await events(t.store)).find((event) => event.kind === "openingRecorded");
+    expect(opening?.kind === "openingRecorded" ? opening.text : "").toContain(testBible.premise);
+    expect(opening?.kind === "openingRecorded" ? opening.text : "").toContain("What do you do?");
+    const stored = await t.store.transaction((tx) => tx.loadCampaign(key));
+    expect(stored?.state.round).toMatchObject({ number: 1 });
+  });
+});

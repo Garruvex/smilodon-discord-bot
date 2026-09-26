@@ -32,6 +32,7 @@ export interface HeroView {
 }
 
 export type PanelMode =
+  | "opening"
   | "collecting"
   | "planning"
   | "awaitingRolls"
@@ -177,6 +178,7 @@ function modeOf(record: CampaignRecord, state: CampaignState, inFight: boolean, 
   if (state.pausedBy === "recovery") return "recovery";
   if (state.pausedBy === "organizer" || record.lifecycle === "paused") return "paused";
   if (state.status === "waitingForPlayers") return "waiting";
+  if (state.opening === "pending") return "opening";
   if (inFight) return "combat";
   if (state.round?.status === "collecting") return "collecting";
   if (state.round?.status === "resolving" && rollsPending) return "awaitingRolls";

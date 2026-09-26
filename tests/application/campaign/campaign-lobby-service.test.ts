@@ -151,7 +151,7 @@ describe("the lobby", () => {
 });
 
 describe("starting the campaign", () => {
-  it("creates the engine campaign from the seats and opens the first round", async () => {
+  it("creates the engine campaign from the seats and asks for the opening before any round", async () => {
     const { service, store, key } = await fullLobby();
     const started = value(await service.start(key, "u-org"));
     expect(started.record).toMatchObject({ lifecycle: "active", startedAt: 1_000 });
@@ -161,7 +161,10 @@ describe("starting the campaign", () => {
     expect(Object.keys(stored?.state.characters ?? {})).toEqual(heroIds);
     expect(stored?.state.members["u-b"]?.characterId).toBe(heroIds[1]);
     expect(stored?.state.organizerId).toBe("u-org");
-    expect(stored?.state.round).toMatchObject({ number: 1, status: "collecting", participants: heroIds });
+    // The Narrator's opening comes first; no round timer runs while the table reads it.
+    expect(stored?.state.opening).toBe("pending");
+    expect(stored?.state.round).toBeNull();
+    expect((await store.transaction((tx) => tx.pendingOutbox("narrateOpening"))).map((item) => item.request.kind)).toEqual(["narrateOpening"]);
     expect(stored?.state.pacing).toMatchObject({ roundSeconds: 300 });
     expect(stored?.ruleset).toMatchObject({ houseRules: {} });
   });

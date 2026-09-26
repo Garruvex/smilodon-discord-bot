@@ -12,9 +12,13 @@ export type Actor = { readonly kind: "user"; readonly userId: UserId } | { reado
 
 // Closed union: decide() handles every kind with an exhaustive switch.
 export type CampaignCommand =
-  // Opens the next round: by the system after narration, or by a present
-  // member after a quiet round.
+  // Opens the next round: by the system after narration (or after a quiet
+  // round with someone present), or by a present member.
   | { readonly kind: "openRound" }
+  // The game has started: the Narrator tells the opening, and the first round
+  // opens once it is on the table.
+  | { readonly kind: "beginAdventure" }
+  | { readonly kind: "recordOpening"; readonly text: string }
   | { readonly kind: "submitAction"; readonly characterId: CharacterId; readonly text: string }
   | { readonly kind: "pass"; readonly characterId: CharacterId }
   | { readonly kind: "closeRound" }

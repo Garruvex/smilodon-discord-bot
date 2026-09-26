@@ -243,6 +243,7 @@ export const narratorJsonSchema: Record<string, unknown> = {
 
 export function buildNarratorPrompt(request: NarratorRequest): { system: string; user: string } {
   const zh = request.language === "zh-TW";
+  if (request.opening !== undefined) return buildOpeningPrompt(request, request.opening.heroes);
   const rules = [
     "## Output rules",
     zh
@@ -262,6 +263,27 @@ export function buildNarratorPrompt(request: NarratorRequest): { system: string;
   return {
     ...splitPrompt(request.context, rules, `Round ${request.roundNumber} outcomes:\n${outcomes || "- Nobody acted."}${spotlight}${threat}`),
   };
+}
+
+// The adventure's opening, as a Dungeon Master would open a session: the
+// world, the place, the party, what draws them in, and then the table's turn.
+function buildOpeningPrompt(
+  request: NarratorRequest,
+  heroes: readonly { readonly name: string; readonly className: string | null }[],
+): { system: string; user: string } {
+  const zh = request.language === "zh-TW";
+  const rules = [
+    "## Output rules",
+    zh
+      ? "Write 300-500 Traditional Chinese characters (Taiwan usage) in the narration field, in two or three short paragraphs."
+      : "Write 180-260 words of English in the narration field, in two or three short paragraphs.",
+    "This is the opening of the adventure, before anyone has acted. Speak as the Dungeon Master to the table: set the world and the place with a few vivid, specific details, introduce the heroes by name as the party gathered here, and say what draws them into the situation.",
+    "Use only what the adventure text above names: its place, people, and premise. Never invent new threats, places, passages, or characters, and never reveal anything the text marks as secret.",
+    "Never write dialogue, choices, or feelings for the heroes; describe the world around them. A named NPC may speak a line in their own voice.",
+    "End by turning to the table: ask what the heroes do, in your own words, so the players know it is their turn.",
+  ].join("\n");
+  const party = heroes.map((hero) => (hero.className === null ? hero.name : `${hero.name} (${hero.className})`)).join(", ");
+  return splitPrompt(request.context, rules, `Open the adventure. The party: ${party}.`);
 }
 
 export function parseNarratorOutput(text: string): string {

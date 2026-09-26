@@ -20,6 +20,7 @@ export interface CampaignCardInput {
 }
 
 const accentFor: Readonly<Record<PanelMode, number>> = {
+  opening: accents.green,
   collecting: accents.green,
   planning: accents.green,
   awaitingRolls: accents.green,

@@ -7,7 +7,7 @@ import { zhTwSrd51Glossary } from "../../../../src/application/i18n/campaign/glo
 import { starterAdventureId } from "../../../../src/infrastructure/campaign/starter-adventures.js";
 import { CampaignCardService } from "../../../../src/infrastructure/discord/campaign/campaign-card-service.js";
 import { CampaignComponentHandler } from "../../../../src/infrastructure/discord/components/campaign-component-handler.js";
-import { guildId, quiet, rig, starter, type Rig } from "../../../application/campaign/campaign-rig.js";
+import { guildId, quiet, rig, starter, tellOpening, type Rig } from "../../../application/campaign/campaign-rig.js";
 import { FakeMessages } from "./fake-messages.js";
 
 const party = "chan-party";
@@ -129,6 +129,7 @@ async function started(t: Harness): Promise<void> {
   await t.press("join", "u-org");
   await t.select("u-org", heroes[0]?.id ?? "");
   await t.press("start", "u-org");
+  await tellOpening(t.r, t.key);
 }
 
 describe("the lobby controls", () => {

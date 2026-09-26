@@ -1,3 +1,4 @@
+import type { CampaignState } from "../../domain/campaign/state/campaign-state.js";
 import type { CampaignCommandBus } from "./campaign-command-bus.js";
 import type { CampaignKey, CampaignUnitOfWork } from "./ports/campaign-store.js";
 import type { DmJobWorker } from "./workers/dm-job-worker.js";
@@ -30,6 +31,9 @@ export interface RecoveryReport {
   readonly paused: readonly CampaignKey[];
   // Campaigns that crashed between starting and opening their first round.
   readonly firstRoundsOpened: readonly CampaignKey[];
+  // Campaigns left with no round after a quiet one (before quiet rounds opened
+  // the next round by themselves); each gets its round now.
+  readonly roundsReopened: readonly CampaignKey[];
 }
 
 // Runs a campaign's background work in one process: dice, timers, the DM's
@@ -93,15 +97,20 @@ export class CampaignRuntime {
     const active = await this.options.unitOfWork.transaction((tx) => tx.listRecordsByLifecycle(["active"]));
     const paused: CampaignKey[] = [];
     const firstRoundsOpened: CampaignKey[] = [];
+    const roundsReopened: CampaignKey[] = [];
     for (const { record } of active) {
       const { key } = record;
       try {
         const stored = await this.options.unitOfWork.transaction((tx) => tx.loadCampaign(key));
         if (stored === undefined) continue;
         const { state } = stored;
-        if (state.lastRoundNumber === 0 && state.round === null && state.encounter === null && state.status === "active") {
-          await this.options.bus.execute(key, { kind: "openRound" }, { commandId: `start:${key.campaignId}`, actor: { kind: "system" } });
+        if (state.lastRoundNumber === 0 && state.round === null && state.encounter === null && state.status === "active" && state.opening === undefined) {
+          await this.options.bus.execute(key, { kind: "beginAdventure" }, { commandId: `start:${key.campaignId}`, actor: { kind: "system" } });
           firstRoundsOpened.push(key);
+        }
+        if (await this.endedOnQuietRound(key, state)) {
+          await this.options.bus.execute(key, { kind: "openRound" }, { commandId: `reopen:${this.options.bootId}:${key.campaignId}`, actor: { kind: "system" } });
+          roundsReopened.push(key);
         }
         const timed = record.pacing.roundSeconds !== null || record.pacing.rollSeconds !== null || record.pacing.turnSeconds !== null;
         if (timed && state.pausedBy === null) {
@@ -116,7 +125,17 @@ export class CampaignRuntime {
         this.options.logger.error({ err: error, guildId: key.guildId, campaignId: key.campaignId }, "Campaign recovery failed");
       }
     }
-    return { paused, firstRoundsOpened };
+    return { paused, firstRoundsOpened, roundsReopened };
+  }
+
+  // A game whose last round was quiet and never got another: nothing is
+  // pending that would open one.
+  private async endedOnQuietRound(key: CampaignKey, state: CampaignState): Promise<boolean> {
+    if (state.lastRoundNumber === 0 || state.round !== null || state.status !== "active" || state.pausedBy !== null) return false;
+    if (state.pendingEncounter !== null || (state.encounter !== null && state.encounter.status !== "ended")) return false;
+    const events = await this.options.unitOfWork.transaction((tx) => tx.readEvents(key));
+    const last = events.map((envelope) => envelope.event).findLast((event) => event.kind === "roundResolved");
+    return last?.kind === "roundResolved" && last.quiet && last.roundNumber === state.lastRoundNumber;
   }
 
   private schedule(): void {

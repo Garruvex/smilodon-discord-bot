@@ -50,6 +50,11 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
       case "narration":
         await say(adventureChannelId, narration(events, delivery.roundNumber));
         break;
+      case "opening": {
+        const opening = events.findLast((event) => event.kind === "openingRecorded");
+        await say(adventureChannelId, opening?.kind === "openingRecorded" ? opening.text : null);
+        break;
+      }
       case "quietRound":
         await say(adventureChannelId, text.campaign.msg.quiet);
         break;

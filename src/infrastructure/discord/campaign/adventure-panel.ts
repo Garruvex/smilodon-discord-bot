@@ -6,6 +6,7 @@ import { campaignCustomId, type CampaignAction } from "./campaign-ids.js";
 import { accents, cardPayload, type CardPayload } from "./card-payload.js";
 
 const accentFor: Readonly<Record<PanelMode, number>> = {
+  opening: accents.amber,
   collecting: accents.green,
   planning: accents.amber,
   awaitingRolls: accents.amber,
@@ -20,6 +21,7 @@ const accentFor: Readonly<Record<PanelMode, number>> = {
 // shared message shows the same buttons to everyone; every click is checked
 // again on the server, and a click that cannot apply gets a private reply.
 const controlsFor: Readonly<Record<PanelMode, readonly CampaignAction[]>> = {
+  opening: ["myHero", "away"],
   collecting: ["act", "pass", "myHero", "away"],
   planning: ["myHero", "away"],
   awaitingRolls: ["roll", "myHero", "away"],
@@ -59,6 +61,8 @@ function statusLine(view: PanelView, text: Texts): string {
   switch (view.mode) {
     case "collecting":
       return `${t.collecting} ${view.closesAt === null ? t.noTimer : t.closes({ when: relative(view.closesAt) })}`;
+    case "opening":
+      return t.opening;
     case "planning":
       return t.planning;
     case "awaitingRolls":

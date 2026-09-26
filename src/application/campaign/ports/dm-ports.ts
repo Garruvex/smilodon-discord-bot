@@ -90,6 +90,9 @@ export interface NarratorRequest {
   readonly spotlight: readonly string[];
   // A fight breaks out after this round: its public description, to lead into.
   readonly threat: string | null;
+  // Set for the adventure's opening, told before the first round (round 0, no
+  // outcomes): the heroes to introduce as the party.
+  readonly opening?: { readonly heroes: readonly { readonly name: string; readonly className: string | null }[] };
 }
 
 // One combat round's flourish, or (final) the fight's closing narration

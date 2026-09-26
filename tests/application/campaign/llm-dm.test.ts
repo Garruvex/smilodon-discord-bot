@@ -190,6 +190,22 @@ describe("LLM DM", () => {
     await expect(new LlmCampaignNarrator({ client: new FakeClient(['{"narration":""}']) }).narrate(narratorRequest)).rejects.toThrow();
   });
 
+  it("opens an adventure like a Dungeon Master: the world, the party, and the table's turn", () => {
+    const prompt = buildNarratorPrompt({
+      ...narratorRequest,
+      language: "en",
+      roundNumber: 0,
+      outcomes: [],
+      spotlight: [],
+      opening: { heroes: [{ name: "Mira", className: "Rogue" }, { name: "Borin", className: null }] },
+    });
+    expect(prompt.user).toContain("Open the adventure. The party: Mira (Rogue), Borin.");
+    expect(prompt.system).toContain("180-260 words of English");
+    expect(prompt.system).toContain("ask what the heroes do");
+    expect(prompt.system).toContain("Never invent new threats");
+    expect(prompt.user).not.toContain("outcomes:");
+  });
+
   it("leads narration into a fight that is about to break out", () => {
     const prompt = buildNarratorPrompt({ ...narratorRequest, threat: "Goblins burst from the pews." });
     expect(prompt.user).toContain("A fight breaks out right after this: Goblins burst from the pews.");

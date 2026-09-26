@@ -87,6 +87,10 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     case "planRetryRequested":
       // History only: the round stays in planning until the next command.
       return state;
+    case "adventureBegan":
+      return { ...state, opening: "pending" };
+    case "openingRecorded":
+      return { ...state, opening: "done" };
     case "narrationRecorded":
       return { ...state, lastNarratedRound: Math.max(state.lastNarratedRound, event.roundNumber) };
     case "ledgerFactRecorded": {

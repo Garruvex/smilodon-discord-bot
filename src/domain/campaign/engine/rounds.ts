@@ -22,14 +22,22 @@ export function openRound(decision: Decision): Rejection | null {
   if (state.encounter !== null && state.encounter.status !== "ended") return { code: "inCombat" };
   if (state.round !== null) return { code: "roundAlreadyOpen" };
 
+  // The opening is still being told: the first round opens when it lands.
+  if (state.opening === "pending") return null;
+
   const participants = participantsFor(state);
   if (participants.length === 0) {
     if (ctx.actor.kind === "user") return { code: "nobodyPresent" };
     enterWaiting(decision);
     return null;
   }
-  const roundNumber = state.lastRoundNumber + 1;
-  const closesAt = deadlineAfter(ctx.now, state.pacing.roundSeconds);
+  beginRound(decision, participants);
+  return null;
+}
+
+function beginRound(decision: Decision, participants: readonly CharacterId[]): void {
+  const roundNumber = decision.state.lastRoundNumber + 1;
+  const closesAt = deadlineAfter(decision.ctx.now, decision.state.pacing.roundSeconds);
   decision.emit({ kind: "roundOpened", roundNumber, participants, closesAt });
   if (closesAt !== null) {
     decision.request({
@@ -37,7 +45,6 @@ export function openRound(decision: Decision): Rejection | null {
       timer: { kind: "roundWindow", timerId: roundTimerId(roundNumber), dueAt: closesAt, roundNumber },
     });
   }
-  return null;
 }
 
 export function submitAction(decision: Decision, characterId: CharacterId, text: string): Rejection | null {
@@ -109,10 +116,14 @@ function closeRound(decision: Decision, reason: RoundCloseReason): void {
 
   const hasActions = Object.values(round.submissions).some((submission) => submission.kind === "action");
   if (!hasActions) {
-    // Only passes and misses: a template status, no model call, and no
-    // automatic next round.
+    // Only passes and misses: a template status and no model call. The next
+    // round opens straight away while someone is present, so the table is
+    // never left without a panel to act on; missed rounds mark players away,
+    // which is what stops a table nobody is at.
     decision.emit({ kind: "roundResolved", roundNumber: round.number, quiet: true });
     decision.request({ kind: "deliver", delivery: { kind: "quietRound", roundNumber: round.number } });
+    const next = participantsFor(decision.state);
+    if (next.length > 0 && decision.state.pausedBy === null) beginRound(decision, next);
   }
   if (presentMembers(decision.state).length === 0) {
     enterWaiting(decision);

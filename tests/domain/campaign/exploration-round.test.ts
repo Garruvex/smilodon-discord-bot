@@ -92,20 +92,25 @@ describe("exploration rounds", () => {
     expect(closed.state.round?.submissions["c-borin"]).toEqual({ kind: "missed" });
   });
 
-  it("ends an all-pass round quietly: no Planner call and no automatic next round", () => {
+  it("ends an all-pass round quietly, with no Planner call, and opens the next round at once", () => {
     let state = run(newCampaign(), system, { kind: "openRound" }).state;
     state = run(state, alex, { kind: "pass", characterId: "c-mira" }).state;
     const last = run(state, jamie, { kind: "pass", characterId: "c-borin" });
-    expect(kinds(last.events)).toEqual(["passSubmitted", "roundClosed", "roundResolved"]);
+    expect(kinds(last.events)).toEqual(["passSubmitted", "roundClosed", "roundResolved", "roundOpened"]);
     expect(last.events[2]).toEqual({ kind: "roundResolved", roundNumber: 1, quiet: true });
-    expect(last.requests).toEqual([
-      { kind: "cancelTimer", timerId: "round:1" },
-      { kind: "deliver", delivery: { kind: "quietRound", roundNumber: 1 } },
-    ]);
-    expect(last.state.round).toBeNull();
+    expect(last.events[3]).toMatchObject({ kind: "roundOpened", roundNumber: 2 });
+    expect(last.requests.map((request) => request.kind)).toEqual(["cancelTimer", "deliver", "startTimer"]);
+    expect(last.requests[1]).toEqual({ kind: "deliver", delivery: { kind: "quietRound", roundNumber: 1 } });
+    expect(last.state.round).toMatchObject({ number: 2, status: "collecting" });
+  });
 
-    // A present player starts the next round explicitly.
-    expect(run(last.state, alex, { kind: "openRound" }).events[0]).toMatchObject({ kind: "roundOpened", roundNumber: 2 });
+  it("does not open another round for a quiet round while the game is paused", () => {
+    let state = run(newCampaign(), system, { kind: "openRound" }).state;
+    state = run(state, alex, { kind: "pass", characterId: "c-mira" }).state;
+    state = { ...state, pausedBy: "organizer" };
+    const last = run(state, jamie, { kind: "pass", characterId: "c-borin" });
+    expect(kinds(last.events)).toEqual(["passSubmitted", "roundClosed", "roundResolved"]);
+    expect(last.state.round).toBeNull();
   });
 });
 

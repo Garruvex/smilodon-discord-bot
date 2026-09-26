@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { DeliveryWorker } from "../../../src/application/campaign/workers/delivery-worker.js";
 import { starterAdventureId } from "../../../src/infrastructure/campaign/starter-adventures.js";
 import { ruleset } from "../../domain/campaign/campaign-fixtures.js";
-import { guildId, rig, starter, startedCampaign } from "./campaign-rig.js";
+import { guildId, rig, starter, startedCampaign, tellOpening } from "./campaign-rig.js";
 
 const player = { kind: "user", userId: "u-org" } as const;
 
@@ -45,8 +45,10 @@ describe("the runtime", () => {
   it("gives up on a delivery after its attempts, without blocking forever", async () => {
     const r = rig();
     const key = await startedCampaign(r);
-    await r.store.transaction((tx) => tx.enqueue(key, "d1", { kind: "deliver", delivery: { kind: "quietRound", roundNumber: 1 } }, 1));
     const worker = new DeliveryWorker(r.store, r.presenter, 2);
+    // The opening's own delivery goes out first.
+    await worker.runOnce();
+    await r.store.transaction((tx) => tx.enqueue(key, "d1", { kind: "deliver", delivery: { kind: "quietRound", roundNumber: 1 } }, 1));
     r.presenter.failNext = 5;
     await worker.runOnce();
     await worker.runOnce();
@@ -87,7 +89,7 @@ describe("recovery after a restart", () => {
     expect((await r.runtime("boot-3").recover()).paused).toEqual([key]);
   });
 
-  it("opens the first round of a campaign that stopped before it, and leaves untimed campaigns running", async () => {
+  it("begins a campaign that stopped before its opening, and leaves untimed campaigns running", async () => {
     const r = rig();
     const created = await r.service.create({
       guildId,
@@ -126,6 +128,52 @@ describe("recovery after a restart", () => {
     expect(report.firstRoundsOpened).toEqual([key]);
     expect(report.paused).toEqual([]);
     const state = (await r.store.transaction((tx) => tx.loadCampaign(key)))?.state;
-    expect(state).toMatchObject({ status: "active", pausedBy: null, round: { number: 1, status: "collecting" } });
+    // The opening comes first; the first round opens when it is told.
+    expect(state).toMatchObject({ status: "active", pausedBy: null, opening: "pending", round: null });
+    await tellOpening(r, key);
+    const opened = (await r.store.transaction((tx) => tx.loadCampaign(key)))?.state;
+    expect(opened).toMatchObject({ opening: "done", round: { number: 1, status: "collecting" } });
+  });
+});
+
+describe("a game left after a quiet round", () => {
+  it("gets its next round at startup, and only once", async () => {
+    const r = rig();
+    const created = await r.service.create({
+      guildId,
+      organizerId: "u-org",
+      name: "Stuck",
+      language: "en",
+      adventureId: starterAdventureId,
+      pacing: { preset: "custom", pacing: { roundSeconds: null, rollSeconds: null, turnSeconds: null, awayAfterMisses: 2 } },
+    });
+    if (created.kind !== "ok") throw new Error("create");
+    const { key } = created.value;
+    const hero = starter.en.heroes[0]?.id ?? "";
+    await r.service.join(key, "u-org");
+    await r.service.chooseHero(key, "u-org", hero);
+    await r.store.transaction(async (tx) => {
+      const stored = await tx.loadRecord(key);
+      if (stored === undefined) throw new Error("record");
+      await tx.saveRecord({ ...stored.record, lifecycle: "active", lobby: { ...stored.record.lobby, status: "started" }, startedAt: 1 }, stored.revision);
+    });
+    const { buildStartingState } = await import("../../../src/application/campaign/setup/starting-state.js");
+    const pacing = { roundSeconds: null, rollSeconds: null, turnSeconds: null, awayAfterMisses: 2 };
+    // The way older builds left it: round 1 was quiet, and no round followed.
+    await r.store.transaction(async (tx) => {
+      await tx.createCampaign(key, {
+        state: { ...buildStartingState({ campaignId: key.campaignId, organizerId: "u-org", adventure: starter.en, seats: [{ userId: "u-org", heroId: hero }], pacing }), lastRoundNumber: 1, opening: "done" },
+        revision: 0,
+        ruleset: { rulesetId: ruleset().content.rulesetId, rulesetVersion: ruleset().content.version, houseRules: {} },
+        adventure: { adventureId: starterAdventureId, version: starter.en.bible.version },
+      });
+      await tx.appendEvents(key, [
+        { campaignId: key.campaignId, causationId: "old", commandKind: "pass", actor: { kind: "system" }, rulesRevision: "r", recordedAt: 1, event: { kind: "roundResolved", roundNumber: 1, quiet: true } },
+      ]);
+    });
+
+    expect((await r.runtime("boot-3").recover()).roundsReopened).toEqual([key]);
+    expect((await r.store.transaction((tx) => tx.loadCampaign(key)))?.state.round).toMatchObject({ number: 2, status: "collecting" });
+    expect((await r.runtime("boot-4").recover()).roundsReopened).toEqual([]);
   });
 });

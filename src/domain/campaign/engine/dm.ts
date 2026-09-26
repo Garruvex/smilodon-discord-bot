@@ -30,6 +30,34 @@ export function retryPlan(decision: Decision): Rejection | null {
   return null;
 }
 
+// The game has started: ask the Narrator for the opening scene. Nothing else
+// happens until it is told, so no round timer runs while the table reads. A
+// game that already has a round (or an opening) is left as it is, which also
+// makes a restart's second attempt harmless.
+export function beginAdventure(decision: Decision): Rejection | null {
+  const { state, ctx } = decision;
+  if (ctx.actor.kind !== "system") return { code: "systemOnly" };
+  if (state.opening !== undefined || state.lastRoundNumber > 0 || state.round !== null) return null;
+  decision.emit({ kind: "adventureBegan" });
+  decision.request({ kind: "narrateOpening" });
+  return null;
+}
+
+// Saves the opening, then opens the first round if anyone is present. An
+// opening that arrives while the table is waiting is kept; continue opens
+// the round.
+export function recordOpening(decision: Decision, text: string): Rejection | null {
+  const { state, ctx } = decision;
+  if (ctx.actor.kind !== "system") return { code: "systemOnly" };
+  const trimmed = text.trim();
+  if (trimmed.length === 0 || trimmed.length > maxNarrationLength) return { code: "emptyNarration" };
+  if (state.opening !== "pending") return { code: "staleNarration" };
+  decision.emit({ kind: "openingRecorded", text: trimmed });
+  decision.request({ kind: "deliver", delivery: { kind: "opening" } });
+  if (decision.state.status !== "active") return null;
+  return openRound(decision);
+}
+
 // Saves the Narrator's text for a resolved round, then starts the fight the
 // round queued, or opens the next round, if anyone is present. Narration
 // that arrives while the table is waiting is still kept; the next step waits

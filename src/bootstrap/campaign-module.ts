@@ -166,7 +166,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
     start: async (): Promise<void> => {
       openStore();
       const report = await running.start();
-      logger.info({ modelConfigured: model !== null, paused: report.paused.length, firstRoundsOpened: report.firstRoundsOpened.length }, "Campaign runtime started");
+      logger.info({ modelConfigured: model !== null, paused: report.paused.length, firstRoundsOpened: report.firstRoundsOpened.length, roundsReopened: report.roundsReopened.length }, "Campaign runtime started");
       // Cards deleted while the bot was away come back; this needs Discord, so it does not hold up startup.
       void cards.recoverAll().catch((error: unknown) => logger.error({ err: error }, "Campaign card recovery at startup failed"));
     },

@@ -5,7 +5,7 @@ import { enSrd51Glossary } from "../../../../src/application/i18n/campaign/gloss
 import { zhTwSrd51Glossary } from "../../../../src/application/i18n/campaign/glossary/zh-TW/srd-5.1.js";
 import { CampaignCardService } from "../../../../src/infrastructure/discord/campaign/campaign-card-service.js";
 import { starterAdventureId } from "../../../../src/infrastructure/campaign/starter-adventures.js";
-import { guildId, quiet, rig, starter, type Rig } from "../../../application/campaign/campaign-rig.js";
+import { guildId, quiet, rig, starter, tellOpening, type Rig } from "../../../application/campaign/campaign-rig.js";
 import { flatten } from "./card-helpers.js";
 import { FakeMessages, type Sent } from "./fake-messages.js";
 
@@ -94,6 +94,7 @@ describe("the card service", () => {
     await r.service.chooseHero(key, "u-org", firstHero);
     await cards.sync(key);
     await r.service.start(key, "u-org");
+    await tellOpening(r, key);
     await cards.sync(key);
 
     const partyMessages = messages.live(party);
@@ -115,6 +116,7 @@ describe("the card service", () => {
     await r.service.join(key, "u-org");
     await r.service.chooseHero(key, "u-org", firstHero);
     await r.service.start(key, "u-org");
+    await tellOpening(r, key);
     await cards.sync(key);
     const first = only(messages.live(adventure));
     r.plannerScript.push({ roundNumber: 1, actions: [{ characterId: firstHero, resolution: { kind: "automatic", reason: "Simple." } }] });

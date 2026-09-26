@@ -8,6 +8,8 @@ export type EngineRequest =
   | { readonly kind: "roll"; readonly rollId: RollId; readonly spec: RollSpec }
   | { readonly kind: "plan"; readonly roundNumber: number }
   | { readonly kind: "narrate"; readonly roundNumber: number }
+  // The adventure's opening scene, told before the first round.
+  | { readonly kind: "narrateOpening" }
   // A combat round's flourish, or (final) the fight's closing narration.
   | { readonly kind: "narrateCombat"; readonly encounterId: string; readonly round: number; readonly final: boolean }
   | { readonly kind: "startTimer"; readonly timer: TimerSpec }
@@ -30,6 +32,7 @@ export type DeliverySpec =
   // Play was paused on purpose; the organizer resumes it.
   | { readonly kind: "campaignPaused"; readonly reason: "organizer" | "recovery" }
   | { readonly kind: "narration"; readonly roundNumber: number }
+  | { readonly kind: "opening" }
   // "The DM considers…": the round is held after the Planner failed.
   | { readonly kind: "dmHolding"; readonly roundNumber: number }
   | { readonly kind: "organizerNotice"; readonly notice: "plannerFailed"; readonly roundNumber: number }

@@ -1,4 +1,4 @@
-import { findEncounter } from "../../../domain/campaign/adventure/adventure-bible.js";
+import { findEncounter, findScene } from "../../../domain/campaign/adventure/adventure-bible.js";
 import { skills } from "../../../domain/campaign/character/character-sheet.js";
 import type { CampaignEvent } from "../../../domain/campaign/events/campaign-event.js";
 import { dcLadder, rollModeReasons } from "../../../domain/campaign/rules/difficulty.js";
@@ -44,6 +44,7 @@ export class DmJobWorker {
     const { unitOfWork } = this.options;
     const items = await unitOfWork.transaction(async (tx) => [
       ...(await tx.pendingOutbox("plan")),
+      ...(await tx.pendingOutbox("narrateOpening")),
       ...(await tx.pendingOutbox("narrate")),
       ...(await tx.pendingOutbox("narrateCombat")),
     ]);
@@ -51,6 +52,7 @@ export class DmJobWorker {
     for (const item of items) {
       try {
         if (item.request.kind === "plan") await this.plan(item, item.request.roundNumber);
+        if (item.request.kind === "narrateOpening") await this.narrateOpening(item);
         if (item.request.kind === "narrate") await this.narrate(item, item.request.roundNumber);
         if (item.request.kind === "narrateCombat") await this.narrateCombat(item, item.request.encounterId, item.request.round, item.request.final);
         await unitOfWork.transaction((tx) => tx.completeOutbox(item.id));
@@ -137,6 +139,36 @@ export class DmJobWorker {
       { kind: "recordNarration", roundNumber, text },
       { commandId: `${item.id}:narration`, actor: system },
     );
+  }
+
+  // The opening scene, told before the first round. Like a round's narration,
+  // it falls back to a template built from the adventure's own text, so an
+  // outage cannot keep the table from starting.
+  private async narrateOpening(item: OutboxItem): Promise<void> {
+    const loaded = await this.load(item.key);
+    const { state } = loaded.stored;
+    if (state.opening !== "pending") return;
+    const heroes = Object.values(state.members).flatMap((member) => {
+      const sheet = member.characterId === null ? undefined : state.characters[member.characterId];
+      return sheet === undefined ? [] : [{ name: sheet.name, className: sheet.className ?? null }];
+    });
+    const request: NarratorRequest = {
+      context: this.context("narrator", loaded),
+      language: state.language,
+      roundNumber: 0,
+      outcomes: [],
+      spotlight: [],
+      threat: null,
+      opening: { heroes },
+    };
+    let text: string;
+    try {
+      text = (await this.options.narrator.narrate(request)).text;
+    } catch (error) {
+      if (item.attempts + 1 < this.maxAttempts) throw error;
+      text = fallbackOpening(loaded, heroes.map((hero) => hero.name));
+    }
+    await this.options.bus.execute(item.key, { kind: "recordOpening", text }, { commandId: `${item.id}:opening`, actor: system });
   }
 
   // Flourishes are optional color: a failed one is skipped, since the table
@@ -248,6 +280,15 @@ interface Loaded {
   readonly stored: StoredCampaign;
   readonly events: readonly CampaignEvent[];
   readonly bible: NonNullable<ReturnType<AdventureCatalog["find"]>>;
+}
+
+function fallbackOpening(loaded: Loaded, heroNames: readonly string[]): string {
+  const zh = loaded.stored.state.language === "zh-TW";
+  const scene = findScene(loaded.bible, loaded.stored.state.sceneId);
+  const party = heroNames.join(zh ? "、" : ", ");
+  const lines = [loaded.bible.premise, scene?.publicDescription ?? ""].filter((line) => line.trim() !== "");
+  lines.push(zh ? `${party} 來到這裡。你們要怎麼做？` : `${party} arrive here together. What do you do?`);
+  return lines.join("\n\n");
 }
 
 function fallbackCombatNarration(request: CombatNarratorRequest): string {

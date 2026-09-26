@@ -97,3 +97,58 @@ describe("ledger facts", () => {
     ).toEqual({ code: "invalidLedgerFact", problem: "entityId" });
   });
 });
+
+describe("the opening", () => {
+  const begun = (): CampaignState => run(newCampaign(), system, { kind: "beginAdventure" }).state;
+
+  it("asks for the opening and opens no round yet", () => {
+    const step = run(newCampaign(), system, { kind: "beginAdventure" });
+    expect(kinds(step.events)).toEqual(["adventureBegan"]);
+    expect(step.requests).toEqual([{ kind: "narrateOpening" }]);
+    expect(step.state.opening).toBe("pending");
+    expect(step.state.round).toBeNull();
+  });
+
+  it("begins only once, and only for the system", () => {
+    expect(run(begun(), system, { kind: "beginAdventure" }).events).toEqual([]);
+    expect(reject(newCampaign(), alex, { kind: "beginAdventure" })).toEqual({ code: "systemOnly" });
+  });
+
+  it("does not open a round while the opening is being told, even when asked", () => {
+    expect(run(begun(), system, { kind: "openRound" }).events).toEqual([]);
+    expect(run(begun(), alex, { kind: "openRound" }).events).toEqual([]);
+  });
+
+  it("records the opening, delivers it, and opens the first round", () => {
+    const step = run(begun(), system, { kind: "recordOpening", text: " Welcome to the inn. What do you do? " });
+    expect(kinds(step.events)).toEqual(["openingRecorded", "roundOpened"]);
+    expect(step.events[0]).toEqual({ kind: "openingRecorded", text: "Welcome to the inn. What do you do?" });
+    expect(step.requests[0]).toEqual({ kind: "deliver", delivery: { kind: "opening" } });
+    expect(step.state).toMatchObject({ opening: "done", round: { number: 1, status: "collecting" } });
+  });
+
+  it("refuses an opening nobody asked for, twice, from a player, or empty", () => {
+    expect(reject(newCampaign(), system, { kind: "recordOpening", text: "Early." })).toEqual({ code: "staleNarration" });
+    const told = run(begun(), system, { kind: "recordOpening", text: "Once." }).state;
+    expect(reject(told, system, { kind: "recordOpening", text: "Twice." })).toEqual({ code: "staleNarration" });
+    expect(reject(begun(), alex, { kind: "recordOpening", text: "Mine." })).toEqual({ code: "systemOnly" });
+    expect(reject(begun(), system, { kind: "recordOpening", text: "  " })).toEqual({ code: "emptyNarration" });
+  });
+
+  it("keeps an opening that arrives while play is paused, and continue opens the round", () => {
+    const paused = run(begun(), organizer, { kind: "pauseCampaign", reason: "organizer" }).state;
+    const told = run(paused, system, { kind: "recordOpening", text: "The inn is warm." });
+    expect(kinds(told.events)).toEqual(["openingRecorded"]);
+    expect(told.state.round).toBeNull();
+    const resumed = run(told.state, organizer, { kind: "continue" });
+    expect(resumed.state.round).toMatchObject({ number: 1, status: "collecting" });
+  });
+
+  it("does not open a round when play continues before the opening has arrived", () => {
+    const paused = run(begun(), organizer, { kind: "pauseCampaign", reason: "organizer" }).state;
+    const resumed = run(paused, organizer, { kind: "continue" });
+    expect(resumed.state.round).toBeNull();
+    const told = run(resumed.state, system, { kind: "recordOpening", text: "The inn is warm." });
+    expect(told.state.round).toMatchObject({ number: 1 });
+  });
+});

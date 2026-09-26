@@ -4,7 +4,7 @@ import { CampaignPlayController, type PlayResult } from "../../../src/applicatio
 import type { CardRefresher } from "../../../src/application/campaign/ports/card-refresher.js";
 import type { CampaignKey } from "../../../src/application/campaign/ports/campaign-store.js";
 import { starterAdventureId } from "../../../src/infrastructure/campaign/starter-adventures.js";
-import { guildId, rig, starter, startedCampaign, type Rig } from "./campaign-rig.js";
+import { guildId, rig, starter, startedCampaign, tellOpening, type Rig } from "./campaign-rig.js";
 
 const heroes = starter.en.heroes.map((hero) => hero.id);
 
@@ -24,6 +24,7 @@ async function twoPlayerCampaign(r: Rig): Promise<CampaignKey> {
     await r.service.chooseHero(key, userId, heroes[index] ?? "");
   }
   await r.service.start(key, "u-org");
+  await tellOpening(r, key);
   return key;
 }
 

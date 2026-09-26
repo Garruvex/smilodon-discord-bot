@@ -13,7 +13,7 @@ import { zhTwSrd51Glossary } from "../../../../src/application/i18n/campaign/glo
 import { starterAdventureId } from "../../../../src/infrastructure/campaign/starter-adventures.js";
 import { CampaignCardService } from "../../../../src/infrastructure/discord/campaign/campaign-card-service.js";
 import { DiscordCampaignPresenter } from "../../../../src/infrastructure/discord/campaign/campaign-presenter.js";
-import { guildId, quiet, rig, starter, type Rig } from "../../../application/campaign/campaign-rig.js";
+import { guildId, quiet, rig, starter, tellOpening, type Rig } from "../../../application/campaign/campaign-rig.js";
 import { flatten } from "./card-helpers.js";
 import { FakeMessages } from "./fake-messages.js";
 
@@ -58,6 +58,7 @@ async function table(language: "en" | "zh-TW" = "en"): Promise<Table> {
   await r.service.join(key, "u-org");
   await r.service.chooseHero(key, "u-org", hero);
   await r.service.start(key, "u-org");
+  await tellOpening(r, key);
   await cards.sync(key);
   return { r, messages, cards, runtime, key, hero };
 }
@@ -80,7 +81,7 @@ describe("the presenter", () => {
     await t.runtime.runOnce();
 
     const posts = t.messages.posts.filter((post) => post.channelId === adventure);
-    expect(posts[0]?.content).toMatch(/^🎲 \*\*.+\*\* · Stealth \(DEX\): d20 \*\*\d+\*\* [+−] \d+ = \*\*\d+\*\* vs DC 15 — [✅❌]/);
+    expect(posts.find((post) => post.content.startsWith("🎲"))?.content).toMatch(/^🎲 \*\*.+\*\* · Stealth \(DEX\): d20 \*\*\d+\*\* [+−] \d+ = \*\*\d+\*\* vs DC 15 — [✅❌]/);
     expect(posts.some((post) => post.content === "The night air stirs.")).toBe(true);
     const narrationOrder = posts.find((post) => post.content === "The night air stirs.")?.order ?? 0;
     const panel = t.messages.live(adventure).at(-1);
@@ -114,6 +115,7 @@ describe("the presenter", () => {
 
   it("redraws the panel for a pause without posting history", async () => {
     const t = await table();
+    await t.runtime.runOnce();
     const before = t.messages.posts.length;
     await t.r.bus.execute(t.key, { kind: "pauseCampaign", reason: "organizer" }, { commandId: "p", actor });
     await t.runtime.runOnce();

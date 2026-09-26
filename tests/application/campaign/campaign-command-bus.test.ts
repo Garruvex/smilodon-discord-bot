@@ -265,7 +265,11 @@ describe("TimerWorker", () => {
     await harness.bus.execute(key, { kind: "pass", characterId: "c-mira" }, meta(alex));
     await harness.bus.execute(key, { kind: "pass", characterId: "c-borin" }, meta(jamie));
     harness.clock.advance(600_000);
-    expect(await timers.runOnce()).toEqual({ processed: 0, failed: [] });
+    // Round 1's window was cancelled; only the window of the round that opened
+    // straight after the quiet one is due.
+    expect(await timers.runOnce()).toEqual({ processed: 1, failed: [] });
+    const events = (await harness.store.transaction((tx) => tx.readEvents(key))).map((envelope) => envelope.event);
+    expect(events.filter((event) => event.kind === "roundClosed" && event.reason === "timer").map((event) => event.kind === "roundClosed" ? event.roundNumber : 0)).toEqual([2]);
   });
 
   it("auto-rolls a pending check when its roll timer expires, labeled as timed out", async () => {
