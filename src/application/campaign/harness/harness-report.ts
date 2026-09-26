@@ -35,9 +35,10 @@ export interface HarnessReport {
 }
 
 // Characters that exist only in Simplified Chinese. Conservative on purpose:
-// characters shared with Traditional usage are left out, so a hit is a real drift.
+// characters shared with Traditional usage are left out (斗 stays out: 斗篷 is
+// Traditional), so a hit is a real drift.
 const simplifiedOnly = new Set(
-  "这们说过还进对时会个为学发与问门马见长开关头书东车国边让从气乐实现点应经没样专业电话饭钱铁银错间闻听语谁请读写买卖卫报场张强总战斗声画区医岁归兴举级极杀际陈陆阴阳龙鸟鱼觉认识钟仅决刘纪约红细终织给绝统续罗脑药虽询贵费资赵选遗邮释钥锁队阶险随难饮馆驾验鲁鲜".split(""),
+  "这们说过还进对时会个为学发与问门马见长开关头书东车国边让从气乐实现点应经没样专业电话饭钱铁银错间闻听语谁请读写买卖卫报场张强总战声画区医岁归兴举级极杀际陈陆阴阳龙鸟鱼觉认识钟仅决刘纪约红细终织给绝统续罗脑药虽询贵费资赵选遗邮释钥锁队阶险随难饮馆驾验鲁鲜".split(""),
 );
 
 export interface TokenTotals {
