@@ -53,8 +53,8 @@ export class CampaignGameCreator {
       adventureId: this.options.defaultAdventureId,
       pacing: { preset: game.pacing },
       maxPlayers: game.players,
-      // No combat controls on Discord yet: fights play themselves on cautious autopilot.
-      houseRules: { "combat-mode": "autopilot", "loot-gold": game.lootGold ?? "pooled" },
+      // Players take their heroes' turns in a fight; an away hero is played on cautious autopilot.
+      houseRules: { "combat-mode": "players", "loot-gold": game.lootGold ?? "pooled" },
     });
     if (created.kind === "refused") return { kind: "refused", reason: created.reason };
     const provisioned = await this.options.setup.provision(created.value.key);

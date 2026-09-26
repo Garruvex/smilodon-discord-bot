@@ -91,15 +91,47 @@ describe("the adventure panel", () => {
       combat: {
         round: 2,
         activeName: "Borin",
-        party: [{ name: "Mira", hp: 4, maxHp: 9, condition: "active" }, { name: "Borin", hp: 12, maxHp: 12, condition: "active" }],
-        foes: [{ name: "Goblin A", band: "bloodied" }, { name: "Wolf", band: "unhurt" }],
+        activeUserId: "2",
+        playersControl: false,
+        zones: ["Cellar", "Stairs"],
+        party: [
+          { name: "Mira", hp: 4, maxHp: 9, condition: "active", zone: "Cellar", active: false },
+          { name: "Borin", hp: 12, maxHp: 12, condition: "active", zone: "Cellar", active: true },
+        ],
+        foes: [
+          { name: "Goblin A", band: "bloodied", zone: "Cellar", active: false },
+          { name: "Wolf", band: "unhurt", zone: "Stairs", active: false },
+        ],
       },
     };
     const card = flatten(renderAdventurePanel(view, texts.en, "camp"));
     expect(card.accent).toBe(accents.red);
     expect(card.text).toContain("Combat, round 2. Active: Borin.");
-    expect(card.text).toContain("Mira 4/9 · Borin 12/12");
-    expect(card.text).toContain("Goblin A: bloodied · Wolf: unhurt");
+    expect(card.text).toContain("📍 Cellar: Mira 4/9 · ▶ Borin 12/12 · Goblin A: bloodied");
+    expect(card.text).toContain("📍 Stairs: Wolf: unhurt");
+    // On autopilot nobody takes turns, so there is only My Hero.
+    expect(card.buttons.map((button) => button.id)).toEqual(["dnd:myHero:camp"]);
+  });
+
+  it("gives a fight the players play a Take turn and End turn button", () => {
+    const view: PanelView = {
+      ...collecting,
+      mode: "combat",
+      closesAt: 1_800_000_000_000,
+      combat: {
+        round: 1,
+        activeName: "Mira",
+        activeUserId: "1",
+        playersControl: true,
+        zones: ["Cellar"],
+        party: [{ name: "Mira", hp: 9, maxHp: 9, condition: "active", zone: "Cellar", active: true }],
+        foes: [{ name: "Wolf", band: "unhurt", zone: "Cellar", active: false }],
+      },
+    };
+    const card = flatten(renderAdventurePanel(view, texts.en, "camp"));
+    expect(card.text).toContain("Closes <t:1800000000:R>.");
+    expect(card.buttons.map((button) => button.id)).toEqual(["dnd:turn:camp", "dnd:endTurn:camp", "dnd:myHero:camp", "dnd:away:camp"]);
+    expect(labels(view, "zh-TW")).toEqual(["輪到我", "結束回合", "我的英雄", "離開"]);
   });
 
   it("speaks Traditional Chinese with short labels, and stays within Discord's limits", () => {

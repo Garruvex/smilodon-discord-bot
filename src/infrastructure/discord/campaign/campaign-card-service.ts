@@ -370,7 +370,8 @@ export class CampaignCardService implements CardRefresher {
 // The adventure panel is replaced when the round or the combat turn changes.
 function panelEpoch(state: StoredCampaign["state"]): string {
   const fight = state.encounter;
-  if (fight !== null && fight.status !== "ended") return `combat:${fight.id}:${fight.turnNumber}`;
+  // The sequence moves on with every action, so the panel is redrawn under each result line.
+  if (fight !== null && fight.status !== "ended") return `combat:${fight.id}:${fight.turnNumber}:${fight.sequence}`;
   return `round:${state.round?.number ?? state.lastRoundNumber}`;
 }
 

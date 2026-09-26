@@ -12,7 +12,8 @@ export interface CampaignMessageGateway {
   // Deleting a message that is already gone is fine.
   remove(channelId: string, messageId: string): Promise<void>;
   // Plain history text (narration, results): no controls, no pings.
-  post(channelId: string, content: string): Promise<string>;
+  // The named users (and only they) are pinged.
+  post(channelId: string, content: string, mentionUserIds?: readonly string[]): Promise<string>;
   pin(channelId: string, messageId: string): Promise<void>;
 }
 
@@ -47,8 +48,8 @@ export class DiscordMessageGateway implements CampaignMessageGateway {
     }
   }
 
-  public async post(channelId: string, content: string): Promise<string> {
-    const message = await (await this.channel(channelId)).send({ content, allowedMentions: { parse: [] } });
+  public async post(channelId: string, content: string, mentionUserIds: readonly string[] = []): Promise<string> {
+    const message = await (await this.channel(channelId)).send({ content, allowedMentions: mentionUserIds.length === 0 ? { parse: [] } : { parse: [], users: [...mentionUserIds] } });
     return message.id;
   }
 

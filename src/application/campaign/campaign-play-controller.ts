@@ -1,5 +1,5 @@
 import type { ContentId } from "../../domain/campaign/rules/content-id.js";
-import type { CampaignCommand } from "../../domain/campaign/commands/campaign-command.js";
+import type { CampaignCommand, CombatCommand } from "../../domain/campaign/commands/campaign-command.js";
 import { isFallen } from "../../domain/campaign/state/campaign-state.js";
 import type { AdventureLibrary } from "./ports/adventure-library.js";
 import type { CharacterId, UserId } from "../../domain/campaign/core/ids.js";
@@ -103,6 +103,11 @@ export class CampaignPlayController {
 
   public remove(key: CampaignKey, userId: UserId, itemId: ContentId<"item">, interactionId: string): Promise<PlayResult> {
     return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "removeItem", characterId, itemId }));
+  }
+
+  // A turn action for the clicker's own hero (the engine checks whose turn it is).
+  public combat(key: CampaignKey, userId: UserId, interactionId: string, command: (characterId: CharacterId) => CombatCommand): Promise<PlayResult> {
+    return this.asHero(key, userId, interactionId, command);
   }
 
   public ready(key: CampaignKey, userId: UserId, interactionId: string): Promise<PlayResult> {

@@ -640,7 +640,7 @@ Persist engine capability and house-rule option versions. An engine upgrade must
 
 No calendar estimate is committed before milestone 0 fixes content scope.
 
-Status: milestone 0 is built but **not signed off**: its report still needs two human ratings per transcript and a dollar cost at the chosen model's prices (see the [milestone 0 report](dnd-milestone-0-report.md)). Milestone 1 is built, and its exit criterion is **not yet met**: a real group has not played an hour in each language or restarted the bot with a roll pending (see the [milestone 1 status](dnd-milestone-1-status.md)). Both gates are recorded at the same real-table playtest, which comes before milestone 2 work.
+Status: milestone 0 is built but **not signed off**: its report still needs two human ratings per transcript and a dollar cost at the chosen model's prices (see the [milestone 0 report](dnd-milestone-0-report.md)). Milestone 1 is built, and its exit criterion is **not yet met**: a real group has not played an hour in each language or restarted the bot with a roll pending (see the [milestone 1 status](dnd-milestone-1-status.md)). Both gates are recorded at the same real-table playtest. Milestone 2 has begun in parallel: players take their heroes' turns through the panel and a private turn menu (see the [milestone 2 status](dnd-milestone-2-status.md)).
 
 ### Owners for the deferred items
 

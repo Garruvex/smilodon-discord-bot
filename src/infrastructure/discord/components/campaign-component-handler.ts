@@ -23,11 +23,16 @@ import { texts, type Texts } from "../../../application/i18n/texts.js";
 import { publicAccessPolicy } from "../../../domain/access/access-policy.js";
 import { freeHeroes } from "../../../domain/campaign/lobby/lobby.js";
 import type { Glossary } from "../../../domain/campaign/rules/content-registry.js";
+import type { CharacterId } from "../../../domain/campaign/core/ids.js";
+import type { CombatCommand } from "../../../domain/campaign/commands/campaign-command.js";
+import { buildTurnView, type TurnView } from "../../../application/campaign/views/turn-view.js";
+import { encodeChoice, parseAim, parseChoice, renderEndConfirm, renderTargetMenu, renderTurnMenu, type TurnChoice, type TurnMenu } from "../campaign/turn-menu.js";
 import type { CampaignAction } from "../campaign/campaign-ids.js";
 import { campaignCustomId, campaignIdPrefix, parseCampaignId } from "../campaign/campaign-ids.js";
 import type { ContentId } from "../../../domain/campaign/rules/content-id.js";
 import { isWorn } from "../../../domain/campaign/combat/combatant-profile.js";
 import { isFallen } from "../../../domain/campaign/state/campaign-state.js";
+import { combatantName } from "../../../application/campaign/dm/combat-records.js";
 import { classLabel } from "../campaign/text-keys.js";
 import { CampaignCardService } from "../campaign/campaign-card-service.js";
 import { renderHeroSheet } from "../campaign/hero-sheet.js";
@@ -45,6 +50,37 @@ export interface CampaignComponentDependencies {
 
 const maxActionLength = 500;
 const actionField = "action";
+
+type TurnInteraction = ButtonInteraction | StringSelectMenuInteraction;
+
+// The engine command for a picked action; null when a target it needs is missing.
+function combatCommand(choice: TurnChoice, targetIds: readonly string[]): ((combatantId: CharacterId) => CombatCommand) | null {
+  const first = targetIds[0];
+  switch (choice.kind) {
+    case "attack":
+      return first === undefined ? null : (combatantId): CombatCommand => ({ kind: "combatAttack", combatantId, targetId: first, weapon: choice.weapon as ContentId<"item"> });
+    case "cast":
+      return targetIds.length === 0 ? null : (combatantId): CombatCommand => ({ kind: "combatCast", combatantId, spellId: choice.spell as ContentId<"spell">, slotLevel: choice.slot, targetIds });
+    case "engage":
+      return first === undefined ? null : (combatantId): CombatCommand => ({ kind: "combatEngage", combatantId, targetId: first });
+    case "feature":
+      return (combatantId): CombatCommand => ({ kind: "combatUseFeature", combatantId, featureId: choice.feature as ContentId<"feature"> });
+    case "potion":
+      return (combatantId): CombatCommand => ({ kind: "combatUseItem", combatantId, itemId: choice.item as ContentId<"item"> });
+    case "move":
+      return (combatantId): CombatCommand => ({ kind: "combatMove", combatantId, zoneId: choice.zone });
+    case "withdraw":
+      return (combatantId): CombatCommand => ({ kind: "combatWithdraw", combatantId });
+    case "dodge":
+      return (combatantId): CombatCommand => ({ kind: "combatDodge", combatantId });
+    case "dash":
+      return (combatantId): CombatCommand => ({ kind: "combatDash", combatantId });
+    case "disengage":
+      return (combatantId): CombatCommand => ({ kind: "combatDisengage", combatantId });
+    case "end":
+      return (combatantId): CombatCommand => ({ kind: "endTurn", combatantId });
+  }
+}
 
 // Which saved card a control must sit on to count as current. A control on any
 // other message (an old panel, a copied link) is obsolete and only gets a
@@ -64,7 +100,11 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "continue":
     case "ready":
     case "begin":
+    case "turn":
       return ["adventure"];
+    case "endTurn":
+      // The confirmation button lives in a private message; the panel's own is the shared one.
+      return argument === "yes" ? [] : ["adventure"];
     case "myHero":
       return ["adventure", "party"];
     case "details":
@@ -72,6 +112,9 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "heroChoice":
     case "newHero":
     case "gear":
+    case "turnRefresh":
+    case "pick":
+    case "aim":
       return [];
   }
 }
@@ -103,6 +146,8 @@ export class CampaignComponentHandler implements ComponentHandler {
     if (interaction.isStringSelectMenu()) {
       if (parsed.action === "newHero") await this.joinReplacement(interaction, record, text);
       else if (parsed.action === "gear") await this.changeGear(interaction, record, text);
+      else if (parsed.action === "pick") await this.pickTurnAction(interaction, record, text);
+      else if (parsed.action === "aim") await this.aimTurnAction(interaction, record, text);
       else await this.chooseHero(interaction, record, text);
       return;
     }
@@ -117,6 +162,17 @@ export class CampaignComponentHandler implements ComponentHandler {
     // A form must be the first response; everything else acknowledges first so a slow step never expires the click.
     if (parsed.action === "act") {
       await interaction.showModal(this.actionModal(record, text));
+      return;
+    }
+    // Buttons inside a private turn menu update that message instead of opening another.
+    if (parsed.action === "turnRefresh") {
+      await interaction.deferUpdate();
+      await this.showTurn(interaction, record, text, null);
+      return;
+    }
+    if (parsed.action === "endTurn" && parsed.argument === "yes") {
+      await interaction.deferUpdate();
+      await this.finishTurn(interaction, record, text);
       return;
     }
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -161,6 +217,12 @@ export class CampaignComponentHandler implements ComponentHandler {
         return void (await this.outcome(await this.deps.play.ready(key, userId, interaction.id), text.campaign.reply.ready, reply, text));
       case "begin":
         return void (await this.outcome(await this.deps.play.begin(key, userId, interaction.id), text.campaign.reply.began, reply, text));
+      case "turn":
+        await this.showTurn(interaction, record, text, null);
+        return;
+      case "endTurn":
+        await this.requestEndTurn(interaction, record, text);
+        return;
       case "myHero":
       case "details": {
         // A player whose hero fell is offered a new one instead of a sheet.
@@ -280,6 +342,106 @@ export class CampaignComponentHandler implements ComponentHandler {
     this.deps.cards.refresh(record.key);
     const hero = this.deps.adventures.document(record.adventure.adventureId, record.language)?.heroes.find((candidate) => candidate.id === heroId);
     await interaction.update({ content: text.campaign.reply.heroChosen({ hero: hero?.name ?? heroId }), components: [] });
+  }
+
+  // The clicker's turn, ready to plan: their hero's turn view, or a private
+  // explanation of why there is none (not in a fight, or someone else's turn).
+  private async turnContext(record: CampaignRecord, text: Texts, userId: string): Promise<{ readonly kind: "ready"; readonly view: TurnView; readonly glossary: Glossary } | { readonly kind: "message"; readonly content: string }> {
+    const loaded = await this.deps.unitOfWork.transaction((tx) => tx.loadCampaign(record.key));
+    const glossary = this.deps.glossaries[record.language];
+    const bible = this.deps.adventures.find(record.adventure.adventureId, record.adventure.version, record.language);
+    if (loaded === undefined || glossary === undefined || bible === undefined) return { kind: "message", content: text.campaign.refusal.notActive };
+    const { state } = loaded;
+    const heroId = state.members[userId]?.characterId ?? null;
+    if (heroId === null) return { kind: "message", content: text.campaign.refusal.noHero };
+    const encounter = state.encounter;
+    if (encounter === null || encounter.status !== "active") return { kind: "message", content: text.campaign.refusal.notInCombat };
+    const { content, houseRules } = this.deps.rulesets.resolve(loaded.ruleset);
+    const view = buildTurnView(state, content, houseRules, { state, bible, glossary }, heroId);
+    if (view !== null) return { kind: "ready", view, glossary };
+    const current = encounter.combatants[encounter.order[encounter.turnIndex] ?? ""];
+    const name = current === undefined ? "" : combatantName(current, { state, bible, glossary });
+    return { kind: "message", content: heroId === current?.id ? text.campaign.turn.over : text.campaign.turn.notYours({ name }) };
+  }
+
+  private async showTurn(interaction: TurnInteraction, record: CampaignRecord, text: Texts, notice: string | null): Promise<void> {
+    const context = await this.turnContext(record, text, interaction.user.id);
+    if (context.kind === "message") {
+      await interaction.editReply({ content: notice === null ? context.content : `${notice}\n\n${context.content}`, components: [] });
+      return;
+    }
+    const menu = renderTurnMenu(context.view, text, context.glossary, record.key.campaignId);
+    await this.editMenu(interaction, menu, notice);
+  }
+
+  private async editMenu(interaction: TurnInteraction, menu: TurnMenu, notice: string | null): Promise<void> {
+    await interaction.editReply({ content: notice === null ? menu.content : `${notice}\n\n${menu.content}`, components: menu.components });
+  }
+
+  // Step one: an action is picked. Aimed actions ask for targets next.
+  private async pickTurnAction(interaction: StringSelectMenuInteraction, record: CampaignRecord, text: Texts): Promise<void> {
+    await interaction.deferUpdate();
+    const choice = parseChoice(interaction.values[0] ?? "");
+    if (choice === null) {
+      await this.showTurn(interaction, record, text, text.campaign.refusal.generic);
+      return;
+    }
+    if (choice.kind === "end") {
+      await this.requestEndTurn(interaction, record, text);
+      return;
+    }
+    const context = await this.turnContext(record, text, interaction.user.id);
+    if (context.kind === "message") {
+      await interaction.editReply({ content: context.content, components: [] });
+      return;
+    }
+    const aimed = choice.kind === "attack" || choice.kind === "cast" || choice.kind === "engage";
+    if (!aimed) {
+      await this.runChoice(interaction, record, text, choice, []);
+      return;
+    }
+    const menu = renderTargetMenu(choice, context.view, text, context.glossary, record.key.campaignId);
+    // The menu went stale (no target left): show the fresh one.
+    if (menu === null) await this.showTurn(interaction, record, text, text.campaign.refusal.invalidTarget);
+    else await this.editMenu(interaction, menu, null);
+  }
+
+  // Step two: the targets are picked and the action happens.
+  private async aimTurnAction(interaction: StringSelectMenuInteraction, record: CampaignRecord, text: Texts): Promise<void> {
+    await interaction.deferUpdate();
+    const aims = interaction.values.map((value) => parseAim(value));
+    const first = aims[0];
+    if (first === null || first === undefined || aims.some((aim) => aim === null || encodeChoice(aim.choice) !== encodeChoice(first.choice))) {
+      await this.showTurn(interaction, record, text, text.campaign.refusal.generic);
+      return;
+    }
+    await this.runChoice(interaction, record, text, first.choice, aims.flatMap((aim) => (aim === null ? [] : [aim.targetId])));
+  }
+
+  private async runChoice(interaction: TurnInteraction, record: CampaignRecord, text: Texts, choice: TurnChoice, targetIds: readonly string[]): Promise<void> {
+    const command = combatCommand(choice, targetIds);
+    if (command === null) {
+      await this.showTurn(interaction, record, text, text.campaign.refusal.generic);
+      return;
+    }
+    const result = await this.deps.play.combat(record.key, interaction.user.id, interaction.id, command);
+    await this.showTurn(interaction, record, text, result.kind === "ok" ? text.campaign.reply.turnDone : refusalText(text, result.reason));
+  }
+
+  // End turn: with something still to spend, the player confirms first.
+  private async requestEndTurn(interaction: TurnInteraction, record: CampaignRecord, text: Texts): Promise<void> {
+    const context = await this.turnContext(record, text, interaction.user.id);
+    if (context.kind === "message") {
+      await interaction.editReply({ content: context.content, components: [] });
+      return;
+    }
+    if (context.view.hasUnspent && !context.view.busy) await this.editMenu(interaction, renderEndConfirm(text, record.key.campaignId), null);
+    else await this.finishTurn(interaction, record, text);
+  }
+
+  private async finishTurn(interaction: TurnInteraction, record: CampaignRecord, text: Texts): Promise<void> {
+    const result = await this.deps.play.combat(record.key, interaction.user.id, interaction.id, (combatantId): CombatCommand => ({ kind: "endTurn", combatantId }));
+    await interaction.editReply({ content: result.kind === "ok" ? text.campaign.reply.turnEnded : refusalText(text, result.reason), components: [] });
   }
 
   // The sheet of the clicker's own hero (My Hero) or a named one (Details on a hero card).

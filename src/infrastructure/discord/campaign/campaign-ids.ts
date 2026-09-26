@@ -23,6 +23,13 @@ export const campaignActions = [
   "ready",
   "begin",
   "gear",
+  // Combat: open the private turn menu, refresh it, pick an action, pick its
+  // targets, end the turn.
+  "turn",
+  "turnRefresh",
+  "pick",
+  "aim",
+  "endTurn",
 ] as const;
 export type CampaignAction = (typeof campaignActions)[number];
 

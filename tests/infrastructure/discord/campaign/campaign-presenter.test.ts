@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { CampaignRuntime } from "../../../../src/application/campaign/campaign-runtime.js";
 import type { CampaignKey } from "../../../../src/application/campaign/ports/campaign-store.js";
+import type { EncounterSpec } from "../../../../src/domain/campaign/commands/campaign-command.js";
 import { SeededRandomSource } from "../../../../src/application/campaign/random/seeded-random-source.js";
 import { DeliveryWorker } from "../../../../src/application/campaign/workers/delivery-worker.js";
 import { DmJobWorker } from "../../../../src/application/campaign/workers/dm-job-worker.js";
@@ -121,5 +122,66 @@ describe("the presenter", () => {
     await t.runtime.runOnce();
     expect(t.messages.posts).toHaveLength(before);
     expect(flatten(t.messages.live(adventure).at(-1)?.payload ?? (undefined as never)).text).toContain("The organizer paused the campaign.");
+  });
+});
+
+const scrap: EncounterSpec = {
+  id: "enc-scrap",
+  zones: [{ id: "yard", name: "Yard" }],
+  edges: [],
+  partyZoneId: "yard",
+  monsters: [{ monsterId: "monster:goblin", zoneId: "yard", npcId: null, fleeBelowHpFraction: null }],
+};
+
+// The round is over and a scrap with one goblin has begun; initiative is rolled.
+async function fightOn(t: Table): Promise<void> {
+  await t.r.store.transaction(async (tx) => {
+    const stored = await tx.loadCampaign(t.key);
+    if (stored === undefined) throw new Error("state");
+    await tx.saveCampaign(t.key, { ...stored.state, round: null }, stored.revision);
+  });
+  await t.r.bus.execute(t.key, { kind: "startEncounter", spec: scrap }, { commandId: "fight", actor });
+  await t.runtime.runOnce();
+}
+
+describe("the presenter in a fight the players play", () => {
+  it("pings the player whose turn it is, once", async () => {
+    const t = await table();
+    await fightOn(t);
+    const pings = t.messages.posts.filter((post) => post.content.includes("it is **Borin**'s turn"));
+    expect(pings).toHaveLength(1);
+    expect(pings[0]?.mentions).toEqual(["u-org"]);
+    expect(pings[0]?.content).toBe("⚔️ <@u-org>, it is **Borin**'s turn.");
+  });
+
+  it("posts a template line for each action, with hits and damage", async () => {
+    const t = await table();
+    await fightOn(t);
+    await t.r.bus.execute(t.key, { kind: "combatEngage", combatantId: t.hero, targetId: "goblin" }, { commandId: "e", actor });
+    await t.r.bus.execute(t.key, { kind: "combatAttack", combatantId: t.hero, targetId: "goblin", weapon: "item:longsword" }, { commandId: "a1", actor });
+    await t.runtime.runOnce();
+    const line = t.messages.posts.find((post) => post.content.startsWith("⚔️ **Borin** ·"))?.content ?? "";
+    expect(line).toMatch(/^⚔️ \*\*Borin\*\* · Longsword → Goblin: (hit, \d+ damage|critical hit, \d+ damage|miss)/);
+  });
+
+  it("says when a hero takes the Dodge action", async () => {
+    const t = await table();
+    await fightOn(t);
+    await t.r.bus.execute(t.key, { kind: "combatDodge", combatantId: t.hero }, { commandId: "d", actor });
+    await t.runtime.runOnce();
+    expect(t.messages.posts.some((post) => post.content === "🛡️ **Borin** takes the Dodge action.")).toBe(true);
+  });
+
+  it("stays quiet about individual actions when the heroes are on autopilot", async () => {
+    const t = await table();
+    await t.r.store.transaction(async (tx) => {
+      const stored = await tx.loadRecord(t.key);
+      if (stored === undefined) throw new Error("record");
+      await tx.saveRecord({ ...stored.record, houseRules: { ...stored.record.houseRules, "combat-mode": "autopilot" } }, stored.revision);
+    });
+    await fightOn(t);
+    await t.r.bus.execute(t.key, { kind: "combatDodge", combatantId: t.hero }, { commandId: "d", actor });
+    await t.runtime.runOnce();
+    expect(t.messages.posts.some((post) => post.content.startsWith("⚔️") || post.content.startsWith("🛡️"))).toBe(false);
   });
 });

@@ -19,7 +19,8 @@ import {
   type TurnPlanRemainder,
 } from "../../combat/combat-state.js";
 import { defaultHeroResources, heroCombatant, monsterCombatant } from "../../combat/combatant-profile.js";
-import { distanceBetween, edgeBetween, engageCost, withdrawCost } from "../../combat/positioning.js";
+import { spellTargetProblem, weaponTargetProblem } from "../../combat/legal-targets.js";
+import { edgeBetween, engageCost, withdrawCost } from "../../combat/positioning.js";
 import { chooseAutopilotPlan, chooseMonsterPlan, type TurnPlan } from "../../combat/tactics.js";
 import { resolveD20Test, type D20TestSpec } from "../../dice/d20-test.js";
 import { classifyRollMoments } from "../../dice/roll-moments.js";
@@ -86,10 +87,11 @@ export function handleCombatCommand(decision: Decision, command: CombatCommand):
     case "combatDash":
     case "combatDodge":
     case "combatDisengage":
-      return withHeroTurn(decision, command.combatantId, (hero) => {
+      return withHeroTurn(decision, command.combatantId, (hero, encounter) => {
         if (!hero.budget.action) return { code: "noActionLeft" };
         const action = command.kind === "combatDash" ? "dash" : command.kind === "combatDodge" ? "dodge" : "disengage";
         decision.emit({ kind: "actionTaken", combatantId: hero.id, action, bonus: false });
+        decision.request({ kind: "deliver", delivery: { kind: "combatBeat", encounterId: encounter.id, combatantId: hero.id, beat: action } });
         return null;
       });
     case "endTurn":
@@ -266,10 +268,8 @@ function declareWeaponAttack(
   if (encounter === null) return { code: "notInCombat" };
   if (purpose === "action" && !attacker.budget.action) return { code: "noActionLeft" };
   const target = encounter.combatants[targetId];
-  if (target === undefined || target.side === attacker.side || !isPresent(target)) return { code: "invalidTarget" };
-  if (option.range.kind === "melee" && !areEngaged(encounter, attacker.id, target.id)) return { code: "notEngaged" };
-  const distance = distanceBetween(encounter, attacker.id, target.id);
-  if (option.range.kind === "ranged" && (distance === null || distance > option.range.long)) return { code: "outOfRange" };
+  const problem = weaponTargetProblem(encounter, attacker, target, option);
+  if (problem !== null || target === undefined) return { code: problem ?? "invalidTarget" };
   return declareResolution(decision, {
     actor: attacker,
     source: { kind: "weapon", option },
@@ -304,19 +304,8 @@ function castSpell(
     return { code: "invalidTargets", maxTargets };
   }
   for (const targetId of targets) {
-    const target = encounter.combatants[targetId];
-    if (target === undefined || !isPresent(target)) return { code: "invalidTarget" };
-    if (spell.targeting.relation === "enemy" && target.side === caster.side) return { code: "invalidTarget" };
-    if (spell.targeting.relation === "ally-or-self" && target.side !== caster.side) return { code: "invalidTarget" };
-    const inReach =
-      spell.range.kind === "self"
-        ? target.id === caster.id
-        : spell.range.kind === "touch"
-          ? // Touch: the positioning contract has no ally adjacency, so any
-            // creature in the caster's zone is within reach.
-            target.id === caster.id || target.zoneId === caster.zoneId
-          : target.id === caster.id || (distanceBetween(encounter, caster.id, target.id) ?? Infinity) <= spell.range.feet;
-    if (!inReach) return { code: "outOfRange" };
+    const problem = spellTargetProblem(encounter, caster, spell, encounter.combatants[targetId]);
+    if (problem !== null) return { code: problem };
   }
   return declareResolution(decision, {
     actor: caster,
@@ -530,6 +519,7 @@ function beginTurn(decision: Decision, turnIndex: number, round: number): void {
     const fraction = combatant.fleeBelowHpFraction;
     if (fraction !== null && combatant.hp < combatant.maxHp * fraction) {
       decision.emit({ kind: "combatantFled", combatantId: combatant.id });
+      decision.request({ kind: "deliver", delivery: { kind: "combatBeat", encounterId: encounter.id, combatantId: combatant.id, beat: "fled" } });
       if (!endIfDecided(decision)) endTurn(decision);
       return;
     }

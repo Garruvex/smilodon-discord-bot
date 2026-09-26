@@ -42,6 +42,8 @@ export type DeliverySpec =
   | { readonly kind: "attackRolled"; readonly encounterId: string; readonly attackId: string }
   | { readonly kind: "attackResolved"; readonly encounterId: string; readonly attackId: string }
   | { readonly kind: "deathSave"; readonly encounterId: string; readonly combatantId: string }
+  // A turn action with no attack of its own: the table sees one template line.
+  | { readonly kind: "combatBeat"; readonly encounterId: string; readonly combatantId: string; readonly beat: "dodge" | "dash" | "disengage" | "useItem" | "fled" }
   | { readonly kind: "encounterEnded"; readonly encounterId: string }
   | { readonly kind: "combatNarration"; readonly encounterId: string; readonly round: number }
   // A trade offer waits for the other hero's owner.

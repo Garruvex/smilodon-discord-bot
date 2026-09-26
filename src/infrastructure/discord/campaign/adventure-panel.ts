@@ -34,6 +34,9 @@ const controlsFor: Readonly<Record<PanelMode, readonly CampaignAction[]>> = {
   archived: [],
 };
 
+// A fight the players play: Take turn opens the private turn menu.
+const combatControls: readonly CampaignAction[] = ["turn", "endTurn", "myHero", "away"];
+
 // The Adventure channel's one live control message, replaced at each round
 // boundary. Deadlines are Discord relative timestamps, so the message never
 // needs editing every second.
@@ -49,7 +52,7 @@ export function renderAdventurePanel(view: PanelView, text: Texts, campaignId: s
   const details = view.mode === "combat" ? combatLines(view, text) : rosterLine(view.roster, text);
   if (details !== "") container.addSeparatorComponents(new SeparatorBuilder()).addTextDisplayComponents(new TextDisplayBuilder().setContent(details));
 
-  const controls = controlsFor[view.mode];
+  const controls = view.mode === "combat" && view.combat?.playersControl === true ? combatControls : controlsFor[view.mode];
   if (controls.length > 0) {
     container.addActionRowComponents(
       new ActionRowBuilder<ButtonBuilder>().addComponents(controls.map((action) => controlButton(action, campaignId, text, view))),
@@ -92,13 +95,22 @@ function rosterLine(roster: readonly RosterEntry[], text: Texts): string {
   return roster.map((entry) => `${entry.heroName} ${text.campaign.roster[entry.status]}`).join(" · ");
 }
 
+// One line per zone: the heroes there with exact HP, then the foes with a
+// health band. The hero whose turn it is has an arrow.
 function combatLines(view: PanelView, text: Texts): string {
   const combat = view.combat;
   if (combat === null) return "";
   const t = text.campaign;
-  const party = combat.party.map((hero) => t.panel.hero({ name: hero.name, hp: Math.max(0, hero.hp), max: hero.maxHp })).join(" · ");
-  const foes = combat.foes.map((foe) => t.panel.foe({ name: foe.name, band: t.band[foe.band] })).join(" · ");
-  return `${party}\n${foes}`;
+  return combat.zones
+    .flatMap((zone) => {
+      const heroes = combat.party
+        .filter((hero) => hero.zone === zone)
+        .map((hero) => `${hero.active ? "▶ " : ""}${t.panel.hero({ name: hero.name, hp: Math.max(0, hero.hp), max: hero.maxHp })}`);
+      const foes = combat.foes.filter((foe) => foe.zone === zone).map((foe) => `${foe.active ? "▶ " : ""}${t.panel.foe({ name: foe.name, band: t.band[foe.band] })}`);
+      const entries = [...heroes, ...foes];
+      return entries.length === 0 ? [] : [t.panel.zone({ zone, entries: entries.join(" · ") })];
+    })
+    .join("\n");
 }
 
 function controlButton(action: CampaignAction, campaignId: string, text: Texts, view: PanelView): ButtonBuilder {
@@ -113,8 +125,10 @@ function controlButton(action: CampaignAction, campaignId: string, text: Texts, 
     continue: t.continue,
     ready: t.ready,
     begin: t.begin,
+    turn: t.turn,
+    endTurn: t.endTurn,
   };
-  const style = action === "act" || action === "roll" || action === "continue" || action === "ready" ? ButtonStyle.Primary : ButtonStyle.Secondary;
+  const style = action === "act" || action === "roll" || action === "continue" || action === "ready" || action === "turn" ? ButtonStyle.Primary : ButtonStyle.Secondary;
   // Roll is enabled while a check waits; the click still finds the clicker's own.
   const disabled = action === "roll" && view.pendingRolls.length === 0;
   return new ButtonBuilder().setCustomId(campaignCustomId(action, campaignId)).setLabel(labels[action] ?? action).setStyle(style).setDisabled(disabled);

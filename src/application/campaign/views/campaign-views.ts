@@ -8,6 +8,9 @@ import { isFallen, type CampaignState, type Submission } from "../../../domain/c
 import { activeMembers, readyToStart, type LobbyMember } from "../../../domain/campaign/lobby/lobby.js";
 import { combatantName, type CombatNames } from "../dm/combat-records.js";
 import type { CampaignRecord } from "../ports/campaign-record.js";
+import { combatMode } from "../../../domain/campaign/rules/house-rules.js";
+
+const combatModeId = combatMode.id;
 
 // What the table is shown, as plain data. The Discord renderers turn these
 // into localized messages; nothing here knows about Discord or a language, so
@@ -68,9 +71,27 @@ export interface RosterEntry {
 export interface CombatView {
   readonly round: number;
   readonly activeName: string | null;
-  readonly party: readonly { readonly name: string; readonly hp: number; readonly maxHp: number; readonly condition: Combatant["condition"] }[];
+  // Whose turn it is, when a player's hero has it.
+  readonly activeUserId: string | null;
+  // Players take their heroes' turns (false: the engine plays them on autopilot).
+  readonly playersControl: boolean;
+  // The battlefield's zones in order; each combatant says which it stands in.
+  readonly zones: readonly string[];
+  readonly party: readonly {
+    readonly name: string;
+    readonly hp: number;
+    readonly maxHp: number;
+    readonly condition: Combatant["condition"];
+    readonly zone: string;
+    readonly active: boolean;
+  }[];
   // Monsters show a health band, never exact HP.
-  readonly foes: readonly { readonly name: string; readonly band: "unhurt" | "hurt" | "bloodied" | "down" }[];
+  readonly foes: readonly {
+    readonly name: string;
+    readonly band: "unhurt" | "hurt" | "bloodied" | "down";
+    readonly zone: string;
+    readonly active: boolean;
+  }[];
 }
 
 export interface PanelView {
@@ -223,7 +244,7 @@ export function buildPanelView(record: CampaignRecord, state: CampaignState, bib
     closesAt: fight?.turnEndsAt ?? state.round?.closesAt ?? null,
     roster,
     pendingRolls,
-    combat: fight === null ? null : combatViewOf({ state, bible, glossary }, fight),
+    combat: fight === null ? null : combatViewOf({ state, bible, glossary }, fight, record.houseRules[combatModeId] !== "autopilot"),
   };
 }
 
@@ -268,21 +289,29 @@ function rosterStatus(submission: Submission | undefined, away: boolean): Roster
   }
 }
 
-function combatViewOf(names: CombatNames, fight: NonNullable<CampaignState["encounter"]>): CombatView {
+function combatViewOf(names: CombatNames, fight: NonNullable<CampaignState["encounter"]>, playersControl: boolean): CombatView {
   const combatants = Object.values(fight.combatants);
   const current = fight.order[fight.turnIndex];
   const name = (combatant: Combatant): string => combatantName(combatant, names);
+  const zoneName = (zoneId: string): string => fight.zones.find((zone) => zone.id === zoneId)?.name ?? zoneId;
+  const active = fight.status === "active" && current !== undefined ? fight.combatants[current] : undefined;
+  const owner = active?.source.kind === "hero" ? names.state.characters[active.source.characterId]?.ownerUserId ?? null : null;
   return {
     round: fight.round,
-    activeName: current === undefined || fight.combatants[current] === undefined ? null : name(fight.combatants[current]),
+    activeName: active === undefined ? null : name(active),
+    activeUserId: owner,
+    playersControl,
+    zones: fight.zones.map((zone) => zone.name),
     party: combatants
       .filter((combatant) => combatant.side === "party")
-      .map((combatant) => ({ name: name(combatant), hp: combatant.hp, maxHp: combatant.maxHp, condition: combatant.condition })),
+      .map((combatant) => ({ name: name(combatant), hp: combatant.hp, maxHp: combatant.maxHp, condition: combatant.condition, zone: zoneName(combatant.zoneId), active: combatant === active })),
     foes: combatants
       .filter((combatant) => combatant.side === "foes")
       .map((combatant) => ({
         name: name(combatant),
         band: combatant.hp <= 0 ? "down" : combatant.hp >= combatant.maxHp ? "unhurt" : combatant.hp * 2 > combatant.maxHp ? "hurt" : "bloodied",
+        zone: zoneName(combatant.zoneId),
+        active: combatant === active,
       })),
   };
 }

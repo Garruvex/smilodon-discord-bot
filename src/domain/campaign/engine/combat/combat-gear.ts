@@ -58,6 +58,7 @@ export function useItemInCombat(decision: Decision, combatantId: string, itemId:
     const hp = Math.min(hero.maxHp, hero.hp + potion.healing);
     decision.emit({ kind: "itemUsed", characterId, itemId, healed: hp - hero.hp });
     decision.emit({ kind: "actionTaken", combatantId: hero.id, action: "useItem", bonus });
+    decision.request({ kind: "deliver", delivery: { kind: "combatBeat", encounterId: activeEncounter(decision)?.id ?? "", combatantId: hero.id, beat: "useItem" } });
     decision.emit({ kind: "combatantHpChanged", combatantId: hero.id, change: hp - hero.hp, hp, condition: "active", deathSaves: { successes: 0, failures: 0 }, cause: "healing" });
     return null;
   });

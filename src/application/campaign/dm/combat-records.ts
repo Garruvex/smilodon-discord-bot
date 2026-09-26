@@ -27,6 +27,8 @@ export interface CombatRoundRecord {
 export type CombatBeat =
   | {
       readonly kind: "action";
+      // The engine's ID for this action, which a result line is matched by.
+      readonly resolutionId?: string;
       readonly actor: string;
       // Weapon, spell, or feature name in the campaign language.
       readonly using: string;
@@ -130,6 +132,7 @@ export function encounterRecords(events: readonly CampaignEvent[], names: Combat
         const id = source.kind === "weapon" ? source.option.weapon : source.kind === "spell" ? source.spellId : source.featureId;
         action = {
           kind: "action",
+          resolutionId: resolution.id,
           actor: nameOf(resolution.actorId),
           using: names.glossary.names[id] ?? id,
           opportunity: resolution.purpose === "opportunity",
