@@ -2,6 +2,7 @@ import type { SceneId } from "../adventure/adventure-bible.js";
 import type { CharacterSheet, CheckTest } from "../character/character-sheet.js";
 import type { CharacterId, CheckId, RollId, UserId } from "../core/ids.js";
 import type { RollResult } from "../dice/roll-spec.js";
+import type { ReminderTarget } from "../engine/engine-request.js";
 import type { LedgerVisibility } from "../ledger/ledger.js";
 import type { ContentId } from "../rules/content-id.js";
 import type { DcTier, RollModeReason } from "../rules/difficulty.js";
@@ -27,6 +28,8 @@ export type CampaignCommand =
   | { readonly kind: "pass"; readonly characterId: CharacterId }
   | { readonly kind: "closeRound" }
   | { readonly kind: "roundTimerExpired"; readonly roundNumber: number }
+  // The halfway timer of a long wait fired (system only; changes no state).
+  | { readonly kind: "timerReminder"; readonly target: ReminderTarget }
   | { readonly kind: "applyRoundPlan"; readonly proposal: RoundPlanProposal }
   | { readonly kind: "requestRoll"; readonly checkId: CheckId }
   | { readonly kind: "rollTimerExpired"; readonly checkId: CheckId }

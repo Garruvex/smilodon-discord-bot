@@ -107,6 +107,21 @@ describe("the presenter", () => {
     expect(t.messages.posts.filter((post) => post.content.includes("Nobody acted")).at(-1)?.nonce).toBeUndefined();
   });
 
+  it("nudges only the players still being waited for, halfway through a long round", async () => {
+    const t = await table();
+    const presenter = new DiscordCampaignPresenter({ unitOfWork: t.r.store, messages: t.messages, cards: t.cards, adventures: t.r.adventures, glossaries });
+    const target = { kind: "round", roundNumber: 1, closesAt: 90_000_000 } as const;
+    await presenter.present(t.key, { kind: "timerReminder", target });
+    const nudge = t.messages.posts.find((post) => post.content.startsWith("⏰"));
+    expect(nudge?.content).toBe("⏰ <@u-org> — this round closes <t:90000:R>, and you have not answered yet.");
+    expect(nudge?.mentions).toEqual(["u-org"]);
+    // Once they have answered, or the round has moved on, there is nobody to nudge.
+    await t.r.bus.execute(t.key, { kind: "pass", characterId: t.hero }, { commandId: "pass", actor });
+    const before = t.messages.posts.length;
+    await presenter.present(t.key, { kind: "timerReminder", target });
+    expect(t.messages.posts.slice(before).filter((post) => post.content.startsWith("⏰"))).toEqual([]);
+  });
+
   it("says so when nobody acts in a round", async () => {
     const t = await table();
     await t.r.bus.execute(t.key, { kind: "pass", characterId: t.hero }, { commandId: "a", actor });

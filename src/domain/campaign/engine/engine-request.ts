@@ -16,12 +16,22 @@ export type EngineRequest =
   | { readonly kind: "cancelTimer"; readonly timerId: TimerId }
   | { readonly kind: "deliver"; readonly delivery: DeliverySpec };
 
+// What a halfway reminder is about, with the deadline it was made for: when the
+// deadline has since moved (a pause and resume) the reminder does nothing.
+export type ReminderTarget =
+  | { readonly kind: "round"; readonly roundNumber: number; readonly closesAt: Instant }
+  | { readonly kind: "roll"; readonly checkId: CheckId; readonly deadline: Instant }
+  | { readonly kind: "turn"; readonly encounterId: string; readonly turnNumber: number; readonly endsAt: Instant };
+
 export type TimerSpec =
+  | { readonly kind: "reminder"; readonly timerId: TimerId; readonly dueAt: Instant; readonly target: ReminderTarget }
   | { readonly kind: "roundWindow"; readonly timerId: TimerId; readonly dueAt: Instant; readonly roundNumber: number }
   | { readonly kind: "roll"; readonly timerId: TimerId; readonly dueAt: Instant; readonly checkId: CheckId }
   | { readonly kind: "combatTurn"; readonly timerId: TimerId; readonly dueAt: Instant; readonly encounterId: string; readonly turnNumber: number };
 
 export type DeliverySpec =
+  // Halfway through a long wait: whoever is still being waited for is nudged.
+  | { readonly kind: "timerReminder"; readonly target: ReminderTarget }
   // The "?" die appears (panel spec: Dice moments).
   | { readonly kind: "rollStarted"; readonly checkId: CheckId }
   // The staged reveal lands on the saved result.

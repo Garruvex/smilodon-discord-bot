@@ -4,6 +4,7 @@ import { isFallen, presentMembers, type CampaignState } from "../state/campaign-
 import { deadlineAfter, type Decision } from "./decision.js";
 import { rollTimerId, roundTimerId } from "./ids.js";
 import type { Rejection } from "./rejection.js";
+import { scheduleReminder } from "./reminders.js";
 import { awayRestriction, beginEncounter, onMemberAway, rearmedTurnDeadline, resumeCombat, turnTimerId } from "./combat/combat-flow.js";
 import { closeIfEveryoneResponded, enterWaiting, finishReadyCheck, finishRoundIfResolved, openRound } from "./rounds.js";
 
@@ -79,16 +80,19 @@ export function continueCampaign(decision: Decision): Rejection | null {
   });
   if (roundClosesAt !== null && state.round !== null) {
     decision.request({ kind: "startTimer", timer: { kind: "roundWindow", timerId: roundTimerId(state.round.number), dueAt: roundClosesAt, roundNumber: state.round.number } });
+    scheduleReminder(decision, { kind: "round", roundNumber: state.round.number, closesAt: roundClosesAt });
   }
   if (turnEndsAt !== null && state.encounter !== null) {
     decision.request({
       kind: "startTimer",
       timer: { kind: "combatTurn", timerId: turnTimerId(state.encounter.id, state.encounter.turnNumber), dueAt: turnEndsAt, encounterId: state.encounter.id, turnNumber: state.encounter.turnNumber },
     });
+    scheduleReminder(decision, { kind: "turn", encounterId: state.encounter.id, turnNumber: state.encounter.turnNumber, endsAt: turnEndsAt });
   }
   for (const [checkId, dueAt] of Object.entries(checkDeadlines)) {
     if (dueAt !== null) {
       decision.request({ kind: "startTimer", timer: { kind: "roll", timerId: rollTimerId(checkId), dueAt, checkId } });
+      scheduleReminder(decision, { kind: "roll", checkId, deadline: dueAt });
     }
   }
 

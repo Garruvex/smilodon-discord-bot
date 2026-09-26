@@ -9,6 +9,7 @@ import { encounterProblems } from "./combat/combat-flow.js";
 import { deadlineAfter, type Decision } from "./decision.js";
 import { checkIdFor, rollIdFor, rollTimerId } from "./ids.js";
 import type { Rejection } from "./rejection.js";
+import { scheduleReminder } from "./reminders.js";
 import { finishRoundIfResolved } from "./rounds.js";
 
 // Applies the Planner's proposal for a closed round. The proposal comes from
@@ -67,6 +68,7 @@ export function applyRoundPlan(decision: Decision, proposal: RoundPlanProposal):
         kind: "startTimer",
         timer: { kind: "roll", timerId: rollTimerId(check.id), dueAt: check.deadline, checkId: check.id },
       });
+      scheduleReminder(decision, { kind: "roll", checkId: check.id, deadline: check.deadline });
     }
   }
   finishRoundIfResolved(decision);

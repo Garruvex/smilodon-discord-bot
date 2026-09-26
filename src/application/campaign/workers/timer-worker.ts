@@ -39,6 +39,8 @@ export class TimerWorker {
 
 function commandFor(timer: TimerSpec): CampaignCommand {
   switch (timer.kind) {
+    case "reminder":
+      return { kind: "timerReminder", target: timer.target };
     case "roundWindow":
       return { kind: "roundTimerExpired", roundNumber: timer.roundNumber };
     case "roll":

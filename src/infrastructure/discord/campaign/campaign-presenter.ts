@@ -101,6 +101,11 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
         if (hero !== undefined) await say(adventureChannelId, text.campaign.msg.speech({ hero: hero.name, text: delivery.text }));
         break;
       }
+      case "timerReminder": {
+        const reminder = state === undefined ? null : this.reminderNotice(state, delivery.target, text);
+        if (reminder !== null) await say(adventureChannelId, reminder.content, reminder.userIds);
+        break;
+      }
       case "campaignPaused":
         // A safety pause is announced without saying who asked.
         if (delivery.reason === "safety") await say(adventureChannelId, text.campaign.msg.safetyPaused);
@@ -131,6 +136,31 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
     }
     // The panel is redrawn after the history line, so it stays below it.
     await this.options.cards.sync(key);
+  }
+
+  // Halfway through a long wait: only the players still being waited for are
+  // named. Discord shows the time left in each reader's own clock.
+  private reminderNotice(state: CampaignState, target: Extract<DeliverySpec, { kind: "timerReminder" }>["target"], text: Texts): { readonly content: string; readonly userIds: readonly string[] } | null {
+    const when = (at: number): string => `<t:${Math.floor(at / 1000)}:R>`;
+    const present = (userId: string): boolean => state.members[userId]?.availability === "present";
+    if (target.kind === "round") {
+      const round = state.round;
+      if (round?.number !== target.roundNumber) return null;
+      const waiting = round.participants.filter((id) => round.submissions[id] === undefined).flatMap((id) => (state.characters[id] === undefined ? [] : [state.characters[id].ownerUserId]));
+      const users = [...new Set(waiting.filter(present))];
+      return users.length === 0 ? null : { content: text.campaign.msg.reminderRound({ users: users.map((id) => `<@${id}>`).join(" "), when: when(target.closesAt) }), userIds: users };
+    }
+    if (target.kind === "roll") {
+      const check = state.checks[target.checkId];
+      const hero = check === undefined ? undefined : state.characters[check.characterId];
+      if (hero === undefined || !present(hero.ownerUserId)) return null;
+      return { content: text.campaign.msg.reminderRoll({ user: `<@${hero.ownerUserId}>`, hero: hero.name, when: when(target.deadline) }), userIds: [hero.ownerUserId] };
+    }
+    const encounter = state.encounter;
+    const combatant = encounter?.combatants[encounter.order[encounter.turnIndex] ?? ""];
+    const hero = combatant?.source.kind === "hero" ? state.characters[combatant.source.characterId] : undefined;
+    if (hero === undefined || !present(hero.ownerUserId)) return null;
+    return { content: text.campaign.msg.reminderTurn({ user: `<@${hero.ownerUserId}>`, hero: hero.name, when: when(target.endsAt) }), userIds: [hero.ownerUserId] };
   }
 
   private turnNotice(state: CampaignState, combatantId: string, text: Texts): { readonly content: string; readonly userId: string } | null {

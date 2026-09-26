@@ -187,6 +187,10 @@ export const campaignEn = {
   "campaign.manage.kept": "Nothing changed.",
   "campaign.manage.needsAttention": "Needs attention:",
 
+  "campaign.msg.reminderRound": "⏰ {users} — this round closes {when}, and you have not answered yet.",
+  "campaign.msg.reminderRoll": "⏰ {user} — {hero}'s roll is still waiting. It will be made for you {when}.",
+  "campaign.msg.reminderTurn": "⏰ {user} — it is still {hero}'s turn. It ends {when}.",
+
   "campaign.issue.short.deliveryFailed": "Some messages could not be sent ({detail}).",
   "campaign.issue.short.permissions": "A permission is missing ({detail}).",
   "campaign.issue.short.channelMissing": "A channel is missing ({detail}).",

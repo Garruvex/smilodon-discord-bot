@@ -187,6 +187,10 @@ export const campaignZhTW = {
   "campaign.manage.kept": "沒有任何變更",
   "campaign.manage.needsAttention": "需要處理：",
 
+  "campaign.msg.reminderRound": "⏰ {users} — 本回合將於 {when}結束，你還沒有回應",
+  "campaign.msg.reminderRoll": "⏰ {user} — {hero}的擲骰還在等待，將於 {when}替你擲出",
+  "campaign.msg.reminderTurn": "⏰ {user} — 現在仍是{hero}的回合，將於 {when}結束",
+
   "campaign.issue.short.deliveryFailed": "部分訊息無法送出（{detail}）",
   "campaign.issue.short.permissions": "缺少權限（{detail}）",
   "campaign.issue.short.channelMissing": "缺少頻道（{detail}）",

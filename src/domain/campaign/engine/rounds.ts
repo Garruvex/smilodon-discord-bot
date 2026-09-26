@@ -6,6 +6,7 @@ import { isFallen, presentMembers, type CampaignState, type RoundState } from ".
 import { deadlineAfter, type Decision } from "./decision.js";
 import { rollTimerId, roundTimerId } from "./ids.js";
 import type { Rejection } from "./rejection.js";
+import { scheduleReminder } from "./reminders.js";
 import { firedEffects } from "./round-plan.js";
 
 export const maxActionLength = 500;
@@ -45,6 +46,7 @@ function beginRound(decision: Decision, participants: readonly CharacterId[]): v
       kind: "startTimer",
       timer: { kind: "roundWindow", timerId: roundTimerId(roundNumber), dueAt: closesAt, roundNumber },
     });
+    scheduleReminder(decision, { kind: "round", roundNumber, closesAt });
   }
 }
 

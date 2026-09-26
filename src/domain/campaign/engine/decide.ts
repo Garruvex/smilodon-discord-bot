@@ -12,6 +12,7 @@ import { Decision, type DecideResult, type EngineContext } from "./decision.js";
 import { beginAdventure, beginPlay, markReady, recordLedgerFact, recordNarration, recordOpening, reportPlannerFailure, retryPlan } from "./dm.js";
 import { continueCampaign, joinHero, markAway, markReturned } from "./members.js";
 import { pauseCampaign } from "./pause.js";
+import { remind } from "./reminders.js";
 import { speak } from "./speech.js";
 import type { Rejection } from "./rejection.js";
 import { applyRoundPlan } from "./round-plan.js";
@@ -38,6 +39,8 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
       return closeRoundByOrganizer(decision);
     case "roundTimerExpired":
       return roundTimerExpired(decision, command.roundNumber);
+    case "timerReminder":
+      return remind(decision, command.target);
     case "applyRoundPlan":
       return applyRoundPlan(decision, command.proposal);
     case "requestRoll":

@@ -1,6 +1,7 @@
 import type { CombatCommand, EncounterSpec } from "../../commands/campaign-command.js";
 import { assertNever } from "../../core/assert-never.js";
 import type { RollId, UserId } from "../../core/ids.js";
+import { scheduleReminder } from "../reminders.js";
 import { isFallen } from "../../state/campaign-state.js";
 import type { ActionCost } from "../../combat/combat-events.js";
 import {
@@ -510,6 +511,7 @@ function beginTurn(decision: Decision, turnIndex: number, round: number): void {
       kind: "startTimer",
       timer: { kind: "combatTurn", timerId: turnTimerId(encounter.id, turnNumber), dueAt: endsAt, encounterId: encounter.id, turnNumber },
     });
+    scheduleReminder(decision, { kind: "turn", encounterId: encounter.id, turnNumber, endsAt });
   }
   expireEffects(decision, combatant.id, currentRound);
 
