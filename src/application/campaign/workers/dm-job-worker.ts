@@ -238,7 +238,7 @@ export class DmJobWorker {
       envelopes: await tx.readEvents(key),
     }));
     if (stored === undefined) throw new Error(`Campaign ${key.campaignId} not found.`);
-    const bible = this.options.adventures.find(stored.adventure.adventureId, stored.adventure.version);
+    const bible = this.options.adventures.find(stored.adventure.adventureId, stored.adventure.version, stored.state.language);
     if (bible === undefined) throw new Error(`Adventure ${stored.adventure.adventureId}@${stored.adventure.version} not found.`);
     return { stored, events: envelopes.map((envelope) => envelope.event), bible };
   }

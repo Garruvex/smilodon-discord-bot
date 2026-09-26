@@ -14,13 +14,14 @@ import {
   type StoredCampaign,
   type TimerRecord,
 } from "../../../application/campaign/ports/campaign-store.js";
+import type { CampaignLifecycle, CampaignRecord, StoredRecord } from "../../../application/campaign/ports/campaign-record.js";
 import type { TimerSpec } from "../../../domain/campaign/engine/engine-request.js";
 import type { CampaignState } from "../../../domain/campaign/state/campaign-state.js";
 
 // Bumped when a table changes shape. Milestone 0 keeps the campaign tables
 // self-contained (JSON payloads for events, state, and requests); they move
 // under the Drizzle migrations when the Discord milestone adds its own tables.
-const schemaVersion = 1;
+const schemaVersion = 2;
 
 const schema = `
 CREATE TABLE IF NOT EXISTS campaign_meta (version INTEGER NOT NULL);
@@ -29,6 +30,11 @@ CREATE TABLE IF NOT EXISTS campaigns (
   state TEXT NOT NULL, ruleset TEXT NOT NULL, adventure TEXT NOT NULL,
   PRIMARY KEY (guild_id, campaign_id)
 );
+CREATE TABLE IF NOT EXISTS campaign_records (
+  guild_id TEXT NOT NULL, campaign_id TEXT NOT NULL, revision INTEGER NOT NULL, lifecycle TEXT NOT NULL, record TEXT NOT NULL,
+  PRIMARY KEY (guild_id, campaign_id)
+);
+CREATE INDEX IF NOT EXISTS campaign_records_by_guild ON campaign_records (guild_id, lifecycle);
 CREATE TABLE IF NOT EXISTS campaign_events (
   guild_id TEXT NOT NULL, campaign_id TEXT NOT NULL, sequence INTEGER NOT NULL, envelope TEXT NOT NULL,
   PRIMARY KEY (guild_id, campaign_id, sequence)
@@ -68,6 +74,8 @@ export class SqliteCampaignStore implements CampaignUnitOfWork {
     database.exec(schema);
     const row = database.prepare("SELECT version FROM campaign_meta").get() as { version: number } | undefined;
     if (row === undefined) database.prepare("INSERT INTO campaign_meta (version) VALUES (?)").run(schemaVersion);
+    // Version 1 only lacked the record table, which the schema above just added.
+    else if (row.version === 1) database.prepare("UPDATE campaign_meta SET version = ?").run(schemaVersion);
     else if (row.version !== schemaVersion) throw new Error(`Campaign schema version ${row.version} is not supported (expected ${schemaVersion}).`);
   }
 
@@ -221,6 +229,41 @@ class SqliteTransaction implements CampaignTransaction {
     return Promise.resolve();
   }
 
+  public createRecord(record: CampaignRecord): Promise<void> {
+    const { guildId, campaignId } = record.key;
+    if (this.db.prepare("SELECT 1 FROM campaign_records WHERE guild_id = ? AND campaign_id = ?").get(guildId, campaignId) !== undefined) {
+      return Promise.reject(new Error(`Campaign ${campaignId} already exists.`));
+    }
+    this.db
+      .prepare("INSERT INTO campaign_records (guild_id, campaign_id, revision, lifecycle, record) VALUES (?, ?, 0, ?, ?)")
+      .run(guildId, campaignId, record.lifecycle, json(record));
+    return Promise.resolve();
+  }
+
+  public loadRecord(key: CampaignKey): Promise<StoredRecord | undefined> {
+    const row = this.db.prepare("SELECT * FROM campaign_records WHERE guild_id = ? AND campaign_id = ?").get(key.guildId, key.campaignId) as Row | undefined;
+    return Promise.resolve(row === undefined ? undefined : toStoredRecord(row));
+  }
+
+  public saveRecord(record: CampaignRecord, expectedRevision: number): Promise<number> {
+    const { guildId, campaignId } = record.key;
+    const row = this.db.prepare("SELECT revision FROM campaign_records WHERE guild_id = ? AND campaign_id = ?").get(guildId, campaignId) as
+      | { revision: number }
+      | undefined;
+    if (row === undefined) return Promise.reject(new Error(`Campaign ${campaignId} does not exist.`));
+    if (row.revision !== expectedRevision) return Promise.reject(new RevisionConflictError(record.key, expectedRevision, row.revision));
+    const revision = row.revision + 1;
+    this.db
+      .prepare("UPDATE campaign_records SET record = ?, lifecycle = ?, revision = ? WHERE guild_id = ? AND campaign_id = ?")
+      .run(json(record), record.lifecycle, revision, guildId, campaignId);
+    return Promise.resolve(revision);
+  }
+
+  public listRecords(guildId: string, lifecycles?: readonly CampaignLifecycle[]): Promise<readonly StoredRecord[]> {
+    const rows = this.db.prepare("SELECT * FROM campaign_records WHERE guild_id = ? ORDER BY rowid").all(guildId) as Row[];
+    return Promise.resolve(rows.map(toStoredRecord).filter((stored) => lifecycles === undefined || lifecycles.includes(stored.record.lifecycle)));
+  }
+
   public findRoll(key: CampaignKey, rollId: string): Promise<SavedRoll | undefined> {
     const row = this.db.prepare("SELECT * FROM campaign_rolls WHERE guild_id = ? AND campaign_id = ? AND roll_id = ?").get(key.guildId, key.campaignId, rollId) as Row | undefined;
     return Promise.resolve(row === undefined ? undefined : toRoll(row));
@@ -234,6 +277,10 @@ class SqliteTransaction implements CampaignTransaction {
     const row = this.db.prepare("SELECT * FROM campaign_rolls WHERE guild_id = ? AND campaign_id = ? AND roll_id = ?").get(roll.key.guildId, roll.key.campaignId, roll.rollId) as Row;
     return Promise.resolve(toRoll(row));
   }
+}
+
+function toStoredRecord(row: Row): StoredRecord {
+  return { record: parse<CampaignRecord>(row.record), revision: row.revision as number };
 }
 
 function toRoll(row: Row): SavedRoll {

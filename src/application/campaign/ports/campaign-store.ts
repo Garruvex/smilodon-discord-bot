@@ -1,3 +1,4 @@
+import type { CampaignLifecycle, CampaignRecord, StoredRecord } from "./campaign-record.js";
 import type { Actor, CampaignCommandKind } from "../../../domain/campaign/commands/campaign-command.js";
 import type { CampaignId, Instant, RollId, TimerId } from "../../../domain/campaign/core/ids.js";
 import type { RollResult } from "../../../domain/campaign/dice/roll-spec.js";
@@ -104,6 +105,14 @@ export interface CampaignTransaction {
   cancelTimer(key: CampaignKey, timerId: TimerId): Promise<void>;
   dueTimers(now: Instant): Promise<readonly TimerRecord[]>;
   markTimerFired(key: CampaignKey, timerId: TimerId): Promise<void>;
+
+  // The campaign record: lobby, settings, and Discord places. It exists from
+  // creation; the engine campaign above exists from the start.
+  createRecord(record: CampaignRecord): Promise<void>;
+  loadRecord(key: CampaignKey): Promise<StoredRecord | undefined>;
+  // Compare-and-set on the record's own revision; returns the new one.
+  saveRecord(record: CampaignRecord, expectedRevision: number): Promise<number>;
+  listRecords(guildId: string, lifecycles?: readonly CampaignLifecycle[]): Promise<readonly StoredRecord[]>;
 
   findRoll(key: CampaignKey, rollId: RollId): Promise<SavedRoll | undefined>;
   // Written once; saving an existing roll ID keeps the first result.

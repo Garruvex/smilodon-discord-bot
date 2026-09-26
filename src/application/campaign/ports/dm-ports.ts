@@ -111,5 +111,6 @@ export interface CampaignNarrator {
 }
 
 export interface AdventureCatalog {
-  find(adventureId: string, version: string): AdventureBible | undefined;
+  // A campaign plays one language edition of an adventure.
+  find(adventureId: string, version: string, language: AdventureBible["language"]): AdventureBible | undefined;
 }

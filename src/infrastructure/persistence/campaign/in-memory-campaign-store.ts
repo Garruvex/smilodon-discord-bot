@@ -12,10 +12,12 @@ import {
   type StoredCampaign,
   type TimerRecord,
 } from "../../../application/campaign/ports/campaign-store.js";
+import type { CampaignLifecycle, CampaignRecord, StoredRecord } from "../../../application/campaign/ports/campaign-record.js";
 import type { CampaignState } from "../../../domain/campaign/state/campaign-state.js";
 import type { TimerSpec } from "../../../domain/campaign/engine/engine-request.js";
 
 interface CampaignData {
+  records: Map<string, StoredRecord>;
   campaigns: Map<string, StoredCampaign>;
   events: Map<string, EventEnvelope[]>;
   processed: Map<string, CommandOutcome>;
@@ -29,6 +31,7 @@ interface CampaignData {
 // so a failure part-way leaves nothing behind, as a database would.
 export class InMemoryCampaignStore implements CampaignUnitOfWork {
   private data: CampaignData = {
+    records: new Map(),
     campaigns: new Map(),
     events: new Map(),
     processed: new Map(),
@@ -148,6 +151,35 @@ class InMemoryTransaction implements CampaignTransaction {
     const record = this.data.timers.get(id);
     if (record?.status === "pending") this.data.timers.set(id, { ...record, status: "fired" });
     return Promise.resolve();
+  }
+
+  public createRecord(record: CampaignRecord): Promise<void> {
+    const id = campaignKey(record.key);
+    if (this.data.records.has(id)) return Promise.reject(new Error(`Campaign ${record.key.campaignId} already exists.`));
+    this.data.records.set(id, { record, revision: 0 });
+    return Promise.resolve();
+  }
+
+  public loadRecord(key: CampaignKey): Promise<StoredRecord | undefined> {
+    return Promise.resolve(this.data.records.get(campaignKey(key)));
+  }
+
+  public saveRecord(record: CampaignRecord, expectedRevision: number): Promise<number> {
+    const id = campaignKey(record.key);
+    const stored = this.data.records.get(id);
+    if (stored === undefined) return Promise.reject(new Error(`Campaign ${record.key.campaignId} does not exist.`));
+    if (stored.revision !== expectedRevision) return Promise.reject(new RevisionConflictError(record.key, expectedRevision, stored.revision));
+    const revision = stored.revision + 1;
+    this.data.records.set(id, { record, revision });
+    return Promise.resolve(revision);
+  }
+
+  public listRecords(guildId: string, lifecycles?: readonly CampaignLifecycle[]): Promise<readonly StoredRecord[]> {
+    return Promise.resolve(
+      [...this.data.records.values()].filter(
+        (stored) => stored.record.key.guildId === guildId && (lifecycles === undefined || lifecycles.includes(stored.record.lifecycle)),
+      ),
+    );
   }
 
   public findRoll(key: CampaignKey, rollId: string): Promise<SavedRoll | undefined> {

@@ -1,11 +1,10 @@
 import type { CampaignLanguage } from "../../../domain/campaign/adventure/adventure-bible.js";
 import type { Actor, CampaignCommand } from "../../../domain/campaign/commands/campaign-command.js";
-import type { CharacterSheet } from "../../../domain/campaign/character/character-sheet.js";
 import { currentCombatant } from "../../../domain/campaign/combat/combat-state.js";
 import type { UserId } from "../../../domain/campaign/core/ids.js";
 import type { RandomSource } from "../../../domain/campaign/dice/random-source.js";
 import type { Glossary } from "../../../domain/campaign/rules/content-registry.js";
-import type { CampaignState, MemberState, Pacing } from "../../../domain/campaign/state/campaign-state.js";
+import type { CampaignState, Pacing } from "../../../domain/campaign/state/campaign-state.js";
 import { AdventureDocumentError, checkAdventureContent, type AdventureDocument } from "../adventures/adventure-document.js";
 import { CampaignCommandBus } from "../campaign-command-bus.js";
 import type { CampaignKey, CampaignUnitOfWork, CommandOutcome, EventEnvelope, StoredCampaign } from "../ports/campaign-store.js";
@@ -14,6 +13,7 @@ import type { CampaignNarrator, CampaignPlanner, CombatNarratorRequest, Narrator
 import type { ModelUsage } from "../ports/structured-model-client.js";
 import type { RulesetCatalog } from "../rules/ruleset-catalog.js";
 import { ManualClock } from "../time/manual-clock.js";
+import { buildStartingState } from "../setup/starting-state.js";
 import { DmJobWorker } from "../workers/dm-job-worker.js";
 import { RollWorker } from "../workers/roll-worker.js";
 import { TimerWorker } from "../workers/timer-worker.js";
@@ -302,44 +302,15 @@ function user(player: HarnessPlayer | undefined): Actor {
 }
 
 function initialState(options: HarnessOptions, pacing: Pacing): CampaignState {
-  const { adventure, players } = options;
-  const members: Record<UserId, MemberState> = {};
-  const characters: Record<string, CharacterSheet> = {};
-  for (const player of players) {
-    const hero = adventure.heroes.find((candidate) => candidate.id === player.heroId);
-    if (hero === undefined) throw new Error(`The adventure has no hero ${player.heroId}.`);
-    const { class: _class, ...sheet } = hero;
-    characters[hero.id] = { ...sheet, ownerUserId: player.userId };
-    members[player.userId] = { userId: player.userId, characterId: hero.id, availability: "present", consecutiveMisses: 0 };
-  }
-  const organizer = players[0];
+  const organizer = options.players[0];
   if (organizer === undefined) throw new Error("The harness needs at least one player.");
-  return {
+  return buildStartingState({
     campaignId: campaignKey.campaignId,
     organizerId: organizer.userId,
-    status: "active",
-    language: adventure.bible.language,
+    adventure: options.adventure,
+    seats: options.players.map((player) => ({ userId: player.userId, heroId: player.heroId })),
     pacing,
-    sceneId: adventure.bible.startScene,
-    members,
-    characters,
-    round: null,
-    lastRoundNumber: 0,
-    lastNarratedRound: 0,
-    checks: {},
-    ledger: {},
-    encounter: null,
-    heroStatus: {},
-    pendingEncounter: null,
-    encounterHistory: [],
-    stash: [],
-    gold: 0,
-    offers: {},
-    offerCount: 0,
-    fightCheckpoint: null,
-    clocks: {},
-    clues: [],
-  };
+  });
 }
 
 async function timed<T>(

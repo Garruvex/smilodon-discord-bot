@@ -11,6 +11,9 @@ import {
   type CampaignUnitOfWork,
   type StoredCampaign,
 } from "../../../src/application/campaign/ports/campaign-store.js";
+import type { CampaignRecord } from "../../../src/application/campaign/ports/campaign-record.js";
+import { emptyChannels } from "../../../src/application/campaign/ports/campaign-record.js";
+import { openLobby } from "../../../src/domain/campaign/lobby/lobby.js";
 import type { RollResult } from "../../../src/domain/campaign/dice/roll-spec.js";
 import { InMemoryCampaignStore } from "../../../src/infrastructure/persistence/campaign/in-memory-campaign-store.js";
 import { SqliteCampaignStore } from "../../../src/infrastructure/persistence/campaign/sqlite-campaign-store.js";
@@ -25,6 +28,27 @@ function campaign(): StoredCampaign {
     revision: 0,
     ruleset: { rulesetId: ruleset().content.rulesetId, rulesetVersion: ruleset().content.version, houseRules: {} },
     adventure: { adventureId: "moonlit-ruins", version: "1" },
+  };
+}
+
+function record(campaignKey: CampaignKey = key, lifecycle: CampaignRecord["lifecycle"] = "lobby"): CampaignRecord {
+  const lobby = openLobby(1, 4);
+  if (!lobby.ok) throw new Error("fixture");
+  return {
+    key: campaignKey,
+    name: "Moonlit Ruins",
+    organizerId: "u-organizer",
+    language: "en",
+    lifecycle,
+    adventure: { adventureId: "moonlit-ruins", version: "1" },
+    pacingPreset: "live",
+    pacing: { roundSeconds: 300, rollSeconds: 120, turnSeconds: 180, awayAfterMisses: 2 },
+    houseRules: {},
+    lobby: lobby.lobby,
+    channels: emptyChannels,
+    pendingResources: [],
+    createdAt: 1,
+    startedAt: null,
   };
 }
 
@@ -80,6 +104,43 @@ describe.each(stores)("campaign store contract: $name", ({ create }) => {
     const loaded = await store.transaction((tx) => tx.loadCampaign(key));
     expect(loaded).toMatchObject({ revision: 1, state: { lastRoundNumber: 3 }, adventure: { adventureId: "moonlit-ruins" } });
     expect(await store.transaction((tx) => tx.loadCampaign(other))).toBeUndefined();
+  });
+
+  it("keeps campaign records with their own compare-and-set revision", async () => {
+    const store = create();
+    await store.transaction((tx) => tx.createRecord(record()));
+    await expect(store.transaction((tx) => tx.createRecord(record()))).rejects.toThrow("already exists");
+    expect(await store.transaction((tx) => tx.loadRecord(key))).toMatchObject({ revision: 0, record: { name: "Moonlit Ruins", lifecycle: "lobby" } });
+    expect(await store.transaction((tx) => tx.loadRecord(other))).toBeUndefined();
+
+    const started = { ...record(), lifecycle: "active" as const, startedAt: 9 };
+    expect(await store.transaction((tx) => tx.saveRecord(started, 0))).toBe(1);
+    await expect(store.transaction((tx) => tx.saveRecord(started, 0))).rejects.toBeInstanceOf(RevisionConflictError);
+    expect(await store.transaction((tx) => tx.loadRecord(key))).toMatchObject({ revision: 1, record: { lifecycle: "active", startedAt: 9 } });
+  });
+
+  it("lists one guild's records in creation order, optionally by lifecycle", async () => {
+    const store = create();
+    const second: CampaignKey = { guildId: "g-1", campaignId: "camp-2" };
+    await store.transaction(async (tx) => {
+      await tx.createRecord(record(key, "active"));
+      await tx.createRecord(record(second, "lobby"));
+      await tx.createRecord(record(other, "lobby"));
+    });
+    expect((await store.transaction((tx) => tx.listRecords("g-1"))).map((stored) => stored.record.key.campaignId)).toEqual(["camp-1", "camp-2"]);
+    expect((await store.transaction((tx) => tx.listRecords("g-1", ["lobby"]))).map((stored) => stored.record.key.campaignId)).toEqual(["camp-2"]);
+    expect(await store.transaction((tx) => tx.listRecords("g-none"))).toEqual([]);
+  });
+
+  it("rolls a record back with the rest of a failed transaction", async () => {
+    const store = create();
+    await expect(
+      store.transaction(async (tx) => {
+        await tx.createRecord(record());
+        throw new Error("boom");
+      }),
+    ).rejects.toThrow("boom");
+    expect(await store.transaction((tx) => tx.loadRecord(key))).toBeUndefined();
   });
 
   it("numbers events per campaign and keeps them in order", async () => {
@@ -191,6 +252,19 @@ describe("sqlite campaign store on disk", () => {
     expect((await second.transaction((tx) => tx.findRoll(key, "r1")))?.result).toEqual(roll);
     expect(await second.transaction((tx) => tx.pendingOutbox("roll"))).toHaveLength(1);
     expect((await second.transaction((tx) => tx.dueTimers(1_000))).map((record) => record.timer.timerId)).toEqual(["round:1"]);
+  });
+
+  it("upgrades a version 1 database in place without losing campaigns", async () => {
+    const file = fileDatabase();
+    const raw = file.open();
+    const first = new SqliteCampaignStore(raw);
+    await first.transaction((tx) => tx.createCampaign(key, campaign()));
+    raw.prepare("DROP TABLE campaign_records").run();
+    raw.prepare("UPDATE campaign_meta SET version = 1").run();
+    const upgraded = new SqliteCampaignStore(raw);
+    expect(await upgraded.transaction((tx) => tx.loadCampaign(key))).toBeDefined();
+    await upgraded.transaction((tx) => tx.createRecord(record()));
+    expect(raw.prepare("SELECT version FROM campaign_meta").get()).toEqual({ version: 2 });
   });
 
   it("refuses a database written by a different schema version", () => {
