@@ -144,6 +144,31 @@ async function fightOn(t: Table): Promise<void> {
   await t.runtime.runOnce();
 }
 
+describe("the presenter and offers", () => {
+  it("pings the receiving player when an item is offered", async () => {
+    const t = await table();
+    const second = starter.en.heroes[1]?.id ?? "";
+    await t.r.service.join(t.key, "u-two");
+    await t.r.service.chooseHero(t.key, "u-two", second);
+    await t.r.store.transaction(async (tx) => {
+      const stored = await tx.loadCampaign(t.key);
+      const base = stored?.state.characters[t.hero];
+      if (stored === undefined || base === undefined) throw new Error("state");
+      const sheet = { ...base, id: second, ownerUserId: "u-two", name: "Mira", equipment: [] };
+      await tx.saveCampaign(
+        t.key,
+        { ...stored.state, characters: { ...stored.state.characters, [second]: sheet }, members: { ...stored.state.members, "u-two": { userId: "u-two", characterId: second, availability: "present", consecutiveMisses: 0 } } },
+        stored.revision,
+      );
+    });
+    await t.r.bus.execute(t.key, { kind: "offerItem", fromCharacterId: t.hero, toCharacterId: second, give: "item:longsword", want: null }, { commandId: "o", actor });
+    await t.runtime.runOnce();
+    const ping = t.messages.posts.find((post) => post.content.includes("offers you"));
+    expect(ping?.mentions).toEqual(["u-two"]);
+    expect(ping?.content).toBe("🎁 <@u-two>, **Borin** offers you **Longsword**. Answer in <#chan-party>.");
+  });
+});
+
 describe("the presenter in a fight the players play", () => {
   it("pings the player whose turn it is, once", async () => {
     const t = await table();

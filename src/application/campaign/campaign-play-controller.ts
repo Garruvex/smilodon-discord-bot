@@ -14,7 +14,7 @@ import type { CampaignKey, CampaignUnitOfWork } from "./ports/campaign-store.js"
 export type PlayRefusal = RejectionCode | "notFound" | "notActive" | "noHero" | "noPendingRoll";
 
 // What a manager can do to a game from the hub.
-export type ManageAction = "pause" | "resume" | "closeRound" | "retry" | "shortRest" | "longRest";
+export type ManageAction = "pause" | "resume" | "closeRound" | "retry" | "retryFight" | "shortRest" | "longRest";
 
 export type PlayResult = { readonly kind: "ok" } | { readonly kind: "refused"; readonly reason: PlayRefusal };
 
@@ -105,6 +105,28 @@ export class CampaignPlayController {
     return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "removeItem", characterId, itemId }));
   }
 
+  // Outside a fight: drink a potion, stash an item, or take one from the stash.
+  public useItem(key: CampaignKey, userId: UserId, itemId: ContentId<"item">, interactionId: string): Promise<PlayResult> {
+    return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "useItem", characterId, itemId }));
+  }
+
+  public stash(key: CampaignKey, userId: UserId, itemId: ContentId<"item">, interactionId: string): Promise<PlayResult> {
+    return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "stashItem", characterId, itemId }));
+  }
+
+  public takeFromStash(key: CampaignKey, userId: UserId, itemId: ContentId<"item">, interactionId: string): Promise<PlayResult> {
+    return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "takeFromStash", characterId, itemId }));
+  }
+
+  // A gift to another hero, who has to accept it.
+  public give(key: CampaignKey, userId: UserId, itemId: ContentId<"item">, toCharacterId: CharacterId, interactionId: string): Promise<PlayResult> {
+    return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "offerItem", fromCharacterId: characterId, toCharacterId, give: itemId, want: null }));
+  }
+
+  public answerOffer(key: CampaignKey, userId: UserId, offerId: string, answer: "accept" | "decline" | "cancel", interactionId: string): Promise<PlayResult> {
+    return this.perform(key, userId, interactionId, () => (answer === "cancel" ? { kind: "cancelOffer", offerId } : { kind: "respondToOffer", offerId, accept: answer === "accept" }));
+  }
+
   // A turn action for the clicker's own hero (the engine checks whose turn it is).
   public combat(key: CampaignKey, userId: UserId, interactionId: string, command: (characterId: CharacterId) => CombatCommand): Promise<PlayResult> {
     return this.asHero(key, userId, interactionId, command);
@@ -154,7 +176,9 @@ export class CampaignPlayController {
             ? { kind: "closeRound" }
             : verb === "retry"
               ? { kind: "retryPlan" }
-              : { kind: "takeRest", rest: verb === "longRest" ? "long" : "short" };
+              : verb === "retryFight"
+                ? { kind: "retryEncounter" }
+                : { kind: "takeRest", rest: verb === "longRest" ? "long" : "short" };
     return this.perform(key, null, interactionId, () => command);
   }
 

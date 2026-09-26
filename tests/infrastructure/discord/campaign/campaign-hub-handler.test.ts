@@ -218,8 +218,14 @@ describe("Manage a game", () => {
     expect(contentOf(await t.click(id, { userId: "u-x" }, { messageId: hubMessageId }))).toBe("Only DnD Admins and the game's organizer can manage a game.");
     const organizer = await t.click(id, { userId: "u-org" }, { messageId: hubMessageId });
     expect(contentOf(organizer)).toContain("Manage Moonlit Ruins");
-    expect(rowsOf(organizer).flat().map((button) => button.label)).toEqual(["Pause", "Close round", "Retry the DM", "Short rest", "Long rest", "Repair cards", "End game"]);
-    expect(rowsOf(await t.click(id, { userId: "u-a", admin: true }, { messageId: hubMessageId })).flat()).toHaveLength(7);
+    expect(rowsOf(organizer).flat().map((button) => button.label)).toEqual(["Pause", "Close round", "Retry the DM", "Short rest", "Long rest", "Retry the fight", "Repair cards", "End game"]);
+    expect(rowsOf(await t.click(id, { userId: "u-a", admin: true }, { messageId: hubMessageId })).flat()).toHaveLength(8);
+  });
+
+  it("refuses Retry the fight when there is no lost fight", async () => {
+    const t = harness();
+    const { key } = await activeGame(t);
+    expect(contentOf(await t.click(hubCustomId("do", key.campaignId, "retryFight"), { userId: "u-org" }))).toContain("There is no lost fight to play again");
   });
 
   it("refuses a Manage button on a message that is no longer the game's hub message", async () => {

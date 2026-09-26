@@ -10,6 +10,7 @@ import type { RulesetCatalog } from "../../../application/campaign/rules/ruleset
 import {
   buildLobbyView,
   type PanelView,
+  buildOfferViews,
   buildPanelView,
   buildPartyView,
 } from "../../../application/campaign/views/campaign-views.js";
@@ -23,6 +24,7 @@ import type { CardPayload } from "./card-payload.js";
 import { renderHeroCard } from "./hero-card.js";
 import { renderHubControl, renderHubGame, type HubGame } from "./hub-card.js";
 import { renderLobbyCard } from "./lobby-card.js";
+import { renderOfferCard } from "./offer-card.js";
 
 export interface CampaignCardServiceOptions {
   readonly unitOfWork: CampaignUnitOfWork;
@@ -165,7 +167,15 @@ export class CampaignCardService implements CardRefresher {
       const reference = await this.place(card, existing[card.key], verify);
       if (reference !== null) updates[card.key] = reference;
     }
-    await this.saveReferences(key, updates, record.lifecycle === "lobby" ? [] : ["lobby"]);
+    // An offer that was answered leaves the Party channel.
+    const answered = Object.keys(record.cards).filter((name) => name.startsWith("offer:") && !desired.some((card) => card.key === name));
+    for (const name of answered) {
+      const card = record.cards[name];
+      if (card === undefined) continue;
+      this.expectRemoval(card.messageId);
+      await this.options.messages.remove(card.channelId, card.messageId).catch(() => undefined);
+    }
+    await this.saveReferences(key, updates, [...(record.lifecycle === "lobby" ? [] : ["lobby"]), ...answered]);
     await this.syncHub(key.guildId, verify);
   }
 
@@ -295,6 +305,11 @@ export class CampaignCardService implements CardRefresher {
           epoch: "hero",
           pin: false,
         });
+      }
+    }
+    if (partyChannelId !== null) {
+      for (const offer of buildOfferViews(state)) {
+        cards.push({ key: offer.id, channelId: partyChannelId, payload: renderOfferCard(offer, text, campaignId, (id) => glossary.names[id] ?? id), epoch: "offer", pin: false });
       }
     }
     if (adventureChannelId !== null) {

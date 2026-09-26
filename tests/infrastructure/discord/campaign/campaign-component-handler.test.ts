@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { quiet, starter } from "../../../application/campaign/campaign-rig.js";
-import { adventure, contentOf, fakeInteraction, harness, heroes, started, type Sent } from "./handler-harness.js";
+import type { CampaignState } from "../../../../src/domain/campaign/state/campaign-state.js";
+import { quiet, starter, tellOpening } from "../../../application/campaign/campaign-rig.js";
+import { adventure, contentOf, fakeInteraction, harness, heroes, party, started, type Sent } from "./handler-harness.js";
 
 describe("the lobby controls", () => {
   it("seats the player and offers the free heroes", async () => {
@@ -130,10 +131,12 @@ describe("getting ready and gear", () => {
     const last = [...sent].reverse().find((entry) => entry.kind === "edit");
     return ((last?.payload as { components?: unknown[] } | undefined)?.components ?? []);
   };
-  const optionValues = (sent: readonly Sent[]): string[] =>
+  const optionValues = (sent: readonly Sent[], menu = "gear"): string[] =>
     componentsOf(sent).flatMap((row) => {
-      const json = (row as { toJSON(): { components: { options?: { value: string; label: string }[] }[] } }).toJSON();
-      return json.components.flatMap((component) => (component.options ?? []).map((option) => `${option.value}=${option.label}`));
+      const json = (row as { toJSON(): { components: { custom_id?: string; options?: { value: string; label: string }[] }[] } }).toJSON();
+      return json.components
+        .filter((component) => component.custom_id?.startsWith(`dnd:${menu}:`) === true)
+        .flatMap((component) => (component.options ?? []).map((option) => `${option.value}=${option.label}`));
     });
 
   it("waits for the Ready button after the opening, and opens round 1 when everyone has pressed it", async () => {
@@ -175,6 +178,147 @@ describe("getting ready and gear", () => {
     const missing = fakeInteraction({ customId: `dnd:gear:${t.key.campaignId}`, userId: "u-org", values: ["wear|item:shortbow"], kind: "select" });
     await t.handler.execute({ interaction: missing.interaction, logger: quiet as never });
     expect(contentOf(missing.sent)).not.toContain("Done");
+  });
+});
+
+describe("the pack, the stash, and gifts", () => {
+  type MenuComponent = { custom_id?: string; options?: { value: string; label: string }[] };
+  const menuValues = (sent: readonly Sent[], menu: string): string[] => {
+    const last = [...sent].reverse().find((entry) => entry.kind === "edit");
+    const rows = (last?.payload as { components?: { toJSON(): { components: MenuComponent[] } }[] } | undefined)?.components ?? [];
+    return rows.flatMap((row) =>
+      row
+        .toJSON()
+        .components.filter((component) => component.custom_id?.startsWith(`dnd:${menu}:`) === true)
+        .flatMap((component) => (component.options ?? []).map((option) => `${option.value}=${option.label}`)),
+    );
+  };
+  const pick = async (t: Awaited<ReturnType<typeof harness>>, menu: string, value: string, userId = "u-org"): Promise<Sent[]> => {
+    const { interaction, sent } = fakeInteraction({ customId: `dnd:${menu}:${t.key.campaignId}`, userId, values: [value], kind: "select" });
+    await t.handler.execute({ interaction, logger: quiet as never });
+    return sent;
+  };
+  const stateOf = async (t: Awaited<ReturnType<typeof harness>>): Promise<CampaignState> => {
+    const stored = await t.r.store.transaction((tx) => tx.loadCampaign(t.key));
+    if (stored === undefined) throw new Error("state");
+    return stored.state;
+  };
+  const twoPlayers = async (): Promise<Awaited<ReturnType<typeof harness>>> => {
+    const t = await harness();
+    await t.press("join", "u-org");
+    await t.select("u-org", heroes[0]?.id ?? "");
+    await t.press("join", "u-two");
+    await t.select("u-two", heroes[1]?.id ?? "");
+    await t.press("start", "u-org");
+    await tellOpening(t.r, t.key);
+    await t.cards.sync(t.key);
+    return t;
+  };
+
+  it("lists what the hero can stash or take, and moves items to and from the stash", async () => {
+    const t = await harness();
+    await started(t);
+    const hero = heroes[0]?.id ?? "";
+    const sheet = await t.press("myHero", "u-org");
+    // Worn armor and the shield stay off the list until they are taken off; there is nobody to give to.
+    expect(menuValues(sheet, "pack")).toEqual(["stash|item:longsword=Put Longsword in the stash"]);
+
+    const stashed = await pick(t, "pack", "stash|item:longsword");
+    expect(contentOf(stashed)).toContain("Done.");
+    expect((await stateOf(t)).stash).toContain("item:longsword");
+    expect(menuValues(stashed, "pack")).toEqual(["take|item:longsword=Take Longsword from the stash"]);
+
+    await pick(t, "pack", "take|item:longsword");
+    expect((await stateOf(t)).characters[hero]?.equipment).toContain("item:longsword");
+    expect((await stateOf(t)).stash).not.toContain("item:longsword");
+  });
+
+  it("drinks a healing potion outside a fight", async () => {
+    const t = await harness();
+    await started(t);
+    const hero = heroes[0]?.id ?? "";
+    await t.r.store.transaction(async (tx) => {
+      const stored = await tx.loadCampaign(t.key);
+      const sheet = stored?.state.characters[hero];
+      if (stored === undefined || sheet === undefined) throw new Error("state");
+      const state: CampaignState = {
+        ...stored.state,
+        characters: { ...stored.state.characters, [hero]: { ...sheet, equipment: [...sheet.equipment, "item:potion-of-healing"] } },
+        heroStatus: { ...stored.state.heroStatus, [hero]: { hp: 3, resources: { spellSlots: {}, featureUses: {} } } },
+      };
+      await tx.saveCampaign(t.key, state, stored.revision);
+    });
+    const sheet = await t.press("myHero", "u-org");
+    expect(menuValues(sheet, "pack")).toContain("use|item:potion-of-healing=Drink Potion of Healing");
+
+    expect(contentOf(await pick(t, "pack", "use|item:potion-of-healing"))).toContain("Done.");
+    const after = await stateOf(t);
+    expect(after.heroStatus[hero]?.hp).toBe(10);
+    expect(after.characters[hero]?.equipment).not.toContain("item:potion-of-healing");
+  });
+
+  it("refuses a forged or stale pack choice privately", async () => {
+    const t = await harness();
+    await started(t);
+    expect(contentOf(await pick(t, "pack", "stash|not-an-item"))).toBe("That is not possible right now.");
+    expect(contentOf(await pick(t, "pack", "take|item:shortbow"))).toContain("You are not carrying that.");
+    expect(contentOf(await pick(t, "pack", "use|item:longsword"))).toContain("That cannot be used like that.");
+    expect(contentOf(await pick(t, "giveTo", "item:longsword>nobody"))).not.toContain("Offer sent");
+  });
+
+  it("offers an item to another hero, whose owner answers on the offer card", async () => {
+    const t = await twoPlayers();
+    const menu = menuValues(await t.press("myHero", "u-org"), "pack");
+    expect(menu).toContain("give|item:longsword=Give Longsword…");
+    const who = await pick(t, "pack", "give|item:longsword");
+    expect(menuValues(who, "giveTo")).toEqual([`item:longsword>${heroes[1]?.id}=${heroes[1]?.name}`]);
+
+    const sent = await pick(t, "giveTo", `item:longsword>${heroes[1]?.id}`);
+    expect(contentOf(sent)).toContain("Offer sent.");
+    await t.cards.sync(t.key);
+    const offerId = Object.keys((await stateOf(t)).offers)[0] ?? "";
+    expect(offerId).toBe("offer:1");
+    const card = t.messages.live(party).find((message) => flatText([message]).includes("offers"));
+    expect(flatText(card === undefined ? [] : [card])).toContain(`dnd:offerYes:${t.key.campaignId}:offer:1`);
+
+    // Only the receiving hero's owner can accept it.
+    expect(contentOf(await t.press("offerYes", "u-org", { argument: offerId, onCard: offerId }))).toBe("That is not your hero.");
+    expect(contentOf(await t.press("offerYes", "u-two", { argument: offerId, onCard: offerId }))).toBe("You answered the offer.");
+    const after = await stateOf(t);
+    expect(after.offers).toEqual({});
+    expect(after.characters[heroes[1]?.id ?? ""]?.equipment).toContain("item:longsword");
+    await t.cards.sync(t.key);
+    // The answered offer leaves the Party channel.
+    expect(t.messages.live(party).some((message) => flatText([message]).includes("offers"))).toBe(false);
+  });
+
+  it("lets the giver take an offer back, and the receiver decline one", async () => {
+    const t = await twoPlayers();
+    await pick(t, "giveTo", `item:longsword>${heroes[1]?.id}`);
+    await t.cards.sync(t.key);
+    expect(contentOf(await t.press("offerCancel", "u-two", { argument: "offer:1", onCard: "offer:1" }))).toBe("That is not your hero.");
+    expect(contentOf(await t.press("offerCancel", "u-org", { argument: "offer:1", onCard: "offer:1" }))).toBe("You took the offer back.");
+    expect((await stateOf(t)).offers).toEqual({});
+    expect((await stateOf(t)).characters[heroes[0]?.id ?? ""]?.equipment).toContain("item:longsword");
+
+    await pick(t, "giveTo", `item:longsword>${heroes[1]?.id}`);
+    await t.cards.sync(t.key);
+    expect(contentOf(await t.press("offerNo", "u-two", { argument: "offer:2", onCard: "offer:2" }))).toBe("You declined the offer.");
+    expect((await stateOf(t)).characters[heroes[1]?.id ?? ""]?.equipment).not.toContain("item:longsword");
+  });
+
+  it("offers nothing to do with the pack in a fight", async () => {
+    const t = await harness();
+    await started(t);
+    await t.r.store.transaction(async (tx) => {
+      const stored = await tx.loadCampaign(t.key);
+      if (stored === undefined) throw new Error("state");
+      await tx.saveCampaign(t.key, { ...stored.state, round: null }, stored.revision);
+    });
+    const spec = { id: "e", zones: [{ id: "z", name: "Yard" }], edges: [], partyZoneId: "z", monsters: [{ monsterId: "monster:goblin" as const, zoneId: "z", npcId: null, fleeBelowHpFraction: null }] };
+    await t.r.bus.execute(t.key, { kind: "startEncounter", spec }, { commandId: "f", actor: { kind: "user", userId: "u-org" } });
+    await t.cards.sync(t.key);
+    expect(menuValues(await t.press("myHero", "u-org"), "pack")).toEqual([]);
   });
 });
 

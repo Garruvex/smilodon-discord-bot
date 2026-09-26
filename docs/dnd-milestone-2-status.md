@@ -15,6 +15,12 @@ New games use the `combat-mode: players` house rule (older games keep whatever t
 - **Result lines.** Every action posts one template line in the Adventure channel with no model call: `⚔️ Borin · Longsword → Goblin A: hit, 7 damage, down`, opportunity attacks, Dodge / Dash / Disengage, potions, a foe fleeing, and death saves. Games created with the autopilot rule keep the old behavior (a flourish per round and the outcome only).
 - Rolls (initiative, attacks, saves, damage, death saves) stay automatic and saved exactly once; nobody clicks to roll in a fight.
 
+## Built: inventory, gifts and retry
+
+- **Pack menu** on My Hero (private, outside fights, alongside the armor and shield menu): **Drink** a healing potion, **Put in the stash** or **Take from the stash**, and **Give** an item to another hero. Worn armor and shields are taken off first from the gear menu. Nothing appears while a fight is on.
+- **Gifts** need a yes. Giving posts an **offer card** in the Party channel (Accept, Decline, Take back) and pings the receiving hero’s player in the Adventure channel. Only that hero’s owner can accept and only the giver can take it back; the engine re-checks that the item is still there when it is accepted. An answered offer card is removed. Exchanges (an item for an item) are in the engine but have no button yet.
+- **Retry the fight** is a button in Manage (organizer or DnD Admin), allowed after a lost fight until someone acts in the round that follows. The party is restored to how it stood when the fight began and the fight runs again with fresh dice. The defeat message tells the organizer about it.
+
 ## Not yet exercised at a real table
 
 - [ ] Start a game, reach a fight, and see the encounter reveal, then the panel with zones and the turn ping for the first hero.
@@ -25,6 +31,8 @@ New games use the `combat-mode: players` house rule (older games keep whatever t
 - [ ] A hero at 0 HP: death save line, no menu for them; the fight continues.
 - [ ] Cast Bless on two allies and Sacred Flame at a foe; Second Wind; drink a potion.
 - [ ] Win the fight: outcome and loot line, then exploration resumes. Lose it: everyone wakes with 1 HP.
+- [ ] Two players: give an item; the receiver is pinged and accepts on the offer card; the giver takes one back; the card disappears when answered.
+- [ ] Lose a fight, then press Retry the fight in Manage.
 - [ ] Repeat in Traditional Chinese.
 
 ## Still to build in milestone 2
@@ -32,7 +40,7 @@ New games use the `combat-mode: players` house rule (older games keep whatever t
 | Item | State |
 | --- | --- |
 | Speak (in-character lines as the hero), Safety, the More… menu | Not started. Safety must exist before public playtests. |
-| Inventory, trade, and retry-a-lost-fight buttons | The engine has all three; no buttons yet. |
+| Item-for-item exchanges | The engine supports them; only gifts have a button. |
 | Shield or gear changes in a fight (a shield costs an action; weapons are drawn free) | Not started; gear changes are outside fights only. |
 | Reaction prompts, pre-declared reactions, proxy play for an away player | Not started. No starter spell or feature needs a player's reaction yet, and heroes' opportunity attacks are automatic. |
 | Preview step (to-hit formula, advantage reasons) before a choice commits | Not started. |

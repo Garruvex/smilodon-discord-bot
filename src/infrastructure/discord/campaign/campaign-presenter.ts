@@ -88,6 +88,17 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
       case "deathSave":
         if (playersFight) await say(adventureChannelId, combat?.deathSave(delivery.combatantId) ?? null);
         break;
+      case "itemOffered": {
+        // A ping for the hero's owner, who answers on the offer card.
+        const offer = state?.offers[delivery.offerId];
+        const to = offer === undefined ? undefined : state?.characters[offer.toCharacterId];
+        const from = offer === undefined ? undefined : state?.characters[offer.fromCharacterId];
+        if (offer !== undefined && to !== undefined && from !== undefined && partyChannelId !== null) {
+          const item = this.options.glossaries[record.language]?.names[offer.give] ?? offer.give;
+          await say(adventureChannelId, text.campaign.msg.offer({ user: to.ownerUserId, from: from.name, item, channel: partyChannelId }), [to.ownerUserId]);
+        }
+        break;
+      }
       case "combatTurn": {
         // A ping for the player whose turn it now is, unless the turn has already moved on.
         const turn = playersFight && state !== undefined ? this.turnNotice(state, delivery.combatantId, text) : null;

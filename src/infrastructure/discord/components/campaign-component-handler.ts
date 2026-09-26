@@ -34,6 +34,7 @@ import { isWorn } from "../../../domain/campaign/combat/combatant-profile.js";
 import { isFallen } from "../../../domain/campaign/state/campaign-state.js";
 import { combatantName } from "../../../application/campaign/dm/combat-records.js";
 import { classLabel } from "../campaign/text-keys.js";
+import { giveMenu, packMenu, parseGift, parsePackChoice } from "../campaign/pack-menu.js";
 import { CampaignCardService } from "../campaign/campaign-card-service.js";
 import { renderHeroSheet } from "../campaign/hero-sheet.js";
 import { refusalText } from "../campaign/refusal-text.js";
@@ -102,6 +103,11 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "begin":
     case "turn":
       return ["adventure"];
+    case "offerYes":
+    case "offerNo":
+    case "offerCancel":
+      // An offer's buttons sit on that offer's own card.
+      return [argument ?? ""];
     case "endTurn":
       // The confirmation button lives in a private message; the panel's own is the shared one.
       return argument === "yes" ? [] : ["adventure"];
@@ -115,6 +121,8 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "turnRefresh":
     case "pick":
     case "aim":
+    case "pack":
+    case "giveTo":
       return [];
   }
 }
@@ -146,6 +154,8 @@ export class CampaignComponentHandler implements ComponentHandler {
     if (interaction.isStringSelectMenu()) {
       if (parsed.action === "newHero") await this.joinReplacement(interaction, record, text);
       else if (parsed.action === "gear") await this.changeGear(interaction, record, text);
+      else if (parsed.action === "pack") await this.changePack(interaction, record, text);
+      else if (parsed.action === "giveTo") await this.giveItem(interaction, record, text);
       else if (parsed.action === "pick") await this.pickTurnAction(interaction, record, text);
       else if (parsed.action === "aim") await this.aimTurnAction(interaction, record, text);
       else await this.chooseHero(interaction, record, text);
@@ -217,6 +227,13 @@ export class CampaignComponentHandler implements ComponentHandler {
         return void (await this.outcome(await this.deps.play.ready(key, userId, interaction.id), text.campaign.reply.ready, reply, text));
       case "begin":
         return void (await this.outcome(await this.deps.play.begin(key, userId, interaction.id), text.campaign.reply.began, reply, text));
+      case "offerYes":
+      case "offerNo":
+      case "offerCancel": {
+        const answer = parsed.action === "offerYes" ? "accept" : parsed.action === "offerNo" ? "decline" : "cancel";
+        const said = answer === "accept" ? text.campaign.reply.offerAccepted : answer === "decline" ? text.campaign.reply.offerDeclined : text.campaign.reply.offerCancelled;
+        return void (await this.outcome(await this.deps.play.answerOffer(key, userId, parsed.argument ?? "", answer, interaction.id), said, reply, text));
+      }
       case "turn":
         await this.showTurn(interaction, record, text, null);
         return;
@@ -233,7 +250,7 @@ export class CampaignComponentHandler implements ComponentHandler {
         }
         const sheet = await this.heroSheet(record, text, parsed.action === "details" ? parsed.argument : null, userId);
         // Only the player's own hero gets the gear controls.
-        const gear = parsed.action === "myHero" ? await this.gearControls(record, text, userId) : [];
+        const gear = parsed.action === "myHero" ? await this.heroMenus(record, text, userId) : [];
         await interaction.editReply({ content: sheet, components: gear });
         return;
       }
@@ -489,7 +506,64 @@ export class CampaignComponentHandler implements ComponentHandler {
     // Show the sheet again, with the menu updated for what is worn now.
     await interaction.editReply({
       content: `${text.campaign.reply.gearChanged}\n\n${await this.heroSheet(record, text, null, interaction.user.id)}`,
-      components: await this.gearControls(record, text, interaction.user.id),
+      components: await this.heroMenus(record, text, interaction.user.id),
+    });
+  }
+
+  // Everything My Hero lets the player change: worn gear, then the pack.
+  private async heroMenus(record: CampaignRecord, text: Texts, userId: string): Promise<ActionRowBuilder<StringSelectMenuBuilder>[]> {
+    const gear = await this.gearControls(record, text, userId);
+    const loaded = await this.deps.unitOfWork.transaction((tx) => tx.loadCampaign(record.key));
+    const heroId = loaded?.state.members[userId]?.characterId ?? null;
+    const glossary = this.deps.glossaries[record.language];
+    if (loaded === undefined || heroId === null || glossary === undefined) return gear;
+    const pack = packMenu(loaded.state, this.deps.rulesets.resolve(loaded.ruleset).content, glossary, text, record.key.campaignId, heroId);
+    return pack === null ? gear : [...gear, pack];
+  }
+
+  // Drink, stash, or take: done at once. Giving asks who to give to next.
+  private async changePack(interaction: StringSelectMenuInteraction, record: CampaignRecord, text: Texts): Promise<void> {
+    await interaction.deferUpdate();
+    const choice = parsePackChoice(interaction.values[0] ?? "");
+    if (choice === null) {
+      await interaction.editReply({ content: text.campaign.refusal.generic, components: [] });
+      return;
+    }
+    if (choice.verb === "give") {
+      const loaded = await this.deps.unitOfWork.transaction((tx) => tx.loadCampaign(record.key));
+      const heroId = loaded?.state.members[interaction.user.id]?.characterId ?? null;
+      const glossary = this.deps.glossaries[record.language];
+      const menu = loaded === undefined || heroId === null || glossary === undefined ? null : giveMenu(loaded.state, glossary, text, record.key.campaignId, heroId, choice.item);
+      await interaction.editReply(menu === null ? { content: text.campaign.refusal.generic, components: [] } : { content: menu.content, components: [menu.row] });
+      return;
+    }
+    const { play } = this.deps;
+    const user = interaction.user.id;
+    const result =
+      choice.verb === "use"
+        ? await play.useItem(record.key, user, choice.item, interaction.id)
+        : choice.verb === "stash"
+          ? await play.stash(record.key, user, choice.item, interaction.id)
+          : await play.takeFromStash(record.key, user, choice.item, interaction.id);
+    await this.showHeroAgain(interaction, record, text, result.kind === "ok" ? text.campaign.reply.packDone : refusalText(text, result.reason));
+  }
+
+  private async giveItem(interaction: StringSelectMenuInteraction, record: CampaignRecord, text: Texts): Promise<void> {
+    await interaction.deferUpdate();
+    const gift = parseGift(interaction.values[0] ?? "");
+    if (gift === null) {
+      await interaction.editReply({ content: text.campaign.refusal.generic, components: [] });
+      return;
+    }
+    const result = await this.deps.play.give(record.key, interaction.user.id, gift.item, gift.toCharacterId, interaction.id);
+    await this.showHeroAgain(interaction, record, text, result.kind === "ok" ? text.campaign.reply.offerSent : refusalText(text, result.reason));
+  }
+
+  // The sheet and menus again, under a note about what just happened.
+  private async showHeroAgain(interaction: StringSelectMenuInteraction, record: CampaignRecord, text: Texts, note: string): Promise<void> {
+    await interaction.editReply({
+      content: `${note}\n\n${await this.heroSheet(record, text, null, interaction.user.id)}`,
+      components: await this.heroMenus(record, text, interaction.user.id),
     });
   }
 

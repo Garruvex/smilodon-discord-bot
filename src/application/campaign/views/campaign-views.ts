@@ -94,6 +94,16 @@ export interface CombatView {
   }[];
 }
 
+// An item one hero offers another, waiting for an answer.
+export interface OfferView {
+  readonly id: string;
+  readonly fromName: string;
+  readonly toName: string;
+  readonly toUserId: string;
+  readonly give: string;
+  readonly want: string | null;
+}
+
 export interface PanelView {
   readonly campaignName: string;
   readonly sceneTitle: string;
@@ -215,6 +225,15 @@ export function buildHeroView(state: CampaignState, sheet: CharacterSheet, conte
     slots,
     uses,
   };
+}
+
+// The offers still open, oldest first.
+export function buildOfferViews(state: CampaignState): readonly OfferView[] {
+  return Object.values(state.offers).flatMap((offer) => {
+    const from = state.characters[offer.fromCharacterId];
+    const to = state.characters[offer.toCharacterId];
+    return from === undefined || to === undefined ? [] : [{ id: offer.id, fromName: from.name, toName: to.name, toUserId: to.ownerUserId, give: offer.give, want: offer.want }];
+  });
 }
 
 // The heroes players currently control, in party order.

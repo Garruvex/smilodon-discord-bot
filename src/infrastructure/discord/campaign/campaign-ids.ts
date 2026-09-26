@@ -30,6 +30,12 @@ export const campaignActions = [
   "pick",
   "aim",
   "endTurn",
+  // Inventory: the pack menu, choosing who gets a gift, and answering an offer.
+  "pack",
+  "giveTo",
+  "offerYes",
+  "offerNo",
+  "offerCancel",
 ] as const;
 export type CampaignAction = (typeof campaignActions)[number];
 

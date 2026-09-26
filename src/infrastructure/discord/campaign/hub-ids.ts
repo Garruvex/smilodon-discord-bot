@@ -27,7 +27,7 @@ export interface ParsedHubId {
 }
 
 // The manager controls a game's manage view offers.
-export const manageVerbs = ["pause", "resume", "closeRound", "retry", "shortRest", "longRest", "repair"] as const;
+export const manageVerbs = ["pause", "resume", "closeRound", "retry", "retryFight", "shortRest", "longRest", "repair"] as const;
 export type ManageVerb = (typeof manageVerbs)[number];
 
 // The choices the new-game wizard has collected so far.
