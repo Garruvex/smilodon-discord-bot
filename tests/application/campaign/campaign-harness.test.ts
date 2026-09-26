@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   AdventureDocumentError,
+  checkAdventureContent,
   checkEditionsMatch,
   parseAdventureDocument,
 } from "../../../src/application/campaign/adventures/adventure-document.js";
@@ -196,3 +197,36 @@ describe("runHarness", () => {
 function runAndSummarize(run: Awaited<ReturnType<typeof runHarness>>): [typeof run, ReturnType<typeof summarizeRun>] {
   return [run, summarizeRun(run)];
 }
+
+describe("adventure content check", () => {
+  const content = ruleset().content;
+
+  it("accepts the shipped starter adventure in both languages", () => {
+    expect(checkAdventureContent(starter.en, content)).toEqual([]);
+    expect(checkAdventureContent(starter["zh-TW"], content)).toEqual([]);
+  });
+
+  it("reports monsters, items, features, and spells the ruleset lacks or that are the wrong kind", () => {
+    const [chapel] = starter.en.bible.encounters.slice(1);
+    const [borin] = starter.en.heroes;
+    if (chapel === undefined || borin === undefined) throw new Error("fixture changed");
+    const broken = {
+      bible: {
+        ...starter.en.bible,
+        encounters: [{ ...chapel, monsters: [{ ...chapel.monsters[0]!, monsterId: "monster:dragon" as const }, { ...chapel.monsters[0]!, monsterId: "item:longsword" as never }] }],
+      },
+      heroes: [{ ...borin, equipment: ["item:lightsaber" as const], features: ["spell:bless" as never] }],
+    };
+    expect(checkAdventureContent(broken, content)).toEqual([
+      "c-borin uses item:lightsaber, which the ruleset does not have.",
+      "c-borin uses spell:bless as a feature, but it is of kind spell.",
+      "encounter:chapel-fight uses monster:dragon, which the ruleset does not have.",
+      "encounter:chapel-fight uses item:longsword as a monster, but it is of kind item.",
+    ]);
+  });
+
+  it("stops the harness before play when an adventure needs content the ruleset lacks", async () => {
+    const bad = { ...starter.en, heroes: starter.en.heroes.map((hero) => ({ ...hero, equipment: ["item:lightsaber" as const] })) };
+    await expect(runHarness(options("en", { adventure: bad }))).rejects.toThrow("item:lightsaber");
+  });
+});

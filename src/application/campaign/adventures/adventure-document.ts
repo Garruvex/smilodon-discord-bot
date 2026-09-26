@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { AdventureBible, ClockId, ClueId, EncounterId, NpcId, SceneId } from "../../../domain/campaign/adventure/adventure-bible.js";
 import { isSkill, type CharacterSheet, type Skill, type SkillProficiency } from "../../../domain/campaign/character/character-sheet.js";
 import type { ContentId } from "../../../domain/campaign/rules/content-id.js";
+import type { SealedContent } from "../../../domain/campaign/rules/content-registry.js";
 import { abilities } from "../../../domain/campaign/rules/effects.js";
 
 // A ready-made hero shipped with an adventure. The owner is assigned when a
@@ -218,4 +219,26 @@ function duplicates(kind: string, ids: readonly string[]): readonly string[] {
   const repeated = new Set<string>();
   for (const id of ids) (seen.has(id) ? repeated : seen).add(id);
   return [...repeated].map((id) => `${kind} ${id} is defined more than once.`);
+}
+
+// Checks what the adventure references against the sealed ruleset: heroes'
+// equipment, features, and spells, and every encounter's monsters. Parsing
+// checks structure; this needs the ruleset, so it runs when a campaign is set
+// up and in the tests of every shipped adventure.
+export function checkAdventureContent(document: AdventureDocument, content: SealedContent): readonly string[] {
+  const problems: string[] = [];
+  const expectKind = (owner: string, id: string, kind: string): void => {
+    const found = content.find(id);
+    if (found === undefined) problems.push(`${owner} uses ${id}, which the ruleset does not have.`);
+    else if (found.kind !== kind) problems.push(`${owner} uses ${id} as a ${kind}, but it is of kind ${found.kind}.`);
+  };
+  for (const hero of document.heroes) {
+    for (const id of hero.equipment) expectKind(hero.id, id, "item");
+    for (const id of hero.features) expectKind(hero.id, id, "feature");
+    for (const id of hero.spellcasting?.spells ?? []) expectKind(hero.id, id, "spell");
+  }
+  for (const encounter of document.bible.encounters) {
+    for (const monster of encounter.monsters) expectKind(encounter.id, monster.monsterId, "monster");
+  }
+  return problems;
 }

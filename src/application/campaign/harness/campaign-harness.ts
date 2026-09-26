@@ -6,7 +6,7 @@ import type { UserId } from "../../../domain/campaign/core/ids.js";
 import type { RandomSource } from "../../../domain/campaign/dice/random-source.js";
 import type { Glossary } from "../../../domain/campaign/rules/content-registry.js";
 import type { CampaignState, MemberState, Pacing } from "../../../domain/campaign/state/campaign-state.js";
-import type { AdventureDocument } from "../adventures/adventure-document.js";
+import { AdventureDocumentError, checkAdventureContent, type AdventureDocument } from "../adventures/adventure-document.js";
 import { CampaignCommandBus } from "../campaign-command-bus.js";
 import type { CampaignKey, CampaignUnitOfWork, CommandOutcome, EventEnvelope, StoredCampaign } from "../ports/campaign-store.js";
 import type { ModelCallKind, ModelCallObserver } from "../dm/llm-dm.js";
@@ -92,6 +92,8 @@ const system: Actor = { kind: "system" };
 // process is a port: model calls, dice, clock, and storage.
 export async function runHarness(options: HarnessOptions): Promise<HarnessRun> {
   const { adventure, players, unitOfWork } = options;
+  const contentProblems = checkAdventureContent(adventure, options.rulesets.resolve(options.rulesetPin).content);
+  if (contentProblems.length > 0) throw new AdventureDocumentError(contentProblems);
   const pacing = options.pacing ?? harnessPacing;
   const clock = new ManualClock(Date.UTC(2026, 0, 1));
   const measure = options.measure ?? ((): number => performance.now());
