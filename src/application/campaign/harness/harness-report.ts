@@ -13,6 +13,7 @@ export interface HarnessReport {
   readonly moments: Readonly<Record<string, number>>;
   readonly narration: { readonly count: number; readonly lengths: readonly number[]; readonly unit: "words" | "characters" };
   readonly plannerFailures: number;
+  readonly targets: TargetResults;
   readonly fights: readonly {
     readonly id: string;
     readonly outcome: string;
@@ -30,9 +31,9 @@ export interface HarnessReport {
   readonly cost: { readonly total: number; readonly perRound: number; readonly perLiveHour: number } | null;
   // Exact secret text found in anything the Narrator received or wrote.
   readonly leaks: readonly string[];
-  // Digits the Narrator wrote. Committed numbers (HP, DCs, rolls) come from the
-  // game state and the table already sees them, so narration should carry none;
-  // any digit is a candidate for a number that disagrees with the state.
+  // Digits the Narrator wrote that match no committed roll or DC (a "natural
+  // 20" that really was a 20 is fine). Anything left is a number that may
+  // disagree with the state.
   readonly numbersInNarration: readonly string[];
   // zh-TW only: Simplified-only characters found in narration.
   readonly simplifiedCharacters: readonly string[];
@@ -44,6 +45,27 @@ export interface HarnessReport {
 const simplifiedOnly = new Set(
   "这们说过还进对时会个为学发与问门马见长开关头书东车国边让从气乐实现点应经没样专业电话饭钱铁银错间闻听语谁请读写买卖卫报场张强总战声画区医岁归兴举级极杀际陈陆阴阳龙鸟鱼觉认识钟仅决刘纪约红细终织给绝统续罗脑药虽询贵费资赵选遗邮释钥锁队阶险随难饮馆驾验鲁鲜".split(""),
 );
+
+// Milestone 0 exit targets (plan §6 and §12): a round's model time from
+// closing the window to narration, and how many narrations land in the
+// length the prompt asks for.
+export const targets = {
+  resolutionP50Ms: 8_000,
+  resolutionP95Ms: 20_000,
+  minimumInLengthShare: 0.8,
+  narrationWords: { min: 60, max: 180 },
+  narrationCharacters: { min: 120, max: 360 },
+} as const;
+
+export interface TargetResults {
+  // Planner plus Narrator time per exploration round; null when nothing was timed.
+  readonly resolution: { readonly p50: number; readonly p95: number; readonly rounds: number } | null;
+  readonly latencyMet: boolean | null;
+  readonly inLengthShare: number | null;
+  readonly lengthMet: boolean | null;
+  // Every hero either acted, passed, or was invited by name at least once.
+  readonly everyoneHeard: boolean;
+}
 
 export interface TokenTotals {
   readonly calls: number;
@@ -113,6 +135,7 @@ export function summarizeRun(run: HarnessRun, pricing?: TokenPricing): HarnessRe
     moments,
     narration: { count: narrations.length, lengths, unit: zh ? "characters" : "words" },
     plannerFailures: events.filter((event) => event.kind === "plannerFailed").length,
+    targets: targetResults(run, perHero),
     fights,
     latency: { planner: latencyOf(run.calls, "planner"), narrator: latencyOf(run.calls, "narrator"), flourish: latencyOf(run.calls, "flourish") },
     maxContextTokens: Math.max(0, ...run.calls.map((call) => call.contextTokens)),
@@ -121,7 +144,7 @@ export function summarizeRun(run: HarnessRun, pricing?: TokenPricing): HarnessRe
     promptVersions: [...new Set(run.calls.flatMap((call) => (call.promptVersion === null ? [] : [call.promptVersion])))],
     cost: costOf(run.calls, pricing, rounds.length),
     leaks,
-    numbersInNarration: [...new Set(narrations.flatMap((text) => text.match(/\d+/g) ?? []))],
+    numbersInNarration: [...new Set(narrations.flatMap((text) => text.match(/\d+/g) ?? []))].filter((number) => !committedNumbers(events).has(number)),
     simplifiedCharacters,
   };
 }
@@ -161,6 +184,20 @@ export function renderReport(run: HarnessRun, report: HarnessReport): string {
     );
   }
   const { lengths, unit } = report.narration;
+  lines.push("", "## Milestone 0 targets", "");
+  const verdict = (met: boolean | null): string => (met === null ? "not measured" : met ? "met" : "**missed**");
+  const t = report.targets;
+  lines.push(
+    `- Resolution latency (p50 <= ${targets.resolutionP50Ms / 1000} s, p95 <= ${targets.resolutionP95Ms / 1000} s): ${
+      t.resolution === null ? "not measured" : `p50 ${(t.resolution.p50 / 1000).toFixed(1)} s, p95 ${(t.resolution.p95 / 1000).toFixed(1)} s over ${t.resolution.rounds} rounds`
+    } - ${verdict(t.latencyMet)}.`,
+  );
+  lines.push(
+    `- Narration length (at least ${targets.minimumInLengthShare * 100}% in range): ${
+      t.inLengthShare === null ? "not measured" : `${(t.inLengthShare * 100).toFixed(0)}% in range`
+    } - ${verdict(t.lengthMet)}.`,
+  );
+  lines.push(`- Spotlight (every hero acted or passed): ${t.everyoneHeard ? "met" : "**missed**"}.`, "");
   const average = lengths.length === 0 ? 0 : lengths.reduce((sum, value) => sum + value, 0) / lengths.length;
   lines.push(`Narration: ${report.narration.count} passages, average ${average.toFixed(0)} ${unit}, longest ${Math.max(0, ...lengths)}.`, "");
   lines.push("## Checks against the plan", "");
@@ -211,6 +248,47 @@ function transcript(run: HarnessRun): string[] {
     for (const fight of fights.filter((candidate) => candidate.afterRound === round.number)) lines.push(...fightTranscript(fight));
   }
   return lines;
+}
+
+function targetResults(run: HarnessRun, perHero: HarnessReport["perHero"]): TargetResults {
+  const rounds = [...new Set(run.calls.filter((call) => call.call !== "flourish").map((call) => call.roundNumber))];
+  const totals = rounds.map((round) =>
+    run.calls.filter((call) => call.call !== "flourish" && call.roundNumber === round).reduce((sum, call) => sum + call.milliseconds, 0),
+  );
+  const sorted = [...totals].sort((a, b) => a - b);
+  const at = (quantile: number): number => sorted[Math.min(sorted.length - 1, Math.floor(quantile * sorted.length))] ?? 0;
+  const timed = run.calls.some((call) => call.model !== null) && sorted.some((value) => value > 0);
+  const resolution = timed ? { p50: at(0.5), p95: at(0.95), rounds: sorted.length } : null;
+  const range = run.language === "zh-TW" ? targets.narrationCharacters : targets.narrationWords;
+  // Combat flourishes are short by design; only exploration narration is measured.
+  const events = run.events.map((envelope) => envelope.event);
+  const zh = run.language === "zh-TW";
+  const explorationLengths = events
+    .flatMap((event) => (event.kind === "narrationRecorded" ? [event.text] : []))
+    .map((text) => (zh ? [...text.replace(/\s/g, "")].length : text.split(/\s+/).filter(Boolean).length));
+  const inLength = explorationLengths.filter((length) => length >= range.min && length <= range.max).length;
+  const inLengthShare = explorationLengths.length === 0 ? null : inLength / explorationLengths.length;
+  return {
+    resolution,
+    latencyMet: resolution === null ? null : resolution.p50 <= targets.resolutionP50Ms && resolution.p95 <= targets.resolutionP95Ms,
+    inLengthShare,
+    // Template narration (the offline DM) is not held to the model's length.
+    lengthMet: inLengthShare === null || run.calls.every((call) => call.model === null) ? null : inLengthShare >= targets.minimumInLengthShare,
+    everyoneHeard: perHero.every((hero) => hero.actions + hero.passes > 0),
+  };
+}
+
+// Every number a check committed: the d20, the total, and the DC.
+function committedNumbers(events: readonly CampaignEvent[]): ReadonlySet<string> {
+  const numbers = new Set<string>();
+  for (const event of events) {
+    if (event.kind === "checkResolved") {
+      numbers.add(String(event.result.roll.d20.natural));
+      numbers.add(String(event.result.roll.total));
+    }
+    if (event.kind === "roundPlanApplied") for (const check of event.checks) numbers.add(String(check.dc));
+  }
+  return numbers;
 }
 
 function fightTranscript(fight: EncounterRecord): string[] {

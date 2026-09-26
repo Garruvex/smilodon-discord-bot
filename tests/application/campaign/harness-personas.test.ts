@@ -50,13 +50,13 @@ describe("adversarial cast", () => {
 describe("numbers in narration", () => {
   it("flags digits the Narrator wrote so they can be checked against the state", async () => {
     const chatty: CampaignNarrator = {
-      narrate: () => Promise.resolve({ text: "Borin swings for 14 damage and Mira has 3 arrows left." }),
-      narrateCombat: () => Promise.resolve({ text: "A 20 lands." }),
+      narrate: () => Promise.resolve({ text: "Borin swings for 777 damage and Mira has 913 arrows left." }),
+      narrateCombat: () => Promise.resolve({ text: "A 913 lands." }),
     };
     const run = await runHarness(options({ dm: () => ({ planner: new RuleBasedPlanner(), narrator: chatty }), rounds: 2 }));
     const report = summarizeRun(run);
-    expect(report.numbersInNarration).toEqual(["14", "3"]);
-    expect(renderReport(run, report)).toContain("Numbers in narration: **14, 3**");
+    expect(report.numbersInNarration).toEqual(["777", "913"]);
+    expect(renderReport(run, report)).toContain("Numbers in narration: **777, 913**");
     expect(summarizeRun(await runHarness(options({ rounds: 2 }))).numbersInNarration).toEqual([]);
   });
 });

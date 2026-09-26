@@ -33,7 +33,7 @@ export interface OpenAiResponsesClientOptions {
   readonly apiKey: string;
   readonly models: readonly string[];
   // Sent only when set: non-reasoning models reject the parameter.
-  readonly reasoningEffort?: "minimal" | "low" | "medium" | "high";
+  readonly reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 }
 
 export class OpenAiResponsesStructuredClient implements StructuredModelClient {

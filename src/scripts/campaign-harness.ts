@@ -37,7 +37,7 @@ import { InMemoryCampaignStore } from "../infrastructure/persistence/campaign/in
 const usage =
   "Usage: campaign-harness [--language en|zh-TW|both] [--rounds N] [--seed N] [--out file.md]\n" +
   "  [--dm offline|openai-responses|openai-compatible|gemini] [--model a,b] [--narrator-model a,b]\n" +
-  "  [--reasoning-effort minimal|low|medium|high] [--thinking-budget N]\n" +
+  "  [--reasoning-effort none|minimal|low|medium|high|xhigh|max] [--thinking-budget N]\n" +
   "  [--cast scripted|adversarial|simulated]  (simulated needs --dm openai-responses|openai-compatible|gemini)\n" +
   "  [--record calls.json] [--replay calls.json]  (save or replay every model call; a replay costs nothing)\n" +
   "  [--db file.sqlite]  (store the game in a SQLite file; one file per language run, the language is added to the name)\n" +
@@ -102,7 +102,7 @@ function createClient(modelList: readonly string[]): StructuredModelClient {
 
 function createLiveClient(modelList: readonly string[]): StructuredModelClient {
   const effort = values["reasoning-effort"];
-  if (effort !== undefined && !["minimal", "low", "medium", "high"].includes(effort)) fail("Invalid --reasoning-effort.");
+  if (effort !== undefined && !["none", "minimal", "low", "medium", "high", "xhigh", "max"].includes(effort)) fail("Invalid --reasoning-effort.");
   const baseUrl = (process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1").replace(/\/$/, "");
   switch (values.dm) {
     case "openai-responses":
@@ -110,7 +110,7 @@ function createLiveClient(modelList: readonly string[]): StructuredModelClient {
         baseUrl,
         apiKey: requireEnv("OPENAI_API_KEY"),
         models: modelList,
-        ...(effort === undefined ? {} : { reasoningEffort: effort as "minimal" | "low" | "medium" | "high" }),
+        ...(effort === undefined ? {} : { reasoningEffort: effort as "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" }),
       });
     case "openai-compatible":
       return new OpenAiCompatibleStructuredClient({ baseUrl, apiKey: requireEnv("OPENAI_API_KEY"), models: modelList });
