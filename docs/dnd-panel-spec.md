@@ -55,9 +55,75 @@ Speak lines and optionally named-NPC dialogue post through a channel webhook usi
 
 Show the English abbreviation next to stats, skills, and conditions, where players cross-check rules (敏捷 DEX, 隱匿 Stealth, 倒地 Prone). Class, spell, item, and monster names appear in the campaign language only, to keep mobile lines short. Button labels stay under about 12 characters in `en` and 6 in `zh-TW`.
 
-### Roll moment (proposed)
+### Dice moments
 
-When a player clicks Roll, the private view first shows "Rolling…" and then the saved result, followed by the public result line. It costs one extra edit and makes the roll feel like an event. The result is already saved before the "Rolling…" edit; the delay is presentation only and never affects which result is used.
+Rolling is the one thing every player does every round, so it should feel like an event and big moments should feel big. Presentation never changes a result: the roll is saved before anything animates, and a retry, restart, or repeated click shows the same saved dice.
+
+**The roll sequence: anticipation first.** The reply is never instant. Discord only requires acknowledging the click within about 3 seconds, and the message can then be edited several times, so the reveal is staged. Clicking Roll saves the result first. Everything after that is theater over a known result:
+
+| Beat | What the table sees | Default timing |
+| --- | --- | --- |
+| 0. Stakes | For stakes rolls only (see below), a public line posts before the dice: "Mira reaches for the trap's wire… **Roll to disarm**". Other players see the attempt, not just the aftermath. | Immediately on click |
+| 1. The "?" die | The public result message appears in a rolling state: a d20 image with **?** on its face, "Mira is rolling…", and no numbers. The roller's private view mirrors it. | 0 s (this is the click acknowledgement) |
+| 2. The die lands | Edit: the "?" face is swapped for the natural number only. A 20 or 1 already shows its gold or cracked style here, so the table reacts before the math. | +1.5 s |
+| 3. The math | Edit: the modifiers add up: **17** + 5 DEX + 3 (Bless) = **25**. | +1 s |
+| 4. The verdict | Edit: the DC or AC and the outcome: vs DC 15 — **Success**, plus the moment headline or tags. The accent color changes here. | +1 s |
+
+This follows web dice rollers such as [d20roll.com](https://d20roll.com/) and [rolladie.net](https://rolladie.net/roll-a-d20-die): the die is shown first with an unknown face, then the number appears. Discord cannot run client-side animation, so each step is a message edit that swaps the image. Do not cycle fake numbers through edits to simulate spinning: every edit counts against rate limits, the frames would arrive unevenly, and a flickered 20 that turns into a 4 feels like a cheat. An optional animated GIF of the "?" die wobbling can replace the static image in beat 1 at no extra API cost.
+
+The whole table watches one public message land, rather than the roller seeing a private result that is then copied out. The DC stays hidden until beat 4, so nobody knows whether 17 was enough until the verdict.
+
+**Suspense scales with the stakes.** Routine rolls get beats 1, 2 and 4 only (math and verdict are merged; about 2.5 s). Stakes rolls get every beat, with a longer pause before the verdict. A roll counts as a stakes roll if it is a death save, an attack or save against a boss, a roll with a clock at its last segment, or a check the Planner marks as pivotal. For the deciding third death save, beat 2 holds for 3 s and the success and failure pips fill one at a time. Suspense has a cap of 6 s per roll, so the pacing never drags.
+
+**Group rolls count up.** When several heroes roll together, such as a group Stealth check or initiative, one message reveals them one at a time in ascending order, so the best roll, and any natural 20, lands last. Each reveal is one edit about 0.8 s apart, and the combined verdict comes at the end.
+
+**Damage gets its own beat.** After a hit, the damage dice appear as a row of "?" icons, then land as face icons with the total. A critical shows twice as many "?" dice, then the doubled row.
+
+**Safety of the theater.** The staging is presentation only:
+
+- The result is committed before beat 1.
+- A restart mid-sequence resumes at the verdict with no replay.
+- The Narrator job starts at click time, in parallel with the staging, so suspense costs no extra latency. Narration posts after the verdict.
+- Edits are scheduled per channel and coalesced so they stay inside Discord's rate limits. If an edit fails or is rate limited, the next edit skips to the final state.
+- Roll speed Fast or Off (see Settings), or Instant pacing, skips the middle beats.
+
+**Moment tiers.** A pure classifier reads the saved roll and its context and returns at most one headline moment (highest tier wins) plus any number of small tags. Moments are tagged on the result event, so the Narrator, the result line, and the session recap all agree on what happened.
+
+| Tier | Moment | Trigger (2014 rules) | Presentation |
+| --- | --- | --- | --- |
+| Legendary | Natural 20 on an attack | Critical hit: damage dice doubled | Gold accent, 🎲 **NATURAL 20 — CRITICAL HIT!** heading, the doubled dice shown as two rows, Narrator flourish |
+| Legendary | Natural 20 on a death save | Hero regains 1 HP and wakes | Gold accent, **BACK FROM THE BRINK**, hero portrait |
+| Legendary | Killing blow on the boss | Final damage drops a boss-tagged foe to 0 HP | Gold accent, monster art greyed, Narrator finisher |
+| Disaster | Natural 1 on an attack | Automatic miss | Dark-red accent, **NATURAL 1**, Narrator describes the miss with flavor, never extra penalties |
+| Disaster | Natural 1 on a death save | Counts as two failures | Dark-red accent, failure pips shown filling two at once |
+| Clutch | Success by exactly 0 | Total equals the DC or AC | **Just enough!** tag |
+| Clutch | A bonus die flipped the result | Bless, Guidance, or similar made the difference | **Blessed!** tag naming the source, e.g. "Bless turned a miss into a hit" |
+| Clutch | Advantage saved it | The lower die would have failed | **Advantage saved you** with both dice shown, the loser struck through |
+| Clutch | Reaction flipped it | Shield or similar turned a hit into a miss | **Blocked!** tag on the reaction line |
+| Heartbreak | Failed by 1 | Total is exactly one below the DC or AC | **So close…** tag |
+| Heartbreak | Third death save | The deciding save, success or failure | Suspense delay doubled; pips animate one at a time |
+| Heartbreak | Disadvantage cost it | The higher die would have succeeded | Both dice shown, the lost one struck through |
+
+Natural 20 and natural 1 on ability checks and saving throws get the flourish (gold or dark-red **Natural 20!** / **Natural 1**) but not an automatic result under the 2014 rules: the outcome still comes from the total. The UI never claims "automatic success" unless the house-rule option below is on. A natural 1 never adds a fumble penalty (dropped weapon, self-damage); that is not in the rules and players hate losing things to one die.
+
+**Dice art.** Ship static assets, not generated images: a "?" face for every die size used in play (d20 first, then d4–d12 for damage; optionally a wobbling GIF version), and the numbered faces for each size. The d20 has a gold style for 20, a cracked dark style for 1, and a neutral style otherwise. Upload once, store the URLs, and reuse them. Damage rolls show small face icons in a row rather than one image per die, to stay inside component limits.
+
+**Hidden rolls.** Hidden checks (the DM rolls privately) produce no public moment; the Narrator may describe the effect without revealing the number.
+
+**The table remembers.** Moments feed three places:
+
+- **Narrator input:** the headline moment is passed to the Narrator so it writes to it ("the blade finds the gap in the armor") instead of guessing from numbers.
+- **Hero stats:** each hero card's details view counts natural 20s, natural 1s, and killing blows for the campaign.
+- **Session recap:** "Dice of the night" names the session's best and worst roll and the luckiest and unluckiest hero by average d20. It is light-hearted and never shames: no public streak counters for bad luck during play.
+
+**Settings.** Roll speed is a campaign display setting (not a house rule), named like d20roll.com's speed control:
+
+- **Dramatic:** every beat on every roll, with longer pauses for stakes rolls.
+- **Normal:** the staged sequence as described above.
+- **Fast:** the "?" die, then the verdict in a single edit; headline and tags are still shown.
+- **Off:** plain text result lines with no images or delay.
+
+It defaults to Normal for Live and Fast for Play-by-post. Every moment is also written as text, so nothing relies on color, animation, or emoji alone.
 
 ## Confirmed two-channel layout
 
@@ -371,6 +437,13 @@ Acknowledge interactions within Discord's initial response deadline. If opening 
 24. Only the active hero or authorized proxy can open the turn view; reactions prompt only eligible players and respect the reaction timer.
 25. Speak lines post through the webhook with the hero's name and portrait and suppressed mentions; without Manage Webhooks they fall back to attributed bot messages.
 26. Non-organizers never see a public Organizer button; Safety is one tap away in every non-archived state.
+27. The roll is saved before the "?" die shows; a restart or repeated click mid-sequence reveals the same saved dice, never a new roll.
+28. A natural 20 on an attack shows the critical-hit presentation with doubled damage dice; a natural 20 on an ability check shows the flourish but the outcome follows the total unless the natural-roll house rule is on.
+29. Each saved roll gets at most one headline moment, and the same moment appears in the result line, the Narrator input, and the session recap.
+30. Clutch tags name the real cause (the bonus die, the advantage die, the reaction) and only appear when that cause actually changed the outcome.
+31. Roll speed Off produces plain text result lines with no delay; every moment is readable as text without color or animation.
+32. The whole table sees one public roll message go through the "?" die, landed face, math, and verdict; the DC is hidden until the verdict; stakes rolls get the longer sequence and no roll's staging exceeds 6 s.
+33. Group rolls reveal in ascending order with the highest last; narration latency is unchanged because the Narrator starts at click time.
 
 ## Sources and implementation checks
 

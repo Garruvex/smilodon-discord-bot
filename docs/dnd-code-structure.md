@@ -271,6 +271,8 @@ interface PanelRenderer<P extends PanelKind> {
 }
 ```
 
+Dice moments (panel spec) are classified in the domain, not the renderer: a pure `classifyRollMoments(roll, context)` in `domain/campaign/dice/` returns the headline moment and tags from the saved roll plus what it was compared against (DC or AC, the other advantage die, bonus dice, reactions). The result is stored on the roll event, so renderers, the Narrator, and the recap read the same classification and never recompute it.
+
 Renderers are pure: projection in, Components V2 payload out. Projections come from `domain/campaign/projection` and are already audience-filtered (public or a specific player), so a renderer cannot leak what it never receives. The reconciliation service asks the registry for the renderer of each desired logical card. Renderer tests snapshot payloads and assert the budget for the worst-case fixtures (six heroes, long `zh-TW` names).
 
 ## 5. The single write path

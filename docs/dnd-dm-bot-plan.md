@@ -171,6 +171,7 @@ Implement the curated SRD subset as ordinary, tested TypeScript in `src/domain/c
 | --- | --- |
 | Ability generation | Standard array, point buy, 4d6-drop-lowest |
 | Critical hits | Double dice, max first die + roll |
+| Natural 20/1 on ability checks and saves | No effect (2014 rules), automatic success/failure |
 | Resting | Standard, gritty, heroic |
 | Death | Standard death saves, no death while away, lingering injuries off/on |
 | Healing potions | Action, bonus action |
@@ -525,7 +526,7 @@ Fun is a release gate with concrete levers and measurements.
 | The world remembers | NPCs call back earlier deeds from the ledger | Scenes referencing ledger entries |
 | Spotlight | Every present player acts each round; DM addresses quiet players by name | Distribution of actions and narration mentions per player |
 | Tension | Scene goals and visible clocks ("Guards alerted 2/4") | Scenes ending with no stakes |
-| Dice drama | Player clicks Roll; DC revealed after the roll; natural 20/1 get special narration | – |
+| Dice drama | Player clicks Roll; a "?" die, then the number is revealed; DC revealed after the roll; tiered moments (natural 20/1, crits, clutch saves, near misses, killing blows) with their own presentation and narration; "Dice of the night" recap ([panel spec: Dice moments](dnd-panel-spec.md#dice-moments)) | Share of rolls tagged with a moment; playtest rating of roll excitement |
 | Consistency | Numbers from the database only; locked names | Contradictions against ledger/state |
 | NPC personality | Each NPC has a voice or tic in the bible | Playtest rating |
 | Safety | Lines and veils from setup are in layer A | Boundary violations |
