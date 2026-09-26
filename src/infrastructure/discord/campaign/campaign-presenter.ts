@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type { AdventureLibrary } from "../../../application/campaign/ports/adventure-library.js";
 import type { CampaignPresenter } from "../../../application/campaign/ports/campaign-presenter.js";
 import type { CampaignKey, CampaignUnitOfWork } from "../../../application/campaign/ports/campaign-store.js";
@@ -30,7 +32,7 @@ export interface PresenterOptions {
 export class DiscordCampaignPresenter implements CampaignPresenter {
   public constructor(private readonly options: PresenterOptions) {}
 
-  public async present(key: CampaignKey, delivery: DeliverySpec): Promise<void> {
+  public async present(key: CampaignKey, delivery: DeliverySpec, deliveryId?: string): Promise<void> {
     const loaded = await this.options.unitOfWork.transaction(async (tx) => ({
       stored: await tx.loadRecord(key),
       campaign: await tx.loadCampaign(key),
@@ -42,8 +44,14 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
     const state = loaded.campaign?.state;
     const text = texts[record.language];
     const { adventureChannelId, partyChannelId } = record.channels;
+    // A delivery's posts carry the same nonces on every retry, so a message
+    // that did go out before the failure is not posted twice.
+    let posted = 0;
     const say = async (channelId: string | null, content: string | null, mentions: readonly string[] = []): Promise<void> => {
-      if (channelId !== null && content !== null && content.trim() !== "") await this.options.messages.post(channelId, truncate(content), mentions);
+      if (channelId === null || content === null || content.trim() === "") return;
+      posted += 1;
+      const nonce = deliveryId === undefined ? undefined : createHash("sha1").update(`${deliveryId}#${posted}`).digest("base64url").slice(0, 25);
+      await this.options.messages.post(channelId, truncate(content), mentions, nonce);
     };
     // Fights the players play get a template line for every action; on autopilot the round flourish is enough.
     const playersFight = record.houseRules[combatMode.id] !== "autopilot";

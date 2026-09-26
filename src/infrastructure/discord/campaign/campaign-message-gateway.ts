@@ -13,7 +13,9 @@ export interface CampaignMessageGateway {
   remove(channelId: string, messageId: string): Promise<void>;
   // Plain history text (narration, results): no controls, no pings.
   // The named users (and only they) are pinged.
-  post(channelId: string, content: string, mentionUserIds?: readonly string[]): Promise<string>;
+  // `nonce` (at most 25 characters) makes Discord drop a repeat of the same
+  // message sent within a few minutes, so a retry after an unsure send does not double-post.
+  post(channelId: string, content: string, mentionUserIds?: readonly string[], nonce?: string): Promise<string>;
   pin(channelId: string, messageId: string): Promise<void>;
 }
 
@@ -48,8 +50,12 @@ export class DiscordMessageGateway implements CampaignMessageGateway {
     }
   }
 
-  public async post(channelId: string, content: string, mentionUserIds: readonly string[] = []): Promise<string> {
-    const message = await (await this.channel(channelId)).send({ content, allowedMentions: mentionUserIds.length === 0 ? { parse: [] } : { parse: [], users: [...mentionUserIds] } });
+  public async post(channelId: string, content: string, mentionUserIds: readonly string[] = [], nonce?: string): Promise<string> {
+    const message = await (await this.channel(channelId)).send({
+      content,
+      allowedMentions: mentionUserIds.length === 0 ? { parse: [] } : { parse: [], users: [...mentionUserIds] },
+      ...(nonce === undefined ? {} : { nonce, enforceNonce: true }),
+    });
     return message.id;
   }
 

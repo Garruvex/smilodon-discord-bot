@@ -200,7 +200,7 @@ describe.each(stores)("campaign store contract: $name", ({ create }) => {
       await tx.enqueue(key, "job-2", { kind: "plan", roundNumber: 1 }, 30);
     });
     const pending = await store.transaction((tx) => tx.pendingOutbox("narrate"));
-    expect(pending).toEqual([{ id: "job-1", key, request, status: "pending", attempts: 0, createdAt: 10, lastError: null }]);
+    expect(pending).toEqual([{ id: "job-1", key, request, status: "pending", attempts: 0, createdAt: 10, lastError: null, notBefore: 0 }]);
 
     await store.transaction((tx) => tx.failOutboxAttempt("job-1", "boom", 2));
     expect((await store.transaction((tx) => tx.pendingOutbox("narrate")))[0]).toMatchObject({ attempts: 1, lastError: "boom" });
@@ -209,6 +209,23 @@ describe.each(stores)("campaign store contract: $name", ({ create }) => {
 
     await store.transaction((tx) => tx.completeOutbox("job-2"));
     expect(await store.transaction((tx) => tx.pendingOutbox("plan"))).toEqual([]);
+  });
+
+  it("holds a failed item back until its retry time and puts given-up work back on request", async () => {
+    const store = create();
+    await store.transaction(async (tx) => {
+      await tx.enqueue(key, "job-1", { kind: "narrate", roundNumber: 1 }, 10);
+      await tx.enqueue(other, "job-9", { kind: "narrate", roundNumber: 1 }, 10);
+    });
+    await store.transaction((tx) => tx.failOutboxAttempt("job-1", "later", 3, 5_000));
+    expect((await store.transaction((tx) => tx.pendingOutbox("narrate"))).find((item) => item.id === "job-1")).toMatchObject({ attempts: 1, notBefore: 5_000 });
+    await store.transaction((tx) => tx.failOutboxAttempt("job-1", "again", 2, 9_000));
+    await store.transaction((tx) => tx.failOutboxAttempt("job-9", "other server", 1));
+    expect((await store.transaction((tx) => tx.pendingOutbox("narrate"))).map((item) => item.id)).toEqual([]);
+    // Only this campaign's given-up work comes back, with a fresh count.
+    expect(await store.transaction((tx) => tx.requeueFailedOutbox(key))).toBe(1);
+    expect(await store.transaction((tx) => tx.pendingOutbox("narrate"))).toMatchObject([{ id: "job-1", attempts: 0, notBefore: 0, status: "pending" }]);
+    expect(await store.transaction((tx) => tx.requeueFailedOutbox(key))).toBe(0);
   });
 
   it("returns only due, pending timers, and lets a reschedule replace one", async () => {
@@ -288,7 +305,19 @@ describe("sqlite campaign store on disk", () => {
     const upgraded = new SqliteCampaignStore(raw);
     expect(await upgraded.transaction((tx) => tx.loadCampaign(key))).toBeDefined();
     await upgraded.transaction((tx) => tx.createRecord(record()));
-    expect(raw.prepare("SELECT version FROM campaign_meta").get()).toEqual({ version: 2 });
+    expect(raw.prepare("SELECT version FROM campaign_meta").get()).toEqual({ version: 3 });
+  });
+
+  it("adds the outbox retry time to a version 2 database", async () => {
+    const file = fileDatabase();
+    const raw = file.open();
+    const first = new SqliteCampaignStore(raw);
+    await first.transaction((tx) => tx.enqueue(key, "job-1", { kind: "narrate", roundNumber: 1 }, 10));
+    raw.exec("ALTER TABLE campaign_outbox DROP COLUMN not_before");
+    raw.prepare("UPDATE campaign_meta SET version = 2").run();
+    const upgraded = new SqliteCampaignStore(raw);
+    expect(await upgraded.transaction((tx) => tx.pendingOutbox("narrate"))).toMatchObject([{ id: "job-1", notBefore: 0 }]);
+    expect(raw.prepare("SELECT version FROM campaign_meta").get()).toEqual({ version: 3 });
   });
 
   it("refuses a database written by a different schema version", () => {

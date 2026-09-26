@@ -21,7 +21,7 @@ import type { CampaignState } from "../../../domain/campaign/state/campaign-stat
 // Bumped when a table changes shape. Milestone 0 keeps the campaign tables
 // self-contained (JSON payloads for events, state, and requests); they move
 // under the Drizzle migrations when the Discord milestone adds its own tables.
-const schemaVersion = 2;
+const schemaVersion = 3;
 
 const schema = `
 CREATE TABLE IF NOT EXISTS campaign_meta (version INTEGER NOT NULL);
@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS campaign_processed_commands (
 );
 CREATE TABLE IF NOT EXISTS campaign_outbox (
   id TEXT PRIMARY KEY, guild_id TEXT NOT NULL, campaign_id TEXT NOT NULL, kind TEXT NOT NULL, request TEXT NOT NULL,
-  status TEXT NOT NULL, attempts INTEGER NOT NULL, created_at INTEGER NOT NULL, last_error TEXT
+  status TEXT NOT NULL, attempts INTEGER NOT NULL, created_at INTEGER NOT NULL, last_error TEXT, not_before INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS campaign_outbox_pending ON campaign_outbox (status, kind);
 CREATE TABLE IF NOT EXISTS campaign_timers (
@@ -76,7 +76,12 @@ export class SqliteCampaignStore implements CampaignUnitOfWork {
     const row = database.prepare("SELECT version FROM campaign_meta").get() as { version: number } | undefined;
     if (row === undefined) database.prepare("INSERT INTO campaign_meta (version) VALUES (?)").run(schemaVersion);
     // Version 1 only lacked the record table, which the schema above just added.
-    else if (row.version === 1) database.prepare("UPDATE campaign_meta SET version = ?").run(schemaVersion);
+    else if (row.version === 1 || row.version === 2) {
+      // Version 2 lacked the outbox's retry time.
+      const columns = database.prepare("PRAGMA table_info(campaign_outbox)").all() as { name: string }[];
+      if (!columns.some((column) => column.name === "not_before")) database.exec("ALTER TABLE campaign_outbox ADD COLUMN not_before INTEGER NOT NULL DEFAULT 0");
+      database.prepare("UPDATE campaign_meta SET version = ?").run(schemaVersion);
+    }
     else if (row.version !== schemaVersion) throw new Error(`Campaign schema version ${row.version} is not supported (expected ${schemaVersion}).`);
   }
 
@@ -166,7 +171,7 @@ class SqliteTransaction implements CampaignTransaction {
 
   public enqueue(key: CampaignKey, id: string, request: OutboxRequest, now: number): Promise<void> {
     this.db
-      .prepare("INSERT OR IGNORE INTO campaign_outbox (id, guild_id, campaign_id, kind, request, status, attempts, created_at, last_error) VALUES (?, ?, ?, ?, ?, 'pending', 0, ?, NULL)")
+      .prepare("INSERT OR IGNORE INTO campaign_outbox (id, guild_id, campaign_id, kind, request, status, attempts, created_at, last_error, not_before) VALUES (?, ?, ?, ?, ?, 'pending', 0, ?, NULL, 0)")
       .run(id, key.guildId, key.campaignId, request.kind, json(request), now);
     return Promise.resolve();
   }
@@ -182,6 +187,7 @@ class SqliteTransaction implements CampaignTransaction {
         attempts: row.attempts as number,
         createdAt: row.created_at as number,
         lastError: (row.last_error as string | null) ?? null,
+        notBefore: (row.not_before as number | undefined) ?? 0,
       })),
     );
   }
@@ -191,11 +197,18 @@ class SqliteTransaction implements CampaignTransaction {
     return Promise.resolve();
   }
 
-  public failOutboxAttempt(id: string, error: string, maxAttempts: number): Promise<void> {
+  public failOutboxAttempt(id: string, error: string, maxAttempts: number, retryAt = 0): Promise<void> {
     this.db
-      .prepare("UPDATE campaign_outbox SET attempts = attempts + 1, last_error = ?, status = CASE WHEN attempts + 1 >= ? THEN 'failed' ELSE 'pending' END WHERE id = ?")
-      .run(error, maxAttempts, id);
+      .prepare("UPDATE campaign_outbox SET attempts = attempts + 1, last_error = ?, not_before = ?, status = CASE WHEN attempts + 1 >= ? THEN 'failed' ELSE 'pending' END WHERE id = ?")
+      .run(error, retryAt, maxAttempts, id);
     return Promise.resolve();
+  }
+
+  public requeueFailedOutbox(key: CampaignKey): Promise<number> {
+    const result = this.db
+      .prepare("UPDATE campaign_outbox SET status = 'pending', attempts = 0, not_before = 0 WHERE guild_id = ? AND campaign_id = ? AND status = 'failed'")
+      .run(key.guildId, key.campaignId);
+    return Promise.resolve(result.changes);
   }
 
   public scheduleTimer(key: CampaignKey, timer: TimerSpec): Promise<void> {

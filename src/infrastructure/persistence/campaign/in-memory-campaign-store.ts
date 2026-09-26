@@ -102,7 +102,7 @@ class InMemoryTransaction implements CampaignTransaction {
 
   public enqueue(key: CampaignKey, id: string, request: OutboxRequest, now: number): Promise<void> {
     if (!this.data.outbox.has(id)) {
-      this.data.outbox.set(id, { id, key, request, status: "pending", attempts: 0, createdAt: now, lastError: null });
+      this.data.outbox.set(id, { id, key, request, status: "pending", attempts: 0, createdAt: now, lastError: null, notBefore: 0 });
     }
     return Promise.resolve();
   }
@@ -119,13 +119,23 @@ class InMemoryTransaction implements CampaignTransaction {
     return Promise.resolve();
   }
 
-  public failOutboxAttempt(id: string, error: string, maxAttempts: number): Promise<void> {
+  public failOutboxAttempt(id: string, error: string, maxAttempts: number, retryAt = 0): Promise<void> {
     const item = this.data.outbox.get(id);
     if (item !== undefined) {
       const attempts = item.attempts + 1;
-      this.data.outbox.set(id, { ...item, attempts, lastError: error, status: attempts >= maxAttempts ? "failed" : "pending" });
+      this.data.outbox.set(id, { ...item, attempts, lastError: error, status: attempts >= maxAttempts ? "failed" : "pending", notBefore: retryAt });
     }
     return Promise.resolve();
+  }
+
+  public requeueFailedOutbox(key: CampaignKey): Promise<number> {
+    let count = 0;
+    for (const [id, item] of this.data.outbox) {
+      if (item.status !== "failed" || item.key.guildId !== key.guildId || item.key.campaignId !== key.campaignId) continue;
+      this.data.outbox.set(id, { ...item, status: "pending", attempts: 0, notBefore: 0 });
+      count += 1;
+    }
+    return Promise.resolve(count);
   }
 
   public scheduleTimer(key: CampaignKey, timer: TimerSpec): Promise<void> {

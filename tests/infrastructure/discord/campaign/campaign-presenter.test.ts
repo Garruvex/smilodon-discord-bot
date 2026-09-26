@@ -91,6 +91,22 @@ describe("the presenter", () => {
     expect(narrationOrder).toBeGreaterThan(0);
   });
 
+  it("signs a delivery's posts the same way on every retry, so Discord can drop a repeat", async () => {
+    const t = await table();
+    const presenter = new DiscordCampaignPresenter({ unitOfWork: t.r.store, messages: t.messages, cards: t.cards, adventures: t.r.adventures, glossaries });
+    await presenter.present(t.key, { kind: "quietRound", roundNumber: 1 }, "outbox-7");
+    await presenter.present(t.key, { kind: "quietRound", roundNumber: 1 }, "outbox-7");
+    await presenter.present(t.key, { kind: "quietRound", roundNumber: 1 }, "outbox-8");
+    const nonces = t.messages.posts.filter((post) => post.content.includes("Nobody acted")).map((post) => post.nonce);
+    expect(nonces).toHaveLength(3);
+    expect(nonces[0]).toBe(nonces[1]);
+    expect(nonces[2]).not.toBe(nonces[0]);
+    expect(nonces[0]?.length).toBeLessThanOrEqual(25);
+    // With no delivery ID (a direct call) nothing is signed.
+    await presenter.present(t.key, { kind: "quietRound", roundNumber: 1 });
+    expect(t.messages.posts.filter((post) => post.content.includes("Nobody acted")).at(-1)?.nonce).toBeUndefined();
+  });
+
   it("says so when nobody acts in a round", async () => {
     const t = await table();
     await t.r.bus.execute(t.key, { kind: "pass", characterId: t.hero }, { commandId: "a", actor });

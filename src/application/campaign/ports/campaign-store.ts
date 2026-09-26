@@ -64,6 +64,8 @@ export interface OutboxItem {
   readonly attempts: number;
   readonly createdAt: Instant;
   readonly lastError: string | null;
+  // A failed attempt is not retried before this time (0: no wait).
+  readonly notBefore: Instant;
 }
 
 export interface TimerRecord {
@@ -97,7 +99,11 @@ export interface CampaignTransaction {
   enqueue(key: CampaignKey, id: string, request: OutboxRequest, now: Instant): Promise<void>;
   pendingOutbox(kind: OutboxRequest["kind"]): Promise<readonly OutboxItem[]>;
   completeOutbox(id: string): Promise<void>;
-  failOutboxAttempt(id: string, error: string, maxAttempts: number): Promise<void>;
+  // `retryAt` holds the next attempt back (backoff); without it the next pass retries.
+  failOutboxAttempt(id: string, error: string, maxAttempts: number, retryAt?: Instant): Promise<void>;
+  // Puts the campaign's given-up work back in the queue with a fresh count
+  // (Repair). Returns how many items were requeued.
+  requeueFailedOutbox(key: CampaignKey): Promise<number>;
 
   // Scheduling a timer ID that already exists replaces it (a resumed
   // campaign reschedules its roll timers).

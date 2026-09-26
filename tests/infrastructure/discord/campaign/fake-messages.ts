@@ -41,11 +41,11 @@ export class FakeMessages implements CampaignMessageGateway {
     return Promise.resolve();
   }
 
-  public readonly posts: { channelId: string; content: string; order: number; mentions: readonly string[] }[] = [];
+  public readonly posts: { channelId: string; content: string; order: number; mentions: readonly string[]; nonce: string | undefined }[] = [];
 
-  public post(channelId: string, content: string, mentions: readonly string[] = []): Promise<string> {
+  public post(channelId: string, content: string, mentions: readonly string[] = [], nonce?: string): Promise<string> {
     this.next += 1;
-    this.posts.push({ channelId, content, order: this.next, mentions });
+    this.posts.push({ channelId, content, order: this.next, mentions, nonce });
     return Promise.resolve(`p${this.next}`);
   }
 
