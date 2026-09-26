@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { alex, jamie, kinds } from "./campaign-fixtures.js";
-import { startedFight } from "./combat-fixtures.js";
+import { startedFight, type Fight } from "./combat-fixtures.js";
 
 // Mira (20) then Borin (15), who wears chain mail and carries a shield.
-const borinsTurn = () => startedFight().run(alex, { kind: "endTurn", combatantId: "c-mira" });
+const borinsTurn = (): Fight => startedFight().run(alex, { kind: "endTurn", combatantId: "c-mira" });
 
 describe("a shield in a fight", () => {
   it("comes off as an action, lowering armor class, and goes back on the same way", () => {
