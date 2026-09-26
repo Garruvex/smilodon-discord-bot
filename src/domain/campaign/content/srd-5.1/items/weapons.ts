@@ -21,6 +21,16 @@ export const shortbow = defineWeapon({
   finesse: false,
   natural: false,
 });
+export const javelin = defineWeapon({
+  id: "item:javelin",
+  source,
+  damage: dice(1, 6),
+  damageType: "piercing",
+  // Thrown 30/120; used here only as a thrown weapon (monster stat blocks).
+  range: { kind: "ranged", normal: 30, long: 120 },
+  finesse: false,
+  natural: false,
+});
 export const bite = defineWeapon({ id: "item:bite", source, damage: dice(1, 4), damageType: "piercing", range: melee, finesse: false, natural: true });
 
-export const srd51Weapons: readonly WeaponDefinition[] = [longsword, shortsword, scimitar, mace, morningstar, shortbow, bite];
+export const srd51Weapons: readonly WeaponDefinition[] = [longsword, shortsword, scimitar, mace, morningstar, shortbow, javelin, bite];

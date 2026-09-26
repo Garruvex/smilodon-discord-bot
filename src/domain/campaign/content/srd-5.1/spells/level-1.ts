@@ -56,4 +56,22 @@ export const bless = defineSpell({
   }),
 });
 
-export const srd51Level1Spells: readonly SpellDefinition[] = [cureWounds, healingWord, bless];
+export const guidingBolt = defineSpell({
+  id: "spell:guiding-bolt",
+  source,
+  level: 1,
+  castingTime: "action",
+  range: { kind: "feet", feet: 120 },
+  targeting: { relation: "creature", count: 1 },
+  concentration: false,
+  plan: ({ slotLevel }) => ({
+    check: { kind: "spellAttack" },
+    onLand: [
+      { kind: "damage", target: "target", amount: dice(3 + slotLevel, 6), damageType: "radiant" },
+      { kind: "nextAttackAdvantage", target: "target" },
+    ],
+    onAvoid: [],
+  }),
+});
+
+export const srd51Level1Spells: readonly SpellDefinition[] = [cureWounds, healingWord, bless, guidingBolt];

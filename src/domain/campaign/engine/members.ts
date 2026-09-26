@@ -3,7 +3,7 @@ import { presentMembers } from "../state/campaign-state.js";
 import { deadlineAfter, type Decision } from "./decision.js";
 import { rollTimerId } from "./ids.js";
 import type { Rejection } from "./rejection.js";
-import { resumeCombat } from "./combat.js";
+import { awayRestriction, onMemberAway, resumeCombat } from "./combat/combat-flow.js";
 import { closeIfEveryoneResponded, enterWaiting, finishRoundIfResolved, openRound } from "./rounds.js";
 
 // A player marks themselves away, or the organizer marks them. An open
@@ -17,7 +17,12 @@ export function markAway(decision: Decision, userId: UserId): Rejection | null {
   if (member.availability === "away") return null;
 
   const reason = decision.ctx.actor.kind === "user" && decision.ctx.actor.userId === userId ? "self" : "organizer";
+  if (reason === "self") {
+    const restriction = awayRestriction(decision, userId);
+    if (restriction !== null) return restriction;
+  }
   decision.emit({ kind: "memberMarkedAway", userId, reason });
+  onMemberAway(decision, userId);
   const round = decision.state.round;
   const characterId = member.characterId;
   if (

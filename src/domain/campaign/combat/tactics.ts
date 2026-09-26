@@ -6,6 +6,8 @@ import { distanceBetween, edgeBetween, engageCost, shortestPath } from "./positi
 // rules with no model call (plan §6, NPCs and monsters in combat). Pure:
 // the combat engine executes the plan through its normal, validated steps.
 export interface TurnPlan {
+  // Nimble Escape: Disengage as a bonus action before moving.
+  readonly disengage: boolean;
   readonly dash: boolean;
   readonly moves: readonly ZoneId[];
   readonly engage: CombatantId | null;
@@ -13,7 +15,7 @@ export interface TurnPlan {
   readonly dodge: boolean;
 }
 
-const idle: TurnPlan = { dash: false, moves: [], engage: null, attack: null, dodge: false };
+const idle: TurnPlan = { disengage: false, dash: false, moves: [], engage: null, attack: null, dodge: false };
 
 // Monsters leave downed heroes alone by default (plan §6: focus-firing
 // unconscious heroes is off unless a house rule enables it).
@@ -24,6 +26,15 @@ export function chooseMonsterPlan(encounter: EncounterState, monster: Combatant)
   const ranged = monster.attacks.find((attack) => attack.range.kind === "ranged") ?? null;
   const engaged = engagedWith(encounter, monster.id).filter((other) => other.side !== monster.side && isActive(other));
 
+  // Skirmishers with Nimble Escape slip out of melee and shoot.
+  if (monster.tactic === "skirmisher" && engaged.length > 0 && ranged !== null && monster.traits.some((trait) => trait.kind === "nimbleEscape")) {
+    const retreat = retreatZone(encounter, monster);
+    if (retreat !== null) {
+      const moved = { ...encounter, combatants: { ...encounter.combatants, [monster.id]: { ...monster, zoneId: retreat } }, engagements: [] };
+      const target = pickTarget(moved, { ...monster, zoneId: retreat }, foes.filter((foe) => inRange(moved, { ...monster, zoneId: retreat }, foe, ranged)));
+      if (target !== null) return { ...idle, disengage: true, moves: [retreat], attack: { targetId: target.id, option: ranged } };
+    }
+  }
   // Skirmishers shoot while nobody is on them.
   if (monster.tactic === "skirmisher" && engaged.length === 0 && ranged !== null) {
     const target = pickTarget(encounter, monster, foes.filter((foe) => inRange(encounter, monster, foe, ranged)));
@@ -75,6 +86,17 @@ function approach(encounter: EncounterState, monster: Combatant, target: Combata
   }
   const engage = at === target.zoneId && spent + engageCost <= budget ? target.id : null;
   return { ...idle, dash: true, moves, engage };
+}
+
+// An adjacent zone within this turn's movement with no conscious foe in it.
+function retreatZone(encounter: EncounterState, monster: Combatant): ZoneId | null {
+  const occupied = new Set(hostiles(encounter, monster).map((foe) => foe.zoneId));
+  const options = encounter.edges
+    .flatMap((edge) => (edge.from === monster.zoneId ? [edge] : edge.to === monster.zoneId ? [{ ...edge, to: edge.from }] : []))
+    .filter((edge) => edge.feet <= monster.speed && !occupied.has(edge.to))
+    .map((edge) => edge.to)
+    .sort();
+  return options[0] ?? null;
 }
 
 function hostiles(encounter: EncounterState, combatant: Combatant): readonly Combatant[] {

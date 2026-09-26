@@ -1,6 +1,8 @@
 import type { ContentDefinition } from "../../rules/content-definitions.js";
 import { ContentRegistryBuilder, type ContentBuildOptions, type SealedContent } from "../../rules/content-registry.js";
 import { srd51Conditions } from "./conditions.js";
+import { srd51Level1Features } from "./features/level-1-features.js";
+import { srd51Armor } from "./items/armor.js";
 import { srd51Weapons } from "./items/weapons.js";
 import { srd51StarterMonsters } from "./monsters/starter-monsters.js";
 import { srd51Cantrips } from "./spells/cantrips.js";
@@ -15,6 +17,8 @@ export const srd51Content: readonly ContentDefinition[] = [
   ...srd51Cantrips,
   ...srd51Level1Spells,
   ...srd51Weapons,
+  ...srd51Armor,
+  ...srd51Level1Features,
   ...srd51StarterMonsters,
 ];
 

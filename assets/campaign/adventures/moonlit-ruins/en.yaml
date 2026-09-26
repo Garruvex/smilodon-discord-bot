@@ -73,10 +73,11 @@ heroes:
     proficiencyBonus: 2
     skills: { athletics: proficient, perception: proficient, intimidation: proficient, survival: proficient }
     savingThrows: [str, con]
-    armorClass: 18 # chain mail and shield
+    level: 1
     maxHp: 12
     speed: 30
-    weapons: [item:longsword]
+    equipment: [item:longsword, item:chain-mail, item:shield]
+    features: [feature:fighting-style-dueling, feature:second-wind]
   - id: c-mira
     name: Mira
     class: rogue
@@ -85,10 +86,11 @@ heroes:
     skills:
       { stealth: expertise, perception: expertise, acrobatics: proficient, deception: proficient, investigation: proficient, persuasion: proficient }
     savingThrows: [dex, int]
-    armorClass: 14 # leather armor
+    level: 1
     maxHp: 9
     speed: 30
-    weapons: [item:shortsword, item:shortbow]
+    equipment: [item:shortsword, item:shortbow, item:leather-armor]
+    features: [feature:sneak-attack, feature:thieves-cant]
   - id: c-elspeth
     name: Elspeth
     class: cleric
@@ -96,7 +98,14 @@ heroes:
     proficiencyBonus: 2
     skills: { insight: proficient, medicine: proficient, religion: proficient, persuasion: proficient }
     savingThrows: [wis, cha]
-    armorClass: 18 # chain mail and shield (Life Domain heavy armor)
+    level: 1
     maxHp: 9
     speed: 30
-    weapons: [item:mace]
+    # Life Domain grants heavy armor proficiency.
+    equipment: [item:mace, item:chain-mail, item:shield]
+    features: [feature:disciple-of-life]
+    spellcasting:
+      ability: wis
+      # Bless and Cure Wounds are Life Domain spells, always prepared.
+      spells: [spell:sacred-flame, spell:bless, spell:cure-wounds, spell:healing-word, spell:guiding-bolt]
+      slots: { "1": 2 }

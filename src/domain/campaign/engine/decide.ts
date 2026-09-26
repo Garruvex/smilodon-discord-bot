@@ -4,7 +4,8 @@ import type { RollId } from "../core/ids.js";
 import type { RollResult } from "../dice/roll-spec.js";
 import type { CampaignState } from "../state/campaign-state.js";
 import { recordCheckRoll, requestRoll, rollTimerExpired } from "./checks.js";
-import { handleCombatCommand, recordCombatRoll } from "./combat.js";
+import { handleCombatCommand, recordCombatRoll } from "./combat/combat-flow.js";
+import { takeRest } from "./rest.js";
 import { Decision, type DecideResult, type EngineContext } from "./decision.js";
 import { recordLedgerFact, recordNarration, reportPlannerFailure, retryPlan } from "./dm.js";
 import { continueCampaign, markAway, markReturned } from "./members.js";
@@ -55,11 +56,16 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
       return recordNarration(decision, command.roundNumber, command.text);
     case "recordLedgerFact":
       return recordLedgerFact(decision, command);
+    case "takeRest":
+      return takeRest(decision, command.rest);
     case "startEncounter":
     case "combatMove":
     case "combatEngage":
     case "combatWithdraw":
     case "combatAttack":
+    case "combatCast":
+    case "combatUseFeature":
+    case "combatDisengage":
     case "combatDash":
     case "combatDodge":
     case "endTurn":

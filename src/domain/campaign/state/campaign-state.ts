@@ -1,6 +1,7 @@
 import type { CampaignLanguage, SceneId } from "../adventure/adventure-bible.js";
 import type { CharacterSheet, CheckTest } from "../character/character-sheet.js";
 import type { EncounterState } from "../combat/combat-state.js";
+import type { HeroStatus } from "../combat/combatant-profile.js";
 import type { CampaignId, CharacterId, CheckId, Instant, RollId, UserId } from "../core/ids.js";
 import type { D20TestRoll, D20TestSpec } from "../dice/d20-test.js";
 import type { RollMoments } from "../dice/roll-moments.js";
@@ -29,8 +30,9 @@ export interface CampaignState {
   readonly ledger: Readonly<Record<string, LedgerEntry>>;
   // The current or last fight; exploration rounds wait while it is active.
   readonly encounter: EncounterState | null;
-  // Heroes' current HP between fights; a hero missing here is at full HP.
-  readonly heroHp: Readonly<Record<CharacterId, number>>;
+  // Heroes' HP and limited resources between fights; a hero missing here is
+  // fresh (full HP, every slot and use).
+  readonly heroStatus: Readonly<Record<CharacterId, HeroStatus>>;
 }
 
 // active: play proceeds. waitingForPlayers: nobody is present; no rounds,

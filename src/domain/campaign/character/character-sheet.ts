@@ -44,12 +44,22 @@ export interface CharacterSheet {
   readonly proficiencyBonus: number;
   readonly skills: Readonly<Partial<Record<Skill, SkillProficiency>>>;
   readonly savingThrows: readonly Ability[];
-  // Combat: armor and shield are already folded into armorClass. Heroes are
-  // proficient with the weapons they carry.
-  readonly armorClass: number;
+  readonly level: number;
   readonly maxHp: number;
   readonly speed: number;
-  readonly weapons: readonly ContentId<"item">[];
+  // Weapons, armor, and shields carried and used. Armor class is derived
+  // from these; heroes are proficient with what they carry.
+  readonly equipment: readonly ContentId<"item">[];
+  readonly features: readonly ContentId<"feature">[];
+  readonly spellcasting: Spellcasting | null;
+}
+
+export interface Spellcasting {
+  readonly ability: Ability;
+  // Cantrips known and spells prepared.
+  readonly spells: readonly ContentId<"spell">[];
+  // Spell slots per slot level, e.g. { 1: 2 } for a level 1 cleric.
+  readonly slots: Readonly<Record<number, number>>;
 }
 
 // An ability check, optionally using a skill.

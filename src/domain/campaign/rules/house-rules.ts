@@ -15,7 +15,14 @@ export const naturalRollsOnChecks: HouseRuleOption<NaturalRollRule> = {
   defaultValue: "no-effect",
 };
 
-export const houseRuleOptions: readonly HouseRuleOption<string>[] = [naturalRollsOnChecks];
+// Plan §5, Away mode: an away hero cannot die while the player is gone.
+export const awaySafety: HouseRuleOption<"protected" | "standard"> = {
+  id: "away-safety",
+  values: ["protected", "standard"],
+  defaultValue: "protected",
+};
+
+export const houseRuleOptions: readonly HouseRuleOption<string>[] = [naturalRollsOnChecks, awaySafety];
 
 // The option values a campaign saved, validated and with defaults filled in.
 export interface HouseRules {

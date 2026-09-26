@@ -32,6 +32,9 @@ export type CampaignCommand =
   | { readonly kind: "retryPlan" }
   | { readonly kind: "recordNarration"; readonly roundNumber: number; readonly text: string }
   | RecordLedgerFactCommand
+  // Organizer, outside combat. Short: limited features recharge. Long: HP,
+  // spell slots, and every feature recharge.
+  | { readonly kind: "takeRest"; readonly rest: "short" | "long" }
   | CombatCommand;
 
 // Combat. Hero commands name the acting combatant (the hero's character ID)
@@ -42,6 +45,16 @@ export type CombatCommand =
   | { readonly kind: "combatEngage"; readonly combatantId: string; readonly targetId: string }
   | { readonly kind: "combatWithdraw"; readonly combatantId: string }
   | { readonly kind: "combatAttack"; readonly combatantId: string; readonly targetId: string; readonly weapon: ContentId<"item"> }
+  | {
+      readonly kind: "combatCast";
+      readonly combatantId: string;
+      readonly spellId: ContentId<"spell">;
+      // 0 for cantrips.
+      readonly slotLevel: number;
+      readonly targetIds: readonly string[];
+    }
+  | { readonly kind: "combatUseFeature"; readonly combatantId: string; readonly featureId: ContentId<"feature"> }
+  | { readonly kind: "combatDisengage"; readonly combatantId: string }
   | { readonly kind: "combatDash"; readonly combatantId: string }
   | { readonly kind: "combatDodge"; readonly combatantId: string }
   | { readonly kind: "endTurn"; readonly combatantId: string }

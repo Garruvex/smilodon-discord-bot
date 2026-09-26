@@ -37,10 +37,12 @@ export const mira: CharacterSheet = {
   proficiencyBonus: 2,
   skills: { stealth: "expertise", perception: "proficient" },
   savingThrows: ["dex", "int"],
-  armorClass: 14,
+  level: 1,
   maxHp: 9,
   speed: 30,
-  weapons: ["item:shortsword", "item:shortbow"],
+  equipment: ["item:shortsword", "item:shortbow", "item:leather-armor"],
+  features: ["feature:sneak-attack", "feature:thieves-cant"],
+  spellcasting: null,
 };
 
 // Level-1 Fighter: STR 16 (+3), Athletics proficient, so +5.
@@ -52,11 +54,46 @@ export const borin: CharacterSheet = {
   proficiencyBonus: 2,
   skills: { athletics: "proficient" },
   savingThrows: ["str", "con"],
-  armorClass: 18,
+  level: 1,
   maxHp: 12,
   speed: 30,
-  weapons: ["item:longsword"],
+  equipment: ["item:longsword", "item:chain-mail", "item:shield"],
+  features: ["feature:fighting-style-dueling", "feature:second-wind"],
+  spellcasting: null,
 };
+
+// Level-1 Life Cleric: WIS 16 (+3), so spell attack +5 and save DC 13.
+export const elspeth: CharacterSheet = {
+  id: "c-elspeth",
+  ownerUserId: "u-sam",
+  name: "Elspeth",
+  abilityScores: { str: 14, dex: 10, con: 13, int: 10, wis: 16, cha: 12 },
+  proficiencyBonus: 2,
+  skills: { insight: "proficient", medicine: "proficient" },
+  savingThrows: ["wis", "cha"],
+  level: 1,
+  maxHp: 9,
+  speed: 30,
+  equipment: ["item:mace", "item:chain-mail", "item:shield"],
+  features: ["feature:disciple-of-life"],
+  spellcasting: {
+    ability: "wis",
+    spells: ["spell:sacred-flame", "spell:bless", "spell:cure-wounds", "spell:healing-word", "spell:guiding-bolt"],
+    slots: { 1: 2 },
+  },
+};
+
+export const sam: Actor = { kind: "user", userId: "u-sam" };
+
+// Mira, Borin, and Elspeth.
+export function partyOfThree(): CampaignState {
+  const base = newCampaign();
+  return {
+    ...base,
+    members: { ...base.members, "u-sam": { userId: "u-sam", characterId: "c-elspeth", availability: "present", consecutiveMisses: 0 } },
+    characters: { ...base.characters, "c-elspeth": elspeth },
+  };
+}
 
 export const livePacing: Pacing = { roundSeconds: 300, rollSeconds: 120, turnSeconds: 180, awayAfterMisses: 2 };
 
@@ -79,7 +116,7 @@ export function newCampaign(pacing: Pacing = livePacing): CampaignState {
     checks: {},
     ledger: {},
     encounter: null,
-    heroHp: {},
+    heroStatus: {},
   };
 }
 

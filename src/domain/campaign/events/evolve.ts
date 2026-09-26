@@ -2,6 +2,7 @@ import { assertNever } from "../core/assert-never.js";
 import type { CharacterId, UserId } from "../core/ids.js";
 import type { CampaignState, CheckState, MemberState, RoundState, Submission } from "../state/campaign-state.js";
 import type { CombatEvent } from "../combat/combat-events.js";
+import type { HeroStatus } from "../combat/combatant-profile.js";
 import { evolveEncounter } from "../combat/evolve-combat.js";
 import type { CampaignEvent } from "./campaign-event.js";
 
@@ -101,16 +102,27 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     case "initiativeRolled":
     case "turnOrderSet":
     case "turnStarted":
+    case "stoodUp":
     case "combatantMoved":
     case "combatantEngaged":
     case "combatantWithdrew":
+    case "moveInterrupted":
+    case "moveCleared":
     case "actionTaken":
-    case "attackDeclared":
-    case "attackRolled":
-    case "damageRollRequested":
-    case "damageRolled":
+    case "resolutionDeclared":
+    case "checkRolled":
+    case "effectRollsRequested":
+    case "effectRolled":
     case "combatantHpChanged":
-    case "attackFinished":
+    case "conditionAdded":
+    case "effectAdded":
+    case "effectsRemoved":
+    case "sneakAttackUsed":
+    case "concentrationStarted":
+    case "concentrationEnded":
+    case "concentrationSaveRequested":
+    case "concentrationSaveRolled":
+    case "resolutionFinished":
     case "deathSaveRequested":
     case "deathSaveRolled":
     case "combatantFled":
@@ -118,20 +130,22 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     case "turnDeferred":
     case "encounterEnded":
       return evolveCombat(state, event);
+    case "restTaken":
+      return { ...state, heroStatus: { ...state.heroStatus, ...event.heroStatus } };
     default:
       return assertNever(event);
   }
 }
 
-// A finished fight writes the heroes' HP back to the campaign.
+// A finished fight writes the heroes' HP and spent resources back to the campaign.
 function evolveCombat(state: CampaignState, event: CombatEvent): CampaignState {
   const encounter = evolveEncounter(state.encounter, event);
   if (event.kind !== "encounterEnded" || encounter === null) return { ...state, encounter };
-  const heroHp: Record<CharacterId, number> = { ...state.heroHp };
+  const heroStatus: Record<CharacterId, HeroStatus> = { ...state.heroStatus };
   for (const combatant of Object.values(encounter.combatants)) {
-    if (combatant.source.kind === "hero") heroHp[combatant.source.characterId] = combatant.hp;
+    if (combatant.source.kind === "hero") heroStatus[combatant.source.characterId] = { hp: combatant.hp, resources: combatant.resources };
   }
-  return { ...state, encounter, heroHp };
+  return { ...state, encounter, heroStatus };
 }
 
 export function replay(initial: CampaignState, events: readonly CampaignEvent[]): CampaignState {

@@ -1,5 +1,6 @@
 import type { CharacterId, CheckId, Instant, RollId, UserId } from "../core/ids.js";
 import type { CombatEvent } from "../combat/combat-events.js";
+import type { HeroStatus } from "../combat/combatant-profile.js";
 import type { LedgerVisibility } from "../ledger/ledger.js";
 import type { CheckResult, CheckState, Resolution } from "../state/campaign-state.js";
 
@@ -51,6 +52,7 @@ export type CampaignEvent =
     }
   // Pending checks get fresh roll deadlines; timers were cancelled while waiting.
   | { readonly kind: "resumed"; readonly checkDeadlines: Readonly<Record<CheckId, Instant | null>> }
+  | { readonly kind: "restTaken"; readonly rest: "short" | "long"; readonly heroStatus: Readonly<Record<CharacterId, HeroStatus>> }
   | CombatEvent;
 
 export type CampaignEventKind = CampaignEvent["kind"];

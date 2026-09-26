@@ -39,6 +39,12 @@ export type Rejection =
   | { readonly code: "alreadyEngaged" }
   | { readonly code: "outOfRange" }
   | { readonly code: "invalidTarget" }
-  | { readonly code: "unknownWeapon" };
+  | { readonly code: "unknownWeapon" }
+  | { readonly code: "unknownSpell" }
+  | { readonly code: "noSpellSlot"; readonly slotLevel: number }
+  | { readonly code: "invalidTargets"; readonly maxTargets: number }
+  | { readonly code: "unknownFeature" }
+  | { readonly code: "noUsesLeft" }
+  | { readonly code: "cannotLeaveNow" }
 
 export type RejectionCode = Rejection["code"];

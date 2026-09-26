@@ -1,11 +1,34 @@
 import type { Instant, RollId } from "../core/ids.js";
 import type { D20TestRoll } from "../dice/d20-test.js";
-import type { ExpressionRoll } from "../dice/roll.js";
+import type { RollResult } from "../dice/roll-spec.js";
 import type { RollMoments } from "../dice/roll-moments.js";
-import type { AttackState, CombatantCondition, CombatantId, EncounterOutcome, EncounterState, ZoneId } from "./combat-state.js";
+import type { ContentId } from "../rules/content-id.js";
+import type {
+  ActiveEffect,
+  CombatantCondition,
+  CombatantId,
+  Concentration,
+  EncounterOutcome,
+  EncounterState,
+  PendingCombatRoll,
+  PendingEffectRoll,
+  PendingMove,
+  ResolutionState,
+  ZoneId,
+} from "./combat-state.js";
+
+// What an action spends when it is declared.
+export interface ActionCost {
+  readonly action: boolean;
+  readonly bonusAction: boolean;
+  readonly reaction: boolean;
+  readonly spellSlot: number | null;
+  readonly featureUse: ContentId<"feature"> | null;
+}
 
 // Combat events. Each carries the values it results in (HP after damage,
-// death-save tallies), so evolve() applies them without recomputing rules.
+// death-save tallies, the next ID sequence), so evolve() applies them
+// without recomputing rules.
 export type CombatEvent =
   | { readonly kind: "encounterStarted"; readonly encounter: EncounterState }
   | { readonly kind: "initiativeRolled"; readonly combatantId: CombatantId; readonly rollId: RollId; readonly roll: D20TestRoll }
@@ -18,33 +41,76 @@ export type CombatEvent =
       readonly turnNumber: number;
       readonly endsAt: Instant | null;
     }
+  | { readonly kind: "stoodUp"; readonly combatantId: CombatantId; readonly feet: number }
   | { readonly kind: "combatantMoved"; readonly combatantId: CombatantId; readonly zoneId: ZoneId; readonly feet: number }
   | { readonly kind: "combatantEngaged"; readonly combatantId: CombatantId; readonly targetId: CombatantId; readonly feet: number }
   | { readonly kind: "combatantWithdrew"; readonly combatantId: CombatantId; readonly feet: number }
-  | { readonly kind: "actionTaken"; readonly combatantId: CombatantId; readonly action: "dash" | "dodge" }
-  | { readonly kind: "attackDeclared"; readonly attack: AttackState }
+  | { readonly kind: "moveInterrupted"; readonly move: PendingMove }
+  | { readonly kind: "moveCleared" }
+  | { readonly kind: "actionTaken"; readonly combatantId: CombatantId; readonly action: "dash" | "dodge" | "disengage"; readonly bonus: boolean }
   | {
-      readonly kind: "attackRolled";
-      readonly attackId: string;
+      readonly kind: "resolutionDeclared";
+      readonly resolution: ResolutionState;
+      readonly cost: ActionCost;
+      readonly pendingRolls: Readonly<Record<RollId, PendingCombatRoll>>;
+      readonly sequence: number;
+    }
+  | {
+      readonly kind: "checkRolled";
+      readonly resolutionId: string;
+      readonly rollId: RollId;
+      readonly targetId: CombatantId;
       readonly roll: D20TestRoll;
-      readonly hit: boolean;
+      readonly landed: boolean;
       readonly critical: boolean;
       readonly moments: RollMoments;
     }
-  | { readonly kind: "damageRollRequested"; readonly attackId: string; readonly rollId: RollId }
-  | { readonly kind: "damageRolled"; readonly attackId: string; readonly roll: ExpressionRoll }
+  | {
+      readonly kind: "effectRollsRequested";
+      readonly resolutionId: string;
+      readonly rolls: Readonly<Record<RollId, PendingEffectRoll>>;
+      readonly sequence: number;
+    }
+  | { readonly kind: "effectRolled"; readonly resolutionId: string; readonly rollId: RollId; readonly effectKey: string; readonly result: RollResult; readonly value: number }
   | {
       readonly kind: "combatantHpChanged";
       readonly combatantId: CombatantId;
-      // Negative for damage.
+      // Negative for damage, positive for healing.
       readonly change: number;
       readonly hp: number;
       readonly condition: CombatantCondition;
       readonly deathSaves: { readonly successes: number; readonly failures: number };
-      readonly cause: "damage" | "massiveDamage" | "damageAtZero";
+      readonly cause: "damage" | "massiveDamage" | "damageAtZero" | "healing" | "protectedWhileAway";
     }
-  | { readonly kind: "attackFinished"; readonly attackId: string }
-  | { readonly kind: "deathSaveRequested"; readonly combatantId: CombatantId; readonly rollId: RollId }
+  | { readonly kind: "conditionAdded"; readonly combatantId: CombatantId; readonly condition: ContentId<"condition"> }
+  | { readonly kind: "effectAdded"; readonly combatantId: CombatantId; readonly effect: ActiveEffect }
+  | { readonly kind: "effectsRemoved"; readonly combatantId: CombatantId; readonly effectIds: readonly string[] }
+  | { readonly kind: "sneakAttackUsed"; readonly combatantId: CombatantId }
+  | { readonly kind: "concentrationStarted"; readonly combatantId: CombatantId; readonly concentration: Concentration }
+  | { readonly kind: "concentrationEnded"; readonly combatantId: CombatantId; readonly reason: "newSpell" | "failedSave" | "downed" | "expired" }
+  | {
+      readonly kind: "concentrationSaveRequested";
+      readonly combatantId: CombatantId;
+      readonly rollId: RollId;
+      readonly pending: PendingCombatRoll;
+      readonly sequence: number;
+    }
+  | {
+      readonly kind: "concentrationSaveRolled";
+      readonly combatantId: CombatantId;
+      readonly rollId: RollId;
+      readonly roll: D20TestRoll;
+      readonly dc: number;
+      readonly kept: boolean;
+    }
+  | { readonly kind: "resolutionFinished"; readonly resolutionId: string }
+  | {
+      readonly kind: "deathSaveRequested";
+      readonly combatantId: CombatantId;
+      readonly rollId: RollId;
+      readonly pending: PendingCombatRoll;
+      readonly sequence: number;
+    }
   | {
       readonly kind: "deathSaveRolled";
       readonly combatantId: CombatantId;
@@ -61,3 +127,37 @@ export type CombatEvent =
   | { readonly kind: "encounterEnded"; readonly outcome: EncounterOutcome };
 
 export type CombatEventKind = CombatEvent["kind"];
+
+export const combatEventKinds: readonly CombatEventKind[] = [
+  "encounterStarted",
+  "initiativeRolled",
+  "turnOrderSet",
+  "turnStarted",
+  "stoodUp",
+  "combatantMoved",
+  "combatantEngaged",
+  "combatantWithdrew",
+  "moveInterrupted",
+  "moveCleared",
+  "actionTaken",
+  "resolutionDeclared",
+  "checkRolled",
+  "effectRollsRequested",
+  "effectRolled",
+  "combatantHpChanged",
+  "conditionAdded",
+  "effectAdded",
+  "effectsRemoved",
+  "sneakAttackUsed",
+  "concentrationStarted",
+  "concentrationEnded",
+  "concentrationSaveRequested",
+  "concentrationSaveRolled",
+  "resolutionFinished",
+  "deathSaveRequested",
+  "deathSaveRolled",
+  "combatantFled",
+  "turnEnded",
+  "turnDeferred",
+  "encounterEnded",
+];

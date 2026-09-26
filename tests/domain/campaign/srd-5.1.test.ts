@@ -6,6 +6,7 @@ import { cantripDiceCount } from "../../../src/domain/campaign/content/srd-5.1/s
 import { buildSrd51 } from "../../../src/domain/campaign/content/srd-5.1/index.js";
 import { formatDiceExpression } from "../../../src/domain/campaign/dice/dice-expression.js";
 import { milestone0Capabilities } from "../../../src/domain/campaign/rules/capabilities.js";
+import { traitsOf } from "../../../src/domain/campaign/rules/content-definitions.js";
 import type { Effect } from "../../../src/domain/campaign/rules/effects.js";
 
 const content = buildSrd51({ capabilities: milestone0Capabilities, glossaries: [enSrd51Glossary, zhTwSrd51Glossary] });
@@ -55,5 +56,28 @@ describe("SRD 5.1 content", () => {
     expect(plan.check).toEqual({ kind: "savingThrow", ability: "dex" });
     expect(plan.onAvoid).toEqual([]);
     expect([1, 4, 5, 10, 11, 16, 17, 20].map(cantripDiceCount)).toEqual([1, 1, 2, 2, 3, 3, 4, 4]);
+  });
+
+
+  it("scales Guiding Bolt by slot and marks the target for advantage", () => {
+    const guidingBolt = content.get("spell:guiding-bolt");
+    expect(guidingBolt.plan({ slotLevel: 1, casterLevel: 1, spellcastingModifier: 3 })).toMatchObject({
+      check: { kind: "spellAttack" },
+      onLand: [{ kind: "damage", damageType: "radiant" }, { kind: "nextAttackAdvantage", target: "target" }],
+    });
+    expect(amountOf(guidingBolt.plan({ slotLevel: 2, casterLevel: 3, spellcastingModifier: 3 }).onLand[0])).toBe("5d6");
+  });
+
+  it("turns armor, shields, and features into the shared trait list", () => {
+    expect(traitsOf(content.get("item:chain-mail"))).toEqual([{ kind: "armor", baseArmorClass: 16, dexterityCap: 0 }]);
+    expect(traitsOf(content.get("item:shield"))).toEqual([{ kind: "armorClassBonus", amount: 2 }]);
+    expect(traitsOf(content.get("feature:disciple-of-life"))).toEqual([{ kind: "healingBonus", flat: 2, perSpellLevel: 1 }]);
+    expect(traitsOf(content.get("monster:wolf"))).toEqual([{ kind: "packTactics" }]);
+  });
+
+  it("gives the wolf's bite a prone rider that references a real condition", () => {
+    expect(content.get("monster:wolf").attacks[0]?.onHit).toEqual([
+      { kind: "conditionUnlessSave", target: "target", ability: "str", dc: 11, condition: "condition:prone" },
+    ]);
   });
 });

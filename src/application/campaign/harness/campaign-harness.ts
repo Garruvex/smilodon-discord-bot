@@ -247,7 +247,7 @@ function initialState(options: HarnessOptions, pacing: Pacing): CampaignState {
     checks: {},
     ledger: {},
     encounter: null,
-    heroHp: {},
+    heroStatus: {},
   };
 }
 

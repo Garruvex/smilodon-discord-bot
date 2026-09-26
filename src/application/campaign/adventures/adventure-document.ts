@@ -18,6 +18,9 @@ export interface AdventureDocument {
 const sceneId = z.string().regex(/^scene:[a-z0-9-]+$/) as unknown as z.ZodType<SceneId>;
 const npcId = z.string().regex(/^npc:[a-z0-9-]+$/) as unknown as z.ZodType<NpcId>;
 const text = z.string().trim().min(1);
+function contentId<K extends "item" | "feature" | "spell">(kind: K): z.ZodType<ContentId<K>> {
+  return z.string().regex(new RegExp('^' + kind + ':[a-z0-9-]+$')) as unknown as z.ZodType<ContentId<K>>;
+}
 const abilityScore = z.number().int().min(1).max(30);
 
 const documentSchema = z
@@ -46,10 +49,20 @@ const documentSchema = z
             proficiencyBonus: z.number().int().min(2).max(6),
             skills: z.record(z.string(), z.enum(["proficient", "expertise"])),
             savingThrows: z.array(z.enum(abilities)),
-            armorClass: z.number().int().min(5).max(30),
+            level: z.number().int().min(1).max(20),
             maxHp: z.number().int().min(1),
             speed: z.number().int().min(0),
-            weapons: z.array(z.string().regex(/^item:[a-z0-9-]+$/) as unknown as z.ZodType<ContentId<"item">>).min(1),
+            equipment: z.array(contentId("item")).min(1),
+            features: z.array(contentId("feature")),
+            spellcasting: z
+              .object({
+                ability: z.enum(abilities),
+                spells: z.array(contentId("spell")),
+                slots: z.record(z.string().regex(/^[1-9]$/), z.number().int().min(0)),
+              })
+              .strict()
+              .nullable()
+              .default(null),
           })
           .strict(),
       )
@@ -94,7 +107,11 @@ export function parseAdventureDocument(source: string): AdventureDocument {
       if (isSkill(skill)) skills[skill] = proficiency;
       else problems.push(`${hero.id} has unknown skill "${skill}".`);
     }
-    return { ...hero, abilityScores: hero.abilityScores as CharacterSheet["abilityScores"], skills };
+    const spellcasting =
+      hero.spellcasting === null
+        ? null
+        : { ...hero.spellcasting, slots: Object.fromEntries(Object.entries(hero.spellcasting.slots).map(([level, count]) => [Number(level), count])) };
+    return { ...hero, abilityScores: hero.abilityScores as CharacterSheet["abilityScores"], skills, spellcasting };
   });
   if (problems.length > 0) throw new AdventureDocumentError(problems);
 

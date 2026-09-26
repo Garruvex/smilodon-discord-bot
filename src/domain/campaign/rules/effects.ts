@@ -52,13 +52,28 @@ export type Effect =
       readonly die: DiceExpression;
       readonly appliesTo: readonly ("attack" | "save")[];
       readonly duration: EffectDuration;
+    }
+  // Guiding Bolt: the next attack roll against the target before the end of
+  // the caster's next turn has advantage.
+  | { readonly kind: "nextAttackAdvantage"; readonly target: EffectTarget }
+  // A rider that needs its own saving throw with a fixed DC, such as a
+  // wolf's bite knocking the target prone.
+  | {
+      readonly kind: "conditionUnlessSave";
+      readonly target: EffectTarget;
+      readonly ability: Ability;
+      readonly dc: number;
+      readonly condition: ContentId<"condition">;
     };
 
 export type EffectKind = Effect["kind"];
 
-// The roll, if any, that decides between success and failure effects.
+// The roll, if any, that decides between the landing and avoided effects.
+// The bonus or DC comes from the source: the caster's spell attack bonus and
+// save DC, or the weapon attack's to-hit.
 export type CheckSpec =
   | { readonly kind: "spellAttack" }
+  | { readonly kind: "weaponAttack" }
   | { readonly kind: "savingThrow"; readonly ability: Ability };
 
 export interface ResolutionPlan {

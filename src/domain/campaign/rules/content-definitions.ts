@@ -1,8 +1,18 @@
 import { assertNever } from "../core/assert-never.js";
+import type { DiceExpression } from "../dice/dice-expression.js";
 import type { Capability } from "./capabilities.js";
 import type { ContentId, ContentKind } from "./content-id.js";
-import type { DiceExpression } from "../dice/dice-expression.js";
 import type { Ability, DamageType, Effect, ResolutionPlan } from "./effects.js";
+import type { Trait } from "./traits.js";
+
+// Content definitions. Each kind keeps the data that is genuinely its own
+// (a spell's slot level, a weapon's range, armor's AC formula), but they all
+// feed two shared engine systems:
+//   - Actions resolve through one ResolutionPlan (check, then effects):
+//     weapon attacks, spells, monster attacks, and feature actions alike.
+//   - Passive rules are Traits, granted by armor, features, and monsters.
+// A new spell, item, or monster is data; engine code changes only for a new
+// effect or trait kind, which every source then shares.
 
 interface DefinitionBase<K extends ContentKind> {
   readonly id: ContentId<K>;
@@ -64,7 +74,35 @@ export interface WeaponDefinition extends DefinitionBase<"item"> {
   readonly natural: boolean;
 }
 
-export type ItemDefinition = WeaponDefinition;
+export interface ArmorDefinition extends DefinitionBase<"item"> {
+  readonly itemType: "armor";
+  readonly category: "light" | "medium" | "heavy";
+  readonly baseArmorClass: number;
+  // null: add the full Dexterity modifier; 2: medium armor; 0: heavy armor.
+  readonly dexterityCap: number | null;
+  readonly stealthDisadvantage: boolean;
+  readonly strengthRequirement: number | null;
+}
+
+export interface ShieldDefinition extends DefinitionBase<"item"> {
+  readonly itemType: "shield";
+  readonly armorClassBonus: number;
+}
+
+export type ItemDefinition = WeaponDefinition | ArmorDefinition | ShieldDefinition;
+
+// A limited-use action a feature grants, resolved like any other action.
+export interface FeatureAction {
+  readonly cost: "action" | "bonusAction";
+  readonly uses: { readonly count: number; readonly recharge: "shortRest" | "longRest" };
+  // Feature actions in milestone 0 target the user (Second Wind).
+  plan(context: { readonly level: number }): ResolutionPlan;
+}
+
+export interface FeatureDefinition extends DefinitionBase<"feature"> {
+  readonly traits: readonly Trait[];
+  readonly action: FeatureAction | null;
+}
 
 // How an ordinary monster fights without a model call (plan §6, NPCs and
 // monsters in combat). brute: close in and hit the nearest hero.
@@ -77,14 +115,11 @@ export interface MonsterAttack {
   readonly weapon: ContentId<"item">;
   readonly toHit: number;
   readonly damage: DiceExpression;
+  // Overrides the weapon's range, e.g. a javelin thrown at 30/120 feet.
+  readonly range?: WeaponRange;
+  // Extra effects on a hit, such as a wolf's bite knocking the target prone.
+  readonly onHit?: readonly Effect[];
 }
-
-// Rules a creature has, whatever it is. A closed union the combat engine
-// applies with an exhaustive switch, so heroes, monsters, and NPCs share
-// one implementation of each trait.
-export type CreatureTrait =
-  // Advantage on attacks while an ally is engaged with the target.
-  { readonly kind: "packTactics" };
 
 export interface MonsterDefinition extends DefinitionBase<"monster"> {
   readonly armorClass: number;
@@ -94,10 +129,10 @@ export interface MonsterDefinition extends DefinitionBase<"monster"> {
   readonly abilityScores: Readonly<Record<Ability, number>>;
   readonly attacks: readonly MonsterAttack[];
   readonly tactic: MonsterTactic;
-  readonly traits: readonly CreatureTrait[];
+  readonly traits: readonly Trait[];
 }
 
-export type ContentDefinition = ConditionDefinition | SpellDefinition | ItemDefinition | MonsterDefinition;
+export type ContentDefinition = ConditionDefinition | SpellDefinition | ItemDefinition | FeatureDefinition | MonsterDefinition;
 
 export type DefinitionOf<K extends ContentKind> = Extract<ContentDefinition, { kind: K }>;
 
@@ -113,8 +148,45 @@ export function defineWeapon(definition: Omit<WeaponDefinition, "kind" | "itemTy
   return { ...definition, kind: "item", itemType: "weapon" };
 }
 
+export function defineArmor(definition: Omit<ArmorDefinition, "kind" | "itemType">): ArmorDefinition {
+  return { ...definition, kind: "item", itemType: "armor" };
+}
+
+export function defineShield(definition: Omit<ShieldDefinition, "kind" | "itemType">): ShieldDefinition {
+  return { ...definition, kind: "item", itemType: "shield" };
+}
+
+export function defineFeature(definition: Omit<FeatureDefinition, "kind">): FeatureDefinition {
+  return { ...definition, kind: "feature" };
+}
+
 export function defineMonster(definition: Omit<MonsterDefinition, "kind">): MonsterDefinition {
   return { ...definition, kind: "monster" };
+}
+
+// The passive traits a definition grants its owner.
+export function traitsOf(definition: ContentDefinition): readonly Trait[] {
+  switch (definition.kind) {
+    case "item":
+      switch (definition.itemType) {
+        case "armor":
+          return [{ kind: "armor", baseArmorClass: definition.baseArmorClass, dexterityCap: definition.dexterityCap }];
+        case "shield":
+          return [{ kind: "armorClassBonus", amount: definition.armorClassBonus }];
+        case "weapon":
+          return [];
+        default:
+          return assertNever(definition);
+      }
+    case "feature":
+    case "monster":
+      return definition.traits;
+    case "condition":
+    case "spell":
+      return [];
+    default:
+      return assertNever(definition);
+  }
 }
 
 export const maxSpellLevel = 9;
@@ -133,6 +205,23 @@ export function samplePlans(spell: SpellDefinition): readonly ResolutionPlan[] {
   );
 }
 
+// Every plan a definition can produce, for capability and reference checks.
+function plansOf(definition: ContentDefinition): readonly ResolutionPlan[] {
+  switch (definition.kind) {
+    case "spell":
+      return samplePlans(definition);
+    case "feature":
+      return definition.action === null ? [] : [definition.action.plan({ level: 1 }), definition.action.plan({ level: 20 })];
+    case "monster":
+      return definition.attacks.map((attack) => ({ check: { kind: "weaponAttack" }, onLand: attack.onHit ?? [], onAvoid: [] }));
+    case "item":
+    case "condition":
+      return [];
+    default:
+      return assertNever(definition);
+  }
+}
+
 export function requiredCapabilities(definition: ContentDefinition): ReadonlySet<Capability> {
   const required = new Set<Capability>(definition.extraRequires ?? []);
   switch (definition.kind) {
@@ -142,52 +231,64 @@ export function requiredCapabilities(definition: ContentDefinition): ReadonlySet
     case "spell":
       if (definition.level > 0) required.add("spell-slots");
       if (definition.concentration) required.add("concentration");
-      for (const plan of samplePlans(definition)) {
-        if (plan.check?.kind === "spellAttack") required.add("attack-rolls");
-        if (plan.check?.kind === "savingThrow") required.add("saving-throws");
-        for (const effect of [...plan.onLand, ...plan.onAvoid]) required.add(capabilityFor(effect));
-      }
       break;
     case "item":
+      if (definition.itemType === "weapon") {
+        required.add("attack-rolls");
+        required.add("damage");
+      }
+      break;
     case "monster":
       required.add("attack-rolls");
       required.add("damage");
       break;
+    case "feature":
+      break;
     default:
       assertNever(definition);
+  }
+  for (const plan of plansOf(definition)) {
+    if (plan.check?.kind === "spellAttack" || plan.check?.kind === "weaponAttack") required.add("attack-rolls");
+    if (plan.check?.kind === "savingThrow") required.add("saving-throws");
+    for (const effect of [...plan.onLand, ...plan.onAvoid]) for (const capability of capabilitiesFor(effect)) required.add(capability);
   }
   return required;
 }
 
 export function referencedContent(definition: ContentDefinition): readonly ContentId[] {
+  const fromPlans = plansOf(definition).flatMap((plan) =>
+    [...plan.onLand, ...plan.onAvoid].flatMap((effect) =>
+      effect.kind === "applyCondition" || effect.kind === "conditionUnlessSave" ? [effect.condition] : [],
+    ),
+  );
   switch (definition.kind) {
     case "condition":
       return definition.includes;
-    case "spell":
-      return samplePlans(definition).flatMap((plan) =>
-        [...plan.onLand, ...plan.onAvoid].flatMap((effect) =>
-          effect.kind === "applyCondition" ? [effect.condition] : [],
-        ),
-      );
-    case "item":
-      return [];
     case "monster":
-      return definition.attacks.map((attack) => attack.weapon);
+      return [...definition.attacks.map((attack) => attack.weapon), ...fromPlans];
+    case "spell":
+    case "item":
+    case "feature":
+      return fromPlans;
     default:
       return assertNever(definition);
   }
 }
 
-function capabilityFor(effect: Effect): Capability {
+function capabilitiesFor(effect: Effect): readonly Capability[] {
   switch (effect.kind) {
     case "damage":
-      return "damage";
+      return ["damage"];
     case "heal":
-      return "healing";
+      return ["healing"];
     case "applyCondition":
-      return "conditions";
+      return ["conditions"];
     case "bonusDie":
-      return "bonus-dice";
+      return ["bonus-dice"];
+    case "nextAttackAdvantage":
+      return ["attack-rolls"];
+    case "conditionUnlessSave":
+      return ["saving-throws", "conditions"];
     default:
       return assertNever(effect);
   }

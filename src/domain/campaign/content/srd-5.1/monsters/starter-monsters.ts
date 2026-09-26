@@ -7,7 +7,7 @@ import { defineMonster, type MonsterDefinition } from "../../../rules/content-de
 // then these monsters are slightly weaker than written.
 const source = "SRD 5.1";
 
-// Not yet implemented: Nimble Escape (Disengage or Hide as a bonus action).
+// Nimble Escape is used as a bonus-action Disengage; Hide is not modeled.
 export const goblin = defineMonster({
   id: "monster:goblin",
   source,
@@ -20,10 +20,9 @@ export const goblin = defineMonster({
     { weapon: "item:shortbow", toHit: 4, damage: plus(dice(1, 6), 2) },
   ],
   tactic: "skirmisher",
-  traits: [],
+  traits: [{ kind: "nimbleEscape" }],
 });
 
-// Not yet implemented: the bite's DC 11 Strength save against being knocked prone.
 export const wolf = defineMonster({
   id: "monster:wolf",
   source,
@@ -31,14 +30,21 @@ export const wolf = defineMonster({
   maxHp: 11,
   speed: 40,
   abilityScores: { str: 12, dex: 15, con: 12, int: 3, wis: 12, cha: 6 },
-  attacks: [{ weapon: "item:bite", toHit: 4, damage: plus(dice(2, 4), 2) }],
+  attacks: [
+    {
+      weapon: "item:bite",
+      toHit: 4,
+      damage: plus(dice(2, 4), 2),
+      onHit: [{ kind: "conditionUnlessSave", target: "target", ability: "str", dc: 11, condition: "condition:prone" }],
+    },
+  ],
   tactic: "brute",
   traits: [{ kind: "packTactics" }],
 });
 
 // The starter adventure's leader, Skarn. Brute is already part of the
-// morningstar's 2d8 damage. Not yet implemented: Javelin (thrown) and
-// Surprise Attack.
+// morningstar's 2d8 melee damage. Not modeled: Surprise Attack (the
+// engine has no surprise rules yet).
 export const bugbear = defineMonster({
   id: "monster:bugbear",
   source,
@@ -46,7 +52,10 @@ export const bugbear = defineMonster({
   maxHp: 27,
   speed: 30,
   abilityScores: { str: 15, dex: 14, con: 13, int: 8, wis: 11, cha: 9 },
-  attacks: [{ weapon: "item:morningstar", toHit: 4, damage: plus(dice(2, 8), 2) }],
+  attacks: [
+    { weapon: "item:morningstar", toHit: 4, damage: plus(dice(2, 8), 2) },
+    { weapon: "item:javelin", toHit: 4, damage: plus(dice(1, 6), 2), range: { kind: "ranged", normal: 30, long: 120 } },
+  ],
   tactic: "brute",
   traits: [],
 });

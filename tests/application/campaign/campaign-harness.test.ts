@@ -66,10 +66,11 @@ heroes:
     proficiencyBonus: 2
     skills: { flying: proficient }
     savingThrows: [str]
-    armorClass: 10
+    level: 1
     maxHp: 8
     speed: 30
-    weapons: [item:mace]
+    equipment: [item:mace]
+    features: []
 `;
     try {
       parseAdventureDocument(source);
