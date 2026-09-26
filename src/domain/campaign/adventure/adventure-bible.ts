@@ -13,6 +13,7 @@ export interface AdventureBible {
   readonly title: string;
   readonly premise: string;
   readonly dmOverview: string;
+  readonly startScene: SceneId;
   readonly scenes: readonly BibleScene[];
   readonly npcs: readonly BibleNpc[];
 }

@@ -1,0 +1,90 @@
+# Starter adventure for milestone 0 (docs/dnd-dm-bot-plan.md §12). Scene,
+# NPC, and hero IDs must match the zh-TW edition exactly.
+id: moonlit-ruins
+version: "1"
+language: en
+title: Moonlit Ruins
+premise: >-
+  Bandits have been raiding the road to Oakvale, and the village has offered
+  a reward to anyone who can stop them. The trail leads from a roadside inn
+  to an old watchtower and a ruined chapel beyond.
+dmOverview: >-
+  The raiders are goblins led by Skarn, who was driven from his hills and
+  wants the chapel's silver bell, an old relic the goblins believe keeps
+  their wolves calm. Garrick, the innkeeper, pays Skarn tribute to keep his
+  inn safe and has been telling him which travelers carry coin. Returning
+  the bell ends the raids peacefully; fighting ends them the hard way.
+startScene: scene:crossroads-inn
+scenes:
+  - id: scene:crossroads-inn
+    title: The Crossroads Inn
+    publicDescription: >-
+      A smoky common room with shuttered windows and too few guests. The
+      innkeeper watches the door more than his customers.
+    dmNotes: >-
+      Garrick knows the raiders camp at the ruined chapel and that they send
+      scouts to the watchtower at dusk. He denies everything at first. A
+      successful Insight check (medium) shows he is afraid, not hostile; a
+      successful Persuasion or Intimidation check (medium) makes him admit
+      he pays tribute and point the party to the watchtower. If the party
+      promises to protect the inn, he gives them a spare key to the tower.
+    npcIds: [npc:garrick]
+  - id: scene:old-watchtower
+    title: The Old Watchtower
+    publicDescription: >-
+      A leaning stone tower above the road, its stairs half collapsed. Fresh
+      boot prints and small, clawed footprints lead inside.
+    dmNotes: >-
+      Skill challenge with a clock: the goblin scouts return at 4. Each
+      failed check or noisy action advances the clock by 1. Three successes
+      (Athletics to climb, Perception or Investigation to search, Stealth to
+      keep quiet) reveal a hidden cellar holding a ledger of tribute payments
+      signed by Garrick and a map to the chapel. If the clock fills, two
+      goblin scouts arrive and try to flee to warn Skarn.
+    npcIds: []
+  - id: scene:ruined-chapel
+    title: The Ruined Chapel
+    publicDescription: >-
+      Moonlight falls through a broken roof onto overturned pews. A silver
+      bell hangs from a beam above the altar, and wolves pace in the shadows.
+    dmNotes: >-
+      Skarn, two goblins, and a wolf hold the chapel. Skarn flees when he
+      drops below half his hit points or when both goblins fall. Peaceful
+      resolution: if the party offers to let Skarn take the bell and leave
+      the region, a Persuasion check (hard, or medium with the tribute
+      ledger as leverage) ends the raids without a fight.
+    npcIds: [npc:skarn]
+npcs:
+  - id: npc:garrick
+    name: Garrick
+    voice: Gruff and clipped; answers questions with questions when nervous.
+    publicDescription: A broad innkeeper polishing the same mug over and over.
+    secret: He pays the goblins tribute and tips them off about travelers carrying coin.
+  - id: npc:skarn
+    name: Skarn
+    voice: Sly and boastful; speaks of himself in the third person.
+    publicDescription: A goblin in a patched wolf-fur cloak with a rusted crown.
+    secret: He only wants the silver bell and would leave the region with it.
+heroes:
+  - id: c-borin
+    name: Borin
+    class: fighter
+    abilityScores: { str: 16, dex: 12, con: 15, int: 10, wis: 12, cha: 8 }
+    proficiencyBonus: 2
+    skills: { athletics: proficient, perception: proficient, intimidation: proficient, survival: proficient }
+    savingThrows: [str, con]
+  - id: c-mira
+    name: Mira
+    class: rogue
+    abilityScores: { str: 8, dex: 16, con: 12, int: 13, wis: 10, cha: 14 }
+    proficiencyBonus: 2
+    skills:
+      { stealth: expertise, perception: expertise, acrobatics: proficient, deception: proficient, investigation: proficient, persuasion: proficient }
+    savingThrows: [dex, int]
+  - id: c-elspeth
+    name: Elspeth
+    class: cleric
+    abilityScores: { str: 14, dex: 10, con: 13, int: 10, wis: 16, cha: 12 }
+    proficiencyBonus: 2
+    skills: { insight: proficient, medicine: proficient, religion: proficient, persuasion: proficient }
+    savingThrows: [wis, cha]

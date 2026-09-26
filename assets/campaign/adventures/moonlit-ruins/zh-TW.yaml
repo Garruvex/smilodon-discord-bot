@@ -1,0 +1,79 @@
+# 里程碑 0 的入門冒險（docs/dnd-dm-bot-plan.md §12）。場景、NPC 與英雄的 ID
+# 必須與英文版完全相同。
+id: moonlit-ruins
+version: "1"
+language: zh-TW
+title: 月光廢墟
+premise: >-
+  盜匪不斷劫掠通往橡谷村的道路，村子懸賞能終結這場災禍的人。線索從路旁的旅店，
+  延伸到一座古老的瞭望塔，再到更遠處的廢棄禮拜堂。
+dmOverview: >-
+  劫掠者是由斯卡恩率領的哥布林。他被趕出山區，想得到禮拜堂裡的銀鐘——哥布林相信
+  那件古老聖物能讓狼群保持平靜。旅店老闆蓋瑞克向斯卡恩繳納保護費以求自保，還一直
+  告訴他哪些旅客身上帶著錢。歸還銀鐘能和平結束劫掠；戰鬥則是較艱難的結局。
+startScene: scene:crossroads-inn
+scenes:
+  - id: scene:crossroads-inn
+    title: 十字路口旅店
+    publicDescription: >-
+      煙霧瀰漫的大廳，窗戶緊閉，客人寥寥無幾。旅店老闆盯著門口的時間比看客人還多。
+    dmNotes: >-
+      蓋瑞克知道盜匪在廢棄禮拜堂紮營，也知道他們黃昏時會派斥候到瞭望塔。他一開始
+      全盤否認。洞悉檢定（中等）成功，會看出他是害怕而非敵意；說服或威嚇檢定（中等）
+      成功，他會承認自己繳保護費，並指引隊伍前往瞭望塔。若隊伍承諾保護旅店，他會
+      交出瞭望塔的備用鑰匙。
+    npcIds: [npc:garrick]
+  - id: scene:old-watchtower
+    title: 古老瞭望塔
+    publicDescription: >-
+      一座傾斜的石塔俯瞰道路，樓梯塌了一半。新鮮的靴印和細小的爪印一路延伸進塔內。
+    dmNotes: >-
+      附時鐘的技能挑戰：哥布林斥候在時鐘達到 4 時返回。每次檢定失敗或發出噪音，
+      時鐘加 1。累積三次成功（運動攀爬、察覺或調查搜索、隱匿保持安靜）會發現隱藏
+      地窖，裡面有蓋瑞克簽名的保護費帳本和一張通往禮拜堂的地圖。若時鐘填滿，兩名
+      哥布林斥候抵達，並試圖逃回去警告斯卡恩。
+    npcIds: []
+  - id: scene:ruined-chapel
+    title: 廢棄禮拜堂
+    publicDescription: >-
+      月光從破損的屋頂灑落在翻倒的長椅上。一口銀鐘懸在祭壇上方的樑上，狼群在陰影中
+      來回踱步。
+    dmNotes: >-
+      斯卡恩、兩名哥布林和一頭狼佔據禮拜堂。當斯卡恩生命值低於一半，或兩名哥布林
+      都倒下時，他會逃跑。和平解決：若隊伍提議讓斯卡恩帶走銀鐘並離開這片地區，說服
+      檢定（困難；若以保護費帳本作為籌碼則為中等）成功即可不戰而結束劫掠。
+    npcIds: [npc:skarn]
+npcs:
+  - id: npc:garrick
+    name: 蓋瑞克
+    voice: 粗聲粗氣、話很短；緊張時會用問題回答問題。
+    publicDescription: 一位體格寬厚的旅店老闆，一遍又一遍擦著同一個杯子。
+    secret: 他向哥布林繳保護費，還通報哪些旅客身上帶著錢。
+  - id: npc:skarn
+    name: 斯卡恩
+    voice: 狡猾又愛吹噓，總是用第三人稱稱呼自己。
+    publicDescription: 一名披著補丁狼皮斗篷、戴著生鏽王冠的哥布林。
+    secret: 他只想要銀鐘，拿到後願意離開這片地區。
+heroes:
+  - id: c-borin
+    name: 波林
+    class: fighter
+    abilityScores: { str: 16, dex: 12, con: 15, int: 10, wis: 12, cha: 8 }
+    proficiencyBonus: 2
+    skills: { athletics: proficient, perception: proficient, intimidation: proficient, survival: proficient }
+    savingThrows: [str, con]
+  - id: c-mira
+    name: 米拉
+    class: rogue
+    abilityScores: { str: 8, dex: 16, con: 12, int: 13, wis: 10, cha: 14 }
+    proficiencyBonus: 2
+    skills:
+      { stealth: expertise, perception: expertise, acrobatics: proficient, deception: proficient, investigation: proficient, persuasion: proficient }
+    savingThrows: [dex, int]
+  - id: c-elspeth
+    name: 艾絲佩絲
+    class: cleric
+    abilityScores: { str: 14, dex: 10, con: 13, int: 10, wis: 16, cha: 12 }
+    proficiencyBonus: 2
+    skills: { insight: proficient, medicine: proficient, religion: proficient, persuasion: proficient }
+    savingThrows: [wis, cha]

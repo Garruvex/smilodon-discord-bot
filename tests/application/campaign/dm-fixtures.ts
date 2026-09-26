@@ -14,6 +14,7 @@ export const testBible: AdventureBible = {
   title: "Moonlit Ruins",
   premise: "Bandits have been raiding the road to Oakvale.",
   dmOverview: secrets.overview,
+  startScene: "scene:tavern",
   scenes: [
     {
       id: "scene:tavern",
