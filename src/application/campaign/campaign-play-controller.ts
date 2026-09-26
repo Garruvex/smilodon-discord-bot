@@ -105,6 +105,16 @@ export class CampaignPlayController {
     return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "removeItem", characterId, itemId }));
   }
 
+  // In-character words: no action, no cost.
+  public speak(key: CampaignKey, userId: UserId, text: string, interactionId: string): Promise<PlayResult> {
+    return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "speak", characterId, text }));
+  }
+
+  // Stops play for everyone; no hero needed, and nobody is told who asked.
+  public safety(key: CampaignKey, userId: UserId, interactionId: string): Promise<PlayResult> {
+    return this.perform(key, userId, interactionId, () => ({ kind: "pauseCampaign", reason: "safety" }));
+  }
+
   // Outside a fight: drink a potion, stash an item, or take one from the stash.
   public useItem(key: CampaignKey, userId: UserId, itemId: ContentId<"item">, interactionId: string): Promise<PlayResult> {
     return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "useItem", characterId, itemId }));

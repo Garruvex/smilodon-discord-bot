@@ -11,6 +11,8 @@ export interface RoundRecord {
   readonly actions: Map<CharacterId, string>;
   readonly passed: Set<CharacterId>;
   readonly missed: Set<CharacterId>;
+  // What heroes said in character, in order.
+  readonly speech: { readonly characterId: CharacterId; readonly text: string }[];
   resolutions: Readonly<Record<CharacterId, Resolution>>;
   readonly checks: Map<string, { readonly test: CheckTest; readonly dc: number; result: CheckResult | null }>;
   narration: string | null;
@@ -21,7 +23,7 @@ export function roundRecords(events: readonly CampaignEvent[]): readonly RoundRe
   const roundOf = (number: number): RoundRecord => {
     let record = rounds.get(number);
     if (record === undefined) {
-      record = { number, actions: new Map(), passed: new Set(), missed: new Set(), resolutions: {}, checks: new Map(), narration: null };
+      record = { number, actions: new Map(), passed: new Set(), missed: new Set(), speech: [], resolutions: {}, checks: new Map(), narration: null };
       rounds.set(number, record);
     }
     return record;
@@ -45,6 +47,9 @@ export function roundRecords(events: readonly CampaignEvent[]): readonly RoundRe
         record.passed.add(event.characterId);
         break;
       }
+      case "heroSpoke":
+        roundOf(event.roundNumber).speech.push({ characterId: event.characterId, text: event.text });
+        break;
       case "roundClosed":
         for (const characterId of event.missed) roundOf(event.roundNumber).missed.add(characterId);
         break;

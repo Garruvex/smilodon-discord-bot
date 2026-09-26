@@ -30,7 +30,9 @@ export type DeliverySpec =
   | { readonly kind: "quietRound"; readonly roundNumber: number }
   | { readonly kind: "waitingForPlayers" }
   // Play was paused on purpose; the organizer resumes it.
-  | { readonly kind: "campaignPaused"; readonly reason: "organizer" | "recovery" }
+  | { readonly kind: "campaignPaused"; readonly reason: "organizer" | "recovery" | "safety" }
+  // A hero's in-character line, posted as they said it.
+  | { readonly kind: "speech"; readonly characterId: string; readonly text: string }
   | { readonly kind: "narration"; readonly roundNumber: number }
   | { readonly kind: "opening" }
   // "The DM considers…": the round is held after the Planner failed.

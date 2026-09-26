@@ -72,7 +72,8 @@ export type CampaignEvent =
       readonly roundClosesAt?: Instant;
       readonly turnEndsAt?: Instant;
     }
-  | { readonly kind: "campaignPaused"; readonly reason: "organizer" | "recovery" }
+  | { readonly kind: "campaignPaused"; readonly reason: "organizer" | "recovery" | "safety" }
+  | { readonly kind: "heroSpoke"; readonly characterId: CharacterId; readonly roundNumber: number; readonly text: string }
   | { readonly kind: "restTaken"; readonly rest: "short" | "long"; readonly heroStatus: Readonly<Record<CharacterId, HeroStatus>> }
   | { readonly kind: "itemOffered"; readonly offer: ItemOffer }
   // The offer was accepted: the items change hands.

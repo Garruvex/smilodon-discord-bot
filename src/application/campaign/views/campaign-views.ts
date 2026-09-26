@@ -58,6 +58,7 @@ export type PanelMode =
   | "combat"
   | "waiting"
   | "paused"
+  | "safety"
   | "recovery"
   | "archived";
 
@@ -270,6 +271,7 @@ export function buildPanelView(record: CampaignRecord, state: CampaignState, bib
 function modeOf(record: CampaignRecord, state: CampaignState, inFight: boolean, rollsPending: boolean): PanelMode {
   if (record.lifecycle === "archived") return "archived";
   if (state.pausedBy === "recovery") return "recovery";
+  if (state.pausedBy === "safety") return "safety";
   if (state.pausedBy === "organizer" || record.lifecycle === "paused") return "paused";
   if (state.status === "waitingForPlayers") return "waiting";
   if (state.opening === "pending") return "opening";

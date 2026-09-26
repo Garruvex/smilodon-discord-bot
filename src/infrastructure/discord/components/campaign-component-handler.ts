@@ -1,5 +1,7 @@
 import {
   ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   MessageFlags,
   ModalBuilder,
   StringSelectMenuBuilder,
@@ -24,6 +26,7 @@ import { publicAccessPolicy } from "../../../domain/access/access-policy.js";
 import { freeHeroes } from "../../../domain/campaign/lobby/lobby.js";
 import type { Glossary } from "../../../domain/campaign/rules/content-registry.js";
 import type { CharacterId } from "../../../domain/campaign/core/ids.js";
+import { maxSpeechLength } from "../../../domain/campaign/engine/speech.js";
 import type { CombatCommand } from "../../../domain/campaign/commands/campaign-command.js";
 import { buildTurnView, type TurnView } from "../../../application/campaign/views/turn-view.js";
 import { encodeChoice, parseAim, parseChoice, renderEndConfirm, renderTargetMenu, renderTurnMenu, type TurnChoice, type TurnMenu } from "../campaign/turn-menu.js";
@@ -102,6 +105,9 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "ready":
     case "begin":
     case "turn":
+    case "speak":
+    case "safety":
+    case "more":
       return ["adventure"];
     case "offerYes":
     case "offerNo":
@@ -123,6 +129,7 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "aim":
     case "pack":
     case "giveTo":
+    case "safetyPause":
       return [];
   }
 }
@@ -174,10 +181,20 @@ export class CampaignComponentHandler implements ComponentHandler {
       await interaction.showModal(this.actionModal(record, text));
       return;
     }
+    if (parsed.action === "speak") {
+      await interaction.showModal(this.speakModal(record, text));
+      return;
+    }
     // Buttons inside a private turn menu update that message instead of opening another.
     if (parsed.action === "turnRefresh") {
       await interaction.deferUpdate();
       await this.showTurn(interaction, record, text, null);
+      return;
+    }
+    if (parsed.action === "safetyPause") {
+      await interaction.deferUpdate();
+      const result = await this.deps.play.safety(key, interaction.user.id, interaction.id);
+      await interaction.editReply({ content: result.kind === "ok" ? text.campaign.reply.safetyDone : refusalText(text, result.reason), components: [] });
       return;
     }
     if (parsed.action === "endTurn" && parsed.argument === "yes") {
@@ -234,6 +251,19 @@ export class CampaignComponentHandler implements ComponentHandler {
         const said = answer === "accept" ? text.campaign.reply.offerAccepted : answer === "decline" ? text.campaign.reply.offerDeclined : text.campaign.reply.offerCancelled;
         return void (await this.outcome(await this.deps.play.answerOffer(key, userId, parsed.argument ?? "", answer, interaction.id), said, reply, text));
       }
+      case "safety":
+        await interaction.editReply({
+          content: text.campaign.reply.safetyAsk,
+          components: [
+            new ActionRowBuilder<ButtonBuilder>().addComponents(
+              new ButtonBuilder().setCustomId(campaignCustomId("safetyPause", key.campaignId)).setLabel(text.campaign.button.pauseGame).setStyle(ButtonStyle.Danger),
+            ),
+          ],
+        });
+        return;
+      case "more":
+        await interaction.editReply({ content: text.campaign.more.help, components: this.linkRow(record, text) });
+        return;
       case "turn":
         await this.showTurn(interaction, record, text, null);
         return;
@@ -262,13 +292,44 @@ export class CampaignComponentHandler implements ComponentHandler {
   public async executeModal(context: ModalContext): Promise<void> {
     const { interaction } = context;
     const parsed = parseCampaignId(interaction.customId);
-    if (parsed?.action !== "act" || interaction.guildId === null) return;
+    if ((parsed?.action !== "act" && parsed?.action !== "speak") || interaction.guildId === null) return;
     const key: CampaignKey = { guildId: interaction.guildId, campaignId: parsed.campaignId };
     const stored = await this.deps.lobby.get(key);
     const text = texts[stored?.record.language ?? "en"];
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    if (parsed.action === "speak") {
+      const spoke = await this.deps.play.speak(key, interaction.user.id, this.field(interaction), interaction.id);
+      await interaction.editReply({ content: spoke.kind === "ok" ? text.campaign.reply.spoke : refusalText(text, spoke.reason) });
+      return;
+    }
     const result = await this.deps.play.submitAction(key, interaction.user.id, this.field(interaction), interaction.id);
     await interaction.editReply({ content: result.kind === "ok" ? text.campaign.reply.actionSaved : refusalText(text, result.reason) });
+  }
+
+  // Links to the places a player may want to go: the Table Talk thread and the Party channel.
+  private linkRow(record: CampaignRecord, text: Texts): ActionRowBuilder<ButtonBuilder>[] {
+    const url = (channelId: string | null): string | null => (channelId === null ? null : `https://discord.com/channels/${record.key.guildId}/${channelId}`);
+    const link = (label: string, target: string | null): ButtonBuilder[] =>
+      target === null ? [] : [new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel(label).setURL(target)];
+    const buttons = [...link(text.campaign.button.tableTalk, url(record.channels.discussionThreadId)), ...link(text.campaign.button.partyChannel, url(record.channels.partyChannelId))];
+    return buttons.length === 0 ? [] : [new ActionRowBuilder<ButtonBuilder>().addComponents(buttons)];
+  }
+
+  private speakModal(record: CampaignRecord, text: Texts): ModalBuilder {
+    return new ModalBuilder()
+      .setCustomId(campaignCustomId("speak", record.key.campaignId))
+      .setTitle(text.campaign.speak.title)
+      .addComponents(
+        new ActionRowBuilder<TextInputBuilder>().addComponents(
+          new TextInputBuilder()
+            .setCustomId(actionField)
+            .setLabel(text.campaign.speak.label)
+            .setPlaceholder(text.campaign.speak.placeholder)
+            .setStyle(TextInputStyle.Paragraph)
+            .setMaxLength(maxSpeechLength)
+            .setRequired(true),
+        ),
+      );
   }
 
   private field(interaction: ModalSubmitInteraction): string {

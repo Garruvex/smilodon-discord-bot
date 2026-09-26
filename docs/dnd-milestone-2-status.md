@@ -21,6 +21,12 @@ New games use the `combat-mode: players` house rule (older games keep whatever t
 - **Gifts** need a yes. Giving posts an **offer card** in the Party channel (Accept, Decline, Take back) and pings the receiving hero’s player in the Adventure channel. Only that hero’s owner can accept and only the giver can take it back; the engine re-checks that the item is still there when it is accepted. An answered offer card is removed. Exchanges (an item for an item) are in the engine but have no button yet.
 - **Retry the fight** is a button in Manage (organizer or DnD Admin), allowed after a lost fight until someone acts in the round that follows. The party is restored to how it stood when the fight began and the fight runs again with fresh dice. The defeat message tells the organizer about it.
 
+## Built: Speak, Safety and More
+
+- **Speak** (panel, while collecting and in a fight): a form; the words are posted in the Adventure channel as the hero’s line (mentions never ping) and told to the DM in the round’s transcript (the last three lines per hero). Speaking costs no action, resource or turn and cannot change any result; anyone with a living hero may speak while play is running, even on someone else’s turn. Up to 300 characters. No webhook avatar yet (that needs the Manage Webhooks permission and belongs with portraits).
+- **Safety** (second row of the panel in every state until the game ends): a private explanation and a **Pause the game** confirm. It stops play for everyone at once, with every timer cancelled and held work waiting, and posts a neutral notice that names nobody. Only the organizer (or a DnD Admin, from Manage) resumes. The text says plainly that the server’s admins can still see the bot’s logs. Removing or skipping content afterwards, and a private note to the organizer, are not built.
+- **More…**: a short how-to-play, and buttons that link to the Table Talk thread and the Party channel. Journal (milestone 5) and Rules pages are not built.
+
 ## Not yet exercised at a real table
 
 - [ ] Start a game, reach a fight, and see the encounter reveal, then the panel with zones and the turn ping for the first hero.
@@ -31,6 +37,7 @@ New games use the `combat-mode: players` house rule (older games keep whatever t
 - [ ] A hero at 0 HP: death save line, no menu for them; the fight continues.
 - [ ] Cast Bless on two allies and Sacred Flame at a foe; Second Wind; drink a potion.
 - [ ] Win the fight: outcome and loot line, then exploration resumes. Lose it: everyone wakes with 1 HP.
+- [ ] Speak: the line appears as `Borin: “…”`, and the next narration can refer to it. Safety: pressing Pause the game stops the timers and the panel says so; the organizer resumes from Manage.
 - [ ] Two players: give an item; the receiver is pinged and accepts on the offer card; the giver takes one back; the card disappears when answered.
 - [ ] Lose a fight, then press Retry the fight in Manage.
 - [ ] Repeat in Traditional Chinese.
@@ -39,7 +46,7 @@ New games use the `combat-mode: players` house rule (older games keep whatever t
 
 | Item | State |
 | --- | --- |
-| Speak (in-character lines as the hero), Safety, the More… menu | Not started. Safety must exist before public playtests. |
+| Journal in More…, a note with a safety pause, skipping content afterwards | Not started. |
 | Item-for-item exchanges | The engine supports them; only gifts have a button. |
 | Shield or gear changes in a fight (a shield costs an action; weapons are drawn free) | Not started; gear changes are outside fights only. |
 | Reaction prompts, pre-declared reactions, proxy play for an away player | Not started. No starter spell or feature needs a player's reaction yet, and heroes' opportunity attacks are automatic. |

@@ -36,6 +36,11 @@ export const campaignActions = [
   "offerYes",
   "offerNo",
   "offerCancel",
+  // Speak in character, the anonymous pause, and the help and links menu.
+  "speak",
+  "safety",
+  "safetyPause",
+  "more",
 ] as const;
 export type CampaignAction = (typeof campaignActions)[number];
 

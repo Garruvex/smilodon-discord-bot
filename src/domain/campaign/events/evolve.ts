@@ -160,6 +160,9 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       return evolveCombat(state, event);
     case "restTaken":
       return { ...state, heroStatus: { ...state.heroStatus, ...event.heroStatus } };
+    // Words are told, not applied: nothing in the state changes.
+    case "heroSpoke":
+      return state;
     case "itemOffered":
       return { ...state, offers: { ...state.offers, [event.offer.id]: event.offer }, offerCount: state.offerCount + 1 };
     case "offerAccepted":

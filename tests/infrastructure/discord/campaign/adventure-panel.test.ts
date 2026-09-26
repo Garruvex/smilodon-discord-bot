@@ -32,7 +32,7 @@ describe("the adventure panel", () => {
     expect(card.text).toContain("## Old Watchtower · Exploration · Round 4");
     expect(card.text).toContain("Submit an action or Pass. Closes <t:1800000000:R>.");
     expect(card.text).toContain("Mira ✓ Submitted · Borin … Thinking · Elin — Away");
-    expect(card.buttons.map((button) => button.id)).toEqual(["dnd:act:camp", "dnd:pass:camp", "dnd:myHero:camp", "dnd:away:camp"]);
+    expect(card.buttons.map((button) => button.id)).toEqual(["dnd:act:camp", "dnd:speak:camp", "dnd:pass:camp", "dnd:myHero:camp", "dnd:away:camp", "dnd:safety:camp", "dnd:more:camp"]);
   });
 
   it("says so when there is no timer", () => {
@@ -40,10 +40,10 @@ describe("the adventure panel", () => {
   });
 
   it("changes its controls with the state", () => {
-    expect(labels({ ...collecting, mode: "planning" })).toEqual(["My Hero", "Away"]);
-    expect(labels({ ...collecting, mode: "awaitingRolls", pendingRolls: [{ characterId: "c-mira", userId: "1", heroName: "Mira" }] })).toEqual(["Roll", "My Hero", "Away"]);
-    expect(labels({ ...collecting, mode: "waiting" })).toEqual(["Continue", "I'm back", "My Hero"]);
-    expect(labels({ ...collecting, mode: "paused" })).toEqual(["My Hero"]);
+    expect(labels({ ...collecting, mode: "planning" })).toEqual(["My Hero", "Away", "Safety", "More…"]);
+    expect(labels({ ...collecting, mode: "awaitingRolls", pendingRolls: [{ characterId: "c-mira", userId: "1", heroName: "Mira" }] })).toEqual(["Roll", "My Hero", "Away", "Safety", "More…"]);
+    expect(labels({ ...collecting, mode: "waiting" })).toEqual(["Continue", "I'm back", "My Hero", "Safety", "More…"]);
+    expect(labels({ ...collecting, mode: "paused" })).toEqual(["My Hero", "Safety", "More…"]);
     expect(labels({ ...collecting, mode: "archived" })).toEqual([]);
   });
 
@@ -62,8 +62,8 @@ describe("the adventure panel", () => {
     expect(card.text).toContain("Getting ready");
     expect(card.text).toContain("Press Ready");
     expect(card.text).toContain("Mira ✓ Ready · Borin … Thinking");
-    expect(card.buttons.map((button) => button.id)).toEqual(["dnd:ready:camp", "dnd:begin:camp", "dnd:myHero:camp", "dnd:away:camp"]);
-    expect(labels(view, "zh-TW")).toEqual(["準備好了", "立即開始", "我的英雄", "離開"]);
+    expect(card.buttons.map((button) => button.id)).toEqual(["dnd:ready:camp", "dnd:begin:camp", "dnd:myHero:camp", "dnd:away:camp", "dnd:safety:camp", "dnd:more:camp"]);
+    expect(labels(view, "zh-TW")).toEqual(["準備好了", "立即開始", "我的英雄", "離開", "安全", "更多…"]);
   });
 
   it("explains a pause and a restart pause in words, on a gray card", () => {
@@ -109,8 +109,8 @@ describe("the adventure panel", () => {
     expect(card.text).toContain("Combat, round 2. Active: Borin.");
     expect(card.text).toContain("📍 Cellar: Mira 4/9 · ▶ Borin 12/12 · Goblin A: bloodied");
     expect(card.text).toContain("📍 Stairs: Wolf: unhurt");
-    // On autopilot nobody takes turns, so there is only My Hero.
-    expect(card.buttons.map((button) => button.id)).toEqual(["dnd:myHero:camp"]);
+    // On autopilot nobody takes turns, so there is only My Hero (and the safety row).
+    expect(card.buttons.map((button) => button.id)).toEqual(["dnd:myHero:camp", "dnd:safety:camp", "dnd:more:camp"]);
   });
 
   it("gives a fight the players play a Take turn and End turn button", () => {
@@ -130,15 +130,15 @@ describe("the adventure panel", () => {
     };
     const card = flatten(renderAdventurePanel(view, texts.en, "camp"));
     expect(card.text).toContain("Closes <t:1800000000:R>.");
-    expect(card.buttons.map((button) => button.id)).toEqual(["dnd:turn:camp", "dnd:endTurn:camp", "dnd:myHero:camp", "dnd:away:camp"]);
-    expect(labels(view, "zh-TW")).toEqual(["輪到我", "結束回合", "我的英雄", "離開"]);
+    expect(card.buttons.map((button) => button.id)).toEqual(["dnd:turn:camp", "dnd:endTurn:camp", "dnd:speak:camp", "dnd:myHero:camp", "dnd:away:camp", "dnd:safety:camp", "dnd:more:camp"]);
+    expect(labels(view, "zh-TW")).toEqual(["輪到我", "結束回合", "說話", "我的英雄", "離開", "安全", "更多…"]);
   });
 
   it("speaks Traditional Chinese with short labels, and stays within Discord's limits", () => {
     const card = flatten(renderAdventurePanel(collecting, texts["zh-TW"], "camp"));
     expect(card.text).toContain("Old Watchtower · 探索 · 第 4 回合");
     expect(card.text).toContain("Mira ✓ 已提交 · Borin … 思考中 · Elin — 離開");
-    expect(card.buttons.map((button) => button.label)).toEqual(["行動／修改", "跳過", "我的英雄", "離開"]);
+    expect(card.buttons.map((button) => button.label)).toEqual(["行動／修改", "說話", "跳過", "我的英雄", "離開", "安全", "更多…"]);
     expect(card.componentCount).toBeLessThan(cardLimits.components);
     expect(card.text.length).toBeLessThan(cardLimits.characters);
   });

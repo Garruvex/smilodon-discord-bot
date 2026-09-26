@@ -38,7 +38,11 @@ export type CampaignCommand =
   // Stops play: every timer is cancelled and no round, roll, or model work
   // runs until the organizer resumes (with continue). "recovery" is the
   // system pausing timed campaigns after a restart.
-  | { readonly kind: "pauseCampaign"; readonly reason: "organizer" | "recovery" }
+  // "safety": any player stops play for everyone, without saying who asked;
+  // only the organizer lifts it.
+  | { readonly kind: "pauseCampaign"; readonly reason: "organizer" | "recovery" | "safety" }
+  // A hero's in-character words: no action, no cost, told to the table and the DM.
+  | { readonly kind: "speak"; readonly characterId: CharacterId; readonly text: string }
   // The Planner could not produce a valid proposal after its retry.
   | { readonly kind: "reportPlannerFailure"; readonly roundNumber: number; readonly problems: readonly string[] }
   // The organizer asks the Planner to try the held round again.

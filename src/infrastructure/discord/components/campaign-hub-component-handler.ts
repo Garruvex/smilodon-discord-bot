@@ -276,7 +276,7 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     const t = text.campaign.manage;
     const described = record.lifecycle === "lobby" ? undefined : await this.deps.cards.describe(record.key);
     const mode = described?.panel?.mode ?? null;
-    const paused = mode === "paused" || mode === "recovery";
+    const paused = mode === "paused" || mode === "recovery" || mode === "safety";
     const status = mode === null ? "" : text.campaign.mode[mode];
     const id = record.key.campaignId;
     const verb = (action: ManageVerb, label: string): ButtonBuilder => new ButtonBuilder().setCustomId(hubCustomId("do", id, action)).setLabel(label).setStyle(ButtonStyle.Secondary);

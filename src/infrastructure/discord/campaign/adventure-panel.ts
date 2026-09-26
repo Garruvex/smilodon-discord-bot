@@ -14,6 +14,7 @@ const accentFor: Readonly<Record<PanelMode, number>> = {
   combat: accents.red,
   waiting: accents.gray,
   paused: accents.gray,
+  safety: accents.gray,
   recovery: accents.gray,
   archived: accents.gray,
 };
@@ -24,18 +25,23 @@ const accentFor: Readonly<Record<PanelMode, number>> = {
 const controlsFor: Readonly<Record<PanelMode, readonly CampaignAction[]>> = {
   opening: ["myHero", "away"],
   readyCheck: ["ready", "begin", "myHero", "away"],
-  collecting: ["act", "pass", "myHero", "away"],
+  collecting: ["act", "speak", "pass", "myHero", "away"],
   planning: ["myHero", "away"],
   awaitingRolls: ["roll", "myHero", "away"],
   combat: ["myHero"],
   waiting: ["continue", "back", "myHero"],
   paused: ["myHero"],
+  safety: ["myHero"],
   recovery: ["myHero"],
   archived: [],
 };
 
 // A fight the players play: Take turn opens the private turn menu.
-const combatControls: readonly CampaignAction[] = ["turn", "endTurn", "myHero", "away"];
+const combatControls: readonly CampaignAction[] = ["turn", "endTurn", "speak", "myHero", "away"];
+
+// The second row, in every state until the game is over: the way to stop play
+// for a moment, and the help and links.
+const safetyControls: readonly CampaignAction[] = ["safety", "more"];
 
 // The Adventure channel's one live control message, replaced at each round
 // boundary. Deadlines are Discord relative timestamps, so the message never
@@ -56,6 +62,11 @@ export function renderAdventurePanel(view: PanelView, text: Texts, campaignId: s
   if (controls.length > 0) {
     container.addActionRowComponents(
       new ActionRowBuilder<ButtonBuilder>().addComponents(controls.map((action) => controlButton(action, campaignId, text, view))),
+    );
+  }
+  if (view.mode !== "archived") {
+    container.addActionRowComponents(
+      new ActionRowBuilder<ButtonBuilder>().addComponents(safetyControls.map((action) => controlButton(action, campaignId, text, view))),
     );
   }
   return cardPayload(container);
@@ -84,6 +95,8 @@ function statusLine(view: PanelView, text: Texts): string {
       return t.waiting;
     case "paused":
       return t.paused;
+    case "safety":
+      return t.safety;
     case "recovery":
       return t.recovery;
     case "archived":
@@ -127,6 +140,9 @@ function controlButton(action: CampaignAction, campaignId: string, text: Texts, 
     begin: t.begin,
     turn: t.turn,
     endTurn: t.endTurn,
+    speak: t.speak,
+    safety: t.safety,
+    more: t.more,
   };
   const style = action === "act" || action === "roll" || action === "continue" || action === "ready" || action === "turn" ? ButtonStyle.Primary : ButtonStyle.Secondary;
   // Roll is enabled while a check waits; the click still finds the clicker's own.

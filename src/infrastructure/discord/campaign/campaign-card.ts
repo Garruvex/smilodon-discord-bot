@@ -28,6 +28,7 @@ const accentFor: Readonly<Record<PanelMode, number>> = {
   combat: accents.red,
   waiting: accents.gray,
   paused: accents.gray,
+  safety: accents.gray,
   recovery: accents.gray,
   archived: accents.gray,
 };

@@ -22,6 +22,8 @@ export interface ContextInput {
 
 export const defaultContextBudget = 30_000;
 
+const maxSpeechLinesPerHero = 3;
+
 export class ContextBudgetError extends Error {
   public constructor(
     public readonly requiredTokens: number,
@@ -184,6 +186,10 @@ function renderRound(record: RoundRecord, input: ContextInput): string {
   }
   for (const characterId of record.passed) lines.push(`- ${nameOf(characterId)}: passed`);
   for (const characterId of record.missed) lines.push(`- ${nameOf(characterId)}: did not respond`);
+  // Words in character, not actions: the latest few per hero, so chatter cannot crowd out the story.
+  const spoken = new Map<string, string[]>();
+  for (const line of record.speech) spoken.set(line.characterId, [...(spoken.get(line.characterId) ?? []), line.text].slice(-maxSpeechLinesPerHero));
+  for (const [characterId, said] of spoken) lines.push(`- ${nameOf(characterId)} said in character (not an action): ${said.map((text) => `"${text}"`).join(" ")}`);
   if (record.narration !== null) lines.push(`Narration: ${record.narration}`);
   return lines.join("\n");
 }

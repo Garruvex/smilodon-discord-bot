@@ -88,6 +88,15 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
       case "deathSave":
         if (playersFight) await say(adventureChannelId, combat?.deathSave(delivery.combatantId) ?? null);
         break;
+      case "speech": {
+        const hero = state?.characters[delivery.characterId];
+        if (hero !== undefined) await say(adventureChannelId, text.campaign.msg.speech({ hero: hero.name, text: delivery.text }));
+        break;
+      }
+      case "campaignPaused":
+        // A safety pause is announced without saying who asked.
+        if (delivery.reason === "safety") await say(adventureChannelId, text.campaign.msg.safetyPaused);
+        break;
       case "itemOffered": {
         // A ping for the hero's owner, who answers on the offer card.
         const offer = state?.offers[delivery.offerId];

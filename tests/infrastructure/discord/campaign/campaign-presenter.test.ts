@@ -144,6 +144,26 @@ async function fightOn(t: Table): Promise<void> {
   await t.runtime.runOnce();
 }
 
+describe("the presenter for speech and safety", () => {
+  it("posts what a hero says in character, without pings", async () => {
+    const t = await table();
+    await t.r.bus.execute(t.key, { kind: "speak", characterId: t.hero, text: "Stay close, <@everyone>." }, { commandId: "s", actor });
+    await t.runtime.runOnce();
+    const post = t.messages.posts.find((entry) => entry.content.startsWith("💬"));
+    expect(post?.content).toBe("💬 **Borin:** “Stay close, <@everyone>.”");
+    expect(post?.mentions).toEqual([]);
+  });
+
+  it("announces a safety pause without saying who asked", async () => {
+    const t = await table();
+    await t.r.bus.execute(t.key, { kind: "pauseCampaign", reason: "safety" }, { commandId: "p", actor });
+    await t.runtime.runOnce();
+    const post = t.messages.posts.find((entry) => entry.content.includes("paused at a player's request"));
+    expect(post?.content).not.toContain("u-org");
+    expect(flatten(t.messages.live(adventure).at(-1)?.payload ?? (undefined as never)).text).toContain("paused at a player's request");
+  });
+});
+
 describe("the presenter and offers", () => {
   it("pings the receiving player when an item is offered", async () => {
     const t = await table();

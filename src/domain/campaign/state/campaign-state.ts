@@ -69,7 +69,7 @@ export interface CampaignState {
   readonly pausedBy: PauseReason | null;
 }
 
-export type PauseReason = "organizer" | "recovery";
+export type PauseReason = "organizer" | "recovery" | "safety";
 
 export interface FightCheckpoint {
   readonly characters: Readonly<Record<CharacterId, CharacterSheet>>;

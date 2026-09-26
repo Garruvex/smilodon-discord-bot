@@ -322,6 +322,88 @@ describe("the pack, the stash, and gifts", () => {
   });
 });
 
+describe("speaking, the safety pause, and the help menu", () => {
+  const stateOf = async (t: Awaited<ReturnType<typeof harness>>): Promise<CampaignState> => {
+    const stored = await t.r.store.transaction((tx) => tx.loadCampaign(t.key));
+    if (stored === undefined) throw new Error("state");
+    return stored.state;
+  };
+  const buttonIds = (sent: readonly Sent[]): string[] => {
+    const last = [...sent].reverse().find((entry) => entry.kind === "edit");
+    const rows = (last?.payload as { components?: { toJSON(): { components: { custom_id?: string; url?: string }[] } }[] } | undefined)?.components ?? [];
+    return rows.flatMap((row) => row.toJSON().components.map((component) => component.custom_id ?? component.url ?? ""));
+  };
+
+  it("opens a form for Speak, then posts the words as the hero without spending the action", async () => {
+    const t = await harness();
+    await started(t);
+    const opened = await t.press("speak", "u-org");
+    expect(opened.some((entry) => entry.kind === "modal")).toBe(true);
+
+    const { interaction, sent } = fakeInteraction({ customId: `dnd:speak:${t.key.campaignId}`, userId: "u-org", fields: { action: "  Quiet, now.  " }, kind: "modal" });
+    await t.handler.executeModal({ interaction, logger: quiet as never });
+    expect(contentOf(sent)).toBe("Posted.");
+    const events = (await t.r.store.transaction((tx) => tx.readEvents(t.key))).map((envelope) => envelope.event);
+    expect(events.findLast((event) => event.kind === "heroSpoke")).toMatchObject({ text: "Quiet, now." });
+    // Still free to act.
+    expect(contentOf(await t.submit("u-org", "I open the door."))).toBe("Your action is saved. You can change it until the round closes.");
+  });
+
+  it("refuses empty words privately and speech from a stranger", async () => {
+    const t = await harness();
+    await started(t);
+    const empty = fakeInteraction({ customId: `dnd:speak:${t.key.campaignId}`, userId: "u-org", fields: { action: "   " }, kind: "modal" });
+    await t.handler.executeModal({ interaction: empty.interaction, logger: quiet as never });
+    expect(contentOf(empty.sent)).toBe("Write what your hero does first.");
+    const stranger = fakeInteraction({ customId: `dnd:speak:${t.key.campaignId}`, userId: "u-stranger", fields: { action: "Hello" }, kind: "modal" });
+    await t.handler.executeModal({ interaction: stranger.interaction, logger: quiet as never });
+    expect(contentOf(stranger.sent)).toBe("You do not have a hero in this campaign.");
+  });
+
+  it("asks before pausing for safety, then pauses the game for everyone", async () => {
+    const t = await harness();
+    await started(t);
+    const asked = await t.press("safety", "u-org");
+    expect(contentOf(asked)).toContain("Nobody at the table is told who asked");
+    expect(buttonIds(asked)).toEqual([`dnd:safetyPause:${t.key.campaignId}`]);
+    // Asking pauses nothing yet.
+    expect((await stateOf(t)).pausedBy).toBeNull();
+
+    const { interaction, sent } = fakeInteraction({ customId: `dnd:safetyPause:${t.key.campaignId}`, userId: "u-org", kind: "button" });
+    await t.handler.execute({ interaction, logger: quiet as never });
+    expect(contentOf(sent)).toBe("The game is paused.");
+    expect(await stateOf(t)).toMatchObject({ pausedBy: "safety", status: "waitingForPlayers" });
+    await t.cards.sync(t.key);
+    expect(flatText(t.messages.live(adventure))).toContain("paused at a player");
+  });
+
+  it("does not let an outsider pause the game", async () => {
+    const t = await harness();
+    await started(t);
+    const { interaction, sent } = fakeInteraction({ customId: `dnd:safetyPause:${t.key.campaignId}`, userId: "u-stranger", kind: "button" });
+    await t.handler.execute({ interaction, logger: quiet as never });
+    expect(contentOf(sent)).not.toBe("The game is paused.");
+    expect((await stateOf(t)).pausedBy).toBeNull();
+  });
+
+  it("explains the controls and links to the Party channel from More", async () => {
+    const t = await harness();
+    await started(t);
+    const more = await t.press("more", "u-org");
+    expect(contentOf(more)).toContain("How to play");
+    expect(buttonIds(more)).toEqual([`https://discord.com/channels/g-1/chan-party`]);
+  });
+
+  it("keeps Safety and More on the panel in every running state", async () => {
+    const t = await harness();
+    await started(t);
+    const text = (): string => flatText(t.messages.live(adventure));
+    await t.cards.sync(t.key);
+    expect(text()).toContain(`dnd:safety:${t.key.campaignId}`);
+    expect(text()).toContain(`dnd:more:${t.key.campaignId}`);
+  });
+});
+
 function flatText(messages: readonly { payload: unknown }[]): string {
   return messages.map((message) => JSON.stringify((message.payload as { toJSON?: () => unknown }).toJSON?.() ?? message.payload)).join(" ");
 }

@@ -7,10 +7,13 @@ import { activeEncounter, turnTimerId } from "./combat/combat-flow.js";
 // does after a restart so no deadline fires unattended. Every timer is
 // cancelled and held work waits; the organizer's continue re-arms fresh
 // windows and picks the held work back up. Pausing twice changes nothing.
-export function pauseCampaign(decision: Decision, reason: "organizer" | "recovery"): Rejection | null {
+export function pauseCampaign(decision: Decision, reason: "organizer" | "recovery" | "safety"): Rejection | null {
   const { state, ctx } = decision;
   if (reason === "recovery") {
     if (ctx.actor.kind !== "system") return { code: "systemOnly" };
+  } else if (reason === "safety") {
+    // Any player at the table may ask, and does not need to be present or have a hero.
+    if (ctx.actor.kind !== "user" || state.members[ctx.actor.userId] === undefined) return { code: "notMember" };
   } else if (ctx.actor.kind === "user" && ctx.actor.userId !== state.organizerId) {
     return { code: "notOrganizer" };
   }

@@ -153,6 +153,17 @@ describe("assembleContext", () => {
     expect(context.sections.map((section) => section.layer)).toEqual(["A", "B", "C", "E", "F"]);
   });
 
+  it("tells both the Planner and the Narrator what heroes said in character, capped per hero", () => {
+    const input = contextInput();
+    const said: CampaignEvent[] = ["one", "two", "three", "four"].map((text) => ({ kind: "heroSpoke" as const, characterId: "c-mira", roundNumber: 1, text: `line ${text}` }));
+    for (const audience of ["planner", "narrator"] as const) {
+      const text = textOf(assembleContext({ ...input, audience, events: [...input.events, ...said] }));
+      // Words, not actions: marked as such, and only the latest three per hero.
+      expect(text).toContain('- Mira said in character (not an action): "line two" "line three" "line four"');
+      expect(text).not.toContain("line one");
+    }
+  });
+
   it("asks for Traditional Chinese for a zh-TW campaign and lists the glossary", () => {
     const input = contextInput({ glossary: zhTwSrd51Glossary });
     const text = textOf(assembleContext({ ...input, state: { ...input.state, language: "zh-TW" } }));
