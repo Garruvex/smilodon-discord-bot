@@ -39,6 +39,7 @@ const usage =
   "  [--dm offline|openai-responses|openai-compatible|gemini] [--model a,b] [--narrator-model a,b]\n" +
   "  [--reasoning-effort none|minimal|low|medium|high|xhigh|max] [--thinking-budget N]\n" +
   "  [--cast scripted|adversarial|simulated]  (simulated needs --dm openai-responses|openai-compatible|gemini)\n" +
+  "  [--cache-key name]  (send a provider prompt-cache key)\n" +
   "  [--record calls.json] [--replay calls.json]  (save or replay every model call; a replay costs nothing)\n" +
   "  [--db file.sqlite]  (store the game in a SQLite file; one file per language run, the language is added to the name)\n" +
   "  [--input-price USD/M] [--cached-price USD/M] [--output-price USD/M]\n";
@@ -52,6 +53,7 @@ const { values } = parseArgs({
     db: { type: "string" },
     cast: { type: "string", default: "scripted" },
     record: { type: "string" },
+    "cache-key": { type: "string" },
     replay: { type: "string" },
     dm: { type: "string", default: "offline" },
     model: { type: "string" },
@@ -135,13 +137,15 @@ const plannerModels = models(values.model);
 if (values.dm !== "offline" && plannerModels.length === 0) fail(`--model is required for --dm ${values.dm}.`);
 const plannerClient = values.dm === "offline" ? null : createClient(plannerModels);
 
+const cacheOption = values["cache-key"] === undefined ? {} : { cacheKey: values["cache-key"] };
+
 function createDm(): HarnessOptions["dm"] {
   if (plannerClient === null) return () => ({ planner: new RuleBasedPlanner(), narrator: new TemplateNarrator() });
   const narratorModels = models(values["narrator-model"]);
   const narratorClient = narratorModels.length > 0 ? createClient(narratorModels) : plannerClient;
   return (observe) => ({
-    planner: new LlmCampaignPlanner({ client: plannerClient, onCall: observe }),
-    narrator: new LlmCampaignNarrator({ client: narratorClient, onCall: observe }),
+    planner: new LlmCampaignPlanner({ client: plannerClient, onCall: observe, ...cacheOption }),
+    narrator: new LlmCampaignNarrator({ client: narratorClient, onCall: observe, ...cacheOption }),
   });
 }
 

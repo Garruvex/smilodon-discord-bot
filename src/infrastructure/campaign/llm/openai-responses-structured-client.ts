@@ -56,6 +56,7 @@ export class OpenAiResponsesStructuredClient implements StructuredModelClient {
           ...(this.options.reasoningEffort === undefined ? {} : { reasoning: { effort: this.options.reasoningEffort } }),
           text: { format: { type: "json_schema", name: request.schemaName, strict: true, schema: request.jsonSchema } },
           max_output_tokens: request.maxOutputTokens,
+          ...(request.cacheKey === undefined ? {} : { prompt_cache_key: request.cacheKey }),
         }),
         signal: AbortSignal.timeout(request.timeoutMs),
       });

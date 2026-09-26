@@ -20,9 +20,9 @@ import type { ModelUsage, StructuredModelClient } from "../ports/structured-mode
 
 // Prompt and schema versions are recorded with each call so harness results
 // and bug reports stay comparable (code structure §8).
-export const plannerPromptVersion = "planner-3";
-export const narratorPromptVersion = "narrator-3";
-export const flourishPromptVersion = "flourish-2";
+export const plannerPromptVersion = "planner-4";
+export const narratorPromptVersion = "narrator-4";
+export const flourishPromptVersion = "flourish-3";
 
 export type ModelCallKind = "planner" | "narrator" | "flourish";
 
@@ -34,7 +34,13 @@ export interface LlmDmOptions {
   readonly client: StructuredModelClient;
   readonly maxOutputTokens?: number;
   readonly timeoutMs?: number;
+  // Per-campaign name; each call kind adds its own suffix so prompts with the same prefix share a cache.
+  readonly cacheKey?: string;
   readonly onCall?: ModelCallObserver;
+}
+
+function cacheKeyFor(options: LlmDmOptions, kind: ModelCallKind): { cacheKey?: string } {
+  return options.cacheKey === undefined ? {} : { cacheKey: `${options.cacheKey}:${kind}` };
 }
 
 export class PlannerOutputError extends Error {
@@ -131,6 +137,8 @@ export function buildPlannerPrompt(request: PlannerRequest): { system: string; u
     "effects: usually empty. transitionScene (target: a scene ID) when the players clearly travel to another scene. startEncounter (target: an encounter ID from the adventure) only when its DM notes say the fight begins; it starts after this round is narrated.",
     "An effect's when is 'always', or 'onSuccess' / 'onFailure' of the check made by characterId this round (for example, a failed Stealth check starts the fight). Use characterId null with 'always'.",
     "advanceClock (target: a clock ID, amount 1 to 3) when a failure or noise costs the party time, as the clock's DM notes describe; revealClue (target: a clue ID) when the clue's DM notes say the party learns it. amount is null for the other kinds.",
+  ].join("\n");
+  const state = [
     `Clocks: ${request.story.clocks.map((clock) => `${clock.id} ${clock.filled}/${clock.segments} (${clock.sceneId})`).join(", ") || "none"}. Clues not yet revealed: ${request.story.clues.map((clue) => `${clue.id} (${clue.sceneId})`).join(", ") || "none"}.`,
     `Current scene: ${request.story.sceneId ?? "none"}. Encounters not yet fought: ${request.story.encounters.map((encounter) => `${encounter.id} (${encounter.sceneId})`).join(", ") || "none"}.`,
   ].join("\n");
@@ -142,8 +150,7 @@ export function buildPlannerPrompt(request: PlannerRequest): { system: string; u
       ? ""
       : `\n\nYour previous proposal was rejected. Fix these problems:\n${request.previousProblems.map((problem) => `- ${problem}`).join("\n")}`;
   return {
-    system: `${renderContext(request.context)}\n\n${rules}`,
-    user: `Round ${request.roundNumber}. Submitted actions:\n${actions}${retry}`,
+    ...splitPrompt(request.context, rules, `${state}\n\nRound ${request.roundNumber}. Submitted actions:\n${actions}${retry}`),
   };
 }
 
@@ -212,6 +219,7 @@ export class LlmCampaignPlanner implements CampaignPlanner {
     const prompt = buildPlannerPrompt(request);
     const response = await this.options.client.generate({
       ...prompt,
+      ...cacheKeyFor(this.options, "planner"),
       schemaName: "campaign_round_plan",
       jsonSchema: plannerJsonSchema(request),
       maxOutputTokens: this.options.maxOutputTokens ?? 2_000,
@@ -252,8 +260,7 @@ export function buildNarratorPrompt(request: NarratorRequest): { system: string;
       ? ""
       : `\nA fight breaks out right after this: ${request.threat} End on the fight erupting instead of a question; do not describe any attacks.`;
   return {
-    system: `${renderContext(request.context)}\n\n${rules}`,
-    user: `Round ${request.roundNumber} outcomes:\n${outcomes || "- Nobody acted."}${spotlight}${threat}`,
+    ...splitPrompt(request.context, rules, `Round ${request.roundNumber} outcomes:\n${outcomes || "- Nobody acted."}${spotlight}${threat}`),
   };
 }
 
@@ -275,6 +282,7 @@ export class LlmCampaignNarrator implements CampaignNarrator {
   public async narrate(request: NarratorRequest): Promise<{ readonly text: string }> {
     const response = await this.options.client.generate({
       ...buildNarratorPrompt(request),
+      ...cacheKeyFor(this.options, "narrator"),
       schemaName: "campaign_narration",
       jsonSchema: narratorJsonSchema,
       maxOutputTokens: this.options.maxOutputTokens ?? 1_200,
@@ -287,6 +295,7 @@ export class LlmCampaignNarrator implements CampaignNarrator {
   public async narrateCombat(request: CombatNarratorRequest): Promise<{ readonly text: string }> {
     const response = await this.options.client.generate({
       ...buildCombatNarratorPrompt(request),
+      ...cacheKeyFor(this.options, "flourish"),
       schemaName: "campaign_combat_narration",
       jsonSchema: narratorJsonSchema,
       maxOutputTokens: this.options.maxOutputTokens ?? 800,
@@ -320,7 +329,7 @@ export function buildCombatNarratorPrompt(request: CombatNarratorRequest): { sys
   ].join("\n");
   const beats = request.beats.map((beat) => `- ${describeBeat(beat)}`).join("\n");
   const heading = request.final ? `The fight ended (${request.outcome ?? "over"}). Final beats:` : `Combat round ${request.round}:`;
-  return { system: `${renderContext(request.context)}\n\n${rules}`, user: `${heading}\n${beats || "- Nothing decisive happened."}` };
+  return splitPrompt(request.context, rules, `${heading}\n${beats || "- Nothing decisive happened."}`);
 }
 
 export function describeBeat(beat: CombatBeat): string {
@@ -355,8 +364,21 @@ export function describeBeat(beat: CombatBeat): string {
 
 // ---------------------------------------------------------------- Shared
 
-function renderContext(context: DmContext): string {
-  return context.sections.map((section) => `## ${section.layer}. ${section.title}\n${section.text}`).join("\n\n");
+function renderSections(sections: DmContext["sections"]): string {
+  return sections.map((section) => `## ${section.layer}. ${section.title}\n${section.text}`).join("\n\n");
+}
+
+// Providers cache a prompt by its identical leading part, so the system prompt
+// holds only what stays the same from round to round (instructions A, the
+// adventure B, and the output rules) and everything that changes (ledger,
+// story so far, scene, live state, this round) leads the user message.
+function splitPrompt(context: DmContext, rules: string, round: string): { system: string; user: string } {
+  const stable = context.sections.filter((section) => section.layer === "A" || section.layer === "B");
+  const changing = context.sections.filter((section) => section.layer !== "A" && section.layer !== "B");
+  return {
+    system: `${renderSections(stable)}\n\n${rules}`,
+    user: changing.length === 0 ? round : `${renderSections(changing)}\n\n${round}`,
+  };
 }
 
 function describeOutcome(outcome: NarratedOutcome): string {

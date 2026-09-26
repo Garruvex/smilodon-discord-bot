@@ -105,14 +105,21 @@ describe("planner prompt and schema", () => {
     expect(item.required).toHaveLength(Object.keys(item.properties).length);
   });
 
+  it("keeps the system prompt identical between rounds so the provider can cache it", () => {
+    const later = { ...plannerRequest, roundNumber: 4, context: { ...context, sections: [context.sections[0]!, { layer: "E" as const, title: "Current scene", text: "Round 2" }] } };
+    expect(buildPlannerPrompt(later).system).toBe(buildPlannerPrompt(plannerRequest).system);
+    expect(buildPlannerPrompt(later).user).toContain("Round 2");
+    expect(buildPlannerPrompt(plannerRequest).system).not.toContain("Current scene");
+  });
+
   it("limits story effects to known scenes and unfought encounters", () => {
     const schema = plannerJsonSchema(plannerRequest) as { properties: { effects: { items: { properties: Record<string, unknown> } } } };
     expect(schema.properties.effects.items.properties.target).toEqual({
       type: "string",
       enum: ["scene:crossroads-inn", "scene:ruined-chapel", "encounter:chapel-fight", "clock:scouts-return", "clue:chapel-map"],
     });
-    expect(buildPlannerPrompt(plannerRequest).system).toContain("Encounters not yet fought: encounter:chapel-fight (scene:ruined-chapel).");
-    expect(buildPlannerPrompt(plannerRequest).system).toContain("clock:scouts-return 1/4 (scene:old-watchtower)");
+    expect(buildPlannerPrompt(plannerRequest).user).toContain("Encounters not yet fought: encounter:chapel-fight (scene:ruined-chapel).");
+    expect(buildPlannerPrompt(plannerRequest).user).toContain("clock:scouts-return 1/4 (scene:old-watchtower)");
   });
 });
 
@@ -167,7 +174,7 @@ describe("LLM DM", () => {
     expect(proposal.actions).toHaveLength(1);
     expect(client.requests[0]?.schemaName).toBe("campaign_round_plan");
     expect(observed).toEqual([
-      { call: "planner", model: "fake-model", promptVersion: "planner-3", usage: { inputTokens: 100, outputTokens: 20, cachedInputTokens: 60 } },
+      { call: "planner", model: "fake-model", promptVersion: "planner-4", usage: { inputTokens: 100, outputTokens: 20, cachedInputTokens: 60 } },
     ]);
   });
 
@@ -221,7 +228,7 @@ describe("LLM DM", () => {
       },
     });
     expect(await narrator.narrateCombat(request)).toEqual({ text: "Borin's blade flashes." });
-    expect(observed).toMatchObject([{ call: "flourish", promptVersion: "flourish-2" }]);
+    expect(observed).toMatchObject([{ call: "flourish", promptVersion: "flourish-3" }]);
     expect(buildCombatNarratorPrompt({ ...request, final: true, outcome: "victory", language: "zh-TW" }).system).toContain("100-200 Traditional Chinese");
   });
 });

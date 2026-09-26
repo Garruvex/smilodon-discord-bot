@@ -39,7 +39,7 @@ Casts: `scripted` (cautious rogue, chaotic fighter, quiet cleric), `adversarial`
 
 ## Tokens per session
 
-Effort `none`, 8 rounds including a fight, English: about 47,000 input tokens (almost none cached) and 3,200 output tokens; `zh-TW` is about 65,000 in and 4,500 out. A Live hour is about 25 rounds, so roughly **150,000–200,000 input and 10,000–14,000 output tokens per Live hour**. Prompt caching showed 0–8% in these runs even though the adventure text at the front of each prompt is identical between calls; it is the largest cost lever still to investigate. Dollar cost is those totals times the model's prices.
+Effort `none`, 8 rounds including a fight, English: about 47,000 input tokens (almost none cached) and 3,200 output tokens; `zh-TW` is about 65,000 in and 4,500 out. A Live hour is about 25 rounds, so roughly **150,000–200,000 input and 10,000–14,000 output tokens per Live hour**. Prompt caching showed 0–8% at first because the rules and the changing sections sat in the system prompt after the adventure. The system prompt now holds only instructions, the adventure and the rules (prompts planner-4, narrator-4, flourish-3), the changing sections lead the user message, and `--cache-key` sends a provider cache key. The planner now caches about a third of its input; the narrator and flourish prefixes are under the provider's 1,024-token minimum, so they do not cache. Dollar cost is those totals times the model's prices.
 
 ## Playtest rubric
 

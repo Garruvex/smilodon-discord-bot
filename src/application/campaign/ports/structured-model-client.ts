@@ -10,6 +10,8 @@ export interface StructuredModelRequest {
   readonly jsonSchema: Record<string, unknown>;
   readonly maxOutputTokens: number;
   readonly timeoutMs: number;
+  // Routes calls that share a prefix to the same provider cache (one per campaign and call kind).
+  readonly cacheKey?: string;
 }
 
 export interface ModelUsage {
