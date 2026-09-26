@@ -113,6 +113,8 @@ export interface CampaignTransaction {
   // Compare-and-set on the record's own revision; returns the new one.
   saveRecord(record: CampaignRecord, expectedRevision: number): Promise<number>;
   listRecords(guildId: string, lifecycles?: readonly CampaignLifecycle[]): Promise<readonly StoredRecord[]>;
+  // Across every server: what the startup recovery walks.
+  listRecordsByLifecycle(lifecycles: readonly CampaignLifecycle[]): Promise<readonly StoredRecord[]>;
 
   findRoll(key: CampaignKey, rollId: RollId): Promise<SavedRoll | undefined>;
   // Written once; saving an existing roll ID keeps the first result.

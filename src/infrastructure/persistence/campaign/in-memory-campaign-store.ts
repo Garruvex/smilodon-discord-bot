@@ -182,6 +182,10 @@ class InMemoryTransaction implements CampaignTransaction {
     );
   }
 
+  public listRecordsByLifecycle(lifecycles: readonly CampaignLifecycle[]): Promise<readonly StoredRecord[]> {
+    return Promise.resolve([...this.data.records.values()].filter((stored) => lifecycles.includes(stored.record.lifecycle)));
+  }
+
   public findRoll(key: CampaignKey, rollId: string): Promise<SavedRoll | undefined> {
     return Promise.resolve(this.data.rolls.get(scoped(key, rollId)));
   }

@@ -132,6 +132,17 @@ describe.each(stores)("campaign store contract: $name", ({ create }) => {
     expect(await store.transaction((tx) => tx.listRecords("g-none"))).toEqual([]);
   });
 
+  it("finds records by lifecycle across servers", async () => {
+    const store = create();
+    await store.transaction(async (tx) => {
+      await tx.createRecord(record(key, "active"));
+      await tx.createRecord(record(other, "active"));
+      await tx.createRecord(record({ guildId: "g-3", campaignId: "camp-9" }, "archived"));
+    });
+    expect((await store.transaction((tx) => tx.listRecordsByLifecycle(["active"]))).map((stored) => stored.record.key.guildId)).toEqual(["g-1", "g-2"]);
+    expect(await store.transaction((tx) => tx.listRecordsByLifecycle(["paused"]))).toEqual([]);
+  });
+
   it("rolls a record back with the rest of a failed transaction", async () => {
     const store = create();
     await expect(

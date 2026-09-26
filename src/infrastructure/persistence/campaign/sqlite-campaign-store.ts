@@ -264,6 +264,11 @@ class SqliteTransaction implements CampaignTransaction {
     return Promise.resolve(rows.map(toStoredRecord).filter((stored) => lifecycles === undefined || lifecycles.includes(stored.record.lifecycle)));
   }
 
+  public listRecordsByLifecycle(lifecycles: readonly CampaignLifecycle[]): Promise<readonly StoredRecord[]> {
+    const rows = this.db.prepare("SELECT * FROM campaign_records ORDER BY rowid").all() as Row[];
+    return Promise.resolve(rows.map(toStoredRecord).filter((stored) => lifecycles.includes(stored.record.lifecycle)));
+  }
+
   public findRoll(key: CampaignKey, rollId: string): Promise<SavedRoll | undefined> {
     const row = this.db.prepare("SELECT * FROM campaign_rolls WHERE guild_id = ? AND campaign_id = ? AND roll_id = ?").get(key.guildId, key.campaignId, rollId) as Row | undefined;
     return Promise.resolve(row === undefined ? undefined : toRoll(row));
