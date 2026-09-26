@@ -191,7 +191,7 @@ function modelReply(): string {
 describe("the adventure commands", () => {
   const intakeFor = (client: StructuredModelClient | null): { intake: AdventureIntake; catalog: AdventureCatalog } => {
     const { catalog } = setup();
-    const author = client === null ? null : new AdventureAuthor({ client, content, heroesFor: (language) => starter[language].heroes });
+    const author = client === null ? null : new AdventureAuthor({ client, content, heroesFor: (language): typeof starter.en.heroes => starter[language].heroes });
     return { intake: new AdventureIntake({ catalog, author, glossaries }), catalog };
   };
   const buttonsOf = (reply: { components?: unknown[] } | undefined): number => ((reply?.components ?? []) as { toJSON(): { components: unknown[] } }[]).flatMap((row) => row.toJSON().components).length;
