@@ -97,6 +97,7 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
     case "combatCast":
     case "combatUseFeature":
     case "combatUseItem":
+    case "combatShield":
     case "combatDisengage":
     case "combatDash":
     case "combatDodge":

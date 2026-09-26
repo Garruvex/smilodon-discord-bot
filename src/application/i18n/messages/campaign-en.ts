@@ -333,6 +333,8 @@ export const campaignEn = {
   "campaign.turn.feature": "Use {feature} ({left} left)",
   "campaign.turn.potion": "Drink {potion} (×{count})",
   "campaign.turn.move": "Move to {zone} ({feet} ft)",
+  "campaign.turn.shieldOn": "Put on {item} (action)",
+  "campaign.turn.shieldOff": "Take off {item} (action)",
   "campaign.turn.engage": "Close in on a foe here",
   "campaign.turn.withdraw": "Step back from melee",
   "campaign.turn.dodge": "Dodge",

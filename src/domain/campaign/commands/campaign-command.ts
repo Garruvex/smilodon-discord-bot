@@ -102,6 +102,8 @@ export type CombatCommand =
     }
   | { readonly kind: "combatUseFeature"; readonly combatantId: string; readonly featureId: ContentId<"feature"> }
   | { readonly kind: "combatUseItem"; readonly combatantId: string; readonly itemId: ContentId<"item"> }
+  // Putting on or taking off a shield costs an action (2014 rules); armor cannot be changed in a fight.
+  | { readonly kind: "combatShield"; readonly combatantId: string; readonly itemId: ContentId<"item">; readonly on: boolean }
   | { readonly kind: "combatDisengage"; readonly combatantId: string }
   | { readonly kind: "combatDash"; readonly combatantId: string }
   | { readonly kind: "combatDodge"; readonly combatantId: string }

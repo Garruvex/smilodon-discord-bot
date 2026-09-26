@@ -332,6 +332,8 @@ export const campaignZhTW = {
   "campaign.turn.feature": "使用{feature}（剩 {left} 次）",
   "campaign.turn.potion": "飲用{potion}（×{count}）",
   "campaign.turn.move": "移動到{zone}（{feet} 尺）",
+  "campaign.turn.shieldOn": "裝備{item}（動作）",
+  "campaign.turn.shieldOff": "卸下{item}（動作）",
   "campaign.turn.engage": "逼近這裡的敵人",
   "campaign.turn.withdraw": "從近戰中退開",
   "campaign.turn.dodge": "閃避",

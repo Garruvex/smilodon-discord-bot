@@ -23,6 +23,7 @@ const view: TurnView = {
   ],
   features: [],
   potions: [{ id: "item:potion-of-healing", count: 2, bonusAction: false }],
+  shields: [{ id: "item:shield", on: true }],
   moves: [{ zoneId: "gate", zone: "Gate", feet: 10 }],
   engage: [],
   canWithdraw: true,
@@ -70,6 +71,7 @@ describe("the turn menu", () => {
     expect(labels).toContain("Cast Bless (level 1 slot, 2 left)");
     expect(labels).toContain("Drink Potion of Healing (×2)");
     expect(labels).toContain("Move to Gate (10 ft)");
+    expect(labels).toContain("Take off Shield (action)");
     expect(labels).toContain("Step back from melee");
     expect(labels.at(-1)).toBe("End turn");
     expect(labels).toHaveLength(new Set(labels).size);

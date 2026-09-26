@@ -1,4 +1,4 @@
-import { heroCombatant } from "../../combat/combatant-profile.js";
+import { heroCombatant, isWorn } from "../../combat/combatant-profile.js";
 import { isActive } from "../../combat/combat-state.js";
 import type { CharacterId } from "../../core/ids.js";
 import type { ContentId } from "../../rules/content-id.js";
@@ -45,6 +45,39 @@ export function refreshGear(decision: Decision, characterIds: readonly Character
     const fresh = heroCombatant(sheet, decision.ctx.rules.content, combatant.zoneId, { hp: combatant.hp, resources: combatant.resources });
     decision.emit({ kind: "gearChanged", combatantId: id, armorClass: fresh.armorClass, attacks: fresh.attacks, traits: fresh.traits });
   }
+}
+
+// A shield goes on or comes off as the hero's action. Armor stays as it is
+// until the fight is over.
+export function changeShieldInCombat(decision: Decision, combatantId: string, itemId: ContentId<"item">, putOn: boolean): Rejection | null {
+  return withHeroTurn(decision, combatantId, (hero) => {
+    if (hero.source.kind !== "hero") return { code: "notYourCharacter" };
+    const characterId = hero.source.characterId;
+    const sheet = decision.state.characters[characterId];
+    const content = decision.ctx.rules.content;
+    const definition = content.find(itemId);
+    if (sheet === undefined || definition?.kind !== "item" || definition.itemType !== "shield") return { code: "notWearable" };
+    if (!sheet.equipment.includes(itemId)) return { code: "itemNotHeld" };
+    if (!hero.budget.action) return { code: "noActionLeft" };
+    const isWearable = (id: ContentId<"item">): boolean => {
+      const other = content.find(id);
+      return other?.kind === "item" && (other.itemType === "armor" || other.itemType === "shield");
+    };
+    const isShield = (id: ContentId<"item">): boolean => {
+      const other = content.find(id);
+      return other?.kind === "item" && other.itemType === "shield";
+    };
+    const worn = sheet.equipment.filter((id) => isWearable(id) && isWorn(sheet, content, id));
+    if (putOn) {
+      if (worn.includes(itemId)) return { code: "alreadyWorn" };
+      if (worn.some(isShield)) return { code: "alreadyWearing" };
+    } else if (!worn.includes(itemId)) return { code: "notWorn" };
+    const next = putOn ? [...worn, itemId] : worn.filter((id) => id !== itemId);
+    decision.emit({ kind: "wornChanged", characterId, worn: next });
+    refreshGear(decision, [characterId]);
+    decision.emit({ kind: "actionTaken", combatantId: hero.id, action: "useItem", bonus: false });
+    return null;
+  });
 }
 
 export function useItemInCombat(decision: Decision, combatantId: string, itemId: ContentId<"item">): Rejection | null {

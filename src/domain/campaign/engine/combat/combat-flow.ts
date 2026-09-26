@@ -31,7 +31,7 @@ import { deadlineAfter, type Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { maxNarrationLength } from "../narration-limits.js";
 import { openRound } from "../rounds.js";
-import { useItemInCombat } from "./combat-gear.js";
+import { changeShieldInCombat, useItemInCombat } from "./combat-gear.js";
 import { declareResolution, endConcentration, recordResolutionRoll } from "./resolution.js";
 
 // A chain of engine-played turns (monsters, autopilot, skipped heroes) must
@@ -82,6 +82,8 @@ export function handleCombatCommand(decision: Decision, command: CombatCommand):
       );
     case "combatUseItem":
       return useItemInCombat(decision, command.combatantId, command.itemId);
+    case "combatShield":
+      return changeShieldInCombat(decision, command.combatantId, command.itemId, command.on);
     case "combatUseFeature":
       return withHeroTurn(decision, command.combatantId, (hero) => useFeature(decision, hero, command.featureId));
     case "combatDash":

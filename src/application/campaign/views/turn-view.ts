@@ -2,6 +2,7 @@ import type { CharacterId } from "../../../domain/campaign/core/ids.js";
 import { isActive, isPresent, currentCombatant, type Combatant, type TurnBudget } from "../../../domain/campaign/combat/combat-state.js";
 import { weaponTargets, spellTargets } from "../../../domain/campaign/combat/legal-targets.js";
 import { edgeBetween, engageCost, withdrawCost } from "../../../domain/campaign/combat/positioning.js";
+import { isWorn } from "../../../domain/campaign/combat/combatant-profile.js";
 import { potionFor } from "../../../domain/campaign/engine/potions.js";
 import { formatDiceExpression } from "../../../domain/campaign/dice/dice-expression.js";
 import type { SealedContent } from "../../../domain/campaign/rules/content-registry.js";
@@ -56,6 +57,8 @@ export interface TurnView {
   readonly spells: readonly SpellChoice[];
   readonly features: readonly { readonly id: string; readonly bonusAction: boolean; readonly left: number }[];
   readonly potions: readonly { readonly id: string; readonly count: number; readonly bonusAction: boolean }[];
+  // Shields carried, and whether each is on: putting one on or off costs the action.
+  readonly shields: readonly { readonly id: string; readonly on: boolean }[];
   readonly moves: readonly { readonly zoneId: string; readonly zone: string; readonly feet: number }[];
   // Foes in the hero's zone they are not yet in reach of.
   readonly engage: readonly TargetView[];
@@ -143,6 +146,12 @@ export function buildTurnView(
   }
   const potions = busy || (potionBonus ? !budget.bonusAction : !budget.action) ? [] : [...counts].map(([id, count]) => ({ id, count, bonusAction: potionBonus }));
 
+  const shields = busy || !budget.action
+    ? []
+    : [...new Set(sheet?.equipment ?? [])].flatMap((id) => {
+        const item = content.find(id);
+        return sheet === undefined || item?.kind !== "item" || item.itemType !== "shield" ? [] : [{ id, on: isWorn(sheet, content, id) }];
+      });
   const engaged = encounter.engagements.some(([a, b]) => a === hero.id || b === hero.id);
   const moves = busy ? [] : encounter.zones.flatMap((zone) => {
     const edge = zone.id === hero.zoneId ? undefined : edgeBetween(encounter.edges, hero.zoneId, zone.id);
@@ -168,6 +177,7 @@ export function buildTurnView(
     spells,
     features,
     potions,
+    shields,
     moves,
     engage,
     canWithdraw: !busy && engaged && budget.movement >= withdrawCost,

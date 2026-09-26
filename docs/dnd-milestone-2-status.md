@@ -8,7 +8,7 @@ New games use the `combat-mode: players` house rule (older games keep whatever t
 
 - **Panel.** In a fight the Adventure panel is one line per zone (heroes with exact HP, foes with a health band, an arrow on whoever's turn it is), the turn timer, and the buttons **Take turn**, **End turn**, My Hero and Away. The panel is redrawn below every action's result line.
 - **Turn ping.** When a player's turn starts, the Adventure channel gets "⚔️ @player, it is Borin's turn." That is the one message that pings, and only that player.
-- **Private turn menu** (Take turn). Shows the hero, zone, and what is left this turn (action, bonus action, reaction, movement), then one menu of only the legal actions: Attack with each weapon that has a target in reach; Cast each prepared spell that has a slot and a legal target; class features with uses left (Second Wind); healing potions; Move to each adjacent zone the movement allows; Close in on a foe in the same zone; Step back from melee; Dodge, Dash, Disengage; **End turn**. Nothing is offered that the engine would refuse, so there are no dead buttons.
+- **Private turn menu** (Take turn). Shows the hero, zone, and what is left this turn (action, bonus action, reaction, movement), then one menu of only the legal actions: Attack with each weapon that has a target in reach; Cast each prepared spell that has a slot and a legal target; class features with uses left (Second Wind); healing potions; Put on or take off a carried shield (it costs the action; armor still waits for the end of the fight; weapons are drawn free); Move to each adjacent zone the movement allows; Close in on a foe in the same zone; Step back from melee; Dodge, Dash, Disengage; **End turn**. Nothing is offered that the engine would refuse, so there are no dead buttons.
 - **Targets.** An aimed action asks for targets in a second menu that lists only the legal ones, each with its zone and health band (allies show exact HP). A spell with several targets (Bless) is a multi-select up to its limit. Choosing the target is the commit; there is no separate preview step yet (the action's to-hit and damage are shown in the first menu's label).
 - **End turn** asks first when an action is still unspent.
 - **Stale menus are safe.** Every choice is re-checked by the engine when picked; if it is no longer legal the player gets the reason above a fresh menu. Menu values carry no authority.
@@ -52,7 +52,6 @@ The milestone’s exit criterion (the party completes the starter encounter with
 | --- | --- |
 | Journal in More…, a note with a safety pause, skipping content afterwards | Not started. |
 | Item-for-item exchanges | The engine supports them; only gifts have a button. |
-| Shield or gear changes in a fight (a shield costs an action; weapons are drawn free) | Not started; gear changes are outside fights only. |
 | Reaction prompts, pre-declared reactions, proxy play for an away player | Not started. No starter spell or feature needs a player's reaction yet, and heroes' opportunity attacks are automatic. |
 | Preview step (to-hit formula, advantage reasons) before a choice commits | Not started. |
 | Custom action in a fight (a creative action mapped by the Planner) | Not started. |
