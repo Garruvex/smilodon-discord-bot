@@ -75,6 +75,7 @@ export class CampaignHubComponentHandler implements ComponentHandler {
       case "wizLanguage":
       case "wizPacing":
       case "wizPlayers":
+      case "wizLoot":
         if (interaction.isStringSelectMenu()) await this.chooseOption(interaction, parsed.action, first);
         return;
       case "wizNext":
@@ -115,6 +116,7 @@ export class CampaignHubComponentHandler implements ComponentHandler {
       language: choices.language,
       pacing: choices.pacing,
       players: choices.players,
+      lootGold: choices.loot,
     });
     await interaction.editReply({ content: createGameText(result, text) });
   }
@@ -134,7 +136,7 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     await interaction.reply({ ...wizardScreen(defaultWizardChoices), flags: MessageFlags.Ephemeral });
   }
 
-  private async chooseOption(interaction: StringSelectMenuInteraction<"cached">, action: "wizLanguage" | "wizPacing" | "wizPlayers", state: string | undefined): Promise<void> {
+  private async chooseOption(interaction: StringSelectMenuInteraction<"cached">, action: "wizLanguage" | "wizPacing" | "wizPlayers" | "wizLoot", state: string | undefined): Promise<void> {
     const current = parseWizardState(state);
     if (!(await this.deps.authority.isAdmin(interaction))) {
       await interaction.update({ content: texts[current.language].campaign.wizard.notAllowed, components: [] });
@@ -146,7 +148,9 @@ export class CampaignHubComponentHandler implements ComponentHandler {
         ? { ...current, language: value === "zh-TW" ? "zh-TW" : "en" }
         : action === "wizPacing"
           ? { ...current, pacing: value === "playByPost" ? "playByPost" : "live" }
-          : { ...current, players: parseWizardState(`en.live.${value}`).players };
+          : action === "wizLoot"
+            ? { ...current, loot: value === "split" ? "split" : "pooled" }
+            : { ...current, players: parseWizardState(`en.live.${value}`).players };
     await interaction.update(wizardScreen(next));
   }
 
@@ -320,7 +324,7 @@ function wizardScreen(choices: WizardChoices): Screen {
   const text = texts[choices.language];
   const t = text.campaign.wizard;
   const state = wizardState(choices);
-  const select = (action: "wizLanguage" | "wizPacing" | "wizPlayers", placeholder: string, options: readonly { label: string; value: string; selected: boolean }[]): ActionRowBuilder<MessageActionRowComponentBuilder> =>
+  const select = (action: "wizLanguage" | "wizPacing" | "wizPlayers" | "wizLoot", placeholder: string, options: readonly { label: string; value: string; selected: boolean }[]): ActionRowBuilder<MessageActionRowComponentBuilder> =>
     new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(hubCustomId(action, state))
@@ -330,7 +334,7 @@ function wizardScreen(choices: WizardChoices): Screen {
   const language = choices.language === "en" ? text.campaign.language.en : text.campaign.language.zhTW;
   const pacing = choices.pacing === "live" ? text.campaign.pacing.live : text.campaign.pacing.playByPost;
   return {
-    content: `**${t.title}**\n${t.intro}\n\n${t.summary({ language, pacing, count: choices.players })}`,
+    content: `**${t.title}**\n${t.intro}\n\n${t.summary({ language, pacing, count: choices.players, loot: choices.loot === "split" ? t.lootSplit : t.lootPooled })}`,
     components: [
       select("wizLanguage", t.languagePlaceholder, [
         { label: text.campaign.language.en, value: "en", selected: choices.language === "en" },
@@ -345,6 +349,10 @@ function wizardScreen(choices: WizardChoices): Screen {
         t.playersPlaceholder,
         [1, 2, 3, 4, 5, 6].map((count) => ({ label: t.players({ count }), value: String(count), selected: choices.players === count })),
       ),
+      select("wizLoot", t.lootPlaceholder, [
+        { label: t.lootPooled, value: "pooled", selected: choices.loot === "pooled" },
+        { label: t.lootSplit, value: "split", selected: choices.loot === "split" },
+      ]),
       row(new ButtonBuilder().setCustomId(hubCustomId("wizNext", state)).setLabel(t.next).setStyle(ButtonStyle.Primary)),
     ],
   };

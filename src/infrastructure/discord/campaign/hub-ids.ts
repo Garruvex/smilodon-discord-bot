@@ -11,6 +11,7 @@ export const hubActions = [
   "wizLanguage",
   "wizPacing",
   "wizPlayers",
+  "wizLoot",
   "wizNext",
   "wizName",
   "manage",
@@ -34,9 +35,11 @@ export interface WizardChoices {
   readonly language: "en" | "zh-TW";
   readonly pacing: "live" | "playByPost";
   readonly players: number;
+  // Where a fight's gold goes: the house rule "loot-gold".
+  readonly loot: "pooled" | "split";
 }
 
-export const defaultWizardChoices: WizardChoices = { language: "en", pacing: "live", players: 3 };
+export const defaultWizardChoices: WizardChoices = { language: "en", pacing: "live", players: 3, loot: "pooled" };
 
 const maxLength = 100;
 
@@ -53,17 +56,18 @@ export function parseHubId(customId: string): ParsedHubId | null {
 }
 
 export function wizardState(choices: WizardChoices): string {
-  return `${choices.language}.${choices.pacing}.${choices.players}`;
+  return `${choices.language}.${choices.pacing}.${choices.players}.${choices.loot}`;
 }
 
 // A malformed or tampered state falls back to the defaults, field by field.
 export function parseWizardState(state: string | undefined): WizardChoices {
-  const [language, pacing, players] = (state ?? "").split(".");
+  const [language, pacing, players, loot] = (state ?? "").split(".");
   const count = Number(players);
   return {
     language: language === "zh-TW" ? "zh-TW" : "en",
     pacing: pacing === "playByPost" ? "playByPost" : "live",
     players: Number.isInteger(count) && count >= 1 && count <= 6 ? count : defaultWizardChoices.players,
+    loot: loot === "split" ? "split" : "pooled",
   };
 }
 

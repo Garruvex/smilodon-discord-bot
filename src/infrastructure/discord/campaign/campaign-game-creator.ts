@@ -12,6 +12,8 @@ export interface NewGame {
   readonly language: CampaignLanguage;
   readonly pacing: "live" | "playByPost";
   readonly players: number;
+  // Where a fight's gold goes (the "loot-gold" house rule); pooled when absent.
+  readonly lootGold?: "pooled" | "split";
 }
 
 export type CreateGameResult =
@@ -52,7 +54,7 @@ export class CampaignGameCreator {
       pacing: { preset: game.pacing },
       maxPlayers: game.players,
       // No combat controls on Discord yet: fights play themselves on cautious autopilot.
-      houseRules: { "combat-mode": "autopilot" },
+      houseRules: { "combat-mode": "autopilot", "loot-gold": game.lootGold ?? "pooled" },
     });
     if (created.kind === "refused") return { kind: "refused", reason: created.reason };
     const provisioned = await this.options.setup.provision(created.value.key);

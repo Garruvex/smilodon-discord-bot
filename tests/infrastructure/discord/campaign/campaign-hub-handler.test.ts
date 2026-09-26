@@ -144,11 +144,11 @@ async function activeGame(t: Harness): Promise<{ key: CampaignKey; hubMessageId:
 
 describe("hub custom IDs", () => {
   it("round-trips the wizard choices and falls back per field when they are tampered with", () => {
-    const choices = { language: "zh-TW", pacing: "playByPost", players: 5 } as const;
+    const choices = { language: "zh-TW", pacing: "playByPost", players: 5, loot: "split" } as const;
     expect(parseWizardState(wizardState(choices))).toEqual(choices);
     expect(parseWizardState("fr.hourly.99")).toEqual(defaultWizardChoices);
     expect(parseWizardState(undefined)).toEqual(defaultWizardChoices);
-    expect(parseWizardState("zh-TW.live.x")).toEqual({ language: "zh-TW", pacing: "live", players: 3 });
+    expect(parseWizardState("zh-TW.live.x")).toEqual({ language: "zh-TW", pacing: "live", players: 3, loot: "pooled" });
   });
 
   it("parses only the hub's own IDs", () => {
@@ -163,8 +163,8 @@ describe("the Create game wizard", () => {
     const t = harness();
     await withSettings(t);
     expect(contentOf(await t.click("dndhub:create", { userId: "u-x" }))).toBe("Only DnD Admins can create games.");
-    expect(rowsOf(await t.click("dndhub:create", { userId: "u-a", admin: true }))).toHaveLength(4);
-    expect(rowsOf(await t.click("dndhub:create", { userId: "u-b", botAdmin: true }))).toHaveLength(4);
+    expect(rowsOf(await t.click("dndhub:create", { userId: "u-a", admin: true }))).toHaveLength(5);
+    expect(rowsOf(await t.click("dndhub:create", { userId: "u-b", botAdmin: true }))).toHaveLength(5);
   });
 
   it("says so when no AI dungeon master is configured", async () => {
@@ -180,22 +180,25 @@ describe("the Create game wizard", () => {
     const chosen = await t.click(hubCustomId("wizLanguage", start), { userId: "u-a", admin: true }, { values: ["zh-TW"] });
     expect(contentOf(chosen)).toContain("新團務");
     const rows = rowsOf(chosen);
-    expect(rows[0]?.[0]?.customId).toBe("dndhub:wizLanguage:zh-TW.live.3");
-    const next = await t.click("dndhub:wizPlayers:zh-TW.live.3", { userId: "u-a", admin: true }, { values: ["5"] });
-    expect(rowsOf(next).at(-1)?.[0]?.customId).toBe("dndhub:wizNext:zh-TW.live.5");
-    const pace = await t.click("dndhub:wizPacing:zh-TW.live.5", { userId: "u-a", admin: true }, { values: ["playByPost"] });
-    expect(rowsOf(pace).at(-1)?.[0]?.customId).toBe("dndhub:wizNext:zh-TW.playByPost.5");
+    expect(rows[0]?.[0]?.customId).toBe("dndhub:wizLanguage:zh-TW.live.3.pooled");
+    const next = await t.click("dndhub:wizPlayers:zh-TW.live.3.pooled", { userId: "u-a", admin: true }, { values: ["5"] });
+    expect(rowsOf(next).at(-1)?.[0]?.customId).toBe("dndhub:wizNext:zh-TW.live.5.pooled");
+    const pace = await t.click("dndhub:wizPacing:zh-TW.live.5.pooled", { userId: "u-a", admin: true }, { values: ["playByPost"] });
+    expect(rowsOf(pace).at(-1)?.[0]?.customId).toBe("dndhub:wizNext:zh-TW.playByPost.5.pooled");
+    const loot = await t.click("dndhub:wizLoot:zh-TW.playByPost.5.pooled", { userId: "u-a", admin: true }, { values: ["split"] });
+    expect(rowsOf(loot).at(-1)?.[0]?.customId).toBe("dndhub:wizNext:zh-TW.playByPost.5.split");
+    expect(contentOf(loot)).toContain("由英雄平分");
   });
 
   it("opens the name form from Next and creates the game from it with the chosen settings", async () => {
     const t = harness();
     await withSettings(t);
-    const modal = await t.click("dndhub:wizNext:zh-TW.playByPost.4", { userId: "u-a", admin: true });
+    const modal = await t.click("dndhub:wizNext:zh-TW.playByPost.4.split", { userId: "u-a", admin: true });
     expect(modal[0]?.kind).toBe("modal");
-    expect(JSON.stringify((modal[0]?.payload as { toJSON(): unknown }).toJSON())).toContain("dndhub:wizName:zh-TW.playByPost.4");
+    expect(JSON.stringify((modal[0]?.payload as { toJSON(): unknown }).toJSON())).toContain("dndhub:wizName:zh-TW.playByPost.4.split");
 
-    await t.submit("dndhub:wizName:zh-TW.playByPost.4", { userId: "u-a", admin: true }, "月光遺跡");
-    expect(t.createCalls).toEqual([{ guildId, organizerId: "u-a", name: "月光遺跡", language: "zh-TW", pacing: "playByPost", players: 4 }]);
+    await t.submit("dndhub:wizName:zh-TW.playByPost.4.split", { userId: "u-a", admin: true }, "月光遺跡");
+    expect(t.createCalls).toEqual([{ guildId, organizerId: "u-a", name: "月光遺跡", language: "zh-TW", pacing: "playByPost", players: 4, lootGold: "split" }]);
   });
 
   it("creates nothing for someone who is not an admin, even with a valid form", async () => {
