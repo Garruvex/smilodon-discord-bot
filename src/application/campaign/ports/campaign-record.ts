@@ -23,13 +23,17 @@ export interface CampaignChannels {
   readonly roleId: string | null;
 }
 
-// A Discord resource setup started to create. Saved before the call and
-// resolved after it, so a retry resumes instead of duplicating.
+// A Discord resource a game needs. It is written down, with the name chosen
+// for it, before any Discord call and its ID is filled in right after the
+// create, so a retry resumes instead of duplicating, and a later repair
+// recreates a deleted channel under the same name. Entries stay for the life
+// of the campaign; a null ID means not created yet.
 export interface PendingResource {
   readonly kind: "partyChannel" | "adventureChannel" | "discussionThread" | "role";
-  // A marker written into the resource's name or topic so a leftover from an
+  // A marker written into the resource's topic so a leftover from an
   // uncertain send can be found again.
   readonly marker: string;
+  readonly name: string;
   readonly resourceId: string | null;
 }
 
