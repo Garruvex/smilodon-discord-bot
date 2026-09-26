@@ -97,7 +97,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
     clock,
     ruleset: { rulesetId: content.rulesetId, rulesetVersion: content.version, houseRules: {} },
   });
-  const play = new CampaignPlayController({ unitOfWork, bus, refresher: cards });
+  const play = new CampaignPlayController({ unitOfWork, bus, refresher: cards, adventures });
   const setup = new CampaignSetupService({ unitOfWork, resources: new DiscordResourceGateway(client), cards, logger });
 
   const model = createModelClient(configuration);

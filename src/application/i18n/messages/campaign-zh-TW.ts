@@ -165,6 +165,8 @@ export const campaignZhTW = {
   "campaign.cmd.statusActive": "**{name}** 進行中：{scene}，{mode}",
   "campaign.cmd.statusEnded": "**{name}** 已結束",
 
+  "campaign.reply.fallen": "你的英雄已經陣亡。請選擇一位新英雄，下一回合加入隊伍",
+  "campaign.reply.newHero": "**{hero}** 加入了隊伍",
   "campaign.reply.obsolete": "這個按鈕已過期，請使用最新的訊息",
   "campaign.reply.actionSaved": "已儲存你的行動，回合結束前都可以修改",
   "campaign.reply.passed": "你這回合跳過了",

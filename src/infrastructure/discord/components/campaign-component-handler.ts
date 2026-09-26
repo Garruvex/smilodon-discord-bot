@@ -64,6 +64,7 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "details":
       return [`hero:${argument ?? ""}`];
     case "heroChoice":
+    case "newHero":
       return [];
   }
 }
@@ -93,7 +94,8 @@ export class CampaignComponentHandler implements ComponentHandler {
     const text = texts[record.language];
 
     if (interaction.isStringSelectMenu()) {
-      await this.chooseHero(interaction, record, text);
+      if (parsed.action === "newHero") await this.joinReplacement(interaction, record, text);
+      else await this.chooseHero(interaction, record, text);
       return;
     }
     if (!interaction.isButton()) return;
@@ -148,9 +150,16 @@ export class CampaignComponentHandler implements ComponentHandler {
       case "continue":
         return void (await this.outcome(await this.deps.play.continue(key, userId, interaction.id), text.campaign.reply.continued, reply, text));
       case "myHero":
-      case "details":
+      case "details": {
+        // A player whose hero fell is offered a new one instead of a sheet.
+        const options = parsed.action === "myHero" ? await this.deps.play.replacementOptions(key, userId) : [];
+        if (options.length > 0) {
+          await this.showReplacementPicker(interaction, record, text, options);
+          return;
+        }
         await reply(await this.heroSheet(record, text, parsed.action === "details" ? parsed.argument : null, userId));
         return;
+      }
       default:
         return;
     }
@@ -214,6 +223,36 @@ export class CampaignComponentHandler implements ComponentHandler {
         ),
       ],
     });
+  }
+
+  private async showReplacementPicker(
+    interaction: ButtonInteraction,
+    record: CampaignRecord,
+    text: Texts,
+    options: readonly { readonly id: string; readonly name: string; readonly className: string }[],
+  ): Promise<void> {
+    await interaction.editReply({
+      content: text.campaign.reply.fallen,
+      components: [
+        new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId(campaignCustomId("newHero", record.key.campaignId))
+            .setPlaceholder(text.campaign.pick.prompt)
+            .addOptions(options.map((option) => ({ label: text.campaign.pick.option({ hero: option.name, class: option.className }).slice(0, 100), value: option.id }))),
+        ),
+      ],
+    });
+  }
+
+  private async joinReplacement(interaction: StringSelectMenuInteraction, record: CampaignRecord, text: Texts): Promise<void> {
+    const presetId = interaction.values[0] ?? "";
+    const result = await this.deps.play.joinHero(record.key, interaction.user.id, presetId, interaction.id);
+    if (result.kind === "refused") {
+      await interaction.update({ content: refusalText(text, result.reason), components: [] });
+      return;
+    }
+    const hero = this.deps.adventures.document(record.adventure.adventureId, record.language)?.heroes.find((candidate) => candidate.id === presetId);
+    await interaction.update({ content: text.campaign.reply.newHero({ hero: hero?.name ?? presetId }), components: [] });
   }
 
   private async chooseHero(interaction: StringSelectMenuInteraction, record: CampaignRecord, text: Texts): Promise<void> {

@@ -10,6 +10,7 @@ export const campaignActions = [
   "leave",
   "pickHero",
   "heroChoice",
+  "newHero",
   "start",
   "act",
   "pass",

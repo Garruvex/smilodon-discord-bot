@@ -82,7 +82,7 @@ async function harness(language: "en" | "zh-TW" = "en"): Promise<Harness> {
   const cards = new CampaignCardService({ unitOfWork: r.store, rulesets: r.rulesets, adventures: r.adventures, messages, glossaries, logger: quiet });
   const handler = new CampaignComponentHandler({
     lobby: r.service,
-    play: new CampaignPlayController({ unitOfWork: r.store, bus: r.bus, refresher: cards }),
+    play: new CampaignPlayController({ unitOfWork: r.store, bus: r.bus, refresher: cards, adventures: r.adventures }),
     cards,
     unitOfWork: r.store,
     rulesets: r.rulesets,
@@ -224,5 +224,31 @@ describe("the play controls", () => {
     const { interaction, sent } = fakeInteraction({ customId: "dnd:pass:missing", userId: "u", kind: "button" });
     await t.handler.execute({ interaction, logger: quiet as never });
     expect(contentOf(sent)).toBe("That campaign no longer exists.");
+  });
+});
+
+describe("a fallen hero", () => {
+  it("is offered a new hero from My Hero, and joins the party by choosing one", async () => {
+    const t = await harness();
+    await t.press("join", "u-org");
+    await t.select("u-org", heroes[0]?.id ?? "");
+    await t.press("join", "u-b");
+    await t.select("u-b", heroes[1]?.id ?? "");
+    await t.press("start", "u-org");
+    await t.r.store.transaction(async (tx) => {
+      const stored = await tx.loadCampaign(t.key);
+      if (stored === undefined) throw new Error("campaign");
+      await tx.saveCampaign(t.key, { ...stored.state, heroStatus: { [heroes[1]?.id ?? ""]: { hp: 0, dead: true, resources: { spellSlots: {}, featureUses: {} } } } }, stored.revision);
+    });
+    const sent = await t.press("myHero", "u-b");
+    const picker = sent.at(-1)?.payload as { content: string; components: { toJSON(): { components: { options: { value: string }[] }[] } }[] };
+    expect(picker.content).toContain("Your hero has fallen for good");
+    expect(picker.components[0]?.toJSON().components[0]?.options.map((option) => option.value)).toEqual([heroes[1]?.id, heroes[2]?.id]);
+
+    const { interaction, sent: chosen } = fakeInteraction({ customId: `dnd:newHero:${t.key.campaignId}`, userId: "u-b", values: [heroes[2]?.id ?? ""], kind: "select" });
+    await t.handler.execute({ interaction, logger: quiet as never });
+    expect(contentOf(chosen)).toBe(`**${heroes[2]?.name}** joins the party.`);
+    const state = (await t.r.store.transaction((tx) => tx.loadCampaign(t.key)))?.state;
+    expect(state?.members["u-b"]?.characterId).toBe(`${heroes[2]?.id}-1`);
   });
 });

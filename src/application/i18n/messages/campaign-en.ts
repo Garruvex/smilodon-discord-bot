@@ -165,6 +165,8 @@ export const campaignEn = {
   "campaign.cmd.statusActive": "**{name}** is being played: {scene}, {mode}.",
   "campaign.cmd.statusEnded": "**{name}** is finished.",
 
+  "campaign.reply.fallen": "Your hero has fallen for good. Choose a new one to join the party at the next round.",
+  "campaign.reply.newHero": "**{hero}** joins the party.",
   "campaign.reply.obsolete": "That control is out of date. Use the newest message.",
   "campaign.reply.actionSaved": "Your action is saved. You can change it until the round closes.",
   "campaign.reply.passed": "You passed this round.",

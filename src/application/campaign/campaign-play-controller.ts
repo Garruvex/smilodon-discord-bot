@@ -1,4 +1,6 @@
 import type { CampaignCommand } from "../../domain/campaign/commands/campaign-command.js";
+import { isFallen } from "../../domain/campaign/state/campaign-state.js";
+import type { AdventureLibrary } from "./ports/adventure-library.js";
 import type { CharacterId, UserId } from "../../domain/campaign/core/ids.js";
 import type { RejectionCode } from "../../domain/campaign/engine/rejection.js";
 import type { CampaignState } from "../../domain/campaign/state/campaign-state.js";
@@ -22,8 +24,47 @@ export class CampaignPlayController {
       readonly unitOfWork: CampaignUnitOfWork;
       readonly bus: CampaignCommandBus;
       readonly refresher: CardRefresher;
+      readonly adventures: AdventureLibrary;
     },
   ) {}
+
+  // The heroes a player whose hero fell can take instead: the adventure's
+  // presets that no living hero already is. Empty when their hero is alive.
+  public async replacementOptions(key: CampaignKey, userId: UserId): Promise<readonly { readonly id: string; readonly name: string; readonly className: string }[]> {
+    const loaded = await this.options.unitOfWork.transaction(async (tx) => ({ record: await tx.loadRecord(key), stored: await tx.loadCampaign(key) }));
+    if (loaded.record === undefined || loaded.stored === undefined) return [];
+    const { state } = loaded.stored;
+    const current = state.members[userId]?.characterId ?? null;
+    if (current === null || !isFallen(state, current)) return [];
+    const heroes = this.options.adventures.document(loaded.record.record.adventure.adventureId, loaded.record.record.language)?.heroes ?? [];
+    const living = Object.values(state.characters).filter((sheet) => !isFallen(state, sheet.id));
+    return heroes
+      .filter((hero) => !living.some((sheet) => baseHeroId(sheet.id) === hero.id))
+      .map((hero) => ({ id: hero.id, name: hero.name, className: hero.class }));
+  }
+
+  // A player whose hero fell joins a new one: a fresh copy of a preset at the
+  // party's level, with starting gear and none of the old hero's loot.
+  public async joinHero(key: CampaignKey, userId: UserId, presetId: string, interactionId: string): Promise<PlayResult> {
+    const options = await this.replacementOptions(key, userId);
+    if (!options.some((option) => option.id === presetId)) return { kind: "refused", reason: "heroNotReplaceable" };
+    const loaded = await this.options.unitOfWork.transaction(async (tx) => ({ record: await tx.loadRecord(key), stored: await tx.loadCampaign(key) }));
+    if (loaded.record === undefined || loaded.stored === undefined) return { kind: "refused", reason: "notFound" };
+    const document = this.options.adventures.document(loaded.record.record.adventure.adventureId, loaded.record.record.language);
+    const preset = document?.heroes.find((hero) => hero.id === presetId);
+    if (preset === undefined) return { kind: "refused", reason: "invalidHero" };
+    const used = Object.values(loaded.stored.state.characters).filter((sheet) => baseHeroId(sheet.id) === presetId).length;
+    const { class: className, ...sheet } = preset;
+    const outcome = await this.options.bus.execute(
+      key,
+      { kind: "joinHero", sheet: { ...sheet, className, id: `${presetId}-${used + 1}`, ownerUserId: userId, name: used === 0 ? preset.name : `${preset.name} ${roman(used + 1)}` } },
+      { commandId: `dnd:${interactionId}`, actor: { kind: "user", userId } },
+    );
+    if (outcome.kind === "notFound") return { kind: "refused", reason: "notFound" };
+    if (outcome.kind === "rejected") return { kind: "refused", reason: outcome.rejection.code };
+    this.options.refresher.refresh(key);
+    return { kind: "ok" };
+  }
 
   public submitAction(key: CampaignKey, userId: UserId, text: string, interactionId: string): Promise<PlayResult> {
     return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "submitAction", characterId, text }));
@@ -97,4 +138,22 @@ export class CampaignPlayController {
     this.options.refresher.refresh(key);
     return { kind: "ok" };
   }
+}
+
+// "c-mira-2" is the second hero played from the "c-mira" preset.
+function baseHeroId(id: string): string {
+  return id.replace(/-\d+$/, "");
+}
+
+function roman(value: number): string {
+  const numerals: readonly [number, string][] = [[10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"]];
+  let rest = value;
+  let text = "";
+  for (const [size, numeral] of numerals) {
+    while (rest >= size) {
+      text += numeral;
+      rest -= size;
+    }
+  }
+  return text;
 }

@@ -29,7 +29,7 @@ async function twoPlayerCampaign(r: Rig): Promise<CampaignKey> {
 
 function controllerFor(r: Rig): { controller: CampaignPlayController; refreshes: Refreshes } {
   const refreshes = new Refreshes();
-  return { controller: new CampaignPlayController({ unitOfWork: r.store, bus: r.bus, refresher: refreshes }), refreshes };
+  return { controller: new CampaignPlayController({ unitOfWork: r.store, bus: r.bus, refresher: refreshes, adventures: r.adventures }), refreshes };
 }
 
 const refusal = (result: PlayResult): string => (result.kind === "refused" ? result.reason : "ok");
@@ -103,5 +103,49 @@ describe("the play controller", () => {
     expect(refusal(await controller.submitAction(key, "u-org", "Hi.", "i-4"))).toBe("campaignWaiting");
     expect(refusal(await controller.continue(key, "u-b", "i-5"))).toBe("notOrganizer");
     expect(await controller.continue(key, "u-org", "i-6")).toEqual({ kind: "ok" });
+  });
+});
+
+describe("replacing a fallen hero", () => {
+  async function withFallenHero(r: Rig): Promise<CampaignKey> {
+    const key = await twoPlayerCampaign(r);
+    await r.store.transaction(async (tx) => {
+      const stored = await tx.loadCampaign(key);
+      if (stored === undefined) throw new Error("campaign");
+      const dead = { hp: 0, dead: true, resources: { spellSlots: {}, featureUses: {} } };
+      await tx.saveCampaign(key, { ...stored.state, heroStatus: { [heroes[1] ?? ""]: dead } }, stored.revision);
+    });
+    return key;
+  }
+
+  it("offers only presets no living hero already is, and only to a player whose hero fell", async () => {
+    const r = rig();
+    const key = await withFallenHero(r);
+    const { controller } = controllerFor(r);
+    expect(await controller.replacementOptions(key, "u-org")).toEqual([]);
+    const options = await controller.replacementOptions(key, "u-b");
+    expect(options.map((option) => option.id)).toEqual([heroes[1], heroes[2]]);
+  });
+
+  it("gives the player a fresh copy of the preset at the party's level, without the old gear", async () => {
+    const r = rig();
+    const key = await withFallenHero(r);
+    const { controller, refreshes } = controllerFor(r);
+    expect(await controller.joinHero(key, "u-b", heroes[1] ?? "", "i-1")).toEqual({ kind: "ok" });
+    expect(refreshes.keys).toHaveLength(1);
+    const state = (await r.store.transaction((tx) => tx.loadCampaign(key)))?.state;
+    const fresh = state?.characters[`${heroes[1]}-2`];
+    expect(fresh).toMatchObject({ ownerUserId: "u-b", level: 1 });
+    expect(fresh?.name).toContain(" II");
+    expect(state?.members["u-b"]?.characterId).toBe(`${heroes[1]}-2`);
+    expect(state?.heroStatus[`${heroes[1]}-2`]).toBeUndefined();
+  });
+
+  it("refuses a hero that is not on offer, and a player whose hero is alive", async () => {
+    const r = rig();
+    const key = await withFallenHero(r);
+    const { controller } = controllerFor(r);
+    expect(refusal(await controller.joinHero(key, "u-b", heroes[0] ?? "", "i-1"))).toBe("heroNotReplaceable");
+    expect(refusal(await controller.joinHero(key, "u-org", heroes[2] ?? "", "i-2"))).toBe("heroNotReplaceable");
   });
 });
