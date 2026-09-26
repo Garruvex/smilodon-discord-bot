@@ -231,3 +231,62 @@ describe("a large ledger", () => {
     expect(named.text).not.toContain("Extra Person 8");
   });
 });
+
+describe("retelling the last scene", () => {
+  it("tells the same round again from the same outcomes, changing only the words", async () => {
+    const c = await campaign();
+    await playRound(c, 1);
+    const before = await stateOf(c);
+    expect(before.lastNarratedRound).toBe(1);
+    const eventsBefore = (await c.r.store.transaction((tx) => tx.readEvents(c.key))).map((envelope) => envelope.event);
+
+    const asked = await c.r.bus.execute(c.key, { kind: "regenerateNarration", roundNumber: 1 }, { commandId: "retell", actor: player });
+    expect(asked.kind).toBe("accepted");
+    await c.runtime.runOnce();
+    await c.runtime.runOnce();
+    const eventsAfter = (await c.r.store.transaction((tx) => tx.readEvents(c.key))).map((envelope) => envelope.event);
+    const added = eventsAfter.slice(eventsBefore.length);
+    // One new telling of round 1, and nothing else happened: no dice, no state change, no new round.
+    expect(added.map((event) => event.kind)).toEqual(["narrationRecorded"]);
+    expect(added[0]).toMatchObject({ roundNumber: 1 });
+    const after = await stateOf(c);
+    expect({ lastNarratedRound: after.lastNarratedRound, heroStatus: after.heroStatus, checks: after.checks, round: after.round?.number, encounter: after.encounter }).toEqual({
+      lastNarratedRound: before.lastNarratedRound,
+      heroStatus: before.heroStatus,
+      checks: before.checks,
+      round: before.round?.number,
+      encounter: before.encounter,
+    });
+    // The table is told it is a retelling.
+    expect(c.r.presenter.delivered).toContainEqual({ kind: "narration", roundNumber: 1, regenerated: true });
+  });
+
+  it("is only for the organizer, only for the round just told, and never twice for the same request", async () => {
+    const c = await campaign();
+    await playRound(c, 1);
+    await playRound(c, 2);
+    expect(await c.r.bus.execute(c.key, { kind: "regenerateNarration", roundNumber: 1 }, { commandId: "old", actor: player })).toEqual({ kind: "rejected", rejection: { code: "nothingToRetell" } });
+    expect(await c.r.bus.execute(c.key, { kind: "regenerateNarration", roundNumber: 2 }, { commandId: "other", actor: { kind: "user", userId: "u-other" } })).toEqual({ kind: "rejected", rejection: { code: "notOrganizer" } });
+    expect(await c.r.bus.execute(c.key, { kind: "replaceNarration", roundNumber: 2, text: "Forged." }, { commandId: "forge", actor: player })).toEqual({ kind: "rejected", rejection: { code: "systemOnly" } });
+    const first = await c.r.bus.execute(c.key, { kind: "regenerateNarration", roundNumber: 2 }, { commandId: "same", actor: player });
+    expect(await c.r.bus.execute(c.key, { kind: "regenerateNarration", roundNumber: 2 }, { commandId: "same", actor: player })).toEqual(first);
+  });
+});
+
+describe("the safety pause", () => {
+  it("asks the next narration to be gentle without saying who asked, and stops asking once it is told", async () => {
+    const c = await campaign();
+    await playRound(c, 1);
+    await c.r.bus.execute(c.key, { kind: "pauseCampaign", reason: "safety" }, { commandId: "safety", actor: { kind: "user", userId: "u-org" } });
+    expect((await stateOf(c)).safetyNote).toBe(true);
+    const narrator = await contextFor(c, "narrator");
+    expect(narrator.text).toContain("Someone at the table used the safety pause. Keep the next narration gentle");
+    expect(narrator.text).not.toContain("u-org");
+    expect((await contextFor(c, "planner")).text).toContain("Keep the next narration gentle");
+
+    await c.r.bus.execute(c.key, { kind: "continue" }, { commandId: "resume", actor: player });
+    await playRound(c, (await stateOf(c)).lastRoundNumber);
+    expect((await stateOf(c)).safetyNote).toBe(false);
+    expect((await contextFor(c, "narrator")).text).not.toContain("safety pause");
+  });
+});

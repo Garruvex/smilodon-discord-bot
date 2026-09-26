@@ -120,6 +120,29 @@ export function recordNarration(decision: Decision, roundNumber: number, text: s
   return openRound(decision);
 }
 
+// The organizer asks for the last narration to be told again. It changes no
+// state: no dice, no resources, no story effects (those were fixed before the
+// words), and only the round just narrated may be retold.
+export function regenerateNarration(decision: Decision, roundNumber: number): Rejection | null {
+  const { state, ctx } = decision;
+  if (ctx.actor.kind !== "user" || ctx.actor.userId !== state.organizerId) return { code: "notOrganizer" };
+  if (roundNumber !== state.lastNarratedRound || roundNumber < 1) return { code: "nothingToRetell" };
+  decision.request({ kind: "renarrate", roundNumber });
+  return null;
+}
+
+// The retold words replace the earlier ones for that round; nothing else moves.
+export function replaceNarration(decision: Decision, roundNumber: number, text: string): Rejection | null {
+  const { state, ctx } = decision;
+  if (ctx.actor.kind !== "system") return { code: "systemOnly" };
+  const trimmed = text.trim();
+  if (trimmed.length === 0 || trimmed.length > maxNarrationLength) return { code: "emptyNarration" };
+  if (roundNumber !== state.lastNarratedRound) return { code: "staleNarration" };
+  decision.emit({ kind: "narrationRecorded", roundNumber, text: trimmed });
+  decision.request({ kind: "deliver", delivery: { kind: "narration", roundNumber, regenerated: true } });
+  return null;
+}
+
 // Keeps the Chronicler's summary of the rounds through `throughRound`. A late
 // one, made before newer rounds were summarized, is refused rather than
 // overwriting what is already there; a summary stating hit points, slots or

@@ -42,6 +42,9 @@ export interface CampaignState {
   // A grant does nothing while the owner is present, and only reaches turns
   // (never the owner's items, story choices or anything outside a fight).
   readonly proxies?: Readonly<Record<UserId, UserId>>;
+  // Someone used the safety pause: the next narration is asked to keep gentle
+  // (plan §5, Table safety). Cleared once that narration is told.
+  readonly safetyNote?: boolean;
   // The round in which the party last changed scene: the moment a chapter closes.
   readonly sceneChangedRound?: number;
   // Checks of the current round only; earlier ones live in the event log.

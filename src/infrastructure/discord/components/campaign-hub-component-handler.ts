@@ -325,7 +325,7 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     if (record.lifecycle !== "lobby") {
       rows.push(
         row(paused ? verb("resume", t.resume).setStyle(ButtonStyle.Success) : verb("pause", t.pause), verb("closeRound", t.closeRound), verb("retry", t.retry)),
-        row(verb("shortRest", t.shortRest), verb("longRest", t.longRest), verb("retryFight", t.retryFight)),
+        row(verb("shortRest", t.shortRest), verb("longRest", t.longRest), verb("retryFight", t.retryFight), verb("retell", t.retell)),
       );
     }
     rows.push(row(verb("repair", t.repair), new ButtonBuilder().setCustomId(hubCustomId("endAsk", id)).setLabel(t.end).setStyle(ButtonStyle.Danger)));
@@ -356,6 +356,8 @@ function successText(verb: ManageVerb, text: Texts): string {
       return t.retried;
     case "retryFight":
       return t.fightRetried;
+    case "retell":
+      return t.retold;
     case "shortRest":
     case "longRest":
       return t.rested;

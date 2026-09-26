@@ -90,7 +90,7 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     case "waitingForPlayers":
       return { ...state, status: "waitingForPlayers", pausedBy: null };
     case "campaignPaused":
-      return { ...state, status: "waitingForPlayers", pausedBy: event.reason };
+      return { ...state, status: "waitingForPlayers", pausedBy: event.reason, ...(event.reason === "safety" ? { safetyNote: true } : {}) };
     case "plannerFailed":
     case "planRetryRequested":
       // History only: the round stays in planning until the next command.
@@ -104,7 +104,7 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     case "tableReady":
       return { ...state, opening: "done" };
     case "narrationRecorded":
-      return { ...state, lastNarratedRound: Math.max(state.lastNarratedRound, event.roundNumber) };
+      return { ...state, lastNarratedRound: Math.max(state.lastNarratedRound, event.roundNumber), safetyNote: false };
     case "ledgerFactRecorded": {
       const entry = state.ledger[event.entityId];
       const fact = { text: event.fact, visibility: event.visibility };

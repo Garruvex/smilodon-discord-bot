@@ -14,7 +14,7 @@ import type { CampaignKey, CampaignUnitOfWork } from "./ports/campaign-store.js"
 export type PlayRefusal = RejectionCode | "notFound" | "notActive" | "noHero" | "noPendingRoll";
 
 // What a manager can do to a game from the hub.
-export type ManageAction = "pause" | "resume" | "closeRound" | "retry" | "retryFight" | "shortRest" | "longRest";
+export type ManageAction = "pause" | "resume" | "closeRound" | "retry" | "retryFight" | "retell" | "shortRest" | "longRest";
 
 export type PlayResult = { readonly kind: "ok" } | { readonly kind: "refused"; readonly reason: PlayRefusal };
 
@@ -182,7 +182,7 @@ export class CampaignPlayController {
   // an organizer control on a game they do not organize. The engine still
   // sees the organizer's own rights, so it decides exactly as it would for them.
   public manage(key: CampaignKey, verb: ManageAction, interactionId: string): Promise<PlayResult> {
-    const command: CampaignCommand =
+    const command = (state: CampaignState): CampaignCommand =>
       verb === "pause"
         ? { kind: "pauseCampaign", reason: "organizer" }
         : verb === "resume"
@@ -193,8 +193,10 @@ export class CampaignPlayController {
               ? { kind: "retryPlan" }
               : verb === "retryFight"
                 ? { kind: "retryEncounter" }
-                : { kind: "takeRest", rest: verb === "longRest" ? "long" : "short" };
-    return this.perform(key, null, interactionId, () => command);
+                : verb === "retell"
+                  ? { kind: "regenerateNarration", roundNumber: state.lastNarratedRound }
+                  : { kind: "takeRest", rest: verb === "longRest" ? "long" : "short" };
+    return this.perform(key, null, interactionId, command);
   }
 
   private asHero(key: CampaignKey, userId: UserId, interactionId: string, command: (characterId: CharacterId) => CampaignCommand): Promise<PlayResult> {

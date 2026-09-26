@@ -121,7 +121,12 @@ function instructions(input: ContextInput): ContextSection {
   const glossary = Object.entries(input.glossary.names)
     .map(([id, name]) => `${id} = ${name}`)
     .join("\n");
-  return { layer: "A", title: "DM instructions", text: [...role, language, "Glossary:", glossary].join("\n") };
+  // A player asked for a pause: the next telling is gentle, and never says who asked.
+  const gentle =
+    input.state.safetyNote === true
+      ? ["Someone at the table used the safety pause. Keep the next narration gentle: no graphic violence or distressing detail, let the scene settle calmly, and do not mention that anyone asked or who."]
+      : [];
+  return { layer: "A", title: "DM instructions", text: [...role, ...gentle, language, "Glossary:", glossary].join("\n") };
 }
 
 function adventure(input: ContextInput): ContextSection {

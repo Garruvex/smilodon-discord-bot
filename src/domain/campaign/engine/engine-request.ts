@@ -10,6 +10,8 @@ export type EngineRequest =
   | { readonly kind: "narrate"; readonly roundNumber: number }
   // The adventure's opening scene, told before the first round.
   | { readonly kind: "narrateOpening" }
+  // Tell the last narrated round again (the organizer did not like it).
+  | { readonly kind: "renarrate"; readonly roundNumber: number }
   // Condense the rounds through this one (background; a scene just closed, or enough rounds piled up).
   | { readonly kind: "chronicle"; readonly throughRound: number }
   // A combat round's flourish, or (final) the fight's closing narration.
@@ -47,7 +49,7 @@ export type DeliverySpec =
   | { readonly kind: "campaignPaused"; readonly reason: "organizer" | "recovery" | "safety" }
   // A hero's in-character line, posted as they said it.
   | { readonly kind: "speech"; readonly characterId: string; readonly text: string }
-  | { readonly kind: "narration"; readonly roundNumber: number }
+  | { readonly kind: "narration"; readonly roundNumber: number; readonly regenerated?: boolean }
   | { readonly kind: "opening" }
   // "The DM considers…": the round is held after the Planner failed.
   | { readonly kind: "dmHolding"; readonly roundNumber: number }

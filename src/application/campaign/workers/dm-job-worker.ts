@@ -52,6 +52,7 @@ export class DmJobWorker {
       ...(await tx.pendingOutbox("narrate")),
       ...(await tx.pendingOutbox("narrateCombat")),
       ...(await tx.pendingOutbox("chronicle")),
+      ...(await tx.pendingOutbox("renarrate")),
     ]);
     const failed: { id: string; error: string }[] = [];
     for (const item of items) {
@@ -61,6 +62,7 @@ export class DmJobWorker {
         if (item.request.kind === "narrate") await this.narrate(item, item.request.roundNumber);
         if (item.request.kind === "narrateCombat") await this.narrateCombat(item, item.request.encounterId, item.request.round, item.request.final);
         if (item.request.kind === "chronicle") await this.chronicle(item, item.request.throughRound);
+        if (item.request.kind === "renarrate") await this.renarrate(item, item.request.roundNumber);
         await unitOfWork.transaction((tx) => tx.completeOutbox(item.id));
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -145,6 +147,23 @@ export class DmJobWorker {
       { kind: "recordNarration", roundNumber, text },
       { commandId: `${item.id}:narration`, actor: system },
     );
+  }
+
+  // Tells the last narrated round again from the same committed outcomes.
+  // Only words come back: the outcomes were fixed before the first telling.
+  // A failure is retried, and after the last attempt the earlier telling stands.
+  private async renarrate(item: OutboxItem, roundNumber: number): Promise<void> {
+    const loaded = await this.load(item.key);
+    if (loaded.stored.state.lastNarratedRound !== roundNumber) return;
+    const request = this.narratorRequest(loaded, roundNumber);
+    let text: string;
+    try {
+      text = (await this.options.narrator.narrate(request)).text;
+    } catch (error) {
+      if (item.attempts + 1 < this.maxAttempts) throw error;
+      return;
+    }
+    await this.options.bus.execute(item.key, { kind: "replaceNarration", roundNumber, text }, { commandId: `${item.id}:retold`, actor: system });
   }
 
   // Condenses the rounds since the last summary, once for the table (from what
