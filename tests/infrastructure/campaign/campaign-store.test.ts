@@ -148,11 +148,11 @@ describe.each(stores)("campaign store contract: $name", ({ create }) => {
     const store = create();
     expect(await store.transaction((tx) => tx.loadGuildSettings("g-1"))).toBeUndefined();
     await store.transaction(async (tx) => {
-      await tx.saveGuildSettings({ guildId: "g-1", categoryId: "cat-1", hubChannelId: null });
-      await tx.saveGuildSettings({ guildId: "g-1", categoryId: "cat-1", hubChannelId: "hub-1" });
-      await tx.saveGuildSettings({ guildId: "g-2", categoryId: null, hubChannelId: "hub-2" });
+      await tx.saveGuildSettings({ guildId: "g-1", categoryId: "cat-1", hubChannelId: null, hubCard: null });
+      await tx.saveGuildSettings({ guildId: "g-1", categoryId: "cat-1", hubChannelId: "hub-1", hubCard: null });
+      await tx.saveGuildSettings({ guildId: "g-2", categoryId: null, hubChannelId: "hub-2", hubCard: null });
     });
-    expect(await store.transaction((tx) => tx.loadGuildSettings("g-1"))).toEqual({ guildId: "g-1", categoryId: "cat-1", hubChannelId: "hub-1" });
+    expect(await store.transaction((tx) => tx.loadGuildSettings("g-1"))).toEqual({ guildId: "g-1", categoryId: "cat-1", hubChannelId: "hub-1", hubCard: null });
     expect((await store.transaction((tx) => tx.loadGuildSettings("g-2")))?.hubChannelId).toBe("hub-2");
   });
 

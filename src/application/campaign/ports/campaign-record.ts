@@ -41,6 +41,9 @@ export interface CardReference {
   readonly messageId: string;
   // A fingerprint of what was last drawn, so an unchanged card is not re-sent.
   readonly renderedHash: string;
+  // Which round or turn the message belongs to. A card whose epoch changes is
+  // replaced by a new message (the old one is retired) instead of edited.
+  readonly epoch: string;
 }
 
 // The server-wide campaign setup (/dnd setup): where games live and where the
@@ -50,6 +53,8 @@ export interface GuildCampaignSettings {
   readonly guildId: string;
   readonly categoryId: string | null;
   readonly hubChannelId: string | null;
+  // The hub's one message listing every game.
+  readonly hubCard: CardReference | null;
 }
 
 export interface CampaignRecord {

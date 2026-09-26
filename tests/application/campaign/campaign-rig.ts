@@ -45,6 +45,8 @@ export interface Rig {
   presenter: Recording;
   plannerScript: ScriptedProposal[];
   runtime: (bootId?: string) => CampaignRuntime;
+  rulesets: RulesetCatalog;
+  adventures: StaticAdventureLibrary;
 }
 
 export function rig(store = new InMemoryCampaignStore(), clock = new ManualClock(1_000)): Rig {
@@ -78,6 +80,8 @@ export function rig(store = new InMemoryCampaignStore(), clock = new ManualClock
     service,
     presenter,
     plannerScript,
+    rulesets,
+    adventures,
     runtime: (bootId = "boot-1"): CampaignRuntime =>
       new CampaignRuntime({
         unitOfWork: store,
