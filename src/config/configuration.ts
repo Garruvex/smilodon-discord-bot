@@ -46,6 +46,17 @@ type ChatConfigVariant = ChatProviderVariant & {
   summaryReasoningEffort?: "minimal" | "low" | "medium" | "high";
 };
 
+export type CampaignModelConfiguration =
+  | {
+      provider: "openai-responses";
+      apiKey: string;
+      baseUrl: string;
+      models: readonly string[];
+      reasoningEffort: "none" | "low" | "medium" | "high" | "xhigh" | "max";
+    }
+  | { provider: "openai-compatible"; apiKey: string; baseUrl: string; models: readonly string[] }
+  | { provider: "gemini"; apiKey: string; models: readonly string[]; thinkingBudget: number | null };
+
 export type EmbeddingConfiguration =
   | { provider: "openai"; apiKey: string; baseUrl: string; model: string }
   | { provider: "gemini"; apiKey: string; model: string };
@@ -100,6 +111,9 @@ export interface ApplicationConfiguration {
   // dependencies.ts's `utilityProvider` fallback chain). No summaryModels/
   // embedding configuration here — this block IS the summary/utility model already.
   utilityChat: ChatProviderVariant | null;
+  // The AI dungeon master for /dnd campaigns (CAMPAIGN_* env vars). Null:
+  // campaigns cannot be started.
+  campaign: CampaignModelConfiguration | null;
   // Independent of chat/utility generation: either vendor can provide
   // vectors regardless of which provider produces replies or summaries.
   embeddings: EmbeddingConfiguration | null;

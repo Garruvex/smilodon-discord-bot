@@ -150,6 +150,7 @@ export const campaignEn = {
   "campaign.cmd.setupDone": "D&D is set up. Games are listed in <#{hub}>, and each new game gets its own channels in the D&D category.",
   "campaign.cmd.setupMissing": "I need more permissions before I can set this up: {permissions}.",
   "campaign.cmd.adminOnly": "Only bot administrators can do that.",
+  "campaign.cmd.noModel": "No AI dungeon master is configured on this bot (CAMPAIGN_MODEL), so games cannot be started.",
   "campaign.cmd.notSetup": "Run /dnd setup first.",
   "campaign.cmd.created": "**{name}** is ready. Players can join in <#{party}>, and the story will be told in <#{adventure}>.",
   "campaign.cmd.createdNoChannels": "**{name}** was created, but its channels could not be finished ({step}). Fix my permissions and run /dnd repair inside the game.",

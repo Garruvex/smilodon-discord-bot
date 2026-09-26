@@ -19,6 +19,8 @@ export interface DndCommandDependencies {
   readonly access: AccessPolicyService;
   // The adventure a new game starts from (the bundled default for now).
   readonly defaultAdventureId: string;
+  // False when no CAMPAIGN_MODEL is set: a game could not be run, so none is started.
+  readonly modelConfigured: boolean;
 }
 
 // Setting up a server and creating games are for bot administrators (plan §3,
@@ -129,6 +131,10 @@ export class DndCommand implements BotCommand {
   }
 
   private async create(interaction: ChatInputCommandInteraction<"cached">, text: Texts, responses: CommandContext["responses"]): Promise<void> {
+    if (!this.deps.modelConfigured) {
+      await responses.edit(text.campaign.cmd.noModel);
+      return;
+    }
     const pacing = interaction.options.getString("pacing") === "playByPost" ? ("playByPost" as const) : ("live" as const);
     const language = interaction.options.getString("language") === "zh-TW" ? ("zh-TW" as const) : ("en" as const);
     const created = await this.deps.lobby.create({

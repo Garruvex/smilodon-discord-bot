@@ -25,7 +25,7 @@ function configuration(): ApplicationConfiguration {
     persistence: { driver: "file", databaseUrl: null },
     lavalink: { host: "localhost", port: 2333, password: "test-password", secure: false },
     chat: null,
-    utilityChat: null,
+    utilityChat: null, campaign: null,
     embeddings: null,
     memory: defaultMemoryEngineLimits,
     chatDelivery: { maxGeneratedImageAggregateBytes: 10 * 1024 * 1024 },

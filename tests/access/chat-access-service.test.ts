@@ -31,7 +31,7 @@ function configuration(): ApplicationConfiguration {
       secure: false,
     },
     chat: null,
-    utilityChat: null,
+    utilityChat: null, campaign: null,
     embeddings: null,
     memory: defaultMemoryEngineLimits,
     chatDelivery: { maxGeneratedImageAggregateBytes: 10 * 1024 * 1024 },

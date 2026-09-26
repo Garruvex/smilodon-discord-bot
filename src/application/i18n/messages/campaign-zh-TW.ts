@@ -150,6 +150,7 @@ export const campaignZhTW = {
   "campaign.cmd.setupDone": "D&D 已設定完成。團務會列在 <#{hub}>，每個新團都會在 D&D 分類下建立自己的頻道",
   "campaign.cmd.setupMissing": "我還需要更多權限才能設定：{permissions}",
   "campaign.cmd.adminOnly": "只有機器人管理員可以這麼做",
+  "campaign.cmd.noModel": "這個機器人沒有設定 AI 地下城主（CAMPAIGN_MODEL），因此無法開團",
   "campaign.cmd.notSetup": "請先執行 /dnd setup",
   "campaign.cmd.created": "**{name}** 準備好了。玩家可以到 <#{party}> 加入，故事會在 <#{adventure}> 進行",
   "campaign.cmd.createdNoChannels": "**{name}** 已建立，但頻道沒能建完（{step}）。請修正我的權限後在該團務中執行 /dnd repair",
