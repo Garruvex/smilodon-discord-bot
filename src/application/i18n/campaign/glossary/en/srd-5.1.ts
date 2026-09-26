@@ -21,6 +21,8 @@ export const enSrd51Glossary: Glossary = {
     "item:bite": "Bite",
     "monster:goblin": "Goblin",
     "monster:wolf": "Wolf",
+    "monster:giant-wolf-spider": "Giant Wolf Spider",
+    "spell:thaumaturgy": "Thaumaturgy",
     "monster:bugbear": "Bugbear",
     "spell:guiding-bolt": "Guiding Bolt",
     "item:javelin": "Javelin",

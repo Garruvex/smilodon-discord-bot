@@ -80,6 +80,7 @@ const documentSchema = z
             savingThrows: z.array(z.enum(abilities)),
             level: z.number().int().min(1).max(20),
             maxHp: z.number().int().min(1),
+            hitDie: z.union([z.literal(6), z.literal(8), z.literal(10), z.literal(12)]),
             speed: z.number().int().min(0),
             equipment: z.array(contentId("item")).min(1),
             features: z.array(contentId("feature")),

@@ -68,6 +68,7 @@ heroes:
     savingThrows: [str]
     level: 1
     maxHp: 8
+    hitDie: 10
     speed: 30
     equipment: [item:mace]
     features: []
@@ -117,6 +118,7 @@ heroes:
     savingThrows: [str]
     level: 1
     maxHp: 8
+    hitDie: 10
     speed: 30
     equipment: [item:mace]
     features: []

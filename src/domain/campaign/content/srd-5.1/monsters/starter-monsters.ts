@@ -60,4 +60,25 @@ export const bugbear = defineMonster({
   traits: [],
 });
 
-export const srd51StarterMonsters: readonly MonsterDefinition[] = [goblin, wolf, bugbear];
+// The bite's poison damage is not modeled; a failed CON save leaves the
+// target Poisoned (disadvantage on attack rolls) for the rest of the fight.
+export const giantWolfSpider = defineMonster({
+  id: "monster:giant-wolf-spider",
+  source,
+  armorClass: 13,
+  maxHp: 11,
+  speed: 40,
+  abilityScores: { str: 12, dex: 16, con: 13, int: 3, wis: 12, cha: 4 },
+  attacks: [
+    {
+      weapon: "item:bite",
+      toHit: 3,
+      damage: plus(dice(1, 6), 1),
+      onHit: [{ kind: "conditionUnlessSave", target: "target", ability: "con", dc: 11, condition: "condition:poisoned" }],
+    },
+  ],
+  tactic: "brute",
+  traits: [],
+});
+
+export const srd51StarterMonsters: readonly MonsterDefinition[] = [goblin, wolf, bugbear, giantWolfSpider];

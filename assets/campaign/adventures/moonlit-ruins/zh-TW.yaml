@@ -100,6 +100,7 @@ heroes:
     savingThrows: [str, con]
     level: 1
     maxHp: 12
+    hitDie: 10
     speed: 30
     equipment: [item:longsword, item:chain-mail, item:shield]
     features: [feature:fighting-style-dueling, feature:second-wind]
@@ -113,6 +114,7 @@ heroes:
     savingThrows: [dex, int]
     level: 1
     maxHp: 9
+    hitDie: 8
     speed: 30
     equipment: [item:shortsword, item:shortbow, item:leather-armor]
     features: [feature:sneak-attack, feature:thieves-cant]
@@ -125,6 +127,7 @@ heroes:
     savingThrows: [wis, cha]
     level: 1
     maxHp: 9
+    hitDie: 8
     speed: 30
     # Life Domain grants heavy armor proficiency.
     equipment: [item:mace, item:chain-mail, item:shield]
@@ -132,5 +135,5 @@ heroes:
     spellcasting:
       ability: wis
       # Bless and Cure Wounds are Life Domain spells, always prepared.
-      spells: [spell:sacred-flame, spell:bless, spell:cure-wounds, spell:healing-word, spell:guiding-bolt]
+      spells: [spell:sacred-flame, spell:thaumaturgy, spell:bless, spell:cure-wounds, spell:healing-word, spell:guiding-bolt]
       slots: { "1": 2 }

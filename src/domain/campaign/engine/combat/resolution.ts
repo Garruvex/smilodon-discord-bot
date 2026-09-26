@@ -31,6 +31,9 @@ import type { Rejection } from "../rejection.js";
 import { activeEncounter, afterResolution, endIfDecided, isProtected } from "./combat-flow.js";
 
 const prone = "condition:prone";
+// Both give disadvantage on the creature's attack rolls (Frightened's
+// line-of-sight and movement limits are not modeled).
+const crippling = ["condition:poisoned", "condition:frightened"] as const;
 
 export interface DeclareRequest {
   readonly actor: Combatant;
@@ -487,6 +490,7 @@ export function attackMode(
     else disadvantage += 1;
   }
   if (hasCondition(attacker, prone)) disadvantage += 1;
+  if (crippling.some((condition) => hasCondition(attacker, condition))) disadvantage += 1;
   if (ranged) {
     const threatened = engagedWith(encounter, attacker.id).some((other) => other.side !== attacker.side && isActive(other));
     if (threatened) disadvantage += 1;

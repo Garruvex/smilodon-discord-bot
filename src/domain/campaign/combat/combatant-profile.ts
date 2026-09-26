@@ -12,6 +12,8 @@ const freshTurn = { action: true, bonusAction: true, reaction: true, movement: 0
 export interface HeroStatus {
   readonly hp: number;
   readonly resources: CombatResources;
+  // Unspent Hit Dice; absent means all of them (the hero's level).
+  readonly hitDice?: number;
 }
 
 // Everything the hero's equipment and features grant, as one list.

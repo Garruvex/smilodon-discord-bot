@@ -154,10 +154,13 @@ function evolveCombat(state: CampaignState, event: CombatEvent): CampaignState {
   if (event.kind !== "encounterEnded" || encounter === null) return { ...state, encounter };
   const heroStatus: Record<CharacterId, HeroStatus> = { ...state.heroStatus };
   for (const combatant of Object.values(encounter.combatants)) {
-    if (combatant.source.kind === "hero") heroStatus[combatant.source.characterId] = {
-        hp: encounter.outcome === "victory" ? Math.max(1, combatant.hp) : combatant.hp,
-        resources: combatant.resources,
-      };
+    if (combatant.source.kind !== "hero") continue;
+    const id = combatant.source.characterId;
+    heroStatus[id] = {
+      ...heroStatus[id],
+      hp: encounter.outcome === "victory" ? Math.max(1, combatant.hp) : combatant.hp,
+      resources: combatant.resources,
+    };
   }
   return { ...state, encounter, heroStatus };
 }

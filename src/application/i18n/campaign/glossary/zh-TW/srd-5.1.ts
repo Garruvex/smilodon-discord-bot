@@ -26,6 +26,8 @@ export const zhTwSrd51Glossary: Glossary = {
     "item:bite": "啃咬",
     "monster:goblin": "哥布林",
     "monster:wolf": "狼",
+    "monster:giant-wolf-spider": "巨型狼蛛",
+    "spell:thaumaturgy": "奇術",
     "monster:bugbear": "熊地精",
     "spell:guiding-bolt": "光導箭",
     "item:javelin": "標槍",

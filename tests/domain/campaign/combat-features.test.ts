@@ -4,7 +4,7 @@ import type { EncounterSpec } from "../../../src/domain/campaign/commands/campai
 import { formatDiceExpression } from "../../../src/domain/campaign/dice/dice-expression.js";
 import type { CampaignEvent } from "../../../src/domain/campaign/events/campaign-event.js";
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
-import { alex, jamie, newCampaign, organizer, partyOfThree, ruleset, sam } from "./campaign-fixtures.js";
+import { alex, jamie, newCampaign, organizer, partyOfThree, ruleset, run, sam } from "./campaign-fixtures.js";
 import { Fight, skirmish } from "./combat-fixtures.js";
 
 // Gate and courtyard 10 ft apart, with a tower beyond the courtyard.
@@ -167,7 +167,15 @@ describe("class features", () => {
     const tired = withStatus(newCampaign(), { "c-borin": 3 });
     const spent = { ...tired, heroStatus: { ...tired.heroStatus, "c-borin": { hp: 3, resources: { spellSlots: {}, featureUses: { "feature:second-wind": 0 } } } } };
     const short = new Fight(spent).run(organizer, { kind: "takeRest", rest: "short" });
-    expect(short.state.heroStatus["c-borin"]).toEqual({ hp: 3, resources: { spellSlots: {}, featureUses: { "feature:second-wind": 1 } } });
+    // Borin's one Hit Die (d10: 6 on average, plus Con +2) heals 8.
+    expect(short.state.heroStatus["c-borin"]).toEqual({ hp: 11, resources: { spellSlots: {}, featureUses: { "feature:second-wind": 1 } }, hitDice: 0 });
+    // With no dice left, a second short rest heals nothing; a long rest brings one back.
+    const again = run(short.state, organizer, { kind: "takeRest", rest: "short" });
+    expect(again.state.heroStatus["c-borin"]?.hp).toBe(11);
+    const overnight = run(again.state, organizer, { kind: "takeRest", rest: "long" });
+    expect(overnight.state.heroStatus["c-borin"]).toMatchObject({ hp: 12, hitDice: 1 });
+    // Healthy heroes keep their dice.
+    expect(short.state.heroStatus["c-mira"]).toMatchObject({ hp: 9, hitDice: 1 });
     const long = new Fight(spent).run(organizer, { kind: "takeRest", rest: "long" });
     expect(long.state.heroStatus["c-borin"]?.hp).toBe(12);
     expect(long.state.heroStatus["c-elspeth"]).toBeUndefined();

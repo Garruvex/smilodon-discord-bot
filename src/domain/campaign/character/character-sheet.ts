@@ -46,6 +46,8 @@ export interface CharacterSheet {
   readonly savingThrows: readonly Ability[];
   readonly level: number;
   readonly maxHp: number;
+  // Die size of the class's Hit Dice; there are `level` of them.
+  readonly hitDie: 6 | 8 | 10 | 12;
   readonly speed: number;
   // Weapons, armor, and shields carried and used. Armor class is derived
   // from these; heroes are proficient with what they carry.

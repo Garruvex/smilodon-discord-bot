@@ -26,4 +26,17 @@ export const sacredFlame = defineSpell({
   }),
 });
 
-export const srd51Cantrips: readonly SpellDefinition[] = [sacredFlame];
+// Narrative only: the effects are for the story (a booming voice, a trembling
+// floor), so the plan changes no state and the Narrator describes it.
+export const thaumaturgy = defineSpell({
+  id: "spell:thaumaturgy",
+  source,
+  level: 0,
+  castingTime: "action",
+  range: { kind: "feet", feet: 30 },
+  targeting: { relation: "self", count: 1 },
+  concentration: false,
+  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+});
+
+export const srd51Cantrips: readonly SpellDefinition[] = [sacredFlame, thaumaturgy];
