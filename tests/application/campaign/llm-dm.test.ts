@@ -228,7 +228,7 @@ describe("LLM DM", () => {
       },
     });
     expect(await narrator.narrateCombat(request)).toEqual({ text: "Borin's blade flashes." });
-    expect(observed).toMatchObject([{ call: "flourish", promptVersion: "flourish-3" }]);
+    expect(observed).toMatchObject([{ call: "flourish", promptVersion: "flourish-4" }]);
     expect(buildCombatNarratorPrompt({ ...request, final: true, outcome: "victory", language: "zh-TW" }).system).toContain("100-200 Traditional Chinese");
   });
 });

@@ -219,11 +219,11 @@ describe("dropping, death saves, and the end of a fight", () => {
     expect(hit).toMatchObject({ combatantId: "c-mira", condition: "dead", cause: "massiveDamage" });
   });
 
-  it("ends in defeat when no hero is left standing", () => {
+  it("ends in defeat when no hero is left standing, and the beaten heroes wake with 1 HP", () => {
     // Both goblins crit: Mira takes 14 (of 9) and Borin 14 (of 12); both drop.
     const fight = new Fight().rolls([5, 4, 20, 19, 20, 20], [6, 6, 6, 6]).run(organizer, { kind: "startEncounter", spec: skirmish });
     expect(fight.events.at(-1)).toEqual({ kind: "encounterEnded", outcome: "defeat" });
-    expect(heroHp(fight)).toEqual({ "c-mira": 0, "c-borin": 0 });
+    expect(heroHp(fight)).toEqual({ "c-mira": 1, "c-borin": 1 });
   });
 
   it("ends in victory when every foe is down, and keeps the heroes' HP", () => {

@@ -67,6 +67,7 @@ export const testBible: AdventureBible = {
       edges: [{ from: "bar", to: "cellar", feet: 20 }],
       partyZoneId: "bar",
       monsters: [{ monsterId: "monster:goblin", zoneId: "cellar", npcId: null, fleeBelowHpFraction: null }],
+      loot: [],
     },
   ],
 };

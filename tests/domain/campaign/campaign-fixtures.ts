@@ -122,6 +122,9 @@ export function newCampaign(pacing: Pacing = livePacing): CampaignState {
     heroStatus: {},
     pendingEncounter: null,
     encounterHistory: [],
+    stash: [],
+    offers: {},
+    offerCount: 0,
     clocks: {},
     clues: [],
   };

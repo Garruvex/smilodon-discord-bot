@@ -1,5 +1,5 @@
 import type { SceneId } from "../adventure/adventure-bible.js";
-import type { CheckTest } from "../character/character-sheet.js";
+import type { CharacterSheet, CheckTest } from "../character/character-sheet.js";
 import type { CharacterId, CheckId, RollId, UserId } from "../core/ids.js";
 import type { RollResult } from "../dice/roll-spec.js";
 import type { LedgerVisibility } from "../ledger/ledger.js";
@@ -38,7 +38,27 @@ export type CampaignCommand =
   // Organizer, outside combat. Short: limited features recharge. Long: HP,
   // spell slots, and every feature recharge.
   | { readonly kind: "takeRest"; readonly rest: "short" | "long" }
+  | InventoryCommand
+  // A player's new hero: their first, or one to replace a fallen hero.
+  | { readonly kind: "joinHero"; readonly sheet: CharacterSheet }
   | CombatCommand;
+
+// Items move between heroes outside combat. The owner of the giving hero
+// offers, the owner of the receiving hero answers; the stash is shared.
+export type InventoryCommand =
+  | {
+      readonly kind: "offerItem";
+      readonly fromCharacterId: CharacterId;
+      readonly toCharacterId: CharacterId;
+      readonly give: ContentId<"item">;
+      // Null: a gift. Otherwise the item asked for in return.
+      readonly want: ContentId<"item"> | null;
+    }
+  | { readonly kind: "respondToOffer"; readonly offerId: string; readonly accept: boolean }
+  | { readonly kind: "cancelOffer"; readonly offerId: string }
+  | { readonly kind: "stashItem"; readonly characterId: CharacterId; readonly itemId: ContentId<"item"> }
+  // The hero's owner, or the organizer, takes an item out of the stash for a hero.
+  | { readonly kind: "takeFromStash"; readonly characterId: CharacterId; readonly itemId: ContentId<"item"> };
 
 // Combat. Hero commands name the acting combatant (the hero's character ID)
 // so a stale button for another turn is refused rather than misapplied.
@@ -69,6 +89,8 @@ export interface EncounterSpec {
   readonly edges: readonly { readonly from: string; readonly to: string; readonly feet: number }[];
   readonly partyZoneId: string;
   readonly monsters: readonly EncounterMonster[];
+  // Added to the party stash on a victory. Absent: none.
+  readonly loot?: readonly ContentId<"item">[];
 }
 
 export interface EncounterMonster {

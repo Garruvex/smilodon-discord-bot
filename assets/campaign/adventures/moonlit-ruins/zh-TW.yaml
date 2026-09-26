@@ -85,6 +85,7 @@ encounters:
     edges:
       - { from: tower-floor, to: stairs, feet: 15 }
     partyZoneId: tower-floor
+    loot: [item:javelin]
     monsters:
       - { monsterId: monster:goblin, zoneId: stairs, fleeBelowHpFraction: 0.5 }
       - { monsterId: monster:goblin, zoneId: stairs, fleeBelowHpFraction: 0.5 }
@@ -103,6 +104,7 @@ encounters:
       - { from: doorway, to: nave, feet: 20 }
       - { from: nave, to: altar, feet: 15 }
     partyZoneId: doorway
+    loot: [item:scimitar, item:shortbow]
     monsters:
       - { monsterId: monster:wolf, zoneId: nave }
       - { monsterId: monster:goblin, zoneId: nave }

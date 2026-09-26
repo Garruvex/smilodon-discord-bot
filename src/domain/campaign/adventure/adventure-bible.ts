@@ -1,4 +1,5 @@
 import type { EncounterMonster, EncounterSpec } from "../commands/campaign-command.js";
+import type { ContentId } from "../rules/content-id.js";
 
 // The adventure as authored (plan §6, layer B). Fields are split by who may
 // see them: public fields can reach narration; dmOverview, dmNotes, and
@@ -78,6 +79,8 @@ export interface BibleEncounter {
   readonly edges: readonly { readonly from: string; readonly to: string; readonly feet: number }[];
   readonly partyZoneId: string;
   readonly monsters: readonly EncounterMonster[];
+  // Found by the party on a victory.
+  readonly loot: readonly ContentId<"item">[];
 }
 
 export function findScene(bible: AdventureBible, sceneId: string | null): BibleScene | undefined {
@@ -97,6 +100,6 @@ export function findClue(bible: AdventureBible, clueId: string): BibleClue | und
 }
 
 export function encounterSpec(encounter: BibleEncounter): EncounterSpec {
-  const { id, zones, edges, partyZoneId, monsters } = encounter;
-  return { id, zones, edges, partyZoneId, monsters };
+  const { id, zones, edges, partyZoneId, monsters, loot } = encounter;
+  return { id, zones, edges, partyZoneId, monsters, loot };
 }

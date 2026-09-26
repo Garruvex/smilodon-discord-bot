@@ -4,7 +4,9 @@ import type { HeroStatus } from "../combat/combatant-profile.js";
 import type { LedgerVisibility } from "../ledger/ledger.js";
 import type { SceneId } from "../adventure/adventure-bible.js";
 import type { EncounterSpec, PlannedEffect } from "../commands/campaign-command.js";
-import type { CheckResult, CheckState, Resolution } from "../state/campaign-state.js";
+import type { CharacterSheet } from "../character/character-sheet.js";
+import type { ContentId } from "../rules/content-id.js";
+import type { CheckResult, CheckState, ItemOffer, Resolution } from "../state/campaign-state.js";
 
 // Domain event payloads. The command bus wraps each in an envelope with
 // campaign ID, sequence, causation, actor, and rules revision.
@@ -61,7 +63,19 @@ export type CampaignEvent =
   // Pending checks get fresh roll deadlines; timers were cancelled while waiting.
   | { readonly kind: "resumed"; readonly checkDeadlines: Readonly<Record<CheckId, Instant | null>> }
   | { readonly kind: "restTaken"; readonly rest: "short" | "long"; readonly heroStatus: Readonly<Record<CharacterId, HeroStatus>> }
+  | { readonly kind: "itemOffered"; readonly offer: ItemOffer }
+  // The offer was accepted: the items change hands.
+  | { readonly kind: "offerAccepted"; readonly offerId: string }
+  | { readonly kind: "offerClosed"; readonly offerId: string; readonly reason: OfferClosedReason }
+  | { readonly kind: "itemStashed"; readonly characterId: CharacterId; readonly itemId: ContentId<"item"> }
+  | { readonly kind: "itemTaken"; readonly characterId: CharacterId; readonly itemId: ContentId<"item"> }
+  // A victory's spoils reach the party stash.
+  | { readonly kind: "lootFound"; readonly encounterId: string; readonly items: readonly ContentId<"item">[] }
+  // The player has this hero from now on (a new player, or a replacement).
+  | { readonly kind: "heroJoined"; readonly sheet: CharacterSheet }
   | CombatEvent;
+
+export type OfferClosedReason = "declined" | "cancelled" | "unavailable";
 
 export type CampaignEventKind = CampaignEvent["kind"];
 

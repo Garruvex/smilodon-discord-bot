@@ -7,6 +7,7 @@ import type { CampaignId, CharacterId, CheckId, Instant, RollId, UserId } from "
 import type { D20TestRoll, D20TestSpec } from "../dice/d20-test.js";
 import type { RollMoments } from "../dice/roll-moments.js";
 import type { LedgerEntry } from "../ledger/ledger.js";
+import type { ContentId } from "../rules/content-id.js";
 import type { DcTier } from "../rules/difficulty.js";
 
 // The in-memory aggregate the engine decides against. The repository
@@ -42,6 +43,22 @@ export interface CampaignState {
   // Heroes' HP and limited resources between fights; a hero missing here is
   // fresh (full HP, every slot and use).
   readonly heroStatus: Readonly<Record<CharacterId, HeroStatus>>;
+  // Items the party holds in common: loot from fights and a fallen hero's gear.
+  readonly stash: readonly ContentId<"item">[];
+  // Trade offers waiting for the other hero's owner to answer.
+  readonly offers: Readonly<Record<string, ItemOffer>>;
+  // Numbers offer IDs deterministically.
+  readonly offerCount: number;
+}
+
+// One hero offers an item, optionally for one of the other hero's in return.
+// The receiver's owner must accept; nothing moves before then.
+export interface ItemOffer {
+  readonly id: string;
+  readonly fromCharacterId: CharacterId;
+  readonly toCharacterId: CharacterId;
+  readonly give: ContentId<"item">;
+  readonly want: ContentId<"item"> | null;
 }
 
 // active: play proceeds. waitingForPlayers: nobody is present; no rounds,
@@ -128,6 +145,12 @@ export interface RevealedClue {
 
 export function presentMembers(state: CampaignState): readonly MemberState[] {
   return Object.values(state.members).filter((member) => member.availability === "present");
+}
+
+// A hero who fell for good (three failed death saves) stays out of play; their
+// player joins a new hero.
+export function isFallen(state: CampaignState, characterId: CharacterId): boolean {
+  return state.heroStatus[characterId]?.dead === true;
 }
 
 export function memberOwning(state: CampaignState, characterId: CharacterId): MemberState | undefined {

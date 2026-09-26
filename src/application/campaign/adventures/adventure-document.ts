@@ -74,6 +74,7 @@ const documentSchema = z
                   .strict(),
               )
               .min(1),
+            loot: z.array(contentId("item")).default([]),
           })
           .strict(),
       )
@@ -239,6 +240,7 @@ export function checkAdventureContent(document: AdventureDocument, content: Seal
   }
   for (const encounter of document.bible.encounters) {
     for (const monster of encounter.monsters) expectKind(encounter.id, monster.monsterId, "monster");
+    for (const item of encounter.loot) expectKind(encounter.id, item, "item");
   }
   return problems;
 }

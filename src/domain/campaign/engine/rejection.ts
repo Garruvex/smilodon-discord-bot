@@ -46,5 +46,11 @@ export type Rejection =
   | { readonly code: "unknownFeature" }
   | { readonly code: "noUsesLeft" }
   | { readonly code: "cannotLeaveNow" }
+  | { readonly code: "unknownOffer" }
+  | { readonly code: "invalidOffer" }
+  | { readonly code: "itemNotHeld" }
+  | { readonly code: "heroFallen" }
+  | { readonly code: "invalidHero"; readonly problems: readonly string[] }
+  | { readonly code: "heroNotReplaceable" }
 
 export type RejectionCode = Rejection["code"];

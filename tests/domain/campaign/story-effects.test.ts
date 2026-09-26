@@ -213,7 +213,7 @@ describe("combat narration", () => {
 });
 
 describe("after a fight", () => {
-  it("brings heroes at 0 HP back with 1 HP after a victory, but not after a defeat", () => {
+  it("brings heroes at 0 HP back with 1 HP after a victory or a defeat", () => {
     const won = new Fight().rolls([20, 15, 5, 4]).run(organizer, { kind: "startEncounter", spec: skirmish });
     const fought = won.encounter;
     const downed = {
@@ -226,6 +226,6 @@ describe("after a fight", () => {
       replay({ ...won.state, encounter: downed }, [{ kind: "encounterEnded", outcome }]);
     expect(ended("victory").heroStatus["c-borin"]?.hp).toBe(1);
     expect(ended("victory").heroStatus["c-mira"]?.hp).toBe(9);
-    expect(ended("defeat").heroStatus["c-borin"]?.hp).toBe(0);
+    expect(ended("defeat").heroStatus["c-borin"]?.hp).toBe(1);
   });
 });

@@ -38,4 +38,6 @@ export type DeliverySpec =
   | { readonly kind: "attackResolved"; readonly encounterId: string; readonly attackId: string }
   | { readonly kind: "deathSave"; readonly encounterId: string; readonly combatantId: string }
   | { readonly kind: "encounterEnded"; readonly encounterId: string }
-  | { readonly kind: "combatNarration"; readonly encounterId: string; readonly round: number };
+  | { readonly kind: "combatNarration"; readonly encounterId: string; readonly round: number }
+  // A trade offer waits for the other hero's owner.
+  | { readonly kind: "itemOffered"; readonly offerId: string };

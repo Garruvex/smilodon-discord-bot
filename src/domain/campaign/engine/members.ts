@@ -1,5 +1,6 @@
+import type { CharacterSheet } from "../character/character-sheet.js";
 import type { CheckId, Instant, UserId } from "../core/ids.js";
-import { presentMembers } from "../state/campaign-state.js";
+import { isFallen, presentMembers, type CampaignState } from "../state/campaign-state.js";
 import { deadlineAfter, type Decision } from "./decision.js";
 import { rollTimerId } from "./ids.js";
 import type { Rejection } from "./rejection.js";
@@ -89,6 +90,40 @@ export function continueCampaign(decision: Decision): Rejection | null {
   if (round.status === "planning") decision.request({ kind: "plan", roundNumber: round.number });
   if (round.status === "resolving") finishRoundIfResolved(decision);
   return null;
+}
+
+// A player takes a hero: their first, or one to replace a fallen hero. The
+// application supplies the sheet from the adventure's presets (starting gear,
+// no loot from an earlier hero); the engine checks it fits this campaign: the
+// party's level, known content, and a fresh ID. The hero plays from the next
+// round or fight.
+export function joinHero(decision: Decision, sheet: CharacterSheet): Rejection | null {
+  const { state, ctx } = decision;
+  if (ctx.actor.kind === "user" && ctx.actor.userId !== sheet.ownerUserId && ctx.actor.userId !== state.organizerId) {
+    return { code: "notOrganizer" };
+  }
+  const member = state.members[sheet.ownerUserId];
+  const current = member?.characterId ?? null;
+  if (current !== null && state.characters[current] !== undefined && !isFallen(state, current)) return { code: "heroNotReplaceable" };
+  const problems = heroProblems(state, sheet, decision);
+  if (problems.length > 0) return { code: "invalidHero", problems };
+  decision.emit({ kind: "heroJoined", sheet });
+  return null;
+}
+
+// A new hero starts at the level of the party's strongest living hero.
+function heroProblems(state: CampaignState, sheet: CharacterSheet, decision: Decision): readonly string[] {
+  const problems: string[] = [];
+  const content = decision.ctx.rules.content;
+  if (state.characters[sheet.id] !== undefined) problems.push(`Hero ${sheet.id} already exists.`);
+  const living = Object.values(state.characters).filter((other) => !isFallen(state, other.id));
+  const partyLevel = Math.max(1, ...living.map((other) => other.level));
+  if (sheet.level !== partyLevel) problems.push(`A new hero starts at the party's level (${partyLevel}), not ${sheet.level}.`);
+  if (!Number.isInteger(sheet.maxHp) || sheet.maxHp < 1) problems.push("Maximum HP must be at least 1.");
+  for (const id of sheet.equipment) if (content.find(id)?.kind !== "item") problems.push(`Unknown item ${id}.`);
+  for (const id of sheet.features) if (content.find(id)?.kind !== "feature") problems.push(`Unknown feature ${id}.`);
+  for (const id of sheet.spellcasting?.spells ?? []) if (content.find(id)?.kind !== "spell") problems.push(`Unknown spell ${id}.`);
+  return problems;
 }
 
 function checkSelfOrOrganizer(decision: Decision, userId: UserId): Rejection | null {

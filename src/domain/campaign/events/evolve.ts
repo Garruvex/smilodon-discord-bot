@@ -1,6 +1,7 @@
 import { assertNever } from "../core/assert-never.js";
+import type { ContentId } from "../rules/content-id.js";
 import type { CharacterId, UserId } from "../core/ids.js";
-import type { CampaignState, CheckState, MemberState, RoundState, Submission } from "../state/campaign-state.js";
+import type { CampaignState, CheckState, ItemOffer, MemberState, RoundState, Submission } from "../state/campaign-state.js";
 import type { CombatEvent } from "../combat/combat-events.js";
 import type { HeroStatus } from "../combat/combatant-profile.js";
 import { evolveEncounter } from "../combat/evolve-combat.js";
@@ -142,14 +143,34 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       return evolveCombat(state, event);
     case "restTaken":
       return { ...state, heroStatus: { ...state.heroStatus, ...event.heroStatus } };
+    case "itemOffered":
+      return { ...state, offers: { ...state.offers, [event.offer.id]: event.offer }, offerCount: state.offerCount + 1 };
+    case "offerAccepted":
+      return acceptOffer(state, event.offerId);
+    case "offerClosed":
+      return withoutOffers(state, (offer) => offer.id === event.offerId);
+    case "itemStashed":
+      return moveItem(state, event.characterId, event.itemId, "toStash");
+    case "itemTaken":
+      return moveItem(state, event.characterId, event.itemId, "fromStash");
+    case "lootFound":
+      return { ...state, stash: [...state.stash, ...event.items] };
+    case "heroJoined": {
+      const sheet = event.sheet;
+      const member = state.members[sheet.ownerUserId];
+      const joined: MemberState = { userId: sheet.ownerUserId, characterId: sheet.id, availability: "present", consecutiveMisses: 0 };
+      return { ...state, characters: { ...state.characters, [sheet.id]: sheet }, members: { ...state.members, [sheet.ownerUserId]: member === undefined ? joined : { ...member, characterId: sheet.id, consecutiveMisses: 0 } } };
+    }
     default:
       return assertNever(event);
   }
 }
 
 // A finished fight writes the heroes' HP and spent resources back to the campaign.
-// After a victory the party binds each other's wounds: anyone at 0 HP is back
-// on their feet with 1 HP (a stand-in until the death rules are decided).
+// Anyone at 0 HP who has not died wakes with 1 HP: after a victory the party
+// binds their wounds, and after a defeat the foes leave them beaten, not dead
+// (captured, robbed, or left for dead; the story decides). A hero who failed
+// three death saves stays dead and their gear joins the party stash.
 function evolveCombat(state: CampaignState, event: CombatEvent): CampaignState {
   const encounter = evolveEncounter(state.encounter, event);
   if (event.kind === "encounterStarted") {
@@ -157,17 +178,60 @@ function evolveCombat(state: CampaignState, event: CombatEvent): CampaignState {
   }
   if (event.kind !== "encounterEnded" || encounter === null) return { ...state, encounter };
   const heroStatus: Record<CharacterId, HeroStatus> = { ...state.heroStatus };
+  const characters = { ...state.characters };
+  let stash = state.stash;
+  const fallen: CharacterId[] = [];
   for (const combatant of Object.values(encounter.combatants)) {
     if (combatant.source.kind !== "hero") continue;
     const id = combatant.source.characterId;
-    heroStatus[id] = {
-      ...heroStatus[id],
-      hp: encounter.outcome === "victory" ? Math.max(1, combatant.hp) : combatant.hp,
-      resources: combatant.resources,
-    };
+    const dead = combatant.condition === "dead";
+    heroStatus[id] = { ...heroStatus[id], hp: dead ? 0 : Math.max(1, combatant.hp), resources: combatant.resources, ...(dead ? { dead: true } : {}) };
+    const sheet = characters[id];
+    if (dead && sheet !== undefined) {
+      fallen.push(id);
+      stash = [...stash, ...sheet.equipment];
+      characters[id] = { ...sheet, equipment: [] };
+    }
   }
-  return { ...state, encounter, heroStatus };
+  return withoutOffers({ ...state, encounter, heroStatus, characters, stash }, (offer) => fallen.includes(offer.fromCharacterId) || fallen.includes(offer.toCharacterId));
 }
+
+function withoutOffers(state: CampaignState, drop: (offer: ItemOffer) => boolean): CampaignState {
+  const kept = Object.fromEntries(Object.entries(state.offers).filter(([, offer]) => !drop(offer)));
+  return { ...state, offers: kept };
+}
+
+function removeFirst<T>(items: readonly T[], item: T): readonly T[] {
+  const index = items.indexOf(item);
+  return index < 0 ? items : [...items.slice(0, index), ...items.slice(index + 1)];
+}
+
+function moveItem(state: CampaignState, characterId: CharacterId, itemId: ItemId, direction: "toStash" | "fromStash"): CampaignState {
+  const sheet = state.characters[characterId];
+  if (sheet === undefined) return state;
+  if (direction === "toStash") {
+    return { ...state, characters: { ...state.characters, [characterId]: { ...sheet, equipment: removeFirst(sheet.equipment, itemId) } }, stash: [...state.stash, itemId] };
+  }
+  return { ...state, characters: { ...state.characters, [characterId]: { ...sheet, equipment: [...sheet.equipment, itemId] } }, stash: removeFirst(state.stash, itemId) };
+}
+
+// The giver's item goes to the receiver and the item asked for comes back;
+// every other offer touching either item is no longer honest, so it closes.
+function acceptOffer(state: CampaignState, offerId: string): CampaignState {
+  const offer = state.offers[offerId];
+  const from = offer === undefined ? undefined : state.characters[offer.fromCharacterId];
+  const to = offer === undefined ? undefined : state.characters[offer.toCharacterId];
+  if (offer === undefined || from === undefined || to === undefined) return state;
+  const fromEquipment = offer.want === null ? removeFirst(from.equipment, offer.give) : [...removeFirst(from.equipment, offer.give), offer.want];
+  const toEquipment = offer.want === null ? [...to.equipment, offer.give] : [...removeFirst(to.equipment, offer.want), offer.give];
+  const moved: CampaignState = {
+    ...state,
+    characters: { ...state.characters, [from.id]: { ...from, equipment: fromEquipment }, [to.id]: { ...to, equipment: toEquipment } },
+  };
+  return withoutOffers(moved, (other) => other.id === offerId || other.fromCharacterId === from.id || other.fromCharacterId === to.id);
+}
+
+type ItemId = ContentId<"item">;
 
 export function replay(initial: CampaignState, events: readonly CampaignEvent[]): CampaignState {
   return events.reduce(evolve, initial);

@@ -22,7 +22,7 @@ import type { ModelUsage, StructuredModelClient } from "../ports/structured-mode
 // and bug reports stay comparable (code structure §8).
 export const plannerPromptVersion = "planner-4";
 export const narratorPromptVersion = "narrator-4";
-export const flourishPromptVersion = "flourish-3";
+export const flourishPromptVersion = "flourish-4";
 
 export type ModelCallKind = "planner" | "narrator" | "flourish";
 
@@ -321,7 +321,9 @@ export function buildCombatNarratorPrompt(request: CombatNarratorRequest): { sys
     "## Output rules",
     `${length} in the narration field.`,
     request.final
-      ? "This closes the fight: describe its last moments and the aftermath, then end on what the heroes see or could do next."
+      ? request.outcome === "defeat"
+        ? "This closes a lost fight. The heroes are beaten but nobody new dies: they are captured, robbed of nothing they own, driven off, or left for dead and wake bruised. Describe the defeat and the moments after, then end on where they are and what they could do next."
+        : "This closes the fight: describe its last moments and the aftermath, then end on what the heroes see or could do next."
       : "This is a quick flourish between combat rounds. The table already saw every roll as a template line; add color, not a recap. Pick the one or two most dramatic beats.",
     "Never change a result: hits hit, misses miss, and nobody falls, dies, or recovers unless the beats say so. Do not mention numbers.",
     "A headline moment (a critical hit, a natural 1, a hero dropping or getting back up, a foe fleeing) deserves the vivid line.",

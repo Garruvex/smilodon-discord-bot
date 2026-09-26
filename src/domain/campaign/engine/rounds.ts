@@ -2,7 +2,7 @@ import type { EncounterSpec, PlannedEffect } from "../commands/campaign-command.
 import { assertNever } from "../core/assert-never.js";
 import type { CharacterId } from "../core/ids.js";
 import type { RoundCloseReason } from "../events/campaign-event.js";
-import { presentMembers, type CampaignState, type RoundState } from "../state/campaign-state.js";
+import { isFallen, presentMembers, type CampaignState, type RoundState } from "../state/campaign-state.js";
 import { deadlineAfter, type Decision } from "./decision.js";
 import { rollTimerId, roundTimerId } from "./ids.js";
 import type { Rejection } from "./rejection.js";
@@ -191,7 +191,9 @@ export function enterWaiting(decision: Decision): void {
 // Present members' heroes, in the order members joined.
 function participantsFor(state: CampaignState): readonly CharacterId[] {
   return presentMembers(state).flatMap((member) =>
-    member.characterId !== null && state.characters[member.characterId] !== undefined ? [member.characterId] : [],
+    member.characterId !== null && state.characters[member.characterId] !== undefined && !isFallen(state, member.characterId)
+      ? [member.characterId]
+      : [],
   );
 }
 

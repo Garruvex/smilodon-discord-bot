@@ -232,6 +232,8 @@ export interface EncounterState {
   readonly deferredTurn: { readonly turnIndex: number; readonly round: number } | null;
   // The last round the Narrator described; later flourishes only.
   readonly narratedRound: number;
+  // Found by the party if it wins.
+  readonly loot: readonly ContentId<"item">[];
 }
 
 export function currentCombatant(encounter: EncounterState): Combatant | undefined {

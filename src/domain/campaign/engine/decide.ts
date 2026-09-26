@@ -5,10 +5,11 @@ import type { RollResult } from "../dice/roll-spec.js";
 import type { CampaignState } from "../state/campaign-state.js";
 import { recordCheckRoll, requestRoll, rollTimerExpired } from "./checks.js";
 import { handleCombatCommand, recordCombatNarration, recordCombatRoll } from "./combat/combat-flow.js";
+import { handleInventoryCommand } from "./inventory.js";
 import { takeRest } from "./rest.js";
 import { Decision, type DecideResult, type EngineContext } from "./decision.js";
 import { recordLedgerFact, recordNarration, reportPlannerFailure, retryPlan } from "./dm.js";
-import { continueCampaign, markAway, markReturned } from "./members.js";
+import { continueCampaign, joinHero, markAway, markReturned } from "./members.js";
 import type { Rejection } from "./rejection.js";
 import { applyRoundPlan } from "./round-plan.js";
 import { closeRoundByOrganizer, openRound, pass, roundTimerExpired, submitAction } from "./rounds.js";
@@ -60,6 +61,14 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
       return recordLedgerFact(decision, command);
     case "takeRest":
       return takeRest(decision, command.rest);
+    case "offerItem":
+    case "respondToOffer":
+    case "cancelOffer":
+    case "stashItem":
+    case "takeFromStash":
+      return handleInventoryCommand(decision, command);
+    case "joinHero":
+      return joinHero(decision, command.sheet);
     case "startEncounter":
     case "combatMove":
     case "combatEngage":

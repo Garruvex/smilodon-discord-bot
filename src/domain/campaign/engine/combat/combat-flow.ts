@@ -1,6 +1,7 @@
 import type { CombatCommand, EncounterSpec } from "../../commands/campaign-command.js";
 import { assertNever } from "../../core/assert-never.js";
 import type { RollId, UserId } from "../../core/ids.js";
+import { isFallen } from "../../state/campaign-state.js";
 import type { ActionCost } from "../../combat/combat-events.js";
 import {
   areEngaged,
@@ -122,7 +123,7 @@ export function beginEncounter(decision: Decision, spec: EncounterSpec): void {
   const combatants: Record<string, Combatant> = {};
   for (const member of Object.values(state.members)) {
     const sheet = member.characterId === null ? undefined : state.characters[member.characterId];
-    if (sheet === undefined) continue;
+    if (sheet === undefined || isFallen(state, sheet.id)) continue;
     const status = state.heroStatus[sheet.id] ?? { hp: sheet.maxHp, resources: defaultHeroResources(sheet, content) };
     combatants[sheet.id] = heroCombatant(sheet, content, spec.partyZoneId, status);
   }
@@ -171,6 +172,7 @@ export function beginEncounter(decision: Decision, spec: EncounterSpec): void {
     outcome: null,
     deferredTurn: null,
     narratedRound: 0,
+    loot: spec.loot ?? [],
   };
   decision.emit({ kind: "encounterStarted", encounter });
   for (const [rollId, pending] of Object.entries(pendingRolls)) {
@@ -190,6 +192,9 @@ export function encounterProblems(decision: Decision, spec: EncounterSpec): read
     if (!Number.isInteger(edge.feet) || edge.feet <= 0) problems.push(`Edge ${edge.from}-${edge.to} needs a positive distance.`);
   }
   if (spec.monsters.length === 0) problems.push("An encounter needs at least one monster.");
+  for (const item of spec.loot ?? []) {
+    if (decision.ctx.rules.content.find(item)?.kind !== "item") problems.push(`Unknown loot item ${item}.`);
+  }
   for (const monster of spec.monsters) {
     if (decision.ctx.rules.content.find(monster.monsterId)?.kind !== "monster") problems.push(`Unknown monster ${monster.monsterId}.`);
     if (!zoneIds.has(monster.zoneId)) problems.push(`${monster.monsterId} is placed in unknown zone ${monster.zoneId}.`);
@@ -713,6 +718,7 @@ export function endIfDecided(decision: Decision): boolean {
   if (foesLeft && heroesStanding) return false;
   if (encounter.turnEndsAt !== null) decision.request({ kind: "cancelTimer", timerId: turnTimerId(encounter.id, encounter.turnNumber) });
   decision.emit({ kind: "encounterEnded", outcome: foesLeft ? "defeat" : "victory" });
+  if (!foesLeft && encounter.loot.length > 0) decision.emit({ kind: "lootFound", encounterId: encounter.id, items: encounter.loot });
   decision.request({ kind: "deliver", delivery: { kind: "encounterEnded", encounterId: encounter.id } });
   // The closing narration covers the last round; exploration resumes after it.
   decision.request({ kind: "narrateCombat", encounterId: encounter.id, round: encounter.round, final: true });

@@ -1,7 +1,7 @@
 import { findScene, type AdventureBible } from "../../../domain/campaign/adventure/adventure-bible.js";
 import type { CampaignEvent } from "../../../domain/campaign/events/campaign-event.js";
 import type { Glossary } from "../../../domain/campaign/rules/content-registry.js";
-import type { CampaignState } from "../../../domain/campaign/state/campaign-state.js";
+import { isFallen, type CampaignState } from "../../../domain/campaign/state/campaign-state.js";
 import type { ContextSection, DmContext } from "../ports/dm-ports.js";
 import { combatantName, encounterRecords, type EncounterRecord } from "./combat-records.js";
 import { checkLabel, roundRecords, type RoundRecord } from "./round-records.js";
@@ -141,6 +141,7 @@ function liveState(input: ContextInput): ContextSection {
   const heroes = Object.values(state.members).flatMap((member) => {
     const sheet = member.characterId === null ? undefined : state.characters[member.characterId];
     if (sheet === undefined) return [];
+    if (isFallen(state, sheet.id)) return [`${sheet.name}: has fallen for good; their player will join a new hero.`];
     const hp = encounter?.combatants[sheet.id]?.hp ?? state.heroStatus[sheet.id]?.hp ?? sheet.maxHp;
     return [`${sheet.name}: ${member.availability}, HP ${hp}/${sheet.maxHp}`];
   });
@@ -150,6 +151,7 @@ function liveState(input: ContextInput): ContextSection {
   if (input.audience === "planner") {
     for (const clock of input.bible.clocks) lines.push(`Clock ${clock.id}: ${state.clocks[clock.id]?.filled ?? 0}/${clock.segments}.`);
   }
+  if (state.stash.length > 0) lines.push(`Party stash: ${state.stash.map((item) => input.glossary.names[item] ?? item).join(", ")}.`);
   if (state.clues.length > 0) lines.push(`Revealed clues: ${state.clues.map((clue) => clue.text).join(" ")}`);
   if (encounter !== null) {
     const foes = Object.values(encounter.combatants)

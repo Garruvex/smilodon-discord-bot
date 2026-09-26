@@ -14,6 +14,8 @@ export interface HeroStatus {
   readonly resources: CombatResources;
   // Unspent Hit Dice; absent means all of them (the hero's level).
   readonly hitDice?: number;
+  // Died in a fight; never rejoins one.
+  readonly dead?: boolean;
 }
 
 // Everything the hero's equipment and features grant, as one list.

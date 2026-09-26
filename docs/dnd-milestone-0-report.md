@@ -66,6 +66,9 @@ Also note per transcript: any narration that contradicted the state, any invente
 - **Named-NPC action choice by the Planner** (Skarn choosing among legal actions, with a fallback to his tactic): needs a waiting state in combat and belongs with Discord combat, milestone 2. Ordinary and named monsters currently use their tactic profiles, as the plan allows for ordinary monsters.
 - **Planner clarification and conflicting-action handling**: needs a private prompt to a player, so it lands with the Discord round flow, milestone 1.
 - **Change NPC attitude and grant item** story effects: need NPC attitude and inventory state, milestone 1 with the character hub.
-- **Death rules**: after a victory a hero at 0 HP wakes with 1 HP; a lost fight leaves heroes as they fell. Deaths, and what a lost fight means for the story, are a design decision for the Discord combat milestone.
+- **Retry a fight from a checkpoint** (optional house rule): replay the event log to the start of the fight with fresh dice. Not built.
+- **Gold and consumables**: the inventory holds weapons, armor, and shields; gold, potions, and consumption rules come with milestone 3 content.
+- **Trades and gifts during combat**: refused for now; an object interaction in the same zone is the later rule.
+- Death rules are built (a hero who fails three death saves stays dead, their gear goes to the party stash, the player joins a new hero without the old loot, and a lost fight is a story defeat with heroes waking at 1 HP). Items can be given, swapped with consent, and stashed outside combat, and encounters carry loot.
 - Hero opportunity attacks and death saves roll automatically; the Discord prompts come with milestone 2.
 - Splitting `combat-flow.ts` (about 750 lines) and untangling the engine modules that import each other in a cycle are worth doing before the Discord work adds more to it.

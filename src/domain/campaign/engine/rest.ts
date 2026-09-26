@@ -1,6 +1,7 @@
 import { abilityModifier } from "../character/character-sheet.js";
 import { defaultHeroResources, type HeroStatus } from "../combat/combatant-profile.js";
 import type { CharacterId } from "../core/ids.js";
+import { isFallen } from "../state/campaign-state.js";
 import type { Decision } from "./decision.js";
 import type { Rejection } from "./rejection.js";
 
@@ -17,6 +18,7 @@ export function takeRest(decision: Decision, rest: "short" | "long"): Rejection 
   const content = ctx.rules.content;
   const heroStatus: Record<CharacterId, HeroStatus> = {};
   for (const sheet of Object.values(state.characters)) {
+    if (isFallen(state, sheet.id)) continue;
     const fresh = defaultHeroResources(sheet, content);
     const current = state.heroStatus[sheet.id] ?? { hp: sheet.maxHp, resources: fresh };
     const dice = current.hitDice ?? sheet.level;

@@ -154,11 +154,27 @@ export async function runHarness(options: HarnessOptions): Promise<HarnessRun> {
     if (stored === undefined) throw new Error("The harness campaign disappeared.");
     return stored.state;
   };
+  // A player whose hero died takes a fresh copy of their preset (no loot), as a
+  // new hero at the party's level; the harness then plays the new one.
+  const heroes = new Map<UserId, string>(players.map((player) => [player.userId, player.heroId]));
+  const heroOf = (player: HarnessPlayer): string => heroes.get(player.userId) ?? player.heroId;
+  let replacements = 0;
+  const replaceFallenHeroes = async (state: CampaignState): Promise<void> => {
+    for (const player of players) {
+      const preset = adventure.heroes.find((candidate) => candidate.id === player.heroId);
+      if (preset === undefined || state.heroStatus[heroOf(player)]?.dead !== true) continue;
+      const { class: _class, ...sheet } = preset;
+      replacements += 1;
+      const id = `${preset.id}-${replacements + 1}`;
+      const outcome = await execute({ kind: "joinHero", sheet: { ...sheet, id, ownerUserId: player.userId, name: `${preset.name} II` } }, user(player));
+      if (outcome.kind !== "rejected") heroes.set(player.userId, id);
+    }
+  };
   const viewFor = async (player: HarnessPlayer, state: CampaignState): Promise<RoundView> => {
     const log = await unitOfWork.transaction((tx) => tx.readEvents(campaignKey));
     const narration = log.map((envelope) => envelope.event).findLast((event) => event.kind === "narrationRecorded");
     return {
-      heroName: state.characters[player.heroId]?.name ?? player.heroId,
+      heroName: state.characters[heroOf(player)]?.name ?? heroOf(player),
       sceneTitle: adventure.bible.scenes.find((scene) => scene.id === state.sceneId)?.title ?? "",
       narration: narration?.kind === "narrationRecorded" ? narration.text : null,
     };
@@ -190,7 +206,7 @@ export async function runHarness(options: HarnessOptions): Promise<HarnessRun> {
       if (encounter === null || encounter.status === "ended") return true;
       if (state.status !== "active" || encounter.status !== "active") return false;
       const hero = currentCombatant(encounter);
-      const player = players.find((candidate) => candidate.heroId === hero?.id);
+      const player = players.find((candidate) => heroOf(candidate) === hero?.id);
       if (hero === undefined || player === undefined || state.members[player.userId]?.availability !== "present") return false;
       const command = chooseHeroCommand(encounter, hero, player.combatRole);
       const outcome = await execute(command, user(player));
@@ -203,6 +219,8 @@ export async function runHarness(options: HarnessOptions): Promise<HarnessRun> {
   await execute({ kind: "openRound" }, system);
   for (let played = 0; played < options.rounds; played += 1) {
     let state = await load();
+    await replaceFallenHeroes(state);
+    state = await load();
     for (const player of players) {
       if (player.returnsWhenAway && state.members[player.userId]?.availability === "away") {
         await execute({ kind: "markReturned", userId: player.userId }, user(player));
@@ -230,10 +248,10 @@ export async function runHarness(options: HarnessOptions): Promise<HarnessRun> {
     }
 
     for (const player of players) {
-      if (!round.participants.includes(player.heroId)) continue;
+      if (!round.participants.includes(heroOf(player))) continue;
       const move = await player.move(round.number, adventure.bible.language, await viewFor(player, state));
-      if (move.kind === "act") await execute({ kind: "submitAction", characterId: player.heroId, text: move.text }, user(player));
-      if (move.kind === "pass") await execute({ kind: "pass", characterId: player.heroId }, user(player));
+      if (move.kind === "act") await execute({ kind: "submitAction", characterId: heroOf(player), text: move.text }, user(player));
+      if (move.kind === "pass") await execute({ kind: "pass", characterId: heroOf(player) }, user(player));
     }
     if ((await load()).round?.status === "collecting") {
       clock.advance((pacing.roundSeconds ?? 0) * 1000);
@@ -243,7 +261,7 @@ export async function runHarness(options: HarnessOptions): Promise<HarnessRun> {
 
     await drainDm();
     for (const check of Object.values((await load()).checks)) {
-      const owner = players.find((player) => player.heroId === check.characterId);
+      const owner = players.find((player) => heroOf(player) === check.characterId);
       if (check.status === "pending" && owner?.clicksRoll === true) {
         await execute({ kind: "requestRoll", checkId: check.id }, user(owner));
       }
@@ -314,6 +332,9 @@ function initialState(options: HarnessOptions, pacing: Pacing): CampaignState {
     heroStatus: {},
     pendingEncounter: null,
     encounterHistory: [],
+    stash: [],
+    offers: {},
+    offerCount: 0,
     clocks: {},
     clues: [],
   };
