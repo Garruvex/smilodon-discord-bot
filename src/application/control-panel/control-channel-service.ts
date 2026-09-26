@@ -171,6 +171,10 @@ export class ControlChannelService {
   private readonly voteMessageByGuild = new Map<string, Message>();
   private readonly voteTrackKeyByGuild = new Map<string, string>();
   private readonly voteClosesAtByGuild = new Map<string, number | null>();
+  // Old vote messages whose delete failed for a reason that may pass (a
+  // network error or a Discord 5xx), retried on the next vote write so they
+  // don't sit in the channel until the next panel setup's sweep.
+  private readonly staleVoteMessagesByGuild = new Map<string, Message[]>();
   private readonly configuredChannelPermissions = new Set<string>();
   private readonly refreshCoordinator: PanelRefreshCoordinator;
   // The action queue: serializes per-guild playbackService/playerGateway
@@ -256,6 +260,7 @@ export class ControlChannelService {
     this.voteMessageByGuild.clear();
     this.voteTrackKeyByGuild.clear();
     this.voteClosesAtByGuild.clear();
+    this.staleVoteMessagesByGuild.clear();
     for (const guildId of [...this.editSlotsByGuild.keys()]) this.releaseEditSlots(guildId);
   }
 
@@ -268,6 +273,7 @@ export class ControlChannelService {
     this.lyricsMessageByGuild.delete(guildId);
     this.lyricsTrackKeyByGuild.delete(guildId);
     this.forgetVoteMessage(guildId);
+    this.staleVoteMessagesByGuild.delete(guildId);
     this.releaseEditSlots(guildId);
     this.refreshCoordinator.stopGuild(guildId);
     const profile = this.guildConfigurationProvider.find(guildId);
@@ -908,6 +914,7 @@ export class ControlChannelService {
     return this.scheduleEdit(guildId, messages, "vote", async () => {
       const channel = messages.channel;
       const snapshot = this.playerGateway.getSnapshot(guildId);
+      this.retryStaleVoteMessageDeletes(guildId);
       try {
         const vote = snapshot?.autoQueueVote;
         const trackKey = snapshot?.currentTrack && vote?.status === "ready"
@@ -949,10 +956,11 @@ export class ControlChannelService {
         await existing.edit(payload);
         return true;
       } catch (error) {
-        // Most likely the message was deleted out from under us; forgetting it
-        // lets the next refresh post a replacement.
-        this.voteMessageByGuild.delete(guildId);
-        this.voteTrackKeyByGuild.delete(guildId);
+        // Forgetting the message lets the next refresh post a replacement.
+        // It is deleted too, not just dropped: the edit may have failed for a
+        // passing reason (a timeout, a Discord 5xx) with the message still
+        // there, and once forgotten nothing else would ever clean it up.
+        this.forgetVoteMessage(guildId);
         this.logger.error({ error, guildId }, "Unable to refresh the autoqueue vote message");
         return true;
       }
@@ -964,9 +972,28 @@ export class ControlChannelService {
     this.voteMessageByGuild.delete(guildId);
     this.voteTrackKeyByGuild.delete(guildId);
     this.voteClosesAtByGuild.delete(guildId);
-    void message?.delete().catch((error: unknown) => {
+    if (message) this.deleteVoteMessage(guildId, message);
+  }
+
+  private deleteVoteMessage(guildId: string, message: Message): void {
+    void message.delete().catch((error: unknown) => {
+      // Already gone is the outcome we wanted.
+      if (error instanceof DiscordAPIError && error.code === RESTJSONErrorCodes.UnknownMessage) return;
       this.logger.warn({ error, guildId, messageId: message.id }, "Unable to delete the autoqueue vote message");
+      // Any other Discord error (missing access, ...) would fail the same way
+      // again; only a failure that never got a Discord answer is worth a retry.
+      if (error instanceof DiscordAPIError) return;
+      const stale = this.staleVoteMessagesByGuild.get(guildId) ?? [];
+      if (!stale.some((entry) => entry.id === message.id)) stale.push(message);
+      this.staleVoteMessagesByGuild.set(guildId, stale);
     });
+  }
+
+  private retryStaleVoteMessageDeletes(guildId: string): void {
+    const stale = this.staleVoteMessagesByGuild.get(guildId);
+    if (!stale) return;
+    this.staleVoteMessagesByGuild.delete(guildId);
+    for (const message of stale) this.deleteVoteMessage(guildId, message);
   }
 
   private async handleVoteButton(interaction: ButtonInteraction): Promise<boolean> {
