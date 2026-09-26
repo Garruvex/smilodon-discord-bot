@@ -4,65 +4,10 @@ import type { CampaignKey } from "../../../../src/application/campaign/ports/cam
 import { enSrd51Glossary } from "../../../../src/application/i18n/campaign/glossary/en/srd-5.1.js";
 import { zhTwSrd51Glossary } from "../../../../src/application/i18n/campaign/glossary/zh-TW/srd-5.1.js";
 import { CampaignCardService } from "../../../../src/infrastructure/discord/campaign/campaign-card-service.js";
-import type { CampaignMessageGateway } from "../../../../src/infrastructure/discord/campaign/campaign-message-gateway.js";
-import type { CardPayload } from "../../../../src/infrastructure/discord/campaign/card-payload.js";
 import { starterAdventureId } from "../../../../src/infrastructure/campaign/starter-adventures.js";
 import { guildId, quiet, rig, starter, type Rig } from "../../../application/campaign/campaign-rig.js";
 import { flatten } from "./card-helpers.js";
-
-interface Sent {
-  channelId: string;
-  messageId: string;
-  payload: CardPayload;
-  removed: boolean;
-}
-
-class FakeMessages implements CampaignMessageGateway {
-  public readonly sent: Sent[] = [];
-  public readonly edits: string[] = [];
-  public readonly pinned: string[] = [];
-  public failSends = 0;
-  public readonly deleted = new Set<string>();
-  private next = 0;
-
-  public send(channelId: string, payload: CardPayload): Promise<string> {
-    if (this.failSends > 0) {
-      this.failSends -= 1;
-      return Promise.reject(new Error("Missing Permissions"));
-    }
-    this.next += 1;
-    const messageId = `m${this.next}`;
-    this.sent.push({ channelId, messageId, payload, removed: false });
-    return Promise.resolve(messageId);
-  }
-
-  public edit(_channelId: string, messageId: string, payload: CardPayload): Promise<"ok" | "missing"> {
-    const message = this.sent.find((candidate) => candidate.messageId === messageId);
-    if (message === undefined || this.deleted.has(messageId)) return Promise.resolve("missing");
-    message.payload = payload;
-    this.edits.push(messageId);
-    return Promise.resolve("ok");
-  }
-
-  public remove(_channelId: string, messageId: string): Promise<void> {
-    const message = this.sent.find((candidate) => candidate.messageId === messageId);
-    if (message !== undefined) message.removed = true;
-    return Promise.resolve();
-  }
-
-  public post(): Promise<string> {
-    return Promise.resolve("post");
-  }
-
-  public pin(_channelId: string, messageId: string): Promise<void> {
-    this.pinned.push(messageId);
-    return Promise.resolve();
-  }
-
-  public live(channelId: string): Sent[] {
-    return this.sent.filter((message) => message.channelId === channelId && !message.removed && !this.deleted.has(message.messageId));
-  }
-}
+import { FakeMessages, type Sent } from "./fake-messages.js";
 
 const party = "chan-party";
 const adventure = "chan-adventure";
