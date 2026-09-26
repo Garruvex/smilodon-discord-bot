@@ -330,6 +330,11 @@ export class Application {
       });
     });
 
+    // The Table Talk thread is one of a game's places: it is made again.
+    this.client.on(Events.ThreadDelete, (thread) => {
+      this.dependencies.campaign.handleChannelDeleted(thread.guildId, thread.id);
+    });
+
     this.client.on(Events.GuildDelete, (guild) => {
       this.controlChannelService.handleGuildRemoved(guild.id);
       void this.dependencies.musicPlayerGateway.handleGuildRemoved(guild.id).catch((error: unknown) => {

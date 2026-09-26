@@ -65,6 +65,21 @@ export interface GuildCampaignSettings {
   readonly adminRoleId?: string | null;
 }
 
+// Something the organizer has to fix. deliveryFailed: a message was given up
+// on after many tries. cardsFailed: a card could not be drawn. permissions: the
+// bot lacks a permission it needs. channelMissing: a channel is gone and was
+// not (or could not be) made again.
+export type CampaignIssueCode = "deliveryFailed" | "cardsFailed" | "permissions" | "channelMissing";
+
+export interface CampaignIssue {
+  readonly code: CampaignIssueCode;
+  // What exactly: a delivery kind, card names, or permission names.
+  readonly detail: string;
+  readonly since: Instant;
+  // The organizer has been told (once, in the game's channel).
+  readonly notified: boolean;
+}
+
 export interface CampaignRecord {
   readonly key: CampaignKey;
   readonly name: string;
@@ -83,6 +98,8 @@ export interface CampaignRecord {
   readonly cards: Readonly<Record<string, CardReference>>;
   readonly createdAt: Instant;
   readonly startedAt: Instant | null;
+  // Problems waiting for the organizer; records saved before this existed have none.
+  readonly issues?: readonly CampaignIssue[];
 }
 
 export interface StoredRecord {

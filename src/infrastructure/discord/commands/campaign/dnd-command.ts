@@ -12,6 +12,7 @@ import { createGameText } from "../../campaign/campaign-game-creator.js";
 import type { CampaignCardService } from "../../campaign/campaign-card-service.js";
 import type { CampaignSetupService } from "../../campaign/campaign-setup-service.js";
 import { refusalText } from "../../campaign/refusal-text.js";
+import { repairText } from "../../campaign/repair-text.js";
 
 export interface DndCommandDependencies {
   readonly lobby: CampaignLobbyService;
@@ -184,9 +185,7 @@ export class DndCommand implements BotCommand {
           await responses.edit(text.campaign.refusal.notOrganizer);
           return;
         }
-        await this.deps.setup.provision(key);
-        await this.deps.cards.sync(key, true);
-        await responses.edit(text.campaign.cmd.repaired);
+        await responses.edit(repairText(await this.deps.setup.repair(key), text));
         return;
       }
     }

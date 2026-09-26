@@ -33,8 +33,9 @@ async function lobby(r: Rig): Promise<CampaignKey> {
   return key;
 }
 
-function serviceFor(r: Rig, messages: FakeMessages): CampaignCardService {
+function serviceFor(r: Rig, messages: FakeMessages, extra: { now?: () => number } = {}): CampaignCardService {
   return new CampaignCardService({
+    ...extra,
     unitOfWork: r.store,
     rulesets: r.rulesets,
     adventures: r.adventures,
@@ -152,12 +153,15 @@ describe("the card service", () => {
   it("survives a failed send, saves nothing for it, and draws it on the next sync", async () => {
     const r = rig();
     const messages = new FakeMessages();
-    const cards = serviceFor(r, messages);
+    let now = 0;
+    const cards = serviceFor(r, messages, { now: () => now });
     const key = await lobby(r);
     messages.failSends = 1;
     await cards.sync(key);
     // Nothing was saved for the card that failed to draw.
     expect(Object.keys((await r.service.get(key))?.record.cards ?? {})).not.toContain("lobby");
+    // A failing card is left alone for a little while, then drawn.
+    now += 60_000;
     await cards.sync(key);
     expect(messages.live(party)).toHaveLength(1);
   });

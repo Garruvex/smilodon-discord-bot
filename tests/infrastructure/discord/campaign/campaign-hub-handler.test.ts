@@ -94,6 +94,7 @@ function harness(options: { modelConfigured?: boolean } = {}): Harness {
   } as unknown as CampaignGameCreator;
   const setup = {
     provision: (key: CampaignKey): Promise<{ kind: "ok" }> => (provisioned.push(key), Promise.resolve({ kind: "ok" })),
+    repair: (key: CampaignKey): Promise<{ kind: "ok"; requeued: number }> => (provisioned.push(key), Promise.resolve({ kind: "ok", requeued: 0 })),
   } as unknown as CampaignSetupService;
   // Only a marked interaction counts as a bot administrator.
   const access = { evaluate: (_policy: unknown, _module: unknown, interaction: { botAdmin?: boolean }): { allowed: boolean } => ({ allowed: interaction.botAdmin === true }) } as unknown as AccessPolicyService;

@@ -9,6 +9,7 @@ import type { Logger } from "pino";
 import type { AccessPolicyService } from "../application/access/access-policy-service.js";
 import { StaticAdventureLibrary } from "../application/campaign/adventures/static-adventure-library.js";
 import { CampaignCommandBus } from "../application/campaign/campaign-command-bus.js";
+import { CampaignIssues } from "../application/campaign/campaign-issues.js";
 import { CampaignLobbyService } from "../application/campaign/campaign-lobby-service.js";
 import { CampaignPlayController } from "../application/campaign/campaign-play-controller.js";
 import { CampaignRuntime } from "../application/campaign/campaign-runtime.js";
@@ -39,7 +40,9 @@ import { CampaignGameCreator } from "../infrastructure/discord/campaign/campaign
 import { DiscordMessageGateway } from "../infrastructure/discord/campaign/campaign-message-gateway.js";
 import { DiscordCampaignPresenter } from "../infrastructure/discord/campaign/campaign-presenter.js";
 import { DiscordResourceGateway } from "../infrastructure/discord/campaign/campaign-resource-gateway.js";
+import { CampaignRecovery } from "../infrastructure/discord/campaign/campaign-recovery.js";
 import { CampaignSetupService } from "../infrastructure/discord/campaign/campaign-setup-service.js";
+import { organizerNotice } from "../infrastructure/discord/campaign/issue-notifier.js";
 import { DndCommand } from "../infrastructure/discord/commands/campaign/dnd-command.js";
 import { CampaignComponentHandler } from "../infrastructure/discord/components/campaign-component-handler.js";
 import { CampaignHubComponentHandler } from "../infrastructure/discord/components/campaign-hub-component-handler.js";
@@ -100,7 +103,8 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
   const bus = new CampaignCommandBus({ unitOfWork, rulesets, clock, onWorkQueued: (): void => runtime?.kick() });
 
   const messages = new DiscordMessageGateway(client);
-  const cards = new CampaignCardService({ unitOfWork, rulesets, adventures, messages, glossaries, logger });
+  const issues = new CampaignIssues({ unitOfWork, clock, notify: organizerNotice(messages) });
+  const cards = new CampaignCardService({ unitOfWork, rulesets, adventures, messages, glossaries, logger, issues });
   const presenter = new DiscordCampaignPresenter({ unitOfWork, messages, cards, adventures, glossaries });
   const lobby = new CampaignLobbyService({
     unitOfWork,
@@ -110,7 +114,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
     ruleset: { rulesetId: content.rulesetId, rulesetVersion: content.version, houseRules: {} },
   });
   const play = new CampaignPlayController({ unitOfWork, bus, refresher: cards, adventures });
-  const setup = new CampaignSetupService({ unitOfWork, resources: new DiscordResourceGateway(client), cards, logger });
+  const setup = new CampaignSetupService({ unitOfWork, resources: new DiscordResourceGateway(client), cards, logger, issues });
 
   const model = createModelClient(configuration);
   const cacheKey = "dnd";
@@ -123,7 +127,12 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
     rolls: new RollWorker(unitOfWork, bus, new CryptoRandomSource(), clock),
     timers: new TimerWorker(unitOfWork, bus, clock),
     dm: new DmJobWorker({ unitOfWork, bus, planner, narrator, adventures, glossaries }),
-    delivery: new DeliveryWorker(unitOfWork, presenter),
+    delivery: new DeliveryWorker(unitOfWork, presenter, {
+      clock,
+      onAbandoned: async (key, item): Promise<void> => {
+        await issues.raise(key, "deliveryFailed", item.request.kind === "deliver" ? item.request.delivery.kind : item.request.kind);
+      },
+    }),
     logger,
     bootId: randomUUID(),
   });
@@ -135,19 +144,11 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
   const handler = new CampaignComponentHandler({ lobby, play, cards, unitOfWork, rulesets, adventures, glossaries });
   const hubHandler = new CampaignHubComponentHandler({ lobby, play, setup, cards, creator, authority });
 
-  // A deleted hub channel or game channel is made again (its cards are drawn
-  // into the new one); a deleted message is drawn again by the card service.
-  const recoverChannel = async (guildId: string, channelId: string): Promise<void> => {
-    const settings = await unitOfWork.transaction((tx) => tx.loadGuildSettings(guildId));
-    if (settings?.hubChannelId === channelId) {
-      await setup.setupGuild(guildId, null);
-      return;
-    }
-    const found = await lobby.findByChannel(guildId, [channelId]);
-    if (found === undefined || found.record.lifecycle === "archived") return;
-    await setup.provision(found.record.key);
-    await cards.sync(found.record.key, true);
-  };
+  // A deleted hub channel, game channel or Table Talk thread is made again
+  // (its cards are drawn into the new one), within limits; a deleted message is
+  // drawn again by the card service.
+  const recovery = new CampaignRecovery({ unitOfWork, lobby, setup, cards, issues, logger });
+  const recoverChannel = (guildId: string, channelId: string): Promise<void> => recovery.channelDeleted(guildId, channelId);
   const logFailure = (what: string, guildId: string): ((error: unknown) => void) => (error): void => {
     logger.error({ err: error, guildId }, what);
   };

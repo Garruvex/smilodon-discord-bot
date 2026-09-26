@@ -1,4 +1,5 @@
 import { KeyedSerialQueue } from "../../../application/concurrency/keyed-serial-queue.js";
+import type { CampaignIssues } from "../../../application/campaign/campaign-issues.js";
 import type { RuntimeLogger } from "../../../application/campaign/campaign-runtime.js";
 import type { CampaignRecord, GuildCampaignSettings, PendingResource } from "../../../application/campaign/ports/campaign-record.js";
 import { RevisionConflictError, type CampaignKey, type CampaignUnitOfWork } from "../../../application/campaign/ports/campaign-store.js";
@@ -18,8 +19,17 @@ export type ProvisionResult =
   | { readonly kind: "missingPermissions"; readonly missing: readonly string[] }
   | { readonly kind: "failed"; readonly step: PendingResource["kind"] };
 
+export type RepairResult =
+  | { readonly kind: "ok"; readonly requeued: number }
+  | { readonly kind: "notFound" }
+  | { readonly kind: "archived" }
+  | { readonly kind: "notSetup" }
+  | { readonly kind: "missingPermissions"; readonly missing: readonly string[] }
+  | { readonly kind: "failed"; readonly step: PendingResource["kind"] };
+
 export interface CampaignSetupServiceOptions {
   readonly unitOfWork: CampaignUnitOfWork;
+  readonly issues?: CampaignIssues;
   readonly resources: CampaignResourceGateway;
   readonly cards: CampaignCardService;
   readonly logger: RuntimeLogger;
@@ -167,6 +177,35 @@ export class CampaignSetupService {
       await this.options.cards.sync(key);
       return { kind: "ok", record };
     });
+  }
+
+  // Repair: makes any missing channel or thread again, sends what had been
+  // given up on, redraws every card against what Discord really has, and clears
+  // the problems that are now fixed. A finished game is left as it is.
+  public async repair(key: CampaignKey): Promise<RepairResult> {
+    const { issues, unitOfWork, cards } = this.options;
+    const stored = await unitOfWork.transaction((tx) => tx.loadRecord(key));
+    if (stored === undefined) return { kind: "notFound" };
+    if (stored.record.lifecycle === "archived") return { kind: "archived" };
+    const provisioned = await this.provision(key);
+    switch (provisioned.kind) {
+      case "notFound":
+      case "notSetup":
+        return provisioned;
+      case "missingPermissions":
+        await issues?.raise(key, "permissions", provisioned.missing.join(", "));
+        return provisioned;
+      case "failed":
+        await issues?.raise(key, "channelMissing", provisioned.step);
+        return provisioned;
+      case "ok":
+        break;
+    }
+    const requeued = await unitOfWork.transaction((tx) => tx.requeueFailedOutbox(key));
+    await issues?.clear(key, ["deliveryFailed", "permissions", "channelMissing"]);
+    // Draws every card again; a card that still cannot be drawn raises its own issue.
+    await cards.sync(key, true);
+    return { kind: "ok", requeued };
   }
 
   // Read-modify-write on the record, retrying when another writer moved it.

@@ -3,7 +3,10 @@ import { createHash } from "node:crypto";
 import { KeyedSerialQueue } from "../../../application/concurrency/keyed-serial-queue.js";
 import type { AdventureLibrary } from "../../../application/campaign/ports/adventure-library.js";
 import type { CardRefresher } from "../../../application/campaign/ports/card-refresher.js";
-import type { CampaignRecord, CardReference } from "../../../application/campaign/ports/campaign-record.js";
+import { DiscordAPIError, RESTJSONErrorCodes } from "discord.js";
+
+import type { CampaignIssues } from "../../../application/campaign/campaign-issues.js";
+import type { CampaignIssueCode, CampaignRecord, CardReference } from "../../../application/campaign/ports/campaign-record.js";
 import { RevisionConflictError, type CampaignKey, type CampaignUnitOfWork, type StoredCampaign } from "../../../application/campaign/ports/campaign-store.js";
 import type { RuntimeLogger } from "../../../application/campaign/campaign-runtime.js";
 import type { RulesetCatalog } from "../../../application/campaign/rules/ruleset-catalog.js";
@@ -33,6 +36,21 @@ export interface CampaignCardServiceOptions {
   readonly messages: CampaignMessageGateway;
   readonly glossaries: Readonly<Record<string, Glossary>>;
   readonly logger: RuntimeLogger;
+  // Where a card that cannot be drawn is reported for the organizer.
+  readonly issues?: CampaignIssues;
+  // Milliseconds now; tests move it.
+  readonly now?: () => number;
+}
+
+// A card that failed to draw is left alone for this long, so a missing
+// permission does not become a failing call on every click (Repair ignores it).
+const failureCooldownMs = 30_000;
+
+interface CardFailure {
+  readonly card: string;
+  // "cooling": skipped because it failed a moment ago; it is still broken.
+  readonly code: CampaignIssueCode | "cooling";
+  readonly detail: string;
 }
 
 interface DesiredCard {
@@ -160,11 +178,12 @@ export class CampaignCardService implements CardRefresher {
     const { record } = loaded.stored;
     const desired = this.desiredCards(record, loaded.campaign);
     const updates: Record<string, CardReference> = {};
+    const failures: CardFailure[] = [];
     // A lobby card becomes the campaign card in place when the adventure starts.
     const inherited = record.cards.party === undefined && record.cards.lobby !== undefined ? { party: record.cards.lobby } : {};
     const existing: Readonly<Record<string, CardReference>> = { ...record.cards, ...inherited };
     for (const card of desired) {
-      const reference = await this.place(card, existing[card.key], verify);
+      const reference = await this.place(card, existing[card.key], verify, `${key.campaignId}:${card.key}`, failures);
       if (reference !== null) updates[card.key] = reference;
     }
     // An offer that was answered leaves the Party channel.
@@ -176,6 +195,7 @@ export class CampaignCardService implements CardRefresher {
       await this.options.messages.remove(card.channelId, card.messageId).catch(() => undefined);
     }
     await this.saveReferences(key, updates, [...(record.lifecycle === "lobby" ? [] : ["lobby"]), ...answered]);
+    await this.reportFailures(key, record, failures);
     await this.syncHub(key.guildId, verify);
   }
 
@@ -318,13 +338,41 @@ export class CampaignCardService implements CardRefresher {
     return cards;
   }
 
+  // A game whose cards cannot be drawn is the organizer's to fix (missing
+  // permission, deleted channel), so it is written on the record once; a sync
+  // that draws everything clears it. A finished game raises nothing.
+  private async reportFailures(key: CampaignKey, record: CampaignRecord, failures: readonly CardFailure[]): Promise<void> {
+    const { issues } = this.options;
+    if (issues === undefined) return;
+    try {
+      if (failures.length === 0) {
+        if ((record.issues ?? []).some((issue) => issue.code !== "deliveryFailed")) await issues.clear(key, ["cardsFailed", "permissions", "channelMissing"]);
+        return;
+      }
+      if (record.lifecycle === "archived") return;
+      for (const code of ["permissions", "channelMissing", "cardsFailed"] as const) {
+        const matching = failures.filter((failure) => failure.code === code);
+        if (matching.length > 0) await issues.raise(key, code, [...new Set(matching.map((failure) => failure.detail))].join(", "));
+      }
+    } catch (error) {
+      this.options.logger.error({ err: error, guildId: key.guildId, campaignId: key.campaignId }, "Campaign issue report failed");
+    }
+  }
+
   // Edits the card in place when it is unchanged in identity, replaces it when
   // the message is gone or the round/turn moved on. Returns the reference to
   // save, or null when nothing could be drawn (the failure is logged and the
   // next sync tries again).
-  private async place(card: DesiredCard, current: CardReference | undefined, verify = false): Promise<CardReference | null> {
+  private async place(card: DesiredCard, current: CardReference | undefined, verify = false, failureKey?: string, failures?: CardFailure[]): Promise<CardReference | null> {
     const hash = hashOf(card.payload);
     const { messages } = this.options;
+    if (failureKey !== undefined && !verify) {
+      const failedAt = this.failedAt.get(failureKey);
+      if (failedAt !== undefined && this.now() - failedAt.at < failureCooldownMs) {
+        failures?.push({ card: card.key, code: "cooling", detail: failedAt.detail });
+        return null;
+      }
+    }
     try {
       if (current !== undefined && current.channelId === card.channelId) {
         if (current.epoch === card.epoch) {
@@ -339,11 +387,22 @@ export class CampaignCardService implements CardRefresher {
         this.expectRemoval(current.messageId);
         await messages.remove(current.channelId, current.messageId).catch(() => undefined);
       }
+      if (failureKey !== undefined) this.failedAt.delete(failureKey);
       return { channelId: card.channelId, messageId, renderedHash: hash, epoch: card.epoch };
     } catch (error) {
       this.options.logger.warn({ err: error, card: card.key }, "A campaign card could not be drawn");
+      const code = classifyFailure(error);
+      const detail = card.key;
+      if (failureKey !== undefined) this.failedAt.set(failureKey, { at: this.now(), detail });
+      failures?.push({ card: card.key, code, detail });
       return null;
     }
+  }
+
+  private readonly failedAt = new Map<string, { at: number; detail: string }>();
+
+  private now(): number {
+    return (this.options.now ?? Date.now)();
   }
 
   // Messages the bot is deleting itself: their delete events are not a
@@ -380,6 +439,20 @@ export class CampaignCardService implements CardRefresher {
       }
     }
   }
+}
+
+// Missing Permissions and Missing Access are the organizer's to fix; an
+// Unknown Channel means the channel is gone.
+const permissionCodes: readonly number[] = [RESTJSONErrorCodes.MissingPermissions, RESTJSONErrorCodes.MissingAccess];
+
+function classifyFailure(error: unknown): CampaignIssueCode {
+  if (error instanceof DiscordAPIError) {
+    const code = Number(error.code);
+    if (permissionCodes.includes(code)) return "permissions";
+    if (code === Number(RESTJSONErrorCodes.UnknownChannel)) return "channelMissing";
+    return "cardsFailed";
+  }
+  return error instanceof Error && /missing (permissions|access)/i.test(error.message) ? "permissions" : "cardsFailed";
 }
 
 // The adventure panel is replaced when the round or the combat turn changes.

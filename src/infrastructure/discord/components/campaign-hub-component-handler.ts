@@ -36,6 +36,7 @@ import {
   type WizardChoices,
 } from "../campaign/hub-ids.js";
 import { refusalText } from "../campaign/refusal-text.js";
+import { repairText } from "../campaign/repair-text.js";
 
 export interface CampaignHubDependencies {
   readonly lobby: CampaignLobbyService;
@@ -205,9 +206,7 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     let notice = "";
     if (verb === "repair") {
       await interaction.deferUpdate();
-      await this.deps.setup.provision(record.key);
-      await this.deps.cards.sync(record.key, true);
-      notice = text.campaign.cmd.repaired;
+      notice = repairText(await this.deps.setup.repair(record.key), text);
     } else if (isManageVerb(verb) && verb !== "repair") {
       await interaction.deferUpdate();
       const result = await this.deps.play.manage(record.key, verb, interaction.id);
@@ -288,7 +287,9 @@ export class CampaignHubComponentHandler implements ComponentHandler {
       );
     }
     rows.push(row(verb("repair", t.repair), new ButtonBuilder().setCustomId(hubCustomId("endAsk", id)).setLabel(t.end).setStyle(ButtonStyle.Danger)));
-    return { content: `**${t.title({ name: record.name })}**${status === "" ? "" : ` · ${status}`}`, components: rows };
+    const problems = (record.issues ?? []).map((issue) => `⚠️ ${text.campaign.issue.short[issue.code]({ detail: issue.detail })}`);
+    const title = `**${t.title({ name: record.name })}**${status === "" ? "" : ` · ${status}`}`;
+    return { content: problems.length === 0 ? title : `${title}\n${t.needsAttention}\n${problems.join("\n")}`, components: rows };
   }
 
   private refreshHub(guildId: string): void {
