@@ -166,8 +166,17 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       return moveItem(state, event.characterId, event.itemId, "toStash");
     case "itemTaken":
       return moveItem(state, event.characterId, event.itemId, "fromStash");
-    case "lootFound":
-      return { ...state, stash: [...state.stash, ...event.items], gold: state.gold + event.gold };
+    case "lootFound": {
+      const stash = [...state.stash, ...event.items];
+      if (event.split === undefined) return { ...state, stash, gold: state.gold + event.gold };
+      const heroGold: Record<CharacterId, number> = { ...state.heroGold };
+      for (const [characterId, share] of Object.entries(event.split)) heroGold[characterId] = (heroGold[characterId] ?? 0) + share;
+      return { ...state, stash, heroGold };
+    }
+    case "wornChanged": {
+      const sheet = state.characters[event.characterId];
+      return sheet === undefined ? state : { ...state, characters: { ...state.characters, [sheet.id]: { ...sheet, worn: event.worn } } };
+    }
     case "itemUsed": {
       const sheet = state.characters[event.characterId];
       if (sheet === undefined) return state;

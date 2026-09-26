@@ -70,7 +70,11 @@ export type InventoryCommand =
   // The hero's owner, or the organizer, takes an item out of the stash for a hero.
   | { readonly kind: "takeFromStash"; readonly characterId: CharacterId; readonly itemId: ContentId<"item"> }
   // Outside combat: the hero drinks a potion they hold.
-  | { readonly kind: "useItem"; readonly characterId: CharacterId; readonly itemId: ContentId<"item"> };
+  | { readonly kind: "useItem"; readonly characterId: CharacterId; readonly itemId: ContentId<"item"> }
+  // Outside combat (armor takes minutes to change in the 2014 rules): the
+  // hero puts on, or takes off, an armor or shield they carry.
+  | { readonly kind: "wearItem"; readonly characterId: CharacterId; readonly itemId: ContentId<"item"> }
+  | { readonly kind: "removeItem"; readonly characterId: CharacterId; readonly itemId: ContentId<"item"> };
 
 // Combat. Hero commands name the acting combatant (the hero's character ID)
 // so a stale button for another turn is refused rather than misapplied.

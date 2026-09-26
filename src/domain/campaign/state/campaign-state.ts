@@ -49,8 +49,11 @@ export interface CampaignState {
   readonly heroStatus: Readonly<Record<CharacterId, HeroStatus>>;
   // Items the party holds in common: loot from fights and a fallen hero's gear.
   readonly stash: readonly ContentId<"item">[];
-  // The party's gold, found as loot.
+  // The party's purse: gold found as loot when the table pools it.
   readonly gold: number;
+  // Each hero's own coins (gold shared out under the "split" house rule).
+  // A hero missing here has none.
+  readonly heroGold?: Readonly<Record<CharacterId, number>>;
   // Trade offers waiting for the other hero's owner to answer.
   readonly offers: Readonly<Record<string, ItemOffer>>;
   // Numbers offer IDs deterministically.

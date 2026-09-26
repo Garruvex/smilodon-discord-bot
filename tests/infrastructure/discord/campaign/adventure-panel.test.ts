@@ -106,9 +106,11 @@ const hero: HeroView = {
   presence: "present",
   down: false,
   fallen: false,
-  equipped: [],
+  worn: [],
+  weapons: [],
   pack: [],
   gold: 0,
+  partyGold: 0,
   stash: [],
   cantrips: [],
   prepared: [],
@@ -130,9 +132,11 @@ describe("hero cards", () => {
   it("always shows gear, pack, gold, stash, spells, slots, and limited uses", () => {
     const loaded: HeroView = {
       ...hero,
-      equipped: ["item:mace", "item:chain-mail"],
+      worn: ["item:chain-mail"],
+      weapons: ["item:mace"],
       pack: [{ id: "item:healing-potion", count: 2 }],
-      gold: 12,
+      gold: 5,
+      partyGold: 12,
       stash: ["item:shortbow"],
       cantrips: ["spell:sacred-flame"],
       prepared: ["spell:bless", "spell:cure-wounds"],
@@ -140,21 +144,26 @@ describe("hero cards", () => {
       uses: [{ id: "feature:second-wind", left: 0, max: 1 }],
     };
     const card = flatten(renderHeroCard(loaded, texts.en, "camp", (id) => id.split(":")[1] ?? id)).text;
-    expect(card).toContain("⚔️ **Equipped:** mace, chain-mail");
-    expect(card).toContain("🎒 **Pack:** healing-potion ×2 · 🪙 Party gold 12");
+    expect(card).toContain("🛡️ **Wearing:** chain-mail");
+    expect(card).toContain("⚔️ **Weapons:** mace");
+    expect(card).toContain("🎒 **Pack:** healing-potion ×2");
+    expect(card).toContain("🪙 **Gold:** 5 · Party purse 12");
     expect(card).toContain("🧰 **Party stash:** shortbow");
     expect(card).toContain("✨ **Cantrips:** sacred-flame · **Prepared:** bless, cure-wounds");
     expect(card).toContain("🔮 **Spell slots:** Level 1 1/2");
     expect(card).toContain("⚡ **Uses:** second-wind 0/1");
 
     const zh = flatten(renderHeroCard(loaded, texts["zh-TW"], "camp", (id) => id.split(":")[1] ?? id)).text;
-    expect(zh).toContain("⚔️ **裝備：**mace、chain-mail");
+    expect(zh).toContain("🛡️ **穿戴：**chain-mail");
+    expect(zh).toContain("🪙 **金幣：**5 · 隊伍公庫 12");
     expect(zh).toContain("🔮 **法術位：**1 環 1/2");
   });
 
   it("shows an empty pack and no spell lines for a hero without them", () => {
     const card = flatten(renderHeroCard(hero, texts.en, "camp", String)).text;
-    expect(card).toContain("🎒 **Pack:** empty · 🪙 Party gold 0");
+    expect(card).toContain("🎒 **Pack:** empty");
+    expect(card).toContain("🪙 **Gold:** 0");
+    expect(card).not.toContain("Party purse");
     expect(card).not.toContain("Cantrips");
     expect(card).not.toContain("Party stash");
     expect(card).not.toContain("Uses:");

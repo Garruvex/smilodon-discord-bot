@@ -5,6 +5,7 @@ import { replay } from "../../../src/domain/campaign/events/evolve.js";
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
 import { alex, borin, jamie, kinds, mira, newCampaign, organizer, reject, run, system } from "./campaign-fixtures.js";
 import { Fight, skirmish } from "./combat-fixtures.js";
+import { ruleset } from "./campaign-fixtures.js";
 
 // Ends the fight with Borin dead and Mira standing, the way a third failed
 // death save would leave it.
@@ -98,6 +99,30 @@ describe("loot", () => {
     expect(kinds(fight.events)).toContain("lootFound");
     expect(fight.state.stash).toEqual(loot);
     expect(fight.state.gold).toBe(15);
+  });
+
+  const win = (fight: Fight): Fight => {
+    fight.rolls([15], [6]).run(alex, { kind: "combatAttack", combatantId: "c-mira", targetId: "goblin-a", weapon: "item:shortbow" });
+    fight.run(alex, { kind: "endTurn", combatantId: "c-mira" });
+    fight.run(jamie, { kind: "combatMove", combatantId: "c-borin", zoneId: "courtyard" });
+    fight.run(jamie, { kind: "combatEngage", combatantId: "c-borin", targetId: "goblin-b" });
+    return fight.rolls([15], [8]).run(jamie, { kind: "combatAttack", combatantId: "c-borin", targetId: "goblin-b", weapon: "item:longsword" });
+  };
+
+  it("shares the gold between the heroes when the table splits it, the remainder to the first", () => {
+    const fight = new Fight(newCampaign(), ruleset({ "loot-gold": "split" })).rolls([20, 15, 5, 4]).run(organizer, { kind: "startEncounter", spec: { ...skirmish, gold: 15 } });
+    win(fight);
+    const loot = fight.events.find((event) => event.kind === "lootFound");
+    expect(loot).toMatchObject({ kind: "lootFound", gold: 15, split: { "c-mira": 8, "c-borin": 7 } });
+    expect(fight.state.heroGold).toEqual({ "c-mira": 8, "c-borin": 7 });
+    expect(fight.state.gold).toBe(0);
+  });
+
+  it("keeps it in one party purse when pooled, which is the default", () => {
+    const fight = new Fight().rolls([20, 15, 5, 4]).run(organizer, { kind: "startEncounter", spec: { ...skirmish, gold: 15 } });
+    win(fight);
+    expect(fight.state.gold).toBe(15);
+    expect(fight.state.heroGold ?? {}).toEqual({});
   });
 
   it("is not found when the party loses, and unknown loot is refused", () => {

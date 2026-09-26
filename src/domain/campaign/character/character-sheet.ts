@@ -54,6 +54,11 @@ export interface CharacterSheet {
   // Weapons, armor, and shields carried and used. Armor class is derived
   // from these; heroes are proficient with what they carry.
   readonly equipment: readonly ContentId<"item">[];
+  // The armor and shield actually worn (2014 rules: one armor and one shield).
+  // Absent: the first armor and the first shield carried are worn, as adventures write them.
+  // Weapons are drawn as needed, so they need no slot; anything else carried
+  // (spare armor, potions) is in the pack.
+  readonly worn?: readonly ContentId<"item">[];
   readonly features: readonly ContentId<"feature">[];
   readonly spellcasting: Spellcasting | null;
 }

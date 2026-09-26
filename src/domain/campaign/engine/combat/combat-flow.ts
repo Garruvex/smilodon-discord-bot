@@ -25,7 +25,7 @@ import { resolveD20Test, type D20TestSpec } from "../../dice/d20-test.js";
 import { classifyRollMoments } from "../../dice/roll-moments.js";
 import { resultMatchesSpec, type RollResult } from "../../dice/roll-spec.js";
 import type { ContentId } from "../../rules/content-id.js";
-import { awaySafety, combatMode } from "../../rules/house-rules.js";
+import { awaySafety, combatMode, lootGold } from "../../rules/house-rules.js";
 import { deadlineAfter, type Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { maxNarrationLength } from "../narration-limits.js";
@@ -723,6 +723,22 @@ function isPlayerControlled(decision: Decision, combatant: Combatant): boolean {
   return ownerId !== undefined && decision.state.members[ownerId]?.availability === "present";
 }
 
+// An even share of the gold for each hero still standing, in party order; the
+// remainder goes to the first. Nobody standing: it stays in the party purse.
+function goldShares(combatants: Readonly<Record<string, Combatant>>, gold: number): Readonly<Record<string, number>> | undefined {
+  if (gold <= 0) return undefined;
+  const standing = Object.values(combatants)
+    .filter((combatant) => combatant.side === "party" && combatant.condition !== "dead" && combatant.condition !== "fled")
+    .flatMap((combatant) => (combatant.source.kind === "hero" ? [combatant.source.characterId] : []));
+  if (standing.length === 0) return undefined;
+  const each = Math.floor(gold / standing.length);
+  const shares: Record<string, number> = {};
+  standing.forEach((characterId, index) => {
+    shares[characterId] = each + (index === 0 ? gold - each * standing.length : 0);
+  });
+  return shares;
+}
+
 export function endIfDecided(decision: Decision): boolean {
   const encounter = activeEncounter(decision);
   if (encounter === null || encounter.status !== "active") return false;
@@ -733,7 +749,8 @@ export function endIfDecided(decision: Decision): boolean {
   if (encounter.turnEndsAt !== null) decision.request({ kind: "cancelTimer", timerId: turnTimerId(encounter.id, encounter.turnNumber) });
   decision.emit({ kind: "encounterEnded", outcome: foesLeft ? "defeat" : "victory" });
   if (!foesLeft && (encounter.loot.length > 0 || encounter.gold > 0)) {
-    decision.emit({ kind: "lootFound", encounterId: encounter.id, items: encounter.loot, gold: encounter.gold });
+    const split = decision.ctx.rules.houseRules.option(lootGold) === "split" ? goldShares(encounter.combatants, encounter.gold) : undefined;
+    decision.emit({ kind: "lootFound", encounterId: encounter.id, items: encounter.loot, gold: encounter.gold, ...(split === undefined ? {} : { split }) });
   }
   decision.request({ kind: "deliver", delivery: { kind: "encounterEnded", encounterId: encounter.id } });
   // The closing narration covers the last round; exploration resumes after it.

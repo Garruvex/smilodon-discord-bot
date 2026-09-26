@@ -1,7 +1,7 @@
 import type { AdventureBible } from "../../../domain/campaign/adventure/adventure-bible.js";
 import { findScene } from "../../../domain/campaign/adventure/adventure-bible.js";
 import { abilityModifier, type CharacterSheet } from "../../../domain/campaign/character/character-sheet.js";
-import { armorClassFrom, heroTraits } from "../../../domain/campaign/combat/combatant-profile.js";
+import { armorClassFrom, heroTraits, isWorn } from "../../../domain/campaign/combat/combatant-profile.js";
 import type { Combatant } from "../../../domain/campaign/combat/combat-state.js";
 import type { Glossary, SealedContent } from "../../../domain/campaign/rules/content-registry.js";
 import { isFallen, type CampaignState, type Submission } from "../../../domain/campaign/state/campaign-state.js";
@@ -29,12 +29,14 @@ export interface HeroView {
   readonly presence: "present" | "away";
   readonly down: boolean;
   readonly fallen: boolean;
-  // What the hero wears and wields (weapons, armor, shields), as content IDs.
-  readonly equipped: readonly string[];
-  // Consumables carried, such as potions, with how many.
+  // The armor and shield worn, and the weapons carried (drawn as needed).
+  readonly worn: readonly string[];
+  readonly weapons: readonly string[];
+  // Everything else carried: potions and spare armor, with how many.
   readonly pack: readonly { readonly id: string; readonly count: number }[];
-  // The party's shared gold and the loot it holds in common.
+  // The hero's own coins, the party purse, and the loot the party holds in common.
   readonly gold: number;
+  readonly partyGold: number;
   readonly stash: readonly string[];
   // Spellcasters: cantrips, prepared spells, and slots left of each level.
   readonly cantrips: readonly string[];
@@ -141,12 +143,15 @@ export function buildHeroView(state: CampaignState, sheet: CharacterSheet, conte
   const member = state.members[sheet.ownerUserId];
   const resources = fighter?.resources ?? state.heroStatus[sheet.id]?.resources;
 
-  const equipped: string[] = [];
+  const worn: string[] = [];
+  const weapons: string[] = [];
   const pack = new Map<string, number>();
   for (const id of sheet.equipment) {
     const definition = content.find(id);
-    if (definition?.kind === "item" && definition.itemType === "potion") pack.set(id, (pack.get(id) ?? 0) + 1);
-    else equipped.push(id);
+    const type = definition?.kind === "item" ? definition.itemType : null;
+    if (type === "weapon") weapons.push(id);
+    else if ((type === "armor" || type === "shield") && isWorn(sheet, content, id)) worn.push(id);
+    else pack.set(id, (pack.get(id) ?? 0) + 1);
   }
   const cantrips: string[] = [];
   const prepared: string[] = [];
@@ -177,9 +182,11 @@ export function buildHeroView(state: CampaignState, sheet: CharacterSheet, conte
     presence: member?.availability ?? "away",
     down: hp <= 0,
     fallen: isFallen(state, sheet.id),
-    equipped,
+    worn,
+    weapons,
     pack: [...pack].map(([id, count]) => ({ id, count })),
-    gold: state.gold,
+    gold: state.heroGold?.[sheet.id] ?? 0,
+    partyGold: state.gold,
     stash: state.stash,
     cantrips,
     prepared,

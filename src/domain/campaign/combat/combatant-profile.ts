@@ -1,4 +1,5 @@
 import { abilityModifier, savingThrowModifier, type CharacterSheet } from "../character/character-sheet.js";
+import type { ContentId } from "../rules/content-id.js";
 import { plus } from "../dice/dice-expression.js";
 import { traitsOf, type MonsterDefinition, type WeaponDefinition } from "../rules/content-definitions.js";
 import type { SealedContent } from "../rules/content-registry.js";
@@ -18,9 +19,23 @@ export interface HeroStatus {
   readonly dead?: boolean;
 }
 
-// Everything the hero's equipment and features grant, as one list.
+// Armor and shields count only while worn; everything else carried counts.
+export function isWorn(sheet: CharacterSheet, content: SealedContent, itemId: ContentId<"item">): boolean {
+  const type = wearableType(content, itemId);
+  if (type === null) return true;
+  if (sheet.worn !== undefined) return sheet.worn.includes(itemId);
+  // Nothing recorded yet: the first armor and the first shield carried are worn.
+  return sheet.equipment.find((id) => wearableType(content, id) === type) === itemId;
+}
+
+function wearableType(content: SealedContent, itemId: ContentId<"item">): "armor" | "shield" | null {
+  const definition = content.find(itemId);
+  return definition?.kind === "item" && (definition.itemType === "armor" || definition.itemType === "shield") ? definition.itemType : null;
+}
+
+// Everything the hero's worn gear and features grant, as one list.
 export function heroTraits(sheet: CharacterSheet, content: SealedContent): readonly Trait[] {
-  return [...sheet.equipment, ...sheet.features].flatMap((id) => {
+  return [...sheet.equipment.filter((id) => isWorn(sheet, content, id)), ...sheet.features].flatMap((id) => {
     const definition = content.find(id);
     return definition === undefined ? [] : traitsOf(definition);
   });

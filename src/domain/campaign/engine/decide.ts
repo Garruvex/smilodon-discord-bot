@@ -75,6 +75,8 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
     case "stashItem":
     case "takeFromStash":
     case "useItem":
+    case "wearItem":
+    case "removeItem":
       return handleInventoryCommand(decision, command);
     case "retryEncounter":
       return retryEncounter(decision);

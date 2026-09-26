@@ -2,6 +2,7 @@ import type { InventoryCommand } from "../commands/campaign-command.js";
 import type { CharacterId } from "../core/ids.js";
 import type { ContentId } from "../rules/content-id.js";
 import { isFallen, type CampaignState, type ItemOffer } from "../state/campaign-state.js";
+import { isWorn } from "../combat/combatant-profile.js";
 import { canHandOver, refreshGear, startHandOver } from "./combat/combat-gear.js";
 import type { Decision } from "./decision.js";
 import { potionFor } from "./potions.js";
@@ -37,6 +38,9 @@ export function handleInventoryCommand(decision: Decision, command: InventoryCom
     }
     case "useItem":
       return useItem(decision, command.characterId, command.itemId);
+    case "wearItem":
+    case "removeItem":
+      return changeGear(decision, command.kind === "wearItem", command.characterId, command.itemId);
     case "takeFromStash": {
       const refusal = mayHandle(decision, command.characterId, true);
       if (refusal !== null) return refusal;
@@ -100,6 +104,39 @@ function useItem(decision: Decision, characterId: CharacterId, itemId: ContentId
   const healed = Math.max(0, Math.min(potion.healing, (sheet?.maxHp ?? 0) - hp));
   decision.emit({ kind: "itemUsed", characterId, itemId, healed });
   return null;
+}
+
+// Puts on or takes off armor or a shield. One armor and one shield at a time:
+// a second has to wait until the first is off.
+function changeGear(decision: Decision, putOn: boolean, characterId: CharacterId, itemId: ContentId<"item">): Rejection | null {
+  const { state } = decision;
+  const refusal = mayHandle(decision, characterId, false);
+  if (refusal !== null) return refusal;
+  const sheet = state.characters[characterId];
+  if (sheet === undefined || !holds(state, characterId, itemId)) return { code: "itemNotHeld" };
+  const content = decision.ctx.rules.content;
+  const slotOf = (id: ContentId<"item">): "armor" | "shield" | null => {
+    const definition = content.find(id);
+    return definition?.kind === "item" && (definition.itemType === "armor" || definition.itemType === "shield") ? definition.itemType : null;
+  };
+  const slot = slotOf(itemId);
+  if (slot === null) return { code: "notWearable" };
+  const worn = sheet.equipment.filter((id) => slotOf(id) !== null && isWorn(sheet, content, id));
+  const isWearing = worn.includes(itemId);
+  if (putOn) {
+    if (isWearing) return { code: "alreadyWorn" };
+    if (worn.some((id) => slotOf(id) === slot)) return { code: "alreadyWearing" };
+    decision.emit({ kind: "wornChanged", characterId, worn: [...worn, itemId] });
+    return null;
+  }
+  if (!isWearing) return { code: "notWorn" };
+  decision.emit({ kind: "wornChanged", characterId, worn: removeFirst(worn, itemId) });
+  return null;
+}
+
+function removeFirst<T>(list: readonly T[], value: T): T[] {
+  const index = list.indexOf(value);
+  return index < 0 ? [...list] : [...list.slice(0, index), ...list.slice(index + 1)];
 }
 
 function cancelOffer(decision: Decision, offerId: string): Rejection | null {

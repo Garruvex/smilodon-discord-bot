@@ -39,7 +39,17 @@ export const combatMode: HouseRuleOption<"players" | "autopilot"> = {
   defaultValue: "players",
 };
 
-export const houseRuleOptions: readonly HouseRuleOption<string>[] = [naturalRollsOnChecks, awaySafety, healingPotionCost, combatMode];
+// Where a fight's gold goes. The 2014 rules leave treasure to the table:
+// "pooled" keeps it in one party purse; "split" shares it evenly between the
+// heroes still standing (any remainder to the first in party order), and each
+// hero keeps their own coins.
+export const lootGold: HouseRuleOption<"pooled" | "split"> = {
+  id: "loot-gold",
+  values: ["pooled", "split"],
+  defaultValue: "pooled",
+};
+
+export const houseRuleOptions: readonly HouseRuleOption<string>[] = [naturalRollsOnChecks, awaySafety, healingPotionCost, combatMode, lootGold];
 
 // The option values a campaign saved, validated and with defaults filled in.
 export interface HouseRules {

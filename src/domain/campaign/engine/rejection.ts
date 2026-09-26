@@ -49,6 +49,10 @@ export type Rejection =
   | { readonly code: "unknownOffer" }
   | { readonly code: "invalidOffer" }
   | { readonly code: "itemNotHeld" }
+  | { readonly code: "notWearable" }
+  | { readonly code: "alreadyWorn" }
+  | { readonly code: "notWorn" }
+  | { readonly code: "alreadyWearing" }
   | { readonly code: "notUsable" }
   | { readonly code: "notRetryable" }
   | { readonly code: "heroFallen" }

@@ -78,8 +78,17 @@ export type CampaignEvent =
   | { readonly kind: "offerClosed"; readonly offerId: string; readonly reason: OfferClosedReason }
   | { readonly kind: "itemStashed"; readonly characterId: CharacterId; readonly itemId: ContentId<"item"> }
   | { readonly kind: "itemTaken"; readonly characterId: CharacterId; readonly itemId: ContentId<"item"> }
-  // A victory's spoils reach the party stash and purse.
-  | { readonly kind: "lootFound"; readonly encounterId: string; readonly items: readonly ContentId<"item">[]; readonly gold: number }
+  // A hero's worn armor and shield changed; `worn` is the whole list now.
+  | { readonly kind: "wornChanged"; readonly characterId: CharacterId; readonly worn: readonly ContentId<"item">[] }
+  // A victory's spoils reach the party stash, and the gold the purse or, when
+  // `split` is given, the heroes' own coins by that amount each.
+  | {
+      readonly kind: "lootFound";
+      readonly encounterId: string;
+      readonly items: readonly ContentId<"item">[];
+      readonly gold: number;
+      readonly split?: Readonly<Record<CharacterId, number>>;
+    }
   // The potion is drunk (and gone); healed is what it actually restored.
   | { readonly kind: "itemUsed"; readonly characterId: CharacterId; readonly itemId: ContentId<"item">; readonly healed: number }
   // The player has this hero from now on (a new player, or a replacement).

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
+import type { CharacterSheet } from "../../../src/domain/campaign/character/character-sheet.js";
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
-import { alex, jamie, kinds, newCampaign, organizer, reject, run } from "./campaign-fixtures.js";
+import { alex, jamie, kinds, newCampaign, organizer, reject, ruleset, run } from "./campaign-fixtures.js";
+import { heroTraits } from "../../../src/domain/campaign/combat/combatant-profile.js";
 import { startedFight } from "./combat-fixtures.js";
 
 // Mira carries a shortsword, shortbow and leather armor; Borin a longsword,
@@ -151,5 +153,46 @@ describe("hand-overs in a fight", () => {
     fight.run(alex, { kind: "combatMove", combatantId: "c-mira", zoneId: "courtyard" });
     fight.run(jamie, { kind: "respondToOffer", offerId: "offer:1", accept: true });
     expect(fight.events.at(-1)).toEqual({ kind: "offerClosed", offerId: "offer:1", reason: "unavailable" });
+  });
+});
+
+describe("putting armor on and taking it off", () => {
+  const takenOff = (): CampaignState => run(newCampaign(), jamie, { kind: "removeItem", characterId: "c-borin", itemId: "item:chain-mail" }).state;
+
+  it("takes armor off and puts it back on, one armor and one shield at a time", () => {
+    const off = run(newCampaign(), jamie, { kind: "removeItem", characterId: "c-borin", itemId: "item:chain-mail" });
+    expect(kinds(off.events)).toEqual(["wornChanged"]);
+    expect(off.state.characters["c-borin"]?.worn).toEqual(["item:shield"]);
+    // Still carried, and the longsword needs no slot.
+    expect(off.state.characters["c-borin"]?.equipment).toContain("item:chain-mail");
+
+    const on = run(off.state, jamie, { kind: "wearItem", characterId: "c-borin", itemId: "item:chain-mail" });
+    expect(on.state.characters["c-borin"]?.worn).toEqual(["item:shield", "item:chain-mail"]);
+  });
+
+  it("changes armor class with what is worn", () => {
+    const sheet = (state: CampaignState): CharacterSheet => state.characters["c-borin"]!;
+    const worn = heroTraits(sheet(newCampaign()), ruleset().content).length;
+    expect(heroTraits(sheet(takenOff()), ruleset().content).length).toBeLessThan(worn);
+  });
+
+  it("refuses a second armor, things that are not worn gear, and gear not carried", () => {
+    // Mira wears leather armor; give her chain mail too.
+    const spare = { ...newCampaign(), stash: ["item:chain-mail" as const] };
+    const taken = run(spare, alex, { kind: "takeFromStash", characterId: "c-mira", itemId: "item:chain-mail" }).state;
+    expect(reject(taken, alex, { kind: "wearItem", characterId: "c-mira", itemId: "item:leather-armor" })).toEqual({ code: "alreadyWorn" });
+    expect(reject(taken, alex, { kind: "wearItem", characterId: "c-mira", itemId: "item:chain-mail" })).toEqual({ code: "alreadyWearing" });
+    const off = run(taken, alex, { kind: "removeItem", characterId: "c-mira", itemId: "item:leather-armor" }).state;
+    const chain = run(off, alex, { kind: "wearItem", characterId: "c-mira", itemId: "item:chain-mail" }).state;
+    expect(reject(chain, alex, { kind: "wearItem", characterId: "c-mira", itemId: "item:leather-armor" })).toEqual({ code: "alreadyWearing" });
+
+    expect(reject(newCampaign(), alex, { kind: "wearItem", characterId: "c-mira", itemId: "item:shortsword" })).toEqual({ code: "notWearable" });
+    expect(reject(newCampaign(), alex, { kind: "wearItem", characterId: "c-mira", itemId: "item:shield" })).toEqual({ code: "itemNotHeld" });
+    expect(reject(takenOff(), jamie, { kind: "removeItem", characterId: "c-borin", itemId: "item:chain-mail" })).toEqual({ code: "notWorn" });
+  });
+
+  it("is for the hero's own player, and never in a fight", () => {
+    expect(reject(newCampaign(), alex, { kind: "removeItem", characterId: "c-borin", itemId: "item:chain-mail" })).toEqual({ code: "notYourCharacter" });
+    expect(reject(startedFight().state, jamie, { kind: "removeItem", characterId: "c-borin", itemId: "item:chain-mail" })).toEqual({ code: "inCombat" });
   });
 });
