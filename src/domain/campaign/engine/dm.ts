@@ -1,10 +1,11 @@
 import type { RecordLedgerFactCommand } from "../commands/campaign-command.js";
 import { isLedgerEntityId } from "../ledger/ledger.js";
+import { beginEncounter } from "./combat/combat-flow.js";
 import type { Decision } from "./decision.js";
+import { maxNarrationLength } from "./narration-limits.js";
 import type { Rejection } from "./rejection.js";
 import { openRound } from "./rounds.js";
 
-export const maxNarrationLength = 4000;
 export const maxLedgerFactLength = 300;
 
 // The Planner failed validation twice: hold the round with a neutral line
@@ -29,9 +30,10 @@ export function retryPlan(decision: Decision): Rejection | null {
   return null;
 }
 
-// Saves the Narrator's text for a resolved round, then opens the next round
-// if anyone is present. Narration that arrives while the table is waiting is
-// still kept; the next round waits for continue.
+// Saves the Narrator's text for a resolved round, then starts the fight the
+// round queued, or opens the next round, if anyone is present. Narration
+// that arrives while the table is waiting is still kept; the next step waits
+// for continue.
 export function recordNarration(decision: Decision, roundNumber: number, text: string): Rejection | null {
   const { state, ctx } = decision;
   if (ctx.actor.kind !== "system") return { code: "systemOnly" };
@@ -42,8 +44,13 @@ export function recordNarration(decision: Decision, roundNumber: number, text: s
   }
   decision.emit({ kind: "narrationRecorded", roundNumber, text: trimmed });
   decision.request({ kind: "deliver", delivery: { kind: "narration", roundNumber } });
-  if (decision.state.status === "active") return openRound(decision);
-  return null;
+  if (decision.state.status !== "active") return null;
+  const pending = decision.state.pendingEncounter;
+  if (pending !== null) {
+    beginEncounter(decision, pending);
+    return null;
+  }
+  return openRound(decision);
 }
 
 // Adds a fact to an entity's ledger entry. The first recorded name is the

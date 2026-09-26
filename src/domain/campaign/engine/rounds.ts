@@ -4,6 +4,7 @@ import { presentMembers, type CampaignState, type RoundState } from "../state/ca
 import { deadlineAfter, type Decision } from "./decision.js";
 import { rollTimerId, roundTimerId } from "./ids.js";
 import type { Rejection } from "./rejection.js";
+import { firedEffects } from "./round-plan.js";
 
 export const maxActionLength = 500;
 
@@ -126,9 +127,17 @@ export function finishRoundIfResolved(decision: Decision): void {
   if (state.status !== "active" || round?.status !== "resolving") return;
   const checks = Object.values(state.checks).filter((check) => check.roundNumber === round.number);
   if (checks.some((check) => check.status !== "resolved")) return;
+  // Scene first, so the Narrator describes the round in the scene it leads to.
+  const fired = [...firedEffects(state, round)].sort((a, b) => effectOrder[a.effect.kind] - effectOrder[b.effect.kind]);
+  for (const { effect } of fired) {
+    if (effect.kind === "transitionScene") decision.emit({ kind: "sceneTransitioned", roundNumber: round.number, sceneId: effect.sceneId });
+    else decision.emit({ kind: "encounterQueued", roundNumber: round.number, encounter: effect.encounter });
+  }
   decision.emit({ kind: "roundResolved", roundNumber: round.number, quiet: false });
   decision.request({ kind: "narrate", roundNumber: round.number });
 }
+
+const effectOrder = { transitionScene: 0, startEncounter: 1 } as const;
 
 // Nobody is present: suspend all timers and hold pending work until a
 // returning player explicitly continues.

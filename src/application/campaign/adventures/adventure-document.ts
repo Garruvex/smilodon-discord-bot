@@ -1,7 +1,7 @@
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 
-import type { AdventureBible, NpcId, SceneId } from "../../../domain/campaign/adventure/adventure-bible.js";
+import type { AdventureBible, EncounterId, NpcId, SceneId } from "../../../domain/campaign/adventure/adventure-bible.js";
 import { isSkill, type CharacterSheet, type Skill, type SkillProficiency } from "../../../domain/campaign/character/character-sheet.js";
 import type { ContentId } from "../../../domain/campaign/rules/content-id.js";
 import { abilities } from "../../../domain/campaign/rules/effects.js";
@@ -17,8 +17,10 @@ export interface AdventureDocument {
 
 const sceneId = z.string().regex(/^scene:[a-z0-9-]+$/) as unknown as z.ZodType<SceneId>;
 const npcId = z.string().regex(/^npc:[a-z0-9-]+$/) as unknown as z.ZodType<NpcId>;
+const encounterId = z.string().regex(/^encounter:[a-z0-9-]+$/) as unknown as z.ZodType<EncounterId>;
+const zoneId = z.string().regex(/^[a-z0-9-]+$/);
 const text = z.string().trim().min(1);
-function contentId<K extends "item" | "feature" | "spell">(kind: K): z.ZodType<ContentId<K>> {
+function contentId<K extends "item" | "feature" | "spell" | "monster">(kind: K): z.ZodType<ContentId<K>> {
   return z.string().regex(new RegExp('^' + kind + ':[a-z0-9-]+$')) as unknown as z.ZodType<ContentId<K>>;
 }
 const abilityScore = z.number().int().min(1).max(30);
@@ -38,6 +40,33 @@ const documentSchema = z
       )
       .min(1),
     npcs: z.array(z.object({ id: npcId, name: text, voice: text, publicDescription: text, secret: text }).strict()),
+    encounters: z
+      .array(
+        z
+          .object({
+            id: encounterId,
+            sceneId,
+            publicDescription: text,
+            dmNotes: text,
+            zones: z.array(z.object({ id: zoneId, name: text }).strict()).min(1),
+            edges: z.array(z.object({ from: zoneId, to: zoneId, feet: z.number().int().min(5) }).strict()),
+            partyZoneId: zoneId,
+            monsters: z
+              .array(
+                z
+                  .object({
+                    monsterId: contentId("monster"),
+                    zoneId,
+                    npcId: npcId.nullable().default(null),
+                    fleeBelowHpFraction: z.number().gt(0).lt(1).nullable().default(null),
+                  })
+                  .strict(),
+              )
+              .min(1),
+          })
+          .strict(),
+      )
+      .default([]),
     heroes: z
       .array(
         z
@@ -101,6 +130,23 @@ export function parseAdventureDocument(source: string): AdventureDocument {
   for (const scene of data.scenes) {
     for (const id of scene.npcIds) if (!npcIds.has(id)) problems.push(`${scene.id} lists unknown ${id}.`);
   }
+  // Monster IDs are checked against the ruleset when the fight starts; the
+  // harness and the starter-adventure tests start every authored encounter.
+  problems.push(...duplicates("encounter", data.encounters.map((encounter) => encounter.id)));
+  const sceneIds = new Set(data.scenes.map((scene) => scene.id));
+  for (const encounter of data.encounters) {
+    if (!sceneIds.has(encounter.sceneId)) problems.push(`${encounter.id} is in unknown ${encounter.sceneId}.`);
+    const zones = new Set(encounter.zones.map((zone) => zone.id));
+    problems.push(...duplicates(`${encounter.id} zone`, encounter.zones.map((zone) => zone.id)));
+    if (!zones.has(encounter.partyZoneId)) problems.push(`${encounter.id} starts the party in unknown zone ${encounter.partyZoneId}.`);
+    for (const edge of encounter.edges) {
+      if (!zones.has(edge.from) || !zones.has(edge.to)) problems.push(`${encounter.id} edge ${edge.from}-${edge.to} names an unknown zone.`);
+    }
+    for (const monster of encounter.monsters) {
+      if (!zones.has(monster.zoneId)) problems.push(`${encounter.id} places ${monster.monsterId} in unknown zone ${monster.zoneId}.`);
+      if (monster.npcId !== null && !npcIds.has(monster.npcId)) problems.push(`${encounter.id} names unknown ${monster.npcId}.`);
+    }
+  }
   const heroes: PresetHero[] = data.heroes.map((hero) => {
     const skills: Partial<Record<Skill, SkillProficiency>> = {};
     for (const [skill, proficiency] of Object.entries(hero.skills)) {
@@ -130,6 +176,12 @@ export function checkEditionsMatch(editions: readonly AdventureDocument[]): read
       startScene: document.bible.startScene,
       scenes: document.bible.scenes.map((scene) => [scene.id, scene.npcIds]),
       npcs: document.bible.npcs.map((npc) => npc.id),
+      encounters: document.bible.encounters.map((encounter) => ({
+        ...encounter,
+        publicDescription: null,
+        dmNotes: null,
+        zones: encounter.zones.map((zone) => zone.id),
+      })),
       heroes: document.heroes.map(({ name: _name, ...mechanics }) => mechanics),
     });
   const expected = shape(first);

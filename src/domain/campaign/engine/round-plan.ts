@@ -1,10 +1,11 @@
 import { checkModifier, isSkill, type CheckTest } from "../character/character-sheet.js";
 import type { CharacterId } from "../core/ids.js";
-import type { PlannedAction, RoundPlanProposal } from "../commands/campaign-command.js";
+import type { PlannedAction, PlannedEffect, RoundPlanProposal } from "../commands/campaign-command.js";
 import { resolveRollMode } from "../dice/roll.js";
 import { dcLadder, isDcTier, isRollModeReason, rollModeReasons } from "../rules/difficulty.js";
 import { abilities } from "../rules/effects.js";
-import type { CheckState, Resolution, RoundState } from "../state/campaign-state.js";
+import type { CampaignState, CheckState, Resolution, RoundState } from "../state/campaign-state.js";
+import { encounterProblems } from "./combat/combat-flow.js";
 import { deadlineAfter, type Decision } from "./decision.js";
 import { checkIdFor, rollIdFor, rollTimerId } from "./ids.js";
 import type { Rejection } from "./rejection.js";
@@ -20,7 +21,7 @@ export function applyRoundPlan(decision: Decision, proposal: RoundPlanProposal):
   const round = state.round;
   if (round?.status !== "planning" || round.number !== proposal.roundNumber) return { code: "stalePlan" };
 
-  const problems = validateProposal(round, proposal);
+  const problems = [...validateProposal(round, proposal), ...effectProblems(decision, proposal)];
   if (problems.length > 0) return { code: "invalidPlan", problems };
 
   const resolutions: Record<CharacterId, Resolution> = {};
@@ -59,7 +60,7 @@ export function applyRoundPlan(decision: Decision, proposal: RoundPlanProposal):
     resolutions[action.characterId] = { kind: "check", checkId };
   }
 
-  decision.emit({ kind: "roundPlanApplied", roundNumber: round.number, resolutions, checks });
+  decision.emit({ kind: "roundPlanApplied", roundNumber: round.number, resolutions, checks, effects: proposal.effects ?? [] });
   for (const check of checks) {
     if (check.deadline !== null) {
       decision.request({
@@ -90,6 +91,42 @@ export function validateProposal(round: RoundState, proposal: RoundPlanProposal)
     if (submission.kind === "action" && !planned.has(characterId)) problems.push(`${characterId}: action was not planned.`);
   }
   return problems;
+}
+
+// At most one scene change and one fight per round; a conditional effect
+// must hang on a check this proposal actually asks for.
+function effectProblems(decision: Decision, proposal: RoundPlanProposal): readonly string[] {
+  const effects = proposal.effects ?? [];
+  const problems: string[] = [];
+  const count = (kind: PlannedEffect["effect"]["kind"]): number => effects.filter((planned) => planned.effect.kind === kind).length;
+  if (count("transitionScene") > 1) problems.push("Only one scene transition per round.");
+  if (count("startEncounter") > 1) problems.push("Only one encounter per round.");
+  for (const { effect, when } of effects) {
+    if (when.kind === "checkOutcome") {
+      const action = proposal.actions.find((candidate) => candidate.characterId === when.characterId);
+      if (action?.resolution.kind !== "check") problems.push(`${effect.kind} depends on ${when.characterId}, who has no check this round.`);
+    }
+    switch (effect.kind) {
+      case "transitionScene":
+        if (!/^scene:[a-z0-9-]+$/.test(effect.sceneId)) problems.push(`Scene ID "${effect.sceneId}" is malformed.`);
+        break;
+      case "startEncounter":
+        problems.push(...encounterProblems(decision, effect.encounter).map((problem) => `Encounter ${effect.encounter.id}: ${problem}`));
+        break;
+      default:
+        problems.push("Unknown story effect.");
+    }
+  }
+  return problems;
+}
+
+// The effects whose condition held, in the order they were proposed.
+export function firedEffects(state: CampaignState, round: RoundState): readonly PlannedEffect[] {
+  return round.effects.filter(({ when }) => {
+    if (when.kind === "always") return true;
+    const check = Object.values(state.checks).find((candidate) => candidate.roundNumber === round.number && candidate.characterId === when.characterId);
+    return check?.result != null && check.result.success === when.success;
+  });
 }
 
 function resolutionProblems(action: PlannedAction): readonly string[] {

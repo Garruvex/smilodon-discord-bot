@@ -21,6 +21,7 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
           submissions: {},
           closesAt: event.closesAt,
           resolutions: {},
+          effects: [],
         },
         lastRoundNumber: event.roundNumber,
         checks: {},
@@ -54,7 +55,7 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       const checks: Record<string, CheckState> = {};
       for (const check of event.checks) checks[check.id] = check;
       return {
-        ...updateRound(state, (round) => ({ ...round, status: "resolving", resolutions: event.resolutions })),
+        ...updateRound(state, (round) => ({ ...round, status: "resolving", resolutions: event.resolutions, effects: event.effects })),
         checks: { ...state.checks, ...checks },
       };
     }
@@ -64,6 +65,10 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       return updateCheck(state, event.checkId, (check) => ({ ...check, status: "resolved", result: event.result }));
     case "roundResolved":
       return state.round?.number === event.roundNumber ? { ...state, round: null } : state;
+    case "sceneTransitioned":
+      return { ...state, sceneId: event.sceneId };
+    case "encounterQueued":
+      return { ...state, pendingEncounter: event.encounter };
     case "memberMarkedAway":
       return updateMember(state, event.userId, (member) => ({ ...member, availability: "away", consecutiveMisses: 0 }));
     case "memberReturned":
@@ -129,6 +134,7 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     case "turnEnded":
     case "turnDeferred":
     case "encounterEnded":
+    case "combatNarrationRecorded":
       return evolveCombat(state, event);
     case "restTaken":
       return { ...state, heroStatus: { ...state.heroStatus, ...event.heroStatus } };
@@ -140,6 +146,9 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
 // A finished fight writes the heroes' HP and spent resources back to the campaign.
 function evolveCombat(state: CampaignState, event: CombatEvent): CampaignState {
   const encounter = evolveEncounter(state.encounter, event);
+  if (event.kind === "encounterStarted") {
+    return { ...state, encounter, pendingEncounter: null, encounterHistory: [...state.encounterHistory, event.encounter.id] };
+  }
   if (event.kind !== "encounterEnded" || encounter === null) return { ...state, encounter };
   const heroStatus: Record<CharacterId, HeroStatus> = { ...state.heroStatus };
   for (const combatant of Object.values(encounter.combatants)) {

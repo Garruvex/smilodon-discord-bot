@@ -3,7 +3,7 @@ import { presentMembers } from "../state/campaign-state.js";
 import { deadlineAfter, type Decision } from "./decision.js";
 import { rollTimerId } from "./ids.js";
 import type { Rejection } from "./rejection.js";
-import { awayRestriction, onMemberAway, resumeCombat } from "./combat/combat-flow.js";
+import { awayRestriction, beginEncounter, onMemberAway, resumeCombat } from "./combat/combat-flow.js";
 import { closeIfEveryoneResponded, enterWaiting, finishRoundIfResolved, openRound } from "./rounds.js";
 
 // A player marks themselves away, or the organizer marks them. An open
@@ -78,6 +78,13 @@ export function continueCampaign(decision: Decision): Rejection | null {
     return null;
   }
   const round = decision.state.round;
+  const pending = decision.state.pendingEncounter;
+  if (round === null && pending !== null) {
+    // Queued by a round that has been narrated: the fight starts now.
+    // Otherwise the narration, still to come, starts it.
+    if (decision.state.lastNarratedRound >= decision.state.lastRoundNumber) beginEncounter(decision, pending);
+    return null;
+  }
   if (round === null) return openRound(decision);
   if (round.status === "planning") decision.request({ kind: "plan", roundNumber: round.number });
   if (round.status === "resolving") finishRoundIfResolved(decision);

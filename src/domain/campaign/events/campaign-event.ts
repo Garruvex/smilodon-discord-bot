@@ -2,6 +2,8 @@ import type { CharacterId, CheckId, Instant, RollId, UserId } from "../core/ids.
 import type { CombatEvent } from "../combat/combat-events.js";
 import type { HeroStatus } from "../combat/combatant-profile.js";
 import type { LedgerVisibility } from "../ledger/ledger.js";
+import type { SceneId } from "../adventure/adventure-bible.js";
+import type { EncounterSpec, PlannedEffect } from "../commands/campaign-command.js";
 import type { CheckResult, CheckState, Resolution } from "../state/campaign-state.js";
 
 // Domain event payloads. The command bus wraps each in an envelope with
@@ -33,10 +35,14 @@ export type CampaignEvent =
       readonly roundNumber: number;
       readonly resolutions: Readonly<Record<CharacterId, Resolution>>;
       readonly checks: readonly CheckState[];
+      readonly effects: readonly PlannedEffect[];
     }
   | { readonly kind: "checkRollStarted"; readonly checkId: CheckId; readonly rollId: RollId; readonly timedOut: boolean }
   | { readonly kind: "checkResolved"; readonly checkId: CheckId; readonly result: CheckResult }
   | { readonly kind: "roundResolved"; readonly roundNumber: number; readonly quiet: boolean }
+  // Story effects that fired when a round resolved.
+  | { readonly kind: "sceneTransitioned"; readonly roundNumber: number; readonly sceneId: SceneId }
+  | { readonly kind: "encounterQueued"; readonly roundNumber: number; readonly encounter: EncounterSpec }
   | { readonly kind: "memberMarkedAway"; readonly userId: UserId; readonly reason: AwayReason }
   | { readonly kind: "memberReturned"; readonly userId: UserId }
   | { readonly kind: "waitingForPlayers" }

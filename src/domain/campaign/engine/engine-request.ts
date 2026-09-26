@@ -8,6 +8,8 @@ export type EngineRequest =
   | { readonly kind: "roll"; readonly rollId: RollId; readonly spec: RollSpec }
   | { readonly kind: "plan"; readonly roundNumber: number }
   | { readonly kind: "narrate"; readonly roundNumber: number }
+  // A combat round's flourish, or (final) the fight's closing narration.
+  | { readonly kind: "narrateCombat"; readonly encounterId: string; readonly round: number; readonly final: boolean }
   | { readonly kind: "startTimer"; readonly timer: TimerSpec }
   | { readonly kind: "cancelTimer"; readonly timerId: TimerId }
   | { readonly kind: "deliver"; readonly delivery: DeliverySpec };
@@ -35,4 +37,5 @@ export type DeliverySpec =
   | { readonly kind: "attackRolled"; readonly encounterId: string; readonly attackId: string }
   | { readonly kind: "attackResolved"; readonly encounterId: string; readonly attackId: string }
   | { readonly kind: "deathSave"; readonly encounterId: string; readonly combatantId: string }
-  | { readonly kind: "encounterEnded"; readonly encounterId: string };
+  | { readonly kind: "encounterEnded"; readonly encounterId: string }
+  | { readonly kind: "combatNarration"; readonly encounterId: string; readonly round: number };

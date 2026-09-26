@@ -3,6 +3,7 @@ import type { CampaignEvent } from "../../../domain/campaign/events/campaign-eve
 import type { Glossary } from "../../../domain/campaign/rules/content-registry.js";
 import type { CampaignState } from "../../../domain/campaign/state/campaign-state.js";
 import type { ContextSection, DmContext } from "../ports/dm-ports.js";
+import { combatantName, encounterRecords, type EncounterRecord } from "./combat-records.js";
 import { checkLabel, roundRecords, type RoundRecord } from "./round-records.js";
 
 // Who the context is for. The Narrator gets a public-only projection
@@ -37,7 +38,11 @@ export class ContextBudgetError extends Error {
 // diagnostic rather than cut rules or pending work.
 export function assembleContext(input: ContextInput): DmContext {
   const fixed = [instructions(input), adventure(input), ledger(input), liveState(input)];
-  const rounds = roundRecords(input.events).map((record) => renderRound(record, input));
+  // Each fight is told right after the round that led into it.
+  const fights = encounterRecords(input.events, input);
+  const rounds = roundRecords(input.events).map((record) =>
+    [renderRound(record, input), ...fights.filter((fight) => fight.afterRound === record.number).map(renderFight)].join("\n\n"),
+  );
   const fixedTokens = fixed.reduce((sum, section) => sum + estimateTokens(section.text), 0);
 
   let kept = rounds;
@@ -95,10 +100,19 @@ function adventure(input: ContextInput): ContextSection {
     const npcs = bible.npcs.map(
       (npc) => `${npc.id} ${npc.name} (voice: ${npc.voice}): ${npc.publicDescription}\nSecret: ${npc.secret}`,
     );
+    const encounters = bible.encounters.map((encounter) => {
+      const fought = state.encounterHistory.includes(encounter.id) ? " [already fought]" : "";
+      const foes = encounter.monsters.map((monster) => {
+        const npc = bible.npcs.find((candidate) => candidate.id === monster.npcId);
+        const kind = input.glossary.names[monster.monsterId] ?? monster.monsterId;
+        return npc === undefined ? kind : `${npc.name} (${kind})`;
+      });
+      return `${encounter.id} in ${encounter.sceneId}${fought}: ${encounter.publicDescription}\nFoes: ${foes.join(", ")}\nDM notes: ${encounter.dmNotes}`;
+    });
     return {
       layer: "B",
       title: "Adventure bible",
-      text: [bible.title, bible.premise, `DM overview: ${bible.dmOverview}`, ...scenes, ...npcs].join("\n"),
+      text: [bible.title, bible.premise, `DM overview: ${bible.dmOverview}`, ...scenes, ...npcs, ...encounters].join("\n"),
     };
   }
   const scene = findScene(bible, state.sceneId);
@@ -121,12 +135,36 @@ function ledger(input: ContextInput): ContextSection {
 
 function liveState(input: ContextInput): ContextSection {
   const { state } = input;
+  const encounter = state.encounter !== null && state.encounter.status !== "ended" ? state.encounter : null;
   const heroes = Object.values(state.members).flatMap((member) => {
     const sheet = member.characterId === null ? undefined : state.characters[member.characterId];
-    return sheet === undefined ? [] : [`${sheet.name}: ${member.availability}`];
+    if (sheet === undefined) return [];
+    const hp = encounter?.combatants[sheet.id]?.hp ?? state.heroStatus[sheet.id]?.hp ?? sheet.maxHp;
+    return [`${sheet.name}: ${member.availability}, HP ${hp}/${sheet.maxHp}`];
   });
-  const round = state.round === null ? "Between rounds." : `Round ${state.round.number}: ${state.round.status}.`;
-  return { layer: "F", title: "Live state", text: [round, ...heroes].join("\n") };
+  const scene = findScene(input.bible, state.sceneId);
+  const lines = [`Scene: ${scene === undefined ? "none" : `${scene.title}`}.`];
+  lines.push(state.round === null ? "Between rounds." : `Round ${state.round.number}: ${state.round.status}.`);
+  if (encounter !== null) {
+    const foes = Object.values(encounter.combatants)
+      .filter((combatant) => combatant.side === "foes")
+      .map((combatant) => `${combatantName(combatant, input)} (${combatant.condition === "active" ? healthBand(combatant.hp, combatant.maxHp) : combatant.condition})`);
+    lines.push(`In combat, round ${encounter.round}. Foes: ${foes.join(", ")}.`);
+  }
+  return { layer: "F", title: "Live state", text: [...lines, ...heroes].join("\n") };
+}
+
+// Monsters' exact HP stay hidden from the table; bands are public.
+function healthBand(hp: number, maxHp: number): string {
+  if (hp >= maxHp) return "unhurt";
+  return hp * 2 > maxHp ? "hurt" : "bloodied";
+}
+
+function renderFight(fight: EncounterRecord): string {
+  const lines = [`Fight ${fight.id}${fight.outcome === null ? " (in progress)" : `: ${fight.outcome}`}`];
+  for (const round of fight.rounds) if (round.narration !== null) lines.push(`Combat round ${round.round}: ${round.narration}`);
+  if (fight.closing !== null) lines.push(`Aftermath: ${fight.closing}`);
+  return lines.join("\n");
 }
 
 function renderRound(record: RoundRecord, input: ContextInput): string {

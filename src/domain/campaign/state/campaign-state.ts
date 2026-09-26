@@ -1,5 +1,6 @@
 import type { CampaignLanguage, SceneId } from "../adventure/adventure-bible.js";
 import type { CharacterSheet, CheckTest } from "../character/character-sheet.js";
+import type { EncounterSpec, PlannedEffect } from "../commands/campaign-command.js";
 import type { EncounterState } from "../combat/combat-state.js";
 import type { HeroStatus } from "../combat/combatant-profile.js";
 import type { CampaignId, CharacterId, CheckId, Instant, RollId, UserId } from "../core/ids.js";
@@ -30,6 +31,10 @@ export interface CampaignState {
   readonly ledger: Readonly<Record<string, LedgerEntry>>;
   // The current or last fight; exploration rounds wait while it is active.
   readonly encounter: EncounterState | null;
+  // A fight the Planner started; it begins after the round is narrated.
+  readonly pendingEncounter: EncounterSpec | null;
+  // Every encounter ID started in this campaign; each runs once.
+  readonly encounterHistory: readonly string[];
   // Heroes' HP and limited resources between fights; a hero missing here is
   // fresh (full HP, every slot and use).
   readonly heroStatus: Readonly<Record<CharacterId, HeroStatus>>;
@@ -68,6 +73,8 @@ export interface RoundState {
   readonly submissions: Readonly<Record<CharacterId, Submission>>;
   readonly closesAt: Instant | null;
   readonly resolutions: Readonly<Record<CharacterId, Resolution>>;
+  // The applied plan's story effects, evaluated when the round resolves.
+  readonly effects: readonly PlannedEffect[];
 }
 
 export type Submission =

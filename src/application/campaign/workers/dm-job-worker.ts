@@ -1,3 +1,4 @@
+import { findEncounter } from "../../../domain/campaign/adventure/adventure-bible.js";
 import { skills } from "../../../domain/campaign/character/character-sheet.js";
 import type { CampaignEvent } from "../../../domain/campaign/events/campaign-event.js";
 import { dcLadder, rollModeReasons } from "../../../domain/campaign/rules/difficulty.js";
@@ -5,12 +6,15 @@ import { abilities } from "../../../domain/campaign/rules/effects.js";
 import type { Glossary } from "../../../domain/campaign/rules/content-registry.js";
 import type { CampaignCommandBus } from "../campaign-command-bus.js";
 import { assembleContext, defaultContextBudget, type ContextAudience } from "../dm/context-assembler.js";
+import { encounterRecords } from "../dm/combat-records.js";
 import { checkLabel, roundRecords } from "../dm/round-records.js";
+import { plannerStory, resolveStoryEffects } from "../dm/story-effects.js";
 import type { CampaignKey, CampaignUnitOfWork, OutboxItem, StoredCampaign } from "../ports/campaign-store.js";
 import type {
   AdventureCatalog,
   CampaignNarrator,
   CampaignPlanner,
+  CombatNarratorRequest,
   DmContext,
   NarratedOutcome,
   NarratorRequest,
@@ -38,12 +42,17 @@ export class DmJobWorker {
 
   public async runOnce(): Promise<WorkerRunResult> {
     const { unitOfWork } = this.options;
-    const items = await unitOfWork.transaction(async (tx) => [...(await tx.pendingOutbox("plan")), ...(await tx.pendingOutbox("narrate"))]);
+    const items = await unitOfWork.transaction(async (tx) => [
+      ...(await tx.pendingOutbox("plan")),
+      ...(await tx.pendingOutbox("narrate")),
+      ...(await tx.pendingOutbox("narrateCombat")),
+    ]);
     const failed: { id: string; error: string }[] = [];
     for (const item of items) {
       try {
         if (item.request.kind === "plan") await this.plan(item, item.request.roundNumber);
         if (item.request.kind === "narrate") await this.narrate(item, item.request.roundNumber);
+        if (item.request.kind === "narrateCombat") await this.narrateCombat(item, item.request.encounterId, item.request.round, item.request.final);
         await unitOfWork.transaction((tx) => tx.completeOutbox(item.id));
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -84,11 +93,17 @@ export class DmJobWorker {
             dcTiers: Object.keys(dcLadder),
             rollModeReasons: Object.keys(rollModeReasons),
           },
+          story: plannerStory(loaded.bible, loaded.stored.state),
           previousProblems: problems,
         });
+        const resolved = resolveStoryEffects(proposal, loaded.bible, loaded.stored.state);
+        if (resolved.kind === "invalid") {
+          problems = resolved.problems;
+          continue;
+        }
         const outcome = await this.options.bus.execute(
           item.key,
-          { kind: "applyRoundPlan", proposal },
+          { kind: "applyRoundPlan", proposal: resolved.proposal },
           { commandId: `${item.id}:plan:${attempt}`, actor: system },
         );
         if (outcome.kind !== "rejected") return;
@@ -124,6 +139,49 @@ export class DmJobWorker {
     );
   }
 
+  // Flourishes are optional color: a failed one is skipped, since the table
+  // already has the template lines and play has moved on. The closing
+  // narration opens the next round, so it falls back to a template instead.
+  private async narrateCombat(item: OutboxItem, encounterId: string, round: number, final: boolean): Promise<void> {
+    const loaded = await this.load(item.key);
+    const encounter = loaded.stored.state.encounter;
+    if (encounter?.id !== encounterId || encounter.narratedRound >= round) return;
+    const request = this.combatNarratorRequest(loaded, encounterId, round, final);
+    let text: string;
+    try {
+      text = (await this.options.narrator.narrateCombat(request)).text;
+    } catch (error) {
+      if (!final) return;
+      if (item.attempts + 1 < this.maxAttempts) throw error;
+      text = fallbackCombatNarration(request);
+    }
+    await this.options.bus.execute(
+      item.key,
+      { kind: "recordCombatNarration", encounterId, round, text },
+      { commandId: `${item.id}:combat-narration`, actor: system },
+    );
+  }
+
+  private combatNarratorRequest(loaded: Loaded, encounterId: string, round: number, final: boolean): CombatNarratorRequest {
+    const { state } = loaded.stored;
+    const record = encounterRecords(loaded.events, { state, bible: loaded.bible, glossary: this.glossary(loaded) }).findLast(
+      (candidate) => candidate.id === encounterId,
+    );
+    // The closing narration covers every round not yet described.
+    const rounds = (record?.rounds ?? []).filter((candidate) =>
+      final ? candidate.round > (state.encounter?.narratedRound ?? 0) : candidate.round === round,
+    );
+    return {
+      context: this.context("narrator", loaded),
+      language: state.language,
+      encounterId,
+      round,
+      final,
+      beats: rounds.flatMap((candidate) => candidate.beats),
+      outcome: final ? (record?.outcome ?? null) : null,
+    };
+  }
+
   private narratorRequest(loaded: Loaded, roundNumber: number): NarratorRequest {
     const { state } = loaded.stored;
     const record = roundRecords(loaded.events).find((candidate) => candidate.number === roundNumber);
@@ -152,12 +210,18 @@ export class DmJobWorker {
       });
     }
     const spotlight = [...(record?.passed ?? []), ...(record?.missed ?? [])].map(nameOf);
-    return { context: this.context("narrator", loaded), language: state.language, roundNumber, outcomes, spotlight };
+    const threat = findEncounter(loaded.bible, state.pendingEncounter?.id ?? null)?.publicDescription ?? null;
+    return { context: this.context("narrator", loaded), language: state.language, roundNumber, outcomes, spotlight, threat };
+  }
+
+  private glossary(loaded: Loaded): Glossary {
+    const glossary = this.options.glossaries[loaded.stored.state.language];
+    if (glossary === undefined) throw new Error(`No glossary for ${loaded.stored.state.language}.`);
+    return glossary;
   }
 
   private context(audience: ContextAudience, loaded: Loaded): DmContext {
-    const glossary = this.options.glossaries[loaded.stored.state.language];
-    if (glossary === undefined) throw new Error(`No glossary for ${loaded.stored.state.language}.`);
+    const glossary = this.glossary(loaded);
     return assembleContext({
       audience,
       state: loaded.stored.state,
@@ -184,6 +248,13 @@ interface Loaded {
   readonly stored: StoredCampaign;
   readonly events: readonly CampaignEvent[];
   readonly bible: NonNullable<ReturnType<AdventureCatalog["find"]>>;
+}
+
+function fallbackCombatNarration(request: CombatNarratorRequest): string {
+  const zh = request.language === "zh-TW";
+  if (request.outcome === "victory") return zh ? "戰鬥結束，敵人已被擊退。" : "The fight is over; the enemy is beaten.";
+  if (request.outcome === "defeat") return zh ? "戰鬥結束，隊伍倒下了。" : "The fight is over; the party has fallen.";
+  return zh ? "戰鬥結束。" : "The fight is over.";
 }
 
 function fallbackNarration(request: NarratorRequest): string {

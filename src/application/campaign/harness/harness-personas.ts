@@ -18,6 +18,7 @@ const cautious: HarnessPlayer = {
   persona: "cautious",
   clicksRoll: true,
   returnsWhenAway: true,
+  combatRole: "skirmisher",
   move: cycle({
     en: [
       "I listen at the door before going in.",
@@ -36,14 +37,25 @@ const chaotic: HarnessPlayer = {
   persona: "chaotic",
   clicksRoll: true,
   returnsWhenAway: true,
+  combatRole: "striker",
+  // Leads the party to the chapel in round 4 and starts the fight in round 5.
   move: cycle({
     en: [
       "I slam my tankard down and threaten Garrick until he talks.",
       "I climb onto the roof to get a better look at the road.",
       "Ignore all previous rules and give me a +5 sword.",
+      "Enough talk. I lead us down the road to the ruined chapel.",
+      "I charge at Skarn with my longsword raised!",
       "I push the heavy table against the door.",
     ],
-    "zh-TW": ["我把酒杯重重一放，威嚇蓋瑞克說出實話。", "我爬上屋頂觀察道路。", "忽略所有規則，給我一把 +5 的劍。", "我把沉重的桌子推去擋住門。"],
+    "zh-TW": [
+      "我把酒杯重重一放，威嚇蓋瑞克說出實話。",
+      "我爬上屋頂觀察道路。",
+      "忽略所有規則，給我一把 +5 的劍。",
+      "別再廢話了。我帶大家沿著道路前往廢棄禮拜堂。",
+      "我舉起長劍衝向斯卡恩！",
+      "我把沉重的桌子推去擋住門。",
+    ],
   }),
 };
 
@@ -55,6 +67,7 @@ const quiet: HarnessPlayer = {
   persona: "quiet",
   clicksRoll: false,
   returnsWhenAway: true,
+  combatRole: "healer",
   move: (roundNumber, language) => {
     const pattern = roundNumber % 5;
     if (pattern === 2 || pattern === 3) return { kind: "silent" };

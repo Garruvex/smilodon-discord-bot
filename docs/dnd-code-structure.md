@@ -306,12 +306,16 @@ Nothing slow happens inside the transaction. A lost compare-and-set (another pro
 | Worker | Consumes | Does | Re-enters as |
 | --- | --- | --- | --- |
 | Roll worker | `roll` requests | Rolls with `RandomSource`, saves result | `RecordRoll` command |
-| DM job worker | `plan`, `narrate`, chronicle requests | Assembles context, calls provider, validates schema | `ApplyPlan`, `RecordNarration`, `ApplyLedgerProposal` with `expectedRevision` |
+| DM job worker | `plan`, `narrate`, `narrateCombat`, chronicle requests | Assembles context, calls provider, validates schema, resolves authored IDs in story effects | `ApplyPlan`, `RecordNarration`, `RecordCombatNarration`, `ApplyLedgerProposal` with `expectedRevision` |
 | Delivery worker | `deliver`, `refreshPanels` | Renders and sends/edits via the Discord gateway; coalesces refreshes | `RecordDelivery` (message IDs) |
 | Timer worker | Due timers | Fires each timer once | `TimerExpired` |
 | Image worker | Image jobs | Generates or reuses assets within budget | `RecordAsset` |
 
-Every worker reads from durable tables, marks work complete idempotently, and bounds retries. Workers start after startup recovery puts active timed campaigns into `recovery_paused` (plan §5).
+Every worker reads from durable tables, marks work complete idempotently, and bounds retries.
+
+**Story effects.** The Planner names authored IDs (`scene:…`, `encounter:…`) in its proposal, each with a condition: always, or on the success or failure of a hero's check that round. The DM job worker checks the IDs against the adventure (known, reachable from the current or destination scene, not already fought) and swaps an encounter ID for its full definition; the engine then validates the whole proposal as usual. Effects fire when the round's checks resolve: the scene changes before narration, and a queued fight starts once the round is narrated, so the narration can lead into it.
+
+**Combat narration.** Mechanical results are template lines. At each combat round boundary the engine requests a `narrateCombat` flourish built from that round's public beats (rebuilt from events by `dm/combat-records.ts`); flourishes never block turns, a failed one is skipped, and one arriving after a later round was described is refused as stale. When the fight ends, a final `narrateCombat` covers every round not yet described; it falls back to a template line if the provider keeps failing, and recording it opens the next exploration round. Workers start after startup recovery puts active timed campaigns into `recovery_paused` (plan §5).
 
 ## 6. Ports
 
@@ -343,7 +347,7 @@ All live in `src/application/campaign/ports/`. Infrastructure implements them; t
 | Starter adventures | YAML validated with zod (both already dependencies) | Authored content, not code; same shape an organizer outline will use later |
 | Organizer outlines and house-rule text | Validated data in the database | User-supplied; never code |
 
-Adventure data references content IDs (`monster:goblin`) and declares its own entities (`npc:garrick`, `clue:ledger`, `scene:watchtower`). Loading an adventure validates it against the sealed ruleset, so an adventure cannot reference a monster or item the ruleset lacks.
+Adventure data references content IDs (`monster:goblin`) and declares its own entities (`npc:garrick`, `clue:ledger`, `scene:watchtower`). Loading an adventure validates its structure and cross-references (scenes, NPCs, encounter zones). Encounter monsters are validated against the sealed ruleset when the fight starts; the harness and the starter-adventure tests play the authored fights, so a missing monster fails there first. Validating the whole adventure against the ruleset at load time is still to do.
 
 ## 8. Versioning
 

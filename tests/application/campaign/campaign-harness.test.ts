@@ -86,6 +86,56 @@ heroes:
     }
   });
 
+  it("checks authored encounters against scenes, zones, and NPCs", () => {
+    const source = `
+id: fights
+version: "1"
+language: en
+title: Fights
+premise: p
+dmOverview: o
+startScene: scene:a
+scenes:
+  - { id: scene:a, title: A, publicDescription: a, dmNotes: n, npcIds: [] }
+npcs: []
+encounters:
+  - id: encounter:x
+    sceneId: scene:b
+    publicDescription: p
+    dmNotes: n
+    zones: [{ id: hall, name: Hall }, { id: hall, name: Hall again }]
+    edges: [{ from: hall, to: yard, feet: 20 }]
+    partyZoneId: gate
+    monsters: [{ monsterId: monster:goblin, zoneId: roof, npcId: npc:boss }]
+heroes:
+  - id: c-x
+    name: X
+    class: fighter
+    abilityScores: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }
+    proficiencyBonus: 2
+    skills: {}
+    savingThrows: [str]
+    level: 1
+    maxHp: 8
+    speed: 30
+    equipment: [item:mace]
+    features: []
+`;
+    expect(() => parseAdventureDocument(source)).toThrow(AdventureDocumentError);
+    try {
+      parseAdventureDocument(source);
+    } catch (error) {
+      expect((error as AdventureDocumentError).problems).toEqual([
+        "encounter:x is in unknown scene:b.",
+        "encounter:x zone hall is defined more than once.",
+        "encounter:x starts the party in unknown zone gate.",
+        "encounter:x edge hall-yard names an unknown zone.",
+        "encounter:x places monster:goblin in unknown zone roof.",
+        "encounter:x names unknown npc:boss.",
+      ]);
+    }
+  });
+
   it("flags editions that disagree on structure", () => {
     const changed = { ...starter["zh-TW"], heroes: starter["zh-TW"].heroes.slice(1) };
     expect(checkEditionsMatch([starter.en, changed])).toEqual(["The zh-TW edition does not match the en edition."]);
@@ -100,7 +150,14 @@ describe("runHarness", () => {
       expect(report.roundsPlayed).toBe(6);
       expect(report.stoppedBecause).toBe("roundLimit");
       expect(report.checks.total).toBeGreaterThan(0);
-      expect(report.narration.count).toBe(6);
+      // Round 4 travels to the chapel; round 5 charges Skarn and the fight plays out.
+      expect(run.finalState.sceneId).toBe("scene:ruined-chapel");
+      expect(report.fights).toHaveLength(1);
+      const [fight] = report.fights;
+      expect(fight).toMatchObject({ id: "encounter:chapel-fight" });
+      expect(["victory", "defeat"]).toContain(fight?.outcome);
+      expect(fight?.flourishes).toBe(fight?.rounds);
+      expect(report.narration.count).toBe(6 + (fight?.flourishes ?? 0));
       expect(report.leaks).toEqual([]);
       expect(report.simplifiedCharacters).toEqual([]);
       // The injection attempt was refused, not obeyed.
@@ -124,7 +181,10 @@ describe("runHarness", () => {
 
   it("catches a narrator that leaks a secret or drifts into Simplified characters", async () => {
     const secret = starter["zh-TW"].bible.npcs[0]?.secret ?? "";
-    const leaky = { narrate: (): Promise<{ text: string }> => Promise.resolve({ text: `这是秘密：${secret}` }) };
+    const leaky = {
+      narrate: (): Promise<{ text: string }> => Promise.resolve({ text: `这是秘密：${secret}` }),
+      narrateCombat: (): Promise<{ text: string }> => Promise.resolve({ text: "..." }),
+    };
     const report = summarizeRun(await runHarness(options("zh-TW", { dm: () => ({ planner: new RuleBasedPlanner(), narrator: leaky }), rounds: 2 })));
     expect(report.leaks).toEqual([secret]);
     expect(report.simplifiedCharacters).toEqual(["这"]);

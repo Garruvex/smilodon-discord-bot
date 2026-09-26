@@ -54,6 +54,42 @@ npcs:
     voice: 狡猾又愛吹噓，總是用第三人稱稱呼自己。
     publicDescription: 一名披著補丁狼皮斗篷、戴著生鏽王冠的哥布林。
     secret: 他只想要銀鐘，拿到後願意離開這片地區。
+encounters:
+  - id: encounter:watchtower-scouts
+    sceneId: scene:old-watchtower
+    publicDescription: >-
+      兩名哥布林斥候爬上殘破的樓梯，一看見隊伍便愣住，接著伸手去拔刀。
+    dmNotes: >-
+      瞭望塔的時鐘填滿時開始這場戰鬥。斥候寧可逃跑去警告斯卡恩，也不願死在這裡。
+    zones:
+      - { id: tower-floor, name: 塔內地面 }
+      - { id: stairs, name: 殘破樓梯 }
+    edges:
+      - { from: tower-floor, to: stairs, feet: 15 }
+    partyZoneId: tower-floor
+    monsters:
+      - { monsterId: monster:goblin, zoneId: stairs, fleeBelowHpFraction: 0.5 }
+      - { monsterId: monster:goblin, zoneId: stairs, fleeBelowHpFraction: 0.5 }
+  - id: encounter:chapel-fight
+    sceneId: scene:ruined-chapel
+    publicDescription: >-
+      斯卡恩敲響一聲銀鐘，尖聲下令。一頭狼從長椅間的陰影撲出，哥布林紛紛舉起武器。
+    dmNotes: >-
+      當隊伍發動攻擊、潛入時被發現，或拒絕斯卡恩的條件時開始這場戰鬥。斯卡恩生命值
+      低於一半時會逃跑。
+    zones:
+      - { id: doorway, name: 門口 }
+      - { id: nave, name: 中殿 }
+      - { id: altar, name: 祭壇 }
+    edges:
+      - { from: doorway, to: nave, feet: 20 }
+      - { from: nave, to: altar, feet: 15 }
+    partyZoneId: doorway
+    monsters:
+      - { monsterId: monster:wolf, zoneId: nave }
+      - { monsterId: monster:goblin, zoneId: nave }
+      - { monsterId: monster:goblin, zoneId: altar }
+      - { monsterId: monster:goblin, zoneId: altar, npcId: npc:skarn, fleeBelowHpFraction: 0.5 }
 heroes:
   - id: c-borin
     name: 波林

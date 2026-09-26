@@ -27,6 +27,8 @@ import type { ContentId } from "../../rules/content-id.js";
 import { awaySafety } from "../../rules/house-rules.js";
 import { deadlineAfter, type Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
+import { maxNarrationLength } from "../narration-limits.js";
+import { openRound } from "../rounds.js";
 import { declareResolution, endConcentration, recordResolutionRoll } from "./resolution.js";
 
 // A chain of engine-played turns (monsters, autopilot, skipped heroes) must
@@ -108,7 +110,14 @@ function startEncounter(decision: Decision, spec: EncounterSpec): Rejection | nu
   if (state.encounter !== null && state.encounter.status !== "ended") return { code: "inCombat" };
   const problems = encounterProblems(decision, spec);
   if (problems.length > 0) return { code: "invalidEncounter", problems };
+  beginEncounter(decision, spec);
+  return null;
+}
 
+// Starts a validated fight: by the organizer, or after the round in which
+// the Planner queued it has been narrated.
+export function beginEncounter(decision: Decision, spec: EncounterSpec): void {
+  const { state, ctx } = decision;
   const content = ctx.rules.content;
   const combatants: Record<string, Combatant> = {};
   for (const member of Object.values(state.members)) {
@@ -161,17 +170,18 @@ function startEncounter(decision: Decision, spec: EncounterSpec): Rejection | nu
     sequence,
     outcome: null,
     deferredTurn: null,
+    narratedRound: 0,
   };
   decision.emit({ kind: "encounterStarted", encounter });
   for (const [rollId, pending] of Object.entries(pendingRolls)) {
     if (pending.purpose === "initiative") decision.request({ kind: "roll", rollId, spec: { kind: "d20Test", spec: pending.spec } });
   }
   decision.request({ kind: "deliver", delivery: { kind: "encounterStarted", encounterId: spec.id } });
-  return null;
 }
 
-function encounterProblems(decision: Decision, spec: EncounterSpec): readonly string[] {
+export function encounterProblems(decision: Decision, spec: EncounterSpec): readonly string[] {
   const problems: string[] = [];
+  if (decision.state.encounterHistory.includes(spec.id)) problems.push("This encounter has already been fought.");
   const zoneIds = new Set(spec.zones.map((zone) => zone.id));
   if (zoneIds.size !== spec.zones.length) problems.push("Zone IDs repeat.");
   if (!zoneIds.has(spec.partyZoneId)) problems.push(`Party zone ${spec.partyZoneId} does not exist.`);
@@ -478,6 +488,9 @@ function beginTurn(decision: Decision, turnIndex: number, round: number): void {
   const combatant = encounter.combatants[encounter.order[index] ?? ""];
   if (combatant === undefined || !isPresent(combatant)) return;
 
+  // A new round: the Narrator describes the one that just finished.
+  if (currentRound > encounter.round) decision.request({ kind: "narrateCombat", encounterId: encounter.id, round: encounter.round, final: false });
+
   const playerTurn = isPlayerControlled(decision, combatant) && isActive(combatant);
   const endsAt = playerTurn ? deadlineAfter(decision.ctx.now, decision.state.pacing.turnSeconds) : null;
   const turnNumber = encounter.turnNumber + 1;
@@ -701,7 +714,28 @@ export function endIfDecided(decision: Decision): boolean {
   if (encounter.turnEndsAt !== null) decision.request({ kind: "cancelTimer", timerId: turnTimerId(encounter.id, encounter.turnNumber) });
   decision.emit({ kind: "encounterEnded", outcome: foesLeft ? "defeat" : "victory" });
   decision.request({ kind: "deliver", delivery: { kind: "encounterEnded", encounterId: encounter.id } });
+  // The closing narration covers the last round; exploration resumes after it.
+  decision.request({ kind: "narrateCombat", encounterId: encounter.id, round: encounter.round, final: true });
   return true;
+}
+
+// Saves a flourish (plan §6, Combat presentation). Flourishes never hold up
+// turns; one that arrives after a later round was described is dropped. The
+// closing narration opens the next exploration round.
+export function recordCombatNarration(decision: Decision, encounterId: string, round: number, text: string): Rejection | null {
+  const { state, ctx } = decision;
+  if (ctx.actor.kind !== "system") return { code: "systemOnly" };
+  const trimmed = text.trim();
+  if (trimmed.length === 0 || trimmed.length > maxNarrationLength) return { code: "emptyNarration" };
+  const encounter = state.encounter;
+  if (encounter?.id !== encounterId || round <= encounter.narratedRound || round > encounter.round) return { code: "staleNarration" };
+  const final = encounter.status === "ended" && round === encounter.round;
+  // The current round of a fight still in progress is not over yet.
+  if (!final && round === encounter.round) return { code: "staleNarration" };
+  decision.emit({ kind: "combatNarrationRecorded", round, text: trimmed, final });
+  decision.request({ kind: "deliver", delivery: { kind: "combatNarration", encounterId, round } });
+  if (final && state.status === "active" && state.round === null) return openRound(decision);
+  return null;
 }
 
 export function activeEncounter(decision: Decision): EncounterState | null {

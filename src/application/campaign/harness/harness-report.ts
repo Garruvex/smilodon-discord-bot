@@ -1,4 +1,6 @@
 import type { CampaignEvent } from "../../../domain/campaign/events/campaign-event.js";
+import { encounterRecords, type EncounterRecord } from "../dm/combat-records.js";
+import { describeBeat } from "../dm/llm-dm.js";
 import { roundRecords } from "../dm/round-records.js";
 import type { HarnessRun, ModelCall } from "./campaign-harness.js";
 
@@ -11,6 +13,14 @@ export interface HarnessReport {
   readonly moments: Readonly<Record<string, number>>;
   readonly narration: { readonly count: number; readonly lengths: readonly number[]; readonly unit: "words" | "characters" };
   readonly plannerFailures: number;
+  readonly fights: readonly {
+    readonly id: string;
+    readonly outcome: string;
+    readonly rounds: number;
+    readonly flourishes: number;
+    // Hero drops to 0 HP over the fight.
+    readonly heroesDowned: number;
+  }[];
   readonly latency: Readonly<Record<ModelCall["call"], { readonly p50: number; readonly p95: number; readonly calls: number }>>;
   readonly maxContextTokens: number;
   readonly usage: Readonly<Record<ModelCall["call"], TokenTotals>>;
@@ -68,12 +78,24 @@ export function summarizeRun(run: HarnessRun, pricing?: TokenPricing): HarnessRe
     if (headline !== null) moments[headline.kind] = (moments[headline.kind] ?? 0) + 1;
   }
 
-  const narrations = events.flatMap((event) => (event.kind === "narrationRecorded" ? [event.text] : []));
+  const narrations = events.flatMap((event) =>
+    event.kind === "narrationRecorded" || event.kind === "combatNarrationRecorded" ? [event.text] : [],
+  );
+  const fights = fightsOf(run).map((fight) => ({
+    id: fight.id,
+    outcome: fight.outcome ?? "unfinished",
+    rounds: fight.rounds.length,
+    flourishes: fight.rounds.filter((round) => round.narration !== null).length + (fight.closing === null ? 0 : 1),
+    heroesDowned: fight.rounds
+      .flatMap((round) => round.beats)
+      .flatMap((beat) => (beat.kind === "action" ? beat.targets : []))
+      .filter((target) => target.condition === "unconscious" && heroNames(run).has(target.name)).length,
+  }));
   const zh = run.language === "zh-TW";
   const lengths = narrations.map((text) => (zh ? [...text.replace(/\s/g, "")].length : text.split(/\s+/).filter(Boolean).length));
 
   const secrets = secretTexts(run);
-  const exposed = [JSON.stringify(run.narratorRequests), ...narrations].join("\n");
+  const exposed = [JSON.stringify(run.narratorRequests), JSON.stringify(run.combatNarratorRequests), ...narrations].join("\n");
   const leaks = secrets.filter((secret) => exposed.includes(secret));
   const simplifiedCharacters = zh ? [...new Set([...narrations.join("")].filter((character) => simplifiedOnly.has(character)))] : [];
 
@@ -86,9 +108,10 @@ export function summarizeRun(run: HarnessRun, pricing?: TokenPricing): HarnessRe
     moments,
     narration: { count: narrations.length, lengths, unit: zh ? "characters" : "words" },
     plannerFailures: events.filter((event) => event.kind === "plannerFailed").length,
-    latency: { planner: latencyOf(run.calls, "planner"), narrator: latencyOf(run.calls, "narrator") },
+    fights,
+    latency: { planner: latencyOf(run.calls, "planner"), narrator: latencyOf(run.calls, "narrator"), flourish: latencyOf(run.calls, "flourish") },
     maxContextTokens: Math.max(0, ...run.calls.map((call) => call.contextTokens)),
-    usage: { planner: tokenTotals(run.calls, "planner"), narrator: tokenTotals(run.calls, "narrator") },
+    usage: { planner: tokenTotals(run.calls, "planner"), narrator: tokenTotals(run.calls, "narrator"), flourish: tokenTotals(run.calls, "flourish") },
     models: [...new Set(run.calls.flatMap((call) => (call.model === null ? [] : [call.model])))],
     promptVersions: [...new Set(run.calls.flatMap((call) => (call.promptVersion === null ? [] : [call.promptVersion])))],
     cost: costOf(run.calls, pricing, rounds.length),
@@ -126,6 +149,11 @@ export function renderReport(run: HarnessRun, report: HarnessReport): string {
       `Estimated cost: ${report.cost.total.toFixed(4)} for this run, ${report.cost.perRound.toFixed(4)} per round, about ${report.cost.perLiveHour.toFixed(2)} per Live hour (${liveRoundsPerHour} rounds).`,
     );
   }
+  for (const fight of report.fights) {
+    lines.push(
+      `Fight ${fight.id}: ${fight.outcome} in ${fight.rounds} round(s), ${fight.flourishes} narrated passage(s), heroes downed ${fight.heroesDowned} time(s).`,
+    );
+  }
   const { lengths, unit } = report.narration;
   const average = lengths.length === 0 ? 0 : lengths.reduce((sum, value) => sum + value, 0) / lengths.length;
   lines.push(`Narration: ${report.narration.count} passages, average ${average.toFixed(0)} ${unit}, longest ${Math.max(0, ...lengths)}.`, "");
@@ -145,6 +173,7 @@ export function renderReport(run: HarnessRun, report: HarnessReport): string {
 
 function transcript(run: HarnessRun): string[] {
   const events = run.events.map((envelope) => envelope.event);
+  const fights = fightsOf(run);
   const nameOf = (id: string): string => run.finalState.characters[id]?.name ?? id;
   const lines: string[] = [];
   for (const round of playedRounds(events)) {
@@ -168,8 +197,30 @@ function transcript(run: HarnessRun): string[] {
     for (const heroId of round.missed) lines.push(`- **${nameOf(heroId)}** did not respond.`);
     if (round.narration !== null) lines.push("", `> ${round.narration}`);
     lines.push("");
+    for (const fight of fights.filter((candidate) => candidate.afterRound === round.number)) lines.push(...fightTranscript(fight));
   }
   return lines;
+}
+
+function fightTranscript(fight: EncounterRecord): string[] {
+  const lines = [`#### Fight ${fight.id} (${fight.outcome ?? "unfinished"})`, ""];
+  for (const round of fight.rounds) {
+    lines.push(`Combat round ${round.round}:`, "");
+    for (const beat of round.beats) lines.push(`- ${describeBeat(beat)}`);
+    if (round.narration !== null) lines.push("", `> ${round.narration}`);
+    lines.push("");
+  }
+  if (fight.closing !== null) lines.push(`> ${fight.closing}`, "");
+  return lines;
+}
+
+function fightsOf(run: HarnessRun): readonly EncounterRecord[] {
+  const events = run.events.map((envelope) => envelope.event);
+  return encounterRecords(events, { state: run.finalState, bible: run.adventure.bible, glossary: run.glossary });
+}
+
+function heroNames(run: HarnessRun): ReadonlySet<string> {
+  return new Set(Object.values(run.finalState.characters).map((sheet) => sheet.name));
 }
 
 // Rounds that closed; the round opened after the last narration is still empty.
@@ -183,7 +234,13 @@ function secretTexts(run: HarnessRun): readonly string[] {
   const ledgerSecrets = Object.values(run.finalState.ledger).flatMap((entry) =>
     entry.facts.filter((fact) => fact.visibility === "secret").map((fact) => fact.text),
   );
-  return [bible.dmOverview, ...bible.scenes.map((scene) => scene.dmNotes), ...bible.npcs.map((npc) => npc.secret), ...ledgerSecrets];
+  return [
+    bible.dmOverview,
+    ...bible.scenes.map((scene) => scene.dmNotes),
+    ...bible.npcs.map((npc) => npc.secret),
+    ...bible.encounters.map((encounter) => encounter.dmNotes),
+    ...ledgerSecrets,
+  ];
 }
 
 function tokenTotals(calls: readonly ModelCall[], call: ModelCall["call"]): TokenTotals {

@@ -65,6 +65,45 @@ npcs:
     voice: Sly and boastful; speaks of himself in the third person.
     publicDescription: A goblin in a patched wolf-fur cloak with a rusted crown.
     secret: He only wants the silver bell and would leave the region with it.
+encounters:
+  - id: encounter:watchtower-scouts
+    sceneId: scene:old-watchtower
+    publicDescription: >-
+      Two goblin scouts scramble up the broken stairs and freeze at the sight
+      of the party, then reach for their blades.
+    dmNotes: >-
+      Start this when the watchtower clock fills. The scouts would rather run
+      and warn Skarn than die here.
+    zones:
+      - { id: tower-floor, name: Tower floor }
+      - { id: stairs, name: Broken stairs }
+    edges:
+      - { from: tower-floor, to: stairs, feet: 15 }
+    partyZoneId: tower-floor
+    monsters:
+      - { monsterId: monster:goblin, zoneId: stairs, fleeBelowHpFraction: 0.5 }
+      - { monsterId: monster:goblin, zoneId: stairs, fleeBelowHpFraction: 0.5 }
+  - id: encounter:chapel-fight
+    sceneId: scene:ruined-chapel
+    publicDescription: >-
+      Skarn rings the silver bell once and shrieks an order. A wolf lunges out
+      of the shadows between the pews, and goblins raise their weapons.
+    dmNotes: >-
+      Start this when the party attacks, is caught sneaking in, or refuses
+      Skarn's terms. Skarn flees below half his hit points.
+    zones:
+      - { id: doorway, name: Doorway }
+      - { id: nave, name: Nave }
+      - { id: altar, name: Altar }
+    edges:
+      - { from: doorway, to: nave, feet: 20 }
+      - { from: nave, to: altar, feet: 15 }
+    partyZoneId: doorway
+    monsters:
+      - { monsterId: monster:wolf, zoneId: nave }
+      - { monsterId: monster:goblin, zoneId: nave }
+      - { monsterId: monster:goblin, zoneId: altar }
+      - { monsterId: monster:goblin, zoneId: altar, npcId: npc:skarn, fleeBelowHpFraction: 0.5 }
 heroes:
   - id: c-borin
     name: Borin

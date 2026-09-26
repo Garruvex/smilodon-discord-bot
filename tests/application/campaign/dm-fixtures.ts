@@ -5,6 +5,7 @@ export const secrets = {
   overview: "SECRET-OVERVIEW-the-mayor-hired-the-bandits",
   dmNotes: "SECRET-NOTES-the-ledger-is-under-the-floor",
   npc: "SECRET-NPC-garrick-is-a-smuggler",
+  encounter: "SECRET-ENCOUNTER-start-when-they-open-the-trapdoor",
 };
 
 export const testBible: AdventureBible = {
@@ -31,6 +32,21 @@ export const testBible: AdventureBible = {
       voice: "Gruff, clipped sentences.",
       publicDescription: "The tavern keeper, polishing the same mug.",
       secret: secrets.npc,
+    },
+  ],
+  encounters: [
+    {
+      id: "encounter:cellar-goblins",
+      sceneId: "scene:tavern",
+      publicDescription: "Goblins burst up through the cellar trapdoor.",
+      dmNotes: secrets.encounter,
+      zones: [
+        { id: "bar", name: "Bar" },
+        { id: "cellar", name: "Cellar" },
+      ],
+      edges: [{ from: "bar", to: "cellar", feet: 20 }],
+      partyZoneId: "bar",
+      monsters: [{ monsterId: "monster:goblin", zoneId: "cellar", npcId: null, fleeBelowHpFraction: null }],
     },
   ],
 };

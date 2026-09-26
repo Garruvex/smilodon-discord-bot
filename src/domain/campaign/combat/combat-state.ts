@@ -230,6 +230,8 @@ export interface EncounterState {
   readonly outcome: EncounterOutcome | null;
   // A turn that was due while nobody was present; continue starts it.
   readonly deferredTurn: { readonly turnIndex: number; readonly round: number } | null;
+  // The last round the Narrator described; later flourishes only.
+  readonly narratedRound: number;
 }
 
 export function currentCombatant(encounter: EncounterState): Combatant | undefined {

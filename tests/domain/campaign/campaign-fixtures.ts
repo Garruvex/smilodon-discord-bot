@@ -117,6 +117,8 @@ export function newCampaign(pacing: Pacing = livePacing): CampaignState {
     ledger: {},
     encounter: null,
     heroStatus: {},
+    pendingEncounter: null,
+    encounterHistory: [],
   };
 }
 

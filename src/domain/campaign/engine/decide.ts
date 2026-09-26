@@ -4,7 +4,7 @@ import type { RollId } from "../core/ids.js";
 import type { RollResult } from "../dice/roll-spec.js";
 import type { CampaignState } from "../state/campaign-state.js";
 import { recordCheckRoll, requestRoll, rollTimerExpired } from "./checks.js";
-import { handleCombatCommand, recordCombatRoll } from "./combat/combat-flow.js";
+import { handleCombatCommand, recordCombatNarration, recordCombatRoll } from "./combat/combat-flow.js";
 import { takeRest } from "./rest.js";
 import { Decision, type DecideResult, type EngineContext } from "./decision.js";
 import { recordLedgerFact, recordNarration, reportPlannerFailure, retryPlan } from "./dm.js";
@@ -54,6 +54,8 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
       return retryPlan(decision);
     case "recordNarration":
       return recordNarration(decision, command.roundNumber, command.text);
+    case "recordCombatNarration":
+      return recordCombatNarration(decision, command.encounterId, command.round, command.text);
     case "recordLedgerFact":
       return recordLedgerFact(decision, command);
     case "takeRest":

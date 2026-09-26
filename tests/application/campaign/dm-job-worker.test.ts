@@ -17,7 +17,7 @@ import { RollWorker } from "../../../src/application/campaign/workers/roll-worke
 import { enSrd51Glossary } from "../../../src/application/i18n/campaign/glossary/en/srd-5.1.js";
 import { zhTwSrd51Glossary } from "../../../src/application/i18n/campaign/glossary/zh-TW/srd-5.1.js";
 import type { AdventureBible } from "../../../src/domain/campaign/adventure/adventure-bible.js";
-import type { RoundPlanProposal } from "../../../src/domain/campaign/commands/campaign-command.js";
+import type { ScriptedProposal } from "../../../src/application/campaign/dm/scripted-dm.js";
 import type { CampaignEvent } from "../../../src/domain/campaign/events/campaign-event.js";
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
 import { InMemoryCampaignStore } from "../../../src/infrastructure/persistence/campaign/in-memory-campaign-store.js";
@@ -26,7 +26,7 @@ import { secrets, testBible } from "./dm-fixtures.js";
 
 const key: CampaignKey = { guildId: "g-1", campaignId: "camp-1" };
 
-const sneak: RoundPlanProposal = {
+const sneak: ScriptedProposal = {
   roundNumber: 1,
   actions: [
     {
@@ -44,7 +44,7 @@ const offLadder = {
       resolution: { kind: "check", test: { kind: "skill", skill: "stealth" }, dcTier: "tricky", rollModeReasons: [] },
     },
   ],
-} as unknown as RoundPlanProposal;
+} as unknown as ScriptedProposal;
 
 function startState(): CampaignState {
   const ledger = {

@@ -1,21 +1,23 @@
 import type { CampaignLanguage } from "../../../domain/campaign/adventure/adventure-bible.js";
 import type { Actor, CampaignCommand } from "../../../domain/campaign/commands/campaign-command.js";
 import type { CharacterSheet } from "../../../domain/campaign/character/character-sheet.js";
+import { currentCombatant } from "../../../domain/campaign/combat/combat-state.js";
 import type { UserId } from "../../../domain/campaign/core/ids.js";
 import type { RandomSource } from "../../../domain/campaign/dice/random-source.js";
 import type { Glossary } from "../../../domain/campaign/rules/content-registry.js";
 import type { CampaignState, MemberState, Pacing } from "../../../domain/campaign/state/campaign-state.js";
 import type { AdventureDocument } from "../adventures/adventure-document.js";
 import { CampaignCommandBus } from "../campaign-command-bus.js";
-import type { CampaignKey, CampaignUnitOfWork, EventEnvelope, StoredCampaign } from "../ports/campaign-store.js";
-import type { ModelCallObserver } from "../dm/llm-dm.js";
-import type { CampaignNarrator, CampaignPlanner, NarratorRequest, PlannerRequest } from "../ports/dm-ports.js";
+import type { CampaignKey, CampaignUnitOfWork, CommandOutcome, EventEnvelope, StoredCampaign } from "../ports/campaign-store.js";
+import type { ModelCallKind, ModelCallObserver } from "../dm/llm-dm.js";
+import type { CampaignNarrator, CampaignPlanner, CombatNarratorRequest, NarratorRequest, PlannerRequest } from "../ports/dm-ports.js";
 import type { ModelUsage } from "../ports/structured-model-client.js";
 import type { RulesetCatalog } from "../rules/ruleset-catalog.js";
 import { ManualClock } from "../time/manual-clock.js";
 import { DmJobWorker } from "../workers/dm-job-worker.js";
 import { RollWorker } from "../workers/roll-worker.js";
 import { TimerWorker } from "../workers/timer-worker.js";
+import { chooseHeroCommand, type HarnessCombatRole } from "./harness-tactics.js";
 
 // What a scripted player does in a given round.
 export type HarnessMove = { readonly kind: "act"; readonly text: string } | { readonly kind: "pass" } | { readonly kind: "silent" };
@@ -29,6 +31,7 @@ export interface HarnessPlayer {
   readonly clicksRoll: boolean;
   // Comes back the round after being marked away.
   readonly returnsWhenAway: boolean;
+  readonly combatRole: HarnessCombatRole;
 }
 
 export interface HarnessOptions {
@@ -49,7 +52,7 @@ export interface HarnessOptions {
 }
 
 export interface ModelCall {
-  readonly call: "planner" | "narrator";
+  readonly call: ModelCallKind;
   readonly roundNumber: number;
   readonly milliseconds: number;
   readonly contextTokens: number;
@@ -67,6 +70,8 @@ export interface HarnessRun {
   readonly events: readonly EventEnvelope[];
   readonly calls: readonly ModelCall[];
   readonly narratorRequests: readonly NarratorRequest[];
+  readonly combatNarratorRequests: readonly CombatNarratorRequest[];
+  readonly glossary: Glossary;
   readonly stoppedBecause: "roundLimit" | "waitingForPlayers" | "stalled";
 }
 
@@ -93,6 +98,7 @@ export async function runHarness(options: HarnessOptions): Promise<HarnessRun> {
     calls.push({ ...entry, model: observed?.model ?? null, promptVersion: observed?.promptVersion ?? null, usage: observed?.usage ?? null });
   };
   const narratorRequests: NarratorRequest[] = [];
+  const combatNarratorRequests: CombatNarratorRequest[] = [];
   const bus = new CampaignCommandBus({ unitOfWork, rulesets: options.rulesets, clock });
 
   const planner: CampaignPlanner = {
@@ -102,6 +108,10 @@ export async function runHarness(options: HarnessOptions): Promise<HarnessRun> {
     narrate: (request: NarratorRequest) => {
       narratorRequests.push(request);
       return timed(record, measure, "narrator", request.roundNumber, request.context.estimatedTokens, () => dmParts.narrator.narrate(request));
+    },
+    narrateCombat: (request: CombatNarratorRequest) => {
+      combatNarratorRequests.push(request);
+      return timed(record, measure, "flourish", request.round, request.context.estimatedTokens, () => dmParts.narrator.narrateCombat(request));
     },
   };
   const dm = new DmJobWorker({
@@ -125,9 +135,9 @@ export async function runHarness(options: HarnessOptions): Promise<HarnessRun> {
   );
 
   let commandNumber = 0;
-  const execute = async (command: CampaignCommand, actor: Actor): Promise<void> => {
+  const execute = async (command: CampaignCommand, actor: Actor): Promise<CommandOutcome> => {
     commandNumber += 1;
-    await bus.execute(campaignKey, command, { commandId: `harness-${commandNumber}`, actor });
+    return bus.execute(campaignKey, command, { commandId: `harness-${commandNumber}`, actor });
   };
   const load = async (): Promise<CampaignState> => {
     const stored = await unitOfWork.transaction((tx) => tx.loadCampaign(campaignKey));
@@ -141,6 +151,33 @@ export async function runHarness(options: HarnessOptions): Promise<HarnessRun> {
       const result = await dm.runOnce();
       if (result.failed.length === 0) return;
     }
+  };
+
+  // Rolls can chain (a hit asks for damage), so run until none are left.
+  const drainRolls = async (): Promise<void> => {
+    for (let pass = 0; pass < 50; pass += 1) {
+      if ((await rolls.runOnce()).processed === 0) return;
+    }
+  };
+  // Plays a fight to its end: players take their turns through real
+  // commands; monsters and away heroes are played by the engine. A player
+  // command the engine refuses ends that turn, as a confused player would.
+  const runCombat = async (): Promise<boolean> => {
+    for (let step = 0; step < 600; step += 1) {
+      await drainRolls();
+      await drainDm();
+      const state = await load();
+      const encounter = state.encounter;
+      if (encounter === null || encounter.status === "ended") return true;
+      if (state.status !== "active" || encounter.status !== "active") return false;
+      const hero = currentCombatant(encounter);
+      const player = players.find((candidate) => candidate.heroId === hero?.id);
+      if (hero === undefined || player === undefined || state.members[player.userId]?.availability !== "present") return false;
+      const command = chooseHeroCommand(encounter, hero, player.combatRole);
+      const outcome = await execute(command, user(player));
+      if (outcome.kind === "rejected" && command.kind !== "endTurn") await execute({ kind: "endTurn", combatantId: hero.id }, user(player));
+    }
+    return false;
   };
 
   let stoppedBecause: HarnessRun["stoppedBecause"] = "roundLimit";
@@ -198,6 +235,12 @@ export async function runHarness(options: HarnessOptions): Promise<HarnessRun> {
     }
     await rolls.runOnce();
     await drainDm();
+    const fight = (await load()).encounter;
+    if (fight !== null && fight.status !== "ended" && !(await runCombat())) {
+      stoppedBecause = "stalled";
+      break;
+    }
+    await drainDm();
     clock.advance(30_000);
   }
 
@@ -210,6 +253,8 @@ export async function runHarness(options: HarnessOptions): Promise<HarnessRun> {
     events,
     calls,
     narratorRequests,
+    combatNarratorRequests,
+    glossary: options.glossary,
     stoppedBecause,
   };
 }
@@ -248,6 +293,8 @@ function initialState(options: HarnessOptions, pacing: Pacing): CampaignState {
     ledger: {},
     encounter: null,
     heroStatus: {},
+    pendingEncounter: null,
+    encounterHistory: [],
   };
 }
 

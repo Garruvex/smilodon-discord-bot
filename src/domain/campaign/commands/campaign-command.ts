@@ -1,3 +1,4 @@
+import type { SceneId } from "../adventure/adventure-bible.js";
 import type { CheckTest } from "../character/character-sheet.js";
 import type { CharacterId, CheckId, RollId, UserId } from "../core/ids.js";
 import type { RollResult } from "../dice/roll-spec.js";
@@ -31,6 +32,8 @@ export type CampaignCommand =
   // The organizer asks the Planner to try the held round again.
   | { readonly kind: "retryPlan" }
   | { readonly kind: "recordNarration"; readonly roundNumber: number; readonly text: string }
+  // The Narrator's flourish for a combat round, or the fight's closing line.
+  | { readonly kind: "recordCombatNarration"; readonly encounterId: string; readonly round: number; readonly text: string }
   | RecordLedgerFactCommand
   // Organizer, outside combat. Short: limited features recharge. Long: HP,
   // spell slots, and every feature recharge.
@@ -87,12 +90,32 @@ export interface RecordLedgerFactCommand {
 export type CampaignCommandKind = CampaignCommand["kind"];
 
 // The Planner's structured proposal for a closed round, validated by the
-// engine before anything applies. Clarification, conflicts, dependencies,
-// and story effects join this shape with the DM pipeline.
+// engine before anything applies. Clarification, conflicts, and
+// dependencies join this shape later.
 export interface RoundPlanProposal {
   readonly roundNumber: number;
   readonly actions: readonly PlannedAction[];
+  // Applied once the round's checks resolve, before narration. Absent: none.
+  readonly effects?: readonly PlannedEffect[];
 }
+
+// A story effect and when it fires (plan §6: effects keyed by outcome, so no
+// second model call is needed after the roll).
+export interface PlannedEffect {
+  readonly effect: StoryEffect;
+  readonly when: EffectCondition;
+}
+
+// The application resolves authored IDs (encounters) to their definitions
+// before the proposal reaches the engine, which validates the result.
+export type StoryEffect =
+  | { readonly kind: "transitionScene"; readonly sceneId: SceneId }
+  | { readonly kind: "startEncounter"; readonly encounter: EncounterSpec };
+
+export type EffectCondition =
+  | { readonly kind: "always" }
+  // Fires on the outcome of this hero's check this round.
+  | { readonly kind: "checkOutcome"; readonly characterId: CharacterId; readonly success: boolean };
 
 export interface PlannedAction {
   readonly characterId: CharacterId;

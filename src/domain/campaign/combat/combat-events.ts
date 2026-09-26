@@ -124,7 +124,9 @@ export type CombatEvent =
   | { readonly kind: "combatantFled"; readonly combatantId: CombatantId }
   | { readonly kind: "turnEnded"; readonly combatantId: CombatantId }
   | { readonly kind: "turnDeferred"; readonly turnIndex: number; readonly round: number }
-  | { readonly kind: "encounterEnded"; readonly outcome: EncounterOutcome };
+  | { readonly kind: "encounterEnded"; readonly outcome: EncounterOutcome }
+  // final: the fight has ended and this is its closing narration.
+  | { readonly kind: "combatNarrationRecorded"; readonly round: number; readonly text: string; readonly final: boolean };
 
 export type CombatEventKind = CombatEvent["kind"];
 
@@ -160,4 +162,5 @@ export const combatEventKinds: readonly CombatEventKind[] = [
   "turnEnded",
   "turnDeferred",
   "encounterEnded",
+  "combatNarrationRecorded",
 ];
