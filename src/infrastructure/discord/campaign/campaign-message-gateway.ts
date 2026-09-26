@@ -20,6 +20,8 @@ export interface CampaignMessageGateway {
   // that is gone is fine.
   editText(channelId: string, messageId: string, content: string): Promise<void>;
   pin(channelId: string, messageId: string): Promise<void>;
+  // A picture with a caption in the channel (a scene's illustration).
+  sendImage(channelId: string, bytes: Buffer, mediaType: string, caption: string): Promise<void>;
 }
 
 const missingCodes: readonly number[] = [RESTJSONErrorCodes.UnknownMessage, RESTJSONErrorCodes.UnknownChannel];
@@ -70,6 +72,11 @@ export class DiscordMessageGateway implements CampaignMessageGateway {
       if (error instanceof DiscordAPIError && missingCodes.includes(Number(error.code))) return;
       throw error;
     }
+  }
+
+  public async sendImage(channelId: string, bytes: Buffer, mediaType: string, caption: string): Promise<void> {
+    const extension = mediaType === "image/jpeg" ? "jpg" : mediaType === "image/webp" ? "webp" : "png";
+    await (await this.channel(channelId)).send({ content: caption.slice(0, 200), files: [{ attachment: bytes, name: `scene.${extension}` }], allowedMentions: { parse: [] } });
   }
 
   public async pin(channelId: string, messageId: string): Promise<void> {

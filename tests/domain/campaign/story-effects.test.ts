@@ -48,6 +48,8 @@ describe("story effects", () => {
     expect(failed.state.sceneId).toBe("scene:ruined-chapel");
     expect(failed.state.pendingEncounter?.id).toBe("encounter:gate-ambush");
     expect(failed.requests).toContainEqual({ kind: "narrate", roundNumber: 1 });
+    // The new scene asks for a picture, which nothing waits on.
+    expect(failed.requests).toContainEqual({ kind: "sceneImage", sceneId: "scene:ruined-chapel", roundNumber: 1 });
 
     const narrated = run(failed.state, system, { kind: "recordNarration", roundNumber: 1, text: "A goblin spots Mira!" });
     expect(kinds(narrated.events)).toEqual(["narrationRecorded", "encounterStarted"]);

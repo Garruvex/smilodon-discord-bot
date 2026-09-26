@@ -57,6 +57,15 @@ export type CampaignModelConfiguration =
   | { provider: "openai-compatible"; apiKey: string; baseUrl: string; models: readonly string[] }
   | { provider: "gemini"; apiKey: string; models: readonly string[]; thinkingBudget: number | null };
 
+// Scene pictures for /dnd campaigns (CAMPAIGN_IMAGE_*). Absent: no pictures.
+export interface CampaignImageConfiguration {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+  // Pictures one campaign may have made.
+  budget: number;
+}
+
 export type EmbeddingConfiguration =
   | { provider: "openai"; apiKey: string; baseUrl: string; model: string }
   | { provider: "gemini"; apiKey: string; model: string };
@@ -114,6 +123,7 @@ export interface ApplicationConfiguration {
   // The AI dungeon master for /dnd campaigns (CAMPAIGN_* env vars). Null:
   // campaigns cannot be started.
   campaign: CampaignModelConfiguration | null;
+  campaignImages?: CampaignImageConfiguration | null;
   // Independent of chat/utility generation: either vendor can provide
   // vectors regardless of which provider produces replies or summaries.
   embeddings: EmbeddingConfiguration | null;

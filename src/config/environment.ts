@@ -136,6 +136,10 @@ const environmentSchema = z.object({
   CAMPAIGN_MODE: z.enum(["chat_completions", "responses"]).optional(),
   CAMPAIGN_REASONING_EFFORT: z.enum(["none", "low", "medium", "high", "xhigh", "max"]).default("none"),
   CAMPAIGN_GEMINI_THINKING_BUDGET: z.coerce.number().int().min(-1).max(32_768).optional(),
+  // Scene pictures: an OpenAI-compatible image model (uses OPENAI_API_KEY),
+  // and how many pictures one campaign may have made (default 12).
+  CAMPAIGN_IMAGE_MODEL: optionalNonEmptyString,
+  CAMPAIGN_IMAGE_BUDGET: z.coerce.number().int().min(0).max(200).default(12),
 
   // See MemoryEngineLimits in memory-engine.ts for what each of these
   // actually gates and the reasoning behind the defaults — the similarity
@@ -267,6 +271,7 @@ export function loadConfiguration(
     chat: buildChatConfiguration(parsed.data),
     utilityChat: buildUtilityChatConfiguration(parsed.data),
     campaign: buildCampaignConfiguration(parsed.data),
+    campaignImages: buildCampaignImages(parsed.data),
     chatDelivery: {
       maxGeneratedImageAggregateBytes: parsed.data.CHATBOT_MAX_GENERATED_IMAGE_BYTES,
     },
@@ -402,6 +407,11 @@ function buildCampaignConfiguration(data: z.infer<typeof environmentSchema>): Ap
     return { provider: "openai-responses", apiKey, baseUrl, models, reasoningEffort: data.CAMPAIGN_REASONING_EFFORT };
   }
   return { provider: "openai-compatible", apiKey, baseUrl, models };
+}
+
+function buildCampaignImages(data: z.infer<typeof environmentSchema>): NonNullable<ApplicationConfiguration["campaignImages"]> | null {
+  if (!data.CAMPAIGN_IMAGE_MODEL || !data.OPENAI_API_KEY) return null;
+  return { apiKey: data.OPENAI_API_KEY, baseUrl: data.OPENAI_BASE_URL.replace(/\/$/, ""), model: data.CAMPAIGN_IMAGE_MODEL, budget: data.CAMPAIGN_IMAGE_BUDGET };
 }
 
 // Mirrors buildChatConfiguration's shape/branching but for the fully

@@ -106,6 +106,9 @@ export interface CampaignRecord {
   // Problems waiting for the organizer; records saved before this existed have none.
   readonly issues?: readonly CampaignIssue[];
   readonly visibility?: CampaignVisibility;
+  // What became of each scene's picture, and how much of the picture budget is spent.
+  readonly images?: Readonly<Record<string, "made" | "done" | "skipped" | "failed">>;
+  readonly imageBudget?: { readonly limit: number; readonly used: number };
 }
 
 export interface StoredRecord {

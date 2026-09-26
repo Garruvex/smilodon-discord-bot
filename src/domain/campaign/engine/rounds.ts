@@ -170,6 +170,7 @@ function applyStoryEffect(decision: Decision, roundNumber: number, effect: Plann
   switch (effect.kind) {
     case "transitionScene":
       decision.emit({ kind: "sceneTransitioned", roundNumber, sceneId: effect.sceneId });
+      decision.request({ kind: "sceneImage", sceneId: effect.sceneId, roundNumber });
       return;
     case "revealClue":
       if (!state.clues.some((clue) => clue.id === effect.clueId)) decision.emit({ kind: "clueRevealed", roundNumber, clueId: effect.clueId, text: effect.text });

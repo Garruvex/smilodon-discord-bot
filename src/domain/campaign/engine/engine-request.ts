@@ -12,6 +12,8 @@ export type EngineRequest =
   | { readonly kind: "narrateOpening" }
   // A combat round's flourish, or (final) the fight's closing narration.
   | { readonly kind: "narrateCombat"; readonly encounterId: string; readonly round: number; readonly final: boolean }
+  // A picture for a scene the party just entered; made in the background and never awaited.
+  | { readonly kind: "sceneImage"; readonly sceneId: string; readonly roundNumber: number }
   | { readonly kind: "startTimer"; readonly timer: TimerSpec }
   | { readonly kind: "cancelTimer"; readonly timerId: TimerId }
   | { readonly kind: "deliver"; readonly delivery: DeliverySpec };

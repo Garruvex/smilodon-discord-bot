@@ -25,6 +25,8 @@ import { CryptoRandomSource } from "../application/campaign/random/crypto-random
 import { RulesetCatalog } from "../application/campaign/rules/ruleset-catalog.js";
 import { SystemClock } from "../application/campaign/time/system-clock.js";
 import { DeliveryWorker } from "../application/campaign/workers/delivery-worker.js";
+import { ImageWorker } from "../application/campaign/workers/image-worker.js";
+import { OpenAiImageGenerator } from "../infrastructure/campaign/image/openai-image-generator.js";
 import { DmJobWorker } from "../application/campaign/workers/dm-job-worker.js";
 import { RollWorker } from "../application/campaign/workers/roll-worker.js";
 import { TimerWorker } from "../application/campaign/workers/timer-worker.js";
@@ -153,6 +155,17 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
         await issues.raise(key, "deliveryFailed", item.request.kind === "deliver" ? item.request.delivery.kind : item.request.kind);
       },
     }),
+    ...(configuration.campaignImages === null || configuration.campaignImages === undefined
+      ? {}
+      : {
+          images: new ImageWorker({
+            unitOfWork,
+            adventures,
+            generator: new OpenAiImageGenerator(configuration.campaignImages),
+            sink: { post: (channelId, image, caption): Promise<void> => messages.sendImage(channelId, image.bytes, image.mediaType, caption) },
+            budgetPerCampaign: configuration.campaignImages.budget,
+          }),
+        }),
     logger,
     bootId: randomUUID(),
   });

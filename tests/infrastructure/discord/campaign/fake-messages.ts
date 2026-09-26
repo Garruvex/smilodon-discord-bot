@@ -49,6 +49,13 @@ export class FakeMessages implements CampaignMessageGateway {
     return Promise.resolve(`p${this.next}`);
   }
 
+  public readonly images: { channelId: string; caption: string; bytes: number }[] = [];
+
+  public sendImage(channelId: string, bytes: Buffer, _mediaType: string, caption: string): Promise<void> {
+    this.images.push({ channelId, caption, bytes: bytes.byteLength });
+    return Promise.resolve();
+  }
+
   public readonly textEdits: { messageId: string; content: string }[] = [];
 
   public editText(_channelId: string, messageId: string, content: string): Promise<void> {

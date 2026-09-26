@@ -5,6 +5,7 @@ import type { DmJobWorker } from "./workers/dm-job-worker.js";
 import type { DeliveryWorker } from "./workers/delivery-worker.js";
 import type { RollWorker, WorkerRunResult } from "./workers/roll-worker.js";
 import type { TimerWorker } from "./workers/timer-worker.js";
+import type { ImageWorker } from "./workers/image-worker.js";
 
 export interface RuntimeLogger {
   info(context: object, message: string): void;
@@ -19,6 +20,8 @@ export interface CampaignRuntimeOptions {
   readonly timers: TimerWorker;
   readonly dm: DmJobWorker;
   readonly delivery: DeliveryWorker;
+  // Scene pictures, when an image model is set up.
+  readonly images?: ImageWorker;
   readonly logger: RuntimeLogger;
   // Names this process start, so the recovery pause commands are new for each
   // start and never mistaken for an earlier start's (they are idempotent per start).
@@ -167,6 +170,8 @@ export class CampaignRuntime {
       if (this.report("roll", await rolls.runOnce(), logger).processed === 0) break;
     }
     this.report("delivery", await delivery.runOnce(), logger);
+    // Pictures come last and are only attempted once the table has its text.
+    if (this.options.images !== undefined) this.report("image", await this.options.images.runOnce(), logger);
   }
 
   private report(worker: string, result: WorkerRunResult, logger: RuntimeLogger): WorkerRunResult {
