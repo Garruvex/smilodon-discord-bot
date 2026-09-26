@@ -244,3 +244,38 @@ describe("a game left after a quiet round", () => {
     expect((await r.runtime("boot-4").recover()).roundsReopened).toEqual([]);
   });
 });
+
+describe("reopening an ended game", () => {
+  it("brings a finished game back paused where it stopped, and the organizer resumes it", async () => {
+    const r = rig();
+    const key = await startedCampaign(r);
+    await r.service.end(key);
+    expect((await r.service.get(key))?.record.lifecycle).toBe("archived");
+
+    const reopened = await r.service.reopen(key);
+    expect(reopened).toMatchObject({ kind: "ok", value: { lifecycle: "active" } });
+    // Still paused: nothing runs until the organizer says so.
+    const paused = (await r.store.transaction((tx) => tx.loadCampaign(key)))?.state;
+    expect(paused).toMatchObject({ status: "waitingForPlayers", pausedBy: "organizer" });
+    const resumed = await r.bus.execute(key, { kind: "continue" }, { commandId: "resume", actor: player });
+    expect(resumed.kind).toBe("accepted");
+    expect((await r.store.transaction((tx) => tx.loadCampaign(key)))?.state).toMatchObject({ status: "active", pausedBy: null });
+  });
+
+  it("refuses a game that is not finished, was cancelled in its lobby, or whose name was taken", async () => {
+    const r = rig();
+    const key = await startedCampaign(r);
+    expect(await r.service.reopen(key)).toEqual({ kind: "refused", reason: "notEnded" });
+    expect(await r.service.reopen({ guildId, campaignId: "nope" })).toEqual({ kind: "refused", reason: "notFound" });
+
+    await r.service.end(key);
+    const other = await r.service.create({ guildId, organizerId: "u-org", name: "Moonlit Ruins", language: "en", adventureId: starterAdventureId, pacing: { preset: "live" } });
+    if (other.kind !== "ok") throw new Error("create");
+    expect(await r.service.reopen(key)).toEqual({ kind: "refused", reason: "nameTaken" });
+
+    // A lobby that was cancelled never began.
+    await r.service.cancel(other.value.key, "u-org");
+    expect(await r.service.reopen(other.value.key)).toEqual({ kind: "refused", reason: "neverStarted" });
+    expect(await r.service.reopen(key)).toMatchObject({ kind: "ok" });
+  });
+});

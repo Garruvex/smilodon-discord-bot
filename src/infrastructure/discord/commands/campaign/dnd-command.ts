@@ -85,6 +85,7 @@ export class DndCommand implements BotCommand {
       },
       { name: "retry", description: "Asks the DM to try the held round again (organizer)." },
       { name: "repair", description: "Checks this game's channels and redraws its cards (organizer)." },
+      { name: "reopen", description: "Opens a finished game again, paused where it stopped (organizer)." },
     ],
   } satisfies BotCommand["definition"];
 
@@ -94,7 +95,7 @@ export class DndCommand implements BotCommand {
   public readonly helpDetails = [
     "/dnd setup creates the D&D category with a #dnd-games hub channel (or uses the channel you give it) and the DnD Admin role, and posts the hub's Create game button.",
     "The hub lists each live game with a Manage button. /dnd new does the same as Create game: its adventure channel, a -stats channel for the party, and a Table Talk thread.",
-    "Everything else is run inside a game's channels: players use the buttons, and the organizer or a DnD Admin uses /dnd pause, resume, close-round, rest, retry, and repair.",
+    "Everything else is run inside a game's channels: players use the buttons, and the organizer or a DnD Admin uses /dnd pause, resume, close-round, rest, retry, repair, and reopen (for a finished game).",
   ];
 
   public constructor(private readonly deps: DndCommandDependencies) {}
@@ -180,6 +181,21 @@ export class DndCommand implements BotCommand {
       }
       case "retry":
         return done(await control("retry", () => this.deps.play.retryPlan(key, userId, id)), text.campaign.cmd.retried);
+      case "reopen": {
+        if (!manager) {
+          await responses.edit(text.campaign.refusal.notOrganizer);
+          return;
+        }
+        const reopened = await this.deps.lobby.reopen(key);
+        if (reopened.kind === "refused") {
+          await responses.edit(refusalText(text, reopened.reason));
+          return;
+        }
+        // The hub lists the game again and its cards show it as paused.
+        await this.deps.cards.sync(key);
+        await responses.edit(text.campaign.cmd.reopened);
+        return;
+      }
       case "repair": {
         if (!manager) {
           await responses.edit(text.campaign.refusal.notOrganizer);

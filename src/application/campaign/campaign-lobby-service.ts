@@ -36,6 +36,8 @@ export type ServiceRefusal =
   | LobbyRefusal
   | "notFound"
   | "notLobby"
+  | "notEnded"
+  | "neverStarted"
   | "unknownAdventure"
   | "languageUnavailable"
   | "invalidName"
@@ -173,6 +175,27 @@ export class CampaignLobbyService {
       await this.options.bus.execute(key, { kind: "pauseCampaign", reason: "organizer" }, { commandId: `end:${key.campaignId}`, actor: { kind: "system" } });
       return ended;
     });
+  }
+
+  // Opens an ended game again (the organizer, or a DnD Admin, has been checked
+  // by the caller). The game comes back paused, exactly where it stopped; the
+  // organizer resumes it. A game cancelled in its lobby never began, and a
+  // name another unfinished game has taken since is not given twice.
+  public reopen(key: CampaignKey): Promise<ServiceResult<CampaignRecord>> {
+    return this.queue.run(queueKey(key), () =>
+      this.options.unitOfWork.transaction(async (tx): Promise<ServiceResult<CampaignRecord>> => {
+        const stored = await tx.loadRecord(key);
+        if (stored === undefined) return refused("notFound");
+        const { record } = stored;
+        if (record.lifecycle !== "archived") return refused("notEnded");
+        if (record.startedAt === null || (await tx.loadCampaign(key)) === undefined) return refused("neverStarted");
+        const taken = (await tx.listRecords(key.guildId, ["lobby", "active", "paused"])).some((other) => other.record.name.toLowerCase() === record.name.toLowerCase());
+        if (taken) return refused("nameTaken");
+        const next: CampaignRecord = { ...record, lifecycle: "active" };
+        await tx.saveRecord(next, stored.revision);
+        return ok(next);
+      }),
+    );
   }
 
   // Starts play: the engine campaign is created from the lobby's seats and the
