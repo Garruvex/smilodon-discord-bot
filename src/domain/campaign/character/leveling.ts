@@ -182,7 +182,13 @@ const firstSpellsForClass: Partial<Record<BuildClass, readonly ContentId<"spell"
 // Narrative-only features (features/higher-level-features.ts) granted the
 // moment a hero reaches a level. Levels past 3 grant none yet.
 const levelFeatures: Readonly<Record<BuildClass, Readonly<Record<number, readonly ContentId<"feature">[]>>>> = {
-  fighter: { 2: ["feature:action-surge"], 3: ["feature:martial-archetype"], 5: ["feature:extra-attack"] },
+  fighter: {
+    2: ["feature:action-surge"],
+    3: ["feature:martial-archetype"],
+    5: ["feature:extra-attack"],
+    11: ["feature:extra-attack-2"],
+    20: ["feature:extra-attack-3"],
+  },
   rogue: { 2: ["feature:cunning-action"], 3: ["feature:roguish-archetype"] },
   cleric: { 2: ["feature:channel-divinity"] },
   barbarian: { 2: ["feature:reckless-attack"], 3: ["feature:primal-path"], 5: ["feature:extra-attack"] },

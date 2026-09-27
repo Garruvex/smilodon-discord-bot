@@ -204,6 +204,17 @@ describe("class features", () => {
     expect(fight.reject(jamie, { kind: "combatAttack", combatantId: "c-borin", targetId: "goblin-a", weapon: "item:longsword" })).toEqual({ code: "noActionLeft" });
   });
 
+  it("gives a level 11 Fighter a third attack, and a level 20 one a fourth", () => {
+    const base = newCampaign();
+    const borin = base.characters["c-borin"];
+    if (borin === undefined) throw new Error("fixture");
+    const veteran = { ...base, characters: { ...base.characters, "c-borin": { ...borin, level: 11, features: [...borin.features, "feature:extra-attack" as const, "feature:extra-attack-2" as const] } } };
+    expect(borinFirst(veteran).combatant("c-borin").budget.attacksLeft).toBe(3);
+
+    const legend = { ...base, characters: { ...base.characters, "c-borin": { ...borin, level: 20, features: [...borin.features, "feature:extra-attack" as const, "feature:extra-attack-2" as const, "feature:extra-attack-3" as const] } } };
+    expect(borinFirst(legend).combatant("c-borin").budget.attacksLeft).toBe(4);
+  });
+
   it("lets Cunning Action Dash as a bonus action, keeping the action free to attack with", () => {
     const base = newCampaign();
     const mira = base.characters["c-mira"];

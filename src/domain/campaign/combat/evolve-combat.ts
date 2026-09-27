@@ -39,7 +39,7 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
             bonusAction: true,
             reaction: true,
             movement: combatant.speed,
-            attacksLeft: combatant.traits.some((trait) => trait.kind === "extraAttack") ? 2 : 1,
+            attacksLeft: combatant.traits.reduce((most, trait) => (trait.kind === "extraAttack" ? Math.max(most, trait.attacks) : most), 1),
           },
           dodging: false,
           disengaged: false,

@@ -63,6 +63,8 @@ export const enSrd51Glossary: Glossary = {
     "feature:otherworldly-patron": "Otherworldly Patron",
     "feature:arcane-recovery": "Arcane Recovery",
     "feature:extra-attack": "Extra Attack",
+    "feature:extra-attack-2": "Extra Attack (2)",
+    "feature:extra-attack-3": "Extra Attack (3)",
     "feature:action-surge": "Action Surge",
     "feature:cunning-action": "Cunning Action",
     "feature:channel-divinity": "Channel Divinity",

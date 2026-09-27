@@ -1,18 +1,22 @@
 import { defineFeature, type FeatureDefinition } from "../../../rules/content-definitions.js";
 
-// Level 2, 3 and 5 class features (SRD 5.1, Classes), granted automatically
-// as a hero levels up (character/leveling.ts's levelFeatures table). Extra
-// Attack, Cunning Action and Divine Smite are mechanical (traits, read where
-// an attack or a Dash/Disengage is declared); the rest are narrative only,
-// same treatment as Thieves' Cant and the level-1 roster's narrative
-// features. Levels beyond 5, and the mechanical features this still skips
-// (Uncanny Dodge, Wild Shape), are out of scope for now.
+// Level 2, 3, 5, 11 and 20 class features (SRD 5.1, Classes), granted
+// automatically as a hero levels up (character/leveling.ts's levelFeatures
+// table). Extra Attack, Cunning Action and Divine Smite are mechanical
+// (traits, read where an attack or a Dash/Disengage is declared); the rest
+// are narrative only, same treatment as Thieves' Cant and the level-1
+// roster's narrative features. The mechanical features this still skips
+// (Uncanny Dodge, Wild Shape), and levels this doesn't reach, are out of
+// scope for now.
 const source = "SRD 5.1";
 
 const narrative = (name: string): FeatureDefinition => defineFeature({ id: `feature:${name}`, source, traits: [], action: null });
 
 // Fighter, Barbarian, Paladin, Ranger and Monk all gain this at level 5.
-export const extraAttack = defineFeature({ id: "feature:extra-attack", source, traits: [{ kind: "extraAttack" }], action: null });
+export const extraAttack = defineFeature({ id: "feature:extra-attack", source, traits: [{ kind: "extraAttack", attacks: 2 }], action: null });
+// Only the Fighter goes on to a third attack at 11 and a fourth at 20.
+export const extraAttack2 = defineFeature({ id: "feature:extra-attack-2", source, traits: [{ kind: "extraAttack", attacks: 3 }], action: null });
+export const extraAttack3 = defineFeature({ id: "feature:extra-attack-3", source, traits: [{ kind: "extraAttack", attacks: 4 }], action: null });
 
 export const actionSurge = narrative("action-surge");
 // Hide is not modeled, so only Dash and Disengage move to the bonus action.
@@ -39,6 +43,8 @@ export const pactBoon = narrative("pact-boon");
 
 export const srd51HigherLevelFeatures: readonly FeatureDefinition[] = [
   extraAttack,
+  extraAttack2,
+  extraAttack3,
   actionSurge,
   cunningAction,
   channelDivinity,

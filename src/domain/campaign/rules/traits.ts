@@ -22,8 +22,10 @@ export type Trait =
   | { readonly kind: "packTactics" }
   // Disengage (or Hide) as a bonus action.
   | { readonly kind: "nimbleEscape" }
-  // Extra Attack: the Attack action makes two weapon attacks instead of one.
-  | { readonly kind: "extraAttack" }
+  // Extra Attack: the Attack action makes this many weapon attacks instead
+  // of one (2 for most classes; a Fighter's own later features raise it
+  // further). More than one granted source: the highest applies.
+  | { readonly kind: "extraAttack"; readonly attacks: number }
   // Cunning Action: Dash or Disengage costs a bonus action instead of the
   // action, when the bonus action is still free (Hide is not modeled).
   | { readonly kind: "cunningAction" }
