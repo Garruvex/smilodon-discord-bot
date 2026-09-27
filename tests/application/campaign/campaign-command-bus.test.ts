@@ -118,6 +118,7 @@ describe("CampaignCommandBus", () => {
         actor: system,
         rulesRevision: "srd-5.1@2026.1",
         recordedAt: 5_000,
+        schemaVersion: 2,
         event: { kind: "roundOpened", roundNumber: 1, participants: ["c-mira", "c-borin"], closesAt: 305_000 },
       },
     ]);

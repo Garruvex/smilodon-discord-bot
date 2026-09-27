@@ -46,6 +46,9 @@ export interface EventEnvelope {
   // "<ruleset id>@<version>" in force when the event was decided.
   readonly rulesRevision: string;
   readonly recordedAt: Instant;
+  // The shape of `event` when it was recorded (eventSchemaVersion). Absent on
+  // events recorded before versions existed, which are version 1.
+  readonly schemaVersion?: number;
   readonly event: CampaignEvent;
 }
 

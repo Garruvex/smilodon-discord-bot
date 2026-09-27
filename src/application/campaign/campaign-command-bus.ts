@@ -2,6 +2,7 @@ import type { Actor, CampaignCommand } from "../../domain/campaign/commands/camp
 import { decide } from "../../domain/campaign/engine/decide.js";
 import type { EngineRequest } from "../../domain/campaign/engine/engine-request.js";
 import { replay } from "../../domain/campaign/events/evolve.js";
+import { eventSchemaVersion } from "../../domain/campaign/events/campaign-event.js";
 import { KeyedSerialQueue } from "../concurrency/keyed-serial-queue.js";
 import {
   RevisionConflictError,
@@ -78,6 +79,7 @@ export class CampaignCommandBus {
           actor: meta.actor,
           rulesRevision,
           recordedAt: now,
+          schemaVersion: eventSchemaVersion,
           event,
         })),
       );

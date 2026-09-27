@@ -8,6 +8,15 @@ import type { CharacterSheet } from "../character/character-sheet.js";
 import type { ContentId } from "../rules/content-id.js";
 import type { CheckResult, CheckState, ItemOffer, Resolution } from "../state/campaign-state.js";
 
+// The version of the event shapes below. It goes up whenever a change to an
+// event could not be read by code written for the old shape, and every recorded
+// envelope carries the version it was written with, so old history can be
+// upcast on read if it ever has to be replayed (docs/dnd-engine-architecture.md §7).
+//   1  Everything up to milestone 6.
+//   2  Conditions and lasting effects became one effect record: conditionAdded and
+//      effectAdded were replaced by effectApplied.
+export const eventSchemaVersion = 2;
+
 // Domain event payloads. The command bus wraps each in an envelope with
 // campaign ID, sequence, causation, actor, and rules revision.
 export type CampaignEvent =
