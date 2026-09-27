@@ -1,0 +1,43 @@
+scripted bless and concentration
+status active outcome null round 1
+c-mira: hp 9/9 active zone=gate conditions=[]
+c-borin: hp 12/12 active zone=gate conditions=[]
+c-elspeth: hp 4/9 active zone=gate conditions=[]
+goblin-a: hp 7/7 active zone=courtyard conditions=[]
+goblin-b: hp 7/7 active zone=courtyard conditions=[]
+
+encounterStarted
+initiative combatantId="c-mira"
+initiative combatantId="c-borin"
+initiative combatantId="c-elspeth"
+initiative combatantId="goblin-a"
+initiative combatantId="goblin-b"
+turnOrderSet
+turnStarted combatantId="c-elspeth" round=1
+resolutionDeclared
+concentrationStarted
+effectAdded combatantId="c-elspeth"
+effectAdded combatantId="c-mira"
+effectAdded combatantId="c-borin"
+resolutionFinished
+turnEnded
+turnStarted combatantId="c-mira" round=1
+resolutionDeclared
+checkRolled
+resolutionFinished
+turnEnded
+turnStarted combatantId="goblin-a" round=1
+resolutionDeclared
+checkRolled
+effectRollsRequested
+effectRolled
+hp combatantId="c-elspeth" hp=4
+concentrationSaveRequested
+concentrationSaveRolled
+concentrationEnded
+effectsRemoved combatantId="c-mira"
+effectsRemoved combatantId="c-borin"
+effectsRemoved combatantId="c-elspeth"
+resolutionFinished
+turnEnded
+turnStarted combatantId="c-borin" round=1

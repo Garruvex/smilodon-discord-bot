@@ -1,0 +1,31 @@
+scripted victory
+status ended outcome victory round 1
+c-mira: hp 9/9 active zone=gate conditions=[]
+c-borin: hp 12/12 active zone=courtyard conditions=[]
+goblin-a: hp 0/7 dead zone=courtyard conditions=[]
+goblin-b: hp 0/7 dead zone=courtyard conditions=[]
+
+encounterStarted
+initiative combatantId="c-mira"
+initiative combatantId="c-borin"
+initiative combatantId="goblin-a"
+initiative combatantId="goblin-b"
+turnOrderSet
+turnStarted combatantId="c-mira" round=1
+resolutionDeclared
+checkRolled
+effectRollsRequested
+effectRolled
+hp combatantId="goblin-a" hp=0
+resolutionFinished
+turnEnded
+turnStarted combatantId="c-borin" round=1
+combatantMoved combatantId="c-borin" zoneId="courtyard" feet=20
+combatantEngaged combatantId="c-borin" feet=10
+resolutionDeclared
+checkRolled
+effectRollsRequested
+effectRolled
+hp combatantId="goblin-b" hp=0
+resolutionFinished
+encounterEnded outcome="victory"

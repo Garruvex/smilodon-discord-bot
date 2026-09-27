@@ -1,0 +1,265 @@
+autopilot seed 1
+status ended outcome defeat round 16
+c-mira: hp 0/9 dead zone=gate conditions=[]
+c-borin: hp 0/12 unconscious zone=gate conditions=[]
+goblin-a: hp 7/7 active zone=courtyard conditions=[]
+goblin-b: hp 7/7 active zone=courtyard conditions=[]
+
+encounterStarted
+initiative combatantId="c-mira"
+initiative combatantId="c-borin"
+initiative combatantId="goblin-a"
+initiative combatantId="goblin-b"
+turnOrderSet
+turnStarted combatantId="c-mira" round=1
+actionTaken
+turnEnded
+turnStarted combatantId="goblin-a" round=1
+resolutionDeclared
+checkRolled
+resolutionFinished
+turnEnded
+turnStarted combatantId="goblin-b" round=1
+resolutionDeclared
+checkRolled
+resolutionFinished
+turnEnded
+turnStarted combatantId="c-borin" round=1
+actionTaken
+turnEnded
+turnStarted combatantId="c-mira" round=2
+actionTaken
+turnEnded
+turnStarted combatantId="goblin-a" round=2
+resolutionDeclared
+checkRolled
+resolutionFinished
+turnEnded
+turnStarted combatantId="goblin-b" round=2
+resolutionDeclared
+checkRolled
+resolutionFinished
+turnEnded
+turnStarted combatantId="c-borin" round=2
+actionTaken
+turnEnded
+turnStarted combatantId="c-mira" round=3
+actionTaken
+turnEnded
+turnStarted combatantId="goblin-a" round=3
+resolutionDeclared
+checkRolled
+resolutionFinished
+turnEnded
+turnStarted combatantId="goblin-b" round=3
+resolutionDeclared
+checkRolled
+resolutionFinished
+turnEnded
+turnStarted combatantId="c-borin" round=3
+actionTaken
+turnEnded
+turnStarted combatantId="c-mira" round=4
+actionTaken
+turnEnded
+turnStarted combatantId="goblin-a" round=4
+resolutionDeclared
+checkRolled
+resolutionFinished
+turnEnded
+turnStarted combatantId="goblin-b" round=4
+resolutionDeclared
+checkRolled
+resolutionFinished
+turnEnded
+turnStarted combatantId="c-borin" round=4
+actionTaken
+turnEnded
+turnStarted combatantId="c-mira" round=5
+actionTaken
+turnEnded
+turnStarted combatantId="goblin-a" round=5
+resolutionDeclared
+checkRolled
+resolutionFinished
+turnEnded
+turnStarted combatantId="goblin-b" round=5
+resolutionDeclared
+checkRolled
+resolutionFinished
+turnEnded
+turnStarted combatantId="c-borin" round=5
+actionTaken
+turnEnded
+turnStarted combatantId="c-mira" round=6
+actionTaken
+turnEnded
+turnStarted combatantId="goblin-a" round=6
+resolutionDeclared
+checkRolled
+effectRollsRequested
+effectRolled
+hp combatantId="c-mira" hp=6
+resolutionFinished
+turnEnded
+turnStarted combatantId="goblin-b" round=6
+resolutionDeclared
+checkRolled
+resolutionFinished
+turnEnded
+turnStarted combatantId="c-borin" round=6
+actionTaken
+turnEnded
+turnStarted combatantId="c-mira" round=7
+actionTaken
+turnEnded
+turnStarted combatantId="goblin-a" round=7
+resolutionDeclared
+checkRolled
+effectRollsRequested
+effectRolled
+hp combatantId="c-mira" hp=0
+resolutionFinished
+turnEnded
+turnStarted combatantId="goblin-b" round=7
+resolutionDeclared
+checkRolled
+resolutionFinished
+turnEnded
+turnStarted combatantId="c-borin" round=7
+actionTaken
+turnEnded
+turnStarted combatantId="c-mira" round=8
+deathSaveRequested
+deathSaveRolled
+turnEnded
+turnStarted combatantId="goblin-a" round=8
+resolutionDeclared
+checkRolled
+effectRollsRequested
+effectRolled
+hp combatantId="c-borin" hp=8
+resolutionFinished
+turnEnded
+turnStarted combatantId="goblin-b" round=8
+resolutionDeclared
+checkRolled
+resolutionFinished
+turnEnded
+turnStarted combatantId="c-borin" round=8
+actionTaken
+turnEnded
+turnStarted combatantId="c-mira" round=9
+deathSaveRequested
+deathSaveRolled
+turnEnded
+turnStarted combatantId="goblin-a" round=9
+resolutionDeclared
+checkRolled
+resolutionFinished
+turnEnded
+turnStarted combatantId="goblin-b" round=9
+resolutionDeclared
+checkRolled
+resolutionFinished
+turnEnded
+turnStarted combatantId="c-borin" round=9
+actionTaken
+turnEnded
+turnStarted combatantId="c-mira" round=10
+deathSaveRequested
+deathSaveRolled
+turnEnded
+turnStarted combatantId="goblin-a" round=10
+resolutionDeclared
+checkRolled
+resolutionFinished
+turnEnded
+turnStarted combatantId="goblin-b" round=10
+resolutionDeclared
+checkRolled
+resolutionFinished
+turnEnded
+turnStarted combatantId="c-borin" round=10
+actionTaken
+turnEnded
+turnStarted combatantId="c-mira" round=11
+deathSaveRequested
+deathSaveRolled
+turnEnded
+turnStarted combatantId="goblin-a" round=11
+resolutionDeclared
+checkRolled
+resolutionFinished
+turnEnded
+turnStarted combatantId="goblin-b" round=11
+resolutionDeclared
+checkRolled
+resolutionFinished
+turnEnded
+turnStarted combatantId="c-borin" round=11
+actionTaken
+turnEnded
+turnStarted combatantId="goblin-a" round=12
+resolutionDeclared
+checkRolled
+effectRollsRequested
+effectRolled
+hp combatantId="c-borin" hp=3
+resolutionFinished
+turnEnded
+turnStarted combatantId="goblin-b" round=12
+resolutionDeclared
+checkRolled
+resolutionFinished
+turnEnded
+turnStarted combatantId="c-borin" round=12
+actionTaken
+turnEnded
+turnStarted combatantId="goblin-a" round=13
+resolutionDeclared
+checkRolled
+resolutionFinished
+turnEnded
+turnStarted combatantId="goblin-b" round=13
+resolutionDeclared
+checkRolled
+resolutionFinished
+turnEnded
+turnStarted combatantId="c-borin" round=13
+actionTaken
+turnEnded
+turnStarted combatantId="goblin-a" round=14
+resolutionDeclared
+checkRolled
+resolutionFinished
+turnEnded
+turnStarted combatantId="goblin-b" round=14
+resolutionDeclared
+checkRolled
+resolutionFinished
+turnEnded
+turnStarted combatantId="c-borin" round=14
+actionTaken
+turnEnded
+turnStarted combatantId="goblin-a" round=15
+resolutionDeclared
+checkRolled
+resolutionFinished
+turnEnded
+turnStarted combatantId="goblin-b" round=15
+resolutionDeclared
+checkRolled
+resolutionFinished
+turnEnded
+turnStarted combatantId="c-borin" round=15
+actionTaken
+turnEnded
+turnStarted combatantId="goblin-a" round=16
+resolutionDeclared
+checkRolled
+effectRollsRequested
+effectRolled
+hp combatantId="c-borin" hp=0
+resolutionFinished
+encounterEnded outcome="defeat"

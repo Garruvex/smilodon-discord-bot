@@ -166,10 +166,19 @@ Each step keeps the existing tests green, adds cases from the audit's missing li
 
 The Discord work already done is not touched, apart from the menu reading `turnOptions` in step 2.
 
-## Open decisions
+## Decisions
 
-1. **Atomic or staged dice for combat actions.** Staged (today) keeps the dice reveal and makes reactions natural. Atomic (roll everything in one commit) is simpler but needs a different way to pause for a reaction. Recommendation: keep staged and add the reaction stage.
-2. **Event versioning now.** Recommendation: yes, in step 3, because it is cheap today and hard later.
-3. **Live campaigns.** If the running server holds real games, step 3 needs a tested state migration. If not, we can change the shape freely. This needs the owner's answer.
-4. **Boundary lint as error or warning** during steps 2 to 5. Recommendation: warning until step 6.
-5. **Scope of step 3.** Which SRD conditions get real consequences first. Recommendation: the five the content already names, then grappled, restrained and blinded.
+Settled by the owner:
+
+1. **Staged dice stay,** with a reaction stage added (section 6).
+2. **Event versioning now:** `EventEnvelope` gets a schema version (migration step 3).
+3. **No live campaigns exist,** so no state migration is needed until the whole engine work is done. The state shape may change freely; existing tests and the golden fights are the safety net.
+4. **The boundary check is a ratchet, not an error, until step 6:** violations that exist are listed in `tests/architecture/boundary-baseline.json` and may only shrink; new ones fail the test.
+5. **Conditions with real consequences, in order:** incapacitated, prone, frightened, poisoned, unconscious, then grappled, restrained and blinded.
+
+## Progress
+
+| Step | State |
+| --- | --- |
+| 1. Fence and freeze | Done. `tests/architecture/` holds the system map and the boundary ratchet (11 violations and 54 shared-path imports recorded). `tests/domain/campaign/golden-fights.test.ts` records five fights (three autopilot seeds, a scripted victory, a scripted Bless with broken concentration) under `tests/domain/campaign/golden/`. |
+| 2 to 7 | Not started. |
