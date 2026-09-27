@@ -223,7 +223,10 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       const sheet = state.characters[event.characterId];
       if (sheet === undefined) return state;
       const hpGain = event.maxHp - sheet.maxHp;
-      const characters = { ...state.characters, [sheet.id]: { ...sheet, level: event.level, maxHp: event.maxHp, abilityScores: event.abilityScores, spellcasting: event.spellcasting } };
+      const characters = {
+        ...state.characters,
+        [sheet.id]: { ...sheet, level: event.level, maxHp: event.maxHp, abilityScores: event.abilityScores, spellcasting: event.spellcasting, features: event.features },
+      };
       // The new Hit Die's worth of HP lands right away, same as the extra max.
       const status = state.heroStatus[sheet.id];
       const heroStatus = status === undefined ? state.heroStatus : { ...state.heroStatus, [sheet.id]: { ...status, hp: status.hp + hpGain } };

@@ -215,7 +215,15 @@ function grantExperience(decision: Decision, encounterId: string, shares: Readon
     const targetLevel = levelForXp(sheet.xp ?? 0);
     while (sheet.level < targetLevel) {
       const next = levelUp(sheet, buildClass);
-      decision.emit({ kind: "characterLeveledUp", characterId, level: next.level, maxHp: next.maxHp, abilityScores: next.abilityScores, spellcasting: next.spellcasting });
+      decision.emit({
+        kind: "characterLeveledUp",
+        characterId,
+        level: next.level,
+        maxHp: next.maxHp,
+        abilityScores: next.abilityScores,
+        spellcasting: next.spellcasting,
+        features: next.features,
+      });
       const updated = decision.state.characters[characterId];
       if (updated === undefined) break;
       sheet = updated;

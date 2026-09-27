@@ -1,13 +1,16 @@
 import type { Ability } from "../rules/effects.js";
 import { abilityModifier, type CharacterSheet } from "./character-sheet.js";
 import { classTemplates, type BuildClass } from "./character-build.js";
+import type { ContentId } from "../rules/content-id.js";
 
 // XP and levels on top of the class roster (character-build.ts): the
 // roster stops at what a level-1 hero has; this is what changes as they earn
 // XP. Numbers only — hit points, proficiency bonus, spell slots, and ability
-// score improvements all follow the SRD tables below, so a new level needs
-// no hand-authored content. Level 2+ class features (Rage's resistance, Wild
-// Shape, subclass choices, and so on) stay out of scope, same as the roster.
+// score improvements all follow the SRD tables below, so a new level needs no
+// hand-authored content, apart from the narrative-only features at levels 2
+// and 3 (features/higher-level-features.ts), granted the same way. Mechanical
+// level 2+ features (Extra Attack, Wild Shape, Divine Smite, Cunning Action,
+// Sneak Attack's scaling, subclass choices) stay out of scope.
 
 export const maxLevel = 20;
 
@@ -164,17 +167,51 @@ export function spellSlotsForLevel(casterType: CasterType, level: number): Reado
   }
 }
 
+// A half-caster's spells begin empty (their level-1 template has none to
+// carry over — paladin and ranger get nothing until level 2). Seeded here so
+// the slots levelUp grants them aren't useless. Approximated from the shared
+// catalog's small spell list rather than each class's own SRD list, same
+// liberty the level-1 roster already takes for Bard and Warlock.
+const firstSpellsForClass: Partial<Record<BuildClass, readonly ContentId<"spell">[]>> = {
+  paladin: ["spell:cure-wounds", "spell:bless"],
+  ranger: ["spell:cure-wounds"],
+};
+
+// Narrative-only features (features/higher-level-features.ts) granted the
+// moment a hero reaches a level. Levels past 3 grant none yet.
+const levelFeatures: Readonly<Record<BuildClass, Readonly<Record<number, readonly ContentId<"feature">[]>>>> = {
+  fighter: { 2: ["feature:action-surge"], 3: ["feature:martial-archetype"] },
+  rogue: { 2: ["feature:cunning-action"], 3: ["feature:roguish-archetype"] },
+  cleric: { 2: ["feature:channel-divinity"] },
+  barbarian: { 2: ["feature:reckless-attack"], 3: ["feature:primal-path"] },
+  bard: { 2: ["feature:jack-of-all-trades"], 3: ["feature:bard-college"] },
+  druid: { 2: ["feature:wild-shape"], 3: ["feature:druid-circle"] },
+  monk: { 2: ["feature:ki"], 3: ["feature:monastic-tradition"] },
+  paladin: { 2: ["feature:fighting-style-dueling", "feature:divine-smite"], 3: ["feature:sacred-oath"] },
+  ranger: { 2: ["feature:fighting-style-dueling"], 3: ["feature:ranger-archetype"] },
+  sorcerer: { 2: ["feature:font-of-magic"], 3: ["feature:metamagic"] },
+  warlock: { 2: ["feature:eldritch-invocations"], 3: ["feature:pact-boon"] },
+  wizard: { 2: ["feature:arcane-tradition"] },
+};
+
 // The next state of a hero's numbers after gaining a level: hit points,
 // proficiency bonus, spell slots (added the first time a half-caster or
-// pact caster reaches the level that grants them), and — on an ASI level —
-// ability scores. Pure; the caller emits the event and applies it.
-export function levelUp(sheet: CharacterSheet, buildClass: BuildClass): Pick<CharacterSheet, "level" | "maxHp" | "abilityScores" | "spellcasting"> {
+// pact caster reaches the level that grants them), any features that level
+// grants, and — on an ASI level — ability scores. Pure; the caller emits the
+// event and applies it.
+export function levelUp(
+  sheet: CharacterSheet,
+  buildClass: BuildClass,
+): Pick<CharacterSheet, "level" | "maxHp" | "abilityScores" | "spellcasting" | "features"> {
   const level = sheet.level + 1;
   const hpGain = hpGainForLevel(sheet.hitDie, sheet.abilityScores.con);
   const abilityScores = asiLevels.includes(level) ? defaultAsiAllocation(buildClass, sheet.abilityScores) : sheet.abilityScores;
   const casterType = casterTypeOf(buildClass);
   const slots = spellSlotsForLevel(casterType, level);
   const ability = spellcastingAbility[buildClass];
-  const spellcasting = casterType === "none" || ability === null ? null : { ability, spells: sheet.spellcasting?.spells ?? [], slots };
-  return { level, maxHp: sheet.maxHp + hpGain, abilityScores, spellcasting };
+  const spells = sheet.spellcasting?.spells ?? firstSpellsForClass[buildClass] ?? [];
+  const spellcasting = casterType === "none" || ability === null ? null : { ability, spells, slots };
+  const gained = levelFeatures[buildClass]?.[level] ?? [];
+  const features = gained.length === 0 ? sheet.features : [...sheet.features, ...gained];
+  return { level, maxHp: sheet.maxHp + hpGain, abilityScores, spellcasting, features };
 }

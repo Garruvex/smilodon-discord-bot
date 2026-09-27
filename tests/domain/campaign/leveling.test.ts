@@ -88,6 +88,38 @@ describe("XP and levels", () => {
     expect(next.spellcasting?.slots).toEqual({ 1: 3 });
   });
 
+  it("gives a paladin real known spells the moment it first gains slots, not an empty list", () => {
+    const paladinBuild: BuildChoices = {
+      class: "paladin",
+      kit: "oath",
+      abilities: { str: 15, dex: 10, con: 14, int: 8, wis: 12, cha: 13 },
+      skills: ["athletics", "religion"],
+      expertise: [],
+      name: "Sera",
+      appearance: "",
+      backstory: "",
+    };
+    const sheet = { ...deriveSheet(paladinBuild), id: "c-2" as never, ownerUserId: "u-2" as never };
+    expect(sheet.spellcasting).toBeNull();
+    const next = levelUp(sheet, "paladin");
+    expect(next.spellcasting?.ability).toBe("cha");
+    expect(next.spellcasting?.spells.length).toBeGreaterThan(0);
+    expect(next.spellcasting?.slots).toEqual({ 1: 2 });
+  });
+
+  it("grants narrative class features on the levels that give them", () => {
+    const sheet = { ...deriveSheet(wizardBuild), id: "c-3" as never, ownerUserId: "u-3" as never };
+    const toLevel2 = levelUp(sheet, "wizard");
+    expect(toLevel2.features).toContain("feature:arcane-tradition");
+    expect(toLevel2.features).toEqual(expect.arrayContaining([...sheet.features]));
+  });
+
+  it("grants no new features on a level with none listed", () => {
+    const sheet = { ...deriveSheet(wizardBuild), id: "c-4" as never, ownerUserId: "u-4" as never, level: 2 };
+    const toLevel3 = levelUp(sheet, "wizard");
+    expect(toLevel3.features).toEqual(sheet.features);
+  });
+
   it("applies an Ability Score Improvement only on its levels", () => {
     expect(asiLevels).toContain(4);
     const template = classTemplates.fighter;

@@ -122,6 +122,7 @@ export type CampaignEvent =
       readonly maxHp: number;
       readonly abilityScores: Readonly<Record<Ability, number>>;
       readonly spellcasting: CharacterSheet["spellcasting"];
+      readonly features: readonly ContentId<"feature">[];
     }
   | CombatEvent;
 
