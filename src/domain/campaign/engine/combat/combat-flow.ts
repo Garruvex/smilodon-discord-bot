@@ -21,7 +21,7 @@ import {
   type TurnPlanRemainder,
 } from "../../combat/combat-state.js";
 import { defaultHeroResources, heroCombatant, monsterCombatant } from "../../combat/combatant-profile.js";
-import { spellTargetProblem, weaponTargetProblem } from "../../combat/legal-targets.js";
+import { attackProblem, costProblem, engageProblem, featureProblem, moveProblem, spellProblem, withdrawProblem } from "../../combat/turn-rules.js";
 import { edgeBetween, engageCost, withdrawCost } from "../../combat/positioning.js";
 import { chooseAutopilotPlan, chooseMonsterPlan, type TurnPlan } from "../../combat/tactics.js";
 import { resolveD20Test, type D20TestSpec } from "../../dice/d20-test.js";
@@ -49,26 +49,22 @@ export function handleCombatCommand(decision: Decision, command: CombatCommand):
       return startEncounter(decision, command.spec);
     case "combatMove":
       return withHeroTurn(decision, command.combatantId, (hero, encounter) => {
-        const edge = edgeBetween(encounter.edges, hero.zoneId, command.zoneId);
-        if (edge === undefined) return { code: "notAdjacent" };
-        if (edge.feet > hero.budget.movement) return { code: "notEnoughMovement", needed: edge.feet, left: hero.budget.movement };
-        startMove(decision, hero, "move", command.zoneId, edge.feet, null);
+        const checked = moveProblem(encounter, hero, command.zoneId);
+        if ("problem" in checked) return checked.problem;
+        startMove(decision, hero, "move", command.zoneId, checked.value.feet, null);
         return null;
       });
     case "combatEngage":
       return withHeroTurn(decision, command.combatantId, (hero, encounter) => {
-        const target = encounter.combatants[command.targetId];
-        if (target === undefined || target.side === hero.side || !isPresent(target)) return { code: "invalidTarget" };
-        if (target.zoneId !== hero.zoneId) return { code: "notAdjacent" };
-        if (areEngaged(encounter, hero.id, target.id)) return { code: "alreadyEngaged" };
-        if (hero.budget.movement < engageCost) return { code: "notEnoughMovement", needed: engageCost, left: hero.budget.movement };
-        decision.emit({ kind: "combatantEngaged", combatantId: hero.id, targetId: target.id, feet: engageCost });
+        const problem = engageProblem(encounter, hero, command.targetId);
+        if (problem !== null) return problem;
+        decision.emit({ kind: "combatantEngaged", combatantId: hero.id, targetId: command.targetId, feet: engageCost });
         return null;
       });
     case "combatWithdraw":
       return withHeroTurn(decision, command.combatantId, (hero, encounter) => {
-        if (engagedWith(encounter, hero.id).length === 0) return { code: "notEngaged" };
-        if (hero.budget.movement < withdrawCost) return { code: "notEnoughMovement", needed: withdrawCost, left: hero.budget.movement };
+        const problem = withdrawProblem(encounter, hero);
+        if (problem !== null) return problem;
         startMove(decision, hero, "withdraw", null, withdrawCost, null);
         return null;
       });
@@ -92,7 +88,8 @@ export function handleCombatCommand(decision: Decision, command: CombatCommand):
     case "combatDodge":
     case "combatDisengage":
       return withHeroTurn(decision, command.combatantId, (hero, encounter) => {
-        if (!hero.budget.action) return { code: "noActionLeft" };
+        const cost = costProblem(hero, "action");
+        if (cost !== null) return cost;
         const action = command.kind === "combatDash" ? "dash" : command.kind === "combatDodge" ? "dodge" : "disengage";
         decision.emit({ kind: "actionTaken", combatantId: hero.id, action, bonus: false });
         decision.request({ kind: "deliver", delivery: { kind: "combatBeat", encounterId: encounter.id, combatantId: hero.id, beat: action } });
@@ -278,14 +275,12 @@ function declareWeaponAttack(
 ): Rejection | null {
   const encounter = activeEncounter(decision);
   if (encounter === null) return { code: "notInCombat" };
-  if (purpose === "action" && !attacker.budget.action) return { code: "noActionLeft" };
-  const target = encounter.combatants[targetId];
-  const problem = weaponTargetProblem(encounter, attacker, target, option);
-  if (problem !== null || target === undefined) return { code: problem ?? "invalidTarget" };
+  const problem = attackProblem(encounter, attacker, option, targetId, purpose);
+  if (problem !== null) return problem;
   return declareResolution(decision, {
     actor: attacker,
     source: { kind: "weapon", option },
-    targetIds: [target.id],
+    targetIds: [targetId],
     purpose,
     cost: { ...noCost, action: purpose === "action", reaction: purpose === "opportunity" },
   });
@@ -299,26 +294,9 @@ function castSpell(
   slotLevel: number,
   targetIds: readonly string[],
 ): Rejection | null {
-  const casting = caster.spellcasting;
-  const spell = decision.ctx.rules.content.find(spellId);
-  if (casting === null || spell?.kind !== "spell" || !casting.spells.includes(spell.id)) return { code: "unknownSpell" };
-  if (spell.level === 0 ? slotLevel !== 0 : slotLevel < spell.level || (caster.resources.spellSlots[slotLevel] ?? 0) < 1) {
-    return { code: "noSpellSlot", slotLevel };
-  }
-  if (spell.castingTime === "reaction") return { code: "unknownSpell" };
-  const bonus = spell.castingTime === "bonus-action";
-  if (bonus ? !caster.budget.bonusAction : !caster.budget.action) return { code: "noActionLeft" };
-
-  const extra = spell.level === 0 ? 0 : (spell.targeting.countPerHigherSlot ?? 0) * (slotLevel - spell.level);
-  const maxTargets = spell.targeting.count + extra;
-  const targets = spell.targeting.relation === "self" ? [caster.id] : targetIds;
-  if (targets.length === 0 || targets.length > maxTargets || new Set(targets).size !== targets.length) {
-    return { code: "invalidTargets", maxTargets };
-  }
-  for (const targetId of targets) {
-    const problem = spellTargetProblem(encounter, caster, spell, encounter.combatants[targetId]);
-    if (problem !== null) return { code: problem };
-  }
+  const checked = spellProblem(encounter, decision.ctx.rules.content, caster, spellId, slotLevel, targetIds);
+  if ("problem" in checked) return checked.problem;
+  const { spell, bonus, targets } = checked.value;
   return declareResolution(decision, {
     actor: caster,
     source: { kind: "spell", spellId: spell.id, slotLevel },
@@ -329,11 +307,9 @@ function castSpell(
 }
 
 function useFeature(decision: Decision, hero: Combatant, featureId: ContentId<"feature">): Rejection | null {
-  const feature = decision.ctx.rules.content.find(featureId);
-  if (feature?.kind !== "feature" || feature.action === null || !hero.features.includes(feature.id)) return { code: "unknownFeature" };
-  if ((hero.resources.featureUses[feature.id] ?? 0) < 1) return { code: "noUsesLeft" };
-  const bonus = feature.action.cost === "bonusAction";
-  if (bonus ? !hero.budget.bonusAction : !hero.budget.action) return { code: "noActionLeft" };
+  const checked = featureProblem(hero, decision.ctx.rules.content, featureId);
+  if ("problem" in checked) return checked.problem;
+  const { feature, bonus } = checked.value;
   return declareResolution(decision, {
     actor: hero,
     source: { kind: "feature", featureId: feature.id },

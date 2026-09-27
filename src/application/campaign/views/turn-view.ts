@@ -1,12 +1,9 @@
 import type { CharacterId } from "../../../domain/campaign/core/ids.js";
-import { isActive, isPresent, currentCombatant, type Combatant, type TurnBudget } from "../../../domain/campaign/combat/combat-state.js";
-import { weaponTargets, spellTargets } from "../../../domain/campaign/combat/legal-targets.js";
-import { edgeBetween, engageCost, withdrawCost } from "../../../domain/campaign/combat/positioning.js";
-import { isWorn } from "../../../domain/campaign/combat/combatant-profile.js";
-import { potionFor } from "../../../domain/campaign/engine/potions.js";
+import type { Combatant, TurnBudget } from "../../../domain/campaign/combat/combat-state.js";
+import { spellMaxTargets, turnOptions } from "../../../domain/campaign/combat/turn-rules.js";
 import { formatDiceExpression } from "../../../domain/campaign/dice/dice-expression.js";
 import type { SealedContent } from "../../../domain/campaign/rules/content-registry.js";
-import { healingPotionCost, type HouseRules } from "../../../domain/campaign/rules/house-rules.js";
+import type { HouseRules } from "../../../domain/campaign/rules/house-rules.js";
 import type { CampaignState } from "../../../domain/campaign/state/campaign-state.js";
 import { combatantName, type CombatNames } from "../dm/combat-records.js";
 
@@ -70,6 +67,9 @@ export interface TurnView {
 
 // The hero whose turn it is, or null when it is nobody's turn to plan (a roll
 // or attack is being resolved, the hero is down, or it is another creature's).
+// What may be chosen comes from the domain's turnOptions, the same rules the
+// engine refuses commands with, so the menu never offers what the engine would
+// turn down; this only adds names and display text.
 export function buildTurnView(
   state: CampaignState,
   content: SealedContent,
@@ -77,112 +77,63 @@ export function buildTurnView(
   names: CombatNames,
   characterId: CharacterId,
 ): TurnView | null {
+  const options = turnOptions(state.encounter, state.characters[characterId], content, houseRules, characterId);
   const encounter = state.encounter;
-  if (encounter === null || encounter.status !== "active") return null;
-  const hero = encounter.combatants[characterId];
-  if (hero === undefined || hero.source.kind !== "hero" || !isActive(hero)) return null;
-  if (currentCombatant(encounter)?.id !== hero.id) return null;
+  const hero = encounter?.combatants[characterId];
+  if (options === null || encounter === null || hero === undefined) return null;
 
   const nameOf = (combatant: Combatant): string => combatantName(combatant, names);
   const zoneOf = (zoneId: string): string => encounter.zones.find((zone) => zone.id === zoneId)?.name ?? zoneId;
-  const targetView = (combatant: Combatant): TargetView => ({
-    id: combatant.id,
-    name: nameOf(combatant),
-    zone: zoneOf(combatant.zoneId),
-    side: combatant.side,
-    hp: combatant.hp,
-    maxHp: combatant.maxHp,
-    band: bandOf(combatant),
-    self: combatant.id === hero.id,
-  });
-  const sheet = state.characters[characterId];
-  const busy = encounter.resolution !== null || encounter.pendingMove !== null;
-  const { budget } = hero;
+  const targetView = (id: string): TargetView[] => {
+    const combatant = encounter.combatants[id];
+    return combatant === undefined
+      ? []
+      : [{ id: combatant.id, name: nameOf(combatant), zone: zoneOf(combatant.zoneId), side: combatant.side, hp: combatant.hp, maxHp: combatant.maxHp, band: bandOf(combatant), self: combatant.id === hero.id }];
+  };
 
-  const attacks: AttackChoice[] = budget.action && !busy
-    ? hero.attacks.flatMap((option) => {
-        const targets = weaponTargets(encounter, hero, option).map(targetView);
-        return targets.length === 0
-          ? []
-          : [{ weapon: option.weapon, toHit: option.toHit, damage: formatDiceExpression(option.damage), ranged: option.range.kind === "ranged", targets }];
-      })
-    : [];
+  const attacks: AttackChoice[] = options.attacks.map(({ option, targetIds }) => ({
+    weapon: option.weapon,
+    toHit: option.toHit,
+    damage: formatDiceExpression(option.damage),
+    ranged: option.range.kind === "ranged",
+    targets: targetIds.flatMap(targetView),
+  }));
 
-  const spells: SpellChoice[] = [];
-  for (const id of hero.spellcasting?.spells ?? []) {
-    const spell = content.find(id);
-    if (spell?.kind !== "spell" || spell.castingTime === "reaction" || busy) continue;
-    const bonus = spell.castingTime === "bonus-action";
-    if (bonus ? !budget.bonusAction : !budget.action) continue;
-    // The lowest slot that fits; a cantrip needs none.
-    const slotLevel = spell.level === 0 ? 0 : Object.keys(hero.resources.spellSlots).map(Number).sort((a, b) => a - b).find((level) => level >= spell.level && (hero.resources.spellSlots[level] ?? 0) > 0);
-    if (slotLevel === undefined) continue;
-    const targets = spellTargets(encounter, hero, spell).map(targetView);
-    if (targets.length === 0) continue;
-    const extra = spell.level === 0 ? 0 : (spell.targeting.countPerHigherSlot ?? 0) * (slotLevel - spell.level);
-    spells.push({
+  // The menu casts at the lowest slot that fits; a cantrip needs none.
+  const spells: SpellChoice[] = options.spells.flatMap(({ spell, slotLevels, bonusAction, targetIds }) => {
+    const slotLevel = slotLevels[0];
+    if (slotLevel === undefined) return [];
+    return [{
       spellId: spell.id,
       slotLevel,
       slotsLeft: slotLevel === 0 ? 0 : (hero.resources.spellSlots[slotLevel] ?? 0),
-      bonusAction: bonus,
-      maxTargets: spell.targeting.relation === "self" ? 1 : spell.targeting.count + extra,
-      targets,
-    });
-  }
-
-  const features = hero.features.flatMap((id) => {
-    const feature = content.find(id);
-    if (feature?.kind !== "feature" || feature.action === null || busy) return [];
-    const bonus = feature.action.cost === "bonusAction";
-    const left = hero.resources.featureUses[id] ?? 0;
-    if (left < 1 || (bonus ? !budget.bonusAction : !budget.action)) return [];
-    return [{ id, bonusAction: bonus, left }];
+      bonusAction,
+      maxTargets: spellMaxTargets(spell, slotLevel),
+      targets: targetIds.flatMap(targetView),
+    }];
   });
 
-  const potionBonus = houseRules.option(healingPotionCost) === "bonus-action";
-  const counts = new Map<string, number>();
-  for (const id of sheet?.equipment ?? []) {
-    if (potionFor(state, content, characterId, id) !== null) counts.set(id, (counts.get(id) ?? 0) + 1);
-  }
-  const potions = busy || (potionBonus ? !budget.bonusAction : !budget.action) ? [] : [...counts].map(([id, count]) => ({ id, count, bonusAction: potionBonus }));
-
-  const shields = busy || !budget.action
-    ? []
-    : [...new Set(sheet?.equipment ?? [])].flatMap((id) => {
-        const item = content.find(id);
-        return sheet === undefined || item?.kind !== "item" || item.itemType !== "shield" ? [] : [{ id, on: isWorn(sheet, content, id) }];
-      });
-  const engaged = encounter.engagements.some(([a, b]) => a === hero.id || b === hero.id);
-  const moves = busy ? [] : encounter.zones.flatMap((zone) => {
-    const edge = zone.id === hero.zoneId ? undefined : edgeBetween(encounter.edges, hero.zoneId, zone.id);
-    return edge === undefined || edge.feet > budget.movement ? [] : [{ zoneId: zone.id, zone: zone.name, feet: edge.feet }];
-  });
-  const engage = busy || budget.movement < engageCost
-    ? []
-    : Object.values(encounter.combatants)
-        .filter((other) => other.side !== hero.side && isPresent(other) && other.zoneId === hero.zoneId && !encounter.engagements.some(([a, b]) => (a === hero.id && b === other.id) || (b === hero.id && a === other.id)))
-        .map(targetView);
-  const engagedWith = encounter.engagements.flatMap(([a, b]) => (a === hero.id ? [b] : b === hero.id ? [a] : []))
+  const engagedWith = encounter.engagements
+    .flatMap(([a, b]) => (a === hero.id ? [b] : b === hero.id ? [a] : []))
     .flatMap((id) => (encounter.combatants[id] === undefined ? [] : [nameOf(encounter.combatants[id])]));
-  const canDodge = budget.action && !busy;
 
   return {
     combatantId: characterId,
     heroName: nameOf(hero),
     zone: zoneOf(hero.zoneId),
-    budget,
+    budget: hero.budget,
     engagedWith,
-    busy,
+    busy: options.busy,
     attacks,
     spells,
-    features,
-    potions,
-    shields,
-    moves,
-    engage,
-    canWithdraw: !busy && engaged && budget.movement >= withdrawCost,
-    canDodge,
-    hasUnspent: !busy && (budget.action || budget.bonusAction) && (attacks.length + spells.length + features.length + potions.length > 0),
+    features: options.features.map(({ feature, bonusAction, left }) => ({ id: feature.id, bonusAction, left })),
+    potions: options.potions.map(({ itemId, count, bonusAction }) => ({ id: itemId, count, bonusAction })),
+    shields: options.shields.filter((shield) => shield.canSwitch).map(({ itemId, on }) => ({ id: itemId, on })),
+    moves: options.moves.map(({ zoneId, feet }) => ({ zoneId, zone: zoneOf(zoneId), feet })),
+    engage: options.engage.flatMap(targetView),
+    canWithdraw: options.canWithdraw,
+    canDodge: options.canTakeAction,
+    hasUnspent: options.hasUnspent,
   };
 }
 

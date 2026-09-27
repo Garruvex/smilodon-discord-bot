@@ -7,10 +7,8 @@
     "Exploration:engine/round-plan.ts -> Combat:engine/combat/combat-flow.ts",
     "Exploration:engine/round-plan.ts -> Table:engine/reminders.ts",
     "Exploration:engine/rounds.ts -> Table:engine/reminders.ts",
-    "Inventory:engine/combat/combat-gear.ts -> Combat:combat/combat-state.ts",
-    "Inventory:engine/combat/combat-gear.ts -> Combat:combat/combatant-profile.ts",
-    "Inventory:engine/combat/combat-gear.ts -> Combat:engine/combat/combat-flow.ts",
-    "Inventory:engine/inventory.ts -> Combat:combat/combatant-profile.ts"
+    "Inventory:engine/inventory.ts -> Combat:combat/combatant-profile.ts",
+    "Inventory:engine/inventory.ts -> Combat:engine/combat/combat-gear.ts"
   ],
   "kernelImports": 54
 }

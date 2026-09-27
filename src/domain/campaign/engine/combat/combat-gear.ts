@@ -1,11 +1,10 @@
-import { heroCombatant, isWorn } from "../../combat/combatant-profile.js";
+import { heroCombatant } from "../../combat/combatant-profile.js";
+import { potionProblem, shieldProblem } from "../../combat/turn-rules.js";
 import { isActive } from "../../combat/combat-state.js";
 import type { CharacterId } from "../../core/ids.js";
 import type { ContentId } from "../../rules/content-id.js";
-import { healingPotionCost } from "../../rules/house-rules.js";
 import type { Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
-import { potionFor } from "../potions.js";
 import { activeEncounter, withHeroTurn } from "./combat-flow.js";
 
 // Items in a fight. Handing an item to a hero in the same zone costs the
@@ -53,27 +52,9 @@ export function changeShieldInCombat(decision: Decision, combatantId: string, it
   return withHeroTurn(decision, combatantId, (hero) => {
     if (hero.source.kind !== "hero") return { code: "notYourCharacter" };
     const characterId = hero.source.characterId;
-    const sheet = decision.state.characters[characterId];
-    const content = decision.ctx.rules.content;
-    const definition = content.find(itemId);
-    if (sheet === undefined || definition?.kind !== "item" || definition.itemType !== "shield") return { code: "notWearable" };
-    if (!sheet.equipment.includes(itemId)) return { code: "itemNotHeld" };
-    if (!hero.budget.action) return { code: "noActionLeft" };
-    const isWearable = (id: ContentId<"item">): boolean => {
-      const other = content.find(id);
-      return other?.kind === "item" && (other.itemType === "armor" || other.itemType === "shield");
-    };
-    const isShield = (id: ContentId<"item">): boolean => {
-      const other = content.find(id);
-      return other?.kind === "item" && other.itemType === "shield";
-    };
-    const worn = sheet.equipment.filter((id) => isWearable(id) && isWorn(sheet, content, id));
-    if (putOn) {
-      if (worn.includes(itemId)) return { code: "alreadyWorn" };
-      if (worn.some(isShield)) return { code: "alreadyWearing" };
-    } else if (!worn.includes(itemId)) return { code: "notWorn" };
-    const next = putOn ? [...worn, itemId] : worn.filter((id) => id !== itemId);
-    decision.emit({ kind: "wornChanged", characterId, worn: next });
+    const checked = shieldProblem(decision.state.characters[characterId], decision.ctx.rules.content, hero, itemId, putOn);
+    if ("problem" in checked) return checked.problem;
+    decision.emit({ kind: "wornChanged", characterId, worn: checked.value.worn });
     refreshGear(decision, [characterId]);
     decision.emit({ kind: "actionTaken", combatantId: hero.id, action: "useItem", bonus: false });
     return null;
@@ -84,11 +65,10 @@ export function useItemInCombat(decision: Decision, combatantId: string, itemId:
   return withHeroTurn(decision, combatantId, (hero) => {
     if (hero.source.kind !== "hero") return { code: "notYourCharacter" };
     const characterId = hero.source.characterId;
-    const potion = potionFor(decision.state, decision.ctx.rules.content, characterId, itemId);
-    if (potion === null) return { code: decision.state.characters[characterId]?.equipment.includes(itemId) === true ? "notUsable" : "itemNotHeld" };
-    const bonus = decision.ctx.rules.houseRules.option(healingPotionCost) === "bonus-action";
-    if (bonus ? !hero.budget.bonusAction : !hero.budget.action) return { code: "noActionLeft" };
-    const hp = Math.min(hero.maxHp, hero.hp + potion.healing);
+    const checked = potionProblem(decision.state.characters[characterId], decision.ctx.rules.content, decision.ctx.rules.houseRules, hero, itemId);
+    if ("problem" in checked) return checked.problem;
+    const { bonus, healing } = checked.value;
+    const hp = Math.min(hero.maxHp, hero.hp + healing);
     decision.emit({ kind: "itemUsed", characterId, itemId, healed: hp - hero.hp });
     decision.emit({ kind: "actionTaken", combatantId: hero.id, action: "useItem", bonus });
     decision.request({ kind: "deliver", delivery: { kind: "combatBeat", encounterId: activeEncounter(decision)?.id ?? "", combatantId: hero.id, beat: "useItem" } });

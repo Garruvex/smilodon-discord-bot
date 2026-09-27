@@ -1,3 +1,5 @@
+import type { TurnProblem } from "../combat/turn-rules.js";
+
 // Why a command was refused. Typed so the Discord layer can show a localized,
 // private explanation; never shown as raw text.
 export type Rejection =
@@ -40,29 +42,11 @@ export type Rejection =
   | { readonly code: "invalidEncounter"; readonly problems: readonly string[] }
   | { readonly code: "notYourTurn" }
   | { readonly code: "attackInProgress" }
-  | { readonly code: "noActionLeft" }
-  | { readonly code: "notEnoughMovement"; readonly needed: number; readonly left: number }
-  | { readonly code: "notAdjacent" }
-  | { readonly code: "notEngaged" }
-  | { readonly code: "alreadyEngaged" }
-  | { readonly code: "outOfRange" }
-  | { readonly code: "invalidTarget" }
-  | { readonly code: "unknownWeapon" }
-  | { readonly code: "unknownSpell" }
-  | { readonly code: "noSpellSlot"; readonly slotLevel: number }
-  | { readonly code: "invalidTargets"; readonly maxTargets: number }
-  | { readonly code: "unknownFeature" }
-  | { readonly code: "noUsesLeft" }
+  | TurnProblem
   | { readonly code: "cannotLeaveNow" }
   | { readonly code: "unknownOffer" }
   | { readonly code: "invalidOffer" }
-  | { readonly code: "itemNotHeld" }
   | { readonly code: "tradingOff" }
-  | { readonly code: "notWearable" }
-  | { readonly code: "alreadyWorn" }
-  | { readonly code: "notWorn" }
-  | { readonly code: "alreadyWearing" }
-  | { readonly code: "notUsable" }
   | { readonly code: "notRetryable" }
   | { readonly code: "heroFallen" }
   | { readonly code: "invalidHero"; readonly problems: readonly string[] }

@@ -61,7 +61,7 @@ Where today's code goes:
 | Core | `core/*`, `dice/*` |
 | Content | `rules/*`, `content/srd-5.1/*`, `adventure/adventure-bible.ts` (data only) |
 | Character | `character/*`, `engine/rest.ts`, derivation half of `combat/combatant-profile.ts` |
-| Inventory | `engine/inventory.ts`, `engine/potions.ts`, `engine/combat/combat-gear.ts` |
+| Inventory | `engine/inventory.ts`, `engine/potions.ts` (in-fight item use, `engine/combat/combat-gear.ts`, stays with Combat) |
 | Effects | `ActiveEffect` and `conditions` in `combat-state.ts`, `evolve-combat.ts`, `expireEffects` and `applyEffect` |
 | Magic | `castSpell` in `combat-flow.ts`, concentration in `resolution.ts`, slots in `combatant-profile.ts` |
 | Combat | `combat/*` (state, positioning, tactics, legal targets), `engine/combat/combat-flow.ts`, `resolution.ts`, `combat-retry.ts` |
@@ -181,4 +181,5 @@ Settled by the owner:
 | Step | State |
 | --- | --- |
 | 1. Fence and freeze | Done. `tests/architecture/` holds the system map and the boundary ratchet (11 violations and 54 shared-path imports recorded). `tests/domain/campaign/golden-fights.test.ts` records five fights (three autopilot seeds, a scripted victory, a scripted Bless with broken concentration) under `tests/domain/campaign/golden/`. |
-| 2 to 7 | Not started. |
+| 2. Shared turn rules | Done. `combat/turn-rules.ts` holds one problem function per choice (attack, spell, feature, move, engage, withdraw, potion, shield, and the action cost), the query wrappers `canAct`, `canReact`, `speedOf` and `armorClassOf`, and `turnOptions`. The engine refuses a command with the same problem the menu greys a choice out with, and the Discord turn view is built from `turnOptions`. `tests/domain/campaign/turn-options.test.ts` tries every possible command in seven situations and requires the engine to accept exactly those the options list (a deliberate break of `canWithdraw` fails it). The combat rejection codes now belong to Combat (`TurnProblem`). `combat-gear.ts` is counted as Combat, since it handles in-fight items; the boundary baseline went from 11 to 9 violations. Not moved yet: `attackMode` (in `resolution.ts`), which moves with the effects work. |
+| 3 to 7 | Not started. |
