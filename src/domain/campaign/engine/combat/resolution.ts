@@ -309,6 +309,7 @@ function applyEffect(
           sourceId: resolution.actorId,
           conditions: [],
           modifiers: [{ kind: "bonusDie", die: effect.die, appliesTo: effect.appliesTo, source: spellId ?? id }],
+          triggers: [],
           // Ends at the start of the source's turn once its rounds are up.
           clock: effect.duration.kind === "rounds" ? { follows: "source", boundary: "start", untilRound: round + effect.duration.count } : null,
           concentrationId: concentrating ? resolution.id : null,
@@ -328,6 +329,7 @@ function applyEffect(
           sourceId: resolution.actorId,
           conditions: [],
           modifiers: [{ kind: "attacksAgainst", mode: "advantage", reach: "any", usesUp: true }],
+          triggers: [],
           clock: { follows: "source", boundary: "end", untilRound: round + 1 },
           concentrationId: null,
           stacking: "coexist",
@@ -359,6 +361,7 @@ function conditionInstance(
     sourceId: resolution.actorId,
     conditions: [condition],
     modifiers: [],
+    triggers: [],
     clock: duration?.kind === "rounds" ? { follows: "source", boundary: "start", untilRound: round + duration.count } : null,
     concentrationId: null,
     stacking: "ignore",

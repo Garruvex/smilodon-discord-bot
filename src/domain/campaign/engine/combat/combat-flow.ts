@@ -33,6 +33,7 @@ import type { Rejection } from "../rejection.js";
 import { maxNarrationLength } from "../narration-limits.js";
 import { openRound } from "../rounds.js";
 import { changeShieldInCombat, useItemInCombat } from "./combat-gear.js";
+import { beginTriggers, recordTriggerRoll } from "./effect-triggers.js";
 import { declareResolution, endConcentration, recordResolutionRoll } from "./resolution.js";
 
 // A chain of engine-played turns (monsters, autopilot, skipped heroes) must
@@ -180,6 +181,7 @@ export function beginEncounter(decision: Decision, spec: EncounterSpec): void {
     engagements: [],
     resolution: null,
     pendingMove: null,
+    pendingTriggers: null,
     pendingRolls,
     sequence,
     outcome: null,
@@ -244,6 +246,8 @@ export function recordCombatRoll(decision: Decision, rollId: RollId, result: Rol
     case "effect":
     case "concentration":
       return recordResolutionRoll(decision, pending, rollId, result);
+    case "trigger":
+      return recordTriggerRoll(decision, pending, rollId, result, (boundary, creatureId) => resumeAfterTriggers(decision, boundary, creatureId));
     default:
       return assertNever(pending);
   }
@@ -503,8 +507,26 @@ function beginTurn(decision: Decision, turnIndex: number, round: number): void {
   const lookup = conditionLookup(decision.ctx.rules.content);
   const fresh = activeEncounter(decision)?.combatants[combatant.id] ?? combatant;
   if (isActive(fresh) && hasCondition(fresh, prone, lookup)) decision.emit({ kind: "stoodUp", combatantId: fresh.id, feet: Math.floor(fresh.speed / 2) });
+  // Effects that act at the start of the turn (poison, burning) run before anything else;
+  // the turn goes on once the last one has.
+  if (beginTriggers(decision, combatant.id, "start")) return;
+  continueTurn(decision, combatant.id);
+}
+
+// The rest of a turn once its start-of-turn effects are done: an incapacitated
+// creature loses it, a foe plays its plan, a downed hero rolls a death save, a
+// present player gets the menu.
+function continueTurn(decision: Decision, combatantId: string): void {
+  const encounter = activeEncounter(decision);
+  const combatant = encounter?.combatants[combatantId];
+  if (encounter == null || combatant === undefined) return;
+  if (!isPresent(combatant)) {
+    endTurn(decision);
+    return;
+  }
+  const playerTurn = isPlayerControlled(decision, combatant) && isActive(combatant);
   // An incapacitated creature loses its turn.
-  if (isActive(fresh) && !canAct(fresh, lookup)) {
+  if (isActive(combatant) && !canAct(combatant, conditionLookup(decision.ctx.rules.content))) {
     endTurn(decision);
     return;
   }
@@ -606,6 +628,18 @@ function endTurn(decision: Decision): void {
   const combatant = currentCombatant(encounter);
   if (combatant !== undefined) {
     if (encounter.turnEndsAt !== null) decision.request({ kind: "cancelTimer", timerId: turnTimerId(encounter.id, encounter.turnNumber) });
+    // Effects that act at the end of the turn (a save that breaks a hold) run first.
+    if (beginTriggers(decision, combatant.id, "end")) return;
+  }
+  finishTurn(decision);
+}
+
+// The turn's end once its end-of-turn effects are done: clocks run out, the next creature's turn begins.
+function finishTurn(decision: Decision): void {
+  const encounter = activeEncounter(decision);
+  if (encounter === null) return;
+  const combatant = currentCombatant(encounter);
+  if (combatant !== undefined) {
     expireDue(decision, combatant.id, "end", encounter.round);
     decision.emit({ kind: "turnEnded", combatantId: combatant.id });
   }
@@ -615,11 +649,18 @@ function endTurn(decision: Decision): void {
   else beginTurn(decision, next, encounter.round);
 }
 
+// A turn boundary's effects are all done: the fight may be over, otherwise the turn goes on.
+function resumeAfterTriggers(decision: Decision, boundary: "start" | "end", creatureId: string): void {
+  if (endIfDecided(decision)) return;
+  if (boundary === "start") continueTurn(decision, creatureId);
+  else finishTurn(decision);
+}
+
 function turnTimerExpired(decision: Decision, encounterId: string, turnNumber: number): Rejection | null {
   if (decision.ctx.actor.kind !== "system") return { code: "systemOnly" };
   const encounter = activeEncounter(decision);
   if (encounter?.id !== encounterId || encounter.turnNumber !== turnNumber) return null;
-  if (encounter.resolution !== null || encounter.pendingMove !== null || decision.state.status !== "active") return null;
+  if (encounter.resolution !== null || encounter.pendingMove !== null || encounter.pendingTriggers !== null || decision.state.status !== "active") return null;
   const combatant = currentCombatant(encounter);
   if (combatant === undefined) return null;
   // Apply the away policy to what is left of the turn, then end it once.
@@ -688,7 +729,7 @@ export function withHeroTurn(
     return { code: "notYourCharacter" };
   }
   if (currentCombatant(encounter)?.id !== hero.id || !isActive(hero)) return { code: "notYourTurn" };
-  if (encounter.resolution !== null || encounter.pendingMove !== null) return { code: "attackInProgress" };
+  if (encounter.resolution !== null || encounter.pendingMove !== null || encounter.pendingTriggers !== null) return { code: "attackInProgress" };
   return act(hero, encounter);
 }
 

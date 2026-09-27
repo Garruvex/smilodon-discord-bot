@@ -142,6 +142,20 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
       }));
       return event.condition === "dead" ? withoutEngagements(updated, event.combatantId) : updated;
     }
+    case "triggersBegan":
+      return { ...encounter, pendingTriggers: { creatureId: event.creatureId, boundary: event.boundary, done: [] } };
+    case "triggerRollRequested":
+      return {
+        ...encounter,
+        sequence: event.sequence,
+        pendingRolls: { ...encounter.pendingRolls, [event.rollId]: event.pending },
+        pendingTriggers:
+          encounter.pendingTriggers === null ? null : { ...encounter.pendingTriggers, done: [...encounter.pendingTriggers.done, `${event.effectId}#${event.index}`] },
+      };
+    case "triggerRolled":
+      return withoutPending(encounter, [event.rollId]);
+    case "triggersFinished":
+      return { ...encounter, pendingTriggers: null };
     case "effectApplied":
       return update(encounter, event.combatantId, (combatant) => ({ ...combatant, effects: stack(combatant.effects, event.effect) }));
     case "effectsRemoved":
@@ -185,6 +199,7 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
         turnEndsAt: null,
         resolution: null,
         pendingMove: null,
+        pendingTriggers: null,
         pendingRolls: {},
       };
     default:

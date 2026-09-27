@@ -178,11 +178,19 @@ export interface TurnPlanRemainder {
   readonly attack: { readonly targetId: CombatantId; readonly option: AttackOption } | null;
 }
 
+export interface PendingTriggers {
+  readonly creatureId: CombatantId;
+  readonly boundary: "start" | "end";
+  readonly done: readonly string[];
+}
+
 export type PendingCombatRoll =
   | { readonly purpose: "initiative"; readonly combatantId: CombatantId; readonly spec: D20TestSpec }
   | { readonly purpose: "check"; readonly resolutionId: string }
   | { readonly purpose: "effect"; readonly resolutionId: string }
   | { readonly purpose: "deathSave"; readonly combatantId: CombatantId; readonly spec: D20TestSpec }
+  // A lasting effect's turn-boundary trigger: its damage dice, or its saving throw to end.
+  | { readonly purpose: "trigger"; readonly holderId: CombatantId; readonly effectId: string; readonly index: number; readonly spec: RollSpec }
   | { readonly purpose: "concentration"; readonly combatantId: CombatantId; readonly spec: D20TestSpec; readonly dc: number };
 
 export type EncounterOutcome = "victory" | "defeat";
@@ -204,6 +212,9 @@ export interface EncounterState {
   readonly engagements: readonly (readonly [CombatantId, CombatantId])[];
   readonly resolution: ResolutionState | null;
   readonly pendingMove: PendingMove | null;
+  // Effect triggers at a turn boundary that are still running, one roll at a time:
+  // whose turn boundary it is, and which triggers have run ("effectId#index").
+  readonly pendingTriggers: PendingTriggers | null;
   readonly pendingRolls: Readonly<Record<RollId, PendingCombatRoll>>;
   // Last number used for deterministic roll and resolution IDs.
   readonly sequence: number;

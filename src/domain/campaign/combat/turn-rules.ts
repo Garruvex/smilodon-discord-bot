@@ -218,7 +218,7 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
   const lookup = conditionLookup(content);
   if (hero === undefined || hero.source.kind !== "hero" || !canAct(hero, lookup)) return null;
   if (currentCombatant(encounter)?.id !== hero.id) return null;
-  const busy = encounter.resolution !== null || encounter.pendingMove !== null;
+  const busy = encounter.resolution !== null || encounter.pendingMove !== null || encounter.pendingTriggers !== null;
 
   const attacks = busy || costProblem(hero, "action", content) !== null
     ? []

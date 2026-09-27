@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import type { Combatant } from "../../../src/domain/campaign/combat/combat-state.js";
 import { turnOptions } from "../../../src/domain/campaign/combat/turn-rules.js";
-import type { EffectInstance } from "../../../src/domain/campaign/effects/effect-instance.js";
+import type { EffectInstance, EffectTrigger } from "../../../src/domain/campaign/effects/effect-instance.js";
+import { decide } from "../../../src/domain/campaign/engine/decide.js";
 import {
   attackBias,
   autoFailsSave,
@@ -256,5 +257,105 @@ describe("how long an effect lasts", () => {
     finishTurns(2);
     expect(fight.combatant("c-borin").effects).toEqual([]);
     expect(removals()).toEqual(["c-borin:expired"]);
+  });
+});
+
+// A synthetic lasting effect that acts at turn boundaries: burning damage at the start of the
+// holder's turn, and a Constitution save at the end of it that puts the fire out.
+const d4 = { terms: [{ count: 1, sides: 4 }], modifier: 0 } as const;
+const burning = (sourceId: string, ...triggers: EffectTrigger[]): EffectInstance => ({
+  id: "burn",
+  definition: "effect:burning",
+  sourceId,
+  conditions: [],
+  modifiers: [],
+  triggers,
+  clock: null,
+  concentrationId: null,
+  stacking: "coexist",
+});
+const burnAtStart: EffectTrigger = { follows: "target", boundary: "start", does: { kind: "damage", amount: d4, damageType: "fire" } };
+const putOutAtEnd: EffectTrigger = { follows: "target", boundary: "end", does: { kind: "saveToEnd", ability: "con", dc: 10 } };
+
+describe("effects that act at a turn boundary", () => {
+  const eventKinds = (fight: Fight, from: number): string[] => fight.events.slice(from).map((event) => event.kind);
+
+  it("deals its damage at the start of the holder's turn, then lets the turn go on", () => {
+    const fight = startedFight();
+    give(fight, "c-borin", burning("goblin-a", burnAtStart));
+    const before = fight.events.length;
+    fight.rolls([], [3]).run(alex, { kind: "endTurn", combatantId: "c-mira" });
+    const kinds = eventKinds(fight, before);
+    const at = (kind: string): number => kinds.indexOf(kind);
+    expect(kinds.slice(at("turnStarted"), at("turnStarted") + 6)).toEqual(["turnStarted", "triggersBegan", "triggerRollRequested", "triggerRolled", "combatantHpChanged", "triggersFinished"]);
+    expect(fight.combatant("c-borin").hp).toBe(9);
+    // The turn is Borin's, with his full budget.
+    expect(fight.current).toBe("c-borin");
+    expect(fight.combatant("c-borin").budget.action).toBe(true);
+  });
+
+  it("holds the turn while a trigger's roll is pending: no menu, no commands", () => {
+    const fight = startedFight();
+    give(fight, "c-borin", burning("goblin-a", burnAtStart));
+    // End Mira's turn without feeding the roll the engine then asks for.
+    const ended = decide(fight.state, { kind: "endTurn", combatantId: "c-mira" }, { rules, now: 0, actor: alex });
+    if (ended.kind === "rejected") throw new Error("endTurn");
+    const waiting = replay(fight.state, ended.events);
+    expect(waiting.encounter?.pendingTriggers).toMatchObject({ creatureId: "c-borin", boundary: "start" });
+    const options = turnOptions(waiting.encounter, waiting.characters["c-borin"], rules.content, rules.houseRules, "c-borin");
+    expect(options?.busy).toBe(true);
+    expect(options?.attacks).toEqual([]);
+    const attack = decide(waiting, { kind: "combatAttack", combatantId: "c-borin", targetId: "goblin-a", weapon: "item:longsword" }, { rules, now: 0, actor: jamie });
+    expect(attack).toEqual({ kind: "rejected", rejection: { code: "attackInProgress" } });
+  });
+
+  it("gives a save at the end of the turn that ends the effect on success and keeps it on failure", () => {
+    const success = startedFight();
+    give(success, "c-borin", burning("goblin-a", putOutAtEnd));
+    success.run(alex, { kind: "endTurn", combatantId: "c-mira" });
+    success.rolls([18]).run(jamie, { kind: "endTurn", combatantId: "c-borin" });
+    expect(success.combatant("c-borin").effects).toEqual([]);
+    expect(success.events.filter((event) => event.kind === "effectsRemoved").map((event) => (event.kind === "effectsRemoved" ? event.reason : ""))).toEqual(["saved"]);
+
+    const failure = startedFight();
+    give(failure, "c-borin", burning("goblin-a", putOutAtEnd));
+    failure.run(alex, { kind: "endTurn", combatantId: "c-mira" });
+    failure.rolls([2]).run(jamie, { kind: "endTurn", combatantId: "c-borin" });
+    expect(failure.combatant("c-borin").effects).toHaveLength(1);
+    // The turn still ended: the goblins had theirs, and it is Mira's again in round 2.
+    expect(failure.encounter.round).toBe(2);
+  });
+
+  it("runs the triggers of one boundary in the order the effects were applied, each after the last", () => {
+    const fight = startedFight();
+    give(fight, "c-borin", { ...burning("goblin-a", burnAtStart), id: "first" });
+    give(fight, "c-borin", { ...burning("goblin-b", burnAtStart), id: "second" });
+    fight.rolls([], [2, 4]).run(alex, { kind: "endTurn", combatantId: "c-mira" });
+    const rolled = fight.events.flatMap((event) => (event.kind === "triggerRolled" ? [`${event.effectId}:${event.outcome.kind === "damage" ? event.outcome.amount : "save"}`] : []));
+    expect(rolled).toEqual(["first:2", "second:4"]);
+    expect(fight.combatant("c-borin").hp).toBe(12 - 6);
+  });
+
+  it("follows the source's turn when it says so", () => {
+    const fight = startedFight();
+    // Goblin A is marked by Mira: it takes damage at the start of Mira's turn, not its own.
+    give(fight, "goblin-a", burning("c-mira", { follows: "source", boundary: "start", does: { kind: "damage", amount: d4, damageType: "fire" } }));
+    fight.rolls([3, 3, 3, 3], [1, 1]).run(alex, { kind: "endTurn", combatantId: "c-mira" });
+    expect(fight.combatant("goblin-a").hp).toBe(7);
+    // Round 2, Mira's turn: the trigger fires.
+    fight.rolls([], [1, 1, 1, 1, 1, 1]).run(jamie, { kind: "endTurn", combatantId: "c-borin" });
+    expect(fight.encounter.round).toBe(2);
+    expect(fight.combatant("goblin-a").hp).toBeLessThan(7);
+  });
+
+  it("carries on into the death saves when the damage drops a hero to 0", () => {
+    const fight = startedFight();
+    give(fight, "c-borin", burning("goblin-a", burnAtStart));
+    fight.state = { ...fight.state, encounter: fight.state.encounter === null ? null : { ...fight.state.encounter, combatants: { ...fight.state.encounter.combatants, "c-borin": { ...fight.encounter.combatants["c-borin"]!, hp: 1 } } } };
+    fight.rolls([], [4]).run(alex, { kind: "endTurn", combatantId: "c-mira" });
+    expect(fight.combatant("c-borin")).toMatchObject({ hp: 0, condition: "unconscious" });
+    // He is down on his own turn: the death save is asked for, as for any downed hero.
+    const kinds = fight.events.map((event) => event.kind);
+    expect(kinds.indexOf("deathSaveRequested")).toBeGreaterThan(kinds.indexOf("triggersFinished"));
   });
 });

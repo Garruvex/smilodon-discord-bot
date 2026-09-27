@@ -19,8 +19,11 @@ import type {
   ZoneId,
 } from "./combat-state.js";
 
+// What a trigger's roll did: damage dealt, or whether the save ended the effect.
+export type TriggerOutcome = { readonly kind: "damage"; readonly amount: number } | { readonly kind: "save"; readonly ended: boolean; readonly dc: number };
+
 // Why lasting effects ended.
-export type EffectEnd = "expired" | "concentration" | "usedUp" | "stoodUp";
+export type EffectEnd = "expired" | "concentration" | "usedUp" | "stoodUp" | "saved";
 
 // What an action spends when it is declared.
 export interface ActionCost {
@@ -89,6 +92,11 @@ export type CombatEvent =
     }
   // A lasting effect (a condition, a spell that outlasts its casting) lands on a creature.
   | { readonly kind: "effectApplied"; readonly combatantId: CombatantId; readonly effect: EffectInstance }
+  // Effect triggers begin at a creature's turn boundary; each asks for its roll in turn.
+  | { readonly kind: "triggersBegan"; readonly creatureId: CombatantId; readonly boundary: "start" | "end" }
+  | { readonly kind: "triggerRollRequested"; readonly holderId: CombatantId; readonly effectId: string; readonly index: number; readonly rollId: RollId; readonly pending: PendingCombatRoll; readonly sequence: number }
+  | { readonly kind: "triggerRolled"; readonly rollId: RollId; readonly holderId: CombatantId; readonly effectId: string; readonly result: RollResult; readonly outcome: TriggerOutcome }
+  | { readonly kind: "triggersFinished" }
   // Effects end: their clock ran out, their concentration broke, an attack used them up, or the holder stood up.
   | { readonly kind: "effectsRemoved"; readonly combatantId: CombatantId; readonly effectIds: readonly string[]; readonly reason: EffectEnd }
   | { readonly kind: "sneakAttackUsed"; readonly combatantId: CombatantId }
@@ -163,6 +171,10 @@ export const combatEventKinds: readonly CombatEventKind[] = [
   "combatantHpChanged",
   "effectApplied",
   "effectsRemoved",
+  "triggersBegan",
+  "triggerRollRequested",
+  "triggerRolled",
+  "triggersFinished",
   "sneakAttackUsed",
   "concentrationStarted",
   "concentrationEnded",

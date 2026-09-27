@@ -4,7 +4,7 @@ import type { ContentId } from "../rules/content-id.js";
 import type { SealedContent } from "../rules/content-registry.js";
 import type { Ability } from "../rules/effects.js";
 import type { Modifier, Reach, RollBias } from "../rules/modifiers.js";
-import type { EffectInstance } from "./effect-instance.js";
+import type { EffectInstance, TriggerAction } from "./effect-instance.js";
 
 // The rule queries: the one place that turns a creature's lasting effects into
 // answers (may it act, how fast, with what bias on a roll). Callers ask these and
@@ -154,6 +154,34 @@ export function bonusDiceFor(holder: Pick<EffectHolder, "effects">, kind: "attac
 }
 
 // ------------------------------------------------------------- Lifetimes
+
+// One trigger of one effect, named by where it is.
+export interface TriggerRef {
+  readonly holderId: string;
+  readonly effectId: string;
+  readonly index: number;
+}
+
+export const triggerKey = (ref: TriggerRef): string => `${ref.effectId}#${ref.index}`;
+
+// The triggers that run at this creature's turn boundary, in the order the effects
+// were applied, leaving out those already run this boundary (`done`).
+export function triggersDueAt(
+  creatures: readonly { readonly id: string; readonly effects: readonly EffectInstance[] }[],
+  creatureId: string,
+  boundary: "start" | "end",
+  done: readonly string[],
+): readonly (TriggerRef & { readonly does: TriggerAction })[] {
+  return creatures.flatMap((holder) =>
+    holder.effects.flatMap((effect) =>
+      effect.triggers.flatMap((trigger, index) => {
+        const ref = { holderId: holder.id, effectId: effect.id, index };
+        const owner = trigger.follows === "source" ? effect.sourceId : holder.id;
+        return trigger.boundary === boundary && owner === creatureId && !done.includes(triggerKey(ref)) ? [{ ...ref, does: trigger.does }] : [];
+      }),
+    ),
+  );
+}
 
 // Which effects on these creatures end at this creature's turn boundary: the ones
 // whose clock follows it (as source or as holder) and has run out. Grouped by holder.
