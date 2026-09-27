@@ -183,6 +183,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
             adventures,
             generator: new OpenAiImageGenerator(configuration.campaignImages),
             sink: { post: (channelId, image, caption): Promise<void> => messages.sendImage(channelId, image.bytes, image.mediaType, caption) },
+            monsterName: (monsterId, language): string | undefined => glossaries[language].names[monsterId],
             assets: new FileImageAssetStore(resolve(configuration.runtimeDataDirectory, "campaign-images")),
             budgetPerCampaign: configuration.campaignImages.budget,
           }),

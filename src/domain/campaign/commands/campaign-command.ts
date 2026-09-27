@@ -59,6 +59,8 @@ export type CampaignCommand =
   | RecordLedgerFactCommand
   // The organizer asks for the last narration to be told again; only the words change.
   | { readonly kind: "regenerateNarration"; readonly roundNumber: number }
+  // The organizer asks for a picture of the last narrated round.
+  | { readonly kind: "illustrateMoment"; readonly roundNumber: number }
   | { readonly kind: "replaceNarration"; readonly roundNumber: number; readonly text: string }
   // The Chronicler's condensed account of the rounds through `throughRound`.
   | { readonly kind: "recordSummary"; readonly throughRound: number; readonly visibility: "public" | "private"; readonly text: string }

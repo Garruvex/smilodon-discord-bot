@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import { encounterSpec, findEncounter } from "../../../src/domain/campaign/adventure/adventure-bible.js";
+import type { GeneratedImage } from "../../../src/application/campaign/ports/image-ports.js";
+import { ImageWorker } from "../../../src/application/campaign/workers/image-worker.js";
 import { CampaignRuntime } from "../../../src/application/campaign/campaign-runtime.js";
 import { assembleContext, estimateTokens, renderTranscript, type ContextInput } from "../../../src/application/campaign/dm/context-assembler.js";
 import { ScriptedNarrator, ScriptedPlanner } from "../../../src/application/campaign/dm/scripted-dm.js";
@@ -288,5 +291,87 @@ describe("the safety pause", () => {
     await playRound(c, (await stateOf(c)).lastRoundNumber);
     expect((await stateOf(c)).safetyNote).toBe(false);
     expect((await contextFor(c, "narrator")).text).not.toContain("safety pause");
+  });
+});
+
+describe("pictures of monsters and moments", () => {
+  const painter = (): { prompts: string[]; posted: { caption: string }[]; worker: (c: Campaign) => ImageWorker } => {
+    const prompts: string[] = [];
+    const posted: { caption: string }[] = [];
+    const kept = new Map<string, GeneratedImage>();
+    return {
+      prompts,
+      posted,
+      worker: (c): ImageWorker =>
+        new ImageWorker({
+          unitOfWork: c.r.store,
+          adventures: c.r.adventures,
+          generator: {
+            generate: (request): Promise<GeneratedImage> => {
+              prompts.push(request.prompt);
+              return Promise.resolve({ bytes: Buffer.alloc(10), mediaType: "image/png" });
+            },
+          },
+          sink: { post: (_channel, _image, caption): Promise<void> => (posted.push({ caption }), Promise.resolve()) },
+          assets: {
+            save: (key, subject, image): Promise<void> => (kept.set(`${key.campaignId}:${subject}`, image), Promise.resolve()),
+            load: (key, subject): Promise<GeneratedImage | undefined> => Promise.resolve(kept.get(`${key.campaignId}:${subject}`)),
+            remove: (key, subject): Promise<void> => (kept.delete(`${key.campaignId}:${subject}`), Promise.resolve()),
+          },
+          monsterName: (id, language): string | undefined => (language === "en" ? enSrd51Glossary : zhTwSrd51Glossary).names[id],
+          budgetPerCampaign: 12,
+        }),
+    };
+  };
+  const withChannel = (c: Campaign): Promise<void> =>
+    c.r.store.transaction(async (tx) => {
+      const stored = await tx.loadRecord(c.key);
+      if (stored === undefined) throw new Error("record");
+      await tx.saveRecord({ ...stored.record, channels: { ...stored.record.channels, adventureChannelId: "chan" } }, stored.revision);
+    });
+
+  it("asks for one portrait per kind of monster as a fight breaks out, and reuses it", async () => {
+    const c = await campaign();
+    await playRound(c, 1);
+    await c.r.store.transaction(async (tx) => {
+      const stored = await tx.loadCampaign(c.key);
+      if (stored === undefined) throw new Error("state");
+      await tx.saveCampaign(c.key, { ...stored.state, round: null }, stored.revision);
+    });
+    const fight = findEncounter(starter.en.bible, "encounter:chapel-fight");
+    if (fight === undefined) throw new Error("encounter");
+    await c.r.bus.execute(c.key, { kind: "startEncounter", spec: encounterSpec(fight) }, { commandId: "fight", actor: player });
+    const asked = (await c.r.store.transaction((tx) => tx.pendingOutbox("monsterImage"))).flatMap((item) => (item.request.kind === "monsterImage" ? [item.request.npcId ?? item.request.monsterId] : []));
+    const kinds = new Set(fight.monsters.map((monster) => monster.npcId ?? monster.monsterId));
+    expect(asked.sort()).toEqual([...kinds].sort());
+
+    await withChannel(c);
+    const p = painter();
+    const worker = p.worker(c);
+    await worker.runOnce();
+    expect(p.prompts).toHaveLength(kinds.size);
+    // The same fight again paints nothing new for those monsters.
+    await c.r.store.transaction((tx) => tx.enqueue(c.key, "again", { kind: "monsterImage", monsterId: fight.monsters[0]?.monsterId ?? "", npcId: fight.monsters[0]?.npcId ?? null }, 9));
+    await worker.runOnce();
+    expect(p.prompts).toHaveLength(kinds.size);
+    const goblin = fight.monsters.find((monster) => monster.npcId === null);
+    if (goblin !== undefined) expect(p.prompts.some((prompt) => prompt.includes(enSrd51Glossary.names[goblin.monsterId] ?? "?"))).toBe(true);
+  });
+
+  it("paints the moment the organizer picks from the narration the table already read, and only for them", async () => {
+    const c = await campaign();
+    await playRound(c, 1);
+    expect(await c.r.bus.execute(c.key, { kind: "illustrateMoment", roundNumber: 1 }, { commandId: "no", actor: { kind: "user", userId: "u-other" } })).toEqual({ kind: "rejected", rejection: { code: "notOrganizer" } });
+    expect(await c.r.bus.execute(c.key, { kind: "illustrateMoment", roundNumber: 5 }, { commandId: "far", actor: player })).toEqual({ kind: "rejected", rejection: { code: "nothingToIllustrate" } });
+    expect((await c.r.bus.execute(c.key, { kind: "illustrateMoment", roundNumber: 1 }, { commandId: "yes", actor: player })).kind).toBe("accepted");
+    await withChannel(c);
+    const p = painter();
+    await p.worker(c).runOnce();
+    // The prompt is the told round, with no DM notes or secrets in it.
+    expect(p.prompts).toHaveLength(1);
+    expect(p.prompts[0]).toContain("Garrick eyes the party through round 1.");
+    expect(p.prompts[0]).not.toContain(secretLine);
+    expect(p.posted).toHaveLength(1);
+    expect((await c.r.service.get(c.key))?.record.images).toMatchObject({ "moment:round-1": "done" });
   });
 });

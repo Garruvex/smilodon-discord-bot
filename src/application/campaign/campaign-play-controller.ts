@@ -15,7 +15,7 @@ import type { CampaignKey, CampaignUnitOfWork } from "./ports/campaign-store.js"
 export type PlayRefusal = RejectionCode | "notFound" | "notActive" | "noHero" | "noPendingRoll";
 
 // What a manager can do to a game from the hub.
-export type ManageAction = "pause" | "resume" | "closeRound" | "retry" | "retryFight" | "retell" | "shortRest" | "longRest";
+export type ManageAction = "pause" | "resume" | "closeRound" | "retry" | "retryFight" | "retell" | "illustrate" | "shortRest" | "longRest";
 
 export type PlayResult = { readonly kind: "ok" } | { readonly kind: "refused"; readonly reason: PlayRefusal };
 
@@ -201,7 +201,9 @@ export class CampaignPlayController {
                 ? { kind: "retryEncounter" }
                 : verb === "retell"
                   ? { kind: "regenerateNarration", roundNumber: state.lastNarratedRound }
-                  : { kind: "takeRest", rest: verb === "longRest" ? "long" : "short" };
+                  : verb === "illustrate"
+                    ? { kind: "illustrateMoment", roundNumber: state.lastNarratedRound }
+                    : { kind: "takeRest", rest: verb === "longRest" ? "long" : "short" };
     return this.perform(key, null, interactionId, command);
   }
 

@@ -9,7 +9,7 @@ import { handleCombatCommand, recordCombatNarration, recordCombatRoll } from "./
 import { handleInventoryCommand } from "./inventory.js";
 import { takeRest } from "./rest.js";
 import { Decision, type DecideResult, type EngineContext } from "./decision.js";
-import { beginAdventure, beginPlay, markReady, recordLedgerFact, recordNarration, recordOpening, recordSummary, regenerateNarration, replaceNarration, reportPlannerFailure, retryPlan } from "./dm.js";
+import { beginAdventure, beginPlay, illustrateMoment, markReady, recordLedgerFact, recordNarration, recordOpening, recordSummary, regenerateNarration, replaceNarration, reportPlannerFailure, retryPlan } from "./dm.js";
 import { continueCampaign, grantProxy, joinHero, markAway, markReturned, revokeProxy } from "./members.js";
 import { pauseCampaign } from "./pause.js";
 import { remind } from "./reminders.js";
@@ -83,6 +83,8 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
       return recordLedgerFact(decision, command);
     case "recordSummary":
       return recordSummary(decision, command);
+    case "illustrateMoment":
+      return illustrateMoment(decision, command.roundNumber);
     case "regenerateNarration":
       return regenerateNarration(decision, command.roundNumber);
     case "replaceNarration":

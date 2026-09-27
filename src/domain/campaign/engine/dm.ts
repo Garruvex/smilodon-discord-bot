@@ -131,6 +131,16 @@ export function regenerateNarration(decision: Decision, roundNumber: number): Re
   return null;
 }
 
+// The organizer asks for a picture of the last told round. It changes no state;
+// the picture is made in the background from the narration the table already read.
+export function illustrateMoment(decision: Decision, roundNumber: number): Rejection | null {
+  const { state, ctx } = decision;
+  if (ctx.actor.kind !== "user" || ctx.actor.userId !== state.organizerId) return { code: "notOrganizer" };
+  if (roundNumber !== state.lastNarratedRound || roundNumber < 1) return { code: "nothingToIllustrate" };
+  decision.request({ kind: "momentImage", roundNumber });
+  return null;
+}
+
 // The retold words replace the earlier ones for that round; nothing else moves.
 export function replaceNarration(decision: Decision, roundNumber: number, text: string): Rejection | null {
   const { state, ctx } = decision;

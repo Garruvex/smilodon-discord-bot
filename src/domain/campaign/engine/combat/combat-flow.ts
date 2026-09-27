@@ -138,6 +138,14 @@ export function beginEncounter(decision: Decision, spec: EncounterSpec): void {
   }
   const counts = new Map<string, number>();
   for (const entry of spec.monsters) counts.set(entry.monsterId, (counts.get(entry.monsterId) ?? 0) + 1);
+  // One portrait per kind of monster (or per named NPC), asked for as the fight breaks out.
+  const portraits = new Set<string>();
+  for (const entry of spec.monsters) {
+    const subject = entry.npcId ?? entry.monsterId;
+    if (portraits.has(subject)) continue;
+    portraits.add(subject);
+    decision.request({ kind: "monsterImage", monsterId: entry.monsterId, npcId: entry.npcId });
+  }
   const seen = new Map<string, number>();
   for (const entry of spec.monsters) {
     const monster = content.get(entry.monsterId);
