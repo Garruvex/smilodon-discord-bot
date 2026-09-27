@@ -22,7 +22,7 @@ What is already right:
 - Every action goes through one persisted resolution (`ResolutionState`: checks, effect rolls, application, concentration saves). Dice are saved before the engine sees them.
 - Target lists come from one shared function (`legal-targets.ts`), used by the menu and the engine.
 
-What is weak:
+What is weak (status after steps 1 to 6: every row below is addressed except that the Discord side of reactions and effect triggers is not built; see Progress):
 
 | Finding | Evidence | Consequence |
 | --- | --- | --- |
