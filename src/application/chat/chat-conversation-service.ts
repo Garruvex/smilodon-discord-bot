@@ -403,6 +403,7 @@ export class ChatConversationService {
   // correction is a quality regression, not a reason to not reply at all.
   private async verifyAttribution(
     draftResponse: string,
+    currentMessage: string,
     replyChain: readonly ReplyChainMessage[],
     channelHistory: readonly { authorId: string; authorDisplayName: string; content: string }[],
     guildId: string,
@@ -416,7 +417,7 @@ export class ChatConversationService {
         ...replyChain.map((hop) => ({ authorId: hop.authorId, authorDisplayName: hop.authorDisplayName, content: hop.content })),
         ...channelHistory.map((hop) => ({ authorId: hop.authorId, authorDisplayName: hop.authorDisplayName, content: hop.content })),
       ];
-      const result = await verifier.verifyAttribution(draftResponse, context);
+      const result = await verifier.verifyAttribution(draftResponse, context, currentMessage);
       if (!result.needsCorrection) return draftResponse;
       const corrected = stripUntrustedMarkers(result.correctedResponse ?? "");
       if (!corrected) return draftResponse;
@@ -854,7 +855,7 @@ export class ChatConversationService {
       // is the one place that guarantees every downstream consumer sees the
       // corrected version rather than some seeing the draft.
       validatedResponse.text = await this.verifyAttribution(
-        validatedResponse.text, input.replyChain, input.channelHistory, input.guildId, input.channelId,
+        validatedResponse.text, input.message, input.replyChain, input.channelHistory, input.guildId, input.channelId,
       );
       const deliveredAssistantMessage = await deliver(validatedResponse);
       // Signals the extraction sub-task (reserved at the very top of this

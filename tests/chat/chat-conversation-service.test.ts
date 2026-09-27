@@ -1024,6 +1024,7 @@ describe("ChatConversationService", () => {
     expect(verifyAttribution).toHaveBeenCalledWith(
       "LW said that.",
       [{ authorId: "ginco", authorDisplayName: "Ginco", content: "friend has grey fur" }],
+      "who said that",
     );
     expect(result.text).toBe("Ginco said that, not LW.");
     expect(deliver).toHaveBeenCalledWith(expect.objectContaining({ text: "Ginco said that, not LW." }));

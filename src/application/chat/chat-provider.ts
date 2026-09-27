@@ -517,6 +517,7 @@ export interface AttributionVerifier {
   verifyAttribution(
     draftResponse: string,
     context: readonly { authorId: string; authorDisplayName: string; content: string }[],
+    currentMessage: string,
   ): Promise<{ needsCorrection: boolean; correctedResponse: string | null }>;
 }
 
