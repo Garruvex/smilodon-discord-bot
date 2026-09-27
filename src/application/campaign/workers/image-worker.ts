@@ -3,7 +3,7 @@ import type { EngineRequest } from "../../../domain/campaign/engine/engine-reque
 import type { CampaignRecord } from "../ports/campaign-record.js";
 import { RevisionConflictError, type CampaignKey, type CampaignUnitOfWork, type OutboxItem } from "../ports/campaign-store.js";
 import type { AdventureLibrary } from "../ports/adventure-library.js";
-import type { ImageAssetStore, ImageGenerator, SceneImageSink } from "../ports/image-ports.js";
+import type { GeneratedImage, ImageAssetStore, ImageGenerator, SceneImageSink } from "../ports/image-ports.js";
 import type { WorkerRunResult } from "./roll-worker.js";
 
 export interface ImageWorkerOptions {
@@ -13,6 +13,8 @@ export interface ImageWorkerOptions {
   readonly sink: SceneImageSink;
   // A monster's English name for its portrait prompt, and its name in the game's language for the caption.
   readonly monsterName?: (monsterId: string, language: "en" | "zh-TW") => string | undefined;
+  // A ready-made portrait for a monster, used when it cannot be painted (no budget left, or the model failed).
+  readonly fallback?: (monsterId: string) => Promise<GeneratedImage | undefined>;
   // Where a made picture waits until it is posted.
   readonly assets: ImageAssetStore;
   // Campaigns painting at the same time (one campaign's pictures never overlap).
@@ -31,17 +33,37 @@ const defaultMaxBytes = 8 * 1024 * 1024;
 // How much of a told round goes into a moment's prompt.
 const momentTextLimit = 700;
 
-type PictureRequest = Extract<EngineRequest, { kind: "sceneImage" | "monsterImage" | "momentImage" }>;
+type PictureRequest = Extract<EngineRequest, { kind: "sceneImage" | "monsterImage" | "momentImage" | "heroImage" | "redoImage" }>;
+// The kinds a picture can be painted for; a redo names one of them by its subject.
+type Painted = Exclude<PictureRequest, { kind: "redoImage" }>;
+const pictureKinds = ["sceneImage", "monsterImage", "momentImage", "heroImage", "redoImage"] as const;
+// An automatic moment picture waits until this many rounds after the last moment picture,
+// and never takes the last few pictures of the budget.
+const autoMomentGap = 3;
+const autoMomentReserve = 3;
 
 // What a picture is of, and the key it is recorded under on the campaign.
 // A scene, a kind of monster (or a named NPC), or one told round each get one picture.
 export function pictureSubject(request: PictureRequest): string {
   if (request.kind === "sceneImage") return request.sceneId;
   if (request.kind === "monsterImage") return request.npcId ?? request.monsterId;
+  if (request.kind === "heroImage") return `hero:${request.characterId}`;
+  if (request.kind === "redoImage") return request.subject;
   return `moment:round-${request.roundNumber}`;
 }
 
-const isPicture = (request: EngineRequest): request is PictureRequest => request.kind === "sceneImage" || request.kind === "monsterImage" || request.kind === "momentImage";
+const isPicture = (request: EngineRequest): request is PictureRequest => (pictureKinds as readonly string[]).includes(request.kind);
+
+// A redo names its picture by subject; this finds what to paint again (undefined when it is gone).
+function paintedFor(subject: string, bible: AdventureBible): Painted | undefined {
+  const round = /^moment:round-(\d+)$/.exec(subject);
+  if (round !== null) return { kind: "momentImage", roundNumber: Number(round[1]) };
+  if (subject.startsWith("hero:")) return { kind: "heroImage", characterId: subject.slice("hero:".length) };
+  if (findScene(bible, subject) !== undefined) return { kind: "sceneImage", sceneId: subject, roundNumber: 0 };
+  if (subject.startsWith("monster:")) return { kind: "monsterImage", monsterId: subject, npcId: null };
+  const fighter = bible.encounters.flatMap((encounter) => encounter.monsters).find((monster) => monster.npcId === subject);
+  return fighter === undefined ? undefined : { kind: "monsterImage", monsterId: fighter.monsterId, npcId: subject };
+}
 
 // Makes pictures as background jobs (plan §6, Adventures and images): one per
 // scene the party enters, one per kind of monster it meets, and one for a
@@ -59,7 +81,7 @@ export class ImageWorker {
   // picture the first one made.
   public async runOnce(): Promise<WorkerRunResult> {
     const items = (
-      await this.options.unitOfWork.transaction(async (tx) => [...(await tx.pendingOutbox("sceneImage")), ...(await tx.pendingOutbox("monsterImage")), ...(await tx.pendingOutbox("momentImage"))])
+      await this.options.unitOfWork.transaction(async (tx) => [...(await tx.pendingOutbox("sceneImage")), ...(await tx.pendingOutbox("monsterImage")), ...(await tx.pendingOutbox("heroImage")), ...(await tx.pendingOutbox("momentImage")), ...(await tx.pendingOutbox("redoImage"))])
     );
     const failed: { id: string; error: string }[] = [];
     let processed = 0;
@@ -83,7 +105,9 @@ export class ImageWorker {
             // Out of attempts: it is marked as gone without, so nothing waits on it.
             if (item.attempts + 1 >= (this.options.maxAttempts ?? 2) && isPicture(item.request)) {
               const subject = pictureSubject(item.request);
-              await this.mark(item.key, subject, "failed");
+              // A monster without a painting may still have a ready-made portrait, which costs nothing.
+              const ready = await this.postFallback(item, item.request).catch(() => false);
+              if (!ready) await this.mark(item.key, subject, "failed");
               await this.options.assets.remove(item.key, subject).catch(() => undefined);
             }
           }
@@ -95,10 +119,10 @@ export class ImageWorker {
   }
 
   private async process(item: OutboxItem): Promise<void> {
-    const request = item.request;
-    if (!isPicture(request)) return;
+    const asked = item.request;
+    if (!isPicture(asked)) return;
     const { unitOfWork, adventures, generator, sink, assets } = this.options;
-    const subject = pictureSubject(request);
+    const subject = pictureSubject(asked);
     const loaded = await unitOfWork.transaction(async (tx) => ({ stored: await tx.loadRecord(item.key), campaign: await tx.loadCampaign(item.key) }));
     if (loaded.stored === undefined || loaded.campaign === undefined) return;
     const { record } = loaded.stored;
@@ -107,6 +131,10 @@ export class ImageWorker {
     if (record.lifecycle === "archived") return;
     const channelId = record.channels.adventureChannelId;
     const bible = adventures.find(record.adventure.adventureId, record.adventure.version, record.language);
+    // A redo paints the subject again; anything else keeps the picture it has.
+    const forced = asked.kind === "redoImage";
+    const request = asked.kind === "redoImage" ? (bible === undefined ? undefined : paintedFor(asked.subject, bible)) : asked;
+    if (request === undefined || (forced && existing === undefined)) return;
     if (existing === "made") {
       // Made and paid for, but the post failed: post the saved picture; never paint again.
       const saved = await assets.load(item.key, subject);
@@ -117,9 +145,20 @@ export class ImageWorker {
       await assets.remove(item.key, subject).catch(() => undefined);
       return;
     }
-    if (existing !== undefined) return;
+    if (existing !== undefined && !forced) return;
     const budget = record.imageBudget ?? { limit: this.options.budgetPerCampaign, used: 0 };
-    if (budget.used >= budget.limit) return void (await this.mark(item.key, subject, "skipped"));
+    // A dramatic roll is only sometimes worth a picture: not right after another, and never the last of the budget.
+    if (request.kind === "momentImage" && request.auto === true) {
+      const recent = Object.keys(record.images ?? {}).some((key) => {
+        const round = /^moment:round-(\d+)$/.exec(key);
+        return round !== null && Math.abs(Number(round[1]) - request.roundNumber) <= autoMomentGap && key !== subject;
+      });
+      if (recent || budget.limit - budget.used <= autoMomentReserve) return void (await this.mark(item.key, subject, "skipped"));
+    }
+    if (budget.used >= budget.limit) {
+      if (!(await this.postFallback(item, request))) await this.mark(item.key, subject, "skipped");
+      return;
+    }
     const described = bible === undefined ? undefined : await this.describe(request, item.key, record, bible);
     if (described === undefined || channelId === null) return void (await this.mark(item.key, subject, "skipped"));
 
@@ -134,8 +173,25 @@ export class ImageWorker {
     await assets.remove(item.key, subject).catch(() => undefined);
   }
 
+  // A ready-made portrait for a monster picture that could not be painted: posted, and recorded as done without spending budget.
+  private async postFallback(item: OutboxItem, request: PictureRequest): Promise<boolean> {
+    const { unitOfWork, adventures, sink, fallback } = this.options;
+    const target = request.kind === "redoImage" ? undefined : request;
+    if (fallback === undefined || target?.kind !== "monsterImage") return false;
+    const loaded = await unitOfWork.transaction((tx) => tx.loadRecord(item.key));
+    const channelId = loaded?.record.channels.adventureChannelId ?? null;
+    const bible = loaded === undefined ? undefined : adventures.find(loaded.record.adventure.adventureId, loaded.record.adventure.version, loaded.record.language);
+    const image = await fallback(target.monsterId);
+    if (loaded === undefined || bible === undefined || channelId === null || image === undefined) return false;
+    const described = await this.describe(target, item.key, loaded.record, bible);
+    if (described === undefined) return false;
+    await sink.post(channelId, image, described.caption);
+    await this.mark(item.key, pictureSubject(target), "done");
+    return true;
+  }
+
   // The prompt and caption for a picture, from public text only; undefined when what it is of is gone.
-  private async describe(request: PictureRequest, key: CampaignKey, record: CampaignRecord, bible: AdventureBible): Promise<{ readonly prompt: string; readonly caption: string } | undefined> {
+  private async describe(request: Painted, key: CampaignKey, record: CampaignRecord, bible: AdventureBible): Promise<{ readonly prompt: string; readonly caption: string } | undefined> {
     const collapse = (value: string): string => value.replace(/\s+/g, " ").trim();
     if (request.kind === "sceneImage") {
       const scene = findScene(bible, request.sceneId);
@@ -147,6 +203,11 @@ export class ImageWorker {
       const npc = request.npcId === null ? undefined : bible.npcs.find((candidate) => candidate.id === request.npcId);
       const who = npc === undefined ? `a ${name}` : `${npc.name}, ${/^[aeiou]/i.test(name) ? "an" : "a"} ${name}`;
       return { prompt: `A fantasy character portrait of ${who}${npc === undefined ? "" : `. ${collapse(npc.publicDescription)}`}. ${sceneImageStyle}`, caption: npc?.name ?? shown };
+    }
+    if (request.kind === "heroImage") {
+      const sheet = (await this.options.unitOfWork.transaction((tx) => tx.loadCampaign(key)))?.state.characters[request.characterId];
+      if (sheet === undefined) return undefined;
+      return { prompt: `A fantasy character portrait of ${sheet.name}, a level ${sheet.level} ${sheet.className ?? "adventurer"}. ${sceneImageStyle}`, caption: sheet.name };
     }
     const events = await this.options.unitOfWork.transaction((tx) => tx.readEvents(key));
     const told = events.map((envelope) => envelope.event).findLast((event) => event.kind === "narrationRecorded" && event.roundNumber === request.roundNumber);
@@ -165,7 +226,10 @@ export class ImageWorker {
           if (stored === undefined) return;
           const record: CampaignRecord = stored.record;
           const budget = record.imageBudget ?? { limit: this.options.budgetPerCampaign, used: 0 };
-          await tx.saveRecord({ ...record, images: { ...(record.images ?? {}), [subject]: status }, imageBudget: spend ? { ...budget, used: budget.used + 1 } : budget }, stored.revision);
+          await tx.saveRecord(
+            { ...record, images: { ...(record.images ?? {}), [subject]: status }, imageBudget: spend ? { ...budget, used: budget.used + 1 } : budget, ...(status === "done" ? { lastPicture: subject } : {}) },
+            stored.revision,
+          );
         });
         return;
       } catch (error) {

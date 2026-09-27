@@ -295,20 +295,23 @@ describe("the safety pause", () => {
 });
 
 describe("pictures of monsters and moments", () => {
-  const painter = (): { prompts: string[]; posted: { caption: string }[]; worker: (c: Campaign) => ImageWorker } => {
+  const painter = (): { prompts: string[]; posted: { caption: string }[]; broken: { on: boolean }; worker: (c: Campaign, extra?: Partial<ConstructorParameters<typeof ImageWorker>[0]>) => ImageWorker } => {
+    const broken = { on: false };
     const prompts: string[] = [];
     const posted: { caption: string }[] = [];
     const kept = new Map<string, GeneratedImage>();
     return {
       prompts,
       posted,
-      worker: (c): ImageWorker =>
+      broken,
+      worker: (c, extra = {}): ImageWorker =>
         new ImageWorker({
           unitOfWork: c.r.store,
           adventures: c.r.adventures,
           generator: {
             generate: (request): Promise<GeneratedImage> => {
               prompts.push(request.prompt);
+              if (broken.on) return Promise.reject(new Error("The model is down."));
               return Promise.resolve({ bytes: Buffer.alloc(10), mediaType: "image/png" });
             },
           },
@@ -320,11 +323,14 @@ describe("pictures of monsters and moments", () => {
           },
           monsterName: (id, language): string | undefined => (language === "en" ? enSrd51Glossary : zhTwSrd51Glossary).names[id],
           budgetPerCampaign: 12,
+          ...extra,
         }),
     };
   };
+  // Points the game at an Adventure channel, and leaves the party's own portraits (asked for at the opening) out of these tests.
   const withChannel = (c: Campaign): Promise<void> =>
     c.r.store.transaction(async (tx) => {
+      for (const item of await tx.pendingOutbox("heroImage")) await tx.completeOutbox(item.id);
       const stored = await tx.loadRecord(c.key);
       if (stored === undefined) throw new Error("record");
       await tx.saveRecord({ ...stored.record, channels: { ...stored.record.channels, adventureChannelId: "chan" } }, stored.revision);
@@ -373,5 +379,106 @@ describe("pictures of monsters and moments", () => {
     expect(p.prompts[0]).not.toContain(secretLine);
     expect(p.posted).toHaveLength(1);
     expect((await c.r.service.get(c.key))?.record.images).toMatchObject({ "moment:round-1": "done" });
+  });
+
+  it("paints each hero's portrait when the party is introduced, from their name and class alone", async () => {
+    const c = await campaign();
+    await c.r.store.transaction(async (tx) => {
+      const stored = await tx.loadRecord(c.key);
+      if (stored === undefined) throw new Error("record");
+      await tx.saveRecord({ ...stored.record, channels: { ...stored.record.channels, adventureChannelId: "chan" } }, stored.revision);
+    });
+    const p = painter();
+    await p.worker(c).runOnce();
+    const sheet = starter.en.heroes[0];
+    expect(p.prompts).toHaveLength(1);
+    expect(p.prompts[0]).toContain(sheet?.name ?? "?");
+    expect(p.posted).toEqual([{ caption: sheet?.name }]);
+  });
+
+  it("repaints the last picture for the organizer only, spending budget again", async () => {
+    const c = await campaign();
+    await playRound(c, 1);
+    await c.r.bus.execute(c.key, { kind: "illustrateMoment", roundNumber: 1 }, { commandId: "yes", actor: player });
+    await withChannel(c);
+    const p = painter();
+    const worker = p.worker(c);
+    await worker.runOnce();
+    const record = (await c.r.service.get(c.key))?.record;
+    expect(record?.lastPicture).toBe("moment:round-1");
+    expect(record?.imageBudget?.used).toBe(1);
+
+    expect(await c.r.bus.execute(c.key, { kind: "redoPicture", subject: "moment:round-1" }, { commandId: "no", actor: { kind: "user", userId: "u-other" } })).toEqual({ kind: "rejected", rejection: { code: "notOrganizer" } });
+    expect(await c.r.bus.execute(c.key, { kind: "redoPicture", subject: "" }, { commandId: "none", actor: player })).toEqual({ kind: "rejected", rejection: { code: "nothingToRedo" } });
+    expect((await c.r.bus.execute(c.key, { kind: "redoPicture", subject: record?.lastPicture ?? "" }, { commandId: "again", actor: player })).kind).toBe("accepted");
+    await worker.runOnce();
+    expect(p.prompts).toHaveLength(2);
+    expect(p.posted).toHaveLength(2);
+    expect((await c.r.service.get(c.key))?.record.imageBudget?.used).toBe(2);
+  });
+
+  it("rations automatic moment pictures: not right after another, and never the last of the budget", async () => {
+    const c = await campaign();
+    await playRound(c, 1);
+    await playRound(c, 2);
+    await withChannel(c);
+    const p = painter();
+    const worker = p.worker(c);
+    const ask = (id: string, round: number): Promise<void> => c.r.store.transaction((tx) => tx.enqueue(c.key, id, { kind: "momentImage", roundNumber: round, auto: true }, 1));
+    await ask("a1", 1);
+    await worker.runOnce();
+    expect(p.prompts).toHaveLength(1);
+    await ask("a2", 2);
+    await worker.runOnce();
+    // Round 2 is right after round 1's picture: skipped, no charge.
+    expect(p.prompts).toHaveLength(1);
+    expect((await c.r.service.get(c.key))?.record.images).toMatchObject({ "moment:round-1": "done", "moment:round-2": "skipped" });
+
+    const low = await campaign();
+    await playRound(low, 1);
+    await withChannel(low);
+    await low.r.store.transaction(async (tx) => {
+      const stored = await tx.loadRecord(low.key);
+      if (stored === undefined) throw new Error("record");
+      await tx.saveRecord({ ...stored.record, imageBudget: { limit: 12, used: 9 } }, stored.revision);
+    });
+    const q = painter();
+    await low.r.store.transaction((tx) => tx.enqueue(low.key, "low", { kind: "momentImage", roundNumber: 1, auto: true }, 1));
+    await q.worker(low).runOnce();
+    expect(q.prompts).toEqual([]);
+  });
+
+  it("posts a ready-made monster portrait, for free, when the budget is spent or the model fails", async () => {
+    const image = { bytes: Buffer.from("gallery"), mediaType: "image/webp" as const };
+    const fallback = (monsterId: string): Promise<GeneratedImage | undefined> => Promise.resolve(monsterId === "monster:goblin" ? image : undefined);
+    // Budget spent.
+    const spent = await campaign();
+    await withChannel(spent);
+    await spent.r.store.transaction(async (tx) => {
+      const stored = await tx.loadRecord(spent.key);
+      if (stored === undefined) throw new Error("record");
+      await tx.saveRecord({ ...stored.record, imageBudget: { limit: 1, used: 1 } }, stored.revision);
+    });
+    const a = painter();
+    await spent.r.store.transaction((tx) => tx.enqueue(spent.key, "goblin", { kind: "monsterImage", monsterId: "monster:goblin", npcId: null }, 1));
+    await a.worker(spent, { fallback }).runOnce();
+    expect(a.prompts).toEqual([]);
+    expect(a.posted).toEqual([{ caption: "Goblin" }]);
+    expect((await spent.r.service.get(spent.key))?.record.imageBudget).toEqual({ limit: 1, used: 1 });
+
+    // The model fails on every try; a monster with no gallery picture just goes without.
+    const down = await campaign();
+    await withChannel(down);
+    const b = painter();
+    b.broken.on = true;
+    await down.r.store.transaction(async (tx) => {
+      await tx.enqueue(down.key, "goblin", { kind: "monsterImage", monsterId: "monster:goblin", npcId: null }, 1);
+      await tx.enqueue(down.key, "wolf", { kind: "monsterImage", monsterId: "monster:wolf", npcId: null }, 2);
+    });
+    const worker = b.worker(down, { fallback });
+    await worker.runOnce();
+    await worker.runOnce();
+    expect(b.posted).toEqual([{ caption: "Goblin" }]);
+    expect((await down.r.service.get(down.key))?.record.images).toMatchObject({ "monster:goblin": "done", "monster:wolf": "failed" });
   });
 });

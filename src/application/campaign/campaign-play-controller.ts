@@ -207,6 +207,11 @@ export class CampaignPlayController {
     return this.perform(key, null, interactionId, command);
   }
 
+  // Organizer: paint the last posted picture again ("" when there is none, which the engine refuses).
+  public redoPicture(key: CampaignKey, subject: string, interactionId: string): Promise<PlayResult> {
+    return this.perform(key, null, interactionId, () => ({ kind: "redoPicture", subject }));
+  }
+
   private asHero(key: CampaignKey, userId: UserId, interactionId: string, command: (characterId: CharacterId) => CampaignCommand): Promise<PlayResult> {
     return this.perform(key, userId, interactionId, (state) => {
       const heroId = state.members[userId]?.characterId;

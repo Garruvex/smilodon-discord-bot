@@ -249,7 +249,11 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     if (verb === "repair") {
       await interaction.deferUpdate();
       notice = repairText(await this.deps.setup.repair(record.key), text);
-    } else if (isManageVerb(verb) && verb !== "repair") {
+    } else if (verb === "redoPicture") {
+      await interaction.deferUpdate();
+      const result = await this.deps.play.redoPicture(record.key, record.lastPicture ?? "", interaction.id);
+      notice = result.kind === "ok" ? text.campaign.cmd.pictureRedone : refusalText(text, result.reason);
+    } else if (isManageVerb(verb) && verb !== "repair" && verb !== "redoPicture") {
       await interaction.deferUpdate();
       const result = await this.deps.play.manage(record.key, verb, interaction.id);
       notice = result.kind === "ok" ? successText(verb, text) : refusalText(text, result.reason);
@@ -324,7 +328,7 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     const rows: ActionRowBuilder<MessageActionRowComponentBuilder>[] = [];
     if (record.lifecycle !== "lobby") {
       rows.push(
-        row(paused ? verb("resume", t.resume).setStyle(ButtonStyle.Success) : verb("pause", t.pause), verb("closeRound", t.closeRound), verb("retry", t.retry)),
+        row(paused ? verb("resume", t.resume).setStyle(ButtonStyle.Success) : verb("pause", t.pause), verb("closeRound", t.closeRound), verb("retry", t.retry), verb("redoPicture", t.redoPicture)),
         row(verb("shortRest", t.shortRest), verb("longRest", t.longRest), verb("retryFight", t.retryFight), verb("retell", t.retell), verb("illustrate", t.illustrate)),
       );
     }
@@ -360,6 +364,8 @@ function successText(verb: ManageVerb, text: Texts): string {
       return t.retold;
     case "illustrate":
       return t.illustrated;
+    case "redoPicture":
+      return t.pictureRedone;
     case "shortRest":
     case "longRest":
       return t.rested;

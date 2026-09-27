@@ -40,6 +40,10 @@ class Shelf implements ImageAssetStore {
 async function table(budget = 3): Promise<{ r: Rig; key: CampaignKey; painter: Painter; posted: { channelId: string; caption: string }[]; worker: ImageWorker; failPost: { on: boolean }; shelf: Shelf }> {
   const r = rig();
   const key = await startedCampaign(r);
+  // The party's own portraits are asked for at the opening; these tests are about the rest.
+  await r.store.transaction(async (tx) => {
+    for (const item of await tx.pendingOutbox("heroImage")) await tx.completeOutbox(item.id);
+  });
   await r.store.transaction(async (tx) => {
     const stored = await tx.loadRecord(key);
     if (stored === undefined) throw new Error("record");
@@ -159,6 +163,7 @@ describe("scene pictures", () => {
     await t.r.service.start(second, "u-two");
     await tellOpening(t.r, second);
     await t.r.store.transaction(async (tx) => {
+      for (const item of await tx.pendingOutbox("heroImage")) await tx.completeOutbox(item.id);
       const stored = await tx.loadRecord(second);
       if (stored === undefined) throw new Error("record");
       await tx.saveRecord({ ...stored.record, channels: { ...stored.record.channels, adventureChannelId: "chan-two" } }, stored.revision);

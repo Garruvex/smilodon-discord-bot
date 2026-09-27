@@ -64,6 +64,8 @@ export function recordOpening(decision: Decision, text: string): Rejection | nul
   if (state.opening !== "pending") return { code: "staleNarration" };
   decision.emit({ kind: "openingRecorded", text: trimmed });
   decision.request({ kind: "deliver", delivery: { kind: "opening" } });
+  // The party is introduced: each hero gets a portrait in the background.
+  for (const characterId of Object.keys(state.characters)) decision.request({ kind: "heroImage", characterId });
   if (decision.state.status === "active") finishReadyCheck(decision);
   return null;
 }
@@ -107,6 +109,9 @@ export function recordNarration(decision: Decision, roundNumber: number, text: s
   }
   decision.emit({ kind: "narrationRecorded", roundNumber, text: trimmed });
   decision.request({ kind: "deliver", delivery: { kind: "narration", roundNumber } });
+  // A natural 20 or 1 in the round is a moment worth a picture (the worker rations these).
+  const dramatic = Object.values(state.checks).some((check) => check.roundNumber === roundNumber && (check.result?.moments.headline?.kind === "natural20" || check.result?.moments.headline?.kind === "natural1"));
+  if (dramatic) decision.request({ kind: "momentImage", roundNumber, auto: true });
   // A chapter closed, or enough rounds piled up: the Chronicler condenses them in the background.
   if (state.sceneChangedRound === roundNumber || roundNumber - latestSummaryRound(state.summaries, "public") >= chronicleEveryRounds) {
     decision.request({ kind: "chronicle", throughRound: roundNumber });
@@ -138,6 +143,14 @@ export function illustrateMoment(decision: Decision, roundNumber: number): Rejec
   if (ctx.actor.kind !== "user" || ctx.actor.userId !== state.organizerId) return { code: "notOrganizer" };
   if (roundNumber !== state.lastNarratedRound || roundNumber < 1) return { code: "nothingToIllustrate" };
   decision.request({ kind: "momentImage", roundNumber });
+  return null;
+}
+
+export function redoPicture(decision: Decision, subject: string): Rejection | null {
+  const { state, ctx } = decision;
+  if (ctx.actor.kind !== "user" || ctx.actor.userId !== state.organizerId) return { code: "notOrganizer" };
+  if (subject.length === 0) return { code: "nothingToRedo" };
+  decision.request({ kind: "redoImage", subject });
   return null;
 }
 

@@ -38,6 +38,22 @@ function rollStealth(state: CampaignState, d20: number): ReturnType<typeof run> 
 }
 
 describe("story effects", () => {
+  it("asks for a moment picture when a natural 20 or 1 decided a round, and not for an ordinary roll", () => {
+    const planned = run(closedRound(), system, { kind: "applyRoundPlan", proposal: sneaking([toChapel]) }).state;
+    const told = (d20: number): ReturnType<typeof run> => run(rollStealth(planned, d20).state, system, { kind: "recordNarration", roundNumber: 1, text: "Mira slips inside." });
+    expect(told(20).requests).toContainEqual({ kind: "momentImage", roundNumber: 1, auto: true });
+    expect(told(1).requests).toContainEqual({ kind: "momentImage", roundNumber: 1, auto: true });
+    expect(told(12).requests.some((request) => request.kind === "momentImage")).toBe(false);
+  });
+
+  it("asks for a portrait of each kind of monster as its fight begins", () => {
+    const planned = run(closedRound(), system, { kind: "applyRoundPlan", proposal: sneaking([ambushIfSpotted]) }).state;
+    const narrated = run(rollStealth(planned, 3).state, system, { kind: "recordNarration", roundNumber: 1, text: "A goblin spots Mira!" });
+    const asked = narrated.requests.flatMap((request) => (request.kind === "monsterImage" ? [request.monsterId] : []));
+    expect(asked.length).toBeGreaterThan(0);
+    expect(new Set(asked).size).toBe(asked.length);
+  });
+
   it("moves the scene and queues the fight on a failed check, then starts it after narration", () => {
     const planned = run(closedRound(), system, { kind: "applyRoundPlan", proposal: sneaking([ambushIfSpotted, toChapel]) }).state;
     expect(planned.round?.effects).toHaveLength(2);

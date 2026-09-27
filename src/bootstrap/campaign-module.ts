@@ -27,6 +27,7 @@ import { RulesetCatalog } from "../application/campaign/rules/ruleset-catalog.js
 import { SystemClock } from "../application/campaign/time/system-clock.js";
 import { DeliveryWorker } from "../application/campaign/workers/delivery-worker.js";
 import { ImageWorker } from "../application/campaign/workers/image-worker.js";
+import { monsterGalleryImage } from "../infrastructure/campaign/image/monster-gallery.js";
 import { FileImageAssetStore } from "../infrastructure/campaign/image/file-image-asset-store.js";
 import { OpenAiImageGenerator } from "../infrastructure/campaign/image/openai-image-generator.js";
 import { DmJobWorker } from "../application/campaign/workers/dm-job-worker.js";
@@ -183,6 +184,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
             adventures,
             generator: new OpenAiImageGenerator(configuration.campaignImages),
             sink: { post: (channelId, image, caption): Promise<void> => messages.sendImage(channelId, image.bytes, image.mediaType, caption) },
+            fallback: monsterGalleryImage,
             monsterName: (monsterId, language): string | undefined => glossaries[language].names[monsterId],
             assets: new FileImageAssetStore(resolve(configuration.runtimeDataDirectory, "campaign-images")),
             budgetPerCampaign: configuration.campaignImages.budget,

@@ -168,6 +168,7 @@ export function joinHero(decision: Decision, sheet: CharacterSheet): Rejection |
   const problems = heroProblems(state, sheet, decision);
   if (problems.length > 0) return { code: "invalidHero", problems };
   decision.emit({ kind: "heroJoined", sheet });
+  decision.request({ kind: "heroImage", characterId: sheet.id });
   return null;
 }
 

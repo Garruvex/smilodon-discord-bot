@@ -109,6 +109,8 @@ export interface CampaignRecord {
   // What became of each scene's picture, and how much of the picture budget is spent.
   readonly images?: Readonly<Record<string, "made" | "done" | "skipped" | "failed">>;
   readonly imageBudget?: { readonly limit: number; readonly used: number };
+  // The subject of the picture posted last, which the organizer's Redo repaints.
+  readonly lastPicture?: string;
 }
 
 export interface StoredRecord {

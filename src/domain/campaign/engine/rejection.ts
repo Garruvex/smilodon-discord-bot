@@ -28,6 +28,7 @@ export type Rejection =
   | { readonly code: "nothingToRetell" }
   | { readonly code: "staleRound" }
   | { readonly code: "nothingToIllustrate" }
+  | { readonly code: "nothingToRedo" }
   | { readonly code: "invalidProxy" }
   | { readonly code: "invalidSummary"; readonly problem: "text" | "numbers" }
   | { readonly code: "invalidLedgerFact"; readonly problem: string }
