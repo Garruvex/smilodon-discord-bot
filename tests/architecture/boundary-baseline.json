@@ -1,14 +1,3 @@
 {
-  "violations": [
-    "Character:engine/rest.ts -> Combat:combat/combatant-profile.ts",
-    "Combat:engine/combat/combat-flow.ts -> Exploration:engine/rounds.ts",
-    "Combat:engine/combat/combat-flow.ts -> Table:engine/members.ts",
-    "Combat:engine/combat/combat-flow.ts -> Table:engine/reminders.ts",
-    "Exploration:engine/round-plan.ts -> Combat:engine/combat/combat-flow.ts",
-    "Exploration:engine/round-plan.ts -> Table:engine/reminders.ts",
-    "Exploration:engine/rounds.ts -> Table:engine/reminders.ts",
-    "Inventory:engine/inventory.ts -> Combat:combat/combatant-profile.ts",
-    "Inventory:engine/inventory.ts -> Combat:engine/combat/combat-gear.ts"
-  ],
-  "kernelImports": 58
+  "kernelImports": 59
 }

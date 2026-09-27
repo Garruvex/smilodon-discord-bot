@@ -1,5 +1,5 @@
 import { abilityModifier } from "../character/character-sheet.js";
-import { defaultHeroResources, type HeroStatus } from "../combat/combatant-profile.js";
+import { defaultHeroResources, type HeroStatus } from "../character/hero-status.js";
 import type { CharacterId } from "../core/ids.js";
 import { isFallen } from "../state/campaign-state.js";
 import type { Decision } from "./decision.js";

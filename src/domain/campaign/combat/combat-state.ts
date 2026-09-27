@@ -1,4 +1,5 @@
 import type { EncounterSpec } from "../commands/campaign-command.js";
+import type { HeroResources } from "../character/hero-status.js";
 import type { EffectInstance } from "../effects/effect-instance.js";
 import type { CharacterId, Instant, RollId } from "../core/ids.js";
 import type { D20TestRoll, D20TestSpec } from "../dice/d20-test.js";
@@ -42,12 +43,8 @@ export interface CombatSpellcasting {
   readonly spells: readonly ContentId<"spell">[];
 }
 
-export interface CombatResources {
-  // Remaining slots per slot level.
-  readonly spellSlots: Readonly<Record<number, number>>;
-  // Remaining uses per limited feature.
-  readonly featureUses: Readonly<Record<string, number>>;
-}
+// A combatant's spell slots and feature uses left (a hero's own resources).
+export type CombatResources = HeroResources;
 
 export interface Concentration {
   readonly resolutionId: string;

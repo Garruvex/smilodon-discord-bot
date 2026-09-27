@@ -1,4 +1,5 @@
 import type { CharacterSheet } from "../character/character-sheet.js";
+import { actsForOwner } from "../character/ownership.js";
 import type { CharacterId, CheckId, Instant, UserId } from "../core/ids.js";
 import { isFallen, presentMembers, type CampaignState } from "../state/campaign-state.js";
 import { deadlineAfter, type Decision } from "./decision.js";
@@ -12,12 +13,8 @@ import { closeIfEveryoneResponded, enterWaiting, finishReadyCheck, finishRoundIf
 // A player marks themselves away, or the organizer marks them. An open
 // window's unanswered slot is excused rather than counted as a miss; a
 // submitted action stands.
-// Whether the actor may act for this hero's owner in a fight: the owner, or
-// the player they named while they are away (plan §5, Away mode: proxy play).
-export function actsForOwner(state: CampaignState, actorUserId: UserId, ownerUserId: UserId): boolean {
-  if (actorUserId === ownerUserId) return true;
-  return state.proxies?.[ownerUserId] === actorUserId && state.members[ownerUserId]?.availability === "away" && state.members[actorUserId]?.availability === "present";
-}
+// Whether the actor may act for this hero's owner in a fight (see character/ownership.ts).
+export { actsForOwner };
 
 // The hero this player controls right now: on a fight turn that belongs to an
 // away friend who named them, that friend's hero; otherwise their own. The turn

@@ -1,11 +1,10 @@
 import { checkModifier, isSkill, type CheckTest } from "../character/character-sheet.js";
 import type { CharacterId } from "../core/ids.js";
-import type { PlannedAction, PlannedEffect, RoundPlanProposal } from "../commands/campaign-command.js";
+import type { EncounterSpec, PlannedAction, PlannedEffect, RoundPlanProposal } from "../commands/campaign-command.js";
 import { resolveRollMode } from "../dice/roll.js";
 import { dcLadder, isDcTier, isRollModeReason, rollModeReasons } from "../rules/difficulty.js";
 import { abilities } from "../rules/effects.js";
 import type { CampaignState, CheckState, Resolution, RoundState } from "../state/campaign-state.js";
-import { encounterProblems } from "./combat/combat-flow.js";
 import { deadlineAfter, type Decision } from "./decision.js";
 import { checkIdFor, rollIdFor, rollTimerId } from "./ids.js";
 import type { Rejection } from "./rejection.js";
@@ -15,14 +14,17 @@ import { finishRoundIfResolved } from "./rounds.js";
 // Applies the Planner's proposal for a closed round. The proposal comes from
 // a model, so every value is checked at runtime even where the types already
 // say it is valid; nothing applies unless the whole proposal is valid.
-export function applyRoundPlan(decision: Decision, proposal: RoundPlanProposal): Rejection | null {
+// Whether a fight the plan would start is valid: Combat's rule, passed in by the caller.
+export type EncounterCheck = (decision: Decision, spec: EncounterSpec) => readonly string[];
+
+export function applyRoundPlan(decision: Decision, proposal: RoundPlanProposal, checkEncounter: EncounterCheck): Rejection | null {
   const { state, ctx } = decision;
   if (ctx.actor.kind !== "system") return { code: "systemOnly" };
   if (state.status === "waitingForPlayers") return { code: "campaignWaiting" };
   const round = state.round;
   if (round?.status !== "planning" || round.number !== proposal.roundNumber) return { code: "stalePlan" };
 
-  const problems = [...validateProposal(round, proposal), ...effectProblems(decision, proposal)];
+  const problems = [...validateProposal(round, proposal), ...effectProblems(decision, proposal, checkEncounter)];
   if (problems.length > 0) return { code: "invalidPlan", problems };
 
   const resolutions: Record<CharacterId, Resolution> = {};
@@ -97,7 +99,7 @@ export function validateProposal(round: RoundState, proposal: RoundPlanProposal)
 
 // At most one scene change and one fight per round; a conditional effect
 // must hang on a check this proposal actually asks for.
-function effectProblems(decision: Decision, proposal: RoundPlanProposal): readonly string[] {
+function effectProblems(decision: Decision, proposal: RoundPlanProposal, checkEncounter: EncounterCheck): readonly string[] {
   const effects = proposal.effects ?? [];
   const problems: string[] = [];
   const count = (kind: PlannedEffect["effect"]["kind"]): number => effects.filter((planned) => planned.effect.kind === kind).length;
@@ -115,12 +117,12 @@ function effectProblems(decision: Decision, proposal: RoundPlanProposal): readon
         if (!/^scene:[a-z0-9-]+$/.test(effect.sceneId)) problems.push(`Scene ID "${effect.sceneId}" is malformed.`);
         break;
       case "startEncounter":
-        problems.push(...encounterProblems(decision, effect.encounter).map((problem) => `Encounter ${effect.encounter.id}: ${problem}`));
+        problems.push(...checkEncounter(decision, effect.encounter).map((problem) => `Encounter ${effect.encounter.id}: ${problem}`));
         break;
       case "advanceClock":
         if (!Number.isInteger(effect.by) || effect.by < 1 || effect.by > 3) problems.push(`Clock ${effect.clockId} may advance by 1 to 3 segments.`);
         if (!Number.isInteger(effect.segments) || effect.segments < 2) problems.push(`Clock ${effect.clockId} needs at least 2 segments.`);
-        if (effect.onFull !== null) problems.push(...encounterProblems(decision, effect.onFull).map((problem) => `Clock ${effect.clockId} encounter ${effect.onFull?.id ?? ""}: ${problem}`));
+        if (effect.onFull !== null) problems.push(...checkEncounter(decision, effect.onFull).map((problem) => `Clock ${effect.clockId} encounter ${effect.onFull?.id ?? ""}: ${problem}`));
         break;
       case "revealClue":
         if (effect.text.trim().length === 0) problems.push(`Clue ${effect.clueId} needs text.`);

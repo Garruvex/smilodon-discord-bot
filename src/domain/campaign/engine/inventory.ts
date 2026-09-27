@@ -3,9 +3,8 @@ import type { CharacterId } from "../core/ids.js";
 import type { ContentId } from "../rules/content-id.js";
 import { itemTrading } from "../rules/house-rules.js";
 import { isFallen, type CampaignState, type ItemOffer } from "../state/campaign-state.js";
-import { isWorn } from "../combat/combatant-profile.js";
-import { canHandOver, refreshGear, startHandOver } from "./combat/combat-gear.js";
 import type { Decision } from "./decision.js";
+import { isWorn } from "./gear.js";
 import { potionFor } from "./potions.js";
 import type { Rejection } from "./rejection.js";
 
@@ -15,7 +14,15 @@ import type { Rejection } from "./rejection.js";
 // given or robbed of anything without saying yes. Armor class and attacks
 // come from the gear at the start of each fight, so a moved item changes
 // them from the next fight on.
-export function handleInventoryCommand(decision: Decision, command: InventoryCommand): Rejection | null {
+// What handing an item over means inside a fight, which Combat supplies: the giver
+// spends a bonus action, the heroes must still stand together, and gear follows the items.
+export interface InventoryHooks {
+  startHandOver(decision: Decision, fromId: CharacterId, toId: CharacterId): Rejection | null;
+  canHandOver(decision: Decision, fromId: CharacterId, toId: CharacterId): boolean;
+  refreshGear(decision: Decision, characterIds: readonly CharacterId[]): void;
+}
+
+export function handleInventoryCommand(decision: Decision, command: InventoryCommand, hooks: InventoryHooks): Rejection | null {
   const { state } = decision;
   if (decision.ctx.actor.kind !== "user") return { code: "notMember" };
   const inCombat = state.encounter !== null && state.encounter.status !== "ended";
@@ -25,9 +32,9 @@ export function handleInventoryCommand(decision: Decision, command: InventoryCom
   }
   switch (command.kind) {
     case "offerItem":
-      return offerItem(decision, command);
+      return offerItem(decision, command, hooks);
     case "respondToOffer":
-      return respondToOffer(decision, command.offerId, command.accept);
+      return respondToOffer(decision, command.offerId, command.accept, hooks);
     case "cancelOffer":
       return cancelOffer(decision, command.offerId);
     case "stashItem": {
@@ -52,7 +59,7 @@ export function handleInventoryCommand(decision: Decision, command: InventoryCom
   }
 }
 
-function offerItem(decision: Decision, command: Extract<InventoryCommand, { kind: "offerItem" }>): Rejection | null {
+function offerItem(decision: Decision, command: Extract<InventoryCommand, { kind: "offerItem" }>, hooks: InventoryHooks): Rejection | null {
   const { state } = decision;
   if (decision.ctx.rules.houseRules.option(itemTrading) === "off") return { code: "tradingOff" };
   const { fromCharacterId, toCharacterId, give, want } = command;
@@ -63,7 +70,7 @@ function offerItem(decision: Decision, command: Extract<InventoryCommand, { kind
   if (!holds(state, fromCharacterId, give)) return { code: "itemNotHeld" };
   if (want !== null && !holds(state, toCharacterId, want)) return { code: "itemNotHeld" };
   if (state.encounter !== null && state.encounter.status !== "ended") {
-    const handOver = startHandOver(decision, fromCharacterId, toCharacterId);
+    const handOver = hooks.startHandOver(decision, fromCharacterId, toCharacterId);
     if (handOver !== null) return handOver;
   }
   const offer: ItemOffer = { id: `offer:${state.offerCount + 1}`, fromCharacterId, toCharacterId, give, want };
@@ -72,7 +79,7 @@ function offerItem(decision: Decision, command: Extract<InventoryCommand, { kind
   return null;
 }
 
-function respondToOffer(decision: Decision, offerId: string, accept: boolean): Rejection | null {
+function respondToOffer(decision: Decision, offerId: string, accept: boolean, hooks: InventoryHooks): Rejection | null {
   const { state } = decision;
   const offer = state.offers[offerId];
   if (offer === undefined) return { code: "unknownOffer" };
@@ -85,13 +92,13 @@ function respondToOffer(decision: Decision, offerId: string, accept: boolean): R
   if (
     !holds(state, offer.fromCharacterId, offer.give) ||
     (offer.want !== null && !holds(state, offer.toCharacterId, offer.want)) ||
-    !canHandOver(decision, offer.fromCharacterId, offer.toCharacterId)
+    !hooks.canHandOver(decision, offer.fromCharacterId, offer.toCharacterId)
   ) {
     decision.emit({ kind: "offerClosed", offerId, reason: "unavailable" });
     return null;
   }
   decision.emit({ kind: "offerAccepted", offerId });
-  refreshGear(decision, [offer.fromCharacterId, offer.toCharacterId]);
+  hooks.refreshGear(decision, [offer.fromCharacterId, offer.toCharacterId]);
   return null;
 }
 

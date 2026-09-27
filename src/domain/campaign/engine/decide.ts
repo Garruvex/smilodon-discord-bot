@@ -5,7 +5,8 @@ import type { RollResult } from "../dice/roll-spec.js";
 import type { CampaignState } from "../state/campaign-state.js";
 import { recordCheckRoll, requestRoll, rollTimerExpired } from "./checks.js";
 import { retryEncounter } from "./combat/combat-retry.js";
-import { handleCombatCommand, recordCombatNarration, recordCombatRoll } from "./combat/combat-flow.js";
+import { canHandOver, refreshGear, startHandOver } from "./combat/combat-gear.js";
+import { encounterProblems, handleCombatCommand, recordCombatNarration, recordCombatRoll } from "./combat/combat-flow.js";
 import { handleInventoryCommand } from "./inventory.js";
 import { takeRest } from "./rest.js";
 import { Decision, type DecideResult, type EngineContext } from "./decision.js";
@@ -42,7 +43,7 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
     case "timerReminder":
       return remind(decision, command.target);
     case "applyRoundPlan":
-      return applyRoundPlan(decision, command.proposal);
+      return applyRoundPlan(decision, command.proposal, encounterProblems);
     case "requestRoll":
       return requestRoll(decision, command.checkId);
     case "rollTimerExpired":
@@ -77,8 +78,14 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
       return markReady(decision);
     case "beginPlay":
       return beginPlay(decision);
-    case "recordCombatNarration":
-      return recordCombatNarration(decision, command.encounterId, command.round, command.text);
+    case "recordCombatNarration": {
+      const rejection = recordCombatNarration(decision, command.encounterId, command.round, command.text);
+      if (rejection !== null) return rejection;
+      // The closing narration of a fight opens the next exploration round.
+      const { encounter } = decision.state;
+      if (encounter?.status === "ended" && command.round === encounter.round && decision.state.status === "active" && decision.state.round === null) return openRound(decision);
+      return null;
+    }
     case "recordLedgerFact":
       return recordLedgerFact(decision, command);
     case "recordSummary":
@@ -101,7 +108,7 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
     case "useItem":
     case "wearItem":
     case "removeItem":
-      return handleInventoryCommand(decision, command);
+      return handleInventoryCommand(decision, command, { startHandOver, canHandOver, refreshGear });
     case "retryEncounter":
       return retryEncounter(decision);
     case "joinHero":

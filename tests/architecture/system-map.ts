@@ -25,11 +25,13 @@ const rules: readonly (readonly [RegExp, System])[] = [
   [/^combat\//, "Combat"],
   [/^engine\/combat\//, "Combat"],
   [/^engine\/(rounds|checks|round-plan)\.ts$/, "Exploration"],
+  [/^engine\/gear\.ts$/, "Inventory"],
+  [/^character\/(hero-status|ownership)\.ts$/, "Character"],
   [/^ledger\//, "Exploration"],
   [/^lobby\//, "Table"],
-  [/^engine\/(members|pause|reminders|speech|dm)\.ts$/, "Table"],
+  [/^engine\/(members|pause|speech|dm)\.ts$/, "Table"],
   [/^(state|events|commands)\//, "Kernel"],
-  [/^engine\/(decide|decision|rejection|engine-request|ids|narration-limits)\.ts$/, "Kernel"],
+  [/^engine\/(decide|decision|rejection|engine-request|ids|narration-limits|reminders)\.ts$/, "Kernel"],
 ];
 
 export const domainRoot = "src/domain/campaign";

@@ -1,37 +1,18 @@
 import { abilityModifier, savingThrowModifier, type CharacterSheet } from "../character/character-sheet.js";
-import type { ContentId } from "../rules/content-id.js";
 import { plus } from "../dice/dice-expression.js";
 import { traitsOf, type MonsterDefinition, type WeaponDefinition } from "../rules/content-definitions.js";
 import type { SealedContent } from "../rules/content-registry.js";
 import { abilities, type Ability } from "../rules/effects.js";
 import type { Trait } from "../rules/traits.js";
-import type { AttackOption, Combatant, CombatResources, ZoneId } from "./combat-state.js";
+import type { HeroStatus } from "../character/hero-status.js";
+import { isWorn } from "../engine/gear.js";
+import type { AttackOption, Combatant, ZoneId } from "./combat-state.js";
 
 const freshTurn = { action: true, bonusAction: true, reaction: true, movement: 0 } as const;
 
-// What a hero brings into a fight from outside it.
-export interface HeroStatus {
-  readonly hp: number;
-  readonly resources: CombatResources;
-  // Unspent Hit Dice; absent means all of them (the hero's level).
-  readonly hitDice?: number;
-  // Died in a fight; never rejoins one.
-  readonly dead?: boolean;
-}
-
-// Armor and shields count only while worn; everything else carried counts.
-export function isWorn(sheet: CharacterSheet, content: SealedContent, itemId: ContentId<"item">): boolean {
-  const type = wearableType(content, itemId);
-  if (type === null) return true;
-  if (sheet.worn !== undefined) return sheet.worn.includes(itemId);
-  // Nothing recorded yet: the first armor and the first shield carried are worn.
-  return sheet.equipment.find((id) => wearableType(content, id) === type) === itemId;
-}
-
-function wearableType(content: SealedContent, itemId: ContentId<"item">): "armor" | "shield" | null {
-  const definition = content.find(itemId);
-  return definition?.kind === "item" && (definition.itemType === "armor" || definition.itemType === "shield") ? definition.itemType : null;
-}
+// Hero status and worn gear belong to Character and Inventory; they are re-exported for callers that build combatants.
+export { defaultHeroResources, type HeroStatus } from "../character/hero-status.js";
+export { isWorn } from "../engine/gear.js";
 
 // Everything the hero's worn gear and features grant, as one list.
 export function heroTraits(sheet: CharacterSheet, content: SealedContent): readonly Trait[] {
@@ -76,15 +57,6 @@ export function heroAttackOption(sheet: CharacterSheet, weapon: WeaponDefinition
     finesse: weapon.finesse || weapon.range.kind === "ranged",
     onHit: [],
   };
-}
-
-export function defaultHeroResources(sheet: CharacterSheet, content: SealedContent): CombatResources {
-  const featureUses: Record<string, number> = {};
-  for (const id of sheet.features) {
-    const feature = content.find(id);
-    if (feature?.kind === "feature" && feature.action !== null) featureUses[id] = feature.action.uses.count;
-  }
-  return { spellSlots: { ...(sheet.spellcasting?.slots ?? {}) }, featureUses };
 }
 
 export function heroCombatant(sheet: CharacterSheet, content: SealedContent, zoneId: ZoneId, status: HeroStatus): Combatant {

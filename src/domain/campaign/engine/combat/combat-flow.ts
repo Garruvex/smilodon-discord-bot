@@ -2,7 +2,7 @@ import type { CombatCommand, EncounterSpec } from "../../commands/campaign-comma
 import { assertNever } from "../../core/assert-never.js";
 import type { RollId, UserId } from "../../core/ids.js";
 import { scheduleReminder } from "../reminders.js";
-import { actsForOwner } from "../members.js";
+import { actsForOwner } from "../../character/ownership.js";
 import { isFallen } from "../../state/campaign-state.js";
 import type { ActionCost } from "../../combat/combat-events.js";
 import {
@@ -18,7 +18,8 @@ import {
   type ResolutionState,
   type TurnPlanRemainder,
 } from "../../combat/combat-state.js";
-import { defaultHeroResources, heroCombatant, monsterCombatant } from "../../combat/combatant-profile.js";
+import { defaultHeroResources } from "../../character/hero-status.js";
+import { heroCombatant, monsterCombatant } from "../../combat/combatant-profile.js";
 import { attackProblem, costProblem, engageProblem, featureProblem, moveProblem, spellProblem, withdrawProblem } from "../../combat/turn-rules.js";
 import { avoidsOpportunityAttacks, bonusDiceFor, canAct, conditionLookup, effectsDueAt, hasCondition } from "../../effects/effect-queries.js";
 import { edgeBetween, engageCost, withdrawCost } from "../../combat/positioning.js";
@@ -31,7 +32,6 @@ import { awaySafety, combatMode, lootGold } from "../../rules/house-rules.js";
 import { deadlineAfter, type Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { maxNarrationLength } from "../narration-limits.js";
-import { openRound } from "../rounds.js";
 import { changeShieldInCombat, useItemInCombat } from "./combat-gear.js";
 import { beginTriggers, recordTriggerRoll } from "./effect-triggers.js";
 import { answerReaction, declineReactionFor, reactionTimerExpired } from "./reactions.js";
@@ -798,7 +798,7 @@ export function endIfDecided(decision: Decision): boolean {
 
 // Saves a flourish (plan §6, Combat presentation). Flourishes never hold up
 // turns; one that arrives after a later round was described is dropped. The
-// closing narration opens the next exploration round.
+// closing narration opens the next exploration round (decide.ts does that).
 export function recordCombatNarration(decision: Decision, encounterId: string, round: number, text: string): Rejection | null {
   const { state, ctx } = decision;
   if (ctx.actor.kind !== "system") return { code: "systemOnly" };
@@ -811,7 +811,6 @@ export function recordCombatNarration(decision: Decision, encounterId: string, r
   if (!final && round === encounter.round) return { code: "staleNarration" };
   decision.emit({ kind: "combatNarrationRecorded", round, text: trimmed, final });
   decision.request({ kind: "deliver", delivery: { kind: "combatNarration", encounterId, round } });
-  if (final && state.status === "active" && state.round === null) return openRound(decision);
   return null;
 }
 
