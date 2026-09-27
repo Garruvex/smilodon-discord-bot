@@ -11,6 +11,15 @@ export interface ImageGenerator {
   generate(request: { readonly prompt: string; readonly timeoutMs: number }): Promise<GeneratedImage>;
 }
 
+// A made picture kept until it has been posted, so a failed post is retried
+// from the saved picture instead of asking (and paying) the model again. A
+// missing picture reads as undefined.
+export interface ImageAssetStore {
+  save(key: { readonly guildId: string; readonly campaignId: string }, sceneId: string, image: GeneratedImage): Promise<void>;
+  load(key: { readonly guildId: string; readonly campaignId: string }, sceneId: string): Promise<GeneratedImage | undefined>;
+  remove(key: { readonly guildId: string; readonly campaignId: string }, sceneId: string): Promise<void>;
+}
+
 // Where a finished picture goes: the game's Adventure channel.
 export interface SceneImageSink {
   post(channelId: string, image: GeneratedImage, caption: string): Promise<void>;

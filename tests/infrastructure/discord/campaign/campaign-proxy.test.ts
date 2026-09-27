@@ -82,5 +82,12 @@ describe("naming a proxy", () => {
     await t.handler.execute({ interaction: menu.interaction, logger: quiet as never });
     expect(menus(menu.sent).some((entry) => entry.id.startsWith("dnd:pick:"))).toBe(true);
     expect(contentOf(menu.sent)).toContain(heroes[0]?.name ?? "");
+
+    // What the menu shows is what its controls act on: the proxy ends the away hero's turn.
+    const end = fakeInteraction({ customId: `dnd:endTurn:${t.key.campaignId}:yes`, userId: "u-two", kind: "button" });
+    await t.handler.execute({ interaction: end.interaction, logger: quiet as never });
+    expect(contentOf(end.sent)).toBe("You ended your turn.");
+    const after = (await t.r.store.transaction((tx) => tx.loadCampaign(t.key)))?.state.encounter;
+    expect(after?.combatants[after.order[after.turnIndex] ?? ""]?.id).not.toBe(heroes[0]?.id);
   });
 });

@@ -258,6 +258,7 @@ export const campaignEn = {
   "campaign.msg.retold": "🔄 *The organizer asked for that scene to be told again:*",
   "campaign.manage.retell": "Retell the last scene",
   "campaign.cmd.retold": "The last scene will be told again. Only the words change; nothing that happened does.",
+  "campaign.refusal.staleRound": "That form was for an earlier round. Press Act to open a fresh one.",
   "campaign.refusal.nothingToRetell": "There is no narration to retell yet, or it has already moved on.",
   "campaign.msg.yourTurn": "⚔️ <@{user}>, it is **{hero}**'s turn.",
   "campaign.msg.combatAction": "⚔️ **{actor}** · {using} → {results}",

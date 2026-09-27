@@ -24,7 +24,7 @@ export type CampaignCommand =
   | { readonly kind: "ready" }
   // The organizer opens the first round without waiting for everyone.
   | { readonly kind: "beginPlay" }
-  | { readonly kind: "submitAction"; readonly characterId: CharacterId; readonly text: string }
+  | { readonly kind: "submitAction"; readonly characterId: CharacterId; readonly text: string; readonly roundNumber?: number }
   | { readonly kind: "pass"; readonly characterId: CharacterId }
   | { readonly kind: "closeRound" }
   | { readonly kind: "roundTimerExpired"; readonly roundNumber: number }

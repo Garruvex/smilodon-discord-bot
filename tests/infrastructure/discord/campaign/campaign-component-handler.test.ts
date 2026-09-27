@@ -67,6 +67,26 @@ describe("the play controls", () => {
     expect(contentOf(await t.submit("u-org", "   "))).toBe("Write what your hero does first.");
   });
 
+  it("refuses a form opened in an earlier round, and takes one for the round that is open", async () => {
+    const t = await harness();
+    await started(t);
+    const round = (await t.r.store.transaction((tx) => tx.loadCampaign(t.key)))?.state.round?.number ?? 0;
+    const opened = await t.press("act", "u-org");
+    expect(JSON.stringify(opened[0]?.payload)).toContain(`dnd:act:${t.key.campaignId}:${round}`);
+    // Nobody acts, so the organizer closes a quiet round and the next one opens.
+    await t.r.bus.execute(t.key, { kind: "closeRound" }, { commandId: "close-1", actor: { kind: "user", userId: "u-org" } });
+    expect((await t.r.store.transaction((tx) => tx.loadCampaign(t.key)))?.state.round?.number).toBe(round + 1);
+
+    const submit = async (forRound: number): Promise<Sent[]> => {
+      const { interaction, sent } = fakeInteraction({ customId: `dnd:act:${t.key.campaignId}:${forRound}`, userId: "u-org", fields: { action: "I search the room." }, kind: "modal" });
+      await t.handler.executeModal({ interaction, logger: quiet as never });
+      return sent;
+    };
+    expect(contentOf(await submit(round))).toBe("That form was for an earlier round. Press Act to open a fresh one.");
+    expect((await t.r.store.transaction((tx) => tx.loadCampaign(t.key)))?.state.round?.submissions[heroes[0]?.id ?? ""]).toBeUndefined();
+    expect(contentOf(await submit(round + 1))).toBe("Your action is saved. You can change it until the round closes.");
+  });
+
   it("explains refusals privately: strangers, waiting play, rolls that are not there", async () => {
     const t = await harness();
     await started(t);

@@ -61,12 +61,14 @@ export function finishReadyCheck(decision: Decision): void {
   openRound(decision, { skipActorCheck: true });
 }
 
-export function submitAction(decision: Decision, characterId: CharacterId, text: string): Rejection | null {
+export function submitAction(decision: Decision, characterId: CharacterId, text: string, forRound?: number): Rejection | null {
   const trimmed = text.trim();
   if (trimmed.length === 0) return { code: "emptyAction" };
   if (trimmed.length > maxActionLength) return { code: "actionTooLong", maxLength: maxActionLength };
   const round = roundAcceptingResponse(decision, characterId);
   if ("code" in round) return round;
+  // A form opened in an earlier round must not land in this one.
+  if (forRound !== undefined && forRound !== round.number) return { code: "staleRound" };
   const previous = round.submissions[characterId];
   const revision = previous?.kind === "action" ? previous.revision + 1 : 1;
   decision.emit({ kind: "actionSubmitted", roundNumber: round.number, characterId, text: trimmed, revision });

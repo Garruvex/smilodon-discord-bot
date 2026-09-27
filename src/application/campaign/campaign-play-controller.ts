@@ -1,5 +1,6 @@
 import type { ContentId } from "../../domain/campaign/rules/content-id.js";
 import type { CampaignCommand, CombatCommand } from "../../domain/campaign/commands/campaign-command.js";
+import { actingHero } from "../../domain/campaign/engine/members.js";
 import { isFallen } from "../../domain/campaign/state/campaign-state.js";
 import type { AdventureLibrary } from "./ports/adventure-library.js";
 import type { CharacterId, UserId } from "../../domain/campaign/core/ids.js";
@@ -70,8 +71,9 @@ export class CampaignPlayController {
     return { kind: "ok" };
   }
 
-  public submitAction(key: CampaignKey, userId: UserId, text: string, interactionId: string): Promise<PlayResult> {
-    return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "submitAction", characterId, text }));
+  // roundNumber is the round the form was opened for; the engine refuses it in any other round.
+  public submitAction(key: CampaignKey, userId: UserId, text: string, interactionId: string, roundNumber?: number): Promise<PlayResult> {
+    return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "submitAction", characterId, text, ...(roundNumber === undefined ? {} : { roundNumber }) }));
   }
 
   public pass(key: CampaignKey, userId: UserId, interactionId: string): Promise<PlayResult> {
@@ -138,8 +140,12 @@ export class CampaignPlayController {
   }
 
   // A turn action for the clicker's own hero (the engine checks whose turn it is).
+  // On an away friend's turn, a proxy they named acts as that friend's hero.
   public combat(key: CampaignKey, userId: UserId, interactionId: string, command: (characterId: CharacterId) => CombatCommand): Promise<PlayResult> {
-    return this.asHero(key, userId, interactionId, command);
+    return this.perform(key, userId, interactionId, (state) => {
+      const heroId = actingHero(state, userId);
+      return heroId === null ? "noHero" : command(heroId);
+    });
   }
 
   public ready(key: CampaignKey, userId: UserId, interactionId: string): Promise<PlayResult> {

@@ -32,7 +32,7 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
     case "openRound":
       return openRound(decision);
     case "submitAction":
-      return submitAction(decision, command.characterId, command.text);
+      return submitAction(decision, command.characterId, command.text, command.roundNumber);
     case "pass":
       return pass(decision, command.characterId);
     case "closeRound":

@@ -47,7 +47,7 @@ import type { CharacterLibrary } from "../../../application/campaign/library/cha
 import { libraryHeroRef, savedSnapshotIdOf } from "../../../application/campaign/library/library-types.js";
 import { conflictLines } from "./character-library-component-handler.js";
 import { buildJournal, buildRecap } from "../../../application/campaign/views/story-views.js";
-import { actsForOwner } from "../../../domain/campaign/engine/members.js";
+import { actingHero } from "../../../domain/campaign/engine/members.js";
 import { renderRulesScreen, ruleLines } from "../campaign/rules-screen.js";
 import { houseRulePresets } from "../../../domain/campaign/rules/house-rules.js";
 import { refusalText } from "../campaign/refusal-text.js";
@@ -211,7 +211,8 @@ export class CampaignComponentHandler implements ComponentHandler {
 
     // A form must be the first response; everything else acknowledges first so a slow step never expires the click.
     if (parsed.action === "act") {
-      await interaction.showModal(this.actionModal(record, text));
+      const open = await this.deps.unitOfWork.transaction((tx) => tx.loadCampaign(key));
+      await interaction.showModal(this.actionModal(record, text, open?.state.round?.number));
       return;
     }
     if (parsed.action === "speak") {
@@ -362,7 +363,8 @@ export class CampaignComponentHandler implements ComponentHandler {
       await interaction.editReply({ content: spoke.kind === "ok" ? text.campaign.reply.spoke : refusalText(text, spoke.reason) });
       return;
     }
-    const result = await this.deps.play.submitAction(key, interaction.user.id, this.field(interaction), interaction.id);
+    const forRound = parsed.argument === null ? Number.NaN : Number(parsed.argument);
+    const result = await this.deps.play.submitAction(key, interaction.user.id, this.field(interaction), interaction.id, Number.isInteger(forRound) ? forRound : undefined);
     await interaction.editReply({ content: result.kind === "ok" ? text.campaign.reply.actionSaved : refusalText(text, result.reason) });
   }
 
@@ -400,9 +402,9 @@ export class CampaignComponentHandler implements ComponentHandler {
     await reply(result.kind === "ok" ? success : refusalText(text, result.reason));
   }
 
-  private actionModal(record: CampaignRecord, text: Texts): ModalBuilder {
+  private actionModal(record: CampaignRecord, text: Texts, roundNumber: number | undefined): ModalBuilder {
     return new ModalBuilder()
-      .setCustomId(campaignCustomId("act", record.key.campaignId))
+      .setCustomId(roundNumber === undefined ? campaignCustomId("act", record.key.campaignId) : campaignCustomId("act", record.key.campaignId, String(roundNumber)))
       .setTitle(text.campaign.modal.title)
       .addComponents(
         new ActionRowBuilder<TextInputBuilder>().addComponents(
@@ -546,12 +548,9 @@ export class CampaignComponentHandler implements ComponentHandler {
     const bible = this.deps.adventures.find(record.adventure.adventureId, record.adventure.version, record.language);
     if (loaded === undefined || glossary === undefined || bible === undefined) return { kind: "message", content: text.campaign.refusal.notActive };
     const { state } = loaded;
-    const own = state.members[userId]?.characterId ?? null;
     const encounter = state.encounter;
-    // A player an away friend named plays that friend's hero on its turn.
-    const turnOf = encounter === null ? undefined : encounter.combatants[encounter.order[encounter.turnIndex] ?? ""];
-    const proxied = turnOf?.source.kind === "hero" ? state.characters[turnOf.source.characterId] : undefined;
-    const heroId = proxied !== undefined && proxied.id !== own && actsForOwner(state, userId, proxied.ownerUserId) ? proxied.id : own;
+    // A player an away friend named plays that friend's hero on its turn (the controls act as the same hero).
+    const heroId = actingHero(state, userId);
     if (heroId === null) return { kind: "message", content: text.campaign.refusal.noHero };
     if (encounter === null || encounter.status !== "active") return { kind: "message", content: text.campaign.refusal.notInCombat };
     const { content, houseRules } = this.deps.rulesets.resolve(loaded.ruleset);

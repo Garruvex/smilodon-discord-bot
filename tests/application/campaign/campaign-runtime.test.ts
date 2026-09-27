@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { CampaignRuntime } from "../../../src/application/campaign/campaign-runtime.js";
 import { DeliveryWorker } from "../../../src/application/campaign/workers/delivery-worker.js";
 import { starterAdventureId } from "../../../src/infrastructure/campaign/starter-adventures.js";
 import { ruleset } from "../../domain/campaign/campaign-fixtures.js";
@@ -23,6 +24,47 @@ describe("the runtime", () => {
     expect(state?.lastNarratedRound).toBe(1);
     expect(state?.round).toMatchObject({ number: 2, status: "collecting" });
     expect(r.presenter.delivered.map((delivery) => delivery.kind)).toContain("narration");
+  });
+
+  it("lets a slow picture run beside the game's work instead of holding it up", async () => {
+    const r = rig();
+    const idle = { runOnce: (): Promise<{ processed: number; failed: never[] }> => Promise.resolve({ processed: 0, failed: [] }) };
+    let deliveries = 0;
+    let pictureRuns = 0;
+    let release: () => void = () => undefined;
+    const images = {
+      runOnce: (): Promise<{ processed: number; failed: never[] }> => {
+        pictureRuns += 1;
+        return new Promise((resolve) => {
+          release = (): void => resolve({ processed: 1, failed: [] });
+        });
+      },
+    };
+    const runtime = new CampaignRuntime({
+      unitOfWork: r.store,
+      bus: r.bus,
+      rolls: idle as never,
+      timers: idle as never,
+      dm: idle as never,
+      delivery: { runOnce: (): Promise<{ processed: number; failed: never[] }> => ((deliveries += 1), idle.runOnce()) } as never,
+      images: images as never,
+      logger: { info: (): void => undefined, warn: (): void => undefined, error: (): void => undefined },
+      bootId: "boot-pictures",
+    });
+    await runtime.start();
+    // The picture is still being painted, yet whole passes finish and deliver.
+    await runtime.runOnce();
+    await runtime.runOnce();
+    await runtime.runOnce();
+    expect(deliveries).toBeGreaterThanOrEqual(3);
+    // Only one picture run at a time.
+    expect(pictureRuns).toBe(1);
+    release();
+    await runtime.settlePictures();
+    await runtime.runOnce();
+    expect(pictureRuns).toBe(2);
+    release();
+    await runtime.stop();
   });
 
   it("keeps a campaign's deliveries in order and retries a failed one before the next", async () => {

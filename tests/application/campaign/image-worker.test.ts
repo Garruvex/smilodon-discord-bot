@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import type { GeneratedImage, ImageGenerator } from "../../../src/application/campaign/ports/image-ports.js";
+import type { GeneratedImage, ImageAssetStore, ImageGenerator } from "../../../src/application/campaign/ports/image-ports.js";
 import { ImageWorker } from "../../../src/application/campaign/workers/image-worker.js";
 import type { CampaignKey } from "../../../src/application/campaign/ports/campaign-store.js";
-import { rig, startedCampaign, starter, type Rig } from "./campaign-rig.js";
+import { starterAdventureId } from "../../../src/infrastructure/campaign/starter-adventures.js";
+import { guildId, rig, startedCampaign, starter, tellOpening, type Rig } from "./campaign-rig.js";
 
 const chapel = "scene:ruined-chapel";
 
@@ -21,7 +22,22 @@ class Painter implements ImageGenerator {
   }
 }
 
-async function table(budget = 3): Promise<{ r: Rig; key: CampaignKey; painter: Painter; posted: { channelId: string; caption: string }[]; worker: ImageWorker; failPost: { on: boolean } }> {
+class Shelf implements ImageAssetStore {
+  public readonly kept = new Map<string, GeneratedImage>();
+  public save(key: CampaignKey, sceneId: string, image: GeneratedImage): Promise<void> {
+    this.kept.set(`${key.campaignId}:${sceneId}`, image);
+    return Promise.resolve();
+  }
+  public load(key: CampaignKey, sceneId: string): Promise<GeneratedImage | undefined> {
+    return Promise.resolve(this.kept.get(`${key.campaignId}:${sceneId}`));
+  }
+  public remove(key: CampaignKey, sceneId: string): Promise<void> {
+    this.kept.delete(`${key.campaignId}:${sceneId}`);
+    return Promise.resolve();
+  }
+}
+
+async function table(budget = 3): Promise<{ r: Rig; key: CampaignKey; painter: Painter; posted: { channelId: string; caption: string }[]; worker: ImageWorker; failPost: { on: boolean }; shelf: Shelf }> {
   const r = rig();
   const key = await startedCampaign(r);
   await r.store.transaction(async (tx) => {
@@ -32,14 +48,16 @@ async function table(budget = 3): Promise<{ r: Rig; key: CampaignKey; painter: P
   const painter = new Painter();
   const posted: { channelId: string; caption: string }[] = [];
   const failPost = { on: false };
+  const shelf = new Shelf();
   const worker = new ImageWorker({
     unitOfWork: r.store,
     adventures: r.adventures,
     generator: painter,
     sink: { post: (channelId, _image, caption): Promise<void> => (failPost.on ? Promise.reject(new Error("no permission")) : (posted.push({ channelId, caption }), Promise.resolve())) },
+    assets: shelf,
     budgetPerCampaign: budget,
   });
-  return { r, key, painter, posted, worker, failPost };
+  return { r, key, painter, posted, worker, failPost, shelf };
 }
 
 const ask = (t: Awaited<ReturnType<typeof table>>, sceneId: string, id = sceneId): Promise<void> =>
@@ -102,12 +120,69 @@ describe("scene pictures", () => {
     expect((await t.r.store.transaction((tx) => tx.loadCampaign(t.key)))?.state.status).toBe("active");
   });
 
-  it("does not bill twice when only the posting failed", async () => {
+  it("does not bill twice when only the posting failed, and the retry posts the saved picture", async () => {
     const t = await table();
     t.failPost.on = true;
     await ask(t, chapel);
     await t.worker.runOnce();
     expect((await recordOf(t)).imageBudget).toEqual({ limit: 3, used: 1 });
+    expect((await recordOf(t)).images).toEqual({ [chapel]: "made" });
+    expect(t.shelf.kept.size).toBe(1);
+    // Discord works again: the retry delivers the same picture without painting.
+    t.failPost.on = false;
+    expect((await t.worker.runOnce()).processed).toBe(1);
+    expect(t.posted).toHaveLength(1);
+    expect(t.painter.prompts).toHaveLength(1);
+    expect((await recordOf(t)).images).toEqual({ [chapel]: "done" });
+    expect((await recordOf(t)).imageBudget).toEqual({ limit: 3, used: 1 });
+    expect(t.shelf.kept.size).toBe(0);
+  });
+
+  it("gives the scene up, and drops the saved picture, when every post fails", async () => {
+    const t = await table();
+    t.failPost.on = true;
+    await ask(t, chapel);
+    await t.worker.runOnce();
+    await t.worker.runOnce();
+    expect((await recordOf(t)).images).toEqual({ [chapel]: "failed" });
+    expect(t.shelf.kept.size).toBe(0);
+    expect(t.painter.prompts).toHaveLength(1);
+  });
+
+  it("paints different campaigns side by side, and one campaign's scenes in order", async () => {
+    const t = await table();
+    const created = await t.r.service.create({ guildId, organizerId: "u-two", name: "Other Ruins", language: "en", adventureId: starterAdventureId, pacing: { preset: "live" } });
+    if (created.kind !== "ok") throw new Error("create");
+    const second = created.value.key;
+    await t.r.service.join(second, "u-two");
+    await t.r.service.chooseHero(second, "u-two", starter.en.heroes[0]?.id ?? "");
+    await t.r.service.start(second, "u-two");
+    await tellOpening(t.r, second);
+    await t.r.store.transaction(async (tx) => {
+      const stored = await tx.loadRecord(second);
+      if (stored === undefined) throw new Error("record");
+      await tx.saveRecord({ ...stored.record, channels: { ...stored.record.channels, adventureChannelId: "chan-two" } }, stored.revision);
+    });
+    let running = 0;
+    let peak = 0;
+    const generate = t.painter.generate.bind(t.painter);
+    t.painter.generate = async (request): Promise<GeneratedImage> => {
+      running += 1;
+      peak = Math.max(peak, running);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      running -= 1;
+      return generate(request);
+    };
+    await ask(t, chapel);
+    await ask(t, chapel, "twice");
+    await ask(t, "scene:old-watchtower");
+    await t.r.store.transaction((tx) => tx.enqueue(second, "img-second", { kind: "sceneImage", sceneId: chapel, roundNumber: 1 }, 1));
+    await t.worker.runOnce();
+    expect(peak).toBe(2);
+    // The first campaign: chapel once, then the watchtower. The second: its chapel.
+    expect(t.painter.prompts).toHaveLength(3);
+    expect(t.posted.filter((post) => post.channelId === "chan-adventure")).toHaveLength(2);
+    expect(t.posted.filter((post) => post.channelId === "chan-two")).toHaveLength(1);
   });
 
   it("refuses a picture over the size limit, and paints nothing for a finished game", async () => {

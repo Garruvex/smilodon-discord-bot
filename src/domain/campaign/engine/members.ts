@@ -1,5 +1,5 @@
 import type { CharacterSheet } from "../character/character-sheet.js";
-import type { CheckId, Instant, UserId } from "../core/ids.js";
+import type { CharacterId, CheckId, Instant, UserId } from "../core/ids.js";
 import { isFallen, presentMembers, type CampaignState } from "../state/campaign-state.js";
 import { deadlineAfter, type Decision } from "./decision.js";
 import { rollTimerId, roundTimerId } from "./ids.js";
@@ -16,6 +16,18 @@ import { closeIfEveryoneResponded, enterWaiting, finishReadyCheck, finishRoundIf
 export function actsForOwner(state: CampaignState, actorUserId: UserId, ownerUserId: UserId): boolean {
   if (actorUserId === ownerUserId) return true;
   return state.proxies?.[ownerUserId] === actorUserId && state.members[ownerUserId]?.availability === "away" && state.members[actorUserId]?.availability === "present";
+}
+
+// The hero this player controls right now: on a fight turn that belongs to an
+// away friend who named them, that friend's hero; otherwise their own. The turn
+// menu and the controls it sends use this one rule, so what is shown is what is acted on.
+export function actingHero(state: CampaignState, userId: UserId): CharacterId | null {
+  const own = state.members[userId]?.characterId ?? null;
+  const encounter = state.encounter;
+  const turnOf = encounter === null || encounter.status !== "active" ? undefined : encounter.combatants[encounter.order[encounter.turnIndex] ?? ""];
+  if (turnOf?.source.kind !== "hero") return own;
+  const sheet = state.characters[turnOf.source.characterId];
+  return sheet !== undefined && sheet.id !== own && actsForOwner(state, userId, sheet.ownerUserId) ? sheet.id : own;
 }
 
 // The owner names a proxy (or takes the grant back). Only for one's own hero,

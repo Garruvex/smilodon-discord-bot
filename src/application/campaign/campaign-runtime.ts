@@ -48,6 +48,8 @@ export class CampaignRuntime {
   private running: Promise<void> | null = null;
   private again = false;
   private stopped = true;
+  // Pictures take a long time, so they run beside the game's work, never inside it.
+  private pictures: Promise<void> | null = null;
 
   public constructor(private readonly options: CampaignRuntimeOptions) {}
 
@@ -64,6 +66,7 @@ export class CampaignRuntime {
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
     await this.running;
+    await this.pictures;
   }
 
   // Called after a commit that queued work, so it runs promptly.
@@ -170,8 +173,26 @@ export class CampaignRuntime {
       if (this.report("roll", await rolls.runOnce(), logger).processed === 0) break;
     }
     this.report("delivery", await delivery.runOnce(), logger);
-    // Pictures come last and are only attempted once the table has its text.
-    if (this.options.images !== undefined) this.report("image", await this.options.images.runOnce(), logger);
+    this.startPictures();
+  }
+
+  // One picture run at a time, started here and not awaited: dice, timers and
+  // narration for every campaign carry on while the image model works.
+  private startPictures(): void {
+    const { images, logger } = this.options;
+    if (images === undefined || this.pictures !== null || this.stopped) return;
+    this.pictures = images
+      .runOnce()
+      .then((result) => void this.report("image", result, logger))
+      .catch((error: unknown) => logger.error({ err: error }, "Scene picture pass failed"))
+      .finally(() => {
+        this.pictures = null;
+      });
+  }
+
+  // Waits for the picture run in flight; for tests and the harness.
+  public async settlePictures(): Promise<void> {
+    await this.pictures;
   }
 
   private report(worker: string, result: WorkerRunResult, logger: RuntimeLogger): WorkerRunResult {

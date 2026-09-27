@@ -257,6 +257,7 @@ export const campaignZhTW = {
   "campaign.msg.retold": "🔄 *主辦人要求把這一幕重新說一次：*",
   "campaign.manage.retell": "重說上一幕",
   "campaign.cmd.retold": "上一幕會重新說一次。只有文字會改變，發生過的事不會",
+  "campaign.refusal.staleRound": "這份表單屬於較早的回合，請再按一次行動開新的",
   "campaign.refusal.nothingToRetell": "目前沒有可重說的敘述，或故事已經往下走了",
   "campaign.msg.yourTurn": "⚔️ <@{user}>，輪到**{hero}**了",
   "campaign.msg.combatAction": "⚔️ **{actor}** · {using} → {results}",
