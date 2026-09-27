@@ -13,6 +13,7 @@ export const goblin = defineMonster({
   source,
   armorClass: 15,
   maxHp: 7,
+  xp: 50,
   speed: 30,
   abilityScores: { str: 8, dex: 14, con: 10, int: 10, wis: 8, cha: 8 },
   attacks: [
@@ -28,6 +29,7 @@ export const wolf = defineMonster({
   source,
   armorClass: 13,
   maxHp: 11,
+  xp: 50,
   speed: 40,
   abilityScores: { str: 12, dex: 15, con: 12, int: 3, wis: 12, cha: 6 },
   attacks: [
@@ -50,6 +52,7 @@ export const bugbear = defineMonster({
   source,
   armorClass: 16,
   maxHp: 27,
+  xp: 200,
   speed: 30,
   abilityScores: { str: 15, dex: 14, con: 13, int: 8, wis: 11, cha: 9 },
   attacks: [
@@ -67,6 +70,7 @@ export const giantWolfSpider = defineMonster({
   source,
   armorClass: 13,
   maxHp: 11,
+  xp: 100,
   speed: 40,
   abilityScores: { str: 12, dex: 16, con: 13, int: 3, wis: 12, cha: 4 },
   attacks: [

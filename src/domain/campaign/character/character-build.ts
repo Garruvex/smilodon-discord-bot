@@ -350,6 +350,7 @@ export function deriveSheet(build: BuildChoices, gear?: { readonly equipment: re
     skills,
     savingThrows: template.savingThrows,
     level: 1,
+    xp: 0,
     maxHp: Math.max(1, template.hitDie + abilityModifier(build.abilities.con)),
     hitDie: template.hitDie,
     speed: 30,

@@ -5,6 +5,7 @@ import type { LedgerVisibility } from "../ledger/ledger.js";
 import type { SceneId } from "../adventure/adventure-bible.js";
 import type { EncounterSpec, PlannedEffect } from "../commands/campaign-command.js";
 import type { CharacterSheet } from "../character/character-sheet.js";
+import type { Ability } from "../rules/effects.js";
 import type { ContentId } from "../rules/content-id.js";
 import type { CheckResult, CheckState, ItemOffer, Resolution } from "../state/campaign-state.js";
 
@@ -110,6 +111,18 @@ export type CampaignEvent =
   | { readonly kind: "heroJoined"; readonly sheet: CharacterSheet }
   // The lost fight is set aside and the party is back as it stood at its start.
   | { readonly kind: "encounterRetried"; readonly encounterId: string }
+  // A victory's XP, split evenly among the heroes still standing (character/leveling.ts).
+  | { readonly kind: "experienceAwarded"; readonly encounterId: string; readonly xp: Readonly<Record<CharacterId, number>> }
+  // One level gained, from crossing an XP threshold. Emitted once per level
+  // when a big XP award crosses more than one at once.
+  | {
+      readonly kind: "characterLeveledUp";
+      readonly characterId: CharacterId;
+      readonly level: number;
+      readonly maxHp: number;
+      readonly abilityScores: Readonly<Record<Ability, number>>;
+      readonly spellcasting: CharacterSheet["spellcasting"];
+    }
   | CombatEvent;
 
 export type OfferClosedReason = "declined" | "cancelled" | "unavailable";

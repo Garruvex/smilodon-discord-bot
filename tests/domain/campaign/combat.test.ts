@@ -233,10 +233,31 @@ describe("dropping, death saves, and the end of a fight", () => {
     fight.run(jamie, { kind: "combatMove", combatantId: "c-borin", zoneId: "courtyard" });
     fight.run(jamie, { kind: "combatEngage", combatantId: "c-borin", targetId: "goblin-b" });
     fight.rolls([15], [8]).run(jamie, { kind: "combatAttack", combatantId: "c-borin", targetId: "goblin-b", weapon: "item:longsword" });
-    expect(fight.events.at(-1)).toEqual({ kind: "encounterEnded", outcome: "victory" });
+    expect(fight.events).toContainEqual({ kind: "encounterEnded", outcome: "victory" });
+    expect(fight.events.at(-1)).toEqual({ kind: "experienceAwarded", encounterId: "enc-1", xp: { "c-mira": 50, "c-borin": 50 } });
     expect(heroHp(fight)).toEqual({ "c-mira": 9, "c-borin": 12 });
     fight.run(system, { kind: "openRound" });
     expect(fight.state.round?.number).toBe(1);
+  });
+
+  it("levels a hero up when a victory's XP crosses a threshold", () => {
+    const base = newCampaign();
+    const mira = base.characters["c-mira"];
+    if (mira === undefined) throw new Error("fixture");
+    // 30 XP short of level 2 (300): the goblins' 100 XP, split 50/50, crosses it for both.
+    const primed: typeof base = { ...base, characters: { ...base.characters, "c-mira": { ...mira, className: "rogue", xp: 270 } } };
+    const fight = startedFight(primed).rolls([15], [6]);
+    fight.run(alex, { kind: "combatAttack", combatantId: "c-mira", targetId: "goblin-a", weapon: "item:shortbow" });
+    fight.run(alex, { kind: "endTurn", combatantId: "c-mira" });
+    fight.run(jamie, { kind: "combatMove", combatantId: "c-borin", zoneId: "courtyard" });
+    fight.run(jamie, { kind: "combatEngage", combatantId: "c-borin", targetId: "goblin-b" });
+    fight.rolls([15], [8]).run(jamie, { kind: "combatAttack", combatantId: "c-borin", targetId: "goblin-b", weapon: "item:longsword" });
+    expect(fight.state.characters["c-mira"]?.xp).toBe(320);
+    expect(fight.state.characters["c-mira"]?.level).toBe(2);
+    expect(fight.state.characters["c-borin"]?.level).toBe(1);
+    expect(fight.events).toContainEqual(
+      expect.objectContaining({ kind: "characterLeveledUp", characterId: "c-mira", level: 2 }),
+    );
   });
 });
 

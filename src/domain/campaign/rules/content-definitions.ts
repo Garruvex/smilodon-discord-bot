@@ -142,6 +142,8 @@ export interface MonsterDefinition extends DefinitionBase<"monster"> {
   readonly armorClass: number;
   // The stat block's average hit points.
   readonly maxHp: number;
+  // SRD 5.1's XP by challenge rating, split evenly among the party (character/leveling.ts).
+  readonly xp: number;
   readonly speed: number;
   readonly abilityScores: Readonly<Record<Ability, number>>;
   readonly attacks: readonly MonsterAttack[];

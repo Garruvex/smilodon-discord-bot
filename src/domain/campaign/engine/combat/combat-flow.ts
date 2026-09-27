@@ -4,6 +4,8 @@ import type { CombatCommand } from "../../commands/campaign-command.js";
 import { assertNever } from "../../core/assert-never.js";
 import type { RollId } from "../../core/ids.js";
 import { actsForOwner } from "../../character/ownership.js";
+import { isBuildClass } from "../../character/character-build.js";
+import { levelForXp, levelUp } from "../../character/leveling.js";
 import { currentCombatant, isActive, isPresent, type Combatant, type EncounterState } from "../../combat/combat-state.js";
 import { costProblem, engageProblem, moveProblem, withdrawProblem } from "../../combat/turn-rules.js";
 import { engageCost, withdrawCost } from "../../combat/positioning.js";
@@ -180,6 +182,47 @@ export function goldShares(combatants: Readonly<Record<string, Combatant>>, gold
   return shares;
 }
 
+// An even share of a defeated foe's XP for each hero still standing, same
+// split as goldShares. Fled foes give none; only what was actually beaten.
+export function experienceShares(decision: Decision, encounter: EncounterState): Readonly<Record<string, number>> | undefined {
+  const combatants = Object.values(encounter.combatants);
+  const defeatedXp = combatants
+    .filter((combatant) => combatant.side === "foes" && combatant.condition === "dead" && combatant.source.kind === "monster")
+    .reduce((sum, combatant) => sum + decision.ctx.rules.content.get((combatant.source as Extract<Combatant["source"], { kind: "monster" }>).monsterId).xp, 0);
+  if (defeatedXp <= 0) return undefined;
+  const standing = combatants
+    .filter((combatant) => combatant.side === "party" && combatant.condition !== "dead" && combatant.condition !== "fled")
+    .flatMap((combatant) => (combatant.source.kind === "hero" ? [combatant.source.characterId] : []));
+  if (standing.length === 0) return undefined;
+  const each = Math.floor(defeatedXp / standing.length);
+  const shares: Record<string, number> = {};
+  standing.forEach((characterId, index) => {
+    shares[characterId] = each + (index === 0 ? defeatedXp - each * standing.length : 0);
+  });
+  return shares;
+}
+
+// Applies a victory's XP, then levels up every hero it carries across a
+// threshold — one characterLeveledUp event per level, so a big award (or a
+// low starting level) still lands as a readable sequence.
+function grantExperience(decision: Decision, encounterId: string, shares: Readonly<Record<string, number>>): void {
+  decision.emit({ kind: "experienceAwarded", encounterId, xp: shares });
+  for (const characterId of Object.keys(shares)) {
+    let sheet = decision.state.characters[characterId];
+    if (sheet === undefined) continue;
+    const buildClass = sheet.className;
+    if (buildClass === undefined || !isBuildClass(buildClass)) continue;
+    const targetLevel = levelForXp(sheet.xp ?? 0);
+    while (sheet.level < targetLevel) {
+      const next = levelUp(sheet, buildClass);
+      decision.emit({ kind: "characterLeveledUp", characterId, level: next.level, maxHp: next.maxHp, abilityScores: next.abilityScores, spellcasting: next.spellcasting });
+      const updated = decision.state.characters[characterId];
+      if (updated === undefined) break;
+      sheet = updated;
+    }
+  }
+}
+
 export function endIfDecided(decision: Decision): boolean {
   const encounter = activeEncounter(decision);
   if (encounter === null || encounter.status !== "active") return false;
@@ -192,6 +235,10 @@ export function endIfDecided(decision: Decision): boolean {
   if (!foesLeft && (encounter.loot.length > 0 || encounter.gold > 0)) {
     const split = decision.ctx.rules.houseRules.option(lootGold) === "split" ? goldShares(encounter.combatants, encounter.gold) : undefined;
     decision.emit({ kind: "lootFound", encounterId: encounter.id, items: encounter.loot, gold: encounter.gold, ...(split === undefined ? {} : { split }) });
+  }
+  if (!foesLeft) {
+    const xpShares = experienceShares(decision, encounter);
+    if (xpShares !== undefined) grantExperience(decision, encounter.id, xpShares);
   }
   decision.request({ kind: "deliver", delivery: { kind: "encounterEnded", encounterId: encounter.id } });
   // The closing narration covers the last round; exploration resumes after it.

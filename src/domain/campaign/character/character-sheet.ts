@@ -47,6 +47,9 @@ export interface CharacterSheet {
   readonly skills: Readonly<Partial<Record<Skill, SkillProficiency>>>;
   readonly savingThrows: readonly Ability[];
   readonly level: number;
+  // Total XP earned. Absent on a sheet from before leveling existed, which
+  // reads as 0 (character/leveling.ts).
+  readonly xp?: number;
   readonly maxHp: number;
   // Die size of the class's Hit Dice; there are `level` of them.
   readonly hitDie: 6 | 8 | 10 | 12;
