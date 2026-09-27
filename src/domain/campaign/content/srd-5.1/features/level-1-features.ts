@@ -1,4 +1,4 @@
-import { dice, plus } from "../../../dice/dice-expression.js";
+import { dice, flat, plus } from "../../../dice/dice-expression.js";
 import { defineFeature, type FeatureDefinition } from "../../../rules/content-definitions.js";
 
 // Level 1 class features of the three preset heroes (SRD 5.1, Classes).
@@ -41,4 +41,51 @@ export const discipleOfLife = defineFeature({
   action: null,
 });
 
-export const srd51Level1Features: readonly FeatureDefinition[] = [fightingStyleDueling, secondWind, sneakAttack, thievesCant, discipleOfLife];
+// Added for the full SRD class roster (step 7). Lay on Hands is mechanical
+// (it maps cleanly onto Second Wind's self-heal shape); the rest are
+// narrative-only for now, same treatment as Thieves' Cant and Thaumaturgy —
+// the hero card names them, but no rule reads them. Level 2+ content (Rage's
+// damage resistance, Wild Shape, Pact Magic's invocations, and so on) is out
+// of scope for the starter roster.
+export const rage = defineFeature({ id: "feature:rage", source, traits: [], action: null });
+export const bardicInspiration = defineFeature({ id: "feature:bardic-inspiration", source, traits: [], action: null });
+export const druidic = defineFeature({ id: "feature:druidic", source, traits: [], action: null });
+export const martialArts = defineFeature({ id: "feature:martial-arts", source, traits: [], action: null });
+export const divineSense = defineFeature({ id: "feature:divine-sense", source, traits: [], action: null });
+export const favoredEnemy = defineFeature({ id: "feature:favored-enemy", source, traits: [], action: null });
+export const naturalExplorer = defineFeature({ id: "feature:natural-explorer", source, traits: [], action: null });
+export const sorcerousOrigin = defineFeature({ id: "feature:sorcerous-origin", source, traits: [], action: null });
+export const otherworldlyPatron = defineFeature({ id: "feature:otherworldly-patron", source, traits: [], action: null });
+export const arcaneRecovery = defineFeature({ id: "feature:arcane-recovery", source, traits: [], action: null });
+
+// Simplified to a flat self-heal (level x 5), like Second Wind, rather than a
+// spendable pool that can heal others in installments.
+export const layOnHands = defineFeature({
+  id: "feature:lay-on-hands",
+  source,
+  traits: [],
+  action: {
+    cost: "action",
+    uses: { count: 1, recharge: "longRest" },
+    plan: ({ level }) => ({ check: null, onLand: [{ kind: "heal", target: "self", amount: flat(level * 5) }], onAvoid: [] }),
+  },
+});
+
+export const srd51Level1Features: readonly FeatureDefinition[] = [
+  fightingStyleDueling,
+  secondWind,
+  sneakAttack,
+  thievesCant,
+  discipleOfLife,
+  rage,
+  bardicInspiration,
+  druidic,
+  martialArts,
+  divineSense,
+  layOnHands,
+  favoredEnemy,
+  naturalExplorer,
+  sorcerousOrigin,
+  otherworldlyPatron,
+  arcaneRecovery,
+];

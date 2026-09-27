@@ -39,4 +39,71 @@ export const thaumaturgy = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-export const srd51Cantrips: readonly SpellDefinition[] = [sacredFlame, thaumaturgy];
+// Added for the full SRD class roster (step 7): a damage cantrip per new
+// spellcasting class, all shaped like sacredFlame (attack or save, one damage
+// effect that scales with cantripDiceCount).
+export const viciousMockery = defineSpell({
+  id: "spell:vicious-mockery",
+  source,
+  level: 0,
+  castingTime: "action",
+  range: { kind: "feet", feet: 60 },
+  targeting: { relation: "creature", count: 1 },
+  concentration: false,
+  // Simplified: the SRD's "disadvantage on its next attack roll" is dropped;
+  // the engine has no effect for imposing disadvantage on someone else's roll.
+  plan: ({ casterLevel }) => ({
+    check: { kind: "savingThrow", ability: "wis" },
+    onLand: [{ kind: "damage", target: "target", amount: dice(cantripDiceCount(casterLevel), 4), damageType: "psychic" }],
+    onAvoid: [],
+  }),
+});
+
+export const produceFlame = defineSpell({
+  id: "spell:produce-flame",
+  source,
+  level: 0,
+  castingTime: "action",
+  range: { kind: "feet", feet: 30 },
+  targeting: { relation: "creature", count: 1 },
+  concentration: false,
+  plan: ({ casterLevel }) => ({
+    check: { kind: "spellAttack" },
+    onLand: [{ kind: "damage", target: "target", amount: dice(cantripDiceCount(casterLevel), 8), damageType: "fire" }],
+    onAvoid: [],
+  }),
+});
+
+export const fireBolt = defineSpell({
+  id: "spell:fire-bolt",
+  source,
+  level: 0,
+  castingTime: "action",
+  range: { kind: "feet", feet: 120 },
+  targeting: { relation: "creature", count: 1 },
+  concentration: false,
+  plan: ({ casterLevel }) => ({
+    check: { kind: "spellAttack" },
+    onLand: [{ kind: "damage", target: "target", amount: dice(cantripDiceCount(casterLevel), 10), damageType: "fire" }],
+    onAvoid: [],
+  }),
+});
+
+// Simplified: one bolt scaled by cantripDiceCount, rather than several beams
+// that can be split between targets.
+export const eldritchBlast = defineSpell({
+  id: "spell:eldritch-blast",
+  source,
+  level: 0,
+  castingTime: "action",
+  range: { kind: "feet", feet: 120 },
+  targeting: { relation: "creature", count: 1 },
+  concentration: false,
+  plan: ({ casterLevel }) => ({
+    check: { kind: "spellAttack" },
+    onLand: [{ kind: "damage", target: "target", amount: dice(cantripDiceCount(casterLevel), 10), damageType: "force" }],
+    onAvoid: [],
+  }),
+});
+
+export const srd51Cantrips: readonly SpellDefinition[] = [sacredFlame, thaumaturgy, viciousMockery, produceFlame, fireBolt, eldritchBlast];

@@ -88,4 +88,40 @@ export const guidingBolt = defineSpell({
   }),
 });
 
-export const srd51Level1Spells: readonly SpellDefinition[] = [cureWounds, healingWord, bless, guidingBolt, shieldSpell];
+// Added for the full SRD class roster (step 7).
+
+// Simplified: one target takes the full missile damage, rather than several
+// darts that can be split between targets.
+export const magicMissile = defineSpell({
+  id: "spell:magic-missile",
+  source,
+  level: 1,
+  castingTime: "action",
+  range: { kind: "feet", feet: 120 },
+  targeting: { relation: "creature", count: 1 },
+  concentration: false,
+  plan: ({ slotLevel }) => ({
+    check: null,
+    onLand: [{ kind: "damage", target: "target", amount: plus(dice(slotLevel + 2, 4), slotLevel + 2), damageType: "force" }],
+    onAvoid: [],
+  }),
+});
+
+// Simplified: a single bolt, not the ongoing arc a held concentration keeps
+// striking with each turn.
+export const witchBolt = defineSpell({
+  id: "spell:witch-bolt",
+  source,
+  level: 1,
+  castingTime: "action",
+  range: { kind: "feet", feet: 30 },
+  targeting: { relation: "creature", count: 1 },
+  concentration: false,
+  plan: ({ slotLevel }) => ({
+    check: { kind: "spellAttack" },
+    onLand: [{ kind: "damage", target: "target", amount: dice(slotLevel, 12), damageType: "lightning" }],
+    onAvoid: [],
+  }),
+});
+
+export const srd51Level1Spells: readonly SpellDefinition[] = [cureWounds, healingWord, bless, guidingBolt, shieldSpell, magicMissile, witchBolt];

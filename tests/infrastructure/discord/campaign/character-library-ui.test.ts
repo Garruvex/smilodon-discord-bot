@@ -84,7 +84,20 @@ describe("My Characters", () => {
     const r = rig();
     const handler = libraryHandler(r);
     let screen = screenOf(await click(handler, libraryCustomId("new")));
-    expect(screen.menus[0]?.options.map((option) => option.value)).toEqual(["fighter", "rogue", "cleric"]);
+    expect(screen.menus[0]?.options.map((option) => option.value)).toEqual([
+      "fighter",
+      "rogue",
+      "cleric",
+      "barbarian",
+      "bard",
+      "druid",
+      "monk",
+      "paladin",
+      "ranger",
+      "sorcerer",
+      "warlock",
+      "wizard",
+    ]);
 
     screen = screenOf(await click(handler, screen.menus[0]?.id ?? "", "u-alice", { values: ["rogue"] }));
     expect(screen.content).toBe("Choose a starting kit for your Rogue.");

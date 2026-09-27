@@ -6,9 +6,24 @@ import { abilityModifier, isSkill, type CharacterSheet, type Skill, type SkillPr
 // The guided character builder's rules (plan §3, Character creation). A build
 // is the player's choices; every number on the sheet is derived from them
 // here, by the engine, never taken from a person or a model. The catalog is
-// three level-1 classes, so that is what can be built.
-
-export const buildClasses = ["fighter", "rogue", "cleric"] as const;
+// the full SRD 5.1 class roster, at level 1 only: hit die, saves, skills,
+// level-1 features, starting kits, and (where the class has any at level 1)
+// spells. Levels beyond 1 are the leveling system's job (character/leveling.ts),
+// not the class template's.
+export const buildClasses = [
+  "fighter",
+  "rogue",
+  "cleric",
+  "barbarian",
+  "bard",
+  "druid",
+  "monk",
+  "paladin",
+  "ranger",
+  "sorcerer",
+  "warlock",
+  "wizard",
+] as const;
 export type BuildClass = (typeof buildClasses)[number];
 
 export function isBuildClass(value: string): value is BuildClass {
@@ -110,6 +125,166 @@ export const classTemplates: Readonly<Record<BuildClass, ClassTemplate>> = {
       slots: { 1: 2 },
     },
     suggested: ["wis", "con", "str", "cha", "dex", "int"],
+  },
+  barbarian: {
+    id: "barbarian",
+    hitDie: 12,
+    savingThrows: ["str", "con"],
+    skillChoices: ["animal-handling", "athletics", "intimidation", "nature", "perception", "survival"],
+    skillCount: 2,
+    expertiseCount: 0,
+    features: [feature("rage")],
+    kits: [
+      { id: "berserker", equipment: [item("greataxe"), item("hide-armor")] },
+      { id: "totemic", equipment: [item("greataxe"), item("leather-armor")] },
+    ],
+    spellcasting: null,
+    suggested: ["str", "con", "dex", "wis", "cha", "int"],
+  },
+  bard: {
+    id: "bard",
+    hitDie: 8,
+    savingThrows: ["dex", "cha"],
+    skillChoices: [
+      "acrobatics",
+      "animal-handling",
+      "arcana",
+      "athletics",
+      "deception",
+      "history",
+      "insight",
+      "intimidation",
+      "investigation",
+      "medicine",
+      "nature",
+      "perception",
+      "performance",
+      "persuasion",
+      "religion",
+      "sleight-of-hand",
+      "stealth",
+      "survival",
+    ],
+    skillCount: 3,
+    expertiseCount: 0,
+    features: [feature("bardic-inspiration")],
+    kits: [
+      { id: "lore", equipment: [item("rapier"), item("leather-armor")] },
+      { id: "skald", equipment: [item("quarterstaff"), item("leather-armor")] },
+    ],
+    spellcasting: { ability: "cha", spells: [spell("vicious-mockery"), spell("healing-word"), spell("bless"), spell("cure-wounds")], slots: { 1: 2 } },
+    suggested: ["cha", "dex", "con", "wis", "int", "str"],
+  },
+  druid: {
+    id: "druid",
+    hitDie: 8,
+    savingThrows: ["int", "wis"],
+    skillChoices: ["arcana", "animal-handling", "insight", "medicine", "nature", "perception", "religion", "survival"],
+    skillCount: 2,
+    expertiseCount: 0,
+    features: [feature("druidic")],
+    kits: [
+      { id: "land", equipment: [item("quarterstaff"), item("leather-armor"), item("shield")] },
+      { id: "moonlit", equipment: [item("scimitar"), item("leather-armor")] },
+    ],
+    spellcasting: { ability: "wis", spells: [spell("produce-flame"), spell("cure-wounds"), spell("healing-word")], slots: { 1: 2 } },
+    suggested: ["wis", "con", "dex", "int", "cha", "str"],
+  },
+  monk: {
+    id: "monk",
+    hitDie: 8,
+    savingThrows: ["str", "dex"],
+    skillChoices: ["acrobatics", "athletics", "history", "insight", "religion", "stealth"],
+    skillCount: 2,
+    expertiseCount: 0,
+    // No armor and no shield: Unarmored Defense is out of scope for the
+    // starter roster (it would need a base-AC formula per class, not just
+    // per item), so a monk's AC is 10 + Dex, as if unarmed and unarmored.
+    features: [feature("martial-arts")],
+    kits: [
+      { id: "openhand", equipment: [item("shortsword")] },
+      { id: "umbra", equipment: [item("dagger")] },
+    ],
+    spellcasting: null,
+    suggested: ["dex", "wis", "con", "str", "cha", "int"],
+  },
+  paladin: {
+    id: "paladin",
+    hitDie: 10,
+    savingThrows: ["wis", "cha"],
+    skillChoices: ["athletics", "insight", "intimidation", "medicine", "persuasion", "religion"],
+    skillCount: 2,
+    expertiseCount: 0,
+    // No spellcasting: paladin spells begin at level 2 in the SRD.
+    features: [feature("divine-sense"), feature("lay-on-hands")],
+    kits: [
+      { id: "oath", equipment: [item("longsword"), item("chain-mail"), item("shield")] },
+      { id: "vengeance", equipment: [item("longsword"), item("leather-armor"), item("javelin")] },
+    ],
+    spellcasting: null,
+    suggested: ["str", "cha", "con", "wis", "dex", "int"],
+  },
+  ranger: {
+    id: "ranger",
+    hitDie: 10,
+    savingThrows: ["str", "dex"],
+    skillChoices: ["animal-handling", "athletics", "insight", "investigation", "nature", "perception", "stealth", "survival"],
+    skillCount: 3,
+    expertiseCount: 0,
+    // No spellcasting: ranger spells begin at level 2 in the SRD.
+    features: [feature("favored-enemy"), feature("natural-explorer")],
+    kits: [
+      { id: "hunter", equipment: [item("longbow"), item("leather-armor")] },
+      { id: "beastmaster", equipment: [item("shortbow"), item("scimitar"), item("leather-armor")] },
+    ],
+    spellcasting: null,
+    suggested: ["dex", "wis", "con", "str", "cha", "int"],
+  },
+  sorcerer: {
+    id: "sorcerer",
+    hitDie: 6,
+    savingThrows: ["con", "cha"],
+    skillChoices: ["arcana", "deception", "insight", "intimidation", "persuasion", "religion"],
+    skillCount: 2,
+    expertiseCount: 0,
+    features: [feature("sorcerous-origin")],
+    kits: [
+      { id: "wildmagic", equipment: [item("dagger")] },
+      { id: "draconic", equipment: [item("quarterstaff")] },
+    ],
+    spellcasting: { ability: "cha", spells: [spell("fire-bolt"), spell("magic-missile"), spell("shield")], slots: { 1: 2 } },
+    suggested: ["cha", "con", "dex", "wis", "int", "str"],
+  },
+  warlock: {
+    id: "warlock",
+    hitDie: 8,
+    savingThrows: ["wis", "cha"],
+    skillChoices: ["arcana", "deception", "history", "intimidation", "investigation", "nature", "religion"],
+    skillCount: 2,
+    expertiseCount: 0,
+    features: [feature("otherworldly-patron")],
+    kits: [
+      { id: "fiendpact", equipment: [item("dagger"), item("leather-armor")] },
+      { id: "oldone", equipment: [item("quarterstaff"), item("leather-armor")] },
+    ],
+    // Pact Magic: fewer, always-highest-level slots. One slot at level 1.
+    spellcasting: { ability: "cha", spells: [spell("eldritch-blast"), spell("witch-bolt")], slots: { 1: 1 } },
+    suggested: ["cha", "con", "dex", "wis", "int", "str"],
+  },
+  wizard: {
+    id: "wizard",
+    hitDie: 6,
+    savingThrows: ["int", "wis"],
+    skillChoices: ["arcana", "history", "insight", "investigation", "medicine", "religion"],
+    skillCount: 2,
+    expertiseCount: 0,
+    features: [feature("arcane-recovery")],
+    kits: [
+      { id: "scholar", equipment: [item("dagger"), item("quarterstaff")] },
+      { id: "evoker", equipment: [item("dagger")] },
+    ],
+    spellcasting: { ability: "int", spells: [spell("fire-bolt"), spell("magic-missile"), spell("shield")], slots: { 1: 2 } },
+    suggested: ["int", "con", "dex", "wis", "cha", "str"],
   },
 };
 

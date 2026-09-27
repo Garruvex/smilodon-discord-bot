@@ -54,7 +54,20 @@ export interface Draft {
 
 export const emptyDraft: Draft = { class: null, kit: null, skills: [], expertise: [], order: [] };
 
-const classCodes: Readonly<Record<BuildClass, string>> = { fighter: "f", rogue: "r", cleric: "c" };
+const classCodes: Readonly<Record<BuildClass, string>> = {
+  fighter: "f",
+  rogue: "r",
+  cleric: "c",
+  barbarian: "b",
+  bard: "d",
+  druid: "u",
+  monk: "m",
+  paladin: "p",
+  ranger: "g",
+  sorcerer: "o",
+  warlock: "l",
+  wizard: "z",
+};
 const abilityCodes: Readonly<Record<Ability, string>> = { str: "s", dex: "d", con: "c", int: "i", wis: "w", cha: "h" };
 const skillCode = (skill: Skill): string => String.fromCharCode(97 + allSkills.indexOf(skill));
 

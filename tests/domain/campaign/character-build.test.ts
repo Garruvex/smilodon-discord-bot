@@ -99,7 +99,7 @@ describe("the guided builder", () => {
     expect(buildProblems({ ...rogue, expertise: ["stealth"] })).toEqual([{ code: "expertiseCount", expected: 2 }]);
     expect(buildProblems({ ...fighter, name: "   " })).toEqual([{ code: "badName" }]);
     expect(buildProblems({ ...fighter, backstory: "x".repeat(301) })).toEqual([{ code: "textTooLong" }]);
-    expect(buildProblems({ ...fighter, class: "wizard" as never })).toEqual([{ code: "unknownClass" }]);
+    expect(buildProblems({ ...fighter, class: "artificer" as never })).toEqual([{ code: "unknownClass" }]);
   });
 
   it("trims the name and keeps the player's words out of the numbers", () => {

@@ -33,4 +33,34 @@ export const javelin = defineWeapon({
 });
 export const bite = defineWeapon({ id: "item:bite", source, damage: dice(1, 4), damageType: "piercing", range: melee, finesse: false, natural: true });
 
-export const srd51Weapons: readonly WeaponDefinition[] = [longsword, shortsword, scimitar, mace, morningstar, shortbow, javelin, bite];
+// Added for the full SRD class roster (step 7): one new melee weapon per
+// class that the existing six don't already cover.
+export const greataxe = defineWeapon({ id: "item:greataxe", source, damage: dice(1, 12), damageType: "slashing", range: melee, finesse: false, natural: false });
+export const quarterstaff = defineWeapon({ id: "item:quarterstaff", source, damage: dice(1, 6), damageType: "bludgeoning", range: melee, finesse: false, natural: false });
+export const rapier = defineWeapon({ id: "item:rapier", source, damage: dice(1, 8), damageType: "piercing", range: melee, finesse: true, natural: false });
+export const dagger = defineWeapon({ id: "item:dagger", source, damage: dice(1, 4), damageType: "piercing", range: melee, finesse: true, natural: false });
+export const longbow = defineWeapon({
+  id: "item:longbow",
+  source,
+  damage: dice(1, 8),
+  damageType: "piercing",
+  range: { kind: "ranged", normal: 150, long: 600 },
+  finesse: false,
+  natural: false,
+});
+
+export const srd51Weapons: readonly WeaponDefinition[] = [
+  longsword,
+  shortsword,
+  scimitar,
+  mace,
+  morningstar,
+  shortbow,
+  javelin,
+  bite,
+  greataxe,
+  quarterstaff,
+  rapier,
+  dagger,
+  longbow,
+];
