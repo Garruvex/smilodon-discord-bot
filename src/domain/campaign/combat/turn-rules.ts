@@ -6,6 +6,7 @@ import type { ContentId } from "../rules/content-id.js";
 import type { SealedContent } from "../rules/content-registry.js";
 import { healingPotionCost, type HouseRules } from "../rules/house-rules.js";
 import { canAct, conditionLookup, speedOf } from "../effects/effect-queries.js";
+import { castableSlotLevels, slotUnavailable, spellMaxTargets } from "../magic/spell-rules.js";
 import { areEngaged, currentCombatant, engagedWith, isPresent, type AttackOption, type Combatant, type EncounterState } from "./combat-state.js";
 import { isWorn } from "./combatant-profile.js";
 import { spellTargetProblem, spellTargets, weaponTargetProblem, weaponTargets } from "./legal-targets.js";
@@ -70,15 +71,8 @@ export function attackProblem(encounter: EncounterState, attacker: Combatant, op
 
 // ------------------------------------------------------------- Spells
 
-// How many creatures a spell may name at a slot level.
-export function spellMaxTargets(spell: SpellDefinition, slotLevel: number): number {
-  const extra = spell.level === 0 ? 0 : (spell.targeting.countPerHigherSlot ?? 0) * (slotLevel - spell.level);
-  return spell.targeting.relation === "self" ? 1 : spell.targeting.count + extra;
-}
-
 export function spellSlotProblem(caster: Combatant, spell: SpellDefinition, slotLevel: number): TurnProblem | null {
-  const unavailable = spell.level === 0 ? slotLevel !== 0 : slotLevel < spell.level || (caster.resources.spellSlots[slotLevel] ?? 0) < 1;
-  return unavailable ? { code: "noSpellSlot", slotLevel } : null;
+  return slotUnavailable(spell, caster.resources.spellSlots, slotLevel) ? { code: "noSpellSlot", slotLevel } : null;
 }
 
 export function spellProblem(
@@ -233,8 +227,7 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
       if (spell?.kind !== "spell" || spell.castingTime === "reaction") continue;
       const bonusAction = spell.castingTime === "bonus-action";
       if (costProblem(hero, bonusAction ? "bonusAction" : "action", content) !== null) continue;
-      const levels = spell.level === 0 ? [0] : Object.keys(hero.resources.spellSlots).map(Number).sort((a, b) => a - b);
-      const slotLevels = levels.filter((level) => spellSlotProblem(hero, spell, level) === null);
+      const slotLevels = castableSlotLevels(spell, hero.resources.spellSlots);
       const targetIds = spellTargets(encounter, hero, spell).map((target) => target.id);
       if (slotLevels.length > 0 && targetIds.length > 0) spells.push({ spell, slotLevels, bonusAction, targetIds });
     }

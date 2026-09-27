@@ -31,6 +31,7 @@ import { criticalHits, naturalRollsOnChecks } from "../../rules/house-rules.js";
 import type { Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { activeEncounter, afterResolution, endIfDecided, isProtected } from "./combat-flow.js";
+import { concentrationDc } from "../../magic/spell-rules.js";
 import { offerReaction } from "./reactions.js";
 
 export interface DeclareRequest {
@@ -438,7 +439,7 @@ export function applyDamage(decision: Decision, target: Combatant, amount: numbe
     endConcentration(decision, after.id, "downed");
     return;
   }
-  requestConcentrationSave(decision, after, Math.max(10, Math.floor(amount / 2)));
+  requestConcentrationSave(decision, after, concentrationDc(amount));
 }
 
 function applyHealing(decision: Decision, target: Combatant, amount: number): void {

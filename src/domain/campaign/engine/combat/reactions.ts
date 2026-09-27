@@ -1,6 +1,7 @@
 import type { D20TestRoll } from "../../dice/d20-test.js";
 import type { PendingReaction, Combatant, EncounterState, ResolutionState } from "../../combat/combat-state.js";
 import { canReact, conditionLookup } from "../../effects/effect-queries.js";
+import { lowestSlot } from "../../magic/spell-rules.js";
 import type { ContentId } from "../../rules/content-id.js";
 import type { SealedContent } from "../../rules/content-registry.js";
 import { deadlineAfter, type Decision } from "../decision.js";
@@ -23,10 +24,7 @@ export function reactionOptions(target: Combatant, content: SealedContent): Pend
   return casting.spells.flatMap((id) => {
     const spell = content.find(id);
     if (spell?.kind !== "spell" || spell.reaction === undefined) return [];
-    const slotLevel = Object.keys(target.resources.spellSlots)
-      .map(Number)
-      .sort((a, b) => a - b)
-      .find((level) => level >= spell.level && (target.resources.spellSlots[level] ?? 0) > 0);
+    const slotLevel = lowestSlot(spell, target.resources.spellSlots);
     return slotLevel === undefined ? [] : [{ spellId: spell.id, slotLevel }];
   });
 }

@@ -1,3 +1,4 @@
+import { spellTargetProblem as magicTargetProblem } from "../magic/spell-rules.js";
 import type { SpellDefinition } from "../rules/content-definitions.js";
 import { areEngaged, isPresent, type AttackOption, type Combatant, type EncounterState } from "./combat-state.js";
 import { distanceBetween } from "./positioning.js";
@@ -27,24 +28,15 @@ export function weaponTargets(encounter: EncounterState, attacker: Combatant, op
 }
 
 // The spell's relation (enemy, ally, self) and reach.
+// The spell's own target rules live in Magic; this supplies the positions.
 export function spellTargetProblem(
   encounter: EncounterState,
   caster: Combatant,
   spell: SpellDefinition,
   target: Combatant | undefined,
 ): TargetProblem | null {
-  if (target === undefined || !isPresent(target)) return "invalidTarget";
-  if (spell.targeting.relation === "enemy" && target.side === caster.side) return "invalidTarget";
-  if (spell.targeting.relation === "ally-or-self" && target.side !== caster.side) return "invalidTarget";
-  const inReach =
-    spell.range.kind === "self"
-      ? target.id === caster.id
-      : spell.range.kind === "touch"
-        ? // Touch: the positioning contract has no ally adjacency, so any
-          // creature in the caster's zone is within reach.
-          target.id === caster.id || target.zoneId === caster.zoneId
-        : target.id === caster.id || (distanceBetween(encounter, caster.id, target.id) ?? Infinity) <= spell.range.feet;
-  return inReach ? null : "outOfRange";
+  const distance = target === undefined ? null : distanceBetween(encounter, caster.id, target.id);
+  return magicTargetProblem(spell, caster, target, target !== undefined && isPresent(target), distance);
 }
 
 export function spellTargets(encounter: EncounterState, caster: Combatant, spell: SpellDefinition): readonly Combatant[] {

@@ -1,6 +1,7 @@
 import type { CharacterId } from "../../../domain/campaign/core/ids.js";
 import type { Combatant, TurnBudget } from "../../../domain/campaign/combat/combat-state.js";
-import { spellMaxTargets, turnOptions } from "../../../domain/campaign/combat/turn-rules.js";
+import { turnOptions } from "../../../domain/campaign/combat/turn-rules.js";
+import { spellMaxTargets } from "../../../domain/campaign/magic/spell-rules.js";
 import { formatDiceExpression } from "../../../domain/campaign/dice/dice-expression.js";
 import type { SealedContent } from "../../../domain/campaign/rules/content-registry.js";
 import type { HouseRules } from "../../../domain/campaign/rules/house-rules.js";
