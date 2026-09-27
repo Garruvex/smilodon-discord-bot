@@ -1,0 +1,175 @@
+# Game engine architecture (review draft)
+
+Status: **proposal, for review. Nothing here is built.** It comes from a review of the code as of the milestone 6 branch. Decisions the owner still has to make are collected in [Open decisions](#open-decisions).
+
+## 1. Goal
+
+The bot is two things that meet at one narrow boundary:
+
+- **The game engine.** Pure rules for SRD 5.1 (2014): characters, inventory, magic, effects, combat, exploration. No Discord, no model calls, no clock, no randomness of its own. It is given a state and a command and returns events and requests.
+- **The Discord UX.** Cards, buttons, menus and text. It shows what the engine says and sends commands. It contains **no rules**.
+
+A third thin layer already exists between them (command bus, store, workers, the DM model adapters). It only moves commands and events around. It never decides a rule.
+
+The engine must not care what an adventure needs. An adventure is data that names content (`monster:goblin`, `spell:bless`, `item:longsword`). If the content exists and every mechanic it uses is a supported capability, the adventure plays. A genuinely new mechanic is new engine code plus tests, then content may refer to it.
+
+## 2. What the review found
+
+What is already right:
+
+- Adventures are pure data; content definitions are separate from engine code; a capability check refuses content the engine cannot run.
+- One `Combatant` shape serves heroes and monsters.
+- Every action goes through one persisted resolution (`ResolutionState`: checks, effect rolls, application, concentration saves). Dice are saved before the engine sees them.
+- Target lists come from one shared function (`legal-targets.ts`), used by the menu and the engine.
+
+What is weak:
+
+| Finding | Evidence | Consequence |
+| --- | --- | --- |
+| No real system boundaries | One `CampaignState`, one `CampaignCommand` union, one `Decision` that every module writes through. Modules reach into each other. | Nothing stops combat code from editing inventory, or the reverse. |
+| Combat is a catch-all | `combat-flow.ts` is 799 lines: initiative, turn flow, moving, opportunity attacks, death saves, spells, features, gear, timers, autopilot. `resolution.ts` is 541 lines and holds damage, healing, concentration and attack modes. | Hard to change one thing without reading all of it. |
+| Magic is not a system | Spell casting lives in `combat-flow.castSpell` and `resolution`; slots live in `combatant-profile` and `rest`. | Nothing outside a fight can cast; spell rules have no owner. |
+| Conditions are labels | `Combatant.conditions` is a list of IDs with no source, clock or stacking. The engine acts on only `prone` and a "crippling" list. Frightened, poisoned and incapacitated exist as names. | Duration and consequences are lost; each new condition means new scattered `if`s. |
+| Two lifetimes for effects | `ActiveEffect` (bonus die, Guiding Bolt) has an expiry and a concentration link; conditions have neither. Expiry is coded per effect in `expireEffects`. | Bless, poison and Hold Person would each need their own code. |
+| Legality is written twice | Target lists are shared, but the action, bonus action and movement checks are in `application/.../turn-view.ts` (menu) and in `combat-flow.ts` (engine). | The menu and the engine agree because tests pin them, not because they share code. |
+| Some derived values are stored | `armorClass`, `attacks`, `saves` are saved on `Combatant`. | They can go stale when gear or effects change. |
+| No reaction window | A resolution goes from checks straight to effects. | Shield and the reaction scenarios (8, 39) cannot be built. |
+| Events have no version | `EventEnvelope` records `rulesRevision` only. | A changed event shape cannot be told apart from an old one. |
+
+## 3. Systems and boundaries
+
+Each system owns four things: **state** (its slice), **events** (it alone emits them), **queries** (pure reads other systems may call) and **commands** (how the outside asks it to act). Systems talk only through queries and events.
+
+Dependencies point downward only. A system may use anything below it and nothing above or beside it, except through a published query.
+
+```
+Table            members, presence, proxies, pause, reminders, DM hooks (story text in, never rules)
+Exploration      rounds, skill checks, clocks, scenes, clues, story effects
+Combat           encounter, initiative, turns, movement, reactions, action resolution, monster and autopilot tactics
+Magic            spell slots, spells known, casting legality, concentration
+Inventory        holdings, gear worn, stash, offers, gold, potions
+Effects          conditions and lasting effects with source, clock, triggers, stacking
+Character        sheet, build, derived stats, rest and resources
+Content          definitions (items, spells, features, monsters, conditions), capabilities, house rules, SRD 5.1 data
+Core             ids, dice, random source, roll results
+```
+
+Where today's code goes:
+
+| System | Today's files |
+| --- | --- |
+| Core | `core/*`, `dice/*` |
+| Content | `rules/*`, `content/srd-5.1/*`, `adventure/adventure-bible.ts` (data only) |
+| Character | `character/*`, `engine/rest.ts`, derivation half of `combat/combatant-profile.ts` |
+| Inventory | `engine/inventory.ts`, `engine/potions.ts`, `engine/combat/combat-gear.ts` |
+| Effects | `ActiveEffect` and `conditions` in `combat-state.ts`, `evolve-combat.ts`, `expireEffects` and `applyEffect` |
+| Magic | `castSpell` in `combat-flow.ts`, concentration in `resolution.ts`, slots in `combatant-profile.ts` |
+| Combat | `combat/*` (state, positioning, tactics, legal targets), `engine/combat/combat-flow.ts`, `resolution.ts`, `combat-retry.ts` |
+| Exploration | `engine/rounds.ts`, `checks.ts`, `round-plan.ts`, `ledger/*` |
+| Table | `lobby/*`, `engine/members.ts`, `pause.ts`, `reminders.ts`, `speech.ts`, `dm.ts` |
+
+**Rule enforced by tooling:** an import-boundary lint (for example `eslint-plugin-boundaries` or `dependency-cruiser`) fails the build when a system imports upward or sideways. Without it the boundaries erode.
+
+## 4. Rule queries: one place for "may I, how much, against what"
+
+Menus and the engine both ask the same pure functions. Nothing calls a stat field directly for a rule.
+
+| Query | Answers |
+| --- | --- |
+| `canAct(c)`, `canReact(c)` | Blocked by incapacitated, unconscious, etc. |
+| `speed(c)` | Base speed after effects (restrained gives 0, difficult terrain halves) |
+| `armorClass(c)` | Base, worn armor and shield, Shield spell, effects |
+| `attackMode(attacker, target, kind)` | Advantage, disadvantage or normal, with the reasons |
+| `saveMode(c, ability)` and `checkMode(c, skill)` | The same for saves and checks |
+| `attackBonus(c, option)` and `saveDc(c)` | Modifiers from ability, proficiency, effects |
+| `turnOptions(encounter, c)` | **Everything the actor may do now**: attacks with legal targets, spells with slots and targets, features, items, moves, plus the reason each unavailable choice is unavailable |
+
+`turnOptions` is the important one. The Discord menu renders it, and the engine validates every command against it: a command is legal exactly when it is in the options. The two can then never disagree, and the menu can say why something is greyed out.
+
+**Derived values are computed on demand**, not stored. Only real state is saved: hit points, resources left, position, effects, the turn budget. With at most about ten combatants and ten effects each, computing costs nothing.
+
+## 5. Effects model
+
+A condition or lasting effect is one record on the combatant (or, for an outlasting curse, on hero status):
+
+```
+EffectInstance {
+  id
+  definition          -> content ID (condition:poisoned, spell:bless, ...)
+  sourceId            who caused it
+  targetId            whom it affects
+  modifiers           what it does, from a fixed vocabulary (see below)
+  clock               { follows: "source" | "target", boundary: "start" | "end", untilRound, untilTurn } | null
+  triggers            [{ at: "start" | "end", follows, do: damage | saveToEnd | expire }]
+  dependsOn           concentration ID | another effect | null
+  stacking            "replace" | "extend" | "coexist" | "ignore"
+}
+```
+
+- **Modifiers use a fixed vocabulary**, for example: `blocksActions`, `blocksReactions`, `speedSet`, `speedMultiplier`, `attackMode(against|by, melee|ranged, advantage|disadvantage)`, `saveMode`, `acBonus`, `bonusDie`. The queries in section 4 fold over them, so no query mentions a condition by name.
+- **Implied conditions** expand through the `includes` field content already has (unconscious includes incapacitated and prone).
+- **A global clock.** Expiry is compared to the encounter's `round` and `turnNumber` (absolute, not decremented each turn), so it survives a pause and is cheap.
+- **Timing patterns** the SRD needs, all expressible as clock plus triggers: end of the caster's next turn (Guiding Bolt), start of the target's turn (poison damage), end of each of the target's turns with a save (Hold Person), concentration (Bless), start of its own next turn (Dodge).
+- **Turn boundary phases.** At the start of a turn the engine collects triggers due for the creature whose turn it is, runs them in the order the effects were applied (dice go through saved rolls, like an attack's damage), then fills the turn budget from the computed values. At the end it runs end-of-turn triggers and expiries. After each trigger the queries are re-read, because damage can down a hero or a save can remove the thing blocking them.
+- **When concentration ends,** every effect that depends on it is removed together.
+- **A truly new behavior** (something the vocabulary cannot say) is a named engine capability, implemented and tested, and content refers to it. We do not use scripting, because content must remain checkable before it becomes playable.
+
+The turn budget (action, bonus action, reaction, movement) stays a per-turn resource. Effects do not overwrite it. `canAct` and `speed` decide what may be spent, at the moment of the choice.
+
+## 6. Action resolution
+
+Keep the persisted, stepwise resolution the code already has, and add what it lacks.
+
+- **One plan for every action.** A weapon attack, a spell, a feature, an item and a monster's breath weapon each produce a plan with cost, targeting, checks and effects. They share validation, resource accounting, dice handling and effect application (already true for most).
+- **Stages, each saved:** declare, checks, **reaction window (new)**, effects, concentration saves, effect expiry and triggers. Restarting resumes at the saved stage without rerolling or respending.
+- **Reaction window.** After the attack roll and before the outcome, each eligible creature (per `canReact`) may be offered its reaction (Shield now, later opportunity attack choices and spells such as Hellish Rebuke). The window closes when everyone answers, declines or the timer runs out (auto-decline). This is what makes scenarios 8 and 39 possible.
+- **Flow to prove first:** attack, then reaction (Shield), then damage, then concentration save, then effect expiry, all with a restart in the middle of each step.
+
+Decision to make (see below): whether combat action dice should resolve in one step instead of through pending rolls and a worker. One step would remove most of the stage machinery; the staged dice reveal and the reaction window are the reasons it exists today.
+
+## 7. Persistence and recovery
+
+- **The saved state is the source of truth,** written with a revision check after every command. Events are the history and feed the journal, recaps and picture prompts. Production never replays the whole log.
+- **Recovery is per command, not per turn.** Restoring to the start of the turn and letting the player redo it would be an undo button: a bad roll could be dodged by a restart. It would also leave Discord messages that contradict the new outcome. Dice are saved when rolled for this reason. The existing `fightCheckpoint` stays for the organizer's "Retry the fight".
+- **Add an event schema version** to `EventEnvelope`, and a state migration step when a system's state shape changes (the effects change alters state). Old events remain readable history and are upcast on read if ever needed.
+- **Event kinds for effects:** `effectApplied`, `effectRemoved`, `effectExpired`, `effectTriggered`. Computed values need no events.
+
+## 8. Content versus engine
+
+Two levels of extension:
+
+1. **New content, existing mechanics** (another weapon, a monster with a supported attack and a poison effect): add a validated definition. No engine change. The LLM may draft these; the validator checks every capability exists before the content becomes playable (already how adventures are checked).
+2. **A new mechanic:** implement it in the owning system, test it, add the capability, then content may reference it.
+
+Adventures reference content by ID only and never contain rules.
+
+A second ruleset (not 5e) is out of scope. We build SRD 5.1 well first and extract shared pieces when a second system gives concrete requirements.
+
+## 9. The Discord UX contract
+
+- The UX reads **views** built from engine queries (`turnOptions`, character and encounter summaries) and sends **commands**. It never computes a rule, checks legality itself or edits state.
+- Buttons carry no authority; every command is checked against saved state (already true).
+- Text catalogs and cards are the UX's own. Adding a spell or monster needs a glossary name, not new UX.
+- Anything the UX needs to know about "why not" comes from the query's reason, not from a second copy of the rule.
+
+## 10. Migration plan
+
+Each step keeps the existing tests green, adds cases from the audit's missing list, and is releasable on its own. Nothing goes to the table between steps unless the owner says so.
+
+1. **Fence and freeze.** Add the import-boundary lint (warning first), and a golden test that plays a fixed multi-round fight and records events and final state, so refactors can be checked for identical behavior.
+2. **`turnOptions` and the shared queries.** Move the menu's legality into the domain, and have the engine validate against it. Menu and engine share one function. Add `canAct`, `speed`, `attackMode` and `armorClass` as queries over current data first.
+3. **Effects as instances.** Add `EffectInstance`, the clock and triggers, and the turn-boundary phases. Move prone, the crippling check, Bless and Guiding Bolt onto it. Give restrained, poisoned, frightened and incapacitated their real consequences. State migration for existing campaigns; event schema version added.
+4. **Reaction stage and Shield.** Add the reaction window to resolution and build Shield. Run the flow in section 6 with restarts.
+5. **Extract Magic.** Move casting, slots and concentration out of combat into their own system; allow casting outside a fight where the rules allow.
+6. **Split Combat and Inventory.** Separate turn flow, movement, resolution and tactics; move `combat-gear.ts` into Inventory. Turn the boundary lint to an error.
+7. **Only then** the rules-depth track (leveling, terrain, shops, more conditions and monsters), which now means adding content and small capabilities.
+
+The Discord work already done is not touched, apart from the menu reading `turnOptions` in step 2.
+
+## Open decisions
+
+1. **Atomic or staged dice for combat actions.** Staged (today) keeps the dice reveal and makes reactions natural. Atomic (roll everything in one commit) is simpler but needs a different way to pause for a reaction. Recommendation: keep staged and add the reaction stage.
+2. **Event versioning now.** Recommendation: yes, in step 3, because it is cheap today and hard later.
+3. **Live campaigns.** If the running server holds real games, step 3 needs a tested state migration. If not, we can change the shape freely. This needs the owner's answer.
+4. **Boundary lint as error or warning** during steps 2 to 5. Recommendation: warning until step 6.
+5. **Scope of step 3.** Which SRD conditions get real consequences first. Recommendation: the five the content already names, then grappled, restrained and blinded.
