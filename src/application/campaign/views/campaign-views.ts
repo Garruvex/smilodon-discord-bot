@@ -1,3 +1,4 @@
+import { conditionLookup, conditionsOf } from "../../../domain/campaign/effects/effect-queries.js";
 import type { AdventureBible } from "../../../domain/campaign/adventure/adventure-bible.js";
 import { findScene } from "../../../domain/campaign/adventure/adventure-bible.js";
 import { abilityModifier, type CharacterSheet } from "../../../domain/campaign/character/character-sheet.js";
@@ -211,7 +212,7 @@ export function buildHeroView(state: CampaignState, sheet: CharacterSheet, conte
     hp,
     maxHp: sheet.maxHp,
     armorClass,
-    conditions: fighter?.conditions ?? [],
+    conditions: fighter === undefined ? [] : conditionsOf(fighter, conditionLookup(content)),
     presence: member?.availability ?? "away",
     down: hp <= 0,
     fallen: isFallen(state, sheet.id),

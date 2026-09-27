@@ -1,3 +1,4 @@
+import { appliedCondition } from "../../domain/campaign/effect-fixtures.js";
 import { describe, expect, it } from "vitest";
 
 import { emptyChannels, type CampaignRecord } from "../../../src/application/campaign/ports/campaign-record.js";
@@ -90,7 +91,7 @@ describe("hero views", () => {
       ...fight.state,
       encounter: {
         ...fight.encounter,
-        combatants: { ...fight.encounter.combatants, "c-mira": { ...fight.encounter.combatants["c-mira"]!, hp: 0, conditions: ["condition:prone" as const] } },
+        combatants: { ...fight.encounter.combatants, "c-mira": { ...fight.encounter.combatants["c-mira"]!, hp: 0, effects: [appliedCondition("condition:prone")] } },
       },
     };
     expect(buildHeroView(hurt, hurt.characters["c-mira"]!, content)).toMatchObject({ hp: 0, down: true, conditions: ["condition:prone"] });

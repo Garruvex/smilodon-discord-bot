@@ -161,8 +161,8 @@ export function encounterRecords(events: readonly CampaignEvent[], names: Combat
         if (event.condition !== "active" || event.change > 0) target.condition = event.condition;
         break;
       }
-      case "conditionAdded":
-        if (action !== null && event.condition === "condition:prone") targetOf(event.combatantId).knockedProne = true;
+      case "effectApplied":
+        if (action !== null && event.effect.conditions.includes("condition:prone")) targetOf(event.combatantId).knockedProne = true;
         break;
       case "resolutionFinished":
         action = null;

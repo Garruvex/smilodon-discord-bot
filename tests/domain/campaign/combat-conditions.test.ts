@@ -3,8 +3,13 @@ import { describe, expect, it } from "vitest";
 import type { EncounterSpec } from "../../../src/domain/campaign/commands/campaign-command.js";
 import { attackMode } from "../../../src/domain/campaign/engine/combat/resolution.js";
 import { alex, jamie, organizer } from "./campaign-fixtures.js";
-import type { Combatant } from "../../../src/domain/campaign/combat/combat-state.js";
+import type { ContentId } from "../../../src/domain/campaign/rules/content-id.js";
+import { conditionLookup, conditionsOf } from "../../../src/domain/campaign/effects/effect-queries.js";
+import { ruleset } from "./campaign-fixtures.js";
+import { appliedCondition } from "./effect-fixtures.js";
 import { Fight } from "./combat-fixtures.js";
+
+const lookup = conditionLookup(ruleset().content);
 
 // A giant wolf spider already on the party's doorstep.
 const webbed: EncounterSpec = {
@@ -21,8 +26,8 @@ describe("poisoned and frightened", () => {
     // then Mira rolls a 2 on her CON save (DC 11).
     const fight = new Fight().rolls([20, 15, 5]).run(organizer, { kind: "startEncounter", spec: webbed });
     fight.rolls([15, 2], [3]).run(alex, { kind: "endTurn", combatantId: "c-mira" }).run(jamie, { kind: "endTurn", combatantId: "c-borin" });
-    expect(fight.combatant("c-mira").conditions).toContain("condition:poisoned");
-    expect(fight.combatant("c-borin").conditions).not.toContain("condition:poisoned");
+    expect(conditionsOf(fight.combatant("c-mira"), lookup)).toContain("condition:poisoned");
+    expect(conditionsOf(fight.combatant("c-borin"), lookup)).not.toContain("condition:poisoned");
   });
 
   it("gives a poisoned or frightened attacker disadvantage, once however many apply", () => {
@@ -30,8 +35,8 @@ describe("poisoned and frightened", () => {
     const { encounter } = fight;
     const mira = fight.combatant("c-mira");
     const spider = fight.combatant("giant-wolf-spider");
-    const modeWith = (conditions: Combatant["conditions"]): string =>
-      attackMode(encounter, { ...mira, conditions }, spider, false, false).mode;
+    const modeWith = (conditions: readonly ContentId<"condition">[]): string =>
+      attackMode(encounter, { ...mira, effects: conditions.map((condition) => appliedCondition(condition)) }, spider, false, false, lookup).mode;
     expect(modeWith([])).toBe("normal");
     expect(modeWith(["condition:poisoned"])).toBe("disadvantage");
     expect(modeWith(["condition:frightened"])).toBe("disadvantage");

@@ -1,4 +1,5 @@
 import type { EncounterSpec } from "../commands/campaign-command.js";
+import type { EffectInstance } from "../effects/effect-instance.js";
 import type { CharacterId, Instant, RollId } from "../core/ids.js";
 import type { D20TestSpec } from "../dice/d20-test.js";
 import type { DiceExpression } from "../dice/dice-expression.js";
@@ -48,29 +49,6 @@ export interface CombatResources {
   readonly featureUses: Readonly<Record<string, number>>;
 }
 
-// Effects from spells that last beyond the action that created them.
-export type ActiveEffect =
-  | {
-      readonly kind: "bonusDie";
-      readonly id: string;
-      readonly sourceId: CombatantId;
-      readonly spellId: ContentId<"spell"> | null;
-      readonly die: DiceExpression;
-      readonly appliesTo: readonly ("attack" | "save")[];
-      // Ends at the start of the source's turn in this round; null: until removed.
-      readonly expiresAtRound: number | null;
-      // Ends with the source's concentration on this resolution.
-      readonly concentrationId: string | null;
-    }
-  | {
-      // Guiding Bolt: the next attack against this creature has advantage,
-      // until the end of the source's next turn.
-      readonly kind: "attackedWithAdvantage";
-      readonly id: string;
-      readonly sourceId: CombatantId;
-      readonly castRound: number;
-    };
-
 export interface Concentration {
   readonly resolutionId: string;
   readonly spellId: ContentId<"spell">;
@@ -109,9 +87,10 @@ export interface Combatant {
   readonly disengaged: boolean;
   readonly sneakAttackUsed: boolean;
   readonly condition: CombatantCondition;
-  // Conditions besides being downed, e.g. condition:prone.
-  readonly conditions: readonly ContentId<"condition">[];
-  readonly effects: readonly ActiveEffect[];
+  // Conditions, spells that outlast their casting, and stances: one record each,
+  // with its source, what it does, and when it ends (effects/effect-instance.ts).
+  // Being downed is not stored here; the rule queries derive it from `condition`.
+  readonly effects: readonly EffectInstance[];
   readonly concentration: Concentration | null;
   readonly deathSaves: { readonly successes: number; readonly failures: number };
 }
@@ -259,10 +238,6 @@ export function isDowned(combatant: Combatant): boolean {
   return combatant.condition === "unconscious" || combatant.condition === "stable";
 }
 
-export function hasCondition(combatant: Combatant, condition: ContentId<"condition">): boolean {
-  return combatant.conditions.includes(condition);
-}
-
 export function areEngaged(encounter: EncounterState, a: CombatantId, b: CombatantId): boolean {
   return encounter.engagements.some(([x, y]) => (x === a && y === b) || (x === b && y === a));
 }
@@ -273,11 +248,4 @@ export function engagedWith(encounter: EncounterState, id: CombatantId): readonl
     const combatant = other === null ? undefined : encounter.combatants[other];
     return combatant === undefined ? [] : [combatant];
   });
-}
-
-// Bonus dice (Bless) a combatant adds to rolls of this kind.
-export function bonusDiceFor(combatant: Combatant, kind: "attack" | "save"): D20TestSpec["bonusDice"] {
-  return combatant.effects.flatMap((effect) =>
-    effect.kind === "bonusDie" && effect.appliesTo.includes(kind) ? [{ source: effect.spellId ?? effect.id, die: effect.die }] : [],
-  );
 }

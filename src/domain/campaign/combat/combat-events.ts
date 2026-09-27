@@ -1,3 +1,4 @@
+import type { EffectInstance } from "../effects/effect-instance.js";
 import type { Instant, RollId } from "../core/ids.js";
 import type { D20TestRoll } from "../dice/d20-test.js";
 import type { RollResult } from "../dice/roll-spec.js";
@@ -5,7 +6,6 @@ import type { RollMoments } from "../dice/roll-moments.js";
 import type { ContentId } from "../rules/content-id.js";
 import type { Trait } from "../rules/traits.js";
 import type {
-  ActiveEffect,
   AttackOption,
   CombatantCondition,
   CombatantId,
@@ -18,6 +18,9 @@ import type {
   ResolutionState,
   ZoneId,
 } from "./combat-state.js";
+
+// Why lasting effects ended.
+export type EffectEnd = "expired" | "concentration" | "usedUp" | "stoodUp";
 
 // What an action spends when it is declared.
 export interface ActionCost {
@@ -84,9 +87,10 @@ export type CombatEvent =
       readonly deathSaves: { readonly successes: number; readonly failures: number };
       readonly cause: "damage" | "massiveDamage" | "damageAtZero" | "healing" | "protectedWhileAway";
     }
-  | { readonly kind: "conditionAdded"; readonly combatantId: CombatantId; readonly condition: ContentId<"condition"> }
-  | { readonly kind: "effectAdded"; readonly combatantId: CombatantId; readonly effect: ActiveEffect }
-  | { readonly kind: "effectsRemoved"; readonly combatantId: CombatantId; readonly effectIds: readonly string[] }
+  // A lasting effect (a condition, a spell that outlasts its casting) lands on a creature.
+  | { readonly kind: "effectApplied"; readonly combatantId: CombatantId; readonly effect: EffectInstance }
+  // Effects end: their clock ran out, their concentration broke, an attack used them up, or the holder stood up.
+  | { readonly kind: "effectsRemoved"; readonly combatantId: CombatantId; readonly effectIds: readonly string[]; readonly reason: EffectEnd }
   | { readonly kind: "sneakAttackUsed"; readonly combatantId: CombatantId }
   | { readonly kind: "concentrationStarted"; readonly combatantId: CombatantId; readonly concentration: Concentration }
   | { readonly kind: "concentrationEnded"; readonly combatantId: CombatantId; readonly reason: "newSpell" | "failedSave" | "downed" | "expired" }
@@ -157,8 +161,7 @@ export const combatEventKinds: readonly CombatEventKind[] = [
   "effectRollsRequested",
   "effectRolled",
   "combatantHpChanged",
-  "conditionAdded",
-  "effectAdded",
+  "effectApplied",
   "effectsRemoved",
   "sneakAttackUsed",
   "concentrationStarted",

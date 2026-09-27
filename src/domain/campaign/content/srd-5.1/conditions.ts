@@ -1,19 +1,66 @@
 import { defineCondition, type ConditionDefinition } from "../../rules/content-definitions.js";
 
-// The milestone 0 subset of SRD 5.1 conditions. What each condition does
-// mechanically lives in the engine; these entries identify them and record
-// which conditions imply others.
+// The SRD 5.1 conditions the engine implements, each as data: which conditions
+// it includes and what it does, from the modifier vocabulary. The rule queries
+// (effects/effect-queries.ts) read these; nothing else names a condition.
+//
+// Simplifications, until the engine has line of sight and forced movement:
+// frightened gives disadvantage on attack rolls whether or not the source of
+// fear can be seen, and does not stop the creature moving closer to it;
+// blinded does not affect ability checks that rely on sight.
 
 const source = "SRD 5.1";
 
-export const incapacitated = defineCondition({ id: "condition:incapacitated", source, includes: [] });
-export const prone = defineCondition({ id: "condition:prone", source, includes: [] });
-export const frightened = defineCondition({ id: "condition:frightened", source, includes: [] });
-export const poisoned = defineCondition({ id: "condition:poisoned", source, includes: [] });
+export const incapacitated = defineCondition({ id: "condition:incapacitated", source, includes: [], modifiers: [{ kind: "blocksActions" }] });
+
+export const prone = defineCondition({
+  id: "condition:prone",
+  source,
+  includes: [],
+  // Attack rolls against it have advantage from within 5 feet and disadvantage from farther away.
+  modifiers: [
+    { kind: "ownAttacks", mode: "disadvantage" },
+    { kind: "attacksAgainst", mode: "advantage", reach: "within5" },
+    { kind: "attacksAgainst", mode: "disadvantage", reach: "beyond5" },
+  ],
+});
+
+export const frightened = defineCondition({ id: "condition:frightened", source, includes: [], modifiers: [{ kind: "ownAttacks", mode: "disadvantage" }] });
+export const poisoned = defineCondition({ id: "condition:poisoned", source, includes: [], modifiers: [{ kind: "ownAttacks", mode: "disadvantage" }] });
+
 export const unconscious = defineCondition({
   id: "condition:unconscious",
   source,
   includes: [incapacitated.id, prone.id],
+  modifiers: [
+    { kind: "attacksAgainst", mode: "advantage", reach: "any" },
+    { kind: "autoFailSaves", abilities: ["str", "dex"] },
+    { kind: "critsAgainst", reach: "within5" },
+  ],
 });
 
-export const srd51Conditions: readonly ConditionDefinition[] = [incapacitated, prone, frightened, poisoned, unconscious];
+export const grappled = defineCondition({ id: "condition:grappled", source, includes: [], modifiers: [{ kind: "speedZero" }] });
+
+export const restrained = defineCondition({
+  id: "condition:restrained",
+  source,
+  includes: [],
+  modifiers: [
+    { kind: "speedZero" },
+    { kind: "ownAttacks", mode: "disadvantage" },
+    { kind: "attacksAgainst", mode: "advantage", reach: "any" },
+    { kind: "saves", ability: "dex", mode: "disadvantage" },
+  ],
+});
+
+export const blinded = defineCondition({
+  id: "condition:blinded",
+  source,
+  includes: [],
+  modifiers: [
+    { kind: "ownAttacks", mode: "disadvantage" },
+    { kind: "attacksAgainst", mode: "advantage", reach: "any" },
+  ],
+});
+
+export const srd51Conditions: readonly ConditionDefinition[] = [incapacitated, prone, frightened, poisoned, unconscious, grappled, restrained, blinded];

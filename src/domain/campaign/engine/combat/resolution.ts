@@ -3,11 +3,8 @@ import type { RollId } from "../../core/ids.js";
 import type { ActionCost } from "../../combat/combat-events.js";
 import {
   areEngaged,
-  bonusDiceFor,
   engagedWith,
-  hasCondition,
   isActive,
-  isDowned,
   isPresent,
   type Combatant,
   type CombatantId,
@@ -17,23 +14,22 @@ import {
   type PendingEffectRoll,
   type ResolutionSource,
   type ResolutionState,
+  type TargetOutcome,
 } from "../../combat/combat-state.js";
+import { attackBias, autoFailsSave, bonusDiceFor, conditionLookup, effectsUsedUpByAttack, hitsAreCritical, saveBias, type ConditionLookup } from "../../effects/effect-queries.js";
+import type { EffectInstance } from "../../effects/effect-instance.js";
+import type { ContentId } from "../../rules/content-id.js";
 import { distanceBetween, engagedDistance } from "../../combat/positioning.js";
 import { resolveD20Test, type D20TestSpec } from "../../dice/d20-test.js";
 import { combine, plus } from "../../dice/dice-expression.js";
 import { resolveRollMode } from "../../dice/roll.js";
 import { classifyRollMoments } from "../../dice/roll-moments.js";
 import { resultMatchesSpec, type RollResult, type RollSpec } from "../../dice/roll-spec.js";
-import type { Effect, ResolutionPlan } from "../../rules/effects.js";
+import type { Effect, EffectDuration, ResolutionPlan } from "../../rules/effects.js";
 import { criticalHits, naturalRollsOnChecks } from "../../rules/house-rules.js";
 import type { Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { activeEncounter, afterResolution, endIfDecided, isProtected } from "./combat-flow.js";
-
-const prone = "condition:prone";
-// Both give disadvantage on the creature's attack rolls (Frightened's
-// line-of-sight and movement limits are not modeled).
-const crippling = ["condition:poisoned", "condition:frightened"] as const;
 
 export interface DeclareRequest {
   readonly actor: Combatant;
@@ -57,7 +53,10 @@ export function declareResolution(decision: Decision, request: DeclareRequest): 
   const id = `${encounter.id}:act:${++sequence}`;
   const checks: Record<RollId, PendingCheck> = {};
   const pendingRolls: Record<RollId, PendingCombatRoll> = {};
-  const consumedAdvantage: { combatantId: CombatantId; effectIds: string[] }[] = [];
+  const consumedAdvantage: { combatantId: CombatantId; effectIds: readonly string[] }[] = [];
+  const lookup = conditionLookup(decision.ctx.rules.content);
+  // Targets that fail a saving throw without rolling (an unconscious creature's Strength and Dexterity saves).
+  const autoFailed: Record<CombatantId, TargetOutcome> = {};
   let sneakAttack = false;
 
   for (const targetId of request.targetIds) {
@@ -69,15 +68,20 @@ export function declareResolution(decision: Decision, request: DeclareRequest): 
     let against: number;
     let kind: PendingCheck["kind"];
     if (check.kind === "savingThrow") {
+      if (autoFailsSave(target, check.ability, lookup)) {
+        autoFailed[targetId] = { landed: true, critical: false };
+        continue;
+      }
       const dc = actor.spellcasting?.saveDc ?? 10;
-      spec = { mode: "normal", modifier: target.saves[check.ability], bonusDice: bonusDiceFor(target, "save") };
+      const bias = saveBias(target, check.ability, lookup);
+      spec = { mode: resolveRollMode(bias.advantage, bias.disadvantage), modifier: target.saves[check.ability], bonusDice: bonusDiceFor(target, "save") };
       against = dc;
       kind = "save";
     } else {
       const ranged = rangedAttack(source);
       const distance = distanceBetween(encounter, actor.id, target.id) ?? Infinity;
       const longShot = source.kind === "weapon" && source.option.range.kind === "ranged" && distance > source.option.range.normal;
-      const mode = attackMode(encounter, actor, target, ranged, longShot);
+      const mode = attackMode(encounter, actor, target, ranged, longShot, lookup);
       const toHit = source.kind === "weapon" ? source.option.toHit : (actor.spellcasting?.attackBonus ?? 0);
       spec = { mode: mode.mode, modifier: toHit, bonusDice: bonusDiceFor(actor, "attack") };
       against = target.armorClass;
@@ -99,7 +103,7 @@ export function declareResolution(decision: Decision, request: DeclareRequest): 
     purpose: request.purpose,
     stage: "checks",
     checks,
-    outcomes: plan.check === null ? Object.fromEntries(request.targetIds.map((targetId) => [targetId, { landed: true, critical: false }])) : {},
+    outcomes: plan.check === null ? Object.fromEntries(request.targetIds.map((targetId) => [targetId, { landed: true, critical: false }])) : autoFailed,
     effectRolls: {},
     rolled: {},
     sneakAttack,
@@ -110,7 +114,7 @@ export function declareResolution(decision: Decision, request: DeclareRequest): 
     if (actor.concentration !== null) endConcentration(decision, actor.id, "newSpell");
   }
   decision.emit({ kind: "resolutionDeclared", resolution, cost: request.cost, pendingRolls, sequence });
-  for (const consumed of consumedAdvantage) decision.emit({ kind: "effectsRemoved", ...consumed });
+  for (const consumed of consumedAdvantage) decision.emit({ kind: "effectsRemoved", ...consumed, reason: "usedUp" });
   if (source.kind === "spell" && decision.ctx.rules.content.get(source.spellId).concentration) {
     decision.emit({ kind: "concentrationStarted", combatantId: actor.id, concentration: { resolutionId: id, spellId: source.spellId } });
   }
@@ -150,8 +154,8 @@ function recordCheck(
     const outcome = resolveD20Test("attack", roll.d20.natural, roll.total, check.against, "no-effect");
     landed = outcome.success;
     // A hit on an unconscious creature from within 5 feet is a critical hit.
-    const closeOnDowned = target !== undefined && isDowned(target) && areEngaged(encounter, resolution.actorId, target.id);
-    critical = outcome.critical || (landed && closeOnDowned);
+    const closeCrit = target !== undefined && hitsAreCritical(target, conditionLookup(decision.ctx.rules.content), areEngaged(encounter, resolution.actorId, target.id));
+    critical = outcome.critical || (landed && closeCrit);
     moments = classifyRollMoments({ kind: "attack", roll, target: check.against, naturalRule: "no-effect" });
   } else {
     const naturalRule = decision.ctx.rules.houseRules.option(naturalRollsOnChecks);
@@ -210,9 +214,12 @@ function proceedToEffects(decision: Decision): void {
         for (const targetId of targets) {
           const target = encounter.combatants[effect.target === "self" ? resolution.actorId : targetId];
           if (target === undefined) continue;
+          const lookup = conditionLookup(decision.ctx.rules.content);
+          if (autoFailsSave(target, effect.ability, lookup)) continue;
+          const bias = saveBias(target, effect.ability, lookup);
           const spec: RollSpec = {
             kind: "d20Test",
-            spec: { mode: "normal", modifier: target.saves[effect.ability], bonusDice: bonusDiceFor(target, "save") },
+            spec: { mode: resolveRollMode(bias.advantage, bias.disadvantage), modifier: target.saves[effect.ability], bonusDice: bonusDiceFor(target, "save") },
           };
           rolls[`${encounter.id}:roll:${++sequence}`] = { effectKey: `rider:${target.id}:${key}`, targetId: target.id, spec };
         }
@@ -287,41 +294,75 @@ function applyEffect(
       applyHealing(decision, recipient, resolution.rolled[key] ?? 0);
       return;
     case "applyCondition":
-      decision.emit({ kind: "conditionAdded", combatantId: recipient.id, condition: effect.condition });
+      decision.emit({ kind: "effectApplied", combatantId: recipient.id, effect: conditionInstance(resolution, recipient, effect.condition, key, effect.duration, round) });
       return;
     case "bonusDie": {
       const concentrating = resolution.source.kind === "spell" && decision.ctx.rules.content.get(resolution.source.spellId).concentration;
+      const id = `${resolution.id}:${recipient.id}`;
+      const spellId = resolution.source.kind === "spell" ? resolution.source.spellId : null;
       decision.emit({
-        kind: "effectAdded",
+        kind: "effectApplied",
         combatantId: recipient.id,
         effect: {
-          kind: "bonusDie",
-          id: `${resolution.id}:${recipient.id}`,
+          id,
+          definition: spellId ?? "effect:bonus-die",
           sourceId: resolution.actorId,
-          spellId: resolution.source.kind === "spell" ? resolution.source.spellId : null,
-          die: effect.die,
-          appliesTo: effect.appliesTo,
-          expiresAtRound: effect.duration.kind === "rounds" ? round + effect.duration.count : null,
+          conditions: [],
+          modifiers: [{ kind: "bonusDie", die: effect.die, appliesTo: effect.appliesTo, source: spellId ?? id }],
+          // Ends at the start of the source's turn once its rounds are up.
+          clock: effect.duration.kind === "rounds" ? { follows: "source", boundary: "start", untilRound: round + effect.duration.count } : null,
           concentrationId: concentrating ? resolution.id : null,
+          stacking: "coexist",
         },
       });
       return;
     }
     case "nextAttackAdvantage":
+      // Guiding Bolt: the next attack against the target has advantage, until the end of the source's next turn.
       decision.emit({
-        kind: "effectAdded",
+        kind: "effectApplied",
         combatantId: recipient.id,
-        effect: { kind: "attackedWithAdvantage", id: `${resolution.id}:${recipient.id}`, sourceId: resolution.actorId, castRound: round },
+        effect: {
+          id: `${resolution.id}:${recipient.id}`,
+          definition: resolution.source.kind === "spell" ? resolution.source.spellId : "effect:advantage",
+          sourceId: resolution.actorId,
+          conditions: [],
+          modifiers: [{ kind: "attacksAgainst", mode: "advantage", reach: "any", usesUp: true }],
+          clock: { follows: "source", boundary: "end", untilRound: round + 1 },
+          concentrationId: null,
+          stacking: "coexist",
+        },
       });
       return;
     case "conditionUnlessSave":
-      if (resolution.rolled[`rider:${recipient.id}:${key}`] === 0) {
-        decision.emit({ kind: "conditionAdded", combatantId: recipient.id, condition: effect.condition });
+      if (resolution.rolled[`rider:${recipient.id}:${key}`] === 0 || autoFailsSave(recipient, effect.ability, conditionLookup(decision.ctx.rules.content))) {
+        decision.emit({ kind: "effectApplied", combatantId: recipient.id, effect: conditionInstance(resolution, recipient, effect.condition, key, null, round) });
       }
       return;
     default:
       assertNever(effect);
   }
+}
+
+// A condition as a lasting effect: it does not stack, and ends when its rounds are up (at the start of its source's turn) if it has any.
+function conditionInstance(
+  resolution: ResolutionState,
+  recipient: Combatant,
+  condition: ContentId<"condition">,
+  key: string,
+  duration: EffectDuration | null,
+  round: number,
+): EffectInstance {
+  return {
+    id: `${resolution.id}:${recipient.id}:${key}`,
+    definition: condition,
+    sourceId: resolution.actorId,
+    conditions: [condition],
+    modifiers: [],
+    clock: duration?.kind === "rounds" ? { follows: "source", boundary: "start", untilRound: round + duration.count } : null,
+    concentrationId: null,
+    stacking: "ignore",
+  };
 }
 
 function finishResolution(decision: Decision): void {
@@ -429,10 +470,8 @@ export function endConcentration(
   if (encounter == null || concentration == null) return;
   decision.emit({ kind: "concentrationEnded", combatantId: casterId, reason });
   for (const combatant of Object.values(encounter.combatants)) {
-    const effectIds = combatant.effects.flatMap((effect) =>
-      effect.kind === "bonusDie" && effect.concentrationId === concentration.resolutionId ? [effect.id] : [],
-    );
-    if (effectIds.length > 0) decision.emit({ kind: "effectsRemoved", combatantId: combatant.id, effectIds });
+    const effectIds = combatant.effects.flatMap((effect) => (effect.concentrationId === concentration.resolutionId ? [effect.id] : []));
+    if (effectIds.length > 0) decision.emit({ kind: "effectsRemoved", combatantId: combatant.id, effectIds, reason: "concentration" });
   }
 }
 
@@ -482,21 +521,15 @@ export function attackMode(
   target: Combatant,
   ranged: boolean,
   longShot: boolean,
-): { readonly mode: D20TestSpec["mode"]; readonly consumed: string[] } {
+  lookup: ConditionLookup,
+): { readonly mode: D20TestSpec["mode"]; readonly consumed: readonly string[] } {
   let advantage = 0;
   let disadvantage = longShot ? 1 : 0;
   const distance = distanceBetween(encounter, attacker.id, target.id) ?? Infinity;
-  const within5 = distance <= engagedDistance;
-  if (target.dodging && isActive(target)) disadvantage += 1;
-  // Unconscious: attacks have advantage. Prone (and unconscious creatures are
-  // prone): advantage from within 5 feet, disadvantage from farther away.
-  if (isDowned(target)) advantage += 1;
-  if (isDowned(target) || hasCondition(target, prone)) {
-    if (within5) advantage += 1;
-    else disadvantage += 1;
-  }
-  if (hasCondition(attacker, prone)) disadvantage += 1;
-  if (crippling.some((condition) => hasCondition(attacker, condition))) disadvantage += 1;
+  // What conditions and lasting effects on either creature add (prone, unconscious, dodging, a Guiding Bolt...).
+  const bias = attackBias(attacker, target, lookup, distance <= engagedDistance);
+  advantage += bias.advantage;
+  disadvantage += bias.disadvantage;
   if (ranged) {
     const threatened = engagedWith(encounter, attacker.id).some((other) => other.side !== attacker.side && isActive(other));
     if (threatened) disadvantage += 1;
@@ -508,9 +541,7 @@ export function attackMode(
     );
     if (allyEngaged) advantage += 1;
   }
-  const consumed = target.effects.flatMap((effect) => (effect.kind === "attackedWithAdvantage" ? [effect.id] : []));
-  if (consumed.length > 0) advantage += 1;
-  return { mode: resolveRollMode(advantage, disadvantage), consumed: consumed.slice(0, 1) };
+  return { mode: resolveRollMode(advantage, disadvantage), consumed: effectsUsedUpByAttack(target) };
 }
 
 // Sneak Attack (2014): once per turn, with a finesse or ranged weapon, when

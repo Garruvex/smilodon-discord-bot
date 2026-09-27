@@ -7,10 +7,8 @@ import { isFallen } from "../../state/campaign-state.js";
 import type { ActionCost } from "../../combat/combat-events.js";
 import {
   areEngaged,
-  bonusDiceFor,
   currentCombatant,
   engagedWith,
-  hasCondition,
   isActive,
   isPresent,
   type AttackOption,
@@ -22,6 +20,7 @@ import {
 } from "../../combat/combat-state.js";
 import { defaultHeroResources, heroCombatant, monsterCombatant } from "../../combat/combatant-profile.js";
 import { attackProblem, costProblem, engageProblem, featureProblem, moveProblem, spellProblem, withdrawProblem } from "../../combat/turn-rules.js";
+import { avoidsOpportunityAttacks, bonusDiceFor, canAct, conditionLookup, effectsDueAt, hasCondition } from "../../effects/effect-queries.js";
 import { edgeBetween, engageCost, withdrawCost } from "../../combat/positioning.js";
 import { chooseAutopilotPlan, chooseMonsterPlan, type TurnPlan } from "../../combat/tactics.js";
 import { resolveD20Test, type D20TestSpec } from "../../dice/d20-test.js";
@@ -49,21 +48,21 @@ export function handleCombatCommand(decision: Decision, command: CombatCommand):
       return startEncounter(decision, command.spec);
     case "combatMove":
       return withHeroTurn(decision, command.combatantId, (hero, encounter) => {
-        const checked = moveProblem(encounter, hero, command.zoneId);
+        const checked = moveProblem(encounter, hero, command.zoneId, decision.ctx.rules.content);
         if ("problem" in checked) return checked.problem;
         startMove(decision, hero, "move", command.zoneId, checked.value.feet, null);
         return null;
       });
     case "combatEngage":
       return withHeroTurn(decision, command.combatantId, (hero, encounter) => {
-        const problem = engageProblem(encounter, hero, command.targetId);
+        const problem = engageProblem(encounter, hero, command.targetId, decision.ctx.rules.content);
         if (problem !== null) return problem;
         decision.emit({ kind: "combatantEngaged", combatantId: hero.id, targetId: command.targetId, feet: engageCost });
         return null;
       });
     case "combatWithdraw":
       return withHeroTurn(decision, command.combatantId, (hero, encounter) => {
-        const problem = withdrawProblem(encounter, hero);
+        const problem = withdrawProblem(encounter, hero, decision.ctx.rules.content);
         if (problem !== null) return problem;
         startMove(decision, hero, "withdraw", null, withdrawCost, null);
         return null;
@@ -88,7 +87,7 @@ export function handleCombatCommand(decision: Decision, command: CombatCommand):
     case "combatDodge":
     case "combatDisengage":
       return withHeroTurn(decision, command.combatantId, (hero, encounter) => {
-        const cost = costProblem(hero, "action");
+        const cost = costProblem(hero, "action", decision.ctx.rules.content);
         if (cost !== null) return cost;
         const action = command.kind === "combatDash" ? "dash" : command.kind === "combatDodge" ? "dodge" : "disengage";
         decision.emit({ kind: "actionTaken", combatantId: hero.id, action, bonus: false });
@@ -275,7 +274,7 @@ function declareWeaponAttack(
 ): Rejection | null {
   const encounter = activeEncounter(decision);
   if (encounter === null) return { code: "notInCombat" };
-  const problem = attackProblem(encounter, attacker, option, targetId, purpose);
+  const problem = attackProblem(encounter, attacker, option, targetId, purpose, decision.ctx.rules.content);
   if (problem !== null) return problem;
   return declareResolution(decision, {
     actor: attacker,
@@ -335,7 +334,7 @@ function startMove(
 ): void {
   const encounter = activeEncounter(decision);
   if (encounter === null) return;
-  const provokers = mover.disengaged
+  const provokers = avoidsOpportunityAttacks(mover, conditionLookup(decision.ctx.rules.content))
     ? []
     : engagedWith(encounter, mover.id)
         .filter((other) => other.side !== mover.side && isActive(other) && other.budget.reaction)
@@ -498,11 +497,17 @@ function beginTurn(decision: Decision, turnIndex: number, round: number): void {
     });
     scheduleReminder(decision, { kind: "turn", encounterId: encounter.id, turnNumber, endsAt });
   }
-  expireEffects(decision, combatant.id, currentRound);
+  expireDue(decision, combatant.id, "start", currentRound);
 
   // Standing up from prone costs half the creature's speed.
+  const lookup = conditionLookup(decision.ctx.rules.content);
   const fresh = activeEncounter(decision)?.combatants[combatant.id] ?? combatant;
-  if (isActive(fresh) && hasCondition(fresh, prone)) decision.emit({ kind: "stoodUp", combatantId: fresh.id, feet: Math.floor(fresh.speed / 2) });
+  if (isActive(fresh) && hasCondition(fresh, prone, lookup)) decision.emit({ kind: "stoodUp", combatantId: fresh.id, feet: Math.floor(fresh.speed / 2) });
+  // An incapacitated creature loses its turn.
+  if (isActive(fresh) && !canAct(fresh, lookup)) {
+    endTurn(decision);
+    return;
+  }
 
   if (combatant.side === "foes") {
     const fraction = combatant.fleeBelowHpFraction;
@@ -537,24 +542,22 @@ function beginTurn(decision: Decision, turnIndex: number, round: number): void {
   if (!playerTurn) playPlan(decision, currentOf(decision, combatant), chooseAutopilotPlan(activeEncounter(decision) ?? encounter, currentOf(decision, combatant)));
 }
 
-// Bless and similar end at the start of their source's turn once their
-// rounds are up, taking the source's concentration with them.
-function expireEffects(decision: Decision, sourceId: string, round: number): void {
+// Lasting effects whose clock has run out at this creature's turn boundary end
+// (Bless at the start of the caster's turn once its rounds are up, Guiding Bolt
+// at the end of the caster's next turn). An effect held up by concentration takes
+// the whole spell down with it.
+function expireDue(decision: Decision, creatureId: string, boundary: "start" | "end", round: number): void {
   const encounter = activeEncounter(decision);
   if (encounter === null) return;
-  const source = encounter.combatants[sourceId];
-  const expired = Object.values(encounter.combatants).some((combatant) =>
-    combatant.effects.some(
-      (effect) => effect.kind === "bonusDie" && effect.sourceId === sourceId && effect.expiresAtRound !== null && round >= effect.expiresAtRound,
-    ),
-  );
-  if (!expired) return;
-  if (source?.concentration != null) endConcentration(decision, sourceId, "expired");
-  for (const combatant of Object.values(activeEncounter(decision)?.combatants ?? {})) {
-    const effectIds = combatant.effects.flatMap((effect) =>
-      effect.kind === "bonusDie" && effect.sourceId === sourceId && effect.expiresAtRound !== null && round >= effect.expiresAtRound ? [effect.id] : [],
-    );
-    if (effectIds.length > 0) decision.emit({ kind: "effectsRemoved", combatantId: combatant.id, effectIds });
+  const due = effectsDueAt(Object.values(encounter.combatants), creatureId, boundary, round);
+  if (due.length === 0) return;
+  const held = new Set(due.flatMap(({ effects }) => effects.flatMap((effect) => (effect.concentrationId === null ? [] : [effect.concentrationId]))));
+  for (const concentrationId of held) {
+    const caster = Object.values(encounter.combatants).find((combatant) => combatant.concentration?.resolutionId === concentrationId);
+    if (caster !== undefined) endConcentration(decision, caster.id, "expired");
+  }
+  for (const { holderId, effects } of effectsDueAt(Object.values(activeEncounter(decision)?.combatants ?? {}), creatureId, boundary, round)) {
+    decision.emit({ kind: "effectsRemoved", combatantId: holderId, effectIds: effects.map((effect) => effect.id), reason: "expired" });
   }
 }
 
@@ -603,13 +606,7 @@ function endTurn(decision: Decision): void {
   const combatant = currentCombatant(encounter);
   if (combatant !== undefined) {
     if (encounter.turnEndsAt !== null) decision.request({ kind: "cancelTimer", timerId: turnTimerId(encounter.id, encounter.turnNumber) });
-    // Guiding Bolt's advantage lasts until the end of the caster's next turn.
-    for (const target of Object.values(encounter.combatants)) {
-      const effectIds = target.effects.flatMap((effect) =>
-        effect.kind === "attackedWithAdvantage" && effect.sourceId === combatant.id && effect.castRound < encounter.round ? [effect.id] : [],
-      );
-      if (effectIds.length > 0) decision.emit({ kind: "effectsRemoved", combatantId: target.id, effectIds });
-    }
+    expireDue(decision, combatant.id, "end", encounter.round);
     decision.emit({ kind: "turnEnded", combatantId: combatant.id });
   }
   if (endIfDecided(decision)) return;

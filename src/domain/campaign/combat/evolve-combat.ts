@@ -1,4 +1,5 @@
 import { assertNever } from "../core/assert-never.js";
+import type { EffectInstance } from "../effects/effect-instance.js";
 import type { CombatEvent } from "./combat-events.js";
 import type { Combatant, CombatantId, EncounterState, ResolutionState } from "./combat-state.js";
 
@@ -42,7 +43,7 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
     case "stoodUp":
       return update(encounter, event.combatantId, (combatant) => ({
         ...combatant,
-        conditions: combatant.conditions.filter((condition) => condition !== prone),
+        effects: combatant.effects.filter((effect) => effect.definition !== prone),
         budget: { ...combatant.budget, movement: combatant.budget.movement - event.feet },
       }));
     case "combatantMoved":
@@ -141,12 +142,8 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
       }));
       return event.condition === "dead" ? withoutEngagements(updated, event.combatantId) : updated;
     }
-    case "conditionAdded":
-      return update(encounter, event.combatantId, (combatant) =>
-        combatant.conditions.includes(event.condition) ? combatant : { ...combatant, conditions: [...combatant.conditions, event.condition] },
-      );
-    case "effectAdded":
-      return update(encounter, event.combatantId, (combatant) => ({ ...combatant, effects: [...combatant.effects, event.effect] }));
+    case "effectApplied":
+      return update(encounter, event.combatantId, (combatant) => ({ ...combatant, effects: stack(combatant.effects, event.effect) }));
     case "effectsRemoved":
       return update(encounter, event.combatantId, (combatant) => ({
         ...combatant,
@@ -193,6 +190,14 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
     default:
       return assertNever(event);
   }
+}
+
+// A new effect joins the ones a creature has, by its stacking rule: ignored when
+// the creature already has that effect, replacing the one from the same source, or alongside.
+function stack(effects: readonly EffectInstance[], added: EffectInstance): readonly EffectInstance[] {
+  if (added.stacking === "ignore") return effects.some((effect) => effect.definition === added.definition) ? effects : [...effects, added];
+  if (added.stacking === "replace") return [...effects.filter((effect) => !(effect.definition === added.definition && effect.sourceId === added.sourceId)), added];
+  return [...effects, added];
 }
 
 function update(encounter: EncounterState, id: CombatantId, change: (combatant: Combatant) => Combatant): EncounterState {

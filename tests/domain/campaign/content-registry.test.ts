@@ -16,7 +16,7 @@ import {
 
 const allCapabilities: ReadonlySet<Capability> = new Set(capabilities);
 
-const prone = defineCondition({ id: "condition:prone", source: "Test", includes: [] });
+const prone = defineCondition({ id: "condition:prone", source: "Test", includes: [], modifiers: [] });
 const trip = defineSpell({
   id: "spell:trip",
   source: "Test",
@@ -122,7 +122,7 @@ describe("ContentRegistryBuilder", () => {
   });
 
   it("reports every problem in one error", () => {
-    const unsourced = defineCondition({ id: "condition:dazed", source: " ", includes: ["condition:stunned"] });
+    const unsourced = defineCondition({ id: "condition:dazed", source: " ", includes: ["condition:stunned"], modifiers: [] });
     const problems = problemsOf(() => build([unsourced], { glossaries: [{ language: "en", names: {} }] }));
     expect(problems).toEqual([
       "condition:dazed: missing source attribution.",

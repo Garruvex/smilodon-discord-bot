@@ -34,10 +34,10 @@ function trace(event: CampaignEvent): string {
     case "combatantFled":
     case "stoodUp":
       return `${event.kind} ${pick("combatantId", "zoneId", "feet")}`;
-    case "conditionAdded":
-    case "effectAdded":
+    case "effectApplied":
+      return `effectApplied combatantId=${JSON.stringify(event.combatantId)} definition=${JSON.stringify(event.effect.definition)}`;
     case "effectsRemoved":
-      return `${event.kind} ${pick("combatantId", "condition", "sourceId")}`;
+      return `effectsRemoved ${pick("combatantId", "reason")}`;
     case "encounterEnded":
       return `encounterEnded ${pick("outcome")}`;
     case "initiativeRolled":
@@ -57,7 +57,7 @@ function play(seed: number): string {
 // The result of a played fight: where it ended, how everyone stands, then what happened, in order.
 function report(name: string, fight: Fight): string {
   const encounter = fight.encounter;
-  const summary = Object.values(encounter.combatants).map((c) => `${c.id}: hp ${c.hp}/${c.maxHp} ${c.condition} zone=${c.zoneId} conditions=[${c.conditions.join(",")}]`);
+  const summary = Object.values(encounter.combatants).map((c) => `${c.id}: hp ${c.hp}/${c.maxHp} ${c.condition} zone=${c.zoneId} effects=[${c.effects.map((effect) => effect.definition).join(",")}]`);
   return [name, `status ${encounter.status} outcome ${String(encounter.outcome)} round ${encounter.round}`, ...summary, "", ...fight.events.map(trace)].join("\n") + "\n";
 }
 

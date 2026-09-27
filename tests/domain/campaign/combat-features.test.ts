@@ -60,7 +60,11 @@ describe("spellcasting", () => {
   it("lands Guiding Bolt's advantage on the next attack against the target, which Sneak Attack then uses", () => {
     const fight = elspethFirst().rolls([12], [1, 1, 1, 1]);
     fight.run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:guiding-bolt", slotLevel: 1, targetIds: ["goblin-a"] });
-    expect(fight.combatant("goblin-a")).toMatchObject({ hp: 3, effects: [{ kind: "attackedWithAdvantage", sourceId: "c-elspeth" }] });
+    // The advantage lasts until the end of Elspeth's next turn, and the first attack against the goblin uses it up.
+    expect(fight.combatant("goblin-a")).toMatchObject({
+      hp: 3,
+      effects: [{ definition: "spell:guiding-bolt", sourceId: "c-elspeth", modifiers: [{ kind: "attacksAgainst", mode: "advantage", usesUp: true }], clock: { follows: "source", boundary: "end", untilRound: 2 } }],
+    });
     expect(fight.combatant("c-elspeth").resources.spellSlots).toEqual({ 1: 1 });
 
     fight.run(sam, { kind: "endTurn", combatantId: "c-elspeth" });
@@ -120,7 +124,9 @@ describe("Bless and concentration", () => {
     const fight = elspethFirst();
     fight.run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:bless", slotLevel: 1, targetIds: ["c-elspeth", "c-mira", "c-borin"] });
     expect(fight.combatant("c-elspeth").concentration).toMatchObject({ spellId: "spell:bless" });
-    expect(fight.combatant("c-borin").effects).toMatchObject([{ kind: "bonusDie", appliesTo: ["attack", "save"], expiresAtRound: 11 }]);
+    expect(fight.combatant("c-borin").effects).toMatchObject([
+      { definition: "spell:bless", modifiers: [{ kind: "bonusDie", appliesTo: ["attack", "save"] }], clock: { follows: "source", boundary: "start", untilRound: 11 } },
+    ]);
 
     // Mira's attack roll carries the Bless die.
     fight.run(sam, { kind: "endTurn", combatantId: "c-elspeth" });
@@ -236,11 +242,11 @@ describe("prone", () => {
     // Wolves 22 and 21, then Mira 4 and Borin 3. Wolf A bites Mira (hit, 4
     // damage) and she fails the DC 11 Strength save; wolf B rolls two 1s.
     const fight = new Fight().rolls([1, 2, 20, 19, 15, 5, 1, 1], [1, 1]).run(organizer, { kind: "startEncounter", spec: wolves });
-    expect(fight.events).toContainEqual({ kind: "conditionAdded", combatantId: "c-mira", condition: "condition:prone" });
+    expect(ofKind(fight, "effectApplied").find((event) => event.combatantId === "c-mira")?.effect).toMatchObject({ definition: "condition:prone", conditions: ["condition:prone"] });
     const second = ofKind(fight, "resolutionDeclared")[1];
     expect(Object.values(second?.resolution.checks ?? {})[0]?.spec.mode).toBe("advantage");
     expect(fight.current).toBe("c-mira");
-    expect(fight.combatant("c-mira")).toMatchObject({ conditions: [], budget: { movement: 15 } });
+    expect(fight.combatant("c-mira")).toMatchObject({ effects: [], budget: { movement: 15 } });
   });
 });
 

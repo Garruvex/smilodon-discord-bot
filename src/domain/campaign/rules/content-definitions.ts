@@ -3,6 +3,7 @@ import type { DiceExpression } from "../dice/dice-expression.js";
 import type { Capability } from "./capabilities.js";
 import type { ContentId, ContentKind } from "./content-id.js";
 import type { Ability, DamageType, Effect, ResolutionPlan } from "./effects.js";
+import type { Modifier } from "./modifiers.js";
 import type { Trait } from "./traits.js";
 
 // Content definitions. Each kind keeps the data that is genuinely its own
@@ -27,6 +28,9 @@ export interface ConditionDefinition extends DefinitionBase<"condition"> {
   // Conditions this one always includes, e.g. Unconscious includes
   // Incapacitated and Prone.
   readonly includes: readonly ContentId<"condition">[];
+  // What the condition does, from the modifier vocabulary. The rule queries
+  // read these; no rule looks for a condition by name.
+  readonly modifiers: readonly Modifier[];
 }
 
 export type CastingTime = "action" | "bonus-action" | "reaction";

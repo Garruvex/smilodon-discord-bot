@@ -5,7 +5,8 @@ import type { FeatureDefinition, SpellDefinition } from "../rules/content-defini
 import type { ContentId } from "../rules/content-id.js";
 import type { SealedContent } from "../rules/content-registry.js";
 import { healingPotionCost, type HouseRules } from "../rules/house-rules.js";
-import { areEngaged, currentCombatant, engagedWith, isActive, isPresent, type AttackOption, type Combatant, type EncounterState } from "./combat-state.js";
+import { canAct, conditionLookup, speedOf } from "../effects/effect-queries.js";
+import { areEngaged, currentCombatant, engagedWith, isPresent, type AttackOption, type Combatant, type EncounterState } from "./combat-state.js";
 import { isWorn } from "./combatant-profile.js";
 import { spellTargetProblem, spellTargets, weaponTargetProblem, weaponTargets } from "./legal-targets.js";
 import { edgeBetween, engageCost, withdrawCost } from "./positioning.js";
@@ -46,25 +47,22 @@ const accept = <T>(value: T): { readonly value: T } => ({ value });
 
 // ------------------------------------------------------------- Queries
 
-// The single place that says whether a creature may take actions and reactions
-// and how fast it moves, and how hard it is to hit. Today they read the
-// combatant; lasting effects (conditions) will change them here and nowhere else.
-export const canAct = (combatant: Combatant): boolean => isActive(combatant);
-export const canReact = (combatant: Combatant): boolean => canAct(combatant) && combatant.budget.reaction;
-export const speedOf = (combatant: Combatant): number => combatant.speed;
+// Whether a creature may act and how fast it moves come from the effect queries
+// (effects/effect-queries.ts), so conditions change them in one place. How hard it
+// is to hit will move there when armor class effects exist.
 export const armorClassOf = (combatant: Combatant): number => combatant.armorClass;
 
 // ------------------------------------------------------------- Costs
 
-export function costProblem(hero: Combatant, cost: "action" | "bonusAction"): TurnProblem | null {
-  return (cost === "bonusAction" ? hero.budget.bonusAction : hero.budget.action) && canAct(hero) ? null : { code: "noActionLeft" };
+export function costProblem(hero: Combatant, cost: "action" | "bonusAction", content: SealedContent): TurnProblem | null {
+  return (cost === "bonusAction" ? hero.budget.bonusAction : hero.budget.action) && canAct(hero, conditionLookup(content)) ? null : { code: "noActionLeft" };
 }
 
 // ------------------------------------------------------------- Weapons
 
-export function attackProblem(encounter: EncounterState, attacker: Combatant, option: AttackOption, targetId: string, purpose: "action" | "opportunity"): TurnProblem | null {
+export function attackProblem(encounter: EncounterState, attacker: Combatant, option: AttackOption, targetId: string, purpose: "action" | "opportunity", content: SealedContent): TurnProblem | null {
   if (purpose === "action") {
-    const cost = costProblem(attacker, "action");
+    const cost = costProblem(attacker, "action", content);
     if (cost !== null) return cost;
   }
   const problem = weaponTargetProblem(encounter, attacker, encounter.combatants[targetId], option);
@@ -100,7 +98,7 @@ export function spellProblem(
   // A reaction spell is cast in response to something, never on the caster's turn.
   if (spell.castingTime === "reaction") return refuse({ code: "unknownSpell" });
   const bonus = spell.castingTime === "bonus-action";
-  const cost = costProblem(caster, bonus ? "bonusAction" : "action");
+  const cost = costProblem(caster, bonus ? "bonusAction" : "action", content);
   if (cost !== null) return refuse(cost);
   const maxTargets = spell.targeting.relation === "self" ? spell.targeting.count : spellMaxTargets(spell, slotLevel);
   const targets = spell.targeting.relation === "self" ? [caster.id] : targetIds;
@@ -119,31 +117,37 @@ export function featureProblem(hero: Combatant, content: SealedContent, featureI
   if (feature?.kind !== "feature" || feature.action === null || !hero.features.includes(feature.id)) return refuse({ code: "unknownFeature" });
   if ((hero.resources.featureUses[feature.id] ?? 0) < 1) return refuse({ code: "noUsesLeft" });
   const bonus = feature.action.cost === "bonusAction";
-  const cost = costProblem(hero, bonus ? "bonusAction" : "action");
+  const cost = costProblem(hero, bonus ? "bonusAction" : "action", content);
   return cost === null ? accept({ feature, bonus }) : refuse(cost);
 }
 
 // ------------------------------------------------------------- Movement
 
-export function moveProblem(encounter: EncounterState, hero: Combatant, zoneId: string): Checked<{ readonly feet: number }> {
+// Movement left this turn, none at all while an effect holds the creature in place.
+const movementLeft = (hero: Combatant, content: SealedContent): number => (speedOf(hero, conditionLookup(content)) === 0 ? 0 : hero.budget.movement);
+
+export function moveProblem(encounter: EncounterState, hero: Combatant, zoneId: string, content: SealedContent): Checked<{ readonly feet: number }> {
   const edge = edgeBetween(encounter.edges, hero.zoneId, zoneId);
   if (edge === undefined) return refuse({ code: "notAdjacent" });
-  if (edge.feet > hero.budget.movement) return refuse({ code: "notEnoughMovement", needed: edge.feet, left: hero.budget.movement });
+  const left = movementLeft(hero, content);
+  if (edge.feet > left) return refuse({ code: "notEnoughMovement", needed: edge.feet, left });
   return accept({ feet: edge.feet });
 }
 
-export function engageProblem(encounter: EncounterState, hero: Combatant, targetId: string): TurnProblem | null {
+export function engageProblem(encounter: EncounterState, hero: Combatant, targetId: string, content: SealedContent): TurnProblem | null {
   const target = encounter.combatants[targetId];
   if (target === undefined || target.side === hero.side || !isPresent(target)) return { code: "invalidTarget" };
   if (target.zoneId !== hero.zoneId) return { code: "notAdjacent" };
   if (areEngaged(encounter, hero.id, target.id)) return { code: "alreadyEngaged" };
-  if (hero.budget.movement < engageCost) return { code: "notEnoughMovement", needed: engageCost, left: hero.budget.movement };
+  const left = movementLeft(hero, content);
+  if (left < engageCost) return { code: "notEnoughMovement", needed: engageCost, left };
   return null;
 }
 
-export function withdrawProblem(encounter: EncounterState, hero: Combatant): TurnProblem | null {
+export function withdrawProblem(encounter: EncounterState, hero: Combatant, content: SealedContent): TurnProblem | null {
   if (engagedWith(encounter, hero.id).length === 0) return { code: "notEngaged" };
-  if (hero.budget.movement < withdrawCost) return { code: "notEnoughMovement", needed: withdrawCost, left: hero.budget.movement };
+  const left = movementLeft(hero, content);
+  if (left < withdrawCost) return { code: "notEnoughMovement", needed: withdrawCost, left };
   return null;
 }
 
@@ -155,7 +159,7 @@ export function potionProblem(sheet: CharacterSheet | undefined, content: Sealed
   const potion = potionOf(sheet, content, itemId);
   if (potion === null) return refuse({ code: sheet?.equipment.includes(itemId) === true ? "notUsable" : "itemNotHeld" });
   const bonus = houseRules.option(healingPotionCost) === "bonus-action";
-  const cost = costProblem(hero, bonus ? "bonusAction" : "action");
+  const cost = costProblem(hero, bonus ? "bonusAction" : "action", content);
   return cost === null ? accept({ bonus, healing: potion.healing }) : refuse(cost);
 }
 
@@ -165,7 +169,7 @@ export function shieldProblem(sheet: CharacterSheet | undefined, content: Sealed
   const definition = content.find(itemId);
   if (sheet === undefined || definition?.kind !== "item" || definition.itemType !== "shield") return refuse({ code: "notWearable" });
   if (!sheet.equipment.includes(itemId)) return refuse({ code: "itemNotHeld" });
-  const cost = costProblem(hero, "action");
+  const cost = costProblem(hero, "action", content);
   if (cost !== null) return refuse(cost);
   const typeOf = (id: ContentId<"item">): "armor" | "shield" | null => {
     const other = content.find(id);
@@ -211,11 +215,12 @@ export interface TurnOptions {
 export function turnOptions(encounter: EncounterState | null, sheet: CharacterSheet | undefined, content: SealedContent, houseRules: HouseRules, characterId: CharacterId): TurnOptions | null {
   if (encounter === null || encounter.status !== "active") return null;
   const hero = encounter.combatants[characterId];
-  if (hero === undefined || hero.source.kind !== "hero" || !canAct(hero)) return null;
+  const lookup = conditionLookup(content);
+  if (hero === undefined || hero.source.kind !== "hero" || !canAct(hero, lookup)) return null;
   if (currentCombatant(encounter)?.id !== hero.id) return null;
   const busy = encounter.resolution !== null || encounter.pendingMove !== null;
 
-  const attacks = busy || costProblem(hero, "action") !== null
+  const attacks = busy || costProblem(hero, "action", content) !== null
     ? []
     : hero.attacks.flatMap((option) => {
         const targetIds = weaponTargets(encounter, hero, option).map((target) => target.id);
@@ -228,7 +233,7 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
       const spell = content.find(id);
       if (spell?.kind !== "spell" || spell.castingTime === "reaction") continue;
       const bonusAction = spell.castingTime === "bonus-action";
-      if (costProblem(hero, bonusAction ? "bonusAction" : "action") !== null) continue;
+      if (costProblem(hero, bonusAction ? "bonusAction" : "action", content) !== null) continue;
       const levels = spell.level === 0 ? [0] : Object.keys(hero.resources.spellSlots).map(Number).sort((a, b) => a - b);
       const slotLevels = levels.filter((level) => spellSlotProblem(hero, spell, level) === null);
       const targetIds = spellTargets(encounter, hero, spell).map((target) => target.id);
@@ -252,7 +257,7 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
         return "value" in checked ? [{ itemId, count, bonusAction: checked.value.bonus }] : [];
       });
 
-  const shields = busy || costProblem(hero, "action") !== null
+  const shields = busy || costProblem(hero, "action", content) !== null
     ? []
     : [...new Set(sheet?.equipment ?? [])].flatMap((itemId) => {
         const item = content.find(itemId);
@@ -264,11 +269,11 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
   const moves = busy
     ? []
     : encounter.zones.flatMap((zone) => {
-        const checked = zone.id === hero.zoneId ? undefined : moveProblem(encounter, hero, zone.id);
+        const checked = zone.id === hero.zoneId ? undefined : moveProblem(encounter, hero, zone.id, content);
         return checked !== undefined && "value" in checked ? [{ zoneId: zone.id, feet: checked.value.feet }] : [];
       });
-  const engage = busy ? [] : Object.values(encounter.combatants).filter((other) => engageProblem(encounter, hero, other.id) === null).map((other) => other.id);
-  const canTakeAction = !busy && costProblem(hero, "action") === null;
+  const engage = busy ? [] : Object.values(encounter.combatants).filter((other) => engageProblem(encounter, hero, other.id, content) === null).map((other) => other.id);
+  const canTakeAction = !busy && costProblem(hero, "action", content) === null;
 
   return {
     combatantId: characterId,
@@ -280,7 +285,7 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
     shields,
     moves,
     engage,
-    canWithdraw: !busy && withdrawProblem(encounter, hero) === null,
+    canWithdraw: !busy && withdrawProblem(encounter, hero, content) === null,
     canTakeAction,
     hasUnspent: !busy && (hero.budget.action || hero.budget.bonusAction) && attacks.length + spells.length + features.length + potions.length > 0,
   };

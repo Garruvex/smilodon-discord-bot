@@ -148,8 +148,7 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     case "effectRollsRequested":
     case "effectRolled":
     case "combatantHpChanged":
-    case "conditionAdded":
-    case "effectAdded":
+    case "effectApplied":
     case "effectsRemoved":
     case "sneakAttackUsed":
     case "concentrationStarted":
