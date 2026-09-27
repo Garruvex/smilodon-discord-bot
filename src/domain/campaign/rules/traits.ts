@@ -26,6 +26,8 @@ export type Trait =
   | { readonly kind: "extraAttack" }
   // Cunning Action: Dash or Disengage costs a bonus action instead of the
   // action, when the bonus action is still free (Hide is not modeled).
-  | { readonly kind: "cunningAction" };
+  | { readonly kind: "cunningAction" }
+  // Divine Smite: a melee hit can spend a spell slot for bonus radiant damage.
+  | { readonly kind: "divineSmite" };
 
 export type TraitKind = Trait["kind"];

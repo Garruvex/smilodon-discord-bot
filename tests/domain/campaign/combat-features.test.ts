@@ -230,6 +230,54 @@ describe("class features", () => {
     dodging.run(alex, { kind: "combatDodge", combatantId: "c-mira" });
     expect(dodging.combatant("c-mira").budget).toMatchObject({ action: false, bonusAction: true });
   });
+
+  function withDivineSmite(): CampaignState {
+    const base = newCampaign();
+    const borin = base.characters["c-borin"];
+    if (borin === undefined) throw new Error("fixture");
+    const smiter = { ...borin, features: [...borin.features, "feature:divine-smite" as const], spellcasting: { ability: "cha" as const, spells: [], slots: { 1: 1 } } };
+    return { ...base, characters: { ...base.characters, "c-borin": smiter } };
+  }
+
+  it("adds radiant damage from Divine Smite, spending the slot on a melee hit", () => {
+    const fight = borinFirst(withDivineSmite());
+    fight.run(jamie, { kind: "combatMove", combatantId: "c-borin", zoneId: "courtyard" });
+    fight.run(jamie, { kind: "combatEngage", combatantId: "c-borin", targetId: "goblin-a" });
+    // Natural 20: certain hit. Longsword 1d8 (4) + Dueling (2) + STR (3); Smite 2d8 (3, 3).
+    fight.rolls([20], [4, 3, 3]).run(jamie, { kind: "combatAttack", combatantId: "c-borin", targetId: "goblin-a", weapon: "item:longsword", smiteSlot: 1 });
+    // 7 (weapon) + 6 (smite) against 7 max HP: downed.
+    expect(fight.combatant("goblin-a").hp).toBe(0);
+    expect(fight.combatant("c-borin").resources.spellSlots).toEqual({ 1: 0 });
+  });
+
+  it("refuses Divine Smite without the feature, or with no slot left", () => {
+    const fight = borinFirst(newCampaign());
+    fight.run(jamie, { kind: "combatMove", combatantId: "c-borin", zoneId: "courtyard" });
+    fight.run(jamie, { kind: "combatEngage", combatantId: "c-borin", targetId: "goblin-a" });
+    expect(fight.reject(jamie, { kind: "combatAttack", combatantId: "c-borin", targetId: "goblin-a", weapon: "item:longsword", smiteSlot: 1 })).toEqual({
+      code: "unknownFeature",
+    });
+
+    const spent = withDivineSmite();
+    const borin = spent.characters["c-borin"];
+    if (borin === undefined) throw new Error("fixture");
+    const noSlot = borinFirst({ ...spent, characters: { ...spent.characters, "c-borin": { ...borin, spellcasting: { ability: "cha", spells: [], slots: { 1: 0 } } } } });
+    noSlot.run(jamie, { kind: "combatMove", combatantId: "c-borin", zoneId: "courtyard" });
+    noSlot.run(jamie, { kind: "combatEngage", combatantId: "c-borin", targetId: "goblin-a" });
+    expect(noSlot.reject(jamie, { kind: "combatAttack", combatantId: "c-borin", targetId: "goblin-a", weapon: "item:longsword", smiteSlot: 1 })).toEqual({
+      code: "noSpellSlot",
+      slotLevel: 1,
+    });
+  });
+
+  it("refuses Divine Smite on a ranged attack", () => {
+    const base = newCampaign();
+    const mira = base.characters["c-mira"];
+    if (mira === undefined) throw new Error("fixture");
+    const smiter = { ...mira, features: [...mira.features, "feature:divine-smite" as const], spellcasting: { ability: "cha" as const, spells: [], slots: { 1: 1 } } };
+    const fight = startedFight({ ...base, characters: { ...base.characters, "c-mira": smiter } });
+    expect(fight.reject(alex, { kind: "combatAttack", combatantId: "c-mira", targetId: "goblin-a", weapon: "item:shortbow", smiteSlot: 1 })).toEqual({ code: "notMelee" });
+  });
 });
 
 describe("opportunity attacks and escape", () => {

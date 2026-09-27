@@ -2,11 +2,11 @@ import { defineFeature, type FeatureDefinition } from "../../../rules/content-de
 
 // Level 2, 3 and 5 class features (SRD 5.1, Classes), granted automatically
 // as a hero levels up (character/leveling.ts's levelFeatures table). Extra
-// Attack and Cunning Action are mechanical (traits, read where an attack or
-// a Dash/Disengage is declared); the rest are narrative only, same treatment
-// as Thieves' Cant and the level-1 roster's narrative features. Levels
-// beyond 5, and the mechanical features this still skips (Uncanny Dodge,
-// Wild Shape, Divine Smite), are out of scope for now.
+// Attack, Cunning Action and Divine Smite are mechanical (traits, read where
+// an attack or a Dash/Disengage is declared); the rest are narrative only,
+// same treatment as Thieves' Cant and the level-1 roster's narrative
+// features. Levels beyond 5, and the mechanical features this still skips
+// (Uncanny Dodge, Wild Shape), are out of scope for now.
 const source = "SRD 5.1";
 
 const narrative = (name: string): FeatureDefinition => defineFeature({ id: `feature:${name}`, source, traits: [], action: null });
@@ -22,7 +22,7 @@ export const recklessAttack = narrative("reckless-attack");
 export const jackOfAllTrades = narrative("jack-of-all-trades");
 export const wildShape = narrative("wild-shape");
 export const ki = narrative("ki");
-export const divineSmite = narrative("divine-smite");
+export const divineSmite = defineFeature({ id: "feature:divine-smite", source, traits: [{ kind: "divineSmite" }], action: null });
 export const fontOfMagic = narrative("font-of-magic");
 export const eldritchInvocations = narrative("eldritch-invocations");
 export const arcaneTradition = narrative("arcane-tradition");

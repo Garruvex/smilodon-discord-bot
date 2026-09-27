@@ -57,7 +57,7 @@ export function handleCombatCommand(decision: Decision, command: CombatCommand):
       return withHeroTurn(decision, command.combatantId, (hero) => {
         const option = hero.attacks.find((attack) => attack.weapon === command.weapon);
         if (option === undefined) return { code: "unknownWeapon" };
-        return declareWeaponAttack(decision, hero, command.targetId, option, "action");
+        return declareWeaponAttack(decision, hero, command.targetId, option, "action", command.smiteSlot);
       });
     case "combatCast":
       return withHeroTurn(decision, command.combatantId, (hero, encounter) =>

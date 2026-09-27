@@ -30,6 +30,7 @@ export type TurnProblem =
   | { readonly code: "unknownWeapon" }
   | { readonly code: "unknownSpell" }
   | { readonly code: "noSpellSlot"; readonly slotLevel: number }
+  | { readonly code: "notMelee" }
   | { readonly code: "invalidTargets"; readonly maxTargets: number }
   | { readonly code: "unknownFeature" }
   | { readonly code: "noUsesLeft" }
@@ -69,6 +70,17 @@ export function attackProblem(encounter: EncounterState, attacker: Combatant, op
   }
   const problem = weaponTargetProblem(encounter, attacker, encounter.combatants[targetId], option);
   return problem === null ? null : { code: problem };
+}
+
+// Divine Smite: spending a slot with a melee hit for bonus radiant damage.
+// The slot is spent when the attack is declared (attack-rules.ts adds the
+// bonus damage to the plan), a simplification — the SRD lets a paladin
+// decide only once the hit is confirmed, sparing the slot on a miss.
+export function smiteProblem(attacker: Combatant, option: AttackOption, slotLevel: number): TurnProblem | null {
+  if (!attacker.traits.some((trait) => trait.kind === "divineSmite")) return { code: "unknownFeature" };
+  if (option.range.kind !== "melee") return { code: "notMelee" };
+  if ((attacker.resources.spellSlots[slotLevel] ?? 0) < 1) return { code: "noSpellSlot", slotLevel };
+  return null;
 }
 
 // ------------------------------------------------------------- Spells

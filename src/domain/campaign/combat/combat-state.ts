@@ -115,7 +115,8 @@ export interface ZoneEdge {
 
 // Where an action's rules come from.
 export type ResolutionSource =
-  | { readonly kind: "weapon"; readonly option: AttackOption }
+  // smiteSlot: Divine Smite's chosen slot level, when spent on this hit.
+  | { readonly kind: "weapon"; readonly option: AttackOption; readonly smiteSlot?: number }
   | { readonly kind: "spell"; readonly spellId: ContentId<"spell">; readonly slotLevel: number }
   | { readonly kind: "feature"; readonly featureId: ContentId<"feature"> };
 

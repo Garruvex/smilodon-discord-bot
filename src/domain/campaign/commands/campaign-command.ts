@@ -106,7 +106,8 @@ export type CombatCommand =
   | { readonly kind: "combatMove"; readonly combatantId: string; readonly zoneId: string }
   | { readonly kind: "combatEngage"; readonly combatantId: string; readonly targetId: string }
   | { readonly kind: "combatWithdraw"; readonly combatantId: string }
-  | { readonly kind: "combatAttack"; readonly combatantId: string; readonly targetId: string; readonly weapon: ContentId<"item"> }
+  // smiteSlot: spend this spell slot on the hit for Divine Smite's bonus damage.
+  | { readonly kind: "combatAttack"; readonly combatantId: string; readonly targetId: string; readonly weapon: ContentId<"item">; readonly smiteSlot?: number }
   | {
       readonly kind: "combatCast";
       readonly combatantId: string;

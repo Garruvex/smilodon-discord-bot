@@ -13,12 +13,16 @@ import type { Decision } from "../decision.js";
 export function planFor(decision: Decision, actor: Combatant, source: ResolutionSource): ResolutionPlan | null {
   const content = decision.ctx.rules.content;
   switch (source.kind) {
-    case "weapon":
+    case "weapon": {
+      // Divine Smite: 2d8 radiant for a 1st-level slot, +1d8 per level above
+      // that, capped at 5d8 (a fiend or undead target's extra d8 is not modeled).
+      const smite: Effect[] = source.smiteSlot === undefined ? [] : [{ kind: "damage", target: "target", amount: dice(Math.min(5, source.smiteSlot + 1), 8), damageType: "radiant" }];
       return {
         check: { kind: "weaponAttack" },
-        onLand: [{ kind: "damage", target: "target", amount: source.option.damage, damageType: source.option.damageType }, ...source.option.onHit],
+        onLand: [{ kind: "damage", target: "target", amount: source.option.damage, damageType: source.option.damageType }, ...source.option.onHit, ...smite],
         onAvoid: [],
       };
+    }
     case "spell": {
       const spell = content.get(source.spellId);
       const plan = spell.plan({ slotLevel: source.slotLevel, casterLevel: actor.level, spellcastingModifier: actor.spellcasting?.modifier ?? 0 });
