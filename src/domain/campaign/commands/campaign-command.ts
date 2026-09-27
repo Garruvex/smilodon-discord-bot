@@ -123,7 +123,11 @@ export type CombatCommand =
   | { readonly kind: "combatDash"; readonly combatantId: string }
   | { readonly kind: "combatDodge"; readonly combatantId: string }
   | { readonly kind: "endTurn"; readonly combatantId: string }
-  | { readonly kind: "turnTimerExpired"; readonly encounterId: string; readonly turnNumber: number };
+  // The target of a hit answers the reaction window: cast a reaction spell (Shield), or decline (null).
+  | { readonly kind: "combatReact"; readonly combatantId: string; readonly spellId: ContentId<"spell"> | null }
+  | { readonly kind: "turnTimerExpired"; readonly encounterId: string; readonly turnNumber: number }
+  // A reaction window ran out of time: the target declines.
+  | { readonly kind: "reactionTimerExpired"; readonly encounterId: string; readonly resolutionId: string };
 
 export interface EncounterSpec {
   readonly id: string;

@@ -205,7 +205,7 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
     text: Texts,
   ): {
     action(attackId: string): string | null;
-    beat(combatantId: string, beat: "dodge" | "dash" | "disengage" | "useItem" | "fled"): string | null;
+    beat(combatantId: string, beat: "dodge" | "dash" | "disengage" | "useItem" | "fled" | "reaction"): string | null;
     deathSave(combatantId: string): string | null;
   } | null {
     const bible = this.options.adventures.find(record.adventure.adventureId, record.adventure.version, record.language);
@@ -238,6 +238,8 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
             return t.combatUseItem({ actor });
           case "fled":
             return t.combatFled({ actor });
+          case "reaction":
+            return t.combatReaction({ actor });
         }
       },
       deathSave: (combatantId): string | null => {

@@ -15,6 +15,7 @@ export const enSrd51Glossary: Glossary = {
     "spell:cure-wounds": "Cure Wounds",
     "spell:healing-word": "Healing Word",
     "spell:bless": "Bless",
+    "spell:shield": "Shield",
     "item:longsword": "Longsword",
     "item:shortsword": "Shortsword",
     "item:scimitar": "Scimitar",

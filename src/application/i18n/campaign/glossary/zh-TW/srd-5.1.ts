@@ -19,6 +19,7 @@ export const zhTwSrd51Glossary: Glossary = {
     "spell:cure-wounds": "治療傷勢",
     "spell:healing-word": "治療真言",
     "spell:bless": "祝福術",
+    "spell:shield": "護盾術",
     // Weapon and monster names are drafts until the terminology survey covers them.
     "item:longsword": "長劍",
     "item:shortsword": "短劍",

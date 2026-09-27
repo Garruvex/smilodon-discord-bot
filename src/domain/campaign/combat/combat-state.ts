@@ -1,7 +1,7 @@
 import type { EncounterSpec } from "../commands/campaign-command.js";
 import type { EffectInstance } from "../effects/effect-instance.js";
 import type { CharacterId, Instant, RollId } from "../core/ids.js";
-import type { D20TestSpec } from "../dice/d20-test.js";
+import type { D20TestRoll, D20TestSpec } from "../dice/d20-test.js";
 import type { DiceExpression } from "../dice/dice-expression.js";
 import type { RollSpec } from "../dice/roll-spec.js";
 import type { MonsterTactic, WeaponRange } from "../rules/content-definitions.js";
@@ -143,6 +143,18 @@ export interface PendingEffectRoll {
 // Attack sequence): checks, then effect rolls, then application, then any
 // concentration saves. Each stage is saved, so a restart resumes where it
 // stopped and never rerolls.
+// An attack has hit and its target may answer with a reaction (Shield) before the
+// hit is final. The dice are already rolled and saved here.
+export interface PendingReaction {
+  readonly rollId: RollId;
+  readonly targetId: CombatantId;
+  readonly roll: D20TestRoll;
+  // The reaction spells the target can cast now, each at the lowest slot that fits.
+  readonly options: readonly { readonly spellId: ContentId<"spell">; readonly slotLevel: number }[];
+  // When the window closes (the target then declines); null when play has no timers.
+  readonly closesAt: Instant | null;
+}
+
 export interface ResolutionState {
   readonly id: string;
   readonly actorId: CombatantId;
@@ -158,6 +170,8 @@ export interface ResolutionState {
   // Rolled totals by effect key; save riders store 1 (saved) or 0 (failed).
   readonly rolled: Readonly<Record<string, number>>;
   readonly sneakAttack: boolean;
+  // Set while a hit waits for the target's answer; the resolution goes no further until then.
+  readonly reaction?: PendingReaction | null;
 }
 
 // A move that provokes opportunity attacks waits for them, then happens if

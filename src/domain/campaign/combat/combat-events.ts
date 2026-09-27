@@ -13,6 +13,7 @@ import type {
   EncounterOutcome,
   EncounterState,
   PendingCombatRoll,
+  PendingReaction,
   PendingEffectRoll,
   PendingMove,
   ResolutionState,
@@ -92,6 +93,10 @@ export type CombatEvent =
     }
   // A lasting effect (a condition, a spell that outlasts its casting) lands on a creature.
   | { readonly kind: "effectApplied"; readonly combatantId: CombatantId; readonly effect: EffectInstance }
+  // A hit waits for the target's reaction; the roll is kept, the outcome is not final yet.
+  | { readonly kind: "reactionOffered"; readonly resolutionId: string; readonly reaction: PendingReaction }
+  // The target cast a reaction spell (spellId, at slotLevel) or declined (both null).
+  | { readonly kind: "reactionAnswered"; readonly resolutionId: string; readonly targetId: CombatantId; readonly spellId: ContentId<"spell"> | null; readonly slotLevel: number | null }
   // Effect triggers begin at a creature's turn boundary; each asks for its roll in turn.
   | { readonly kind: "triggersBegan"; readonly creatureId: CombatantId; readonly boundary: "start" | "end" }
   | { readonly kind: "triggerRollRequested"; readonly holderId: CombatantId; readonly effectId: string; readonly index: number; readonly rollId: RollId; readonly pending: PendingCombatRoll; readonly sequence: number }
@@ -171,6 +176,8 @@ export const combatEventKinds: readonly CombatEventKind[] = [
   "combatantHpChanged",
   "effectApplied",
   "effectsRemoved",
+  "reactionOffered",
+  "reactionAnswered",
   "triggersBegan",
   "triggerRollRequested",
   "triggerRolled",

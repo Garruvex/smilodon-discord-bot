@@ -5,6 +5,7 @@ import { deadlineAfter, type Decision } from "./decision.js";
 import { rollTimerId, roundTimerId } from "./ids.js";
 import type { Rejection } from "./rejection.js";
 import { scheduleReminder } from "./reminders.js";
+import { reactionTimerId } from "./combat/reactions.js";
 import { awayRestriction, beginEncounter, onMemberAway, rearmedTurnDeadline, resumeCombat, turnTimerId } from "./combat/combat-flow.js";
 import { closeIfEveryoneResponded, enterWaiting, finishReadyCheck, finishRoundIfResolved, openRound } from "./rounds.js";
 
@@ -125,6 +126,15 @@ export function continueCampaign(decision: Decision): Rejection | null {
       timer: { kind: "combatTurn", timerId: turnTimerId(state.encounter.id, state.encounter.turnNumber), dueAt: turnEndsAt, encounterId: state.encounter.id, turnNumber: state.encounter.turnNumber },
     });
     scheduleReminder(decision, { kind: "turn", encounterId: state.encounter.id, turnNumber: state.encounter.turnNumber, endsAt: turnEndsAt });
+  }
+  // A reaction window that was waiting gets a fresh full timer.
+  const waitingReaction = state.encounter?.resolution?.reaction;
+  const reactionClosesAt = waitingReaction == null ? null : deadlineAfter(ctx.now, state.pacing.turnSeconds);
+  if (state.encounter !== null && state.encounter.resolution !== null && waitingReaction != null && reactionClosesAt !== null) {
+    decision.request({
+      kind: "startTimer",
+      timer: { kind: "combatReaction", timerId: reactionTimerId(state.encounter.resolution.id, waitingReaction.rollId), dueAt: reactionClosesAt, encounterId: state.encounter.id, resolutionId: state.encounter.resolution.id },
+    });
   }
   for (const [checkId, dueAt] of Object.entries(checkDeadlines)) {
     if (dueAt !== null) {

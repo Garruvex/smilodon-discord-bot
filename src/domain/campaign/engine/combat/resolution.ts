@@ -16,8 +16,9 @@ import {
   type ResolutionState,
   type TargetOutcome,
 } from "../../combat/combat-state.js";
-import { attackBias, autoFailsSave, bonusDiceFor, conditionLookup, effectsUsedUpByAttack, hitsAreCritical, saveBias, type ConditionLookup } from "../../effects/effect-queries.js";
+import { armorClassOf, attackBias, autoFailsSave, bonusDiceFor, conditionLookup, effectsUsedUpByAttack, hitsAreCritical, saveBias, type ConditionLookup } from "../../effects/effect-queries.js";
 import type { EffectInstance } from "../../effects/effect-instance.js";
+import type { D20TestRoll } from "../../dice/d20-test.js";
 import type { ContentId } from "../../rules/content-id.js";
 import { distanceBetween, engagedDistance } from "../../combat/positioning.js";
 import { resolveD20Test, type D20TestSpec } from "../../dice/d20-test.js";
@@ -30,6 +31,7 @@ import { criticalHits, naturalRollsOnChecks } from "../../rules/house-rules.js";
 import type { Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { activeEncounter, afterResolution, endIfDecided, isProtected } from "./combat-flow.js";
+import { offerReaction } from "./reactions.js";
 
 export interface DeclareRequest {
   readonly actor: Combatant;
@@ -84,7 +86,7 @@ export function declareResolution(decision: Decision, request: DeclareRequest): 
       const mode = attackMode(encounter, actor, target, ranged, longShot, lookup);
       const toHit = source.kind === "weapon" ? source.option.toHit : (actor.spellcasting?.attackBonus ?? 0);
       spec = { mode: mode.mode, modifier: toHit, bonusDice: bonusDiceFor(actor, "attack") };
-      against = target.armorClass;
+      against = armorClassOf(target, lookup);
       kind = "attack";
       if (mode.consumed.length > 0) consumedAdvantage.push({ combatantId: target.id, effectIds: mode.consumed });
       if (source.kind === "weapon" && sneakAttackEligible(encounter, actor, target, source.option.finesse, mode.mode)) sneakAttack = true;
@@ -146,17 +148,37 @@ function recordCheck(
   if (check === undefined) return { code: "unknownRoll" };
   if (result.kind !== "d20Test" || !resultMatchesSpec(result, { kind: "d20Test", spec: check.spec })) return { code: "rollMismatch" };
   const roll = result.roll;
+  // A hit its target could still turn into a miss (Shield) waits for its answer.
+  if (check.kind === "attack") {
+    const target = encounter.combatants[check.targetId];
+    const against = target === undefined ? check.against : armorClassOf(target, conditionLookup(decision.ctx.rules.content));
+    const outcome = resolveD20Test("attack", roll.d20.natural, roll.total, against, "no-effect");
+    if (outcome.success && !outcome.critical && offerReaction(decision, encounter, resolution, rollId, roll, against)) return null;
+  }
+  return settleCheck(decision, resolution.id, rollId, roll);
+}
+
+// A check's dice are in: works out whether it landed (an attack against the armor
+// class the target has now, so a reaction can change the answer), records it, and
+// goes on to the effects once every check is settled and no reaction is pending.
+export function settleCheck(decision: Decision, resolutionId: string, rollId: RollId, roll: D20TestRoll): Rejection | null {
+  const encounter = activeEncounter(decision);
+  const resolution = encounter?.resolution;
+  const check = resolution?.checks[rollId];
+  if (encounter == null || resolution == null || resolution.id !== resolutionId || check === undefined) return { code: "unknownRoll" };
+  const lookup = conditionLookup(decision.ctx.rules.content);
   const target = encounter.combatants[check.targetId];
   let landed: boolean;
   let critical = false;
   let moments;
   if (check.kind === "attack") {
-    const outcome = resolveD20Test("attack", roll.d20.natural, roll.total, check.against, "no-effect");
+    const against = target === undefined ? check.against : armorClassOf(target, lookup);
+    const outcome = resolveD20Test("attack", roll.d20.natural, roll.total, against, "no-effect");
     landed = outcome.success;
     // A hit on an unconscious creature from within 5 feet is a critical hit.
-    const closeCrit = target !== undefined && hitsAreCritical(target, conditionLookup(decision.ctx.rules.content), areEngaged(encounter, resolution.actorId, target.id));
+    const closeCrit = target !== undefined && hitsAreCritical(target, lookup, areEngaged(encounter, resolution.actorId, target.id));
     critical = outcome.critical || (landed && closeCrit);
-    moments = classifyRollMoments({ kind: "attack", roll, target: check.against, naturalRule: "no-effect" });
+    moments = classifyRollMoments({ kind: "attack", roll, target: against, naturalRule: "no-effect" });
   } else {
     const naturalRule = decision.ctx.rules.houseRules.option(naturalRollsOnChecks);
     const saved = resolveD20Test("savingThrow", roll.d20.natural, roll.total, check.against, naturalRule).success;
@@ -169,7 +191,7 @@ function recordCheck(
   const waiting = Object.values(activeEncounter(decision)?.pendingRolls ?? {}).some(
     (pending) => pending.purpose === "check" && pending.resolutionId === resolution.id,
   );
-  if (after != null && !waiting) proceedToEffects(decision);
+  if (after != null && !waiting && after.reaction == null) proceedToEffects(decision);
   return null;
 }
 

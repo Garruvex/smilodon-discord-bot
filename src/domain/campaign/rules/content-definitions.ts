@@ -54,9 +54,15 @@ export interface SpellCastContext {
   readonly spellcastingModifier: number;
 }
 
+// What a reaction spell does when cast in response to being hit. A closed set:
+// each kind is a mechanic the engine implements (engine/combat/reactions.ts).
+export type ReactionRule = { readonly kind: "acBonusUntilNextTurn"; readonly bonus: number };
+
 export interface SpellDefinition extends DefinitionBase<"spell"> {
   readonly level: number; // 0 = cantrip
   readonly castingTime: CastingTime;
+  // Set on spells cast as a reaction to being hit (Shield); they are never cast on the caster's turn.
+  readonly reaction?: ReactionRule;
   readonly range: SpellRange;
   readonly targeting: SpellTargeting;
   readonly concentration: boolean;
@@ -247,6 +253,7 @@ export function requiredCapabilities(definition: ContentDefinition): ReadonlySet
     case "spell":
       if (definition.level > 0) required.add("spell-slots");
       if (definition.concentration) required.add("concentration");
+      if (definition.reaction !== undefined) required.add("reactions");
       break;
     case "item":
       if (definition.itemType === "weapon") {

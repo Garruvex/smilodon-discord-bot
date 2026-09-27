@@ -42,7 +42,8 @@ export type TimerSpec =
   | { readonly kind: "reminder"; readonly timerId: TimerId; readonly dueAt: Instant; readonly target: ReminderTarget }
   | { readonly kind: "roundWindow"; readonly timerId: TimerId; readonly dueAt: Instant; readonly roundNumber: number }
   | { readonly kind: "roll"; readonly timerId: TimerId; readonly dueAt: Instant; readonly checkId: CheckId }
-  | { readonly kind: "combatTurn"; readonly timerId: TimerId; readonly dueAt: Instant; readonly encounterId: string; readonly turnNumber: number };
+  | { readonly kind: "combatTurn"; readonly timerId: TimerId; readonly dueAt: Instant; readonly encounterId: string; readonly turnNumber: number }
+  | { readonly kind: "combatReaction"; readonly timerId: TimerId; readonly dueAt: Instant; readonly encounterId: string; readonly resolutionId: string };
 
 export type DeliverySpec =
   // Halfway through a long wait: whoever is still being waited for is nudged.
@@ -67,10 +68,12 @@ export type DeliverySpec =
   | { readonly kind: "encounterStarted"; readonly encounterId: string }
   | { readonly kind: "combatTurn"; readonly encounterId: string; readonly combatantId: string }
   | { readonly kind: "attackRolled"; readonly encounterId: string; readonly attackId: string }
+  // A hit waits for its target to answer with a reaction.
+  | { readonly kind: "reactionOffered"; readonly encounterId: string; readonly attackId: string }
   | { readonly kind: "attackResolved"; readonly encounterId: string; readonly attackId: string }
   | { readonly kind: "deathSave"; readonly encounterId: string; readonly combatantId: string }
   // A turn action with no attack of its own: the table sees one template line.
-  | { readonly kind: "combatBeat"; readonly encounterId: string; readonly combatantId: string; readonly beat: "dodge" | "dash" | "disengage" | "useItem" | "fled" }
+  | { readonly kind: "combatBeat"; readonly encounterId: string; readonly combatantId: string; readonly beat: "dodge" | "dash" | "disengage" | "useItem" | "fled" | "reaction" }
   | { readonly kind: "encounterEnded"; readonly encounterId: string }
   | { readonly kind: "combatNarration"; readonly encounterId: string; readonly round: number }
   // A trade offer waits for the other hero's owner.

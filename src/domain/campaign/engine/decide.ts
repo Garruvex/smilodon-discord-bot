@@ -119,7 +119,9 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
     case "combatDash":
     case "combatDodge":
     case "endTurn":
+    case "combatReact":
     case "turnTimerExpired":
+    case "reactionTimerExpired":
       return handleCombatCommand(decision, command);
     default:
       return assertNever(command);

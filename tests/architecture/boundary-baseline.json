@@ -10,5 +10,5 @@
     "Inventory:engine/inventory.ts -> Combat:combat/combatant-profile.ts",
     "Inventory:engine/inventory.ts -> Combat:engine/combat/combat-gear.ts"
   ],
-  "kernelImports": 56
+  "kernelImports": 58
 }

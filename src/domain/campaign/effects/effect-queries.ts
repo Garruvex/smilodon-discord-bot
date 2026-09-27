@@ -84,6 +84,11 @@ export function speedOf(holder: EffectHolder, lookup: ConditionLookup): number {
   return modifiersOf(holder, lookup).some(({ modifier }) => modifier.kind === "speedZero") ? 0 : holder.speed;
 }
 
+// Armor class after effects (Shield adds 5 until the caster's next turn).
+export function armorClassOf(holder: EffectHolder & { readonly armorClass: number }, lookup: ConditionLookup): number {
+  return holder.armorClass + modifiersOf(holder, lookup).reduce((sum, { modifier }) => sum + (modifier.kind === "acBonus" ? modifier.amount : 0), 0);
+}
+
 export function avoidsOpportunityAttacks(holder: EffectHolder, lookup: ConditionLookup): boolean {
   return modifiersOf(holder, lookup).some(({ modifier }) => modifier.kind === "avoidsOpportunityAttacks");
 }

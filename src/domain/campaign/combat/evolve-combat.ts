@@ -142,6 +142,19 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
       }));
       return event.condition === "dead" ? withoutEngagements(updated, event.combatantId) : updated;
     }
+    case "reactionOffered":
+      return withoutPending(updateResolution(encounter, event.resolutionId, (resolution) => ({ ...resolution, reaction: event.reaction })), [event.reaction.rollId]);
+    case "reactionAnswered": {
+      const answered = updateResolution(encounter, event.resolutionId, (resolution) => ({ ...resolution, reaction: null }));
+      if (event.spellId === null || event.slotLevel === null) return answered;
+      const slotLevel = event.slotLevel;
+      // Casting spends the reaction and a spell slot.
+      return update(answered, event.targetId, (combatant) => ({
+        ...combatant,
+        budget: { ...combatant.budget, reaction: false },
+        resources: { ...combatant.resources, spellSlots: { ...combatant.resources.spellSlots, [slotLevel]: Math.max(0, (combatant.resources.spellSlots[slotLevel] ?? 0) - 1) } },
+      }));
+    }
     case "triggersBegan":
       return { ...encounter, pendingTriggers: { creatureId: event.creatureId, boundary: event.boundary, done: [] } };
     case "triggerRollRequested":

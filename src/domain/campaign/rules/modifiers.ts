@@ -30,4 +30,6 @@ export type Modifier =
   // Adds a die to the holder's rolls of the listed kinds (Bless).
   | { readonly kind: "bonusDie"; readonly die: DiceExpression; readonly appliesTo: readonly ("attack" | "save")[]; readonly source: string }
   // Leaving a hostile's reach provokes no opportunity attack (Disengage).
-  | { readonly kind: "avoidsOpportunityAttacks" };
+  | { readonly kind: "avoidsOpportunityAttacks" }
+  // Adds to the holder's armor class (Shield).
+  | { readonly kind: "acBonus"; readonly amount: number };

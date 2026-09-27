@@ -3,6 +3,20 @@ import { defineSpell, type SpellDefinition } from "../../../rules/content-defini
 
 const source = "SRD 5.1";
 
+// Cast as a reaction when a hit would land: +5 armor class until the start of the
+// caster's next turn (a hit that no longer beats it becomes a miss).
+export const shieldSpell = defineSpell({
+  id: "spell:shield",
+  source,
+  level: 1,
+  castingTime: "reaction",
+  range: { kind: "self" },
+  targeting: { relation: "self", count: 1 },
+  concentration: false,
+  reaction: { kind: "acBonusUntilNextTurn", bonus: 5 },
+  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+});
+
 export const cureWounds = defineSpell({
   id: "spell:cure-wounds",
   source,
@@ -74,4 +88,4 @@ export const guidingBolt = defineSpell({
   }),
 });
 
-export const srd51Level1Spells: readonly SpellDefinition[] = [cureWounds, healingWord, bless, guidingBolt];
+export const srd51Level1Spells: readonly SpellDefinition[] = [cureWounds, healingWord, bless, guidingBolt, shieldSpell];

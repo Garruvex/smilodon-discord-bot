@@ -150,6 +150,8 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     case "combatantHpChanged":
     case "effectApplied":
     case "effectsRemoved":
+    case "reactionOffered":
+    case "reactionAnswered":
     case "triggersBegan":
     case "triggerRollRequested":
     case "triggerRolled":

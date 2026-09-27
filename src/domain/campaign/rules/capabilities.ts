@@ -13,6 +13,7 @@ export const capabilities = [
   "spell-slots",
   "concentration",
   "death-saves",
+  "reactions",
 ] as const;
 export type Capability = (typeof capabilities)[number];
 

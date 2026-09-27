@@ -34,6 +34,7 @@ import { maxNarrationLength } from "../narration-limits.js";
 import { openRound } from "../rounds.js";
 import { changeShieldInCombat, useItemInCombat } from "./combat-gear.js";
 import { beginTriggers, recordTriggerRoll } from "./effect-triggers.js";
+import { answerReaction, declineReactionFor, reactionTimerExpired } from "./reactions.js";
 import { declareResolution, endConcentration, recordResolutionRoll } from "./resolution.js";
 
 // A chain of engine-played turns (monsters, autopilot, skipped heroes) must
@@ -100,6 +101,10 @@ export function handleCombatCommand(decision: Decision, command: CombatCommand):
         endTurn(decision);
         return null;
       });
+    case "combatReact":
+      return answerReaction(decision, command.combatantId, command.spellId, "player");
+    case "reactionTimerExpired":
+      return reactionTimerExpired(decision, command.encounterId, command.resolutionId);
     case "turnTimerExpired":
       return turnTimerExpired(decision, command.encounterId, command.turnNumber);
     default:
@@ -689,6 +694,8 @@ export function onMemberAway(decision: Decision, userId: UserId): void {
   const encounter = activeEncounter(decision);
   const characterId = decision.state.members[userId]?.characterId;
   const hero = characterId == null ? undefined : encounter?.combatants[characterId];
+  // A window waiting for a player who has gone away closes as a decline.
+  if (hero !== undefined) declineReactionFor(decision, hero.id);
   if (hero?.condition === "unconscious" && isProtected(decision, hero)) stabilize(decision, hero);
 }
 
@@ -733,8 +740,17 @@ export function withHeroTurn(
   return act(hero, encounter);
 }
 
+// Whether the actor of this command may act for this hero: its owner, or the player
+// the owner named while away.
+export function mayActFor(decision: Decision, hero: Combatant): boolean {
+  const { state, ctx } = decision;
+  if (hero.source.kind !== "hero") return false;
+  const owner = state.characters[hero.source.characterId]?.ownerUserId;
+  return ctx.actor.kind === "user" && owner !== undefined && actsForOwner(state, ctx.actor.userId, owner);
+}
+
 // A present player drives their hero; everything else is engine-played.
-function isPlayerControlled(decision: Decision, combatant: Combatant): boolean {
+export function isPlayerControlled(decision: Decision, combatant: Combatant): boolean {
   if (combatant.source.kind !== "hero") return false;
   if (decision.ctx.rules.houseRules.option(combatMode) === "autopilot") return false;
   const ownerId = decision.state.characters[combatant.source.characterId]?.ownerUserId;

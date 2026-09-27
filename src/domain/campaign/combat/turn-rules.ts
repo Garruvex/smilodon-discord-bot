@@ -47,10 +47,9 @@ const accept = <T>(value: T): { readonly value: T } => ({ value });
 
 // ------------------------------------------------------------- Queries
 
-// Whether a creature may act and how fast it moves come from the effect queries
-// (effects/effect-queries.ts), so conditions change them in one place. How hard it
-// is to hit will move there when armor class effects exist.
-export const armorClassOf = (combatant: Combatant): number => combatant.armorClass;
+// Whether a creature may act, how fast it moves and how hard it is to hit come from the
+// effect queries (effects/effect-queries.ts), so conditions change them in one place. How hard it
+// is to hit is armorClassOf there too.
 
 // ------------------------------------------------------------- Costs
 
