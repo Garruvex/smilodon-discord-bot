@@ -21,12 +21,13 @@ export function declareWeaponAttack(
   if (encounter === null) return { code: "notInCombat" };
   const problem = attackProblem(encounter, attacker, option, targetId, purpose, decision.ctx.rules.content);
   if (problem !== null) return problem;
+  // Extra Attack: the action itself is spent only on the last attack it grants.
   return declareResolution(decision, {
     actor: attacker,
     source: { kind: "weapon", option },
     targetIds: [targetId],
     purpose,
-    cost: { ...noCost, action: purpose === "action", reaction: purpose === "opportunity" },
+    cost: { ...noCost, action: purpose === "action" && attacker.budget.attacksLeft <= 1, reaction: purpose === "opportunity" },
   });
 }
 

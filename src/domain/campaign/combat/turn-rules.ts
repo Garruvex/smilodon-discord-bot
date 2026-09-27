@@ -62,8 +62,10 @@ export function costProblem(hero: Combatant, cost: "action" | "bonusAction", con
 
 export function attackProblem(encounter: EncounterState, attacker: Combatant, option: AttackOption, targetId: string, purpose: "action" | "opportunity", content: SealedContent): TurnProblem | null {
   if (purpose === "action") {
-    const cost = costProblem(attacker, "action", content);
-    if (cost !== null) return cost;
+    // Extra Attack: the Attack action grants more than one attack, so what
+    // must still be available is an attack left in it, not the action itself
+    // (which is only spent once the last of them is made).
+    if (attacker.budget.attacksLeft <= 0 || !canAct(attacker, conditionLookup(content))) return { code: "noActionLeft" };
   }
   const problem = weaponTargetProblem(encounter, attacker, encounter.combatants[targetId], option);
   return problem === null ? null : { code: problem };

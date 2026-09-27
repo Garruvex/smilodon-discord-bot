@@ -21,6 +21,8 @@ export type Trait =
   // Advantage on attacks while an ally is engaged with the target.
   | { readonly kind: "packTactics" }
   // Disengage (or Hide) as a bonus action.
-  | { readonly kind: "nimbleEscape" };
+  | { readonly kind: "nimbleEscape" }
+  // Extra Attack: the Attack action makes two weapon attacks instead of one.
+  | { readonly kind: "extraAttack" };
 
 export type TraitKind = Trait["kind"];

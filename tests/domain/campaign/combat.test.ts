@@ -33,7 +33,7 @@ describe("starting an encounter", () => {
     expect(fight.encounter.order).toEqual(["c-mira", "c-borin", "goblin-a", "goblin-b"]);
     expect(fight.encounter.status).toBe("active");
     expect(fight.current).toBe("c-mira");
-    expect(fight.combatant("c-mira").budget).toEqual({ action: true, bonusAction: true, reaction: true, movement: 30 });
+    expect(fight.combatant("c-mira").budget).toEqual({ action: true, bonusAction: true, reaction: true, movement: 30, attacksLeft: 1 });
     expect(fight.requests).toContainEqual({
       kind: "startTimer",
       timer: { kind: "combatTurn", timerId: "turn:enc-1:1", dueAt: 180_000, encounterId: "enc-1", turnNumber: 1 },

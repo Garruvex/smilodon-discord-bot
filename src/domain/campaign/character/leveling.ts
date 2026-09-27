@@ -7,10 +7,12 @@ import type { ContentId } from "../rules/content-id.js";
 // roster stops at what a level-1 hero has; this is what changes as they earn
 // XP. Numbers only — hit points, proficiency bonus, spell slots, and ability
 // score improvements all follow the SRD tables below, so a new level needs no
-// hand-authored content, apart from the narrative-only features at levels 2
-// and 3 (features/higher-level-features.ts), granted the same way. Mechanical
-// level 2+ features (Extra Attack, Wild Shape, Divine Smite, Cunning Action,
-// Sneak Attack's scaling, subclass choices) stay out of scope.
+// hand-authored content, apart from the class features at levels 2, 3 and 5
+// (features/higher-level-features.ts), granted the same way. Extra Attack
+// (level 5, Fighter/Barbarian/Paladin/Ranger/Monk) is mechanical; the rest
+// are narrative. Other mechanical level 2+ features (Wild Shape, Divine
+// Smite, Cunning Action, Sneak Attack's scaling, subclass choices) stay out
+// of scope.
 
 export const maxLevel = 20;
 
@@ -180,15 +182,15 @@ const firstSpellsForClass: Partial<Record<BuildClass, readonly ContentId<"spell"
 // Narrative-only features (features/higher-level-features.ts) granted the
 // moment a hero reaches a level. Levels past 3 grant none yet.
 const levelFeatures: Readonly<Record<BuildClass, Readonly<Record<number, readonly ContentId<"feature">[]>>>> = {
-  fighter: { 2: ["feature:action-surge"], 3: ["feature:martial-archetype"] },
+  fighter: { 2: ["feature:action-surge"], 3: ["feature:martial-archetype"], 5: ["feature:extra-attack"] },
   rogue: { 2: ["feature:cunning-action"], 3: ["feature:roguish-archetype"] },
   cleric: { 2: ["feature:channel-divinity"] },
-  barbarian: { 2: ["feature:reckless-attack"], 3: ["feature:primal-path"] },
+  barbarian: { 2: ["feature:reckless-attack"], 3: ["feature:primal-path"], 5: ["feature:extra-attack"] },
   bard: { 2: ["feature:jack-of-all-trades"], 3: ["feature:bard-college"] },
   druid: { 2: ["feature:wild-shape"], 3: ["feature:druid-circle"] },
-  monk: { 2: ["feature:ki"], 3: ["feature:monastic-tradition"] },
-  paladin: { 2: ["feature:fighting-style-dueling", "feature:divine-smite"], 3: ["feature:sacred-oath"] },
-  ranger: { 2: ["feature:fighting-style-dueling"], 3: ["feature:ranger-archetype"] },
+  monk: { 2: ["feature:ki"], 3: ["feature:monastic-tradition"], 5: ["feature:extra-attack"] },
+  paladin: { 2: ["feature:fighting-style-dueling", "feature:divine-smite"], 3: ["feature:sacred-oath"], 5: ["feature:extra-attack"] },
+  ranger: { 2: ["feature:fighting-style-dueling"], 3: ["feature:ranger-archetype"], 5: ["feature:extra-attack"] },
   sorcerer: { 2: ["feature:font-of-magic"], 3: ["feature:metamagic"] },
   warlock: { 2: ["feature:eldritch-invocations"], 3: ["feature:pact-boon"] },
   wizard: { 2: ["feature:arcane-tradition"] },

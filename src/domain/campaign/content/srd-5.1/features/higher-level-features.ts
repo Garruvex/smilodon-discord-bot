@@ -1,15 +1,18 @@
 import { defineFeature, type FeatureDefinition } from "../../../rules/content-definitions.js";
 
-// Level 2 and 3 class features (SRD 5.1, Classes), granted automatically as
-// a hero levels up (character/leveling.ts's levelFeatures table). Narrative
-// only, same treatment as Thieves' Cant and the level-1 roster's narrative
-// features: the hero card names them, but no rule reads them yet. Levels
-// beyond 3, and the mechanical features this skips (Extra Attack, Uncanny
-// Dodge, Wild Shape, Divine Smite, Cunning Action, Sneak Attack's scaling),
-// are out of scope for now.
+// Level 2, 3 and 5 class features (SRD 5.1, Classes), granted automatically
+// as a hero levels up (character/leveling.ts's levelFeatures table). Extra
+// Attack is mechanical (a trait, read where an attack is declared); the rest
+// are narrative only, same treatment as Thieves' Cant and the level-1
+// roster's narrative features. Levels beyond 5, and the mechanical features
+// this still skips (Uncanny Dodge, Wild Shape, Divine Smite, Cunning Action,
+// Sneak Attack's scaling), are out of scope for now.
 const source = "SRD 5.1";
 
 const narrative = (name: string): FeatureDefinition => defineFeature({ id: `feature:${name}`, source, traits: [], action: null });
+
+// Fighter, Barbarian, Paladin, Ranger and Monk all gain this at level 5.
+export const extraAttack = defineFeature({ id: "feature:extra-attack", source, traits: [{ kind: "extraAttack" }], action: null });
 
 export const actionSurge = narrative("action-surge");
 export const cunningAction = narrative("cunning-action");
@@ -34,6 +37,7 @@ export const metamagic = narrative("metamagic");
 export const pactBoon = narrative("pact-boon");
 
 export const srd51HigherLevelFeatures: readonly FeatureDefinition[] = [
+  extraAttack,
   actionSurge,
   cunningAction,
   channelDivinity,

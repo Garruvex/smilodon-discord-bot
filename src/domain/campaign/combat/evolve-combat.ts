@@ -34,7 +34,13 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
         event.combatantId,
         (combatant) => ({
           ...combatant,
-          budget: { action: true, bonusAction: true, reaction: true, movement: combatant.speed },
+          budget: {
+            action: true,
+            bonusAction: true,
+            reaction: true,
+            movement: combatant.speed,
+            attacksLeft: combatant.traits.some((trait) => trait.kind === "extraAttack") ? 2 : 1,
+          },
           dodging: false,
           disengaged: false,
         }),
@@ -79,17 +85,30 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
           action: event.bonus ? combatant.budget.action : false,
           bonusAction: event.bonus ? false : combatant.budget.bonusAction,
           movement: event.action === "dash" ? combatant.budget.movement + combatant.speed : combatant.budget.movement,
+          // Spending the action on something other than an attack (or all of
+          // it on a bonus action) owes no more attacks from Extra Attack.
+          attacksLeft: event.bonus ? combatant.budget.attacksLeft : 0,
         },
         dodging: event.action === "dodge" ? true : combatant.dodging,
         disengaged: event.action === "disengage" ? true : combatant.disengaged,
       }));
     case "resolutionDeclared": {
       const { resolution, cost } = event;
+      // Extra Attack: a weapon attack taken as the Attack action spends one
+      // of the turn's attacksLeft instead of the action itself; only the
+      // last of them (cost.action true) actually spends the action. Spending
+      // the action on anything else (a spell, a feature) owes no more attacks.
+      const spendsAnAttack = resolution.source.kind === "weapon" && resolution.purpose === "action";
       const spent = update(encounter, resolution.actorId, (combatant) => {
         const slots = { ...combatant.resources.spellSlots };
         if (cost.spellSlot !== null) slots[cost.spellSlot] = Math.max(0, (slots[cost.spellSlot] ?? 0) - 1);
         const uses = { ...combatant.resources.featureUses };
         if (cost.featureUse !== null) uses[cost.featureUse] = Math.max(0, (uses[cost.featureUse] ?? 0) - 1);
+        const attacksLeft = spendsAnAttack
+          ? Math.max(0, combatant.budget.attacksLeft - 1)
+          : cost.action
+            ? 0
+            : combatant.budget.attacksLeft;
         return {
           ...combatant,
           budget: {
@@ -97,6 +116,7 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
             action: cost.action ? false : combatant.budget.action,
             bonusAction: cost.bonusAction ? false : combatant.budget.bonusAction,
             reaction: cost.reaction ? false : combatant.budget.reaction,
+            attacksLeft,
           },
           resources: { spellSlots: slots, featureUses: uses },
         };

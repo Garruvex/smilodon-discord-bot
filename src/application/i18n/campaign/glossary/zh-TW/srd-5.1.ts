@@ -67,6 +67,7 @@ export const zhTwSrd51Glossary: Glossary = {
     "feature:sorcerous-origin": "術師血脈",
     "feature:otherworldly-patron": "超自然靠山",
     "feature:arcane-recovery": "奧術復原",
+    "feature:extra-attack": "額外攻擊",
     "feature:action-surge": "越戰越勇",
     "feature:cunning-action": "詭詐行動",
     "feature:channel-divinity": "神聖引導",

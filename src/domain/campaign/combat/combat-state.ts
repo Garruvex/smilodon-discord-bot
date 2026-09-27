@@ -97,6 +97,9 @@ export interface TurnBudget {
   readonly bonusAction: boolean;
   readonly reaction: boolean;
   readonly movement: number;
+  // Weapon attacks left in this turn's action: 1, or 2 with Extra Attack.
+  // The action itself is spent only once this reaches 0.
+  readonly attacksLeft: number;
 }
 
 export interface Zone {

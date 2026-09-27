@@ -13,7 +13,7 @@ const view: TurnView = {
   combatantId: "c-elin",
   heroName: "Elin",
   zone: "Yard",
-  budget: { action: true, bonusAction: true, reaction: true, movement: 30 },
+  budget: { action: true, bonusAction: true, reaction: true, movement: 30, attacksLeft: 1 },
   engagedWith: ["Goblin A"],
   busy: false,
   attacks: [{ weapon: "item:mace", toHit: 4, damage: "1d6+2", ranged: false, targets: [goblin] }],

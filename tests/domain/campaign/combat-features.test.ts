@@ -187,6 +187,22 @@ describe("class features", () => {
     expect(long.state.heroStatus["c-elspeth"]).toBeUndefined();
     expect(new Fight(spent).reject(alex, { kind: "takeRest", rest: "long" })).toEqual({ code: "notOrganizer" });
   });
+
+  it("lets a hero with Extra Attack attack twice on one action, then spends it", () => {
+    const base = newCampaign();
+    const borin = base.characters["c-borin"];
+    if (borin === undefined) throw new Error("fixture");
+    const leveled = { ...base, characters: { ...base.characters, "c-borin": { ...borin, level: 5, features: [...borin.features, "feature:extra-attack" as const] } } };
+    const fight = borinFirst(leveled);
+    expect(fight.combatant("c-borin").budget.attacksLeft).toBe(2);
+    fight.run(jamie, { kind: "combatMove", combatantId: "c-borin", zoneId: "courtyard" });
+    fight.run(jamie, { kind: "combatEngage", combatantId: "c-borin", targetId: "goblin-a" });
+    fight.rolls([1]).run(jamie, { kind: "combatAttack", combatantId: "c-borin", targetId: "goblin-a", weapon: "item:longsword" });
+    expect(fight.combatant("c-borin").budget).toMatchObject({ action: true, attacksLeft: 1 });
+    fight.rolls([1]).run(jamie, { kind: "combatAttack", combatantId: "c-borin", targetId: "goblin-a", weapon: "item:longsword" });
+    expect(fight.combatant("c-borin").budget).toMatchObject({ action: false, attacksLeft: 0 });
+    expect(fight.reject(jamie, { kind: "combatAttack", combatantId: "c-borin", targetId: "goblin-a", weapon: "item:longsword" })).toEqual({ code: "noActionLeft" });
+  });
 });
 
 describe("opportunity attacks and escape", () => {
