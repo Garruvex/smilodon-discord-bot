@@ -85,4 +85,91 @@ export const giantWolfSpider = defineMonster({
   traits: [],
 });
 
-export const srd51StarterMonsters: readonly MonsterDefinition[] = [goblin, wolf, bugbear, giantWolfSpider];
+// Added for engine-robustness pass (step 8): more common low-level monsters,
+// same shape as the starter four.
+
+export const kobold = defineMonster({
+  id: "monster:kobold",
+  source,
+  armorClass: 12,
+  maxHp: 5,
+  xp: 25,
+  speed: 30,
+  abilityScores: { str: 7, dex: 15, con: 9, int: 8, wis: 7, cha: 8 },
+  attacks: [{ weapon: "item:dagger", toHit: 4, damage: plus(dice(1, 4), 2) }],
+  tactic: "skirmisher",
+  traits: [{ kind: "packTactics" }],
+});
+
+export const giantRat = defineMonster({
+  id: "monster:giant-rat",
+  source,
+  armorClass: 12,
+  maxHp: 7,
+  xp: 25,
+  speed: 30,
+  abilityScores: { str: 7, dex: 15, con: 11, int: 2, wis: 10, cha: 4 },
+  attacks: [{ weapon: "item:bite", toHit: 4, damage: plus(dice(1, 4), 2) }],
+  tactic: "brute",
+  traits: [{ kind: "packTactics" }],
+});
+
+// Not modeled: Undead Fortitude (the engine has no "drop to 1 HP instead of 0
+// on a failed CON save" mechanic yet).
+export const zombie = defineMonster({
+  id: "monster:zombie",
+  source,
+  armorClass: 8,
+  maxHp: 22,
+  xp: 50,
+  speed: 20,
+  abilityScores: { str: 13, dex: 6, con: 16, int: 3, wis: 6, cha: 5 },
+  attacks: [{ weapon: "item:slam", toHit: 3, damage: plus(dice(1, 6), 1) }],
+  tactic: "brute",
+  traits: [],
+});
+
+// Not modeled: bonus-action move toward the nearest enemy on its turn (Aggressive).
+export const orc = defineMonster({
+  id: "monster:orc",
+  source,
+  armorClass: 13,
+  maxHp: 15,
+  xp: 100,
+  speed: 30,
+  abilityScores: { str: 16, dex: 12, con: 16, int: 7, wis: 11, cha: 10 },
+  attacks: [{ weapon: "item:greataxe", toHit: 5, damage: plus(dice(1, 12), 3) }],
+  tactic: "brute",
+  traits: [],
+});
+
+// Not modeled: damage vulnerability to bludgeoning, immunity to poison damage
+// and the poisoned/exhausted conditions (the engine has no damage-type
+// resistance/immunity or condition-immunity vocabulary yet).
+export const skeleton = defineMonster({
+  id: "monster:skeleton",
+  source,
+  armorClass: 13,
+  maxHp: 13,
+  xp: 50,
+  speed: 30,
+  abilityScores: { str: 10, dex: 14, con: 15, int: 6, wis: 8, cha: 5 },
+  attacks: [
+    { weapon: "item:shortsword", toHit: 4, damage: plus(dice(1, 6), 2) },
+    { weapon: "item:shortbow", toHit: 4, damage: plus(dice(1, 6), 2) },
+  ],
+  tactic: "skirmisher",
+  traits: [],
+});
+
+export const srd51StarterMonsters: readonly MonsterDefinition[] = [
+  goblin,
+  wolf,
+  bugbear,
+  giantWolfSpider,
+  kobold,
+  giantRat,
+  zombie,
+  orc,
+  skeleton,
+];

@@ -106,4 +106,49 @@ export const eldritchBlast = defineSpell({
   }),
 });
 
-export const srd51Cantrips: readonly SpellDefinition[] = [sacredFlame, thaumaturgy, viciousMockery, produceFlame, fireBolt, eldritchBlast];
+// Added for engine-robustness pass (step 8): rounding out the wizard/sorcerer
+// cantrip list with the SRD's other attack-roll cantrips.
+// Simplified: Ray of Frost's "speed reduced by 10 feet" rider is dropped; the
+// engine has no effect for altering someone else's speed for a duration.
+export const rayOfFrost = defineSpell({
+  id: "spell:ray-of-frost",
+  source,
+  level: 0,
+  castingTime: "action",
+  range: { kind: "feet", feet: 60 },
+  targeting: { relation: "creature", count: 1 },
+  concentration: false,
+  plan: ({ casterLevel }) => ({
+    check: { kind: "spellAttack" },
+    onLand: [{ kind: "damage", target: "target", amount: dice(cantripDiceCount(casterLevel), 8), damageType: "cold" }],
+    onAvoid: [],
+  }),
+});
+
+// Simplified: Chill Touch's "can't regain hit points" and "undead have
+// disadvantage" riders are dropped; only the damage is modeled.
+export const chillTouch = defineSpell({
+  id: "spell:chill-touch",
+  source,
+  level: 0,
+  castingTime: "action",
+  range: { kind: "feet", feet: 120 },
+  targeting: { relation: "creature", count: 1 },
+  concentration: false,
+  plan: ({ casterLevel }) => ({
+    check: { kind: "spellAttack" },
+    onLand: [{ kind: "damage", target: "target", amount: dice(cantripDiceCount(casterLevel), 8), damageType: "necrotic" }],
+    onAvoid: [],
+  }),
+});
+
+export const srd51Cantrips: readonly SpellDefinition[] = [
+  sacredFlame,
+  thaumaturgy,
+  viciousMockery,
+  produceFlame,
+  fireBolt,
+  eldritchBlast,
+  rayOfFrost,
+  chillTouch,
+];

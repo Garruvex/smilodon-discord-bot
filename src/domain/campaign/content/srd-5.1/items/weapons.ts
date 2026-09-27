@@ -49,6 +49,9 @@ export const longbow = defineWeapon({
   natural: false,
 });
 
+// Added for engine-robustness pass (step 8): a monster's natural slam attack (zombie).
+export const slam = defineWeapon({ id: "item:slam", source, damage: dice(1, 6), damageType: "bludgeoning", range: melee, finesse: false, natural: true });
+
 export const srd51Weapons: readonly WeaponDefinition[] = [
   longsword,
   shortsword,
@@ -63,4 +66,5 @@ export const srd51Weapons: readonly WeaponDefinition[] = [
   rapier,
   dagger,
   longbow,
+  slam,
 ];

@@ -124,4 +124,31 @@ export const witchBolt = defineSpell({
   }),
 });
 
-export const srd51Level1Spells: readonly SpellDefinition[] = [cureWounds, healingWord, bless, guidingBolt, shieldSpell, magicMissile, witchBolt];
+// Added for engine-robustness pass (step 8). Simplified: Command's other
+// one-word effects (Flee, Grovel, Approach) are dropped; only "Halt" is
+// modeled, as one round of the Incapacitated condition on a failed save.
+export const command = defineSpell({
+  id: "spell:command",
+  source,
+  level: 1,
+  castingTime: "action",
+  range: { kind: "feet", feet: 60 },
+  targeting: { relation: "creature", count: 1 },
+  concentration: false,
+  plan: () => ({
+    check: { kind: "savingThrow", ability: "wis" },
+    onLand: [{ kind: "applyCondition", target: "target", condition: "condition:incapacitated", duration: { kind: "rounds", count: 1 } }],
+    onAvoid: [],
+  }),
+});
+
+export const srd51Level1Spells: readonly SpellDefinition[] = [
+  cureWounds,
+  healingWord,
+  bless,
+  guidingBolt,
+  shieldSpell,
+  magicMissile,
+  witchBolt,
+  command,
+];

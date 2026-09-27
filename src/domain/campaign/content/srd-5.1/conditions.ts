@@ -63,4 +63,51 @@ export const blinded = defineCondition({
   ],
 });
 
-export const srd51Conditions: readonly ConditionDefinition[] = [incapacitated, prone, frightened, poisoned, unconscious, grappled, restrained, blinded];
+// Added for engine-robustness pass (step 8): conditions the existing modifier
+// vocabulary already covers in full, so no new Modifier kind was needed.
+export const paralyzed = defineCondition({
+  id: "condition:paralyzed",
+  source,
+  includes: [incapacitated.id],
+  modifiers: [
+    { kind: "speedZero" },
+    { kind: "attacksAgainst", mode: "advantage", reach: "any" },
+    { kind: "autoFailSaves", abilities: ["str", "dex"] },
+    { kind: "critsAgainst", reach: "within5" },
+  ],
+});
+
+export const stunned = defineCondition({
+  id: "condition:stunned",
+  source,
+  includes: [incapacitated.id],
+  modifiers: [
+    { kind: "speedZero" },
+    { kind: "attacksAgainst", mode: "advantage", reach: "any" },
+    { kind: "autoFailSaves", abilities: ["str", "dex"] },
+  ],
+});
+
+export const invisible = defineCondition({
+  id: "condition:invisible",
+  source,
+  includes: [],
+  modifiers: [
+    { kind: "ownAttacks", mode: "advantage" },
+    { kind: "attacksAgainst", mode: "disadvantage", reach: "any" },
+  ],
+});
+
+export const srd51Conditions: readonly ConditionDefinition[] = [
+  incapacitated,
+  prone,
+  frightened,
+  poisoned,
+  unconscious,
+  grappled,
+  restrained,
+  blinded,
+  paralyzed,
+  stunned,
+  invisible,
+];

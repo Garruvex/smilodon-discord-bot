@@ -80,4 +80,43 @@ describe("SRD 5.1 content", () => {
       { kind: "conditionUnlessSave", target: "target", ability: "str", dc: 11, condition: "condition:prone" },
     ]);
   });
+
+  it("gives Paralyzed and Stunned the incapacitated/no-save/advantage-against shape, and Invisible the attack-roll swap", () => {
+    expect(content.get("condition:paralyzed").includes).toEqual(["condition:incapacitated"]);
+    expect(content.get("condition:paralyzed").modifiers).toContainEqual({ kind: "critsAgainst", reach: "within5" });
+    expect(content.get("condition:stunned").includes).toEqual(["condition:incapacitated"]);
+    expect(content.get("condition:invisible").modifiers).toEqual([
+      { kind: "ownAttacks", mode: "advantage" },
+      { kind: "attacksAgainst", mode: "disadvantage", reach: "any" },
+    ]);
+  });
+
+  it("scales Ray of Frost and Chill Touch as attack-roll cantrips", () => {
+    const rayOfFrost = content.get("spell:ray-of-frost");
+    expect(rayOfFrost.plan({ slotLevel: 0, casterLevel: 5, spellcastingModifier: 3 })).toMatchObject({
+      check: { kind: "spellAttack" },
+      onLand: [{ kind: "damage", damageType: "cold" }],
+    });
+    expect(amountOf(rayOfFrost.plan({ slotLevel: 0, casterLevel: 5, spellcastingModifier: 3 }).onLand[0])).toBe("2d8");
+    expect(content.get("spell:chill-touch").plan({ slotLevel: 0, casterLevel: 1, spellcastingModifier: 3 }).onLand[0]).toMatchObject({
+      damageType: "necrotic",
+    });
+  });
+
+  it("makes Command a Wisdom save that incapacitates for one round", () => {
+    const command = content.get("spell:command");
+    expect(command.plan({ slotLevel: 1, casterLevel: 1, spellcastingModifier: 3 })).toEqual({
+      check: { kind: "savingThrow", ability: "wis" },
+      onLand: [{ kind: "applyCondition", target: "target", condition: "condition:incapacitated", duration: { kind: "rounds", count: 1 } }],
+      onAvoid: [],
+    });
+  });
+
+  it("gives the new monsters pack tactics or brute/skirmisher attacks that reference real weapons", () => {
+    expect(traitsOf(content.get("monster:kobold"))).toEqual([{ kind: "packTactics" }]);
+    expect(traitsOf(content.get("monster:giant-rat"))).toEqual([{ kind: "packTactics" }]);
+    expect(content.get("monster:zombie").attacks[0]?.weapon).toBe("item:slam");
+    expect(content.get("monster:orc").attacks[0]?.weapon).toBe("item:greataxe");
+    expect(content.get("monster:skeleton").attacks.map((attack) => attack.weapon)).toEqual(["item:shortsword", "item:shortbow"]);
+  });
 });
