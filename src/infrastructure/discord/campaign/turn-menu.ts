@@ -166,7 +166,8 @@ function choicesOf(view: TurnView): readonly TurnChoice[] {
     ...view.moves.map((move): TurnChoice => ({ kind: "move", zone: move.zoneId })),
     ...(view.engage.length > 0 ? [{ kind: "engage" } as const] : []),
     ...(view.canWithdraw ? [{ kind: "withdraw" } as const] : []),
-    ...(view.canDodge ? [{ kind: "dodge" } as const, { kind: "dash" } as const, { kind: "disengage" } as const] : []),
+    ...(view.canDodge ? [{ kind: "dodge" } as const] : []),
+    ...(view.canDashOrDisengage ? [{ kind: "dash" } as const, { kind: "disengage" } as const] : []),
   ];
 }
 

@@ -2,11 +2,11 @@ import { defineFeature, type FeatureDefinition } from "../../../rules/content-de
 
 // Level 2, 3 and 5 class features (SRD 5.1, Classes), granted automatically
 // as a hero levels up (character/leveling.ts's levelFeatures table). Extra
-// Attack is mechanical (a trait, read where an attack is declared); the rest
-// are narrative only, same treatment as Thieves' Cant and the level-1
-// roster's narrative features. Levels beyond 5, and the mechanical features
-// this still skips (Uncanny Dodge, Wild Shape, Divine Smite, Cunning Action,
-// Sneak Attack's scaling), are out of scope for now.
+// Attack and Cunning Action are mechanical (traits, read where an attack or
+// a Dash/Disengage is declared); the rest are narrative only, same treatment
+// as Thieves' Cant and the level-1 roster's narrative features. Levels
+// beyond 5, and the mechanical features this still skips (Uncanny Dodge,
+// Wild Shape, Divine Smite), are out of scope for now.
 const source = "SRD 5.1";
 
 const narrative = (name: string): FeatureDefinition => defineFeature({ id: `feature:${name}`, source, traits: [], action: null });
@@ -15,7 +15,8 @@ const narrative = (name: string): FeatureDefinition => defineFeature({ id: `feat
 export const extraAttack = defineFeature({ id: "feature:extra-attack", source, traits: [{ kind: "extraAttack" }], action: null });
 
 export const actionSurge = narrative("action-surge");
-export const cunningAction = narrative("cunning-action");
+// Hide is not modeled, so only Dash and Disengage move to the bonus action.
+export const cunningAction = defineFeature({ id: "feature:cunning-action", source, traits: [{ kind: "cunningAction" }], action: null });
 export const channelDivinity = narrative("channel-divinity");
 export const recklessAttack = narrative("reckless-attack");
 export const jackOfAllTrades = narrative("jack-of-all-trades");

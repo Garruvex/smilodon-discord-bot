@@ -27,7 +27,7 @@ export const secondWind = defineFeature({
 export const sneakAttack = defineFeature({
   id: "feature:sneak-attack",
   source,
-  traits: [{ kind: "sneakAttack", dice: dice(1, 6) }],
+  traits: [{ kind: "sneakAttack" }],
   action: null,
 });
 

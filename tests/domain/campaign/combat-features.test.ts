@@ -5,7 +5,7 @@ import { formatDiceExpression } from "../../../src/domain/campaign/dice/dice-exp
 import type { CampaignEvent } from "../../../src/domain/campaign/events/campaign-event.js";
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
 import { alex, jamie, newCampaign, organizer, partyOfThree, ruleset, run, sam } from "./campaign-fixtures.js";
-import { Fight, skirmish } from "./combat-fixtures.js";
+import { Fight, skirmish, startedFight } from "./combat-fixtures.js";
 
 // Gate and courtyard 10 ft apart, with a tower beyond the courtyard.
 const close: EncounterSpec = {
@@ -202,6 +202,33 @@ describe("class features", () => {
     fight.rolls([1]).run(jamie, { kind: "combatAttack", combatantId: "c-borin", targetId: "goblin-a", weapon: "item:longsword" });
     expect(fight.combatant("c-borin").budget).toMatchObject({ action: false, attacksLeft: 0 });
     expect(fight.reject(jamie, { kind: "combatAttack", combatantId: "c-borin", targetId: "goblin-a", weapon: "item:longsword" })).toEqual({ code: "noActionLeft" });
+  });
+
+  it("lets Cunning Action Dash as a bonus action, keeping the action free to attack with", () => {
+    const base = newCampaign();
+    const mira = base.characters["c-mira"];
+    if (mira === undefined) throw new Error("fixture");
+    const cunning = { ...base, characters: { ...base.characters, "c-mira": { ...mira, features: [...mira.features, "feature:cunning-action" as const] } } };
+    const fight = startedFight(cunning);
+    fight.run(alex, { kind: "combatDash", combatantId: "c-mira" });
+    // Speed 30 twice (the turn's own movement, plus Dash's).
+    expect(fight.combatant("c-mira").budget).toMatchObject({ action: true, bonusAction: false, movement: 60 });
+    fight.run(alex, { kind: "combatAttack", combatantId: "c-mira", targetId: "goblin-a", weapon: "item:shortbow" });
+    expect(fight.combatant("c-mira").budget.action).toBe(false);
+  });
+
+  it("still costs the action without Cunning Action, and never covers Dodge", () => {
+    const base = newCampaign();
+    const mira = base.characters["c-mira"];
+    if (mira === undefined) throw new Error("fixture");
+    const plain = startedFight(base);
+    plain.run(alex, { kind: "combatDash", combatantId: "c-mira" });
+    expect(plain.combatant("c-mira").budget).toMatchObject({ action: false, bonusAction: true });
+
+    const cunning = { ...base, characters: { ...base.characters, "c-mira": { ...mira, features: [...mira.features, "feature:cunning-action" as const] } } };
+    const dodging = startedFight(cunning);
+    dodging.run(alex, { kind: "combatDodge", combatantId: "c-mira" });
+    expect(dodging.combatant("c-mira").budget).toMatchObject({ action: false, bonusAction: true });
   });
 });
 

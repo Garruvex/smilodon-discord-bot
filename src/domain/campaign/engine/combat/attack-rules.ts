@@ -4,8 +4,8 @@ import { engagedWith, isActive, type Combatant, type EncounterState, type Resolu
 import { attackBias, effectsUsedUpByAttack, type ConditionLookup } from "../../effects/effect-queries.js";
 import { distanceBetween, engagedDistance } from "../../combat/positioning.js";
 import type { D20TestSpec } from "../../dice/d20-test.js";
-import type { combine} from "../../dice/dice-expression.js";
-import { plus } from "../../dice/dice-expression.js";
+import type { combine } from "../../dice/dice-expression.js";
+import { dice, plus } from "../../dice/dice-expression.js";
 import { resolveRollMode } from "../../dice/roll.js";
 import type { Effect, ResolutionPlan } from "../../rules/effects.js";
 import type { Decision } from "../decision.js";
@@ -93,9 +93,11 @@ export function sneakAttackEligible(
   return engagedWith(encounter, target.id).some((other) => other.side === attacker.side && other.id !== attacker.id && isActive(other));
 }
 
+// SRD 5.1: 1d6 at level 1, plus one more every two levels after (2d6 at 3,
+// 3d6 at 5, and so on through 10d6 at 19).
 export function sneakDice(attacker: Combatant | undefined): ReturnType<typeof combine> | null {
-  for (const trait of attacker?.traits ?? []) if (trait.kind === "sneakAttack") return trait.dice;
-  return null;
+  if (attacker === undefined || !attacker.traits.some((trait) => trait.kind === "sneakAttack")) return null;
+  return dice(Math.ceil(attacker.level / 2), 6);
 }
 
 export function effectForKey(plan: ResolutionPlan, key: string): Effect | undefined {

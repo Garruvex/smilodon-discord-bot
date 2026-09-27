@@ -73,10 +73,13 @@ export function handleCombatCommand(decision: Decision, command: CombatCommand):
     case "combatDodge":
     case "combatDisengage":
       return withHeroTurn(decision, command.combatantId, (hero, encounter) => {
-        const cost = costProblem(hero, "action", decision.ctx.rules.content);
-        if (cost !== null) return cost;
         const action = command.kind === "combatDash" ? "dash" : command.kind === "combatDodge" ? "dodge" : "disengage";
-        decision.emit({ kind: "actionTaken", combatantId: hero.id, action, bonus: false });
+        // Cunning Action (Dodge is not one of its options): free as a bonus
+        // action when that is still available, otherwise the ordinary action.
+        const cunning = action !== "dodge" && hero.traits.some((trait) => trait.kind === "cunningAction") && hero.budget.bonusAction;
+        const cost = costProblem(hero, cunning ? "bonusAction" : "action", decision.ctx.rules.content);
+        if (cost !== null) return cost;
+        decision.emit({ kind: "actionTaken", combatantId: hero.id, action, bonus: cunning });
         decision.request({ kind: "deliver", delivery: { kind: "combatBeat", encounterId: encounter.id, combatantId: hero.id, beat: action } });
         return null;
       });

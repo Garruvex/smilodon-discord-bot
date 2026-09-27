@@ -62,6 +62,7 @@ export interface TurnView {
   readonly engage: readonly TargetView[];
   readonly canWithdraw: boolean;
   readonly canDodge: boolean;
+  readonly canDashOrDisengage: boolean;
   // Anything left worth spending: ending the turn then asks first.
   readonly hasUnspent: boolean;
 }
@@ -134,6 +135,7 @@ export function buildTurnView(
     engage: options.engage.flatMap(targetView),
     canWithdraw: options.canWithdraw,
     canDodge: options.canTakeAction,
+    canDashOrDisengage: options.canDashOrDisengage,
     hasUnspent: options.hasUnspent,
   };
 }

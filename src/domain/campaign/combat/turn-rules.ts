@@ -199,8 +199,11 @@ export interface TurnOptions {
   readonly moves: readonly { readonly zoneId: string; readonly feet: number }[];
   readonly engage: readonly string[];
   readonly canWithdraw: boolean;
-  // Dash, Dodge and Disengage each cost the action.
+  // Dodge always costs the action.
   readonly canTakeAction: boolean;
+  // Dash and Disengage cost the action too, unless Cunning Action makes
+  // either free as a bonus action instead.
+  readonly canDashOrDisengage: boolean;
   // Anything left worth spending: ending the turn then asks first.
   readonly hasUnspent: boolean;
 }
@@ -268,6 +271,8 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
       });
   const engage = busy ? [] : Object.values(encounter.combatants).filter((other) => engageProblem(encounter, hero, other.id, content) === null).map((other) => other.id);
   const canTakeAction = !busy && costProblem(hero, "action", content) === null;
+  const cunningAvailable = hero.traits.some((trait) => trait.kind === "cunningAction") && costProblem(hero, "bonusAction", content) === null;
+  const canDashOrDisengage = canTakeAction || (!busy && cunningAvailable);
 
   return {
     combatantId: characterId,
@@ -281,6 +286,7 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
     engage,
     canWithdraw: !busy && withdrawProblem(encounter, hero, content) === null,
     canTakeAction,
+    canDashOrDisengage,
     hasUnspent: !busy && (hero.budget.action || hero.budget.bonusAction) && attacks.length + spells.length + features.length + potions.length > 0,
   };
 }

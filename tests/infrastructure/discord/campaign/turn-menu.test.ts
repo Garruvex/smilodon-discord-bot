@@ -28,6 +28,7 @@ const view: TurnView = {
   engage: [],
   canWithdraw: true,
   canDodge: true,
+  canDashOrDisengage: true,
   hasUnspent: true,
 };
 
