@@ -253,8 +253,8 @@ export class CampaignCardService implements CardRefresher {
         lifecycle: paused.has(record.key.campaignId) ? "paused" : record.lifecycle,
         players: record.lobby.members.filter((member) => member.status !== "withdrawn").length,
         maxPlayers: record.lobby.maxPlayers,
-        partyChannelId: record.channels.partyChannelId,
-        adventureChannelId: record.channels.adventureChannelId,
+        partyChannelId: record.channels.partyPostId,
+        adventureChannelId: record.channels.adventurePostId,
       };
       const reference = await this.place(
         { key: `hub:${record.key.campaignId}`, channelId: hubChannelId, payload: renderHubGame(game, allTexts[record.language]), epoch, pin: false },
@@ -271,7 +271,7 @@ export class CampaignCardService implements CardRefresher {
     const language: Language = record.language;
     const text = allTexts[language];
     const campaignId = record.key.campaignId;
-    const { partyChannelId, adventureChannelId, discussionThreadId } = record.channels;
+    const { partyPostId: partyChannelId, adventurePostId: adventureChannelId } = record.channels;
     const summary = this.options.adventures.list().find((adventure) => adventure.id === record.adventure.adventureId);
     const presets = summary?.heroes.map((hero) => ({ id: hero.id, name: hero.name, className: hero.class })) ?? [];
     const cards: DesiredCard[] = [];
@@ -309,7 +309,6 @@ export class CampaignCardService implements CardRefresher {
             organizerId: record.organizerId,
             heroes,
             adventureUrl: guildUrl(adventureChannelId),
-            talkUrl: guildUrl(discussionThreadId),
           },
           text,
           campaignId,

@@ -53,7 +53,7 @@ async function table(language: "en" | "zh-TW" = "en"): Promise<Table> {
   await r.store.transaction(async (tx) => {
     const stored = await tx.loadRecord(key);
     if (stored === undefined) throw new Error("record");
-    await tx.saveRecord({ ...stored.record, channels: { ...stored.record.channels, partyChannelId: party, adventureChannelId: adventure } }, stored.revision);
+    await tx.saveRecord({ ...stored.record, channels: { ...stored.record.channels, partyPostId: party, adventurePostId: adventure } }, stored.revision);
   });
   const hero = starter[language].heroes[0]?.id ?? "";
   await r.service.join(key, "u-org");

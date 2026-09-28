@@ -333,7 +333,7 @@ describe("pictures of monsters and moments", () => {
       for (const item of await tx.pendingOutbox("heroImage")) await tx.completeOutbox(item.id);
       const stored = await tx.loadRecord(c.key);
       if (stored === undefined) throw new Error("record");
-      await tx.saveRecord({ ...stored.record, channels: { ...stored.record.channels, adventureChannelId: "chan" } }, stored.revision);
+      await tx.saveRecord({ ...stored.record, channels: { ...stored.record.channels, adventurePostId: "chan" } }, stored.revision);
     });
 
   it("asks for one portrait per kind of monster as a fight breaks out, and reuses it", async () => {
@@ -386,7 +386,7 @@ describe("pictures of monsters and moments", () => {
     await c.r.store.transaction(async (tx) => {
       const stored = await tx.loadRecord(c.key);
       if (stored === undefined) throw new Error("record");
-      await tx.saveRecord({ ...stored.record, channels: { ...stored.record.channels, adventureChannelId: "chan" } }, stored.revision);
+      await tx.saveRecord({ ...stored.record, channels: { ...stored.record.channels, adventurePostId: "chan" } }, stored.revision);
     });
     const p = painter();
     await p.worker(c).runOnce();

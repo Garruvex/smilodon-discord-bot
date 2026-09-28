@@ -207,8 +207,8 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
   const handler = new CampaignComponentHandler({ lobby, play, cards, unitOfWork, rulesets, adventures, glossaries, library });
   const hubHandler = new CampaignHubComponentHandler({ lobby, play, setup, cards, creator, authority, adventures });
 
-  // A deleted hub channel, game channel or Table Talk thread is made again
-  // (its cards are drawn into the new one), within limits; a deleted message is
+  // A deleted hub channel or game post (a forum thread) is made again (its
+  // cards are drawn into the new one), within limits; a deleted message is
   // drawn again by the card service.
   const recovery = new CampaignRecovery({ unitOfWork, lobby, setup, cards, issues, logger });
   const recoverChannel = (guildId: string, channelId: string): Promise<void> => recovery.channelDeleted(guildId, channelId);

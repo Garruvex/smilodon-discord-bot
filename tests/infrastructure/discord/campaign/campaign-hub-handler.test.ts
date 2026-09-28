@@ -137,7 +137,7 @@ async function activeGame(t: Harness): Promise<{ key: CampaignKey; hubMessageId:
   await t.r.store.transaction(async (tx) => {
     const stored = await tx.loadRecord(key);
     if (stored === undefined) throw new Error("record");
-    await tx.saveRecord({ ...stored.record, channels: { ...stored.record.channels, partyChannelId: "chan-party", adventureChannelId: "chan-adventure" } }, stored.revision);
+    await tx.saveRecord({ ...stored.record, channels: { ...stored.record.channels, partyPostId: "chan-party", adventurePostId: "chan-adventure" } }, stored.revision);
   });
   await t.cards.sync(key);
   return { key, hubMessageId: (await t.r.service.get(key))?.record.cards.hub?.messageId ?? "" };

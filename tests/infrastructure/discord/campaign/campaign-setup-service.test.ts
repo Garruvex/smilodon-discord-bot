@@ -31,7 +31,7 @@ async function newGame(r: Rig, name = "Moonlit Ruins", language: "en" | "zh-TW" 
 }
 
 describe("server setup", () => {
-  it("creates the D&D category and a read-only hub channel, and lists games there", async () => {
+  it("creates the D&D category, the four campaign forums, and a read-only hub channel, and lists games there", async () => {
     const r = rig();
     const { service, resources, messages } = setup(r);
     const result = await service.setupGuild(guildId, null);
@@ -39,28 +39,33 @@ describe("server setup", () => {
     expect(resources.categories.size).toBe(1);
     expect(resources.channels).toHaveLength(1);
     expect(resources.channels[0]?.options).toMatchObject({ name: "dnd-games", playersReadOnly: true });
+    expect(resources.forums.map((forum) => forum.options.name)).toEqual(["public-games", "public-parties", "private-games", "private-parties"]);
+    expect(resources.forums.find((forum) => forum.options.name === "public-games")?.options.tags).toEqual(["Recruiting", "Active", "Paused", "Completed"]);
+    expect(resources.forums.find((forum) => forum.options.name === "public-parties")?.options.tags).toEqual([]);
+    expect(resources.forums.find((forum) => forum.options.name === "private-games")?.options.viewerRoleId).toBeTruthy();
     expect(result.settings).toMatchObject({ categoryId: "cat1", hubChannelId: "ch2" });
     expect(flatten(messages.live("ch2")[0]!.payload).text).toContain("No games yet");
     expect(messages.pinned).toContain(messages.live("ch2")[0]!.messageId);
   });
 
-  it("creates the DnD Admin role once and makes it again when it was deleted", async () => {
+  it("creates the DnD Admin and Private Games roles once, and makes them again when deleted", async () => {
     const r = rig();
     const { service, resources } = setup(r);
     const first = await service.setupGuild(guildId, null);
     if (first.kind !== "ok") throw new Error("setup");
     const roleId = first.settings.adminRoleId;
     expect(roleId).toBeTruthy();
-    expect(resources.roles.size).toBe(1);
+    expect(first.settings.privateGamesRoleId).toBeTruthy();
+    expect(resources.roles.size).toBe(2);
 
     const again = await service.setupGuild(guildId, null);
     expect(again.kind === "ok" && again.settings.adminRoleId).toBe(roleId);
-    expect(resources.roles.size).toBe(1);
+    expect(resources.roles.size).toBe(2);
 
     resources.roles.clear();
     const repaired = await service.setupGuild(guildId, null);
     expect(repaired.kind === "ok" && repaired.settings.adminRoleId).not.toBe(roleId);
-    expect(resources.roles.size).toBe(1);
+    expect(resources.roles.size).toBe(2);
   });
 
   it("uses the channel the organizer ran it in as the hub, and keeps the category on a repeat", async () => {
@@ -81,11 +86,12 @@ describe("server setup", () => {
     expect(await service.setupGuild(guildId, null)).toEqual({ kind: "missingPermissions", missing: ["ManageChannels"] });
     expect(resources.categories.size).toBe(0);
     expect(resources.channels).toHaveLength(0);
+    expect(resources.forums).toHaveLength(0);
   });
 });
 
-describe("creating a game's channels", () => {
-  it("makes <name> and <name>-stats plus a Table Talk thread, read-only for players", async () => {
+describe("creating a game's posts", () => {
+  it("makes the Games and Parties forum posts, tagged Recruiting for a new game", async () => {
     const r = rig();
     const { service, resources, messages } = setup(r);
     await service.setupGuild(guildId, null);
@@ -93,34 +99,49 @@ describe("creating a game's channels", () => {
     const result = await service.provision(key);
     if (result.kind !== "ok") throw new Error(`provision: ${result.kind}`);
 
-    const names = resources.channels.map((channel) => channel.options.name);
-    expect(names).toContain("moonlit-ruins");
-    expect(names).toContain("moonlit-ruins-stats");
-    const party = resources.channels.find((channel) => channel.options.name === "moonlit-ruins-stats");
-    const adventure = resources.channels.find((channel) => channel.options.name === "moonlit-ruins");
-    expect(party?.options).toMatchObject({ playersReadOnly: true, allowThreadMessages: true, parentId: "cat1" });
-    expect(adventure?.options).toMatchObject({ playersReadOnly: true, allowThreadMessages: false });
-    expect(result.record.channels).toMatchObject({ partyChannelId: party?.id, adventureChannelId: adventure?.id });
-    expect(result.record.channels.discussionThreadId).toBe(resources.threads[0]?.id);
-    expect(resources.threads[0]?.name).toBe("Moonlit Ruins — Table Talk");
-    expect(result.record.pendingResources.map((resource) => [resource.kind, resource.resourceId !== null])).toEqual([["partyChannel", true], ["adventureChannel", true], ["discussionThread", true]]);
-    // The lobby card is on the Party channel and the hub lists the game.
+    const publicGames = resources.forums.find((forum) => forum.options.name === "public-games");
+    const publicParties = resources.forums.find((forum) => forum.options.name === "public-parties");
+    const adventure = resources.forumPosts.find((post) => post.forumId === publicGames?.id);
+    const party = resources.forumPosts.find((post) => post.forumId === publicParties?.id);
+    expect(adventure?.name).toBe("Moonlit Ruins");
+    expect(party?.name).toBe("Moonlit Ruins — Party");
+    expect(adventure?.tag).toBe("Recruiting");
+    expect(result.record.channels).toMatchObject({ partyPostId: party?.id, adventurePostId: adventure?.id });
+    expect(result.record.pendingResources.map((resource) => [resource.kind, resource.resourceId !== null])).toEqual([
+      ["adventurePost", true],
+      ["partyPost", true],
+    ]);
+    // The lobby card is on the Party post and the hub lists the game.
     expect(flatten(messages.live(party?.id ?? "")[0]!.payload).text).toContain("Moonlit Ruins — Lobby");
   });
 
-  it("names a second game with the same name apart from the first", async () => {
+  it("puts a members-only game's posts in the private forums instead", async () => {
+    const r = rig();
+    const { service, resources } = setup(r);
+    await service.setupGuild(guildId, null);
+    const created = await r.service.create({ guildId, organizerId: "u-org", name: "Secret Table", language: "en", adventureId: starterAdventureId, pacing: { preset: "live" }, visibility: "membersOnly" });
+    if (created.kind !== "ok") throw new Error("create");
+    const result = await service.provision(created.value.key);
+    if (result.kind !== "ok") throw new Error(`provision: ${result.kind}`);
+
+    const privateGames = resources.forums.find((forum) => forum.options.name === "private-games");
+    const privateParties = resources.forums.find((forum) => forum.options.name === "private-parties");
+    expect(resources.forumPosts.some((post) => post.forumId === privateGames?.id && post.name === "Secret Table")).toBe(true);
+    expect(resources.forumPosts.some((post) => post.forumId === privateParties?.id)).toBe(true);
+  });
+
+  it("allows a second game with the same name as the first (forum posts need no unique name)", async () => {
     const r = rig();
     const { service, resources } = setup(r);
     await service.setupGuild(guildId, null);
     const first = await newGame(r);
     await service.provision(first);
-    // A finished game frees the campaign name; its channels keep theirs.
+    // A finished game frees the campaign name.
     await r.service.cancel(first, "u-org");
     const second = await newGame(r);
-    await service.provision(second);
-    const names = resources.channels.map((channel) => channel.options.name);
-    expect(names).toContain("moonlit-ruins-2");
-    expect(names).toContain("moonlit-ruins-2-stats");
+    const result = await service.provision(second);
+    expect(result.kind).toBe("ok");
+    expect(resources.forumPosts.filter((post) => post.name === "Moonlit Ruins")).toHaveLength(2);
   });
 
   it("asks for /dnd setup first", async () => {
@@ -135,10 +156,10 @@ describe("creating a game's channels", () => {
     const { service, resources } = setup(r);
     await service.setupGuild(guildId, null);
     const key = await newGame(r);
-    const before = resources.channels.length;
+    const before = resources.forumPosts.length;
     resources.missing = ["CreatePublicThreads"];
     expect(await service.provision(key)).toEqual({ kind: "missingPermissions", missing: ["CreatePublicThreads"] });
-    expect(resources.channels).toHaveLength(before);
+    expect(resources.forumPosts).toHaveLength(before);
   });
 
   it("resumes after a failure without duplicating what was already made", async () => {
@@ -146,52 +167,36 @@ describe("creating a game's channels", () => {
     const { service, resources } = setup(r);
     await service.setupGuild(guildId, null);
     const key = await newGame(r);
-    // The Party channel is created on Discord but the answer is lost.
-    resources.failCreates = 1;
-    expect(await service.provision(key)).toEqual({ kind: "failed", step: "partyChannel" });
-    expect((await r.service.get(key))?.record.pendingResources.map((resource) => resource.kind)).toEqual(["partyChannel", "adventureChannel", "discussionThread"]);
+    // The Games post is created on Discord but the answer is lost.
+    resources.failForumPostCreates = 1;
+    expect(await service.provision(key)).toEqual({ kind: "failed", step: "adventurePost" });
+    expect((await r.service.get(key))?.record.pendingResources.map((resource) => resource.kind)).toEqual(["adventurePost", "partyPost"]);
 
     const retry = await service.provision(key);
     expect(retry.kind).toBe("ok");
-    const party = resources.channels.filter((channel) => channel.options.name.endsWith("-stats"));
-    expect(party).toHaveLength(1);
-    expect(resources.channels.filter((channel) => channel.options.name === "moonlit-ruins")).toHaveLength(1);
+    expect(resources.forumPosts.filter((post) => post.name === "Moonlit Ruins")).toHaveLength(1);
+    expect(resources.forumPosts.filter((post) => post.name === "Moonlit Ruins — Party")).toHaveLength(1);
   });
 
-  it("keeps the channels when only the thread fails, and finishes on retry", async () => {
-    const r = rig();
-    const { service, resources } = setup(r);
-    await service.setupGuild(guildId, null);
-    const key = await newGame(r);
-    resources.failThreads = 1;
-    expect(await service.provision(key)).toEqual({ kind: "failed", step: "discussionThread" });
-    const channelsAfterFailure = resources.channels.length;
-    const retry = await service.provision(key);
-    expect(retry.kind).toBe("ok");
-    expect(resources.channels).toHaveLength(channelsAfterFailure);
-    expect(resources.threads).toHaveLength(1);
-  });
-
-  it("recreates a channel an administrator deleted, and leaves the rest alone", async () => {
+  it("recreates a post an administrator deleted, and leaves the rest alone", async () => {
     const r = rig();
     const { service, resources } = setup(r);
     await service.setupGuild(guildId, null);
     const key = await newGame(r);
     await service.provision(key);
-    const gone = resources.channels.findIndex((channel) => channel.options.name === "moonlit-ruins");
-    resources.channels.splice(gone, 1);
+    const gone = resources.forumPosts.findIndex((post) => post.name === "Moonlit Ruins");
+    resources.forumPosts.splice(gone, 1);
     const again = await service.provision(key);
     expect(again.kind).toBe("ok");
-    expect(resources.channels.filter((channel) => channel.options.name === "moonlit-ruins")).toHaveLength(1);
-    expect(resources.threads).toHaveLength(1);
+    expect(resources.forumPosts.filter((post) => post.name === "Moonlit Ruins")).toHaveLength(1);
+    expect(resources.forumPosts.filter((post) => post.name === "Moonlit Ruins — Party")).toHaveLength(1);
   });
 
-  it("names channels in Traditional Chinese from the campaign name", async () => {
+  it("names posts in Traditional Chinese from the campaign name", async () => {
     const r = rig();
     const { service, resources } = setup(r);
     await service.setupGuild(guildId, null);
     await service.provision(await newGame(r, "月光遺跡", "zh-TW"));
-    expect(resources.channels.map((channel) => channel.options.name)).toEqual(expect.arrayContaining(["月光遺跡", "月光遺跡-stats"]));
-    expect(resources.threads[0]?.name).toBe("月光遺跡 — 閒聊討論串");
+    expect(resources.forumPosts.map((post) => post.name)).toEqual(expect.arrayContaining(["月光遺跡", "月光遺跡 — 隊伍"]));
   });
 });

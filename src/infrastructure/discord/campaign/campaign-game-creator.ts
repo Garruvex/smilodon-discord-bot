@@ -89,7 +89,7 @@ export function createGameText(result: CreateGameResult, text: Texts): string {
   const t = text.campaign.cmd;
   switch (result.kind) {
     case "created":
-      return t.created({ name: result.record.name, party: result.record.channels.partyChannelId ?? "", adventure: result.record.channels.adventureChannelId ?? "" });
+      return t.created({ name: result.record.name, party: result.record.channels.partyPostId ?? "", adventure: result.record.channels.adventurePostId ?? "" });
     case "refused":
       return refusalText(text, result.reason);
     case "noModel":

@@ -330,7 +330,7 @@ export class Application {
       });
     });
 
-    // The Table Talk thread is one of a game's places: it is made again.
+    // A Games or Parties forum post is a thread; it is made again too.
     this.client.on(Events.ThreadDelete, (thread) => {
       this.dependencies.campaign.handleChannelDeleted(thread.guildId, thread.id);
     });

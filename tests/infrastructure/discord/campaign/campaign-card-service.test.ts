@@ -27,7 +27,7 @@ async function lobby(r: Rig): Promise<CampaignKey> {
   await r.store.transaction(async (tx) => {
     const stored = await tx.loadRecord(key);
     if (stored === undefined) throw new Error("record");
-    await tx.saveRecord({ ...stored.record, channels: { ...stored.record.channels, partyChannelId: party, adventureChannelId: adventure } }, stored.revision);
+    await tx.saveRecord({ ...stored.record, channels: { ...stored.record.channels, partyPostId: party, adventurePostId: adventure } }, stored.revision);
     await tx.saveGuildSettings({ guildId, categoryId: null, hubChannelId: hub, hubCard: null });
   });
   return key;
@@ -190,7 +190,7 @@ describe("the card service", () => {
       await r.store.transaction(async (tx) => {
         const stored = await tx.loadRecord(second);
         if (stored === undefined) throw new Error("record");
-        await tx.saveRecord({ ...stored.record, channels: { ...stored.record.channels, partyChannelId: "chan-party-2", adventureChannelId: "chan-adventure-2" } }, stored.revision);
+        await tx.saveRecord({ ...stored.record, channels: { ...stored.record.channels, partyPostId: "chan-party-2", adventurePostId: "chan-adventure-2" } }, stored.revision);
       });
       await cards.sync(first);
       await cards.sync(second);

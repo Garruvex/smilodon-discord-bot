@@ -368,12 +368,12 @@ export class CampaignComponentHandler implements ComponentHandler {
     await interaction.editReply({ content: result.kind === "ok" ? text.campaign.reply.actionSaved : refusalText(text, result.reason) });
   }
 
-  // Links to the places a player may want to go: the Table Talk thread and the Party channel.
+  // A link to the Party post, the place a player may want to go back to.
   private linkRow(record: CampaignRecord, text: Texts): ActionRowBuilder<ButtonBuilder>[] {
     const url = (channelId: string | null): string | null => (channelId === null ? null : `https://discord.com/channels/${record.key.guildId}/${channelId}`);
     const link = (label: string, target: string | null): ButtonBuilder[] =>
       target === null ? [] : [new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel(label).setURL(target)];
-    const buttons = [...link(text.campaign.button.tableTalk, url(record.channels.discussionThreadId)), ...link(text.campaign.button.partyChannel, url(record.channels.partyChannelId))];
+    const buttons = link(text.campaign.button.partyChannel, url(record.channels.partyPostId));
     return buttons.length === 0 ? [] : [new ActionRowBuilder<ButtonBuilder>().addComponents(buttons)];
   }
 

@@ -20,23 +20,29 @@ export type CampaignVisibility = "open" | "membersOnly";
 export type PacingPresetId = "live" | "playByPost" | "custom";
 
 // Discord places, filled in as setup creates them (all null until then).
+// partyPostId/adventurePostId are forum posts (one Parties post, one Games
+// post), each in the public or private forum pair chosen by the campaign's
+// visibility at creation. Players talk directly in the party post's own
+// thread; there is no separate Table Talk thread any more. There is no
+// per-campaign role either: a membersOnly campaign's players are granted the
+// guild's one shared private-games role (GuildCampaignSettings.privateGamesRoleId)
+// instead, since a forum post cannot be restricted independently of its forum.
 export interface CampaignChannels {
   readonly categoryId: string | null;
-  readonly partyChannelId: string | null;
-  readonly adventureChannelId: string | null;
-  readonly discussionThreadId: string | null;
-  readonly roleId: string | null;
+  readonly partyPostId: string | null;
+  readonly adventurePostId: string | null;
 }
 
 // A Discord resource a game needs. It is written down, with the name chosen
 // for it, before any Discord call and its ID is filled in right after the
 // create, so a retry resumes instead of duplicating, and a later repair
-// recreates a deleted channel under the same name. Entries stay for the life
+// recreates a deleted post under the same name. Entries stay for the life
 // of the campaign; a null ID means not created yet.
 export interface PendingResource {
-  readonly kind: "partyChannel" | "adventureChannel" | "discussionThread" | "role";
-  // A marker written into the resource's topic so a leftover from an
-  // uncertain send can be found again.
+  readonly kind: "partyPost" | "adventurePost";
+  // A marker carried in the resource's topic (a text channel) or starter
+  // message (a forum post) so a leftover from an uncertain send can be found
+  // again.
   readonly marker: string;
   readonly name: string;
   readonly resourceId: string | null;
@@ -62,12 +68,23 @@ export interface GuildCampaignSettings {
   readonly guildId: string;
   readonly categoryId: string | null;
   readonly hubChannelId: string | null;
+  // The four forums a campaign's Games/Parties posts go into, chosen by
+  // visibility at creation. Settings saved before these existed have no
+  // value, read as null (an old-style setup awaiting a repeat /dnd setup).
+  readonly publicGamesForumId?: string | null;
+  readonly publicPartiesForumId?: string | null;
+  readonly privateGamesForumId?: string | null;
+  readonly privatePartiesForumId?: string | null;
   // The hub's pinned control message (Create game). Each game's own hub
   // message is the "hub" card on its record.
   readonly hubCard: CardReference | null;
   // The "DnD Admin" role: its holders can create and manage every game.
   // Settings saved before the role existed have no value, read as null.
   readonly adminRoleId?: string | null;
+  // Shared by every membersOnly campaign: what the Private Games/Parties
+  // forums are restricted to, and what a private campaign's own players are
+  // granted so they can see their game (plan §1's "Private-games role").
+  readonly privateGamesRoleId?: string | null;
 }
 
 // Something the organizer has to fix. deliveryFailed: a message was given up
@@ -121,8 +138,6 @@ export interface StoredRecord {
 
 export const emptyChannels: CampaignChannels = {
   categoryId: null,
-  partyChannelId: null,
-  adventureChannelId: null,
-  discussionThreadId: null,
-  roleId: null,
+  partyPostId: null,
+  adventurePostId: null,
 };

@@ -99,7 +99,7 @@ export async function harness(language: "en" | "zh-TW" = "en"): Promise<Harness>
   await r.store.transaction(async (tx) => {
     const stored = await tx.loadRecord(key);
     if (stored === undefined) throw new Error("record");
-    await tx.saveRecord({ ...stored.record, channels: { ...stored.record.channels, partyChannelId: party, adventureChannelId: adventure } }, stored.revision);
+    await tx.saveRecord({ ...stored.record, channels: { ...stored.record.channels, partyPostId: party, adventurePostId: adventure } }, stored.revision);
   });
   await cards.sync(key);
   const messageFor = async (card: string): Promise<string> => (await r.service.get(key))?.record.cards[card]?.messageId ?? "stale";

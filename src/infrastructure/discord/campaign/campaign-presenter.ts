@@ -46,7 +46,7 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
     const events = loaded.envelopes.map((envelope) => envelope.event);
     const state = loaded.campaign?.state;
     const text = texts[record.language];
-    const { adventureChannelId, partyChannelId } = record.channels;
+    const { adventurePostId: adventureChannelId, partyPostId: partyChannelId } = record.channels;
     // A delivery's posts carry the same nonces on every retry, so a message
     // that did go out before the failure is not posted twice.
     let posted = 0;

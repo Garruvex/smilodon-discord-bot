@@ -108,18 +108,11 @@ export class FakeResources implements CampaignResourceGateway {
   }
 
   public readonly grants: { roleId: string; userId: string }[] = [];
-  public readonly restricted: { channelId: string; roleId: string; allowThreadMessages: boolean }[] = [];
   public failGrants = false;
 
   public grantRole(_guildId: string, roleId: string, userId: string): Promise<void> {
     if (this.failGrants) return Promise.reject(new Error("Missing Permissions"));
     if (!this.grants.some((grant) => grant.roleId === roleId && grant.userId === userId)) this.grants.push({ roleId, userId });
-    return Promise.resolve();
-  }
-
-  public restrictToRole(_guildId: string, channelId: string, roleId: string, allowThreadMessages: boolean): Promise<void> {
-    if (this.failGrants) return Promise.reject(new Error("Missing Permissions"));
-    this.restricted.push({ channelId, roleId, allowThreadMessages });
     return Promise.resolve();
   }
 
@@ -129,6 +122,7 @@ export class FakeResources implements CampaignResourceGateway {
 
   public readonly forums: FakeForum[] = [];
   public readonly forumPosts: FakeForumPost[] = [];
+  public failForumPostCreates = 0;
 
   public createForum(_guildId: string, options: ForumOptions): Promise<string> {
     this.next += 1;
@@ -145,6 +139,11 @@ export class FakeResources implements CampaignResourceGateway {
     this.next += 1;
     const id = `post${this.next}`;
     this.forumPosts.push({ id, forumId: options.forumId, name: options.name, content: withMarker(options.content, options.marker), tag: null, archived: false, locked: false });
+    if (this.failForumPostCreates > 0) {
+      // The create may have gone through even though the bot never heard back.
+      this.failForumPostCreates -= 1;
+      return Promise.reject(new Error("timeout"));
+    }
     return Promise.resolve({ postId: id, starterMessageId: `msg${this.next}` });
   }
 

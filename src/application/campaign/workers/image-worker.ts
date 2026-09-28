@@ -129,7 +129,7 @@ export class ImageWorker {
     const existing = record.images?.[subject];
     // A subject keeps the picture it has, and a finished game makes no more.
     if (record.lifecycle === "archived") return;
-    const channelId = record.channels.adventureChannelId;
+    const channelId = record.channels.adventurePostId;
     const bible = adventures.find(record.adventure.adventureId, record.adventure.version, record.language);
     // A redo paints the subject again; anything else keeps the picture it has.
     const forced = asked.kind === "redoImage";
@@ -179,7 +179,7 @@ export class ImageWorker {
     const target = request.kind === "redoImage" ? undefined : request;
     if (fallback === undefined || target?.kind !== "monsterImage") return false;
     const loaded = await unitOfWork.transaction((tx) => tx.loadRecord(item.key));
-    const channelId = loaded?.record.channels.adventureChannelId ?? null;
+    const channelId = loaded?.record.channels.adventurePostId ?? null;
     const bible = loaded === undefined ? undefined : adventures.find(loaded.record.adventure.adventureId, loaded.record.adventure.version, loaded.record.language);
     const image = await fallback(target.monsterId);
     if (loaded === undefined || bible === undefined || channelId === null || image === undefined) return false;

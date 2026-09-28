@@ -51,8 +51,6 @@ async function table(language: "en" | "zh-TW" = "en"): Promise<Table> {
   return { r, messages, resources, setup, cards, issues, recovery, clock, key };
 }
 
-const gameRoles = (t: Table): string[] => t.resources.roleNames.filter((name) => name.startsWith("🎲"));
-
 const recordOf = async (t: Table): Promise<NonNullable<Awaited<ReturnType<Table["r"]["service"]["get"]>>>["record"]> => {
   const stored = await t.r.service.get(t.key);
   if (stored === undefined) throw new Error("record");
@@ -72,7 +70,7 @@ async function loseLobbyCard(t: Table): Promise<void> {
 describe("cards that cannot be drawn", () => {
   it("become one organizer issue and one notice, are not retried at once, and clear when they draw again", async () => {
     const t = await table();
-    const partyId = (await recordOf(t)).channels.partyChannelId ?? "";
+    const partyId = (await recordOf(t)).channels.partyPostId ?? "";
     // The Party card is gone from Discord and every send is refused.
     await loseLobbyCard(t);
     t.messages.failSends = 100;
@@ -167,47 +165,42 @@ describe("a players-only game", () => {
     return t;
   };
 
-  it("stays open while people are joining, and hides both channels from everyone but the role once it starts", async () => {
+  it("stays open while people are joining, and grants the shared private-games role to the table once it starts", async () => {
     const t = await started();
     // The lobby is open: nobody has to be invited to press Join.
     expect(await t.setup.applyVisibility(t.key)).toEqual({ kind: "open" });
-    expect(t.resources.restricted).toEqual([]);
+    expect(t.resources.grants).toEqual([]);
 
     await t.r.service.start(t.key, "u-org");
     const result = await t.setup.applyVisibility(t.key);
     if (result.kind !== "applied") throw new Error("visibility");
-    const record = await recordOf(t);
-    expect(record.channels.roleId).toBe(result.roleId);
-    expect(gameRoles(t)).toEqual(["🎲 Moonlit Ruins"]);
-    expect(t.resources.restricted).toEqual([
-      { channelId: record.channels.partyChannelId, roleId: result.roleId, allowThreadMessages: true },
-      { channelId: record.channels.adventureChannelId, roleId: result.roleId, allowThreadMessages: false },
-    ]);
-    // The organizer and every player at the table hold the role.
+    const settings = await t.r.store.transaction((tx) => tx.loadGuildSettings(guildId));
+    expect(result.roleId).toBe(settings?.privateGamesRoleId);
+    // The organizer and every player at the table hold the shared role.
     expect(new Set(t.resources.grants.map((grant) => grant.userId))).toEqual(new Set(["u-org", "u-two"]));
   });
 
-  it("makes the role once, gives it back to a player who lost it on Repair, and keeps it when the game ends", async () => {
+  it("gives the role back to a player who lost it on Repair, and keeps granting it when the game ends", async () => {
     const t = await started();
     await t.r.service.start(t.key, "u-org");
     await t.setup.applyVisibility(t.key);
     t.resources.grants.length = 0;
     expect(await t.setup.repair(t.key)).toEqual({ kind: "ok", requeued: 0 });
-    expect(gameRoles(t)).toHaveLength(1);
     expect(t.resources.grants).toHaveLength(2);
     await t.r.service.end(t.key);
-    expect((await recordOf(t)).channels.roleId).not.toBeNull();
     expect(await t.setup.applyVisibility(t.key)).toMatchObject({ kind: "applied" });
-    expect(gameRoles(t)).toHaveLength(1);
   });
 
-  it("makes a role that was deleted again", async () => {
+  it("makes the shared role again if it was deleted, and keeps using it afterwards", async () => {
     const t = await started();
     await t.r.service.start(t.key, "u-org");
-    await t.setup.applyVisibility(t.key);
+    const first = await t.setup.applyVisibility(t.key);
+    if (first.kind !== "applied") throw new Error("visibility");
     t.resources.roles.clear();
-    await t.setup.applyVisibility(t.key);
-    expect(gameRoles(t)).toHaveLength(2);
+    const again = await t.setup.applyVisibility(t.key);
+    expect(again).toMatchObject({ kind: "applied" });
+    expect(again.kind === "applied" && again.roleId).not.toBe(first.roleId);
+    expect(t.resources.roles.size).toBe(1);
   });
 
   it("reports a missing permission as an organizer issue instead of leaving the game half hidden", async () => {
@@ -218,83 +211,61 @@ describe("a players-only game", () => {
     expect((await recordOf(t)).issues).toMatchObject([{ code: "permissions", detail: "role" }]);
   });
 
-  it("makes a channel deleted later already hidden from everyone but the role", async () => {
-    const t = await started();
-    await t.r.service.start(t.key, "u-org");
-    const applied = await t.setup.applyVisibility(t.key);
-    if (applied.kind !== "applied") throw new Error("visibility");
-    const gone = (await recordOf(t)).channels.adventureChannelId ?? "";
-    t.resources.channels.splice(t.resources.channels.findIndex((channel) => channel.id === gone), 1);
-    await t.recovery.channelDeleted(guildId, gone);
-    const made = t.resources.channels.find((channel) => channel.id === (t.resources.channels.at(-1)?.id ?? ""));
-    expect(made?.options.viewerRoleId).toBe(applied.roleId);
-  });
-
   it("does nothing for an open game", async () => {
     const t = await table();
     await t.r.service.join(t.key, "u-org");
     await t.r.service.chooseHero(t.key, "u-org", "c-mira");
     await t.r.service.start(t.key, "u-org");
     expect(await t.setup.applyVisibility(t.key)).toEqual({ kind: "open" });
-    expect(gameRoles(t)).toEqual([]);
+    expect(t.resources.grants).toEqual([]);
   });
 });
 
 describe("a place taken away", () => {
-  it("makes a deleted game channel again and draws its cards there", async () => {
+  it("makes a deleted Games post again and draws its cards there", async () => {
     const t = await table();
     const before = await recordOf(t);
-    const gone = before.channels.adventureChannelId ?? "";
-    t.resources.channels.splice(t.resources.channels.findIndex((channel) => channel.id === gone), 1);
+    const gone = before.channels.adventurePostId ?? "";
+    t.resources.forumPosts.splice(t.resources.forumPosts.findIndex((post) => post.id === gone), 1);
     await t.recovery.channelDeleted(guildId, gone);
     const after = await recordOf(t);
-    expect(after.channels.adventureChannelId).not.toBe(gone);
-    expect(t.resources.channels.some((channel) => channel.id === after.channels.adventureChannelId)).toBe(true);
+    expect(after.channels.adventurePostId).not.toBe(gone);
+    expect(t.resources.forumPosts.some((post) => post.id === after.channels.adventurePostId)).toBe(true);
   });
 
-  it("makes a deleted Table Talk thread again", async () => {
+  it("does not bring back a finished game's post", async () => {
     const t = await table();
-    const before = (await recordOf(t)).channels.discussionThreadId ?? "";
-    t.resources.threads.splice(0, 1);
-    await t.recovery.channelDeleted(guildId, before);
-    const after = (await recordOf(t)).channels.discussionThreadId;
-    expect(after).not.toBe(before);
-    expect(t.resources.threads.map((thread) => thread.id)).toEqual([after]);
-  });
-
-  it("does not bring back a finished game's channel", async () => {
-    const t = await table();
-    const gone = (await recordOf(t)).channels.adventureChannelId ?? "";
+    const gone = (await recordOf(t)).channels.adventurePostId ?? "";
     await t.r.service.cancel(t.key, "u-org");
-    t.resources.channels.splice(t.resources.channels.findIndex((channel) => channel.id === gone), 1);
-    const count = t.resources.channels.length;
+    t.resources.forumPosts.splice(t.resources.forumPosts.findIndex((post) => post.id === gone), 1);
+    const count = t.resources.forumPosts.length;
     await t.recovery.channelDeleted(guildId, gone);
-    expect(t.resources.channels).toHaveLength(count);
+    expect(t.resources.forumPosts).toHaveLength(count);
   });
 
-  it("stops making a channel again when it keeps being deleted, and tells the organizer instead", async () => {
+  it("stops making a post again when it keeps being deleted, and tells the organizer instead", async () => {
     const t = await table();
     for (let round = 0; round < 3; round += 1) {
-      const id = (await recordOf(t)).channels.adventureChannelId ?? "";
-      t.resources.channels.splice(t.resources.channels.findIndex((channel) => channel.id === id), 1);
+      const id = (await recordOf(t)).channels.adventurePostId ?? "";
+      t.resources.forumPosts.splice(t.resources.forumPosts.findIndex((post) => post.id === id), 1);
       await t.recovery.channelDeleted(guildId, id);
     }
-    const count = t.resources.channels.length;
-    const id = (await recordOf(t)).channels.adventureChannelId ?? "";
-    t.resources.channels.splice(t.resources.channels.findIndex((channel) => channel.id === id), 1);
+    const count = t.resources.forumPosts.length;
+    const id = (await recordOf(t)).channels.adventurePostId ?? "";
+    t.resources.forumPosts.splice(t.resources.forumPosts.findIndex((post) => post.id === id), 1);
     await t.recovery.channelDeleted(guildId, id);
-    expect(t.resources.channels).toHaveLength(count - 1);
+    expect(t.resources.forumPosts).toHaveLength(count - 1);
     expect((await recordOf(t)).issues).toMatchObject([{ code: "channelMissing", detail: "recreated too often" }]);
     // An hour later it is allowed again, and Repair always makes it.
     t.clock.now += 61 * 60 * 1000;
     await t.recovery.channelDeleted(guildId, id);
-    expect(t.resources.channels).toHaveLength(count);
+    expect(t.resources.forumPosts).toHaveLength(count);
   });
 
   it("reports missing permissions instead of failing quietly", async () => {
     const t = await table();
-    const gone = (await recordOf(t)).channels.adventureChannelId ?? "";
-    t.resources.channels.splice(t.resources.channels.findIndex((channel) => channel.id === gone), 1);
+    const gone = (await recordOf(t)).channels.adventurePostId ?? "";
+    t.resources.forumPosts.splice(t.resources.forumPosts.findIndex((post) => post.id === gone), 1);
     t.resources.missing = ["ManageChannels"];
     await t.recovery.channelDeleted(guildId, gone);
     expect((await recordOf(t)).issues).toMatchObject([{ code: "permissions", detail: "ManageChannels" }]);

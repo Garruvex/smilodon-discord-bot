@@ -21,8 +21,8 @@ const recoveriesPerWindow = 3;
 const windowMs = 60 * 60 * 1000;
 
 // Puts things back when Discord takes a place away (plan §10). A deleted hub
-// channel, game channel or Table Talk thread is made again and its cards drawn
-// into it. Recovery stays controlled: a finished game is left alone, a
+// channel or game post (Games or Parties forum thread) is made again and its
+// cards drawn into it. Recovery stays controlled: a finished game is left alone, a
 // missing permission or a channel that keeps being deleted becomes an issue
 // for the organizer instead of a loop of failing or unwanted creates.
 export class CampaignRecovery {

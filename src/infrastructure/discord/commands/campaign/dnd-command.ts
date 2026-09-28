@@ -141,9 +141,9 @@ export class DndCommand implements BotCommand {
   public readonly access = publicAccessPolicy;
   public readonly responseVisibility = CommandResponseVisibility.Ephemeral;
   public readonly helpDetails = [
-    "/dnd setup creates the D&D category with a #dnd-games hub channel (or uses the channel you give it) and the DnD Admin role, and posts the hub's Create game button.",
-    "The hub lists each live game with a Manage button. /dnd new does the same as Create game: its adventure channel, a -stats channel for the party, and a Table Talk thread.",
-    "Everything else is run inside a game's channels: players use the buttons, and the organizer or a DnD Admin uses /dnd pause, resume, close-round, rest, retry, repair, and reopen (for a finished game).",
+    "/dnd setup creates the D&D category with a #dnd-games hub channel (or uses the channel you give it), the Public/Private Games and Parties forums, and the DnD Admin and Private Games roles, and posts the hub's Create game button.",
+    "The hub lists each live game with a Manage button. /dnd new does the same as Create game: a Games post and a matching Parties post, in the public or private forum pair its visibility picks.",
+    "Everything else is run inside a game's posts: players use the buttons, and the organizer or a DnD Admin uses /dnd pause, resume, close-round, rest, retry, repair, and reopen (for a finished game).",
   ];
 
   public constructor(private readonly deps: DndCommandDependencies) {}

@@ -14,9 +14,9 @@ export interface CampaignCardInput {
   readonly pacingPreset: PacingPresetId;
   readonly organizerId: string;
   readonly heroes: readonly HeroView[];
-  // Links to the Adventure channel and the discussion thread, when they exist.
+  // Link to the Games post, when it exists. Players talk directly in this
+  // card's own Parties post; there is no separate Table Talk link any more.
   readonly adventureUrl: string | null;
-  readonly talkUrl: string | null;
 }
 
 const accentFor: Readonly<Record<PanelMode, number>> = {
@@ -58,6 +58,5 @@ export function renderCampaignCard(input: CampaignCardInput, text: Texts, campai
     new ButtonBuilder().setCustomId(campaignCustomId("myHero", campaignId)).setLabel(t.button.myHero).setStyle(ButtonStyle.Primary),
   );
   if (input.adventureUrl !== null) row.addComponents(new ButtonBuilder().setURL(input.adventureUrl).setLabel(t.card.linkAdventure).setStyle(ButtonStyle.Link));
-  if (input.talkUrl !== null) row.addComponents(new ButtonBuilder().setURL(input.talkUrl).setLabel(t.card.linkTalk).setStyle(ButtonStyle.Link));
   return cardPayload(container.addActionRowComponents(row));
 }

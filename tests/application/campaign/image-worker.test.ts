@@ -47,7 +47,7 @@ async function table(budget = 3): Promise<{ r: Rig; key: CampaignKey; painter: P
   await r.store.transaction(async (tx) => {
     const stored = await tx.loadRecord(key);
     if (stored === undefined) throw new Error("record");
-    await tx.saveRecord({ ...stored.record, channels: { ...stored.record.channels, adventureChannelId: "chan-adventure" } }, stored.revision);
+    await tx.saveRecord({ ...stored.record, channels: { ...stored.record.channels, adventurePostId: "chan-adventure" } }, stored.revision);
   });
   const painter = new Painter();
   const posted: { channelId: string; caption: string }[] = [];
@@ -166,7 +166,7 @@ describe("scene pictures", () => {
       for (const item of await tx.pendingOutbox("heroImage")) await tx.completeOutbox(item.id);
       const stored = await tx.loadRecord(second);
       if (stored === undefined) throw new Error("record");
-      await tx.saveRecord({ ...stored.record, channels: { ...stored.record.channels, adventureChannelId: "chan-two" } }, stored.revision);
+      await tx.saveRecord({ ...stored.record, channels: { ...stored.record.channels, adventurePostId: "chan-two" } }, stored.revision);
     });
     let running = 0;
     let peak = 0;
