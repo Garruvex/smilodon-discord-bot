@@ -1,8 +1,30 @@
-import type { CampaignResourceGateway, TextChannelOptions } from "../../../../src/infrastructure/discord/campaign/campaign-resource-gateway.js";
+import type {
+  CampaignResourceGateway,
+  ForumOptions,
+  ForumPost,
+  ForumPostOptions,
+  TextChannelOptions,
+} from "../../../../src/infrastructure/discord/campaign/campaign-resource-gateway.js";
+import { withMarker } from "../../../../src/infrastructure/discord/campaign/campaign-resource-gateway.js";
 
 export interface FakeChannel {
   id: string;
   options: TextChannelOptions;
+}
+
+export interface FakeForum {
+  id: string;
+  options: ForumOptions;
+}
+
+export interface FakeForumPost {
+  id: string;
+  forumId: string;
+  name: string;
+  content: string;
+  tag: string | null;
+  archived: boolean;
+  locked: boolean;
 }
 
 export class FakeResources implements CampaignResourceGateway {
@@ -103,5 +125,49 @@ export class FakeResources implements CampaignResourceGateway {
 
   public missingPermissions(): Promise<readonly string[]> {
     return Promise.resolve(this.missing);
+  }
+
+  public readonly forums: FakeForum[] = [];
+  public readonly forumPosts: FakeForumPost[] = [];
+
+  public createForum(_guildId: string, options: ForumOptions): Promise<string> {
+    this.next += 1;
+    const id = `forum${this.next}`;
+    this.forums.push({ id, options });
+    return Promise.resolve(id);
+  }
+
+  public forumExists(_guildId: string, forumId: string): Promise<boolean> {
+    return Promise.resolve(this.forums.some((forum) => forum.id === forumId));
+  }
+
+  public createForumPost(options: ForumPostOptions): Promise<ForumPost> {
+    this.next += 1;
+    const id = `post${this.next}`;
+    this.forumPosts.push({ id, forumId: options.forumId, name: options.name, content: withMarker(options.content, options.marker), tag: null, archived: false, locked: false });
+    return Promise.resolve({ postId: id, starterMessageId: `msg${this.next}` });
+  }
+
+  public findForumPostByMarker(forumId: string, marker: string): Promise<string | null> {
+    return Promise.resolve(this.forumPosts.find((post) => post.forumId === forumId && post.content.includes(marker))?.id ?? null);
+  }
+
+  public forumPostExists(postId: string): Promise<boolean> {
+    return Promise.resolve(this.forumPosts.some((post) => post.id === postId));
+  }
+
+  public setForumPostTag(_forumId: string, postId: string, tag: string | null): Promise<void> {
+    const post = this.forumPosts.find((candidate) => candidate.id === postId);
+    if (post !== undefined) post.tag = tag;
+    return Promise.resolve();
+  }
+
+  public archiveForumPost(postId: string, locked: boolean): Promise<void> {
+    const post = this.forumPosts.find((candidate) => candidate.id === postId);
+    if (post !== undefined) {
+      post.archived = true;
+      post.locked = locked;
+    }
+    return Promise.resolve();
   }
 }
