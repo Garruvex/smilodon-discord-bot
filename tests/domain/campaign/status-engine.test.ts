@@ -4,7 +4,7 @@ import type { EncounterSpec } from "../../../src/domain/campaign/commands/campai
 import { turnOptions } from "../../../src/domain/campaign/combat/turn-rules.js";
 import type { CampaignEvent } from "../../../src/domain/campaign/events/campaign-event.js";
 import { replay } from "../../../src/domain/campaign/events/evolve.js";
-import { damageMultiplier } from "../../../src/domain/campaign/rules/traits.js";
+import { damageMultiplier, isImmuneToCondition } from "../../../src/domain/campaign/rules/traits.js";
 import { conditionLookup, forbiddenAttackTargets } from "../../../src/domain/campaign/effects/effect-queries.js";
 import { alex, jamie, partyOfThree, organizer, ruleset, run, sam } from "./campaign-fixtures.js";
 import { appliedCondition } from "./effect-fixtures.js";
@@ -35,6 +35,15 @@ describe("damageMultiplier (resistance, immunity, vulnerability)", () => {
   it("lets immunity win over vulnerability to the same type", () => {
     const traits = [{ kind: "damageImmunity" as const, damageTypes: ["poison" as const] }, { kind: "damageVulnerability" as const, damageTypes: ["poison" as const] }];
     expect(damageMultiplier(traits, "poison")).toBe(0);
+  });
+});
+
+describe("isImmuneToCondition", () => {
+  it("checks the specific condition ID, not any other trait or condition", () => {
+    const traits = [{ kind: "conditionImmunity" as const, conditions: ["condition:poisoned" as const] }];
+    expect(isImmuneToCondition(traits, "condition:poisoned")).toBe(true);
+    expect(isImmuneToCondition(traits, "condition:prone")).toBe(false);
+    expect(isImmuneToCondition([], "condition:poisoned")).toBe(false);
   });
 });
 

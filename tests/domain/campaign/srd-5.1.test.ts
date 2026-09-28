@@ -119,4 +119,9 @@ describe("SRD 5.1 content", () => {
     expect(content.get("monster:orc").attacks[0]?.weapon).toBe("item:greataxe");
     expect(content.get("monster:skeleton").attacks.map((attack) => attack.weapon)).toEqual(["item:shortsword", "item:shortbow"]);
   });
+
+  it("makes Zombie and Skeleton immune to the poisoned condition itself, not just poison damage", () => {
+    expect(traitsOf(content.get("monster:zombie"))).toContainEqual({ kind: "conditionImmunity", conditions: ["condition:poisoned"] });
+    expect(traitsOf(content.get("monster:skeleton"))).toContainEqual({ kind: "conditionImmunity", conditions: ["condition:poisoned"] });
+  });
 });

@@ -1,3 +1,4 @@
+import type { ContentId } from "./content-id.js";
 import type { DamageType } from "./effects.js";
 
 // Passive rules a creature has, from whatever grants them: armor and shields,
@@ -41,7 +42,11 @@ export type Trait =
   // weapon), so those are granted as flat resistance to the damage type.
   | { readonly kind: "damageResistance"; readonly damageTypes: readonly DamageType[] }
   | { readonly kind: "damageImmunity"; readonly damageTypes: readonly DamageType[] }
-  | { readonly kind: "damageVulnerability"; readonly damageTypes: readonly DamageType[] };
+  | { readonly kind: "damageVulnerability"; readonly damageTypes: readonly DamageType[] }
+  // Never gains these conditions (Skeleton/Zombie's immunity to poisoned; a
+  // monster's own immunity list, not a condition's, since only some holders
+  // of a given condition are immune to it, e.g. undead but not the living).
+  | { readonly kind: "conditionImmunity"; readonly conditions: readonly ContentId<"condition">[] };
 
 export type TraitKind = Trait["kind"];
 
@@ -54,4 +59,11 @@ export function damageMultiplier(traits: readonly Trait[], damageType: DamageTyp
   const vulnerable = traits.some((trait) => trait.kind === "damageVulnerability" && trait.damageTypes.includes(damageType));
   if (resistant === vulnerable) return 1;
   return resistant ? 0.5 : 2;
+}
+
+// Whether this creature's traits make it immune to gaining this specific
+// condition (checked where a condition is about to be applied, not where its
+// modifiers are read — an immune creature simply never receives the effect).
+export function isImmuneToCondition(traits: readonly Trait[], conditionId: ContentId<"condition">): boolean {
+  return traits.some((trait) => trait.kind === "conditionImmunity" && trait.conditions.includes(conditionId));
 }

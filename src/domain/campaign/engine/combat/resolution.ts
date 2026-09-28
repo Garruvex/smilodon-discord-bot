@@ -15,6 +15,7 @@ import { classifyRollMoments } from "../../dice/roll-moments.js";
 import { resultMatchesSpec, type RollResult, type RollSpec } from "../../dice/roll-spec.js";
 import type { Effect, EffectDuration } from "../../rules/effects.js";
 import { criticalHits, naturalRollsOnChecks } from "../../rules/house-rules.js";
+import { isImmuneToCondition } from "../../rules/traits.js";
 import type { Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { activeEncounter, afterResolution, endIfDecided } from "./combat-flow.js";
@@ -222,7 +223,7 @@ export function proceedToEffects(decision: Decision): void {
       if (effect.kind === "conditionUnlessSave") {
         for (const targetId of targets) {
           const target = encounter.combatants[effect.target === "self" ? resolution.actorId : targetId];
-          if (target === undefined) continue;
+          if (target === undefined || isImmuneToCondition(target.traits, effect.condition)) continue;
           const lookup = conditionLookup(decision.ctx.rules.content);
           if (autoFailsSave(target, effect.ability, lookup)) continue;
           const bias = saveBias(target, effect.ability, lookup);
@@ -303,7 +304,9 @@ export function applyEffect(
       applyHealing(decision, recipient, resolution.rolled[key] ?? 0);
       return;
     case "applyCondition":
-      decision.emit({ kind: "effectApplied", combatantId: recipient.id, effect: conditionInstance(resolution, recipient, effect.condition, key, effect.duration, round) });
+      if (!isImmuneToCondition(recipient.traits, effect.condition)) {
+        decision.emit({ kind: "effectApplied", combatantId: recipient.id, effect: conditionInstance(resolution, recipient, effect.condition, key, effect.duration, round) });
+      }
       return;
     case "bonusDie": {
       const concentrating = resolution.source.kind === "spell" && decision.ctx.rules.content.get(resolution.source.spellId).concentration;
@@ -346,7 +349,10 @@ export function applyEffect(
       });
       return;
     case "conditionUnlessSave":
-      if (resolution.rolled[`rider:${recipient.id}:${key}`] === 0 || autoFailsSave(recipient, effect.ability, conditionLookup(decision.ctx.rules.content))) {
+      if (
+        !isImmuneToCondition(recipient.traits, effect.condition) &&
+        (resolution.rolled[`rider:${recipient.id}:${key}`] === 0 || autoFailsSave(recipient, effect.ability, conditionLookup(decision.ctx.rules.content)))
+      ) {
         decision.emit({ kind: "effectApplied", combatantId: recipient.id, effect: conditionInstance(resolution, recipient, effect.condition, key, null, round) });
       }
       return;
