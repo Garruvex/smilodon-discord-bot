@@ -8,6 +8,7 @@ import {
   buildPanelView,
   buildPartyView,
   buildReactionView,
+  buildSmiteView,
 } from "../../../src/application/campaign/views/campaign-views.js";
 import { enSrd51Glossary } from "../../../src/application/i18n/campaign/glossary/en/srd-5.1.js";
 import { chooseHero, join, openLobby, type LobbyResult, type LobbyState } from "../../../src/domain/campaign/lobby/lobby.js";
@@ -191,5 +192,39 @@ describe("buildReactionView", () => {
       options: [{ spellId: "spell:shield", spellName: expect.any(String) as string, slotLevel: 1 }],
     });
     expect(view?.options[0]?.spellName).not.toBe("spell:shield");
+  });
+});
+
+describe("buildSmiteView", () => {
+  // Borin, given Divine Smite for this test, moves and engages, then swings
+  // without declaring smite up front. A natural 20 is a certain hit.
+  function smitePending(): CampaignState {
+    const base = newCampaign();
+    const borin = base.characters["c-borin"];
+    if (borin === undefined) throw new Error("fixture");
+    const smiter = { ...borin, features: [...borin.features, "feature:divine-smite" as const], spellcasting: { ability: "cha" as const, spells: [], slots: { 1: 1 } } };
+    const state = { ...base, characters: { ...base.characters, "c-borin": smiter } };
+    return new Fight(state)
+      .rolls([1, 20, 5, 4])
+      .run(organizer, { kind: "startEncounter", spec: skirmish })
+      .run(jamie, { kind: "combatMove", combatantId: "c-borin", zoneId: "courtyard" })
+      .run(jamie, { kind: "combatEngage", combatantId: "c-borin", targetId: "goblin-a" })
+      .rolls([20])
+      .run(jamie, { kind: "combatAttack", combatantId: "c-borin", targetId: "goblin-a", weapon: "item:longsword" }).state;
+  }
+
+  it("is null when nothing is waiting on a smite answer", () => {
+    expect(buildSmiteView(newCampaign(), starter.bible, enSrd51Glossary)).toBeNull();
+    expect(buildSmiteView(startedFight().state, starter.bible, enSrd51Glossary)).toBeNull();
+  });
+
+  it("describes the landed hit, its attacker, and the slots they could spend", () => {
+    const view = buildSmiteView(smitePending(), starter.bible, enSrd51Glossary);
+    expect(view).toMatchObject({
+      attackerName: "Borin",
+      attackerUserId: "u-jamie",
+      targetName: expect.stringContaining("Goblin") as string,
+      options: [{ slotLevel: 1 }],
+    });
   });
 });

@@ -58,6 +58,9 @@ export const campaignActions = [
   // A reaction window (Shield): cast one of the offered spells, or take the hit.
   "reactCast",
   "reactDecline",
+  // A smite window: spend the given slot for Divine Smite's bonus damage, or skip it.
+  "smiteChoose",
+  "smiteSkip",
 ] as const;
 export type CampaignAction = (typeof campaignActions)[number];
 

@@ -103,6 +103,7 @@ export const campaignZhTW = {
   "campaign.button.endTurnAnyway": "仍然結束回合",
   "campaign.button.details": "詳情",
   "campaign.button.takeHit": "承受攻擊",
+  "campaign.button.skipSmite": "跳過",
 
   "campaign.hero.line": "**{name}** · {class} · {level} 級",
   "campaign.hero.player": "玩家：{user}",
@@ -255,6 +256,7 @@ export const campaignZhTW = {
   "campaign.msg.encounterDefeat": "隊伍戰敗了，英雄們醒來時剩下 1 點生命。在大家行動之前，主辦人可以在「管理」中按「重打這場戰鬥」再來一次",
   "campaign.msg.offer": "🎁 <@{user}>，**{from}** 想送你**{item}**，請到 <#{channel}> 回應",
   "campaign.msg.reactionOffered": "🛡️ <@{user}>，**{attacker}**的攻擊還有機會落空。施展護盾，或是承受這次攻擊。",
+  "campaign.msg.smiteOffered": "⚔️ <@{user}>，你對**{target}**的攻擊命中了。要制裁嗎？",
   "campaign.msg.speech": "💬 **{hero}**：「{text}」",
   "campaign.msg.safetyPaused": "⏸️ 應一位玩家的要求暫停遊戲，等大家準備好，主辦人可以在「管理」按繼續，或使用 /dnd resume",
   "campaign.msg.proxyTurn": "⚔️ <@{user}>，輪到**{hero}**了，你正在代替 <@{owner}> 操作",
@@ -558,6 +560,8 @@ export const campaignZhTW = {
   "campaign.reply.offerCancelled": "你收回了這個提議",
   "campaign.reply.reactionCast": "你施展了法術",
   "campaign.reply.reactionDeclined": "你承受了這次攻擊",
+  "campaign.reply.smiteChosen": "你制裁了它",
+  "campaign.reply.smiteSkipped": "你跳過了",
 
   "campaign.pack.placeholder": "背包與隊伍儲藏",
   "campaign.pack.use": "飲用{item}",
@@ -574,6 +578,11 @@ export const campaignZhTW = {
   "campaign.reaction.option": "施展 {spell}（消耗 {slot} 環法術位）",
   "campaign.reaction.player": "等待 {user} 回應",
   "campaign.reaction.closes": "{when} 後自動決定",
+
+  "campaign.smite.title": "⚔️ **{attacker}**對**{target}**的攻擊命中了，要制裁嗎？",
+  "campaign.smite.option": "制裁（消耗 {slot} 環法術位）",
+  "campaign.smite.player": "等待 {user} 回應",
+  "campaign.smite.closes": "{when} 後自動決定",
 
   "campaign.turn.header": "**{hero}** · {zone}\n動作 {action} · 附贈動作 {bonus} · 反應 {reaction} · 移動 {feet} 尺",
   "campaign.turn.engaged": "正與{names}近戰",

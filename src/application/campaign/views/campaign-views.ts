@@ -119,6 +119,16 @@ export interface ReactionView {
   readonly closesAt: number | null;
 }
 
+// A landed weapon hit waiting on its attacker's Divine Smite answer: never
+// changes whether the hit lands, only whether bonus damage follows it.
+export interface SmiteView {
+  readonly attackerName: string;
+  readonly attackerUserId: string;
+  readonly targetName: string;
+  readonly options: readonly { readonly slotLevel: number }[];
+  readonly closesAt: number | null;
+}
+
 export interface PanelView {
   readonly campaignName: string;
   readonly sceneTitle: string;
@@ -261,6 +271,29 @@ export function buildReactionView(state: CampaignState, bible: AdventureBible, g
     natural: pending.roll.d20.natural,
     total: pending.roll.total,
     options: pending.options.map((option) => ({ spellId: option.spellId, spellName: glossary.names[option.spellId] ?? option.spellId, slotLevel: option.slotLevel })),
+    closesAt: pending.closesAt,
+  };
+}
+
+// The landed hit waiting on a smite answer right now, if any (at most one at
+// a time, the same as a reaction: resolution stalls on it before anything
+// else can proceed). The attacker is a hero (only a player-controlled
+// attacker is ever offered the choice — engine/combat/smite.ts's offerSmite).
+export function buildSmiteView(state: CampaignState, bible: AdventureBible, glossary: Glossary): SmiteView | null {
+  const encounter = state.encounter;
+  const resolution = encounter?.resolution;
+  const pending = resolution?.smite;
+  if (encounter == null || resolution == null || pending == null) return null;
+  const attacker = encounter.combatants[resolution.actorId];
+  const target = encounter.combatants[pending.targetId];
+  const attackerSheet = attacker?.source.kind === "hero" ? state.characters[attacker.source.characterId] : undefined;
+  if (attacker === undefined || target === undefined || attackerSheet === undefined) return null;
+  const names: CombatNames = { state, bible, glossary };
+  return {
+    attackerName: combatantName(attacker, names),
+    attackerUserId: attackerSheet.ownerUserId,
+    targetName: combatantName(target, names),
+    options: pending.options,
     closesAt: pending.closesAt,
   };
 }

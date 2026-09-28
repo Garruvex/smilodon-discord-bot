@@ -5,7 +5,7 @@ import type { CampaignPresenter } from "../../../application/campaign/ports/camp
 import type { CampaignKey, CampaignUnitOfWork } from "../../../application/campaign/ports/campaign-store.js";
 import { texts, type Texts } from "../../../application/i18n/texts.js";
 import { combatantName, encounterRecords, type CombatBeat } from "../../../application/campaign/dm/combat-records.js";
-import { buildReactionView } from "../../../application/campaign/views/campaign-views.js";
+import { buildReactionView, buildSmiteView } from "../../../application/campaign/views/campaign-views.js";
 import { abilityOf, type CheckTest } from "../../../domain/campaign/character/character-sheet.js";
 import { combatMode } from "../../../domain/campaign/rules/house-rules.js";
 import type { DeliverySpec } from "../../../domain/campaign/engine/engine-request.js";
@@ -157,6 +157,15 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
         const glossary = this.options.glossaries[record.language];
         const view = state === undefined || bible === undefined || glossary === undefined ? null : buildReactionView(state, bible, glossary);
         if (view !== null) await say(adventureChannelId, text.campaign.msg.reactionOffered({ user: view.targetUserId, attacker: view.attackerName }), [view.targetUserId]);
+        break;
+      }
+      case "smiteOffered": {
+        // Same pattern as reactionOffered: the ping here, the decision card
+        // itself drawn by the cards.sync() below.
+        const bible = this.options.adventures.find(record.adventure.adventureId, record.adventure.version, record.language);
+        const glossary = this.options.glossaries[record.language];
+        const view = state === undefined || bible === undefined || glossary === undefined ? null : buildSmiteView(state, bible, glossary);
+        if (view !== null) await say(adventureChannelId, text.campaign.msg.smiteOffered({ user: view.attackerUserId, target: view.targetName }), [view.attackerUserId]);
         break;
       }
       default:

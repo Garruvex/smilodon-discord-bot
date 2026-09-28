@@ -166,6 +166,10 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "reactDecline":
       // The one reaction window open at a time sits on its own card.
       return ["reaction"];
+    case "smiteChoose":
+    case "smiteSkip":
+      // The one smite window open at a time sits on its own card.
+      return ["smite"];
   }
 }
 
@@ -301,6 +305,13 @@ export class CampaignComponentHandler implements ComponentHandler {
         const spellId = parsed.action === "reactCast" ? (parsed.argument as ContentId<"spell"> | null) : null;
         const said = spellId === null ? text.campaign.reply.reactionDeclined : text.campaign.reply.reactionCast;
         const command = (combatantId: CharacterId): CombatCommand => ({ kind: "combatReact", combatantId, spellId });
+        return void (await this.outcome(await this.deps.play.combat(key, userId, interaction.id, command), said, reply, text));
+      }
+      case "smiteChoose":
+      case "smiteSkip": {
+        const slotLevel = parsed.action === "smiteChoose" ? Number(parsed.argument) : null;
+        const said = slotLevel === null ? text.campaign.reply.smiteSkipped : text.campaign.reply.smiteChosen;
+        const command = (combatantId: CharacterId): CombatCommand => ({ kind: "combatSmite", combatantId, slotLevel });
         return void (await this.outcome(await this.deps.play.combat(key, userId, interaction.id, command), said, reply, text));
       }
       case "useSaved": {

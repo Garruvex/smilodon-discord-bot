@@ -103,6 +103,7 @@ export const campaignEn = {
   "campaign.button.endTurnAnyway": "End turn anyway",
   "campaign.button.details": "Details",
   "campaign.button.takeHit": "Take the hit",
+  "campaign.button.skipSmite": "Skip",
 
   "campaign.hero.line": "**{name}** · {class} · Lv {level}",
   "campaign.hero.player": "Played by {user}",
@@ -256,6 +257,7 @@ export const campaignEn = {
   "campaign.msg.loot": "Found: {items}",
   "campaign.msg.offer": "🎁 <@{user}>, **{from}** offers you **{item}**. Answer in <#{channel}>.",
   "campaign.msg.reactionOffered": "🛡️ <@{user}>, **{attacker}**'s attack could still be a miss. Cast Shield, or let it land.",
+  "campaign.msg.smiteOffered": "⚔️ <@{user}>, your hit on **{target}** lands. Smite it, or leave it as it is.",
   "campaign.msg.speech": "💬 **{hero}:** “{text}”",
   "campaign.msg.safetyPaused": "⏸️ Play is paused at a player's request. The organizer resumes it from Manage or /dnd resume when the table is ready.",
   "campaign.msg.proxyTurn": "⚔️ <@{user}>, it is **{hero}**'s turn, and you are playing for <@{owner}>.",
@@ -559,6 +561,8 @@ export const campaignEn = {
   "campaign.reply.offerCancelled": "You took the offer back.",
   "campaign.reply.reactionCast": "You cast it.",
   "campaign.reply.reactionDeclined": "You took the hit.",
+  "campaign.reply.smiteChosen": "You smote it.",
+  "campaign.reply.smiteSkipped": "You skipped it.",
 
   "campaign.pack.placeholder": "Pack and stash",
   "campaign.pack.use": "Drink {item}",
@@ -575,6 +579,11 @@ export const campaignEn = {
   "campaign.reaction.option": "Cast {spell} (level {slot} slot)",
   "campaign.reaction.player": "Waiting for {user}.",
   "campaign.reaction.closes": "Decides itself {when}.",
+
+  "campaign.smite.title": "⚔️ **{attacker}**'s hit on **{target}** lands. Smite it?",
+  "campaign.smite.option": "Smite (level {slot} slot)",
+  "campaign.smite.player": "Waiting for {user}.",
+  "campaign.smite.closes": "Decides itself {when}.",
 
   "campaign.turn.header": "**{hero}** · {zone}\nAction {action} · Bonus action {bonus} · Reaction {reaction} · Movement {feet} ft",
   "campaign.turn.engaged": "In melee with {names}.",

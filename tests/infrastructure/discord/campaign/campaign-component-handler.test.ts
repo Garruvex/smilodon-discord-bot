@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { CampaignState } from "../../../../src/domain/campaign/state/campaign-state.js";
 import { quiet, starter, tellOpening } from "../../../application/campaign/campaign-rig.js";
-import { alex, organizer as fightOrganizer, partyOfThree, sam } from "../../../domain/campaign/campaign-fixtures.js";
+import { alex, jamie, newCampaign, organizer as fightOrganizer, partyOfThree, sam } from "../../../domain/campaign/campaign-fixtures.js";
 import { Fight, skirmish } from "../../../domain/campaign/combat-fixtures.js";
 import { adventure, contentOf, fakeInteraction, harness, heroes, party, started, type Sent } from "./handler-harness.js";
 
@@ -419,6 +419,73 @@ describe("a Shield reaction", () => {
 
     await t.cards.sync(t.key);
     expect(reactionCard(t)).toBeUndefined();
+  });
+});
+
+describe("a smite window", () => {
+  // Same approach as "a Shield reaction" above: graft a real, engine-verified
+  // mid-smite CampaignState onto a Discord-harness campaign, then drive the
+  // real component handler and play controller against it.
+  async function smitePending(t: Awaited<ReturnType<typeof harness>>): Promise<void> {
+    const base = newCampaign();
+    const borin = base.characters["c-borin"];
+    if (borin === undefined) throw new Error("fixture");
+    const smiter = { ...borin, features: [...borin.features, "feature:divine-smite" as const], spellcasting: { ability: "cha" as const, spells: [], slots: { 1: 1 } } };
+    const state = { ...base, characters: { ...base.characters, "c-borin": smiter } };
+    const fight = new Fight(state)
+      .rolls([1, 20, 5, 4])
+      .run(fightOrganizer, { kind: "startEncounter", spec: skirmish })
+      .run(jamie, { kind: "combatMove", combatantId: "c-borin", zoneId: "courtyard" })
+      .run(jamie, { kind: "combatEngage", combatantId: "c-borin", targetId: "goblin-a" })
+      .rolls([20])
+      .run(jamie, { kind: "combatAttack", combatantId: "c-borin", targetId: "goblin-a", weapon: "item:longsword" });
+    expect(fight.encounter.resolution?.smite).toMatchObject({ targetId: "goblin-a" });
+    await t.r.store.transaction(async (tx) => {
+      const stored = await tx.loadCampaign(t.key);
+      if (stored === undefined) throw new Error("campaign");
+      await tx.saveCampaign(t.key, fight.state, stored.revision);
+    });
+    await t.cards.sync(t.key);
+  }
+
+  const smiteCard = (t: Awaited<ReturnType<typeof harness>>): { payload: unknown } | undefined =>
+    t.messages.live(adventure).find((message) => flatText([message]).includes(`dnd:smiteChoose:${t.key.campaignId}:1`));
+
+  it("shows a card for the landed hit, answered only by the attacker's own player", async () => {
+    const t = await harness();
+    await started(t);
+    await smitePending(t);
+    expect(smiteCard(t)).toBeDefined();
+
+    expect(contentOf(await t.press("smiteChoose", "u-org", { argument: "1", onCard: "smite" }))).toBe("You do not have a hero in this campaign.");
+  });
+
+  it("spends the slot and clears the card when chosen", async () => {
+    const t = await harness();
+    await started(t);
+    await smitePending(t);
+
+    expect(contentOf(await t.press("smiteChoose", "u-jamie", { argument: "1", onCard: "smite" }))).toBe("You smote it.");
+    const after = await t.r.store.transaction((tx) => tx.loadCampaign(t.key));
+    expect(after?.state.encounter?.resolution?.smite).toBeFalsy();
+    expect(after?.state.encounter?.combatants["c-borin"]?.resources.spellSlots).toEqual({ 1: 0 });
+
+    await t.cards.sync(t.key);
+    expect(smiteCard(t)).toBeUndefined();
+  });
+
+  it("spends nothing and clears the card when skipped", async () => {
+    const t = await harness();
+    await started(t);
+    await smitePending(t);
+
+    expect(contentOf(await t.press("smiteSkip", "u-jamie", { onCard: "smite" }))).toBe("You skipped it.");
+    const after = await t.r.store.transaction((tx) => tx.loadCampaign(t.key));
+    expect(after?.state.encounter?.resolution?.smite).toBeFalsy();
+    expect(after?.state.encounter?.combatants["c-borin"]?.resources.spellSlots).toEqual({ 1: 1 });
+
+    await t.cards.sync(t.key);
+    expect(smiteCard(t)).toBeUndefined();
   });
 });
 
