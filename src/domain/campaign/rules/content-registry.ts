@@ -1,5 +1,6 @@
 import type { Capability } from "./capabilities.js";
 import {
+  maxSpellLevel,
   referencedContent,
   requiredCapabilities,
   type ContentDefinition,
@@ -112,6 +113,24 @@ export class ContentRegistryBuilder {
         problems.push(`${definition.id}: references missing content "${reference}".`);
       } else if (target.kind !== parseContentId(reference)?.kind) {
         problems.push(`${definition.id}: reference "${reference}" resolves to a ${target.kind}.`);
+      }
+    }
+    // Out of range: castableSlotLevels (content-definitions.ts) would sample
+    // zero slot levels for it, so samplePlans above never calls its plan()
+    // at all — a spell whose plan always throws would otherwise pass silently.
+    if (definition.kind === "spell" && (!Number.isInteger(definition.level) || definition.level < 0 || definition.level > maxSpellLevel)) {
+      problems.push(`${definition.id}: spell level ${definition.level} is out of range (0-${maxSpellLevel}).`);
+    }
+    // The generic reference check above only confirms a monster attack's
+    // weapon resolves to *an item*; an attack naming a shield or a potion
+    // would pass it and then silently produce a Combatant with one fewer
+    // attack (combatant-profile.ts's monsterCombatant drops unresolvable ones).
+    if (definition.kind === "monster") {
+      for (const attack of definition.attacks) {
+        const target = byId.get(attack.weapon);
+        if (target !== undefined && (target.kind !== "item" || target.itemType !== "weapon")) {
+          problems.push(`${definition.id}: attack references "${attack.weapon}", which is not a weapon.`);
+        }
       }
     }
     return problems;

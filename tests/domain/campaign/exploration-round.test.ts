@@ -206,6 +206,24 @@ describe("round plans and checks", () => {
     ]);
   });
 
+  it("forces disadvantage on a Stealth check while wearing armor that imposes it, cancelling out the Planner's own advantage reason", () => {
+    let state = closedRound();
+    const mira = state.characters["c-mira"];
+    if (mira === undefined) throw new Error("fixture");
+    // Chain mail imposes Stealth disadvantage; this is mechanical, not
+    // something the Planner has to notice and cite as a rollModeReason.
+    state = { ...state, characters: { ...state.characters, "c-mira": { ...mira, equipment: ["item:chain-mail"] } } };
+    const step = run(state, system, { kind: "applyRoundPlan", proposal: miraSneaks }, { now: 1_000 });
+    expect(step.state.checks["r1:c-mira"]?.spec.mode).toBe("normal"); // 1 advantage (Planner) cancels 1 disadvantage (armor).
+
+    const noHelp: RoundPlanProposal = {
+      roundNumber: 1,
+      actions: [{ characterId: "c-mira", resolution: { kind: "check", test: { kind: "skill", skill: "stealth" }, dcTier: "medium", rollModeReasons: [] } }],
+    };
+    const withoutHelp = run(state, system, { kind: "applyRoundPlan", proposal: noHelp }, { now: 1_000 });
+    expect(withoutHelp.state.checks["r1:c-mira"]?.spec.mode).toBe("disadvantage");
+  });
+
   it("rejects the whole plan and lists every problem", () => {
     const bad = {
       roundNumber: 1,

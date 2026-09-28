@@ -5,7 +5,7 @@ import type { SealedContent } from "../rules/content-registry.js";
 import { abilities, type Ability } from "../rules/effects.js";
 import type { Trait } from "../rules/traits.js";
 import type { HeroStatus } from "../character/hero-status.js";
-import { isWorn } from "../engine/gear.js";
+import { armorSpeedPenalty, isWorn } from "../engine/gear.js";
 import type { AttackOption, Combatant, ZoneId } from "./combat-state.js";
 
 const freshTurn = { action: true, bonusAction: true, reaction: true, movement: 0, attacksLeft: 1 } as const;
@@ -14,9 +14,14 @@ const freshTurn = { action: true, bonusAction: true, reaction: true, movement: 0
 export { defaultHeroResources, type HeroStatus } from "../character/hero-status.js";
 export { isWorn } from "../engine/gear.js";
 
-// Everything the hero's worn gear and features grant, as one list.
+// Everything the hero's worn gear and features grant, as one list. Equipment
+// IDs are deduplicated first: only one of each item can be worn regardless of
+// how many the sheet lists (a spare shield in the pack), so isWorn's by-ID
+// check must be asked once per distinct item, not once per inventory entry —
+// otherwise a second copy of a worn shield or armor would count its bonus twice.
 export function heroTraits(sheet: CharacterSheet, content: SealedContent): readonly Trait[] {
-  return [...sheet.equipment.filter((id) => isWorn(sheet, content, id)), ...sheet.features].flatMap((id) => {
+  const worn = [...new Set(sheet.equipment)].filter((id) => isWorn(sheet, content, id));
+  return [...worn, ...sheet.features].flatMap((id) => {
     const definition = content.find(id);
     return definition === undefined ? [] : traitsOf(definition);
   });
@@ -79,7 +84,9 @@ export function heroCombatant(sheet: CharacterSheet, content: SealedContent, zon
     armorClass: armorClassFrom(traits, dex),
     maxHp: sheet.maxHp,
     hp: status.hp,
-    speed: sheet.speed,
+    // Armor worn under its Strength requirement (heavy armor a hero isn't
+    // strong enough for) costs 10 feet of speed.
+    speed: Math.max(0, sheet.speed - armorSpeedPenalty(sheet, content)),
     initiativeModifier: dex,
     saves,
     attacks: weapons.map((weapon) => heroAttackOption(sheet, weapon, traits, meleeWeapons)),

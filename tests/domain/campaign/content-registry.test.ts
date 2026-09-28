@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { dice } from "../../../src/domain/campaign/dice/dice-expression.js";
+import { dice, plus } from "../../../src/domain/campaign/dice/dice-expression.js";
 import { capabilities, type Capability } from "../../../src/domain/campaign/rules/capabilities.js";
 import {
   defineCondition,
+  defineMonster,
+  defineShield,
   defineSpell,
+  defineWeapon,
   type ContentDefinition,
 } from "../../../src/domain/campaign/rules/content-definitions.js";
 import type { ContentId } from "../../../src/domain/campaign/rules/content-id.js";
@@ -110,6 +113,59 @@ describe("ContentRegistryBuilder", () => {
     const problems = problemsOf(() => build([broken]));
     expect(problems).toHaveLength(1);
     expect(problems[0]).toMatch(/^spell:broken: definition could not be evaluated/);
+  });
+
+  it("rejects a spell level outside 0-9, which castableSlotLevels would otherwise silently sample zero plans from", () => {
+    const tooHigh = defineSpell({ ...trip, id: "spell:too-high", level: 10 });
+    const problems = problemsOf(() => build([tooHigh]));
+    expect(problems).toEqual(["spell:too-high: spell level 10 is out of range (0-9)."]);
+
+    // Even one whose plan always throws must still be caught: at an
+    // out-of-range level, samplePlans would never call it at all.
+    const brokenAndTooHigh = defineSpell({
+      ...trip,
+      id: "spell:broken-too-high",
+      level: 10,
+      plan: () => {
+        throw new Error("never called");
+      },
+    });
+    expect(problemsOf(() => build([brokenAndTooHigh]))).toEqual(["spell:broken-too-high: spell level 10 is out of range (0-9)."]);
+  });
+
+  it("rejects a monster attack that references a non-weapon item", () => {
+    const shield = defineShield({ id: "item:test-shield", source: "Test", armorClassBonus: 2 });
+    const badMonster = defineMonster({
+      id: "monster:confused",
+      source: "Test",
+      armorClass: 10,
+      maxHp: 5,
+      xp: 10,
+      speed: 30,
+      abilityScores: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
+      attacks: [{ weapon: "item:test-shield", toHit: 2, damage: dice(1, 4) }],
+      tactic: "brute",
+      traits: [],
+    });
+    const problems = problemsOf(() => build([shield, badMonster]));
+    expect(problems).toEqual(['monster:confused: attack references "item:test-shield", which is not a weapon.']);
+  });
+
+  it("accepts a monster attack that references an actual weapon", () => {
+    const club = defineWeapon({ id: "item:test-club", source: "Test", damage: dice(1, 4), damageType: "bludgeoning", range: { kind: "melee" }, finesse: false, natural: false });
+    const monster = defineMonster({
+      id: "monster:ordinary",
+      source: "Test",
+      armorClass: 10,
+      maxHp: 5,
+      xp: 10,
+      speed: 30,
+      abilityScores: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
+      attacks: [{ weapon: "item:test-club", toHit: 2, damage: plus(dice(1, 4), 1) }],
+      tactic: "brute",
+      traits: [],
+    });
+    expect(() => build([club, monster])).not.toThrow();
   });
 
   it("requires a display name in every glossary and flags unknown glossary entries", () => {
