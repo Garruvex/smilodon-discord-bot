@@ -52,6 +52,10 @@ export const longbow = defineWeapon({
 // Added for engine-robustness pass (step 8): a monster's natural slam attack (zombie).
 export const slam = defineWeapon({ id: "item:slam", source, damage: dice(1, 6), damageType: "bludgeoning", range: melee, finesse: false, natural: true });
 
+// Added for engine-robustness pass (step 14): more monster attacks.
+export const greatclub = defineWeapon({ id: "item:greatclub", source, damage: dice(2, 8), damageType: "bludgeoning", range: melee, finesse: false, natural: false });
+export const lifeDrain = defineWeapon({ id: "item:life-drain", source, damage: dice(3, 6), damageType: "necrotic", range: melee, finesse: false, natural: true });
+
 export const srd51Weapons: readonly WeaponDefinition[] = [
   longsword,
   shortsword,
@@ -67,4 +71,6 @@ export const srd51Weapons: readonly WeaponDefinition[] = [
   dagger,
   longbow,
   slam,
+  greatclub,
+  lifeDrain,
 ];

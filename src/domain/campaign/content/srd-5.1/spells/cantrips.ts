@@ -142,6 +142,56 @@ export const chillTouch = defineSpell({
   }),
 });
 
+// Added for engine-robustness pass (step 14): more content within the
+// existing shapes (attack-roll or save, one scaled damage effect).
+export const poisonSpray = defineSpell({
+  id: "spell:poison-spray",
+  source,
+  level: 0,
+  castingTime: "action",
+  range: { kind: "feet", feet: 10 },
+  targeting: { relation: "creature", count: 1 },
+  concentration: false,
+  plan: ({ casterLevel }) => ({
+    check: { kind: "savingThrow", ability: "con" },
+    onLand: [{ kind: "damage", target: "target", amount: dice(cantripDiceCount(casterLevel), 12), damageType: "poison" }],
+    onAvoid: [],
+  }),
+});
+
+// Simplified: Acid Splash's second target within 5 feet of the first is
+// dropped, the same liberty Eldritch Blast and Magic Missile already take.
+export const acidSplash = defineSpell({
+  id: "spell:acid-splash",
+  source,
+  level: 0,
+  castingTime: "action",
+  range: { kind: "feet", feet: 60 },
+  targeting: { relation: "creature", count: 1 },
+  concentration: false,
+  plan: ({ casterLevel }) => ({
+    check: { kind: "savingThrow", ability: "dex" },
+    onLand: [{ kind: "damage", target: "target", amount: dice(cantripDiceCount(casterLevel), 6), damageType: "acid" }],
+    onAvoid: [],
+  }),
+});
+
+// Simplified: the "advantage against metal armor" rider is dropped.
+export const shockingGrasp = defineSpell({
+  id: "spell:shocking-grasp",
+  source,
+  level: 0,
+  castingTime: "action",
+  range: { kind: "touch" },
+  targeting: { relation: "creature", count: 1 },
+  concentration: false,
+  plan: ({ casterLevel }) => ({
+    check: { kind: "spellAttack" },
+    onLand: [{ kind: "damage", target: "target", amount: dice(cantripDiceCount(casterLevel), 8), damageType: "lightning" }],
+    onAvoid: [],
+  }),
+});
+
 export const srd51Cantrips: readonly SpellDefinition[] = [
   sacredFlame,
   thaumaturgy,
@@ -151,4 +201,7 @@ export const srd51Cantrips: readonly SpellDefinition[] = [
   eldritchBlast,
   rayOfFrost,
   chillTouch,
+  poisonSpray,
+  acidSplash,
+  shockingGrasp,
 ];

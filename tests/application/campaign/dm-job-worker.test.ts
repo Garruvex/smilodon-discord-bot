@@ -176,7 +176,10 @@ describe("assembleContext", () => {
     const extra: CampaignEvent[] = Array.from({ length: 40 }, (_, index) => ({
       kind: "narrationRecorded" as const,
       roundNumber: index + 2,
-      text: "The wind howls through the ruins. ".repeat(20),
+      // Repeated generously so the fixed overhead (instructions, glossary)
+      // stays a small fraction of the total regardless of glossary size,
+      // keeping "half of full" a reliably sufficient tight budget below.
+      text: "The wind howls through the ruins. ".repeat(60),
     }));
     const full = assembleContext({ ...input, events: [...input.events, ...extra] });
     const tight = assembleContext({ ...input, events: [...input.events, ...extra], budgetTokens: Math.floor(full.estimatedTokens / 2) });

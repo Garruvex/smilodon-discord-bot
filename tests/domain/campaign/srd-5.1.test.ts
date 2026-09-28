@@ -124,4 +124,41 @@ describe("SRD 5.1 content", () => {
     expect(traitsOf(content.get("monster:zombie"))).toContainEqual({ kind: "conditionImmunity", conditions: ["condition:poisoned"] });
     expect(traitsOf(content.get("monster:skeleton"))).toContainEqual({ kind: "conditionImmunity", conditions: ["condition:poisoned"] });
   });
+
+  it("makes Poison Spray and Acid Splash Constitution/Dexterity saves, and Shocking Grasp an attack roll", () => {
+    expect(content.get("spell:poison-spray").plan({ slotLevel: 0, casterLevel: 1, spellcastingModifier: 3 })).toMatchObject({
+      check: { kind: "savingThrow", ability: "con" },
+      onLand: [{ kind: "damage", damageType: "poison" }],
+    });
+    expect(content.get("spell:acid-splash").plan({ slotLevel: 0, casterLevel: 1, spellcastingModifier: 3 })).toMatchObject({
+      check: { kind: "savingThrow", ability: "dex" },
+      onLand: [{ kind: "damage", damageType: "acid" }],
+    });
+    expect(content.get("spell:shocking-grasp").plan({ slotLevel: 0, casterLevel: 1, spellcastingModifier: 3 })).toMatchObject({
+      check: { kind: "spellAttack" },
+      onLand: [{ kind: "damage", damageType: "lightning" }],
+    });
+  });
+
+  it("scales Inflict Wounds by slot and makes Tasha's Hideous Laughter a Wisdom save into Incapacitated and Prone", () => {
+    expect(amountOf(content.get("spell:inflict-wounds").plan({ slotLevel: 1, casterLevel: 1, spellcastingModifier: 3 }).onLand[0])).toBe("3d10");
+    expect(amountOf(content.get("spell:inflict-wounds").plan({ slotLevel: 3, casterLevel: 5, spellcastingModifier: 3 }).onLand[0])).toBe("5d10");
+    const laughter = content.get("spell:tashas-hideous-laughter").plan({ slotLevel: 1, casterLevel: 1, spellcastingModifier: 3 });
+    expect(laughter.check).toEqual({ kind: "savingThrow", ability: "wis" });
+    expect(laughter.onLand).toEqual([
+      { kind: "applyCondition", target: "target", condition: "condition:incapacitated", duration: { kind: "rounds", count: 10 } },
+      { kind: "applyCondition", target: "target", condition: "condition:prone", duration: { kind: "rounds", count: 10 } },
+    ]);
+  });
+
+  it("gives Hobgoblin, Ogre, and Specter their weapons and Specter its heavy resistance/immunity list", () => {
+    expect(content.get("monster:hobgoblin").attacks[0]?.weapon).toBe("item:longsword");
+    expect(content.get("monster:ogre").attacks[0]?.weapon).toBe("item:greatclub");
+    expect(content.get("monster:specter").attacks[0]?.weapon).toBe("item:life-drain");
+    expect(traitsOf(content.get("monster:specter"))).toContainEqual({ kind: "damageImmunity", damageTypes: ["necrotic", "poison"] });
+    const conditionImmunity = traitsOf(content.get("monster:specter")).find((trait) => trait.kind === "conditionImmunity");
+    expect(conditionImmunity?.kind === "conditionImmunity" ? conditionImmunity.conditions : []).toEqual(
+      expect.arrayContaining(["condition:charmed", "condition:paralyzed"]),
+    );
+  });
 });

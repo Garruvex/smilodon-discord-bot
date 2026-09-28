@@ -142,6 +142,43 @@ export const command = defineSpell({
   }),
 });
 
+// Added for engine-robustness pass (step 14).
+export const inflictWounds = defineSpell({
+  id: "spell:inflict-wounds",
+  source,
+  level: 1,
+  castingTime: "action",
+  range: { kind: "touch" },
+  targeting: { relation: "creature", count: 1 },
+  concentration: false,
+  plan: ({ slotLevel }) => ({
+    check: { kind: "spellAttack" },
+    onLand: [{ kind: "damage", target: "target", amount: dice(2 + slotLevel, 10), damageType: "necrotic" }],
+    onAvoid: [],
+  }),
+});
+
+// Simplified: the condition ends early if the target takes damage or
+// someone uses an action to shake it (the engine has no effect for either);
+// it just runs its full duration.
+export const tashasHideousLaughter = defineSpell({
+  id: "spell:tashas-hideous-laughter",
+  source,
+  level: 1,
+  castingTime: "action",
+  range: { kind: "feet", feet: 30 },
+  targeting: { relation: "creature", count: 1 },
+  concentration: true,
+  plan: () => ({
+    check: { kind: "savingThrow", ability: "wis" },
+    onLand: [
+      { kind: "applyCondition", target: "target", condition: "condition:incapacitated", duration: { kind: "rounds", count: 10 } },
+      { kind: "applyCondition", target: "target", condition: "condition:prone", duration: { kind: "rounds", count: 10 } },
+    ],
+    onAvoid: [],
+  }),
+});
+
 export const srd51Level1Spells: readonly SpellDefinition[] = [
   cureWounds,
   healingWord,
@@ -151,4 +188,6 @@ export const srd51Level1Spells: readonly SpellDefinition[] = [
   magicMissile,
   witchBolt,
   command,
+  inflictWounds,
+  tashasHideousLaughter,
 ];

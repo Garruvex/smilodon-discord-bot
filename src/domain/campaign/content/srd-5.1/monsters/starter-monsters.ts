@@ -165,6 +165,59 @@ export const skeleton = defineMonster({
   ],
 });
 
+// Added for engine-robustness pass (step 14): more monsters across a wider
+// CR range. Not modeled: Martial Advantage (extra damage when an ally is
+// adjacent to the target — Sneak Attack's own condition, not yet a shared
+// monster trait).
+export const hobgoblin = defineMonster({
+  id: "monster:hobgoblin",
+  source,
+  armorClass: 18,
+  maxHp: 11,
+  xp: 100,
+  speed: 30,
+  abilityScores: { str: 13, dex: 12, con: 12, int: 10, wis: 10, cha: 10 },
+  attacks: [{ weapon: "item:longsword", toHit: 3, damage: plus(dice(1, 8), 1) }],
+  tactic: "brute",
+  traits: [],
+});
+
+export const ogre = defineMonster({
+  id: "monster:ogre",
+  source,
+  armorClass: 11,
+  maxHp: 59,
+  xp: 450,
+  speed: 40,
+  abilityScores: { str: 19, dex: 8, con: 16, int: 5, wis: 7, cha: 7 },
+  attacks: [{ weapon: "item:greatclub", toHit: 6, damage: plus(dice(2, 8), 4) }],
+  tactic: "brute",
+  traits: [],
+});
+
+// Not modeled: the "reduces the target's hit point maximum" half of Life
+// Drain (no mechanic for a temporary maximum HP change yet), Incorporeal
+// Movement, and condition immunity to Exhaustion/Petrified/Unconscious (the
+// first two the engine doesn't implement; Unconscious is derived from HP,
+// not a condition a trait can block). Damage resistances drop the SRD's
+// "from nonmagical attacks" qualifier, the same liberty Skeleton/Zombie take.
+export const specter = defineMonster({
+  id: "monster:specter",
+  source,
+  armorClass: 12,
+  maxHp: 22,
+  xp: 200,
+  speed: 50,
+  abilityScores: { str: 1, dex: 14, con: 11, int: 10, wis: 10, cha: 11 },
+  attacks: [{ weapon: "item:life-drain", toHit: 4, damage: plus(dice(3, 6), 2) }],
+  tactic: "brute",
+  traits: [
+    { kind: "damageResistance", damageTypes: ["acid", "cold", "fire", "lightning", "thunder", "bludgeoning", "piercing", "slashing"] },
+    { kind: "damageImmunity", damageTypes: ["necrotic", "poison"] },
+    { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:grappled", "condition:paralyzed", "condition:poisoned", "condition:prone", "condition:restrained"] },
+  ],
+});
+
 export const srd51StarterMonsters: readonly MonsterDefinition[] = [
   goblin,
   wolf,
@@ -175,4 +228,7 @@ export const srd51StarterMonsters: readonly MonsterDefinition[] = [
   zombie,
   orc,
   skeleton,
+  hobgoblin,
+  ogre,
+  specter,
 ];
