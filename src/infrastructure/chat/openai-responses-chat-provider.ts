@@ -480,7 +480,7 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
     draftResponse: string,
     context: readonly { authorId: string; authorDisplayName: string; content: string }[],
     currentMessage: string,
-  ): Promise<{ needsCorrection: boolean; correctedResponse: string | null }> {
+  ): Promise<{ needsCorrection: boolean; correctionNotes: string | null }> {
     const text = await this.callStructuredOutput(
       buildAttributionVerificationPrompt(draftResponse, context, currentMessage),
       "attribution_verification",

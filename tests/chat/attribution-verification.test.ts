@@ -41,17 +41,17 @@ describe("parseAttributionVerificationOutput", () => {
   it("parses a well-formed no-correction response", () => {
     const result = parseAttributionVerificationOutput(JSON.stringify({
       needsCorrection: false,
-      correctedResponse: null,
+      correctionNotes: null,
     }));
-    expect(result).toEqual({ needsCorrection: false, correctedResponse: null });
+    expect(result).toEqual({ needsCorrection: false, correctionNotes: null });
   });
 
   it("parses a well-formed corrected response", () => {
     const result = parseAttributionVerificationOutput(JSON.stringify({
       needsCorrection: true,
-      correctedResponse: "Ginco said that, not LW.",
+      correctionNotes: "Ginco said that, not LW.",
     }));
-    expect(result).toEqual({ needsCorrection: true, correctedResponse: "Ginco said that, not LW." });
+    expect(result).toEqual({ needsCorrection: true, correctionNotes: "Ginco said that, not LW." });
   });
 
   it("throws a ChatProviderError instead of returning raw text for invalid JSON", () => {

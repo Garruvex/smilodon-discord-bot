@@ -1003,13 +1003,15 @@ describe("ChatConversationService", () => {
     expect(reply).toHaveBeenCalledWith(expect.objectContaining({ replyChainSummary: null }), undefined);
   });
 
-  it("delivers the corrected text when attribution verification finds a misattribution", async () => {
+  it("repairs with the original persona and context without delivering verifier notes or repeating tools", async () => {
     const store = baseStore();
     const verifyAttribution = vi.fn(() => Promise.resolve({
       needsCorrection: true,
-      correctedResponse: "Ginco said that, not LW.",
+      correctionNotes: "CONTEXT: ginco authored the quote; LW did not.",
     }));
-    const reply = vi.fn(() => Promise.resolve(response("LW said that.")));
+    const reply = vi.fn()
+      .mockResolvedValueOnce(response("LW said that."))
+      .mockResolvedValueOnce(response("欸，那句是 Ginco 說的啦。"));
     const provider: ChatProvider = { reply, verifyAttribution };
     const service = new ChatConversationService(provider, store, testMemoryEngine().engine);
     const deliver = vi.fn((r: ChatResponse) => Promise.resolve(r.text));
@@ -1026,13 +1028,36 @@ describe("ChatConversationService", () => {
       [{ authorId: "ginco", authorDisplayName: "Ginco", content: "friend has grey fur" }],
       "who said that",
     );
-    expect(result.text).toBe("Ginco said that, not LW.");
-    expect(deliver).toHaveBeenCalledWith(expect.objectContaining({ text: "Ginco said that, not LW." }));
+    const original = reply.mock.calls[0]![0] as ChatRequest;
+    expect(reply).toHaveBeenCalledTimes(2);
+    expect(reply.mock.calls[1]).toEqual([{
+      ...original,
+      attributionRepair: { draft: "LW said that.", notes: "CONTEXT: ginco authored the quote; LW did not." },
+      enabledTools: [], webSearchMode: "off", imageGenerationEnabled: false, historyReactionsEnabled: false,
+    }]);
+    expect(result.text).toBe("欸，那句是 Ginco 說的啦。");
+    expect(deliver).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ text: result.text }));
+  });
+
+  it.each(["failure", "empty"])("keeps the draft when the main-model repair returns %s", async (mode) => {
+    const reply = vi.fn().mockResolvedValueOnce(response("Original draft."));
+    if (mode === "failure") reply.mockRejectedValueOnce(new Error("repair unavailable"));
+    else reply.mockResolvedValueOnce(response(" "));
+    const verifyAttribution = vi.fn().mockResolvedValue({ needsCorrection: true, correctionNotes: "Internal diagnostics" });
+    const service = new ChatConversationService({ reply, verifyAttribution }, baseStore(), testMemoryEngine().engine);
+    const deliver = vi.fn((r: ChatResponse) => Promise.resolve(r.text));
+    const result = await service.run({
+      ...input("who said that"),
+      channelHistory: [{ messageId: "m1", timestampMs: 0, authorId: "ginco", authorDisplayName: "Ginco", content: "hello", imageCount: 0 }],
+    }, deliver);
+    expect(result.text).toBe("Original draft.");
+    expect(deliver).toHaveBeenCalledTimes(1);
+    expect(reply).toHaveBeenCalledTimes(2);
   });
 
   it("skips attribution verification entirely when there's no reply-chain or channel-history context", async () => {
     const store = baseStore();
-    const verifyAttribution = vi.fn(() => Promise.resolve({ needsCorrection: true, correctedResponse: "should not be used" }));
+    const verifyAttribution = vi.fn(() => Promise.resolve({ needsCorrection: true, correctionNotes: "should not be used" }));
     const reply = vi.fn(() => Promise.resolve(response("ok")));
     const provider: ChatProvider = { reply, verifyAttribution };
     const service = new ChatConversationService(provider, store, testMemoryEngine().engine);
@@ -1062,7 +1087,7 @@ describe("ChatConversationService", () => {
 
   it("leaves the draft unchanged when verification reports needsCorrection false", async () => {
     const store = baseStore();
-    const verifyAttribution = vi.fn(() => Promise.resolve({ needsCorrection: false, correctedResponse: null }));
+    const verifyAttribution = vi.fn(() => Promise.resolve({ needsCorrection: false, correctionNotes: null }));
     const reply = vi.fn(() => Promise.resolve(response("Ginco said that.")));
     const provider: ChatProvider = { reply, verifyAttribution };
     const service = new ChatConversationService(provider, store, testMemoryEngine().engine);
@@ -1077,13 +1102,15 @@ describe("ChatConversationService", () => {
     expect(result.text).toBe("Ginco said that.");
   });
 
-  it("strips untrusted-data fence markers the verifier echoes into a real correction", async () => {
+  it("strips untrusted-data fence markers from the main model's repair", async () => {
     const store = baseStore();
     const verifyAttribution = vi.fn(() => Promise.resolve({
       needsCorrection: true,
-      correctedResponse: "<<<BEGIN-UNTRUSTED-DATA>>>\nGinco said that, not LW.\n<<<END-UNTRUSTED-DATA>>>",
+      correctionNotes: "<<<BEGIN-UNTRUSTED-DATA>>>\nGinco said that, not LW.\n<<<END-UNTRUSTED-DATA>>>",
     }));
-    const reply = vi.fn(() => Promise.resolve(response("LW said that.")));
+    const reply = vi.fn()
+      .mockResolvedValueOnce(response("LW said that."))
+      .mockResolvedValueOnce(response("<<<BEGIN-UNTRUSTED-DATA>>>\nGinco said that, not LW.\n<<<END-UNTRUSTED-DATA>>>"));
     const provider: ChatProvider = { reply, verifyAttribution };
     const service = new ChatConversationService(provider, store, testMemoryEngine().engine);
 
@@ -1097,12 +1124,12 @@ describe("ChatConversationService", () => {
     expect(result.text).toBe("Ginco said that, not LW.");
   });
 
-  it("delivers the draft untouched when the verifier's correction is just the fenced draft echoed back", async () => {
+  it("delivers the draft untouched when the repair echoes the draft", async () => {
     const store = baseStore();
     const draft = "冰寒刺骨\n競技場中的所有人都會受到緩速 II 和挖掘疲勞 II 效果。";
     const verifyAttribution = vi.fn(() => Promise.resolve({
       needsCorrection: true,
-      correctedResponse: `<<<BEGIN-UNTRUSTED-DATA>>>\n${draft}\n<<<END-UNTRUSTED-DATA>>>`,
+      correctionNotes: `<<<BEGIN-UNTRUSTED-DATA>>>\n${draft}\n<<<END-UNTRUSTED-DATA>>>`,
     }));
     const reply = vi.fn(() => Promise.resolve(response(draft)));
     const provider: ChatProvider = { reply, verifyAttribution };

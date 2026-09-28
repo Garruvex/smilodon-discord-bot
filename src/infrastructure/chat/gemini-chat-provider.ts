@@ -447,7 +447,7 @@ export class GeminiChatProvider implements ChatProvider {
     draftResponse: string,
     context: readonly { authorId: string; authorDisplayName: string; content: string }[],
     currentMessage: string,
-  ): Promise<{ needsCorrection: boolean; correctedResponse: string | null }> {
+  ): Promise<{ needsCorrection: boolean; correctionNotes: string | null }> {
     const response = await this.summaryModelChain.run((model) => this.generateStructured(
       model,
       buildAttributionVerificationPrompt(draftResponse, context, currentMessage),

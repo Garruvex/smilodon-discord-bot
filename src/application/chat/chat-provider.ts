@@ -6,6 +6,8 @@ import type { CausalChainLink } from "../memory/memory.js";
 import type { ChannelMemoryMode } from "../memory/memory-channel-policy.js";
 
 export interface ChatRequest {
+  // Internal text-only repair; the original context/persona remains intact.
+  attributionRepair?: { draft: string; notes: string };
   guildId: string;
   // The Discord channel this turn is happening in — scopes guild-knowledge
   // read/write and the recent-exchange session to this channel (see
@@ -509,8 +511,9 @@ export interface PersonalMemoryExtractor {
 // person (not fabricating content, just mislabeling whose it is). Only
 // worth calling when the turn actually had other people's messages in
 // context (reply_chain/channel_history) — a turn with none of that has
-// nothing to misattribute. Returns the draft unchanged (needsCorrection
-// false) on the common path; a provider missing this capability means the
+// nothing to misattribute. Returns diagnostic notes, never replacement
+// prose; the main reply provider repairs the text with the original persona.
+// needsCorrection is false on the common path; a missing capability means the
 // turn simply skips verification, same as any other optional capability
 // here.
 export interface AttributionVerifier {
@@ -518,7 +521,7 @@ export interface AttributionVerifier {
     draftResponse: string,
     context: readonly { authorId: string; authorDisplayName: string; content: string }[],
     currentMessage: string,
-  ): Promise<{ needsCorrection: boolean; correctedResponse: string | null }>;
+  ): Promise<{ needsCorrection: boolean; correctionNotes: string | null }>;
 }
 
 // A ChatProvider is always a ChatReplyProvider; the rest are standalone
