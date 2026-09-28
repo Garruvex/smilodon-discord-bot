@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import { canMulticlassInto, deriveSheet, hitDicePool, type BuildChoices } from "../../../src/domain/campaign/character/character-build.js";
 import type { CharacterSheet } from "../../../src/domain/campaign/character/character-sheet.js";
+import { defaultHeroResources } from "../../../src/domain/campaign/character/hero-status.js";
 import { levelUp, spellSlotsForLevel } from "../../../src/domain/campaign/character/leveling.js";
+import { availableSlots, spendSlot } from "../../../src/domain/campaign/combat/combat-state.js";
 import { replay } from "../../../src/domain/campaign/events/evolve.js";
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
-import { newCampaign, jamie, run, reject } from "./campaign-fixtures.js";
+import { newCampaign, jamie, organizer, ruleset, run, reject } from "./campaign-fixtures.js";
 
 const fighterBuild: BuildChoices = {
   class: "fighter",
@@ -81,23 +83,27 @@ describe("levelUp: combined multiclass spellcasting", () => {
     expect(next.spellcasting?.ability).toBe("int"); // The hero's primary (first) casting class.
   });
 
-  it("keeps a solo Warlock on its own Pact Magic table, unaffected by the shared multiclass table", () => {
+  it("keeps a solo Warlock's slots in the separate Pact Magic pool, not the shared one", () => {
     const sheet = sheetWith("c-1", "u-1", {
       class: "warlock",
       classLevels: { warlock: 1 },
-      spellcasting: { ability: "cha", spells: ["spell:eldritch-blast"], slots: spellSlotsForLevel("pact", 1) },
+      spellcasting: { ability: "cha", spells: ["spell:eldritch-blast"], slots: {} },
+      pactMagic: { slots: spellSlotsForLevel("pact", 1) },
     } as never);
     const next = levelUp(sheet, "warlock");
-    expect(next.spellcasting?.slots).toEqual(spellSlotsForLevel("pact", 2));
+    expect(next.spellcasting?.slots).toEqual({});
+    expect(next.pactMagic?.slots).toEqual(spellSlotsForLevel("pact", 2));
   });
 
-  it("gives a Warlock level alongside another class no slots of its own (Pact Magic's separate pool is not modeled)", () => {
+  it("gives a Warlock level alongside another class its own Pact Magic slots, still apart from the shared pool", () => {
     const sheet = sheetWith("c-1", "u-1", {
       level: 3,
       classLevels: { fighter: 3 },
     });
-    const next = levelUp(sheet, "warlock"); // Fighter 3 (none) + Warlock 1 (excluded alongside another class) = no caster.
-    expect(next.spellcasting).toBeNull();
+    const next = levelUp(sheet, "warlock"); // Fighter 3 (none) contributes nothing to the shared pool.
+    expect(next.spellcasting?.ability).toBe("cha"); // Still casts — just off Pact Magic, not the shared pool.
+    expect(next.spellcasting?.slots).toEqual({});
+    expect(next.pactMagic?.slots).toEqual(spellSlotsForLevel("pact", 1));
   });
 });
 
@@ -110,6 +116,52 @@ describe("hitDicePool: one die per class level, largest first", () => {
   it("falls back to the single hitDie for a sheet from before multiclassing existed (no classLevels)", () => {
     const sheet = sheetWith("c-1", "u-1", { level: 3, classLevels: undefined, className: undefined } as never);
     expect(hitDicePool(sheet)).toEqual([10, 10, 10]);
+  });
+});
+
+describe("Pact Magic: a genuinely separate pool", () => {
+  it("merges both pools when asking what's available, but spends the ordinary pool first", () => {
+    const resources = { spellSlots: { 1: 1 }, pactSlots: { 1: 1 }, featureUses: {} };
+    expect(availableSlots(resources)).toEqual({ 1: 2 });
+    const afterOne = spendSlot(resources, 1);
+    expect(afterOne).toEqual({ spellSlots: { 1: 0 }, pactSlots: { 1: 1 }, featureUses: {} });
+    const afterTwo = spendSlot(afterOne, 1);
+    expect(afterTwo).toEqual({ spellSlots: { 1: 0 }, pactSlots: { 1: 0 }, featureUses: {} });
+  });
+
+  it("never goes negative once both pools are spent", () => {
+    const empty = { spellSlots: {}, pactSlots: {}, featureUses: {} };
+    expect(spendSlot(empty, 1)).toEqual({ spellSlots: {}, pactSlots: { 1: 0 }, featureUses: {} });
+  });
+
+  it("defaultHeroResources seeds pactSlots from the sheet's pactMagic, separate from spellSlots", () => {
+    const sheet = sheetWith("c-1", "u-1", {
+      class: "warlock",
+      classLevels: { warlock: 1 },
+      spellcasting: { ability: "cha", spells: ["spell:eldritch-blast"], slots: {} },
+      pactMagic: { slots: { 1: 1 } },
+    } as never);
+    const resources = defaultHeroResources(sheet, ruleset().content);
+    expect(resources.spellSlots).toEqual({});
+    expect(resources.pactSlots).toEqual({ 1: 1 });
+  });
+
+  it("a short rest refills pactSlots but leaves spellSlots as they are", () => {
+    const sheet = sheetWith("c-borin", "u-jamie", {
+      class: "warlock",
+      classLevels: { warlock: 1 },
+      spellcasting: { ability: "cha", spells: ["spell:eldritch-blast"], slots: {} },
+      pactMagic: { slots: { 1: 1 } },
+    } as never);
+    const base = newCampaign();
+    const state: CampaignState = {
+      ...base,
+      characters: { ...base.characters, "c-borin": sheet },
+      heroStatus: { "c-borin": { hp: sheet.maxHp, resources: { spellSlots: { 2: 1 }, pactSlots: { 1: 0 }, featureUses: {} } } },
+    };
+    const rested = run(state, organizer, { kind: "takeRest", rest: "short" });
+    expect(rested.state.heroStatus["c-borin"]?.resources.pactSlots).toEqual({ 1: 1 });
+    expect(rested.state.heroStatus["c-borin"]?.resources.spellSlots).toEqual({ 2: 1 }); // Untouched by a short rest.
   });
 });
 

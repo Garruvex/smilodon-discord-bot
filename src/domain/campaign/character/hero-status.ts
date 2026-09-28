@@ -7,6 +7,14 @@ import type { CharacterSheet } from "./character-sheet.js";
 export interface HeroResources {
   // Remaining slots per slot level.
   readonly spellSlots: Readonly<Record<number, number>>;
+  // Remaining Pact Magic slots (character-sheet.ts's pactMagic), separate
+  // from spellSlots above: a short rest refills these to full but leaves
+  // spellSlots as they are (engine/rest.ts), the one real difference Pact
+  // Magic has from every other caster's slots. Optional, like hitDice and
+  // exhaustion elsewhere in this file: absent means none, the same as a
+  // hero with no Warlock levels — so every resources literal from before
+  // this step still reads correctly.
+  readonly pactSlots?: Readonly<Record<number, number>>;
   // Remaining uses per limited feature.
   readonly featureUses: Readonly<Record<string, number>>;
 }
@@ -31,5 +39,5 @@ export function defaultHeroResources(sheet: CharacterSheet, content: SealedConte
     const feature = content.find(id);
     if (feature?.kind === "feature" && feature.action !== null) featureUses[id] = feature.action.uses.count;
   }
-  return { spellSlots: { ...(sheet.spellcasting?.slots ?? {}) }, featureUses };
+  return { spellSlots: { ...(sheet.spellcasting?.slots ?? {}) }, pactSlots: { ...(sheet.pactMagic?.slots ?? {}) }, featureUses };
 }

@@ -219,7 +219,15 @@ export function deriveSheet(build: BuildChoices, gear?: { readonly equipment: re
     equipment,
     ...(gear?.worn === undefined ? {} : { worn: gear.worn }),
     features: template.features,
-    spellcasting: template.spellcasting === null ? null : { ability: template.spellcasting.ability, spells: template.spellcasting.spells, slots: template.spellcasting.slots },
+    // A Warlock's level-1 slot is Pact Magic even before any level-up
+    // (character/leveling.ts's combinedSpellcasting does this from level 2
+    // on): its recovery on a short rest, not just a long one, is real from
+    // the start, not something that only kicks in once the hero levels.
+    spellcasting:
+      template.spellcasting === null
+        ? null
+        : { ability: template.spellcasting.ability, spells: template.spellcasting.spells, slots: template.casterType === "pact" ? {} : template.spellcasting.slots },
+    ...(template.casterType === "pact" && template.spellcasting !== null ? { pactMagic: { slots: template.spellcasting.slots } } : {}),
   };
 }
 

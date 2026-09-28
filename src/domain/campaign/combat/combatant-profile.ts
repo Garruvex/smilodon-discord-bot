@@ -171,7 +171,7 @@ export function monsterCombatant(monster: MonsterDefinition, content: SealedCont
     attacks,
     spellcasting: null,
     features: [],
-    resources: { spellSlots: {}, featureUses: {} },
+    resources: { spellSlots: {}, pactSlots: {}, featureUses: {} },
     traits: monster.traits,
     tactic: monster.tactic,
     fleeBelowHpFraction: placement.fleeBelowHpFraction,

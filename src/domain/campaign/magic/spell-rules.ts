@@ -8,6 +8,15 @@ import type { SpellDefinition } from "../rules/content-definitions.js";
 // Spell slots left, by slot level.
 export type SpellSlots = Readonly<Record<number, number>>;
 
+// A caster's ordinary slots and their Pact Magic slots, summed level by
+// level, for asking "can this spell be cast at all right now" without
+// caring which pool it would draw from (spending — evolve-combat.ts's
+// spendSlot — does care, and always prefers the ordinary pool first).
+export function mergeSlots(spellSlots: SpellSlots, pactSlots: SpellSlots): SpellSlots {
+  const levels = new Set([...Object.keys(spellSlots), ...Object.keys(pactSlots)].map(Number));
+  return Object.fromEntries([...levels].map((level) => [level, (spellSlots[level] ?? 0) + (pactSlots[level] ?? 0)]));
+}
+
 // What a spell's target rules need to know about a creature.
 export interface SpellParty {
   readonly id: string;

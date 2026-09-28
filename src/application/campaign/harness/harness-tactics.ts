@@ -1,5 +1,5 @@
 import type { CombatCommand } from "../../../domain/campaign/commands/campaign-command.js";
-import { engagedWith, isActive, type Combatant, type EncounterState } from "../../../domain/campaign/combat/combat-state.js";
+import { availableSlots, engagedWith, isActive, type Combatant, type EncounterState } from "../../../domain/campaign/combat/combat-state.js";
 import { distanceBetween, edgeBetween, engageCost } from "../../../domain/campaign/combat/positioning.js";
 import { chooseMonsterPlan } from "../../../domain/campaign/combat/tactics.js";
 
@@ -20,7 +20,7 @@ export function chooseHeroCommand(encounter: EncounterState, hero: Combatant, ro
   const endTurn: CombatCommand = { kind: "endTurn", combatantId: hero.id };
   const foes = Object.values(encounter.combatants).filter((other) => other.side !== hero.side && isActive(other));
   if (foes.length === 0) return endTurn;
-  const slots = hero.resources.spellSlots[1] ?? 0;
+  const slots = availableSlots(hero.resources)[1] ?? 0;
   const knows = (spellId: string): boolean => hero.spellcasting?.spells.includes(spellId as `spell:${string}`) === true;
 
   if (role === "healer" && slots > 0) {

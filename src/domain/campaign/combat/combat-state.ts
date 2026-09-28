@@ -9,6 +9,7 @@ import type { MonsterTactic, WeaponRange } from "../rules/content-definitions.js
 import type { ContentId } from "../rules/content-id.js";
 import type { Ability, DamageType, Effect, ResolutionPlan } from "../rules/effects.js";
 import type { Trait } from "../rules/traits.js";
+import { mergeSlots, type SpellSlots } from "../magic/spell-rules.js";
 
 export type CombatantId = string;
 export type ZoneId = string;
@@ -45,6 +46,28 @@ export interface CombatSpellcasting {
 
 // A combatant's spell slots and feature uses left (a hero's own resources).
 export type CombatResources = HeroResources;
+
+// Every slot a combatant could cast with right now, ordinary and Pact Magic
+// summed together (magic/spell-rules.ts's mergeSlots) — for asking "is a
+// slot of this level available at all"; spendSlot below is the one place
+// that cares which pool it actually comes from.
+export function availableSlots(resources: CombatResources): SpellSlots {
+  return mergeSlots(resources.spellSlots, resources.pactSlots ?? {});
+}
+
+// Spends one slot of the given level, off the ordinary pool first and only
+// falling back to Pact Magic if that level isn't there — a fixed spending
+// order, not a player choice, so casting a Warlock/multiclass hero's spell
+// needs no new command surface (engine/combat/evolve-combat.ts's two
+// spenders, magic/spell-rules.ts's mergeSlots for what's available to spend
+// at all).
+export function spendSlot(resources: CombatResources, slotLevel: number): CombatResources {
+  if ((resources.spellSlots[slotLevel] ?? 0) > 0) {
+    return { ...resources, spellSlots: { ...resources.spellSlots, [slotLevel]: (resources.spellSlots[slotLevel] ?? 0) - 1 } };
+  }
+  const pactSlots = resources.pactSlots ?? {};
+  return { ...resources, pactSlots: { ...pactSlots, [slotLevel]: Math.max(0, (pactSlots[slotLevel] ?? 0) - 1) } };
+}
 
 export interface Concentration {
   readonly resolutionId: string;

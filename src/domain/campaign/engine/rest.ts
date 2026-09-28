@@ -49,7 +49,15 @@ export function takeRest(decision: Decision, rest: "short" | "long"): Rejection 
       const feature = content.find(id);
       if (feature?.kind === "feature" && feature.action?.uses.recharge === "shortRest") featureUses[id] = feature.action.uses.count;
     }
-    heroStatus[sheet.id] = { hp, resources: { ...current.resources, featureUses }, hitDice: left, exhaustion: current.exhaustion ?? 0 };
+    // Pact Magic (Warlock) is SRD 5.1's one resource that comes back on a
+    // short rest rather than a long one; every other spell slot is
+    // untouched here, same as before this hero had any.
+    heroStatus[sheet.id] = {
+      hp,
+      resources: { ...current.resources, featureUses, ...(fresh.pactSlots === undefined ? {} : { pactSlots: fresh.pactSlots }) },
+      hitDice: left,
+      exhaustion: current.exhaustion ?? 0,
+    };
   }
   decision.emit({ kind: "restTaken", rest, heroStatus });
   return null;

@@ -1,7 +1,7 @@
 import { assertNever } from "../core/assert-never.js";
 import type { EffectInstance } from "../effects/effect-instance.js";
 import type { CombatEvent } from "./combat-events.js";
-import type { Combatant, CombatantId, EncounterState, ResolutionState } from "./combat-state.js";
+import { spendSlot, type Combatant, type CombatantId, type EncounterState, type ResolutionState } from "./combat-state.js";
 
 const prone = "condition:prone";
 
@@ -104,9 +104,8 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
       // the action on anything else (a spell, a feature) owes no more attacks.
       const spendsAnAttack = resolution.source.kind === "weapon" && resolution.purpose === "action";
       const spent = update(encounter, resolution.actorId, (combatant) => {
-        const slots = { ...combatant.resources.spellSlots };
-        if (cost.spellSlot !== null) slots[cost.spellSlot] = Math.max(0, (slots[cost.spellSlot] ?? 0) - 1);
-        const uses = { ...combatant.resources.featureUses };
+        const resources = cost.spellSlot !== null ? spendSlot(combatant.resources, cost.spellSlot) : combatant.resources;
+        const uses = { ...resources.featureUses };
         if (cost.featureUse !== null) uses[cost.featureUse] = Math.max(0, (uses[cost.featureUse] ?? 0) - 1);
         const attacksLeft = spendsAnAttack
           ? Math.max(0, combatant.budget.attacksLeft - 1)
@@ -122,7 +121,7 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
             reaction: cost.reaction ? false : combatant.budget.reaction,
             attacksLeft,
           },
-          resources: { spellSlots: slots, featureUses: uses },
+          resources: { ...resources, featureUses: uses },
         };
       });
       return { ...spent, resolution, sequence: event.sequence, pendingRolls: { ...spent.pendingRolls, ...event.pendingRolls } };
@@ -176,7 +175,7 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
       return update(answered, event.targetId, (combatant) => ({
         ...combatant,
         budget: { ...combatant.budget, reaction: false },
-        resources: { ...combatant.resources, spellSlots: { ...combatant.resources.spellSlots, [slotLevel]: Math.max(0, (combatant.resources.spellSlots[slotLevel] ?? 0) - 1) } },
+        resources: spendSlot(combatant.resources, slotLevel),
       }));
     }
     case "triggersBegan":

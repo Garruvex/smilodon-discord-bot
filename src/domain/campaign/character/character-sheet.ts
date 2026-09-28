@@ -59,6 +59,16 @@ export interface CharacterSheet {
   readonly worn?: readonly ContentId<"item">[];
   readonly features: readonly ContentId<"feature">[];
   readonly spellcasting: Spellcasting | null;
+  // Pact Magic (Warlock): a second, separate pool of slots that recovers on
+  // a short rest, not just a long one — SRD 5.1's actual distinction from
+  // every other caster's slots (`spellcasting.slots` above). Present exactly
+  // when the hero holds Warlock levels; its ability is `spellcasting.ability`
+  // (always Charisma for a Warlock, and this character's one ability for
+  // spellcasting generally — the same single-ability simplification every
+  // multiclassed caster already takes, character/leveling.ts's
+  // combinedSpellcasting). Spending prefers `spellcasting.slots` first,
+  // falling back to this pool (engine/combat/evolve-combat.ts's spendSlot).
+  readonly pactMagic?: { readonly slots: Readonly<Record<number, number>> };
   // A hero brought from the character library: the library character and the
   // exact snapshot this campaign's copy was made from. Progress saved from
   // this campaign continues from that snapshot on its own branch.

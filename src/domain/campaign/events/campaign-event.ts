@@ -128,6 +128,8 @@ export type CampaignEvent =
       // multiclass skill this level granted (character/leveling.ts).
       readonly classLevels: Readonly<Partial<Record<string, number>>>;
       readonly skills: CharacterSheet["skills"];
+      // Present exactly when this recomputes to a Warlock holding levels.
+      readonly pactMagic?: CharacterSheet["pactMagic"];
     }
   // The hero's next level will land in `buildClass` (character-build.ts's
   // BuildClass), and, if that class is new to them and grants one, the skill

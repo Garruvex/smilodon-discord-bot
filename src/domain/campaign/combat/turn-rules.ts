@@ -7,7 +7,7 @@ import type { SealedContent } from "../rules/content-registry.js";
 import { healingPotionCost, type HouseRules } from "../rules/house-rules.js";
 import { canAct, conditionLookup, speedOf } from "../effects/effect-queries.js";
 import { castableSlotLevels, slotUnavailable, spellMaxTargets } from "../magic/spell-rules.js";
-import { areEngaged, currentCombatant, engagedWith, isPresent, type AttackOption, type Combatant, type EncounterState } from "./combat-state.js";
+import { areEngaged, availableSlots, currentCombatant, engagedWith, isPresent, type AttackOption, type Combatant, type EncounterState } from "./combat-state.js";
 import { isWorn } from "./combatant-profile.js";
 import { spellTargetProblem, spellTargets, weaponTargetProblem, weaponTargets } from "./legal-targets.js";
 import { edgeBetween, engageCost, withdrawCost } from "./positioning.js";
@@ -81,14 +81,14 @@ export function attackProblem(encounter: EncounterState, attacker: Combatant, op
 export function smiteProblem(attacker: Combatant, option: AttackOption, slotLevel: number): TurnProblem | null {
   if (!attacker.traits.some((trait) => trait.kind === "divineSmite")) return { code: "unknownFeature" };
   if (option.range.kind !== "melee") return { code: "notMelee" };
-  if ((attacker.resources.spellSlots[slotLevel] ?? 0) < 1) return { code: "noSpellSlot", slotLevel };
+  if ((availableSlots(attacker.resources)[slotLevel] ?? 0) < 1) return { code: "noSpellSlot", slotLevel };
   return null;
 }
 
 // ------------------------------------------------------------- Spells
 
 export function spellSlotProblem(caster: Combatant, spell: SpellDefinition, slotLevel: number): TurnProblem | null {
-  return slotUnavailable(spell, caster.resources.spellSlots, slotLevel) ? { code: "noSpellSlot", slotLevel } : null;
+  return slotUnavailable(spell, availableSlots(caster.resources), slotLevel) ? { code: "noSpellSlot", slotLevel } : null;
 }
 
 export function spellProblem(
@@ -272,7 +272,7 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
       if (spell?.kind !== "spell" || spell.castingTime === "reaction") continue;
       const bonusAction = spell.castingTime === "bonus-action";
       if (costProblem(hero, bonusAction ? "bonusAction" : "action", content) !== null) continue;
-      const slotLevels = castableSlotLevels(spell, hero.resources.spellSlots);
+      const slotLevels = castableSlotLevels(spell, availableSlots(hero.resources));
       const targetIds = spellTargets(encounter, hero, spell, content).map((target) => target.id);
       if (slotLevels.length > 0 && targetIds.length > 0) spells.push({ spell, slotLevels, bonusAction, targetIds });
     }

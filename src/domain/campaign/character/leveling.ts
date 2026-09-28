@@ -155,41 +155,40 @@ type SpellId = NonNullable<CharacterSheet["spellcasting"]>["spells"][number];
 // contributes its own level, every half-caster (Paladin, Ranger) contributes
 // half (rounded down), to one shared slot pool — reusing fullCasterSlots
 // above, since a full caster's own progression already *is* that table at
-// combined level = character level. A hero with only a Pact caster
-// (Warlock) still uses its own table unchanged. Warlock levels alongside
-// another class grant nothing to the shared pool: Pact Magic is SRD's own
-// separate, short-rest-recharging resource, and modeling that second pool
-// (with its own recharge timing) is out of scope here — documented, not
-// guessed at, the same as the race Traits this branch leaves unmodeled.
+// combined level = character level. Pact Magic (Warlock) is genuinely
+// separate — SRD 5.1's own second pool, recovering on a short rest rather
+// than a long one — so it is returned apart, always off the Warlock's own
+// level alone, whether or not the hero holds any other class. `ability` is
+// this character's one spellcasting ability for everything (the multiclass
+// simplification every caster already takes: a real multiclass hero keys
+// each spell to its own class's ability, not modeled here) — the first
+// caster class taken, of any type, so a Warlock-only hero still gets one.
 function combinedSpellcasting(
   classLevels: Readonly<Partial<Record<BuildClass, number>>>,
   previous: CharacterSheet["spellcasting"],
-): CharacterSheet["spellcasting"] {
+): { readonly spellcasting: CharacterSheet["spellcasting"]; readonly pactMagic: CharacterSheet["pactMagic"] } {
   const entries = (Object.entries(classLevels) as readonly [BuildClass, number | undefined][]).filter(
     (entry): entry is [BuildClass, number] => (entry[1] ?? 0) > 0,
   );
-  const soleClass = entries.length === 1 ? entries[0] : undefined;
-  if (soleClass !== undefined && classTemplates[soleClass[0]].casterType === "pact") {
-    const [buildClass, level] = soleClass;
-    const template = classTemplates[buildClass];
-    if (template.spellcastingAbility === null) return null;
-    return { ability: template.spellcastingAbility, spells: previous?.spells ?? template.firstSpells, slots: spellSlotsForLevel("pact", level) };
-  }
 
   let combinedLevel = 0;
+  let pactLevel = 0;
   let ability: Ability | null = null;
   const spells = new Set<SpellId>(previous?.spells ?? []);
   for (const [buildClass, level] of entries) {
     const template = classTemplates[buildClass];
-    if (template.casterType === "full") combinedLevel += level;
-    else if (template.casterType === "half") combinedLevel += Math.floor(level / 2);
-    else continue; // A Pact caster alongside another class, or a non-caster, adds nothing here.
+    if (template.casterType === "none") continue;
     if (ability === null) ability = template.spellcastingAbility;
     const known = level === 1 ? (template.spellcasting?.spells ?? template.firstSpells) : template.firstSpells;
     for (const id of known) spells.add(id);
+    if (template.casterType === "full") combinedLevel += level;
+    else if (template.casterType === "half") combinedLevel += Math.floor(level / 2);
+    else pactLevel = level; // Only one class can ever be the Pact caster.
   }
-  if (combinedLevel === 0 || ability === null) return null;
-  return { ability, spells: [...spells], slots: spellSlotsForLevel("full", combinedLevel) };
+  if (ability === null) return { spellcasting: null, pactMagic: undefined };
+  const spellcasting = { ability, spells: [...spells], slots: combinedLevel > 0 ? spellSlotsForLevel("full", combinedLevel) : {} };
+  const pactMagic = pactLevel > 0 ? { slots: spellSlotsForLevel("pact", pactLevel) } : undefined;
+  return { spellcasting, pactMagic };
 }
 
 // The next state of a hero's numbers after gaining a level in `buildClass` —
@@ -205,7 +204,7 @@ export function levelUp(
   sheet: CharacterSheet,
   buildClass: BuildClass,
   skillChoice?: Skill,
-): Pick<CharacterSheet, "level" | "maxHp" | "abilityScores" | "spellcasting" | "features" | "skills"> & {
+): Pick<CharacterSheet, "level" | "maxHp" | "abilityScores" | "spellcasting" | "features" | "skills" | "pactMagic"> & {
   readonly classLevels: Readonly<Partial<Record<BuildClass, number>>>;
 } {
   const level = sheet.level + 1;
@@ -219,7 +218,7 @@ export function levelUp(
   const classLevel = priorInClass + 1;
   const classLevels: Partial<Record<BuildClass, number>> = { ...priorLevels, [buildClass]: classLevel };
 
-  const spellcasting = combinedSpellcasting(classLevels, sheet.spellcasting);
+  const { spellcasting, pactMagic } = combinedSpellcasting(classLevels, sheet.spellcasting);
 
   const gained = [...(isNewClass ? template.features : []), ...(template.levelFeatures[classLevel] ?? [])];
   const features = gained.length === 0 ? sheet.features : [...sheet.features, ...gained];
@@ -230,5 +229,5 @@ export function levelUp(
     if (choice !== undefined && skills[choice] === undefined) skills[choice] = "proficient";
   }
 
-  return { level, maxHp: sheet.maxHp + hpGain, abilityScores, spellcasting, features, classLevels, skills };
+  return { level, maxHp: sheet.maxHp + hpGain, abilityScores, spellcasting, features, classLevels, skills, ...(pactMagic === undefined ? {} : { pactMagic }) };
 }
