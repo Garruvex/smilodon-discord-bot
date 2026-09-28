@@ -16,7 +16,14 @@ export class OpenAiImageGenerator implements ImageGenerator {
     const response = await fetch(`${this.options.baseUrl}/images/generations`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${this.options.apiKey}` },
-      body: JSON.stringify({ model: this.options.model, prompt: request.prompt.slice(0, 3_800), n: 1, size: this.options.size ?? "1024x1024", response_format: "b64_json" }),
+      body: JSON.stringify({
+        model: this.options.model,
+        prompt: request.prompt.slice(0, 3_800),
+        n: 1,
+        size: this.options.size ?? "1024x1024",
+        // GPT image models always return base64 and reject response_format.
+        ...(this.options.model.startsWith("gpt-image-") ? {} : { response_format: "b64_json" }),
+      }),
       signal: AbortSignal.timeout(request.timeoutMs),
     });
     if (!response.ok) throw new Error(`The image provider answered ${response.status}.`);
