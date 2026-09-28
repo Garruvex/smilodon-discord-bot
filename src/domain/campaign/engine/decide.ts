@@ -125,6 +125,7 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
     case "combatDisengage":
     case "combatDash":
     case "combatDodge":
+    case "combatWildShape":
     case "endTurn":
     case "combatReact":
     case "turnTimerExpired":

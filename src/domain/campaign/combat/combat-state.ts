@@ -51,6 +51,17 @@ export interface Concentration {
   readonly spellId: ContentId<"spell">;
 }
 
+// The hero's own stat block, stashed while Wild Shape borrows a beast's
+// (engine/combat/wild-shape.ts). Restored on reverting.
+export interface WildShapeForm {
+  readonly attacks: readonly AttackOption[];
+  readonly armorClass: number;
+  readonly speed: number;
+  readonly traits: readonly Trait[];
+  readonly maxHp: number;
+  readonly hp: number;
+}
+
 // Every creature in a fight has this one shape (heroes and monsters share one
 // system with different stats).
 export interface Combatant {
@@ -87,6 +98,8 @@ export interface Combatant {
   // condition: unlike every other one, its effects stack and change per
   // level). effect-queries.ts's speedOf/modifiersOf read it directly.
   readonly exhaustion: number;
+  // Non-null while Wild Shaped: the hero's own stat block, to restore on reverting.
+  readonly wildShapeOriginal: WildShapeForm | null;
   readonly condition: CombatantCondition;
   // Conditions, spells that outlast their casting, and stances: one record each,
   // with its source, what it does, and when it ends (effects/effect-instance.ts).

@@ -40,6 +40,10 @@ export type Trait =
   // so there is no real choice to ask about, only whether the reaction and
   // the trait are there.
   | { readonly kind: "uncannyDodge" }
+  // Wild Shape: may borrow a beast's stat block as a bonus action
+  // (engine/combat/wild-shape.ts). A marker; which beasts are offered is
+  // computed there, not carried on the trait.
+  | { readonly kind: "wildShape" }
   // Half damage of these types (rounded down); zero of these types (immune);
   // double these types (vulnerable). A monster stat block's Damage
   // Resistances/Immunities/Vulnerabilities, e.g. Skeleton's bludgeoning

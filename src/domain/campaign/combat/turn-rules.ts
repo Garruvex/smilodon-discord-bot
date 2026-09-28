@@ -39,7 +39,9 @@ export type TurnProblem =
   | { readonly code: "alreadyWorn" }
   | { readonly code: "alreadyWearing" }
   | { readonly code: "notWorn" }
-  | { readonly code: "notUsable" };
+  | { readonly code: "notUsable" }
+  | { readonly code: "alreadyShaped" }
+  | { readonly code: "notShaped" };
 
 // A checked choice: the problem, or what the engine needs to carry it out.
 export type Checked<T> = { readonly problem: TurnProblem } | { readonly value: T };
@@ -99,7 +101,8 @@ export function spellProblem(
 ): Checked<{ readonly spell: SpellDefinition; readonly bonus: boolean; readonly targets: readonly string[] }> {
   const casting = caster.spellcasting;
   const spell = content.find(spellId);
-  if (casting === null || spell?.kind !== "spell" || !casting.spells.includes(spell.id)) return refuse({ code: "unknownSpell" });
+  // Wild Shape: no spellcasting while shaped (SRD 5.1).
+  if (caster.wildShapeOriginal !== null || casting === null || spell?.kind !== "spell" || !casting.spells.includes(spell.id)) return refuse({ code: "unknownSpell" });
   const slot = spellSlotProblem(caster, spell, slotLevel);
   if (slot !== null) return refuse(slot);
   // A reaction spell is cast in response to something, never on the caster's turn.
@@ -115,6 +118,20 @@ export function spellProblem(
     if (problem !== null) return refuse({ code: problem });
   }
   return accept({ spell, bonus, targets });
+}
+
+// ------------------------------------------------------------- Wild Shape
+
+// Simplified: only the Wolf is offered — the one beast in the catalog
+// within a level 2 Druid's CR 1/4 cap (monsters carry no challenge rating
+// yet to check a higher-level Druid's wider cap against, so every Druid
+// with the trait is offered the same single form). monsterId omitted
+// means reverting, checked against wildShapeOriginal instead.
+export function wildShapeProblem(hero: Combatant, content: SealedContent, monsterId?: ContentId<"monster">): TurnProblem | null {
+  if (monsterId === undefined) return hero.wildShapeOriginal === null ? { code: "notShaped" } : null;
+  if (hero.wildShapeOriginal !== null) return { code: "alreadyShaped" };
+  if (!hero.traits.some((trait) => trait.kind === "wildShape")) return { code: "unknownFeature" };
+  return monsterId === "monster:wolf" && content.find(monsterId)?.kind === "monster" ? null : { code: "unknownFeature" };
 }
 
 // ------------------------------------------------------------- Features
@@ -222,6 +239,10 @@ export interface TurnOptions {
   readonly canDashOrDisengage: boolean;
   // Anything left worth spending: ending the turn then asks first.
   readonly hasUnspent: boolean;
+  // Wild Shape: beast forms that may be taken now, and whether the current
+  // shape (if any) may be reverted now. Both cost the bonus action.
+  readonly wildShapeForms: readonly ContentId<"monster">[];
+  readonly canRevertShape: boolean;
 }
 
 // The hero whose turn it is, or null when it is nobody's turn to plan (a roll
@@ -245,7 +266,7 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
       });
 
   const spells: TurnOptions["spells"][number][] = [];
-  if (!busy) {
+  if (!busy && hero.wildShapeOriginal === null) {
     for (const id of hero.spellcasting?.spells ?? []) {
       const spell = content.find(id);
       if (spell?.kind !== "spell" || spell.castingTime === "reaction") continue;
@@ -292,6 +313,8 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
   const canTakeAction = !busy && costProblem(hero, "action", content) === null;
   const cunningAvailable = hero.traits.some((trait) => trait.kind === "cunningAction") && costProblem(hero, "bonusAction", content) === null;
   const canDashOrDisengage = canTakeAction || (!busy && cunningAvailable);
+  const wildShapeForms: ContentId<"monster">[] = busy || wildShapeProblem(hero, content, "monster:wolf") !== null ? [] : ["monster:wolf"];
+  const canRevertShape = !busy && wildShapeProblem(hero, content) === null;
 
   return {
     combatantId: characterId,
@@ -306,6 +329,8 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
     canWithdraw: !busy && withdrawProblem(encounter, hero, content) === null,
     canTakeAction,
     canDashOrDisengage,
+    wildShapeForms,
+    canRevertShape,
     hasUnspent: !busy && (hero.budget.action || hero.budget.bonusAction) && attacks.length + spells.length + features.length + potions.length > 0,
   };
 }

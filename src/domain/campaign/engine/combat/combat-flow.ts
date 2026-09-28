@@ -23,6 +23,7 @@ import { castSpell, declareWeaponAttack, useFeature } from "./combat-actions.js"
 import { startMove } from "./movement.js";
 import { resolveDeathSave } from "./death-saves.js";
 import { beginTurn, endTurn, resumeAfterTriggers, turnTimerExpired, turnTimerId } from "./turn-flow.js";
+import { wildShape } from "./wild-shape.js";
 export { beginEncounter, encounterProblems } from "./encounter-start.js";
 export { afterResolution } from "./movement.js";
 export { awayRestriction, isProtected, onMemberAway } from "./death-saves.js";
@@ -83,6 +84,8 @@ export function handleCombatCommand(decision: Decision, command: CombatCommand):
         decision.request({ kind: "deliver", delivery: { kind: "combatBeat", encounterId: encounter.id, combatantId: hero.id, beat: action } });
         return null;
       });
+    case "combatWildShape":
+      return withHeroTurn(decision, command.combatantId, (hero) => wildShape(decision, hero, command.monsterId));
     case "endTurn":
       return withHeroTurn(decision, command.combatantId, () => {
         endTurn(decision);

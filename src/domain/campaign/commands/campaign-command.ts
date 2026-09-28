@@ -123,6 +123,9 @@ export type CombatCommand =
   | { readonly kind: "combatDisengage"; readonly combatantId: string }
   | { readonly kind: "combatDash"; readonly combatantId: string }
   | { readonly kind: "combatDodge"; readonly combatantId: string }
+  // Wild Shape: borrows a beast's stat block (monsterId) as a bonus action,
+  // or (monsterId omitted) reverts to the hero's own, stashed while shaped.
+  | { readonly kind: "combatWildShape"; readonly combatantId: string; readonly monsterId?: ContentId<"monster"> }
   | { readonly kind: "endTurn"; readonly combatantId: string }
   // The target of a hit answers the reaction window: cast a reaction spell (Shield), or decline (null).
   | { readonly kind: "combatReact"; readonly combatantId: string; readonly spellId: ContentId<"spell"> | null }

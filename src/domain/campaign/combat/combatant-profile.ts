@@ -111,6 +111,7 @@ export function heroCombatant(sheet: CharacterSheet, content: SealedContent, zon
     disengaged: false,
     sneakAttackUsed: false,
     exhaustion: status.exhaustion ?? 0,
+    wildShapeOriginal: null,
     condition: status.hp > 0 ? "active" : "stable",
     effects: [],
     concentration: null,
@@ -126,8 +127,11 @@ export interface MonsterPlacement {
   readonly fleeBelowHpFraction: number | null;
 }
 
-export function monsterCombatant(monster: MonsterDefinition, content: SealedContent, placement: MonsterPlacement): Combatant {
-  const attacks = monster.attacks.flatMap((attack): AttackOption[] => {
+// A monster stat block's attacks as AttackOptions, resolving each one's
+// weapon reference. Shared by monsterCombatant and Wild Shape (engine/combat/
+// wild-shape.ts), which borrows a beast's whole stat block for a hero.
+export function monsterAttackOptions(monster: MonsterDefinition, content: SealedContent): readonly AttackOption[] {
+  return monster.attacks.flatMap((attack): AttackOption[] => {
     const weapon = content.find(attack.weapon);
     if (weapon?.kind !== "item" || weapon.itemType !== "weapon") return [];
     const range = attack.range ?? weapon.range;
@@ -143,6 +147,10 @@ export function monsterCombatant(monster: MonsterDefinition, content: SealedCont
       },
     ];
   });
+}
+
+export function monsterCombatant(monster: MonsterDefinition, content: SealedContent, placement: MonsterPlacement): Combatant {
+  const attacks = monsterAttackOptions(monster, content);
   const saves = Object.fromEntries(abilities.map((ability) => [ability, abilityModifier(monster.abilityScores[ability])])) as Record<Ability, number>;
   return {
     id: placement.id,
@@ -170,6 +178,7 @@ export function monsterCombatant(monster: MonsterDefinition, content: SealedCont
     disengaged: false,
     sneakAttackUsed: false,
     exhaustion: 0,
+    wildShapeOriginal: null,
     condition: "active",
     effects: [],
     concentration: null,

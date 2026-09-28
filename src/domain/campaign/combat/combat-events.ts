@@ -17,6 +17,7 @@ import type {
   PendingEffectRoll,
   PendingMove,
   ResolutionState,
+  WildShapeForm,
   ZoneId,
 } from "./combat-state.js";
 
@@ -109,6 +110,20 @@ export type CombatEvent =
   | { readonly kind: "exhaustionChanged"; readonly combatantId: CombatantId; readonly level: number }
   // Uncanny Dodge halved an attack's damage; spends the reaction it uses.
   | { readonly kind: "uncannyDodgeUsed"; readonly combatantId: CombatantId }
+  // Wild Shape: transforming into (or reverting from) a beast's stat block.
+  // original: the hero's own stats to restore later, stashed on transforming;
+  // null on reverting, since there is then nothing left to stash.
+  | {
+      readonly kind: "wildShapeChanged";
+      readonly combatantId: CombatantId;
+      readonly attacks: readonly AttackOption[];
+      readonly armorClass: number;
+      readonly speed: number;
+      readonly traits: readonly Trait[];
+      readonly maxHp: number;
+      readonly hp: number;
+      readonly original: WildShapeForm | null;
+    }
   | { readonly kind: "concentrationStarted"; readonly combatantId: CombatantId; readonly concentration: Concentration }
   | { readonly kind: "concentrationEnded"; readonly combatantId: CombatantId; readonly reason: "newSpell" | "failedSave" | "downed" | "expired" }
   | {
@@ -189,6 +204,7 @@ export const combatEventKinds: readonly CombatEventKind[] = [
   "sneakAttackUsed",
   "exhaustionChanged",
   "uncannyDodgeUsed",
+  "wildShapeChanged",
   "concentrationStarted",
   "concentrationEnded",
   "concentrationSaveRequested",

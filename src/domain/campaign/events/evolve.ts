@@ -159,6 +159,7 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     case "sneakAttackUsed":
     case "exhaustionChanged":
     case "uncannyDodgeUsed":
+    case "wildShapeChanged":
     case "concentrationStarted":
     case "concentrationEnded":
     case "concentrationSaveRequested":

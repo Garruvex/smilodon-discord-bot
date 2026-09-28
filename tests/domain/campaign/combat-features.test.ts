@@ -250,6 +250,39 @@ describe("class features", () => {
     expect(ofKind(fight, "uncannyDodgeUsed")).toEqual([{ kind: "uncannyDodgeUsed", combatantId: "c-mira" }]);
   });
 
+  it("swaps a Wild Shaped hero's whole stat block for the Wolf's, and restores it exactly on reverting", () => {
+    const base = partyOfThree();
+    const elspeth = base.characters["c-elspeth"];
+    if (elspeth === undefined) throw new Error("fixture");
+    const druid = { ...base, characters: { ...base.characters, "c-elspeth": { ...elspeth, features: [...elspeth.features, "feature:wild-shape" as const] } } };
+    const fight = elspethFirst(druid);
+    const before = fight.combatant("c-elspeth");
+    expect(before.wildShapeOriginal).toBeNull();
+
+    fight.run(sam, { kind: "combatWildShape", combatantId: "c-elspeth", monsterId: "monster:wolf" });
+    const wolf = fight.combatant("c-elspeth");
+    expect(wolf).toMatchObject({ armorClass: 13, maxHp: 11, hp: 11, speed: 40, traits: [{ kind: "packTactics" }] });
+    expect(wolf.attacks[0]?.weapon).toBe("item:bite");
+    expect(wolf.wildShapeOriginal).toMatchObject({ armorClass: before.armorClass, maxHp: before.maxHp, hp: before.hp, speed: before.speed });
+    // No spellcasting while shaped, even though her spellcasting data is untouched.
+    expect(fight.reject(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:sacred-flame", slotLevel: 0, targetIds: ["goblin-a"] })).toEqual({ code: "unknownSpell" });
+    const shapedOptions = turnOptions(fight.encounter, fight.state.characters["c-elspeth"], ruleset().content, ruleset().houseRules, "c-elspeth");
+    expect(shapedOptions?.spells).toEqual([]);
+    expect(shapedOptions?.wildShapeForms).toEqual([]);
+    expect(shapedOptions?.canRevertShape).toBe(true);
+    expect(fight.reject(sam, { kind: "combatWildShape", combatantId: "c-elspeth", monsterId: "monster:wolf" })).toEqual({ code: "alreadyShaped" });
+
+    fight.run(sam, { kind: "combatWildShape", combatantId: "c-elspeth" });
+    expect(fight.combatant("c-elspeth")).toMatchObject({ armorClass: before.armorClass, maxHp: before.maxHp, hp: before.hp, speed: before.speed, traits: before.traits });
+    expect(fight.combatant("c-elspeth").wildShapeOriginal).toBeNull();
+    expect(fight.reject(sam, { kind: "combatWildShape", combatantId: "c-elspeth" })).toEqual({ code: "notShaped" });
+  });
+
+  it("refuses Wild Shape without the feature", () => {
+    const fight = elspethFirst();
+    expect(fight.reject(sam, { kind: "combatWildShape", combatantId: "c-elspeth", monsterId: "monster:wolf" })).toEqual({ code: "unknownFeature" });
+  });
+
   it("lets Cunning Action Dash as a bonus action, keeping the action free to attack with", () => {
     const base = newCampaign();
     const mira = base.characters["c-mira"];
