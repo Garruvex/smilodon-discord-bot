@@ -67,6 +67,7 @@ export const enSrd51Glossary: Glossary = {
     "feature:extra-attack-3": "Extra Attack (3)",
     "feature:action-surge": "Action Surge",
     "feature:cunning-action": "Cunning Action",
+    "feature:uncanny-dodge": "Uncanny Dodge",
     "feature:channel-divinity": "Channel Divinity",
     "feature:reckless-attack": "Reckless Attack",
     "feature:jack-of-all-trades": "Jack of All Trades",

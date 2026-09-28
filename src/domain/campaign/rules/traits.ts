@@ -34,6 +34,12 @@ export type Trait =
   | { readonly kind: "cunningAction" }
   // Divine Smite: a melee hit can spend a spell slot for bonus radiant damage.
   | { readonly kind: "divineSmite" }
+  // Uncanny Dodge: halves an attack's damage. Simplified: applied
+  // automatically whenever available (resolution.ts) rather than offered as
+  // a reaction prompt — unlike Shield, it has no cost or downside to weigh,
+  // so there is no real choice to ask about, only whether the reaction and
+  // the trait are there.
+  | { readonly kind: "uncannyDodge" }
   // Half damage of these types (rounded down); zero of these types (immune);
   // double these types (vulnerable). A monster stat block's Damage
   // Resistances/Immunities/Vulnerabilities, e.g. Skeleton's bludgeoning

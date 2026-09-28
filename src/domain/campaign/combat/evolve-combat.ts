@@ -207,6 +207,8 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
       }));
       return event.level >= 6 ? withoutEngagements(updated, event.combatantId) : updated;
     }
+    case "uncannyDodgeUsed":
+      return update(encounter, event.combatantId, (combatant) => ({ ...combatant, budget: { ...combatant.budget, reaction: false } }));
     case "concentrationStarted":
       return update(encounter, event.combatantId, (combatant) => ({ ...combatant, concentration: event.concentration }));
     case "concentrationEnded":

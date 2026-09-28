@@ -297,9 +297,18 @@ export function applyEffect(
 ): void {
   const round = activeEncounter(decision)?.round ?? 0;
   switch (effect.kind) {
-    case "damage":
-      applyDamage(decision, recipient, resolution.rolled[key] ?? 0, critical, effect.damageType);
+    case "damage": {
+      const rolled = resolution.rolled[key] ?? 0;
+      // Uncanny Dodge: halves an attack's damage, automatically whenever
+      // the reaction is there (see the trait's own comment for why no
+      // prompt). Only against an attack roll, not a saving throw, matching
+      // the SRD ("hits you with an attack").
+      const isAttack = resolution.plan.check?.kind === "weaponAttack" || resolution.plan.check?.kind === "spellAttack";
+      const dodges = isAttack && recipient.traits.some((trait) => trait.kind === "uncannyDodge") && recipient.budget.reaction;
+      if (dodges) decision.emit({ kind: "uncannyDodgeUsed", combatantId: recipient.id });
+      applyDamage(decision, recipient, dodges ? Math.floor(rolled / 2) : rolled, critical, effect.damageType);
       return;
+    }
     case "heal":
       applyHealing(decision, recipient, resolution.rolled[key] ?? 0);
       return;

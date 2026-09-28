@@ -107,6 +107,8 @@ export type CombatEvent =
   | { readonly kind: "sneakAttackUsed"; readonly combatantId: CombatantId }
   // Exhaustion changed to this level (0-6), clamped by the caller. Level 6 kills.
   | { readonly kind: "exhaustionChanged"; readonly combatantId: CombatantId; readonly level: number }
+  // Uncanny Dodge halved an attack's damage; spends the reaction it uses.
+  | { readonly kind: "uncannyDodgeUsed"; readonly combatantId: CombatantId }
   | { readonly kind: "concentrationStarted"; readonly combatantId: CombatantId; readonly concentration: Concentration }
   | { readonly kind: "concentrationEnded"; readonly combatantId: CombatantId; readonly reason: "newSpell" | "failedSave" | "downed" | "expired" }
   | {
@@ -186,6 +188,7 @@ export const combatEventKinds: readonly CombatEventKind[] = [
   "triggersFinished",
   "sneakAttackUsed",
   "exhaustionChanged",
+  "uncannyDodgeUsed",
   "concentrationStarted",
   "concentrationEnded",
   "concentrationSaveRequested",

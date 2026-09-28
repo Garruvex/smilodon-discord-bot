@@ -233,6 +233,23 @@ describe("class features", () => {
     expect(borinFirst(legend).combatant("c-borin").budget.attacksLeft).toBe(4);
   });
 
+  it("halves a hit's damage with Uncanny Dodge, spending the reaction so a second hit that round lands in full", () => {
+    const base = newCampaign();
+    const mira = base.characters["c-mira"];
+    if (mira === undefined) throw new Error("fixture");
+    const dodgy = { ...base, characters: { ...base.characters, "c-mira": { ...mira, level: 5, features: [...mira.features, "feature:uncanny-dodge" as const] } } };
+    // One goblin only, so exactly one attack lands per round.
+    const oneGoblin: EncounterSpec = { ...skirmish, monsters: [{ monsterId: "monster:goblin", zoneId: "courtyard", npcId: null, fleeBelowHpFraction: null }] };
+    const fight = new Fight(dodgy).rolls([20, 15, 5]).run(organizer, { kind: "startEncounter", spec: oneGoblin });
+    fight.run(alex, { kind: "combatDodge", combatantId: "c-mira" });
+    fight.run(alex, { kind: "endTurn", combatantId: "c-mira" });
+    // The goblin (unengaged, so it shoots), disadvantaged by Mira's own Dodge: two dice, the lower kept.
+    fight.rolls([15, 18], [4]).run(jamie, { kind: "endTurn", combatantId: "c-borin" });
+    // 4 rolled + 2 = 6, halved to 3.
+    expect(fight.combatant("c-mira").hp).toBe(6);
+    expect(ofKind(fight, "uncannyDodgeUsed")).toEqual([{ kind: "uncannyDodgeUsed", combatantId: "c-mira" }]);
+  });
+
   it("lets Cunning Action Dash as a bonus action, keeping the action free to attack with", () => {
     const base = newCampaign();
     const mira = base.characters["c-mira"];

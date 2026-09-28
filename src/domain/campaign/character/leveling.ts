@@ -189,7 +189,7 @@ const levelFeatures: Readonly<Record<BuildClass, Readonly<Record<number, readonl
     11: ["feature:extra-attack-2"],
     20: ["feature:extra-attack-3"],
   },
-  rogue: { 2: ["feature:cunning-action"], 3: ["feature:roguish-archetype"] },
+  rogue: { 2: ["feature:cunning-action"], 3: ["feature:roguish-archetype"], 5: ["feature:uncanny-dodge"] },
   cleric: { 2: ["feature:channel-divinity"] },
   barbarian: { 2: ["feature:reckless-attack"], 3: ["feature:primal-path"], 5: ["feature:extra-attack"] },
   bard: { 2: ["feature:jack-of-all-trades"], 3: ["feature:bard-college"] },

@@ -72,6 +72,7 @@ export const zhTwSrd51Glossary: Glossary = {
     "feature:extra-attack-3": "額外攻擊(三)",
     "feature:action-surge": "越戰越勇",
     "feature:cunning-action": "詭詐行動",
+    "feature:uncanny-dodge": "神出鬼沒",
     "feature:channel-divinity": "神聖引導",
     "feature:reckless-attack": "不顧一切",
     "feature:jack-of-all-trades": "萬事通",
