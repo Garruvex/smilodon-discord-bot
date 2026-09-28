@@ -22,7 +22,7 @@ import type { CampaignEvent } from "../../../src/domain/campaign/events/campaign
 import type { CharacterSheet } from "../../../src/domain/campaign/character/character-sheet.js";
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
 import { InMemoryCampaignStore } from "../../../src/infrastructure/persistence/campaign/in-memory-campaign-store.js";
-import { alex, jamie, newCampaign, organizer, ruleset, run, system } from "../../domain/campaign/campaign-fixtures.js";
+import { alex, d20Roll, jamie, newCampaign, organizer, ruleset, run, system } from "../../domain/campaign/campaign-fixtures.js";
 import { secrets, testBible } from "./dm-fixtures.js";
 
 const key: CampaignKey = { guildId: "g-1", campaignId: "camp-1" };
@@ -397,6 +397,40 @@ describe("narrateUtilityCast", () => {
     expect(await worker.runOnce()).toEqual({ processed: 1, failed: [] });
     const log = await events(store);
     expect(log).toContainEqual({ kind: "utilityCastNarrated", castId: "cast:1", text: "Rowan casts Detect Magic." });
+  });
+});
+
+describe("narrateHazard", () => {
+  async function tableWithAHazard(narrator: ScriptedNarrator): Promise<Table> {
+    const state = { ...startState(), characters: { ...startState().characters, "c-rowan": rowan } };
+    const table_ = await table(new ScriptedPlanner([]), narrator, state);
+    await table_.bus.execute(key, { kind: "faceHazard", characterId: "c-rowan", ability: "con", dc: 5 }, { commandId: "hazard-1", actor: organizer });
+    const stored = await table_.store.transaction((tx) => tx.loadCampaign(key));
+    const pending = stored?.state.hazardPending?.["c-rowan"];
+    if (pending === undefined) throw new Error("Expected a pending hazard.");
+    // Rowan's CON 14 (+2), no save proficiency, no Exhaustion yet: a natural 20 always clears DC 5.
+    const roll = d20Roll("normal", [20], 2);
+    await table_.bus.execute(key, { kind: "recordRoll", rollId: pending.rollId, result: { kind: "d20Test", roll } }, { commandId: "hazard-roll-1", actor: system });
+    return table_;
+  }
+
+  it("resolves the hero's name and the save's ability from the check label", async () => {
+    const narrator = new ScriptedNarrator([], [], [], [], [], [{ text: "Rowan shrugs off the biting cold." }]);
+    const { store, worker } = await tableWithAHazard(narrator);
+    expect(await worker.runOnce()).toEqual({ processed: 1, failed: [] });
+
+    expect(narrator.hazardRequests[0]).toMatchObject({ heroName: "Rowan", ability: "con check", dc: 5, total: 22, success: true, exhaustionGained: 0 });
+    const log = await events(store);
+    expect(log).toContainEqual({ kind: "hazardNarrated", hazardId: "hazard:1", text: "Rowan shrugs off the biting cold." });
+  });
+
+  it("falls back to a template line once the Narrator's attempts are spent", async () => {
+    const narrator = new ScriptedNarrator([], [], [], [], [], [new Error("rate limited"), new Error("rate limited")]);
+    const { store, worker } = await tableWithAHazard(narrator);
+    expect(await worker.runOnce()).toMatchObject({ processed: 0, failed: [{ error: "rate limited" }] });
+    expect(await worker.runOnce()).toEqual({ processed: 1, failed: [] });
+    const log = await events(store);
+    expect(log).toContainEqual({ kind: "hazardNarrated", hazardId: "hazard:1", text: "Rowan pushes through the ordeal unscathed." });
   });
 });
 

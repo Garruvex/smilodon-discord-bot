@@ -10,6 +10,7 @@ import type {
   CombatNarratorRequest,
   DialogueNarratorRequest,
   DmContext,
+  HazardNarratorRequest,
   NarratedOutcome,
   NarratorRequest,
   PlannerEffect,
@@ -29,8 +30,9 @@ export const flourishPromptVersion = "flourish-5";
 export const tradePromptVersion = "trade-2";
 export const dialoguePromptVersion = "dialogue-2";
 export const utilityCastPromptVersion = "utility-cast-2";
+export const hazardPromptVersion = "hazard-2";
 
-export type ModelCallKind = "planner" | "narrator" | "flourish" | "trade" | "dialogue" | "utilityCast";
+export type ModelCallKind = "planner" | "narrator" | "flourish" | "trade" | "dialogue" | "utilityCast" | "hazard";
 
 export interface ModelCallObserver {
   (call: { readonly call: ModelCallKind; readonly model: string; readonly promptVersion: string; readonly usage: ModelUsage | null }): void;
@@ -372,6 +374,19 @@ export class LlmCampaignNarrator implements CampaignNarrator {
     this.options.onCall?.({ call: "utilityCast", model: response.model, promptVersion: utilityCastPromptVersion, usage: response.usage });
     return { text: parseNarratorOutput(response.text) };
   }
+
+  public async narrateHazard(request: HazardNarratorRequest): Promise<{ readonly text: string }> {
+    const response = await this.options.client.generate({
+      ...buildHazardNarratorPrompt(request),
+      ...cacheKeyFor(this.options, "hazard"),
+      schemaName: "campaign_hazard_narration",
+      jsonSchema: narratorJsonSchema,
+      maxOutputTokens: this.options.maxOutputTokens ?? 400,
+      timeoutMs: this.options.timeoutMs ?? 20_000,
+    });
+    this.options.onCall?.({ call: "hazard", model: response.model, promptVersion: hazardPromptVersion, usage: response.usage });
+    return { text: parseNarratorOutput(response.text) };
+  }
 }
 
 // The price and who won any haggle are already decided (engine/shop.ts); this
@@ -440,6 +455,22 @@ export function buildUtilityCastNarratorPrompt(request: UtilityCastNarratorReque
     "Never mention dice, DCs, or checks; this spell needed none.",
   ].join("\n");
   return splitPrompt(request.context, rules, `${request.heroName} casts ${request.spell.name}.`);
+}
+
+// Whether the save succeeded and whether it cost a level of Exhaustion are
+// already decided (engine/travel.ts); this call only describes the toll the
+// journey or terrain took, never the roll itself.
+export function buildHazardNarratorPrompt(request: HazardNarratorRequest): { system: string; user: string } {
+  const zh = request.language === "zh-TW";
+  const rules = [
+    "## Output rules",
+    zh ? "Write 40-150 Traditional Chinese characters (Taiwan usage) in the narration field." : "Write at most 60 words of English, in the DM's descriptive voice.",
+    "Describe the hazard itself and how it tells on the party, drawing only on the scene context above. Never mention dice, DCs, or checks.",
+  ].join("\n");
+  const situation = request.success
+    ? `${request.heroName} pushes through the hazard, unscathed.`
+    : `${request.heroName} is worn down by the hazard, gaining a level of Exhaustion.`;
+  return splitPrompt(request.context, rules, situation);
 }
 
 // ---------------------------------------------------------------- Combat

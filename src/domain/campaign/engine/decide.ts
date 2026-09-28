@@ -11,6 +11,7 @@ import { handleInventoryCommand } from "./inventory.js";
 import { takeRest } from "./rest.js";
 import { handleDialogueCommand, recordPressRoll } from "./dialogue.js";
 import { handleShopCommand, recordHaggleRoll } from "./shop.js";
+import { handleTravelCommand, recordHazardRoll } from "./travel.js";
 import { handleUtilityMagicCommand } from "./utility-magic.js";
 import { Decision, type DecideResult, type EngineContext } from "./decision.js";
 import { beginAdventure, beginPlay, illustrateMoment, markReady, redoPicture, recordLedgerFact, recordNarration, recordOpening, recordSummary, regenerateNarration, replaceNarration, reportPlannerFailure, retryPlan } from "./dm.js";
@@ -129,6 +130,9 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
     case "castRitualSpell":
     case "recordUtilityCastNarration":
       return handleUtilityMagicCommand(decision, command);
+    case "faceHazard":
+    case "recordHazardNarration":
+      return handleTravelCommand(decision, command);
     case "chooseClassLevel": {
       const skillChoice = command.skillChoice !== undefined && isSkill(command.skillChoice) ? command.skillChoice : undefined;
       return chooseClassLevel(decision, command.characterId, command.buildClass, skillChoice);
@@ -168,5 +172,7 @@ function recordRoll(decision: Decision, rollId: RollId, result: RollResult): Rej
   if (haggle !== undefined) return recordHaggleRoll(decision, haggle, result);
   const press = Object.values(decision.state.pressPending ?? {}).find((candidate) => candidate.rollId === rollId);
   if (press !== undefined) return recordPressRoll(decision, press, result);
+  const hazard = Object.values(decision.state.hazardPending ?? {}).find((candidate) => candidate.rollId === rollId);
+  if (hazard !== undefined) return recordHazardRoll(decision, hazard, result);
   return recordCombatRoll(decision, rollId, result);
 }

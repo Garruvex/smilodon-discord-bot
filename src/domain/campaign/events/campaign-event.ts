@@ -7,7 +7,19 @@ import type { EncounterSpec, PlannedEffect } from "../commands/campaign-command.
 import type { CharacterSheet } from "../character/character-sheet.js";
 import type { Ability } from "../rules/effects.js";
 import type { ContentId } from "../rules/content-id.js";
-import type { CheckResult, CheckState, DialogueRecord, ItemOffer, PendingHaggle, PendingPress, Resolution, TradeRecord, UtilityCastRecord } from "../state/campaign-state.js";
+import type {
+  CheckResult,
+  CheckState,
+  DialogueRecord,
+  HazardRecord,
+  ItemOffer,
+  PendingHaggle,
+  PendingHazard,
+  PendingPress,
+  Resolution,
+  TradeRecord,
+  UtilityCastRecord,
+} from "../state/campaign-state.js";
 import type { Skill } from "../rules/skills.js";
 
 // The version of the event shapes below. It goes up whenever a change to an
@@ -160,6 +172,17 @@ export type CampaignEvent =
   | { readonly kind: "utilitySpellCast"; readonly cast: UtilityCastRecord }
   // The Narrator's line for a settled utility cast; the cast record is spent.
   | { readonly kind: "utilityCastNarrated"; readonly castId: string; readonly text: string }
+  // A hazard save was requested; the pending state a settled roll needs to finish it.
+  | { readonly kind: "hazardStarted"; readonly hazard: PendingHazard }
+  // A hazard save landed — Exhaustion gained on a failure, nothing on a
+  // success — and is now waiting on a Narrator line. `heroStatus`, when
+  // present, is the hero's full resolved status with that Exhaustion
+  // already folded in (engine/travel.ts defaults it, the same way
+  // engine/rest.ts does, when the hero never had one yet); absent only if
+  // the hero's sheet somehow no longer exists.
+  | { readonly kind: "hazardSettled"; readonly hazard: HazardRecord; readonly heroStatus?: HeroStatus }
+  // The Narrator's line for a settled hazard; the hazard record is spent.
+  | { readonly kind: "hazardNarrated"; readonly hazardId: string; readonly text: string }
   | CombatEvent;
 
 export type OfferClosedReason = "declined" | "cancelled" | "unavailable";

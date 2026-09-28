@@ -22,6 +22,8 @@ export type EngineRequest =
   | { readonly kind: "narrateDialogue"; readonly dialogueId: string }
   // A ritual spell cast outside combat, waiting on what it reveals or does (engine/utility-magic.ts).
   | { readonly kind: "narrateUtilityCast"; readonly castId: string }
+  // A settled travel or environmental hazard, waiting on the toll it took (engine/travel.ts).
+  | { readonly kind: "narrateHazard"; readonly hazardId: string }
   // A picture for a scene the party just entered; made in the background and never awaited.
   | { readonly kind: "sceneImage"; readonly sceneId: string; readonly roundNumber: number }
   // A portrait of a monster the party meets for the first time (or of the named NPC it plays); made once and reused.
@@ -94,4 +96,6 @@ export type DeliverySpec =
   // A conversation's NPC reply is ready.
   | { readonly kind: "dialogueNarrated"; readonly dialogueId: string }
   // A ritual spell's outside-combat effect is ready.
-  | { readonly kind: "utilityCastNarrated"; readonly castId: string };
+  | { readonly kind: "utilityCastNarrated"; readonly castId: string }
+  // A hazard's Narrator line is ready.
+  | { readonly kind: "hazardNarrated"; readonly hazardId: string };

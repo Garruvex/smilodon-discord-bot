@@ -73,6 +73,8 @@ export function buildStartingState(input: {
     dialogueCount: 0,
     utilityCasts: {},
     utilityCastCount: 0,
+    hazards: {},
+    hazardCount: 0,
     fightCheckpoint: null,
     pausedBy: null,
     clocks: {},

@@ -3,6 +3,7 @@ import type {
   CampaignPlanner,
   CombatNarratorRequest,
   DialogueNarratorRequest,
+  HazardNarratorRequest,
   NarratorRequest,
   PlannerEffect,
   PlannerProposal,
@@ -37,6 +38,7 @@ export class ScriptedNarrator implements CampaignNarrator {
   public readonly tradeRequests: TradeNarratorRequest[] = [];
   public readonly dialogueRequests: DialogueNarratorRequest[] = [];
   public readonly utilityCastRequests: UtilityCastNarratorRequest[] = [];
+  public readonly hazardRequests: HazardNarratorRequest[] = [];
 
   public constructor(
     private readonly script: Scripted<NarratorRequest, { readonly text: string }>[],
@@ -44,6 +46,7 @@ export class ScriptedNarrator implements CampaignNarrator {
     private readonly tradeScript: Scripted<TradeNarratorRequest, { readonly text: string }>[] = [],
     private readonly dialogueScript: Scripted<DialogueNarratorRequest, { readonly text: string }>[] = [],
     private readonly utilityCastScript: Scripted<UtilityCastNarratorRequest, { readonly text: string }>[] = [],
+    private readonly hazardScript: Scripted<HazardNarratorRequest, { readonly text: string }>[] = [],
   ) {}
 
   public narrate(request: NarratorRequest): Promise<{ readonly text: string }> {
@@ -69,6 +72,11 @@ export class ScriptedNarrator implements CampaignNarrator {
   public narrateUtilityCast(request: UtilityCastNarratorRequest): Promise<{ readonly text: string }> {
     this.utilityCastRequests.push(request);
     return next(this.utilityCastScript, request, "utility cast narrator");
+  }
+
+  public narrateHazard(request: HazardNarratorRequest): Promise<{ readonly text: string }> {
+    this.hazardRequests.push(request);
+    return next(this.hazardScript, request, "hazard narrator");
   }
 }
 

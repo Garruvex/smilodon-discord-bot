@@ -253,6 +253,19 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       const { [event.castId]: _narrated, ...utilityCasts } = state.utilityCasts;
       return { ...state, utilityCasts };
     }
+    case "hazardStarted":
+      return { ...state, hazardPending: { ...state.hazardPending, [event.hazard.characterId]: event.hazard } };
+    case "hazardSettled": {
+      const { hazard, heroStatus } = event;
+      const { [hazard.characterId]: _spentHazard, ...hazardPending } = state.hazardPending ?? {};
+      const withHazard: CampaignState = { ...state, hazardPending, hazards: { ...state.hazards, [hazard.id]: hazard }, hazardCount: state.hazardCount + 1 };
+      if (heroStatus === undefined) return withHazard;
+      return { ...withHazard, heroStatus: { ...withHazard.heroStatus, [hazard.characterId]: heroStatus } };
+    }
+    case "hazardNarrated": {
+      const { [event.hazardId]: _narrated, ...hazards } = state.hazards;
+      return { ...state, hazards };
+    }
     case "itemUsed": {
       const sheet = state.characters[event.characterId];
       if (sheet === undefined) return state;

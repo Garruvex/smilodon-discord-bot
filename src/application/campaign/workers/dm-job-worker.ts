@@ -19,6 +19,7 @@ import type {
   CombatNarratorRequest,
   DialogueNarratorRequest,
   DmContext,
+  HazardNarratorRequest,
   NarratedOutcome,
   NarratorRequest,
   TradeNarratorRequest,
@@ -57,6 +58,7 @@ export class DmJobWorker {
       ...(await tx.pendingOutbox("narrateTrade")),
       ...(await tx.pendingOutbox("narrateDialogue")),
       ...(await tx.pendingOutbox("narrateUtilityCast")),
+      ...(await tx.pendingOutbox("narrateHazard")),
       ...(await tx.pendingOutbox("chronicle")),
       ...(await tx.pendingOutbox("renarrate")),
     ]);
@@ -70,6 +72,7 @@ export class DmJobWorker {
         if (item.request.kind === "narrateTrade") await this.narrateTrade(item, item.request.tradeId);
         if (item.request.kind === "narrateDialogue") await this.narrateDialogue(item, item.request.dialogueId);
         if (item.request.kind === "narrateUtilityCast") await this.narrateUtilityCast(item, item.request.castId);
+        if (item.request.kind === "narrateHazard") await this.narrateHazard(item, item.request.hazardId);
         if (item.request.kind === "chronicle") await this.chronicle(item, item.request.throughRound);
         if (item.request.kind === "renarrate") await this.renarrate(item, item.request.roundNumber);
         await unitOfWork.transaction((tx) => tx.completeOutbox(item.id));
@@ -315,6 +318,22 @@ export class DmJobWorker {
     await this.options.bus.execute(item.key, { kind: "recordUtilityCastNarration", castId, text }, { commandId: `${item.id}:utility-cast-narration`, actor: system });
   }
 
+  // A settled travel or environmental hazard, waiting on its Narrator line
+  // (engine/travel.ts). Same "not load-bearing" shape as the other outside-combat narrations.
+  private async narrateHazard(item: OutboxItem, hazardId: string): Promise<void> {
+    const loaded = await this.load(item.key);
+    if (loaded.stored.state.hazards[hazardId] === undefined) return; // Already narrated, or gone.
+    const request = this.hazardNarratorRequest(loaded, hazardId);
+    let text: string;
+    try {
+      text = (await this.options.narrator.narrateHazard(request)).text;
+    } catch (error) {
+      if (item.attempts + 1 < this.maxAttempts) throw error;
+      text = fallbackHazardNarration(request);
+    }
+    await this.options.bus.execute(item.key, { kind: "recordHazardNarration", hazardId, text }, { commandId: `${item.id}:hazard-narration`, actor: system });
+  }
+
   private combatNarratorRequest(loaded: Loaded, encounterId: string, round: number, final: boolean): CombatNarratorRequest {
     const { state } = loaded.stored;
     const record = encounterRecords(loaded.events, { state, bible: loaded.bible, glossary: this.glossary(loaded) }).findLast(
@@ -395,6 +414,23 @@ export class DmJobWorker {
       language: state.language,
       heroName: state.characters[cast.characterId]?.name ?? cast.characterId,
       spell: { id: cast.spellId, name: glossary.names[cast.spellId] ?? cast.spellId },
+    };
+  }
+
+  private hazardNarratorRequest(loaded: Loaded, hazardId: string): HazardNarratorRequest {
+    const { state } = loaded.stored;
+    const hazard = state.hazards[hazardId];
+    if (hazard === undefined) throw new Error(`Unknown hazard ${hazardId}.`);
+    return {
+      context: this.context("narrator", loaded),
+      language: state.language,
+      heroName: state.characters[hazard.characterId]?.name ?? hazard.characterId,
+      ability: checkLabel({ kind: "ability", ability: hazard.ability }),
+      dc: hazard.dc,
+      total: hazard.total,
+      success: hazard.success,
+      headline: hazard.moments.headline,
+      exhaustionGained: hazard.exhaustionGained,
     };
   }
 
@@ -506,6 +542,17 @@ function fallbackDialogueNarration(request: DialogueNarratorRequest): string {
 function fallbackUtilityCastNarration(request: UtilityCastNarratorRequest): string {
   const zh = request.language === "zh-TW";
   return zh ? `${request.heroName}施展了${request.spell.name}。` : `${request.heroName} casts ${request.spell.name}.`;
+}
+
+function fallbackHazardNarration(request: HazardNarratorRequest): string {
+  const zh = request.language === "zh-TW";
+  return request.success
+    ? zh
+      ? `${request.heroName}挺過了這段艱苦的路程。`
+      : `${request.heroName} pushes through the ordeal unscathed.`
+    : zh
+      ? `${request.heroName}被這段路程磨得筋疲力盡。`
+      : `${request.heroName} is worn down by the ordeal.`;
 }
 
 function fallbackNarration(request: NarratorRequest): string {

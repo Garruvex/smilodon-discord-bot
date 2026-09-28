@@ -281,6 +281,7 @@ export const campaignEn = {
   "campaign.refusal.pressAlreadyPending": "This hero already has a press roll waiting.",
   "campaign.refusal.secretAlreadyRevealed": "This NPC has already given that up.",
   "campaign.refusal.notARitualSpell": "That spell can't be cast as a ritual.",
+  "campaign.refusal.hazardAlreadyPending": "This hero already has a hazard save waiting.",
   "campaign.refusal.nothingToRedo": "There is no picture to redo yet.",
   "campaign.cmd.illustrated": "A picture of the last scene is being painted, if pictures are set up and this game has budget left.",
   "campaign.refusal.nothingToIllustrate": "There is no told scene to picture yet, or the story has moved on.",

@@ -14,6 +14,7 @@ import type {
   CampaignPlanner,
   CombatNarratorRequest,
   DialogueNarratorRequest,
+  HazardNarratorRequest,
   NarratorRequest,
   PlannerRequest,
   TradeNarratorRequest,
@@ -91,6 +92,7 @@ export interface HarnessRun {
   readonly tradeNarratorRequests: readonly TradeNarratorRequest[];
   readonly dialogueNarratorRequests: readonly DialogueNarratorRequest[];
   readonly utilityCastNarratorRequests: readonly UtilityCastNarratorRequest[];
+  readonly hazardNarratorRequests: readonly HazardNarratorRequest[];
   readonly glossary: Glossary;
   readonly stoppedBecause: "roundLimit" | "waitingForPlayers" | "stalled";
 }
@@ -124,6 +126,7 @@ export async function runHarness(options: HarnessOptions): Promise<HarnessRun> {
   const tradeNarratorRequests: TradeNarratorRequest[] = [];
   const dialogueNarratorRequests: DialogueNarratorRequest[] = [];
   const utilityCastNarratorRequests: UtilityCastNarratorRequest[] = [];
+  const hazardNarratorRequests: HazardNarratorRequest[] = [];
   const bus = new CampaignCommandBus({ unitOfWork, rulesets: options.rulesets, clock });
 
   const planner: CampaignPlanner = {
@@ -149,6 +152,10 @@ export async function runHarness(options: HarnessOptions): Promise<HarnessRun> {
     narrateUtilityCast: (request: UtilityCastNarratorRequest) => {
       utilityCastNarratorRequests.push(request);
       return timed(record, measure, "utilityCast", 0, request.context.estimatedTokens, () => dmParts.narrator.narrateUtilityCast(request));
+    },
+    narrateHazard: (request: HazardNarratorRequest) => {
+      hazardNarratorRequests.push(request);
+      return timed(record, measure, "hazard", 0, request.context.estimatedTokens, () => dmParts.narrator.narrateHazard(request));
     },
   };
   const dm = new DmJobWorker({
@@ -321,6 +328,7 @@ export async function runHarness(options: HarnessOptions): Promise<HarnessRun> {
     tradeNarratorRequests,
     dialogueNarratorRequests,
     utilityCastNarratorRequests,
+    hazardNarratorRequests,
     glossary: options.glossary,
     stoppedBecause,
   };

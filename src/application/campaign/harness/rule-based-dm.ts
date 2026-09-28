@@ -6,6 +6,7 @@ import type {
   CampaignPlanner,
   CombatNarratorRequest,
   DialogueNarratorRequest,
+  HazardNarratorRequest,
   NarratedOutcome,
   NarratorRequest,
   PlannerEffect,
@@ -161,6 +162,18 @@ export class TemplateNarrator implements CampaignNarrator {
     return Promise.resolve({
       text: zh ? `${request.heroName}施展了${request.spell.name}。` : `${request.heroName} casts ${request.spell.name}.`,
     });
+  }
+
+  public narrateHazard(request: HazardNarratorRequest): Promise<{ readonly text: string }> {
+    const zh = request.language === "zh-TW";
+    const text = request.success
+      ? zh
+        ? `${request.heroName}挺過了這段艱苦的路程。`
+        : `${request.heroName} pushes through the ordeal unscathed.`
+      : zh
+        ? `${request.heroName}被這段路程磨得筋疲力盡。`
+        : `${request.heroName} is worn down by the ordeal.`;
+    return Promise.resolve({ text });
   }
 }
 

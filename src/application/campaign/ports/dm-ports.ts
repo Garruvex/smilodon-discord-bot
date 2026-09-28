@@ -153,12 +153,28 @@ export interface UtilityCastNarratorRequest {
   readonly spell: { readonly id: string; readonly name: string };
 }
 
+// A settled travel or environmental hazard (engine/travel.ts): the save, its
+// DC, and whether it cost a level of Exhaustion are already decided; this
+// call only describes the toll the journey or terrain took.
+export interface HazardNarratorRequest {
+  readonly context: DmContext;
+  readonly language: CampaignLanguage;
+  readonly heroName: string;
+  readonly ability: string;
+  readonly dc: number;
+  readonly total: number;
+  readonly success: boolean;
+  readonly headline: RollMoment | null;
+  readonly exhaustionGained: number;
+}
+
 export interface CampaignNarrator {
   narrate(request: NarratorRequest): Promise<{ readonly text: string }>;
   narrateCombat(request: CombatNarratorRequest): Promise<{ readonly text: string }>;
   narrateTrade(request: TradeNarratorRequest): Promise<{ readonly text: string }>;
   narrateDialogue(request: DialogueNarratorRequest): Promise<{ readonly text: string }>;
   narrateUtilityCast(request: UtilityCastNarratorRequest): Promise<{ readonly text: string }>;
+  narrateHazard(request: HazardNarratorRequest): Promise<{ readonly text: string }>;
 }
 
 // The background call that condenses rounds already told (plan §6, Chronicler).

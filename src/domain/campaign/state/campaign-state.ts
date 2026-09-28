@@ -9,6 +9,7 @@ import type { RollMoments } from "../dice/roll-moments.js";
 import type { LedgerEntry } from "../ledger/ledger.js";
 import type { ContentId } from "../rules/content-id.js";
 import type { DcTier } from "../rules/difficulty.js";
+import type { Ability } from "../rules/effects.js";
 
 // The in-memory aggregate the engine decides against. The repository
 // assembles it from the campaign tables; evolve() produces the next one.
@@ -106,6 +107,14 @@ export interface CampaignState {
   // recordUtilityCastNarration lands. Not gameplay state, same as trades.
   readonly utilityCasts: Readonly<Record<string, UtilityCastRecord>>;
   readonly utilityCastCount: number;
+  // A hero's saving throw against a travel or environmental hazard, waiting
+  // for its result (engine/travel.ts). One at a time per hero.
+  readonly hazardPending?: Readonly<Record<CharacterId, PendingHazard>>;
+  // A settled hazard, waiting for the Narrator to describe the toll of the
+  // journey; removed once recordHazardNarration lands. Not gameplay state —
+  // the Exhaustion it grants, if any, already landed on hazardSettled.
+  readonly hazards: Readonly<Record<string, HazardRecord>>;
+  readonly hazardCount: number;
 }
 
 // A pending Persuasion/Deception/Intimidation check over a specific item's
@@ -173,6 +182,33 @@ export interface UtilityCastRecord {
   readonly id: string;
   readonly characterId: CharacterId;
   readonly spellId: ContentId<"spell">;
+}
+
+// A pending saving throw against a travel or environmental hazard
+// (engine/travel.ts's faceHazard): the ability and DC are named by whoever
+// calls it (the organizer, narrating the terrain) — the engine has no bible
+// access to look up a scene's own hazard, the same trust boundary an
+// EncounterSpec's zones and monsters already have.
+export interface PendingHazard {
+  readonly characterId: CharacterId;
+  readonly ability: Ability;
+  readonly dc: number;
+  readonly spec: D20TestSpec;
+  readonly rollId: RollId;
+}
+
+// A settled hazard: a real saving throw decided whether it costs anything —
+// SRD's own "gains a level of exhaustion on a failed save" shape for forced
+// marches and harsh terrain — never narrative fiat.
+export interface HazardRecord {
+  readonly id: string;
+  readonly characterId: CharacterId;
+  readonly ability: Ability;
+  readonly dc: number;
+  readonly total: number;
+  readonly success: boolean;
+  readonly moments: RollMoments;
+  readonly exhaustionGained: number;
 }
 
 export type PauseReason = "organizer" | "recovery" | "safety";

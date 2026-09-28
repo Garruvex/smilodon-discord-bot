@@ -6,6 +6,7 @@ import type { ReminderTarget } from "../engine/engine-request.js";
 import type { LedgerVisibility } from "../ledger/ledger.js";
 import type { ContentId } from "../rules/content-id.js";
 import type { DcTier, RollModeReason } from "../rules/difficulty.js";
+import type { Ability } from "../rules/effects.js";
 
 // Who issued a command. Users are checked against saved campaign state
 // (membership, ownership, organizer); the system covers timers and workers.
@@ -83,6 +84,7 @@ export type CampaignCommand =
   | ShopCommand
   | DialogueCommand
   | UtilityMagicCommand
+  | TravelCommand
   | CombatCommand;
 
 // A hero trades with an NPC's shop outside combat (engine/shop.ts). The
@@ -126,6 +128,15 @@ export type DialogueCommand =
 export type UtilityMagicCommand =
   | { readonly kind: "castRitualSpell"; readonly characterId: CharacterId; readonly spellId: ContentId<"spell"> }
   | { readonly kind: "recordUtilityCastNarration"; readonly castId: string; readonly text: string };
+
+// A travel or environmental hazard outside combat (engine/travel.ts):
+// forced marches, extreme weather, harsh terrain — the organizer names the
+// ability it tests and its DC (the engine has no bible to look either up
+// from), and a real saving throw, not narrative fiat, decides whether the
+// hero gains a level of Exhaustion for it (SRD's own default cost).
+export type TravelCommand =
+  | { readonly kind: "faceHazard"; readonly characterId: CharacterId; readonly ability: Ability; readonly dc: number }
+  | { readonly kind: "recordHazardNarration"; readonly hazardId: string; readonly text: string };
 
 // Items move between heroes outside combat. The owner of the giving hero
 // offers, the owner of the receiving hero answers; the stash is shared.
