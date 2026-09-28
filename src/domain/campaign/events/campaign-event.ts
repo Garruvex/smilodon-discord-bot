@@ -7,7 +7,7 @@ import type { EncounterSpec, PlannedEffect } from "../commands/campaign-command.
 import type { CharacterSheet } from "../character/character-sheet.js";
 import type { Ability } from "../rules/effects.js";
 import type { ContentId } from "../rules/content-id.js";
-import type { CheckResult, CheckState, ItemOffer, PendingHaggle, Resolution, TradeRecord } from "../state/campaign-state.js";
+import type { CheckResult, CheckState, DialogueRecord, ItemOffer, PendingHaggle, PendingPress, Resolution, TradeRecord } from "../state/campaign-state.js";
 import type { Skill } from "../rules/skills.js";
 
 // The version of the event shapes below. It goes up whenever a change to an
@@ -147,6 +147,15 @@ export type CampaignEvent =
   | { readonly kind: "tradeSettled"; readonly trade: TradeRecord; readonly wallet: "pool" | "hero" }
   // The Narrator's line for a settled trade; the trade record is spent.
   | { readonly kind: "tradeNarrated"; readonly tradeId: string; readonly text: string }
+  // A press roll was requested (engine/dialogue.ts's pressNpc); the pending
+  // state a settled roll needs to finish it.
+  | { readonly kind: "pressStarted"; readonly press: PendingPress }
+  // A conversation landed — instantly (askNpc) or once a press roll settled
+  // it — and is now waiting on a Narrator line. `revealSecret`: a press
+  // succeeded, so the NPC's authored secret is now known to the party.
+  | { readonly kind: "dialogueSettled"; readonly dialogue: DialogueRecord; readonly revealSecret: boolean }
+  // The Narrator's line for a settled conversation; the dialogue record is spent.
+  | { readonly kind: "dialogueNarrated"; readonly dialogueId: string; readonly text: string }
   | CombatEvent;
 
 export type OfferClosedReason = "declined" | "cancelled" | "unavailable";

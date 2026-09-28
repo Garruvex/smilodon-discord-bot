@@ -18,6 +18,8 @@ export type EngineRequest =
   | { readonly kind: "narrateCombat"; readonly encounterId: string; readonly round: number; readonly final: boolean }
   // A settled trade's NPC reaction (engine/shop.ts).
   | { readonly kind: "narrateTrade"; readonly tradeId: string }
+  // A settled conversation's NPC reply (engine/dialogue.ts).
+  | { readonly kind: "narrateDialogue"; readonly dialogueId: string }
   // A picture for a scene the party just entered; made in the background and never awaited.
   | { readonly kind: "sceneImage"; readonly sceneId: string; readonly roundNumber: number }
   // A portrait of a monster the party meets for the first time (or of the named NPC it plays); made once and reused.
@@ -86,4 +88,6 @@ export type DeliverySpec =
   // A trade offer waits for the other hero's owner.
   | { readonly kind: "itemOffered"; readonly offerId: string }
   // A shop trade's NPC reaction is ready.
-  | { readonly kind: "tradeNarrated"; readonly tradeId: string };
+  | { readonly kind: "tradeNarrated"; readonly tradeId: string }
+  // A conversation's NPC reply is ready.
+  | { readonly kind: "dialogueNarrated"; readonly dialogueId: string };

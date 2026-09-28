@@ -188,6 +188,7 @@ describe("runHarness", () => {
       narrate: (): Promise<{ text: string }> => Promise.resolve({ text: `这是秘密：${secret}` }),
       narrateCombat: (): Promise<{ text: string }> => Promise.resolve({ text: "..." }),
       narrateTrade: (): Promise<{ text: string }> => Promise.resolve({ text: "..." }),
+      narrateDialogue: (): Promise<{ text: string }> => Promise.resolve({ text: "..." }),
     };
     const report = summarizeRun(await runHarness(options("zh-TW", { dm: () => ({ planner: new RuleBasedPlanner(), narrator: leaky }), rounds: 2 })));
     expect(report.leaks).toEqual([secret]);

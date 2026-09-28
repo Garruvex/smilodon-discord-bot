@@ -88,6 +88,19 @@ export interface CampaignState {
   // lands. Not gameplay state — narration is the only thing still pending.
   readonly trades: Readonly<Record<string, TradeRecord>>;
   readonly tradeCount: number;
+  // A hero's roll to pry an NPC's secret loose, waiting for its result
+  // (engine/dialogue.ts). One at a time per hero; cleared once the roll
+  // settles the conversation.
+  readonly pressPending?: Readonly<Record<CharacterId, PendingPress>>;
+  // A conversation already decided (a plain question, or a settled press),
+  // waiting for the Narrator to voice the NPC's reply; removed once
+  // recordDialogueNarration lands. Not gameplay state, same as trades.
+  readonly dialogues: Readonly<Record<string, DialogueRecord>>;
+  readonly dialogueCount: number;
+  // NPCs who have given up their authored secret (adventure-bible.ts's
+  // BibleNpc.secret) to a successful press; once true, pressNpc refuses a
+  // second attempt on that NPC and later conversation may reference it.
+  readonly npcSecretsRevealed?: Readonly<Record<NpcId, boolean>>;
 }
 
 // A pending Persuasion/Deception/Intimidation check over a specific item's
@@ -120,6 +133,31 @@ export interface TradeRecord {
   readonly finalPrice: number;
   readonly outcome: "completed" | "cannotAfford";
   readonly haggle: { readonly test: CheckTest; readonly dc: number; readonly total: number; readonly success: boolean; readonly moments: RollMoments } | null;
+}
+
+// A pending Insight/Persuasion/Deception/Intimidation check to pry an NPC's
+// secret loose (engine/dialogue.ts's pressNpc): frozen the same way a
+// haggle's PendingHaggle is, the moment the roll is requested.
+export interface PendingPress {
+  readonly characterId: CharacterId;
+  readonly npcId: NpcId;
+  readonly test: CheckTest;
+  readonly dc: number;
+  readonly spec: D20TestSpec;
+  readonly rollId: RollId;
+}
+
+// A settled conversation with an NPC: a plain question (kind "ask", check
+// null, always answered) or a press at their secret (kind "press", question
+// null) — dice decide whether it gives anything up, never the model asked to
+// play the NPC (same rule engine/shop.ts's haggling already follows).
+export interface DialogueRecord {
+  readonly id: string;
+  readonly characterId: CharacterId;
+  readonly npcId: NpcId;
+  readonly kind: "ask" | "press";
+  readonly question: string | null;
+  readonly check: { readonly test: CheckTest; readonly dc: number; readonly total: number; readonly success: boolean; readonly moments: RollMoments } | null;
 }
 
 export type PauseReason = "organizer" | "recovery" | "safety";

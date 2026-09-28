@@ -17,6 +17,7 @@ import type {
   CampaignNarrator,
   CampaignPlanner,
   CombatNarratorRequest,
+  DialogueNarratorRequest,
   DmContext,
   NarratedOutcome,
   NarratorRequest,
@@ -53,6 +54,7 @@ export class DmJobWorker {
       ...(await tx.pendingOutbox("narrate")),
       ...(await tx.pendingOutbox("narrateCombat")),
       ...(await tx.pendingOutbox("narrateTrade")),
+      ...(await tx.pendingOutbox("narrateDialogue")),
       ...(await tx.pendingOutbox("chronicle")),
       ...(await tx.pendingOutbox("renarrate")),
     ]);
@@ -64,6 +66,7 @@ export class DmJobWorker {
         if (item.request.kind === "narrate") await this.narrate(item, item.request.roundNumber);
         if (item.request.kind === "narrateCombat") await this.narrateCombat(item, item.request.encounterId, item.request.round, item.request.final);
         if (item.request.kind === "narrateTrade") await this.narrateTrade(item, item.request.tradeId);
+        if (item.request.kind === "narrateDialogue") await this.narrateDialogue(item, item.request.dialogueId);
         if (item.request.kind === "chronicle") await this.chronicle(item, item.request.throughRound);
         if (item.request.kind === "renarrate") await this.renarrate(item, item.request.roundNumber);
         await unitOfWork.transaction((tx) => tx.completeOutbox(item.id));
@@ -275,6 +278,23 @@ export class DmJobWorker {
     await this.options.bus.execute(item.key, { kind: "recordTradeNarration", tradeId, text }, { commandId: `${item.id}:trade-narration`, actor: system });
   }
 
+  // A settled conversation waiting for its Narrator line (engine/dialogue.ts).
+  // Same "not load-bearing" shape as narrateTrade: a failure that exhausts
+  // its attempts just leaves the fallback line.
+  private async narrateDialogue(item: OutboxItem, dialogueId: string): Promise<void> {
+    const loaded = await this.load(item.key);
+    if (loaded.stored.state.dialogues[dialogueId] === undefined) return; // Already narrated, or gone.
+    const request = this.dialogueNarratorRequest(loaded, dialogueId);
+    let text: string;
+    try {
+      text = (await this.options.narrator.narrateDialogue(request)).text;
+    } catch (error) {
+      if (item.attempts + 1 < this.maxAttempts) throw error;
+      text = fallbackDialogueNarration(request);
+    }
+    await this.options.bus.execute(item.key, { kind: "recordDialogueNarration", dialogueId, text }, { commandId: `${item.id}:dialogue-narration`, actor: system });
+  }
+
   private combatNarratorRequest(loaded: Loaded, encounterId: string, round: number, final: boolean): CombatNarratorRequest {
     const { state } = loaded.stored;
     const record = encounterRecords(loaded.events, { state, bible: loaded.bible, glossary: this.glossary(loaded) }).findLast(
@@ -315,6 +335,33 @@ export class DmJobWorker {
         trade.haggle === null
           ? null
           : { skill: checkLabel(trade.haggle.test), total: trade.haggle.total, dc: trade.haggle.dc, success: trade.haggle.success, headline: trade.haggle.moments.headline },
+    };
+  }
+
+  private dialogueNarratorRequest(loaded: Loaded, dialogueId: string): DialogueNarratorRequest {
+    const { state } = loaded.stored;
+    const dialogue = state.dialogues[dialogueId];
+    if (dialogue === undefined) throw new Error(`Unknown dialogue ${dialogueId}.`);
+    const npc = loaded.bible.npcs.find((candidate) => candidate.id === dialogue.npcId);
+    const secretRevealed = state.npcSecretsRevealed?.[dialogue.npcId] === true;
+    return {
+      context: this.context("narrator", loaded),
+      language: state.language,
+      npc: {
+        id: dialogue.npcId,
+        name: npc?.name ?? dialogue.npcId,
+        voice: npc?.voice ?? "",
+        publicDescription: npc?.publicDescription ?? "",
+        secret: secretRevealed ? (npc?.secret ?? null) : null,
+      },
+      heroName: state.characters[dialogue.characterId]?.name ?? dialogue.characterId,
+      kind: dialogue.kind,
+      question: dialogue.question,
+      press:
+        dialogue.check === null
+          ? null
+          : { skill: checkLabel(dialogue.check.test), total: dialogue.check.total, dc: dialogue.check.dc, success: dialogue.check.success, headline: dialogue.check.moments.headline },
+      secretRevealed,
     };
   }
 
@@ -409,6 +456,18 @@ function fallbackTradeNarration(request: TradeNarratorRequest): string {
   return zh
     ? `${request.npc.name}${verb}${request.heroName} ${request.itemName}，收取 ${request.finalPrice} 枚金幣。`
     : `${request.npc.name} ${verb} ${request.heroName} the ${request.itemName} for ${request.finalPrice} gold.`;
+}
+
+function fallbackDialogueNarration(request: DialogueNarratorRequest): string {
+  const zh = request.language === "zh-TW";
+  if (request.kind === "ask") return zh ? `${request.npc.name}回答了你的問題。` : `${request.npc.name} answers your question.`;
+  return request.secretRevealed
+    ? zh
+      ? `${request.npc.name}終於鬆口了。`
+      : `${request.npc.name} finally gives in.`
+    : zh
+      ? `${request.npc.name}不為所動，什麼都沒說。`
+      : `${request.npc.name} holds firm and says nothing more.`;
 }
 
 function fallbackNarration(request: NarratorRequest): string {

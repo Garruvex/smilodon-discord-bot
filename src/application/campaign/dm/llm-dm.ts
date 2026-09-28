@@ -8,6 +8,7 @@ import type {
   CampaignNarrator,
   CampaignPlanner,
   CombatNarratorRequest,
+  DialogueNarratorRequest,
   DmContext,
   NarratedOutcome,
   NarratorRequest,
@@ -25,8 +26,9 @@ export const plannerPromptVersion = "planner-4";
 export const narratorPromptVersion = "narrator-4";
 export const flourishPromptVersion = "flourish-4";
 export const tradePromptVersion = "trade-1";
+export const dialoguePromptVersion = "dialogue-1";
 
-export type ModelCallKind = "planner" | "narrator" | "flourish" | "trade";
+export type ModelCallKind = "planner" | "narrator" | "flourish" | "trade" | "dialogue";
 
 export interface ModelCallObserver {
   (call: { readonly call: ModelCallKind; readonly model: string; readonly promptVersion: string; readonly usage: ModelUsage | null }): void;
@@ -341,6 +343,19 @@ export class LlmCampaignNarrator implements CampaignNarrator {
     this.options.onCall?.({ call: "trade", model: response.model, promptVersion: tradePromptVersion, usage: response.usage });
     return { text: parseNarratorOutput(response.text) };
   }
+
+  public async narrateDialogue(request: DialogueNarratorRequest): Promise<{ readonly text: string }> {
+    const response = await this.options.client.generate({
+      ...buildDialogueNarratorPrompt(request),
+      ...cacheKeyFor(this.options, "dialogue"),
+      schemaName: "campaign_dialogue_narration",
+      jsonSchema: narratorJsonSchema,
+      maxOutputTokens: this.options.maxOutputTokens ?? 500,
+      timeoutMs: this.options.timeoutMs ?? 20_000,
+    });
+    this.options.onCall?.({ call: "dialogue", model: response.model, promptVersion: dialoguePromptVersion, usage: response.usage });
+    return { text: parseNarratorOutput(response.text) };
+  }
 }
 
 // The price and who won any haggle are already decided (engine/shop.ts); this
@@ -367,6 +382,33 @@ export function buildTradeNarratorPrompt(request: TradeNarratorRequest): { syste
         : ` They tried a ${request.haggle.skill} appeal to talk the price, but it didn't move you.`;
   const result = request.completed ? " The deal goes through." : " They come up short and cannot complete it.";
   return splitPrompt(request.context, rules, `${deal}${haggle}${result}`);
+}
+
+// Whether the NPC gives anything up (a plain answer, or their secret on a
+// won press) is already decided (engine/dialogue.ts); this call only asks
+// for their in-character reply. `npc.secret` is only ever populated when
+// `secretRevealed` is true, so the prompt cannot leak it by naming it here
+// and then instructing the model to withhold it.
+export function buildDialogueNarratorPrompt(request: DialogueNarratorRequest): { system: string; user: string } {
+  const zh = request.language === "zh-TW";
+  const grounding =
+    request.secretRevealed && request.npc.secret !== null
+      ? `What ${request.npc.name} is known to say publicly: "${request.npc.publicDescription}". They have just given up this secret too, so you may now reveal it: "${request.npc.secret}".`
+      : `What ${request.npc.name} is known to say publicly: "${request.npc.publicDescription}". Never reveal anything beyond that, and never invent new facts, places, or plot the text above didn't give you.`;
+  const rules = [
+    "## Output rules",
+    zh ? "Write 40-150 Traditional Chinese characters (Taiwan usage) in the narration field." : "Write at most 60 words of English, one to three sentences.",
+    `Speak only as ${request.npc.name}, in their own voice (${request.npc.voice}), replying to the hero below. Do not narrate the hero's actions or describe the scene; just the NPC's reply.`,
+    grounding,
+    "Never mention dice, DCs, or checks.",
+  ].join("\n");
+  const situation =
+    request.kind === "ask"
+      ? `${request.heroName} asks ${request.npc.name}: "${request.question ?? ""}"`
+      : request.secretRevealed
+        ? `${request.heroName} presses ${request.npc.name} with a ${request.press?.skill ?? ""} appeal, and they finally give in.`
+        : `${request.heroName} presses ${request.npc.name} with a ${request.press?.skill ?? ""} appeal, but they hold firm and deflect.`;
+  return splitPrompt(request.context, rules, situation);
 }
 
 // ---------------------------------------------------------------- Combat

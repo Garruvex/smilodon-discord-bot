@@ -9,6 +9,7 @@ import { canHandOver, refreshGear, startHandOver } from "./combat/combat-gear.js
 import { encounterProblems, handleCombatCommand, recordCombatNarration, recordCombatRoll } from "./combat/combat-flow.js";
 import { handleInventoryCommand } from "./inventory.js";
 import { takeRest } from "./rest.js";
+import { handleDialogueCommand, recordPressRoll } from "./dialogue.js";
 import { handleShopCommand, recordHaggleRoll } from "./shop.js";
 import { Decision, type DecideResult, type EngineContext } from "./decision.js";
 import { beginAdventure, beginPlay, illustrateMoment, markReady, redoPicture, recordLedgerFact, recordNarration, recordOpening, recordSummary, regenerateNarration, replaceNarration, reportPlannerFailure, retryPlan } from "./dm.js";
@@ -120,6 +121,10 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
     case "hagglePrice":
     case "recordTradeNarration":
       return handleShopCommand(decision, command);
+    case "askNpc":
+    case "pressNpc":
+    case "recordDialogueNarration":
+      return handleDialogueCommand(decision, command);
     case "chooseClassLevel": {
       const skillChoice = command.skillChoice !== undefined && isSkill(command.skillChoice) ? command.skillChoice : undefined;
       return chooseClassLevel(decision, command.characterId, command.buildClass, skillChoice);
@@ -157,5 +162,7 @@ function recordRoll(decision: Decision, rollId: RollId, result: RollResult): Rej
   if (check !== undefined) return recordCheckRoll(decision, check, result);
   const haggle = Object.values(decision.state.hagglePending ?? {}).find((candidate) => candidate.rollId === rollId);
   if (haggle !== undefined) return recordHaggleRoll(decision, haggle, result);
+  const press = Object.values(decision.state.pressPending ?? {}).find((candidate) => candidate.rollId === rollId);
+  if (press !== undefined) return recordPressRoll(decision, press, result);
   return recordCombatRoll(decision, rollId, result);
 }

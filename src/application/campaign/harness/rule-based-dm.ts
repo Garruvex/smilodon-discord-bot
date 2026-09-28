@@ -5,6 +5,7 @@ import type {
   CampaignNarrator,
   CampaignPlanner,
   CombatNarratorRequest,
+  DialogueNarratorRequest,
   NarratedOutcome,
   NarratorRequest,
   PlannerEffect,
@@ -137,6 +138,21 @@ export class TemplateNarrator implements CampaignNarrator {
       : `${request.heroName} ${verb} the ${request.itemName} from ${request.npc.name} for ${price}.`;
     const flourish = haggled ? (zh ? `${request.npc.name}讓步了。` : `${request.npc.name} gives ground.`) : "";
     return Promise.resolve({ text: zh ? `${line}${flourish}` : `${line} ${flourish}`.trim() });
+  }
+
+  public narrateDialogue(request: DialogueNarratorRequest): Promise<{ readonly text: string }> {
+    const zh = request.language === "zh-TW";
+    if (request.kind === "ask") {
+      return Promise.resolve({ text: zh ? `${request.npc.name}回答了${request.heroName}的問題。` : `${request.npc.name} answers ${request.heroName}'s question.` });
+    }
+    const text = request.secretRevealed
+      ? zh
+        ? `${request.npc.name}終於鬆口，說出了實情。`
+        : `${request.npc.name} finally gives in and tells the truth.`
+      : zh
+        ? `${request.npc.name}不為所動，什麼都沒說。`
+        : `${request.npc.name} holds firm and gives nothing away.`;
+    return Promise.resolve({ text });
   }
 }
 

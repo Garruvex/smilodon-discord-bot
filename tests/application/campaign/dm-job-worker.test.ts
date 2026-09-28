@@ -316,6 +316,44 @@ describe("narrateTrade", () => {
   });
 });
 
+describe("narrateDialogue", () => {
+  async function tableWithADialogue(narrator: ScriptedNarrator): Promise<Table> {
+    const table_ = await table(new ScriptedPlanner([]), narrator);
+    await table_.bus.execute(
+      key,
+      { kind: "askNpc", characterId: "c-mira", npcId: "npc:garrick", question: "Any news from the road?" },
+      { commandId: "ask-1", actor: alex },
+    );
+    return table_;
+  }
+
+  it("resolves the NPC's name, voice, and public description from the bible, without ever seeing the secret", async () => {
+    const narrator = new ScriptedNarrator([], [], [], [{ text: 'Garrick grunts: "Nothing worth telling."' }]);
+    const { store, worker } = await tableWithADialogue(narrator);
+    expect(await worker.runOnce()).toEqual({ processed: 1, failed: [] });
+
+    expect(narrator.dialogueRequests[0]).toMatchObject({
+      npc: { id: "npc:garrick", name: "Garrick", voice: "Gruff, clipped sentences.", publicDescription: "The tavern keeper, polishing the same mug.", secret: null },
+      heroName: "Mira",
+      kind: "ask",
+      question: "Any news from the road?",
+      press: null,
+      secretRevealed: false,
+    });
+    const log = await events(store);
+    expect(log).toContainEqual({ kind: "dialogueNarrated", dialogueId: "dialogue:1", text: 'Garrick grunts: "Nothing worth telling."' });
+  });
+
+  it("falls back to a template line once the Narrator's attempts are spent", async () => {
+    const narrator = new ScriptedNarrator([], [], [], [new Error("rate limited"), new Error("rate limited")]);
+    const { store, worker } = await tableWithADialogue(narrator);
+    expect(await worker.runOnce()).toMatchObject({ processed: 0, failed: [{ error: "rate limited" }] });
+    expect(await worker.runOnce()).toEqual({ processed: 1, failed: [] });
+    const log = await events(store);
+    expect(log).toContainEqual({ kind: "dialogueNarrated", dialogueId: "dialogue:1", text: "Garrick answers your question." });
+  });
+});
+
 describe("the opening", () => {
   it("has the Narrator open the adventure with the party, then waits for the table and opens the first round", async () => {
     const narrator = new ScriptedNarrator([{ text: "Welcome to the Crossroads Inn. What do you do?" }]);

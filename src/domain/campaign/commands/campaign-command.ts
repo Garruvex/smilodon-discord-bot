@@ -81,6 +81,7 @@ export type CampaignCommand =
   // class's own multiclass skill is actually granted.
   | { readonly kind: "chooseClassLevel"; readonly characterId: CharacterId; readonly buildClass: string; readonly skillChoice?: string }
   | ShopCommand
+  | DialogueCommand
   | CombatCommand;
 
 // A hero trades with an NPC's shop outside combat (engine/shop.ts). The
@@ -106,6 +107,16 @@ export type ShopCommand =
       readonly skill: Skill;
     }
   | { readonly kind: "recordTradeNarration"; readonly tradeId: string; readonly text: string };
+
+// Talking to an NPC outside combat (engine/dialogue.ts). askNpc is a free
+// question, always answered from what the NPC is authored to say in public
+// (BibleNpc.publicDescription); pressNpc tries to pry their authored secret
+// loose over a real Insight, Persuasion, Deception, or Intimidation check —
+// same "dice decide, never the model's own call" rule as hagglePrice.
+export type DialogueCommand =
+  | { readonly kind: "askNpc"; readonly characterId: CharacterId; readonly npcId: NpcId; readonly question: string }
+  | { readonly kind: "pressNpc"; readonly characterId: CharacterId; readonly npcId: NpcId; readonly skill: Skill }
+  | { readonly kind: "recordDialogueNarration"; readonly dialogueId: string; readonly text: string };
 
 // Items move between heroes outside combat. The owner of the giving hero
 // offers, the owner of the receiving hero answers; the stash is shared.

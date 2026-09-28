@@ -59,5 +59,8 @@ export type Rejection =
   | { readonly code: "insufficientGold" }
   | { readonly code: "invalidHaggleSkill" }
   | { readonly code: "haggleAlreadyPending" }
+  | { readonly code: "invalidPressSkill" }
+  | { readonly code: "pressAlreadyPending" }
+  | { readonly code: "secretAlreadyRevealed" }
 
 export type RejectionCode = Rejection["code"];

@@ -53,6 +53,7 @@ describe("numbers in narration", () => {
       narrate: () => Promise.resolve({ text: "Borin swings for 777 damage and Mira has 913 arrows left." }),
       narrateCombat: () => Promise.resolve({ text: "A 913 lands." }),
       narrateTrade: () => Promise.resolve({ text: "..." }),
+      narrateDialogue: () => Promise.resolve({ text: "..." }),
     };
     const run = await runHarness(options({ dm: () => ({ planner: new RuleBasedPlanner(), narrator: chatty }), rounds: 2 }));
     const report = summarizeRun(run);

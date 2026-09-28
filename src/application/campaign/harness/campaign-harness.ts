@@ -9,7 +9,7 @@ import { AdventureDocumentError, checkAdventureContent, type AdventureDocument }
 import { CampaignCommandBus } from "../campaign-command-bus.js";
 import type { CampaignKey, CampaignUnitOfWork, CommandOutcome, EventEnvelope, StoredCampaign } from "../ports/campaign-store.js";
 import type { ModelCallKind, ModelCallObserver } from "../dm/llm-dm.js";
-import type { CampaignNarrator, CampaignPlanner, CombatNarratorRequest, NarratorRequest, PlannerRequest, TradeNarratorRequest } from "../ports/dm-ports.js";
+import type { CampaignNarrator, CampaignPlanner, CombatNarratorRequest, DialogueNarratorRequest, NarratorRequest, PlannerRequest, TradeNarratorRequest } from "../ports/dm-ports.js";
 import type { ModelUsage } from "../ports/structured-model-client.js";
 import type { RulesetCatalog } from "../rules/ruleset-catalog.js";
 import { ManualClock } from "../time/manual-clock.js";
@@ -80,6 +80,7 @@ export interface HarnessRun {
   readonly narratorRequests: readonly NarratorRequest[];
   readonly combatNarratorRequests: readonly CombatNarratorRequest[];
   readonly tradeNarratorRequests: readonly TradeNarratorRequest[];
+  readonly dialogueNarratorRequests: readonly DialogueNarratorRequest[];
   readonly glossary: Glossary;
   readonly stoppedBecause: "roundLimit" | "waitingForPlayers" | "stalled";
 }
@@ -111,6 +112,7 @@ export async function runHarness(options: HarnessOptions): Promise<HarnessRun> {
   const narratorRequests: NarratorRequest[] = [];
   const combatNarratorRequests: CombatNarratorRequest[] = [];
   const tradeNarratorRequests: TradeNarratorRequest[] = [];
+  const dialogueNarratorRequests: DialogueNarratorRequest[] = [];
   const bus = new CampaignCommandBus({ unitOfWork, rulesets: options.rulesets, clock });
 
   const planner: CampaignPlanner = {
@@ -128,6 +130,10 @@ export async function runHarness(options: HarnessOptions): Promise<HarnessRun> {
     narrateTrade: (request: TradeNarratorRequest) => {
       tradeNarratorRequests.push(request);
       return timed(record, measure, "trade", 0, request.context.estimatedTokens, () => dmParts.narrator.narrateTrade(request));
+    },
+    narrateDialogue: (request: DialogueNarratorRequest) => {
+      dialogueNarratorRequests.push(request);
+      return timed(record, measure, "dialogue", 0, request.context.estimatedTokens, () => dmParts.narrator.narrateDialogue(request));
     },
   };
   const dm = new DmJobWorker({
@@ -298,6 +304,7 @@ export async function runHarness(options: HarnessOptions): Promise<HarnessRun> {
     narratorRequests,
     combatNarratorRequests,
     tradeNarratorRequests,
+    dialogueNarratorRequests,
     glossary: options.glossary,
     stoppedBecause,
   };

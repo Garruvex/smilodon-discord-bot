@@ -142,6 +142,7 @@ export function summarizeRun(run: HarnessRun, pricing?: TokenPricing): HarnessRe
       narrator: latencyOf(run.calls, "narrator"),
       flourish: latencyOf(run.calls, "flourish"),
       trade: latencyOf(run.calls, "trade"),
+      dialogue: latencyOf(run.calls, "dialogue"),
     },
     maxContextTokens: Math.max(0, ...run.calls.map((call) => call.contextTokens)),
     usage: {
@@ -149,6 +150,7 @@ export function summarizeRun(run: HarnessRun, pricing?: TokenPricing): HarnessRe
       narrator: tokenTotals(run.calls, "narrator"),
       flourish: tokenTotals(run.calls, "flourish"),
       trade: tokenTotals(run.calls, "trade"),
+      dialogue: tokenTotals(run.calls, "dialogue"),
     },
     models: [...new Set(run.calls.flatMap((call) => (call.model === null ? [] : [call.model])))],
     promptVersions: [...new Set(run.calls.flatMap((call) => (call.promptVersion === null ? [] : [call.promptVersion])))],

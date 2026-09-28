@@ -124,10 +124,28 @@ export interface TradeNarratorRequest {
   readonly haggle: { readonly skill: string; readonly total: number; readonly dc: number; readonly success: boolean; readonly headline: RollMoment | null } | null;
 }
 
+// A settled conversation with an NPC (engine/dialogue.ts): a plain question
+// is always answered, grounded only in what the NPC is authored to say in
+// public; a press only reveals the secret when `secretRevealed` is true,
+// already decided by a real check the engine ran — `npc.secret` carries the
+// actual text only then, so the model can never leak it by accident. This
+// call only voices the NPC; it never decides what they give up.
+export interface DialogueNarratorRequest {
+  readonly context: DmContext;
+  readonly language: CampaignLanguage;
+  readonly npc: { readonly id: string; readonly name: string; readonly voice: string; readonly publicDescription: string; readonly secret: string | null };
+  readonly heroName: string;
+  readonly kind: "ask" | "press";
+  readonly question: string | null;
+  readonly press: { readonly skill: string; readonly total: number; readonly dc: number; readonly success: boolean; readonly headline: RollMoment | null } | null;
+  readonly secretRevealed: boolean;
+}
+
 export interface CampaignNarrator {
   narrate(request: NarratorRequest): Promise<{ readonly text: string }>;
   narrateCombat(request: CombatNarratorRequest): Promise<{ readonly text: string }>;
   narrateTrade(request: TradeNarratorRequest): Promise<{ readonly text: string }>;
+  narrateDialogue(request: DialogueNarratorRequest): Promise<{ readonly text: string }>;
 }
 
 // The background call that condenses rounds already told (plan §6, Chronicler).

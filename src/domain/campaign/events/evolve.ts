@@ -229,6 +229,24 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       const { [event.tradeId]: _narrated, ...trades } = state.trades;
       return { ...state, trades };
     }
+    case "pressStarted":
+      return { ...state, pressPending: { ...state.pressPending, [event.press.characterId]: event.press } };
+    case "dialogueSettled": {
+      const { dialogue, revealSecret } = event;
+      const { [dialogue.characterId]: _spentPress, ...pressPending } = state.pressPending ?? {};
+      const withDialogue: CampaignState = {
+        ...state,
+        pressPending,
+        dialogues: { ...state.dialogues, [dialogue.id]: dialogue },
+        dialogueCount: state.dialogueCount + 1,
+      };
+      if (!revealSecret) return withDialogue;
+      return { ...withDialogue, npcSecretsRevealed: { ...withDialogue.npcSecretsRevealed, [dialogue.npcId]: true } };
+    }
+    case "dialogueNarrated": {
+      const { [event.dialogueId]: _narrated, ...dialogues } = state.dialogues;
+      return { ...state, dialogues };
+    }
     case "itemUsed": {
       const sheet = state.characters[event.characterId];
       if (sheet === undefined) return state;

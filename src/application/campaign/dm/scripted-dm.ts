@@ -2,6 +2,7 @@ import type {
   CampaignNarrator,
   CampaignPlanner,
   CombatNarratorRequest,
+  DialogueNarratorRequest,
   NarratorRequest,
   PlannerEffect,
   PlannerProposal,
@@ -33,11 +34,13 @@ export class ScriptedNarrator implements CampaignNarrator {
   public readonly requests: NarratorRequest[] = [];
   public readonly combatRequests: CombatNarratorRequest[] = [];
   public readonly tradeRequests: TradeNarratorRequest[] = [];
+  public readonly dialogueRequests: DialogueNarratorRequest[] = [];
 
   public constructor(
     private readonly script: Scripted<NarratorRequest, { readonly text: string }>[],
     private readonly combatScript: Scripted<CombatNarratorRequest, { readonly text: string }>[] = [],
     private readonly tradeScript: Scripted<TradeNarratorRequest, { readonly text: string }>[] = [],
+    private readonly dialogueScript: Scripted<DialogueNarratorRequest, { readonly text: string }>[] = [],
   ) {}
 
   public narrate(request: NarratorRequest): Promise<{ readonly text: string }> {
@@ -53,6 +56,11 @@ export class ScriptedNarrator implements CampaignNarrator {
   public narrateTrade(request: TradeNarratorRequest): Promise<{ readonly text: string }> {
     this.tradeRequests.push(request);
     return next(this.tradeScript, request, "trade narrator");
+  }
+
+  public narrateDialogue(request: DialogueNarratorRequest): Promise<{ readonly text: string }> {
+    this.dialogueRequests.push(request);
+    return next(this.dialogueScript, request, "dialogue narrator");
   }
 }
 

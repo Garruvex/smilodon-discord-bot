@@ -69,6 +69,8 @@ export function buildStartingState(input: {
     offerCount: 0,
     trades: {},
     tradeCount: 0,
+    dialogues: {},
+    dialogueCount: 0,
     fightCheckpoint: null,
     pausedBy: null,
     clocks: {},
