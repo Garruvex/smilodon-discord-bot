@@ -56,7 +56,11 @@ export type Trait =
   // Never gains these conditions (Skeleton/Zombie's immunity to poisoned; a
   // monster's own immunity list, not a condition's, since only some holders
   // of a given condition are immune to it, e.g. undead but not the living).
-  | { readonly kind: "conditionImmunity"; readonly conditions: readonly ContentId<"condition">[] };
+  | { readonly kind: "conditionImmunity"; readonly conditions: readonly ContentId<"condition">[] }
+  // Champion's Improved Critical: a natural roll of this or higher on an
+  // attack is a critical hit, not just a natural 20. The lowest of any held
+  // wins (nothing lowers it below 20 by default).
+  | { readonly kind: "expandedCritRange"; readonly threshold: number };
 
 export type TraitKind = Trait["kind"];
 
@@ -76,4 +80,11 @@ export function damageMultiplier(traits: readonly Trait[], damageType: DamageTyp
 // modifiers are read — an immune creature simply never receives the effect).
 export function isImmuneToCondition(traits: readonly Trait[], conditionId: ContentId<"condition">): boolean {
   return traits.some((trait) => trait.kind === "conditionImmunity" && trait.conditions.includes(conditionId));
+}
+
+// The lowest natural roll that lands a critical hit for this creature's own
+// attacks (Champion's Improved Critical lowers it to 19; nothing here raises
+// it, so the default is the ordinary 20).
+export function critThreshold(traits: readonly Trait[]): number {
+  return traits.reduce((lowest, trait) => (trait.kind === "expandedCritRange" ? Math.min(lowest, trait.threshold) : lowest), 20);
 }

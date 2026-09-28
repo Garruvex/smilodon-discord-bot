@@ -29,7 +29,7 @@ export const fighter = defineClass({
   firstSpells: [],
   levelFeatures: {
     2: ["feature:action-surge"],
-    3: ["feature:martial-archetype"],
+    3: ["feature:champion"],
     5: ["feature:extra-attack"],
     11: ["feature:extra-attack-2"],
     20: ["feature:extra-attack-3"],
@@ -54,7 +54,7 @@ export const rogue = defineClass({
   casterType: "none",
   spellcastingAbility: null,
   firstSpells: [],
-  levelFeatures: { 2: ["feature:cunning-action"], 3: ["feature:roguish-archetype"], 5: ["feature:uncanny-dodge"] },
+  levelFeatures: { 2: ["feature:cunning-action"], 3: ["feature:thief"], 5: ["feature:uncanny-dodge"] },
 });
 
 export const cleric = defineClass({
@@ -104,7 +104,7 @@ export const barbarian = defineClass({
   casterType: "none",
   spellcastingAbility: null,
   firstSpells: [],
-  levelFeatures: { 2: ["feature:reckless-attack"], 3: ["feature:primal-path"], 5: ["feature:extra-attack"] },
+  levelFeatures: { 2: ["feature:reckless-attack"], 3: ["feature:path-of-the-berserker"], 5: ["feature:extra-attack"] },
 });
 
 export const bard = defineClass({
@@ -144,7 +144,7 @@ export const bard = defineClass({
   casterType: "full",
   spellcastingAbility: "cha",
   firstSpells: [],
-  levelFeatures: { 2: ["feature:jack-of-all-trades"], 3: ["feature:bard-college"] },
+  levelFeatures: { 2: ["feature:jack-of-all-trades"], 3: ["feature:college-of-lore"] },
 });
 
 export const druid = defineClass({
@@ -165,7 +165,7 @@ export const druid = defineClass({
   casterType: "full",
   spellcastingAbility: "wis",
   firstSpells: [],
-  levelFeatures: { 2: ["feature:wild-shape"], 3: ["feature:druid-circle"] },
+  levelFeatures: { 2: ["feature:wild-shape"], 3: ["feature:circle-of-the-land"] },
 });
 
 export const monk = defineClass({
@@ -189,7 +189,7 @@ export const monk = defineClass({
   casterType: "none",
   spellcastingAbility: null,
   firstSpells: [],
-  levelFeatures: { 2: ["feature:ki"], 3: ["feature:monastic-tradition"], 5: ["feature:extra-attack"] },
+  levelFeatures: { 2: ["feature:ki"], 3: ["feature:way-of-the-open-hand"], 5: ["feature:extra-attack"] },
 });
 
 export const paladin = defineClass({
@@ -214,7 +214,7 @@ export const paladin = defineClass({
   // class's own full SRD list, the same liberty the level-1 roster already
   // takes for Bard and Warlock.
   firstSpells: ["spell:cure-wounds", "spell:bless"],
-  levelFeatures: { 2: ["feature:fighting-style-dueling", "feature:divine-smite"], 3: ["feature:sacred-oath"], 5: ["feature:extra-attack"] },
+  levelFeatures: { 2: ["feature:fighting-style-dueling", "feature:divine-smite"], 3: ["feature:oath-of-devotion"], 5: ["feature:extra-attack"] },
 });
 
 export const ranger = defineClass({
@@ -236,7 +236,7 @@ export const ranger = defineClass({
   casterType: "half",
   spellcastingAbility: "wis",
   firstSpells: ["spell:cure-wounds"],
-  levelFeatures: { 2: ["feature:fighting-style-dueling"], 3: ["feature:ranger-archetype"], 5: ["feature:extra-attack"] },
+  levelFeatures: { 2: ["feature:fighting-style-dueling"], 3: ["feature:hunter"], 5: ["feature:extra-attack"] },
 });
 
 export const sorcerer = defineClass({
@@ -247,7 +247,7 @@ export const sorcerer = defineClass({
   skillChoices: ["arcana", "deception", "insight", "intimidation", "persuasion", "religion"],
   skillCount: 2,
   expertiseCount: 0,
-  features: ["feature:sorcerous-origin"],
+  features: ["feature:draconic-bloodline"],
   kits: [
     { id: "wildmagic", equipment: ["item:dagger"] },
     { id: "draconic", equipment: ["item:quarterstaff"] },
@@ -268,7 +268,7 @@ export const warlock = defineClass({
   skillChoices: ["arcana", "deception", "history", "intimidation", "investigation", "nature", "religion"],
   skillCount: 2,
   expertiseCount: 0,
-  features: ["feature:otherworldly-patron"],
+  features: ["feature:fiend-patron"],
   kits: [
     { id: "fiendpact", equipment: ["item:dagger", "item:leather-armor"] },
     { id: "oldone", equipment: ["item:quarterstaff", "item:leather-armor"] },
@@ -300,7 +300,7 @@ export const wizard = defineClass({
   casterType: "full",
   spellcastingAbility: "int",
   firstSpells: [],
-  levelFeatures: { 2: ["feature:arcane-tradition"] },
+  levelFeatures: { 2: ["feature:school-of-evocation"] },
 });
 
 export const srd51Classes: readonly ClassDefinition[] = [fighter, rogue, cleric, barbarian, bard, druid, monk, paladin, ranger, sorcerer, warlock, wizard];

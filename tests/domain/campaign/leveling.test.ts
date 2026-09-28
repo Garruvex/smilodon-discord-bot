@@ -110,7 +110,7 @@ describe("XP and levels", () => {
   it("grants narrative class features on the levels that give them", () => {
     const sheet = { ...deriveSheet(wizardBuild), id: "c-3" as never, ownerUserId: "u-3" as never };
     const toLevel2 = levelUp(sheet, "wizard");
-    expect(toLevel2.features).toContain("feature:arcane-tradition");
+    expect(toLevel2.features).toContain("feature:school-of-evocation");
     expect(toLevel2.features).toEqual(expect.arrayContaining([...sheet.features]));
   });
 

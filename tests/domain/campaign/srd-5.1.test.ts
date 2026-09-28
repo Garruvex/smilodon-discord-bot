@@ -175,6 +175,15 @@ describe("SRD 5.1 content", () => {
     expect(content.get("class:paladin").spellcastingAbility).toBe("cha");
   });
 
+  it("gives every class its own named subclass, mechanical where the engine already can", () => {
+    expect(traitsOf(content.get("feature:champion"))).toEqual([{ kind: "expandedCritRange", threshold: 19 }]);
+    expect(traitsOf(content.get("feature:draconic-bloodline"))).toEqual([{ kind: "damageResistance", damageTypes: ["fire"] }]);
+    // Fiend Patron and the rest are narrative, same treatment as Thieves' Cant.
+    expect(traitsOf(content.get("feature:fiend-patron"))).toEqual([]);
+    expect(content.get("class:fighter").levelFeatures[3]).toEqual(["feature:champion"]);
+    expect(content.get("class:sorcerer").features).toEqual(["feature:draconic-bloodline"]);
+  });
+
   it("gives Dwarf, Dragonborn, and Tiefling a real damage resistance trait, and Elf just its ability bonus", () => {
     expect(traitsOf(content.get("race:dwarf"))).toEqual([{ kind: "damageResistance", damageTypes: ["poison"] }]);
     expect(traitsOf(content.get("race:dragonborn"))).toEqual([{ kind: "damageResistance", damageTypes: ["fire"] }]);

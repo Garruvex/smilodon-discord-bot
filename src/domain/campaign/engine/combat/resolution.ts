@@ -15,7 +15,7 @@ import { classifyRollMoments } from "../../dice/roll-moments.js";
 import { resultMatchesSpec, type RollResult, type RollSpec } from "../../dice/roll-spec.js";
 import type { Effect, EffectDuration } from "../../rules/effects.js";
 import { criticalHits, naturalRollsOnChecks } from "../../rules/house-rules.js";
-import { isImmuneToCondition } from "../../rules/traits.js";
+import { critThreshold, isImmuneToCondition } from "../../rules/traits.js";
 import type { Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { activeEncounter, afterResolution, endIfDecided } from "./combat-flow.js";
@@ -141,8 +141,9 @@ export function recordCheck(
   // A hit its target could still turn into a miss (Shield) waits for its answer.
   if (check.kind === "attack") {
     const target = encounter.combatants[check.targetId];
+    const attacker = encounter.combatants[resolution.actorId];
     const against = target === undefined ? check.against : armorClassOf(target, conditionLookup(decision.ctx.rules.content));
-    const outcome = resolveD20Test("attack", roll.d20.natural, roll.total, against, "no-effect");
+    const outcome = resolveD20Test("attack", roll.d20.natural, roll.total, against, "no-effect", critThreshold(attacker?.traits ?? []));
     if (outcome.success && !outcome.critical && offerReaction(decision, encounter, resolution, rollId, roll, against)) return null;
   }
   return settleCheck(decision, resolution.id, rollId, roll);
@@ -162,8 +163,9 @@ export function settleCheck(decision: Decision, resolutionId: string, rollId: Ro
   let critical = false;
   let moments;
   if (check.kind === "attack") {
+    const attacker = encounter.combatants[resolution.actorId];
     const against = target === undefined ? check.against : armorClassOf(target, lookup);
-    const outcome = resolveD20Test("attack", roll.d20.natural, roll.total, against, "no-effect");
+    const outcome = resolveD20Test("attack", roll.d20.natural, roll.total, against, "no-effect", critThreshold(attacker?.traits ?? []));
     landed = outcome.success;
     // A hit on an unconscious creature from within 5 feet is a critical hit.
     const closeCrit = target !== undefined && hitsAreCritical(target, lookup, areEngaged(encounter, resolution.actorId, target.id));

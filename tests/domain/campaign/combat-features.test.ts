@@ -5,7 +5,7 @@ import { turnOptions } from "../../../src/domain/campaign/combat/turn-rules.js";
 import { formatDiceExpression } from "../../../src/domain/campaign/dice/dice-expression.js";
 import type { CampaignEvent } from "../../../src/domain/campaign/events/campaign-event.js";
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
-import { alex, jamie, newCampaign, organizer, partyOfThree, ruleset, run, sam, system } from "./campaign-fixtures.js";
+import { alex, borin, jamie, newCampaign, organizer, partyOfThree, ruleset, run, sam, system } from "./campaign-fixtures.js";
 import { Fight, skirmish, startedFight } from "./combat-fixtures.js";
 
 // Gate and courtyard 10 ft apart, with a tower beyond the courtyard.
@@ -441,6 +441,24 @@ describe("opportunity attacks and escape", () => {
     expect(ofKind(fight, "resolutionDeclared").some((event) => event.resolution.actorId === "c-borin")).toBe(false);
     expect(fight.combatant("c-borin").budget.reaction).toBe(true);
     expect(fight.encounter.pendingMove).toBeNull();
+  });
+});
+
+describe("subclasses", () => {
+  it("gives a Champion fighter a critical hit on a natural 19, not just a 20", () => {
+    const base = newCampaign();
+    const champion = { ...borin, features: [...borin.features, "feature:champion" as const] };
+    const fight = new Fight({ ...base, characters: { ...base.characters, "c-borin": champion } })
+      .rolls([1, 20, 5, 4])
+      .run(organizer, { kind: "startEncounter", spec: skirmish });
+    fight.run(jamie, { kind: "combatMove", combatantId: "c-borin", zoneId: "courtyard" });
+    fight.run(jamie, { kind: "combatEngage", combatantId: "c-borin", targetId: "goblin-a" });
+    // Natural 19 + 5 (Str +3, proficiency +2) hits a goblin's AC 15 either
+    // way; without Champion it would not also crit.
+    fight.rolls([19], [5, 6]).run(jamie, { kind: "combatAttack", combatantId: "c-borin", targetId: "goblin-a", weapon: "item:longsword" });
+    expect(ofKind(fight, "checkRolled").at(-1)).toMatchObject({ landed: true, critical: true });
+    // 2d8 (5 + 6) + 3 Str = 14, off the goblin's 7 HP.
+    expect(fight.combatant("goblin-a").hp).toBe(0);
   });
 });
 

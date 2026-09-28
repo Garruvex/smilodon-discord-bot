@@ -76,9 +76,14 @@ export function resolveD20Test(
   total: number,
   target: number,
   naturalRule: NaturalRollRule,
+  // The lowest natural roll that critical-hits on its own (Champion's
+  // Improved Critical); irrelevant off an attack. Default: the ordinary 20,
+  // already covered by the natural-20 branch below.
+  critThreshold = 20,
 ): D20TestOutcome {
   const naturalDecides = kind === "attack" || kind === "deathSave" || naturalRule === "automatic";
   if (naturalDecides && natural === 20) return { success: true, decidedByNatural: "natural20", critical: kind === "attack" };
   if (naturalDecides && natural === 1) return { success: false, decidedByNatural: "natural1", critical: false };
-  return { success: total >= target, decidedByNatural: null, critical: false };
+  const success = total >= target;
+  return { success, decidedByNatural: null, critical: kind === "attack" && success && natural >= critThreshold };
 }

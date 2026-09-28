@@ -1,13 +1,14 @@
 import { defineFeature, type FeatureDefinition } from "../../../rules/content-definitions.js";
 
 // Level 2, 3, 5, 11 and 20 class features (SRD 5.1, Classes), granted
-// automatically as a hero levels up (character/leveling.ts's levelFeatures
-// table). Extra Attack, Cunning Action, Divine Smite and Uncanny Dodge are
-// mechanical (traits, read where an attack, a Dash/Disengage, or damage is
-// declared); the rest are narrative only, same treatment as Thieves' Cant
-// and the level-1 roster's narrative features. Wild Shape is mechanical too,
-// but is its own thing (engine/combat/wild-shape.ts), not a trait, since it
-// swaps the hero's whole stat block rather than reading one passively.
+// automatically as a hero levels up (content/srd-5.1/classes.ts's
+// levelFeatures). Extra Attack, Cunning Action, Divine Smite, Uncanny Dodge
+// and Champion's Improved Critical are mechanical (traits, read where an
+// attack, a Dash/Disengage, or damage is declared); the rest are narrative
+// only, same treatment as Thieves' Cant and the level-1 roster's narrative
+// features. Wild Shape is mechanical too, but is its own thing
+// (engine/combat/wild-shape.ts), not a trait, since it swaps the hero's
+// whole stat block rather than reading one passively.
 // Levels this doesn't reach are out of scope for now.
 const source = "SRD 5.1";
 
@@ -31,17 +32,43 @@ export const ki = narrative("ki");
 export const divineSmite = defineFeature({ id: "feature:divine-smite", source, traits: [{ kind: "divineSmite" }], action: null });
 export const fontOfMagic = narrative("font-of-magic");
 export const eldritchInvocations = narrative("eldritch-invocations");
-export const arcaneTradition = narrative("arcane-tradition");
-export const martialArchetype = narrative("martial-archetype");
-export const roguishArchetype = narrative("roguish-archetype");
-export const primalPath = narrative("primal-path");
-export const bardCollege = narrative("bard-college");
-export const druidCircle = narrative("druid-circle");
-export const monasticTradition = narrative("monastic-tradition");
-export const sacredOath = narrative("sacred-oath");
-export const rangerArchetype = narrative("ranger-archetype");
+// Champion (Fighter 3): Improved Critical, a real 19-20 crit range
+// (dice/d20-test.ts's critThreshold). Remarkable Athlete and Additional
+// Fighting Style are not modeled (a skill-check bonus system and a second
+// fighting-style slot, neither of which exists here).
+export const champion = defineFeature({ id: "feature:champion", source, traits: [{ kind: "expandedCritRange", threshold: 19 }], action: null });
+// Thief (Rogue 3): narrative. Fast Hands overlaps with Cunning Action (no
+// item-use action to spend it on); Second-Story Work needs a climbing/
+// jumping rule the engine doesn't have.
+export const thief = narrative("thief");
+// Path of the Berserker (Barbarian 3): narrative. Frenzy (an extra attack
+// while raging) and Mindless Rage need Rage itself to be a mechanic first
+// (feature:rage is narrative-only, like Thieves' Cant).
+export const pathOfTheBerserker = narrative("path-of-the-berserker");
+// College of Lore (Bard 3): narrative. Cutting Words (a reaction to reduce
+// an enemy's roll) is its own reaction-shaped project (see step 16's note on
+// why Shield stays the only reaction of its kind for now); Additional
+// Magical Secrets grants spells outside the class list.
+export const collegeOfLore = narrative("college-of-lore");
+// Circle of the Land (Druid 3): narrative. Its bonus spells and Natural
+// Recovery (partial spell-slot recovery on a short rest) are not modeled.
+export const circleOfTheLand = narrative("circle-of-the-land");
+// Way of the Open Hand (Monk 3): narrative. Its riders all trigger off
+// Flurry of Blows, which needs Ki itself to be a mechanic first
+// (feature:ki is narrative-only).
+export const wayOfTheOpenHand = narrative("way-of-the-open-hand");
+// Oath of Devotion (Paladin 3): narrative. Its Channel Divinity options
+// need Paladins to have Channel Divinity at all, which only Clerics do here.
+export const oathOfDevotion = narrative("oath-of-devotion");
+// Hunter (Ranger 3): narrative. Its Hunter's Prey options (e.g. Colossus
+// Slayer's extra damage once per turn) would need a new once-per-turn
+// tracking mechanic, the shape Sneak Attack already special-cases for Rogue.
+export const hunter = narrative("hunter");
 export const metamagic = narrative("metamagic");
 export const pactBoon = narrative("pact-boon");
+// School of Evocation (Wizard 2): narrative. Sculpt Spells needs
+// area-of-effect spells to matter, and none are modeled yet.
+export const schoolOfEvocation = narrative("school-of-evocation");
 
 export const srd51HigherLevelFeatures: readonly FeatureDefinition[] = [
   extraAttack,
@@ -58,15 +85,15 @@ export const srd51HigherLevelFeatures: readonly FeatureDefinition[] = [
   divineSmite,
   fontOfMagic,
   eldritchInvocations,
-  arcaneTradition,
-  martialArchetype,
-  roguishArchetype,
-  primalPath,
-  bardCollege,
-  druidCircle,
-  monasticTradition,
-  sacredOath,
-  rangerArchetype,
+  champion,
+  thief,
+  pathOfTheBerserker,
+  collegeOfLore,
+  circleOfTheLand,
+  wayOfTheOpenHand,
+  oathOfDevotion,
+  hunter,
   metamagic,
   pactBoon,
+  schoolOfEvocation,
 ];
