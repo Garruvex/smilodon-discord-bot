@@ -89,6 +89,7 @@ export const enSrd51Glossary: Glossary = {
     "condition:paralyzed": "Paralyzed",
     "condition:stunned": "Stunned",
     "condition:invisible": "Invisible",
+    "condition:charmed": "Charmed",
     "spell:ray-of-frost": "Ray of Frost",
     "spell:chill-touch": "Chill Touch",
     "spell:command": "Command",

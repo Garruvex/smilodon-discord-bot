@@ -5,6 +5,8 @@ import { bonusDiceFor } from "../../effects/effect-queries.js";
 import { resolveD20Test, type D20TestSpec } from "../../dice/d20-test.js";
 import { resultMatchesSpec, type RollResult } from "../../dice/roll-spec.js";
 import { naturalRollsOnChecks } from "../../rules/house-rules.js";
+import type { DamageType } from "../../rules/effects.js";
+import { damageMultiplier } from "../../rules/traits.js";
 import type { Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { activeEncounter, isProtected } from "./combat-flow.js";
@@ -15,7 +17,10 @@ import { finishResolution } from "./resolution.js";
 // leftover damage of at least their HP maximum kills outright; damage while
 // at 0 HP is a death-save failure (two on a critical). Monsters die at 0.
 // Protected while away (plan §5): the hero stops at 0 HP, stable.
-export function applyDamage(decision: Decision, target: Combatant, amount: number, critical: boolean): void {
+// damageType null: a source with no type to check resistance/immunity/
+// vulnerability against (a trigger predates this, or a future non-typed source).
+export function applyDamage(decision: Decision, target: Combatant, rolled: number, critical: boolean, damageType: DamageType | null = null): void {
+  const amount = damageType === null ? rolled : Math.floor(rolled * damageMultiplier(target.traits, damageType));
   if (amount <= 0) return;
   const base = { kind: "combatantHpChanged", combatantId: target.id, change: -amount } as const;
   const protectedHero = isProtected(decision, target);

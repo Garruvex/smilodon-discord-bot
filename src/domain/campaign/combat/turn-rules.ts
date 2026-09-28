@@ -68,7 +68,7 @@ export function attackProblem(encounter: EncounterState, attacker: Combatant, op
     // (which is only spent once the last of them is made).
     if (attacker.budget.attacksLeft <= 0 || !canAct(attacker, conditionLookup(content))) return { code: "noActionLeft" };
   }
-  const problem = weaponTargetProblem(encounter, attacker, encounter.combatants[targetId], option);
+  const problem = weaponTargetProblem(encounter, attacker, encounter.combatants[targetId], option, content);
   return problem === null ? null : { code: problem };
 }
 
@@ -111,7 +111,7 @@ export function spellProblem(
   const targets = spell.targeting.relation === "self" ? [caster.id] : targetIds;
   if (targets.length === 0 || targets.length > maxTargets || new Set(targets).size !== targets.length) return refuse({ code: "invalidTargets", maxTargets });
   for (const targetId of targets) {
-    const problem = spellTargetProblem(encounter, caster, spell, encounter.combatants[targetId]);
+    const problem = spellTargetProblem(encounter, caster, spell, encounter.combatants[targetId], content);
     if (problem !== null) return refuse({ code: problem });
   }
   return accept({ spell, bonus, targets });
@@ -233,7 +233,7 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
   const attacks = busy || costProblem(hero, "action", content) !== null
     ? []
     : hero.attacks.flatMap((option) => {
-        const targetIds = weaponTargets(encounter, hero, option).map((target) => target.id);
+        const targetIds = weaponTargets(encounter, hero, option, content).map((target) => target.id);
         return targetIds.length === 0 ? [] : [{ option, targetIds }];
       });
 
@@ -245,7 +245,7 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
       const bonusAction = spell.castingTime === "bonus-action";
       if (costProblem(hero, bonusAction ? "bonusAction" : "action", content) !== null) continue;
       const slotLevels = castableSlotLevels(spell, hero.resources.spellSlots);
-      const targetIds = spellTargets(encounter, hero, spell).map((target) => target.id);
+      const targetIds = spellTargets(encounter, hero, spell, content).map((target) => target.id);
       if (slotLevels.length > 0 && targetIds.length > 0) spells.push({ spell, slotLevels, bonusAction, targetIds });
     }
   }

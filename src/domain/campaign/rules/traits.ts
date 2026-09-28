@@ -1,3 +1,5 @@
+import type { DamageType } from "./effects.js";
+
 // Passive rules a creature has, from whatever grants them: armor and shields,
 // class features, monster stat blocks. One closed union, so each rule is
 // implemented once in the engine and reused by every source (code structure:
@@ -30,6 +32,26 @@ export type Trait =
   // action, when the bonus action is still free (Hide is not modeled).
   | { readonly kind: "cunningAction" }
   // Divine Smite: a melee hit can spend a spell slot for bonus radiant damage.
-  | { readonly kind: "divineSmite" };
+  | { readonly kind: "divineSmite" }
+  // Half damage of these types (rounded down); zero of these types (immune);
+  // double these types (vulnerable). A monster stat block's Damage
+  // Resistances/Immunities/Vulnerabilities, e.g. Skeleton's bludgeoning
+  // vulnerability. Simplified: the SRD's "nonmagical weapons" qualifier on
+  // some resistances is dropped (the engine has no notion of a magic
+  // weapon), so those are granted as flat resistance to the damage type.
+  | { readonly kind: "damageResistance"; readonly damageTypes: readonly DamageType[] }
+  | { readonly kind: "damageImmunity"; readonly damageTypes: readonly DamageType[] }
+  | { readonly kind: "damageVulnerability"; readonly damageTypes: readonly DamageType[] };
 
 export type TraitKind = Trait["kind"];
+
+// The multiplier this creature's traits apply to damage of this type:
+// resistance and vulnerability to the same type cancel out per the SRD, and
+// immunity wins over either. Applied before rounding (damage.ts floors it).
+export function damageMultiplier(traits: readonly Trait[], damageType: DamageType): number {
+  if (traits.some((trait) => trait.kind === "damageImmunity" && trait.damageTypes.includes(damageType))) return 0;
+  const resistant = traits.some((trait) => trait.kind === "damageResistance" && trait.damageTypes.includes(damageType));
+  const vulnerable = traits.some((trait) => trait.kind === "damageVulnerability" && trait.damageTypes.includes(damageType));
+  if (resistant === vulnerable) return 1;
+  return resistant ? 0.5 : 2;
+}

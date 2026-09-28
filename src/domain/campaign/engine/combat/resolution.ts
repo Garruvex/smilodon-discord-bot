@@ -297,7 +297,7 @@ export function applyEffect(
   const round = activeEncounter(decision)?.round ?? 0;
   switch (effect.kind) {
     case "damage":
-      applyDamage(decision, recipient, resolution.rolled[key] ?? 0, critical);
+      applyDamage(decision, recipient, resolution.rolled[key] ?? 0, critical, effect.damageType);
       return;
     case "heal":
       applyHealing(decision, recipient, resolution.rolled[key] ?? 0);

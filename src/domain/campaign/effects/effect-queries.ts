@@ -93,6 +93,20 @@ export function avoidsOpportunityAttacks(holder: EffectHolder, lookup: Condition
   return modifiersOf(holder, lookup).some(({ modifier }) => modifier.kind === "avoidsOpportunityAttacks");
 }
 
+// Whoever the holder may not attack or target with a spell right now
+// (Charmed). "cannotTargetSource" only means something read against the one
+// effect that granted it, so — unlike every other modifier — this is read
+// directly off holder.effects, not through modifiersOf()'s flattened list,
+// which tags a condition-derived modifier with the condition's id, not the
+// sourceId of the specific effect that applied it.
+export function forbiddenAttackTargets(holder: EffectHolder, lookup: ConditionLookup): readonly string[] {
+  const forbidden = new Set<string>();
+  for (const effect of holder.effects) {
+    for (const id of effect.conditions) if (lookup(id)?.modifiers.some((modifier) => modifier.kind === "cannotTargetSource") === true) forbidden.add(effect.sourceId);
+  }
+  return [...forbidden];
+}
+
 // ------------------------------------------------------------- Rolls
 
 export interface BiasReason {

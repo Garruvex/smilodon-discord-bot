@@ -115,7 +115,8 @@ export const giantRat = defineMonster({
 });
 
 // Not modeled: Undead Fortitude (the engine has no "drop to 1 HP instead of 0
-// on a failed CON save" mechanic yet).
+// on a failed CON save" mechanic yet), or condition immunity to poisoned
+// (the engine has no condition-immunity vocabulary yet).
 export const zombie = defineMonster({
   id: "monster:zombie",
   source,
@@ -126,7 +127,7 @@ export const zombie = defineMonster({
   abilityScores: { str: 13, dex: 6, con: 16, int: 3, wis: 6, cha: 5 },
   attacks: [{ weapon: "item:slam", toHit: 3, damage: plus(dice(1, 6), 1) }],
   tactic: "brute",
-  traits: [],
+  traits: [{ kind: "damageImmunity", damageTypes: ["poison"] }],
 });
 
 // Not modeled: bonus-action move toward the nearest enemy on its turn (Aggressive).
@@ -143,9 +144,8 @@ export const orc = defineMonster({
   traits: [],
 });
 
-// Not modeled: damage vulnerability to bludgeoning, immunity to poison damage
-// and the poisoned/exhausted conditions (the engine has no damage-type
-// resistance/immunity or condition-immunity vocabulary yet).
+// Not modeled: condition immunity to poisoned/exhaustion (the engine has no
+// condition-immunity vocabulary yet).
 export const skeleton = defineMonster({
   id: "monster:skeleton",
   source,
@@ -159,7 +159,7 @@ export const skeleton = defineMonster({
     { weapon: "item:shortbow", toHit: 4, damage: plus(dice(1, 6), 2) },
   ],
   tactic: "skirmisher",
-  traits: [],
+  traits: [{ kind: "damageVulnerability", damageTypes: ["bludgeoning"] }, { kind: "damageImmunity", damageTypes: ["poison"] }],
 });
 
 export const srd51StarterMonsters: readonly MonsterDefinition[] = [

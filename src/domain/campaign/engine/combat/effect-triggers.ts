@@ -76,7 +76,7 @@ export function recordTriggerRoll(
   if (action.kind === "damage" && result.kind === "dice") {
     const amount = Math.max(0, result.roll.total);
     decision.emit({ kind: "triggerRolled", rollId, holderId: holder.id, effectId: effect.id, result, outcome: { kind: "damage", amount } });
-    applyDamage(decision, holder, amount, false);
+    applyDamage(decision, holder, amount, false, action.damageType);
   } else if (action.kind === "saveToEnd" && result.kind === "d20Test") {
     const naturalRule = decision.ctx.rules.houseRules.option(naturalRollsOnChecks);
     const ended = resolveD20Test("savingThrow", result.roll.d20.natural, result.roll.total, action.dc, naturalRule).success;

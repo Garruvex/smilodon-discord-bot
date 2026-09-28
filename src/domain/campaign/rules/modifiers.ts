@@ -32,4 +32,10 @@ export type Modifier =
   // Leaving a hostile's reach provokes no opportunity attack (Disengage).
   | { readonly kind: "avoidsOpportunityAttacks" }
   // Adds to the holder's armor class (Shield).
-  | { readonly kind: "acBonus"; readonly amount: number };
+  | { readonly kind: "acBonus"; readonly amount: number }
+  // The holder cannot attack, or target with a spell, whoever caused this
+  // effect (Charmed). Unlike every other modifier here, this one only means
+  // anything read against the specific effect that granted it — a generic
+  // "the holder is Charmed" fact says nothing about who by — so it is not
+  // read through modifiersOf()'s flattened list; see forbiddenAttackTargets().
+  | { readonly kind: "cannotTargetSource" };

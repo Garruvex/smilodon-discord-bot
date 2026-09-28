@@ -98,6 +98,11 @@ export const invisible = defineCondition({
   ],
 });
 
+// Simplified: only the "can't attack or target the charmer" half is modeled;
+// the charmer's advantage on social checks is narrative (the engine has no
+// social-check roll to add it to).
+export const charmed = defineCondition({ id: "condition:charmed", source, includes: [], modifiers: [{ kind: "cannotTargetSource" }] });
+
 export const srd51Conditions: readonly ConditionDefinition[] = [
   incapacitated,
   prone,
@@ -110,4 +115,5 @@ export const srd51Conditions: readonly ConditionDefinition[] = [
   paralyzed,
   stunned,
   invisible,
+  charmed,
 ];

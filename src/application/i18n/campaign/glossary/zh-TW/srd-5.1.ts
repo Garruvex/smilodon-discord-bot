@@ -94,6 +94,7 @@ export const zhTwSrd51Glossary: Glossary = {
     "condition:paralyzed": "麻痺",
     "condition:stunned": "震懾",
     "condition:invisible": "隱形",
+    "condition:charmed": "魅惑",
     "spell:ray-of-frost": "冰霜射線",
     "spell:chill-touch": "寒冰之觸",
     "spell:command": "命令術",
