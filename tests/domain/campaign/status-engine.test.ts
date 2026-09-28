@@ -6,9 +6,9 @@ import type { CampaignEvent } from "../../../src/domain/campaign/events/campaign
 import { replay } from "../../../src/domain/campaign/events/evolve.js";
 import { damageMultiplier } from "../../../src/domain/campaign/rules/traits.js";
 import { conditionLookup, forbiddenAttackTargets } from "../../../src/domain/campaign/effects/effect-queries.js";
-import { alex, partyOfThree, organizer, ruleset, sam } from "./campaign-fixtures.js";
+import { alex, jamie, partyOfThree, organizer, ruleset, run, sam } from "./campaign-fixtures.js";
 import { appliedCondition } from "./effect-fixtures.js";
-import { Fight, skirmish } from "./combat-fixtures.js";
+import { Fight, skirmish, startedFight } from "./combat-fixtures.js";
 
 const rules = ruleset();
 const lookup = conditionLookup(rules.content);
@@ -75,5 +75,48 @@ describe("Charmed blocks attacking or targeting the charmer", () => {
   it("computes forbiddenAttackTargets directly off the effect's sourceId, not the condition's name", () => {
     const holder = { effects: [appliedCondition("condition:charmed", "the-charmer")], condition: "active" as const, dodging: false, disengaged: false, speed: 30, budget: { reaction: true } };
     expect(forbiddenAttackTargets(holder, lookup)).toEqual(["the-charmer"]);
+  });
+});
+
+describe("a turn timer firing mid-resolution retries instead of dropping the timeout", () => {
+  it("re-arms a fresh combatTurn timer, and leaves the pending attack and the away policy untouched", () => {
+    const fight = startedFight();
+    // Declared directly (not through Fight.run), so the to-hit roll it
+    // asked for is left unanswered: the turn is genuinely mid-resolution.
+    const attacking = run(fight.state, alex, { kind: "combatAttack", combatantId: "c-mira", targetId: "goblin-a", weapon: "item:shortbow" }, { now: 1_000 });
+    const encounter = attacking.state.encounter;
+    if (encounter === null) throw new Error("fixture");
+    expect(encounter.resolution).not.toBeNull();
+
+    const timedOut = run(attacking.state, { kind: "system" }, { kind: "turnTimerExpired", encounterId: encounter.id, turnNumber: encounter.turnNumber }, { now: 2_000 });
+    expect(timedOut.events).toEqual([]); // Busy: nothing about the fight itself changed.
+    expect(timedOut.requests).toEqual([
+      { kind: "startTimer", timer: { kind: "combatTurn", timerId: `turn:${encounter.id}:${encounter.turnNumber}`, dueAt: 7_000, encounterId: encounter.id, turnNumber: encounter.turnNumber } },
+    ]);
+    // Still mira's turn, still waiting on her attack roll — the away policy did not run in her place.
+    expect(timedOut.state.encounter?.resolution).not.toBeNull();
+    expect(timedOut.state.encounter?.order[timedOut.state.encounter.turnIndex]).toBe("c-mira");
+  });
+});
+
+describe("automated movement respects immobilizing conditions", () => {
+  const spiderPit: EncounterSpec = { ...skirmish, monsters: [{ monsterId: "monster:giant-wolf-spider", zoneId: "courtyard", npcId: null, fleeBelowHpFraction: null }] };
+
+  it("keeps a restrained spider from closing the distance on its own turn", () => {
+    // Heroes act first; the spider (lowest initiative) moves last.
+    const fight = new Fight(partyOfThree()).rolls([20, 15, 10, 1]).run(organizer, { kind: "startEncounter", spec: spiderPit });
+    give(fight, "giant-wolf-spider", appliedCondition("condition:restrained", "test-source"));
+    expect(fight.combatant("giant-wolf-spider").zoneId).toBe("courtyard");
+
+    fight.run(alex, { kind: "combatDodge", combatantId: "c-mira" });
+    fight.run(alex, { kind: "endTurn", combatantId: "c-mira" });
+    fight.run(jamie, { kind: "combatDodge", combatantId: "c-borin" });
+    fight.run(jamie, { kind: "endTurn", combatantId: "c-borin" });
+    fight.run(sam, { kind: "combatDodge", combatantId: "c-elspeth" });
+    fight.run(sam, { kind: "endTurn", combatantId: "c-elspeth" });
+
+    // The spider's own turn just played out automatically (a monster turn
+    // needs no player command): restrained, it could not approach at all.
+    expect(fight.combatant("giant-wolf-spider").zoneId).toBe("courtyard");
   });
 });

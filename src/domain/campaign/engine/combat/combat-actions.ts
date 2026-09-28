@@ -26,9 +26,13 @@ export function declareWeaponAttack(
     const smite = smiteProblem(attacker, option, smiteSlot);
     if (smite !== null) return smite;
   }
-  // Extra Attack: the action itself is spent only on the last attack it
-  // grants. Divine Smite's slot (see turn-rules.ts's smiteProblem) is spent
-  // on declaring the attack, whether or not it goes on to land.
+  // Extra Attack: the Attack action is spent the moment it is taken, on the
+  // first of the attacks it grants, same as any other action — what makes
+  // Extra Attack special is attacksLeft (evolve-combat.ts), a separate
+  // counter that still permits further weapon attacks after the action
+  // itself shows spent. Divine Smite's slot (see turn-rules.ts's
+  // smiteProblem) is spent on declaring the attack, whether or not it goes
+  // on to land.
   return declareResolution(decision, {
     actor: attacker,
     source: { kind: "weapon", option, ...(smiteSlot === undefined ? {} : { smiteSlot }) },
@@ -36,7 +40,7 @@ export function declareWeaponAttack(
     purpose,
     cost: {
       ...noCost,
-      action: purpose === "action" && attacker.budget.attacksLeft <= 1,
+      action: purpose === "action",
       reaction: purpose === "opportunity",
       spellSlot: smiteSlot ?? null,
     },

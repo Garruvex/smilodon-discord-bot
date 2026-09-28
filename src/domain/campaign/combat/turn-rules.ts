@@ -130,8 +130,12 @@ export function featureProblem(hero: Combatant, content: SealedContent, featureI
 
 // ------------------------------------------------------------- Movement
 
-// Movement left this turn, none at all while an effect holds the creature in place.
-const movementLeft = (hero: Combatant, content: SealedContent): number => (speedOf(hero, conditionLookup(content)) === 0 ? 0 : hero.budget.movement);
+// Movement left this turn, none at all while an effect holds the creature in
+// place (grappled, restrained, paralyzed, stunned). The one place movement
+// legality is decided, so a player's move and the engine's own automated
+// movement (turn-flow.ts's continuePlan, for monsters and the away policy)
+// can't disagree about whether a hindered creature may cross a zone.
+export const movementLeft = (hero: Combatant, content: SealedContent): number => (speedOf(hero, conditionLookup(content)) === 0 ? 0 : hero.budget.movement);
 
 export function moveProblem(encounter: EncounterState, hero: Combatant, zoneId: string, content: SealedContent): Checked<{ readonly feet: number }> {
   const edge = edgeBetween(encounter.edges, hero.zoneId, zoneId);
@@ -230,7 +234,10 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
   if (currentCombatant(encounter)?.id !== hero.id) return null;
   const busy = encounter.resolution !== null || encounter.pendingMove !== null || encounter.pendingTriggers !== null;
 
-  const attacks = busy || costProblem(hero, "action", content) !== null
+  // Gated on attacksLeft, not costProblem("action", ...): Extra Attack marks
+  // the action spent on the first swing (attackProblem below matches), but
+  // further swings from the same action stay legal while attacksLeft holds.
+  const attacks = busy || hero.budget.attacksLeft <= 0 || !canAct(hero, lookup)
     ? []
     : hero.attacks.flatMap((option) => {
         const targetIds = weaponTargets(encounter, hero, option, content).map((target) => target.id);

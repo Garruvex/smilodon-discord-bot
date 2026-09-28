@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { EncounterSpec } from "../../../src/domain/campaign/commands/campaign-command.js";
+import { turnOptions } from "../../../src/domain/campaign/combat/turn-rules.js";
 import { formatDiceExpression } from "../../../src/domain/campaign/dice/dice-expression.js";
 import type { CampaignEvent } from "../../../src/domain/campaign/events/campaign-event.js";
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
@@ -198,10 +199,27 @@ describe("class features", () => {
     fight.run(jamie, { kind: "combatMove", combatantId: "c-borin", zoneId: "courtyard" });
     fight.run(jamie, { kind: "combatEngage", combatantId: "c-borin", targetId: "goblin-a" });
     fight.rolls([1]).run(jamie, { kind: "combatAttack", combatantId: "c-borin", targetId: "goblin-a", weapon: "item:longsword" });
-    expect(fight.combatant("c-borin").budget).toMatchObject({ action: true, attacksLeft: 1 });
+    // The Attack action is spent on the first swing, same as any other
+    // action — attacksLeft is what still permits the second one.
+    expect(fight.combatant("c-borin").budget).toMatchObject({ action: false, attacksLeft: 1 });
     fight.rolls([1]).run(jamie, { kind: "combatAttack", combatantId: "c-borin", targetId: "goblin-a", weapon: "item:longsword" });
     expect(fight.combatant("c-borin").budget).toMatchObject({ action: false, attacksLeft: 0 });
     expect(fight.reject(jamie, { kind: "combatAttack", combatantId: "c-borin", targetId: "goblin-a", weapon: "item:longsword" })).toEqual({ code: "noActionLeft" });
+  });
+
+  it("cannot spend the action on Dodge after the first of two Extra Attack swings", () => {
+    const base = newCampaign();
+    const borin = base.characters["c-borin"];
+    if (borin === undefined) throw new Error("fixture");
+    const leveled = { ...base, characters: { ...base.characters, "c-borin": { ...borin, level: 5, features: [...borin.features, "feature:extra-attack" as const] } } };
+    const fight = borinFirst(leveled);
+    fight.run(jamie, { kind: "combatMove", combatantId: "c-borin", zoneId: "courtyard" });
+    fight.run(jamie, { kind: "combatEngage", combatantId: "c-borin", targetId: "goblin-a" });
+    fight.rolls([1]).run(jamie, { kind: "combatAttack", combatantId: "c-borin", targetId: "goblin-a", weapon: "item:longsword" });
+    expect(fight.reject(jamie, { kind: "combatDodge", combatantId: "c-borin" })).toEqual({ code: "noActionLeft" });
+    // The menu still offers the second swing Extra Attack still owes.
+    const options = turnOptions(fight.encounter, fight.state.characters["c-borin"], ruleset().content, ruleset().houseRules, "c-borin");
+    expect(options?.attacks[0]?.targetIds).toContain("goblin-a");
   });
 
   it("gives a level 11 Fighter a third attack, and a level 20 one a fourth", () => {

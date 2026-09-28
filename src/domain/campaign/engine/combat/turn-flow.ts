@@ -1,8 +1,9 @@
 // The order of a fight's turns: what happens when one starts (clocks, standing up, triggers), how a foe or an autopilot plays it, and how it ends.
 import { scheduleReminder } from "../reminders.js";
-import { areEngaged, currentCombatant, isActive, isPresent, type Combatant, type EncounterState, type TurnPlanRemainder } from "../../combat/combat-state.js";
+import { currentCombatant, isActive, isPresent, type Combatant, type TurnPlanRemainder } from "../../combat/combat-state.js";
 import { bonusDiceFor, canAct, conditionLookup, effectsDueAt, hasCondition } from "../../effects/effect-queries.js";
-import { edgeBetween, engageCost } from "../../combat/positioning.js";
+import { engageCost } from "../../combat/positioning.js";
+import { engageProblem, moveProblem } from "../../combat/turn-rules.js";
 import { chooseAutopilotPlan, chooseMonsterPlan, type TurnPlan } from "../../combat/tactics.js";
 import type { D20TestSpec } from "../../dice/d20-test.js";
 import { deadlineAfter, type Decision } from "../decision.js";
@@ -168,11 +169,17 @@ export function continuePlan(decision: Decision, combatantId: string, plan: Turn
   const encounter = activeEncounter(decision);
   const combatant = encounter?.combatants[combatantId];
   if (encounter == null || combatant === undefined) return;
+  const content = decision.ctx.rules.content;
   const [next, ...rest] = plan.moves;
   if (next !== undefined) {
-    const feet = edgeBetween(encounter.edges, combatant.zoneId, next)?.feet;
-    if (feet !== undefined && feet <= combatant.budget.movement) {
-      startMove(decision, combatant, "move", next, feet, { ...plan, moves: rest });
+    // moveProblem, not a raw edge/budget check: a hindered creature
+    // (grappled, restrained, paralyzed, stunned) has no movement left even
+    // if combatant.budget.movement itself is nonzero (turn-rules.ts's
+    // movementLeft is what zeroes it), and automated movement must be held
+    // to the same legality a player's own move command is.
+    const checked = moveProblem(encounter, combatant, next, content);
+    if ("value" in checked) {
+      startMove(decision, combatant, "move", next, checked.value.feet, { ...plan, moves: rest });
       return;
     }
   }
@@ -183,8 +190,7 @@ export function continuePlan(decision: Decision, combatantId: string, plan: Turn
   }
   if (plan.engage !== null) {
     const target = activeEncounter(decision)?.combatants[plan.engage];
-    const engaged = activeEncounter(decision) !== null && areEngaged(activeEncounter(decision) as EncounterState, current.id, plan.engage);
-    if (target !== undefined && isPresent(target) && target.zoneId === current.zoneId && !engaged && current.budget.movement >= engageCost) {
+    if (target !== undefined && engageProblem(activeEncounter(decision) ?? encounter, current, plan.engage, content) === null) {
       decision.emit({ kind: "combatantEngaged", combatantId: current.id, targetId: target.id, feet: engageCost });
     }
   }
@@ -229,11 +235,27 @@ export function resumeAfterTriggers(decision: Decision, boundary: "start" | "end
   else finishTurn(decision);
 }
 
+// A turn timer that fires mid-resolution (an attack, a reaction, an opening
+// move's opportunity attacks) can't run the away policy yet — there is
+// nothing sensible to play on top of a decision already in flight — but
+// doing nothing would lose the timeout outright: the worker that delivered
+// this event has already consumed it, so if the wait for a response never
+// resolves on its own (a reaction prompt nobody answers), the turn would
+// never end. Asking for another timer shortly retries once the turn frees up.
+export const turnTimerRetryMs = 5000;
+
 export function turnTimerExpired(decision: Decision, encounterId: string, turnNumber: number): Rejection | null {
   if (decision.ctx.actor.kind !== "system") return { code: "systemOnly" };
   const encounter = activeEncounter(decision);
   if (encounter?.id !== encounterId || encounter.turnNumber !== turnNumber) return null;
-  if (encounter.resolution !== null || encounter.pendingMove !== null || encounter.pendingTriggers !== null || decision.state.status !== "active") return null;
+  if (decision.state.status !== "active") return null;
+  if (encounter.resolution !== null || encounter.pendingMove !== null || encounter.pendingTriggers !== null) {
+    decision.request({
+      kind: "startTimer",
+      timer: { kind: "combatTurn", timerId: turnTimerId(encounterId, turnNumber), dueAt: decision.ctx.now + turnTimerRetryMs, encounterId, turnNumber },
+    });
+    return null;
+  }
   const combatant = currentCombatant(encounter);
   if (combatant === undefined) return null;
   // Apply the away policy to what is left of the turn, then end it once.
