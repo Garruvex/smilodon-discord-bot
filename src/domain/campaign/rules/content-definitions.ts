@@ -189,6 +189,21 @@ export interface ClassDefinition extends DefinitionBase<"class"> {
   // Narrative or mechanical features granted at levels 2+, by level. Level 1's
   // own features are the `features` field above, not this one.
   readonly levelFeatures: Readonly<Record<number, readonly ContentId<"feature">[]>>;
+  // SRD 5.1 multiclassing: every group here needs at least one ability at
+  // 13+ in the hero's scores before they may take their first level in this
+  // class (groups AND together; abilities within a group are an OR — e.g.
+  // Fighter's Strength-or-Dexterity). A class the hero already holds levels
+  // in is exempt (character-build.ts's canMulticlassInto); SRD's matching
+  // requirement to also keep 13+ in one's existing class(es) is not checked,
+  // the same "gate the choice, not the whole sheet" liberty.
+  readonly multiclassRequires: readonly (readonly Ability[])[];
+  // The one skill a hero may pick when adding this class as other than their
+  // first (SRD 5.1's Multiclassing Proficiencies table); absent for classes
+  // that grant none there. That table's armor and weapon proficiencies are
+  // not modeled: this engine has no proficiency-gated AC or attack roll at
+  // all (heroes are always proficient with what they carry —
+  // combatant-profile.ts), so granting them here would be inert.
+  readonly multiclassSkillChoices?: readonly Skill[];
 }
 
 export interface RaceDefinition extends DefinitionBase<"race"> {

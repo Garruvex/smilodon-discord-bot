@@ -1,4 +1,5 @@
 import { abilityModifier } from "../character/character-sheet.js";
+import { hitDicePool } from "../character/character-build.js";
 import { defaultHeroResources, type HeroStatus } from "../character/hero-status.js";
 import type { CharacterId } from "../core/ids.js";
 import { isFallen } from "../state/campaign-state.js";
@@ -29,12 +30,19 @@ export function takeRest(decision: Decision, rest: "short" | "long"): Rejection 
       heroStatus[sheet.id] = { hp: sheet.maxHp, resources: fresh, hitDice, exhaustion };
       continue;
     }
-    const perDie = Math.max(1, Math.floor(sheet.hitDie / 2) + 1 + abilityModifier(sheet.abilityScores.con));
+    // Largest die first (hitDicePool's own ordering): a multiclass hero's
+    // remaining `dice` count is always the smallest-`dice` suffix of this
+    // sorted pool, since every rest spends and restores largest-first too —
+    // see hitDicePool's doc comment (character-build.ts).
+    const pool = hitDicePool(sheet);
     let hp = current.hp;
     let left = dice;
+    let spent = pool.length - dice;
     while (hp < sheet.maxHp && left > 0) {
-      hp = Math.min(sheet.maxHp, hp + perDie);
+      const die = pool[spent] ?? sheet.hitDie;
+      hp = Math.min(sheet.maxHp, hp + Math.max(1, Math.floor(die / 2) + 1 + abilityModifier(sheet.abilityScores.con)));
       left -= 1;
+      spent += 1;
     }
     const featureUses = { ...current.resources.featureUses };
     for (const id of sheet.features) {

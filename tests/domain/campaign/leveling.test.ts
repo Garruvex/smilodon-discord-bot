@@ -115,7 +115,7 @@ describe("XP and levels", () => {
   });
 
   it("grants no new features on a level with none listed", () => {
-    const sheet = { ...deriveSheet(wizardBuild), id: "c-4" as never, ownerUserId: "u-4" as never, level: 2 };
+    const sheet = { ...deriveSheet(wizardBuild), id: "c-4" as never, ownerUserId: "u-4" as never, level: 2, classLevels: { wizard: 2 } };
     const toLevel3 = levelUp(sheet, "wizard");
     expect(toLevel3.features).toEqual(sheet.features);
   });
@@ -124,7 +124,7 @@ describe("XP and levels", () => {
     expect(asiLevels).toContain(4);
     const template = classTemplates.fighter;
     const abilityScores = { str: 15, dex: 12, con: 14, int: 8, wis: 13, cha: 10 };
-    const sheet = { level: 3, hitDie: 10, abilityScores } as never;
+    const sheet = { level: 3, hitDie: 10, abilityScores, classLevels: { fighter: 3 }, features: [], skills: {} } as never;
     const toLevel4 = levelUp(sheet, "fighter");
     expect(toLevel4.abilityScores).not.toEqual(abilityScores);
     expect(template.suggested[0]).toBe("str");

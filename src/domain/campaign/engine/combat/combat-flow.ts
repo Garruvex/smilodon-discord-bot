@@ -4,7 +4,8 @@ import type { CombatCommand } from "../../commands/campaign-command.js";
 import { assertNever } from "../../core/assert-never.js";
 import type { RollId } from "../../core/ids.js";
 import { actsForOwner } from "../../character/ownership.js";
-import { isBuildClass } from "../../character/character-build.js";
+import { canMulticlassInto, classLevelsOf, isBuildClass, type BuildClass } from "../../character/character-build.js";
+import type { CharacterSheet } from "../../character/character-sheet.js";
 import { levelForXp, levelUp } from "../../character/leveling.js";
 import { currentCombatant, isActive, isPresent, type Combatant, type EncounterState } from "../../combat/combat-state.js";
 import { costProblem, engageProblem, moveProblem, withdrawProblem } from "../../combat/turn-rules.js";
@@ -212,19 +213,37 @@ export function experienceShares(decision: Decision, encounter: EncounterState):
   return shares;
 }
 
+// Which class a hero's next level lands in: the class declared by the
+// chooseClassLevel command (members.ts), if it still qualifies — a
+// requirement checked again here since XP, and so ability scores from an
+// earlier ASI, can change between declaring and actually reaching the next
+// threshold — otherwise the class already being leveled.
+function nextClassFor(sheet: CharacterSheet): BuildClass | null {
+  const pending = sheet.pendingClassLevel;
+  if (pending !== undefined && isBuildClass(pending.buildClass) && canMulticlassInto(pending.buildClass, sheet)) return pending.buildClass;
+  if (sheet.className !== undefined && isBuildClass(sheet.className)) return sheet.className;
+  const [first] = Object.keys(classLevelsOf(sheet));
+  return first !== undefined && isBuildClass(first) ? first : null;
+}
+
 // Applies a victory's XP, then levels up every hero it carries across a
 // threshold — one characterLeveledUp event per level, so a big award (or a
-// low starting level) still lands as a readable sequence.
+// low starting level) still lands as a readable sequence. A crossed
+// threshold that jumps more than one level spends the pending class choice
+// on the first of them only; the rest continue whatever class that first
+// level left the hero leveling — a one-shot-per-declaration simplification,
+// not a multi-level plan.
 function grantExperience(decision: Decision, encounterId: string, shares: Readonly<Record<string, number>>): void {
   decision.emit({ kind: "experienceAwarded", encounterId, xp: shares });
   for (const characterId of Object.keys(shares)) {
     let sheet = decision.state.characters[characterId];
     if (sheet === undefined) continue;
-    const buildClass = sheet.className;
-    if (buildClass === undefined || !isBuildClass(buildClass)) continue;
     const targetLevel = levelForXp(sheet.xp ?? 0);
     while (sheet.level < targetLevel) {
-      const next = levelUp(sheet, buildClass);
+      const buildClass = nextClassFor(sheet);
+      if (buildClass === null) break;
+      const skillChoice = sheet.pendingClassLevel?.buildClass === buildClass ? sheet.pendingClassLevel.skillChoice : undefined;
+      const next = levelUp(sheet, buildClass, skillChoice);
       decision.emit({
         kind: "characterLeveledUp",
         characterId,
@@ -233,6 +252,8 @@ function grantExperience(decision: Decision, encounterId: string, shares: Readon
         abilityScores: next.abilityScores,
         spellcasting: next.spellcasting,
         features: next.features,
+        classLevels: next.classLevels,
+        skills: next.skills,
       });
       const updated = decision.state.characters[characterId];
       if (updated === undefined) break;

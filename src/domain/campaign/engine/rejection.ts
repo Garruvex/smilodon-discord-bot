@@ -53,5 +53,7 @@ export type Rejection =
   | { readonly code: "heroFallen" }
   | { readonly code: "invalidHero"; readonly problems: readonly string[] }
   | { readonly code: "heroNotReplaceable" }
+  | { readonly code: "unknownClass" }
+  | { readonly code: "multiclassRequirementNotMet" }
 
 export type RejectionCode = Rejection["code"];

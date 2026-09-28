@@ -8,6 +8,7 @@ import type { CharacterSheet } from "../character/character-sheet.js";
 import type { Ability } from "../rules/effects.js";
 import type { ContentId } from "../rules/content-id.js";
 import type { CheckResult, CheckState, ItemOffer, Resolution } from "../state/campaign-state.js";
+import type { Skill } from "../rules/skills.js";
 
 // The version of the event shapes below. It goes up whenever a change to an
 // event could not be read by code written for the old shape, and every recorded
@@ -123,7 +124,16 @@ export type CampaignEvent =
       readonly abilityScores: Readonly<Record<Ability, number>>;
       readonly spellcasting: CharacterSheet["spellcasting"];
       readonly features: readonly ContentId<"feature">[];
+      // Levels per class after this one, and skill proficiencies after any
+      // multiclass skill this level granted (character/leveling.ts).
+      readonly classLevels: Readonly<Partial<Record<string, number>>>;
+      readonly skills: CharacterSheet["skills"];
     }
+  // The hero's next level will land in `buildClass` (character-build.ts's
+  // BuildClass), and, if that class is new to them and grants one, the skill
+  // named. Declaring again before the next level replaces it; reaching the
+  // next level spends and clears it (engine/members.ts's chooseClassLevel).
+  | { readonly kind: "classLevelPlanChosen"; readonly characterId: CharacterId; readonly buildClass: string; readonly skillChoice?: Skill }
   | CombatEvent;
 
 export type OfferClosedReason = "declined" | "cancelled" | "unavailable";

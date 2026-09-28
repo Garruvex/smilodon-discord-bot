@@ -11,7 +11,8 @@ import { handleInventoryCommand } from "./inventory.js";
 import { takeRest } from "./rest.js";
 import { Decision, type DecideResult, type EngineContext } from "./decision.js";
 import { beginAdventure, beginPlay, illustrateMoment, markReady, redoPicture, recordLedgerFact, recordNarration, recordOpening, recordSummary, regenerateNarration, replaceNarration, reportPlannerFailure, retryPlan } from "./dm.js";
-import { continueCampaign, grantProxy, joinHero, markAway, markReturned, revokeProxy } from "./members.js";
+import { chooseClassLevel, continueCampaign, grantProxy, joinHero, markAway, markReturned, revokeProxy } from "./members.js";
+import { isSkill } from "../character/character-sheet.js";
 import { pauseCampaign } from "./pause.js";
 import { remind } from "./reminders.js";
 import { speak } from "./speech.js";
@@ -113,6 +114,10 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
       return retryEncounter(decision);
     case "joinHero":
       return joinHero(decision, command.sheet);
+    case "chooseClassLevel": {
+      const skillChoice = command.skillChoice !== undefined && isSkill(command.skillChoice) ? command.skillChoice : undefined;
+      return chooseClassLevel(decision, command.characterId, command.buildClass, skillChoice);
+    }
     case "startEncounter":
     case "combatMove":
     case "combatEngage":

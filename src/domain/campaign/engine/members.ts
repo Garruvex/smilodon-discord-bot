@@ -1,5 +1,7 @@
 import type { CharacterSheet } from "../character/character-sheet.js";
+import { canMulticlassInto, classTemplates, isBuildClass } from "../character/character-build.js";
 import { actsForOwner } from "../character/ownership.js";
+import type { Skill } from "../rules/skills.js";
 import type { CharacterId, CheckId, Instant, UserId } from "../core/ids.js";
 import { isFallen, presentMembers, type CampaignState } from "../state/campaign-state.js";
 import { deadlineAfter, type Decision } from "./decision.js";
@@ -203,6 +205,26 @@ function heroProblems(state: CampaignState, sheet: CharacterSheet, decision: Dec
   for (const id of sheet.features) if (content.find(id)?.kind !== "feature") problems.push(`Unknown feature ${id}.`);
   for (const id of sheet.spellcasting?.spells ?? []) if (content.find(id)?.kind !== "spell") problems.push(`Unknown spell ${id}.`);
   return problems;
+}
+
+// Declares which class the hero's next level lands in — the class already
+// being leveled, to cancel a multiclass plan, or a new one, checked against
+// that class's SRD ability-score prerequisite now (grantExperience,
+// combat/combat-flow.ts, checks it again when the level is actually
+// reached, since scores can still change between now and then). The
+// skillChoice, if given, is only spent — and only validated — once that
+// level actually arrives and grants it.
+export function chooseClassLevel(decision: Decision, characterId: CharacterId, buildClass: string, skillChoice?: Skill): Rejection | null {
+  const { state, ctx } = decision;
+  const sheet = state.characters[characterId];
+  if (sheet === undefined) return { code: "notYourCharacter" };
+  if (ctx.actor.kind === "user" && ctx.actor.userId !== sheet.ownerUserId && ctx.actor.userId !== state.organizerId) return { code: "notYourCharacter" };
+  if (!isBuildClass(buildClass)) return { code: "unknownClass" };
+  if (!canMulticlassInto(buildClass, sheet)) return { code: "multiclassRequirementNotMet" };
+  const template = classTemplates[buildClass];
+  const validSkill = skillChoice !== undefined && template.multiclassSkillChoices?.includes(skillChoice) === true ? skillChoice : undefined;
+  decision.emit({ kind: "classLevelPlanChosen", characterId, buildClass, ...(validSkill === undefined ? {} : { skillChoice: validSkill }) });
+  return null;
 }
 
 function checkSelfOrOrganizer(decision: Decision, userId: UserId): Rejection | null {

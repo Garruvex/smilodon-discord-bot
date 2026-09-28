@@ -187,6 +187,7 @@ describe("ContentRegistryBuilder", () => {
       spellcastingAbility: null,
       firstSpells: [],
       levelFeatures: {},
+      multiclassRequires: [["str"]],
     });
     const problems = problemsOf(() => build([club, brawler]));
     expect(problems).toEqual([

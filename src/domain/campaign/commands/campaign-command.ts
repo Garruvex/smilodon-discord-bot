@@ -74,6 +74,12 @@ export type CampaignCommand =
   | { readonly kind: "retryEncounter" }
   // A player's new hero: their first, or one to replace a fallen hero.
   | { readonly kind: "joinHero"; readonly sheet: CharacterSheet }
+  // Declares which class the hero's next level lands in (character-build.ts's
+  // BuildClass) — the same class they are already leveling, or a new one
+  // (multiclassing in, gated by that class's SRD ability-score prerequisite).
+  // skillChoice only matters, and is only validated, the moment that new
+  // class's own multiclass skill is actually granted.
+  | { readonly kind: "chooseClassLevel"; readonly characterId: CharacterId; readonly buildClass: string; readonly skillChoice?: string }
   | CombatCommand;
 
 // Items move between heroes outside combat. The owner of the giving hero

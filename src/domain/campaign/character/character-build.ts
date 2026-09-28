@@ -74,6 +74,42 @@ function raceContentId(race: BuildRace): ContentId<"race"> {
   return `race:${race}`;
 }
 
+// A sheet's classes and the levels held in each, keyed by builder slug. Every
+// class-aware reader (leveling.ts, combat's HP-on-rest, the multiclass
+// commands) goes through this rather than the raw field, so a sheet saved
+// before multiclassing existed — classLevels absent, just className/level —
+// still reads as the single class it always was.
+export function classLevelsOf(sheet: Pick<CharacterSheet, "className" | "level" | "classLevels">): Readonly<Partial<Record<BuildClass, number>>> {
+  if (sheet.classLevels !== undefined) return sheet.classLevels;
+  return sheet.className !== undefined && isBuildClass(sheet.className) ? { [sheet.className]: sheet.level } : {};
+}
+
+// SRD 5.1 multiclassing: whether the hero's ability scores meet this class's
+// requirement to take a level in it. Always true for a class already held
+// (see multiclassRequires' doc comment on content-definitions.ts).
+export function canMulticlassInto(buildClass: BuildClass, sheet: Pick<CharacterSheet, "className" | "level" | "classLevels" | "abilityScores">): boolean {
+  if ((classLevelsOf(sheet)[buildClass] ?? 0) > 0) return true;
+  const template = classTemplates[buildClass] as ClassDefinition | undefined;
+  if (template === undefined) return false;
+  return template.multiclassRequires.every((group) => group.some((ability) => sheet.abilityScores[ability] >= 13));
+}
+
+// One Hit Die per class level, largest first: how a rest spends and recovers
+// them when the pool mixes die sizes (character/rest.ts). Largest-first is
+// not a house rule — it is the greedy-optimal order for "heal until full or
+// out of dice" and the natural mirror for restoring the biggest ones back
+// first, so it needs no player choice to reach the SRD's own numbers.
+export function hitDicePool(sheet: Pick<CharacterSheet, "className" | "level" | "classLevels" | "hitDie">): readonly number[] {
+  const levels = classLevelsOf(sheet);
+  const dice: number[] = [];
+  for (const [buildClass, count] of Object.entries(levels)) {
+    const die = (classTemplates as Readonly<Record<string, ClassDefinition | undefined>>)[buildClass]?.hitDie ?? sheet.hitDie;
+    for (let index = 0; index < (count ?? 0); index += 1) dice.push(die);
+  }
+  while (dice.length < sheet.level) dice.push(sheet.hitDie);
+  return dice.sort((a, b) => b - a);
+}
+
 // SRD 5.1 standard array: each score is used once.
 export const standardArray: readonly number[] = [15, 14, 13, 12, 10, 8];
 
@@ -169,6 +205,7 @@ export function deriveSheet(build: BuildChoices, gear?: { readonly equipment: re
   return {
     name: build.name.trim(),
     className: build.class,
+    classLevels: { [build.class]: 1 },
     ...(build.race === undefined ? {} : { race: raceContentId(build.race) }),
     abilityScores,
     proficiencyBonus: 2,

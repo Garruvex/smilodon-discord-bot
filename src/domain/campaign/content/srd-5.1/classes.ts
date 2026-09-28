@@ -34,6 +34,7 @@ export const fighter = defineClass({
     11: ["feature:extra-attack-2"],
     20: ["feature:extra-attack-3"],
   },
+  multiclassRequires: [["str", "dex"]],
 });
 
 export const rogue = defineClass({
@@ -55,6 +56,8 @@ export const rogue = defineClass({
   spellcastingAbility: null,
   firstSpells: [],
   levelFeatures: { 2: ["feature:cunning-action"], 3: ["feature:thief"], 5: ["feature:uncanny-dodge"] },
+  multiclassRequires: [["dex"]],
+  multiclassSkillChoices: ["acrobatics", "athletics", "deception", "insight", "intimidation", "investigation", "perception", "performance", "persuasion", "sleight-of-hand", "stealth"],
 });
 
 export const cleric = defineClass({
@@ -84,6 +87,7 @@ export const cleric = defineClass({
   spellcastingAbility: "wis",
   firstSpells: [],
   levelFeatures: { 2: ["feature:channel-divinity"] },
+  multiclassRequires: [["wis"]],
 });
 
 export const barbarian = defineClass({
@@ -105,6 +109,7 @@ export const barbarian = defineClass({
   spellcastingAbility: null,
   firstSpells: [],
   levelFeatures: { 2: ["feature:reckless-attack"], 3: ["feature:path-of-the-berserker"], 5: ["feature:extra-attack"] },
+  multiclassRequires: [["str"]],
 });
 
 export const bard = defineClass({
@@ -145,6 +150,27 @@ export const bard = defineClass({
   spellcastingAbility: "cha",
   firstSpells: [],
   levelFeatures: { 2: ["feature:jack-of-all-trades"], 3: ["feature:college-of-lore"] },
+  multiclassRequires: [["cha"]],
+  multiclassSkillChoices: [
+    "acrobatics",
+    "animal-handling",
+    "arcana",
+    "athletics",
+    "deception",
+    "history",
+    "insight",
+    "intimidation",
+    "investigation",
+    "medicine",
+    "nature",
+    "perception",
+    "performance",
+    "persuasion",
+    "religion",
+    "sleight-of-hand",
+    "stealth",
+    "survival",
+  ],
 });
 
 export const druid = defineClass({
@@ -166,6 +192,7 @@ export const druid = defineClass({
   spellcastingAbility: "wis",
   firstSpells: [],
   levelFeatures: { 2: ["feature:wild-shape"], 3: ["feature:circle-of-the-land"] },
+  multiclassRequires: [["wis"]],
 });
 
 export const monk = defineClass({
@@ -190,6 +217,7 @@ export const monk = defineClass({
   spellcastingAbility: null,
   firstSpells: [],
   levelFeatures: { 2: ["feature:ki"], 3: ["feature:way-of-the-open-hand"], 5: ["feature:extra-attack"] },
+  multiclassRequires: [["dex"], ["wis"]],
 });
 
 export const paladin = defineClass({
@@ -215,6 +243,7 @@ export const paladin = defineClass({
   // takes for Bard and Warlock.
   firstSpells: ["spell:cure-wounds", "spell:bless"],
   levelFeatures: { 2: ["feature:fighting-style-dueling", "feature:divine-smite"], 3: ["feature:oath-of-devotion"], 5: ["feature:extra-attack"] },
+  multiclassRequires: [["str"], ["cha"]],
 });
 
 export const ranger = defineClass({
@@ -237,6 +266,8 @@ export const ranger = defineClass({
   spellcastingAbility: "wis",
   firstSpells: ["spell:cure-wounds"],
   levelFeatures: { 2: ["feature:fighting-style-dueling"], 3: ["feature:hunter"], 5: ["feature:extra-attack"] },
+  multiclassRequires: [["dex"], ["wis"]],
+  multiclassSkillChoices: ["animal-handling", "athletics", "insight", "investigation", "nature", "perception", "stealth", "survival"],
 });
 
 export const sorcerer = defineClass({
@@ -258,6 +289,7 @@ export const sorcerer = defineClass({
   spellcastingAbility: "cha",
   firstSpells: [],
   levelFeatures: { 2: ["feature:font-of-magic"], 3: ["feature:metamagic"] },
+  multiclassRequires: [["cha"]],
 });
 
 export const warlock = defineClass({
@@ -280,6 +312,7 @@ export const warlock = defineClass({
   spellcastingAbility: "cha",
   firstSpells: [],
   levelFeatures: { 2: ["feature:eldritch-invocations"], 3: ["feature:pact-boon"] },
+  multiclassRequires: [["cha"]],
 });
 
 export const wizard = defineClass({
@@ -301,6 +334,7 @@ export const wizard = defineClass({
   spellcastingAbility: "int",
   firstSpells: [],
   levelFeatures: { 2: ["feature:school-of-evocation"] },
+  multiclassRequires: [["int"]],
 });
 
 export const srd51Classes: readonly ClassDefinition[] = [fighter, rogue, cleric, barbarian, bard, druid, monk, paladin, ranger, sorcerer, warlock, wizard];

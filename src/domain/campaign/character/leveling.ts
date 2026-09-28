@@ -1,7 +1,8 @@
 import type { Ability } from "../rules/effects.js";
 import type { CasterType } from "../rules/content-definitions.js";
+import type { Skill } from "../rules/skills.js";
 import { abilityModifier, type CharacterSheet } from "./character-sheet.js";
-import { classTemplates, type BuildClass } from "./character-build.js";
+import { classLevelsOf, classTemplates, type BuildClass } from "./character-build.js";
 
 // XP and levels on top of the class roster (character-build.ts): the
 // roster stops at what a level-1 hero has; this is what changes as they earn
@@ -146,25 +147,88 @@ export function spellSlotsForLevel(casterType: CasterType, level: number): Reado
   }
 }
 
-// The next state of a hero's numbers after gaining a level: hit points,
-// proficiency bonus, spell slots (added the first time a half-caster or
-// pact caster reaches the level that grants them), any features that level
-// grants, and — on an ASI level — ability scores. Pure; the caller emits the
-// event and applies it.
+// A spell ID, named off Spellcasting's own shape so this file needs no
+// direct import of ContentId just to type a Set of them.
+type SpellId = NonNullable<CharacterSheet["spellcasting"]>["spells"][number];
+
+// SRD 5.1's multiclass spellcaster table: every full-caster class level
+// contributes its own level, every half-caster (Paladin, Ranger) contributes
+// half (rounded down), to one shared slot pool — reusing fullCasterSlots
+// above, since a full caster's own progression already *is* that table at
+// combined level = character level. A hero with only a Pact caster
+// (Warlock) still uses its own table unchanged. Warlock levels alongside
+// another class grant nothing to the shared pool: Pact Magic is SRD's own
+// separate, short-rest-recharging resource, and modeling that second pool
+// (with its own recharge timing) is out of scope here — documented, not
+// guessed at, the same as the race Traits this branch leaves unmodeled.
+function combinedSpellcasting(
+  classLevels: Readonly<Partial<Record<BuildClass, number>>>,
+  previous: CharacterSheet["spellcasting"],
+): CharacterSheet["spellcasting"] {
+  const entries = (Object.entries(classLevels) as readonly [BuildClass, number | undefined][]).filter(
+    (entry): entry is [BuildClass, number] => (entry[1] ?? 0) > 0,
+  );
+  const soleClass = entries.length === 1 ? entries[0] : undefined;
+  if (soleClass !== undefined && classTemplates[soleClass[0]].casterType === "pact") {
+    const [buildClass, level] = soleClass;
+    const template = classTemplates[buildClass];
+    if (template.spellcastingAbility === null) return null;
+    return { ability: template.spellcastingAbility, spells: previous?.spells ?? template.firstSpells, slots: spellSlotsForLevel("pact", level) };
+  }
+
+  let combinedLevel = 0;
+  let ability: Ability | null = null;
+  const spells = new Set<SpellId>(previous?.spells ?? []);
+  for (const [buildClass, level] of entries) {
+    const template = classTemplates[buildClass];
+    if (template.casterType === "full") combinedLevel += level;
+    else if (template.casterType === "half") combinedLevel += Math.floor(level / 2);
+    else continue; // A Pact caster alongside another class, or a non-caster, adds nothing here.
+    if (ability === null) ability = template.spellcastingAbility;
+    const known = level === 1 ? (template.spellcasting?.spells ?? template.firstSpells) : template.firstSpells;
+    for (const id of known) spells.add(id);
+  }
+  if (combinedLevel === 0 || ability === null) return null;
+  return { ability, spells: [...spells], slots: spellSlotsForLevel("full", combinedLevel) };
+}
+
+// The next state of a hero's numbers after gaining a level in `buildClass` —
+// which may be a class the hero already has levels in, or a brand-new one
+// (multiclassing in): hit points off that class's own Hit Die, its own
+// level-based features (its level-1 features too, the first time), the
+// multiclass skill it grants on a first level if any, spell slots recombined
+// across every class held, and — on an ASI level, SRD 5.1's own fixed list,
+// independent of which class is being leveled — ability scores. Pure; the
+// caller (combat/combat-flow.ts's grantExperience, engine/members.ts's
+// chooseClassLevel) checks canMulticlassInto first and emits the event.
 export function levelUp(
   sheet: CharacterSheet,
   buildClass: BuildClass,
-): Pick<CharacterSheet, "level" | "maxHp" | "abilityScores" | "spellcasting" | "features"> {
+  skillChoice?: Skill,
+): Pick<CharacterSheet, "level" | "maxHp" | "abilityScores" | "spellcasting" | "features" | "skills"> & {
+  readonly classLevels: Readonly<Partial<Record<BuildClass, number>>>;
+} {
   const level = sheet.level + 1;
-  const hpGain = hpGainForLevel(sheet.hitDie, sheet.abilityScores.con);
-  const abilityScores = asiLevels.includes(level) ? defaultAsiAllocation(buildClass, sheet.abilityScores) : sheet.abilityScores;
   const template = classTemplates[buildClass];
-  const casterType = template.casterType;
-  const slots = spellSlotsForLevel(casterType, level);
-  const ability = template.spellcastingAbility;
-  const spells = sheet.spellcasting?.spells ?? template.firstSpells;
-  const spellcasting = casterType === "none" || ability === null ? null : { ability, spells, slots };
-  const gained = template.levelFeatures[level] ?? [];
+  const hpGain = hpGainForLevel(template.hitDie, sheet.abilityScores.con);
+  const abilityScores = asiLevels.includes(level) ? defaultAsiAllocation(buildClass, sheet.abilityScores) : sheet.abilityScores;
+
+  const priorLevels = classLevelsOf(sheet);
+  const priorInClass = priorLevels[buildClass] ?? 0;
+  const isNewClass = priorInClass === 0;
+  const classLevel = priorInClass + 1;
+  const classLevels: Partial<Record<BuildClass, number>> = { ...priorLevels, [buildClass]: classLevel };
+
+  const spellcasting = combinedSpellcasting(classLevels, sheet.spellcasting);
+
+  const gained = [...(isNewClass ? template.features : []), ...(template.levelFeatures[classLevel] ?? [])];
   const features = gained.length === 0 ? sheet.features : [...sheet.features, ...gained];
-  return { level, maxHp: sheet.maxHp + hpGain, abilityScores, spellcasting, features };
+
+  const skills = { ...sheet.skills };
+  if (isNewClass && template.multiclassSkillChoices !== undefined && template.multiclassSkillChoices.length > 0) {
+    const choice = skillChoice !== undefined && template.multiclassSkillChoices.includes(skillChoice) ? skillChoice : template.multiclassSkillChoices[0];
+    if (choice !== undefined && skills[choice] === undefined) skills[choice] = "proficient";
+  }
+
+  return { level, maxHp: sheet.maxHp + hpGain, abilityScores, spellcasting, features, classLevels, skills };
 }

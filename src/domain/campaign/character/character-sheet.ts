@@ -17,8 +17,20 @@ export interface CharacterSheet {
   readonly id: CharacterId;
   readonly ownerUserId: UserId;
   readonly name: string;
-  // The class as the table reads it, in the campaign's language (display only).
+  // The class as the table reads it, in the campaign's language (display
+  // only): always the hero's first class, even once multiclassed — showing
+  // every class held is a Discord-layer task, out of scope here.
   readonly className?: string;
+  // Levels held in each class, keyed by its builder slug (e.g. "fighter"),
+  // for a multiclassed hero. Optional so a sheet from before multiclassing
+  // existed still loads; classLevelsOf (character-build.ts) falls back to
+  // { [className]: level } when absent. Their sum is always `level` below.
+  readonly classLevels?: Readonly<Partial<Record<string, number>>>;
+  // Declared by the chooseClassLevel command: which class the hero's *next*
+  // level lands in (and which multiclass skill to grant, if that class
+  // offers one and this would be the hero's first level in it). Cleared once
+  // spent. Absent means "keep leveling the class already being leveled."
+  readonly pendingClassLevel?: { readonly buildClass: string; readonly skillChoice?: Skill };
   // The race chosen at creation, if any: races are optional so a sheet from
   // before this content existed still loads. Ability score increases and
   // speed are folded into abilityScores/speed once, at creation; combat

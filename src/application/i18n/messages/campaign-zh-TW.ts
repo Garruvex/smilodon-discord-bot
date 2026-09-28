@@ -270,6 +270,8 @@ export const campaignZhTW = {
   "campaign.cmd.pictureRedone": "正在重畫上一張圖片（前提是這場遊戲還有額度）",
   "campaign.refusal.noReaction": "目前沒有可以反應的事情",
   "campaign.refusal.noOpportunityAttack": "目前沒有等你決定的借機攻擊",
+  "campaign.refusal.unknownClass": "這不是本桌認得的職業。",
+  "campaign.refusal.multiclassRequirementNotMet": "這名角色的屬性值還不符合該職業的兼職條件。",
   "campaign.refusal.nothingToRedo": "目前沒有可重畫的圖片",
   "campaign.cmd.illustrated": "正在為上一幕繪製圖片（前提是已啟用圖片功能且這場遊戲還有額度）",
   "campaign.refusal.nothingToIllustrate": "目前沒有可配圖的場景，或故事已經往下走了",
