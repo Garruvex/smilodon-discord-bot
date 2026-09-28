@@ -71,6 +71,8 @@ export function buildStartingState(input: {
     tradeCount: 0,
     dialogues: {},
     dialogueCount: 0,
+    utilityCasts: {},
+    utilityCastCount: 0,
     fightCheckpoint: null,
     pausedBy: null,
     clocks: {},

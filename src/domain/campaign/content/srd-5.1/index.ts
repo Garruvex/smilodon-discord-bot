@@ -11,6 +11,7 @@ import { srd51StarterMonsters } from "./monsters/starter-monsters.js";
 import { srd51Races } from "./races.js";
 import { srd51Cantrips } from "./spells/cantrips.js";
 import { srd51Level1Spells } from "./spells/level-1.js";
+import { srd51UtilitySpells } from "./spells/utility.js";
 
 export const srd51RulesetId = "srd-5.1";
 // Bump when any shipped definition changes behavior; campaigns pin a version.
@@ -20,6 +21,7 @@ export const srd51Content: readonly ContentDefinition[] = [
   ...srd51Conditions,
   ...srd51Cantrips,
   ...srd51Level1Spells,
+  ...srd51UtilitySpells,
   ...srd51Weapons,
   ...srd51Armor,
   ...srd51Potions,

@@ -62,5 +62,6 @@ export type Rejection =
   | { readonly code: "invalidPressSkill" }
   | { readonly code: "pressAlreadyPending" }
   | { readonly code: "secretAlreadyRevealed" }
+  | { readonly code: "notARitualSpell" }
 
 export type RejectionCode = Rejection["code"];

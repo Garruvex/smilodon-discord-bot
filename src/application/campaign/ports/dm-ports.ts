@@ -141,11 +141,24 @@ export interface DialogueNarratorRequest {
   readonly secretRevealed: boolean;
 }
 
+// A ritual (or cantrip) spell cast outside combat (engine/utility-magic.ts):
+// that the hero knows it and may cast it free is already decided; this call
+// only describes what it reveals or does, grounded in the same scene and
+// ledger context every other narration gets — never a new mechanical fact
+// (a magic item, a hidden passage) the adventure text above doesn't already give.
+export interface UtilityCastNarratorRequest {
+  readonly context: DmContext;
+  readonly language: CampaignLanguage;
+  readonly heroName: string;
+  readonly spell: { readonly id: string; readonly name: string };
+}
+
 export interface CampaignNarrator {
   narrate(request: NarratorRequest): Promise<{ readonly text: string }>;
   narrateCombat(request: CombatNarratorRequest): Promise<{ readonly text: string }>;
   narrateTrade(request: TradeNarratorRequest): Promise<{ readonly text: string }>;
   narrateDialogue(request: DialogueNarratorRequest): Promise<{ readonly text: string }>;
+  narrateUtilityCast(request: UtilityCastNarratorRequest): Promise<{ readonly text: string }>;
 }
 
 // The background call that condenses rounds already told (plan §6, Chronicler).

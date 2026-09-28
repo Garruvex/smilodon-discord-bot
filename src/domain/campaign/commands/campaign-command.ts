@@ -82,6 +82,7 @@ export type CampaignCommand =
   | { readonly kind: "chooseClassLevel"; readonly characterId: CharacterId; readonly buildClass: string; readonly skillChoice?: string }
   | ShopCommand
   | DialogueCommand
+  | UtilityMagicCommand
   | CombatCommand;
 
 // A hero trades with an NPC's shop outside combat (engine/shop.ts). The
@@ -117,6 +118,14 @@ export type DialogueCommand =
   | { readonly kind: "askNpc"; readonly characterId: CharacterId; readonly npcId: NpcId; readonly question: string }
   | { readonly kind: "pressNpc"; readonly characterId: CharacterId; readonly npcId: NpcId; readonly skill: Skill }
   | { readonly kind: "recordDialogueNarration"; readonly dialogueId: string; readonly text: string };
+
+// Casting a spell outside combat (engine/utility-magic.ts). Scoped to ritual
+// casting only (SpellDefinition.ritual) or a cantrip (level 0): both are
+// free, so this never spends a slot — a hero who wants a slotted utility
+// spell faster than a ritual's ten minutes has no command for that yet.
+export type UtilityMagicCommand =
+  | { readonly kind: "castRitualSpell"; readonly characterId: CharacterId; readonly spellId: ContentId<"spell"> }
+  | { readonly kind: "recordUtilityCastNarration"; readonly castId: string; readonly text: string };
 
 // Items move between heroes outside combat. The owner of the giving hero
 // offers, the owner of the receiving hero answers; the stash is shared.

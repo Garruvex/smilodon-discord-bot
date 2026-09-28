@@ -18,6 +18,7 @@ const rules: readonly (readonly [RegExp, System])[] = [
   [/^adventure\//, "Content"],
   [/^effects\//, "Effects"],
   [/^magic\//, "Magic"],
+  [/^engine\/utility-magic\.ts$/, "Magic"],
   [/^character\//, "Character"],
   [/^engine\/rest\.ts$/, "Character"],
   [/^engine\/inventory\.ts$/, "Inventory"],

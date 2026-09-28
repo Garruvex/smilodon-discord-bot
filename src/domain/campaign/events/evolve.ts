@@ -247,6 +247,12 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       const { [event.dialogueId]: _narrated, ...dialogues } = state.dialogues;
       return { ...state, dialogues };
     }
+    case "utilitySpellCast":
+      return { ...state, utilityCasts: { ...state.utilityCasts, [event.cast.id]: event.cast }, utilityCastCount: state.utilityCastCount + 1 };
+    case "utilityCastNarrated": {
+      const { [event.castId]: _narrated, ...utilityCasts } = state.utilityCasts;
+      return { ...state, utilityCasts };
+    }
     case "itemUsed": {
       const sheet = state.characters[event.characterId];
       if (sheet === undefined) return state;

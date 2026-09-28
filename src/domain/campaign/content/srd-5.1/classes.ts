@@ -328,7 +328,15 @@ export const wizard = defineClass({
     { id: "scholar", equipment: ["item:dagger", "item:quarterstaff"] },
     { id: "evoker", equipment: ["item:dagger"] },
   ],
-  spellcasting: { ability: "int", spells: ["spell:fire-bolt", "spell:magic-missile", "spell:shield"], slots: { 1: 2 } },
+  // A Wizard's classic utility repertoire, so the outside-combat spellcasting
+  // step (engine/utility-magic.ts) has a caster who actually knows any of it
+  // out of the box; a deliberate simplification, not the full SRD wizard
+  // spell list, and not yet sprinkled onto every other caster class.
+  spellcasting: {
+    ability: "int",
+    spells: ["spell:fire-bolt", "spell:magic-missile", "spell:shield", "spell:mage-hand", "spell:prestidigitation", "spell:detect-magic", "spell:identify", "spell:comprehend-languages"],
+    slots: { 1: 2 },
+  },
   suggested: ["int", "con", "dex", "wis", "cha", "str"],
   casterType: "full",
   spellcastingAbility: "int",

@@ -101,6 +101,11 @@ export interface CampaignState {
   // BibleNpc.secret) to a successful press; once true, pressNpc refuses a
   // second attempt on that NPC and later conversation may reference it.
   readonly npcSecretsRevealed?: Readonly<Record<NpcId, boolean>>;
+  // A ritual spell cast outside combat, waiting for the Narrator to describe
+  // what it reveals or does (engine/utility-magic.ts); removed once
+  // recordUtilityCastNarration lands. Not gameplay state, same as trades.
+  readonly utilityCasts: Readonly<Record<string, UtilityCastRecord>>;
+  readonly utilityCastCount: number;
 }
 
 // A pending Persuasion/Deception/Intimidation check over a specific item's
@@ -158,6 +163,16 @@ export interface DialogueRecord {
   readonly kind: "ask" | "press";
   readonly question: string | null;
   readonly check: { readonly test: CheckTest; readonly dc: number; readonly total: number; readonly success: boolean; readonly moments: RollMoments } | null;
+}
+
+// A ritual spell cast outside combat (engine/utility-magic.ts): no roll, no
+// mechanical Effect — the spell's own definition already validated as known
+// and ritual-tagged, so this only waits on the Narrator to describe what it
+// reveals or does, grounded in the scene like any other narration.
+export interface UtilityCastRecord {
+  readonly id: string;
+  readonly characterId: CharacterId;
+  readonly spellId: ContentId<"spell">;
 }
 
 export type PauseReason = "organizer" | "recovery" | "safety";

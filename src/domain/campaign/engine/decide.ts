@@ -11,6 +11,7 @@ import { handleInventoryCommand } from "./inventory.js";
 import { takeRest } from "./rest.js";
 import { handleDialogueCommand, recordPressRoll } from "./dialogue.js";
 import { handleShopCommand, recordHaggleRoll } from "./shop.js";
+import { handleUtilityMagicCommand } from "./utility-magic.js";
 import { Decision, type DecideResult, type EngineContext } from "./decision.js";
 import { beginAdventure, beginPlay, illustrateMoment, markReady, redoPicture, recordLedgerFact, recordNarration, recordOpening, recordSummary, regenerateNarration, replaceNarration, reportPlannerFailure, retryPlan } from "./dm.js";
 import { chooseClassLevel, continueCampaign, grantProxy, joinHero, markAway, markReturned, revokeProxy } from "./members.js";
@@ -125,6 +126,9 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
     case "pressNpc":
     case "recordDialogueNarration":
       return handleDialogueCommand(decision, command);
+    case "castRitualSpell":
+    case "recordUtilityCastNarration":
+      return handleUtilityMagicCommand(decision, command);
     case "chooseClassLevel": {
       const skillChoice = command.skillChoice !== undefined && isSkill(command.skillChoice) ? command.skillChoice : undefined;
       return chooseClassLevel(decision, command.characterId, command.buildClass, skillChoice);

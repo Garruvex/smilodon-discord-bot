@@ -20,6 +20,8 @@ export type EngineRequest =
   | { readonly kind: "narrateTrade"; readonly tradeId: string }
   // A settled conversation's NPC reply (engine/dialogue.ts).
   | { readonly kind: "narrateDialogue"; readonly dialogueId: string }
+  // A ritual spell cast outside combat, waiting on what it reveals or does (engine/utility-magic.ts).
+  | { readonly kind: "narrateUtilityCast"; readonly castId: string }
   // A picture for a scene the party just entered; made in the background and never awaited.
   | { readonly kind: "sceneImage"; readonly sceneId: string; readonly roundNumber: number }
   // A portrait of a monster the party meets for the first time (or of the named NPC it plays); made once and reused.
@@ -90,4 +92,6 @@ export type DeliverySpec =
   // A shop trade's NPC reaction is ready.
   | { readonly kind: "tradeNarrated"; readonly tradeId: string }
   // A conversation's NPC reply is ready.
-  | { readonly kind: "dialogueNarrated"; readonly dialogueId: string };
+  | { readonly kind: "dialogueNarrated"; readonly dialogueId: string }
+  // A ritual spell's outside-combat effect is ready.
+  | { readonly kind: "utilityCastNarrated"; readonly castId: string };

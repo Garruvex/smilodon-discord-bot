@@ -269,4 +269,5 @@ const unavailableNarrator: CampaignNarrator = {
   narrateCombat: () => Promise.reject(new Error("CAMPAIGN_MODEL is not configured.")),
   narrateTrade: () => Promise.reject(new Error("CAMPAIGN_MODEL is not configured.")),
   narrateDialogue: () => Promise.reject(new Error("CAMPAIGN_MODEL is not configured.")),
+  narrateUtilityCast: () => Promise.reject(new Error("CAMPAIGN_MODEL is not configured.")),
 };

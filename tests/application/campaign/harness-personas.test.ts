@@ -54,6 +54,7 @@ describe("numbers in narration", () => {
       narrateCombat: () => Promise.resolve({ text: "A 913 lands." }),
       narrateTrade: () => Promise.resolve({ text: "..." }),
       narrateDialogue: () => Promise.resolve({ text: "..." }),
+      narrateUtilityCast: () => Promise.resolve({ text: "..." }),
     };
     const run = await runHarness(options({ dm: () => ({ planner: new RuleBasedPlanner(), narrator: chatty }), rounds: 2 }));
     const report = summarizeRun(run);

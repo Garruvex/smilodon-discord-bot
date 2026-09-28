@@ -16,6 +16,7 @@ import type {
   PlannerProposal,
   PlannerRequest,
   TradeNarratorRequest,
+  UtilityCastNarratorRequest,
 } from "../ports/dm-ports.js";
 import type { CombatBeat } from "./combat-records.js";
 import type { ModelUsage, StructuredModelClient } from "../ports/structured-model-client.js";
@@ -27,8 +28,9 @@ export const narratorPromptVersion = "narrator-4";
 export const flourishPromptVersion = "flourish-4";
 export const tradePromptVersion = "trade-1";
 export const dialoguePromptVersion = "dialogue-1";
+export const utilityCastPromptVersion = "utility-cast-1";
 
-export type ModelCallKind = "planner" | "narrator" | "flourish" | "trade" | "dialogue";
+export type ModelCallKind = "planner" | "narrator" | "flourish" | "trade" | "dialogue" | "utilityCast";
 
 export interface ModelCallObserver {
   (call: { readonly call: ModelCallKind; readonly model: string; readonly promptVersion: string; readonly usage: ModelUsage | null }): void;
@@ -356,6 +358,19 @@ export class LlmCampaignNarrator implements CampaignNarrator {
     this.options.onCall?.({ call: "dialogue", model: response.model, promptVersion: dialoguePromptVersion, usage: response.usage });
     return { text: parseNarratorOutput(response.text) };
   }
+
+  public async narrateUtilityCast(request: UtilityCastNarratorRequest): Promise<{ readonly text: string }> {
+    const response = await this.options.client.generate({
+      ...buildUtilityCastNarratorPrompt(request),
+      ...cacheKeyFor(this.options, "utilityCast"),
+      schemaName: "campaign_utility_cast_narration",
+      jsonSchema: narratorJsonSchema,
+      maxOutputTokens: this.options.maxOutputTokens ?? 400,
+      timeoutMs: this.options.timeoutMs ?? 20_000,
+    });
+    this.options.onCall?.({ call: "utilityCast", model: response.model, promptVersion: utilityCastPromptVersion, usage: response.usage });
+    return { text: parseNarratorOutput(response.text) };
+  }
 }
 
 // The price and who won any haggle are already decided (engine/shop.ts); this
@@ -409,6 +424,21 @@ export function buildDialogueNarratorPrompt(request: DialogueNarratorRequest): {
         ? `${request.heroName} presses ${request.npc.name} with a ${request.press?.skill ?? ""} appeal, and they finally give in.`
         : `${request.heroName} presses ${request.npc.name} with a ${request.press?.skill ?? ""} appeal, but they hold firm and deflect.`;
   return splitPrompt(request.context, rules, situation);
+}
+
+// Whether the hero knows the spell and may cast it free is already decided
+// (engine/utility-magic.ts); this call only describes what it reveals or
+// does. The scene and ledger context is the only source of new fact allowed
+// - the spell itself has no mechanical Effect to report.
+export function buildUtilityCastNarratorPrompt(request: UtilityCastNarratorRequest): { system: string; user: string } {
+  const zh = request.language === "zh-TW";
+  const rules = [
+    "## Output rules",
+    zh ? "Write 40-150 Traditional Chinese characters (Taiwan usage) in the narration field." : "Write at most 60 words of English, in the DM's descriptive voice.",
+    "Describe what the spell reveals or does, drawing only on the scene and ledger context above. Never invent a new magic item, passage, or plot fact the text above doesn't already give; if there is nothing notable, say so plainly.",
+    "Never mention dice, DCs, or checks; this spell needed none.",
+  ].join("\n");
+  return splitPrompt(request.context, rules, `${request.heroName} casts ${request.spell.name}.`);
 }
 
 // ---------------------------------------------------------------- Combat

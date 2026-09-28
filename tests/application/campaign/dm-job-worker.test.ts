@@ -19,6 +19,7 @@ import { zhTwSrd51Glossary } from "../../../src/application/i18n/campaign/glossa
 import type { AdventureBible } from "../../../src/domain/campaign/adventure/adventure-bible.js";
 import type { ScriptedProposal } from "../../../src/application/campaign/dm/scripted-dm.js";
 import type { CampaignEvent } from "../../../src/domain/campaign/events/campaign-event.js";
+import type { CharacterSheet } from "../../../src/domain/campaign/character/character-sheet.js";
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
 import { InMemoryCampaignStore } from "../../../src/infrastructure/persistence/campaign/in-memory-campaign-store.js";
 import { alex, jamie, newCampaign, organizer, ruleset, run, system } from "../../domain/campaign/campaign-fixtures.js";
@@ -351,6 +352,51 @@ describe("narrateDialogue", () => {
     expect(await worker.runOnce()).toEqual({ processed: 1, failed: [] });
     const log = await events(store);
     expect(log).toContainEqual({ kind: "dialogueNarrated", dialogueId: "dialogue:1", text: "Garrick answers your question." });
+  });
+});
+
+const rowan: CharacterSheet = {
+  id: "c-rowan",
+  ownerUserId: "u-alex",
+  name: "Rowan",
+  abilityScores: { str: 8, dex: 12, con: 14, int: 16, wis: 13, cha: 10 },
+  proficiencyBonus: 2,
+  skills: { arcana: "proficient" },
+  savingThrows: ["int", "wis"],
+  level: 1,
+  maxHp: 7,
+  hitDie: 6,
+  speed: 30,
+  equipment: ["item:dagger"],
+  features: ["feature:arcane-recovery"],
+  spellcasting: { ability: "int", spells: ["spell:mage-hand", "spell:detect-magic"], slots: { 1: 2 } },
+};
+
+describe("narrateUtilityCast", () => {
+  async function tableWithAUtilityCast(narrator: ScriptedNarrator): Promise<Table> {
+    const state = { ...startState(), characters: { ...startState().characters, "c-rowan": rowan } };
+    const table_ = await table(new ScriptedPlanner([]), narrator, state);
+    await table_.bus.execute(key, { kind: "castRitualSpell", characterId: "c-rowan", spellId: "spell:detect-magic" }, { commandId: "cast-1", actor: alex });
+    return table_;
+  }
+
+  it("resolves the hero's name and the spell's name from the glossary", async () => {
+    const narrator = new ScriptedNarrator([], [], [], [], [{ text: "A faint blue aura clings to the old ledger on the bar." }]);
+    const { store, worker } = await tableWithAUtilityCast(narrator);
+    expect(await worker.runOnce()).toEqual({ processed: 1, failed: [] });
+
+    expect(narrator.utilityCastRequests[0]).toMatchObject({ heroName: "Rowan", spell: { id: "spell:detect-magic", name: "Detect Magic" } });
+    const log = await events(store);
+    expect(log).toContainEqual({ kind: "utilityCastNarrated", castId: "cast:1", text: "A faint blue aura clings to the old ledger on the bar." });
+  });
+
+  it("falls back to a template line once the Narrator's attempts are spent", async () => {
+    const narrator = new ScriptedNarrator([], [], [], [], [new Error("rate limited"), new Error("rate limited")]);
+    const { store, worker } = await tableWithAUtilityCast(narrator);
+    expect(await worker.runOnce()).toMatchObject({ processed: 0, failed: [{ error: "rate limited" }] });
+    expect(await worker.runOnce()).toEqual({ processed: 1, failed: [] });
+    const log = await events(store);
+    expect(log).toContainEqual({ kind: "utilityCastNarrated", castId: "cast:1", text: "Rowan casts Detect Magic." });
   });
 });
 

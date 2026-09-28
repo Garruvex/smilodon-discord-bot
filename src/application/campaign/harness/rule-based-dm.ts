@@ -12,6 +12,7 @@ import type {
   PlannerProposal,
   PlannerRequest,
   TradeNarratorRequest,
+  UtilityCastNarratorRequest,
 } from "../ports/dm-ports.js";
 
 // Deterministic stand-ins for the model calls, so the harness can play a
@@ -153,6 +154,13 @@ export class TemplateNarrator implements CampaignNarrator {
         ? `${request.npc.name}不為所動，什麼都沒說。`
         : `${request.npc.name} holds firm and gives nothing away.`;
     return Promise.resolve({ text });
+  }
+
+  public narrateUtilityCast(request: UtilityCastNarratorRequest): Promise<{ readonly text: string }> {
+    const zh = request.language === "zh-TW";
+    return Promise.resolve({
+      text: zh ? `${request.heroName}施展了${request.spell.name}。` : `${request.heroName} casts ${request.spell.name}.`,
+    });
   }
 }
 

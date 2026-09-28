@@ -67,6 +67,12 @@ export interface SpellDefinition extends DefinitionBase<"spell"> {
   readonly range: SpellRange;
   readonly targeting: SpellTargeting;
   readonly concentration: boolean;
+  // SRD ritual tag: a hero who knows the spell may cast it without spending
+  // a slot (engine/utility-magic.ts's castRitualSpell), the extra ten
+  // minutes narrated rather than timed. A simplification of the SRD's own
+  // rule, which also requires a class's separate Ritual Casting feature —
+  // not modeled here; knowing the spell is enough.
+  readonly ritual?: boolean;
   plan(context: SpellCastContext): ResolutionPlan;
 }
 

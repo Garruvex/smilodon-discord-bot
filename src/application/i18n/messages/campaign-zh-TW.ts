@@ -279,6 +279,7 @@ export const campaignZhTW = {
   "campaign.refusal.invalidPressSkill": "追問秘密只能使用說服、欺瞞、威嚇或洞察。",
   "campaign.refusal.pressAlreadyPending": "這名角色已經有一筆追問正在等待擲骰。",
   "campaign.refusal.secretAlreadyRevealed": "這名NPC已經透露過那件事了。",
+  "campaign.refusal.notARitualSpell": "這個法術無法以儀式施法。",
   "campaign.refusal.nothingToRedo": "目前沒有可重畫的圖片",
   "campaign.cmd.illustrated": "正在為上一幕繪製圖片（前提是已啟用圖片功能且這場遊戲還有額度）",
   "campaign.refusal.nothingToIllustrate": "目前沒有可配圖的場景，或故事已經往下走了",

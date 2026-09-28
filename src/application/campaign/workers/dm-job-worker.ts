@@ -22,6 +22,7 @@ import type {
   NarratedOutcome,
   NarratorRequest,
   TradeNarratorRequest,
+  UtilityCastNarratorRequest,
 } from "../ports/dm-ports.js";
 import { defaultMaxAttempts, type WorkerRunResult } from "./roll-worker.js";
 
@@ -55,6 +56,7 @@ export class DmJobWorker {
       ...(await tx.pendingOutbox("narrateCombat")),
       ...(await tx.pendingOutbox("narrateTrade")),
       ...(await tx.pendingOutbox("narrateDialogue")),
+      ...(await tx.pendingOutbox("narrateUtilityCast")),
       ...(await tx.pendingOutbox("chronicle")),
       ...(await tx.pendingOutbox("renarrate")),
     ]);
@@ -67,6 +69,7 @@ export class DmJobWorker {
         if (item.request.kind === "narrateCombat") await this.narrateCombat(item, item.request.encounterId, item.request.round, item.request.final);
         if (item.request.kind === "narrateTrade") await this.narrateTrade(item, item.request.tradeId);
         if (item.request.kind === "narrateDialogue") await this.narrateDialogue(item, item.request.dialogueId);
+        if (item.request.kind === "narrateUtilityCast") await this.narrateUtilityCast(item, item.request.castId);
         if (item.request.kind === "chronicle") await this.chronicle(item, item.request.throughRound);
         if (item.request.kind === "renarrate") await this.renarrate(item, item.request.roundNumber);
         await unitOfWork.transaction((tx) => tx.completeOutbox(item.id));
@@ -295,6 +298,23 @@ export class DmJobWorker {
     await this.options.bus.execute(item.key, { kind: "recordDialogueNarration", dialogueId, text }, { commandId: `${item.id}:dialogue-narration`, actor: system });
   }
 
+  // A ritual spell cast outside combat, waiting on its Narrator line
+  // (engine/utility-magic.ts). Same "not load-bearing" shape as narrateTrade
+  // and narrateDialogue.
+  private async narrateUtilityCast(item: OutboxItem, castId: string): Promise<void> {
+    const loaded = await this.load(item.key);
+    if (loaded.stored.state.utilityCasts[castId] === undefined) return; // Already narrated, or gone.
+    const request = this.utilityCastNarratorRequest(loaded, castId);
+    let text: string;
+    try {
+      text = (await this.options.narrator.narrateUtilityCast(request)).text;
+    } catch (error) {
+      if (item.attempts + 1 < this.maxAttempts) throw error;
+      text = fallbackUtilityCastNarration(request);
+    }
+    await this.options.bus.execute(item.key, { kind: "recordUtilityCastNarration", castId, text }, { commandId: `${item.id}:utility-cast-narration`, actor: system });
+  }
+
   private combatNarratorRequest(loaded: Loaded, encounterId: string, round: number, final: boolean): CombatNarratorRequest {
     const { state } = loaded.stored;
     const record = encounterRecords(loaded.events, { state, bible: loaded.bible, glossary: this.glossary(loaded) }).findLast(
@@ -362,6 +382,19 @@ export class DmJobWorker {
           ? null
           : { skill: checkLabel(dialogue.check.test), total: dialogue.check.total, dc: dialogue.check.dc, success: dialogue.check.success, headline: dialogue.check.moments.headline },
       secretRevealed,
+    };
+  }
+
+  private utilityCastNarratorRequest(loaded: Loaded, castId: string): UtilityCastNarratorRequest {
+    const { state } = loaded.stored;
+    const cast = state.utilityCasts[castId];
+    if (cast === undefined) throw new Error(`Unknown utility cast ${castId}.`);
+    const glossary = this.glossary(loaded);
+    return {
+      context: this.context("narrator", loaded),
+      language: state.language,
+      heroName: state.characters[cast.characterId]?.name ?? cast.characterId,
+      spell: { id: cast.spellId, name: glossary.names[cast.spellId] ?? cast.spellId },
     };
   }
 
@@ -468,6 +501,11 @@ function fallbackDialogueNarration(request: DialogueNarratorRequest): string {
     : zh
       ? `${request.npc.name}不為所動，什麼都沒說。`
       : `${request.npc.name} holds firm and says nothing more.`;
+}
+
+function fallbackUtilityCastNarration(request: UtilityCastNarratorRequest): string {
+  const zh = request.language === "zh-TW";
+  return zh ? `${request.heroName}施展了${request.spell.name}。` : `${request.heroName} casts ${request.spell.name}.`;
 }
 
 function fallbackNarration(request: NarratorRequest): string {
