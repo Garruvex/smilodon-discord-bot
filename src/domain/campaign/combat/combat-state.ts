@@ -202,6 +202,10 @@ export interface PendingMove {
   readonly provokers: readonly CombatantId[];
   // The rest of an engine-played turn, resumed after the move.
   readonly thenPlan: TurnPlanRemainder | null;
+  // Set while `provokers[0]` is a player-controlled hero deciding whether to
+  // take the opportunity attack it could make (movement.ts); an engine-played
+  // provoker never waits, so this is absent while one of those is up next.
+  readonly offer?: { readonly closesAt: Instant | null } | null;
 }
 
 export interface TurnPlanRemainder {

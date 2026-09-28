@@ -270,6 +270,7 @@ export const campaignEn = {
   "campaign.manage.redoPicture": "Redo the last picture",
   "campaign.cmd.pictureRedone": "The last picture is being painted again, if this game has budget left.",
   "campaign.refusal.noReaction": "There is nothing to react to right now.",
+  "campaign.refusal.noOpportunityAttack": "There is no opportunity attack waiting on you right now.",
   "campaign.refusal.nothingToRedo": "There is no picture to redo yet.",
   "campaign.cmd.illustrated": "A picture of the last scene is being painted, if pictures are set up and this game has budget left.",
   "campaign.refusal.nothingToIllustrate": "There is no told scene to picture yet, or the story has moved on.",

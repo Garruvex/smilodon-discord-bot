@@ -128,8 +128,10 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
     case "combatWildShape":
     case "endTurn":
     case "combatReact":
+    case "combatOpportunityAttack":
     case "turnTimerExpired":
     case "reactionTimerExpired":
+    case "opportunityAttackTimerExpired":
       return handleCombatCommand(decision, command);
     default:
       return assertNever(command);

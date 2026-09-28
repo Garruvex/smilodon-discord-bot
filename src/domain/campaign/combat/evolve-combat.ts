@@ -77,6 +77,10 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
       return { ...encounter, pendingMove: event.move };
     case "moveCleared":
       return { ...encounter, pendingMove: null };
+    case "opportunityAttackOffered":
+      return encounter.pendingMove === null ? encounter : { ...encounter, pendingMove: { ...encounter.pendingMove, offer: { closesAt: event.closesAt } } };
+    case "opportunityAttackAnswered":
+      return encounter.pendingMove === null ? encounter : { ...encounter, pendingMove: { ...encounter.pendingMove, offer: null } };
     case "actionTaken":
       return update(encounter, event.combatantId, (combatant) => ({
         ...combatant,

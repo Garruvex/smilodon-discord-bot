@@ -26,13 +26,21 @@ export function chooseMonsterPlan(encounter: EncounterState, monster: Combatant)
   const ranged = monster.attacks.find((attack) => attack.range.kind === "ranged") ?? null;
   const engaged = engagedWith(encounter, monster.id).filter((other) => other.side !== monster.side && isActive(other));
 
-  // Skirmishers with Nimble Escape slip out of melee and shoot.
-  if (monster.tactic === "skirmisher" && engaged.length > 0 && ranged !== null && monster.traits.some((trait) => trait.kind === "nimbleEscape")) {
+  // Skirmishers retreat from melee to shoot. Nimble Escape makes the retreat
+  // free (Disengage as a bonus action); without it, the retreat still goes
+  // ahead and risks whatever opportunity attack it draws (movement.ts: an
+  // engine-played foe always takes it, a player-controlled one is offered
+  // the choice) — a monster with a bow is still better off shooting than
+  // trading blows in melee.
+  if (monster.tactic === "skirmisher" && engaged.length > 0 && ranged !== null) {
     const retreat = retreatZone(encounter, monster);
     if (retreat !== null) {
       const moved = { ...encounter, combatants: { ...encounter.combatants, [monster.id]: { ...monster, zoneId: retreat } }, engagements: [] };
       const target = pickTarget(moved, { ...monster, zoneId: retreat }, foes.filter((foe) => inRange(moved, { ...monster, zoneId: retreat }, foe, ranged)));
-      if (target !== null) return { ...idle, disengage: true, moves: [retreat], attack: { targetId: target.id, option: ranged } };
+      if (target !== null) {
+        const nimble = monster.traits.some((trait) => trait.kind === "nimbleEscape");
+        return { ...idle, disengage: nimble, moves: [retreat], attack: { targetId: target.id, option: ranged } };
+      }
     }
   }
   // Skirmishers shoot while nobody is on them.

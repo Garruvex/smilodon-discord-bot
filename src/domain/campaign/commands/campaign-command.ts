@@ -129,9 +129,14 @@ export type CombatCommand =
   | { readonly kind: "endTurn"; readonly combatantId: string }
   // The target of a hit answers the reaction window: cast a reaction spell (Shield), or decline (null).
   | { readonly kind: "combatReact"; readonly combatantId: string; readonly spellId: ContentId<"spell"> | null }
+  // A provoker answers whether they take the opportunity attack a mover's
+  // move offered them.
+  | { readonly kind: "combatOpportunityAttack"; readonly combatantId: string; readonly take: boolean }
   | { readonly kind: "turnTimerExpired"; readonly encounterId: string; readonly turnNumber: number }
   // A reaction window ran out of time: the target declines.
-  | { readonly kind: "reactionTimerExpired"; readonly encounterId: string; readonly resolutionId: string };
+  | { readonly kind: "reactionTimerExpired"; readonly encounterId: string; readonly resolutionId: string }
+  // An opportunity attack offer ran out of time: the provoker declines (holds the reaction).
+  | { readonly kind: "opportunityAttackTimerExpired"; readonly encounterId: string; readonly combatantId: string };
 
 export interface EncounterSpec {
   readonly id: string;

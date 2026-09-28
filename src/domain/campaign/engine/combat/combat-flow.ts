@@ -20,7 +20,7 @@ import { answerReaction, reactionTimerExpired } from "./reactions.js";
 import { recordResolutionRoll } from "./resolution.js";
 import { initiativeOrder, startEncounter } from "./encounter-start.js";
 import { castSpell, declareWeaponAttack, useFeature } from "./combat-actions.js";
-import { startMove } from "./movement.js";
+import { answerOpportunityAttack, opportunityAttackTimerExpired, startMove } from "./movement.js";
 import { resolveDeathSave } from "./death-saves.js";
 import { beginTurn, endTurn, resumeAfterTriggers, turnTimerExpired, turnTimerId } from "./turn-flow.js";
 import { wildShape } from "./wild-shape.js";
@@ -93,8 +93,12 @@ export function handleCombatCommand(decision: Decision, command: CombatCommand):
       });
     case "combatReact":
       return answerReaction(decision, command.combatantId, command.spellId, "player");
+    case "combatOpportunityAttack":
+      return answerOpportunityAttack(decision, command.combatantId, command.take, "player");
     case "reactionTimerExpired":
       return reactionTimerExpired(decision, command.encounterId, command.resolutionId);
+    case "opportunityAttackTimerExpired":
+      return opportunityAttackTimerExpired(decision, command.encounterId, command.combatantId);
     case "turnTimerExpired":
       return turnTimerExpired(decision, command.encounterId, command.turnNumber);
     default:

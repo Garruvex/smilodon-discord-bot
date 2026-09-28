@@ -5,7 +5,7 @@ import { turnOptions } from "../../../src/domain/campaign/combat/turn-rules.js";
 import { formatDiceExpression } from "../../../src/domain/campaign/dice/dice-expression.js";
 import type { CampaignEvent } from "../../../src/domain/campaign/events/campaign-event.js";
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
-import { alex, jamie, newCampaign, organizer, partyOfThree, ruleset, run, sam } from "./campaign-fixtures.js";
+import { alex, jamie, newCampaign, organizer, partyOfThree, ruleset, run, sam, system } from "./campaign-fixtures.js";
 import { Fight, skirmish, startedFight } from "./combat-fixtures.js";
 
 // Gate and courtyard 10 ft apart, with a tower beyond the courtyard.
@@ -397,6 +397,50 @@ describe("opportunity attacks and escape", () => {
     const shot = ofKind(fight, "resolutionDeclared").find((event) => event.resolution.actorId === "goblin-a");
     expect(shot?.resolution).toMatchObject({ purpose: "action", source: { option: { weapon: "item:shortbow" } } });
     expect(ofKind(fight, "resolutionDeclared").some((event) => event.resolution.purpose === "opportunity")).toBe(false);
+  });
+
+  // A skeleton has no Nimble Escape, so retreating from melee to shoot risks
+  // the attack it provokes; a player-controlled provoker gets a real choice
+  // instead of taking it automatically (unlike an engine-played monster,
+  // which still always takes it — see the Nimble Escape test above for the
+  // other side of that same retreat-and-shoot tactic).
+  function borinEngagedWithSkeleton(): Fight {
+    const closeSkeleton: EncounterSpec = { ...close, monsters: [{ monsterId: "monster:skeleton", zoneId: "courtyard", npcId: null, fleeBelowHpFraction: null }] };
+    const fight = new Fight().rolls([1, 20, 5]).run(organizer, { kind: "startEncounter", spec: closeSkeleton });
+    fight.run(jamie, { kind: "combatMove", combatantId: "c-borin", zoneId: "courtyard" });
+    fight.run(jamie, { kind: "combatEngage", combatantId: "c-borin", targetId: "skeleton" });
+    fight.run(jamie, { kind: "endTurn", combatantId: "c-borin" });
+    return fight;
+  }
+
+  it("offers a hero the choice before a retreating skeleton draws its bow, rather than attacking for them", () => {
+    const fight = borinEngagedWithSkeleton();
+    expect(fight.encounter.pendingMove).toMatchObject({ combatantId: "skeleton", provokers: ["c-borin"] });
+    expect(fight.encounter.pendingMove?.offer).not.toBeNull();
+    expect(ofKind(fight, "resolutionDeclared")).toHaveLength(0);
+
+    fight.rolls([15], [4]).run(jamie, { kind: "combatOpportunityAttack", combatantId: "c-borin", take: true });
+    const opportunity = ofKind(fight, "resolutionDeclared").at(0);
+    expect(opportunity?.resolution).toMatchObject({ actorId: "c-borin", purpose: "opportunity", targetIds: ["skeleton"] });
+    expect(opportunity?.cost).toMatchObject({ reaction: true, action: false });
+    expect(fight.combatant("c-borin").budget.reaction).toBe(false);
+    expect(fight.encounter.pendingMove).toBeNull();
+  });
+
+  it("lets a hero decline the opportunity attack and hold the reaction", () => {
+    const fight = borinEngagedWithSkeleton();
+    fight.run(jamie, { kind: "combatOpportunityAttack", combatantId: "c-borin", take: false });
+    expect(ofKind(fight, "resolutionDeclared").some((event) => event.resolution.actorId === "c-borin")).toBe(false);
+    expect(fight.combatant("c-borin").budget.reaction).toBe(true);
+    expect(fight.encounter.pendingMove).toBeNull();
+  });
+
+  it("declines the offer on its own once the window's timer runs out", () => {
+    const fight = borinEngagedWithSkeleton();
+    fight.run(system, { kind: "opportunityAttackTimerExpired", encounterId: fight.encounter.id, combatantId: "c-borin" });
+    expect(ofKind(fight, "resolutionDeclared").some((event) => event.resolution.actorId === "c-borin")).toBe(false);
+    expect(fight.combatant("c-borin").budget.reaction).toBe(true);
+    expect(fight.encounter.pendingMove).toBeNull();
   });
 });
 

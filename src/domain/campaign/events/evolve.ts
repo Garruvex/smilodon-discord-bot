@@ -142,6 +142,8 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     case "combatantWithdrew":
     case "moveInterrupted":
     case "moveCleared":
+    case "opportunityAttackOffered":
+    case "opportunityAttackAnswered":
     case "actionTaken":
     case "resolutionDeclared":
     case "checkRolled":

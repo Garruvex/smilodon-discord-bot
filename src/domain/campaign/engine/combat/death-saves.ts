@@ -9,6 +9,7 @@ import { awaySafety } from "../../rules/house-rules.js";
 import type { Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { declineReactionFor } from "./reactions.js";
+import { declineOpportunityAttackFor } from "./movement.js";
 import { endTurn, playPlan } from "./turn-flow.js";
 import { activeEncounter, endIfDecided, isPlayerControlled } from "./combat-flow.js";
 
@@ -69,7 +70,10 @@ export function onMemberAway(decision: Decision, userId: UserId): void {
   const characterId = decision.state.members[userId]?.characterId;
   const hero = characterId == null ? undefined : encounter?.combatants[characterId];
   // A window waiting for a player who has gone away closes as a decline.
-  if (hero !== undefined) declineReactionFor(decision, hero.id);
+  if (hero !== undefined) {
+    declineReactionFor(decision, hero.id);
+    declineOpportunityAttackFor(decision, hero.id);
+  }
   if (hero?.condition === "unconscious" && isProtected(decision, hero)) stabilize(decision, hero);
 }
 

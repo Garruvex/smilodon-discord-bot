@@ -57,6 +57,12 @@ export type CombatEvent =
   | { readonly kind: "combatantWithdrew"; readonly combatantId: CombatantId; readonly feet: number }
   | { readonly kind: "moveInterrupted"; readonly move: PendingMove }
   | { readonly kind: "moveCleared" }
+  // A move waits for the front provoker (moveInterrupted's own PendingMove
+  // names who) to say whether they take the opportunity attack it offers.
+  | { readonly kind: "opportunityAttackOffered"; readonly combatantId: CombatantId; readonly closesAt: Instant | null }
+  // They took it (an ordinary "opportunity" attack follows), or declined
+  // (held the reaction, and the next provoker in line is asked or auto-resolved).
+  | { readonly kind: "opportunityAttackAnswered"; readonly combatantId: CombatantId; readonly took: boolean }
   | { readonly kind: "actionTaken"; readonly combatantId: CombatantId; readonly action: "dash" | "dodge" | "disengage" | "giveItem" | "useItem"; readonly bonus: boolean }
   | {
       readonly kind: "resolutionDeclared";
@@ -187,6 +193,8 @@ export const combatEventKinds: readonly CombatEventKind[] = [
   "combatantWithdrew",
   "moveInterrupted",
   "moveCleared",
+  "opportunityAttackOffered",
+  "opportunityAttackAnswered",
   "actionTaken",
   "resolutionDeclared",
   "checkRolled",

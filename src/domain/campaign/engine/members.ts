@@ -7,6 +7,7 @@ import { rollTimerId, roundTimerId } from "./ids.js";
 import type { Rejection } from "./rejection.js";
 import { scheduleReminder } from "./reminders.js";
 import { reactionTimerId } from "./combat/reactions.js";
+import { opportunityAttackTimerId } from "./combat/movement.js";
 import { awayRestriction, beginEncounter, onMemberAway, rearmedTurnDeadline, resumeCombat, turnTimerId } from "./combat/combat-flow.js";
 import { closeIfEveryoneResponded, enterWaiting, finishReadyCheck, finishRoundIfResolved, openRound } from "./rounds.js";
 
@@ -131,6 +132,16 @@ export function continueCampaign(decision: Decision): Rejection | null {
     decision.request({
       kind: "startTimer",
       timer: { kind: "combatReaction", timerId: reactionTimerId(state.encounter.resolution.id, waitingReaction.rollId), dueAt: reactionClosesAt, encounterId: state.encounter.id, resolutionId: state.encounter.resolution.id },
+    });
+  }
+  // An opportunity attack offer that was waiting gets a fresh full timer too.
+  const waitingOffer = state.encounter?.pendingMove?.offer;
+  const offerProvoker = state.encounter?.pendingMove?.provokers[0];
+  const offerClosesAt = waitingOffer == null ? null : deadlineAfter(ctx.now, state.pacing.turnSeconds);
+  if (state.encounter !== null && waitingOffer != null && offerProvoker !== undefined && offerClosesAt !== null) {
+    decision.request({
+      kind: "startTimer",
+      timer: { kind: "opportunityAttack", timerId: opportunityAttackTimerId(state.encounter.id, offerProvoker), dueAt: offerClosesAt, encounterId: state.encounter.id, combatantId: offerProvoker },
     });
   }
   for (const [checkId, dueAt] of Object.entries(checkDeadlines)) {
