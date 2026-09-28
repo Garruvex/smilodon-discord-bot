@@ -20,6 +20,7 @@ function setup(r: Rig): { resources: FakeResources; messages: FakeMessages; serv
     messages,
     glossaries: { en: enSrd51Glossary, "zh-TW": zhTwSrd51Glossary },
     logger: quiet,
+    resources,
   });
   return { resources, messages, service: new CampaignSetupService({ unitOfWork: r.store, resources, cards, logger: quiet }) };
 }

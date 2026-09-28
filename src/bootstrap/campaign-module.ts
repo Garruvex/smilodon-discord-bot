@@ -140,7 +140,8 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
 
   const messages = new DiscordMessageGateway(client);
   const issues = new CampaignIssues({ unitOfWork, clock, notify: organizerNotice(messages) });
-  const cards = new CampaignCardService({ unitOfWork, rulesets, adventures, messages, glossaries, logger, issues });
+  const resources = new DiscordResourceGateway(client);
+  const cards = new CampaignCardService({ unitOfWork, rulesets, adventures, messages, glossaries, logger, issues, resources });
   const presenter = new DiscordCampaignPresenter({ unitOfWork, messages, cards, adventures, glossaries, revealDelayMs: 1_200 });
   const library = new CharacterLibrary({ unitOfWork, clock, content, rulesetVersion: content.version });
   const lobby = new CampaignLobbyService({
@@ -157,7 +158,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
     },
   });
   const play = new CampaignPlayController({ unitOfWork, bus, refresher: cards, adventures });
-  const setup = new CampaignSetupService({ unitOfWork, resources: new DiscordResourceGateway(client), cards, logger, issues });
+  const setup = new CampaignSetupService({ unitOfWork, resources, cards, logger, issues });
 
   const model = createModelClient(configuration);
   const cacheKey = "dnd";

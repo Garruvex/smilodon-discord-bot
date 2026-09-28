@@ -8,6 +8,7 @@ import { starterAdventureId } from "../../../../src/infrastructure/campaign/star
 import { guildId, quiet, rig, starter, tellOpening, type Rig } from "../../../application/campaign/campaign-rig.js";
 import { flatten } from "./card-helpers.js";
 import { FakeMessages, type Sent } from "./fake-messages.js";
+import { FakeResources } from "./fake-resources.js";
 
 const party = "chan-party";
 const adventure = "chan-adventure";
@@ -296,5 +297,50 @@ describe("the card service", () => {
       expect(messages.live(party)).toHaveLength(1);
       expect(texts(messages.live(hub)).filter((text) => text.includes("Moonlit Ruins"))).toHaveLength(1);
     });
+  });
+});
+
+describe("the Games post's status tag", () => {
+  it("follows the campaign's lifecycle, and a pause even though that isn't its own lifecycle value", async () => {
+    const r = rig();
+    const resources = new FakeResources();
+    const forumId = await resources.createForum(guildId, { name: "public-games", topic: "", parentId: null, tags: ["Recruiting", "Active", "Paused", "Completed"], viewerRoleId: null });
+    const key = await lobby(r);
+    const post = await resources.createForumPost({ forumId, name: "Moonlit Ruins", content: "Moonlit Ruins", marker: "m" });
+    await r.store.transaction(async (tx) => {
+      const stored = await tx.loadRecord(key);
+      const settings = await tx.loadGuildSettings(guildId);
+      if (stored === undefined || settings === undefined) throw new Error("record");
+      await tx.saveRecord({ ...stored.record, channels: { ...stored.record.channels, adventurePostId: post.postId } }, stored.revision);
+      await tx.saveGuildSettings({ ...settings, publicGamesForumId: forumId });
+    });
+    const messages = new FakeMessages();
+    const cards = new CampaignCardService({ unitOfWork: r.store, rulesets: r.rulesets, adventures: r.adventures, messages, glossaries: { en: enSrd51Glossary, "zh-TW": zhTwSrd51Glossary }, logger: quiet, resources });
+    const tagOf = (): string | null | undefined => resources.forumPosts.find((candidate) => candidate.id === post.postId)?.tag;
+
+    await cards.sync(key);
+    expect(tagOf()).toBe("Recruiting");
+
+    await r.service.join(key, "u-org");
+    await r.service.chooseHero(key, "u-org", firstHero);
+    await r.service.start(key, "u-org");
+    await cards.sync(key);
+    expect(tagOf()).toBe("Active");
+
+    await r.bus.execute(key, { kind: "pauseCampaign", reason: "organizer" }, { commandId: "p", actor: { kind: "user", userId: "u-org" } });
+    await cards.sync(key);
+    expect(tagOf()).toBe("Paused");
+
+    await r.service.end(key);
+    await cards.sync(key);
+    expect(tagOf()).toBe("Completed");
+  });
+
+  it("does nothing when the service is built without a resource gateway", async () => {
+    const r = rig();
+    const key = await lobby(r);
+    const messages = new FakeMessages();
+    const cards = serviceFor(r, messages);
+    await expect(cards.sync(key)).resolves.toBeUndefined();
   });
 });

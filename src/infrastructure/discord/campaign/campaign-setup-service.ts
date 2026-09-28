@@ -176,10 +176,9 @@ export class CampaignSetupService {
         }
       }
 
-      if (record.channels.adventurePostId !== null) {
-        await resources.setForumPostTag(gamesForumId, record.channels.adventurePostId, gameStatusTag(record.lifecycle), reasonFor("campaign status tag"));
-      }
-
+      // cards.sync() re-tags the post from the record's current lifecycle
+      // (and, for an active game, whether it's actually paused) every time it
+      // runs, so provisioning needs no tag call of its own here.
       await this.options.cards.sync(key);
       return { kind: "ok", record };
     });
@@ -269,8 +268,11 @@ export class CampaignSetupService {
 }
 
 // The Games forum's status tag for a campaign's current lifecycle
-// (plan §1's campaign tags: Recruiting/Active/Paused/Completed).
-function gameStatusTag(lifecycle: CampaignRecord["lifecycle"]): string {
+// (plan §1's campaign tags: Recruiting/Active/Paused/Completed). Also used
+// by CampaignCardService, which re-syncs it on every card sync (a pause is
+// not its own lifecycle value — it lives in the engine state's pausedBy —
+// so that caller computes the "Paused" case itself before falling back here).
+export function gameStatusTag(lifecycle: CampaignRecord["lifecycle"]): string {
   switch (lifecycle) {
     case "lobby":
       return "Recruiting";

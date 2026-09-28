@@ -10,6 +10,8 @@ import type { CampaignIssueCode, CampaignRecord, CardReference } from "../../../
 import { RevisionConflictError, type CampaignKey, type CampaignUnitOfWork, type StoredCampaign } from "../../../application/campaign/ports/campaign-store.js";
 import type { RuntimeLogger } from "../../../application/campaign/campaign-runtime.js";
 import type { RulesetCatalog } from "../../../application/campaign/rules/ruleset-catalog.js";
+import type { CampaignResourceGateway } from "./campaign-resource-gateway.js";
+import { gameStatusTag } from "./campaign-setup-service.js";
 import {
   buildLobbyView,
   type PanelView,
@@ -40,6 +42,9 @@ export interface CampaignCardServiceOptions {
   readonly issues?: CampaignIssues;
   // Milliseconds now; tests move it.
   readonly now?: () => number;
+  // Re-tags a campaign's Games post on every sync when given; omitted in
+  // tests that don't care about forum tags.
+  readonly resources?: CampaignResourceGateway;
 }
 
 // A card that failed to draw is left alone for this long, so a missing
@@ -196,7 +201,30 @@ export class CampaignCardService implements CardRefresher {
     }
     await this.saveReferences(key, updates, [...(record.lifecycle === "lobby" ? [] : ["lobby"]), ...answered]);
     await this.reportFailures(key, record, failures);
+    await this.syncStatusTag(record, loaded.campaign);
     await this.syncHub(key.guildId, verify);
+  }
+
+  // Keeps the Games post's status tag (Recruiting/Active/Paused/Completed)
+  // in line with the record's lifecycle, plus the one case that isn't its own
+  // lifecycle value: a pause lives in the engine state's pausedBy, not on the
+  // record. Every sync() call re-applies it; the underlying Discord call is
+  // cheap and idempotent, so there is no separate "did it change" tracking.
+  private async syncStatusTag(record: CampaignRecord, campaign: StoredCampaign | undefined): Promise<void> {
+    const { resources, unitOfWork, logger } = this.options;
+    if (resources === undefined) return;
+    const postId = record.channels.adventurePostId;
+    if (postId === null) return;
+    const settings = await unitOfWork.transaction((tx) => tx.loadGuildSettings(record.key.guildId));
+    const forumId = record.visibility === "membersOnly" ? settings?.privateGamesForumId : settings?.publicGamesForumId;
+    if (forumId == null) return;
+    const paused = record.lifecycle === "active" && campaign?.state.pausedBy != null;
+    const tag = paused ? "Paused" : gameStatusTag(record.lifecycle);
+    try {
+      await resources.setForumPostTag(forumId, postId, tag, "D&D campaign: status tag");
+    } catch (error) {
+      logger.error({ err: error, guildId: record.key.guildId, campaignId: record.key.campaignId }, "Campaign status tag could not be set");
+    }
   }
 
   // Redraws the hub: the pinned control message first, then one message per
