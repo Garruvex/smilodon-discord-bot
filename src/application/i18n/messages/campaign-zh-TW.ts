@@ -270,6 +270,7 @@ export const campaignZhTW = {
   "campaign.cmd.pictureRedone": "正在重畫上一張圖片（前提是這場遊戲還有額度）",
   "campaign.refusal.noReaction": "目前沒有可以反應的事情",
   "campaign.refusal.noOpportunityAttack": "目前沒有等你決定的借機攻擊",
+  "campaign.refusal.noSmite": "目前沒有等你決定的神聖制裁",
   "campaign.refusal.unknownClass": "這不是本桌認得的職業。",
   "campaign.refusal.multiclassRequirementNotMet": "這名角色的屬性值還不符合該職業的兼職條件。",
   "campaign.refusal.unknownItem": "這不是真實存在的物品。",

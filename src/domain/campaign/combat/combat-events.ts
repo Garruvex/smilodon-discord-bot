@@ -14,6 +14,7 @@ import type {
   EncounterState,
   PendingCombatRoll,
   PendingReaction,
+  PendingSmite,
   PendingEffectRoll,
   PendingMove,
   ResolutionState,
@@ -104,6 +105,10 @@ export type CombatEvent =
   | { readonly kind: "reactionOffered"; readonly resolutionId: string; readonly reaction: PendingReaction }
   // The target cast a reaction spell (spellId, at slotLevel) or declined (both null).
   | { readonly kind: "reactionAnswered"; readonly resolutionId: string; readonly targetId: CombatantId; readonly spellId: ContentId<"spell"> | null; readonly slotLevel: number | null }
+  // A landed weapon hit waits for the attacker's Divine Smite answer; the check already settled.
+  | { readonly kind: "smiteOffered"; readonly resolutionId: string; readonly smite: PendingSmite }
+  // The attacker (not the hit's target) spent this slot on bonus damage, or skipped it (null).
+  | { readonly kind: "smiteAnswered"; readonly resolutionId: string; readonly combatantId: CombatantId; readonly slotLevel: number | null }
   // Effect triggers begin at a creature's turn boundary; each asks for its roll in turn.
   | { readonly kind: "triggersBegan"; readonly creatureId: CombatantId; readonly boundary: "start" | "end" }
   | { readonly kind: "triggerRollRequested"; readonly holderId: CombatantId; readonly effectId: string; readonly index: number; readonly rollId: RollId; readonly pending: PendingCombatRoll; readonly sequence: number }
@@ -205,6 +210,8 @@ export const combatEventKinds: readonly CombatEventKind[] = [
   "effectsRemoved",
   "reactionOffered",
   "reactionAnswered",
+  "smiteOffered",
+  "smiteAnswered",
   "triggersBegan",
   "triggerRollRequested",
   "triggerRolled",

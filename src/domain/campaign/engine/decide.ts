@@ -153,8 +153,10 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
     case "endTurn":
     case "combatReact":
     case "combatOpportunityAttack":
+    case "combatSmite":
     case "turnTimerExpired":
     case "reactionTimerExpired":
+    case "smiteTimerExpired":
     case "opportunityAttackTimerExpired":
       return handleCombatCommand(decision, command);
     default:

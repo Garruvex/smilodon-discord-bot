@@ -18,6 +18,7 @@ import { maxNarrationLength } from "../narration-limits.js";
 import { changeShieldInCombat, useItemInCombat } from "./combat-gear.js";
 import { recordTriggerRoll } from "./effect-triggers.js";
 import { answerReaction, reactionTimerExpired } from "./reactions.js";
+import { answerSmite, smiteTimerExpired } from "./smite.js";
 import { recordResolutionRoll } from "./resolution.js";
 import { initiativeOrder, startEncounter } from "./encounter-start.js";
 import { castSpell, declareWeaponAttack, useFeature } from "./combat-actions.js";
@@ -96,8 +97,12 @@ export function handleCombatCommand(decision: Decision, command: CombatCommand):
       return answerReaction(decision, command.combatantId, command.spellId, "player");
     case "combatOpportunityAttack":
       return answerOpportunityAttack(decision, command.combatantId, command.take, "player");
+    case "combatSmite":
+      return answerSmite(decision, command.combatantId, command.slotLevel, "player");
     case "reactionTimerExpired":
       return reactionTimerExpired(decision, command.encounterId, command.resolutionId);
+    case "smiteTimerExpired":
+      return smiteTimerExpired(decision, command.encounterId, command.resolutionId);
     case "opportunityAttackTimerExpired":
       return opportunityAttackTimerExpired(decision, command.encounterId, command.combatantId);
     case "turnTimerExpired":

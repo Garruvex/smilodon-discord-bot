@@ -194,9 +194,14 @@ export type CombatCommand =
   // A provoker answers whether they take the opportunity attack a mover's
   // move offered them.
   | { readonly kind: "combatOpportunityAttack"; readonly combatantId: string; readonly take: boolean }
+  // The attacker of a landed hit answers the smite window: spend this slot
+  // for Divine Smite's bonus damage, or skip it (null).
+  | { readonly kind: "combatSmite"; readonly combatantId: string; readonly slotLevel: number | null }
   | { readonly kind: "turnTimerExpired"; readonly encounterId: string; readonly turnNumber: number }
   // A reaction window ran out of time: the target declines.
   | { readonly kind: "reactionTimerExpired"; readonly encounterId: string; readonly resolutionId: string }
+  // A smite window ran out of time: the attacker skips it.
+  | { readonly kind: "smiteTimerExpired"; readonly encounterId: string; readonly resolutionId: string }
   // An opportunity attack offer ran out of time: the provoker declines (holds the reaction).
   | { readonly kind: "opportunityAttackTimerExpired"; readonly encounterId: string; readonly combatantId: string };
 

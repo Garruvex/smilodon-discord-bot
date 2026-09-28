@@ -196,6 +196,16 @@ export interface PendingReaction {
   readonly closesAt: Instant | null;
 }
 
+// A landed weapon attack waits for the attacker's Divine Smite answer: spend
+// a slot for bonus radiant damage, or let the hit stand as it is. Unlike
+// Shield, this never changes whether the hit landed — only the damage.
+export interface PendingSmite {
+  readonly targetId: CombatantId;
+  // The slot levels the attacker could spend right now.
+  readonly options: readonly { readonly slotLevel: number }[];
+  readonly closesAt: Instant | null;
+}
+
 export interface ResolutionState {
   readonly id: string;
   readonly actorId: CombatantId;
@@ -213,6 +223,12 @@ export interface ResolutionState {
   readonly sneakAttack: boolean;
   // Set while a hit waits for the target's answer; the resolution goes no further until then.
   readonly reaction?: PendingReaction | null;
+  // Set while a landed hit waits for the attacker's smite answer.
+  readonly smite?: PendingSmite | null;
+  // The attacker's post-hit smite answer, once given (undefined: no answer
+  // recorded yet — resolution.ts falls back to a slot declared up front on
+  // the attack itself, if any; null: answered, no smite).
+  readonly smiteSlot?: number | null;
 }
 
 // A move that provokes opportunity attacks waits for them, then happens if

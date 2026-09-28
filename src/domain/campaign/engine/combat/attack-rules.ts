@@ -14,12 +14,13 @@ export function planFor(decision: Decision, actor: Combatant, source: Resolution
   const content = decision.ctx.rules.content;
   switch (source.kind) {
     case "weapon": {
-      // Divine Smite: 2d8 radiant for a 1st-level slot, +1d8 per level above
-      // that, capped at 5d8 (a fiend or undead target's extra d8 is not modeled).
-      const smite: Effect[] = source.smiteSlot === undefined ? [] : [{ kind: "damage", target: "target", amount: dice(Math.min(5, source.smiteSlot + 1), 8), damageType: "radiant" }];
+      // Divine Smite's bonus damage is not here: it depends on a slot that
+      // may only be chosen after this hit lands (engine/combat/smite.ts), so
+      // resolution.ts's landEffects() adds it at apply time instead, past
+      // the plan this function fixes at declare time.
       return {
         check: { kind: "weaponAttack" },
-        onLand: [{ kind: "damage", target: "target", amount: source.option.damage, damageType: source.option.damageType }, ...source.option.onHit, ...smite],
+        onLand: [{ kind: "damage", target: "target", amount: source.option.damage, damageType: source.option.damageType }, ...source.option.onHit],
         onAvoid: [],
       };
     }

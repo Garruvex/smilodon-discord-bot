@@ -9,6 +9,7 @@ import { awaySafety } from "../../rules/house-rules.js";
 import type { Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { declineReactionFor } from "./reactions.js";
+import { declineSmiteFor } from "./smite.js";
 import { declineOpportunityAttackFor } from "./movement.js";
 import { endTurn, playPlan } from "./turn-flow.js";
 import { activeEncounter, endIfDecided, isPlayerControlled } from "./combat-flow.js";
@@ -73,6 +74,7 @@ export function onMemberAway(decision: Decision, userId: UserId): void {
   if (hero !== undefined) {
     declineReactionFor(decision, hero.id);
     declineOpportunityAttackFor(decision, hero.id);
+    declineSmiteFor(decision, hero.id);
   }
   if (hero?.condition === "unconscious" && isProtected(decision, hero)) stabilize(decision, hero);
 }

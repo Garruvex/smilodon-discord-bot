@@ -178,6 +178,17 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
         resources: spendSlot(combatant.resources, slotLevel),
       }));
     }
+    // The roll that triggered this is already off pendingRolls (checkRolled
+    // cleared it before offering smite); nothing else to remove here.
+    case "smiteOffered":
+      return updateResolution(encounter, event.resolutionId, (resolution) => ({ ...resolution, smite: event.smite }));
+    case "smiteAnswered": {
+      const answered = updateResolution(encounter, event.resolutionId, (resolution) => ({ ...resolution, smite: null, smiteSlot: event.slotLevel }));
+      if (event.slotLevel === null) return answered;
+      const slotLevel = event.slotLevel;
+      // Divine Smite spends its slot when the choice is made, not when declared.
+      return update(answered, event.combatantId, (combatant) => ({ ...combatant, resources: spendSlot(combatant.resources, slotLevel) }));
+    }
     case "triggersBegan":
       return { ...encounter, pendingTriggers: { creatureId: event.creatureId, boundary: event.boundary, done: [] } };
     case "triggerRollRequested":

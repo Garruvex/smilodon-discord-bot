@@ -9,7 +9,7 @@ import type { D20TestRoll } from "../../dice/d20-test.js";
 import type { ContentId } from "../../rules/content-id.js";
 import { distanceBetween } from "../../combat/positioning.js";
 import { resolveD20Test, type D20TestSpec } from "../../dice/d20-test.js";
-import { combine } from "../../dice/dice-expression.js";
+import { combine, dice } from "../../dice/dice-expression.js";
 import { resolveRollMode } from "../../dice/roll.js";
 import { classifyRollMoments } from "../../dice/roll-moments.js";
 import { resultMatchesSpec, type RollResult, type RollSpec } from "../../dice/roll-spec.js";
@@ -20,6 +20,7 @@ import type { Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { activeEncounter, afterResolution, endIfDecided } from "./combat-flow.js";
 import { offerReaction } from "./reactions.js";
+import { offerSmite } from "./smite.js";
 import { applyDamage, applyHealing, endConcentration, recordConcentration } from "./damage.js";
 import { attackMode, effectForKey, planFor, rangedAttack, sneakAttackEligible, sneakDice } from "./attack-rules.js";
 export { applyDamage, endConcentration } from "./damage.js";
@@ -183,8 +184,28 @@ export function settleCheck(decision: Decision, resolutionId: string, rollId: Ro
   const waiting = Object.values(activeEncounter(decision)?.pendingRolls ?? {}).some(
     (pending) => pending.purpose === "check" && pending.resolutionId === resolution.id,
   );
-  if (after != null && !waiting && after.reaction == null) proceedToEffects(decision);
+  if (after != null && !waiting && after.reaction == null) {
+    // A landed weapon hit still waits on the attacker's Divine Smite answer,
+    // unless a slot was already declared up front on the attack itself.
+    if (check.kind === "attack" && landed && offerSmite(decision, encounter, after, check.targetId)) return null;
+    proceedToEffects(decision);
+  }
   return null;
+}
+
+// The "land" effects list, extended with Divine Smite's bonus damage when a
+// slot was spent on this hit — declared up front (combatAttack's smiteSlot)
+// or chosen after the hit landed (smite.ts's pause). Kept out of the plan
+// itself (attack-rules.ts's planFor) since the plan is fixed at declare time
+// and a post-hit choice isn't known yet; both readers of onLand below go
+// through this instead of the plan directly so the extra effect reaches damage
+// rolling and application the same way any other does.
+function landEffects(resolution: ResolutionState): readonly Effect[] {
+  const slot = resolution.smiteSlot !== undefined ? resolution.smiteSlot : resolution.source.kind === "weapon" ? (resolution.source.smiteSlot ?? null) : null;
+  if (slot === null) return resolution.plan.onLand;
+  // 2d8 for a 1st-level slot, +1d8 per level above that, capped at 5d8 (a
+  // fiend or undead target's extra d8 is not modeled).
+  return [...resolution.plan.onLand, { kind: "damage", target: "target", amount: dice(Math.min(5, slot + 1), 8), damageType: "radiant" }];
 }
 
 // Works out which effects happen to whom, and asks for the dice they need.
@@ -199,7 +220,7 @@ export function proceedToEffects(decision: Decision): void {
   const anyCritical = Object.values(resolution.outcomes).some((outcome) => outcome.landed && outcome.critical);
   let sneakAdded = false;
 
-  for (const [listName, effects] of [["land", resolution.plan.onLand], ["avoid", resolution.plan.onAvoid]] as const) {
+  for (const [listName, effects] of [["land", landEffects(resolution)], ["avoid", resolution.plan.onAvoid]] as const) {
     const targets = resolution.targetIds.filter((targetId) => (resolution.outcomes[targetId]?.landed ?? false) === (listName === "land"));
     if (targets.length === 0) continue;
     effects.forEach((effect, index) => {
@@ -274,7 +295,7 @@ export function applyEffects(decision: Decision): void {
   for (const targetId of resolution.targetIds) {
     const outcome = resolution.outcomes[targetId];
     const listName = outcome?.landed === true ? "land" : "avoid";
-    const effects = listName === "land" ? resolution.plan.onLand : resolution.plan.onAvoid;
+    const effects = listName === "land" ? landEffects(resolution) : resolution.plan.onAvoid;
     effects.forEach((effect, index) => {
       const key = `${listName}:${index}`;
       const encounter = activeEncounter(decision);

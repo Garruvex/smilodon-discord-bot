@@ -52,6 +52,7 @@ export type TimerSpec =
   | { readonly kind: "roll"; readonly timerId: TimerId; readonly dueAt: Instant; readonly checkId: CheckId }
   | { readonly kind: "combatTurn"; readonly timerId: TimerId; readonly dueAt: Instant; readonly encounterId: string; readonly turnNumber: number }
   | { readonly kind: "combatReaction"; readonly timerId: TimerId; readonly dueAt: Instant; readonly encounterId: string; readonly resolutionId: string }
+  | { readonly kind: "combatSmite"; readonly timerId: TimerId; readonly dueAt: Instant; readonly encounterId: string; readonly resolutionId: string }
   // A move waits for a provoker to say whether they take the opportunity
   // attack it offers; combatantId is the provoker asked.
   | { readonly kind: "opportunityAttack"; readonly timerId: TimerId; readonly dueAt: Instant; readonly encounterId: string; readonly combatantId: string };
@@ -81,6 +82,8 @@ export type DeliverySpec =
   | { readonly kind: "attackRolled"; readonly encounterId: string; readonly attackId: string }
   // A hit waits for its target to answer with a reaction.
   | { readonly kind: "reactionOffered"; readonly encounterId: string; readonly attackId: string }
+  // A landed hit waits for its attacker to answer the smite window.
+  | { readonly kind: "smiteOffered"; readonly encounterId: string; readonly attackId: string }
   // A move waits for a provoker to say whether they take the opportunity attack.
   | { readonly kind: "opportunityAttackOffered"; readonly encounterId: string; readonly combatantId: string }
   | { readonly kind: "attackResolved"; readonly encounterId: string; readonly attackId: string }

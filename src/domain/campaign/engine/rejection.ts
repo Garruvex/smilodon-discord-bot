@@ -33,6 +33,7 @@ export type Rejection =
   | { readonly code: "nothingToRedo" }
   | { readonly code: "noReaction" }
   | { readonly code: "noOpportunityAttack" }
+  | { readonly code: "noSmite" }
   | { readonly code: "invalidProxy" }
   | { readonly code: "invalidSummary"; readonly problem: "text" | "numbers" }
   | { readonly code: "invalidLedgerFact"; readonly problem: string }

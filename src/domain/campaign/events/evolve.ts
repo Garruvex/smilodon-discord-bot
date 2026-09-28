@@ -154,6 +154,8 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     case "effectsRemoved":
     case "reactionOffered":
     case "reactionAnswered":
+    case "smiteOffered":
+    case "smiteAnswered":
     case "triggersBegan":
     case "triggerRollRequested":
     case "triggerRolled":

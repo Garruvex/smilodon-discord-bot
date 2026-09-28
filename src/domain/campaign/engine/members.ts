@@ -9,6 +9,7 @@ import { rollTimerId, roundTimerId } from "./ids.js";
 import type { Rejection } from "./rejection.js";
 import { scheduleReminder } from "./reminders.js";
 import { reactionTimerId } from "./combat/reactions.js";
+import { smiteTimerId } from "./combat/smite.js";
 import { opportunityAttackTimerId } from "./combat/movement.js";
 import { awayRestriction, beginEncounter, onMemberAway, rearmedTurnDeadline, resumeCombat, turnTimerId } from "./combat/combat-flow.js";
 import { closeIfEveryoneResponded, enterWaiting, finishReadyCheck, finishRoundIfResolved, openRound } from "./rounds.js";
@@ -134,6 +135,15 @@ export function continueCampaign(decision: Decision): Rejection | null {
     decision.request({
       kind: "startTimer",
       timer: { kind: "combatReaction", timerId: reactionTimerId(state.encounter.resolution.id, waitingReaction.rollId), dueAt: reactionClosesAt, encounterId: state.encounter.id, resolutionId: state.encounter.resolution.id },
+    });
+  }
+  // A smite window that was waiting gets a fresh full timer too.
+  const waitingSmite = state.encounter?.resolution?.smite;
+  const smiteClosesAt = waitingSmite == null ? null : deadlineAfter(ctx.now, state.pacing.turnSeconds);
+  if (state.encounter !== null && state.encounter.resolution !== null && waitingSmite != null && smiteClosesAt !== null) {
+    decision.request({
+      kind: "startTimer",
+      timer: { kind: "combatSmite", timerId: smiteTimerId(state.encounter.resolution.id), dueAt: smiteClosesAt, encounterId: state.encounter.id, resolutionId: state.encounter.resolution.id },
     });
   }
   // An opportunity attack offer that was waiting gets a fresh full timer too.
