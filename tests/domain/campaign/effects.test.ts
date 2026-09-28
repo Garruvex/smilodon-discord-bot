@@ -91,6 +91,21 @@ describe("acting and moving", () => {
     }
   });
 
+  it("scales Exhaustion's penalties with its level: half speed at 2, zero at 5, attack/save disadvantage at 3+", () => {
+    const fight = startedFight();
+    const mira = fight.combatant("c-mira");
+    expect(speedOf({ ...mira, exhaustion: 1 }, lookup)).toBe(30);
+    expect(speedOf({ ...mira, exhaustion: 2 }, lookup)).toBe(15);
+    expect(speedOf({ ...mira, exhaustion: 4 }, lookup)).toBe(15);
+    expect(speedOf({ ...mira, exhaustion: 5 }, lookup)).toBe(0);
+
+    const goblin = fight.combatant("goblin-a");
+    expect(attackBias({ ...mira, exhaustion: 2 }, goblin, lookup, true).disadvantage).toBe(0);
+    expect(attackBias({ ...mira, exhaustion: 3 }, goblin, lookup, true).disadvantage).toBe(1);
+    expect(saveBias({ ...mira, exhaustion: 3 }, "dex", lookup).disadvantage).toBe(1);
+    expect(saveBias({ ...mira, exhaustion: 2 }, "dex", lookup).disadvantage).toBe(0);
+  });
+
   it("refuses moving, closing in and withdrawing while held, and leaves them out of the options", () => {
     const fight = startedFight();
     give(fight, "c-mira", condition("condition:grappled", "goblin-a"));

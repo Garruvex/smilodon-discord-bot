@@ -314,6 +314,8 @@ function capabilitiesFor(effect: Effect): readonly Capability[] {
       return ["attack-rolls"];
     case "conditionUnlessSave":
       return ["saving-throws", "conditions"];
+    case "exhaustion":
+      return ["exhaustion"];
     default:
       return assertNever(effect);
   }

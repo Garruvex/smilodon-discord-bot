@@ -356,6 +356,9 @@ export function applyEffect(
         decision.emit({ kind: "effectApplied", combatantId: recipient.id, effect: conditionInstance(resolution, recipient, effect.condition, key, null, round) });
       }
       return;
+    case "exhaustion":
+      decision.emit({ kind: "exhaustionChanged", combatantId: recipient.id, level: Math.min(6, Math.max(0, recipient.exhaustion + effect.amount)) });
+      return;
     default:
       assertNever(effect);
   }

@@ -14,6 +14,7 @@ export const capabilities = [
   "concentration",
   "death-saves",
   "reactions",
+  "exhaustion",
 ] as const;
 export type Capability = (typeof capabilities)[number];
 

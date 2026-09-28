@@ -24,7 +24,9 @@ export function takeRest(decision: Decision, rest: "short" | "long"): Rejection 
     const dice = current.hitDice ?? sheet.level;
     if (rest === "long") {
       const hitDice = Math.min(sheet.level, dice + Math.max(1, Math.floor(sheet.level / 2)));
-      heroStatus[sheet.id] = { hp: sheet.maxHp, resources: fresh, hitDice };
+      // SRD 5.1: a long rest also removes one level of Exhaustion.
+      const exhaustion = Math.max(0, (current.exhaustion ?? 0) - 1);
+      heroStatus[sheet.id] = { hp: sheet.maxHp, resources: fresh, hitDice, exhaustion };
       continue;
     }
     const perDie = Math.max(1, Math.floor(sheet.hitDie / 2) + 1 + abilityModifier(sheet.abilityScores.con));
@@ -39,7 +41,7 @@ export function takeRest(decision: Decision, rest: "short" | "long"): Rejection 
       const feature = content.find(id);
       if (feature?.kind === "feature" && feature.action?.uses.recharge === "shortRest") featureUses[id] = feature.action.uses.count;
     }
-    heroStatus[sheet.id] = { hp, resources: { ...current.resources, featureUses }, hitDice: left };
+    heroStatus[sheet.id] = { hp, resources: { ...current.resources, featureUses }, hitDice: left, exhaustion: current.exhaustion ?? 0 };
   }
   decision.emit({ kind: "restTaken", rest, heroStatus });
   return null;

@@ -83,6 +83,10 @@ export interface Combatant {
   // Disengage: leaving engagement provokes no opportunity attacks this turn.
   readonly disengaged: boolean;
   readonly sneakAttackUsed: boolean;
+  // 0-6, SRD 5.1 Exhaustion (its own tracked stat, not a Modifier-bearing
+  // condition: unlike every other one, its effects stack and change per
+  // level). effect-queries.ts's speedOf/modifiersOf read it directly.
+  readonly exhaustion: number;
   readonly condition: CombatantCondition;
   // Conditions, spells that outlast their casting, and stances: one record each,
   // with its source, what it does, and when it ends (effects/effect-instance.ts).

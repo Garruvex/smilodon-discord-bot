@@ -21,6 +21,10 @@ export interface EffectHolder {
   readonly disengaged: boolean;
   readonly speed: number;
   readonly budget: { readonly reaction: boolean };
+  // 0-6, SRD 5.1 Exhaustion. Its per-level effects are synthesized into
+  // modifiersOf/speedOf below rather than carried as a condition's own
+  // modifiers, since (unlike every other condition) they change with level.
+  readonly exhaustion: number;
 }
 
 export type ConditionLookup = (id: ContentId<"condition">) => ConditionDefinition | undefined;
@@ -66,6 +70,13 @@ export function modifiersOf(holder: EffectHolder, lookup: ConditionLookup): read
   for (const id of conditionsOf(holder, lookup)) for (const modifier of lookup(id)?.modifiers ?? []) list.push({ source: id, effectId: null, modifier });
   if (holder.dodging && holder.condition === "active") list.push({ source: "action:dodge", effectId: null, modifier: { kind: "attacksAgainst", mode: "disadvantage", reach: "any" } });
   if (holder.disengaged) list.push({ source: "action:disengage", effectId: null, modifier: { kind: "avoidsOpportunityAttacks" } });
+  // Exhaustion 3+: disadvantage on attack rolls and saving throws. 5+: speed
+  // 0 (speedOf below also halves it at 2+, which speedZero can't say).
+  if (holder.exhaustion >= 3) {
+    list.push({ source: "exhaustion", effectId: null, modifier: { kind: "ownAttacks", mode: "disadvantage" } });
+    list.push({ source: "exhaustion", effectId: null, modifier: { kind: "saves", ability: "any", mode: "disadvantage" } });
+  }
+  if (holder.exhaustion >= 5) list.push({ source: "exhaustion", effectId: null, modifier: { kind: "speedZero" } });
   return list;
 }
 
@@ -79,9 +90,11 @@ export function canReact(holder: EffectHolder, lookup: ConditionLookup): boolean
   return canAct(holder, lookup) && holder.budget.reaction;
 }
 
-// Speed after effects (grappled and restrained make it 0).
+// Speed after effects (grappled, restrained, and Exhaustion 5+ make it 0;
+// Exhaustion 2-4 halves it, which speedZero has no way to say).
 export function speedOf(holder: EffectHolder, lookup: ConditionLookup): number {
-  return modifiersOf(holder, lookup).some(({ modifier }) => modifier.kind === "speedZero") ? 0 : holder.speed;
+  if (modifiersOf(holder, lookup).some(({ modifier }) => modifier.kind === "speedZero")) return 0;
+  return holder.exhaustion >= 2 ? Math.floor(holder.speed / 2) : holder.speed;
 }
 
 // Armor class after effects (Shield adds 5 until the caster's next turn).

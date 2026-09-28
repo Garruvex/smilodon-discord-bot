@@ -175,7 +175,7 @@ describe("class features", () => {
     const spent = { ...tired, heroStatus: { ...tired.heroStatus, "c-borin": { hp: 3, resources: { spellSlots: {}, featureUses: { "feature:second-wind": 0 } } } } };
     const short = new Fight(spent).run(organizer, { kind: "takeRest", rest: "short" });
     // Borin's one Hit Die (d10: 6 on average, plus Con +2) heals 8.
-    expect(short.state.heroStatus["c-borin"]).toEqual({ hp: 11, resources: { spellSlots: {}, featureUses: { "feature:second-wind": 1 } }, hitDice: 0 });
+    expect(short.state.heroStatus["c-borin"]).toEqual({ hp: 11, resources: { spellSlots: {}, featureUses: { "feature:second-wind": 1 } }, hitDice: 0, exhaustion: 0 });
     // With no dice left, a second short rest heals nothing; a long rest brings one back.
     const again = run(short.state, organizer, { kind: "takeRest", rest: "short" });
     expect(again.state.heroStatus["c-borin"]?.hp).toBe(11);

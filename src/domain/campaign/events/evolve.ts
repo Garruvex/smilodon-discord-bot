@@ -157,6 +157,7 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     case "triggerRolled":
     case "triggersFinished":
     case "sneakAttackUsed":
+    case "exhaustionChanged":
     case "concentrationStarted":
     case "concentrationEnded":
     case "concentrationSaveRequested":
@@ -270,7 +271,13 @@ function evolveCombat(state: CampaignState, event: CombatEvent): CampaignState {
     if (combatant.source.kind !== "hero") continue;
     const id = combatant.source.characterId;
     const dead = combatant.condition === "dead";
-    heroStatus[id] = { ...heroStatus[id], hp: dead ? 0 : Math.max(1, combatant.hp), resources: combatant.resources, ...(dead ? { dead: true } : {}) };
+    heroStatus[id] = {
+      ...heroStatus[id],
+      hp: dead ? 0 : Math.max(1, combatant.hp),
+      resources: combatant.resources,
+      exhaustion: combatant.exhaustion,
+      ...(dead ? { dead: true } : {}),
+    };
     const sheet = characters[id];
     if (dead && sheet !== undefined) {
       fallen.push(id);

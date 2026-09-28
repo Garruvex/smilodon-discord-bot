@@ -40,9 +40,11 @@ export function applyRoundPlan(decision: Decision, proposal: RoundPlanProposal, 
     if (sheet === undefined) continue; // Unreachable: participants always have sheets.
     const checkId = checkIdFor(round.number, action.characterId);
     const directions = plan.rollModeReasons.map((reason) => rollModeReasons[reason]);
-    // Stealth disadvantage from worn armor is mechanical, not something the
-    // Planner has to notice and cite as a reason (unlike its own rollModeReasons).
+    // Stealth disadvantage from worn armor, and Exhaustion 1+'s disadvantage
+    // on every ability check, are mechanical — not something the Planner has
+    // to notice and cite as a reason (unlike its own rollModeReasons).
     const armorStealthPenalty = plan.test.kind === "skill" && plan.test.skill === "stealth" && hasStealthDisadvantage(sheet, ctx.rules.content) ? 1 : 0;
+    const exhaustionPenalty = (state.heroStatus[action.characterId]?.exhaustion ?? 0) >= 1 ? 1 : 0;
     checks.push({
       id: checkId,
       roundNumber: round.number,
@@ -53,7 +55,7 @@ export function applyRoundPlan(decision: Decision, proposal: RoundPlanProposal, 
       spec: {
         mode: resolveRollMode(
           directions.filter((direction) => direction === "advantage").length,
-          directions.filter((direction) => direction === "disadvantage").length + armorStealthPenalty,
+          directions.filter((direction) => direction === "disadvantage").length + armorStealthPenalty + exhaustionPenalty,
         ),
         modifier: checkModifier(sheet, plan.test),
         bonusDice: [],

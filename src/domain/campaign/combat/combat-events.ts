@@ -105,6 +105,8 @@ export type CombatEvent =
   // Effects end: their clock ran out, their concentration broke, an attack used them up, or the holder stood up.
   | { readonly kind: "effectsRemoved"; readonly combatantId: CombatantId; readonly effectIds: readonly string[]; readonly reason: EffectEnd }
   | { readonly kind: "sneakAttackUsed"; readonly combatantId: CombatantId }
+  // Exhaustion changed to this level (0-6), clamped by the caller. Level 6 kills.
+  | { readonly kind: "exhaustionChanged"; readonly combatantId: CombatantId; readonly level: number }
   | { readonly kind: "concentrationStarted"; readonly combatantId: CombatantId; readonly concentration: Concentration }
   | { readonly kind: "concentrationEnded"; readonly combatantId: CombatantId; readonly reason: "newSpell" | "failedSave" | "downed" | "expired" }
   | {
@@ -183,6 +185,7 @@ export const combatEventKinds: readonly CombatEventKind[] = [
   "triggerRolled",
   "triggersFinished",
   "sneakAttackUsed",
+  "exhaustionChanged",
   "concentrationStarted",
   "concentrationEnded",
   "concentrationSaveRequested",

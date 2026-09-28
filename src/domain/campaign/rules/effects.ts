@@ -64,7 +64,12 @@ export type Effect =
       readonly ability: Ability;
       readonly dc: number;
       readonly condition: ContentId<"condition">;
-    };
+    }
+  // Gains (positive) or removes (negative) this many levels of Exhaustion, a
+  // 6-level stacking condition unlike every other one here (Greater
+  // Restoration removes a level; a future travel/environment system would
+  // be what usually grants one, since the engine has neither yet).
+  | { readonly kind: "exhaustion"; readonly target: EffectTarget; readonly amount: number };
 
 export type EffectKind = Effect["kind"];
 

@@ -198,6 +198,15 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
       }));
     case "sneakAttackUsed":
       return update(encounter, event.combatantId, (combatant) => ({ ...combatant, sneakAttackUsed: true }));
+    // A 6th level of Exhaustion kills (SRD 5.1), same as any other death.
+    case "exhaustionChanged": {
+      const updated = update(encounter, event.combatantId, (combatant) => ({
+        ...combatant,
+        exhaustion: event.level,
+        condition: event.level >= 6 ? "dead" : combatant.condition,
+      }));
+      return event.level >= 6 ? withoutEngagements(updated, event.combatantId) : updated;
+    }
     case "concentrationStarted":
       return update(encounter, event.combatantId, (combatant) => ({ ...combatant, concentration: event.concentration }));
     case "concentrationEnded":

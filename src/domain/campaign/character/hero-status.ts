@@ -19,6 +19,9 @@ export interface HeroStatus {
   readonly hitDice?: number;
   // Died in a fight; never rejoins one.
   readonly dead?: boolean;
+  // 0-6, SRD 5.1 Exhaustion; absent means 0. Carried between fights (and
+  // into exploration checks, round-plan.ts) the way HP and resources are.
+  readonly exhaustion?: number;
 }
 
 // A rested hero: every slot and every limited feature use.

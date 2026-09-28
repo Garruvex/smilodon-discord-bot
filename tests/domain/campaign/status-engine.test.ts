@@ -6,7 +6,7 @@ import type { CampaignEvent } from "../../../src/domain/campaign/events/campaign
 import { replay } from "../../../src/domain/campaign/events/evolve.js";
 import { damageMultiplier, isImmuneToCondition } from "../../../src/domain/campaign/rules/traits.js";
 import { conditionLookup, forbiddenAttackTargets } from "../../../src/domain/campaign/effects/effect-queries.js";
-import { alex, jamie, partyOfThree, organizer, ruleset, run, sam } from "./campaign-fixtures.js";
+import { alex, jamie, newCampaign, partyOfThree, organizer, ruleset, run, sam } from "./campaign-fixtures.js";
 import { appliedCondition } from "./effect-fixtures.js";
 import { Fight, skirmish, startedFight } from "./combat-fixtures.js";
 
@@ -82,8 +82,40 @@ describe("Charmed blocks attacking or targeting the charmer", () => {
   });
 
   it("computes forbiddenAttackTargets directly off the effect's sourceId, not the condition's name", () => {
-    const holder = { effects: [appliedCondition("condition:charmed", "the-charmer")], condition: "active" as const, dodging: false, disengaged: false, speed: 30, budget: { reaction: true } };
+    const holder = { effects: [appliedCondition("condition:charmed", "the-charmer")], condition: "active" as const, dodging: false, disengaged: false, speed: 30, budget: { reaction: true }, exhaustion: 0 };
     expect(forbiddenAttackTargets(holder, lookup)).toEqual(["the-charmer"]);
+  });
+});
+
+describe("Exhaustion: a genuinely different shape (stacking levels, not a Modifier-bearing condition)", () => {
+  it("kills at level 6, the same way any other death does (clears engagements too)", () => {
+    const fight = new Fight(partyOfThree()).rolls([20, 4, 3, 2]).run(organizer, { kind: "startEncounter", spec: skirmish });
+    fight.run(alex, { kind: "combatMove", combatantId: "c-mira", zoneId: "courtyard" });
+    fight.run(alex, { kind: "combatEngage", combatantId: "c-mira", targetId: "goblin-a" });
+    const event: CampaignEvent = { kind: "exhaustionChanged", combatantId: "c-mira", level: 6 };
+    fight.state = replay(fight.state, [event]);
+    expect(fight.combatant("c-mira").exhaustion).toBe(6);
+    expect(fight.combatant("c-mira").condition).toBe("dead");
+    expect(fight.encounter.engagements).toEqual([]);
+  });
+
+  it("carries between fights: a long rest removes one level, a short rest leaves it, and an ended encounter writes the level back to heroStatus", () => {
+    const tired = { ...newCampaign(), heroStatus: { ...newCampaign().heroStatus, "c-borin": { hp: 12, resources: { spellSlots: {}, featureUses: {} }, exhaustion: 3 } } };
+    const short = run(tired, organizer, { kind: "takeRest", rest: "short" });
+    expect(short.state.heroStatus["c-borin"]?.exhaustion).toBe(3);
+    const long = run(tired, organizer, { kind: "takeRest", rest: "long" });
+    expect(long.state.heroStatus["c-borin"]?.exhaustion).toBe(2);
+
+    const fight = new Fight(tired).rolls([20, 15, 4, 3]).run(organizer, { kind: "startEncounter", spec: skirmish });
+    expect(fight.combatant("c-borin").exhaustion).toBe(3); // Seeded from heroStatus at encounter start.
+    fight.state = replay(fight.state, [{ kind: "exhaustionChanged", combatantId: "c-borin", level: 2 }]);
+    fight.rolls([15], [4]).run(alex, { kind: "combatAttack", combatantId: "c-mira", targetId: "goblin-a", weapon: "item:shortbow" });
+    fight.run(alex, { kind: "endTurn", combatantId: "c-mira" });
+    fight.run(jamie, { kind: "combatMove", combatantId: "c-borin", zoneId: "courtyard" });
+    fight.run(jamie, { kind: "combatEngage", combatantId: "c-borin", targetId: "goblin-b" });
+    fight.rolls([15], [8]).run(jamie, { kind: "combatAttack", combatantId: "c-borin", targetId: "goblin-b", weapon: "item:longsword" });
+    expect(fight.events).toContainEqual({ kind: "encounterEnded", outcome: "victory" });
+    expect(fight.state.heroStatus["c-borin"]?.exhaustion).toBe(2); // Written back from the Combatant, not left at its pre-fight 3.
   });
 });
 
