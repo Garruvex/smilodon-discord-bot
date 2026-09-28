@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import type { CampaignState } from "../../../../src/domain/campaign/state/campaign-state.js";
 import { quiet, starter, tellOpening } from "../../../application/campaign/campaign-rig.js";
+import { alex, organizer as fightOrganizer, partyOfThree, sam } from "../../../domain/campaign/campaign-fixtures.js";
+import { Fight, skirmish } from "../../../domain/campaign/combat-fixtures.js";
 import { adventure, contentOf, fakeInteraction, harness, heroes, party, started, type Sent } from "./handler-harness.js";
 
 describe("the lobby controls", () => {
@@ -342,6 +344,81 @@ describe("the pack, the stash, and gifts", () => {
     await t.r.bus.execute(t.key, { kind: "startEncounter", spec }, { commandId: "f", actor: { kind: "user", userId: "u-org" } });
     await t.cards.sync(t.key);
     expect(menuValues(await t.press("myHero", "u-org"), "pack")).toEqual([]);
+  });
+});
+
+describe("a Shield reaction", () => {
+  // Grafts a real, mid-reaction combat state from the low-level engine
+  // harness onto a normal campaign: the reaction view and the engine's own
+  // command handling only need the state to be internally consistent, not
+  // the same heroes this campaign started with (the domain layer's own
+  // tests/domain/campaign/reactions.test.ts already covers the mechanics;
+  // this only exercises the Discord-facing card and button wiring).
+  async function reactionPending(t: Awaited<ReturnType<typeof harness>>): Promise<void> {
+    const base = partyOfThree();
+    const elspeth = base.characters["c-elspeth"];
+    const casting = elspeth?.spellcasting;
+    if (elspeth === undefined || casting === undefined || casting === null) throw new Error("fixture");
+    const wizardParty = { ...base, characters: { ...base.characters, "c-elspeth": { ...elspeth, spellcasting: { ...casting, spells: [...casting.spells, "spell:shield" as const] } } } };
+    const fight = new Fight(wizardParty)
+      .rolls([5, 4, 20, 3, 2])
+      .run(fightOrganizer, { kind: "startEncounter", spec: skirmish })
+      .run(sam, { kind: "endTurn", combatantId: "c-elspeth" })
+      .rolls([15])
+      .run(alex, { kind: "endTurn", combatantId: "c-mira" });
+    expect(fight.encounter.resolution?.reaction).toMatchObject({ targetId: "c-elspeth" });
+    await t.r.store.transaction(async (tx) => {
+      const stored = await tx.loadCampaign(t.key);
+      if (stored === undefined) throw new Error("campaign");
+      await tx.saveCampaign(t.key, fight.state, stored.revision);
+    });
+    await t.cards.sync(t.key);
+  }
+
+  // The reaction card's own buttons, distinct from the adventure panel that
+  // sits below it (which also names every hero present, Elspeth included).
+  const reactionCard = (t: Awaited<ReturnType<typeof harness>>): { payload: unknown } | undefined =>
+    t.messages.live(adventure).find((message) => flatText([message]).includes(`dnd:reactCast:${t.key.campaignId}:spell:shield`));
+
+  it("shows a card for the hit, answered only by the target's own player", async () => {
+    const t = await harness();
+    await started(t);
+    await reactionPending(t);
+    expect(reactionCard(t)).toBeDefined();
+
+    // "u-org" has no hero in this grafted state at all (a stranger clicking it).
+    expect(contentOf(await t.press("reactCast", "u-org", { argument: "spell:shield", onCard: "reaction" }))).toBe("You do not have a hero in this campaign.");
+  });
+
+  it("turns the hit into a miss when cast, and clears the card", async () => {
+    const t = await harness();
+    await started(t);
+    await reactionPending(t);
+
+    expect(contentOf(await t.press("reactCast", "u-sam", { argument: "spell:shield", onCard: "reaction" }))).toBe("You cast it.");
+    const after = await t.r.store.transaction((tx) => tx.loadCampaign(t.key));
+    expect(after?.state.characters["c-elspeth"]).toBeDefined();
+    expect(after?.state.encounter?.resolution?.reaction).toBeUndefined();
+
+    await t.cards.sync(t.key);
+    expect(reactionCard(t)).toBeUndefined();
+  });
+
+  it("takes the hit when declined, and clears the card", async () => {
+    const t = await harness();
+    await started(t);
+    await reactionPending(t);
+
+    // Damage isn't rolled synchronously here (this rig has no RollWorker
+    // running; the roll lands via the same recordRoll path any other pending
+    // check does, covered at the domain layer's own reactions.test.ts). What
+    // this checks is that the click itself is accepted and clears the window.
+    expect(contentOf(await t.press("reactDecline", "u-sam", { onCard: "reaction" }))).toBe("You took the hit.");
+    const after = await t.r.store.transaction((tx) => tx.loadCampaign(t.key));
+    expect(after?.state.encounter?.resolution?.reaction).toBeFalsy();
+
+    await t.cards.sync(t.key);
+    expect(reactionCard(t)).toBeUndefined();
   });
 });
 

@@ -102,6 +102,7 @@ export const campaignEn = {
   "campaign.button.cancelOffer": "Take back",
   "campaign.button.endTurnAnyway": "End turn anyway",
   "campaign.button.details": "Details",
+  "campaign.button.takeHit": "Take the hit",
 
   "campaign.hero.line": "**{name}** · {class} · Lv {level}",
   "campaign.hero.player": "Played by {user}",
@@ -254,6 +255,7 @@ export const campaignEn = {
   "campaign.msg.encounterDefeat": "The party was beaten. The heroes wake with 1 HP. The organizer can play the fight again with Retry the fight in Manage, before anyone acts.",
   "campaign.msg.loot": "Found: {items}",
   "campaign.msg.offer": "🎁 <@{user}>, **{from}** offers you **{item}**. Answer in <#{channel}>.",
+  "campaign.msg.reactionOffered": "🛡️ <@{user}>, **{attacker}**'s attack could still be a miss. Cast Shield, or let it land.",
   "campaign.msg.speech": "💬 **{hero}:** “{text}”",
   "campaign.msg.safetyPaused": "⏸️ Play is paused at a player's request. The organizer resumes it from Manage or /dnd resume when the table is ready.",
   "campaign.msg.proxyTurn": "⚔️ <@{user}>, it is **{hero}**'s turn, and you are playing for <@{owner}>.",
@@ -554,6 +556,8 @@ export const campaignEn = {
   "campaign.reply.offerAccepted": "You answered the offer.",
   "campaign.reply.offerDeclined": "You declined the offer.",
   "campaign.reply.offerCancelled": "You took the offer back.",
+  "campaign.reply.reactionCast": "You cast it.",
+  "campaign.reply.reactionDeclined": "You took the hit.",
 
   "campaign.pack.placeholder": "Pack and stash",
   "campaign.pack.use": "Drink {item}",
@@ -565,6 +569,11 @@ export const campaignEn = {
   "campaign.offer.line": "🎁 **{from}** offers **{item}** to **{to}**.",
   "campaign.offer.trade": "🎁 **{from}** offers **{item}** to **{to}** for **{want}**.",
   "campaign.offer.player": "Waiting for {user}.",
+
+  "campaign.reaction.title": "🛡️ **{attacker}**'s attack lands on **{target}** (roll {natural}, total {total}).",
+  "campaign.reaction.option": "Cast {spell} (level {slot} slot)",
+  "campaign.reaction.player": "Waiting for {user}.",
+  "campaign.reaction.closes": "Decides itself {when}.",
 
   "campaign.turn.header": "**{hero}** · {zone}\nAction {action} · Bonus action {bonus} · Reaction {reaction} · Movement {feet} ft",
   "campaign.turn.engaged": "In melee with {names}.",

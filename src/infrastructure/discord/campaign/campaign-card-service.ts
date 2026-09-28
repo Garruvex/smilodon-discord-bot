@@ -18,6 +18,7 @@ import {
   buildOfferViews,
   buildPanelView,
   buildPartyView,
+  buildReactionView,
 } from "../../../application/campaign/views/campaign-views.js";
 import type { Language } from "../../../application/i18n/language.js";
 import { texts as allTexts } from "../../../application/i18n/texts.js";
@@ -30,6 +31,7 @@ import { renderHeroCard } from "./hero-card.js";
 import { renderHubControl, renderHubGame, type HubGame } from "./hub-card.js";
 import { renderLobbyCard } from "./lobby-card.js";
 import { renderOfferCard } from "./offer-card.js";
+import { renderReactionCard } from "./reaction-card.js";
 
 export interface CampaignCardServiceOptions {
   readonly unitOfWork: CampaignUnitOfWork;
@@ -191,8 +193,8 @@ export class CampaignCardService implements CardRefresher {
       const reference = await this.place(card, existing[card.key], verify, `${key.campaignId}:${card.key}`, failures);
       if (reference !== null) updates[card.key] = reference;
     }
-    // An offer that was answered leaves the Party channel.
-    const answered = Object.keys(record.cards).filter((name) => name.startsWith("offer:") && !desired.some((card) => card.key === name));
+    // An offer that was answered leaves the Party channel; an answered reaction leaves the Adventure channel.
+    const answered = Object.keys(record.cards).filter((name) => (name.startsWith("offer:") || name === "reaction") && !desired.some((card) => card.key === name));
     for (const name of answered) {
       const card = record.cards[name];
       if (card === undefined) continue;
@@ -360,6 +362,8 @@ export class CampaignCardService implements CardRefresher {
       }
     }
     if (adventureChannelId !== null) {
+      const reaction = buildReactionView(state, bible, glossary);
+      if (reaction !== null) cards.push({ key: "reaction", channelId: adventureChannelId, payload: renderReactionCard(reaction, text, campaignId), epoch: "reaction", pin: false });
       cards.push({ key: "adventure", channelId: adventureChannelId, payload: renderAdventurePanel(panel, text, campaignId), epoch: panelEpoch(state), pin: false });
     }
     return cards;

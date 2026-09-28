@@ -5,6 +5,7 @@ import type { CampaignPresenter } from "../../../application/campaign/ports/camp
 import type { CampaignKey, CampaignUnitOfWork } from "../../../application/campaign/ports/campaign-store.js";
 import { texts, type Texts } from "../../../application/i18n/texts.js";
 import { combatantName, encounterRecords, type CombatBeat } from "../../../application/campaign/dm/combat-records.js";
+import { buildReactionView } from "../../../application/campaign/views/campaign-views.js";
 import { abilityOf, type CheckTest } from "../../../domain/campaign/character/character-sheet.js";
 import { combatMode } from "../../../domain/campaign/rules/house-rules.js";
 import type { DeliverySpec } from "../../../domain/campaign/engine/engine-request.js";
@@ -148,6 +149,16 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
       case "encounterEnded":
         await say(adventureChannelId, this.encounterEnd(events, delivery.encounterId, text, this.options.glossaries[record.language]));
         break;
+      case "reactionOffered": {
+        // The waiting notice, pinging the target; the decision card itself is
+        // drawn by the cards.sync() below (a hit can't wait on the reaction
+        // more than once at a time, so there is nothing else to disambiguate here).
+        const bible = this.options.adventures.find(record.adventure.adventureId, record.adventure.version, record.language);
+        const glossary = this.options.glossaries[record.language];
+        const view = state === undefined || bible === undefined || glossary === undefined ? null : buildReactionView(state, bible, glossary);
+        if (view !== null) await say(adventureChannelId, text.campaign.msg.reactionOffered({ user: view.targetUserId, attacker: view.attackerName }), [view.targetUserId]);
+        break;
+      }
       default:
         // Panel-only changes (waiting, paused, turns): the redraw below is the whole delivery.
         break;

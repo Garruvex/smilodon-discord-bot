@@ -162,6 +162,10 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "recap":
     case "proxy":
       return [];
+    case "reactCast":
+    case "reactDecline":
+      // The one reaction window open at a time sits on its own card.
+      return ["reaction"];
   }
 }
 
@@ -291,6 +295,13 @@ export class CampaignComponentHandler implements ComponentHandler {
         const answer = parsed.action === "offerYes" ? "accept" : parsed.action === "offerNo" ? "decline" : "cancel";
         const said = answer === "accept" ? text.campaign.reply.offerAccepted : answer === "decline" ? text.campaign.reply.offerDeclined : text.campaign.reply.offerCancelled;
         return void (await this.outcome(await this.deps.play.answerOffer(key, userId, parsed.argument ?? "", answer, interaction.id), said, reply, text));
+      }
+      case "reactCast":
+      case "reactDecline": {
+        const spellId = parsed.action === "reactCast" ? (parsed.argument as ContentId<"spell"> | null) : null;
+        const said = spellId === null ? text.campaign.reply.reactionDeclined : text.campaign.reply.reactionCast;
+        const command = (combatantId: CharacterId): CombatCommand => ({ kind: "combatReact", combatantId, spellId });
+        return void (await this.outcome(await this.deps.play.combat(key, userId, interaction.id, command), said, reply, text));
       }
       case "useSaved": {
         const chosen = await this.deps.lobby.chooseSaved(key, userId, parsed.argument ?? "");

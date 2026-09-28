@@ -55,6 +55,9 @@ export const campaignActions = [
   "recap",
   // Naming a proxy for fights while away (a menu on My Hero).
   "proxy",
+  // A reaction window (Shield): cast one of the offered spells, or take the hit.
+  "reactCast",
+  "reactDecline",
 ] as const;
 export type CampaignAction = (typeof campaignActions)[number];
 

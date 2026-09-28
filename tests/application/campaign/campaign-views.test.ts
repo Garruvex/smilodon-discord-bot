@@ -7,13 +7,14 @@ import {
   buildLobbyView,
   buildPanelView,
   buildPartyView,
+  buildReactionView,
 } from "../../../src/application/campaign/views/campaign-views.js";
 import { enSrd51Glossary } from "../../../src/application/i18n/campaign/glossary/en/srd-5.1.js";
 import { chooseHero, join, openLobby, type LobbyResult, type LobbyState } from "../../../src/domain/campaign/lobby/lobby.js";
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
 import { loadStarterAdventure } from "../../../src/infrastructure/campaign/starter-adventures.js";
-import { alex, jamie, livePacing, newCampaign, ruleset, run, system } from "../../domain/campaign/campaign-fixtures.js";
-import { startedFight } from "../../domain/campaign/combat-fixtures.js";
+import { alex, jamie, livePacing, newCampaign, organizer, partyOfThree, ruleset, run, sam, system } from "../../domain/campaign/campaign-fixtures.js";
+import { Fight, skirmish, startedFight } from "../../domain/campaign/combat-fixtures.js";
 
 const starter = loadStarterAdventure().en;
 const content = ruleset().content;
@@ -153,5 +154,42 @@ describe("the adventure panel view", () => {
     expect(view.combat).toMatchObject({ round: 1, activeName: "Mira" });
     expect(view.combat?.foes.map((foe) => foe.band)).toEqual(["unhurt", "unhurt"]);
     expect(view.combat?.party.map((hero) => hero.name)).toEqual(["Mira", "Borin"]);
+  });
+});
+
+describe("buildReactionView", () => {
+  // Elspeth, made a wizard for this test, has Shield prepared. Goblin A shoots
+  // her with a natural 15 (+4 to hit against armor class 18, but not 23), so
+  // a real reaction window opens.
+  function reactionPending(): CampaignState {
+    const base = partyOfThree();
+    const elspeth = base.characters["c-elspeth"];
+    const casting = elspeth?.spellcasting;
+    if (elspeth === undefined || casting === undefined || casting === null) throw new Error("fixture");
+    const wizardParty = { ...base, characters: { ...base.characters, "c-elspeth": { ...elspeth, spellcasting: { ...casting, spells: [...casting.spells, "spell:shield" as const] } } } };
+    return new Fight(wizardParty)
+      .rolls([5, 4, 20, 3, 2])
+      .run(organizer, { kind: "startEncounter", spec: skirmish })
+      .run(sam, { kind: "endTurn", combatantId: "c-elspeth" })
+      .rolls([15])
+      .run(alex, { kind: "endTurn", combatantId: "c-mira" }).state;
+  }
+
+  it("is null when nothing is waiting on a reaction", () => {
+    expect(buildReactionView(newCampaign(), starter.bible, enSrd51Glossary)).toBeNull();
+    expect(buildReactionView(startedFight().state, starter.bible, enSrd51Glossary)).toBeNull();
+  });
+
+  it("describes the hit, its target, and what they could cast", () => {
+    const view = buildReactionView(reactionPending(), starter.bible, enSrd51Glossary);
+    expect(view).toMatchObject({
+      attackerName: expect.stringContaining("Goblin") as string,
+      targetName: "Elspeth",
+      targetUserId: "u-sam",
+      natural: 15,
+      total: 19,
+      options: [{ spellId: "spell:shield", spellName: expect.any(String) as string, slotLevel: 1 }],
+    });
+    expect(view?.options[0]?.spellName).not.toBe("spell:shield");
   });
 });

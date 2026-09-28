@@ -106,6 +106,19 @@ export interface OfferView {
   readonly want: string | null;
 }
 
+// A hit waiting on its target's reaction (Shield): the attack that landed,
+// who it's on, and what they could cast to still turn it into a miss.
+export interface ReactionView {
+  readonly attackerName: string;
+  readonly targetName: string;
+  readonly targetUserId: string;
+  readonly natural: number;
+  readonly total: number;
+  readonly options: readonly { readonly spellId: string; readonly spellName: string; readonly slotLevel: number }[];
+  // Milliseconds since epoch the window closes at; null when play has no timers.
+  readonly closesAt: number | null;
+}
+
 export interface PanelView {
   readonly campaignName: string;
   readonly sceneTitle: string;
@@ -226,6 +239,29 @@ export function buildHeroView(state: CampaignState, sheet: CharacterSheet, conte
     prepared,
     slots,
     uses,
+  };
+}
+
+// The hit waiting on a reaction right now, if any (at most one at a time:
+// resolution stalls on it before anything else can proceed).
+export function buildReactionView(state: CampaignState, bible: AdventureBible, glossary: Glossary): ReactionView | null {
+  const encounter = state.encounter;
+  const resolution = encounter?.resolution;
+  const pending = resolution?.reaction;
+  if (encounter == null || resolution == null || pending == null) return null;
+  const attacker = encounter.combatants[resolution.actorId];
+  const target = encounter.combatants[pending.targetId];
+  const targetSheet = target?.source.kind === "hero" ? state.characters[target.source.characterId] : undefined;
+  if (attacker === undefined || target === undefined || targetSheet === undefined) return null;
+  const names: CombatNames = { state, bible, glossary };
+  return {
+    attackerName: combatantName(attacker, names),
+    targetName: combatantName(target, names),
+    targetUserId: targetSheet.ownerUserId,
+    natural: pending.roll.d20.natural,
+    total: pending.roll.total,
+    options: pending.options.map((option) => ({ spellId: option.spellId, spellName: glossary.names[option.spellId] ?? option.spellId, slotLevel: option.slotLevel })),
+    closesAt: pending.closesAt,
   };
 }
 
