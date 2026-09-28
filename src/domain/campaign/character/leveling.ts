@@ -1,7 +1,7 @@
 import type { Ability } from "../rules/effects.js";
+import type { CasterType } from "../rules/content-definitions.js";
 import { abilityModifier, type CharacterSheet } from "./character-sheet.js";
 import { classTemplates, type BuildClass } from "./character-build.js";
-import type { ContentId } from "../rules/content-id.js";
 
 // XP and levels on top of the class roster (character-build.ts): the
 // roster stops at what a level-1 hero has; this is what changes as they earn
@@ -67,36 +67,13 @@ export function defaultAsiAllocation(buildClass: BuildClass, abilityScores: Read
   return result;
 }
 
-export type CasterType = "full" | "half" | "pact" | "none";
-
-const fullCasters = new Set<BuildClass>(["bard", "cleric", "druid", "sorcerer", "wizard"]);
-const halfCasters = new Set<BuildClass>(["paladin", "ranger"]);
-const pactCasters = new Set<BuildClass>(["warlock"]);
-
+// Caster type, spellcasting ability, and the first spells a class ever
+// knows are all part of its content now (content/srd-5.1/classes.ts),
+// alongside its level-1 template; casterTypeOf is kept as a thin accessor
+// since it reads better at call sites than classTemplates[x].casterType.
 export function casterTypeOf(buildClass: BuildClass): CasterType {
-  if (fullCasters.has(buildClass)) return "full";
-  if (halfCasters.has(buildClass)) return "half";
-  if (pactCasters.has(buildClass)) return "pact";
-  return "none";
+  return classTemplates[buildClass].casterType;
 }
-
-// The ability every spell a class knows keys off, independent of whether the
-// class has any spells yet at level 1 (paladin and ranger get none until
-// level 2, so their level-1 template carries no spellcasting to read it from).
-const spellcastingAbility: Readonly<Record<BuildClass, Ability | null>> = {
-  fighter: null,
-  rogue: null,
-  cleric: "wis",
-  barbarian: null,
-  bard: "cha",
-  druid: "wis",
-  monk: null,
-  paladin: "cha",
-  ranger: "wis",
-  sorcerer: "cha",
-  warlock: "cha",
-  wizard: "int",
-};
 
 // SRD 5.1 multiclass spell slot tables, by character level (index 0 = level 1).
 const fullCasterSlots: readonly Readonly<Record<number, number>>[] = [
@@ -169,39 +146,6 @@ export function spellSlotsForLevel(casterType: CasterType, level: number): Reado
   }
 }
 
-// A half-caster's spells begin empty (their level-1 template has none to
-// carry over — paladin and ranger get nothing until level 2). Seeded here so
-// the slots levelUp grants them aren't useless. Approximated from the shared
-// catalog's small spell list rather than each class's own SRD list, same
-// liberty the level-1 roster already takes for Bard and Warlock.
-const firstSpellsForClass: Partial<Record<BuildClass, readonly ContentId<"spell">[]>> = {
-  paladin: ["spell:cure-wounds", "spell:bless"],
-  ranger: ["spell:cure-wounds"],
-};
-
-// Narrative-only features (features/higher-level-features.ts) granted the
-// moment a hero reaches a level. Levels past 3 grant none yet.
-const levelFeatures: Readonly<Record<BuildClass, Readonly<Record<number, readonly ContentId<"feature">[]>>>> = {
-  fighter: {
-    2: ["feature:action-surge"],
-    3: ["feature:martial-archetype"],
-    5: ["feature:extra-attack"],
-    11: ["feature:extra-attack-2"],
-    20: ["feature:extra-attack-3"],
-  },
-  rogue: { 2: ["feature:cunning-action"], 3: ["feature:roguish-archetype"], 5: ["feature:uncanny-dodge"] },
-  cleric: { 2: ["feature:channel-divinity"] },
-  barbarian: { 2: ["feature:reckless-attack"], 3: ["feature:primal-path"], 5: ["feature:extra-attack"] },
-  bard: { 2: ["feature:jack-of-all-trades"], 3: ["feature:bard-college"] },
-  druid: { 2: ["feature:wild-shape"], 3: ["feature:druid-circle"] },
-  monk: { 2: ["feature:ki"], 3: ["feature:monastic-tradition"], 5: ["feature:extra-attack"] },
-  paladin: { 2: ["feature:fighting-style-dueling", "feature:divine-smite"], 3: ["feature:sacred-oath"], 5: ["feature:extra-attack"] },
-  ranger: { 2: ["feature:fighting-style-dueling"], 3: ["feature:ranger-archetype"], 5: ["feature:extra-attack"] },
-  sorcerer: { 2: ["feature:font-of-magic"], 3: ["feature:metamagic"] },
-  warlock: { 2: ["feature:eldritch-invocations"], 3: ["feature:pact-boon"] },
-  wizard: { 2: ["feature:arcane-tradition"] },
-};
-
 // The next state of a hero's numbers after gaining a level: hit points,
 // proficiency bonus, spell slots (added the first time a half-caster or
 // pact caster reaches the level that grants them), any features that level
@@ -214,12 +158,13 @@ export function levelUp(
   const level = sheet.level + 1;
   const hpGain = hpGainForLevel(sheet.hitDie, sheet.abilityScores.con);
   const abilityScores = asiLevels.includes(level) ? defaultAsiAllocation(buildClass, sheet.abilityScores) : sheet.abilityScores;
-  const casterType = casterTypeOf(buildClass);
+  const template = classTemplates[buildClass];
+  const casterType = template.casterType;
   const slots = spellSlotsForLevel(casterType, level);
-  const ability = spellcastingAbility[buildClass];
-  const spells = sheet.spellcasting?.spells ?? firstSpellsForClass[buildClass] ?? [];
+  const ability = template.spellcastingAbility;
+  const spells = sheet.spellcasting?.spells ?? template.firstSpells;
   const spellcasting = casterType === "none" || ability === null ? null : { ability, spells, slots };
-  const gained = levelFeatures[buildClass]?.[level] ?? [];
+  const gained = template.levelFeatures[level] ?? [];
   const features = gained.length === 0 ? sheet.features : [...sheet.features, ...gained];
   return { level, maxHp: sheet.maxHp + hpGain, abilityScores, spellcasting, features };
 }

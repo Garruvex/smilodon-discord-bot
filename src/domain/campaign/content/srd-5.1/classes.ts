@@ -1,0 +1,306 @@
+import { defineClass, type ClassDefinition } from "../../rules/content-definitions.js";
+
+// The full SRD 5.1 class roster, as sealed content: everything the builder
+// and leveling need for one class in one place, validated the same way a
+// spell or monster is (checkDefinition resolves every kit item, feature and
+// spell it names). Level 1 only, plus the levels-2+ progression a class
+// grants on its own (character/leveling.ts turns XP into levels; the numbers
+// that follow from a level alone — HP, proficiency, spell slot counts, ASIs —
+// stay there, formula-driven, rather than repeated per class here).
+const source = "SRD 5.1";
+
+export const fighter = defineClass({
+  id: "class:fighter",
+  source,
+  hitDie: 10,
+  savingThrows: ["str", "con"],
+  skillChoices: ["acrobatics", "animal-handling", "athletics", "history", "insight", "intimidation", "perception", "survival"],
+  skillCount: 2,
+  expertiseCount: 0,
+  features: ["feature:fighting-style-dueling", "feature:second-wind"],
+  kits: [
+    { id: "knight", equipment: ["item:longsword", "item:chain-mail", "item:shield"] },
+    { id: "skirmisher", equipment: ["item:scimitar", "item:shortbow", "item:leather-armor"] },
+  ],
+  spellcasting: null,
+  suggested: ["str", "con", "dex", "wis", "int", "cha"],
+  casterType: "none",
+  spellcastingAbility: null,
+  firstSpells: [],
+  levelFeatures: {
+    2: ["feature:action-surge"],
+    3: ["feature:martial-archetype"],
+    5: ["feature:extra-attack"],
+    11: ["feature:extra-attack-2"],
+    20: ["feature:extra-attack-3"],
+  },
+});
+
+export const rogue = defineClass({
+  id: "class:rogue",
+  source,
+  hitDie: 8,
+  savingThrows: ["dex", "int"],
+  skillChoices: ["acrobatics", "athletics", "deception", "insight", "intimidation", "investigation", "perception", "performance", "persuasion", "sleight-of-hand", "stealth"],
+  skillCount: 4,
+  expertiseCount: 2,
+  features: ["feature:sneak-attack", "feature:thieves-cant"],
+  kits: [
+    { id: "shadow", equipment: ["item:shortsword", "item:shortbow", "item:leather-armor"] },
+    { id: "duelist", equipment: ["item:scimitar", "item:shortsword", "item:leather-armor"] },
+  ],
+  spellcasting: null,
+  suggested: ["dex", "cha", "int", "con", "wis", "str"],
+  casterType: "none",
+  spellcastingAbility: null,
+  firstSpells: [],
+  levelFeatures: { 2: ["feature:cunning-action"], 3: ["feature:roguish-archetype"], 5: ["feature:uncanny-dodge"] },
+});
+
+export const cleric = defineClass({
+  id: "class:cleric",
+  source,
+  hitDie: 8,
+  savingThrows: ["wis", "cha"],
+  skillChoices: ["history", "insight", "medicine", "persuasion", "religion"],
+  skillCount: 2,
+  expertiseCount: 0,
+  features: ["feature:disciple-of-life"],
+  kits: [
+    // The Life Domain grants heavy armor proficiency.
+    { id: "shieldbearer", equipment: ["item:mace", "item:chain-mail", "item:shield"] },
+    { id: "wayfarer", equipment: ["item:mace", "item:leather-armor", "item:shield", "item:javelin"] },
+  ],
+  // Bless and Cure Wounds are Life Domain spells, always prepared; the other
+  // level 1 cleric spells the catalog has are prepared too (the limit,
+  // Wisdom modifier plus level, is never below this many with the standard array).
+  spellcasting: {
+    ability: "wis",
+    spells: ["spell:sacred-flame", "spell:thaumaturgy", "spell:bless", "spell:cure-wounds", "spell:healing-word", "spell:guiding-bolt"],
+    slots: { 1: 2 },
+  },
+  suggested: ["wis", "con", "str", "cha", "dex", "int"],
+  casterType: "full",
+  spellcastingAbility: "wis",
+  firstSpells: [],
+  levelFeatures: { 2: ["feature:channel-divinity"] },
+});
+
+export const barbarian = defineClass({
+  id: "class:barbarian",
+  source,
+  hitDie: 12,
+  savingThrows: ["str", "con"],
+  skillChoices: ["animal-handling", "athletics", "intimidation", "nature", "perception", "survival"],
+  skillCount: 2,
+  expertiseCount: 0,
+  features: ["feature:rage"],
+  kits: [
+    { id: "berserker", equipment: ["item:greataxe", "item:hide-armor"] },
+    { id: "totemic", equipment: ["item:greataxe", "item:leather-armor"] },
+  ],
+  spellcasting: null,
+  suggested: ["str", "con", "dex", "wis", "cha", "int"],
+  casterType: "none",
+  spellcastingAbility: null,
+  firstSpells: [],
+  levelFeatures: { 2: ["feature:reckless-attack"], 3: ["feature:primal-path"], 5: ["feature:extra-attack"] },
+});
+
+export const bard = defineClass({
+  id: "class:bard",
+  source,
+  hitDie: 8,
+  savingThrows: ["dex", "cha"],
+  skillChoices: [
+    "acrobatics",
+    "animal-handling",
+    "arcana",
+    "athletics",
+    "deception",
+    "history",
+    "insight",
+    "intimidation",
+    "investigation",
+    "medicine",
+    "nature",
+    "perception",
+    "performance",
+    "persuasion",
+    "religion",
+    "sleight-of-hand",
+    "stealth",
+    "survival",
+  ],
+  skillCount: 3,
+  expertiseCount: 0,
+  features: ["feature:bardic-inspiration"],
+  kits: [
+    { id: "lore", equipment: ["item:rapier", "item:leather-armor"] },
+    { id: "skald", equipment: ["item:quarterstaff", "item:leather-armor"] },
+  ],
+  spellcasting: { ability: "cha", spells: ["spell:vicious-mockery", "spell:healing-word", "spell:bless", "spell:cure-wounds"], slots: { 1: 2 } },
+  suggested: ["cha", "dex", "con", "wis", "int", "str"],
+  casterType: "full",
+  spellcastingAbility: "cha",
+  firstSpells: [],
+  levelFeatures: { 2: ["feature:jack-of-all-trades"], 3: ["feature:bard-college"] },
+});
+
+export const druid = defineClass({
+  id: "class:druid",
+  source,
+  hitDie: 8,
+  savingThrows: ["int", "wis"],
+  skillChoices: ["arcana", "animal-handling", "insight", "medicine", "nature", "perception", "religion", "survival"],
+  skillCount: 2,
+  expertiseCount: 0,
+  features: ["feature:druidic"],
+  kits: [
+    { id: "land", equipment: ["item:quarterstaff", "item:leather-armor", "item:shield"] },
+    { id: "moonlit", equipment: ["item:scimitar", "item:leather-armor"] },
+  ],
+  spellcasting: { ability: "wis", spells: ["spell:produce-flame", "spell:cure-wounds", "spell:healing-word"], slots: { 1: 2 } },
+  suggested: ["wis", "con", "dex", "int", "cha", "str"],
+  casterType: "full",
+  spellcastingAbility: "wis",
+  firstSpells: [],
+  levelFeatures: { 2: ["feature:wild-shape"], 3: ["feature:druid-circle"] },
+});
+
+export const monk = defineClass({
+  id: "class:monk",
+  source,
+  hitDie: 8,
+  savingThrows: ["str", "dex"],
+  skillChoices: ["acrobatics", "athletics", "history", "insight", "religion", "stealth"],
+  skillCount: 2,
+  expertiseCount: 0,
+  // No armor and no shield: Unarmored Defense is out of scope for the
+  // starter roster (it would need a base-AC formula per class, not just
+  // per item), so a monk's AC is 10 + Dex, as if unarmed and unarmored.
+  features: ["feature:martial-arts"],
+  kits: [
+    { id: "openhand", equipment: ["item:shortsword"] },
+    { id: "umbra", equipment: ["item:dagger"] },
+  ],
+  spellcasting: null,
+  suggested: ["dex", "wis", "con", "str", "cha", "int"],
+  casterType: "none",
+  spellcastingAbility: null,
+  firstSpells: [],
+  levelFeatures: { 2: ["feature:ki"], 3: ["feature:monastic-tradition"], 5: ["feature:extra-attack"] },
+});
+
+export const paladin = defineClass({
+  id: "class:paladin",
+  source,
+  hitDie: 10,
+  savingThrows: ["wis", "cha"],
+  skillChoices: ["athletics", "insight", "intimidation", "medicine", "persuasion", "religion"],
+  skillCount: 2,
+  expertiseCount: 0,
+  // No spellcasting: paladin spells begin at level 2 in the SRD.
+  features: ["feature:divine-sense", "feature:lay-on-hands"],
+  kits: [
+    { id: "oath", equipment: ["item:longsword", "item:chain-mail", "item:shield"] },
+    { id: "vengeance", equipment: ["item:longsword", "item:leather-armor", "item:javelin"] },
+  ],
+  spellcasting: null,
+  suggested: ["str", "cha", "con", "wis", "dex", "int"],
+  casterType: "half",
+  spellcastingAbility: "cha",
+  // Approximated from the shared catalog's small spell list rather than the
+  // class's own full SRD list, the same liberty the level-1 roster already
+  // takes for Bard and Warlock.
+  firstSpells: ["spell:cure-wounds", "spell:bless"],
+  levelFeatures: { 2: ["feature:fighting-style-dueling", "feature:divine-smite"], 3: ["feature:sacred-oath"], 5: ["feature:extra-attack"] },
+});
+
+export const ranger = defineClass({
+  id: "class:ranger",
+  source,
+  hitDie: 10,
+  savingThrows: ["str", "dex"],
+  skillChoices: ["animal-handling", "athletics", "insight", "investigation", "nature", "perception", "stealth", "survival"],
+  skillCount: 3,
+  expertiseCount: 0,
+  // No spellcasting: ranger spells begin at level 2 in the SRD.
+  features: ["feature:favored-enemy", "feature:natural-explorer"],
+  kits: [
+    { id: "hunter", equipment: ["item:longbow", "item:leather-armor"] },
+    { id: "beastmaster", equipment: ["item:shortbow", "item:scimitar", "item:leather-armor"] },
+  ],
+  spellcasting: null,
+  suggested: ["dex", "wis", "con", "str", "cha", "int"],
+  casterType: "half",
+  spellcastingAbility: "wis",
+  firstSpells: ["spell:cure-wounds"],
+  levelFeatures: { 2: ["feature:fighting-style-dueling"], 3: ["feature:ranger-archetype"], 5: ["feature:extra-attack"] },
+});
+
+export const sorcerer = defineClass({
+  id: "class:sorcerer",
+  source,
+  hitDie: 6,
+  savingThrows: ["con", "cha"],
+  skillChoices: ["arcana", "deception", "insight", "intimidation", "persuasion", "religion"],
+  skillCount: 2,
+  expertiseCount: 0,
+  features: ["feature:sorcerous-origin"],
+  kits: [
+    { id: "wildmagic", equipment: ["item:dagger"] },
+    { id: "draconic", equipment: ["item:quarterstaff"] },
+  ],
+  spellcasting: { ability: "cha", spells: ["spell:fire-bolt", "spell:magic-missile", "spell:shield"], slots: { 1: 2 } },
+  suggested: ["cha", "con", "dex", "wis", "int", "str"],
+  casterType: "full",
+  spellcastingAbility: "cha",
+  firstSpells: [],
+  levelFeatures: { 2: ["feature:font-of-magic"], 3: ["feature:metamagic"] },
+});
+
+export const warlock = defineClass({
+  id: "class:warlock",
+  source,
+  hitDie: 8,
+  savingThrows: ["wis", "cha"],
+  skillChoices: ["arcana", "deception", "history", "intimidation", "investigation", "nature", "religion"],
+  skillCount: 2,
+  expertiseCount: 0,
+  features: ["feature:otherworldly-patron"],
+  kits: [
+    { id: "fiendpact", equipment: ["item:dagger", "item:leather-armor"] },
+    { id: "oldone", equipment: ["item:quarterstaff", "item:leather-armor"] },
+  ],
+  // Pact Magic: fewer, always-highest-level slots. One slot at level 1.
+  spellcasting: { ability: "cha", spells: ["spell:eldritch-blast", "spell:witch-bolt"], slots: { 1: 1 } },
+  suggested: ["cha", "con", "dex", "wis", "int", "str"],
+  casterType: "pact",
+  spellcastingAbility: "cha",
+  firstSpells: [],
+  levelFeatures: { 2: ["feature:eldritch-invocations"], 3: ["feature:pact-boon"] },
+});
+
+export const wizard = defineClass({
+  id: "class:wizard",
+  source,
+  hitDie: 6,
+  savingThrows: ["int", "wis"],
+  skillChoices: ["arcana", "history", "insight", "investigation", "medicine", "religion"],
+  skillCount: 2,
+  expertiseCount: 0,
+  features: ["feature:arcane-recovery"],
+  kits: [
+    { id: "scholar", equipment: ["item:dagger", "item:quarterstaff"] },
+    { id: "evoker", equipment: ["item:dagger"] },
+  ],
+  spellcasting: { ability: "int", spells: ["spell:fire-bolt", "spell:magic-missile", "spell:shield"], slots: { 1: 2 } },
+  suggested: ["int", "con", "dex", "wis", "cha", "str"],
+  casterType: "full",
+  spellcastingAbility: "int",
+  firstSpells: [],
+  levelFeatures: { 2: ["feature:arcane-tradition"] },
+});
+
+export const srd51Classes: readonly ClassDefinition[] = [fighter, rogue, cleric, barbarian, bard, druid, monk, paladin, ranger, sorcerer, warlock, wizard];

@@ -4,6 +4,7 @@ import type { Capability } from "./capabilities.js";
 import type { ContentId, ContentKind } from "./content-id.js";
 import type { Ability, DamageType, Effect, ResolutionPlan } from "./effects.js";
 import type { Modifier } from "./modifiers.js";
+import type { Skill } from "./skills.js";
 import type { Trait } from "./traits.js";
 
 // Content definitions. Each kind keeps the data that is genuinely its own
@@ -151,7 +152,60 @@ export interface MonsterDefinition extends DefinitionBase<"monster"> {
   readonly traits: readonly Trait[];
 }
 
-export type ContentDefinition = ConditionDefinition | SpellDefinition | ItemDefinition | FeatureDefinition | MonsterDefinition;
+// How a class casts, if at all: full (Wizard-shaped slot table), half
+// (Paladin/Ranger), pact (Warlock's own table), or none. Read alongside
+// spellcastingAbility by leveling.ts's spellSlotsForLevel.
+export type CasterType = "full" | "half" | "pact" | "none";
+
+// One of a class's starting kits: the player's gear choice at level 1.
+export interface StartingKit {
+  readonly id: string;
+  readonly equipment: readonly ContentId<"item">[];
+}
+
+export interface ClassDefinition extends DefinitionBase<"class"> {
+  readonly hitDie: 6 | 8 | 10 | 12;
+  readonly savingThrows: readonly Ability[];
+  // The skills the class may choose from, how many, and how many get expertise.
+  readonly skillChoices: readonly Skill[];
+  readonly skillCount: number;
+  readonly expertiseCount: number;
+  // Features granted at level 1. Levels 2+ are levelFeatures below.
+  readonly features: readonly ContentId<"feature">[];
+  readonly kits: readonly StartingKit[];
+  // What a level-1 hero of this class casts, if anything (paladin and
+  // ranger have none until level 2, so this is null for them).
+  readonly spellcasting: { readonly ability: Ability; readonly spells: readonly ContentId<"spell">[]; readonly slots: Readonly<Record<number, number>> } | null;
+  // The abilities worth the highest scores, as a suggestion for the builder's default.
+  readonly suggested: readonly Ability[];
+  readonly casterType: CasterType;
+  // The ability every spell this class knows keys off, independent of
+  // whether it has any spells yet at level 1 (paladin/ranger: cha/wis).
+  readonly spellcastingAbility: Ability | null;
+  // Seeded the moment a half- or pact caster's spellcasting first appears
+  // past level 1 (paladin, ranger); empty for classes whose level-1 template
+  // already carries spells, or that never cast at all.
+  readonly firstSpells: readonly ContentId<"spell">[];
+  // Narrative or mechanical features granted at levels 2+, by level. Level 1's
+  // own features are the `features` field above, not this one.
+  readonly levelFeatures: Readonly<Record<number, readonly ContentId<"feature">[]>>;
+}
+
+export interface RaceDefinition extends DefinitionBase<"race"> {
+  readonly speed: number;
+  // Only the abilities this race raises; SRD 5.1's fixed racial bonus (e.g.
+  // Elf +2 Dex, Human +1 to all six).
+  readonly abilityScoreIncrease: Readonly<Partial<Record<Ability, number>>>;
+  // From the shared Trait vocabulary, same as armor, features, and monsters
+  // (e.g. Dwarven Resilience's poison resistance). Traits the engine does
+  // not implement yet (Darkvision — no vision system; save-advantage against
+  // a specific condition; a bonus cantrip outside the class list) are left
+  // out and documented per race (content/srd-5.1/races.ts), the same
+  // "not modeled" convention the monster roster already uses.
+  readonly traits: readonly Trait[];
+}
+
+export type ContentDefinition = ConditionDefinition | SpellDefinition | ItemDefinition | FeatureDefinition | MonsterDefinition | ClassDefinition | RaceDefinition;
 
 export type DefinitionOf<K extends ContentKind> = Extract<ContentDefinition, { kind: K }>;
 
@@ -187,6 +241,14 @@ export function defineMonster(definition: Omit<MonsterDefinition, "kind">): Mons
   return { ...definition, kind: "monster" };
 }
 
+export function defineClass(definition: Omit<ClassDefinition, "kind">): ClassDefinition {
+  return { ...definition, kind: "class" };
+}
+
+export function defineRace(definition: Omit<RaceDefinition, "kind">): RaceDefinition {
+  return { ...definition, kind: "race" };
+}
+
 // The passive traits a definition grants its owner.
 export function traitsOf(definition: ContentDefinition): readonly Trait[] {
   switch (definition.kind) {
@@ -205,8 +267,11 @@ export function traitsOf(definition: ContentDefinition): readonly Trait[] {
     case "feature":
     case "monster":
       return definition.traits;
+    case "race":
+      return definition.traits;
     case "condition":
     case "spell":
+    case "class":
       return [];
     default:
       return assertNever(definition);
@@ -240,6 +305,8 @@ function plansOf(definition: ContentDefinition): readonly ResolutionPlan[] {
       return definition.attacks.map((attack) => ({ check: { kind: "weaponAttack" }, onLand: attack.onHit ?? [], onAvoid: [] }));
     case "item":
     case "condition":
+    case "class":
+    case "race":
       return [];
     default:
       return assertNever(definition);
@@ -268,6 +335,8 @@ export function requiredCapabilities(definition: ContentDefinition): ReadonlySet
       required.add("damage");
       break;
     case "feature":
+    case "class":
+    case "race":
       break;
     default:
       assertNever(definition);
@@ -291,9 +360,18 @@ export function referencedContent(definition: ContentDefinition): readonly Conte
       return definition.includes;
     case "monster":
       return [...definition.attacks.map((attack) => attack.weapon), ...fromPlans];
+    case "class":
+      return [
+        ...definition.kits.flatMap((kit) => kit.equipment),
+        ...definition.features,
+        ...Object.values(definition.levelFeatures).flat(),
+        ...(definition.spellcasting?.spells ?? []),
+        ...definition.firstSpells,
+      ];
     case "spell":
     case "item":
     case "feature":
+    case "race":
       return fromPlans;
     default:
       return assertNever(definition);

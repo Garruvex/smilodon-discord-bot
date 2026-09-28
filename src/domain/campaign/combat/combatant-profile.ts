@@ -21,10 +21,14 @@ export { isWorn } from "../engine/gear.js";
 // otherwise a second copy of a worn shield or armor would count its bonus twice.
 export function heroTraits(sheet: CharacterSheet, content: SealedContent): readonly Trait[] {
   const worn = [...new Set(sheet.equipment)].filter((id) => isWorn(sheet, content, id));
-  return [...worn, ...sheet.features].flatMap((id) => {
-    const definition = content.find(id);
-    return definition === undefined ? [] : traitsOf(definition);
-  });
+  const raceTraits = sheet.race === undefined ? [] : traitsOf(content.get(sheet.race));
+  return [
+    ...raceTraits,
+    ...[...worn, ...sheet.features].flatMap((id) => {
+      const definition = content.find(id);
+      return definition === undefined ? [] : traitsOf(definition);
+    }),
+  ];
 }
 
 // 2014 rules: armor sets the base (Dexterity capped by armor type), with no

@@ -1,35 +1,12 @@
 import type { CharacterId, UserId } from "../core/ids.js";
 import type { ContentId } from "../rules/content-id.js";
 import type { Ability } from "../rules/effects.js";
+import { skillAbilities, type Skill } from "../rules/skills.js";
 
-// SRD 5.1 skills and the ability each one uses.
-export const skillAbilities = {
-  acrobatics: "dex",
-  "animal-handling": "wis",
-  arcana: "int",
-  athletics: "str",
-  deception: "cha",
-  history: "int",
-  insight: "wis",
-  intimidation: "cha",
-  investigation: "int",
-  medicine: "wis",
-  nature: "int",
-  perception: "wis",
-  performance: "cha",
-  persuasion: "cha",
-  religion: "int",
-  "sleight-of-hand": "dex",
-  stealth: "dex",
-  survival: "wis",
-} as const satisfies Record<string, Ability>;
-
-export type Skill = keyof typeof skillAbilities;
-export const skills = Object.keys(skillAbilities) as readonly Skill[];
-
-export function isSkill(value: string): value is Skill {
-  return Object.hasOwn(skillAbilities, value);
-}
+// Skills moved to rules/skills.ts (Content), so class content (skillChoices)
+// can reference the type; re-exported here since this is where every other
+// file already imports them from.
+export { skillAbilities, skills, isSkill, type Skill } from "../rules/skills.js";
 
 // Expertise (Rogue) doubles the proficiency bonus.
 export type SkillProficiency = "proficient" | "expertise";
@@ -42,6 +19,12 @@ export interface CharacterSheet {
   readonly name: string;
   // The class as the table reads it, in the campaign's language (display only).
   readonly className?: string;
+  // The race chosen at creation, if any: races are optional so a sheet from
+  // before this content existed still loads. Ability score increases and
+  // speed are folded into abilityScores/speed once, at creation; combat
+  // reads the race's own traits straight from content (combatant-profile.ts's
+  // heroTraits), the same way it reads a feature's or a worn item's.
+  readonly race?: ContentId<"race">;
   readonly abilityScores: Readonly<Record<Ability, number>>;
   readonly proficiencyBonus: number;
   readonly skills: Readonly<Partial<Record<Skill, SkillProficiency>>>;

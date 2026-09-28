@@ -107,4 +107,33 @@ describe("the guided builder", () => {
     // The sheet has no field for the appearance or backstory.
     expect(JSON.stringify(deriveSheet(fighter))).not.toContain("town guard");
   });
+
+  it("is legal without a race, the same as before races existed", () => {
+    expect(buildProblems(fighter)).toEqual([]);
+    expect(deriveSheet(fighter).race).toBeUndefined();
+    expect(deriveSheet(fighter).speed).toBe(30);
+  });
+
+  it("folds a chosen race's ability score increase and speed into the sheet, and its traits into combat", () => {
+    const dwarfFighter: BuildChoices = { ...fighter, race: "dwarf" };
+    expect(buildProblems(dwarfFighter)).toEqual([]);
+    const sheet = deriveSheet(dwarfFighter);
+    // Base Constitution 14 + Dwarf's +2.
+    expect(sheet.abilityScores.con).toBe(16);
+    expect(sheet.abilityScores.str).toBe(15); // Untouched abilities carry over unchanged.
+    expect(sheet.speed).toBe(25);
+    expect(sheet.race).toBe("race:dwarf");
+    // Hit points follow the boosted Constitution: 10 (Hit Die) + 3 (Con +3 now).
+    expect(sheet.maxHp).toBe(13);
+
+    const { content } = ruleset();
+    const dwarfSheet = { ...sheet, id: "c-dwarf", ownerUserId: "u-1" };
+    const combatant = heroCombatant(dwarfSheet, content, "gate", { hp: dwarfSheet.maxHp, resources: defaultHeroResources(dwarfSheet, content) });
+    expect(combatant.traits).toContainEqual({ kind: "damageResistance", damageTypes: ["poison"] });
+    expect(combatant.speed).toBe(25);
+  });
+
+  it("rejects a build naming a race that does not exist", () => {
+    expect(buildProblems({ ...fighter, race: "elemental" as never })).toEqual([{ code: "unknownRace" }]);
+  });
 });

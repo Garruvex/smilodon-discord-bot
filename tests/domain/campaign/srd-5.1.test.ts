@@ -151,6 +151,39 @@ describe("SRD 5.1 content", () => {
     ]);
   });
 
+  it("registers the full class and race roster as validated, glossaried content", () => {
+    expect(content.all("class").map((definition) => definition.id).sort()).toEqual(
+      [
+        "class:barbarian",
+        "class:bard",
+        "class:cleric",
+        "class:druid",
+        "class:fighter",
+        "class:monk",
+        "class:paladin",
+        "class:ranger",
+        "class:rogue",
+        "class:sorcerer",
+        "class:warlock",
+        "class:wizard",
+      ].sort(),
+    );
+    expect(content.all("race").map((definition) => definition.id).sort()).toEqual(
+      ["race:human", "race:elf", "race:dwarf", "race:halfling", "race:dragonborn", "race:gnome", "race:half-elf", "race:half-orc", "race:tiefling"].sort(),
+    );
+    expect(content.get("class:wizard").casterType).toBe("full");
+    expect(content.get("class:paladin").spellcastingAbility).toBe("cha");
+  });
+
+  it("gives Dwarf, Dragonborn, and Tiefling a real damage resistance trait, and Elf just its ability bonus", () => {
+    expect(traitsOf(content.get("race:dwarf"))).toEqual([{ kind: "damageResistance", damageTypes: ["poison"] }]);
+    expect(traitsOf(content.get("race:dragonborn"))).toEqual([{ kind: "damageResistance", damageTypes: ["fire"] }]);
+    expect(traitsOf(content.get("race:tiefling"))).toEqual([{ kind: "damageResistance", damageTypes: ["fire"] }]);
+    expect(content.get("race:elf").abilityScoreIncrease).toEqual({ dex: 2 });
+    expect(content.get("race:elf").speed).toBe(30);
+    expect(content.get("race:dwarf").speed).toBe(25);
+  });
+
   it("gives Hobgoblin, Ogre, and Specter their weapons and Specter its heavy resistance/immunity list", () => {
     expect(content.get("monster:hobgoblin").attacks[0]?.weapon).toBe("item:longsword");
     expect(content.get("monster:ogre").attacks[0]?.weapon).toBe("item:greatclub");

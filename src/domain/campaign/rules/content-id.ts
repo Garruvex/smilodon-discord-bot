@@ -2,7 +2,7 @@
 // never renamed or reused once shipped: saved campaigns, events, glossaries,
 // and adventure files all refer to content by ID.
 
-export const contentKinds = ["action", "class", "condition", "feature", "item", "monster", "spell"] as const;
+export const contentKinds = ["action", "class", "condition", "feature", "item", "monster", "race", "spell"] as const;
 export type ContentKind = (typeof contentKinds)[number];
 
 export type ContentId<K extends ContentKind = ContentKind> = `${K}:${string}`;

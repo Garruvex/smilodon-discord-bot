@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { dice, plus } from "../../../src/domain/campaign/dice/dice-expression.js";
 import { capabilities, type Capability } from "../../../src/domain/campaign/rules/capabilities.js";
 import {
+  defineClass,
   defineCondition,
   defineMonster,
   defineShield,
@@ -166,6 +167,32 @@ describe("ContentRegistryBuilder", () => {
       traits: [],
     });
     expect(() => build([club, monster])).not.toThrow();
+  });
+
+  it("resolves references out of a class's kits, features, and spellcasting, the same as any other content", () => {
+    const club = defineWeapon({ id: "item:test-club", source: "Test", damage: dice(1, 4), damageType: "bludgeoning", range: { kind: "melee" }, finesse: false, natural: false });
+    const brawler = defineClass({
+      id: "class:brawler",
+      source: "Test",
+      hitDie: 10,
+      savingThrows: ["str"],
+      skillChoices: ["athletics"],
+      skillCount: 1,
+      expertiseCount: 0,
+      features: ["feature:missing"],
+      kits: [{ id: "starter", equipment: ["item:test-club", "item:also-missing"] }],
+      spellcasting: null,
+      suggested: ["str"],
+      casterType: "none",
+      spellcastingAbility: null,
+      firstSpells: [],
+      levelFeatures: {},
+    });
+    const problems = problemsOf(() => build([club, brawler]));
+    expect(problems).toEqual([
+      'class:brawler: references missing content "item:also-missing".',
+      'class:brawler: references missing content "feature:missing".',
+    ]);
   });
 
   it("requires a display name in every glossary and flags unknown glossary entries", () => {
