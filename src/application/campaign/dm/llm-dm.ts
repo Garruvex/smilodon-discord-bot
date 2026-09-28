@@ -23,12 +23,12 @@ import type { ModelUsage, StructuredModelClient } from "../ports/structured-mode
 
 // Prompt and schema versions are recorded with each call so harness results
 // and bug reports stay comparable (code structure §8).
-export const plannerPromptVersion = "planner-4";
-export const narratorPromptVersion = "narrator-4";
-export const flourishPromptVersion = "flourish-4";
-export const tradePromptVersion = "trade-1";
-export const dialoguePromptVersion = "dialogue-1";
-export const utilityCastPromptVersion = "utility-cast-1";
+export const plannerPromptVersion = "planner-5";
+export const narratorPromptVersion = "narrator-5";
+export const flourishPromptVersion = "flourish-5";
+export const tradePromptVersion = "trade-2";
+export const dialoguePromptVersion = "dialogue-2";
+export const utilityCastPromptVersion = "utility-cast-2";
 
 export type ModelCallKind = "planner" | "narrator" | "flourish" | "trade" | "dialogue" | "utilityCast";
 
@@ -256,9 +256,10 @@ export function buildNarratorPrompt(request: NarratorRequest): { system: string;
       ? "Write 150-300 Traditional Chinese characters (Taiwan usage) in the narration field."
       : "Write 80-150 words of English in the narration field.",
     "Narrate every outcome below faithfully, in a natural order. Successes succeed and failures fail; never soften or reverse a result.",
+    "Connect the outcomes into a scene rather than a list of individual reports. Show the immediate, supported response of the world; vary the rhythm with the stakes, and do not pad a quiet round to meet the target length.",
     "Do not repeat dice numbers or DCs; the table already sees them. A headline moment (a natural 20, a clutch save) deserves a vivid beat.",
     "Never write dialogue, choices, or feelings for the heroes; describe what they did and what the world does in response. NPCs may speak in their voice.",
-    "End on a hook or a question, but a hook may only point at things named in the adventure text above or in the outcomes; never invent new threats, places, passages, or characters. Address the listed quiet heroes by name to invite them in.",
+    "When a decision is needed, end with a concrete opportunity to act grounded in the adventure or resolved outcomes. Ask a question when helpful; a clear situation can speak for itself. Avoid repeating a generic 'What do you do?' every round. Invite the listed quiet heroes by name without choosing an action or feeling for them.",
   ].join("\n");
   const outcomes = request.outcomes.map((outcome) => `- ${describeOutcome(outcome)}`).join("\n");
   const spotlight = request.spotlight.length > 0 ? `\nQuiet heroes to invite: ${request.spotlight.join(", ")}.` : "";
@@ -284,7 +285,7 @@ function buildOpeningPrompt(
       ? "Write 300-500 Traditional Chinese characters (Taiwan usage) in the narration field, in two or three short paragraphs."
       : "Write 180-260 words of English in the narration field, in two or three short paragraphs.",
     "This is the opening of the adventure, before anyone has acted. Speak as the Dungeon Master to the table: set the world and the place with a few vivid, specific details, introduce the heroes by name as the party gathered here, and say what draws them into the situation.",
-    "Use only what the adventure text above names: its place, people, and premise. Never invent new threats, places, passages, or characters, and never reveal anything the text marks as secret.",
+    "Anchor the opening in the adventure's place, people, and premise. Add a few harmless sensory details consistent with that setting, and introduce the immediate situation through what the party can notice rather than a lore dump. Never invent new threats, places, passages, or characters, and never reveal anything the text marks as secret.",
     "Never write dialogue, choices, or feelings for the heroes; describe the world around them. A named NPC may speak a line in their own voice.",
     "End by turning to the table: ask what the heroes do, in your own words, so the players know it is their turn.",
   ].join("\n");
@@ -457,7 +458,7 @@ export function buildCombatNarratorPrompt(request: CombatNarratorRequest): { sys
     `${length} in the narration field.`,
     request.final
       ? request.outcome === "defeat"
-        ? "This closes a lost fight. The heroes are beaten but nobody new dies: they are captured, robbed of nothing they own, driven off, or left for dead and wake bruised. Describe the defeat and the moments after, then end on where they are and what they could do next."
+        ? "This closes a lost fight. Describe the defeat using the committed beats and live state. Do not invent capture, relocation, theft, death, or recovery. If the aftermath is not established, end on the immediate scene without deciding what happens to the heroes next."
         : "This closes the fight: describe its last moments and the aftermath, then end on what the heroes see or could do next."
       : "This is a quick flourish between combat rounds. The table already saw every roll as a template line; add color, not a recap. Pick the one or two most dramatic beats.",
     "Never change a result: hits hit, misses miss, and nobody falls, dies, or recovers unless the beats say so. Do not mention numbers.",

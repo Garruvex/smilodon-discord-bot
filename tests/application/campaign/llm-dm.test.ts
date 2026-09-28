@@ -174,7 +174,7 @@ describe("LLM DM", () => {
     expect(proposal.actions).toHaveLength(1);
     expect(client.requests[0]?.schemaName).toBe("campaign_round_plan");
     expect(observed).toEqual([
-      { call: "planner", model: "fake-model", promptVersion: "planner-4", usage: { inputTokens: 100, outputTokens: 20, cachedInputTokens: 60 } },
+      { call: "planner", model: "fake-model", promptVersion: "planner-5", usage: { inputTokens: 100, outputTokens: 20, cachedInputTokens: 60 } },
     ]);
   });
 
@@ -244,7 +244,7 @@ describe("LLM DM", () => {
       },
     });
     expect(await narrator.narrateCombat(request)).toEqual({ text: "Borin's blade flashes." });
-    expect(observed).toMatchObject([{ call: "flourish", promptVersion: "flourish-4" }]);
+    expect(observed).toMatchObject([{ call: "flourish", promptVersion: "flourish-5" }]);
     expect(buildCombatNarratorPrompt({ ...request, final: true, outcome: "victory", language: "zh-TW" }).system).toContain("100-200 Traditional Chinese");
   });
 });
