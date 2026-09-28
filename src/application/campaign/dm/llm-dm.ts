@@ -14,6 +14,7 @@ import type {
   PlannerEffect,
   PlannerProposal,
   PlannerRequest,
+  TradeNarratorRequest,
 } from "../ports/dm-ports.js";
 import type { CombatBeat } from "./combat-records.js";
 import type { ModelUsage, StructuredModelClient } from "../ports/structured-model-client.js";
@@ -23,8 +24,9 @@ import type { ModelUsage, StructuredModelClient } from "../ports/structured-mode
 export const plannerPromptVersion = "planner-4";
 export const narratorPromptVersion = "narrator-4";
 export const flourishPromptVersion = "flourish-4";
+export const tradePromptVersion = "trade-1";
 
-export type ModelCallKind = "planner" | "narrator" | "flourish";
+export type ModelCallKind = "planner" | "narrator" | "flourish" | "trade";
 
 export interface ModelCallObserver {
   (call: { readonly call: ModelCallKind; readonly model: string; readonly promptVersion: string; readonly usage: ModelUsage | null }): void;
@@ -326,6 +328,45 @@ export class LlmCampaignNarrator implements CampaignNarrator {
     this.options.onCall?.({ call: "flourish", model: response.model, promptVersion: flourishPromptVersion, usage: response.usage });
     return { text: parseNarratorOutput(response.text) };
   }
+
+  public async narrateTrade(request: TradeNarratorRequest): Promise<{ readonly text: string }> {
+    const response = await this.options.client.generate({
+      ...buildTradeNarratorPrompt(request),
+      ...cacheKeyFor(this.options, "trade"),
+      schemaName: "campaign_trade_narration",
+      jsonSchema: narratorJsonSchema,
+      maxOutputTokens: this.options.maxOutputTokens ?? 400,
+      timeoutMs: this.options.timeoutMs ?? 20_000,
+    });
+    this.options.onCall?.({ call: "trade", model: response.model, promptVersion: tradePromptVersion, usage: response.usage });
+    return { text: parseNarratorOutput(response.text) };
+  }
+}
+
+// The price and who won any haggle are already decided (engine/shop.ts); this
+// call only asks for the NPC's in-character line reacting to it — never for
+// a price, a check result, or whether the deal goes through.
+export function buildTradeNarratorPrompt(request: TradeNarratorRequest): { system: string; user: string } {
+  const zh = request.language === "zh-TW";
+  const rules = [
+    "## Output rules",
+    zh ? "Write 20-60 Traditional Chinese characters (Taiwan usage) in the narration field." : "Write at most 30 words of English, one or two sentences.",
+    `Speak only as ${request.npc.name}, in their own voice (${request.npc.voice}), reacting to what already happened below. Do not narrate the hero's actions or describe the scene; just the NPC's line.`,
+    "The price and the outcome are already decided; never state or imply a different one. Never mention dice, DCs, or numbers — react to the deal, not the math.",
+  ].join("\n");
+  const item = `the ${request.itemName}`;
+  const deal =
+    request.direction === "buy"
+      ? `${request.heroName} is trying to buy ${item} from you for ${request.finalPrice} gold (listed at ${request.listedPrice}).`
+      : `${request.heroName} is trying to sell you ${item} for ${request.finalPrice} gold (you listed it at ${request.listedPrice} to buy back).`;
+  const haggle =
+    request.haggle === null
+      ? ""
+      : request.haggle.success
+        ? ` They talked you into a better price with a ${request.haggle.skill} appeal.`
+        : ` They tried a ${request.haggle.skill} appeal to talk the price, but it didn't move you.`;
+  const result = request.completed ? " The deal goes through." : " They come up short and cannot complete it.";
+  return splitPrompt(request.context, rules, `${deal}${haggle}${result}`);
 }
 
 // ---------------------------------------------------------------- Combat

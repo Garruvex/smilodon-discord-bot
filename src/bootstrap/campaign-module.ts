@@ -267,4 +267,5 @@ const unavailablePlanner: CampaignPlanner = { plan: () => Promise.reject(new Err
 const unavailableNarrator: CampaignNarrator = {
   narrate: () => Promise.reject(new Error("CAMPAIGN_MODEL is not configured.")),
   narrateCombat: () => Promise.reject(new Error("CAMPAIGN_MODEL is not configured.")),
+  narrateTrade: () => Promise.reject(new Error("CAMPAIGN_MODEL is not configured.")),
 };

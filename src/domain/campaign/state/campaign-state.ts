@@ -1,4 +1,4 @@
-import type { CampaignLanguage, SceneId } from "../adventure/adventure-bible.js";
+import type { CampaignLanguage, NpcId, SceneId } from "../adventure/adventure-bible.js";
 import type { CharacterSheet, CheckTest } from "../character/character-sheet.js";
 import type { EncounterSpec, PlannedEffect } from "../commands/campaign-command.js";
 import type { EncounterState } from "../combat/combat-state.js";
@@ -80,6 +80,46 @@ export interface CampaignState {
   // or the bot restarted and waits for the organizer to resume. Null while
   // playing, and while merely waiting for players to come back.
   readonly pausedBy: PauseReason | null;
+  // A hero's haggle roll, waiting for its result (engine/shop.ts). One at a
+  // time per hero; cleared the moment the roll settles the trade.
+  readonly hagglePending?: Readonly<Record<CharacterId, PendingHaggle>>;
+  // A trade already decided (bought, sold, or a settled haggle), waiting for
+  // the Narrator to voice the NPC's reaction; removed once recordTradeNarration
+  // lands. Not gameplay state — narration is the only thing still pending.
+  readonly trades: Readonly<Record<string, TradeRecord>>;
+  readonly tradeCount: number;
+}
+
+// A pending Persuasion/Deception/Intimidation check over a specific item's
+// price (engine/shop.ts's hagglePrice): dc and spec are fixed the moment the
+// roll is requested, the same way a round-plan CheckState freezes them.
+export interface PendingHaggle {
+  readonly characterId: CharacterId;
+  readonly npcId: NpcId;
+  readonly itemId: ContentId<"item">;
+  readonly direction: "buy" | "sell";
+  readonly listedPrice: number;
+  readonly test: CheckTest;
+  readonly dc: number;
+  readonly spec: D20TestSpec;
+  readonly rollId: RollId;
+}
+
+// A completed trade: an instant buy/sell at the listed price (haggle null),
+// or one settled by a haggle roll (character/leveling.ts's dice, never the
+// model's own judgment — see docs/dnd-engine-architecture.md's step on this).
+// "cannotAfford": the haggle succeeded but even the negotiated price was more
+// gold than the hero had; nothing moved, but the attempt still gets narrated.
+export interface TradeRecord {
+  readonly id: string;
+  readonly characterId: CharacterId;
+  readonly npcId: NpcId;
+  readonly itemId: ContentId<"item">;
+  readonly direction: "buy" | "sell";
+  readonly listedPrice: number;
+  readonly finalPrice: number;
+  readonly outcome: "completed" | "cannotAfford";
+  readonly haggle: { readonly test: CheckTest; readonly dc: number; readonly total: number; readonly success: boolean; readonly moments: RollMoments } | null;
 }
 
 export type PauseReason = "organizer" | "recovery" | "safety";

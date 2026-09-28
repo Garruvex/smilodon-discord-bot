@@ -20,6 +20,7 @@ import type {
   DmContext,
   NarratedOutcome,
   NarratorRequest,
+  TradeNarratorRequest,
 } from "../ports/dm-ports.js";
 import { defaultMaxAttempts, type WorkerRunResult } from "./roll-worker.js";
 
@@ -51,6 +52,7 @@ export class DmJobWorker {
       ...(await tx.pendingOutbox("narrateOpening")),
       ...(await tx.pendingOutbox("narrate")),
       ...(await tx.pendingOutbox("narrateCombat")),
+      ...(await tx.pendingOutbox("narrateTrade")),
       ...(await tx.pendingOutbox("chronicle")),
       ...(await tx.pendingOutbox("renarrate")),
     ]);
@@ -61,6 +63,7 @@ export class DmJobWorker {
         if (item.request.kind === "narrateOpening") await this.narrateOpening(item);
         if (item.request.kind === "narrate") await this.narrate(item, item.request.roundNumber);
         if (item.request.kind === "narrateCombat") await this.narrateCombat(item, item.request.encounterId, item.request.round, item.request.final);
+        if (item.request.kind === "narrateTrade") await this.narrateTrade(item, item.request.tradeId);
         if (item.request.kind === "chronicle") await this.chronicle(item, item.request.throughRound);
         if (item.request.kind === "renarrate") await this.renarrate(item, item.request.roundNumber);
         await unitOfWork.transaction((tx) => tx.completeOutbox(item.id));
@@ -254,6 +257,24 @@ export class DmJobWorker {
     );
   }
 
+  // A settled trade waiting for its Narrator line (engine/shop.ts). Unlike
+  // narrateCombat this is never load-bearing for anything else, so a failure
+  // that exhausts its attempts just leaves the fallback line — nothing is
+  // held or retried past that.
+  private async narrateTrade(item: OutboxItem, tradeId: string): Promise<void> {
+    const loaded = await this.load(item.key);
+    if (loaded.stored.state.trades[tradeId] === undefined) return; // Already narrated, or gone.
+    const request = this.tradeNarratorRequest(loaded, tradeId);
+    let text: string;
+    try {
+      text = (await this.options.narrator.narrateTrade(request)).text;
+    } catch (error) {
+      if (item.attempts + 1 < this.maxAttempts) throw error;
+      text = fallbackTradeNarration(request);
+    }
+    await this.options.bus.execute(item.key, { kind: "recordTradeNarration", tradeId, text }, { commandId: `${item.id}:trade-narration`, actor: system });
+  }
+
   private combatNarratorRequest(loaded: Loaded, encounterId: string, round: number, final: boolean): CombatNarratorRequest {
     const { state } = loaded.stored;
     const record = encounterRecords(loaded.events, { state, bible: loaded.bible, glossary: this.glossary(loaded) }).findLast(
@@ -271,6 +292,29 @@ export class DmJobWorker {
       final,
       beats: rounds.flatMap((candidate) => candidate.beats),
       outcome: final ? (record?.outcome ?? null) : null,
+    };
+  }
+
+  private tradeNarratorRequest(loaded: Loaded, tradeId: string): TradeNarratorRequest {
+    const { state } = loaded.stored;
+    const trade = state.trades[tradeId];
+    if (trade === undefined) throw new Error(`Unknown trade ${tradeId}.`);
+    const npc = loaded.bible.npcs.find((candidate) => candidate.id === trade.npcId);
+    const glossary = this.glossary(loaded);
+    return {
+      context: this.context("narrator", loaded),
+      language: state.language,
+      npc: { id: trade.npcId, name: npc?.name ?? trade.npcId, voice: npc?.voice ?? "" },
+      heroName: state.characters[trade.characterId]?.name ?? trade.characterId,
+      itemName: glossary.names[trade.itemId] ?? trade.itemId,
+      direction: trade.direction,
+      completed: trade.outcome === "completed",
+      listedPrice: trade.listedPrice,
+      finalPrice: trade.finalPrice,
+      haggle:
+        trade.haggle === null
+          ? null
+          : { skill: checkLabel(trade.haggle.test), total: trade.haggle.total, dc: trade.haggle.dc, success: trade.haggle.success, headline: trade.haggle.moments.headline },
     };
   }
 
@@ -356,6 +400,15 @@ function fallbackCombatNarration(request: CombatNarratorRequest): string {
   if (request.outcome === "victory") return zh ? "戰鬥結束，敵人已被擊退。" : "The fight is over; the enemy is beaten.";
   if (request.outcome === "defeat") return zh ? "戰鬥結束，隊伍倒下了。" : "The fight is over; the party has fallen.";
   return zh ? "戰鬥結束。" : "The fight is over.";
+}
+
+function fallbackTradeNarration(request: TradeNarratorRequest): string {
+  const zh = request.language === "zh-TW";
+  if (!request.completed) return zh ? `${request.npc.name}搖頭表示還不夠。` : `${request.npc.name} shakes their head — it's not enough.`;
+  const verb = request.direction === "buy" ? (zh ? "賣給" : "sells to") : zh ? "買下" : "buys from";
+  return zh
+    ? `${request.npc.name}${verb}${request.heroName} ${request.itemName}，收取 ${request.finalPrice} 枚金幣。`
+    : `${request.npc.name} ${verb} ${request.heroName} the ${request.itemName} for ${request.finalPrice} gold.`;
 }
 
 function fallbackNarration(request: NarratorRequest): string {

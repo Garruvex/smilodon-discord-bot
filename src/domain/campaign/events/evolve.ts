@@ -202,6 +202,33 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       const sheet = state.characters[event.characterId];
       return sheet === undefined ? state : { ...state, characters: { ...state.characters, [sheet.id]: { ...sheet, worn: event.worn } } };
     }
+    case "haggleStarted":
+      return { ...state, hagglePending: { ...state.hagglePending, [event.haggle.characterId]: event.haggle } };
+    case "tradeSettled": {
+      const { trade, wallet } = event;
+      const { [trade.characterId]: _spentHaggle, ...hagglePending } = state.hagglePending ?? {};
+      const withTrade: CampaignState = {
+        ...state,
+        hagglePending,
+        trades: { ...state.trades, [trade.id]: trade },
+        tradeCount: state.tradeCount + 1,
+      };
+      if (trade.outcome !== "completed") return withTrade;
+      const signedPrice = trade.direction === "buy" ? -trade.finalPrice : trade.finalPrice;
+      const gold = wallet === "pool" ? withTrade.gold + signedPrice : withTrade.gold;
+      const paid: CampaignState =
+        wallet === "hero"
+          ? { ...withTrade, heroGold: { ...withTrade.heroGold, [trade.characterId]: (withTrade.heroGold?.[trade.characterId] ?? 0) + signedPrice } }
+          : { ...withTrade, gold };
+      const sheet = paid.characters[trade.characterId];
+      if (sheet === undefined) return paid;
+      const equipment = trade.direction === "buy" ? [...sheet.equipment, trade.itemId] : removeFirst(sheet.equipment, trade.itemId);
+      return { ...paid, characters: { ...paid.characters, [sheet.id]: { ...sheet, equipment } } };
+    }
+    case "tradeNarrated": {
+      const { [event.tradeId]: _narrated, ...trades } = state.trades;
+      return { ...state, trades };
+    }
     case "itemUsed": {
       const sheet = state.characters[event.characterId];
       if (sheet === undefined) return state;

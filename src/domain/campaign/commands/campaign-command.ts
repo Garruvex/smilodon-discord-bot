@@ -1,5 +1,5 @@
-import type { SceneId } from "../adventure/adventure-bible.js";
-import type { CharacterSheet, CheckTest } from "../character/character-sheet.js";
+import type { NpcId, SceneId } from "../adventure/adventure-bible.js";
+import type { CharacterSheet, CheckTest, Skill } from "../character/character-sheet.js";
 import type { CharacterId, CheckId, RollId, UserId } from "../core/ids.js";
 import type { RollResult } from "../dice/roll-spec.js";
 import type { ReminderTarget } from "../engine/engine-request.js";
@@ -80,7 +80,32 @@ export type CampaignCommand =
   // skillChoice only matters, and is only validated, the moment that new
   // class's own multiclass skill is actually granted.
   | { readonly kind: "chooseClassLevel"; readonly characterId: CharacterId; readonly buildClass: string; readonly skillChoice?: string }
+  | ShopCommand
   | CombatCommand;
+
+// A hero trades with an NPC's shop outside combat (engine/shop.ts). The
+// engine itself never reads the adventure bible (only the application layer
+// does, the same as an EncounterSpec's zones and monsters): the price named
+// here is trusted the same way, resolved from the NPC's authored stock by
+// whoever issues the command. buyItem and sellItem are instant, at that
+// price; hagglePrice tries for a better one first, over a real
+// Persuasion/Deception/Intimidation check — never a model's own judgment
+// call (docs/dnd-engine-architecture.md, the step this shipped in). Every
+// trade, haggled or not, gets a Narrator line once settled
+// (recordTradeNarration).
+export type ShopCommand =
+  | { readonly kind: "buyItem"; readonly characterId: CharacterId; readonly npcId: NpcId; readonly itemId: ContentId<"item">; readonly price: number }
+  | { readonly kind: "sellItem"; readonly characterId: CharacterId; readonly npcId: NpcId; readonly itemId: ContentId<"item">; readonly price: number }
+  | {
+      readonly kind: "hagglePrice";
+      readonly characterId: CharacterId;
+      readonly npcId: NpcId;
+      readonly itemId: ContentId<"item">;
+      readonly direction: "buy" | "sell";
+      readonly listedPrice: number;
+      readonly skill: Skill;
+    }
+  | { readonly kind: "recordTradeNarration"; readonly tradeId: string; readonly text: string };
 
 // Items move between heroes outside combat. The owner of the giving hero
 // offers, the owner of the receiving hero answers; the stash is shared.

@@ -6,6 +6,7 @@ import type {
   PlannerEffect,
   PlannerProposal,
   PlannerRequest,
+  TradeNarratorRequest,
 } from "../ports/dm-ports.js";
 
 type Scripted<Request, Response> = Response | Error | ((request: Request) => Response);
@@ -31,10 +32,12 @@ export class ScriptedPlanner implements CampaignPlanner {
 export class ScriptedNarrator implements CampaignNarrator {
   public readonly requests: NarratorRequest[] = [];
   public readonly combatRequests: CombatNarratorRequest[] = [];
+  public readonly tradeRequests: TradeNarratorRequest[] = [];
 
   public constructor(
     private readonly script: Scripted<NarratorRequest, { readonly text: string }>[],
     private readonly combatScript: Scripted<CombatNarratorRequest, { readonly text: string }>[] = [],
+    private readonly tradeScript: Scripted<TradeNarratorRequest, { readonly text: string }>[] = [],
   ) {}
 
   public narrate(request: NarratorRequest): Promise<{ readonly text: string }> {
@@ -45,6 +48,11 @@ export class ScriptedNarrator implements CampaignNarrator {
   public narrateCombat(request: CombatNarratorRequest): Promise<{ readonly text: string }> {
     this.combatRequests.push(request);
     return next(this.combatScript, request, "combat narrator");
+  }
+
+  public narrateTrade(request: TradeNarratorRequest): Promise<{ readonly text: string }> {
+    this.tradeRequests.push(request);
+    return next(this.tradeScript, request, "trade narrator");
   }
 }
 

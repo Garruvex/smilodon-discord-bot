@@ -126,6 +126,8 @@ export function newCampaign(pacing: Pacing = livePacing): CampaignState {
     gold: 0,
     offers: {},
     offerCount: 0,
+    trades: {},
+    tradeCount: 0,
     fightCheckpoint: null,
     pausedBy: null,
     clocks: {},

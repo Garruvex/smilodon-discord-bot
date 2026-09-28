@@ -64,6 +64,16 @@ export interface BibleNpc {
   readonly voice: string;
   readonly publicDescription: string;
   readonly secret: string;
+  // Present when this NPC trades. Prices are gold, authored (items carry no
+  // inherent value of their own — engine/shop.ts's buyItem/sellItem/hagglePrice
+  // never invent one). sellPrice absent means this NPC won't buy that item back.
+  readonly shop?: { readonly stock: readonly ShopStock[] };
+}
+
+export interface ShopStock {
+  readonly itemId: ContentId<"item">;
+  readonly buyPrice: number;
+  readonly sellPrice?: number;
 }
 
 // An authored fight. The Planner may start it by ID (plan §6, "start
@@ -90,6 +100,10 @@ export function findScene(bible: AdventureBible, sceneId: string | null): BibleS
 
 export function findEncounter(bible: AdventureBible, encounterId: string | null): BibleEncounter | undefined {
   return bible.encounters.find((encounter) => encounter.id === encounterId);
+}
+
+export function findNpc(bible: AdventureBible, npcId: string): BibleNpc | undefined {
+  return bible.npcs.find((npc) => npc.id === npcId);
 }
 
 export function findClock(bible: AdventureBible, clockId: string): BibleClock | undefined {

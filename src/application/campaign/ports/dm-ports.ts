@@ -108,9 +108,26 @@ export interface CombatNarratorRequest {
   readonly outcome: EncounterOutcome | null;
 }
 
+// A settled trade's NPC reaction (plan §6, Narrator): the price, the check
+// (if any), and who won it are already decided by the engine; this call only
+// voices the NPC in character. `haggle` is null for an unhaggled buy/sell.
+export interface TradeNarratorRequest {
+  readonly context: DmContext;
+  readonly language: CampaignLanguage;
+  readonly npc: { readonly id: string; readonly name: string; readonly voice: string };
+  readonly heroName: string;
+  readonly itemName: string;
+  readonly direction: "buy" | "sell";
+  readonly completed: boolean;
+  readonly listedPrice: number;
+  readonly finalPrice: number;
+  readonly haggle: { readonly skill: string; readonly total: number; readonly dc: number; readonly success: boolean; readonly headline: RollMoment | null } | null;
+}
+
 export interface CampaignNarrator {
   narrate(request: NarratorRequest): Promise<{ readonly text: string }>;
   narrateCombat(request: CombatNarratorRequest): Promise<{ readonly text: string }>;
+  narrateTrade(request: TradeNarratorRequest): Promise<{ readonly text: string }>;
 }
 
 // The background call that condenses rounds already told (plan §6, Chronicler).

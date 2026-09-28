@@ -10,6 +10,7 @@ import type {
   PlannerEffect,
   PlannerProposal,
   PlannerRequest,
+  TradeNarratorRequest,
 } from "../ports/dm-ports.js";
 
 // Deterministic stand-ins for the model calls, so the harness can play a
@@ -123,6 +124,19 @@ export class TemplateNarrator implements CampaignNarrator {
       lines.push(zh ? "刀劍交擊聲不絕於耳。" : "Steel rings against steel.");
     }
     return Promise.resolve({ text: lines.join(zh ? "" : " ") });
+  }
+
+  public narrateTrade(request: TradeNarratorRequest): Promise<{ readonly text: string }> {
+    const zh = request.language === "zh-TW";
+    if (!request.completed) return Promise.resolve({ text: zh ? `${request.npc.name}搖了搖頭：「這樣還是不夠。」` : `${request.npc.name} shakes their head: "Still not enough."` });
+    const verb = request.direction === "buy" ? (zh ? "買下" : "buys") : zh ? "賣出" : "sells";
+    const haggled = request.haggle !== null && request.haggle.success && request.finalPrice !== request.listedPrice;
+    const price = zh ? `${request.finalPrice} 枚金幣` : `${request.finalPrice} gold`;
+    const line = zh
+      ? `${request.heroName}向${request.npc.name}${verb}了${request.itemName}，花費 ${price}。`
+      : `${request.heroName} ${verb} the ${request.itemName} from ${request.npc.name} for ${price}.`;
+    const flourish = haggled ? (zh ? `${request.npc.name}讓步了。` : `${request.npc.name} gives ground.`) : "";
+    return Promise.resolve({ text: zh ? `${line}${flourish}` : `${line} ${flourish}`.trim() });
   }
 }
 

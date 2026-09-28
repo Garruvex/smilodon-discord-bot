@@ -280,6 +280,42 @@ describe("DmJobWorker", () => {
   });
 });
 
+describe("narrateTrade", () => {
+  async function tableWithATrade(narrator: ScriptedNarrator): Promise<Table> {
+    const table_ = await table(new ScriptedPlanner([]), narrator, { ...startState(), gold: 100 });
+    await table_.bus.execute(key, { kind: "buyItem", characterId: "c-mira", npcId: "npc:garrick", itemId: "item:dagger", price: 20 }, { commandId: "buy-1", actor: alex });
+    return table_;
+  }
+
+  it("resolves the NPC's name and voice from the bible, and the item's name from the glossary", async () => {
+    const narrator = new ScriptedNarrator([], [], [{ text: "Garrick grunts and slides the dagger across the bar." }]);
+    const { store, worker } = await tableWithATrade(narrator);
+    expect(await worker.runOnce()).toEqual({ processed: 1, failed: [] });
+
+    expect(narrator.tradeRequests[0]).toMatchObject({
+      npc: { id: "npc:garrick", name: "Garrick", voice: "Gruff, clipped sentences." },
+      heroName: "Mira",
+      itemName: "Dagger",
+      direction: "buy",
+      completed: true,
+      listedPrice: 20,
+      finalPrice: 20,
+      haggle: null,
+    });
+    const log = await events(store);
+    expect(log).toContainEqual({ kind: "tradeNarrated", tradeId: "trade:1", text: "Garrick grunts and slides the dagger across the bar." });
+  });
+
+  it("falls back to a template line once the Narrator's attempts are spent", async () => {
+    const narrator = new ScriptedNarrator([], [], [new Error("rate limited"), new Error("rate limited")]);
+    const { store, worker } = await tableWithATrade(narrator);
+    expect(await worker.runOnce()).toMatchObject({ processed: 0, failed: [{ error: "rate limited" }] });
+    expect(await worker.runOnce()).toEqual({ processed: 1, failed: [] });
+    const log = await events(store);
+    expect(log).toContainEqual({ kind: "tradeNarrated", tradeId: "trade:1", text: "Garrick sells to Mira the Dagger for 20 gold." });
+  });
+});
+
 describe("the opening", () => {
   it("has the Narrator open the adventure with the party, then waits for the table and opens the first round", async () => {
     const narrator = new ScriptedNarrator([{ text: "Welcome to the Crossroads Inn. What do you do?" }]);

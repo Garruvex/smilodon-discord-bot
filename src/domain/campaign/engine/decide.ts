@@ -9,6 +9,7 @@ import { canHandOver, refreshGear, startHandOver } from "./combat/combat-gear.js
 import { encounterProblems, handleCombatCommand, recordCombatNarration, recordCombatRoll } from "./combat/combat-flow.js";
 import { handleInventoryCommand } from "./inventory.js";
 import { takeRest } from "./rest.js";
+import { handleShopCommand, recordHaggleRoll } from "./shop.js";
 import { Decision, type DecideResult, type EngineContext } from "./decision.js";
 import { beginAdventure, beginPlay, illustrateMoment, markReady, redoPicture, recordLedgerFact, recordNarration, recordOpening, recordSummary, regenerateNarration, replaceNarration, reportPlannerFailure, retryPlan } from "./dm.js";
 import { chooseClassLevel, continueCampaign, grantProxy, joinHero, markAway, markReturned, revokeProxy } from "./members.js";
@@ -114,6 +115,11 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
       return retryEncounter(decision);
     case "joinHero":
       return joinHero(decision, command.sheet);
+    case "buyItem":
+    case "sellItem":
+    case "hagglePrice":
+    case "recordTradeNarration":
+      return handleShopCommand(decision, command);
     case "chooseClassLevel": {
       const skillChoice = command.skillChoice !== undefined && isSkill(command.skillChoice) ? command.skillChoice : undefined;
       return chooseClassLevel(decision, command.characterId, command.buildClass, skillChoice);
@@ -149,5 +155,7 @@ function recordRoll(decision: Decision, rollId: RollId, result: RollResult): Rej
   if (decision.ctx.actor.kind !== "system") return { code: "systemOnly" };
   const check = Object.values(decision.state.checks).find((candidate) => candidate.rollId === rollId);
   if (check !== undefined) return recordCheckRoll(decision, check, result);
+  const haggle = Object.values(decision.state.hagglePending ?? {}).find((candidate) => candidate.rollId === rollId);
+  if (haggle !== undefined) return recordHaggleRoll(decision, haggle, result);
   return recordCombatRoll(decision, rollId, result);
 }

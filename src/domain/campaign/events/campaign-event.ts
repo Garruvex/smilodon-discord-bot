@@ -7,7 +7,7 @@ import type { EncounterSpec, PlannedEffect } from "../commands/campaign-command.
 import type { CharacterSheet } from "../character/character-sheet.js";
 import type { Ability } from "../rules/effects.js";
 import type { ContentId } from "../rules/content-id.js";
-import type { CheckResult, CheckState, ItemOffer, Resolution } from "../state/campaign-state.js";
+import type { CheckResult, CheckState, ItemOffer, PendingHaggle, Resolution, TradeRecord } from "../state/campaign-state.js";
 import type { Skill } from "../rules/skills.js";
 
 // The version of the event shapes below. It goes up whenever a change to an
@@ -136,6 +136,17 @@ export type CampaignEvent =
   // named. Declaring again before the next level replaces it; reaching the
   // next level spends and clears it (engine/members.ts's chooseClassLevel).
   | { readonly kind: "classLevelPlanChosen"; readonly characterId: CharacterId; readonly buildClass: string; readonly skillChoice?: Skill }
+  // A haggle roll was requested; the pending state a settled roll (or a
+  // pause-and-resume re-arm, if one is ever added) needs to finish it.
+  | { readonly kind: "haggleStarted"; readonly haggle: PendingHaggle }
+  // A trade landed — instantly (buyItem/sellItem) or once a haggle roll
+  // settled it — and is now waiting on a Narrator line (engine/shop.ts).
+  // `wallet` says which gold this drew on or paid into (the "split" house
+  // rule's own choice, resolved once at settlement time, not re-derived
+  // later — evolve() is pure and has no house rule to read).
+  | { readonly kind: "tradeSettled"; readonly trade: TradeRecord; readonly wallet: "pool" | "hero" }
+  // The Narrator's line for a settled trade; the trade record is spent.
+  | { readonly kind: "tradeNarrated"; readonly tradeId: string; readonly text: string }
   | CombatEvent;
 
 export type OfferClosedReason = "declined" | "cancelled" | "unavailable";

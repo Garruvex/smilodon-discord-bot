@@ -55,5 +55,9 @@ export type Rejection =
   | { readonly code: "heroNotReplaceable" }
   | { readonly code: "unknownClass" }
   | { readonly code: "multiclassRequirementNotMet" }
+  | { readonly code: "unknownItem" }
+  | { readonly code: "insufficientGold" }
+  | { readonly code: "invalidHaggleSkill" }
+  | { readonly code: "haggleAlreadyPending" }
 
 export type RejectionCode = Rejection["code"];

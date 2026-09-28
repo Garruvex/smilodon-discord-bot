@@ -42,7 +42,23 @@ const documentSchema = z
         z.object({ id: sceneId, title: text, publicDescription: text, dmNotes: text, npcIds: z.array(npcId) }).strict(),
       )
       .min(1),
-    npcs: z.array(z.object({ id: npcId, name: text, voice: text, publicDescription: text, secret: text }).strict()),
+    npcs: z.array(
+      z
+        .object({
+          id: npcId,
+          name: text,
+          voice: text,
+          publicDescription: text,
+          secret: text,
+          shop: z
+            .object({
+              stock: z.array(z.object({ itemId: contentId("item"), buyPrice: z.number().int().min(0), sellPrice: z.number().int().min(0).optional() }).strict()).min(1),
+            })
+            .strict()
+            .optional(),
+        })
+        .strict(),
+    ),
     clocks: z
       .array(
         z
@@ -144,6 +160,9 @@ export function parseAdventureDocument(source: string): AdventureDocument {
   for (const scene of data.scenes) {
     for (const id of scene.npcIds) if (!npcIds.has(id)) problems.push(`${scene.id} lists unknown ${id}.`);
   }
+  for (const npc of data.npcs) {
+    if (npc.shop !== undefined) problems.push(...duplicates(`${npc.id} shop`, npc.shop.stock.map((entry) => entry.itemId)));
+  }
   // Monster IDs are checked against the ruleset when the fight starts; the
   // harness and the starter-adventure tests start every authored encounter.
   problems.push(...duplicates("encounter", data.encounters.map((encounter) => encounter.id)));
@@ -185,7 +204,16 @@ export function parseAdventureDocument(source: string): AdventureDocument {
   });
   if (problems.length > 0) throw new AdventureDocumentError(problems);
 
-  const { heroes: _heroes, ...bible } = data;
+  const { heroes: _heroes, ...rest } = data;
+  // zod's .optional() leaves the key present with value undefined, which
+  // exactOptionalPropertyTypes treats as different from the key being
+  // absent; strip it so an npc with no shop matches BibleNpc exactly.
+  const npcs = data.npcs.map(({ shop, ...npc }) => {
+    if (shop === undefined) return npc;
+    const stock = shop.stock.map(({ sellPrice, ...entry }) => (sellPrice === undefined ? entry : { ...entry, sellPrice }));
+    return { ...npc, shop: { stock } };
+  });
+  const bible: AdventureBible = { ...rest, npcs };
   return { bible, heroes };
 }
 
@@ -199,7 +227,7 @@ export function checkEditionsMatch(editions: readonly AdventureDocument[]): read
       version: document.bible.version,
       startScene: document.bible.startScene,
       scenes: document.bible.scenes.map((scene) => [scene.id, scene.npcIds]),
-      npcs: document.bible.npcs.map((npc) => npc.id),
+      npcs: document.bible.npcs.map((npc) => [npc.id, npc.shop ?? null]),
       clocks: document.bible.clocks.map((clock) => [clock.id, clock.sceneId, clock.segments, clock.onFull]),
       clues: document.bible.clues.map((clue) => [clue.id, clue.sceneId]),
       encounters: document.bible.encounters.map((encounter) => ({
