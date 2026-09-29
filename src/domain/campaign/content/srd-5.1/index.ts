@@ -13,6 +13,7 @@ import { srd51MoreMonsters } from "./monsters/more-monsters.js";
 import { srd51GeneratedMonsters } from "./monsters/srd-monsters.generated.js";
 import { srd51StarterMonsters } from "./monsters/starter-monsters.js";
 import { srd51DragonAncestries, srd51Races, srd51Subraces } from "./races.js";
+import { srd51ClassAbilitySpells } from "./spells/class-ability-spells.js";
 import { srd51Cantrips } from "./spells/cantrips.js";
 import { srd51Level1Spells } from "./spells/level-1.js";
 import { srd51GeneratedSpells } from "./spells/srd-spells.generated.js";
@@ -28,6 +29,7 @@ export const srd51Content: readonly ContentDefinition[] = [
   ...srd51Level1Spells,
   ...srd51UtilitySpells,
   ...srd51GeneratedSpells,
+  ...srd51ClassAbilitySpells,
   ...srd51Weapons,
   ...srd51Armor,
   ...srd51Potions,

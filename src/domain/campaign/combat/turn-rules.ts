@@ -291,6 +291,8 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
       const bonusAction = spell.castingTime === "bonus-action";
       if (costProblem(hero, bonusAction ? "bonusAction" : "action", content) !== null) continue;
       if (hero.budget.bonusSpellCast && (bonusAction || spell.level > 0)) continue;
+      const innate = hero.spellcasting?.innate?.[id];
+      if (innate !== undefined && innate !== null && (hero.resources.featureUses[innateUseKey(id)] ?? innate) < 1) continue;
       const slotLevels = castableSlotLevels(spell, availableSlots(hero.resources));
       const targetIds = spellTargets(encounter, hero, spell, content).map((target) => target.id);
       if (slotLevels.length > 0 && targetIds.length > 0) spells.push({ spell, slotLevels, bonusAction, targetIds });

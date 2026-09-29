@@ -46,6 +46,8 @@ export interface CombatSpellcasting {
   readonly casterLevel?: number;
   // Spells cast by nature, with no slot: at will (null) or this many times a day.
   readonly innate?: Readonly<Record<string, number | null>>;
+  // Save DCs that differ from saveDc for particular spells (a Dragonborn's breath uses Constitution).
+  readonly saveDcs?: Readonly<Record<string, number>>;
 }
 
 // A combatant's spell slots and feature uses left (a hero's own resources).

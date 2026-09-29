@@ -70,6 +70,32 @@ export function heroAttackOption(sheet: CharacterSheet, weapon: WeaponDefinition
   };
 }
 
+// A hero's spellcasting: their class's, plus any spell-shaped abilities their traits give (cast as innate spells).
+function heroSpellcasting(sheet: CharacterSheet, content: SealedContent, traits: readonly Trait[], castingModifier: number | null): CombatSpellcasting | null {
+  const granted = traits.flatMap((trait) => (trait.kind === "featureSpell" ? [trait] : []));
+  const base = sheet.proficiencyBonus;
+  if (granted.length === 0) {
+    return castingModifier === null ? null : { attackBonus: base + castingModifier, saveDc: 8 + base + castingModifier, modifier: castingModifier, spells: spellbookOf(sheet, content) };
+  }
+  const first = granted[0];
+  const modifier = castingModifier ?? abilityModifier(sheet.abilityScores[first?.ability ?? "cha"]);
+  const innate: Record<string, number | null> = {};
+  const saveDcs: Record<string, number> = {};
+  for (const trait of granted) {
+    const mod = abilityModifier(sheet.abilityScores[trait.ability]);
+    innate[trait.spell] = trait.usesAbility === true ? Math.max(1, mod) : trait.uses;
+    saveDcs[trait.spell] = 8 + base + mod;
+  }
+  return {
+    attackBonus: base + modifier,
+    saveDc: 8 + base + modifier,
+    modifier,
+    spells: [...(castingModifier === null ? [] : spellbookOf(sheet, content)), ...granted.map((trait) => trait.spell)],
+    innate,
+    saveDcs,
+  };
+}
+
 export function heroCombatant(sheet: CharacterSheet, content: SealedContent, zoneId: ZoneId, status: HeroStatus): Combatant {
   const traits = heroTraits(sheet, content);
   const weapons = sheet.equipment.flatMap((id) => {
@@ -96,15 +122,7 @@ export function heroCombatant(sheet: CharacterSheet, content: SealedContent, zon
     initiativeModifier: dex,
     saves,
     attacks: weapons.map((weapon) => heroAttackOption(sheet, weapon, traits, meleeWeapons)),
-    spellcasting:
-      casting === null
-        ? null
-        : {
-            attackBonus: sheet.proficiencyBonus + castingModifier,
-            saveDc: 8 + sheet.proficiencyBonus + castingModifier,
-            modifier: castingModifier,
-            spells: spellbookOf(sheet, content),
-          },
+    spellcasting: heroSpellcasting(sheet, content, traits, casting === null ? null : castingModifier),
     features: sheet.features,
     resources: status.resources,
     traits,

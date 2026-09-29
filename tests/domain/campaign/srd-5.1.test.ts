@@ -186,8 +186,8 @@ describe("SRD 5.1 content", () => {
 
   it("gives Dwarf, Dragonborn, and Tiefling a real damage resistance trait, and Elf just its ability bonus", () => {
     expect(traitsOf(content.get("race:dwarf"))).toContainEqual({ kind: "damageResistance", damageTypes: ["poison"] });
-    expect(traitsOf(content.get("race:dragonborn"))).toEqual([{ kind: "damageResistance", damageTypes: ["fire"] }]);
-    expect(traitsOf(content.get("race:tiefling"))).toEqual([{ kind: "damageResistance", damageTypes: ["fire"] }]);
+    expect(traitsOf(content.get("race:dragonborn"))).toContainEqual({ kind: "damageResistance", damageTypes: ["fire"] });
+    expect(traitsOf(content.get("race:tiefling"))).toContainEqual({ kind: "damageResistance", damageTypes: ["fire"] });
     expect(content.get("race:elf").abilityScoreIncrease).toEqual({ dex: 2 });
     expect(content.get("race:elf").speed).toBe(30);
     expect(content.get("race:dwarf").speed).toBe(25);

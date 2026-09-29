@@ -34,7 +34,7 @@ export function spellMaxTargets(spell: SpellDefinition, slotLevel: number): numb
 }
 
 // Where an innate spell's uses left are counted (resources.featureUses).
-export const innateUseKey = (spellId: string): string => `innate:${spellId}`;
+export { innateUseKey } from "../rules/traits.js";
 
 // A slot is unavailable when it is too low for the spell, empty, or (for a cantrip) not zero.
 export function slotUnavailable(spell: SpellDefinition, slots: SpellSlots, slotLevel: number): boolean {

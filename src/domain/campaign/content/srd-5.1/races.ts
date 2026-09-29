@@ -1,4 +1,6 @@
 import { defineRace, type RaceDefinition } from "../../rules/content-definitions.js";
+import type { Trait } from "../../rules/traits.js";
+import { breathWeaponId } from "./spells/class-ability-spells.js";
 
 // SRD 5.1's playable races (2014 rules). Speed and ability score increases
 // are exact; traits reuse the shared Trait vocabulary where a race's trait
@@ -6,6 +8,8 @@ import { defineRace, type RaceDefinition } from "../../rules/content-definitions
 // are left out, with a comment, where it is not — the same "not modeled"
 // convention the monster roster (starter-monsters.ts) already uses.
 const source = "SRD 5.1";
+
+const breath = (color: string): Trait => ({ kind: "featureSpell", spell: breathWeaponId(color), ability: "con", uses: 1, recharge: "shortRest" });
 
 export const human = defineRace({
   id: "race:human",
@@ -59,7 +63,7 @@ export const dragonborn = defineRace({
   source,
   speed: 30,
   abilityScoreIncrease: { str: 2, cha: 1 },
-  traits: [{ kind: "damageResistance", damageTypes: ["fire"] }],
+  traits: [{ kind: "damageResistance", damageTypes: ["fire"] }, breath("red")],
 });
 
 // Not modeled: Darkvision, Gnome Cunning (advantage on Intelligence, Wisdom,
@@ -106,7 +110,7 @@ export const tiefling = defineRace({
   source,
   speed: 30,
   abilityScoreIncrease: { cha: 2, int: 1 },
-  traits: [{ kind: "damageResistance", damageTypes: ["fire"] }],
+  traits: [{ kind: "damageResistance", damageTypes: ["fire"] }, { kind: "featureSpell", spell: "spell:thaumaturgy", ability: "cha", uses: null, recharge: "longRest" }],
 });
 
 export const srd51Races: readonly RaceDefinition[] = [human, elf, dwarf, halfling, dragonborn, gnome, halfElf, halfOrc, tiefling];
@@ -132,5 +136,5 @@ const dragonAncestries = [
   ["gold", "fire"], ["green", "poison"], ["red", "fire"], ["silver", "cold"], ["white", "cold"],
 ] as const;
 export const srd51DragonAncestries: readonly RaceDefinition[] = dragonAncestries.map(([color, damageType]) => defineRace({
-  id: `race:${color}-dragonborn`, source, speed: 30, abilityScoreIncrease: { str: 2, cha: 1 }, traits: [{ kind: "damageResistance", damageTypes: [damageType] }],
+  id: `race:${color}-dragonborn`, source, speed: 30, abilityScoreIncrease: { str: 2, cha: 1 }, traits: [{ kind: "damageResistance", damageTypes: [damageType] }, breath(color)],
 }));

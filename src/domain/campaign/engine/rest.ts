@@ -1,5 +1,6 @@
 import { wildShapeUses } from "../rules/wild-shape-rules.js";
-import { featureUsesOf } from "../rules/content-definitions.js";
+import { featureUsesOf, traitsOf } from "../rules/content-definitions.js";
+import { innateUseKey } from "../rules/traits.js";
 import { abilityModifier } from "../character/character-sheet.js";
 import { hitDicePool } from "../character/character-build.js";
 import { defaultHeroResources, type HeroStatus } from "../character/hero-status.js";
@@ -52,6 +53,11 @@ export function takeRest(decision: Decision, rest: "short" | "long"): Rejection 
       const uses = feature?.kind === "feature" ? featureUsesOf(feature, sheet.level) : null;
       if (uses?.recharge === "shortRest") featureUses[id] = uses.count;
       if (feature?.kind === "feature" && feature.traits.some((trait) => trait.kind === "wildShape")) featureUses[id] = wildShapeUses;
+    }
+    // Spell-shaped abilities that come back on a short rest (Breath Weapon).
+    const sources = [...(sheet.race === undefined ? [] : [sheet.race]), ...sheet.features];
+    for (const trait of sources.flatMap((id) => { const definition = content.find(id); return definition === undefined ? [] : traitsOf(definition); })) {
+      if (trait.kind === "featureSpell" && trait.recharge === "shortRest") delete featureUses[innateUseKey(trait.spell)];
     }
     // Pact Magic (Warlock) is SRD 5.1's one resource that comes back on a
     // short rest rather than a long one; every other spell slot is

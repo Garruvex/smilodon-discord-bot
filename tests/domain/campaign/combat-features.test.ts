@@ -214,6 +214,32 @@ describe("class features", () => {
     expect(fight.reject(jamie, { kind: "combatUseFeature", combatantId: "c-borin", featureId: "feature:flurry-of-blows" })).toEqual({ code: "noActionLeft" });
   });
 
+  it("breathes as a red Dragonborn: a save for half, once per short rest, at a Constitution-based DC", () => {
+    const base = newCampaign();
+    const hero = base.characters["c-borin"];
+    if (hero === undefined) throw new Error("fixture");
+    const state: CampaignState = { ...base, characters: { ...base.characters, "c-borin": { ...hero, race: "race:red-dragonborn" as const } } };
+    const fight = borinFirst(state);
+    const both = ["goblin-a", "goblin-b"];
+    fight.run(jamie, { kind: "combatMove", combatantId: "c-borin", zoneId: "courtyard" });
+    // Goblin A rolls 3 on its Dexterity save (fails), goblin B 15 (passes); 2d6 rolls 4 and 3.
+    fight.rolls([3, 15], [4, 3]).run(jamie, { kind: "combatCast", combatantId: "c-borin", spellId: "spell:breath-weapon-red", slotLevel: 0, targetIds: both });
+    expect(fight.combatant("goblin-a").hp).toBe(0);
+    expect(fight.combatant("goblin-b").hp).toBe(4);
+    expect(fight.reject(jamie, { kind: "combatCast", combatantId: "c-borin", spellId: "spell:breath-weapon-red", slotLevel: 0, targetIds: both })).toBeDefined();
+  });
+
+  it("inspires an ally as a bard: a die on their next roll, as a bonus action", () => {
+    const base = newCampaign();
+    const hero = base.characters["c-borin"];
+    if (hero === undefined) throw new Error("fixture");
+    const state: CampaignState = { ...base, characters: { ...base.characters, "c-borin": { ...hero, features: [...hero.features, "feature:bardic-inspiration"] as typeof hero.features } } };
+    const fight = borinFirst(state);
+    fight.run(jamie, { kind: "combatCast", combatantId: "c-borin", spellId: "spell:bardic-inspiration", slotLevel: 0, targetIds: ["c-mira"] });
+    expect(fight.combatant("c-borin").budget).toMatchObject({ bonusAction: false, action: true });
+    expect(fight.combatant("c-mira").effects).toHaveLength(1);
+  });
+
   it("adds Sneak Attack when an ally is next to the target", () => {
     // Two zones only: the goblins have nowhere to slip away to.
     const fight = borinFirst(newCampaign(), { ...skirmish, edges: [{ from: "gate", to: "courtyard", feet: 10 }] });

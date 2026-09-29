@@ -68,7 +68,7 @@ export function declareResolution(decision: Decision, request: DeclareRequest): 
         autoFailed[targetId] = { landed: true, critical: false };
         continue;
       }
-      const dc = source.kind === "area" ? source.area.dc : (actor.spellcasting?.saveDc ?? 10);
+      const dc = source.kind === "area" ? source.area.dc : ((source.kind === "spell" ? actor.spellcasting?.saveDcs?.[source.spellId] : undefined) ?? actor.spellcasting?.saveDc ?? 10);
       const bias = saveBias(target, check.ability, lookup);
       const racial = hasSaveAdvantage(target.traits, check.ability, saveContextOf(plan, source)) ? 1 : 0;
       spec = { mode: resolveRollMode(bias.advantage + racial, bias.disadvantage), modifier: target.saves[check.ability], bonusDice: bonusDiceFor(target, "save") };

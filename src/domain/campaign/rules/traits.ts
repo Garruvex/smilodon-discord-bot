@@ -61,6 +61,17 @@ export type Trait =
   // Never gains these conditions (Skeleton/Zombie's immunity to poisoned; a
   // monster's own immunity list, not a condition's, since only some holders
   // of a given condition are immune to it, e.g. undead but not the living).
+  // A spell-shaped ability the holder can use (Bardic Inspiration, Breath Weapon, Lay on Hands): cast like a
+  // cantrip from the turn menu, limited by uses (null: at will) that come back on a rest. usesAbility makes the
+  // uses the ability modifier (at least 1); ability is what its save DC and attack bonus are built on.
+  | {
+      readonly kind: "featureSpell";
+      readonly spell: ContentId<"spell">;
+      readonly ability: Ability;
+      readonly uses: number | null;
+      readonly usesAbility?: boolean;
+      readonly recharge: "shortRest" | "longRest";
+    }
   // Half-Orc Savage Attacks: a melee weapon critical hit rolls one extra damage die.
   | { readonly kind: "savageAttacks" }
   // Half-Orc Relentless Endurance: once per long rest, damage that would drop the holder to 0 HP leaves 1 HP instead.
@@ -111,6 +122,9 @@ export type Trait =
   | { readonly kind: "legendaryActions"; readonly uses: number; readonly options: readonly { readonly weapon: ContentId<"item">; readonly cost: number }[] };
 
 // Where a monster's remaining Legendary Resistance is counted (resources.featureUses).
+// Where an innate or spell-shaped ability's uses left are counted (resources.featureUses).
+export const innateUseKey = (spellId: string): string => `innate:${spellId}`;
+
 // Where a hero's Relentless Endurance use is counted (resources.featureUses).
 export const relentlessEnduranceKey = "trait:relentless-endurance";
 export const legendaryResistanceKey = "trait:legendary-resistance";

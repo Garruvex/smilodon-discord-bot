@@ -1,4 +1,4 @@
-import { dice, flat, plus } from "../../../dice/dice-expression.js";
+import { dice, plus } from "../../../dice/dice-expression.js";
 import { defineFeature, type FeatureDefinition } from "../../../rules/content-definitions.js";
 
 // Level 1 class features of the three preset heroes (SRD 5.1, Classes).
@@ -73,7 +73,13 @@ export const rage = defineFeature({
     }),
   },
 });
-export const bardicInspiration = defineFeature({ id: "feature:bardic-inspiration", source, traits: [], action: null });
+// Bardic Inspiration and Lay on Hands are spell-shaped abilities (spells/class-ability-spells.ts): cast on an ally from the turn menu.
+export const bardicInspiration = defineFeature({
+  id: "feature:bardic-inspiration",
+  source,
+  traits: [{ kind: "featureSpell", spell: "spell:bardic-inspiration", ability: "cha", uses: null, usesAbility: true, recharge: "longRest" }],
+  action: null,
+});
 export const druidic = defineFeature({ id: "feature:druidic", source, traits: [], action: null });
 export const martialArts = defineFeature({ id: "feature:martial-arts", source, traits: [], action: null });
 export const divineSense = defineFeature({ id: "feature:divine-sense", source, traits: [], action: null });
@@ -90,17 +96,12 @@ export const draconicBloodline = defineFeature({ id: "feature:draconic-bloodline
 export const fiendPatron = defineFeature({ id: "feature:fiend-patron", source, traits: [], action: null });
 export const arcaneRecovery = defineFeature({ id: "feature:arcane-recovery", source, traits: [], action: null });
 
-// Simplified to a flat self-heal (level x 5), like Second Wind, rather than a
-// spendable pool that can heal others in installments.
+// The SRD's pool of 5 hit points per level is spent in one healing, on the paladin or an ally.
 export const layOnHands = defineFeature({
   id: "feature:lay-on-hands",
   source,
-  traits: [],
-  action: {
-    cost: "action",
-    uses: { count: 1, recharge: "longRest" },
-    plan: ({ level }) => ({ check: null, onLand: [{ kind: "heal", target: "self", amount: flat(level * 5) }], onAvoid: [] }),
-  },
+  traits: [{ kind: "featureSpell", spell: "spell:lay-on-hands", ability: "cha", uses: 1, recharge: "longRest" }],
+  action: null,
 });
 
 export const srd51Level1Features: readonly FeatureDefinition[] = [
