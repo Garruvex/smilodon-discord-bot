@@ -24,3 +24,28 @@ export interface ImageAssetStore {
 export interface SceneImageSink {
   post(channelId: string, image: GeneratedImage, caption: string): Promise<void>;
 }
+
+// Turns a picture a player uploaded into a character portrait: the source is
+// the reference, the prompt says what to make of it. A thrown error is a
+// timeout, a refusal or a provider failure.
+export interface PortraitStylizer {
+  stylize(request: { readonly source: GeneratedImage; readonly prompt: string; readonly timeoutMs: number }): Promise<GeneratedImage>;
+}
+
+// Where a library character's portrait lives, across servers and games. A
+// slot is "portrait" (the one in use), "candidate" (made, waiting for a yes)
+// or "source" (the upload a candidate was made from, kept only until the
+// player decides). A small note (the style a candidate was made in) rides
+// along.
+export type PortraitSlot = "portrait" | "candidate" | "source";
+export interface CharacterPortraitStore {
+  saveImage(characterId: string, slot: PortraitSlot, image: GeneratedImage): Promise<void>;
+  loadImage(characterId: string, slot: PortraitSlot): Promise<GeneratedImage | undefined>;
+  removeImage(characterId: string, slot: PortraitSlot): Promise<void>;
+  saveNote(characterId: string, text: string): Promise<void>;
+  loadNote(characterId: string): Promise<string | undefined>;
+  // Everything kept for a character (it was deleted).
+  removeAll(characterId: string): Promise<void>;
+  // Drops candidates and sources not touched for this long; portraits stay.
+  sweepDrafts(olderThanMs: number): Promise<number>;
+}

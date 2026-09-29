@@ -30,6 +30,9 @@ import { ImageWorker } from "../application/campaign/workers/image-worker.js";
 import { monsterGalleryImage } from "../infrastructure/campaign/image/monster-gallery.js";
 import { FileImageAssetStore } from "../infrastructure/campaign/image/file-image-asset-store.js";
 import { OpenAiImageGenerator } from "../infrastructure/campaign/image/openai-image-generator.js";
+import { OpenAiImageStylizer } from "../infrastructure/campaign/image/openai-image-stylizer.js";
+import { FilePortraitStore } from "../infrastructure/campaign/image/file-portrait-store.js";
+import { CharacterPortraits } from "../application/campaign/library/character-portraits.js";
 import { DmJobWorker } from "../application/campaign/workers/dm-job-worker.js";
 import { RollWorker } from "../application/campaign/workers/roll-worker.js";
 import { TimerWorker } from "../application/campaign/workers/timer-worker.js";
@@ -144,6 +147,17 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
   const cards = new CampaignCardService({ unitOfWork, rulesets, adventures, messages, glossaries, logger, issues, resources });
   const presenter = new DiscordCampaignPresenter({ unitOfWork, messages, cards, adventures, glossaries, revealDelayMs: 1_200 });
   const library = new CharacterLibrary({ unitOfWork, clock, content, rulesetVersion: content.version });
+  // A saved character's portrait: an upload turned into D&D art, or one painted from its description.
+  // Both need the image model; without it the portrait screens are simply not offered.
+  const portraitStore = new FilePortraitStore(resolve(configuration.runtimeDataDirectory, "character-portraits"));
+  const portraits = new CharacterPortraits({
+    library,
+    store: portraitStore,
+    clock,
+    ...(configuration.campaignImages === null || configuration.campaignImages === undefined
+      ? {}
+      : { stylizer: new OpenAiImageStylizer(configuration.campaignImages), generator: new OpenAiImageGenerator(configuration.campaignImages) }),
+  });
   const lobby = new CampaignLobbyService({
     unitOfWork,
     library,
@@ -188,6 +202,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
             fallback: monsterGalleryImage,
             monsterName: (monsterId, language): string | undefined => glossaries[language].names[monsterId],
             assets: new FileImageAssetStore(resolve(configuration.runtimeDataDirectory, "campaign-images")),
+            portraits,
             budgetPerCampaign: configuration.campaignImages.budget,
           }),
         }),
@@ -198,7 +213,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
 
   const authority = new CampaignAuthority(input.accessPolicyService, unitOfWork);
   const creator = new CampaignGameCreator({ lobby, setup, defaultAdventureId: starterAdventureId, modelConfigured: model !== null, adventures });
-  const libraryHandler = new CharacterLibraryComponentHandler({ library, content, glossaries });
+  const libraryHandler = new CharacterLibraryComponentHandler({ library, content, glossaries, portraits });
   const catalog = new AdventureCatalog({ unitOfWork, clock, content, library: adventures });
   // The Author never writes heroes: it borrows the bundled adventure's, in the language asked for.
   const author = model === null ? null : new AdventureAuthor({ client: model, content, heroesFor: (language): typeof starter.en.heroes => starter[language].heroes });
@@ -241,6 +256,8 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
     },
     start: async (): Promise<void> => {
       openStore();
+      // Portrait drafts a player walked away from are let go after a day.
+      void portraitStore.sweepDrafts(24 * 60 * 60 * 1000).catch(logFailure("Portrait drafts could not be cleaned up", "-"));
       await postgresStore?.ready();
       // Adventures a server approved are readable again before any game needs them.
       const loaded = await catalog.load();

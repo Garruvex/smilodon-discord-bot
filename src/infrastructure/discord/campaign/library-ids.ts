@@ -25,6 +25,17 @@ export const libraryActions = [
   "export",
   "deleteAsk",
   "deleteYes",
+  // The portrait screens: home, the upload form, painting from the description, the
+  // style menu on a preview, try again, use, discard, and remove the one in use.
+  "pHome",
+  "pUpload",
+  "pSubmit",
+  "pPaint",
+  "pStyle",
+  "pRetry",
+  "pUse",
+  "pDrop",
+  "pRemove",
 ] as const;
 export type LibraryAction = (typeof libraryActions)[number];
 

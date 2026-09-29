@@ -10,7 +10,16 @@ export type DownloadResult =
   | { readonly ok: true; readonly text: string }
   | { readonly ok: false; readonly reason: "notDiscord" | "tooLarge" | "failed" };
 
+export type BytesResult =
+  | { readonly ok: true; readonly bytes: Buffer }
+  | { readonly ok: false; readonly reason: "notDiscord" | "tooLarge" | "failed" };
+
 export async function downloadAttachmentText(url: string, maxBytes: number): Promise<DownloadResult> {
+  const result = await downloadAttachmentBytes(url, maxBytes);
+  return result.ok ? { ok: true, text: new TextDecoder("utf-8", { fatal: false }).decode(result.bytes) } : result;
+}
+
+export async function downloadAttachmentBytes(url: string, maxBytes: number): Promise<BytesResult> {
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -32,7 +41,7 @@ export async function downloadAttachmentText(url: string, maxBytes: number): Pro
       if (total > maxBytes) return { ok: false, reason: "tooLarge" };
       chunks.push(chunk);
     }
-    return { ok: true, text: new TextDecoder("utf-8", { fatal: false }).decode(Buffer.concat(chunks)) };
+    return { ok: true, bytes: Buffer.concat(chunks) };
   } catch {
     return { ok: false, reason: "failed" };
   }

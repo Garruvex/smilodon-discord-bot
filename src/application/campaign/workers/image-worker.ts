@@ -17,6 +17,9 @@ export interface ImageWorkerOptions {
   readonly fallback?: (monsterId: string) => Promise<GeneratedImage | undefined>;
   // Where a made picture waits until it is posted.
   readonly assets: ImageAssetStore;
+  // The portrait a player gave a library character. A hero from that character
+  // is introduced with it, not with a painting, and nothing is spent.
+  readonly portraits?: { forGame(libraryCharacterId: string): Promise<GeneratedImage | undefined> };
   // Campaigns painting at the same time (one campaign's pictures never overlap).
   readonly concurrency?: number;
   // Pictures one campaign may have made in total.
@@ -146,6 +149,14 @@ export class ImageWorker {
       return;
     }
     if (existing !== undefined && !forced) return;
+    if (request.kind === "heroImage" && !forced && channelId !== null) {
+      const own = await this.ownPortrait(item.key, request.characterId);
+      if (own !== undefined) {
+        await sink.post(channelId, own.image, own.name);
+        await this.mark(item.key, subject, "done");
+        return;
+      }
+    }
     const budget = record.imageBudget ?? { limit: this.options.budgetPerCampaign, used: 0 };
     // A dramatic roll is only sometimes worth a picture: not right after another, and never the last of the budget.
     if (request.kind === "momentImage" && request.auto === true) {
@@ -171,6 +182,16 @@ export class ImageWorker {
     await sink.post(channelId, image, described.caption);
     await this.mark(item.key, subject, "done");
     await assets.remove(item.key, subject).catch(() => undefined);
+  }
+
+  // The player's own portrait for a hero that came from their library, if they gave one.
+  private async ownPortrait(key: CampaignKey, characterId: string): Promise<{ readonly image: GeneratedImage; readonly name: string } | undefined> {
+    const { unitOfWork, portraits } = this.options;
+    if (portraits === undefined) return undefined;
+    const sheet = (await unitOfWork.transaction((tx) => tx.loadCampaign(key)))?.state.characters[characterId];
+    if (sheet?.origin === undefined) return undefined;
+    const image = await portraits.forGame(sheet.origin.libraryCharacterId);
+    return image === undefined ? undefined : { image, name: sheet.name };
   }
 
   // A ready-made portrait for a monster picture that could not be painted: posted, and recorded as done without spending budget.

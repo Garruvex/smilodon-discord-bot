@@ -202,3 +202,62 @@ describe("scene pictures", () => {
     expect(finished.painter.prompts).toEqual([]);
   });
 });
+
+describe("a hero from a saved character", () => {
+  async function withOrigin(t: Awaited<ReturnType<typeof table>>): Promise<{ heroId: string; name: string }> {
+    const stored = await t.r.store.transaction((tx) => tx.loadCampaign(t.key));
+    const sheet = Object.values(stored?.state.characters ?? {})[0];
+    if (stored === undefined || sheet === undefined) throw new Error("hero");
+    await t.r.store.transaction(async (tx) => {
+      const latest = await tx.loadCampaign(t.key);
+      if (latest === undefined) throw new Error("state");
+      await tx.saveCampaign(t.key, { ...latest.state, characters: { ...latest.state.characters, [sheet.id]: { ...sheet, origin: { libraryCharacterId: "lc-wren", snapshotId: "ls-wren" } } } }, latest.revision);
+    });
+    return { heroId: sheet.id, name: sheet.name };
+  }
+
+  it("is introduced with the player's own portrait, without painting or spending the budget", async () => {
+    const t = await table();
+    const { heroId, name } = await withOrigin(t);
+    const worker = new ImageWorker({
+      unitOfWork: t.r.store,
+      adventures: t.r.adventures,
+      generator: t.painter,
+      sink: { post: (channelId, image, caption): Promise<void> => (t.posted.push({ channelId, caption: `${caption}:${image.bytes.toString()}` }), Promise.resolve()) },
+      assets: t.shelf,
+      budgetPerCampaign: 3,
+      portraits: { forGame: (id): Promise<GeneratedImage | undefined> => Promise.resolve(id === "lc-wren" ? { bytes: Buffer.from("own"), mediaType: "image/png" } : undefined) },
+    });
+    await t.r.store.transaction((tx) => tx.enqueue(t.key, "img-hero", { kind: "heroImage", characterId: heroId }, 1));
+    expect((await worker.runOnce()).processed).toBe(1);
+    expect(t.posted).toEqual([{ channelId: "chan-adventure", caption: `${name}:own` }]);
+    expect(t.painter.prompts).toEqual([]);
+    const record = await recordOf(t);
+    expect(record.images).toEqual({ [`hero:${heroId}`]: "done" });
+    expect(record.imageBudget ?? { used: 0 }).toMatchObject({ used: 0 });
+  });
+
+  it("is painted as before when its character has no portrait, and a redo paints again rather than reposting", async () => {
+    const t = await table();
+    const { heroId } = await withOrigin(t);
+    let has = false;
+    const worker = new ImageWorker({
+      unitOfWork: t.r.store,
+      adventures: t.r.adventures,
+      generator: t.painter,
+      sink: { post: (channelId, _image, caption): Promise<void> => (t.posted.push({ channelId, caption }), Promise.resolve()) },
+      assets: t.shelf,
+      budgetPerCampaign: 3,
+      portraits: { forGame: (): Promise<GeneratedImage | undefined> => Promise.resolve(has ? { bytes: Buffer.from("own"), mediaType: "image/png" } : undefined) },
+    });
+    await t.r.store.transaction((tx) => tx.enqueue(t.key, "img-hero", { kind: "heroImage", characterId: heroId }, 1));
+    await worker.runOnce();
+    expect(t.painter.prompts).toHaveLength(1);
+    expect((await recordOf(t)).imageBudget).toEqual({ limit: 3, used: 1 });
+    // Asked to paint it again after a portrait exists: the redo is a painting, not a repost.
+    has = true;
+    await t.r.store.transaction((tx) => tx.enqueue(t.key, "img-redo", { kind: "redoImage", subject: `hero:${heroId}` }, 1));
+    await worker.runOnce();
+    expect(t.painter.prompts).toHaveLength(2);
+  });
+});

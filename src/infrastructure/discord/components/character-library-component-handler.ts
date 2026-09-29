@@ -8,10 +8,12 @@ import {
   TextInputBuilder,
   TextInputStyle,
   type ButtonInteraction,
+  type ModalSubmitInteraction,
   type StringSelectMenuInteraction,
 } from "discord.js";
 
 import { maxCharactersPerOwner, type CharacterLibrary } from "../../../application/campaign/library/character-library.js";
+import { isPortraitStyle, maxUploadBytes, type CharacterPortraits, type PortraitResult } from "../../../application/campaign/library/character-portraits.js";
 import type { ImportConflict } from "../../../application/campaign/library/compatibility.js";
 import type { LibrarySnapshot } from "../../../application/campaign/library/library-types.js";
 import { CommandModule } from "../../../application/commands/command.js";
@@ -25,18 +27,26 @@ import { armorClassFrom, heroTraits } from "../../../domain/campaign/combat/comb
 import type { Glossary, SealedContent } from "../../../domain/campaign/rules/content-registry.js";
 import { abilities, type Ability } from "../../../domain/campaign/rules/effects.js";
 import { classLabel, skillKey } from "../campaign/text-keys.js";
+import { downloadAttachmentBytes, type BytesResult } from "../campaign/attachment-download.js";
+import { fileField, noteField, portraitHome, portraitModal, portraitPreview, portraitRefused, portraitWorking, styleField, type PortraitScreen } from "../campaign/portrait-screens.js";
 import { decodeDraft, emptyDraft, encodeDraft, libraryCustomId, libraryIdPrefix, parseLibraryId, scoresOf, type Draft } from "../campaign/library-ids.js";
 
 export interface CharacterLibraryHandlerDependencies {
   readonly library: CharacterLibrary;
   readonly content: SealedContent;
   readonly glossaries: Readonly<Record<string, Glossary>>;
+  // Portraits for saved characters; absent: the screens do not offer them.
+  readonly portraits?: CharacterPortraits;
+  // Reads an uploaded picture (a test can hand it over directly).
+  readonly downloadImage?: (url: string, maxBytes: number) => Promise<BytesResult>;
 }
 
 type Row = ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>;
 export interface LibraryScreen {
   readonly content: string;
   readonly components: Row[];
+  // A picture shown with the screen (a character's portrait).
+  readonly files?: PortraitScreen["files"];
 }
 
 type Language = "en" | "zh-TW";
@@ -122,6 +132,8 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
           const next = ability === undefined || draft.order.includes(ability) ? draft : { ...draft, order: [...draft.order, ability] };
           return void (await this.show(interaction, this.scoresScreen(next, language)));
         }
+        case "pStyle":
+          return void (await this.repaint(interaction, userId, first ?? "", language, isPortraitStyle(value) ? value : undefined));
         default:
           return;
       }
@@ -146,6 +158,38 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
       case "bName":
         // A form has to be the first response.
         return void (await interaction.showModal(this.nameModal(first ?? "", text)));
+      case "pUpload":
+        return void (await interaction.showModal(portraitModal(text, first ?? "")));
+      case "pHome":
+        await interaction.deferUpdate();
+        return void (await this.show(interaction, await this.portraitHomeFor(userId, first ?? "", language)));
+      case "pPaint": {
+        await interaction.deferUpdate();
+        const characterId = first ?? "";
+        const name = (await this.deps.library.entry(userId, characterId))?.character.name ?? "";
+        await this.show(interaction, portraitWorking(text, name));
+        const result = (await this.deps.portraits?.fromDescription(userId, characterId, "painterly", "")) ?? ({ kind: "refused", reason: "unavailable" } as const);
+        return void (await this.show(interaction, await this.portraitResult(userId, characterId, language, result)));
+      }
+      case "pRetry":
+        await interaction.deferUpdate();
+        return void (await this.repaint(interaction, userId, first ?? "", language, undefined));
+      case "pUse": {
+        await interaction.deferUpdate();
+        const characterId = first ?? "";
+        const saved = (await this.deps.portraits?.accept(userId, characterId)) === true;
+        const name = (await this.deps.library.entry(userId, characterId))?.character.name ?? "";
+        if (!saved) return void (await this.show(interaction, await this.portraitHomeFor(userId, characterId, language)));
+        return void (await this.show(interaction, await this.viewScreen(userId, characterId, language, text.campaign.portrait.saved({ name }))));
+      }
+      case "pDrop":
+        await interaction.deferUpdate();
+        await this.deps.portraits?.discard(userId, first ?? "");
+        return void (await this.show(interaction, await this.portraitHomeFor(userId, first ?? "", language)));
+      case "pRemove":
+        await interaction.deferUpdate();
+        await this.deps.portraits?.remove(userId, first ?? "");
+        return void (await this.show(interaction, await this.portraitHomeFor(userId, first ?? "", language, text.campaign.portrait.removed)));
       case "export":
         await interaction.deferUpdate();
         return void (await this.exportFile(interaction, userId, first ?? "", text));
@@ -167,6 +211,7 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
         await interaction.deferUpdate();
         const entry = await this.deps.library.entry(userId, first ?? "");
         const removed = entry !== undefined && (await this.deps.library.remove(userId, entry.character.id));
+        if (removed && entry !== undefined) await this.deps.portraits?.forget(entry.character.id);
         const home = await this.homeScreen(userId, language);
         return void (await this.show(interaction, { content: `${removed && entry !== undefined ? text.campaign.chars.deleted({ name: entry.character.name }) : text.campaign.chars.gone}\n\n${home.content}`, components: home.components }));
       }
@@ -179,6 +224,7 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
   public async executeModal(context: ModalContext): Promise<void> {
     const { interaction } = context;
     const parsed = parseLibraryId(interaction.customId);
+    if (parsed?.action === "pSubmit") return void (await this.submitPortrait(interaction, parsed.parts[0] ?? ""));
     if (parsed?.action !== "bName") return;
     const language = languageOf(interaction);
     const text = texts[language];
@@ -202,12 +248,60 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
       await interaction.editReply({ content: text.campaign.chars.full({ max: maxCharactersPerOwner }) });
       return;
     }
-    await interaction.editReply({ content: text.campaign.chars.created({ name: made.character.name, sheet: this.sheetLine(made.snapshot, text) }) });
+    const offer = this.deps.portraits?.available === true;
+    await interaction.editReply({
+      content: text.campaign.chars.created({ name: made.character.name, sheet: this.sheetLine(made.snapshot, text) }) + (offer ? `\n\n${text.campaign.portrait.offer}` : ""),
+      components: offer ? [new ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>().addComponents(button(libraryCustomId("pHome", made.character.id), text.campaign.portrait.button, ButtonStyle.Primary), button(libraryCustomId("view", made.character.id), text.campaign.chars.viewButton, ButtonStyle.Secondary))] : [],
+    });
+  }
+
+  // The upload form was sent: read the picture, make the portrait, show it for a yes.
+  private async submitPortrait(interaction: ModalSubmitInteraction, characterId: string): Promise<void> {
+    const language = languageOf(interaction);
+    const text = texts[language];
+    const userId = interaction.user.id;
+    await interaction.deferUpdate();
+    const shown = async (screen: LibraryScreen): Promise<void> => void (await interaction.editReply({ content: screen.content, components: screen.components, files: [...(screen.files ?? [])], attachments: [] }));
+    const attachment = interaction.fields.getUploadedFiles(fileField, false)?.first();
+    if (attachment === undefined) return shown(portraitRefused(text, characterId, "noFile"));
+    if (attachment.size > maxUploadBytes) return shown(portraitRefused(text, characterId, "tooLarge"));
+    const name = (await this.deps.library.entry(userId, characterId))?.character.name ?? "";
+    await shown(portraitWorking(text, name));
+    const downloaded = await (this.deps.downloadImage ?? downloadAttachmentBytes)(attachment.url, maxUploadBytes);
+    if (!downloaded.ok) return shown(portraitRefused(text, characterId, downloaded.reason === "tooLarge" ? "tooLarge" : "downloadFailed"));
+    const chosen = interaction.fields.getStringSelectValues(styleField)[0] ?? "";
+    const result = (await this.deps.portraits?.fromUpload(userId, characterId, downloaded.bytes, isPortraitStyle(chosen) ? chosen : "painterly", interaction.fields.getTextInputValue(noteField))) ?? ({ kind: "refused", reason: "unavailable" } as const);
+    await shown(await this.portraitResult(userId, characterId, language, result));
   }
 
   // ---- screens ------------------------------------------------------------
 
-  private async viewScreen(userId: string, characterId: string, language: Language): Promise<LibraryScreen> {
+  private async portraitHomeFor(userId: string, characterId: string, language: Language, note?: string): Promise<LibraryScreen> {
+    const text = texts[language];
+    const portraits = this.deps.portraits;
+    const entry = await this.deps.library.entry(userId, characterId);
+    if (portraits === undefined || entry === undefined) return { content: text.campaign.chars.gone, components: [] };
+    return portraitHome({ text, characterId, name: entry.character.name, current: await portraits.current(userId, characterId), canUpload: portraits.canUpload, canPaint: portraits.canPaint, ...(note === undefined ? {} : { note }) });
+  }
+
+  // A made portrait to look at, or the reason there is none.
+  private async portraitResult(userId: string, characterId: string, language: Language, result: PortraitResult): Promise<LibraryScreen> {
+    const text = texts[language];
+    if (result.kind === "refused") return portraitRefused(text, characterId, result.reason, result.retryAfterMinutes);
+    const name = (await this.deps.library.entry(userId, characterId))?.character.name ?? "";
+    return portraitPreview({ text, characterId, name, style: result.style, image: result.image });
+  }
+
+  // Try the candidate again, in the same look or a new one.
+  private async repaint(interaction: ButtonInteraction | StringSelectMenuInteraction, userId: string, characterId: string, language: Language, style: Parameters<CharacterPortraits["again"]>[2]): Promise<void> {
+    const text = texts[language];
+    const name = (await this.deps.library.entry(userId, characterId))?.character.name ?? "";
+    await this.show(interaction, portraitWorking(text, name));
+    const result = (await this.deps.portraits?.again(userId, characterId, style)) ?? ({ kind: "refused", reason: "unavailable" } as const);
+    await this.show(interaction, await this.portraitResult(userId, characterId, language, result));
+  }
+
+  private async viewScreen(userId: string, characterId: string, language: Language, note?: string): Promise<LibraryScreen> {
     const text = texts[language];
     const t = text.campaign.chars;
     const entry = await this.deps.library.entry(userId, characterId);
@@ -225,10 +319,14 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
     const latest = entry.snapshots.at(-1);
     const race = first?.build.race === undefined ? null : (glossary?.names[`race:${first.build.race}`] ?? first.build.race);
     const heading = `${race === null ? "" : `${race} `}${classLabel(text, entry.character.className)}`;
+    const portraits = this.deps.portraits;
+    const portrait = portraits === undefined ? undefined : await portraits.current(userId, characterId);
     return {
-      content: [t.viewTitle({ name: entry.character.name, class: heading }), t.viewScores({ scores }), "", ...lines].join("\n"),
+      content: [...(note === undefined ? [] : [note, ""]), t.viewTitle({ name: entry.character.name, class: heading }), t.viewScores({ scores }), "", ...lines].join("\n"),
+      ...(portrait === undefined ? {} : { files: [{ attachment: portrait.bytes, name: `portrait.${portrait.mediaType === "image/jpeg" ? "jpg" : portrait.mediaType === "image/webp" ? "webp" : "png"}` }] }),
       components: [
         new ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>().addComponents(
+          ...(portraits?.available === true ? [button(libraryCustomId("pHome", entry.character.id), text.campaign.portrait.button, portrait === undefined ? ButtonStyle.Primary : ButtonStyle.Secondary)] : []),
           ...(latest === undefined ? [] : [button(libraryCustomId("export", latest.id), t.exportButton, ButtonStyle.Secondary)]),
           button(libraryCustomId("deleteAsk", entry.character.id), t.deleteButton, ButtonStyle.Danger),
           button(libraryCustomId("home"), t.backButton, ButtonStyle.Secondary),
@@ -355,8 +453,9 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
     await interaction.editReply({ content: text.campaign.chars.exported, files: [{ attachment: Buffer.from(file, "utf8"), name: `${safeName}.json` }], components: [] });
   }
 
+  // A screen replaces the last one, picture included: no files means the old picture goes.
   private async show(interaction: ButtonInteraction | StringSelectMenuInteraction, screen: LibraryScreen): Promise<void> {
-    await interaction.editReply({ content: screen.content, components: screen.components });
+    await interaction.editReply({ content: screen.content, components: screen.components, files: [...(screen.files ?? [])], attachments: [] });
   }
 }
 

@@ -18,7 +18,7 @@ export interface Sent {
 }
 
 // Just enough of a Discord interaction to drive the handler.
-export function fakeInteraction(input: { customId: string; userId: string; messageId?: string; values?: string[]; fields?: Record<string, string>; locale?: string; kind: "button" | "select" | "modal" }): {
+export function fakeInteraction(input: { customId: string; userId: string; messageId?: string; values?: string[]; fields?: Record<string, string>; selects?: Record<string, string[]>; uploads?: Record<string, { url: string; size: number }[]>; locale?: string; kind: "button" | "select" | "modal" }): {
   interaction: never;
   sent: Sent[];
 } {
@@ -57,7 +57,14 @@ export function fakeInteraction(input: { customId: string; userId: string; messa
       sent.push({ kind: "modal", payload });
       return Promise.resolve();
     },
-    fields: { getTextInputValue: (name: string): string => input.fields?.[name] ?? "" },
+    fields: {
+      getTextInputValue: (name: string): string => input.fields?.[name] ?? "",
+      getStringSelectValues: (name: string): string[] => input.selects?.[name] ?? [],
+      getUploadedFiles: (name: string): { first: () => { url: string; size: number } | undefined } | null => {
+        const files = input.uploads?.[name];
+        return files === undefined ? null : { first: () => files[0] };
+      },
+    },
   };
   return { interaction: interaction as never, sent };
 }
