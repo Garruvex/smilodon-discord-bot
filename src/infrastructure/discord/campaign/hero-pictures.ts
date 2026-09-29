@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { createCanvas, loadImage } from "@napi-rs/canvas";
 
 import type { GeneratedImage } from "../../../application/campaign/ports/image-ports.js";
+import { sniffImageType } from "../../../application/campaign/images/image-bytes.js";
 import { fontFamily } from "../canvas/card-font.js";
 
 // A hero's picture on Discord (panel spec, Hero cards): the player's portrait
@@ -40,7 +41,14 @@ export function initialsOf(name: string): string {
   return letters.join("").toUpperCase();
 }
 
-const fileNameOf = (characterId: string): string => `hero-${characterId.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60)}.png`;
+const extensionOf: Readonly<Record<GeneratedImage["mediaType"], string>> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
+// A changed attachment needs a changed URL: Discord may keep the old image
+// when an edited component still refers to the same attachment filename.
+const fileNameOf = (characterId: string, bytes: Buffer, mediaType: GeneratedImage["mediaType"]): string => {
+  const id = characterId.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+  const version = createHash("sha1").update(bytes).digest("hex").slice(0, 12);
+  return `hero-${id}-${version}.${extensionOf[mediaType]}`;
+};
 
 // A steady colour for a name, so a hero keeps the same tile.
 function hueOf(name: string): number {
@@ -66,9 +74,13 @@ export class HeroPictures {
     const key = `${subject.characterId}|${subject.name}|${digest}`;
     const kept = this.cache.get(key);
     if (kept !== undefined) return kept;
-    const name = fileNameOf(subject.characterId);
-    const bytes = (portrait === undefined ? undefined : await this.cut(portrait).catch(() => undefined)) ?? this.tile(subject.name);
-    const file: HeroPictureFile = { name, bytes };
+    const cropped = portrait === undefined ? undefined : await this.cut(portrait).catch(() => undefined);
+    // If the local image decoder cannot crop a valid portrait, let Discord
+    // display the original instead of silently replacing it with initials.
+    const original = portrait !== undefined && sniffImageType(portrait.bytes) === portrait.mediaType ? portrait : undefined;
+    const bytes = cropped ?? original?.bytes ?? this.tile(subject.name);
+    const mediaType = cropped === undefined && original !== undefined ? original.mediaType : "image/png";
+    const file: HeroPictureFile = { name: fileNameOf(subject.characterId, bytes, mediaType), bytes };
     if (this.cache.size >= cacheLimit) this.cache.delete(this.cache.keys().next().value ?? "");
     this.cache.set(key, file);
     return file;

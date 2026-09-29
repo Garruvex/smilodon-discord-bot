@@ -10,10 +10,10 @@ import type { GeneratedImage } from "../../../../src/application/campaign/ports/
 import { guildId, quiet, rig, starter, tellOpening } from "../../../application/campaign/campaign-rig.js";
 import { FakeMessages } from "./fake-messages.js";
 
-const wide = (): GeneratedImage => {
+const wide = (color = "#c33"): GeneratedImage => {
   const canvas = createCanvas(300, 200);
   const context = canvas.getContext("2d");
-  context.fillStyle = "#c33";
+  context.fillStyle = color;
   context.fillRect(0, 0, 300, 200);
   return { bytes: canvas.toBuffer("image/png"), mediaType: "image/png" };
 };
@@ -32,7 +32,7 @@ describe("a hero's thumbnail", () => {
   it("is the portrait cut square and small", async () => {
     const pictures = new HeroPictures({ portraitFor: (): Promise<GeneratedImage | undefined> => Promise.resolve(wide()) });
     const thumb = await pictures.thumbnail({ characterId: "char-1", name: "Mira", libraryCharacterId: "lc-1" });
-    expect(thumb.name).toBe("hero-char-1.png");
+    expect(thumb.name).toMatch(/^hero-char-1-[0-9a-f]{12}\.png$/);
     const image = await loadImage(thumb.bytes);
     expect([image.width, image.height]).toEqual([160, 160]);
   });
@@ -62,6 +62,17 @@ describe("a hero's thumbnail", () => {
     const second = await pictures.thumbnail(subject);
     expect(second).toBe(first);
     expect(lookups).toBe(2);
+  });
+
+  it("changes the attachment URL when an accepted portrait changes", async () => {
+    let portrait = wide();
+    const pictures = new HeroPictures({ portraitFor: (): Promise<GeneratedImage> => Promise.resolve(portrait) });
+    const subject = { characterId: "char-1", name: "Luna", libraryCharacterId: "lc-1" };
+    const first = await pictures.thumbnail(subject);
+    portrait = wide("#36c");
+    const second = await pictures.thumbnail(subject);
+    expect(second.name).not.toBe(first.name);
+    expect(second.bytes.equals(first.bytes)).toBe(false);
   });
 
   it("gives a name the same colour every time and different names their own", async () => {
