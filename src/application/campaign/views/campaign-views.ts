@@ -28,6 +28,8 @@ export interface HeroView {
   readonly level: number;
   readonly hp: number;
   readonly maxHp: number;
+  // Temporary hit points in a fight (0 otherwise).
+  readonly tempHp: number;
   readonly armorClass: number;
   // Condition IDs, e.g. condition:prone; localized by the renderer.
   readonly conditions: readonly string[];
@@ -87,6 +89,7 @@ export interface CombatView {
     readonly name: string;
     readonly hp: number;
     readonly maxHp: number;
+    readonly tempHp: number;
     readonly condition: Combatant["condition"];
     readonly zone: string;
     readonly active: boolean;
@@ -257,6 +260,7 @@ export function buildHeroView(state: CampaignState, sheet: CharacterSheet, conte
     level: sheet.level,
     hp,
     maxHp: sheet.maxHp,
+    tempHp: fighter?.tempHp ?? 0,
     armorClass,
     conditions: fighter === undefined ? [] : conditionsOf(fighter, conditionLookup(content)),
     presence: member?.availability ?? "away",
@@ -443,7 +447,7 @@ function combatViewOf(names: CombatNames, fight: NonNullable<CampaignState["enco
     zones: fight.zones.map((zone) => zone.name),
     party: combatants
       .filter((combatant) => combatant.side === "party")
-      .map((combatant) => ({ name: name(combatant), hp: combatant.hp, maxHp: combatant.maxHp, condition: combatant.condition, zone: zoneName(combatant.zoneId), active: combatant === active })),
+      .map((combatant) => ({ name: name(combatant), hp: combatant.hp, maxHp: combatant.maxHp, tempHp: combatant.tempHp ?? 0, condition: combatant.condition, zone: zoneName(combatant.zoneId), active: combatant === active })),
     foes: combatants
       .filter((combatant) => combatant.side === "foes")
       .map((combatant) => ({

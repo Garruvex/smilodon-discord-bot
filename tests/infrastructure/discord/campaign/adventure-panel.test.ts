@@ -95,8 +95,8 @@ describe("the adventure panel", () => {
         playersControl: false,
         zones: ["Cellar", "Stairs"],
         party: [
-          { name: "Mira", hp: 4, maxHp: 9, condition: "active", zone: "Cellar", active: false },
-          { name: "Borin", hp: 12, maxHp: 12, condition: "active", zone: "Cellar", active: true },
+          { name: "Mira", hp: 4, maxHp: 9, tempHp: 0, condition: "active", zone: "Cellar", active: false },
+          { name: "Borin", hp: 12, maxHp: 12, tempHp: 0, condition: "active", zone: "Cellar", active: true },
         ],
         foes: [
           { name: "Goblin A", band: "bloodied", zone: "Cellar", active: false },
@@ -124,7 +124,7 @@ describe("the adventure panel", () => {
         activeUserId: "1",
         playersControl: true,
         zones: ["Cellar"],
-        party: [{ name: "Mira", hp: 9, maxHp: 9, condition: "active", zone: "Cellar", active: true }],
+        party: [{ name: "Mira", hp: 9, maxHp: 9, tempHp: 0, condition: "active", zone: "Cellar", active: true }],
         foes: [{ name: "Wolf", band: "unhurt", zone: "Cellar", active: false }],
       },
     };
@@ -148,6 +148,7 @@ const hero: HeroView = {
   characterId: "c-mira",
   ownerUserId: "42",
   name: "Mira",
+  tempHp: 0,
   className: "Rogue",
   level: 1,
   hp: 4,

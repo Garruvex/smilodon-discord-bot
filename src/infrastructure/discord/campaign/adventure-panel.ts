@@ -118,7 +118,7 @@ function combatLines(view: PanelView, text: Texts): string {
     .flatMap((zone) => {
       const heroes = combat.party
         .filter((hero) => hero.zone === zone)
-        .map((hero) => `${hero.active ? "▶ " : ""}${t.panel.hero({ name: hero.name, hp: Math.max(0, hero.hp), max: hero.maxHp })}`);
+        .map((hero) => `${hero.active ? "▶ " : ""}${t.panel.hero({ name: hero.name, hp: Math.max(0, hero.hp), max: hero.maxHp })}${hero.tempHp > 0 ? ` ✚${hero.tempHp}` : ""}`);
       const foes = combat.foes.filter((foe) => foe.zone === zone).map((foe) => `${foe.active ? "▶ " : ""}${t.panel.foe({ name: foe.name, band: t.band[foe.band] })}`);
       const entries = [...heroes, ...foes];
       return entries.length === 0 ? [] : [t.panel.zone({ zone, entries: entries.join(" · ") })];

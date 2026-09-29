@@ -46,7 +46,7 @@ export function renderHeroCard(view: HeroView, text: Texts, campaignId: string, 
   const lines = [
     t.hero.line({ name: view.name, class: classLabel(text, view.className), level: view.level }),
     t.hero.player({ user: `<@${view.ownerUserId}>` }),
-    t.hero.stats({ bar: hpBar(view.hp, view.maxHp), hp: Math.max(0, view.hp), max: view.maxHp, ac: view.armorClass }),
+    t.hero.stats({ bar: hpBar(view.hp, view.maxHp), hp: Math.max(0, view.hp), max: view.maxHp, ac: view.armorClass }) + (view.tempHp > 0 ? ` ✚${view.tempHp}` : ""),
     t.hero.status({ conditions, presence }),
     t.hero.worn({ items: view.worn.length === 0 ? t.hero.nothing : list(view.worn) }),
     t.hero.weapons({ items: view.weapons.length === 0 ? t.hero.nothing : list(view.weapons) }),
