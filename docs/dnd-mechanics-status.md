@@ -58,6 +58,7 @@ Race and subrace details are also in `dnd-race-mechanics-status.md`.
 - Done: warlock invocations Agonizing Blast, Armor of Shadows and Fiendish Vigor (all three granted at warlock level 2; there is no choosing of invocations).
 - Done: Reliable Talent (rogue 11).
 - Done: Grapple and Shove for the martial classes (the target's Strength save against 8 + proficiency + Strength; a grapple lasts up to ten rounds because escaping is not modeled).
+- Done: summons (a `summon` effect: creatures join the party side after the caster, play their own turns like a foe, never count as heroes for victory, XP or loot). Conjure Animals summons two brown bears; they last until the fight ends, not for the spell's duration.
 - Dragon Scale Mail, Armor of Resistance and Adamantine Armor are named but give nothing yet.
 
 ### Other

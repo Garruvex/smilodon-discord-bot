@@ -1,4 +1,5 @@
 import type { EffectInstance } from "../effects/effect-instance.js";
+import type { Combatant } from "./combat-state.js";
 import type { Instant, RollId } from "../core/ids.js";
 import type { D20TestRoll } from "../dice/d20-test.js";
 import type { RollResult } from "../dice/roll-spec.js";
@@ -185,6 +186,8 @@ export type CombatEvent =
       readonly deathSaves: { readonly successes: number; readonly failures: number };
     }
   | { readonly kind: "combatantFled"; readonly combatantId: CombatantId }
+  // A conjured creature joins the fight on its summoner's side, right after the summoner in the turn order.
+  | { readonly kind: "combatantSummoned"; readonly combatant: Combatant; readonly summonerId: CombatantId }
   | { readonly kind: "turnEnded"; readonly combatantId: CombatantId }
   | { readonly kind: "turnDeferred"; readonly turnIndex: number; readonly round: number }
   // A hero's gear changed mid-fight (a hand-over): armor class, attacks, and traits follow it.
@@ -246,6 +249,7 @@ export const combatEventKinds: readonly CombatEventKind[] = [
   "deathSaveRequested",
   "deathSaveRolled",
   "combatantFled",
+  "combatantSummoned",
   "turnEnded",
   "turnDeferred",
   "gearChanged",

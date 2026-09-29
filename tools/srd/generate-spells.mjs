@@ -156,6 +156,7 @@ const curated = {
   grease: { relation: "enemy", count: 6, save: "dex", note: "", effects: [{ condition: "prone", duration: { kind: "rounds", count: 1 }, onLand: true }] },
   weird: { relation: "enemy", count: 6, save: "wis", note: "Frightened stands in for the psychic damage each turn.", effects: [{ condition: "frightened", duration: { kind: "untilRemoved" }, onLand: true }] },
   eyebite: { relation: "enemy", count: 1, save: "wis", note: "Only the frightening option is modeled.", effects: [{ condition: "frightened", duration: { kind: "untilRemoved" }, onLand: true }] },
+  "conjure-animals": { relation: "self", count: 1, summon: { monster: "brown-bear", count: 2 }, note: "Two brown bears stand in for the beasts the caster would choose; they fight until the fight ends, not for the spell's minute.", effects: [] },
   darkness: { relation: "enemy", count: 6, save: null, note: "Blinds the creatures in the area for the duration; there is no lighting in the engine.", effects: [{ condition: "blinded", duration: { kind: "untilRemoved" }, onLand: true }] },
 };
 
@@ -224,6 +225,7 @@ function planFor(spell, notes) {
   if (special !== undefined) {
     summary.curated += 1;
     if (special.note !== "") notes.push(special.note);
+    if (special.summon !== undefined) return { relation: special.relation, count: special.count, countPerHigherSlot: 0, body: `{ check: null, onLand: [{ kind: "summon", target: "self", monsterId: "monster:${special.summon.monster}", count: ${special.summon.count} }], onAvoid: [] }`, params: uses, wrap };
     const land = [];
     const self = [];
     for (const effect of special.effects) {

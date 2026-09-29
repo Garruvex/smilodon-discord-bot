@@ -49,7 +49,8 @@ export function applyDamage(decision: Decision, target: Combatant, rolled: numbe
   const base = { kind: "combatantHpChanged", combatantId: target.id, change: -remaining, ...tempLeft } as const;
   const protectedHero = isProtected(decision, target);
   const through = remaining;
-  if (target.side === "foes") {
+  // A conjured creature (a party-side monster) drops at 0 like a foe.
+  if (target.side === "foes" || target.source.kind !== "hero") {
     const hp = Math.max(0, target.hp - through);
     decision.emit({ ...base, hp, condition: hp === 0 ? "dead" : "active", deathSaves: target.deathSaves, cause: "damage" });
   } else if (target.hp === 0) {

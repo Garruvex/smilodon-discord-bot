@@ -107,7 +107,8 @@ export function continueTurn(decision: Decision, combatantId: string): void {
     return;
   }
 
-  if (combatant.side === "foes") {
+  // A conjured creature (a monster on the party's side) plays its plan the way a foe does, against the other side.
+  if (combatant.side === "foes" || combatant.source.kind !== "hero") {
     const fraction = combatant.fleeBelowHpFraction;
     if (fraction !== null && combatant.hp < combatant.maxHp * fraction) {
       decision.emit({ kind: "combatantFled", combatantId: combatant.id });

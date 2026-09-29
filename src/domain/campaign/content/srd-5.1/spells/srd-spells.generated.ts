@@ -619,16 +619,16 @@ export const confusion = defineSpell({
   plan: () => ({ check: { kind: "savingThrow", ability: "wis" }, onLand: [{ kind: "applyCondition", target: "target", condition: "condition:incapacitated", duration: { kind: "untilRemoved" } }], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Two brown bears stand in for the beasts the caster would choose; they fight until the fight ends, not for the spell's minute.
 export const conjureAnimals = defineSpell({
   id: "spell:conjure-animals",
   source,
   level: 3,
   castingTime: "action",
   range: { kind: "feet", feet: 60 },
-  targeting: { relation: "creature", count: 1 },
+  targeting: { relation: "self", count: 1 },
   concentration: true,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "summon", target: "self", monsterId: "monster:brown-bear", count: 2 }], onAvoid: [] }),
 });
 
 // Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.

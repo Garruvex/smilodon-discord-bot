@@ -8,6 +8,7 @@ import type { EffectInstance } from "../../effects/effect-instance.js";
 import type { D20TestRoll } from "../../dice/d20-test.js";
 import type { SealedContent } from "../../rules/content-registry.js";
 import type { ContentId } from "../../rules/content-id.js";
+import { monsterCombatant } from "../../combat/combatant-profile.js";
 import { distanceBetween } from "../../combat/positioning.js";
 import { resolveD20Test, type D20TestSpec } from "../../dice/d20-test.js";
 import { combine, dice } from "../../dice/dice-expression.js";
@@ -492,6 +493,18 @@ export function applyEffect(
         decision.emit({ kind: "effectApplied", combatantId: recipient.id, effect: conditionInstance(resolution, recipient, effect.condition, key, null, round, decision.ctx.rules.content) });
       }
       return;
+    case "summon": {
+      const monster = decision.ctx.rules.content.find(effect.monsterId);
+      if (monster?.kind !== "monster") return;
+      const slug = effect.monsterId.slice("monster:".length);
+      for (let index = effect.count - 1; index >= 0; index -= 1) {
+        const letter = effect.count > 1 ? String.fromCharCode(65 + index) : null;
+        const id = `${recipient.id}-${slug}${letter === null ? "" : `-${letter.toLowerCase()}`}-${resolution.id}`;
+        const summoned = monsterCombatant(monster, decision.ctx.rules.content, { id, letter, zoneId: recipient.zoneId, npcId: null, fleeBelowHpFraction: null });
+        decision.emit({ kind: "combatantSummoned", summonerId: recipient.id, combatant: { ...summoned, side: "party", initiative: recipient.initiative } });
+      }
+      return;
+    }
     case "destroy": {
       const definition = recipient.source.kind === "monster" ? decision.ctx.rules.content.find(recipient.source.monsterId) : undefined;
       if (definition?.kind === "monster" && definition.xp <= effect.maxXp && recipient.hp > 0) {

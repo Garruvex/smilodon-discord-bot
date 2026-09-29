@@ -90,6 +90,8 @@ export type Effect =
   // be what usually grants one, since the engine has neither yet).
   // Destroy Undead: a monster worth no more experience than this is destroyed outright (Turn Undead, from cleric level 5).
   | { readonly kind: "destroy"; readonly target: EffectTarget; readonly maxXp: number }
+  // Conjures creatures that fight on the caster's side until the fight ends (Conjure Animals). They act on their own turns.
+  | { readonly kind: "summon"; readonly target: EffectTarget; readonly monsterId: ContentId<"monster">; readonly count: number }
   | { readonly kind: "exhaustion"; readonly target: EffectTarget; readonly amount: number };
 
 export type EffectKind = Effect["kind"];

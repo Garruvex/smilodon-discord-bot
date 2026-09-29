@@ -233,7 +233,7 @@ export function endIfDecided(decision: Decision): boolean {
   if (encounter === null || encounter.status !== "active") return false;
   const combatants = Object.values(encounter.combatants);
   const foesLeft = combatants.some((combatant) => combatant.side === "foes" && isPresent(combatant));
-  const heroesStanding = combatants.some((combatant) => combatant.side === "party" && isActive(combatant));
+  const heroesStanding = combatants.some((combatant) => combatant.side === "party" && combatant.source.kind === "hero" && isActive(combatant));
   if (foesLeft && heroesStanding) return false;
   if (encounter.turnEndsAt !== null) decision.request({ kind: "cancelTimer", timerId: turnTimerId(encounter.id, encounter.turnNumber) });
   decision.emit({ kind: "encounterEnded", outcome: foesLeft ? "defeat" : "victory" });

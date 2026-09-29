@@ -308,6 +308,11 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
       }));
       return event.condition === "dead" ? withoutEngagements(updated, event.combatantId) : updated;
     }
+    case "combatantSummoned": {
+      const at = encounter.order.indexOf(event.summonerId) + 1;
+      const order = [...encounter.order.slice(0, at), event.combatant.id, ...encounter.order.slice(at)];
+      return { ...encounter, combatants: { ...encounter.combatants, [event.combatant.id]: event.combatant }, order, turnIndex: at <= encounter.turnIndex ? encounter.turnIndex + 1 : encounter.turnIndex };
+    }
     case "combatantFled":
       return update(withoutEngagements(encounter, event.combatantId), event.combatantId, (combatant) => ({ ...combatant, condition: "fled" }));
     case "turnEnded":
