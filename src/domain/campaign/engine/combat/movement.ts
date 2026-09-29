@@ -6,7 +6,8 @@ import { deadlineAfter, type Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { declareWeaponAttack } from "./combat-actions.js";
 import { takeLegendaryAction } from "./legendary.js";
-import { advanceTurn, continuePlan, endTurn } from "./turn-flow.js";
+import { chooseMonsterPlan } from "../../combat/tactics.js";
+import { advanceTurn, continuePlan, endTurn, playPlan } from "./turn-flow.js";
 import { activeEncounter, isPlayerControlled, mayActFor } from "./combat-flow.js";
 
 export const opportunityAttackTimerId = (encounterId: string, combatantId: string): string => `opportunity:${encounterId}:${combatantId}`;
@@ -158,6 +159,11 @@ export function afterResolution(decision: Decision, resolution: ResolutionState)
   const encounter = activeEncounter(decision);
   const actor = encounter?.combatants[resolution.actorId];
   if (encounter == null || actor === undefined || isPlayerControlled(decision, actor)) return;
+  // An aura (Frightful Presence) was part of the action: the rest of the turn is still to play.
+  if (resolution.source.kind === "area" && resolution.source.area.free === true && isActive(actor) && actor.budget.action) {
+    playPlan(decision, actor, chooseMonsterPlan(encounter, actor, decision.ctx.rules.content));
+    return;
+  }
   if (resolution.source.kind === "weapon" && isActive(actor) && currentCombatant(encounter)?.id === actor.id && nextMultiattack(decision, encounter, actor)) return;
   endTurn(decision);
 }

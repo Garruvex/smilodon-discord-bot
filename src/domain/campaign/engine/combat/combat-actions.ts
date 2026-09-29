@@ -56,7 +56,8 @@ export function declareAreaAttack(decision: Decision, attacker: Combatant, area:
     source: { kind: "area", area },
     targetIds,
     purpose: "action",
-    cost: { ...noCost, action: true },
+    // An aura costs nothing of the action itself.
+    cost: { ...noCost, action: area.free !== true },
   });
 }
 

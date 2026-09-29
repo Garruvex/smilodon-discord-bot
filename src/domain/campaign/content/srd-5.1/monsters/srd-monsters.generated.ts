@@ -39,7 +39,7 @@ export const adultBlackDragon = defineMonster({
     { weapon: "item:tail", toHit: 11, damage: plus(dice(2, 8), 6) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:acid-breath", ability: "dex", dc: 18, damage: dice(12, 8), damageType: "acid", halfOnSave: true, range: 60, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["acid"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:frightful-presence", ability: "wis", dc: 16, condition: "condition:frightened", halfOnSave: false, range: 120, cooldown: 99, free: true }, { kind: "areaAttack", weapon: "item:acid-breath", ability: "dex", dc: 18, damage: dice(12, 8), damageType: "acid", halfOnSave: true, range: 60, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["acid"] }],
 });
 
 // Not modeled: Bite's extra damage types are folded into one; Frightful Presence; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
@@ -57,10 +57,10 @@ export const adultBlueDragon = defineMonster({
     { weapon: "item:tail", toHit: 12, damage: plus(dice(2, 8), 7) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:lightning-breath", ability: "dex", dc: 19, damage: dice(12, 10), damageType: "lightning", halfOnSave: true, range: 90, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["lightning"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:frightful-presence", ability: "wis", dc: 17, condition: "condition:frightened", halfOnSave: false, range: 120, cooldown: 99, free: true }, { kind: "areaAttack", weapon: "item:lightning-breath", ability: "dex", dc: 19, damage: dice(12, 10), damageType: "lightning", halfOnSave: true, range: 90, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["lightning"] }],
 });
 
-// Not modeled: Frightful Presence; Breath Weapons; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
+// Not modeled: Breath Weapons; Frightful Presence; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
 export const adultBrassDragon = defineMonster({
   id: "monster:adult-brass-dragon",
   source,
@@ -75,10 +75,10 @@ export const adultBrassDragon = defineMonster({
     { weapon: "item:tail", toHit: 11, damage: plus(dice(2, 8), 6) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["fire"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:frightful-presence", ability: "wis", dc: 16, condition: "condition:frightened", halfOnSave: false, range: 120, cooldown: 99, free: true }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["fire"] }],
 });
 
-// Not modeled: Frightful Presence; Breath Weapons; Amphibious; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
+// Not modeled: Breath Weapons; Frightful Presence; Amphibious; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
 export const adultBronzeDragon = defineMonster({
   id: "monster:adult-bronze-dragon",
   source,
@@ -93,10 +93,10 @@ export const adultBronzeDragon = defineMonster({
     { weapon: "item:tail", toHit: 12, damage: plus(dice(2, 8), 7) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["lightning"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:frightful-presence", ability: "wis", dc: 17, condition: "condition:frightened", halfOnSave: false, range: 120, cooldown: 99, free: true }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["lightning"] }],
 });
 
-// Not modeled: Frightful Presence; Breath Weapons; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
+// Not modeled: Breath Weapons; Frightful Presence; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
 export const adultCopperDragon = defineMonster({
   id: "monster:adult-copper-dragon",
   source,
@@ -111,10 +111,10 @@ export const adultCopperDragon = defineMonster({
     { weapon: "item:tail", toHit: 11, damage: plus(dice(2, 8), 6) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["acid"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:frightful-presence", ability: "wis", dc: 16, condition: "condition:frightened", halfOnSave: false, range: 120, cooldown: 99, free: true }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["acid"] }],
 });
 
-// Not modeled: Frightful Presence; Breath Weapons; Amphibious; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
+// Not modeled: Breath Weapons; Frightful Presence; Amphibious; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
 export const adultGoldDragon = defineMonster({
   id: "monster:adult-gold-dragon",
   source,
@@ -129,7 +129,7 @@ export const adultGoldDragon = defineMonster({
     { weapon: "item:tail", toHit: 14, damage: plus(dice(2, 8), 8) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["fire"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:frightful-presence", ability: "wis", dc: 21, condition: "condition:frightened", halfOnSave: false, range: 120, cooldown: 99, free: true }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["fire"] }],
 });
 
 // Not modeled: Bite's extra damage types are folded into one; Frightful Presence; Amphibious; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
@@ -147,7 +147,7 @@ export const adultGreenDragon = defineMonster({
     { weapon: "item:tail", toHit: 11, damage: plus(dice(2, 8), 6) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:poison-breath", ability: "con", dc: 18, damage: dice(16, 6), damageType: "poison", halfOnSave: true, range: 60, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:frightful-presence", ability: "wis", dc: 16, condition: "condition:frightened", halfOnSave: false, range: 120, cooldown: 99, free: true }, { kind: "areaAttack", weapon: "item:poison-breath", ability: "con", dc: 18, damage: dice(16, 6), damageType: "poison", halfOnSave: true, range: 60, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
 });
 
 // Not modeled: Bite's extra damage types are folded into one; Frightful Presence; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
@@ -165,10 +165,10 @@ export const adultRedDragon = defineMonster({
     { weapon: "item:tail", toHit: 14, damage: plus(dice(2, 8), 8) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:fire-breath", ability: "dex", dc: 21, damage: dice(18, 6), damageType: "fire", halfOnSave: false, range: 60, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["fire"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:frightful-presence", ability: "wis", dc: 19, condition: "condition:frightened", halfOnSave: false, range: 120, cooldown: 99, free: true }, { kind: "areaAttack", weapon: "item:fire-breath", ability: "dex", dc: 21, damage: dice(18, 6), damageType: "fire", halfOnSave: false, range: 60, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["fire"] }],
 });
 
-// Not modeled: Frightful Presence; Breath Weapons; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
+// Not modeled: Breath Weapons; Frightful Presence; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
 export const adultSilverDragon = defineMonster({
   id: "monster:adult-silver-dragon",
   source,
@@ -183,7 +183,7 @@ export const adultSilverDragon = defineMonster({
     { weapon: "item:tail", toHit: 13, damage: plus(dice(2, 8), 8) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["cold"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:frightful-presence", ability: "wis", dc: 18, condition: "condition:frightened", halfOnSave: false, range: 120, cooldown: 99, free: true }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["cold"] }],
 });
 
 // Not modeled: Bite's extra damage types are folded into one; Frightful Presence; Ice Walk; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
@@ -201,7 +201,7 @@ export const adultWhiteDragon = defineMonster({
     { weapon: "item:tail", toHit: 11, damage: plus(dice(2, 8), 6) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:cold-breath", ability: "con", dc: 19, damage: dice(12, 8), damageType: "cold", halfOnSave: true, range: 60, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["cold"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:frightful-presence", ability: "wis", dc: 14, condition: "condition:frightened", halfOnSave: false, range: 120, cooldown: 99, free: true }, { kind: "areaAttack", weapon: "item:cold-breath", ability: "con", dc: 19, damage: dice(12, 8), damageType: "cold", halfOnSave: true, range: 60, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["cold"] }],
 });
 
 // Not modeled: Whirlwind; Air Form.
@@ -235,7 +235,7 @@ export const ancientBlackDragon = defineMonster({
     { weapon: "item:tail", toHit: 15, damage: plus(dice(2, 8), 8) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:acid-breath", ability: "dex", dc: 22, damage: dice(15, 8), damageType: "acid", halfOnSave: true, range: 90, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["acid"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:frightful-presence", ability: "wis", dc: 19, condition: "condition:frightened", halfOnSave: false, range: 120, cooldown: 99, free: true }, { kind: "areaAttack", weapon: "item:acid-breath", ability: "dex", dc: 22, damage: dice(15, 8), damageType: "acid", halfOnSave: true, range: 90, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["acid"] }],
 });
 
 // Not modeled: Bite's extra damage types are folded into one; Frightful Presence; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
@@ -253,10 +253,10 @@ export const ancientBlueDragon = defineMonster({
     { weapon: "item:tail", toHit: 16, damage: plus(dice(2, 8), 9) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:lightning-breath", ability: "dex", dc: 23, damage: dice(16, 10), damageType: "lightning", halfOnSave: true, range: 120, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["lightning"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:frightful-presence", ability: "wis", dc: 20, condition: "condition:frightened", halfOnSave: false, range: 120, cooldown: 99, free: true }, { kind: "areaAttack", weapon: "item:lightning-breath", ability: "dex", dc: 23, damage: dice(16, 10), damageType: "lightning", halfOnSave: true, range: 120, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["lightning"] }],
 });
 
-// Not modeled: Frightful Presence; Breath Weapons; Change Shape; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
+// Not modeled: Breath Weapons; Change Shape; Frightful Presence; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
 export const ancientBrassDragon = defineMonster({
   id: "monster:ancient-brass-dragon",
   source,
@@ -271,10 +271,10 @@ export const ancientBrassDragon = defineMonster({
     { weapon: "item:tail", toHit: 14, damage: plus(dice(2, 8), 8) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["fire"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:frightful-presence", ability: "wis", dc: 18, condition: "condition:frightened", halfOnSave: false, range: 120, cooldown: 99, free: true }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["fire"] }],
 });
 
-// Not modeled: Frightful Presence; Breath Weapons; Change Shape; Amphibious; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
+// Not modeled: Breath Weapons; Change Shape; Frightful Presence; Amphibious; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
 export const ancientBronzeDragon = defineMonster({
   id: "monster:ancient-bronze-dragon",
   source,
@@ -289,10 +289,10 @@ export const ancientBronzeDragon = defineMonster({
     { weapon: "item:tail", toHit: 16, damage: plus(dice(2, 8), 9) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["lightning"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:frightful-presence", ability: "wis", dc: 20, condition: "condition:frightened", halfOnSave: false, range: 120, cooldown: 99, free: true }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["lightning"] }],
 });
 
-// Not modeled: Frightful Presence; Breath Weapons; Change Shape; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
+// Not modeled: Breath Weapons; Change Shape; Frightful Presence; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
 export const ancientCopperDragon = defineMonster({
   id: "monster:ancient-copper-dragon",
   source,
@@ -307,10 +307,10 @@ export const ancientCopperDragon = defineMonster({
     { weapon: "item:tail", toHit: 15, damage: plus(dice(2, 8), 8) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["acid"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:frightful-presence", ability: "wis", dc: 19, condition: "condition:frightened", halfOnSave: false, range: 120, cooldown: 99, free: true }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["acid"] }],
 });
 
-// Not modeled: Frightful Presence; Breath Weapons; Change Shape; Amphibious; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
+// Not modeled: Breath Weapons; Change Shape; Frightful Presence; Amphibious; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
 export const ancientGoldDragon = defineMonster({
   id: "monster:ancient-gold-dragon",
   source,
@@ -325,7 +325,7 @@ export const ancientGoldDragon = defineMonster({
     { weapon: "item:tail", toHit: 17, damage: plus(dice(2, 8), 10) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["fire"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:frightful-presence", ability: "wis", dc: 24, condition: "condition:frightened", halfOnSave: false, range: 120, cooldown: 99, free: true }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["fire"] }],
 });
 
 // Not modeled: Bite's extra damage types are folded into one; Frightful Presence; Amphibious; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
@@ -343,7 +343,7 @@ export const ancientGreenDragon = defineMonster({
     { weapon: "item:tail", toHit: 15, damage: plus(dice(2, 8), 8) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:poison-breath", ability: "con", dc: 22, damage: dice(22, 6), damageType: "poison", halfOnSave: true, range: 90, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:frightful-presence", ability: "wis", dc: 19, condition: "condition:frightened", halfOnSave: false, range: 120, cooldown: 99, free: true }, { kind: "areaAttack", weapon: "item:poison-breath", ability: "con", dc: 22, damage: dice(22, 6), damageType: "poison", halfOnSave: true, range: 90, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
 });
 
 // Not modeled: Bite's extra damage types are folded into one; Frightful Presence; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
@@ -361,10 +361,10 @@ export const ancientRedDragon = defineMonster({
     { weapon: "item:tail", toHit: 17, damage: plus(dice(2, 8), 10) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:fire-breath", ability: "dex", dc: 24, damage: dice(26, 6), damageType: "fire", halfOnSave: true, range: 90, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["fire"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:frightful-presence", ability: "wis", dc: 21, condition: "condition:frightened", halfOnSave: false, range: 120, cooldown: 99, free: true }, { kind: "areaAttack", weapon: "item:fire-breath", ability: "dex", dc: 24, damage: dice(26, 6), damageType: "fire", halfOnSave: true, range: 90, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["fire"] }],
 });
 
-// Not modeled: Frightful Presence; Breath Weapons; Change Shape; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
+// Not modeled: Breath Weapons; Change Shape; Frightful Presence; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
 export const ancientSilverDragon = defineMonster({
   id: "monster:ancient-silver-dragon",
   source,
@@ -379,7 +379,7 @@ export const ancientSilverDragon = defineMonster({
     { weapon: "item:tail", toHit: 17, damage: plus(dice(2, 8), 10) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["cold"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:frightful-presence", ability: "wis", dc: 21, condition: "condition:frightened", halfOnSave: false, range: 120, cooldown: 99, free: true }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["cold"] }],
 });
 
 // Not modeled: Bite's extra damage types are folded into one; Frightful Presence; Ice Walk; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
@@ -397,7 +397,7 @@ export const ancientWhiteDragon = defineMonster({
     { weapon: "item:tail", toHit: 14, damage: plus(dice(2, 8), 8) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:cold-breath", ability: "con", dc: 22, damage: dice(16, 8), damageType: "cold", halfOnSave: false, range: 90, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["cold"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:frightful-presence", ability: "wis", dc: 16, condition: "condition:frightened", halfOnSave: false, range: 120, cooldown: 99, free: true }, { kind: "areaAttack", weapon: "item:cold-breath", ability: "con", dc: 22, damage: dice(16, 8), damageType: "cold", halfOnSave: false, range: 90, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["cold"] }],
 });
 
 // Not modeled: Roar; Inscrutable; Magic Weapons; legendary: Teleport (Costs 2 Actions); legendary: Cast a Spell (Costs 3 Actions); Immunity to mundane weapons is played as resistance.
@@ -977,7 +977,7 @@ export const clayGolem = defineMonster({
   traits: [{ kind: "multiattack", weapons: ["item:slam", "item:slam"] }, { kind: "damageImmunity", damageTypes: ["acid", "poison", "psychic"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:paralyzed", "condition:poisoned"] }],
 });
 
-// Not modeled: Moan; Phantasms; Damage Transfer; False Appearance; Light Sensitivity.
+// Not modeled: Phantasms; Damage Transfer; False Appearance; Light Sensitivity.
 export const cloaker = defineMonster({
   id: "monster:cloaker",
   source,
@@ -991,7 +991,7 @@ export const cloaker = defineMonster({
     { weapon: "item:tail-slashing", toHit: 6, damage: plus(dice(1, 8), 3) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:tail-slashing"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:tail-slashing"] }, { kind: "areaAttack", weapon: "item:moan", ability: "wis", dc: 13, condition: "condition:frightened", halfOnSave: false, range: 60, cooldown: 99 }],
 });
 
 // Not modeled: Keen Smell.
@@ -1381,7 +1381,7 @@ export const duergar = defineMonster({
   traits: [{ kind: "damageResistance", damageTypes: ["poison"] }],
 });
 
-// Not modeled: Blinding Breath; Death Burst.
+// Not modeled: Death Burst.
 export const dustMephit = defineMonster({
   id: "monster:dust-mephit",
   source,
@@ -1394,7 +1394,7 @@ export const dustMephit = defineMonster({
     { weapon: "item:claws", toHit: 4, damage: plus(dice(1, 4), 2) },
   ],
   tactic: "brute",
-  traits: [{ kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageVulnerability", damageTypes: ["fire"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  traits: [{ kind: "areaAttack", weapon: "item:blinding-breath", ability: "dex", dc: 10, condition: "condition:blinded", halfOnSave: false, range: 15, cooldown: 6 }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageVulnerability", damageTypes: ["fire"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
   spellcasting: { casterLevel: 1, saveDc: 10, attackBonus: 2, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:sleep", perDay: 1 }] },
 });
 
@@ -2089,7 +2089,7 @@ export const gibberingMouther = defineMonster({
     { weapon: "item:bites", toHit: 2, damage: dice(5, 6), onHit: [{ kind: "conditionUnlessSave", target: "target", ability: "str", dc: 10, condition: "condition:prone" }] },
   ],
   tactic: "brute",
-  traits: [{ kind: "conditionImmunity", conditions: ["condition:prone"] }],
+  traits: [{ kind: "areaAttack", weapon: "item:blinding-spittle", ability: "dex", dc: 13, condition: "condition:blinded", halfOnSave: false, range: 15, cooldown: 3 }, { kind: "conditionImmunity", conditions: ["condition:prone"] }],
 });
 
 // Not modeled: Magic Resistance.
@@ -2159,7 +2159,7 @@ export const goldDragonWyrmling = defineMonster({
   traits: [{ kind: "damageImmunity", damageTypes: ["fire"] }],
 });
 
-// Not modeled: Petrifying Breath; Trampling Charge.
+// Not modeled: Trampling Charge.
 export const gorgon = defineMonster({
   id: "monster:gorgon",
   source,
@@ -2173,7 +2173,7 @@ export const gorgon = defineMonster({
     { weapon: "item:hooves", toHit: 8, damage: plus(dice(2, 10), 5) },
   ],
   tactic: "brute",
-  traits: [],
+  traits: [{ kind: "areaAttack", weapon: "item:petrifying-breath", ability: "con", dc: 13, condition: "condition:restrained", halfOnSave: false, range: 30, cooldown: 3 }],
 });
 
 // Not modeled: Pseudopod's extra damage types are folded into one; Amorphous; Corrode Metal; False Appearance.
@@ -3001,7 +3001,7 @@ export const mummyLord = defineMonster({
   spellcasting: { casterLevel: 10, saveDc: 17, attackBonus: 9, modifier: 9, slots: { 1: 4, 2: 3, 3: 3, 4: 3, 5: 2, 6: 1 }, spells: ["spell:sacred-flame", "spell:thaumaturgy", "spell:command", "spell:guiding-bolt", "spell:shield-of-faith", "spell:hold-person", "spell:silence", "spell:spiritual-weapon", "spell:animate-dead", "spell:dispel-magic", "spell:divination", "spell:guardian-of-faith", "spell:contagion", "spell:insect-plague", "spell:harm"], innate: [] },
 });
 
-// Not modeled: Horror Nimbus; Teleport; Magic Resistance.
+// Not modeled: Teleport; Horror Nimbus; Magic Resistance.
 export const nalfeshnee = defineMonster({
   id: "monster:nalfeshnee",
   source,
@@ -3015,7 +3015,7 @@ export const nalfeshnee = defineMonster({
     { weapon: "item:claw", toHit: 10, damage: plus(dice(3, 6), 5) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageResistance", damageTypes: ["cold", "fire", "lightning", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:horror-nimbus", ability: "wis", dc: 15, condition: "condition:frightened", halfOnSave: false, range: 15, cooldown: 3 }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageResistance", damageTypes: ["cold", "fire", "lightning", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
 });
 
 // Not modeled: Change Shape; Etherealness; Nightmare Haunting; Magic Resistance; Night Hag Items.
@@ -4164,7 +4164,7 @@ export const swarmOfWasps = defineMonster({
   traits: [{ kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:grappled", "condition:paralyzed", "condition:prone", "condition:restrained", "condition:stunned"] }],
 });
 
-// Not modeled: Frightful Presence; Swallow; Magic Resistance; Reflective Carapace; Siege Monster; legendary: Move; legendary: Chomp (Costs 2 Actions); Immunity to mundane weapons is played as resistance.
+// Not modeled: Swallow; Frightful Presence; Magic Resistance; Reflective Carapace; Siege Monster; legendary: Move; legendary: Chomp (Costs 2 Actions); Immunity to mundane weapons is played as resistance.
 export const tarrasque = defineMonster({
   id: "monster:tarrasque",
   source,
@@ -4180,7 +4180,7 @@ export const tarrasque = defineMonster({
     { weapon: "item:tail", toHit: 19, damage: plus(dice(4, 6), 10), onHit: [{ kind: "conditionUnlessSave", target: "target", ability: "str", dc: 20, condition: "condition:prone" }] },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw", "item:horns-piercing", "item:tail"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:bite", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:paralyzed", "condition:poisoned"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw", "item:horns-piercing", "item:tail"] }, { kind: "areaAttack", weapon: "item:frightful-presence", ability: "wis", dc: 17, condition: "condition:frightened", halfOnSave: false, range: 120, cooldown: 99, free: true }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:bite", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:paralyzed", "condition:poisoned"] }],
 });
 
 export const thug = defineMonster({
@@ -4419,7 +4419,7 @@ export const violetFungus = defineMonster({
   traits: [{ kind: "conditionImmunity", conditions: ["condition:blinded", "condition:blinded", "condition:frightened"] }],
 });
 
-// Not modeled: Spores; Stunning Screech; Magic Resistance.
+// Not modeled: Spores; Magic Resistance.
 export const vrock = defineMonster({
   id: "monster:vrock",
   source,
@@ -4433,7 +4433,7 @@ export const vrock = defineMonster({
     { weapon: "item:talons", toHit: 6, damage: plus(dice(2, 10), 3) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:beak-piercing", "item:talons"] }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageResistance", damageTypes: ["cold", "fire", "lightning", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:beak-piercing", "item:talons"] }, { kind: "areaAttack", weapon: "item:stunning-screech", ability: "con", dc: 14, condition: "condition:stunned", halfOnSave: false, range: 20, cooldown: 99 }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageResistance", damageTypes: ["cold", "fire", "lightning", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
 });
 
 // Not modeled: Keen Sight and Smell.

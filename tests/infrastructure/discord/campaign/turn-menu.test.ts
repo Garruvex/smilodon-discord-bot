@@ -4,7 +4,7 @@ import { enSrd51Glossary } from "../../../../src/application/i18n/campaign/gloss
 import { zhTwSrd51Glossary } from "../../../../src/application/i18n/campaign/glossary/zh-TW/srd-5.1.js";
 import type { TurnView } from "../../../../src/application/campaign/views/turn-view.js";
 import { texts } from "../../../../src/application/i18n/texts.js";
-import { encodeAim, encodeChoice, parseAim, parseChoice, renderEndConfirm, renderTargetMenu, renderTurnMenu, type TurnChoice } from "../../../../src/infrastructure/discord/campaign/turn-menu.js";
+import { encodeAim, encodeChoice, parseAim, parseChoice, renderEndConfirm, renderSpellMenu, renderTargetMenu, renderTurnMenu, type TurnChoice } from "../../../../src/infrastructure/discord/campaign/turn-menu.js";
 
 const goblin = { id: "goblin-a", name: "Goblin A", zone: "Yard", side: "foes", hp: 5, maxHp: 7, band: "bloodied", self: false } as const;
 const ally = { id: "c-mira", name: "Mira", zone: "Yard", side: "party", hp: 6, maxHp: 9, band: "hurt", self: false } as const;
@@ -29,6 +29,8 @@ const view: TurnView = {
   canWithdraw: true,
   canDodge: true,
   canDashOrDisengage: true,
+  wildShapes: [],
+  canRevertShape: false,
   hasUnspent: true,
 };
 
@@ -40,6 +42,10 @@ describe("the turn menu", () => {
     const choices: TurnChoice[] = [
       { kind: "attack", weapon: "item:mace" },
       { kind: "cast", spell: "spell:bless", slot: 1 },
+      { kind: "spells", page: 2 },
+      { kind: "shape", monster: "monster:wolf" },
+      { kind: "shapes", page: 1 },
+      { kind: "unshape" },
       { kind: "feature", feature: "feature:second-wind" },
       { kind: "potion", item: "item:potion-of-healing" },
       { kind: "move", zone: "gate" },
@@ -58,6 +64,27 @@ describe("the turn menu", () => {
     expect(parseAim("dodge")).toBeNull();
     expect(parseAim("dodge>")).toBeNull();
     expect(encodeAim({ kind: "attack", weapon: "item:mace" }, "goblin-a").length).toBeLessThan(100);
+  });
+
+  it("folds a long spellbook and a long list of beasts into paged menus", () => {
+    const many: TurnView = {
+      ...view,
+      spells: Array.from({ length: 30 }, (_, index) => ({ spellId: `spell:s${index}`, slotLevel: 1, slotsLeft: 1, bonusAction: false, maxTargets: 1, targets: [goblin] })),
+      wildShapes: Array.from({ length: 12 }, (_, index) => `monster:b${index}`),
+      canRevertShape: true,
+    };
+    const menu = renderTurnMenu(many, texts.en, enSrd51Glossary, "camp");
+    const labels = ((json(menu).find((component) => Array.isArray(component.options))?.options ?? []) as { label: string }[]).map((option) => option.label);
+    expect(labels).toContain("Cast a spell… (30 ready)");
+    expect(labels).toContain("Wild Shape… (12 beasts)");
+    expect(labels).toContain("Wild Shape: return to your own form (bonus action)");
+    expect(labels.some((label) => label.startsWith("Cast s"))).toBe(false);
+    const book = json(renderSpellMenu(many, 0, texts.en, enSrd51Glossary, "camp")).find((component) => Array.isArray(component.options));
+    const options = (book?.options ?? []) as { label: string; value: string }[];
+    expect(options).toHaveLength(24);
+    expect(options.at(-1)?.value).toBe("spells|1");
+    const last = json(renderSpellMenu(many, 1, texts.en, enSrd51Glossary, "camp")).find((component) => Array.isArray(component.options));
+    expect((last?.options as unknown[]).length).toBe(7);
   });
 
   it("lists each legal action once, ending with End turn, with readable labels", () => {

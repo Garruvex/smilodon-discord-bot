@@ -76,12 +76,16 @@ export type Trait =
       readonly weapon: ContentId<"item">;
       readonly ability: Ability;
       readonly dc: number;
-      readonly damage: DiceExpression;
-      readonly damageType: DamageType;
+      // What a failed save costs: damage (half of it on a save when halfOnSave), and/or a condition.
+      readonly damage?: DiceExpression;
+      readonly damageType?: DamageType;
+      readonly condition?: ContentId<"condition">;
       readonly halfOnSave: boolean;
       // Feet: every foe this close is caught.
       readonly range: number;
       readonly cooldown: number;
+      // An aura (Frightful Presence) is used as part of the action, not in place of it.
+      readonly free?: boolean;
     }
   // Regains these hit points at the start of its turn, unless it took damage of
   // one of the listed types since its last turn.

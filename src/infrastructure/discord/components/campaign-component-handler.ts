@@ -33,7 +33,7 @@ import { maxSpeechLength } from "../../../domain/campaign/engine/speech.js";
 import type { CombatCommand } from "../../../domain/campaign/commands/campaign-command.js";
 import { abilities, type Ability } from "../../../domain/campaign/rules/effects.js";
 import { buildTurnView, type TurnView } from "../../../application/campaign/views/turn-view.js";
-import { encodeChoice, parseAim, parseChoice, renderEndConfirm, renderSpellMenu, renderTargetMenu, renderTurnMenu, type TurnChoice, type TurnMenu } from "../campaign/turn-menu.js";
+import { encodeChoice, parseAim, parseChoice, renderEndConfirm, renderShapeMenu, renderSpellMenu, renderTargetMenu, renderTurnMenu, type TurnChoice, type TurnMenu } from "../campaign/turn-menu.js";
 import type { CampaignAction } from "../campaign/campaign-ids.js";
 import { campaignCustomId, campaignIdPrefix, parseCampaignId } from "../campaign/campaign-ids.js";
 import type { ContentId } from "../../../domain/campaign/rules/content-id.js";
@@ -112,7 +112,12 @@ function combatCommand(choice: TurnChoice, targetIds: readonly string[]): ((comb
       return (combatantId): CombatCommand => ({ kind: "combatDisengage", combatantId });
     case "end":
       return (combatantId): CombatCommand => ({ kind: "endTurn", combatantId });
+    case "shape":
+      return (combatantId): CombatCommand => ({ kind: "combatWildShape", combatantId, monsterId: choice.monster as ContentId<"monster"> });
+    case "unshape":
+      return (combatantId): CombatCommand => ({ kind: "combatWildShape", combatantId });
     case "spells":
+    case "shapes":
       return null;
   }
 }
@@ -691,6 +696,10 @@ export class CampaignComponentHandler implements ComponentHandler {
     }
     if (choice.kind === "spells") {
       await this.editMenu(interaction, renderSpellMenu(context.view, choice.page, text, context.glossary, record.key.campaignId), null);
+      return;
+    }
+    if (choice.kind === "shapes") {
+      await this.editMenu(interaction, renderShapeMenu(context.view, choice.page, text, context.glossary, record.key.campaignId), null);
       return;
     }
     const aimed = choice.kind === "attack" || choice.kind === "cast" || choice.kind === "engage";

@@ -39,10 +39,12 @@ export function planFor(decision: Decision, actor: Combatant, source: Resolution
     }
     case "area": {
       const area = source.area;
+      const damage: Effect[] = area.damage === undefined || area.damageType === undefined ? [] : [{ kind: "damage", target: "target", amount: area.damage, damageType: area.damageType }];
+      const condition: Effect[] = area.condition === undefined ? [] : [{ kind: "applyCondition", target: "target", condition: area.condition, duration: { kind: "rounds", count: 10 } }];
       return {
         check: { kind: "savingThrow", ability: area.ability },
-        onLand: [{ kind: "damage", target: "target", amount: area.damage, damageType: area.damageType }],
-        onAvoid: area.halfOnSave ? [{ kind: "damage", target: "target", amount: area.damage, damageType: area.damageType, halfOfLand: true }] : [],
+        onLand: [...damage, ...condition],
+        onAvoid: area.halfOnSave && area.damage !== undefined && area.damageType !== undefined ? [{ kind: "damage", target: "target", amount: area.damage, damageType: area.damageType, halfOfLand: true }] : [],
       };
     }
     default:

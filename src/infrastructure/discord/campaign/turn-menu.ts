@@ -15,6 +15,10 @@ export type TurnChoice =
   | { readonly kind: "cast"; readonly spell: string; readonly slot: number }
   // The spellbook: a hero with many spells picks from a page of them (renderSpellMenu).
   | { readonly kind: "spells"; readonly page: number }
+  // Wild Shape: a beast to become, the beasts to choose from, or a return to the druid's own form.
+  | { readonly kind: "shape"; readonly monster: string }
+  | { readonly kind: "shapes"; readonly page: number }
+  | { readonly kind: "unshape" }
   | { readonly kind: "feature"; readonly feature: string }
   | { readonly kind: "potion"; readonly item: string }
   | { readonly kind: "move"; readonly zone: string }
@@ -34,6 +38,10 @@ export function encodeChoice(choice: TurnChoice): string {
       return `cast|${choice.spell}|${choice.slot}`;
     case "spells":
       return `spells|${choice.page}`;
+    case "shape":
+      return `shape|${choice.monster}`;
+    case "shapes":
+      return `shapes|${choice.page}`;
     case "feature":
       return `feature|${choice.feature}`;
     case "potion":
@@ -56,10 +64,15 @@ export function parseChoice(value: string): TurnChoice | null {
       const slot = Number(second);
       return first?.startsWith("spell:") === true && Number.isInteger(slot) && slot >= 0 ? { kind, spell: first, slot } : null;
     }
-    case "spells": {
+    case "spells":
+    case "shapes": {
       const page = Number(first);
       return Number.isInteger(page) && page >= 0 ? { kind, page } : null;
     }
+    case "shape":
+      return first?.startsWith("monster:") === true ? { kind, monster: first } : null;
+    case "unshape":
+      return { kind };
     case "feature":
       return first?.startsWith("feature:") === true ? { kind, feature: first } : null;
     case "potion":
@@ -148,6 +161,25 @@ export function renderSpellMenu(view: TurnView, page: number, text: Texts, gloss
   };
 }
 
+// Wild Shape: one page of the beasts the druid may become now.
+export function renderShapeMenu(view: TurnView, page: number, text: Texts, glossary: Glossary, campaignId: string): TurnMenu {
+  const t = text.campaign.turn;
+  const pages = Math.max(1, Math.ceil(view.wildShapes.length / spellsPerPage));
+  const at = Math.min(Math.max(0, page), pages - 1);
+  const choices = view.wildShapes.slice(at * spellsPerPage, (at + 1) * spellsPerPage).map((monster): TurnChoice => ({ kind: "shape", monster }));
+  const options = choices.map((choice) => ({ label: choiceLabel(choice, view, text, glossary).slice(0, 100), value: encodeChoice(choice) }));
+  if (at + 1 < pages) options.push({ label: t.shapesMore({ page: at + 2 }), value: encodeChoice({ kind: "shapes", page: at + 1 }) });
+  return {
+    content: t.shapesPrompt,
+    components: [
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+        new StringSelectMenuBuilder().setCustomId(campaignCustomId("pick", campaignId)).setPlaceholder(t.shapesPlaceholder).addOptions(options),
+      ),
+      refreshRow(campaignId, t.back),
+    ],
+  };
+}
+
 // The second step: who the chosen action is aimed at.
 export function renderTargetMenu(choice: TurnChoice, view: TurnView, text: Texts, glossary: Glossary, campaignId: string): TurnMenu | null {
   const targets = targetsOf(choice, view);
@@ -193,6 +225,10 @@ function choicesOf(view: TurnView): readonly TurnChoice[] {
     ...(view.spells.length > spellbookThreshold
       ? [{ kind: "spells", page: 0 } as const]
       : view.spells.map((spell): TurnChoice => ({ kind: "cast", spell: spell.spellId, slot: spell.slotLevel }))),
+    ...(view.wildShapes.length > spellbookThreshold
+      ? [{ kind: "shapes", page: 0 } as const]
+      : view.wildShapes.map((monster): TurnChoice => ({ kind: "shape", monster }))),
+    ...(view.canRevertShape ? [{ kind: "unshape" } as const] : []),
     ...view.features.map((feature): TurnChoice => ({ kind: "feature", feature: feature.id })),
     ...view.potions.map((potion): TurnChoice => ({ kind: "potion", item: potion.id })),
     ...view.shields.map((shield): TurnChoice => ({ kind: "shield", item: shield.id, on: !shield.on })),
@@ -237,6 +273,12 @@ function choiceLabel(choice: TurnChoice, view: TurnView, text: Texts, glossary: 
     }
     case "spells":
       return t.spellbook({ count: view.spells.length });
+    case "shape":
+      return t.shape({ beast: name(choice.monster) });
+    case "shapes":
+      return t.shapes({ count: view.wildShapes.length });
+    case "unshape":
+      return t.unshape;
     case "feature":
       return t.feature({ feature: name(choice.feature), left: view.features.find((candidate) => candidate.id === choice.feature)?.left ?? 0 });
     case "potion":

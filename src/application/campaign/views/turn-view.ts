@@ -63,6 +63,9 @@ export interface TurnView {
   readonly canWithdraw: boolean;
   readonly canDodge: boolean;
   readonly canDashOrDisengage: boolean;
+  // Wild Shape: the beasts a druid may become now, and whether they may return to their own form.
+  readonly wildShapes: readonly string[];
+  readonly canRevertShape: boolean;
   // Anything left worth spending: ending the turn then asks first.
   readonly hasUnspent: boolean;
 }
@@ -143,6 +146,8 @@ export function buildTurnView(
     canWithdraw: options.canWithdraw,
     canDodge: options.canTakeAction,
     canDashOrDisengage: options.canDashOrDisengage,
+    wildShapes: options.wildShapeForms,
+    canRevertShape: options.canRevertShape,
     hasUnspent: options.hasUnspent,
   };
 }

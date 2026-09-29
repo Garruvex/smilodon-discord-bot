@@ -232,6 +232,19 @@ function areaTraitCode(monster, action) {
   return `{ kind: "areaAttack", weapon: ${quote(weapon)}, ability: ${quote(ability)}, dc: ${action.dc.dc_value}, damage: ${damage.code}, damageType: ${quote(damage.type)}, halfOnSave: ${action.dc.success_type === "half"}, range: ${reach[1]}, cooldown: ${cooldown} }`;
 }
 
+// An aura or gaze that makes each creature near it save or take a condition: Frightful Presence and its kin.
+function auraTraitCode(monster, action) {
+  if (action.dc === undefined || action.attack_bonus !== undefined || (action.damage ?? []).length > 0) return null;
+  if (!new RegExp("each (?:other )?creature", "i").test(action.desc)) return null;
+  const condition = new RegExp("(frightened|paralyzed|stunned|charmed|blinded|restrained|poisoned|incapacitated)", "i").exec(action.desc)?.[1];
+  const reach = new RegExp("within (\\d+) (?:feet|ft)").exec(action.desc) ?? new RegExp("(\\d+)-foot (?:cone|line|radius)").exec(action.desc);
+  if (condition === undefined || reach === null) return null;
+  const ability = abilityCodes[action.dc.dc_type.name.toLowerCase()] ?? action.dc.dc_type.index;
+  const recharge = action.usage?.type === "recharge on roll" ? Math.round(6 / (7 - action.usage.min_value)) : 99;
+  const weapon = weaponFor(action, "psychic");
+  return `{ kind: "areaAttack", weapon: ${quote(weapon)}, ability: ${quote(ability)}, dc: ${action.dc.dc_value}, condition: "condition:${conditionNames[condition.toLowerCase()]}", halfOnSave: false, range: ${reach[1]}, cooldown: ${recharge}${action.name === "Frightful Presence" ? ", free: true" : ""} }`;
+}
+
 for (const monster of monsters) {
   const id = `monster:${monster.index}`;
   if (knownMonsters.has(id)) continue;
@@ -242,7 +255,7 @@ for (const monster of monsters) {
   const weaponByAction = new Map();
   const areaTraits = [];
   for (const action of monster.actions ?? []) {
-    const area = areaTraitCode(monster, action);
+    const area = areaTraitCode(monster, action) ?? auraTraitCode(monster, action);
     if (area !== null) {
       areaTraits.push(area);
       continue;

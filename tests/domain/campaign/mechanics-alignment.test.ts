@@ -272,3 +272,16 @@ describe("Legendary actions", () => {
     expect(fight.combatant(monsterId(fight)).resources.featureUses["trait:legendary-actions"]).toBeGreaterThan(0);
   });
 });
+
+describe("Frightful Presence", () => {
+  it("is used for free at the start of a dragon's turn, and the turn goes on with a breath", () => {
+    const fight = new Fight(partyOfThree()).rolls([1, 1, 20, 15]).run(organizer, { kind: "startEncounter", spec: alone("monster:adult-red-dragon") });
+    const tough = Object.fromEntries(Object.entries(fight.encounter.combatants).map(([id, combatant]) => [id, combatant.side === "party" ? { ...combatant, hp: 900, maxHp: 900 } : combatant]));
+    fight.state = { ...fight.state, encounter: { ...fight.encounter, combatants: tough } };
+    passHeroTurns(fight);
+    const uses = ofKind(fight, "resolutionDeclared").map((event) => (event.resolution.source.kind === "area" ? event.resolution.source.area.weapon : event.resolution.source.kind));
+    expect(uses).toEqual(["item:frightful-presence", "item:fire-breath"]);
+    const frightened = Object.values(fight.encounter.combatants).filter((combatant) => combatant.effects.some((effect) => effect.definition === "condition:frightened"));
+    expect(frightened.length).toBeGreaterThan(0);
+  });
+});

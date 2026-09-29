@@ -580,5 +580,12 @@
   "item:rowboat": "划艇",
   "item:sailing-ship": "帆船",
   "item:warship": "戰艦",
-  "item:horn-instrument": "號角"
+  "item:horn-instrument": "號角",
+  "item:frightful-presence": "恐怖威懾",
+  "item:moan": "哀嚎",
+  "item:blinding-breath": "致盲吐息",
+  "item:blinding-spittle": "致盲唾液",
+  "item:petrifying-breath": "石化吐息",
+  "item:horror-nimbus": "恐懼光環",
+  "item:stunning-screech": "震懾尖嘯"
 }
