@@ -55,6 +55,7 @@ Race and subrace details are also in `dnd-race-mechanics-status.md`.
 - Done: effect potions and charged wands (Magic Missile, Fireball, Lightning Bolt, Fear, Hold Person at save DC 15, seven charges).
 - Done: a spell scroll for every castable SRD spell (cast once at the spell's own level, SRD scroll save DC; the use is counted per spell, so two scrolls of one spell share it, and a spent scroll stays in the pack).
 - Done: sorcery points (Font of Magic) and two Metamagic options, Quickened and Twinned Spell (readied as a free action that spends 2 points, used up by the next casting). Other options, and converting slots and points, are not modeled.
+- Done: warlock invocations Agonizing Blast, Armor of Shadows and Fiendish Vigor (all three granted at warlock level 2; there is no choosing of invocations).
 - Dragon Scale Mail, Armor of Resistance and Adamantine Armor are named but give nothing yet.
 
 ### Other

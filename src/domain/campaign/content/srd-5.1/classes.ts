@@ -320,7 +320,7 @@ export const warlock = defineClass({
   casterType: "pact",
   spellcastingAbility: "cha",
   firstSpells: [],
-  levelFeatures: { 2: ["feature:eldritch-invocations"], 3: ["feature:pact-boon"] },
+  levelFeatures: { 2: ["feature:eldritch-invocations", "feature:agonizing-blast", "feature:armor-of-shadows", "feature:fiendish-vigor"], 3: ["feature:pact-boon"] },
   multiclassRequires: [["cha"]],
   spellList: srd51WarlockSpells,
 });

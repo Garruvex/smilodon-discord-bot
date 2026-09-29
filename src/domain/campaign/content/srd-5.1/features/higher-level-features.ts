@@ -84,7 +84,11 @@ const metamagicOption = (name: string, option: "quickened" | "twinned", spend: n
   });
 export const quickenedSpell = metamagicOption("quickened-spell", "quickened", 2);
 export const twinnedSpell = metamagicOption("twinned-spell", "twinned", 2);
+// Eldritch Invocations: every warlock takes these three at level 2 (this build has no choosing of invocations).
 export const eldritchInvocations = narrative("eldritch-invocations");
+export const agonizingBlast = defineFeature({ id: "feature:agonizing-blast", source, traits: [{ kind: "agonizingBlast" }], action: null });
+export const armorOfShadows = defineFeature({ id: "feature:armor-of-shadows", source, traits: [{ kind: "featureSpell", spell: "spell:mage-armor", ability: "cha", uses: null, recharge: "longRest" }], action: null });
+export const fiendishVigor = defineFeature({ id: "feature:fiendish-vigor", source, traits: [{ kind: "featureSpell", spell: "spell:false-life", ability: "cha", uses: null, recharge: "longRest" }], action: null });
 // Champion (Fighter 3): Improved Critical, a real 19-20 crit range
 // (dice/d20-test.ts's critThreshold). Remarkable Athlete and Additional
 // Fighting Style are not modeled (a skill-check bonus system and a second
@@ -157,6 +161,9 @@ export const pactBoon = narrative("pact-boon");
 export const schoolOfEvocation = narrative("school-of-evocation");
 
 export const srd51HigherLevelFeatures: readonly FeatureDefinition[] = [
+  agonizingBlast,
+  armorOfShadows,
+  fiendishVigor,
   quickenedSpell,
   twinnedSpell,
   destroyUndead,

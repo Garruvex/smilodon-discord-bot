@@ -28,7 +28,12 @@ export function planFor(decision: Decision, actor: Combatant, source: Resolution
     }
     case "spell": {
       const spell = content.get(source.spellId);
-      const plan = spell.plan({ slotLevel: source.slotLevel, casterLevel: actor.spellcasting?.casterLevel ?? actor.level, spellcastingModifier: actor.spellcasting?.modifier ?? 0 });
+      const casterLevel = actor.spellcasting?.casterLevel ?? actor.level;
+      const cast = spell.plan({ slotLevel: source.slotLevel, casterLevel, spellcastingModifier: actor.spellcasting?.modifier ?? 0 });
+      // Agonizing Blast: the modifier on every beam (this build fires them as one bolt of that many dice).
+      const beams = casterLevel >= 17 ? 4 : casterLevel >= 11 ? 3 : casterLevel >= 5 ? 2 : 1;
+      const agonizing = source.spellId === "spell:eldritch-blast" && actor.traits.some((trait) => trait.kind === "agonizingBlast") ? (actor.spellcasting?.modifier ?? 0) * beams : 0;
+      const plan = agonizing === 0 ? cast : { ...cast, onLand: cast.onLand.map((effect): Effect => (effect.kind === "damage" ? { ...effect, amount: plus(effect.amount, agonizing) } : effect)) };
       // Disciple of Life and similar: extra healing from leveled spells.
       const bonus = source.slotLevel > 0 ? healingBonus(actor, source.slotLevel) : 0;
       if (bonus === 0) return plan;
