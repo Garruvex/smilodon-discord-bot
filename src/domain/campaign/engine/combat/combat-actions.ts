@@ -1,5 +1,6 @@
 // What a hero does with their action: a weapon attack, a spell, a feature. The rules for each are in combat/turn-rules.ts.
 import { useKeyOf } from "../../rules/content-definitions.js";
+import { armedMetamagic, conditionLookup } from "../../effects/effect-queries.js";
 import type { ActionCost } from "../../combat/combat-events.js";
 import { type AttackOption, type Combatant, type EncounterState } from "../../combat/combat-state.js";
 import { attackProblem, featureProblem, smiteProblem, spellProblem } from "../../combat/turn-rules.js";
@@ -70,16 +71,20 @@ export function castSpell(
   slotLevel: number,
   targetIds: readonly string[],
 ): Rejection | null {
-  const checked = spellProblem(encounter, decision.ctx.rules.content, caster, spellId, slotLevel, targetIds);
+  const armed = armedMetamagic(caster, conditionLookup(decision.ctx.rules.content));
+  const checked = spellProblem(encounter, decision.ctx.rules.content, caster, spellId, slotLevel, targetIds, armed?.option ?? null);
   if ("problem" in checked) return checked.problem;
   const { spell, bonus, targets } = checked.value;
-  return declareResolution(decision, {
+  const declared = declareResolution(decision, {
     actor: caster,
     source: { kind: "spell", spellId: spell.id, slotLevel },
     targetIds: targets,
     purpose: "action",
     cost: { ...noCost, action: !bonus, bonusAction: bonus, spellSlot: spell.level === 0 || caster.spellcasting?.innate?.[spell.id] !== undefined ? null : slotLevel },
   });
+  // The readied Metamagic is used up by the casting.
+  if (declared === null && armed !== null) decision.emit({ kind: "effectsRemoved", combatantId: caster.id, effectIds: [armed.effectId], reason: "usedUp" });
+  return declared;
 }
 
 export function useFeature(decision: Decision, hero: Combatant, featureId: ContentId<"feature">): Rejection | null {
@@ -91,6 +96,6 @@ export function useFeature(decision: Decision, hero: Combatant, featureId: Conte
     source: { kind: "feature", featureId: feature.id },
     targetIds: [hero.id],
     purpose: "action",
-    cost: { ...noCost, action: !bonus && !free, bonusAction: bonus, featureUse: useKeyOf(feature) },
+    cost: { ...noCost, action: !bonus && !free, bonusAction: bonus, featureUse: useKeyOf(feature), ...(feature.action?.spend === undefined ? {} : { featureUseAmount: feature.action.spend }) },
   });
 }

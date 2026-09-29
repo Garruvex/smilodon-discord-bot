@@ -3,7 +3,7 @@ import type { ConditionDefinition } from "../rules/content-definitions.js";
 import type { ContentId } from "../rules/content-id.js";
 import type { SealedContent } from "../rules/content-registry.js";
 import type { Ability } from "../rules/effects.js";
-import type { Modifier, Reach, RollBias } from "../rules/modifiers.js";
+import type { MetamagicOption, Modifier, Reach, RollBias } from "../rules/modifiers.js";
 import type { Trait } from "../rules/traits.js";
 import type { EffectInstance, TriggerAction } from "./effect-instance.js";
 
@@ -91,6 +91,12 @@ export function effectResistances(holder: EffectHolder, lookup: ConditionLookup)
 // Extra melee weapon damage from lasting effects (Rage).
 export function attackBonusOf(holder: EffectHolder, lookup: ConditionLookup): number {
   return modifiersOf(holder, lookup).reduce((sum, { modifier }) => sum + (modifier.kind === "attackBonus" ? modifier.amount : 0), 0);
+}
+
+// The Metamagic readied for the next spell, and the effect to use up once it is cast.
+export function armedMetamagic(holder: EffectHolder, lookup: ConditionLookup): { readonly option: MetamagicOption; readonly effectId: string } | null {
+  for (const { modifier, effectId } of modifiersOf(holder, lookup)) if (modifier.kind === "metamagic" && effectId !== null) return { option: modifier.option, effectId };
+  return null;
 }
 
 export function meleeDamageBonusOf(holder: EffectHolder, lookup: ConditionLookup): number {

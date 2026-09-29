@@ -296,7 +296,7 @@ export const sorcerer = defineClass({
   casterType: "full",
   spellcastingAbility: "cha",
   firstSpells: [],
-  levelFeatures: { 2: ["feature:font-of-magic"], 3: ["feature:metamagic"] },
+  levelFeatures: { 2: ["feature:font-of-magic"], 3: ["feature:metamagic", "feature:quickened-spell", "feature:twinned-spell"] },
   multiclassRequires: [["cha"]],
   spellList: srd51SorcererSpells,
 });

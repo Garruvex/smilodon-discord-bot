@@ -44,4 +44,8 @@ export type Modifier =
   // anything read against the specific effect that granted it — a generic
   // "the holder is Charmed" fact says nothing about who by — so it is not
   // read through modifiersOf()'s flattened list; see forbiddenAttackTargets().
-  | { readonly kind: "cannotTargetSource" };
+  | { readonly kind: "cannotTargetSource" }
+  // Metamagic the sorcerer has readied for the next spell they cast (it is used up by the casting).
+  | { readonly kind: "metamagic"; readonly option: MetamagicOption };
+
+export type MetamagicOption = "quickened" | "twinned";

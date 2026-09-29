@@ -113,6 +113,8 @@ const zhTwBase: Glossary = {
     "feature:brutal-critical-2": "殘暴重擊（兩顆骰）",
     "feature:brutal-critical-3": "殘暴重擊（三顆骰）",
     "feature:evasion": "閃避",
+    "feature:quickened-spell": "快速施法",
+    "feature:twinned-spell": "雙生施法",
     "feature:destroy-undead": "摧毀不死生物",
     "feature:font-of-inspiration": "啟發之泉",
     "feature:feral-instinct": "野性直覺",

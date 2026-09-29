@@ -157,6 +157,8 @@ export interface FeatureAction {
   readonly cost: "action" | "bonusAction" | "free";
   // Its own uses, or a pool another feature holds (Ki points).
   readonly uses: FeatureUses | { readonly pool: ContentId<"feature"> };
+  // How many of those uses one use of the action spends (Metamagic costs sorcery points); 1 when absent.
+  readonly spend?: number;
   // Feature actions in milestone 0 target the user (Second Wind).
   plan(context: { readonly level: number; readonly spellcastingModifier: number }): ResolutionPlan;
 }

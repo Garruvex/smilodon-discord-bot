@@ -113,7 +113,7 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
       const spent = update(encounter, resolution.actorId, (combatant) => {
         const resources = cost.spellSlot !== null ? spendSlot(combatant.resources, cost.spellSlot) : combatant.resources;
         const uses = { ...resources.featureUses };
-        if (cost.featureUse !== null) uses[cost.featureUse] = Math.max(0, (uses[cost.featureUse] ?? 0) - 1);
+        if (cost.featureUse !== null) uses[cost.featureUse] = Math.max(0, (uses[cost.featureUse] ?? 0) - (cost.featureUseAmount ?? 1));
         // An innate spell cast a number of times a day uses one of them up.
         if (resolution.source.kind === "spell") {
           const innate = combatant.spellcasting?.innate?.[resolution.source.spellId];

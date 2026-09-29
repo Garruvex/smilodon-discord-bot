@@ -108,6 +108,8 @@ const enBase: Glossary = {
     "feature:brutal-critical-2": "Brutal Critical (two dice)",
     "feature:brutal-critical-3": "Brutal Critical (three dice)",
     "feature:evasion": "Evasion",
+    "feature:quickened-spell": "Quickened Spell",
+    "feature:twinned-spell": "Twinned Spell",
     "feature:destroy-undead": "Destroy Undead",
     "feature:font-of-inspiration": "Font of Inspiration",
     "feature:feral-instinct": "Feral Instinct",

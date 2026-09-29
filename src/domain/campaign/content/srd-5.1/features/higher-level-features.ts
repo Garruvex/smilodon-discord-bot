@@ -66,7 +66,24 @@ const unarmoredMovementGrowth = (level: number): FeatureDefinition => defineFeat
 export const jackOfAllTrades = narrative("jack-of-all-trades");
 export const wildShape = defineFeature({ id: "feature:wild-shape", source, traits: [{ kind: "wildShape" }], action: null });
 export const divineSmite = defineFeature({ id: "feature:divine-smite", source, traits: [{ kind: "divineSmite" }], action: null });
-export const fontOfMagic = narrative("font-of-magic");
+// Font of Magic: sorcery points equal to the sorcerer's level, back on a long rest. Metamagic spends them.
+export const fontOfMagic = defineFeature({ id: "feature:font-of-magic", source, traits: [], action: null, resource: { count: 2, perLevel: (level) => level, recharge: "longRest" } });
+// Readies a Metamagic option for the next spell cast; the sorcery points are spent now. This build gives a sorcerer
+// Quickened Spell (2 points) and Twinned Spell (a flat 2 points, where the SRD charges the spell's level).
+const metamagicOption = (name: string, option: "quickened" | "twinned", spend: number): FeatureDefinition =>
+  defineFeature({
+    id: `feature:${name}`,
+    source,
+    traits: [],
+    action: {
+      cost: "free",
+      uses: { pool: "feature:font-of-magic" },
+      spend,
+      plan: () => ({ check: null, onLand: [{ kind: "applyModifiers", target: "self", modifiers: [{ kind: "metamagic", option }], duration: { kind: "rounds", count: 1 } }], onAvoid: [] }),
+    },
+  });
+export const quickenedSpell = metamagicOption("quickened-spell", "quickened", 2);
+export const twinnedSpell = metamagicOption("twinned-spell", "twinned", 2);
 export const eldritchInvocations = narrative("eldritch-invocations");
 // Champion (Fighter 3): Improved Critical, a real 19-20 crit range
 // (dice/d20-test.ts's critThreshold). Remarkable Athlete and Additional
@@ -140,6 +157,8 @@ export const pactBoon = narrative("pact-boon");
 export const schoolOfEvocation = narrative("school-of-evocation");
 
 export const srd51HigherLevelFeatures: readonly FeatureDefinition[] = [
+  quickenedSpell,
+  twinnedSpell,
   destroyUndead,
   fontOfInspiration,
   feralInstinct,

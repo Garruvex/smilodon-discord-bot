@@ -35,6 +35,8 @@ export interface ActionCost {
   readonly reaction: boolean;
   readonly spellSlot: number | null;
   readonly featureUse: ContentId<"feature"> | null;
+  // How many of them; 1 when absent.
+  readonly featureUseAmount?: number;
 }
 
 // Combat events. Each carries the values it results in (HP after damage,

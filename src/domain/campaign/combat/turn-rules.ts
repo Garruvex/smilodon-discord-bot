@@ -3,6 +3,7 @@ import type { CharacterId } from "../core/ids.js";
 import { potionOf } from "../engine/potions.js";
 import { useKeyOf, type FeatureDefinition, type SpellDefinition } from "../rules/content-definitions.js";
 import type { ContentId } from "../rules/content-id.js";
+import type { MetamagicOption } from "../rules/modifiers.js";
 import type { SealedContent } from "../rules/content-registry.js";
 import { healingPotionCost, type HouseRules } from "../rules/house-rules.js";
 import { mayWildShapeInto, wildShapeFeature, wildShapeUses } from "../rules/wild-shape-rules.js";
@@ -99,6 +100,7 @@ export function spellProblem(
   spellId: ContentId<"spell">,
   slotLevel: number,
   targetIds: readonly string[],
+  metamagic: MetamagicOption | null = null,
 ): Checked<{ readonly spell: SpellDefinition; readonly bonus: boolean; readonly targets: readonly string[] }> {
   const casting = caster.spellcasting;
   const spell = content.find(spellId);
@@ -115,12 +117,15 @@ export function spellProblem(
   }
   // A reaction spell is cast in response to something, never on the caster's turn.
   if (spell.castingTime === "reaction" || spell.castingTime === "long") return refuse({ code: "unknownSpell" });
-  const bonus = spell.castingTime === "bonus-action";
+  // Quickened Spell: a spell that takes an action is cast as a bonus action instead.
+  const bonus = spell.castingTime === "bonus-action" || (metamagic === "quickened" && spell.castingTime === "action");
   // After a bonus-action spell, only a one-action cantrip may be cast this turn.
   if (caster.budget.bonusSpellCast && (bonus || spell.level > 0)) return refuse({ code: "bonusSpellCast" });
   const cost = costProblem(caster, bonus ? "bonusAction" : "action", content);
   if (cost !== null) return refuse(cost);
-  const maxTargets = spell.targeting.relation === "self" ? spell.targeting.count : spellMaxTargets(spell, slotLevel);
+  // Twinned Spell: a spell that targets only one creature (and does not grow with the slot) may target a second.
+  const twin = metamagic === "twinned" && spell.targeting.count === 1 && (spell.targeting.countPerHigherSlot ?? 0) === 0 && spell.targeting.relation !== "self" ? 1 : 0;
+  const maxTargets = spell.targeting.relation === "self" ? spell.targeting.count : spellMaxTargets(spell, slotLevel) + twin;
   const targets = spell.targeting.relation === "self" ? [caster.id] : targetIds;
   if (targets.length === 0 || targets.length > maxTargets || new Set(targets).size !== targets.length) return refuse({ code: "invalidTargets", maxTargets });
   for (const targetId of targets) {
@@ -156,7 +161,7 @@ export function wildShapeForms(hero: Combatant, content: SealedContent): readonl
 export function featureProblem(hero: Combatant, content: SealedContent, featureId: ContentId<"feature">): Checked<{ readonly feature: FeatureDefinition; readonly bonus: boolean; readonly free: boolean }> {
   const feature = content.find(featureId);
   if (feature?.kind !== "feature" || feature.action === null || !hero.features.includes(feature.id)) return refuse({ code: "unknownFeature" });
-  if ((hero.resources.featureUses[useKeyOf(feature)] ?? 0) < 1) return refuse({ code: "noUsesLeft" });
+  if ((hero.resources.featureUses[useKeyOf(feature)] ?? 0) < (feature.action.spend ?? 1)) return refuse({ code: "noUsesLeft" });
   const bonus = feature.action.cost === "bonusAction";
   const free = feature.action.cost === "free";
   const cost = free ? (canAct(hero, conditionLookup(content)) ? null : { code: "noActionLeft" as const }) : costProblem(hero, bonus ? "bonusAction" : "action", content);
