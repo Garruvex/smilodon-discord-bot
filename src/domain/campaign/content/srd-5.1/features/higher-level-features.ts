@@ -34,6 +34,22 @@ export const channelDivinity = defineFeature({
   ],
   action: null,
 });
+export const superiorCritical = defineFeature({ id: "feature:superior-critical", source, traits: [{ kind: "expandedCritRange", threshold: 18 }], action: null });
+const brutalCritical = (suffix: string): FeatureDefinition => defineFeature({ id: `feature:brutal-critical${suffix}`, source, traits: [{ kind: "brutalCritical", dice: 1 }], action: null });
+export const evasion = defineFeature({ id: "feature:evasion", source, traits: [{ kind: "evasion" }], action: null });
+// The bonus is filled in from the holder's Charisma modifier (combat/combatant-profile.ts).
+export const auraOfProtection = defineFeature({ id: "feature:aura-of-protection", source, traits: [{ kind: "auraOfProtection", bonus: 1 }], action: null });
+// The SRD's aura also covers allies; here it protects the paladin.
+export const auraOfCourage = defineFeature({ id: "feature:aura-of-courage", source, traits: [{ kind: "conditionImmunity", conditions: ["condition:frightened"] }], action: null });
+export const improvedDivineSmite = defineFeature({ id: "feature:improved-divine-smite", source, traits: [{ kind: "improvedDivineSmite" }], action: null });
+export const purityOfBody = defineFeature({
+  id: "feature:purity-of-body",
+  source,
+  traits: [{ kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  action: null,
+});
+// A monk's Unarmored Movement grows by 5 feet at levels 6, 10, 14 and 18.
+const unarmoredMovementGrowth = (level: number): FeatureDefinition => defineFeature({ id: `feature:unarmored-movement-${level}`, source, traits: [{ kind: "speedBonus", amount: 5 }], action: null });
 export const jackOfAllTrades = narrative("jack-of-all-trades");
 export const wildShape = defineFeature({ id: "feature:wild-shape", source, traits: [{ kind: "wildShape" }], action: null });
 export const divineSmite = defineFeature({ id: "feature:divine-smite", source, traits: [{ kind: "divineSmite" }], action: null });
@@ -111,6 +127,16 @@ export const pactBoon = narrative("pact-boon");
 export const schoolOfEvocation = narrative("school-of-evocation");
 
 export const srd51HigherLevelFeatures: readonly FeatureDefinition[] = [
+  superiorCritical,
+  brutalCritical(""),
+  brutalCritical("-2"),
+  brutalCritical("-3"),
+  evasion,
+  auraOfProtection,
+  auraOfCourage,
+  improvedDivineSmite,
+  purityOfBody,
+  ...[6, 10, 14, 18].map(unarmoredMovementGrowth),
   extraAttack,
   extraAttack2,
   extraAttack3,

@@ -33,6 +33,7 @@ export const fighter = defineClass({
     3: ["feature:champion"],
     5: ["feature:extra-attack"],
     11: ["feature:extra-attack-2"],
+    15: ["feature:superior-critical"],
     20: ["feature:extra-attack-3"],
   },
   multiclassRequires: [["str", "dex"]],
@@ -56,7 +57,7 @@ export const rogue = defineClass({
   casterType: "none",
   spellcastingAbility: null,
   firstSpells: [],
-  levelFeatures: { 2: ["feature:cunning-action"], 3: ["feature:thief"], 5: ["feature:uncanny-dodge"] },
+  levelFeatures: { 2: ["feature:cunning-action"], 3: ["feature:thief"], 5: ["feature:uncanny-dodge"], 7: ["feature:evasion"] },
   multiclassRequires: [["dex"]],
   multiclassSkillChoices: ["acrobatics", "athletics", "deception", "insight", "intimidation", "investigation", "perception", "performance", "persuasion", "sleight-of-hand", "stealth"],
 });
@@ -110,7 +111,7 @@ export const barbarian = defineClass({
   casterType: "none",
   spellcastingAbility: null,
   firstSpells: [],
-  levelFeatures: { 2: ["feature:reckless-attack", "feature:danger-sense"], 3: ["feature:path-of-the-berserker"], 5: ["feature:extra-attack", "feature:fast-movement"] },
+  levelFeatures: { 2: ["feature:reckless-attack", "feature:danger-sense"], 3: ["feature:path-of-the-berserker"], 5: ["feature:extra-attack", "feature:fast-movement"], 9: ["feature:brutal-critical"], 13: ["feature:brutal-critical-2"], 17: ["feature:brutal-critical-3"] },
   multiclassRequires: [["str"]],
 });
 
@@ -220,7 +221,7 @@ export const monk = defineClass({
   casterType: "none",
   spellcastingAbility: null,
   firstSpells: [],
-  levelFeatures: { 2: ["feature:ki", "feature:unarmored-movement", "feature:flurry-of-blows", "feature:patient-defense", "feature:step-of-the-wind"], 3: ["feature:way-of-the-open-hand"], 5: ["feature:extra-attack"] },
+  levelFeatures: { 2: ["feature:ki", "feature:unarmored-movement", "feature:flurry-of-blows", "feature:patient-defense", "feature:step-of-the-wind"], 3: ["feature:way-of-the-open-hand"], 5: ["feature:extra-attack"], 6: ["feature:unarmored-movement-6"], 7: ["feature:evasion"], 10: ["feature:purity-of-body", "feature:unarmored-movement-10"], 14: ["feature:unarmored-movement-14"], 18: ["feature:unarmored-movement-18"] },
   multiclassRequires: [["dex"], ["wis"]],
 });
 
@@ -246,7 +247,7 @@ export const paladin = defineClass({
   // class's own full SRD list, the same liberty the level-1 roster already
   // takes for Bard and Warlock.
   firstSpells: ["spell:cure-wounds", "spell:bless"],
-  levelFeatures: { 2: ["feature:fighting-style-dueling", "feature:divine-smite"], 3: ["feature:oath-of-devotion"], 5: ["feature:extra-attack"] },
+  levelFeatures: { 2: ["feature:fighting-style-dueling", "feature:divine-smite"], 3: ["feature:oath-of-devotion"], 5: ["feature:extra-attack"], 6: ["feature:aura-of-protection"], 10: ["feature:aura-of-courage"], 11: ["feature:improved-divine-smite"] },
   multiclassRequires: [["str"], ["cha"]],
   spellList: srd51PaladinSpells,
 });

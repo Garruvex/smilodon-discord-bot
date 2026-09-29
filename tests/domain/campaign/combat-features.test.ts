@@ -7,6 +7,7 @@ import type { CampaignEvent } from "../../../src/domain/campaign/events/campaign
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
 import { conditionLookup, effectResistances, meleeDamageBonusOf } from "../../../src/domain/campaign/effects/effect-queries.js";
 import { damageMultiplier } from "../../../src/domain/campaign/rules/traits.js";
+import { auraBonusFor } from "../../../src/domain/campaign/engine/combat/attack-rules.js";
 import { alex, borin, jamie, newCampaign, organizer, partyOfThree, ruleset, run, sam, system } from "./campaign-fixtures.js";
 import { Fight, skirmish, startedFight } from "./combat-fixtures.js";
 
@@ -426,6 +427,34 @@ describe("class features", () => {
     // Real hit points are only touched once the temporary ones are gone.
     if (after.hp < after.maxHp) expect(after.tempHp ?? 0).toBe(0);
     else expect(after.tempHp).toBeGreaterThan(0);
+  });
+
+  const undeadSpec: EncounterSpec = { ...close, monsters: [{ monsterId: "monster:skeleton", zoneId: "courtyard", npcId: null, fleeBelowHpFraction: null }] };
+  function strike(features: readonly string[], to: number, dice: number[]): number {
+    const fight = new Fight(withFeatures("c-borin", features)).rolls([1, 20, 5]).run(organizer, { kind: "startEncounter", spec: undeadSpec });
+    fight.run(jamie, { kind: "combatMove", combatantId: "c-borin", zoneId: "courtyard" });
+    fight.run(jamie, { kind: "combatEngage", combatantId: "c-borin", targetId: "skeleton" });
+    const before = fight.combatant("skeleton").hp;
+    fight.rolls([to], dice).run(jamie, { kind: "combatAttack", combatantId: "c-borin", targetId: "skeleton", weapon: "item:longsword" });
+    return before - fight.combatant("skeleton").hp;
+  }
+
+  it("rolls an extra weapon die on a critical hit with Brutal Critical", () => {
+    // Longsword d8: a critical doubles it to two dice; Brutal Critical adds a third. Every die shows 1; +5 to damage.
+    expect(strike([], 20, [1, 1, 1])).toBe(2 + 5);
+    expect(strike(["feature:brutal-critical"], 20, [1, 1, 1])).toBe(3 + 5);
+  });
+
+  it("adds 1d8 radiant to every melee hit with Improved Divine Smite", () => {
+    expect(strike([], 15, [1, 1])).toBe(1 + 5);
+    expect(strike(["feature:improved-divine-smite"], 15, [1, 1])).toBe(1 + 5 + 1);
+  });
+
+  it("gives the party a save bonus from Aura of Protection while they stand together", () => {
+    const fight = borinFirst(withFeatures("c-borin", ["feature:aura-of-protection"]));
+    const mira = fight.combatant("c-mira");
+    expect(auraBonusFor(fight.encounter, mira)).toBeGreaterThanOrEqual(1);
+    expect(auraBonusFor(fight.encounter, fight.combatant("goblin-a"))).toBe(0);
   });
 
   it("adds one more die of Divine Smite against an undead creature", () => {

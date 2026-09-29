@@ -21,6 +21,7 @@ Race and subrace details are also in `dnd-race-mechanics-status.md`.
   - Druid: Wild Shape (limits by level), Natural Recovery.
   - Wizard: Arcane Recovery. Ranger: Hunter's Colossus Slayer. Sorcerer: Draconic Bloodline.
 - Races: ability scores, resistances, save advantage (Fey Ancestry, Brave, Dwarven Resilience, Gnome Cunning), Relentless Endurance, Savage Attacks, Dragonborn Breath Weapon, Tiefling Thaumaturgy.
+- Levels 6 to 18, the parts that need no new primitive: Evasion (rogue and monk 7), Brutal Critical (barbarian 9/13/17), Aura of Protection (paladin 6, for allies in the same zone), Aura of Courage (paladin 10, the paladin only), Improved Divine Smite (paladin 11), Purity of Body and the growing Unarmored Movement (monk), Superior Critical (fighter 15).
 - Creature types on every SRD monster; Divine Smite rolls an extra die against undead and fiends. Temporary hit points exist in combat (False Life); they are taken before real hit points and are not shown on the party card yet.
 - Spell-shaped abilities (`featureSpell` trait): class and racial abilities that target creatures use the spell machinery, with uses per rest.
 

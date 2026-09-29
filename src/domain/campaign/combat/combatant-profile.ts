@@ -32,13 +32,14 @@ export function heroTraits(sheet: CharacterSheet, content: SealedContent): reado
     return attuned <= 3;
   });
   const raceTraits = sheet.race === undefined ? [] : traitsOf(content.get(sheet.race));
+  const chaModifier = abilityModifier(sheet.abilityScores.cha);
   return [
     ...raceTraits,
     ...[...worn, ...sheet.features].flatMap((id) => {
       const definition = content.find(id);
       return definition === undefined ? [] : traitsOf(definition);
     }),
-  ];
+  ].map((trait): Trait => (trait.kind === "auraOfProtection" ? { ...trait, bonus: Math.max(1, chaModifier) } : trait));
 }
 
 // 2014 rules: armor sets the base (Dexterity capped by armor type), with no

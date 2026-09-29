@@ -135,6 +135,16 @@ export function sneakDice(attacker: Combatant | undefined): ReturnType<typeof co
 }
 
 // Colossus Slayer: a weapon attack on a creature that is missing hit points, once per turn (it shares Sneak Attack's slot).
+// Aura of Protection: the best bonus among the conscious allies (itself included) standing in the target's zone.
+export function auraBonusFor(encounter: EncounterState, target: Combatant): number {
+  let best = 0;
+  for (const other of Object.values(encounter.combatants)) {
+    if (other.side !== target.side || other.zoneId !== target.zoneId || other.hp <= 0) continue;
+    for (const trait of other.traits) if (trait.kind === "auraOfProtection") best = Math.max(best, trait.bonus);
+  }
+  return best;
+}
+
 export function colossusSlayerEligible(attacker: Combatant, target: Combatant): boolean {
   return !attacker.sneakAttackUsed && attacker.traits.some((trait) => trait.kind === "colossusSlayer") && target.hp < target.maxHp;
 }

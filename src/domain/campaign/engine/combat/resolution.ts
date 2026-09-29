@@ -23,7 +23,7 @@ import { activeEncounter, afterResolution, endIfDecided } from "./combat-flow.js
 import { offerReaction } from "./reactions.js";
 import { offerSmite } from "./smite.js";
 import { applyDamage, applyHealing, applyTempHp, endConcentration, recordConcentration } from "./damage.js";
-import { colossusSlayerEligible, attackMode, effectForKey, planFor, rangedAttack, saveContextOf, sneakAttackEligible, sneakDice } from "./attack-rules.js";
+import { auraBonusFor, colossusSlayerEligible, attackMode, effectForKey, planFor, rangedAttack, saveContextOf, sneakAttackEligible, sneakDice } from "./attack-rules.js";
 export { applyDamage, endConcentration } from "./damage.js";
 export { attackMode } from "./attack-rules.js";
 
@@ -71,7 +71,7 @@ export function declareResolution(decision: Decision, request: DeclareRequest): 
       const dc = source.kind === "area" ? source.area.dc : ((source.kind === "spell" ? actor.spellcasting?.saveDcs?.[source.spellId] : undefined) ?? actor.spellcasting?.saveDc ?? 10);
       const bias = saveBias(target, check.ability, lookup);
       const racial = hasSaveAdvantage(target.traits, check.ability, saveContextOf(plan, source)) ? 1 : 0;
-      spec = { mode: resolveRollMode(bias.advantage + racial, bias.disadvantage), modifier: target.saves[check.ability], bonusDice: bonusDiceFor(target, "save") };
+      spec = { mode: resolveRollMode(bias.advantage + racial, bias.disadvantage), modifier: target.saves[check.ability] + auraBonusFor(encounter, target), bonusDice: bonusDiceFor(target, "save") };
       against = dc;
       kind = "save";
     } else {
@@ -208,7 +208,7 @@ export function settleCheck(decision: Decision, resolutionId: string, rollId: Ro
 // through this instead of the plan directly so the extra effect reaches damage
 // rolling and application the same way any other does.
 function landEffects(resolution: ResolutionState, encounter: EncounterState): readonly Effect[] {
-  const onLand = withSavageAttacks(resolution, encounter);
+  const onLand = withImprovedSmite(resolution, encounter, withSavageAttacks(resolution, encounter));
   const slot = resolution.smiteSlot !== undefined ? resolution.smiteSlot : resolution.source.kind === "weapon" ? (resolution.source.smiteSlot ?? null) : null;
   if (slot === null) return onLand;
   // 2d8 for a 1st-level slot, +1d8 per level above that, capped at 5d8; one more d8 against a fiend or undead.
@@ -218,15 +218,25 @@ function landEffects(resolution: ResolutionState, encounter: EncounterState): re
   return [...onLand, { kind: "damage", target: "target", amount: dice(Math.min(5, slot + 1) + extra, 8), damageType: "radiant" }];
 }
 
+// Improved Divine Smite: every melee weapon hit deals 1d8 more radiant damage.
+function withImprovedSmite(resolution: ResolutionState, encounter: EncounterState, effects: readonly Effect[]): readonly Effect[] {
+  const actor = encounter.combatants[resolution.actorId];
+  if (resolution.source.kind !== "weapon" || resolution.source.option.range.kind !== "melee" || actor === undefined || !actor.traits.some((trait) => trait.kind === "improvedDivineSmite")) return effects;
+  return [...effects, { kind: "damage", target: "target", amount: dice(1, 8), damageType: "radiant" }];
+}
+
 // Savage Attacks: a melee weapon critical hit rolls one more of the weapon's damage dice, on top of the doubled ones.
+// Brutal Critical adds more of them.
 function withSavageAttacks(resolution: ResolutionState, encounter: EncounterState): readonly Effect[] {
   const { source } = resolution;
   const actor = encounter.combatants[resolution.actorId];
   const struck = Object.values(resolution.outcomes).some((outcome) => outcome.landed && outcome.critical);
   const sides = source.kind === "weapon" ? source.option.damage.terms[0]?.sides : undefined;
   if (source.kind !== "weapon" || source.option.range.kind !== "melee" || !struck || sides === undefined) return resolution.plan.onLand;
-  if (actor === undefined || !actor.traits.some((trait) => trait.kind === "savageAttacks")) return resolution.plan.onLand;
-  return [...resolution.plan.onLand, { kind: "damage", target: "target", amount: dice(1, sides), damageType: source.option.damageType, uncritical: true }];
+  if (actor === undefined) return resolution.plan.onLand;
+  const extra = actor.traits.reduce((sum, trait) => sum + (trait.kind === "savageAttacks" ? 1 : trait.kind === "brutalCritical" ? trait.dice : 0), 0);
+  if (extra === 0) return resolution.plan.onLand;
+  return [...resolution.plan.onLand, { kind: "damage", target: "target", amount: dice(extra, sides), damageType: source.option.damageType, uncritical: true }];
 }
 
 // Works out which effects happen to whom, and asks for the dice they need.
@@ -279,7 +289,7 @@ export function proceedToEffects(decision: Decision): void {
           const racial = hasSaveAdvantage(target.traits, effect.ability, { conditions: [effect.condition], damageTypes: [], magic: resolution.source.kind === "spell" }) ? 1 : 0;
           const spec: RollSpec = {
             kind: "d20Test",
-            spec: { mode: resolveRollMode(bias.advantage + racial, bias.disadvantage), modifier: target.saves[effect.ability], bonusDice: bonusDiceFor(target, "save") },
+            spec: { mode: resolveRollMode(bias.advantage + racial, bias.disadvantage), modifier: target.saves[effect.ability] + auraBonusFor(encounter, target), bonusDice: bonusDiceFor(target, "save") },
           };
           rolls[`${encounter.id}:roll:${++sequence}`] = { effectKey: `rider:${target.id}:${key}`, targetId: target.id, spec };
         }
@@ -358,7 +368,11 @@ export function applyEffect(
       const isAttack = resolution.plan.check?.kind === "weaponAttack" || resolution.plan.check?.kind === "spellAttack";
       const dodges = isAttack && recipient.traits.some((trait) => trait.kind === "uncannyDodge") && recipient.budget.reaction;
       if (dodges) decision.emit({ kind: "uncannyDodgeUsed", combatantId: recipient.id });
-      applyDamage(decision, recipient, dodges ? Math.floor(rolled / 2) : rolled, critical, effect.damageType);
+      // Evasion: a Dexterity save against damage that halves on a success takes nothing on a success and half on a failure.
+      const evades =
+        resolution.plan.check?.kind === "savingThrow" && resolution.plan.check.ability === "dex" && recipient.traits.some((trait) => trait.kind === "evasion") && resolution.plan.onAvoid.some((other) => other.kind === "damage" && other.halfOfLand === true);
+      const taken = evades ? (effect.halfOfLand === true ? 0 : Math.floor(rolled / 2)) : rolled;
+      applyDamage(decision, recipient, dodges ? Math.floor(taken / 2) : taken, critical, effect.damageType);
       return;
     }
     case "heal":

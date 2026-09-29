@@ -84,6 +84,14 @@ export type Trait =
   | { readonly kind: "abilityScore"; readonly ability: Ability; readonly score: number }
   // Half-Orc Savage Attacks: a melee weapon critical hit rolls one extra damage die.
   | { readonly kind: "savageAttacks" }
+  // Brutal Critical: this many more weapon dice on a melee critical hit (they add up across the levels that grant them).
+  | { readonly kind: "brutalCritical"; readonly dice: number }
+  // Evasion: a Dexterity save that would halve the damage takes none on a success, and half on a failure.
+  | { readonly kind: "evasion" }
+  // Aura of Protection: allies in the paladin's zone (and the paladin) add this to their saving throws. The bonus is the holder's Charisma modifier, filled in when the hero joins a fight.
+  | { readonly kind: "auraOfProtection"; readonly bonus: number }
+  // Improved Divine Smite: 1d8 more radiant damage on every melee weapon hit.
+  | { readonly kind: "improvedDivineSmite" }
   // Half-Orc Relentless Endurance: once per long rest, damage that would drop the holder to 0 HP leaves 1 HP instead.
   | { readonly kind: "relentlessEndurance" }
   | { readonly kind: "conditionImmunity"; readonly conditions: readonly ContentId<"condition">[] }
