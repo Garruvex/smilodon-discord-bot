@@ -3,7 +3,7 @@ import { featureUsesOf } from "../../../domain/campaign/rules/content-definition
 import type { AdventureBible } from "../../../domain/campaign/adventure/adventure-bible.js";
 import { findScene } from "../../../domain/campaign/adventure/adventure-bible.js";
 import { abilityModifier, type CharacterSheet } from "../../../domain/campaign/character/character-sheet.js";
-import { armorClassFrom, heroTraits, isWorn } from "../../../domain/campaign/combat/combatant-profile.js";
+import { armorClassFrom, heroTraits, isWorn, unarmoredModifier } from "../../../domain/campaign/combat/combatant-profile.js";
 import type { Combatant } from "../../../domain/campaign/combat/combat-state.js";
 import type { Glossary, SealedContent } from "../../../domain/campaign/rules/content-registry.js";
 import { isFallen, type CampaignState, type Submission } from "../../../domain/campaign/state/campaign-state.js";
@@ -209,7 +209,7 @@ export function buildLobbyView(record: CampaignRecord, adventureTitle: string, p
 export function buildHeroView(state: CampaignState, sheet: CharacterSheet, content: SealedContent): HeroView {
   const fighter = state.encounter !== null && state.encounter.status !== "ended" ? state.encounter.combatants[sheet.id] : undefined;
   const hp = fighter?.hp ?? state.heroStatus[sheet.id]?.hp ?? sheet.maxHp;
-  const armorClass = fighter?.armorClass ?? armorClassFrom(heroTraits(sheet, content), abilityModifier(sheet.abilityScores.dex));
+  const armorClass = fighter?.armorClass ?? armorClassFrom(heroTraits(sheet, content), abilityModifier(sheet.abilityScores.dex), unarmoredModifier(heroTraits(sheet, content), sheet.abilityScores));
   const member = state.members[sheet.ownerUserId];
   const resources = fighter?.resources ?? state.heroStatus[sheet.id]?.resources;
 

@@ -129,8 +129,14 @@ export function sneakAttackEligible(
 // SRD 5.1: 1d6 at level 1, plus one more every two levels after (2d6 at 3,
 // 3d6 at 5, and so on through 10d6 at 19).
 export function sneakDice(attacker: Combatant | undefined): ReturnType<typeof combine> | null {
-  if (attacker === undefined || !attacker.traits.some((trait) => trait.kind === "sneakAttack")) return null;
-  return dice(Math.ceil(attacker.level / 2), 6);
+  if (attacker === undefined) return null;
+  if (attacker.traits.some((trait) => trait.kind === "sneakAttack")) return dice(Math.ceil(attacker.level / 2), 6);
+  return attacker.traits.some((trait) => trait.kind === "colossusSlayer") ? dice(1, 8) : null;
+}
+
+// Colossus Slayer: a weapon attack on a creature that is missing hit points, once per turn (it shares Sneak Attack's slot).
+export function colossusSlayerEligible(attacker: Combatant, target: Combatant): boolean {
+  return !attacker.sneakAttackUsed && attacker.traits.some((trait) => trait.kind === "colossusSlayer") && target.hp < target.maxHp;
 }
 
 export function effectForKey(plan: ResolutionPlan, key: string): Effect | undefined {

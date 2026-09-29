@@ -47,16 +47,18 @@ export const discipleOfLife = defineFeature({
 // the hero card names them, but no rule reads them. Level 2+ content (Rage's
 // damage resistance, Wild Shape, Pact Magic's invocations, and so on) is out
 // of scope for the starter roster.
-// Rage: a bonus action, twice per long rest; for 10 rounds the barbarian resists
-// weapon damage and adds +2 to melee damage (SRD 5.1, level 1 to 8).
+// Rage: a bonus action; for 10 rounds the barbarian resists weapon damage and adds to melee damage
+// (+2, +3 from level 9, +4 from level 16), with more uses a day as the barbarian levels (SRD 5.1).
+// Unarmored Defense (10 + Dexterity + Constitution with no armor) is carried here too, so every barbarian has it.
+const rageUses = (level: number): number => (level >= 17 ? 6 : level >= 12 ? 5 : level >= 6 ? 4 : level >= 3 ? 3 : 2);
 export const rage = defineFeature({
   id: "feature:rage",
   source,
-  traits: [],
+  traits: [{ kind: "unarmoredDefense", ability: "con" }],
   action: {
     cost: "bonusAction",
-    uses: { count: 2, recharge: "longRest" },
-    plan: () => ({
+    uses: { count: 2, perLevel: rageUses, recharge: "longRest" },
+    plan: ({ level }) => ({
       check: null,
       onLand: [
         {
@@ -64,7 +66,7 @@ export const rage = defineFeature({
           target: "self",
           modifiers: [
             { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] },
-            { kind: "meleeDamageBonus", amount: 2 },
+            { kind: "meleeDamageBonus", amount: level >= 16 ? 4 : level >= 9 ? 3 : 2 },
           ],
           duration: { kind: "rounds", count: 10 },
         },
@@ -81,7 +83,8 @@ export const bardicInspiration = defineFeature({
   action: null,
 });
 export const druidic = defineFeature({ id: "feature:druidic", source, traits: [], action: null });
-export const martialArts = defineFeature({ id: "feature:martial-arts", source, traits: [], action: null });
+// Unarmored Defense (10 + Dexterity + Wisdom with no armor) is carried here so every monk has it.
+export const martialArts = defineFeature({ id: "feature:martial-arts", source, traits: [{ kind: "unarmoredDefense", ability: "wis" }], action: null });
 export const divineSense = defineFeature({ id: "feature:divine-sense", source, traits: [], action: null });
 export const favoredEnemy = defineFeature({ id: "feature:favored-enemy", source, traits: [], action: null });
 export const naturalExplorer = defineFeature({ id: "feature:natural-explorer", source, traits: [], action: null });
@@ -94,7 +97,14 @@ export const draconicBloodline = defineFeature({ id: "feature:draconic-bloodline
 // The Fiend: narrative only. Dark One's Blessing (temporary HP on a kill)
 // needs a temporary-HP mechanic the engine doesn't have yet.
 export const fiendPatron = defineFeature({ id: "feature:fiend-patron", source, traits: [], action: null });
-export const arcaneRecovery = defineFeature({ id: "feature:arcane-recovery", source, traits: [], action: null });
+// Once a day, on a short rest: spell slots back, up to half the wizard's level in combined slot levels.
+export const arcaneRecovery = defineFeature({
+  id: "feature:arcane-recovery",
+  source,
+  traits: [{ kind: "slotRecovery", feature: "feature:arcane-recovery" }],
+  action: null,
+  resource: { count: 1, recharge: "longRest" },
+});
 
 // The SRD's pool of 5 hit points per level is spent in one healing, on the paladin or an ally.
 export const layOnHands = defineFeature({

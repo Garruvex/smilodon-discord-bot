@@ -59,12 +59,28 @@ export function takeRest(decision: Decision, rest: "short" | "long"): Rejection 
     for (const trait of sources.flatMap((id) => { const definition = content.find(id); return definition === undefined ? [] : traitsOf(definition); })) {
       if (trait.kind === "featureSpell" && trait.recharge === "shortRest") delete featureUses[innateUseKey(trait.spell)];
     }
+    // Arcane Recovery and Natural Recovery: slots back once a day, up to half the hero's level in combined slot levels, highest first.
+    const spellSlots = { ...current.resources.spellSlots };
+    for (const id of sheet.features) {
+      const feature = content.find(id);
+      const recovery = feature?.kind === "feature" ? feature.traits.find((trait) => trait.kind === "slotRecovery") : undefined;
+      if (recovery === undefined || (featureUses[recovery.feature] ?? 0) < 1) continue;
+      let budget = Math.ceil(sheet.level / 2);
+      for (const level of Object.keys(fresh.spellSlots).map(Number).sort((a, b) => b - a)) {
+        if (level > 5) continue;
+        while (budget >= level && (spellSlots[level] ?? 0) < (fresh.spellSlots[level] ?? 0)) {
+          spellSlots[level] = (spellSlots[level] ?? 0) + 1;
+          budget -= level;
+          featureUses[recovery.feature] = 0;
+        }
+      }
+    }
     // Pact Magic (Warlock) is SRD 5.1's one resource that comes back on a
     // short rest rather than a long one; every other spell slot is
     // untouched here, same as before this hero had any.
     heroStatus[sheet.id] = {
       hp,
-      resources: { ...current.resources, featureUses, ...(fresh.pactSlots === undefined ? {} : { pactSlots: fresh.pactSlots }) },
+      resources: { ...current.resources, spellSlots, featureUses, ...(fresh.pactSlots === undefined ? {} : { pactSlots: fresh.pactSlots }) },
       hitDice: left,
       exhaustion: current.exhaustion ?? 0,
     };

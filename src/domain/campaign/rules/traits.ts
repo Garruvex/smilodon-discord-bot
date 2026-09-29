@@ -86,7 +86,17 @@ export type Trait =
       readonly damageTypes?: readonly DamageType[];
       readonly magic?: boolean;
       readonly abilities?: readonly Ability[];
+      // Against everything (Danger Sense).
+      readonly always?: boolean;
     }
+  // Barbarian and Monk Unarmored Defense: with no armor, AC is 10 + Dexterity + this ability's modifier.
+  | { readonly kind: "unarmoredDefense"; readonly ability: Ability }
+  // Fast Movement, Unarmored Movement.
+  | { readonly kind: "speedBonus"; readonly amount: number }
+  // Hunter's Colossus Slayer: once per turn, 1d8 extra damage to a creature that is missing hit points.
+  | { readonly kind: "colossusSlayer" }
+  // Arcane Recovery and Natural Recovery: on a short rest, get spell slots back once a day (combined level up to half the holder's level, rounded up).
+  | { readonly kind: "slotRecovery"; readonly feature: ContentId<"feature"> }
   // Champion's Improved Critical: a natural roll of this or higher on an
   // attack is a critical hit, not just a natural 20. The lowest of any held
   // wins (nothing lowers it below 20 by default).
@@ -175,7 +185,8 @@ export function hasSaveAdvantage(traits: readonly Trait[], ability: Ability, con
     (trait) =>
       trait.kind === "saveAdvantage" &&
       (trait.abilities === undefined || trait.abilities.includes(ability)) &&
-      ((trait.conditions?.some((condition) => context.conditions.includes(condition)) ?? false) ||
+      (trait.always === true ||
+        (trait.conditions?.some((condition) => context.conditions.includes(condition)) ?? false) ||
         (trait.damageTypes?.some((damageType) => context.damageTypes.includes(damageType)) ?? false) ||
         (trait.magic === true && context.magic)),
   );

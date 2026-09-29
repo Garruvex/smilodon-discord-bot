@@ -35,8 +35,9 @@ export function heroTraits(sheet: CharacterSheet, content: SealedContent): reado
 
 // 2014 rules: armor sets the base (Dexterity capped by armor type), with no
 // armor it is 10 + Dexterity; shields and similar traits add on top.
-export function armorClassFrom(traits: readonly Trait[], dexterityModifier: number): number {
-  let base = 10 + dexterityModifier;
+export function armorClassFrom(traits: readonly Trait[], dexterityModifier: number, unarmoredModifier = 0): number {
+  const armored = traits.some((trait) => trait.kind === "armor");
+  let base = 10 + dexterityModifier + (armored ? 0 : unarmoredModifier);
   let bonus = 0;
   for (const trait of traits) {
     if (trait.kind === "armor") {
@@ -46,6 +47,11 @@ export function armorClassFrom(traits: readonly Trait[], dexterityModifier: numb
     if (trait.kind === "armorClassBonus") bonus += trait.amount;
   }
   return base + bonus;
+}
+
+// The ability modifier Unarmored Defense adds (Constitution for a barbarian, Wisdom for a monk), if the hero has it.
+export function unarmoredModifier(traits: readonly Trait[], scores: CharacterSheet["abilityScores"]): number {
+  return traits.reduce((best, trait) => (trait.kind === "unarmoredDefense" ? Math.max(best, abilityModifier(scores[trait.ability])) : best), 0);
 }
 
 // A hero's attack with a weapon: Strength for melee, Dexterity for ranged,
@@ -113,12 +119,12 @@ export function heroCombatant(sheet: CharacterSheet, content: SealedContent, zon
     source: { kind: "hero", characterId: sheet.id },
     letter: null,
     level: sheet.level,
-    armorClass: armorClassFrom(traits, dex),
+    armorClass: armorClassFrom(traits, dex, unarmoredModifier(traits, sheet.abilityScores)),
     maxHp: sheet.maxHp,
     hp: status.hp,
     // Armor worn under its Strength requirement (heavy armor a hero isn't
     // strong enough for) costs 10 feet of speed.
-    speed: Math.max(0, sheet.speed - armorSpeedPenalty(sheet, content)),
+    speed: Math.max(0, sheet.speed - armorSpeedPenalty(sheet, content) + traits.reduce((sum, trait) => sum + (trait.kind === "speedBonus" ? trait.amount : 0), 0)),
     initiativeModifier: dex,
     saves,
     attacks: weapons.map((weapon) => heroAttackOption(sheet, weapon, traits, meleeWeapons)),

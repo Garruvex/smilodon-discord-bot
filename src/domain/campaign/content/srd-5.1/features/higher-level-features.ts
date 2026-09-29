@@ -23,7 +23,14 @@ export const extraAttack3 = defineFeature({ id: "feature:extra-attack-3", source
 // Hide is not modeled, so only Dash and Disengage move to the bonus action.
 export const cunningAction = defineFeature({ id: "feature:cunning-action", source, traits: [{ kind: "cunningAction" }], action: null });
 export const uncannyDodge = defineFeature({ id: "feature:uncanny-dodge", source, traits: [{ kind: "uncannyDodge" }], action: null });
-export const channelDivinity = narrative("channel-divinity");
+// Preserve Life stands for the cleric's Channel Divinity: one healing of 5 hit points per level, once per short rest.
+// Turn Undead is not modeled (creatures have no type).
+export const channelDivinity = defineFeature({
+  id: "feature:channel-divinity",
+  source,
+  traits: [{ kind: "featureSpell", spell: "spell:preserve-life", ability: "wis", uses: 1, recharge: "shortRest" }],
+  action: null,
+});
 export const jackOfAllTrades = narrative("jack-of-all-trades");
 export const wildShape = defineFeature({ id: "feature:wild-shape", source, traits: [{ kind: "wildShape" }], action: null });
 export const divineSmite = defineFeature({ id: "feature:divine-smite", source, traits: [{ kind: "divineSmite" }], action: null });
@@ -41,7 +48,18 @@ export const thief = narrative("thief");
 // Path of the Berserker (Barbarian 3): narrative. Frenzy (an extra attack
 // while raging) and Mindless Rage need Rage itself to be a mechanic first
 // (feature:rage is narrative-only, like Thieves' Cant).
-export const pathOfTheBerserker = narrative("path-of-the-berserker");
+// Frenzy is an extra melee attack as a bonus action; the SRD asks for a raging barbarian, which is not checked.
+// Mindless Rage (level 6) is not modeled.
+export const pathOfTheBerserker = defineFeature({
+  id: "feature:path-of-the-berserker",
+  source,
+  traits: [],
+  action: { cost: "bonusAction", uses: { count: 99, recharge: "shortRest" }, plan: () => ({ check: null, onLand: [{ kind: "grantAction", target: "self", attacks: 1 }], onAvoid: [] }) },
+});
+// Danger Sense: advantage on Dexterity saves. (The SRD asks for effects the barbarian can see.)
+export const dangerSense = defineFeature({ id: "feature:danger-sense", source, traits: [{ kind: "saveAdvantage", abilities: ["dex"], always: true }], action: null });
+export const fastMovement = defineFeature({ id: "feature:fast-movement", source, traits: [{ kind: "speedBonus", amount: 10 }], action: null });
+export const unarmoredMovement = defineFeature({ id: "feature:unarmored-movement", source, traits: [{ kind: "speedBonus", amount: 10 }], action: null });
 // College of Lore (Bard 3): narrative. Cutting Words (a reaction to reduce
 // an enemy's roll) is its own reaction-shaped project (see step 16's note on
 // why Shield stays the only reaction of its kind for now); Additional
@@ -49,7 +67,14 @@ export const pathOfTheBerserker = narrative("path-of-the-berserker");
 export const collegeOfLore = narrative("college-of-lore");
 // Circle of the Land (Druid 3): narrative. Its bonus spells and Natural
 // Recovery (partial spell-slot recovery on a short rest) are not modeled.
-export const circleOfTheLand = narrative("circle-of-the-land");
+// Natural Recovery is modeled (slots back on a short rest); the bonus land spells are not.
+export const circleOfTheLand = defineFeature({
+  id: "feature:circle-of-the-land",
+  source,
+  traits: [{ kind: "slotRecovery", feature: "feature:circle-of-the-land" }],
+  action: null,
+  resource: { count: 1, recharge: "longRest" },
+});
 // Way of the Open Hand (Monk 3): narrative. Its riders all trigger off
 // Flurry of Blows, which needs Ki itself to be a mechanic first
 // (feature:ki is narrative-only).
@@ -60,7 +85,8 @@ export const oathOfDevotion = narrative("oath-of-devotion");
 // Hunter (Ranger 3): narrative. Its Hunter's Prey options (e.g. Colossus
 // Slayer's extra damage once per turn) would need a new once-per-turn
 // tracking mechanic, the shape Sneak Attack already special-cases for Rogue.
-export const hunter = narrative("hunter");
+// Colossus Slayer is modeled; the other Hunter's Prey options are not.
+export const hunter = defineFeature({ id: "feature:hunter", source, traits: [{ kind: "colossusSlayer" }], action: null });
 export const metamagic = narrative("metamagic");
 export const pactBoon = narrative("pact-boon");
 // School of Evocation (Wizard 2): narrative. Sculpt Spells needs
@@ -80,6 +106,9 @@ export const srd51HigherLevelFeatures: readonly FeatureDefinition[] = [
   fontOfMagic,
   eldritchInvocations,
   champion,
+  dangerSense,
+  fastMovement,
+  unarmoredMovement,
   thief,
   pathOfTheBerserker,
   collegeOfLore,

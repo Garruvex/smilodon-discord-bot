@@ -23,7 +23,7 @@ import { publicAccessPolicy } from "../../../domain/access/access-policy.js";
 import { deriveSnapshotSheet } from "../../../domain/campaign/character/leveling.js";
 import { buildClasses, buildRaces, classTemplates, selectableBuildRaces, suggestedAbilities, type BuildChoices, type BuildProblem } from "../../../domain/campaign/character/character-build.js";
 import { abilityModifier, skillAbilities, type CharacterSheet, type Skill } from "../../../domain/campaign/character/character-sheet.js";
-import { armorClassFrom, heroTraits } from "../../../domain/campaign/combat/combatant-profile.js";
+import { armorClassFrom, heroTraits, unarmoredModifier } from "../../../domain/campaign/combat/combatant-profile.js";
 import type { Glossary, SealedContent } from "../../../domain/campaign/rules/content-registry.js";
 import { abilities, type Ability } from "../../../domain/campaign/rules/effects.js";
 import { isSkill, skills } from "../../../domain/campaign/rules/skills.js";
@@ -487,7 +487,7 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
   public sheetLine(snapshot: LibrarySnapshot, text: Texts): string {
     const derived = deriveSnapshotSheet(snapshot.build, snapshot.gear, snapshot.progression);
     const sheet: CharacterSheet = { ...derived, id: "c-preview", ownerUserId: snapshot.ownerUserId };
-    const armorClass = armorClassFrom(heroTraits(sheet, this.deps.content), abilityModifier(sheet.abilityScores.dex));
+    const armorClass = armorClassFrom(heroTraits(sheet, this.deps.content), abilityModifier(sheet.abilityScores.dex), unarmoredModifier(heroTraits(sheet, this.deps.content), sheet.abilityScores));
     return text.campaign.chars.sheetLine({ class: classLabel(text, snapshot.build.class), hp: sheet.maxHp, ac: armorClass });
   }
 

@@ -23,7 +23,7 @@ import { activeEncounter, afterResolution, endIfDecided } from "./combat-flow.js
 import { offerReaction } from "./reactions.js";
 import { offerSmite } from "./smite.js";
 import { applyDamage, applyHealing, endConcentration, recordConcentration } from "./damage.js";
-import { attackMode, effectForKey, planFor, rangedAttack, saveContextOf, sneakAttackEligible, sneakDice } from "./attack-rules.js";
+import { colossusSlayerEligible, attackMode, effectForKey, planFor, rangedAttack, saveContextOf, sneakAttackEligible, sneakDice } from "./attack-rules.js";
 export { applyDamage, endConcentration } from "./damage.js";
 export { attackMode } from "./attack-rules.js";
 
@@ -84,7 +84,7 @@ export function declareResolution(decision: Decision, request: DeclareRequest): 
       against = armorClassOf(target, lookup);
       kind = "attack";
       if (mode.consumed.length > 0) consumedAdvantage.push({ combatantId: target.id, effectIds: mode.consumed });
-      if (source.kind === "weapon" && sneakAttackEligible(encounter, actor, target, source.option.finesse, mode.mode)) sneakAttack = true;
+      if (source.kind === "weapon" && (sneakAttackEligible(encounter, actor, target, source.option.finesse, mode.mode) || colossusSlayerEligible(actor, target))) sneakAttack = true;
     }
     const rollId = `${encounter.id}:roll:${++sequence}`;
     checks[rollId] = { targetId, kind, spec, against };

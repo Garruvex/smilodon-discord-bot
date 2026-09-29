@@ -37,6 +37,18 @@ export const layOnHands = defineSpell({
   plan: ({ casterLevel }) => ({ check: null, onLand: [{ kind: "heal", target: "target", amount: flat(casterLevel * 5) }], onAvoid: [] }),
 });
 
+// Channel Divinity: Preserve Life, a cleric's healing (the SRD splits it among creatures; here it goes to one).
+export const preserveLife = defineSpell({
+  id: "spell:preserve-life",
+  source,
+  level: 0,
+  castingTime: "action",
+  range: { kind: "feet", feet: 30 },
+  targeting: { relation: "ally-or-self", count: 1 },
+  concentration: false,
+  plan: ({ casterLevel }) => ({ check: null, onLand: [{ kind: "heal", target: "target", amount: flat(casterLevel * 5) }], onAvoid: [] }),
+});
+
 // Dragonborn ancestries: the color, its damage type, the save it calls for, and whether the breath is a line (30 ft) or a cone (15 ft).
 export const breathAncestries: readonly (readonly [string, DamageType, Ability, number])[] = [
   ["black", "acid", "dex", 30],
@@ -73,4 +85,4 @@ export const breathWeapons: readonly SpellDefinition[] = breathAncestries.map(([
   }),
 );
 
-export const srd51ClassAbilitySpells: readonly SpellDefinition[] = [bardicInspiration, layOnHands, ...breathWeapons];
+export const srd51ClassAbilitySpells: readonly SpellDefinition[] = [bardicInspiration, layOnHands, preserveLife, ...breathWeapons];
