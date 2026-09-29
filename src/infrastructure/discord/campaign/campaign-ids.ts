@@ -71,6 +71,22 @@ export const campaignActions = [
   "asiPick",
   "levelClass",
   "levelSkill",
+  // Between fights (the Explore button): people in the scene, asking, pressing,
+  // shopping, and casting a spell. Private screens; the NPC rides in the argument.
+  "explore",
+  "exploreHome",
+  "exploreBack",
+  "exploreNpc",
+  "exploreAsk",
+  "exploreAskSubmit",
+  "explorePress",
+  "explorePressPick",
+  "exploreShop",
+  "exploreBuy",
+  "exploreSell",
+  "exploreHaggle",
+  "exploreCast",
+  "exploreCastPick",
 ] as const;
 export type CampaignAction = (typeof campaignActions)[number];
 

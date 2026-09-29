@@ -23,6 +23,7 @@ import { CommandModule } from "../../../application/commands/command.js";
 import type { ComponentContext, ComponentHandler, ModalContext } from "../../../application/components/component-handler.js";
 import { texts, type Texts } from "../../../application/i18n/texts.js";
 import { publicAccessPolicy } from "../../../domain/access/access-policy.js";
+import { abilities } from "../../../domain/campaign/rules/effects.js";
 import { maxIdeaChars } from "../../../application/campaign/adventures/adventure-author.js";
 import type { AdventureIntake, IntakeContext } from "../campaign/adventure-intake.js";
 import type { CampaignAuthority } from "../campaign/campaign-authority.js";
@@ -68,6 +69,9 @@ const fileField = "file";
 const ideaField = "idea";
 const languageField = "language";
 const levelField = "level";
+const whoField = "who";
+const abilityField = "ability";
+const dcField = "dc";
 
 // The hub's controls: the Create game wizard and each game's Manage view. All
 // replies are private. Who may do what is decided on every click from the
@@ -132,6 +136,9 @@ export class CampaignHubComponentHandler implements ComponentHandler {
       case "levelOpen":
         if (interaction.isButton() && first !== undefined) await this.openLevel(interaction, first);
         return;
+      case "hazardOpen":
+        if (interaction.isButton() && first !== undefined) await this.openHazard(interaction, first);
+        return;
       default:
         return;
     }
@@ -145,6 +152,7 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     if (parsed.action === "uploadSubmit") return void (await this.submitUpload(interaction));
     if (parsed.action === "authorSubmit") return void (await this.submitAuthor(interaction));
     if (parsed.action === "levelSubmit") return void (await this.submitLevel(interaction, parsed.parts[0] ?? ""));
+    if (parsed.action === "hazardSubmit") return void (await this.submitHazard(interaction, parsed.parts[0] ?? ""));
     if (parsed.action !== "wizName") return;
     const choices = parseWizardState(parsed.parts[0]);
     const text = texts[choices.language];
@@ -319,6 +327,62 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     // A DnD Admin acts for the organizer: no user is named, so the engine sees the organizer.
     const result = await this.deps.play.raiseLevel(record.key, null, Number.isInteger(level) ? level : 0, interaction.id);
     await interaction.editReply({ content: result.kind === "ok" ? text.campaign.cmd.levelRaised({ level }) : refusalText(text, result.reason) });
+  }
+
+  // ---- Face a hazard (Manage) -------------------------------------------------
+
+  private async openHazard(interaction: ButtonInteraction<"cached">, campaignId: string): Promise<void> {
+    const record = (await this.deps.lobby.get({ guildId: interaction.guildId, campaignId }))?.record;
+    if (record === undefined) {
+      await interaction.reply({ content: texts.en.campaign.manage.gone, flags: MessageFlags.Ephemeral });
+      return;
+    }
+    const text = texts[record.language];
+    if (!(await this.deps.authority.canManage(interaction, record))) {
+      await interaction.reply({ content: text.campaign.manage.notAllowed, flags: MessageFlags.Ephemeral });
+      return;
+    }
+    const heroes = await this.deps.play.livingHeroes(record.key);
+    const t = text.campaign.hub;
+    await interaction.showModal(
+      new ModalBuilder()
+        .setCustomId(hubCustomId("hazardSubmit", campaignId))
+        .setTitle(t.hazardTitle)
+        .addLabelComponents(
+          new LabelBuilder()
+            .setLabel(t.hazardWho)
+            .setStringSelectMenuComponent(
+              new StringSelectMenuBuilder()
+                .setCustomId(whoField)
+                .setRequired(true)
+                .addOptions([{ label: t.hazardEveryone, value: "party", default: true }, ...heroes.slice(0, 24).map((hero) => ({ label: hero.name.slice(0, 100), value: hero.id }))]),
+            ),
+          new LabelBuilder()
+            .setLabel(t.hazardAbility)
+            .setStringSelectMenuComponent(
+              new StringSelectMenuBuilder()
+                .setCustomId(abilityField)
+                .setRequired(true)
+                .addOptions(abilities.map((ability) => ({ label: text.campaign.ability[ability], value: ability, default: ability === "con" }))),
+            ),
+          new LabelBuilder().setLabel(t.hazardDc).setTextInputComponent(new TextInputBuilder().setCustomId(dcField).setStyle(TextInputStyle.Short).setRequired(true).setMinLength(1).setMaxLength(2).setPlaceholder("15")),
+        ),
+    );
+  }
+
+  private async submitHazard(interaction: ModalSubmitInteraction<"cached">, campaignId: string): Promise<void> {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const record = (await this.deps.lobby.get({ guildId: interaction.guildId, campaignId }))?.record;
+    if (record === undefined) return void (await interaction.editReply({ content: texts.en.campaign.manage.gone }));
+    const text = texts[record.language];
+    // Checked again here: the form is only a request.
+    if (!(await this.deps.authority.canManage(interaction, record))) return void (await interaction.editReply({ content: text.campaign.manage.notAllowed }));
+    const who = interaction.fields.getStringSelectValues(whoField)[0] ?? "party";
+    const chosen = interaction.fields.getStringSelectValues(abilityField)[0] ?? "";
+    const ability = abilities.find((candidate) => candidate === chosen);
+    const dc = Number(interaction.fields.getTextInputValue(dcField).trim());
+    const result = ability === undefined ? ({ kind: "refused", reason: "invalidHazard" } as const) : await this.deps.play.hazard(record.key, null, who, ability, dc, interaction.id);
+    await interaction.editReply({ content: result.kind === "ok" ? text.campaign.cmd.hazardSet : refusalText(text, result.reason) });
   }
 
   // ---- Create game --------------------------------------------------------
@@ -527,7 +591,13 @@ export class CampaignHubComponentHandler implements ComponentHandler {
         row(verb("shortRest", t.shortRest), verb("longRest", t.longRest), verb("retryFight", t.retryFight), verb("retell", t.retell), verb("illustrate", t.illustrate)),
       );
     }
-    rows.push(row(verb("repair", t.repair), new ButtonBuilder().setCustomId(hubCustomId("endAsk", id)).setLabel(t.end).setStyle(ButtonStyle.Danger)));
+    rows.push(
+      row(
+        verb("repair", t.repair),
+        ...(record.lifecycle === "lobby" ? [] : [new ButtonBuilder().setCustomId(hubCustomId("hazardOpen", id)).setLabel(t.hazardButton).setStyle(ButtonStyle.Secondary)]),
+        new ButtonBuilder().setCustomId(hubCustomId("endAsk", id)).setLabel(t.end).setStyle(ButtonStyle.Danger),
+      ),
+    );
     const problems = (record.issues ?? []).map((issue) => `⚠️ ${text.campaign.issue.short[issue.code]({ detail: issue.detail })}`);
     const title = `**${t.title({ name: record.name })}**${status === "" ? "" : ` · ${status}`}`;
     return { content: problems.length === 0 ? title : `${title}\n${t.needsAttention}\n${problems.join("\n")}`, components: rows };

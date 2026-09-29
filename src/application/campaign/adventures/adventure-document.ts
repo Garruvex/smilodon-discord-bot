@@ -17,7 +17,8 @@ export interface AdventureDocument {
 }
 
 const sceneId = z.string().regex(/^scene:[a-z0-9-]+$/) as unknown as z.ZodType<SceneId>;
-const npcId = z.string().regex(/^npc:[a-z0-9-]+$/) as unknown as z.ZodType<NpcId>;
+// At most 40 characters after "npc:", so a control that names the NPC always fits a custom ID.
+const npcId = z.string().regex(/^npc:[a-z0-9-]{1,40}$/) as unknown as z.ZodType<NpcId>;
 const encounterId = z.string().regex(/^encounter:[a-z0-9-]+$/) as unknown as z.ZodType<EncounterId>;
 const clockId = z.string().regex(/^clock:[a-z0-9-]+$/) as unknown as z.ZodType<ClockId>;
 const clueId = z.string().regex(/^clue:[a-z0-9-]+$/) as unknown as z.ZodType<ClueId>;
@@ -272,6 +273,7 @@ export function checkAdventureContent(document: AdventureDocument, content: Seal
     for (const id of hero.features) expectKind(hero.id, id, "feature");
     for (const id of hero.spellcasting?.spells ?? []) expectKind(hero.id, id, "spell");
   }
+  for (const npc of document.bible.npcs) for (const entry of npc.shop?.stock ?? []) expectKind(npc.id, entry.itemId, "item");
   for (const encounter of document.bible.encounters) {
     for (const monster of encounter.monsters) expectKind(encounter.id, monster.monsterId, "monster");
     for (const item of encounter.loot) expectKind(encounter.id, item, "item");

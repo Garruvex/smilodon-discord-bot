@@ -49,6 +49,23 @@ npcs:
     voice: 粗聲粗氣、話很短；緊張時會用問題回答問題。
     publicDescription: 一位體格寬厚的旅店老闆，一遍又一遍擦著同一個杯子。
     secret: 他向哥布林繳保護費，還通報哪些旅客身上帶著錢。
+    shop:
+      stock:
+        - itemId: item:potion-of-healing
+          buyPrice: 50
+          sellPrice: 25
+        - itemId: item:dagger
+          buyPrice: 2
+          sellPrice: 1
+        - itemId: item:javelin
+          buyPrice: 5
+          sellPrice: 2
+        - itemId: item:longsword
+          buyPrice: 15
+          sellPrice: 7
+        - itemId: item:shortsword
+          buyPrice: 10
+          sellPrice: 5
   - id: npc:skarn
     name: 斯卡恩
     voice: 狡猾又愛吹噓，總是用第三人稱稱呼自己。

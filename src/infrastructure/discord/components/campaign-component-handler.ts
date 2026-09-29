@@ -53,6 +53,7 @@ import { renderRulesScreen, ruleLines } from "../campaign/rules-screen.js";
 import { houseRulePresets, levelingMode } from "../../../domain/campaign/rules/house-rules.js";
 import { maxLevel } from "../../../domain/campaign/character/leveling.js";
 import { renderLevelForm } from "../campaign/level-up-form.js";
+import { ExploreFlow, isExploreAction } from "../campaign/explore-flow.js";
 import { refusalText } from "../campaign/refusal-text.js";
 
 // Joins lines, dropping the earliest content lines when they do not fit, so the latest news survives.
@@ -134,6 +135,7 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "speak":
     case "safety":
     case "more":
+    case "explore":
       return ["adventure"];
     case "offerYes":
     case "offerNo":
@@ -168,6 +170,19 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "recap":
     case "proxy":
     case "levelOpen":
+    case "exploreHome":
+    case "exploreBack":
+    case "exploreNpc":
+    case "exploreAsk":
+    case "exploreAskSubmit":
+    case "explorePress":
+    case "explorePressPick":
+    case "exploreShop":
+    case "exploreBuy":
+    case "exploreSell":
+    case "exploreHaggle":
+    case "exploreCast":
+    case "exploreCastPick":
       return [];
     case "reactCast":
     case "reactDecline":
@@ -193,7 +208,11 @@ export class CampaignComponentHandler implements ComponentHandler {
   public readonly module = CommandModule.Campaign;
   public readonly access = publicAccessPolicy;
 
-  public constructor(private readonly deps: CampaignComponentDependencies) {}
+  private readonly explore: ExploreFlow;
+
+  public constructor(private readonly deps: CampaignComponentDependencies) {
+    this.explore = new ExploreFlow({ play: deps.play, unitOfWork: deps.unitOfWork, rulesets: deps.rulesets, adventures: deps.adventures, glossaries: deps.glossaries });
+  }
 
   public async execute(context: ComponentContext): Promise<void> {
     const { interaction } = context;
@@ -218,6 +237,10 @@ export class CampaignComponentHandler implements ComponentHandler {
       else if (parsed.action === "proxy") await this.changeProxy(interaction, record, text);
       else if (parsed.action === "asiPick") await this.chooseAsi(interaction, record, text);
       else if (parsed.action === "levelClass" || parsed.action === "levelSkill") await this.chooseClass(interaction, record, text, parsed.action, parsed.argument);
+      else if (isExploreAction(parsed.action)) {
+        await interaction.deferUpdate();
+        await this.explore.select(interaction, record, text, parsed.action, parsed.argument);
+      }
       else if (parsed.action === "rulePreset" || parsed.action === "ruleOption" || parsed.action === "ruleValue") await this.changeRules(interaction, record, text, parsed.action, parsed.argument);
       else await this.chooseHero(interaction, record, text);
       return;
@@ -238,6 +261,16 @@ export class CampaignComponentHandler implements ComponentHandler {
     }
     if (parsed.action === "speak") {
       await interaction.showModal(this.speakModal(record, text));
+      return;
+    }
+    // Between fights: asking is a form, which has to be the first response; the other screens update their own message.
+    if (parsed.action === "exploreAsk") {
+      await interaction.showModal(this.explore.askModal(record, text, parsed.argument ?? ""));
+      return;
+    }
+    if (isExploreAction(parsed.action) && parsed.action !== "explore") {
+      await interaction.deferUpdate();
+      await this.explore.button(interaction, record, text, parsed.action, parsed.argument);
       return;
     }
     // Buttons inside a private turn menu update that message instead of opening another.
@@ -352,6 +385,8 @@ export class CampaignComponentHandler implements ComponentHandler {
         await interaction.editReply(form);
         return;
       }
+      case "explore":
+        return void (await this.explore.open(interaction, record, text));
       case "safety":
         await interaction.editReply({
           content: text.campaign.reply.safetyAsk,
@@ -402,11 +437,16 @@ export class CampaignComponentHandler implements ComponentHandler {
   public async executeModal(context: ModalContext): Promise<void> {
     const { interaction } = context;
     const parsed = parseCampaignId(interaction.customId);
-    if ((parsed?.action !== "act" && parsed?.action !== "speak") || interaction.guildId === null) return;
+    if ((parsed?.action !== "act" && parsed?.action !== "speak" && parsed?.action !== "exploreAskSubmit") || interaction.guildId === null) return;
     const key: CampaignKey = { guildId: interaction.guildId, campaignId: parsed.campaignId };
     const stored = await this.deps.lobby.get(key);
     const text = texts[stored?.record.language ?? "en"];
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    if (parsed.action === "exploreAskSubmit") {
+      if (stored === undefined) return void (await interaction.editReply({ content: text.campaign.refusal.notFound }));
+      await this.explore.submitAsk(interaction, stored.record, text, parsed.argument ?? "");
+      return;
+    }
     if (parsed.action === "speak") {
       const spoke = await this.deps.play.speak(key, interaction.user.id, this.field(interaction), interaction.id);
       await interaction.editReply({ content: spoke.kind === "ok" ? text.campaign.reply.spoke : refusalText(text, spoke.reason) });

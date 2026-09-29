@@ -130,6 +130,8 @@ function modelReply(overrides: Record<string, unknown> = {}): string {
   return JSON.stringify({
     ...story,
     id: "the-lost-chapel",
+    // The Author writes people, not price lists.
+    npcs: story.npcs.map(({ shop: _shop, ...npc }) => npc),
     clocks: story.clocks.map((clock) => ({ ...clock })),
     encounters: story.encounters.map((encounter) => ({
       ...encounter,

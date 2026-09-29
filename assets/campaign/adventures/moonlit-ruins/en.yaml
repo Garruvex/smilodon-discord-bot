@@ -60,6 +60,23 @@ npcs:
     voice: Gruff and clipped; answers questions with questions when nervous.
     publicDescription: A broad innkeeper polishing the same mug over and over.
     secret: He pays the goblins tribute and tips them off about travelers carrying coin.
+    shop:
+      stock:
+        - itemId: item:potion-of-healing
+          buyPrice: 50
+          sellPrice: 25
+        - itemId: item:dagger
+          buyPrice: 2
+          sellPrice: 1
+        - itemId: item:javelin
+          buyPrice: 5
+          sellPrice: 2
+        - itemId: item:longsword
+          buyPrice: 15
+          sellPrice: 7
+        - itemId: item:shortsword
+          buyPrice: 10
+          sellPrice: 5
   - id: npc:skarn
     name: Skarn
     voice: Sly and boastful; speaks of himself in the third person.

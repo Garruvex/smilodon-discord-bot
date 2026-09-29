@@ -65,9 +65,9 @@ export function renderAdventurePanel(view: PanelView, text: Texts, campaignId: s
     );
   }
   if (view.mode !== "archived") {
-    container.addActionRowComponents(
-      new ActionRowBuilder<ButtonBuilder>().addComponents(safetyControls.map((action) => controlButton(action, campaignId, text, view))),
-    );
+    // Explore (people, shops, spells) is for between fights.
+    const second: readonly CampaignAction[] = view.mode === "combat" ? safetyControls : ["explore", ...safetyControls];
+    container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(second.map((action) => controlButton(action, campaignId, text, view))));
   }
   return cardPayload(container);
 }
@@ -143,6 +143,7 @@ function controlButton(action: CampaignAction, campaignId: string, text: Texts, 
     speak: t.speak,
     safety: t.safety,
     more: t.more,
+    explore: t.explore,
   };
   const style = action === "act" || action === "roll" || action === "continue" || action === "ready" || action === "turn" ? ButtonStyle.Primary : ButtonStyle.Secondary;
   // Roll is enabled while a check waits; the click still finds the clicker's own.

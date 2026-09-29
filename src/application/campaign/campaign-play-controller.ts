@@ -1,3 +1,7 @@
+import type { AdventureBible, NpcId } from "../../domain/campaign/adventure/adventure-bible.js";
+import type { Skill } from "../../domain/campaign/character/character-sheet.js";
+import { abilities } from "../../domain/campaign/rules/effects.js";
+import { sceneNpcs } from "./views/explore-view.js";
 import { raiseToLevel } from "../../domain/campaign/character/leveling.js";
 import type { ContentId } from "../../domain/campaign/rules/content-id.js";
 import type { CampaignCommand, CombatCommand } from "../../domain/campaign/commands/campaign-command.js";
@@ -14,7 +18,7 @@ import type { CampaignKey, CampaignUnitOfWork } from "./ports/campaign-store.js"
 
 // Why a control did nothing. Engine rejections keep their code; the rest are
 // the controller's own. The Discord layer turns each into a private message.
-export type PlayRefusal = RejectionCode | "notFound" | "notActive" | "noHero" | "noPendingRoll";
+export type PlayRefusal = RejectionCode | "notFound" | "notActive" | "noHero" | "noPendingRoll" | "npcNotHere" | "notForSale" | "invalidHazard";
 
 // What a manager can do to a game from the hub.
 export type ManageAction = "pause" | "resume" | "closeRound" | "retry" | "retryFight" | "retell" | "illustrate" | "shortRest" | "longRest";
@@ -84,6 +88,88 @@ export class CampaignPlayController {
   // The hero's next level lands in `buildClass` (their own, or a multiclass they qualify for).
   public chooseClassLevel(key: CampaignKey, userId: UserId, buildClass: string, skillChoice: string | undefined, interactionId: string): Promise<PlayResult> {
     return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "chooseClassLevel", characterId, buildClass, ...(skillChoice === undefined ? {} : { skillChoice }) }));
+  }
+
+  // The heroes still in play, for a form that picks one.
+  public async livingHeroes(key: CampaignKey): Promise<readonly { readonly id: string; readonly name: string }[]> {
+    const loaded = await this.options.unitOfWork.transaction((tx) => tx.loadCampaign(key));
+    if (loaded === undefined) return [];
+    const { state } = loaded;
+    return Object.values(state.characters).filter((sheet) => !isFallen(state, sheet.id)).map((sheet) => ({ id: sheet.id, name: sheet.name }));
+  }
+
+  // ---- Between fights: talking, trading, magic, hazards -----------------------
+  // The engine trusts the NPC and the price it is handed (it never reads the
+  // adventure), so these check them first: the NPC must be in the scene the
+  // party is standing in, and a price is only ever the one the adventure wrote.
+
+  // A free question to an NPC in the scene, answered by the Narrator in their voice.
+  public ask(key: CampaignKey, userId: UserId, npcId: string, question: string, interactionId: string): Promise<PlayResult> {
+    return this.withNpc(key, userId, npcId, interactionId, (characterId, id) => ({ kind: "askNpc", characterId, npcId: id, question }));
+  }
+
+  // Pressing an NPC for their secret over a real check.
+  public press(key: CampaignKey, userId: UserId, npcId: string, skill: Skill, interactionId: string): Promise<PlayResult> {
+    return this.withNpc(key, userId, npcId, interactionId, (characterId, id) => ({ kind: "pressNpc", characterId, npcId: id, skill }));
+  }
+
+  // Buying or selling at an NPC's shop, at the price the adventure wrote for
+  // it, or over a haggle (a real check that moves the price at most a quarter).
+  public trade(
+    key: CampaignKey,
+    userId: UserId,
+    request: { readonly npcId: string; readonly itemId: ContentId<"item">; readonly direction: "buy" | "sell"; readonly haggle?: Skill },
+    interactionId: string,
+  ): Promise<PlayResult> {
+    return this.withNpc(key, userId, request.npcId, interactionId, (characterId, npcId, bible) => {
+      const entry = bible.npcs.find((npc) => npc.id === npcId)?.shop?.stock.find((stock) => stock.itemId === request.itemId);
+      if (entry === undefined) return "notForSale";
+      const price = request.direction === "buy" ? entry.buyPrice : entry.sellPrice;
+      if (price === undefined) return "notForSale";
+      return request.haggle === undefined
+        ? { kind: request.direction === "buy" ? "buyItem" : "sellItem", characterId, npcId, itemId: request.itemId, price }
+        : { kind: "hagglePrice", characterId, npcId, itemId: request.itemId, direction: request.direction, listedPrice: price, skill: request.haggle };
+    });
+  }
+
+  // A cantrip or ritual cast between fights, told by the Narrator.
+  public castSpell(key: CampaignKey, userId: UserId, spellId: ContentId<"spell">, interactionId: string): Promise<PlayResult> {
+    return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "castRitualSpell", characterId, spellId }));
+  }
+
+  // The organizer (or a DnD Admin, as the organizer) sets a hazard save for one
+  // hero or the whole party, the ability and DC being theirs to name.
+  public async hazard(key: CampaignKey, userId: UserId | null, target: string, ability: Ability, dc: number, interactionId: string): Promise<PlayResult> {
+    if (!Number.isInteger(dc) || dc < 5 || dc > 30 || !abilities.includes(ability)) return { kind: "refused", reason: "invalidHazard" };
+    const loaded = await this.options.unitOfWork.transaction((tx) => tx.loadCampaign(key));
+    if (loaded === undefined) return { kind: "refused", reason: "notFound" };
+    const { state } = loaded;
+    const heroes = target === "party" ? Object.values(state.characters).filter((sheet) => !isFallen(state, sheet.id)).map((sheet) => sheet.id) : [target];
+    if (heroes.length === 0) return { kind: "refused", reason: "noHero" };
+    let first: PlayResult | null = null;
+    for (const characterId of heroes) {
+      const result = await this.perform(key, userId, `${interactionId}:${characterId}`, () => ({ kind: "faceHazard", characterId, ability, dc }));
+      // A party goes through together; the first refusal is the one worth telling.
+      if (result.kind === "refused" && first === null) first = result;
+    }
+    return first ?? { kind: "ok" };
+  }
+
+  // Runs a command for the clicker's hero against an NPC the scene actually has.
+  private async withNpc(
+    key: CampaignKey,
+    userId: UserId,
+    npcId: string,
+    interactionId: string,
+    build: (characterId: CharacterId, npcId: NpcId, bible: AdventureBible) => CampaignCommand | PlayRefusal,
+  ): Promise<PlayResult> {
+    const stored = await this.options.unitOfWork.transaction((tx) => tx.loadRecord(key));
+    const bible = stored === undefined ? undefined : this.options.adventures.find(stored.record.adventure.adventureId, stored.record.adventure.version, stored.record.language);
+    if (bible === undefined) return { kind: "refused", reason: "notFound" };
+    return this.asHero(key, userId, interactionId, (characterId, state) => {
+      const npc = sceneNpcs(state, bible).find((candidate) => candidate.id === npcId);
+      return npc === undefined ? "npcNotHere" : build(characterId, npc.id, bible);
+    });
   }
 
   // roundNumber is the round the form was opened for; the engine refuses it in any other round.
@@ -233,10 +319,10 @@ export class CampaignPlayController {
     return this.perform(key, null, interactionId, () => ({ kind: "redoPicture", subject }));
   }
 
-  private asHero(key: CampaignKey, userId: UserId, interactionId: string, command: (characterId: CharacterId) => CampaignCommand): Promise<PlayResult> {
+  private asHero(key: CampaignKey, userId: UserId, interactionId: string, command: (characterId: CharacterId, state: CampaignState) => CampaignCommand | PlayRefusal): Promise<PlayResult> {
     return this.perform(key, userId, interactionId, (state) => {
       const heroId = state.members[userId]?.characterId;
-      return heroId === null || heroId === undefined ? "noHero" : command(heroId);
+      return heroId === null || heroId === undefined ? "noHero" : command(heroId, state);
     });
   }
 

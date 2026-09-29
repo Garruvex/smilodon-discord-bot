@@ -181,6 +181,7 @@ function modelReply(): string {
   return JSON.stringify({
     ...story,
     id: "the-lost-chapel",
+    npcs: story.npcs.map(({ shop: _shop, ...npc }) => npc),
     encounters: story.encounters.map((encounter) => ({
       ...encounter,
       monsters: encounter.monsters.map((monster) => ({ monsterId: monster.monsterId, zoneId: monster.zoneId, npcId: monster.npcId ?? null, fleeBelowHpFraction: monster.fleeBelowHpFraction ?? null })),

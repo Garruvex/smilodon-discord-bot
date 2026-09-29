@@ -33,6 +33,9 @@ export const hubActions = [
   // Manage: raise the party's level (a form for the number).
   "levelOpen",
   "levelSubmit",
+  // Manage: set a hazard save for a hero or the whole party.
+  "hazardOpen",
+  "hazardSubmit",
 ] as const;
 export type HubAction = (typeof hubActions)[number];
 

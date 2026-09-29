@@ -292,8 +292,8 @@ describe("Manage a game", () => {
     expect(contentOf(await t.click(id, { userId: "u-x" }, { messageId: hubMessageId }))).toBe("Only DnD Admins and the game's organizer can manage a game.");
     const organizer = await t.click(id, { userId: "u-org" }, { messageId: hubMessageId });
     expect(contentOf(organizer)).toContain("Manage Moonlit Ruins");
-    expect(rowsOf(organizer).flat().map((button) => button.label)).toEqual(["Pause", "Close round", "Retry the DM", "Redo the last picture", "Raise level", "Short rest", "Long rest", "Retry the fight", "Retell the last scene", "Picture this moment", "Repair cards", "End game"]);
-    expect(rowsOf(await t.click(id, { userId: "u-a", admin: true }, { messageId: hubMessageId })).flat()).toHaveLength(12);
+    expect(rowsOf(organizer).flat().map((button) => button.label)).toEqual(["Pause", "Close round", "Retry the DM", "Redo the last picture", "Raise level", "Short rest", "Long rest", "Retry the fight", "Retell the last scene", "Picture this moment", "Repair cards", "Hazard", "End game"]);
+    expect(rowsOf(await t.click(id, { userId: "u-a", admin: true }, { messageId: hubMessageId })).flat()).toHaveLength(13);
   });
 
   it("refuses Retry the fight when there is no lost fight", async () => {
@@ -483,5 +483,35 @@ describe("Raise level in Manage", () => {
     const t = harness();
     const { key } = await activeGame(t);
     expect(contentOf(await t.form(hubCustomId("levelSubmit", key.campaignId), { userId: "u-a", admin: true }, { fields: { level: "2" } }))).toContain("The party is now level 2");
+  });
+});
+
+describe("Hazard in Manage", () => {
+  it("opens a form naming who faces it, the save and the DC, for the organizer or a DnD Admin only", async () => {
+    const t = harness();
+    const { key } = await activeGame(t);
+    const id = hubCustomId("hazardOpen", key.campaignId);
+    expect(contentOf(await t.click(id, { userId: "u-x" }))).toBe("Only DnD Admins and the game's organizer can manage a game.");
+    const opened = await t.click(id, { userId: "u-org" });
+    const modal = (opened.find((entry) => entry.kind === "modal")?.payload as { toJSON(): { custom_id: string; components: { label: string; component: { custom_id: string; options?: { value: string }[] } }[] } }).toJSON();
+    expect(modal.custom_id).toBe(hubCustomId("hazardSubmit", key.campaignId));
+    expect(modal.components.map((row) => row.component.custom_id)).toEqual(["who", "ability", "dc"]);
+    // The whole party first, then each hero still in play.
+    expect(modal.components[0]?.component.options?.map((option) => option.value)[0]).toBe("party");
+    expect(modal.components[0]?.component.options?.length).toBeGreaterThan(1);
+    expect(modal.components[1]?.component.options?.map((option) => option.value)).toEqual(["str", "dex", "con", "int", "wis", "cha"]);
+  });
+
+  it("sets a real saving throw for the party and refuses a stranger, a bad DC or a bad save", async () => {
+    const t = harness();
+    const { key } = await activeGame(t);
+    const id = hubCustomId("hazardSubmit", key.campaignId);
+    const set = await t.form(id, { userId: "u-org" }, { selects: { who: ["party"], ability: ["con"] }, fields: { dc: "13" } });
+    expect(contentOf(set)).toContain("The hazard is set.");
+    const state = (await t.r.store.transaction((tx) => tx.loadCampaign(key)))?.state;
+    expect(Object.values(state?.hazardPending ?? {}).map((hazard) => [hazard.ability, hazard.dc])).toEqual([["con", 13]]);
+    expect(contentOf(await t.form(id, { userId: "u-org" }, { selects: { who: ["party"], ability: ["con"] }, fields: { dc: "40" } }))).toContain("Pick an ability and a DC from 5 to 30.");
+    expect(contentOf(await t.form(id, { userId: "u-org" }, { selects: { who: ["party"], ability: ["nope"] }, fields: { dc: "13" } }))).toContain("Pick an ability and a DC from 5 to 30.");
+    expect(contentOf(await t.form(id, { userId: "u-x" }, { selects: { who: ["party"], ability: ["con"] }, fields: { dc: "13" } }))).toBe("Only DnD Admins and the game's organizer can manage a game.");
   });
 });

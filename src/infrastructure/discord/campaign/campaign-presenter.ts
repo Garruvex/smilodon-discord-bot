@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import type { AdventureLibrary } from "../../../application/campaign/ports/adventure-library.js";
+import type { AdventureBible } from "../../../domain/campaign/adventure/adventure-bible.js";
 import type { CampaignPresenter } from "../../../application/campaign/ports/campaign-presenter.js";
 import type { CampaignKey, CampaignUnitOfWork } from "../../../application/campaign/ports/campaign-store.js";
 import { texts, type Texts } from "../../../application/i18n/texts.js";
@@ -177,6 +178,16 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
         if (view !== null) {
           await say(adventureChannelId, text.campaign.msg.opportunityAttackOffered({ user: view.provokerUserId, mover: view.moverName }), [view.provokerUserId]);
         }
+        break;
+      }
+      case "tradeNarrated":
+      case "dialogueNarrated":
+      case "utilityCastNarrated":
+      case "hazardNarrated": {
+        // What a hero did between fights: the plain facts the engine decided, then the Narrator’s line.
+        const bible = this.options.adventures.find(record.adventure.adventureId, record.adventure.version, record.language);
+        const glossary = this.options.glossaries[record.language];
+        if (state !== undefined && bible !== undefined && glossary !== undefined) await say(adventureChannelId, outsideCombatText(delivery, events, state, bible, glossary, text));
         break;
       }
       default:
@@ -381,4 +392,63 @@ function checkLabel(test: CheckTest, text: Texts): string {
 // Discord rejects a message over 2,000 characters.
 function truncate(content: string): string {
   return content.length <= 2000 ? content : `${content.slice(0, 1996)}…`;
+}
+
+const passed = (success: boolean, text: Texts): string => (success ? text.campaign.msg.checkPassed : text.campaign.msg.checkFailed);
+
+// The table-facing words for a trade, a conversation, a ritual or a hazard:
+// what the dice and the ledger decided, in a line, then what the Narrator
+// made of it. The numbers come from the saved events, never from the model.
+function outsideCombatText(
+  delivery: Extract<DeliverySpec, { kind: "tradeNarrated" | "dialogueNarrated" | "utilityCastNarrated" | "hazardNarrated" }>,
+  events: readonly CampaignEvent[],
+  state: CampaignState,
+  bible: AdventureBible,
+  glossary: Glossary,
+  text: Texts,
+): string | null {
+  const t = text.campaign.msg;
+  const nameOf = (id: string): string => glossary.names[id] ?? id;
+  const heroOf = (id: string): string => state.characters[id]?.name ?? id;
+  const npcOf = (id: string): string => bible.npcs.find((npc) => npc.id === id)?.name ?? id;
+  const join = (facts: readonly string[], told: string | undefined): string | null => (told === undefined ? null : [...facts, "", told].join("\n"));
+  switch (delivery.kind) {
+    case "tradeNarrated": {
+      const settled = events.findLast((event) => event.kind === "tradeSettled" && event.trade.id === delivery.tradeId);
+      const told = events.findLast((event) => event.kind === "tradeNarrated" && event.tradeId === delivery.tradeId);
+      if (settled?.kind !== "tradeSettled" || told?.kind !== "tradeNarrated") return null;
+      const { trade } = settled;
+      const values = { hero: heroOf(trade.characterId), npc: npcOf(trade.npcId), item: nameOf(trade.itemId), price: trade.finalPrice };
+      const line = trade.outcome === "cannotAfford" ? t.tradeBroke(values) : trade.direction === "buy" ? t.tradeBuy(values) : t.tradeSell(values);
+      const haggle = trade.haggle === null ? [] : [t.tradeHaggle({ skill: checkLabel(trade.haggle.test, text), total: trade.haggle.total, dc: trade.haggle.dc, result: passed(trade.haggle.success, text), listed: trade.listedPrice })];
+      return join([line, ...haggle], told.text);
+    }
+    case "dialogueNarrated": {
+      const settled = events.findLast((event) => event.kind === "dialogueSettled" && event.dialogue.id === delivery.dialogueId);
+      const told = events.findLast((event) => event.kind === "dialogueNarrated" && event.dialogueId === delivery.dialogueId);
+      if (settled?.kind !== "dialogueSettled" || told?.kind !== "dialogueNarrated") return null;
+      const { dialogue } = settled;
+      const hero = heroOf(dialogue.characterId);
+      const npc = npcOf(dialogue.npcId);
+      const line =
+        dialogue.kind === "ask" || dialogue.check === null
+          ? t.askLine({ hero, npc, question: dialogue.question ?? "" })
+          : t.pressLine({ hero, npc, skill: checkLabel(dialogue.check.test, text), total: dialogue.check.total, dc: dialogue.check.dc, result: passed(dialogue.check.success, text) });
+      return join([line], told.text);
+    }
+    case "utilityCastNarrated": {
+      const cast = events.findLast((event) => event.kind === "utilitySpellCast" && event.cast.id === delivery.castId);
+      const told = events.findLast((event) => event.kind === "utilityCastNarrated" && event.castId === delivery.castId);
+      if (cast?.kind !== "utilitySpellCast" || told?.kind !== "utilityCastNarrated") return null;
+      return join([t.castLine({ hero: heroOf(cast.cast.characterId), spell: nameOf(cast.cast.spellId) })], told.text);
+    }
+    case "hazardNarrated": {
+      const settled = events.findLast((event) => event.kind === "hazardSettled" && event.hazard.id === delivery.hazardId);
+      const told = events.findLast((event) => event.kind === "hazardNarrated" && event.hazardId === delivery.hazardId);
+      if (settled?.kind !== "hazardSettled" || told?.kind !== "hazardNarrated") return null;
+      const { hazard } = settled;
+      const line = t.hazardLine({ hero: heroOf(hazard.characterId), ability: text.campaign.ability[hazard.ability], dc: hazard.dc, total: hazard.total, result: passed(hazard.success, text) });
+      return join([line, ...(hazard.exhaustionGained > 0 ? [t.hazardExhausted] : [])], told.text);
+    }
+  }
 }
