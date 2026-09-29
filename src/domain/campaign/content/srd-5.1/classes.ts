@@ -89,7 +89,7 @@ export const cleric = defineClass({
   casterType: "full",
   spellcastingAbility: "wis",
   firstSpells: [],
-  levelFeatures: { 2: ["feature:channel-divinity"] },
+  levelFeatures: { 2: ["feature:channel-divinity"], 5: ["feature:destroy-undead"] },
   multiclassRequires: [["wis"]],
   spellList: srd51ClericSpells,
 });
@@ -112,7 +112,7 @@ export const barbarian = defineClass({
   casterType: "none",
   spellcastingAbility: null,
   firstSpells: [],
-  levelFeatures: { 2: ["feature:reckless-attack", "feature:danger-sense"], 3: ["feature:path-of-the-berserker"], 5: ["feature:extra-attack", "feature:fast-movement"], 9: ["feature:brutal-critical"], 13: ["feature:brutal-critical-2"], 17: ["feature:brutal-critical-3"] },
+  levelFeatures: { 2: ["feature:reckless-attack", "feature:danger-sense"], 3: ["feature:path-of-the-berserker"], 5: ["feature:extra-attack", "feature:fast-movement"], 7: ["feature:feral-instinct"], 9: ["feature:brutal-critical"], 13: ["feature:brutal-critical-2"], 17: ["feature:brutal-critical-3"] },
   multiclassRequires: [["str"]],
 });
 
@@ -153,7 +153,7 @@ export const bard = defineClass({
   casterType: "full",
   spellcastingAbility: "cha",
   firstSpells: [],
-  levelFeatures: { 2: ["feature:jack-of-all-trades"], 3: ["feature:college-of-lore"] },
+  levelFeatures: { 2: ["feature:jack-of-all-trades"], 3: ["feature:college-of-lore"], 5: ["feature:font-of-inspiration"] },
   multiclassRequires: [["cha"]],
   multiclassSkillChoices: [
     "acrobatics",

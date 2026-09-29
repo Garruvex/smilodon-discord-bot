@@ -29,8 +29,8 @@ export const channelDivinity = defineFeature({
   id: "feature:channel-divinity",
   source,
   traits: [
-    { kind: "featureSpell", spell: "spell:preserve-life", ability: "wis", uses: 1, recharge: "shortRest" },
-    { kind: "featureSpell", spell: "spell:turn-undead", ability: "wis", uses: 1, recharge: "shortRest" },
+    { kind: "featureSpell", spell: "spell:preserve-life", ability: "wis", uses: 1, usesAt: [{ level: 6, uses: 2 }, { level: 18, uses: 3 }], recharge: "shortRest" },
+    { kind: "featureSpell", spell: "spell:turn-undead", ability: "wis", uses: 1, usesAt: [{ level: 6, uses: 2 }, { level: 18, uses: 3 }], recharge: "shortRest" },
   ],
   action: null,
 });
@@ -42,6 +42,11 @@ export const indomitable = defineFeature({
   action: null,
   resource: { count: 1, perLevel: (level) => (level >= 17 ? 3 : level >= 13 ? 2 : 1), recharge: "longRest" },
 });
+// Destroy Undead is part of Turn Undead (class-ability-spells.ts); this names it on the sheet.
+export const destroyUndead = narrative("destroy-undead");
+// Font of Inspiration: Bardic Inspiration comes back on a short rest (engine/rest.ts).
+export const fontOfInspiration = narrative("font-of-inspiration");
+export const feralInstinct = defineFeature({ id: "feature:feral-instinct", source, traits: [{ kind: "feralInstinct" }], action: null });
 export const superiorCritical = defineFeature({ id: "feature:superior-critical", source, traits: [{ kind: "expandedCritRange", threshold: 18 }], action: null });
 const brutalCritical = (suffix: string): FeatureDefinition => defineFeature({ id: `feature:brutal-critical${suffix}`, source, traits: [{ kind: "brutalCritical", dice: 1 }], action: null });
 export const evasion = defineFeature({ id: "feature:evasion", source, traits: [{ kind: "evasion" }], action: null });
@@ -135,6 +140,9 @@ export const pactBoon = narrative("pact-boon");
 export const schoolOfEvocation = narrative("school-of-evocation");
 
 export const srd51HigherLevelFeatures: readonly FeatureDefinition[] = [
+  destroyUndead,
+  fontOfInspiration,
+  feralInstinct,
   indomitable,
   superiorCritical,
   brutalCritical(""),

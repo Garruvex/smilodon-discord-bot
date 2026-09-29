@@ -492,6 +492,13 @@ export function applyEffect(
         decision.emit({ kind: "effectApplied", combatantId: recipient.id, effect: conditionInstance(resolution, recipient, effect.condition, key, null, round, decision.ctx.rules.content) });
       }
       return;
+    case "destroy": {
+      const definition = recipient.source.kind === "monster" ? decision.ctx.rules.content.find(recipient.source.monsterId) : undefined;
+      if (definition?.kind === "monster" && definition.xp <= effect.maxXp && recipient.hp > 0) {
+        decision.emit({ kind: "combatantHpChanged", combatantId: recipient.id, change: -recipient.hp, hp: 0, condition: "dead", deathSaves: recipient.deathSaves, cause: "damage" });
+      }
+      return;
+    }
     case "exhaustion":
       decision.emit({ kind: "exhaustionChanged", combatantId: recipient.id, level: Math.min(6, Math.max(0, recipient.exhaustion + effect.amount)) });
       return;

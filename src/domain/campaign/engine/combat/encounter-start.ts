@@ -64,7 +64,7 @@ export function beginEncounter(decision: Decision, spec: EncounterSpec): void {
   const pendingRolls: Record<RollId, PendingCombatRoll> = {};
   let sequence = 0;
   for (const combatant of Object.values(combatants)) {
-    const rollSpec: D20TestSpec = { mode: "normal", modifier: combatant.initiativeModifier, bonusDice: [] };
+    const rollSpec: D20TestSpec = { mode: combatant.traits.some((trait) => trait.kind === "feralInstinct") ? "advantage" : "normal", modifier: combatant.initiativeModifier, bonusDice: [] };
     pendingRolls[`${spec.id}:roll:${++sequence}`] = { purpose: "initiative", combatantId: combatant.id, spec: rollSpec };
   }
   const encounter: EncounterState = {

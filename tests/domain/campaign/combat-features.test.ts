@@ -460,6 +460,27 @@ describe("class features", () => {
     expect(ofKind(plain, "checkRerolled")).toHaveLength(0);
   });
 
+  it("destroys a weak undead outright with Turn Undead from level 5, and only turns it before then", () => {
+    const cast = (level: number): Fight => {
+      const base = withFeatures("c-borin", ["feature:channel-divinity"]);
+      const hero = base.characters["c-borin"];
+      if (hero === undefined) throw new Error("fixture");
+      const state: CampaignState = { ...base, characters: { ...base.characters, "c-borin": { ...hero, level } } };
+      const fight = new Fight(state).rolls([1, 20, 5]).run(organizer, { kind: "startEncounter", spec: undeadSpec });
+      fight.run(jamie, { kind: "combatMove", combatantId: "c-borin", zoneId: "courtyard" });
+      return fight.rolls([2]).run(jamie, { kind: "combatCast", combatantId: "c-borin", spellId: "spell:turn-undead", slotLevel: 0, targetIds: ["skeleton"] });
+    };
+    expect(cast(5).combatant("skeleton").hp).toBe(0);
+    expect(cast(2).combatant("skeleton").hp).toBeGreaterThan(0);
+    expect(cast(2).combatant("skeleton").effects.some((effect) => JSON.stringify(effect).includes("condition:turned"))).toBe(true);
+  });
+
+  it("rolls initiative with advantage for a Barbarian with Feral Instinct", () => {
+    const fight = new Fight(withFeatures("c-borin", ["feature:feral-instinct"])).rolls([1, 20, 5, 4]).run(organizer, { kind: "startEncounter", spec: undeadSpec });
+    const rolls = fight.requests.filter((request) => request.kind === "roll" && request.spec.kind === "d20Test" && request.spec.spec.mode === "advantage");
+    expect(rolls).toHaveLength(1);
+  });
+
   it("rolls an extra weapon die on a critical hit with Brutal Critical", () => {
     // Longsword d8: a critical doubles it to two dice; Brutal Critical adds a third. Every die shows 1; +5 to damage.
     expect(strike([], 20, [1, 1, 1])).toBe(2 + 5);

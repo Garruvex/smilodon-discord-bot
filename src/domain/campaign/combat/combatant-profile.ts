@@ -106,7 +106,8 @@ function heroSpellcasting(sheet: CharacterSheet, content: SealedContent, traits:
   const saveDcs: Record<string, number> = {};
   for (const trait of granted) {
     const mod = abilityModifier(sheet.abilityScores[trait.ability]);
-    innate[trait.spell] = trait.usesAbility === true ? Math.max(1, mod) : trait.uses;
+    const atLevel = trait.usesAt?.filter((step) => step.level <= sheet.level).at(-1)?.uses;
+    innate[trait.spell] = trait.usesAbility === true ? Math.max(1, mod) : (atLevel ?? trait.uses);
     saveDcs[trait.spell] = 8 + base + mod;
   }
   return {

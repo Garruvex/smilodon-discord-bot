@@ -75,6 +75,8 @@ export type Trait =
       readonly spell: ContentId<"spell">;
       readonly ability: Ability;
       readonly uses: number | null;
+      // Uses that grow with level: the last entry at or below the holder's level wins over `uses`.
+      readonly usesAt?: readonly { readonly level: number; readonly uses: number }[];
       readonly usesAbility?: boolean;
       readonly recharge: "shortRest" | "longRest";
     }
@@ -93,6 +95,8 @@ export type Trait =
   | { readonly kind: "lucky" }
   // Fighter's Indomitable: a failed saving throw is rolled again (its uses are counted like a monster's Legendary Resistance).
   | { readonly kind: "indomitable" }
+  // Barbarian's Feral Instinct: advantage on initiative rolls.
+  | { readonly kind: "feralInstinct" }
   | { readonly kind: "brutalCritical"; readonly dice: number }
   // Evasion: a Dexterity save that would halve the damage takes none on a success, and half on a failure.
   | { readonly kind: "evasion" }

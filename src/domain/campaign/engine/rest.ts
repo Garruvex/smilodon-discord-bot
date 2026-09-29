@@ -57,7 +57,7 @@ export function takeRest(decision: Decision, rest: "short" | "long"): Rejection 
     // Spell-shaped abilities that come back on a short rest (Breath Weapon).
     const sources = [...(sheet.race === undefined ? [] : [sheet.race]), ...sheet.features];
     for (const trait of sources.flatMap((id) => { const definition = content.find(id); return definition === undefined ? [] : traitsOf(definition); })) {
-      if (trait.kind === "featureSpell" && trait.recharge === "shortRest") delete featureUses[innateUseKey(trait.spell)];
+      if (trait.kind === "featureSpell" && (trait.recharge === "shortRest" || (trait.spell === "spell:bardic-inspiration" && sheet.features.includes("feature:font-of-inspiration")))) delete featureUses[innateUseKey(trait.spell)];
     }
     // Arcane Recovery and Natural Recovery: slots back once a day, up to half the hero's level in combined slot levels, highest first.
     const spellSlots = { ...current.resources.spellSlots };

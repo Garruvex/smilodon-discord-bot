@@ -88,6 +88,8 @@ export type Effect =
   // 6-level stacking condition unlike every other one here (Greater
   // Restoration removes a level; a future travel/environment system would
   // be what usually grants one, since the engine has neither yet).
+  // Destroy Undead: a monster worth no more experience than this is destroyed outright (Turn Undead, from cleric level 5).
+  | { readonly kind: "destroy"; readonly target: EffectTarget; readonly maxXp: number }
   | { readonly kind: "exhaustion"; readonly target: EffectTarget; readonly amount: number };
 
 export type EffectKind = Effect["kind"];

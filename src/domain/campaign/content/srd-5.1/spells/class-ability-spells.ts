@@ -51,6 +51,9 @@ export const preserveLife = defineSpell({
 
 // Channel Divinity: Turn Undead. Undead within 30 feet that fail a Wisdom save are turned for a minute; a turned
 // creature is played as one that has fled the fight (it takes no actions).
+// Destroy Undead: the most experience an undead may be worth (challenge 1/2, then 1, 2, 3 and 4) to be destroyed by Turn Undead.
+const destroyLimit = (level: number): number => (level >= 17 ? 1100 : level >= 14 ? 700 : level >= 11 ? 450 : level >= 8 ? 200 : level >= 5 ? 100 : 0);
+
 export const turnUndead = defineSpell({
   id: "spell:turn-undead",
   source,
@@ -59,9 +62,12 @@ export const turnUndead = defineSpell({
   range: { kind: "feet", feet: 30 },
   targeting: { relation: "enemy", count: 6, creatureTypes: ["undead"] },
   concentration: false,
-  plan: () => ({
+  plan: ({ casterLevel }) => ({
     check: { kind: "savingThrow", ability: "wis" },
-    onLand: [{ kind: "applyCondition", target: "target", condition: "condition:turned", duration: { kind: "rounds", count: 10 } }],
+    onLand: [
+      { kind: "applyCondition", target: "target", condition: "condition:turned", duration: { kind: "rounds", count: 10 } },
+      ...(destroyLimit(casterLevel) > 0 ? [{ kind: "destroy" as const, target: "target" as const, maxXp: destroyLimit(casterLevel) }] : []),
+    ],
     onAvoid: [],
   }),
 });
