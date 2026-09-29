@@ -105,6 +105,9 @@ export function attackMode(
   const bias = attackBias(attacker, target, lookup, distance <= engagedDistance);
   advantage += bias.advantage;
   disadvantage += bias.disadvantage;
+  // Darkness: a creature that cannot see in the dark fights at disadvantage in a dark zone, or against one in it.
+  const darkAt = (zoneId: string): boolean => encounter.zones.some((zone) => zone.id === zoneId && zone.lighting === "dark");
+  if ((darkAt(attacker.zoneId) || darkAt(target.zoneId)) && !attacker.traits.some((trait) => trait.kind === "darkvision")) disadvantage += 1;
   if (ranged) {
     const threatened = engagedWith(encounter, attacker.id).some((other) => other.side !== attacker.side && isActive(other));
     if (threatened) disadvantage += 1;

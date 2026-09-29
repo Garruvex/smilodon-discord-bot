@@ -12,7 +12,7 @@ import { srd51EnchantedGear } from "./items/magic-gear.js";
 import { srd51MagicItems } from "./items/srd-magic-items.generated.js";
 import { spellScrolls } from "./items/spell-scrolls.js";
 import { srd51GeneratedItems } from "./items/srd-equipment.generated.js";
-import { srd51CreatureTypes } from "./monsters/creature-types.generated.js";
+import { srd51CreatureTypes, srd51Darkvision } from "./monsters/creature-types.generated.js";
 import { srd51MoreMonsters } from "./monsters/more-monsters.js";
 import { srd51GeneratedMonsters } from "./monsters/srd-monsters.generated.js";
 import { srd51StarterMonsters } from "./monsters/starter-monsters.js";
@@ -28,9 +28,13 @@ export const srd51RulesetId = "srd-5.1";
 export const srd51Version = "2026.1";
 
 // A monster carries its creature type as a trait, so the rules that name undead, fiends and the like can read it.
+// The same wrapper gives a monster its darkvision (or blindsight and the like), which the dark-zone rules read.
 const withCreatureType = (definition: ContentDefinition): ContentDefinition => {
-  const type = definition.kind === "monster" ? srd51CreatureTypes[definition.id] : undefined;
-  return type === undefined || definition.kind !== "monster" ? definition : { ...definition, traits: [...definition.traits, { kind: "creatureType", type }] };
+  if (definition.kind !== "monster") return definition;
+  const type = srd51CreatureTypes[definition.id];
+  const feet = srd51Darkvision[definition.id];
+  const traits = [...definition.traits, ...(type === undefined ? [] : [{ kind: "creatureType" as const, type }]), ...(feet === undefined ? [] : [{ kind: "darkvision" as const, feet }])];
+  return traits.length === definition.traits.length ? definition : { ...definition, traits };
 };
 
 // Spells cast as a reaction: what sets each one off (engine/combat/reactions.ts).

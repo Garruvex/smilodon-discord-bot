@@ -29,7 +29,7 @@ export const elf = defineRace({
   speed: 30,
   abilityScoreIncrease: { dex: 2 },
   skillProficiencies: ["perception"],
-  traits: [{ kind: "saveAdvantage", conditions: ["condition:charmed"] }],
+  traits: [{ kind: "darkvision", feet: 60 }, { kind: "saveAdvantage", conditions: ["condition:charmed"] }],
 });
 
 // Not modeled: Darkvision, Dwarven Combat Training and Tool Proficiency
@@ -39,7 +39,7 @@ export const dwarf = defineRace({
   source,
   speed: 25,
   abilityScoreIncrease: { con: 2 },
-  traits: [{ kind: "saveAdvantage", damageTypes: ["poison"], conditions: ["condition:poisoned"] }, { kind: "damageResistance", damageTypes: ["poison"] }],
+  traits: [{ kind: "darkvision", feet: 60 }, { kind: "saveAdvantage", damageTypes: ["poison"], conditions: ["condition:poisoned"] }, { kind: "damageResistance", damageTypes: ["poison"] }],
 });
 
 // Not modeled: Lucky (reroll a natural 1 on the d20), Brave (advantage
@@ -74,7 +74,7 @@ export const gnome = defineRace({
   source,
   speed: 25,
   abilityScoreIncrease: { int: 2 },
-  traits: [{ kind: "saveAdvantage", magic: true, abilities: ["int", "wis", "cha"] }],
+  traits: [{ kind: "darkvision", feet: 60 }, { kind: "saveAdvantage", magic: true, abilities: ["int", "wis", "cha"] }],
 });
 
 // SRD 5.1's +1 to two abilities of the player's choice is fixed here to
@@ -87,7 +87,7 @@ export const halfElf = defineRace({
   source,
   speed: 30,
   abilityScoreIncrease: { cha: 2, dex: 1, con: 1 },
-  traits: [{ kind: "saveAdvantage", conditions: ["condition:charmed"] }],
+  traits: [{ kind: "darkvision", feet: 60 }, { kind: "saveAdvantage", conditions: ["condition:charmed"] }],
 });
 
 // Not modeled: Darkvision, Relentless Endurance (drop to 1 HP instead of 0
@@ -99,7 +99,7 @@ export const halfOrc = defineRace({
   source,
   speed: 30,
   abilityScoreIncrease: { str: 2, con: 1 },
-  traits: [{ kind: "savageAttacks" }, { kind: "relentlessEndurance" }],
+  traits: [{ kind: "darkvision", feet: 60 }, { kind: "savageAttacks" }, { kind: "relentlessEndurance" }],
 });
 
 // Not modeled: Darkvision, Infernal Legacy (a bonus cantrip, and spells at
@@ -110,22 +110,22 @@ export const tiefling = defineRace({
   source,
   speed: 30,
   abilityScoreIncrease: { cha: 2, int: 1 },
-  traits: [{ kind: "damageResistance", damageTypes: ["fire"] }, { kind: "featureSpell", spell: "spell:thaumaturgy", ability: "cha", uses: null, recharge: "longRest" }],
+  traits: [{ kind: "darkvision", feet: 60 }, { kind: "damageResistance", damageTypes: ["fire"] }, { kind: "featureSpell", spell: "spell:thaumaturgy", ability: "cha", uses: null, recharge: "longRest" }],
 });
 
 export const srd51Races: readonly RaceDefinition[] = [human, elf, dwarf, halfling, dragonborn, gnome, halfElf, halfOrc, tiefling];
 
 // Explicit 2014 subraces. The unsuffixed entries above remain available for
 // characters saved before the builder offered a subrace choice.
-export const hillDwarf = defineRace({ id: "race:hill-dwarf", source, speed: 25, abilityScoreIncrease: { con: 2, wis: 1 }, bonusHpPerLevel: 1, traits: [{ kind: "saveAdvantage", damageTypes: ["poison"], conditions: ["condition:poisoned"] }, { kind: "damageResistance", damageTypes: ["poison"] }] });
-export const mountainDwarf = defineRace({ id: "race:mountain-dwarf", source, speed: 25, abilityScoreIncrease: { con: 2, str: 2 }, traits: [{ kind: "saveAdvantage", damageTypes: ["poison"], conditions: ["condition:poisoned"] }, { kind: "damageResistance", damageTypes: ["poison"] }] });
-export const highElf = defineRace({ id: "race:high-elf", source, speed: 30, abilityScoreIncrease: { dex: 2, int: 1 }, skillProficiencies: ["perception"], traits: [{ kind: "saveAdvantage", conditions: ["condition:charmed"] }] });
-export const woodElf = defineRace({ id: "race:wood-elf", source, speed: 35, abilityScoreIncrease: { dex: 2, wis: 1 }, skillProficiencies: ["perception"], traits: [{ kind: "saveAdvantage", conditions: ["condition:charmed"] }] });
-export const drow = defineRace({ id: "race:drow", source, speed: 30, abilityScoreIncrease: { dex: 2, cha: 1 }, skillProficiencies: ["perception"], traits: [{ kind: "saveAdvantage", conditions: ["condition:charmed"] }] });
+export const hillDwarf = defineRace({ id: "race:hill-dwarf", source, speed: 25, abilityScoreIncrease: { con: 2, wis: 1 }, bonusHpPerLevel: 1, traits: [{ kind: "darkvision", feet: 60 }, { kind: "saveAdvantage", damageTypes: ["poison"], conditions: ["condition:poisoned"] }, { kind: "damageResistance", damageTypes: ["poison"] }] });
+export const mountainDwarf = defineRace({ id: "race:mountain-dwarf", source, speed: 25, abilityScoreIncrease: { con: 2, str: 2 }, traits: [{ kind: "darkvision", feet: 60 }, { kind: "saveAdvantage", damageTypes: ["poison"], conditions: ["condition:poisoned"] }, { kind: "damageResistance", damageTypes: ["poison"] }] });
+export const highElf = defineRace({ id: "race:high-elf", source, speed: 30, abilityScoreIncrease: { dex: 2, int: 1 }, skillProficiencies: ["perception"], traits: [{ kind: "darkvision", feet: 60 }, { kind: "saveAdvantage", conditions: ["condition:charmed"] }] });
+export const woodElf = defineRace({ id: "race:wood-elf", source, speed: 35, abilityScoreIncrease: { dex: 2, wis: 1 }, skillProficiencies: ["perception"], traits: [{ kind: "darkvision", feet: 60 }, { kind: "saveAdvantage", conditions: ["condition:charmed"] }] });
+export const drow = defineRace({ id: "race:drow", source, speed: 30, abilityScoreIncrease: { dex: 2, cha: 1 }, skillProficiencies: ["perception"], traits: [{ kind: "darkvision", feet: 120 }, { kind: "saveAdvantage", conditions: ["condition:charmed"] }] });
 export const lightfootHalfling = defineRace({ id: "race:lightfoot-halfling", source, speed: 25, abilityScoreIncrease: { dex: 2, cha: 1 }, traits: [{ kind: "saveAdvantage", conditions: ["condition:frightened"] }, { kind: "lucky" }] });
 export const stoutHalfling = defineRace({ id: "race:stout-halfling", source, speed: 25, abilityScoreIncrease: { dex: 2, con: 1 }, traits: [{ kind: "saveAdvantage", damageTypes: ["poison"], conditions: ["condition:poisoned"] }, { kind: "saveAdvantage", conditions: ["condition:frightened"] }, { kind: "damageResistance", damageTypes: ["poison"] }, { kind: "lucky" }] });
-export const forestGnome = defineRace({ id: "race:forest-gnome", source, speed: 25, abilityScoreIncrease: { int: 2, dex: 1 }, traits: [{ kind: "saveAdvantage", magic: true, abilities: ["int", "wis", "cha"] }] });
-export const rockGnome = defineRace({ id: "race:rock-gnome", source, speed: 25, abilityScoreIncrease: { int: 2, con: 1 }, traits: [{ kind: "saveAdvantage", magic: true, abilities: ["int", "wis", "cha"] }] });
+export const forestGnome = defineRace({ id: "race:forest-gnome", source, speed: 25, abilityScoreIncrease: { int: 2, dex: 1 }, traits: [{ kind: "darkvision", feet: 60 }, { kind: "saveAdvantage", magic: true, abilities: ["int", "wis", "cha"] }] });
+export const rockGnome = defineRace({ id: "race:rock-gnome", source, speed: 25, abilityScoreIncrease: { int: 2, con: 1 }, traits: [{ kind: "darkvision", feet: 60 }, { kind: "saveAdvantage", magic: true, abilities: ["int", "wis", "cha"] }] });
 
 export const srd51Subraces: readonly RaceDefinition[] = [hillDwarf, mountainDwarf, highElf, woodElf, drow, lightfootHalfling, stoutHalfling, forestGnome, rockGnome];
 

@@ -151,6 +151,7 @@ export interface TurnBudget {
 export interface Zone {
   readonly id: ZoneId;
   readonly name: string;
+  readonly lighting?: "bright" | "dim" | "dark";
 }
 
 export interface ZoneEdge {

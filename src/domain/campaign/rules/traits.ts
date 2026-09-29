@@ -89,6 +89,8 @@ export type Trait =
   // Half-Orc Savage Attacks: a melee weapon critical hit rolls one extra damage die.
   | { readonly kind: "savageAttacks" }
   // Brutal Critical: this many more weapon dice on a melee critical hit (they add up across the levels that grant them).
+  // Can see in the dark to this many feet (Darkvision); blindsight, tremorsense and truesight count for it too.
+  | { readonly kind: "darkvision"; readonly feet: number }
   // Warlock invocation Agonizing Blast: the spellcasting modifier is added to each beam of Eldritch Blast.
   | { readonly kind: "agonizingBlast" }
   // Fighting Style (Archery): a bonus to attack rolls with ranged weapons.
