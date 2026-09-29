@@ -10,7 +10,8 @@ import { deadlineAfter, type Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { beginTriggers } from "./effect-triggers.js";
 import { endConcentration } from "./resolution.js";
-import { declareWeaponAttack } from "./combat-actions.js";
+import { declareAreaAttack, declareWeaponAttack } from "./combat-actions.js";
+import { applyHealing } from "./damage.js";
 import { startMove } from "./movement.js";
 import { isProtected, stabilize } from "./death-saves.js";
 import { activeEncounter, currentOf, endIfDecided, isPlayerControlled } from "./combat-flow.js";
@@ -113,6 +114,7 @@ export function continueTurn(decision: Decision, combatantId: string): void {
       if (!endIfDecided(decision)) endTurn(decision);
       return;
     }
+    regenerate(decision, combatant);
     playPlan(decision, currentOf(decision, combatant), chooseMonsterPlan(activeEncounter(decision) ?? encounter, currentOf(decision, combatant)));
     return;
   }
@@ -157,12 +159,24 @@ export function expireDue(decision: Decision, creatureId: string, boundary: "sta
   }
 }
 
+// Regeneration: a monster heals at the start of its turn, unless damage of a kind that
+// stops it landed since its last one (which lets it regenerate again the turn after).
+function regenerate(decision: Decision, monster: Combatant): void {
+  const trait = monster.traits.find((entry) => entry.kind === "regeneration");
+  if (trait === undefined || !isActive(monster)) return;
+  if (monster.regenBlocked) {
+    decision.emit({ kind: "monsterStateChanged", combatantId: monster.id, regenBlocked: false });
+    return;
+  }
+  if (monster.hp < monster.maxHp) applyHealing(decision, monster, trait.amount);
+}
+
 // Executes an engine-chosen plan through the same steps players use.
 export function playPlan(decision: Decision, combatant: Combatant, plan: TurnPlan): void {
   if (plan.disengage) decision.emit({ kind: "actionTaken", combatantId: combatant.id, action: "disengage", bonus: true });
   if (plan.dash) decision.emit({ kind: "actionTaken", combatantId: combatant.id, action: "dash", bonus: false });
   if (plan.dodge) decision.emit({ kind: "actionTaken", combatantId: combatant.id, action: "dodge", bonus: false });
-  continuePlan(decision, combatant.id, { moves: plan.moves, engage: plan.engage, attack: plan.attack });
+  continuePlan(decision, combatant.id, { moves: plan.moves, engage: plan.engage, attack: plan.attack, area: plan.area });
 }
 
 export function continuePlan(decision: Decision, combatantId: string, plan: TurnPlanRemainder): void {
@@ -193,6 +207,10 @@ export function continuePlan(decision: Decision, combatantId: string, plan: Turn
     if (target !== undefined && engageProblem(activeEncounter(decision) ?? encounter, current, plan.engage, content) === null) {
       decision.emit({ kind: "combatantEngaged", combatantId: current.id, targetId: target.id, feet: engageCost });
     }
+  }
+  if (plan.area != null) {
+    const attacker = activeEncounter(decision)?.combatants[combatantId] ?? current;
+    if (declareAreaAttack(decision, attacker, plan.area.area, plan.area.targetIds) === null) return;
   }
   if (plan.attack !== null) {
     const attacker = activeEncounter(decision)?.combatants[combatantId] ?? current;

@@ -30,6 +30,10 @@ export function applyDamage(decision: Decision, target: Combatant, rolled: numbe
     if (restored !== undefined && amount > target.hp) applyDamage(decision, restored, amount - target.hp, critical);
     return;
   }
+  // A regenerating monster hit by the damage that stops it does not regenerate at its next turn.
+  if (damageType !== null && !target.regenBlocked && target.traits.some((trait) => trait.kind === "regeneration" && trait.blockedBy.includes(damageType))) {
+    decision.emit({ kind: "monsterStateChanged", combatantId: target.id, regenBlocked: true });
+  }
   const base = { kind: "combatantHpChanged", combatantId: target.id, change: -amount } as const;
   const protectedHero = isProtected(decision, target);
   if (target.side === "foes") {

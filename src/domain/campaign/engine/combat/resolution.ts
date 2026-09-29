@@ -15,7 +15,7 @@ import { classifyRollMoments } from "../../dice/roll-moments.js";
 import { resultMatchesSpec, type RollResult, type RollSpec } from "../../dice/roll-spec.js";
 import type { Effect, EffectDuration } from "../../rules/effects.js";
 import { criticalHits, naturalRollsOnChecks } from "../../rules/house-rules.js";
-import { critThreshold, isImmuneToCondition } from "../../rules/traits.js";
+import { critThreshold, isImmuneToCondition, legendaryResistanceKey } from "../../rules/traits.js";
 import type { Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { activeEncounter, afterResolution, endIfDecided } from "./combat-flow.js";
@@ -67,7 +67,7 @@ export function declareResolution(decision: Decision, request: DeclareRequest): 
         autoFailed[targetId] = { landed: true, critical: false };
         continue;
       }
-      const dc = actor.spellcasting?.saveDc ?? 10;
+      const dc = source.kind === "area" ? source.area.dc : (actor.spellcasting?.saveDc ?? 10);
       const bias = saveBias(target, check.ability, lookup);
       spec = { mode: resolveRollMode(bias.advantage, bias.disadvantage), modifier: target.saves[check.ability], bonusDice: bonusDiceFor(target, "save") };
       against = dc;
@@ -174,7 +174,12 @@ export function settleCheck(decision: Decision, resolutionId: string, rollId: Ro
     moments = classifyRollMoments({ kind: "attack", roll, target: against, naturalRule: "no-effect" });
   } else {
     const naturalRule = decision.ctx.rules.houseRules.option(naturalRollsOnChecks);
-    const saved = resolveD20Test("savingThrow", roll.d20.natural, roll.total, check.against, naturalRule).success;
+    let saved = resolveD20Test("savingThrow", roll.d20.natural, roll.total, check.against, naturalRule).success;
+    // Legendary Resistance: a monster that would fail chooses to succeed instead.
+    if (!saved && target !== undefined && (target.resources.featureUses[legendaryResistanceKey] ?? 0) > 0) {
+      decision.emit({ kind: "monsterStateChanged", combatantId: target.id, legendaryResistanceSpent: true });
+      saved = true;
+    }
     landed = !saved;
     moments = classifyRollMoments({ kind: "savingThrow", roll, target: check.against, naturalRule });
   }
@@ -222,9 +227,14 @@ export function proceedToEffects(decision: Decision): void {
 
   for (const [listName, effects] of [["land", landEffects(resolution)], ["avoid", resolution.plan.onAvoid]] as const) {
     const targets = resolution.targetIds.filter((targetId) => (resolution.outcomes[targetId]?.landed ?? false) === (listName === "land"));
-    if (targets.length === 0) continue;
+    // The avoided side's "half as much" is half of the landing side's roll, so that is rolled even when everyone saved.
+    const halved = listName === "land" ? new Set(resolution.plan.onAvoid.flatMap((effect, index) => (effect.kind === "damage" && effect.halfOfLand === true ? [index] : []))) : new Set<number>();
+    const avoiders = resolution.targetIds.some((targetId) => resolution.outcomes[targetId]?.landed !== true);
+    if (targets.length === 0 && !(halved.size > 0 && avoiders)) continue;
     effects.forEach((effect, index) => {
       const key = `${listName}:${index}`;
+      if (targets.length === 0 && !halved.has(index)) return;
+      if (effect.kind === "damage" && effect.halfOfLand === true) return;
       if (effect.kind === "damage" || effect.kind === "heal") {
         let expression = effect.amount;
         if (effect.kind === "damage" && listName === "land" && resolution.sneakAttack && !sneakAdded) {
@@ -321,7 +331,7 @@ export function applyEffect(
   const round = activeEncounter(decision)?.round ?? 0;
   switch (effect.kind) {
     case "damage": {
-      const rolled = resolution.rolled[key] ?? 0;
+      const rolled = effect.halfOfLand === true ? Math.floor((resolution.rolled[key.replace("avoid:", "land:")] ?? 0) / 2) : (resolution.rolled[key] ?? 0);
       // Uncanny Dodge: halves an attack's damage, automatically whenever
       // the reaction is there (see the trait's own comment for why no
       // prompt). Only against an attack roll, not a saving throw, matching

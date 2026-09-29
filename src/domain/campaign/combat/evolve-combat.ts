@@ -1,6 +1,6 @@
 import { assertNever } from "../core/assert-never.js";
 import type { EffectInstance } from "../effects/effect-instance.js";
-import { attacksPerAction } from "../rules/traits.js";
+import { attacksPerAction, legendaryResistanceKey } from "../rules/traits.js";
 import { wildShapeUses } from "../rules/wild-shape-rules.js";
 import type { CombatEvent } from "./combat-events.js";
 import { spendSlot, type Combatant, type CombatantId, type EncounterState, type ResolutionState } from "./combat-state.js";
@@ -46,6 +46,7 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
           },
           dodging: false,
           disengaged: false,
+          cooldowns: Object.fromEntries(Object.entries(combatant.cooldowns).map(([id, turns]) => [id, Math.max(0, turns - 1)])),
         }),
       );
     }
@@ -110,6 +111,7 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
         const resources = cost.spellSlot !== null ? spendSlot(combatant.resources, cost.spellSlot) : combatant.resources;
         const uses = { ...resources.featureUses };
         if (cost.featureUse !== null) uses[cost.featureUse] = Math.max(0, (uses[cost.featureUse] ?? 0) - 1);
+        const cooldowns = resolution.source.kind === "area" ? { ...combatant.cooldowns, [resolution.source.area.weapon]: resolution.source.area.cooldown } : combatant.cooldowns;
         const attacksLeft = spendsAnAttack
           ? Math.max(0, combatant.budget.attacksLeft - 1)
           : cost.action
@@ -126,6 +128,7 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
             bonusSpellCast: combatant.budget.bonusSpellCast || (resolution.source.kind === "spell" && cost.bonusAction),
           },
           resources: { ...resources, featureUses: uses },
+          cooldowns,
         };
       });
       return { ...spent, resolution, sequence: event.sequence, pendingRolls: { ...spent.pendingRolls, ...event.pendingRolls } };
@@ -217,6 +220,15 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
     case "sneakAttackUsed":
       return update(encounter, event.combatantId, (combatant) => ({ ...combatant, sneakAttackUsed: true }));
     // A 6th level of Exhaustion kills (SRD 5.1), same as any other death.
+    case "monsterStateChanged":
+      return update(encounter, event.combatantId, (combatant) => ({
+        ...combatant,
+        regenBlocked: event.regenBlocked ?? combatant.regenBlocked,
+        resources:
+          event.legendaryResistanceSpent === true
+            ? { ...combatant.resources, featureUses: { ...combatant.resources.featureUses, [legendaryResistanceKey]: Math.max(0, (combatant.resources.featureUses[legendaryResistanceKey] ?? 0) - 1) } }
+            : combatant.resources,
+      }));
     case "exhaustionChanged": {
       const updated = update(encounter, event.combatantId, (combatant) => ({
         ...combatant,

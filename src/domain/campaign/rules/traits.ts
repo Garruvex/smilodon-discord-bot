@@ -1,5 +1,6 @@
+import type { DiceExpression } from "../dice/dice-expression.js";
 import type { ContentId } from "./content-id.js";
-import type { DamageType } from "./effects.js";
+import type { Ability, DamageType } from "./effects.js";
 
 // Passive rules a creature has, from whatever grants them: armor and shields,
 // class features, monster stat blocks. One closed union, so each rule is
@@ -64,7 +65,34 @@ export type Trait =
   // Champion's Improved Critical: a natural roll of this or higher on an
   // attack is a critical hit, not just a natural 20. The lowest of any held
   // wins (nothing lowers it below 20 by default).
-  | { readonly kind: "expandedCritRange"; readonly threshold: number };
+  | { readonly kind: "expandedCritRange"; readonly threshold: number }
+  // A breath weapon and the like: every foe within range makes a saving throw,
+  // taking the damage (or half of it, when halfOnSave) as the Attack action's
+  // replacement. The SRD's "recharge 5-6" is played deterministically: after use
+  // it comes back once its cooldown, in the monster's own turns, has run out.
+  | {
+      readonly kind: "areaAttack";
+      // The item id that names it ("item:fire-breath").
+      readonly weapon: ContentId<"item">;
+      readonly ability: Ability;
+      readonly dc: number;
+      readonly damage: DiceExpression;
+      readonly damageType: DamageType;
+      readonly halfOnSave: boolean;
+      // Feet: every foe this close is caught.
+      readonly range: number;
+      readonly cooldown: number;
+    }
+  // Regains these hit points at the start of its turn, unless it took damage of
+  // one of the listed types since its last turn.
+  | { readonly kind: "regeneration"; readonly amount: number; readonly blockedBy: readonly DamageType[] }
+  // Turns this many failed saving throws a day into successes.
+  | { readonly kind: "legendaryResistance"; readonly uses: number };
+
+// Where a monster's remaining Legendary Resistance is counted (resources.featureUses).
+export const legendaryResistanceKey = "trait:legendary-resistance";
+
+export type AreaAttack = Extract<Trait, { readonly kind: "areaAttack" }>;
 
 export type TraitKind = Trait["kind"];
 

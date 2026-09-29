@@ -37,6 +37,14 @@ export function planFor(decision: Decision, actor: Combatant, source: Resolution
       const feature = content.get(source.featureId);
       return feature.action?.plan({ level: actor.level }) ?? null;
     }
+    case "area": {
+      const area = source.area;
+      return {
+        check: { kind: "savingThrow", ability: area.ability },
+        onLand: [{ kind: "damage", target: "target", amount: area.damage, damageType: area.damageType }],
+        onAvoid: area.halfOnSave ? [{ kind: "damage", target: "target", amount: area.damage, damageType: area.damageType, halfOfLand: true }] : [],
+      };
+    }
     default:
       return assertNever(source);
   }

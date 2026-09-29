@@ -1,3 +1,4 @@
+import type { AreaAttack } from "../rules/traits.js";
 import type { AttackOption, Combatant, CombatantId, EncounterState, ZoneId } from "./combat-state.js";
 import { engagedWith, isActive } from "./combat-state.js";
 import { distanceBetween, edgeBetween, engageCost, shortestPath } from "./positioning.js";
@@ -12,16 +13,24 @@ export interface TurnPlan {
   readonly moves: readonly ZoneId[];
   readonly engage: CombatantId | null;
   readonly attack: { readonly targetId: CombatantId; readonly option: AttackOption } | null;
+  // A breath weapon in place of an attack.
+  readonly area: { readonly area: AreaAttack; readonly targetIds: readonly CombatantId[] } | null;
   readonly dodge: boolean;
 }
 
-const idle: TurnPlan = { disengage: false, dash: false, moves: [], engage: null, attack: null, dodge: false };
+const idle: TurnPlan = { disengage: false, dash: false, moves: [], engage: null, attack: null, area: null, dodge: false };
 
 // Monsters leave downed heroes alone by default (plan §6: focus-firing
 // unconscious heroes is off unless a house rule enables it).
 export function chooseMonsterPlan(encounter: EncounterState, monster: Combatant): TurnPlan {
   const foes = hostiles(encounter, monster);
   if (foes.length === 0) return idle;
+  // A breath weapon that is ready and catches anyone is used before anything else.
+  for (const trait of monster.traits) {
+    if (trait.kind !== "areaAttack" || (monster.cooldowns[trait.weapon] ?? 0) > 0) continue;
+    const caught = foes.filter((foe) => (distanceBetween(encounter, monster.id, foe.id) ?? Infinity) <= trait.range);
+    if (caught.length > 0) return { ...idle, area: { area: trait, targetIds: caught.map((foe) => foe.id) } };
+  }
   // A Multiattack opens with its first weapon.
   const opener = monster.traits.find((trait) => trait.kind === "multiattack")?.weapons[0];
   const melee = monster.attacks.find((attack) => attack.range.kind === "melee" && attack.weapon === opener) ?? monster.attacks.find((attack) => attack.range.kind === "melee") ?? null;

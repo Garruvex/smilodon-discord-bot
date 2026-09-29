@@ -178,6 +178,19 @@ function multiattackWeapons(monster, weaponByAction, notes) {
   return weapons;
 }
 
+// A breath weapon: a save-for-half action that recharges, shaped as a cone or line.
+function areaTraitCode(monster, action) {
+  if (action.dc === undefined || action.attack_bonus !== undefined || action.usage?.type !== "recharge on roll") return null;
+  if (!/cone|line/.test(action.desc)) return null;
+  const damage = damageList(monster, action);
+  const reach = /(\d+)[- ](?:foot|ft)/.exec(action.desc);
+  if (damage === null || reach === null) return null;
+  const ability = abilityCodes[action.dc.dc_type.name.toLowerCase()] ?? action.dc.dc_type.index;
+  const cooldown = Math.round(6 / (7 - action.usage.min_value));
+  const weapon = weaponFor(action, damage.type);
+  return `{ kind: "areaAttack", weapon: ${quote(weapon)}, ability: ${quote(ability)}, dc: ${action.dc.dc_value}, damage: ${damage.code}, damageType: ${quote(damage.type)}, halfOnSave: ${action.dc.success_type === "half"}, range: ${reach[1]}, cooldown: ${cooldown} }`;
+}
+
 for (const monster of monsters) {
   const id = `monster:${monster.index}`;
   if (knownMonsters.has(id)) continue;
@@ -186,7 +199,13 @@ for (const monster of monsters) {
   let anyRanged = false;
   let anyMelee = false;
   const weaponByAction = new Map();
+  const areaTraits = [];
   for (const action of monster.actions ?? []) {
+    const area = areaTraitCode(monster, action);
+    if (area !== null) {
+      areaTraits.push(area);
+      continue;
+    }
     if (action.attack_bonus === undefined || (action.damage ?? []).length === 0) {
       if (action.name !== "Multiattack") notes.push(action.name);
       continue;
@@ -205,18 +224,35 @@ for (const monster of monsters) {
     else anyMelee = true;
     attacks.push(`    { weapon: ${quote(weapon)}, toHit: ${action.attack_bonus}, damage: ${damage.code}${rider === null ? "" : `, onHit: [${rider}]`} }`);
   }
-  if (attacks.length === 0) {
+  if (attacks.length === 0 && areaTraits.length === 0) {
     // Nothing to swing: a monster that only casts, breathes or uses gaze cannot fight in this engine yet.
     notes.unshift("No weapon attack; it deals no damage yet");
-    attacks.push(`    { weapon: "item:slam", toHit: 0, damage: flat(0) }`);
   }
+  if (attacks.length === 0) attacks.push(`    { weapon: "item:slam", toHit: 0, damage: flat(0) }`);
   const traits = [];
   const swings = multiattackWeapons(monster, weaponByAction, notes);
   if (swings.length > 1) traits.push(`{ kind: "multiattack", weapons: [${swings.map(quote).join(", ")}] }`);
   const abilityNames = (monster.special_abilities ?? []).map((ability) => ability.name);
   if (abilityNames.includes("Pack Tactics")) traits.push(`{ kind: "packTactics" }`);
   if (abilityNames.includes("Nimble Escape")) traits.push(`{ kind: "nimbleEscape" }`);
-  for (const name of abilityNames) if (!["Pack Tactics", "Nimble Escape"].includes(name)) notes.push(name);
+  traits.push(...areaTraits);
+  for (const ability of monster.special_abilities ?? []) {
+    if (ability.name === "Regeneration") {
+      const amount = /regains (\d+) hit points/.exec(ability.desc);
+      const blocker = /takes ([^.]*)\./.exec(ability.desc)?.[1] ?? "";
+      if (amount !== null) {
+        const blockedBy = damageTypes.filter((type) => blocker.toLowerCase().includes(type));
+        traits.push(`{ kind: "regeneration", amount: ${amount[1]}, blockedBy: [${blockedBy.map(quote).join(", ")}] }`);
+        continue;
+      }
+    }
+    const resistance = ability.name === "Legendary Resistance" ? ability.usage?.times : undefined;
+    if (resistance !== undefined) {
+      traits.push(`{ kind: "legendaryResistance", uses: ${resistance} }`);
+      continue;
+    }
+    if (!["Pack Tactics", "Nimble Escape"].includes(ability.name)) notes.push(ability.name);
+  }
   for (const legendary of monster.legendary_actions ?? []) notes.push(`legendary: ${legendary.name}`);
   traits.push(...damageTraits(monster, notes));
   const speeds = Object.values(monster.speed ?? {}).map((text) => parseInt(text, 10)).filter(Number.isFinite);

@@ -3,7 +3,7 @@ import { plus } from "../dice/dice-expression.js";
 import { traitsOf, type MonsterDefinition, type WeaponDefinition } from "../rules/content-definitions.js";
 import type { SealedContent } from "../rules/content-registry.js";
 import { abilities, type Ability } from "../rules/effects.js";
-import type { Trait } from "../rules/traits.js";
+import { legendaryResistanceKey, type Trait } from "../rules/traits.js";
 import type { HeroStatus } from "../character/hero-status.js";
 import { armorSpeedPenalty, isWorn } from "../engine/gear.js";
 import type { AttackOption, Combatant, ZoneId } from "./combat-state.js";
@@ -116,6 +116,8 @@ export function heroCombatant(sheet: CharacterSheet, content: SealedContent, zon
     sneakAttackUsed: false,
     exhaustion: status.exhaustion ?? 0,
     wildShapeOriginal: null,
+    cooldowns: {},
+    regenBlocked: false,
     condition: status.hp > 0 ? "active" : "stable",
     effects: [],
     concentration: null,
@@ -153,6 +155,12 @@ export function monsterAttackOptions(monster: MonsterDefinition, content: Sealed
   });
 }
 
+// A monster begins with its full Legendary Resistance.
+function legendaryResistances(traits: readonly Trait[]): Readonly<Record<string, number>> {
+  const uses = traits.reduce((sum, trait) => sum + (trait.kind === "legendaryResistance" ? trait.uses : 0), 0);
+  return uses > 0 ? { [legendaryResistanceKey]: uses } : {};
+}
+
 export function monsterCombatant(monster: MonsterDefinition, content: SealedContent, placement: MonsterPlacement): Combatant {
   const attacks = monsterAttackOptions(monster, content);
   const saves = Object.fromEntries(abilities.map((ability) => [ability, abilityModifier(monster.abilityScores[ability])])) as Record<Ability, number>;
@@ -171,7 +179,7 @@ export function monsterCombatant(monster: MonsterDefinition, content: SealedCont
     attacks,
     spellcasting: null,
     features: [],
-    resources: { spellSlots: {}, pactSlots: {}, featureUses: {} },
+    resources: { spellSlots: {}, pactSlots: {}, featureUses: legendaryResistances(monster.traits) },
     traits: monster.traits,
     tactic: monster.tactic,
     fleeBelowHpFraction: placement.fleeBelowHpFraction,
@@ -183,6 +191,8 @@ export function monsterCombatant(monster: MonsterDefinition, content: SealedCont
     sneakAttackUsed: false,
     exhaustion: 0,
     wildShapeOriginal: null,
+    cooldowns: {},
+    regenBlocked: false,
     condition: "active",
     effects: [],
     concentration: null,

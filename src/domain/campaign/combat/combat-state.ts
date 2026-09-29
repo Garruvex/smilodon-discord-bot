@@ -8,7 +8,7 @@ import type { RollSpec } from "../dice/roll-spec.js";
 import type { MonsterTactic, WeaponRange } from "../rules/content-definitions.js";
 import type { ContentId } from "../rules/content-id.js";
 import type { Ability, DamageType, Effect, ResolutionPlan } from "../rules/effects.js";
-import type { Trait } from "../rules/traits.js";
+import type { AreaAttack, Trait } from "../rules/traits.js";
 import { mergeSlots, type SpellSlots } from "../magic/spell-rules.js";
 
 export type CombatantId = string;
@@ -112,6 +112,10 @@ export interface Combatant {
   readonly exhaustion: number;
   // Non-null while Wild Shaped: the hero's own stat block, to restore on reverting.
   readonly wildShapeOriginal: WildShapeForm | null;
+  // Turns of its own left before each area attack (by its item id) comes back.
+  readonly cooldowns: Readonly<Record<string, number>>;
+  // Took damage this round that stops its Regeneration at the next turn start.
+  readonly regenBlocked: boolean;
   readonly condition: CombatantCondition;
   // Conditions, spells that outlast their casting, and stances: one record each,
   // with its source, what it does, and when it ends (effects/effect-instance.ts).
@@ -150,7 +154,9 @@ export type ResolutionSource =
   // smiteSlot: Divine Smite's chosen slot level, when spent on this hit.
   | { readonly kind: "weapon"; readonly option: AttackOption; readonly smiteSlot?: number }
   | { readonly kind: "spell"; readonly spellId: ContentId<"spell">; readonly slotLevel: number }
-  | { readonly kind: "feature"; readonly featureId: ContentId<"feature"> };
+  | { readonly kind: "feature"; readonly featureId: ContentId<"feature"> }
+  // A breath weapon or similar area attack from the monster's traits.
+  | { readonly kind: "area"; readonly area: AreaAttack };
 
 export interface TargetOutcome {
   readonly landed: boolean;
@@ -243,6 +249,8 @@ export interface TurnPlanRemainder {
   readonly moves: readonly ZoneId[];
   readonly engage: CombatantId | null;
   readonly attack: { readonly targetId: CombatantId; readonly option: AttackOption } | null;
+  // A breath weapon used in place of an attack, on these targets.
+  readonly area?: { readonly area: AreaAttack; readonly targetIds: readonly CombatantId[] } | null;
 }
 
 export interface PendingTriggers {

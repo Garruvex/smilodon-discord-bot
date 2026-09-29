@@ -129,7 +129,7 @@ export function encounterRecords(events: readonly CampaignEvent[], names: Combat
       case "resolutionDeclared": {
         const { resolution } = event;
         const source = resolution.source;
-        const id = source.kind === "weapon" ? source.option.weapon : source.kind === "spell" ? source.spellId : source.featureId;
+        const id = source.kind === "weapon" ? source.option.weapon : source.kind === "spell" ? source.spellId : source.kind === "area" ? source.area.weapon : source.featureId;
         action = {
           kind: "action",
           resolutionId: resolution.id,

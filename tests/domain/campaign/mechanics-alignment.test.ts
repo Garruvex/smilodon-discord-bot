@@ -148,3 +148,86 @@ describe("Wild Shape", () => {
     expect(druid.hp).toBe(before.hp - 9);
   });
 });
+
+// Ends each hero's turn for the rest of this round; the monsters take theirs on the way, and the next round opens.
+function passHeroTurns(fight: Fight): void {
+  const owners: Record<string, typeof alex> = { "c-mira": alex, "c-borin": jamie, "c-elspeth": sam };
+  const round = fight.encounter.round;
+  for (let guard = 0; guard < 12 && fight.encounter.round === round; guard += 1) {
+    const id = fight.current ?? "";
+    const owner = owners[id];
+    if (owner === undefined) return;
+    fight.run(owner, { kind: "endTurn", combatantId: id });
+  }
+}
+
+const monsterId = (fight: Fight): string => Object.values(fight.encounter.combatants).find((combatant) => combatant.side === "foes")?.id ?? "";
+
+describe("Breath weapons", () => {
+  it("catches every hero in a young dragon's breath", () => {
+    const fight = new Fight(partyOfThree()).rolls([1, 1, 1, 20]).run(organizer, { kind: "startEncounter", spec: alone("monster:young-red-dragon") });
+    const declared = ofKind(fight, "resolutionDeclared");
+    expect(declared).toHaveLength(1);
+    expect(declared[0]?.resolution.source).toMatchObject({ kind: "area", area: { weapon: "item:fire-breath", ability: "dex", dc: 17 } });
+    expect(declared[0]?.resolution.targetIds.slice().sort()).toEqual(["c-borin", "c-elspeth", "c-mira"]);
+    expect(fight.combatant(monsterId(fight)).cooldowns["item:fire-breath"]).toBe(3);
+  });
+
+  it("breathes on its first turn and again on its fourth, biting and clawing in between", () => {
+    // The heroes go first, and are made tough enough to last.
+    const fight = new Fight(partyOfThree()).rolls([1, 1, 20, 15]).run(organizer, { kind: "startEncounter", spec: alone("monster:young-red-dragon") });
+    const combatants = Object.fromEntries(Object.entries(fight.encounter.combatants).map(([id, combatant]) => [id, combatant.side === "party" ? { ...combatant, hp: 900, maxHp: 900 } : combatant]));
+    fight.state = { ...fight.state, encounter: { ...fight.encounter, combatants } };
+    const breaths: number[] = [];
+    for (let round = 1; round <= 4; round += 1) {
+      passHeroTurns(fight);
+      breaths.push(ofKind(fight, "resolutionDeclared").filter((event) => event.resolution.source.kind === "area").length);
+    }
+    expect(breaths).toEqual([1, 1, 1, 2]);
+  });
+
+  it("halves the damage for a hero who saves", () => {
+    // Every d20 is a 1 (fail) except one save, a 20. Sixteen d6, all threes: 48 damage.
+    const fight = new Fight(partyOfThree()).rolls([1, 1, 1, 20, 20, 1, 1], Array.from({ length: 16 }, () => 3)).run(organizer, { kind: "startEncounter", spec: alone("monster:young-red-dragon") });
+    const damages = ofKind(fight, "combatantHpChanged").map((event) => -event.change).sort((a, b) => a - b);
+    expect(damages).toEqual([24, 48, 48]);
+  });
+});
+
+describe("Regeneration", () => {
+  const troll = (): Fight => {
+    const fight = new Fight(partyOfThree()).rolls([1, 1, 20, 1]).run(organizer, { kind: "startEncounter", spec: alone("monster:troll") });
+    const id = monsterId(fight);
+    const wounded = { ...fight.combatant(id), hp: 40 };
+    fight.state = { ...fight.state, encounter: { ...fight.encounter, combatants: { ...fight.encounter.combatants, [id]: wounded } } };
+    return fight;
+  };
+
+  it("heals 10 at the start of the troll's turn", () => {
+    const fight = troll();
+    passHeroTurns(fight);
+    const healed = ofKind(fight, "combatantHpChanged").filter((event) => event.cause === "healing" && event.combatantId === monsterId(fight));
+    expect(healed.map((event) => event.change)).toEqual([10]);
+  });
+
+  it("skips a turn after the troll takes fire, and only one", () => {
+    const fight = troll();
+    const id = monsterId(fight);
+    fight.state = { ...fight.state, encounter: { ...fight.encounter, combatants: { ...fight.encounter.combatants, [id]: { ...fight.combatant(id), regenBlocked: true } } } };
+    passHeroTurns(fight);
+    expect(ofKind(fight, "combatantHpChanged").filter((event) => event.cause === "healing" && event.combatantId === id)).toHaveLength(0);
+    expect(fight.combatant(id).regenBlocked).toBe(false);
+  });
+});
+
+describe("Legendary Resistance", () => {
+  it("turns a dragon's failed save into a success and spends a use", () => {
+    const fight = new Fight(partyOfThree()).rolls([1, 1, 20, 15]).run(organizer, { kind: "startEncounter", spec: alone("monster:adult-red-dragon") });
+    const id = monsterId(fight);
+    expect(fight.combatant(id).resources.featureUses["trait:legendary-resistance"]).toBe(3);
+    const before = fight.combatant(id).hp;
+    fight.rolls([1]).run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:sacred-flame", slotLevel: 0, targetIds: [id] });
+    expect(fight.combatant(id).resources.featureUses["trait:legendary-resistance"]).toBe(2);
+    expect(fight.combatant(id).hp).toBe(before);
+  });
+});

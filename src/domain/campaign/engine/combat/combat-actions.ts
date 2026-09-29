@@ -3,6 +3,7 @@ import type { ActionCost } from "../../combat/combat-events.js";
 import { type AttackOption, type Combatant, type EncounterState } from "../../combat/combat-state.js";
 import { attackProblem, featureProblem, smiteProblem, spellProblem } from "../../combat/turn-rules.js";
 import type { ContentId } from "../../rules/content-id.js";
+import type { AreaAttack } from "../../rules/traits.js";
 import type { Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { declareResolution } from "./resolution.js";
@@ -44,6 +45,18 @@ export function declareWeaponAttack(
       reaction: purpose === "opportunity",
       spellSlot: smiteSlot ?? null,
     },
+  });
+}
+
+// A monster's breath weapon: the action, on every target caught.
+export function declareAreaAttack(decision: Decision, attacker: Combatant, area: AreaAttack, targetIds: readonly string[]): Rejection | null {
+  if (targetIds.length === 0 || !attacker.budget.action) return { code: "noActionLeft" };
+  return declareResolution(decision, {
+    actor: attacker,
+    source: { kind: "area", area },
+    targetIds,
+    purpose: "action",
+    cost: { ...noCost, action: true },
   });
 }
 

@@ -37,6 +37,9 @@ export type Effect =
       readonly target: EffectTarget;
       readonly amount: DiceExpression;
       readonly damageType: DamageType;
+      // On the avoided side of a save: half of what the same-numbered effect on the
+      // landing side rolled (an area effect's "half as much on a successful save").
+      readonly halfOfLand?: boolean;
     }
   | { readonly kind: "heal"; readonly target: EffectTarget; readonly amount: DiceExpression }
   | {
