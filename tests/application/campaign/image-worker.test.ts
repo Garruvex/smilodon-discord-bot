@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { GeneratedImage, ImageAssetStore, ImageGenerator } from "../../../src/application/campaign/ports/image-ports.js";
+import { ImageProviderError, type GeneratedImage, type ImageAspect, type ImageAssetStore, type ImageGenerator } from "../../../src/application/campaign/ports/image-ports.js";
 import { ImageWorker } from "../../../src/application/campaign/workers/image-worker.js";
 import type { CampaignKey } from "../../../src/application/campaign/ports/campaign-store.js";
 import { starterAdventureId } from "../../../src/infrastructure/campaign/starter-adventures.js";
@@ -10,10 +10,15 @@ const chapel = "scene:ruined-chapel";
 
 class Painter implements ImageGenerator {
   public readonly prompts: string[] = [];
+  public readonly aspects: (ImageAspect | undefined)[] = [];
   public fail = 0;
+  // The provider's own rules said no: trying again would be refused the same way.
+  public refuse = false;
   public size = 1_000;
-  public generate(request: { prompt: string }): Promise<GeneratedImage> {
+  public generate(request: { prompt: string; aspect?: ImageAspect }): Promise<GeneratedImage> {
     this.prompts.push(request.prompt);
+    this.aspects.push(request.aspect);
+    if (this.refuse) return Promise.reject(new ImageProviderError("The image provider answered 400: moderation_blocked.", false));
     if (this.fail > 0) {
       this.fail -= 1;
       return Promise.reject(new Error("The provider is busy."));
@@ -259,5 +264,42 @@ describe("a hero from a saved character", () => {
     await t.r.store.transaction((tx) => tx.enqueue(t.key, "img-redo", { kind: "redoImage", subject: `hero:${heroId}` }, 1));
     await worker.runOnce();
     expect(t.painter.prompts).toHaveLength(2);
+  });
+});
+
+describe("how a picture is asked for", () => {
+  it("shapes a place wide and a face square", async () => {
+    const t = await table();
+    await ask(t, chapel);
+    const heroId = Object.keys((await t.r.store.transaction((tx) => tx.loadCampaign(t.key)))?.state.characters ?? {})[0] ?? "";
+    await t.r.store.transaction((tx) => tx.enqueue(t.key, "img-hero", { kind: "heroImage", characterId: heroId }, 1));
+    await t.worker.runOnce();
+    expect([...t.painter.aspects].sort()).toEqual(["square", "wide"]);
+  });
+
+  it("describes a hero by the class on the sheet and the gear they carry", async () => {
+    const t = await table();
+    const state = (await t.r.store.transaction((tx) => tx.loadCampaign(t.key)))?.state;
+    const sheet = Object.values(state?.characters ?? {})[0];
+    if (sheet === undefined) throw new Error("hero");
+    await t.r.store.transaction((tx) => tx.enqueue(t.key, "img-hero", { kind: "heroImage", characterId: sheet.id }, 1));
+    await t.worker.runOnce();
+    const prompt = t.painter.prompts[0] ?? "";
+    expect(prompt).toContain(sheet.name);
+    expect(prompt).toMatch(/Subject: .*adventurer/);
+    expect(prompt).toContain("Carrying:");
+    expect(prompt).toContain("No text");
+  });
+
+  it("does not ask again after a refusal, and the picture goes without at once", async () => {
+    const t = await table();
+    t.painter.refuse = true;
+    await ask(t, chapel);
+    expect((await t.worker.runOnce()).failed).toHaveLength(1);
+    expect(t.painter.prompts).toHaveLength(1);
+    expect((await recordOf(t)).images).toEqual({ [chapel]: "failed" });
+    expect(await t.r.store.transaction((tx) => tx.pendingOutbox("sceneImage"))).toEqual([]);
+    expect((await t.worker.runOnce()).processed).toBe(0);
+    expect(t.painter.prompts).toHaveLength(1);
   });
 });

@@ -57,11 +57,14 @@ export type CampaignModelConfiguration =
   | { provider: "openai-compatible"; apiKey: string; baseUrl: string; models: readonly string[] }
   | { provider: "gemini"; apiKey: string; models: readonly string[]; thinkingBudget: number | null };
 
-// Scene pictures for /dnd campaigns (CAMPAIGN_IMAGE_*). Absent: no pictures.
+// Pictures for /dnd campaigns (CAMPAIGN_IMAGE_*): the campaign's own image
+// connection, apart from the chat's. Absent: no pictures.
 export interface CampaignImageConfiguration {
   apiKey: string;
   baseUrl: string;
   model: string;
+  // "low" | "medium" | "high" | "auto"; absent: the provider's default.
+  quality?: string;
   // Pictures one campaign may have made.
   budget: number;
 }

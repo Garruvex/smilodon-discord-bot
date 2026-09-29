@@ -3,7 +3,8 @@ import type { EngineRequest } from "../../../domain/campaign/engine/engine-reque
 import type { CampaignRecord } from "../ports/campaign-record.js";
 import { RevisionConflictError, type CampaignKey, type CampaignUnitOfWork, type OutboxItem } from "../ports/campaign-store.js";
 import type { AdventureLibrary } from "../ports/adventure-library.js";
-import type { GeneratedImage, ImageAssetStore, ImageGenerator, SceneImageSink } from "../ports/image-ports.js";
+import { creaturePrompt, heroPrompt, momentPrompt, scenePrompt, type PictureBrief } from "../images/image-prompts.js";
+import { ImageProviderError, type GeneratedImage, type ImageAssetStore, type ImageGenerator, type SceneImageSink } from "../ports/image-ports.js";
 import type { WorkerRunResult } from "./roll-worker.js";
 
 export interface ImageWorkerOptions {
@@ -31,10 +32,7 @@ export interface ImageWorkerOptions {
   readonly maxAttempts?: number;
 }
 
-export const sceneImageStyle = "A painterly fantasy illustration, atmospheric, no text, no lettering, no watermark.";
 const defaultMaxBytes = 8 * 1024 * 1024;
-// How much of a told round goes into a moment's prompt.
-const momentTextLimit = 700;
 
 type PictureRequest = Extract<EngineRequest, { kind: "sceneImage" | "monsterImage" | "momentImage" | "heroImage" | "redoImage" }>;
 // The kinds a picture can be painted for; a redo names one of them by its subject.
@@ -104,9 +102,11 @@ export class ImageWorker {
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             failed.push({ id: item.id, error: message });
-            await this.options.unitOfWork.transaction((tx) => tx.failOutboxAttempt(item.id, message, this.options.maxAttempts ?? 2));
+            // A refusal would come back the same on a second try (and be billed again): it is the last attempt.
+            const attempts = error instanceof ImageProviderError && !error.retryable ? 1 : (this.options.maxAttempts ?? 2);
+            await this.options.unitOfWork.transaction((tx) => tx.failOutboxAttempt(item.id, message, attempts));
             // Out of attempts: it is marked as gone without, so nothing waits on it.
-            if (item.attempts + 1 >= (this.options.maxAttempts ?? 2) && isPicture(item.request)) {
+            if (item.attempts + 1 >= attempts && isPicture(item.request)) {
               const subject = pictureSubject(item.request);
               // A monster without a painting may still have a ready-made portrait, which costs nothing.
               const ready = await this.postFallback(item, item.request).catch(() => false);
@@ -173,7 +173,7 @@ export class ImageWorker {
     const described = bible === undefined ? undefined : await this.describe(request, item.key, record, bible);
     if (described === undefined || channelId === null) return void (await this.mark(item.key, subject, "skipped"));
 
-    const image = await generator.generate({ prompt: described.prompt, timeoutMs: this.options.timeoutMs ?? 90_000 });
+    const image = await generator.generate({ prompt: described.prompt, aspect: described.aspect, timeoutMs: this.options.timeoutMs ?? 90_000 });
     if (image.bytes.byteLength > (this.options.maxBytes ?? defaultMaxBytes)) throw new Error("The picture is larger than the limit.");
     // Kept before it is counted, and counted when made, not when posted: a failed
     // post is retried from the saved picture without a second bill.
@@ -212,30 +212,30 @@ export class ImageWorker {
   }
 
   // The prompt and caption for a picture, from public text only; undefined when what it is of is gone.
-  private async describe(request: Painted, key: CampaignKey, record: CampaignRecord, bible: AdventureBible): Promise<{ readonly prompt: string; readonly caption: string } | undefined> {
-    const collapse = (value: string): string => value.replace(/\s+/g, " ").trim();
+  private async describe(request: Painted, key: CampaignKey, record: CampaignRecord, bible: AdventureBible): Promise<(PictureBrief & { readonly caption: string }) | undefined> {
     if (request.kind === "sceneImage") {
       const scene = findScene(bible, request.sceneId);
-      return scene === undefined ? undefined : { prompt: `${scene.title}. ${collapse(scene.publicDescription)} ${sceneImageStyle}`, caption: scene.title };
+      return scene === undefined ? undefined : { ...scenePrompt({ title: scene.title, description: scene.publicDescription }), caption: scene.title };
     }
     if (request.kind === "monsterImage") {
       const name = this.options.monsterName?.(request.monsterId, "en") ?? request.monsterId.replace(/^monster:/, "").replace(/-/g, " ");
       const shown = this.options.monsterName?.(request.monsterId, record.language) ?? name;
       const npc = request.npcId === null ? undefined : bible.npcs.find((candidate) => candidate.id === request.npcId);
-      const who = npc === undefined ? `a ${name}` : `${npc.name}, ${/^[aeiou]/i.test(name) ? "an" : "a"} ${name}`;
-      return { prompt: `A fantasy character portrait of ${who}${npc === undefined ? "" : `. ${collapse(npc.publicDescription)}`}. ${sceneImageStyle}`, caption: npc?.name ?? shown };
+      return { ...creaturePrompt({ kind: name, ...(npc === undefined ? {} : { name: npc.name, description: npc.publicDescription }) }), caption: npc?.name ?? shown };
     }
     if (request.kind === "heroImage") {
       const sheet = (await this.options.unitOfWork.transaction((tx) => tx.loadCampaign(key)))?.state.characters[request.characterId];
       if (sheet === undefined) return undefined;
-      return { prompt: `A fantasy character portrait of ${sheet.name}, a level ${sheet.level} ${sheet.className ?? "adventurer"}. ${sceneImageStyle}`, caption: sheet.name };
+      // The class by its builder name (English) when the sheet has one, so the prompt is not in the table's language.
+      const className = Object.keys(sheet.classLevels ?? {})[0] ?? sheet.className ?? "adventurer";
+      return { ...heroPrompt({ name: sheet.name, level: sheet.level, className, ...(sheet.race === undefined ? {} : { race: sheet.race }), gear: sheet.equipment }), caption: sheet.name };
     }
     const events = await this.options.unitOfWork.transaction((tx) => tx.readEvents(key));
     const told = events.map((envelope) => envelope.event).findLast((event) => event.kind === "narrationRecorded" && event.roundNumber === request.roundNumber);
     if (told?.kind !== "narrationRecorded") return undefined;
     const state = await this.options.unitOfWork.transaction((tx) => tx.loadCampaign(key));
     const scene = findScene(bible, state?.state.sceneId ?? null);
-    return { prompt: `An illustration of this moment from a fantasy adventure: ${collapse(told.text).slice(0, momentTextLimit)} ${sceneImageStyle}`, caption: scene?.title ?? record.name };
+    return { ...momentPrompt({ narration: told.text, ...(scene === undefined ? {} : { sceneTitle: scene.title }) }), caption: scene?.title ?? record.name };
   }
 
   // Records what became of a picture on the campaign record.

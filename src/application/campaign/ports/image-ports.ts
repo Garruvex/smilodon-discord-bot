@@ -6,9 +6,26 @@ export interface GeneratedImage {
   readonly mediaType: "image/png" | "image/jpeg" | "image/webp";
 }
 
+// The shape of a picture: a place is wide, a face is square. The provider maps
+// it to the sizes its model offers.
+export type ImageAspect = "square" | "wide" | "tall";
+
+// Why a provider gave nothing. A refusal (its content rules said no) or a bad
+// request would fail again the same way, so it is not tried a second time;
+// a timeout, a rate limit or a server error may pass.
+export class ImageProviderError extends Error {
+  public constructor(
+    message: string,
+    public readonly retryable: boolean,
+  ) {
+    super(message);
+    this.name = "ImageProviderError";
+  }
+}
+
 export interface ImageGenerator {
-  // One picture from a prompt, or a thrown error (a timeout, a refusal, a provider failure).
-  generate(request: { readonly prompt: string; readonly timeoutMs: number }): Promise<GeneratedImage>;
+  // One picture from a prompt, or a thrown error (an ImageProviderError, or a timeout).
+  generate(request: { readonly prompt: string; readonly aspect?: ImageAspect; readonly timeoutMs: number }): Promise<GeneratedImage>;
 }
 
 // A made picture kept until it has been posted, so a failed post is retried

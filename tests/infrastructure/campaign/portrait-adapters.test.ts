@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { FilePortraitStore } from "../../../src/infrastructure/campaign/image/file-portrait-store.js";
+import { pngBytes } from "../../application/campaign/portrait-fakes.js";
 import { OpenAiImageStylizer } from "../../../src/infrastructure/campaign/image/openai-image-stylizer.js";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -13,11 +14,11 @@ describe("the image edit request", () => {
   const source = { bytes: Buffer.from("upload"), mediaType: "image/jpeg" as const };
 
   it("sends the picture as the reference with the prompt, and reads the base64 result", async () => {
-    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: [{ b64_json: Buffer.from("portrait").toString("base64") }] }), { status: 200 }));
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: [{ b64_json: Buffer.concat([pngBytes, Buffer.from("portrait")]).toString("base64") }] }), { status: 200 }));
     vi.stubGlobal("fetch", fetch);
     const stylizer = new OpenAiImageStylizer({ apiKey: "key", baseUrl: "https://example.test/v1", model: "gpt-image-2.5-flare" });
     const result = await stylizer.stylize({ source, prompt: "A gnome rogue", timeoutMs: 1000 });
-    expect(result.bytes.toString()).toBe("portrait");
+    expect(result.bytes.subarray(pngBytes.length).toString()).toBe("portrait");
 
     const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("https://example.test/v1/images/edits");
@@ -33,7 +34,7 @@ describe("the image edit request", () => {
   });
 
   it("asks older models for base64, and reports a provider failure", async () => {
-    const fetch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ data: [{ b64_json: Buffer.from("x").toString("base64") }] }), { status: 200 })).mockResolvedValueOnce(new Response("no", { status: 400 }));
+    const fetch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ data: [{ b64_json: pngBytes.toString("base64") }] }), { status: 200 })).mockResolvedValueOnce(new Response("no", { status: 400 }));
     vi.stubGlobal("fetch", fetch);
     const stylizer = new OpenAiImageStylizer({ apiKey: "key", baseUrl: "https://example.test/v1", model: "dall-e-2" });
     await stylizer.stylize({ source, prompt: "p", timeoutMs: 1000 });

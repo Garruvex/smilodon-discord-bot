@@ -1,6 +1,8 @@
-import { buildRaces, type BuildChoices } from "../../../domain/campaign/character/character-build.js";
+import type { BuildChoices } from "../../../domain/campaign/character/character-build.js";
 import type { UserId } from "../../../domain/campaign/core/ids.js";
 import type { CharacterPortraitStore, GeneratedImage, ImageGenerator, PortraitStylizer } from "../ports/image-ports.js";
+import { sniffImageType } from "../images/image-bytes.js";
+import { portraitPrompt, isPortraitStyle, type PortraitStyle } from "../images/image-prompts.js";
 import type { Clock } from "../ports/clock.js";
 import type { CharacterLibrary } from "./character-library.js";
 
@@ -10,30 +12,12 @@ import type { CharacterLibrary } from "./character-library.js";
 // not kept once the player has decided, and only the finished portrait stays.
 // Prompts are built from the character's own build and the player's own words.
 
-export const portraitStyles = ["painterly", "ink", "watercolor", "realistic"] as const;
-export type PortraitStyle = (typeof portraitStyles)[number];
-export const isPortraitStyle = (value: string): value is PortraitStyle => (portraitStyles as readonly string[]).includes(value);
+// The prompts live in images/image-prompts.ts, with every other picture's.
+export { portraitPrompt, portraitStyles, isPortraitStyle, type PortraitStyle } from "../images/image-prompts.js";
+export { sniffImageType } from "../images/image-bytes.js";
 
 export const maxUploadBytes = 8 * 1024 * 1024;
 export const maxNoteLength = 200;
-
-// What an upload really is, from its first bytes and not from what it claims
-// to be; undefined for anything that is not a PNG, JPEG or WebP picture.
-export function sniffImageType(bytes: Uint8Array): GeneratedImage["mediaType"] | undefined {
-  const at = (index: number): number => bytes[index] ?? -1;
-  if (at(0) === 0x89 && at(1) === 0x50 && at(2) === 0x4e && at(3) === 0x47) return "image/png";
-  if (at(0) === 0xff && at(1) === 0xd8 && at(2) === 0xff) return "image/jpeg";
-  const riff = String.fromCharCode(at(0), at(1), at(2), at(3));
-  const webp = String.fromCharCode(at(8), at(9), at(10), at(11));
-  return riff === "RIFF" && webp === "WEBP" ? "image/webp" : undefined;
-}
-
-const styleWords: Readonly<Record<PortraitStyle, string>> = {
-  painterly: "a painterly fantasy illustration, rich brushwork, dramatic lighting",
-  ink: "a bold ink-and-colour comic-book illustration with strong linework",
-  watercolor: "a soft storybook watercolour illustration",
-  realistic: "detailed realistic tabletop-game concept art",
-};
 
 export type PortraitRefusal = "unavailable" | "notFound" | "badType" | "tooLarge" | "rateLimited" | "noSource" | "failed";
 export type PortraitResult =
@@ -210,18 +194,4 @@ export class CharacterPortraits {
     this.asked.set(ownerUserId, [...recent, now]);
     return null;
   }
-}
-
-// The prompt for a portrait: the character's race, class and the player's own
-// words about how they look, in the style chosen. With a reference picture the
-// likeness is kept; without one it is painted from the words.
-export function portraitPrompt(build: BuildChoices, style: PortraitStyle, note: string, hasReference: boolean): string {
-  const race = build.race !== undefined && (buildRaces as readonly string[]).includes(build.race) ? build.race.replace("-", " ") : "";
-  const article = race === "" ? "a" : /^[aeiou]/i.test(race) ? "an" : "a";
-  const who = `${build.name}, ${article} ${race} ${build.class}`.replace(/\s+/g, " ").trim();
-  const look = [build.appearance, note].map((part) => part.trim().replace(/[.s]+$/, "")).filter((part) => part.length > 0).join(". ");
-  const lead = hasReference
-    ? `Turn the person or figure in the reference picture into a fantasy tabletop RPG character portrait of ${who}. Keep their recognisable face, hair, expression and colouring, but dress and style them as a fantasy ${race} ${build.class} adventurer.`
-    : `A fantasy tabletop RPG character portrait of ${who}.`;
-  return `${lead}${look === "" ? "" : ` Details: ${look}.`} Head-and-shoulders portrait in ${styleWords[style]}. A fictional character, no text, no lettering, no watermark.`.replace(/\s+/g, " ");
 }

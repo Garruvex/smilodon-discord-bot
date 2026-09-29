@@ -136,9 +136,13 @@ const environmentSchema = z.object({
   CAMPAIGN_MODE: z.enum(["chat_completions", "responses"]).optional(),
   CAMPAIGN_REASONING_EFFORT: z.enum(["none", "low", "medium", "high", "xhigh", "max"]).default("none"),
   CAMPAIGN_GEMINI_THINKING_BUDGET: z.coerce.number().int().min(-1).max(32_768).optional(),
-  // Scene pictures: an OpenAI-compatible image model (uses OPENAI_API_KEY),
-  // and how many pictures one campaign may have made (default 12).
+  // Campaign pictures: an OpenAI-compatible image model, its own connection
+  // (the key and address default to OPENAI_API_KEY / OPENAI_BASE_URL, and are
+  // never the chat's), and how many pictures one campaign may have made (default 12).
   CAMPAIGN_IMAGE_MODEL: optionalNonEmptyString,
+  CAMPAIGN_IMAGE_API_KEY: optionalNonEmptyString,
+  CAMPAIGN_IMAGE_BASE_URL: z.preprocess((value) => (value === "" ? undefined : value), z.string().url().optional()),
+  CAMPAIGN_IMAGE_QUALITY: z.preprocess((value) => (value === "" ? undefined : value), z.enum(["low", "medium", "high", "auto"]).optional()),
   CAMPAIGN_IMAGE_BUDGET: z.coerce.number().int().min(0).max(200).default(12),
 
   // See MemoryEngineLimits in memory-engine.ts for what each of these
@@ -410,8 +414,16 @@ function buildCampaignConfiguration(data: z.infer<typeof environmentSchema>): Ap
 }
 
 function buildCampaignImages(data: z.infer<typeof environmentSchema>): NonNullable<ApplicationConfiguration["campaignImages"]> | null {
-  if (!data.CAMPAIGN_IMAGE_MODEL || !data.OPENAI_API_KEY) return null;
-  return { apiKey: data.OPENAI_API_KEY, baseUrl: data.OPENAI_BASE_URL.replace(/\/$/, ""), model: data.CAMPAIGN_IMAGE_MODEL, budget: data.CAMPAIGN_IMAGE_BUDGET };
+  // The campaign has its own connection; the shared OpenAI key and address are only its default.
+  const apiKey = data.CAMPAIGN_IMAGE_API_KEY ?? data.OPENAI_API_KEY;
+  if (!data.CAMPAIGN_IMAGE_MODEL || !apiKey) return null;
+  return {
+    apiKey,
+    baseUrl: (data.CAMPAIGN_IMAGE_BASE_URL ?? data.OPENAI_BASE_URL).replace(/\/$/, ""),
+    model: data.CAMPAIGN_IMAGE_MODEL,
+    budget: data.CAMPAIGN_IMAGE_BUDGET,
+    ...(data.CAMPAIGN_IMAGE_QUALITY === undefined ? {} : { quality: data.CAMPAIGN_IMAGE_QUALITY }),
+  };
 }
 
 // Mirrors buildChatConfiguration's shape/branching but for the fully
