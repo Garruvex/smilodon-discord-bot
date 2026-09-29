@@ -621,6 +621,9 @@ export const campaignEn = {
   "campaign.reply.smiteSkipped": "You skipped it.",
   "campaign.reply.opportunityTaken": "You took the attack.",
   "campaign.reply.opportunityHeld": "You held your reaction.",
+  "campaign.reply.styleChosen": "Fighting Style: {style}.",
+  "campaign.level.styleNow": "**Fighting Style:** {style}",
+  "campaign.level.stylePlaceholder": "Change your Fighting Style",
   "campaign.reply.asiApplied": "Ability score improved: {changes}.",
 
   "campaign.pack.placeholder": "Pack and stash",

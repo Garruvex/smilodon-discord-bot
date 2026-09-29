@@ -8,6 +8,7 @@ import { abilities } from "../../../domain/campaign/rules/effects.js";
 import type { Glossary } from "../../../domain/campaign/rules/content-registry.js";
 import { campaignCustomId } from "./campaign-ids.js";
 import { classLabel, skillKey } from "./text-keys.js";
+import { fightingStyles, heldFightingStyle } from "../../../domain/campaign/character/fighting-styles.js";
 
 export interface LevelForm {
   readonly content: string;
@@ -94,6 +95,19 @@ export function renderLevelForm(input: { readonly campaignId: string; readonly s
           .setMinValues(1)
           .setMaxValues(2)
           .addOptions(abilities.map((ability) => ({ label: `${t.ability[ability]} ${sheet.abilityScores[ability]}`, value: ability }))),
+      ),
+    );
+  }
+  // A hero whose class gives a Fighting Style may swap it for another.
+  const style = heldFightingStyle(sheet.features);
+  if (style !== null) {
+    lines.push(t.level.styleNow({ style: glossary.names[style] ?? style }));
+    components.push(
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId(campaignCustomId("stylePick", campaignId))
+          .setPlaceholder(t.level.stylePlaceholder)
+          .addOptions(fightingStyles.map((id) => ({ label: (glossary.names[id] ?? id).slice(0, 100), value: id, default: id === style }))),
       ),
     );
   }

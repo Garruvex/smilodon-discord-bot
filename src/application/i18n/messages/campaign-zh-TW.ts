@@ -620,6 +620,9 @@ export const campaignZhTW = {
   "campaign.reply.smiteSkipped": "你跳過了",
   "campaign.reply.opportunityTaken": "你發動了攻擊",
   "campaign.reply.opportunityHeld": "你保留了反應",
+  "campaign.reply.styleChosen": "戰鬥風格：{style}。",
+  "campaign.level.styleNow": "**戰鬥風格：**{style}",
+  "campaign.level.stylePlaceholder": "更換戰鬥風格",
   "campaign.reply.asiApplied": "能力值已提升：{changes}",
 
   "campaign.pack.placeholder": "背包與隊伍儲藏",

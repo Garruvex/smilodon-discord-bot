@@ -17,7 +17,7 @@ import { handleUtilityMagicCommand } from "./utility-magic.js";
 import { Decision, type DecideResult, type EngineContext } from "./decision.js";
 import { beginAdventure, beginPlay, illustrateMoment, markReady, redoPicture, recordLedgerFact, recordNarration, recordOpening, recordSummary, regenerateNarration, replaceNarration, reportPlannerFailure, retryPlan } from "./dm.js";
 import { raisePartyLevel } from "./level-up.js";
-import { chooseAsi, chooseClassLevel, continueCampaign, grantProxy, joinHero, markAway, markReturned, revokeProxy } from "./members.js";
+import { chooseAsi, chooseClassLevel, chooseFightingStyle, continueCampaign, grantProxy, joinHero, markAway, markReturned, revokeProxy } from "./members.js";
 import { isSkill } from "../character/character-sheet.js";
 import { pauseCampaign } from "./pause.js";
 import { remind } from "./reminders.js";
@@ -143,6 +143,8 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
     }
     case "chooseAsi":
       return chooseAsi(decision, command.characterId, command.allocation);
+    case "chooseFightingStyle":
+      return chooseFightingStyle(decision, command.characterId, command.styleId);
     case "raiseLevel":
       return raisePartyLevel(decision, command.level);
     case "startEncounter":

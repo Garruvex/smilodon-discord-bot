@@ -254,6 +254,11 @@ export class CampaignPlayController {
     });
   }
 
+  // Swaps the hero's Fighting Style for another.
+  public chooseFightingStyle(key: CampaignKey, userId: UserId, styleId: string, interactionId: string): Promise<PlayResult> {
+    return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "chooseFightingStyle", characterId, styleId }));
+  }
+
   // Spends one unspent Ability Score Improvement (the engine checks there is
   // one owed and caps each ability at 20).
   public chooseAsi(key: CampaignKey, userId: UserId, allocation: { readonly plusTwo: Ability } | { readonly plusOne: readonly [Ability, Ability] }, interactionId: string): Promise<PlayResult> {

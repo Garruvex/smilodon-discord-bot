@@ -54,6 +54,7 @@ export function armorClassFrom(traits: readonly Trait[], dexterityModifier: numb
       base = trait.baseArmorClass + dex;
     }
     if (trait.kind === "armorClassBonus") bonus += trait.amount;
+    if (trait.kind === "armoredBonus" && armored) bonus += trait.amount;
   }
   return base + bonus;
 }
@@ -76,7 +77,7 @@ export function heroAttackOption(sheet: CharacterSheet, weapon: WeaponDefinition
       : 0;
   return {
     weapon: weapon.id,
-    toHit: ability + sheet.proficiencyBonus + (weapon.enchantment ?? 0),
+    toHit: ability + sheet.proficiencyBonus + (weapon.enchantment ?? 0) + (weapon.range.kind === "ranged" ? traits.reduce((sum, trait) => sum + (trait.kind === "rangedAttackBonus" ? trait.amount : 0), 0) : 0),
     damage: plus(weapon.damage, ability + dueling + (weapon.enchantment ?? 0)),
     damageType: weapon.damageType,
     range: weapon.range,

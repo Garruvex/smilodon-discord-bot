@@ -1,4 +1,5 @@
 import type { CharacterSheet } from "../character/character-sheet.js";
+import { heldFightingStyle, isFightingStyle } from "../character/fighting-styles.js";
 import { canMulticlassInto, classTemplates, isBuildClass } from "../character/character-build.js";
 import { actsForOwner } from "../character/ownership.js";
 import type { Skill } from "../rules/skills.js";
@@ -253,6 +254,17 @@ export function chooseAsi(decision: Decision, characterId: CharacterId, allocati
   const abilityScores = { ...sheet.abilityScores };
   for (const ability of targets) abilityScores[ability] = Math.min(20, abilityScores[ability] + ("plusTwo" in allocation ? 2 : 1));
   decision.emit({ kind: "abilityScoreImproved", characterId, abilityScores, pendingAsi: (sheet.pendingAsi ?? 0) - 1 });
+  return null;
+}
+
+// Swaps the hero's Fighting Style for another. Only a hero whose class gives one holds a style to swap.
+export function chooseFightingStyle(decision: Decision, characterId: CharacterId, styleId: string): Rejection | null {
+  const { state, ctx } = decision;
+  const sheet = state.characters[characterId];
+  if (sheet === undefined) return { code: "notYourCharacter" };
+  if (ctx.actor.kind === "user" && ctx.actor.userId !== sheet.ownerUserId && ctx.actor.userId !== state.organizerId) return { code: "notYourCharacter" };
+  if (!isFightingStyle(styleId) || heldFightingStyle(sheet.features) === null) return { code: "unknownFeature" };
+  decision.emit({ kind: "fightingStyleChosen", characterId, styleId });
   return null;
 }
 

@@ -84,6 +84,8 @@ export type CampaignCommand =
   // Spends one unspent Ability Score Improvement (character/leveling.ts's
   // asiLevels): +2 to one ability, or +1 to two, each capped at 20 by the engine.
   | { readonly kind: "chooseAsi"; readonly characterId: CharacterId; readonly allocation: { readonly plusTwo: Ability } | { readonly plusOne: readonly [Ability, Ability] } }
+  // Swaps the hero's Fighting Style for another (character/fighting-styles.ts).
+  | { readonly kind: "chooseFightingStyle"; readonly characterId: CharacterId; readonly styleId: string }
   // The organizer raises every living hero to this level (milestone
   // leveling, or a reward at an experience table). Not during a fight.
   | { readonly kind: "raiseLevel"; readonly level: number }

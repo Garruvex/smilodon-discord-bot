@@ -1,4 +1,5 @@
 import { abilities, type Ability } from "../rules/effects.js";
+import { heldFightingStyle, swapFightingStyle, type FightingStyleId } from "./fighting-styles.js";
 import type { CasterType } from "../rules/content-definitions.js";
 import type { Skill } from "../rules/skills.js";
 import { abilityModifier, type CharacterSheet } from "./character-sheet.js";
@@ -311,6 +312,8 @@ export interface Progression {
   readonly multiclassSkills: Readonly<Partial<Record<string, Skill>>>;
   readonly abilityScores: Readonly<Record<Ability, number>>;
   readonly pendingAsi: number;
+  // The Fighting Style the hero holds (it may be a swap for the class's own).
+  readonly fightingStyle?: FightingStyleId;
 }
 
 export type ProgressionProblem =
@@ -333,7 +336,8 @@ export function progressionOf(sheet: CharacterSheet): Progression {
     const held = (classTemplates[buildClass].multiclassSkillChoices ?? []).find((skill) => sheet.skills[skill] !== undefined);
     if (held !== undefined) multiclassSkills[buildClass] = held;
   }
-  return { xp: sheet.xp ?? 0, classLevels, multiclassSkills, abilityScores: sheet.abilityScores, pendingAsi: sheet.pendingAsi ?? 0 };
+  const style = heldFightingStyle(sheet.features);
+  return { xp: sheet.xp ?? 0, classLevels, multiclassSkills, abilityScores: sheet.abilityScores, pendingAsi: sheet.pendingAsi ?? 0, ...(style === null ? {} : { fightingStyle: style }) };
 }
 
 // Every level past the build's own first, one entry each. levelUp accumulates
@@ -382,7 +386,8 @@ export function applyProgression(build: DerivedSheet, progression: Progression):
     const next = levelUp(sheet as unknown as CharacterSheet, buildClass, progression.multiclassSkills[buildClass]);
     sheet = { ...sheet, ...next };
   }
-  return { ...sheet, xp: progression.xp, pendingAsi: progression.pendingAsi };
+  const styled = progression.fightingStyle === undefined ? sheet.features : swapFightingStyle(sheet.features, progression.fightingStyle);
+  return { ...sheet, features: styled, xp: progression.xp, pendingAsi: progression.pendingAsi };
 }
 
 // The sheet a snapshot plays as: its build and gear, plus any saved progress.

@@ -85,6 +85,10 @@ export type Trait =
   // Half-Orc Savage Attacks: a melee weapon critical hit rolls one extra damage die.
   | { readonly kind: "savageAttacks" }
   // Brutal Critical: this many more weapon dice on a melee critical hit (they add up across the levels that grant them).
+  // Fighting Style (Archery): a bonus to attack rolls with ranged weapons.
+  | { readonly kind: "rangedAttackBonus"; readonly amount: number }
+  // Fighting Style (Defense): a bonus to armor class while wearing armor.
+  | { readonly kind: "armoredBonus"; readonly amount: number }
   | { readonly kind: "brutalCritical"; readonly dice: number }
   // Evasion: a Dexterity save that would halve the damage takes none on a success, and half on a failure.
   | { readonly kind: "evasion" }

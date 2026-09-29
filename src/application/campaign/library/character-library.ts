@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 
+import { isFightingStyle } from "../../../domain/campaign/character/fighting-styles.js";
+
 import { buildProblems, isBuildClass, isBuildRace, kitEquipment, type BuildChoices, type BuildProblem } from "../../../domain/campaign/character/character-build.js";
 import { isSkill } from "../../../domain/campaign/character/character-sheet.js";
 import { progressionOf, type Progression } from "../../../domain/campaign/character/leveling.js";
@@ -295,5 +297,6 @@ function readProgression(raw: unknown): Progression | null {
     if (typeof score !== "number") return null;
     scores[ability] = score;
   }
-  return { xp: raw.xp, classLevels, multiclassSkills, abilityScores: scores as Progression["abilityScores"], pendingAsi: raw.pendingAsi };
+  const style = typeof raw.fightingStyle === "string" && isFightingStyle(raw.fightingStyle) ? raw.fightingStyle : undefined;
+  return { xp: raw.xp, classLevels, multiclassSkills, abilityScores: scores as Progression["abilityScores"], pendingAsi: raw.pendingAsi, ...(style === undefined ? {} : { fightingStyle: style }) };
 }

@@ -1,4 +1,5 @@
 import { assertNever } from "../core/assert-never.js";
+import { swapFightingStyle } from "../character/fighting-styles.js";
 import type { ContentId } from "../rules/content-id.js";
 import type { CharacterId, UserId } from "../core/ids.js";
 import type { CampaignState, CheckState, ItemOffer, MemberState, RoundState, Submission } from "../state/campaign-state.js";
@@ -334,6 +335,11 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       const sheet = state.characters[event.characterId];
       if (sheet === undefined) return state;
       return { ...state, characters: { ...state.characters, [sheet.id]: { ...sheet, abilityScores: event.abilityScores, pendingAsi: event.pendingAsi } } };
+    }
+    case "fightingStyleChosen": {
+      const sheet = state.characters[event.characterId];
+      if (sheet === undefined) return state;
+      return { ...state, characters: { ...state.characters, [sheet.id]: { ...sheet, features: swapFightingStyle(sheet.features, event.styleId) } } };
     }
     case "heroJoined": {
       const sheet = event.sheet;

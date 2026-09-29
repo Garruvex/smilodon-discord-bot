@@ -1,4 +1,5 @@
 import type { CharacterId, CheckId, Instant, RollId, UserId } from "../core/ids.js";
+import type { FightingStyleId } from "../character/fighting-styles.js";
 import type { CombatEvent } from "../combat/combat-events.js";
 import type { HeroStatus } from "../combat/combatant-profile.js";
 import type { LedgerVisibility } from "../ledger/ledger.js";
@@ -159,6 +160,8 @@ export type CampaignEvent =
   // chooseAsi): the abilities named each rose by 1 (two abilities) or 2 (one
   // ability), and the hero's pendingAsi count dropped by one.
   | { readonly kind: "abilityScoreImproved"; readonly characterId: CharacterId; readonly abilityScores: Readonly<Record<Ability, number>>; readonly pendingAsi: number }
+  // The hero swapped their Fighting Style (engine/members.ts's chooseFightingStyle).
+  | { readonly kind: "fightingStyleChosen"; readonly characterId: CharacterId; readonly styleId: FightingStyleId }
   // A haggle roll was requested; the pending state a settled roll (or a
   // pause-and-resume re-arm, if one is ever added) needs to finish it.
   | { readonly kind: "haggleStarted"; readonly haggle: PendingHaggle }

@@ -56,7 +56,7 @@ interface Table {
   readonly characterId: string;
 }
 
-async function table(r: Rig, options: { stylizer?: boolean; downloaded?: Buffer | "fail" } = {}): Promise<Table> {
+async function table(r: Rig, options: { stylizer?: boolean; downloaded?: Buffer | "fail"; onPortraitChanged?: (characterId: string) => Promise<void> } = {}): Promise<Table> {
   const store = new MemoryPortraitStore();
   const stylizer = new Stylizer();
   const painter = new Painter();
@@ -67,6 +67,7 @@ async function table(r: Rig, options: { stylizer?: boolean; downloaded?: Buffer 
     content: ruleset().content,
     glossaries,
     portraits,
+    ...(options.onPortraitChanged === undefined ? {} : { onPortraitChanged: options.onPortraitChanged }),
     downloadImage: (): ReturnType<NonNullable<ConstructorParameters<typeof CharacterLibraryComponentHandler>[0]["downloadImage"]>> => Promise.resolve(downloaded === "fail" ? ({ ok: false, reason: "failed" } as const) : ({ ok: true, bytes: downloaded } as const)),
   });
   const made = await r.library.create("u-alice", fighterBuild);
@@ -206,6 +207,16 @@ describe("portraits on My Characters", () => {
     expect(removed.content).toContain("Portrait removed.");
     expect(removed.files).toBe(0);
     expect(await portraits.current("u-alice", characterId)).toBeUndefined();
+  });
+
+  it("redraws linked game cards when a portrait is accepted or removed", async () => {
+    const r = rig();
+    const changed: string[] = [];
+    const { handler, characterId } = await table(r, { onPortraitChanged: (id): Promise<void> => { changed.push(id); return Promise.resolve(); } });
+    await click(handler, libraryCustomId("pPaint", characterId));
+    await click(handler, libraryCustomId("pUse", characterId));
+    await click(handler, libraryCustomId("pRemove", characterId));
+    expect(changed).toEqual([characterId, characterId]);
   });
 
   it("explains why, and goes back, when the picture cannot be used", async () => {

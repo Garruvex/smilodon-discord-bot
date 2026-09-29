@@ -216,7 +216,34 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
 
   const authority = new CampaignAuthority(input.accessPolicyService, unitOfWork);
   const creator = new CampaignGameCreator({ lobby, setup, defaultAdventureId: starterAdventureId, modelConfigured: model !== null, adventures });
-  const libraryHandler = new CharacterLibraryComponentHandler({ library, content, glossaries, portraits });
+  const libraryHandler = new CharacterLibraryComponentHandler({
+    library,
+    content,
+    glossaries,
+    portraits,
+    onPortraitChanged: async (libraryCharacterId): Promise<void> => {
+      try {
+        const active = await unitOfWork.transaction(async (tx) => {
+          const records = await tx.listRecordsByLifecycle(["active", "paused"]);
+          const matches = [];
+          for (const { record } of records) {
+            const campaign = await tx.loadCampaign(record.key);
+            if (campaign !== undefined && Object.values(campaign.state.characters).some((sheet) => sheet.origin?.libraryCharacterId === libraryCharacterId)) matches.push(record.key);
+          }
+          return matches;
+        });
+        for (const key of active) {
+          try {
+            await cards.sync(key);
+          } catch (error) {
+            logger.warn({ err: error, guildId: key.guildId, campaignId: key.campaignId }, "Party portrait refresh failed");
+          }
+        }
+      } catch (error) {
+        logger.warn({ err: error, libraryCharacterId }, "Party portrait refresh lookup failed");
+      }
+    },
+  });
   const catalog = new AdventureCatalog({ unitOfWork, clock, content, library: adventures });
   // The Author never writes heroes: it borrows the bundled adventure's, in the language asked for.
   const author = model === null ? null : new AdventureAuthor({ client: model, content, heroesFor: (language): typeof starter.en.heroes => starter[language].heroes });

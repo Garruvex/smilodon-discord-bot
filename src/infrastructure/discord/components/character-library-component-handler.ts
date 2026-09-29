@@ -40,6 +40,8 @@ export interface CharacterLibraryHandlerDependencies {
   readonly portraits?: CharacterPortraits;
   // Reads an uploaded picture (a test can hand it over directly).
   readonly downloadImage?: (url: string, maxBytes: number) => Promise<BytesResult>;
+  // Redraw game cards that use this saved character when its accepted portrait changes.
+  readonly onPortraitChanged?: (characterId: string) => Promise<void>;
 }
 
 type Row = ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>;
@@ -222,6 +224,7 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
         const saved = (await this.deps.portraits?.accept(userId, characterId)) === true;
         const name = (await this.deps.library.entry(userId, characterId))?.character.name ?? "";
         if (!saved) return void (await this.show(interaction, await this.portraitHomeFor(userId, characterId, language)));
+        await this.deps.onPortraitChanged?.(characterId);
         return void (await this.show(interaction, await this.viewScreen(userId, characterId, language, text.campaign.portrait.saved({ name }))));
       }
       case "pDrop":
@@ -231,6 +234,7 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
       case "pRemove":
         await interaction.deferUpdate();
         await this.deps.portraits?.remove(userId, first ?? "");
+        await this.deps.onPortraitChanged?.(first ?? "");
         return void (await this.show(interaction, await this.portraitHomeFor(userId, first ?? "", language, text.campaign.portrait.removed)));
       case "export":
         await interaction.deferUpdate();

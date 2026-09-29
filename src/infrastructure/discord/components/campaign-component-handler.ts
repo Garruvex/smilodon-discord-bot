@@ -173,6 +173,7 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "ruleOption":
     case "ruleValue":
     case "asiPick":
+    case "stylePick":
     case "levelClass":
     case "levelSkill":
     case "useSaved":
@@ -249,6 +250,7 @@ export class CampaignComponentHandler implements ComponentHandler {
       else if (parsed.action === "aim") await this.aimTurnAction(interaction, record, text);
       else if (parsed.action === "proxy") await this.changeProxy(interaction, record, text);
       else if (parsed.action === "asiPick") await this.chooseAsi(interaction, record, text);
+      else if (parsed.action === "stylePick") await this.chooseStyle(interaction, record, text);
       else if (parsed.action === "levelClass" || parsed.action === "levelSkill") await this.chooseClass(interaction, record, text, parsed.action, parsed.argument);
       else if (isExploreAction(parsed.action)) {
         await interaction.deferUpdate();
@@ -915,6 +917,21 @@ export class CampaignComponentHandler implements ComponentHandler {
     const value = interaction.values[0] ?? "none";
     const result = await this.deps.play.proxy(record.key, interaction.user.id, value === "none" ? null : value, interaction.id);
     await interaction.editReply({ content: result.kind === "ok" ? (value === "none" ? text.campaign.proxy.cleared : text.campaign.proxy.set) : refusalText(text, result.reason), components: [] });
+  }
+
+  private async chooseStyle(interaction: StringSelectMenuInteraction, record: CampaignRecord, text: Texts): Promise<void> {
+    await interaction.deferUpdate();
+    const style = interaction.values[0] ?? "";
+    const result = await this.deps.play.chooseFightingStyle(record.key, interaction.user.id, style, interaction.id);
+    if (result.kind !== "ok") {
+      await interaction.editReply({ content: refusalText(text, result.reason), components: [] });
+      return;
+    }
+    const glossary = this.deps.glossaries[record.language];
+    const note = text.campaign.reply.styleChosen({ style: glossary?.names[style] ?? style });
+    const form = await this.levelForm(record, text, interaction.user.id, note);
+    if (form === null) await this.showHeroAgain(interaction, record, text, note);
+    else await interaction.editReply(form);
   }
 
   private async chooseAsi(interaction: StringSelectMenuInteraction, record: CampaignRecord, text: Texts): Promise<void> {

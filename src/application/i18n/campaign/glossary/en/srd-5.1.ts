@@ -97,6 +97,8 @@ const enBase: Glossary = {
     "feature:danger-sense": "Danger Sense",
     "feature:fast-movement": "Fast Movement",
     "feature:unarmored-movement": "Unarmored Movement",
+    "feature:fighting-style-archery": "Fighting Style: Archery",
+    "feature:fighting-style-defense": "Fighting Style: Defense",
     "feature:unarmored-movement-6": "Unarmored Movement (improved)",
     "feature:unarmored-movement-10": "Unarmored Movement (improved)",
     "feature:unarmored-movement-14": "Unarmored Movement (improved)",

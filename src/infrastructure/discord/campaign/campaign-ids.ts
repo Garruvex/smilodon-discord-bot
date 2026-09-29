@@ -69,6 +69,7 @@ export const campaignActions = [
   // form, pick the class (and skill), pick one ability for +2 or two for +1 each.
   "levelOpen",
   "asiPick",
+  "stylePick",
   "levelClass",
   "levelSkill",
   // Between fights (the Explore button): people in the scene, asking, pressing,
