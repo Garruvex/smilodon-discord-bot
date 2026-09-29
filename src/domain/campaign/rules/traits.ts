@@ -180,6 +180,8 @@ export function creatureTypeOf(traits: readonly Trait[]): CreatureType | null {
 
 // Where a hero's Relentless Endurance use is counted (resources.featureUses).
 export const relentlessEnduranceKey = "trait:relentless-endurance";
+// Relentless Rage (Barbarian 11): where its use is counted.
+export const relentlessRageKey = "feature:relentless-rage";
 export const legendaryResistanceKey = "trait:legendary-resistance";
 export const indomitableKey = "feature:indomitable";
 // And its legendary actions left this round.

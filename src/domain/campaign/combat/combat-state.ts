@@ -163,7 +163,8 @@ export interface ZoneEdge {
 // Where an action's rules come from.
 export type ResolutionSource =
   // smiteSlot: Divine Smite's chosen slot level, when spent on this hit.
-  | { readonly kind: "weapon"; readonly option: AttackOption; readonly smiteSlot?: number }
+  // stunDc: a readied Stunning Strike; a melee hit calls for a Constitution save against it.
+  | { readonly kind: "weapon"; readonly option: AttackOption; readonly smiteSlot?: number; readonly stunDc?: number }
   | { readonly kind: "spell"; readonly spellId: ContentId<"spell">; readonly slotLevel: number }
   | { readonly kind: "feature"; readonly featureId: ContentId<"feature"> }
   // A potion drunk in a fight whose effects are more than healing.

@@ -112,7 +112,7 @@ export const barbarian = defineClass({
   casterType: "none",
   spellcastingAbility: null,
   firstSpells: [],
-  levelFeatures: { 2: ["feature:reckless-attack", "feature:danger-sense"], 3: ["feature:path-of-the-berserker"], 5: ["feature:extra-attack", "feature:fast-movement"], 7: ["feature:feral-instinct"], 9: ["feature:brutal-critical"], 13: ["feature:brutal-critical-2"], 17: ["feature:brutal-critical-3"] },
+  levelFeatures: { 2: ["feature:reckless-attack", "feature:danger-sense"], 3: ["feature:path-of-the-berserker"], 5: ["feature:extra-attack", "feature:fast-movement"], 7: ["feature:feral-instinct"], 9: ["feature:brutal-critical"], 11: ["feature:relentless-rage"], 13: ["feature:brutal-critical-2"], 17: ["feature:brutal-critical-3"] },
   multiclassRequires: [["str"]],
 });
 
@@ -222,7 +222,7 @@ export const monk = defineClass({
   casterType: "none",
   spellcastingAbility: null,
   firstSpells: [],
-  levelFeatures: { 2: ["feature:ki", "feature:unarmored-movement", "feature:flurry-of-blows", "feature:patient-defense", "feature:step-of-the-wind"], 3: ["feature:way-of-the-open-hand"], 5: ["feature:extra-attack"], 6: ["feature:unarmored-movement-6"], 7: ["feature:evasion"], 10: ["feature:purity-of-body", "feature:unarmored-movement-10"], 14: ["feature:unarmored-movement-14"], 18: ["feature:unarmored-movement-18"] },
+  levelFeatures: { 2: ["feature:ki", "feature:unarmored-movement", "feature:flurry-of-blows", "feature:patient-defense", "feature:step-of-the-wind"], 3: ["feature:way-of-the-open-hand"], 5: ["feature:extra-attack", "feature:stunning-strike"], 6: ["feature:unarmored-movement-6"], 7: ["feature:evasion"], 10: ["feature:purity-of-body", "feature:unarmored-movement-10"], 14: ["feature:unarmored-movement-14"], 18: ["feature:unarmored-movement-18"] },
   multiclassRequires: [["dex"], ["wis"]],
 });
 

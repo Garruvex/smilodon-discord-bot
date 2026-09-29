@@ -522,6 +522,46 @@ describe("class features", () => {
     expect(fight.combatant("c-borin").budget.action).toBe(false);
   });
 
+  it("stuns on a hit when a readied Stunning Strike is not saved against, and spends a ki point", () => {
+    const base = newCampaign();
+    const hero = base.characters["c-borin"];
+    if (hero === undefined) throw new Error("fixture");
+    const state: CampaignState = { ...base, characters: { ...base.characters, "c-borin": { ...hero, level: 5, features: [...hero.features, "feature:ki", "feature:stunning-strike"] as typeof hero.features } } };
+    const fight = borinFirst(state);
+    fight.run(jamie, { kind: "combatMove", combatantId: "c-borin", zoneId: "courtyard" });
+    fight.run(jamie, { kind: "combatEngage", combatantId: "c-borin", targetId: "goblin-a" });
+    const kiBefore = fight.combatant("c-borin").resources.featureUses["feature:ki"] ?? 0;
+    fight.run(jamie, { kind: "combatUseFeature", combatantId: "c-borin", featureId: "feature:stunning-strike" });
+    expect(fight.combatant("c-borin").resources.featureUses["feature:ki"]).toBe(kiBefore - 1);
+    // The attack hits (15), does little damage, and the goblin fails its Constitution save (2).
+    fight.rolls([15, 2], [1]).run(jamie, { kind: "combatAttack", combatantId: "c-borin", targetId: "goblin-a", weapon: "item:longsword" });
+    expect(fight.combatant("goblin-a").effects.some((effect) => effect.conditions.includes("condition:stunned"))).toBe(true);
+    // The readied strike was used up by that attack.
+    expect(fight.combatant("c-borin").effects.some((effect) => effect.modifiers.some((modifier) => modifier.kind === "stunningStrike"))).toBe(false);
+  });
+
+  it("keeps a raging barbarian standing at twice their level, once", () => {
+    const base = withStatus(newCampaign(), { "c-borin": 1, "c-mira": 20 });
+    const hero = base.characters["c-borin"];
+    if (hero === undefined) throw new Error("fixture");
+    const status = base.heroStatus["c-borin"];
+    if (status === undefined) throw new Error("fixture");
+    const state: CampaignState = {
+      ...base,
+      characters: { ...base.characters, "c-borin": { ...hero, level: 11, maxHp: 100, features: [...hero.features, "feature:rage", "feature:relentless-rage"] as typeof hero.features } },
+      heroStatus: { ...base.heroStatus, "c-borin": { ...status, resources: { ...status.resources, featureUses: { ...status.resources.featureUses, "feature:rage": 4, "feature:relentless-rage": 1 } } } },
+    };
+    const fight = borinFirst(state);
+    fight.run(jamie, { kind: "combatUseFeature", combatantId: "c-borin", featureId: "feature:rage" });
+    expect(fight.combatant("c-borin").resources.featureUses["feature:relentless-rage"]).toBe(1);
+    // The goblins act next: one hits Borin (15) hard enough to drop him.
+    fight.rolls([15, 15], [6, 6, 6, 6]).run(jamie, { kind: "endTurn", combatantId: "c-borin" });
+    const borin = fight.combatant("c-borin");
+    expect(borin.hp).toBe(22);
+    expect(borin.condition).toBe("active");
+    expect(borin.resources.featureUses["feature:relentless-rage"]).toBe(0);
+  });
+
   it("drinks a Potion of Resistance: resistance for the fight and the potion is used up", () => {
     const base = newCampaign();
     const hero = base.characters["c-borin"];

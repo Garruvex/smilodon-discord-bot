@@ -108,6 +108,8 @@ const enBase: Glossary = {
     "feature:brutal-critical-2": "Brutal Critical (two dice)",
     "feature:brutal-critical-3": "Brutal Critical (three dice)",
     "feature:evasion": "Evasion",
+    "feature:relentless-rage": "Relentless Rage",
+    "feature:stunning-strike": "Stunning Strike",
     "feature:reliable-talent": "Reliable Talent",
     "feature:agonizing-blast": "Agonizing Blast",
     "feature:armor-of-shadows": "Armor of Shadows",

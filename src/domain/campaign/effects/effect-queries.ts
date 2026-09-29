@@ -99,6 +99,12 @@ export function armedMetamagic(holder: EffectHolder, lookup: ConditionLookup): {
   return null;
 }
 
+// The readied Stunning Strike, if any, and the effect to use up once the attack is made.
+export function armedStunningStrike(holder: EffectHolder, lookup: ConditionLookup): string | null {
+  for (const { modifier, effectId } of modifiersOf(holder, lookup)) if (modifier.kind === "stunningStrike" && effectId !== null) return effectId;
+  return null;
+}
+
 export function meleeDamageBonusOf(holder: EffectHolder, lookup: ConditionLookup): number {
   return modifiersOf(holder, lookup).reduce((sum, { modifier }) => sum + (modifier.kind === "meleeDamageBonus" ? modifier.amount : 0), 0);
 }

@@ -240,7 +240,7 @@ export function settleCheck(decision: Decision, resolutionId: string, rollId: Ro
 // through this instead of the plan directly so the extra effect reaches damage
 // rolling and application the same way any other does.
 export function landEffects(resolution: ResolutionState, encounter: EncounterState): readonly Effect[] {
-  const onLand = withImprovedSmite(resolution, encounter, withSavageAttacks(resolution, encounter));
+  const onLand = withStunningStrike(resolution, withImprovedSmite(resolution, encounter, withSavageAttacks(resolution, encounter)));
   const slot = resolution.smiteSlot !== undefined ? resolution.smiteSlot : resolution.source.kind === "weapon" ? (resolution.source.smiteSlot ?? null) : null;
   if (slot === null) return onLand;
   // 2d8 for a 1st-level slot, +1d8 per level above that, capped at 5d8; one more d8 against a fiend or undead.
@@ -248,6 +248,13 @@ export function landEffects(resolution: ResolutionState, encounter: EncounterSta
   const type = struck === undefined ? null : creatureTypeOf(struck.traits);
   const extra = type === "undead" || type === "fiend" ? 1 : 0;
   return [...onLand, { kind: "damage", target: "target", amount: dice(Math.min(5, slot + 1) + extra, 8), damageType: "radiant" }];
+}
+
+// Stunning Strike: the hit stuns unless the target makes a Constitution save (until the end of the monk's next turn, played as a round).
+function withStunningStrike(resolution: ResolutionState, effects: readonly Effect[]): readonly Effect[] {
+  const { source } = resolution;
+  if (source.kind !== "weapon" || source.stunDc === undefined) return effects;
+  return [...effects, { kind: "conditionUnlessSave", target: "target", ability: "con", dc: source.stunDc, condition: "condition:stunned", duration: { kind: "rounds", count: 1 } }];
 }
 
 // Improved Divine Smite: every melee weapon hit deals 1d8 more radiant damage.
@@ -490,7 +497,7 @@ export function applyEffect(
         !isImmuneToCondition(recipient.traits, effect.condition) &&
         (resolution.rolled[`rider:${recipient.id}:${key}`] === 0 || autoFailsSave(recipient, effect.ability, conditionLookup(decision.ctx.rules.content)))
       ) {
-        decision.emit({ kind: "effectApplied", combatantId: recipient.id, effect: conditionInstance(resolution, recipient, effect.condition, key, null, round, decision.ctx.rules.content) });
+        decision.emit({ kind: "effectApplied", combatantId: recipient.id, effect: conditionInstance(resolution, recipient, effect.condition, key, effect.duration ?? null, round, decision.ctx.rules.content) });
       }
       return;
     case "summon": {

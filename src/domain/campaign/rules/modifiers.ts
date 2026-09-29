@@ -46,6 +46,8 @@ export type Modifier =
   // read through modifiersOf()'s flattened list; see forbiddenAttackTargets().
   | { readonly kind: "cannotTargetSource" }
   // Metamagic the sorcerer has readied for the next spell they cast (it is used up by the casting).
-  | { readonly kind: "metamagic"; readonly option: MetamagicOption };
+  | { readonly kind: "metamagic"; readonly option: MetamagicOption }
+  // A monk's readied Stunning Strike: the next melee weapon hit may stun (used up by the attack).
+  | { readonly kind: "stunningStrike" };
 
 export type MetamagicOption = "quickened" | "twinned";

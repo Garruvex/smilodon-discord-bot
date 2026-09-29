@@ -1,6 +1,7 @@
 // What a hero does with their action: a weapon attack, a spell, a feature. The rules for each are in combat/turn-rules.ts.
 import { useKeyOf } from "../../rules/content-definitions.js";
-import { armedMetamagic, conditionLookup } from "../../effects/effect-queries.js";
+import { proficiencyBonusForLevel } from "../../character/leveling.js";
+import { armedMetamagic, armedStunningStrike, conditionLookup } from "../../effects/effect-queries.js";
 import type { ActionCost } from "../../combat/combat-events.js";
 import { type AttackOption, type Combatant, type EncounterState } from "../../combat/combat-state.js";
 import { attackProblem, featureProblem, smiteProblem, spellProblem } from "../../combat/turn-rules.js";
@@ -36,9 +37,12 @@ export function declareWeaponAttack(
   // itself shows spent. Divine Smite's slot (see turn-rules.ts's
   // smiteProblem) is spent on declaring the attack, whether or not it goes
   // on to land.
-  return declareResolution(decision, {
+  // Stunning Strike (Monk 5): a readied one rides on this melee attack and is used up by it.
+  const stunning = option.range.kind === "melee" ? armedStunningStrike(attacker, conditionLookup(decision.ctx.rules.content)) : null;
+  const stunDc = stunning === null ? undefined : 8 + proficiencyBonusForLevel(attacker.level) + (attacker.saves.wis ?? 0);
+  const declared = declareResolution(decision, {
     actor: attacker,
-    source: { kind: "weapon", option, ...(smiteSlot === undefined ? {} : { smiteSlot }) },
+    source: { kind: "weapon", option, ...(smiteSlot === undefined ? {} : { smiteSlot }), ...(stunDc === undefined ? {} : { stunDc }) },
     targetIds: [targetId],
     purpose,
     cost: {
@@ -48,6 +52,8 @@ export function declareWeaponAttack(
       spellSlot: smiteSlot ?? null,
     },
   });
+  if (declared === null && stunning !== null) decision.emit({ kind: "effectsRemoved", combatantId: attacker.id, effectIds: [stunning], reason: "usedUp" });
+  return declared;
 }
 
 // A monster's breath weapon: the action, on every target caught.

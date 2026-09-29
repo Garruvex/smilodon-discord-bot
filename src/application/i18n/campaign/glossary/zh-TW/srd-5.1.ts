@@ -113,6 +113,8 @@ const zhTwBase: Glossary = {
     "feature:brutal-critical-2": "殘暴重擊（兩顆骰）",
     "feature:brutal-critical-3": "殘暴重擊（三顆骰）",
     "feature:evasion": "閃避",
+    "feature:relentless-rage": "不屈狂怒",
+    "feature:stunning-strike": "震懾拳",
     "spell:grapple": "擒抱",
     "spell:shove": "推撞",
     "feature:grapple": "擒抱",

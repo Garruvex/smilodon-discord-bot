@@ -72,6 +72,8 @@ export type Effect =
       readonly ability: Ability;
       readonly dc: number;
       readonly condition: ContentId<"condition">;
+      // How long it lasts; until removed when absent.
+      readonly duration?: EffectDuration;
     }
   // A lasting effect made of modifiers alone (Mage Armor's armor class, Faerie Fire's
   // advantage to hit): the same effect record a condition is, ending with its duration

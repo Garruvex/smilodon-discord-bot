@@ -84,4 +84,16 @@ export const stepOfTheWind = defineFeature({
   },
 });
 
-export const srd51ClassActions: readonly FeatureDefinition[] = [actionSurge, recklessAttack, ki, flurryOfBlows, patientDefense, stepOfTheWind];
+// Monk 5: readies a stun for the next melee hit (a ki point); the target makes a Constitution save or is stunned.
+export const stunningStrike = defineFeature({
+  id: "feature:stunning-strike",
+  source,
+  traits: [],
+  action: {
+    cost: "free",
+    uses: kiCost,
+    plan: () => ({ check: null, onLand: [{ kind: "applyModifiers", target: "self", modifiers: [{ kind: "stunningStrike" }], duration: { kind: "rounds", count: 1 } }], onAvoid: [] }),
+  },
+});
+
+export const srd51ClassActions: readonly FeatureDefinition[] = [actionSurge, recklessAttack, ki, flurryOfBlows, patientDefense, stepOfTheWind, stunningStrike];

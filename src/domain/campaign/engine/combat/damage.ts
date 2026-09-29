@@ -6,7 +6,7 @@ import { resolveD20Test, type D20TestSpec } from "../../dice/d20-test.js";
 import { resultMatchesSpec, type RollResult } from "../../dice/roll-spec.js";
 import { naturalRollsOnChecks } from "../../rules/house-rules.js";
 import type { DamageType } from "../../rules/effects.js";
-import { damageMultiplier, relentlessEnduranceKey } from "../../rules/traits.js";
+import { damageMultiplier, relentlessEnduranceKey, relentlessRageKey } from "../../rules/traits.js";
 import type { Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { activeEncounter, isProtected } from "./combat-flow.js";
@@ -68,6 +68,12 @@ export function applyDamage(decision: Decision, target: Combatant, rolled: numbe
     if (!massive && (target.resources.featureUses[relentlessEnduranceKey] ?? 0) > 0) {
       decision.emit({ kind: "monsterStateChanged", combatantId: target.id, relentlessSpent: true });
       decision.emit({ ...base, change: 1 - target.hp, hp: 1, condition: "active", deathSaves: target.deathSaves, cause: "damage" });
+    } else if (!massive && (target.resources.featureUses[relentlessRageKey] ?? 0) > 0 && target.effects.some((effect) => effect.definition === "feature:rage")) {
+      // Relentless Rage: a raging barbarian dropped to 0 stays up at twice their level in hit points, once per long rest
+      // (the SRD's Constitution save is played as a success).
+      const hp = Math.min(target.maxHp, target.level * 2);
+      decision.emit({ kind: "monsterStateChanged", combatantId: target.id, relentlessRageSpent: true });
+      decision.emit({ ...base, change: hp - target.hp, hp, condition: "active", deathSaves: target.deathSaves, cause: "damage" });
     } else decision.emit({
       ...base,
       hp: 0,
