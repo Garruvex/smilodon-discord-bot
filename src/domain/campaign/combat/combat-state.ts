@@ -165,6 +165,8 @@ export type ResolutionSource =
   | { readonly kind: "weapon"; readonly option: AttackOption; readonly smiteSlot?: number }
   | { readonly kind: "spell"; readonly spellId: ContentId<"spell">; readonly slotLevel: number }
   | { readonly kind: "feature"; readonly featureId: ContentId<"feature"> }
+  // A potion drunk in a fight whose effects are more than healing.
+  | { readonly kind: "item"; readonly itemId: ContentId<"item"> }
   // A breath weapon or similar area attack from the monster's traits.
   | { readonly kind: "area"; readonly area: AreaAttack };
 

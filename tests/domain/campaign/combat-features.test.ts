@@ -481,6 +481,29 @@ describe("class features", () => {
     expect(rolls).toHaveLength(1);
   });
 
+  it("drinks a Potion of Resistance: resistance for the fight and the potion is used up", () => {
+    const base = newCampaign();
+    const hero = base.characters["c-borin"];
+    if (hero === undefined) throw new Error("fixture");
+    const state: CampaignState = { ...base, characters: { ...base.characters, "c-borin": { ...hero, equipment: [...hero.equipment, "item:potion-of-resistance-fire" as const] } } };
+    const fight = borinFirst(state);
+    fight.run(jamie, { kind: "combatUseItem", combatantId: "c-borin", itemId: "item:potion-of-resistance-fire" });
+    const drinker = fight.combatant("c-borin");
+    expect(damageMultiplier([...drinker.traits, ...effectResistances(drinker, conditionLookup(ruleset().content))], "fire")).toBe(0.5);
+    expect(fight.state.characters["c-borin"]?.equipment).not.toContain("item:potion-of-resistance-fire");
+    expect(ofKind(fight, "resolutionFinished").length).toBeGreaterThan(0);
+  });
+
+  it("gives temporary hit points with a Potion of Heroism", () => {
+    const base = newCampaign();
+    const hero = base.characters["c-borin"];
+    if (hero === undefined) throw new Error("fixture");
+    const state: CampaignState = { ...base, characters: { ...base.characters, "c-borin": { ...hero, equipment: [...hero.equipment, "item:potion-of-heroism" as const] } } };
+    const fight = borinFirst(state);
+    fight.run(jamie, { kind: "combatUseItem", combatantId: "c-borin", itemId: "item:potion-of-heroism" });
+    expect(fight.combatant("c-borin").tempHp).toBe(10);
+  });
+
   it("rolls an extra weapon die on a critical hit with Brutal Critical", () => {
     // Longsword d8: a critical doubles it to two dice; Brutal Critical adds a third. Every die shows 1; +5 to damage.
     expect(strike([], 20, [1, 1, 1])).toBe(2 + 5);

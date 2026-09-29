@@ -123,6 +123,8 @@ export interface ShieldDefinition extends DefinitionBase<"item"> {
 export interface PotionDefinition extends DefinitionBase<"item"> {
   readonly itemType: "potion";
   readonly healing: number;
+  // What drinking it does besides healing, on the drinker (resistance for the fight, temporary hit points, an armor class bonus).
+  readonly effects?: readonly Effect[];
 }
 
 // Everything else a hero carries or buys: adventuring gear, tools, mounts and vehicles.

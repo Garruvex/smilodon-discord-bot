@@ -6,6 +6,7 @@ import type { ContentId } from "../../rules/content-id.js";
 import type { Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { activeEncounter, withHeroTurn } from "./combat-flow.js";
+import { declareResolution } from "./resolution.js";
 
 // Items in a fight. Handing an item to a hero in the same zone costs the
 // giver a bonus action (their object interaction) and still needs the
@@ -73,6 +74,12 @@ export function useItemInCombat(decision: Decision, combatantId: string, itemId:
     decision.emit({ kind: "actionTaken", combatantId: hero.id, action: "useItem", bonus });
     decision.request({ kind: "deliver", delivery: { kind: "combatBeat", encounterId: activeEncounter(decision)?.id ?? "", combatantId: hero.id, beat: "useItem" } });
     decision.emit({ kind: "combatantHpChanged", combatantId: hero.id, change: hp - hero.hp, hp, condition: "active", deathSaves: { successes: 0, failures: 0 }, cause: "healing" });
+    // A potion with more to it than healing (resistance, heroism, speed) works through the same pipeline as a spell.
+    const potion = decision.ctx.rules.content.find(itemId);
+    const drinker = activeEncounter(decision)?.combatants[hero.id];
+    if (potion?.kind === "item" && potion.itemType === "potion" && potion.effects !== undefined && drinker !== undefined) {
+      declareResolution(decision, { actor: drinker, source: { kind: "item", itemId }, targetIds: [drinker.id], purpose: "action", cost: { action: false, bonusAction: false, reaction: false, spellSlot: null, featureUse: null } });
+    }
     return null;
   });
 }

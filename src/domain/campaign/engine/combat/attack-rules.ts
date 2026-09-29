@@ -39,6 +39,10 @@ export function planFor(decision: Decision, actor: Combatant, source: Resolution
       const feature = content.get(source.featureId);
       return feature.action?.plan({ level: actor.level, spellcastingModifier: actor.spellcasting?.modifier ?? 0 }) ?? null;
     }
+    case "item": {
+      const item = content.find(source.itemId);
+      return item?.kind === "item" && item.itemType === "potion" && item.effects !== undefined ? { check: null, onLand: item.effects, onAvoid: [] } : null;
+    }
     case "area": {
       const area = source.area;
       const damage: Effect[] = area.damage === undefined || area.damageType === undefined ? [] : [{ kind: "damage", target: "target", amount: area.damage, damageType: area.damageType }];
