@@ -495,6 +495,18 @@ describe("class features", () => {
     expect(fight.combatant("c-borin").resources.featureUses["innate:spell:fireball"]).toBe(6);
   });
 
+  it("reads a Scroll of Fireball once, at the SRD's scroll save DC", () => {
+    const base = newCampaign();
+    const hero = base.characters["c-borin"];
+    if (hero === undefined) throw new Error("fixture");
+    const state: CampaignState = { ...base, characters: { ...base.characters, "c-borin": { ...hero, equipment: [...hero.equipment, "item:scroll-of-fireball" as const] } } };
+    const fight = borinFirst(state);
+    expect(fight.combatant("c-borin").spellcasting?.saveDcs?.["spell:fireball"]).toBe(15);
+    fight.rolls([3, 3], Array.from({ length: 8 }, () => 4)).run(jamie, { kind: "combatCast", combatantId: "c-borin", spellId: "spell:fireball", slotLevel: 3, targetIds: ["goblin-a", "goblin-b"] });
+    expect(fight.combatant("goblin-a").hp).toBe(0);
+    expect(fight.combatant("c-borin").resources.featureUses["innate:spell:fireball"]).toBe(0);
+  });
+
   it("drinks a Potion of Resistance: resistance for the fight and the potion is used up", () => {
     const base = newCampaign();
     const hero = base.characters["c-borin"];

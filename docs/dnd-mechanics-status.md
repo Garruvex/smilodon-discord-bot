@@ -53,6 +53,7 @@ Race and subrace details are also in `dnd-race-mechanics-status.md`.
 ### Items
 - Magic items with active powers: staffs, rods, bags, boots, spell scrolls, conditional weapon effects (Dragon Slayer, Holy Avenger), charges, cursed items.
 - Done: effect potions and charged wands (Magic Missile, Fireball, Lightning Bolt, Fear, Hold Person at save DC 15, seven charges).
+- Done: a spell scroll for every castable SRD spell (cast once at the spell's own level, SRD scroll save DC; the use is counted per spell, so two scrolls of one spell share it, and a spent scroll stays in the pack).
 - Dragon Scale Mail, Armor of Resistance and Adamantine Armor are named but give nothing yet.
 
 ### Other

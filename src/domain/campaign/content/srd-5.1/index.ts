@@ -10,6 +10,7 @@ import { srd51Potions } from "./items/potions.js";
 import { srd51Weapons } from "./items/weapons.js";
 import { srd51EnchantedGear } from "./items/magic-gear.js";
 import { srd51MagicItems } from "./items/srd-magic-items.generated.js";
+import { spellScrolls } from "./items/spell-scrolls.js";
 import { srd51GeneratedItems } from "./items/srd-equipment.generated.js";
 import { srd51CreatureTypes } from "./monsters/creature-types.generated.js";
 import { srd51MoreMonsters } from "./monsters/more-monsters.js";
@@ -58,6 +59,7 @@ const srd51Definitions: readonly ContentDefinition[] = [
   ...srd51GeneratedItems,
   ...srd51MagicItems,
   ...srd51EnchantedGear,
+  ...spellScrolls,
   ...srd51Classes,
   ...srd51Races,
   ...srd51Subraces,

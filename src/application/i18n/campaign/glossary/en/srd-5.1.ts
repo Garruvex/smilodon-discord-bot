@@ -1,5 +1,5 @@
 import type { Glossary } from "../../../../../domain/campaign/rules/content-registry.js";
-import { enchantedNames } from "../enchanted-names.js";
+import { enchantedNames, scrollNames } from "../enchanted-names.js";
 import { srd51GeneratedNames } from "./srd-generated-names.js";
 import { srd51MagicNames } from "./srd-magic-names.js";
 
@@ -231,4 +231,4 @@ const enBase: Glossary = {
 };
 
 const named = { ...enBase.names, ...srd51MagicNames };
-export const enSrd51Glossary: Glossary = { ...enBase, names: { ...named, ...enchantedNames(named) } };
+export const enSrd51Glossary: Glossary = { ...enBase, names: { ...named, ...enchantedNames(named), ...scrollNames(named, (spell) => `Scroll of ${spell}`) } };

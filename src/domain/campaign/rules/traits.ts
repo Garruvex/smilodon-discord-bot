@@ -80,7 +80,7 @@ export type Trait =
       readonly usesAbility?: boolean;
       // A fixed save DC, for an item that casts the spell for its holder (a wand's DC 15).
       readonly saveDc?: number;
-      readonly recharge: "shortRest" | "longRest";
+      readonly recharge: "shortRest" | "longRest" | "never";
     }
   // A flat bonus to saving throws (Ring of Protection, Cloak of Protection).
   | { readonly kind: "saveBonus"; readonly amount: number }
