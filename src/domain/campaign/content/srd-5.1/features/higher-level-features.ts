@@ -63,6 +63,8 @@ export const purityOfBody = defineFeature({
 });
 // A monk's Unarmored Movement grows by 5 feet at levels 6, 10, 14 and 18.
 const unarmoredMovementGrowth = (level: number): FeatureDefinition => defineFeature({ id: `feature:unarmored-movement-${level}`, source, traits: [{ kind: "speedBonus", amount: 5 }], action: null });
+// Read where a skill check is resolved (engine/checks.ts).
+export const reliableTalent = narrative("reliable-talent");
 export const jackOfAllTrades = narrative("jack-of-all-trades");
 export const wildShape = defineFeature({ id: "feature:wild-shape", source, traits: [{ kind: "wildShape" }], action: null });
 export const divineSmite = defineFeature({ id: "feature:divine-smite", source, traits: [{ kind: "divineSmite" }], action: null });
@@ -161,6 +163,7 @@ export const pactBoon = narrative("pact-boon");
 export const schoolOfEvocation = narrative("school-of-evocation");
 
 export const srd51HigherLevelFeatures: readonly FeatureDefinition[] = [
+  reliableTalent,
   agonizingBlast,
   armorOfShadows,
   fiendishVigor,

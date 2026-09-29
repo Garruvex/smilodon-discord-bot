@@ -37,6 +37,22 @@ function plannedRound(): CampaignState {
   return run(closedRound(), system, { kind: "applyRoundPlan", proposal: miraSneaks }, { now: 1_000 }).state;
 }
 
+describe("Reliable Talent", () => {
+  it("counts a low d20 as 10 on a skill the hero is proficient in", () => {
+    const planned = plannedRound();
+    const mira = planned.characters["c-mira"];
+    if (mira === undefined) throw new Error("mira");
+    const talented: CampaignState = { ...planned, characters: { ...planned.characters, "c-mira": { ...mira, features: [...mira.features, "feature:reliable-talent"] as typeof mira.features } } };
+    const clicked = run(talented, alex, { kind: "requestRoll", checkId: "r1:c-mira" });
+    // 3 and 4 with a +7 would total 11 and miss the DC; the talent lifts the 4 to a 10.
+    const resolved = run(clicked.state, system, { kind: "recordRoll", rollId: "r1:c-mira:roll", result: { kind: "d20Test", roll: d20Roll("advantage", [3, 4], 7) } });
+    const event = resolved.events.find((candidate) => candidate.kind === "checkResolved");
+    expect(event).toMatchObject({ result: { success: true, roll: { total: 17 } } });
+    const without = run(run(planned, alex, { kind: "requestRoll", checkId: "r1:c-mira" }).state, system, { kind: "recordRoll", rollId: "r1:c-mira:roll", result: { kind: "d20Test", roll: d20Roll("advantage", [3, 4], 7) } });
+    expect(without.events.find((candidate) => candidate.kind === "checkResolved")).toMatchObject({ result: { success: false } });
+  });
+});
+
 describe("exploration rounds", () => {
   it("opens a round for present heroes with a window timer", () => {
     const step = run(newCampaign(), system, { kind: "openRound" }, { now: 10_000 });

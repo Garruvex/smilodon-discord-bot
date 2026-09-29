@@ -1,5 +1,5 @@
 import type { CheckId } from "../core/ids.js";
-import { resolveD20Test, rollMatchesSpec } from "../dice/d20-test.js";
+import { resolveD20Test, rollMatchesSpec, type D20TestRoll } from "../dice/d20-test.js";
 import type { RollResult } from "../dice/roll-spec.js";
 import { classifyRollMoments } from "../dice/roll-moments.js";
 import { naturalRollsOnChecks } from "../rules/house-rules.js";
@@ -39,8 +39,8 @@ export function recordCheckRoll(decision: Decision, check: CheckState, result: R
   if (check.status === "resolved") return null;
   if (check.status !== "rolling") return { code: "checkNotPending" };
   if (result.kind !== "d20Test" || !rollMatchesSpec(result.roll, check.spec)) return { code: "rollMismatch" };
-  const roll = result.roll;
   const { ctx } = decision;
+  const roll = withReliableTalent(result.roll, decision, check);
 
   const naturalRule = ctx.rules.houseRules.option(naturalRollsOnChecks);
   const outcome = resolveD20Test("abilityCheck", roll.d20.natural, roll.total, check.dc, naturalRule);
@@ -49,6 +49,14 @@ export function recordCheckRoll(decision: Decision, check: CheckState, result: R
   decision.request({ kind: "deliver", delivery: { kind: "rollResult", checkId: check.id } });
   finishRoundIfResolved(decision);
   return null;
+}
+
+// Reliable Talent (Rogue 11): a d20 that rolls below 10 on a skill the rogue is proficient in counts as 10.
+function withReliableTalent(roll: D20TestRoll, decision: Decision, check: CheckState): D20TestRoll {
+  const sheet = decision.state.characters[check.characterId];
+  if (check.test.kind !== "skill" || sheet === undefined || !sheet.features.includes("feature:reliable-talent") || sheet.skills[check.test.skill] === undefined || roll.d20.natural >= 10) return roll;
+  const raise = 10 - roll.d20.natural;
+  return { ...roll, d20: { ...roll.d20, natural: 10, total: roll.d20.total + raise }, total: roll.total + raise };
 }
 
 function startRoll(decision: Decision, check: CheckState, timedOut: boolean): void {

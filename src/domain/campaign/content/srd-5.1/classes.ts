@@ -58,7 +58,7 @@ export const rogue = defineClass({
   casterType: "none",
   spellcastingAbility: null,
   firstSpells: [],
-  levelFeatures: { 2: ["feature:cunning-action"], 3: ["feature:thief"], 5: ["feature:uncanny-dodge"], 7: ["feature:evasion"] },
+  levelFeatures: { 2: ["feature:cunning-action"], 3: ["feature:thief"], 5: ["feature:uncanny-dodge"], 7: ["feature:evasion"], 11: ["feature:reliable-talent"] },
   multiclassRequires: [["dex"]],
   multiclassSkillChoices: ["acrobatics", "athletics", "deception", "insight", "intimidation", "investigation", "perception", "performance", "persuasion", "sleight-of-hand", "stealth"],
 });

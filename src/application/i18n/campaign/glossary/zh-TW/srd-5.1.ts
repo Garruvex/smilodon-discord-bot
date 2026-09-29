@@ -113,6 +113,7 @@ const zhTwBase: Glossary = {
     "feature:brutal-critical-2": "殘暴重擊（兩顆骰）",
     "feature:brutal-critical-3": "殘暴重擊（三顆骰）",
     "feature:evasion": "閃避",
+    "feature:reliable-talent": "可靠才能",
     "feature:agonizing-blast": "痛苦魔爆",
     "feature:armor-of-shadows": "暗影護甲",
     "feature:fiendish-vigor": "邪魔活力",
