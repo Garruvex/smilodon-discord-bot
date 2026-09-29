@@ -104,6 +104,8 @@ export const campaignZhTW = {
   "campaign.button.details": "詳情",
   "campaign.button.takeHit": "承受攻擊",
   "campaign.button.skipSmite": "跳過",
+  "campaign.button.takeOpportunity": "發動攻擊",
+  "campaign.button.holdOpportunity": "保留反應",
 
   "campaign.hero.line": "**{name}** · {class} · {level} 級",
   "campaign.hero.player": "玩家：{user}",
@@ -134,6 +136,7 @@ export const campaignZhTW = {
   "campaign.hero.prepared": "**已準備：**{spells}",
   "campaign.hero.slots": "🔮 **法術位：**{slots}",
   "campaign.hero.slot": "{level} 環 {left}/{max}",
+  "campaign.hero.pactSlots": "🔮 **契約法術位：**{slots}",
   "campaign.hero.uses": "⚡ **可用次數：**{uses}",
   "campaign.hero.present": "在場",
   "campaign.hero.away": "離開",
@@ -257,6 +260,7 @@ export const campaignZhTW = {
   "campaign.msg.offer": "🎁 <@{user}>，**{from}** 想送你**{item}**，請到 <#{channel}> 回應",
   "campaign.msg.reactionOffered": "🛡️ <@{user}>，**{attacker}**的攻擊還有機會落空。施展護盾，或是承受這次攻擊。",
   "campaign.msg.smiteOffered": "⚔️ <@{user}>，你對**{target}**的攻擊命中了。要制裁嗎？",
+  "campaign.msg.opportunityAttackOffered": "🏃 <@{user}>，**{mover}**正要離開你的攻擊範圍。發動攻擊，還是讓他離開？",
   "campaign.msg.speech": "💬 **{hero}**：「{text}」",
   "campaign.msg.safetyPaused": "⏸️ 應一位玩家的要求暫停遊戲，等大家準備好，主辦人可以在「管理」按繼續，或使用 /dnd resume",
   "campaign.msg.proxyTurn": "⚔️ <@{user}>，輪到**{hero}**了，你正在代替 <@{owner}> 操作",
@@ -562,6 +566,8 @@ export const campaignZhTW = {
   "campaign.reply.reactionDeclined": "你承受了這次攻擊",
   "campaign.reply.smiteChosen": "你制裁了它",
   "campaign.reply.smiteSkipped": "你跳過了",
+  "campaign.reply.opportunityTaken": "你發動了攻擊",
+  "campaign.reply.opportunityHeld": "你保留了反應",
 
   "campaign.pack.placeholder": "背包與隊伍儲藏",
   "campaign.pack.use": "飲用{item}",
@@ -583,6 +589,10 @@ export const campaignZhTW = {
   "campaign.smite.option": "制裁（消耗 {slot} 環法術位）",
   "campaign.smite.player": "等待 {user} 回應",
   "campaign.smite.closes": "{when} 後自動決定",
+
+  "campaign.opportunity.title": "🏃 **{mover}**正要離開**{provoker}**的攻擊範圍。要發動攻擊嗎？",
+  "campaign.opportunity.player": "等待 {user} 回應",
+  "campaign.opportunity.closes": "{when} 後自動決定",
 
   "campaign.turn.header": "**{hero}** · {zone}\n動作 {action} · 附贈動作 {bonus} · 反應 {reaction} · 移動 {feet} 尺",
   "campaign.turn.engaged": "正與{names}近戰",

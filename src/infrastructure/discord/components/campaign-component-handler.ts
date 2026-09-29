@@ -170,6 +170,10 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "smiteSkip":
       // The one smite window open at a time sits on its own card.
       return ["smite"];
+    case "opportunityTake":
+    case "opportunityHold":
+      // The one opportunity-attack window open at a time sits on its own card.
+      return ["opportunity"];
   }
 }
 
@@ -312,6 +316,13 @@ export class CampaignComponentHandler implements ComponentHandler {
         const slotLevel = parsed.action === "smiteChoose" ? Number(parsed.argument) : null;
         const said = slotLevel === null ? text.campaign.reply.smiteSkipped : text.campaign.reply.smiteChosen;
         const command = (combatantId: CharacterId): CombatCommand => ({ kind: "combatSmite", combatantId, slotLevel });
+        return void (await this.outcome(await this.deps.play.combat(key, userId, interaction.id, command), said, reply, text));
+      }
+      case "opportunityTake":
+      case "opportunityHold": {
+        const take = parsed.action === "opportunityTake";
+        const said = take ? text.campaign.reply.opportunityTaken : text.campaign.reply.opportunityHeld;
+        const command = (combatantId: CharacterId): CombatCommand => ({ kind: "combatOpportunityAttack", combatantId, take });
         return void (await this.outcome(await this.deps.play.combat(key, userId, interaction.id, command), said, reply, text));
       }
       case "useSaved": {

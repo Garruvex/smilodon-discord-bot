@@ -16,6 +16,7 @@ import {
   buildLobbyView,
   type PanelView,
   buildOfferViews,
+  buildOpportunityAttackView,
   buildPanelView,
   buildPartyView,
   buildReactionView,
@@ -32,6 +33,7 @@ import { renderHeroCard } from "./hero-card.js";
 import { renderHubControl, renderHubGame, type HubGame } from "./hub-card.js";
 import { renderLobbyCard } from "./lobby-card.js";
 import { renderOfferCard } from "./offer-card.js";
+import { renderOpportunityAttackCard } from "./opportunity-attack-card.js";
 import { renderReactionCard } from "./reaction-card.js";
 import { renderSmiteCard } from "./smite-card.js";
 
@@ -79,6 +81,8 @@ interface DesiredCard {
 export class CampaignCardService implements CardRefresher {
   private readonly queue = new KeyedSerialQueue();
   private readonly scheduled = new Set<string>();
+  private readonly appliedTags = new Map<string, string>();
+  private verificationCursor = 0;
 
   public constructor(private readonly options: CampaignCardServiceOptions) {}
 
@@ -126,6 +130,34 @@ export class CampaignCardService implements CardRefresher {
         this.options.logger.error({ err: error, guildId: guild.guildId }, "Campaign hub recovery failed");
       }
     }
+  }
+
+  // State is authoritative. A periodic pass catches a refresh lost during a
+  // Discord outage or process restart without rewriting unchanged messages.
+  public async reconcileAll(): Promise<void> {
+    const { records, settings } = await this.options.unitOfWork.transaction(async (tx) => ({
+      records: await tx.listRecordsByLifecycle(["lobby", "active", "paused"]),
+      settings: await tx.listGuildSettings(),
+    }));
+    const guilds = new Set(settings.map((setting) => setting.guildId));
+    const verifiedRecord = records.length === 0 ? -1 : this.verificationCursor % records.length;
+    for (const [index, { record }] of records.entries()) {
+      guilds.add(record.key.guildId);
+      try {
+        await this.queue.run(`${record.key.guildId}:${record.key.campaignId}`, () => this.syncNow(record.key, index === verifiedRecord, true));
+      } catch (error) {
+        this.options.logger.error({ err: error, guildId: record.key.guildId, campaignId: record.key.campaignId }, "Campaign card reconciliation failed");
+      }
+    }
+    const guildIds = [...guilds];
+    for (const [index, guildId] of guildIds.entries()) {
+      try {
+        await this.syncHub(guildId, index === this.verificationCursor % guildIds.length);
+      } catch (error) {
+        this.options.logger.error({ err: error, guildId }, "Campaign hub reconciliation failed");
+      }
+    }
+    this.verificationCursor += 1;
   }
 
   // Someone deleted messages in a channel. When one of them was a card or the
@@ -181,7 +213,7 @@ export class CampaignCardService implements CardRefresher {
     return record.cards[cardKey]?.messageId === messageId;
   }
 
-  private async syncNow(key: CampaignKey, verify = false): Promise<void> {
+  private async syncNow(key: CampaignKey, verify = false, deferHub = false): Promise<void> {
     const loaded = await this.options.unitOfWork.transaction(async (tx) => ({ stored: await tx.loadRecord(key), campaign: await tx.loadCampaign(key) }));
     if (loaded.stored === undefined) return;
     const { record } = loaded.stored;
@@ -193,11 +225,14 @@ export class CampaignCardService implements CardRefresher {
     const existing: Readonly<Record<string, CardReference>> = { ...record.cards, ...inherited };
     for (const card of desired) {
       const reference = await this.place(card, existing[card.key], verify, `${key.campaignId}:${card.key}`, failures);
-      if (reference !== null) updates[card.key] = reference;
+      const saved = record.cards[card.key];
+      if (reference !== null && (saved === undefined || saved.messageId !== reference.messageId || saved.channelId !== reference.channelId || saved.renderedHash !== reference.renderedHash || saved.epoch !== reference.epoch)) {
+        updates[card.key] = reference;
+      }
     }
-    // An offer that was answered leaves the Party channel; an answered reaction or smite leaves the Adventure channel.
+    // An offer that was answered leaves the Party channel; an answered reaction, smite, or opportunity attack leaves the Adventure channel.
     const answered = Object.keys(record.cards).filter(
-      (name) => (name.startsWith("offer:") || name === "reaction" || name === "smite") && !desired.some((card) => card.key === name),
+      (name) => (name.startsWith("offer:") || name === "reaction" || name === "smite" || name === "opportunity") && !desired.some((card) => card.key === name),
     );
     for (const name of answered) {
       const card = record.cards[name];
@@ -205,18 +240,18 @@ export class CampaignCardService implements CardRefresher {
       this.expectRemoval(card.messageId);
       await this.options.messages.remove(card.channelId, card.messageId).catch(() => undefined);
     }
-    await this.saveReferences(key, updates, [...(record.lifecycle === "lobby" ? [] : ["lobby"]), ...answered]);
+    await this.saveReferences(key, updates, [...(record.lifecycle !== "lobby" && record.cards.lobby !== undefined ? ["lobby"] : []), ...answered]);
     await this.reportFailures(key, record, failures);
-    await this.syncStatusTag(record, loaded.campaign);
-    await this.syncHub(key.guildId, verify);
+    await this.syncStatusTag(record, loaded.campaign, verify && !deferHub);
+    if (!deferHub) await this.syncHub(key.guildId, verify);
   }
 
   // Keeps the Games post's status tag (Recruiting/Active/Paused/Completed)
   // in line with the record's lifecycle, plus the one case that isn't its own
   // lifecycle value: a pause lives in the engine state's pausedBy, not on the
-  // record. Every sync() call re-applies it; the underlying Discord call is
-  // cheap and idempotent, so there is no separate "did it change" tracking.
-  private async syncStatusTag(record: CampaignRecord, campaign: StoredCampaign | undefined): Promise<void> {
+  // record. Avoid repeating the same PATCH on every card refresh; a repair or
+  // restart verifies the tag again.
+  private async syncStatusTag(record: CampaignRecord, campaign: StoredCampaign | undefined, verify = false): Promise<void> {
     const { resources, unitOfWork, logger } = this.options;
     if (resources === undefined) return;
     const postId = record.channels.adventurePostId;
@@ -226,8 +261,10 @@ export class CampaignCardService implements CardRefresher {
     if (forumId == null) return;
     const paused = record.lifecycle === "active" && campaign?.state.pausedBy != null;
     const tag = paused ? "Paused" : gameStatusTag(record.lifecycle);
+    if (!verify && this.appliedTags.get(postId) === tag) return;
     try {
       await resources.setForumPostTag(forumId, postId, tag, "D&D campaign: status tag");
+      this.appliedTags.set(postId, tag);
     } catch (error) {
       logger.error({ err: error, guildId: record.key.guildId, campaignId: record.key.campaignId }, "Campaign status tag could not be set");
     }
@@ -370,6 +407,10 @@ export class CampaignCardService implements CardRefresher {
       if (reaction !== null) cards.push({ key: "reaction", channelId: adventureChannelId, payload: renderReactionCard(reaction, text, campaignId), epoch: "reaction", pin: false });
       const smite = buildSmiteView(state, bible, glossary);
       if (smite !== null) cards.push({ key: "smite", channelId: adventureChannelId, payload: renderSmiteCard(smite, text, campaignId), epoch: "smite", pin: false });
+      const opportunity = buildOpportunityAttackView(state, bible, glossary);
+      if (opportunity !== null) {
+        cards.push({ key: "opportunity", channelId: adventureChannelId, payload: renderOpportunityAttackCard(opportunity, text, campaignId), epoch: "opportunity", pin: false });
+      }
       cards.push({ key: "adventure", channelId: adventureChannelId, payload: renderAdventurePanel(panel, text, campaignId), epoch: panelEpoch(state), pin: false });
     }
     return cards;
@@ -413,8 +454,11 @@ export class CampaignCardService implements CardRefresher {
     try {
       if (current !== undefined && current.channelId === card.channelId) {
         if (current.epoch === card.epoch) {
-          if (current.renderedHash === hash && !verify) return current;
-          if ((await messages.edit(current.channelId, current.messageId, card.payload)) === "ok") return { ...current, renderedHash: hash };
+          if (current.renderedHash === hash) {
+            if (!verify || await messages.exists(current.channelId, current.messageId)) return current;
+          } else if ((await messages.edit(current.channelId, current.messageId, card.payload)) === "ok") {
+            return { ...current, renderedHash: hash };
+          }
         }
       }
       const messageId = await messages.send(card.channelId, card.payload);
@@ -503,4 +547,3 @@ function panelEpoch(state: StoredCampaign["state"]): string {
 function hashOf(payload: CardPayload): string {
   return createHash("sha1").update(JSON.stringify(payload.components.map((component) => component.toJSON()))).digest("hex");
 }
-

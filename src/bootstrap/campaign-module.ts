@@ -212,6 +212,15 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
   // cards are drawn into the new one), within limits; a deleted message is
   // drawn again by the card service.
   const recovery = new CampaignRecovery({ unitOfWork, lobby, setup, cards, issues, logger });
+  let cardRecovery: Promise<void> | null = null;
+  let cardReconciliation: Promise<void> | null = null;
+  let reconcileTimer: NodeJS.Timeout | null = null;
+  const reconcileCards = (): void => {
+    if (cardRecovery !== null || cardReconciliation !== null) return;
+    cardReconciliation = cards.reconcileAll()
+      .catch((error: unknown) => logger.error({ err: error }, "Campaign card reconciliation failed"))
+      .finally(() => { cardReconciliation = null; });
+  };
   const recoverChannel = (guildId: string, channelId: string): Promise<void> => recovery.channelDeleted(guildId, channelId);
   const logFailure = (what: string, guildId: string): ((error: unknown) => void) => (error): void => {
     logger.error({ err: error, guildId }, what);
@@ -239,9 +248,17 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
       const report = await running.start();
       logger.info({ modelConfigured: model !== null, paused: report.paused.length, firstRoundsOpened: report.firstRoundsOpened.length, roundsReopened: report.roundsReopened.length }, "Campaign runtime started");
       // Cards deleted while the bot was away come back; this needs Discord, so it does not hold up startup.
-      void cards.recoverAll().catch((error: unknown) => logger.error({ err: error }, "Campaign card recovery at startup failed"));
+      cardRecovery = cards.recoverAll()
+        .catch((error: unknown) => logger.error({ err: error }, "Campaign card recovery at startup failed"))
+        .finally(() => { cardRecovery = null; });
+      reconcileTimer = setInterval(reconcileCards, 60_000);
+      reconcileTimer.unref();
     },
     stop: async (): Promise<void> => {
+      if (reconcileTimer !== null) clearInterval(reconcileTimer);
+      reconcileTimer = null;
+      await cardRecovery;
+      await cardReconciliation;
       await running.stop();
       if (database?.open === true) database.close();
       await postgres?.close();

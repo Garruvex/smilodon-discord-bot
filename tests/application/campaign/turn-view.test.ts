@@ -4,7 +4,7 @@ import { buildTurnView } from "../../../src/application/campaign/views/turn-view
 import { enSrd51Glossary } from "../../../src/application/i18n/campaign/glossary/en/srd-5.1.js";
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
 import { loadStarterAdventure } from "../../../src/infrastructure/campaign/starter-adventures.js";
-import { alex, newCampaign, organizer, ruleset } from "../../domain/campaign/campaign-fixtures.js";
+import { alex, jamie, newCampaign, organizer, partyOfThree, ruleset } from "../../domain/campaign/campaign-fixtures.js";
 import { Fight, skirmish } from "../../domain/campaign/combat-fixtures.js";
 
 const bible = loadStarterAdventure().en.bible;
@@ -63,5 +63,46 @@ describe("a hero's turn view", () => {
     const fight = start().run(alex, { kind: "endTurn", combatantId: "c-mira" }).rolls([2, 2]);
     expect(viewOf(fight.state, "c-mira")).toBeNull();
     expect(viewOf(fight.state, "c-borin")).not.toBeNull();
+  });
+
+  it("offers a spell at every slot level it can be upcast to, not only the cheapest", () => {
+    const base = partyOfThree();
+    const elspeth = base.characters["c-elspeth"];
+    if (elspeth === undefined || elspeth.spellcasting === null || elspeth.spellcasting === undefined) throw new Error("fixture");
+    const upcaster = { ...base, characters: { ...base.characters, "c-elspeth": { ...elspeth, spellcasting: { ...elspeth.spellcasting, slots: { 1: 2, 2: 1 } } } } };
+    // Mira, then Borin, then Elspeth: the goblins' turns resolve by themselves in between.
+    const fight = new Fight(upcaster)
+      .rolls([20, 1, 1, 5, 4])
+      .run(organizer, { kind: "startEncounter", spec: skirmish })
+      .run(alex, { kind: "endTurn", combatantId: "c-mira" })
+      .run(jamie, { kind: "endTurn", combatantId: "c-borin" });
+    const view = viewOf(fight.state, "c-elspeth");
+    // Bless (a buff, not a heal) has a legal target even at full HP.
+    const bless = view?.spells.filter((spell) => spell.spellId === "spell:bless") ?? [];
+    expect(bless.map((spell) => spell.slotLevel)).toEqual([1, 2]);
+    expect(bless.map((spell) => spell.slotsLeft)).toEqual([2, 1]);
+  });
+
+  it("counts a Pact Magic slot toward slotsLeft, not just the ordinary pool", () => {
+    const base = partyOfThree();
+    const elspeth = base.characters["c-elspeth"];
+    if (elspeth === undefined || elspeth.spellcasting == null) throw new Error("fixture");
+    // No ordinary level-1 slots at all; one Pact slot instead. Without the
+    // merge, slotsLeft would read 0 even though the spell is castable.
+    const pactCaster = {
+      ...base,
+      characters: {
+        ...base.characters,
+        "c-elspeth": { ...elspeth, spellcasting: { ...elspeth.spellcasting, slots: {} }, pactMagic: { slots: { 1: 1 } } },
+      },
+    };
+    const fight = new Fight(pactCaster)
+      .rolls([20, 1, 1, 5, 4])
+      .run(organizer, { kind: "startEncounter", spec: skirmish })
+      .run(alex, { kind: "endTurn", combatantId: "c-mira" })
+      .run(jamie, { kind: "endTurn", combatantId: "c-borin" });
+    const view = viewOf(fight.state, "c-elspeth");
+    const bless = view?.spells.find((spell) => spell.spellId === "spell:bless");
+    expect(bless).toMatchObject({ slotLevel: 1, slotsLeft: 1 });
   });
 });

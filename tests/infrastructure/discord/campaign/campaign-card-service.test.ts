@@ -179,6 +179,42 @@ describe("the card service", () => {
     expect(() => cards.refresh({ guildId, campaignId: "missing" })).not.toThrow();
   });
 
+  it("repairs a missed state refresh on the next reconciliation without editing unchanged cards", async () => {
+    const r = rig();
+    const messages = new FakeMessages();
+    const cards = serviceFor(r, messages);
+    const key = await lobby(r);
+    await cards.sync(key);
+    const editsBefore = messages.edits.length;
+    const revisionBefore = (await r.service.get(key))?.revision;
+
+    await cards.reconcileAll();
+    expect(messages.edits).toHaveLength(editsBefore);
+    expect((await r.service.get(key))?.revision).toBe(revisionBefore);
+
+    await r.service.join(key, "u-org");
+    await cards.reconcileAll();
+    expect(flatten(only(messages.live(party)).payload).text).toContain("Choosing a hero");
+    // The party card and the hub's player count both reflect the join.
+    expect(messages.edits).toHaveLength(editsBefore + 2);
+  });
+
+  it("redraws a deleted card when Discord's deletion event was missed", async () => {
+    const r = rig();
+    const messages = new FakeMessages();
+    const cards = serviceFor(r, messages);
+    const key = await lobby(r);
+    await cards.sync(key);
+    const old = only(messages.live(party)).messageId;
+    messages.deleted.add(old);
+
+    await cards.reconcileAll();
+
+    expect(messages.live(party)).toHaveLength(1);
+    expect(only(messages.live(party)).messageId).not.toBe(old);
+    expect((await r.service.get(key))?.record.cards.lobby?.messageId).toBe(only(messages.live(party)).messageId);
+  });
+
   describe("the hub", () => {
     const texts = (messages: readonly Sent[]): string[] => messages.map((message) => flatten(message.payload).text);
 
@@ -293,9 +329,12 @@ describe("the card service", () => {
       await cards.sync(first);
       expect(messages.live(party)).toHaveLength(0);
 
+      const editsBefore = messages.edits.length;
       await cards.recoverAll();
       expect(messages.live(party)).toHaveLength(1);
       expect(texts(messages.live(hub)).filter((text) => text.includes("Moonlit Ruins"))).toHaveLength(1);
+      // Recovery checks for missing messages without PATCHing every live card.
+      expect(messages.edits).toHaveLength(editsBefore);
     });
   });
 });

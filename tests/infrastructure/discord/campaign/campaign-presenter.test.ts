@@ -145,6 +145,28 @@ describe("the presenter", () => {
     expect(added[0]?.content).toBe(t.messages.textEdits[0]?.content);
   });
 
+  it("posts the roll result if its staged message was deleted", async () => {
+    const t = await table();
+    const presenter = new DiscordCampaignPresenter({ unitOfWork: t.r.store, messages: t.messages, cards: t.cards, adventures: t.r.adventures, glossaries, revealDelayMs: 1 });
+    t.r.plannerScript.push({
+      roundNumber: 1,
+      actions: [{ characterId: t.hero, resolution: { kind: "check", test: { kind: "skill", skill: "stealth" }, dcTier: "medium", rollModeReasons: [] } }],
+    });
+    await t.r.bus.execute(t.key, { kind: "submitAction", characterId: t.hero, text: "I sneak in." }, { commandId: "a", actor });
+    await t.runtime.runOnce();
+    const state = (await t.r.store.transaction((tx) => tx.loadCampaign(t.key)))?.state;
+    const checkId = Object.keys(state?.checks ?? {})[0] ?? "";
+    await t.r.bus.execute(t.key, { kind: "requestRoll", checkId }, { commandId: "b", actor });
+    await t.runtime.runOnce();
+    const before = t.messages.posts.length;
+    t.messages.editText = (): Promise<"missing"> => Promise.resolve("missing");
+    await presenter.present(t.key, { kind: "rollResult", checkId });
+    const added = t.messages.posts.slice(before);
+    expect(added).toHaveLength(2);
+    expect(added[0]?.content).toContain("rolls");
+    expect(added[1]?.content).toMatch(/^🎲 \*\*.+\*\* · Stealth \(DEX\): d20/);
+  });
+
   it("says so when nobody acts in a round", async () => {
     const t = await table();
     await t.r.bus.execute(t.key, { kind: "pass", characterId: t.hero }, { commandId: "a", actor });

@@ -16,7 +16,15 @@ function spellLines(view: HeroView, text: Texts, nameOf: (id: string) => string)
     ...(view.prepared.length === 0 ? [] : [t.prepared({ spells: view.prepared.map(nameOf).join(t.separator) })]),
   ];
   const slots = view.slots.map((slot) => t.slot({ level: slot.level, left: slot.left, max: slot.max })).join(" · ");
-  return [parts.join(" · "), ...(slots === "" ? [] : [t.slots({ slots })])];
+  // Shown apart from ordinary slots: a Warlock's Pact Magic is its own pool,
+  // always at the Warlock's own level, recovering on a short rest rather
+  // than a long one, so folding its count into slots would misstate both.
+  const pactSlots = view.pactSlots.map((slot) => t.slot({ level: slot.level, left: slot.left, max: slot.max })).join(" · ");
+  return [
+    parts.join(" · "),
+    ...(slots === "" ? [] : [t.slots({ slots })]),
+    ...(pactSlots === "" ? [] : [t.pactSlots({ slots: pactSlots })]),
+  ];
 }
 
 export function hpBar(hp: number, maxHp: number): string {

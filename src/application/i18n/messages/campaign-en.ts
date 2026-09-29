@@ -104,6 +104,8 @@ export const campaignEn = {
   "campaign.button.details": "Details",
   "campaign.button.takeHit": "Take the hit",
   "campaign.button.skipSmite": "Skip",
+  "campaign.button.takeOpportunity": "Take the attack",
+  "campaign.button.holdOpportunity": "Hold",
 
   "campaign.hero.line": "**{name}** · {class} · Lv {level}",
   "campaign.hero.player": "Played by {user}",
@@ -134,6 +136,7 @@ export const campaignEn = {
   "campaign.hero.prepared": "**Prepared:** {spells}",
   "campaign.hero.slots": "🔮 **Spell slots:** {slots}",
   "campaign.hero.slot": "Level {level} {left}/{max}",
+  "campaign.hero.pactSlots": "🔮 **Pact slots:** {slots}",
   "campaign.hero.uses": "⚡ **Uses:** {uses}",
   "campaign.hero.present": "Present",
   "campaign.hero.away": "Away",
@@ -258,6 +261,7 @@ export const campaignEn = {
   "campaign.msg.offer": "🎁 <@{user}>, **{from}** offers you **{item}**. Answer in <#{channel}>.",
   "campaign.msg.reactionOffered": "🛡️ <@{user}>, **{attacker}**'s attack could still be a miss. Cast Shield, or let it land.",
   "campaign.msg.smiteOffered": "⚔️ <@{user}>, your hit on **{target}** lands. Smite it, or leave it as it is.",
+  "campaign.msg.opportunityAttackOffered": "🏃 <@{user}>, **{mover}** is leaving your reach. Take the attack, or let them go.",
   "campaign.msg.speech": "💬 **{hero}:** “{text}”",
   "campaign.msg.safetyPaused": "⏸️ Play is paused at a player's request. The organizer resumes it from Manage or /dnd resume when the table is ready.",
   "campaign.msg.proxyTurn": "⚔️ <@{user}>, it is **{hero}**'s turn, and you are playing for <@{owner}>.",
@@ -563,6 +567,8 @@ export const campaignEn = {
   "campaign.reply.reactionDeclined": "You took the hit.",
   "campaign.reply.smiteChosen": "You smote it.",
   "campaign.reply.smiteSkipped": "You skipped it.",
+  "campaign.reply.opportunityTaken": "You took the attack.",
+  "campaign.reply.opportunityHeld": "You held your reaction.",
 
   "campaign.pack.placeholder": "Pack and stash",
   "campaign.pack.use": "Drink {item}",
@@ -584,6 +590,10 @@ export const campaignEn = {
   "campaign.smite.option": "Smite (level {slot} slot)",
   "campaign.smite.player": "Waiting for {user}.",
   "campaign.smite.closes": "Decides itself {when}.",
+
+  "campaign.opportunity.title": "🏃 **{mover}** is leaving **{provoker}**'s reach. Take the attack?",
+  "campaign.opportunity.player": "Waiting for {user}.",
+  "campaign.opportunity.closes": "Decides itself {when}.",
 
   "campaign.turn.header": "**{hero}** · {zone}\nAction {action} · Bonus action {bonus} · Reaction {reaction} · Movement {feet} ft",
   "campaign.turn.engaged": "In melee with {names}.",

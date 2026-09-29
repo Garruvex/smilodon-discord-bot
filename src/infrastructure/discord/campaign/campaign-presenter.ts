@@ -5,7 +5,7 @@ import type { CampaignPresenter } from "../../../application/campaign/ports/camp
 import type { CampaignKey, CampaignUnitOfWork } from "../../../application/campaign/ports/campaign-store.js";
 import { texts, type Texts } from "../../../application/i18n/texts.js";
 import { combatantName, encounterRecords, type CombatBeat } from "../../../application/campaign/dm/combat-records.js";
-import { buildReactionView, buildSmiteView } from "../../../application/campaign/views/campaign-views.js";
+import { buildOpportunityAttackView, buildReactionView, buildSmiteView } from "../../../application/campaign/views/campaign-views.js";
 import { abilityOf, type CheckTest } from "../../../domain/campaign/character/character-sheet.js";
 import { combatMode } from "../../../domain/campaign/rules/house-rules.js";
 import type { DeliverySpec } from "../../../domain/campaign/engine/engine-request.js";
@@ -74,7 +74,7 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
         const rolling = await say(adventureChannelId, text.campaign.msg.rolling({ hero: state?.characters[check.characterId]?.name ?? check.characterId, check: checkLabel(check.test, text) }));
         await new Promise<void>((resolve) => setTimeout(resolve, delay));
         if (rolling === null) await say(adventureChannelId, line);
-        else await this.options.messages.editText(adventureChannelId, rolling, truncate(line));
+        else if ((await this.options.messages.editText(adventureChannelId, rolling, truncate(line))) === "missing") await say(adventureChannelId, line);
         break;
       }
       case "narration":
@@ -166,6 +166,17 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
         const glossary = this.options.glossaries[record.language];
         const view = state === undefined || bible === undefined || glossary === undefined ? null : buildSmiteView(state, bible, glossary);
         if (view !== null) await say(adventureChannelId, text.campaign.msg.smiteOffered({ user: view.attackerUserId, target: view.targetName }), [view.attackerUserId]);
+        break;
+      }
+      case "opportunityAttackOffered": {
+        // Same pattern as reactionOffered/smiteOffered: the ping here, the
+        // decision card itself drawn by the cards.sync() below.
+        const bible = this.options.adventures.find(record.adventure.adventureId, record.adventure.version, record.language);
+        const glossary = this.options.glossaries[record.language];
+        const view = state === undefined || bible === undefined || glossary === undefined ? null : buildOpportunityAttackView(state, bible, glossary);
+        if (view !== null) {
+          await say(adventureChannelId, text.campaign.msg.opportunityAttackOffered({ user: view.provokerUserId, mover: view.moverName }), [view.provokerUserId]);
+        }
         break;
       }
       default:

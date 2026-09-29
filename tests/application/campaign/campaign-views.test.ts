@@ -5,6 +5,7 @@ import { emptyChannels, type CampaignRecord } from "../../../src/application/cam
 import {
   buildHeroView,
   buildLobbyView,
+  buildOpportunityAttackView,
   buildPanelView,
   buildPartyView,
   buildReactionView,
@@ -12,6 +13,7 @@ import {
 } from "../../../src/application/campaign/views/campaign-views.js";
 import { enSrd51Glossary } from "../../../src/application/i18n/campaign/glossary/en/srd-5.1.js";
 import { chooseHero, join, openLobby, type LobbyResult, type LobbyState } from "../../../src/domain/campaign/lobby/lobby.js";
+import type { EncounterSpec } from "../../../src/domain/campaign/commands/campaign-command.js";
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
 import { loadStarterAdventure } from "../../../src/infrastructure/campaign/starter-adventures.js";
 import { alex, jamie, livePacing, newCampaign, organizer, partyOfThree, ruleset, run, sam, system } from "../../domain/campaign/campaign-fixtures.js";
@@ -99,6 +101,21 @@ describe("hero views", () => {
     expect(buildHeroView(hurt, hurt.characters["c-mira"]!, content)).toMatchObject({ hp: 0, down: true, conditions: ["condition:prone"] });
     const dead = { ...fight.state, heroStatus: { "c-borin": { hp: 0, dead: true, resources: { spellSlots: {}, featureUses: {} } } } };
     expect(buildHeroView(dead, dead.characters["c-borin"]!, content).fallen).toBe(true);
+  });
+
+  it("shows Pact Magic slots apart from ordinary ones", () => {
+    const state = newCampaign();
+    const mira = state.characters["c-mira"];
+    if (mira === undefined) throw new Error("fixture");
+    const warlock = { ...mira, pactMagic: { slots: { 1: 2 } } };
+    const withSlots = {
+      ...state,
+      characters: { ...state.characters, "c-mira": warlock },
+      heroStatus: { "c-mira": { hp: warlock.maxHp, resources: { spellSlots: {}, pactSlots: { 1: 1 }, featureUses: {} } } },
+    };
+    const view = buildHeroView(withSlots, warlock, content);
+    expect(view.pactSlots).toEqual([{ level: 1, left: 1, max: 2 }]);
+    expect(view.slots).toEqual([]);
   });
 });
 
@@ -225,6 +242,38 @@ describe("buildSmiteView", () => {
       attackerUserId: "u-jamie",
       targetName: expect.stringContaining("Goblin") as string,
       options: [{ slotLevel: 1 }],
+    });
+  });
+});
+
+describe("buildOpportunityAttackView", () => {
+  // Gate and courtyard 10 ft apart, so leaving the courtyard mid-move is
+  // observable as its own step (mirrors combat-features.test.ts's fixture).
+  const close: EncounterSpec = { ...skirmish, zones: [...skirmish.zones, { id: "tower", name: "Tower" }], edges: [...skirmish.edges, { from: "courtyard", to: "tower", feet: 10 }] };
+
+  // Borin engages a skeleton (no Nimble Escape), then it retreats to shoot,
+  // provoking Borin's reaction and opening the window.
+  function opportunityPending(): CampaignState {
+    const closeSkeleton: EncounterSpec = { ...close, monsters: [{ monsterId: "monster:skeleton", zoneId: "courtyard", npcId: null, fleeBelowHpFraction: null }] };
+    return new Fight()
+      .rolls([1, 20, 5])
+      .run(organizer, { kind: "startEncounter", spec: closeSkeleton })
+      .run(jamie, { kind: "combatMove", combatantId: "c-borin", zoneId: "courtyard" })
+      .run(jamie, { kind: "combatEngage", combatantId: "c-borin", targetId: "skeleton" })
+      .run(jamie, { kind: "endTurn", combatantId: "c-borin" }).state;
+  }
+
+  it("is null when nothing is waiting on an opportunity-attack answer", () => {
+    expect(buildOpportunityAttackView(newCampaign(), starter.bible, enSrd51Glossary)).toBeNull();
+    expect(buildOpportunityAttackView(startedFight().state, starter.bible, enSrd51Glossary)).toBeNull();
+  });
+
+  it("describes the mover, the provoker, and who must answer", () => {
+    const view = buildOpportunityAttackView(opportunityPending(), starter.bible, enSrd51Glossary);
+    expect(view).toMatchObject({
+      moverName: expect.stringContaining("Skeleton") as string,
+      provokerName: "Borin",
+      provokerUserId: "u-jamie",
     });
   });
 });

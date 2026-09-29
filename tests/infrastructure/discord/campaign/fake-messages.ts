@@ -35,6 +35,10 @@ export class FakeMessages implements CampaignMessageGateway {
     return Promise.resolve("ok");
   }
 
+  public exists(channelId: string, messageId: string): Promise<boolean> {
+    return Promise.resolve(this.sent.some((message) => message.channelId === channelId && message.messageId === messageId && !message.removed && !this.deleted.has(messageId)));
+  }
+
   public remove(_channelId: string, messageId: string): Promise<void> {
     const message = this.sent.find((candidate) => candidate.messageId === messageId);
     if (message !== undefined) message.removed = true;
@@ -58,11 +62,12 @@ export class FakeMessages implements CampaignMessageGateway {
 
   public readonly textEdits: { messageId: string; content: string }[] = [];
 
-  public editText(_channelId: string, messageId: string, content: string): Promise<void> {
+  public editText(_channelId: string, messageId: string, content: string): Promise<"ok" | "missing"> {
     const post = this.posts.find((candidate) => `p${candidate.order}` === messageId);
-    if (post !== undefined) post.content = content;
+    if (post === undefined || this.deleted.has(messageId)) return Promise.resolve("missing");
+    post.content = content;
     this.textEdits.push({ messageId, content });
-    return Promise.resolve();
+    return Promise.resolve("ok");
   }
 
   public pin(_channelId: string, messageId: string): Promise<void> {
@@ -74,4 +79,3 @@ export class FakeMessages implements CampaignMessageGateway {
     return this.sent.filter((message) => message.channelId === channelId && !message.removed && !this.deleted.has(message.messageId));
   }
 }
-

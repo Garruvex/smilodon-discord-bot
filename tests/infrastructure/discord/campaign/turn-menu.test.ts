@@ -95,6 +95,27 @@ describe("the turn menu", () => {
     expect(renderTargetMenu({ kind: "dodge" }, view, texts.en, enSrd51Glossary, "camp")).toBeNull();
   });
 
+  it("lists a spell at every slot level it could be upcast to, as separate choices", () => {
+    const upcastable: TurnView = {
+      ...view,
+      spells: [...view.spells, { spellId: "spell:bless", slotLevel: 2, slotsLeft: 1, bonusAction: false, maxTargets: 3, targets: [ally] }],
+    };
+    const menu = renderTurnMenu(upcastable, texts.en, enSrd51Glossary, "camp");
+    const select = json(menu).find((component) => Array.isArray(component.options));
+    const options = select?.options as { label: string; value: string }[];
+    expect(options.map((option) => option.label)).toContain("Cast Bless (level 1 slot, 2 left)");
+    expect(options.map((option) => option.label)).toContain("Cast Bless (level 2 slot, 1 left)");
+    expect(options.map((option) => option.value)).toEqual(expect.arrayContaining(["cast|spell:bless|1", "cast|spell:bless|2"]));
+
+    // Each level targets and answers independently.
+    const atOne = renderTargetMenu({ kind: "cast", spell: "spell:bless", slot: 1 }, upcastable, texts.en, enSrd51Glossary, "camp");
+    const atTwo = renderTargetMenu({ kind: "cast", spell: "spell:bless", slot: 2 }, upcastable, texts.en, enSrd51Glossary, "camp");
+    const optionsAtOne = atOne === null ? undefined : json(atOne).find((component) => Array.isArray(component.options));
+    const optionsAtTwo = atTwo === null ? undefined : json(atTwo).find((component) => Array.isArray(component.options));
+    expect(optionsAtOne?.max_values).toBe(2);
+    expect(optionsAtTwo?.max_values).toBe(1);
+  });
+
   it("only offers Refresh while an attack is being resolved", () => {
     const menu = renderTurnMenu({ ...view, busy: true }, texts.en, enSrd51Glossary, "camp");
     expect(menu.content).toContain("Your action is being resolved");

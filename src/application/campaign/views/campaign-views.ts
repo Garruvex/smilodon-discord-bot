@@ -46,6 +46,9 @@ export interface HeroView {
   readonly cantrips: readonly string[];
   readonly prepared: readonly string[];
   readonly slots: readonly { readonly level: number; readonly left: number; readonly max: number }[];
+  // A Warlock's separate Pact Magic pool (always its own level, recovers on
+  // a short rest), shown apart from slots since the two never share a count.
+  readonly pactSlots: readonly { readonly level: number; readonly left: number; readonly max: number }[];
   // Limited-use features (Second Wind) with uses left.
   readonly uses: readonly { readonly id: string; readonly left: number; readonly max: number }[];
 }
@@ -126,6 +129,15 @@ export interface SmiteView {
   readonly attackerUserId: string;
   readonly targetName: string;
   readonly options: readonly { readonly slotLevel: number }[];
+  readonly closesAt: number | null;
+}
+
+// A mover leaving a hostile creature's reach waits on that creature's
+// player: take the opportunity attack (spending the reaction), or hold it.
+export interface OpportunityAttackView {
+  readonly moverName: string;
+  readonly provokerName: string;
+  readonly provokerUserId: string;
   readonly closesAt: number | null;
 }
 
@@ -220,6 +232,10 @@ export function buildHeroView(state: CampaignState, sheet: CharacterSheet, conte
     .map(([level, max]) => ({ level: Number(level), left: Math.min(max, resources?.spellSlots[Number(level)] ?? max), max }))
     .filter((slot) => slot.max > 0)
     .sort((a, b) => a.level - b.level);
+  const pactSlots = Object.entries(sheet.pactMagic?.slots ?? {})
+    .map(([level, max]) => ({ level: Number(level), left: Math.min(max, resources?.pactSlots?.[Number(level)] ?? max), max }))
+    .filter((slot) => slot.max > 0)
+    .sort((a, b) => a.level - b.level);
   const uses = sheet.features.flatMap((id) => {
     const definition = content.find(id);
     if (definition?.kind !== "feature" || definition.action === null) return [];
@@ -248,6 +264,7 @@ export function buildHeroView(state: CampaignState, sheet: CharacterSheet, conte
     cantrips,
     prepared,
     slots,
+    pactSlots,
     uses,
   };
 }
@@ -295,6 +312,28 @@ export function buildSmiteView(state: CampaignState, bible: AdventureBible, glos
     targetName: combatantName(target, names),
     options: pending.options,
     closesAt: pending.closesAt,
+  };
+}
+
+// The opportunity attack waiting on a provoker's answer right now, if any
+// (at most one at a time: the mover's move waits on the whole provokers
+// queue in order, one offer open at a time — engine/combat/movement.ts).
+export function buildOpportunityAttackView(state: CampaignState, bible: AdventureBible, glossary: Glossary): OpportunityAttackView | null {
+  const encounter = state.encounter;
+  const move = encounter?.pendingMove;
+  const offer = move?.offer;
+  const provokerId = move?.provokers[0];
+  if (encounter == null || move == null || offer == null || provokerId === undefined) return null;
+  const mover = encounter.combatants[move.combatantId];
+  const provoker = encounter.combatants[provokerId];
+  const provokerSheet = provoker?.source.kind === "hero" ? state.characters[provoker.source.characterId] : undefined;
+  if (mover === undefined || provoker === undefined || provokerSheet === undefined) return null;
+  const names: CombatNames = { state, bible, glossary };
+  return {
+    moverName: combatantName(mover, names),
+    provokerName: combatantName(provoker, names),
+    provokerUserId: provokerSheet.ownerUserId,
+    closesAt: offer.closesAt,
   };
 }
 

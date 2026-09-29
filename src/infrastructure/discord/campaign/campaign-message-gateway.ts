@@ -9,6 +9,7 @@ import type { CardPayload } from "./card-payload.js";
 export interface CampaignMessageGateway {
   send(channelId: string, payload: CardPayload): Promise<string>;
   edit(channelId: string, messageId: string, payload: CardPayload): Promise<"ok" | "missing">;
+  exists(channelId: string, messageId: string): Promise<boolean>;
   // Deleting a message that is already gone is fine.
   remove(channelId: string, messageId: string): Promise<void>;
   // Plain history text (narration, results): no controls, no pings.
@@ -16,9 +17,9 @@ export interface CampaignMessageGateway {
   // `nonce` (at most 25 characters) makes Discord drop a repeat of the same
   // message sent within a few minutes, so a retry after an unsure send does not double-post.
   post(channelId: string, content: string, mentionUserIds?: readonly string[], nonce?: string): Promise<string>;
-  // Rewrites a message made with post (the staged dice reveal); a message
-  // that is gone is fine.
-  editText(channelId: string, messageId: string, content: string): Promise<void>;
+  // Rewrites a message made with post (the staged dice reveal). A missing
+  // placeholder must be reported so the result can be posted separately.
+  editText(channelId: string, messageId: string, content: string): Promise<"ok" | "missing">;
   pin(channelId: string, messageId: string): Promise<void>;
   // A picture with a caption in the channel (a scene's illustration).
   sendImage(channelId: string, bytes: Buffer, mediaType: string, caption: string): Promise<void>;
@@ -45,6 +46,17 @@ export class DiscordMessageGateway implements CampaignMessageGateway {
     }
   }
 
+  public async exists(channelId: string, messageId: string): Promise<boolean> {
+    try {
+      // Force a REST lookup: a deleted message can still be in discord.js's cache.
+      await (await this.channel(channelId)).messages.fetch({ message: messageId, force: true });
+      return true;
+    } catch (error) {
+      if (error instanceof DiscordAPIError && missingCodes.includes(Number(error.code))) return false;
+      throw error;
+    }
+  }
+
   public async remove(channelId: string, messageId: string): Promise<void> {
     try {
       const channel = await this.channel(channelId);
@@ -64,12 +76,13 @@ export class DiscordMessageGateway implements CampaignMessageGateway {
     return message.id;
   }
 
-  public async editText(channelId: string, messageId: string, content: string): Promise<void> {
+  public async editText(channelId: string, messageId: string, content: string): Promise<"ok" | "missing"> {
     try {
       const channel = await this.channel(channelId);
       await channel.messages.edit(messageId, { content, allowedMentions: { parse: [] } });
+      return "ok";
     } catch (error) {
-      if (error instanceof DiscordAPIError && missingCodes.includes(Number(error.code))) return;
+      if (error instanceof DiscordAPIError && missingCodes.includes(Number(error.code))) return "missing";
       throw error;
     }
   }

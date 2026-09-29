@@ -1,5 +1,5 @@
 import type { CharacterId } from "../../../domain/campaign/core/ids.js";
-import type { Combatant, TurnBudget } from "../../../domain/campaign/combat/combat-state.js";
+import { availableSlots, type Combatant, type TurnBudget } from "../../../domain/campaign/combat/combat-state.js";
 import { turnOptions } from "../../../domain/campaign/combat/turn-rules.js";
 import { spellMaxTargets } from "../../../domain/campaign/magic/spell-rules.js";
 import { formatDiceExpression } from "../../../domain/campaign/dice/dice-expression.js";
@@ -101,19 +101,26 @@ export function buildTurnView(
     targets: targetIds.flatMap(targetView),
   }));
 
-  // The menu casts at the lowest slot that fits; a cantrip needs none.
-  const spells: SpellChoice[] = options.spells.flatMap(({ spell, slotLevels, bonusAction, targetIds }) => {
-    const slotLevel = slotLevels[0];
-    if (slotLevel === undefined) return [];
-    return [{
+  // One choice per slot level the spell could be upcast to, not just the
+  // lowest that fits (plan §8: "all available slot levels"), so a healing or
+  // damage spell can be cast at a higher level for more effect when a hero
+  // has slots to spare, not only ever at the cheapest one that works.
+  // The merged count (ordinary slots plus Pact Magic), not spellSlots alone:
+  // a Warlock's Pact slots cast this spell exactly as well as an ordinary
+  // one does, so "how many casts are left at this level" means both pools
+  // together, the same total availableSlots() already used to decide which
+  // levels are offered at all.
+  const slots = availableSlots(hero.resources);
+  const spells: SpellChoice[] = options.spells.flatMap(({ spell, slotLevels, bonusAction, targetIds }) =>
+    slotLevels.map((slotLevel) => ({
       spellId: spell.id,
       slotLevel,
-      slotsLeft: slotLevel === 0 ? 0 : (hero.resources.spellSlots[slotLevel] ?? 0),
+      slotsLeft: slotLevel === 0 ? 0 : (slots[slotLevel] ?? 0),
       bonusAction,
       maxTargets: spellMaxTargets(spell, slotLevel),
       targets: targetIds.flatMap(targetView),
-    }];
-  });
+    })),
+  );
 
   const engagedWith = encounter.engagements
     .flatMap(([a, b]) => (a === hero.id ? [b] : b === hero.id ? [a] : []))

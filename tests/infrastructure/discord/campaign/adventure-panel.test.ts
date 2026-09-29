@@ -166,6 +166,7 @@ const hero: HeroView = {
   cantrips: [],
   prepared: [],
   slots: [],
+  pactSlots: [],
   uses: [],
 };
 
@@ -192,6 +193,7 @@ describe("hero cards", () => {
       cantrips: ["spell:sacred-flame"],
       prepared: ["spell:bless", "spell:cure-wounds"],
       slots: [{ level: 1, left: 1, max: 2 }],
+      pactSlots: [{ level: 1, left: 1, max: 2 }],
       uses: [{ id: "feature:second-wind", left: 0, max: 1 }],
     };
     const card = flatten(renderHeroCard(loaded, texts.en, "camp", (id) => id.split(":")[1] ?? id)).text;
@@ -202,12 +204,15 @@ describe("hero cards", () => {
     expect(card).toContain("🧰 **Party stash:** shortbow");
     expect(card).toContain("✨ **Cantrips:** sacred-flame · **Prepared:** bless, cure-wounds");
     expect(card).toContain("🔮 **Spell slots:** Level 1 1/2");
+    // A Warlock's Pact Magic is its own pool, shown as its own line.
+    expect(card).toContain("🔮 **Pact slots:** Level 1 1/2");
     expect(card).toContain("⚡ **Uses:** second-wind 0/1");
 
     const zh = flatten(renderHeroCard(loaded, texts["zh-TW"], "camp", (id) => id.split(":")[1] ?? id)).text;
     expect(zh).toContain("🛡️ **穿戴：**chain-mail");
     expect(zh).toContain("🪙 **金幣：**5 · 隊伍公庫 12");
     expect(zh).toContain("🔮 **法術位：**1 環 1/2");
+    expect(zh).toContain("🔮 **契約法術位：**1 環 1/2");
   });
 
   it("shows an empty pack and no spell lines for a hero without them", () => {

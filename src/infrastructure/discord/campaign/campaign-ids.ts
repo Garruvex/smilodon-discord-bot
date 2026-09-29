@@ -61,6 +61,9 @@ export const campaignActions = [
   // A smite window: spend the given slot for Divine Smite's bonus damage, or skip it.
   "smiteChoose",
   "smiteSkip",
+  // An opportunity attack offer: take it (spending the reaction), or hold it.
+  "opportunityTake",
+  "opportunityHold",
 ] as const;
 export type CampaignAction = (typeof campaignActions)[number];
 

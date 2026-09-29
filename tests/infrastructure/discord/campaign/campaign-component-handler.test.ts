@@ -489,6 +489,77 @@ describe("a smite window", () => {
   });
 });
 
+describe("an opportunity attack", () => {
+  // Same approach as "a Shield reaction" above: graft a real, engine-verified
+  // mid-move-with-offer CampaignState onto a Discord-harness campaign, then
+  // drive the real component handler and play controller against it. Borin
+  // engages a skeleton (no Nimble Escape), which then retreats to shoot,
+  // provoking Borin's reaction (tests/domain/campaign/combat-features.test.ts
+  // already covers the mechanics; this only exercises the Discord wiring).
+  async function opportunityPending(t: Awaited<ReturnType<typeof harness>>): Promise<void> {
+    const close = { ...skirmish, zones: [...skirmish.zones, { id: "tower", name: "Tower" }], edges: [...skirmish.edges, { from: "courtyard", to: "tower", feet: 10 }] };
+    const closeSkeleton = { ...close, monsters: [{ monsterId: "monster:skeleton" as const, zoneId: "courtyard", npcId: null, fleeBelowHpFraction: null }] };
+    const fight = new Fight()
+      .rolls([1, 20, 5])
+      .run(fightOrganizer, { kind: "startEncounter", spec: closeSkeleton })
+      .run(jamie, { kind: "combatMove", combatantId: "c-borin", zoneId: "courtyard" })
+      .run(jamie, { kind: "combatEngage", combatantId: "c-borin", targetId: "skeleton" })
+      .run(jamie, { kind: "endTurn", combatantId: "c-borin" });
+    expect(fight.encounter.pendingMove).toMatchObject({ combatantId: "skeleton", provokers: ["c-borin"] });
+    await t.r.store.transaction(async (tx) => {
+      const stored = await tx.loadCampaign(t.key);
+      if (stored === undefined) throw new Error("campaign");
+      await tx.saveCampaign(t.key, fight.state, stored.revision);
+    });
+    await t.cards.sync(t.key);
+  }
+
+  const opportunityCard = (t: Awaited<ReturnType<typeof harness>>): { payload: unknown } | undefined =>
+    t.messages.live(adventure).find((message) => flatText([message]).includes(`dnd:opportunityTake:${t.key.campaignId}`));
+
+  it("shows a card for the retreat, answered only by the provoker's own player", async () => {
+    const t = await harness();
+    await started(t);
+    await opportunityPending(t);
+    expect(opportunityCard(t)).toBeDefined();
+
+    expect(contentOf(await t.press("opportunityTake", "u-org", { onCard: "opportunity" }))).toBe("You do not have a hero in this campaign.");
+  });
+
+  it("takes the attack and clears the card when taken", async () => {
+    const t = await harness();
+    await started(t);
+    await opportunityPending(t);
+
+    // The attack roll itself isn't resolved synchronously here (this rig has
+    // no RollWorker running; the roll lands via the same recordRoll path any
+    // other pending check does, covered at the domain layer's own
+    // combat-features.test.ts). What this checks is that the click is
+    // accepted and the decision window itself closes.
+    expect(contentOf(await t.press("opportunityTake", "u-jamie", { onCard: "opportunity" }))).toBe("You took the attack.");
+    const after = await t.r.store.transaction((tx) => tx.loadCampaign(t.key));
+    expect(after?.state.encounter?.pendingMove?.offer).toBeFalsy();
+    expect(after?.state.encounter?.pendingMove?.provokers).toEqual([]);
+
+    await t.cards.sync(t.key);
+    expect(opportunityCard(t)).toBeUndefined();
+  });
+
+  it("holds the reaction and clears the card when declined", async () => {
+    const t = await harness();
+    await started(t);
+    await opportunityPending(t);
+
+    expect(contentOf(await t.press("opportunityHold", "u-jamie", { onCard: "opportunity" }))).toBe("You held your reaction.");
+    const after = await t.r.store.transaction((tx) => tx.loadCampaign(t.key));
+    expect(after?.state.encounter?.pendingMove).toBeFalsy();
+    expect(after?.state.encounter?.combatants["c-borin"]?.budget.reaction).toBe(true);
+
+    await t.cards.sync(t.key);
+    expect(opportunityCard(t)).toBeUndefined();
+  });
+});
+
 describe("speaking, the safety pause, and the help menu", () => {
   const stateOf = async (t: Awaited<ReturnType<typeof harness>>): Promise<CampaignState> => {
     const stored = await t.r.store.transaction((tx) => tx.loadCampaign(t.key));
