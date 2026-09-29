@@ -162,6 +162,7 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     case "triggersFinished":
     case "sneakAttackUsed":
     case "exhaustionChanged":
+    case "actionGranted":
     case "monsterStateChanged":
     case "uncannyDodgeUsed":
     case "wildShapeChanged":

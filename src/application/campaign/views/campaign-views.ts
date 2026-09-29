@@ -1,4 +1,5 @@
 import { conditionLookup, conditionsOf } from "../../../domain/campaign/effects/effect-queries.js";
+import { featureUsesOf } from "../../../domain/campaign/rules/content-definitions.js";
 import type { AdventureBible } from "../../../domain/campaign/adventure/adventure-bible.js";
 import { findScene } from "../../../domain/campaign/adventure/adventure-bible.js";
 import { abilityModifier, type CharacterSheet } from "../../../domain/campaign/character/character-sheet.js";
@@ -238,8 +239,9 @@ export function buildHeroView(state: CampaignState, sheet: CharacterSheet, conte
     .sort((a, b) => a.level - b.level);
   const uses = sheet.features.flatMap((id) => {
     const definition = content.find(id);
-    if (definition?.kind !== "feature" || definition.action === null) return [];
-    const max = definition.action.uses.count;
+    const held = definition?.kind === "feature" ? featureUsesOf(definition, sheet.level) : null;
+    if (held === null) return [];
+    const max = held.count;
     return [{ id, left: Math.min(max, resources?.featureUses[id] ?? max), max }];
   });
   return {

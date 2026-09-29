@@ -211,6 +211,13 @@ describe("My Characters", () => {
     expect(screenOf(sent).content).toContain("**Aldric** — 戰士 · 已存 1 個版本");
     const builder = screenOf(await click(handler, libraryCustomId("new"), "u-alice", { locale: "zh-TW" }));
     expect(builder.content).toBe("請選擇職業");
+    const races = screenOf(await click(handler, builder.menus[0]?.id ?? "", "u-alice", { values: ["fighter"], locale: "zh-TW" }));
+    expect(races.menus[0]?.options).toEqual(expect.arrayContaining([
+      expect.objectContaining({ value: "mountain-dwarf", label: "高山矮人" }),
+      expect.objectContaining({ value: "stout-halfling", label: "強魄半身人" }),
+      expect.objectContaining({ value: "forest-gnome", label: "林地侏" }),
+      expect.objectContaining({ value: "rock-gnome", label: "岩地侏" }),
+    ]));
   });
 });
 

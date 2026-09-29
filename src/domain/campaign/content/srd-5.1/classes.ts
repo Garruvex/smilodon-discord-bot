@@ -220,7 +220,7 @@ export const monk = defineClass({
   casterType: "none",
   spellcastingAbility: null,
   firstSpells: [],
-  levelFeatures: { 2: ["feature:ki"], 3: ["feature:way-of-the-open-hand"], 5: ["feature:extra-attack"] },
+  levelFeatures: { 2: ["feature:ki", "feature:flurry-of-blows", "feature:patient-defense", "feature:step-of-the-wind"], 3: ["feature:way-of-the-open-hand"], 5: ["feature:extra-attack"] },
   multiclassRequires: [["dex"], ["wis"]],
 });
 

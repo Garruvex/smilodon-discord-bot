@@ -389,6 +389,9 @@ export function applyEffect(
       });
       return;
     }
+    case "grantAction":
+      decision.emit({ kind: "actionGranted", combatantId: recipient.id, ...(effect.attacks === undefined ? {} : { attacks: effect.attacks }) });
+      return;
     case "applyModifiers": {
       const spellId = resolution.source.kind === "spell" ? resolution.source.spellId : null;
       const concentrating = spellId !== null && decision.ctx.rules.content.get(spellId).concentration;
@@ -397,7 +400,7 @@ export function applyEffect(
         combatantId: recipient.id,
         effect: {
           id: `${resolution.id}:${recipient.id}:${key}`,
-          definition: spellId ?? "effect:modifiers",
+          definition: spellId ?? (resolution.source.kind === "feature" ? resolution.source.featureId : "effect:modifiers"),
           sourceId: resolution.actorId,
           conditions: [],
           modifiers: effect.modifiers,

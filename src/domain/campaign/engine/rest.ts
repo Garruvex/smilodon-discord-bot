@@ -1,4 +1,5 @@
 import { wildShapeUses } from "../rules/wild-shape-rules.js";
+import { featureUsesOf } from "../rules/content-definitions.js";
 import { abilityModifier } from "../character/character-sheet.js";
 import { hitDicePool } from "../character/character-build.js";
 import { defaultHeroResources, type HeroStatus } from "../character/hero-status.js";
@@ -48,7 +49,8 @@ export function takeRest(decision: Decision, rest: "short" | "long"): Rejection 
     const featureUses = { ...current.resources.featureUses };
     for (const id of sheet.features) {
       const feature = content.find(id);
-      if (feature?.kind === "feature" && feature.action?.uses.recharge === "shortRest") featureUses[id] = feature.action.uses.count;
+      const uses = feature?.kind === "feature" ? featureUsesOf(feature, sheet.level) : null;
+      if (uses?.recharge === "shortRest") featureUses[id] = uses.count;
       if (feature?.kind === "feature" && feature.traits.some((trait) => trait.kind === "wildShape")) featureUses[id] = wildShapeUses;
     }
     // Pact Magic (Warlock) is SRD 5.1's one resource that comes back on a

@@ -178,6 +178,42 @@ describe("class features", () => {
     expect(meleeDamageBonusOf(raging, lookup)).toBe(2);
   });
 
+  const withFeatures = (id: string, features: readonly string[]): CampaignState => {
+    const base = newCampaign();
+    const hero = base.characters[id];
+    if (hero === undefined) throw new Error("fixture");
+    return { ...base, characters: { ...base.characters, [id]: { ...hero, features: [...hero.features, ...features] as typeof hero.features } } };
+  };
+
+  it("gives one more action with Action Surge, once per short rest, without spending the turn's action", () => {
+    const fight = borinFirst(withFeatures("c-borin", ["feature:action-surge"]));
+    fight.run(jamie, { kind: "combatDodge", combatantId: "c-borin" });
+    expect(fight.combatant("c-borin").budget.action).toBe(false);
+    fight.run(jamie, { kind: "combatUseFeature", combatantId: "c-borin", featureId: "feature:action-surge" });
+    expect(fight.combatant("c-borin").budget).toMatchObject({ action: true, bonusAction: true });
+    expect(fight.reject(jamie, { kind: "combatUseFeature", combatantId: "c-borin", featureId: "feature:action-surge" })).toEqual({ code: "noUsesLeft" });
+  });
+
+  it("gives advantage both ways with Reckless Attack, for free", () => {
+    const fight = borinFirst(withFeatures("c-borin", ["feature:reckless-attack"]));
+    fight.run(jamie, { kind: "combatUseFeature", combatantId: "c-borin", featureId: "feature:reckless-attack" });
+    expect(fight.combatant("c-borin").budget).toMatchObject({ action: true, bonusAction: true });
+    expect(fight.combatant("c-borin").effects).toHaveLength(1);
+  });
+
+  it("spends ki from one pool: Patient Defense and Flurry of Blows each cost a point", () => {
+    const base = newCampaign();
+    const borinSheet = base.characters["c-borin"];
+    if (borinSheet === undefined) throw new Error("fixture");
+    const monk = { ...base, characters: { ...base.characters, "c-borin": { ...borinSheet, level: 3, features: [...borinSheet.features, "feature:ki", "feature:patient-defense", "feature:flurry-of-blows"] as typeof borinSheet.features } }, heroStatus: {} };
+    const fight = borinFirst(monk);
+    expect(fight.combatant("c-borin").resources.featureUses["feature:ki"]).toBe(3);
+    fight.run(jamie, { kind: "combatUseFeature", combatantId: "c-borin", featureId: "feature:patient-defense" });
+    expect(fight.combatant("c-borin").resources.featureUses["feature:ki"]).toBe(2);
+    expect(fight.combatant("c-borin").budget.bonusAction).toBe(false);
+    expect(fight.reject(jamie, { kind: "combatUseFeature", combatantId: "c-borin", featureId: "feature:flurry-of-blows" })).toEqual({ code: "noActionLeft" });
+  });
+
   it("adds Sneak Attack when an ally is next to the target", () => {
     // Two zones only: the goblins have nowhere to slip away to.
     const fight = borinFirst(newCampaign(), { ...skirmish, edges: [{ from: "gate", to: "courtyard", feet: 10 }] });

@@ -1,7 +1,7 @@
 import type { CharacterSheet } from "../character/character-sheet.js";
 import type { CharacterId } from "../core/ids.js";
 import { potionOf } from "../engine/potions.js";
-import type { FeatureDefinition, SpellDefinition } from "../rules/content-definitions.js";
+import { useKeyOf, type FeatureDefinition, type SpellDefinition } from "../rules/content-definitions.js";
 import type { ContentId } from "../rules/content-id.js";
 import type { SealedContent } from "../rules/content-registry.js";
 import { healingPotionCost, type HouseRules } from "../rules/house-rules.js";
@@ -153,13 +153,14 @@ export function wildShapeForms(hero: Combatant, content: SealedContent): readonl
 
 // ------------------------------------------------------------- Features
 
-export function featureProblem(hero: Combatant, content: SealedContent, featureId: ContentId<"feature">): Checked<{ readonly feature: FeatureDefinition; readonly bonus: boolean }> {
+export function featureProblem(hero: Combatant, content: SealedContent, featureId: ContentId<"feature">): Checked<{ readonly feature: FeatureDefinition; readonly bonus: boolean; readonly free: boolean }> {
   const feature = content.find(featureId);
   if (feature?.kind !== "feature" || feature.action === null || !hero.features.includes(feature.id)) return refuse({ code: "unknownFeature" });
-  if ((hero.resources.featureUses[feature.id] ?? 0) < 1) return refuse({ code: "noUsesLeft" });
+  if ((hero.resources.featureUses[useKeyOf(feature)] ?? 0) < 1) return refuse({ code: "noUsesLeft" });
   const bonus = feature.action.cost === "bonusAction";
-  const cost = costProblem(hero, bonus ? "bonusAction" : "action", content);
-  return cost === null ? accept({ feature, bonus }) : refuse(cost);
+  const free = feature.action.cost === "free";
+  const cost = free ? (canAct(hero, conditionLookup(content)) ? null : { code: "noActionLeft" as const }) : costProblem(hero, bonus ? "bonusAction" : "action", content);
+  return cost === null ? accept({ feature, bonus, free }) : refuse(cost);
 }
 
 // ------------------------------------------------------------- Movement
@@ -300,7 +301,7 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
     ? []
     : hero.features.flatMap((id) => {
         const checked = featureProblem(hero, content, id);
-        return "value" in checked ? [{ feature: checked.value.feature, bonusAction: checked.value.bonus, left: hero.resources.featureUses[id] ?? 0 }] : [];
+        return "value" in checked ? [{ feature: checked.value.feature, bonusAction: checked.value.bonus, left: hero.resources.featureUses[useKeyOf(checked.value.feature)] ?? 0 }] : [];
       });
 
   const counts = new Map<ContentId<"item">, number>();

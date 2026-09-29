@@ -129,15 +129,37 @@ export type ItemDefinition = WeaponDefinition | ArmorDefinition | ShieldDefiniti
 
 // A limited-use action a feature grants, resolved like any other action.
 export interface FeatureAction {
-  readonly cost: "action" | "bonusAction";
-  readonly uses: { readonly count: number; readonly recharge: "shortRest" | "longRest" };
+  // free: costs no action of its own (Action Surge, Reckless Attack).
+  readonly cost: "action" | "bonusAction" | "free";
+  // Its own uses, or a pool another feature holds (Ki points).
+  readonly uses: FeatureUses | { readonly pool: ContentId<"feature"> };
   // Feature actions in milestone 0 target the user (Second Wind).
   plan(context: { readonly level: number }): ResolutionPlan;
+}
+
+export interface FeatureUses {
+  readonly count: number;
+  // When the number depends on level (Ki points equal the monk's level).
+  readonly perLevel?: (level: number) => number;
+  readonly recharge: "shortRest" | "longRest";
 }
 
 export interface FeatureDefinition extends DefinitionBase<"feature"> {
   readonly traits: readonly Trait[];
   readonly action: FeatureAction | null;
+  // A pool of uses the feature holds without being an action itself (Ki).
+  readonly resource?: FeatureUses;
+}
+
+// The uses this feature holds for a hero of this level, if it holds any.
+export function featureUsesOf(feature: FeatureDefinition, level: number): { readonly count: number; readonly recharge: FeatureUses["recharge"] } | null {
+  const uses = feature.resource ?? (feature.action !== null && "recharge" in feature.action.uses ? feature.action.uses : null);
+  return uses === null ? null : { count: uses.perLevel?.(level) ?? uses.count, recharge: uses.recharge };
+}
+
+// Where a feature's action counts its uses: its own, or its pool's.
+export function useKeyOf(feature: FeatureDefinition): ContentId<"feature"> {
+  return feature.action !== null && "pool" in feature.action.uses ? feature.action.uses.pool : feature.id;
 }
 
 // How an ordinary monster fights without a model call (plan §6, NPCs and
@@ -463,6 +485,8 @@ function capabilitiesFor(effect: Effect): readonly Capability[] {
       return ["exhaustion"];
     case "applyModifiers":
       return ["conditions"];
+    case "grantAction":
+      return [];
     default:
       return assertNever(effect);
   }

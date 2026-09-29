@@ -120,6 +120,8 @@ export type CombatEvent =
   // Exhaustion changed to this level (0-6), clamped by the caller. Level 6 kills.
   | { readonly kind: "exhaustionChanged"; readonly combatantId: CombatantId; readonly level: number }
   // A monster's Regeneration was blocked (or is free again), or one Legendary Resistance was spent.
+  // Action Surge: the combatant has its action (and the attacks of it) again.
+  | { readonly kind: "actionGranted"; readonly combatantId: CombatantId; readonly attacks?: number }
   | { readonly kind: "monsterStateChanged"; readonly combatantId: CombatantId; readonly regenBlocked?: boolean; readonly legendaryResistanceSpent?: boolean; readonly legendarySpent?: number; readonly legendaryTurn?: number; readonly relentlessSpent?: boolean }
   // Uncanny Dodge halved an attack's damage; spends the reaction it uses.
   | { readonly kind: "uncannyDodgeUsed"; readonly combatantId: CombatantId }
@@ -223,6 +225,7 @@ export const combatEventKinds: readonly CombatEventKind[] = [
   "sneakAttackUsed",
   "exhaustionChanged",
   "monsterStateChanged",
+  "actionGranted",
   "uncannyDodgeUsed",
   "wildShapeChanged",
   "concentrationStarted",

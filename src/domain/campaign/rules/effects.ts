@@ -74,6 +74,8 @@ export type Effect =
   // A lasting effect made of modifiers alone (Mage Armor's armor class, Faerie Fire's
   // advantage to hit): the same effect record a condition is, ending with its duration
   // or the caster's concentration.
+  // Action Surge: one more action this turn. With attacks: that many more attacks instead (Flurry of Blows).
+  | { readonly kind: "grantAction"; readonly target: EffectTarget; readonly attacks?: number }
   | {
       readonly kind: "applyModifiers";
       readonly target: EffectTarget;

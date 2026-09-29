@@ -20,15 +20,12 @@ export const extraAttack = defineFeature({ id: "feature:extra-attack", source, t
 export const extraAttack2 = defineFeature({ id: "feature:extra-attack-2", source, traits: [{ kind: "extraAttack", attacks: 3 }], action: null });
 export const extraAttack3 = defineFeature({ id: "feature:extra-attack-3", source, traits: [{ kind: "extraAttack", attacks: 4 }], action: null });
 
-export const actionSurge = narrative("action-surge");
 // Hide is not modeled, so only Dash and Disengage move to the bonus action.
 export const cunningAction = defineFeature({ id: "feature:cunning-action", source, traits: [{ kind: "cunningAction" }], action: null });
 export const uncannyDodge = defineFeature({ id: "feature:uncanny-dodge", source, traits: [{ kind: "uncannyDodge" }], action: null });
 export const channelDivinity = narrative("channel-divinity");
-export const recklessAttack = narrative("reckless-attack");
 export const jackOfAllTrades = narrative("jack-of-all-trades");
 export const wildShape = defineFeature({ id: "feature:wild-shape", source, traits: [{ kind: "wildShape" }], action: null });
-export const ki = narrative("ki");
 export const divineSmite = defineFeature({ id: "feature:divine-smite", source, traits: [{ kind: "divineSmite" }], action: null });
 export const fontOfMagic = narrative("font-of-magic");
 export const eldritchInvocations = narrative("eldritch-invocations");
@@ -74,14 +71,11 @@ export const srd51HigherLevelFeatures: readonly FeatureDefinition[] = [
   extraAttack,
   extraAttack2,
   extraAttack3,
-  actionSurge,
   cunningAction,
   uncannyDodge,
   channelDivinity,
-  recklessAttack,
   jackOfAllTrades,
   wildShape,
-  ki,
   divineSmite,
   fontOfMagic,
   eldritchInvocations,

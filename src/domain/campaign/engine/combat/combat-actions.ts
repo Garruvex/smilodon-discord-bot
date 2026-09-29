@@ -1,4 +1,5 @@
 // What a hero does with their action: a weapon attack, a spell, a feature. The rules for each are in combat/turn-rules.ts.
+import { useKeyOf } from "../../rules/content-definitions.js";
 import type { ActionCost } from "../../combat/combat-events.js";
 import { type AttackOption, type Combatant, type EncounterState } from "../../combat/combat-state.js";
 import { attackProblem, featureProblem, smiteProblem, spellProblem } from "../../combat/turn-rules.js";
@@ -84,12 +85,12 @@ export function castSpell(
 export function useFeature(decision: Decision, hero: Combatant, featureId: ContentId<"feature">): Rejection | null {
   const checked = featureProblem(hero, decision.ctx.rules.content, featureId);
   if ("problem" in checked) return checked.problem;
-  const { feature, bonus } = checked.value;
+  const { feature, bonus, free } = checked.value;
   return declareResolution(decision, {
     actor: hero,
     source: { kind: "feature", featureId: feature.id },
     targetIds: [hero.id],
     purpose: "action",
-    cost: { ...noCost, action: !bonus, bonusAction: bonus, featureUse: feature.id },
+    cost: { ...noCost, action: !bonus && !free, bonusAction: bonus, featureUse: useKeyOf(feature) },
   });
 }
