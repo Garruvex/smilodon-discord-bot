@@ -11,15 +11,15 @@ gaps grouped by the engine primitive they need, with size (S: a day or less, M: 
 | **Reroll and change a roll after it is made**: attack rolls and saving throws in a fight are done (Halfling Lucky, Indomitable); ability checks, rider saves and concentration saves are not | M | Halfling Lucky, Indomitable (Fighter 9), Portent (Divination), Silvery Barbs-style effects, Bardic Inspiration spent after the roll instead of before it |
 | ~~Temporary hit points~~ **done** (combat only; False Life uses it) | S | Still needs Dark One's Blessing (a kill trigger), Heroism's per-turn refresh, Armor of Agathys, Inspiring Leader |
 | ~~Creature types~~ **done** (a `creatureType` trait on every SRD monster) | S | Turn Undead and Divine Smite's extra die are built; Holy Avenger, Dragon Slayer, Giant Slayer, Favored Enemy and Protection from Evil and Good can now read it |
-| **Lighting and vision** (dark, dim, darkvision, blindsight) | L | Darkvision for most races, Drow Sunlight Sensitivity, Light and Darkness spells, stealth |
+| **Lighting and vision**: dark zones and darkvision are done; dim light, Sunlight Sensitivity, Light/Darkness spells and hiding are not | M | Drow Sunlight Sensitivity, Light and Darkness spells, stealth |
 | **Positions inside a zone** (range bands, cover, area shapes) | L | Cones, lines, spheres that pick their targets, Sculpt Spells, Fireball versus allies, opportunity-attack reach, cover bonuses |
-| **Summons and companions** (a creature the caster controls) | L | Conjure Animals and the rest of the conjure spells, Find Familiar, Beast Master companion, Animate Dead, Spiritual Weapon, Flaming Sphere |
-| **Sorcery points and spell modification** | M | Metamagic, Font of Magic |
-| **Warlock invocations and pact boons** | M | Agonizing Blast, Pact of the Blade, Hex tie-ins |
-| **Grapple, shove and other special attacks** | M | Athletics contests, Open Hand riders, Grappler feats, many monster grabs and swallows |
+| **Summons and companions**: the summon effect is done (Conjure Animals); summons end with the fight, not the spell, and the player does not steer them | M | Find Familiar, the other conjure spells, Animate Dead, Spiritual Weapon, Flaming Sphere (these need their own stat blocks or a way to choose what is summoned) |
+| ~~Sorcery points and spell modification~~ **done in part** (Font of Magic points, Quickened and Twinned Spell) | S | Other Metamagic options, converting slots and points |
+| ~~Warlock invocations~~ **done in part** (Agonizing Blast, Armor of Shadows, Fiendish Vigor, all granted at level 2) | S | Choosing invocations, Pact of the Blade, Hex tie-ins |
+| ~~Grapple and shove~~ **done** for the martial classes (a Strength save stands in for the contest) | S | Escaping a grapple, Open Hand riders, Grappler feats, monster swallows |
 | **Forms other than Wild Shape** (Polymorph, Shapechange, Wild Shape variants) | M | Polymorph, True Polymorph, Circle of the Moon |
-| **Charges and active magic items** | M | Staffs, rods, bags, boots, spell scrolls, cursed items |
-| **Movement effects** (teleport, push, fly, difficult terrain) | M | Misty Step, Thunderwave's push, Dimension Door, Fly, Levitate, Step of the Wind's Dash |
+| **Charges and active magic items**: wands, spell scrolls and effect potions are done | M | Staffs (several spells sharing one pool), rods, bags, boots, cursed items |
+| **Movement effects**: push is done (Thunderwave); teleport, fly and difficult terrain are not | M | Misty Step, Dimension Door, Fly, Levitate, Step of the Wind's Dash |
 | **Hide, search and stealth in combat** | M | Cunning Action's Hide, Skulker, surprise |
 
 ## 2. Class features by level (levels 6 to 20, and the parts of 1 to 5 still missing)
