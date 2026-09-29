@@ -57,6 +57,7 @@ Race and subrace details are also in `dnd-race-mechanics-status.md`.
 - Done: sorcery points (Font of Magic) and two Metamagic options, Quickened and Twinned Spell (readied as a free action that spends 2 points, used up by the next casting). Other options, and converting slots and points, are not modeled.
 - Done: warlock invocations Agonizing Blast, Armor of Shadows and Fiendish Vigor (all three granted at warlock level 2; there is no choosing of invocations).
 - Done: Reliable Talent (rogue 11).
+- Done: Grapple and Shove for the martial classes (the target's Strength save against 8 + proficiency + Strength; a grapple lasts up to ten rounds because escaping is not modeled).
 - Dragon Scale Mail, Armor of Resistance and Adamantine Armor are named but give nothing yet.
 
 ### Other

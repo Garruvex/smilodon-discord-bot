@@ -507,6 +507,21 @@ describe("class features", () => {
     expect(fight.combatant("c-borin").resources.featureUses["innate:spell:fireball"]).toBe(0);
   });
 
+  it("grapples and shoves with the target's Strength save against 8 + proficiency + Strength", () => {
+    const base = newCampaign();
+    const hero = base.characters["c-borin"];
+    if (hero === undefined) throw new Error("fixture");
+    const state: CampaignState = { ...base, characters: { ...base.characters, "c-borin": { ...hero, features: [...hero.features, "feature:grapple", "feature:shove"] as typeof hero.features } } };
+    const fight = borinFirst(state);
+    const borin = fight.combatant("c-borin");
+    expect(borin.spellcasting?.saveDcs?.["spell:grapple"]).toBe(8 + hero.proficiencyBonus + Math.floor((hero.abilityScores.str - 10) / 2));
+    fight.run(jamie, { kind: "combatMove", combatantId: "c-borin", zoneId: "courtyard" });
+    fight.rolls([2]).run(jamie, { kind: "combatCast", combatantId: "c-borin", spellId: "spell:grapple", slotLevel: 0, targetIds: ["goblin-a"] });
+    expect(fight.combatant("goblin-a").effects.some((effect) => effect.conditions.includes("condition:grappled"))).toBe(true);
+    // The action is spent, so the shove waits for the next turn: a passed save leaves the goblin standing.
+    expect(fight.combatant("c-borin").budget.action).toBe(false);
+  });
+
   it("drinks a Potion of Resistance: resistance for the fight and the potion is used up", () => {
     const base = newCampaign();
     const hero = base.characters["c-borin"];

@@ -18,7 +18,7 @@ export const fighter = defineClass({
   skillChoices: ["acrobatics", "animal-handling", "athletics", "history", "insight", "intimidation", "perception", "survival"],
   skillCount: 2,
   expertiseCount: 0,
-  features: ["feature:fighting-style-dueling", "feature:second-wind"],
+  features: ["feature:fighting-style-dueling", "feature:second-wind", "feature:grapple", "feature:shove"],
   kits: [
     { id: "knight", equipment: ["item:longsword", "item:chain-mail", "item:shield"] },
     { id: "skirmisher", equipment: ["item:scimitar", "item:shortbow", "item:leather-armor"] },
@@ -48,7 +48,7 @@ export const rogue = defineClass({
   skillChoices: ["acrobatics", "athletics", "deception", "insight", "intimidation", "investigation", "perception", "performance", "persuasion", "sleight-of-hand", "stealth"],
   skillCount: 4,
   expertiseCount: 2,
-  features: ["feature:sneak-attack", "feature:thieves-cant"],
+  features: ["feature:sneak-attack", "feature:thieves-cant", "feature:grapple", "feature:shove"],
   kits: [
     { id: "shadow", equipment: ["item:shortsword", "item:shortbow", "item:leather-armor"] },
     { id: "duelist", equipment: ["item:scimitar", "item:shortsword", "item:leather-armor"] },
@@ -102,7 +102,7 @@ export const barbarian = defineClass({
   skillChoices: ["animal-handling", "athletics", "intimidation", "nature", "perception", "survival"],
   skillCount: 2,
   expertiseCount: 0,
-  features: ["feature:rage"],
+  features: ["feature:rage", "feature:grapple", "feature:shove"],
   kits: [
     { id: "berserker", equipment: ["item:greataxe", "item:hide-armor"] },
     { id: "totemic", equipment: ["item:greataxe", "item:leather-armor"] },
@@ -212,7 +212,7 @@ export const monk = defineClass({
   // No armor and no shield: Unarmored Defense is out of scope for the
   // starter roster (it would need a base-AC formula per class, not just
   // per item), so a monk's AC is 10 + Dex, as if unarmed and unarmored.
-  features: ["feature:martial-arts"],
+  features: ["feature:martial-arts", "feature:grapple", "feature:shove"],
   kits: [
     { id: "openhand", equipment: ["item:shortsword"] },
     { id: "umbra", equipment: ["item:dagger"] },
@@ -235,7 +235,7 @@ export const paladin = defineClass({
   skillCount: 2,
   expertiseCount: 0,
   // No spellcasting: paladin spells begin at level 2 in the SRD.
-  features: ["feature:divine-sense", "feature:lay-on-hands"],
+  features: ["feature:divine-sense", "feature:lay-on-hands", "feature:grapple", "feature:shove"],
   kits: [
     { id: "oath", equipment: ["item:longsword", "item:chain-mail", "item:shield"] },
     { id: "vengeance", equipment: ["item:longsword", "item:leather-armor", "item:javelin"] },
@@ -262,7 +262,7 @@ export const ranger = defineClass({
   skillCount: 3,
   expertiseCount: 0,
   // No spellcasting: ranger spells begin at level 2 in the SRD.
-  features: ["feature:favored-enemy", "feature:natural-explorer"],
+  features: ["feature:favored-enemy", "feature:natural-explorer", "feature:grapple", "feature:shove"],
   kits: [
     { id: "hunter", equipment: ["item:longbow", "item:leather-armor"] },
     { id: "beastmaster", equipment: ["item:shortbow", "item:scimitar", "item:leather-armor"] },

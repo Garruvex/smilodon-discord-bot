@@ -54,6 +54,30 @@ export const preserveLife = defineSpell({
 // Destroy Undead: the most experience an undead may be worth (challenge 1/2, then 1, 2, 3 and 4) to be destroyed by Turn Undead.
 const destroyLimit = (level: number): number => (level >= 17 ? 1100 : level >= 14 ? 700 : level >= 11 ? 450 : level >= 8 ? 200 : level >= 5 ? 100 : 0);
 
+// Grapple and Shove: the SRD's Athletics contest, played as the target's Strength saving throw against
+// 8 + proficiency + the attacker's Strength (the feature that grants them sets the DC). A grappled creature
+// is held for up to a minute (escaping is not modeled); a shoved one is knocked prone.
+export const grapple = defineSpell({
+  id: "spell:grapple",
+  source,
+  level: 0,
+  castingTime: "action",
+  range: { kind: "touch" },
+  targeting: { relation: "enemy", count: 1 },
+  concentration: false,
+  plan: () => ({ check: { kind: "savingThrow", ability: "str" }, onLand: [{ kind: "applyCondition", target: "target", condition: "condition:grappled", duration: { kind: "rounds", count: 10 } }], onAvoid: [] }),
+});
+export const shove = defineSpell({
+  id: "spell:shove",
+  source,
+  level: 0,
+  castingTime: "action",
+  range: { kind: "touch" },
+  targeting: { relation: "enemy", count: 1 },
+  concentration: false,
+  plan: () => ({ check: { kind: "savingThrow", ability: "str" }, onLand: [{ kind: "applyCondition", target: "target", condition: "condition:prone", duration: { kind: "untilRemoved" } }], onAvoid: [] }),
+});
+
 export const turnUndead = defineSpell({
   id: "spell:turn-undead",
   source,
@@ -108,4 +132,4 @@ export const breathWeapons: readonly SpellDefinition[] = breathAncestries.map(([
   }),
 );
 
-export const srd51ClassAbilitySpells: readonly SpellDefinition[] = [bardicInspiration, layOnHands, preserveLife, turnUndead, ...breathWeapons];
+export const srd51ClassAbilitySpells: readonly SpellDefinition[] = [bardicInspiration, layOnHands, preserveLife, turnUndead, grapple, shove, ...breathWeapons];
