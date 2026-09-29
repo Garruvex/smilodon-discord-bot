@@ -439,6 +439,27 @@ describe("class features", () => {
     return before - fight.combatant("skeleton").hp;
   }
 
+  it("rolls a natural 1 again as a Halfling, and uses the new roll", () => {
+    const base = newCampaign();
+    const hero = base.characters["c-borin"];
+    if (hero === undefined) throw new Error("fixture");
+    const state: CampaignState = { ...base, characters: { ...base.characters, "c-borin": { ...hero, race: "race:halfling" as const } } };
+    const fight = new Fight(state).rolls([1, 20, 5]).run(organizer, { kind: "startEncounter", spec: undeadSpec });
+    fight.run(jamie, { kind: "combatMove", combatantId: "c-borin", zoneId: "courtyard" });
+    fight.run(jamie, { kind: "combatEngage", combatantId: "c-borin", targetId: "skeleton" });
+    const before = fight.combatant("skeleton").hp;
+    // The first d20 shows a 1 (a miss); Lucky throws it away and the second shows 15 (a hit).
+    fight.rolls([1, 15], [3]).run(jamie, { kind: "combatAttack", combatantId: "c-borin", targetId: "skeleton", weapon: "item:longsword" });
+    expect(fight.combatant("skeleton").hp).toBeLessThan(before);
+    expect(ofKind(fight, "checkRerolled")).toHaveLength(1);
+    // Without Lucky the same 1 misses.
+    const plain = new Fight(newCampaign()).rolls([1, 20, 5]).run(organizer, { kind: "startEncounter", spec: undeadSpec });
+    plain.run(jamie, { kind: "combatMove", combatantId: "c-borin", zoneId: "courtyard" });
+    plain.run(jamie, { kind: "combatEngage", combatantId: "c-borin", targetId: "skeleton" });
+    plain.rolls([1], []).run(jamie, { kind: "combatAttack", combatantId: "c-borin", targetId: "skeleton", weapon: "item:longsword" });
+    expect(ofKind(plain, "checkRerolled")).toHaveLength(0);
+  });
+
   it("rolls an extra weapon die on a critical hit with Brutal Critical", () => {
     // Longsword d8: a critical doubles it to two dice; Brutal Critical adds a third. Every die shows 1; +5 to damage.
     expect(strike([], 20, [1, 1, 1])).toBe(2 + 5);

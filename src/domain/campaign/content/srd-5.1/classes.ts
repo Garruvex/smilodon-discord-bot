@@ -32,6 +32,7 @@ export const fighter = defineClass({
     2: ["feature:action-surge"],
     3: ["feature:champion"],
     5: ["feature:extra-attack"],
+    9: ["feature:indomitable"],
     11: ["feature:extra-attack-2"],
     15: ["feature:superior-critical"],
     20: ["feature:extra-attack-3"],

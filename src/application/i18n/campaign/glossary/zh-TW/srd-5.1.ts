@@ -113,6 +113,7 @@ const zhTwBase: Glossary = {
     "feature:brutal-critical-2": "殘暴重擊（兩顆骰）",
     "feature:brutal-critical-3": "殘暴重擊（三顆骰）",
     "feature:evasion": "閃避",
+    "feature:indomitable": "不屈",
     "feature:aura-of-protection": "守護光環",
     "feature:aura-of-courage": "勇氣光環",
     "feature:improved-divine-smite": "精進神聖斬擊",

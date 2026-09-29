@@ -124,7 +124,9 @@ export type CombatEvent =
   // A monster's Regeneration was blocked (or is free again), or one Legendary Resistance was spent.
   // Action Surge: the combatant has its action (and the attacks of it) again.
   | { readonly kind: "actionGranted"; readonly combatantId: CombatantId; readonly attacks?: number }
-  | { readonly kind: "monsterStateChanged"; readonly combatantId: CombatantId; readonly regenBlocked?: boolean; readonly legendaryResistanceSpent?: boolean; readonly legendarySpent?: number; readonly legendaryTurn?: number; readonly relentlessSpent?: boolean }
+  | { readonly kind: "monsterStateChanged"; readonly combatantId: CombatantId; readonly regenBlocked?: boolean; readonly legendaryResistanceSpent?: boolean; readonly legendarySpent?: number; readonly legendaryTurn?: number; readonly relentlessSpent?: boolean; readonly indomitableSpent?: boolean }
+  // A check's roll was thrown away and made again (Halfling Lucky, Indomitable); the new roll takes its place.
+  | { readonly kind: "checkRerolled"; readonly resolutionId: string; readonly oldRollId: RollId; readonly rollId: RollId; readonly reason: "lucky" | "indomitable" }
   // Uncanny Dodge halved an attack's damage; spends the reaction it uses.
   | { readonly kind: "uncannyDodgeUsed"; readonly combatantId: CombatantId }
   // Wild Shape: transforming into (or reverting from) a beast's stat block.
@@ -211,6 +213,7 @@ export const combatEventKinds: readonly CombatEventKind[] = [
   "actionTaken",
   "resolutionDeclared",
   "checkRolled",
+  "checkRerolled",
   "effectRollsRequested",
   "effectRolled",
   "combatantHpChanged",

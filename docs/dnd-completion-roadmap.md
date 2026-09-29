@@ -8,7 +8,7 @@ gaps grouped by the engine primitive they need, with size (S: a day or less, M: 
 | Primitive | Size | Unlocks |
 |---|---|---|
 | **Reaction windows** beyond "you were hit" (a spell was cast, damage was taken, an ally was hit, a save is about to be rolled) | L | Counterspell, Absorb Elements, Hellish Rebuke, Cutting Words (Lore), Protection fighting style, Sentinel-style feats, Deflect Missiles (Monk 3), Uncanny Dodge already works |
-| **Reroll and change a roll after it is made** (needs a second roll request inside a check) | M | Halfling Lucky, Indomitable (Fighter 9), Portent (Divination), Silvery Barbs-style effects, Bardic Inspiration spent after the roll instead of before it |
+| **Reroll and change a roll after it is made**: attack rolls and saving throws in a fight are done (Halfling Lucky, Indomitable); ability checks, rider saves and concentration saves are not | M | Halfling Lucky, Indomitable (Fighter 9), Portent (Divination), Silvery Barbs-style effects, Bardic Inspiration spent after the roll instead of before it |
 | ~~Temporary hit points~~ **done** (combat only; False Life uses it) | S | Still needs Dark One's Blessing (a kill trigger), Heroism's per-turn refresh, Armor of Agathys, Inspiring Leader |
 | ~~Creature types~~ **done** (a `creatureType` trait on every SRD monster) | S | Turn Undead and Divine Smite's extra die are built; Holy Avenger, Dragon Slayer, Giant Slayer, Favored Enemy and Protection from Evil and Good can now read it |
 | **Lighting and vision** (dark, dim, darkvision, blindsight) | L | Darkvision for most races, Drow Sunlight Sensitivity, Light and Darkness spells, stealth |

@@ -108,6 +108,7 @@ const enBase: Glossary = {
     "feature:brutal-critical-2": "Brutal Critical (two dice)",
     "feature:brutal-critical-3": "Brutal Critical (three dice)",
     "feature:evasion": "Evasion",
+    "feature:indomitable": "Indomitable",
     "feature:aura-of-protection": "Aura of Protection",
     "feature:aura-of-courage": "Aura of Courage",
     "feature:improved-divine-smite": "Improved Divine Smite",

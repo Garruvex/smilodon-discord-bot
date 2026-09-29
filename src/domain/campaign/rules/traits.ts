@@ -89,6 +89,10 @@ export type Trait =
   | { readonly kind: "rangedAttackBonus"; readonly amount: number }
   // Fighting Style (Defense): a bonus to armor class while wearing armor.
   | { readonly kind: "armoredBonus"; readonly amount: number }
+  // Halfling Lucky: a natural 1 on an attack roll or saving throw is rolled again, and the new roll is used.
+  | { readonly kind: "lucky" }
+  // Fighter's Indomitable: a failed saving throw is rolled again (its uses are counted like a monster's Legendary Resistance).
+  | { readonly kind: "indomitable" }
   | { readonly kind: "brutalCritical"; readonly dice: number }
   // Evasion: a Dexterity save that would halve the damage takes none on a success, and half on a failure.
   | { readonly kind: "evasion" }
@@ -167,6 +171,7 @@ export function creatureTypeOf(traits: readonly Trait[]): CreatureType | null {
 // Where a hero's Relentless Endurance use is counted (resources.featureUses).
 export const relentlessEnduranceKey = "trait:relentless-endurance";
 export const legendaryResistanceKey = "trait:legendary-resistance";
+export const indomitableKey = "feature:indomitable";
 // And its legendary actions left this round.
 export const legendaryActionsKey = "trait:legendary-actions";
 

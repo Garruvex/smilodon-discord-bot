@@ -237,6 +237,8 @@ export interface ResolutionState {
   // recorded yet — resolution.ts falls back to a slot declared up front on
   // the attack itself, if any; null: answered, no smite).
   readonly smiteSlot?: number | null;
+  // Rolls that replace an earlier one (Lucky, Indomitable); a roll made this way is never rolled again.
+  readonly rerolled?: readonly string[];
 }
 
 // A move that provokes opportunity attacks waits for them, then happens if

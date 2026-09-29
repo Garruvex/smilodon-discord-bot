@@ -51,7 +51,7 @@ export const halfling = defineRace({
   source,
   speed: 25,
   abilityScoreIncrease: { dex: 2 },
-  traits: [{ kind: "saveAdvantage", conditions: ["condition:frightened"] }],
+  traits: [{ kind: "saveAdvantage", conditions: ["condition:frightened"] }, { kind: "lucky" }],
 });
 
 // SRD 5.1 offers a choice of Draconic Ancestry, each with its own damage
@@ -122,8 +122,8 @@ export const mountainDwarf = defineRace({ id: "race:mountain-dwarf", source, spe
 export const highElf = defineRace({ id: "race:high-elf", source, speed: 30, abilityScoreIncrease: { dex: 2, int: 1 }, skillProficiencies: ["perception"], traits: [{ kind: "saveAdvantage", conditions: ["condition:charmed"] }] });
 export const woodElf = defineRace({ id: "race:wood-elf", source, speed: 35, abilityScoreIncrease: { dex: 2, wis: 1 }, skillProficiencies: ["perception"], traits: [{ kind: "saveAdvantage", conditions: ["condition:charmed"] }] });
 export const drow = defineRace({ id: "race:drow", source, speed: 30, abilityScoreIncrease: { dex: 2, cha: 1 }, skillProficiencies: ["perception"], traits: [{ kind: "saveAdvantage", conditions: ["condition:charmed"] }] });
-export const lightfootHalfling = defineRace({ id: "race:lightfoot-halfling", source, speed: 25, abilityScoreIncrease: { dex: 2, cha: 1 }, traits: [{ kind: "saveAdvantage", conditions: ["condition:frightened"] }] });
-export const stoutHalfling = defineRace({ id: "race:stout-halfling", source, speed: 25, abilityScoreIncrease: { dex: 2, con: 1 }, traits: [{ kind: "saveAdvantage", damageTypes: ["poison"], conditions: ["condition:poisoned"] }, { kind: "saveAdvantage", conditions: ["condition:frightened"] }, { kind: "damageResistance", damageTypes: ["poison"] }] });
+export const lightfootHalfling = defineRace({ id: "race:lightfoot-halfling", source, speed: 25, abilityScoreIncrease: { dex: 2, cha: 1 }, traits: [{ kind: "saveAdvantage", conditions: ["condition:frightened"] }, { kind: "lucky" }] });
+export const stoutHalfling = defineRace({ id: "race:stout-halfling", source, speed: 25, abilityScoreIncrease: { dex: 2, con: 1 }, traits: [{ kind: "saveAdvantage", damageTypes: ["poison"], conditions: ["condition:poisoned"] }, { kind: "saveAdvantage", conditions: ["condition:frightened"] }, { kind: "damageResistance", damageTypes: ["poison"] }, { kind: "lucky" }] });
 export const forestGnome = defineRace({ id: "race:forest-gnome", source, speed: 25, abilityScoreIncrease: { int: 2, dex: 1 }, traits: [{ kind: "saveAdvantage", magic: true, abilities: ["int", "wis", "cha"] }] });
 export const rockGnome = defineRace({ id: "race:rock-gnome", source, speed: 25, abilityScoreIncrease: { int: 2, con: 1 }, traits: [{ kind: "saveAdvantage", magic: true, abilities: ["int", "wis", "cha"] }] });
 

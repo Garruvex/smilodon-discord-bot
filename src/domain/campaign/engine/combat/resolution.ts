@@ -16,7 +16,7 @@ import { classifyRollMoments } from "../../dice/roll-moments.js";
 import { resultMatchesSpec, type RollResult, type RollSpec } from "../../dice/roll-spec.js";
 import type { Effect, EffectDuration } from "../../rules/effects.js";
 import { criticalHits, naturalRollsOnChecks } from "../../rules/house-rules.js";
-import { creatureTypeOf, critThreshold, hasSaveAdvantage, isImmuneToCondition, legendaryResistanceKey } from "../../rules/traits.js";
+import { creatureTypeOf, critThreshold, hasSaveAdvantage, indomitableKey, isImmuneToCondition, legendaryResistanceKey } from "../../rules/traits.js";
 import type { Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { activeEncounter, afterResolution, endIfDecided } from "./combat-flow.js";
@@ -141,6 +141,7 @@ export function recordCheck(
   if (check === undefined) return { code: "unknownRoll" };
   if (result.kind !== "d20Test" || !resultMatchesSpec(result, { kind: "d20Test", spec: check.spec })) return { code: "rollMismatch" };
   const roll = result.roll;
+  if (rerollIfLucky(decision, encounter, resolution, rollId, check, roll)) return null;
   // A hit its target could still turn into a miss (Shield) waits for its answer.
   if (check.kind === "attack") {
     const target = encounter.combatants[check.targetId];
@@ -150,6 +151,24 @@ export function recordCheck(
     if (outcome.success && !outcome.critical && offerReaction(decision, encounter, resolution, rollId, roll, against)) return null;
   }
   return settleCheck(decision, resolution.id, rollId, roll);
+}
+
+// Halfling Lucky (a natural 1) and Indomitable (a failed save) throw the roll away and make it again with a new
+// roll ID; the new roll is final. Returns true when a new roll was requested.
+function rerollIfLucky(decision: Decision, encounter: EncounterState, resolution: ResolutionState, rollId: RollId, check: PendingCheck, roll: D20TestRoll): boolean {
+  if ((resolution.rerolled ?? []).includes(rollId)) return false;
+  const roller = encounter.combatants[check.kind === "attack" ? resolution.actorId : check.targetId];
+  if (roller === undefined) return false;
+  const lucky = roll.d20.natural === 1 && roller.traits.some((trait) => trait.kind === "lucky");
+  const naturalRule = decision.ctx.rules.houseRules.option(naturalRollsOnChecks);
+  const failedSave = check.kind === "save" && !resolveD20Test("savingThrow", roll.d20.natural, roll.total, check.against, naturalRule).success;
+  const indomitable = failedSave && roller.traits.some((trait) => trait.kind === "indomitable") && (roller.resources.featureUses[indomitableKey] ?? 0) > 0;
+  if (!lucky && !indomitable) return false;
+  const newId = `${rollId}:again`;
+  if (!lucky) decision.emit({ kind: "monsterStateChanged", combatantId: roller.id, indomitableSpent: true });
+  decision.emit({ kind: "checkRerolled", resolutionId: resolution.id, oldRollId: rollId, rollId: newId, reason: lucky ? "lucky" : "indomitable" });
+  decision.request({ kind: "roll", rollId: newId, spec: { kind: "d20Test", spec: check.spec } });
+  return true;
 }
 
 // A check's dice are in: works out whether it landed (an attack against the armor

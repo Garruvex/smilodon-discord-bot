@@ -1,6 +1,6 @@
 import { assertNever } from "../core/assert-never.js";
 import type { EffectInstance } from "../effects/effect-instance.js";
-import { attacksPerAction, legendaryActionsKey, legendaryResistanceKey, relentlessEnduranceKey } from "../rules/traits.js";
+import { attacksPerAction, indomitableKey, legendaryActionsKey, legendaryResistanceKey, relentlessEnduranceKey } from "../rules/traits.js";
 import { wildShapeUses } from "../rules/wild-shape-rules.js";
 import type { CombatEvent } from "./combat-events.js";
 import { innateUseKey } from "../magic/spell-rules.js";
@@ -149,6 +149,16 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
         })),
         [event.rollId],
       );
+    case "checkRerolled": {
+      const replaced = updateResolution(encounter, event.resolutionId, (resolution) => {
+        const check = resolution.checks[event.oldRollId];
+        if (check === undefined) return resolution;
+        const { [event.oldRollId]: _old, ...others } = resolution.checks;
+        return { ...resolution, checks: { ...others, [event.rollId]: check }, rerolled: [...(resolution.rerolled ?? []), event.rollId] };
+      });
+      const { [event.oldRollId]: _gone, ...pending } = replaced.pendingRolls;
+      return { ...replaced, pendingRolls: { ...pending, [event.rollId]: { purpose: "check", resolutionId: event.resolutionId } } };
+    }
     case "effectRollsRequested": {
       const pending = Object.fromEntries(
         Object.keys(event.rolls).map((rollId) => [rollId, { purpose: "effect", resolutionId: event.resolutionId } as const]),
@@ -236,6 +246,7 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
         const uses = { ...combatant.resources.featureUses };
         if (event.legendaryResistanceSpent === true) uses[legendaryResistanceKey] = Math.max(0, (uses[legendaryResistanceKey] ?? 0) - 1);
         if (event.relentlessSpent === true) uses[relentlessEnduranceKey] = 0;
+        if (event.indomitableSpent === true) uses[indomitableKey] = Math.max(0, (uses[indomitableKey] ?? 0) - 1);
         if (event.legendarySpent !== undefined) uses[legendaryActionsKey] = Math.max(0, (uses[legendaryActionsKey] ?? 0) - event.legendarySpent);
         return {
           ...combatant,

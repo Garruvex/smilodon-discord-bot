@@ -34,6 +34,14 @@ export const channelDivinity = defineFeature({
   ],
   action: null,
 });
+// Indomitable: 1 use at level 9, 2 at 13, 3 at 17; a failed saving throw is rolled again.
+export const indomitable = defineFeature({
+  id: "feature:indomitable",
+  source,
+  traits: [{ kind: "indomitable" }],
+  action: null,
+  resource: { count: 1, perLevel: (level) => (level >= 17 ? 3 : level >= 13 ? 2 : 1), recharge: "longRest" },
+});
 export const superiorCritical = defineFeature({ id: "feature:superior-critical", source, traits: [{ kind: "expandedCritRange", threshold: 18 }], action: null });
 const brutalCritical = (suffix: string): FeatureDefinition => defineFeature({ id: `feature:brutal-critical${suffix}`, source, traits: [{ kind: "brutalCritical", dice: 1 }], action: null });
 export const evasion = defineFeature({ id: "feature:evasion", source, traits: [{ kind: "evasion" }], action: null });
@@ -127,6 +135,7 @@ export const pactBoon = narrative("pact-boon");
 export const schoolOfEvocation = narrative("school-of-evocation");
 
 export const srd51HigherLevelFeatures: readonly FeatureDefinition[] = [
+  indomitable,
   superiorCritical,
   brutalCritical(""),
   brutalCritical("-2"),
