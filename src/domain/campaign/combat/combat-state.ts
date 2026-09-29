@@ -195,9 +195,16 @@ export interface PendingEffectRoll {
 // An attack has hit and its target may answer with a reaction (Shield) before the
 // hit is final. The dice are already rolled and saved here.
 export interface PendingReaction {
+  // The attack roll that hit (trigger "hit"); a label for the other triggers.
   readonly rollId: RollId;
   readonly targetId: CombatantId;
-  readonly roll: D20TestRoll;
+  // The attack roll that landed; null when the window is not about an attack roll.
+  readonly roll: D20TestRoll | null;
+  // What opened the window: a hit that Shield could turn into a miss (the default), a spell a foe is
+  // casting (Counterspell), or damage a foe just dealt (Hellish Rebuke).
+  readonly trigger?: "hit" | "spell" | "damage";
+  // For "spell": the spell being cast.
+  readonly spellId?: ContentId<"spell">;
   // The reaction spells the target can cast now, each at the lowest slot that fits.
   readonly options: readonly { readonly spellId: ContentId<"spell">; readonly slotLevel: number }[];
   // When the window closes (the target then declines); null when play has no timers.
@@ -221,7 +228,7 @@ export interface ResolutionState {
   readonly targetIds: readonly CombatantId[];
   readonly plan: ResolutionPlan;
   // opportunity: a reaction during someone else's move.
-  readonly purpose: "action" | "opportunity" | "legendary";
+  readonly purpose: "action" | "opportunity" | "legendary" | "reaction";
   readonly stage: "checks" | "effects" | "concentration";
   readonly checks: Readonly<Record<RollId, PendingCheck>>;
   readonly outcomes: Readonly<Record<CombatantId, TargetOutcome>>;
@@ -239,6 +246,10 @@ export interface ResolutionState {
   readonly smiteSlot?: number | null;
   // Rolls that replace an earlier one (Lucky, Indomitable); a roll made this way is never rolled again.
   readonly rerolled?: readonly string[];
+  // Reaction windows already offered during this resolution, so none is offered twice.
+  readonly reactionsAsked?: readonly string[];
+  // A reaction cast during another resolution (Hellish Rebuke): the one to carry on with once this finishes.
+  readonly resumes?: ResolutionState;
 }
 
 // A move that provokes opportunity attacks waits for them, then happens if

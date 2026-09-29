@@ -215,7 +215,16 @@ export class ImageWorker {
   private async describe(request: Painted, key: CampaignKey, record: CampaignRecord, bible: AdventureBible): Promise<(PictureBrief & { readonly caption: string }) | undefined> {
     if (request.kind === "sceneImage") {
       const scene = findScene(bible, request.sceneId);
-      return scene === undefined ? undefined : { ...scenePrompt({ title: scene.title, description: scene.publicDescription }), caption: scene.title };
+      if (scene === undefined) return undefined;
+      // The opening has already been told when its image is queued. Use that
+      // public narration to show the room as the players encountered it.
+      const opening = request.roundNumber === 0 && request.sceneId === bible.startScene
+        ? (await this.options.unitOfWork.transaction((tx) => tx.readEvents(key)))
+          .map((envelope) => envelope.event)
+          .findLast((event) => event.kind === "openingRecorded")
+        : undefined;
+      const description = opening?.kind === "openingRecorded" ? `${scene.publicDescription} ${opening.text}` : scene.publicDescription;
+      return { ...scenePrompt({ title: scene.title, description }), caption: scene.title };
     }
     if (request.kind === "monsterImage") {
       const name = this.options.monsterName?.(request.monsterId, "en") ?? request.monsterId.replace(/^monster:/, "").replace(/-/g, " ");

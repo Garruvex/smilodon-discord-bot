@@ -155,6 +155,7 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     case "effectApplied":
     case "effectsRemoved":
     case "reactionOffered":
+    case "spellCountered":
     case "reactionAnswered":
     case "smiteOffered":
     case "smiteAnswered":

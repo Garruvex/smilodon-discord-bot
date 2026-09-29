@@ -105,6 +105,8 @@ export type CombatEvent =
   | { readonly kind: "effectApplied"; readonly combatantId: CombatantId; readonly effect: EffectInstance }
   // A hit waits for the target's reaction; the roll is kept, the outcome is not final yet.
   | { readonly kind: "reactionOffered"; readonly resolutionId: string; readonly reaction: PendingReaction }
+  // A spell was countered (Counterspell): it does nothing, and the rolls it was waiting on are dropped.
+  | { readonly kind: "spellCountered"; readonly resolutionId: string }
   // The target cast a reaction spell (spellId, at slotLevel) or declined (both null).
   | { readonly kind: "reactionAnswered"; readonly resolutionId: string; readonly targetId: CombatantId; readonly spellId: ContentId<"spell"> | null; readonly slotLevel: number | null }
   // A landed weapon hit waits for the attacker's Divine Smite answer; the check already settled.
@@ -220,6 +222,7 @@ export const combatEventKinds: readonly CombatEventKind[] = [
   "effectApplied",
   "effectsRemoved",
   "reactionOffered",
+  "spellCountered",
   "reactionAnswered",
   "smiteOffered",
   "smiteAnswered",

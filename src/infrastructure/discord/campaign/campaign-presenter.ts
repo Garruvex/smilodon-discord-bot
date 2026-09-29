@@ -158,7 +158,15 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
         const bible = this.options.adventures.find(record.adventure.adventureId, record.adventure.version, record.language);
         const glossary = this.options.glossaries[record.language];
         const view = state === undefined || bible === undefined || glossary === undefined ? null : buildReactionView(state, bible, glossary);
-        if (view !== null) await say(adventureChannelId, text.campaign.msg.reactionOffered({ user: view.targetUserId, attacker: view.attackerName }), [view.targetUserId]);
+        if (view !== null) {
+          const notice =
+            view.trigger === "spell"
+              ? text.campaign.msg.reactionSpell({ user: view.targetUserId, attacker: view.attackerName, spell: view.spellName ?? "" })
+              : view.trigger === "damage"
+                ? text.campaign.msg.reactionDamage({ user: view.targetUserId, attacker: view.attackerName })
+                : text.campaign.msg.reactionOffered({ user: view.targetUserId, attacker: view.attackerName });
+          await say(adventureChannelId, notice, [view.targetUserId]);
+        }
         break;
       }
       case "smiteOffered": {
@@ -272,7 +280,7 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
     text: Texts,
   ): {
     action(attackId: string): string | null;
-    beat(combatantId: string, beat: "dodge" | "dash" | "disengage" | "useItem" | "fled" | "reaction"): string | null;
+    beat(combatantId: string, beat: "dodge" | "dash" | "disengage" | "useItem" | "fled" | "reaction" | "counterspell"): string | null;
     deathSave(combatantId: string): string | null;
   } | null {
     const bible = this.options.adventures.find(record.adventure.adventureId, record.adventure.version, record.language);
@@ -307,6 +315,8 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
             return t.combatFled({ actor });
           case "reaction":
             return t.combatReaction({ actor });
+          case "counterspell":
+            return t.combatCounterspell({ actor });
         }
       },
       deathSave: (combatantId): string | null => {

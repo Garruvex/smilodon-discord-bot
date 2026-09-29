@@ -52,8 +52,8 @@ export function scenePrompt(scene: { readonly title: string; readonly descriptio
   return {
     aspect: "wide",
     prompt: lines(
-      `Scene: ${sentence(plain(scene.title, 80))} ${sentence(plain(scene.description, 600))}`,
-      "Composition: a wide establishing shot with the place as the subject; clear foreground, middle ground and background; any figures small and in the middle distance.",
+      `Scene: ${sentence(plain(scene.title, 80))} ${sentence(plain(scene.description, 900))}`,
+      "Composition: a wide establishing shot of the described place at this moment, with its atmosphere, architecture and people in clear spatial relation. Props are supporting details, never an isolated item or product shot. Show foreground, middle ground and background.",
       artDirection,
       rules,
     ),

@@ -124,6 +124,7 @@ describe("the opening", () => {
     expect(kinds(step.events)).toEqual(["openingRecorded"]);
     expect(step.events[0]).toEqual({ kind: "openingRecorded", text: "Welcome to the inn. What do you do?" });
     expect(step.requests[0]).toEqual({ kind: "deliver", delivery: { kind: "opening" } });
+    expect(step.requests.slice(1)).toEqual([]);
     expect(step.state).toMatchObject({ opening: "waiting", openingReady: [], round: null });
   });
 

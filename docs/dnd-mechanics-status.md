@@ -22,6 +22,7 @@ Race and subrace details are also in `dnd-race-mechanics-status.md`.
   - Wizard: Arcane Recovery. Ranger: Hunter's Colossus Slayer. Sorcerer: Draconic Bloodline.
 - Races: ability scores, resistances, save advantage (Fey Ancestry, Brave, Dwarven Resilience, Gnome Cunning), Relentless Endurance, Savage Attacks, Dragonborn Breath Weapon, Tiefling Thaumaturgy.
 - Levels 6 to 18, the parts that need no new primitive: Evasion (rogue and monk 7), Brutal Critical (barbarian 9/13/17), Aura of Protection (paladin 6, for allies in the same zone), Aura of Courage (paladin 10, the paladin only), Improved Divine Smite (paladin 11), Purity of Body and the growing Unarmored Movement (monk), Superior Critical (fighter 15).
+- Reaction spells: Shield (a hit), Counterspell (a spell a foe is casting; the slot must be at least the spell's level, so no ability check is rolled) and Hellish Rebuke (after a foe damages the hero, within 60 feet). Each opens a card the hero's player answers, or the timer declines.
 - Rerolls: a Halfling rerolls a natural 1 on an attack or save, and a fighter's Indomitable (level 9, then 13 and 17) rerolls a failed save, both automatically. Fighting Style can be swapped in the level-up form (Dueling, Archery, Defense).
 - Creature types on every SRD monster; Divine Smite rolls an extra die against undead and fiends. Temporary hit points exist in combat (False Life); they are taken before real hit points and are not shown on the party card yet.
 - Spell-shaped abilities (`featureSpell` trait): class and racial abilities that target creatures use the spell machinery, with uses per rest.
@@ -29,7 +30,7 @@ Race and subrace details are also in `dnd-race-mechanics-status.md`.
 ## Missing
 
 ### Spells and reactions
-- Reaction spells other than Shield (Counterspell, Absorb Elements, Hellish Rebuke): each needs a new reaction window.
+- Reaction spells: Absorb Elements is not in the SRD; Feather Fall needs falling; Cutting Words and Deflect Missiles are not built.
 - Spells that need terrain, teleporting or summoned creatures.
 
 ### Monsters

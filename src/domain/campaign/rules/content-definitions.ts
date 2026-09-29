@@ -60,7 +60,12 @@ export interface SpellCastContext {
 
 // What a reaction spell does when cast in response to being hit. A closed set:
 // each kind is a mechanic the engine implements (engine/combat/reactions.ts).
-export type ReactionRule = { readonly kind: "acBonusUntilNextTurn"; readonly bonus: number };
+export type ReactionRule =
+  | { readonly kind: "acBonusUntilNextTurn"; readonly bonus: number }
+  // Counterspell: cast against a spell a foe is casting; it fails when the slot is at least the spell's level.
+  | { readonly kind: "counterspell" }
+  // Hellish Rebuke: cast against a foe that has just damaged the caster.
+  | { readonly kind: "retort" };
 
 export interface SpellDefinition extends DefinitionBase<"spell"> {
   readonly level: number; // 0 = cantrip

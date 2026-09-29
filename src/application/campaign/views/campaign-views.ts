@@ -116,8 +116,13 @@ export interface ReactionView {
   readonly attackerName: string;
   readonly targetName: string;
   readonly targetUserId: string;
-  readonly natural: number;
-  readonly total: number;
+  // The attack roll that landed; null when the window is about a spell being cast or damage just dealt.
+  readonly natural: number | null;
+  readonly total: number | null;
+  // What opened the window: a hit (Shield), a spell being cast (Counterspell), or damage dealt (Hellish Rebuke).
+  readonly trigger: "hit" | "spell" | "damage";
+  // For a spell being cast, its name.
+  readonly spellName: string | null;
   readonly options: readonly { readonly spellId: string; readonly spellName: string; readonly slotLevel: number }[];
   // Milliseconds since epoch the window closes at; null when play has no timers.
   readonly closesAt: number | null;
@@ -287,8 +292,10 @@ export function buildReactionView(state: CampaignState, bible: AdventureBible, g
     attackerName: combatantName(attacker, names),
     targetName: combatantName(target, names),
     targetUserId: targetSheet.ownerUserId,
-    natural: pending.roll.d20.natural,
-    total: pending.roll.total,
+    natural: pending.roll?.d20.natural ?? null,
+    total: pending.roll?.total ?? null,
+    trigger: pending.trigger ?? "hit",
+    spellName: pending.spellId === undefined ? null : (glossary.names[pending.spellId] ?? pending.spellId),
     options: pending.options.map((option) => ({ spellId: option.spellId, spellName: glossary.names[option.spellId] ?? option.spellId, slotLevel: option.slotLevel })),
     closesAt: pending.closesAt,
   };

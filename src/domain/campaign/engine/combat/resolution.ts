@@ -20,7 +20,7 @@ import { creatureTypeOf, critThreshold, hasSaveAdvantage, indomitableKey, isImmu
 import type { Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { activeEncounter, afterResolution, endIfDecided } from "./combat-flow.js";
-import { offerReaction } from "./reactions.js";
+import { offerCounterspell, offerReaction, offerRetort } from "./reactions.js";
 import { offerSmite } from "./smite.js";
 import { applyDamage, applyHealing, applyTempHp, endConcentration, recordConcentration } from "./damage.js";
 import { auraBonusFor, colossusSlayerEligible, attackMode, effectForKey, planFor, rangedAttack, saveContextOf, sneakAttackEligible, sneakDice } from "./attack-rules.js";
@@ -31,7 +31,9 @@ export interface DeclareRequest {
   readonly actor: Combatant;
   readonly source: ResolutionSource;
   readonly targetIds: readonly CombatantId[];
-  readonly purpose: "action" | "opportunity" | "legendary";
+  readonly purpose: "action" | "opportunity" | "legendary" | "reaction";
+  // A reaction cast in the middle of another resolution, which carries on once this one is done.
+  readonly resumes?: ResolutionState;
   readonly cost: ActionCost;
 }
 
@@ -104,6 +106,7 @@ export function declareResolution(decision: Decision, request: DeclareRequest): 
     effectRolls: {},
     rolled: {},
     sneakAttack,
+    ...(request.resumes === undefined ? {} : { resumes: request.resumes }),
   };
 
   // A new concentration spell ends the previous one.
@@ -115,9 +118,18 @@ export function declareResolution(decision: Decision, request: DeclareRequest): 
   if (source.kind === "spell" && decision.ctx.rules.content.get(source.spellId).concentration) {
     decision.emit({ kind: "concentrationStarted", combatantId: actor.id, concentration: { resolutionId: id, spellId: source.spellId } });
   }
-  for (const [rollId, check] of Object.entries(checks)) decision.request({ kind: "roll", rollId, spec: { kind: "d20Test", spec: check.spec } });
-  if (Object.keys(checks).length === 0) proceedToEffects(decision);
+  // A hero may counter a foe's spell before anything is rolled for it.
+  if (offerCounterspell(decision, activeEncounter(decision) ?? encounter, resolution)) return null;
+  startResolution(decision);
   return null;
+}
+
+// Asks for the rolls a declared resolution is waiting on (or goes straight on to its effects when it needs none).
+export function startResolution(decision: Decision): void {
+  const resolution = activeEncounter(decision)?.resolution;
+  if (resolution == null) return;
+  for (const [rollId, check] of Object.entries(resolution.checks)) decision.request({ kind: "roll", rollId, spec: { kind: "d20Test", spec: check.spec } });
+  if (Object.keys(resolution.checks).length === 0) proceedToEffects(decision);
 }
 
 export function recordResolutionRoll(decision: Decision, pending: PendingCombatRoll, rollId: RollId, result: RollResult): Rejection | null {
@@ -226,7 +238,7 @@ export function settleCheck(decision: Decision, resolutionId: string, rollId: Ro
 // and a post-hit choice isn't known yet; both readers of onLand below go
 // through this instead of the plan directly so the extra effect reaches damage
 // rolling and application the same way any other does.
-function landEffects(resolution: ResolutionState, encounter: EncounterState): readonly Effect[] {
+export function landEffects(resolution: ResolutionState, encounter: EncounterState): readonly Effect[] {
   const onLand = withImprovedSmite(resolution, encounter, withSavageAttacks(resolution, encounter));
   const slot = resolution.smiteSlot !== undefined ? resolution.smiteSlot : resolution.source.kind === "weapon" ? (resolution.source.smiteSlot ?? null) : null;
   if (slot === null) return onLand;
@@ -365,7 +377,11 @@ export function applyEffects(decision: Decision): void {
     });
   }
   const waiting = Object.values(activeEncounter(decision)?.pendingRolls ?? {}).some((roll) => roll.purpose === "concentration");
-  if (!waiting) finishResolution(decision);
+  if (waiting) return;
+  // The target may answer damage with a spell of its own (Hellish Rebuke) before the action is over.
+  const latest = activeEncounter(decision);
+  if (latest !== null && latest.resolution != null && offerRetort(decision, latest, latest.resolution)) return;
+  finishResolution(decision);
 }
 
 export function applyEffect(
@@ -515,5 +531,5 @@ export function finishResolution(decision: Decision): void {
   decision.emit({ kind: "resolutionFinished", resolutionId: resolution.id });
   decision.request({ kind: "deliver", delivery: { kind: "attackResolved", encounterId: encounter.id, attackId: resolution.id } });
   if (endIfDecided(decision)) return;
-  afterResolution(decision, resolution);
+  afterResolution(decision, resolution.resumes ?? resolution);
 }

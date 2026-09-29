@@ -11,7 +11,11 @@ import { accents, cardPayload, type CardPayload } from "./card-payload.js";
 export function renderReactionCard(view: ReactionView, text: Texts, campaignId: string): CardPayload {
   const t = text.campaign;
   const lines = [
-    t.reaction.title({ attacker: view.attackerName, target: view.targetName, natural: view.natural, total: view.total }),
+    view.trigger === "spell"
+      ? t.reaction.titleSpell({ attacker: view.attackerName, spell: view.spellName ?? "" })
+      : view.trigger === "damage"
+        ? t.reaction.titleDamage({ attacker: view.attackerName, target: view.targetName })
+        : t.reaction.title({ attacker: view.attackerName, target: view.targetName, natural: view.natural ?? 0, total: view.total ?? 0 }),
     t.reaction.player({ user: `<@${view.targetUserId}>` }),
     ...(view.closesAt === null ? [] : [`-# ${t.reaction.closes({ when: `<t:${Math.floor(view.closesAt / 1000)}:R>` })}`]),
   ];
@@ -26,7 +30,7 @@ export function renderReactionCard(view: ReactionView, text: Texts, campaignId: 
             .setLabel(t.reaction.option({ spell: option.spellName, slot: option.slotLevel }))
             .setStyle(ButtonStyle.Success),
         ),
-        new ButtonBuilder().setCustomId(campaignCustomId("reactDecline", campaignId)).setLabel(t.button.takeHit).setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(campaignCustomId("reactDecline", campaignId)).setLabel(view.trigger === "hit" ? t.button.takeHit : t.button.letItPass).setStyle(ButtonStyle.Secondary),
       ),
     );
   return cardPayload(container);

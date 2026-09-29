@@ -1,4 +1,4 @@
-import type { ContentDefinition } from "../../rules/content-definitions.js";
+import type { ContentDefinition, ReactionRule } from "../../rules/content-definitions.js";
 import { ContentRegistryBuilder, type ContentBuildOptions, type SealedContent } from "../../rules/content-registry.js";
 import { srd51Classes } from "./classes.js";
 import { srd51Conditions } from "./conditions.js";
@@ -32,6 +32,13 @@ const withCreatureType = (definition: ContentDefinition): ContentDefinition => {
   return type === undefined || definition.kind !== "monster" ? definition : { ...definition, traits: [...definition.traits, { kind: "creatureType", type }] };
 };
 
+// Spells cast as a reaction: what sets each one off (engine/combat/reactions.ts).
+const reactionRules: Readonly<Record<string, ReactionRule>> = { "spell:counterspell": { kind: "counterspell" }, "spell:hellish-rebuke": { kind: "retort" } };
+const withReaction = (definition: ContentDefinition): ContentDefinition => {
+  const reaction = definition.kind === "spell" ? reactionRules[definition.id] : undefined;
+  return reaction === undefined || definition.kind !== "spell" ? definition : { ...definition, reaction };
+};
+
 const srd51Definitions: readonly ContentDefinition[] = [
   ...srd51Conditions,
   ...srd51Cantrips,
@@ -57,7 +64,7 @@ const srd51Definitions: readonly ContentDefinition[] = [
   ...srd51DragonAncestries,
 ];
 
-export const srd51Content: readonly ContentDefinition[] = srd51Definitions.map(withCreatureType);
+export const srd51Content: readonly ContentDefinition[] = srd51Definitions.map(withCreatureType).map(withReaction);
 
 export function buildSrd51(options: ContentBuildOptions): SealedContent {
   return new ContentRegistryBuilder(srd51RulesetId, srd51Version).add(srd51Content).build(options);

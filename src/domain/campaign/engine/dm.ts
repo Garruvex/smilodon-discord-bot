@@ -64,8 +64,9 @@ export function recordOpening(decision: Decision, text: string): Rejection | nul
   if (state.opening !== "pending") return { code: "staleNarration" };
   decision.emit({ kind: "openingRecorded", text: trimmed });
   decision.request({ kind: "deliver", delivery: { kind: "opening" } });
-  // The party is introduced: each hero gets a portrait in the background.
-  for (const characterId of Object.keys(state.characters)) decision.request({ kind: "heroImage", characterId });
+  // Establish the place the players just heard about. Hero portraits already
+  // belong on the Party cards, so they do not interrupt the opening narration.
+  if (state.sceneId !== null) decision.request({ kind: "sceneImage", sceneId: state.sceneId, roundNumber: 0 });
   if (decision.state.status === "active") finishReadyCheck(decision);
   return null;
 }

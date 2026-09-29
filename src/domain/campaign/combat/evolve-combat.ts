@@ -192,7 +192,15 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
       return event.condition === "dead" ? withoutEngagements(updated, event.combatantId) : updated;
     }
     case "reactionOffered":
-      return withoutPending(updateResolution(encounter, event.resolutionId, (resolution) => ({ ...resolution, reaction: event.reaction })), [event.reaction.rollId]);
+      return withoutPending(
+        updateResolution(encounter, event.resolutionId, (resolution) => ({ ...resolution, reaction: event.reaction, reactionsAsked: [...(resolution.reactionsAsked ?? []), event.reaction.rollId] })),
+        [event.reaction.rollId],
+      );
+    case "spellCountered":
+      return withoutPending(
+        updateResolution(encounter, event.resolutionId, (resolution) => ({ ...resolution, checks: {} })),
+        Object.keys(encounter.resolution?.id === event.resolutionId ? encounter.resolution.checks : {}),
+      );
     case "reactionAnswered": {
       const answered = updateResolution(encounter, event.resolutionId, (resolution) => ({ ...resolution, reaction: null }));
       if (event.spellId === null || event.slotLevel === null) return answered;
