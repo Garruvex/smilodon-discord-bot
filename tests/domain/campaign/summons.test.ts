@@ -41,3 +41,19 @@ describe("Conjure Animals", () => {
     expect(JSON.stringify(awarded[0])).not.toContain("brown-bear");
   });
 });
+
+describe("Thunderwave", () => {
+  it("pushes a creature that fails its save into the next zone, out of reach", () => {
+    const base = partyOfThree();
+    const elspeth = base.characters["c-elspeth"];
+    const casting = elspeth?.spellcasting;
+    if (elspeth === undefined || casting === undefined || casting === null) throw new Error("elspeth");
+    const state: CampaignState = { ...base, characters: { ...base.characters, "c-elspeth": { ...elspeth, spellcasting: { ...casting, spells: [...casting.spells, "spell:thunderwave"] as typeof casting.spells } } } };
+    const spec = { ...skirmish, zones: [...skirmish.zones, { id: "yard", name: "Yard" }], edges: [{ from: "gate", to: "courtyard", feet: 10 }, { from: "courtyard", to: "yard", feet: 10 }] };
+    const fight = new Fight(state).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec });
+    fight.rolls([2, 20], [1, 1]).run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:thunderwave", slotLevel: 1, targetIds: ["goblin-a", "goblin-b"] });
+    // The first goblin failed its save and is thrown back; the second held its ground.
+    expect(fight.combatant("goblin-a").zoneId).toBe("yard");
+    expect(fight.combatant("goblin-b").zoneId).toBe("courtyard");
+  });
+});

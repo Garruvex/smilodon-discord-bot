@@ -9,7 +9,7 @@ import type { D20TestRoll } from "../../dice/d20-test.js";
 import type { SealedContent } from "../../rules/content-registry.js";
 import type { ContentId } from "../../rules/content-id.js";
 import { monsterCombatant } from "../../combat/combatant-profile.js";
-import { distanceBetween } from "../../combat/positioning.js";
+import { distanceBetween, shortestPath } from "../../combat/positioning.js";
 import { resolveD20Test, type D20TestSpec } from "../../dice/d20-test.js";
 import { combine, dice } from "../../dice/dice-expression.js";
 import { resolveRollMode } from "../../dice/roll.js";
@@ -500,6 +500,20 @@ export function applyEffect(
         decision.emit({ kind: "effectApplied", combatantId: recipient.id, effect: conditionInstance(resolution, recipient, effect.condition, key, effect.duration ?? null, round, decision.ctx.rules.content) });
       }
       return;
+    case "push": {
+      const from = decision.state.encounter?.combatants[resolution.actorId]?.zoneId ?? recipient.zoneId;
+      const encounter = activeEncounter(decision);
+      if (encounter === null) return;
+      const distanceFrom = (zone: string): number => shortestPath(encounter.edges, from, zone)?.feet ?? Infinity;
+      const here = distanceFrom(recipient.zoneId);
+      const options = encounter.edges
+        .flatMap((edge) => (edge.from === recipient.zoneId ? [{ zone: edge.to, feet: edge.feet }] : edge.to === recipient.zoneId ? [{ zone: edge.from, feet: edge.feet }] : []))
+        .filter((edge) => edge.feet <= 10 && distanceFrom(edge.zone) > here)
+        .sort((a, b) => distanceFrom(b.zone) - distanceFrom(a.zone) || a.zone.localeCompare(b.zone));
+      // A move of no distance still breaks any melee the creature was in.
+      decision.emit({ kind: "combatantMoved", combatantId: recipient.id, zoneId: options[0]?.zone ?? recipient.zoneId, feet: 0 });
+      return;
+    }
     case "summon": {
       const monster = decision.ctx.rules.content.find(effect.monsterId);
       if (monster?.kind !== "monster") return;

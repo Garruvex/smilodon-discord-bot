@@ -61,6 +61,7 @@ Race and subrace details are also in `dnd-race-mechanics-status.md`.
 - Done: summons (a `summon` effect: creatures join the party side after the caster, play their own turns like a foe, never count as heroes for victory, XP or loot). Conjure Animals summons two brown bears; they last until the fight ends, not for the spell's duration.
 - Done: darkvision and dark zones (a zone may be dark; a creature without darkvision, blindsight, tremorsense or truesight attacks in or into it at disadvantage; SRD races and monsters carry the trait). Dim light, hiding in the dark and light spells are not modeled.
 - Done: Stunning Strike (monk 5: a free action that readies it for a ki point; the next melee hit calls for a Constitution save against 8 + proficiency + Wisdom, stunned for a round) and Relentless Rage (barbarian 11: once per long rest a raging barbarian dropped to 0 stays up at twice their level in hit points; the SRD save is played as a success).
+- Done: a push effect (Thunderwave throws a creature that fails its save into the next zone within 10 feet and farther from the caster, or out of melee if there is none). Teleport (Misty Step) is not modeled.
 - Dragon Scale Mail, Armor of Resistance and Adamantine Armor are named but give nothing yet.
 
 ### Other

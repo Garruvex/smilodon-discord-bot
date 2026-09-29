@@ -291,6 +291,8 @@ for (const spell of spells) {
   if (zhNames[spell.index] === undefined) throw new Error(`No Chinese name for ${spell.index}. Add it to tools/srd/zh-tw-spell-names.json.`);
   const notes = [];
   const planned = planFor(spell, notes);
+  // Thunderwave: a creature that fails its save is also pushed away (into the next zone, or out of the melee).
+  if (spell.index === "thunderwave" && planned !== null) planned.body = planned.body.replace("], onAvoid:", ", { kind: \"push\", target: \"target\" }], onAvoid:");
   const range = rangeOf(spell);
   const castingTime = castingTimeOf(spell.casting_time);
   const name = camel(spell.index);

@@ -3234,7 +3234,7 @@ export const thunderwave = defineSpell({
   range: { kind: "feet", feet: 15 },
   targeting: { relation: "enemy", count: 6 },
   concentration: false,
-  plan: ({ slotLevel }) => ({ check: { kind: "savingThrow", ability: "con" }, onLand: [{ kind: "damage", target: "target", amount: diceAt(thunderwaveDamage, slotLevel), damageType: "thunder" }], onAvoid: [{ kind: "damage", target: "target", amount: diceAt(thunderwaveDamage, slotLevel), damageType: "thunder", halfOfLand: true }] }),
+  plan: ({ slotLevel }) => ({ check: { kind: "savingThrow", ability: "con" }, onLand: [{ kind: "damage", target: "target", amount: diceAt(thunderwaveDamage, slotLevel), damageType: "thunder" }, { kind: "push", target: "target" }], onAvoid: [{ kind: "damage", target: "target", amount: diceAt(thunderwaveDamage, slotLevel), damageType: "thunder", halfOfLand: true }] }),
 });
 
 // Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.

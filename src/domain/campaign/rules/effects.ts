@@ -93,6 +93,9 @@ export type Effect =
   // Destroy Undead: a monster worth no more experience than this is destroyed outright (Turn Undead, from cleric level 5).
   | { readonly kind: "destroy"; readonly target: EffectTarget; readonly maxXp: number }
   // Conjures creatures that fight on the caster's side until the fight ends (Conjure Animals). They act on their own turns.
+  // Pushes the target away from the source: into the next zone if one lies within 10 feet and farther from them,
+  // otherwise only out of any melee it was in.
+  | { readonly kind: "push"; readonly target: EffectTarget }
   | { readonly kind: "summon"; readonly target: EffectTarget; readonly monsterId: ContentId<"monster">; readonly count: number }
   | { readonly kind: "exhaustion"; readonly target: EffectTarget; readonly amount: number };
 
