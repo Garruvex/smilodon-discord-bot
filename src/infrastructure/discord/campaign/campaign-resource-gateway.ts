@@ -9,6 +9,9 @@ export interface CampaignResourceGateway {
   categoryExists(guildId: string, categoryId: string): Promise<boolean>;
   createTextChannel(guildId: string, options: TextChannelOptions, reason: string): Promise<string>;
   channelExists(guildId: string, channelId: string): Promise<boolean>;
+  // Puts a channel first in its category (the hub is the door to everything
+  // else there). A channel outside the category is left where it is.
+  placeFirst(guildId: string, channelId: string, categoryId: string): Promise<void>;
   // A channel in the category whose topic carries the marker, for resuming an
   // uncertain create instead of duplicating it.
   findTextChannelByMarker(guildId: string, categoryId: string | null, marker: string): Promise<string | null>;
@@ -99,6 +102,8 @@ const botPermissions = [
   PermissionFlagsBits.ReadMessageHistory,
 ];
 
+const reasonFirst = "D&D campaign: hub channel first";
+
 const viewerAllowed = (allowThreadMessages: boolean): bigint[] => [
   PermissionFlagsBits.ViewChannel,
   PermissionFlagsBits.ReadMessageHistory,
@@ -143,6 +148,12 @@ export class DiscordResourceGateway implements CampaignResourceGateway {
       reason,
     });
     return channel.id;
+  }
+
+  public async placeFirst(guildId: string, channelId: string, categoryId: string): Promise<void> {
+    const channel = await (await this.guild(guildId)).channels.fetch(channelId).catch(() => null);
+    if (channel?.type !== ChannelType.GuildText || channel.parentId !== categoryId) return;
+    await channel.setPosition(0, { reason: reasonFirst });
   }
 
   public async channelExists(guildId: string, channelId: string): Promise<boolean> {

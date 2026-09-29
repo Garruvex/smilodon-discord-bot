@@ -11,11 +11,8 @@ import type { CampaignGameCreator } from "../../campaign/campaign-game-creator.j
 import { createGameText } from "../../campaign/campaign-game-creator.js";
 import type { CampaignCardService } from "../../campaign/campaign-card-service.js";
 import type { CharacterLibrary } from "../../../../application/campaign/library/character-library.js";
-import { maxImportBytes } from "../../../../application/campaign/library/character-library.js";
-import { downloadAttachmentText } from "../../campaign/attachment-download.js";
 import type { AdventureIntake } from "../../campaign/adventure-intake.js";
-import { conflictLines, languageOf, type CharacterLibraryComponentHandler } from "../../components/character-library-component-handler.js";
-import { texts } from "../../../../application/i18n/texts.js";
+import { languageOf, type CharacterLibraryComponentHandler } from "../../components/character-library-component-handler.js";
 import type { CampaignSetupService } from "../../campaign/campaign-setup-service.js";
 import { refusalText } from "../../campaign/refusal-text.js";
 import { repairText } from "../../campaign/repair-text.js";
@@ -29,7 +26,7 @@ export interface DndCommandDependencies {
   readonly authority: CampaignAuthority;
   // The character library and its opening screen (My Characters).
   readonly library: CharacterLibrary;
-  readonly libraryScreens: Pick<CharacterLibraryComponentHandler, "homeScreen" | "sheetLine">;
+  readonly libraryScreens: Pick<CharacterLibraryComponentHandler, "homeScreen" | "importFromFile">;
   // Uploading an adventure file and the Adventure Author.
   readonly intake: AdventureIntake;
 }
@@ -147,7 +144,7 @@ export class DndCommand implements BotCommand {
   public readonly responseVisibility = CommandResponseVisibility.Ephemeral;
   public readonly helpDetails = [
     "/dnd setup creates the D&D category with a #dnd-games hub channel (or uses the channel you give it), the Public/Private Games and Parties forums, and the DnD Admin and Private Games roles, and posts the hub's Create game button.",
-    "The hub lists each live game with a Manage button. /dnd new does the same as Create game: a Games post and a matching Parties post, in the public or private forum pair its visibility picks.",
+    "The hub is the same things as buttons: Create game, My Characters, New character, Import character, Upload adventure, Write an adventure and a short guide, with each live game listed below and a Manage button on it. /dnd new does the same as Create game: a Games post and a matching Parties post, in the public or private forum pair its visibility picks.",
     "Everything else is run inside a game's posts: players use the buttons, and the organizer or a DnD Admin uses /dnd pause, resume, close-round, rest, level, retry, repair, and reopen (for a finished game).",
   ];
 
@@ -195,38 +192,8 @@ export class DndCommand implements BotCommand {
   // Reads an uploaded character file as data and makes it a new character in
   // the asker's library, or says exactly why it cannot.
   private async importCharacter(interaction: ChatInputCommandInteraction<"cached">): Promise<void> {
-    const words = texts[languageOf(interaction)].campaign.chars;
     const file = interaction.options.getAttachment("file");
-    if (file === null) {
-      await interaction.editReply({ content: words.importNeedsFile });
-      return;
-    }
-    // Only a file uploaded to Discord, and only a small one.
-    if (file.size > maxImportBytes) {
-      await interaction.editReply({ content: words.importUnreadable.tooLarge });
-      return;
-    }
-    const fetched = await downloadAttachmentText(file.url, maxImportBytes);
-    if (!fetched.ok) {
-      await interaction.editReply({ content: fetched.reason === "notDiscord" ? words.importBadLink : fetched.reason === "tooLarge" ? words.importUnreadable.tooLarge : words.importUnreadable.notJson });
-      return;
-    }
-    const result = await this.deps.library.import(interaction.user.id, fetched.text);
-    const text = texts[languageOf(interaction)];
-    switch (result.kind) {
-      case "ok":
-        await interaction.editReply({ content: words.imported({ name: result.character.name, sheet: this.deps.libraryScreens.sheetLine(result.snapshot, text) }) });
-        return;
-      case "unreadable":
-        await interaction.editReply({ content: words.importUnreadable[result.reason] });
-        return;
-      case "conflicts":
-        await interaction.editReply({ content: [words.importConflicts, ...conflictLines(result.conflicts, text).map((line) => `• ${line}`)].join("\n") });
-        return;
-      case "full":
-        await interaction.editReply({ content: words.full({ max: 20 }) });
-        return;
-    }
+    await interaction.editReply({ content: await this.deps.libraryScreens.importFromFile(interaction.user.id, languageOf(interaction), file === null ? null : { url: file.url, size: file.size }) });
   }
 
   private async setup(interaction: ChatInputCommandInteraction<"cached">, text: Texts, responses: CommandContext["responses"]): Promise<void> {

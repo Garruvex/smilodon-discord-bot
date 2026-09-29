@@ -31,10 +31,22 @@ interface Who {
 }
 
 // Just enough of a Discord interaction to drive the hub handler.
-function fakeInteraction(input: Who & { customId: string; messageId?: string; values?: string[]; fields?: Record<string, string>; kind: "button" | "select" | "modal" }): { interaction: never; sent: Sent[] } {
+function fakeInteraction(
+  input: Who & {
+    customId: string;
+    messageId?: string;
+    values?: string[];
+    fields?: Record<string, string>;
+    selects?: Record<string, string[]>;
+    uploads?: Record<string, { url: string; size: number }[]>;
+    locale?: string;
+    kind: "button" | "select" | "modal";
+  },
+): { interaction: never; sent: Sent[] } {
   const sent: Sent[] = [];
   const interaction = {
     customId: input.customId,
+    locale: input.locale ?? "en-US",
     guildId,
     id: `i-${Math.random()}`,
     user: { id: input.userId },
@@ -51,7 +63,14 @@ function fakeInteraction(input: Who & { customId: string; messageId?: string; va
     editReply: (payload: unknown): Promise<void> => (sent.push({ kind: "edit", payload }), Promise.resolve()),
     update: (payload: unknown): Promise<void> => (sent.push({ kind: "update", payload }), Promise.resolve()),
     showModal: (payload: unknown): Promise<void> => (sent.push({ kind: "modal", payload }), Promise.resolve()),
-    fields: { getTextInputValue: (name: string): string => input.fields?.[name] ?? "" },
+    fields: {
+      getTextInputValue: (name: string): string => input.fields?.[name] ?? "",
+      getStringSelectValues: (name: string): string[] => input.selects?.[name] ?? [],
+      getUploadedFiles: (name: string): { first: () => { url: string; size: number } | undefined } | null => {
+        const files = input.uploads?.[name];
+        return files === undefined ? null : { first: () => files[0] };
+      },
+    },
   };
   // The role cache is a Set of ids; the handler asks has(id) like discord.js' Collection.
   return { interaction: interaction as never, sent };
@@ -76,9 +95,13 @@ interface Harness {
   provisioned: CampaignKey[];
   click: (customId: string, who: Who, options?: { messageId?: string; values?: string[] }) => Promise<Sent[]>;
   submit: (customId: string, who: Who, name: string) => Promise<Sent[]>;
+  // A form with any mix of text, menu and uploaded-file answers.
+  form: (customId: string, who: Who, answers: { fields?: Record<string, string>; selects?: Record<string, string[]>; uploads?: Record<string, { url: string; size: number }[]>; locale?: string }) => Promise<Sent[]>;
+  library: { imports: { userId: string; language: string; file: { url: string; size: number } | null }[] };
+  intake: { uploads: { guildId: string; file: { url: string; size: number } | null }[]; authors: { guildId: string; input: unknown }[] };
 }
 
-function harness(options: { modelConfigured?: boolean } = {}): Harness {
+function harness(options: { modelConfigured?: boolean; launcher?: boolean; canAuthor?: boolean } = {}): Harness {
   const r = rig();
   const messages = new FakeMessages();
   const glossaries = { en: enSrd51Glossary, "zh-TW": zhTwSrd51Glossary };
@@ -99,7 +122,25 @@ function harness(options: { modelConfigured?: boolean } = {}): Harness {
   // Only a marked interaction counts as a bot administrator.
   const access = { evaluate: (_policy: unknown, _module: unknown, interaction: { botAdmin?: boolean }): { allowed: boolean } => ({ allowed: interaction.botAdmin === true }) } as unknown as AccessPolicyService;
   const authority = new CampaignAuthority(access, r.store);
+  const library: Harness["library"] = { imports: [] };
+  const intake: Harness["intake"] = { uploads: [], authors: [] };
+  const launcher =
+    options.launcher === false
+      ? {}
+      : {
+          libraryScreens: {
+            homeScreen: (userId: string, language: string): Promise<{ content: string; components: never[] }> => Promise.resolve({ content: `home of ${userId} in ${language}`, components: [] }),
+            builderScreen: (language: string): { content: string; components: never[] } => ({ content: `builder in ${language}`, components: [] }),
+            importFromFile: (userId: string, language: string, file: { url: string; size: number } | null): Promise<string> => (library.imports.push({ userId, language, file }), Promise.resolve("imported it")),
+          },
+          intake: {
+            canAuthor: options.canAuthor ?? true,
+            uploadFile: (ctx: { guildId: string; editReply: (payload: { content: string }) => Promise<unknown> }, file: { url: string; size: number } | null): Promise<void> => (intake.uploads.push({ guildId: ctx.guildId, file }), ctx.editReply({ content: "under review" }).then(() => undefined)),
+            authorFrom: (ctx: { guildId: string; editReply: (payload: { content: string }) => Promise<unknown> }, input: unknown): Promise<void> => (intake.authors.push({ guildId: ctx.guildId, input }), ctx.editReply({ content: "written" }).then(() => undefined)),
+          },
+        };
   const handler = new CampaignHubComponentHandler({
+    ...(launcher as object),
     lobby: r.service,
     play: new CampaignPlayController({ unitOfWork: r.store, bus: r.bus, refresher: cards, adventures: r.adventures }),
     setup,
@@ -116,6 +157,13 @@ function harness(options: { modelConfigured?: boolean } = {}): Harness {
     click: async (customId, who, opts = {}): Promise<Sent[]> => {
       const { interaction, sent } = fakeInteraction({ ...who, customId, ...(opts.messageId === undefined ? {} : { messageId: opts.messageId }), ...(opts.values === undefined ? {} : { values: opts.values }), kind: opts.values === undefined ? "button" : "select" });
       await handler.execute({ interaction, logger: quiet as never });
+      return sent;
+    },
+    library,
+    intake,
+    form: async (customId, who, answers): Promise<Sent[]> => {
+      const { interaction, sent } = fakeInteraction({ ...who, customId, ...answers, kind: "modal" });
+      await handler.executeModal({ interaction, logger: quiet as never });
       return sent;
     },
     submit: async (customId, who, name): Promise<Sent[]> => {
@@ -244,8 +292,8 @@ describe("Manage a game", () => {
     expect(contentOf(await t.click(id, { userId: "u-x" }, { messageId: hubMessageId }))).toBe("Only DnD Admins and the game's organizer can manage a game.");
     const organizer = await t.click(id, { userId: "u-org" }, { messageId: hubMessageId });
     expect(contentOf(organizer)).toContain("Manage Moonlit Ruins");
-    expect(rowsOf(organizer).flat().map((button) => button.label)).toEqual(["Pause", "Close round", "Retry the DM", "Redo the last picture", "Short rest", "Long rest", "Retry the fight", "Retell the last scene", "Picture this moment", "Repair cards", "End game"]);
-    expect(rowsOf(await t.click(id, { userId: "u-a", admin: true }, { messageId: hubMessageId })).flat()).toHaveLength(11);
+    expect(rowsOf(organizer).flat().map((button) => button.label)).toEqual(["Pause", "Close round", "Retry the DM", "Redo the last picture", "Raise level", "Short rest", "Long rest", "Retry the fight", "Retell the last scene", "Picture this moment", "Repair cards", "End game"]);
+    expect(rowsOf(await t.click(id, { userId: "u-a", admin: true }, { messageId: hubMessageId })).flat()).toHaveLength(12);
   });
 
   it("refuses Retry the fight when there is no lost fight", async () => {
@@ -321,5 +369,119 @@ describe("Manage a game", () => {
     await withSettings(t);
     const sent = await t.click(hubCustomId("manage", "missing"), { userId: "u-org" }, { messageId: "m" });
     expect(contentOf(sent)).toBe("That game no longer exists.");
+  });
+});
+
+describe("the hub launcher", () => {
+  const anyone = { userId: "u-x" };
+  const admin = { userId: "u-a", admin: true };
+  const upload = { url: "https://cdn.discordapp.com/attachments/1/2/file.json", size: 500 };
+  const modalOf = (sent: readonly Sent[]): { custom_id: string; title: string; components: { label: string; component: { custom_id: string } }[] } | undefined =>
+    (sent.find((entry) => entry.kind === "modal")?.payload as { toJSON(): never } | undefined)?.toJSON();
+
+  it("explains itself, in the reader's own language", async () => {
+    const t = harness();
+    expect(contentOf(await t.click("dndhub:help", anyone))).toContain("How D&D works here");
+    const zh = fakeInteraction({ ...anyone, customId: "dndhub:help", kind: "button", locale: "zh-TW" });
+    await new CampaignHubComponentHandler({ lobby: t.r.service, play: undefined as never, setup: undefined as never, cards: t.cards, creator: undefined as never, authority: undefined as never }).execute({ interaction: zh.interaction, logger: quiet as never });
+    expect(contentOf(zh.sent)).toContain("D&D 使用說明");
+  });
+
+  it("opens My Characters and the builder for anyone, as the same private screens the slash command opens", async () => {
+    const t = harness();
+    const home = await t.click("dndhub:characters", { userId: "u-x" });
+    expect(contentOf(home)).toBe("home of u-x in en");
+    expect(home[0]).toMatchObject({ kind: "defer" });
+    expect(contentOf(await t.click("dndhub:newCharacter", anyone))).toBe("builder in en");
+  });
+
+  it("says a button is unavailable when the bot was started without that part", async () => {
+    const t = harness({ launcher: false });
+    await withSettings(t);
+    expect(contentOf(await t.click("dndhub:characters", anyone))).toBe("That is not available on this bot right now.");
+    expect(contentOf(await t.click("dndhub:importOpen", anyone))).toBe("That is not available on this bot right now.");
+    expect(contentOf(await t.click("dndhub:uploadOpen", admin))).toBe("That is not available on this bot right now.");
+  });
+
+  it("opens the import form for anyone and reads the file they send, exactly as /dnd import-character does", async () => {
+    const t = harness();
+    const modal = modalOf(await t.click("dndhub:importOpen", anyone));
+    expect(modal?.custom_id).toBe("dndhub:importSubmit");
+    expect(modal?.components.map((row) => row.label)).toEqual(["Character file"]);
+    expect(modal?.components[0]?.component.custom_id).toBe("file");
+
+    const done = await t.form("dndhub:importSubmit", anyone, { uploads: { file: [upload] } });
+    expect(contentOf(done)).toBe("imported it");
+    expect(t.library.imports).toEqual([{ userId: "u-x", language: "en", file: upload }]);
+    // No file in the form is passed on as none, for the shared reader to explain.
+    await t.form("dndhub:importSubmit", anyone, {});
+    expect(t.library.imports[1]?.file).toBeNull();
+  });
+
+  it("keeps the adventure forms for DnD Admins, checking again when the form is sent", async () => {
+    const t = harness();
+    await withSettings(t);
+    expect(contentOf(await t.click("dndhub:uploadOpen", anyone))).toBe("Only bot administrators can do that.");
+    expect(contentOf(await t.click("dndhub:authorOpen", anyone))).toBe("Only bot administrators can do that.");
+    expect(contentOf(await t.form("dndhub:uploadSubmit", anyone, { uploads: { file: [upload] } }))).toBe("Only bot administrators can do that.");
+    expect(contentOf(await t.form("dndhub:authorSubmit", anyone, { fields: { idea: "a chapel" } }))).toBe("Only bot administrators can do that.");
+    expect(t.intake.uploads).toEqual([]);
+    expect(t.intake.authors).toEqual([]);
+  });
+
+  it("uploads an adventure from the form for a DnD Admin", async () => {
+    const t = harness();
+    await withSettings(t);
+    const modal = modalOf(await t.click("dndhub:uploadOpen", admin));
+    expect(modal?.custom_id).toBe("dndhub:uploadSubmit");
+    expect(modal?.title).toBe("Upload an adventure");
+    expect(contentOf(await t.form("dndhub:uploadSubmit", admin, { uploads: { file: [upload] } }))).toBe("under review");
+    expect(t.intake.uploads).toEqual([{ guildId, file: upload }]);
+  });
+
+  it("has the Author write from an idea, a language and optional notes", async () => {
+    const t = harness();
+    await withSettings(t);
+    const modal = modalOf(await t.click("dndhub:authorOpen", admin));
+    expect(modal?.components.map((row) => row.component.custom_id)).toEqual(["idea", "language", "file"]);
+    expect(contentOf(await t.form("dndhub:authorSubmit", admin, { fields: { idea: "A haunted chapel" }, selects: { language: ["zh-TW"] }, uploads: { file: [upload] } }))).toBe("written");
+    expect(t.intake.authors).toEqual([{ guildId, input: { idea: "A haunted chapel", gameLanguage: "zh-TW", notes: upload } }]);
+    // Without notes, the language falls back to English.
+    await t.form("dndhub:authorSubmit", admin, { fields: { idea: "x" } });
+    expect(t.intake.authors[1]?.input).toEqual({ idea: "x", gameLanguage: "en", notes: null });
+  });
+
+  it("says so when there is no AI author", async () => {
+    const t = harness({ canAuthor: false });
+    await withSettings(t);
+    expect(contentOf(await t.click("dndhub:authorOpen", admin))).toBe("No AI author is set up on this bot.");
+  });
+});
+
+describe("Raise level in Manage", () => {
+  it("opens a form for the organizer only, and raises the party from it", async () => {
+    const t = harness();
+    const { key } = await activeGame(t);
+    const id = hubCustomId("levelOpen", key.campaignId);
+    expect(contentOf(await t.click(id, { userId: "u-x" }))).toBe("Only DnD Admins and the game's organizer can manage a game.");
+    const opened = await t.click(id, { userId: "u-org" });
+    const modal = (opened.find((entry) => entry.kind === "modal")?.payload as { toJSON(): { custom_id: string; components: { label: string }[] } }).toJSON();
+    expect(modal.custom_id).toBe(hubCustomId("levelSubmit", key.campaignId));
+    expect(modal.components[0]?.label).toBe("Level (2 to 20)");
+
+    const raised = await t.form(hubCustomId("levelSubmit", key.campaignId), { userId: "u-org" }, { fields: { level: "3" } });
+    expect(contentOf(raised)).toContain("The party is now level 3");
+    const state = (await t.r.store.transaction((tx) => tx.loadCampaign(key)))?.state;
+    expect(Object.values(state?.characters ?? {}).every((sheet) => sheet.level === 3)).toBe(true);
+    // Again to the same level, an odd number, and a stranger sending the form.
+    expect(contentOf(await t.form(hubCustomId("levelSubmit", key.campaignId), { userId: "u-org" }, { fields: { level: "3" } }))).toContain("already at that level or higher");
+    expect(contentOf(await t.form(hubCustomId("levelSubmit", key.campaignId), { userId: "u-org" }, { fields: { level: "many" } }))).toContain("Pick a level from 2 to 20");
+    expect(contentOf(await t.form(hubCustomId("levelSubmit", key.campaignId), { userId: "u-x" }, { fields: { level: "4" } }))).toBe("Only DnD Admins and the game's organizer can manage a game.");
+  });
+
+  it("lets a DnD Admin raise a game they do not organize", async () => {
+    const t = harness();
+    const { key } = await activeGame(t);
+    expect(contentOf(await t.form(hubCustomId("levelSubmit", key.campaignId), { userId: "u-a", admin: true }, { fields: { level: "2" } }))).toContain("The party is now level 2");
   });
 });

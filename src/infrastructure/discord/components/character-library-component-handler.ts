@@ -12,7 +12,7 @@ import {
   type StringSelectMenuInteraction,
 } from "discord.js";
 
-import { maxCharactersPerOwner, type CharacterLibrary } from "../../../application/campaign/library/character-library.js";
+import { maxCharactersPerOwner, maxImportBytes, type CharacterLibrary } from "../../../application/campaign/library/character-library.js";
 import { isPortraitStyle, maxUploadBytes, type CharacterPortraits, type PortraitResult } from "../../../application/campaign/library/character-portraits.js";
 import type { ImportConflict } from "../../../application/campaign/library/compatibility.js";
 import type { LibrarySnapshot } from "../../../application/campaign/library/library-types.js";
@@ -27,7 +27,7 @@ import { armorClassFrom, heroTraits } from "../../../domain/campaign/combat/comb
 import type { Glossary, SealedContent } from "../../../domain/campaign/rules/content-registry.js";
 import { abilities, type Ability } from "../../../domain/campaign/rules/effects.js";
 import { classLabel, skillKey } from "../campaign/text-keys.js";
-import { downloadAttachmentBytes, type BytesResult } from "../campaign/attachment-download.js";
+import { downloadAttachmentBytes, downloadAttachmentText, type BytesResult } from "../campaign/attachment-download.js";
 import { fileField, noteField, portraitHome, portraitModal, portraitPreview, portraitRefused, portraitWorking, styleField, type PortraitScreen } from "../campaign/portrait-screens.js";
 import { decodeDraft, emptyDraft, encodeDraft, libraryCustomId, libraryIdPrefix, parseLibraryId, scoresOf, type Draft } from "../campaign/library-ids.js";
 
@@ -89,6 +89,35 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
     rows.push(new ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>().addComponents(button(libraryCustomId("new"), t.newButton, ButtonStyle.Primary, entries.length >= maxCharactersPerOwner)));
     const lines = entries.map((entry) => t.line({ name: entry.character.name, class: classLabel(text, entry.character.className), count: entry.snapshots.length }));
     return { content: `**${t.title}**\n${t.intro}\n\n${lines.length === 0 ? t.empty : lines.join("\n")}`, components: rows };
+  }
+
+  // The builder's first screen (choose a class), for the hub's New character button.
+  public builderScreen(language: Language): LibraryScreen {
+    return this.classScreen(texts[language]);
+  }
+
+  // Reads an uploaded character file as data and makes it a new character in
+  // the person's library, or says exactly why it cannot. Shared by
+  // /dnd import-character and the hub's Import character form.
+  public async importFromFile(userId: string, language: Language, file: { readonly url: string; readonly size: number } | null): Promise<string> {
+    const text = texts[language];
+    const words = text.campaign.chars;
+    if (file === null) return words.importNeedsFile;
+    // Only a file uploaded to Discord, and only a small one.
+    if (file.size > maxImportBytes) return words.importUnreadable.tooLarge;
+    const fetched = await downloadAttachmentText(file.url, maxImportBytes);
+    if (!fetched.ok) return fetched.reason === "notDiscord" ? words.importBadLink : fetched.reason === "tooLarge" ? words.importUnreadable.tooLarge : words.importUnreadable.notJson;
+    const result = await this.deps.library.import(userId, fetched.text);
+    switch (result.kind) {
+      case "ok":
+        return words.imported({ name: result.character.name, sheet: this.sheetLine(result.snapshot, text) });
+      case "unreadable":
+        return words.importUnreadable[result.reason];
+      case "conflicts":
+        return [words.importConflicts, ...conflictLines(result.conflicts, text).map((line) => `• ${line}`)].join("\n");
+      case "full":
+        return words.full({ max: maxCharactersPerOwner });
+    }
   }
 
   public async execute(context: ComponentContext): Promise<void> {

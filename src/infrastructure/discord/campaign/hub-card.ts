@@ -15,19 +15,25 @@ export interface HubGame {
   readonly adventureChannelId: string | null;
 }
 
-// The hub's first, pinned message: what the hub is for and the Create game
-// button. It is the oldest message in the channel, with one message per live
-// game below it.
+// The hub's first, pinned message: what the hub is for and a launcher for
+// everything the /dnd commands do, grouped by what a person came to do: games,
+// characters, adventures. It is the oldest message in the channel, with one
+// message per live game below it.
 export function renderHubControl(gameCount: number, text: Texts): CardPayload {
   const t = text.campaign.hub;
+  const button = (action: Parameters<typeof hubCustomId>[0], label: string, style = ButtonStyle.Secondary): ButtonBuilder =>
+    new ButtonBuilder().setCustomId(hubCustomId(action)).setLabel(label).setStyle(style);
   const container = new ContainerBuilder()
     .setAccentColor(accents.blue)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ${t.title}\n${t.intro}${gameCount === 0 ? `\n\n${t.empty}` : ""}`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(t.sectionGames))
+    .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(button("create", t.createButton, ButtonStyle.Success), button("help", t.helpButton)))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(t.sectionCharacters))
     .addActionRowComponents(
-      new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(hubCustomId("create")).setLabel(t.createButton).setStyle(ButtonStyle.Success),
-      ),
-    );
+      new ActionRowBuilder<ButtonBuilder>().addComponents(button("characters", t.charactersButton, ButtonStyle.Primary), button("newCharacter", t.newCharacterButton), button("importOpen", t.importButton)),
+    )
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(t.sectionAdventures))
+    .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(button("uploadOpen", t.uploadButton), button("authorOpen", t.authorButton)));
   return cardPayload(container);
 }
 

@@ -117,6 +117,10 @@ export class CampaignSetupService {
         privateGamesRoleId,
       };
       await unitOfWork.transaction((tx) => tx.saveGuildSettings(settings));
+      // The hub is the door to everything in the category, so it sits first, above the forums made after it.
+      await resources.placeFirst(guildId, hubChannelId, categoryId).catch((error: unknown) => {
+        this.options.logger.warn({ err: error, guildId }, "The hub channel could not be moved to the top");
+      });
       await this.options.cards.syncHub(guildId);
       // The hub card's reference was saved by the sync.
       const saved = await unitOfWork.transaction((tx) => tx.loadGuildSettings(guildId));

@@ -2,6 +2,8 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  FileUploadBuilder,
+  LabelBuilder,
   MessageFlags,
   ModalBuilder,
   StringSelectMenuBuilder,
@@ -9,6 +11,7 @@ import {
   TextInputStyle,
   type ButtonInteraction,
   type MessageActionRowComponentBuilder,
+  type ModalSubmitInteraction,
   type StringSelectMenuInteraction,
 } from "discord.js";
 
@@ -20,6 +23,8 @@ import { CommandModule } from "../../../application/commands/command.js";
 import type { ComponentContext, ComponentHandler, ModalContext } from "../../../application/components/component-handler.js";
 import { texts, type Texts } from "../../../application/i18n/texts.js";
 import { publicAccessPolicy } from "../../../domain/access/access-policy.js";
+import { maxIdeaChars } from "../../../application/campaign/adventures/adventure-author.js";
+import type { AdventureIntake, IntakeContext } from "../campaign/adventure-intake.js";
 import type { CampaignAuthority } from "../campaign/campaign-authority.js";
 import type { CampaignCardService } from "../campaign/campaign-card-service.js";
 import { createGameText, type CampaignGameCreator } from "../campaign/campaign-game-creator.js";
@@ -36,6 +41,7 @@ import {
   type WizardChoices,
 } from "../campaign/hub-ids.js";
 import { refusalText } from "../campaign/refusal-text.js";
+import { languageOf, type CharacterLibraryComponentHandler } from "./character-library-component-handler.js";
 import { repairText } from "../campaign/repair-text.js";
 
 export interface CampaignHubDependencies {
@@ -45,6 +51,9 @@ export interface CampaignHubDependencies {
   readonly cards: CampaignCardService;
   readonly creator: CampaignGameCreator;
   readonly authority: CampaignAuthority;
+  // The launcher's character and adventure buttons; without them those buttons say they are unavailable.
+  readonly libraryScreens?: Pick<CharacterLibraryComponentHandler, "homeScreen" | "builderScreen" | "importFromFile">;
+  readonly intake?: Pick<AdventureIntake, "uploadFile" | "authorFrom" | "canAuthor">;
   // The adventures this server can start from; without it the wizard offers only the bundled one.
   readonly adventures?: { listForGuild(guildId: string): readonly { readonly id: string; readonly titles: Readonly<Partial<Record<"en" | "zh-TW", string>>> }[] };
 }
@@ -55,6 +64,10 @@ interface Screen {
 }
 
 const nameField = "name";
+const fileField = "file";
+const ideaField = "idea";
+const languageField = "language";
+const levelField = "level";
 
 // The hub's controls: the Create game wizard and each game's Manage view. All
 // replies are private. Who may do what is decided on every click from the
@@ -102,6 +115,23 @@ export class CampaignHubComponentHandler implements ComponentHandler {
       case "endYes":
         if (interaction.isButton() && first !== undefined) await this.end(interaction, first);
         return;
+      case "help":
+        if (interaction.isButton()) await interaction.reply({ content: texts[languageOf(interaction)].campaign.hub.help, flags: MessageFlags.Ephemeral });
+        return;
+      case "characters":
+      case "newCharacter":
+        if (interaction.isButton()) await this.openLibrary(interaction, parsed.action);
+        return;
+      case "importOpen":
+        if (interaction.isButton()) await this.openImport(interaction);
+        return;
+      case "uploadOpen":
+      case "authorOpen":
+        if (interaction.isButton()) await this.openAdventureForm(interaction, parsed.action);
+        return;
+      case "levelOpen":
+        if (interaction.isButton() && first !== undefined) await this.openLevel(interaction, first);
+        return;
       default:
         return;
     }
@@ -110,7 +140,12 @@ export class CampaignHubComponentHandler implements ComponentHandler {
   public async executeModal(context: ModalContext): Promise<void> {
     const { interaction } = context;
     const parsed = parseHubId(interaction.customId);
-    if (parsed?.action !== "wizName" || !interaction.inCachedGuild()) return;
+    if (parsed === null || !interaction.inCachedGuild()) return;
+    if (parsed.action === "importSubmit") return void (await this.submitImport(interaction));
+    if (parsed.action === "uploadSubmit") return void (await this.submitUpload(interaction));
+    if (parsed.action === "authorSubmit") return void (await this.submitAuthor(interaction));
+    if (parsed.action === "levelSubmit") return void (await this.submitLevel(interaction, parsed.parts[0] ?? ""));
+    if (parsed.action !== "wizName") return;
     const choices = parseWizardState(parsed.parts[0]);
     const text = texts[choices.language];
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -130,6 +165,160 @@ export class CampaignHubComponentHandler implements ComponentHandler {
       ...(choices.adventure === null ? {} : { adventureId: choices.adventure }),
     });
     await interaction.editReply({ content: createGameText(result, text) });
+  }
+
+  // ---- The launcher: characters and adventures -------------------------------
+
+  // My Characters and New character: the same private screens /dnd characters opens.
+  private async openLibrary(interaction: ButtonInteraction<"cached">, action: "characters" | "newCharacter"): Promise<void> {
+    const language = languageOf(interaction);
+    if (this.deps.libraryScreens === undefined) {
+      await interaction.reply({ content: texts[language].campaign.hub.unavailable, flags: MessageFlags.Ephemeral });
+      return;
+    }
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const screen = action === "characters" ? await this.deps.libraryScreens.homeScreen(interaction.user.id, language) : this.deps.libraryScreens.builderScreen(language);
+    await interaction.editReply({ content: screen.content, components: screen.components });
+  }
+
+  private fileModal(customId: string, title: string, label: string, hint: string, required: boolean): ModalBuilder {
+    return new ModalBuilder()
+      .setCustomId(customId)
+      .setTitle(title)
+      .addLabelComponents(new LabelBuilder().setLabel(label).setDescription(hint).setFileUploadComponent(new FileUploadBuilder().setCustomId(fileField).setRequired(required).setMinValues(required ? 1 : 0).setMaxValues(1)));
+  }
+
+  private async openImport(interaction: ButtonInteraction<"cached">): Promise<void> {
+    const t = texts[languageOf(interaction)].campaign.hub;
+    if (this.deps.libraryScreens === undefined) {
+      await interaction.reply({ content: t.unavailable, flags: MessageFlags.Ephemeral });
+      return;
+    }
+    await interaction.showModal(this.fileModal(hubCustomId("importSubmit"), t.importTitle, t.importFileLabel, t.importFileHint, true));
+  }
+
+  private async submitImport(interaction: ModalSubmitInteraction<"cached">): Promise<void> {
+    const language = languageOf(interaction);
+    const t = texts[language].campaign.hub;
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    if (this.deps.libraryScreens === undefined) return void (await interaction.editReply({ content: t.unavailable }));
+    const file = interaction.fields.getUploadedFiles(fileField, false)?.first();
+    await interaction.editReply({ content: await this.deps.libraryScreens.importFromFile(interaction.user.id, language, file === undefined ? null : { url: file.url, size: file.size }) });
+  }
+
+  // Upload adventure and Write an adventure: for DnD Admins, like the slash commands.
+  private async openAdventureForm(interaction: ButtonInteraction<"cached">, action: "uploadOpen" | "authorOpen"): Promise<void> {
+    const language = languageOf(interaction);
+    const text = texts[language];
+    const t = text.campaign.hub;
+    if (!(await this.deps.authority.isAdmin(interaction))) {
+      await interaction.reply({ content: text.campaign.cmd.adminOnly, flags: MessageFlags.Ephemeral });
+      return;
+    }
+    if (this.deps.intake === undefined) {
+      await interaction.reply({ content: t.unavailable, flags: MessageFlags.Ephemeral });
+      return;
+    }
+    if (action === "uploadOpen") {
+      await interaction.showModal(this.fileModal(hubCustomId("uploadSubmit"), t.uploadTitle, t.uploadFileLabel, t.uploadFileHint, true));
+      return;
+    }
+    if (!this.deps.intake.canAuthor) {
+      await interaction.reply({ content: text.campaign.adventure.authorNoModel, flags: MessageFlags.Ephemeral });
+      return;
+    }
+    await interaction.showModal(
+      new ModalBuilder()
+        .setCustomId(hubCustomId("authorSubmit"))
+        .setTitle(t.authorTitle)
+        .addLabelComponents(
+          new LabelBuilder()
+            .setLabel(t.authorIdeaLabel)
+            .setTextInputComponent(new TextInputBuilder().setCustomId(ideaField).setStyle(TextInputStyle.Paragraph).setRequired(false).setMaxLength(maxIdeaChars).setPlaceholder(t.authorIdeaPlaceholder)),
+          new LabelBuilder()
+            .setLabel(t.authorLanguageLabel)
+            .setStringSelectMenuComponent(
+              new StringSelectMenuBuilder()
+                .setCustomId(languageField)
+                .setRequired(true)
+                .addOptions([
+                  { label: text.campaign.language.en, value: "en", default: language === "en" },
+                  { label: text.campaign.language.zhTW, value: "zh-TW", default: language === "zh-TW" },
+                ]),
+            ),
+          new LabelBuilder().setLabel(t.authorNotesLabel).setDescription(t.authorNotesHint).setFileUploadComponent(new FileUploadBuilder().setCustomId(fileField).setRequired(false).setMinValues(0).setMaxValues(1)),
+        ),
+    );
+  }
+
+  private intakeContext(interaction: ModalSubmitInteraction<"cached">): IntakeContext {
+    return {
+      guildId: interaction.guildId,
+      userId: interaction.user.id,
+      language: languageOf(interaction),
+      editReply: (payload) => interaction.editReply(payload),
+    };
+  }
+
+  private async submitUpload(interaction: ModalSubmitInteraction<"cached">): Promise<void> {
+    const text = texts[languageOf(interaction)];
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    // A form can be sent by anyone who got hold of it; the admin check is made again.
+    if (!(await this.deps.authority.isAdmin(interaction))) return void (await interaction.editReply({ content: text.campaign.cmd.adminOnly }));
+    if (this.deps.intake === undefined) return void (await interaction.editReply({ content: text.campaign.hub.unavailable }));
+    const file = interaction.fields.getUploadedFiles(fileField, false)?.first();
+    await this.deps.intake.uploadFile(this.intakeContext(interaction), file === undefined ? null : { url: file.url, size: file.size });
+  }
+
+  private async submitAuthor(interaction: ModalSubmitInteraction<"cached">): Promise<void> {
+    const text = texts[languageOf(interaction)];
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    if (!(await this.deps.authority.isAdmin(interaction))) return void (await interaction.editReply({ content: text.campaign.cmd.adminOnly }));
+    if (this.deps.intake === undefined) return void (await interaction.editReply({ content: text.campaign.hub.unavailable }));
+    const notes = interaction.fields.getUploadedFiles(fileField, false)?.first();
+    await this.deps.intake.authorFrom(this.intakeContext(interaction), {
+      idea: interaction.fields.getTextInputValue(ideaField),
+      gameLanguage: interaction.fields.getStringSelectValues(languageField)[0] === "zh-TW" ? "zh-TW" : "en",
+      notes: notes === undefined ? null : { url: notes.url, size: notes.size },
+    });
+  }
+
+  // ---- Raise level (Manage) -------------------------------------------------
+
+  private async openLevel(interaction: ButtonInteraction<"cached">, campaignId: string): Promise<void> {
+    const record = (await this.deps.lobby.get({ guildId: interaction.guildId, campaignId }))?.record;
+    if (record === undefined) {
+      await interaction.reply({ content: texts.en.campaign.manage.gone, flags: MessageFlags.Ephemeral });
+      return;
+    }
+    const text = texts[record.language];
+    if (!(await this.deps.authority.canManage(interaction, record))) {
+      await interaction.reply({ content: text.campaign.manage.notAllowed, flags: MessageFlags.Ephemeral });
+      return;
+    }
+    await interaction.showModal(
+      new ModalBuilder()
+        .setCustomId(hubCustomId("levelSubmit", campaignId))
+        .setTitle(text.campaign.hub.levelTitle)
+        .addLabelComponents(
+          new LabelBuilder()
+            .setLabel(text.campaign.hub.levelLabel)
+            .setTextInputComponent(new TextInputBuilder().setCustomId(levelField).setStyle(TextInputStyle.Short).setRequired(true).setMinLength(1).setMaxLength(2).setPlaceholder(text.campaign.hub.levelPlaceholder)),
+        ),
+    );
+  }
+
+  private async submitLevel(interaction: ModalSubmitInteraction<"cached">, campaignId: string): Promise<void> {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const record = (await this.deps.lobby.get({ guildId: interaction.guildId, campaignId }))?.record;
+    if (record === undefined) return void (await interaction.editReply({ content: texts.en.campaign.manage.gone }));
+    const text = texts[record.language];
+    // Checked again here: the form is only a request.
+    if (!(await this.deps.authority.canManage(interaction, record))) return void (await interaction.editReply({ content: text.campaign.manage.notAllowed }));
+    const level = Number(interaction.fields.getTextInputValue(levelField).trim());
+    // A DnD Admin acts for the organizer: no user is named, so the engine sees the organizer.
+    const result = await this.deps.play.raiseLevel(record.key, null, Number.isInteger(level) ? level : 0, interaction.id);
+    await interaction.editReply({ content: result.kind === "ok" ? text.campaign.cmd.levelRaised({ level }) : refusalText(text, result.reason) });
   }
 
   // ---- Create game --------------------------------------------------------
@@ -328,7 +517,13 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     const rows: ActionRowBuilder<MessageActionRowComponentBuilder>[] = [];
     if (record.lifecycle !== "lobby") {
       rows.push(
-        row(paused ? verb("resume", t.resume).setStyle(ButtonStyle.Success) : verb("pause", t.pause), verb("closeRound", t.closeRound), verb("retry", t.retry), verb("redoPicture", t.redoPicture)),
+        row(
+          paused ? verb("resume", t.resume).setStyle(ButtonStyle.Success) : verb("pause", t.pause),
+          verb("closeRound", t.closeRound),
+          verb("retry", t.retry),
+          verb("redoPicture", t.redoPicture),
+          new ButtonBuilder().setCustomId(hubCustomId("levelOpen", id)).setLabel(t.levelButton).setStyle(ButtonStyle.Secondary),
+        ),
         row(verb("shortRest", t.shortRest), verb("longRest", t.longRest), verb("retryFight", t.retryFight), verb("retell", t.retell), verb("illustrate", t.illustrate)),
       );
     }

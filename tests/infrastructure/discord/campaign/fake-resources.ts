@@ -62,6 +62,13 @@ export class FakeResources implements CampaignResourceGateway {
     return Promise.resolve(id);
   }
 
+  public readonly placedFirst: string[] = [];
+
+  public placeFirst(_guildId: string, channelId: string): Promise<void> {
+    this.placedFirst.push(channelId);
+    return Promise.resolve();
+  }
+
   public channelExists(_guildId: string, channelId: string): Promise<boolean> {
     return Promise.resolve(this.channels.some((channel) => channel.id === channelId));
   }

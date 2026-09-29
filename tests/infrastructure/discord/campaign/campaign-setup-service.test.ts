@@ -46,6 +46,8 @@ describe("server setup", () => {
     expect(resources.forums.find((forum) => forum.options.name === "private-games")?.options.viewerRoleId).toBeTruthy();
     expect(result.settings).toMatchObject({ categoryId: "cat1", hubChannelId: "ch2" });
     expect(flatten(messages.live("ch2")[0]!.payload).text).toContain("No games yet");
+    // The hub is the door to the rest of the category, so it is put first, above the forums made after it.
+    expect(resources.placedFirst).toEqual(["ch2"]);
     expect(messages.pinned).toContain(messages.live("ch2")[0]!.messageId);
   });
 

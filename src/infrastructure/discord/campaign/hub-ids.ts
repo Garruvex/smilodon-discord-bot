@@ -20,6 +20,19 @@ export const hubActions = [
   "do",
   "endAsk",
   "endYes",
+  // The hub launcher: the same things the slash commands do, as buttons.
+  "help",
+  "characters",
+  "newCharacter",
+  "importOpen",
+  "importSubmit",
+  "uploadOpen",
+  "uploadSubmit",
+  "authorOpen",
+  "authorSubmit",
+  // Manage: raise the party's level (a form for the number).
+  "levelOpen",
+  "levelSubmit",
 ] as const;
 export type HubAction = (typeof hubActions)[number];
 

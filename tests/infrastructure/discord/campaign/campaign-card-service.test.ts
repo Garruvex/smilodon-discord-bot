@@ -241,8 +241,8 @@ describe("the card service", () => {
       const live = messages.live(hub);
       expect(live).toHaveLength(3);
       const [control, one, two] = live;
-      expect(flatten(control!.payload).buttons.map((button) => button.label)).toEqual(["Create game"]);
-      expect(flatten(control!.payload).buttons.map((button) => button.id)).toEqual(["dndhub:create"]);
+      expect(flatten(control!.payload).buttons.map((button) => button.label)).toEqual(["Create game", "How it works", "My Characters", "New character", "Import character", "Upload adventure", "Write an adventure"]);
+      expect(flatten(control!.payload).buttons.map((button) => button.id)).toEqual(["dndhub:create", "dndhub:help", "dndhub:characters", "dndhub:newCharacter", "dndhub:importOpen", "dndhub:uploadOpen", "dndhub:authorOpen"]);
       expect(messages.pinned).toContain(control!.messageId);
       expect(flatten(one!.payload).text).toContain("Moonlit Ruins");
       expect(flatten(one!.payload).text).toContain("Lobby · 0 / 3 players");
@@ -278,7 +278,7 @@ describe("the card service", () => {
       await cards.handleMessagesDeleted(guildId, hub, [control.messageId]);
       const live = messages.live(hub);
       expect(live).toHaveLength(3);
-      expect(flatten(live[0]!.payload).buttons.map((button) => button.label)).toEqual(["Create game"]);
+      expect(flatten(live[0]!.payload).buttons.map((button) => button.label)).toContain("Create game");
       expect(texts(live.slice(1))).toEqual([expect.stringContaining("Moonlit Ruins"), expect.stringContaining("Second Game")]);
       expect(live[0]!.messageId).not.toBe(control.messageId);
       expect(messages.pinned).toContain(live[0]!.messageId);
