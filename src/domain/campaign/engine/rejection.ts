@@ -56,6 +56,8 @@ export type Rejection =
   | { readonly code: "heroNotReplaceable" }
   | { readonly code: "unknownClass" }
   | { readonly code: "multiclassRequirementNotMet" }
+  | { readonly code: "invalidLevel" }
+  | { readonly code: "noLevelToRaise" }
   | { readonly code: "noAsiPending" }
   | { readonly code: "invalidAsiAllocation" }
   | { readonly code: "unknownItem" }

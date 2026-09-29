@@ -50,7 +50,9 @@ import { conflictLines } from "./character-library-component-handler.js";
 import { buildJournal, buildRecap } from "../../../application/campaign/views/story-views.js";
 import { actingHero } from "../../../domain/campaign/engine/members.js";
 import { renderRulesScreen, ruleLines } from "../campaign/rules-screen.js";
-import { houseRulePresets } from "../../../domain/campaign/rules/house-rules.js";
+import { houseRulePresets, levelingMode } from "../../../domain/campaign/rules/house-rules.js";
+import { maxLevel } from "../../../domain/campaign/character/leveling.js";
+import { renderLevelForm } from "../campaign/level-up-form.js";
 import { refusalText } from "../campaign/refusal-text.js";
 
 // Joins lines, dropping the earliest content lines when they do not fit, so the latest news survives.
@@ -158,12 +160,14 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "ruleOption":
     case "ruleValue":
     case "asiPick":
+    case "levelClass":
+    case "levelSkill":
     case "useSaved":
     case "saveProgress":
     case "journal":
     case "recap":
     case "proxy":
-    case "asiOpen":
+    case "levelOpen":
       return [];
     case "reactCast":
     case "reactDecline":
@@ -213,6 +217,7 @@ export class CampaignComponentHandler implements ComponentHandler {
       else if (parsed.action === "aim") await this.aimTurnAction(interaction, record, text);
       else if (parsed.action === "proxy") await this.changeProxy(interaction, record, text);
       else if (parsed.action === "asiPick") await this.chooseAsi(interaction, record, text);
+      else if (parsed.action === "levelClass" || parsed.action === "levelSkill") await this.chooseClass(interaction, record, text, parsed.action, parsed.argument);
       else if (parsed.action === "rulePreset" || parsed.action === "ruleOption" || parsed.action === "ruleValue") await this.changeRules(interaction, record, text, parsed.action, parsed.argument);
       else await this.chooseHero(interaction, record, text);
       return;
@@ -341,13 +346,10 @@ export class CampaignComponentHandler implements ComponentHandler {
       }
       case "saveProgress":
         return void (await reply(await this.saveProgress(record, userId, text)));
-      case "asiOpen": {
-        const loaded = await this.deps.unitOfWork.transaction((tx) => tx.loadCampaign(key));
-        const heroId = loaded?.state.members[userId]?.characterId ?? null;
-        const pendingAsi = heroId === null ? undefined : loaded?.state.characters[heroId]?.pendingAsi;
-        if (pendingAsi === undefined || pendingAsi <= 0) return void (await reply(refusalText(text, "noAsiPending")));
-        const screen = this.asiScreen(pendingAsi, text, key.campaignId);
-        await interaction.editReply({ content: screen.content, components: screen.components });
+      case "levelOpen": {
+        const form = await this.levelForm(record, text, userId);
+        if (form === null) return void (await reply(refusalText(text, "noHero")));
+        await interaction.editReply(form);
         return;
       }
       case "safety":
@@ -387,7 +389,7 @@ export class CampaignComponentHandler implements ComponentHandler {
         // Only the player's own hero gets the gear controls.
         const gear = parsed.action === "myHero" ? await this.heroMenus(record, text, userId) : [];
         const save = parsed.action === "myHero" ? await this.saveRow(record, text, userId) : [];
-        const asi = parsed.action === "myHero" ? await this.asiRow(record, text, userId) : [];
+        const asi = parsed.action === "myHero" ? await this.levelRow(record, text, userId) : [];
         const proxy = parsed.action === "myHero" ? await this.proxyMenu(record, text, userId) : [];
         await interaction.editReply({ content: sheet, components: [...gear, ...asi, ...proxy, ...save].slice(0, 5) });
         return;
@@ -791,23 +793,39 @@ export class CampaignComponentHandler implements ComponentHandler {
     ];
   }
 
-  // Opens the Ability Score Improvement picker, only when one is owed.
-  private async asiRow(record: CampaignRecord, text: Texts, userId: string): Promise<ActionRowBuilder<ButtonBuilder>[]> {
+  // Opens the level-up form, whenever the hero has a level to go or an Improvement owed.
+  private async levelRow(record: CampaignRecord, text: Texts, userId: string): Promise<ActionRowBuilder<ButtonBuilder>[]> {
     const loaded = await this.deps.unitOfWork.transaction((tx) => tx.loadCampaign(record.key));
     const heroId = loaded?.state.members[userId]?.characterId ?? null;
     const sheet = heroId === null ? undefined : loaded?.state.characters[heroId];
-    if (sheet === undefined || (sheet.pendingAsi ?? 0) <= 0) return [];
+    if (sheet === undefined || (sheet.level >= maxLevel && (sheet.pendingAsi ?? 0) <= 0)) return [];
+    const owed = (sheet.pendingAsi ?? 0) > 0;
     return [
-      new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(campaignCustomId("asiOpen", record.key.campaignId)).setLabel(text.campaign.button.improveAbility).setStyle(ButtonStyle.Success)),
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId(campaignCustomId("levelOpen", record.key.campaignId)).setLabel(text.campaign.button.levelUp).setStyle(owed ? ButtonStyle.Success : ButtonStyle.Secondary),
+      ),
     ];
   }
 
-  // The ability-score picker itself: one ability for +2, or two for +1 each.
-  private asiScreen(pendingAsi: number, text: Texts, campaignId: string): { readonly content: string; readonly components: ActionRowBuilder<StringSelectMenuBuilder>[] } {
-    const t = text.campaign;
-    const options = abilities.map((ability) => ({ label: t.ability[ability], value: ability }));
-    const menu = new StringSelectMenuBuilder().setCustomId(campaignCustomId("asiPick", campaignId)).setPlaceholder(t.asi.placeholder).setMinValues(1).setMaxValues(2).addOptions(options);
-    return { content: t.asi.prompt({ count: pendingAsi }), components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu)] };
+  // The private level-up form for the player's own hero, or null when they have none.
+  private async levelForm(record: CampaignRecord, text: Texts, userId: string, note?: string): Promise<{ readonly content: string; readonly components: ActionRowBuilder<StringSelectMenuBuilder>[] } | null> {
+    const loaded = await this.deps.unitOfWork.transaction((tx) => tx.loadCampaign(record.key));
+    const heroId = loaded?.state.members[userId]?.characterId ?? null;
+    const sheet = heroId === null ? undefined : loaded?.state.characters[heroId];
+    const glossary = this.deps.glossaries[record.language];
+    if (loaded === undefined || sheet === undefined || glossary === undefined) return null;
+    return renderLevelForm({ campaignId: record.key.campaignId, sheet, milestone: record.houseRules[levelingMode.id] === "milestone", text, glossary, ...(note === undefined ? {} : { note }) });
+  }
+
+  // The form's class and skill menus: declare which class the next level lands in.
+  private async chooseClass(interaction: StringSelectMenuInteraction, record: CampaignRecord, text: Texts, action: "levelClass" | "levelSkill", argument: string | null): Promise<void> {
+    await interaction.deferUpdate();
+    const value = interaction.values[0] ?? "";
+    const buildClass = action === "levelClass" ? value : argument ?? "";
+    const result = await this.deps.play.chooseClassLevel(record.key, interaction.user.id, buildClass, action === "levelSkill" ? value : undefined, interaction.id);
+    const note = result.kind === "ok" ? text.campaign.reply.classPlanned({ class: classLabel(text, buildClass) }) : refusalText(text, result.reason);
+    const form = await this.levelForm(record, text, interaction.user.id, note);
+    await interaction.editReply(form ?? { content: note, components: [] });
   }
 
   // "Let someone play my hero in fights while I am away": a menu of the other players on My Hero.
@@ -855,7 +873,9 @@ export class CampaignComponentHandler implements ComponentHandler {
     const changes = chosen
       .map((ability) => `${text.campaign.ability[ability]} ${before?.[ability] ?? 0} → ${Math.min(20, (before?.[ability] ?? 0) + (second === undefined ? 2 : 1))}`)
       .join(", ");
-    await this.showHeroAgain(interaction, record, text, text.campaign.reply.asiApplied({ changes }));
+    const form = await this.levelForm(record, text, userId, text.campaign.reply.asiApplied({ changes }));
+    if (form === null) await this.showHeroAgain(interaction, record, text, text.campaign.reply.asiApplied({ changes }));
+    else await interaction.editReply(form);
   }
 
   // The Table rules screen's menus: pick a bundle, pick an option, or pick a

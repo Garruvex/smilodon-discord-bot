@@ -2,7 +2,7 @@ import { abilities, type Ability } from "../rules/effects.js";
 import type { CasterType } from "../rules/content-definitions.js";
 import type { Skill } from "../rules/skills.js";
 import { abilityModifier, type CharacterSheet } from "./character-sheet.js";
-import { classLevelsOf, classTemplates, deriveSheet, isBuildClass, type BuildChoices, type BuildClass, type DerivedSheet } from "./character-build.js";
+import { canMulticlassInto, classLevelsOf, classTemplates, deriveSheet, isBuildClass, type BuildChoices, type BuildClass, type DerivedSheet } from "./character-build.js";
 
 // XP and levels on top of the class roster (character-build.ts): the
 // roster stops at what a level-1 hero has; this is what changes as they earn
@@ -201,7 +201,7 @@ function combinedSpellcasting(
 // caller (combat/combat-flow.ts's grantExperience, engine/members.ts's
 // chooseClassLevel) checks canMulticlassInto first and emits the event.
 export function levelUp(
-  sheet: CharacterSheet,
+  sheet: Omit<CharacterSheet, "ownerUserId">,
   buildClass: BuildClass,
   skillChoice?: Skill,
 ): Pick<CharacterSheet, "level" | "maxHp" | "abilityScores" | "spellcasting" | "features" | "skills" | "pactMagic" | "pendingAsi"> & {
@@ -235,6 +235,63 @@ export function levelUp(
   }
 
   return { level, maxHp: sheet.maxHp + hpGain, abilityScores, spellcasting, features, classLevels, skills, pendingAsi, ...(pactMagic === undefined ? {} : { pactMagic }) };
+}
+
+// A hero before it has an owner (an adventure's preset, a library snapshot's
+// derived sheet) levels the same way a seated one does.
+export type Levelable = Omit<CharacterSheet, "ownerUserId">;
+export type LevelStep = ReturnType<typeof levelUp>;
+
+// Which class a hero's next level lands in: the class declared by the
+// chooseClassLevel command, if it still qualifies (scores can change between
+// declaring and reaching the level), otherwise the class already being leveled.
+export function nextClassFor(sheet: Levelable): BuildClass | null {
+  const pending = sheet.pendingClassLevel;
+  if (pending !== undefined && isBuildClass(pending.buildClass) && canMulticlassInto(pending.buildClass, sheet)) return pending.buildClass;
+  if (sheet.className !== undefined && isBuildClass(sheet.className)) return sheet.className;
+  const [first] = Object.keys(classLevelsOf(sheet));
+  return first !== undefined && isBuildClass(first) ? first : null;
+}
+
+// Every level a hero gains on the way up to `targetLevel`, one step each, so a
+// big jump still lands as a readable sequence. A declared multiclass is spent
+// on the first of those levels only; the rest continue whatever class that
+// level left the hero leveling (the same one-shot-per-declaration
+// simplification the XP path always had).
+export function levelSteps(sheet: Levelable, targetLevel: number): readonly LevelStep[] {
+  const steps: LevelStep[] = [];
+  let current = sheet;
+  while (current.level < Math.min(targetLevel, maxLevel)) {
+    const buildClass = nextClassFor(current);
+    if (buildClass === null) break;
+    const skillChoice = current.pendingClassLevel?.buildClass === buildClass ? current.pendingClassLevel.skillChoice : undefined;
+    const next = levelUp(current, buildClass, skillChoice);
+    steps.push(next);
+    const { pendingClassLevel: _spent, ...rest } = current;
+    current = { ...rest, ...next };
+  }
+  return steps;
+}
+
+// A hero brought up to `level` in one go (a game that starts above level 1,
+// a replacement joining a party that has grown): the level steps, with XP at
+// the threshold so the hero reads as exactly that level in either leveling
+// mode. Improvements earned on the way are left for the player to spend.
+export function raiseToLevel<S extends Levelable>(sheet: S, level: number): S {
+  const steps = levelSteps(sheet, level);
+  const last = steps[steps.length - 1];
+  if (last === undefined) return sheet;
+  const { pendingClassLevel: _spent, ...rest } = sheet;
+  return { ...rest, ...last, xp: Math.max(sheet.xp ?? 0, xpThresholds[last.level - 1] ?? 0) } as unknown as S;
+}
+
+// What the level-up form offers for the hero's next level: the class they are
+// leveling (always), and every other class they qualify to multiclass into.
+export function classChoicesFor(sheet: Levelable): readonly { readonly buildClass: BuildClass; readonly current: boolean }[] {
+  const held = classLevelsOf(sheet);
+  return (Object.keys(classTemplates) as BuildClass[])
+    .filter((buildClass) => (held[buildClass] ?? 0) > 0 || canMulticlassInto(buildClass, sheet))
+    .map((buildClass) => ({ buildClass, current: (held[buildClass] ?? 0) > 0 }));
 }
 
 // Saved progress (the character library's Save Progress and export): what a

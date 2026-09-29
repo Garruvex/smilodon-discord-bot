@@ -177,6 +177,8 @@ export const zhTWCommandDescriptions = {
   "dnd/close-round": "不再等待，直接結束這一回合的收件（主辦人）", // Closes the current round without waiting (organizer).
   "dnd/rest": "讓隊伍在戰鬥之間休息（主辦人）", // Has the party take a rest between fights (organizer).
   "dnd/rest:type": "休息的長度", // How long the rest is.
+  "dnd/level": "把所有存活的角色提升到指定等級，用於里程碑升級（主辦人）", // Raises every living hero to a level, for milestone leveling (organizer).
+  "dnd/level:level": "隊伍要提升到的等級", // The level to raise the party to.
   "dnd/retry": "請地下城主重新結算被擱置的回合（主辦人）", // Asks the DM to try the held round again (organizer).
   "dnd/characters": "開啟你的角色庫：建立、檢視、匯出與刪除角色", // Opens your character library: build, view, export and delete characters.
   "dnd/import-character": "從匯出的檔案把角色加入你的角色庫", // Adds a character from an exported file to your library.

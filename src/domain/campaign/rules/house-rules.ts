@@ -75,6 +75,33 @@ export const importedGear: HouseRuleOption<"kept" | "starter"> = {
   defaultValue: "kept",
 };
 
+// How heroes level. "experience" is the 2014 rules: defeated foes give XP and a
+// threshold crossed is a level. "milestone" gives no XP; the organizer (or an
+// authored story beat) raises the party's level instead. Either way the
+// organizer can raise the party by hand.
+export const levelingMode: HouseRuleOption<"experience" | "milestone"> = {
+  id: "leveling",
+  values: ["experience", "milestone"],
+  defaultValue: "experience",
+};
+
+// The level a new game's heroes start at. "adventure" uses the level the
+// adventure is written for (level 1 when it names none); a number sets it for
+// the table, and everyone is brought up to it.
+export const startingLevelValues = ["adventure", "level1", "level2", "level3", "level4", "level5", "level6", "level7", "level8", "level9", "level10"] as const;
+export const startingLevelRule: HouseRuleOption<(typeof startingLevelValues)[number]> = {
+  id: "starting-level",
+  values: startingLevelValues,
+  defaultValue: "adventure",
+};
+
+// The level heroes begin at, from the table's rule and the adventure's own.
+export function startingLevelFor(saved: Readonly<Record<string, string>>, adventureLevel: number | undefined): number {
+  const chosen = saved[startingLevelRule.id] ?? startingLevelRule.defaultValue;
+  const level = chosen === "adventure" ? adventureLevel ?? 1 : Number(chosen.replace("level", ""));
+  return Number.isInteger(level) && level >= 1 ? level : 1;
+}
+
 export const houseRuleOptions: readonly HouseRuleOption<string>[] = [
   naturalRollsOnChecks,
   awaySafety,
@@ -84,6 +111,8 @@ export const houseRuleOptions: readonly HouseRuleOption<string>[] = [
   criticalHits,
   itemTrading,
   importedGear,
+  levelingMode,
+  startingLevelRule,
 ];
 
 // A named bundle of option values (plan §4). Applying one sets exactly the

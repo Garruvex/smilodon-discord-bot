@@ -106,7 +106,7 @@ export const campaignEn = {
   "campaign.button.skipSmite": "Skip",
   "campaign.button.takeOpportunity": "Take the attack",
   "campaign.button.holdOpportunity": "Hold",
-  "campaign.button.improveAbility": "Improve Ability Scores",
+  "campaign.button.levelUp": "Level Up",
 
   "campaign.hero.line": "**{name}** · {class} · Lv {level}",
   "campaign.hero.player": "Played by {user}",
@@ -611,6 +611,51 @@ export const campaignEn = {
 
   "campaign.asi.prompt": "Pick one ability for +2, or two abilities for +1 each. ({count} to spend)",
   "campaign.asi.placeholder": "Ability score(s)",
+  "campaign.cmd.levelRaised": "The party is now level {level}. Open My Hero → Level Up for new choices.",
+  "campaign.refusal.invalidLevel": "Pick a level from 2 to 20.",
+  "campaign.refusal.noLevelToRaise": "Every living hero is already at that level or higher.",
+  "campaign.rules.opt.leveling.name": "Leveling",
+  "campaign.rules.opt.leveling.info": "How heroes gain levels. The organizer can always raise the party with /dnd level.",
+  "campaign.rules.opt.leveling.experience": "Experience points from fights (2014 rules)",
+  "campaign.rules.opt.leveling.milestone": "Milestones: the story and the organizer raise the level",
+  "campaign.rules.opt.startingLevel.name": "Starting level",
+  "campaign.rules.opt.startingLevel.info": "The level heroes begin at. Everyone below it is brought up to it when the game starts.",
+  "campaign.rules.opt.startingLevel.adventure": "The adventure's own level",
+  "campaign.rules.opt.startingLevel.level1": "Level 1",
+  "campaign.rules.opt.startingLevel.level2": "Level 2",
+  "campaign.rules.opt.startingLevel.level3": "Level 3",
+  "campaign.rules.opt.startingLevel.level4": "Level 4",
+  "campaign.rules.opt.startingLevel.level5": "Level 5",
+  "campaign.rules.opt.startingLevel.level6": "Level 6",
+  "campaign.rules.opt.startingLevel.level7": "Level 7",
+  "campaign.rules.opt.startingLevel.level8": "Level 8",
+  "campaign.rules.opt.startingLevel.level9": "Level 9",
+  "campaign.rules.opt.startingLevel.level10": "Level 10",
+
+
+
+
+
+
+
+
+
+
+  "campaign.level.milestone": "Milestone table: the story and the organizer raise your level. XP is not counted here.",
+  "campaign.level.xp": "XP {bar} {xp} / {next}",
+  "campaign.level.xpMax": "XP {xp} · maximum level",
+  "campaign.level.next": "**Next level ({level}):** {class} {classLevel} · +{hp} HP",
+  "campaign.level.gains": "New: {features}",
+  "campaign.level.asiNext": "This level comes with an Ability Score Improvement.",
+  "campaign.level.maxed": "Level 20: there is nothing more to gain.",
+  "campaign.level.hint": "Each choice below is saved as you make it.",
+  "campaign.level.classPlaceholder": "Class for your next level",
+  "campaign.level.classCurrent": "{class} (level {level})",
+  "campaign.level.classNew": "{class} (new class)",
+  "campaign.level.classKeep": "Keep leveling this class",
+  "campaign.level.classMulti": "Multiclass: you meet its requirement",
+  "campaign.level.skillPlaceholder": "Skill your new class gives you",
+  "campaign.reply.classPlanned": "Your next level will be {class}.",
 
   "campaign.turn.header": "**{hero}** · {zone}\nAction {action} · Bonus action {bonus} · Reaction {reaction} · Movement {feet} ft",
   "campaign.turn.engaged": "In melee with {names}.",

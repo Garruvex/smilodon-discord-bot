@@ -84,6 +84,9 @@ export type CampaignCommand =
   // Spends one unspent Ability Score Improvement (character/leveling.ts's
   // asiLevels): +2 to one ability, or +1 to two, each capped at 20 by the engine.
   | { readonly kind: "chooseAsi"; readonly characterId: CharacterId; readonly allocation: { readonly plusTwo: Ability } | { readonly plusOne: readonly [Ability, Ability] } }
+  // The organizer raises every living hero to this level (milestone
+  // leveling, or a reward at an experience table). Not during a fight.
+  | { readonly kind: "raiseLevel"; readonly level: number }
   | ShopCommand
   | DialogueCommand
   | UtilityMagicCommand
@@ -217,6 +220,9 @@ export interface EncounterSpec {
   // Added to the party stash on a victory. Absent: none.
   readonly loot?: readonly ContentId<"item">[];
   readonly gold?: number;
+  // A victory here raises the party to this level at a milestone table (the
+  // adventure's own story beat). Ignored where XP levels the party.
+  readonly milestoneLevel?: number;
 }
 
 export interface EncounterMonster {

@@ -142,11 +142,37 @@ describe("replacing a fallen hero", () => {
     expect(state?.heroStatus[`${heroes[1]}-2`]).toBeUndefined();
   });
 
+  it("brings the replacement up to a party that has since grown", async () => {
+    const r = rig();
+    const key = await withFallenHero(r);
+    const { controller } = controllerFor(r);
+    expect(await controller.raiseLevel(key, "u-org", 3, "i-0")).toEqual({ kind: "ok" });
+    expect(await controller.joinHero(key, "u-b", heroes[1] ?? "", "i-1")).toEqual({ kind: "ok" });
+    const fresh = (await r.store.transaction((tx) => tx.loadCampaign(key)))?.state.characters[`${heroes[1]}-2`];
+    expect(fresh).toMatchObject({ level: 3, ownerUserId: "u-b" });
+  });
+
   it("refuses a hero that is not on offer, and a player whose hero is alive", async () => {
     const r = rig();
     const key = await withFallenHero(r);
     const { controller } = controllerFor(r);
     expect(refusal(await controller.joinHero(key, "u-b", heroes[0] ?? "", "i-1"))).toBe("heroNotReplaceable");
     expect(refusal(await controller.joinHero(key, "u-org", heroes[2] ?? "", "i-2"))).toBe("heroNotReplaceable");
+  });
+});
+
+describe("raising the party's level", () => {
+  it("is the organizer's to do, in range, and levels every living hero", async () => {
+    const r = rig();
+    const key = await twoPlayerCampaign(r);
+    const { controller } = controllerFor(r);
+    expect(refusal(await controller.raiseLevel(key, "u-b", 3, "i-1"))).toBe("notOrganizer");
+    expect(refusal(await controller.raiseLevel(key, "u-org", 1, "i-2"))).toBe("invalidLevel");
+    expect(await controller.raiseLevel(key, "u-org", 3, "i-3")).toEqual({ kind: "ok" });
+    const state = (await r.store.transaction((tx) => tx.loadCampaign(key)))?.state;
+    expect(Object.values(state?.characters ?? {}).map((sheet) => sheet.level)).toEqual([3, 3]);
+    expect(refusal(await controller.raiseLevel(key, "u-org", 3, "i-4"))).toBe("noLevelToRaise");
+    // A DnD Admin acts for the organizer without being named.
+    expect(await controller.raiseLevel(key, null, 4, "i-5")).toEqual({ kind: "ok" });
   });
 });

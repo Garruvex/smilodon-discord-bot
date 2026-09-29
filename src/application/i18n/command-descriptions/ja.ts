@@ -175,6 +175,8 @@ export const jaCommandDescriptions = {
   "dnd/close-round": "待たずに現在のラウンドを締め切ります（主催者）", // Closes the current round without waiting (organizer).
   "dnd/rest": "戦闘の合間にパーティを休ませます（主催者）", // Has the party take a rest between fights (organizer).
   "dnd/rest:type": "休憩の長さ", // How long the rest is.
+  "dnd/level": "生存中のヒーロー全員を指定のレベルに上げます。マイルストーン方式用（主催者）", // Raises every living hero to a level, for milestone leveling (organizer).
+  "dnd/level:level": "パーティを上げるレベル", // The level to raise the party to.
   "dnd/retry": "保留になったラウンドを DM にやり直させます（主催者）", // Asks the DM to try the held round again (organizer).
   "dnd/characters": "あなたのキャラクターライブラリを開きます（作成・表示・書き出し・削除）", // Opens your character library: build, view, export and delete characters.
   "dnd/import-character": "書き出したファイルからキャラクターをライブラリに追加します", // Adds a character from an exported file to your library.

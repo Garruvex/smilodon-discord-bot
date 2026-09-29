@@ -144,6 +144,9 @@ export type CampaignEvent =
       readonly pactMagic?: CharacterSheet["pactMagic"];
       // Unspent Ability Score Improvements after this level (character/leveling.ts's asiLevels).
       readonly pendingAsi?: number;
+      // Present when the level was given rather than earned (milestone): the
+      // XP threshold of the level, so XP and level stay in step.
+      readonly xp?: number;
     }
   // The hero's next level will land in `buildClass` (character-build.ts's
   // BuildClass), and, if that class is new to them and grants one, the skill

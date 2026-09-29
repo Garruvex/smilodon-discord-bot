@@ -4,7 +4,7 @@ import type { CampaignLanguage } from "../../domain/campaign/adventure/adventure
 import type { UserId } from "../../domain/campaign/core/ids.js";
 import * as lobbyRules from "../../domain/campaign/lobby/lobby.js";
 import type { LobbyRefusal, LobbyResult } from "../../domain/campaign/lobby/lobby.js";
-import { HouseRuleError, resolveHouseRules } from "../../domain/campaign/rules/house-rules.js";
+import { HouseRuleError, resolveHouseRules, startingLevelFor } from "../../domain/campaign/rules/house-rules.js";
 import { KeyedSerialQueue } from "../concurrency/keyed-serial-queue.js";
 import type { CampaignCommandBus } from "./campaign-command-bus.js";
 import { emptyChannels, type CampaignRecord, type CampaignVisibility, type StoredRecord } from "./ports/campaign-record.js";
@@ -322,7 +322,7 @@ export class CampaignLobbyService {
         }
         let state;
         try {
-          state = buildStartingState({ campaignId: key.campaignId, organizerId: record.organizerId, adventure: document, seats, pacing: record.pacing });
+          state = buildStartingState({ campaignId: key.campaignId, organizerId: record.organizerId, adventure: document, seats, pacing: record.pacing, startingLevel: startingLevelFor(record.houseRules, document.bible.startingLevel) });
         } catch (error) {
           if (error instanceof StartingStateError) return refused("notReady");
           throw error;

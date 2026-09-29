@@ -18,6 +18,9 @@ export interface AdventureBible {
   readonly language: CampaignLanguage;
   readonly title: string;
   readonly premise: string;
+  // The level the adventure is written for. Absent: level 1. The table's
+  // starting-level rule can override it; everyone is brought up to the result.
+  readonly startingLevel?: number;
   readonly dmOverview: string;
   readonly startScene: SceneId;
   readonly scenes: readonly BibleScene[];
@@ -92,6 +95,9 @@ export interface BibleEncounter {
   // Found by the party on a victory.
   readonly loot: readonly ContentId<"item">[];
   readonly gold: number;
+  // Winning this fight is a story milestone: at a milestone table the party is
+  // raised to this level. An experience table ignores it.
+  readonly milestoneLevel?: number;
 }
 
 export function findScene(bible: AdventureBible, sceneId: string | null): BibleScene | undefined {
@@ -115,6 +121,6 @@ export function findClue(bible: AdventureBible, clueId: string): BibleClue | und
 }
 
 export function encounterSpec(encounter: BibleEncounter): EncounterSpec {
-  const { id, zones, edges, partyZoneId, monsters, loot, gold } = encounter;
-  return { id, zones, edges, partyZoneId, monsters, loot, gold };
+  const { id, zones, edges, partyZoneId, monsters, loot, gold, milestoneLevel } = encounter;
+  return { id, zones, edges, partyZoneId, monsters, loot, gold, ...(milestoneLevel === undefined ? {} : { milestoneLevel }) };
 }

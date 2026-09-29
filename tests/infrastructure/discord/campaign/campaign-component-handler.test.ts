@@ -582,18 +582,53 @@ describe("an Ability Score Improvement owed on My Hero", () => {
     return { heroId, str: sheet.abilityScores.str };
   }
 
-  it("offers the picker only when one is owed", async () => {
+  const menuIds = (sent: readonly Sent[]): string[] => buttonIds(sent).filter((id) => id.startsWith("dnd:"));
+
+  it("always offers Level Up on My Hero, and the form shows the ability menu only when an Improvement is owed", async () => {
     const t = await harness();
     await started(t);
-    expect(buttonIds(await t.press("myHero", "u-org")).some((id) => id.startsWith("dnd:asiOpen:"))).toBe(false);
+    expect(buttonIds(await t.press("myHero", "u-org")).some((id) => id.startsWith("dnd:levelOpen:"))).toBe(true);
+    const plain = await t.press("levelOpen", "u-org");
+    expect(menuIds(plain).some((id) => id.startsWith("dnd:asiPick:"))).toBe(false);
+    expect(menuIds(plain).some((id) => id.startsWith("dnd:levelClass:"))).toBe(true);
+    expect(contentOf(plain)).toContain("Level 1");
+    expect(contentOf(plain)).toContain("Next level (2)");
+
     await withPendingAsi(t);
-    expect(buttonIds(await t.press("myHero", "u-org")).some((id) => id.startsWith("dnd:asiOpen:"))).toBe(true);
+    const owed = await t.press("levelOpen", "u-org");
+    expect(menuIds(owed).some((id) => id.startsWith("dnd:asiPick:"))).toBe(true);
+    expect(contentOf(owed)).toContain("1 Ability Score Improvement");
   });
 
-  it("refuses to open the picker once nothing is owed", async () => {
+  it("shows how far the hero is from the next level, and says so plainly at a milestone table", async () => {
     const t = await harness();
     await started(t);
-    expect(contentOf(await t.press("asiOpen", "u-org"))).toBe("This hero has no Ability Score Improvement to spend right now.");
+    expect(contentOf(await t.press("levelOpen", "u-org"))).toContain(" 0 / 300");
+    await t.r.store.transaction(async (tx) => {
+      const latest = await tx.loadRecord(t.key);
+      if (latest === undefined) throw new Error("record");
+      await tx.saveRecord({ ...latest.record, houseRules: { ...latest.record.houseRules, leveling: "milestone" } }, latest.revision);
+    });
+    expect(contentOf(await t.press("levelOpen", "u-org"))).toContain("Milestone table");
+  });
+
+  it("declares the class the next level lands in, from the form", async () => {
+    const t = await harness();
+    await started(t);
+    const picked = fakeInteraction({ customId: `dnd:levelClass:${t.key.campaignId}`, userId: "u-org", values: ["barbarian"], kind: "select" });
+    await t.handler.execute({ interaction: picked.interaction, logger: quiet as never });
+    expect(contentOf(picked.sent)).toContain("Your next level will be Barbarian.");
+    const stored = await t.r.store.transaction((tx) => tx.loadCampaign(t.key));
+    const heroId = stored?.state.members["u-org"]?.characterId ?? "";
+    expect(stored?.state.characters[heroId]?.pendingClassLevel).toMatchObject({ buildClass: "barbarian" });
+  });
+
+  it("refuses a class whose requirement the hero does not meet", async () => {
+    const t = await harness();
+    await started(t);
+    const picked = fakeInteraction({ customId: `dnd:levelClass:${t.key.campaignId}`, userId: "u-org", values: ["wizard"], kind: "select" });
+    await t.handler.execute({ interaction: picked.interaction, logger: quiet as never });
+    expect(contentOf(picked.sent)).toContain("multiclassing requirement");
   });
 
   it("adds +2 to one ability and clears the pending improvement", async () => {

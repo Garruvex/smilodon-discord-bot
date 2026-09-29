@@ -169,6 +169,18 @@ describe("starting the campaign", () => {
     expect(stored?.ruleset).toMatchObject({ houseRules: {} });
   });
 
+  it("brings every hero up to the table's starting level", async () => {
+    const { service, store } = setup();
+    const { key } = value(await service.create(input({ houseRules: { "starting-level": "level3" } })));
+    value(await service.join(key, "u-org"));
+    value(await service.chooseHero(key, "u-org", heroIds[0] ?? ""));
+    value(await service.start(key, "u-org"));
+    const stored = await store.transaction((tx) => tx.loadCampaign(key));
+    const levels = Object.values(stored?.state.characters ?? {}).map((sheet) => sheet.level);
+    expect(levels.length).toBeGreaterThan(0);
+    expect(levels.every((level) => level === 3)).toBe(true);
+  });
+
   it("needs the organizer and a ready party, and only happens once", async () => {
     const { service, key } = await fullLobby();
     expect(refusal(await service.start(key, "u-b"))).toBe("notOrganizer");

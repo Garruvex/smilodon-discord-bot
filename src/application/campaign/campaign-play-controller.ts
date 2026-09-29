@@ -1,3 +1,4 @@
+import { raiseToLevel } from "../../domain/campaign/character/leveling.js";
 import type { ContentId } from "../../domain/campaign/rules/content-id.js";
 import type { CampaignCommand, CombatCommand } from "../../domain/campaign/commands/campaign-command.js";
 import type { Ability } from "../../domain/campaign/rules/effects.js";
@@ -61,15 +62,28 @@ export class CampaignPlayController {
     if (preset === undefined) return { kind: "refused", reason: "invalidHero" };
     const used = Object.values(loaded.stored.state.characters).filter((sheet) => baseHeroId(sheet.id) === presetId).length;
     const { class: className, ...sheet } = preset;
+    const state = loaded.stored.state;
+    const partyLevel = Math.max(1, ...Object.values(state.characters).filter((other) => !isFallen(state, other.id)).map((other) => other.level));
+    const joining = raiseToLevel({ ...sheet, className, id: `${presetId}-${used + 1}`, ownerUserId: userId, name: used === 0 ? preset.name : `${preset.name} ${roman(used + 1)}` }, partyLevel);
     const outcome = await this.options.bus.execute(
       key,
-      { kind: "joinHero", sheet: { ...sheet, className, id: `${presetId}-${used + 1}`, ownerUserId: userId, name: used === 0 ? preset.name : `${preset.name} ${roman(used + 1)}` } },
+      { kind: "joinHero", sheet: joining },
       { commandId: `dnd:${interactionId}`, actor: { kind: "user", userId } },
     );
     if (outcome.kind === "notFound") return { kind: "refused", reason: "notFound" };
     if (outcome.kind === "rejected") return { kind: "refused", reason: outcome.rejection.code };
     this.options.refresher.refresh(key);
     return { kind: "ok" };
+  }
+
+  // The organizer raises every living hero to `level` (milestone leveling).
+  public raiseLevel(key: CampaignKey, userId: UserId | null, level: number, interactionId: string): Promise<PlayResult> {
+    return this.perform(key, userId, interactionId, () => ({ kind: "raiseLevel", level }));
+  }
+
+  // The hero's next level lands in `buildClass` (their own, or a multiclass they qualify for).
+  public chooseClassLevel(key: CampaignKey, userId: UserId, buildClass: string, skillChoice: string | undefined, interactionId: string): Promise<PlayResult> {
+    return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "chooseClassLevel", characterId, buildClass, ...(skillChoice === undefined ? {} : { skillChoice }) }));
   }
 
   // roundNumber is the round the form was opened for; the engine refuses it in any other round.

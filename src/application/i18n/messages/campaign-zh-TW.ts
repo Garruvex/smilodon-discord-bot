@@ -106,7 +106,7 @@ export const campaignZhTW = {
   "campaign.button.skipSmite": "跳過",
   "campaign.button.takeOpportunity": "發動攻擊",
   "campaign.button.holdOpportunity": "保留反應",
-  "campaign.button.improveAbility": "提升能力值",
+  "campaign.button.levelUp": "升級",
 
   "campaign.hero.line": "**{name}** · {class} · {level} 級",
   "campaign.hero.player": "玩家：{user}",
@@ -610,6 +610,51 @@ export const campaignZhTW = {
 
   "campaign.asi.prompt": "選擇一項能力提升 2 點，或兩項能力各提升 1 點。（還有 {count} 次可用）",
   "campaign.asi.placeholder": "能力值",
+  "campaign.cmd.levelRaised": "隊伍現在是 {level} 級。到「我的角色」→「升級」查看新的選擇。",
+  "campaign.refusal.invalidLevel": "請選擇 2 到 20 級。",
+  "campaign.refusal.noLevelToRaise": "所有存活的角色都已達到或超過該等級。",
+  "campaign.rules.opt.leveling.name": "升級方式",
+  "campaign.rules.opt.leveling.info": "角色如何升級。主辦人隨時可以用 /dnd level 提升隊伍等級。",
+  "campaign.rules.opt.leveling.experience": "戰鬥獲得經驗值（2014 規則）",
+  "campaign.rules.opt.leveling.milestone": "里程碑：由故事與主辦人提升等級",
+  "campaign.rules.opt.startingLevel.name": "起始等級",
+  "campaign.rules.opt.startingLevel.info": "角色一開始的等級。遊戲開始時，低於這個等級的角色都會被提升到它。",
+  "campaign.rules.opt.startingLevel.adventure": "依冒險本身的等級",
+  "campaign.rules.opt.startingLevel.level1": "1 級",
+  "campaign.rules.opt.startingLevel.level2": "2 級",
+  "campaign.rules.opt.startingLevel.level3": "3 級",
+  "campaign.rules.opt.startingLevel.level4": "4 級",
+  "campaign.rules.opt.startingLevel.level5": "5 級",
+  "campaign.rules.opt.startingLevel.level6": "6 級",
+  "campaign.rules.opt.startingLevel.level7": "7 級",
+  "campaign.rules.opt.startingLevel.level8": "8 級",
+  "campaign.rules.opt.startingLevel.level9": "9 級",
+  "campaign.rules.opt.startingLevel.level10": "10 級",
+
+
+
+
+
+
+
+
+
+
+  "campaign.level.milestone": "里程碑模式：由故事與主辦人提升你的等級，這裡不計算經驗值。",
+  "campaign.level.xp": "經驗值 {bar} {xp} / {next}",
+  "campaign.level.xpMax": "經驗值 {xp} · 已達最高等級",
+  "campaign.level.next": "**下一級（{level}）：**{class} {classLevel} 級 · 生命值 +{hp}",
+  "campaign.level.gains": "新獲得：{features}",
+  "campaign.level.asiNext": "這一級可以提升能力值。",
+  "campaign.level.maxed": "已達 20 級，沒有更多可獲得的了。",
+  "campaign.level.hint": "下方的每項選擇都會立即儲存。",
+  "campaign.level.classPlaceholder": "下一級要升的職業",
+  "campaign.level.classCurrent": "{class}（{level} 級）",
+  "campaign.level.classNew": "{class}（新職業）",
+  "campaign.level.classKeep": "繼續升這個職業",
+  "campaign.level.classMulti": "兼職：你符合它的需求",
+  "campaign.level.skillPlaceholder": "新職業給你的技能",
+  "campaign.reply.classPlanned": "下一級將升 {class}。",
 
   "campaign.turn.header": "**{hero}** · {zone}\n動作 {action} · 附贈動作 {bonus} · 反應 {reaction} · 移動 {feet} 尺",
   "campaign.turn.engaged": "正與{names}近戰",

@@ -64,10 +64,13 @@ export const campaignActions = [
   // An opportunity attack offer: take it (spending the reaction), or hold it.
   "opportunityTake",
   "opportunityHold",
-  // An unspent Ability Score Improvement (a menu on My Hero): open the
-  // picker, then pick one ability for +2 or two abilities for +1 each.
-  "asiOpen",
+  // The level-up form (a button on My Hero): progress, the next level's class,
+  // and any Ability Score Improvement, as menus that save each choice. Open the
+  // form, pick the class (and skill), pick one ability for +2 or two for +1 each.
+  "levelOpen",
   "asiPick",
+  "levelClass",
+  "levelSkill",
 ] as const;
 export type CampaignAction = (typeof campaignActions)[number];
 

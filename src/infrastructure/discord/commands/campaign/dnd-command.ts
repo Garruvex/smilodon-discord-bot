@@ -131,6 +131,11 @@ export class DndCommand implements BotCommand {
           },
         ],
       },
+      {
+        name: "level",
+        description: "Raises every living hero to a level, for milestone leveling (organizer).",
+        options: [{ type: "integer", name: "level", description: "The level to raise the party to.", required: true, minValue: 2, maxValue: 20 }],
+      },
       { name: "retry", description: "Asks the DM to try the held round again (organizer)." },
       { name: "repair", description: "Checks this game's channels and redraws its cards (organizer)." },
       { name: "reopen", description: "Opens a finished game again, paused where it stopped (organizer)." },
@@ -143,7 +148,7 @@ export class DndCommand implements BotCommand {
   public readonly helpDetails = [
     "/dnd setup creates the D&D category with a #dnd-games hub channel (or uses the channel you give it), the Public/Private Games and Parties forums, and the DnD Admin and Private Games roles, and posts the hub's Create game button.",
     "The hub lists each live game with a Manage button. /dnd new does the same as Create game: a Games post and a matching Parties post, in the public or private forum pair its visibility picks.",
-    "Everything else is run inside a game's posts: players use the buttons, and the organizer or a DnD Admin uses /dnd pause, resume, close-round, rest, retry, repair, and reopen (for a finished game).",
+    "Everything else is run inside a game's posts: players use the buttons, and the organizer or a DnD Admin uses /dnd pause, resume, close-round, rest, level, retry, repair, and reopen (for a finished game).",
   ];
 
   public constructor(private readonly deps: DndCommandDependencies) {}
@@ -283,6 +288,11 @@ export class DndCommand implements BotCommand {
       case "rest": {
         const long = interaction.options.getString("type", true) === "long";
         return done(await control(long ? "longRest" : "shortRest", () => this.deps.play.rest(key, userId, long ? "long" : "short", id)), text.campaign.cmd.rested);
+      }
+      case "level": {
+        const level = interaction.options.getInteger("level", true);
+        // A DnD Admin acts for the organizer: no user is named, so the engine sees the organizer.
+        return done(await this.deps.play.raiseLevel(key, manager ? null : userId, level, id), text.campaign.cmd.levelRaised({ level }));
       }
       case "retry":
         return done(await control("retry", () => this.deps.play.retryPlan(key, userId, id)), text.campaign.cmd.retried);

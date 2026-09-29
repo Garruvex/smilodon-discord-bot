@@ -35,6 +35,7 @@ const documentSchema = z
     language: z.enum(["en", "zh-TW"]),
     title: text,
     premise: text,
+    startingLevel: z.number().int().min(1).max(10).optional(),
     dmOverview: text,
     startScene: sceneId,
     scenes: z
@@ -92,6 +93,7 @@ const documentSchema = z
               .min(1),
             loot: z.array(contentId("item")).default([]),
             gold: z.number().int().min(0).default(0),
+            milestoneLevel: z.number().int().min(2).max(20).optional(),
           })
           .strict(),
       )
@@ -204,7 +206,7 @@ export function parseAdventureDocument(source: string): AdventureDocument {
   });
   if (problems.length > 0) throw new AdventureDocumentError(problems);
 
-  const { heroes: _heroes, ...rest } = data;
+  const { heroes: _heroes, startingLevel, encounters, ...rest } = data;
   // zod's .optional() leaves the key present with value undefined, which
   // exactOptionalPropertyTypes treats as different from the key being
   // absent; strip it so an npc with no shop matches BibleNpc exactly.
@@ -213,7 +215,9 @@ export function parseAdventureDocument(source: string): AdventureDocument {
     const stock = shop.stock.map(({ sellPrice, ...entry }) => (sellPrice === undefined ? entry : { ...entry, sellPrice }));
     return { ...npc, shop: { stock } };
   });
-  const bible: AdventureBible = { ...rest, npcs };
+  // Same for the optional levels: absent, not undefined.
+  const bibleEncounters = encounters.map(({ milestoneLevel, ...encounter }) => (milestoneLevel === undefined ? encounter : { ...encounter, milestoneLevel }));
+  const bible: AdventureBible = { ...rest, npcs, encounters: bibleEncounters, ...(startingLevel === undefined ? {} : { startingLevel }) };
   return { bible, heroes };
 }
 
@@ -226,6 +230,7 @@ export function checkEditionsMatch(editions: readonly AdventureDocument[]): read
       id: document.bible.id,
       version: document.bible.version,
       startScene: document.bible.startScene,
+      startingLevel: document.bible.startingLevel ?? null,
       scenes: document.bible.scenes.map((scene) => [scene.id, scene.npcIds]),
       npcs: document.bible.npcs.map((npc) => [npc.id, npc.shop ?? null]),
       clocks: document.bible.clocks.map((clock) => [clock.id, clock.sceneId, clock.segments, clock.onFull]),

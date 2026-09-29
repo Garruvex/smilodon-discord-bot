@@ -1,3 +1,4 @@
+import { raiseToLevel } from "../../../domain/campaign/character/leveling.js";
 import type { CharacterSheet } from "../../../domain/campaign/character/character-sheet.js";
 import type { CampaignId, UserId } from "../../../domain/campaign/core/ids.js";
 import type { CampaignState, MemberState, Pacing } from "../../../domain/campaign/state/campaign-state.js";
@@ -28,6 +29,8 @@ export function buildStartingState(input: {
   readonly adventure: AdventureDocument;
   readonly seats: readonly Seat[];
   readonly pacing: Pacing;
+  // Every hero below this level is brought up to it before play begins.
+  readonly startingLevel?: number;
 }): CampaignState {
   const { adventure, seats } = input;
   if (seats.length === 0) throw new StartingStateError("A campaign needs at least one player.");
@@ -38,11 +41,13 @@ export function buildStartingState(input: {
     if (hero === undefined) throw new StartingStateError(`The adventure has no hero ${seat.heroId}.`);
     if (characters[hero.id] !== undefined) throw new StartingStateError(`Hero ${hero.id} is chosen twice.`);
     if (members[seat.userId] !== undefined) throw new StartingStateError(`Player ${seat.userId} has two seats.`);
-    if (seat.sheet !== undefined) characters[hero.id] = { ...seat.sheet, ownerUserId: seat.userId };
+    let owned: CharacterSheet;
+    if (seat.sheet !== undefined) owned = { ...seat.sheet, ownerUserId: seat.userId };
     else {
       const { class: className, ...sheet } = hero as PresetHero;
-      characters[hero.id] = { ...sheet, className, ownerUserId: seat.userId };
+      owned = { ...sheet, className, ownerUserId: seat.userId };
     }
+    characters[hero.id] = raiseToLevel(owned, input.startingLevel ?? 1);
     members[seat.userId] = { userId: seat.userId, characterId: hero.id, availability: "present", consecutiveMisses: 0 };
   }
   return {

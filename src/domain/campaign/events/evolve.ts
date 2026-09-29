@@ -308,6 +308,7 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
           skills: event.skills,
           ...(event.pactMagic === undefined ? {} : { pactMagic: event.pactMagic }),
           ...(event.pendingAsi === undefined ? {} : { pendingAsi: event.pendingAsi }),
+          ...(event.xp === undefined ? {} : { xp: Math.max(sheet.xp ?? 0, event.xp) }),
         },
       };
       // The new Hit Die's worth of HP lands right away, same as the extra max.
