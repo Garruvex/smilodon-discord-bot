@@ -140,6 +140,19 @@ describe("XP and levels", () => {
   });
 });
 
+describe("extra Ability Score Improvements", () => {
+  const base = { hitDie: 10, abilityScores: { str: 15, dex: 12, con: 14, int: 8, wis: 13, cha: 10 }, features: [], skills: {} };
+
+  it("gives a fighter one at 6 and 14, and a rogue one at 10, on top of the general levels", () => {
+    expect(levelUp({ ...base, level: 5, classLevels: { fighter: 5 } } as never, "fighter").pendingAsi).toBe(1);
+    expect(levelUp({ ...base, level: 13, classLevels: { fighter: 13 } } as never, "fighter").pendingAsi).toBe(1);
+    expect(levelUp({ ...base, level: 9, classLevels: { rogue: 9 } } as never, "rogue").pendingAsi).toBe(1);
+    expect(levelUp({ ...base, level: 5, classLevels: { wizard: 5 } } as never, "wizard").pendingAsi).toBe(0);
+    // A fighter's sixth level earned in a multiclass build still counts by class level.
+    expect(levelUp({ ...base, level: 8, classLevels: { fighter: 5, wizard: 3 } } as never, "fighter").pendingAsi).toBe(1);
+  });
+});
+
 describe("saved progress", () => {
   const base = { ...deriveSheet(wizardBuild), id: "c-p" as never, ownerUserId: "u-p" as never };
 

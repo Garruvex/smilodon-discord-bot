@@ -48,10 +48,18 @@ export function hpGainForLevel(hitDie: 6 | 8 | 10 | 12, constitutionScore: numbe
   return Math.floor(hitDie / 2) + 1 + abilityModifier(constitutionScore);
 }
 
-// Ability Score Improvements land at these levels (SRD 5.1; ignores the
-// subclass features, such as Fighter's extra ASIs, that milestone 0 content
+// Ability Score Improvements land at these levels (SRD 5.1; the
 // doesn't implement).
 export const asiLevels: readonly number[] = [4, 8, 12, 16, 19];
+
+// The extra improvements some classes get at their own class level: Fighter's at 6 and 14, Rogue's at 10.
+const extraAsiClassLevels: Readonly<Partial<Record<BuildClass, readonly number[]>>> = { fighter: [6, 14], rogue: [10] };
+
+// How many improvements a hero of this many levels has earned in all.
+function asiEarned(level: number, classLevels: Readonly<Partial<Record<string, number>>>): number {
+  const extra = Object.entries(classLevels).reduce((sum, [buildClass, count]) => sum + (isBuildClass(buildClass) ? (extraAsiClassLevels[buildClass] ?? []).filter((at) => at <= (count ?? 0)).length : 0), 0);
+  return asiLevels.filter((asiLevel) => asiLevel <= level).length + extra;
+}
 
 // +2 to one ability, or +1 to two: the default puts the class's two most
 // relied-on abilities first (character-build.ts's "suggested" order),
@@ -217,13 +225,13 @@ export function levelUp(
   // to two): this only counts the improvement as owed, it does not pick for
   // them. defaultAsiAllocation stays as the Discord picker's "use the
   // suggestion" shortcut, the same role it already plays nowhere else now.
-  const pendingAsi = (sheet.pendingAsi ?? 0) + (asiLevels.includes(level) ? 1 : 0);
   const abilityScores = sheet.abilityScores;
 
   const priorLevels = classLevelsOf(sheet);
   const priorInClass = priorLevels[buildClass] ?? 0;
   const isNewClass = priorInClass === 0;
   const classLevel = priorInClass + 1;
+  const pendingAsi = (sheet.pendingAsi ?? 0) + (asiLevels.includes(level) ? 1 : 0) + ((extraAsiClassLevels[buildClass] ?? []).includes(classLevel) ? 1 : 0);
   const classLevels: Partial<Record<BuildClass, number>> = { ...priorLevels, [buildClass]: classLevel };
 
   const { spellcasting, pactMagic } = combinedSpellcasting(classLevels, sheet.spellcasting);
@@ -362,7 +370,7 @@ export function progressionProblems(build: DerivedSheet, progression: Progressio
   if (problems.length > 0) return problems;
   if (!Number.isInteger(progression.xp) || levelForXp(progression.xp) !== level) problems.push({ code: "xpLevelMismatch" });
 
-  const asiLevelsCrossed = asiLevels.filter((asiLevel) => asiLevel <= level).length;
+  const asiLevelsCrossed = asiEarned(level, progression.classLevels);
   let pointsSpent = 0;
   for (const ability of abilities) {
     const before = build.abilityScores[ability];
