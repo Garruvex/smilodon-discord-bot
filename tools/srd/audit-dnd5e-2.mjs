@@ -1,3 +1,4 @@
+/* global fetch, URL, process */
 // Compare local SRD spell labels with the public page titles linked by dnd5e-2.
 // Run with: node tools/srd/audit-dnd5e-2.mjs
 import { readFileSync } from "node:fs";

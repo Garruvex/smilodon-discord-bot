@@ -42,11 +42,11 @@ describe("checking an adventure", () => {
   });
 
   it("refuses monsters, items and spells the ruleset does not have, before any rehearsal", () => {
-    const source = yamlOf("en").replace("monster:goblin", "monster:beholder").replace("item:longsword", "item:vorpal-sword");
+    const source = yamlOf("en").replace("monster:goblin", "monster:beholder").replace("item:longsword", "item:sword-of-nonexistence");
     const report = validateAdventure(source, content);
     expect(report.ok).toBe(false);
     expect(report.errors).toContain("encounter:watchtower-scouts uses monster:beholder, which the ruleset does not have.");
-    expect(report.errors.some((error) => error.includes("item:vorpal-sword"))).toBe(true);
+    expect(report.errors.some((error) => error.includes("item:sword-of-nonexistence"))).toBe(true);
     expect(report.rehearsals).toEqual([]);
   });
 

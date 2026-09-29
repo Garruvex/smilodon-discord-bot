@@ -171,7 +171,7 @@ describe("bringing a saved character into a game", () => {
       id: "ls-badbadbadbad",
       sourceKey: "import",
       rulesetId: "srd-5.2",
-      gear: { equipment: ["item:longsword", "item:vorpal-sword"], worn: ["item:chain-mail"] },
+      gear: { equipment: ["item:longsword", "item:sword-of-nonexistence"], worn: ["item:chain-mail"] },
     };
     await t.r.store.transaction((tx) => tx.saveLibrarySnapshot(bad));
     const key = await newLobby(t);
@@ -181,7 +181,7 @@ describe("bringing a saved character into a game", () => {
       kind: "conflicts",
       conflicts: [
         { code: "rulesetMismatch", expected: "srd-5.1", actual: "srd-5.2" },
-        { code: "unknownContent", id: "item:vorpal-sword", as: "item" },
+        { code: "unknownContent", id: "item:sword-of-nonexistence", as: "item" },
         { code: "wornNotCarried", id: "item:chain-mail" },
       ],
     });
@@ -389,8 +389,8 @@ describe("export and import", () => {
     // A stronger character than the array allows, and gear the ruleset does not have.
     const cheat = { ...file, build: { ...file.build, abilities: { ...file.build.abilities, str: 20 } } };
     expect(await t.library.import("u-bob", JSON.stringify(cheat))).toEqual({ kind: "conflicts", conflicts: [{ code: "invalidBuild", problem: { code: "abilitiesNotStandardArray" } }] });
-    const loot = { ...file, gear: { equipment: [...file.gear.equipment, "item:vorpal-sword"] } };
-    expect(await t.library.import("u-bob", JSON.stringify(loot))).toEqual({ kind: "conflicts", conflicts: [{ code: "unknownContent", id: "item:vorpal-sword", as: "item" }] });
+    const loot = { ...file, gear: { equipment: [...file.gear.equipment, "item:sword-of-nonexistence"] } };
+    expect(await t.library.import("u-bob", JSON.stringify(loot))).toEqual({ kind: "conflicts", conflicts: [{ code: "unknownContent", id: "item:sword-of-nonexistence", as: "item" }] });
     expect(await t.library.import("u-bob", JSON.stringify({ ...file, rulesetId: "srd-5.2" }))).toMatchObject({ kind: "conflicts", conflicts: [{ code: "rulesetMismatch" }] });
     expect(await t.library.list("u-bob")).toEqual([]);
   });

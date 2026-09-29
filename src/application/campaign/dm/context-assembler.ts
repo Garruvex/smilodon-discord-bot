@@ -100,6 +100,13 @@ export function estimateTokens(text: string): number {
   return cjk + Math.ceil((text.length - cjk) / 4);
 }
 
+// Rules terms are always listed. Monsters, items and spells are hundreds of names, so only the ones the story
+// mentions (in the state, the events or the adventure) are sent.
+function relevantGlossary(input: ContextInput): [string, string][] {
+  const story = JSON.stringify([input.state, input.events, input.bible]);
+  return Object.entries(input.glossary.names).filter(([id]) => !/^(monster|item|spell):/.test(id) || story.includes(id));
+}
+
 function instructions(input: ContextInput): ContextSection {
   const language =
     input.state.language === "zh-TW"
@@ -121,7 +128,7 @@ function instructions(input: ContextInput): ContextSection {
           "Never invent a player's dialogue, choices, or motives, and never change or add mechanical results.",
           "Respect the heroes' agency: never decide their feelings or next actions. Follow the specific output rules for this telling's length, speaker, and ending.",
         ];
-  const glossary = Object.entries(input.glossary.names)
+  const glossary = relevantGlossary(input)
     .map(([id, name]) => `${id} = ${name}`)
     .join("\n");
   // A player asked for a pause: the next telling is gentle, and never says who asked.

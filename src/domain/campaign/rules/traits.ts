@@ -72,6 +72,10 @@ export type Trait =
       readonly usesAbility?: boolean;
       readonly recharge: "shortRest" | "longRest";
     }
+  // A flat bonus to saving throws (Ring of Protection, Cloak of Protection).
+  | { readonly kind: "saveBonus"; readonly amount: number }
+  // The holder's ability score is at least this while the item is carried (Amulet of Health, Belt of Giant Strength).
+  | { readonly kind: "abilityScore"; readonly ability: Ability; readonly score: number }
   // Half-Orc Savage Attacks: a melee weapon critical hit rolls one extra damage die.
   | { readonly kind: "savageAttacks" }
   // Half-Orc Relentless Endurance: once per long rest, damage that would drop the holder to 0 HP leaves 1 HP instead.

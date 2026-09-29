@@ -82,7 +82,7 @@ describe("joining as a new hero", () => {
     const state = borinFell();
     expect(reject(state, alex, { kind: "joinHero", sheet: newHero("c-borin-2", "u-jamie") })).toEqual({ code: "notOrganizer" });
     expect(reject(state, jamie, { kind: "joinHero", sheet: newHero("c-borin-2", "u-jamie", 5) })).toMatchObject({ code: "invalidHero" });
-    expect(reject(state, jamie, { kind: "joinHero", sheet: { ...newHero("c-borin-2", "u-jamie"), equipment: ["item:vorpal-sword"] } })).toMatchObject({ code: "invalidHero" });
+    expect(reject(state, jamie, { kind: "joinHero", sheet: { ...newHero("c-borin-2", "u-jamie"), equipment: ["item:sword-of-nonexistence"] } })).toMatchObject({ code: "invalidHero" });
     expect(reject(state, jamie, { kind: "joinHero", sheet: newHero("c-borin", "u-jamie") })).toMatchObject({ code: "invalidHero" });
   });
 });
@@ -128,7 +128,7 @@ describe("loot", () => {
   it("is not found when the party loses, and unknown loot is refused", () => {
     const lost = new Fight().rolls([5, 4, 20, 19, 20, 20], [6, 6, 6, 6]).run(organizer, { kind: "startEncounter", spec: { ...skirmish, loot: ["item:scimitar"] } });
     expect(lost.state.stash).toEqual([]);
-    expect(reject(newCampaign(), organizer, { kind: "startEncounter", spec: { ...skirmish, loot: ["item:vorpal-sword"] } })).toMatchObject({ code: "invalidEncounter" });
+    expect(reject(newCampaign(), organizer, { kind: "startEncounter", spec: { ...skirmish, loot: ["item:sword-of-nonexistence"] } })).toMatchObject({ code: "invalidEncounter" });
   });
 });
 

@@ -1,7 +1,9 @@
 import type { Glossary } from "../../../../../domain/campaign/rules/content-registry.js";
+import { enchantedNames } from "../enchanted-names.js";
 import { srd51GeneratedNames } from "./srd-generated-names.js";
+import { srd51MagicNames } from "./srd-magic-names.js";
 
-export const enSrd51Glossary: Glossary = {
+const enBase: Glossary = {
   language: "en",
   names: {
     ...srd51GeneratedNames,
@@ -206,3 +208,6 @@ export const enSrd51Glossary: Glossary = {
     "race:white-dragonborn": "White Dragonborn",
   },
 };
+
+const named = { ...enBase.names, ...srd51MagicNames };
+export const enSrd51Glossary: Glossary = { ...enBase, names: { ...named, ...enchantedNames(named) } };

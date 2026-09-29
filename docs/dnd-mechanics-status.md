@@ -9,6 +9,7 @@ Race and subrace details are also in `dnd-race-mechanics-status.md`.
 - Monsters: Multiattack, breath weapons with recharge, Regeneration, Legendary Resistance, legendary actions (weapon attacks only), auras (Frightful Presence), spellcasting.
 - Spells: all 319 SRD spells exist; 294 are mechanical, and every caster has a spellbook.
 - Gear: 187 pieces of equipment, tools, mounts and vehicles.
+- Magic items: all 331 non-generic SRD magic items exist with names in both languages, plus +1 to +3 versions of every weapon, armor and shield. Modeled: those bonuses, named weapons (Flame Tongue, Frost Brand, Sun Blade...), Elven Chain, Dwarven Plate, Animated Shield, the healing potions above the basic one, Ring/Cloak of Protection, ability-setting items (Belt of Giant Strength, Amulet of Health, Gauntlets of Ogre Power, Headband of Intellect), resistance rings, Ring of Warmth, Brooch of Shielding, spell-resistance items and attunement (at most three). The rest are for the story.
 - Class features:
   - Fighter: Second Wind, Action Surge, Extra Attack (2 to 4), Champion (Improved Critical, Remarkable Athlete).
   - Rogue: Sneak Attack, Cunning Action, Uncanny Dodge.
@@ -46,8 +47,8 @@ Race and subrace details are also in `dnd-race-mechanics-status.md`.
 - Halfling Lucky (a reroll needs a new roll request), Elf Trance, gnome and elf subrace magic, Darkvision (no lighting system), languages and tools.
 
 ### Items
-- Magic items (needs the SRD magic items file; not downloaded).
-- Attunement, charges, cursed items.
+- Magic items with active powers: wands, staffs, rods, bags, boots, potions other than healing, spell scrolls, conditional weapon effects (Dragon Slayer, Holy Avenger), charges, cursed items.
+- Dragon Scale Mail, Armor of Resistance and Adamantine Armor are named but give nothing yet.
 
 ### Other
 - Zh-TW names for monsters, items and spells are machine-assisted and need a human read.

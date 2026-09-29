@@ -22,7 +22,15 @@ export { isWorn } from "../engine/gear.js";
 // check must be asked once per distinct item, not once per inventory entry —
 // otherwise a second copy of a worn shield or armor would count its bonus twice.
 export function heroTraits(sheet: CharacterSheet, content: SealedContent): readonly Trait[] {
-  const worn = [...new Set(sheet.equipment)].filter((id) => isWorn(sheet, content, id));
+  let attuned = 0;
+  const worn = [...new Set(sheet.equipment)].filter((id) => {
+    if (!isWorn(sheet, content, id)) return false;
+    // A hero attunes to at most three items.
+    const definition = content.find(id);
+    if (definition?.kind !== "item" || definition.itemType !== "magic" || !definition.attunement) return true;
+    attuned += 1;
+    return attuned <= 3;
+  });
   const raceTraits = sheet.race === undefined ? [] : traitsOf(content.get(sheet.race));
   return [
     ...raceTraits,
@@ -67,13 +75,20 @@ export function heroAttackOption(sheet: CharacterSheet, weapon: WeaponDefinition
       : 0;
   return {
     weapon: weapon.id,
-    toHit: ability + sheet.proficiencyBonus,
-    damage: plus(weapon.damage, ability + dueling),
+    toHit: ability + sheet.proficiencyBonus + (weapon.enchantment ?? 0),
+    damage: plus(weapon.damage, ability + dueling + (weapon.enchantment ?? 0)),
     damageType: weapon.damageType,
     range: weapon.range,
     finesse: weapon.finesse || weapon.range.kind === "ranged",
-    onHit: [],
+    onHit: weapon.onHit ?? [],
   };
+}
+
+// Magic that sets an ability score (a Belt of Giant Strength) applies to everything the hero rolls in a fight.
+function withMagicScores(sheet: CharacterSheet, traits: readonly Trait[]): CharacterSheet {
+  const scores = { ...sheet.abilityScores };
+  for (const trait of traits) if (trait.kind === "abilityScore") scores[trait.ability] = Math.max(scores[trait.ability], trait.score);
+  return { ...sheet, abilityScores: scores };
 }
 
 // A hero's spellcasting: their class's, plus any spell-shaped abilities their traits give (cast as innate spells).
@@ -102,15 +117,17 @@ function heroSpellcasting(sheet: CharacterSheet, content: SealedContent, traits:
   };
 }
 
-export function heroCombatant(sheet: CharacterSheet, content: SealedContent, zoneId: ZoneId, status: HeroStatus): Combatant {
-  const traits = heroTraits(sheet, content);
+export function heroCombatant(base: CharacterSheet, content: SealedContent, zoneId: ZoneId, status: HeroStatus): Combatant {
+  const traits = heroTraits(base, content);
+  const sheet = withMagicScores(base, traits);
+  const saveBonus = traits.reduce((sum, trait) => sum + (trait.kind === "saveBonus" ? trait.amount : 0), 0);
   const weapons = sheet.equipment.flatMap((id) => {
     const item = content.find(id);
     return item?.kind === "item" && item.itemType === "weapon" ? [item] : [];
   });
   const meleeWeapons = weapons.filter((weapon) => weapon.range.kind === "melee").length;
   const dex = abilityModifier(sheet.abilityScores.dex);
-  const saves = Object.fromEntries(abilities.map((ability) => [ability, savingThrowModifier(sheet, ability)])) as Record<Ability, number>;
+  const saves = Object.fromEntries(abilities.map((ability) => [ability, savingThrowModifier(sheet, ability) + saveBonus])) as Record<Ability, number>;
   const casting = sheet.spellcasting;
   const castingModifier = casting === null ? 0 : abilityModifier(sheet.abilityScores[casting.ability]);
   return {

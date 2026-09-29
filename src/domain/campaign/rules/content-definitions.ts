@@ -90,6 +90,10 @@ export interface WeaponDefinition extends DefinitionBase<"item"> {
   readonly finesse: boolean;
   // Natural weapons (bite, claws) belong to monsters and are never carried.
   readonly natural: boolean;
+  // A magic weapon's bonus to attack and damage rolls (+1 to +3).
+  readonly enchantment?: number;
+  // Extra effects on a hit (a Flame Tongue's fire damage).
+  readonly onHit?: readonly Effect[];
 }
 
 export interface ArmorDefinition extends DefinitionBase<"item"> {
@@ -125,7 +129,18 @@ export interface GearDefinition extends DefinitionBase<"item"> {
   readonly weight: number | null;
 }
 
-export type ItemDefinition = WeaponDefinition | ArmorDefinition | ShieldDefinition | PotionDefinition | GearDefinition;
+// A magic item that is not a weapon, armor or potion. Its traits apply while it is carried (a hero attunes to at most
+// three items that ask for it); items whose powers the engine does not model have none and are for the story.
+export interface MagicItemDefinition extends DefinitionBase<"item"> {
+  readonly itemType: "magic";
+  readonly rarity: "common" | "uncommon" | "rare" | "very rare" | "legendary" | "artifact" | "varies";
+  readonly attunement: boolean;
+  // What kind of thing it is: ring, wand, wondrous item...
+  readonly category: string;
+  readonly traits: readonly Trait[];
+}
+
+export type ItemDefinition = WeaponDefinition | ArmorDefinition | ShieldDefinition | PotionDefinition | GearDefinition | MagicItemDefinition;
 
 // A limited-use action a feature grants, resolved like any other action.
 export interface FeatureAction {
@@ -312,6 +327,10 @@ export function defineGear(definition: Omit<GearDefinition, "kind" | "itemType">
   return { ...definition, kind: "item", itemType: "gear" };
 }
 
+export function defineMagicItem(definition: Omit<MagicItemDefinition, "kind" | "itemType">): MagicItemDefinition {
+  return { ...definition, kind: "item", itemType: "magic" };
+}
+
 export function definePotion(definition: Omit<PotionDefinition, "kind" | "itemType">): PotionDefinition {
   return { ...definition, kind: "item", itemType: "potion" };
 }
@@ -345,6 +364,8 @@ export function traitsOf(definition: ContentDefinition): readonly Trait[] {
         case "potion":
         case "gear":
           return [];
+        case "magic":
+          return definition.traits;
         default:
           return assertNever(definition);
       }

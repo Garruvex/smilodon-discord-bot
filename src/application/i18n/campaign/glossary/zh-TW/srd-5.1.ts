@@ -1,11 +1,13 @@
 import type { Glossary } from "../../../../../domain/campaign/rules/content-registry.js";
+import { enchantedNames } from "../enchanted-names.js";
 import { srd51GeneratedNames } from "./srd-generated-names.js";
+import { srd51MagicNames } from "./srd-magic-names.js";
 
 // Terms follow the plan's terminology survey (docs/dnd-dm-bot-plan.md §7):
 // the Traditional-script community term by default, with recorded product
 // decisions (倒地 for Prone; 失能 for Incapacitated, pending the BG3 check).
 // Spell names below are drafts until the glossary survey covers them.
-export const zhTwSrd51Glossary: Glossary = {
+const zhTwBase: Glossary = {
   language: "zh-TW",
   names: {
     ...srd51GeneratedNames,
@@ -211,3 +213,6 @@ export const zhTwSrd51Glossary: Glossary = {
     "race:white-dragonborn": "白龍裔",
   },
 };
+
+const named = { ...zhTwBase.names, ...srd51MagicNames };
+export const zhTwSrd51Glossary: Glossary = { ...zhTwBase, names: { ...named, ...enchantedNames(named) } };

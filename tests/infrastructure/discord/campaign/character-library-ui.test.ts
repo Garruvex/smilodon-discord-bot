@@ -263,14 +263,14 @@ describe("choosing a saved character when joining a game", () => {
   it("names every conflict of an incompatible character and offers no way to play it", async () => {
     const t = await harness();
     const good = await savedInLobby(t);
-    const bad: LibrarySnapshot = { ...good, id: "ls-badbadbadbad", sourceKey: "import", gear: { equipment: ["item:longsword", "item:vorpal-sword"] } };
+    const bad: LibrarySnapshot = { ...good, id: "ls-badbadbadbad", sourceKey: "import", gear: { equipment: ["item:longsword", "item:sword-of-nonexistence"] } };
     await t.r.store.transaction((tx) => tx.saveLibrarySnapshot(bad));
     await t.press("join", "u-org");
     const chosen = fakeInteraction({ customId: `dnd:heroChoice:${t.key.campaignId}`, userId: "u-org", values: [`lib:${bad.id}`], kind: "select" });
     await t.handler.execute({ interaction: chosen.interaction, logger: quiet as never });
     const preview = screenOf(chosen.sent);
     expect(preview.content).toContain("This character cannot join this game:");
-    expect(preview.content).toContain("• item:vorpal-sword is not in this game's rules.");
+    expect(preview.content).toContain("• item:sword-of-nonexistence is not in this game's rules.");
     expect(preview.buttons).toEqual([]);
   });
 

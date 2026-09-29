@@ -8,6 +8,8 @@ import { srd51HigherLevelFeatures } from "./features/higher-level-features.js";
 import { srd51Armor } from "./items/armor.js";
 import { srd51Potions } from "./items/potions.js";
 import { srd51Weapons } from "./items/weapons.js";
+import { srd51EnchantedGear } from "./items/magic-gear.js";
+import { srd51MagicItems } from "./items/srd-magic-items.generated.js";
 import { srd51GeneratedItems } from "./items/srd-equipment.generated.js";
 import { srd51MoreMonsters } from "./monsters/more-monsters.js";
 import { srd51GeneratedMonsters } from "./monsters/srd-monsters.generated.js";
@@ -40,6 +42,8 @@ export const srd51Content: readonly ContentDefinition[] = [
   ...srd51MoreMonsters,
   ...srd51GeneratedMonsters,
   ...srd51GeneratedItems,
+  ...srd51MagicItems,
+  ...srd51EnchantedGear,
   ...srd51Classes,
   ...srd51Races,
   ...srd51Subraces,
