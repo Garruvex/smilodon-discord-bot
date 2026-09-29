@@ -1,8 +1,10 @@
 import type { Glossary } from "../../../../../domain/campaign/rules/content-registry.js";
+import { srd51GeneratedNames } from "./srd-generated-names.js";
 
 export const enSrd51Glossary: Glossary = {
   language: "en",
   names: {
+    ...srd51GeneratedNames,
     "condition:incapacitated": "Incapacitated",
     "condition:prone": "Prone",
     "condition:frightened": "Frightened",

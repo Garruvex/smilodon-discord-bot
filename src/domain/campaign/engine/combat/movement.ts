@@ -127,9 +127,11 @@ export function completeMove(decision: Decision): void {
     if (move.thenPlan !== null) continuePlan(decision, mover.id, move.thenPlan);
     return;
   }
-  // The mover went down mid-move: an engine-played turn simply ends.
+  // The mover went down mid-move: their turn is over, whoever plays it. (A hero
+  // dropped by an opportunity attack has nothing left to choose, so waiting for a
+  // command would hold the fight until the turn timer ran out.)
   const encounter = activeEncounter(decision);
-  if (mover !== undefined && encounter !== null && currentCombatant(encounter)?.id === mover.id && !isPlayerControlled(decision, mover)) {
+  if (mover !== undefined && encounter !== null && currentCombatant(encounter)?.id === mover.id) {
     endTurn(decision);
   }
 }

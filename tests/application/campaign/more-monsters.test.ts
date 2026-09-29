@@ -4,6 +4,7 @@ import { rehearseEncounter } from "../../../src/application/campaign/adventures/
 import { enSrd51Glossary } from "../../../src/application/i18n/campaign/glossary/en/srd-5.1.js";
 import { zhTwSrd51Glossary } from "../../../src/application/i18n/campaign/glossary/zh-TW/srd-5.1.js";
 import { srd51MoreMonsters } from "../../../src/domain/campaign/content/srd-5.1/monsters/more-monsters.js";
+import { srd51GeneratedMonsters } from "../../../src/domain/campaign/content/srd-5.1/monsters/srd-monsters.generated.js";
 import { ruleset } from "../../domain/campaign/campaign-fixtures.js";
 import { starter } from "./campaign-rig.js";
 
@@ -11,7 +12,7 @@ const { content } = ruleset();
 const base = starter.en.bible.encounters[0];
 
 describe("the wider monster roster", () => {
-  it.each(srd51MoreMonsters.map((monster) => monster.id))("%s has a name in both languages and can be fought to an end", (id) => {
+  it.each([...srd51MoreMonsters, ...srd51GeneratedMonsters].map((monster) => monster.id))("%s has a name in both languages and can be fought to an end", (id) => {
     if (base === undefined) throw new Error("encounter");
     expect(enSrd51Glossary.names[id], "en").toBeTruthy();
     expect(zhTwSrd51Glossary.names[id], "zh-TW").toBeTruthy();

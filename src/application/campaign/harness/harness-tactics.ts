@@ -2,6 +2,7 @@ import type { CombatCommand } from "../../../domain/campaign/commands/campaign-c
 import { availableSlots, engagedWith, isActive, type Combatant, type EncounterState } from "../../../domain/campaign/combat/combat-state.js";
 import { distanceBetween, edgeBetween, engageCost } from "../../../domain/campaign/combat/positioning.js";
 import { movementLeft } from "../../../domain/campaign/combat/turn-rules.js";
+import { canAct, conditionLookup } from "../../../domain/campaign/effects/effect-queries.js";
 import { chooseMonsterPlan } from "../../../domain/campaign/combat/tactics.js";
 import type { SealedContent } from "../../../domain/campaign/rules/content-registry.js";
 
@@ -24,6 +25,8 @@ export function chooseHeroCommand(encounter: EncounterState, hero: Combatant, ro
   const endTurn: CombatCommand = { kind: "endTurn", combatantId: hero.id };
   const foes = Object.values(encounter.combatants).filter((other) => other.side !== hero.side && isActive(other));
   if (foes.length === 0) return endTurn;
+  // Paralyzed or stunned partway through the turn: nothing is left to choose.
+  if (content !== undefined && !canAct(hero, conditionLookup(content))) return endTurn;
   const slots = availableSlots(hero.resources)[1] ?? 0;
   const knows = (spellId: string): boolean => hero.spellcasting?.spells.includes(spellId as `spell:${string}`) === true;
 

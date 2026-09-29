@@ -1,4 +1,5 @@
 import type { Glossary } from "../../../../../domain/campaign/rules/content-registry.js";
+import { srd51GeneratedNames } from "./srd-generated-names.js";
 
 // Terms follow the plan's terminology survey (docs/dnd-dm-bot-plan.md §7):
 // the Traditional-script community term by default, with recorded product
@@ -7,6 +8,7 @@ import type { Glossary } from "../../../../../domain/campaign/rules/content-regi
 export const zhTwSrd51Glossary: Glossary = {
   language: "zh-TW",
   names: {
+    ...srd51GeneratedNames,
     "condition:incapacitated": "失能",
     "condition:prone": "倒地",
     "condition:frightened": "恐懼",

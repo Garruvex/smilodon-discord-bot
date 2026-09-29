@@ -81,7 +81,7 @@ export function rehearseEncounter(document: AdventureDocument, encounter: BibleE
       return finish(fight?.outcome === "victory" ? "victory" : "defeat", null);
     }
     const current = fight.combatants[fight.order[fight.turnIndex] ?? ""];
-    if (current === undefined || current.source.kind !== "hero" || !isActive(current)) return finish("stuck", "The fight stopped waiting for something that cannot happen.");
+    if (current === undefined || current.source.kind !== "hero" || !isActive(current)) return finish("stuck", `The fight stopped waiting for something that cannot happen (turn: ${current?.side ?? "nobody"} ${current?.condition ?? ""} hp ${current?.hp ?? "?"}; all: ${Object.values(fight.combatants).map((c) => `${c.side}:${c.condition}:${c.hp}`).join(" ")}; order ${fight.order.length} idx ${fight.turnIndex} round ${fight.round}).`);
     const owner = state.characters[current.source.characterId]?.ownerUserId;
     if (owner === undefined) return finish("stuck", "A hero has no player.");
     const sheet = state.characters[current.source.characterId];
