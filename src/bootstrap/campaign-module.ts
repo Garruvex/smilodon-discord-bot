@@ -45,7 +45,7 @@ import { milestone0Capabilities } from "../domain/campaign/rules/capabilities.js
 import { GeminiStructuredClient } from "../infrastructure/campaign/llm/gemini-structured-client.js";
 import { OpenAiCompatibleStructuredClient } from "../infrastructure/campaign/llm/openai-compatible-structured-client.js";
 import { OpenAiResponsesStructuredClient } from "../infrastructure/campaign/llm/openai-responses-structured-client.js";
-import { loadStarterAdventure, starterAdventureId } from "../infrastructure/campaign/starter-adventures.js";
+import { loadBundledAdventures, loadStarterAdventure, starterAdventureId } from "../infrastructure/campaign/starter-adventures.js";
 import { CampaignAuthority } from "../infrastructure/discord/campaign/campaign-authority.js";
 import { CampaignCardService } from "../infrastructure/discord/campaign/campaign-card-service.js";
 import { CampaignSettingsAccess } from "../infrastructure/discord/campaign/campaign-settings-access.js";
@@ -134,9 +134,9 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
   const content = buildSrd51({ capabilities: milestone0Capabilities, glossaries: [enSrd51Glossary, zhTwSrd51Glossary] });
   const rulesets = new RulesetCatalog([content]);
   const glossaries = { en: enSrd51Glossary, "zh-TW": zhTwSrd51Glossary };
+  // The bundled adventures plus every adventure a server approved.
   const starter = loadStarterAdventure();
-  // The bundled adventure plus every adventure a server approved.
-  const adventures = new UploadedAdventureLibrary(new StaticAdventureLibrary([{ id: starterAdventureId, editions: starter }]));
+  const adventures = new UploadedAdventureLibrary(new StaticAdventureLibrary(loadBundledAdventures()));
   const clock = new SystemClock();
 
   let runtime: CampaignRuntime | null = null;

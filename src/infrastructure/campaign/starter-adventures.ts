@@ -10,13 +10,23 @@ import {
 import type { CampaignLanguage } from "../../domain/campaign/adventure/adventure-bible.js";
 
 export const starterAdventureId = "moonlit-ruins";
+// Every adventure that ships with the bot: the short starter first (the default), then the full campaigns.
+export const bundledAdventureIds: readonly string[] = [starterAdventureId, "ashfall-barrow"];
 const editions: readonly CampaignLanguage[] = ["en", "zh-TW"];
 
-// Loads every language edition of the bundled starter adventure from
-// assets/, and refuses editions that disagree on structure.
 export function loadStarterAdventure(): Readonly<Record<CampaignLanguage, AdventureDocument>> {
+  return loadBundledAdventure(starterAdventureId);
+}
+
+export function loadBundledAdventures(): readonly { readonly id: string; readonly editions: Readonly<Record<CampaignLanguage, AdventureDocument>> }[] {
+  return bundledAdventureIds.map((id) => ({ id, editions: loadBundledAdventure(id) }));
+}
+
+// Loads every language edition of a bundled adventure from assets/, and
+// refuses editions that disagree on structure.
+export function loadBundledAdventure(adventureId: string): Readonly<Record<CampaignLanguage, AdventureDocument>> {
   const documents = editions.map((language) => {
-    const url = new URL(`../../../assets/campaign/adventures/${starterAdventureId}/${language}.yaml`, import.meta.url);
+    const url = new URL(`../../../assets/campaign/adventures/${adventureId}/${language}.yaml`, import.meta.url);
     const document = parseAdventureDocument(readFileSync(fileURLToPath(url), "utf8"));
     if (document.bible.language !== language) {
       throw new AdventureDocumentError([`${language}.yaml declares language ${document.bible.language}.`]);
