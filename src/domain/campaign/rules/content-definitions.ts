@@ -114,7 +114,18 @@ export interface PotionDefinition extends DefinitionBase<"item"> {
   readonly healing: number;
 }
 
-export type ItemDefinition = WeaponDefinition | ArmorDefinition | ShieldDefinition | PotionDefinition;
+// Everything else a hero carries or buys: adventuring gear, tools, mounts and vehicles.
+// It has no rule of its own; it is named, priced and weighed, and the Narrator may use it.
+export interface GearDefinition extends DefinitionBase<"item"> {
+  readonly itemType: "gear";
+  readonly category: "gear" | "tool" | "transport";
+  // Price in copper pieces (a gold piece is 100).
+  readonly costCp: number;
+  // Pounds; null when the book gives none.
+  readonly weight: number | null;
+}
+
+export type ItemDefinition = WeaponDefinition | ArmorDefinition | ShieldDefinition | PotionDefinition | GearDefinition;
 
 // A limited-use action a feature grants, resolved like any other action.
 export interface FeatureAction {
@@ -260,6 +271,10 @@ export function definePotion(definition: Omit<PotionDefinition, "kind" | "itemTy
   return { ...definition, kind: "item", itemType: "potion" };
 }
 
+export function defineGear(definition: Omit<GearDefinition, "kind" | "itemType">): GearDefinition {
+  return { ...definition, kind: "item", itemType: "gear" };
+}
+
 export function defineFeature(definition: Omit<FeatureDefinition, "kind">): FeatureDefinition {
   return { ...definition, kind: "feature" };
 }
@@ -291,6 +306,7 @@ export function traitsOf(definition: ContentDefinition): readonly Trait[] {
         default:
           return assertNever(definition);
       }
+        case "gear":
     case "feature":
     case "monster":
       return definition.traits;

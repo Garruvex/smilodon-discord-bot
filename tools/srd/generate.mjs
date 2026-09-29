@@ -51,12 +51,14 @@ function diceCode(text) {
 
 // ------------------------------------------------------------- equipment
 // The SRD lists these crossbows with the type second; the content names them the way they read.
-const equipmentAlias = { "crossbow-light": "light-crossbow", "crossbow-hand": "hand-crossbow", "crossbow-heavy": "heavy-crossbow" };
+const equipmentAlias = { horn: "horn-instrument", "crossbow-light": "light-crossbow", "crossbow-hand": "hand-crossbow", "crossbow-heavy": "heavy-crossbow" };
 const weaponIdOf = new Map(); // "scimitar" -> "item:scimitar" for weapons the SRD equipment defines
 const weaponLines = [];
 const itemNames = {};
 const armorLines = [];
 const equipmentIds = [];
+const gearLines = [];
+const gearCategories = { "adventuring-gear": "gear", tools: "tool", "mounts-and-vehicles": "transport" };
 for (const entry of equipment) {
   const index = equipmentAlias[entry.index] ?? entry.index;
   const id = `item:${index}`;
@@ -82,6 +84,12 @@ for (const entry of equipment) {
         `export const ${camel(index)} = defineArmor({ id: ${quote(id)}, source, category: ${quote(entry.armor_category.toLowerCase())}, baseArmorClass: ${entry.armor_class.base}, dexterityCap: ${cap}, stealthDisadvantage: ${entry.stealth_disadvantage === true}, strengthRequirement: ${entry.str_minimum > 0 ? entry.str_minimum : null} });`,
       );
     }
+    equipmentIds.push(camel(index));
+    itemNames[id] = entry.name;
+  } else if (gearCategories[category] !== undefined && !knownItems.has(id)) {
+    const unit = { cp: 1, sp: 10, gp: 100 }[entry.cost?.unit ?? "cp"] ?? 1;
+    const weight = typeof entry.weight === "number" ? entry.weight : null;
+    gearLines.push(`export const ${camel(index)} = defineGear({ id: ${quote(id)}, source, category: ${quote(gearCategories[category])}, costCp: ${(entry.cost?.quantity ?? 0) * unit}, weight: ${weight} });`);
     equipmentIds.push(camel(index));
     itemNames[id] = entry.name;
   }
@@ -300,13 +308,16 @@ for (const [id, weapon] of naturalById) {
 writeFileSync(
   join(content, "items/srd-equipment.generated.ts"),
   `${banner}import { dice, flat } from "../../../dice/dice-expression.js";
-import { defineArmor, defineWeapon, type ItemDefinition } from "../../../rules/content-definitions.js";
+import { defineArmor, defineGear, defineWeapon, type ItemDefinition } from "../../../rules/content-definitions.js";
 
 const source = "SRD 5.1";
 const melee = { kind: "melee" } as const;
 
 ${weaponLines.join("\n")}
 ${armorLines.join("\n")}
+
+// Adventuring gear, tools, mounts and vehicles: named, priced and weighed.
+${gearLines.join("\n")}
 
 // What generated monsters bite, claw and slam with. The damage die here is a
 // placeholder: each monster's attack carries its own damage.
