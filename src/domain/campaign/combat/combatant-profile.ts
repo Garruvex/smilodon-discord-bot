@@ -1,4 +1,5 @@
 import { abilityModifier, savingThrowModifier, type CharacterSheet } from "../character/character-sheet.js";
+import { spellbookOf } from "../character/spell-access.js";
 import { plus } from "../dice/dice-expression.js";
 import { traitsOf, type MonsterDefinition, type WeaponDefinition } from "../rules/content-definitions.js";
 import type { SealedContent } from "../rules/content-registry.js";
@@ -101,7 +102,7 @@ export function heroCombatant(sheet: CharacterSheet, content: SealedContent, zon
             attackBonus: sheet.proficiencyBonus + castingModifier,
             saveDc: 8 + sheet.proficiencyBonus + castingModifier,
             modifier: castingModifier,
-            spells: casting.spells,
+            spells: spellbookOf(sheet, content),
           },
     features: sheet.features,
     resources: status.resources,

@@ -34,7 +34,8 @@ export interface ConditionDefinition extends DefinitionBase<"condition"> {
   readonly modifiers: readonly Modifier[];
 }
 
-export type CastingTime = "action" | "bonus-action" | "reaction";
+// "long": a minute or more, so never cast in a fight (rituals, and the spells a hero takes time over).
+export type CastingTime = "action" | "bonus-action" | "reaction" | "long";
 
 export type SpellRange =
   | { readonly kind: "self" }
@@ -190,6 +191,9 @@ export interface ClassDefinition extends DefinitionBase<"class"> {
   // The ability every spell this class knows keys off, independent of
   // whether it has any spells yet at level 1 (paladin/ranger: cha/wis).
   readonly spellcastingAbility: Ability | null;
+  // Every spell the class may cast, from which a hero's spellbook grows with the
+  // spell levels their slots reach (character/spell-access.ts).
+  readonly spellList?: readonly ContentId<"spell">[];
   // Seeded the moment a half- or pact caster's spellcasting first appears
   // past level 1 (paladin, ranger); empty for classes whose level-1 template
   // already carries spells, or that never cast at all.
@@ -393,6 +397,7 @@ export function referencedContent(definition: ContentDefinition): readonly Conte
       ];
     case "spell":
     case "item":
+        ...(definition.spellList ?? []),
     case "feature":
     case "race":
       return fromPlans;
@@ -421,3 +426,5 @@ function capabilitiesFor(effect: Effect): readonly Capability[] {
       return assertNever(effect);
   }
 }
+    case "applyModifiers":
+      return ["conditions"];

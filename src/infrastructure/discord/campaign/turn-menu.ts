@@ -13,6 +13,8 @@ import { campaignCustomId } from "./campaign-ids.js";
 export type TurnChoice =
   | { readonly kind: "attack"; readonly weapon: string }
   | { readonly kind: "cast"; readonly spell: string; readonly slot: number }
+  // The spellbook: a hero with many spells picks from a page of them (renderSpellMenu).
+  | { readonly kind: "spells"; readonly page: number }
   | { readonly kind: "feature"; readonly feature: string }
   | { readonly kind: "potion"; readonly item: string }
   | { readonly kind: "move"; readonly zone: string }
@@ -30,6 +32,8 @@ export function encodeChoice(choice: TurnChoice): string {
       return `attack|${choice.weapon}`;
     case "cast":
       return `cast|${choice.spell}|${choice.slot}`;
+    case "spells":
+      return `spells|${choice.page}`;
     case "feature":
       return `feature|${choice.feature}`;
     case "potion":
@@ -51,6 +55,10 @@ export function parseChoice(value: string): TurnChoice | null {
     case "cast": {
       const slot = Number(second);
       return first?.startsWith("spell:") === true && Number.isInteger(slot) && slot >= 0 ? { kind, spell: first, slot } : null;
+    }
+    case "spells": {
+      const page = Number(first);
+      return Number.isInteger(page) && page >= 0 ? { kind, page } : null;
     }
     case "feature":
       return first?.startsWith("feature:") === true ? { kind, feature: first } : null;
@@ -117,6 +125,29 @@ export function renderTurnMenu(view: TurnView, text: Texts, glossary: Glossary, 
   };
 }
 
+// More spells than this collapse into one "Cast a spell…" entry.
+const spellbookThreshold = 8;
+const spellsPerPage = maxOptions - 2;
+
+// The spellbook: one page of the spells the hero can cast now, each at each slot level it fits.
+export function renderSpellMenu(view: TurnView, page: number, text: Texts, glossary: Glossary, campaignId: string): TurnMenu {
+  const t = text.campaign.turn;
+  const pages = Math.max(1, Math.ceil(view.spells.length / spellsPerPage));
+  const at = Math.min(Math.max(0, page), pages - 1);
+  const choices = view.spells.slice(at * spellsPerPage, (at + 1) * spellsPerPage).map((spell): TurnChoice => ({ kind: "cast", spell: spell.spellId, slot: spell.slotLevel }));
+  const options = choices.map((choice) => ({ label: choiceLabel(choice, view, text, glossary).slice(0, 100), value: encodeChoice(choice) }));
+  if (at + 1 < pages) options.push({ label: t.spellbookMore({ page: at + 2 }), value: encodeChoice({ kind: "spells", page: at + 1 }) });
+  return {
+    content: t.spellbookPrompt,
+    components: [
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+        new StringSelectMenuBuilder().setCustomId(campaignCustomId("pick", campaignId)).setPlaceholder(t.spellbookPlaceholder).addOptions(options),
+      ),
+      refreshRow(campaignId, t.back),
+    ],
+  };
+}
+
 // The second step: who the chosen action is aimed at.
 export function renderTargetMenu(choice: TurnChoice, view: TurnView, text: Texts, glossary: Glossary, campaignId: string): TurnMenu | null {
   const targets = targetsOf(choice, view);
@@ -159,7 +190,9 @@ function refreshRow(campaignId: string, label: string): ActionRowBuilder<ButtonB
 function choicesOf(view: TurnView): readonly TurnChoice[] {
   return [
     ...view.attacks.map((attack): TurnChoice => ({ kind: "attack", weapon: attack.weapon })),
-    ...view.spells.map((spell): TurnChoice => ({ kind: "cast", spell: spell.spellId, slot: spell.slotLevel })),
+    ...(view.spells.length > spellbookThreshold
+      ? [{ kind: "spells", page: 0 } as const]
+      : view.spells.map((spell): TurnChoice => ({ kind: "cast", spell: spell.spellId, slot: spell.slotLevel }))),
     ...view.features.map((feature): TurnChoice => ({ kind: "feature", feature: feature.id })),
     ...view.potions.map((potion): TurnChoice => ({ kind: "potion", item: potion.id })),
     ...view.shields.map((shield): TurnChoice => ({ kind: "shield", item: shield.id, on: !shield.on })),
@@ -202,6 +235,8 @@ function choiceLabel(choice: TurnChoice, view: TurnView, text: Texts, glossary: 
       const base = choice.slot === 0 ? t.cast({ spell: name(choice.spell) }) : t.castSlot({ spell: name(choice.spell), level: choice.slot, left: spell?.slotsLeft ?? 0 });
       return spell?.bonusAction === true ? `${base} · ${t.bonusTag}` : base;
     }
+    case "spells":
+      return t.spellbook({ count: view.spells.length });
     case "feature":
       return t.feature({ feature: name(choice.feature), left: view.features.find((candidate) => candidate.id === choice.feature)?.left ?? 0 });
     case "potion":

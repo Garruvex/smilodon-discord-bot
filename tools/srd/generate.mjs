@@ -339,7 +339,8 @@ const missingZh = Object.keys(allNames).filter((id) => zhNames[id] === undefined
 if (missingZh.length > 0) throw new Error(`No Chinese name for: ${missingZh.join(", ")}. Add them to tools/srd/zh-tw-names.json.`);
 const namesFile = (table, note) => {
   const rows = Object.keys(allNames).map((id) => `  ${quote(id)}: ${quote(table[id])},`);
-  return [banner + `// ${note}`, "export const srd51GeneratedNames: Readonly<Record<string, string>> = {", ...rows, "};", ""].join(String.fromCharCode(10));
+  // The spell names come from tools/srd/generate-spells.mjs, and join here so the glossaries need one import.
+  return [banner + `// ${note}`, 'import { srd51SpellNames } from "./srd-spell-names.js";', "", "export const srd51GeneratedNames: Readonly<Record<string, string>> = {", ...rows, "  ...srd51SpellNames,", "};", ""].join(String.fromCharCode(10));
 };
 const glossaryDir = join(root, "src/application/i18n/campaign/glossary");
 writeFileSync(join(glossaryDir, "en/srd-generated-names.ts"), namesFile(allNames, "English names for the generated SRD 5.1 monsters and items."));

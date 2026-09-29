@@ -1,3 +1,4 @@
+import { srd51BardSpells, srd51ClericSpells, srd51DruidSpells, srd51PaladinSpells, srd51RangerSpells, srd51SorcererSpells, srd51WarlockSpells, srd51WizardSpells } from "./spells/class-spell-lists.generated.js";
 import { defineClass, type ClassDefinition } from "../../rules/content-definitions.js";
 
 // The full SRD 5.1 class roster, as sealed content: everything the builder
@@ -88,6 +89,7 @@ export const cleric = defineClass({
   firstSpells: [],
   levelFeatures: { 2: ["feature:channel-divinity"] },
   multiclassRequires: [["wis"]],
+  spellList: srd51ClericSpells,
 });
 
 export const barbarian = defineClass({
@@ -171,6 +173,7 @@ export const bard = defineClass({
     "stealth",
     "survival",
   ],
+  spellList: srd51BardSpells,
 });
 
 export const druid = defineClass({
@@ -193,6 +196,7 @@ export const druid = defineClass({
   firstSpells: [],
   levelFeatures: { 2: ["feature:wild-shape"], 3: ["feature:circle-of-the-land"] },
   multiclassRequires: [["wis"]],
+  spellList: srd51DruidSpells,
 });
 
 export const monk = defineClass({
@@ -244,6 +248,7 @@ export const paladin = defineClass({
   firstSpells: ["spell:cure-wounds", "spell:bless"],
   levelFeatures: { 2: ["feature:fighting-style-dueling", "feature:divine-smite"], 3: ["feature:oath-of-devotion"], 5: ["feature:extra-attack"] },
   multiclassRequires: [["str"], ["cha"]],
+  spellList: srd51PaladinSpells,
 });
 
 export const ranger = defineClass({
@@ -268,6 +273,7 @@ export const ranger = defineClass({
   levelFeatures: { 2: ["feature:fighting-style-dueling"], 3: ["feature:hunter"], 5: ["feature:extra-attack"] },
   multiclassRequires: [["dex"], ["wis"]],
   multiclassSkillChoices: ["animal-handling", "athletics", "insight", "investigation", "nature", "perception", "stealth", "survival"],
+  spellList: srd51RangerSpells,
 });
 
 export const sorcerer = defineClass({
@@ -290,6 +296,7 @@ export const sorcerer = defineClass({
   firstSpells: [],
   levelFeatures: { 2: ["feature:font-of-magic"], 3: ["feature:metamagic"] },
   multiclassRequires: [["cha"]],
+  spellList: srd51SorcererSpells,
 });
 
 export const warlock = defineClass({
@@ -313,6 +320,7 @@ export const warlock = defineClass({
   firstSpells: [],
   levelFeatures: { 2: ["feature:eldritch-invocations"], 3: ["feature:pact-boon"] },
   multiclassRequires: [["cha"]],
+  spellList: srd51WarlockSpells,
 });
 
 export const wizard = defineClass({
@@ -343,6 +351,7 @@ export const wizard = defineClass({
   firstSpells: [],
   levelFeatures: { 2: ["feature:school-of-evocation"] },
   multiclassRequires: [["int"]],
+  spellList: srd51WizardSpells,
 });
 
 export const srd51Classes: readonly ClassDefinition[] = [fighter, rogue, cleric, barbarian, bard, druid, monk, paladin, ranger, sorcerer, warlock, wizard];

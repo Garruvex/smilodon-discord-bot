@@ -1,5 +1,6 @@
 import type { HealingMagicCommand } from "../commands/campaign-command.js";
 import { abilityModifier } from "../character/character-sheet.js";
+import { spellbookOf } from "../character/spell-access.js";
 import { defaultHeroResources, type HeroStatus } from "../character/hero-status.js";
 import type { CharacterId } from "../core/ids.js";
 import { plus } from "../dice/dice-expression.js";
@@ -41,7 +42,7 @@ function castHealingSpell(decision: Decision, casterId: CharacterId, targetId: C
   const caster = state.characters[casterId];
   const target = state.characters[targetId];
   const spell = ctx.rules.content.find(spellId);
-  if (caster === undefined || spell?.kind !== "spell" || caster.spellcasting?.spells.includes(spellId) !== true) return { code: "unknownSpell" };
+  if (caster === undefined || spell?.kind !== "spell" || caster.spellcasting === null || !spellbookOf(caster, ctx.rules.content).includes(spellId)) return { code: "unknownSpell" };
   if (target === undefined || isFallen(state, targetId)) return { code: "invalidTarget" };
   if (state.healingPending?.[casterId] !== undefined) return { code: "healingAlreadyPending" };
 

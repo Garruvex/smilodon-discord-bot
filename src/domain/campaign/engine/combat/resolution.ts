@@ -6,6 +6,7 @@ import { areEngaged, isPresent, type Combatant, type CombatantId, type Encounter
 import { armorClassOf, autoFailsSave, bonusDiceFor, conditionLookup, hitsAreCritical, saveBias } from "../../effects/effect-queries.js";
 import type { EffectInstance } from "../../effects/effect-instance.js";
 import type { D20TestRoll } from "../../dice/d20-test.js";
+import type { SealedContent } from "../../rules/content-registry.js";
 import type { ContentId } from "../../rules/content-id.js";
 import { distanceBetween } from "../../combat/positioning.js";
 import { resolveD20Test, type D20TestSpec } from "../../dice/d20-test.js";
@@ -347,7 +348,7 @@ export function applyEffect(
       return;
     case "applyCondition":
       if (!isImmuneToCondition(recipient.traits, effect.condition)) {
-        decision.emit({ kind: "effectApplied", combatantId: recipient.id, effect: conditionInstance(resolution, recipient, effect.condition, key, effect.duration, round) });
+        decision.emit({ kind: "effectApplied", combatantId: recipient.id, effect: conditionInstance(resolution, recipient, effect.condition, key, effect.duration, round, decision.ctx.rules.content) });
       }
       return;
     case "bonusDie": {
@@ -368,6 +369,26 @@ export function applyEffect(
           clock: effect.duration.kind === "rounds" ? { follows: "source", boundary: "start", untilRound: round + effect.duration.count } : null,
           concentrationId: concentrating ? resolution.id : null,
           stacking: "coexist",
+        },
+      });
+      return;
+    }
+    case "applyModifiers": {
+      const spellId = resolution.source.kind === "spell" ? resolution.source.spellId : null;
+      const concentrating = spellId !== null && decision.ctx.rules.content.get(spellId).concentration;
+      decision.emit({
+        kind: "effectApplied",
+        combatantId: recipient.id,
+        effect: {
+          id: `${resolution.id}:${recipient.id}:${key}`,
+          definition: spellId ?? "effect:modifiers",
+          sourceId: resolution.actorId,
+          conditions: [],
+          modifiers: effect.modifiers,
+          triggers: [],
+          clock: effect.duration.kind === "rounds" ? { follows: "source", boundary: "start", untilRound: round + effect.duration.count } : null,
+          concentrationId: concentrating ? resolution.id : null,
+          stacking: "replace",
         },
       });
       return;
@@ -395,7 +416,7 @@ export function applyEffect(
         !isImmuneToCondition(recipient.traits, effect.condition) &&
         (resolution.rolled[`rider:${recipient.id}:${key}`] === 0 || autoFailsSave(recipient, effect.ability, conditionLookup(decision.ctx.rules.content)))
       ) {
-        decision.emit({ kind: "effectApplied", combatantId: recipient.id, effect: conditionInstance(resolution, recipient, effect.condition, key, null, round) });
+        decision.emit({ kind: "effectApplied", combatantId: recipient.id, effect: conditionInstance(resolution, recipient, effect.condition, key, null, round, decision.ctx.rules.content) });
       }
       return;
     case "exhaustion":
@@ -414,6 +435,7 @@ export function conditionInstance(
   key: string,
   duration: EffectDuration | null,
   round: number,
+  content: SealedContent,
 ): EffectInstance {
   return {
     id: `${resolution.id}:${recipient.id}:${key}`,
@@ -423,7 +445,8 @@ export function conditionInstance(
     modifiers: [],
     triggers: [],
     clock: duration?.kind === "rounds" ? { follows: "source", boundary: "start", untilRound: round + duration.count } : null,
-    concentrationId: null,
+    // A condition a concentration spell laid on ends with the concentration.
+    concentrationId: resolution.source.kind === "spell" && content.get(resolution.source.spellId).concentration ? resolution.id : null,
     stacking: "ignore",
   };
 }

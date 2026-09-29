@@ -1,4 +1,5 @@
 import type { UtilityMagicCommand } from "../commands/campaign-command.js";
+import { spellbookOf } from "../character/spell-access.js";
 import type { CharacterId } from "../core/ids.js";
 import { isFallen, type UtilityCastRecord } from "../state/campaign-state.js";
 import type { Decision } from "./decision.js";
@@ -37,7 +38,7 @@ function castRitualSpell(decision: Decision, characterId: CharacterId, spellId: 
   const sheet = state.characters[characterId];
   // Same code combat casting uses for "not a real spell" and "not known" —
   // turn-rules.ts's spellSlotProblem doesn't split them either.
-  if (spell?.kind !== "spell" || sheet?.spellcasting?.spells.includes(spellId) !== true) return { code: "unknownSpell" };
+  if (spell?.kind !== "spell" || sheet === undefined || !spellbookOf(sheet, ctx.rules.content).includes(spellId)) return { code: "unknownSpell" };
   if (spell.level !== 0 && spell.ritual !== true) return { code: "notARitualSpell" };
 
   const cast: UtilityCastRecord = { id: `cast:${state.utilityCastCount + 1}`, characterId, spellId };

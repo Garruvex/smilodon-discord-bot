@@ -107,7 +107,7 @@ export function spellProblem(
   const slot = spellSlotProblem(caster, spell, slotLevel);
   if (slot !== null) return refuse(slot);
   // A reaction spell is cast in response to something, never on the caster's turn.
-  if (spell.castingTime === "reaction") return refuse({ code: "unknownSpell" });
+  if (spell.castingTime === "reaction" || spell.castingTime === "long") return refuse({ code: "unknownSpell" });
   const bonus = spell.castingTime === "bonus-action";
   // After a bonus-action spell, only a one-action cantrip may be cast this turn.
   if (caster.budget.bonusSpellCast && (bonus || spell.level > 0)) return refuse({ code: "bonusSpellCast" });
@@ -279,7 +279,7 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
   if (!busy && hero.wildShapeOriginal === null) {
     for (const id of hero.spellcasting?.spells ?? []) {
       const spell = content.find(id);
-      if (spell?.kind !== "spell" || spell.castingTime === "reaction") continue;
+      if (spell?.kind !== "spell" || spell.castingTime === "reaction" || spell.castingTime === "long") continue;
       const bonusAction = spell.castingTime === "bonus-action";
       if (costProblem(hero, bonusAction ? "bonusAction" : "action", content) !== null) continue;
       if (hero.budget.bonusSpellCast && (bonusAction || spell.level > 0)) continue;

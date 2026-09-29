@@ -375,10 +375,11 @@ export class ExploreFlow {
     const t = text.campaign.explore;
     const view = buildExploreView(loaded.state, loaded.bible, loaded.content, loaded.glossary, loaded.hero.id);
     if (view.spells.length === 0 && view.healing.length === 0) return this.home(record, text, userId, t.noSpells);
+    // Healing first, then rituals, then cantrips: a caster with a long spellbook must not lose the useful ones to the menu's 25-entry limit.
     const options = [
-      ...view.spells.map((spell) => ({ label: spell.name.slice(0, 100), description: spell.cantrip ? t.castCantrip : t.castRitual, value: spell.id })),
       // A healing spell spends a slot, so the menu says so; the value tells the next step to ask which.
       ...view.healing.map((spell) => ({ label: spell.name.slice(0, 100), description: t.castHeals, value: `${healPrefix}${spell.id}` })),
+      ...[...view.spells].sort((a, b) => Number(a.cantrip) - Number(b.cantrip)).map((spell) => ({ label: spell.name.slice(0, 100), description: spell.cantrip ? t.castCantrip : t.castRitual, value: spell.id })),
     ];
     return {
       content: t.castPlaceholder,

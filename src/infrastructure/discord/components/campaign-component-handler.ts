@@ -33,7 +33,7 @@ import { maxSpeechLength } from "../../../domain/campaign/engine/speech.js";
 import type { CombatCommand } from "../../../domain/campaign/commands/campaign-command.js";
 import { abilities, type Ability } from "../../../domain/campaign/rules/effects.js";
 import { buildTurnView, type TurnView } from "../../../application/campaign/views/turn-view.js";
-import { encodeChoice, parseAim, parseChoice, renderEndConfirm, renderTargetMenu, renderTurnMenu, type TurnChoice, type TurnMenu } from "../campaign/turn-menu.js";
+import { encodeChoice, parseAim, parseChoice, renderEndConfirm, renderSpellMenu, renderTargetMenu, renderTurnMenu, type TurnChoice, type TurnMenu } from "../campaign/turn-menu.js";
 import type { CampaignAction } from "../campaign/campaign-ids.js";
 import { campaignCustomId, campaignIdPrefix, parseCampaignId } from "../campaign/campaign-ids.js";
 import type { ContentId } from "../../../domain/campaign/rules/content-id.js";
@@ -112,6 +112,8 @@ function combatCommand(choice: TurnChoice, targetIds: readonly string[]): ((comb
       return (combatantId): CombatCommand => ({ kind: "combatDisengage", combatantId });
     case "end":
       return (combatantId): CombatCommand => ({ kind: "endTurn", combatantId });
+    case "spells":
+      return null;
   }
 }
 
@@ -685,6 +687,10 @@ export class CampaignComponentHandler implements ComponentHandler {
     const context = await this.turnContext(record, text, interaction.user.id);
     if (context.kind === "message") {
       await interaction.editReply({ content: context.content, components: [] });
+      return;
+    }
+    if (choice.kind === "spells") {
+      await this.editMenu(interaction, renderSpellMenu(context.view, choice.page, text, context.glossary, record.key.campaignId), null);
       return;
     }
     const aimed = choice.kind === "attack" || choice.kind === "cast" || choice.kind === "engage";

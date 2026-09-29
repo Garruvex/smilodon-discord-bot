@@ -1,5 +1,6 @@
 import type { DiceExpression } from "../dice/dice-expression.js";
 import type { ContentId } from "./content-id.js";
+import type { Modifier } from "./modifiers.js";
 
 export const abilities = ["str", "dex", "con", "int", "wis", "cha"] as const;
 export type Ability = (typeof abilities)[number];
@@ -67,6 +68,15 @@ export type Effect =
       readonly ability: Ability;
       readonly dc: number;
       readonly condition: ContentId<"condition">;
+    }
+  // A lasting effect made of modifiers alone (Mage Armor's armor class, Faerie Fire's
+  // advantage to hit): the same effect record a condition is, ending with its duration
+  // or the caster's concentration.
+  | {
+      readonly kind: "applyModifiers";
+      readonly target: EffectTarget;
+      readonly modifiers: readonly Modifier[];
+      readonly duration: EffectDuration;
     }
   // Gains (positive) or removes (negative) this many levels of Exhaustion, a
   // 6-level stacking condition unlike every other one here (Greater

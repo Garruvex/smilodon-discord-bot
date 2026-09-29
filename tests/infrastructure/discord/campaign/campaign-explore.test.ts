@@ -238,8 +238,8 @@ describe("Explore: casting between fights", () => {
     const { t } = await table();
     const cast = screenOf(await click(t, id(t, "exploreCast")));
     // Sleep is a slotted spell with no place between fights.
-    expect(cast.menus[0]?.options.map((option) => option.value)).toEqual(["spell:mage-hand", "spell:detect-magic", "spell:identify"]);
-    expect(cast.menus[0]?.options.map((option) => option.description)).toEqual(["Cantrip", "Ritual", "Ritual"]);
+    expect(cast.menus[0]?.options.map((option) => option.value)).toEqual(["spell:detect-magic", "spell:identify", "spell:mage-hand"]);
+    expect(cast.menus[0]?.options.map((option) => option.description)).toEqual(["Ritual", "Ritual", "Cantrip"]);
     const done = screenOf(await choose(t, id(t, "exploreCastPick"), "spell:detect-magic"));
     expect(done.content).toContain("You cast Detect Magic.");
     expect(await t.r.store.transaction((tx) => tx.pendingOutbox("narrateUtilityCast"))).toHaveLength(1);
@@ -278,8 +278,8 @@ describe("Explore: healing a friend between fights", () => {
   it("offers the healing spells that spend a slot, next to the free ones, and not the rest", async () => {
     const { t } = await healer();
     const cast = screenOf(await click(t, id(t, "exploreCast")));
-    expect(cast.menus[0]?.options.map((option) => option.value)).toEqual(["spell:detect-magic", "heal:spell:cure-wounds", "heal:spell:healing-word"]);
-    expect(cast.menus[0]?.options.map((option) => option.description)).toEqual(["Ritual", "Heals a friend · uses a spell slot", "Heals a friend · uses a spell slot"]);
+    expect(cast.menus[0]?.options.map((option) => option.value)).toEqual(["heal:spell:cure-wounds", "heal:spell:healing-word", "spell:detect-magic"]);
+    expect(cast.menus[0]?.options.map((option) => option.description)).toEqual(["Heals a friend · uses a spell slot", "Heals a friend · uses a spell slot", "Ritual"]);
   });
 
   it("asks which slot when there is a choice, then whom, then casts for real", async () => {
