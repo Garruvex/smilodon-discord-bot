@@ -2,6 +2,10 @@ import type { DiceExpression } from "../dice/dice-expression.js";
 import type { ContentId } from "./content-id.js";
 import type { Ability, DamageType } from "./effects.js";
 
+// What kind of creature a monster is, for the rules that single out undead, fiends and the like.
+export const creatureTypes = ["aberration", "beast", "celestial", "construct", "dragon", "elemental", "fey", "fiend", "giant", "humanoid", "monstrosity", "ooze", "plant", "undead"] as const;
+export type CreatureType = (typeof creatureTypes)[number];
+
 // Passive rules a creature has, from whatever grants them: armor and shields,
 // class features, monster stat blocks. One closed union, so each rule is
 // implemented once in the engine and reused by every source (code structure:
@@ -55,6 +59,8 @@ export type Trait =
   // vulnerability. Simplified: the SRD's "nonmagical weapons" qualifier on
   // some resistances is dropped (the engine has no notion of a magic
   // weapon), so those are granted as flat resistance to the damage type.
+  // A monster's creature type (Turn Undead, Divine Smite's extra die against undead and fiends).
+  | { readonly kind: "creatureType"; readonly type: CreatureType }
   | { readonly kind: "damageResistance"; readonly damageTypes: readonly DamageType[] }
   | { readonly kind: "damageImmunity"; readonly damageTypes: readonly DamageType[] }
   | { readonly kind: "damageVulnerability"; readonly damageTypes: readonly DamageType[] }
@@ -137,7 +143,14 @@ export type Trait =
 
 // Where a monster's remaining Legendary Resistance is counted (resources.featureUses).
 // Where an innate or spell-shaped ability's uses left are counted (resources.featureUses).
-export const innateUseKey = (spellId: string): string => `innate:${spellId}`;
+// Spell-shaped abilities that draw on one pool of uses (Turn Undead and Preserve Life are both the cleric's one Channel Divinity).
+const sharedUses: Readonly<Record<string, string>> = { "spell:turn-undead": "spell:preserve-life" };
+export const innateUseKey = (spellId: string): string => `innate:${sharedUses[spellId] ?? spellId}`;
+
+export function creatureTypeOf(traits: readonly Trait[]): CreatureType | null {
+  for (const trait of traits) if (trait.kind === "creatureType") return trait.type;
+  return null;
+}
 
 // Where a hero's Relentless Endurance use is counted (resources.featureUses).
 export const relentlessEnduranceKey = "trait:relentless-endurance";

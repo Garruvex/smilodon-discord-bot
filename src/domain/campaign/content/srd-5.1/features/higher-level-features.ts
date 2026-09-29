@@ -24,11 +24,14 @@ export const extraAttack3 = defineFeature({ id: "feature:extra-attack-3", source
 export const cunningAction = defineFeature({ id: "feature:cunning-action", source, traits: [{ kind: "cunningAction" }], action: null });
 export const uncannyDodge = defineFeature({ id: "feature:uncanny-dodge", source, traits: [{ kind: "uncannyDodge" }], action: null });
 // Preserve Life stands for the cleric's Channel Divinity: one healing of 5 hit points per level, once per short rest.
-// Turn Undead is not modeled (creatures have no type).
+// Turn Undead shares its one use.
 export const channelDivinity = defineFeature({
   id: "feature:channel-divinity",
   source,
-  traits: [{ kind: "featureSpell", spell: "spell:preserve-life", ability: "wis", uses: 1, recharge: "shortRest" }],
+  traits: [
+    { kind: "featureSpell", spell: "spell:preserve-life", ability: "wis", uses: 1, recharge: "shortRest" },
+    { kind: "featureSpell", spell: "spell:turn-undead", ability: "wis", uses: 1, recharge: "shortRest" },
+  ],
   action: null,
 });
 export const jackOfAllTrades = narrative("jack-of-all-trades");

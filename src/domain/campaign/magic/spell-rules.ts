@@ -1,5 +1,6 @@
 import type { HeroResources } from "../character/hero-status.js";
 import type { SpellDefinition } from "../rules/content-definitions.js";
+import { creatureTypeOf, type Trait } from "../rules/traits.js";
 
 // The rules of spellcasting that do not depend on where a fight is happening:
 // slots, how many targets, whom a spell may name, and what keeps concentration.
@@ -23,6 +24,7 @@ export interface SpellParty {
   readonly id: string;
   readonly side: "party" | "foes";
   readonly zoneId: string;
+  readonly traits?: readonly Trait[];
 }
 
 export type SpellTargetProblem = "invalidTarget" | "outOfRange";
@@ -69,6 +71,10 @@ export function lowestSlot(spell: SpellDefinition, slots: SpellSlots): number | 
 export function spellTargetProblem(spell: SpellDefinition, caster: SpellParty, target: SpellParty | undefined, present: boolean, distanceFeet: number | null): SpellTargetProblem | null {
   if (target === undefined || !present) return "invalidTarget";
   if (spell.targeting.relation === "enemy" && target.side === caster.side) return "invalidTarget";
+  if (spell.targeting.creatureTypes !== undefined) {
+    const type = creatureTypeOf(target.traits ?? []);
+    if (type === null || !spell.targeting.creatureTypes.includes(type)) return "invalidTarget";
+  }
   if (spell.targeting.relation === "ally-or-self" && target.side !== caster.side) return "invalidTarget";
   const inReach =
     spell.range.kind === "self"

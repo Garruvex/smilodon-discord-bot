@@ -49,6 +49,23 @@ export const preserveLife = defineSpell({
   plan: ({ casterLevel }) => ({ check: null, onLand: [{ kind: "heal", target: "target", amount: flat(casterLevel * 5) }], onAvoid: [] }),
 });
 
+// Channel Divinity: Turn Undead. Undead within 30 feet that fail a Wisdom save are turned for a minute; a turned
+// creature is played as one that has fled the fight (it takes no actions).
+export const turnUndead = defineSpell({
+  id: "spell:turn-undead",
+  source,
+  level: 0,
+  castingTime: "action",
+  range: { kind: "feet", feet: 30 },
+  targeting: { relation: "enemy", count: 6, creatureTypes: ["undead"] },
+  concentration: false,
+  plan: () => ({
+    check: { kind: "savingThrow", ability: "wis" },
+    onLand: [{ kind: "applyCondition", target: "target", condition: "condition:turned", duration: { kind: "rounds", count: 10 } }],
+    onAvoid: [],
+  }),
+});
+
 // Dragonborn ancestries: the color, its damage type, the save it calls for, and whether the breath is a line (30 ft) or a cone (15 ft).
 export const breathAncestries: readonly (readonly [string, DamageType, Ability, number])[] = [
   ["black", "acid", "dex", 30],
@@ -85,4 +102,4 @@ export const breathWeapons: readonly SpellDefinition[] = breathAncestries.map(([
   }),
 );
 
-export const srd51ClassAbilitySpells: readonly SpellDefinition[] = [bardicInspiration, layOnHands, preserveLife, ...breathWeapons];
+export const srd51ClassAbilitySpells: readonly SpellDefinition[] = [bardicInspiration, layOnHands, preserveLife, turnUndead, ...breathWeapons];

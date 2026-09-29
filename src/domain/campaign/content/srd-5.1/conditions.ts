@@ -26,6 +26,8 @@ export const prone = defineCondition({
 });
 
 export const frightened = defineCondition({ id: "condition:frightened", source, includes: [], modifiers: [{ kind: "ownAttacks", mode: "disadvantage" }] });
+// Turned by Turn Undead: it flees, so it takes no actions and attacks poorly if forced to.
+export const turned = defineCondition({ id: "condition:turned", source, includes: [frightened.id, incapacitated.id], modifiers: [] });
 export const poisoned = defineCondition({ id: "condition:poisoned", source, includes: [], modifiers: [{ kind: "ownAttacks", mode: "disadvantage" }] });
 
 export const unconscious = defineCondition({
@@ -107,6 +109,7 @@ export const srd51Conditions: readonly ConditionDefinition[] = [
   incapacitated,
   prone,
   frightened,
+  turned,
   poisoned,
   unconscious,
   grappled,

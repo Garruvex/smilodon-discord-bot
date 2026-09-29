@@ -5,7 +5,7 @@ import type { ContentId, ContentKind } from "./content-id.js";
 import type { Ability, DamageType, Effect, ResolutionPlan } from "./effects.js";
 import type { Modifier } from "./modifiers.js";
 import type { Skill } from "./skills.js";
-import type { Trait } from "./traits.js";
+import type { CreatureType, Trait } from "./traits.js";
 
 // Content definitions. Each kind keeps the data that is genuinely its own
 // (a spell's slot level, a weapon's range, armor's AC formula), but they all
@@ -45,6 +45,8 @@ export type SpellRange =
 export interface SpellTargeting {
   readonly relation: "self" | "ally-or-self" | "creature" | "enemy";
   readonly count: number;
+  // Only creatures of these types may be named (Turn Undead).
+  readonly creatureTypes?: readonly CreatureType[];
   // Extra targets per slot level above the spell's level (Bless: 1).
   readonly countPerHigherSlot?: number;
 }

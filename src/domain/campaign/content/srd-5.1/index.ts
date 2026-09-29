@@ -11,6 +11,7 @@ import { srd51Weapons } from "./items/weapons.js";
 import { srd51EnchantedGear } from "./items/magic-gear.js";
 import { srd51MagicItems } from "./items/srd-magic-items.generated.js";
 import { srd51GeneratedItems } from "./items/srd-equipment.generated.js";
+import { srd51CreatureTypes } from "./monsters/creature-types.generated.js";
 import { srd51MoreMonsters } from "./monsters/more-monsters.js";
 import { srd51GeneratedMonsters } from "./monsters/srd-monsters.generated.js";
 import { srd51StarterMonsters } from "./monsters/starter-monsters.js";
@@ -25,7 +26,13 @@ export const srd51RulesetId = "srd-5.1";
 // Bump when any shipped definition changes behavior; campaigns pin a version.
 export const srd51Version = "2026.1";
 
-export const srd51Content: readonly ContentDefinition[] = [
+// A monster carries its creature type as a trait, so the rules that name undead, fiends and the like can read it.
+const withCreatureType = (definition: ContentDefinition): ContentDefinition => {
+  const type = definition.kind === "monster" ? srd51CreatureTypes[definition.id] : undefined;
+  return type === undefined || definition.kind !== "monster" ? definition : { ...definition, traits: [...definition.traits, { kind: "creatureType", type }] };
+};
+
+const srd51Definitions: readonly ContentDefinition[] = [
   ...srd51Conditions,
   ...srd51Cantrips,
   ...srd51Level1Spells,
@@ -49,6 +56,8 @@ export const srd51Content: readonly ContentDefinition[] = [
   ...srd51Subraces,
   ...srd51DragonAncestries,
 ];
+
+export const srd51Content: readonly ContentDefinition[] = srd51Definitions.map(withCreatureType);
 
 export function buildSrd51(options: ContentBuildOptions): SealedContent {
   return new ContentRegistryBuilder(srd51RulesetId, srd51Version).add(srd51Content).build(options);

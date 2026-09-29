@@ -343,7 +343,7 @@ describe("class features", () => {
 
     fight.run(sam, { kind: "combatWildShape", combatantId: "c-elspeth", monsterId: "monster:wolf" });
     const wolf = fight.combatant("c-elspeth");
-    expect(wolf).toMatchObject({ armorClass: 13, maxHp: 11, hp: 11, speed: 40, traits: [{ kind: "packTactics" }] });
+    expect(wolf).toMatchObject({ armorClass: 13, maxHp: 11, hp: 11, speed: 40, traits: [{ kind: "packTactics" }, { kind: "creatureType", type: "beast" }] });
     expect(wolf.attacks[0]?.weapon).toBe("item:bite");
     expect(wolf.wildShapeOriginal).toMatchObject({ armorClass: before.armorClass, maxHp: before.maxHp, hp: before.hp, speed: before.speed });
     // No spellcasting while shaped, even though her spellcasting data is untouched.
@@ -409,6 +409,36 @@ describe("class features", () => {
     // 7 (weapon) + 6 (smite) against 7 max HP: downed.
     expect(fight.combatant("goblin-a").hp).toBe(0);
     expect(fight.combatant("c-borin").resources.spellSlots).toEqual({ 1: 0 });
+  });
+
+  it("adds one more die of Divine Smite against an undead creature", () => {
+    const undead: EncounterSpec = { ...close, monsters: [{ monsterId: "monster:skeleton", zoneId: "courtyard", npcId: null, fleeBelowHpFraction: null }] };
+    const fight = new Fight(withDivineSmite()).rolls([1, 20, 5]).run(organizer, { kind: "startEncounter", spec: undead });
+    fight.run(jamie, { kind: "combatMove", combatantId: "c-borin", zoneId: "courtyard" });
+    fight.run(jamie, { kind: "combatEngage", combatantId: "c-borin", targetId: "skeleton" });
+    const before = fight.combatant("skeleton").hp;
+    // Weapon die 1 and three smite dice of 1: a 1st-level slot rolls 2d8 against the living, 3d8 against the undead.
+    fight.rolls([15], [1, 1, 1, 1]).run(jamie, { kind: "combatAttack", combatantId: "c-borin", targetId: "skeleton", weapon: "item:longsword", smiteSlot: 1 });
+    expect(before - fight.combatant("skeleton").hp).toBe(1 + 5 + 3);
+  });
+
+  it("turns the undead with Channel Divinity, and names only undead as targets", () => {
+    const base = newCampaign();
+    const hero = base.characters["c-borin"];
+    if (hero === undefined) throw new Error("fixture");
+    const state: CampaignState = { ...base, characters: { ...base.characters, "c-borin": { ...hero, features: [...hero.features, "feature:channel-divinity"] as typeof hero.features } } };
+    const mixed: EncounterSpec = {
+      ...close,
+      monsters: [
+        { monsterId: "monster:skeleton", zoneId: "courtyard", npcId: null, fleeBelowHpFraction: null },
+        { monsterId: "monster:goblin", zoneId: "courtyard", npcId: null, fleeBelowHpFraction: null },
+      ],
+    };
+    const fight = new Fight(state).rolls([1, 20, 5, 4]).run(organizer, { kind: "startEncounter", spec: mixed });
+    fight.run(jamie, { kind: "combatMove", combatantId: "c-borin", zoneId: "courtyard" });
+    expect(fight.reject(jamie, { kind: "combatCast", combatantId: "c-borin", spellId: "spell:turn-undead", slotLevel: 0, targetIds: ["goblin"] })).toEqual({ code: "invalidTarget" });
+    fight.rolls([2]).run(jamie, { kind: "combatCast", combatantId: "c-borin", spellId: "spell:turn-undead", slotLevel: 0, targetIds: ["skeleton"] });
+    expect(fight.combatant("skeleton").effects.some((effect) => JSON.stringify(effect).includes("condition:turned"))).toBe(true);
   });
 
   it("refuses Divine Smite without the feature, or with no slot left", () => {

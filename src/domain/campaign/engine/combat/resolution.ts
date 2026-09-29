@@ -16,7 +16,7 @@ import { classifyRollMoments } from "../../dice/roll-moments.js";
 import { resultMatchesSpec, type RollResult, type RollSpec } from "../../dice/roll-spec.js";
 import type { Effect, EffectDuration } from "../../rules/effects.js";
 import { criticalHits, naturalRollsOnChecks } from "../../rules/house-rules.js";
-import { critThreshold, hasSaveAdvantage, isImmuneToCondition, legendaryResistanceKey } from "../../rules/traits.js";
+import { creatureTypeOf, critThreshold, hasSaveAdvantage, isImmuneToCondition, legendaryResistanceKey } from "../../rules/traits.js";
 import type { Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { activeEncounter, afterResolution, endIfDecided } from "./combat-flow.js";
@@ -211,9 +211,11 @@ function landEffects(resolution: ResolutionState, encounter: EncounterState): re
   const onLand = withSavageAttacks(resolution, encounter);
   const slot = resolution.smiteSlot !== undefined ? resolution.smiteSlot : resolution.source.kind === "weapon" ? (resolution.source.smiteSlot ?? null) : null;
   if (slot === null) return onLand;
-  // 2d8 for a 1st-level slot, +1d8 per level above that, capped at 5d8 (a
-  // fiend or undead target's extra d8 is not modeled).
-  return [...onLand, { kind: "damage", target: "target", amount: dice(Math.min(5, slot + 1), 8), damageType: "radiant" }];
+  // 2d8 for a 1st-level slot, +1d8 per level above that, capped at 5d8; one more d8 against a fiend or undead.
+  const struck = encounter.combatants[resolution.targetIds[0] ?? ""];
+  const type = struck === undefined ? null : creatureTypeOf(struck.traits);
+  const extra = type === "undead" || type === "fiend" ? 1 : 0;
+  return [...onLand, { kind: "damage", target: "target", amount: dice(Math.min(5, slot + 1) + extra, 8), damageType: "radiant" }];
 }
 
 // Savage Attacks: a melee weapon critical hit rolls one more of the weapon's damage dice, on top of the doubled ones.

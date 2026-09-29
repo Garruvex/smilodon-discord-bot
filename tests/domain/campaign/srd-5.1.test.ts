@@ -72,7 +72,7 @@ describe("SRD 5.1 content", () => {
     expect(traitsOf(content.get("item:chain-mail"))).toEqual([{ kind: "armor", baseArmorClass: 16, dexterityCap: 0 }]);
     expect(traitsOf(content.get("item:shield"))).toEqual([{ kind: "armorClassBonus", amount: 2 }]);
     expect(traitsOf(content.get("feature:disciple-of-life"))).toEqual([{ kind: "healingBonus", flat: 2, perSpellLevel: 1 }]);
-    expect(traitsOf(content.get("monster:wolf"))).toEqual([{ kind: "packTactics" }]);
+    expect(traitsOf(content.get("monster:wolf"))).toContainEqual({ kind: "packTactics" });
   });
 
   it("gives the wolf's bite a prone rider that references a real condition", () => {
@@ -113,8 +113,8 @@ describe("SRD 5.1 content", () => {
   });
 
   it("gives the new monsters pack tactics or brute/skirmisher attacks that reference real weapons", () => {
-    expect(traitsOf(content.get("monster:kobold"))).toEqual([{ kind: "packTactics" }]);
-    expect(traitsOf(content.get("monster:giant-rat"))).toEqual([{ kind: "packTactics" }]);
+    expect(traitsOf(content.get("monster:kobold"))).toContainEqual({ kind: "packTactics" });
+    expect(traitsOf(content.get("monster:giant-rat"))).toContainEqual({ kind: "packTactics" });
     expect(content.get("monster:zombie").attacks[0]?.weapon).toBe("item:slam");
     expect(content.get("monster:orc").attacks[0]?.weapon).toBe("item:greataxe");
     expect(content.get("monster:skeleton").attacks.map((attack) => attack.weapon)).toEqual(["item:shortsword", "item:shortbow"]);
