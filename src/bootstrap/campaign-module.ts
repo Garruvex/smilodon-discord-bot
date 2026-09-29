@@ -29,6 +29,7 @@ import { DeliveryWorker } from "../application/campaign/workers/delivery-worker.
 import { ImageWorker } from "../application/campaign/workers/image-worker.js";
 import { monsterGalleryImage } from "../infrastructure/campaign/image/monster-gallery.js";
 import { FileImageAssetStore } from "../infrastructure/campaign/image/file-image-asset-store.js";
+import { HeroPictures } from "../infrastructure/discord/campaign/hero-pictures.js";
 import { OpenAiImageGenerator } from "../infrastructure/campaign/image/openai-image-generator.js";
 import { OpenAiImageStylizer } from "../infrastructure/campaign/image/openai-image-stylizer.js";
 import { FilePortraitStore } from "../infrastructure/campaign/image/file-portrait-store.js";
@@ -144,8 +145,6 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
   const messages = new DiscordMessageGateway(client);
   const issues = new CampaignIssues({ unitOfWork, clock, notify: organizerNotice(messages) });
   const resources = new DiscordResourceGateway(client);
-  const cards = new CampaignCardService({ unitOfWork, rulesets, adventures, messages, glossaries, logger, issues, resources });
-  const presenter = new DiscordCampaignPresenter({ unitOfWork, messages, cards, adventures, glossaries, revealDelayMs: 1_200 });
   const library = new CharacterLibrary({ unitOfWork, clock, content, rulesetVersion: content.version });
   // A saved character's portrait: an upload turned into D&D art, or one painted from its description.
   // Both need the image model; without it the portrait screens are simply not offered.
@@ -158,6 +157,10 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
       ? {}
       : { stylizer: new OpenAiImageStylizer(configuration.campaignImages), generator: new OpenAiImageGenerator(configuration.campaignImages) }),
   });
+  // Each hero's thumbnail on the party channel and portrait on their sheet: their saved character's portrait, or their initials.
+  const heroPictures = new HeroPictures({ portraitFor: (libraryCharacterId): ReturnType<typeof portraits.forGame> => portraits.forGame(libraryCharacterId) });
+  const cards = new CampaignCardService({ unitOfWork, rulesets, adventures, messages, glossaries, logger, issues, resources, pictures: heroPictures });
+  const presenter = new DiscordCampaignPresenter({ unitOfWork, messages, cards, adventures, glossaries, revealDelayMs: 1_200 });
   const lobby = new CampaignLobbyService({
     unitOfWork,
     library,
@@ -220,7 +223,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
   const intake = new AdventureIntake({ catalog, author, glossaries });
   const adventureHandler = new AdventureComponentHandler({ catalog, authority });
   const command = new DndCommand({ lobby, play, setup, cards, creator, authority, library, libraryScreens: libraryHandler, intake });
-  const handler = new CampaignComponentHandler({ lobby, play, cards, unitOfWork, rulesets, adventures, glossaries, library });
+  const handler = new CampaignComponentHandler({ lobby, play, cards, unitOfWork, rulesets, adventures, glossaries, library, pictures: heroPictures });
   const hubHandler = new CampaignHubComponentHandler({ lobby, play, setup, cards, creator, authority, adventures, libraryScreens: libraryHandler, intake });
 
   // A deleted hub channel or game post (a forum thread) is made again (its

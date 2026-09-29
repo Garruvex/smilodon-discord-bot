@@ -1,9 +1,9 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, TextDisplayBuilder } from "discord.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, SectionBuilder, TextDisplayBuilder, ThumbnailBuilder } from "discord.js";
 
 import type { HeroView } from "../../../application/campaign/views/campaign-views.js";
 import type { Texts } from "../../../application/i18n/texts.js";
 import { campaignCustomId } from "./campaign-ids.js";
-import { accents, cardPayload, type CardPayload } from "./card-payload.js";
+import { accents, cardPayload, type CardFile, type CardPayload } from "./card-payload.js";
 import { classLabel } from "./text-keys.js";
 
 const barCells = 8;
@@ -37,7 +37,8 @@ export function hpBar(hp: number, maxHp: number): string {
 // gear, pack, party gold, prepared spells and slots, and limited uses, so the
 // table never has to click for them. Private notes never appear here.
 // `nameOf` localizes a content ID (a condition, item, spell, or feature).
-export function renderHeroCard(view: HeroView, text: Texts, campaignId: string, nameOf: (id: string) => string): CardPayload {
+// `picture` is the hero's thumbnail (their portrait, or a tile with their initials).
+export function renderHeroCard(view: HeroView, text: Texts, campaignId: string, nameOf: (id: string) => string, picture?: CardFile): CardPayload {
   const t = text.campaign;
   const presence = view.fallen ? t.hero.fallen : view.down ? t.hero.down : view.presence === "away" ? t.hero.away : t.hero.present;
   const list = (ids: readonly string[]): string => ids.map(nameOf).join(t.hero.separator);
@@ -57,10 +58,11 @@ export function renderHeroCard(view: HeroView, text: Texts, campaignId: string, 
     ...spellLines(view, text, nameOf),
     ...(view.uses.length === 0 ? [] : [t.hero.uses({ uses: view.uses.map((use) => `${nameOf(use.id)} ${use.left}/${use.max}`).join(t.hero.separator) })]),
   ];
-  const container = new ContainerBuilder()
-    .setAccentColor(view.fallen ? accents.gray : view.down ? accents.red : view.presence === "away" ? accents.gray : accents.green)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")))
-    .addActionRowComponents(
+  const body = new TextDisplayBuilder().setContent(lines.join("\n"));
+  const container = new ContainerBuilder().setAccentColor(view.fallen ? accents.gray : view.down ? accents.red : view.presence === "away" ? accents.gray : accents.green);
+  if (picture === undefined) container.addTextDisplayComponents(body);
+  else container.addSectionComponents(new SectionBuilder().addTextDisplayComponents(body).setThumbnailAccessory(new ThumbnailBuilder().setURL(`attachment://${picture.name}`).setDescription(view.name.slice(0, 100))));
+  container.addActionRowComponents(
       new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
           .setCustomId(campaignCustomId("details", campaignId, view.characterId))
@@ -68,5 +70,5 @@ export function renderHeroCard(view: HeroView, text: Texts, campaignId: string, 
           .setStyle(ButtonStyle.Secondary),
       ),
     );
-  return cardPayload(container);
+  return cardPayload(container, picture === undefined ? [] : [picture]);
 }

@@ -30,6 +30,7 @@ import { renderCampaignCard } from "./campaign-card.js";
 import type { CampaignMessageGateway } from "./campaign-message-gateway.js";
 import type { CardPayload } from "./card-payload.js";
 import { renderHeroCard } from "./hero-card.js";
+import type { HeroPictureFile, HeroPictures } from "./hero-pictures.js";
 import { renderHubControl, renderHubGame, type HubGame } from "./hub-card.js";
 import { renderLobbyCard } from "./lobby-card.js";
 import { renderOfferCard } from "./offer-card.js";
@@ -51,6 +52,8 @@ export interface CampaignCardServiceOptions {
   // Re-tags a campaign's Games post on every sync when given; omitted in
   // tests that don't care about forum tags.
   readonly resources?: CampaignResourceGateway;
+  // Hero thumbnails for the party channel's hero cards; omitted in tests that don't draw them.
+  readonly pictures?: HeroPictures;
 }
 
 // A card that failed to draw is left alone for this long, so a missing
@@ -217,7 +220,7 @@ export class CampaignCardService implements CardRefresher {
     const loaded = await this.options.unitOfWork.transaction(async (tx) => ({ stored: await tx.loadRecord(key), campaign: await tx.loadCampaign(key) }));
     if (loaded.stored === undefined) return;
     const { record } = loaded.stored;
-    const desired = this.desiredCards(record, loaded.campaign);
+    const desired = this.desiredCards(record, loaded.campaign, await this.thumbnails(loaded.campaign));
     const updates: Record<string, CardReference> = {};
     const failures: CardFailure[] = [];
     // A lobby card becomes the campaign card in place when the adventure starts.
@@ -338,7 +341,22 @@ export class CampaignCardService implements CardRefresher {
     }
   }
 
-  private desiredCards(record: CampaignRecord, campaign: StoredCampaign | undefined): readonly DesiredCard[] {
+  // Each hero's thumbnail, by character; empty when thumbnails are not wired or a picture cannot be made.
+  private async thumbnails(campaign: StoredCampaign | undefined): Promise<ReadonlyMap<string, HeroPictureFile>> {
+    const { pictures } = this.options;
+    const made = new Map<string, HeroPictureFile>();
+    if (pictures === undefined || campaign === undefined) return made;
+    for (const sheet of Object.values(campaign.state.characters)) {
+      try {
+        made.set(sheet.id, await pictures.thumbnail({ characterId: sheet.id, name: sheet.name, ...(sheet.origin === undefined ? {} : { libraryCharacterId: sheet.origin.libraryCharacterId }) }));
+      } catch (error) {
+        this.options.logger.warn({ err: error, characterId: sheet.id }, "A hero thumbnail could not be made");
+      }
+    }
+    return made;
+  }
+
+  private desiredCards(record: CampaignRecord, campaign: StoredCampaign | undefined, thumbnails: ReadonlyMap<string, HeroPictureFile> = new Map()): readonly DesiredCard[] {
     const language: Language = record.language;
     const text = allTexts[language];
     const campaignId = record.key.campaignId;
@@ -391,7 +409,7 @@ export class CampaignCardService implements CardRefresher {
         cards.push({
           key: `hero:${hero.characterId}`,
           channelId: partyChannelId,
-          payload: renderHeroCard(hero, text, campaignId, (id) => glossary.names[id] ?? id),
+          payload: renderHeroCard(hero, text, campaignId, (id) => glossary.names[id] ?? id, thumbnails.get(hero.characterId)),
           epoch: "hero",
           pin: false,
         });
@@ -545,5 +563,8 @@ function panelEpoch(state: StoredCampaign["state"]): string {
 }
 
 function hashOf(payload: CardPayload): string {
-  return createHash("sha1").update(JSON.stringify(payload.components.map((component) => component.toJSON()))).digest("hex");
+  const hash = createHash("sha1").update(JSON.stringify(payload.components.map((component) => component.toJSON())));
+  // A card's pictures are part of what it shows: a new portrait is an edit.
+  for (const file of payload.files ?? []) hash.update(file.name).update(file.bytes);
+  return hash.digest("hex");
 }

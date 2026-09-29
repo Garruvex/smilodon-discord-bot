@@ -38,7 +38,7 @@ export class DiscordMessageGateway implements CampaignMessageGateway {
   public async edit(channelId: string, messageId: string, payload: CardPayload): Promise<"ok" | "missing"> {
     try {
       const channel = await this.channel(channelId);
-      await channel.messages.edit(messageId, options(payload));
+      await channel.messages.edit(messageId, editOptions(payload));
       return "ok";
     } catch (error) {
       if (error instanceof DiscordAPIError && missingCodes.includes(Number(error.code))) return "missing";
@@ -104,6 +104,12 @@ export class DiscordMessageGateway implements CampaignMessageGateway {
   }
 }
 
-function options(payload: CardPayload): { components: CardPayload["components"]; flags: CardPayload["flags"]; allowedMentions: CardPayload["allowedMentions"] } {
-  return { components: payload.components, flags: payload.flags, allowedMentions: payload.allowedMentions };
+function options(payload: CardPayload): { components: CardPayload["components"]; flags: CardPayload["flags"]; allowedMentions: CardPayload["allowedMentions"]; files?: { attachment: Buffer; name: string }[] } {
+  const files = (payload.files ?? []).map((file) => ({ attachment: file.bytes, name: file.name }));
+  return { components: payload.components, flags: payload.flags, allowedMentions: payload.allowedMentions, ...(files.length === 0 ? {} : { files }) };
+}
+
+// An edit that carries pictures replaces the message's attachments with exactly those.
+function editOptions(payload: CardPayload): ReturnType<typeof options> & { attachments?: [] } {
+  return { ...options(payload), ...((payload.files ?? []).length === 0 ? {} : { attachments: [] }) };
 }

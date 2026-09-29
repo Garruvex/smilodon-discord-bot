@@ -8,10 +8,18 @@ export interface CardPayload {
   readonly components: [ContainerBuilder];
   readonly flags: MessageFlags.IsComponentsV2;
   readonly allowedMentions: { readonly parse: [] };
+  // Pictures the card shows as attachment://name (a hero's thumbnail). They go
+  // out with every send and edit, so the message always holds exactly these.
+  readonly files?: readonly CardFile[];
 }
 
-export function cardPayload(container: ContainerBuilder): CardPayload {
-  return { components: [container], flags: Flags.IsComponentsV2, allowedMentions: { parse: [] } };
+export interface CardFile {
+  readonly name: string;
+  readonly bytes: Buffer;
+}
+
+export function cardPayload(container: ContainerBuilder, files: readonly CardFile[] = []): CardPayload {
+  return { components: [container], flags: Flags.IsComponentsV2, allowedMentions: { parse: [] }, ...(files.length === 0 ? {} : { files }) };
 }
 
 // Panel spec, State accents.

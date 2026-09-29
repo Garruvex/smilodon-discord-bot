@@ -44,6 +44,7 @@ import { classLabel } from "../campaign/text-keys.js";
 import { giveMenu, packMenu, parseGift, parsePackChoice } from "../campaign/pack-menu.js";
 import { CampaignCardService } from "../campaign/campaign-card-service.js";
 import { renderHeroSheet } from "../campaign/hero-sheet.js";
+import type { HeroPictures } from "../campaign/hero-pictures.js";
 import type { CharacterLibrary } from "../../../application/campaign/library/character-library.js";
 import { libraryHeroRef, savedSnapshotIdOf } from "../../../application/campaign/library/library-types.js";
 import { conflictLines } from "./character-library-component-handler.js";
@@ -74,6 +75,8 @@ export interface CampaignComponentDependencies {
   readonly glossaries: Readonly<Record<string, Glossary>>;
   // Saved characters: without it the hero picker offers only the adventure's presets.
   readonly library?: CharacterLibrary;
+  // A hero's portrait for the full-size picture on their sheet; without it the sheet is text only.
+  readonly pictures?: HeroPictures;
 }
 
 const maxActionLength = 500;
@@ -426,7 +429,8 @@ export class CampaignComponentHandler implements ComponentHandler {
         const save = parsed.action === "myHero" ? await this.saveRow(record, text, userId) : [];
         const asi = parsed.action === "myHero" ? await this.levelRow(record, text, userId) : [];
         const proxy = parsed.action === "myHero" ? await this.proxyMenu(record, text, userId) : [];
-        await interaction.editReply({ content: sheet, components: [...gear, ...asi, ...proxy, ...save].slice(0, 5) });
+        const portrait = await this.heroPortrait(record, parsed.action === "details" ? parsed.argument : null, userId);
+        await interaction.editReply({ content: sheet, components: [...gear, ...asi, ...proxy, ...save].slice(0, 5), ...(portrait === undefined ? {} : { files: [portrait] }) });
         return;
       }
       default:
@@ -994,6 +998,20 @@ export class CampaignComponentHandler implements ComponentHandler {
       content: `${note}\n\n${await this.heroSheet(record, text, null, interaction.user.id)}`,
       components: await this.heroMenus(record, text, interaction.user.id),
     });
+  }
+
+  // The hero's own portrait as a file for their sheet; undefined when they have none (the sheet is then text only).
+  private async heroPortrait(record: CampaignRecord, characterId: string | null, userId: string): Promise<{ attachment: Buffer; name: string } | undefined> {
+    const { pictures } = this.deps;
+    if (pictures === undefined) return undefined;
+    const loaded = await this.deps.unitOfWork.transaction((tx) => tx.loadCampaign(record.key));
+    const id = characterId ?? loaded?.state.members[userId]?.characterId ?? null;
+    const sheet = id === null ? undefined : loaded?.state.characters[id];
+    if (sheet === undefined) return undefined;
+    const image = await pictures.full({ characterId: sheet.id, name: sheet.name, ...(sheet.origin === undefined ? {} : { libraryCharacterId: sheet.origin.libraryCharacterId }) });
+    if (image === undefined) return undefined;
+    const extension = image.mediaType === "image/jpeg" ? "jpg" : image.mediaType === "image/webp" ? "webp" : "png";
+    return { attachment: image.bytes, name: `portrait.${extension}` };
   }
 
   private async heroSheet(record: CampaignRecord, text: Texts, characterId: string | null, userId: string): Promise<string> {
