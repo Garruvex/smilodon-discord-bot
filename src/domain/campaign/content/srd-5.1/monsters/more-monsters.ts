@@ -297,6 +297,91 @@ export const owlbear = defineMonster({
   traits: [],
 });
 
+// Wilted-forest creatures and a hag, for the farm-and-forest style of adventure.
+export const twigBlight = defineMonster({
+  id: "monster:twig-blight",
+  source,
+  armorClass: 13,
+  maxHp: 4,
+  xp: 25,
+  speed: 20,
+  abilityScores: { str: 6, dex: 13, con: 12, int: 3, wis: 8, cha: 3 },
+  attacks: [{ weapon: "item:claw", toHit: 3, damage: plus(dice(1, 4), 1) }],
+  tactic: "brute",
+  traits: [{ kind: "conditionImmunity", conditions: ["condition:blinded"] }],
+});
+
+// The needles (a ranged attack) are not modeled; it fights with its claws.
+export const needleBlight = defineMonster({
+  id: "monster:needle-blight",
+  source,
+  armorClass: 12,
+  maxHp: 11,
+  xp: 50,
+  speed: 30,
+  abilityScores: { str: 12, dex: 12, con: 13, int: 4, wis: 8, cha: 3 },
+  attacks: [{ weapon: "item:claw", toHit: 3, damage: plus(dice(2, 6), 1) }],
+  tactic: "brute",
+  traits: [{ kind: "conditionImmunity", conditions: ["condition:blinded"] }],
+});
+
+// The poison's extra damage is left out; only Poisoned on a failed save applies.
+export const giantCentipede = defineMonster({
+  id: "monster:giant-centipede",
+  source,
+  armorClass: 13,
+  maxHp: 4,
+  xp: 50,
+  speed: 30,
+  abilityScores: { str: 5, dex: 14, con: 12, int: 1, wis: 7, cha: 3 },
+  attacks: [
+    {
+      weapon: "item:bite",
+      toHit: 4,
+      damage: plus(dice(1, 4), 2),
+      onHit: [{ kind: "conditionUnlessSave", target: "target", ability: "con", dc: 11, condition: "condition:poisoned" }],
+    },
+  ],
+  tactic: "brute",
+  traits: [],
+});
+
+// The bite and the constricting coil are one attack here: the bite's damage, and a
+// Strength save against being grappled.
+export const giantConstrictorSnake = defineMonster({
+  id: "monster:giant-constrictor-snake",
+  source,
+  armorClass: 12,
+  maxHp: 60,
+  xp: 450,
+  speed: 30,
+  abilityScores: { str: 19, dex: 14, con: 12, int: 1, wis: 10, cha: 3 },
+  attacks: [
+    {
+      weapon: "item:bite",
+      toHit: 6,
+      damage: plus(dice(2, 6), 4),
+      onHit: [{ kind: "conditionUnlessSave", target: "target", ability: "str", dc: 16, condition: "condition:grappled" }],
+    },
+  ],
+  tactic: "brute",
+  traits: [],
+});
+
+// Not modeled: Illusory Appearance, Invisible Passage, Mimicry, Amphibious.
+export const greenHag = defineMonster({
+  id: "monster:green-hag",
+  source,
+  armorClass: 17,
+  maxHp: 82,
+  xp: 700,
+  speed: 30,
+  abilityScores: { str: 18, dex: 12, con: 16, int: 13, wis: 14, cha: 14 },
+  attacks: [{ weapon: "item:claw", toHit: 6, damage: plus(dice(2, 8), 4) }],
+  tactic: "brute",
+  traits: [],
+});
+
 export const srd51MoreMonsters: readonly MonsterDefinition[] = [
   bandit,
   banditCaptain,
@@ -316,4 +401,9 @@ export const srd51MoreMonsters: readonly MonsterDefinition[] = [
   direWolf,
   ghoul,
   owlbear,
+  twigBlight,
+  needleBlight,
+  giantCentipede,
+  giantConstrictorSnake,
+  greenHag,
 ];

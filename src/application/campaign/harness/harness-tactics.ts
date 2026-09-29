@@ -1,7 +1,9 @@
 import type { CombatCommand } from "../../../domain/campaign/commands/campaign-command.js";
 import { availableSlots, engagedWith, isActive, type Combatant, type EncounterState } from "../../../domain/campaign/combat/combat-state.js";
 import { distanceBetween, edgeBetween, engageCost } from "../../../domain/campaign/combat/positioning.js";
+import { movementLeft } from "../../../domain/campaign/combat/turn-rules.js";
 import { chooseMonsterPlan } from "../../../domain/campaign/combat/tactics.js";
+import type { SealedContent } from "../../../domain/campaign/rules/content-registry.js";
 
 // How a scripted player fights: a front-liner, a ranged skirmisher, or a
 // healer who keeps allies standing.
@@ -16,7 +18,9 @@ const sacredFlame = "spell:sacred-flame";
 // the current state after every step. Movement and attacks reuse the monster
 // tactics so heroes and foes follow the same positioning rules; the harness
 // sends each step as a real player command, which the engine validates.
-export function chooseHeroCommand(encounter: EncounterState, hero: Combatant, role: HarnessCombatRole): CombatCommand {
+// `content` lets it see that a grappled or restrained hero has no movement left, as the engine does.
+export function chooseHeroCommand(encounter: EncounterState, hero: Combatant, role: HarnessCombatRole, content?: SealedContent): CombatCommand {
+  const movement = content === undefined ? hero.budget.movement : movementLeft(hero, content);
   const endTurn: CombatCommand = { kind: "endTurn", combatantId: hero.id };
   const foes = Object.values(encounter.combatants).filter((other) => other.side !== hero.side && isActive(other));
   if (foes.length === 0) return endTurn;
@@ -48,11 +52,11 @@ export function chooseHeroCommand(encounter: EncounterState, hero: Combatant, ro
   const [next] = plan.moves;
   if (next !== undefined) {
     const feet = edgeBetween(encounter.edges, hero.zoneId, next)?.feet ?? Infinity;
-    if (feet <= hero.budget.movement) return { kind: "combatMove", combatantId: hero.id, zoneId: next };
+    if (feet <= movement) return { kind: "combatMove", combatantId: hero.id, zoneId: next };
     if (plan.dash && hero.budget.action) return { kind: "combatDash", combatantId: hero.id };
     return endTurn;
   }
-  if (plan.engage !== null && hero.budget.movement >= engageCost && !engagedWith(encounter, hero.id).some((other) => other.id === plan.engage)) {
+  if (plan.engage !== null && movement >= engageCost && !engagedWith(encounter, hero.id).some((other) => other.id === plan.engage)) {
     return { kind: "combatEngage", combatantId: hero.id, targetId: plan.engage };
   }
   if (plan.attack !== null && hero.budget.action) return { kind: "combatAttack", combatantId: hero.id, targetId: plan.attack.targetId, weapon: plan.attack.option.weapon };

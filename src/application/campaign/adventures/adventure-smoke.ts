@@ -85,7 +85,7 @@ export function rehearseEncounter(document: AdventureDocument, encounter: BibleE
     const owner = state.characters[current.source.characterId]?.ownerUserId;
     if (owner === undefined) return finish("stuck", "A hero has no player.");
     const sheet = state.characters[current.source.characterId];
-    const problem = apply({ kind: "user", userId: owner }, chooseHeroCommand(fight, current, roleFor(sheet?.className)));
+    const problem = apply({ kind: "user", userId: owner }, chooseHeroCommand(fight, current, roleFor(sheet?.className), content));
     if (problem !== null) return finish("rejected", problem);
   }
   return finish("stuck", "The fight went on for too many steps without ending.");
