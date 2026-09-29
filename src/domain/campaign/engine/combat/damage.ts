@@ -1,7 +1,7 @@
 // Hit points and concentration: damage and healing, the death and unconscious rules, and what keeps a caster concentrating.
 import type { RollId } from "../../core/ids.js";
 import { isPresent, type Combatant, type CombatantId, type PendingCombatRoll } from "../../combat/combat-state.js";
-import { bonusDiceFor } from "../../effects/effect-queries.js";
+import { bonusDiceFor, conditionLookup, effectResistances } from "../../effects/effect-queries.js";
 import { resolveD20Test, type D20TestSpec } from "../../dice/d20-test.js";
 import { resultMatchesSpec, type RollResult } from "../../dice/roll-spec.js";
 import { naturalRollsOnChecks } from "../../rules/house-rules.js";
@@ -21,7 +21,8 @@ import { revertWildShape } from "./wild-shape.js";
 // damageType null: a source with no type to check resistance/immunity/
 // vulnerability against (a trigger predates this, or a future non-typed source).
 export function applyDamage(decision: Decision, target: Combatant, rolled: number, critical: boolean, damageType: DamageType | null = null): void {
-  const amount = damageType === null ? rolled : Math.floor(rolled * damageMultiplier(target.traits, damageType));
+  const traits = [...target.traits, ...effectResistances(target, conditionLookup(decision.ctx.rules.content))];
+  const amount = damageType === null ? rolled : Math.floor(rolled * damageMultiplier(traits, damageType));
   if (amount <= 0) return;
   // A Wild Shaped druid whose beast form drops to 0 HP reverts, and the damage left over falls on them.
   if (target.wildShapeOriginal !== null && amount >= target.hp) {

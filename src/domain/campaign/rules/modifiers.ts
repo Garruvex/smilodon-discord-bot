@@ -1,5 +1,5 @@
 import type { DiceExpression } from "../dice/dice-expression.js";
-import type { Ability } from "./effects.js";
+import type { Ability, DamageType } from "./effects.js";
 
 // What a lasting effect or condition does, from a fixed vocabulary. The rule
 // queries (effects/effect-queries.ts) read these and nothing else, so no rule
@@ -33,6 +33,10 @@ export type Modifier =
   | { readonly kind: "avoidsOpportunityAttacks" }
   // Adds to the holder's armor class (Shield).
   | { readonly kind: "acBonus"; readonly amount: number }
+  // Takes half damage of these types while it lasts (Rage).
+  | { readonly kind: "damageResistance"; readonly damageTypes: readonly DamageType[] }
+  // Adds to the holder's melee weapon damage (Rage).
+  | { readonly kind: "meleeDamageBonus"; readonly amount: number }
   // The holder cannot attack, or target with a spell, whoever caused this
   // effect (Charmed). Unlike every other modifier here, this one only means
   // anything read against the specific effect that granted it — a generic

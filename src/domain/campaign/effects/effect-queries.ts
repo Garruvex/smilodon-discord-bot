@@ -4,6 +4,7 @@ import type { ContentId } from "../rules/content-id.js";
 import type { SealedContent } from "../rules/content-registry.js";
 import type { Ability } from "../rules/effects.js";
 import type { Modifier, Reach, RollBias } from "../rules/modifiers.js";
+import type { Trait } from "../rules/traits.js";
 import type { EffectInstance, TriggerAction } from "./effect-instance.js";
 
 // The rule queries: the one place that turns a creature's lasting effects into
@@ -81,6 +82,16 @@ export function modifiersOf(holder: EffectHolder, lookup: ConditionLookup): read
 }
 
 // ------------------------------------------------------------- Acting and moving
+
+// The damage-resistance a creature has from lasting effects (Rage), in the Trait shape damageMultiplier reads.
+export function effectResistances(holder: EffectHolder, lookup: ConditionLookup): readonly Trait[] {
+  return modifiersOf(holder, lookup).flatMap(({ modifier }): Trait[] => (modifier.kind === "damageResistance" ? [{ kind: "damageResistance", damageTypes: modifier.damageTypes }] : []));
+}
+
+// Extra melee weapon damage from lasting effects (Rage).
+export function meleeDamageBonusOf(holder: EffectHolder, lookup: ConditionLookup): number {
+  return modifiersOf(holder, lookup).reduce((sum, { modifier }) => sum + (modifier.kind === "meleeDamageBonus" ? modifier.amount : 0), 0);
+}
 
 export function canAct(holder: EffectHolder, lookup: ConditionLookup): boolean {
   return holder.condition === "active" && !modifiersOf(holder, lookup).some(({ modifier }) => modifier.kind === "blocksActions");

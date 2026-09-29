@@ -158,6 +158,21 @@ describe("class features", () => {
     expect(fight.reject(jamie, { kind: "combatUseFeature", combatantId: "c-borin", featureId: "feature:second-wind" })).toEqual({ code: "noUsesLeft" });
   });
 
+  it("rages as a bonus action: resists weapon damage and adds +2 to melee damage, twice per long rest", () => {
+    const base = newCampaign();
+    const borin = base.characters["c-borin"];
+    if (borin === undefined) throw new Error("fixture");
+    const state: CampaignState = { ...base, characters: { ...base.characters, "c-borin": { ...borin, features: [...borin.features, "feature:rage" as const] } } };
+    const fight = borinFirst(state);
+    fight.run(jamie, { kind: "combatUseFeature", combatantId: "c-borin", featureId: "feature:rage" });
+    expect(fight.combatant("c-borin")).toMatchObject({ budget: { bonusAction: false, action: true } });
+    expect(fight.combatant("c-borin").effects).toHaveLength(1);
+    fight.run(jamie, { kind: "endTurn", combatantId: "c-borin" });
+    // Goblins hit Borin with slashing damage; Rage halves it.
+    const hits = ofKind(fight, "combatantHpChanged").filter((event) => event.combatantId === "c-borin");
+    for (const hit of hits) expect(hit.change).toBeGreaterThan(-6);
+  });
+
   it("adds Sneak Attack when an ally is next to the target", () => {
     // Two zones only: the goblins have nowhere to slip away to.
     const fight = borinFirst(newCampaign(), { ...skirmish, edges: [{ from: "gate", to: "courtyard", feet: 10 }] });

@@ -47,7 +47,32 @@ export const discipleOfLife = defineFeature({
 // the hero card names them, but no rule reads them. Level 2+ content (Rage's
 // damage resistance, Wild Shape, Pact Magic's invocations, and so on) is out
 // of scope for the starter roster.
-export const rage = defineFeature({ id: "feature:rage", source, traits: [], action: null });
+// Rage: a bonus action, twice per long rest; for 10 rounds the barbarian resists
+// weapon damage and adds +2 to melee damage (SRD 5.1, level 1 to 8).
+export const rage = defineFeature({
+  id: "feature:rage",
+  source,
+  traits: [],
+  action: {
+    cost: "bonusAction",
+    uses: { count: 2, recharge: "longRest" },
+    plan: () => ({
+      check: null,
+      onLand: [
+        {
+          kind: "applyModifiers",
+          target: "self",
+          modifiers: [
+            { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] },
+            { kind: "meleeDamageBonus", amount: 2 },
+          ],
+          duration: { kind: "rounds", count: 10 },
+        },
+      ],
+      onAvoid: [],
+    }),
+  },
+});
 export const bardicInspiration = defineFeature({ id: "feature:bardic-inspiration", source, traits: [], action: null });
 export const druidic = defineFeature({ id: "feature:druidic", source, traits: [], action: null });
 export const martialArts = defineFeature({ id: "feature:martial-arts", source, traits: [], action: null });

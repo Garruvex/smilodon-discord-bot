@@ -1,7 +1,8 @@
 // The rules an attack or spell is built from: its plan, advantage and disadvantage, and Sneak Attack.
 import { assertNever } from "../../core/assert-never.js";
 import { engagedWith, isActive, type Combatant, type EncounterState, type ResolutionSource } from "../../combat/combat-state.js";
-import { attackBias, effectsUsedUpByAttack, type ConditionLookup } from "../../effects/effect-queries.js";
+import { attackBias, conditionLookup, effectsUsedUpByAttack, meleeDamageBonusOf, type ConditionLookup } from "../../effects/effect-queries.js";
+import type { DiceExpression } from "../../dice/dice-expression.js";
 import { distanceBetween, engagedDistance } from "../../combat/positioning.js";
 import type { D20TestSpec } from "../../dice/d20-test.js";
 import type { combine } from "../../dice/dice-expression.js";
@@ -20,7 +21,7 @@ export function planFor(decision: Decision, actor: Combatant, source: Resolution
       // the plan this function fixes at declare time.
       return {
         check: { kind: "weaponAttack" },
-        onLand: [{ kind: "damage", target: "target", amount: source.option.damage, damageType: source.option.damageType }, ...source.option.onHit],
+        onLand: [{ kind: "damage", target: "target", amount: withRageBonus(source.option.damage, source.option.range.kind === "melee", actor, decision), damageType: source.option.damageType }, ...source.option.onHit],
         onAvoid: [],
       };
     }
@@ -50,6 +51,12 @@ export function planFor(decision: Decision, actor: Combatant, source: Resolution
     default:
       return assertNever(source);
   }
+}
+
+// Rage (and similar lasting effects): a flat bonus to melee weapon damage.
+function withRageBonus(damage: DiceExpression, melee: boolean, actor: Combatant, decision: Decision): DiceExpression {
+  const bonus = melee ? meleeDamageBonusOf(actor, conditionLookup(decision.ctx.rules.content)) : 0;
+  return bonus === 0 ? damage : plus(damage, bonus);
 }
 
 export function healingBonus(actor: Combatant, spellLevel: number): number {
