@@ -8,7 +8,7 @@ import type { HeroStatus } from "../character/hero-status.js";
 import { armorSpeedPenalty, isWorn } from "../engine/gear.js";
 import type { AttackOption, Combatant, ZoneId } from "./combat-state.js";
 
-const freshTurn = { action: true, bonusAction: true, reaction: true, movement: 0, attacksLeft: 1 } as const;
+const freshTurn = { action: true, bonusAction: true, reaction: true, movement: 0, attacksLeft: 1, bonusSpellCast: false } as const;
 
 // Hero status and worn gear belong to Character and Inventory; they are re-exported for callers that build combatants.
 export { defaultHeroResources, type HeroStatus } from "../character/hero-status.js";

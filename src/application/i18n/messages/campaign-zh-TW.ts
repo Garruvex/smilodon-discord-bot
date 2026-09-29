@@ -884,6 +884,7 @@ export const campaignZhTW = {
   "campaign.refusal.noSpellSlot": "你沒有足夠的法術位",
   "campaign.refusal.unknownFeature": "你沒有那項能力",
   "campaign.refusal.noUsesLeft": "那項能力已經沒有次數了",
+  "campaign.refusal.bonusSpellCast": "這回合用附贈動作施放法術之後，只能再施放一個需要動作的戲法",
   "campaign.refusal.itemNotHeld": "你沒有攜帶那個物品",
   "campaign.refusal.notUsable": "那個物品不能這樣使用",
   "campaign.refusal.generic": "現在無法這麼做",

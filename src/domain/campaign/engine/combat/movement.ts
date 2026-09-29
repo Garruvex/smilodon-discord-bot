@@ -1,5 +1,6 @@
 // Moving in a fight, and the opportunity attacks it provokes: a move waits for them, then happens if the mover can still move.
 import { currentCombatant, engagedWith, isActive, type Combatant, type EncounterState, type ResolutionState, type TurnPlanRemainder } from "../../combat/combat-state.js";
+import { weaponTargets } from "../../combat/legal-targets.js";
 import { avoidsOpportunityAttacks, conditionLookup } from "../../effects/effect-queries.js";
 import { deadlineAfter, type Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
@@ -148,6 +149,25 @@ export function afterResolution(decision: Decision, resolution: ResolutionState)
     nextOpportunityAttack(decision);
     return;
   }
-  const actor = activeEncounter(decision)?.combatants[resolution.actorId];
-  if (actor !== undefined && !isPlayerControlled(decision, actor)) endTurn(decision);
+  const encounter = activeEncounter(decision);
+  const actor = encounter?.combatants[resolution.actorId];
+  if (encounter == null || actor === undefined || isPlayerControlled(decision, actor)) return;
+  if (resolution.source.kind === "weapon" && isActive(actor) && currentCombatant(encounter)?.id === actor.id && nextMultiattack(decision, encounter, actor)) return;
+  endTurn(decision);
+}
+
+// Multiattack: the next swing of the Attack action, at the first weapon in the
+// sequence that has a target in reach. True when one was declared.
+function nextMultiattack(decision: Decision, encounter: EncounterState, actor: Combatant): boolean {
+  const multiattack = actor.traits.find((trait) => trait.kind === "multiattack");
+  if (multiattack === undefined || actor.budget.attacksLeft <= 0) return false;
+  const content = decision.ctx.rules.content;
+  const swung = multiattack.weapons.length - actor.budget.attacksLeft;
+  for (const weapon of multiattack.weapons.slice(swung)) {
+    const option = actor.attacks.find((attack) => attack.weapon === weapon);
+    if (option === undefined) continue;
+    const [target] = [...weaponTargets(encounter, actor, option, content)].sort((a, b) => (a.hp !== b.hp ? a.hp - b.hp : a.id.localeCompare(b.id)));
+    if (target !== undefined && declareWeaponAttack(decision, actor, target.id, option, "action") === null) return true;
+  }
+  return false;
 }

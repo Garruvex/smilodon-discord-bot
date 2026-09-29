@@ -5,6 +5,7 @@ import type { FeatureDefinition, SpellDefinition } from "../rules/content-defini
 import type { ContentId } from "../rules/content-id.js";
 import type { SealedContent } from "../rules/content-registry.js";
 import { healingPotionCost, type HouseRules } from "../rules/house-rules.js";
+import { mayWildShapeInto, wildShapeFeature, wildShapeUses } from "../rules/wild-shape-rules.js";
 import { canAct, conditionLookup, speedOf } from "../effects/effect-queries.js";
 import { castableSlotLevels, slotUnavailable, spellMaxTargets } from "../magic/spell-rules.js";
 import { areEngaged, availableSlots, currentCombatant, engagedWith, isPresent, type AttackOption, type Combatant, type EncounterState } from "./combat-state.js";
@@ -30,6 +31,7 @@ export type TurnProblem =
   | { readonly code: "unknownWeapon" }
   | { readonly code: "unknownSpell" }
   | { readonly code: "noSpellSlot"; readonly slotLevel: number }
+  | { readonly code: "bonusSpellCast" }
   | { readonly code: "notMelee" }
   | { readonly code: "invalidTargets"; readonly maxTargets: number }
   | { readonly code: "unknownFeature" }
@@ -75,9 +77,8 @@ export function attackProblem(encounter: EncounterState, attacker: Combatant, op
 }
 
 // Divine Smite: spending a slot with a melee hit for bonus radiant damage.
-// The slot is spent when the attack is declared (attack-rules.ts adds the
-// bonus damage to the plan), a simplification — the SRD lets a paladin
-// decide only once the hit is confirmed, sparing the slot on a miss.
+// A slot declared up front with the attack is spent then; otherwise the paladin
+// is offered the choice once the hit is confirmed (engine/combat/smite.ts).
 export function smiteProblem(attacker: Combatant, option: AttackOption, slotLevel: number): TurnProblem | null {
   if (!attacker.traits.some((trait) => trait.kind === "divineSmite")) return { code: "unknownFeature" };
   if (option.range.kind !== "melee") return { code: "notMelee" };
@@ -108,6 +109,8 @@ export function spellProblem(
   // A reaction spell is cast in response to something, never on the caster's turn.
   if (spell.castingTime === "reaction") return refuse({ code: "unknownSpell" });
   const bonus = spell.castingTime === "bonus-action";
+  // After a bonus-action spell, only a one-action cantrip may be cast this turn.
+  if (caster.budget.bonusSpellCast && (bonus || spell.level > 0)) return refuse({ code: "bonusSpellCast" });
   const cost = costProblem(caster, bonus ? "bonusAction" : "action", content);
   if (cost !== null) return refuse(cost);
   const maxTargets = spell.targeting.relation === "self" ? spell.targeting.count : spellMaxTargets(spell, slotLevel);
@@ -122,16 +125,23 @@ export function spellProblem(
 
 // ------------------------------------------------------------- Wild Shape
 
-// Simplified: only the Wolf is offered — the one beast in the catalog
-// within a level 2 Druid's CR 1/4 cap (monsters carry no challenge rating
-// yet to check a higher-level Druid's wider cap against, so every Druid
-// with the trait is offered the same single form). monsterId omitted
-// means reverting, checked against wildShapeOriginal instead.
+// A beast within the druid's level cap (rules/wild-shape-rules.ts), while a use
+// is left. monsterId omitted means reverting, checked against wildShapeOriginal instead.
 export function wildShapeProblem(hero: Combatant, content: SealedContent, monsterId?: ContentId<"monster">): TurnProblem | null {
   if (monsterId === undefined) return hero.wildShapeOriginal === null ? { code: "notShaped" } : null;
   if (hero.wildShapeOriginal !== null) return { code: "alreadyShaped" };
   if (!hero.traits.some((trait) => trait.kind === "wildShape")) return { code: "unknownFeature" };
-  return monsterId === "monster:wolf" && content.find(monsterId)?.kind === "monster" ? null : { code: "unknownFeature" };
+  const beast = content.find(monsterId);
+  if (beast?.kind !== "monster" || !mayWildShapeInto(hero.level, beast)) return { code: "unknownFeature" };
+  return (hero.resources.featureUses[wildShapeFeature] ?? wildShapeUses) < 1 ? { code: "noUsesLeft" } : null;
+}
+
+// Every beast this druid may take now.
+export function wildShapeForms(hero: Combatant, content: SealedContent): readonly ContentId<"monster">[] {
+  return content
+    .all("monster")
+    .filter((beast) => wildShapeProblem(hero, content, beast.id) === null)
+    .map((beast) => beast.id);
 }
 
 // ------------------------------------------------------------- Features
@@ -272,6 +282,7 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
       if (spell?.kind !== "spell" || spell.castingTime === "reaction") continue;
       const bonusAction = spell.castingTime === "bonus-action";
       if (costProblem(hero, bonusAction ? "bonusAction" : "action", content) !== null) continue;
+      if (hero.budget.bonusSpellCast && (bonusAction || spell.level > 0)) continue;
       const slotLevels = castableSlotLevels(spell, availableSlots(hero.resources));
       const targetIds = spellTargets(encounter, hero, spell, content).map((target) => target.id);
       if (slotLevels.length > 0 && targetIds.length > 0) spells.push({ spell, slotLevels, bonusAction, targetIds });
@@ -313,7 +324,7 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
   const canTakeAction = !busy && costProblem(hero, "action", content) === null;
   const cunningAvailable = hero.traits.some((trait) => trait.kind === "cunningAction") && costProblem(hero, "bonusAction", content) === null;
   const canDashOrDisengage = canTakeAction || (!busy && cunningAvailable);
-  const wildShapeForms: ContentId<"monster">[] = busy || wildShapeProblem(hero, content, "monster:wolf") !== null ? [] : ["monster:wolf"];
+  const formsNow = busy || !hero.budget.bonusAction ? [] : wildShapeForms(hero, content);
   const canRevertShape = !busy && wildShapeProblem(hero, content) === null;
 
   return {
@@ -329,7 +340,7 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
     canWithdraw: !busy && withdrawProblem(encounter, hero, content) === null,
     canTakeAction,
     canDashOrDisengage,
-    wildShapeForms,
+    wildShapeForms: formsNow,
     canRevertShape,
     hasUnspent: !busy && (hero.budget.action || hero.budget.bonusAction) && attacks.length + spells.length + features.length + potions.length > 0,
   };

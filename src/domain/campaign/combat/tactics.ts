@@ -22,7 +22,9 @@ const idle: TurnPlan = { disengage: false, dash: false, moves: [], engage: null,
 export function chooseMonsterPlan(encounter: EncounterState, monster: Combatant): TurnPlan {
   const foes = hostiles(encounter, monster);
   if (foes.length === 0) return idle;
-  const melee = monster.attacks.find((attack) => attack.range.kind === "melee") ?? null;
+  // A Multiattack opens with its first weapon.
+  const opener = monster.traits.find((trait) => trait.kind === "multiattack")?.weapons[0];
+  const melee = monster.attacks.find((attack) => attack.range.kind === "melee" && attack.weapon === opener) ?? monster.attacks.find((attack) => attack.range.kind === "melee") ?? null;
   const ranged = monster.attacks.find((attack) => attack.range.kind === "ranged") ?? null;
   const engaged = engagedWith(encounter, monster.id).filter((other) => other.side !== monster.side && isActive(other));
 

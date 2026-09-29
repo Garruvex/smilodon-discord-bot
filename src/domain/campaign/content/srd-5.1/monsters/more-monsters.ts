@@ -25,7 +25,7 @@ export const bandit = defineMonster({
   traits: [],
 });
 
-// Multiattack (two scimitar strikes and a dagger) and Parry are not modeled.
+// Parry is not modeled.
 export const banditCaptain = defineMonster({
   id: "monster:bandit-captain",
   source,
@@ -34,9 +34,12 @@ export const banditCaptain = defineMonster({
   xp: 450,
   speed: 30,
   abilityScores: { str: 15, dex: 16, con: 14, int: 14, wis: 11, cha: 14 },
-  attacks: [{ weapon: "item:scimitar", toHit: 5, damage: plus(dice(1, 6), 3) }],
+  attacks: [
+    { weapon: "item:scimitar", toHit: 5, damage: plus(dice(1, 6), 3) },
+    { weapon: "item:dagger", toHit: 5, damage: plus(dice(1, 4), 3) },
+  ],
   tactic: "brute",
-  traits: [],
+  traits: [{ kind: "multiattack", weapons: ["item:scimitar", "item:scimitar", "item:dagger"] }],
 });
 
 export const cultist = defineMonster({
@@ -89,6 +92,7 @@ export const boar = defineMonster({
   attacks: [{ weapon: "item:tusk", toHit: 3, damage: plus(dice(1, 6), 1) }],
   tactic: "brute",
   traits: [],
+  beast: { challengeRating: 0.25, flies: false, swims: false },
 });
 
 export const giantBoar = defineMonster({
@@ -102,6 +106,7 @@ export const giantBoar = defineMonster({
   attacks: [{ weapon: "item:tusk", toHit: 5, damage: plus(dice(2, 6), 3) }],
   tactic: "brute",
   traits: [],
+  beast: { challengeRating: 2, flies: false, swims: false },
 });
 
 // Flies at 60 feet; the engine tracks one speed, so that is it.
@@ -116,6 +121,7 @@ export const giantBat = defineMonster({
   attacks: [{ weapon: "item:bite", toHit: 4, damage: plus(dice(1, 6), 2) }],
   tactic: "skirmisher",
   traits: [],
+  beast: { challengeRating: 0.25, flies: true, swims: false },
 });
 
 export const giantPoisonousSnake = defineMonster({
@@ -136,9 +142,9 @@ export const giantPoisonousSnake = defineMonster({
   ],
   tactic: "brute",
   traits: [],
+  beast: { challengeRating: 0.25, flies: false, swims: true },
 });
 
-// Multiattack (bite and claws) is played as the claws.
 export const blackBear = defineMonster({
   id: "monster:black-bear",
   source,
@@ -147,9 +153,13 @@ export const blackBear = defineMonster({
   xp: 100,
   speed: 40,
   abilityScores: { str: 15, dex: 10, con: 14, int: 2, wis: 12, cha: 7 },
-  attacks: [{ weapon: "item:claw", toHit: 3, damage: plus(dice(2, 4), 2) }],
+  attacks: [
+    { weapon: "item:bite", toHit: 3, damage: plus(dice(1, 6), 2) },
+    { weapon: "item:claw", toHit: 3, damage: plus(dice(2, 4), 2) },
+  ],
   tactic: "brute",
-  traits: [],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw"] }],
+  beast: { challengeRating: 0.5, flies: false, swims: false },
 });
 
 export const brownBear = defineMonster({
@@ -160,9 +170,13 @@ export const brownBear = defineMonster({
   xp: 200,
   speed: 40,
   abilityScores: { str: 19, dex: 10, con: 16, int: 2, wis: 13, cha: 7 },
-  attacks: [{ weapon: "item:claw", toHit: 6, damage: plus(dice(2, 4), 4) }],
+  attacks: [
+    { weapon: "item:bite", toHit: 6, damage: plus(dice(1, 8), 4) },
+    { weapon: "item:claw", toHit: 6, damage: plus(dice(2, 4), 4) },
+  ],
   tactic: "brute",
-  traits: [],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw"] }],
+  beast: { challengeRating: 1, flies: false, swims: false },
 });
 
 // The grapple is an escape-DC grapple in the book; here a Strength save stands in for it.
@@ -184,6 +198,7 @@ export const crocodile = defineMonster({
   ],
   tactic: "brute",
   traits: [],
+  beast: { challengeRating: 0.5, flies: false, swims: true },
 });
 
 export const gnoll = defineMonster({
@@ -202,7 +217,6 @@ export const gnoll = defineMonster({
   traits: [],
 });
 
-// Multiattack (bite and a weapon) is played as one weapon attack.
 export const lizardfolk = defineMonster({
   id: "monster:lizardfolk",
   source,
@@ -212,11 +226,12 @@ export const lizardfolk = defineMonster({
   speed: 30,
   abilityScores: { str: 15, dex: 10, con: 13, int: 7, wis: 12, cha: 7 },
   attacks: [
+    { weapon: "item:bite", toHit: 4, damage: plus(dice(1, 6), 2) },
     { weapon: "item:mace", toHit: 4, damage: plus(dice(1, 6), 2) },
     { weapon: "item:javelin", toHit: 4, damage: plus(dice(1, 6), 2), range: { kind: "ranged", normal: 30, long: 120 } },
   ],
   tactic: "brute",
-  traits: [],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:mace"] }],
 });
 
 // Web and Web Walker are not modeled, and the bite's extra 2d8 poison damage
@@ -239,6 +254,7 @@ export const giantSpider = defineMonster({
   ],
   tactic: "brute",
   traits: [],
+  beast: { challengeRating: 1, flies: false, swims: false },
 });
 
 export const direWolf = defineMonster({
@@ -259,6 +275,7 @@ export const direWolf = defineMonster({
   ],
   tactic: "brute",
   traits: [{ kind: "packTactics" }],
+  beast: { challengeRating: 1, flies: false, swims: false },
 });
 
 // The claws paralyze on a failed Constitution save, as written (the book
@@ -283,7 +300,6 @@ export const ghoul = defineMonster({
   traits: [{ kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:poisoned"] }],
 });
 
-// Multiattack (beak and claws) is played as the claws.
 export const owlbear = defineMonster({
   id: "monster:owlbear",
   source,
@@ -292,9 +308,12 @@ export const owlbear = defineMonster({
   xp: 700,
   speed: 40,
   abilityScores: { str: 20, dex: 12, con: 17, int: 3, wis: 12, cha: 7 },
-  attacks: [{ weapon: "item:claw", toHit: 7, damage: plus(dice(2, 8), 5) }],
+  attacks: [
+    { weapon: "item:beak", toHit: 7, damage: plus(dice(1, 10), 5) },
+    { weapon: "item:claw", toHit: 7, damage: plus(dice(2, 8), 5) },
+  ],
   tactic: "brute",
-  traits: [],
+  traits: [{ kind: "multiattack", weapons: ["item:beak", "item:claw"] }],
 });
 
 // Wilted-forest creatures and a hag, for the farm-and-forest style of adventure.
@@ -344,6 +363,7 @@ export const giantCentipede = defineMonster({
   ],
   tactic: "brute",
   traits: [],
+  beast: { challengeRating: 0.25, flies: false, swims: false },
 });
 
 // The bite and the constricting coil are one attack here: the bite's damage, and a
@@ -366,6 +386,7 @@ export const giantConstrictorSnake = defineMonster({
   ],
   tactic: "brute",
   traits: [],
+  beast: { challengeRating: 2, flies: false, swims: true },
 });
 
 // Not modeled: Illusory Appearance, Invisible Passage, Mimicry, Amphibious.

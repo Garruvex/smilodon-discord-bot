@@ -1,5 +1,7 @@
 import { assertNever } from "../core/assert-never.js";
 import type { EffectInstance } from "../effects/effect-instance.js";
+import { attacksPerAction } from "../rules/traits.js";
+import { wildShapeUses } from "../rules/wild-shape-rules.js";
 import type { CombatEvent } from "./combat-events.js";
 import { spendSlot, type Combatant, type CombatantId, type EncounterState, type ResolutionState } from "./combat-state.js";
 
@@ -39,7 +41,8 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
             bonusAction: true,
             reaction: true,
             movement: combatant.speed,
-            attacksLeft: combatant.traits.reduce((most, trait) => (trait.kind === "extraAttack" ? Math.max(most, trait.attacks) : most), 1),
+            attacksLeft: attacksPerAction(combatant.traits),
+            bonusSpellCast: false,
           },
           dodging: false,
           disengaged: false,
@@ -120,6 +123,7 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
             bonusAction: cost.bonusAction ? false : combatant.budget.bonusAction,
             reaction: cost.reaction ? false : combatant.budget.reaction,
             attacksLeft,
+            bonusSpellCast: combatant.budget.bonusSpellCast || (resolution.source.kind === "spell" && cost.bonusAction),
           },
           resources: { ...resources, featureUses: uses },
         };
@@ -233,6 +237,10 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
         maxHp: event.maxHp,
         hp: event.hp,
         wildShapeOriginal: event.original,
+        resources:
+          event.spendsUseOf === undefined
+            ? combatant.resources
+            : { ...combatant.resources, featureUses: { ...combatant.resources.featureUses, [event.spendsUseOf]: Math.max(0, (combatant.resources.featureUses[event.spendsUseOf] ?? wildShapeUses) - 1) } },
       }));
     case "concentrationStarted":
       return update(encounter, event.combatantId, (combatant) => ({ ...combatant, concentration: event.concentration }));

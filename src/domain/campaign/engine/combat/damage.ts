@@ -12,6 +12,7 @@ import type { Rejection } from "../rejection.js";
 import { activeEncounter, isProtected } from "./combat-flow.js";
 import { concentrationDc } from "../../magic/spell-rules.js";
 import { finishResolution } from "./resolution.js";
+import { revertWildShape } from "./wild-shape.js";
 
 // 2014 rules: damage that leaves a hero at 0 HP knocks them unconscious;
 // leftover damage of at least their HP maximum kills outright; damage while
@@ -22,6 +23,13 @@ import { finishResolution } from "./resolution.js";
 export function applyDamage(decision: Decision, target: Combatant, rolled: number, critical: boolean, damageType: DamageType | null = null): void {
   const amount = damageType === null ? rolled : Math.floor(rolled * damageMultiplier(target.traits, damageType));
   if (amount <= 0) return;
+  // A Wild Shaped druid whose beast form drops to 0 HP reverts, and the damage left over falls on them.
+  if (target.wildShapeOriginal !== null && amount >= target.hp) {
+    revertWildShape(decision, target);
+    const restored = activeEncounter(decision)?.combatants[target.id];
+    if (restored !== undefined && amount > target.hp) applyDamage(decision, restored, amount - target.hp, critical);
+    return;
+  }
   const base = { kind: "combatantHpChanged", combatantId: target.id, change: -amount } as const;
   const protectedHero = isProtected(decision, target);
   if (target.side === "foes") {

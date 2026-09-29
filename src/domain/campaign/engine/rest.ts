@@ -1,3 +1,4 @@
+import { wildShapeUses } from "../rules/wild-shape-rules.js";
 import { abilityModifier } from "../character/character-sheet.js";
 import { hitDicePool } from "../character/character-build.js";
 import { defaultHeroResources, type HeroStatus } from "../character/hero-status.js";
@@ -48,6 +49,7 @@ export function takeRest(decision: Decision, rest: "short" | "long"): Rejection 
     for (const id of sheet.features) {
       const feature = content.find(id);
       if (feature?.kind === "feature" && feature.action?.uses.recharge === "shortRest") featureUses[id] = feature.action.uses.count;
+      if (feature?.kind === "feature" && feature.traits.some((trait) => trait.kind === "wildShape")) featureUses[id] = wildShapeUses;
     }
     // Pact Magic (Warlock) is SRD 5.1's one resource that comes back on a
     // short rest rather than a long one; every other spell slot is

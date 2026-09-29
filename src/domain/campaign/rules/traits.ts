@@ -29,6 +29,10 @@ export type Trait =
   // of one (2 for most classes; a Fighter's own later features raise it
   // further). More than one granted source: the highest applies.
   | { readonly kind: "extraAttack"; readonly attacks: number }
+  // Multiattack: the Attack action makes these attacks, in this order. An
+  // engine-played monster swings each in turn (movement.ts's afterResolution),
+  // skipping any that has nothing in reach.
+  | { readonly kind: "multiattack"; readonly weapons: readonly ContentId<"item">[] }
   // Cunning Action: Dash or Disengage costs a bonus action instead of the
   // action, when the bonus action is still free (Hide is not modeled).
   | { readonly kind: "cunningAction" }
@@ -63,6 +67,16 @@ export type Trait =
   | { readonly kind: "expandedCritRange"; readonly threshold: number };
 
 export type TraitKind = Trait["kind"];
+
+// How many weapon attacks the Attack action makes: 1, or more from Extra Attack
+// (the highest granted source) or Multiattack.
+export function attacksPerAction(traits: readonly Trait[]): number {
+  return traits.reduce((most, trait) => {
+    if (trait.kind === "extraAttack") return Math.max(most, trait.attacks);
+    if (trait.kind === "multiattack") return Math.max(most, trait.weapons.length);
+    return most;
+  }, 1);
+}
 
 // The multiplier this creature's traits apply to damage of this type:
 // resistance and vulnerability to the same type cancel out per the SRD, and

@@ -254,7 +254,7 @@ describe("class features", () => {
     const base = partyOfThree();
     const elspeth = base.characters["c-elspeth"];
     if (elspeth === undefined) throw new Error("fixture");
-    const druid = { ...base, characters: { ...base.characters, "c-elspeth": { ...elspeth, features: [...elspeth.features, "feature:wild-shape" as const] } } };
+    const druid = { ...base, characters: { ...base.characters, "c-elspeth": { ...elspeth, level: 2, features: [...elspeth.features, "feature:wild-shape" as const] } } };
     const fight = elspethFirst(druid);
     const before = fight.combatant("c-elspeth");
     expect(before.wildShapeOriginal).toBeNull();

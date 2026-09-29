@@ -159,6 +159,25 @@ function damageTraits(monster, notes) {
   return traits;
 }
 
+// The swings of a Multiattack, in order: the first option when the stat block offers several.
+// Uses that are not weapon attacks (Frightful Presence) are noted, not played.
+function multiattackWeapons(monster, weaponByAction, notes) {
+  const entry = (monster.actions ?? []).find((action) => action.name === "Multiattack");
+  if (entry === undefined) return [];
+  let steps = entry.actions ?? [];
+  if (entry.action_options !== undefined) {
+    const first = entry.action_options.from.options[0];
+    steps = (first.option_type === "multiple" ? first.items : [first]).map((item) => ({ action_name: item.action_name, count: Number(item.count) || 1 }));
+  }
+  const weapons = [];
+  for (const step of steps) {
+    const weapon = weaponByAction.get(String(step.action_name).toLowerCase());
+    if (weapon === undefined) notes.push(step.action_name);
+    else for (let index = 0; index < (Number(step.count) || 1); index += 1) weapons.push(weapon);
+  }
+  return weapons;
+}
+
 for (const monster of monsters) {
   const id = `monster:${monster.index}`;
   if (knownMonsters.has(id)) continue;
@@ -166,10 +185,10 @@ for (const monster of monsters) {
   const attacks = [];
   let anyRanged = false;
   let anyMelee = false;
+  const weaponByAction = new Map();
   for (const action of monster.actions ?? []) {
     if (action.attack_bonus === undefined || (action.damage ?? []).length === 0) {
-      if (action.name === "Multiattack") notes.push("Multiattack (played as one attack)");
-      else notes.push(action.name);
+      if (action.name !== "Multiattack") notes.push(action.name);
       continue;
     }
     const damage = damageList(monster, action);
@@ -179,6 +198,7 @@ for (const monster of monsters) {
     }
     if (damage.multiple) notes.push(`${action.name}'s extra damage types are folded into one`);
     const weapon = weaponFor(action, damage.type);
+    weaponByAction.set(action.name.toLowerCase(), weapon);
     const rider = riderCode(action);
     const ranged = /Ranged (Weapon|Spell) Attack/.test(action.desc);
     if (ranged) anyRanged = true;
@@ -191,6 +211,8 @@ for (const monster of monsters) {
     attacks.push(`    { weapon: "item:slam", toHit: 0, damage: flat(0) }`);
   }
   const traits = [];
+  const swings = multiattackWeapons(monster, weaponByAction, notes);
+  if (swings.length > 1) traits.push(`{ kind: "multiattack", weapons: [${swings.map(quote).join(", ")}] }`);
   const abilityNames = (monster.special_abilities ?? []).map((ability) => ability.name);
   if (abilityNames.includes("Pack Tactics")) traits.push(`{ kind: "packTactics" }`);
   if (abilityNames.includes("Nimble Escape")) traits.push(`{ kind: "nimbleEscape" }`);
@@ -203,6 +225,8 @@ for (const monster of monsters) {
   const speed = fly > 0 ? Math.max(walk, fly) : walk > 0 ? walk : Math.max(0, ...speeds);
   const armorClass = monster.armor_class[0].value;
   const tactic = anyRanged && !anyMelee ? "skirmisher" : "brute";
+  const beast = monster.type === "beast" ? `
+  beast: { challengeRating: ${monster.challenge_rating}, flies: ${(monster.speed?.fly ?? "") !== ""}, swims: ${(monster.speed?.swim ?? "") !== ""} },` : "";
   const name = camel(monster.index);
   const uniqueNotes = [...new Set(notes)];
   const comment = uniqueNotes.length === 0 ? "" : `// Not modeled: ${uniqueNotes.join("; ")}.\n`;
@@ -218,7 +242,7 @@ for (const monster of monsters) {
 ${attacks.join(",\n")},
   ],
   tactic: ${quote(tactic)},
-  traits: [${traits.join(", ")}],
+  traits: [${traits.join(", ")}],${beast}
 });
 `);
   monsterList.push(name);

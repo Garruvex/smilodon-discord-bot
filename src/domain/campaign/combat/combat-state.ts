@@ -129,6 +129,9 @@ export interface TurnBudget {
   // Weapon attacks left in this turn's action: 1, or 2 with Extra Attack.
   // The action itself is spent only once this reaches 0.
   readonly attacksLeft: number;
+  // A spell was cast as a bonus action this turn: only a cantrip with a casting
+  // time of one action may follow (SRD 5.1).
+  readonly bonusSpellCast: boolean;
 }
 
 export interface Zone {

@@ -883,6 +883,7 @@ export const campaignEn = {
   "campaign.refusal.noSpellSlot": "You have no spell slot left for that.",
   "campaign.refusal.unknownFeature": "You do not have that ability.",
   "campaign.refusal.noUsesLeft": "That ability has no uses left.",
+  "campaign.refusal.bonusSpellCast": "After a bonus-action spell, only a cantrip that takes an action can follow this turn.",
   "campaign.refusal.itemNotHeld": "You are not carrying that.",
   "campaign.refusal.notUsable": "That cannot be used like that.",
   "campaign.refusal.notPlanning": "The DM is not waiting on anything right now.",

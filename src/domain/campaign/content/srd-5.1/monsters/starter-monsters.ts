@@ -42,6 +42,7 @@ export const wolf = defineMonster({
   ],
   tactic: "brute",
   traits: [{ kind: "packTactics" }],
+  beast: { challengeRating: 0.25, flies: false, swims: false },
 });
 
 // The starter adventure's leader, Skarn. Brute is already part of the
@@ -83,6 +84,7 @@ export const giantWolfSpider = defineMonster({
   ],
   tactic: "brute",
   traits: [],
+  beast: { challengeRating: 0.25, flies: false, swims: false },
 });
 
 // Added for engine-robustness pass (step 8): more common low-level monsters,
@@ -112,6 +114,7 @@ export const giantRat = defineMonster({
   attacks: [{ weapon: "item:bite", toHit: 4, damage: plus(dice(1, 4), 2) }],
   tactic: "brute",
   traits: [{ kind: "packTactics" }],
+  beast: { challengeRating: 0.125, flies: false, swims: false },
 });
 
 // Not modeled: Undead Fortitude (the engine has no "drop to 1 HP instead of 0

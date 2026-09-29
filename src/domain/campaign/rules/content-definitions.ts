@@ -156,6 +156,8 @@ export interface MonsterDefinition extends DefinitionBase<"monster"> {
   readonly attacks: readonly MonsterAttack[];
   readonly tactic: MonsterTactic;
   readonly traits: readonly Trait[];
+  // Set on beasts only: what a Druid's Wild Shape checks (rules/wild-shape-rules.ts).
+  readonly beast?: { readonly challengeRating: number; readonly flies: boolean; readonly swims: boolean };
 }
 
 // How a class casts, if at all: full (Wizard-shaped slot table), half
