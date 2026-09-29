@@ -5,6 +5,8 @@ import { turnOptions } from "../../../src/domain/campaign/combat/turn-rules.js";
 import { formatDiceExpression } from "../../../src/domain/campaign/dice/dice-expression.js";
 import type { CampaignEvent } from "../../../src/domain/campaign/events/campaign-event.js";
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
+import { conditionLookup, effectResistances, meleeDamageBonusOf } from "../../../src/domain/campaign/effects/effect-queries.js";
+import { damageMultiplier } from "../../../src/domain/campaign/rules/traits.js";
 import { alex, borin, jamie, newCampaign, organizer, partyOfThree, ruleset, run, sam, system } from "./campaign-fixtures.js";
 import { Fight, skirmish, startedFight } from "./combat-fixtures.js";
 
@@ -169,8 +171,11 @@ describe("class features", () => {
     expect(fight.combatant("c-borin").effects).toHaveLength(1);
     fight.run(jamie, { kind: "endTurn", combatantId: "c-borin" });
     // Goblins hit Borin with slashing damage; Rage halves it.
-    const hits = ofKind(fight, "combatantHpChanged").filter((event) => event.combatantId === "c-borin");
-    for (const hit of hits) expect(hit.change).toBeGreaterThan(-6);
+    const raging = fight.combatant("c-borin");
+    const lookup = conditionLookup(ruleset().content);
+    expect(damageMultiplier([...raging.traits, ...effectResistances(raging, lookup)], "slashing")).toBe(0.5);
+    expect(damageMultiplier([...raging.traits, ...effectResistances(raging, lookup)], "fire")).toBe(1);
+    expect(meleeDamageBonusOf(raging, lookup)).toBe(2);
   });
 
   it("adds Sneak Attack when an ally is next to the target", () => {
