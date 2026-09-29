@@ -34,7 +34,7 @@ async function lobby(r: Rig): Promise<CampaignKey> {
   return key;
 }
 
-function serviceFor(r: Rig, messages: FakeMessages, extra: { now?: () => number } = {}): CampaignCardService {
+function serviceFor(r: Rig, messages: FakeMessages, extra: { now?: () => number; retryDelaysMs?: readonly number[] } = {}): CampaignCardService {
   return new CampaignCardService({
     ...extra,
     unitOfWork: r.store,
@@ -381,5 +381,23 @@ describe("the Games post's status tag", () => {
     const messages = new FakeMessages();
     const cards = serviceFor(r, messages);
     await expect(cards.sync(key)).resolves.toBeUndefined();
+  });
+
+  it("draws a card again by itself after an edit timed out, without waiting for a click", async () => {
+    const r = rig();
+    const messages = new FakeMessages();
+    const cards = serviceFor(r, messages, { retryDelaysMs: [5, 5, 5] });
+    const key = await lobby(r);
+    await cards.sync(key);
+    await r.service.join(key, "u-org");
+    // Discord holds the edit until the client gives up, twice.
+    messages.failEdits = 2;
+    await cards.sync(key);
+    const stale = flatten(only(messages.live(party)).payload).text;
+    expect(messages.edits).toHaveLength(0);
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    expect(messages.edits.length).toBeGreaterThan(0);
+    expect(flatten(only(messages.live(party)).payload).text).not.toBe(stale);
+    expect(flatten(only(messages.live(party)).payload).text).toContain("u-org");
   });
 });

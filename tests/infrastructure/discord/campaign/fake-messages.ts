@@ -13,6 +13,7 @@ export class FakeMessages implements CampaignMessageGateway {
   public readonly edits: string[] = [];
   public readonly pinned: string[] = [];
   public failSends = 0;
+  public failEdits = 0;
   public readonly deleted = new Set<string>();
   private next = 0;
 
@@ -28,6 +29,10 @@ export class FakeMessages implements CampaignMessageGateway {
   }
 
   public edit(_channelId: string, messageId: string, payload: CardPayload): Promise<"ok" | "missing"> {
+    if (this.failEdits > 0) {
+      this.failEdits -= 1;
+      return Promise.reject(new Error("Request timed out"));
+    }
     const message = this.sent.find((candidate) => candidate.messageId === messageId);
     if (message === undefined || this.deleted.has(messageId)) return Promise.resolve("missing");
     message.payload = payload;

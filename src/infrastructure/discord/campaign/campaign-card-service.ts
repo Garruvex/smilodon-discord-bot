@@ -54,6 +54,8 @@ export interface CampaignCardServiceOptions {
   readonly resources?: CampaignResourceGateway;
   // Hero thumbnails for the party channel's hero cards; omitted in tests that don't draw them.
   readonly pictures?: HeroPictures;
+  // Waits (milliseconds) before each retry of a card that could not be drawn for a reason that may pass (a rate limit, a timeout); tests shorten it.
+  readonly retryDelaysMs?: readonly number[];
 }
 
 // A card that failed to draw is left alone for this long, so a missing
@@ -245,6 +247,7 @@ export class CampaignCardService implements CardRefresher {
     }
     await this.saveReferences(key, updates, [...(record.lifecycle !== "lobby" && record.cards.lobby !== undefined ? ["lobby"] : []), ...answered]);
     await this.reportFailures(key, record, failures);
+    this.retryTransient(key, failures.some((failure) => failure.code === "cardsFailed" || failure.code === "cooling"));
     await this.syncStatusTag(record, loaded.campaign, verify && !deferHub);
     if (!deferHub) await this.syncHub(key.guildId, verify);
   }
@@ -464,7 +467,8 @@ export class CampaignCardService implements CardRefresher {
     const { messages } = this.options;
     if (failureKey !== undefined && !verify) {
       const failedAt = this.failedAt.get(failureKey);
-      if (failedAt !== undefined && this.now() - failedAt.at < failureCooldownMs) {
+      // Only a failure the organizer must fix (permissions, a deleted channel) is left alone for a while; a rate limit or a timeout is tried again at once.
+      if (failedAt !== undefined && failedAt.code !== "cardsFailed" && this.now() - failedAt.at < failureCooldownMs) {
         failures?.push({ card: card.key, code: "cooling", detail: failedAt.detail });
         return null;
       }
@@ -492,13 +496,39 @@ export class CampaignCardService implements CardRefresher {
       this.options.logger.warn({ err: error, card: card.key }, "A campaign card could not be drawn");
       const code = classifyFailure(error);
       const detail = card.key;
-      if (failureKey !== undefined) this.failedAt.set(failureKey, { at: this.now(), detail });
+      if (failureKey !== undefined) this.failedAt.set(failureKey, { at: this.now(), detail, code });
       failures?.push({ card: card.key, code, detail });
       return null;
     }
   }
 
-  private readonly failedAt = new Map<string, { at: number; detail: string }>();
+  private readonly failedAt = new Map<string, { at: number; detail: string; code: CampaignIssueCode }>();
+
+  // A card that could not be drawn because Discord was slow or limiting edits
+  // would stay stale (a panel still saying the DM is thinking) until the next
+  // click or the minute pass. It is tried again on its own, a little later each
+  // time, until it draws; the state it shows is always the saved one.
+  private readonly retries = new Map<string, { attempt: number; timer: NodeJS.Timeout | null }>();
+
+  private retryTransient(key: CampaignKey, failing: boolean): void {
+    const id = `${key.guildId}:${key.campaignId}`;
+    const waiting = this.retries.get(id);
+    if (!failing) {
+      if (waiting?.timer != null) clearTimeout(waiting.timer);
+      this.retries.delete(id);
+      return;
+    }
+    const delays = this.options.retryDelaysMs ?? [3_000, 8_000, 20_000, 45_000, 90_000];
+    const attempt = waiting?.attempt ?? 0;
+    const delay = delays[attempt];
+    if (waiting?.timer != null || delay === undefined) return;
+    const timer = setTimeout(() => {
+      this.retries.set(id, { attempt: attempt + 1, timer: null });
+      void this.sync(key).catch((error: unknown) => this.options.logger.error({ err: error, guildId: key.guildId, campaignId: key.campaignId }, "Campaign card retry failed"));
+    }, delay);
+    timer.unref();
+    this.retries.set(id, { attempt, timer });
+  }
 
   private now(): number {
     return (this.options.now ?? Date.now)();

@@ -459,5 +459,9 @@ export function createDiscordClient(): Client {
     // the MessageReactionAdd handler below call .fetch() on each to get the
     // real data instead of silently operating on missing content.
     partials: [Partials.Message, Partials.Reaction, Partials.User],
+    // Discord limits how fast one channel's messages may be edited, and a request
+    // waiting out that limit is held by the client. The default 15 s timeout gave
+    // up on such an edit, so a card stayed stale while the game had moved on.
+    rest: { timeout: 60_000 },
   });
 }
