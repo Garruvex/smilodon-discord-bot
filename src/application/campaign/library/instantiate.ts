@@ -1,4 +1,4 @@
-import { deriveSheet } from "../../../domain/campaign/character/character-build.js";
+import { deriveSnapshotSheet } from "../../../domain/campaign/character/leveling.js";
 import type { CharacterSheet } from "../../../domain/campaign/character/character-sheet.js";
 import { importedGear, resolveHouseRules } from "../../../domain/campaign/rules/house-rules.js";
 import type { LibrarySnapshot } from "./library-types.js";
@@ -10,7 +10,7 @@ import type { LibrarySnapshot } from "./library-types.js";
 // A table that plays "starter" gear ignores what the character earned.
 export function instantiateHero(snapshot: LibrarySnapshot, houseRules: Readonly<Record<string, string>>): Omit<CharacterSheet, "ownerUserId"> {
   const starter = resolveHouseRules(houseRules).option(importedGear) === "starter";
-  const derived = deriveSheet(snapshot.build, starter ? undefined : snapshot.gear);
+  const derived = deriveSnapshotSheet(snapshot.build, starter ? undefined : snapshot.gear, snapshot.progression);
   return {
     ...derived,
     id: heroIdFor(snapshot.id),

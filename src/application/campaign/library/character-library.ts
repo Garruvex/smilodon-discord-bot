@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { buildProblems, isBuildClass, isBuildRace, kitEquipment, type BuildChoices, type BuildProblem } from "../../../domain/campaign/character/character-build.js";
 import { isSkill } from "../../../domain/campaign/character/character-sheet.js";
+import { progressionOf, type Progression } from "../../../domain/campaign/character/leveling.js";
 import type { UserId } from "../../../domain/campaign/core/ids.js";
 import { abilities } from "../../../domain/campaign/rules/effects.js";
 import type { SealedContent } from "../../../domain/campaign/rules/content-registry.js";
@@ -88,7 +89,7 @@ export class CharacterLibrary {
   // Saves a hero's progress from a campaign as a new snapshot on that
   // campaign's own branch. Only from a settled moment (no fight, no roll
   // waiting), never HP, spent slots, conditions, the party stash or the
-  // party's gold: what carries over is the build and the gear.
+  // party's gold: what carries over is the build, the gear, and the hero's progress (level, XP, classes, improvements).
   public saveProgress(ownerUserId: UserId, key: CampaignKey): Promise<SaveProgressResult> {
     return this.options.unitOfWork.transaction(async (tx): Promise<SaveProgressResult> => {
       const stored = await tx.loadCampaign(key);
@@ -127,6 +128,7 @@ export class CharacterLibrary {
         rulesetVersion: parent.rulesetVersion,
         createdAt: this.options.clock.now(),
         build: parent.build,
+        progression: progressionOf(sheet),
         gear,
       };
       await tx.saveLibrarySnapshot(snapshot);
@@ -138,7 +140,7 @@ export class CharacterLibrary {
   public export(ownerUserId: UserId, snapshotId: string): Promise<string | undefined> {
     return this.snapshot(ownerUserId, snapshotId).then((snapshot) => {
       if (snapshot === undefined) return undefined;
-      const portable: PortableCharacter = { format: "dnd-character", version: 1, rulesetId: snapshot.rulesetId, rulesetVersion: snapshot.rulesetVersion, build: snapshot.build, gear: snapshot.gear };
+      const portable: PortableCharacter = { format: "dnd-character", version: 1, rulesetId: snapshot.rulesetId, rulesetVersion: snapshot.rulesetVersion, build: snapshot.build, gear: snapshot.gear, ...(snapshot.progression === undefined ? {} : { progression: snapshot.progression }) };
       return JSON.stringify(portable, null, 2);
     });
   }
@@ -158,7 +160,7 @@ export class CharacterLibrary {
     if (portable === null) return { kind: "unreadable", reason: "wrongFormat" };
     const conflicts = checkCompatibility(portable, this.options.content);
     if (conflicts.length > 0) return { kind: "conflicts", conflicts };
-    return this.options.unitOfWork.transaction((tx) => this.insert(tx, ownerUserId, portable.build, portable.gear, { kind: "import" }, portable.rulesetVersion));
+    return this.options.unitOfWork.transaction((tx) => this.insert(tx, ownerUserId, portable.build, portable.gear, { kind: "import" }, portable.rulesetVersion, portable.progression));
   }
 
   private async insert(
@@ -168,6 +170,7 @@ export class CharacterLibrary {
     gear: SnapshotGear,
     source: LibrarySnapshot["source"],
     rulesetVersion = this.options.rulesetVersion,
+    progression?: Progression,
   ): Promise<Extract<CreateResult, { kind: "ok" | "full" }>> {
     if ((await tx.listLibraryCharacters(ownerUserId)).length >= maxCharactersPerOwner) return { kind: "full" };
     const now = this.options.clock.now();
@@ -185,6 +188,7 @@ export class CharacterLibrary {
       rulesetVersion,
       createdAt: now,
       build: { ...build, name: build.name.trim() },
+      ...(progression === undefined ? {} : { progression }),
       gear,
     };
     await tx.saveLibraryCharacter(character);
@@ -209,7 +213,9 @@ function readPortable(raw: unknown): PortableCharacter | null {
   const build = readBuild(raw.build);
   const gear = readGear(raw.gear);
   if (build === null || gear === null) return null;
-  return { format: "dnd-character", version: 1, rulesetId: raw.rulesetId, rulesetVersion: raw.rulesetVersion, build, gear };
+  const progression = raw.progression === undefined ? undefined : readProgression(raw.progression);
+  if (progression === null) return null;
+  return { format: "dnd-character", version: 1, rulesetId: raw.rulesetId, rulesetVersion: raw.rulesetVersion, build, gear, ...(progression === undefined ? {} : { progression }) };
 }
 
 function readBuild(raw: unknown): BuildChoices | null {
@@ -261,4 +267,29 @@ function isItemList(value: unknown): value is SnapshotGear["equipment"] {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+// Numbers only, and only known keys: whether they add up to a legal hero is
+// checked separately (compatibility.ts), like a build's.
+function readProgression(raw: unknown): Progression | null {
+  if (!isRecord(raw) || typeof raw.xp !== "number" || typeof raw.pendingAsi !== "number") return null;
+  if (!isRecord(raw.classLevels) || !isRecord(raw.multiclassSkills) || !isRecord(raw.abilityScores)) return null;
+  if (Object.keys(raw.classLevels).length > 12 || Object.keys(raw.multiclassSkills).length > 12) return null;
+  const classLevels: Record<string, number> = {};
+  for (const [name, count] of Object.entries(raw.classLevels)) {
+    if (typeof count !== "number") return null;
+    classLevels[name] = count;
+  }
+  const multiclassSkills: Record<string, BuildChoices["skills"][number]> = {};
+  for (const [name, skill] of Object.entries(raw.multiclassSkills)) {
+    if (typeof skill !== "string" || !isSkill(skill)) return null;
+    multiclassSkills[name] = skill;
+  }
+  const scores: Record<string, number> = {};
+  for (const ability of abilities) {
+    const score = raw.abilityScores[ability];
+    if (typeof score !== "number") return null;
+    scores[ability] = score;
+  }
+  return { xp: raw.xp, classLevels, multiclassSkills, abilityScores: scores as Progression["abilityScores"], pendingAsi: raw.pendingAsi };
 }

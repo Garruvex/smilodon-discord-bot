@@ -18,7 +18,8 @@ import { CommandModule } from "../../../application/commands/command.js";
 import type { ComponentContext, ComponentHandler, ModalContext } from "../../../application/components/component-handler.js";
 import { texts, type Texts } from "../../../application/i18n/texts.js";
 import { publicAccessPolicy } from "../../../domain/access/access-policy.js";
-import { buildClasses, buildRaces, classTemplates, deriveSheet, suggestedAbilities, type BuildChoices, type BuildProblem } from "../../../domain/campaign/character/character-build.js";
+import { deriveSnapshotSheet } from "../../../domain/campaign/character/leveling.js";
+import { buildClasses, buildRaces, classTemplates, suggestedAbilities, type BuildChoices, type BuildProblem } from "../../../domain/campaign/character/character-build.js";
 import { abilityModifier, skillAbilities, type CharacterSheet, type Skill } from "../../../domain/campaign/character/character-sheet.js";
 import { armorClassFrom, heroTraits } from "../../../domain/campaign/combat/combatant-profile.js";
 import type { Glossary, SealedContent } from "../../../domain/campaign/rules/content-registry.js";
@@ -332,7 +333,7 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
 
   // One line for a saved character: class, hit points and armor class, all derived.
   public sheetLine(snapshot: LibrarySnapshot, text: Texts): string {
-    const derived = deriveSheet(snapshot.build, snapshot.gear);
+    const derived = deriveSnapshotSheet(snapshot.build, snapshot.gear, snapshot.progression);
     const sheet: CharacterSheet = { ...derived, id: "c-preview", ownerUserId: snapshot.ownerUserId };
     const armorClass = armorClassFrom(heroTraits(sheet, this.deps.content), abilityModifier(sheet.abilityScores.dex));
     return text.campaign.chars.sheetLine({ class: classLabel(text, snapshot.build.class), hp: sheet.maxHp, ac: armorClass });
@@ -371,6 +372,8 @@ export function conflictLines(conflicts: readonly ImportConflict[], text: Texts)
         return t.conflict.invalidBuild({ problem: problems[conflict.problem.code] ?? conflict.problem.code });
       case "unknownContent":
         return t.conflict.unknownContent({ id: conflict.id });
+      case "invalidProgression":
+        return t.conflict.invalidProgression({ problem: (t.progress as Readonly<Record<string, string>>)[conflict.problem.code] ?? conflict.problem.code });
       case "wornNotCarried":
         return t.conflict.wornNotCarried({ id: conflict.id });
     }

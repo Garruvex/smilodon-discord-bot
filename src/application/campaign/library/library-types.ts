@@ -1,5 +1,6 @@
 import type { BuildChoices } from "../../../domain/campaign/character/character-build.js";
 import type { Instant, UserId } from "../../../domain/campaign/core/ids.js";
+import type { Progression } from "../../../domain/campaign/character/leveling.js";
 import type { ContentId } from "../../../domain/campaign/rules/content-id.js";
 
 // The Discord-owned character library (plan §3). A character belongs to a
@@ -50,6 +51,8 @@ export interface LibrarySnapshot {
   // The player's choices: every number is derived from them, never stored.
   readonly build: BuildChoices;
   readonly gear: SnapshotGear;
+  // Progress carried out of a campaign (level, XP, classes, improvements); absent for a fresh build.
+  readonly progression?: Progression;
 }
 
 // A lobby seat that holds a saved character names its snapshot: "lib:<snapshot id>".
@@ -68,4 +71,5 @@ export interface PortableCharacter {
   readonly rulesetVersion: string;
   readonly build: BuildChoices;
   readonly gear: SnapshotGear;
+  readonly progression?: Progression;
 }

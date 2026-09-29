@@ -6,7 +6,10 @@ import {
   defaultAsiAllocation,
   hpGainForLevel,
   levelForXp,
+  applyProgression,
   levelUp,
+  progressionOf,
+  progressionProblems,
   proficiencyBonusForLevel,
   spellSlotsForLevel,
   xpForNextLevel,
@@ -134,5 +137,41 @@ describe("XP and levels", () => {
     expect(levelUp(level5, "fighter").pendingAsi).toBe(1);
     const level7 = { ...base, level: 7, classLevels: toLevel4.classLevels, pendingAsi: toLevel4.pendingAsi } as never;
     expect(levelUp(level7, "fighter").pendingAsi).toBe(2);
+  });
+});
+
+describe("saved progress", () => {
+  const base = { ...deriveSheet(wizardBuild), id: "c-p" as never, ownerUserId: "u-p" as never };
+
+  // Levels a hero live the way a campaign does: level after level, spending
+  // each Improvement as it comes.
+  function liveHero(levels: number): typeof base {
+    let sheet = base as never as Parameters<typeof levelUp>[0];
+    for (let level = 2; level <= levels; level += 1) {
+      const next = levelUp(sheet, "wizard");
+      sheet = { ...sheet, ...next, xp: xpThresholds[level - 1] ?? 0 };
+      if (asiLevels.includes(level)) sheet = { ...sheet, abilityScores: { ...sheet.abilityScores, int: sheet.abilityScores.int + 2 }, pendingAsi: (sheet.pendingAsi ?? 1) - 1 };
+    }
+    return sheet as never;
+  }
+
+  it("replays to the same hero a live level-up made, without storing a derived number", () => {
+    const live = liveHero(5);
+    const progress = progressionOf(live);
+    expect(progress).not.toHaveProperty("maxHp");
+    expect(progressionProblems(deriveSheet(wizardBuild), progress)).toEqual([]);
+    const replayed = applyProgression(deriveSheet(wizardBuild), progress);
+    expect(replayed).toMatchObject({ level: 5, maxHp: live.maxHp, abilityScores: live.abilityScores, features: live.features, classLevels: live.classLevels, pendingAsi: 0 });
+    expect(replayed.spellcasting).toEqual(live.spellcasting);
+  });
+
+  it("refuses progress that does not add up", () => {
+    const build = deriveSheet(wizardBuild);
+    const progress = progressionOf(liveHero(5));
+    expect(progressionProblems(build, { ...progress, xp: 0 })).toContainEqual({ code: "xpLevelMismatch" });
+    expect(progressionProblems(build, { ...progress, abilityScores: { ...progress.abilityScores, str: 20, dex: 20 } })).toContainEqual({ code: "asiPointsExceeded" });
+    expect(progressionProblems(build, { ...progress, pendingAsi: 3 })).toContainEqual({ code: "pendingAsiExceeded" });
+    expect(progressionProblems(build, { ...progress, classLevels: { rogue: 5 } })).toContainEqual({ code: "missingStartingClassLevel" });
+    expect(progressionProblems(build, { ...progress, classLevels: { wizard: 25 } })).toContainEqual({ code: "invalidLevel" });
   });
 });

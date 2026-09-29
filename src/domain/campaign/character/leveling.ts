@@ -1,8 +1,8 @@
-import type { Ability } from "../rules/effects.js";
+import { abilities, type Ability } from "../rules/effects.js";
 import type { CasterType } from "../rules/content-definitions.js";
 import type { Skill } from "../rules/skills.js";
 import { abilityModifier, type CharacterSheet } from "./character-sheet.js";
-import { classLevelsOf, classTemplates, type BuildClass } from "./character-build.js";
+import { classLevelsOf, classTemplates, deriveSheet, isBuildClass, type BuildChoices, type BuildClass, type DerivedSheet } from "./character-build.js";
 
 // XP and levels on top of the class roster (character-build.ts): the
 // roster stops at what a level-1 hero has; this is what changes as they earn
@@ -235,4 +235,99 @@ export function levelUp(
   }
 
   return { level, maxHp: sheet.maxHp + hpGain, abilityScores, spellcasting, features, classLevels, skills, pendingAsi, ...(pactMagic === undefined ? {} : { pactMagic }) };
+}
+
+// Saved progress (the character library's Save Progress and export): what a
+// hero became since its build's own level 1, kept as the facts that produced
+// it rather than as trusted derived numbers, the same "derive, never take a
+// stored number" rule a build follows. classLevels is the current total per
+// class; multiclassSkills the skill each added class granted on its first
+// level; abilityScores the current scores after any Improvements (bounded by
+// progressionProblems, not trusted); pendingAsi how many earned improvements
+// are still unspent. Hit points, features, spells and slots are all
+// recomputed from these by replaying levelUp.
+export interface Progression {
+  readonly xp: number;
+  readonly classLevels: Readonly<Partial<Record<string, number>>>;
+  readonly multiclassSkills: Readonly<Partial<Record<string, Skill>>>;
+  readonly abilityScores: Readonly<Record<Ability, number>>;
+  readonly pendingAsi: number;
+}
+
+export type ProgressionProblem =
+  | { readonly code: "invalidLevel" }
+  | { readonly code: "unknownClass"; readonly buildClass: string }
+  | { readonly code: "missingStartingClassLevel" }
+  | { readonly code: "xpLevelMismatch" }
+  | { readonly code: "abilityScoreOutOfRange" }
+  | { readonly code: "asiPointsExceeded" }
+  | { readonly code: "pendingAsiExceeded" };
+
+// The progress a live hero has made. A multiclass skill is read back as the
+// one of that class's offered skills the hero holds, since a sheet does not
+// remember which level granted it.
+export function progressionOf(sheet: CharacterSheet): Progression {
+  const classLevels = classLevelsOf(sheet);
+  const multiclassSkills: Record<string, Skill> = {};
+  for (const buildClass of Object.keys(classLevels)) {
+    if (buildClass === sheet.className || !isBuildClass(buildClass)) continue;
+    const held = (classTemplates[buildClass].multiclassSkillChoices ?? []).find((skill) => sheet.skills[skill] !== undefined);
+    if (held !== undefined) multiclassSkills[buildClass] = held;
+  }
+  return { xp: sheet.xp ?? 0, classLevels, multiclassSkills, abilityScores: sheet.abilityScores, pendingAsi: sheet.pendingAsi ?? 0 };
+}
+
+// Every level past the build's own first, one entry each. levelUp accumulates
+// by class, not by call order, so the order here never changes the result.
+function levelSequence(build: DerivedSheet, classLevels: Readonly<Partial<Record<string, number>>>): readonly BuildClass[] {
+  const sequence: BuildClass[] = [];
+  for (const [buildClass, count] of Object.entries(classLevels)) {
+    if (!isBuildClass(buildClass) || count === undefined) continue;
+    const already = buildClass === build.className ? 1 : 0;
+    for (let index = 0; index < count - already; index += 1) sequence.push(buildClass);
+  }
+  return sequence;
+}
+
+export function progressionProblems(build: DerivedSheet, progression: Progression): readonly ProgressionProblem[] {
+  const problems: ProgressionProblem[] = [];
+  const counts = Object.values(progression.classLevels);
+  const level = counts.reduce((sum: number, count) => sum + (count ?? 0), 0);
+  if (counts.some((count) => count === undefined || !Number.isInteger(count) || count < 1) || level < 1 || level > maxLevel) problems.push({ code: "invalidLevel" });
+  for (const buildClass of Object.keys(progression.classLevels)) if (!isBuildClass(buildClass)) problems.push({ code: "unknownClass", buildClass });
+  if (build.className !== undefined && (progression.classLevels[build.className] ?? 0) < 1) problems.push({ code: "missingStartingClassLevel" });
+  if (problems.length > 0) return problems;
+  if (!Number.isInteger(progression.xp) || levelForXp(progression.xp) !== level) problems.push({ code: "xpLevelMismatch" });
+
+  const asiLevelsCrossed = asiLevels.filter((asiLevel) => asiLevel <= level).length;
+  let pointsSpent = 0;
+  for (const ability of abilities) {
+    const before = build.abilityScores[ability];
+    const after = progression.abilityScores[ability];
+    if (!Number.isInteger(after) || after < before || after > 20) problems.push({ code: "abilityScoreOutOfRange" });
+    else pointsSpent += after - before;
+  }
+  if (pointsSpent > asiLevelsCrossed * 2) problems.push({ code: "asiPointsExceeded" });
+  if (!Number.isInteger(progression.pendingAsi) || progression.pendingAsi < 0 || progression.pendingAsi > asiLevelsCrossed) problems.push({ code: "pendingAsiExceeded" });
+  return problems;
+}
+
+// Replays the saved progress onto the build's level-1 sheet with levelUp
+// itself, so hit points, features, spells and slots come out exactly as they
+// did live. The improved scores are in place from the start, so every level's
+// hit points use the final Constitution, the same no-retroactive-HP
+// simplification chooseAsi already accepts. Callers check progressionProblems first.
+export function applyProgression(build: DerivedSheet, progression: Progression): DerivedSheet {
+  let sheet: DerivedSheet = { ...build, abilityScores: progression.abilityScores };
+  for (const buildClass of levelSequence(build, progression.classLevels)) {
+    const next = levelUp(sheet as unknown as CharacterSheet, buildClass, progression.multiclassSkills[buildClass]);
+    sheet = { ...sheet, ...next };
+  }
+  return { ...sheet, xp: progression.xp, pendingAsi: progression.pendingAsi };
+}
+
+// The sheet a snapshot plays as: its build and gear, plus any saved progress.
+export function deriveSnapshotSheet(build: BuildChoices, gear: Parameters<typeof deriveSheet>[1], progression: Progression | undefined): DerivedSheet {
+  const base = deriveSheet(build, gear);
+  return progression === undefined ? base : applyProgression(base, progression);
 }

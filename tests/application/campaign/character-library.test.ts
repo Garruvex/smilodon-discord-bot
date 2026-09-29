@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { CampaignLobbyService } from "../../../src/application/campaign/campaign-lobby-service.js";
+import { instantiateHero } from "../../../src/application/campaign/library/instantiate.js";
+import { levelUp } from "../../../src/domain/campaign/character/leveling.js";
 import { CharacterLibrary } from "../../../src/application/campaign/library/character-library.js";
 import { libraryHeroRef, type LibrarySnapshot } from "../../../src/application/campaign/library/library-types.js";
 import type { CampaignKey } from "../../../src/application/campaign/ports/campaign-store.js";
@@ -393,5 +395,53 @@ describe("export and import", () => {
     const imported = await t.library.import("u-bob", JSON.stringify(sneaky));
     if (imported.kind !== "ok") throw new Error("import");
     expect(imported.snapshot.build.abilities.str).toBe(15);
+  });
+});
+
+describe("progress carried between games", () => {
+  // A hero that reached level 4 in a game and spent its Improvement on Strength.
+  async function leveled(t: Table): Promise<{ key: CampaignKey; snapshot: LibrarySnapshot }> {
+    const snapshot = await createAldric(t);
+    const key = await newLobby(t);
+    const state = await play(t, key, snapshot);
+    const hero = heroOf(state);
+    await t.r.store.transaction(async (tx) => {
+      const stored = await tx.loadCampaign(key);
+      if (stored === undefined) throw new Error("state");
+      let grown = hero;
+      for (let level = 2; level <= 4; level += 1) grown = { ...grown, ...levelUp(grown, "fighter"), xp: 2700 };
+      grown = { ...grown, abilityScores: { ...grown.abilityScores, str: grown.abilityScores.str + 2 }, pendingAsi: 0 };
+      await tx.saveCampaign(key, { ...stored.state, characters: { ...stored.state.characters, [hero.id]: grown } }, stored.revision);
+    });
+    return { key, snapshot };
+  }
+
+  it("saves level, XP and improvements as choices, and plays them back as the same hero", async () => {
+    const t = table();
+    const { key, snapshot } = await leveled(t);
+    const saved = await t.library.saveProgress("u-alice", key);
+    if (saved.kind !== "saved") throw new Error(JSON.stringify(saved));
+    expect(saved.snapshot.progression).toMatchObject({ xp: 2700, classLevels: { fighter: 4 }, pendingAsi: 0 });
+    expect(JSON.stringify(saved.snapshot.progression)).not.toMatch(/maxHp|features|spells/);
+    const hero = instantiateHero(saved.snapshot, {});
+    expect(hero).toMatchObject({ level: 4, xp: 2700, classLevels: { fighter: 4 } });
+    expect(hero.abilityScores.str).toBe(snapshot.build.abilities.str + 2);
+    expect(hero.maxHp).toBeGreaterThan(12);
+  });
+
+  it("carries progress through export and import, and refuses a forged one", async () => {
+    const t = table();
+    const { key } = await leveled(t);
+    const saved = await t.library.saveProgress("u-alice", key);
+    if (saved.kind !== "saved") throw new Error("save");
+    const file = (await t.library.export("u-alice", saved.snapshot.id)) ?? "";
+    const imported = await t.library.import("u-bob", file);
+    if (imported.kind !== "ok") throw new Error(JSON.stringify(imported));
+    expect(imported.snapshot.progression).toEqual(saved.snapshot.progression);
+
+    const forged = JSON.parse(file) as { progression: { xp: number; classLevels: Record<string, number> } };
+    forged.progression.classLevels = { fighter: 20 };
+    const refused = await t.library.import("u-bob", JSON.stringify(forged));
+    expect(refused).toMatchObject({ kind: "conflicts", conflicts: [{ code: "invalidProgression", problem: { code: "xpLevelMismatch" } }] });
   });
 });
