@@ -134,6 +134,7 @@ export function newCampaign(pacing: Pacing = livePacing): CampaignState {
     utilityCastCount: 0,
     hazards: {},
     hazardCount: 0,
+    healingCount: 0,
     fightCheckpoint: null,
     pausedBy: null,
     clocks: {},

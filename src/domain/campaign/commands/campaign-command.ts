@@ -90,6 +90,7 @@ export type CampaignCommand =
   | ShopCommand
   | DialogueCommand
   | UtilityMagicCommand
+  | HealingMagicCommand
   | TravelCommand
   | CombatCommand;
 
@@ -134,6 +135,16 @@ export type DialogueCommand =
 export type UtilityMagicCommand =
   | { readonly kind: "castRitualSpell"; readonly characterId: CharacterId; readonly spellId: ContentId<"spell"> }
   | { readonly kind: "recordUtilityCastNarration"; readonly castId: string; readonly text: string };
+
+// A slotted healing spell on a friend outside combat (engine/healing-magic.ts):
+// spends the slot the hero names and heals by the spell's own dice.
+export type HealingMagicCommand = {
+  readonly kind: "castHealingSpell";
+  readonly characterId: CharacterId;
+  readonly targetId: CharacterId;
+  readonly spellId: ContentId<"spell">;
+  readonly slotLevel: number;
+};
 
 // A travel or environmental hazard outside combat (engine/travel.ts):
 // forced marches, extreme weather, harsh terrain — the organizer names the

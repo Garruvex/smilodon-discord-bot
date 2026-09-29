@@ -137,6 +137,11 @@ export class CampaignPlayController {
     return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "castRitualSpell", characterId, spellId }));
   }
 
+  // A slotted healing spell on a friend between fights; the dice decide how much it heals.
+  public healSpell(key: CampaignKey, userId: UserId, spellId: ContentId<"spell">, slotLevel: number, targetId: string, interactionId: string): Promise<PlayResult> {
+    return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "castHealingSpell", characterId, targetId, spellId, slotLevel }));
+  }
+
   // The organizer (or a DnD Admin, as the organizer) sets a hazard save for one
   // hero or the whole party, the ability and DC being theirs to name.
   public async hazard(key: CampaignKey, userId: UserId | null, target: string, ability: Ability, dc: number, interactionId: string): Promise<PlayResult> {

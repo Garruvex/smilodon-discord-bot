@@ -255,6 +255,12 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       const { [event.castId]: _narrated, ...utilityCasts } = state.utilityCasts;
       return { ...state, utilityCasts };
     }
+    case "healingStarted":
+      return { ...state, healingPending: { ...state.healingPending, [event.healing.casterId]: event.healing } };
+    case "healingSettled": {
+      const { [event.healing.casterId]: _spentHealing, ...healingPending } = state.healingPending ?? {};
+      return { ...state, healingPending, healingCount: state.healingCount + 1, heroStatus: { ...state.heroStatus, ...event.heroStatus } };
+    }
     case "hazardStarted":
       return { ...state, hazardPending: { ...state.hazardPending, [event.hazard.characterId]: event.hazard } };
     case "hazardSettled": {

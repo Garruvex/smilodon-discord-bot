@@ -8,6 +8,7 @@ import { texts, type Texts } from "../../../application/i18n/texts.js";
 import { combatantName, encounterRecords, type CombatBeat } from "../../../application/campaign/dm/combat-records.js";
 import { buildOpportunityAttackView, buildReactionView, buildSmiteView } from "../../../application/campaign/views/campaign-views.js";
 import { abilityOf, type CheckTest } from "../../../domain/campaign/character/character-sheet.js";
+import { formatDiceExpression } from "../../../domain/campaign/dice/dice-expression.js";
 import { combatMode } from "../../../domain/campaign/rules/house-rules.js";
 import type { DeliverySpec } from "../../../domain/campaign/engine/engine-request.js";
 import type { CampaignEvent } from "../../../domain/campaign/events/campaign-event.js";
@@ -188,6 +189,30 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
         const bible = this.options.adventures.find(record.adventure.adventureId, record.adventure.version, record.language);
         const glossary = this.options.glossaries[record.language];
         if (state !== undefined && bible !== undefined && glossary !== undefined) await say(adventureChannelId, outsideCombatText(delivery, events, state, bible, glossary, text));
+        break;
+      }
+      case "healingSettled": {
+        // A healing spell between fights: what was rolled and restored, from the saved event alone.
+        const settled = events.findLast((event) => event.kind === "healingSettled" && event.healing.id === delivery.healingId);
+        const glossary = this.options.glossaries[record.language];
+        if (settled?.kind === "healingSettled" && state !== undefined && glossary !== undefined) {
+          const { healing } = settled;
+          const heroOf = (id: string): string => state.characters[id]?.name ?? id;
+          await say(
+            adventureChannelId,
+            text.campaign.msg.healLine({
+              hero: heroOf(healing.casterId),
+              spell: glossary.names[healing.spellId] ?? healing.spellId,
+              level: healing.slotLevel,
+              target: heroOf(healing.targetId),
+              dice: formatDiceExpression(healing.expression),
+              rolled: healing.rolled,
+              healed: healing.healed,
+              hp: healing.hpAfter,
+              max: state.characters[healing.targetId]?.maxHp ?? healing.hpAfter,
+            }),
+          );
+        }
         break;
       }
       default:

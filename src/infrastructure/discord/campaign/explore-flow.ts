@@ -48,7 +48,7 @@ export interface ExploreScreen {
 }
 
 export interface ExploreFlowDependencies {
-  readonly play: Pick<CampaignPlayController, "ask" | "press" | "trade" | "castSpell">;
+  readonly play: Pick<CampaignPlayController, "ask" | "press" | "trade" | "castSpell" | "healSpell">;
   readonly unitOfWork: CampaignUnitOfWork;
   readonly rulesets: RulesetCatalog;
   readonly adventures: AdventureLibrary;
@@ -70,10 +70,14 @@ export const exploreActions: readonly CampaignAction[] = [
   "exploreHaggle",
   "exploreCast",
   "exploreCastPick",
+  "exploreHealSlot",
+  "exploreHealWho",
 ];
 export const isExploreAction = (action: CampaignAction): boolean => exploreActions.includes(action);
 
 const questionField = "question";
+// A menu value that starts a healing cast rather than a free one.
+const healPrefix = "heal:";
 // A shop’s haggle choice, as one letter in the control ID.
 const haggleCodes: Readonly<Record<string, Skill | undefined>> = { n: undefined, p: "persuasion", d: "deception", i: "intimidation" };
 const codeOf = (skill: Skill | undefined): string => Object.entries(haggleCodes).find(([, value]) => value === skill)?.[0] ?? "n";
@@ -137,7 +141,20 @@ export class ExploreFlow {
         const name = this.npcNameIn(record, withPrefix(npc));
         return void (await interaction.editReply(await this.shopScreen(record, text, userId, argument ?? "", this.told(text, result, text.campaign.explore.traded({ name })))));
       }
+      case "exploreHealSlot": {
+        // The slot is chosen; the friend is next. The spell and slot ride in the control ID.
+        const [short = ""] = (argument ?? "").split(".");
+        return void (await interaction.editReply(await this.healWhoScreen(record, text, userId, short, Number(value))));
+      }
+      case "exploreHealWho": {
+        const [short = "", level = "0"] = (argument ?? "").split(".");
+        const spellId = `spell:${short}` as const;
+        const result = await this.deps.play.healSpell(record.key, userId, spellId, Number(level), value, interaction.id);
+        const spell = this.deps.glossaries[record.language]?.names[spellId] ?? spellId;
+        return void (await interaction.editReply(await this.home(record, text, userId, this.told(text, result, text.campaign.explore.healCast({ spell })))));
+      }
       case "exploreCastPick": {
+        if (value.startsWith(healPrefix)) return void (await interaction.editReply(await this.healSlotScreen(record, text, userId, value.slice(healPrefix.length + "spell:".length))));
         const result = await this.deps.play.castSpell(record.key, userId, value as ContentId<"spell">, interaction.id);
         const spell = this.deps.glossaries[record.language]?.names[value] ?? value;
         return void (await interaction.editReply(await this.home(record, text, userId, this.told(text, result, text.campaign.explore.cast({ spell })))));
@@ -202,7 +219,7 @@ export class ExploreFlow {
     if (loaded === null) return this.noHero(text);
     const t = text.campaign.explore;
     const view = buildExploreView(loaded.state, loaded.bible, loaded.content, loaded.glossary, loaded.hero.id);
-    const lines = [...(note === undefined ? [] : [note, ""]), t.title({ hero: loaded.hero.name }), view.npcs.length === 0 && view.spells.length === 0 ? t.nobody : t.intro];
+    const lines = [...(note === undefined ? [] : [note, ""]), t.title({ hero: loaded.hero.name }), view.npcs.length === 0 && view.spells.length === 0 && view.healing.length === 0 ? t.nobody : t.intro];
     const rows: Row[] = [];
     if (view.npcs.length > 0) {
       rows.push(
@@ -214,7 +231,7 @@ export class ExploreFlow {
         ),
       );
     }
-    if (view.spells.length > 0) {
+    if (view.spells.length > 0 || view.healing.length > 0) {
       rows.push(
         new ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>().addComponents(
           new ButtonBuilder().setCustomId(campaignCustomId("exploreCast", record.key.campaignId)).setLabel(t.castButton).setStyle(ButtonStyle.Secondary),
@@ -306,20 +323,68 @@ export class ExploreFlow {
     };
   }
 
+  // Which slot to cast a healing spell with; skipped when there is only one to choose.
+  private async healSlotScreen(record: CampaignRecord, text: Texts, userId: string, short: string): Promise<ExploreScreen> {
+    const loaded = await this.load(record, userId);
+    if (loaded === null) return this.noHero(text);
+    const t = text.campaign.explore;
+    const view = buildExploreView(loaded.state, loaded.bible, loaded.content, loaded.glossary, loaded.hero.id);
+    const spell = view.healing.find((candidate) => candidate.id === `spell:${short}`);
+    if (spell === undefined) return this.home(record, text, userId, text.campaign.refusal.noSpellSlot);
+    if (view.hurt.length === 0) return this.home(record, text, userId, t.noOneHurt);
+    const only = spell.slots.length === 1 ? spell.slots[0] : undefined;
+    if (only !== undefined) return this.healWhoScreen(record, text, userId, short, only.level);
+    return {
+      content: t.healSlotPlaceholder,
+      components: [
+        new ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId(campaignCustomId("exploreHealSlot", record.key.campaignId, short))
+            .setPlaceholder(t.healSlotPlaceholder)
+            .addOptions(spell.slots.slice(0, 25).map((slot) => ({ label: t.healSlotOption({ level: slot.level, left: slot.left }), value: String(slot.level) }))),
+        ),
+        new ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>().addComponents(this.back("exploreCast", record, text)),
+      ],
+    };
+  }
+
+  // Whom to heal: the friends who are hurt, with how hurt.
+  private async healWhoScreen(record: CampaignRecord, text: Texts, userId: string, short: string, level: number): Promise<ExploreScreen> {
+    const loaded = await this.load(record, userId);
+    if (loaded === null) return this.noHero(text);
+    const t = text.campaign.explore;
+    const view = buildExploreView(loaded.state, loaded.bible, loaded.content, loaded.glossary, loaded.hero.id);
+    if (view.hurt.length === 0) return this.home(record, text, userId, t.noOneHurt);
+    return {
+      content: t.healWhoPlaceholder,
+      components: [
+        new ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId(campaignCustomId("exploreHealWho", record.key.campaignId, `${short}.${level}`))
+            .setPlaceholder(t.healWhoPlaceholder)
+            .addOptions(view.hurt.slice(0, 25).map((hero) => ({ label: hero.name.slice(0, 100), description: t.healWhoOption({ hp: hero.hp, max: hero.maxHp }), value: hero.id }))),
+        ),
+        new ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>().addComponents(this.back("exploreCast", record, text)),
+      ],
+    };
+  }
+
   private async castScreen(record: CampaignRecord, text: Texts, userId: string): Promise<ExploreScreen> {
     const loaded = await this.load(record, userId);
     if (loaded === null) return this.noHero(text);
     const t = text.campaign.explore;
     const view = buildExploreView(loaded.state, loaded.bible, loaded.content, loaded.glossary, loaded.hero.id);
-    if (view.spells.length === 0) return this.home(record, text, userId, t.noSpells);
+    if (view.spells.length === 0 && view.healing.length === 0) return this.home(record, text, userId, t.noSpells);
+    const options = [
+      ...view.spells.map((spell) => ({ label: spell.name.slice(0, 100), description: spell.cantrip ? t.castCantrip : t.castRitual, value: spell.id })),
+      // A healing spell spends a slot, so the menu says so; the value tells the next step to ask which.
+      ...view.healing.map((spell) => ({ label: spell.name.slice(0, 100), description: t.castHeals, value: `${healPrefix}${spell.id}` })),
+    ];
     return {
       content: t.castPlaceholder,
       components: [
         new ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>().addComponents(
-          new StringSelectMenuBuilder()
-            .setCustomId(campaignCustomId("exploreCastPick", record.key.campaignId))
-            .setPlaceholder(t.castPlaceholder)
-            .addOptions(view.spells.slice(0, 25).map((spell) => ({ label: spell.name.slice(0, 100), description: spell.cantrip ? t.castCantrip : t.castRitual, value: spell.id }))),
+          new StringSelectMenuBuilder().setCustomId(campaignCustomId("exploreCastPick", record.key.campaignId)).setPlaceholder(t.castPlaceholder).addOptions(options.slice(0, 25)),
         ),
         new ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>().addComponents(this.back("exploreHome", record, text)),
       ],

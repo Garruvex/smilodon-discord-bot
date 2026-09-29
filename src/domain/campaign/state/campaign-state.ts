@@ -5,6 +5,7 @@ import type { EncounterState } from "../combat/combat-state.js";
 import type { HeroStatus } from "../combat/combatant-profile.js";
 import type { CampaignId, CharacterId, CheckId, Instant, RollId, UserId } from "../core/ids.js";
 import type { D20TestRoll, D20TestSpec } from "../dice/d20-test.js";
+import type { DiceExpression } from "../dice/dice-expression.js";
 import type { RollMoments } from "../dice/roll-moments.js";
 import type { LedgerEntry } from "../ledger/ledger.js";
 import type { ContentId } from "../rules/content-id.js";
@@ -115,6 +116,36 @@ export interface CampaignState {
   // the Exhaustion it grants, if any, already landed on hazardSettled.
   readonly hazards: Readonly<Record<string, HazardRecord>>;
   readonly hazardCount: number;
+  // A slotted healing spell cast outside combat, waiting for its dice
+  // (engine/healing-magic.ts). One at a time per caster. Settled healings are
+  // told from the saved event; nothing about them is kept here but the count.
+  readonly healingPending?: Readonly<Record<CharacterId, PendingHealing>>;
+  readonly healingCount: number;
+}
+
+// A healing spell cast outside combat, its dice requested: the expression is
+// fixed the moment the roll is requested (the spell's own plan plus any bonus).
+export interface PendingHealing {
+  readonly casterId: CharacterId;
+  readonly targetId: CharacterId;
+  readonly spellId: ContentId<"spell">;
+  readonly slotLevel: number;
+  readonly expression: DiceExpression;
+  readonly rollId: RollId;
+}
+
+// A settled healing spell: what was rolled and how much hit points it restored
+// (less than rolled when the target was nearly whole).
+export interface HealingRecord {
+  readonly id: string;
+  readonly casterId: CharacterId;
+  readonly targetId: CharacterId;
+  readonly spellId: ContentId<"spell">;
+  readonly slotLevel: number;
+  readonly expression: DiceExpression;
+  readonly rolled: number;
+  readonly healed: number;
+  readonly hpAfter: number;
 }
 
 // A pending Persuasion/Deception/Intimidation check over a specific item's

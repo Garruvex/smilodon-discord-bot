@@ -254,6 +254,74 @@ describe("Explore: casting between fights", () => {
   });
 });
 
+describe("Explore: healing a friend between fights", () => {
+  // Borin as a healer with two 1st-level slots and one 2nd, hurt down to 1 hit point.
+  async function healer(slots: Record<number, number> = { 1: 2, 2: 1 }, hp = 1): Promise<{ t: Harness; heroId: string }> {
+    const { t, heroId } = await table();
+    await t.r.store.transaction(async (tx) => {
+      const latest = await tx.loadCampaign(t.key);
+      const sheet = latest?.state.characters[heroId];
+      if (latest === undefined || sheet === undefined) throw new Error("state");
+      await tx.saveCampaign(
+        t.key,
+        {
+          ...latest.state,
+          characters: { ...latest.state.characters, [heroId]: { ...sheet, spellcasting: { ability: "wis", spells: ["spell:cure-wounds", "spell:healing-word", "spell:detect-magic", "spell:bless"], slots } } },
+          heroStatus: { ...latest.state.heroStatus, [heroId]: { hp, resources: { spellSlots: slots, featureUses: {} } } },
+        },
+        latest.revision,
+      );
+    });
+    return { t, heroId };
+  }
+
+  it("offers the healing spells that spend a slot, next to the free ones, and not the rest", async () => {
+    const { t } = await healer();
+    const cast = screenOf(await click(t, id(t, "exploreCast")));
+    expect(cast.menus[0]?.options.map((option) => option.value)).toEqual(["spell:detect-magic", "heal:spell:cure-wounds", "heal:spell:healing-word"]);
+    expect(cast.menus[0]?.options.map((option) => option.description)).toEqual(["Ritual", "Heals a friend · uses a spell slot", "Heals a friend · uses a spell slot"]);
+  });
+
+  it("asks which slot when there is a choice, then whom, then casts for real", async () => {
+    const { t, heroId } = await healer();
+    const slot = screenOf(await choose(t, id(t, "exploreCastPick"), "heal:spell:cure-wounds"));
+    expect(slot.menus[0]?.id).toBe(id(t, "exploreHealSlot", "cure-wounds"));
+    expect(slot.menus[0]?.options.map((option) => option.label)).toEqual(["Level 1 slot (2 left)", "Level 2 slot (1 left)"]);
+    const who = screenOf(await choose(t, id(t, "exploreHealSlot", "cure-wounds"), "2"));
+    expect(who.menus[0]?.id).toBe(id(t, "exploreHealWho", "cure-wounds.2"));
+    expect(who.menus[0]?.options.map((option) => option.value)).toEqual([heroId]);
+    expect(who.menus[0]?.options[0]?.description).toMatch(/^1\/\d+ HP$/);
+    const done = screenOf(await choose(t, id(t, "exploreHealWho", "cure-wounds.2"), heroId));
+    expect(done.content).toContain("You cast Cure Wounds. The dice are rolling");
+    const pending = (await stateOf(t)).state.healingPending?.[heroId];
+    expect(pending).toMatchObject({ targetId: heroId, slotLevel: 2, spellId: "spell:cure-wounds" });
+    expect(await t.r.store.transaction((tx) => tx.pendingOutbox("roll"))).toHaveLength(1);
+  });
+
+  it("goes straight to whom when only one slot level is left", async () => {
+    const { t, heroId } = await healer({ 1: 1 });
+    const who = screenOf(await choose(t, id(t, "exploreCastPick"), "heal:spell:healing-word"));
+    expect(who.menus[0]?.id).toBe(id(t, "exploreHealWho", "healing-word.1"));
+    expect(who.menus[0]?.options.map((option) => option.value)).toEqual([heroId]);
+  });
+
+  it("says so when nobody is hurt, and offers no healing when no slot is left", async () => {
+    const whole = await healer({ 1: 2 }, 100);
+    expect(screenOf(await choose(whole.t, id(whole.t, "exploreCastPick"), "heal:spell:cure-wounds")).content).toContain("Nobody needs healing");
+    const dry = await healer({ 1: 0 });
+    expect(screenOf(await click(dry.t, id(dry.t, "exploreCast"))).menus[0]?.options.map((option) => option.value)).toEqual(["spell:detect-magic"]);
+  });
+
+  it("refuses a spell or friend it should not, however the control got there", async () => {
+    const { t, heroId } = await healer();
+    // Bless is not a healing spell; a friend who is not in the party is no target.
+    expect(screenOf(await choose(t, id(t, "exploreHealWho", "bless.1"), heroId)).content).toContain("can't be cast on a friend");
+    expect(screenOf(await choose(t, id(t, "exploreHealWho", "cure-wounds.1"), "hero:nobody")).content).toContain("not a valid target");
+    expect(screenOf(await choose(t, id(t, "exploreHealWho", "cure-wounds.3"), heroId)).content).toContain("no spell slot");
+    expect((await stateOf(t)).state.healingPending).toBeUndefined();
+  });
+});
+
 // ---- what the table reads --------------------------------------------------------
 
 describe("what the table is told", () => {
@@ -344,6 +412,31 @@ describe("what the table is told", () => {
     await g.controller.castSpell(g.key, "u-org", "spell:detect-magic", "i-1");
     await g.settle();
     expect(g.said().join("\n")).toContain("✨ **Borin** casts **Detect Magic**.");
+  });
+
+  it("tells a healing spell with its dice, what it restored and the slot it spent", async () => {
+    const g = await play();
+    await g.r.store.transaction(async (tx) => {
+      const latest = await tx.loadCampaign(g.key);
+      const sheet = latest?.state.characters[g.heroId];
+      if (latest === undefined || sheet === undefined) throw new Error("state");
+      await tx.saveCampaign(
+        g.key,
+        {
+          ...latest.state,
+          characters: { ...latest.state.characters, [g.heroId]: { ...sheet, spellcasting: { ability: "wis", spells: ["spell:cure-wounds"], slots: { 1: 2 } } } },
+          heroStatus: { ...latest.state.heroStatus, [g.heroId]: { hp: 1, resources: { spellSlots: { 1: 2 }, featureUses: {} } } },
+        },
+        latest.revision,
+      );
+    });
+    expect(await g.controller.healSpell(g.key, "u-org", "spell:cure-wounds", 1, g.heroId, "i-1")).toEqual({ kind: "ok" });
+    await g.settle();
+    const line = g.said().find((text) => text.includes("casts **Cure Wounds**"));
+    expect(line).toMatch(/💚 \*\*Borin\*\* casts \*\*Cure Wounds\*\* \(level 1 slot\) on \*\*Borin\*\*: 1d8 [+-] \d+ rolls \d+, restoring \*\*\d+\*\* HP \(\d+\/\d+\)\./);
+    const stored = await g.r.store.transaction((tx) => tx.loadCampaign(g.key));
+    expect(stored?.state.heroStatus[g.heroId]?.resources.spellSlots[1]).toBe(1);
+    expect(stored?.state.heroStatus[g.heroId]?.hp).toBeGreaterThan(1);
   });
 
   it("puts a hazard on the whole party, or one hero, and tells the save and its cost", async () => {

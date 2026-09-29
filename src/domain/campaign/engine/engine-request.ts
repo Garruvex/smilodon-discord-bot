@@ -101,4 +101,6 @@ export type DeliverySpec =
   // A ritual spell's outside-combat effect is ready.
   | { readonly kind: "utilityCastNarrated"; readonly castId: string }
   // A hazard's Narrator line is ready.
-  | { readonly kind: "hazardNarrated"; readonly hazardId: string };
+  | { readonly kind: "hazardNarrated"; readonly hazardId: string }
+  // A healing spell cast outside combat has landed; the presenter tells it from the saved event.
+  | { readonly kind: "healingSettled"; readonly healingId: string };

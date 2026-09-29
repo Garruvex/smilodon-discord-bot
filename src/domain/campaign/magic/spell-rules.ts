@@ -1,3 +1,4 @@
+import type { HeroResources } from "../character/hero-status.js";
 import type { SpellDefinition } from "../rules/content-definitions.js";
 
 // The rules of spellcasting that do not depend on where a fight is happening:
@@ -35,6 +36,18 @@ export function spellMaxTargets(spell: SpellDefinition, slotLevel: number): numb
 // A slot is unavailable when it is too low for the spell, empty, or (for a cantrip) not zero.
 export function slotUnavailable(spell: SpellDefinition, slots: SpellSlots, slotLevel: number): boolean {
   return spell.level === 0 ? slotLevel !== 0 : slotLevel < spell.level || (slots[slotLevel] ?? 0) < 1;
+}
+
+// Spends one slot of the given level, off the ordinary pool first and only
+// falling back to Pact Magic if that level isn't there: a fixed spending order,
+// not a player choice, so casting a Warlock or multiclass hero's spell needs no
+// new command surface. Casting in a fight and outside one spend the same way.
+export function spendSlot(resources: HeroResources, slotLevel: number): HeroResources {
+  if ((resources.spellSlots[slotLevel] ?? 0) > 0) {
+    return { ...resources, spellSlots: { ...resources.spellSlots, [slotLevel]: (resources.spellSlots[slotLevel] ?? 0) - 1 } };
+  }
+  const pactSlots = resources.pactSlots ?? {};
+  return { ...resources, pactSlots: { ...pactSlots, [slotLevel]: Math.max(0, (pactSlots[slotLevel] ?? 0) - 1) } };
 }
 
 // Every slot level the spell can be cast at now: [0] for a cantrip, otherwise each level that fits and has a slot left.

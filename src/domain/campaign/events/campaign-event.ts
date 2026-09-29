@@ -19,6 +19,8 @@ import type {
   Resolution,
   TradeRecord,
   UtilityCastRecord,
+  HealingRecord,
+  PendingHealing,
 } from "../state/campaign-state.js";
 import type { Skill } from "../rules/skills.js";
 
@@ -182,6 +184,11 @@ export type CampaignEvent =
   // The Narrator's line for a settled utility cast; the cast record is spent.
   | { readonly kind: "utilityCastNarrated"; readonly castId: string; readonly text: string }
   // A hazard save was requested; the pending state a settled roll needs to finish it.
+  // A healing spell was cast outside combat; its dice are requested.
+  | { readonly kind: "healingStarted"; readonly healing: PendingHealing }
+  // The healing dice landed: the slot is spent and the hit points restored,
+  // both carried as the statuses of the caster and (if another) the target.
+  | { readonly kind: "healingSettled"; readonly healing: HealingRecord; readonly heroStatus: Readonly<Record<CharacterId, HeroStatus>> }
   | { readonly kind: "hazardStarted"; readonly hazard: PendingHazard }
   // A hazard save landed — Exhaustion gained on a failure, nothing on a
   // success — and is now waiting on a Narrator line. `heroStatus`, when

@@ -4,7 +4,11 @@ import type { CharacterId } from "../../../domain/campaign/core/ids.js";
 import type { Glossary, SealedContent } from "../../../domain/campaign/rules/content-registry.js";
 import type { ContentId } from "../../../domain/campaign/rules/content-id.js";
 import { lootGold, type HouseRules } from "../../../domain/campaign/rules/house-rules.js";
-import type { CampaignState } from "../../../domain/campaign/state/campaign-state.js";
+import { abilityModifier } from "../../../domain/campaign/character/character-sheet.js";
+import { defaultHeroResources } from "../../../domain/campaign/character/hero-status.js";
+import { healingEffectOf } from "../../../domain/campaign/engine/healing-magic.js";
+import { castableSlotLevels, mergeSlots } from "../../../domain/campaign/magic/spell-rules.js";
+import { isFallen, type CampaignState } from "../../../domain/campaign/state/campaign-state.js";
 
 // What a hero can do between fights, read straight off the saved game and the
 // adventure (panel spec, Explore): the people in the scene they are standing
@@ -27,9 +31,26 @@ export interface ExploreSpell {
   readonly cantrip: boolean;
 }
 
+// A spell that heals a friend, with the slot levels the hero can still cast it at.
+export interface HealingSpell {
+  readonly id: ContentId<"spell">;
+  readonly name: string;
+  readonly slots: readonly { readonly level: number; readonly left: number }[];
+}
+
+export interface HurtHero {
+  readonly id: CharacterId;
+  readonly name: string;
+  readonly hp: number;
+  readonly maxHp: number;
+}
+
 export interface ExploreView {
   readonly npcs: readonly ExploreNpc[];
   readonly spells: readonly ExploreSpell[];
+  // Healing spells the hero can cast now (a slot is left), and the friends who are hurt.
+  readonly healing: readonly HealingSpell[];
+  readonly hurt: readonly HurtHero[];
 }
 
 export interface ShopLine {
@@ -78,8 +99,36 @@ export function castableSpells(state: CampaignState, characterId: CharacterId, c
   });
 }
 
+// Healing spells the hero knows and has a slot for: what the engine's own
+// healingEffectOf accepts, at each slot level the hero still holds.
+export function healingSpells(state: CampaignState, characterId: CharacterId, content: SealedContent, glossary: Glossary): readonly HealingSpell[] {
+  const sheet = state.characters[characterId];
+  if (sheet?.spellcasting === null || sheet === undefined) return [];
+  const resources = state.heroStatus[characterId]?.resources ?? defaultHeroResources(sheet, content);
+  const slots = mergeSlots(resources.spellSlots, resources.pactSlots ?? {});
+  const modifier = abilityModifier(sheet.abilityScores[sheet.spellcasting.ability]);
+  return sheet.spellcasting.spells.flatMap((id) => {
+    const spell = content.find(id);
+    if (spell?.kind !== "spell" || healingEffectOf(spell, spell.level, sheet.level, modifier) === undefined) return [];
+    const levels = castableSlotLevels(spell, slots).map((level) => ({ level, left: slots[level] ?? 0 }));
+    return levels.length === 0 ? [] : [{ id, name: glossary.names[id] ?? id, slots: levels }];
+  });
+}
+
+export function hurtHeroes(state: CampaignState): readonly HurtHero[] {
+  return Object.values(state.characters).flatMap((sheet) => {
+    const hp = state.heroStatus[sheet.id]?.hp ?? sheet.maxHp;
+    return isFallen(state, sheet.id) || hp >= sheet.maxHp ? [] : [{ id: sheet.id, name: sheet.name, hp: Math.max(0, hp), maxHp: sheet.maxHp }];
+  });
+}
+
 export function buildExploreView(state: CampaignState, bible: AdventureBible, content: SealedContent, glossary: Glossary, characterId: CharacterId): ExploreView {
-  return { npcs: sceneNpcs(state, bible).map((npc) => exploreNpc(state, npc)), spells: castableSpells(state, characterId, content, glossary) };
+  return {
+    npcs: sceneNpcs(state, bible).map((npc) => exploreNpc(state, npc)),
+    spells: castableSpells(state, characterId, content, glossary),
+    healing: healingSpells(state, characterId, content, glossary),
+    hurt: hurtHeroes(state),
+  };
 }
 
 export function buildShopView(state: CampaignState, bible: AdventureBible, glossary: Glossary, houseRules: HouseRules, characterId: CharacterId, npcId: string): ShopView | undefined {

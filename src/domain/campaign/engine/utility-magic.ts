@@ -20,7 +20,8 @@ export function handleUtilityMagicCommand(decision: Decision, command: UtilityMa
   }
 }
 
-function mayCast(decision: Decision, characterId: CharacterId): Rejection | null {
+// Who may cast outside a fight: the hero's own player, while the hero still stands and no fight is on.
+export function mayCastOutsideCombat(decision: Decision, characterId: CharacterId): Rejection | null {
   const { state, ctx } = decision;
   if (ctx.actor.kind !== "user" || state.characters[characterId]?.ownerUserId !== ctx.actor.userId) return { code: "notYourCharacter" };
   if (isFallen(state, characterId)) return { code: "heroFallen" };
@@ -29,7 +30,7 @@ function mayCast(decision: Decision, characterId: CharacterId): Rejection | null
 }
 
 function castRitualSpell(decision: Decision, characterId: CharacterId, spellId: UtilityCastRecord["spellId"]): Rejection | null {
-  const refusal = mayCast(decision, characterId);
+  const refusal = mayCastOutsideCombat(decision, characterId);
   if (refusal !== null) return refusal;
   const { state, ctx } = decision;
   const spell = ctx.rules.content.find(spellId);
