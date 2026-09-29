@@ -31,6 +31,7 @@ import type { Glossary } from "../../../domain/campaign/rules/content-registry.j
 import type { CharacterId } from "../../../domain/campaign/core/ids.js";
 import { maxSpeechLength } from "../../../domain/campaign/engine/speech.js";
 import type { CombatCommand } from "../../../domain/campaign/commands/campaign-command.js";
+import { abilities, type Ability } from "../../../domain/campaign/rules/effects.js";
 import { buildTurnView, type TurnView } from "../../../application/campaign/views/turn-view.js";
 import { encodeChoice, parseAim, parseChoice, renderEndConfirm, renderTargetMenu, renderTurnMenu, type TurnChoice, type TurnMenu } from "../campaign/turn-menu.js";
 import type { CampaignAction } from "../campaign/campaign-ids.js";
@@ -156,11 +157,13 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "rulePreset":
     case "ruleOption":
     case "ruleValue":
+    case "asiPick":
     case "useSaved":
     case "saveProgress":
     case "journal":
     case "recap":
     case "proxy":
+    case "asiOpen":
       return [];
     case "reactCast":
     case "reactDecline":
@@ -209,6 +212,7 @@ export class CampaignComponentHandler implements ComponentHandler {
       else if (parsed.action === "pick") await this.pickTurnAction(interaction, record, text);
       else if (parsed.action === "aim") await this.aimTurnAction(interaction, record, text);
       else if (parsed.action === "proxy") await this.changeProxy(interaction, record, text);
+      else if (parsed.action === "asiPick") await this.chooseAsi(interaction, record, text);
       else if (parsed.action === "rulePreset" || parsed.action === "ruleOption" || parsed.action === "ruleValue") await this.changeRules(interaction, record, text, parsed.action, parsed.argument);
       else await this.chooseHero(interaction, record, text);
       return;
@@ -337,6 +341,15 @@ export class CampaignComponentHandler implements ComponentHandler {
       }
       case "saveProgress":
         return void (await reply(await this.saveProgress(record, userId, text)));
+      case "asiOpen": {
+        const loaded = await this.deps.unitOfWork.transaction((tx) => tx.loadCampaign(key));
+        const heroId = loaded?.state.members[userId]?.characterId ?? null;
+        const pendingAsi = heroId === null ? undefined : loaded?.state.characters[heroId]?.pendingAsi;
+        if (pendingAsi === undefined || pendingAsi <= 0) return void (await reply(refusalText(text, "noAsiPending")));
+        const screen = this.asiScreen(pendingAsi, text, key.campaignId);
+        await interaction.editReply({ content: screen.content, components: screen.components });
+        return;
+      }
       case "safety":
         await interaction.editReply({
           content: text.campaign.reply.safetyAsk,
@@ -374,8 +387,9 @@ export class CampaignComponentHandler implements ComponentHandler {
         // Only the player's own hero gets the gear controls.
         const gear = parsed.action === "myHero" ? await this.heroMenus(record, text, userId) : [];
         const save = parsed.action === "myHero" ? await this.saveRow(record, text, userId) : [];
+        const asi = parsed.action === "myHero" ? await this.asiRow(record, text, userId) : [];
         const proxy = parsed.action === "myHero" ? await this.proxyMenu(record, text, userId) : [];
-        await interaction.editReply({ content: sheet, components: [...gear, ...proxy, ...save].slice(0, 5) });
+        await interaction.editReply({ content: sheet, components: [...gear, ...asi, ...proxy, ...save].slice(0, 5) });
         return;
       }
       default:
@@ -777,6 +791,25 @@ export class CampaignComponentHandler implements ComponentHandler {
     ];
   }
 
+  // Opens the Ability Score Improvement picker, only when one is owed.
+  private async asiRow(record: CampaignRecord, text: Texts, userId: string): Promise<ActionRowBuilder<ButtonBuilder>[]> {
+    const loaded = await this.deps.unitOfWork.transaction((tx) => tx.loadCampaign(record.key));
+    const heroId = loaded?.state.members[userId]?.characterId ?? null;
+    const sheet = heroId === null ? undefined : loaded?.state.characters[heroId];
+    if (sheet === undefined || (sheet.pendingAsi ?? 0) <= 0) return [];
+    return [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(campaignCustomId("asiOpen", record.key.campaignId)).setLabel(text.campaign.button.improveAbility).setStyle(ButtonStyle.Success)),
+    ];
+  }
+
+  // The ability-score picker itself: one ability for +2, or two for +1 each.
+  private asiScreen(pendingAsi: number, text: Texts, campaignId: string): { readonly content: string; readonly components: ActionRowBuilder<StringSelectMenuBuilder>[] } {
+    const t = text.campaign;
+    const options = abilities.map((ability) => ({ label: t.ability[ability], value: ability }));
+    const menu = new StringSelectMenuBuilder().setCustomId(campaignCustomId("asiPick", campaignId)).setPlaceholder(t.asi.placeholder).setMinValues(1).setMaxValues(2).addOptions(options);
+    return { content: t.asi.prompt({ count: pendingAsi }), components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu)] };
+  }
+
   // "Let someone play my hero in fights while I am away": a menu of the other players on My Hero.
   private async proxyMenu(record: CampaignRecord, text: Texts, userId: string): Promise<ActionRowBuilder<StringSelectMenuBuilder>[]> {
     const loaded = await this.deps.unitOfWork.transaction((tx) => tx.loadCampaign(record.key));
@@ -798,6 +831,31 @@ export class CampaignComponentHandler implements ComponentHandler {
     const value = interaction.values[0] ?? "none";
     const result = await this.deps.play.proxy(record.key, interaction.user.id, value === "none" ? null : value, interaction.id);
     await interaction.editReply({ content: result.kind === "ok" ? (value === "none" ? text.campaign.proxy.cleared : text.campaign.proxy.set) : refusalText(text, result.reason), components: [] });
+  }
+
+  private async chooseAsi(interaction: StringSelectMenuInteraction, record: CampaignRecord, text: Texts): Promise<void> {
+    await interaction.deferUpdate();
+    const userId = interaction.user.id;
+    const chosen = interaction.values.filter((value): value is Ability => (abilities as readonly string[]).includes(value));
+    if (chosen.length === 0 || chosen.length > 2 || (chosen.length === 2 && chosen[0] === chosen[1])) {
+      await interaction.editReply({ content: refusalText(text, "invalidAsiAllocation"), components: [] });
+      return;
+    }
+    const [first, second] = chosen;
+    if (first === undefined) return;
+    const loaded = await this.deps.unitOfWork.transaction((tx) => tx.loadCampaign(record.key));
+    const heroId = loaded?.state.members[userId]?.characterId ?? null;
+    const before = heroId === null ? undefined : loaded?.state.characters[heroId]?.abilityScores;
+    const allocation = second === undefined ? { plusTwo: first } : { plusOne: [first, second] as const };
+    const result = await this.deps.play.chooseAsi(record.key, userId, allocation, interaction.id);
+    if (result.kind !== "ok") {
+      await interaction.editReply({ content: refusalText(text, result.reason), components: [] });
+      return;
+    }
+    const changes = chosen
+      .map((ability) => `${text.campaign.ability[ability]} ${before?.[ability] ?? 0} → ${Math.min(20, (before?.[ability] ?? 0) + (second === undefined ? 2 : 1))}`)
+      .join(", ");
+    await this.showHeroAgain(interaction, record, text, text.campaign.reply.asiApplied({ changes }));
   }
 
   // The Table rules screen's menus: pick a bundle, pick an option, or pick a

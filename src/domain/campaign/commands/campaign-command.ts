@@ -81,6 +81,9 @@ export type CampaignCommand =
   // skillChoice only matters, and is only validated, the moment that new
   // class's own multiclass skill is actually granted.
   | { readonly kind: "chooseClassLevel"; readonly characterId: CharacterId; readonly buildClass: string; readonly skillChoice?: string }
+  // Spends one unspent Ability Score Improvement (character/leveling.ts's
+  // asiLevels): +2 to one ability, or +1 to two, each capped at 20 by the engine.
+  | { readonly kind: "chooseAsi"; readonly characterId: CharacterId; readonly allocation: { readonly plusTwo: Ability } | { readonly plusOne: readonly [Ability, Ability] } }
   | ShopCommand
   | DialogueCommand
   | UtilityMagicCommand

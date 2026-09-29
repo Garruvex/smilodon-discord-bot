@@ -106,6 +106,7 @@ export const campaignEn = {
   "campaign.button.skipSmite": "Skip",
   "campaign.button.takeOpportunity": "Take the attack",
   "campaign.button.holdOpportunity": "Hold",
+  "campaign.button.improveAbility": "Improve Ability Scores",
 
   "campaign.hero.line": "**{name}** · {class} · Lv {level}",
   "campaign.hero.player": "Played by {user}",
@@ -280,6 +281,8 @@ export const campaignEn = {
   "campaign.refusal.noSmite": "There is no smite waiting on you right now.",
   "campaign.refusal.unknownClass": "That isn't a class this table knows.",
   "campaign.refusal.multiclassRequirementNotMet": "This hero's ability scores don't meet that class's multiclassing requirement yet.",
+  "campaign.refusal.noAsiPending": "This hero has no Ability Score Improvement to spend right now.",
+  "campaign.refusal.invalidAsiAllocation": "Pick one ability, or two different ones.",
   "campaign.refusal.unknownItem": "That isn't a real item.",
   "campaign.refusal.insufficientGold": "That costs more gold than is on hand.",
   "campaign.refusal.invalidHaggleSkill": "Haggling only works with Persuasion, Deception, or Intimidation.",
@@ -571,6 +574,7 @@ export const campaignEn = {
   "campaign.reply.smiteSkipped": "You skipped it.",
   "campaign.reply.opportunityTaken": "You took the attack.",
   "campaign.reply.opportunityHeld": "You held your reaction.",
+  "campaign.reply.asiApplied": "Ability score improved: {changes}.",
 
   "campaign.pack.placeholder": "Pack and stash",
   "campaign.pack.use": "Drink {item}",
@@ -596,6 +600,9 @@ export const campaignEn = {
   "campaign.opportunity.title": "🏃 **{mover}** is leaving **{provoker}**'s reach. Take the attack?",
   "campaign.opportunity.player": "Waiting for {user}.",
   "campaign.opportunity.closes": "Decides itself {when}.",
+
+  "campaign.asi.prompt": "Pick one ability for +2, or two abilities for +1 each. ({count} to spend)",
+  "campaign.asi.placeholder": "Ability score(s)",
 
   "campaign.turn.header": "**{hero}** · {zone}\nAction {action} · Bonus action {bonus} · Reaction {reaction} · Movement {feet} ft",
   "campaign.turn.engaged": "In melee with {names}.",
@@ -639,6 +646,7 @@ export const campaignEn = {
   "campaign.sheet.equipment": "Equipment: {items}",
   "campaign.sheet.features": "Features: {features}",
   "campaign.sheet.spells": "Spells: {spells}",
+  "campaign.sheet.pendingAsi": "⭐ {count} Ability Score Improvement(s) to spend — see My Hero.",
   "campaign.sheet.none": "none",
   "campaign.sheet.expertise": "{skill} (expertise)",
 

@@ -29,6 +29,7 @@ export function renderHeroSheet(sheet: CharacterSheet, view: HeroView, text: Tex
     t.sheet.equipment({ items: sheet.equipment.length === 0 ? none : sheet.equipment.map(name).join(", ") }),
     t.sheet.features({ features: sheet.features.length === 0 ? none : sheet.features.map(name).join(", ") }),
     ...(sheet.spellcasting === null ? [] : [t.sheet.spells({ spells: sheet.spellcasting.spells.map(name).join(", ") })]),
+    ...((sheet.pendingAsi ?? 0) > 0 ? [t.sheet.pendingAsi({ count: sheet.pendingAsi ?? 0 })] : []),
   ].join("\n");
 }
 

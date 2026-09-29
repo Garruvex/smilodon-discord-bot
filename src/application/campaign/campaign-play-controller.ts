@@ -1,5 +1,6 @@
 import type { ContentId } from "../../domain/campaign/rules/content-id.js";
 import type { CampaignCommand, CombatCommand } from "../../domain/campaign/commands/campaign-command.js";
+import type { Ability } from "../../domain/campaign/rules/effects.js";
 import { actingHero } from "../../domain/campaign/engine/members.js";
 import { isFallen } from "../../domain/campaign/state/campaign-state.js";
 import type { AdventureLibrary } from "./ports/adventure-library.js";
@@ -146,6 +147,12 @@ export class CampaignPlayController {
       const heroId = actingHero(state, userId);
       return heroId === null ? "noHero" : command(heroId);
     });
+  }
+
+  // Spends one unspent Ability Score Improvement (the engine checks there is
+  // one owed and caps each ability at 20).
+  public chooseAsi(key: CampaignKey, userId: UserId, allocation: { readonly plusTwo: Ability } | { readonly plusOne: readonly [Ability, Ability] }, interactionId: string): Promise<PlayResult> {
+    return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "chooseAsi", characterId, allocation }));
   }
 
   public ready(key: CampaignKey, userId: UserId, interactionId: string): Promise<PlayResult> {

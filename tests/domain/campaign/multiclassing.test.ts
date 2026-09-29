@@ -218,3 +218,62 @@ describe("chooseClassLevel command", () => {
     expect(leveled.characters["c-borin"]?.classLevels).toEqual({ fighter: 3, rogue: 1 });
   });
 });
+
+describe("chooseAsi command", () => {
+  function campaignWithPendingAsi(pendingAsi = 1): CampaignState {
+    const base = newCampaign();
+    const torvin = sheetWith("c-borin", "u-jamie", { pendingAsi });
+    return { ...base, characters: { ...base.characters, "c-borin": torvin } };
+  }
+
+  it("does nothing on its own: a level that owes one leaves the scores untouched until spent", () => {
+    const sheet = sheetWith("c-1", "u-1", { level: 3, classLevels: { fighter: 3 } });
+    const next = levelUp(sheet, "fighter"); // Level 4: an ASI level.
+    expect(next.pendingAsi).toBe(1);
+    expect(next.abilityScores).toEqual(sheet.abilityScores);
+  });
+
+  it("refuses when nothing is owed", () => {
+    const state = campaignWithPendingAsi(0);
+    expect(reject(state, jamie, { kind: "chooseAsi", characterId: "c-borin", allocation: { plusTwo: "str" } })).toEqual({ code: "noAsiPending" });
+  });
+
+  it("refuses two of the same ability for a +1/+1 split", () => {
+    const state = campaignWithPendingAsi();
+    expect(reject(state, jamie, { kind: "chooseAsi", characterId: "c-borin", allocation: { plusOne: ["str", "str"] } })).toEqual({ code: "invalidAsiAllocation" });
+  });
+
+  it("adds +2 to one ability and spends the pending improvement", () => {
+    const state = campaignWithPendingAsi();
+    const before = state.characters["c-borin"]?.abilityScores.str ?? 0;
+    const step = run(state, jamie, { kind: "chooseAsi", characterId: "c-borin", allocation: { plusTwo: "str" } });
+    const sheet = step.state.characters["c-borin"];
+    expect(sheet?.abilityScores.str).toBe(before + 2);
+    expect(sheet?.pendingAsi).toBe(0);
+  });
+
+  it("adds +1 to two different abilities", () => {
+    const state = campaignWithPendingAsi();
+    const before = state.characters["c-borin"]?.abilityScores;
+    const step = run(state, jamie, { kind: "chooseAsi", characterId: "c-borin", allocation: { plusOne: ["str", "dex"] } });
+    const sheet = step.state.characters["c-borin"];
+    expect(sheet?.abilityScores.str).toBe((before?.str ?? 0) + 1);
+    expect(sheet?.abilityScores.dex).toBe((before?.dex ?? 0) + 1);
+    expect(sheet?.pendingAsi).toBe(0);
+  });
+
+  it("never raises an ability past 20", () => {
+    const state = campaignWithPendingAsi();
+    const capped = { ...state, characters: { ...state.characters, "c-borin": { ...(state.characters["c-borin"] as CharacterSheet), abilityScores: { ...(state.characters["c-borin"] as CharacterSheet).abilityScores, str: 19 } } } };
+    const step = run(capped, jamie, { kind: "chooseAsi", characterId: "c-borin", allocation: { plusTwo: "str" } });
+    expect(step.state.characters["c-borin"]?.abilityScores.str).toBe(20);
+  });
+
+  it("stacks two pending improvements as two separate spends", () => {
+    const state = campaignWithPendingAsi(2);
+    const first = run(state, jamie, { kind: "chooseAsi", characterId: "c-borin", allocation: { plusTwo: "str" } });
+    expect(first.state.characters["c-borin"]?.pendingAsi).toBe(1);
+    const second = run(first.state, jamie, { kind: "chooseAsi", characterId: "c-borin", allocation: { plusTwo: "con" } });
+    expect(second.state.characters["c-borin"]?.pendingAsi).toBe(0);
+  });
+});

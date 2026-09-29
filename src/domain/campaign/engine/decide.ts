@@ -15,7 +15,7 @@ import { handleTravelCommand, recordHazardRoll } from "./travel.js";
 import { handleUtilityMagicCommand } from "./utility-magic.js";
 import { Decision, type DecideResult, type EngineContext } from "./decision.js";
 import { beginAdventure, beginPlay, illustrateMoment, markReady, redoPicture, recordLedgerFact, recordNarration, recordOpening, recordSummary, regenerateNarration, replaceNarration, reportPlannerFailure, retryPlan } from "./dm.js";
-import { chooseClassLevel, continueCampaign, grantProxy, joinHero, markAway, markReturned, revokeProxy } from "./members.js";
+import { chooseAsi, chooseClassLevel, continueCampaign, grantProxy, joinHero, markAway, markReturned, revokeProxy } from "./members.js";
 import { isSkill } from "../character/character-sheet.js";
 import { pauseCampaign } from "./pause.js";
 import { remind } from "./reminders.js";
@@ -137,6 +137,8 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
       const skillChoice = command.skillChoice !== undefined && isSkill(command.skillChoice) ? command.skillChoice : undefined;
       return chooseClassLevel(decision, command.characterId, command.buildClass, skillChoice);
     }
+    case "chooseAsi":
+      return chooseAsi(decision, command.characterId, command.allocation);
     case "startEncounter":
     case "combatMove":
     case "combatEngage":

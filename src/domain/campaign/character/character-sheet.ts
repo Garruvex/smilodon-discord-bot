@@ -31,6 +31,11 @@ export interface CharacterSheet {
   // offers one and this would be the hero's first level in it). Cleared once
   // spent. Absent means "keep leveling the class already being leveled."
   readonly pendingClassLevel?: { readonly buildClass: string; readonly skillChoice?: Skill };
+  // Unspent Ability Score Improvements: one per level in leveling.ts's
+  // asiLevels the hero has reached but not yet allocated (a big XP award can
+  // grant more than one before either is spent). Absent or 0 means none
+  // waiting. Cleared one at a time by the chooseAsi command (engine/members.ts).
+  readonly pendingAsi?: number;
   // The race chosen at creation, if any: races are optional so a sheet from
   // before this content existed still loads. Ability score increases and
   // speed are folded into abilityScores/speed once, at creation; combat

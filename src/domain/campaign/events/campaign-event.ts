@@ -142,12 +142,18 @@ export type CampaignEvent =
       readonly skills: CharacterSheet["skills"];
       // Present exactly when this recomputes to a Warlock holding levels.
       readonly pactMagic?: CharacterSheet["pactMagic"];
+      // Unspent Ability Score Improvements after this level (character/leveling.ts's asiLevels).
+      readonly pendingAsi?: number;
     }
   // The hero's next level will land in `buildClass` (character-build.ts's
   // BuildClass), and, if that class is new to them and grants one, the skill
   // named. Declaring again before the next level replaces it; reaching the
   // next level spends and clears it (engine/members.ts's chooseClassLevel).
   | { readonly kind: "classLevelPlanChosen"; readonly characterId: CharacterId; readonly buildClass: string; readonly skillChoice?: Skill }
+  // One unspent Ability Score Improvement was allocated (engine/members.ts's
+  // chooseAsi): the abilities named each rose by 1 (two abilities) or 2 (one
+  // ability), and the hero's pendingAsi count dropped by one.
+  | { readonly kind: "abilityScoreImproved"; readonly characterId: CharacterId; readonly abilityScores: Readonly<Record<Ability, number>>; readonly pendingAsi: number }
   // A haggle roll was requested; the pending state a settled roll (or a
   // pause-and-resume re-arm, if one is ever added) needs to finish it.
   | { readonly kind: "haggleStarted"; readonly haggle: PendingHaggle }

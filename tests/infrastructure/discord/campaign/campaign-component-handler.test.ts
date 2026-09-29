@@ -560,6 +560,90 @@ describe("an opportunity attack", () => {
   });
 });
 
+describe("an Ability Score Improvement owed on My Hero", () => {
+  const buttonIds = (sent: readonly Sent[]): string[] => {
+    const last = [...sent].reverse().find((entry) => entry.kind === "edit");
+    const rows = (last?.payload as { components?: { toJSON(): { components: { custom_id?: string; url?: string }[] } }[] } | undefined)?.components ?? [];
+    return rows.flatMap((row) => row.toJSON().components.map((component) => component.custom_id ?? component.url ?? ""));
+  };
+
+  async function withPendingAsi(t: Awaited<ReturnType<typeof harness>>, pendingAsi = 1): Promise<{ heroId: string; str: number }> {
+    await started(t);
+    const stored = await t.r.store.transaction((tx) => tx.loadCampaign(t.key));
+    if (stored === undefined) throw new Error("state");
+    const heroId = stored.state.members["u-org"]?.characterId;
+    const sheet = heroId === null || heroId === undefined ? undefined : stored.state.characters[heroId];
+    if (heroId === null || heroId === undefined || sheet === undefined) throw new Error("hero");
+    await t.r.store.transaction(async (tx) => {
+      const latest = await tx.loadCampaign(t.key);
+      if (latest === undefined) throw new Error("state");
+      await tx.saveCampaign(t.key, { ...latest.state, characters: { ...latest.state.characters, [heroId]: { ...sheet, pendingAsi } } }, latest.revision);
+    });
+    return { heroId, str: sheet.abilityScores.str };
+  }
+
+  it("offers the picker only when one is owed", async () => {
+    const t = await harness();
+    await started(t);
+    expect(buttonIds(await t.press("myHero", "u-org")).some((id) => id.startsWith("dnd:asiOpen:"))).toBe(false);
+    await withPendingAsi(t);
+    expect(buttonIds(await t.press("myHero", "u-org")).some((id) => id.startsWith("dnd:asiOpen:"))).toBe(true);
+  });
+
+  it("refuses to open the picker once nothing is owed", async () => {
+    const t = await harness();
+    await started(t);
+    expect(contentOf(await t.press("asiOpen", "u-org"))).toBe("This hero has no Ability Score Improvement to spend right now.");
+  });
+
+  it("adds +2 to one ability and clears the pending improvement", async () => {
+    const t = await harness();
+    const { heroId, str } = await withPendingAsi(t);
+    const picked = fakeInteraction({ customId: `dnd:asiPick:${t.key.campaignId}`, userId: "u-org", values: ["str"], kind: "select" });
+    await t.handler.execute({ interaction: picked.interaction, logger: quiet as never });
+    expect(contentOf(picked.sent)).toContain(`Ability score improved: Strength ${str} → ${str + 2}`);
+    const after = await t.r.store.transaction((tx) => tx.loadCampaign(t.key));
+    expect(after?.state.characters[heroId]?.abilityScores.str).toBe(str + 2);
+    expect(after?.state.characters[heroId]?.pendingAsi).toBe(0);
+  });
+
+  it("adds +1 to two different abilities", async () => {
+    const t = await harness();
+    const { heroId } = await withPendingAsi(t);
+    const stored = await t.r.store.transaction((tx) => tx.loadCampaign(t.key));
+    const before = stored?.state.characters[heroId]?.abilityScores;
+    const picked = fakeInteraction({ customId: `dnd:asiPick:${t.key.campaignId}`, userId: "u-org", values: ["dex", "wis"], kind: "select" });
+    await t.handler.execute({ interaction: picked.interaction, logger: quiet as never });
+    const after = await t.r.store.transaction((tx) => tx.loadCampaign(t.key));
+    expect(after?.state.characters[heroId]?.abilityScores.dex).toBe((before?.dex ?? 0) + 1);
+    expect(after?.state.characters[heroId]?.abilityScores.wis).toBe((before?.wis ?? 0) + 1);
+    expect(after?.state.characters[heroId]?.pendingAsi).toBe(0);
+  });
+
+  it("refuses the same ability picked twice", async () => {
+    const t = await harness();
+    await withPendingAsi(t);
+    const picked = fakeInteraction({ customId: `dnd:asiPick:${t.key.campaignId}`, userId: "u-org", values: ["str", "str"], kind: "select" });
+    await t.handler.execute({ interaction: picked.interaction, logger: quiet as never });
+    expect(contentOf(picked.sent)).toBe("Pick one ability, or two different ones.");
+  });
+
+  it("stacks two owed improvements as two separate spends", async () => {
+    const t = await harness();
+    const { heroId, str } = await withPendingAsi(t, 2);
+    const first = fakeInteraction({ customId: `dnd:asiPick:${t.key.campaignId}`, userId: "u-org", values: ["str"], kind: "select" });
+    await t.handler.execute({ interaction: first.interaction, logger: quiet as never });
+    const middle = await t.r.store.transaction((tx) => tx.loadCampaign(t.key));
+    expect(middle?.state.characters[heroId]?.pendingAsi).toBe(1);
+    expect(middle?.state.characters[heroId]?.abilityScores.str).toBe(str + 2);
+
+    const second = fakeInteraction({ customId: `dnd:asiPick:${t.key.campaignId}`, userId: "u-org", values: ["con"], kind: "select" });
+    await t.handler.execute({ interaction: second.interaction, logger: quiet as never });
+    const after = await t.r.store.transaction((tx) => tx.loadCampaign(t.key));
+    expect(after?.state.characters[heroId]?.pendingAsi).toBe(0);
+  });
+});
+
 describe("speaking, the safety pause, and the help menu", () => {
   const stateOf = async (t: Awaited<ReturnType<typeof harness>>): Promise<CampaignState> => {
     const stored = await t.r.store.transaction((tx) => tx.loadCampaign(t.key));

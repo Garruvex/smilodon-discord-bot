@@ -12,7 +12,7 @@ import {
   xpForNextLevel,
   xpThresholds,
 } from "../../../src/domain/campaign/character/leveling.js";
-import { classTemplates, deriveSheet, type BuildChoices } from "../../../src/domain/campaign/character/character-build.js";
+import { deriveSheet, type BuildChoices } from "../../../src/domain/campaign/character/character-build.js";
 
 const wizardBuild: BuildChoices = {
   class: "wizard",
@@ -120,13 +120,19 @@ describe("XP and levels", () => {
     expect(toLevel3.features).toEqual(sheet.features);
   });
 
-  it("applies an Ability Score Improvement only on its levels", () => {
+  it("owes an Ability Score Improvement on its levels, for the player to allocate, rather than picking for them", () => {
     expect(asiLevels).toContain(4);
-    const template = classTemplates.fighter;
     const abilityScores = { str: 15, dex: 12, con: 14, int: 8, wis: 13, cha: 10 };
-    const sheet = { level: 3, hitDie: 10, abilityScores, classLevels: { fighter: 3 }, features: [], skills: {} } as never;
+    const base = { hitDie: 10, abilityScores, features: [], skills: {} };
+    const sheet = { ...base, level: 3, classLevels: { fighter: 3 } } as never;
     const toLevel4 = levelUp(sheet, "fighter");
-    expect(toLevel4.abilityScores).not.toEqual(abilityScores);
-    expect(template.suggested[0]).toBe("str");
+    // Nothing is allocated yet: the scores are untouched, and one is owed.
+    expect(toLevel4.abilityScores).toEqual(abilityScores);
+    expect(toLevel4.pendingAsi).toBe(1);
+    // A non-ASI level owes nothing more, and a second ASI level stacks.
+    const level5 = { ...base, level: 4, classLevels: toLevel4.classLevels, pendingAsi: toLevel4.pendingAsi } as never;
+    expect(levelUp(level5, "fighter").pendingAsi).toBe(1);
+    const level7 = { ...base, level: 7, classLevels: toLevel4.classLevels, pendingAsi: toLevel4.pendingAsi } as never;
+    expect(levelUp(level7, "fighter").pendingAsi).toBe(2);
   });
 });

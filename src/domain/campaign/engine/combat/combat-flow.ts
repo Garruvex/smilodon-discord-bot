@@ -260,6 +260,7 @@ function grantExperience(decision: Decision, encounterId: string, shares: Readon
         classLevels: next.classLevels,
         skills: next.skills,
         pactMagic: next.pactMagic,
+        ...(next.pendingAsi === undefined ? {} : { pendingAsi: next.pendingAsi }),
       });
       const updated = decision.state.characters[characterId];
       if (updated === undefined) break;

@@ -307,6 +307,7 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
           classLevels: event.classLevels,
           skills: event.skills,
           ...(event.pactMagic === undefined ? {} : { pactMagic: event.pactMagic }),
+          ...(event.pendingAsi === undefined ? {} : { pendingAsi: event.pendingAsi }),
         },
       };
       // The new Hit Die's worth of HP lands right away, same as the extra max.
@@ -319,6 +320,11 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       if (sheet === undefined) return state;
       const pendingClassLevel = { buildClass: event.buildClass, ...(event.skillChoice === undefined ? {} : { skillChoice: event.skillChoice }) };
       return { ...state, characters: { ...state.characters, [sheet.id]: { ...sheet, pendingClassLevel } } };
+    }
+    case "abilityScoreImproved": {
+      const sheet = state.characters[event.characterId];
+      if (sheet === undefined) return state;
+      return { ...state, characters: { ...state.characters, [sheet.id]: { ...sheet, abilityScores: event.abilityScores, pendingAsi: event.pendingAsi } } };
     }
     case "heroJoined": {
       const sheet = event.sheet;

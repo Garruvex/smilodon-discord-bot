@@ -106,6 +106,7 @@ export const campaignZhTW = {
   "campaign.button.skipSmite": "跳過",
   "campaign.button.takeOpportunity": "發動攻擊",
   "campaign.button.holdOpportunity": "保留反應",
+  "campaign.button.improveAbility": "提升能力值",
 
   "campaign.hero.line": "**{name}** · {class} · {level} 級",
   "campaign.hero.player": "玩家：{user}",
@@ -279,6 +280,8 @@ export const campaignZhTW = {
   "campaign.refusal.noSmite": "目前沒有等你決定的神聖制裁",
   "campaign.refusal.unknownClass": "這不是本桌認得的職業。",
   "campaign.refusal.multiclassRequirementNotMet": "這名角色的屬性值還不符合該職業的兼職條件。",
+  "campaign.refusal.noAsiPending": "這名角色目前沒有能力值提升可以使用。",
+  "campaign.refusal.invalidAsiAllocation": "請選擇一項能力，或兩項不同的能力。",
   "campaign.refusal.unknownItem": "這不是真實存在的物品。",
   "campaign.refusal.insufficientGold": "身上的金幣不夠支付這筆花費。",
   "campaign.refusal.invalidHaggleSkill": "討價還價只能使用說服、欺瞞或威嚇。",
@@ -570,6 +573,7 @@ export const campaignZhTW = {
   "campaign.reply.smiteSkipped": "你跳過了",
   "campaign.reply.opportunityTaken": "你發動了攻擊",
   "campaign.reply.opportunityHeld": "你保留了反應",
+  "campaign.reply.asiApplied": "能力值已提升：{changes}",
 
   "campaign.pack.placeholder": "背包與隊伍儲藏",
   "campaign.pack.use": "飲用{item}",
@@ -595,6 +599,9 @@ export const campaignZhTW = {
   "campaign.opportunity.title": "🏃 **{mover}**正要離開**{provoker}**的攻擊範圍。要發動攻擊嗎？",
   "campaign.opportunity.player": "等待 {user} 回應",
   "campaign.opportunity.closes": "{when} 後自動決定",
+
+  "campaign.asi.prompt": "選擇一項能力提升 2 點，或兩項能力各提升 1 點。（還有 {count} 次可用）",
+  "campaign.asi.placeholder": "能力值",
 
   "campaign.turn.header": "**{hero}** · {zone}\n動作 {action} · 附贈動作 {bonus} · 反應 {reaction} · 移動 {feet} 尺",
   "campaign.turn.engaged": "正與{names}近戰",
@@ -639,6 +646,7 @@ export const campaignZhTW = {
   "campaign.sheet.equipment": "裝備：{items}",
   "campaign.sheet.features": "特性：{features}",
   "campaign.sheet.spells": "法術：{spells}",
+  "campaign.sheet.pendingAsi": "⭐ 還有 {count} 次能力值提升可用——見「我的英雄」。",
   "campaign.sheet.none": "無",
   "campaign.sheet.expertise": "{skill}（專精）",
 

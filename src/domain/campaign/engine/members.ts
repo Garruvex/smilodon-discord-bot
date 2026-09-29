@@ -2,6 +2,7 @@ import type { CharacterSheet } from "../character/character-sheet.js";
 import { canMulticlassInto, classTemplates, isBuildClass } from "../character/character-build.js";
 import { actsForOwner } from "../character/ownership.js";
 import type { Skill } from "../rules/skills.js";
+import { abilities, type Ability } from "../rules/effects.js";
 import type { CharacterId, CheckId, Instant, UserId } from "../core/ids.js";
 import { isFallen, presentMembers, type CampaignState } from "../state/campaign-state.js";
 import { deadlineAfter, type Decision } from "./decision.js";
@@ -234,6 +235,24 @@ export function chooseClassLevel(decision: Decision, characterId: CharacterId, b
   const template = classTemplates[buildClass];
   const validSkill = skillChoice !== undefined && template.multiclassSkillChoices?.includes(skillChoice) === true ? skillChoice : undefined;
   decision.emit({ kind: "classLevelPlanChosen", characterId, buildClass, ...(validSkill === undefined ? {} : { skillChoice: validSkill }) });
+  return null;
+}
+
+// Spends one unspent Ability Score Improvement: +2 to one ability, or +1 to
+// two distinct ones, each capped at the SRD's 20 (a point that would push an
+// ability past it is simply not applied, the same "no effect past the cap"
+// rule a potion or a feature already follows — never refused for that alone).
+export function chooseAsi(decision: Decision, characterId: CharacterId, allocation: { readonly plusTwo: Ability } | { readonly plusOne: readonly [Ability, Ability] }): Rejection | null {
+  const { state, ctx } = decision;
+  const sheet = state.characters[characterId];
+  if (sheet === undefined) return { code: "notYourCharacter" };
+  if (ctx.actor.kind === "user" && ctx.actor.userId !== sheet.ownerUserId && ctx.actor.userId !== state.organizerId) return { code: "notYourCharacter" };
+  if ((sheet.pendingAsi ?? 0) <= 0) return { code: "noAsiPending" };
+  const targets = "plusTwo" in allocation ? [allocation.plusTwo] : allocation.plusOne;
+  if (targets.some((ability) => !abilities.includes(ability)) || ("plusOne" in allocation && targets[0] === targets[1])) return { code: "invalidAsiAllocation" };
+  const abilityScores = { ...sheet.abilityScores };
+  for (const ability of targets) abilityScores[ability] = Math.min(20, abilityScores[ability] + ("plusTwo" in allocation ? 2 : 1));
+  decision.emit({ kind: "abilityScoreImproved", characterId, abilityScores, pendingAsi: (sheet.pendingAsi ?? 0) - 1 });
   return null;
 }
 

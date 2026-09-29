@@ -204,13 +204,18 @@ export function levelUp(
   sheet: CharacterSheet,
   buildClass: BuildClass,
   skillChoice?: Skill,
-): Pick<CharacterSheet, "level" | "maxHp" | "abilityScores" | "spellcasting" | "features" | "skills" | "pactMagic"> & {
+): Pick<CharacterSheet, "level" | "maxHp" | "abilityScores" | "spellcasting" | "features" | "skills" | "pactMagic" | "pendingAsi"> & {
   readonly classLevels: Readonly<Partial<Record<BuildClass, number>>>;
 } {
   const level = sheet.level + 1;
   const template = classTemplates[buildClass];
   const hpGain = hpGainForLevel(template.hitDie, sheet.abilityScores.con);
-  const abilityScores = asiLevels.includes(level) ? defaultAsiAllocation(buildClass, sheet.abilityScores) : sheet.abilityScores;
+  // The SRD lets the player choose the allocation (+2 to one ability, or +1
+  // to two): this only counts the improvement as owed, it does not pick for
+  // them. defaultAsiAllocation stays as the Discord picker's "use the
+  // suggestion" shortcut, the same role it already plays nowhere else now.
+  const pendingAsi = (sheet.pendingAsi ?? 0) + (asiLevels.includes(level) ? 1 : 0);
+  const abilityScores = sheet.abilityScores;
 
   const priorLevels = classLevelsOf(sheet);
   const priorInClass = priorLevels[buildClass] ?? 0;
@@ -229,5 +234,5 @@ export function levelUp(
     if (choice !== undefined && skills[choice] === undefined) skills[choice] = "proficient";
   }
 
-  return { level, maxHp: sheet.maxHp + hpGain, abilityScores, spellcasting, features, classLevels, skills, ...(pactMagic === undefined ? {} : { pactMagic }) };
+  return { level, maxHp: sheet.maxHp + hpGain, abilityScores, spellcasting, features, classLevels, skills, pendingAsi, ...(pactMagic === undefined ? {} : { pactMagic }) };
 }
