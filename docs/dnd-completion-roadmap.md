@@ -18,7 +18,7 @@ gaps grouped by the engine primitive they need, with size (S: a day or less, M: 
 | **Warlock invocations and pact boons** | M | Agonizing Blast, Pact of the Blade, Hex tie-ins |
 | **Grapple, shove and other special attacks** | M | Athletics contests, Open Hand riders, Grappler feats, many monster grabs and swallows |
 | **Forms other than Wild Shape** (Polymorph, Shapechange, Wild Shape variants) | M | Polymorph, True Polymorph, Circle of the Moon |
-| **Charges and active magic items** | M | Wands, staffs, rods, bags, boots, spell scrolls, potions with effects, cursed items |
+| **Charges and active magic items** | M | Staffs, rods, bags, boots, spell scrolls, cursed items |
 | **Movement effects** (teleport, push, fly, difficult terrain) | M | Misty Step, Thunderwave's push, Dimension Door, Fly, Levitate, Step of the Wind's Dash |
 | **Hide, search and stealth in combat** | M | Cunning Action's Hide, Skulker, surprise |
 

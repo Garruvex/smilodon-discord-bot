@@ -29,11 +29,11 @@ export type EngineRequest =
   // A portrait of a monster the party meets for the first time (or of the named NPC it plays); made once and reused.
   | { readonly kind: "monsterImage"; readonly monsterId: string; readonly npcId: string | null }
   // A picture of what just happened, from a round's already-told narration (the organizer asked for it).
-  // `auto`: the engine noticed a dramatic roll; the picture is skipped when one was made lately or the budget is running low.
+  // `auto`: the engine noticed a dramatic roll; closely spaced pictures are skipped.
   | { readonly kind: "momentImage"; readonly roundNumber: number; readonly auto?: boolean }
   // A portrait of a hero who joined the party.
   | { readonly kind: "heroImage"; readonly characterId: string }
-  // Paint a picture again (the organizer did not like it); spends budget like a new one.
+  // Paint a picture again (the organizer did not like it).
   | { readonly kind: "redoImage"; readonly subject: string }
   | { readonly kind: "startTimer"; readonly timer: TimerSpec }
   | { readonly kind: "cancelTimer"; readonly timerId: TimerId }

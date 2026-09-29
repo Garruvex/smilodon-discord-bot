@@ -51,7 +51,8 @@ Race and subrace details are also in `dnd-race-mechanics-status.md`.
 - Halfling Lucky (a reroll needs a new roll request), Elf Trance, gnome and elf subrace magic, Darkvision (no lighting system), languages and tools.
 
 ### Items
-- Magic items with active powers: wands, staffs, rods, bags, boots, potions other than healing, spell scrolls, conditional weapon effects (Dragon Slayer, Holy Avenger), charges, cursed items.
+- Magic items with active powers: staffs, rods, bags, boots, spell scrolls, conditional weapon effects (Dragon Slayer, Holy Avenger), charges, cursed items.
+- Done: effect potions and charged wands (Magic Missile, Fireball, Lightning Bolt, Fear, Hold Person at save DC 15, seven charges).
 - Dragon Scale Mail, Armor of Resistance and Adamantine Armor are named but give nothing yet.
 
 ### Other

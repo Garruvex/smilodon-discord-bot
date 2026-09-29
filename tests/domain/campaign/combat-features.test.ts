@@ -481,6 +481,20 @@ describe("class features", () => {
     expect(rolls).toHaveLength(1);
   });
 
+  it("casts Fireball from a Wand of Fireballs at the wand's own save DC, using up a charge", () => {
+    const base = newCampaign();
+    const hero = base.characters["c-borin"];
+    if (hero === undefined) throw new Error("fixture");
+    const state: CampaignState = { ...base, characters: { ...base.characters, "c-borin": { ...hero, equipment: [...hero.equipment, "item:wand-of-fireballs" as const] } } };
+    const fight = borinFirst(state);
+    expect(fight.combatant("c-borin").spellcasting?.saveDcs?.["spell:fireball"]).toBe(15);
+    // Both goblins fail their Dexterity saves (3), and 8d6 rolls a 4 on each die.
+    fight.rolls([3, 3], Array.from({ length: 8 }, () => 4)).run(jamie, { kind: "combatCast", combatantId: "c-borin", spellId: "spell:fireball", slotLevel: 3, targetIds: ["goblin-a", "goblin-b"] });
+    expect(fight.combatant("goblin-a").hp).toBe(0);
+    expect(fight.combatant("goblin-b").hp).toBe(0);
+    expect(fight.combatant("c-borin").resources.featureUses["innate:spell:fireball"]).toBe(6);
+  });
+
   it("drinks a Potion of Resistance: resistance for the fight and the potion is used up", () => {
     const base = newCampaign();
     const hero = base.characters["c-borin"];

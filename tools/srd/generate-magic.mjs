@@ -47,6 +47,13 @@ const TRAITS = {
   "scarab-of-protection": [magicAdvantage],
   "ring-of-spell-turning": [magicAdvantage],
 };
+// Wands: seven charges of one spell, cast for the holder at the wand's own save DC (they come back with the day's rest, in place of the SRD's dawn roll).
+const wand = (spell) => [`{ kind: "featureSpell", spell: "spell:${spell}", ability: "cha", uses: 7, saveDc: 15, recharge: "longRest" }`];
+TRAITS["wand-of-magic-missiles"] = wand("magic-missile");
+TRAITS["wand-of-fireballs"] = wand("fireball");
+TRAITS["wand-of-lightning-bolts"] = wand("lightning-bolt");
+TRAITS["wand-of-fear"] = wand("fear");
+TRAITS["wand-of-paralysis"] = wand("hold-person");
 for (const type of ["acid", "cold", "fire", "force", "lightning", "necrotic", "poison", "psychic", "radiant", "thunder"]) TRAITS[`ring-of-resistance-${type}`] = [resist(type)];
 
 // Potions that do something in a fight, worked out through the same pipeline as a spell (effects on the drinker).

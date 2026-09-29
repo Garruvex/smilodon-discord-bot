@@ -78,6 +78,8 @@ export type Trait =
       // Uses that grow with level: the last entry at or below the holder's level wins over `uses`.
       readonly usesAt?: readonly { readonly level: number; readonly uses: number }[];
       readonly usesAbility?: boolean;
+      // A fixed save DC, for an item that casts the spell for its holder (a wand's DC 15).
+      readonly saveDc?: number;
       readonly recharge: "shortRest" | "longRest";
     }
   // A flat bonus to saving throws (Ring of Protection, Cloak of Protection).
