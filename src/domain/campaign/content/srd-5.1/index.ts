@@ -7,6 +7,7 @@ import { srd51HigherLevelFeatures } from "./features/higher-level-features.js";
 import { srd51Armor } from "./items/armor.js";
 import { srd51Potions } from "./items/potions.js";
 import { srd51Weapons } from "./items/weapons.js";
+import { srd51MoreMonsters } from "./monsters/more-monsters.js";
 import { srd51StarterMonsters } from "./monsters/starter-monsters.js";
 import { srd51Races } from "./races.js";
 import { srd51Cantrips } from "./spells/cantrips.js";
@@ -28,6 +29,7 @@ export const srd51Content: readonly ContentDefinition[] = [
   ...srd51Level1Features,
   ...srd51HigherLevelFeatures,
   ...srd51StarterMonsters,
+  ...srd51MoreMonsters,
   ...srd51Classes,
   ...srd51Races,
 ];

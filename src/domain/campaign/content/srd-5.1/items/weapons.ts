@@ -56,6 +56,21 @@ export const slam = defineWeapon({ id: "item:slam", source, damage: dice(1, 6), 
 export const greatclub = defineWeapon({ id: "item:greatclub", source, damage: dice(2, 8), damageType: "bludgeoning", range: melee, finesse: false, natural: false });
 export const lifeDrain = defineWeapon({ id: "item:life-drain", source, damage: dice(3, 6), damageType: "necrotic", range: melee, finesse: false, natural: true });
 
+// Added with the wider monster roster: what those stat blocks swing, shoot and claw with.
+export const club = defineWeapon({ id: "item:club", source, damage: dice(1, 4), damageType: "bludgeoning", range: melee, finesse: false, natural: false });
+export const spear = defineWeapon({ id: "item:spear", source, damage: dice(1, 6), damageType: "piercing", range: melee, finesse: false, natural: false });
+export const lightCrossbow = defineWeapon({
+  id: "item:light-crossbow",
+  source,
+  damage: dice(1, 8),
+  damageType: "piercing",
+  range: { kind: "ranged", normal: 80, long: 320 },
+  finesse: false,
+  natural: false,
+});
+export const claw = defineWeapon({ id: "item:claw", source, damage: dice(1, 4), damageType: "slashing", range: melee, finesse: false, natural: true });
+export const tusk = defineWeapon({ id: "item:tusk", source, damage: dice(1, 6), damageType: "slashing", range: melee, finesse: false, natural: true });
+
 export const srd51Weapons: readonly WeaponDefinition[] = [
   longsword,
   shortsword,
@@ -73,4 +88,9 @@ export const srd51Weapons: readonly WeaponDefinition[] = [
   slam,
   greatclub,
   lifeDrain,
+  club,
+  spear,
+  lightCrossbow,
+  claw,
+  tusk,
 ];
