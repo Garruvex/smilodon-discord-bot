@@ -81,7 +81,21 @@ export const circleOfTheLand = defineFeature({
 export const wayOfTheOpenHand = narrative("way-of-the-open-hand");
 // Oath of Devotion (Paladin 3): narrative. Its Channel Divinity options
 // need Paladins to have Channel Divinity at all, which only Clerics do here.
-export const oathOfDevotion = narrative("oath-of-devotion");
+// Sacred Weapon (Channel Divinity): Charisma modifier added to attack rolls for a minute. Turn the Unholy is not modeled.
+export const oathOfDevotion = defineFeature({
+  id: "feature:oath-of-devotion",
+  source,
+  traits: [],
+  action: {
+    cost: "action",
+    uses: { count: 1, recharge: "shortRest" },
+    plan: ({ spellcastingModifier }) => ({
+      check: null,
+      onLand: [{ kind: "applyModifiers", target: "self", modifiers: [{ kind: "attackBonus", amount: Math.max(1, spellcastingModifier) }], duration: { kind: "rounds", count: 10 } }],
+      onAvoid: [],
+    }),
+  },
+});
 // Hunter (Ranger 3): narrative. Its Hunter's Prey options (e.g. Colossus
 // Slayer's extra damage once per turn) would need a new once-per-turn
 // tracking mechanic, the shape Sneak Attack already special-cases for Rogue.

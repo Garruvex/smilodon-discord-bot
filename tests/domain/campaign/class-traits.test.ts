@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { checkModifier } from "../../../src/domain/campaign/character/character-sheet.js";
 import { armorClassFrom, heroCombatant, unarmoredModifier } from "../../../src/domain/campaign/combat/combatant-profile.js";
 import { traitsOf } from "../../../src/domain/campaign/rules/content-definitions.js";
 import { hasSaveAdvantage, type SaveContext, type Trait } from "../../../src/domain/campaign/rules/traits.js";
@@ -53,7 +54,7 @@ describe("speed bonuses and Rage by level", () => {
     expect(rage.action.uses.perLevel?.(6)).toBe(4);
     expect(rage.action.uses.perLevel?.(17)).toBe(6);
     const bonus = (level: number): number => {
-      const modifiers = rage.action?.plan({ level }).onLand.flatMap((effect) => (effect.kind === "applyModifiers" ? effect.modifiers : [])) ?? [];
+      const modifiers = rage.action?.plan({ level, spellcastingModifier: 0 }).onLand.flatMap((effect) => (effect.kind === "applyModifiers" ? effect.modifiers : [])) ?? [];
       return modifiers.flatMap((modifier) => (modifier.kind === "meleeDamageBonus" ? [modifier.amount] : []))[0] ?? 0;
     };
     expect([bonus(1), bonus(9), bonus(16)]).toEqual([2, 3, 4]);
@@ -77,5 +78,23 @@ describe("Natural and Arcane Recovery", () => {
     expect(rested.state.heroStatus["c-elspeth"]?.resources.featureUses["feature:circle-of-the-land"]).toBe(0);
     const again = run(rested.state, organizer, { kind: "takeRest", rest: "short" });
     expect(again.state.heroStatus["c-elspeth"]?.resources.spellSlots).toEqual({ 1: 0, 2: 1 });
+  });
+});
+
+describe("Jack of All Trades and Sacred Weapon", () => {
+  it("adds half the proficiency bonus to a check the bard is not proficient in", () => {
+    const hero = newCampaign().characters["c-borin"];
+    if (hero === undefined) throw new Error("fixture");
+    const plain = { ...hero, features: [] as typeof hero.features, skills: {} };
+    const bard = { ...plain, features: ["feature:jack-of-all-trades"] as typeof hero.features };
+    const test = { kind: "ability", ability: "wis" } as const;
+    expect(checkModifier(bard, test) - checkModifier(plain, test)).toBe(Math.floor(hero.proficiencyBonus / 2));
+  });
+
+  it("adds the Charisma modifier to attack rolls for ten rounds", () => {
+    const oath = content.get("feature:oath-of-devotion");
+    if (oath.kind !== "feature" || oath.action === null) throw new Error("oath");
+    const modifiers = oath.action.plan({ level: 3, spellcastingModifier: 3 }).onLand.flatMap((effect) => (effect.kind === "applyModifiers" ? effect.modifiers : []));
+    expect(modifiers).toEqual([{ kind: "attackBonus", amount: 3 }]);
   });
 });

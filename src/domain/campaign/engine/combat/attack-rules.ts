@@ -37,7 +37,7 @@ export function planFor(decision: Decision, actor: Combatant, source: Resolution
     }
     case "feature": {
       const feature = content.get(source.featureId);
-      return feature.action?.plan({ level: actor.level }) ?? null;
+      return feature.action?.plan({ level: actor.level, spellcastingModifier: actor.spellcasting?.modifier ?? 0 }) ?? null;
     }
     case "area": {
       const area = source.area;

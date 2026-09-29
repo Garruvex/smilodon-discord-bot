@@ -134,7 +134,7 @@ export interface FeatureAction {
   // Its own uses, or a pool another feature holds (Ki points).
   readonly uses: FeatureUses | { readonly pool: ContentId<"feature"> };
   // Feature actions in milestone 0 target the user (Second Wind).
-  plan(context: { readonly level: number }): ResolutionPlan;
+  plan(context: { readonly level: number; readonly spellcastingModifier: number }): ResolutionPlan;
 }
 
 export interface FeatureUses {
@@ -384,7 +384,7 @@ function plansOf(definition: ContentDefinition): readonly ResolutionPlan[] {
     case "spell":
       return samplePlans(definition);
     case "feature":
-      return definition.action === null ? [] : [definition.action.plan({ level: 1 }), definition.action.plan({ level: 20 })];
+      return definition.action === null ? [] : [definition.action.plan({ level: 1, spellcastingModifier: 0 }), definition.action.plan({ level: 20, spellcastingModifier: 0 })];
     case "monster":
       return definition.attacks.map((attack) => ({ check: { kind: "weaponAttack" }, onLand: attack.onHit ?? [], onAvoid: [] }));
     case "item":

@@ -103,10 +103,14 @@ export function abilityOf(test: CheckTest): Ability {
 
 export function checkModifier(sheet: CharacterSheet, test: CheckTest): number {
   const base = abilityModifier(sheet.abilityScores[abilityOf(test)]);
-  if (test.kind === "ability") return base;
-  const proficiency = sheet.skills[test.skill];
+  const proficiency = test.kind === "skill" ? sheet.skills[test.skill] : undefined;
   if (proficiency === "expertise") return base + sheet.proficiencyBonus * 2;
   if (proficiency === "proficient") return base + sheet.proficiencyBonus;
+  // Jack of All Trades: half the proficiency bonus on any check the bard is not proficient in.
+  // Remarkable Athlete (Champion): the same, on Strength, Dexterity and Constitution checks.
+  const half = Math.floor(sheet.proficiencyBonus / 2);
+  if (sheet.features.includes("feature:jack-of-all-trades")) return base + half;
+  if (sheet.features.includes("feature:champion") && ["str", "dex", "con"].includes(abilityOf(test))) return base + half;
   return base;
 }
 

@@ -19,6 +19,8 @@ export type Modifier =
   | { readonly kind: "speedZero" }
   // The holder's own attack rolls.
   | { readonly kind: "ownAttacks"; readonly mode: RollBias }
+  // A flat bonus to the holder's own attack rolls (Sacred Weapon).
+  | { readonly kind: "attackBonus"; readonly amount: number }
   // Attack rolls against the holder. usesUp: the first attack against it uses the effect up.
   | { readonly kind: "attacksAgainst"; readonly mode: RollBias; readonly reach: Reach; readonly usesUp?: true }
   // The holder's saving throws of one ability, or of any.

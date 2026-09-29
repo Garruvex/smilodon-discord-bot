@@ -89,6 +89,10 @@ export function effectResistances(holder: EffectHolder, lookup: ConditionLookup)
 }
 
 // Extra melee weapon damage from lasting effects (Rage).
+export function attackBonusOf(holder: EffectHolder, lookup: ConditionLookup): number {
+  return modifiersOf(holder, lookup).reduce((sum, { modifier }) => sum + (modifier.kind === "attackBonus" ? modifier.amount : 0), 0);
+}
+
 export function meleeDamageBonusOf(holder: EffectHolder, lookup: ConditionLookup): number {
   return modifiersOf(holder, lookup).reduce((sum, { modifier }) => sum + (modifier.kind === "meleeDamageBonus" ? modifier.amount : 0), 0);
 }

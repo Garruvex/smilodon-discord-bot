@@ -3,7 +3,7 @@ import { assertNever } from "../../core/assert-never.js";
 import type { RollId } from "../../core/ids.js";
 import type { ActionCost } from "../../combat/combat-events.js";
 import { areEngaged, isPresent, type Combatant, type CombatantId, type EncounterState, type PendingCheck, type PendingCombatRoll, type PendingEffectRoll, type ResolutionSource, type ResolutionState, type TargetOutcome } from "../../combat/combat-state.js";
-import { armorClassOf, autoFailsSave, bonusDiceFor, conditionLookup, hitsAreCritical, saveBias } from "../../effects/effect-queries.js";
+import { armorClassOf, attackBonusOf, autoFailsSave, bonusDiceFor, conditionLookup, hitsAreCritical, saveBias } from "../../effects/effect-queries.js";
 import type { EffectInstance } from "../../effects/effect-instance.js";
 import type { D20TestRoll } from "../../dice/d20-test.js";
 import type { SealedContent } from "../../rules/content-registry.js";
@@ -79,7 +79,7 @@ export function declareResolution(decision: Decision, request: DeclareRequest): 
       const distance = distanceBetween(encounter, actor.id, target.id) ?? Infinity;
       const longShot = source.kind === "weapon" && source.option.range.kind === "ranged" && distance > source.option.range.normal;
       const mode = attackMode(encounter, actor, target, ranged, longShot, lookup);
-      const toHit = source.kind === "weapon" ? source.option.toHit : (actor.spellcasting?.attackBonus ?? 0);
+      const toHit = (source.kind === "weapon" ? source.option.toHit : (actor.spellcasting?.attackBonus ?? 0)) + attackBonusOf(actor, lookup);
       spec = { mode: mode.mode, modifier: toHit, bonusDice: bonusDiceFor(actor, "attack") };
       against = armorClassOf(target, lookup);
       kind = "attack";
