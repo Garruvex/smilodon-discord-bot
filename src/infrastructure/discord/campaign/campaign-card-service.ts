@@ -83,6 +83,9 @@ interface DesiredCard {
 // shown, skip what is unchanged, edit what changed, and replace a card that
 // was deleted or whose round or turn moved on. It reads saved state only, so
 // running it twice draws the same thing.
+// How many times a card that will not draw is tried again on its own before it waits for the next click or the minute pass.
+const maxRetries = 20;
+
 export class CampaignCardService implements CardRefresher {
   private readonly queue = new KeyedSerialQueue();
   private readonly scheduled = new Set<string>();
@@ -507,7 +510,8 @@ export class CampaignCardService implements CardRefresher {
   // A card that could not be drawn because Discord was slow or limiting edits
   // would stay stale (a panel still saying the DM is thinking) until the next
   // click or the minute pass. It is tried again on its own, a little later each
-  // time, until it draws; the state it shows is always the saved one.
+  // time, until it draws (the last delay repeats, up to maxRetries in all); the
+  // state it shows is always the saved one.
   private readonly retries = new Map<string, { attempt: number; timer: NodeJS.Timeout | null }>();
 
   private retryTransient(key: CampaignKey, failing: boolean): void {
@@ -520,8 +524,8 @@ export class CampaignCardService implements CardRefresher {
     }
     const delays = this.options.retryDelaysMs ?? [3_000, 8_000, 20_000, 45_000, 90_000];
     const attempt = waiting?.attempt ?? 0;
-    const delay = delays[attempt];
-    if (waiting?.timer != null || delay === undefined) return;
+    const delay = delays[Math.min(attempt, delays.length - 1)];
+    if (waiting?.timer != null || delay === undefined || attempt >= maxRetries) return;
     const timer = setTimeout(() => {
       this.retries.set(id, { attempt: attempt + 1, timer: null });
       void this.sync(key).catch((error: unknown) => this.options.logger.error({ err: error, guildId: key.guildId, campaignId: key.campaignId }, "Campaign card retry failed"));

@@ -45,6 +45,7 @@ export function renderLevelForm(input: { readonly campaignId: string; readonly s
   if (sheet.level >= maxLevel) lines.push(t.level.maxed);
   else if (landing !== null) {
     const preview = levelUp(sheet, landing, sheet.pendingClassLevel?.buildClass === landing ? sheet.pendingClassLevel.skillChoice : undefined);
+    if (pendingAsi === 0) lines.push(t.level.notYet);
     lines.push(t.level.next({ level: preview.level, class: classLabel(text, landing), classLevel: preview.classLevels[landing] ?? 1, hp: preview.maxHp - sheet.maxHp }));
     const gained = preview.features.slice(sheet.features.length).map((id) => glossary.names[id] ?? id);
     if (gained.length > 0) lines.push(t.level.gains({ features: gained.join(", ") }));

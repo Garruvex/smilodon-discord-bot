@@ -85,6 +85,27 @@ const codeOf = (skill: Skill | undefined): string => Object.entries(haggleCodes)
 const withPrefix = (npcArg: string): string => `npc:${npcArg}`;
 const withoutPrefix = (npcId: string): string => npcId.replace(/^npc:/, "");
 
+// A menu holds 25 entries. A longer list continues on the next page, reached by a last entry that names it, so nothing is cut off.
+const menuLimit = 25;
+const pagePrefix = "~page.";
+
+function pageOf<T extends { readonly label: string; readonly value: string }>(options: readonly T[], page: number, more: (params: { page: number; pages: number }) => string): (T | { readonly label: string; readonly value: string })[] {
+  if (options.length <= menuLimit) return [...options];
+  const size = menuLimit - 1;
+  const pages = Math.ceil(options.length / size);
+  const at = Math.min(Math.max(0, page), pages - 1);
+  const shown: (T | { readonly label: string; readonly value: string })[] = options.slice(at * size, (at + 1) * size);
+  if (at + 1 < pages) shown.push({ label: more({ page: at + 2, pages }), value: `${pagePrefix}${at + 1}` });
+  return shown;
+}
+
+// The page a "more" entry asks for, or null when the value is an ordinary choice.
+function pageAsked(value: string): number | null {
+  if (!value.startsWith(pagePrefix)) return null;
+  const page = Number(value.slice(pagePrefix.length));
+  return Number.isInteger(page) && page >= 0 ? page : null;
+}
+
 export class ExploreFlow {
   public constructor(private readonly deps: ExploreFlowDependencies) {}
 
@@ -115,8 +136,11 @@ export class ExploreFlow {
     const userId = interaction.user.id;
     const value = interaction.values[0] ?? "";
     switch (action) {
-      case "exploreNpc":
+      case "exploreNpc": {
+        const page = pageAsked(value);
+        if (page !== null) return void (await interaction.editReply(await this.home(record, text, userId, undefined, page)));
         return void (await interaction.editReply(await this.npcScreen(record, text, userId, withoutPrefix(value))));
+      }
       case "explorePressPick": {
         const npc = argument ?? "";
         const skill = isSkill(value) ? value : undefined;
@@ -131,7 +155,9 @@ export class ExploreFlow {
       }
       case "exploreBuy":
       case "exploreSell": {
-        const [npc = "", code = "n"] = (argument ?? "").split(".");
+        const [npc = "", code = "n", buyPage = "0", sellPage = "0"] = (argument ?? "").split(".");
+        const page = pageAsked(value);
+        if (page !== null) return void (await interaction.editReply(await this.shopScreen(record, text, userId, action === "exploreBuy" ? `${npc}.${code}.${page}.${sellPage}` : `${npc}.${code}.${buyPage}.${page}`)));
         const result = await this.deps.play.trade(
           record.key,
           userId,
@@ -154,6 +180,8 @@ export class ExploreFlow {
         return void (await interaction.editReply(await this.home(record, text, userId, this.told(text, result, text.campaign.explore.healCast({ spell })))));
       }
       case "exploreCastPick": {
+        const page = pageAsked(value);
+        if (page !== null) return void (await interaction.editReply(await this.castScreen(record, text, userId, page)));
         if (value.startsWith(healPrefix)) return void (await interaction.editReply(await this.healSlotScreen(record, text, userId, value.slice(healPrefix.length + "spell:".length))));
         const result = await this.deps.play.castSpell(record.key, userId, value as ContentId<"spell">, interaction.id);
         const spell = this.deps.glossaries[record.language]?.names[value] ?? value;
@@ -214,7 +242,7 @@ export class ExploreFlow {
     return new ButtonBuilder().setCustomId(campaignCustomId(action, record.key.campaignId, argument)).setLabel(text.campaign.explore.backButton).setStyle(ButtonStyle.Secondary);
   }
 
-  public async home(record: CampaignRecord, text: Texts, userId: string, note?: string): Promise<ExploreScreen> {
+  public async home(record: CampaignRecord, text: Texts, userId: string, note?: string, page = 0): Promise<ExploreScreen> {
     const loaded = await this.load(record, userId);
     if (loaded === null) return this.noHero(text);
     const t = text.campaign.explore;
@@ -227,7 +255,7 @@ export class ExploreFlow {
           new StringSelectMenuBuilder()
             .setCustomId(campaignCustomId("exploreNpc", record.key.campaignId))
             .setPlaceholder(t.npcPlaceholder)
-            .addOptions(view.npcs.slice(0, 25).map((npc) => ({ label: npc.name.slice(0, 100), description: (npc.trades ? `${t.trades} · ${npc.description}` : npc.description).slice(0, 100), value: npc.id }))),
+            .addOptions(pageOf(view.npcs.map((npc) => ({ label: npc.name.slice(0, 100), description: (npc.trades ? `${t.trades} · ${npc.description}` : npc.description).slice(0, 100), value: npc.id })), page, t.more)),
         ),
       );
     }
@@ -288,19 +316,19 @@ export class ExploreFlow {
     const loaded = await this.load(record, userId);
     if (loaded === null) return this.noHero(text);
     const t = text.campaign.explore;
-    const [npcArg = "", code = "n"] = arg.split(".");
+    const [npcArg = "", code = "n", buyAt = "0", sellAt = "0"] = arg.split(".");
     const haggle = haggleCodes[code];
     const shop = buildShopView(loaded.state, loaded.bible, loaded.glossary, loaded.houseRules, loaded.hero.id, withPrefix(npcArg));
     if (shop === undefined) return this.home(record, text, userId, refusalText(text, "npcNotHere"));
-    const state = `${npcArg}.${codeOf(haggle)}`;
+    const state = buyAt === "0" && sellAt === "0" ? `${npcArg}.${codeOf(haggle)}` : `${npcArg}.${codeOf(haggle)}.${buyAt}.${sellAt}`;
     const lines = (items: typeof shop.buy): string => (items.length === 0 ? t.shopNothing : items.map((line) => t.shopLine({ item: line.name, price: line.price })).join("\n"));
-    const menu = (action: CampaignAction, placeholder: string, options: readonly { label: string; value: string; description?: string; default?: boolean }[]): Row =>
+    const menu = (action: CampaignAction, placeholder: string, options: readonly { label: string; value: string; description?: string; default?: boolean }[], page = 0): Row =>
       new ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>().addComponents(
-        new StringSelectMenuBuilder().setCustomId(campaignCustomId(action, record.key.campaignId, state)).setPlaceholder(placeholder).addOptions(options.slice(0, 25).map((option) => ({ ...option, label: option.label.slice(0, 100) }))),
+        new StringSelectMenuBuilder().setCustomId(campaignCustomId(action, record.key.campaignId, state)).setPlaceholder(placeholder).addOptions(pageOf(options.map((option) => ({ ...option, label: option.label.slice(0, 100) })), page, t.more)),
       );
     const rows: Row[] = [];
-    if (shop.buy.length > 0) rows.push(menu("exploreBuy", t.buyPlaceholder, shop.buy.map((line) => ({ label: t.option({ item: line.name, price: line.price }), value: line.itemId }))));
-    if (shop.sell.length > 0) rows.push(menu("exploreSell", t.sellPlaceholder, shop.sell.map((line) => ({ label: t.option({ item: line.name, price: line.price }), value: line.itemId }))));
+    if (shop.buy.length > 0) rows.push(menu("exploreBuy", t.buyPlaceholder, shop.buy.map((line) => ({ label: t.option({ item: line.name, price: line.price }), value: line.itemId })), Number(buyAt)));
+    if (shop.sell.length > 0) rows.push(menu("exploreSell", t.sellPlaceholder, shop.sell.map((line) => ({ label: t.option({ item: line.name, price: line.price }), value: line.itemId })), Number(sellAt)));
     rows.push(
       menu("exploreHaggle", t.hagglePlaceholder, [
         { label: t.haggleNone, value: "n", default: haggle === undefined },
@@ -369,13 +397,13 @@ export class ExploreFlow {
     };
   }
 
-  private async castScreen(record: CampaignRecord, text: Texts, userId: string): Promise<ExploreScreen> {
+  private async castScreen(record: CampaignRecord, text: Texts, userId: string, page = 0): Promise<ExploreScreen> {
     const loaded = await this.load(record, userId);
     if (loaded === null) return this.noHero(text);
     const t = text.campaign.explore;
     const view = buildExploreView(loaded.state, loaded.bible, loaded.content, loaded.glossary, loaded.hero.id);
     if (view.spells.length === 0 && view.healing.length === 0) return this.home(record, text, userId, t.noSpells);
-    // Healing first, then rituals, then cantrips: a caster with a long spellbook must not lose the useful ones to the menu's 25-entry limit.
+    // Healing first, then rituals, then cantrips, so the useful ones are on the first page of a long spellbook.
     const options = [
       // A healing spell spends a slot, so the menu says so; the value tells the next step to ask which.
       ...view.healing.map((spell) => ({ label: spell.name.slice(0, 100), description: t.castHeals, value: `${healPrefix}${spell.id}` })),
@@ -385,7 +413,7 @@ export class ExploreFlow {
       content: t.castPlaceholder,
       components: [
         new ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>().addComponents(
-          new StringSelectMenuBuilder().setCustomId(campaignCustomId("exploreCastPick", record.key.campaignId)).setPlaceholder(t.castPlaceholder).addOptions(options.slice(0, 25)),
+          new StringSelectMenuBuilder().setCustomId(campaignCustomId("exploreCastPick", record.key.campaignId)).setPlaceholder(t.castPlaceholder).addOptions(pageOf(options, page, t.more)),
         ),
         new ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>().addComponents(this.back("exploreHome", record, text)),
       ],

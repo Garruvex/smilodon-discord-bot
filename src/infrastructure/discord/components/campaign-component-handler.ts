@@ -118,6 +118,7 @@ function combatCommand(choice: TurnChoice, targetIds: readonly string[]): ((comb
       return (combatantId): CombatCommand => ({ kind: "combatWildShape", combatantId });
     case "spells":
     case "shapes":
+    case "more":
       return null;
   }
 }
@@ -698,6 +699,10 @@ export class CampaignComponentHandler implements ComponentHandler {
       await this.editMenu(interaction, renderSpellMenu(context.view, choice.page, text, context.glossary, record.key.campaignId), null);
       return;
     }
+    if (choice.kind === "more") {
+      await this.editMenu(interaction, renderTurnMenu(context.view, text, context.glossary, record.key.campaignId, choice.page), null);
+      return;
+    }
     if (choice.kind === "shapes") {
       await this.editMenu(interaction, renderShapeMenu(context.view, choice.page, text, context.glossary, record.key.campaignId), null);
       return;
@@ -854,7 +859,7 @@ export class CampaignComponentHandler implements ComponentHandler {
     ];
   }
 
-  // Opens the level-up form, whenever the hero has a level to go or an Improvement owed.
+  // Opens the level-up form. It says "Level Up" only when an Improvement is owed; otherwise it is a plan for the next level, and says so.
   private async levelRow(record: CampaignRecord, text: Texts, userId: string): Promise<ActionRowBuilder<ButtonBuilder>[]> {
     const loaded = await this.deps.unitOfWork.transaction((tx) => tx.loadCampaign(record.key));
     const heroId = loaded?.state.members[userId]?.characterId ?? null;
@@ -863,7 +868,7 @@ export class CampaignComponentHandler implements ComponentHandler {
     const owed = (sheet.pendingAsi ?? 0) > 0;
     return [
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(campaignCustomId("levelOpen", record.key.campaignId)).setLabel(text.campaign.button.levelUp).setStyle(owed ? ButtonStyle.Success : ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(campaignCustomId("levelOpen", record.key.campaignId)).setLabel(owed ? text.campaign.button.levelUp : text.campaign.button.levelPlan).setStyle(owed ? ButtonStyle.Success : ButtonStyle.Secondary),
       ),
     ];
   }

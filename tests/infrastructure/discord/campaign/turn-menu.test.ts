@@ -155,6 +155,15 @@ describe("the turn menu", () => {
     expect((select?.options as unknown[]).length).toBe(25);
     expect(((select?.options as { value: string }[]).at(-1))?.value).toBe("end");
 
+    // Nothing is cut off: the rest of the actions continue on the next page.
+    const values = (menu: unknown): string[] => ((json(menu as never).find((component) => Array.isArray(component.options))?.options ?? []) as { value: string }[]).map((option) => option.value);
+    const first = values(renderTurnMenu(crowded, texts.en, enSrd51Glossary, "camp"));
+    expect(first).toContain("more|1");
+    const second = values(renderTurnMenu(crowded, texts.en, enSrd51Glossary, "camp", 1));
+    expect(second.filter((value) => value.startsWith("move|"))).toHaveLength(30 - first.filter((value) => value.startsWith("move|")).length);
+    expect(second).not.toContain("more|2");
+    expect(second.at(-1)).toBe("end");
+
     const zh = renderTurnMenu(view, texts["zh-TW"], zhTwSrd51Glossary, "camp");
     expect(zh.content).toContain("動作 ✅");
     const labels = (json(zh).find((component) => Array.isArray(component.options))?.options as { label: string }[]).map((option) => option.label);

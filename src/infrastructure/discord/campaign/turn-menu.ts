@@ -18,6 +18,8 @@ export type TurnChoice =
   // Wild Shape: a beast to become, the beasts to choose from, or a return to the druid's own form.
   | { readonly kind: "shape"; readonly monster: string }
   | { readonly kind: "shapes"; readonly page: number }
+  // The rest of the main menu, when it holds more actions than one menu can show.
+  | { readonly kind: "more"; readonly page: number }
   | { readonly kind: "unshape" }
   | { readonly kind: "feature"; readonly feature: string }
   | { readonly kind: "potion"; readonly item: string }
@@ -42,6 +44,8 @@ export function encodeChoice(choice: TurnChoice): string {
       return `shape|${choice.monster}`;
     case "shapes":
       return `shapes|${choice.page}`;
+    case "more":
+      return `more|${choice.page}`;
     case "feature":
       return `feature|${choice.feature}`;
     case "potion":
@@ -65,7 +69,8 @@ export function parseChoice(value: string): TurnChoice | null {
       return first?.startsWith("spell:") === true && Number.isInteger(slot) && slot >= 0 ? { kind, spell: first, slot } : null;
     }
     case "spells":
-    case "shapes": {
+    case "shapes":
+    case "more": {
       const page = Number(first);
       return Number.isInteger(page) && page >= 0 ? { kind, page } : null;
     }
@@ -112,9 +117,11 @@ export interface TurnMenu {
 }
 
 const maxOptions = 25;
+// The main menu keeps a place for "More actions…" and for End turn.
+const actionsPerPage = maxOptions - 2;
 
 // The turn view: what is left this turn, then one menu of everything legal.
-export function renderTurnMenu(view: TurnView, text: Texts, glossary: Glossary, campaignId: string): TurnMenu {
+export function renderTurnMenu(view: TurnView, text: Texts, glossary: Glossary, campaignId: string, page = 0): TurnMenu {
   const t = text.campaign.turn;
   const mark = (left: boolean): string => (left ? "✅" : "❌");
   const lines = [
@@ -124,8 +131,12 @@ export function renderTurnMenu(view: TurnView, text: Texts, glossary: Glossary, 
   const options = choicesOf(view).map((choice) => ({ label: choiceLabel(choice, view, text, glossary).slice(0, 100), value: encodeChoice(choice) }));
   const refresh = refreshRow(campaignId, text.campaign.button.refresh);
   if (view.busy) return { content: [...lines, t.busy].join("\n"), components: [refresh] };
-  // End turn always fits; the others give way if there are too many.
-  const menu = [...options.slice(0, maxOptions - 1), { label: t.end, value: encodeChoice({ kind: "end" }) }];
+  // End turn is on every page; a long list continues on the next one, so no action is ever cut off.
+  const pages = Math.max(1, Math.ceil(options.length / actionsPerPage));
+  const at = Math.min(Math.max(0, page), pages - 1);
+  const shown = options.slice(at * actionsPerPage, (at + 1) * actionsPerPage);
+  if (at + 1 < pages) shown.push({ label: t.actionsMore({ page: at + 2, pages }), value: encodeChoice({ kind: "more", page: at + 1 }) });
+  const menu = [...shown, { label: t.end, value: encodeChoice({ kind: "end" }) }];
   lines.push(options.length === 0 ? t.nothing : t.prompt);
   return {
     content: lines.join("\n"),
@@ -277,6 +288,8 @@ function choiceLabel(choice: TurnChoice, view: TurnView, text: Texts, glossary: 
       return t.shape({ beast: name(choice.monster) });
     case "shapes":
       return t.shapes({ count: view.wildShapes.length });
+    case "more":
+      return t.actionsMore({ page: choice.page + 1, pages: choice.page + 1 });
     case "unshape":
       return t.unshape;
     case "feature":
