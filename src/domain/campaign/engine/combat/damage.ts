@@ -35,22 +35,34 @@ export function applyDamage(decision: Decision, target: Combatant, rolled: numbe
   if (damageType !== null && !target.regenBlocked && target.traits.some((trait) => trait.kind === "regeneration" && trait.blockedBy.includes(damageType))) {
     decision.emit({ kind: "monsterStateChanged", combatantId: target.id, regenBlocked: true });
   }
-  const base = { kind: "combatantHpChanged", combatantId: target.id, change: -amount } as const;
+  // Temporary hit points take the damage first; only what is left reaches the real ones.
+  const temp = target.tempHp ?? 0;
+  const absorbed = Math.min(temp, amount);
+  const remaining = amount - absorbed;
+  const tempLeft = absorbed > 0 ? { tempHp: temp - absorbed } : {};
+  if (remaining === 0) {
+    decision.emit({ kind: "combatantHpChanged", combatantId: target.id, change: 0, hp: target.hp, condition: target.condition, deathSaves: target.deathSaves, cause: "damage", ...tempLeft });
+    const soaked = activeEncounter(decision)?.combatants[target.id];
+    if (soaked?.concentration != null) requestConcentrationSave(decision, soaked, concentrationDc(amount));
+    return;
+  }
+  const base = { kind: "combatantHpChanged", combatantId: target.id, change: -remaining, ...tempLeft } as const;
   const protectedHero = isProtected(decision, target);
+  const through = remaining;
   if (target.side === "foes") {
-    const hp = Math.max(0, target.hp - amount);
+    const hp = Math.max(0, target.hp - through);
     decision.emit({ ...base, hp, condition: hp === 0 ? "dead" : "active", deathSaves: target.deathSaves, cause: "damage" });
   } else if (target.hp === 0) {
     if (protectedHero) return;
     const failures = Math.min(3, target.deathSaves.failures + (critical ? 2 : 1));
     const deathSaves = { successes: target.deathSaves.successes, failures };
     decision.emit({ ...base, hp: 0, condition: failures >= 3 ? "dead" : "unconscious", deathSaves, cause: "damageAtZero" });
-  } else if (amount < target.hp) {
-    decision.emit({ ...base, hp: target.hp - amount, condition: "active", deathSaves: target.deathSaves, cause: "damage" });
+  } else if (through < target.hp) {
+    decision.emit({ ...base, hp: target.hp - through, condition: "active", deathSaves: target.deathSaves, cause: "damage" });
   } else if (protectedHero) {
     decision.emit({ ...base, hp: 0, condition: "stable", deathSaves: { successes: 0, failures: 0 }, cause: "protectedWhileAway" });
   } else {
-    const massive = amount - target.hp >= target.maxHp;
+    const massive = through - target.hp >= target.maxHp;
     // Relentless Endurance: once per long rest, not killed outright, drop to 1 HP instead of 0.
     if (!massive && (target.resources.featureUses[relentlessEnduranceKey] ?? 0) > 0) {
       decision.emit({ kind: "monsterStateChanged", combatantId: target.id, relentlessSpent: true });
@@ -70,6 +82,12 @@ export function applyDamage(decision: Decision, target: Combatant, rolled: numbe
     return;
   }
   requestConcentrationSave(decision, after, concentrationDc(amount));
+}
+
+// Temporary hit points replace a smaller pool and are lost when a larger one is already held.
+export function applyTempHp(decision: Decision, target: Combatant, amount: number): void {
+  if (!isPresent(target) || amount <= (target.tempHp ?? 0)) return;
+  decision.emit({ kind: "combatantHpChanged", combatantId: target.id, change: 0, hp: target.hp, tempHp: amount, condition: target.condition, deathSaves: target.deathSaves, cause: "healing" });
 }
 
 export function applyHealing(decision: Decision, target: Combatant, amount: number): void {

@@ -9,8 +9,8 @@ gaps grouped by the engine primitive they need, with size (S: a day or less, M: 
 |---|---|---|
 | **Reaction windows** beyond "you were hit" (a spell was cast, damage was taken, an ally was hit, a save is about to be rolled) | L | Counterspell, Absorb Elements, Hellish Rebuke, Cutting Words (Lore), Protection fighting style, Sentinel-style feats, Deflect Missiles (Monk 3), Uncanny Dodge already works |
 | **Reroll and change a roll after it is made** (needs a second roll request inside a check) | M | Halfling Lucky, Indomitable (Fighter 9), Portent (Divination), Silvery Barbs-style effects, Bardic Inspiration spent after the roll instead of before it |
-| **Temporary hit points** | S | Dark One's Blessing, Heroism, False Life, Armor of Agathys, Inspiring Leader |
-| **Creature types** (undead, fiend, dragon, humanoid, and so on) on monsters | S | Turn Undead, Divine Smite's extra die, Holy Avenger, Dragon Slayer, Giant Slayer, Favored Enemy, Protection from Evil and Good |
+| ~~Temporary hit points~~ **done** (combat only; False Life uses it) | S | Still needs Dark One's Blessing (a kill trigger), Heroism's per-turn refresh, Armor of Agathys, Inspiring Leader |
+| ~~Creature types~~ **done** (a `creatureType` trait on every SRD monster) | S | Turn Undead and Divine Smite's extra die are built; Holy Avenger, Dragon Slayer, Giant Slayer, Favored Enemy and Protection from Evil and Good can now read it |
 | **Lighting and vision** (dark, dim, darkvision, blindsight) | L | Darkvision for most races, Drow Sunlight Sensitivity, Light and Darkness spells, stealth |
 | **Positions inside a zone** (range bands, cover, area shapes) | L | Cones, lines, spheres that pick their targets, Sculpt Spells, Fireball versus allies, opportunity-attack reach, cover bonuses |
 | **Summons and companions** (a creature the caster controls) | L | Conjure Animals and the rest of the conjure spells, Find Familiar, Beast Master companion, Animate Dead, Spiritual Weapon, Flaming Sphere |
@@ -74,8 +74,8 @@ Levels 1 to 5 are done for the class core. What each class still needs:
 
 ## Suggested order
 
-1. **Cheap primitives first:** temporary hit points and creature types (both S). They unlock Turn Undead, Dark One's Blessing, Smite on undead, Heroism, Favored Enemy.
-2. **Level-up and builder choices:** fighting style, subclass, ASI, so a hero can actually reach levels 6 and up.
+1. ~~Cheap primitives first~~ (temporary hit points and creature types): done.
+2. **Level-up and builder choices:** the ability score improvement is done; fighting style and subclass choice are not.
 3. **Class features 6 to 11** for the classes people play (Fighter, Rogue, Barbarian, Paladin, Cleric, Wizard), using the primitives already built.
 4. **Reaction windows** (L), which unlocks the most named features in one go.
 5. **Rerolls** (M), then Lucky, Indomitable, Portent.

@@ -92,6 +92,8 @@ export interface Combatant {
   readonly armorClass: number;
   readonly maxHp: number;
   readonly hp: number;
+  // Temporary hit points, taken first; absent means none.
+  readonly tempHp?: number;
   readonly speed: number;
   readonly initiativeModifier: number;
   readonly saves: Readonly<Record<Ability, number>>;

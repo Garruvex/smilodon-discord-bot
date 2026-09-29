@@ -1233,7 +1233,7 @@ export const falseLife = defineSpell({
   range: { kind: "self" },
   targeting: { relation: "self", count: 1 },
   concentration: false,
-  plan: ({ slotLevel }) => ({ check: null, onLand: [{ kind: "heal", target: "target", amount: diceAt(falseLifeHealing, slotLevel) }], onAvoid: [] }),
+  plan: ({ slotLevel }) => ({ check: null, onLand: [{ kind: "tempHp", target: "target", amount: diceAt(falseLifeHealing, slotLevel) }], onAvoid: [] }),
 });
 
 export const fear = defineSpell({

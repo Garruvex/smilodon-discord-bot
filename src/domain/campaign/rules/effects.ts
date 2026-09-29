@@ -45,6 +45,8 @@ export type Effect =
       readonly uncritical?: boolean;
     }
   | { readonly kind: "heal"; readonly target: EffectTarget; readonly amount: DiceExpression }
+  // Temporary hit points (False Life): taken before real ones, never added to them, and not stacking — the larger pool stays.
+  | { readonly kind: "tempHp"; readonly target: EffectTarget; readonly amount: DiceExpression }
   | {
       readonly kind: "applyCondition";
       readonly target: EffectTarget;

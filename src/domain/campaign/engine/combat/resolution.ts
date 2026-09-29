@@ -22,7 +22,7 @@ import type { Rejection } from "../rejection.js";
 import { activeEncounter, afterResolution, endIfDecided } from "./combat-flow.js";
 import { offerReaction } from "./reactions.js";
 import { offerSmite } from "./smite.js";
-import { applyDamage, applyHealing, endConcentration, recordConcentration } from "./damage.js";
+import { applyDamage, applyHealing, applyTempHp, endConcentration, recordConcentration } from "./damage.js";
 import { colossusSlayerEligible, attackMode, effectForKey, planFor, rangedAttack, saveContextOf, sneakAttackEligible, sneakDice } from "./attack-rules.js";
 export { applyDamage, endConcentration } from "./damage.js";
 export { attackMode } from "./attack-rules.js";
@@ -251,7 +251,7 @@ export function proceedToEffects(decision: Decision): void {
       const key = `${listName}:${index}`;
       if (targets.length === 0 && !halved.has(index)) return;
       if (effect.kind === "damage" && effect.halfOfLand === true) return;
-      if (effect.kind === "damage" || effect.kind === "heal") {
+      if (effect.kind === "damage" || effect.kind === "heal" || effect.kind === "tempHp") {
         let expression = effect.amount;
         if (effect.kind === "damage" && listName === "land" && resolution.sneakAttack && !sneakAdded) {
           const sneak = sneakDice(encounter.combatants[resolution.actorId]);
@@ -363,6 +363,9 @@ export function applyEffect(
     }
     case "heal":
       applyHealing(decision, recipient, resolution.rolled[key] ?? 0);
+      return;
+    case "tempHp":
+      applyTempHp(decision, recipient, resolution.rolled[key] ?? 0);
       return;
     case "applyCondition":
       if (!isImmuneToCondition(recipient.traits, effect.condition)) {

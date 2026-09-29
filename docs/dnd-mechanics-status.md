@@ -16,11 +16,12 @@ Race and subrace details are also in `dnd-race-mechanics-status.md`.
   - Barbarian: Rage (uses and damage by level), Unarmored Defense, Reckless Attack, Danger Sense, Fast Movement, Berserker Frenzy.
   - Monk: Unarmored Defense, Unarmored Movement, Ki with Flurry of Blows, Patient Defense and Step of the Wind (Disengage only).
   - Paladin: Lay on Hands (on allies too), Divine Smite, Sacred Weapon.
-  - Cleric: Preserve Life; Disciple of Life.
+  - Cleric: Preserve Life and Turn Undead (one shared Channel Divinity use); Disciple of Life.
   - Bard: Bardic Inspiration (on allies, die grows with level), Jack of All Trades.
   - Druid: Wild Shape (limits by level), Natural Recovery.
   - Wizard: Arcane Recovery. Ranger: Hunter's Colossus Slayer. Sorcerer: Draconic Bloodline.
 - Races: ability scores, resistances, save advantage (Fey Ancestry, Brave, Dwarven Resilience, Gnome Cunning), Relentless Endurance, Savage Attacks, Dragonborn Breath Weapon, Tiefling Thaumaturgy.
+- Creature types on every SRD monster; Divine Smite rolls an extra die against undead and fiends. Temporary hit points exist in combat (False Life); they are taken before real hit points and are not shown on the party card yet.
 - Spell-shaped abilities (`featureSpell` trait): class and racial abilities that target creatures use the spell machinery, with uses per rest.
 
 ## Missing
@@ -33,7 +34,6 @@ Race and subrace details are also in `dnd-race-mechanics-status.md`.
 - Legendary actions that are not attacks (Wing Attack, Detect...).
 - Possession and charm gazes.
 - Engulf and swallow.
-- Creature types, so Turn Undead and Divine Smite's extra die on undead cannot apply.
 
 ### Class features
 - Levels 6 to 20 for most classes (Indomitable, Evasion, Extra Attack scaling beyond fighter, Brutal Critical, and so on); the level tables stop at 5.

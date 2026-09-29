@@ -175,6 +175,7 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
       const updated = update(encounter, event.combatantId, (combatant) => ({
         ...combatant,
         hp: event.hp,
+        ...(event.tempHp === undefined ? {} : { tempHp: event.tempHp }),
         condition: event.condition,
         deathSaves: event.deathSaves,
       }));

@@ -263,7 +263,7 @@ function planFor(spell, notes) {
     const modifier = /spellcasting ability modifier/i.test(description(spell));
     summary.heal += 1;
     const amount = modifier ? `plus(diceAt(${name}, slotLevel), spellcastingModifier)` : `diceAt(${name}, slotLevel)`;
-    return { relation: "ally-or-self", count: targetCount(spell), countPerHigherSlot: higherTargets(spell), body: `{ check: null, onLand: [${scan(`{ kind: "heal", target: "target", amount: ${amount} }`)}], onAvoid: [] }`, params: uses, wrap };
+    return { relation: "ally-or-self", count: targetCount(spell), countPerHigherSlot: higherTargets(spell), body: `{ check: null, onLand: [${scan(`{ kind: ${spell.index === "false-life" ? "\"tempHp\"" : "\"heal\""}, target: "target", amount: ${amount} }`)}], onAvoid: [] }`, params: uses, wrap };
   }
   const rider = conditionRider(spell);
   if (rider !== null && save !== null && rider.condition !== undefined) {

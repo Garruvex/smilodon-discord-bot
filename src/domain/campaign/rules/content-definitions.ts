@@ -495,6 +495,7 @@ function capabilitiesFor(effect: Effect): readonly Capability[] {
     case "damage":
       return ["damage"];
     case "heal":
+    case "tempHp":
       return ["healing"];
     case "applyCondition":
       return ["conditions"];

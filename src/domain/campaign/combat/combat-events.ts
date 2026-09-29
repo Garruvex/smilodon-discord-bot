@@ -95,6 +95,8 @@ export type CombatEvent =
       // Negative for damage, positive for healing.
       readonly change: number;
       readonly hp: number;
+      // The temporary hit points left after this change, when it touched them.
+      readonly tempHp?: number;
       readonly condition: CombatantCondition;
       readonly deathSaves: { readonly successes: number; readonly failures: number };
       readonly cause: "damage" | "massiveDamage" | "damageAtZero" | "healing" | "protectedWhileAway";

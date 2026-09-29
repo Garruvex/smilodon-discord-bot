@@ -411,6 +411,23 @@ describe("class features", () => {
     expect(fight.combatant("c-borin").resources.spellSlots).toEqual({ 1: 0 });
   });
 
+  it("gives temporary hit points with False Life, and takes damage from them before the real ones", () => {
+    const base = newCampaign();
+    const hero = base.characters["c-borin"];
+    if (hero === undefined) throw new Error("fixture");
+    const state: CampaignState = { ...base, characters: { ...base.characters, "c-borin": { ...hero, spellcasting: { ability: "int" as const, spells: ["spell:false-life" as const], slots: { 1: 1 } } } } };
+    const fight = borinFirst(state);
+    // 1d4 rolls 2, plus 4.
+    fight.rolls([], [2]).run(jamie, { kind: "combatCast", combatantId: "c-borin", spellId: "spell:false-life", slotLevel: 1, targetIds: ["c-borin"] });
+    expect(fight.combatant("c-borin").tempHp).toBe(6);
+    expect(fight.combatant("c-borin").hp).toBe(fight.combatant("c-borin").maxHp);
+    fight.run(jamie, { kind: "endTurn", combatantId: "c-borin" });
+    const after = fight.combatant("c-borin");
+    // Real hit points are only touched once the temporary ones are gone.
+    if (after.hp < after.maxHp) expect(after.tempHp ?? 0).toBe(0);
+    else expect(after.tempHp).toBeGreaterThan(0);
+  });
+
   it("adds one more die of Divine Smite against an undead creature", () => {
     const undead: EncounterSpec = { ...close, monsters: [{ monsterId: "monster:skeleton", zoneId: "courtyard", npcId: null, fleeBelowHpFraction: null }] };
     const fight = new Fight(withDivineSmite()).rolls([1, 20, 5]).run(organizer, { kind: "startEncounter", spec: undead });
