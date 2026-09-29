@@ -15,9 +15,8 @@ export const human = defineRace({
   traits: [],
 });
 
-// Not modeled: Darkvision (the engine has no vision/lighting system), Keen
-// Senses (a Perception skill proficiency; skill choices are the class's, not
-// a race's, in this build), Fey Ancestry (advantage on saves against being
+// Not modeled: Darkvision (the engine has no vision/lighting system),
+// Fey Ancestry (advantage on saves against being
 // charmed, and immunity to magical sleep — the engine has no per-condition
 // save-advantage mechanic), Trance (no long-rest-length rule to shorten).
 export const elf = defineRace({
@@ -25,7 +24,8 @@ export const elf = defineRace({
   source,
   speed: 30,
   abilityScoreIncrease: { dex: 2 },
-  traits: [],
+  skillProficiencies: ["perception"],
+  traits: [{ kind: "saveAdvantage", conditions: ["condition:charmed"] }],
 });
 
 // Not modeled: Darkvision, Dwarven Combat Training and Tool Proficiency
@@ -35,7 +35,7 @@ export const dwarf = defineRace({
   source,
   speed: 25,
   abilityScoreIncrease: { con: 2 },
-  traits: [{ kind: "damageResistance", damageTypes: ["poison"] }],
+  traits: [{ kind: "saveAdvantage", damageTypes: ["poison"], conditions: ["condition:poisoned"] }, { kind: "damageResistance", damageTypes: ["poison"] }],
 });
 
 // Not modeled: Lucky (reroll a natural 1 on the d20), Brave (advantage
@@ -47,7 +47,7 @@ export const halfling = defineRace({
   source,
   speed: 25,
   abilityScoreIncrease: { dex: 2 },
-  traits: [],
+  traits: [{ kind: "saveAdvantage", conditions: ["condition:frightened"] }],
 });
 
 // SRD 5.1 offers a choice of Draconic Ancestry, each with its own damage
@@ -70,7 +70,7 @@ export const gnome = defineRace({
   source,
   speed: 25,
   abilityScoreIncrease: { int: 2 },
-  traits: [],
+  traits: [{ kind: "saveAdvantage", magic: true, abilities: ["int", "wis", "cha"] }],
 });
 
 // SRD 5.1's +1 to two abilities of the player's choice is fixed here to
@@ -83,7 +83,7 @@ export const halfElf = defineRace({
   source,
   speed: 30,
   abilityScoreIncrease: { cha: 2, dex: 1, con: 1 },
-  traits: [],
+  traits: [{ kind: "saveAdvantage", conditions: ["condition:charmed"] }],
 });
 
 // Not modeled: Darkvision, Relentless Endurance (drop to 1 HP instead of 0
@@ -95,7 +95,7 @@ export const halfOrc = defineRace({
   source,
   speed: 30,
   abilityScoreIncrease: { str: 2, con: 1 },
-  traits: [],
+  traits: [{ kind: "savageAttacks" }, { kind: "relentlessEndurance" }],
 });
 
 // Not modeled: Darkvision, Infernal Legacy (a bonus cantrip, and spells at
@@ -110,3 +110,27 @@ export const tiefling = defineRace({
 });
 
 export const srd51Races: readonly RaceDefinition[] = [human, elf, dwarf, halfling, dragonborn, gnome, halfElf, halfOrc, tiefling];
+
+// Explicit 2014 subraces. The unsuffixed entries above remain available for
+// characters saved before the builder offered a subrace choice.
+export const hillDwarf = defineRace({ id: "race:hill-dwarf", source, speed: 25, abilityScoreIncrease: { con: 2, wis: 1 }, bonusHpPerLevel: 1, traits: [{ kind: "saveAdvantage", damageTypes: ["poison"], conditions: ["condition:poisoned"] }, { kind: "damageResistance", damageTypes: ["poison"] }] });
+export const mountainDwarf = defineRace({ id: "race:mountain-dwarf", source, speed: 25, abilityScoreIncrease: { con: 2, str: 2 }, traits: [{ kind: "saveAdvantage", damageTypes: ["poison"], conditions: ["condition:poisoned"] }, { kind: "damageResistance", damageTypes: ["poison"] }] });
+export const highElf = defineRace({ id: "race:high-elf", source, speed: 30, abilityScoreIncrease: { dex: 2, int: 1 }, skillProficiencies: ["perception"], traits: [{ kind: "saveAdvantage", conditions: ["condition:charmed"] }] });
+export const woodElf = defineRace({ id: "race:wood-elf", source, speed: 35, abilityScoreIncrease: { dex: 2, wis: 1 }, skillProficiencies: ["perception"], traits: [{ kind: "saveAdvantage", conditions: ["condition:charmed"] }] });
+export const drow = defineRace({ id: "race:drow", source, speed: 30, abilityScoreIncrease: { dex: 2, cha: 1 }, skillProficiencies: ["perception"], traits: [{ kind: "saveAdvantage", conditions: ["condition:charmed"] }] });
+export const lightfootHalfling = defineRace({ id: "race:lightfoot-halfling", source, speed: 25, abilityScoreIncrease: { dex: 2, cha: 1 }, traits: [{ kind: "saveAdvantage", conditions: ["condition:frightened"] }] });
+export const stoutHalfling = defineRace({ id: "race:stout-halfling", source, speed: 25, abilityScoreIncrease: { dex: 2, con: 1 }, traits: [{ kind: "saveAdvantage", damageTypes: ["poison"], conditions: ["condition:poisoned"] }, { kind: "saveAdvantage", conditions: ["condition:frightened"] }, { kind: "damageResistance", damageTypes: ["poison"] }] });
+export const forestGnome = defineRace({ id: "race:forest-gnome", source, speed: 25, abilityScoreIncrease: { int: 2, dex: 1 }, traits: [{ kind: "saveAdvantage", magic: true, abilities: ["int", "wis", "cha"] }] });
+export const rockGnome = defineRace({ id: "race:rock-gnome", source, speed: 25, abilityScoreIncrease: { int: 2, con: 1 }, traits: [{ kind: "saveAdvantage", magic: true, abilities: ["int", "wis", "cha"] }] });
+
+export const srd51Subraces: readonly RaceDefinition[] = [hillDwarf, mountainDwarf, highElf, woodElf, drow, lightfootHalfling, stoutHalfling, forestGnome, rockGnome];
+
+// The ancestry determines Dragonborn's damage resistance. Breath weapons
+// need an area-effect action and remain outside the current engine vocabulary.
+const dragonAncestries = [
+  ["black", "acid"], ["blue", "lightning"], ["brass", "fire"], ["bronze", "lightning"], ["copper", "acid"],
+  ["gold", "fire"], ["green", "poison"], ["red", "fire"], ["silver", "cold"], ["white", "cold"],
+] as const;
+export const srd51DragonAncestries: readonly RaceDefinition[] = dragonAncestries.map(([color, damageType]) => defineRace({
+  id: `race:${color}-dragonborn`, source, speed: 30, abilityScoreIncrease: { str: 2, cha: 1 }, traits: [{ kind: "damageResistance", damageTypes: [damageType] }],
+}));

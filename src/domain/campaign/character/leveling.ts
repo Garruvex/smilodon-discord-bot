@@ -2,7 +2,7 @@ import { abilities, type Ability } from "../rules/effects.js";
 import type { CasterType } from "../rules/content-definitions.js";
 import type { Skill } from "../rules/skills.js";
 import { abilityModifier, type CharacterSheet } from "./character-sheet.js";
-import { canMulticlassInto, classLevelsOf, classTemplates, deriveSheet, isBuildClass, type BuildChoices, type BuildClass, type DerivedSheet } from "./character-build.js";
+import { canMulticlassInto, classLevelsOf, classTemplates, deriveSheet, isBuildClass, isBuildRace, raceTemplates, type BuildChoices, type BuildClass, type DerivedSheet } from "./character-build.js";
 
 // XP and levels on top of the class roster (character-build.ts): the
 // roster stops at what a level-1 hero has; this is what changes as they earn
@@ -209,7 +209,9 @@ export function levelUp(
 } {
   const level = sheet.level + 1;
   const template = classTemplates[buildClass];
-  const hpGain = hpGainForLevel(template.hitDie, sheet.abilityScores.con);
+  const raceSlug = sheet.race?.slice("race:".length);
+  const race = raceSlug !== undefined && isBuildRace(raceSlug) ? raceTemplates[raceSlug] : undefined;
+  const hpGain = hpGainForLevel(template.hitDie, sheet.abilityScores.con) + (race?.bonusHpPerLevel ?? 0);
   // The SRD lets the player choose the allocation (+2 to one ability, or +1
   // to two): this only counts the improvement as owed, it does not pick for
   // them. defaultAsiAllocation stays as the Discord picker's "use the

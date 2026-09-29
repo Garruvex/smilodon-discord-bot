@@ -1,4 +1,6 @@
 import { wildShapeUses } from "../rules/wild-shape-rules.js";
+import { traitsOf } from "../rules/content-definitions.js";
+import { relentlessEnduranceKey } from "../rules/traits.js";
 import type { SealedContent } from "../rules/content-registry.js";
 import type { CharacterSheet } from "./character-sheet.js";
 
@@ -41,5 +43,7 @@ export function defaultHeroResources(sheet: CharacterSheet, content: SealedConte
     if (feature?.kind === "feature" && feature.action !== null) featureUses[id] = feature.action.uses.count;
     if (feature?.kind === "feature" && feature.traits.some((trait) => trait.kind === "wildShape")) featureUses[id] = wildShapeUses;
   }
+  const race = sheet.race === undefined ? undefined : content.find(sheet.race);
+  if (race !== undefined && traitsOf(race).some((trait) => trait.kind === "relentlessEndurance")) featureUses[relentlessEnduranceKey] = 1;
   return { spellSlots: { ...(sheet.spellcasting?.slots ?? {}) }, pactSlots: { ...(sheet.pactMagic?.slots ?? {}) }, featureUses };
 }

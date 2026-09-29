@@ -16,14 +16,14 @@ import { classifyRollMoments } from "../../dice/roll-moments.js";
 import { resultMatchesSpec, type RollResult, type RollSpec } from "../../dice/roll-spec.js";
 import type { Effect, EffectDuration } from "../../rules/effects.js";
 import { criticalHits, naturalRollsOnChecks } from "../../rules/house-rules.js";
-import { critThreshold, isImmuneToCondition, legendaryResistanceKey } from "../../rules/traits.js";
+import { critThreshold, hasSaveAdvantage, isImmuneToCondition, legendaryResistanceKey } from "../../rules/traits.js";
 import type { Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { activeEncounter, afterResolution, endIfDecided } from "./combat-flow.js";
 import { offerReaction } from "./reactions.js";
 import { offerSmite } from "./smite.js";
 import { applyDamage, applyHealing, endConcentration, recordConcentration } from "./damage.js";
-import { attackMode, effectForKey, planFor, rangedAttack, sneakAttackEligible, sneakDice } from "./attack-rules.js";
+import { attackMode, effectForKey, planFor, rangedAttack, saveContextOf, sneakAttackEligible, sneakDice } from "./attack-rules.js";
 export { applyDamage, endConcentration } from "./damage.js";
 export { attackMode } from "./attack-rules.js";
 
@@ -70,7 +70,8 @@ export function declareResolution(decision: Decision, request: DeclareRequest): 
       }
       const dc = source.kind === "area" ? source.area.dc : (actor.spellcasting?.saveDc ?? 10);
       const bias = saveBias(target, check.ability, lookup);
-      spec = { mode: resolveRollMode(bias.advantage, bias.disadvantage), modifier: target.saves[check.ability], bonusDice: bonusDiceFor(target, "save") };
+      const racial = hasSaveAdvantage(target.traits, check.ability, saveContextOf(plan, source)) ? 1 : 0;
+      spec = { mode: resolveRollMode(bias.advantage + racial, bias.disadvantage), modifier: target.saves[check.ability], bonusDice: bonusDiceFor(target, "save") };
       against = dc;
       kind = "save";
     } else {
@@ -206,12 +207,24 @@ export function settleCheck(decision: Decision, resolutionId: string, rollId: Ro
 // and a post-hit choice isn't known yet; both readers of onLand below go
 // through this instead of the plan directly so the extra effect reaches damage
 // rolling and application the same way any other does.
-function landEffects(resolution: ResolutionState): readonly Effect[] {
+function landEffects(resolution: ResolutionState, encounter: EncounterState): readonly Effect[] {
+  const onLand = withSavageAttacks(resolution, encounter);
   const slot = resolution.smiteSlot !== undefined ? resolution.smiteSlot : resolution.source.kind === "weapon" ? (resolution.source.smiteSlot ?? null) : null;
-  if (slot === null) return resolution.plan.onLand;
+  if (slot === null) return onLand;
   // 2d8 for a 1st-level slot, +1d8 per level above that, capped at 5d8 (a
   // fiend or undead target's extra d8 is not modeled).
-  return [...resolution.plan.onLand, { kind: "damage", target: "target", amount: dice(Math.min(5, slot + 1), 8), damageType: "radiant" }];
+  return [...onLand, { kind: "damage", target: "target", amount: dice(Math.min(5, slot + 1), 8), damageType: "radiant" }];
+}
+
+// Savage Attacks: a melee weapon critical hit rolls one more of the weapon's damage dice, on top of the doubled ones.
+function withSavageAttacks(resolution: ResolutionState, encounter: EncounterState): readonly Effect[] {
+  const { source } = resolution;
+  const actor = encounter.combatants[resolution.actorId];
+  const struck = Object.values(resolution.outcomes).some((outcome) => outcome.landed && outcome.critical);
+  const sides = source.kind === "weapon" ? source.option.damage.terms[0]?.sides : undefined;
+  if (source.kind !== "weapon" || source.option.range.kind !== "melee" || !struck || sides === undefined) return resolution.plan.onLand;
+  if (actor === undefined || !actor.traits.some((trait) => trait.kind === "savageAttacks")) return resolution.plan.onLand;
+  return [...resolution.plan.onLand, { kind: "damage", target: "target", amount: dice(1, sides), damageType: source.option.damageType, uncritical: true }];
 }
 
 // Works out which effects happen to whom, and asks for the dice they need.
@@ -226,7 +239,7 @@ export function proceedToEffects(decision: Decision): void {
   const anyCritical = Object.values(resolution.outcomes).some((outcome) => outcome.landed && outcome.critical);
   let sneakAdded = false;
 
-  for (const [listName, effects] of [["land", landEffects(resolution)], ["avoid", resolution.plan.onAvoid]] as const) {
+  for (const [listName, effects] of [["land", landEffects(resolution, encounter)], ["avoid", resolution.plan.onAvoid]] as const) {
     const targets = resolution.targetIds.filter((targetId) => (resolution.outcomes[targetId]?.landed ?? false) === (listName === "land"));
     // The avoided side's "half as much" is half of the landing side's roll, so that is rolled even when everyone saved.
     const halved = listName === "land" ? new Set(resolution.plan.onAvoid.flatMap((effect, index) => (effect.kind === "damage" && effect.halfOfLand === true ? [index] : []))) : new Set<number>();
@@ -245,7 +258,7 @@ export function proceedToEffects(decision: Decision): void {
             sneakAdded = true;
           }
         }
-        const critical = effect.kind === "damage" && anyCritical;
+        const critical = effect.kind === "damage" && anyCritical && effect.uncritical !== true;
         const spec: RollSpec = {
           kind: "dice",
           expression,
@@ -261,9 +274,10 @@ export function proceedToEffects(decision: Decision): void {
           const lookup = conditionLookup(decision.ctx.rules.content);
           if (autoFailsSave(target, effect.ability, lookup)) continue;
           const bias = saveBias(target, effect.ability, lookup);
+          const racial = hasSaveAdvantage(target.traits, effect.ability, { conditions: [effect.condition], damageTypes: [], magic: resolution.source.kind === "spell" }) ? 1 : 0;
           const spec: RollSpec = {
             kind: "d20Test",
-            spec: { mode: resolveRollMode(bias.advantage, bias.disadvantage), modifier: target.saves[effect.ability], bonusDice: bonusDiceFor(target, "save") },
+            spec: { mode: resolveRollMode(bias.advantage + racial, bias.disadvantage), modifier: target.saves[effect.ability], bonusDice: bonusDiceFor(target, "save") },
           };
           rolls[`${encounter.id}:roll:${++sequence}`] = { effectKey: `rider:${target.id}:${key}`, targetId: target.id, spec };
         }
@@ -306,7 +320,9 @@ export function applyEffects(decision: Decision): void {
   for (const targetId of resolution.targetIds) {
     const outcome = resolution.outcomes[targetId];
     const listName = outcome?.landed === true ? "land" : "avoid";
-    const effects = listName === "land" ? landEffects(resolution) : resolution.plan.onAvoid;
+    const current = activeEncounter(decision);
+    if (current === null) return;
+    const effects = listName === "land" ? landEffects(resolution, current) : resolution.plan.onAvoid;
     effects.forEach((effect, index) => {
       const key = `${listName}:${index}`;
       const encounter = activeEncounter(decision);

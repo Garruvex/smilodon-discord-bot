@@ -9,6 +9,7 @@ import type { combine } from "../../dice/dice-expression.js";
 import { dice, plus } from "../../dice/dice-expression.js";
 import { resolveRollMode } from "../../dice/roll.js";
 import type { Effect, ResolutionPlan } from "../../rules/effects.js";
+import type { SaveContext } from "../../rules/traits.js";
 import type { Decision } from "../decision.js";
 
 export function planFor(decision: Decision, actor: Combatant, source: ResolutionSource): ResolutionPlan | null {
@@ -57,6 +58,16 @@ export function planFor(decision: Decision, actor: Combatant, source: Resolution
 function withRageBonus(damage: DiceExpression, melee: boolean, actor: Combatant, decision: Decision): DiceExpression {
   const bonus = melee ? meleeDamageBonusOf(actor, conditionLookup(decision.ctx.rules.content)) : 0;
   return bonus === 0 ? damage : plus(damage, bonus);
+}
+
+// What a saving throw against this plan is against, for racial save advantage (Fey Ancestry, Dwarven Resilience...).
+export function saveContextOf(plan: ResolutionPlan, source: ResolutionSource): SaveContext {
+  const effects = [...plan.onLand, ...plan.onAvoid];
+  return {
+    conditions: effects.flatMap((effect) => (effect.kind === "applyCondition" || effect.kind === "conditionUnlessSave" ? [effect.condition] : [])),
+    damageTypes: effects.flatMap((effect) => (effect.kind === "damage" ? [effect.damageType] : [])),
+    magic: source.kind === "spell",
+  };
 }
 
 export function healingBonus(actor: Combatant, spellLevel: number): number {

@@ -41,6 +41,8 @@ export type Effect =
       // On the avoided side of a save: half of what the same-numbered effect on the
       // landing side rolled (an area effect's "half as much on a successful save").
       readonly halfOfLand?: boolean;
+      // Not doubled by a critical hit (Savage Attacks' one extra die).
+      readonly uncritical?: boolean;
     }
   | { readonly kind: "heal"; readonly target: EffectTarget; readonly amount: DiceExpression }
   | {

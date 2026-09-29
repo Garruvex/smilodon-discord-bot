@@ -68,6 +68,22 @@ const fighterBuild: BuildChoices = {
 };
 
 describe("My Characters", () => {
+  it("asks a Half-Elf to choose two distinct non-Charisma ability bonuses before the kit", async () => {
+    const handler = libraryHandler(rig());
+    let screen = screenOf(await click(handler, libraryCustomId("new")));
+    screen = screenOf(await click(handler, screen.menus[0]?.id ?? "", "u-alice", { values: ["fighter"] }));
+    screen = screenOf(await click(handler, screen.menus[0]?.id ?? "", "u-alice", { values: ["half-elf"] }));
+    expect(screen.content).toContain("choose 2 more ability");
+    expect(screen.menus[0]?.options.map((option) => option.value)).not.toContain("cha");
+    screen = screenOf(await click(handler, screen.menus[0]?.id ?? "", "u-alice", { values: ["str"] }));
+    expect(screen.content).toContain("choose 1 more ability");
+    expect(screen.menus[0]?.options.map((option) => option.value)).not.toContain("str");
+    screen = screenOf(await click(handler, screen.menus[0]?.id ?? "", "u-alice", { values: ["wis"] }));
+    expect(screen.content).toContain("choose two extra skill proficiencies");
+    screen = screenOf(await click(handler, screen.menus[0]?.id ?? "", "u-alice", { values: ["history", "nature"] }));
+    expect(screen.content).toContain("Choose a starting kit");
+  });
+
   it("starts empty with a way to build, and lists what the user has", async () => {
     const r = rig();
     const handler = libraryHandler(r);
@@ -101,10 +117,10 @@ describe("My Characters", () => {
 
     screen = screenOf(await click(handler, screen.menus[0]?.id ?? "", "u-alice", { values: ["rogue"] }));
     expect(screen.content).toBe("Choose a race for your Rogue.");
-    expect(screen.menus[0]?.options.map((option) => option.value)).toEqual(["human", "elf", "dwarf", "halfling", "dragonborn", "gnome", "half-elf", "half-orc", "tiefling"]);
+    expect(screen.menus[0]?.options.map((option) => option.value)).toEqual(["human", "hill-dwarf", "mountain-dwarf", "high-elf", "wood-elf", "drow", "lightfoot-halfling", "stout-halfling", "black-dragonborn", "blue-dragonborn", "brass-dragonborn", "bronze-dragonborn", "copper-dragonborn", "gold-dragonborn", "green-dragonborn", "red-dragonborn", "silver-dragonborn", "white-dragonborn", "forest-gnome", "rock-gnome", "half-elf", "half-orc", "tiefling"]);
 
-    // Gnome (+2 Int) leaves this build's Dex and Con untouched, so HP/AC below stay the same as before a race existed.
-    screen = screenOf(await click(handler, screen.menus[0]?.id ?? "", "u-alice", { values: ["gnome"] }));
+    // High Elf raises Dexterity by 2 and Intelligence by 1.
+    screen = screenOf(await click(handler, screen.menus[0]?.id ?? "", "u-alice", { values: ["high-elf"] }));
     expect(screen.content).toBe("Choose a starting kit for your Rogue.");
     expect(screen.menus[0]?.options.map((option) => option.value)).toEqual(["shadow", "duelist"]);
 
@@ -132,9 +148,9 @@ describe("My Characters", () => {
     expect(nameButton?.id.length).toBeLessThan(100);
 
     const named = screenOf(await submitName(handler, nameButton?.id ?? "", "u-alice", { name: "  Wren  ", appearance: "Quick and quiet.", backstory: "" }));
-    expect(named.content).toBe("**Wren** is saved to your library (Rogue · 9 HP · AC 13). Pick it when you join a game.");
+    expect(named.content).toBe("**Wren** is saved to your library (Rogue · 9 HP · AC 14). Pick it when you join a game.");
     const saved = (await r.library.list("u-alice"))[0]?.snapshots[0];
-    expect(saved?.build).toMatchObject({ class: "rogue", race: "gnome", kit: "shadow", name: "Wren", skills: ["stealth", "perception", "acrobatics", "deception"], expertise: ["stealth", "perception"], appearance: "Quick and quiet." });
+    expect(saved?.build).toMatchObject({ class: "rogue", race: "high-elf", kit: "shadow", name: "Wren", skills: ["stealth", "perception", "acrobatics", "deception"], expertise: ["stealth", "perception"], appearance: "Quick and quiet." });
     expect(saved?.build.abilities).toEqual({ dex: 15, cha: 14, int: 13, con: 12, wis: 10, str: 8 });
   });
 

@@ -7,6 +7,7 @@ import {
   type DefinitionOf,
 } from "./content-definitions.js";
 import { parseContentId, type ContentId, type ContentKind } from "./content-id.js";
+import { isSkill } from "./skills.js";
 
 // Display names for one language, keyed by content ID. Lives with the i18n
 // messages; the registry only checks that it is complete.
@@ -120,6 +121,15 @@ export class ContentRegistryBuilder {
     // at all — a spell whose plan always throws would otherwise pass silently.
     if (definition.kind === "spell" && (!Number.isInteger(definition.level) || definition.level < 0 || definition.level > maxSpellLevel)) {
       problems.push(`${definition.id}: spell level ${definition.level} is out of range (0-${maxSpellLevel}).`);
+    }
+    if (definition.kind === "race") {
+      if (definition.bonusHpPerLevel !== undefined && (!Number.isInteger(definition.bonusHpPerLevel) || definition.bonusHpPerLevel < 0)) {
+        problems.push(`${definition.id}: bonus HP per level must be a nonnegative integer.`);
+      }
+      const skills = definition.skillProficiencies ?? [];
+      if (new Set(skills).size !== skills.length || skills.some((skill) => !isSkill(skill))) {
+        problems.push(`${definition.id}: racial skill proficiencies must be distinct, known skills.`);
+      }
     }
     // The generic reference check above only confirms a monster attack's
     // weapon resolves to *an item*; an attack naming a shield or a potion

@@ -1,5 +1,5 @@
 import { srd51Classes } from "../content/srd-5.1/classes.js";
-import { srd51Races } from "../content/srd-5.1/races.js";
+import { srd51DragonAncestries, srd51Races, srd51Subraces } from "../content/srd-5.1/races.js";
 import { parseContentId, type ContentId } from "../rules/content-id.js";
 import type { ClassDefinition, RaceDefinition } from "../rules/content-definitions.js";
 import type { Ability } from "../rules/effects.js";
@@ -38,8 +38,12 @@ export function isBuildClass(value: string): value is BuildClass {
   return (buildClasses as readonly string[]).includes(value);
 }
 
-export const buildRaces = ["human", "elf", "dwarf", "halfling", "dragonborn", "gnome", "half-elf", "half-orc", "tiefling"] as const;
+export const buildRaces = ["human", "elf", "dwarf", "halfling", "dragonborn", "gnome", "half-elf", "half-orc", "tiefling", "hill-dwarf", "mountain-dwarf", "high-elf", "wood-elf", "drow", "lightfoot-halfling", "stout-halfling", "forest-gnome", "rock-gnome", "black-dragonborn", "blue-dragonborn", "brass-dragonborn", "bronze-dragonborn", "copper-dragonborn", "gold-dragonborn", "green-dragonborn", "red-dragonborn", "silver-dragonborn", "white-dragonborn"] as const;
 export type BuildRace = (typeof buildRaces)[number];
+
+// Broad legacy entries remain valid for imports but are replaced by their
+// explicit subraces in new builds.
+export const selectableBuildRaces: readonly BuildRace[] = ["human", "hill-dwarf", "mountain-dwarf", "high-elf", "wood-elf", "drow", "lightfoot-halfling", "stout-halfling", "black-dragonborn", "blue-dragonborn", "brass-dragonborn", "bronze-dragonborn", "copper-dragonborn", "gold-dragonborn", "green-dragonborn", "red-dragonborn", "silver-dragonborn", "white-dragonborn", "forest-gnome", "rock-gnome", "half-elf", "half-orc", "tiefling"];
 
 export function isBuildRace(value: string): value is BuildRace {
   return (buildRaces as readonly string[]).includes(value);
@@ -68,7 +72,7 @@ function byBuildKey<Slug extends string, Definition extends { readonly id: Conte
 // existing caller) already spells a class: "fighter", not "class:fighter".
 export const classTemplates: Readonly<Record<BuildClass, ClassDefinition>> = byBuildKey(srd51Classes, isBuildClass, "class");
 
-export const raceTemplates: Readonly<Record<BuildRace, RaceDefinition>> = byBuildKey(srd51Races, isBuildRace, "race");
+export const raceTemplates: Readonly<Record<BuildRace, RaceDefinition>> = byBuildKey([...srd51Races, ...srd51Subraces, ...srd51DragonAncestries], isBuildRace, "race");
 
 function raceContentId(race: BuildRace): ContentId<"race"> {
   return `race:${race}`;
@@ -131,6 +135,11 @@ export interface BuildChoices {
   // legal; deriveSheet applies no racial bonus and the SRD default speed
   // when it is absent.
   readonly race?: BuildRace;
+  // Half-Elf chooses two different non-Charisma abilities for its +1s.
+  // Absent on older saved builds, which retain the original Dex/Con default.
+  readonly raceAbilityChoices?: readonly Ability[];
+  // Half-Elf Skill Versatility: two skills chosen independently of class.
+  readonly raceSkillChoices?: readonly Skill[];
 }
 
 // Every reason a build cannot be made, in the builder's own words (codes the
@@ -138,6 +147,8 @@ export interface BuildChoices {
 export type BuildProblem =
   | { readonly code: "unknownClass" }
   | { readonly code: "unknownRace" }
+  | { readonly code: "invalidRaceAbilityChoices" }
+  | { readonly code: "invalidRaceSkillChoices" }
   | { readonly code: "unknownKit"; readonly kit: string }
   | { readonly code: "abilitiesNotStandardArray" }
   | { readonly code: "skillCount"; readonly expected: number }
@@ -153,6 +164,8 @@ export function buildProblems(build: BuildChoices): readonly BuildProblem[] {
   if (template === undefined) return [{ code: "unknownClass" }];
   const problems: BuildProblem[] = [];
   if (build.race !== undefined && !isBuildRace(build.race)) problems.push({ code: "unknownRace" });
+  if (build.raceAbilityChoices !== undefined && (build.race !== "half-elf" || build.raceAbilityChoices.length !== 2 || new Set(build.raceAbilityChoices).size !== 2 || build.raceAbilityChoices.some((ability) => !abilities.includes(ability) || ability === "cha"))) problems.push({ code: "invalidRaceAbilityChoices" });
+  if (build.raceSkillChoices !== undefined && (build.race !== "half-elf" || build.raceSkillChoices.length !== 2 || new Set(build.raceSkillChoices).size !== 2 || build.raceSkillChoices.some((skill) => !isSkill(skill) || build.skills.includes(skill)))) problems.push({ code: "invalidRaceSkillChoices" });
   if (!template.kits.some((kit) => kit.id === build.kit)) problems.push({ code: "unknownKit", kit: build.kit });
   const scores = abilities.map((ability) => build.abilities[ability]).sort((a, b) => b - a);
   if (scores.length !== standardArray.length || scores.some((score, index) => score !== standardArray[index])) problems.push({ code: "abilitiesNotStandardArray" });
@@ -198,9 +211,17 @@ function withAbilityScoreIncrease(scores: Readonly<Record<Ability, number>>, inc
 export function deriveSheet(build: BuildChoices, gear?: { readonly equipment: readonly ContentId<"item">[]; readonly worn?: readonly ContentId<"item">[] }): DerivedSheet {
   const template = classTemplates[build.class];
   const race = build.race === undefined ? undefined : raceTemplates[build.race];
-  const abilityScores = race === undefined ? build.abilities : withAbilityScoreIncrease(build.abilities, race.abilityScoreIncrease);
+  const increase = race === undefined ? {} : { ...race.abilityScoreIncrease };
+  if (build.race === "half-elf" && build.raceAbilityChoices?.length === 2) {
+    delete increase.dex;
+    delete increase.con;
+    for (const ability of build.raceAbilityChoices) increase[ability] = (increase[ability] ?? 0) + 1;
+  }
+  const abilityScores = withAbilityScoreIncrease(build.abilities, increase);
   const skills: Partial<Record<Skill, SkillProficiency>> = {};
   for (const skill of build.skills) skills[skill] = build.expertise.includes(skill) ? "expertise" : "proficient";
+  for (const skill of race?.skillProficiencies ?? []) if (skills[skill] === undefined) skills[skill] = "proficient";
+  for (const skill of build.raceSkillChoices ?? []) if (skills[skill] === undefined) skills[skill] = "proficient";
   const equipment = gear?.equipment ?? kitEquipment(build);
   return {
     name: build.name.trim(),
@@ -213,7 +234,7 @@ export function deriveSheet(build: BuildChoices, gear?: { readonly equipment: re
     savingThrows: template.savingThrows,
     level: 1,
     xp: 0,
-    maxHp: Math.max(1, template.hitDie + abilityModifier(abilityScores.con)),
+    maxHp: Math.max(1, template.hitDie + abilityModifier(abilityScores.con) + (race?.bonusHpPerLevel ?? 0)),
     hitDie: template.hitDie,
     speed: race?.speed ?? 30,
     equipment,

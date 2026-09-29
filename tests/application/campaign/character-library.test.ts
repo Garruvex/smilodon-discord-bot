@@ -369,6 +369,18 @@ describe("export and import", () => {
     expect(await t.library.import("u-bob", JSON.stringify(fake))).toEqual({ kind: "unreadable", reason: "wrongFormat" });
   });
 
+  it("round-trips Half-Elf ability and skill choices in a portable character", async () => {
+    const t = table();
+    const snapshot = await createAldric(t);
+    const halfElf: LibrarySnapshot = { ...snapshot, id: "ls-half-elf", build: { ...snapshot.build, race: "half-elf", raceAbilityChoices: ["str", "wis"], raceSkillChoices: ["history", "nature"] } };
+    await t.r.store.transaction((tx) => tx.saveLibrarySnapshot(halfElf));
+    const file = await t.library.export("u-alice", halfElf.id);
+    if (file === undefined) throw new Error("export");
+    const imported = await t.library.import("u-bob", file);
+    if (imported.kind !== "ok") throw new Error(JSON.stringify(imported));
+    expect(imported.snapshot.build).toMatchObject({ race: "half-elf", raceAbilityChoices: ["str", "wis"], raceSkillChoices: ["history", "nature"] });
+  });
+
   it("names what is wrong with a file instead of importing it", async () => {
     const t = table();
     const snapshot = await createAldric(t);

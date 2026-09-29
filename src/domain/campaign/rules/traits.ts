@@ -61,7 +61,21 @@ export type Trait =
   // Never gains these conditions (Skeleton/Zombie's immunity to poisoned; a
   // monster's own immunity list, not a condition's, since only some holders
   // of a given condition are immune to it, e.g. undead but not the living).
+  // Half-Orc Savage Attacks: a melee weapon critical hit rolls one extra damage die.
+  | { readonly kind: "savageAttacks" }
+  // Half-Orc Relentless Endurance: once per long rest, damage that would drop the holder to 0 HP leaves 1 HP instead.
+  | { readonly kind: "relentlessEndurance" }
   | { readonly kind: "conditionImmunity"; readonly conditions: readonly ContentId<"condition">[] }
+  // Advantage on saving throws against being given one of these conditions (Fey
+  // Ancestry, Brave), against these damage types (Dwarven Resilience), or against
+  // spells and other magic (Gnome Cunning); abilities narrows it to some saves.
+  | {
+      readonly kind: "saveAdvantage";
+      readonly conditions?: readonly ContentId<"condition">[];
+      readonly damageTypes?: readonly DamageType[];
+      readonly magic?: boolean;
+      readonly abilities?: readonly Ability[];
+    }
   // Champion's Improved Critical: a natural roll of this or higher on an
   // attack is a critical hit, not just a natural 20. The lowest of any held
   // wins (nothing lowers it below 20 by default).
@@ -97,6 +111,8 @@ export type Trait =
   | { readonly kind: "legendaryActions"; readonly uses: number; readonly options: readonly { readonly weapon: ContentId<"item">; readonly cost: number }[] };
 
 // Where a monster's remaining Legendary Resistance is counted (resources.featureUses).
+// Where a hero's Relentless Endurance use is counted (resources.featureUses).
+export const relentlessEnduranceKey = "trait:relentless-endurance";
 export const legendaryResistanceKey = "trait:legendary-resistance";
 // And its legendary actions left this round.
 export const legendaryActionsKey = "trait:legendary-actions";
@@ -131,6 +147,24 @@ export function damageMultiplier(traits: readonly Trait[], damageType: DamageTyp
 // modifiers are read — an immune creature simply never receives the effect).
 export function isImmuneToCondition(traits: readonly Trait[], conditionId: ContentId<"condition">): boolean {
   return traits.some((trait) => trait.kind === "conditionImmunity" && trait.conditions.includes(conditionId));
+}
+
+// What a saving throw is against, for the advantage the traits above give.
+export interface SaveContext {
+  readonly conditions: readonly ContentId<"condition">[];
+  readonly damageTypes: readonly DamageType[];
+  readonly magic: boolean;
+}
+
+export function hasSaveAdvantage(traits: readonly Trait[], ability: Ability, context: SaveContext): boolean {
+  return traits.some(
+    (trait) =>
+      trait.kind === "saveAdvantage" &&
+      (trait.abilities === undefined || trait.abilities.includes(ability)) &&
+      ((trait.conditions?.some((condition) => context.conditions.includes(condition)) ?? false) ||
+        (trait.damageTypes?.some((damageType) => context.damageTypes.includes(damageType)) ?? false) ||
+        (trait.magic === true && context.magic)),
+  );
 }
 
 // The lowest natural roll that lands a critical hit for this creature's own

@@ -222,6 +222,7 @@ function readBuild(raw: unknown): BuildChoices | null {
   if (!isRecord(raw) || typeof raw.class !== "string" || !isBuildClass(raw.class) || typeof raw.kit !== "string") return null;
   if (typeof raw.name !== "string" || typeof raw.appearance !== "string" || typeof raw.backstory !== "string") return null;
   if (raw.race !== undefined && (typeof raw.race !== "string" || !isBuildRace(raw.race))) return null;
+  if (raw.raceAbilityChoices !== undefined && (!Array.isArray(raw.raceAbilityChoices) || raw.raceAbilityChoices.length !== 2 || raw.raceAbilityChoices.some((value: unknown) => typeof value !== "string" || !abilities.includes(value as typeof abilities[number])))) return null;
   if (!isRecord(raw.abilities)) return null;
   const scores: Record<string, number> = {};
   for (const ability of abilities) {
@@ -231,7 +232,8 @@ function readBuild(raw: unknown): BuildChoices | null {
   }
   const skills = readSkills(raw.skills);
   const expertise = readSkills(raw.expertise);
-  if (skills === null || expertise === null) return null;
+  const raceSkillChoices = raw.raceSkillChoices === undefined ? undefined : readSkills(raw.raceSkillChoices);
+  if (skills === null || expertise === null || raceSkillChoices === null) return null;
   return {
     class: raw.class,
     kit: raw.kit,
@@ -242,6 +244,8 @@ function readBuild(raw: unknown): BuildChoices | null {
     appearance: raw.appearance,
     backstory: raw.backstory,
     ...(raw.race === undefined ? {} : { race: raw.race }),
+    ...(raw.raceAbilityChoices === undefined ? {} : { raceAbilityChoices: raw.raceAbilityChoices as readonly (typeof abilities)[number][] }),
+    ...(raceSkillChoices === undefined ? {} : { raceSkillChoices }),
   };
 }
 

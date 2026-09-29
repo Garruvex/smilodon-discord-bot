@@ -12,6 +12,7 @@ import {
 } from "../../../src/domain/campaign/character/character-build.js";
 import { abilities } from "../../../src/domain/campaign/rules/effects.js";
 import { defaultHeroResources, heroCombatant } from "../../../src/domain/campaign/combat/combatant-profile.js";
+import { levelUp } from "../../../src/domain/campaign/character/leveling.js";
 import { ruleset } from "./campaign-fixtures.js";
 
 const fighter: BuildChoices = {
@@ -135,5 +136,32 @@ describe("the guided builder", () => {
 
   it("rejects a build naming a race that does not exist", () => {
     expect(buildProblems({ ...fighter, race: "elemental" as never })).toEqual([{ code: "unknownRace" }]);
+  });
+
+  it("applies subrace ability, speed, proficiency, resistance, and hill dwarf toughness", () => {
+    const hill = deriveSheet({ ...fighter, race: "hill-dwarf" });
+    expect(hill.abilityScores).toMatchObject({ con: 16, wis: 14 });
+    expect(hill.maxHp).toBe(14);
+    expect(levelUp({ ...hill, id: "c-hill" }, "fighter").maxHp).toBe(24);
+    const wood = deriveSheet({ ...cleric, race: "wood-elf" });
+    expect(wood.speed).toBe(35);
+    expect(wood.skills.perception).toBe("proficient");
+    const stout = deriveSheet({ ...fighter, race: "stout-halfling" });
+    expect(stout.abilityScores).toMatchObject({ dex: 14, con: 15 });
+    const { content } = ruleset();
+    const hero = { ...stout, id: "c-stout", ownerUserId: "u-1" };
+    expect(heroCombatant(hero, content, "gate", { hp: hero.maxHp, resources: defaultHeroResources(hero, content) }).traits).toContainEqual({ kind: "damageResistance", damageTypes: ["poison"] });
+    expect(content.get("race:blue-dragonborn").traits).toContainEqual({ kind: "damageResistance", damageTypes: ["lightning"] });
+  });
+
+  it("lets a new Half-Elf choose two bonuses while old builds retain their original allocation", () => {
+    const chosen: BuildChoices = { ...fighter, race: "half-elf", raceAbilityChoices: ["str", "wis"], raceSkillChoices: ["history", "nature"] };
+    expect(buildProblems(chosen)).toEqual([]);
+    expect(deriveSheet(chosen).abilityScores).toMatchObject({ str: 16, wis: 14, cha: 12, dex: 12, con: 14 });
+    expect(deriveSheet(chosen).skills).toMatchObject({ history: "proficient", nature: "proficient" });
+    expect(deriveSheet({ ...fighter, race: "half-elf" }).abilityScores).toMatchObject({ dex: 13, con: 15, cha: 12 });
+    expect(buildProblems({ ...chosen, raceAbilityChoices: ["str", "str"] })).toContainEqual({ code: "invalidRaceAbilityChoices" });
+    expect(buildProblems({ ...chosen, raceAbilityChoices: ["cha", "str"] })).toContainEqual({ code: "invalidRaceAbilityChoices" });
+    expect(buildProblems({ ...chosen, raceSkillChoices: ["history", "history"] })).toContainEqual({ code: "invalidRaceSkillChoices" });
   });
 });

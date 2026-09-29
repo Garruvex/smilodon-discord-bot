@@ -21,11 +21,12 @@ import type { ComponentContext, ComponentHandler, ModalContext } from "../../../
 import { texts, type Texts } from "../../../application/i18n/texts.js";
 import { publicAccessPolicy } from "../../../domain/access/access-policy.js";
 import { deriveSnapshotSheet } from "../../../domain/campaign/character/leveling.js";
-import { buildClasses, buildRaces, classTemplates, suggestedAbilities, type BuildChoices, type BuildProblem } from "../../../domain/campaign/character/character-build.js";
+import { buildClasses, buildRaces, classTemplates, selectableBuildRaces, suggestedAbilities, type BuildChoices, type BuildProblem } from "../../../domain/campaign/character/character-build.js";
 import { abilityModifier, skillAbilities, type CharacterSheet, type Skill } from "../../../domain/campaign/character/character-sheet.js";
 import { armorClassFrom, heroTraits } from "../../../domain/campaign/combat/combatant-profile.js";
 import type { Glossary, SealedContent } from "../../../domain/campaign/rules/content-registry.js";
 import { abilities, type Ability } from "../../../domain/campaign/rules/effects.js";
+import { isSkill, skills } from "../../../domain/campaign/rules/skills.js";
 import { classLabel, skillKey } from "../campaign/text-keys.js";
 import { downloadAttachmentBytes, downloadAttachmentText, type BytesResult } from "../campaign/attachment-download.js";
 import { fileField, noteField, portraitHome, portraitModal, portraitPreview, portraitRefused, portraitWorking, styleField, type PortraitScreen } from "../campaign/portrait-screens.js";
@@ -140,13 +141,25 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
         case "bRace": {
           const draft = decodeDraft(first);
           const race = buildRaces.find((id) => id === value) ?? null;
-          return void (await this.show(interaction, this.kitScreen({ ...draft, race }, text)));
+          const chosen = { ...draft, race, raceAbilities: [], raceSkills: [] };
+          return void (await this.show(interaction, race === "half-elf" ? this.raceAbilityScreen(chosen, text) : this.kitScreen(chosen, text)));
+        }
+        case "bRaceAbility": {
+          const draft = decodeDraft(first);
+          const ability = abilities.find((candidate) => candidate === value && candidate !== "cha" && !draft.raceAbilities.includes(candidate));
+          const chosen = ability === undefined ? draft : { ...draft, raceAbilities: [...draft.raceAbilities, ability] };
+          return void (await this.show(interaction, chosen.raceAbilities.length === 2 ? this.raceSkillScreen(chosen, text) : this.raceAbilityScreen(chosen, text)));
+        }
+        case "bRaceSkills": {
+          const draft = decodeDraft(first);
+          const raceSkills = interaction.values.filter((skill): skill is Draft["raceSkills"][number] => isSkill(skill)).slice(0, 2);
+          return void (await this.show(interaction, this.kitScreen({ ...draft, raceSkills }, text)));
         }
         case "bKit":
           return void (await this.show(interaction, this.skillsScreen({ ...decodeDraft(first), kit: value }, language)));
         case "bSkills": {
           const draft = decodeDraft(first);
-          const chosen = { ...draft, skills: interaction.values.flatMap((skill) => (classTemplates[draft.class ?? "fighter"].skillChoices as readonly string[]).includes(skill) ? [skill as Draft["skills"][number]] : []), expertise: [] };
+          const chosen = { ...draft, skills: interaction.values.flatMap((skill) => (classTemplates[draft.class ?? "fighter"].skillChoices as readonly string[]).includes(skill) && !(draft.raceSkills as readonly string[]).includes(skill) ? [skill as Draft["skills"][number]] : []), expertise: [] };
           const needsExpertise = draft.class !== null && classTemplates[draft.class].expertiseCount > 0;
           return void (await this.show(interaction, needsExpertise ? this.expertiseScreen(chosen, language) : this.scoresScreen(chosen, language)));
         }
@@ -377,8 +390,20 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
     const t = text.campaign.chars;
     if (draft.class === null) return this.classScreen(text);
     const glossary = this.deps.glossaries[language];
-    const options = buildRaces.map((race) => ({ label: glossary?.names[`race:${race}`] ?? race, value: race }));
+    const options = selectableBuildRaces.map((race) => ({ label: glossary?.names[`race:${race}`] ?? race, value: race }));
     return { content: t.bRace({ class: classLabel(text, draft.class) }), components: [select(libraryCustomId("bRace", encodeDraft(draft)), t.bRacePlaceholder, options)] };
+  }
+
+  private raceAbilityScreen(draft: Draft, text: Texts): LibraryScreen {
+    if (draft.race !== "half-elf") return this.kitScreen(draft, text);
+    const t = text.campaign.chars;
+    const options = abilities.filter((ability) => ability !== "cha" && !draft.raceAbilities.includes(ability)).map((ability) => ({ label: text.campaign.ability[ability], value: ability }));
+    return { content: t.bRaceAbility({ count: 2 - draft.raceAbilities.length }), components: [select(libraryCustomId("bRaceAbility", encodeDraft(draft)), t.bRaceAbilityPlaceholder, options)] };
+  }
+
+  private raceSkillScreen(draft: Draft, text: Texts): LibraryScreen {
+    const t = text.campaign.chars;
+    return { content: t.bRaceSkills, components: [select(libraryCustomId("bRaceSkills", encodeDraft(draft)), t.bRaceSkillsPlaceholder, skills.map((skill) => ({ label: text.campaign.skill[skillKey(skill)], value: skill })), 2, 2)] };
   }
 
   private kitScreen(draft: Draft, text: Texts): LibraryScreen {
@@ -393,7 +418,7 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
     const t = text.campaign.chars;
     if (draft.class === null) return this.classScreen(text);
     const template = classTemplates[draft.class];
-    const options = template.skillChoices.map((skill) => ({ label: `${text.campaign.skill[skillKey(skill)]} (${skillAbility(skill)})`, value: skill }));
+    const options = template.skillChoices.filter((skill) => !draft.raceSkills.includes(skill)).map((skill) => ({ label: `${text.campaign.skill[skillKey(skill)]} (${skillAbility(skill)})`, value: skill }));
     return {
       content: t.bSkills({ count: template.skillCount }),
       components: [select(libraryCustomId("bSkills", encodeDraft(draft)), t.bSkillsPlaceholder, options, template.skillCount, template.skillCount)],
@@ -451,11 +476,11 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
 
   // The build a finished draft and the form's words make, or null when the draft is not finished.
   private buildFrom(draft: Draft, words: { readonly name: string; readonly appearance: string; readonly backstory: string }): BuildChoices | null {
-    if (draft.class === null || draft.race === null || draft.kit === null || draft.order.length < abilities.length - 1) return null;
+    if (draft.class === null || draft.race === null || draft.kit === null || draft.order.length < abilities.length - 1 || (draft.race === "half-elf" && (draft.raceAbilities.length !== 2 || draft.raceSkills.length !== 2))) return null;
     const scores = scoresOf(draft.order);
     const built = { ...suggestedAbilities(draft.class) } as Record<Ability, number>;
     for (const ability of abilities) built[ability] = scores[ability] ?? 0;
-    return { class: draft.class, race: draft.race, kit: draft.kit, abilities: built, skills: draft.skills, expertise: draft.expertise, ...words };
+    return { class: draft.class, race: draft.race, ...(draft.race === "half-elf" ? { raceAbilityChoices: draft.raceAbilities, raceSkillChoices: draft.raceSkills } : {}), kit: draft.kit, abilities: built, skills: draft.skills, expertise: draft.expertise, ...words };
   }
 
   // One line for a saved character: class, hit points and armor class, all derived.

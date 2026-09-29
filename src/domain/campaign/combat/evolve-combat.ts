@@ -1,6 +1,6 @@
 import { assertNever } from "../core/assert-never.js";
 import type { EffectInstance } from "../effects/effect-instance.js";
-import { attacksPerAction, legendaryActionsKey, legendaryResistanceKey } from "../rules/traits.js";
+import { attacksPerAction, legendaryActionsKey, legendaryResistanceKey, relentlessEnduranceKey } from "../rules/traits.js";
 import { wildShapeUses } from "../rules/wild-shape-rules.js";
 import type { CombatEvent } from "./combat-events.js";
 import { innateUseKey } from "../magic/spell-rules.js";
@@ -232,6 +232,7 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
       return update(encounter, event.combatantId, (combatant) => {
         const uses = { ...combatant.resources.featureUses };
         if (event.legendaryResistanceSpent === true) uses[legendaryResistanceKey] = Math.max(0, (uses[legendaryResistanceKey] ?? 0) - 1);
+        if (event.relentlessSpent === true) uses[relentlessEnduranceKey] = 0;
         if (event.legendarySpent !== undefined) uses[legendaryActionsKey] = Math.max(0, (uses[legendaryActionsKey] ?? 0) - event.legendarySpent);
         return {
           ...combatant,

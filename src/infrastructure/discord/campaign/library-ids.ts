@@ -16,6 +16,8 @@ export const libraryActions = [
   "new",
   "bClass",
   "bRace",
+  "bRaceAbility",
+  "bRaceSkills",
   "bKit",
   "bSkills",
   "bExpert",
@@ -58,6 +60,8 @@ export function parseLibraryId(customId: string): { readonly action: LibraryActi
 export interface Draft {
   readonly class: BuildClass | null;
   readonly race: BuildRace | null;
+  readonly raceAbilities: readonly Ability[];
+  readonly raceSkills: readonly Skill[];
   readonly kit: string | null;
   readonly skills: readonly Skill[];
   readonly expertise: readonly Skill[];
@@ -65,7 +69,7 @@ export interface Draft {
   readonly order: readonly Ability[];
 }
 
-export const emptyDraft: Draft = { class: null, race: null, kit: null, skills: [], expertise: [], order: [] };
+export const emptyDraft: Draft = { class: null, race: null, raceAbilities: [], raceSkills: [], kit: null, skills: [], expertise: [], order: [] };
 
 const classCodes: Readonly<Record<BuildClass, string>> = {
   fighter: "f",
@@ -92,6 +96,25 @@ const raceCodes: Readonly<Record<BuildRace, string>> = {
   "half-elf": "x",
   "half-orc": "v",
   tiefling: "t",
+  "hill-dwarf": "A",
+  "mountain-dwarf": "B",
+  "high-elf": "C",
+  "wood-elf": "D",
+  drow: "E",
+  "lightfoot-halfling": "F",
+  "stout-halfling": "G",
+  "forest-gnome": "H",
+  "rock-gnome": "I",
+  "black-dragonborn": "J",
+  "blue-dragonborn": "K",
+  "brass-dragonborn": "L",
+  "bronze-dragonborn": "M",
+  "copper-dragonborn": "N",
+  "gold-dragonborn": "O",
+  "green-dragonborn": "P",
+  "red-dragonborn": "Q",
+  "silver-dragonborn": "R",
+  "white-dragonborn": "S",
 };
 const skillCode = (skill: Skill): string => String.fromCharCode(97 + allSkills.indexOf(skill));
 
@@ -106,11 +129,13 @@ export function encodeDraft(draft: Draft): string {
     draft.skills.map(skillCode).join(""),
     draft.expertise.map(skillCode).join(""),
     draft.order.map((ability) => abilityCodes[ability]).join(""),
+    draft.raceAbilities.map((ability) => abilityCodes[ability]).join(""),
+    draft.raceSkills.map(skillCode).join(""),
   ].join(".");
 }
 
 export function decodeDraft(token: string | undefined): Draft {
-  const [head = "", skillsPart = "", expertisePart = "", orderPart = ""] = (token ?? "").split(".");
+  const [head = "", skillsPart = "", expertisePart = "", orderPart = "", raceAbilitiesPart = "", raceSkillsPart = ""] = (token ?? "").split(".");
   const classId = (Object.keys(classCodes) as BuildClass[]).find((id) => classCodes[id] === head[0]);
   if (classId === undefined || !isBuildClass(classId)) return emptyDraft;
   const template = classTemplates[classId];
@@ -127,7 +152,13 @@ export function decodeDraft(token: string | undefined): Draft {
     const ability = abilities.find((candidate) => abilityCodes[candidate] === char);
     if (ability !== undefined && !order.includes(ability) && order.length < standardArray.length) order.push(ability);
   }
-  return { class: classId, race, kit, skills: kit === null ? [] : skills, expertise: kit === null ? [] : chosen, order };
+  const raceAbilities: Ability[] = [];
+  if (race === "half-elf") for (const char of raceAbilitiesPart) {
+    const ability = abilities.find((candidate) => abilityCodes[candidate] === char);
+    if (ability !== undefined && ability !== "cha" && !raceAbilities.includes(ability) && raceAbilities.length < 2) raceAbilities.push(ability);
+  }
+  const raceSkills = race === "half-elf" ? readSkills(raceSkillsPart, allSkills).slice(0, 2) : [];
+  return { class: classId, race, raceAbilities, raceSkills, kit, skills: kit === null ? [] : skills, expertise: kit === null ? [] : chosen, order };
 }
 
 function readSkills(part: string, allowed: readonly Skill[]): Skill[] {

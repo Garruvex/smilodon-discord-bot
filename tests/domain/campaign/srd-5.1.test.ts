@@ -169,7 +169,7 @@ describe("SRD 5.1 content", () => {
       ].sort(),
     );
     expect(content.all("race").map((definition) => definition.id).sort()).toEqual(
-      ["race:human", "race:elf", "race:dwarf", "race:halfling", "race:dragonborn", "race:gnome", "race:half-elf", "race:half-orc", "race:tiefling"].sort(),
+      ["race:human", "race:elf", "race:dwarf", "race:halfling", "race:dragonborn", "race:gnome", "race:half-elf", "race:half-orc", "race:tiefling", "race:hill-dwarf", "race:mountain-dwarf", "race:high-elf", "race:wood-elf", "race:drow", "race:lightfoot-halfling", "race:stout-halfling", "race:forest-gnome", "race:rock-gnome", ...["black", "blue", "brass", "bronze", "copper", "gold", "green", "red", "silver", "white"].map((color) => `race:${color}-dragonborn`)].sort(),
     );
     expect(content.get("class:wizard").casterType).toBe("full");
     expect(content.get("class:paladin").spellcastingAbility).toBe("cha");
@@ -185,7 +185,7 @@ describe("SRD 5.1 content", () => {
   });
 
   it("gives Dwarf, Dragonborn, and Tiefling a real damage resistance trait, and Elf just its ability bonus", () => {
-    expect(traitsOf(content.get("race:dwarf"))).toEqual([{ kind: "damageResistance", damageTypes: ["poison"] }]);
+    expect(traitsOf(content.get("race:dwarf"))).toContainEqual({ kind: "damageResistance", damageTypes: ["poison"] });
     expect(traitsOf(content.get("race:dragonborn"))).toEqual([{ kind: "damageResistance", damageTypes: ["fire"] }]);
     expect(traitsOf(content.get("race:tiefling"))).toEqual([{ kind: "damageResistance", damageTypes: ["fire"] }]);
     expect(content.get("race:elf").abilityScoreIncrease).toEqual({ dex: 2 });

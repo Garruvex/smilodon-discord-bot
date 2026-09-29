@@ -246,6 +246,10 @@ export interface ClassDefinition extends DefinitionBase<"class"> {
 
 export interface RaceDefinition extends DefinitionBase<"race"> {
   readonly speed: number;
+  // Hill Dwarf's Dwarven Toughness applies at creation and each level.
+  readonly bonusHpPerLevel?: number;
+  // Fixed racial skill grants, independent of the class's chosen skills.
+  readonly skillProficiencies?: readonly Skill[];
   // Only the abilities this race raises; SRD 5.1's fixed racial bonus (e.g.
   // Elf +2 Dex, Human +1 to all six).
   readonly abilityScoreIncrease: Readonly<Partial<Record<Ability, number>>>;
@@ -282,12 +286,12 @@ export function defineShield(definition: Omit<ShieldDefinition, "kind" | "itemTy
   return { ...definition, kind: "item", itemType: "shield" };
 }
 
-export function definePotion(definition: Omit<PotionDefinition, "kind" | "itemType">): PotionDefinition {
-  return { ...definition, kind: "item", itemType: "potion" };
-}
-
 export function defineGear(definition: Omit<GearDefinition, "kind" | "itemType">): GearDefinition {
   return { ...definition, kind: "item", itemType: "gear" };
+}
+
+export function definePotion(definition: Omit<PotionDefinition, "kind" | "itemType">): PotionDefinition {
+  return { ...definition, kind: "item", itemType: "potion" };
 }
 
 export function defineFeature(definition: Omit<FeatureDefinition, "kind">): FeatureDefinition {
@@ -317,11 +321,11 @@ export function traitsOf(definition: ContentDefinition): readonly Trait[] {
           return [{ kind: "armorClassBonus", amount: definition.armorClassBonus }];
         case "weapon":
         case "potion":
+        case "gear":
           return [];
         default:
           return assertNever(definition);
       }
-        case "gear":
     case "feature":
     case "monster":
       return definition.traits;
@@ -428,11 +432,11 @@ export function referencedContent(definition: ContentDefinition): readonly Conte
         ...definition.features,
         ...Object.values(definition.levelFeatures).flat(),
         ...(definition.spellcasting?.spells ?? []),
+        ...(definition.spellList ?? []),
         ...definition.firstSpells,
       ];
     case "spell":
     case "item":
-        ...(definition.spellList ?? []),
     case "feature":
     case "race":
       return fromPlans;
@@ -457,9 +461,9 @@ function capabilitiesFor(effect: Effect): readonly Capability[] {
       return ["saving-throws", "conditions"];
     case "exhaustion":
       return ["exhaustion"];
+    case "applyModifiers":
+      return ["conditions"];
     default:
       return assertNever(effect);
   }
 }
-    case "applyModifiers":
-      return ["conditions"];
