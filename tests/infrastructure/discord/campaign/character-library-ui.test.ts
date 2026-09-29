@@ -100,6 +100,11 @@ describe("My Characters", () => {
     ]);
 
     screen = screenOf(await click(handler, screen.menus[0]?.id ?? "", "u-alice", { values: ["rogue"] }));
+    expect(screen.content).toBe("Choose a race for your Rogue.");
+    expect(screen.menus[0]?.options.map((option) => option.value)).toEqual(["human", "elf", "dwarf", "halfling", "dragonborn", "gnome", "half-elf", "half-orc", "tiefling"]);
+
+    // Gnome (+2 Int) leaves this build's Dex and Con untouched, so HP/AC below stay the same as before a race existed.
+    screen = screenOf(await click(handler, screen.menus[0]?.id ?? "", "u-alice", { values: ["gnome"] }));
     expect(screen.content).toBe("Choose a starting kit for your Rogue.");
     expect(screen.menus[0]?.options.map((option) => option.value)).toEqual(["shadow", "duelist"]);
 
@@ -129,7 +134,7 @@ describe("My Characters", () => {
     const named = screenOf(await submitName(handler, nameButton?.id ?? "", "u-alice", { name: "  Wren  ", appearance: "Quick and quiet.", backstory: "" }));
     expect(named.content).toBe("**Wren** is saved to your library (Rogue · 9 HP · AC 13). Pick it when you join a game.");
     const saved = (await r.library.list("u-alice"))[0]?.snapshots[0];
-    expect(saved?.build).toMatchObject({ class: "rogue", kit: "shadow", name: "Wren", skills: ["stealth", "perception", "acrobatics", "deception"], expertise: ["stealth", "perception"], appearance: "Quick and quiet." });
+    expect(saved?.build).toMatchObject({ class: "rogue", race: "gnome", kit: "shadow", name: "Wren", skills: ["stealth", "perception", "acrobatics", "deception"], expertise: ["stealth", "perception"], appearance: "Quick and quiet." });
     expect(saved?.build.abilities).toEqual({ dex: 15, cha: 14, int: 13, con: 12, wis: 10, str: 8 });
   });
 
@@ -137,7 +142,7 @@ describe("My Characters", () => {
     const r = rig();
     const handler = libraryHandler(r);
     // A name too long for the form's own limit still reaches the check.
-    const sent = await submitName(handler, libraryCustomId("bName", "f0.ab..dcsiwh"), "u-alice", { name: "x".repeat(41), appearance: "", backstory: "" });
+    const sent = await submitName(handler, libraryCustomId("bName", "fh0.ab..dcsiwh"), "u-alice", { name: "x".repeat(41), appearance: "", backstory: "" });
     expect(contentOf(sent)).toContain("the name must be 1 to 40 characters");
     // An unfinished draft is not a character.
     expect(contentOf(await submitName(handler, libraryCustomId("bName", "f0.ab.."), "u-alice", { name: "Aldric", appearance: "", backstory: "" }))).toContain("standard array");

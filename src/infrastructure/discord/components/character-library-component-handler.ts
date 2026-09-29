@@ -18,7 +18,7 @@ import { CommandModule } from "../../../application/commands/command.js";
 import type { ComponentContext, ComponentHandler, ModalContext } from "../../../application/components/component-handler.js";
 import { texts, type Texts } from "../../../application/i18n/texts.js";
 import { publicAccessPolicy } from "../../../domain/access/access-policy.js";
-import { buildClasses, classTemplates, deriveSheet, suggestedAbilities, type BuildChoices, type BuildProblem } from "../../../domain/campaign/character/character-build.js";
+import { buildClasses, buildRaces, classTemplates, deriveSheet, suggestedAbilities, type BuildChoices, type BuildProblem } from "../../../domain/campaign/character/character-build.js";
 import { abilityModifier, skillAbilities, type CharacterSheet, type Skill } from "../../../domain/campaign/character/character-sheet.js";
 import { armorClassFrom, heroTraits } from "../../../domain/campaign/combat/combatant-profile.js";
 import type { Glossary, SealedContent } from "../../../domain/campaign/rules/content-registry.js";
@@ -96,7 +96,12 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
         case "view":
           return void (await this.show(interaction, await this.viewScreen(userId, value, language)));
         case "bClass":
-          return void (await this.show(interaction, this.kitScreen({ ...emptyDraft, class: buildClasses.find((id) => id === value) ?? null }, text)));
+          return void (await this.show(interaction, this.raceScreen({ ...emptyDraft, class: buildClasses.find((id) => id === value) ?? null }, language)));
+        case "bRace": {
+          const draft = decodeDraft(first);
+          const race = buildRaces.find((id) => id === value) ?? null;
+          return void (await this.show(interaction, this.kitScreen({ ...draft, race }, text)));
+        }
         case "bKit":
           return void (await this.show(interaction, this.skillsScreen({ ...decodeDraft(first), kit: value }, language)));
         case "bSkills": {
@@ -217,8 +222,10 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
       }),
     );
     const latest = entry.snapshots.at(-1);
+    const race = first?.build.race === undefined ? null : (glossary?.names[`race:${first.build.race}`] ?? first.build.race);
+    const heading = `${race === null ? "" : `${race} `}${classLabel(text, entry.character.className)}`;
     return {
-      content: [t.viewTitle({ name: entry.character.name, class: classLabel(text, entry.character.className) }), t.viewScores({ scores }), "", ...lines].join("\n"),
+      content: [t.viewTitle({ name: entry.character.name, class: heading }), t.viewScores({ scores }), "", ...lines].join("\n"),
       components: [
         new ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>().addComponents(
           ...(latest === undefined ? [] : [button(libraryCustomId("export", latest.id), t.exportButton, ButtonStyle.Secondary)]),
@@ -235,6 +242,15 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
       content: t.bClass,
       components: [select(libraryCustomId("bClass"), t.bClassPlaceholder, buildClasses.map((id) => ({ label: classLabel(text, id), value: id })))],
     };
+  }
+
+  private raceScreen(draft: Draft, language: Language): LibraryScreen {
+    const text = texts[language];
+    const t = text.campaign.chars;
+    if (draft.class === null) return this.classScreen(text);
+    const glossary = this.deps.glossaries[language];
+    const options = buildRaces.map((race) => ({ label: glossary?.names[`race:${race}`] ?? race, value: race }));
+    return { content: t.bRace({ class: classLabel(text, draft.class) }), components: [select(libraryCustomId("bRace", encodeDraft(draft)), t.bRacePlaceholder, options)] };
   }
 
   private kitScreen(draft: Draft, text: Texts): LibraryScreen {
@@ -307,11 +323,11 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
 
   // The build a finished draft and the form's words make, or null when the draft is not finished.
   private buildFrom(draft: Draft, words: { readonly name: string; readonly appearance: string; readonly backstory: string }): BuildChoices | null {
-    if (draft.class === null || draft.kit === null || draft.order.length < abilities.length - 1) return null;
+    if (draft.class === null || draft.race === null || draft.kit === null || draft.order.length < abilities.length - 1) return null;
     const scores = scoresOf(draft.order);
     const built = { ...suggestedAbilities(draft.class) } as Record<Ability, number>;
     for (const ability of abilities) built[ability] = scores[ability] ?? 0;
-    return { class: draft.class, kit: draft.kit, abilities: built, skills: draft.skills, expertise: draft.expertise, ...words };
+    return { class: draft.class, race: draft.race, kit: draft.kit, abilities: built, skills: draft.skills, expertise: draft.expertise, ...words };
   }
 
   // One line for a saved character: class, hit points and armor class, all derived.

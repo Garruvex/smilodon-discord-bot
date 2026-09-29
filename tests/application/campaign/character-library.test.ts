@@ -349,6 +349,24 @@ describe("export and import", () => {
     expect((await t.library.list("u-bob")).map((entry) => entry.character.name)).toEqual(["Aldric"]);
   });
 
+  it("carries a chosen race through export and import, and drops one that is not real", async () => {
+    const t = table();
+    const snapshot = await createAldric(t);
+    const dwarven: LibrarySnapshot = { ...snapshot, id: "ls-dwarven", build: { ...snapshot.build, race: "dwarf" } };
+    await t.r.store.transaction((tx) => tx.saveLibrarySnapshot(dwarven));
+    const file = await t.library.export("u-alice", dwarven.id);
+    if (file === undefined) throw new Error("export");
+    expect(JSON.parse(file)).toMatchObject({ build: { race: "dwarf" } });
+
+    const imported = await t.library.import("u-bob", file);
+    if (imported.kind !== "ok") throw new Error(JSON.stringify(imported));
+    expect(imported.snapshot.build.race).toBe("dwarf");
+
+    const fake = JSON.parse(file) as { build: Record<string, unknown> };
+    fake.build.race = "elemental";
+    expect(await t.library.import("u-bob", JSON.stringify(fake))).toEqual({ kind: "unreadable", reason: "wrongFormat" });
+  });
+
   it("names what is wrong with a file instead of importing it", async () => {
     const t = table();
     const snapshot = await createAldric(t);

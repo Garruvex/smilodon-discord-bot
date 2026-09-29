@@ -433,6 +433,8 @@ export const campaignZhTW = {
   "campaign.chars.exported": "你的角色檔案。裡面只有你的選擇和裝備，匯入時會重新計算所有數值",
   "campaign.chars.bClass": "請選擇職業",
   "campaign.chars.bClassPlaceholder": "職業",
+  "campaign.chars.bRace": "請為你的{class}選擇種族",
+  "campaign.chars.bRacePlaceholder": "種族",
   "campaign.chars.bKit": "請為你的{class}選擇起始裝備",
   "campaign.chars.bKitPlaceholder": "起始裝備",
   "campaign.chars.kit.knight": "騎士：長劍、鏈甲、盾牌",

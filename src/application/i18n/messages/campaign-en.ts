@@ -434,6 +434,8 @@ export const campaignEn = {
   "campaign.chars.exported": "Your character file. It holds only your choices and gear; every number is worked out again when it is imported.",
   "campaign.chars.bClass": "Choose a class.",
   "campaign.chars.bClassPlaceholder": "Class",
+  "campaign.chars.bRace": "Choose a race for your {class}.",
+  "campaign.chars.bRacePlaceholder": "Race",
   "campaign.chars.bKit": "Choose a starting kit for your {class}.",
   "campaign.chars.bKitPlaceholder": "Starting kit",
   "campaign.chars.kit.knight": "Knight: longsword, chain mail, shield",

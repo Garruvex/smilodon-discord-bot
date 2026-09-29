@@ -1,4 +1,4 @@
-import { standardArray, classTemplates, isBuildClass, type BuildClass } from "../../../domain/campaign/character/character-build.js";
+import { standardArray, classTemplates, isBuildClass, isBuildRace, type BuildClass, type BuildRace } from "../../../domain/campaign/character/character-build.js";
 import { skills as allSkills, type Skill } from "../../../domain/campaign/character/character-sheet.js";
 import { abilities, type Ability } from "../../../domain/campaign/rules/effects.js";
 
@@ -15,6 +15,7 @@ export const libraryActions = [
   "view",
   "new",
   "bClass",
+  "bRace",
   "bKit",
   "bSkills",
   "bExpert",
@@ -45,6 +46,7 @@ export function parseLibraryId(customId: string): { readonly action: LibraryActi
 // that does not decode into something legal decodes to an empty draft.
 export interface Draft {
   readonly class: BuildClass | null;
+  readonly race: BuildRace | null;
   readonly kit: string | null;
   readonly skills: readonly Skill[];
   readonly expertise: readonly Skill[];
@@ -52,7 +54,7 @@ export interface Draft {
   readonly order: readonly Ability[];
 }
 
-export const emptyDraft: Draft = { class: null, kit: null, skills: [], expertise: [], order: [] };
+export const emptyDraft: Draft = { class: null, race: null, kit: null, skills: [], expertise: [], order: [] };
 
 const classCodes: Readonly<Record<BuildClass, string>> = {
   fighter: "f",
@@ -69,13 +71,27 @@ const classCodes: Readonly<Record<BuildClass, string>> = {
   wizard: "z",
 };
 const abilityCodes: Readonly<Record<Ability, string>> = { str: "s", dex: "d", con: "c", int: "i", wis: "w", cha: "h" };
+const raceCodes: Readonly<Record<BuildRace, string>> = {
+  human: "h",
+  elf: "e",
+  dwarf: "w",
+  halfling: "a",
+  dragonborn: "n",
+  gnome: "k",
+  "half-elf": "x",
+  "half-orc": "v",
+  tiefling: "t",
+};
 const skillCode = (skill: Skill): string => String.fromCharCode(97 + allSkills.indexOf(skill));
 
-// "f0.ac.a.dcs": class fighter, kit 0, skills, expertise, abilities so far.
+// "f0.ac.a.dcs": class fighter, kit 0, skills, expertise, abilities so far. A
+// race, once chosen, rides between the class letter and the kit digits (a
+// letter, never a digit, so decoding tells them apart without its own field).
 export function encodeDraft(draft: Draft): string {
+  const race = draft.race === null ? "" : raceCodes[draft.race];
   const kit = draft.class === null || draft.kit === null ? "" : String(classTemplates[draft.class].kits.findIndex((candidate) => candidate.id === draft.kit));
   return [
-    `${draft.class === null ? "" : classCodes[draft.class]}${kit}`,
+    `${draft.class === null ? "" : classCodes[draft.class]}${race}${kit}`,
     draft.skills.map(skillCode).join(""),
     draft.expertise.map(skillCode).join(""),
     draft.order.map((ability) => abilityCodes[ability]).join(""),
@@ -87,7 +103,11 @@ export function decodeDraft(token: string | undefined): Draft {
   const classId = (Object.keys(classCodes) as BuildClass[]).find((id) => classCodes[id] === head[0]);
   if (classId === undefined || !isBuildClass(classId)) return emptyDraft;
   const template = classTemplates[classId];
-  const kitIndex = head.length > 1 ? Number(head.slice(1)) : Number.NaN;
+  let rest = head.slice(1);
+  const raceId = (Object.keys(raceCodes) as BuildRace[]).find((id) => raceCodes[id] === rest[0]);
+  const race = raceId !== undefined && isBuildRace(raceId) ? raceId : null;
+  if (race !== null) rest = rest.slice(1);
+  const kitIndex = rest.length > 0 ? Number(rest) : Number.NaN;
   const kit = Number.isInteger(kitIndex) ? (template.kits[kitIndex]?.id ?? null) : null;
   const skills = readSkills(skillsPart, template.skillChoices);
   const chosen = readSkills(expertisePart, skills);
@@ -96,7 +116,7 @@ export function decodeDraft(token: string | undefined): Draft {
     const ability = abilities.find((candidate) => abilityCodes[candidate] === char);
     if (ability !== undefined && !order.includes(ability) && order.length < standardArray.length) order.push(ability);
   }
-  return { class: classId, kit, skills: kit === null ? [] : skills, expertise: kit === null ? [] : chosen, order };
+  return { class: classId, race, kit, skills: kit === null ? [] : skills, expertise: kit === null ? [] : chosen, order };
 }
 
 function readSkills(part: string, allowed: readonly Skill[]): Skill[] {

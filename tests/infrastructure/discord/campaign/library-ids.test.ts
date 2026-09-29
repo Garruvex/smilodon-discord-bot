@@ -10,7 +10,7 @@ describe("library custom IDs", () => {
   });
 
   it("keeps the builder's choices in a short token that round-trips", () => {
-    const draft: Draft = { class: "rogue", kit: "duelist", skills: ["stealth", "perception", "acrobatics", "deception"], expertise: ["stealth", "perception"], order: ["dex", "cha", "int", "con", "wis"] };
+    const draft: Draft = { class: "rogue", race: "half-elf", kit: "duelist", skills: ["stealth", "perception", "acrobatics", "deception"], expertise: ["stealth", "perception"], order: ["dex", "cha", "int", "con", "wis"] };
     const token = encodeDraft(draft);
     expect(token.length).toBeLessThan(30);
     expect(decodeDraft(token)).toEqual(draft);
@@ -23,12 +23,12 @@ describe("library custom IDs", () => {
     expect(decodeDraft(undefined)).toEqual(emptyDraft);
     expect(decodeDraft("x9.zzz..")).toEqual(emptyDraft);
     // An unknown kit drops everything that depended on it.
-    expect(decodeDraft("f9.ac..dc")).toMatchObject({ class: "fighter", kit: null, skills: [], order: ["dex", "con"] });
+    expect(decodeDraft("f9.ac..dc")).toMatchObject({ class: "fighter", race: null, kit: null, skills: [], order: ["dex", "con"] });
     // A skill the class cannot take is ignored, and so is a repeat.
-    const fighter: Draft = { class: "fighter", kit: "knight", skills: ["stealth", "athletics", "athletics"], expertise: [], order: [] };
+    const fighter: Draft = { class: "fighter", race: "human", kit: "knight", skills: ["stealth", "athletics", "athletics"], expertise: [], order: [] };
     expect(decodeDraft(encodeDraft(fighter)).skills).toEqual(["athletics"]);
     // Expertise only in skills the hero has, abilities only once each.
-    const rogue: Draft = { class: "rogue", kit: "shadow", skills: ["stealth"], expertise: ["perception"], order: ["dex", "dex", "dex"] };
+    const rogue: Draft = { class: "rogue", race: "elf", kit: "shadow", skills: ["stealth"], expertise: ["perception"], order: ["dex", "dex", "dex"] };
     expect(decodeDraft(encodeDraft(rogue)).expertise).toEqual([]);
     expect(decodeDraft(encodeDraft(rogue)).order).toEqual(["dex"]);
   });

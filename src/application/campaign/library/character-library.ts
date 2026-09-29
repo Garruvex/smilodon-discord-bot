@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { buildProblems, isBuildClass, kitEquipment, type BuildChoices, type BuildProblem } from "../../../domain/campaign/character/character-build.js";
+import { buildProblems, isBuildClass, isBuildRace, kitEquipment, type BuildChoices, type BuildProblem } from "../../../domain/campaign/character/character-build.js";
 import { isSkill } from "../../../domain/campaign/character/character-sheet.js";
 import type { UserId } from "../../../domain/campaign/core/ids.js";
 import { abilities } from "../../../domain/campaign/rules/effects.js";
@@ -215,6 +215,7 @@ function readPortable(raw: unknown): PortableCharacter | null {
 function readBuild(raw: unknown): BuildChoices | null {
   if (!isRecord(raw) || typeof raw.class !== "string" || !isBuildClass(raw.class) || typeof raw.kit !== "string") return null;
   if (typeof raw.name !== "string" || typeof raw.appearance !== "string" || typeof raw.backstory !== "string") return null;
+  if (raw.race !== undefined && (typeof raw.race !== "string" || !isBuildRace(raw.race))) return null;
   if (!isRecord(raw.abilities)) return null;
   const scores: Record<string, number> = {};
   for (const ability of abilities) {
@@ -225,7 +226,17 @@ function readBuild(raw: unknown): BuildChoices | null {
   const skills = readSkills(raw.skills);
   const expertise = readSkills(raw.expertise);
   if (skills === null || expertise === null) return null;
-  return { class: raw.class, kit: raw.kit, abilities: scores as BuildChoices["abilities"], skills, expertise, name: raw.name, appearance: raw.appearance, backstory: raw.backstory };
+  return {
+    class: raw.class,
+    kit: raw.kit,
+    abilities: scores as BuildChoices["abilities"],
+    skills,
+    expertise,
+    name: raw.name,
+    appearance: raw.appearance,
+    backstory: raw.backstory,
+    ...(raw.race === undefined ? {} : { race: raw.race }),
+  };
 }
 
 function readSkills(raw: unknown): BuildChoices["skills"] | null {
