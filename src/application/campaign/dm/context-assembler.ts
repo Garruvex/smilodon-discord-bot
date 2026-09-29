@@ -1,6 +1,7 @@
 import { findScene, type AdventureBible } from "../../../domain/campaign/adventure/adventure-bible.js";
 import type { CampaignEvent } from "../../../domain/campaign/events/campaign-event.js";
-import type { Glossary } from "../../../domain/campaign/rules/content-registry.js";
+import type { Glossary, SealedContent } from "../../../domain/campaign/rules/content-registry.js";
+import { foeCards } from "./scene-cards.js";
 import { isFallen, type CampaignState } from "../../../domain/campaign/state/campaign-state.js";
 import type { ContextSection, DmContext } from "../ports/dm-ports.js";
 import { combatantName, encounterRecords, type EncounterRecord } from "./combat-records.js";
@@ -17,6 +18,8 @@ export interface ContextInput {
   readonly events: readonly CampaignEvent[];
   readonly bible: AdventureBible;
   readonly glossary: Glossary;
+  // The ruleset's content, to write reference cards for the monsters in a fight; without it there are none.
+  readonly content?: SealedContent;
   readonly budgetTokens: number;
 }
 
@@ -237,6 +240,10 @@ function liveState(input: ContextInput): ContextSection {
       .filter((combatant) => combatant.side === "foes")
       .map((combatant) => `${combatantName(combatant, input)} (${combatant.condition === "active" ? healthBand(combatant.hp, combatant.maxHp) : combatant.condition})`);
     lines.push(`In combat, round ${encounter.round}. Foes: ${foes.join(", ")}.`);
+    if (input.content !== undefined) {
+      const cards = foeCards(Object.values(encounter.combatants).filter((combatant) => combatant.side === "foes"), input.content, input.glossary.names);
+      if (cards.length > 0) lines.push("What the foes can do:", ...cards);
+    }
   }
   return { layer: "F", title: "Live state", text: [...lines, ...heroes].join("\n") };
 }

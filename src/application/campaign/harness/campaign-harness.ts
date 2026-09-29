@@ -165,6 +165,7 @@ export async function runHarness(options: HarnessOptions): Promise<HarnessRun> {
     narrator,
     adventures: { find: (): AdventureDocument["bible"] => adventure.bible },
     glossaries: { [adventure.bible.language]: options.glossary },
+    rulesets: options.rulesets,
   });
   const rolls = new RollWorker(unitOfWork, bus, options.random, clock);
   const timers = new TimerWorker(unitOfWork, bus, clock);

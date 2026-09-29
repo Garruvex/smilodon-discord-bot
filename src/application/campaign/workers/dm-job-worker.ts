@@ -1,3 +1,4 @@
+import type { RulesetCatalog } from "../rules/ruleset-catalog.js";
 import { findEncounter, findScene } from "../../../domain/campaign/adventure/adventure-bible.js";
 import { skills } from "../../../domain/campaign/character/character-sheet.js";
 import type { CampaignEvent } from "../../../domain/campaign/events/campaign-event.js";
@@ -36,6 +37,8 @@ export interface DmJobWorkerOptions {
   readonly chronicler?: CampaignChronicler;
   readonly adventures: AdventureCatalog;
   readonly glossaries: Readonly<Record<string, Glossary>>;
+  // Resolves each campaign's pinned ruleset, so the narrator can be given reference cards for the monsters in a fight.
+  readonly rulesets?: RulesetCatalog;
   readonly budgetTokens?: number;
   readonly maxAttempts?: number;
 }
@@ -480,6 +483,7 @@ export class DmJobWorker {
       events: loaded.events,
       bible: loaded.bible,
       glossary,
+      ...(this.options.rulesets === undefined ? {} : { content: this.options.rulesets.resolve(loaded.stored.ruleset).content }),
       budgetTokens: this.options.budgetTokens ?? defaultContextBudget,
     });
   }
