@@ -231,3 +231,44 @@ describe("Legendary Resistance", () => {
     expect(fight.combatant(id).hp).toBe(before);
   });
 });
+
+describe("Spellcasting monsters", () => {
+  it("has a mage open with its highest spell and spend the slot", () => {
+    const fight = new Fight(partyOfThree()).rolls([1, 1, 1, 20]).run(organizer, { kind: "startEncounter", spec: alone("monster:mage") });
+    const source = ofKind(fight, "resolutionDeclared")[0]?.resolution.source;
+    expect(source).toMatchObject({ kind: "spell", spellId: "spell:cone-of-cold", slotLevel: 5 });
+    expect(fight.combatant(monsterId(fight)).resources.spellSlots[5]).toBe(0);
+  });
+
+  it("casts an innate spell with no slot, and counts a per-day one", () => {
+    // Thunderwave reaches 15 feet, so the djinni starts 10 feet away.
+    const near = { ...alone("monster:djinni"), edges: [{ from: "gate", to: "courtyard", feet: 10 }] };
+    const fight = new Fight(partyOfThree()).rolls([1, 1, 1, 20]).run(organizer, { kind: "startEncounter", spec: near });
+    const source = ofKind(fight, "resolutionDeclared")[0]?.resolution.source;
+    expect(source).toMatchObject({ kind: "spell", spellId: "spell:thunderwave", slotLevel: 1 });
+    expect(fight.combatant(monsterId(fight)).resources.spellSlots).toEqual({});
+  });
+
+  it("falls back to its weapon when it has no spell that harms", () => {
+    const fight = new Fight(partyOfThree()).rolls([1, 1, 1, 20]).run(organizer, { kind: "startEncounter", spec: alone("monster:goblin") });
+    expect(ofKind(fight, "resolutionDeclared")[0]?.resolution.source.kind).toBe("weapon");
+  });
+});
+
+describe("Legendary actions", () => {
+  it("has an adult dragon strike with its tail at the end of a hero's turn, and only once per turn", () => {
+    // The heroes go first, and are made tough enough to last.
+    const fight = new Fight(partyOfThree()).rolls([1, 1, 20, 15]).run(organizer, { kind: "startEncounter", spec: alone("monster:adult-red-dragon") });
+    const tough = Object.fromEntries(Object.entries(fight.encounter.combatants).map(([id, combatant]) => [id, combatant.side === "party" ? { ...combatant, hp: 900, maxHp: 900 } : combatant]));
+    fight.state = { ...fight.state, encounter: { ...fight.encounter, combatants: tough } };
+    for (let round = 0; round < 4; round += 1) passHeroTurns(fight);
+    const legendary = ofKind(fight, "resolutionDeclared").filter((event) => event.resolution.purpose === "legendary");
+    expect(legendary.length).toBeGreaterThan(0);
+    expect(legendary.every((event) => event.resolution.source.kind === "weapon" && event.resolution.source.option.weapon === "item:tail")).toBe(true);
+    // Never two after the same turn: each is spent on a different turn's end.
+    const turns = ofKind(fight, "monsterStateChanged").flatMap((event) => (event.legendaryTurn === undefined ? [] : [event.legendaryTurn]));
+    expect(new Set(turns).size).toBe(turns.length);
+    // Its legendary actions are back after its own turn.
+    expect(fight.combatant(monsterId(fight)).resources.featureUses["trait:legendary-actions"]).toBeGreaterThan(0);
+  });
+});

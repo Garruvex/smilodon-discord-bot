@@ -2,7 +2,7 @@ import type { CombatCommand } from "../../../domain/campaign/commands/campaign-c
 import { availableSlots, engagedWith, isActive, type Combatant, type EncounterState } from "../../../domain/campaign/combat/combat-state.js";
 import { distanceBetween, edgeBetween, engageCost } from "../../../domain/campaign/combat/positioning.js";
 import { movementLeft } from "../../../domain/campaign/combat/turn-rules.js";
-import { canAct, conditionLookup } from "../../../domain/campaign/effects/effect-queries.js";
+import { canAct, conditionLookup, forbiddenAttackTargets } from "../../../domain/campaign/effects/effect-queries.js";
 import { chooseMonsterPlan } from "../../../domain/campaign/combat/tactics.js";
 import type { SealedContent } from "../../../domain/campaign/rules/content-registry.js";
 
@@ -47,7 +47,8 @@ export function chooseHeroCommand(encounter: EncounterState, hero: Combatant, ro
   }
   // A healer out of melee casts at range rather than walking in.
   if (role === "healer" && hero.budget.action && knows(sacredFlame) && engagedWith(encounter, hero.id).length === 0) {
-    const target = foes.find((foe) => (distanceBetween(encounter, hero.id, foe.id) ?? Infinity) <= 60);
+    const barred = content === undefined ? [] : forbiddenAttackTargets(hero, conditionLookup(content));
+    const target = foes.find((foe) => !barred.includes(foe.id) && (distanceBetween(encounter, hero.id, foe.id) ?? Infinity) <= 60);
     if (target !== undefined) return { kind: "combatCast", combatantId: hero.id, spellId: sacredFlame, slotLevel: 0, targetIds: [target.id] };
   }
 
@@ -62,6 +63,9 @@ export function chooseHeroCommand(encounter: EncounterState, hero: Combatant, ro
   if (plan.engage !== null && movement >= engageCost && !engagedWith(encounter, hero.id).some((other) => other.id === plan.engage)) {
     return { kind: "combatEngage", combatantId: hero.id, targetId: plan.engage };
   }
+  // A charmed hero cannot strike the one who charmed them: stand guard instead.
+  const forbidden = content === undefined || plan.attack === null ? false : forbiddenAttackTargets(hero, conditionLookup(content)).includes(plan.attack.targetId);
+  if (forbidden && hero.budget.action) return { kind: "combatDodge", combatantId: hero.id };
   if (plan.attack !== null && hero.budget.action) return { kind: "combatAttack", combatantId: hero.id, targetId: plan.attack.targetId, weapon: plan.attack.option.weapon };
   if (plan.dodge && hero.budget.action) return { kind: "combatDodge", combatantId: hero.id };
   return endTurn;

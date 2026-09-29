@@ -79,6 +79,15 @@ export const acolyte = defineMonster({
   attacks: [{ weapon: "item:club", toHit: 2, damage: dice(1, 4) }],
   tactic: "brute",
   traits: [],
+  spellcasting: {
+    casterLevel: 1,
+    saveDc: 12,
+    attackBonus: 4,
+    modifier: 2,
+    slots: { 1: 3 },
+    spells: ["spell:light", "spell:sacred-flame", "spell:thaumaturgy", "spell:bless", "spell:cure-wounds", "spell:sanctuary"],
+    innate: [],
+  },
 });
 
 export const boar = defineMonster({
@@ -401,6 +410,19 @@ export const greenHag = defineMonster({
   attacks: [{ weapon: "item:claw", toHit: 6, damage: plus(dice(2, 8), 4) }],
   tactic: "brute",
   traits: [],
+  spellcasting: {
+    casterLevel: 5,
+    saveDc: 12,
+    attackBonus: 4,
+    modifier: 2,
+    slots: {},
+    spells: [],
+    innate: [
+      { spell: "spell:dancing-lights", perDay: null },
+      { spell: "spell:minor-illusion", perDay: null },
+      { spell: "spell:vicious-mockery", perDay: null },
+    ],
+  },
 });
 
 export const srd51MoreMonsters: readonly MonsterDefinition[] = [

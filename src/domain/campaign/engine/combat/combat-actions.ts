@@ -16,7 +16,7 @@ export function declareWeaponAttack(
   attacker: Combatant,
   targetId: string,
   option: AttackOption,
-  purpose: "action" | "opportunity",
+  purpose: "action" | "opportunity" | "legendary",
   smiteSlot?: number,
 ): Rejection | null {
   const encounter = activeEncounter(decision);
@@ -76,7 +76,7 @@ export function castSpell(
     source: { kind: "spell", spellId: spell.id, slotLevel },
     targetIds: targets,
     purpose: "action",
-    cost: { ...noCost, action: !bonus, bonusAction: bonus, spellSlot: spell.level === 0 ? null : slotLevel },
+    cost: { ...noCost, action: !bonus, bonusAction: bonus, spellSlot: spell.level === 0 || caster.spellcasting?.innate?.[spell.id] !== undefined ? null : slotLevel },
   });
 }
 

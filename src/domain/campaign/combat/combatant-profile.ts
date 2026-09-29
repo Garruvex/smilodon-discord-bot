@@ -1,13 +1,14 @@
 import { abilityModifier, savingThrowModifier, type CharacterSheet } from "../character/character-sheet.js";
 import { spellbookOf } from "../character/spell-access.js";
 import { plus } from "../dice/dice-expression.js";
-import { traitsOf, type MonsterDefinition, type WeaponDefinition } from "../rules/content-definitions.js";
+import { traitsOf, type MonsterDefinition, type MonsterSpellcasting, type WeaponDefinition } from "../rules/content-definitions.js";
+import { innateUseKey } from "../magic/spell-rules.js";
 import type { SealedContent } from "../rules/content-registry.js";
 import { abilities, type Ability } from "../rules/effects.js";
-import { legendaryResistanceKey, type Trait } from "../rules/traits.js";
+import { legendaryActionsKey, legendaryResistanceKey, type Trait } from "../rules/traits.js";
 import type { HeroStatus } from "../character/hero-status.js";
 import { armorSpeedPenalty, isWorn } from "../engine/gear.js";
-import type { AttackOption, Combatant, ZoneId } from "./combat-state.js";
+import type { AttackOption, Combatant, CombatSpellcasting, ZoneId } from "./combat-state.js";
 
 const freshTurn = { action: true, bonusAction: true, reaction: true, movement: 0, attacksLeft: 1, bonusSpellCast: false } as const;
 
@@ -119,6 +120,7 @@ export function heroCombatant(sheet: CharacterSheet, content: SealedContent, zon
     wildShapeOriginal: null,
     cooldowns: {},
     regenBlocked: false,
+    legendaryTurn: -1,
     condition: status.hp > 0 ? "active" : "stable",
     effects: [],
     concentration: null,
@@ -156,10 +158,32 @@ export function monsterAttackOptions(monster: MonsterDefinition, content: Sealed
   });
 }
 
+// A monster begins the fight with its legendary actions for the round.
+function legendaryActionUses(traits: readonly Trait[]): Readonly<Record<string, number>> {
+  const uses = traits.reduce((most, trait) => (trait.kind === "legendaryActions" ? Math.max(most, trait.uses) : most), 0);
+  return uses > 0 ? { [legendaryActionsKey]: uses } : {};
+}
+
 // A monster begins with its full Legendary Resistance.
 function legendaryResistances(traits: readonly Trait[]): Readonly<Record<string, number>> {
   const uses = traits.reduce((sum, trait) => sum + (trait.kind === "legendaryResistance" ? trait.uses : 0), 0);
   return uses > 0 ? { [legendaryResistanceKey]: uses } : {};
+}
+
+function monsterSpellcasting(casting: MonsterSpellcasting): CombatSpellcasting {
+  return {
+    attackBonus: casting.attackBonus,
+    saveDc: casting.saveDc,
+    modifier: casting.modifier,
+    spells: [...casting.spells, ...casting.innate.map((entry) => entry.spell)],
+    casterLevel: casting.casterLevel,
+    innate: Object.fromEntries(casting.innate.map((entry) => [entry.spell, entry.perDay])),
+  };
+}
+
+// Innate spells cast a number of times a day begin with all of them.
+function innateUses(casting: MonsterSpellcasting | undefined): Readonly<Record<string, number>> {
+  return Object.fromEntries((casting?.innate ?? []).flatMap((entry) => (entry.perDay === null ? [] : [[innateUseKey(entry.spell), entry.perDay] as const])));
 }
 
 export function monsterCombatant(monster: MonsterDefinition, content: SealedContent, placement: MonsterPlacement): Combatant {
@@ -178,9 +202,9 @@ export function monsterCombatant(monster: MonsterDefinition, content: SealedCont
     initiativeModifier: abilityModifier(monster.abilityScores.dex),
     saves,
     attacks,
-    spellcasting: null,
+    spellcasting: monster.spellcasting === undefined ? null : monsterSpellcasting(monster.spellcasting),
     features: [],
-    resources: { spellSlots: {}, pactSlots: {}, featureUses: legendaryResistances(monster.traits) },
+    resources: { spellSlots: { ...(monster.spellcasting?.slots ?? {}) }, pactSlots: {}, featureUses: { ...legendaryResistances(monster.traits), ...legendaryActionUses(monster.traits), ...innateUses(monster.spellcasting) } },
     traits: monster.traits,
     tactic: monster.tactic,
     fleeBelowHpFraction: placement.fleeBelowHpFraction,
@@ -194,6 +218,7 @@ export function monsterCombatant(monster: MonsterDefinition, content: SealedCont
     wildShapeOriginal: null,
     cooldowns: {},
     regenBlocked: false,
+    legendaryTurn: -1,
     condition: "active",
     effects: [],
     concentration: null,

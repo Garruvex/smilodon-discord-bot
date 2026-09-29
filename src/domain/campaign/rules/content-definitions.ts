@@ -157,6 +157,20 @@ export interface MonsterAttack {
   readonly onHit?: readonly Effect[];
 }
 
+// A monster's spellcasting: slots for the spells it prepares, and spells it casts by nature,
+// at will or a number of times a day.
+export interface MonsterSpellcasting {
+  readonly casterLevel: number;
+  readonly saveDc: number;
+  readonly attackBonus: number;
+  readonly modifier: number;
+  readonly slots: Readonly<Record<number, number>>;
+  // Cantrips and slotted spells.
+  readonly spells: readonly ContentId<"spell">[];
+  // perDay null: at will.
+  readonly innate: readonly { readonly spell: ContentId<"spell">; readonly perDay: number | null }[];
+}
+
 export interface MonsterDefinition extends DefinitionBase<"monster"> {
   readonly armorClass: number;
   // The stat block's average hit points.
@@ -170,6 +184,7 @@ export interface MonsterDefinition extends DefinitionBase<"monster"> {
   readonly traits: readonly Trait[];
   // Set on beasts only: what a Druid's Wild Shape checks (rules/wild-shape-rules.ts).
   readonly beast?: { readonly challengeRating: number; readonly flies: boolean; readonly swims: boolean };
+  readonly spellcasting?: MonsterSpellcasting;
 }
 
 // How a class casts, if at all: full (Wizard-shaped slot table), half
@@ -402,7 +417,11 @@ export function referencedContent(definition: ContentDefinition): readonly Conte
     case "condition":
       return definition.includes;
     case "monster":
-      return [...definition.attacks.map((attack) => attack.weapon), ...fromPlans];
+      return [
+        ...definition.attacks.map((attack) => attack.weapon),
+        ...(definition.spellcasting === undefined ? [] : [...definition.spellcasting.spells, ...definition.spellcasting.innate.map((entry) => entry.spell)]),
+        ...fromPlans,
+      ];
     case "class":
       return [
         ...definition.kits.flatMap((kit) => kit.equipment),

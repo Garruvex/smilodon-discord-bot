@@ -31,7 +31,7 @@ export interface DeclareRequest {
   readonly actor: Combatant;
   readonly source: ResolutionSource;
   readonly targetIds: readonly CombatantId[];
-  readonly purpose: "action" | "opportunity";
+  readonly purpose: "action" | "opportunity" | "legendary";
   readonly cost: ActionCost;
 }
 

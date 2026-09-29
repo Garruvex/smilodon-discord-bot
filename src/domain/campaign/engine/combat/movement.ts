@@ -5,7 +5,8 @@ import { avoidsOpportunityAttacks, conditionLookup } from "../../effects/effect-
 import { deadlineAfter, type Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { declareWeaponAttack } from "./combat-actions.js";
-import { continuePlan, endTurn } from "./turn-flow.js";
+import { takeLegendaryAction } from "./legendary.js";
+import { advanceTurn, continuePlan, endTurn } from "./turn-flow.js";
 import { activeEncounter, isPlayerControlled, mayActFor } from "./combat-flow.js";
 
 export const opportunityAttackTimerId = (encounterId: string, combatantId: string): string => `opportunity:${encounterId}:${combatantId}`;
@@ -147,6 +148,11 @@ export function performMove(decision: Decision, combatantId: string, kind: "move
 export function afterResolution(decision: Decision, resolution: ResolutionState): void {
   if (resolution.purpose === "opportunity") {
     nextOpportunityAttack(decision);
+    return;
+  }
+  // A legendary action between turns: another monster may act, or the next turn begins.
+  if (resolution.purpose === "legendary") {
+    if (!takeLegendaryAction(decision)) advanceTurn(decision);
     return;
   }
   const encounter = activeEncounter(decision);

@@ -7,7 +7,7 @@ import type { SealedContent } from "../rules/content-registry.js";
 import { healingPotionCost, type HouseRules } from "../rules/house-rules.js";
 import { mayWildShapeInto, wildShapeFeature, wildShapeUses } from "../rules/wild-shape-rules.js";
 import { canAct, conditionLookup, speedOf } from "../effects/effect-queries.js";
-import { castableSlotLevels, slotUnavailable, spellMaxTargets } from "../magic/spell-rules.js";
+import { castableSlotLevels, innateUseKey, slotUnavailable, spellMaxTargets } from "../magic/spell-rules.js";
 import { areEngaged, availableSlots, currentCombatant, engagedWith, isPresent, type AttackOption, type Combatant, type EncounterState } from "./combat-state.js";
 import { isWorn } from "./combatant-profile.js";
 import { spellTargetProblem, spellTargets, weaponTargetProblem, weaponTargets } from "./legal-targets.js";
@@ -65,7 +65,7 @@ export function costProblem(hero: Combatant, cost: "action" | "bonusAction", con
 
 // ------------------------------------------------------------- Weapons
 
-export function attackProblem(encounter: EncounterState, attacker: Combatant, option: AttackOption, targetId: string, purpose: "action" | "opportunity", content: SealedContent): TurnProblem | null {
+export function attackProblem(encounter: EncounterState, attacker: Combatant, option: AttackOption, targetId: string, purpose: "action" | "opportunity" | "legendary", content: SealedContent): TurnProblem | null {
   if (purpose === "action") {
     // Extra Attack: the Attack action grants more than one attack, so what
     // must still be available is an attack left in it, not the action itself
@@ -104,8 +104,15 @@ export function spellProblem(
   const spell = content.find(spellId);
   // Wild Shape: no spellcasting while shaped (SRD 5.1).
   if (caster.wildShapeOriginal !== null || casting === null || spell?.kind !== "spell" || !casting.spells.includes(spell.id)) return refuse({ code: "unknownSpell" });
-  const slot = spellSlotProblem(caster, spell, slotLevel);
-  if (slot !== null) return refuse(slot);
+  // A spell cast by nature needs no slot, only uses left; it is cast at its own level.
+  const innate = casting.innate?.[spell.id];
+  if (innate !== undefined) {
+    if (slotLevel !== spell.level) return refuse({ code: "noSpellSlot", slotLevel });
+    if (innate !== null && (caster.resources.featureUses[innateUseKey(spell.id)] ?? innate) < 1) return refuse({ code: "noUsesLeft" });
+  } else {
+    const slot = spellSlotProblem(caster, spell, slotLevel);
+    if (slot !== null) return refuse(slot);
+  }
   // A reaction spell is cast in response to something, never on the caster's turn.
   if (spell.castingTime === "reaction" || spell.castingTime === "long") return refuse({ code: "unknownSpell" });
   const bonus = spell.castingTime === "bonus-action";

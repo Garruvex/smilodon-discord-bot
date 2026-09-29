@@ -87,10 +87,15 @@ export type Trait =
   // one of the listed types since its last turn.
   | { readonly kind: "regeneration"; readonly amount: number; readonly blockedBy: readonly DamageType[] }
   // Turns this many failed saving throws a day into successes.
-  | { readonly kind: "legendaryResistance"; readonly uses: number };
+  | { readonly kind: "legendaryResistance"; readonly uses: number }
+  // Legendary actions: after another creature's turn, spends some of its actions per round (renewed at
+  // the start of its own turn) on one of these attacks, each costing this many.
+  | { readonly kind: "legendaryActions"; readonly uses: number; readonly options: readonly { readonly weapon: ContentId<"item">; readonly cost: number }[] };
 
 // Where a monster's remaining Legendary Resistance is counted (resources.featureUses).
 export const legendaryResistanceKey = "trait:legendary-resistance";
+// And its legendary actions left this round.
+export const legendaryActionsKey = "trait:legendary-actions";
 
 export type AreaAttack = Extract<Trait, { readonly kind: "areaAttack" }>;
 

@@ -186,6 +186,39 @@ function multiattackWeapons(monster, weaponByAction, notes) {
   return weapons;
 }
 
+// Spells a monster casts: slotted ones, and innate ones (at will or so many times a day).
+function spellcastingOf(monster) {
+  // The numbers are sometimes only in the text: "spell save DC 17, +9 to hit with spell attacks".
+  const entries = (monster.special_abilities ?? [])
+    .filter((ability) => ability.spellcasting !== undefined)
+    .map((ability) => {
+      const text = new RegExp("spell save DC (\\d+), \\+(\\d+) to hit").exec(ability.desc);
+      const dc = ability.spellcasting.dc ?? (text === null ? 10 : Number(text[1]));
+      const modifier = ability.spellcasting.modifier ?? (text === null ? 0 : Math.max(0, Number(text[2]) - 4));
+      return { ...ability.spellcasting, dc, modifier };
+    });
+  if (entries.length === 0) return "";
+  const idOf = (spell) => {
+    const index = spell.url.split("/").pop();
+    return `spell:${index === "hideous-laughter" ? "tashas-hideous-laughter" : index}`;
+  };
+  const best = entries.reduce((a, b) => (b.dc > a.dc ? b : a));
+  const slots = {};
+  const spells = [];
+  const innate = [];
+  for (const entry of entries) {
+    for (const [level, count] of Object.entries(entry.slots ?? {})) slots[level] = Math.max(slots[level] ?? 0, count);
+    for (const spell of entry.spells) {
+      if (spell.usage === undefined) spells.push(idOf(spell));
+      else innate.push(`{ spell: ${quote(idOf(spell))}, perDay: ${spell.usage.type === "at will" ? "null" : (spell.usage.times ?? 1)} }`);
+    }
+  }
+  const slotCode = Object.entries(slots).map(([level, count]) => `${level}: ${count}`).join(", ");
+  const level = entries.find((entry) => entry.level !== undefined)?.level ?? 1;
+  return `
+  spellcasting: { casterLevel: ${level}, saveDc: ${best.dc}, attackBonus: ${best.dc - 8}, modifier: ${best.modifier}, slots: { ${slotCode} }, spells: [${[...new Set(spells)].map(quote).join(", ")}], innate: [${innate.join(", ")}] },`;
+}
+
 // A breath weapon: a save-for-half action that recharges, shaped as a cone or line.
 function areaTraitCode(monster, action) {
   if (action.dc === undefined || action.attack_bonus !== undefined || action.usage?.type !== "recharge on roll") return null;
@@ -240,6 +273,7 @@ for (const monster of monsters) {
   const traits = [];
   const swings = multiattackWeapons(monster, weaponByAction, notes);
   if (swings.length > 1) traits.push(`{ kind: "multiattack", weapons: [${swings.map(quote).join(", ")}] }`);
+  const spellcastingCode = spellcastingOf(monster);
   const abilityNames = (monster.special_abilities ?? []).map((ability) => ability.name);
   if (abilityNames.includes("Pack Tactics")) traits.push(`{ kind: "packTactics" }`);
   if (abilityNames.includes("Nimble Escape")) traits.push(`{ kind: "nimbleEscape" }`);
@@ -259,9 +293,19 @@ for (const monster of monsters) {
       traits.push(`{ kind: "legendaryResistance", uses: ${resistance} }`);
       continue;
     }
+    if (ability.spellcasting !== undefined) continue;
     if (!["Pack Tactics", "Nimble Escape"].includes(ability.name)) notes.push(ability.name);
   }
-  for (const legendary of monster.legendary_actions ?? []) notes.push(`legendary: ${legendary.name}`);
+  // Legendary actions that are one of the monster's own attacks are played; the rest are noted.
+  const legendaryOptions = [];
+  for (const legendary of monster.legendary_actions ?? []) {
+    const cost = Number(/Costs (\d+) Actions/.exec(legendary.name)?.[1] ?? 1);
+    const key = legendary.name.replace(/ *\(.*\)/, "").toLowerCase().replace(/ attack$/, "");
+    const weapon = key === "attack" ? [...weaponByAction.values()][0] : weaponByAction.get(key);
+    if (weapon !== undefined) legendaryOptions.push(`{ weapon: ${quote(weapon)}, cost: ${cost} }`);
+    else notes.push(`legendary: ${legendary.name}`);
+  }
+  if (legendaryOptions.length > 0) traits.push(`{ kind: "legendaryActions", uses: 3, options: [${legendaryOptions.join(", ")}] }`);
   traits.push(...damageTraits(monster, notes));
   const speeds = Object.values(monster.speed ?? {}).map((text) => parseInt(text, 10)).filter(Number.isFinite);
   const walk = parseInt(monster.speed?.walk ?? "0", 10) || 0;
@@ -286,7 +330,7 @@ for (const monster of monsters) {
 ${attacks.join(",\n")},
   ],
   tactic: ${quote(tactic)},
-  traits: [${traits.join(", ")}],${beast}
+  traits: [${traits.join(", ")}],${beast}${spellcastingCode}
 });
 `);
   monsterList.push(name);

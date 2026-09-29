@@ -24,7 +24,7 @@ export const aboleth = defineMonster({
   traits: [{ kind: "multiattack", weapons: ["item:tentacle", "item:tentacle", "item:tentacle"] }],
 });
 
-// Not modeled: Bite's extra damage types are folded into one; Frightful Presence; Amphibious; legendary: Detect; legendary: Tail Attack; legendary: Wing Attack (Costs 2 Actions).
+// Not modeled: Bite's extra damage types are folded into one; Frightful Presence; Amphibious; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
 export const adultBlackDragon = defineMonster({
   id: "monster:adult-black-dragon",
   source,
@@ -39,10 +39,10 @@ export const adultBlackDragon = defineMonster({
     { weapon: "item:tail", toHit: 11, damage: plus(dice(2, 8), 6) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:acid-breath", ability: "dex", dc: 18, damage: dice(12, 8), damageType: "acid", halfOnSave: true, range: 60, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "damageImmunity", damageTypes: ["acid"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:acid-breath", ability: "dex", dc: 18, damage: dice(12, 8), damageType: "acid", halfOnSave: true, range: 60, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["acid"] }],
 });
 
-// Not modeled: Bite's extra damage types are folded into one; Frightful Presence; legendary: Detect; legendary: Tail Attack; legendary: Wing Attack (Costs 2 Actions).
+// Not modeled: Bite's extra damage types are folded into one; Frightful Presence; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
 export const adultBlueDragon = defineMonster({
   id: "monster:adult-blue-dragon",
   source,
@@ -57,10 +57,10 @@ export const adultBlueDragon = defineMonster({
     { weapon: "item:tail", toHit: 12, damage: plus(dice(2, 8), 7) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:lightning-breath", ability: "dex", dc: 19, damage: dice(12, 10), damageType: "lightning", halfOnSave: true, range: 90, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "damageImmunity", damageTypes: ["lightning"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:lightning-breath", ability: "dex", dc: 19, damage: dice(12, 10), damageType: "lightning", halfOnSave: true, range: 90, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["lightning"] }],
 });
 
-// Not modeled: Frightful Presence; Breath Weapons; legendary: Detect; legendary: Tail Attack; legendary: Wing Attack (Costs 2 Actions).
+// Not modeled: Frightful Presence; Breath Weapons; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
 export const adultBrassDragon = defineMonster({
   id: "monster:adult-brass-dragon",
   source,
@@ -75,10 +75,10 @@ export const adultBrassDragon = defineMonster({
     { weapon: "item:tail", toHit: 11, damage: plus(dice(2, 8), 6) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "damageImmunity", damageTypes: ["fire"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["fire"] }],
 });
 
-// Not modeled: Frightful Presence; Breath Weapons; Amphibious; legendary: Detect; legendary: Tail Attack; legendary: Wing Attack (Costs 2 Actions).
+// Not modeled: Frightful Presence; Breath Weapons; Amphibious; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
 export const adultBronzeDragon = defineMonster({
   id: "monster:adult-bronze-dragon",
   source,
@@ -93,10 +93,10 @@ export const adultBronzeDragon = defineMonster({
     { weapon: "item:tail", toHit: 12, damage: plus(dice(2, 8), 7) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "damageImmunity", damageTypes: ["lightning"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["lightning"] }],
 });
 
-// Not modeled: Frightful Presence; Breath Weapons; legendary: Detect; legendary: Tail Attack; legendary: Wing Attack (Costs 2 Actions).
+// Not modeled: Frightful Presence; Breath Weapons; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
 export const adultCopperDragon = defineMonster({
   id: "monster:adult-copper-dragon",
   source,
@@ -111,10 +111,10 @@ export const adultCopperDragon = defineMonster({
     { weapon: "item:tail", toHit: 11, damage: plus(dice(2, 8), 6) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "damageImmunity", damageTypes: ["acid"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["acid"] }],
 });
 
-// Not modeled: Frightful Presence; Breath Weapons; Amphibious; legendary: Detect; legendary: Tail Attack; legendary: Wing Attack (Costs 2 Actions).
+// Not modeled: Frightful Presence; Breath Weapons; Amphibious; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
 export const adultGoldDragon = defineMonster({
   id: "monster:adult-gold-dragon",
   source,
@@ -129,10 +129,10 @@ export const adultGoldDragon = defineMonster({
     { weapon: "item:tail", toHit: 14, damage: plus(dice(2, 8), 8) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "damageImmunity", damageTypes: ["fire"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["fire"] }],
 });
 
-// Not modeled: Bite's extra damage types are folded into one; Frightful Presence; Amphibious; legendary: Detect; legendary: Tail Attack; legendary: Wing Attack (Costs 2 Actions).
+// Not modeled: Bite's extra damage types are folded into one; Frightful Presence; Amphibious; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
 export const adultGreenDragon = defineMonster({
   id: "monster:adult-green-dragon",
   source,
@@ -147,10 +147,10 @@ export const adultGreenDragon = defineMonster({
     { weapon: "item:tail", toHit: 11, damage: plus(dice(2, 8), 6) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:poison-breath", ability: "con", dc: 18, damage: dice(16, 6), damageType: "poison", halfOnSave: true, range: 60, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:poison-breath", ability: "con", dc: 18, damage: dice(16, 6), damageType: "poison", halfOnSave: true, range: 60, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
 });
 
-// Not modeled: Bite's extra damage types are folded into one; Frightful Presence; legendary: Detect; legendary: Tail Attack; legendary: Wing Attack (Costs 2 Actions).
+// Not modeled: Bite's extra damage types are folded into one; Frightful Presence; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
 export const adultRedDragon = defineMonster({
   id: "monster:adult-red-dragon",
   source,
@@ -165,10 +165,10 @@ export const adultRedDragon = defineMonster({
     { weapon: "item:tail", toHit: 14, damage: plus(dice(2, 8), 8) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:fire-breath", ability: "dex", dc: 21, damage: dice(18, 6), damageType: "fire", halfOnSave: false, range: 60, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "damageImmunity", damageTypes: ["fire"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:fire-breath", ability: "dex", dc: 21, damage: dice(18, 6), damageType: "fire", halfOnSave: false, range: 60, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["fire"] }],
 });
 
-// Not modeled: Frightful Presence; Breath Weapons; legendary: Detect; legendary: Tail Attack; legendary: Wing Attack (Costs 2 Actions).
+// Not modeled: Frightful Presence; Breath Weapons; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
 export const adultSilverDragon = defineMonster({
   id: "monster:adult-silver-dragon",
   source,
@@ -183,10 +183,10 @@ export const adultSilverDragon = defineMonster({
     { weapon: "item:tail", toHit: 13, damage: plus(dice(2, 8), 8) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "damageImmunity", damageTypes: ["cold"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["cold"] }],
 });
 
-// Not modeled: Bite's extra damage types are folded into one; Frightful Presence; Ice Walk; legendary: Detect; legendary: Tail Attack; legendary: Wing Attack (Costs 2 Actions).
+// Not modeled: Bite's extra damage types are folded into one; Frightful Presence; Ice Walk; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
 export const adultWhiteDragon = defineMonster({
   id: "monster:adult-white-dragon",
   source,
@@ -201,7 +201,7 @@ export const adultWhiteDragon = defineMonster({
     { weapon: "item:tail", toHit: 11, damage: plus(dice(2, 8), 6) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:cold-breath", ability: "con", dc: 19, damage: dice(12, 8), damageType: "cold", halfOnSave: true, range: 60, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "damageImmunity", damageTypes: ["cold"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:cold-breath", ability: "con", dc: 19, damage: dice(12, 8), damageType: "cold", halfOnSave: true, range: 60, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["cold"] }],
 });
 
 // Not modeled: Whirlwind; Air Form.
@@ -220,7 +220,7 @@ export const airElemental = defineMonster({
   traits: [{ kind: "multiattack", weapons: ["item:slam", "item:slam"] }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageResistance", damageTypes: ["lightning", "thunder", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:grappled", "condition:paralyzed", "condition:poisoned", "condition:prone", "condition:restrained"] }],
 });
 
-// Not modeled: Bite's extra damage types are folded into one; Frightful Presence; Amphibious; legendary: Detect; legendary: Tail Attack; legendary: Wing Attack (Costs 2 Actions).
+// Not modeled: Bite's extra damage types are folded into one; Frightful Presence; Amphibious; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
 export const ancientBlackDragon = defineMonster({
   id: "monster:ancient-black-dragon",
   source,
@@ -235,10 +235,10 @@ export const ancientBlackDragon = defineMonster({
     { weapon: "item:tail", toHit: 15, damage: plus(dice(2, 8), 8) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:acid-breath", ability: "dex", dc: 22, damage: dice(15, 8), damageType: "acid", halfOnSave: true, range: 90, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "damageImmunity", damageTypes: ["acid"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:acid-breath", ability: "dex", dc: 22, damage: dice(15, 8), damageType: "acid", halfOnSave: true, range: 90, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["acid"] }],
 });
 
-// Not modeled: Bite's extra damage types are folded into one; Frightful Presence; legendary: Detect; legendary: Tail Attack; legendary: Wing Attack (Costs 2 Actions).
+// Not modeled: Bite's extra damage types are folded into one; Frightful Presence; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
 export const ancientBlueDragon = defineMonster({
   id: "monster:ancient-blue-dragon",
   source,
@@ -253,10 +253,10 @@ export const ancientBlueDragon = defineMonster({
     { weapon: "item:tail", toHit: 16, damage: plus(dice(2, 8), 9) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:lightning-breath", ability: "dex", dc: 23, damage: dice(16, 10), damageType: "lightning", halfOnSave: true, range: 120, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "damageImmunity", damageTypes: ["lightning"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:lightning-breath", ability: "dex", dc: 23, damage: dice(16, 10), damageType: "lightning", halfOnSave: true, range: 120, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["lightning"] }],
 });
 
-// Not modeled: Frightful Presence; Breath Weapons; Change Shape; legendary: Detect; legendary: Tail Attack; legendary: Wing Attack (Costs 2 Actions).
+// Not modeled: Frightful Presence; Breath Weapons; Change Shape; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
 export const ancientBrassDragon = defineMonster({
   id: "monster:ancient-brass-dragon",
   source,
@@ -271,10 +271,10 @@ export const ancientBrassDragon = defineMonster({
     { weapon: "item:tail", toHit: 14, damage: plus(dice(2, 8), 8) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "damageImmunity", damageTypes: ["fire"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["fire"] }],
 });
 
-// Not modeled: Frightful Presence; Breath Weapons; Change Shape; Amphibious; legendary: Detect; legendary: Tail Attack; legendary: Wing Attack (Costs 2 Actions).
+// Not modeled: Frightful Presence; Breath Weapons; Change Shape; Amphibious; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
 export const ancientBronzeDragon = defineMonster({
   id: "monster:ancient-bronze-dragon",
   source,
@@ -289,10 +289,10 @@ export const ancientBronzeDragon = defineMonster({
     { weapon: "item:tail", toHit: 16, damage: plus(dice(2, 8), 9) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "damageImmunity", damageTypes: ["lightning"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["lightning"] }],
 });
 
-// Not modeled: Frightful Presence; Breath Weapons; Change Shape; legendary: Detect; legendary: Tail Attack; legendary: Wing Attack (Costs 2 Actions).
+// Not modeled: Frightful Presence; Breath Weapons; Change Shape; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
 export const ancientCopperDragon = defineMonster({
   id: "monster:ancient-copper-dragon",
   source,
@@ -307,10 +307,10 @@ export const ancientCopperDragon = defineMonster({
     { weapon: "item:tail", toHit: 15, damage: plus(dice(2, 8), 8) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "damageImmunity", damageTypes: ["acid"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["acid"] }],
 });
 
-// Not modeled: Frightful Presence; Breath Weapons; Change Shape; Amphibious; legendary: Detect; legendary: Tail Attack; legendary: Wing Attack (Costs 2 Actions).
+// Not modeled: Frightful Presence; Breath Weapons; Change Shape; Amphibious; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
 export const ancientGoldDragon = defineMonster({
   id: "monster:ancient-gold-dragon",
   source,
@@ -325,10 +325,10 @@ export const ancientGoldDragon = defineMonster({
     { weapon: "item:tail", toHit: 17, damage: plus(dice(2, 8), 10) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "damageImmunity", damageTypes: ["fire"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["fire"] }],
 });
 
-// Not modeled: Bite's extra damage types are folded into one; Frightful Presence; Amphibious; legendary: Detect; legendary: Tail Attack; legendary: Wing Attack (Costs 2 Actions).
+// Not modeled: Bite's extra damage types are folded into one; Frightful Presence; Amphibious; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
 export const ancientGreenDragon = defineMonster({
   id: "monster:ancient-green-dragon",
   source,
@@ -343,10 +343,10 @@ export const ancientGreenDragon = defineMonster({
     { weapon: "item:tail", toHit: 15, damage: plus(dice(2, 8), 8) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:poison-breath", ability: "con", dc: 22, damage: dice(22, 6), damageType: "poison", halfOnSave: true, range: 90, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:poison-breath", ability: "con", dc: 22, damage: dice(22, 6), damageType: "poison", halfOnSave: true, range: 90, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
 });
 
-// Not modeled: Bite's extra damage types are folded into one; Frightful Presence; legendary: Detect; legendary: Tail Attack; legendary: Wing Attack (Costs 2 Actions).
+// Not modeled: Bite's extra damage types are folded into one; Frightful Presence; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
 export const ancientRedDragon = defineMonster({
   id: "monster:ancient-red-dragon",
   source,
@@ -361,10 +361,10 @@ export const ancientRedDragon = defineMonster({
     { weapon: "item:tail", toHit: 17, damage: plus(dice(2, 8), 10) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:fire-breath", ability: "dex", dc: 24, damage: dice(26, 6), damageType: "fire", halfOnSave: true, range: 90, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "damageImmunity", damageTypes: ["fire"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:fire-breath", ability: "dex", dc: 24, damage: dice(26, 6), damageType: "fire", halfOnSave: true, range: 90, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["fire"] }],
 });
 
-// Not modeled: Frightful Presence; Breath Weapons; Change Shape; legendary: Detect; legendary: Tail Attack; legendary: Wing Attack (Costs 2 Actions).
+// Not modeled: Frightful Presence; Breath Weapons; Change Shape; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
 export const ancientSilverDragon = defineMonster({
   id: "monster:ancient-silver-dragon",
   source,
@@ -379,10 +379,10 @@ export const ancientSilverDragon = defineMonster({
     { weapon: "item:tail", toHit: 17, damage: plus(dice(2, 8), 10) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "damageImmunity", damageTypes: ["cold"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["cold"] }],
 });
 
-// Not modeled: Bite's extra damage types are folded into one; Frightful Presence; Ice Walk; legendary: Detect; legendary: Tail Attack; legendary: Wing Attack (Costs 2 Actions).
+// Not modeled: Bite's extra damage types are folded into one; Frightful Presence; Ice Walk; legendary: Detect; legendary: Wing Attack (Costs 2 Actions).
 export const ancientWhiteDragon = defineMonster({
   id: "monster:ancient-white-dragon",
   source,
@@ -397,10 +397,10 @@ export const ancientWhiteDragon = defineMonster({
     { weapon: "item:tail", toHit: 14, damage: plus(dice(2, 8), 8) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:cold-breath", ability: "con", dc: 22, damage: dice(16, 8), damageType: "cold", halfOnSave: false, range: 90, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "damageImmunity", damageTypes: ["cold"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:cold-breath", ability: "con", dc: 22, damage: dice(16, 8), damageType: "cold", halfOnSave: false, range: 90, cooldown: 3 }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:tail", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["cold"] }],
 });
 
-// Not modeled: Roar; Inscrutable; Magic Weapons; Spellcasting; legendary: Claw Attack; legendary: Teleport (Costs 2 Actions); legendary: Cast a Spell (Costs 3 Actions); Immunity to mundane weapons is played as resistance.
+// Not modeled: Roar; Inscrutable; Magic Weapons; legendary: Teleport (Costs 2 Actions); legendary: Cast a Spell (Costs 3 Actions); Immunity to mundane weapons is played as resistance.
 export const androsphinx = defineMonster({
   id: "monster:androsphinx",
   source,
@@ -413,7 +413,8 @@ export const androsphinx = defineMonster({
     { weapon: "item:claw", toHit: 12, damage: plus(dice(2, 10), 6) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:claw", "item:claw"] }, { kind: "damageImmunity", damageTypes: ["psychic"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:claw", "item:claw"] }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:claw", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["psychic"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened"] }],
+  spellcasting: { casterLevel: 12, saveDc: 18, attackBonus: 10, modifier: 10, slots: { 1: 4, 2: 3, 3: 3, 4: 3, 5: 2, 6: 1 }, spells: ["spell:sacred-flame", "spell:spare-the-dying", "spell:thaumaturgy", "spell:command", "spell:detect-evil-and-good", "spell:detect-magic", "spell:lesser-restoration", "spell:zone-of-truth", "spell:dispel-magic", "spell:tongues", "spell:banishment", "spell:freedom-of-movement", "spell:flame-strike", "spell:greater-restoration", "spell:heroes-feast"], innate: [] },
 });
 
 // Not modeled: Antimagic Susceptibility; False Appearance.
@@ -465,7 +466,7 @@ export const ape = defineMonster({
   beast: { challengeRating: 0.5, flies: false, swims: false },
 });
 
-// Not modeled: Magic Resistance; Spellcasting.
+// Not modeled: Magic Resistance.
 export const archmage = defineMonster({
   id: "monster:archmage",
   source,
@@ -479,6 +480,7 @@ export const archmage = defineMonster({
   ],
   tactic: "skirmisher",
   traits: [{ kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }],
+  spellcasting: { casterLevel: 18, saveDc: 17, attackBonus: 9, modifier: 9, slots: { 1: 4, 2: 3, 3: 3, 4: 3, 5: 3, 6: 1, 7: 1, 8: 1, 9: 1 }, spells: ["spell:fire-bolt", "spell:light", "spell:mage-hand", "spell:prestidigitation", "spell:shocking-grasp", "spell:detect-magic", "spell:identify", "spell:mage-armor", "spell:magic-missile", "spell:detect-thoughts", "spell:mirror-image", "spell:misty-step", "spell:counterspell", "spell:fly", "spell:lightning-bolt", "spell:banishment", "spell:fire-shield", "spell:stoneskin", "spell:cone-of-cold", "spell:scrying", "spell:wall-of-force", "spell:globe-of-invulnerability", "spell:teleport", "spell:mind-blank", "spell:time-stop"], innate: [{ spell: "spell:disguise-self", perDay: null }, { spell: "spell:invisibility", perDay: null }] },
 });
 
 // Not modeled: Shortsword's extra damage types are folded into one; Light Crossbow's extra damage types are folded into one; Assassinate; Evasion; Sneak Attack (1/Turn).
@@ -992,7 +994,7 @@ export const cloaker = defineMonster({
   traits: [{ kind: "multiattack", weapons: ["item:bite", "item:tail-slashing"] }],
 });
 
-// Not modeled: Keen Smell; Innate Spellcasting.
+// Not modeled: Keen Smell.
 export const cloudGiant = defineMonster({
   id: "monster:cloud-giant",
   source,
@@ -1007,6 +1009,7 @@ export const cloudGiant = defineMonster({
   ],
   tactic: "brute",
   traits: [{ kind: "multiattack", weapons: ["item:morningstar", "item:morningstar"] }],
+  spellcasting: { casterLevel: 1, saveDc: 10, attackBonus: 2, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:detect-magic", perDay: null }, { spell: "spell:fog-cloud", perDay: null }, { spell: "spell:light", perDay: null }, { spell: "spell:feather-fall", perDay: 3 }, { spell: "spell:fly", perDay: 3 }, { spell: "spell:misty-step", perDay: 3 }, { spell: "spell:telekinesis", perDay: 3 }, { spell: "spell:control-weather", perDay: 1 }, { spell: "spell:gaseous-form", perDay: 1 }] },
 });
 
 export const cockatrice = defineMonster({
@@ -1072,7 +1075,7 @@ export const copperDragonWyrmling = defineMonster({
   traits: [{ kind: "damageImmunity", damageTypes: ["acid"] }],
 });
 
-// Not modeled: Change Shape; Innate Spellcasting; Magic Weapons; Shielded Mind; Immunity to mundane weapons is played as resistance.
+// Not modeled: Change Shape; Magic Weapons; Shielded Mind; Immunity to mundane weapons is played as resistance.
 export const couatl = defineMonster({
   id: "monster:couatl",
   source,
@@ -1087,6 +1090,7 @@ export const couatl = defineMonster({
   ],
   tactic: "brute",
   traits: [{ kind: "damageImmunity", damageTypes: ["psychic"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing", "radiant"] }],
+  spellcasting: { casterLevel: 1, saveDc: 14, attackBonus: 6, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:detect-evil-and-good", perDay: null }, { spell: "spell:detect-magic", perDay: null }, { spell: "spell:detect-thoughts", perDay: null }, { spell: "spell:bless", perDay: 3 }, { spell: "spell:create-food-and-water", perDay: 3 }, { spell: "spell:cure-wounds", perDay: 3 }, { spell: "spell:lesser-restoration", perDay: 3 }, { spell: "spell:protection-from-poison", perDay: 3 }, { spell: "spell:sanctuary", perDay: 3 }, { spell: "spell:shield", perDay: 3 }, { spell: "spell:dream", perDay: 1 }, { spell: "spell:greater-restoration", perDay: 1 }, { spell: "spell:scrying", perDay: 1 }] },
 });
 
 // Not modeled: Amphibious.
@@ -1106,7 +1110,7 @@ export const crab = defineMonster({
   beast: { challengeRating: 0, flies: false, swims: true },
 });
 
-// Not modeled: Dark Devotion; Spellcasting.
+// Not modeled: Dark Devotion.
 export const cultFanatic = defineMonster({
   id: "monster:cult-fanatic",
   source,
@@ -1120,6 +1124,7 @@ export const cultFanatic = defineMonster({
   ],
   tactic: "skirmisher",
   traits: [{ kind: "multiattack", weapons: ["item:dagger", "item:dagger"] }],
+  spellcasting: { casterLevel: 4, saveDc: 11, attackBonus: 3, modifier: 3, slots: { 1: 4, 2: 3 }, spells: ["spell:light", "spell:sacred-flame", "spell:thaumaturgy", "spell:command", "spell:inflict-wounds", "spell:shield-of-faith", "spell:hold-person", "spell:spiritual-weapon"], innate: [] },
 });
 
 // Not modeled: Darkness Aura; Echolocation; False Appearance.
@@ -1154,7 +1159,7 @@ export const deathDog = defineMonster({
   traits: [{ kind: "multiattack", weapons: ["item:bite", "item:bite"] }],
 });
 
-// Not modeled: Stone Camouflage; Gnome Cunning; Innate Spellcasting.
+// Not modeled: Stone Camouflage; Gnome Cunning.
 export const deepGnomeSvirfneblin = defineMonster({
   id: "monster:deep-gnome-svirfneblin",
   source,
@@ -1169,6 +1174,7 @@ export const deepGnomeSvirfneblin = defineMonster({
   ],
   tactic: "brute",
   traits: [],
+  spellcasting: { casterLevel: 1, saveDc: 11, attackBonus: 3, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:nondetection", perDay: null }, { spell: "spell:blindness-deafness", perDay: 1 }, { spell: "spell:blur", perDay: 1 }, { spell: "spell:disguise-self", perDay: 1 }] },
 });
 
 export const deer = defineMonster({
@@ -1187,7 +1193,7 @@ export const deer = defineMonster({
   beast: { challengeRating: 0, flies: false, swims: false },
 });
 
-// Not modeled: Mace's extra damage types are folded into one; Healing Touch; Change Shape; Angelic Weapons; Innate Spellcasting; Magic Resistance.
+// Not modeled: Mace's extra damage types are folded into one; Healing Touch; Change Shape; Angelic Weapons; Magic Resistance.
 export const deva = defineMonster({
   id: "monster:deva",
   source,
@@ -1201,9 +1207,10 @@ export const deva = defineMonster({
   ],
   tactic: "brute",
   traits: [{ kind: "multiattack", weapons: ["item:mace", "item:mace"] }, { kind: "damageResistance", damageTypes: ["radiant", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened"] }],
+  spellcasting: { casterLevel: 1, saveDc: 17, attackBonus: 9, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:detect-evil-and-good", perDay: null }, { spell: "spell:commune", perDay: 1 }, { spell: "spell:raise-dead", perDay: 1 }] },
 });
 
-// Not modeled: Create Whirlwind; Elemental Demise; Innate Spellcasting.
+// Not modeled: Create Whirlwind; Elemental Demise.
 export const djinni = defineMonster({
   id: "monster:djinni",
   source,
@@ -1217,6 +1224,7 @@ export const djinni = defineMonster({
   ],
   tactic: "brute",
   traits: [{ kind: "multiattack", weapons: ["item:scimitar", "item:scimitar", "item:scimitar"] }, { kind: "damageImmunity", damageTypes: ["lightning", "thunder"] }],
+  spellcasting: { casterLevel: 1, saveDc: 17, attackBonus: 9, modifier: 9, slots: {  }, spells: [], innate: [{ spell: "spell:detect-evil-and-good", perDay: null }, { spell: "spell:detect-magic", perDay: null }, { spell: "spell:thunderwave", perDay: null }, { spell: "spell:create-food-and-water", perDay: 3 }, { spell: "spell:tongues", perDay: 3 }, { spell: "spell:wind-walk", perDay: 3 }, { spell: "spell:conjure-elemental", perDay: 1 }, { spell: "spell:creation", perDay: 1 }, { spell: "spell:gaseous-form", perDay: 1 }, { spell: "spell:invisibility", perDay: 1 }, { spell: "spell:major-image", perDay: 1 }, { spell: "spell:plane-shift", perDay: 1 }] },
 });
 
 // Not modeled: Read Thoughts; Shapechanger; Ambusher; Surprise Attack.
@@ -1286,7 +1294,7 @@ export const dretch = defineMonster({
   traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claws"] }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageResistance", damageTypes: ["cold", "fire", "lightning"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
 });
 
-// Not modeled: Bite's extra damage types are folded into one; Longsword; Longbow's extra damage types are folded into one; Fey Ancestry; Innate Spellcasting; Spider Climb; Sunlight Sensitivity; Web Walker.
+// Not modeled: Bite's extra damage types are folded into one; Longsword; Longbow's extra damage types are folded into one; Fey Ancestry; Spider Climb; Sunlight Sensitivity; Web Walker.
 export const drider = defineMonster({
   id: "monster:drider",
   source,
@@ -1301,9 +1309,10 @@ export const drider = defineMonster({
   ],
   tactic: "brute",
   traits: [],
+  spellcasting: { casterLevel: 1, saveDc: 13, attackBonus: 5, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:dancing-lights", perDay: null }, { spell: "spell:darkness", perDay: 1 }, { spell: "spell:faerie-fire", perDay: 1 }] },
 });
 
-// Not modeled: Fey Ancestry; Innate Spellcasting; Sunlight Sensitivity.
+// Not modeled: Fey Ancestry; Sunlight Sensitivity.
 export const drow = defineMonster({
   id: "monster:drow",
   source,
@@ -1318,9 +1327,10 @@ export const drow = defineMonster({
   ],
   tactic: "brute",
   traits: [],
+  spellcasting: { casterLevel: 1, saveDc: 11, attackBonus: 3, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:dancing-lights", perDay: null }, { spell: "spell:darkness", perDay: 1 }, { spell: "spell:faerie-fire", perDay: 1 }] },
 });
 
-// Not modeled: No weapon attack; it deals no damage yet; Quarterstaff; Spellcasting.
+// Not modeled: No weapon attack; it deals no damage yet; Quarterstaff.
 export const druid = defineMonster({
   id: "monster:druid",
   source,
@@ -1334,9 +1344,10 @@ export const druid = defineMonster({
   ],
   tactic: "brute",
   traits: [],
+  spellcasting: { casterLevel: 4, saveDc: 12, attackBonus: 4, modifier: 4, slots: { 1: 4, 2: 3 }, spells: ["spell:druidcraft", "spell:produce-flame", "spell:shillelagh", "spell:entangle", "spell:longstrider", "spell:speak-with-animals", "spell:thunderwave", "spell:animal-messenger", "spell:barkskin"], innate: [] },
 });
 
-// Not modeled: Fey Charm; Innate Spellcasting; Magic Resistance; Speak with Beasts and Plants; Tree Stride.
+// Not modeled: Fey Charm; Magic Resistance; Speak with Beasts and Plants; Tree Stride.
 export const dryad = defineMonster({
   id: "monster:dryad",
   source,
@@ -1350,6 +1361,7 @@ export const dryad = defineMonster({
   ],
   tactic: "brute",
   traits: [],
+  spellcasting: { casterLevel: 1, saveDc: 14, attackBonus: 6, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:druidcraft", perDay: null }, { spell: "spell:entangle", perDay: 3 }, { spell: "spell:goodberry", perDay: 3 }, { spell: "spell:barkskin", perDay: 1 }, { spell: "spell:pass-without-trace", perDay: 1 }, { spell: "spell:shillelagh", perDay: 1 }] },
 });
 
 // Not modeled: Enlarge; Invisibility; Duergar Resilience; Sunlight Sensitivity.
@@ -1369,7 +1381,7 @@ export const duergar = defineMonster({
   traits: [{ kind: "damageResistance", damageTypes: ["poison"] }],
 });
 
-// Not modeled: Blinding Breath; Death Burst; Innate Spellcasting.
+// Not modeled: Blinding Breath; Death Burst.
 export const dustMephit = defineMonster({
   id: "monster:dust-mephit",
   source,
@@ -1383,6 +1395,7 @@ export const dustMephit = defineMonster({
   ],
   tactic: "brute",
   traits: [{ kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageVulnerability", damageTypes: ["fire"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  spellcasting: { casterLevel: 1, saveDc: 10, attackBonus: 2, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:sleep", perDay: 1 }] },
 });
 
 // Not modeled: Keen Sight.
@@ -1418,7 +1431,7 @@ export const earthElemental = defineMonster({
   traits: [{ kind: "multiattack", weapons: ["item:slam", "item:slam"] }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "damageVulnerability", damageTypes: ["thunder"] }, { kind: "conditionImmunity", conditions: ["condition:paralyzed", "condition:poisoned"] }],
 });
 
-// Not modeled: Scimitar's extra damage types are folded into one; Elemental Demise; Innate Spellcasting.
+// Not modeled: Scimitar's extra damage types are folded into one; Elemental Demise.
 export const efreeti = defineMonster({
   id: "monster:efreeti",
   source,
@@ -1433,6 +1446,7 @@ export const efreeti = defineMonster({
   ],
   tactic: "brute",
   traits: [{ kind: "multiattack", weapons: ["item:scimitar", "item:scimitar"] }, { kind: "damageImmunity", damageTypes: ["fire"] }],
+  spellcasting: { casterLevel: 1, saveDc: 15, attackBonus: 7, modifier: 7, slots: {  }, spells: [], innate: [{ spell: "spell:detect-magic", perDay: null }, { spell: "spell:enlarge-reduce", perDay: 3 }, { spell: "spell:tongues", perDay: 3 }, { spell: "spell:conjure-elemental", perDay: 1 }, { spell: "spell:gaseous-form", perDay: 1 }, { spell: "spell:invisibility", perDay: 1 }, { spell: "spell:major-image", perDay: 1 }, { spell: "spell:plane-shift", perDay: 1 }, { spell: "spell:wall-of-fire", perDay: 1 }] },
 });
 
 // Not modeled: Trampling Charge.
@@ -2078,7 +2092,7 @@ export const gibberingMouther = defineMonster({
   traits: [{ kind: "conditionImmunity", conditions: ["condition:prone"] }],
 });
 
-// Not modeled: Innate Spellcasting; Magic Resistance.
+// Not modeled: Magic Resistance.
 export const glabrezu = defineMonster({
   id: "monster:glabrezu",
   source,
@@ -2093,6 +2107,7 @@ export const glabrezu = defineMonster({
   ],
   tactic: "brute",
   traits: [{ kind: "multiattack", weapons: ["item:pincer", "item:pincer", "item:fist", "item:fist"] }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageResistance", damageTypes: ["cold", "fire", "lightning", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  spellcasting: { casterLevel: 1, saveDc: 16, attackBonus: 8, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:darkness", perDay: null }, { spell: "spell:detect-magic", perDay: null }, { spell: "spell:dispel-magic", perDay: null }, { spell: "spell:confusion", perDay: 1 }, { spell: "spell:fly", perDay: 1 }, { spell: "spell:power-word-stun", perDay: 1 }] },
 });
 
 // Not modeled: Spear; Brave; Brute.
@@ -2243,7 +2258,7 @@ export const grimlock = defineMonster({
   traits: [{ kind: "conditionImmunity", conditions: ["condition:blinded"] }],
 });
 
-// Not modeled: Spit Poison; Rejuvenation; Spellcasting.
+// Not modeled: Spit Poison; Rejuvenation.
 export const guardianNaga = defineMonster({
   id: "monster:guardian-naga",
   source,
@@ -2257,9 +2272,10 @@ export const guardianNaga = defineMonster({
   ],
   tactic: "brute",
   traits: [{ kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:poisoned"] }],
+  spellcasting: { casterLevel: 11, saveDc: 16, attackBonus: 8, modifier: 8, slots: { 1: 4, 2: 3, 3: 3, 4: 3, 5: 2, 6: 1 }, spells: ["spell:mending", "spell:sacred-flame", "spell:thaumaturgy", "spell:command", "spell:cure-wounds", "spell:shield-of-faith", "spell:calm-emotions", "spell:hold-person", "spell:bestow-curse", "spell:clairvoyance", "spell:banishment", "spell:freedom-of-movement", "spell:flame-strike", "spell:geas", "spell:true-seeing"], innate: [] },
 });
 
-// Not modeled: Inscrutable; Magic Weapons; Spellcasting; legendary: Claw Attack; legendary: Teleport (Costs 2 Actions); legendary: Cast a Spell (Costs 3 Actions).
+// Not modeled: Inscrutable; Magic Weapons; legendary: Teleport (Costs 2 Actions); legendary: Cast a Spell (Costs 3 Actions).
 export const gynosphinx = defineMonster({
   id: "monster:gynosphinx",
   source,
@@ -2272,7 +2288,8 @@ export const gynosphinx = defineMonster({
     { weapon: "item:claw", toHit: 9, damage: plus(dice(2, 8), 4) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:claw", "item:claw"] }, { kind: "damageImmunity", damageTypes: ["psychic"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:claw", "item:claw"] }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:claw", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["psychic"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened"] }],
+  spellcasting: { casterLevel: 9, saveDc: 16, attackBonus: 8, modifier: 8, slots: { 1: 4, 2: 3, 3: 3, 4: 3, 5: 1 }, spells: ["spell:mage-hand", "spell:minor-illusion", "spell:prestidigitation", "spell:detect-magic", "spell:identify", "spell:shield", "spell:darkness", "spell:locate-object", "spell:suggestion", "spell:dispel-magic", "spell:remove-curse", "spell:tongues", "spell:banishment", "spell:greater-invisibility", "spell:legend-lore"], innate: [] },
 });
 
 // Not modeled: Longsword.
@@ -2493,7 +2510,7 @@ export const iceDevil = defineMonster({
   traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claws", "item:tail"] }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
 });
 
-// Not modeled: Claws's extra damage types are folded into one; Death Burst; False Appearance; Innate Spellcasting.
+// Not modeled: Claws's extra damage types are folded into one; Death Burst; False Appearance.
 export const iceMephit = defineMonster({
   id: "monster:ice-mephit",
   source,
@@ -2507,6 +2524,7 @@ export const iceMephit = defineMonster({
   ],
   tactic: "brute",
   traits: [{ kind: "areaAttack", weapon: "item:frost-breath", ability: "dex", dc: 10, damage: dice(2, 4), damageType: "cold", halfOnSave: true, range: 15, cooldown: 6 }, { kind: "damageImmunity", damageTypes: ["cold", "poison"] }, { kind: "damageVulnerability", damageTypes: ["bludgeoning", "fire"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  spellcasting: { casterLevel: 1, saveDc: 10, attackBonus: 2, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:fog-cloud", perDay: 1 }] },
 });
 
 // Not modeled: Invisibility; Shapechanger; Devil's Sight; Magic Resistance.
@@ -2626,7 +2644,7 @@ export const kraken = defineMonster({
   traits: [{ kind: "multiattack", weapons: ["item:tentacle", "item:tentacle", "item:tentacle"] }, { kind: "damageImmunity", damageTypes: ["lightning"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:frightened", "condition:paralyzed"] }],
 });
 
-// Not modeled: Intoxicating Touch; Innate Spellcasting.
+// Not modeled: Intoxicating Touch.
 export const lamia = defineMonster({
   id: "monster:lamia",
   source,
@@ -2641,6 +2659,7 @@ export const lamia = defineMonster({
   ],
   tactic: "brute",
   traits: [{ kind: "multiattack", weapons: ["item:claws", "item:dagger"] }],
+  spellcasting: { casterLevel: 1, saveDc: 13, attackBonus: 5, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:disguise-self", perDay: null }, { spell: "spell:major-image", perDay: null }, { spell: "spell:charm-person", perDay: 3 }, { spell: "spell:mirror-image", perDay: 3 }, { spell: "spell:scrying", perDay: 3 }, { spell: "spell:suggestion", perDay: 3 }, { spell: "spell:geas", perDay: 1 }] },
 });
 
 // Not modeled: Devil's Sight; Hellish Rejuvenation.
@@ -2659,7 +2678,7 @@ export const lemure = defineMonster({
   traits: [{ kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageResistance", damageTypes: ["cold"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:poisoned"] }],
 });
 
-// Not modeled: Rejuvenation; Spellcasting; Turn Resistance; legendary: Cantrip; legendary: Paralyzing Touch (Costs 2 Actions); legendary: Frightening Gaze (Costs 2 Actions); legendary: Disrupt Life (Costs 3 Actions); Immunity to mundane weapons is played as resistance.
+// Not modeled: Rejuvenation; Turn Resistance; legendary: Cantrip; legendary: Frightening Gaze (Costs 2 Actions); legendary: Disrupt Life (Costs 3 Actions); Immunity to mundane weapons is played as resistance.
 export const lich = defineMonster({
   id: "monster:lich",
   source,
@@ -2672,7 +2691,8 @@ export const lich = defineMonster({
     { weapon: "item:paralyzing-touch", toHit: 12, damage: dice(3, 6), onHit: [{ kind: "conditionUnlessSave", target: "target", ability: "con", dc: 18, condition: "condition:paralyzed" }] },
   ],
   tactic: "brute",
-  traits: [{ kind: "legendaryResistance", uses: 3 }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing", "cold", "lightning", "necrotic"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:paralyzed", "condition:poisoned"] }],
+  traits: [{ kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:paralyzing-touch", cost: 2 }] }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing", "cold", "lightning", "necrotic"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:paralyzed", "condition:poisoned"] }],
+  spellcasting: { casterLevel: 18, saveDc: 20, attackBonus: 12, modifier: 12, slots: { 1: 4, 2: 3, 3: 3, 4: 3, 5: 3, 6: 1, 7: 1, 8: 1, 9: 1 }, spells: ["spell:mage-hand", "spell:prestidigitation", "spell:ray-of-frost", "spell:detect-magic", "spell:magic-missile", "spell:shield", "spell:thunderwave", "spell:acid-arrow", "spell:detect-thoughts", "spell:invisibility", "spell:mirror-image", "spell:animate-dead", "spell:counterspell", "spell:dispel-magic", "spell:fireball", "spell:blight", "spell:dimension-door", "spell:cloudkill", "spell:scrying", "spell:disintegrate", "spell:globe-of-invulnerability", "spell:finger-of-death", "spell:plane-shift", "spell:dominate-monster", "spell:power-word-stun", "spell:power-word-kill"], innate: [] },
 });
 
 // Not modeled: Keen Smell; Pounce; Running Leap.
@@ -2709,7 +2729,6 @@ export const lizard = defineMonster({
   beast: { challengeRating: 0, flies: false, swims: false },
 });
 
-// Not modeled: Spellcasting.
 export const mage = defineMonster({
   id: "monster:mage",
   source,
@@ -2723,9 +2742,10 @@ export const mage = defineMonster({
   ],
   tactic: "skirmisher",
   traits: [],
+  spellcasting: { casterLevel: 9, saveDc: 14, attackBonus: 6, modifier: 6, slots: { 1: 4, 2: 3, 3: 3, 4: 3, 5: 1 }, spells: ["spell:fire-bolt", "spell:light", "spell:mage-hand", "spell:prestidigitation", "spell:detect-magic", "spell:mage-armor", "spell:magic-missile", "spell:shield", "spell:misty-step", "spell:suggestion", "spell:counterspell", "spell:fireball", "spell:fly", "spell:greater-invisibility", "spell:ice-storm", "spell:cone-of-cold"], innate: [] },
 });
 
-// Not modeled: Claws's extra damage types are folded into one; Death Burst; False Appearance; Innate Spellcasting.
+// Not modeled: Claws's extra damage types are folded into one; Death Burst; False Appearance.
 export const magmaMephit = defineMonster({
   id: "monster:magma-mephit",
   source,
@@ -2739,6 +2759,7 @@ export const magmaMephit = defineMonster({
   ],
   tactic: "brute",
   traits: [{ kind: "areaAttack", weapon: "item:fire-breath", ability: "dex", dc: 11, damage: dice(2, 6), damageType: "fire", halfOnSave: true, range: 15, cooldown: 6 }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageVulnerability", damageTypes: ["cold"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  spellcasting: { casterLevel: 1, saveDc: 10, attackBonus: 2, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:heat-metal", perDay: 1 }] },
 });
 
 // Not modeled: Death Burst; Ignited Illumination.
@@ -2963,7 +2984,7 @@ export const mummy = defineMonster({
   traits: [{ kind: "damageImmunity", damageTypes: ["necrotic", "poison"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "damageVulnerability", damageTypes: ["fire"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:paralyzed", "condition:poisoned"] }],
 });
 
-// Not modeled: Rotting Fist's extra damage types are folded into one; Dreadful Glare; Magic Resistance; Rejuvenation; Spellcasting; legendary: Attack; legendary: Blinding Dust; legendary: Blasphemous Word (Costs 2 Actions); legendary: Channel Negative Energy (Costs 2 Actions); legendary: Whirlwind of Sand (Costs 2 Actions); Immunity to mundane weapons is played as resistance.
+// Not modeled: Rotting Fist's extra damage types are folded into one; Dreadful Glare; Magic Resistance; Rejuvenation; legendary: Blinding Dust; legendary: Blasphemous Word (Costs 2 Actions); legendary: Channel Negative Energy (Costs 2 Actions); legendary: Whirlwind of Sand (Costs 2 Actions); Immunity to mundane weapons is played as resistance.
 export const mummyLord = defineMonster({
   id: "monster:mummy-lord",
   source,
@@ -2976,7 +2997,8 @@ export const mummyLord = defineMonster({
     { weapon: "item:rotting-fist", toHit: 9, damage: combine(plus(dice(3, 6), 4), dice(6, 6)) },
   ],
   tactic: "brute",
-  traits: [{ kind: "damageImmunity", damageTypes: ["necrotic", "poison"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "damageVulnerability", damageTypes: ["fire"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:paralyzed", "condition:poisoned"] }],
+  traits: [{ kind: "legendaryActions", uses: 3, options: [{ weapon: "item:rotting-fist", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["necrotic", "poison"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "damageVulnerability", damageTypes: ["fire"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:paralyzed", "condition:poisoned"] }],
+  spellcasting: { casterLevel: 10, saveDc: 17, attackBonus: 9, modifier: 9, slots: { 1: 4, 2: 3, 3: 3, 4: 3, 5: 2, 6: 1 }, spells: ["spell:sacred-flame", "spell:thaumaturgy", "spell:command", "spell:guiding-bolt", "spell:shield-of-faith", "spell:hold-person", "spell:silence", "spell:spiritual-weapon", "spell:animate-dead", "spell:dispel-magic", "spell:divination", "spell:guardian-of-faith", "spell:contagion", "spell:insect-plague", "spell:harm"], innate: [] },
 });
 
 // Not modeled: Horror Nimbus; Teleport; Magic Resistance.
@@ -2996,7 +3018,7 @@ export const nalfeshnee = defineMonster({
   traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageResistance", damageTypes: ["cold", "fire", "lightning", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
 });
 
-// Not modeled: Change Shape; Etherealness; Nightmare Haunting; Innate Spellcasting; Magic Resistance; Night Hag Items.
+// Not modeled: Change Shape; Etherealness; Nightmare Haunting; Magic Resistance; Night Hag Items.
 export const nightHag = defineMonster({
   id: "monster:night-hag",
   source,
@@ -3010,6 +3032,7 @@ export const nightHag = defineMonster({
   ],
   tactic: "brute",
   traits: [{ kind: "damageResistance", damageTypes: ["cold", "fire", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed"] }],
+  spellcasting: { casterLevel: 1, saveDc: 14, attackBonus: 6, modifier: 6, slots: {  }, spells: [], innate: [{ spell: "spell:detect-magic", perDay: null }, { spell: "spell:magic-missile", perDay: null }, { spell: "spell:plane-shift", perDay: 2 }, { spell: "spell:ray-of-enfeeblement", perDay: 2 }, { spell: "spell:sleep", perDay: 2 }] },
 });
 
 // Not modeled: Hooves's extra damage types are folded into one; Ethereal Stride; Confer Fire Resistance; Illumination.
@@ -3092,7 +3115,7 @@ export const ogreZombie = defineMonster({
   traits: [{ kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
 });
 
-// Not modeled: Change Shape; Innate Spellcasting; Magic Weapons.
+// Not modeled: Change Shape; Magic Weapons.
 export const oni = defineMonster({
   id: "monster:oni",
   source,
@@ -3107,6 +3130,7 @@ export const oni = defineMonster({
   ],
   tactic: "brute",
   traits: [{ kind: "multiattack", weapons: ["item:glaive", "item:glaive"] }, { kind: "regeneration", amount: 10, blockedBy: [] }],
+  spellcasting: { casterLevel: 1, saveDc: 13, attackBonus: 5, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:darkness", perDay: null }, { spell: "spell:invisibility", perDay: null }, { spell: "spell:charm-person", perDay: 1 }, { spell: "spell:cone-of-cold", perDay: 1 }, { spell: "spell:gaseous-form", perDay: 1 }, { spell: "spell:sleep", perDay: 1 }] },
 });
 
 // Not modeled: Tentacle's extra damage types are folded into one; Tentacle Slam; Limited Telepathy.
@@ -3192,7 +3216,7 @@ export const phaseSpider = defineMonster({
   traits: [],
 });
 
-// Not modeled: Fear Aura; Magic Resistance; Magic Weapons; Innate Spellcasting.
+// Not modeled: Fear Aura; Magic Resistance; Magic Weapons.
 export const pitFiend = defineMonster({
   id: "monster:pit-fiend",
   source,
@@ -3209,9 +3233,10 @@ export const pitFiend = defineMonster({
   ],
   tactic: "brute",
   traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:mace", "item:tail"] }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageResistance", damageTypes: ["cold", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  spellcasting: { casterLevel: 1, saveDc: 21, attackBonus: 13, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:detect-magic", perDay: null }, { spell: "spell:fireball", perDay: null }, { spell: "spell:hold-monster", perDay: 3 }, { spell: "spell:wall-of-fire", perDay: 3 }] },
 });
 
-// Not modeled: Greatsword's extra damage types are folded into one; Healing Touch; Angelic Weapons; Divine Awareness; Innate Spellcasting; Magic Resistance.
+// Not modeled: Greatsword's extra damage types are folded into one; Healing Touch; Angelic Weapons; Divine Awareness; Magic Resistance.
 export const planetar = defineMonster({
   id: "monster:planetar",
   source,
@@ -3225,6 +3250,7 @@ export const planetar = defineMonster({
   ],
   tactic: "brute",
   traits: [{ kind: "multiattack", weapons: ["item:greatsword", "item:greatsword"] }, { kind: "damageResistance", damageTypes: ["radiant", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened"] }],
+  spellcasting: { casterLevel: 1, saveDc: 20, attackBonus: 12, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:detect-evil-and-good", perDay: null }, { spell: "spell:invisibility", perDay: null }, { spell: "spell:blade-barrier", perDay: 3 }, { spell: "spell:dispel-evil-and-good", perDay: 3 }, { spell: "spell:flame-strike", perDay: 3 }, { spell: "spell:raise-dead", perDay: 3 }, { spell: "spell:commune", perDay: 1 }, { spell: "spell:control-weather", perDay: 1 }, { spell: "spell:insect-plague", perDay: 1 }] },
 });
 
 // Not modeled: Hold Breath.
@@ -3294,7 +3320,7 @@ export const pony = defineMonster({
   beast: { challengeRating: 0.125, flies: false, swims: false },
 });
 
-// Not modeled: Divine Eminence; Spellcasting.
+// Not modeled: Divine Eminence.
 export const priest = defineMonster({
   id: "monster:priest",
   source,
@@ -3308,6 +3334,7 @@ export const priest = defineMonster({
   ],
   tactic: "brute",
   traits: [],
+  spellcasting: { casterLevel: 5, saveDc: 13, attackBonus: 5, modifier: 5, slots: { 1: 4, 2: 3, 3: 2 }, spells: ["spell:light", "spell:sacred-flame", "spell:thaumaturgy", "spell:cure-wounds", "spell:guiding-bolt", "spell:sanctuary", "spell:lesser-restoration", "spell:spiritual-weapon", "spell:dispel-magic", "spell:spirit-guardians"], innate: [] },
 });
 
 // Not modeled: Keen Senses; Magic Resistance; Limited Telepathy.
@@ -3377,7 +3404,7 @@ export const quipper = defineMonster({
   beast: { challengeRating: 0, flies: false, swims: true },
 });
 
-// Not modeled: Limited Magic Immunity; Innate Spellcasting; Immunity to mundane weapons is played as resistance.
+// Not modeled: Limited Magic Immunity; Immunity to mundane weapons is played as resistance.
 export const rakshasa = defineMonster({
   id: "monster:rakshasa",
   source,
@@ -3391,6 +3418,7 @@ export const rakshasa = defineMonster({
   ],
   tactic: "brute",
   traits: [{ kind: "multiattack", weapons: ["item:claw", "item:claw"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "damageVulnerability", damageTypes: ["piercing"] }],
+  spellcasting: { casterLevel: 1, saveDc: 18, attackBonus: 10, modifier: 10, slots: {  }, spells: [], innate: [{ spell: "spell:detect-thoughts", perDay: null }, { spell: "spell:disguise-self", perDay: null }, { spell: "spell:mage-hand", perDay: null }, { spell: "spell:minor-illusion", perDay: null }, { spell: "spell:charm-person", perDay: 3 }, { spell: "spell:detect-magic", perDay: 3 }, { spell: "spell:invisibility", perDay: 3 }, { spell: "spell:major-image", perDay: 3 }, { spell: "spell:suggestion", perDay: 3 }, { spell: "spell:dominate-person", perDay: 1 }, { spell: "spell:fly", perDay: 1 }, { spell: "spell:plane-shift", perDay: 1 }, { spell: "spell:true-seeing", perDay: 1 }] },
 });
 
 // Not modeled: Keen Smell.
@@ -3790,7 +3818,7 @@ export const silverDragonWyrmling = defineMonster({
   traits: [{ kind: "damageImmunity", damageTypes: ["cold"] }],
 });
 
-// Not modeled: Greatsword's extra damage types are folded into one; Slaying Longbow's extra damage types are folded into one; Flying Sword; Healing Touch; Angelic Weapons; Divine Awareness; Innate Spellcasting; Magic Resistance; legendary: Teleport; legendary: Searing Burst (Costs 2 Actions); legendary: Blinding Gaze (Costs 3 Actions).
+// Not modeled: Greatsword's extra damage types are folded into one; Slaying Longbow's extra damage types are folded into one; Flying Sword; Healing Touch; Angelic Weapons; Divine Awareness; Magic Resistance; legendary: Teleport; legendary: Searing Burst (Costs 2 Actions); legendary: Blinding Gaze (Costs 3 Actions).
 export const solar = defineMonster({
   id: "monster:solar",
   source,
@@ -3805,6 +3833,7 @@ export const solar = defineMonster({
   ],
   tactic: "brute",
   traits: [{ kind: "multiattack", weapons: ["item:greatsword", "item:greatsword"] }, { kind: "damageImmunity", damageTypes: ["necrotic", "poison"] }, { kind: "damageResistance", damageTypes: ["radiant", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:poisoned"] }],
+  spellcasting: { casterLevel: 1, saveDc: 25, attackBonus: 17, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:detect-evil-and-good", perDay: null }, { spell: "spell:invisibility", perDay: null }, { spell: "spell:blade-barrier", perDay: 3 }, { spell: "spell:dispel-evil-and-good", perDay: 3 }, { spell: "spell:resurrection", perDay: 3 }, { spell: "spell:commune", perDay: 1 }, { spell: "spell:control-weather", perDay: 1 }] },
 });
 
 // Not modeled: Spider Climb; Web Sense; Web Walker.
@@ -3824,7 +3853,7 @@ export const spider = defineMonster({
   beast: { challengeRating: 0, flies: false, swims: false },
 });
 
-// Not modeled: Rejuvenation; Spellcasting.
+// Not modeled: Rejuvenation.
 export const spiritNaga = defineMonster({
   id: "monster:spirit-naga",
   source,
@@ -3838,6 +3867,7 @@ export const spiritNaga = defineMonster({
   ],
   tactic: "brute",
   traits: [{ kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:poisoned"] }],
+  spellcasting: { casterLevel: 10, saveDc: 14, attackBonus: 6, modifier: 6, slots: { 1: 4, 2: 3, 3: 3, 4: 3, 5: 2 }, spells: ["spell:mage-hand", "spell:minor-illusion", "spell:ray-of-frost", "spell:charm-person", "spell:detect-magic", "spell:sleep", "spell:detect-thoughts", "spell:hold-person", "spell:lightning-bolt", "spell:water-breathing", "spell:blight", "spell:dimension-door", "spell:dominate-person"], innate: [] },
 });
 
 // Not modeled: Heart Sight; Invisibility.
@@ -3874,7 +3904,7 @@ export const spy = defineMonster({
   traits: [{ kind: "multiattack", weapons: ["item:shortsword", "item:shortsword"] }],
 });
 
-// Not modeled: Claws's extra damage types are folded into one; Death Burst; Innate Spellcasting.
+// Not modeled: Claws's extra damage types are folded into one; Death Burst.
 export const steamMephit = defineMonster({
   id: "monster:steam-mephit",
   source,
@@ -3888,6 +3918,7 @@ export const steamMephit = defineMonster({
   ],
   tactic: "brute",
   traits: [{ kind: "areaAttack", weapon: "item:steam-breath", ability: "dex", dc: 10, damage: dice(1, 8), damageType: "fire", halfOnSave: true, range: 15, cooldown: 6 }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  spellcasting: { casterLevel: 1, saveDc: 11, attackBonus: 3, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:blur", perDay: 1 }] },
 });
 
 export const stirge = defineMonster({
@@ -3939,7 +3970,7 @@ export const stoneGolem = defineMonster({
   traits: [{ kind: "multiattack", weapons: ["item:slam", "item:slam"] }, { kind: "damageImmunity", damageTypes: ["poison", "psychic"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:paralyzed", "condition:poisoned"] }],
 });
 
-// Not modeled: Lightning Strike; Amphibious; Innate Spellcasting.
+// Not modeled: Lightning Strike; Amphibious.
 export const stormGiant = defineMonster({
   id: "monster:storm-giant",
   source,
@@ -3954,6 +3985,7 @@ export const stormGiant = defineMonster({
   ],
   tactic: "brute",
   traits: [{ kind: "multiattack", weapons: ["item:greatsword", "item:greatsword"] }, { kind: "damageImmunity", damageTypes: ["lightning", "thunder"] }, { kind: "damageResistance", damageTypes: ["cold"] }],
+  spellcasting: { casterLevel: 1, saveDc: 17, attackBonus: 9, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:detect-magic", perDay: null }, { spell: "spell:feather-fall", perDay: null }, { spell: "spell:levitate", perDay: null }, { spell: "spell:light", perDay: null }, { spell: "spell:control-weather", perDay: 3 }, { spell: "spell:water-breathing", perDay: 3 }] },
 });
 
 // Not modeled: Charm; Draining Kiss; Etherealness; Telepathic Bond; Shapechanger.
@@ -4132,7 +4164,7 @@ export const swarmOfWasps = defineMonster({
   traits: [{ kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:grappled", "condition:paralyzed", "condition:prone", "condition:restrained", "condition:stunned"] }],
 });
 
-// Not modeled: Frightful Presence; Swallow; Magic Resistance; Reflective Carapace; Siege Monster; legendary: Attack; legendary: Move; legendary: Chomp (Costs 2 Actions); Immunity to mundane weapons is played as resistance.
+// Not modeled: Frightful Presence; Swallow; Magic Resistance; Reflective Carapace; Siege Monster; legendary: Move; legendary: Chomp (Costs 2 Actions); Immunity to mundane weapons is played as resistance.
 export const tarrasque = defineMonster({
   id: "monster:tarrasque",
   source,
@@ -4148,7 +4180,7 @@ export const tarrasque = defineMonster({
     { weapon: "item:tail", toHit: 19, damage: plus(dice(4, 6), 10), onHit: [{ kind: "conditionUnlessSave", target: "target", ability: "str", dc: 20, condition: "condition:prone" }] },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw", "item:horns-piercing", "item:tail"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:paralyzed", "condition:poisoned"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw", "item:horns-piercing", "item:tail"] }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:bite", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:paralyzed", "condition:poisoned"] }],
 });
 
 export const thug = defineMonster({
@@ -4270,7 +4302,7 @@ export const tyrannosaurusRex = defineMonster({
   beast: { challengeRating: 8, flies: false, swims: false },
 });
 
-// Not modeled: Healing Touch; Teleport; Charge; Innate Spellcasting; Magic Resistance; Magic Weapons; legendary: Hooves; legendary: Shimmering Shield (Costs 2 Actions); legendary: Heal Self (Costs 3 Actions).
+// Not modeled: Healing Touch; Teleport; Charge; Magic Resistance; Magic Weapons; legendary: Shimmering Shield (Costs 2 Actions); legendary: Heal Self (Costs 3 Actions).
 export const unicorn = defineMonster({
   id: "monster:unicorn",
   source,
@@ -4284,10 +4316,11 @@ export const unicorn = defineMonster({
     { weapon: "item:horn", toHit: 7, damage: plus(dice(1, 8), 4) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:hooves", "item:horn"] }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:paralyzed", "condition:poisoned"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:hooves", "item:horn"] }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:hooves", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:paralyzed", "condition:poisoned"] }],
+  spellcasting: { casterLevel: 1, saveDc: 14, attackBonus: 6, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:detect-evil-and-good", perDay: null }, { spell: "spell:druidcraft", perDay: null }, { spell: "spell:pass-without-trace", perDay: null }, { spell: "spell:calm-emotions", perDay: 1 }, { spell: "spell:dispel-evil-and-good", perDay: 1 }, { spell: "spell:entangle", perDay: 1 }] },
 });
 
-// Not modeled: Bite's extra damage types are folded into one; Charm; Children of the Night; Unarmed Strike (Vampire Form Only); Bite (Bat or Vampire Form Only); Shapechanger; Misty Escape; Spider Climb; Vampire Weaknesses; legendary: Move; legendary: Unarmed Strike; legendary: Bite (Costs 2 Actions).
+// Not modeled: Bite's extra damage types are folded into one; Charm; Children of the Night; Unarmed Strike (Vampire Form Only); Bite (Bat or Vampire Form Only); Shapechanger; Misty Escape; Spider Climb; Vampire Weaknesses; legendary: Move.
 export const vampireVampire = defineMonster({
   id: "monster:vampire-vampire",
   source,
@@ -4301,10 +4334,10 @@ export const vampireVampire = defineMonster({
     { weapon: "item:bite", toHit: 9, damage: combine(plus(dice(1, 6), 4), dice(3, 6)) },
   ],
   tactic: "brute",
-  traits: [{ kind: "legendaryResistance", uses: 3 }, { kind: "regeneration", amount: 20, blockedBy: ["radiant"] }, { kind: "damageResistance", damageTypes: ["necrotic", "bludgeoning", "piercing", "slashing"] }],
+  traits: [{ kind: "legendaryResistance", uses: 3 }, { kind: "regeneration", amount: 20, blockedBy: ["radiant"] }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:unarmed-strike", cost: 1 }, { weapon: "item:bite", cost: 2 }] }, { kind: "damageResistance", damageTypes: ["necrotic", "bludgeoning", "piercing", "slashing"] }],
 });
 
-// Not modeled: Bite's extra damage types are folded into one; Charm; Children of the Night; Shapechanger; Misty Escape; Spider Climb; Vampire Weaknesses; legendary: Move; legendary: Unarmed Strike; legendary: Bite (Costs 2 Actions).
+// Not modeled: Bite's extra damage types are folded into one; Charm; Children of the Night; Shapechanger; Misty Escape; Spider Climb; Vampire Weaknesses; legendary: Move; legendary: Unarmed Strike.
 export const vampireBat = defineMonster({
   id: "monster:vampire-bat",
   source,
@@ -4317,7 +4350,7 @@ export const vampireBat = defineMonster({
     { weapon: "item:bite", toHit: 9, damage: combine(plus(dice(1, 6), 4), dice(3, 6)) },
   ],
   tactic: "brute",
-  traits: [{ kind: "legendaryResistance", uses: 3 }, { kind: "regeneration", amount: 20, blockedBy: ["radiant"] }, { kind: "damageResistance", damageTypes: ["necrotic", "bludgeoning", "piercing", "slashing"] }],
+  traits: [{ kind: "legendaryResistance", uses: 3 }, { kind: "regeneration", amount: 20, blockedBy: ["radiant"] }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:bite", cost: 2 }] }, { kind: "damageResistance", damageTypes: ["necrotic", "bludgeoning", "piercing", "slashing"] }],
 });
 
 // Not modeled: No weapon attack; it deals no damage yet; Shapechanger; Misty Escape; Spider Climb; Vampire Weaknesses; legendary: Move; legendary: Unarmed Strike; legendary: Bite (Costs 2 Actions).

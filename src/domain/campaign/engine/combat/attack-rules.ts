@@ -26,7 +26,7 @@ export function planFor(decision: Decision, actor: Combatant, source: Resolution
     }
     case "spell": {
       const spell = content.get(source.spellId);
-      const plan = spell.plan({ slotLevel: source.slotLevel, casterLevel: actor.level, spellcastingModifier: actor.spellcasting?.modifier ?? 0 });
+      const plan = spell.plan({ slotLevel: source.slotLevel, casterLevel: actor.spellcasting?.casterLevel ?? actor.level, spellcastingModifier: actor.spellcasting?.modifier ?? 0 });
       // Disciple of Life and similar: extra healing from leveled spells.
       const bonus = source.slotLevel > 0 ? healingBonus(actor, source.slotLevel) : 0;
       if (bonus === 0) return plan;

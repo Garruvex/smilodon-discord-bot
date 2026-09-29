@@ -33,6 +33,9 @@ export function spellMaxTargets(spell: SpellDefinition, slotLevel: number): numb
   return spell.targeting.relation === "self" ? 1 : spell.targeting.count + extra;
 }
 
+// Where an innate spell's uses left are counted (resources.featureUses).
+export const innateUseKey = (spellId: string): string => `innate:${spellId}`;
+
 // A slot is unavailable when it is too low for the spell, empty, or (for a cantrip) not zero.
 export function slotUnavailable(spell: SpellDefinition, slots: SpellSlots, slotLevel: number): boolean {
   return spell.level === 0 ? slotLevel !== 0 : slotLevel < spell.level || (slots[slotLevel] ?? 0) < 1;

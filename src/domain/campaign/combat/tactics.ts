@@ -1,6 +1,12 @@
+import { maximumOf } from "../dice/dice-expression.js";
+import type { SpellDefinition } from "../rules/content-definitions.js";
+import type { ContentId } from "../rules/content-id.js";
+import type { SealedContent } from "../rules/content-registry.js";
 import type { AreaAttack } from "../rules/traits.js";
+import { castableSlotLevels, innateUseKey, spellMaxTargets } from "../magic/spell-rules.js";
 import type { AttackOption, Combatant, CombatantId, EncounterState, ZoneId } from "./combat-state.js";
-import { engagedWith, isActive } from "./combat-state.js";
+import { availableSlots, engagedWith, isActive } from "./combat-state.js";
+import { spellTargets } from "./legal-targets.js";
 import { distanceBetween, edgeBetween, engageCost, shortestPath } from "./positioning.js";
 
 // What a combatant not driven by a player does this turn, chosen by plain
@@ -15,16 +21,27 @@ export interface TurnPlan {
   readonly attack: { readonly targetId: CombatantId; readonly option: AttackOption } | null;
   // A breath weapon in place of an attack.
   readonly area: { readonly area: AreaAttack; readonly targetIds: readonly CombatantId[] } | null;
+  // A spell in place of an attack.
+  readonly cast: SpellCast | null;
   readonly dodge: boolean;
 }
 
-const idle: TurnPlan = { disengage: false, dash: false, moves: [], engage: null, attack: null, area: null, dodge: false };
+export interface SpellCast {
+  readonly spellId: ContentId<"spell">;
+  readonly slotLevel: number;
+  readonly targetIds: readonly CombatantId[];
+}
+
+const idle: TurnPlan = { disengage: false, dash: false, moves: [], engage: null, attack: null, area: null, cast: null, dodge: false };
 
 // Monsters leave downed heroes alone by default (plan §6: focus-firing
 // unconscious heroes is off unless a house rule enables it).
-export function chooseMonsterPlan(encounter: EncounterState, monster: Combatant): TurnPlan {
+export function chooseMonsterPlan(encounter: EncounterState, monster: Combatant, content?: SealedContent): TurnPlan {
   const foes = hostiles(encounter, monster);
   if (foes.length === 0) return idle;
+  // A spell that hurts or hinders foes, when the monster has one it can cast, is cast before anything else.
+  const cast = content === undefined ? null : chooseSpell(encounter, monster, content);
+  if (cast !== null) return { ...idle, cast };
   // A breath weapon that is ready and catches anyone is used before anything else.
   for (const trait of monster.traits) {
     if (trait.kind !== "areaAttack" || (monster.cooldowns[trait.weapon] ?? 0) > 0) continue;
@@ -72,6 +89,46 @@ export function chooseMonsterPlan(encounter: EncounterState, monster: Combatant)
     if (target !== null) return { ...idle, attack: { targetId: target.id, option: ranged } };
   }
   return idle;
+}
+
+// The best spell a monster can cast at foes now: a leveled one over a cantrip, and the one that
+// catches the most creatures among those. Never one that would end a concentration it is holding.
+function chooseSpell(encounter: EncounterState, monster: Combatant, content: SealedContent): SpellCast | null {
+  const casting = monster.spellcasting;
+  if (casting === null) return null;
+  let best: { readonly cast: SpellCast; readonly score: number } | null = null;
+  // A cantrip is worth casting over a weapon only for a monster that shoots from range or has no weapon to swing.
+  const cantrips = monster.tactic === "skirmisher" || monster.attacks.every((attack) => maximumOf(attack.damage) <= 0);
+  for (const id of casting.spells) {
+    const spell = content.find(id);
+    if (spell?.kind !== "spell" || spell.castingTime !== "action" || (spell.concentration && monster.concentration !== null)) continue;
+    if (spell.level === 0 && !cantrips) continue;
+    const innate = casting.innate?.[id];
+    let slotLevel: number;
+    if (innate !== undefined) {
+      if (innate !== null && (monster.resources.featureUses[innateUseKey(id)] ?? innate) < 1) continue;
+      slotLevel = spell.level;
+    } else {
+      const levels = castableSlotLevels(spell, availableSlots(monster.resources));
+      const lowest = levels[0];
+      if (lowest === undefined) continue;
+      slotLevel = lowest;
+    }
+    if (!hurtsFoes(spell, slotLevel, monster)) continue;
+    const reachable = [...spellTargets(encounter, monster, spell, content)].sort((a, b) => (a.hp !== b.hp ? a.hp - b.hp : a.id.localeCompare(b.id)));
+    const targets = reachable.slice(0, spellMaxTargets(spell, slotLevel));
+    if (targets.length === 0) continue;
+    const score = spell.level * 10 + targets.length;
+    if (best === null || score > best.score) best = { cast: { spellId: id, slotLevel, targetIds: targets.map((target) => target.id) }, score };
+  }
+  return best?.cast ?? null;
+}
+
+// Whether the spell does harm to whoever it is aimed at: damage, or a condition or modifier laid on them.
+function hurtsFoes(spell: SpellDefinition, slotLevel: number, monster: Combatant): boolean {
+  if (spell.targeting.relation !== "enemy") return false;
+  const plan = spell.plan({ slotLevel, casterLevel: monster.spellcasting?.casterLevel ?? 1, spellcastingModifier: monster.spellcasting?.modifier ?? 0 });
+  return plan.onLand.some((effect) => effect.kind === "damage" || effect.kind === "applyCondition" || effect.kind === "applyModifiers");
 }
 
 // Cautious autopilot for an away hero (plan §5, Away mode): hit a foe that is

@@ -10,8 +10,9 @@ import { deadlineAfter, type Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { beginTriggers } from "./effect-triggers.js";
 import { endConcentration } from "./resolution.js";
-import { declareAreaAttack, declareWeaponAttack } from "./combat-actions.js";
+import { castSpell, declareAreaAttack, declareWeaponAttack } from "./combat-actions.js";
 import { applyHealing } from "./damage.js";
+import { takeLegendaryAction } from "./legendary.js";
 import { startMove } from "./movement.js";
 import { isProtected, stabilize } from "./death-saves.js";
 import { activeEncounter, currentOf, endIfDecided, isPlayerControlled } from "./combat-flow.js";
@@ -115,7 +116,7 @@ export function continueTurn(decision: Decision, combatantId: string): void {
       return;
     }
     regenerate(decision, combatant);
-    playPlan(decision, currentOf(decision, combatant), chooseMonsterPlan(activeEncounter(decision) ?? encounter, currentOf(decision, combatant)));
+    playPlan(decision, currentOf(decision, combatant), chooseMonsterPlan(activeEncounter(decision) ?? encounter, currentOf(decision, combatant), decision.ctx.rules.content));
     return;
   }
   if (combatant.condition === "unconscious") {
@@ -176,7 +177,7 @@ export function playPlan(decision: Decision, combatant: Combatant, plan: TurnPla
   if (plan.disengage) decision.emit({ kind: "actionTaken", combatantId: combatant.id, action: "disengage", bonus: true });
   if (plan.dash) decision.emit({ kind: "actionTaken", combatantId: combatant.id, action: "dash", bonus: false });
   if (plan.dodge) decision.emit({ kind: "actionTaken", combatantId: combatant.id, action: "dodge", bonus: false });
-  continuePlan(decision, combatant.id, { moves: plan.moves, engage: plan.engage, attack: plan.attack, area: plan.area });
+  continuePlan(decision, combatant.id, { moves: plan.moves, engage: plan.engage, attack: plan.attack, area: plan.area, cast: plan.cast });
 }
 
 export function continuePlan(decision: Decision, combatantId: string, plan: TurnPlanRemainder): void {
@@ -207,6 +208,10 @@ export function continuePlan(decision: Decision, combatantId: string, plan: Turn
     if (target !== undefined && engageProblem(activeEncounter(decision) ?? encounter, current, plan.engage, content) === null) {
       decision.emit({ kind: "combatantEngaged", combatantId: current.id, targetId: target.id, feet: engageCost });
     }
+  }
+  if (plan.cast != null) {
+    const caster = activeEncounter(decision)?.combatants[combatantId] ?? current;
+    if (castSpell(decision, activeEncounter(decision) ?? encounter, caster, plan.cast.spellId, plan.cast.slotLevel, plan.cast.targetIds) === null) return;
   }
   if (plan.area != null) {
     const attacker = activeEncounter(decision)?.combatants[combatantId] ?? current;
@@ -241,6 +246,15 @@ export function finishTurn(decision: Decision): void {
     decision.emit({ kind: "turnEnded", combatantId: combatant.id });
   }
   if (endIfDecided(decision)) return;
+  // A monster with legendary actions may act now, between this turn and the next.
+  if (takeLegendaryAction(decision)) return;
+  advanceTurn(decision);
+}
+
+// The next creature's turn begins.
+export function advanceTurn(decision: Decision): void {
+  const encounter = activeEncounter(decision);
+  if (encounter === null) return;
   const next = encounter.turnIndex + 1;
   if (next >= encounter.order.length) beginTurn(decision, 0, encounter.round + 1);
   else beginTurn(decision, next, encounter.round);

@@ -1,8 +1,9 @@
 import { assertNever } from "../core/assert-never.js";
 import type { EffectInstance } from "../effects/effect-instance.js";
-import { attacksPerAction, legendaryResistanceKey } from "../rules/traits.js";
+import { attacksPerAction, legendaryActionsKey, legendaryResistanceKey } from "../rules/traits.js";
 import { wildShapeUses } from "../rules/wild-shape-rules.js";
 import type { CombatEvent } from "./combat-events.js";
+import { innateUseKey } from "../magic/spell-rules.js";
 import { spendSlot, type Combatant, type CombatantId, type EncounterState, type ResolutionState } from "./combat-state.js";
 
 const prone = "condition:prone";
@@ -46,6 +47,8 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
           },
           dodging: false,
           disengaged: false,
+          // Its legendary actions come back at the start of its own turn.
+          resources: renewLegendaryActions(combatant),
           cooldowns: Object.fromEntries(Object.entries(combatant.cooldowns).map(([id, turns]) => [id, Math.max(0, turns - 1)])),
         }),
       );
@@ -111,6 +114,11 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
         const resources = cost.spellSlot !== null ? spendSlot(combatant.resources, cost.spellSlot) : combatant.resources;
         const uses = { ...resources.featureUses };
         if (cost.featureUse !== null) uses[cost.featureUse] = Math.max(0, (uses[cost.featureUse] ?? 0) - 1);
+        // An innate spell cast a number of times a day uses one of them up.
+        if (resolution.source.kind === "spell") {
+          const innate = combatant.spellcasting?.innate?.[resolution.source.spellId];
+          if (typeof innate === "number") uses[innateUseKey(resolution.source.spellId)] = Math.max(0, (uses[innateUseKey(resolution.source.spellId)] ?? innate) - 1);
+        }
         const cooldowns = resolution.source.kind === "area" ? { ...combatant.cooldowns, [resolution.source.area.weapon]: resolution.source.area.cooldown } : combatant.cooldowns;
         const attacksLeft = spendsAnAttack
           ? Math.max(0, combatant.budget.attacksLeft - 1)
@@ -221,14 +229,17 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
       return update(encounter, event.combatantId, (combatant) => ({ ...combatant, sneakAttackUsed: true }));
     // A 6th level of Exhaustion kills (SRD 5.1), same as any other death.
     case "monsterStateChanged":
-      return update(encounter, event.combatantId, (combatant) => ({
-        ...combatant,
-        regenBlocked: event.regenBlocked ?? combatant.regenBlocked,
-        resources:
-          event.legendaryResistanceSpent === true
-            ? { ...combatant.resources, featureUses: { ...combatant.resources.featureUses, [legendaryResistanceKey]: Math.max(0, (combatant.resources.featureUses[legendaryResistanceKey] ?? 0) - 1) } }
-            : combatant.resources,
-      }));
+      return update(encounter, event.combatantId, (combatant) => {
+        const uses = { ...combatant.resources.featureUses };
+        if (event.legendaryResistanceSpent === true) uses[legendaryResistanceKey] = Math.max(0, (uses[legendaryResistanceKey] ?? 0) - 1);
+        if (event.legendarySpent !== undefined) uses[legendaryActionsKey] = Math.max(0, (uses[legendaryActionsKey] ?? 0) - event.legendarySpent);
+        return {
+          ...combatant,
+          regenBlocked: event.regenBlocked ?? combatant.regenBlocked,
+          legendaryTurn: event.legendaryTurn ?? combatant.legendaryTurn,
+          resources: { ...combatant.resources, featureUses: uses },
+        };
+      });
     case "exhaustionChanged": {
       const updated = update(encounter, event.combatantId, (combatant) => ({
         ...combatant,
@@ -325,4 +336,10 @@ function withoutPending(encounter: EncounterState, rollIds: readonly string[]): 
   const pendingRolls = { ...encounter.pendingRolls };
   for (const rollId of rollIds) delete pendingRolls[rollId];
   return { ...encounter, pendingRolls };
+}
+
+// A monster with legendary actions has all of them again at the start of its own turn.
+function renewLegendaryActions(combatant: Combatant): Combatant["resources"] {
+  const uses = combatant.traits.reduce((most, trait) => (trait.kind === "legendaryActions" ? Math.max(most, trait.uses) : most), 0);
+  return uses === 0 ? combatant.resources : { ...combatant.resources, featureUses: { ...combatant.resources.featureUses, [legendaryActionsKey]: uses } };
 }

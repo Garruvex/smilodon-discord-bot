@@ -42,6 +42,10 @@ export interface CombatSpellcasting {
   readonly saveDc: number;
   readonly modifier: number;
   readonly spells: readonly ContentId<"spell">[];
+  // A monster's spellcaster level, which scales its cantrips (a hero's is their level).
+  readonly casterLevel?: number;
+  // Spells cast by nature, with no slot: at will (null) or this many times a day.
+  readonly innate?: Readonly<Record<string, number | null>>;
 }
 
 // A combatant's spell slots and feature uses left (a hero's own resources).
@@ -116,6 +120,8 @@ export interface Combatant {
   readonly cooldowns: Readonly<Record<string, number>>;
   // Took damage this round that stops its Regeneration at the next turn start.
   readonly regenBlocked: boolean;
+  // The turn (by number) whose end it last used a legendary action after; one per turn's end.
+  readonly legendaryTurn: number;
   readonly condition: CombatantCondition;
   // Conditions, spells that outlast their casting, and stances: one record each,
   // with its source, what it does, and when it ends (effects/effect-instance.ts).
@@ -211,7 +217,7 @@ export interface ResolutionState {
   readonly targetIds: readonly CombatantId[];
   readonly plan: ResolutionPlan;
   // opportunity: a reaction during someone else's move.
-  readonly purpose: "action" | "opportunity";
+  readonly purpose: "action" | "opportunity" | "legendary";
   readonly stage: "checks" | "effects" | "concentration";
   readonly checks: Readonly<Record<RollId, PendingCheck>>;
   readonly outcomes: Readonly<Record<CombatantId, TargetOutcome>>;
@@ -251,6 +257,8 @@ export interface TurnPlanRemainder {
   readonly attack: { readonly targetId: CombatantId; readonly option: AttackOption } | null;
   // A breath weapon used in place of an attack, on these targets.
   readonly area?: { readonly area: AreaAttack; readonly targetIds: readonly CombatantId[] } | null;
+  // A spell cast in place of an attack.
+  readonly cast?: { readonly spellId: ContentId<"spell">; readonly slotLevel: number; readonly targetIds: readonly CombatantId[] } | null;
 }
 
 export interface PendingTriggers {
