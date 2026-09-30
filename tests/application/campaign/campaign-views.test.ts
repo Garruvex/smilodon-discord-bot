@@ -162,7 +162,7 @@ describe("the adventure panel view", () => {
     }).state;
     const view = buildPanelView(record(lobbyOf()), state, starter.bible, enSrd51Glossary);
     expect(view.mode).toBe("awaitingRolls");
-    expect(view.pendingRolls).toEqual([{ characterId: "c-mira", userId: "u-alex", heroName: "Mira" }]);
+    expect(view.pendingRolls).toEqual([{ characterId: "c-mira", userId: "u-alex", heroName: "Mira", test: { kind: "skill", skill: "stealth" }, action: "I sneak." }]);
   });
 
   it("summarizes a fight with monster health bands and the active fighter", () => {

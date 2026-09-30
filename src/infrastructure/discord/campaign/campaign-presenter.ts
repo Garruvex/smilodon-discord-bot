@@ -7,7 +7,6 @@ import type { CampaignKey, CampaignUnitOfWork } from "../../../application/campa
 import { texts, type Texts } from "../../../application/i18n/texts.js";
 import { combatantName, encounterRecords, type CombatBeat } from "../../../application/campaign/dm/combat-records.js";
 import { buildOpportunityAttackView, buildReactionView, buildSmiteView } from "../../../application/campaign/views/campaign-views.js";
-import { abilityOf, type CheckTest } from "../../../domain/campaign/character/character-sheet.js";
 import { formatDiceExpression } from "../../../domain/campaign/dice/dice-expression.js";
 import { combatMode } from "../../../domain/campaign/rules/house-rules.js";
 import type { DeliverySpec } from "../../../domain/campaign/engine/engine-request.js";
@@ -17,7 +16,7 @@ import type { CampaignRecord } from "../../../application/campaign/ports/campaig
 import type { CampaignState, CheckState } from "../../../domain/campaign/state/campaign-state.js";
 import type { CampaignCardService } from "./campaign-card-service.js";
 import type { CampaignMessageGateway, MessageStyle } from "./campaign-message-gateway.js";
-import { skillKey } from "./text-keys.js";
+import { checkLabel } from "./text-keys.js";
 
 export interface PresenterOptions {
   readonly unitOfWork: CampaignUnitOfWork;
@@ -460,13 +459,6 @@ function rollLine(events: readonly CampaignEvent[], state: CampaignState, checkI
     outcome: `${success ? "✅" : "❌"} ${outcome}`,
   });
   return started?.kind === "checkRollStarted" && started.timedOut ? `${line} ${text.campaign.msg.rollTimedOut}` : line;
-}
-
-// The English abbreviation sits next to the localized name, where players cross-check rules.
-function checkLabel(test: CheckTest, text: Texts): string {
-  const ability = abilityOf(test);
-  const name = test.kind === "skill" ? text.campaign.skill[skillKey(test.skill)] : text.campaign.ability[ability];
-  return `${test.kind === "save" ? text.campaign.msg.saveLabel({ name }) : name} (${ability.toUpperCase()})`;
 }
 
 // Discord rejects a message over 2,000 characters.

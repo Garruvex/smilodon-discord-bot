@@ -6,6 +6,7 @@ import type { Texts } from "../../../application/i18n/texts.js";
 import { campaignCustomId, type CampaignAction } from "./campaign-ids.js";
 import { accents, cardPayload, type CardPayload } from "./card-payload.js";
 import { hpBar } from "./hero-card.js";
+import { checkLabel } from "./text-keys.js";
 
 const accentFor: Readonly<Record<PanelMode, number>> = {
   opening: accents.amber,
@@ -29,9 +30,9 @@ const controlsFor: Readonly<Record<PanelMode, readonly CampaignAction[]>> = {
   readyCheck: ["ready", "begin", "myHero", "away"],
   collecting: ["act", "speak", "pass", "myHero", "away"],
   planning: ["myHero", "away"],
-  awaitingRolls: ["myHero", "away"],
+  awaitingRolls: ["roll", "myHero", "away"],
   combat: ["myHero"],
-  waiting: ["continue", "back", "myHero"],
+  waiting: ["continue", "away", "myHero"],
   paused: ["myHero"],
   safety: ["myHero"],
   recovery: ["myHero"],
@@ -68,9 +69,9 @@ export function renderAdventurePanel(view: PanelView, text: Texts, campaignId: s
   }
   if (view.mode !== "archived") {
     // Explore (people, shops, spells) is for between fights.
-    // A player marked away can always come back, whatever state the game is in (waiting already shows it in the first row).
-    const comeBack: readonly CampaignAction[] = view.mode === "waiting" ? [] : ["back"];
-    const second: readonly CampaignAction[] = view.mode === "combat" ? [...safetyControls, ...comeBack] : ["explore", ...safetyControls, ...comeBack];
+    // Away and back are one toggle, present in every state so a player marked away can always return (the first row may already hold it).
+    const toggle: readonly CampaignAction[] = controls.includes("away") ? [] : ["away"];
+    const second: readonly CampaignAction[] = view.mode === "combat" ? [...safetyControls, ...toggle] : ["explore", ...safetyControls, ...toggle];
     container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(second.map((action) => controlButton(action, campaignId, text))));
   }
   return cardPayload(container);
@@ -88,7 +89,16 @@ function statusLine(view: PanelView, text: Texts): string {
     case "planning":
       return t.planning;
     case "awaitingRolls":
-      return `${t.awaitingRolls({ heroes: view.pendingRolls.map((roll) => roll.heroName).join(", ") })}${view.closesAt === null ? "" : ` ${t.closes({ when: relative(view.closesAt) })}`}`;
+      return [
+        `${t.awaitingRolls}${view.closesAt === null ? "" : ` ${t.closes({ when: relative(view.closesAt) })}`}`,
+        ...view.pendingRolls.map((roll) => {
+          const hero = displayName(roll.heroName);
+          const check = checkLabel(roll.test, text);
+          // The player's own words are why the dice are called for; a long one is cut.
+          const action = roll.action === null ? "" : escapeMarkdown(roll.action.replace(/\s+/g, " ").trim().slice(0, 80));
+          return action === "" ? t.rollWhyBare({ hero, check }) : t.rollWhy({ hero, check, action });
+        }),
+      ].join("\n");
     case "combat":
       return view.combat === null
         ? ""

@@ -2,7 +2,7 @@ import { conditionLookup, conditionsOf } from "../../../domain/campaign/effects/
 import { featureUsesOf } from "../../../domain/campaign/rules/content-definitions.js";
 import type { AdventureBible } from "../../../domain/campaign/adventure/adventure-bible.js";
 import { findScene } from "../../../domain/campaign/adventure/adventure-bible.js";
-import { abilityModifier, type CharacterSheet } from "../../../domain/campaign/character/character-sheet.js";
+import { abilityModifier, type CharacterSheet, type CheckTest } from "../../../domain/campaign/character/character-sheet.js";
 import { armorClassFrom, heroTraits, isWorn, unarmoredModifier } from "../../../domain/campaign/combat/combatant-profile.js";
 import type { Combatant } from "../../../domain/campaign/combat/combat-state.js";
 import type { Glossary, SealedContent } from "../../../domain/campaign/rules/content-registry.js";
@@ -163,7 +163,7 @@ export interface PanelView {
   readonly closesAt: number | null;
   readonly roster: readonly RosterEntry[];
   // Heroes whose check is waiting for a click (or its auto-roll).
-  readonly pendingRolls: readonly { readonly characterId: string; readonly userId: string; readonly heroName: string }[];
+  readonly pendingRolls: readonly { readonly characterId: string; readonly userId: string; readonly heroName: string; readonly test: CheckTest; readonly action: string | null }[];
   readonly combat: CombatView | null;
 }
 
@@ -377,11 +377,17 @@ export function buildPanelView(record: CampaignRecord, state: CampaignState, bib
   const fight = state.encounter !== null && state.encounter.status !== "ended" ? state.encounter : null;
   const pendingRolls = Object.values(state.checks)
     .filter((check) => check.status === "pending" || check.status === "rolling")
-    .map((check) => ({
-      characterId: check.characterId,
-      userId: state.characters[check.characterId]?.ownerUserId ?? "",
-      heroName: state.characters[check.characterId]?.name ?? check.characterId,
-    }));
+    .map((check) => {
+      const submission = state.round?.submissions[check.characterId];
+      return {
+        characterId: check.characterId,
+        userId: state.characters[check.characterId]?.ownerUserId ?? "",
+        heroName: state.characters[check.characterId]?.name ?? check.characterId,
+        test: check.test,
+        // What the player asked to do: the reason the dice are called for.
+        action: submission?.kind === "action" ? submission.text : null,
+      };
+    });
   return {
     campaignName: record.name,
     sceneTitle: scene?.title ?? bible.title,

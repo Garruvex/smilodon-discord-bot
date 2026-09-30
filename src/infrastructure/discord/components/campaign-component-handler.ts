@@ -387,8 +387,12 @@ export class CampaignComponentHandler implements ComponentHandler {
       case "roll":
         return void (await this.outcome(await this.deps.play.roll(key, userId, interaction.id), text.campaign.reply.rolled, reply, text));
       case "away":
-        return void (await this.outcome(await this.deps.play.away(key, userId, interaction.id), text.campaign.reply.away, reply, text));
       case "back": {
+        // One toggle: a player who is away comes back, anyone else goes away ("back" is kept for panels posted before the merge).
+        const current = await this.deps.unitOfWork.transaction((tx) => tx.loadCampaign(key));
+        if (current?.state.members[userId]?.availability !== "away" && parsed.action === "away") {
+          return void (await this.outcome(await this.deps.play.away(key, userId, interaction.id), text.campaign.reply.away, reply, text));
+        }
         const returned = await this.deps.play.back(key, userId, interaction.id);
         // Someone coming back is caught up on what they missed.
         return void (await reply(returned.kind === "ok" ? `${text.campaign.reply.back}\n\n${await this.recapText(record, text)}` : refusalText(text, returned.reason)));
