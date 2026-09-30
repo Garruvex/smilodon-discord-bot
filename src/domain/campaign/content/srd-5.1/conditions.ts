@@ -98,6 +98,23 @@ export const stunned = defineCondition({
 // incapacitated with the speed at zero, and the fight ends it (encounter-start.ts) once the creature's first turn has passed.
 export const surprised = defineCondition({ id: "condition:surprised", source, includes: [incapacitated.id], modifiers: [{ kind: "speedZero" }] });
 
+// Cannot hear: no rule here reads hearing, so it changes nothing by itself (a spell that needs a listener is the Narrator's to judge).
+export const deafened = defineCondition({ id: "condition:deafened", source, includes: [], modifiers: [] });
+
+// Turned to stone: incapacitated and unable to move, hit automatically and failing Strength and Dexterity saves, and resistant to all
+// damage. The SRD's immunity to poison and disease is not played.
+export const petrified = defineCondition({
+  id: "condition:petrified",
+  source,
+  includes: [incapacitated.id],
+  modifiers: [
+    { kind: "speedZero" },
+    { kind: "attacksAgainst", mode: "advantage", reach: "any" },
+    { kind: "autoFailSaves", abilities: ["str", "dex"] },
+    { kind: "damageResistance", damageTypes: ["acid", "bludgeoning", "cold", "fire", "force", "lightning", "necrotic", "piercing", "poison", "psychic", "radiant", "slashing", "thunder"] },
+  ],
+});
+
 export const invisible = defineCondition({
   id: "condition:invisible",
   source,
@@ -127,6 +144,8 @@ export const srd51Conditions: readonly ConditionDefinition[] = [
   paralyzed,
   stunned,
   surprised,
+  deafened,
+  petrified,
   invisible,
   charmed,
 ];

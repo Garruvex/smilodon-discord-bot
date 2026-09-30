@@ -260,6 +260,8 @@ const enBase: Glossary = {
     "condition:paralyzed": "Paralyzed",
     "condition:stunned": "Stunned",
     "condition:surprised": "Surprised",
+    "condition:deafened": "Deafened",
+    "condition:petrified": "Petrified",
     "condition:invisible": "Invisible",
     "condition:charmed": "Charmed",
     "spell:ray-of-frost": "Ray of Frost",

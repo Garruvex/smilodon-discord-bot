@@ -276,6 +276,8 @@ const zhTwBase: Glossary = {
     "condition:paralyzed": "麻痺",
     "condition:stunned": "震懾",
     "condition:surprised": "受驚",
+    "condition:deafened": "耳聾",
+    "condition:petrified": "石化",
     "condition:invisible": "隱形",
     "condition:charmed": "魅惑",
     "spell:ray-of-frost": "冰霜射線",
