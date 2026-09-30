@@ -14,6 +14,7 @@ import {
   type MessageActionRowComponentBuilder,
   type ModalSubmitInteraction,
   type StringSelectMenuInteraction,
+  type UserSelectMenuInteraction,
 } from "discord.js";
 
 import type { CampaignLobbyService } from "../../../application/campaign/campaign-lobby-service.js";
@@ -578,7 +579,7 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     await interaction.reply({ content: record.language === "zh-TW" ? "選擇要邀請的玩家。" : "Select the player to invite.", components: [new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(new UserSelectMenuBuilder().setCustomId(hubCustomId("inviteUser", campaignId)).setMaxValues(1))], flags: MessageFlags.Ephemeral });
   }
 
-  private async openJoinForm(interaction: ButtonInteraction<"cached"> | import("discord.js").UserSelectMenuInteraction<"cached">, campaignId: string, action: "inviteOpen" | "joinApproveOpen", userId?: string): Promise<void> {
+  private async openJoinForm(interaction: ButtonInteraction<"cached"> | UserSelectMenuInteraction<"cached">, campaignId: string, action: "inviteOpen" | "joinApproveOpen", userId?: string): Promise<void> {
     const record = (await this.deps.lobby.get({ guildId: interaction.guildId, campaignId }))?.record;
     if (record === undefined || record.organizerId !== interaction.user.id || record.lifecycle === "lobby" || record.lifecycle === "archived") {
       await interaction.reply({ content: "Only the organizer can manage joining for a running game.", flags: MessageFlags.Ephemeral });

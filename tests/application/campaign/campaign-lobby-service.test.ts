@@ -211,7 +211,7 @@ describe("starting the campaign", () => {
 });
 
 describe("joining an ongoing campaign", () => {
-  async function running(visibility: "open" | "membersOnly" = "open") {
+  async function running(visibility: "open" | "membersOnly" = "open"): Promise<{ service: ReturnType<typeof setup>["service"]; store: ReturnType<typeof setup>["store"]; key: CampaignKey }> {
     const { service, store } = setup();
     const { key } = value(await service.create(input({ visibility, maxPlayers: 3 })));
     value(await service.join(key, "u-org"));
