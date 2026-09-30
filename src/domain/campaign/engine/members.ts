@@ -189,7 +189,7 @@ export function continueCampaign(decision: Decision): Rejection | null {
 // no loot from an earlier hero); the engine checks it fits this campaign: the
 // party's level, known content, and a fresh ID. The hero plays from the next
 // round or fight.
-export function joinHero(decision: Decision, sheet: CharacterSheet): Rejection | null {
+export function joinHero(decision: Decision, sheet: CharacterSheet, entrance?: string): Rejection | null {
   const { state, ctx } = decision;
   if (ctx.actor.kind === "user" && ctx.actor.userId !== sheet.ownerUserId && ctx.actor.userId !== state.organizerId) {
     return { code: "notOrganizer" };
@@ -199,7 +199,10 @@ export function joinHero(decision: Decision, sheet: CharacterSheet): Rejection |
   if (current !== null && state.characters[current] !== undefined && !isFallen(state, current)) return { code: "heroNotReplaceable" };
   const problems = heroProblems(state, sheet, decision);
   if (problems.length > 0) return { code: "invalidHero", problems };
-  decision.emit({ kind: "heroJoined", sheet });
+  const arrival = entrance?.trim();
+  if (arrival !== undefined && (arrival.length === 0 || arrival.length > 500)) return { code: "invalidHero", problems: ["Character entrance must be 1–500 characters."] };
+  decision.emit({ kind: "heroJoined", sheet, ...(arrival === undefined ? {} : { entrance: arrival }) });
+  if (arrival !== undefined) decision.request({ kind: "deliver", delivery: { kind: "heroArrival", characterId: sheet.id } });
   return null;
 }
 

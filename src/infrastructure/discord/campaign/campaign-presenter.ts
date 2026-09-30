@@ -90,6 +90,11 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
         await say(adventureChannelId, opening?.kind === "openingRecorded" ? opening.text : null);
         break;
       }
+      case "heroArrival": {
+        const joined = events.findLast((event) => event.kind === "heroJoined" && event.sheet.id === delivery.characterId);
+        if (joined?.kind === "heroJoined" && joined.entrance !== undefined) await say(adventureChannelId, `${joined.sheet.name} — ${joined.entrance}`);
+        break;
+      }
       case "quietRound":
         await say(adventureChannelId, text.campaign.msg.quiet);
         break;

@@ -28,7 +28,7 @@ export const plannerPromptVersion = "planner-5";
 export const narratorPromptVersion = "narrator-5";
 export const flourishPromptVersion = "flourish-5";
 export const tradePromptVersion = "trade-2";
-export const dialoguePromptVersion = "dialogue-2";
+export const dialoguePromptVersion = "dialogue-3";
 export const utilityCastPromptVersion = "utility-cast-2";
 export const hazardPromptVersion = "hazard-2";
 
@@ -425,17 +425,17 @@ export function buildDialogueNarratorPrompt(request: DialogueNarratorRequest): {
   const grounding =
     request.secretRevealed && request.npc.secret !== null
       ? `What ${request.npc.name} is known to say publicly: "${request.npc.publicDescription}". They have just given up this secret too, so you may now reveal it: "${request.npc.secret}".`
-      : `What ${request.npc.name} is known to say publicly: "${request.npc.publicDescription}". Never reveal anything beyond that, and never invent new facts, places, or plot the text above didn't give you.`;
+      : `What ${request.npc.name} is known to say publicly: "${request.npc.publicDescription}". They may also discuss established public scene facts from the context above. Do not reveal an unrevealed secret or invent new facts, places, or plot details.`;
   const rules = [
     "## Output rules",
-    zh ? "Write 40-150 Traditional Chinese characters (Taiwan usage) in the narration field." : "Write at most 60 words of English, one to three sentences.",
-    `Speak only as ${request.npc.name}, in their own voice (${request.npc.voice}), replying to the hero below. Do not narrate the hero's actions or describe the scene; just the NPC's reply.`,
+    zh ? "Write up to 350 Traditional Chinese characters (Taiwan usage) in the narration field." : "Write up to 150 words of English in the narration field.",
+    `Speak only as ${request.npc.name}, in their own voice (${request.npc.voice}), replying to the hero below. If the hero makes several statements or asks several questions, address each relevant point naturally in one reply. Do not force a one-sentence answer or invent an extra exchange with the hero. Do not narrate the hero's actions or describe the scene; just the NPC's reply.`,
     grounding,
     "Never mention dice, DCs, or checks.",
   ].join("\n");
   const situation =
     request.kind === "ask"
-      ? `${request.heroName} asks ${request.npc.name}: "${request.question ?? ""}"`
+      ? `${request.heroName} says to ${request.npc.name}: "${request.question ?? ""}"`
       : request.secretRevealed
         ? `${request.heroName} presses ${request.npc.name} with a ${request.press?.skill ?? ""} appeal, and they finally give in.`
         : `${request.heroName} presses ${request.npc.name} with a ${request.press?.skill ?? ""} appeal, but they hold firm and deflect.`;

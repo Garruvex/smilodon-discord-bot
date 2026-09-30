@@ -123,8 +123,11 @@ export interface CampaignRecord {
   // Problems waiting for the organizer; records saved before this existed have none.
   readonly issues?: readonly CampaignIssue[];
   readonly visibility?: CampaignVisibility;
-  // What became of each scene's picture, and how much of the picture budget is spent.
+  // Requests and invitations for people joining after play has started.
+  readonly joinRequests?: Readonly<Record<UserId, { readonly status: "requested" | "invited" | "approved"; readonly entrance?: string; readonly expiresAt: number }>>;
+  // What became of each picture.
   readonly images?: Readonly<Record<string, "made" | "done" | "skipped" | "failed">>;
+  // Legacy counters from campaigns created before picture budgets were removed.
   readonly imageBudget?: { readonly limit: number; readonly used: number };
   // The subject of the picture posted last, which the organizer's Redo repaints.
   readonly lastPicture?: string;

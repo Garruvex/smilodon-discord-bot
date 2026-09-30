@@ -56,6 +56,7 @@ export function renderCampaignCard(input: CampaignCardInput, text: Texts, campai
 
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(campaignCustomId("myHero", campaignId)).setLabel(t.button.myHero).setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(campaignCustomId("joinOngoing", campaignId)).setLabel(input.language === "zh-TW" ? "申請／加入遊戲" : "Request / join game").setStyle(ButtonStyle.Secondary),
   );
   if (input.adventureUrl !== null) row.addComponents(new ButtonBuilder().setURL(input.adventureUrl).setLabel(t.card.linkAdventure).setStyle(ButtonStyle.Link));
   return cardPayload(container.addActionRowComponents(row));

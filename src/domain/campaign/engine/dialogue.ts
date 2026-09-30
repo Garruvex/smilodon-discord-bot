@@ -32,7 +32,7 @@ export function handleDialogueCommand(decision: Decision, command: DialogueComma
 
 // The skills SRD 5.1 actually offers for reading or wearing down a reluctant NPC.
 const pressSkills = ["persuasion", "deception", "intimidation", "insight"] as const;
-export const maxQuestionLength = 300;
+export const maxQuestionLength = 1000;
 
 function mayTalk(decision: Decision, characterId: CharacterId): Rejection | null {
   const { state, ctx } = decision;

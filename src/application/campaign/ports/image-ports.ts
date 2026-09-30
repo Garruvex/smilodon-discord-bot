@@ -25,7 +25,7 @@ export class ImageProviderError extends Error {
 
 export interface ImageGenerator {
   // One picture from a prompt, or a thrown error (an ImageProviderError, or a timeout).
-  generate(request: { readonly prompt: string; readonly aspect?: ImageAspect; readonly timeoutMs: number }): Promise<GeneratedImage>;
+  generate(request: { readonly prompt: string; readonly aspect?: ImageAspect; readonly timeoutMs: number; readonly references?: readonly { readonly name: string; readonly image: GeneratedImage }[] }): Promise<GeneratedImage>;
 }
 
 // A made picture kept until it has been posted, so a failed post is retried

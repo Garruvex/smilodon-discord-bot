@@ -64,6 +64,24 @@ describe("the campaign's image request", () => {
     await new OpenAiImageGenerator({ apiKey: "k", baseUrl: "https://example.test/v1", model: "gpt-image-1" }).generate({ prompt: "x".repeat(9_000), timeoutMs: 1000 });
     expect(String(bodyOf(fetch).prompt).length).toBe(3_800);
   });
+
+  it("sends saved party portraits as image references for a wide scene", async () => {
+    const fetch = vi.fn().mockResolvedValue(answer(200, picture));
+    vi.stubGlobal("fetch", fetch);
+    await new OpenAiImageGenerator({ apiKey: "k", baseUrl: "https://example.test/v1", model: "gpt-image-1" }).generate({
+      prompt: "Luna enters the inn",
+      aspect: "wide",
+      timeoutMs: 1000,
+      references: [{ name: "Luna", image: { bytes: pngBytes, mediaType: "image/png" } }],
+    });
+    const [url, options] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://example.test/v1/images/edits");
+    expect(options.body).toBeInstanceOf(FormData);
+    const form = options.body as FormData;
+    expect(form.get("size")).toBe("1536x1024");
+    expect(form.get("prompt")).toBe("Luna enters the inn");
+    expect(form.getAll("image[]")).toHaveLength(1);
+  });
 });
 
 describe("what the provider says back", () => {

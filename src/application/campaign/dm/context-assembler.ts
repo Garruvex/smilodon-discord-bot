@@ -235,6 +235,8 @@ function liveState(input: ContextInput): ContextSection {
   if (state.gold > 0) lines.push(`Party gold: ${state.gold}.`);
   if (state.stash.length > 0) lines.push(`Party stash: ${state.stash.map((item) => input.glossary.names[item] ?? item).join(", ")}.`);
   if (state.clues.length > 0) lines.push(`Revealed clues: ${state.clues.map((clue) => clue.text).join(" ")}`);
+  const arrival = input.events.findLast((event) => event.kind === "heroJoined" && event.entrance !== undefined);
+  if (arrival?.kind === "heroJoined" && arrival.entrance !== undefined) lines.push(`New companion ${arrival.sheet.name} joined at this scene: ${arrival.entrance}`);
   if (encounter !== null) {
     const foes = Object.values(encounter.combatants)
       .filter((combatant) => combatant.side === "foes")

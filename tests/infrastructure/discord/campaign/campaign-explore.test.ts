@@ -114,7 +114,7 @@ describe("Explore: the people in the scene", () => {
     const npc = screenOf(await choose(t, id(t, "exploreNpc"), "npc:garrick"));
     expect(npc.content).toContain("**Garrick**");
     expect(npc.content).toContain("polishing the same mug");
-    expect(npc.buttons.map((button) => button.label)).toEqual(["Ask a question", "Press for a secret", "Shop", "Back"]);
+    expect(npc.buttons.map((button) => button.label)).toEqual(["Talk", "Press for a secret", "Shop", "Back"]);
     // Skarn is not in the inn, whatever the menu was made to say.
     expect(screenOf(await choose(t, id(t, "exploreNpc"), "npc:skarn")).content).toContain("They are not here right now.");
     const back = screenOf(await click(t, id(t, "exploreBack", "garrick")));
@@ -124,20 +124,21 @@ describe("Explore: the people in the scene", () => {
 });
 
 describe("Explore: asking and pressing", () => {
-  it("opens a form for the question, and sends it to the person", async () => {
+  it("opens a multi-line conversation form and sends the full speech to the NPC", async () => {
     const { t, heroId } = await table();
     const opened = await click(t, id(t, "exploreAsk", "garrick"));
     const modal = (opened.find((entry) => entry.kind === "modal")?.payload as { toJSON(): { custom_id: string; title: string; components: { components: { custom_id: string; max_length: number }[] }[] } }).toJSON();
     expect(modal.custom_id).toBe(id(t, "exploreAskSubmit", "garrick"));
-    expect(modal.title).toBe("Ask Garrick");
-    expect(modal.components[0]?.components[0]).toMatchObject({ custom_id: "question", max_length: 300 });
+    expect(modal.title).toBe("Talk to Garrick");
+    expect(modal.components[0]?.components[0]).toMatchObject({ custom_id: "question", max_length: 1000 });
 
-    const { interaction, sent } = fakeInteraction({ customId: id(t, "exploreAskSubmit", "garrick"), userId: "u-org", fields: { question: "Seen anything odd on the road?" }, kind: "modal" });
+    const speech = "Good evening. Seen anything odd on the road?\nDid anyone follow the travelers?";
+    const { interaction, sent } = fakeInteraction({ customId: id(t, "exploreAskSubmit", "garrick"), userId: "u-org", fields: { question: speech }, kind: "modal" });
     await t.handler.executeModal({ interaction, logger: quiet as never });
-    expect(contentOf(sent)).toContain("Your question is with Garrick");
+    expect(contentOf(sent)).toContain("You speak to Garrick");
     const queued = await t.r.store.transaction((tx) => tx.pendingOutbox("narrateDialogue"));
     expect(queued).toHaveLength(1);
-    expect((await stateOf(t)).state.dialogues["dialogue:1"]).toMatchObject({ characterId: heroId, npcId: "npc:garrick", kind: "ask", question: "Seen anything odd on the road?" });
+    expect((await stateOf(t)).state.dialogues["dialogue:1"]).toMatchObject({ characterId: heroId, npcId: "npc:garrick", kind: "ask", question: speech });
   });
 
   it("says why an empty question or a stranger's hero cannot ask", async () => {

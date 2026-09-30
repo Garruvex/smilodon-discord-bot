@@ -209,3 +209,42 @@ describe("starting the campaign", () => {
     expect(Object.values(stored?.state.characters ?? {})[0]?.name).toBe(starter["zh-TW"].heroes[0]?.name);
   });
 });
+
+describe("joining an ongoing campaign", () => {
+  async function running(visibility: "open" | "membersOnly" = "open") {
+    const { service, store } = setup();
+    const { key } = value(await service.create(input({ visibility, maxPlayers: 3 })));
+    value(await service.join(key, "u-org"));
+    value(await service.chooseHero(key, "u-org", heroIds[0] ?? ""));
+    value(await service.start(key, "u-org"));
+    return { service, store, key };
+  }
+
+  it("lets a public applicant join only after approval, then records the story entrance", async () => {
+    const { service, store, key } = await running();
+    expect(refusal(await service.joinOngoingHero(key, "u-b", heroIds[1] ?? "", "before"))).toBe("joinNotApproved");
+    value(await service.requestOngoingJoin(key, "u-b"));
+    expect((await service.get(key))?.record.joinRequests?.["u-b"]?.status).toBe("requested");
+    value(await service.decideOngoingJoin(key, "u-org", "u-b", true, "The party meets them at the inn."));
+    value(await service.joinOngoingHero(key, "u-b", heroIds[1] ?? "", "joining"));
+    const state = (await store.transaction((tx) => tx.loadCampaign(key)))?.state;
+    expect(state?.members["u-b"]?.characterId).toBe(heroIds[1]);
+    expect(state?.round?.participants ?? []).not.toContain(heroIds[1]);
+    expect((await service.get(key))?.record.lobby.members).toHaveLength(2);
+    expect((await service.get(key))?.record.joinRequests?.["u-b"]).toBeUndefined();
+    expect((await store.transaction((tx) => tx.readEvents(key))).map((entry) => entry.event)).toContainEqual(expect.objectContaining({ kind: "heroJoined", entrance: "The party meets them at the inn." }));
+    expect(await store.transaction((tx) => tx.pendingOutbox("deliver"))).toContainEqual(expect.objectContaining({ request: { kind: "deliver", delivery: { kind: "heroArrival", characterId: heroIds[1] } } }));
+  });
+
+  it("keeps private joining invitation-only and honors the seat limit", async () => {
+    const { service, key } = await running("membersOnly");
+    expect(refusal(await service.requestOngoingJoin(key, "u-b"))).toBe("privateInviteOnly");
+    expect(refusal(await service.inviteOngoing(key, "u-b", "u-c", "They arrive."))).toBe("notOrganizer");
+    value(await service.inviteOngoing(key, "u-org", "u-b", "They arrive."));
+    expect((await service.get(key))?.record.joinRequests?.["u-b"]?.status).toBe("invited");
+    value(await service.acceptOngoingInvite(key, "u-b"));
+    expect((await service.get(key))?.record.joinRequests?.["u-b"]?.status).toBe("approved");
+    value(await service.inviteOngoing(key, "u-org", "u-c", "They arrive later."));
+    expect(refusal(await service.inviteOngoing(key, "u-org", "u-d", "They arrive later."))).toBe("gameFull");
+  });
+});

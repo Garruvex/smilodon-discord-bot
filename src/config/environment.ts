@@ -143,7 +143,6 @@ const environmentSchema = z.object({
   CAMPAIGN_IMAGE_API_KEY: optionalNonEmptyString,
   CAMPAIGN_IMAGE_BASE_URL: z.preprocess((value) => (value === "" ? undefined : value), z.string().url().optional()),
   CAMPAIGN_IMAGE_QUALITY: z.preprocess((value) => (value === "" ? undefined : value), z.enum(["low", "medium", "high", "auto"]).optional()),
-  CAMPAIGN_IMAGE_BUDGET: z.coerce.number().int().min(0).max(200).default(12),
 
   // See MemoryEngineLimits in memory-engine.ts for what each of these
   // actually gates and the reasoning behind the defaults — the similarity
@@ -421,7 +420,6 @@ function buildCampaignImages(data: z.infer<typeof environmentSchema>): NonNullab
     apiKey,
     baseUrl: (data.CAMPAIGN_IMAGE_BASE_URL ?? data.OPENAI_BASE_URL).replace(/\/$/, ""),
     model: data.CAMPAIGN_IMAGE_MODEL,
-    budget: data.CAMPAIGN_IMAGE_BUDGET,
     ...(data.CAMPAIGN_IMAGE_QUALITY === undefined ? {} : { quality: data.CAMPAIGN_IMAGE_QUALITY }),
   };
 }

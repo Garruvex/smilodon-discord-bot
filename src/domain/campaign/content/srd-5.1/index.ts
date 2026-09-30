@@ -15,6 +15,7 @@ import { srd51GeneratedItems } from "./items/srd-equipment.generated.js";
 import { srd51CreatureTypes, srd51Darkvision } from "./monsters/creature-types.generated.js";
 import { srd51MoreMonsters } from "./monsters/more-monsters.js";
 import { srd51GeneratedMonsters } from "./monsters/srd-monsters.generated.js";
+import { srd51SummonedCreatures } from "./monsters/summoned-creatures.js";
 import { srd51StarterMonsters } from "./monsters/starter-monsters.js";
 import { srd51DragonAncestries, srd51Races, srd51Subraces } from "./races.js";
 import { srd51ClassAbilitySpells } from "./spells/class-ability-spells.js";
@@ -59,6 +60,7 @@ const srd51Definitions: readonly ContentDefinition[] = [
   ...srd51ClassActions,
   ...srd51StarterMonsters,
   ...srd51MoreMonsters,
+  ...srd51SummonedCreatures,
   ...srd51GeneratedMonsters,
   ...srd51GeneratedItems,
   ...srd51MagicItems,

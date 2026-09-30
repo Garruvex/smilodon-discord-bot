@@ -10,13 +10,15 @@ const chapel = "scene:ruined-chapel";
 
 class Painter implements ImageGenerator {
   public readonly prompts: string[] = [];
+  public readonly references: (readonly { readonly name: string; readonly image: GeneratedImage }[] | undefined)[] = [];
   public readonly aspects: (ImageAspect | undefined)[] = [];
   public fail = 0;
   // The provider's own rules said no: trying again would be refused the same way.
   public refuse = false;
   public size = 1_000;
-  public generate(request: { prompt: string; aspect?: ImageAspect }): Promise<GeneratedImage> {
+  public generate(request: { prompt: string; aspect?: ImageAspect; references?: readonly { readonly name: string; readonly image: GeneratedImage }[] }): Promise<GeneratedImage> {
     this.prompts.push(request.prompt);
+    this.references.push(request.references);
     this.aspects.push(request.aspect);
     if (this.refuse) return Promise.reject(new ImageProviderError("The image provider answered 400: moderation_blocked.", false));
     if (this.fail > 0) {
@@ -42,12 +44,12 @@ class Shelf implements ImageAssetStore {
   }
 }
 
-async function table(budget = 3): Promise<{ r: Rig; key: CampaignKey; painter: Painter; posted: { channelId: string; caption: string }[]; worker: ImageWorker; failPost: { on: boolean }; shelf: Shelf }> {
+async function table(): Promise<{ r: Rig; key: CampaignKey; painter: Painter; posted: { channelId: string; caption: string }[]; worker: ImageWorker; failPost: { on: boolean }; shelf: Shelf }> {
   const r = rig();
   const key = await startedCampaign(r);
-  // The party's own portraits are asked for at the opening; these tests are about the rest.
+  // The opening scene is illustrated separately; these tests are about the rest.
   await r.store.transaction(async (tx) => {
-    for (const item of await tx.pendingOutbox("heroImage")) await tx.completeOutbox(item.id);
+    for (const item of await tx.pendingOutbox("sceneImage")) await tx.completeOutbox(item.id);
   });
   await r.store.transaction(async (tx) => {
     const stored = await tx.loadRecord(key);
@@ -64,7 +66,6 @@ async function table(budget = 3): Promise<{ r: Rig; key: CampaignKey; painter: P
     generator: painter,
     sink: { post: (channelId, _image, caption): Promise<void> => (failPost.on ? Promise.reject(new Error("no permission")) : (posted.push({ channelId, caption }), Promise.resolve())) },
     assets: shelf,
-    budgetPerCampaign: budget,
   });
   return { r, key, painter, posted, worker, failPost, shelf };
 }
@@ -90,7 +91,7 @@ describe("scene pictures", () => {
     for (const npc of starter.en.bible.npcs) expect(t.painter.prompts[0]).not.toContain(npc.secret.slice(0, 40));
     const record = await recordOf(t);
     expect(record.images).toEqual({ [chapel]: "done" });
-    expect(record.imageBudget).toEqual({ limit: 3, used: 1 });
+    expect(record.imageBudget).toBeUndefined();
 
     // Asked again, the scene keeps the picture it has.
     await ask(t, chapel, "again");
@@ -105,13 +106,18 @@ describe("scene pictures", () => {
     expect(t.posted[0]?.caption).toBe(starter.en.bible.scenes.find((scene) => scene.id === "scene:old-watchtower")?.title);
   });
 
-  it("stops at the campaign's budget without failing anything", async () => {
-    const t = await table(1);
+  it("paints each distinct scene without a campaign image cap", async () => {
+    const t = await table();
+    await t.r.store.transaction(async (tx) => {
+      const stored = await tx.loadRecord(t.key);
+      if (stored === undefined) throw new Error("record");
+      await tx.saveRecord({ ...stored.record, imageBudget: { limit: 1, used: 1 } }, stored.revision);
+    });
     await ask(t, chapel);
     await ask(t, "scene:old-watchtower");
     expect((await t.worker.runOnce()).failed).toEqual([]);
-    expect(t.painter.prompts).toHaveLength(1);
-    expect((await recordOf(t)).images).toEqual({ [chapel]: "done", "scene:old-watchtower": "skipped" });
+    expect(t.painter.prompts).toHaveLength(2);
+    expect((await recordOf(t)).images).toEqual({ [chapel]: "done", "scene:old-watchtower": "done" });
   });
 
   it("leaves text play alone when the model fails: tries twice, then the scene goes without", async () => {
@@ -123,18 +129,18 @@ describe("scene pictures", () => {
     expect((await t.worker.runOnce()).failed).toHaveLength(1);
     expect((await recordOf(t)).images).toEqual({ [chapel]: "failed" });
     expect(t.posted).toEqual([]);
-    expect((await recordOf(t)).imageBudget ?? { used: 0 }).toMatchObject({ used: 0 });
+    expect((await recordOf(t)).imageBudget).toBeUndefined();
     // Nothing is left waiting, and the game itself is untouched.
     expect(await t.r.store.transaction((tx) => tx.pendingOutbox("sceneImage"))).toEqual([]);
     expect((await t.r.store.transaction((tx) => tx.loadCampaign(t.key)))?.state.status).toBe("active");
   });
 
-  it("does not bill twice when only the posting failed, and the retry posts the saved picture", async () => {
+  it("does not generate twice when only the posting failed, and the retry posts the saved picture", async () => {
     const t = await table();
     t.failPost.on = true;
     await ask(t, chapel);
     await t.worker.runOnce();
-    expect((await recordOf(t)).imageBudget).toEqual({ limit: 3, used: 1 });
+    expect((await recordOf(t)).imageBudget).toBeUndefined();
     expect((await recordOf(t)).images).toEqual({ [chapel]: "made" });
     expect(t.shelf.kept.size).toBe(1);
     // Discord works again: the retry delivers the same picture without painting.
@@ -143,7 +149,7 @@ describe("scene pictures", () => {
     expect(t.posted).toHaveLength(1);
     expect(t.painter.prompts).toHaveLength(1);
     expect((await recordOf(t)).images).toEqual({ [chapel]: "done" });
-    expect((await recordOf(t)).imageBudget).toEqual({ limit: 3, used: 1 });
+    expect((await recordOf(t)).imageBudget).toBeUndefined();
     expect(t.shelf.kept.size).toBe(0);
   });
 
@@ -168,7 +174,7 @@ describe("scene pictures", () => {
     await t.r.service.start(second, "u-two");
     await tellOpening(t.r, second);
     await t.r.store.transaction(async (tx) => {
-      for (const item of await tx.pendingOutbox("heroImage")) await tx.completeOutbox(item.id);
+      for (const item of await tx.pendingOutbox("sceneImage")) await tx.completeOutbox(item.id);
       const stored = await tx.loadRecord(second);
       if (stored === undefined) throw new Error("record");
       await tx.saveRecord({ ...stored.record, channels: { ...stored.record.channels, adventurePostId: "chan-two" } }, stored.revision);
@@ -221,7 +227,7 @@ describe("a hero from a saved character", () => {
     return { heroId: sheet.id, name: sheet.name };
   }
 
-  it("is introduced with the player's own portrait, without painting or spending the budget", async () => {
+  it("posts the player's saved portrait without generating a replacement", async () => {
     const t = await table();
     const { heroId, name } = await withOrigin(t);
     const worker = new ImageWorker({
@@ -230,7 +236,6 @@ describe("a hero from a saved character", () => {
       generator: t.painter,
       sink: { post: (channelId, image, caption): Promise<void> => (t.posted.push({ channelId, caption: `${caption}:${image.bytes.toString()}` }), Promise.resolve()) },
       assets: t.shelf,
-      budgetPerCampaign: 3,
       portraits: { forGame: (id): Promise<GeneratedImage | undefined> => Promise.resolve(id === "lc-wren" ? { bytes: Buffer.from("own"), mediaType: "image/png" } : undefined) },
     });
     await t.r.store.transaction((tx) => tx.enqueue(t.key, "img-hero", { kind: "heroImage", characterId: heroId }, 1));
@@ -239,7 +244,34 @@ describe("a hero from a saved character", () => {
     expect(t.painter.prompts).toEqual([]);
     const record = await recordOf(t);
     expect(record.images).toEqual({ [`hero:${heroId}`]: "done" });
-    expect(record.imageBudget ?? { used: 0 }).toMatchObject({ used: 0 });
+    expect(record.imageBudget).toBeUndefined();
+  });
+
+  it("uses the present hero's race, class and saved portrait when painting a scene", async () => {
+    const t = await table();
+    const { heroId, name } = await withOrigin(t);
+    await t.r.store.transaction(async (tx) => {
+      const stored = await tx.loadCampaign(t.key);
+      if (stored === undefined) throw new Error("state");
+      const hero = stored.state.characters[heroId];
+      if (hero === undefined) throw new Error("hero");
+      await tx.saveCampaign(t.key, { ...stored.state, characters: { ...stored.state.characters, [heroId]: { ...hero, race: "race:hill-dwarf" } } }, stored.revision);
+    });
+    const portrait = { bytes: Buffer.from("portrait"), mediaType: "image/png" as const };
+    const worker = new ImageWorker({
+      unitOfWork: t.r.store,
+      adventures: t.r.adventures,
+      generator: t.painter,
+      sink: { post: (): Promise<void> => Promise.resolve() },
+      assets: t.shelf,
+      portraits: { forGame: (): Promise<GeneratedImage> => Promise.resolve(portrait) },
+    });
+    await ask(t, chapel);
+    await worker.runOnce();
+    expect(t.painter.prompts[0]).toContain(`${name}, a level 1 hill dwarf fighter`);
+    expect(t.painter.prompts[0]).toContain("carrying");
+    expect(t.painter.prompts[0]).toContain("reference image 1");
+    expect(t.painter.references[0]).toEqual([{ name, image: portrait }]);
   });
 
   it("is painted as before when its character has no portrait, and a redo paints again rather than reposting", async () => {
@@ -252,13 +284,12 @@ describe("a hero from a saved character", () => {
       generator: t.painter,
       sink: { post: (channelId, _image, caption): Promise<void> => (t.posted.push({ channelId, caption }), Promise.resolve()) },
       assets: t.shelf,
-      budgetPerCampaign: 3,
       portraits: { forGame: (): Promise<GeneratedImage | undefined> => Promise.resolve(has ? { bytes: Buffer.from("own"), mediaType: "image/png" } : undefined) },
     });
     await t.r.store.transaction((tx) => tx.enqueue(t.key, "img-hero", { kind: "heroImage", characterId: heroId }, 1));
     await worker.runOnce();
     expect(t.painter.prompts).toHaveLength(1);
-    expect((await recordOf(t)).imageBudget).toEqual({ limit: 3, used: 1 });
+    expect((await recordOf(t)).imageBudget).toBeUndefined();
     // Asked to paint it again after a portrait exists: the redo is a painting, not a repost.
     has = true;
     await t.r.store.transaction((tx) => tx.enqueue(t.key, "img-redo", { kind: "redoImage", subject: `hero:${heroId}` }, 1));

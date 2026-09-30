@@ -233,6 +233,8 @@ export interface MonsterDefinition extends DefinitionBase<"monster"> {
   // Set on beasts only: what a Druid's Wild Shape checks (rules/wild-shape-rules.ts).
   readonly beast?: { readonly challengeRating: number; readonly flies: boolean; readonly swims: boolean };
   readonly spellcasting?: MonsterSpellcasting;
+  // A creature only a spell can call up: never offered to adventure authors or placed in an encounter.
+  readonly summonOnly?: true;
 }
 
 // How a class casts, if at all: full (Wizard-shaped slot table), half

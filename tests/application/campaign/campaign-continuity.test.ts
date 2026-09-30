@@ -322,15 +322,14 @@ describe("pictures of monsters and moments", () => {
             remove: (key, subject): Promise<void> => (kept.delete(`${key.campaignId}:${subject}`), Promise.resolve()),
           },
           monsterName: (id, language): string | undefined => (language === "en" ? enSrd51Glossary : zhTwSrd51Glossary).names[id],
-          budgetPerCampaign: 12,
           ...extra,
         }),
     };
   };
-  // Points the game at an Adventure channel, and leaves the party's own portraits (asked for at the opening) out of these tests.
+  // Points the game at an Adventure channel, and leaves the opening illustration out of unrelated tests.
   const withChannel = (c: Campaign): Promise<void> =>
     c.r.store.transaction(async (tx) => {
-      for (const item of await tx.pendingOutbox("heroImage")) await tx.completeOutbox(item.id);
+      for (const item of await tx.pendingOutbox("sceneImage")) await tx.completeOutbox(item.id);
       const stored = await tx.loadRecord(c.key);
       if (stored === undefined) throw new Error("record");
       await tx.saveRecord({ ...stored.record, channels: { ...stored.record.channels, adventurePostId: "chan" } }, stored.revision);
@@ -381,7 +380,7 @@ describe("pictures of monsters and moments", () => {
     expect((await c.r.service.get(c.key))?.record.images).toMatchObject({ "moment:round-1": "done" });
   });
 
-  it("paints each hero's portrait when the party is introduced, from their name and class alone", async () => {
+  it("paints the opening scene from the narration rather than interrupting with a hero portrait", async () => {
     const c = await campaign();
     await c.r.store.transaction(async (tx) => {
       const stored = await tx.loadRecord(c.key);
@@ -390,13 +389,14 @@ describe("pictures of monsters and moments", () => {
     });
     const p = painter();
     await p.worker(c).runOnce();
-    const sheet = starter.en.heroes[0];
     expect(p.prompts).toHaveLength(1);
-    expect(p.prompts[0]).toContain(sheet?.name ?? "?");
-    expect(p.posted).toEqual([{ caption: sheet?.name }]);
+    expect(p.prompts[0]).toContain("The night is quiet. What do you do");
+    expect(p.prompts[0]).toContain("wide establishing shot");
+    expect(p.posted).toEqual([{ caption: starter.en.bible.scenes.find((scene) => scene.id === starter.en.bible.startScene)?.title }]);
+    expect(await c.r.store.transaction((tx) => tx.pendingOutbox("heroImage"))).toEqual([]);
   });
 
-  it("repaints the last picture for the organizer only, spending budget again", async () => {
+  it("repaints the last picture for the organizer only", async () => {
     const c = await campaign();
     await playRound(c, 1);
     await c.r.bus.execute(c.key, { kind: "illustrateMoment", roundNumber: 1 }, { commandId: "yes", actor: player });
@@ -406,7 +406,6 @@ describe("pictures of monsters and moments", () => {
     await worker.runOnce();
     const record = (await c.r.service.get(c.key))?.record;
     expect(record?.lastPicture).toBe("moment:round-1");
-    expect(record?.imageBudget?.used).toBe(1);
 
     expect(await c.r.bus.execute(c.key, { kind: "redoPicture", subject: "moment:round-1" }, { commandId: "no", actor: { kind: "user", userId: "u-other" } })).toEqual({ kind: "rejected", rejection: { code: "notOrganizer" } });
     expect(await c.r.bus.execute(c.key, { kind: "redoPicture", subject: "" }, { commandId: "none", actor: player })).toEqual({ kind: "rejected", rejection: { code: "nothingToRedo" } });
@@ -414,10 +413,10 @@ describe("pictures of monsters and moments", () => {
     await worker.runOnce();
     expect(p.prompts).toHaveLength(2);
     expect(p.posted).toHaveLength(2);
-    expect((await c.r.service.get(c.key))?.record.imageBudget?.used).toBe(2);
+    expect((await c.r.service.get(c.key))?.record.imageBudget).toBeUndefined();
   });
 
-  it("rations automatic moment pictures: not right after another, and never the last of the budget", async () => {
+  it("spaces automatic moment pictures, even without an image cap", async () => {
     const c = await campaign();
     await playRound(c, 1);
     await playRound(c, 2);
@@ -430,42 +429,15 @@ describe("pictures of monsters and moments", () => {
     expect(p.prompts).toHaveLength(1);
     await ask("a2", 2);
     await worker.runOnce();
-    // Round 2 is right after round 1's picture: skipped, no charge.
+    // Round 2 is right after round 1's picture: skipped.
     expect(p.prompts).toHaveLength(1);
     expect((await c.r.service.get(c.key))?.record.images).toMatchObject({ "moment:round-1": "done", "moment:round-2": "skipped" });
 
-    const low = await campaign();
-    await playRound(low, 1);
-    await withChannel(low);
-    await low.r.store.transaction(async (tx) => {
-      const stored = await tx.loadRecord(low.key);
-      if (stored === undefined) throw new Error("record");
-      await tx.saveRecord({ ...stored.record, imageBudget: { limit: 12, used: 9 } }, stored.revision);
-    });
-    const q = painter();
-    await low.r.store.transaction((tx) => tx.enqueue(low.key, "low", { kind: "momentImage", roundNumber: 1, auto: true }, 1));
-    await q.worker(low).runOnce();
-    expect(q.prompts).toEqual([]);
   });
 
-  it("posts a ready-made monster portrait, for free, when the budget is spent or the model fails", async () => {
+  it("posts a ready-made monster portrait when the model fails", async () => {
     const image = { bytes: Buffer.from("gallery"), mediaType: "image/webp" as const };
     const fallback = (monsterId: string): Promise<GeneratedImage | undefined> => Promise.resolve(monsterId === "monster:goblin" ? image : undefined);
-    // Budget spent.
-    const spent = await campaign();
-    await withChannel(spent);
-    await spent.r.store.transaction(async (tx) => {
-      const stored = await tx.loadRecord(spent.key);
-      if (stored === undefined) throw new Error("record");
-      await tx.saveRecord({ ...stored.record, imageBudget: { limit: 1, used: 1 } }, stored.revision);
-    });
-    const a = painter();
-    await spent.r.store.transaction((tx) => tx.enqueue(spent.key, "goblin", { kind: "monsterImage", monsterId: "monster:goblin", npcId: null }, 1));
-    await a.worker(spent, { fallback }).runOnce();
-    expect(a.prompts).toEqual([]);
-    expect(a.posted).toEqual([{ caption: "Goblin" }]);
-    expect((await spent.r.service.get(spent.key))?.record.imageBudget).toEqual({ limit: 1, used: 1 });
-
     // The model fails on every try; a monster with no gallery picture just goes without.
     const down = await campaign();
     await withChannel(down);

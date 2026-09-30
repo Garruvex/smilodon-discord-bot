@@ -21,7 +21,7 @@ export interface CampaignMessageGateway {
   // placeholder must be reported so the result can be posted separately.
   editText(channelId: string, messageId: string, content: string): Promise<"ok" | "missing">;
   pin(channelId: string, messageId: string): Promise<void>;
-  // A picture with a caption in the channel (a scene's illustration).
+  // A picture attachment; the caption stays internal so it does not duplicate the narration.
   sendImage(channelId: string, bytes: Buffer, mediaType: string, caption: string): Promise<void>;
 }
 
@@ -87,9 +87,9 @@ export class DiscordMessageGateway implements CampaignMessageGateway {
     }
   }
 
-  public async sendImage(channelId: string, bytes: Buffer, mediaType: string, caption: string): Promise<void> {
+  public async sendImage(channelId: string, bytes: Buffer, mediaType: string, _caption: string): Promise<void> {
     const extension = mediaType === "image/jpeg" ? "jpg" : mediaType === "image/webp" ? "webp" : "png";
-    await (await this.channel(channelId)).send({ content: caption.slice(0, 200), files: [{ attachment: bytes, name: `scene.${extension}` }], allowedMentions: { parse: [] } });
+    await (await this.channel(channelId)).send({ files: [{ attachment: bytes, name: `scene.${extension}` }], allowedMentions: { parse: [] } });
   }
 
   public async pin(channelId: string, messageId: string): Promise<void> {

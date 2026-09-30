@@ -9,6 +9,7 @@ import {
   StringSelectMenuBuilder,
   TextInputBuilder,
   TextInputStyle,
+  UserSelectMenuBuilder,
   type ButtonInteraction,
   type MessageActionRowComponentBuilder,
   type ModalSubmitInteraction,
@@ -72,6 +73,7 @@ const levelField = "level";
 const whoField = "who";
 const abilityField = "ability";
 const dcField = "dc";
+const entranceField = "entrance";
 
 // The hub's controls: the Create game wizard and each game's Manage view. All
 // replies are private. Who may do what is decided on every click from the
@@ -109,6 +111,21 @@ export class CampaignHubComponentHandler implements ComponentHandler {
         return;
       case "manage":
         if (interaction.isButton() && first !== undefined) await this.openManage(interaction, first);
+        return;
+      case "inviteOpen":
+        if (interaction.isButton() && first !== undefined) await this.chooseInvitee(interaction, first);
+        return;
+      case "inviteUser":
+        if (interaction.isUserSelectMenu() && first !== undefined) await this.openJoinForm(interaction, first, "inviteOpen", interaction.values[0]);
+        return;
+      case "joinApproveOpen":
+        if (interaction.isButton() && first !== undefined) await this.openJoinForm(interaction, first, parsed.action, second);
+        return;
+      case "joinRequests":
+        if (interaction.isButton() && first !== undefined) await this.showJoinRequests(interaction, first);
+        return;
+      case "joinDecline":
+        if (interaction.isButton() && first !== undefined && second !== undefined) await this.declineJoin(interaction, first, second);
         return;
       case "do":
         if (interaction.isButton() && first !== undefined) await this.runManage(interaction, first, second);
@@ -153,6 +170,7 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     if (parsed.action === "authorSubmit") return void (await this.submitAuthor(interaction));
     if (parsed.action === "levelSubmit") return void (await this.submitLevel(interaction, parsed.parts[0] ?? ""));
     if (parsed.action === "hazardSubmit") return void (await this.submitHazard(interaction, parsed.parts[0] ?? ""));
+    if (parsed.action === "inviteSubmit" || parsed.action === "joinApproveSubmit") return void (await this.submitJoinForm(interaction, parsed.parts[0] ?? "", parsed.action, parsed.parts[1]));
     if (parsed.action !== "wizName") return;
     const choices = parseWizardState(parsed.parts[0]);
     const text = texts[choices.language];
@@ -494,6 +512,61 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     await interaction.editReply(await this.manageScreen(record, text));
   }
 
+  private async chooseInvitee(interaction: ButtonInteraction<"cached">, campaignId: string): Promise<void> {
+    const record = (await this.deps.lobby.get({ guildId: interaction.guildId, campaignId }))?.record;
+    if (record === undefined || record.organizerId !== interaction.user.id || record.lifecycle === "lobby" || record.lifecycle === "archived") return void (await interaction.reply({ content: "Only the organizer can invite players into a running game.", flags: MessageFlags.Ephemeral }));
+    await interaction.reply({ content: record.language === "zh-TW" ? "選擇要邀請的玩家。" : "Select the player to invite.", components: [new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(new UserSelectMenuBuilder().setCustomId(hubCustomId("inviteUser", campaignId)).setMaxValues(1))], flags: MessageFlags.Ephemeral });
+  }
+
+  private async openJoinForm(interaction: ButtonInteraction<"cached"> | import("discord.js").UserSelectMenuInteraction<"cached">, campaignId: string, action: "inviteOpen" | "joinApproveOpen", userId?: string): Promise<void> {
+    const record = (await this.deps.lobby.get({ guildId: interaction.guildId, campaignId }))?.record;
+    if (record === undefined || record.organizerId !== interaction.user.id || record.lifecycle === "lobby" || record.lifecycle === "archived") {
+      await interaction.reply({ content: "Only the organizer can manage joining for a running game.", flags: MessageFlags.Ephemeral });
+      return;
+    }
+    const zh = record.language === "zh-TW";
+    const modal = new ModalBuilder().setCustomId(hubCustomId(action === "inviteOpen" ? "inviteSubmit" : "joinApproveSubmit", campaignId, ...(userId === undefined ? [] : [userId]))).setTitle(zh ? "安排新角色加入" : "Bring in a new character");
+    modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId(entranceField).setLabel(zh ? "角色登場方式" : "How the character enters the story").setStyle(TextInputStyle.Paragraph).setMaxLength(500).setRequired(true)));
+    await interaction.showModal(modal);
+  }
+
+  private async submitJoinForm(interaction: ModalSubmitInteraction<"cached">, campaignId: string, action: "inviteSubmit" | "joinApproveSubmit", approvedUserId?: string): Promise<void> {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const key: CampaignKey = { guildId: interaction.guildId, campaignId };
+    const record = (await this.deps.lobby.get(key))?.record;
+    if (record === undefined || record.organizerId !== interaction.user.id) return void (await interaction.editReply({ content: "Only the organizer can manage joining." }));
+    const userId = approvedUserId ?? "";
+    if (!/^\d{15,22}$/.test(userId)) return void (await interaction.editReply({ content: record.language === "zh-TW" ? "請輸入有效的 Discord 使用者 ID。" : "Enter a valid Discord user ID." }));
+    const entrance = interaction.fields.getTextInputValue(entranceField);
+    const result = action === "inviteSubmit" ? await this.deps.lobby.inviteOngoing(key, interaction.user.id, userId, entrance) : await this.deps.lobby.decideOngoingJoin(key, interaction.user.id, userId, true, entrance);
+    if (result.kind === "refused") return void (await interaction.editReply({ content: refusalText(texts[record.language], result.reason) }));
+    const access = await this.deps.setup.applyVisibility(key);
+    const party = result.value.channels.partyPostId;
+    const link = party === null ? "" : ` https://discord.com/channels/${key.guildId}/${party}`;
+    const notified = await interaction.client.users.fetch(userId).then((user) => user.send(record.language === "zh-TW" ? `你已受邀／獲准加入「${record.name}」。請到隊伍頻道按「申請／加入遊戲」並選擇角色。${link}` : `You're invited or approved to join ${record.name}. Open the Party post, press “Request / join game,” and choose a character.${link}`)).then(() => true).catch(() => false);
+    await interaction.editReply({ content: record.language === "zh-TW" ? `<@${userId}> 已獲准加入。${notified ? "已發送私訊。" : "私訊未送達，請直接告知玩家。"}${access.kind === "failed" ? " 私人頻道權限需修復。" : ""}` : `<@${userId}> may join. ${notified ? "I sent them a DM." : "The DM could not be delivered; please tell them directly."}${access.kind === "failed" ? " Private-channel access needs repair." : ""}` });
+  }
+
+  private async showJoinRequests(interaction: ButtonInteraction<"cached">, campaignId: string): Promise<void> {
+    const found = await this.allowed(interaction, campaignId);
+    if (found === null) return;
+    const pending = Object.entries(found.record.joinRequests ?? {}).filter(([, request]) => request.status === "requested" && request.expiresAt > Date.now()).slice(0, 4);
+    await interaction.update({
+      content: pending.length === 0 ? (found.record.language === "zh-TW" ? "目前沒有待審申請。" : "No pending applications.") : pending.map(([userId]) => `<@${userId}>`).join("\n"),
+      components: pending.map(([userId]) => row(
+        new ButtonBuilder().setCustomId(hubCustomId("joinApproveOpen", campaignId, userId)).setLabel(found.record.language === "zh-TW" ? `批准 ${userId}` : `Approve ${userId}`).setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(hubCustomId("joinDecline", campaignId, userId)).setLabel(found.record.language === "zh-TW" ? "拒絕" : "Decline").setStyle(ButtonStyle.Secondary),
+      )),
+    });
+  }
+
+  private async declineJoin(interaction: ButtonInteraction<"cached">, campaignId: string, userId: string): Promise<void> {
+    const found = await this.allowed(interaction, campaignId);
+    if (found === null) return;
+    const result = await this.deps.lobby.decideOngoingJoin(found.record.key, interaction.user.id, userId, false);
+    await interaction.update({ content: result.kind === "refused" ? refusalText(found.text, result.reason) : (found.record.language === "zh-TW" ? "已拒絕申請。" : "Application declined."), components: [] });
+  }
+
   private async runManage(interaction: ButtonInteraction<"cached">, campaignId: string, verb: string | undefined): Promise<void> {
     const found = await this.allowed(interaction, campaignId);
     if (found === null) return;
@@ -590,6 +663,11 @@ export class CampaignHubComponentHandler implements ComponentHandler {
         ),
         row(verb("shortRest", t.shortRest), verb("longRest", t.longRest), verb("retryFight", t.retryFight), verb("retell", t.retell), verb("illustrate", t.illustrate)),
       );
+      const pendingCount = Object.values(record.joinRequests ?? {}).filter((request) => request.status === "requested" && request.expiresAt > Date.now()).length;
+      rows.push(row(
+        new ButtonBuilder().setCustomId(hubCustomId("inviteOpen", id)).setLabel(record.language === "zh-TW" ? "邀請玩家" : "Invite player").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(hubCustomId("joinRequests", id)).setLabel(record.language === "zh-TW" ? `加入申請 (${pendingCount})` : `Join requests (${pendingCount})`).setStyle(ButtonStyle.Secondary),
+      ));
     }
     rows.push(
       row(

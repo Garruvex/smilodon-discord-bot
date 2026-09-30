@@ -119,7 +119,7 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
     case "retryEncounter":
       return retryEncounter(decision);
     case "joinHero":
-      return joinHero(decision, command.sheet);
+      return joinHero(decision, command.sheet, command.entrance);
     case "buyItem":
     case "sellItem":
     case "hagglePrice":

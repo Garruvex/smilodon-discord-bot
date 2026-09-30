@@ -65,8 +65,6 @@ export interface CampaignImageConfiguration {
   model: string;
   // "low" | "medium" | "high" | "auto"; absent: the provider's default.
   quality?: string;
-  // Pictures one campaign may have made.
-  budget: number;
 }
 
 export type EmbeddingConfiguration =

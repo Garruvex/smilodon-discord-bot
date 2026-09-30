@@ -158,9 +158,12 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
       return argument === "yes" ? [] : ["adventure"];
     case "myHero":
       return ["adventure", "party"];
+    case "joinOngoing":
+      return ["party"];
     case "details":
       return [`hero:${argument ?? ""}`];
     case "heroChoice":
+    case "lateHeroChoice":
     case "newHero":
     case "gear":
     case "turnRefresh":
@@ -243,6 +246,7 @@ export class CampaignComponentHandler implements ComponentHandler {
 
     if (interaction.isStringSelectMenu()) {
       if (parsed.action === "newHero") await this.joinReplacement(interaction, record, text);
+      else if (parsed.action === "lateHeroChoice") await this.joinOngoingHero(interaction, record, text);
       else if (parsed.action === "gear") await this.changeGear(interaction, record, text);
       else if (parsed.action === "pack") await this.changePack(interaction, record, text);
       else if (parsed.action === "giveTo") await this.giveItem(interaction, record, text);
@@ -309,6 +313,23 @@ export class CampaignComponentHandler implements ComponentHandler {
     const reply = (content: string): Promise<unknown> => interaction.editReply({ content, components: [] });
     const userId = interaction.user.id;
     switch (parsed.action) {
+      case "joinOngoing": {
+        const current = record.joinRequests?.[userId];
+        if (current?.status === "invited") {
+          const accepted = await this.deps.lobby.acceptOngoingInvite(key, userId);
+          if (accepted.kind === "refused") return void (await reply(refusalText(text, accepted.reason)));
+          await this.showOngoingHeroPicker(interaction, accepted.value, text);
+          return;
+        }
+        if (current?.status === "approved") {
+          await this.showOngoingHeroPicker(interaction, record, text);
+          return;
+        }
+        const requested = await this.deps.lobby.requestOngoingJoin(key, userId);
+        if (requested.kind === "refused") return void (await reply(refusalText(text, requested.reason)));
+        await reply(record.language === "zh-TW" ? "已向主持人提出加入申請。獲准後再按此鈕選擇角色。" : "Your request is with the organizer. Once approved, press this button again to choose a character.");
+        return;
+      }
       case "join": {
         const joined = await this.deps.lobby.join(key, userId);
         if (joined.kind === "refused") return void (await reply(refusalText(text, joined.reason)));
@@ -578,6 +599,28 @@ export class CampaignComponentHandler implements ComponentHandler {
     }
     const hero = this.deps.adventures.document(record.adventure.adventureId, record.language)?.heroes.find((candidate) => candidate.id === presetId);
     await interaction.update({ content: text.campaign.reply.newHero({ hero: hero?.name ?? presetId }), components: [] });
+  }
+
+  private async showOngoingHeroPicker(interaction: ButtonInteraction, record: CampaignRecord, text: Texts): Promise<void> {
+    const state = (await this.deps.unitOfWork.transaction((tx) => tx.loadCampaign(record.key)))?.state;
+    const document = this.deps.adventures.document(record.adventure.adventureId, record.language);
+    const used = Object.values(state?.characters ?? {}).filter((hero) => state === undefined || !isFallen(state, hero.id)).map((hero) => hero.id);
+    const presets = (document?.heroes ?? []).filter((hero) => !used.some((id) => id === hero.id || id.startsWith(`${hero.id}-`))).map((hero) => ({ label: text.campaign.pick.option({ hero: hero.name, class: classLabel(text, hero.class) }).slice(0, 100), value: hero.id }));
+    const saved = (await this.savedOptions(interaction.user.id, text, null)).map(({ label, value }) => ({ label, value }));
+    const options = [...presets, ...saved].slice(0, 25);
+    if (options.length === 0) return void (await interaction.editReply({ content: text.campaign.pick.none, components: [] }));
+    await interaction.editReply({
+      content: record.language === "zh-TW" ? "選擇加入這場冒險的角色；主持人安排的登場方式會在冒險頻道公布。" : "Choose a character for this adventure. The organizer's entrance will be posted in the Adventure channel.",
+      components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(new StringSelectMenuBuilder().setCustomId(campaignCustomId("lateHeroChoice", record.key.campaignId)).addOptions(options))],
+    });
+  }
+
+  private async joinOngoingHero(interaction: StringSelectMenuInteraction, record: CampaignRecord, text: Texts): Promise<void> {
+    await interaction.deferUpdate();
+    const result = await this.deps.lobby.joinOngoingHero(record.key, interaction.user.id, interaction.values[0] ?? "", interaction.id);
+    if (result.kind === "refused") return void (await interaction.editReply({ content: refusalText(text, result.reason), components: [] }));
+    this.deps.cards.refresh(record.key);
+    await interaction.editReply({ content: record.language === "zh-TW" ? "角色已加入隊伍。請查看冒險頻道的登場敘述。" : "Your character has joined the party. Watch the Adventure channel for their entrance.", components: [] });
   }
 
   // Every saved version of the player's characters, newest first, as picker options.
@@ -1064,4 +1107,3 @@ export class CampaignComponentHandler implements ComponentHandler {
     return renderHeroSheet(sheet, buildHeroView(loaded.state, sheet, content), text, glossary);
   }
 }
-

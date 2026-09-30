@@ -2,18 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
 import type { Combatant } from "../../../src/domain/campaign/combat/combat-state.js";
-import { alex, jamie, organizer, partyOfThree, sam } from "./campaign-fixtures.js";
+import { alex, jamie, organizer, partyWithSpells, sam } from "./campaign-fixtures.js";
 import { Fight, skirmish } from "./combat-fixtures.js";
 
 // Conjured creatures: they join the fight on the caster's side, act on their own turns, and never count as heroes.
 
 function withConjure(): CampaignState {
-  const base = partyOfThree();
-  const elspeth = base.characters["c-elspeth"];
-  const casting = elspeth?.spellcasting;
-  if (elspeth === undefined || casting === undefined || casting === null) throw new Error("elspeth");
-  const slots = { ...casting.slots, 3: 1 };
-  return { ...base, characters: { ...base.characters, "c-elspeth": { ...elspeth, spellcasting: { ...casting, spells: [...casting.spells, "spell:conjure-animals"] as typeof casting.spells, slots } } } };
+  return partyWithSpells(["spell:conjure-animals"], { 3: 1 });
 }
 
 describe("Conjure Animals", () => {
@@ -60,14 +55,7 @@ describe("a summon held by concentration", () => {
 
 describe("Spiritual Weapon", () => {
   it("calls a spectral weapon that keeps attacking for the caster without concentration", () => {
-    const base = partyOfThree();
-    const elspeth = base.characters["c-elspeth"];
-    const casting = elspeth?.spellcasting;
-    if (elspeth === undefined || casting === undefined || casting === null) throw new Error("elspeth");
-    const state: CampaignState = {
-      ...base,
-      characters: { ...base.characters, "c-elspeth": { ...elspeth, spellcasting: { ...casting, spells: [...casting.spells, "spell:spiritual-weapon"] as typeof casting.spells, slots: { ...casting.slots, 2: 1 } } } },
-    };
+    const state = partyWithSpells(["spell:spiritual-weapon"], { 2: 1 });
     const fight = new Fight(state).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec: skirmish });
     fight.run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:spiritual-weapon", slotLevel: 2, targetIds: ["c-elspeth"] });
     expect(fight.combatant("c-elspeth").concentration).toBeNull();
@@ -81,11 +69,7 @@ describe("Spiritual Weapon", () => {
 
 describe("Thunderwave", () => {
   it("pushes a creature that fails its save into the next zone, out of reach", () => {
-    const base = partyOfThree();
-    const elspeth = base.characters["c-elspeth"];
-    const casting = elspeth?.spellcasting;
-    if (elspeth === undefined || casting === undefined || casting === null) throw new Error("elspeth");
-    const state: CampaignState = { ...base, characters: { ...base.characters, "c-elspeth": { ...elspeth, spellcasting: { ...casting, spells: [...casting.spells, "spell:thunderwave"] as typeof casting.spells } } } };
+    const state = partyWithSpells(["spell:thunderwave"]);
     const spec = { ...skirmish, zones: [...skirmish.zones, { id: "yard", name: "Yard" }], edges: [{ from: "gate", to: "courtyard", feet: 10 }, { from: "courtyard", to: "yard", feet: 10 }] };
     const fight = new Fight(state).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec });
     fight.rolls([2, 20], [1, 1]).run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:thunderwave", slotLevel: 1, targetIds: ["goblin-a", "goblin-b"] });

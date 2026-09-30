@@ -124,7 +124,7 @@ export type CampaignEvent =
   // The potion is drunk (and gone); healed is what it actually restored.
   | { readonly kind: "itemUsed"; readonly characterId: CharacterId; readonly itemId: ContentId<"item">; readonly healed: number }
   // The player has this hero from now on (a new player, or a replacement).
-  | { readonly kind: "heroJoined"; readonly sheet: CharacterSheet }
+  | { readonly kind: "heroJoined"; readonly sheet: CharacterSheet; readonly entrance?: string }
   // The lost fight is set aside and the party is back as it stood at its start.
   | { readonly kind: "encounterRetried"; readonly encounterId: string }
   // A victory's XP, split evenly among the heroes still standing (character/leveling.ts).

@@ -206,7 +206,6 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
             monsterName: (monsterId, language): string | undefined => glossaries[language].names[monsterId],
             assets: new FileImageAssetStore(resolve(configuration.runtimeDataDirectory, "campaign-images")),
             portraits,
-            budgetPerCampaign: configuration.campaignImages.budget,
           }),
         }),
     logger,

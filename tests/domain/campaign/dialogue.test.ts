@@ -44,9 +44,9 @@ describe("askNpc", () => {
 
   it("rejects a question that's too long", () => {
     const state = campaignWithSable();
-    expect(reject(state, jamie, { kind: "askNpc", characterId: "c-borin", npcId: "npc:smith", question: "x".repeat(301) })).toEqual({
+    expect(reject(state, jamie, { kind: "askNpc", characterId: "c-borin", npcId: "npc:smith", question: "x".repeat(1001) })).toEqual({
       code: "actionTooLong",
-      maxLength: 300,
+      maxLength: 1000,
     });
   });
 

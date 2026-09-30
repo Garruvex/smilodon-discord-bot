@@ -7,6 +7,8 @@ export const campaignIdPrefix = "dnd";
 
 export const campaignActions = [
   "join",
+  "joinOngoing",
+  "lateHeroChoice",
   "leave",
   "pickHero",
   "heroChoice",

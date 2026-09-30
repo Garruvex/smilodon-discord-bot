@@ -86,7 +86,7 @@ export class AdventureAuthor {
 
   private systemPrompt(language: CampaignLanguage): string {
     const { content } = this.options;
-    const monsters = content.all("monster").map((monster) => `${monster.id} (AC ${monster.armorClass}, ${monster.maxHp} HP)`);
+    const monsters = content.all("monster").filter((monster) => monster.summonOnly !== true).map((monster) => `${monster.id} (AC ${monster.armorClass}, ${monster.maxHp} HP)`);
     const items = content.all("item").map((item) => item.id);
     return [
       `You write tabletop role-playing adventures for a Discord bot that runs D&D 5th edition (SRD 5.1) for level 1 heroes. Write the adventure in ${language === "zh-TW" ? "Traditional Chinese (繁體中文, Taiwan usage; never Simplified characters)" : "English"}.`,
@@ -158,7 +158,7 @@ export function authorJsonSchema(content: SealedContent): Record<string, unknown
   const nullableStr = { type: ["string", "null"] };
   const obj = (properties: Record<string, unknown>): Record<string, unknown> => ({ type: "object", additionalProperties: false, required: Object.keys(properties), properties });
   const list = (items: Record<string, unknown>): Record<string, unknown> => ({ type: "array", items });
-  const monsterIds = content.all("monster").map((monster) => monster.id);
+  const monsterIds = content.all("monster").filter((monster) => monster.summonOnly !== true).map((monster) => monster.id);
   const itemIds = content.all("item").map((item) => item.id);
   return obj({
     id: str,

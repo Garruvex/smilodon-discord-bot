@@ -55,6 +55,21 @@ describe("the lobby controls", () => {
 });
 
 describe("the play controls", () => {
+  it("lets an approved applicant pick a hero from the live Party card", async () => {
+    const t = await harness();
+    await started(t);
+    expect(contentOf(await t.press("joinOngoing", "u-b", { onCard: "party" }))).toContain("request is with the organizer");
+    const pending = (await t.r.service.get(t.key))?.record.joinRequests?.["u-b"];
+    expect(pending?.status).toBe("requested");
+    await t.r.service.decideOngoingJoin(t.key, "u-org", "u-b", true, "They arrive at the inn.");
+    const picker = await t.press("joinOngoing", "u-b", { onCard: "party" });
+    expect(contentOf(picker)).toContain("Choose a character");
+    const { interaction, sent } = fakeInteraction({ customId: `dnd:lateHeroChoice:${t.key.campaignId}`, userId: "u-b", values: [heroes[1]?.id ?? ""], kind: "select" });
+    await t.handler.execute({ interaction, logger: quiet as never });
+    expect(contentOf(sent)).toContain("joined the party");
+    expect((await t.r.store.transaction((tx) => tx.loadCampaign(t.key)))?.state.members["u-b"]?.characterId).toBe(heroes[1]?.id);
+  });
+
   it("opens a form first, saves the submitted action, and refuses an empty one", async () => {
     const t = await harness();
     await started(t);

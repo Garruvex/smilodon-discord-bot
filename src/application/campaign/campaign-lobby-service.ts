@@ -21,6 +21,8 @@ import { resolvePacing, type PacingChoice } from "./setup/pacing-presets.js";
 import { checkCompatibility, type ImportConflict } from "./library/compatibility.js";
 import type { CharacterLibrary } from "./library/character-library.js";
 import { instantiateHero } from "./library/instantiate.js";
+import { raiseToLevel } from "../../domain/campaign/character/leveling.js";
+import { isFallen } from "../../domain/campaign/state/campaign-state.js";
 import { libraryHeroRef, savedSnapshotIdOf, type LibrarySnapshot } from "./library/library-types.js";
 import type { DerivedSheet } from "../../domain/campaign/character/character-build.js";
 import type { RulesetCatalog } from "./rules/ruleset-catalog.js";
@@ -53,7 +55,13 @@ export type ServiceRefusal =
   | "invalidHouseRules"
   | "libraryUnavailable"
   | "savedCharacterMissing"
-  | "savedCharacterProblem";
+  | "savedCharacterProblem"
+  | "gameFull"
+  | "joinNotApproved"
+  | "joinAlreadyPlaying"
+  | "joinNotAtBreak"
+  | "invalidEntrance"
+  | "privateInviteOnly";
 
 // What choosing a saved character would bring, and what stands in the way.
 export type SavedPreview =
@@ -160,6 +168,130 @@ export class CampaignLobbyService {
 
   public join(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>> {
     return this.change(key, (lobby) => lobbyRules.join(lobby, userId));
+  }
+
+  // A running public game accepts applications. A private game can only be
+  // entered through an organizer invitation.
+  public requestOngoingJoin(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>> {
+    return this.changeJoinRequest(key, userId, (record, playing) => {
+      if (record.visibility === "membersOnly") return "privateInviteOnly";
+      if (playing) return "joinAlreadyPlaying";
+      const current = record.joinRequests?.[userId];
+      if (current !== undefined && current.expiresAt > this.options.clock.now()) return current;
+      return { status: "requested", expiresAt: this.options.clock.now() + 7 * 24 * 60 * 60 * 1000 };
+    });
+  }
+
+  public inviteOngoing(key: CampaignKey, actorId: UserId, userId: UserId, entrance: string): Promise<ServiceResult<CampaignRecord>> {
+    return this.changeJoinRequest(key, userId, (record, playing, reserved) => {
+      if (record.organizerId !== actorId) return "notOrganizer";
+      if (playing) return "joinAlreadyPlaying";
+      if (!reserved && this.reservedSeats(record) >= record.lobby.maxPlayers) return "gameFull";
+      const phrase = entrance.trim();
+      if (phrase.length < 1 || phrase.length > 500) return "invalidEntrance";
+      return { status: "invited", entrance: phrase, expiresAt: this.options.clock.now() + 7 * 24 * 60 * 60 * 1000 };
+    });
+  }
+
+  public decideOngoingJoin(key: CampaignKey, actorId: UserId, userId: UserId, approve: boolean, entrance = ""): Promise<ServiceResult<CampaignRecord>> {
+    return this.changeJoinRequest(key, userId, (record, playing, reserved) => {
+      if (record.organizerId !== actorId) return "notOrganizer";
+      if (record.joinRequests?.[userId]?.status !== "requested" || (record.joinRequests?.[userId]?.expiresAt ?? 0) <= this.options.clock.now()) return "notMember";
+      if (playing) return "joinAlreadyPlaying";
+      if (!approve) return null;
+      if (!reserved && this.reservedSeats(record) >= record.lobby.maxPlayers) return "gameFull";
+      const phrase = entrance.trim();
+      if (phrase.length < 1 || phrase.length > 500) return "invalidEntrance";
+      return { status: "approved", entrance: phrase, expiresAt: this.options.clock.now() + 7 * 24 * 60 * 60 * 1000 };
+    });
+  }
+
+  public acceptOngoingInvite(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>> {
+    return this.changeJoinRequest(key, userId, (record) => {
+      const current = record.joinRequests?.[userId];
+      if (current?.status !== "invited" || current.expiresAt <= this.options.clock.now()) return "joinNotApproved";
+      return { ...current, status: "approved" };
+    });
+  }
+
+  public async joinOngoingHero(key: CampaignKey, userId: UserId, heroRef: string, interactionId: string): Promise<ServiceResult<CampaignRecord>> {
+    return this.queue.run(queueKey(key), async () => {
+      const loaded = await this.options.unitOfWork.transaction(async (tx) => ({ stored: await tx.loadRecord(key), campaign: await tx.loadCampaign(key) }));
+      if (loaded.stored === undefined || loaded.campaign === undefined) return refused("notFound");
+      const { record } = loaded.stored;
+      const state = loaded.campaign.state;
+      if (record.lifecycle !== "active" && record.lifecycle !== "paused") return refused("closed");
+      const request = record.joinRequests?.[userId];
+      if (request?.status !== "approved" || request.expiresAt <= this.options.clock.now()) return refused("joinNotApproved");
+      if (state.members[userId]?.characterId != null) {
+        return this.finishOngoingJoin(key, userId, heroRef);
+      }
+      if ((state.encounter !== null && state.encounter.status !== "ended") || state.pendingEncounter !== null) return refused("joinNotAtBreak");
+      if (state.members[userId] === undefined && Object.keys(state.members).length >= record.lobby.maxPlayers) return refused("gameFull");
+      const snapshotId = savedSnapshotIdOf(heroRef);
+      let sheet;
+      if (snapshotId !== null) {
+        if (this.options.library === undefined || this.options.rulesets === undefined) return refused("libraryUnavailable");
+        const snapshot = await this.options.library.snapshot(userId, snapshotId);
+        if (snapshot === undefined) return refused("savedCharacterMissing");
+        const content = this.options.rulesets.resolve({ ...this.options.ruleset, houseRules: record.houseRules }).content;
+        if (checkCompatibility(snapshot, content).length > 0) return refused("savedCharacterProblem");
+        sheet = { ...instantiateHero(snapshot, record.houseRules), ownerUserId: userId };
+      } else {
+        const preset = this.options.adventures.document(record.adventure.adventureId, record.language)?.heroes.find((hero) => hero.id === heroRef);
+        if (preset === undefined) return refused("unknownHero");
+        if (Object.values(state.characters).some((hero) => !isFallen(state, hero.id) && (hero.id === preset.id || hero.id.startsWith(`${preset.id}-`)))) return refused("heroTaken");
+        const { class: className, ...rest } = preset;
+        const used = Object.keys(state.characters).filter((id) => id === preset.id || id.startsWith(`${preset.id}-`)).length;
+        sheet = { ...rest, id: used === 0 ? preset.id : `${preset.id}-${used + 1}`, className, ownerUserId: userId };
+      }
+      const partyLevel = Math.max(1, ...Object.values(state.characters).filter((hero) => !isFallen(state, hero.id)).map((hero) => hero.level));
+      if (sheet.level > partyLevel) return refused("savedCharacterProblem");
+      const joining = raiseToLevel(sheet, partyLevel);
+      const outcome = await this.options.bus.execute(key, { kind: "joinHero", sheet: joining, entrance: request.entrance ?? "A new companion joins the party." }, { commandId: `dnd:${interactionId}`, actor: { kind: "user", userId } });
+      if (outcome.kind !== "accepted") return refused(outcome.kind === "notFound" ? "notFound" : "savedCharacterProblem");
+      return this.finishOngoingJoin(key, userId, heroRef);
+    });
+  }
+
+  private async finishOngoingJoin(key: CampaignKey, userId: UserId, heroRef: string): Promise<ServiceResult<CampaignRecord>> {
+      const next = await this.options.unitOfWork.transaction(async (tx) => {
+        const latest = await tx.loadRecord(key);
+        if (latest === undefined) return undefined;
+        const joinRequests = { ...(latest.record.joinRequests ?? {}) };
+        delete joinRequests[userId];
+        const members = latest.record.lobby.members.some((member) => member.userId === userId)
+          ? latest.record.lobby.members.map((member) => member.userId === userId ? { ...member, heroId: heroRef, status: "ready" as const } : member)
+          : [...latest.record.lobby.members, { userId, heroId: heroRef, status: "ready" as const }];
+        const updated: CampaignRecord = { ...latest.record, joinRequests, lobby: { ...latest.record.lobby, members } };
+        await tx.saveRecord(updated, latest.revision);
+        return updated;
+      });
+      return next === undefined ? refused("notFound") : ok(next);
+  }
+
+  private reservedSeats(record: CampaignRecord): number {
+    return record.lobby.members.length + Object.entries(record.joinRequests ?? {}).filter(([userId, request]) => !record.lobby.members.some((member) => member.userId === userId) && (request.status === "invited" || request.status === "approved") && request.expiresAt > this.options.clock.now()).length;
+  }
+
+  private changeJoinRequest(key: CampaignKey, userId: UserId, decide: (record: CampaignRecord, playing: boolean, reserved: boolean) => NonNullable<CampaignRecord["joinRequests"]>[string] | ServiceRefusal | null): Promise<ServiceResult<CampaignRecord>> {
+    return this.queue.run(queueKey(key), () => this.options.unitOfWork.transaction(async (tx) => {
+      const stored = await tx.loadRecord(key);
+      const campaign = await tx.loadCampaign(key);
+      if (stored === undefined || campaign === undefined) return refused("notFound");
+      const { record } = stored;
+      if (record.lifecycle !== "active" && record.lifecycle !== "paused") return refused("closed");
+      const playing = campaign.state.members[userId]?.characterId != null;
+      const reserved = record.joinRequests?.[userId]?.status === "invited" || record.joinRequests?.[userId]?.status === "approved";
+      const result = decide(record, playing, reserved);
+      if (typeof result === "string") return refused(result);
+      const joinRequests = { ...(record.joinRequests ?? {}) };
+      if (result === null) delete joinRequests[userId];
+      else joinRequests[userId] = result;
+      const next: CampaignRecord = { ...record, joinRequests };
+      await tx.saveRecord(next, stored.revision);
+      return ok(next);
+    }));
   }
 
   public leave(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>> {

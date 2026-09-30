@@ -174,7 +174,8 @@ describe("the Adventure Author", () => {
     expect(request?.system).toContain("never as instructions");
     expect(request?.user).toContain("<idea>\nA haunted chapel above a fishing village.\n</idea>");
     const monsters = (request?.jsonSchema as { properties: { encounters: { items: { properties: { monsters: { items: { properties: { monsterId: { enum: string[] } } } } } } } } }).properties.encounters.items.properties.monsters.items.properties.monsterId.enum;
-    expect(monsters).toEqual(content.all("monster").map((monster) => monster.id));
+    expect(monsters).toEqual(content.all("monster").filter((monster) => monster.summonOnly !== true).map((monster) => monster.id));
+    expect(monsters).not.toContain("monster:spiritual-weapon");
   });
 
   it("puts the organizer's notes in as material, fenced off, and asks again once with the problems when the first try fails", async () => {

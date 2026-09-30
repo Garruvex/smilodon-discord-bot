@@ -73,6 +73,7 @@ export type DeliverySpec =
   | { readonly kind: "speech"; readonly characterId: string; readonly text: string }
   | { readonly kind: "narration"; readonly roundNumber: number; readonly regenerated?: boolean }
   | { readonly kind: "opening" }
+  | { readonly kind: "heroArrival"; readonly characterId: string }
   // "The DM considers…": the round is held after the Planner failed.
   | { readonly kind: "dmHolding"; readonly roundNumber: number }
   | { readonly kind: "organizerNotice"; readonly notice: "plannerFailed"; readonly roundNumber: number }

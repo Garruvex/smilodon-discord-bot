@@ -3,6 +3,7 @@ import { expect } from "vitest";
 import { enSrd51Glossary } from "../../../src/application/i18n/campaign/glossary/en/srd-5.1.js";
 import { zhTwSrd51Glossary } from "../../../src/application/i18n/campaign/glossary/zh-TW/srd-5.1.js";
 import type { CharacterSheet } from "../../../src/domain/campaign/character/character-sheet.js";
+import type { ContentId } from "../../../src/domain/campaign/rules/content-id.js";
 import type { Actor, CampaignCommand } from "../../../src/domain/campaign/commands/campaign-command.js";
 import { buildSrd51 } from "../../../src/domain/campaign/content/srd-5.1/index.js";
 import type { D20TestRoll } from "../../../src/domain/campaign/dice/d20-test.js";
@@ -87,6 +88,16 @@ export const elspeth: CharacterSheet = {
 };
 
 export const sam: Actor = { kind: "user", userId: "u-sam" };
+
+// Elspeth with extra spells known, and slots set for any level given.
+export function partyWithSpells(spells: readonly ContentId<"spell">[], slots: Readonly<Record<number, number>> = {}): CampaignState {
+  const base = partyOfThree();
+  const elspeth = base.characters["c-elspeth"];
+  const casting = elspeth?.spellcasting;
+  if (elspeth === undefined || casting === undefined || casting === null) throw new Error("elspeth");
+  const spellcasting = { ...casting, spells: [...casting.spells, ...spells], slots: { ...casting.slots, ...slots } };
+  return { ...base, characters: { ...base.characters, "c-elspeth": { ...elspeth, spellcasting } } };
+}
 
 // Mira, Borin, and Elspeth.
 export function partyOfThree(): CampaignState {

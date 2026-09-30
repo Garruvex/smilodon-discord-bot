@@ -74,7 +74,7 @@ export type CampaignCommand =
   // Organizer, after a lost fight: play it again from its start, with fresh dice.
   | { readonly kind: "retryEncounter" }
   // A player's new hero: their first, or one to replace a fallen hero.
-  | { readonly kind: "joinHero"; readonly sheet: CharacterSheet }
+  | { readonly kind: "joinHero"; readonly sheet: CharacterSheet; readonly entrance?: string }
   // Declares which class the hero's next level lands in (character-build.ts's
   // BuildClass) — the same class they are already leveling, or a new one
   // (multiclassing in, gated by that class's SRD ability-score prerequisite).
