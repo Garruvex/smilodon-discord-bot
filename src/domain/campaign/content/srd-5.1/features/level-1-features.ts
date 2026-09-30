@@ -14,6 +14,7 @@ export const fightingStyleDueling = defineFeature({
 });
 
 export const fightingStyleArchery = defineFeature({ id: "feature:fighting-style-archery", source, traits: [{ kind: "rangedAttackBonus", amount: 2 }], action: null });
+export const fightingStyleProtection = defineFeature({ id: "feature:fighting-style-protection", source, traits: [{ kind: "protectionStyle" }], action: null });
 export const fightingStyleDefense = defineFeature({ id: "feature:fighting-style-defense", source, traits: [{ kind: "armoredBonus", amount: 1 }], action: null });
 
 export const secondWind = defineFeature({
@@ -120,6 +121,7 @@ export const layOnHands = defineFeature({
 export const srd51Level1Features: readonly FeatureDefinition[] = [
   fightingStyleDueling,
   fightingStyleArchery,
+  fightingStyleProtection,
   fightingStyleDefense,
   secondWind,
   sneakAttack,

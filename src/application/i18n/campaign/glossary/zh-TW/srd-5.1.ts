@@ -103,6 +103,7 @@ const zhTwBase: Glossary = {
     "feature:fast-movement": "快速移動",
     "feature:unarmored-movement": "無甲移動",
     "feature:fighting-style-archery": "戰鬥風格：箭術",
+    "feature:fighting-style-protection": "戰鬥風格：守護",
     "feature:fighting-style-defense": "戰鬥風格：防禦",
     "feature:unarmored-movement-6": "無甲移動（精進）",
     "feature:unarmored-movement-10": "無甲移動（精進）",

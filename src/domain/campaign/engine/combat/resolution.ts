@@ -1,6 +1,7 @@
 // Resolving an action: declaring its plan, the checks and effect rolls it needs, and applying what lands. Damage and concentration are in damage.ts, the attack rules in attack-rules.ts.
 import { assertNever } from "../../core/assert-never.js";
 import type { RollId } from "../../core/ids.js";
+import { abilityModifier } from "../../character/character-sheet.js";
 import type { ActionCost } from "../../combat/combat-events.js";
 import { areEngaged, isPresent, type Combatant, type CombatantId, type EncounterState, type PendingCheck, type PendingCombatRoll, type PendingEffectRoll, type ResolutionSource, type ResolutionState, type TargetOutcome } from "../../combat/combat-state.js";
 import { armorClassOf, attackBonusOf, autoFailsSave, bonusDiceFor, conditionLookup, hitsAreCritical, saveBias } from "../../effects/effect-queries.js";
@@ -24,7 +25,7 @@ import { activeEncounter, afterResolution, endIfDecided } from "./combat-flow.js
 import { offerCounterspell, offerReaction, offerRetort } from "./reactions.js";
 import { offerSmite } from "./smite.js";
 import { applyDamage, applyHealing, applyTempHp, endConcentration, recordConcentration } from "./damage.js";
-import { auraBonusFor, colossusSlayerEligible, attackMode, effectForKey, planFor, rangedAttack, saveContextOf, sneakAttackEligible, sneakDice } from "./attack-rules.js";
+import { auraBonusFor, colossusSlayerEligible, attackMode, effectForKey, planFor, protectorFor, rangedAttack, saveContextOf, sneakAttackEligible, sneakDice } from "./attack-rules.js";
 export { applyDamage, endConcentration } from "./damage.js";
 export { attackMode } from "./attack-rules.js";
 
@@ -57,6 +58,7 @@ export function declareResolution(decision: Decision, request: DeclareRequest): 
   // Targets that fail a saving throw without rolling (an unconscious creature's Strength and Dexterity saves).
   const autoFailed: Record<CombatantId, TargetOutcome> = {};
   let sneakAttack = false;
+  const protectors = new Set<CombatantId>();
 
   for (const targetId of request.targetIds) {
     const target = encounter.combatants[targetId];
@@ -81,7 +83,13 @@ export function declareResolution(decision: Decision, request: DeclareRequest): 
       const ranged = rangedAttack(source);
       const distance = distanceBetween(encounter, actor.id, target.id) ?? Infinity;
       const longShot = source.kind === "weapon" && source.option.range.kind === "ranged" && distance > source.option.range.normal;
-      const mode = attackMode(encounter, actor, target, ranged, longShot, lookup);
+      const attackModeBefore = attackMode(encounter, actor, target, ranged, longShot, lookup);
+      // Protection: a neighbor's reaction gives the attack disadvantage (one reaction covers the whole action).
+      const protector = source.kind === "weapon" ? protectorFor(encounter, target, lookup) : undefined;
+      const guarded = protector !== undefined && !protectors.has(protector.id);
+      if (guarded) protectors.add(protector.id);
+      const mode = guarded ? { ...attackModeBefore, mode: attackModeBefore.mode === "advantage" ? ("normal" as const) : ("disadvantage" as const) } : attackModeBefore;
+      if (guarded) decision.emit({ kind: "uncannyDodgeUsed", combatantId: protector.id });
       const toHit = (source.kind === "weapon" ? source.option.toHit : (actor.spellcasting?.attackBonus ?? 0)) + attackBonusOf(actor, lookup);
       spec = { mode: mode.mode, modifier: toHit, bonusDice: bonusDiceFor(actor, "attack") };
       against = armorClassOf(target, lookup);
@@ -240,7 +248,7 @@ export function settleCheck(decision: Decision, resolutionId: string, rollId: Ro
 // through this instead of the plan directly so the extra effect reaches damage
 // rolling and application the same way any other does.
 export function landEffects(resolution: ResolutionState, encounter: EncounterState): readonly Effect[] {
-  const onLand = withStunningStrike(resolution, withImprovedSmite(resolution, encounter, withSavageAttacks(resolution, encounter)));
+  const onLand = withStunningStrike(resolution, withDivineStrike(resolution, encounter, withImprovedSmite(resolution, encounter, withSavageAttacks(resolution, encounter))));
   const slot = resolution.smiteSlot !== undefined ? resolution.smiteSlot : resolution.source.kind === "weapon" ? (resolution.source.smiteSlot ?? null) : null;
   if (slot === null) return onLand;
   // 2d8 for a 1st-level slot, +1d8 per level above that, capped at 5d8; one more d8 against a fiend or undead.
@@ -257,11 +265,27 @@ function withStunningStrike(resolution: ResolutionState, effects: readonly Effec
   return [...effects, { kind: "conditionUnlessSave", target: "target", ability: "con", dc: source.stunDc, condition: "condition:stunned", duration: { kind: "rounds", count: 1 } }];
 }
 
+// Dark One's Blessing: the attacker gains temporary hit points for dropping a hostile creature to 0.
+function blessedByKill(decision: Decision, resolution: ResolutionState, target: Combatant): void {
+  const encounter = activeEncounter(decision);
+  const actor = encounter?.combatants[resolution.actorId];
+  const after = encounter?.combatants[target.id];
+  if (actor === undefined || after === undefined || actor.side === target.side || target.hp <= 0 || after.hp > 0 || !actor.traits.some((trait) => trait.kind === "darkOnesBlessing")) return;
+  applyTempHp(decision, actor, Math.max(1, (actor.spellcasting?.modifier ?? 0) + actor.level));
+}
+
 // Improved Divine Smite: every melee weapon hit deals 1d8 more radiant damage.
 function withImprovedSmite(resolution: ResolutionState, encounter: EncounterState, effects: readonly Effect[]): readonly Effect[] {
   const actor = encounter.combatants[resolution.actorId];
   if (resolution.source.kind !== "weapon" || resolution.source.option.range.kind !== "melee" || actor === undefined || !actor.traits.some((trait) => trait.kind === "improvedDivineSmite")) return effects;
   return [...effects, { kind: "damage", target: "target", amount: dice(1, 8), damageType: "radiant" }];
+}
+
+// Divine Strike: a weapon hit deals 1d8 more radiant damage, 2d8 from level 14.
+function withDivineStrike(resolution: ResolutionState, encounter: EncounterState, effects: readonly Effect[]): readonly Effect[] {
+  const actor = encounter.combatants[resolution.actorId];
+  if (resolution.source.kind !== "weapon" || actor === undefined || !actor.traits.some((trait) => trait.kind === "divineStrike")) return effects;
+  return [...effects, { kind: "damage", target: "target", amount: dice(actor.level >= 14 ? 2 : 1, 8), damageType: "radiant" }];
 }
 
 // Savage Attacks: a melee weapon critical hit rolls one more of the weapon's damage dice, on top of the doubled ones.
@@ -415,7 +439,12 @@ export function applyEffect(
       const evades =
         resolution.plan.check?.kind === "savingThrow" && resolution.plan.check.ability === "dex" && recipient.traits.some((trait) => trait.kind === "evasion") && resolution.plan.onAvoid.some((other) => other.kind === "damage" && other.halfOfLand === true);
       const taken = evades ? (effect.halfOfLand === true ? 0 : Math.floor(rolled / 2)) : rolled;
-      applyDamage(decision, recipient, dodges ? Math.floor(taken / 2) : taken, critical, effect.damageType);
+      // Deflect Missiles: the reaction turns a ranged weapon hit down by the die's average, the Dexterity modifier and the level.
+      const deflects = !dodges && resolution.source.kind === "weapon" && resolution.source.option.range.kind === "ranged" && isAttack && recipient.traits.some((trait) => trait.kind === "deflectMissiles") && recipient.budget.reaction;
+      if (deflects) decision.emit({ kind: "uncannyDodgeUsed", combatantId: recipient.id });
+      const deflected = deflects ? 6 + abilityModifier(decision.state.characters[recipient.id]?.abilityScores.dex ?? 10) + recipient.level : 0;
+      applyDamage(decision, recipient, dodges ? Math.floor(taken / 2) : Math.max(0, taken - deflected), critical, effect.damageType);
+      blessedByKill(decision, resolution, recipient);
       return;
     }
     case "heal":

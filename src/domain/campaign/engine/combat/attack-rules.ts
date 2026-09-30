@@ -33,7 +33,10 @@ export function planFor(decision: Decision, actor: Combatant, source: Resolution
       // Agonizing Blast: the modifier on every beam (this build fires them as one bolt of that many dice).
       const beams = casterLevel >= 17 ? 4 : casterLevel >= 11 ? 3 : casterLevel >= 5 ? 2 : 1;
       const agonizing = source.spellId === "spell:eldritch-blast" && actor.traits.some((trait) => trait.kind === "agonizingBlast") ? (actor.spellcasting?.modifier ?? 0) * beams : 0;
-      const plan = agonizing === 0 ? cast : { ...cast, onLand: cast.onLand.map((effect): Effect => (effect.kind === "damage" ? { ...effect, amount: plus(effect.amount, agonizing) } : effect)) };
+      // Potent Cantrip: the save that would have avoided a damaging cantrip still takes half.
+      const potent = spell.level === 0 && cast.check?.kind === "savingThrow" && cast.onAvoid.length === 0 && actor.traits.some((trait) => trait.kind === "potentCantrip");
+      const halved = potent ? { ...cast, onAvoid: cast.onLand.flatMap((effect): Effect[] => (effect.kind === "damage" ? [{ ...effect, halfOfLand: true }] : [])) } : cast;
+      const plan = agonizing === 0 ? halved : { ...halved, onLand: cast.onLand.map((effect): Effect => (effect.kind === "damage" ? { ...effect, amount: plus(effect.amount, agonizing) } : effect)) };
       // Disciple of Life and similar: extra healing from leveled spells.
       const bonus = source.slotLevel > 0 ? healingBonus(actor, source.slotLevel) : 0;
       if (bonus === 0) return plan;
@@ -122,6 +125,13 @@ export function attackMode(
   // Elusive: nothing gives advantage against a creature that can still act.
   if (target.traits.some((trait) => trait.kind === "elusive") && canAct(target, lookup)) advantage = 0;
   return { mode: resolveRollMode(advantage, disadvantage), consumed: effectsUsedUpByAttack(target) };
+}
+
+// Protection (Fighting Style): a creature standing beside the target, with its reaction to spare, that can throw the attack off.
+export function protectorFor(encounter: EncounterState, target: Combatant, lookup: ConditionLookup): Combatant | undefined {
+  return Object.values(encounter.combatants).find(
+    (other) => other.id !== target.id && other.side === target.side && other.zoneId === target.zoneId && isActive(other) && other.hp > 0 && other.budget.reaction && other.traits.some((trait) => trait.kind === "protectionStyle") && canAct(other, lookup),
+  );
 }
 
 // Sneak Attack (2014): once per turn, with a finesse or ranged weapon, when

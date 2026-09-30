@@ -107,6 +107,16 @@ export type Trait =
   | { readonly kind: "survivor" }
   // Elusive (Rogue 18): no attack roll has advantage against the holder unless it is incapacitated.
   | { readonly kind: "elusive" }
+  // Fighting Style (Protection): when a creature attacks another one standing beside the holder, the holder's reaction gives that attack disadvantage. The shield the SRD asks for is not checked.
+  | { readonly kind: "protectionStyle" }
+  // Divine Strike (Cleric 8): a weapon hit deals 1d8 more radiant damage (2d8 from level 14).
+  | { readonly kind: "divineStrike" }
+  // Dark One's Blessing (Fiend warlock): reducing a hostile creature to 0 hit points gives temporary hit points (Charisma modifier plus level).
+  | { readonly kind: "darkOnesBlessing" }
+  // Potent Cantrip (Wizard 6): a creature that saves against the wizard's damaging cantrip still takes half the damage.
+  | { readonly kind: "potentCantrip" }
+  // Deflect Missiles (Monk 3): a ranged weapon hit is reduced by 1d10 plus Dexterity modifier plus level (played at the die's average), using the reaction.
+  | { readonly kind: "deflectMissiles" }
   // Indomitable Might (Barbarian 18): a Strength check total is at least the Strength score.
   | { readonly kind: "indomitableMight" }
   | { readonly kind: "brutalCritical"; readonly dice: number }

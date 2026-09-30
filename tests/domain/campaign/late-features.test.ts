@@ -6,7 +6,7 @@ import { savingThrowModifier, type CharacterSheet } from "../../../src/domain/ca
 import { conditionLookup } from "../../../src/domain/campaign/effects/effect-queries.js";
 import { attackMode } from "../../../src/domain/campaign/engine/combat/attack-rules.js";
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
-import { alex, d20Roll, jamie, newCampaign, organizer, run, ruleset, system } from "./campaign-fixtures.js";
+import { alex, d20Roll, jamie, newCampaign, organizer, partyOfThree, run, ruleset, sam, system } from "./campaign-fixtures.js";
 import { Fight, skirmish } from "./combat-fixtures.js";
 
 // Class features from level 6 up that the engine reads.
@@ -84,5 +84,72 @@ describe("Primal Champion", () => {
     const progression = progressionOf({ ...sheet, xp: xpThresholds[19] } as unknown as CharacterSheet);
     expect(progressionProblems(deriveSheet(build), progression)).toEqual([]);
     expect(applyProgression(deriveSheet(build), progression).abilityScores).toMatchObject({ str: 19, con: 18 });
+  });
+});
+
+describe("Divine Strike, Dark One's Blessing and Potent Cantrip", () => {
+  function skirmishWith(heroId: string, features: readonly string[]): Fight {
+    return new Fight(withFeatures(partyOfThree(), heroId, features)).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec: skirmish });
+  }
+
+  it("Divine Strike adds a radiant die to a weapon hit", () => {
+    const shoot = (features: readonly string[], dice: readonly number[]): number => {
+      const fight = skirmishWith("c-mira", features);
+      fight.run(sam, { kind: "endTurn", combatantId: "c-elspeth" });
+      fight.rolls([15], dice).run(alex, { kind: "combatAttack", combatantId: "c-mira", targetId: "goblin-a", weapon: "item:shortbow" });
+      return 7 - fight.combatant("goblin-a").hp;
+    };
+    const plain = shoot([], [1]);
+    expect(shoot(["feature:divine-strike"], [1, 3])).toBe(plain + 3);
+  });
+
+  it("Dark One's Blessing gives temporary hit points for a kill", () => {
+    const fight = skirmishWith("c-elspeth", ["feature:dark-ones-blessing"]);
+    fight.rolls([5], [8]).run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:sacred-flame", slotLevel: 0, targetIds: ["goblin-a"] });
+    expect(fight.combatant("goblin-a").hp).toBe(0);
+    // Wisdom modifier 3 plus level 1.
+    expect(fight.combatant("c-elspeth").tempHp).toBe(4);
+  });
+
+  it("Potent Cantrip halves a damaging cantrip that was saved against", () => {
+    const flame = (features: readonly string[], dice: readonly number[]): number => {
+      const fight = skirmishWith("c-elspeth", features);
+      fight.rolls([15], dice).run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:sacred-flame", slotLevel: 0, targetIds: ["goblin-a"] });
+      return fight.combatant("goblin-a").hp;
+    };
+    expect(flame([], [])).toBe(7);
+    expect(flame(["feature:potent-cantrip"], [6])).toBe(4);
+  });
+});
+
+describe("Deflect Missiles", () => {
+  it("uses the reaction to turn a ranged hit down", () => {
+    const struck = (features: readonly string[]): { readonly lost: number; readonly reaction: boolean } => {
+      const state = withFeatures(partyOfThree(), "c-elspeth", features);
+      const fight = new Fight(state).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec: skirmish });
+      fight.run(sam, { kind: "endTurn", combatantId: "c-elspeth" });
+      const before = fight.combatant("c-elspeth").hp;
+      fight.rolls(Array.from({ length: 6 }, () => 19), Array.from({ length: 6 }, () => 6)).run(alex, { kind: "endTurn", combatantId: "c-mira" });
+      return { lost: before - fight.combatant("c-elspeth").hp, reaction: fight.combatant("c-elspeth").budget.reaction };
+    };
+    const plain = struck([]);
+    const deflected = struck(["feature:deflect-missiles"]);
+    expect(plain).toMatchObject({ reaction: true });
+    expect(plain.lost).toBeGreaterThan(0);
+    expect(deflected.reaction).toBe(false);
+    expect(deflected.lost).toBeLessThan(plain.lost);
+  });
+});
+
+describe("Fighting Style: Protection", () => {
+  it("spends a neighbor's reaction to give an attack on an ally disadvantage", () => {
+    const state = withFeatures(partyOfThree(), "c-borin", ["feature:fighting-style-protection"]);
+    const fight = new Fight(state).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec: skirmish });
+    fight.run(sam, { kind: "endTurn", combatantId: "c-elspeth" });
+    fight.rolls(Array.from({ length: 6 }, () => 10), Array.from({ length: 6 }, () => 3)).run(alex, { kind: "endTurn", combatantId: "c-mira" });
+    const shot = fight.events.filter((event) => event.kind === "resolutionDeclared").at(-1);
+    expect(shot?.resolution.targetIds).toEqual(["c-elspeth"]);
+    expect(Object.values(shot?.resolution.checks ?? {})[0]?.spec.mode).toBe("disadvantage");
+    expect(fight.events).toContainEqual({ kind: "uncannyDodgeUsed", combatantId: "c-borin" });
   });
 });
