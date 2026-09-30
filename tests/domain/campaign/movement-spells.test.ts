@@ -148,3 +148,35 @@ describe("Fly", () => {
     expect(fight.events.some((event) => event.kind === "combatantHpChanged" && event.combatantId === "c-elspeth" && event.change < 0)).toBe(false);
   });
 });
+
+describe("Shapechange and Animal Shapes", () => {
+  function shaped(spell: `spell:${string}`, slot: number): Fight {
+    const fight = new Fight(partyWithSpells([spell], { [slot]: 1 })).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec });
+    return fight.run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: spell, slotLevel: slot, targetIds: ["c-elspeth"] });
+  }
+
+  it("lets the caster take a creature's form from the wild-shape command, at no use of Wild Shape, until concentration ends", () => {
+    const fight = shaped("spell:shapechange", 9);
+    // Something bigger than the spell allows is refused.
+    expect(fight.reject(sam, { kind: "combatWildShape", combatantId: "c-elspeth", monsterId: "monster:adult-red-dragon" })).toEqual({ code: "unknownFeature" });
+    fight.run(sam, { kind: "combatWildShape", combatantId: "c-elspeth", monsterId: "monster:wolf" });
+    const wolf = fight.combatant("c-elspeth");
+    expect(wolf.wildShapeOriginal).not.toBeNull();
+    expect(wolf.maxHp).toBe(11);
+    expect(wolf.resources.featureUses["feature:wild-shape"]).toBeUndefined();
+  });
+
+  it("Animal Shapes offers beasts only", () => {
+    const fight = shaped("spell:animal-shapes", 8);
+    expect(fight.reject(sam, { kind: "combatWildShape", combatantId: "c-elspeth", monsterId: "monster:goblin" })).toEqual({ code: "unknownFeature" });
+    fight.run(sam, { kind: "combatWildShape", combatantId: "c-elspeth", monsterId: "monster:brown-bear" });
+    expect(fight.combatant("c-elspeth").wildShapeOriginal).not.toBeNull();
+  });
+
+  it("returns the caster to their own form when concentration is lost", () => {
+    const fight = shaped("spell:shapechange", 9);
+    fight.run(sam, { kind: "combatWildShape", combatantId: "c-elspeth", monsterId: "monster:wolf" });
+    fight.run(sam, { kind: "combatWildShape", combatantId: "c-elspeth" });
+    expect(fight.combatant("c-elspeth").wildShapeOriginal).toBeNull();
+  });
+});

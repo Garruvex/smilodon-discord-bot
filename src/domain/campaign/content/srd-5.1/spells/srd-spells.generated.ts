@@ -135,16 +135,16 @@ export const animalMessenger = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Only the caster takes a beast form (up to challenge 4) from the wild-shape menu; the other willing creatures the book transforms are not.
 export const animalShapes = defineSpell({
   id: "spell:animal-shapes",
   source,
   level: 8,
   castingTime: "action",
   range: { kind: "feet", feet: 30 },
-  targeting: { relation: "creature", count: 1 },
+  targeting: { relation: "self", count: 1 },
   concentration: true,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "applyModifiers", target: "target", modifiers: [{ kind: "shapechange", maxXp: 1100, beastsOnly: true }], duration: { kind: "untilRemoved" } }], onAvoid: [] }),
 });
 
 // A skeleton fights beside the caster until the fight ends; it does not need a corpse and is not raised for a day.
@@ -2867,7 +2867,7 @@ export const sequester = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// The caster may take the form of any creature worth up to 5,000 experience (challenge 9) from the wild-shape menu, holding it while the concentration lasts; the form's own mind and its special abilities are not modeled.
 export const shapechange = defineSpell({
   id: "spell:shapechange",
   source,
@@ -2876,7 +2876,7 @@ export const shapechange = defineSpell({
   range: { kind: "self" },
   targeting: { relation: "self", count: 1 },
   concentration: true,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "applyModifiers", target: "target", modifiers: [{ kind: "shapechange", maxXp: 5000 }], duration: { kind: "untilRemoved" } }], onAvoid: [] }),
 });
 
 export const shatter = defineSpell({

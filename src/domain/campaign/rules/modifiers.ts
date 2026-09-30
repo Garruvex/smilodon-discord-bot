@@ -36,6 +36,8 @@ export type Modifier =
   | { readonly kind: "avoidsOpportunityAttacks" }
   // Airborne: creatures on the ground cannot reach it in melee, and it cannot be engaged by them.
   | { readonly kind: "flying" }
+  // Shapechange and Animal Shapes: the creature may take the form of any creature worth at most this much experience (beasts only when set).
+  | { readonly kind: "shapechange"; readonly maxXp: number; readonly beastsOnly?: boolean }
   // Adds to the holder's armor class (Shield).
   | { readonly kind: "acBonus"; readonly amount: number }
   // Takes half damage of these types while it lasts (Rage).

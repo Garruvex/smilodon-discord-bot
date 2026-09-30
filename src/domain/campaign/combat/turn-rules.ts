@@ -1,13 +1,13 @@
 import type { CharacterSheet } from "../character/character-sheet.js";
 import type { CharacterId } from "../core/ids.js";
 import { potionOf } from "../engine/potions.js";
-import { useKeyOf, type FeatureDefinition, type SpellDefinition } from "../rules/content-definitions.js";
+import { useKeyOf, type FeatureDefinition, type MonsterDefinition, type SpellDefinition } from "../rules/content-definitions.js";
 import type { ContentId } from "../rules/content-id.js";
 import type { MetamagicOption } from "../rules/modifiers.js";
 import type { SealedContent } from "../rules/content-registry.js";
 import { healingPotionCost, type HouseRules } from "../rules/house-rules.js";
 import { mayWildShapeInto, wildShapeFeature, wildShapeUses } from "../rules/wild-shape-rules.js";
-import { canAct, conditionLookup, hasCondition, isFlying, speedOf } from "../effects/effect-queries.js";
+import { canAct, conditionLookup, hasCondition, isFlying, shapechangeOf, speedOf } from "../effects/effect-queries.js";
 import { castableSlotLevels, slotUnavailable, spellMaxTargets, usePoolOf } from "../magic/spell-rules.js";
 import { areEngaged, availableSlots, currentCombatant, engagedWith, isPresent, type AttackOption, type Combatant, type EncounterState } from "./combat-state.js";
 import { isWorn } from "./combatant-profile.js";
@@ -158,10 +158,21 @@ function withEveryoneInTheirZones(encounter: EncounterState, named: readonly str
 export function wildShapeProblem(hero: Combatant, content: SealedContent, monsterId?: ContentId<"monster">): TurnProblem | null {
   if (monsterId === undefined) return hero.wildShapeOriginal === null ? { code: "notShaped" } : null;
   if (hero.wildShapeOriginal !== null) return { code: "alreadyShaped" };
-  if (!hero.traits.some((trait) => trait.kind === "wildShape")) return { code: "unknownFeature" };
   const beast = content.find(monsterId);
-  if (beast?.kind !== "monster" || !mayWildShapeInto(hero.level, beast)) return { code: "unknownFeature" };
+  if (beast?.kind !== "monster") return { code: "unknownFeature" };
+  const source = shapeSource(hero, content, beast);
+  if (source === null) return { code: "unknownFeature" };
+  // A form taken through a spell costs no use of Wild Shape.
+  if (source === "spell") return null;
   return (hero.resources.featureUses[wildShapeFeature] ?? wildShapeUses) < 1 && !hero.traits.some((trait) => trait.kind === "unlimitedWildShape") ? { code: "noUsesLeft" } : null;
+}
+
+// What lets this creature take that form: the druid's Wild Shape, or a spell (Shapechange, Animal Shapes) in force.
+export function shapeSource(hero: Combatant, content: SealedContent, form: MonsterDefinition): "class" | "spell" | null {
+  if (hero.traits.some((trait) => trait.kind === "wildShape") && mayWildShapeInto(hero.level, form)) return "class";
+  const spell = shapechangeOf(hero, conditionLookup(content));
+  if (spell !== undefined && form.summonOnly !== true && form.xp <= spell.maxXp && (!spell.beastsOnly || form.beast !== undefined)) return "spell";
+  return null;
 }
 
 // Every beast this druid may take now.

@@ -9,7 +9,7 @@
 // form, since the roster has nothing that would conflict.
 import { monsterAttackOptions } from "../../combat/combatant-profile.js";
 import type { Combatant } from "../../combat/combat-state.js";
-import { costProblem, wildShapeProblem } from "../../combat/turn-rules.js";
+import { costProblem, shapeSource, wildShapeProblem } from "../../combat/turn-rules.js";
 import type { ContentId } from "../../rules/content-id.js";
 import { wildShapeFeature } from "../../rules/wild-shape-rules.js";
 import type { Decision } from "../decision.js";
@@ -38,7 +38,7 @@ export function wildShape(decision: Decision, hero: Combatant, monsterId: Conten
     maxHp: beast.maxHp,
     hp: beast.maxHp,
     original: { attacks: hero.attacks, armorClass: hero.armorClass, speed: hero.speed, traits: hero.traits, maxHp: hero.maxHp, hp: hero.hp },
-    spendsUseOf: wildShapeFeature,
+    ...(shapeSource(hero, content, beast) === "class" ? { spendsUseOf: wildShapeFeature } : (hero.concentration === null ? {} : { boundTo: hero.concentration.resolutionId })),
   });
   return null;
 }

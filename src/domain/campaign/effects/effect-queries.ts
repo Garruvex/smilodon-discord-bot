@@ -145,6 +145,13 @@ export function armorClassOf(holder: EffectHolder & { readonly armorClass: numbe
   return holder.armorClass + modifiersOf(holder, lookup).reduce((sum, { modifier }) => sum + (modifier.kind === "acBonus" ? modifier.amount : 0), 0);
 }
 
+// The widest form a spell lets the creature take, if one is in force.
+export function shapechangeOf(holder: EffectHolder, lookup: ConditionLookup): { readonly maxXp: number; readonly beastsOnly: boolean } | undefined {
+  const found = modifiersOf(holder, lookup).flatMap(({ modifier }) => (modifier.kind === "shapechange" ? [modifier] : []));
+  if (found.length === 0) return undefined;
+  return { maxXp: Math.max(...found.map((modifier) => modifier.maxXp)), beastsOnly: found.every((modifier) => modifier.beastsOnly === true) };
+}
+
 export function isFlying(holder: EffectHolder, lookup: ConditionLookup): boolean {
   return modifiersOf(holder, lookup).some(({ modifier }) => modifier.kind === "flying");
 }
