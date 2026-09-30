@@ -152,6 +152,8 @@ export type CombatEvent =
       readonly original: WildShapeForm | null;
       // The feature whose use taking the form spends.
       readonly spendsUseOf?: ContentId<"feature">;
+      // The resolution of the concentration spell that holds the form (Polymorph); it reverts when that ends.
+      readonly boundTo?: string;
     }
   | { readonly kind: "concentrationStarted"; readonly combatantId: CombatantId; readonly concentration: Concentration }
   | { readonly kind: "concentrationEnded"; readonly combatantId: CombatantId; readonly reason: "newSpell" | "failedSave" | "downed" | "expired" }

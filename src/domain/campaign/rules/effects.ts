@@ -80,6 +80,8 @@ export type Effect =
   // or the caster's concentration.
   // Action Surge: one more action this turn. With attacks: that many more attacks instead (Flurry of Blows).
   | { readonly kind: "grantAction"; readonly target: EffectTarget; readonly attacks?: number }
+  // Turns the target into this beast until its hit points run out or the spell's concentration ends (Polymorph).
+  | { readonly kind: "polymorph"; readonly target: EffectTarget; readonly monsterId: ContentId<"monster"> }
   // Feet of movement to use this turn (Misty Step's teleport is played as movement that provokes nothing).
   | { readonly kind: "grantMovement"; readonly target: EffectTarget; readonly feet: number }
   | {

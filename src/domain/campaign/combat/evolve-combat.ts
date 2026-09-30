@@ -278,8 +278,9 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
     case "uncannyDodgeUsed":
       return update(encounter, event.combatantId, (combatant) => ({ ...combatant, budget: { ...combatant.budget, reaction: false } }));
     case "wildShapeChanged":
-      return update(encounter, event.combatantId, (combatant) => ({
+      return update(encounter, event.combatantId, ({ boundTo: _held, ...combatant }) => ({
         ...combatant,
+        ...(event.boundTo === undefined ? {} : { boundTo: event.boundTo }),
         attacks: event.attacks,
         armorClass: event.armorClass,
         speed: event.speed,

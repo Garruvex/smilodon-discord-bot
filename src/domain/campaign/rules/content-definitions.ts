@@ -530,6 +530,8 @@ function capabilitiesFor(effect: Effect): readonly Capability[] {
       return ["damage"];
     case "applyModifiers":
       return ["conditions"];
+    case "polymorph":
+      return ["conditions"];
     case "grantAction":
     case "grantMovement":
       return [];

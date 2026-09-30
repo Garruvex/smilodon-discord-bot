@@ -90,3 +90,33 @@ describe("Thunderwave", () => {
     expect(fight.combatant("goblin-b").zoneId).toBe("courtyard");
   });
 });
+
+describe("Polymorph", () => {
+  const polymorphed = (): Fight => {
+    const fight = new Fight(partyWithSpells(["spell:polymorph", "spell:bless"], { 1: 2, 4: 1 })).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec: skirmish });
+    fight.rolls([2]).run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:polymorph", slotLevel: 4, targetIds: ["goblin-a"] });
+    return fight;
+  };
+
+  it("turns a creature that fails its save into a frog, and back when its hit points run out", () => {
+    const fight = polymorphed();
+    expect(fight.combatant("goblin-a")).toMatchObject({ maxHp: 1, hp: 1 });
+    expect(fight.combatant("goblin-a").wildShapeOriginal).not.toBeNull();
+    fight.run(sam, { kind: "endTurn", combatantId: "c-elspeth" });
+    fight.rolls([15], [1, 1]).run(alex, { kind: "combatAttack", combatantId: "c-mira", targetId: "goblin-a", weapon: "item:shortbow" });
+    // The frog dies to the arrow, so the goblin is back, with what the arrow left over.
+    expect(fight.combatant("goblin-a").wildShapeOriginal).toBeNull();
+    expect(fight.combatant("goblin-a").maxHp).toBe(7);
+    expect(fight.combatant("goblin-a").hp).toBeGreaterThan(0);
+  });
+
+  it("reverts when the caster's concentration ends", () => {
+    const fight = polymorphed();
+    fight.run(sam, { kind: "endTurn", combatantId: "c-elspeth" });
+    fight.rolls(Array.from({ length: 12 }, () => 1), Array.from({ length: 12 }, () => 1)).run(alex, { kind: "endTurn", combatantId: "c-mira" });
+    fight.run(jamie, { kind: "endTurn", combatantId: "c-borin" });
+    fight.run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:bless", slotLevel: 1, targetIds: ["c-elspeth"] });
+    expect(fight.combatant("goblin-a").wildShapeOriginal).toBeNull();
+    expect(fight.combatant("goblin-a").maxHp).toBe(7);
+  });
+});

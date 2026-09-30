@@ -9,7 +9,7 @@ import type { EffectInstance } from "../../effects/effect-instance.js";
 import type { D20TestRoll } from "../../dice/d20-test.js";
 import type { SealedContent } from "../../rules/content-registry.js";
 import type { ContentId } from "../../rules/content-id.js";
-import { monsterCombatant } from "../../combat/combatant-profile.js";
+import { monsterAttackOptions, monsterCombatant } from "../../combat/combatant-profile.js";
 import { distanceBetween, shortestPath } from "../../combat/positioning.js";
 import { resolveD20Test, type D20TestSpec } from "../../dice/d20-test.js";
 import { combine, dice } from "../../dice/dice-expression.js";
@@ -512,6 +512,24 @@ export function applyEffect(
           concentrationId: concentrating ? resolution.id : null,
           stacking: "coexist",
         },
+      });
+      return;
+    }
+    case "polymorph": {
+      const beast = decision.ctx.rules.content.find(effect.monsterId);
+      if (beast?.kind !== "monster" || recipient.wildShapeOriginal !== null || recipient.hp <= 0) return;
+      const concentrating = resolution.source.kind === "spell" && decision.ctx.rules.content.get(resolution.source.spellId).concentration;
+      decision.emit({
+        kind: "wildShapeChanged",
+        combatantId: recipient.id,
+        attacks: monsterAttackOptions(beast, decision.ctx.rules.content),
+        armorClass: beast.armorClass,
+        speed: beast.speed,
+        traits: beast.traits,
+        maxHp: beast.maxHp,
+        hp: beast.maxHp,
+        original: { attacks: recipient.attacks, armorClass: recipient.armorClass, speed: recipient.speed, traits: recipient.traits, maxHp: recipient.maxHp, hp: recipient.hp },
+        ...(concentrating ? { boundTo: resolution.id } : {}),
       });
       return;
     }

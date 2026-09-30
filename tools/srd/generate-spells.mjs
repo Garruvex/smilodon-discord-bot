@@ -178,6 +178,8 @@ const curated = {
   "giant-insect": { relation: "self", count: 1, summon: { monster: "giant-centipede", count: 3 }, note: "Three giant centipedes stand in for the insects the caster would grow.", effects: [] },
   "animate-objects": { relation: "self", count: 1, summon: { monster: "flying-sword", count: 6 }, note: "Six flying swords stand in for the objects the caster would animate.", effects: [] },
   "create-undead": { relation: "self", count: 1, summon: { monster: "ghoul", count: 3 }, note: "Three ghouls stand in for the undead the caster would raise; they do not need corpses and obey until the fight ends.", effects: [] },
+  polymorph: { relation: "enemy", count: 1, save: "wis", note: "Only the hostile use is modeled: a creature that fails its save becomes a frog until it is brought to 0 hit points or concentration ends.", effects: [{ polymorph: "frog", onLand: true }] },
+  "true-polymorph": { relation: "enemy", count: 1, save: "wis", note: "Played as Polymorph: the target becomes a frog; the permanent form and the other uses are not modeled.", effects: [{ polymorph: "frog", onLand: true }] },
   darkness: { relation: "enemy", count: 6, save: null, note: "Blinds the creatures in the area for the duration; there is no lighting in the engine.", effects: [{ condition: "blinded", duration: { kind: "untilRemoved" }, onLand: true }] },
 };
 
@@ -251,7 +253,8 @@ function planFor(spell, notes) {
     const self = [];
     for (const effect of special.effects) {
       let code;
-      if (effect.movement !== undefined) code = `{ kind: "grantMovement", target: "target", feet: ${effect.movement} }`;
+      if (effect.polymorph !== undefined) code = `{ kind: "polymorph", target: "target", monsterId: "monster:${effect.polymorph}" }`;
+      else if (effect.movement !== undefined) code = `{ kind: "grantMovement", target: "target", feet: ${effect.movement} }`;
       else if (effect.damage !== undefined) code = `{ kind: "damage", target: "target", amount: ${effect.damage[0][0] === 0 ? `flat(${effect.damage[0][2]})` : "flat(0)"}, damageType: ${quote(effect.damageType)} }`;
       else if (effect.condition !== undefined) code = `{ kind: "applyCondition", target: "target", condition: "condition:${effect.condition}", duration: ${durationCode(effect.duration)} }`;
       else code = `{ kind: "applyModifiers", target: "target", modifiers: ${JSON.stringify(effect.modifiers).replace(/"([a-zA-Z]+)":/g, "$1:").replace(/,/g, ", ").replace(/:/g, ": ").replace(/\{/g, "{ ").replace(/\}/g, " }")}, duration: ${durationCode(effect.duration)} }`;

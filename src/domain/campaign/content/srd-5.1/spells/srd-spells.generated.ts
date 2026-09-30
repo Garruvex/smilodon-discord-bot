@@ -2485,16 +2485,16 @@ export const plantGrowth = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Only the hostile use is modeled: a creature that fails its save becomes a frog until it is brought to 0 hit points or concentration ends.
 export const polymorph = defineSpell({
   id: "spell:polymorph",
   source,
   level: 4,
   castingTime: "action",
   range: { kind: "feet", feet: 60 },
-  targeting: { relation: "creature", count: 1 },
+  targeting: { relation: "enemy", count: 1 },
   concentration: true,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: { kind: "savingThrow", ability: "wis" }, onLand: [{ kind: "polymorph", target: "target", monsterId: "monster:frog" }], onAvoid: [] }),
 });
 
 // Deals 100 force damage rather than killing outright, and the hit point threshold is not checked.
@@ -3296,16 +3296,16 @@ export const treeStride = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Played as Polymorph: the target becomes a frog; the permanent form and the other uses are not modeled.
 export const truePolymorph = defineSpell({
   id: "spell:true-polymorph",
   source,
   level: 9,
   castingTime: "action",
   range: { kind: "feet", feet: 30 },
-  targeting: { relation: "creature", count: 1 },
+  targeting: { relation: "enemy", count: 1 },
   concentration: true,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: { kind: "savingThrow", ability: "wis" }, onLand: [{ kind: "polymorph", target: "target", monsterId: "monster:frog" }], onAvoid: [] }),
 });
 
 // Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
