@@ -4,7 +4,7 @@ import { abilities } from "../../domain/campaign/rules/effects.js";
 import { sceneNpcs } from "./views/explore-view.js";
 import { raiseToLevel } from "../../domain/campaign/character/leveling.js";
 import type { ContentId } from "../../domain/campaign/rules/content-id.js";
-import type { CampaignCommand, CombatCommand } from "../../domain/campaign/commands/campaign-command.js";
+import type { CampaignCommand, CombatCommand, EnvironmentalDamageSource } from "../../domain/campaign/commands/campaign-command.js";
 import type { Ability } from "../../domain/campaign/rules/effects.js";
 import { actingHero } from "../../domain/campaign/engine/members.js";
 import { isFallen } from "../../domain/campaign/state/campaign-state.js";
@@ -165,6 +165,23 @@ export class CampaignPlayController {
     for (const characterId of heroes) {
       const result = await this.perform(key, userId, `${interactionId}:${characterId}`, () => ({ kind: "faceHazard", characterId, ability, dc }));
       // A party goes through together; the first refusal is the one worth telling.
+      if (result.kind === "refused" && first === null) first = result;
+    }
+    return first ?? { kind: "ok" };
+  }
+
+  // The organizer hurts one hero or the whole party between fights: a fall (the amount is feet), suffocation, or damage of a type (the amount is d6s).
+  public async hurt(key: CampaignKey, userId: UserId | null, target: string, kind: string, amount: number, interactionId: string): Promise<PlayResult> {
+    const source = hurtSource(kind, amount);
+    if (source === null) return { kind: "refused", reason: "invalidHazardDamage" };
+    const loaded = await this.options.unitOfWork.transaction((tx) => tx.loadCampaign(key));
+    if (loaded === undefined) return { kind: "refused", reason: "notFound" };
+    const { state } = loaded;
+    const heroes = target === "party" ? Object.values(state.characters).filter((sheet) => !isFallen(state, sheet.id)).map((sheet) => sheet.id) : [target];
+    if (heroes.length === 0) return { kind: "refused", reason: "noHero" };
+    let first: PlayResult | null = null;
+    for (const characterId of heroes) {
+      const result = await this.perform(key, userId, `${interactionId}:${characterId}`, () => ({ kind: "takeEnvironmentalDamage", characterId, source }));
       if (result.kind === "refused" && first === null) first = result;
     }
     return first ?? { kind: "ok" };
@@ -392,4 +409,14 @@ function roman(value: number): string {
     }
   }
   return text;
+}
+
+export const hurtKinds = ["fall", "suffocation", "fire", "cold", "acid", "poison", "lightning", "necrotic", "piercing", "slashing", "bludgeoning"] as const;
+
+function hurtSource(kind: string, amount: number): EnvironmentalDamageSource | null {
+  if (kind === "suffocation") return { kind: "suffocation" };
+  if (!Number.isInteger(amount) || amount < 1 || amount > 500) return null;
+  if (kind === "fall") return { kind: "fall", feet: amount };
+  const damageType = hurtKinds.find((candidate) => candidate === kind);
+  return damageType === undefined || damageType === "fall" || damageType === "suffocation" ? null : { kind: "damage", count: Math.min(amount, 20), sides: 6, damageType };
 }

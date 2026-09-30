@@ -114,6 +114,7 @@ function effectProblems(decision: Decision, proposal: RoundPlanProposal, checkEn
   const clocks = effects.flatMap(({ effect }) => (effect.kind === "advanceClock" ? [effect.clockId] : []));
   if (new Set(clocks).size !== clocks.length) problems.push("Advance each clock at most once per round.");
   for (const { effect, when } of effects) {
+    if (when.kind === "groupCheck" && proposal.actions.filter((candidate) => candidate.resolution.kind === "check").length < 2) problems.push(`${effect.kind} depends on a group check, which needs at least two checks this round.`);
     if (when.kind === "checkOutcome") {
       const action = proposal.actions.find((candidate) => candidate.characterId === when.characterId);
       if (action?.resolution.kind !== "check") problems.push(`${effect.kind} depends on ${when.characterId}, who has no check this round.`);
@@ -144,6 +145,11 @@ function effectProblems(decision: Decision, proposal: RoundPlanProposal, checkEn
 export function firedEffects(state: CampaignState, round: RoundState): readonly PlannedEffect[] {
   return round.effects.filter(({ when }) => {
     if (when.kind === "always") return true;
+    if (when.kind === "groupCheck") {
+      const made = Object.values(state.checks).filter((candidate) => candidate.roundNumber === round.number && candidate.result != null);
+      const passed = made.filter((candidate) => candidate.result?.success === true).length;
+      return made.length > 0 && (passed * 2 >= made.length) === when.success;
+    }
     const check = Object.values(state.checks).find((candidate) => candidate.roundNumber === round.number && candidate.characterId === when.characterId);
     return check?.result != null && check.result.success === when.success;
   });

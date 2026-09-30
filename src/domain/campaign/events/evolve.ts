@@ -274,6 +274,16 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       const { [event.castId]: _narrated, ...utilityCasts } = state.utilityCasts;
       return { ...state, utilityCasts };
     }
+    case "environmentalDamageStarted":
+      return { ...state, damagePending: { ...state.damagePending, [event.pending.characterId]: event.pending } };
+    case "environmentalDamageSettled": {
+      const { [event.damage.characterId]: _spentDamage, ...damagePending } = state.damagePending ?? {};
+      const settled: CampaignState = { ...state, damagePending, damageCount: (state.damageCount ?? 0) + 1, heroStatus: { ...state.heroStatus, [event.damage.characterId]: event.heroStatus } };
+      // A hero killed between fights leaves their gear in the stash, as in a fight.
+      const sheet = settled.characters[event.damage.characterId];
+      if (!event.damage.dead || sheet === undefined) return settled;
+      return { ...settled, stash: [...settled.stash, ...sheet.equipment], characters: { ...settled.characters, [sheet.id]: { ...sheet, equipment: [] } } };
+    }
     case "healingStarted":
       return { ...state, healingPending: { ...state.healingPending, [event.healing.casterId]: event.healing } };
     case "healingSettled": {

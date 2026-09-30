@@ -43,6 +43,9 @@ export const hubActions = [
   // Manage: set a hazard save for a hero or the whole party.
   "hazardOpen",
   "hazardSubmit",
+  // Manage: hurt a hero or the whole party between fights (a fall, drowning, a trap).
+  "hurtOpen",
+  "hurtSubmit",
 ] as const;
 export type HubAction = (typeof hubActions)[number];
 

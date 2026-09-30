@@ -17,11 +17,13 @@ import type {
   HazardRecord,
   ItemOffer,
   PendingHaggle,
+  PendingEnvironmentalDamage,
   PendingHazard,
   PendingPress,
   Resolution,
   TradeRecord,
   UtilityCastRecord,
+  EnvironmentalDamageRecord,
   HealingRecord,
   PendingHealing,
 } from "../state/campaign-state.js";
@@ -200,6 +202,10 @@ export type CampaignEvent =
   // The healing dice landed: the slot is spent and the hit points restored,
   // both carried as the statuses of the caster and (if another) the target.
   | { readonly kind: "healingSettled"; readonly healing: HealingRecord; readonly heroStatus: Readonly<Record<CharacterId, HeroStatus>> }
+  // Damage between fights: its dice were requested.
+  | { readonly kind: "environmentalDamageStarted"; readonly pending: PendingEnvironmentalDamage }
+  // The damage landed; `heroStatus` is the hero with their new hit points (dead when it killed them).
+  | { readonly kind: "environmentalDamageSettled"; readonly damage: EnvironmentalDamageRecord; readonly heroStatus: HeroStatus }
   | { readonly kind: "hazardStarted"; readonly hazard: PendingHazard }
   // A hazard save landed — Exhaustion gained on a failure, nothing on a
   // success — and is now waiting on a Narrator line. `heroStatus`, when

@@ -114,6 +114,11 @@ export function checkModifier(sheet: CharacterSheet, test: CheckTest): number {
   return base;
 }
 
+// Passive Perception: 10 plus the Wisdom (Perception) modifier, what a hero notices without looking.
+export function passivePerception(sheet: CharacterSheet): number {
+  return 10 + checkModifier(sheet, { kind: "skill", skill: "perception" });
+}
+
 export function savingThrowModifier(sheet: CharacterSheet, ability: Ability): number {
   const base = abilityModifier(sheet.abilityScores[ability]);
   // Slippery Mind (Rogue 15) adds Wisdom saves; Diamond Soul (Monk 14) adds all of them.

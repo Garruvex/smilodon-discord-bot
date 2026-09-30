@@ -23,6 +23,7 @@ import type { Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { activeEncounter, afterResolution, endIfDecided } from "./combat-flow.js";
 import { offerDeathBurst } from "./death-burst.js";
+import { offerReady } from "./ready.js";
 import { offerRetaliation } from "./retaliation.js";
 import { offerCounterspell, offerReaction, offerRetort } from "./reactions.js";
 import { offerSmite } from "./smite.js";
@@ -571,7 +572,7 @@ export function applyEffect(
         struck = now?.combatants[recipient.id] ?? recipient;
         struck = activeEncounter(decision)?.combatants[recipient.id] ?? struck;
       }
-      applyDamage(decision, struck, dodges ? Math.floor(taken / 2) : Math.max(0, taken - deflected), critical, effect.damageType);
+      applyDamage(decision, struck, dodges ? Math.floor(taken / 2) : Math.max(0, taken - deflected), critical, effect.damageType, resolution.source.kind === "weapon" && resolution.source.nonlethal === true);
       blessedByKill(decision, resolution, recipient);
       return;
     }
@@ -816,6 +817,7 @@ export function finishResolution(decision: Decision): void {
   // A monster that has just died may go off before anything else carries on.
   if (offerDeathBurst(decision, resolution)) return;
   if (offerRetaliation(decision, resolution)) return;
+  if (offerReady(decision, resolution)) return;
   if (endIfDecided(decision)) return;
   afterResolution(decision, resolution.resumes ?? resolution);
 }

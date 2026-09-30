@@ -98,13 +98,17 @@ export function buildTurnView(
       : [{ id: combatant.id, name: nameOf(combatant), zone: zoneOf(combatant.zoneId), side: combatant.side, hp: combatant.hp, maxHp: combatant.maxHp, band: bandOf(combatant), self: combatant.id === hero.id }];
   };
 
-  const attacks: AttackChoice[] = options.attacks.map(({ option, targetIds, offHand }) => ({
-    weapon: offHand === true ? `offhand:${option.weapon}` : option.weapon,
-    toHit: option.toHit,
-    damage: formatDiceExpression(option.damage),
-    ranged: option.range.kind === "ranged",
-    targets: targetIds.flatMap(targetView),
-  }));
+  const attacks: AttackChoice[] = options.attacks.flatMap(({ option, targetIds, offHand }) => {
+    const choice: AttackChoice = {
+      weapon: offHand === true ? `offhand:${option.weapon}` : option.weapon,
+      toHit: option.toHit,
+      damage: formatDiceExpression(option.damage),
+      ranged: option.range.kind === "ranged",
+      targets: targetIds.flatMap(targetView),
+    };
+    // A melee blow may knock the foe out instead of killing it.
+    return option.range.kind === "melee" && offHand !== true ? [choice, { ...choice, weapon: `nonlethal:${option.weapon}` }] : [choice];
+  });
 
   // One choice per slot level the spell could be upcast to, not just the
   // lowest that fits (plan §8: "all available slot levels"), so a healing or

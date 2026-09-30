@@ -20,7 +20,7 @@ import { revertWildShape } from "./wild-shape.js";
 // Protected while away (plan §5): the hero stops at 0 HP, stable.
 // damageType null: a source with no type to check resistance/immunity/
 // vulnerability against (a trigger predates this, or a future non-typed source).
-export function applyDamage(decision: Decision, target: Combatant, rolled: number, critical: boolean, damageType: DamageType | null = null): void {
+export function applyDamage(decision: Decision, target: Combatant, rolled: number, critical: boolean, damageType: DamageType | null = null, nonlethal = false): void {
   const traits = [...target.traits, ...effectResistances(target, conditionLookup(decision.ctx.rules.content))];
   const amount = damageType === null ? rolled : Math.floor(rolled * damageMultiplier(traits, damageType));
   if (amount <= 0) return;
@@ -52,7 +52,7 @@ export function applyDamage(decision: Decision, target: Combatant, rolled: numbe
   // A conjured creature (a party-side monster) drops at 0 like a foe.
   if (target.side === "foes" || target.source.kind !== "hero") {
     const hp = Math.max(0, target.hp - through);
-    decision.emit({ ...base, hp, condition: hp === 0 ? "dead" : "active", deathSaves: target.deathSaves, cause: "damage" });
+    decision.emit({ ...base, hp, condition: hp === 0 ? (nonlethal ? "stable" : "dead") : "active", deathSaves: target.deathSaves, cause: "damage" });
   } else if (target.hp === 0) {
     if (protectedHero) return;
     const failures = Math.min(3, target.deathSaves.failures + (critical ? 2 : 1));

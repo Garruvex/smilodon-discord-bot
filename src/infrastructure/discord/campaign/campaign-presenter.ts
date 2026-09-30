@@ -228,6 +228,19 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
         }
         break;
       }
+      case "environmentalDamage": {
+        // Damage between fights (a fall, drowning): what was rolled and where it leaves the hero, from the saved event alone.
+        const settled = events.findLast((event) => event.kind === "environmentalDamageSettled" && event.damage.id === delivery.damageId);
+        if (settled?.kind === "environmentalDamageSettled" && state !== undefined) {
+          const { damage } = settled;
+          const hero = state.characters[damage.characterId]?.name ?? damage.characterId;
+          const max = state.characters[damage.characterId]?.maxHp ?? damage.hpAfter;
+          const m = text.campaign.msg;
+          const line = damage.dead ? m.envDamageDead({ hero }) : damage.hpAfter === 0 ? m.envDamageDown({ hero }) : m.envDamageHurt({ hero, taken: damage.taken, hp: damage.hpAfter, max });
+          await say(adventureChannelId, `${m.envCause[damage.cause]} ${line}`);
+        }
+        break;
+      }
       default:
         // Panel-only changes (waiting, paused, turns): the redraw below is the whole delivery.
         break;

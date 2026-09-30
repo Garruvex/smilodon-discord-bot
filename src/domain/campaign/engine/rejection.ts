@@ -73,5 +73,6 @@ export type Rejection =
   | { readonly code: "notAHealingSpell" }
   | { readonly code: "nothingToHeal" }
   | { readonly code: "healingAlreadyPending" }
+  | { readonly code: "invalidHazardDamage" }
 
 export type RejectionCode = Rejection["code"];

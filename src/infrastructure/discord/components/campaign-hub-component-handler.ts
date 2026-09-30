@@ -17,7 +17,7 @@ import {
 } from "discord.js";
 
 import type { CampaignLobbyService } from "../../../application/campaign/campaign-lobby-service.js";
-import type { CampaignPlayController } from "../../../application/campaign/campaign-play-controller.js";
+import { hurtKinds, type CampaignPlayController } from "../../../application/campaign/campaign-play-controller.js";
 import type { CampaignRecord } from "../../../application/campaign/ports/campaign-record.js";
 import type { CampaignKey } from "../../../application/campaign/ports/campaign-store.js";
 import { CommandModule } from "../../../application/commands/command.js";
@@ -73,6 +73,8 @@ const levelField = "level";
 const whoField = "who";
 const abilityField = "ability";
 const dcField = "dc";
+const kindField = "kind";
+const amountField = "amount";
 const entranceField = "entrance";
 
 // The hub's controls: the Create game wizard and each game's Manage view. All
@@ -156,6 +158,9 @@ export class CampaignHubComponentHandler implements ComponentHandler {
       case "hazardOpen":
         if (interaction.isButton() && first !== undefined) await this.openHazard(interaction, first);
         return;
+      case "hurtOpen":
+        if (interaction.isButton() && first !== undefined) await this.openHurt(interaction, first);
+        return;
       default:
         return;
     }
@@ -170,6 +175,7 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     if (parsed.action === "authorSubmit") return void (await this.submitAuthor(interaction));
     if (parsed.action === "levelSubmit") return void (await this.submitLevel(interaction, parsed.parts[0] ?? ""));
     if (parsed.action === "hazardSubmit") return void (await this.submitHazard(interaction, parsed.parts[0] ?? ""));
+    if (parsed.action === "hurtSubmit") return void (await this.submitHurt(interaction, parsed.parts[0] ?? ""));
     if (parsed.action === "inviteSubmit" || parsed.action === "joinApproveSubmit") return void (await this.submitJoinForm(interaction, parsed.parts[0] ?? "", parsed.action, parsed.parts[1]));
     if (parsed.action !== "wizName") return;
     const choices = parseWizardState(parsed.parts[0]);
@@ -401,6 +407,60 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     const dc = Number(interaction.fields.getTextInputValue(dcField).trim());
     const result = ability === undefined ? ({ kind: "refused", reason: "invalidHazard" } as const) : await this.deps.play.hazard(record.key, null, who, ability, dc, interaction.id);
     await interaction.editReply({ content: result.kind === "ok" ? text.campaign.cmd.hazardSet : refusalText(text, result.reason) });
+  }
+
+  // ---- Hurt a hero between fights (Manage) ------------------------------------
+
+  private async openHurt(interaction: ButtonInteraction<"cached">, campaignId: string): Promise<void> {
+    const record = (await this.deps.lobby.get({ guildId: interaction.guildId, campaignId }))?.record;
+    if (record === undefined) {
+      await interaction.reply({ content: texts.en.campaign.manage.gone, flags: MessageFlags.Ephemeral });
+      return;
+    }
+    const text = texts[record.language];
+    if (!(await this.deps.authority.canManage(interaction, record))) {
+      await interaction.reply({ content: text.campaign.manage.notAllowed, flags: MessageFlags.Ephemeral });
+      return;
+    }
+    const heroes = await this.deps.play.livingHeroes(record.key);
+    const t = text.campaign.hub;
+    await interaction.showModal(
+      new ModalBuilder()
+        .setCustomId(hubCustomId("hurtSubmit", campaignId))
+        .setTitle(t.hurtTitle)
+        .addLabelComponents(
+          new LabelBuilder()
+            .setLabel(t.hazardWho)
+            .setStringSelectMenuComponent(
+              new StringSelectMenuBuilder()
+                .setCustomId(whoField)
+                .setRequired(true)
+                .addOptions([{ label: t.hazardEveryone, value: "party", default: true }, ...heroes.slice(0, 24).map((hero) => ({ label: hero.name.slice(0, 100), value: hero.id }))]),
+            ),
+          new LabelBuilder()
+            .setLabel(t.hurtWhat)
+            .setStringSelectMenuComponent(
+              new StringSelectMenuBuilder()
+                .setCustomId(kindField)
+                .setRequired(true)
+                .addOptions(hurtKinds.map((kind) => ({ label: t.hurtKind[kind], value: kind, default: kind === "fall" }))),
+            ),
+          new LabelBuilder().setLabel(t.hurtAmount).setTextInputComponent(new TextInputBuilder().setCustomId(amountField).setStyle(TextInputStyle.Short).setRequired(false).setMaxLength(3).setPlaceholder("20")),
+        ),
+    );
+  }
+
+  private async submitHurt(interaction: ModalSubmitInteraction<"cached">, campaignId: string): Promise<void> {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const record = (await this.deps.lobby.get({ guildId: interaction.guildId, campaignId }))?.record;
+    if (record === undefined) return void (await interaction.editReply({ content: texts.en.campaign.manage.gone }));
+    const text = texts[record.language];
+    if (!(await this.deps.authority.canManage(interaction, record))) return void (await interaction.editReply({ content: text.campaign.manage.notAllowed }));
+    const who = interaction.fields.getStringSelectValues(whoField)[0] ?? "party";
+    const kind = interaction.fields.getStringSelectValues(kindField)[0] ?? "";
+    const amount = Number(interaction.fields.getTextInputValue(amountField).trim());
+    const result = await this.deps.play.hurt(record.key, null, who, kind, amount, interaction.id);
+    await interaction.editReply({ content: result.kind === "ok" ? text.campaign.cmd.hurtSet : refusalText(text, result.reason) });
   }
 
   // ---- Create game --------------------------------------------------------
@@ -672,7 +732,12 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     rows.push(
       row(
         verb("repair", t.repair),
-        ...(record.lifecycle === "lobby" ? [] : [new ButtonBuilder().setCustomId(hubCustomId("hazardOpen", id)).setLabel(t.hazardButton).setStyle(ButtonStyle.Secondary)]),
+        ...(record.lifecycle === "lobby"
+          ? []
+          : [
+              new ButtonBuilder().setCustomId(hubCustomId("hazardOpen", id)).setLabel(t.hazardButton).setStyle(ButtonStyle.Secondary),
+              new ButtonBuilder().setCustomId(hubCustomId("hurtOpen", id)).setLabel(t.hurtButton).setStyle(ButtonStyle.Secondary),
+            ]),
         new ButtonBuilder().setCustomId(hubCustomId("endAsk", id)).setLabel(t.end).setStyle(ButtonStyle.Danger),
       ),
     );

@@ -63,7 +63,7 @@ export function handleCombatCommand(decision: Decision, command: CombatCommand):
         // Whirlwind Attack: a melee swing also strikes every other foe the hero is in melee with.
         const encounter = activeEncounter(decision);
         const sweep = encounter !== null && option.range.kind === "melee" && hero.traits.some((trait) => trait.kind === "whirlwind") ? weaponTargets(encounter, hero, option, decision.ctx.rules.content).map((foe) => foe.id).filter((id) => id !== command.targetId) : [];
-        return declareWeaponAttack(decision, hero, command.targetId, option, "action", command.smiteSlot, undefined, command.offHand === true ? [] : sweep, command.offHand === true);
+        return declareWeaponAttack(decision, hero, command.targetId, option, "action", command.smiteSlot, undefined, command.offHand === true ? [] : sweep, command.offHand === true, command.nonlethal === true);
       });
     case "combatCast":
       return withHeroTurn(decision, command.combatantId, (hero, encounter) =>
@@ -207,7 +207,7 @@ export function goldShares(combatants: Readonly<Record<string, Combatant>>, gold
 export function experienceShares(decision: Decision, encounter: EncounterState): Readonly<Record<string, number>> | undefined {
   const combatants = Object.values(encounter.combatants);
   const defeatedXp = combatants
-    .filter((combatant) => combatant.side === "foes" && combatant.condition === "dead" && combatant.source.kind === "monster")
+    .filter((combatant) => combatant.side === "foes" && (combatant.condition === "dead" || combatant.condition === "stable") && combatant.source.kind === "monster")
     .reduce((sum, combatant) => sum + decision.ctx.rules.content.get((combatant.source as Extract<Combatant["source"], { kind: "monster" }>).monsterId).xp, 0);
   if (defeatedXp <= 0) return undefined;
   const standing = combatants
@@ -237,7 +237,8 @@ export function endIfDecided(decision: Decision): boolean {
   const encounter = activeEncounter(decision);
   if (encounter === null || encounter.status !== "active") return false;
   const combatants = Object.values(encounter.combatants);
-  const foesLeft = combatants.some((combatant) => combatant.side === "foes" && isPresent(combatant));
+  // A foe knocked out (stable at 0) is out of the fight, though alive.
+  const foesLeft = combatants.some((combatant) => combatant.side === "foes" && isPresent(combatant) && combatant.condition !== "stable");
   const heroesStanding = combatants.some((combatant) => combatant.side === "party" && combatant.source.kind === "hero" && isActive(combatant));
   if (foesLeft && heroesStanding) return false;
   if (encounter.turnEndsAt !== null) decision.request({ kind: "cancelTimer", timerId: turnTimerId(encounter.id, encounter.turnNumber) });

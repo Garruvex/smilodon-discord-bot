@@ -415,6 +415,18 @@ for (const [id, weapon] of naturalById) {
   itemNames[id] = weapon.name;
 }
 
+// What every piece of SRD equipment weighs, in pounds (hand-written items included), for the carrying rules.
+const weightLines = equipment
+  .filter((entry) => typeof entry.weight === "number" && entry.weight > 0)
+  .map((entry) => `  ${quote(`item:${equipmentAlias[entry.index] ?? entry.index}`)}: ${entry.weight},`);
+writeFileSync(
+  join(root, "src/domain/campaign/rules/srd-item-weights.generated.ts"),
+  `${banner}// Pounds, by item ID. Items with no weight in the SRD are left out.
+export const srdItemWeights: Readonly<Record<string, number>> = {
+${weightLines.join("\n")}
+};
+`,
+);
 writeFileSync(
   join(content, "items/srd-equipment.generated.ts"),
   `${banner}import { dice, flat } from "../../../dice/dice-expression.js";

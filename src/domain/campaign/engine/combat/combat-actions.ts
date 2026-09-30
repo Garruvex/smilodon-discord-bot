@@ -27,6 +27,8 @@ export function declareWeaponAttack(
   alsoIds: readonly string[] = [],
   // Two-weapon fighting: the bonus-action attack with a second light weapon.
   offHand = false,
+  // Knocking out: a melee blow that would drop the foe to 0 leaves it unconscious and alive.
+  nonlethal = false,
 ): Rejection | null {
   const encounter = activeEncounter(decision);
   if (encounter === null) return { code: "notInCombat" };
@@ -53,7 +55,7 @@ export function declareWeaponAttack(
   const hurl = armedHurl(attacker, conditionLookup(decision.ctx.rules.content));
   const declared = declareResolution(decision, {
     actor: attacker,
-    source: { kind: "weapon", option, ...(smiteSlot === undefined ? {} : { smiteSlot }), ...(stunDc === undefined ? {} : { stunDc }), ...(palmDc === undefined ? {} : { palmDc }), ...(hurl === null ? {} : { hurl: true as const }), ...(offHand ? { offHand: true as const } : {}) },
+    source: { kind: "weapon", option, ...(smiteSlot === undefined ? {} : { smiteSlot }), ...(stunDc === undefined ? {} : { stunDc }), ...(palmDc === undefined ? {} : { palmDc }), ...(hurl === null ? {} : { hurl: true as const }), ...(offHand ? { offHand: true as const } : {}), ...(nonlethal && option.range.kind === "melee" ? { nonlethal: true as const } : {}) },
     targetIds: [targetId, ...alsoIds],
     purpose,
     ...(resumes === undefined ? {} : { resumes }),

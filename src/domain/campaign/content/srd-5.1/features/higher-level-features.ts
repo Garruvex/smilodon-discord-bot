@@ -75,6 +75,7 @@ const freeSwitch = (id: string, onLand: readonly Effect[]): FeatureDefinition =>
 export const holdReactions = freeSwitch("hold-reactions", [{ kind: "applyCondition", target: "self", condition: "condition:holding-reactions", duration: { kind: "untilRemoved" } }]);
 export const resumeReactions = freeSwitch("resume-reactions", [{ kind: "removeCondition", target: "self", conditions: ["condition:holding-reactions"] }]);
 export const shoveFeature = defineFeature({ id: "feature:shove", source, traits: [{ kind: "featureSpell", spell: "spell:shove", ability: "str", uses: null, recharge: "longRest" }], action: null });
+export const readyFeature = defineFeature({ id: "feature:ready", source, traits: [{ kind: "featureSpell", spell: "spell:ready", ability: "str", uses: null, recharge: "longRest" }], action: null });
 export const helpFeature = defineFeature({ id: "feature:help", source, traits: [{ kind: "featureSpell", spell: "spell:help", ability: "str", uses: null, recharge: "longRest" }], action: null });
 // Barbarian 11: read where damage drops a raging barbarian to 0 (engine/combat/damage.ts).
 export const relentlessRage = defineFeature({ id: "feature:relentless-rage", source, traits: [], action: null, resource: { count: 1, recharge: "longRest" } });
@@ -228,6 +229,7 @@ export const srd51HigherLevelFeatures: readonly FeatureDefinition[] = [
   grappleFeature,
   shoveFeature,
   helpFeature,
+  readyFeature,
   escapeGrappleFeature,
   holdReactions,
   resumeReactions,

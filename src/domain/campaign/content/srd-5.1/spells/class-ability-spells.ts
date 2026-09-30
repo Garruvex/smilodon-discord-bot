@@ -79,6 +79,18 @@ export const help = defineSpell({
   concentration: false,
   plan: () => ({ check: null, onLand: [{ kind: "nextAttackAdvantage", target: "target" }], onAvoid: [] }),
 });
+// The Ready action, open to every class. The trigger is fixed to the one the engine can watch for: the hero readies an attack and makes it, as a reaction,
+// against the first foe that attacks (anyone) before the hero's next turn.
+export const ready = defineSpell({
+  id: "spell:ready",
+  source,
+  level: 0,
+  castingTime: "action",
+  range: { kind: "self" },
+  targeting: { relation: "self", count: 1 },
+  concentration: false,
+  plan: () => ({ check: null, onLand: [{ kind: "applyCondition", target: "target", condition: "condition:readied", duration: { kind: "rounds", count: 1 } }], onAvoid: [] }),
+});
 export const shove = defineSpell({
   id: "spell:shove",
   source,
@@ -209,4 +221,4 @@ export const breathWeapons: readonly SpellDefinition[] = breathAncestries.map(([
   }),
 );
 
-export const srd51ClassAbilitySpells: readonly SpellDefinition[] = [bardicInspiration, layOnHands, preserveLife, turnUndead, grapple, help, shove, escapeGrapple, holyNimbus, intimidatingPresence, draconicPresence, wholenessOfBody, ...breathWeapons];
+export const srd51ClassAbilitySpells: readonly SpellDefinition[] = [bardicInspiration, layOnHands, preserveLife, turnUndead, grapple, help, ready, shove, escapeGrapple, holyNimbus, intimidatingPresence, draconicPresence, wholenessOfBody, ...breathWeapons];

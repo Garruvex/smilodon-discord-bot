@@ -1,6 +1,7 @@
 import type { HeroView } from "../../../application/campaign/views/campaign-views.js";
 import type { Texts } from "../../../application/i18n/texts.js";
-import { skills as allSkills, type CharacterSheet, type Skill } from "../../../domain/campaign/character/character-sheet.js";
+import { loadOf } from "../../../domain/campaign/character/encumbrance.js";
+import { passivePerception, skills as allSkills, type CharacterSheet, type Skill } from "../../../domain/campaign/character/character-sheet.js";
 import { classLabel, skillKey } from "./text-keys.js";
 import type { Glossary } from "../../../domain/campaign/rules/content-registry.js";
 
@@ -21,9 +22,11 @@ export function renderHeroSheet(sheet: CharacterSheet, view: HeroView, text: Tex
       return [proficiency === "expertise" ? t.sheet.expertise({ skill: label }) : label];
     })
     .join(", ");
+  const load = loadOf(sheet);
   return [
     `**${t.sheet.title({ name: sheet.name, class: classLabel(text, sheet.className ?? null), level: sheet.level })}**`,
     t.sheet.vitals({ hp: Math.max(0, view.hp), max: view.maxHp, ac: view.armorClass, speed: sheet.speed }),
+    t.sheet.senses({ perception: passivePerception(sheet), carried: Math.round(load.carried), capacity: load.capacity, load: t.sheet.load[load.band] }),
     t.sheet.abilities({ str: scores.str, dex: scores.dex, con: scores.con, int: scores.int, wis: scores.wis, cha: scores.cha }),
     t.sheet.skills({ skills: skillLine === "" ? none : skillLine }),
     t.sheet.equipment({ items: sheet.equipment.length === 0 ? none : sheet.equipment.map(name).join(", ") }),

@@ -6,7 +6,7 @@ import type { ReminderTarget } from "../engine/engine-request.js";
 import type { LedgerVisibility } from "../ledger/ledger.js";
 import type { ContentId } from "../rules/content-id.js";
 import type { DcTier, RollModeReason } from "../rules/difficulty.js";
-import type { Ability } from "../rules/effects.js";
+import type { Ability, DamageType } from "../rules/effects.js";
 
 // Who issued a command. Users are checked against saved campaign state
 // (membership, ownership, organizer); the system covers timers and workers.
@@ -174,7 +174,15 @@ export type HealingMagicCommand = {
 // hero gains a level of Exhaustion for it (SRD's own default cost).
 export type TravelCommand =
   | { readonly kind: "faceHazard"; readonly characterId: CharacterId; readonly ability: Ability; readonly dc: number }
-  | { readonly kind: "recordHazardNarration"; readonly hazardId: string; readonly text: string };
+  | { readonly kind: "recordHazardNarration"; readonly hazardId: string; readonly text: string }
+  // Damage between fights (engine/environmental-damage.ts): a fall (1d6 bludgeoning for each 10 feet, up to 20d6), drowning or suffocation
+  // (a hero drops to 0 hit points; one already there dies), or any other dice of damage the organizer names.
+  | { readonly kind: "takeEnvironmentalDamage"; readonly characterId: CharacterId; readonly source: EnvironmentalDamageSource };
+
+export type EnvironmentalDamageSource =
+  | { readonly kind: "fall"; readonly feet: number }
+  | { readonly kind: "suffocation" }
+  | { readonly kind: "damage"; readonly count: number; readonly sides: 4 | 6 | 8 | 10 | 12; readonly damageType: DamageType };
 
 // Items move between heroes outside combat. The owner of the giving hero
 // offers, the owner of the receiving hero answers; the stash is shared.
@@ -207,7 +215,7 @@ export type CombatCommand =
   | { readonly kind: "combatEngage"; readonly combatantId: string; readonly targetId: string }
   | { readonly kind: "combatWithdraw"; readonly combatantId: string }
   // smiteSlot: spend this spell slot on the hit for Divine Smite's bonus damage.
-  | { readonly kind: "combatAttack"; readonly combatantId: string; readonly targetId: string; readonly weapon: ContentId<"item">; readonly smiteSlot?: number; readonly offHand?: true }
+  | { readonly kind: "combatAttack"; readonly combatantId: string; readonly targetId: string; readonly weapon: ContentId<"item">; readonly smiteSlot?: number; readonly offHand?: true; readonly nonlethal?: true }
   | {
       readonly kind: "combatCast";
       readonly combatantId: string;
@@ -316,7 +324,9 @@ export type StoryEffect =
 export type EffectCondition =
   | { readonly kind: "always" }
   // Fires on the outcome of this hero's check this round.
-  | { readonly kind: "checkOutcome"; readonly characterId: CharacterId; readonly success: boolean };
+  | { readonly kind: "checkOutcome"; readonly characterId: CharacterId; readonly success: boolean }
+  // A group check: it succeeds when at least half of the round's checks did (the SRD's rule for the whole party attempting one thing).
+  | { readonly kind: "groupCheck"; readonly success: boolean };
 
 export interface PlannedAction {
   readonly characterId: CharacterId;

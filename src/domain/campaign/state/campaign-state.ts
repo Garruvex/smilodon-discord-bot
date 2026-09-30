@@ -11,7 +11,7 @@ import type { RollMoments } from "../dice/roll-moments.js";
 import type { LedgerEntry } from "../ledger/ledger.js";
 import type { ContentId } from "../rules/content-id.js";
 import type { DcTier } from "../rules/difficulty.js";
-import type { Ability } from "../rules/effects.js";
+import type { Ability, DamageType } from "../rules/effects.js";
 
 // The in-memory aggregate the engine decides against. The repository
 // assembles it from the campaign tables; evolve() produces the next one.
@@ -117,6 +117,9 @@ export interface CampaignState {
   // the Exhaustion it grants, if any, already landed on hazardSettled.
   readonly hazards: Readonly<Record<string, HazardRecord>>;
   readonly hazardCount: number;
+  // Damage between fights (a fall, drowning, a trap) waiting for its dice (engine/environmental-damage.ts). One at a time per hero.
+  readonly damagePending?: Readonly<Record<CharacterId, PendingEnvironmentalDamage>>;
+  readonly damageCount?: number;
   // A slotted healing spell cast outside combat, waiting for its dice
   // (engine/healing-magic.ts). One at a time per caster. Settled healings are
   // told from the saved event; nothing about them is kept here but the count.
@@ -124,6 +127,29 @@ export interface CampaignState {
   readonly healingCount: number;
   // Creatures the heroes brought along between fights (companions/companion-roster.ts). Absent until the first one.
   readonly companions?: CompanionRoster | undefined;
+}
+
+// Damage between fights, its dice requested: fixed the moment the roll is asked for.
+export interface PendingEnvironmentalDamage {
+  readonly characterId: CharacterId;
+  readonly cause: EnvironmentalCause;
+  readonly expression: DiceExpression;
+  readonly damageType: DamageType;
+  readonly rollId: RollId;
+}
+
+export type EnvironmentalCause = "fall" | "suffocation" | "other";
+
+// Damage between fights, settled: what was rolled, what the hero took (after resistance) and where that leaves them.
+export interface EnvironmentalDamageRecord {
+  readonly id: string;
+  readonly characterId: CharacterId;
+  readonly cause: EnvironmentalCause;
+  readonly expression: DiceExpression | null;
+  readonly rolled: number;
+  readonly taken: number;
+  readonly hpAfter: number;
+  readonly dead: boolean;
 }
 
 // A healing spell cast outside combat, its dice requested: the expression is

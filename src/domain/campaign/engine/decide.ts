@@ -11,6 +11,7 @@ import { handleInventoryCommand } from "./inventory.js";
 import { takeRest } from "./rest.js";
 import { handleDialogueCommand, recordPressRoll } from "./dialogue.js";
 import { handleShopCommand, recordHaggleRoll } from "./shop.js";
+import { recordEnvironmentalDamageRoll } from "./environmental-damage.js";
 import { handleTravelCommand, recordHazardRoll } from "./travel.js";
 import { handleHealingMagicCommand, recordHealingRoll } from "./healing-magic.js";
 import { handleRevivalMagicCommand } from "./revival-magic.js";
@@ -144,6 +145,7 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
       return handleHealingMagicCommand(decision, command);
     case "faceHazard":
     case "recordHazardNarration":
+    case "takeEnvironmentalDamage":
       return handleTravelCommand(decision, command);
     case "chooseClassLevel": {
       const skillChoice = command.skillChoice !== undefined && isSkill(command.skillChoice) ? command.skillChoice : undefined;
@@ -196,6 +198,8 @@ function recordRoll(decision: Decision, rollId: RollId, result: RollResult): Rej
   if (press !== undefined) return recordPressRoll(decision, press, result);
   const hazard = Object.values(decision.state.hazardPending ?? {}).find((candidate) => candidate.rollId === rollId);
   if (hazard !== undefined) return recordHazardRoll(decision, hazard, result);
+  const damage = Object.values(decision.state.damagePending ?? {}).find((candidate) => candidate.rollId === rollId);
+  if (damage !== undefined) return recordEnvironmentalDamageRoll(decision, damage, result);
   const healing = Object.values(decision.state.healingPending ?? {}).find((candidate) => candidate.rollId === rollId);
   if (healing !== undefined) return recordHealingRoll(decision, healing, result);
   return recordCombatRoll(decision, rollId, result);

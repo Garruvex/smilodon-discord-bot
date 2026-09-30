@@ -27,6 +27,8 @@ export const prone = defineCondition({
 
 // A marker, not a hardship: the creature keeps its reaction for something it chooses, so the reactions that fire by themselves
 // (Protection, Deflect Missiles, Cutting Words, Uncanny Dodge) hold back.
+// Readied an attack: the hero strikes as a reaction at the first foe that attacks, until their next turn (engine/combat/ready.ts).
+export const readied = defineCondition({ id: "condition:readied", source, includes: [], modifiers: [] });
 export const holdingReactions = defineCondition({ id: "condition:holding-reactions", source, includes: [], modifiers: [] });
 
 export const frightened = defineCondition({ id: "condition:frightened", source, includes: [], modifiers: [{ kind: "ownAttacks", mode: "disadvantage" }] });
@@ -132,6 +134,7 @@ export const charmed = defineCondition({ id: "condition:charmed", source, includ
 
 export const srd51Conditions: readonly ConditionDefinition[] = [
   holdingReactions,
+  readied,
   incapacitated,
   prone,
   frightened,

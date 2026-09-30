@@ -94,7 +94,9 @@ function combatCommand(choice: TurnChoice, targetIds: readonly string[]): ((comb
         : (combatantId): CombatCommand =>
             choice.weapon.startsWith("offhand:")
               ? { kind: "combatAttack", combatantId, targetId: first, weapon: choice.weapon.slice("offhand:".length) as ContentId<"item">, offHand: true }
-              : { kind: "combatAttack", combatantId, targetId: first, weapon: choice.weapon as ContentId<"item"> };
+              : choice.weapon.startsWith("nonlethal:")
+                ? { kind: "combatAttack", combatantId, targetId: first, weapon: choice.weapon.slice("nonlethal:".length) as ContentId<"item">, nonlethal: true }
+                : { kind: "combatAttack", combatantId, targetId: first, weapon: choice.weapon as ContentId<"item"> };
     case "cast":
       return targetIds.length === 0 ? null : (combatantId): CombatCommand => ({ kind: "combatCast", combatantId, spellId: choice.spell as ContentId<"spell">, slotLevel: choice.slot, targetIds });
     case "engage":

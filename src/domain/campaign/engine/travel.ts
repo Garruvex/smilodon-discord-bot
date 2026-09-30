@@ -1,3 +1,4 @@
+import { takeEnvironmentalDamage } from "./environmental-damage.js";
 import type { TravelCommand } from "../commands/campaign-command.js";
 import { savingThrowModifier } from "../character/character-sheet.js";
 import { defaultHeroResources } from "../character/hero-status.js";
@@ -25,6 +26,8 @@ export function handleTravelCommand(decision: Decision, command: TravelCommand):
       return faceHazard(decision, command.characterId, command.ability, command.dc);
     case "recordHazardNarration":
       return recordHazardNarration(decision, command.hazardId, command.text);
+    case "takeEnvironmentalDamage":
+      return takeEnvironmentalDamage(decision, command.characterId, command.source);
   }
 }
 

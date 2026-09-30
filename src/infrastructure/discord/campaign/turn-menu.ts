@@ -67,7 +67,7 @@ export function parseChoice(value: string): TurnChoice | null {
   const [kind, first, second, third] = value.split("|");
   switch (kind) {
     case "attack":
-      return first?.startsWith("item:") === true || first?.startsWith("offhand:item:") === true ? { kind, weapon: first } : null;
+      return first?.startsWith("item:") === true || first?.startsWith("offhand:item:") === true || first?.startsWith("nonlethal:item:") === true ? { kind, weapon: first } : null;
     case "cast": {
       const slot = Number(second);
       return first?.startsWith("spell:") === true && Number.isInteger(slot) && slot >= 0 ? { kind, spell: first, slot } : null;
@@ -285,8 +285,9 @@ function choiceLabel(choice: TurnChoice, view: TurnView, text: Texts, glossary: 
       const attack = view.attacks.find((candidate) => candidate.weapon === choice.weapon);
       const toHit = attack === undefined ? 0 : attack.toHit;
       const offHand = choice.weapon.startsWith("offhand:");
-      const label = t.attack({ weapon: name(offHand ? choice.weapon.slice("offhand:".length) : choice.weapon), toHit: toHit >= 0 ? `+${toHit}` : `${toHit}`, damage: attack?.damage ?? "" });
-      return offHand ? `${label} · ${t.offHandTag}` : label;
+      const nonlethal = choice.weapon.startsWith("nonlethal:");
+      const label = t.attack({ weapon: name(offHand ? choice.weapon.slice("offhand:".length) : nonlethal ? choice.weapon.slice("nonlethal:".length) : choice.weapon), toHit: toHit >= 0 ? `+${toHit}` : `${toHit}`, damage: attack?.damage ?? "" });
+      return offHand ? `${label} · ${t.offHandTag}` : nonlethal ? `${label} · ${t.nonlethalTag}` : label;
     }
     case "cast": {
       const spell = view.spells.find((candidate) => candidate.spellId === choice.spell && candidate.slotLevel === choice.slot);
