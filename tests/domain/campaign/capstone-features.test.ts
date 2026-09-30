@@ -216,3 +216,16 @@ describe("Hunter's Multiattack", () => {
     expect(swing?.kind === "resolutionDeclared" ? [...swing.resolution.targetIds].sort() : []).toEqual(["goblin-a", "goblin-b"]);
   });
 });
+
+describe("the Help action", () => {
+  it("gives the next attack against a foe in reach advantage", () => {
+    const base = partyOfThree();
+    const sheet = base.characters["c-borin"];
+    if (sheet === undefined) throw new Error("borin");
+    const state: CampaignState = { ...base, characters: { ...base.characters, "c-borin": { ...sheet, features: [...sheet.features, "feature:help"] as typeof sheet.features } } };
+    const fight = new Fight(state).rolls([5, 20, 4, 3, 2]).run(organizer, { kind: "startEncounter", spec: { ...skirmish, partyZoneId: "courtyard" } });
+    fight.run(jamie, { kind: "combatEngage", combatantId: "c-borin", targetId: "goblin-a" });
+    fight.run(jamie, { kind: "combatCast", combatantId: "c-borin", spellId: "spell:help", slotLevel: 0, targetIds: ["goblin-a"] });
+    expect(fight.combatant("goblin-a").effects.some((effect) => effect.modifiers.some((modifier) => modifier.kind === "attacksAgainst" && modifier.mode === "advantage"))).toBe(true);
+  });
+});

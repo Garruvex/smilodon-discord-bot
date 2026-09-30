@@ -251,6 +251,8 @@ export interface EncounterSpec {
   readonly zones: readonly { readonly id: string; readonly name: string; readonly lighting?: "bright" | "dim" | "dark"; readonly cover?: "half" | "three-quarters"; readonly difficult?: boolean }[];
   readonly edges: readonly { readonly from: string; readonly to: string; readonly feet: number }[];
   readonly partyZoneId: string;
+  // Which side is taken by surprise: it cannot act or react until its first turn has passed. Absent: nobody.
+  readonly surprised?: "party" | "foes" | undefined;
   readonly monsters: readonly EncounterMonster[];
   // Added to the party stash on a victory. Absent: none.
   readonly loot?: readonly ContentId<"item">[];

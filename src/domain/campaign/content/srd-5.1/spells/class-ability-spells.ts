@@ -67,6 +67,18 @@ export const grapple = defineSpell({
   concentration: false,
   plan: () => ({ check: { kind: "savingThrow", ability: "str" }, onLand: [{ kind: "applyCondition", target: "target", condition: "condition:grappled", duration: { kind: "rounds", count: 10 } }], onAvoid: [] }),
 });
+// The Help action, open to every class: distract a foe in melee reach, so the next attack against it has advantage (until the end of the
+// helper's next turn). Helping with an ability check is not played.
+export const help = defineSpell({
+  id: "spell:help",
+  source,
+  level: 0,
+  castingTime: "action",
+  range: { kind: "touch" },
+  targeting: { relation: "enemy", count: 1 },
+  concentration: false,
+  plan: () => ({ check: null, onLand: [{ kind: "nextAttackAdvantage", target: "target" }], onAvoid: [] }),
+});
 export const shove = defineSpell({
   id: "spell:shove",
   source,
@@ -197,4 +209,4 @@ export const breathWeapons: readonly SpellDefinition[] = breathAncestries.map(([
   }),
 );
 
-export const srd51ClassAbilitySpells: readonly SpellDefinition[] = [bardicInspiration, layOnHands, preserveLife, turnUndead, grapple, shove, escapeGrapple, holyNimbus, intimidatingPresence, draconicPresence, wholenessOfBody, ...breathWeapons];
+export const srd51ClassAbilitySpells: readonly SpellDefinition[] = [bardicInspiration, layOnHands, preserveLife, turnUndead, grapple, help, shove, escapeGrapple, holyNimbus, intimidatingPresence, draconicPresence, wholenessOfBody, ...breathWeapons];

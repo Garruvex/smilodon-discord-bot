@@ -127,6 +127,7 @@ export function recordCombatRoll(decision: Decision, rollId: RollId, result: Rol
       const after = activeEncounter(decision);
       if (after !== null && Object.values(after.pendingRolls).every((roll) => roll.purpose !== "initiative")) {
         decision.emit({ kind: "turnOrderSet", order: initiativeOrder(after) });
+        surprise(decision, after);
         beginTurn(decision, 0, 1);
       }
       return null;
@@ -286,4 +287,19 @@ export function activeEncounter(decision: Decision): EncounterState | null {
 
 export function currentOf(decision: Decision, combatant: Combatant): Combatant {
   return activeEncounter(decision)?.combatants[combatant.id] ?? combatant;
+}
+
+// A side taken by surprise (the encounter says which) cannot act or react until its first turn is over: each of its
+// creatures takes the Surprised condition, which lapses when that creature's turn comes round again.
+function surprise(decision: Decision, encounter: EncounterState): void {
+  const side = encounter.spec.surprised;
+  if (side === undefined) return;
+  for (const combatant of Object.values(encounter.combatants)) {
+    if (combatant.side !== (side === "party" ? "party" : "foes") || !isPresent(combatant)) continue;
+    decision.emit({
+      kind: "effectApplied",
+      combatantId: combatant.id,
+      effect: { id: `${encounter.id}:surprised:${combatant.id}`, definition: "condition:surprised", sourceId: combatant.id, conditions: ["condition:surprised"], modifiers: [], triggers: [], clock: { follows: "target", boundary: "start", untilRound: 2 }, concentrationId: null, stacking: "ignore" },
+    });
+  }
 }

@@ -80,6 +80,7 @@ const documentSchema = z
             zones: z.array(z.object({ id: zoneId, name: text, lighting: z.enum(["bright", "dim", "dark"]).optional(), cover: z.enum(["half", "three-quarters"]).optional(), difficult: z.boolean().optional() }).strict()).min(1),
             edges: z.array(z.object({ from: zoneId, to: zoneId, feet: z.number().int().min(5) }).strict()),
             partyZoneId: zoneId,
+            surprised: z.enum(["party", "foes"]).optional(),
             monsters: z
               .array(
                 z

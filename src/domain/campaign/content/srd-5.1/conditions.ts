@@ -94,6 +94,10 @@ export const stunned = defineCondition({
   ],
 });
 
+// Taken by surprise at the start of a fight: no action, movement or reaction until the first turn is over. It is
+// incapacitated with the speed at zero, and the fight ends it (encounter-start.ts) once the creature's first turn has passed.
+export const surprised = defineCondition({ id: "condition:surprised", source, includes: [incapacitated.id], modifiers: [{ kind: "speedZero" }] });
+
 export const invisible = defineCondition({
   id: "condition:invisible",
   source,
@@ -122,6 +126,7 @@ export const srd51Conditions: readonly ConditionDefinition[] = [
   blinded,
   paralyzed,
   stunned,
+  surprised,
   invisible,
   charmed,
 ];
