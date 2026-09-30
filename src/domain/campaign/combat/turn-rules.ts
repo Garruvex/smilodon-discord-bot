@@ -7,7 +7,7 @@ import type { MetamagicOption } from "../rules/modifiers.js";
 import type { SealedContent } from "../rules/content-registry.js";
 import { healingPotionCost, type HouseRules } from "../rules/house-rules.js";
 import { mayWildShapeInto, wildShapeFeature, wildShapeUses } from "../rules/wild-shape-rules.js";
-import { armedMetamagic, canAct, conditionLookup, hasCondition, isFlying, shapechangeOf, speedOf } from "../effects/effect-queries.js";
+import { armedMetamagic, canAct, canReact, conditionLookup, hasCondition, isFlying, shapechangeOf, speedOf } from "../effects/effect-queries.js";
 import { castableSlotLevels, slotUnavailable, spellMaxTargets, usePoolOf } from "../magic/spell-rules.js";
 import { areEngaged, availableSlots, currentCombatant, engagedWith, isPresent, type AttackOption, type Combatant, type EncounterState } from "./combat-state.js";
 import { isWorn } from "./combatant-profile.js";
@@ -67,11 +67,16 @@ export function costProblem(hero: Combatant, cost: "action" | "bonusAction", con
 // ------------------------------------------------------------- Weapons
 
 export function attackProblem(encounter: EncounterState, attacker: Combatant, option: AttackOption, targetId: string, purpose: "action" | "opportunity" | "legendary" | "reaction", content: SealedContent): TurnProblem | null {
+  const lookup = conditionLookup(content);
   if (purpose === "action") {
     // Extra Attack: the Attack action grants more than one attack, so what
     // must still be available is an attack left in it, not the action itself
     // (which is only spent once the last of them is made).
-    if (attacker.budget.attacksLeft <= 0 || !canAct(attacker, conditionLookup(content))) return { code: "noActionLeft" };
+    if (attacker.budget.attacksLeft <= 0 || !canAct(attacker, lookup)) return { code: "noActionLeft" };
+  } else if (purpose === "legendary") {
+    if (!canAct(attacker, lookup)) return { code: "noActionLeft" };
+  } else if (!canReact(attacker, lookup)) {
+    return { code: "noActionLeft" };
   }
   const problem = weaponTargetProblem(encounter, attacker, encounter.combatants[targetId], option, content);
   return problem === null ? null : { code: problem };
@@ -143,6 +148,8 @@ export function spellProblem(
   const bonus = castAsBonusAction(spell, metamagic);
   // After a bonus-action spell, only a one-action cantrip may be cast this turn.
   if (caster.budget.bonusSpellCast && (bonus || spell.level > 0)) return refuse({ code: "bonusSpellCast" });
+  // A bonus-action spell cannot follow another spell in the same turn.
+  if (bonus && caster.budget.spellCast === true) return refuse({ code: "bonusSpellCast" });
   const cost = costProblem(caster, bonus ? "bonusAction" : "action", content);
   if (cost !== null) return refuse(cost);
   // A teleport is aimed at a zone within reach, other than the one the caster stands in.
@@ -388,6 +395,7 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
       const bonusAction = castAsBonusAction(spell, metamagic);
       if (costProblem(hero, bonusAction ? "bonusAction" : "action", content) !== null) continue;
       if (hero.budget.bonusSpellCast && (bonusAction || spell.level > 0)) continue;
+      if (bonusAction && hero.budget.spellCast === true) continue;
       const innate = hero.spellcasting?.innate?.[id];
       const pool = usePoolOf(hero.spellcasting, id);
       if (innate !== undefined && innate !== null && (hero.resources.featureUses[pool.key] ?? innate) < pool.cost) continue;

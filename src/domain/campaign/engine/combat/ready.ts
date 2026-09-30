@@ -1,7 +1,7 @@
 // Ready: a hero who readied an attack makes it, as a reaction, against the first foe that attacks before their next turn.
 import { isPresent, type ResolutionState } from "../../combat/combat-state.js";
 import { weaponTargetProblem } from "../../combat/legal-targets.js";
-import { conditionLookup, hasCondition } from "../../effects/effect-queries.js";
+import { canReact, conditionLookup, hasCondition } from "../../effects/effect-queries.js";
 import type { Decision } from "../decision.js";
 import { activeEncounter } from "./combat-flow.js";
 import { declareWeaponAttack } from "./combat-actions.js";
@@ -20,7 +20,7 @@ export function offerReady(decision: Decision, resolution: ResolutionState): boo
   const content = decision.ctx.rules.content;
   const lookup = conditionLookup(content);
   for (const hero of Object.values(encounter.combatants)) {
-    if (hero.side === attacker.side || hero.condition !== "active" || hero.hp <= 0 || !hero.budget.reaction || !hasCondition(hero, readied, lookup) || hasCondition(hero, "condition:holding-reactions", lookup)) continue;
+    if (hero.side === attacker.side || hero.hp <= 0 || !canReact(hero, lookup) || !hasCondition(hero, readied, lookup) || hasCondition(hero, "condition:holding-reactions", lookup)) continue;
     const option = hero.attacks.find((attack) => weaponTargetProblem(encounter, hero, attacker, attack, content) === null);
     if (option === undefined) continue;
     const effectIds = hero.effects.filter((effect) => effect.definition === readied).map((effect) => effect.id);

@@ -1,7 +1,7 @@
 // Moving in a fight, and the opportunity attacks it provokes: a move waits for them, then happens if the mover can still move.
 import { currentCombatant, engagedWith, isActive, type Combatant, type EncounterState, type ResolutionState, type TurnPlanRemainder } from "../../combat/combat-state.js";
 import { weaponTargets } from "../../combat/legal-targets.js";
-import { avoidsOpportunityAttacks, conditionLookup } from "../../effects/effect-queries.js";
+import { avoidsOpportunityAttacks, canReact, conditionLookup } from "../../effects/effect-queries.js";
 import { deadlineAfter, type Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { declareWeaponAttack } from "./combat-actions.js";
@@ -31,7 +31,7 @@ export function startMove(
   const provokers = avoidsOpportunityAttacks(mover, conditionLookup(decision.ctx.rules.content))
     ? []
     : engagedWith(encounter, mover.id)
-        .filter((other) => other.side !== mover.side && isActive(other) && other.budget.reaction)
+        .filter((other) => other.side !== mover.side && canReact(other, conditionLookup(decision.ctx.rules.content)))
         .filter((other) => other.attacks.some((attack) => attack.range.kind === "melee"))
         .map((other) => other.id);
   if (provokers.length === 0) {
@@ -58,7 +58,7 @@ export function nextOpportunityAttack(decision: Decision): void {
   }
   const provoker = encounter.combatants[provokerId];
   const melee = provoker?.attacks.find((attack) => attack.range.kind === "melee");
-  if (provoker === undefined || melee === undefined || !isActive(provoker) || !provoker.budget.reaction) {
+  if (provoker === undefined || melee === undefined || !canReact(provoker, conditionLookup(decision.ctx.rules.content))) {
     decision.emit({ kind: "moveInterrupted", move: { ...move, provokers: rest } });
     nextOpportunityAttack(decision);
     return;
@@ -97,7 +97,7 @@ export function answerOpportunityAttack(decision: Decision, combatantId: string,
 
   const mover = encounter.combatants[move.combatantId];
   const melee = provoker.attacks.find((attack) => attack.range.kind === "melee");
-  if (take && mover !== undefined && melee !== undefined && isActive(mover) && isActive(provoker) && provoker.budget.reaction) {
+  if (take && mover !== undefined && melee !== undefined && isActive(mover) && canReact(provoker, conditionLookup(decision.ctx.rules.content))) {
     if (declareWeaponAttack(decision, provoker, mover.id, melee, "opportunity") !== null) nextOpportunityAttack(decision);
     return null;
   }

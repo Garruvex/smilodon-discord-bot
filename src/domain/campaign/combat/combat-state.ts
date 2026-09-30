@@ -155,6 +155,9 @@ export interface TurnBudget {
   // A spell was cast as a bonus action this turn: only a cantrip with a casting
   // time of one action may follow (SRD 5.1).
   readonly bonusSpellCast: boolean;
+  // Any spell has already been cast this turn (used to prevent a later bonus-action spell).
+  // Optional so saved encounters created before this rule change remain readable.
+  readonly spellCast?: boolean;
   // The light melee weapon attacked with in this turn's Attack action (an off-hand attack needs a different one).
   readonly lightAttack?: string | undefined;
 }

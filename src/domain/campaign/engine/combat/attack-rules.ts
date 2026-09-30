@@ -1,7 +1,7 @@
 // The rules an attack or spell is built from: its plan, advantage and disadvantage, and Sneak Attack.
 import { assertNever } from "../../core/assert-never.js";
 import { engagedWith, isActive, type Combatant, type EncounterState, type ResolutionSource } from "../../combat/combat-state.js";
-import { attackBias, canAct, conditionLookup, effectsUsedUpByAttack, hasCondition, meleeDamageBonusOf, type ConditionLookup } from "../../effects/effect-queries.js";
+import { attackBias, canAct, canReact, conditionLookup, effectsUsedUpByAttack, hasCondition, meleeDamageBonusOf, type ConditionLookup } from "../../effects/effect-queries.js";
 import type { DiceExpression } from "../../dice/dice-expression.js";
 import { distanceBetween, engagedDistance } from "../../combat/positioning.js";
 import type { D20TestSpec } from "../../dice/d20-test.js";
@@ -137,13 +137,13 @@ export function attackMode(
   if (attacker.traits.some((trait) => trait.kind === "sunlightSensitivity") && (brightAt(attacker.zoneId) || brightAt(target.zoneId))) disadvantage += 1;
   if (!ranged && target.hp < target.maxHp && attacker.traits.some((trait) => trait.kind === "bloodFrenzy")) advantage += 1;
   if (ranged) {
-    const threatened = engagedWith(encounter, attacker.id).some((other) => other.side !== attacker.side && isActive(other));
+    const threatened = engagedWith(encounter, attacker.id).some((other) => other.side !== attacker.side && canAct(other, lookup));
     if (threatened) disadvantage += 1;
   }
   for (const trait of attacker.traits) {
     if (trait.kind !== "packTactics") continue;
     const allyEngaged = engagedWith(encounter, target.id).some(
-      (other) => other.side === attacker.side && other.id !== attacker.id && isActive(other),
+      (other) => other.side === attacker.side && other.id !== attacker.id && canAct(other, lookup),
     );
     if (allyEngaged) advantage += 1;
   }
@@ -163,7 +163,7 @@ export function coverBonus(encounter: EncounterState, sourceId: string, target: 
 // Protection (Fighting Style): a creature standing beside the target, with its reaction to spare, that can throw the attack off.
 export function protectorFor(encounter: EncounterState, target: Combatant, lookup: ConditionLookup): Combatant | undefined {
   return Object.values(encounter.combatants).find(
-    (other) => other.id !== target.id && other.side === target.side && other.zoneId === target.zoneId && isActive(other) && other.hp > 0 && other.budget.reaction && other.traits.some((trait) => trait.kind === "protectionStyle") && canAct(other, lookup) && !hasCondition(other, "condition:holding-reactions", lookup),
+    (other) => other.id !== target.id && other.side === target.side && other.zoneId === target.zoneId && isActive(other) && other.hp > 0 && canReact(other, lookup) && other.traits.some((trait) => trait.kind === "protectionStyle") && !hasCondition(other, "condition:holding-reactions", lookup),
   );
 }
 

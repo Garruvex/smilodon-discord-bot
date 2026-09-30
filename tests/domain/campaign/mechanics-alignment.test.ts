@@ -65,12 +65,14 @@ describe("Bonus-action spells", () => {
     expect(fight.combatant("c-elspeth").budget.action).toBe(false);
   });
 
-  it("lets a leveled spell come first and a bonus-action spell follow", () => {
+  it("blocks a bonus-action spell after any spell was cast first", () => {
     const fight = fightOf().rolls([15], [2, 2]);
     fight.run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:cure-wounds", slotLevel: 1, targetIds: ["c-mira"] });
     expect(fight.combatant("c-elspeth").budget.bonusSpellCast).toBe(false);
-    fight.run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:healing-word", slotLevel: 1, targetIds: ["c-mira"] });
-    expect(fight.combatant("c-elspeth").budget.bonusSpellCast).toBe(true);
+    expect(fight.combatant("c-elspeth").budget.spellCast).toBe(true);
+    expect(fight.reject(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:healing-word", slotLevel: 1, targetIds: ["c-mira"] })).toEqual({ code: "bonusSpellCast" });
+    const options = turnOptions(fight.encounter, fight.state.characters["c-elspeth"], ruleset().content, ruleset().houseRules, "c-elspeth");
+    expect(options?.spells.map((entry) => entry.spell.id)).not.toContain("spell:healing-word");
   });
 
   it("forgets it on the next turn", () => {
@@ -81,6 +83,7 @@ describe("Bonus-action spells", () => {
     // Around to Elspeth again: the flag is fresh.
     passTurnsTo(fight, "c-elspeth");
     expect(fight.combatant("c-elspeth").budget.bonusSpellCast).toBe(false);
+    expect(fight.combatant("c-elspeth").budget.spellCast).toBe(false);
   });
 });
 

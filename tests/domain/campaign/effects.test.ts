@@ -19,6 +19,7 @@ import {
   speedOf,
 } from "../../../src/domain/campaign/effects/effect-queries.js";
 import type { CampaignEvent } from "../../../src/domain/campaign/events/campaign-event.js";
+import { attackProblem } from "../../../src/domain/campaign/combat/turn-rules.js";
 import { replay } from "../../../src/domain/campaign/events/evolve.js";
 import type { ContentId } from "../../../src/domain/campaign/rules/content-id.js";
 import { alex, jamie, organizer, partyOfThree, ruleset, sam } from "./campaign-fixtures.js";
@@ -81,6 +82,16 @@ describe("acting and moving", () => {
     expect(canReact(stunned, lookup)).toBe(false);
     // A creature that has used its reaction cannot react either.
     expect(canReact({ ...mira, budget: { ...mira.budget, reaction: false } }, lookup)).toBe(false);
+  });
+
+  it("refuses a reaction attack while incapacitated", () => {
+    const fight = startedFight();
+    const mira = fight.combatant("c-mira");
+    const incapacitated = withEffects(fight, "c-mira", [condition("condition:incapacitated")]);
+    const encounter = { ...fight.encounter, combatants: { ...fight.encounter.combatants, [mira.id]: incapacitated } };
+    const weapon = mira.attacks[0];
+    if (weapon === undefined) throw new Error("fixture has no weapon");
+    expect(attackProblem(encounter, incapacitated, weapon, "goblin-a", "reaction", rules.content)).toEqual({ code: "noActionLeft" });
   });
 
   it("holds a grappled or restrained creature in place", () => {
