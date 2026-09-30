@@ -200,7 +200,11 @@ function toEffect(effect: z.infer<typeof plannedEffectSchema>, problems: string[
     if (effect.characterId === null) problems.push(`${effect.kind} ${effect.target}: '${effect.when}' needs the characterId whose check decides it.`);
     else when = { kind: "checkOutcome", characterId: effect.characterId, success: effect.when === "onSuccess" };
   }
-  switch (effect.kind) {
+  // The one target list serves every kind, so the model sometimes names an encounter under a scene change (or the like); the ID's own
+  // prefix says what it is, and the authored ID is trusted over the label.
+  const kind = /^(scene|encounter|clock|clue):/.exec(effect.target)?.[1];
+  const named = kind === "scene" ? "transitionScene" : kind === "encounter" ? "startEncounter" : kind === "clock" ? "advanceClock" : kind === "clue" ? "revealClue" : effect.kind;
+  switch (named) {
     case "transitionScene":
       return { kind: "transitionScene", sceneId: effect.target, when };
     case "startEncounter":

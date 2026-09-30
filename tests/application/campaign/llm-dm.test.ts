@@ -183,6 +183,12 @@ describe("parsePlannerOutput", () => {
     expect(() => parsePlannerOutput(JSON.stringify(plan), 3)).toThrow("needs the characterId whose check decides it");
   });
 
+  it("reads an effect by its target's own prefix when the model labels it with the wrong kind", () => {
+    const plan = JSON.parse(validPlan) as Record<string, unknown>;
+    plan.effects = [{ kind: "transitionScene", target: "encounter:sublee-gang", amount: null, when: "always", characterId: null }];
+    expect(parsePlannerOutput(JSON.stringify(plan), 3).effects).toEqual([{ kind: "startEncounter", encounterId: "encounter:sublee-gang", when: { kind: "always" } }]);
+  });
+
   it("rejects malformed output with problems the retry can use", () => {
     expect(() => parsePlannerOutput("not json", 3)).toThrow(PlannerOutputError);
     const missingSkill = JSON.parse(validPlan) as { actions: Record<string, unknown>[] };
