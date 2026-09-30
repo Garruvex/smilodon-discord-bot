@@ -107,6 +107,14 @@ describe("the turn menu", () => {
     expect(labels).toHaveLength(new Set(labels).size);
   });
 
+  it("offers an attack once when the hero carries two of the same weapon", () => {
+    const twoDaggers: TurnView = { ...view, attacks: ["item:dagger", "item:dagger"].map((weapon) => ({ weapon, toHit: 4, damage: "1d4+2", ranged: false, targets: [goblin] })) };
+    const select = json(renderTurnMenu(twoDaggers, texts.en, enSrd51Glossary, "camp")).find((component) => Array.isArray(component.options));
+    const values = (select?.options as { value: string }[]).map((option) => option.value);
+    expect(values).toHaveLength(new Set(values).size);
+    expect(values.filter((value) => value === "attack|item:dagger")).toHaveLength(1);
+  });
+
   it("aims at the legal targets only, allowing several for a spell that has several", () => {
     const single = renderTargetMenu({ kind: "attack", weapon: "item:mace" }, view, texts.en, enSrd51Glossary, "camp");
     const select = single === null ? undefined : json(single).find((component) => Array.isArray(component.options));

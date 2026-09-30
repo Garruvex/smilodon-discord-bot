@@ -177,6 +177,12 @@ function attackNote(choice: TurnChoice, view: TurnView, text: Texts): string | u
   return choice.weapon.startsWith("offhand:") ? t.noteOffHand : t.noteMelee;
 }
 
+// Discord refuses a menu with two options of one value, and a hero carrying two daggers offers the same attack twice.
+function distinct(options: readonly MenuOption[]): MenuOption[] {
+  const seen = new Set<string>();
+  return options.filter((option) => (seen.has(option.value) ? false : (seen.add(option.value), true)));
+}
+
 function optionOf(choice: TurnChoice, view: TurnView, text: Texts, glossary: Glossary, icons: CampaignIcons): MenuOption {
   const icon = iconOf(choice, view);
   const emoji = icon === undefined ? undefined : icons.emoji(icon);
@@ -195,7 +201,7 @@ export function renderTurnMenu(view: TurnView, text: Texts, glossary: Glossary, 
     t.header({ hero: view.heroName, zone: view.zone, action: mark(view.budget.action), bonus: mark(view.budget.bonusAction), reaction: mark(view.budget.reaction), feet: view.budget.movement }),
   ];
   if (view.engagedWith.length > 0) lines.push(t.engaged({ names: view.engagedWith.join(", ") }));
-  const options: MenuOption[] = choicesOf(view).map((choice) => optionOf(choice, view, text, glossary, icons));
+  const options: MenuOption[] = distinct(choicesOf(view).map((choice) => optionOf(choice, view, text, glossary, icons)));
   const refresh = refreshRow(campaignId, text.campaign.button.refresh);
   if (view.busy) return { content: [...lines, t.busy].join("\n"), components: [refresh] };
   // End turn is on every page; a long list continues on the next one, so no action is ever cut off.
@@ -226,7 +232,7 @@ export function renderSpellMenu(view: TurnView, page: number, text: Texts, gloss
   const pages = Math.max(1, Math.ceil(view.spells.length / spellsPerPage));
   const at = Math.min(Math.max(0, page), pages - 1);
   const choices = view.spells.slice(at * spellsPerPage, (at + 1) * spellsPerPage).map((spell): TurnChoice => ({ kind: "cast", spell: spell.spellId, slot: spell.slotLevel }));
-  const options: MenuOption[] = choices.map((choice) => optionOf(choice, view, text, glossary, icons));
+  const options: MenuOption[] = distinct(choices.map((choice) => optionOf(choice, view, text, glossary, icons)));
   if (at + 1 < pages) options.push({ label: t.spellbookMore({ page: at + 2 }), value: encodeChoice({ kind: "spells", page: at + 1 }) });
   return {
     content: t.spellbookPrompt,
@@ -245,7 +251,7 @@ export function renderShapeMenu(view: TurnView, page: number, text: Texts, gloss
   const pages = Math.max(1, Math.ceil(view.wildShapes.length / spellsPerPage));
   const at = Math.min(Math.max(0, page), pages - 1);
   const choices = view.wildShapes.slice(at * spellsPerPage, (at + 1) * spellsPerPage).map((monster): TurnChoice => ({ kind: "shape", monster }));
-  const options: MenuOption[] = choices.map((choice) => optionOf(choice, view, text, glossary, icons));
+  const options: MenuOption[] = distinct(choices.map((choice) => optionOf(choice, view, text, glossary, icons)));
   if (at + 1 < pages) options.push({ label: t.shapesMore({ page: at + 2 }), value: encodeChoice({ kind: "shapes", page: at + 1 }) });
   return {
     content: t.shapesPrompt,
