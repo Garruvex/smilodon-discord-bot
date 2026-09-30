@@ -12,7 +12,7 @@ import { castableSlotLevels, slotUnavailable, spellMaxTargets, usePoolOf } from 
 import { areEngaged, availableSlots, currentCombatant, engagedWith, isPresent, type AttackOption, type Combatant, type EncounterState } from "./combat-state.js";
 import { isWorn } from "./combatant-profile.js";
 import { spellTargetProblem, spellTargets, weaponTargetProblem, weaponTargets } from "./legal-targets.js";
-import { edgeBetween, engageCost, withdrawCost } from "./positioning.js";
+import { engageCost, stepCost, withdrawCost } from "./positioning.js";
 
 // The rules of a combat turn, in one place. Every choice a hero can make has a
 // *problem* function: null when the choice is legal now, or why it is not.
@@ -188,11 +188,11 @@ export function featureProblem(hero: Combatant, content: SealedContent, featureI
 export const movementLeft = (hero: Combatant, content: SealedContent): number => (speedOf(hero, conditionLookup(content)) === 0 ? 0 : hero.budget.movement);
 
 export function moveProblem(encounter: EncounterState, hero: Combatant, zoneId: string, content: SealedContent): Checked<{ readonly feet: number }> {
-  const edge = edgeBetween(encounter.edges, hero.zoneId, zoneId);
-  if (edge === undefined) return refuse({ code: "notAdjacent" });
+  const feet = stepCost(encounter.edges, encounter.zones, hero.zoneId, zoneId);
+  if (feet === undefined) return refuse({ code: "notAdjacent" });
   const left = movementLeft(hero, content);
-  if (edge.feet > left) return refuse({ code: "notEnoughMovement", needed: edge.feet, left });
-  return accept({ feet: edge.feet });
+  if (feet > left) return refuse({ code: "notEnoughMovement", needed: feet, left });
+  return accept({ feet });
 }
 
 export function engageProblem(encounter: EncounterState, hero: Combatant, targetId: string, content: SealedContent): TurnProblem | null {

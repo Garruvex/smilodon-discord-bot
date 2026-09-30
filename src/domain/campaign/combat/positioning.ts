@@ -1,4 +1,4 @@
-import type { EncounterState, ZoneEdge, ZoneId } from "./combat-state.js";
+import type { EncounterState, Zone, ZoneEdge, ZoneId } from "./combat-state.js";
 import { areEngaged, type CombatantId } from "./combat-state.js";
 
 // The positioning contract (plan §5): zones, not a grid.
@@ -12,11 +12,20 @@ export function zoneDistance(edges: readonly ZoneEdge[], from: ZoneId, to: ZoneI
   return shortestPath(edges, from, to)?.feet ?? null;
 }
 
-// The zones to walk through (excluding the start) and the total cost.
+// What crossing one edge into a zone costs to walk: double when the zone is difficult terrain.
+export function stepCost(edges: readonly ZoneEdge[], zones: readonly Zone[], from: ZoneId, into: ZoneId): number | undefined {
+  const edge = edgeBetween(edges, from, into);
+  if (edge === undefined) return undefined;
+  return zones.find((zone) => zone.id === into)?.difficult === true ? edge.feet * 2 : edge.feet;
+}
+
+// The zones to walk through (excluding the start) and the total cost. With the terrain given, difficult terrain costs double
+// to enter, which is what a walker pays; without them it is plain distance, which is what range measures.
 export function shortestPath(
   edges: readonly ZoneEdge[],
   from: ZoneId,
   to: ZoneId,
+  terrain: readonly Zone[] = [],
 ): { readonly zones: readonly ZoneId[]; readonly feet: number } | null {
   if (from === to) return { zones: [], feet: 0 };
   const distance = new Map<ZoneId, number>([[from, 0]]);
@@ -34,7 +43,7 @@ export function shortestPath(
     for (const edge of edges) {
       const next = edge.from === current ? edge.to : edge.to === current ? edge.from : null;
       if (next === null) continue;
-      const candidate = (distance.get(current) ?? Infinity) + edge.feet;
+      const candidate = (distance.get(current) ?? Infinity) + (terrain.find((zone) => zone.id === next)?.difficult === true ? edge.feet * 2 : edge.feet);
       if (candidate < (distance.get(next) ?? Infinity)) {
         distance.set(next, candidate);
         previous.set(next, current);

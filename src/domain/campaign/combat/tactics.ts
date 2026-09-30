@@ -7,7 +7,7 @@ import { castableSlotLevels, innateUseKey, spellMaxTargets } from "../magic/spel
 import type { AttackOption, Combatant, CombatantId, EncounterState, ZoneId } from "./combat-state.js";
 import { availableSlots, engagedWith, isActive } from "./combat-state.js";
 import { spellTargets } from "./legal-targets.js";
-import { distanceBetween, edgeBetween, engageCost, shortestPath } from "./positioning.js";
+import { distanceBetween, engageCost, shortestPath, stepCost } from "./positioning.js";
 
 // What a combatant not driven by a player does this turn, chosen by plain
 // rules with no model call (plan §6, NPCs and monsters in combat). Pure:
@@ -145,7 +145,7 @@ export function chooseAutopilotPlan(encounter: EncounterState, hero: Combatant):
 // Walk toward the target and engage it. Attack if it can be reached with
 // normal movement; otherwise Dash (spending the action) to close the gap.
 function approach(encounter: EncounterState, monster: Combatant, target: Combatant, melee: AttackOption): TurnPlan {
-  const path = shortestPath(encounter.edges, monster.zoneId, target.zoneId);
+  const path = shortestPath(encounter.edges, monster.zoneId, target.zoneId, encounter.zones);
   if (path === null) return idle;
   const needed = path.feet + engageCost;
   if (needed <= monster.speed) {
@@ -156,7 +156,7 @@ function approach(encounter: EncounterState, monster: Combatant, target: Combata
   let spent = 0;
   let at = monster.zoneId;
   for (const zone of path.zones) {
-    const feet = edgeBetween(encounter.edges, at, zone)?.feet ?? Infinity;
+    const feet = stepCost(encounter.edges, encounter.zones, at, zone) ?? Infinity;
     if (spent + feet > budget) break;
     moves.push(zone);
     spent += feet;
@@ -171,7 +171,7 @@ function retreatZone(encounter: EncounterState, monster: Combatant): ZoneId | nu
   const occupied = new Set(hostiles(encounter, monster).map((foe) => foe.zoneId));
   const options = encounter.edges
     .flatMap((edge) => (edge.from === monster.zoneId ? [edge] : edge.to === monster.zoneId ? [{ ...edge, to: edge.from }] : []))
-    .filter((edge) => edge.feet <= monster.speed && !occupied.has(edge.to))
+    .filter((edge) => (stepCost(encounter.edges, encounter.zones, monster.zoneId, edge.to) ?? Infinity) <= monster.speed && !occupied.has(edge.to))
     .map((edge) => edge.to)
     .sort();
   return options[0] ?? null;
