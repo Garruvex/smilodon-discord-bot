@@ -92,7 +92,7 @@ describe("creating a campaign", () => {
     expect(refusal(await service.create(input({ pacing: { preset: "custom", pacing: { roundSeconds: 5, rollSeconds: null, turnSeconds: null, awayAfterMisses: 2 } } })))).toBe("invalidPacing");
     expect(refusal(await service.create(input({ houseRules: { "no-such-rule": "x" } })))).toBe("invalidHouseRules");
     expect(refusal(await service.create(input({ minPlayers: 3, maxPlayers: 2 })))).toBe("invalidLimits");
-    expect(refusal(await service.create(input({ maxPlayers: 5 })))).toBe("invalidLimits");
+    expect((await service.create(input({ maxPlayers: 5 }))).kind).toBe("ok");
   });
 
   it("keeps names unique among unfinished campaigns, ignoring case", async () => {

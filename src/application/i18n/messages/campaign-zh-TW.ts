@@ -30,7 +30,7 @@ export const campaignZhTW = {
 
   "campaign.pick.prompt": "選擇你的英雄",
   "campaign.pick.option": "{hero} — {class}",
-  "campaign.pick.none": "所有英雄都被選走了",
+  "campaign.pick.none": "預設英雄都已有人選。請先到「我的角色」建立角色，再回來選擇。",
 
   "campaign.reply.joined": "你已加入 **{name}**，請在下方選擇英雄",
   "campaign.reply.left": "你已離開大廳",
@@ -1027,7 +1027,7 @@ export const campaignZhTW = {
   "campaign.refusal.notOrganizer": "只有主辦人可以這麼做",
   "campaign.refusal.notEnoughPlayers": "人數還不夠，無法開始冒險",
   "campaign.refusal.notReady": "所有人都要先選好英雄才能開始",
-  "campaign.refusal.invalidLimits": "人數上限設定無效",
+  "campaign.refusal.invalidLimits": "人數上限須為 1–6 人，且最少人數不能超過人數上限。",
   "campaign.refusal.notFound": "找不到這個團務",
   "campaign.refusal.notLobby": "這個團務已經不在大廳階段",
   "campaign.refusal.gameFull": "這場遊戲的玩家席位已滿",

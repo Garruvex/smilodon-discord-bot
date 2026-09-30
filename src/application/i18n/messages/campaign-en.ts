@@ -30,7 +30,7 @@ export const campaignEn = {
 
   "campaign.pick.prompt": "Choose your hero",
   "campaign.pick.option": "{hero} — {class}",
-  "campaign.pick.none": "Every hero is taken.",
+  "campaign.pick.none": "All preset heroes are taken. Create a character in My Characters, then return here to choose it.",
 
   "campaign.reply.joined": "You joined **{name}**. Choose your hero below.",
   "campaign.reply.left": "You left the lobby.",
@@ -1027,7 +1027,7 @@ export const campaignEn = {
   "campaign.refusal.notOrganizer": "Only the organizer can do that.",
   "campaign.refusal.notEnoughPlayers": "More players are needed before the adventure can start.",
   "campaign.refusal.notReady": "Everyone must choose a hero before the adventure can start.",
-  "campaign.refusal.invalidLimits": "The player limits are not valid.",
+  "campaign.refusal.invalidLimits": "The player limit must be 1–6, and the minimum cannot exceed the maximum.",
   "campaign.refusal.notFound": "That campaign no longer exists.",
   "campaign.refusal.notLobby": "This campaign is no longer in the lobby.",
   "campaign.refusal.gameFull": "This game's player seats are full.",

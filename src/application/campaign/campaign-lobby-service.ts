@@ -117,7 +117,6 @@ export class CampaignLobbyService {
     }
     const lobby = lobbyRules.openLobby(input.minPlayers ?? 1, input.maxPlayers ?? Math.min(document.heroes.length, lobbyRules.lobbyLimits.maxPlayersCeiling));
     if (!lobby.ok) return refused(lobby.reason);
-    if (lobby.lobby.maxPlayers > document.heroes.length) return refused("invalidLimits");
 
     const key: CampaignKey = { guildId: input.guildId, campaignId: (this.options.newId ?? randomUUID)() };
     const record: CampaignRecord = {

@@ -119,6 +119,21 @@ describe("the character library", () => {
 });
 
 describe("bringing a saved character into a game", () => {
+  it("starts with a fourth player using a saved character beyond three preset heroes", async () => {
+    const t = table();
+    const created = await t.lobby.create({ guildId, organizerId: "u-alice", name: "Four Players", language: "en", adventureId: starterAdventureId, pacing: { preset: "live" }, maxPlayers: 4 });
+    if (created.kind !== "ok") throw new Error(`create: ${JSON.stringify(created)}`);
+    const key = created.value.key;
+    for (const [index, userId] of ["u-alice", "u-bob", "u-cara"].entries()) {
+      expect((await t.lobby.join(key, userId)).kind).toBe("ok");
+      expect((await t.lobby.chooseHero(key, userId, starter.en.heroes[index]?.id ?? "")).kind).toBe("ok");
+    }
+    const saved = await createAldric(t, "u-dan");
+    expect((await t.lobby.join(key, "u-dan")).kind).toBe("ok");
+    expect((await t.lobby.chooseSaved(key, "u-dan", saved.id)).kind).toBe("ok");
+    expect((await t.lobby.start(key, "u-alice")).kind).toBe("ok");
+  });
+
   it("previews what carries over, then seats the character and shows it on the lobby", async () => {
     const t = table();
     const snapshot = await createAldric(t);

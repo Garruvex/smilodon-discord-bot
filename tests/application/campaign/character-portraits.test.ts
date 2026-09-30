@@ -17,7 +17,7 @@ const build: BuildChoices = {
   backstory: "",
 };
 
-async function setup(options: { stylizer?: boolean; generator?: boolean; maxPerHour?: number } = {}): Promise<{
+async function setup(options: { stylizer?: boolean; generator?: boolean; maxPerWindow?: number } = {}): Promise<{
   portraits: CharacterPortraits;
   store: MemoryPortraitStore;
   stylizer: Stylizer;
@@ -37,7 +37,7 @@ async function setup(options: { stylizer?: boolean; generator?: boolean; maxPerH
     clock: r.clock,
     ...(options.stylizer === false ? {} : { stylizer }),
     ...(options.generator === false ? {} : { generator: painter }),
-    ...(options.maxPerHour === undefined ? {} : { maxPerHour: options.maxPerHour }),
+    ...(options.maxPerWindow === undefined ? {} : { maxPerWindow: options.maxPerWindow }),
   });
   return { portraits, store, stylizer, painter, characterId: made.character.id, r };
 }
@@ -148,13 +148,15 @@ describe("painting from the description", () => {
 });
 
 describe("limits and cleanup", () => {
-  it("allows a few pictures an hour per person, then says when to come back", async () => {
-    const { portraits, characterId, r } = await setup({ maxPerHour: 2 });
+  it("allows a few pictures per 15 minutes and reports the remaining wait", async () => {
+    const { portraits, characterId, r } = await setup({ maxPerWindow: 2 });
     expect((await portraits.fromDescription("u-alice", characterId, "ink", "")).kind).toBe("ok");
     expect((await portraits.fromDescription("u-alice", characterId, "ink", "")).kind).toBe("ok");
     const third = await portraits.fromDescription("u-alice", characterId, "ink", "");
-    expect(third).toMatchObject({ kind: "refused", reason: "rateLimited" });
-    r.clock.advance(61 * 60 * 1000);
+    expect(third).toEqual({ kind: "refused", reason: "rateLimited", retryAfterMinutes: 15 });
+    r.clock.advance(10 * 60 * 1000);
+    expect(await portraits.fromDescription("u-alice", characterId, "ink", "")).toEqual({ kind: "refused", reason: "rateLimited", retryAfterMinutes: 5 });
+    r.clock.advance(5 * 60 * 1000);
     expect((await portraits.fromDescription("u-alice", characterId, "ink", "")).kind).toBe("ok");
   });
 

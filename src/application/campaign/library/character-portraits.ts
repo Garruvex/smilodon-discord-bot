@@ -32,8 +32,8 @@ export interface CharacterPortraitsOptions {
   readonly stylizer?: PortraitStylizer;
   // Paints from text alone; absent: "paint from my description" is not offered.
   readonly generator?: ImageGenerator;
-  // Pictures one person may ask for in an hour, so the image budget is not theirs alone.
-  readonly maxPerHour?: number;
+  // Pictures one person may ask for in a rolling 15-minute window.
+  readonly maxPerWindow?: number;
   readonly timeoutMs?: number;
 }
 
@@ -180,16 +180,16 @@ export class CharacterPortraits {
     }
   }
 
-  // A sliding hour per person.
+  // A short rolling window per person keeps retries available without unbounded image use.
   private limit(ownerUserId: UserId): PortraitResult | null {
     const now = this.options.clock.now();
-    const hour = 60 * 60 * 1000;
-    const recent = (this.asked.get(ownerUserId) ?? []).filter((at) => now - at < hour);
-    const max = this.options.maxPerHour ?? 6;
+    const windowMs = 15 * 60 * 1000;
+    const recent = (this.asked.get(ownerUserId) ?? []).filter((at) => now - at < windowMs);
+    const max = this.options.maxPerWindow ?? 6;
     if (recent.length >= max) {
       const oldest = recent[0] ?? now;
       this.asked.set(ownerUserId, recent);
-      return { kind: "refused", reason: "rateLimited", retryAfterMinutes: Math.max(1, Math.ceil((oldest + hour - now) / 60_000)) };
+      return { kind: "refused", reason: "rateLimited", retryAfterMinutes: Math.max(1, Math.ceil((oldest + windowMs - now) / 60_000)) };
     }
     this.asked.set(ownerUserId, [...recent, now]);
     return null;

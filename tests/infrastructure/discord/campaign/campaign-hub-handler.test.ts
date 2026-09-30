@@ -298,6 +298,18 @@ describe("the Create game wizard", () => {
     expect(rowsOf(forged).at(-1)?.[0]?.customId).toBe("dndhub:wizNext:zh-TW.live.3.pooled.open.chinese-only");
   });
 
+  it("allows more players than the selected adventure has preset heroes", async () => {
+    const t = harness({ catalog: [
+      { id: "moonlit-ruins", version: "1", languages: ["en", "zh-TW"], titles: { en: "Moonlit Ruins" } },
+      { id: "short-party", version: "1", languages: ["en"], titles: { en: "Short Party" } },
+    ] });
+    await withSettings(t);
+    const picked = await t.click(hubCustomId("wizAdventurePick", "en.live.6.pooled"), { userId: "u-a", admin: true }, { values: ["short-party"] });
+    const payload = picked.at(-1)?.payload as { components: { toJSON(): { components: { options?: { value: string }[]; custom_id?: string }[] } }[] };
+    expect(payload.components[2]?.toJSON().components[0]?.options?.map((option) => option.value)).toEqual(["1", "2", "3", "4", "5", "6"]);
+    expect(rowsOf(picked).at(-1)?.[0]?.customId).toBe("dndhub:wizNext:en.live.6.pooled.open.short-party");
+  });
+
   it("switches between open and players-only with a button, and remembers it in the controls", async () => {
     const t = harness();
     await withSettings(t);
