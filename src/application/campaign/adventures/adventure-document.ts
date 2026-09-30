@@ -77,7 +77,7 @@ const documentSchema = z
             sceneId,
             publicDescription: text,
             dmNotes: text,
-            zones: z.array(z.object({ id: zoneId, name: text, lighting: z.enum(["bright", "dim", "dark"]).optional() }).strict()).min(1),
+            zones: z.array(z.object({ id: zoneId, name: text, lighting: z.enum(["bright", "dim", "dark"]).optional(), cover: z.enum(["half", "three-quarters"]).optional() }).strict()).min(1),
             edges: z.array(z.object({ from: zoneId, to: zoneId, feet: z.number().int().min(5) }).strict()),
             partyZoneId: zoneId,
             monsters: z

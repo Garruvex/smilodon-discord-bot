@@ -25,7 +25,7 @@ import { activeEncounter, afterResolution, endIfDecided } from "./combat-flow.js
 import { offerCounterspell, offerReaction, offerRetort } from "./reactions.js";
 import { offerSmite } from "./smite.js";
 import { applyDamage, applyHealing, applyTempHp, endConcentration, recordConcentration } from "./damage.js";
-import { auraBonusFor, colossusSlayerEligible, attackMode, effectForKey, planFor, protectorFor, rangedAttack, saveContextOf, sneakAttackEligible, sneakDice } from "./attack-rules.js";
+import { auraBonusFor, colossusSlayerEligible, coverBonus, attackMode, effectForKey, planFor, protectorFor, rangedAttack, saveContextOf, sneakAttackEligible, sneakDice } from "./attack-rules.js";
 export { applyDamage, endConcentration } from "./damage.js";
 export { attackMode } from "./attack-rules.js";
 
@@ -76,7 +76,7 @@ export function declareResolution(decision: Decision, request: DeclareRequest): 
       const dc = source.kind === "area" ? source.area.dc : ((source.kind === "spell" ? actor.spellcasting?.saveDcs?.[source.spellId] : undefined) ?? actor.spellcasting?.saveDc ?? 10);
       const bias = saveBias(target, check.ability, lookup);
       const racial = hasSaveAdvantage(target.traits, check.ability, saveContextOf(plan, source)) ? 1 : 0;
-      spec = { mode: resolveRollMode(bias.advantage + racial, bias.disadvantage), modifier: target.saves[check.ability] + auraBonusFor(encounter, target), bonusDice: bonusDiceFor(target, "save") };
+      spec = { mode: resolveRollMode(bias.advantage + racial, bias.disadvantage), modifier: target.saves[check.ability] + auraBonusFor(encounter, target) + (check.ability === "dex" ? coverBonus(encounter, actor.id, target) : 0), bonusDice: bonusDiceFor(target, "save") };
       against = dc;
       kind = "save";
     } else {
@@ -92,7 +92,7 @@ export function declareResolution(decision: Decision, request: DeclareRequest): 
       if (guarded) decision.emit({ kind: "uncannyDodgeUsed", combatantId: protector.id });
       const toHit = (source.kind === "weapon" ? source.option.toHit : (actor.spellcasting?.attackBonus ?? 0)) + attackBonusOf(actor, lookup);
       spec = { mode: mode.mode, modifier: toHit, bonusDice: bonusDiceFor(actor, "attack") };
-      against = armorClassOf(target, lookup);
+      against = armorClassOf(target, lookup) + coverBonus(encounter, actor.id, target);
       kind = "attack";
       if (mode.consumed.length > 0) consumedAdvantage.push({ combatantId: target.id, effectIds: mode.consumed });
       if (source.kind === "weapon" && (sneakAttackEligible(encounter, actor, target, source.option.finesse, mode.mode) || colossusSlayerEligible(actor, target))) sneakAttack = true;
@@ -208,7 +208,7 @@ export function settleCheck(decision: Decision, resolutionId: string, rollId: Ro
   let moments;
   if (check.kind === "attack") {
     const attacker = encounter.combatants[resolution.actorId];
-    const against = target === undefined ? check.against : armorClassOf(target, lookup);
+    const against = target === undefined ? check.against : armorClassOf(target, lookup) + coverBonus(encounter, resolution.actorId, target);
     const outcome = resolveD20Test("attack", roll.d20.natural, roll.total, against, "no-effect", critThreshold(attacker?.traits ?? []));
     landed = outcome.success;
     // A hit on an unconscious creature from within 5 feet is a critical hit.

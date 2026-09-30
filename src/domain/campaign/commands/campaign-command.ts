@@ -227,7 +227,7 @@ export type CombatCommand =
 export interface EncounterSpec {
   readonly id: string;
   // lighting: bright when absent. In a dark zone a creature without darkvision cannot see, and attacks in or into it at disadvantage.
-  readonly zones: readonly { readonly id: string; readonly name: string; readonly lighting?: "bright" | "dim" | "dark" }[];
+  readonly zones: readonly { readonly id: string; readonly name: string; readonly lighting?: "bright" | "dim" | "dark"; readonly cover?: "half" | "three-quarters" }[];
   readonly edges: readonly { readonly from: string; readonly to: string; readonly feet: number }[];
   readonly partyZoneId: string;
   readonly monsters: readonly EncounterMonster[];

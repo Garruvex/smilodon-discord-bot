@@ -109,6 +109,7 @@ const enBase: Glossary = {
     "feature:brutal-critical-2": "Brutal Critical (two dice)",
     "feature:brutal-critical-3": "Brutal Critical (three dice)",
     "feature:evasion": "Evasion",
+    "feature:hide": "Hide",
     "feature:mindless-rage": "Mindless Rage",
     "feature:intimidating-presence": "Intimidating Presence",
     "feature:retaliation": "Retaliation",

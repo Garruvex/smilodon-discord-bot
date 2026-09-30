@@ -1,7 +1,7 @@
 // What a hero does with their action: a weapon attack, a spell, a feature. The rules for each are in combat/turn-rules.ts.
 import { useKeyOf } from "../../rules/content-definitions.js";
 import { proficiencyBonusForLevel } from "../../character/leveling.js";
-import { armedMetamagic, armedOverchannel, armedStunningStrike, conditionLookup } from "../../effects/effect-queries.js";
+import { armedMetamagic, armedOverchannel, armedStunningStrike, conditionLookup, hidingEffects } from "../../effects/effect-queries.js";
 import type { ActionCost } from "../../combat/combat-events.js";
 import { type AttackOption, type Combatant, type EncounterState } from "../../combat/combat-state.js";
 import { attackProblem, featureProblem, smiteProblem, spellProblem } from "../../combat/turn-rules.js";
@@ -53,6 +53,7 @@ export function declareWeaponAttack(
     },
   });
   if (declared === null && stunning !== null) decision.emit({ kind: "effectsRemoved", combatantId: attacker.id, effectIds: [stunning], reason: "usedUp" });
+  if (declared === null) revealed(decision, attacker);
   return declared;
 }
 
@@ -91,12 +92,19 @@ export function castSpell(
   });
   // The readied Metamagic is used up by the casting.
   if (declared === null && armed !== null) decision.emit({ kind: "effectsRemoved", combatantId: caster.id, effectIds: [armed.effectId], reason: "usedUp" });
+  if (declared === null) revealed(decision, caster);
   if (declared === null && overchannel !== null) decision.emit({ kind: "effectsRemoved", combatantId: caster.id, effectIds: [overchannel], reason: "usedUp" });
   return declared;
 }
 
+// Attacking or casting gives away a hiding creature.
+function revealed(decision: Decision, creature: Combatant): void {
+  const hiding = hidingEffects(activeEncounter(decision)?.combatants[creature.id] ?? creature);
+  if (hiding.length > 0) decision.emit({ kind: "effectsRemoved", combatantId: creature.id, effectIds: hiding, reason: "usedUp" });
+}
+
 export function useFeature(decision: Decision, hero: Combatant, featureId: ContentId<"feature">): Rejection | null {
-  const checked = featureProblem(hero, decision.ctx.rules.content, featureId);
+  const checked = featureProblem(hero, decision.ctx.rules.content, featureId, activeEncounter(decision));
   if ("problem" in checked) return checked.problem;
   const { feature, bonus, free } = checked.value;
   return declareResolution(decision, {

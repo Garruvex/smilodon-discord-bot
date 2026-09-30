@@ -96,4 +96,17 @@ export const stunningStrike = defineFeature({
   },
 });
 
-export const srd51ClassActions: readonly FeatureDefinition[] = [actionSurge, recklessAttack, ki, flurryOfBlows, patientDefense, stepOfTheWind, stunningStrike];
+// Hide, open to every class: an action (a bonus action for a rogue) to slip from sight in a zone with cover or darkness, out of any foe's reach.
+// The Stealth contest against passive Perception is not rolled: hiding works if the place allows it. The next attack or spell ends it.
+export const hide = defineFeature({
+  id: "feature:hide",
+  source,
+  traits: [],
+  action: {
+    cost: "action",
+    uses: { count: 99, recharge: "shortRest" },
+    plan: () => ({ check: null, onLand: [{ kind: "applyModifiers", target: "self", modifiers: [{ kind: "hidden" }], duration: { kind: "untilRemoved" } }], onAvoid: [] }),
+  },
+});
+
+export const srd51ClassActions: readonly FeatureDefinition[] = [hide, actionSurge, recklessAttack, ki, flurryOfBlows, patientDefense, stepOfTheWind, stunningStrike];

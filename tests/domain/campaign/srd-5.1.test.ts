@@ -181,7 +181,7 @@ describe("SRD 5.1 content", () => {
     // Fiend Patron and the rest are narrative, same treatment as Thieves' Cant.
     expect(traitsOf(content.get("feature:fiend-patron"))).toEqual([]);
     expect(content.get("class:fighter").levelFeatures[3]).toEqual(["feature:champion"]);
-    expect(content.get("class:sorcerer").features).toEqual(["feature:draconic-bloodline"]);
+    expect(content.get("class:sorcerer").features).toEqual(["feature:hide", "feature:draconic-bloodline"]);
   });
 
   it("gives Dwarf, Dragonborn, and Tiefling a real damage resistance trait, and Elf just its ability bonus", () => {

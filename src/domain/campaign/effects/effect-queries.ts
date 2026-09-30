@@ -99,6 +99,11 @@ export function armedMetamagic(holder: EffectHolder, lookup: ConditionLookup): {
   return null;
 }
 
+// The effects that hide this creature; making an attack or casting a spell gives it away.
+export function hidingEffects(holder: EffectHolder): readonly string[] {
+  return holder.effects.filter((effect) => effect.modifiers.some((modifier) => modifier.kind === "hidden")).map((effect) => effect.id);
+}
+
 // The readied Overchannel, if any, and the effect to use up once the spell is cast.
 export function armedOverchannel(holder: EffectHolder, lookup: ConditionLookup): string | null {
   for (const { modifier, effectId } of modifiersOf(holder, lookup)) if (modifier.kind === "overchannel" && effectId !== null) return effectId;
@@ -186,9 +191,13 @@ function tally(reasons: readonly BiasReason[]): BiasTally {
 // within5: the attacker is within 5 feet of the target.
 export function attackBias(attacker: EffectHolder, target: EffectHolder, lookup: ConditionLookup, within5: boolean): BiasTally {
   const reasons: BiasReason[] = [];
-  for (const { source, modifier } of modifiersOf(attacker, lookup)) if (modifier.kind === "ownAttacks") reasons.push({ source, mode: modifier.mode });
+  for (const { source, modifier } of modifiersOf(attacker, lookup)) {
+    if (modifier.kind === "ownAttacks") reasons.push({ source, mode: modifier.mode });
+    if (modifier.kind === "hidden") reasons.push({ source, mode: "advantage" });
+  }
   for (const { source, modifier } of modifiersOf(target, lookup)) {
     if (modifier.kind === "attacksAgainst" && reachApplies(modifier.reach, within5)) reasons.push({ source, mode: modifier.mode });
+    if (modifier.kind === "hidden") reasons.push({ source, mode: "disadvantage" });
   }
   return tally(reasons);
 }

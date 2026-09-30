@@ -114,6 +114,7 @@ const zhTwBase: Glossary = {
     "feature:brutal-critical-2": "殘暴重擊（兩顆骰）",
     "feature:brutal-critical-3": "殘暴重擊（三顆骰）",
     "feature:evasion": "閃避",
+    "feature:hide": "躲藏",
     "feature:mindless-rage": "無腦狂怒",
     "feature:intimidating-presence": "威嚇存在",
     "feature:retaliation": "報復",

@@ -158,11 +158,17 @@ export function wildShapeForms(hero: Combatant, content: SealedContent): readonl
 
 // ------------------------------------------------------------- Features
 
-export function featureProblem(hero: Combatant, content: SealedContent, featureId: ContentId<"feature">): Checked<{ readonly feature: FeatureDefinition; readonly bonus: boolean; readonly free: boolean }> {
+export function featureProblem(hero: Combatant, content: SealedContent, featureId: ContentId<"feature">, encounter: EncounterState | null = null): Checked<{ readonly feature: FeatureDefinition; readonly bonus: boolean; readonly free: boolean }> {
   const feature = content.find(featureId);
   if (feature?.kind !== "feature" || feature.action === null || !hero.features.includes(feature.id)) return refuse({ code: "unknownFeature" });
   if ((hero.resources.featureUses[useKeyOf(feature)] ?? 0) < (feature.action.spend ?? 1)) return refuse({ code: "noUsesLeft" });
-  const bonus = feature.action.cost === "bonusAction";
+  // Hide: out of every foe's reach, and somewhere to hide (cover or darkness). A rogue's Cunning Action makes it a bonus action.
+  if (feature.id === "feature:hide" && encounter !== null) {
+    const zone = encounter.zones.find((candidate) => candidate.id === hero.zoneId);
+    const engaged = engagedWith(encounter, hero.id).some((other) => other.side !== hero.side && isPresent(other) && other.hp > 0);
+    if (engaged || (zone?.cover === undefined && zone?.lighting !== "dark")) return refuse({ code: "notUsable" });
+  }
+  const bonus = feature.action.cost === "bonusAction" || (feature.id === "feature:hide" && hero.traits.some((trait) => trait.kind === "cunningAction"));
   const free = feature.action.cost === "free";
   const cost = free ? (canAct(hero, conditionLookup(content)) ? null : { code: "noActionLeft" as const }) : costProblem(hero, bonus ? "bonusAction" : "action", content);
   return cost === null ? accept({ feature, bonus, free }) : refuse(cost);
@@ -307,7 +313,7 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
   const features = busy
     ? []
     : hero.features.flatMap((id) => {
-        const checked = featureProblem(hero, content, id);
+        const checked = featureProblem(hero, content, id, encounter);
         return "value" in checked ? [{ feature: checked.value.feature, bonusAction: checked.value.bonus, left: hero.resources.featureUses[useKeyOf(checked.value.feature)] ?? 0 }] : [];
       });
 

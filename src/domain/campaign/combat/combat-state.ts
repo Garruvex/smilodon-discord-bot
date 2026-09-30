@@ -154,6 +154,8 @@ export interface Zone {
   readonly id: ZoneId;
   readonly name: string;
   readonly lighting?: "bright" | "dim" | "dark";
+  // Cover for the creatures in it against attacks and effects from other zones: half (+2 armor class and Dexterity saves) or three-quarters (+5).
+  readonly cover?: "half" | "three-quarters";
 }
 
 export interface ZoneEdge {

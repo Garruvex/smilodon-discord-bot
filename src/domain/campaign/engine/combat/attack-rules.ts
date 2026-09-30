@@ -142,6 +142,14 @@ export function attackMode(
   return { mode: resolveRollMode(advantage, disadvantage), consumed: effectsUsedUpByAttack(target) };
 }
 
+// Cover: creatures in a zone with cover are harder to hit and to catch in an effect from another zone.
+export function coverBonus(encounter: EncounterState, sourceId: string, target: Combatant): number {
+  const source = encounter.combatants[sourceId];
+  if (source === undefined || source.zoneId === target.zoneId) return 0;
+  const cover = encounter.zones.find((zone) => zone.id === target.zoneId)?.cover;
+  return cover === "three-quarters" ? 5 : cover === "half" ? 2 : 0;
+}
+
 // Protection (Fighting Style): a creature standing beside the target, with its reaction to spare, that can throw the attack off.
 export function protectorFor(encounter: EncounterState, target: Combatant, lookup: ConditionLookup): Combatant | undefined {
   return Object.values(encounter.combatants).find(
