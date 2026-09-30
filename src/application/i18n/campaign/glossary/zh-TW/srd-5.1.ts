@@ -180,6 +180,8 @@ const zhTwBase: Glossary = {
     "item:spear": "長矛",
     "item:light-crossbow": "輕弩",
     "item:claw": "爪擊",
+    "item:spectral-weapon": "靈魂武器",
+    "monster:spiritual-weapon": "靈魂武器",
     "item:tusk": "獠牙",
     "monster:bandit": "強盜",
     "monster:bandit-captain": "強盜首領",

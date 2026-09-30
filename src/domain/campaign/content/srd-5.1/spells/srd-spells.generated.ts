@@ -56,7 +56,6 @@ const prayerOfHealingHealing: DiceTable = { 2: [2, 8, 0], 3: [3, 8, 0], 4: [4, 8
 const regenerateHealing: DiceTable = { 7: [4, 8, 15] };
 const scorchingRayDamage: DiceTable = { 2: [2, 6, 0] };
 const shatterDamage: DiceTable = { 2: [3, 8, 0], 3: [4, 8, 0], 4: [5, 8, 0], 5: [6, 8, 0], 6: [7, 8, 0], 7: [8, 8, 0], 8: [9, 8, 0], 9: [10, 8, 0] };
-const spiritualWeaponDamage: DiceTable = { 2: [1, 8, 0], 3: [1, 8, 0], 4: [2, 8, 0], 5: [2, 8, 0], 6: [3, 8, 0], 7: [3, 8, 0], 8: [4, 8, 0], 9: [4, 8, 0] };
 const stormOfVengeanceDamage: DiceTable = { 9: [2, 6, 0] };
 const sunbeamDamage: DiceTable = { 6: [6, 8, 0] };
 const sunburstDamage: DiceTable = { 8: [12, 6, 0] };
@@ -3073,15 +3072,16 @@ export const spiritGuardians = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
+// A spectral weapon fights beside the caster until the fight ends, as a creature with its own turn; the book makes it a bonus action each turn and untargetable.
 export const spiritualWeapon = defineSpell({
   id: "spell:spiritual-weapon",
   source,
   level: 2,
   castingTime: "bonus-action",
   range: { kind: "feet", feet: 60 },
-  targeting: { relation: "enemy", count: 1 },
+  targeting: { relation: "self", count: 1 },
   concentration: false,
-  plan: ({ slotLevel, spellcastingModifier }) => ({ check: { kind: "spellAttack" }, onLand: [{ kind: "damage", target: "target", amount: plus(diceAt(spiritualWeaponDamage, slotLevel), spellcastingModifier), damageType: "force" }], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "summon", target: "self", monsterId: "monster:spiritual-weapon", count: 1 }], onAvoid: [] }),
 });
 
 // Poisoned stands in for a turn lost to retching.

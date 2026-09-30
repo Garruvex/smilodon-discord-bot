@@ -157,6 +157,7 @@ const curated = {
   weird: { relation: "enemy", count: 6, save: "wis", note: "Frightened stands in for the psychic damage each turn.", effects: [{ condition: "frightened", duration: { kind: "untilRemoved" }, onLand: true }] },
   eyebite: { relation: "enemy", count: 1, save: "wis", note: "Only the frightening option is modeled.", effects: [{ condition: "frightened", duration: { kind: "untilRemoved" }, onLand: true }] },
   "conjure-animals": { relation: "self", count: 1, summon: { monster: "brown-bear", count: 2 }, note: "Two brown bears stand in for the beasts the caster would choose; they fight until the fight ends, not for the spell's minute.", effects: [] },
+  "spiritual-weapon": { relation: "self", count: 1, summon: { monster: "spiritual-weapon", count: 1 }, note: "A spectral weapon fights beside the caster until the fight ends, as a creature with its own turn; the book makes it a bonus action each turn and untargetable.", effects: [] },
   darkness: { relation: "enemy", count: 6, save: null, note: "Blinds the creatures in the area for the duration; there is no lighting in the engine.", effects: [{ condition: "blinded", duration: { kind: "untilRemoved" }, onLand: true }] },
 };
 

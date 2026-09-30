@@ -58,6 +58,27 @@ describe("a summon held by concentration", () => {
   });
 });
 
+describe("Spiritual Weapon", () => {
+  it("calls a spectral weapon that keeps attacking for the caster without concentration", () => {
+    const base = partyOfThree();
+    const elspeth = base.characters["c-elspeth"];
+    const casting = elspeth?.spellcasting;
+    if (elspeth === undefined || casting === undefined || casting === null) throw new Error("elspeth");
+    const state: CampaignState = {
+      ...base,
+      characters: { ...base.characters, "c-elspeth": { ...elspeth, spellcasting: { ...casting, spells: [...casting.spells, "spell:spiritual-weapon"] as typeof casting.spells, slots: { ...casting.slots, 2: 1 } } } },
+    };
+    const fight = new Fight(state).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec: skirmish });
+    fight.run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:spiritual-weapon", slotLevel: 2, targetIds: ["c-elspeth"] });
+    expect(fight.combatant("c-elspeth").concentration).toBeNull();
+    const weapon = Object.values(fight.encounter.combatants).find((combatant) => combatant.id.startsWith("c-elspeth-spiritual-weapon"));
+    expect(weapon).toMatchObject({ side: "party" });
+    // On its turn it walks up and strikes: 1d8 + 3 force.
+    fight.rolls([15], [4]).run(sam, { kind: "endTurn", combatantId: "c-elspeth" });
+    expect(fight.events).toContainEqual(expect.objectContaining({ kind: "combatantHpChanged", combatantId: "goblin-a", change: -7 }));
+  });
+});
+
 describe("Thunderwave", () => {
   it("pushes a creature that fails its save into the next zone, out of reach", () => {
     const base = partyOfThree();
