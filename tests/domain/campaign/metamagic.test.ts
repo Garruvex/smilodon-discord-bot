@@ -10,7 +10,7 @@ function sorcerer(): CampaignState {
   const base = partyOfThree();
   const elspeth = base.characters["c-elspeth"];
   if (elspeth === undefined) throw new Error("elspeth");
-  const features = [...elspeth.features, "feature:font-of-magic", "feature:quickened-spell", "feature:twinned-spell"] as typeof elspeth.features;
+  const features = [...elspeth.features, "feature:font-of-magic", "feature:quickened-spell", "feature:twinned-spell", "feature:heightened-spell", "feature:empowered-spell", "feature:extended-spell", "feature:subtle-spell", "feature:create-slot-2"] as typeof elspeth.features;
   // Level 4 (sorcery points equal the level).
   return { ...base, characters: { ...base.characters, "c-elspeth": { ...elspeth, features, level: 4 } } };
 }
@@ -44,5 +44,48 @@ describe("Metamagic", () => {
     fight.run(sam, { kind: "combatUseFeature", combatantId: "c-elspeth", featureId: "feature:twinned-spell" });
     expect(fight.combatant("c-elspeth").resources.featureUses["feature:font-of-magic"]).toBe(0);
     expect(() => fight.run(sam, { kind: "combatUseFeature", combatantId: "c-elspeth", featureId: "feature:twinned-spell" })).toThrow();
+  });
+
+  const save = (feature: string | null): { readonly mode: string; readonly modifier: number } => {
+    const fight = started();
+    if (feature !== null) fight.run(sam, { kind: "combatUseFeature", combatantId: "c-elspeth", featureId: feature as "feature:heightened-spell" });
+    fight.rolls([3], [4]).run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:sacred-flame", slotLevel: 0, targetIds: ["goblin-a"] });
+    const declared = fight.events.filter((event) => event.kind === "resolutionDeclared").at(-1);
+    const spec = Object.values(declared?.resolution.checks ?? {})[0]?.spec;
+    return { mode: spec?.mode ?? "?", modifier: spec?.modifier ?? 0 };
+  };
+
+  it("Heightened Spell gives the first target disadvantage on its save", () => {
+    expect(save(null).mode).toBe("normal");
+    expect(save("feature:heightened-spell").mode).toBe("disadvantage");
+  });
+
+  it("Empowered Spell adds the spellcasting modifier to a damage roll", () => {
+    const damage = (feature: string | null): number => {
+      const fight = started();
+      if (feature !== null) fight.run(sam, { kind: "combatUseFeature", combatantId: "c-elspeth", featureId: feature as "feature:empowered-spell" });
+      fight.rolls([3], [4]).run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:sacred-flame", slotLevel: 0, targetIds: ["goblin-a"] });
+      return 7 - fight.combatant("goblin-a").hp;
+    };
+    expect(damage("feature:empowered-spell")).toBe(damage(null) + 3);
+  });
+
+  it("Extended Spell doubles a timed effect", () => {
+    const rounds = (feature: string | null): number | undefined => {
+      const fight = started();
+      if (feature !== null) fight.run(sam, { kind: "combatUseFeature", combatantId: "c-elspeth", featureId: feature as "feature:extended-spell" });
+      fight.run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:bless", slotLevel: 1, targetIds: ["c-elspeth"] });
+      return fight.combatant("c-elspeth").effects[0]?.clock?.untilRound;
+    };
+    expect((rounds("feature:extended-spell") ?? 0) - 1).toBe(((rounds(null) ?? 0) - 1) * 2);
+  });
+
+  it("Flexible Casting turns three sorcery points into a second-level slot", () => {
+    const fight = started();
+    const before = fight.combatant("c-elspeth").resources.spellSlots[2] ?? 0;
+    fight.run(sam, { kind: "combatUseFeature", combatantId: "c-elspeth", featureId: "feature:create-slot-2" });
+    expect(fight.combatant("c-elspeth").resources.spellSlots[2]).toBe(before + 1);
+    expect(fight.combatant("c-elspeth").resources.featureUses["feature:font-of-magic"]).toBe(1);
+    expect(fight.combatant("c-elspeth").budget.bonusAction).toBe(false);
   });
 });

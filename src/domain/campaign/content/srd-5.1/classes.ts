@@ -288,7 +288,7 @@ export const sorcerer = defineClass({
   casterType: "full",
   spellcastingAbility: "cha",
   firstSpells: [],
-  levelFeatures: { 2: ["feature:font-of-magic"], 3: ["feature:metamagic", "feature:quickened-spell", "feature:twinned-spell"], 6: ["feature:elemental-affinity"], 10: ["feature:metamagic-additional"], 14: ["feature:dragon-wings"], 18: ["feature:draconic-presence"], 20: ["feature:sorcerous-restoration"] },
+  levelFeatures: { 2: ["feature:font-of-magic", "feature:create-slot-1", "feature:create-slot-2", "feature:create-slot-3", "feature:create-slot-4", "feature:create-slot-5"], 3: ["feature:metamagic", "feature:quickened-spell", "feature:twinned-spell"], 6: ["feature:elemental-affinity"], 10: ["feature:metamagic-additional", "feature:heightened-spell", "feature:empowered-spell"], 14: ["feature:dragon-wings"], 17: ["feature:extended-spell", "feature:subtle-spell"], 18: ["feature:draconic-presence"], 20: ["feature:sorcerous-restoration"] },
   multiclassRequires: [["cha"]],
   spellList: srd51SorcererSpells,
 });

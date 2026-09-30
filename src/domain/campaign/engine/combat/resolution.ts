@@ -76,7 +76,9 @@ export function declareResolution(decision: Decision, request: DeclareRequest): 
       const dc = source.kind === "area" ? source.area.dc : ((source.kind === "spell" ? actor.spellcasting?.saveDcs?.[source.spellId] : undefined) ?? actor.spellcasting?.saveDc ?? 10);
       const bias = saveBias(target, check.ability, lookup);
       const racial = hasSaveAdvantage(target.traits, check.ability, saveContextOf(plan, source)) ? 1 : 0;
-      spec = { mode: resolveRollMode(bias.advantage + racial, bias.disadvantage), modifier: target.saves[check.ability] + auraBonusFor(encounter, target) + (check.ability === "dex" ? coverBonus(encounter, actor.id, target) : 0), bonusDice: bonusDiceFor(target, "save") };
+      // Heightened Spell: the first target saves at disadvantage.
+      const heightened = source.kind === "spell" && source.metamagic === "heightened" && targetId === request.targetIds[0] ? 1 : 0;
+      spec = { mode: resolveRollMode(bias.advantage + racial, bias.disadvantage + heightened), modifier: target.saves[check.ability] + auraBonusFor(encounter, target) + (check.ability === "dex" ? coverBonus(encounter, actor.id, target) : 0), bonusDice: bonusDiceFor(target, "save") };
       against = dc;
       kind = "save";
     } else {
@@ -533,6 +535,9 @@ export function applyEffect(
       });
       return;
     }
+    case "gainSlot":
+      decision.emit({ kind: "slotGained", combatantId: recipient.id, level: effect.level });
+      return;
     case "grantMovement":
       decision.emit({ kind: "movementGranted", combatantId: recipient.id, feet: effect.feet });
       return;

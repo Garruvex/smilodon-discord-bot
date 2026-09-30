@@ -29,7 +29,11 @@ export function planFor(decision: Decision, actor: Combatant, source: Resolution
     case "spell": {
       const spell = content.get(source.spellId);
       const casterLevel = actor.spellcasting?.casterLevel ?? actor.level;
-      const cast = spell.plan({ slotLevel: source.slotLevel, casterLevel, spellcastingModifier: actor.spellcasting?.modifier ?? 0 });
+      const planned = spell.plan({ slotLevel: source.slotLevel, casterLevel, spellcastingModifier: actor.spellcasting?.modifier ?? 0 });
+      // Extended Spell: timed effects last twice as long.
+      const stretch = (effect: Effect): Effect =>
+        source.metamagic === "extended" && "duration" in effect && effect.duration?.kind === "rounds" ? { ...effect, duration: { kind: "rounds", count: effect.duration.count * 2 } } : effect;
+      const cast = source.metamagic === "extended" ? { ...planned, onLand: planned.onLand.map(stretch), onAvoid: planned.onAvoid.map(stretch) } : planned;
       // Agonizing Blast: the modifier on every beam (this build fires them as one bolt of that many dice).
       const beams = casterLevel >= 17 ? 4 : casterLevel >= 11 ? 3 : casterLevel >= 5 ? 2 : 1;
       const agonizing = source.spellId === "spell:eldritch-blast" && actor.traits.some((trait) => trait.kind === "agonizingBlast") ? (actor.spellcasting?.modifier ?? 0) * beams : 0;
@@ -37,9 +41,9 @@ export function planFor(decision: Decision, actor: Combatant, source: Resolution
       const potent = spell.level === 0 && cast.check?.kind === "savingThrow" && cast.onAvoid.length === 0 && actor.traits.some((trait) => trait.kind === "potentCantrip");
       const halved = potent ? { ...cast, onAvoid: cast.onLand.flatMap((effect): Effect[] => (effect.kind === "damage" ? [{ ...effect, halfOfLand: true }] : [])) } : cast;
       const plan = agonizing === 0 ? halved : { ...halved, onLand: cast.onLand.map((effect): Effect => (effect.kind === "damage" ? { ...effect, amount: plus(effect.amount, agonizing) } : effect)) };
-      // Empowered Evocation and Elemental Affinity: the modifier on one damage roll.
+      // Empowered Evocation, Empowered Spell and Elemental Affinity: the modifier on one damage roll.
       const affinity = plan.onLand.some((effect) => effect.kind === "damage" && actor.traits.some((trait) => trait.kind === "elementalAffinity" && trait.damageType === effect.damageType));
-      const empowered = (spell.school === "evocation" && actor.traits.some((trait) => trait.kind === "empoweredEvocation")) || affinity ? (actor.spellcasting?.modifier ?? 0) : 0;
+      const empowered = (spell.school === "evocation" && actor.traits.some((trait) => trait.kind === "empoweredEvocation")) || affinity || source.metamagic === "empowered" ? (actor.spellcasting?.modifier ?? 0) : 0;
       const firstDamage = plan.onLand.findIndex((effect) => effect.kind === "damage");
       const empoweredPlan =
         empowered === 0 || firstDamage < 0 ? plan : { ...plan, onLand: plan.onLand.map((effect, index): Effect => (index === firstDamage && effect.kind === "damage" ? { ...effect, amount: plus(effect.amount, empowered) } : effect)) };

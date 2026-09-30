@@ -59,4 +59,4 @@ export type Modifier =
   // A wizard's readied Overchannel: the next spell of the 1st to 5th level deals its maximum damage or healing (used up by the casting).
   | { readonly kind: "overchannel" };
 
-export type MetamagicOption = "quickened" | "twinned";
+export type MetamagicOption = "quickened" | "twinned" | "heightened" | "empowered" | "extended" | "subtle";

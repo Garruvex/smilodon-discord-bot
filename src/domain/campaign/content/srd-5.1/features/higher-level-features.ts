@@ -1,4 +1,5 @@
 import { defineFeature, type FeatureDefinition } from "../../../rules/content-definitions.js";
+import type { MetamagicOption } from "../../../rules/modifiers.js";
 
 // Level 2, 3, 5, 11 and 20 class features (SRD 5.1, Classes), granted
 // automatically as a hero levels up (content/srd-5.1/classes.ts's
@@ -76,7 +77,7 @@ export const divineSmite = defineFeature({ id: "feature:divine-smite", source, t
 export const fontOfMagic = defineFeature({ id: "feature:font-of-magic", source, traits: [], action: null, resource: { count: 2, perLevel: (level) => level, recharge: "longRest" } });
 // Readies a Metamagic option for the next spell cast; the sorcery points are spent now. This build gives a sorcerer
 // Quickened Spell (2 points) and Twinned Spell (a flat 2 points, where the SRD charges the spell's level).
-const metamagicOption = (name: string, option: "quickened" | "twinned", spend: number): FeatureDefinition =>
+const metamagicOption = (name: string, option: MetamagicOption, spend: number): FeatureDefinition =>
   defineFeature({
     id: `feature:${name}`,
     source,
@@ -90,6 +91,21 @@ const metamagicOption = (name: string, option: "quickened" | "twinned", spend: n
   });
 export const quickenedSpell = metamagicOption("quickened-spell", "quickened", 2);
 export const twinnedSpell = metamagicOption("twinned-spell", "twinned", 2);
+// Sorcerer 10 and 17: Heightened (the first target saves at disadvantage), Empowered (the spellcasting modifier on one damage roll,
+// where the SRD rerolls that many dice), Extended (timed effects last twice as long) and Subtle (cannot be countered).
+export const heightenedSpell = metamagicOption("heightened-spell", "heightened", 3);
+export const empoweredSpell = metamagicOption("empowered-spell", "empowered", 1);
+export const extendedSpell = metamagicOption("extended-spell", "extended", 1);
+export const subtleSpell = metamagicOption("subtle-spell", "subtle", 1);
+// Flexible Casting (Sorcerer 2): sorcery points turned into a spell slot of the 1st to the 5th level (2, 3, 5, 6 and 7 points).
+const createSlot = (level: number, cost: number): FeatureDefinition =>
+  defineFeature({
+    id: `feature:create-slot-${level}`,
+    source,
+    traits: [],
+    action: { cost: "bonusAction", uses: { pool: "feature:font-of-magic" }, spend: cost, plan: () => ({ check: null, onLand: [{ kind: "gainSlot", target: "self", level }], onAvoid: [] }) },
+  });
+export const createSlots: readonly FeatureDefinition[] = [createSlot(1, 2), createSlot(2, 3), createSlot(3, 5), createSlot(4, 6), createSlot(5, 7)];
 // Eldritch Invocations: every warlock takes these three at level 2 (this build has no choosing of invocations).
 export const eldritchInvocations = narrative("eldritch-invocations");
 export const agonizingBlast = defineFeature({ id: "feature:agonizing-blast", source, traits: [{ kind: "agonizingBlast" }], action: null });
@@ -176,6 +192,11 @@ export const srd51HigherLevelFeatures: readonly FeatureDefinition[] = [
   fiendishVigor,
   quickenedSpell,
   twinnedSpell,
+  ...createSlots,
+  heightenedSpell,
+  empoweredSpell,
+  extendedSpell,
+  subtleSpell,
   destroyUndead,
   fontOfInspiration,
   feralInstinct,

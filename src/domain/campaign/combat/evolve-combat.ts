@@ -247,6 +247,11 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
     case "sneakAttackUsed":
       return update(encounter, event.combatantId, (combatant) => ({ ...combatant, sneakAttackUsed: true }));
     // A 6th level of Exhaustion kills (SRD 5.1), same as any other death.
+    case "slotGained":
+      return update(encounter, event.combatantId, (combatant) => ({
+        ...combatant,
+        resources: { ...combatant.resources, spellSlots: { ...combatant.resources.spellSlots, [event.level]: (combatant.resources.spellSlots[event.level] ?? 0) + 1 } },
+      }));
     case "movementGranted":
       return update(encounter, event.combatantId, (combatant) => ({ ...combatant, budget: { ...combatant.budget, movement: combatant.budget.movement + event.feet } }));
     case "actionGranted":

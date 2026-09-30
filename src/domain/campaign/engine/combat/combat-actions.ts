@@ -85,7 +85,13 @@ export function castSpell(
   const overchannel = spell.level >= 1 && spell.level <= 5 ? armedOverchannel(caster, conditionLookup(decision.ctx.rules.content)) : null;
   const declared = declareResolution(decision, {
     actor: caster,
-    source: { kind: "spell", spellId: spell.id, slotLevel, ...(overchannel === null ? {} : { maximized: true as const }) },
+    source: {
+      kind: "spell",
+      spellId: spell.id,
+      slotLevel,
+      ...(overchannel === null ? {} : { maximized: true as const }),
+      ...(armed === null || armed.option === "quickened" || armed.option === "twinned" ? {} : { metamagic: armed.option }),
+    },
     targetIds: targets,
     purpose: "action",
     cost: { ...noCost, action: !bonus, bonusAction: bonus, spellSlot: spell.level === 0 || caster.spellcasting?.innate?.[spell.id] !== undefined ? null : slotLevel },

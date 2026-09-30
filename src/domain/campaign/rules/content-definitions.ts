@@ -534,6 +534,7 @@ function capabilitiesFor(effect: Effect): readonly Capability[] {
       return ["conditions"];
     case "grantAction":
     case "grantMovement":
+    case "gainSlot":
       return [];
     default:
       return assertNever(effect);

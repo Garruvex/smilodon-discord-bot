@@ -43,7 +43,7 @@ function openWindow(decision: Decision, encounter: EncounterState, resolution: R
 // A foe is casting a spell: a hero who can counter it (a slot of the spell's level or higher, and at least the 3rd)
 // gets to say so before anything is rolled. True when a window opened (the caller stops).
 export function offerCounterspell(decision: Decision, encounter: EncounterState, resolution: ResolutionState): boolean {
-  if (resolution.source.kind !== "spell" || resolution.purpose === "reaction") return false;
+  if (resolution.source.kind !== "spell" || resolution.purpose === "reaction" || resolution.source.metamagic === "subtle") return false;
   const caster = encounter.combatants[resolution.actorId];
   if (caster === undefined || caster.side !== "foes") return false;
   const content = decision.ctx.rules.content;
