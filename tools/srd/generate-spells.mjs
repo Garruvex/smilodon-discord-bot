@@ -335,6 +335,7 @@ for (const spell of spells) {
   let relation;
   let count;
   let perHigher = 0;
+  let area = false;
   let plan;
   if (planned === null) {
     summary.narrative += 1;
@@ -347,13 +348,19 @@ for (const spell of spells) {
     relation = planned.relation;
     count = planned.count;
     perHigher = planned.countPerHigherSlot;
+    // A hostile area of ten feet or more reaches everyone in the zone it is aimed at.
+    if (relation === "enemy" && (spell.area_of_effect?.size ?? 0) >= 10) {
+      area = true;
+      count = 1;
+      perHigher = 0;
+    }
     plan = planned.wrap(planned.body);
     if (range.kind === "self" && relation !== "self" && spell.area_of_effect === undefined && curated[spell.index] === undefined) relation = "self";
   }
   const cleanNotes = notes.filter((note) => note !== "");
   const comment = cleanNotes.length === 0 ? "" : cleanNotes.map((note) => `// ${note}`).join(nl) + nl;
   const rangeCode = range.kind === "feet" ? `{ kind: "feet", feet: ${range.feet} }` : `{ kind: ${quote(range.kind)} }`;
-  const targeting = `{ relation: ${quote(relation)}, count: ${count}${perHigher > 0 ? `, countPerHigherSlot: ${perHigher}` : ""} }`;
+  const targeting = `{ relation: ${quote(relation)}, count: ${count}${perHigher > 0 ? `, countPerHigherSlot: ${perHigher}` : ""}${area ? ", area: true" : ""} }`;
   spellLines.push(`${comment}export const ${name} = defineSpell({
   id: ${quote(`spell:${spell.index}`)},
   source,

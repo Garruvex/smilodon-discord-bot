@@ -489,7 +489,7 @@ describe("class features", () => {
     const fight = borinFirst(state);
     expect(fight.combatant("c-borin").spellcasting?.saveDcs?.["spell:fireball"]).toBe(15);
     // Both goblins fail their Dexterity saves (3), and 8d6 rolls a 4 on each die.
-    fight.rolls([3, 3], Array.from({ length: 8 }, () => 4)).run(jamie, { kind: "combatCast", combatantId: "c-borin", spellId: "spell:fireball", slotLevel: 3, targetIds: ["goblin-a", "goblin-b"] });
+    fight.rolls([3, 3], Array.from({ length: 8 }, () => 4)).run(jamie, { kind: "combatCast", combatantId: "c-borin", spellId: "spell:fireball", slotLevel: 3, targetIds: ["goblin-a"] });
     expect(fight.combatant("goblin-a").hp).toBe(0);
     expect(fight.combatant("goblin-b").hp).toBe(0);
     expect(fight.combatant("c-borin").resources.featureUses["innate:spell:fireball"]).toBe(6);
@@ -502,7 +502,7 @@ describe("class features", () => {
     const state: CampaignState = { ...base, characters: { ...base.characters, "c-borin": { ...hero, equipment: [...hero.equipment, "item:scroll-of-fireball" as const] } } };
     const fight = borinFirst(state);
     expect(fight.combatant("c-borin").spellcasting?.saveDcs?.["spell:fireball"]).toBe(15);
-    fight.rolls([3, 3], Array.from({ length: 8 }, () => 4)).run(jamie, { kind: "combatCast", combatantId: "c-borin", spellId: "spell:fireball", slotLevel: 3, targetIds: ["goblin-a", "goblin-b"] });
+    fight.rolls([3, 3], Array.from({ length: 8 }, () => 4)).run(jamie, { kind: "combatCast", combatantId: "c-borin", spellId: "spell:fireball", slotLevel: 3, targetIds: ["goblin-a"] });
     expect(fight.combatant("goblin-a").hp).toBe(0);
     expect(fight.combatant("c-borin").resources.featureUses["innate:spell:fireball"]).toBe(0);
   });

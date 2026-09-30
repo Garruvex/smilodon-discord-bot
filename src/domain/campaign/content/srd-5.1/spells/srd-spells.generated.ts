@@ -370,7 +370,7 @@ export const blackTentacles = defineSpell({
   level: 4,
   castingTime: "action",
   range: { kind: "feet", feet: 90 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: true,
   plan: ({ slotLevel }) => ({ check: { kind: "savingThrow", ability: "dex" }, onLand: [{ kind: "damage", target: "target", amount: diceAt(blackTentaclesDamage, slotLevel), damageType: "bludgeoning" }], onAvoid: [] }),
 });
@@ -381,7 +381,7 @@ export const bladeBarrier = defineSpell({
   level: 6,
   castingTime: "action",
   range: { kind: "feet", feet: 90 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: true,
   plan: ({ slotLevel }) => ({ check: { kind: "savingThrow", ability: "dex" }, onLand: [{ kind: "damage", target: "target", amount: diceAt(bladeBarrierDamage, slotLevel), damageType: "slashing" }], onAvoid: [{ kind: "damage", target: "target", amount: diceAt(bladeBarrierDamage, slotLevel), damageType: "slashing", halfOfLand: true }] }),
 });
@@ -449,7 +449,7 @@ export const burningHands = defineSpell({
   level: 1,
   castingTime: "action",
   range: { kind: "feet", feet: 15 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: false,
   plan: ({ slotLevel }) => ({ check: { kind: "savingThrow", ability: "dex" }, onLand: [{ kind: "damage", target: "target", amount: diceAt(burningHandsDamage, slotLevel), damageType: "fire" }], onAvoid: [{ kind: "damage", target: "target", amount: diceAt(burningHandsDamage, slotLevel), damageType: "fire", halfOfLand: true }] }),
 });
@@ -505,7 +505,7 @@ export const circleOfDeath = defineSpell({
   level: 6,
   castingTime: "action",
   range: { kind: "feet", feet: 150 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: false,
   plan: ({ slotLevel }) => ({ check: { kind: "savingThrow", ability: "con" }, onLand: [{ kind: "damage", target: "target", amount: diceAt(circleOfDeathDamage, slotLevel), damageType: "necrotic" }], onAvoid: [{ kind: "damage", target: "target", amount: diceAt(circleOfDeathDamage, slotLevel), damageType: "necrotic", halfOfLand: true }] }),
 });
@@ -540,7 +540,7 @@ export const cloudkill = defineSpell({
   level: 5,
   castingTime: "action",
   range: { kind: "feet", feet: 120 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: true,
   plan: ({ slotLevel }) => ({ check: { kind: "savingThrow", ability: "con" }, onLand: [{ kind: "damage", target: "target", amount: diceAt(cloudkillDamage, slotLevel), damageType: "poison" }], onAvoid: [{ kind: "damage", target: "target", amount: diceAt(cloudkillDamage, slotLevel), damageType: "poison", halfOfLand: true }] }),
 });
@@ -552,7 +552,7 @@ export const colorSpray = defineSpell({
   level: 1,
   castingTime: "action",
   range: { kind: "feet", feet: 15 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: false,
   plan: () => ({ check: null, onLand: [{ kind: "applyCondition", target: "target", condition: "condition:blinded", duration: { kind: "rounds", count: 1 } }], onAvoid: [] }),
 });
@@ -600,7 +600,7 @@ export const coneOfCold = defineSpell({
   level: 5,
   castingTime: "action",
   range: { kind: "feet", feet: 60 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: false,
   plan: ({ slotLevel }) => ({ check: { kind: "savingThrow", ability: "con" }, onLand: [{ kind: "damage", target: "target", amount: diceAt(coneOfColdDamage, slotLevel), damageType: "cold" }], onAvoid: [{ kind: "damage", target: "target", amount: diceAt(coneOfColdDamage, slotLevel), damageType: "cold", halfOfLand: true }] }),
 });
@@ -612,7 +612,7 @@ export const confusion = defineSpell({
   level: 4,
   castingTime: "action",
   range: { kind: "feet", feet: 90 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: true,
   plan: () => ({ check: { kind: "savingThrow", ability: "wis" }, onLand: [{ kind: "applyCondition", target: "target", condition: "condition:incapacitated", duration: { kind: "untilRemoved" } }], onAvoid: [] }),
 });
@@ -743,7 +743,7 @@ export const controlWater = defineSpell({
   level: 4,
   castingTime: "action",
   range: { kind: "feet", feet: 300 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: true,
   plan: ({ slotLevel }) => ({ check: { kind: "savingThrow", ability: "str" }, onLand: [{ kind: "damage", target: "target", amount: diceAt(controlWaterDamage, slotLevel), damageType: "bludgeoning" }], onAvoid: [{ kind: "damage", target: "target", amount: diceAt(controlWaterDamage, slotLevel), damageType: "bludgeoning", halfOfLand: true }] }),
 });
@@ -886,7 +886,7 @@ export const delayedBlastFireball = defineSpell({
   level: 7,
   castingTime: "action",
   range: { kind: "feet", feet: 150 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: true,
   plan: ({ slotLevel }) => ({ check: { kind: "savingThrow", ability: "dex" }, onLand: [{ kind: "damage", target: "target", amount: diceAt(delayedBlastFireballDamage, slotLevel), damageType: "fire" }], onAvoid: [{ kind: "damage", target: "target", amount: diceAt(delayedBlastFireballDamage, slotLevel), damageType: "fire", halfOfLand: true }] }),
 });
@@ -969,7 +969,7 @@ export const disintegrate = defineSpell({
   level: 6,
   castingTime: "action",
   range: { kind: "feet", feet: 60 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: false,
   plan: ({ slotLevel }) => ({ check: { kind: "savingThrow", ability: "dex" }, onLand: [{ kind: "damage", target: "target", amount: diceAt(disintegrateDamage, slotLevel), damageType: "force" }], onAvoid: [] }),
 });
@@ -1135,7 +1135,7 @@ export const entangle = defineSpell({
   level: 1,
   castingTime: "action",
   range: { kind: "feet", feet: 90 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: true,
   plan: () => ({ check: { kind: "savingThrow", ability: "str" }, onLand: [{ kind: "applyCondition", target: "target", condition: "condition:restrained", duration: { kind: "untilRemoved" } }], onAvoid: [] }),
 });
@@ -1207,7 +1207,7 @@ export const faerieFire = defineSpell({
   level: 1,
   castingTime: "action",
   range: { kind: "feet", feet: 60 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: true,
   plan: () => ({ check: { kind: "savingThrow", ability: "dex" }, onLand: [{ kind: "applyModifiers", target: "target", modifiers: [{ kind: "attacksAgainst", mode: "advantage", reach: "any" }], duration: { kind: "untilRemoved" } }], onAvoid: [] }),
 });
@@ -1240,7 +1240,7 @@ export const fear = defineSpell({
   level: 3,
   castingTime: "action",
   range: { kind: "feet", feet: 30 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: true,
   plan: () => ({ check: { kind: "savingThrow", ability: "wis" }, onLand: [{ kind: "applyCondition", target: "target", condition: "condition:frightened", duration: { kind: "rounds", count: 10 } }], onAvoid: [] }),
 });
@@ -1345,7 +1345,7 @@ export const fireStorm = defineSpell({
   level: 7,
   castingTime: "action",
   range: { kind: "feet", feet: 150 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: false,
   plan: ({ slotLevel }) => ({ check: { kind: "savingThrow", ability: "dex" }, onLand: [{ kind: "damage", target: "target", amount: diceAt(fireStormDamage, slotLevel), damageType: "fire" }], onAvoid: [{ kind: "damage", target: "target", amount: diceAt(fireStormDamage, slotLevel), damageType: "fire", halfOfLand: true }] }),
 });
@@ -1356,7 +1356,7 @@ export const fireball = defineSpell({
   level: 3,
   castingTime: "action",
   range: { kind: "feet", feet: 150 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: false,
   plan: ({ slotLevel }) => ({ check: { kind: "savingThrow", ability: "dex" }, onLand: [{ kind: "damage", target: "target", amount: diceAt(fireballDamage, slotLevel), damageType: "fire" }], onAvoid: [{ kind: "damage", target: "target", amount: diceAt(fireballDamage, slotLevel), damageType: "fire", halfOfLand: true }] }),
 });
@@ -1378,7 +1378,7 @@ export const flameStrike = defineSpell({
   level: 5,
   castingTime: "action",
   range: { kind: "feet", feet: 60 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: false,
   plan: ({ slotLevel }) => ({ check: { kind: "savingThrow", ability: "dex" }, onLand: [{ kind: "damage", target: "target", amount: diceAt(flameStrikeDamage, slotLevel), damageType: "fire" }, { kind: "damage", target: "target", amount: diceAt(flameStrikeDamage2, slotLevel), damageType: "radiant" }], onAvoid: [{ kind: "damage", target: "target", amount: diceAt(flameStrikeDamage, slotLevel), damageType: "fire", halfOfLand: true }, { kind: "damage", target: "target", amount: diceAt(flameStrikeDamage2, slotLevel), damageType: "radiant", halfOfLand: true }] }),
 });
@@ -1499,7 +1499,7 @@ export const freezingSphere = defineSpell({
   level: 6,
   castingTime: "action",
   range: { kind: "feet", feet: 300 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: false,
   plan: ({ slotLevel }) => ({ check: { kind: "savingThrow", ability: "con" }, onLand: [{ kind: "damage", target: "target", amount: diceAt(freezingSphereDamage, slotLevel), damageType: "cold" }], onAvoid: [{ kind: "damage", target: "target", amount: diceAt(freezingSphereDamage, slotLevel), damageType: "cold", halfOfLand: true }] }),
 });
@@ -1618,7 +1618,7 @@ export const grease = defineSpell({
   level: 1,
   castingTime: "action",
   range: { kind: "feet", feet: 60 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: false,
   plan: () => ({ check: { kind: "savingThrow", ability: "dex" }, onLand: [{ kind: "applyCondition", target: "target", condition: "condition:prone", duration: { kind: "rounds", count: 1 } }], onAvoid: [] }),
 });
@@ -1652,7 +1652,7 @@ export const guardianOfFaith = defineSpell({
   level: 4,
   castingTime: "action",
   range: { kind: "feet", feet: 30 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: false,
   plan: ({ slotLevel }) => ({ check: { kind: "savingThrow", ability: "dex" }, onLand: [{ kind: "damage", target: "target", amount: diceAt(guardianOfFaithDamage, slotLevel), damageType: "radiant" }], onAvoid: [{ kind: "damage", target: "target", amount: diceAt(guardianOfFaithDamage, slotLevel), damageType: "radiant", halfOfLand: true }] }),
 });
@@ -1860,7 +1860,7 @@ export const iceStorm = defineSpell({
   level: 4,
   castingTime: "action",
   range: { kind: "feet", feet: 300 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: false,
   plan: ({ slotLevel }) => ({ check: { kind: "savingThrow", ability: "dex" }, onLand: [{ kind: "damage", target: "target", amount: diceAt(iceStormDamage, slotLevel), damageType: "bludgeoning" }, { kind: "damage", target: "target", amount: diceAt(iceStormDamage2, slotLevel), damageType: "cold" }], onAvoid: [{ kind: "damage", target: "target", amount: diceAt(iceStormDamage, slotLevel), damageType: "bludgeoning", halfOfLand: true }, { kind: "damage", target: "target", amount: diceAt(iceStormDamage2, slotLevel), damageType: "cold", halfOfLand: true }] }),
 });
@@ -1896,7 +1896,7 @@ export const incendiaryCloud = defineSpell({
   level: 8,
   castingTime: "action",
   range: { kind: "feet", feet: 150 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: true,
   plan: ({ slotLevel }) => ({ check: { kind: "savingThrow", ability: "dex" }, onLand: [{ kind: "damage", target: "target", amount: diceAt(incendiaryCloudDamage, slotLevel), damageType: "fire" }], onAvoid: [{ kind: "damage", target: "target", amount: diceAt(incendiaryCloudDamage, slotLevel), damageType: "fire", halfOfLand: true }] }),
 });
@@ -1907,7 +1907,7 @@ export const insectPlague = defineSpell({
   level: 5,
   castingTime: "action",
   range: { kind: "feet", feet: 300 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: true,
   plan: ({ slotLevel }) => ({ check: { kind: "savingThrow", ability: "con" }, onLand: [{ kind: "damage", target: "target", amount: diceAt(insectPlagueDamage, slotLevel), damageType: "piercing" }], onAvoid: [{ kind: "damage", target: "target", amount: diceAt(insectPlagueDamage, slotLevel), damageType: "piercing", halfOfLand: true }] }),
 });
@@ -2026,7 +2026,7 @@ export const lightningBolt = defineSpell({
   level: 3,
   castingTime: "action",
   range: { kind: "feet", feet: 100 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: false,
   plan: ({ slotLevel }) => ({ check: { kind: "savingThrow", ability: "dex" }, onLand: [{ kind: "damage", target: "target", amount: diceAt(lightningBoltDamage, slotLevel), damageType: "lightning" }], onAvoid: [{ kind: "damage", target: "target", amount: diceAt(lightningBoltDamage, slotLevel), damageType: "lightning", halfOfLand: true }] }),
 });
@@ -2264,7 +2264,7 @@ export const meteorSwarm = defineSpell({
   level: 9,
   castingTime: "action",
   range: { kind: "feet", feet: 500 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: false,
   plan: ({ slotLevel }) => ({ check: { kind: "savingThrow", ability: "dex" }, onLand: [{ kind: "damage", target: "target", amount: diceAt(meteorSwarmDamage, slotLevel), damageType: "fire" }, { kind: "damage", target: "target", amount: diceAt(meteorSwarmDamage2, slotLevel), damageType: "bludgeoning" }], onAvoid: [{ kind: "damage", target: "target", amount: diceAt(meteorSwarmDamage, slotLevel), damageType: "fire", halfOfLand: true }, { kind: "damage", target: "target", amount: diceAt(meteorSwarmDamage2, slotLevel), damageType: "bludgeoning", halfOfLand: true }] }),
 });
@@ -2885,7 +2885,7 @@ export const shatter = defineSpell({
   level: 2,
   castingTime: "action",
   range: { kind: "feet", feet: 60 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: false,
   plan: ({ slotLevel }) => ({ check: { kind: "savingThrow", ability: "con" }, onLand: [{ kind: "damage", target: "target", amount: diceAt(shatterDamage, slotLevel), damageType: "thunder" }], onAvoid: [{ kind: "damage", target: "target", amount: diceAt(shatterDamage, slotLevel), damageType: "thunder", halfOfLand: true }] }),
 });
@@ -2957,7 +2957,7 @@ export const sleep = defineSpell({
   level: 1,
   castingTime: "action",
   range: { kind: "feet", feet: 90 },
-  targeting: { relation: "enemy", count: 3, countPerHigherSlot: 2 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: false,
   plan: () => ({ check: { kind: "savingThrow", ability: "wis" }, onLand: [{ kind: "applyCondition", target: "target", condition: "condition:unconscious", duration: { kind: "rounds", count: 10 } }], onAvoid: [] }),
 });
@@ -2981,7 +2981,7 @@ export const slow = defineSpell({
   level: 3,
   castingTime: "action",
   range: { kind: "feet", feet: 120 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: true,
   plan: () => ({ check: { kind: "savingThrow", ability: "wis" }, onLand: [{ kind: "applyModifiers", target: "target", modifiers: [{ kind: "acBonus", amount: -2 }, { kind: "saves", ability: "dex", mode: "disadvantage" }], duration: { kind: "untilRemoved" } }], onAvoid: [] }),
 });
@@ -3090,7 +3090,7 @@ export const stinkingCloud = defineSpell({
   level: 3,
   castingTime: "action",
   range: { kind: "feet", feet: 90 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: true,
   plan: () => ({ check: { kind: "savingThrow", ability: "con" }, onLand: [{ kind: "applyCondition", target: "target", condition: "condition:poisoned", duration: { kind: "untilRemoved" } }], onAvoid: [] }),
 });
@@ -3124,7 +3124,7 @@ export const stormOfVengeance = defineSpell({
   level: 9,
   castingTime: "action",
   range: { kind: "feet", feet: 120 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: true,
   plan: ({ slotLevel }) => ({ check: { kind: "savingThrow", ability: "con" }, onLand: [{ kind: "damage", target: "target", amount: diceAt(stormOfVengeanceDamage, slotLevel), damageType: "thunder" }], onAvoid: [] }),
 });
@@ -3147,7 +3147,7 @@ export const sunbeam = defineSpell({
   level: 6,
   castingTime: "action",
   range: { kind: "feet", feet: 60 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: true,
   plan: ({ slotLevel }) => ({ check: { kind: "savingThrow", ability: "con" }, onLand: [{ kind: "damage", target: "target", amount: diceAt(sunbeamDamage, slotLevel), damageType: "radiant" }], onAvoid: [{ kind: "damage", target: "target", amount: diceAt(sunbeamDamage, slotLevel), damageType: "radiant", halfOfLand: true }] }),
 });
@@ -3158,7 +3158,7 @@ export const sunburst = defineSpell({
   level: 8,
   castingTime: "action",
   range: { kind: "feet", feet: 150 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: false,
   plan: ({ slotLevel }) => ({ check: { kind: "savingThrow", ability: "con" }, onLand: [{ kind: "damage", target: "target", amount: diceAt(sunburstDamage, slotLevel), damageType: "radiant" }], onAvoid: [{ kind: "damage", target: "target", amount: diceAt(sunburstDamage, slotLevel), damageType: "radiant", halfOfLand: true }] }),
 });
@@ -3230,7 +3230,7 @@ export const thunderwave = defineSpell({
   level: 1,
   castingTime: "action",
   range: { kind: "feet", feet: 15 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: false,
   plan: ({ slotLevel }) => ({ check: { kind: "savingThrow", ability: "con" }, onLand: [{ kind: "damage", target: "target", amount: diceAt(thunderwaveDamage, slotLevel), damageType: "thunder" }, { kind: "push", target: "target" }], onAvoid: [{ kind: "damage", target: "target", amount: diceAt(thunderwaveDamage, slotLevel), damageType: "thunder", halfOfLand: true }] }),
 });
@@ -3374,7 +3374,7 @@ export const wallOfFire = defineSpell({
   level: 4,
   castingTime: "action",
   range: { kind: "feet", feet: 120 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: true,
   plan: ({ slotLevel }) => ({ check: { kind: "savingThrow", ability: "dex" }, onLand: [{ kind: "damage", target: "target", amount: diceAt(wallOfFireDamage, slotLevel), damageType: "fire" }], onAvoid: [{ kind: "damage", target: "target", amount: diceAt(wallOfFireDamage, slotLevel), damageType: "fire", halfOfLand: true }] }),
 });
@@ -3397,7 +3397,7 @@ export const wallOfIce = defineSpell({
   level: 6,
   castingTime: "action",
   range: { kind: "feet", feet: 120 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: true,
   plan: ({ slotLevel }) => ({ check: { kind: "savingThrow", ability: "dex" }, onLand: [{ kind: "damage", target: "target", amount: diceAt(wallOfIceDamage, slotLevel), damageType: "cold" }], onAvoid: [{ kind: "damage", target: "target", amount: diceAt(wallOfIceDamage, slotLevel), damageType: "cold", halfOfLand: true }] }),
 });
@@ -3420,7 +3420,7 @@ export const wallOfThorns = defineSpell({
   level: 6,
   castingTime: "action",
   range: { kind: "feet", feet: 120 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: true,
   plan: ({ slotLevel }) => ({ check: { kind: "savingThrow", ability: "dex" }, onLand: [{ kind: "damage", target: "target", amount: diceAt(wallOfThornsDamage, slotLevel), damageType: "piercing" }], onAvoid: [{ kind: "damage", target: "target", amount: diceAt(wallOfThornsDamage, slotLevel), damageType: "piercing", halfOfLand: true }] }),
 });
@@ -3470,7 +3470,7 @@ export const web = defineSpell({
   level: 2,
   castingTime: "action",
   range: { kind: "feet", feet: 60 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: true,
   plan: () => ({ check: { kind: "savingThrow", ability: "dex" }, onLand: [{ kind: "applyCondition", target: "target", condition: "condition:restrained", duration: { kind: "untilRemoved" } }], onAvoid: [] }),
 });
@@ -3482,7 +3482,7 @@ export const weird = defineSpell({
   level: 9,
   castingTime: "action",
   range: { kind: "feet", feet: 120 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: true,
   plan: () => ({ check: { kind: "savingThrow", ability: "wis" }, onLand: [{ kind: "applyCondition", target: "target", condition: "condition:frightened", duration: { kind: "untilRemoved" } }], onAvoid: [] }),
 });
@@ -3505,7 +3505,7 @@ export const windWall = defineSpell({
   level: 3,
   castingTime: "action",
   range: { kind: "feet", feet: 120 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "enemy", count: 1, area: true },
   concentration: true,
   plan: ({ slotLevel }) => ({ check: { kind: "savingThrow", ability: "str" }, onLand: [{ kind: "damage", target: "target", amount: diceAt(windWallDamage, slotLevel), damageType: "bludgeoning" }], onAvoid: [{ kind: "damage", target: "target", amount: diceAt(windWallDamage, slotLevel), damageType: "bludgeoning", halfOfLand: true }] }),
 });

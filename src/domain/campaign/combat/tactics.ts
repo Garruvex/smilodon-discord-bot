@@ -118,12 +118,25 @@ function chooseSpell(encounter: EncounterState, monster: Combatant, content: Sea
     }
     if (!hurtsFoes(spell, slotLevel, monster)) continue;
     const reachable = [...spellTargets(encounter, monster, spell, content)].sort((a, b) => (a.hp !== b.hp ? a.hp - b.hp : a.id.localeCompare(b.id)));
-    const targets = reachable.slice(0, spellMaxTargets(spell, slotLevel));
+    const area = spell.targeting.area === true ? bestAreaAnchor(encounter, monster, reachable) : null;
+    const targets = area === null ? reachable.slice(0, spellMaxTargets(spell, slotLevel)) : area.anchor === null ? [] : [area.anchor];
     if (targets.length === 0) continue;
-    const score = spell.level * 10 + targets.length;
+    const score = spell.level * 10 + (area === null ? targets.length : area.net);
     if (best === null || score > best.score) best = { cast: { spellId: id, slotLevel, targetIds: targets.map((target) => target.id) }, score };
   }
   return best?.cast ?? null;
+}
+
+// Where an area is best aimed: the zone that catches the most foes for every friend of the caster (itself included) it also catches,
+// and never one that catches more friends than foes.
+function bestAreaAnchor(encounter: EncounterState, monster: Combatant, reachable: readonly Combatant[]): { readonly anchor: Combatant | null; readonly net: number } {
+  let best: { readonly anchor: Combatant | null; readonly net: number } = { anchor: null, net: 0 };
+  for (const anchor of reachable) {
+    const inZone = Object.values(encounter.combatants).filter((other) => other.zoneId === anchor.zoneId && isActive(other));
+    const net = inZone.filter((other) => other.side !== monster.side).length - inZone.filter((other) => other.side === monster.side).length;
+    if (net > best.net) best = { anchor, net };
+  }
+  return best;
 }
 
 // Whether the spell does harm to whoever it is aimed at: damage, or a condition or modifier laid on them.

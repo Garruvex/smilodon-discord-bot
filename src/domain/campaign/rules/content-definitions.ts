@@ -48,6 +48,8 @@ export interface SpellTargeting {
   // Only creatures of these types may be named (Turn Undead).
   readonly creatureTypes?: readonly CreatureType[];
   // Extra targets per slot level above the spell's level (Bless: 1).
+  // An area: the caster names one creature and the spell reaches every creature in its zone, friends and the caster included.
+  readonly area?: boolean;
   readonly countPerHigherSlot?: number;
 }
 

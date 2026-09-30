@@ -133,7 +133,14 @@ export function spellProblem(
     const problem = spellTargetProblem(encounter, caster, spell, encounter.combatants[targetId], content);
     if (problem !== null) return refuse({ code: problem });
   }
-  return accept({ spell, bonus, targets });
+  return accept({ spell, bonus, targets: spell.targeting.area === true ? withEveryoneInTheirZones(encounter, targets) : targets });
+}
+
+// An area reaches everyone in the zone it is aimed at: the creature named first, then the others, friends and the caster among them.
+function withEveryoneInTheirZones(encounter: EncounterState, named: readonly string[]): readonly string[] {
+  const zones = new Set(named.flatMap((id) => (encounter.combatants[id] === undefined ? [] : [encounter.combatants[id].zoneId])));
+  const others = Object.values(encounter.combatants).filter((other) => zones.has(other.zoneId) && isPresent(other) && !named.includes(other.id));
+  return [...named, ...others.map((other) => other.id)];
 }
 
 // ------------------------------------------------------------- Wild Shape

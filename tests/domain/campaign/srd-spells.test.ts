@@ -51,7 +51,7 @@ describe("casting the generated spells in a fight", () => {
   it("takes full damage from a failed save and half from a successful one", () => {
     // Shatter, three d8 all threes: nine damage. The first goblin fails its save, the second makes it.
     const fight = started(withSpells(["spell:shatter"], { 2: 1 })).rolls([1, 20], [3, 3, 3]);
-    fight.run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:shatter", slotLevel: 2, targetIds: ["goblin-a", "goblin-b"] });
+    fight.run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:shatter", slotLevel: 2, targetIds: ["goblin-a"] });
     expect(fight.combatant("goblin-a").condition).toBe("dead");
     expect(fight.combatant("goblin-b").hp).toBe(3);
   });

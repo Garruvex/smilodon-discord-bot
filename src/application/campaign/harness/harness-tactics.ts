@@ -66,6 +66,9 @@ export function chooseHeroCommand(encounter: EncounterState, hero: Combatant, ro
   // A charmed hero cannot strike the one who charmed them: stand guard instead.
   const forbidden = content === undefined || plan.attack === null ? false : forbiddenAttackTargets(hero, conditionLookup(content)).includes(plan.attack.targetId);
   if (forbidden && hero.budget.action) return { kind: "combatDodge", combatantId: hero.id };
+  // Held in place and out of reach of the target (restrained, say): a melee blow is out of the question.
+  const outOfReach = plan.attack !== null && plan.attack.option.range.kind === "melee" && !engagedWith(encounter, hero.id).some((other) => other.id === plan.attack?.targetId);
+  if (outOfReach && hero.budget.action) return { kind: "combatDodge", combatantId: hero.id };
   if (plan.attack !== null && hero.budget.action) return { kind: "combatAttack", combatantId: hero.id, targetId: plan.attack.targetId, weapon: plan.attack.option.weapon };
   if (plan.dodge && hero.budget.action) return { kind: "combatDodge", combatantId: hero.id };
   return endTurn;

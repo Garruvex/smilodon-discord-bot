@@ -124,6 +124,7 @@ const enBase: Glossary = {
     "feature:empowered-spell": "Empowered Spell",
     "feature:extended-spell": "Extended Spell",
     "feature:subtle-spell": "Subtle Spell",
+    "feature:careful-spell": "Careful Spell",
     "feature:hide": "Hide",
     "feature:mindless-rage": "Mindless Rage",
     "feature:intimidating-presence": "Intimidating Presence",

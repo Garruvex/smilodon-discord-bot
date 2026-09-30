@@ -129,6 +129,7 @@ const zhTwBase: Glossary = {
     "feature:empowered-spell": "強化法術",
     "feature:extended-spell": "延長法術",
     "feature:subtle-spell": "隱密法術",
+    "feature:careful-spell": "謹慎法術",
     "feature:hide": "躲藏",
     "feature:mindless-rage": "無腦狂怒",
     "feature:intimidating-presence": "威嚇存在",

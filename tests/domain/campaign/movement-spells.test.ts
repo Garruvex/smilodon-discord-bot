@@ -48,7 +48,7 @@ describe("Longstrider", () => {
 describe("Web", () => {
   it("restrains creatures that fail their Dexterity save", () => {
     const fight = start(["spell:web"], { 1: 2, 2: 1 });
-    fight.rolls([2, 20]).run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:web", slotLevel: 2, targetIds: ["goblin-a", "goblin-b"] });
+    fight.rolls([2, 20]).run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:web", slotLevel: 2, targetIds: ["goblin-a"] });
     expect(fight.combatant("goblin-a").effects.map((effect) => effect.definition)).toContain("condition:restrained");
     expect(fight.combatant("goblin-b").effects.map((effect) => effect.definition)).not.toContain("condition:restrained");
   });
@@ -104,7 +104,7 @@ describe("Staffs", () => {
     if (hero === undefined) throw new Error("borin");
     const state: CampaignState = { ...base, characters: { ...base.characters, "c-borin": { ...hero, equipment: [...hero.equipment, "item:staff-of-fire" as const] } } };
     const fight = new Fight(state).rolls([1, 20, 5, 4]).run(organizer, { kind: "startEncounter", spec: { ...skirmish, edges: [{ from: "gate", to: "courtyard", feet: 10 }] } });
-    fight.rolls([3, 3], Array.from({ length: 8 }, () => 1)).run(jamie, { kind: "combatCast", combatantId: "c-borin", spellId: "spell:fireball", slotLevel: 3, targetIds: ["goblin-a", "goblin-b"] });
+    fight.rolls([3, 3], Array.from({ length: 8 }, () => 1)).run(jamie, { kind: "combatCast", combatantId: "c-borin", spellId: "spell:fireball", slotLevel: 3, targetIds: ["goblin-a"] });
     // Fireball costs three of the ten charges.
     expect(fight.combatant("c-borin").resources.featureUses["pool:staff-of-fire"]).toBe(7);
     expect(fight.combatant("c-borin").spellcasting?.pools?.["spell:burning-hands"]).toEqual({ key: "pool:staff-of-fire", cost: 1 });

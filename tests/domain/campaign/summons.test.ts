@@ -85,7 +85,7 @@ describe("Thunderwave", () => {
     const state = partyWithSpells(["spell:thunderwave"]);
     const spec = { ...skirmish, zones: [...skirmish.zones, { id: "yard", name: "Yard" }], edges: [{ from: "gate", to: "courtyard", feet: 10 }, { from: "courtyard", to: "yard", feet: 10 }] };
     const fight = new Fight(state).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec });
-    fight.rolls([2, 20], [1, 1]).run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:thunderwave", slotLevel: 1, targetIds: ["goblin-a", "goblin-b"] });
+    fight.rolls([2, 20], [1, 1]).run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:thunderwave", slotLevel: 1, targetIds: ["goblin-a"] });
     // The first goblin failed its save and is thrown back; the second held its ground.
     expect(fight.combatant("goblin-a").zoneId).toBe("yard");
     expect(fight.combatant("goblin-b").zoneId).toBe("courtyard");

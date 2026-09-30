@@ -92,6 +92,8 @@ const metamagicOption = (name: string, option: MetamagicOption, spend: number): 
   });
 export const quickenedSpell = metamagicOption("quickened-spell", "quickened", 2);
 export const twinnedSpell = metamagicOption("twinned-spell", "twinned", 2);
+// Careful Spell (Sorcerer 3): friends in the area, as many as the Charisma modifier (at least one), succeed on the save without rolling.
+export const carefulSpell = metamagicOption("careful-spell", "careful", 1);
 // Sorcerer 10 and 17: Heightened (the first target saves at disadvantage), Empowered (the spellcasting modifier on one damage roll,
 // where the SRD rerolls that many dice), Extended (timed effects last twice as long) and Subtle (cannot be countered).
 export const heightenedSpell = metamagicOption("heightened-spell", "heightened", 3);
@@ -203,6 +205,7 @@ export const srd51HigherLevelFeatures: readonly FeatureDefinition[] = [
   fiendishVigor,
   quickenedSpell,
   twinnedSpell,
+  carefulSpell,
   ...createSlots,
   ...slotsToPoints,
   heightenedSpell,

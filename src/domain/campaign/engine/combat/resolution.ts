@@ -59,6 +59,9 @@ export function declareResolution(decision: Decision, request: DeclareRequest): 
   const autoFailed: Record<CombatantId, TargetOutcome> = {};
   let sneakAttack = false;
   const protectors = new Set<CombatantId>();
+  // Targets that succeed on a saving throw without rolling (Careful Spell), as many as the caster's Charisma modifier allows.
+  const autoSaved: Record<CombatantId, TargetOutcome> = {};
+  let carefulLeft = source.kind === "spell" && source.metamagic === "careful" ? Math.max(1, actor.spellcasting?.modifier ?? 0) : 0;
 
   for (const targetId of request.targetIds) {
     const target = encounter.combatants[targetId];
@@ -71,6 +74,11 @@ export function declareResolution(decision: Decision, request: DeclareRequest): 
     if (check.kind === "savingThrow") {
       if (autoFailsSave(target, check.ability, lookup)) {
         autoFailed[targetId] = { landed: true, critical: false };
+        continue;
+      }
+      if (carefulLeft > 0 && target.side === actor.side && target.id !== actor.id) {
+        carefulLeft -= 1;
+        autoSaved[targetId] = { landed: false, critical: false };
         continue;
       }
       const dc = source.kind === "area" ? source.area.dc : ((source.kind === "spell" ? actor.spellcasting?.saveDcs?.[source.spellId] : undefined) ?? actor.spellcasting?.saveDc ?? 10);
@@ -113,7 +121,7 @@ export function declareResolution(decision: Decision, request: DeclareRequest): 
     purpose: request.purpose,
     stage: "checks",
     checks,
-    outcomes: plan.check === null ? Object.fromEntries(request.targetIds.map((targetId) => [targetId, { landed: true, critical: false }])) : autoFailed,
+    outcomes: plan.check === null ? Object.fromEntries(request.targetIds.map((targetId) => [targetId, { landed: true, critical: false }])) : { ...autoFailed, ...autoSaved },
     effectRolls: {},
     rolled: {},
     sneakAttack,
