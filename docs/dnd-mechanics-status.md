@@ -7,7 +7,7 @@ Race and subrace details are also in `dnd-race-mechanics-status.md`.
 
 - Combat: initiative, actions, bonus actions, reactions (Shield), movement and zones, opportunity attacks, advantage and disadvantage, death saves, concentration.
 - Monsters: Multiattack, breath weapons with recharge, Regeneration, Legendary Resistance, legendary actions (weapon attacks only), auras (Frightful Presence), spellcasting.
-- Spells: all 319 SRD spells exist; 294 are mechanical, and every caster has a spellbook.
+- Spells: all 319 SRD spells exist; 162 are narrative (casting spends the slot, the engine changes nothing), the rest have effects, and every caster has a spellbook.
 - Gear: 187 pieces of equipment, tools, mounts and vehicles.
 - Magic items: all 331 non-generic SRD magic items exist with names in both languages, plus +1 to +3 versions of every weapon, armor and shield. Modeled: those bonuses, named weapons (Flame Tongue, Frost Brand, Sun Blade...), Elven Chain, Dwarven Plate, Animated Shield, the healing potions above the basic one, Ring/Cloak of Protection, ability-setting items (Belt of Giant Strength, Amulet of Health, Gauntlets of Ogre Power, Headband of Intellect), resistance rings, Ring of Warmth, Brooch of Shielding, spell-resistance items and attunement (at most three). The rest are for the story.
 - Class features:

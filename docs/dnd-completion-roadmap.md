@@ -5,51 +5,51 @@ gaps grouped by the engine primitive they need, with size (S: a day or less, M: 
 
 ## 1. Engine primitives (build once, unlock many features)
 
-| Primitive | Size | Unlocks |
+| Primitive | State | What is left |
 |---|---|---|
-| **Reaction windows**: "you were hit", "a foe is casting" and "a foe hurt you" are done; "an ally was hit" and "a save is about to be rolled" are not | L | Counterspell, Absorb Elements, Hellish Rebuke, Cutting Words (Lore), Protection fighting style, Sentinel-style feats, Deflect Missiles (Monk 3), Uncanny Dodge already works |
-| **Reroll and change a roll after it is made**: attack rolls and saving throws in a fight are done (Halfling Lucky, Indomitable); ability checks, rider saves and concentration saves are not | M | Halfling Lucky, Indomitable (Fighter 9), Portent (Divination), Silvery Barbs-style effects, Bardic Inspiration spent after the roll instead of before it |
-| ~~Temporary hit points~~ **done** (combat only; False Life uses it) | S | Still needs Dark One's Blessing (a kill trigger), Heroism's per-turn refresh, Armor of Agathys, Inspiring Leader |
-| ~~Creature types~~ **done** (a `creatureType` trait on every SRD monster) | S | Turn Undead and Divine Smite's extra die are built; Holy Avenger, Dragon Slayer, Giant Slayer, Favored Enemy and Protection from Evil and Good can now read it |
-| **Lighting and vision**: dark zones and darkvision are done; dim light, Sunlight Sensitivity, Light/Darkness spells and hiding are not | M | Drow Sunlight Sensitivity, Light and Darkness spells, stealth |
-| **Positions inside a zone** (range bands, cover, area shapes) | L | Cones, lines, spheres that pick their targets, Sculpt Spells, Fireball versus allies, opportunity-attack reach, cover bonuses |
-| **Summons and companions**: the summon effect is done (Conjure Animals); summons end with the fight (or the caster's concentration), and the player does not steer them | M | Find Familiar, the other conjure spells, Animate Dead, Flaming Sphere (these need their own stat blocks or a way to choose what is summoned) |
-| ~~Sorcery points and spell modification~~ **done in part** (Font of Magic points, Quickened and Twinned Spell) | S | Other Metamagic options, converting slots and points |
-| ~~Warlock invocations~~ **done in part** (Agonizing Blast, Armor of Shadows, Fiendish Vigor, all granted at level 2) | S | Choosing invocations, Pact of the Blade, Hex tie-ins |
-| ~~Grapple and shove~~ **done** for the martial classes (a Strength save stands in for the contest) | S | Escaping a grapple, Open Hand riders, Grappler feats, monster swallows |
-| **Forms other than Wild Shape** (Polymorph, Shapechange, Wild Shape variants) | M | Polymorph, True Polymorph, Circle of the Moon |
-| **Charges and active magic items**: wands, spell scrolls and effect potions are done | M | Staffs (several spells sharing one pool), rods, bags, boots, cursed items |
-| **Movement effects**: push is done (Thunderwave); teleport, fly and difficult terrain are not | M | Misty Step, Dimension Door, Fly, Levitate, Step of the Wind's Dash |
-| **Hide, search and stealth in combat** | M | Cunning Action's Hide, Skulker, surprise |
+| **Reaction windows** | "you were hit", "a foe is casting" and "a foe hurt you" open a prompt (Shield, Counterspell, Hellish Rebuke). Deflect Missiles, Cutting Words and the Protection style are applied automatically, like Uncanny Dodge | A prompt for "an ally was hit" and "a save is about to be rolled" (Cutting Words on saves and damage, Sentinel-style feats) |
+| **Rerolls** | Halfling Lucky and Indomitable on attacks and saves; Stroke of Luck on a missed attack | Ability checks, rider saves and concentration saves |
+| ~~Temporary hit points~~ | done (Dark One's Blessing, False Life, Heroism potions; the hero card shows them) | Armor of Agathys, Inspiring Leader |
+| ~~Creature types~~ | done | Holy Avenger, Dragon Slayer, Giant Slayer and Protection from Evil and Good can read them |
+| **Lighting and vision** | darkvision, dark zones, Light, Daylight and Darkness (they change a zone's lighting for the rest of the fight), Sunlight Sensitivity where a zone is lit as bright | Dim light has no effect; creatures do not carry their own light |
+| **Positions inside a zone** | cover on a zone (half +2, three-quarters +5) against attacks and Dexterity effects from another zone | Range bands, area shapes that pick their targets, cover from creatures, Sculpt Spells (allies are never in an area here, so it does nothing) |
+| ~~Summons and companions~~ | done: Conjure Animals, Spiritual Weapon, the other conjuring spells, summons end with concentration when the spell needs it | Find Familiar and Flaming Sphere; the player does not steer them or pick what is summoned |
+| ~~Sorcery points and spell modification~~ | done: Quickened, Twinned, Heightened, Empowered, Extended, Subtle, and Flexible Casting (creating slots) | Distant and Careful Spell, turning slots into points, the SRD's per-level Twinned cost |
+| **Warlock invocations** | three fixed invocations at level 2, Mystic Arcanum with a fixed spell for each level | Choosing invocations and pact boons, more invocations |
+| ~~Grapple and shove~~ | done, including escaping (an action that always works) | The contest rolls |
+| **Forms** | Wild Shape (Archdruid has no limit), Polymorph and True Polymorph (hostile use, into a frog) | Shapechange, Animal Shapes, choosing the form, Circle of the Moon |
+| **Charges and active magic items** | wands, spell scrolls, effect potions, staffs (Fire, Frost, Healing, Power) sharing one pool | Rods, bags, boots, cursed items, the other staffs |
+| **Movement effects** | push (Thunderwave), movement grants (Misty Step is thirty feet that provokes nothing), speed bonuses (Longstrider, Fly) | A real teleport to a chosen zone, flight, difficult terrain |
+| **Hide and stealth** | Hide (in a zone with cover or darkness, out of foes' reach); the next attack or spell ends it | The Stealth contest, surprise, searching |
 
-## 2. Class features by level (levels 6 to 20, and the parts of 1 to 5 still missing)
+## 2. Class features by level
 
-Levels 1 to 5 are done for the class core. What each class still needs:
+Every SRD class feature from level 1 to 20 is on the sheet from its level (`features/late-features.ts`). The mechanical ones are listed in `dnd-mechanics-status.md`. What has no rule yet:
 
-- **Barbarian:** Brutal Critical (6, 9, 13, 17), Mindless Rage, Relentless Rage (11), Persistent Rage (15), Indomitable Might (18), Primal Champion (20), Feral Instinct (7), Path features 6/10/14. Rage's early-end rule. Size: M.
-- **Bard:** Bardic Inspiration die scaling with the short-rest recharge at 5, Countercharm (6), Song of Rest (2), Expertise (3, 10), Magical Secrets (10, 14, 18), Superior Inspiration (20), Lore: Cutting Words (needs reactions), Additional Magical Secrets. Size: M.
-- **Cleric:** Channel Divinity uses and Turn Undead (needs creature types), Destroy Undead (5), Divine Intervention (10), Domain features at 1/2/6/8/17 (Life domain: Preserve Life pool). Size: M.
-- **Druid:** Wild Shape variants (Circle of the Moon), Timeless Body, Beast Spells, Archdruid, Circle of the Land bonus spells. Size: M.
-- **Fighter:** Fighting Style choice (Archery, Defense, Great Weapon Fighting, Protection, Two-Weapon Fighting), Indomitable (needs rerolls), Second Wind and Action Surge second uses (17), Champion 7/10/15/18. Size: M.
-- **Monk:** Martial Arts dice and unarmed strikes, Flurry of Blows as unarmed strikes, Deflect Missiles, Slow Fall, Stunning Strike (5), Ki-Empowered Strikes, Evasion, Stillness of Mind, Purity of Body, Tongue of the Sun and Moon, Diamond Soul, Timeless Body, Empty Body, Perfect Self, Open Hand riders. Size: L.
-- **Paladin:** Aura of Protection (6), Aura of Courage (10), Improved Divine Smite (11), Cleansing Touch (14), Divine Health (3), Oath features (Devotion 7/15/20), Channel Divinity Turn the Unholy. Size: M.
-- **Ranger:** Favored Enemy and Natural Explorer (bonuses for their terrain and enemy type), Primeval Awareness, Land's Stride, Hide in Plain Sight, Vanish, Feral Senses, Foe Slayer, Hunter 7/11/15, Beast Master companion (needs summons). Size: L.
-- **Rogue:** Expertise, Evasion (7), Reliable Talent (11), Blindsense (14), Slippery Mind (15), Elusive (18), Stroke of Luck (20), Thief 9/13/17, Fast Hands, Second-Story Work. Size: M.
-- **Sorcerer:** Font of Magic, Metamagic, Sorcerous Restoration, Draconic Bloodline 6/14/18 (elemental affinity, dragon wings, draconic presence), Sorcerous Origin. Size: L.
-- **Warlock:** Pact boons, Eldritch Invocations, Mystic Arcanum (11+), Eldritch Master, The Fiend: Dark One's Blessing, Dark One's Own Luck, Fiendish Resilience, Hurl Through Hell. Size: L.
-- **Wizard:** Arcane Tradition features (Evocation: Sculpt Spells, Potent Cantrip, Empowered Evocation, Overchannel), Spell Mastery, Signature Spells. Size: M.
-- **All classes:** Ability Score Improvement or feat at 4, 8, 12, 16, 19 (the builder needs a level-up choice for it), multiclass proficiencies and spell slot merging checks. Size: M.
+- **Barbarian:** Retaliation (14), Persistent Rage (no early end to persist).
+- **Bard:** Countercharm, Superior Inspiration, Magical Secrets (no spells outside the class list), Expertise (3, 10).
+- **Cleric:** Divine Intervention.
+- **Druid:** Circle of the Land bonus spells, Nature's Ward and Sanctuary, Land's Stride.
+- **Fighter:** Additional Fighting Style (the builder holds one style).
+- **Monk:** Tongue of the Sun and Moon, Timeless Body, Quivering Palm, Perfect Self, Open Hand Technique, Tranquility, Slow Fall.
+- **Paladin:** Cleansing Touch, Purity of Heart, Divine Health.
+- **Ranger:** Favored Enemy and Natural Explorer (out of combat), Primeval Awareness, Defensive Tactics, Hunter's Multiattack, Superior Hunter's Defense, Feral Senses.
+- **Rogue:** Blindsense, Thief's Reflexes, Supreme Sneak, Use Magic Device, Second-Story Work.
+- **Sorcerer:** Dragon Wings, Draconic Presence.
+- **Warlock:** Dark One's Own Luck, Fiendish Resilience, Hurl Through Hell, Eldritch Master.
+- **Wizard:** Sculpt Spells, Spell Mastery, Signature Spells.
+- **All classes:** the builder has no choices for feats, and the SRD has none beyond Grappler.
 
 ## 3. Spells
 
-- 294 of 319 are mechanical; the other 25 are named only and need the primitives above (terrain, teleport, summons, polymorph forms).
+- All 319 SRD spells exist. 162 of them are narrative: casting spends the slot and the Narrator describes it, and the engine changes nothing. The rest have effects (damage, healing, conditions, buffs, summons, movement, lighting). The narrative ones mostly need what section 1 lists as missing: areas that pick targets, terrain, real teleport and flight, walls, divination and travel.
 - Reaction spells (Counterspell, Absorb Elements, Hellish Rebuke, Feather Fall, Shield is done).
 - Concentration edge cases: Wild Shape and concentration, upcasting on the reaction path.
 - Ritual casting and out-of-combat use of utility spells beyond the current set.
 
 ## 4. Monsters
 
-- Legendary actions other than weapon attacks (Wing Attack, Detect, Tail Swipe variants), lair actions and regional effects.
+- Legendary actions: weapon attacks and the dragon Wing Attack are played; Detect, Move and Teleport are not. Lair actions and regional effects are not.
 - Possession, charm gazes, engulf and swallow, life drain that lowers maximum HP, Aversion to fire/sunlight, shapechanging (Werewolf, Vampire), summon-on-death.
 - Fear, aura and spell-like traits stated only in text; grapple and shove.
 - Challenge-rating-aware encounter building (only hand-picked encounters exist).
