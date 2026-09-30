@@ -12,7 +12,7 @@ import type { ContentId } from "../rules/content-id.js";
 import { isFallen, type HealingRecord, type PendingHealing } from "../state/campaign-state.js";
 import type { Decision } from "./decision.js";
 import type { Rejection } from "./rejection.js";
-import { mayCastOutsideCombat } from "./utility-magic.js";
+import { mayCastOutsideCombat } from "./outside-combat.js";
 
 // A slotted healing spell (Cure Wounds, Healing Word) cast on a friend outside
 // a fight: it spends a real slot and a real roll decides how much it heals.

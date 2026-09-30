@@ -1,6 +1,7 @@
 // Starting a fight: validating the encounter, placing everyone, rolling initiative.
 import type { EncounterSpec } from "../../commands/campaign-command.js";
 import type { RollId } from "../../core/ids.js";
+import { companionsOf } from "../../companions/companion-roster.js";
 import { isFallen } from "../../state/campaign-state.js";
 import { type Combatant, type EncounterState, type PendingCombatRoll } from "../../combat/combat-state.js";
 import { defaultHeroResources } from "../../character/hero-status.js";
@@ -32,6 +33,14 @@ export function beginEncounter(decision: Decision, spec: EncounterSpec): void {
     if (sheet === undefined || isFallen(state, sheet.id)) continue;
     const status = state.heroStatus[sheet.id] ?? { hp: sheet.maxHp, resources: defaultHeroResources(sheet, content) };
     combatants[sheet.id] = heroCombatant(sheet, content, spec.partyZoneId, status);
+    // What the hero brought along joins on the party's side, wounds and all.
+    for (const companion of companionsOf(state.companions, sheet.id)) {
+      const monster = content.find(companion.monsterId);
+      if (monster?.kind !== "monster") continue;
+      const id = `${sheet.id}-${companion.id.replace(":", "-")}`;
+      const creature = monsterCombatant(monster, content, { id, letter: null, zoneId: spec.partyZoneId, npcId: null, fleeBelowHpFraction: null });
+      combatants[id] = { ...creature, side: "party", companionId: companion.id, hp: companion.hp ?? creature.hp };
+    }
   }
   const counts = new Map<string, number>();
   for (const entry of spec.monsters) counts.set(entry.monsterId, (counts.get(entry.monsterId) ?? 0) + 1);

@@ -1,7 +1,9 @@
 import type { UtilityMagicCommand } from "../commands/campaign-command.js";
 import { spellbookOf } from "../character/spell-access.js";
 import type { CharacterId } from "../core/ids.js";
-import { isFallen, type UtilityCastRecord } from "../state/campaign-state.js";
+import type { UtilityCastRecord } from "../state/campaign-state.js";
+import { summonCompanionRitual } from "./companion-magic.js";
+import { mayCastOutsideCombat } from "./outside-combat.js";
 import type { Decision } from "./decision.js";
 import type { Rejection } from "./rejection.js";
 
@@ -21,18 +23,12 @@ export function handleUtilityMagicCommand(decision: Decision, command: UtilityMa
   }
 }
 
-// Who may cast outside a fight: the hero's own player, while the hero still stands and no fight is on.
-export function mayCastOutsideCombat(decision: Decision, characterId: CharacterId): Rejection | null {
-  const { state, ctx } = decision;
-  if (ctx.actor.kind !== "user" || state.characters[characterId]?.ownerUserId !== ctx.actor.userId) return { code: "notYourCharacter" };
-  if (isFallen(state, characterId)) return { code: "heroFallen" };
-  if (state.encounter !== null && state.encounter.status !== "ended") return { code: "inCombat" };
-  return null;
-}
-
 function castRitualSpell(decision: Decision, characterId: CharacterId, spellId: UtilityCastRecord["spellId"]): Rejection | null {
   const refusal = mayCastOutsideCombat(decision, characterId);
   if (refusal !== null) return refusal;
+  // A ritual that calls a creature keeps it for the next fight; the rest is only told.
+  const companion = summonCompanionRitual(decision, characterId, spellId);
+  if (companion !== undefined) return companion;
   const { state, ctx } = decision;
   const spell = ctx.rules.content.find(spellId);
   const sheet = state.characters[characterId];

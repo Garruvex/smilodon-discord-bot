@@ -110,6 +110,8 @@ export interface Combatant {
   readonly fleeBelowHpFraction: number | null;
   // A summon held up by concentration: the resolution of the spell that called it. It vanishes when that ends.
   readonly boundTo?: string;
+  // A creature the campaign brought along between fights (companions/companion-roster.ts): the roster entry it writes its wounds back to.
+  readonly companionId?: string;
   readonly zoneId: ZoneId;
   readonly initiative: number | null;
   readonly budget: TurnBudget;

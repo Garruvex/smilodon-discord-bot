@@ -1,3 +1,4 @@
+import { afterFight, afterRest, withSummoned, withoutCompanions } from "../companions/companion-roster.js";
 import { assertNever } from "../core/assert-never.js";
 import { swapFightingStyle } from "../character/fighting-styles.js";
 import type { ContentId } from "../rules/content-id.js";
@@ -188,7 +189,11 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     case "combatNarrationRecorded":
       return evolveCombat(state, event);
     case "restTaken":
-      return { ...state, heroStatus: { ...state.heroStatus, ...event.heroStatus } };
+      return withCompanions({ ...state, heroStatus: { ...state.heroStatus, ...event.heroStatus } }, afterRest(state.companions, event.rest));
+    case "companionsSummoned":
+      return { ...state, companions: withSummoned(state.companions, event.companions, event.replaced), heroStatus: { ...state.heroStatus, ...event.heroStatus } };
+    case "companionDismissed":
+      return withCompanions(state, withoutCompanions(state.companions, [event.companionId]));
     // Words are told, not applied: nothing in the state changes.
     case "heroSpoke":
       return state;
@@ -366,14 +371,14 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
 function evolveCombat(state: CampaignState, event: CombatEvent): CampaignState {
   const encounter = evolveEncounter(state.encounter, event);
   if (event.kind === "encounterStarted") {
-    const { characters, heroStatus, stash, gold, offers, offerCount } = state;
+    const { characters, heroStatus, stash, gold, offers, offerCount, companions } = state;
     const baseId = baseEncounterId(event.encounter.id);
     return {
       ...state,
       encounter,
       pendingEncounter: null,
       encounterHistory: state.encounterHistory.includes(baseId) ? state.encounterHistory : [...state.encounterHistory, baseId],
-      fightCheckpoint: { characters, heroStatus, stash, gold, offers, offerCount },
+      fightCheckpoint: { characters, heroStatus, stash, gold, offers, offerCount, companions },
     };
   }
   if (event.kind !== "encounterEnded" || encounter === null) return { ...state, encounter };
@@ -399,7 +404,12 @@ function evolveCombat(state: CampaignState, event: CombatEvent): CampaignState {
       characters[id] = { ...sheet, equipment: [] };
     }
   }
-  return withoutOffers({ ...state, encounter, heroStatus, characters, stash }, (offer) => fallen.includes(offer.fromCharacterId) || fallen.includes(offer.toCharacterId));
+  return withoutOffers(withCompanions({ ...state, encounter, heroStatus, characters, stash }, afterFight(state.companions, Object.values(encounter.combatants))), (offer) => fallen.includes(offer.fromCharacterId) || fallen.includes(offer.toCharacterId));
+}
+
+// The state with a new roster; an absent roster stays absent.
+function withCompanions(state: CampaignState, companions: CampaignState["companions"]): CampaignState {
+  return companions === undefined ? state : { ...state, companions };
 }
 
 function withoutOffers(state: CampaignState, drop: (offer: ItemOffer) => boolean): CampaignState {

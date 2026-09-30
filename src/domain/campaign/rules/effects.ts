@@ -109,7 +109,7 @@ export type Effect =
   // Pushes the target away from the source: into the next zone if one lies within 10 feet and farther from them,
   // otherwise only out of any melee it was in.
   | { readonly kind: "push"; readonly target: EffectTarget }
-  | { readonly kind: "summon"; readonly target: EffectTarget; readonly monsterId: ContentId<"monster">; readonly count: number }
+  | { readonly kind: "summon"; readonly target: EffectTarget; readonly monsterId: ContentId<"monster">; readonly count: number; readonly permanent?: boolean }
   | { readonly kind: "exhaustion"; readonly target: EffectTarget; readonly amount: number };
 
 export type EffectKind = Effect["kind"];

@@ -1268,17 +1268,17 @@ export const feeblemind = defineSpell({
   plan: ({ slotLevel }) => ({ check: { kind: "savingThrow", ability: "int" }, onLand: [{ kind: "damage", target: "target", amount: diceAt(feeblemindDamage, slotLevel), damageType: "psychic" }], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// An owl stands in for the familiar the caster would choose; it stays until it is dismissed or killed, and fights like an owl where the book has a familiar only help.
 export const findFamiliar = defineSpell({
   id: "spell:find-familiar",
   source,
   level: 1,
   castingTime: "long",
   range: { kind: "feet", feet: 10 },
-  targeting: { relation: "creature", count: 1 },
+  targeting: { relation: "self", count: 1 },
   concentration: false,
   ritual: true,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "summon", target: "self", monsterId: "monster:owl", count: 1, permanent: true }], onAvoid: [] }),
 });
 
 // Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.

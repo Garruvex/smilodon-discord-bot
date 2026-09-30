@@ -93,6 +93,7 @@ export type CampaignCommand =
   | DialogueCommand
   | UtilityMagicCommand
   | HealingMagicCommand
+  | CompanionMagicCommand
   | TravelCommand
   | CombatCommand;
 
@@ -137,6 +138,12 @@ export type DialogueCommand =
 export type UtilityMagicCommand =
   | { readonly kind: "castRitualSpell"; readonly characterId: CharacterId; readonly spellId: ContentId<"spell"> }
   | { readonly kind: "recordUtilityCastNarration"; readonly castId: string; readonly text: string };
+
+// A minute-long conjuring or a familiar, cast between fights (engine/companion-magic.ts): the creatures
+// wait in the campaign and join the next fight. A ritual (Find Familiar) costs no slot; any other spends the one named.
+export type CompanionMagicCommand =
+  | { readonly kind: "summonCompanion"; readonly characterId: CharacterId; readonly spellId: ContentId<"spell">; readonly slotLevel: number }
+  | { readonly kind: "dismissCompanion"; readonly characterId: CharacterId; readonly companionId: string };
 
 // A slotted healing spell on a friend outside combat (engine/healing-magic.ts):
 // spends the slot the hero names and heals by the spell's own dice.

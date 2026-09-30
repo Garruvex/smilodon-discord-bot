@@ -13,6 +13,7 @@ import { handleDialogueCommand, recordPressRoll } from "./dialogue.js";
 import { handleShopCommand, recordHaggleRoll } from "./shop.js";
 import { handleTravelCommand, recordHazardRoll } from "./travel.js";
 import { handleHealingMagicCommand, recordHealingRoll } from "./healing-magic.js";
+import { handleCompanionMagicCommand } from "./companion-magic.js";
 import { handleUtilityMagicCommand } from "./utility-magic.js";
 import { Decision, type DecideResult, type EngineContext } from "./decision.js";
 import { beginAdventure, beginPlay, illustrateMoment, markReady, redoPicture, recordLedgerFact, recordNarration, recordOpening, recordSummary, regenerateNarration, replaceNarration, reportPlannerFailure, retryPlan } from "./dm.js";
@@ -132,6 +133,9 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
     case "castRitualSpell":
     case "recordUtilityCastNarration":
       return handleUtilityMagicCommand(decision, command);
+    case "summonCompanion":
+    case "dismissCompanion":
+      return handleCompanionMagicCommand(decision, command);
     case "castHealingSpell":
       return handleHealingMagicCommand(decision, command);
     case "faceHazard":

@@ -1,4 +1,5 @@
 import type { CharacterId, CheckId, Instant, RollId, UserId } from "../core/ids.js";
+import type { Companion } from "../companions/companion-roster.js";
 import type { FightingStyleId } from "../character/fighting-styles.js";
 import type { CombatEvent } from "../combat/combat-events.js";
 import type { HeroStatus } from "../combat/combatant-profile.js";
@@ -188,6 +189,9 @@ export type CampaignEvent =
   | { readonly kind: "utilityCastNarrated"; readonly castId: string; readonly text: string }
   // A hazard save was requested; the pending state a settled roll needs to finish it.
   // A healing spell was cast outside combat; its dice are requested.
+  // Creatures a hero brought along between fights (engine/companion-magic.ts); `heroStatus` is the caster's, with the slot spent.
+  | { readonly kind: "companionsSummoned"; readonly companions: readonly Companion[]; readonly replaced: readonly string[]; readonly heroStatus: Readonly<Record<CharacterId, HeroStatus>> }
+  | { readonly kind: "companionDismissed"; readonly companionId: string }
   | { readonly kind: "healingStarted"; readonly healing: PendingHealing }
   // The healing dice landed: the slot is spent and the hit points restored,
   // both carried as the statuses of the caster and (if another) the target.

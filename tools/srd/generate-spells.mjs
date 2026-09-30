@@ -171,6 +171,7 @@ const curated = {
   "mirror-image": { relation: "self", count: 1, note: "Armor class +3 stands in for the three duplicates.", effects: [{ modifiers: [{ kind: "acBonus", amount: 3 }], duration: { kind: "rounds", count: 10 } }] },
   "enlarge-reduce": { relation: "ally-or-self", count: 1, note: "Only Enlarge is modeled: +2 melee damage stands in for the extra d4.", effects: [{ modifiers: [{ kind: "meleeDamageBonus", amount: 2 }], duration: { kind: "rounds", count: 10 } }] },
   "flaming-sphere": { relation: "self", count: 1, summon: { monster: "flaming-sphere", count: 1 }, note: "A ball of fire fights beside the caster until the fight ends, attacking for the same 2d6 fire; the book has it roll into a creature for a Dexterity save.", effects: [] },
+  "find-familiar": { relation: "self", count: 1, summon: { monster: "owl", count: 1, permanent: true }, note: "An owl stands in for the familiar the caster would choose; it stays until it is dismissed or killed, and fights like an owl where the book has a familiar only help.", effects: [] },
   "animate-dead": { relation: "self", count: 1, summon: { monster: "skeleton", count: 1 }, note: "A skeleton fights beside the caster until the fight ends; it does not need a corpse and is not raised for a day.", effects: [] },
   "conjure-minor-elementals": { relation: "self", count: 1, summon: { monster: "steam-mephit", count: 4 }, note: "Four steam mephits stand in for the elementals the caster would choose.", effects: [] },
   "conjure-woodland-beings": { relation: "self", count: 1, summon: { monster: "satyr", count: 2 }, note: "Two satyrs stand in for the fey the caster would choose.", effects: [] },
@@ -256,7 +257,7 @@ function planFor(spell, notes) {
   if (special !== undefined) {
     summary.curated += 1;
     if (special.note !== "") notes.push(special.note);
-    if (special.summon !== undefined) return { relation: special.relation, count: special.count, countPerHigherSlot: 0, body: `{ check: null, onLand: [{ kind: "summon", target: "self", monsterId: "monster:${special.summon.monster}", count: ${special.summon.count} }], onAvoid: [] }`, params: uses, wrap };
+    if (special.summon !== undefined) return { relation: special.relation, count: special.count, countPerHigherSlot: 0, body: `{ check: null, onLand: [{ kind: "summon", target: "self", monsterId: "monster:${special.summon.monster}", count: ${special.summon.count}${special.summon.permanent ? ", permanent: true" : ""} }], onAvoid: [] }`, params: uses, wrap };
     const land = [];
     const self = [];
     for (const effect of special.effects) {

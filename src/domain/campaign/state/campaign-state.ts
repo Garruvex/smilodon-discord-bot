@@ -1,3 +1,4 @@
+import type { CompanionRoster } from "../companions/companion-roster.js";
 import type { CampaignLanguage, NpcId, SceneId } from "../adventure/adventure-bible.js";
 import type { CharacterSheet, CheckTest } from "../character/character-sheet.js";
 import type { EncounterSpec, PlannedEffect } from "../commands/campaign-command.js";
@@ -121,6 +122,8 @@ export interface CampaignState {
   // told from the saved event; nothing about them is kept here but the count.
   readonly healingPending?: Readonly<Record<CharacterId, PendingHealing>>;
   readonly healingCount: number;
+  // Creatures the heroes brought along between fights (companions/companion-roster.ts). Absent until the first one.
+  readonly companions?: CompanionRoster | undefined;
 }
 
 // A healing spell cast outside combat, its dice requested: the expression is
@@ -251,6 +254,7 @@ export interface FightCheckpoint {
   readonly gold: number;
   readonly offers: Readonly<Record<string, ItemOffer>>;
   readonly offerCount: number;
+  readonly companions?: CompanionRoster | undefined;
 }
 
 // One hero offers an item, optionally for one of the other hero's in return.
