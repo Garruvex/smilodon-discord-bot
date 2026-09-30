@@ -128,7 +128,9 @@ export function heroCombatant(base: CharacterSheet, content: SealedContent, zone
   const traits = heroTraits(base, content);
   const sheet = withMagicScores(base, traits);
   const saveBonus = traits.reduce((sum, trait) => sum + (trait.kind === "saveBonus" ? trait.amount : 0), 0);
-  const weapons = sheet.equipment.flatMap((id) => {
+  // Pact of the Blade: a weapon of the warlock's own, besides whatever they carry.
+  const pact = sheet.features.includes("feature:pact-of-the-blade") ? content.find("item:pact-blade") : undefined;
+  const weapons = [...sheet.equipment, ...(pact === undefined ? [] : [pact.id])].flatMap((id) => {
     const item = content.find(id);
     return item?.kind === "item" && item.itemType === "weapon" ? [item] : [];
   });

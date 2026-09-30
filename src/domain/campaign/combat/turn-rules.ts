@@ -66,7 +66,7 @@ export function costProblem(hero: Combatant, cost: "action" | "bonusAction", con
 
 // ------------------------------------------------------------- Weapons
 
-export function attackProblem(encounter: EncounterState, attacker: Combatant, option: AttackOption, targetId: string, purpose: "action" | "opportunity" | "legendary", content: SealedContent): TurnProblem | null {
+export function attackProblem(encounter: EncounterState, attacker: Combatant, option: AttackOption, targetId: string, purpose: "action" | "opportunity" | "legendary" | "reaction", content: SealedContent): TurnProblem | null {
   if (purpose === "action") {
     // Extra Attack: the Attack action grants more than one attack, so what
     // must still be available is an attack left in it, not the action itself

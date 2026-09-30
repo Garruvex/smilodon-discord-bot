@@ -202,6 +202,12 @@ export function auraBonusFor(encounter: EncounterState, target: Combatant): numb
   return best;
 }
 
+// Countercharm: a bard who can still act, in the target's zone and on its side, gives advantage on saves against being frightened or charmed.
+export function countercharmCovers(encounter: EncounterState, target: Combatant, context: SaveContext): boolean {
+  if (!context.conditions.some((condition) => condition === "condition:frightened" || condition === "condition:charmed")) return false;
+  return Object.values(encounter.combatants).some((other) => other.side === target.side && other.zoneId === target.zoneId && other.hp > 0 && other.condition === "active" && other.traits.some((trait) => trait.kind === "countercharm"));
+}
+
 export function colossusSlayerEligible(attacker: Combatant, target: Combatant): boolean {
   return !attacker.sneakAttackUsed && attacker.traits.some((trait) => trait.kind === "colossusSlayer") && target.hp < target.maxHp;
 }

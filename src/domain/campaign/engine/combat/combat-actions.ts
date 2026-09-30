@@ -1,9 +1,9 @@
 // What a hero does with their action: a weapon attack, a spell, a feature. The rules for each are in combat/turn-rules.ts.
 import { useKeyOf } from "../../rules/content-definitions.js";
 import { proficiencyBonusForLevel } from "../../character/leveling.js";
-import { armedMetamagic, armedOverchannel, armedQuiveringPalm, armedStunningStrike, conditionLookup, hidingEffects } from "../../effects/effect-queries.js";
+import { armedMetamagic, armedHurl, armedOverchannel, armedQuiveringPalm, armedStunningStrike, conditionLookup, hidingEffects } from "../../effects/effect-queries.js";
 import type { ActionCost } from "../../combat/combat-events.js";
-import { type AttackOption, type Combatant, type EncounterState } from "../../combat/combat-state.js";
+import { type AttackOption, type Combatant, type EncounterState, type ResolutionState } from "../../combat/combat-state.js";
 import { attackProblem, featureProblem, smiteProblem, spellProblem } from "../../combat/turn-rules.js";
 import type { ContentId } from "../../rules/content-id.js";
 import type { AreaAttack } from "../../rules/traits.js";
@@ -19,8 +19,10 @@ export function declareWeaponAttack(
   attacker: Combatant,
   targetId: string,
   option: AttackOption,
-  purpose: "action" | "opportunity" | "legendary",
+  purpose: "action" | "opportunity" | "legendary" | "reaction",
   smiteSlot?: number,
+  // A reaction made in the middle of another resolution, which carries on once this one is done.
+  resumes?: ResolutionState,
 ): Rejection | null {
   const encounter = activeEncounter(decision);
   if (encounter === null) return { code: "notInCombat" };
@@ -43,20 +45,24 @@ export function declareWeaponAttack(
   // Quivering Palm (Monk 17): the same for the palm, against the same save.
   const palm = option.range.kind === "melee" ? armedQuiveringPalm(attacker, conditionLookup(decision.ctx.rules.content)) : null;
   const palmDc = palm === null ? undefined : 8 + proficiencyBonusForLevel(attacker.level) + (attacker.saves.wis ?? 0);
+  // Hurl Through Hell (Warlock 14): a readied one rides on this attack, melee or ranged.
+  const hurl = armedHurl(attacker, conditionLookup(decision.ctx.rules.content));
   const declared = declareResolution(decision, {
     actor: attacker,
-    source: { kind: "weapon", option, ...(smiteSlot === undefined ? {} : { smiteSlot }), ...(stunDc === undefined ? {} : { stunDc }), ...(palmDc === undefined ? {} : { palmDc }) },
+    source: { kind: "weapon", option, ...(smiteSlot === undefined ? {} : { smiteSlot }), ...(stunDc === undefined ? {} : { stunDc }), ...(palmDc === undefined ? {} : { palmDc }), ...(hurl === null ? {} : { hurl: true as const }) },
     targetIds: [targetId],
     purpose,
+    ...(resumes === undefined ? {} : { resumes }),
     cost: {
       ...noCost,
       action: purpose === "action",
-      reaction: purpose === "opportunity",
+      reaction: purpose === "opportunity" || purpose === "reaction",
       spellSlot: smiteSlot ?? null,
     },
   });
   if (declared === null && stunning !== null) decision.emit({ kind: "effectsRemoved", combatantId: attacker.id, effectIds: [stunning], reason: "usedUp" });
   if (declared === null && palm !== null) decision.emit({ kind: "effectsRemoved", combatantId: attacker.id, effectIds: [palm], reason: "usedUp" });
+  if (declared === null && hurl !== null) decision.emit({ kind: "effectsRemoved", combatantId: attacker.id, effectIds: [hurl], reason: "usedUp" });
   if (declared === null) revealed(decision, attacker);
   return declared;
 }

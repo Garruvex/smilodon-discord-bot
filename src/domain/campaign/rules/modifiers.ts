@@ -56,6 +56,8 @@ export type Modifier =
   | { readonly kind: "stunningStrike" }
   // A monk readies Quivering Palm: the next melee weapon hit may drop the target to 0 hit points (used up by the attack).
   | { readonly kind: "quiveringPalm" }
+  // A warlock readies Hurl Through Hell: the next weapon hit sends its target through the lower planes (used up by the attack).
+  | { readonly kind: "hurlThroughHell" }
   // More feet of movement every turn while the effect lasts (Longstrider).
   | { readonly kind: "speedBonus"; readonly amount: number }
   // Unseen by the foes: attacks against the holder have disadvantage and its own attacks advantage; the first attack or spell ends it (Hide).

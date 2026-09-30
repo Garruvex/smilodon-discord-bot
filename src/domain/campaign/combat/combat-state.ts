@@ -174,7 +174,7 @@ export interface ZoneEdge {
 export type ResolutionSource =
   // smiteSlot: Divine Smite's chosen slot level, when spent on this hit.
   // stunDc: a readied Stunning Strike; a melee hit calls for a Constitution save against it.
-  | { readonly kind: "weapon"; readonly option: AttackOption; readonly smiteSlot?: number; readonly stunDc?: number; readonly palmDc?: number }
+  | { readonly kind: "weapon"; readonly option: AttackOption; readonly smiteSlot?: number; readonly stunDc?: number; readonly palmDc?: number; readonly hurl?: true }
   // maximized: Overchannel, so its damage and healing are the most the dice can give. metamagic: heightened, empowered, extended, subtle or careful, readied for this casting.
   | { readonly kind: "spell"; readonly spellId: ContentId<"spell">; readonly slotLevel: number; readonly maximized?: true; readonly destination?: string; readonly metamagic?: "heightened" | "empowered" | "extended" | "subtle" | "careful" }
   | { readonly kind: "feature"; readonly featureId: ContentId<"feature"> }

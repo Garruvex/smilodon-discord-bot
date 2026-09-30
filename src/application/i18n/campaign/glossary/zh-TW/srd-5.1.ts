@@ -300,6 +300,7 @@ const zhTwBase: Glossary = {
     "item:spectral-weapon": "靈魂武器",
     "monster:spiritual-weapon": "靈魂武器",
     "item:scorching-sphere": "灼熱火球",
+    "item:pact-blade": "契約之刃",
     "monster:flaming-sphere": "燃燒火球",
     "item:tusk": "獠牙",
     "monster:bandit": "強盜",

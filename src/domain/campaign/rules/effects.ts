@@ -85,6 +85,8 @@ export type Effect =
       readonly damage: DiceExpression;
       readonly damageType: DamageType;
     }
+  // Divine Intervention: a percentile roll at or under the caster's level (always, at 20th) makes every friend whole.
+  | { readonly kind: "divineIntervention"; readonly target: EffectTarget }
   // A lasting effect made of modifiers alone (Mage Armor's armor class, Faerie Fire's
   // advantage to hit): the same effect record a condition is, ending with its duration
   // or the caster's concentration.

@@ -33,6 +33,8 @@ export const javelin = defineWeapon({
 });
 export const bite = defineWeapon({ id: "item:bite", source, damage: dice(1, 4), damageType: "piercing", range: melee, finesse: false, natural: true });
 export const scorchingSphere = defineWeapon({ id: "item:scorching-sphere", source, damage: dice(2, 6), damageType: "fire", range: melee, finesse: false, natural: true });
+// Pact of the Blade: the weapon the warlock calls into their hand. Always at hand in a fight (the bonus action to summon it is not asked for).
+export const pactBlade = defineWeapon({ id: "item:pact-blade", source, damage: dice(1, 8), damageType: "slashing", range: melee, finesse: true, natural: false });
 export const spectralWeapon = defineWeapon({ id: "item:spectral-weapon", source, damage: dice(1, 8), damageType: "force", range: melee, finesse: false, natural: true });
 
 // Added for the full SRD class roster (step 7): one new melee weapon per
@@ -83,6 +85,7 @@ export const srd51Weapons: readonly WeaponDefinition[] = [
   javelin,
   bite,
   spectralWeapon,
+  pactBlade,
   scorchingSphere,
   greataxe,
   quarterstaff,

@@ -96,6 +96,12 @@ export type Trait =
   | { readonly kind: "darkvision"; readonly feet: number }
   // Warlock invocation Agonizing Blast: the spellcasting modifier is added to each beam of Eldritch Blast.
   | { readonly kind: "agonizingBlast" }
+  // Retaliation (Berserker 10): a creature that damages the holder from close by is struck back, with the holder's reaction.
+  | { readonly kind: "retaliation" }
+  // Countercharm (Bard 6): friends near the holder, the holder too, have advantage on saves against being frightened or charmed.
+  | { readonly kind: "countercharm" }
+  // Superior Hunter's Defense (Hunter 15): when damaged, the holder's reaction gives resistance to that damage type until its next turn.
+  | { readonly kind: "hunterDefense" }
   // Land's Stride: difficult terrain costs nothing extra to cross.
   | { readonly kind: "landsStride" }
   // Sculpt Spells (School of Evocation): the wizard spares some friends from an evocation area, one more than the spell's level.

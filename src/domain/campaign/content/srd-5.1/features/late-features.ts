@@ -9,23 +9,32 @@ const narrative = (name: string): FeatureDefinition => defineFeature({ id: `feat
 
 export const mindlessRage = narrative("mindless-rage");
 export const intimidatingPresence = defineFeature({ id: "feature:intimidating-presence", source, traits: [{ kind: "featureSpell", spell: "spell:intimidating-presence", ability: "cha", uses: 1, recharge: "longRest" }], action: null });
-export const retaliation = narrative("retaliation");
+export const retaliation = defineFeature({ id: "feature:retaliation", source, traits: [{ kind: "retaliation" }], action: null });
 export const persistentRage = narrative("persistent-rage");
 export const indomitableMight = defineFeature({ id: "feature:indomitable-might", source, traits: [{ kind: "indomitableMight" }], action: null });
 export const primalChampion = narrative("primal-champion");
 export const songOfRest = narrative("song-of-rest");
 export const cuttingWords = defineFeature({ id: "feature:cutting-words", source, traits: [{ kind: "cuttingWords" }], action: null });
-export const countercharm = narrative("countercharm");
+// The SRD asks for an action to start the performance; here it is always on while the bard can be heard.
+export const countercharm = defineFeature({ id: "feature:countercharm", source, traits: [{ kind: "countercharm" }], action: null });
 export const additionalMagicalSecrets = narrative("additional-magical-secrets");
 export const magicalSecrets = narrative("magical-secrets");
 export const peerlessSkill = narrative("peerless-skill");
 export const superiorInspiration = defineFeature({ id: "feature:superior-inspiration", source, traits: [{ kind: "superiorInspiration" }], action: null });
 export const blessedHealer = defineFeature({ id: "feature:blessed-healer", source, traits: [{ kind: "blessedHealer" }], action: null });
 export const divineStrike = defineFeature({ id: "feature:divine-strike", source, traits: [{ kind: "divineStrike" }], action: null });
-export const divineIntervention = narrative("divine-intervention");
+// The cleric implores their deity: a percentile roll at or under their level (always, at 20th) and the whole party is made whole.
+// The SRD leaves the answer to the DM and holds the power back for a week after it works; here it is once per long rest.
+export const divineIntervention = defineFeature({
+  id: "feature:divine-intervention",
+  source,
+  traits: [],
+  action: { cost: "action", uses: { count: 1, recharge: "longRest" }, plan: () => ({ check: null, onLand: [{ kind: "divineIntervention", target: "self" }], onAvoid: [] }) },
+});
 export const supremeHealing = defineFeature({ id: "feature:supreme-healing", source, traits: [{ kind: "supremeHealing" }], action: null });
 export const landsStride = defineFeature({ id: "feature:lands-stride", source, traits: [{ kind: "landsStride" }], action: null });
-export const naturesWard = narrative("natures-ward");
+// The SRD also shields the druid from charms and fears cast by elementals and fey; only the poison and disease part is played (no disease exists here).
+export const naturesWard = defineFeature({ id: "feature:natures-ward", source, traits: [{ kind: "conditionImmunity", conditions: ["condition:poisoned"] }, { kind: "damageImmunity", damageTypes: ["poison"] }], action: null });
 export const naturesSanctuary = narrative("natures-sanctuary");
 export const timelessBody = narrative("timeless-body");
 export const beastSpells = defineFeature({ id: "feature:beast-spells", source, traits: [{ kind: "beastSpells" }], action: null });
@@ -87,7 +96,7 @@ export const rangersLandsStride = defineFeature({ id: "feature:rangers-lands-str
 export const hideInPlainSight = narrative("hide-in-plain-sight");
 export const hunterMultiattack = narrative("hunter-multiattack");
 export const vanish = defineFeature({ id: "feature:vanish", source, traits: [{ kind: "quickHide" }], action: null });
-export const superiorHuntersDefense = narrative("superior-hunters-defense");
+export const superiorHuntersDefense = defineFeature({ id: "feature:superior-hunters-defense", source, traits: [{ kind: "hunterDefense" }], action: null });
 export const feralSenses = narrative("feral-senses");
 export const foeSlayer = defineFeature({ id: "feature:foe-slayer", source, traits: [{ kind: "foeSlayer" }], action: null });
 export const fastHands = defineFeature({ id: "feature:fast-hands", source, traits: [{ kind: "fastHands" }], action: null });
@@ -120,7 +129,13 @@ export const fiendishResilience = narrative("fiendish-resilience");
 const arcanum = (level: number, spell: `spell:${string}`): FeatureDefinition => defineFeature({ id: `feature:mystic-arcanum-${level}`, source, traits: [{ kind: "featureSpell", spell, ability: "cha", uses: 1, recharge: "longRest" }], action: null });
 export const mysticArcanum6 = arcanum(6, "spell:circle-of-death");
 export const mysticArcanum7 = arcanum(7, "spell:finger-of-death");
-export const hurlThroughHell = narrative("hurl-through-hell");
+// Readies the next hit to send its target through the lower planes: 10d10 psychic damage (a fiend takes none), and it is gone from the fight for a round.
+export const hurlThroughHell = defineFeature({
+  id: "feature:hurl-through-hell",
+  source,
+  traits: [],
+  action: { cost: "free", uses: { count: 1, recharge: "longRest" }, plan: () => ({ check: null, onLand: [{ kind: "applyModifiers", target: "self", modifiers: [{ kind: "hurlThroughHell" }], duration: { kind: "rounds", count: 1 } }], onAvoid: [] }) },
+});
 export const mysticArcanum8 = arcanum(8, "spell:power-word-stun");
 export const mysticArcanum9 = arcanum(9, "spell:power-word-kill");
 export const eldritchMaster = narrative("eldritch-master");

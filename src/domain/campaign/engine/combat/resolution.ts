@@ -4,7 +4,7 @@ import type { RollId } from "../../core/ids.js";
 import { abilityModifier } from "../../character/character-sheet.js";
 import type { ActionCost } from "../../combat/combat-events.js";
 import { areEngaged, isPresent, type Combatant, type CombatantId, type EncounterState, type PendingCheck, type PendingCombatRoll, type PendingEffectRoll, type ResolutionSource, type ResolutionState, type TargetOutcome } from "../../combat/combat-state.js";
-import { armorClassOf, attackBonusOf, autoFailsSave, bonusDiceFor, conditionLookup, hasCondition, hitsAreCritical, modifiersOf, saveBias } from "../../effects/effect-queries.js";
+import { armorClassOf, attackBonusOf, autoFailsSave, bonusDiceFor, conditionLookup, effectResistances, hasCondition, hitsAreCritical, modifiersOf, saveBias } from "../../effects/effect-queries.js";
 import type { EffectInstance } from "../../effects/effect-instance.js";
 import type { D20TestRoll } from "../../dice/d20-test.js";
 import type { SealedContent } from "../../rules/content-registry.js";
@@ -18,15 +18,16 @@ import { classifyRollMoments } from "../../dice/roll-moments.js";
 import { resultMatchesSpec, type RollResult, type RollSpec } from "../../dice/roll-spec.js";
 import type { Effect, EffectDuration } from "../../rules/effects.js";
 import { criticalHits, naturalRollsOnChecks } from "../../rules/house-rules.js";
-import { creatureTypeOf, critThreshold, hasSaveAdvantage, indomitableKey, innateUseKey, isImmuneToCondition, legendaryResistanceKey } from "../../rules/traits.js";
+import { creatureTypeOf, critThreshold, damageMultiplier, hasSaveAdvantage, indomitableKey, innateUseKey, isImmuneToCondition, legendaryResistanceKey } from "../../rules/traits.js";
 import type { Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { activeEncounter, afterResolution, endIfDecided } from "./combat-flow.js";
 import { offerDeathBurst } from "./death-burst.js";
+import { offerRetaliation } from "./retaliation.js";
 import { offerCounterspell, offerReaction, offerRetort } from "./reactions.js";
 import { offerSmite } from "./smite.js";
 import { applyDamage, applyHealing, applyTempHp, endConcentration, recordConcentration } from "./damage.js";
-import { auraBonusFor, colossusSlayerEligible, coverBonus, attackMode, effectForKey, planFor, protectorFor, rangedAttack, saveContextOf, sneakAttackEligible, sneakDice } from "./attack-rules.js";
+import { auraBonusFor, countercharmCovers, colossusSlayerEligible, coverBonus, attackMode, effectForKey, planFor, protectorFor, rangedAttack, saveContextOf, sneakAttackEligible, sneakDice } from "./attack-rules.js";
 export { applyDamage, endConcentration } from "./damage.js";
 export { attackMode } from "./attack-rules.js";
 
@@ -84,7 +85,7 @@ export function declareResolution(decision: Decision, request: DeclareRequest): 
       }
       const dc = source.kind === "area" ? source.area.dc : ((source.kind === "spell" ? actor.spellcasting?.saveDcs?.[source.spellId] : undefined) ?? actor.spellcasting?.saveDc ?? 10);
       const bias = saveBias(target, check.ability, lookup);
-      const racial = hasSaveAdvantage(target.traits, check.ability, saveContextOf(plan, source)) ? 1 : 0;
+      const racial = hasSaveAdvantage(target.traits, check.ability, saveContextOf(plan, source)) || countercharmCovers(encounter, target, saveContextOf(plan, source)) ? 1 : 0;
       // Heightened Spell: the first target saves at disadvantage.
       const heightened = source.kind === "spell" && source.metamagic === "heightened" && targetId === request.targetIds[0] ? 1 : 0;
       spec = { mode: resolveRollMode(bias.advantage + racial, bias.disadvantage + heightened), modifier: target.saves[check.ability] + auraBonusFor(encounter, target) + (check.ability === "dex" ? coverBonus(encounter, actor.id, target) : 0), bonusDice: bonusDiceFor(target, "save") };
@@ -271,7 +272,7 @@ export function settleCheck(decision: Decision, resolutionId: string, rollId: Ro
 // through this instead of the plan directly so the extra effect reaches damage
 // rolling and application the same way any other does.
 export function landEffects(resolution: ResolutionState, encounter: EncounterState): readonly Effect[] {
-  const onLand = withQuiveringPalm(resolution, withStunningStrike(resolution, withCharge(resolution, encounter, withFoeSlayer(resolution, encounter, withMark(resolution, encounter, withDivineStrike(resolution, encounter, withImprovedSmite(resolution, encounter, withSavageAttacks(resolution, encounter))))))));
+  const onLand = withHurl(resolution, encounter, withQuiveringPalm(resolution, withStunningStrike(resolution, withCharge(resolution, encounter, withFoeSlayer(resolution, encounter, withMark(resolution, encounter, withDivineStrike(resolution, encounter, withImprovedSmite(resolution, encounter, withSavageAttacks(resolution, encounter)))))))));
   const slot = resolution.smiteSlot !== undefined ? resolution.smiteSlot : resolution.source.kind === "weapon" ? (resolution.source.smiteSlot ?? null) : null;
   if (slot === null) return onLand;
   // 2d8 for a 1st-level slot, +1d8 per level above that, capped at 5d8; one more d8 against a fiend or undead.
@@ -286,6 +287,15 @@ function withStunningStrike(resolution: ResolutionState, effects: readonly Effec
   const { source } = resolution;
   if (source.kind !== "weapon" || source.stunDc === undefined) return effects;
   return [...effects, { kind: "conditionUnlessSave", target: "target", ability: "con", dc: source.stunDc, condition: "condition:stunned", duration: { kind: "rounds", count: 1 } }];
+}
+
+// Hurl Through Hell: the hit costs 10d10 psychic damage (not to a fiend) and takes the target out of the fight for a round.
+function withHurl(resolution: ResolutionState, encounter: EncounterState, effects: readonly Effect[]): readonly Effect[] {
+  const { source } = resolution;
+  if (source.kind !== "weapon" || source.hurl !== true) return effects;
+  const struck = encounter.combatants[resolution.targetIds[0] ?? ""];
+  const fiend = struck !== undefined && creatureTypeOf(struck.traits) === "fiend";
+  return [...effects, ...(fiend ? [] : [{ kind: "damage" as const, target: "target" as const, amount: dice(10, 10), damageType: "psychic" as const }]), { kind: "applyCondition", target: "target", condition: "condition:incapacitated", duration: { kind: "rounds", count: 2 } }];
 }
 
 // Quivering Palm: the hit drops the target to 0 hit points unless it makes a Constitution save, and then it takes 10d10 necrotic damage.
@@ -427,6 +437,7 @@ export function proceedToEffects(decision: Decision): void {
         };
         rolls[`${encounter.id}:roll:${++sequence}`] = { effectKey: key, targetId: null, spec };
       }
+      if (effect.kind === "divineIntervention") rolls[`${encounter.id}:roll:${++sequence}`] = { effectKey: key, targetId: null, spec: { kind: "dice", expression: dice(1, 100), critical: false } };
       if (effect.kind === "slayUnlessSave") rolls[`${encounter.id}:roll:${++sequence}`] = { effectKey: key, targetId: null, spec: { kind: "dice", expression: effect.damage, critical: false } };
       if (effect.kind === "conditionUnlessSave" || effect.kind === "slayUnlessSave") {
         for (const targetId of targets) {
@@ -435,7 +446,8 @@ export function proceedToEffects(decision: Decision): void {
           const lookup = conditionLookup(decision.ctx.rules.content);
           if (autoFailsSave(target, effect.ability, lookup)) continue;
           const bias = saveBias(target, effect.ability, lookup);
-          const racial = hasSaveAdvantage(target.traits, effect.ability, { conditions: effect.kind === "conditionUnlessSave" ? [effect.condition] : [], damageTypes: [], magic: resolution.source.kind === "spell" }) ? 1 : 0;
+          const context = { conditions: effect.kind === "conditionUnlessSave" ? [effect.condition] : [], damageTypes: [], magic: resolution.source.kind === "spell" };
+          const racial = hasSaveAdvantage(target.traits, effect.ability, context) || countercharmCovers(encounter, target, context) ? 1 : 0;
           const spec: RollSpec = {
             kind: "d20Test",
             spec: { mode: resolveRollMode(bias.advantage + racial, bias.disadvantage), modifier: target.saves[effect.ability] + auraBonusFor(encounter, target), bonusDice: bonusDiceFor(target, "save") },
@@ -532,7 +544,34 @@ export function applyEffect(
       const deflects = !dodges && resolution.source.kind === "weapon" && resolution.source.option.range.kind === "ranged" && isAttack && recipient.traits.some((trait) => trait.kind === "deflectMissiles") && recipient.budget.reaction && !holding;
       if (deflects) decision.emit({ kind: "uncannyDodgeUsed", combatantId: recipient.id });
       const deflected = deflects ? 6 + abilityModifier(decision.state.characters[recipient.id]?.abilityScores.dex ?? 10) + recipient.level : 0;
-      applyDamage(decision, recipient, dodges ? Math.floor(taken / 2) : Math.max(0, taken - deflected), critical, effect.damageType);
+      // Superior Hunter's Defense: the reaction gives resistance to this kind of damage, this blow included.
+      const lookup = conditionLookup(decision.ctx.rules.content);
+      const resisted = damageMultiplier([...recipient.traits, ...effectResistances(recipient, lookup)], effect.damageType) < 1;
+      const hunting = !dodges && !deflects && !resisted && taken > 0 && recipient.hp > 0 && recipient.budget.reaction && !holding && recipient.traits.some((trait) => trait.kind === "hunterDefense");
+      let struck = recipient;
+      if (hunting) {
+        decision.emit({ kind: "uncannyDodgeUsed", combatantId: recipient.id });
+        const now = activeEncounter(decision);
+        const untilRound = now === null || now.order.indexOf(recipient.id) > now.turnIndex ? (now?.round ?? round) : now.round + 1;
+        decision.emit({
+          kind: "effectApplied",
+          combatantId: recipient.id,
+          effect: {
+            id: `${resolution.id}:${recipient.id}:hunters-defense`,
+            definition: "feature:superior-hunters-defense",
+            sourceId: recipient.id,
+            conditions: [],
+            modifiers: [{ kind: "damageResistance", damageTypes: [effect.damageType] }],
+            triggers: [],
+            clock: { follows: "target", boundary: "start", untilRound },
+            concentrationId: null,
+            stacking: "coexist",
+          },
+        });
+        struck = now?.combatants[recipient.id] ?? recipient;
+        struck = activeEncounter(decision)?.combatants[recipient.id] ?? struck;
+      }
+      applyDamage(decision, struck, dodges ? Math.floor(taken / 2) : Math.max(0, taken - deflected), critical, effect.damageType);
       blessedByKill(decision, resolution, recipient);
       return;
     }
@@ -682,6 +721,15 @@ export function applyEffect(
         decision.emit({ kind: "effectApplied", combatantId: recipient.id, effect: conditionInstance(resolution, recipient, effect.condition, key, effect.duration ?? null, round, decision.ctx.rules.content) });
       }
       return;
+    case "divineIntervention": {
+      const roll = resolution.rolled[key] ?? 100;
+      const caster = activeEncounter(decision)?.combatants[resolution.actorId];
+      if (caster === undefined || (caster.level < 20 && roll > caster.level)) return;
+      for (const friend of Object.values(activeEncounter(decision)?.combatants ?? {})) {
+        if (friend.side === caster.side && isPresent(friend) && friend.hp < friend.maxHp) applyHealing(decision, friend, friend.maxHp - friend.hp);
+      }
+      return;
+    }
     case "slayUnlessSave": {
       const failed = resolution.rolled[`rider:${recipient.id}:${key}`] === 0 || autoFailsSave(recipient, effect.ability, conditionLookup(decision.ctx.rules.content));
       // Failing takes the hit points to 0 (a hero falls, a monster dies); passing takes the necrotic damage.
@@ -767,6 +815,7 @@ export function finishResolution(decision: Decision): void {
   decision.request({ kind: "deliver", delivery: { kind: "attackResolved", encounterId: encounter.id, attackId: resolution.id } });
   // A monster that has just died may go off before anything else carries on.
   if (offerDeathBurst(decision, resolution)) return;
+  if (offerRetaliation(decision, resolution)) return;
   if (endIfDecided(decision)) return;
   afterResolution(decision, resolution.resumes ?? resolution);
 }
