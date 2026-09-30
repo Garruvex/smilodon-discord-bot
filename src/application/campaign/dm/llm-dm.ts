@@ -25,7 +25,7 @@ import type { ModelUsage, StructuredModelClient } from "../ports/structured-mode
 
 // Prompt and schema versions are recorded with each call so harness results
 // and bug reports stay comparable (code structure §8).
-export const plannerPromptVersion = "planner-7";
+export const plannerPromptVersion = "planner-8";
 export const narratorPromptVersion = "narrator-6";
 export const flourishPromptVersion = "flourish-5";
 export const tradePromptVersion = "trade-2";
@@ -84,6 +84,12 @@ const plannerOutputSchema = z.object({ actions: z.array(plannedActionSchema), ef
 
 export function plannerJsonSchema(request: PlannerRequest): Record<string, unknown> {
   const nullableEnum = (values: readonly string[]): Record<string, unknown> => ({ type: ["string", "null"], enum: [...values, null] });
+  const targets = [...new Set([
+    ...request.story.sceneIds,
+    ...request.story.encounters.map((encounter) => encounter.id),
+    ...request.story.clocks.map((clock) => clock.id),
+    ...request.story.clues.map((clue) => clue.id),
+  ])];
   return {
     type: "object",
     additionalProperties: false,
@@ -91,6 +97,9 @@ export function plannerJsonSchema(request: PlannerRequest): Record<string, unkno
     properties: {
       effects: {
         type: "array",
+        // An empty enum is an invalid schema, even when the array is empty.
+        // Scenes with no remaining effects must still allow action planning.
+        ...(targets.length === 0 ? { maxItems: 0 } : {}),
         items: {
           type: "object",
           additionalProperties: false,
@@ -99,12 +108,7 @@ export function plannerJsonSchema(request: PlannerRequest): Record<string, unkno
             kind: { type: "string", enum: ["transitionScene", "startEncounter", "advanceClock", "revealClue"] },
             target: {
               type: "string",
-              enum: [
-                ...request.story.sceneIds,
-                ...request.story.encounters.map((encounter) => encounter.id),
-                ...request.story.clocks.map((clock) => clock.id),
-                ...request.story.clues.map((clue) => clue.id),
-              ],
+              ...(targets.length === 0 ? {} : { enum: targets }),
             },
             amount: { type: ["number", "null"] },
             when: { type: "string", enum: ["always", "onSuccess", "onFailure", "onGroupSuccess", "onGroupFailure"] },

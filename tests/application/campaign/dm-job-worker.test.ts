@@ -261,7 +261,22 @@ describe("DmJobWorker", () => {
       glossaries: { en: enSrd51Glossary },
     });
     await retried.runOnce();
+    expect(retry.requests[0]?.previousProblems).toEqual(["The planner call failed: provider timeout"]);
     expect((await store.transaction((tx) => tx.loadCampaign(key)))?.state.round?.status).toBe("resolving");
+  });
+
+  it("carries validation feedback into an organizer retry so the round can reach its roll", async () => {
+    const planner = new ScriptedPlanner([offLadder, offLadder, sneak]);
+    const { store, bus, worker } = await table(planner, new ScriptedNarrator([]));
+    await closeRoundOne(bus);
+    await worker.runOnce();
+    expect((await store.transaction((tx) => tx.loadCampaign(key)))?.state.round?.status).toBe("planning");
+    await bus.execute(key, { kind: "retryPlan" }, { commandId: "retry-validation", actor: organizer });
+    await worker.runOnce();
+    expect(planner.requests[2]?.previousProblems).toEqual(['c-mira: DC tier "tricky" is not on the ladder.']);
+    const state = (await store.transaction((tx) => tx.loadCampaign(key)))?.state;
+    expect(state?.round?.status).toBe("resolving");
+    expect(state?.checks["r1:c-mira"]?.status).toBe("pending");
   });
 
   it("falls back to template narration when the Narrator keeps failing, so play continues", async () => {

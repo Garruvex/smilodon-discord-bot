@@ -108,7 +108,10 @@ export class DmJobWorker {
         ? [{ characterId, heroName: loaded.stored.state.characters[characterId]?.name ?? characterId, text: submission.text }]
         : [],
     );
-    let problems: readonly string[] = [];
+    // An organizer retry is a new job, but it must retain the last failure's
+    // feedback instead of asking the model to repeat the same invalid plan.
+    const previousFailure = loaded.events.findLast((event) => event.kind === "plannerFailed" && event.roundNumber === roundNumber);
+    let problems: readonly string[] = previousFailure?.kind === "plannerFailed" ? previousFailure.problems : [];
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       try {
         const proposal = await this.options.planner.plan({

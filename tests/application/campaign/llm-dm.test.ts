@@ -132,6 +132,14 @@ describe("planner prompt and schema", () => {
     expect(buildPlannerPrompt(plannerRequest).system).not.toContain("Current scene");
   });
 
+  it("can plan actions when no story effect targets remain", () => {
+    const request = { ...plannerRequest, story: { sceneId: "scene:ending", sceneIds: [], encounters: [], clocks: [], clues: [] } };
+    const schema = plannerJsonSchema(request) as { properties: { effects: { maxItems?: number; items: { properties: Record<string, unknown> } } } };
+    expect(schema.properties.effects.maxItems).toBe(0);
+    expect(schema.properties.effects.items.properties.target).toEqual({ type: "string" });
+    expect(parsePlannerOutput(validPlan, request.roundNumber).actions).toHaveLength(1);
+  });
+
   it("limits story effects to known scenes and unfought encounters", () => {
     const schema = plannerJsonSchema(plannerRequest) as { properties: { effects: { items: { properties: Record<string, unknown> } } } };
     expect(schema.properties.effects.items.properties.target).toEqual({
@@ -194,7 +202,7 @@ describe("LLM DM", () => {
     expect(proposal.actions).toHaveLength(1);
     expect(client.requests[0]?.schemaName).toBe("campaign_round_plan");
     expect(observed).toEqual([
-      { call: "planner", model: "fake-model", promptVersion: "planner-7", usage: { inputTokens: 100, outputTokens: 20, cachedInputTokens: 60 } },
+      { call: "planner", model: "fake-model", promptVersion: "planner-8", usage: { inputTokens: 100, outputTokens: 20, cachedInputTokens: 60 } },
     ]);
   });
 
