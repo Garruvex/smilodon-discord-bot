@@ -430,3 +430,29 @@ describe("Charge", () => {
     expect(charged.lost).toBeGreaterThan(walked.lost);
   });
 });
+
+describe("Halfling Lucky on an ability check", () => {
+  function clickedCheck(): ReturnType<typeof run> {
+    const mira = newCampaign().characters["c-mira"];
+    if (mira === undefined) throw new Error("mira");
+    const base: CampaignState = { ...newCampaign(), characters: { ...newCampaign().characters, "c-mira": { ...mira, race: "race:lightfoot-halfling" } } };
+    const opened = run(base, system, { kind: "openRound" }).state;
+    const acted = run(run(opened, alex, { kind: "submitAction", characterId: "c-mira", text: "I pick the lock." }).state, jamie, { kind: "pass", characterId: "c-borin" }).state;
+    const planned = run(acted, system, {
+      kind: "applyRoundPlan",
+      proposal: { roundNumber: 1, actions: [{ characterId: "c-mira", resolution: { kind: "check", test: { kind: "ability", ability: "dex" }, dcTier: "hard", rollModeReasons: [] } }] },
+    }).state;
+    return run(planned, alex, { kind: "requestRoll", checkId: "r1:c-mira" });
+  }
+
+  it("rolls a natural 1 again, once, and the second roll stands", () => {
+    const clicked = clickedCheck();
+    const spec = clicked.state.checks["r1:c-mira"]?.spec;
+    if (spec === undefined) throw new Error("check");
+    const first = run(clicked.state, system, { kind: "recordRoll", rollId: "r1:c-mira:roll", result: { kind: "d20Test", roll: d20Roll(spec.mode, [1], spec.modifier) } });
+    expect(first.events.some((event) => event.kind === "checkResolved")).toBe(false);
+    expect(first.requests).toContainEqual(expect.objectContaining({ kind: "roll", rollId: "r1:c-mira:roll:lucky" }));
+    const second = run(first.state, system, { kind: "recordRoll", rollId: "r1:c-mira:roll:lucky", result: { kind: "d20Test", roll: d20Roll(spec.mode, [1], spec.modifier) } });
+    expect(second.events.find((event) => event.kind === "checkResolved")).toMatchObject({ result: { roll: { d20: { natural: 1 } } } });
+  });
+});

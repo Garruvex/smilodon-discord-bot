@@ -64,7 +64,7 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       };
     }
     case "checkRollStarted":
-      return updateCheck(state, event.checkId, (check) => ({ ...check, status: "rolling", timedOut: event.timedOut }));
+      return updateCheck(state, event.checkId, (check) => ({ ...check, status: "rolling", timedOut: event.timedOut, rollId: event.rollId }));
     case "checkResolved":
       return updateCheck(state, event.checkId, (check) => ({ ...check, status: "resolved", result: event.result }));
     case "roundResolved":
