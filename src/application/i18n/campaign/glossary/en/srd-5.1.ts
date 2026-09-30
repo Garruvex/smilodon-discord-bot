@@ -242,6 +242,8 @@ const enBase: Glossary = {
     "spell:poison-spray": "Poison Spray",
     "spell:acid-splash": "Acid Splash",
     "spell:shocking-grasp": "Shocking Grasp",
+    "spell:intimidating-presence": "Intimidating Presence",
+    "spell:wholeness-of-body": "Wholeness of Body",
     "spell:grapple": "Grapple",
     "spell:shove": "Shove",
     "feature:grapple": "Grapple",

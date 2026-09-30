@@ -109,6 +109,14 @@ export type Trait =
   | { readonly kind: "elusive" }
   // Aura of Courage and Aura of Devotion (Paladin 10, 7): the holder and its conscious allies in its zone cannot gain these conditions.
   | { readonly kind: "auraOfImmunity"; readonly conditions: readonly ContentId<"condition">[] }
+  // Empowered Evocation (Wizard 10): the spellcasting modifier is added to one damage roll of an evocation spell.
+  | { readonly kind: "empoweredEvocation" }
+  // Supreme Healing (Life Cleric 17): healing spells restore the most their dice can give.
+  | { readonly kind: "supremeHealing" }
+  // Draconic Resilience: armor class 13 plus Dexterity with no armor (a flat bonus to the unarmored base).
+  | { readonly kind: "unarmoredBonus"; readonly amount: number }
+  // Elemental Affinity (Draconic sorcerer 6): the spellcasting modifier is added to one damage roll of a spell that deals this type.
+  | { readonly kind: "elementalAffinity"; readonly damageType: DamageType }
   // Cutting Words (College of Lore): a Bardic Inspiration use and the reaction take the die's average off a foe's attack roll within 60 feet, when that turns a hit into a miss.
   | { readonly kind: "cuttingWords" }
   // Fighting Style (Protection): when a creature attacks another one standing beside the holder, the holder's reaction gives that attack disadvantage. The shield the SRD asks for is not checked.

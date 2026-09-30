@@ -3,11 +3,12 @@ import { describe, expect, it } from "vitest";
 import { deriveSheet, type BuildChoices } from "../../../src/domain/campaign/character/character-build.js";
 import { applyProgression, levelUp, progressionOf, progressionProblems, xpThresholds } from "../../../src/domain/campaign/character/leveling.js";
 import { savingThrowModifier, type CharacterSheet } from "../../../src/domain/campaign/character/character-sheet.js";
+import { armorClassFrom } from "../../../src/domain/campaign/combat/combatant-profile.js";
 import { conditionLookup } from "../../../src/domain/campaign/effects/effect-queries.js";
 import { attackMode } from "../../../src/domain/campaign/engine/combat/attack-rules.js";
 import type { EncounterSpec } from "../../../src/domain/campaign/commands/campaign-command.js";
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
-import { alex, d20Roll, jamie, newCampaign, organizer, partyOfThree, run, ruleset, sam, system } from "./campaign-fixtures.js";
+import { alex, d20Roll, jamie, newCampaign, organizer, partyOfThree, partyWithSpells, run, ruleset, sam, system } from "./campaign-fixtures.js";
 import { Fight, skirmish } from "./combat-fixtures.js";
 
 // Class features from level 6 up that the engine reads.
@@ -185,5 +186,128 @@ describe("Cutting Words", () => {
   it("turns a hit into a miss by spending a Bardic Inspiration use and the reaction", () => {
     expect(shotAtElspeth(["feature:bardic-inspiration"]).lost).toBeGreaterThan(0);
     expect(shotAtElspeth(["feature:bardic-inspiration", "feature:cutting-words"])).toEqual({ lost: 0, spent: true });
+  });
+});
+
+describe("Empowered Evocation, Overchannel and Supreme Healing", () => {
+  const start = (features: readonly string[], hp?: number): Fight => {
+    const base = withFeatures(partyOfThree(), "c-elspeth", features);
+    const state: CampaignState = hp === undefined ? base : { ...base, heroStatus: { ...base.heroStatus, "c-borin": { hp, resources: { spellSlots: {}, featureUses: {} } } } };
+    return new Fight(state).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec: skirmish });
+  };
+
+  it("Empowered Evocation adds the spellcasting modifier to an evocation spell's damage", () => {
+    const flame = (features: readonly string[]): number => {
+      const fight = start(features);
+      fight.rolls([5], [2]).run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:sacred-flame", slotLevel: 0, targetIds: ["goblin-a"] });
+      return 7 - fight.combatant("goblin-a").hp;
+    };
+    expect(flame([])).toBe(2);
+    expect(flame(["feature:empowered-evocation"])).toBe(5);
+  });
+
+  it("Overchannel makes the next spell deal its maximum damage, once", () => {
+    const fight = start(["feature:overchannel"]);
+    fight.run(sam, { kind: "combatUseFeature", combatantId: "c-elspeth", featureId: "feature:overchannel" });
+    fight.rolls([15]).run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:guiding-bolt", slotLevel: 1, targetIds: ["goblin-a"] });
+    // 4d6 at its most is 24: the goblin is gone without a single die being rolled.
+    expect(fight.combatant("goblin-a").hp).toBe(0);
+    expect(fight.combatant("c-elspeth").effects.some((effect) => effect.modifiers.some((modifier) => modifier.kind === "overchannel"))).toBe(false);
+  });
+
+  it("Supreme Healing restores the most a healing spell's dice can give", () => {
+    const heal = (features: readonly string[]): number => {
+      const fight = start(features, 2);
+      fight.rolls([], [1]).run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:cure-wounds", slotLevel: 1, targetIds: ["c-borin"] });
+      return fight.combatant("c-borin").hp;
+    };
+    expect(heal(["feature:supreme-healing"])).toBeGreaterThan(heal([]));
+  });
+});
+
+describe("Short rest features", () => {
+  it("Song of Rest heals one more die for a hero who spent a Hit Die", () => {
+    const wounded = (features: readonly string[]): number => {
+      const base = withFeatures(partyOfThree(), "c-elspeth", features);
+      const state: CampaignState = { ...base, heroStatus: { ...base.heroStatus, "c-borin": { hp: 1, resources: { spellSlots: {}, featureUses: {} } } } };
+      const rested = run(state, organizer, { kind: "takeRest", rest: "short" }).state;
+      return rested.heroStatus["c-borin"]?.hp ?? 0;
+    };
+    // Borin's Hit Die heals 8; the song adds a d6's average of 4 (capped at his 12).
+    expect(wounded([])).toBe(9);
+    expect(wounded(["feature:song-of-rest"])).toBe(12);
+  });
+
+  it("Sorcerous Restoration returns four sorcery points", () => {
+    const base = withFeatures(partyOfThree(), "c-elspeth", ["feature:font-of-magic", "feature:sorcerous-restoration"]);
+    const sheet = base.characters["c-elspeth"];
+    if (sheet === undefined) throw new Error("elspeth");
+    const state: CampaignState = { ...base, characters: { ...base.characters, "c-elspeth": { ...sheet, level: 6 } }, heroStatus: { ...base.heroStatus, "c-elspeth": { hp: 9, resources: { spellSlots: {}, featureUses: { "feature:font-of-magic": 1 } } } } };
+    const rested = run(state, organizer, { kind: "takeRest", rest: "short" }).state;
+    expect(rested.heroStatus["c-elspeth"]?.resources.featureUses["feature:font-of-magic"]).toBe(5);
+  });
+});
+
+describe("Feature abilities cast like spells", () => {
+  it("Wholeness of Body heals three times the monk's level, once", () => {
+    const base = withFeatures(partyOfThree(), "c-borin", ["feature:wholeness-of-body"]);
+    const sheet = base.characters["c-borin"];
+    if (sheet === undefined) throw new Error("borin");
+    const state: CampaignState = { ...base, characters: { ...base.characters, "c-borin": { ...sheet, level: 6, maxHp: 40 } }, heroStatus: { ...base.heroStatus, "c-borin": { hp: 2, resources: { spellSlots: {}, featureUses: {} } } } };
+    const fight = new Fight(state).rolls([1, 20, 5, 4]).run(organizer, { kind: "startEncounter", spec: skirmish });
+    fight.run(jamie, { kind: "combatCast", combatantId: "c-borin", spellId: "spell:wholeness-of-body", slotLevel: 0, targetIds: ["c-borin"] });
+    expect(fight.combatant("c-borin").hp).toBe(20);
+  });
+
+  it("Intimidating Presence frightens a creature that fails its Wisdom save", () => {
+    const state = withFeatures(partyOfThree(), "c-borin", ["feature:intimidating-presence"]);
+    const fight = new Fight(state).rolls([1, 20, 5, 4]).run(organizer, { kind: "startEncounter", spec: { ...skirmish, edges: [{ from: "gate", to: "courtyard", feet: 10 }] } });
+    fight.rolls([2]).run(jamie, { kind: "combatCast", combatantId: "c-borin", spellId: "spell:intimidating-presence", slotLevel: 0, targetIds: ["goblin-a"] });
+    expect(fight.combatant("goblin-a").effects.map((effect) => effect.definition)).toContain("condition:frightened");
+    expect(fight.reject(jamie, { kind: "combatCast", combatantId: "c-borin", spellId: "spell:intimidating-presence", slotLevel: 0, targetIds: ["goblin-b"] })).toEqual({ code: "noUsesLeft" });
+  });
+});
+
+describe("Mindless Rage", () => {
+  it("keeps a raging barbarian from being frightened", () => {
+    const afterDragon = (rage: boolean): readonly string[] => {
+      const base = withFeatures(partyOfThree(), "c-borin", ["feature:rage"]);
+      const sheet = base.characters["c-borin"];
+      if (sheet === undefined) throw new Error("borin");
+      const state: CampaignState = { ...base, characters: { ...base.characters, "c-borin": { ...sheet, level: 6 } } };
+      const spec: EncounterSpec = { ...skirmish, monsters: [{ monsterId: "monster:adult-blue-dragon", zoneId: "courtyard", npcId: null, fleeBelowHpFraction: null }] };
+      const fight = new Fight(state).rolls([20, 1, 1, 1], []).run(organizer, { kind: "startEncounter", spec });
+      fight.rolls(Array.from({ length: 30 }, () => 2), Array.from({ length: 30 }, () => 1));
+      fight.run(alex, { kind: "endTurn", combatantId: "c-mira" });
+      if (rage) fight.run(jamie, { kind: "combatUseFeature", combatantId: "c-borin", featureId: "feature:rage" });
+      fight.run(jamie, { kind: "endTurn", combatantId: "c-borin" });
+      fight.run(sam, { kind: "endTurn", combatantId: "c-elspeth" });
+      return fight.combatant("c-borin").effects.map((effect) => effect.definition);
+    };
+    expect(afterDragon(false)).toContain("condition:frightened");
+    expect(afterDragon(true)).not.toContain("condition:frightened");
+  });
+});
+
+describe("Draconic Bloodline", () => {
+  const build: BuildChoices = { class: "sorcerer", kit: "spellslinger", abilities: { str: 8, dex: 14, con: 14, int: 10, wis: 10, cha: 15 }, skills: ["arcana", "persuasion"], expertise: [], name: "Vex", appearance: "", backstory: "" };
+
+  it("adds a hit point a level and an unarmored armor class of 13 plus Dexterity", () => {
+    const sheet = deriveSheet(build);
+    // d6 + Constitution +2, and one more for Draconic Resilience.
+    expect(sheet.maxHp).toBe(9);
+    expect(levelUp(sheet as unknown as CharacterSheet, "sorcerer").maxHp).toBe(9 + 4 + 2 + 1);
+    expect(armorClassFrom([{ kind: "unarmoredBonus", amount: 3 }], 2)).toBe(15);
+  });
+
+  it("Elemental Affinity adds the spellcasting modifier to a fire spell's damage", () => {
+    const burn = (features: readonly string[]): number => {
+      const base = partyWithSpells(["spell:fire-bolt"]);
+      const state = withFeatures(base, "c-elspeth", features);
+      const fight = new Fight(state).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec: skirmish });
+      fight.rolls([15], [2]).run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:fire-bolt", slotLevel: 0, targetIds: ["goblin-a"] });
+      return 7 - fight.combatant("goblin-a").hp;
+    };
+    expect(burn(["feature:elemental-affinity"])).toBe(burn([]) + 3);
   });
 });

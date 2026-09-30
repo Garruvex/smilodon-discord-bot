@@ -4,7 +4,7 @@ import type { RollId } from "../../core/ids.js";
 import { abilityModifier } from "../../character/character-sheet.js";
 import type { ActionCost } from "../../combat/combat-events.js";
 import { areEngaged, isPresent, type Combatant, type CombatantId, type EncounterState, type PendingCheck, type PendingCombatRoll, type PendingEffectRoll, type ResolutionSource, type ResolutionState, type TargetOutcome } from "../../combat/combat-state.js";
-import { armorClassOf, attackBonusOf, autoFailsSave, bonusDiceFor, conditionLookup, hitsAreCritical, saveBias } from "../../effects/effect-queries.js";
+import { armorClassOf, attackBonusOf, autoFailsSave, bonusDiceFor, conditionLookup, hitsAreCritical, modifiersOf, saveBias } from "../../effects/effect-queries.js";
 import type { EffectInstance } from "../../effects/effect-instance.js";
 import type { D20TestRoll } from "../../dice/d20-test.js";
 import type { SealedContent } from "../../rules/content-registry.js";
@@ -292,8 +292,9 @@ function cuttingWords(decision: Decision, encounter: EncounterState, attackerId:
 }
 
 // A condition the creature cannot gain, of its own or from an ally's aura in the same zone.
-function immuneTo(encounter: EncounterState | undefined, target: Combatant, condition: ContentId<"condition">): boolean {
+function immuneTo(decision: Decision, encounter: EncounterState | undefined, target: Combatant, condition: ContentId<"condition">): boolean {
   if (isImmuneToCondition(target.traits, condition)) return true;
+  if (modifiersOf(target, conditionLookup(decision.ctx.rules.content)).some(({ modifier }) => modifier.kind === "conditionImmunity" && modifier.conditions.includes(condition))) return true;
   return Object.values(encounter?.combatants ?? {}).some(
     (other) => other.side === target.side && other.zoneId === target.zoneId && other.hp > 0 && other.traits.some((trait) => trait.kind === "auraOfImmunity" && trait.conditions.includes(condition)),
   );
@@ -379,7 +380,7 @@ export function proceedToEffects(decision: Decision): void {
       if (effect.kind === "conditionUnlessSave") {
         for (const targetId of targets) {
           const target = encounter.combatants[effect.target === "self" ? resolution.actorId : targetId];
-          if (target === undefined || immuneTo(encounter, target, effect.condition)) continue;
+          if (target === undefined || immuneTo(decision, encounter, target, effect.condition)) continue;
           const lookup = conditionLookup(decision.ctx.rules.content);
           if (autoFailsSave(target, effect.ability, lookup)) continue;
           const bias = saveBias(target, effect.ability, lookup);
@@ -488,7 +489,7 @@ export function applyEffect(
       applyTempHp(decision, recipient, resolution.rolled[key] ?? 0);
       return;
     case "applyCondition":
-      if (!immuneTo(activeEncounter(decision) ?? undefined, recipient, effect.condition)) {
+      if (!immuneTo(decision, activeEncounter(decision) ?? undefined, recipient, effect.condition)) {
         decision.emit({ kind: "effectApplied", combatantId: recipient.id, effect: conditionInstance(resolution, recipient, effect.condition, key, effect.duration, round, decision.ctx.rules.content) });
       }
       return;
@@ -557,7 +558,7 @@ export function applyEffect(
       return;
     case "conditionUnlessSave":
       if (
-        !immuneTo(activeEncounter(decision) ?? undefined, recipient, effect.condition) &&
+        !immuneTo(decision, activeEncounter(decision) ?? undefined, recipient, effect.condition) &&
         (resolution.rolled[`rider:${recipient.id}:${key}`] === 0 || autoFailsSave(recipient, effect.ability, conditionLookup(decision.ctx.rules.content)))
       ) {
         decision.emit({ kind: "effectApplied", combatantId: recipient.id, effect: conditionInstance(resolution, recipient, effect.condition, key, effect.duration ?? null, round, decision.ctx.rules.content) });

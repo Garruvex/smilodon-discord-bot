@@ -225,7 +225,8 @@ export function levelUp(
   const template = classTemplates[buildClass];
   const raceSlug = sheet.race?.slice("race:".length);
   const race = raceSlug !== undefined && isBuildRace(raceSlug) ? raceTemplates[raceSlug] : undefined;
-  const hpGain = hpGainForLevel(template.hitDie, sheet.abilityScores.con) + (race?.bonusHpPerLevel ?? 0);
+  // Draconic Resilience: one more hit point every level.
+  const hpGain = hpGainForLevel(template.hitDie, sheet.abilityScores.con) + (race?.bonusHpPerLevel ?? 0) + (sheet.features.includes("feature:draconic-bloodline") ? 1 : 0);
   // The SRD lets the player choose the allocation (+2 to one ability, or +1
   // to two): this only counts the improvement as owed, it does not pick for
   // them. defaultAsiAllocation stays as the Discord picker's "use the

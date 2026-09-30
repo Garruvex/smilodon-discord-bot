@@ -1,7 +1,7 @@
 // What a hero does with their action: a weapon attack, a spell, a feature. The rules for each are in combat/turn-rules.ts.
 import { useKeyOf } from "../../rules/content-definitions.js";
 import { proficiencyBonusForLevel } from "../../character/leveling.js";
-import { armedMetamagic, armedStunningStrike, conditionLookup } from "../../effects/effect-queries.js";
+import { armedMetamagic, armedOverchannel, armedStunningStrike, conditionLookup } from "../../effects/effect-queries.js";
 import type { ActionCost } from "../../combat/combat-events.js";
 import { type AttackOption, type Combatant, type EncounterState } from "../../combat/combat-state.js";
 import { attackProblem, featureProblem, smiteProblem, spellProblem } from "../../combat/turn-rules.js";
@@ -81,15 +81,17 @@ export function castSpell(
   const checked = spellProblem(encounter, decision.ctx.rules.content, caster, spellId, slotLevel, targetIds, armed?.option ?? null);
   if ("problem" in checked) return checked.problem;
   const { spell, bonus, targets } = checked.value;
+  const overchannel = spell.level >= 1 && spell.level <= 5 ? armedOverchannel(caster, conditionLookup(decision.ctx.rules.content)) : null;
   const declared = declareResolution(decision, {
     actor: caster,
-    source: { kind: "spell", spellId: spell.id, slotLevel },
+    source: { kind: "spell", spellId: spell.id, slotLevel, ...(overchannel === null ? {} : { maximized: true as const }) },
     targetIds: targets,
     purpose: "action",
     cost: { ...noCost, action: !bonus, bonusAction: bonus, spellSlot: spell.level === 0 || caster.spellcasting?.innate?.[spell.id] !== undefined ? null : slotLevel },
   });
   // The readied Metamagic is used up by the casting.
   if (declared === null && armed !== null) decision.emit({ kind: "effectsRemoved", combatantId: caster.id, effectIds: [armed.effectId], reason: "usedUp" });
+  if (declared === null && overchannel !== null) decision.emit({ kind: "effectsRemoved", combatantId: caster.id, effectIds: [overchannel], reason: "usedUp" });
   return declared;
 }
 

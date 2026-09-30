@@ -99,6 +99,12 @@ export function armedMetamagic(holder: EffectHolder, lookup: ConditionLookup): {
   return null;
 }
 
+// The readied Overchannel, if any, and the effect to use up once the spell is cast.
+export function armedOverchannel(holder: EffectHolder, lookup: ConditionLookup): string | null {
+  for (const { modifier, effectId } of modifiersOf(holder, lookup)) if (modifier.kind === "overchannel" && effectId !== null) return effectId;
+  return null;
+}
+
 // The readied Stunning Strike, if any, and the effect to use up once the attack is made.
 export function armedStunningStrike(holder: EffectHolder, lookup: ConditionLookup): string | null {
   for (const { modifier, effectId } of modifiersOf(holder, lookup)) if (modifier.kind === "stunningStrike" && effectId !== null) return effectId;

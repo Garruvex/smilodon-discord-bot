@@ -8,7 +8,7 @@ const source = "SRD 5.1";
 const narrative = (name: string): FeatureDefinition => defineFeature({ id: `feature:${name}`, source, traits: [], action: null });
 
 export const mindlessRage = narrative("mindless-rage");
-export const intimidatingPresence = narrative("intimidating-presence");
+export const intimidatingPresence = defineFeature({ id: "feature:intimidating-presence", source, traits: [{ kind: "featureSpell", spell: "spell:intimidating-presence", ability: "cha", uses: 1, recharge: "longRest" }], action: null });
 export const retaliation = narrative("retaliation");
 export const persistentRage = narrative("persistent-rage");
 export const indomitableMight = defineFeature({ id: "feature:indomitable-might", source, traits: [{ kind: "indomitableMight" }], action: null });
@@ -23,7 +23,7 @@ export const superiorInspiration = narrative("superior-inspiration");
 export const blessedHealer = narrative("blessed-healer");
 export const divineStrike = defineFeature({ id: "feature:divine-strike", source, traits: [{ kind: "divineStrike" }], action: null });
 export const divineIntervention = narrative("divine-intervention");
-export const supremeHealing = narrative("supreme-healing");
+export const supremeHealing = defineFeature({ id: "feature:supreme-healing", source, traits: [{ kind: "supremeHealing" }], action: null });
 export const landsStride = narrative("lands-stride");
 export const naturesWard = narrative("natures-ward");
 export const naturesSanctuary = narrative("natures-sanctuary");
@@ -36,7 +36,7 @@ export const deflectMissiles = defineFeature({ id: "feature:deflect-missiles", s
 export const openHandTechnique = narrative("open-hand-technique");
 export const slowFall = narrative("slow-fall");
 export const kiEmpoweredStrikes = narrative("ki-empowered-strikes");
-export const wholenessOfBody = narrative("wholeness-of-body");
+export const wholenessOfBody = defineFeature({ id: "feature:wholeness-of-body", source, traits: [{ kind: "featureSpell", spell: "spell:wholeness-of-body", ability: "wis", uses: 1, recharge: "longRest" }], action: null });
 export const stillnessOfMind = narrative("stillness-of-mind");
 export const tranquility = narrative("tranquility");
 export const tongueOfTheSunAndMoon = narrative("tongue-of-the-sun-and-moon");
@@ -68,7 +68,8 @@ export const slipperyMind = narrative("slippery-mind");
 export const thiefsReflexes = narrative("thiefs-reflexes");
 export const elusive = defineFeature({ id: "feature:elusive", source, traits: [{ kind: "elusive" }], action: null });
 export const strokeOfLuck = narrative("stroke-of-luck");
-export const elementalAffinity = narrative("elemental-affinity");
+// Every sorcerer here descends from a red dragon (draconic-bloodline), so the affinity is for fire.
+export const elementalAffinity = defineFeature({ id: "feature:elemental-affinity", source, traits: [{ kind: "elementalAffinity", damageType: "fire" }], action: null });
 export const metamagicAdditional = narrative("metamagic-additional");
 export const dragonWings = narrative("dragon-wings");
 export const draconicPresence = narrative("draconic-presence");
@@ -84,8 +85,18 @@ export const mysticArcanum9 = narrative("mystic-arcanum-9");
 export const eldritchMaster = narrative("eldritch-master");
 export const sculptSpells = narrative("sculpt-spells");
 export const potentCantrip = defineFeature({ id: "feature:potent-cantrip", source, traits: [{ kind: "potentCantrip" }], action: null });
-export const empoweredEvocation = narrative("empowered-evocation");
-export const overchannel = narrative("overchannel");
+export const empoweredEvocation = defineFeature({ id: "feature:empowered-evocation", source, traits: [{ kind: "empoweredEvocation" }], action: null });
+// Readies the next spell of the 1st to 5th level to deal its maximum (used up by the casting). The SRD's damage to the wizard for later uses is not modeled: it is once per long rest.
+export const overchannel = defineFeature({
+  id: "feature:overchannel",
+  source,
+  traits: [],
+  action: {
+    cost: "free",
+    uses: { count: 1, recharge: "longRest" },
+    plan: () => ({ check: null, onLand: [{ kind: "applyModifiers", target: "self", modifiers: [{ kind: "overchannel" }], duration: { kind: "rounds", count: 1 } }], onAvoid: [] }),
+  },
+});
 export const spellMastery = narrative("spell-mastery");
 export const signatureSpells = narrative("signature-spells");
 

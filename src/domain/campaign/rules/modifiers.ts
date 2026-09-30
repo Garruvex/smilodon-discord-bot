@@ -1,4 +1,5 @@
 import type { DiceExpression } from "../dice/dice-expression.js";
+import type { ContentId } from "./content-id.js";
 import type { Ability, DamageType } from "./effects.js";
 
 // What a lasting effect or condition does, from a fixed vocabulary. The rule
@@ -48,6 +49,10 @@ export type Modifier =
   // Metamagic the sorcerer has readied for the next spell they cast (it is used up by the casting).
   | { readonly kind: "metamagic"; readonly option: MetamagicOption }
   // A monk's readied Stunning Strike: the next melee weapon hit may stun (used up by the attack).
-  | { readonly kind: "stunningStrike" };
+  | { readonly kind: "stunningStrike" }
+  // Cannot gain these conditions while the effect lasts (Mindless Rage).
+  | { readonly kind: "conditionImmunity"; readonly conditions: readonly ContentId<"condition">[] }
+  // A wizard's readied Overchannel: the next spell of the 1st to 5th level deals its maximum damage or healing (used up by the casting).
+  | { readonly kind: "overchannel" };
 
 export type MetamagicOption = "quickened" | "twinned";

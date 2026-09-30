@@ -365,6 +365,13 @@ ${listLines.join(nl)}
 `,
 );
 
+// The school of magic of every SRD spell, for the rules that name one (Empowered Evocation).
+const schoolRows = spells.map((spell) => `  ${quote(`spell:${spell.index}`)}: ${quote(spell.school.index)},`);
+writeFileSync(
+  join(spellDir, "spell-schools.generated.ts"),
+  [banner + "import type { SpellSchool } from \"../../../rules/content-definitions.js\";", "", "// The school of every SRD 5.1 spell.", "export const srd51SpellSchools: Readonly<Record<string, SpellSchool>> = {", ...schoolRows, "};", ""].join(nl),
+);
+
 const namesFile = (table, note) => {
   const rows = Object.keys(names).map((id) => `  ${quote(id)}: ${quote(table[id])},`);
   return [banner + `// ${note}`, "export const srd51SpellNames: Readonly<Record<string, string>> = {", ...rows, "};", ""].join(nl);

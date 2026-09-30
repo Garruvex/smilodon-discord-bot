@@ -197,6 +197,8 @@ const zhTwBase: Glossary = {
     "feature:signature-spells": "招牌法術",
     "feature:relentless-rage": "不屈狂怒",
     "feature:stunning-strike": "震懾拳",
+    "spell:intimidating-presence": "威嚇存在",
+    "spell:wholeness-of-body": "完整之軀",
     "spell:grapple": "擒抱",
     "spell:shove": "推撞",
     "feature:grapple": "擒抱",

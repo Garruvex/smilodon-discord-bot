@@ -67,8 +67,12 @@ export type ReactionRule =
   // Hellish Rebuke: cast against a foe that has just damaged the caster.
   | { readonly kind: "retort" };
 
+export type SpellSchool = "abjuration" | "conjuration" | "divination" | "enchantment" | "evocation" | "illusion" | "necromancy" | "transmutation";
+
 export interface SpellDefinition extends DefinitionBase<"spell"> {
   readonly level: number; // 0 = cantrip
+  // The school of magic; set from the SRD table when the ruleset is built.
+  readonly school?: SpellSchool;
   readonly castingTime: CastingTime;
   // Set on spells cast as a reaction to being hit (Shield); they are never cast on the caster's turn.
   readonly reaction?: ReactionRule;

@@ -167,7 +167,8 @@ export type ResolutionSource =
   // smiteSlot: Divine Smite's chosen slot level, when spent on this hit.
   // stunDc: a readied Stunning Strike; a melee hit calls for a Constitution save against it.
   | { readonly kind: "weapon"; readonly option: AttackOption; readonly smiteSlot?: number; readonly stunDc?: number }
-  | { readonly kind: "spell"; readonly spellId: ContentId<"spell">; readonly slotLevel: number }
+  // maximized: Overchannel, so its damage and healing are the most the dice can give.
+  | { readonly kind: "spell"; readonly spellId: ContentId<"spell">; readonly slotLevel: number; readonly maximized?: true }
   | { readonly kind: "feature"; readonly featureId: ContentId<"feature"> }
   // A potion drunk in a fight whose effects are more than healing.
   | { readonly kind: "item"; readonly itemId: ContentId<"item"> }

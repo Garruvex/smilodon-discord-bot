@@ -37,11 +37,21 @@ export function planFor(decision: Decision, actor: Combatant, source: Resolution
       const potent = spell.level === 0 && cast.check?.kind === "savingThrow" && cast.onAvoid.length === 0 && actor.traits.some((trait) => trait.kind === "potentCantrip");
       const halved = potent ? { ...cast, onAvoid: cast.onLand.flatMap((effect): Effect[] => (effect.kind === "damage" ? [{ ...effect, halfOfLand: true }] : [])) } : cast;
       const plan = agonizing === 0 ? halved : { ...halved, onLand: cast.onLand.map((effect): Effect => (effect.kind === "damage" ? { ...effect, amount: plus(effect.amount, agonizing) } : effect)) };
+      // Empowered Evocation and Elemental Affinity: the modifier on one damage roll.
+      const affinity = plan.onLand.some((effect) => effect.kind === "damage" && actor.traits.some((trait) => trait.kind === "elementalAffinity" && trait.damageType === effect.damageType));
+      const empowered = (spell.school === "evocation" && actor.traits.some((trait) => trait.kind === "empoweredEvocation")) || affinity ? (actor.spellcasting?.modifier ?? 0) : 0;
+      const firstDamage = plan.onLand.findIndex((effect) => effect.kind === "damage");
+      const empoweredPlan =
+        empowered === 0 || firstDamage < 0 ? plan : { ...plan, onLand: plan.onLand.map((effect, index): Effect => (index === firstDamage && effect.kind === "damage" ? { ...effect, amount: plus(effect.amount, empowered) } : effect)) };
       // Disciple of Life and similar: extra healing from leveled spells.
       const bonus = source.slotLevel > 0 ? healingBonus(actor, source.slotLevel) : 0;
-      if (bonus === 0) return plan;
       const boost = (effect: Effect): Effect => (effect.kind === "heal" ? { ...effect, amount: plus(effect.amount, bonus) } : effect);
-      return { ...plan, onLand: plan.onLand.map(boost), onAvoid: plan.onAvoid.map(boost) };
+      const boosted = bonus === 0 ? empoweredPlan : { ...empoweredPlan, onLand: empoweredPlan.onLand.map(boost), onAvoid: empoweredPlan.onAvoid.map(boost) };
+      // Overchannel and Supreme Healing: the dice give their most.
+      const supreme = actor.traits.some((trait) => trait.kind === "supremeHealing");
+      const most = (effect: Effect): Effect =>
+        (effect.kind === "damage" && source.maximized === true) || (effect.kind === "heal" && (source.maximized === true || supreme)) ? { ...effect, amount: maximumOf(effect.amount) } : effect;
+      return source.maximized === true || supreme ? { ...boosted, onLand: boosted.onLand.map(most), onAvoid: boosted.onAvoid.map(most) } : boosted;
     }
     case "feature": {
       const feature = content.get(source.featureId);
@@ -64,6 +74,11 @@ export function planFor(decision: Decision, actor: Combatant, source: Resolution
     default:
       return assertNever(source);
   }
+}
+
+// A dice expression with every die at its highest face.
+function maximumOf(expression: DiceExpression): DiceExpression {
+  return { terms: [], modifier: expression.modifier + expression.terms.reduce((sum, term) => sum + term.count * term.sides, 0) };
 }
 
 // Rage (and similar lasting effects): a flat bonus to melee weapon damage.

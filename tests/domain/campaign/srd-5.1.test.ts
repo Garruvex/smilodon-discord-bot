@@ -177,7 +177,7 @@ describe("SRD 5.1 content", () => {
 
   it("gives every class its own named subclass, mechanical where the engine already can", () => {
     expect(traitsOf(content.get("feature:champion"))).toEqual([{ kind: "expandedCritRange", threshold: 19 }]);
-    expect(traitsOf(content.get("feature:draconic-bloodline"))).toEqual([{ kind: "damageResistance", damageTypes: ["fire"] }]);
+    expect(traitsOf(content.get("feature:draconic-bloodline"))).toEqual([{ kind: "damageResistance", damageTypes: ["fire"] }, { kind: "unarmoredBonus", amount: 3 }]);
     // Fiend Patron and the rest are narrative, same treatment as Thieves' Cant.
     expect(traitsOf(content.get("feature:fiend-patron"))).toEqual([]);
     expect(content.get("class:fighter").levelFeatures[3]).toEqual(["feature:champion"]);

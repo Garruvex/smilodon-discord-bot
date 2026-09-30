@@ -78,6 +78,30 @@ export const shove = defineSpell({
   plan: () => ({ check: { kind: "savingThrow", ability: "str" }, onLand: [{ kind: "applyCondition", target: "target", condition: "condition:prone", duration: { kind: "untilRemoved" } }], onAvoid: [] }),
 });
 
+// Barbarian 10 (Berserker): a creature within 30 feet that fails a Wisdom save is frightened for a minute.
+export const intimidatingPresence = defineSpell({
+  id: "spell:intimidating-presence",
+  source,
+  level: 0,
+  castingTime: "action",
+  range: { kind: "feet", feet: 30 },
+  targeting: { relation: "enemy", count: 1 },
+  concentration: false,
+  plan: () => ({ check: { kind: "savingThrow", ability: "wis" }, onLand: [{ kind: "applyCondition", target: "target", condition: "condition:frightened", duration: { kind: "rounds", count: 10 } }], onAvoid: [] }),
+});
+
+// Monk 6 (Open Hand): heals three times the monk's level, once per long rest.
+export const wholenessOfBody = defineSpell({
+  id: "spell:wholeness-of-body",
+  source,
+  level: 0,
+  castingTime: "action",
+  range: { kind: "self" },
+  targeting: { relation: "self", count: 1 },
+  concentration: false,
+  plan: ({ casterLevel }) => ({ check: null, onLand: [{ kind: "heal", target: "target", amount: flat(casterLevel * 3) }], onAvoid: [] }),
+});
+
 export const turnUndead = defineSpell({
   id: "spell:turn-undead",
   source,
@@ -132,4 +156,4 @@ export const breathWeapons: readonly SpellDefinition[] = breathAncestries.map(([
   }),
 );
 
-export const srd51ClassAbilitySpells: readonly SpellDefinition[] = [bardicInspiration, layOnHands, preserveLife, turnUndead, grapple, shove, ...breathWeapons];
+export const srd51ClassAbilitySpells: readonly SpellDefinition[] = [bardicInspiration, layOnHands, preserveLife, turnUndead, grapple, shove, intimidatingPresence, wholenessOfBody, ...breathWeapons];

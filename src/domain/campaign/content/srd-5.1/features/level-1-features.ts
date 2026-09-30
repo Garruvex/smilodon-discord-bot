@@ -71,6 +71,8 @@ export const rage = defineFeature({
           modifiers: [
             { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] },
             { kind: "meleeDamageBonus", amount: level >= 16 ? 4 : level >= 9 ? 3 : 2 },
+            // Mindless Rage (Berserker 6): no fear or charm while raging.
+            ...(level >= 6 ? [{ kind: "conditionImmunity" as const, conditions: ["condition:frightened" as const, "condition:charmed" as const] }] : []),
           ],
           duration: { kind: "rounds", count: 10 },
         },
@@ -97,7 +99,7 @@ export const naturalExplorer = defineFeature({ id: "feature:natural-explorer", s
 // Shape's Wolf already take. Draconic Resilience: the fire resistance is
 // mechanical (the same Trait a monster or race carries); the SRD's +1 HP per
 // level and unarmored AC bonus are not modeled.
-export const draconicBloodline = defineFeature({ id: "feature:draconic-bloodline", source, traits: [{ kind: "damageResistance", damageTypes: ["fire"] }], action: null });
+export const draconicBloodline = defineFeature({ id: "feature:draconic-bloodline", source, traits: [{ kind: "damageResistance", damageTypes: ["fire"] }, { kind: "unarmoredBonus", amount: 3 }], action: null });
 // The Fiend: narrative only. Dark One's Blessing (temporary HP on a kill)
 // needs a temporary-HP mechanic the engine doesn't have yet.
 export const fiendPatron = defineFeature({ id: "feature:fiend-patron", source, traits: [], action: null });

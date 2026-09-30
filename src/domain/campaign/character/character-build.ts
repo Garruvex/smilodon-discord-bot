@@ -234,7 +234,7 @@ export function deriveSheet(build: BuildChoices, gear?: { readonly equipment: re
     savingThrows: template.savingThrows,
     level: 1,
     xp: 0,
-    maxHp: Math.max(1, template.hitDie + abilityModifier(abilityScores.con) + (race?.bonusHpPerLevel ?? 0)),
+    maxHp: Math.max(1, template.hitDie + abilityModifier(abilityScores.con) + (race?.bonusHpPerLevel ?? 0) + (template.features.includes("feature:draconic-bloodline") ? 1 : 0)),
     hitDie: template.hitDie,
     speed: race?.speed ?? 30,
     equipment,

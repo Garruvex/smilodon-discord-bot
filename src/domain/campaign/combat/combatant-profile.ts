@@ -55,6 +55,7 @@ export function armorClassFrom(traits: readonly Trait[], dexterityModifier: numb
     }
     if (trait.kind === "armorClassBonus") bonus += trait.amount;
     if (trait.kind === "armoredBonus" && armored) bonus += trait.amount;
+    if (trait.kind === "unarmoredBonus" && !armored) bonus += trait.amount;
   }
   return base + bonus;
 }

@@ -21,6 +21,8 @@ export function takeRest(decision: Decision, rest: "short" | "long"): Rejection 
   if (state.round !== null) return { code: "roundInProgress" };
   const content = ctx.rules.content;
   const heroStatus: Record<CharacterId, HeroStatus> = {};
+  // Song of Rest: a bard's song adds one more Hit Die of healing (its average) to every hero who spent a Hit Die on this rest.
+  const song = Math.max(0, ...Object.values(state.characters).map((sheet) => (sheet.features.includes("feature:song-of-rest") && !isFallen(state, sheet.id) ? Math.floor((sheet.level >= 17 ? 12 : sheet.level >= 13 ? 10 : sheet.level >= 9 ? 8 : 6) / 2) + 1 : 0)));
   for (const sheet of Object.values(state.characters)) {
     if (isFallen(state, sheet.id)) continue;
     const fresh = defaultHeroResources(sheet, content);
@@ -47,12 +49,18 @@ export function takeRest(decision: Decision, rest: "short" | "long"): Rejection 
       left -= 1;
       spent += 1;
     }
+    if (left < dice) hp = Math.min(sheet.maxHp, hp + song);
     const featureUses = { ...current.resources.featureUses };
     for (const id of sheet.features) {
       const feature = content.find(id);
       const uses = feature?.kind === "feature" ? featureUsesOf(feature, sheet.level) : null;
       if (uses?.recharge === "shortRest") featureUses[id] = uses.count;
       if (feature?.kind === "feature" && feature.traits.some((trait) => trait.kind === "wildShape")) featureUses[id] = wildShapeUses;
+    }
+    // Sorcerous Restoration (Sorcerer 20): four sorcery points come back on a short rest.
+    if (sheet.features.includes("feature:sorcerous-restoration")) {
+      const font = "feature:font-of-magic";
+      featureUses[font] = Math.min(fresh.featureUses[font] ?? sheet.level, (featureUses[font] ?? 0) + 4);
     }
     // Spell-shaped abilities that come back on a short rest (Breath Weapon).
     const sources = [...(sheet.race === undefined ? [] : [sheet.race]), ...sheet.features];
