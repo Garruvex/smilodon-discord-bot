@@ -1831,16 +1831,16 @@ export const holyAura = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// The mark adds 1d6 to the caster's weapon hits on the creature; moving it when the creature falls is not modeled.
 export const huntersMark = defineSpell({
   id: "spell:hunters-mark",
   source,
   level: 1,
   castingTime: "bonus-action",
   range: { kind: "feet", feet: 90 },
-  targeting: { relation: "creature", count: 1 },
+  targeting: { relation: "enemy", count: 1 },
   concentration: true,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "applyModifiers", target: "target", modifiers: [{ kind: "marked" }], duration: { kind: "untilRemoved" } }], onAvoid: [] }),
 });
 
 export const hypnoticPattern = defineSpell({

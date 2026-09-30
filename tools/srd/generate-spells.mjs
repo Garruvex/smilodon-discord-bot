@@ -183,6 +183,7 @@ const curated = {
   "lesser-restoration": { relation: "ally-or-self", count: 1, save: null, note: "Ends poisoned, blinded or paralyzed; the deafness and disease it also cures are not modeled.", effects: [{ removes: ["poisoned", "blinded", "paralyzed"] }] },
   "greater-restoration": { relation: "ally-or-self", count: 1, save: null, note: "Ends charmed, stunned, poisoned, blinded or paralyzed; the other conditions it cures are not modeled.", effects: [{ removes: ["charmed", "stunned", "poisoned", "blinded", "paralyzed"] }] },
   "calm-emotions": { relation: "ally-or-self", count: 6, save: null, note: "Ends charmed and frightened on willing creatures; the suppression of hostility is not modeled.", effects: [{ removes: ["charmed", "frightened"] }] },
+  "hunters-mark": { relation: "enemy", count: 1, save: null, note: "The mark adds 1d6 to the caster's weapon hits on the creature; moving it when the creature falls is not modeled.", effects: [{ modifiers: [{ kind: "marked" }], duration: { kind: "untilRemoved" }, onLand: true }] },
   darkness: { relation: "enemy", count: 6, save: null, note: "Blinds the creatures in the area for the duration; there is no lighting in the engine.", effects: [{ condition: "blinded", duration: { kind: "untilRemoved" }, onLand: true }] },
 };
 

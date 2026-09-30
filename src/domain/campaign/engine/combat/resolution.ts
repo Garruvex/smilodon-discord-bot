@@ -256,7 +256,7 @@ export function settleCheck(decision: Decision, resolutionId: string, rollId: Ro
 // through this instead of the plan directly so the extra effect reaches damage
 // rolling and application the same way any other does.
 export function landEffects(resolution: ResolutionState, encounter: EncounterState): readonly Effect[] {
-  const onLand = withStunningStrike(resolution, withDivineStrike(resolution, encounter, withImprovedSmite(resolution, encounter, withSavageAttacks(resolution, encounter))));
+  const onLand = withStunningStrike(resolution, withMark(resolution, encounter, withDivineStrike(resolution, encounter, withImprovedSmite(resolution, encounter, withSavageAttacks(resolution, encounter)))));
   const slot = resolution.smiteSlot !== undefined ? resolution.smiteSlot : resolution.source.kind === "weapon" ? (resolution.source.smiteSlot ?? null) : null;
   if (slot === null) return onLand;
   // 2d8 for a 1st-level slot, +1d8 per level above that, capped at 5d8; one more d8 against a fiend or undead.
@@ -316,6 +316,14 @@ function withImprovedSmite(resolution: ResolutionState, encounter: EncounterStat
   const actor = encounter.combatants[resolution.actorId];
   if (resolution.source.kind !== "weapon" || resolution.source.option.range.kind !== "melee" || actor === undefined || !actor.traits.some((trait) => trait.kind === "improvedDivineSmite")) return effects;
   return [...effects, { kind: "damage", target: "target", amount: dice(1, 8), damageType: "radiant" }];
+}
+
+// Hunter's Mark: the caster's weapon hits on a creature they marked deal 1d6 more damage.
+function withMark(resolution: ResolutionState, encounter: EncounterState, effects: readonly Effect[]): readonly Effect[] {
+  const target = encounter.combatants[resolution.targetIds[0] ?? ""];
+  if (resolution.source.kind !== "weapon" || target === undefined) return effects;
+  const marked = target.effects.some((held) => held.sourceId === resolution.actorId && held.modifiers.some((modifier) => modifier.kind === "marked"));
+  return marked ? [...effects, { kind: "damage", target: "target", amount: dice(1, 6), damageType: resolution.source.option.damageType }] : effects;
 }
 
 // Divine Strike: a weapon hit deals 1d8 more radiant damage, 2d8 from level 14.

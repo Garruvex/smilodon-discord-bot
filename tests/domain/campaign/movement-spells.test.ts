@@ -82,3 +82,17 @@ describe("Escaping and curing", () => {
     expect(fight.combatant("c-elspeth").effects.map((effect) => effect.definition)).toEqual(["condition:grappled"]);
   });
 });
+
+describe("Hunter's Mark", () => {
+  it("adds a d6 to the caster's weapon hits on the marked creature", () => {
+    const shoot = (mark: boolean): number => {
+      const fight = new Fight(partyWithSpells(["spell:hunters-mark"], { 1: 2 })).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec: { ...spec, partyZoneId: "courtyard" } });
+      if (mark) fight.run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:hunters-mark", slotLevel: 1, targetIds: ["goblin-a"] });
+      // Elspeth closes in and swings her mace at the mark.
+      fight.run(sam, { kind: "combatEngage", combatantId: "c-elspeth", targetId: "goblin-a" });
+      fight.rolls([15], [1, 4]).run(sam, { kind: "combatAttack", combatantId: "c-elspeth", targetId: "goblin-a", weapon: "item:mace" });
+      return 7 - fight.combatant("goblin-a").hp;
+    };
+    expect(shoot(true)).toBe(shoot(false) + 4);
+  });
+});

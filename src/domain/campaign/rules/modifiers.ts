@@ -54,6 +54,8 @@ export type Modifier =
   | { readonly kind: "speedBonus"; readonly amount: number }
   // Unseen by the foes: attacks against the holder have disadvantage and its own attacks advantage; the first attack or spell ends it (Hide).
   | { readonly kind: "hidden" }
+  // Marked by whoever cast the spell (Hunter's Mark): that caster's weapon hits deal 1d6 more damage.
+  | { readonly kind: "marked" }
   // Cannot gain these conditions while the effect lasts (Mindless Rage).
   | { readonly kind: "conditionImmunity"; readonly conditions: readonly ContentId<"condition">[] }
   // A wizard's readied Overchannel: the next spell of the 1st to 5th level deals its maximum damage or healing (used up by the casting).
