@@ -10,7 +10,7 @@ function sorcerer(): CampaignState {
   const base = partyOfThree();
   const elspeth = base.characters["c-elspeth"];
   if (elspeth === undefined) throw new Error("elspeth");
-  const features = [...elspeth.features, "feature:font-of-magic", "feature:quickened-spell", "feature:twinned-spell", "feature:heightened-spell", "feature:empowered-spell", "feature:extended-spell", "feature:subtle-spell", "feature:create-slot-2"] as typeof elspeth.features;
+  const features = [...elspeth.features, "feature:font-of-magic", "feature:quickened-spell", "feature:twinned-spell", "feature:heightened-spell", "feature:empowered-spell", "feature:extended-spell", "feature:subtle-spell", "feature:create-slot-2", "feature:slot-to-points-1"] as typeof elspeth.features;
   // Level 4 (sorcery points equal the level).
   return { ...base, characters: { ...base.characters, "c-elspeth": { ...elspeth, features, level: 4 } } };
 }
@@ -87,5 +87,18 @@ describe("Metamagic", () => {
     expect(fight.combatant("c-elspeth").resources.spellSlots[2]).toBe(before + 1);
     expect(fight.combatant("c-elspeth").resources.featureUses["feature:font-of-magic"]).toBe(1);
     expect(fight.combatant("c-elspeth").budget.bonusAction).toBe(false);
+  });
+
+  it("turns a spell slot back into sorcery points, and only while a slot is held and the points have room", () => {
+    const fight = started();
+    const convert = { kind: "combatUseFeature", combatantId: "c-elspeth", featureId: "feature:slot-to-points-1" } as const;
+    // The pool is full at the start, so there is nowhere for the points to go.
+    expect(fight.reject(sam, convert)).toEqual({ code: "notUsable" });
+    fight.run(sam, { kind: "combatUseFeature", combatantId: "c-elspeth", featureId: "feature:quickened-spell" });
+    const slots = fight.combatant("c-elspeth").resources.spellSlots[1] ?? 0;
+    fight.run(sam, convert);
+    expect(fight.combatant("c-elspeth").resources.spellSlots[1]).toBe(slots - 1);
+    // One point came back.
+    expect(fight.combatant("c-elspeth").resources.featureUses["feature:font-of-magic"]).toBe(3);
   });
 });

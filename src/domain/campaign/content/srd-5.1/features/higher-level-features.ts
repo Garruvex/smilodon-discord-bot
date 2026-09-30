@@ -106,6 +106,15 @@ const createSlot = (level: number, cost: number): FeatureDefinition =>
     traits: [],
     action: { cost: "bonusAction", uses: { pool: "feature:font-of-magic" }, spend: cost, plan: () => ({ check: null, onLand: [{ kind: "gainSlot", target: "self", level }], onAvoid: [] }) },
   });
+// Flexible Casting, the other way: a spell slot becomes sorcery points equal to its level (a bonus action).
+const slotToPoints = (level: number): FeatureDefinition =>
+  defineFeature({
+    id: `feature:slot-to-points-${level}`,
+    source,
+    traits: [],
+    action: { cost: "bonusAction", uses: { count: 99, recharge: "shortRest" }, plan: () => ({ check: null, onLand: [{ kind: "convertSlot", target: "self", level }], onAvoid: [] }) },
+  });
+export const slotsToPoints: readonly FeatureDefinition[] = [1, 2, 3, 4, 5].map(slotToPoints);
 export const createSlots: readonly FeatureDefinition[] = [createSlot(1, 2), createSlot(2, 3), createSlot(3, 5), createSlot(4, 6), createSlot(5, 7)];
 // Eldritch Invocations: every warlock takes these three at level 2 (this build has no choosing of invocations).
 export const eldritchInvocations = narrative("eldritch-invocations");
@@ -195,6 +204,7 @@ export const srd51HigherLevelFeatures: readonly FeatureDefinition[] = [
   quickenedSpell,
   twinnedSpell,
   ...createSlots,
+  ...slotsToPoints,
   heightenedSpell,
   empoweredSpell,
   extendedSpell,

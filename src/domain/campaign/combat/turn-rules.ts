@@ -164,6 +164,9 @@ export function featureProblem(hero: Combatant, content: SealedContent, featureI
   if (feature?.kind !== "feature" || feature.action === null || !hero.features.includes(feature.id)) return refuse({ code: "unknownFeature" });
   if ((hero.resources.featureUses[useKeyOf(feature)] ?? 0) < (feature.action.spend ?? 1)) return refuse({ code: "noUsesLeft" });
   // Hide: out of every foe's reach, and somewhere to hide (cover or darkness). A rogue's Cunning Action makes it a bonus action.
+  // Only a slot the hero still holds can be turned into points, and only when the points have room.
+  const convert = /^feature:slot-to-points-(\d)$/.exec(feature.id);
+  if (convert !== null && ((hero.resources.spellSlots[Number(convert[1])] ?? 0) < 1 || (hero.resources.featureUses["feature:font-of-magic"] ?? 0) >= hero.level)) return refuse({ code: "notUsable" });
   if (feature.id === "feature:hide" && encounter !== null) {
     const zone = encounter.zones.find((candidate) => candidate.id === hero.zoneId);
     const engaged = engagedWith(encounter, hero.id).some((other) => other.side !== hero.side && isPresent(other) && other.hp > 0);

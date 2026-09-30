@@ -169,6 +169,7 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     case "actionGranted":
     case "movementGranted":
     case "slotGained":
+    case "slotConverted":
     case "lightingChanged":
     case "monsterStateChanged":
     case "uncannyDodgeUsed":

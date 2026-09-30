@@ -255,6 +255,16 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
         ...combatant,
         resources: { ...combatant.resources, spellSlots: { ...combatant.resources.spellSlots, [event.level]: (combatant.resources.spellSlots[event.level] ?? 0) + 1 } },
       }));
+    case "slotConverted":
+      // The points cannot pass the pool's maximum, which is the sorcerer's level.
+      return update(encounter, event.combatantId, (combatant) => ({
+        ...combatant,
+        resources: {
+          ...combatant.resources,
+          spellSlots: { ...combatant.resources.spellSlots, [event.level]: Math.max(0, (combatant.resources.spellSlots[event.level] ?? 0) - 1) },
+          featureUses: { ...combatant.resources.featureUses, "feature:font-of-magic": Math.min(combatant.level, (combatant.resources.featureUses["feature:font-of-magic"] ?? 0) + event.level) },
+        },
+      }));
     case "movementGranted":
       return update(encounter, event.combatantId, (combatant) => ({ ...combatant, budget: { ...combatant.budget, movement: combatant.budget.movement + event.feet } }));
     case "actionGranted":
