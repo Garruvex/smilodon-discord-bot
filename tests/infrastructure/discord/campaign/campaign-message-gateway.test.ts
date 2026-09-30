@@ -16,7 +16,7 @@ function gatewayWith(icons?: Parameters<typeof applicationIcons>[0]): { gateway:
 }
 
 const embedOf = (payload: Record<string, unknown> | undefined): { color?: number; description?: string; thumbnail?: { url: string } } =>
-  ((payload?.embeds as { toJSON(): Record<string, unknown> }[] | undefined)?.[0]?.toJSON() ?? {}) as never;
+  ((payload?.embeds as { toJSON(): Record<string, unknown> }[] | undefined)?.[0]?.toJSON() ?? {});
 
 describe("styled messages", () => {
   it("draws each kind of message as a coloured panel with its icon in the corner once the icons are uploaded", async () => {
