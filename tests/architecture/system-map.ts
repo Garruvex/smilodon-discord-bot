@@ -18,7 +18,7 @@ const rules: readonly (readonly [RegExp, System])[] = [
   [/^adventure\//, "Content"],
   [/^effects\//, "Effects"],
   [/^magic\//, "Magic"],
-  [/^engine\/((utility|healing|companion)-magic|outside-combat)\.ts$/, "Magic"],
+  [/^engine\/((utility|healing|companion|revival)-magic|outside-combat)\.ts$/, "Magic"],
   [/^companions\//, "Character"],
   [/^character\//, "Character"],
   [/^engine\/(rest|level-up|warlock-choices)\.ts$/, "Character"],

@@ -195,6 +195,8 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       return withCompanions({ ...state, heroStatus: { ...state.heroStatus, ...event.heroStatus } }, afterRest(state.companions, event.rest));
     case "companionsSummoned":
       return { ...state, companions: withSummoned(state.companions, event.companions, event.replaced), heroStatus: { ...state.heroStatus, ...event.heroStatus } };
+    case "heroRevived":
+      return { ...state, heroStatus: { ...state.heroStatus, ...event.heroStatus } };
     case "companionDismissed":
       return withCompanions(state, withoutCompanions(state.companions, [event.companionId]));
     // Words are told, not applied: nothing in the state changes.

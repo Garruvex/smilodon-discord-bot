@@ -92,6 +92,8 @@ export type Effect =
   // Flexible Casting the other way: a spell slot of this level becomes that many sorcery points.
   // The caster appears in the zone the casting was aimed at (Misty Step): no movement is spent and no one gets an opportunity attack.
   | { readonly kind: "teleport"; readonly target: EffectTarget }
+  // A fallen hero rises again with this many hit points, or all of them (Revivify and the spells above it). Cast between fights only.
+  | { readonly kind: "revive"; readonly target: EffectTarget; readonly hp: number | "full" }
   // A downed creature stops dying: stable at 0 hit points (Spare the Dying).
   | { readonly kind: "stabilize"; readonly target: EffectTarget }
   // Every lasting spell on the creature ends (Dispel Magic).

@@ -193,6 +193,8 @@ export type CampaignEvent =
   // A healing spell was cast outside combat; its dice are requested.
   // Creatures a hero brought along between fights (engine/companion-magic.ts); `heroStatus` is the caster's, with the slot spent.
   | { readonly kind: "companionsSummoned"; readonly companions: readonly Companion[]; readonly replaced: readonly string[]; readonly heroStatus: Readonly<Record<CharacterId, HeroStatus>> }
+  // A fallen hero rises again (engine/revival-magic.ts); `heroStatus` holds the hero, alive, and the caster with the slot spent.
+  | { readonly kind: "heroRevived"; readonly characterId: CharacterId; readonly heroStatus: Readonly<Record<CharacterId, HeroStatus>> }
   | { readonly kind: "companionDismissed"; readonly companionId: string }
   | { readonly kind: "healingStarted"; readonly healing: PendingHealing }
   // The healing dice landed: the slot is spent and the hit points restored,

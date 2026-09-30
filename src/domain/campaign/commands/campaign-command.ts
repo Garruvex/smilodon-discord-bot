@@ -96,6 +96,7 @@ export type CampaignCommand =
   | UtilityMagicCommand
   | HealingMagicCommand
   | CompanionMagicCommand
+  | RevivalMagicCommand
   | TravelCommand
   | CombatCommand;
 
@@ -146,6 +147,15 @@ export type UtilityMagicCommand =
 export type CompanionMagicCommand =
   | { readonly kind: "summonCompanion"; readonly characterId: CharacterId; readonly spellId: ContentId<"spell">; readonly slotLevel: number }
   | { readonly kind: "dismissCompanion"; readonly characterId: CharacterId; readonly companionId: string };
+
+// A spell that brings a fallen hero back (Revivify and the spells above it), cast between fights (engine/revival-magic.ts): spends the slot named.
+export type RevivalMagicCommand = {
+  readonly kind: "castReviveSpell";
+  readonly characterId: CharacterId;
+  readonly targetId: CharacterId;
+  readonly spellId: ContentId<"spell">;
+  readonly slotLevel: number;
+};
 
 // A slotted healing spell on a friend outside combat (engine/healing-magic.ts):
 // spends the slot the hero names and heals by the spell's own dice.

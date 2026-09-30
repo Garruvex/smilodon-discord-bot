@@ -142,6 +142,11 @@ export class CampaignPlayController {
     return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "summonCompanion", characterId, spellId, slotLevel }));
   }
 
+  // A spell that brings a fallen hero back, cast between fights.
+  public reviveSpell(key: CampaignKey, userId: UserId, spellId: ContentId<"spell">, slotLevel: number, targetId: string, interactionId: string): Promise<PlayResult> {
+    return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "castReviveSpell", characterId, targetId, spellId, slotLevel }));
+  }
+
   // A slotted healing spell on a friend between fights; the dice decide how much it heals.
   public healSpell(key: CampaignKey, userId: UserId, spellId: ContentId<"spell">, slotLevel: number, targetId: string, interactionId: string): Promise<PlayResult> {
     return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "castHealingSpell", characterId, targetId, spellId, slotLevel }));

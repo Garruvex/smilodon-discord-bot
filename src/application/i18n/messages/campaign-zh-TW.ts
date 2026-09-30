@@ -757,6 +757,8 @@ export const campaignZhTW = {
   "campaign.explore.healWhoPlaceholder": "治療誰？",
   "campaign.explore.healWhoOption": "生命值 {hp}/{max}",
   "campaign.explore.noOneHurt": "現在沒有人需要治療。",
+  "campaign.explore.reviveWhoPlaceholder": "讓誰復活？",
+  "campaign.explore.noOneFallen": "沒有人倒下。",
   "campaign.explore.healCast": "你施展了{spell}。骰子正在擲出，結果會貼在故事裡。",
   "campaign.refusal.npcNotHere": "他現在不在這裡。",
   "campaign.refusal.notForSale": "他不交易這個。",

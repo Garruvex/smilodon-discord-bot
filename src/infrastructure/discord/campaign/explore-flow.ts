@@ -48,7 +48,7 @@ export interface ExploreScreen {
 }
 
 export interface ExploreFlowDependencies {
-  readonly play: Pick<CampaignPlayController, "ask" | "press" | "trade" | "castSpell" | "healSpell" | "summonCompanion">;
+  readonly play: Pick<CampaignPlayController, "ask" | "press" | "trade" | "castSpell" | "healSpell" | "summonCompanion" | "reviveSpell">;
   readonly unitOfWork: CampaignUnitOfWork;
   readonly rulesets: RulesetCatalog;
   readonly adventures: AdventureLibrary;
@@ -75,6 +75,8 @@ export const exploreActions: readonly CampaignAction[] = [
   "exploreHealSlot",
   "exploreHealWho",
   "exploreConjureSlot",
+  "exploreReviveSlot",
+  "exploreReviveWho",
 ];
 export const isExploreAction = (action: CampaignAction): boolean => exploreActions.includes(action);
 
@@ -83,6 +85,8 @@ const questionField = "question";
 const healPrefix = "heal:";
 // A menu value that calls creatures to wait for the next fight.
 const conjurePrefix = "conjure:";
+// A menu value that brings back a fallen hero.
+const revivePrefix = "revive:";
 // A shop’s haggle choice, as one letter in the control ID.
 const haggleCodes: Readonly<Record<string, Skill | undefined>> = { n: undefined, p: "persuasion", d: "deception", i: "intimidation" };
 const codeOf = (skill: Skill | undefined): string => Object.entries(haggleCodes).find(([, value]) => value === skill)?.[0] ?? "n";
@@ -197,10 +201,22 @@ export class ExploreFlow {
         const spell = this.deps.glossaries[record.language]?.names[spellId] ?? spellId;
         return void (await interaction.editReply(await this.home(record, text, userId, this.told(text, result, text.campaign.explore.cast({ spell })))));
       }
+      case "exploreReviveSlot": {
+        // The slot is chosen; the fallen hero is next.
+        return void (await interaction.editReply(await this.reviveWhoScreen(record, text, userId, argument ?? "", Number(value))));
+      }
+      case "exploreReviveWho": {
+        const [short = "", level = "0"] = (argument ?? "").split(".");
+        const spellId = `spell:${short}` as const;
+        const result = await this.deps.play.reviveSpell(record.key, userId, spellId, Number(level), value, interaction.id);
+        const spell = this.deps.glossaries[record.language]?.names[spellId] ?? spellId;
+        return void (await interaction.editReply(await this.home(record, text, userId, this.told(text, result, text.campaign.explore.cast({ spell })))));
+      }
       case "exploreCastPick": {
         const page = pageAsked(value);
         if (page !== null) return void (await interaction.editReply(await this.castScreen(record, text, userId, page)));
         if (value.startsWith(healPrefix)) return void (await interaction.editReply(await this.healSlotScreen(record, text, userId, value.slice(healPrefix.length + "spell:".length))));
+        if (value.startsWith(revivePrefix)) return void (await interaction.editReply(await this.reviveSlotScreen(record, text, userId, value.slice(revivePrefix.length + "spell:".length))));
         if (value.startsWith(conjurePrefix)) return void (await interaction.editReply(await this.conjureSlotScreen(record, text, userId, value.slice(conjurePrefix.length + "spell:".length))));
         const result = await this.deps.play.castSpell(record.key, userId, value as ContentId<"spell">, interaction.id);
         const spell = this.deps.glossaries[record.language]?.names[value] ?? value;
@@ -444,6 +460,51 @@ export class ExploreFlow {
     };
   }
 
+  // Which slot to bring a fallen hero back with; skipped when there is only one to choose.
+  private async reviveSlotScreen(record: CampaignRecord, text: Texts, userId: string, short: string): Promise<ExploreScreen> {
+    const loaded = await this.load(record, userId);
+    if (loaded === null) return this.noHero(text);
+    const t = text.campaign.explore;
+    const view = buildExploreView(loaded.state, loaded.bible, loaded.content, loaded.glossary, loaded.hero.id);
+    const spell = view.reviving.find((candidate) => candidate.id === `spell:${short}`);
+    if (spell === undefined) return this.home(record, text, userId, text.campaign.refusal.noSpellSlot);
+    const only = spell.slots.length === 1 ? spell.slots[0] : undefined;
+    if (only !== undefined) return this.reviveWhoScreen(record, text, userId, short, only.level);
+    return {
+      content: t.healSlotPlaceholder,
+      components: [
+        new ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId(campaignCustomId("exploreReviveSlot", record.key.campaignId, short))
+            .setPlaceholder(t.healSlotPlaceholder)
+            .addOptions(spell.slots.slice(0, 25).map((slot) => ({ label: t.healSlotOption({ level: slot.level, left: slot.left }), value: String(slot.level) }))),
+        ),
+        new ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>().addComponents(this.back("exploreCast", record, text)),
+      ],
+    };
+  }
+
+  // Whom to bring back: the heroes who have fallen.
+  private async reviveWhoScreen(record: CampaignRecord, text: Texts, userId: string, short: string, level: number): Promise<ExploreScreen> {
+    const loaded = await this.load(record, userId);
+    if (loaded === null) return this.noHero(text);
+    const t = text.campaign.explore;
+    const view = buildExploreView(loaded.state, loaded.bible, loaded.content, loaded.glossary, loaded.hero.id);
+    if (view.fallen.length === 0) return this.home(record, text, userId, t.noOneFallen);
+    return {
+      content: t.reviveWhoPlaceholder,
+      components: [
+        new ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId(campaignCustomId("exploreReviveWho", record.key.campaignId, `${short}.${level}`))
+            .setPlaceholder(t.reviveWhoPlaceholder)
+            .addOptions(view.fallen.slice(0, 25).map((hero) => ({ label: hero.name.slice(0, 100), value: hero.id }))),
+        ),
+        new ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>().addComponents(this.back("exploreCast", record, text)),
+      ],
+    };
+  }
+
   // Whom to heal: the friends who are hurt, with how hurt.
   private async healWhoScreen(record: CampaignRecord, text: Texts, userId: string, short: string, level: number): Promise<ExploreScreen> {
     const loaded = await this.load(record, userId);
@@ -470,11 +531,12 @@ export class ExploreFlow {
     if (loaded === null) return this.noHero(text);
     const t = text.campaign.explore;
     const view = buildExploreView(loaded.state, loaded.bible, loaded.content, loaded.glossary, loaded.hero.id);
-    if (view.spells.length === 0 && view.healing.length === 0 && view.conjuring.length === 0) return this.home(record, text, userId, t.noSpells);
+    if (view.spells.length === 0 && view.healing.length === 0 && view.conjuring.length === 0 && view.reviving.length === 0) return this.home(record, text, userId, t.noSpells);
     // Healing first, then rituals, then cantrips, so the useful ones are on the first page of a long spellbook.
     const options = [
       // A healing spell spends a slot, so the menu says so; the value tells the next step to ask which.
       ...view.healing.map((spell) => ({ label: spell.name.slice(0, 100), description: t.castHeals, value: `${healPrefix}${spell.id}` })),
+      ...view.reviving.map((spell) => ({ label: spell.name.slice(0, 100), value: `${revivePrefix}${spell.id}` })),
       ...view.conjuring.map((spell) => ({ label: spell.name.slice(0, 100), value: `${conjurePrefix}${spell.id}` })),
       ...[...view.spells].sort((a, b) => Number(a.cantrip) - Number(b.cantrip)).map((spell) => ({ label: spell.name.slice(0, 100), description: spell.cantrip ? t.castCantrip : t.castRitual, value: spell.id })),
     ];

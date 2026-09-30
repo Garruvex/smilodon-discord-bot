@@ -546,6 +546,7 @@ function capabilitiesFor(effect: Effect): readonly Capability[] {
     case "convertSlot":
     case "teleport":
     case "stabilize":
+    case "revive":
     case "makeDifficult":
       return [];
     case "dispel":

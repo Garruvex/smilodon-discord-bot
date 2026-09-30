@@ -518,3 +518,39 @@ describe("Explore: calling creatures for the next fight", () => {
     expect(state.heroStatus[heroId]?.resources.spellSlots[3]).toBe(1);
   });
 });
+
+describe("Explore: bringing back a fallen hero", () => {
+  it("offers Revivify only while a hero has fallen, and raises them with the slot chosen", async () => {
+    const { t, heroId } = await table();
+    await t.r.store.transaction(async (tx) => {
+      const latest = await tx.loadCampaign(t.key);
+      const sheet = latest?.state.characters[heroId];
+      if (latest === undefined || sheet === undefined) throw new Error("state");
+      const slots = { 3: 1 };
+      await tx.saveCampaign(
+        t.key,
+        {
+          ...latest.state,
+          characters: {
+            ...latest.state.characters,
+            [heroId]: { ...sheet, spellcasting: { ability: "wis", spells: ["spell:revivify"], slots } },
+            "c-ghost": { ...sheet, id: "c-ghost", name: "Ghost", ownerUserId: "u-ghost" },
+          },
+          heroStatus: { ...latest.state.heroStatus, [heroId]: { hp: 10, resources: { spellSlots: slots, featureUses: {} } }, "c-ghost": { hp: 0, dead: true, resources: { spellSlots: {}, featureUses: {} } } },
+        },
+        latest.revision,
+      );
+    });
+    const cast = screenOf(await click(t, id(t, "exploreCast")));
+    expect(cast.menus[0]?.options.map((option) => option.value)).toEqual(["revive:spell:revivify"]);
+    const who = screenOf(await choose(t, id(t, "exploreCastPick"), "revive:spell:revivify"));
+    expect(who.menus[0]?.id).toBe(id(t, "exploreReviveWho", "revivify.3"));
+    expect(who.menus[0]?.options.map((option) => option.value)).toEqual(["c-ghost"]);
+    const done = screenOf(await choose(t, id(t, "exploreReviveWho", "revivify.3"), "c-ghost"));
+    expect(done.content).toContain("You cast Revivify");
+    const state = (await stateOf(t)).state;
+    expect(state.heroStatus["c-ghost"]).toMatchObject({ hp: 1 });
+    expect(state.heroStatus["c-ghost"]?.dead).toBeUndefined();
+    expect(state.heroStatus[heroId]?.resources.spellSlots[3]).toBe(0);
+  });
+});

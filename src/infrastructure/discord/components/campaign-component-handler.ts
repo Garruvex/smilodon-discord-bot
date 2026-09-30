@@ -207,6 +207,8 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "exploreHealSlot":
     case "exploreHealWho":
     case "exploreConjureSlot":
+    case "exploreReviveSlot":
+    case "exploreReviveWho":
       return [];
     case "reactCast":
     case "reactDecline":

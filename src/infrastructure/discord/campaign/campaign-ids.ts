@@ -97,6 +97,8 @@ export const campaignActions = [
   "exploreHealSlot",
   "exploreHealWho",
   "exploreConjureSlot",
+  "exploreReviveSlot",
+  "exploreReviveWho",
 ] as const;
 export type CampaignAction = (typeof campaignActions)[number];
 

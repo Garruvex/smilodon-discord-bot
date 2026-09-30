@@ -192,6 +192,11 @@ const curated = {
   light: { relation: "self", count: 1, save: null, note: "Lights the zone the caster stands in, for the rest of the fight.", effects: [{ lighting: "bright" }] },
   daylight: { relation: "self", count: 1, save: null, note: "Lights the zone the caster stands in, for the rest of the fight.", effects: [{ lighting: "bright" }] },
   "spirit-guardians": { relation: "enemy", count: 6, range: 15, save: null, note: "Each creature named is hurt as its own turn starts, for 2d8 radiant damage, which stands in for 3d8 with a Wisdom save for half; the spirits do not move with the caster or catch newcomers.", effects: [{ modifiers: [], triggers: [{ follows: "target", boundary: "start", does: { kind: "damage", amount: { terms: [{ count: 2, sides: 8 }], modifier: 0 }, damageType: "radiant" } }], duration: { kind: "untilRemoved" }, onLand: true }] },
+  revivify: { relation: "ally-or-self", count: 1, range: 5, save: null, note: "Brings a fallen hero back with 1 hit point, between fights; the minute limit and the diamond are not modeled.", effects: [{ raw: '{ kind: "revive", target: "target", hp: 1 }' }] },
+  "raise-dead": { relation: "ally-or-self", count: 1, range: 5, save: null, note: "Brings a fallen hero back with 1 hit point, between fights; the penalty to rolls, the days limit and the diamond are not modeled.", effects: [{ raw: '{ kind: "revive", target: "target", hp: 1 }' }] },
+  reincarnate: { relation: "ally-or-self", count: 1, range: 5, save: null, note: "Brings a fallen hero back with 1 hit point in their own body, between fights; the new body the book gives is not modeled.", effects: [{ raw: '{ kind: "revive", target: "target", hp: 1 }' }] },
+  resurrection: { relation: "ally-or-self", count: 1, range: 5, save: null, note: "Brings a fallen hero back with all their hit points, between fights; the penalty, the years limit and the diamond are not modeled.", effects: [{ raw: '{ kind: "revive", target: "target", hp: "full" }' }] },
+  "true-resurrection": { relation: "ally-or-self", count: 1, range: 5, save: null, note: "Brings a fallen hero back with all their hit points, between fights; the years limit and the diamonds are not modeled.", effects: [{ raw: '{ kind: "revive", target: "target", hp: "full" }' }] },
   "spare-the-dying": { relation: "ally-or-self", count: 1, save: null, note: "", effects: [{ kind: "stabilize" }] },
   "dispel-magic": { relation: "creature", count: 1, save: null, note: "Ends every lasting spell on the creature; the check for a spell of a higher level, and the spells on an object, are not modeled.", effects: [{ kind: "dispel" }] },
   "plant-growth": { relation: "creature", count: 1, save: null, note: "The zone of the creature named becomes difficult terrain for the rest of the fight; the book's wide area and its enriching use are not modeled.", effects: [{ kind: "makeDifficult" }] },
@@ -278,7 +283,8 @@ function planFor(spell, notes) {
     const self = [];
     for (const effect of special.effects) {
       let code;
-      if (effect.kind !== undefined) code = `{ kind: ${quote(effect.kind)}, target: "target" }`;
+      if (effect.raw !== undefined) code = effect.raw;
+      else if (effect.kind !== undefined) code = `{ kind: ${quote(effect.kind)}, target: "target" }`;
       else if (effect.lighting !== undefined) code = `{ kind: "setLighting", target: "target", lighting: ${quote(effect.lighting)} }`;
       else if (effect.removes !== undefined) code = `{ kind: "removeCondition", target: "target", conditions: [${effect.removes.map((name) => `"condition:${name}"`).join(", ")}] }`;
       else if (effect.polymorph !== undefined) code = `{ kind: "polymorph", target: "target", monsterId: "monster:${effect.polymorph}" }`;

@@ -758,6 +758,8 @@ export const campaignEn = {
   "campaign.explore.healWhoPlaceholder": "Heal whom?",
   "campaign.explore.healWhoOption": "{hp}/{max} HP",
   "campaign.explore.noOneHurt": "Nobody needs healing right now.",
+  "campaign.explore.reviveWhoPlaceholder": "Bring back whom?",
+  "campaign.explore.noOneFallen": "Nobody has fallen.",
   "campaign.explore.healCast": "You cast {spell}. The dice are rolling; the result is posted to the story.",
   "campaign.refusal.npcNotHere": "They are not here right now.",
   "campaign.refusal.notForSale": "They do not trade that.",

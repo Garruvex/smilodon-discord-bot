@@ -13,6 +13,7 @@ import { handleDialogueCommand, recordPressRoll } from "./dialogue.js";
 import { handleShopCommand, recordHaggleRoll } from "./shop.js";
 import { handleTravelCommand, recordHazardRoll } from "./travel.js";
 import { handleHealingMagicCommand, recordHealingRoll } from "./healing-magic.js";
+import { handleRevivalMagicCommand } from "./revival-magic.js";
 import { chooseWarlockOptions } from "./warlock-choices.js";
 import { handleCompanionMagicCommand } from "./companion-magic.js";
 import { handleUtilityMagicCommand } from "./utility-magic.js";
@@ -134,6 +135,8 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
     case "castRitualSpell":
     case "recordUtilityCastNarration":
       return handleUtilityMagicCommand(decision, command);
+    case "castReviveSpell":
+      return handleRevivalMagicCommand(decision, command);
     case "summonCompanion":
     case "dismissCompanion":
       return handleCompanionMagicCommand(decision, command);

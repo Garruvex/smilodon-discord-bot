@@ -2641,16 +2641,16 @@ export const purifyFoodAndDrink = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Brings a fallen hero back with 1 hit point, between fights; the penalty to rolls, the days limit and the diamond are not modeled.
 export const raiseDead = defineSpell({
   id: "spell:raise-dead",
   source,
   level: 5,
   castingTime: "long",
-  range: { kind: "touch" },
+  range: { kind: "feet", feet: 5 },
   targeting: { relation: "ally-or-self", count: 1 },
   concentration: false,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "revive", target: "target", hp: 1 }], onAvoid: [] }),
 });
 
 // Disadvantage on attacks stands in for the halved Strength damage; the target gets no save on the first blow.
@@ -2676,16 +2676,16 @@ export const regenerate = defineSpell({
   plan: ({ slotLevel }) => ({ check: null, onLand: [{ kind: "heal", target: "target", amount: diceAt(regenerateHealing, slotLevel) }], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Brings a fallen hero back with 1 hit point in their own body, between fights; the new body the book gives is not modeled.
 export const reincarnate = defineSpell({
   id: "spell:reincarnate",
   source,
   level: 5,
   castingTime: "long",
-  range: { kind: "touch" },
+  range: { kind: "feet", feet: 5 },
   targeting: { relation: "ally-or-self", count: 1 },
   concentration: false,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "revive", target: "target", hp: 1 }], onAvoid: [] }),
 });
 
 // Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
@@ -2724,16 +2724,16 @@ export const resistance = defineSpell({
   plan: () => ({ check: null, onLand: [{ kind: "applyModifiers", target: "target", modifiers: [{ kind: "bonusDie", die: { terms: [{ count: 1, sides: 4 }], modifier: 0 }, appliesTo: ["save"], source: "spell: resistance" }], duration: { kind: "rounds", count: 10 } }], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Brings a fallen hero back with all their hit points, between fights; the penalty, the years limit and the diamond are not modeled.
 export const resurrection = defineSpell({
   id: "spell:resurrection",
   source,
   level: 7,
   castingTime: "long",
-  range: { kind: "touch" },
+  range: { kind: "feet", feet: 5 },
   targeting: { relation: "ally-or-self", count: 1 },
   concentration: false,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "revive", target: "target", hp: "full" }], onAvoid: [] }),
 });
 
 // Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
@@ -2748,16 +2748,16 @@ export const reverseGravity = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Brings a fallen hero back with 1 hit point, between fights; the minute limit and the diamond are not modeled.
 export const revivify = defineSpell({
   id: "spell:revivify",
   source,
   level: 3,
   castingTime: "action",
-  range: { kind: "touch" },
+  range: { kind: "feet", feet: 5 },
   targeting: { relation: "ally-or-self", count: 1 },
   concentration: false,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "revive", target: "target", hp: 1 }], onAvoid: [] }),
 });
 
 // Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
@@ -3307,16 +3307,16 @@ export const truePolymorph = defineSpell({
   plan: () => ({ check: { kind: "savingThrow", ability: "wis" }, onLand: [{ kind: "polymorph", target: "target", monsterId: "monster:frog" }], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Brings a fallen hero back with all their hit points, between fights; the years limit and the diamonds are not modeled.
 export const trueResurrection = defineSpell({
   id: "spell:true-resurrection",
   source,
   level: 9,
   castingTime: "long",
-  range: { kind: "touch" },
+  range: { kind: "feet", feet: 5 },
   targeting: { relation: "ally-or-self", count: 1 },
   concentration: false,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "revive", target: "target", hp: "full" }], onAvoid: [] }),
 });
 
 // Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.

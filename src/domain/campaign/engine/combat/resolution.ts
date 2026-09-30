@@ -587,6 +587,9 @@ export function applyEffect(
       if (effectIds.length > 0) decision.emit({ kind: "effectsRemoved", combatantId: recipient.id, effectIds, reason: "cured" });
       return;
     }
+    case "revive":
+      // Only between fights: the fallen are not creatures on the battlefield.
+      return;
     case "stabilize":
       if (recipient.condition === "unconscious" && recipient.hp === 0) {
         decision.emit({ kind: "combatantHpChanged", combatantId: recipient.id, change: 0, hp: 0, condition: "stable", deathSaves: { successes: 0, failures: 0 }, cause: "healing" });

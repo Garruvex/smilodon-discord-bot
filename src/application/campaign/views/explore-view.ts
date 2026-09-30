@@ -7,6 +7,7 @@ import { lootGold, type HouseRules } from "../../../domain/campaign/rules/house-
 import { abilityModifier } from "../../../domain/campaign/character/character-sheet.js";
 import { defaultHeroResources } from "../../../domain/campaign/character/hero-status.js";
 import { knownSpells, spellbookOf } from "../../../domain/campaign/character/spell-access.js";
+import { reviveEffectOf } from "../../../domain/campaign/engine/revival-magic.js";
 import { companionEffectOf } from "../../../domain/campaign/engine/companion-magic.js";
 import { healingEffectOf } from "../../../domain/campaign/engine/healing-magic.js";
 import { castableSlotLevels, mergeSlots } from "../../../domain/campaign/magic/spell-rules.js";
@@ -54,6 +55,9 @@ export interface ExploreView {
   readonly healing: readonly HealingSpell[];
   // Spells that call creatures to wait for the next fight, with the slots the hero can cast them at.
   readonly conjuring: readonly HealingSpell[];
+  // Spells that bring back a fallen hero, with the slots to cast them at, and the heroes who have fallen.
+  readonly reviving: readonly HealingSpell[];
+  readonly fallen: readonly { readonly id: CharacterId; readonly name: string }[];
   readonly hurt: readonly HurtHero[];
 }
 
@@ -134,6 +138,24 @@ export function conjuringSpells(state: CampaignState, characterId: CharacterId, 
   });
 }
 
+// Spells that bring a fallen hero back, at each slot level still held; none while no one has fallen.
+export function revivingSpells(state: CampaignState, characterId: CharacterId, content: SealedContent, glossary: Glossary): readonly HealingSpell[] {
+  const sheet = state.characters[characterId];
+  if (sheet?.spellcasting === null || sheet === undefined || fallenHeroes(state).length === 0) return [];
+  const resources = state.heroStatus[characterId]?.resources ?? defaultHeroResources(sheet, content);
+  const slots = mergeSlots(resources.spellSlots, resources.pactSlots ?? {});
+  return knownSpells(sheet, content).flatMap((id) => {
+    const spell = content.find(id);
+    if (spell?.kind !== "spell" || reviveEffectOf(spell) === undefined) return [];
+    const levels = castableSlotLevels(spell, slots).map((level) => ({ level, left: slots[level] ?? 0 }));
+    return levels.length === 0 ? [] : [{ id, name: glossary.names[id] ?? id, slots: levels }];
+  });
+}
+
+export function fallenHeroes(state: CampaignState): readonly { readonly id: CharacterId; readonly name: string }[] {
+  return Object.values(state.characters).filter((sheet) => isFallen(state, sheet.id)).map((sheet) => ({ id: sheet.id, name: sheet.name }));
+}
+
 export function hurtHeroes(state: CampaignState): readonly HurtHero[] {
   return Object.values(state.characters).flatMap((sheet) => {
     const hp = state.heroStatus[sheet.id]?.hp ?? sheet.maxHp;
@@ -147,6 +169,8 @@ export function buildExploreView(state: CampaignState, bible: AdventureBible, co
     spells: castableSpells(state, characterId, content, glossary),
     healing: healingSpells(state, characterId, content, glossary),
     conjuring: conjuringSpells(state, characterId, content, glossary),
+    reviving: revivingSpells(state, characterId, content, glossary),
+    fallen: fallenHeroes(state),
     hurt: hurtHeroes(state),
   };
 }
