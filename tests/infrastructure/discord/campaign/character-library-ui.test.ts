@@ -68,6 +68,29 @@ const fighterBuild: BuildChoices = {
 };
 
 describe("My Characters", () => {
+  it("opens an existing build for editing and saves a new version", async () => {
+    const r = rig();
+    const made = await r.library.create("u-alice", { ...fighterBuild, race: "human" });
+    if (made.kind !== "ok") throw new Error("create");
+    const handler = libraryHandler(r);
+    const viewed = screenOf(await click(handler, libraryCustomId("view", made.character.id)));
+    const edit = viewed.buttons.find((button) => button.label === "Edit character");
+    const editing = screenOf(await click(handler, edit?.id ?? ""));
+    expect(editing.content).toContain("Choose what to change");
+    const classChoice = editing.buttons.find((button) => button.label === "Class");
+    const classes = screenOf(await click(handler, classChoice?.id ?? ""));
+    const changedClass = screenOf(await click(handler, classes.menus[0]?.id ?? "", "u-alice", { values: ["rogue"] }));
+    expect(changedClass.menus[0]?.id).toContain(made.character.id);
+    const details = editing.buttons.find((button) => button.label === "Name and story");
+    const scores = screenOf(await click(handler, details?.id ?? ""));
+    expect(scores.content).toContain("Scores set:");
+    const name = scores.buttons.find((button) => button.label === "Name your character");
+    expect(name?.id).toContain(made.character.id);
+    const result = screenOf(await submitName(handler, name?.id ?? "", "u-alice", { name: "Aldric Again", appearance: "New look", backstory: "New past" }));
+    expect(result.content).toContain("version 2");
+    expect((await r.library.entry("u-alice", made.character.id))?.snapshots).toHaveLength(2);
+  });
+
   it("asks a Half-Elf to choose two distinct non-Charisma ability bonuses before the kit", async () => {
     const handler = libraryHandler(rig());
     let screen = screenOf(await click(handler, libraryCustomId("new")));
@@ -346,13 +369,15 @@ describe("Save progress from a game", () => {
   }
   const saveButton = (sent: readonly Sent[]): boolean => screenOf(sent).buttons.some((button) => button.label === "Save progress");
 
-  it("puts Save progress on My Hero for a hero from the library, and saves a new version", async () => {
+  it("offers Save progress in My Characters for a hero from the library", async () => {
     const { t, snapshot } = await playing();
     const sheet = await t.press("myHero", "u-org");
-    expect(saveButton(sheet)).toBe(true);
-    const saved = await t.press("saveProgress", "u-org", { onCard: "adventure" });
-    expect(contentOf(saved)).toBe("Progress saved: **Aldric**, version 2. Pick it when you join another game.");
-    expect(contentOf(await t.press("saveProgress", "u-org", { onCard: "adventure" }))).toBe("That moment is already saved.");
+    expect(saveButton(sheet)).toBe(false);
+    const handler = libraryHandler(t.r);
+    const viewed = screenOf(await click(handler, libraryCustomId("view", snapshot.characterId), "u-org"));
+    expect(viewed.menus[0]?.id).toContain("dndchar:sync:");
+    const saved = screenOf(await click(handler, viewed.menus[0]?.id ?? "", "u-org", { values: [t.key.campaignId] }));
+    expect(saved.content).toContain("Progress saved: **Aldric**, version 2");
     expect((await t.r.library.entry("u-org", snapshot.characterId))?.snapshots).toHaveLength(2);
   });
 

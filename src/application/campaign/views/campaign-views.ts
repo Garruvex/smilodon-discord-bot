@@ -94,9 +94,11 @@ export interface CombatView {
     readonly zone: string;
     readonly active: boolean;
   }[];
-  // Monsters show a health band, never exact HP.
+  // Health is shown numerically on the shared combat panel, with a short status.
   readonly foes: readonly {
     readonly name: string;
+    readonly hp: number;
+    readonly maxHp: number;
     readonly band: "unhurt" | "hurt" | "bloodied" | "down";
     readonly zone: string;
     readonly active: boolean;
@@ -455,6 +457,8 @@ function combatViewOf(names: CombatNames, fight: NonNullable<CampaignState["enco
       .filter((combatant) => combatant.side === "foes")
       .map((combatant) => ({
         name: name(combatant),
+        hp: combatant.hp,
+        maxHp: combatant.maxHp,
         band: combatant.hp <= 0 ? "down" : combatant.hp >= combatant.maxHp ? "unhurt" : combatant.hp * 2 > combatant.maxHp ? "hurt" : "bloodied",
         zone: zoneName(combatant.zoneId),
         active: combatant === active,

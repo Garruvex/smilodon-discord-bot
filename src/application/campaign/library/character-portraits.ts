@@ -34,6 +34,7 @@ export interface CharacterPortraitsOptions {
   readonly generator?: ImageGenerator;
   // Pictures one person may ask for in a rolling 15-minute window.
   readonly maxPerWindow?: number;
+  readonly windowMinutes?: number;
   readonly timeoutMs?: number;
 }
 
@@ -183,7 +184,7 @@ export class CharacterPortraits {
   // A short rolling window per person keeps retries available without unbounded image use.
   private limit(ownerUserId: UserId): PortraitResult | null {
     const now = this.options.clock.now();
-    const windowMs = 15 * 60 * 1000;
+    const windowMs = (this.options.windowMinutes ?? 15) * 60 * 1000;
     const recent = (this.asked.get(ownerUserId) ?? []).filter((at) => now - at < windowMs);
     const max = this.options.maxPerWindow ?? 6;
     if (recent.length >= max) {

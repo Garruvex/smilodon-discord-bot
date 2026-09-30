@@ -171,6 +171,7 @@ describe("the adventure panel view", () => {
     expect(view.mode).toBe("combat");
     expect(view.combat).toMatchObject({ round: 1, activeName: "Mira" });
     expect(view.combat?.foes.map((foe) => foe.band)).toEqual(["unhurt", "unhurt"]);
+    expect(view.combat?.foes.map((foe) => ({ hp: foe.hp, maxHp: foe.maxHp }))).toEqual(Object.values(fight.state.encounter!.combatants).filter((foe) => foe.side === "foes").map((foe) => ({ hp: foe.hp, maxHp: foe.maxHp })));
     expect(view.combat?.party.map((hero) => hero.name)).toEqual(["Mira", "Borin"]);
   });
 });

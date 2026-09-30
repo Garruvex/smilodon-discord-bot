@@ -48,7 +48,7 @@ describe("the adventure panel", () => {
 
   it("changes its controls with the state", () => {
     expect(labels({ ...collecting, mode: "planning" })).toEqual(["My Hero", "Away", "Explore", "Safety", "More…"]);
-    expect(labels({ ...collecting, mode: "awaitingRolls", pendingRolls: [{ characterId: "c-mira", userId: "1", heroName: "Mira" }] })).toEqual(["Roll", "My Hero", "Away", "Explore", "Safety", "More…"]);
+    expect(labels({ ...collecting, mode: "awaitingRolls", pendingRolls: [{ characterId: "c-mira", userId: "1", heroName: "Mira" }] })).toEqual(["My Hero", "Away", "Explore", "Safety", "More…"]);
     expect(labels({ ...collecting, mode: "waiting" })).toEqual(["Continue", "I'm back", "My Hero", "Explore", "Safety", "More…"]);
     expect(labels({ ...collecting, mode: "paused" })).toEqual(["My Hero", "Explore", "Safety", "More…"]);
     expect(labels({ ...collecting, mode: "archived" })).toEqual([]);
@@ -81,16 +81,15 @@ describe("the adventure panel", () => {
     expect(flatten(renderAdventurePanel({ ...collecting, mode: "recovery" }, texts.en, "camp")).text).toContain("The organizer must resume play.");
   });
 
-  it("names who the rolls wait for, with Roll disabled when none", () => {
+  it("names who the rolls wait for and points them to their private hero screen", () => {
     const view: PanelView = { ...collecting, mode: "awaitingRolls", pendingRolls: [{ characterId: "c-mira", userId: "1", heroName: "Mira" }] };
     const card = flatten(renderAdventurePanel(view, texts.en, "camp"));
     expect(card.accent).toBe(accents.amber);
-    expect(card.text).toContain("Waiting for rolls: Mira.");
-    expect(card.buttons[0]?.disabled).toBe(false);
-    expect(flatten(renderAdventurePanel({ ...view, pendingRolls: [] }, texts.en, "camp")).buttons[0]?.disabled).toBe(true);
+    expect(card.text).toContain("Waiting for rolls: Mira. If this is your hero, open My Hero to roll.");
+    expect(card.buttons.map((button) => button.label)).not.toContain("Roll");
   });
 
-  it("summarizes a fight with hero HP and monster bands, never monster HP", () => {
+  it("separates both sides with health bars, exact HP, and locations", () => {
     const view: PanelView = {
       ...collecting,
       mode: "combat",
@@ -106,16 +105,20 @@ describe("the adventure panel", () => {
           { name: "Borin", hp: 12, maxHp: 12, tempHp: 0, condition: "active", zone: "Cellar", active: true },
         ],
         foes: [
-          { name: "Goblin A", band: "bloodied", zone: "Cellar", active: false },
-          { name: "Wolf", band: "unhurt", zone: "Stairs", active: false },
+          { name: "Goblin A", hp: 2, maxHp: 7, band: "bloodied", zone: "Cellar", active: false },
+          { name: "Wolf", hp: 11, maxHp: 11, band: "unhurt", zone: "Stairs", active: false },
         ],
       },
     };
     const card = flatten(renderAdventurePanel(view, texts.en, "camp"));
     expect(card.accent).toBe(accents.red);
-    expect(card.text).toContain("Combat, round 2. Active: Borin.");
-    expect(card.text).toContain("📍 Cellar: Mira 4/9 · ▶ Borin 12/12 · Goblin A: bloodied");
-    expect(card.text).toContain("📍 Stairs: Wolf: unhurt");
+    expect(card.text).toContain("▶ **Borin** is taking their turn.");
+    expect(card.text).toContain("### Party (2)\n▶ **Borin**");
+    expect(card.text).toContain("▰▰▰▰▰▰▰▰ HP 12/12 · 📍 Cellar");
+    expect(card.text).toContain("• **Mira** · ▰▰▰▰▱▱▱▱ HP 4/9");
+    expect(card.text).toContain("### Enemies (2)\n• **Goblin A**");
+    expect(card.text).toContain("HP 2/7 · bloodied · 📍 Cellar");
+    expect(card.text).toContain("HP 11/11 · unhurt · 📍 Stairs");
     // On autopilot nobody takes turns, so there is only My Hero (and the safety row).
     expect(card.buttons.map((button) => button.id)).toEqual(["dnd:myHero:camp", "dnd:safety:camp", "dnd:more:camp"]);
   });
@@ -132,11 +135,11 @@ describe("the adventure panel", () => {
         playersControl: true,
         zones: ["Cellar"],
         party: [{ name: "Mira", hp: 9, maxHp: 9, tempHp: 0, condition: "active", zone: "Cellar", active: true }],
-        foes: [{ name: "Wolf", band: "unhurt", zone: "Cellar", active: false }],
+        foes: [{ name: "Wolf", hp: 11, maxHp: 11, band: "unhurt", zone: "Cellar", active: false }],
       },
     };
     const card = flatten(renderAdventurePanel(view, texts.en, "camp"));
-    expect(card.text).toContain("Closes <t:1800000000:R>.");
+    expect(card.text).toContain("\nTurn deadline: <t:1800000000:d> <t:1800000000:t>");
     expect(card.buttons.map((button) => button.id)).toEqual(["dnd:turn:camp", "dnd:endTurn:camp", "dnd:speak:camp", "dnd:myHero:camp", "dnd:away:camp", "dnd:safety:camp", "dnd:more:camp"]);
     expect(labels(view, "zh-TW")).toEqual(["輪到我", "結束回合", "說話", "我的英雄", "離開", "安全", "更多…"]);
   });
@@ -148,6 +151,43 @@ describe("the adventure panel", () => {
     expect(card.buttons.map((button) => button.label)).toEqual(["行動／修改", "說話", "跳過", "我的英雄", "離開", "探索", "安全", "更多…"]);
     expect(card.componentCount).toBeLessThan(cardLimits.components);
     expect(card.text.length).toBeLessThan(cardLimits.characters);
+  });
+
+  it("shows Chinese health, temporary HP and incapacitation with a separate deadline", () => {
+    const view: PanelView = {
+      ...collecting, mode: "combat", roundNumber: 1,
+      combat: {
+        round: 1, activeName: "空虎", activeUserId: "1", playersControl: true, zones: ["辦公室"],
+        party: [
+          { name: "空虎", hp: 10, maxHp: 10, tempHp: 3, condition: "active", zone: "辦公室", active: true },
+          { name: "Onyx", hp: -2, maxHp: 8, tempHp: 0, condition: "unconscious", zone: "辦公室", active: false },
+        ],
+        foes: [{ name: "飛蛇", hp: 2, maxHp: 5, band: "bloodied", zone: "辦公室", active: false }],
+      },
+    };
+    const card = flatten(renderAdventurePanel(view, texts["zh-TW"], "camp"));
+    expect(card.text).toContain("▶ 輪到 **空虎** 行動\n行動截止時間：<t:1800000000:d> <t:1800000000:t>");
+    expect(card.text).toContain("### 隊伍（2）\n▶ **空虎** · ▰▰▰▰▰▰▰▰ 生命 10/10 · +3 臨時生命值");
+    expect(card.text).toContain("• **Onyx** · ▱▱▱▱▱▱▱▱ 生命 0/8 · 倒地");
+    expect(card.text).toContain("### 敵方（1）\n• **飛蛇** · ▰▰▰▰▱▱▱▱ 生命 2/5 · 重傷");
+    expect(card.text).not.toContain(":R>");
+  });
+
+  it("keeps a crowded fight within message limits with the active enemy visible", () => {
+    const view: PanelView = {
+      ...collecting, mode: "combat",
+      combat: {
+        round: 1, activeName: "Last enemy", activeUserId: null, playersControl: true, zones: ["Cellar", "Stairs"],
+        party: Array.from({ length: 30 }, (_, i) => ({ name: `Hero ${i} with a long name`, hp: 5, maxHp: 10, tempHp: 0, condition: "active" as const, zone: "Cellar", active: false })),
+        foes: Array.from({ length: 100 }, (_, i) => ({ name: i === 99 ? "Last enemy" : `Enemy ${i} with a long name`, hp: 3, maxHp: 7, band: "bloodied" as const, zone: "Stairs", active: i === 99 })),
+      },
+    };
+    const card = flatten(renderAdventurePanel(view, texts.en, "camp"));
+    expect(card.text).toContain("### Party (30)");
+    expect(card.text).toContain("### Enemies (100)\n▶ **Last enemy**");
+    expect(card.text).toContain("more combatants");
+    expect(card.text.length).toBeLessThan(cardLimits.characters);
+    expect(card.componentCount).toBeLessThan(cardLimits.components);
   });
 });
 

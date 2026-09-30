@@ -66,6 +66,8 @@ export interface CardReference {
 // written back into the human-managed guild profile.
 export interface GuildCampaignSettings {
   readonly guildId: string;
+  // Language chosen for this server's D&D hub and newly created games.
+  readonly language?: "en" | "zh-TW";
   readonly categoryId: string | null;
   readonly hubChannelId: string | null;
   // The four forums a campaign's Games/Parties posts go into, chosen by
@@ -131,6 +133,8 @@ export interface CampaignRecord {
   readonly imageBudget?: { readonly limit: number; readonly used: number };
   // The subject of the picture posted last, which the organizer's Redo repaints.
   readonly lastPicture?: string;
+  // One automatic dramatic moment per scene; the subject also identifies a retry.
+  readonly automaticMomentScenes?: Readonly<Record<string, string>>;
 }
 
 export interface StoredRecord {

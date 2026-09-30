@@ -89,7 +89,7 @@ describe("D&D settings", () => {
   it("sets up with a default hub (no channel given), and is unavailable without the campaign module", async () => {
     const fake = access();
     const repaired = await engineFixture({ deps: { campaign: fake.campaign } }).run("dnd.setup", slashValues({}));
-    expect(fake.setUp).toHaveBeenCalledWith(guildId, null);
+    expect(fake.setUp).toHaveBeenCalledWith(guildId, null, "en");
     expect(repaired.kind).toBe("done");
 
     const missing = await engineFixture().run("dnd.setup", slashValues({}));

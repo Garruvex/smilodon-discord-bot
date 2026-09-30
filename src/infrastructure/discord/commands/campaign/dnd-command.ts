@@ -6,7 +6,7 @@ import { CommandModule, CommandResponseVisibility, type BotCommand, type Command
 import type { CampaignLobbyService } from "../../../../application/campaign/campaign-lobby-service.js";
 import type { CampaignPlayController, ManageAction, PlayResult } from "../../../../application/campaign/campaign-play-controller.js";
 import type { StoredRecord } from "../../../../application/campaign/ports/campaign-record.js";
-import type { Texts } from "../../../../application/i18n/texts.js";
+import { texts, type Texts } from "../../../../application/i18n/texts.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
 import type { CampaignAuthority } from "../../campaign/campaign-authority.js";
 import type { CampaignGameCreator } from "../../campaign/campaign-game-creator.js";
@@ -45,7 +45,10 @@ export class DndCommand implements BotCommand {
       {
         name: "setup",
         description: "Sets this server up for D&D: a D&D category with a games hub channel.",
-        options: [{ type: "channel", name: "hub", description: "Use this channel as the hub (default: a new #dnd-games).", guildTextOnly: true }],
+        options: [
+          { type: "channel", name: "hub", description: "Use this channel as the hub (default: a new channel).", guildTextOnly: true },
+          { type: "string", name: "language", description: "Language for the D&D hub and new games.", choices: [{ name: "English", value: "en" }, { name: "繁體中文", value: "zh-TW" }] },
+        ],
       },
       {
         name: "new",
@@ -219,23 +222,24 @@ export class DndCommand implements BotCommand {
     const channel = interaction.channel;
     const ids = [interaction.channelId, ...(channel?.isThread() && channel.parentId !== null ? [channel.parentId] : [])];
     const game = await this.deps.lobby.findByChannel(interaction.guildId, ids);
-    return game?.record.language ?? this.deps.authority.guildLanguage(interaction.guildId);
+    return game?.record.language ?? await this.deps.authority.guildLanguage(interaction.guildId);
   }
 
   private async setup(interaction: ChatInputCommandInteraction<"cached">, text: Texts, responses: CommandContext["responses"]): Promise<void> {
     const chosen = interaction.options.getChannel("hub");
     // No channel given: the hub is a new #dnd-games in the D&D category (or the one already there).
     const hub = chosen !== null && chosen.type === ChannelType.GuildText ? chosen.id : null;
-    const result = await this.deps.setup.setupGuild(interaction.guildId, hub);
+    const selected = interaction.options.getString("language");
+    const result = await this.deps.setup.setupGuild(interaction.guildId, hub, selected === "zh-TW" ? "zh-TW" : selected === "en" ? "en" : await this.deps.authority.guildLanguage(interaction.guildId));
     if (result.kind === "missingPermissions") {
       await responses.edit(text.campaign.cmd.setupMissing({ permissions: result.missing.join(", ") }));
       return;
     }
-    await responses.edit(text.campaign.cmd.setupDone({ hub: result.settings.hubChannelId ?? "" }));
+    await responses.edit(texts[result.settings.language ?? "en"].campaign.cmd.setupDone({ hub: result.settings.hubChannelId ?? "" }));
   }
 
   private async create(interaction: ChatInputCommandInteraction<"cached">, text: Texts, responses: CommandContext["responses"]): Promise<void> {
-    const language = interaction.options.getString("language") === "zh-TW" ? "zh-TW" : interaction.options.getString("language") === "en" ? "en" : this.deps.authority.guildLanguage(interaction.guildId);
+    const language = interaction.options.getString("language") === "zh-TW" ? "zh-TW" : interaction.options.getString("language") === "en" ? "en" : await this.deps.authority.guildLanguage(interaction.guildId);
     const named = this.deps.creator.findAdventure(interaction.guildId, language, interaction.options.getString("adventure"));
     if (named.kind !== "found") {
       const t = text.campaign.cmd;

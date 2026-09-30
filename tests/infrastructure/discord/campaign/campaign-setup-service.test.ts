@@ -32,6 +32,22 @@ async function newGame(r: Rig, name = "Moonlit Ruins", language: "en" | "zh-TW" 
 }
 
 describe("server setup", () => {
+  it("creates a Traditional Chinese D&D space and retains its language on repair", async () => {
+    const r = rig();
+    const { service, resources, messages } = setup(r);
+    const first = await service.setupGuild(guildId, null, "zh-TW");
+    if (first.kind !== "ok") throw new Error("setup");
+    expect(first.settings.language).toBe("zh-TW");
+    expect(resources.categoryNames).toEqual(["龍與地下城"]);
+    expect(resources.channels[0]?.options).toMatchObject({ name: "龍與地下城-團務", topic: "本伺服器的龍與地下城團務" });
+    expect(resources.forums.map((forum) => forum.options.name)).toEqual(["公開遊戲", "公開隊伍", "私人遊戲", "私人隊伍"]);
+    expect(resources.forums[0]?.options.topic).toBe("龍與地下城 公開遊戲");
+    expect(flatten(messages.live(first.settings.hubChannelId!)[0]!.payload).text).toContain("還沒有團務");
+    const repaired = await service.setupGuild(guildId, null);
+    expect(repaired.kind === "ok" && repaired.settings.language).toBe("zh-TW");
+    expect(resources.categories.size).toBe(1);
+  });
+
   it("creates the D&D category, the four campaign forums, and a read-only hub channel, and lists games there", async () => {
     const r = rig();
     const { service, resources, messages } = setup(r);

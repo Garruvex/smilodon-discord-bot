@@ -101,6 +101,9 @@ export class CampaignCardService implements CardRefresher {
     if (this.scheduled.has(id)) return;
     this.scheduled.add(id);
     void this.queue.run(id, async () => {
+      // Combine the roll request, result, and ensuing state changes into one
+      // rendering of the latest state instead of several rapid message edits.
+      await new Promise((resolve) => setTimeout(resolve, 150));
       this.scheduled.delete(id);
       try {
         await this.syncNow(key);
@@ -231,13 +234,23 @@ export class CampaignCardService implements CardRefresher {
     // A lobby card becomes the campaign card in place when the adventure starts.
     const inherited = record.cards.party === undefined && record.cards.lobby !== undefined ? { party: record.cards.lobby } : {};
     const existing: Readonly<Record<string, CardReference>> = { ...record.cards, ...inherited };
-    for (const card of desired) {
-      const reference = await this.place(card, existing[card.key], verify, `${key.campaignId}:${card.key}`, failures);
-      const saved = record.cards[card.key];
-      if (reference !== null && (saved === undefined || saved.messageId !== reference.messageId || saved.channelId !== reference.channelId || saved.renderedHash !== reference.renderedHash || saved.epoch !== reference.epoch)) {
-        updates[card.key] = reference;
+    const channels = new Map<string, DesiredCard[]>();
+    for (const card of desired) channels.set(card.channelId, [...(channels.get(card.channelId) ?? []), card]);
+    // A slow party-channel edit must not hold the adventure's roll prompt behind it.
+    // Within each channel, actionable controls go first and requests remain serial.
+    await Promise.all([...channels.values()].map(async (cards) => {
+      cards.sort((a, b) => Number(b.key === "adventure") - Number(a.key === "adventure"));
+      for (const card of cards) {
+        const reference = await this.place(card, existing[card.key], verify, `${key.guildId}:${key.campaignId}:${card.key}`, failures);
+        const saved = record.cards[card.key];
+        if (reference !== null && (saved === undefined || saved.messageId !== reference.messageId || saved.channelId !== reference.channelId || saved.renderedHash !== reference.renderedHash || saved.epoch !== reference.epoch)) {
+          updates[card.key] = reference;
+          // Publish the new message identity immediately, so its buttons work
+          // even while another channel is waiting on Discord.
+          await this.saveReferences(key, { [card.key]: reference }, []);
+        }
       }
-    }
+    }));
     // An offer that was answered leaves the Party channel; an answered reaction, smite, or opportunity attack leaves the Adventure channel.
     const answered = Object.keys(record.cards).filter(
       (name) => (name.startsWith("offer:") || name === "reaction" || name === "smite" || name === "opportunity") && !desired.some((card) => card.key === name),
@@ -300,9 +313,7 @@ export class CampaignCardService implements CardRefresher {
     if (settings?.hubChannelId === null || settings === undefined) return;
     const hubChannelId = settings.hubChannelId;
     const live = games.filter(({ record }) => record.lifecycle !== "archived");
-    // The hub speaks the server's default (English) unless every live game shares a language.
-    const languages = new Set(live.map(({ record }) => record.language));
-    const language: Language = languages.size === 1 && languages.has("zh-TW") ? "zh-TW" : "en";
+    const language: Language = settings.language ?? "en";
     const control = await this.place(
       { key: "hub", channelId: hubChannelId, payload: renderHubControl(live.length, allTexts[language]), epoch: "hub", pin: true },
       settings.hubCard ?? undefined,

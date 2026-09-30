@@ -1,10 +1,11 @@
 import { worldLine } from "./world-text.js";
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, SeparatorBuilder, TextDisplayBuilder } from "discord.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, SeparatorBuilder, TextDisplayBuilder, escapeMarkdown } from "discord.js";
 
 import type { PanelMode, PanelView, RosterEntry } from "../../../application/campaign/views/campaign-views.js";
 import type { Texts } from "../../../application/i18n/texts.js";
 import { campaignCustomId, type CampaignAction } from "./campaign-ids.js";
 import { accents, cardPayload, type CardPayload } from "./card-payload.js";
+import { hpBar } from "./hero-card.js";
 
 const accentFor: Readonly<Record<PanelMode, number>> = {
   opening: accents.amber,
@@ -28,7 +29,7 @@ const controlsFor: Readonly<Record<PanelMode, readonly CampaignAction[]>> = {
   readyCheck: ["ready", "begin", "myHero", "away"],
   collecting: ["act", "speak", "pass", "myHero", "away"],
   planning: ["myHero", "away"],
-  awaitingRolls: ["roll", "myHero", "away"],
+  awaitingRolls: ["myHero", "away"],
   combat: ["myHero"],
   waiting: ["continue", "back", "myHero"],
   paused: ["myHero"],
@@ -62,13 +63,13 @@ export function renderAdventurePanel(view: PanelView, text: Texts, campaignId: s
   const controls = view.mode === "combat" && view.combat?.playersControl === true ? combatControls : controlsFor[view.mode];
   if (controls.length > 0) {
     container.addActionRowComponents(
-      new ActionRowBuilder<ButtonBuilder>().addComponents(controls.map((action) => controlButton(action, campaignId, text, view))),
+      new ActionRowBuilder<ButtonBuilder>().addComponents(controls.map((action) => controlButton(action, campaignId, text))),
     );
   }
   if (view.mode !== "archived") {
     // Explore (people, shops, spells) is for between fights.
     const second: readonly CampaignAction[] = view.mode === "combat" ? safetyControls : ["explore", ...safetyControls];
-    container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(second.map((action) => controlButton(action, campaignId, text, view))));
+    container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(second.map((action) => controlButton(action, campaignId, text))));
   }
   return cardPayload(container);
 }
@@ -91,7 +92,7 @@ function statusLine(view: PanelView, text: Texts): string {
         ? ""
         : view.combat.activeName === null
           ? t.combatIdle({ round: view.combat.round })
-          : `${t.combat({ round: view.combat.round, name: view.combat.activeName })}${view.closesAt === null ? "" : ` ${t.closes({ when: relative(view.closesAt) })}`}`;
+          : `${t.combatTurn({ name: displayName(view.combat.activeName) })}${view.closesAt === null ? "" : `\n${t.turnDeadline({ date: timestamp(view.closesAt, "d"), time: timestamp(view.closesAt, "t") })}`}`;
     case "waiting":
       return t.waiting;
     case "paused":
@@ -109,25 +110,41 @@ function rosterLine(roster: readonly RosterEntry[], text: Texts): string {
   return roster.map((entry) => `${entry.heroName} ${text.campaign.roster[entry.status]}`).join(" · ");
 }
 
-// One line per zone: the heroes there with exact HP, then the foes with a
-// health band. The hero whose turn it is has an arrow.
+// Separate sides, one combatant per line. A crowded fight keeps the active
+// combatant visible and reserves room for both sides within Discord's limit.
 function combatLines(view: PanelView, text: Texts): string {
   const combat = view.combat;
   if (combat === null) return "";
   const t = text.campaign;
-  return combat.zones
-    .flatMap((zone) => {
-      const heroes = combat.party
-        .filter((hero) => hero.zone === zone)
-        .map((hero) => `${hero.active ? "▶ " : ""}${t.panel.hero({ name: hero.name, hp: Math.max(0, hero.hp), max: hero.maxHp })}${hero.tempHp > 0 ? ` ✚${hero.tempHp}` : ""}`);
-      const foes = combat.foes.filter((foe) => foe.zone === zone).map((foe) => `${foe.active ? "▶ " : ""}${t.panel.foe({ name: foe.name, band: t.band[foe.band] })}`);
-      const entries = [...heroes, ...foes];
-      return entries.length === 0 ? [] : [t.panel.zone({ zone, entries: entries.join(" · ") })];
-    })
-    .join("\n");
+  const location = (zone: string): string => combat.zones.length > 1 ? ` · 📍 ${displayName(zone)}` : "";
+  const party = [...combat.party].sort((a, b) => Number(b.active) - Number(a.active)).map((hero) => {
+    const condition = hero.condition === "dead" ? t.hero.fallen : hero.condition === "fled" ? t.panel.combatFled : hero.condition === "stable" ? t.panel.combatStable : hero.hp <= 0 ? t.hero.down : "";
+    return `${hero.active ? "▶" : "•"} **${displayName(hero.name)}** · ${hpBar(hero.hp, hero.maxHp)} ${t.panel.combatHp({ hp: Math.max(0, hero.hp), max: hero.maxHp })}${hero.tempHp > 0 ? ` · ${t.panel.combatTempHp({ hp: hero.tempHp })}` : ""}${condition === "" ? "" : ` · ${condition}`}${location(hero.zone)}`;
+  });
+  const foes = [...combat.foes].sort((a, b) => Number(b.active) - Number(a.active)).map((foe) =>
+    `${foe.active ? "▶" : "•"} **${displayName(foe.name)}** · ${hpBar(foe.hp, foe.maxHp)} ${t.panel.combatHp({ hp: Math.max(0, foe.hp), max: foe.maxHp })} · ${t.band[foe.band]}${location(foe.zone)}`,
+  );
+  return [boundedRoster(t.panel.combatParty({ count: party.length }), party, text), boundedRoster(t.panel.combatFoes({ count: foes.length }), foes, text)].filter(Boolean).join("\n\n");
 }
 
-function controlButton(action: CampaignAction, campaignId: string, text: Texts, view: PanelView): ButtonBuilder {
+function boundedRoster(heading: string, lines: readonly string[], text: Texts): string {
+  if (lines.length === 0) return "";
+  const shown: string[] = [];
+  let length = heading.length + 8;
+  for (const line of lines) {
+    if (length + line.length + 1 > 1450) break;
+    shown.push(line);
+    length += line.length + 1;
+  }
+  if (shown.length < lines.length) shown.push(text.campaign.panel.combatMore({ count: lines.length - shown.length }));
+  return `### ${heading}\n${shown.join("\n")}`;
+}
+
+function displayName(name: string): string {
+  return escapeMarkdown(name.replace(/[\r\n]/g, " ").slice(0, 64));
+}
+
+function controlButton(action: CampaignAction, campaignId: string, text: Texts): ButtonBuilder {
   const t = text.campaign.button;
   const labels: Partial<Record<CampaignAction, string>> = {
     act: t.act,
@@ -147,11 +164,13 @@ function controlButton(action: CampaignAction, campaignId: string, text: Texts, 
     explore: t.explore,
   };
   const style = action === "act" || action === "roll" || action === "continue" || action === "ready" || action === "turn" ? ButtonStyle.Primary : ButtonStyle.Secondary;
-  // Roll is enabled while a check waits; the click still finds the clicker's own.
-  const disabled = action === "roll" && view.pendingRolls.length === 0;
-  return new ButtonBuilder().setCustomId(campaignCustomId(action, campaignId)).setLabel(labels[action] ?? action).setStyle(style).setDisabled(disabled);
+  return new ButtonBuilder().setCustomId(campaignCustomId(action, campaignId)).setLabel(labels[action] ?? action).setStyle(style);
 }
 
 function relative(milliseconds: number): string {
   return `<t:${Math.floor(milliseconds / 1000)}:R>`;
+}
+
+function timestamp(milliseconds: number, style: "d" | "t"): string {
+  return `<t:${Math.floor(milliseconds / 1000)}:${style}>`;
 }

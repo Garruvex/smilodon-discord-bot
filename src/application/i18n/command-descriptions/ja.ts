@@ -189,6 +189,8 @@ export const jaCommandDescriptions = {
   "dnd/import-character:file": "My Characters から書き出したキャラクターファイル（.json）", // The character file (.json) exported from My Characters.
   "dnd/upload-adventure": "ファイルから冒険をこのサーバーに追加します（確認と承認あり）", // Adds an adventure from a file to this server, after checks and your approval.
   "dnd/upload-adventure:file": "冒険ファイル（YAML または JSON）", // The adventure file (YAML or JSON).
+  "dnd/upload-adventure:language": "この冒険で使用する言語", // The language of this adventure.
+  "dnd/setup:language": "D&D チャンネルで使用する言語", // Language for the D&D channels.
   "dnd/adventures": "このサーバーの冒険を一覧表示します（下書きの確認、削除、復元）", // Lists this server's adventures: review a draft, remove one, or restore it.
   "dnd/author": "アイデアやメモから冒険作者に冒険を書いてもらいます", // Has the Adventure Author write an adventure from an idea or your notes.
   "dnd/author:idea": "冒険の内容", // What the adventure is about.

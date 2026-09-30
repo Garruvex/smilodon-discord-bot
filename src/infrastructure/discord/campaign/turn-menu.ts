@@ -162,13 +162,26 @@ function iconOf(choice: TurnChoice, view: TurnView): CampaignIcon | undefined {
 interface MenuOption {
   readonly label: string;
   readonly value: string;
+  readonly description?: string;
   readonly emoji?: { readonly id: string; readonly name: string };
+}
+
+// The line under an attack: whether it is a close blow or a shot, and how far it carries.
+function attackNote(choice: TurnChoice, view: TurnView, text: Texts): string | undefined {
+  if (choice.kind !== "attack") return undefined;
+  const t = text.campaign.turn;
+  const attack = view.attacks.find((candidate) => candidate.weapon === choice.weapon);
+  if (attack === undefined) return undefined;
+  if (choice.weapon.startsWith("nonlethal:")) return t.noteKnockOut;
+  if (attack.reach !== undefined) return t.noteRanged({ normal: attack.reach.normal, long: attack.reach.long });
+  return choice.weapon.startsWith("offhand:") ? t.noteOffHand : t.noteMelee;
 }
 
 function optionOf(choice: TurnChoice, view: TurnView, text: Texts, glossary: Glossary, icons: CampaignIcons): MenuOption {
   const icon = iconOf(choice, view);
   const emoji = icon === undefined ? undefined : icons.emoji(icon);
-  return { label: choiceLabel(choice, view, text, glossary).slice(0, 100), value: encodeChoice(choice), ...(emoji === undefined ? {} : { emoji }) };
+  const note = attackNote(choice, view, text);
+  return { label: choiceLabel(choice, view, text, glossary).slice(0, 100), value: encodeChoice(choice), ...(note === undefined ? {} : { description: note.slice(0, 100) }), ...(emoji === undefined ? {} : { emoji }) };
 }
 
 // The main menu keeps a place for "More actions…" and for End turn.

@@ -30,6 +30,7 @@ export const zhTWDnd: SettingsTextCatalog = {
       done: "D&D 已設定完成，遊戲大廳是 {channel}，缺少的部分都已重新建立",
     },
   },
+  "dnd.setup.language": { label: "語言", description: "D&D 大廳與新頻道使用的語言。", choices: { en: "英文", "zh-TW": "繁體中文" } },
 
   "dnd.hub-channel": {
     label: "移動大廳",

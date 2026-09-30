@@ -21,6 +21,7 @@ export interface LibraryCharacter {
 // imported file.
 export type SnapshotSource =
   | { readonly kind: "builder" }
+  | { readonly kind: "edit" }
   | { readonly kind: "import" }
   | { readonly kind: "campaign"; readonly campaignId: string; readonly heroId: string; readonly stateRevision: number };
 

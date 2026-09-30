@@ -18,7 +18,9 @@ export class CampaignAuthority {
     private readonly unitOfWork: CampaignUnitOfWork,
   ) {}
 
-  public guildLanguage(guildId: string): "en" | "zh-TW" {
+  public async guildLanguage(guildId: string): Promise<"en" | "zh-TW"> {
+    const settings = await this.unitOfWork.transaction((tx) => tx.loadGuildSettings(guildId));
+    if (settings?.language !== undefined) return settings.language;
     const language = this.access.guildLanguage(guildId);
     return language === "zh-TW" ? "zh-TW" : "en";
   }

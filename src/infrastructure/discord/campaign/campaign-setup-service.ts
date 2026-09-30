@@ -41,8 +41,10 @@ export interface CampaignSetupServiceOptions {
   readonly logger: RuntimeLogger;
 }
 
-const categoryName = "D&D";
-const hubChannelName = "dnd-games";
+const setupNames = {
+  en: { category: "D&D", hub: "dnd-games", topic: "D&D games on this server", forums: ["public-games", "public-parties", "private-games", "private-parties"] },
+  "zh-TW": { category: "龍與地下城", hub: "龍與地下城-團務", topic: "本伺服器的龍與地下城團務", forums: ["公開遊戲", "公開隊伍", "私人遊戲", "私人隊伍"] },
+} as const;
 export const adminRoleName = "DnD Admin";
 const privateGamesRoleName = "Private Games";
 // A campaign post is tagged with its lifecycle in the Games forum; Parties
@@ -64,22 +66,24 @@ export class CampaignSetupService {
   // campaign forums (Public/Private Games, Public/Private Parties), and pick
   // the hub channel: the one the organizer ran the command in, or a new
   // read-only "dnd-games" channel.
-  public setupGuild(guildId: string, preferredHubChannelId: string | null): Promise<GuildSetupResult> {
+  public setupGuild(guildId: string, preferredHubChannelId: string | null, chosenLanguage?: "en" | "zh-TW"): Promise<GuildSetupResult> {
     return this.queue.run(`guild:${guildId}`, async () => {
       const { resources, unitOfWork } = this.options;
       const existing = await unitOfWork.transaction((tx) => tx.loadGuildSettings(guildId));
+      const language = chosenLanguage ?? existing?.language ?? "en";
+      const names = setupNames[language];
       let categoryId = existing?.categoryId ?? null;
       if (categoryId !== null && !(await resources.categoryExists(guildId, categoryId))) categoryId = null;
       const missing = await resources.missingPermissions(guildId, categoryId);
       if (missing.length > 0) return { kind: "missingPermissions", missing };
-      if (categoryId === null) categoryId = await resources.createCategory(guildId, categoryName, reasonFor("category"));
+      if (categoryId === null) categoryId = await resources.createCategory(guildId, names.category, reasonFor("category"));
 
       let hubChannelId = preferredHubChannelId ?? existing?.hubChannelId ?? null;
       if (hubChannelId !== null && !(await resources.channelExists(guildId, hubChannelId))) hubChannelId = null;
       if (hubChannelId === null) {
         hubChannelId = await resources.createTextChannel(
           guildId,
-          { name: hubChannelName, topic: "D&D games on this server", parentId: categoryId, playersReadOnly: true, allowThreadMessages: false },
+          { name: names.hub, topic: names.topic, parentId: categoryId, playersReadOnly: true, allowThreadMessages: false },
           reasonFor("hub channel"),
         );
       }
@@ -95,16 +99,17 @@ export class CampaignSetupService {
       const forum = async (currentId: string | null | undefined, name: string, tags: readonly string[], viewerRoleId: string | null): Promise<string> => {
         let id = currentId ?? null;
         if (id !== null && !(await resources.forumExists(guildId, id))) id = null;
-        id ??= await resources.createForum(guildId, { name, topic: `D&D ${name.replace(/-/g, " ")}`, parentId: categoryId, tags, viewerRoleId }, reasonFor(`${name} forum`));
+        id ??= await resources.createForum(guildId, { name, topic: `${names.category} ${name.replace(/-/g, " ")}`, parentId: categoryId, tags, viewerRoleId }, reasonFor(`${name} forum`));
         return id;
       };
-      const publicGamesForumId = await forum(existing?.publicGamesForumId, "public-games", gameStatusTags, null);
-      const publicPartiesForumId = await forum(existing?.publicPartiesForumId, "public-parties", [], null);
-      const privateGamesForumId = await forum(existing?.privateGamesForumId, "private-games", gameStatusTags, privateGamesRoleId);
-      const privatePartiesForumId = await forum(existing?.privatePartiesForumId, "private-parties", [], privateGamesRoleId);
+      const publicGamesForumId = await forum(existing?.publicGamesForumId, names.forums[0], gameStatusTags, null);
+      const publicPartiesForumId = await forum(existing?.publicPartiesForumId, names.forums[1], [], null);
+      const privateGamesForumId = await forum(existing?.privateGamesForumId, names.forums[2], gameStatusTags, privateGamesRoleId);
+      const privatePartiesForumId = await forum(existing?.privatePartiesForumId, names.forums[3], [], privateGamesRoleId);
 
       const settings: GuildCampaignSettings = {
         guildId,
+        language,
         categoryId,
         hubChannelId,
         publicGamesForumId,

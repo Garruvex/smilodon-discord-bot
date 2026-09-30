@@ -17,7 +17,7 @@ const build: BuildChoices = {
   backstory: "",
 };
 
-async function setup(options: { stylizer?: boolean; generator?: boolean; maxPerWindow?: number } = {}): Promise<{
+async function setup(options: { stylizer?: boolean; generator?: boolean; maxPerWindow?: number; windowMinutes?: number } = {}): Promise<{
   portraits: CharacterPortraits;
   store: MemoryPortraitStore;
   stylizer: Stylizer;
@@ -38,6 +38,7 @@ async function setup(options: { stylizer?: boolean; generator?: boolean; maxPerW
     ...(options.stylizer === false ? {} : { stylizer }),
     ...(options.generator === false ? {} : { generator: painter }),
     ...(options.maxPerWindow === undefined ? {} : { maxPerWindow: options.maxPerWindow }),
+    ...(options.windowMinutes === undefined ? {} : { windowMinutes: options.windowMinutes }),
   });
   return { portraits, store, stylizer, painter, characterId: made.character.id, r };
 }
@@ -158,6 +159,14 @@ describe("limits and cleanup", () => {
     expect(await portraits.fromDescription("u-alice", characterId, "ink", "")).toEqual({ kind: "refused", reason: "rateLimited", retryAfterMinutes: 5 });
     r.clock.advance(5 * 60 * 1000);
     expect((await portraits.fromDescription("u-alice", characterId, "ink", "")).kind).toBe("ok");
+  });
+
+  it("uses a configured generation count and window", async () => {
+    const { portraits, characterId, r } = await setup({ maxPerWindow: 1, windowMinutes: 5 });
+    expect((await portraits.fromDescription("u-alice", characterId, "ink", "")).kind).toBe("ok");
+    expect(await portraits.again("u-alice", characterId)).toEqual({ kind: "refused", reason: "rateLimited", retryAfterMinutes: 5 });
+    r.clock.advance(5 * 60 * 1000);
+    expect((await portraits.again("u-alice", characterId)).kind).toBe("ok");
   });
 
   it("removes the portrait, and everything with a deleted character", async () => {

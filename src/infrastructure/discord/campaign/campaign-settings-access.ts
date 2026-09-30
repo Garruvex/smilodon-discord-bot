@@ -42,8 +42,8 @@ export class CampaignSettingsAccess {
 
   // Sets the server up, moves the hub to `channelId`, or (null) repairs what is
   // there: the category, hub channel, DnD Admin role and every card.
-  public setUp(guildId: string, channelId: string | null): Promise<GuildSetupResult> {
-    return this.options.setup.setupGuild(guildId, channelId);
+  public setUp(guildId: string, channelId: string | null, language?: "en" | "zh-TW"): Promise<GuildSetupResult> {
+    return this.options.setup.setupGuild(guildId, channelId, language);
   }
 
   // Hands the DnD Admin powers to another role. False before the server is set up.

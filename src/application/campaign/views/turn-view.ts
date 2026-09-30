@@ -29,6 +29,8 @@ export interface AttackChoice {
   readonly toHit: number;
   readonly damage: string;
   readonly ranged: boolean;
+  // Feet of normal and long range for a ranged attack.
+  readonly reach?: { readonly normal: number; readonly long: number };
   readonly targets: readonly TargetView[];
 }
 
@@ -105,6 +107,7 @@ export function buildTurnView(
       toHit: option.toHit,
       damage: formatDiceExpression(option.damage),
       ranged: option.range.kind === "ranged",
+      ...(option.range.kind === "ranged" ? { reach: { normal: option.range.normal, long: option.range.long } } : {}),
       targets: targetIds.flatMap(targetView),
     };
     // A melee blow may knock the foe out instead of killing it.

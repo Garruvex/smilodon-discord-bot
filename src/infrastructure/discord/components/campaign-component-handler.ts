@@ -156,6 +156,7 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "act":
     case "pass":
     case "roll":
+      return [];
     case "away":
     case "back":
     case "continue":
@@ -486,11 +487,12 @@ export class CampaignComponentHandler implements ComponentHandler {
         const sheet = await this.heroSheet(record, text, parsed.action === "details" ? parsed.argument : null, userId);
         // Only the player's own hero gets the gear controls.
         const gear = parsed.action === "myHero" ? await this.heroMenus(record, text, userId) : [];
-        const save = parsed.action === "myHero" ? await this.saveRow(record, text, userId) : [];
+        const roll = parsed.action === "myHero" ? await this.rollRow(record, text, userId) : [];
         const asi = parsed.action === "myHero" ? await this.levelRow(record, text, userId) : [];
         const proxy = parsed.action === "myHero" ? await this.proxyMenu(record, text, userId) : [];
         const portrait = await this.heroPortrait(record, parsed.action === "details" ? parsed.argument : null, userId);
-        await interaction.editReply({ content: sheet, components: [...gear, ...asi, ...proxy, ...save].slice(0, 5), ...(portrait === undefined ? {} : { files: [portrait] }) });
+        const scope = parsed.action === "myHero" && sheet !== text.campaign.refusal.noHero && sheet.length < 1750 ? `\n\n${text.campaign.chars.liveScope}` : "";
+        await interaction.editReply({ content: `${sheet}${scope}`, components: [...roll, ...gear, ...asi, ...proxy].slice(0, 5), ...(portrait === undefined ? {} : { files: [portrait] }) });
         return;
       }
       default:
@@ -920,15 +922,11 @@ export class CampaignComponentHandler implements ComponentHandler {
     return fit(lines, 1900);
   }
 
-  // Save progress, for a hero that came from the player's library.
-  private async saveRow(record: CampaignRecord, text: Texts, userId: string): Promise<ActionRowBuilder<ButtonBuilder>[]> {
-    if (this.deps.library === undefined) return [];
+  private async rollRow(record: CampaignRecord, text: Texts, userId: string): Promise<ActionRowBuilder<ButtonBuilder>[]> {
     const loaded = await this.deps.unitOfWork.transaction((tx) => tx.loadCampaign(record.key));
-    const heroId = loaded?.state.members[userId]?.characterId ?? null;
-    if (heroId === null || loaded?.state.characters[heroId]?.origin === undefined) return [];
-    return [
-      new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(campaignCustomId("saveProgress", record.key.campaignId)).setLabel(text.campaign.button.saveProgress).setStyle(ButtonStyle.Secondary)),
-    ];
+    const heroId = loaded?.state.members[userId]?.characterId;
+    if (heroId == null || !Object.values(loaded?.state.checks ?? {}).some((check) => check.characterId === heroId && check.status === "pending")) return [];
+    return [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(campaignCustomId("roll", record.key.campaignId)).setLabel(text.campaign.button.roll).setStyle(ButtonStyle.Primary))];
   }
 
   // Opens the level-up form. It says "Level Up" only when an Improvement is owed; otherwise it is a plan for the next level, and says so.

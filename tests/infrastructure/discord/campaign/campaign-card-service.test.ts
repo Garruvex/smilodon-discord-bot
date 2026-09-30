@@ -56,6 +56,37 @@ function only(messages: readonly Sent[]): Sent {
 }
 
 describe("the card service", () => {
+  it("publishes actionable adventure controls while the party channel is waiting", async () => {
+    const r = rig();
+    const messages = new FakeMessages();
+    const cards = serviceFor(r, messages);
+    const key = await lobby(r);
+    await r.service.join(key, "u-org");
+    await r.service.chooseHero(key, "u-org", firstHero);
+    await r.service.start(key, "u-org");
+    await tellOpening(r, key);
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => { release = resolve; });
+    const send = messages.send.bind(messages);
+    messages.send = async (channelId, payload): Promise<string> => {
+      if (channelId === party) await waiting;
+      return send(channelId, payload);
+    };
+    const sync = cards.sync(key);
+    try {
+      for (let attempt = 0; attempt < 30 && (await r.service.get(key))?.record.cards.adventure === undefined; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 1));
+      }
+      expect(messages.live(party)).toHaveLength(0);
+      const reference = (await r.service.get(key))?.record.cards.adventure;
+      expect(reference?.messageId).toBe(messages.live(adventure)[0]?.messageId);
+      expect(reference).toBeDefined();
+    } finally {
+      release();
+      await sync;
+    }
+  });
+
   it("draws the lobby card once and leaves an unchanged card alone", async () => {
     const r = rig();
     const messages = new FakeMessages();

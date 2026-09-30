@@ -125,7 +125,7 @@ describe("portraits on My Characters", () => {
     const r = rig();
     const { handler, characterId } = await table(r);
     const view = screenOf(await click(handler, "dndchar:view", "u-alice", { values: [characterId] }));
-    expect(view.buttons.map((button) => button.label)).toEqual(["Portrait", "Export", "Delete", "Back"]);
+    expect(view.buttons.map((button) => button.label)).toEqual(["Portrait", "Edit character", "Export", "Delete", "Back"]);
     const home = screenOf(await click(handler, libraryCustomId("pHome", characterId)));
     expect(home.content).toContain("**Portrait for Aldric**");
     expect(home.content).toContain("not kept");

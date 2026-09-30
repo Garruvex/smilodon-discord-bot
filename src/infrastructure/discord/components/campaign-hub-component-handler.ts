@@ -217,7 +217,7 @@ export class CampaignHubComponentHandler implements ComponentHandler {
 
   // My Characters and New character: the same private screens /dnd characters opens.
   private async openLibrary(interaction: ButtonInteraction<"cached">, action: "characters" | "newCharacter"): Promise<void> {
-    const language = this.deps.authority.guildLanguage(interaction.guildId);
+    const language = await this.deps.authority.guildLanguage(interaction.guildId);
     if (this.deps.libraryScreens === undefined) {
       await interaction.reply({ content: texts[language].campaign.hub.unavailable, flags: MessageFlags.Ephemeral });
       return;
@@ -498,7 +498,7 @@ export class CampaignHubComponentHandler implements ComponentHandler {
       await interaction.reply({ content: text.campaign.cmd.noModel, flags: MessageFlags.Ephemeral });
       return;
     }
-    await interaction.reply({ ...this.screen({ ...defaultWizardChoices, language: this.deps.authority.guildLanguage(interaction.guildId) }, interaction.guildId), flags: MessageFlags.Ephemeral });
+    await interaction.reply({ ...this.screen({ ...defaultWizardChoices, language: await this.deps.authority.guildLanguage(interaction.guildId) }, interaction.guildId), flags: MessageFlags.Ephemeral });
   }
 
   private async chooseOption(interaction: StringSelectMenuInteraction<"cached">, action: "wizLanguage" | "wizPacing" | "wizPlayers" | "wizLoot", state: string | undefined): Promise<void> {

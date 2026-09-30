@@ -157,6 +157,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
     library,
     store: portraitStore,
     clock,
+    ...configuration.portraitGenerationLimit,
     ...(configuration.campaignImages === null || configuration.campaignImages === undefined
       ? {}
       : { stylizer: new OpenAiImageStylizer(configuration.campaignImages), generator: new OpenAiImageGenerator(configuration.campaignImages) }),
@@ -164,7 +165,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
   // Each hero's thumbnail on the party channel and portrait on their sheet: their saved character's portrait, or their initials.
   const heroPictures = new HeroPictures({ portraitFor: (libraryCharacterId): ReturnType<typeof portraits.forGame> => portraits.forGame(libraryCharacterId) });
   const cards = new CampaignCardService({ unitOfWork, rulesets, adventures, messages, glossaries, logger, issues, resources, pictures: heroPictures });
-  const presenter = new DiscordCampaignPresenter({ unitOfWork, messages, cards, adventures, glossaries, revealDelayMs: 1_200 });
+  const presenter = new DiscordCampaignPresenter({ unitOfWork, messages, cards, adventures, glossaries });
   const lobby = new CampaignLobbyService({
     unitOfWork,
     library,

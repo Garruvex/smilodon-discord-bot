@@ -79,6 +79,35 @@ const recordOf = async (t: Awaited<ReturnType<typeof table>>): Promise<NonNullab
 };
 
 describe("scene pictures", () => {
+  it("bounds automatic moments per scene while allowing manual moments and a new scene", async () => {
+    const t = await table();
+    const moments = [
+      { round: 1, scene: chapel, auto: true },
+      { round: 5, scene: chapel, auto: true },
+      { round: 9, scene: chapel, auto: true },
+      { round: 13, scene: chapel, auto: false },
+      { round: 17, scene: "scene:old-watchtower", auto: true },
+    ];
+    for (const moment of moments) {
+      await t.r.store.transaction(async (tx) => {
+        await tx.appendEvents(t.key, [{ campaignId: t.key.campaignId, causationId: `moment-${moment.round}`, commandKind: "pass", actor: { kind: "system" }, rulesRevision: "test", recordedAt: 1, event: { kind: "narrationRecorded", roundNumber: moment.round, text: "The heroes discover a remarkable sight." } }]);
+        await tx.enqueue(t.key, `moment-${moment.round}`, { kind: "momentImage", roundNumber: moment.round, auto: moment.auto, snapshot: { sceneId: moment.scene, world: { day: 1, time: "dusk" }, heroes: [] } }, 1);
+      });
+      expect((await t.worker.runOnce()).failed).toEqual([]);
+    }
+    expect(t.painter.prompts).toHaveLength(3);
+    expect((await recordOf(t)).automaticMomentScenes).toEqual({ [chapel]: "moment:round-1", "scene:old-watchtower": "moment:round-17" });
+    expect((await recordOf(t)).images?.["moment:round-9"]).toBe("skipped");
+  });
+
+  it("does not pay twice when worker passes overlap", async () => {
+    const t = await table();
+    await ask(t, chapel);
+    await Promise.all([t.worker.runOnce(), t.worker.runOnce()]);
+    expect(t.painter.prompts).toHaveLength(1);
+    expect(t.posted).toHaveLength(1);
+  });
+
   it("paints a scene once from its public description alone, and posts it with the scene's title", async () => {
     const t = await table();
     await ask(t, chapel);

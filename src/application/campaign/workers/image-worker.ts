@@ -6,6 +6,7 @@ import type { AdventureLibrary } from "../ports/adventure-library.js";
 import { creaturePrompt, heroPrompt, momentPrompt, scenePrompt, type PictureBrief } from "../images/image-prompts.js";
 import { ImageProviderError, type GeneratedImage, type ImageAssetStore, type ImageGenerator, type SceneImageSink } from "../ports/image-ports.js";
 import type { WorkerRunResult } from "./roll-worker.js";
+import { KeyedSerialQueue } from "../../concurrency/keyed-serial-queue.js";
 
 export interface ImageWorkerOptions {
   readonly unitOfWork: CampaignUnitOfWork;
@@ -70,11 +71,16 @@ function paintedFor(subject: string, bible: AdventureBible): Painted | undefined
 // NPC's public description, a round's told narration), so nothing the DM keeps
 // secret can reach an image.
 export class ImageWorker {
+  private readonly queue = new KeyedSerialQueue();
   public constructor(private readonly options: ImageWorkerOptions) {}
 
   // Campaigns run side by side, a few at a time; one campaign's pictures run in
   // order, so a repeat request finds the picture the first one made.
-  public async runOnce(): Promise<WorkerRunResult> {
+  public runOnce(): Promise<WorkerRunResult> {
+    return this.queue.run("images", () => this.runPending());
+  }
+
+  private async runPending(): Promise<WorkerRunResult> {
     const items = (
       await this.options.unitOfWork.transaction(async (tx) => [...(await tx.pendingOutbox("sceneImage")), ...(await tx.pendingOutbox("monsterImage")), ...(await tx.pendingOutbox("heroImage")), ...(await tx.pendingOutbox("momentImage")), ...(await tx.pendingOutbox("redoImage"))])
     );
@@ -165,6 +171,12 @@ export class ImageWorker {
     }
     const described = bible === undefined ? undefined : await this.describe(request, item.key, record, bible);
     if (described === undefined || channelId === null) return void (await this.mark(item.key, subject, "skipped"));
+    if (request.kind === "momentImage" && request.auto === true && !forced) {
+      const sceneId = request.snapshot?.sceneId ?? state.sceneId;
+      if (sceneId === null || !(await this.reserveAutomaticMoment(item.key, sceneId, subject))) {
+        return void (await this.mark(item.key, subject, "skipped"));
+      }
+    }
 
     const image = await generator.generate({ prompt: described.prompt, aspect: described.aspect, timeoutMs: this.options.timeoutMs ?? 90_000, ...(described.references === undefined ? {} : { references: described.references }) });
     if (image.bytes.byteLength > (this.options.maxBytes ?? defaultMaxBytes)) throw new Error("The picture is larger than the limit.");
@@ -178,6 +190,24 @@ export class ImageWorker {
   }
 
   // The player's own portrait for a hero that came from their library, if they gave one.
+  private async reserveAutomaticMoment(key: CampaignKey, sceneId: string, subject: string): Promise<boolean> {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await this.options.unitOfWork.transaction(async (tx) => {
+          const stored = await tx.loadRecord(key);
+          if (stored === undefined) return false;
+          const previous = stored.record.automaticMomentScenes?.[sceneId];
+          if (previous !== undefined) return previous === subject;
+          await tx.saveRecord({ ...stored.record, automaticMomentScenes: { ...stored.record.automaticMomentScenes, [sceneId]: subject } }, stored.revision);
+          return true;
+        });
+      } catch (error) {
+        if (!(error instanceof RevisionConflictError) || attempt === 2) throw error;
+      }
+    }
+    return false;
+  }
+
   private async ownPortrait(key: CampaignKey, characterId: string): Promise<{ readonly image: GeneratedImage; readonly name: string } | undefined> {
     const { unitOfWork, portraits } = this.options;
     if (portraits === undefined) return undefined;

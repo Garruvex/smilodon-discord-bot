@@ -125,6 +125,7 @@ export interface ApplicationConfiguration {
   // campaigns cannot be started.
   campaign: CampaignModelConfiguration | null;
   campaignImages?: CampaignImageConfiguration | null;
+  portraitGenerationLimit?: { readonly maxPerWindow: number; readonly windowMinutes: number };
   // Independent of chat/utility generation: either vendor can provide
   // vectors regardless of which provider produces replies or summaries.
   embeddings: EmbeddingConfiguration | null;
