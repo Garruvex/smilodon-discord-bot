@@ -28,15 +28,7 @@ export const fighter = defineClass({
   casterType: "none",
   spellcastingAbility: null,
   firstSpells: [],
-  levelFeatures: {
-    2: ["feature:action-surge"],
-    3: ["feature:champion"],
-    5: ["feature:extra-attack"],
-    9: ["feature:indomitable"],
-    11: ["feature:extra-attack-2"],
-    15: ["feature:superior-critical"],
-    20: ["feature:extra-attack-3"],
-  },
+  levelFeatures: { 2: ["feature:action-surge"], 3: ["feature:champion"], 5: ["feature:extra-attack"], 9: ["feature:indomitable"], 10: ["feature:additional-fighting-style"], 11: ["feature:extra-attack-2"], 15: ["feature:superior-critical"], 18: ["feature:survivor"], 20: ["feature:extra-attack-3"] },
   multiclassRequires: [["str", "dex"]],
 });
 
@@ -58,7 +50,7 @@ export const rogue = defineClass({
   casterType: "none",
   spellcastingAbility: null,
   firstSpells: [],
-  levelFeatures: { 2: ["feature:cunning-action"], 3: ["feature:thief"], 5: ["feature:uncanny-dodge"], 7: ["feature:evasion"], 11: ["feature:reliable-talent"] },
+  levelFeatures: { 2: ["feature:cunning-action"], 3: ["feature:thief", "feature:fast-hands", "feature:second-story-work"], 5: ["feature:uncanny-dodge"], 7: ["feature:evasion"], 9: ["feature:supreme-sneak"], 11: ["feature:reliable-talent"], 13: ["feature:use-magic-device"], 14: ["feature:blindsense"], 15: ["feature:slippery-mind"], 17: ["feature:thiefs-reflexes"], 18: ["feature:elusive"], 20: ["feature:stroke-of-luck"] },
   multiclassRequires: [["dex"]],
   multiclassSkillChoices: ["acrobatics", "athletics", "deception", "insight", "intimidation", "investigation", "perception", "performance", "persuasion", "sleight-of-hand", "stealth"],
 });
@@ -89,7 +81,7 @@ export const cleric = defineClass({
   casterType: "full",
   spellcastingAbility: "wis",
   firstSpells: [],
-  levelFeatures: { 2: ["feature:channel-divinity"], 5: ["feature:destroy-undead"] },
+  levelFeatures: { 2: ["feature:channel-divinity"], 5: ["feature:destroy-undead"], 6: ["feature:blessed-healer"], 8: ["feature:divine-strike"], 10: ["feature:divine-intervention"], 17: ["feature:supreme-healing"] },
   multiclassRequires: [["wis"]],
   spellList: srd51ClericSpells,
 });
@@ -112,7 +104,7 @@ export const barbarian = defineClass({
   casterType: "none",
   spellcastingAbility: null,
   firstSpells: [],
-  levelFeatures: { 2: ["feature:reckless-attack", "feature:danger-sense"], 3: ["feature:path-of-the-berserker"], 5: ["feature:extra-attack", "feature:fast-movement"], 7: ["feature:feral-instinct"], 9: ["feature:brutal-critical"], 11: ["feature:relentless-rage"], 13: ["feature:brutal-critical-2"], 17: ["feature:brutal-critical-3"] },
+  levelFeatures: { 2: ["feature:reckless-attack", "feature:danger-sense"], 3: ["feature:path-of-the-berserker"], 5: ["feature:extra-attack", "feature:fast-movement"], 6: ["feature:mindless-rage"], 7: ["feature:feral-instinct"], 9: ["feature:brutal-critical"], 10: ["feature:intimidating-presence"], 11: ["feature:relentless-rage"], 13: ["feature:brutal-critical-2"], 14: ["feature:retaliation"], 15: ["feature:persistent-rage"], 17: ["feature:brutal-critical-3"], 18: ["feature:indomitable-might"], 20: ["feature:primal-champion"] },
   multiclassRequires: [["str"]],
 });
 
@@ -153,7 +145,7 @@ export const bard = defineClass({
   casterType: "full",
   spellcastingAbility: "cha",
   firstSpells: [],
-  levelFeatures: { 2: ["feature:jack-of-all-trades"], 3: ["feature:college-of-lore"], 5: ["feature:font-of-inspiration"] },
+  levelFeatures: { 2: ["feature:jack-of-all-trades", "feature:song-of-rest"], 3: ["feature:college-of-lore", "feature:cutting-words"], 5: ["feature:font-of-inspiration"], 6: ["feature:countercharm", "feature:additional-magical-secrets"], 10: ["feature:magical-secrets"], 14: ["feature:peerless-skill"], 20: ["feature:superior-inspiration"] },
   multiclassRequires: [["cha"]],
   multiclassSkillChoices: [
     "acrobatics",
@@ -196,7 +188,7 @@ export const druid = defineClass({
   casterType: "full",
   spellcastingAbility: "wis",
   firstSpells: [],
-  levelFeatures: { 2: ["feature:wild-shape"], 3: ["feature:circle-of-the-land"] },
+  levelFeatures: { 2: ["feature:wild-shape"], 3: ["feature:circle-of-the-land"], 6: ["feature:lands-stride"], 10: ["feature:natures-ward"], 14: ["feature:natures-sanctuary"], 18: ["feature:timeless-body", "feature:beast-spells"], 20: ["feature:archdruid"] },
   multiclassRequires: [["wis"]],
   spellList: srd51DruidSpells,
 });
@@ -222,7 +214,7 @@ export const monk = defineClass({
   casterType: "none",
   spellcastingAbility: null,
   firstSpells: [],
-  levelFeatures: { 2: ["feature:ki", "feature:unarmored-movement", "feature:flurry-of-blows", "feature:patient-defense", "feature:step-of-the-wind"], 3: ["feature:way-of-the-open-hand"], 5: ["feature:extra-attack", "feature:stunning-strike"], 6: ["feature:unarmored-movement-6"], 7: ["feature:evasion"], 10: ["feature:purity-of-body", "feature:unarmored-movement-10"], 14: ["feature:unarmored-movement-14"], 18: ["feature:unarmored-movement-18"] },
+  levelFeatures: { 2: ["feature:ki", "feature:unarmored-movement", "feature:flurry-of-blows", "feature:patient-defense", "feature:step-of-the-wind"], 3: ["feature:way-of-the-open-hand", "feature:deflect-missiles", "feature:open-hand-technique"], 4: ["feature:slow-fall"], 5: ["feature:extra-attack", "feature:stunning-strike"], 6: ["feature:unarmored-movement-6", "feature:ki-empowered-strikes", "feature:wholeness-of-body"], 7: ["feature:evasion", "feature:stillness-of-mind"], 10: ["feature:purity-of-body", "feature:unarmored-movement-10"], 11: ["feature:tranquility"], 13: ["feature:tongue-of-the-sun-and-moon"], 14: ["feature:unarmored-movement-14", "feature:diamond-soul"], 15: ["feature:timeless-body-monk"], 17: ["feature:quivering-palm"], 18: ["feature:unarmored-movement-18", "feature:empty-body"], 20: ["feature:perfect-self"] },
   multiclassRequires: [["dex"], ["wis"]],
 });
 
@@ -248,7 +240,7 @@ export const paladin = defineClass({
   // class's own full SRD list, the same liberty the level-1 roster already
   // takes for Bard and Warlock.
   firstSpells: ["spell:cure-wounds", "spell:bless"],
-  levelFeatures: { 2: ["feature:fighting-style-dueling", "feature:divine-smite"], 3: ["feature:oath-of-devotion"], 5: ["feature:extra-attack"], 6: ["feature:aura-of-protection"], 10: ["feature:aura-of-courage"], 11: ["feature:improved-divine-smite"] },
+  levelFeatures: { 2: ["feature:fighting-style-dueling", "feature:divine-smite"], 3: ["feature:oath-of-devotion", "feature:divine-health"], 5: ["feature:extra-attack"], 6: ["feature:aura-of-protection"], 7: ["feature:aura-of-devotion"], 10: ["feature:aura-of-courage"], 11: ["feature:improved-divine-smite"], 14: ["feature:cleansing-touch"], 15: ["feature:purity-of-heart"], 20: ["feature:holy-nimbus"] },
   multiclassRequires: [["str"], ["cha"]],
   spellList: srd51PaladinSpells,
 });
@@ -272,7 +264,7 @@ export const ranger = defineClass({
   casterType: "half",
   spellcastingAbility: "wis",
   firstSpells: ["spell:cure-wounds"],
-  levelFeatures: { 2: ["feature:fighting-style-dueling"], 3: ["feature:hunter"], 5: ["feature:extra-attack"] },
+  levelFeatures: { 2: ["feature:fighting-style-dueling"], 3: ["feature:hunter", "feature:primeval-awareness"], 5: ["feature:extra-attack"], 7: ["feature:defensive-tactics"], 8: ["feature:rangers-lands-stride"], 10: ["feature:hide-in-plain-sight"], 11: ["feature:hunter-multiattack"], 14: ["feature:vanish"], 15: ["feature:superior-hunters-defense"], 18: ["feature:feral-senses"], 20: ["feature:foe-slayer"] },
   multiclassRequires: [["dex"], ["wis"]],
   multiclassSkillChoices: ["animal-handling", "athletics", "insight", "investigation", "nature", "perception", "stealth", "survival"],
   spellList: srd51RangerSpells,
@@ -296,7 +288,7 @@ export const sorcerer = defineClass({
   casterType: "full",
   spellcastingAbility: "cha",
   firstSpells: [],
-  levelFeatures: { 2: ["feature:font-of-magic"], 3: ["feature:metamagic", "feature:quickened-spell", "feature:twinned-spell"] },
+  levelFeatures: { 2: ["feature:font-of-magic"], 3: ["feature:metamagic", "feature:quickened-spell", "feature:twinned-spell"], 6: ["feature:elemental-affinity"], 10: ["feature:metamagic-additional"], 14: ["feature:dragon-wings"], 18: ["feature:draconic-presence"], 20: ["feature:sorcerous-restoration"] },
   multiclassRequires: [["cha"]],
   spellList: srd51SorcererSpells,
 });
@@ -309,7 +301,7 @@ export const warlock = defineClass({
   skillChoices: ["arcana", "deception", "history", "intimidation", "investigation", "nature", "religion"],
   skillCount: 2,
   expertiseCount: 0,
-  features: ["feature:fiend-patron"],
+  features: ["feature:fiend-patron", "feature:dark-ones-blessing"],
   kits: [
     { id: "fiendpact", equipment: ["item:dagger", "item:leather-armor"] },
     { id: "oldone", equipment: ["item:quarterstaff", "item:leather-armor"] },
@@ -320,7 +312,7 @@ export const warlock = defineClass({
   casterType: "pact",
   spellcastingAbility: "cha",
   firstSpells: [],
-  levelFeatures: { 2: ["feature:eldritch-invocations", "feature:agonizing-blast", "feature:armor-of-shadows", "feature:fiendish-vigor"], 3: ["feature:pact-boon"] },
+  levelFeatures: { 2: ["feature:eldritch-invocations", "feature:agonizing-blast", "feature:armor-of-shadows", "feature:fiendish-vigor"], 3: ["feature:pact-boon"], 6: ["feature:dark-ones-own-luck"], 10: ["feature:fiendish-resilience"], 11: ["feature:mystic-arcanum-6"], 13: ["feature:mystic-arcanum-7"], 14: ["feature:hurl-through-hell"], 15: ["feature:mystic-arcanum-8"], 17: ["feature:mystic-arcanum-9"], 20: ["feature:eldritch-master"] },
   multiclassRequires: [["cha"]],
   spellList: srd51WarlockSpells,
 });
@@ -351,7 +343,7 @@ export const wizard = defineClass({
   casterType: "full",
   spellcastingAbility: "int",
   firstSpells: [],
-  levelFeatures: { 2: ["feature:school-of-evocation"] },
+  levelFeatures: { 2: ["feature:school-of-evocation", "feature:sculpt-spells"], 6: ["feature:potent-cantrip"], 10: ["feature:empowered-evocation"], 14: ["feature:overchannel"], 18: ["feature:spell-mastery"], 20: ["feature:signature-spells"] },
   multiclassRequires: [["int"]],
   spellList: srd51WizardSpells,
 });

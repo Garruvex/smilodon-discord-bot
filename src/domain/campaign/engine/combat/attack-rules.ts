@@ -1,7 +1,7 @@
 // The rules an attack or spell is built from: its plan, advantage and disadvantage, and Sneak Attack.
 import { assertNever } from "../../core/assert-never.js";
 import { engagedWith, isActive, type Combatant, type EncounterState, type ResolutionSource } from "../../combat/combat-state.js";
-import { attackBias, conditionLookup, effectsUsedUpByAttack, meleeDamageBonusOf, type ConditionLookup } from "../../effects/effect-queries.js";
+import { attackBias, canAct, conditionLookup, effectsUsedUpByAttack, meleeDamageBonusOf, type ConditionLookup } from "../../effects/effect-queries.js";
 import type { DiceExpression } from "../../dice/dice-expression.js";
 import { distanceBetween, engagedDistance } from "../../combat/positioning.js";
 import type { D20TestSpec } from "../../dice/d20-test.js";
@@ -119,6 +119,8 @@ export function attackMode(
     );
     if (allyEngaged) advantage += 1;
   }
+  // Elusive: nothing gives advantage against a creature that can still act.
+  if (target.traits.some((trait) => trait.kind === "elusive") && canAct(target, lookup)) advantage = 0;
   return { mode: resolveRollMode(advantage, disadvantage), consumed: effectsUsedUpByAttack(target) };
 }
 

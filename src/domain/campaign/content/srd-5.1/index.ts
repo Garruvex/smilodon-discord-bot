@@ -4,6 +4,7 @@ import { srd51Classes } from "./classes.js";
 import { srd51Conditions } from "./conditions.js";
 import { srd51Level1Features } from "./features/level-1-features.js";
 import { srd51ClassActions } from "./features/class-actions.js";
+import { srd51LateFeatures } from "./features/late-features.js";
 import { srd51HigherLevelFeatures } from "./features/higher-level-features.js";
 import { srd51Armor } from "./items/armor.js";
 import { srd51Potions } from "./items/potions.js";
@@ -57,6 +58,7 @@ const srd51Definitions: readonly ContentDefinition[] = [
   ...srd51Potions,
   ...srd51Level1Features,
   ...srd51HigherLevelFeatures,
+  ...srd51LateFeatures,
   ...srd51ClassActions,
   ...srd51StarterMonsters,
   ...srd51MoreMonsters,

@@ -103,6 +103,12 @@ export type Trait =
   | { readonly kind: "indomitable" }
   // Barbarian's Feral Instinct: advantage on initiative rolls.
   | { readonly kind: "feralInstinct" }
+  // Champion's Survivor: at the start of its turn, at half its hit points or fewer (and above 0), regains 5 plus its Constitution modifier.
+  | { readonly kind: "survivor" }
+  // Elusive (Rogue 18): no attack roll has advantage against the holder unless it is incapacitated.
+  | { readonly kind: "elusive" }
+  // Indomitable Might (Barbarian 18): a Strength check total is at least the Strength score.
+  | { readonly kind: "indomitableMight" }
   | { readonly kind: "brutalCritical"; readonly dice: number }
   // Evasion: a Dexterity save that would halve the damage takes none on a success, and half on a failure.
   | { readonly kind: "evasion" }

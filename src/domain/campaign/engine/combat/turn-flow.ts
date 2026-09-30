@@ -101,6 +101,7 @@ export function continueTurn(decision: Decision, combatantId: string): void {
     return;
   }
   const playerTurn = isPlayerControlled(decision, combatant) && isActive(combatant);
+  survive(decision, combatant);
   // An incapacitated creature loses its turn.
   if (isActive(combatant) && !canAct(combatant, conditionLookup(decision.ctx.rules.content))) {
     endTurn(decision);
@@ -159,6 +160,14 @@ export function expireDue(decision: Decision, creatureId: string, boundary: "sta
   for (const { holderId, effects } of effectsDueAt(Object.values(activeEncounter(decision)?.combatants ?? {}), creatureId, boundary, round)) {
     decision.emit({ kind: "effectsRemoved", combatantId: holderId, effectIds: effects.map((effect) => effect.id), reason: "expired" });
   }
+}
+
+// Survivor (Champion 18): a bloodied creature that is still up regains hit points as its turn begins.
+function survive(decision: Decision, hero: Combatant): void {
+  if (!hero.traits.some((trait) => trait.kind === "survivor") || !isActive(hero) || hero.hp <= 0 || hero.hp > hero.maxHp / 2) return;
+  const sheet = decision.state.characters[hero.id];
+  const modifier = sheet === undefined ? 0 : Math.floor((sheet.abilityScores.con - 10) / 2);
+  applyHealing(decision, hero, 5 + modifier);
 }
 
 // Regeneration: a monster heals at the start of its turn, unless damage of a kind that

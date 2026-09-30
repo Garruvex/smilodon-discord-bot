@@ -55,6 +55,11 @@ export const asiLevels: readonly number[] = [4, 8, 12, 16, 19];
 // The extra improvements some classes get at their own class level: Fighter's at 6 and 14, Rogue's at 10.
 const extraAsiClassLevels: Readonly<Partial<Record<BuildClass, readonly number[]>>> = { fighter: [6, 14], rogue: [10] };
 
+// Primal Champion (Barbarian 20): Strength and Constitution each rise by 4, up to 24, beyond any improvement.
+function primalChampionBonus(classLevels: Readonly<Partial<Record<string, number>>>, ability: Ability): number {
+  return (classLevels["barbarian"] ?? 0) >= 20 && (ability === "str" || ability === "con") ? 4 : 0;
+}
+
 // How many improvements a hero of this many levels has earned in all.
 function asiEarned(level: number, classLevels: Readonly<Partial<Record<string, number>>>): number {
   const extra = Object.entries(classLevels).reduce((sum, [buildClass, count]) => sum + (isBuildClass(buildClass) ? (extraAsiClassLevels[buildClass] ?? []).filter((at) => at <= (count ?? 0)).length : 0), 0);
@@ -225,8 +230,6 @@ export function levelUp(
   // to two): this only counts the improvement as owed, it does not pick for
   // them. defaultAsiAllocation stays as the Discord picker's "use the
   // suggestion" shortcut, the same role it already plays nowhere else now.
-  const abilityScores = sheet.abilityScores;
-
   const priorLevels = classLevelsOf(sheet);
   const priorInClass = priorLevels[buildClass] ?? 0;
   const isNewClass = priorInClass === 0;
@@ -237,6 +240,9 @@ export function levelUp(
   const { spellcasting, pactMagic } = combinedSpellcasting(classLevels, sheet.spellcasting);
 
   const gained = [...(isNewClass ? template.features : []), ...(template.levelFeatures[classLevel] ?? [])];
+  const abilityScores = gained.includes("feature:primal-champion")
+    ? { ...sheet.abilityScores, str: Math.min(24, sheet.abilityScores.str + 4), con: Math.min(24, sheet.abilityScores.con + 4) }
+    : sheet.abilityScores;
   const features = gained.length === 0 ? sheet.features : [...sheet.features, ...gained];
 
   const skills = { ...sheet.skills };
@@ -374,7 +380,7 @@ export function progressionProblems(build: DerivedSheet, progression: Progressio
   let pointsSpent = 0;
   for (const ability of abilities) {
     const before = build.abilityScores[ability];
-    const after = progression.abilityScores[ability];
+    const after = progression.abilityScores[ability] - primalChampionBonus(progression.classLevels, ability);
     if (!Number.isInteger(after) || after < before || after > 20) problems.push({ code: "abilityScoreOutOfRange" });
     else pointsSpent += after - before;
   }
@@ -389,7 +395,9 @@ export function progressionProblems(build: DerivedSheet, progression: Progressio
 // hit points use the final Constitution, the same no-retroactive-HP
 // simplification chooseAsi already accepts. Callers check progressionProblems first.
 export function applyProgression(build: DerivedSheet, progression: Progression): DerivedSheet {
-  let sheet: DerivedSheet = { ...build, abilityScores: progression.abilityScores };
+  // The scores in a saved progression already include Primal Champion; levelUp adds it back on the way.
+  const scores = Object.fromEntries(abilities.map((ability) => [ability, progression.abilityScores[ability] - primalChampionBonus(progression.classLevels, ability)])) as Record<Ability, number>;
+  let sheet: DerivedSheet = { ...build, abilityScores: scores };
   for (const buildClass of levelSequence(build, progression.classLevels)) {
     const next = levelUp(sheet as unknown as CharacterSheet, buildClass, progression.multiclassSkills[buildClass]);
     sheet = { ...sheet, ...next };

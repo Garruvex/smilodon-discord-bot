@@ -116,5 +116,8 @@ export function checkModifier(sheet: CharacterSheet, test: CheckTest): number {
 
 export function savingThrowModifier(sheet: CharacterSheet, ability: Ability): number {
   const base = abilityModifier(sheet.abilityScores[ability]);
-  return sheet.savingThrows.includes(ability) ? base + sheet.proficiencyBonus : base;
+  // Slippery Mind (Rogue 15) adds Wisdom saves; Diamond Soul (Monk 14) adds all of them.
+  const proficient =
+    sheet.savingThrows.includes(ability) || sheet.features.includes("feature:diamond-soul") || (ability === "wis" && sheet.features.includes("feature:slippery-mind"));
+  return proficient ? base + sheet.proficiencyBonus : base;
 }

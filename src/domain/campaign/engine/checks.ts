@@ -1,4 +1,5 @@
 import type { CheckId } from "../core/ids.js";
+import { abilityOf } from "../character/character-sheet.js";
 import { resolveD20Test, rollMatchesSpec, type D20TestRoll } from "../dice/d20-test.js";
 import type { RollResult } from "../dice/roll-spec.js";
 import { classifyRollMoments } from "../dice/roll-moments.js";
@@ -40,7 +41,7 @@ export function recordCheckRoll(decision: Decision, check: CheckState, result: R
   if (check.status !== "rolling") return { code: "checkNotPending" };
   if (result.kind !== "d20Test" || !rollMatchesSpec(result.roll, check.spec)) return { code: "rollMismatch" };
   const { ctx } = decision;
-  const roll = withReliableTalent(result.roll, decision, check);
+  const roll = withIndomitableMight(withReliableTalent(result.roll, decision, check), decision, check);
 
   const naturalRule = ctx.rules.houseRules.option(naturalRollsOnChecks);
   const outcome = resolveD20Test("abilityCheck", roll.d20.natural, roll.total, check.dc, naturalRule);
@@ -57,6 +58,13 @@ function withReliableTalent(roll: D20TestRoll, decision: Decision, check: CheckS
   if (check.test.kind !== "skill" || sheet === undefined || !sheet.features.includes("feature:reliable-talent") || sheet.skills[check.test.skill] === undefined || roll.d20.natural >= 10) return roll;
   const raise = 10 - roll.d20.natural;
   return { ...roll, d20: { ...roll.d20, natural: 10, total: roll.d20.total + raise }, total: roll.total + raise };
+}
+
+// Indomitable Might (Barbarian 18): a Strength check total below the Strength score counts as the score.
+function withIndomitableMight(roll: D20TestRoll, decision: Decision, check: CheckState): D20TestRoll {
+  const sheet = decision.state.characters[check.characterId];
+  if (sheet === undefined || !sheet.features.includes("feature:indomitable-might") || abilityOf(check.test) !== "str" || roll.total >= sheet.abilityScores.str) return roll;
+  return { ...roll, total: sheet.abilityScores.str };
 }
 
 function startRoll(decision: Decision, check: CheckState, timedOut: boolean): void {

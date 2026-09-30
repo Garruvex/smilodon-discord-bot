@@ -11,7 +11,7 @@ export const actionSurge = defineFeature({
   traits: [],
   action: {
     cost: "free",
-    uses: { count: 1, recharge: "shortRest" },
+    uses: { count: 1, perLevel: (level) => (level >= 17 ? 2 : 1), recharge: "shortRest" },
     plan: () => ({ check: null, onLand: [{ kind: "grantAction", target: "self" }], onAvoid: [] }),
   },
 });
