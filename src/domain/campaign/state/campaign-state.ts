@@ -63,6 +63,8 @@ export interface CampaignState {
   readonly clocks: Readonly<Record<string, ClockState>>;
   // Clues the party has learned, in the order revealed.
   readonly clues: readonly RevealedClue[];
+  // Story facts an adventure sets and later text requires (flag name to value); absent: none yet.
+  readonly flags?: Readonly<Record<string, number>>;
   // Heroes' HP and limited resources between fights; a hero missing here is
   // fresh (full HP, every slot and use).
   readonly heroStatus: Readonly<Record<CharacterId, HeroStatus>>;

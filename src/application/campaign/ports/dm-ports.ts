@@ -38,6 +38,8 @@ export interface PlannerRequest {
     // Clocks with their progress, and clues not yet revealed.
     readonly clocks: readonly { readonly id: string; readonly sceneId: string; readonly filled: number; readonly segments: number }[];
     readonly clues: readonly { readonly id: string; readonly sceneId: string }[];
+    // The authored interactions the party can attempt right now (in this scene, requirements met, attempts left).
+    readonly interactions?: readonly { readonly id: string; readonly sceneId: string; readonly label: string }[];
   };
   // Validation problems from the previous attempt, for the one retry.
   readonly previousProblems: readonly string[];
@@ -46,9 +48,12 @@ export interface PlannerRequest {
 // The Planner's proposal as the model states it: story effects name
 // authored IDs, which the DM job resolves (and checks) before the engine
 // validates the whole proposal.
+// A planned action, and the authored interaction it is an attempt at (the DM job replaces the check with the interaction's own).
+export type PlannerAction = PlannedAction & { readonly interactionId?: string | null };
+
 export interface PlannerProposal {
   readonly roundNumber: number;
-  readonly actions: readonly PlannedAction[];
+  readonly actions: readonly PlannerAction[];
   readonly effects: readonly PlannerEffect[];
 }
 

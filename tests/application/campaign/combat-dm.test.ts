@@ -124,6 +124,7 @@ describe("story effects from the Planner", () => {
       encounters: [{ id: "encounter:cellar-goblins", sceneId: "scene:tavern" }],
       clocks: [{ id: "clock:guards-return", sceneId: "scene:tavern", filled: 0, segments: 3 }],
       clues: [{ id: "clue:cellar-key", sceneId: "scene:tavern" }],
+      interactions: [],
     });
     await worker.runOnce(); // narrate
     expect(narrator.requests[0]?.threat).toBe("Goblins burst up through the cellar trapdoor.");

@@ -8,6 +8,7 @@ import { rollTimerId, roundTimerId } from "./ids.js";
 import type { Rejection } from "./rejection.js";
 import { scheduleReminder } from "./reminders.js";
 import { firedEffects } from "./round-plan.js";
+import { lootGold } from "../rules/house-rules.js";
 
 export const maxActionLength = 500;
 
@@ -163,7 +164,7 @@ export function finishRoundIfResolved(decision: Decision): void {
   decision.request({ kind: "narrate", roundNumber: round.number });
 }
 
-const effectOrder = { transitionScene: 0, revealClue: 1, startEncounter: 2, advanceClock: 3 } as const;
+const effectOrder = { transitionScene: 0, setFlag: 1, spendGold: 1, revealClue: 2, grantReward: 2, startEncounter: 3, advanceClock: 4 } as const;
 
 // One fired effect. A fight can be queued only once at a time, and one that
 // was already fought is not queued again (a filled clock may name it).
@@ -188,9 +189,34 @@ function applyStoryEffect(decision: Decision, roundNumber: number, effect: Plann
     case "startEncounter":
       queueEncounter(decision, roundNumber, effect.encounter);
       return;
+    case "setFlag":
+      if (state.flags?.[effect.flag] !== effect.value) decision.emit({ kind: "flagSet", roundNumber, flag: effect.flag, value: effect.value });
+      return;
+    case "grantReward": {
+      const key = `reward:${effect.rewardId}`;
+      if (state.flags?.[key] !== undefined) return;
+      decision.emit({ kind: "flagSet", roundNumber, flag: key, value: 1 });
+      const split = decision.ctx.rules.houseRules.option(lootGold) === "split" ? rewardShares(state, effect.gold) : undefined;
+      decision.emit({ kind: "lootFound", encounterId: effect.rewardId, items: effect.items, gold: effect.gold, ...(split === undefined ? {} : { split }) });
+      return;
+    }
+    case "spendGold": {
+      const split = decision.ctx.rules.houseRules.option(lootGold) === "split";
+      const available = split ? (state.heroGold?.[effect.characterId] ?? 0) : state.gold;
+      if (available >= effect.amount) decision.emit({ kind: "goldSpent", roundNumber, characterId: effect.characterId, amount: effect.amount, wallet: split ? "hero" : "pool" });
+      return;
+    }
     default:
       assertNever(effect);
   }
+}
+
+// An even share for each hero still standing, the remainder to the first (the same split a fight's gold gets).
+function rewardShares(state: CampaignState, gold: number): Readonly<Record<string, number>> | undefined {
+  const standing = Object.values(state.characters).filter((sheet) => !isFallen(state, sheet.id)).map((sheet) => sheet.id);
+  if (gold <= 0 || standing.length === 0) return undefined;
+  const each = Math.floor(gold / standing.length);
+  return Object.fromEntries(standing.map((characterId, index) => [characterId, each + (index === 0 ? gold - each * standing.length : 0)]));
 }
 
 function queueEncounter(decision: Decision, roundNumber: number, encounter: EncounterSpec): void {

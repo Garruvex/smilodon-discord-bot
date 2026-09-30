@@ -319,14 +319,22 @@ export type StoryEffect =
       readonly by: number;
       readonly onFull: EncounterSpec | null;
     }
-  | { readonly kind: "revealClue"; readonly clueId: string; readonly text: string };
+  | { readonly kind: "revealClue"; readonly clueId: string; readonly text: string }
+  // Sets a story flag: a fact later story text can require. Idempotent.
+  | { readonly kind: "setFlag"; readonly flag: string; readonly value: number }
+  // Gold and items the party is given, once: a second grant with the same rewardId does nothing.
+  | { readonly kind: "grantReward"; readonly rewardId: string; readonly gold: number; readonly items: readonly ContentId<"item">[] }
+  // The hero pays gold (their own share, or the party purse) for what the story sells; nothing happens if they cannot.
+  | { readonly kind: "spendGold"; readonly characterId: CharacterId; readonly amount: number };
 
 export type EffectCondition =
   | { readonly kind: "always" }
   // Fires on the outcome of this hero's check this round.
   | { readonly kind: "checkOutcome"; readonly characterId: CharacterId; readonly success: boolean }
   // A group check: it succeeds when at least half of the round's checks did (the SRD's rule for the whole party attempting one thing).
-  | { readonly kind: "groupCheck"; readonly success: boolean };
+  | { readonly kind: "groupCheck"; readonly success: boolean }
+  // Several heroes tried the same thing: success when any of their checks did (reaching atLeast, when given), failure when none did.
+  | { readonly kind: "anyCheck"; readonly characterIds: readonly CharacterId[]; readonly success: boolean; readonly atLeast?: number };
 
 export interface PlannedAction {
   readonly characterId: CharacterId;
@@ -340,5 +348,7 @@ export type PlannedResolution =
       readonly kind: "check";
       readonly test: CheckTest;
       readonly dcTier: DcTier;
+      // An authored difficulty (an adventure's own DC 11, say) in place of the tier's; 1 to 30.
+      readonly dc?: number;
       readonly rollModeReasons: readonly RollModeReason[];
     };

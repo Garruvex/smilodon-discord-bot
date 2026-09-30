@@ -9,6 +9,7 @@ export const adventureLimits = {
   maxScenes: 30,
   maxNpcs: 40,
   maxEncounters: 20,
+  maxInteractions: 120,
   // Any one text field: a scene description, a note, a secret.
   maxTextChars: 4_000,
 } as const;
@@ -69,6 +70,7 @@ function limitProblems(document: AdventureDocument): readonly string[] {
   if (!/^[A-Za-z0-9._-]{1,20}$/.test(bible.version)) problems.push("The version must be 1 to 20 letters, digits, dots, dashes or underscores.");
   if (bible.scenes.length > adventureLimits.maxScenes) problems.push(`An adventure may have at most ${adventureLimits.maxScenes} scenes.`);
   if (bible.npcs.length > adventureLimits.maxNpcs) problems.push(`An adventure may have at most ${adventureLimits.maxNpcs} NPCs.`);
+  if ((bible.interactions ?? []).length > adventureLimits.maxInteractions) problems.push(`An adventure may have at most ${adventureLimits.maxInteractions} interactions.`);
   if (bible.encounters.length > adventureLimits.maxEncounters) problems.push(`An adventure may have at most ${adventureLimits.maxEncounters} fights.`);
   const walk = (value: unknown, path: string): void => {
     if (typeof value === "string") {

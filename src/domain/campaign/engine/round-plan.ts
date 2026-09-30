@@ -51,7 +51,7 @@ export function applyRoundPlan(decision: Decision, proposal: RoundPlanProposal, 
       characterId: action.characterId,
       test: plan.test,
       dcTier: plan.dcTier,
-      dc: dcLadder[plan.dcTier],
+      dc: plan.dc ?? dcLadder[plan.dcTier],
       spec: {
         mode: resolveRollMode(
           directions.filter((direction) => direction === "advantage").length,
@@ -115,6 +115,12 @@ function effectProblems(decision: Decision, proposal: RoundPlanProposal, checkEn
   if (new Set(clocks).size !== clocks.length) problems.push("Advance each clock at most once per round.");
   for (const { effect, when } of effects) {
     if (when.kind === "groupCheck" && proposal.actions.filter((candidate) => candidate.resolution.kind === "check").length < 2) problems.push(`${effect.kind} depends on a group check, which needs at least two checks this round.`);
+    if (when.kind === "anyCheck") {
+      for (const characterId of when.characterIds) {
+        if (proposal.actions.find((candidate) => candidate.characterId === characterId)?.resolution.kind !== "check") problems.push(`${effect.kind} depends on ${characterId}, who has no check this round.`);
+      }
+      if (when.characterIds.length === 0) problems.push(`${effect.kind} depends on no one's check.`);
+    }
     if (when.kind === "checkOutcome") {
       const action = proposal.actions.find((candidate) => candidate.characterId === when.characterId);
       if (action?.resolution.kind !== "check") problems.push(`${effect.kind} depends on ${when.characterId}, who has no check this round.`);
@@ -134,6 +140,15 @@ function effectProblems(decision: Decision, proposal: RoundPlanProposal, checkEn
       case "revealClue":
         if (effect.text.trim().length === 0) problems.push(`Clue ${effect.clueId} needs text.`);
         break;
+      case "setFlag":
+        if (!/^[a-z0-9:_-]{1,80}$/.test(effect.flag) || !Number.isInteger(effect.value) || effect.value < 0 || effect.value > 1000) problems.push(`Flag "${effect.flag}" is malformed.`);
+        break;
+      case "grantReward":
+        if (!Number.isInteger(effect.gold) || effect.gold < 0 || effect.gold > 100_000 || effect.items.length > 20 || (effect.gold === 0 && effect.items.length === 0)) problems.push(`Reward ${effect.rewardId} is empty or out of range.`);
+        break;
+      case "spendGold":
+        if (!Number.isInteger(effect.amount) || effect.amount < 1 || effect.amount > 100_000) problems.push(`A payment of ${effect.amount} gold is out of range.`);
+        break;
       default:
         problems.push("Unknown story effect.");
     }
@@ -150,6 +165,15 @@ export function firedEffects(state: CampaignState, round: RoundState): readonly 
       const passed = made.filter((candidate) => candidate.result?.success === true).length;
       return made.length > 0 && (passed * 2 >= made.length) === when.success;
     }
+    if (when.kind === "anyCheck") {
+      const results = when.characterIds.flatMap((characterId) => {
+        const result = Object.values(state.checks).find((candidate) => candidate.roundNumber === round.number && candidate.characterId === characterId)?.result;
+        return result == null ? [] : [result];
+      });
+      if (results.length === 0) return false;
+      if (!when.success) return results.every((result) => !result.success);
+      return results.some((result) => result.success && (when.atLeast === undefined || result.roll.total >= when.atLeast));
+    }
     const check = Object.values(state.checks).find((candidate) => candidate.roundNumber === round.number && candidate.characterId === when.characterId);
     return check?.result != null && check.result.success === when.success;
   });
@@ -164,6 +188,7 @@ function resolutionProblems(action: PlannedAction): readonly string[] {
       return plan.reason.trim().length === 0 ? [`${who}: ${plan.kind} needs a reason.`] : [];
     case "check": {
       const problems = testProblems(plan.test).map((problem) => `${who}: ${problem}`);
+      if (plan.dc !== undefined && (!Number.isInteger(plan.dc) || plan.dc < 1 || plan.dc > 30)) problems.push(`${who}: DC ${plan.dc} is out of range.`);
       if (!isDcTier(plan.dcTier)) problems.push(`${who}: DC tier "${String(plan.dcTier)}" is not on the ladder.`);
       for (const reason of plan.rollModeReasons) {
         if (!isRollModeReason(reason)) problems.push(`${who}: unknown advantage reason "${String(reason)}".`);

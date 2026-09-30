@@ -1,5 +1,6 @@
 import type { EncounterMonster, EncounterSpec } from "../commands/campaign-command.js";
 import type { ContentId } from "../rules/content-id.js";
+import type { Ability } from "../rules/effects.js";
 
 // The adventure as authored (plan §6, layer B). Fields are split by who may
 // see them: public fields can reach narration; dmOverview, dmNotes, and
@@ -11,6 +12,7 @@ export type NpcId = `npc:${string}`;
 export type EncounterId = `encounter:${string}`;
 export type ClockId = `clock:${string}`;
 export type ClueId = `clue:${string}`;
+export type InteractionId = `interaction:${string}`;
 
 export interface AdventureBible {
   readonly id: string;
@@ -28,7 +30,50 @@ export interface AdventureBible {
   readonly encounters: readonly BibleEncounter[];
   readonly clocks: readonly BibleClock[];
   readonly clues: readonly BibleClue[];
+  // What the party can do in each scene, as the engine plays it (see BibleInteraction). Absent: the Planner improvises from the notes alone.
+  readonly interactions?: readonly BibleInteraction[];
 }
+
+// What the engine can do when a story beat lands. The same few words serve every scene, check and fight, so an adventure is data and
+// never code: the Planner picks which interaction the players are attempting, and the engine rolls it and applies these.
+export type BibleEffect =
+  | { readonly kind: "reveal"; readonly clue: ClueId }
+  // Sets a story flag (value 1 unless given) that interactions and exits can require.
+  | { readonly kind: "set"; readonly flag: string; readonly value?: number }
+  | { readonly kind: "reward"; readonly gold?: number; readonly items?: readonly ContentId<"item">[] }
+  | { readonly kind: "goto"; readonly scene: SceneId }
+  | { readonly kind: "encounter"; readonly encounter: EncounterId }
+  | { readonly kind: "clock"; readonly clock: ClockId; readonly by: number };
+
+// What must hold before an interaction or an exit is available. Every listed condition must hold.
+export interface BibleRequirement {
+  readonly clues?: readonly ClueId[];
+  // Story flags that must be set, and flags that must not be.
+  readonly flags?: readonly string[];
+  readonly notFlags?: readonly string[];
+}
+
+// Something the players can attempt in a scene: an authored check (or none) and what follows. The label says what the players are doing
+// in plain words, and the notes tell the Planner when it applies; neither reaches the Narrator.
+export interface BibleInteraction {
+  readonly id: InteractionId;
+  readonly sceneId: SceneId;
+  readonly label: string;
+  readonly dmNotes: string;
+  // Absent: it happens on its own (talking to someone who is willing, taking what is offered).
+  readonly check: { readonly skill?: string; readonly ability?: Ability; readonly dc: number } | null;
+  readonly requires: BibleRequirement;
+  // Gold the hero pays for it; they must have it.
+  readonly pay: number;
+  // How many times the party may try it (normal play: once, unless the situation changes).
+  readonly attempts: number;
+  readonly onSuccess: readonly BibleEffect[];
+  readonly onFailure: readonly BibleEffect[];
+  // Extra results for a roll that reaches a higher total; each tier's effects join the success ones. Ascending by dc.
+  readonly tiers: readonly { readonly dc: number; readonly effects: readonly BibleEffect[] }[];
+}
+
+export const interactionsOf = (bible: AdventureBible): readonly BibleInteraction[] => bible.interactions ?? [];
 
 // A skill-challenge clock (plan §5): the Planner advances it when failure or
 // noise costs the party time; when it fills, the authored fight begins.
@@ -58,6 +103,8 @@ export interface BibleScene {
   readonly dmNotes: string;
   // NPCs present in the scene.
   readonly npcIds: readonly NpcId[];
+  // Where the party can go from here. Absent: anywhere the Planner sends them.
+  readonly exits?: readonly { readonly to: SceneId; readonly requires?: BibleRequirement }[];
 }
 
 export interface BibleNpc {

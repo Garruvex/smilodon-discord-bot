@@ -86,6 +86,12 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       return { ...state, clocks: { ...state.clocks, [event.clockId]: { segments: event.segments, filled: event.filled } } };
     case "clueRevealed":
       return { ...state, clues: [...state.clues, { id: event.clueId, text: event.text }] };
+    case "flagSet":
+      return { ...state, flags: { ...state.flags, [event.flag]: event.value } };
+    case "goldSpent":
+      return event.wallet === "pool"
+        ? { ...state, gold: state.gold - event.amount }
+        : { ...state, heroGold: { ...state.heroGold, [event.characterId]: (state.heroGold?.[event.characterId] ?? 0) - event.amount } };
     case "memberMarkedAway":
       return updateMember(state, event.userId, (member) => ({ ...member, availability: "away", consecutiveMisses: 0 }));
     case "memberReturned":

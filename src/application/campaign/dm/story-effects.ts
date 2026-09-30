@@ -1,13 +1,16 @@
-import { encounterSpec, findClock, findClue, findEncounter, type AdventureBible } from "../../../domain/campaign/adventure/adventure-bible.js";
-import type { PlannedEffect, RoundPlanProposal } from "../../../domain/campaign/commands/campaign-command.js";
+import { encounterSpec, findClock, findClue, findEncounter, type AdventureBible, type BibleEffect, type BibleInteraction } from "../../../domain/campaign/adventure/adventure-bible.js";
+import type { CheckTest } from "../../../domain/campaign/character/character-sheet.js";
+import type { EffectCondition, PlannedAction, PlannedEffect, RoundPlanProposal } from "../../../domain/campaign/commands/campaign-command.js";
+import { dcLadder, type DcTier } from "../../../domain/campaign/rules/difficulty.js";
 import type { CampaignState } from "../../../domain/campaign/state/campaign-state.js";
 import type { PlannerProposal, PlannerRequest } from "../ports/dm-ports.js";
+import { availableInteractions, doneFlag, goldOf, reachableScenes, triedFlag } from "./interactions.js";
 
 // The IDs a proposal's story effects may name right now.
 export function plannerStory(bible: AdventureBible, state: CampaignState): PlannerRequest["story"] {
   return {
     sceneId: state.sceneId,
-    sceneIds: bible.scenes.map((scene) => scene.id),
+    sceneIds: reachableScenes(bible, state),
     encounters: bible.encounters
       .filter((encounter) => !state.encounterHistory.includes(encounter.id))
       .map((encounter) => ({ id: encounter.id, sceneId: encounter.sceneId })),
@@ -18,6 +21,7 @@ export function plannerStory(bible: AdventureBible, state: CampaignState): Plann
       segments: clock.segments,
     })),
     clues: bible.clues.filter((clue) => !state.clues.some((known) => known.id === clue.id)).map((clue) => ({ id: clue.id, sceneId: clue.sceneId })),
+    interactions: availableInteractions(bible, state).map((interaction) => ({ id: interaction.id, sceneId: interaction.sceneId, label: interaction.label })),
   };
 }
 
@@ -35,6 +39,7 @@ export function resolveStoryEffects(
   // A fight may be in the current scene or in the one this round moves to.
   const reachable = new Set<string>(state.sceneId === null ? [] : [state.sceneId]);
   for (const effect of proposal.effects) if (effect.kind === "transitionScene") reachable.add(effect.sceneId);
+  const exits = new Set(reachableScenes(bible, state));
 
   for (const effect of proposal.effects) {
     switch (effect.kind) {
@@ -42,6 +47,7 @@ export function resolveStoryEffects(
         const scene = bible.scenes.find((candidate) => candidate.id === effect.sceneId);
         if (scene === undefined) problems.push(`Unknown scene "${effect.sceneId}".`);
         else if (scene.id === state.sceneId) problems.push(`The party is already in ${scene.id}; drop the transition.`);
+        else if (!exits.has(scene.id)) problems.push(`${scene.id} cannot be reached from ${state.sceneId ?? "here"}; the way on is ${[...exits].join(", ") || "closed"}.`);
         else effects.push({ effect: { kind: "transitionScene", sceneId: scene.id }, when: effect.when });
         break;
       }
@@ -58,11 +64,7 @@ export function resolveStoryEffects(
         if (clock === undefined) problems.push(`Unknown clock "${effect.clockId}".`);
         else if (!reachable.has(clock.sceneId)) problems.push(`${clock.id} belongs to ${clock.sceneId}, where the party is not.`);
         else if (!Number.isInteger(effect.by) || effect.by < 1 || effect.by > 3) problems.push(`${clock.id} may advance by 1 to 3 segments.`);
-        else {
-          const fight = findEncounter(bible, clock.onFull);
-          const onFull = fight === undefined || state.encounterHistory.includes(fight.id) ? null : encounterSpec(fight);
-          effects.push({ effect: { kind: "advanceClock", clockId: clock.id, segments: clock.segments, by: effect.by, onFull }, when: effect.when });
-        }
+        else effects.push({ effect: clockEffect(bible, state, clock.id, effect.by), when: effect.when });
         break;
       }
       case "revealClue": {
@@ -77,6 +79,107 @@ export function resolveStoryEffects(
         problems.push("Unknown story effect.");
     }
   }
+
+  const { actions, interactionEffects } = resolveInteractions(proposal, bible, state, problems);
+  effects.push(...interactionEffects);
   if (problems.length > 0) return { kind: "invalid", problems };
-  return { kind: "resolved", proposal: { roundNumber: proposal.roundNumber, actions: proposal.actions, effects } };
+  return { kind: "resolved", proposal: { roundNumber: proposal.roundNumber, actions, effects } };
 }
+
+// The heroes that chose an authored interaction get its check and DC in place of the model's; each interaction's results are
+// hung on its heroes' checks once, however many attempted it.
+function resolveInteractions(
+  proposal: PlannerProposal,
+  bible: AdventureBible,
+  state: CampaignState,
+  problems: string[],
+): { readonly actions: readonly PlannedAction[]; readonly interactionEffects: readonly PlannedEffect[] } {
+  const available = new Map(availableInteractions(bible, state).map((interaction) => [interaction.id as string, interaction]));
+  const attempts = new Map<string, { readonly interaction: BibleInteraction; readonly heroes: string[] }>();
+  const actions: PlannedAction[] = proposal.actions.map((action) => {
+    const plain: PlannedAction = { characterId: action.characterId, resolution: action.resolution };
+    const id = action.interactionId ?? null;
+    if (id === null || action.resolution.kind === "impossible") return plain;
+    const interaction = available.get(id);
+    if (interaction === undefined) {
+      problems.push(`${action.characterId}: ${id} is not an interaction available here now; use null for it.`);
+      return plain;
+    }
+    if (interaction.pay > 0 && goldOf(state, action.characterId) < interaction.pay) {
+      problems.push(`${action.characterId} cannot pay the ${interaction.pay} gold ${id} costs; plan something else.`);
+      return plain;
+    }
+    const group = attempts.get(id) ?? { interaction, heroes: [] };
+    group.heroes.push(action.characterId);
+    attempts.set(id, group);
+    const { check } = interaction;
+    if (check === null) return { characterId: action.characterId, resolution: { kind: "automatic", reason: interaction.label } };
+    const test: CheckTest = check.skill !== undefined ? { kind: "skill", skill: check.skill as never } : { kind: "ability", ability: check.ability as never };
+    const reasons = action.resolution.kind === "check" ? action.resolution.rollModeReasons : [];
+    return { characterId: action.characterId, resolution: { kind: "check", test, dcTier: nearestTier(check.dc), dc: check.dc, rollModeReasons: reasons } };
+  });
+
+  const interactionEffects: PlannedEffect[] = [];
+  for (const { interaction, heroes } of attempts.values()) {
+    const rolled = interaction.check !== null;
+    const success: EffectCondition = rolled ? { kind: "anyCheck", characterIds: heroes, success: true } : { kind: "always" };
+    const failure: EffectCondition = { kind: "anyCheck", characterIds: heroes, success: false };
+    const always: EffectCondition = { kind: "always" };
+    const tried = state.flags?.[triedFlag(interaction.id)] ?? 0;
+    if (interaction.pay > 0) interactionEffects.push({ effect: { kind: "spendGold", characterId: heroes[0] ?? "", amount: interaction.pay }, when: always });
+    interactionEffects.push({ effect: { kind: "setFlag", flag: triedFlag(interaction.id), value: tried + 1 }, when: always });
+    interactionEffects.push({ effect: { kind: "setFlag", flag: doneFlag(interaction.id), value: 1 }, when: success });
+    const add = (list: readonly BibleEffect[], when: EffectCondition, scope: string): void => {
+      list.forEach((effect, index) => {
+        const planned = plannedEffect(effect, `${interaction.id}:${scope}:${index}`, bible, state, problems);
+        if (planned !== null) interactionEffects.push({ effect: planned, when });
+      });
+    };
+    add(interaction.onSuccess, success, "s");
+    if (rolled) add(interaction.onFailure, failure, "f");
+    interaction.tiers.forEach((tier, index) => add(tier.effects, { kind: "anyCheck", characterIds: heroes, success: true, atLeast: tier.dc }, `t${index}`));
+  }
+  return { actions, interactionEffects };
+}
+
+// One authored effect as the engine applies it; null when it no longer applies (a clue already known, a fight already fought).
+function plannedEffect(effect: BibleEffect, rewardId: string, bible: AdventureBible, state: CampaignState, problems: string[]): PlannedEffect["effect"] | null {
+  switch (effect.kind) {
+    case "reveal": {
+      const clue = findClue(bible, effect.clue);
+      if (clue === undefined) problems.push(`Unknown clue "${effect.clue}".`);
+      return clue === undefined || state.clues.some((known) => known.id === clue.id) ? null : { kind: "revealClue", clueId: clue.id, text: clue.publicText };
+    }
+    case "set":
+      return { kind: "setFlag", flag: effect.flag, value: effect.value ?? 1 };
+    case "reward":
+      return { kind: "grantReward", rewardId, gold: effect.gold ?? 0, items: effect.items ?? [] };
+    case "goto":
+      return effect.scene === state.sceneId ? null : { kind: "transitionScene", sceneId: effect.scene };
+    case "encounter": {
+      const encounter = findEncounter(bible, effect.encounter);
+      if (encounter === undefined) problems.push(`Unknown encounter "${effect.encounter}".`);
+      return encounter === undefined || state.encounterHistory.includes(encounter.id) ? null : { kind: "startEncounter", encounter: encounterSpec(encounter) };
+    }
+    case "clock": {
+      const clock = findClock(bible, effect.clock);
+      if (clock === undefined) problems.push(`Unknown clock "${effect.clock}".`);
+      return clock === undefined ? null : clockEffect(bible, state, clock.id, effect.by);
+    }
+  }
+}
+
+function clockEffect(bible: AdventureBible, state: CampaignState, clockId: string, by: number): Extract<PlannedEffect["effect"], { kind: "advanceClock" }> {
+  const clock = findClock(bible, clockId);
+  const fight = findEncounter(bible, clock?.onFull ?? null);
+  const onFull = fight === undefined || state.encounterHistory.includes(fight.id) ? null : encounterSpec(fight);
+  return { kind: "advanceClock", clockId, segments: clock?.segments ?? 2, by, onFull };
+}
+
+// The ladder tier closest to an authored DC (the check itself keeps the exact DC).
+function nearestTier(dc: number): DcTier {
+  const tiers = Object.entries(dcLadder) as [DcTier, number][];
+  return tiers.reduce((best, tier) => (Math.abs(tier[1] - dc) < Math.abs(best[1] - dc) ? tier : best))[0];
+}
+
+

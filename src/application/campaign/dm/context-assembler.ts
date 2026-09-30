@@ -1,4 +1,5 @@
-import { findScene, type AdventureBible } from "../../../domain/campaign/adventure/adventure-bible.js";
+import { findScene, interactionsOf, type AdventureBible } from "../../../domain/campaign/adventure/adventure-bible.js";
+import { describeInteraction } from "./interactions.js";
 import type { CampaignEvent } from "../../../domain/campaign/events/campaign-event.js";
 import type { Glossary, SealedContent } from "../../../domain/campaign/rules/content-registry.js";
 import { foeCards } from "./scene-cards.js";
@@ -160,10 +161,11 @@ function adventure(input: ContextInput): ContextSection {
     });
     const clocks = bible.clocks.map((clock) => `${clock.id} "${clock.name}" (${clock.segments} segments, in ${clock.sceneId}): ${clock.dmNotes}`);
     const clues = bible.clues.map((clue) => `${clue.id} in ${clue.sceneId}: ${clue.publicText}\nDM notes: ${clue.dmNotes}`);
+    const interactions = interactionsOf(bible).map((interaction) => describeInteraction(interaction));
     return {
       layer: "B",
       title: "Adventure bible",
-      text: [bible.title, bible.premise, `DM overview: ${bible.dmOverview}`, ...scenes, ...npcs, ...encounters, ...clocks, ...clues].join("\n"),
+      text: [bible.title, bible.premise, `DM overview: ${bible.dmOverview}`, ...scenes, ...npcs, ...encounters, ...clocks, ...clues, ...interactions].join("\n"),
     };
   }
   const scene = findScene(bible, state.sceneId);
