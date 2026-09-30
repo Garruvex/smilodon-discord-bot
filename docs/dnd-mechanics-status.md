@@ -40,7 +40,6 @@ Race and subrace details are also in `dnd-race-mechanics-status.md`.
 - Engulf and swallow.
 
 ### Class features
-- Levels 6 to 20 for most classes (Indomitable, Evasion, Extra Attack scaling beyond fighter, Brutal Critical, and so on); the level tables stop at 5.
 - Subclasses: Lore's Cutting Words, Open Hand riders, Thief, Evocation's Sculpt Spells, Fiend's Dark One's Blessing (no temporary hit points), Turn the Unholy.
 - Metamagic and sorcery points, Warlock invocations and pact boons, Bardic Inspiration's rest recharge at level 5.
 - Fighting styles other than Dueling (the builder has no choice for them).
@@ -62,6 +61,13 @@ Race and subrace details are also in `dnd-race-mechanics-status.md`.
 - Done: darkvision and dark zones (a zone may be dark; a creature without darkvision, blindsight, tremorsense or truesight attacks in or into it at disadvantage; SRD races and monsters carry the trait). Dim light, hiding in the dark and light spells are not modeled.
 - Done: Stunning Strike (monk 5: a free action that readies it for a ki point; the next melee hit calls for a Constitution save against 8 + proficiency + Wisdom, stunned for a round) and Relentless Rage (barbarian 11: once per long rest a raging barbarian dropped to 0 stays up at twice their level in hit points; the SRD save is played as a success).
 - Done: a push effect (Thunderwave throws a creature that fails its save into the next zone within 10 feet and farther from the caster, or out of melee if there is none). Teleport (Misty Step) is not modeled.
+- Done (levels 6 to 20): every SRD class feature is on the sheet from its level, and these act in the engine: Survivor, Elusive, Indomitable Might, Slippery Mind, Diamond Soul, Primal Champion, a second Action Surge, Divine Strike, Dark One's Blessing, Potent Cantrip, Deflect Missiles (at the die's average), Cutting Words (a Bardic Inspiration use and the reaction, at the die's average, only when it turns a hit into a miss), Aura of Courage and Aura of Devotion (allies in the zone), Empowered Evocation, Overchannel (once), Supreme Healing, Song of Rest, Sorcerous Restoration, Intimidating Presence, Wholeness of Body, Mindless Rage, Elemental Affinity (fire) and Draconic Resilience. Features that only matter outside a fight are named without a rule.
+- Done: the Protection fighting style (a neighbor's reaction gives an attack on an ally disadvantage; the shield is not checked). Deflect Missiles, Cutting Words and Protection are applied automatically rather than offered as a prompt, like Uncanny Dodge.
+- Done: spell schools (a table from the SRD), cover on a zone (half +2, three-quarters +5 to armor class and Dexterity saves against things from another zone) and Hide (out of every foe's reach, in a zone with cover or darkness; no Stealth roll; the next attack or spell ends it).
+- Done: movement effects: `grantMovement` (Misty Step is thirty feet of movement that provokes nothing, in place of a teleport) and a `speedBonus` modifier (Longstrider, Expeditious Retreat, Fly). Difficult terrain and flight itself are not modeled.
+- Done: Polymorph and True Polymorph (hostile use only: the target becomes a frog until its hit points run out or concentration ends), the other conjuring spells (Animate Objects, Giant Insect, Conjure Woodland Beings and more, as summons), Hunter's Mark, Web, Resistance, Magic Weapon, Stoneskin, Mirror Image, Enlarge, Lesser and Greater Restoration, Calm Emotions, and escaping a grapple (always works, costs the action).
+- Done: Metamagic Heightened, Empowered, Extended and Subtle (granted at sorcerer 10 and 17), and Flexible Casting (sorcery points into a spell slot).
+- Done: staffs (Fire, Frost, Healing, Power) draw several spells from one pool of charges; Magic Resistance, Blood Frenzy and Sunlight Sensitivity on the SRD monsters.
 - Dragon Scale Mail, Armor of Resistance and Adamantine Armor are named but give nothing yet.
 
 ### Other

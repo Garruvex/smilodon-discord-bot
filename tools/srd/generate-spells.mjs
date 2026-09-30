@@ -184,7 +184,9 @@ const curated = {
   "greater-restoration": { relation: "ally-or-self", count: 1, save: null, note: "Ends charmed, stunned, poisoned, blinded or paralyzed; the other conditions it cures are not modeled.", effects: [{ removes: ["charmed", "stunned", "poisoned", "blinded", "paralyzed"] }] },
   "calm-emotions": { relation: "ally-or-self", count: 6, save: null, note: "Ends charmed and frightened on willing creatures; the suppression of hostility is not modeled.", effects: [{ removes: ["charmed", "frightened"] }] },
   "hunters-mark": { relation: "enemy", count: 1, save: null, note: "The mark adds 1d6 to the caster's weapon hits on the creature; moving it when the creature falls is not modeled.", effects: [{ modifiers: [{ kind: "marked" }], duration: { kind: "untilRemoved" }, onLand: true }] },
-  darkness: { relation: "enemy", count: 6, save: null, note: "Blinds the creatures in the area for the duration; there is no lighting in the engine.", effects: [{ condition: "blinded", duration: { kind: "untilRemoved" }, onLand: true }] },
+  light: { relation: "self", count: 1, save: null, note: "Lights the zone the caster stands in, for the rest of the fight.", effects: [{ lighting: "bright" }] },
+  daylight: { relation: "self", count: 1, save: null, note: "Lights the zone the caster stands in, for the rest of the fight.", effects: [{ lighting: "bright" }] },
+  darkness: { relation: "self", count: 1, save: null, note: "Darkens the zone the caster stands in for the rest of the fight; creatures without darkvision, the caster's friends included, attack in or into it at disadvantage.", effects: [{ lighting: "dark" }] },
 };
 
 // ------------------------------------------------------------------ emission
@@ -257,7 +259,8 @@ function planFor(spell, notes) {
     const self = [];
     for (const effect of special.effects) {
       let code;
-      if (effect.removes !== undefined) code = `{ kind: "removeCondition", target: "target", conditions: [${effect.removes.map((name) => `"condition:${name}"`).join(", ")}] }`;
+      if (effect.lighting !== undefined) code = `{ kind: "setLighting", target: "target", lighting: ${quote(effect.lighting)} }`;
+      else if (effect.removes !== undefined) code = `{ kind: "removeCondition", target: "target", conditions: [${effect.removes.map((name) => `"condition:${name}"`).join(", ")}] }`;
       else if (effect.polymorph !== undefined) code = `{ kind: "polymorph", target: "target", monsterId: "monster:${effect.polymorph}" }`;
       else if (effect.movement !== undefined) code = `{ kind: "grantMovement", target: "target", feet: ${effect.movement} }`;
       else if (effect.damage !== undefined) code = `{ kind: "damage", target: "target", amount: ${effect.damage[0][0] === 0 ? `flat(${effect.damage[0][2]})` : "flat(0)"}, damageType: ${quote(effect.damageType)} }`;

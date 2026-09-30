@@ -833,16 +833,16 @@ export const dancingLights = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Blinds the creatures in the area for the duration; there is no lighting in the engine.
+// Darkens the zone the caster stands in for the rest of the fight; creatures without darkvision, the caster's friends included, attack in or into it at disadvantage.
 export const darkness = defineSpell({
   id: "spell:darkness",
   source,
   level: 2,
   castingTime: "action",
   range: { kind: "feet", feet: 60 },
-  targeting: { relation: "enemy", count: 6 },
+  targeting: { relation: "self", count: 1 },
   concentration: true,
-  plan: () => ({ check: null, onLand: [{ kind: "applyCondition", target: "target", condition: "condition:blinded", duration: { kind: "untilRemoved" } }], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "setLighting", target: "target", lighting: "dark" }], onAvoid: [] }),
 });
 
 // Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
@@ -857,16 +857,16 @@ export const darkvision = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Lights the zone the caster stands in, for the rest of the fight.
 export const daylight = defineSpell({
   id: "spell:daylight",
   source,
   level: 3,
   castingTime: "action",
   range: { kind: "feet", feet: 60 },
-  targeting: { relation: "creature", count: 6 },
+  targeting: { relation: "self", count: 1 },
   concentration: false,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "setLighting", target: "target", lighting: "bright" }], onAvoid: [] }),
 });
 
 // Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
@@ -2008,16 +2008,16 @@ export const levitate = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Lights the zone the caster stands in, for the rest of the fight.
 export const light = defineSpell({
   id: "spell:light",
   source,
   level: 0,
   castingTime: "action",
   range: { kind: "touch" },
-  targeting: { relation: "ally-or-self", count: 1 },
+  targeting: { relation: "self", count: 1 },
   concentration: false,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "setLighting", target: "target", lighting: "bright" }], onAvoid: [] }),
 });
 
 export const lightningBolt = defineSpell({

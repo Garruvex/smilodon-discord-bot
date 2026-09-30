@@ -548,6 +548,9 @@ export function applyEffect(
       if (effectIds.length > 0) decision.emit({ kind: "effectsRemoved", combatantId: recipient.id, effectIds, reason: "cured" });
       return;
     }
+    case "setLighting":
+      decision.emit({ kind: "lightingChanged", zoneId: recipient.zoneId, lighting: effect.lighting });
+      return;
     case "gainSlot":
       decision.emit({ kind: "slotGained", combatantId: recipient.id, level: effect.level });
       return;

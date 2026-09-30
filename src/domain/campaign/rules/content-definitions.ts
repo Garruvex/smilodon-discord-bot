@@ -534,6 +534,8 @@ function capabilitiesFor(effect: Effect): readonly Capability[] {
       return ["conditions"];
     case "removeCondition":
       return ["conditions"];
+    case "setLighting":
+      return [];
     case "grantAction":
     case "grantMovement":
     case "gainSlot":

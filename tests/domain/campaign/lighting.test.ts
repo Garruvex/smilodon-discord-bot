@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { EncounterSpec } from "../../../src/domain/campaign/commands/campaign-command.js";
 import { conditionLookup } from "../../../src/domain/campaign/effects/effect-queries.js";
 import { attackMode } from "../../../src/domain/campaign/engine/combat/attack-rules.js";
-import { organizer, partyOfThree, ruleset } from "./campaign-fixtures.js";
+import { alex, jamie, organizer, partyOfThree, partyWithSpells, ruleset, sam } from "./campaign-fixtures.js";
 import { Fight, skirmish } from "./combat-fixtures.js";
 
 // Dark zones: a creature that cannot see in the dark fights at disadvantage in or against one.
@@ -28,5 +28,20 @@ describe("dark zones", () => {
     const goblin = fight.combatant("goblin-a");
     expect(goblin.traits).toContainEqual({ kind: "darkvision", feet: 60 });
     expect(attackMode(fight.encounter, goblin, fight.combatant("c-mira"), false, false, lookup).mode).toBe("normal");
+  });
+});
+
+describe("Darkness and Light", () => {
+  it("Darkness darkens the caster's zone and Light brings it back", () => {
+    const fight = new Fight(partyWithSpells(["spell:darkness", "spell:light"], { 2: 1 })).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec: skirmish });
+    const lighting = (): string | undefined => fight.encounter.zones.find((zone) => zone.id === "gate")?.lighting;
+    expect(lighting()).toBeUndefined();
+    fight.run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:darkness", slotLevel: 2, targetIds: ["c-elspeth"] });
+    expect(lighting()).toBe("dark");
+    fight.run(sam, { kind: "endTurn", combatantId: "c-elspeth" });
+    fight.rolls(Array.from({ length: 12 }, () => 1), Array.from({ length: 12 }, () => 1)).run(alex, { kind: "endTurn", combatantId: "c-mira" });
+    fight.run(jamie, { kind: "endTurn", combatantId: "c-borin" });
+    fight.run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:light", slotLevel: 0, targetIds: ["c-elspeth"] });
+    expect(lighting()).toBe("bright");
   });
 });

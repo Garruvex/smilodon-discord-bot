@@ -84,6 +84,8 @@ export type Effect =
   | { readonly kind: "polymorph"; readonly target: EffectTarget; readonly monsterId: ContentId<"monster"> }
   // Ends the target's effects that are one of these conditions (Lesser Restoration, escaping a grapple).
   | { readonly kind: "removeCondition"; readonly target: EffectTarget; readonly conditions: readonly ContentId<"condition">[] }
+  // Changes how well lit the zone the target stands in is, for the rest of the fight (Light, Daylight, Darkness).
+  | { readonly kind: "setLighting"; readonly target: EffectTarget; readonly lighting: "bright" | "dim" | "dark" }
   // One more spell slot of this level (Flexible Casting), gone with the next long rest.
   | { readonly kind: "gainSlot"; readonly target: EffectTarget; readonly level: number }
   // Feet of movement to use this turn (Misty Step's teleport is played as movement that provokes nothing).
