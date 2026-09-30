@@ -76,6 +76,7 @@ describe("The other conjuring spells", () => {
     };
     expect(summoned("spell:giant-insect", 4, "c-elspeth-giant-centipede")).toBe(3);
     expect(summoned("spell:animate-objects", 5, "c-elspeth-flying-sword")).toBe(6);
+    expect(summoned("spell:flaming-sphere", 2, "c-elspeth-flaming-sphere")).toBe(1);
   });
 });
 

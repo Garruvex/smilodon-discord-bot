@@ -34,7 +34,6 @@ const fireballDamage: DiceTable = { 3: [8, 6, 0], 4: [9, 6, 0], 5: [10, 6, 0], 6
 const flameBladeDamage: DiceTable = { 2: [3, 6, 0], 4: [4, 6, 0], 6: [5, 6, 0], 8: [6, 6, 0] };
 const flameStrikeDamage: DiceTable = { 5: [4, 6, 0], 6: [5, 6, 0], 7: [6, 6, 0], 8: [7, 6, 0], 9: [8, 6, 0] };
 const flameStrikeDamage2: DiceTable = { 5: [4, 6, 0], 6: [5, 6, 0], 7: [6, 6, 0], 8: [7, 6, 0], 9: [8, 6, 0] };
-const flamingSphereDamage: DiceTable = { 2: [2, 6, 0], 3: [3, 6, 0], 4: [4, 6, 0], 5: [5, 6, 0], 6: [6, 6, 0], 7: [7, 6, 0], 8: [8, 6, 0], 9: [9, 6, 0] };
 const freezingSphereDamage: DiceTable = { 6: [10, 6, 0] };
 const guardianOfFaithDamage: DiceTable = { 4: [0, 0, 20] };
 const harmDamage: DiceTable = { 6: [14, 6, 0] };
@@ -1384,15 +1383,16 @@ export const flameStrike = defineSpell({
   plan: ({ slotLevel }) => ({ check: { kind: "savingThrow", ability: "dex" }, onLand: [{ kind: "damage", target: "target", amount: diceAt(flameStrikeDamage, slotLevel), damageType: "fire" }, { kind: "damage", target: "target", amount: diceAt(flameStrikeDamage2, slotLevel), damageType: "radiant" }], onAvoid: [{ kind: "damage", target: "target", amount: diceAt(flameStrikeDamage, slotLevel), damageType: "fire", halfOfLand: true }, { kind: "damage", target: "target", amount: diceAt(flameStrikeDamage2, slotLevel), damageType: "radiant", halfOfLand: true }] }),
 });
 
+// A ball of fire fights beside the caster until the fight ends, attacking for the same 2d6 fire; the book has it roll into a creature for a Dexterity save.
 export const flamingSphere = defineSpell({
   id: "spell:flaming-sphere",
   source,
   level: 2,
   castingTime: "action",
   range: { kind: "feet", feet: 60 },
-  targeting: { relation: "enemy", count: 1 },
+  targeting: { relation: "self", count: 1 },
   concentration: true,
-  plan: ({ slotLevel }) => ({ check: null, onLand: [{ kind: "damage", target: "target", amount: diceAt(flamingSphereDamage, slotLevel), damageType: "fire" }], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "summon", target: "self", monsterId: "monster:flaming-sphere", count: 1 }], onAvoid: [] }),
 });
 
 // Restrained stands in for the slow petrification.

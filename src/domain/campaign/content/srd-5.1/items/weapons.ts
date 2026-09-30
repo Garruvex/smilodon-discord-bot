@@ -32,6 +32,7 @@ export const javelin = defineWeapon({
   natural: false,
 });
 export const bite = defineWeapon({ id: "item:bite", source, damage: dice(1, 4), damageType: "piercing", range: melee, finesse: false, natural: true });
+export const scorchingSphere = defineWeapon({ id: "item:scorching-sphere", source, damage: dice(2, 6), damageType: "fire", range: melee, finesse: false, natural: true });
 export const spectralWeapon = defineWeapon({ id: "item:spectral-weapon", source, damage: dice(1, 8), damageType: "force", range: melee, finesse: false, natural: true });
 
 // Added for the full SRD class roster (step 7): one new melee weapon per
@@ -82,6 +83,7 @@ export const srd51Weapons: readonly WeaponDefinition[] = [
   javelin,
   bite,
   spectralWeapon,
+  scorchingSphere,
   greataxe,
   quarterstaff,
   rapier,

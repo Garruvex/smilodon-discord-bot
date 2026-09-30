@@ -22,4 +22,19 @@ export const spiritualWeapon = defineMonster({
   summonOnly: true,
 });
 
-export const srd51SummonedCreatures: readonly MonsterDefinition[] = [spiritualWeapon];
+// What Flaming Sphere calls up. The book has it ram a creature for a Dexterity save; here it makes an attack for the same 2d6 fire.
+export const flamingSphere = defineMonster({
+  id: "monster:flaming-sphere",
+  source,
+  armorClass: 13,
+  maxHp: 10,
+  xp: 0,
+  speed: 30,
+  abilityScores: { str: 10, dex: 10, con: 10, int: 1, wis: 10, cha: 1 },
+  attacks: [{ weapon: "item:scorching-sphere", toHit: 5, damage: dice(2, 6) }],
+  tactic: "brute",
+  traits: [{ kind: "damageResistance", damageTypes: ["fire"] }],
+  summonOnly: true,
+});
+
+export const srd51SummonedCreatures: readonly MonsterDefinition[] = [spiritualWeapon, flamingSphere];

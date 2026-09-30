@@ -274,6 +274,8 @@ const enBase: Glossary = {
     "item:claw": "Claw",
     "item:spectral-weapon": "Spectral Weapon",
     "monster:spiritual-weapon": "Spiritual Weapon",
+    "item:scorching-sphere": "Scorching Sphere",
+    "monster:flaming-sphere": "Flaming Sphere",
     "item:tusk": "Tusk",
     "monster:bandit": "Bandit",
     "monster:bandit-captain": "Bandit Captain",
