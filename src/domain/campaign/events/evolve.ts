@@ -88,6 +88,8 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       return { ...state, clues: [...state.clues, { id: event.clueId, text: event.text }] };
     case "flagSet":
       return { ...state, flags: { ...state.flags, [event.flag]: event.value } };
+    case "keepsakeGained":
+      return { ...state, keepsakes: { ...state.keepsakes, [event.keepsake.id]: event.keepsake } };
     case "goldSpent":
       return event.wallet === "pool"
         ? { ...state, gold: state.gold - event.amount }
@@ -143,6 +145,7 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     }
     case "encounterStarted":
     case "initiativeRolled":
+    case "dreadRolled":
     case "turnOrderSet":
     case "turnStarted":
     case "stoodUp":

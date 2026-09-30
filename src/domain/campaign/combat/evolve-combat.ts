@@ -18,6 +18,10 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
         update(encounter, event.combatantId, (combatant) => ({ ...combatant, initiative: event.roll.total })),
         [event.rollId],
       );
+    case "dreadRolled": {
+      const settled = withoutPending(encounter, [event.rollId]);
+      return event.saved ? settled : { ...settled, dreadFailed: [...(settled.dreadFailed ?? []), event.combatantId] };
+    }
     case "turnOrderSet":
       return { ...encounter, status: "active", order: event.order, round: 1, turnIndex: 0 };
     case "turnStarted": {

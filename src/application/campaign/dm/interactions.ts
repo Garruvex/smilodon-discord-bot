@@ -34,10 +34,11 @@ export function reachableScenes(bible: AdventureBible, state: CampaignState): re
   return here.exits.filter((exit) => requirementMet(exit.requires, state)).map((exit) => exit.to);
 }
 
-// Gold a hero has to spend: their own share at a split table (heroes then hold gold of their own), otherwise the party purse.
-export function goldOf(state: CampaignState, characterId: string): number {
-  const split = Object.keys(state.heroGold ?? {}).length > 0;
-  return split ? (state.heroGold?.[characterId] ?? 0) : state.gold;
+// Whose gold pays, from the table's loot-gold rule: each hero's own, or the party purse.
+export type Wallet = "pool" | "hero";
+
+export function goldOf(state: CampaignState, characterId: string, wallet: Wallet): number {
+  return wallet === "hero" ? (state.heroGold?.[characterId] ?? 0) : state.gold;
 }
 
 function describeEffect(effect: BibleEffect): string {
@@ -54,6 +55,14 @@ function describeEffect(effect: BibleEffect): string {
       return `${effect.encounter} begins`;
     case "clock":
       return `${effect.clock} advances by ${effect.by}`;
+    case "notice":
+      return `the table is told: "${effect.text}"`;
+    case "keepsake":
+      return `the party receives ${effect.name}`;
+    case "hurt":
+      return `${effect.who === "party" ? "every hero" : "the hero"} takes ${effect.count}d${effect.sides} ${effect.damageType} damage`;
+    case "random":
+      return `one of, chosen by chance: ${effect.options.map((option) => describeEffects(option.effects)).join(" | ")}`;
   }
 }
 
@@ -62,7 +71,7 @@ const describeEffects = (effects: readonly BibleEffect[]): string => (effects.le
 // One interaction for the Planner's context (never the Narrator's): what it is, how it is rolled, what follows, and when it applies.
 export function describeInteraction(interaction: BibleInteraction): string {
   const { check } = interaction;
-  const roll = check === null ? "happens on its own, no roll" : `${check.skill ?? check.ability} check, DC ${check.dc}`;
+  const roll = check === null ? "happens on its own, no roll" : `${check.skill ?? check.ability} ${check.save === true ? "saving throw" : "check"}, DC ${check.dc}`;
   const needs = [
     ...(interaction.requires.clues ?? []).map((clue) => `clue ${clue}`),
     ...(interaction.requires.flags ?? []).map((flag) => `flag ${flag}`),

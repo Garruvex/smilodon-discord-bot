@@ -194,7 +194,7 @@ describe("LLM DM", () => {
     expect(proposal.actions).toHaveLength(1);
     expect(client.requests[0]?.schemaName).toBe("campaign_round_plan");
     expect(observed).toEqual([
-      { call: "planner", model: "fake-model", promptVersion: "planner-6", usage: { inputTokens: 100, outputTokens: 20, cachedInputTokens: 60 } },
+      { call: "planner", model: "fake-model", promptVersion: "planner-7", usage: { inputTokens: 100, outputTokens: 20, cachedInputTokens: 60 } },
     ]);
   });
 

@@ -306,6 +306,8 @@ export interface PendingTriggers {
 
 export type PendingCombatRoll =
   | { readonly purpose: "initiative"; readonly combatantId: CombatantId; readonly spec: D20TestSpec }
+  // The saving throw against something dreadful as the fight breaks out (the encounter's dread), rolled with initiative.
+  | { readonly purpose: "dread"; readonly combatantId: CombatantId; readonly spec: D20TestSpec; readonly dc: number }
   | { readonly purpose: "check"; readonly resolutionId: string }
   | { readonly purpose: "effect"; readonly resolutionId: string }
   | { readonly purpose: "deathSave"; readonly combatantId: CombatantId; readonly spec: D20TestSpec }
@@ -317,6 +319,8 @@ export type EncounterOutcome = "victory" | "defeat";
 
 export interface EncounterState {
   readonly id: string;
+  // Heroes who failed the fight's dread save: frightened until their first turn ends. Absent: none.
+  readonly dreadFailed?: readonly CombatantId[];
   // initiative: waiting for initiative rolls. active: taking turns.
   readonly status: "initiative" | "active" | "ended";
   readonly round: number;

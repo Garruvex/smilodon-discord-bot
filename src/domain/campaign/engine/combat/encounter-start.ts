@@ -5,7 +5,8 @@ import { companionsOf } from "../../companions/companion-roster.js";
 import { isFallen } from "../../state/campaign-state.js";
 import { type Combatant, type EncounterState, type PendingCombatRoll } from "../../combat/combat-state.js";
 import { defaultHeroResources } from "../../character/hero-status.js";
-import { innateUseKey } from "../../rules/traits.js";
+import { hasSaveAdvantage, innateUseKey, isImmuneToCondition } from "../../rules/traits.js";
+import { savingThrowModifier } from "../../character/character-sheet.js";
 import { heroCombatant, monsterCombatant } from "../../combat/combatant-profile.js";
 import type { D20TestSpec } from "../../dice/d20-test.js";
 import type { Decision } from "../decision.js";
@@ -86,6 +87,16 @@ export function beginEncounter(decision: Decision, spec: EncounterSpec): void {
     const rollSpec: D20TestSpec = { mode: combatant.traits.some((trait) => trait.kind === "feralInstinct") ? "advantage" : "normal", modifier: combatant.initiativeModifier, bonusDice: [] };
     pendingRolls[`${spec.id}:roll:${++sequence}`] = { purpose: "initiative", combatantId: combatant.id, spec: rollSpec };
   }
+  // Something dreadful as the fight breaks out: each hero (not one immune to fear) saves, their rolls landing with initiative.
+  if (spec.dread !== undefined) {
+    const { ability, dc } = spec.dread;
+    for (const combatant of Object.values(combatants)) {
+      const sheet = combatant.source.kind === "hero" ? state.characters[combatant.source.characterId] : undefined;
+      if (sheet === undefined || isImmuneToCondition(combatant.traits, "condition:frightened")) continue;
+      const advantage = hasSaveAdvantage(combatant.traits, ability, { conditions: ["condition:frightened"], damageTypes: [], magic: false });
+      pendingRolls[`${spec.id}:roll:${++sequence}`] = { purpose: "dread", combatantId: combatant.id, dc, spec: { mode: advantage ? "advantage" : "normal", modifier: savingThrowModifier(sheet, ability), bonusDice: [] } };
+    }
+  }
   const encounter: EncounterState = {
     id: spec.id,
     status: "initiative",
@@ -112,7 +123,7 @@ export function beginEncounter(decision: Decision, spec: EncounterSpec): void {
   };
   decision.emit({ kind: "encounterStarted", encounter });
   for (const [rollId, pending] of Object.entries(pendingRolls)) {
-    if (pending.purpose === "initiative") decision.request({ kind: "roll", rollId, spec: { kind: "d20Test", spec: pending.spec } });
+    if (pending.purpose === "initiative" || pending.purpose === "dread") decision.request({ kind: "roll", rollId, spec: { kind: "d20Test", spec: pending.spec } });
   }
   decision.request({ kind: "deliver", delivery: { kind: "encounterStarted", encounterId: spec.id } });
 }

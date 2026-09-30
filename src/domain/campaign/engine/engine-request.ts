@@ -94,6 +94,14 @@ export type DeliverySpec =
   | { readonly kind: "encounterEnded"; readonly encounterId: string }
   // A line an authored trigger shows the table mid-fight (a new foe steps out of the mist).
   | { readonly kind: "fightNotice"; readonly encounterId: string; readonly text: string }
+  // A line the story shows the table (an authored notice, once).
+  | { readonly kind: "storyNotice"; readonly text: string }
+  // Gold and items an authored reward gave the party (the loot event tells what).
+  | { readonly kind: "rewardFound"; readonly rewardId: string }
+  // A story object joined the party's belongings.
+  | { readonly kind: "keepsakeGained"; readonly keepsakeId: string }
+  // A hero paid for what the story sold.
+  | { readonly kind: "paymentMade"; readonly characterId: string; readonly amount: number }
   | { readonly kind: "combatNarration"; readonly encounterId: string; readonly round: number }
   // A trade offer waits for the other hero's owner.
   | { readonly kind: "itemOffered"; readonly offerId: string }

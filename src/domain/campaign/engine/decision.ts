@@ -1,4 +1,4 @@
-import type { Actor } from "../commands/campaign-command.js";
+import type { Actor, PartyEffect } from "../commands/campaign-command.js";
 import type { Instant } from "../core/ids.js";
 import type { CampaignEvent } from "../events/campaign-event.js";
 import { evolve } from "../events/evolve.js";
@@ -46,7 +46,7 @@ export class Decision {
   }
 
   // Applies one story effect (a round's planned effect, or a fight's trigger or victory): the engine's single story vocabulary.
-  public applyStory(roundNumber: number, effect: Parameters<typeof applyStoryEffect>[2]): void {
+  public applyStory(roundNumber: number, effect: PartyEffect): void {
     applyStoryEffect(this, roundNumber, effect);
   }
 

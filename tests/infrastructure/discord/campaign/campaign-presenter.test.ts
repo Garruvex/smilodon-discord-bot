@@ -306,3 +306,55 @@ describe("the presenter in a fight the players play", () => {
     expect(t.messages.posts.some((post) => post.content.startsWith("⚔️") || post.content.startsWith("🛡️"))).toBe(false);
   });
 });
+
+describe("the look of each kind of message", () => {
+  it("sets dice and fight actions in panels and leaves the story as plain prose", async () => {
+    const t = await table();
+    t.r.plannerScript.push({
+      roundNumber: 1,
+      actions: [{ characterId: t.hero, resolution: { kind: "check", test: { kind: "skill", skill: "stealth" }, dcTier: "medium", rollModeReasons: [] } }],
+    });
+    await t.r.bus.execute(t.key, { kind: "submitAction", characterId: t.hero, text: "I sneak in." }, { commandId: "a", actor });
+    await t.runtime.runOnce();
+    const state = (await t.r.store.transaction((tx) => tx.loadCampaign(t.key)))?.state;
+    const checkId = Object.keys(state?.checks ?? {})[0] ?? "";
+    await t.r.bus.execute(t.key, { kind: "requestRoll", checkId }, { commandId: "b", actor });
+    await t.runtime.runOnce();
+    await t.runtime.runOnce();
+    const posts = t.messages.posts.filter((post) => post.channelId === adventure);
+    expect(posts.find((post) => post.content.startsWith("🎲"))?.style).toBe("roll");
+    expect(posts.find((post) => post.content === "The night air stirs.")?.style).toBeUndefined();
+
+    const fight = await table();
+    await fightOn(fight);
+    await fight.r.bus.execute(fight.key, { kind: "combatDodge", combatantId: fight.hero }, { commandId: "d", actor });
+    await fight.runtime.runOnce();
+    expect(fight.messages.posts.find((post) => post.content.startsWith("🛡️"))?.style).toBe("action");
+  });
+
+  it("announces what an authored reward, a keepsake, a payment and a notice gave the table, each in its own panel", async () => {
+    const t = await table();
+    const presenter = new DiscordCampaignPresenter({ unitOfWork: t.r.store, messages: t.messages, cards: t.cards, adventures: t.r.adventures, glossaries });
+    const events = [
+      { kind: "lootFound", encounterId: "interaction:bent:s:0", items: ["item:longsword"], gold: 100 },
+      { kind: "keepsakeGained", roundNumber: 1, keepsake: { id: "bent-token", name: "Bent's token", description: "A carved wooden token." } },
+    ] as const;
+    await t.r.store.transaction((tx) =>
+      tx.appendEvents(
+        t.key,
+        events.map((event) => ({ campaignId: t.key.campaignId, causationId: "test", commandKind: "openRound" as const, actor: { kind: "system" as const }, rulesRevision: "test", recordedAt: 0, event })),
+      ),
+    );
+    await presenter.present(t.key, { kind: "rewardFound", rewardId: "interaction:bent:s:0" });
+    await presenter.present(t.key, { kind: "keepsakeGained", keepsakeId: "bent-token" });
+    await presenter.present(t.key, { kind: "paymentMade", characterId: t.hero, amount: 10 });
+    await presenter.present(t.key, { kind: "storyNotice", text: "The wind drops." });
+    const posts = t.messages.posts.filter((post) => post.channelId === adventure);
+    expect(posts.map((post) => [post.content, post.style])).toEqual([
+      ["🎁 **Reward** · Longsword, 100 gold", "reward"],
+      ["🗝️ **Bent's token** joins the party's belongings — A carved wooden token.", "reward"],
+      ["🪙 **Borin** pays 10 gold.", "reward"],
+      ["The wind drops.", "notice"],
+    ]);
+  });
+});

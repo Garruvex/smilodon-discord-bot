@@ -16,6 +16,7 @@ import type {
   DialogueRecord,
   HazardRecord,
   ItemOffer,
+  Keepsake,
   PendingHaggle,
   PendingEnvironmentalDamage,
   PendingHazard,
@@ -78,6 +79,7 @@ export type CampaignEvent =
   | { readonly kind: "clockAdvanced"; readonly roundNumber: number; readonly clockId: string; readonly segments: number; readonly filled: number }
   | { readonly kind: "clueRevealed"; readonly roundNumber: number; readonly clueId: string; readonly text: string }
   | { readonly kind: "flagSet"; readonly roundNumber: number; readonly flag: string; readonly value: number }
+  | { readonly kind: "keepsakeGained"; readonly roundNumber: number; readonly keepsake: Keepsake }
   | { readonly kind: "goldSpent"; readonly roundNumber: number; readonly characterId: CharacterId; readonly amount: number; readonly wallet: "pool" | "hero" }
   | { readonly kind: "memberMarkedAway"; readonly userId: UserId; readonly reason: AwayReason }
   | { readonly kind: "memberReturned"; readonly userId: UserId }

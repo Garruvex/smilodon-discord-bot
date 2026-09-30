@@ -1,10 +1,10 @@
-import { encounterSpec, findClock, findClue, findEncounter, type AdventureBible, type BibleEffect, type BibleInteraction } from "../../../domain/campaign/adventure/adventure-bible.js";
+import { encounterSpec, findClock, findClue, findEncounter, storyEffectOf, withArrival, type AdventureBible, type BibleEffect, type BibleInteraction, type BiblePartyEffect } from "../../../domain/campaign/adventure/adventure-bible.js";
 import type { CheckTest } from "../../../domain/campaign/character/character-sheet.js";
-import type { EffectCondition, PlannedAction, PlannedEffect, RoundPlanProposal } from "../../../domain/campaign/commands/campaign-command.js";
+import type { EffectCondition, PartyEffect, PlannedAction, PlannedEffect, RoundPlanProposal } from "../../../domain/campaign/commands/campaign-command.js";
 import { dcLadder, type DcTier } from "../../../domain/campaign/rules/difficulty.js";
 import type { CampaignState } from "../../../domain/campaign/state/campaign-state.js";
 import type { PlannerProposal, PlannerRequest } from "../ports/dm-ports.js";
-import { availableInteractions, doneFlag, goldOf, reachableScenes, triedFlag } from "./interactions.js";
+import { availableInteractions, doneFlag, goldOf, reachableScenes, triedFlag, type Wallet } from "./interactions.js";
 
 // The IDs a proposal's story effects may name right now.
 export function plannerStory(bible: AdventureBible, state: CampaignState): PlannerRequest["story"] {
@@ -29,10 +29,18 @@ export function plannerStory(bible: AdventureBible, state: CampaignState): Plann
 // and the encounter's full definition. Unknown or out-of-place IDs are
 // problems for the Planner's retry, like the engine's own (plan §6: unknown
 // encounter IDs are rejected).
+// The table's rules the resolution depends on: whose gold pays (the loot-gold house rule) and where chance comes from (a table on the
+// page; the result is written into the plan, so it is decided once and the log shows it).
+export interface ResolveOptions {
+  readonly wallet: Wallet;
+  readonly random?: () => number;
+}
+
 export function resolveStoryEffects(
   proposal: PlannerProposal,
   bible: AdventureBible,
   state: CampaignState,
+  options: ResolveOptions = { wallet: "pool" },
 ): { readonly kind: "resolved"; readonly proposal: RoundPlanProposal } | { readonly kind: "invalid"; readonly problems: readonly string[] } {
   const problems: string[] = [];
   const effects: PlannedEffect[] = [];
@@ -48,7 +56,7 @@ export function resolveStoryEffects(
         if (scene === undefined) problems.push(`Unknown scene "${effect.sceneId}".`);
         else if (scene.id === state.sceneId) problems.push(`The party is already in ${scene.id}; drop the transition.`);
         else if (!exits.has(scene.id)) problems.push(`${scene.id} cannot be reached from ${state.sceneId ?? "here"}; the way on is ${[...exits].join(", ") || "closed"}.`);
-        else effects.push({ effect: { kind: "transitionScene", sceneId: scene.id }, when: effect.when });
+        else effects.push(...withArrival({ kind: "transitionScene", sceneId: scene.id }, bible).map((planned) => ({ effect: planned, when: effect.when })));
         break;
       }
       case "startEncounter": {
@@ -80,7 +88,7 @@ export function resolveStoryEffects(
     }
   }
 
-  const { actions, interactionEffects } = resolveInteractions(proposal, bible, state, problems);
+  const { actions, interactionEffects } = resolveInteractions(proposal, bible, state, options, problems);
   effects.push(...interactionEffects);
   if (problems.length > 0) return { kind: "invalid", problems };
   return { kind: "resolved", proposal: { roundNumber: proposal.roundNumber, actions, effects } };
@@ -92,6 +100,7 @@ function resolveInteractions(
   proposal: PlannerProposal,
   bible: AdventureBible,
   state: CampaignState,
+  options: ResolveOptions,
   problems: string[],
 ): { readonly actions: readonly PlannedAction[]; readonly interactionEffects: readonly PlannedEffect[] } {
   const available = new Map(availableInteractions(bible, state).map((interaction) => [interaction.id as string, interaction]));
@@ -105,7 +114,7 @@ function resolveInteractions(
       problems.push(`${action.characterId}: ${id} is not an interaction available here now; use null for it.`);
       return plain;
     }
-    if (interaction.pay > 0 && goldOf(state, action.characterId) < interaction.pay) {
+    if (interaction.pay > 0 && goldOf(state, action.characterId, options.wallet) < interaction.pay) {
       problems.push(`${action.characterId} cannot pay the ${interaction.pay} gold ${id} costs; plan something else.`);
       return plain;
     }
@@ -114,12 +123,13 @@ function resolveInteractions(
     attempts.set(id, group);
     const { check } = interaction;
     if (check === null) return { characterId: action.characterId, resolution: { kind: "automatic", reason: interaction.label } };
-    const test: CheckTest = check.skill !== undefined ? { kind: "skill", skill: check.skill as never } : { kind: "ability", ability: check.ability as never };
+    const test: CheckTest = check.skill !== undefined ? { kind: "skill", skill: check.skill as never } : { kind: check.save === true ? "save" : "ability", ability: check.ability as never };
     const reasons = action.resolution.kind === "check" ? action.resolution.rollModeReasons : [];
     return { characterId: action.characterId, resolution: { kind: "check", test, dcTier: nearestTier(check.dc), dc: check.dc, rollModeReasons: reasons } };
   });
 
   const interactionEffects: PlannedEffect[] = [];
+  const random = options.random ?? Math.random;
   for (const { interaction, heroes } of attempts.values()) {
     const rolled = interaction.check !== null;
     const success: EffectCondition = rolled ? { kind: "anyCheck", characterIds: heroes, success: true } : { kind: "always" };
@@ -129,42 +139,77 @@ function resolveInteractions(
     if (interaction.pay > 0) interactionEffects.push({ effect: { kind: "spendGold", characterId: heroes[0] ?? "", amount: interaction.pay }, when: always });
     interactionEffects.push({ effect: { kind: "setFlag", flag: triedFlag(interaction.id), value: tried + 1 }, when: always });
     interactionEffects.push({ effect: { kind: "setFlag", flag: doneFlag(interaction.id), value: 1 }, when: success });
-    const add = (list: readonly BibleEffect[], when: EffectCondition, scope: string): void => {
+    // Harm to the rollers follows each hero's own result, not the group's.
+    const own = (branch: "success" | "failure" | number) => (characterId: string): EffectCondition =>
+      !rolled
+        ? always
+        : branch === "failure"
+          ? { kind: "checkOutcome", characterId, success: false }
+          : typeof branch === "number"
+            ? { kind: "anyCheck", characterIds: [characterId], success: true, atLeast: branch }
+            : { kind: "checkOutcome", characterId, success: true };
+    const add = (list: readonly BibleEffect[], when: EffectCondition, perHero: (characterId: string) => EffectCondition, scope: string): void => {
       list.forEach((effect, index) => {
-        const planned = plannedEffect(effect, `${interaction.id}:${scope}:${index}`, bible, state, problems);
-        if (planned !== null) interactionEffects.push({ effect: planned, when });
+        interactionEffects.push(...plannedEffects(effect, `${interaction.id}:${scope}:${index}`, { bible, state, random, problems, heroes, when, perHero }));
       });
     };
-    add(interaction.onSuccess, success, "s");
-    if (rolled) add(interaction.onFailure, failure, "f");
-    interaction.tiers.forEach((tier, index) => add(tier.effects, { kind: "anyCheck", characterIds: heroes, success: true, atLeast: tier.dc }, `t${index}`));
+    add(interaction.onSuccess, success, own("success"), "s");
+    if (rolled) add(interaction.onFailure, failure, own("failure"), "f");
+    interaction.tiers.forEach((tier, index) => add(tier.effects, { kind: "anyCheck", characterIds: heroes, success: true, atLeast: tier.dc }, own(tier.dc), `t${index}`));
   }
   return { actions, interactionEffects };
 }
 
-// One authored effect as the engine applies it; null when it no longer applies (a clue already known, a fight already fought).
-function plannedEffect(effect: BibleEffect, rewardId: string, bible: AdventureBible, state: CampaignState, problems: string[]): PlannedEffect["effect"] | null {
+interface EffectContext {
+  readonly bible: AdventureBible;
+  readonly state: CampaignState;
+  readonly random: () => number;
+  readonly problems: string[];
+  // The heroes who took the attempt, the condition the effect hangs on, and the condition for one hero alone.
+  readonly heroes: readonly string[];
+  readonly when: EffectCondition;
+  readonly perHero: (characterId: string) => EffectCondition;
+}
+
+// One authored effect as planned effects, each with the condition it fires on; nothing when it no longer applies (a clue already
+// known, a fight already fought). A random table is decided here, once, and the choice is what the plan carries.
+function plannedEffects(effect: BibleEffect, scopeId: string, context: EffectContext): readonly PlannedEffect[] {
+  const { bible, state, problems, when } = context;
   switch (effect.kind) {
+    case "random": {
+      const weights = effect.options.map((option) => option.weight ?? 1);
+      let roll = context.random() * weights.reduce((sum, weight) => sum + weight, 0);
+      const picked = weights.findIndex((weight) => (roll -= weight) < 0);
+      const option = effect.options[picked < 0 ? weights.length - 1 : picked];
+      return (option?.effects ?? []).flatMap((inner, index) => plannedEffects(inner, `${scopeId}:o${picked}:${index}`, context));
+    }
+    case "hurt": {
+      const targets = effect.who === "party" ? Object.keys(state.characters) : context.heroes;
+      return targets.map((characterId) => ({
+        effect: { kind: "hurt" as const, characterId, count: effect.count, sides: effect.sides, damageType: effect.damageType },
+        when: effect.who === "party" ? when : context.perHero(characterId),
+      }));
+    }
     case "reveal": {
       const clue = findClue(bible, effect.clue);
       if (clue === undefined) problems.push(`Unknown clue "${effect.clue}".`);
-      return clue === undefined || state.clues.some((known) => known.id === clue.id) ? null : { kind: "revealClue", clueId: clue.id, text: clue.publicText };
+      return clue === undefined || state.clues.some((known) => known.id === clue.id) ? [] : [{ effect: { kind: "revealClue", clueId: clue.id, text: clue.publicText }, when }];
     }
-    case "set":
-      return { kind: "setFlag", flag: effect.flag, value: effect.value ?? 1 };
-    case "reward":
-      return { kind: "grantReward", rewardId, gold: effect.gold ?? 0, items: effect.items ?? [] };
     case "goto":
-      return effect.scene === state.sceneId ? null : { kind: "transitionScene", sceneId: effect.scene };
+      return effect.scene === state.sceneId ? [] : withArrival({ kind: "transitionScene", sceneId: effect.scene }, bible).map((planned) => ({ effect: planned, when }));
     case "encounter": {
       const encounter = findEncounter(bible, effect.encounter);
       if (encounter === undefined) problems.push(`Unknown encounter "${effect.encounter}".`);
-      return encounter === undefined || state.encounterHistory.includes(encounter.id) ? null : { kind: "startEncounter", encounter: encounterSpec(encounter, bible) };
+      return encounter === undefined || state.encounterHistory.includes(encounter.id) ? [] : [{ effect: { kind: "startEncounter", encounter: encounterSpec(encounter, bible) }, when }];
     }
     case "clock": {
       const clock = findClock(bible, effect.clock);
       if (clock === undefined) problems.push(`Unknown clock "${effect.clock}".`);
-      return clock === undefined ? null : clockEffect(bible, state, clock.id, effect.by);
+      return clock === undefined ? [] : [{ effect: clockEffect(bible, state, clock.id, effect.by), when }];
+    }
+    default: {
+      const party: PartyEffect | null = storyEffectOf(effect satisfies BiblePartyEffect, scopeId, bible);
+      return party === null ? [] : [{ effect: party, when }];
     }
   }
 }

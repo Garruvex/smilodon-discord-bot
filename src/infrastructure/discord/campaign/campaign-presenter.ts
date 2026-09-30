@@ -16,7 +16,7 @@ import type { Glossary } from "../../../domain/campaign/rules/content-registry.j
 import type { CampaignRecord } from "../../../application/campaign/ports/campaign-record.js";
 import type { CampaignState, CheckState } from "../../../domain/campaign/state/campaign-state.js";
 import type { CampaignCardService } from "./campaign-card-service.js";
-import type { CampaignMessageGateway } from "./campaign-message-gateway.js";
+import type { CampaignMessageGateway, MessageStyle } from "./campaign-message-gateway.js";
 import { skillKey } from "./text-keys.js";
 
 export interface PresenterOptions {
@@ -53,11 +53,12 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
     // A delivery's posts carry the same nonces on every retry, so a message
     // that did go out before the failure is not posted twice.
     let posted = 0;
-    const say = async (channelId: string | null, content: string | null, mentions: readonly string[] = []): Promise<string | null> => {
+    // A style sets a message apart from the story: dice, actions, rewards, notices and hazards are panels, narration stays prose.
+    const say = async (channelId: string | null, content: string | null, mentions: readonly string[] = [], style?: MessageStyle): Promise<string | null> => {
       if (channelId === null || content === null || content.trim() === "") return null;
       posted += 1;
       const nonce = deliveryId === undefined ? undefined : createHash("sha1").update(`${deliveryId}#${posted}`).digest("base64url").slice(0, 25);
-      return this.options.messages.post(channelId, truncate(content), mentions, nonce);
+      return this.options.messages.post(channelId, truncate(content), mentions, nonce, style);
     };
     // Fights the players play get a template line for every action; on autopilot the round flourish is enough.
     const playersFight = record.houseRules[combatMode.id] !== "autopilot";
@@ -69,14 +70,14 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
         const delay = this.options.revealDelayMs ?? 0;
         const check = line === null ? undefined : checkOf(events, delivery.checkId);
         if (line === null || check === undefined || delay <= 0 || adventureChannelId === null) {
-          await say(adventureChannelId, line);
+          await say(adventureChannelId, line, [], "roll");
           break;
         }
         // The staged reveal: the die is thrown, a moment passes, the result lands.
-        const rolling = await say(adventureChannelId, text.campaign.msg.rolling({ hero: state?.characters[check.characterId]?.name ?? check.characterId, check: checkLabel(check.test, text) }));
+        const rolling = await say(adventureChannelId, text.campaign.msg.rolling({ hero: state?.characters[check.characterId]?.name ?? check.characterId, check: checkLabel(check.test, text) }), [], "roll");
         await new Promise<void>((resolve) => setTimeout(resolve, delay));
-        if (rolling === null) await say(adventureChannelId, line);
-        else if ((await this.options.messages.editText(adventureChannelId, rolling, truncate(line))) === "missing") await say(adventureChannelId, line);
+        if (rolling === null) await say(adventureChannelId, line, [], "roll");
+        else if ((await this.options.messages.editText(adventureChannelId, rolling, truncate(line), "roll")) === "missing") await say(adventureChannelId, line, [], "roll");
         break;
       }
       case "narration":
@@ -114,13 +115,13 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
         await say(adventureChannelId, combatNarration(events, delivery.round));
         break;
       case "attackResolved":
-        if (playersFight) await say(adventureChannelId, combat?.action(delivery.attackId) ?? null);
+        if (playersFight) await say(adventureChannelId, combat?.action(delivery.attackId) ?? null, [], "action");
         break;
       case "combatBeat":
-        if (playersFight) await say(adventureChannelId, combat?.beat(delivery.combatantId, delivery.beat) ?? null);
+        if (playersFight) await say(adventureChannelId, combat?.beat(delivery.combatantId, delivery.beat) ?? null, [], "action");
         break;
       case "deathSave":
-        if (playersFight) await say(adventureChannelId, combat?.deathSave(delivery.combatantId) ?? null);
+        if (playersFight) await say(adventureChannelId, combat?.deathSave(delivery.combatantId) ?? null, [], "action");
         break;
       case "speech": {
         const hero = state?.characters[delivery.characterId];
@@ -154,11 +155,29 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
         break;
       }
       case "fightNotice":
-        await say(adventureChannelId, delivery.text);
+      case "storyNotice":
+        await say(adventureChannelId, delivery.text, [], "notice");
         break;
-      case "encounterEnded":
-        await say(adventureChannelId, this.encounterEnd(events, delivery.encounterId, text, this.options.glossaries[record.language]));
+      case "rewardFound": {
+        // Gold and items an authored reward gave the party, from the saved loot event.
+        const loot = events.findLast((event) => event.kind === "lootFound" && event.encounterId === delivery.rewardId);
+        const what = loot?.kind === "lootFound" ? lootText(loot, this.options.glossaries[record.language], text) : null;
+        await say(adventureChannelId, what === null ? null : text.campaign.msg.reward({ what }), [], "reward");
         break;
+      }
+      case "keepsakeGained": {
+        const gained = events.findLast((event) => event.kind === "keepsakeGained" && event.keepsake.id === delivery.keepsakeId);
+        if (gained?.kind === "keepsakeGained") await say(adventureChannelId, text.campaign.msg.keepsake({ name: gained.keepsake.name, description: gained.keepsake.description }), [], "reward");
+        break;
+      }
+      case "paymentMade":
+        await say(adventureChannelId, text.campaign.msg.payment({ hero: state?.characters[delivery.characterId]?.name ?? delivery.characterId, amount: delivery.amount }), [], "reward");
+        break;
+      case "encounterEnded": {
+        const ended = this.encounterEnd(events, delivery.encounterId, text, this.options.glossaries[record.language]);
+        await say(adventureChannelId, ended?.text ?? null, [], ended?.style);
+        break;
+      }
       case "reactionOffered": {
         // The waiting notice, pinging the target; the decision card itself is
         // drawn by the cards.sync() below (a hit can't wait on the reaction
@@ -240,7 +259,7 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
           const max = state.characters[damage.characterId]?.maxHp ?? damage.hpAfter;
           const m = text.campaign.msg;
           const line = damage.dead ? m.envDamageDead({ hero }) : damage.hpAfter === 0 ? m.envDamageDown({ hero }) : m.envDamageHurt({ hero, taken: damage.taken, hp: damage.hpAfter, max });
-          await say(adventureChannelId, `${m.envCause[damage.cause]} ${line}`);
+          await say(adventureChannelId, `${m.envCause[damage.cause]} ${line}`, [], "hazard");
         }
         break;
       }
@@ -349,16 +368,21 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
     };
   }
 
-  private encounterEnd(events: readonly CampaignEvent[], encounterId: string, text: Texts, glossary: Glossary | undefined): string | null {
+  private encounterEnd(events: readonly CampaignEvent[], encounterId: string, text: Texts, glossary: Glossary | undefined): { readonly text: string; readonly style: MessageStyle } | null {
     const ended = events.findLast((event) => event.kind === "encounterEnded");
     const lines: string[] = [];
     if (ended?.kind === "encounterEnded") lines.push(ended.outcome === "victory" ? text.campaign.msg.encounterVictory : text.campaign.msg.encounterDefeat);
     const loot = events.findLast((event) => event.kind === "lootFound" && event.encounterId === encounterId);
-    if (loot?.kind === "lootFound" && loot.items.length > 0) {
-      lines.push(text.campaign.msg.loot({ items: loot.items.map((item) => glossary?.names[item] ?? item).join(", ") }));
-    }
-    return lines.length === 0 ? null : lines.join("\n");
+    const found = loot?.kind === "lootFound" ? lootText(loot, glossary, text) : null;
+    if (found !== null) lines.push(text.campaign.msg.loot({ items: found }));
+    return lines.length === 0 ? null : { text: lines.join("\n"), style: found === null ? "notice" : "reward" };
   }
+}
+
+// The items and gold a loot event gave the party, in words; null when it gave nothing.
+function lootText(loot: Extract<CampaignEvent, { kind: "lootFound" }>, glossary: Glossary | undefined, text: Texts): string | null {
+  const parts = [...loot.items.map((item) => glossary?.names[item] ?? item), ...(loot.gold > 0 ? [text.campaign.msg.goldAmount({ gold: loot.gold })] : [])];
+  return parts.length === 0 ? null : parts.join(", ");
 }
 
 // "⚔️ Mira · Shortsword → Goblin A: hit, 7 damage, down".
@@ -442,7 +466,7 @@ function rollLine(events: readonly CampaignEvent[], state: CampaignState, checkI
 function checkLabel(test: CheckTest, text: Texts): string {
   const ability = abilityOf(test);
   const name = test.kind === "skill" ? text.campaign.skill[skillKey(test.skill)] : text.campaign.ability[ability];
-  return `${name} (${ability.toUpperCase()})`;
+  return `${test.kind === "save" ? text.campaign.msg.saveLabel({ name }) : name} (${ability.toUpperCase()})`;
 }
 
 // Discord rejects a message over 2,000 characters.

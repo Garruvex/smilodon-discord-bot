@@ -44,7 +44,7 @@ export function applyRoundPlan(decision: Decision, proposal: RoundPlanProposal, 
     // on every ability check, are mechanical — not something the Planner has
     // to notice and cite as a reason (unlike its own rollModeReasons).
     const armorStealthPenalty = plan.test.kind === "skill" && plan.test.skill === "stealth" && hasStealthDisadvantage(sheet, ctx.rules.content) ? 1 : 0;
-    const exhaustionPenalty = (state.heroStatus[action.characterId]?.exhaustion ?? 0) >= 1 ? 1 : 0;
+    const exhaustionPenalty = plan.test.kind !== "save" && (state.heroStatus[action.characterId]?.exhaustion ?? 0) >= 1 ? 1 : 0;
     checks.push({
       id: checkId,
       roundNumber: round.number,
@@ -149,6 +149,16 @@ function effectProblems(decision: Decision, proposal: RoundPlanProposal, checkEn
       case "spendGold":
         if (!Number.isInteger(effect.amount) || effect.amount < 1 || effect.amount > 100_000) problems.push(`A payment of ${effect.amount} gold is out of range.`);
         break;
+      case "notice":
+        if (effect.noticeId.trim().length === 0 || effect.text.trim().length === 0 || effect.text.length > 1500) problems.push(`Notice ${effect.noticeId} needs an id and text of at most 1500 characters.`);
+        break;
+      case "grantKeepsake":
+        if (!/^[a-z0-9-]{1,60}$/.test(effect.keepsake.id) || effect.keepsake.name.trim().length === 0 || effect.keepsake.description.trim().length === 0) problems.push(`Keepsake ${effect.keepsake.id} needs an id, a name and a description.`);
+        break;
+      case "hurt":
+        if (!Number.isInteger(effect.count) || effect.count < 1 || effect.count > 20 || ![4, 6, 8, 10, 12].includes(effect.sides)) problems.push(`Harm of ${effect.count}d${effect.sides} is out of range.`);
+        if (decision.state.characters[effect.characterId] === undefined) problems.push(`Harm names ${effect.characterId}, who is not a hero here.`);
+        break;
       default:
         problems.push("Unknown story effect.");
     }
@@ -206,6 +216,7 @@ function resolutionProblems(action: PlannedAction): readonly string[] {
 function testProblems(test: CheckTest): readonly string[] {
   switch (test.kind) {
     case "ability":
+    case "save":
       return (abilities as readonly string[]).includes(test.ability) ? [] : [`unknown ability "${test.ability}".`];
     case "skill":
       return isSkill(test.skill) ? [] : [`unknown skill "${String(test.skill)}".`];

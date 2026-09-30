@@ -1,4 +1,4 @@
-import { DiscordAPIError, RESTJSONErrorCodes, type Client, type GuildTextBasedChannel } from "discord.js";
+import { DiscordAPIError, EmbedBuilder, RESTJSONErrorCodes, type Client, type GuildTextBasedChannel } from "discord.js";
 
 import type { CardPayload } from "./card-payload.js";
 
@@ -6,6 +6,12 @@ import type { CardPayload } from "./card-payload.js";
 // card service can be tested with a fake. Sends return the message ID so it
 // can be saved; edits report a message that no longer exists instead of
 // throwing, because a deleted card is normal and is replaced.
+// How a history message looks, so the eye can tell the story from the mechanics. The story itself (narration, speech) is plain
+// prose; every other kind is a coloured panel: dice, actions in a fight, rewards, table notices and hazards.
+export type MessageStyle = "roll" | "action" | "reward" | "notice" | "hazard";
+
+const styleColors: Readonly<Record<MessageStyle, number>> = { roll: 0x5865f2, action: 0xed4245, reward: 0xf1c40f, notice: 0x9b59b6, hazard: 0xe67e22 };
+
 export interface CampaignMessageGateway {
   send(channelId: string, payload: CardPayload): Promise<string>;
   edit(channelId: string, messageId: string, payload: CardPayload): Promise<"ok" | "missing">;
@@ -16,10 +22,10 @@ export interface CampaignMessageGateway {
   // The named users (and only they) are pinged.
   // `nonce` (at most 25 characters) makes Discord drop a repeat of the same
   // message sent within a few minutes, so a retry after an unsure send does not double-post.
-  post(channelId: string, content: string, mentionUserIds?: readonly string[], nonce?: string): Promise<string>;
+  post(channelId: string, content: string, mentionUserIds?: readonly string[], nonce?: string, style?: MessageStyle): Promise<string>;
   // Rewrites a message made with post (the staged dice reveal). A missing
   // placeholder must be reported so the result can be posted separately.
-  editText(channelId: string, messageId: string, content: string): Promise<"ok" | "missing">;
+  editText(channelId: string, messageId: string, content: string, style?: MessageStyle): Promise<"ok" | "missing">;
   pin(channelId: string, messageId: string): Promise<void>;
   // A picture attachment; the caption stays internal so it does not duplicate the narration.
   sendImage(channelId: string, bytes: Buffer, mediaType: string, caption: string): Promise<void>;
@@ -67,19 +73,19 @@ export class DiscordMessageGateway implements CampaignMessageGateway {
     }
   }
 
-  public async post(channelId: string, content: string, mentionUserIds: readonly string[] = [], nonce?: string): Promise<string> {
+  public async post(channelId: string, content: string, mentionUserIds: readonly string[] = [], nonce?: string, style?: MessageStyle): Promise<string> {
     const message = await (await this.channel(channelId)).send({
-      content,
+      ...body(content, style),
       allowedMentions: mentionUserIds.length === 0 ? { parse: [] } : { parse: [], users: [...mentionUserIds] },
       ...(nonce === undefined ? {} : { nonce, enforceNonce: true }),
     });
     return message.id;
   }
 
-  public async editText(channelId: string, messageId: string, content: string): Promise<"ok" | "missing"> {
+  public async editText(channelId: string, messageId: string, content: string, style?: MessageStyle): Promise<"ok" | "missing"> {
     try {
       const channel = await this.channel(channelId);
-      await channel.messages.edit(messageId, { content, allowedMentions: { parse: [] } });
+      await channel.messages.edit(messageId, { ...body(content, style), allowedMentions: { parse: [] } });
       return "ok";
     } catch (error) {
       if (error instanceof DiscordAPIError && missingCodes.includes(Number(error.code))) return "missing";
@@ -102,6 +108,10 @@ export class DiscordMessageGateway implements CampaignMessageGateway {
     if (channel === null || !channel.isTextBased() || channel.isDMBased()) throw new Error(`Channel ${channelId} is not a guild text channel.`);
     return channel;
   }
+}
+
+function body(content: string, style: MessageStyle | undefined): { content: string; embeds: EmbedBuilder[] } {
+  return style === undefined ? { content, embeds: [] } : { content: "", embeds: [new EmbedBuilder().setColor(styleColors[style]).setDescription(content)] };
 }
 
 function options(payload: CardPayload): { components: CardPayload["components"]; flags: CardPayload["flags"]; allowedMentions: CardPayload["allowedMentions"]; files?: { attachment: Buffer; name: string }[] } {

@@ -46,6 +46,7 @@ export interface ActionCost {
 export type CombatEvent =
   | { readonly kind: "encounterStarted"; readonly encounter: EncounterState }
   | { readonly kind: "initiativeRolled"; readonly combatantId: CombatantId; readonly rollId: RollId; readonly roll: D20TestRoll }
+  | { readonly kind: "dreadRolled"; readonly combatantId: CombatantId; readonly rollId: RollId; readonly roll: D20TestRoll; readonly saved: boolean }
   | { readonly kind: "turnOrderSet"; readonly order: readonly CombatantId[] }
   | {
       readonly kind: "turnStarted";
@@ -217,6 +218,7 @@ export type CombatEventKind = CombatEvent["kind"];
 export const combatEventKinds: readonly CombatEventKind[] = [
   "encounterStarted",
   "initiativeRolled",
+  "dreadRolled",
   "turnOrderSet",
   "turnStarted",
   "stoodUp",

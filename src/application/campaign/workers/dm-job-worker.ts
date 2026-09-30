@@ -4,6 +4,7 @@ import { skills } from "../../../domain/campaign/character/character-sheet.js";
 import type { CampaignEvent } from "../../../domain/campaign/events/campaign-event.js";
 import { dcLadder, rollModeReasons } from "../../../domain/campaign/rules/difficulty.js";
 import { abilities } from "../../../domain/campaign/rules/effects.js";
+import { lootGold } from "../../../domain/campaign/rules/house-rules.js";
 import type { Glossary } from "../../../domain/campaign/rules/content-registry.js";
 import type { CampaignCommandBus } from "../campaign-command-bus.js";
 import { assembleContext, defaultContextBudget, renderTranscript, type ContextAudience } from "../dm/context-assembler.js";
@@ -41,6 +42,8 @@ export interface DmJobWorkerOptions {
   readonly rulesets?: RulesetCatalog;
   readonly budgetTokens?: number;
   readonly maxAttempts?: number;
+  // Chance for the tables an adventure rolls on (0 up to but excluding 1); tests pin it.
+  readonly random?: () => number;
 }
 
 const system = { kind: "system" } as const;
@@ -121,7 +124,8 @@ export class DmJobWorker {
           story: plannerStory(loaded.bible, loaded.stored.state),
           previousProblems: problems,
         });
-        const resolved = resolveStoryEffects(proposal, loaded.bible, loaded.stored.state);
+        const wallet = loaded.stored.ruleset.houseRules[lootGold.id] === "split" ? "hero" : "pool";
+        const resolved = resolveStoryEffects(proposal, loaded.bible, loaded.stored.state, { wallet, ...(this.options.random === undefined ? {} : { random: this.options.random }) });
         if (resolved.kind === "invalid") {
           problems = resolved.problems;
           continue;

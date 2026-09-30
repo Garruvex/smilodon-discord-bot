@@ -1,5 +1,6 @@
 // The combat engine's entry points: the command dispatch, the checks every hero action shares (whose turn it is, who may act for whom),
 // and the fight's end. The rest is split by what it does: encounter-start, turn-flow, movement, combat-actions, death-saves, resolution, reactions.
+import { passivePerception } from "../../character/character-sheet.js";
 import type { CombatCommand } from "../../commands/campaign-command.js";
 import { assertNever } from "../../core/assert-never.js";
 import type { RollId } from "../../core/ids.js";
@@ -125,12 +126,13 @@ export function recordCombatRoll(decision: Decision, rollId: RollId, result: Rol
     case "initiative": {
       if (result.kind !== "d20Test" || !resultMatchesSpec(result, { kind: "d20Test", spec: pending.spec })) return { code: "rollMismatch" };
       decision.emit({ kind: "initiativeRolled", combatantId: pending.combatantId, rollId, roll: result.roll });
-      const after = activeEncounter(decision);
-      if (after !== null && Object.values(after.pendingRolls).every((roll) => roll.purpose !== "initiative")) {
-        decision.emit({ kind: "turnOrderSet", order: initiativeOrder(after) });
-        surprise(decision, after);
-        beginTurn(decision, 0, 1);
-      }
+      beginWhenReady(decision);
+      return null;
+    }
+    case "dread": {
+      if (result.kind !== "d20Test" || !resultMatchesSpec(result, { kind: "d20Test", spec: pending.spec })) return { code: "rollMismatch" };
+      decision.emit({ kind: "dreadRolled", combatantId: pending.combatantId, rollId, roll: result.roll, saved: result.roll.total >= pending.dc });
+      beginWhenReady(decision);
       return null;
     }
     case "deathSave":
@@ -144,6 +146,16 @@ export function recordCombatRoll(decision: Decision, rollId: RollId, result: Rol
     default:
       return assertNever(pending);
   }
+}
+
+// Turns begin when the last opening roll (initiative, and the dread save where the fight has one) has landed.
+function beginWhenReady(decision: Decision): void {
+  const after = activeEncounter(decision);
+  if (after === null || !Object.values(after.pendingRolls).every((roll) => roll.purpose !== "initiative" && roll.purpose !== "dread")) return;
+  decision.emit({ kind: "turnOrderSet", order: initiativeOrder(after) });
+  surprise(decision, after);
+  frighten(decision, after);
+  beginTurn(decision, 0, 1);
 }
 
 export function withHeroTurn(
@@ -296,10 +308,32 @@ export function currentOf(decision: Decision, combatant: Combatant): Combatant {
   return activeEncounter(decision)?.combatants[combatant.id] ?? combatant;
 }
 
+// The side taken by surprise: the one the story names, or the party when foes lie in ambush and no hero's passive Perception sees them.
+function surprisedSide(decision: Decision, encounter: EncounterState): "party" | "foes" | undefined {
+  const { surprised, ambush } = encounter.spec;
+  if (surprised !== undefined || ambush === undefined) return surprised;
+  const noticed = Object.values(encounter.combatants).some((combatant) => {
+    const sheet = combatant.source.kind === "hero" ? decision.state.characters[combatant.source.characterId] : undefined;
+    return sheet !== undefined && isPresent(combatant) && passivePerception(sheet) >= ambush.dc;
+  });
+  return noticed ? undefined : "party";
+}
+
+// A hero who failed the dread save is frightened until their first turn is over.
+function frighten(decision: Decision, encounter: EncounterState): void {
+  for (const combatantId of encounter.dreadFailed ?? []) {
+    decision.emit({
+      kind: "effectApplied",
+      combatantId,
+      effect: { id: `${encounter.id}:dread:${combatantId}`, definition: "condition:frightened", sourceId: combatantId, conditions: ["condition:frightened"], modifiers: [], triggers: [], clock: { follows: "target", boundary: "end", untilRound: 1 }, concentrationId: null, stacking: "ignore" },
+    });
+  }
+}
+
 // A side taken by surprise (the encounter says which) cannot act or react until its first turn is over: each of its
 // creatures takes the Surprised condition, which lapses when that creature's turn comes round again.
 function surprise(decision: Decision, encounter: EncounterState): void {
-  const side = encounter.spec.surprised;
+  const side = surprisedSide(decision, encounter);
   if (side === undefined) return;
   for (const combatant of Object.values(encounter.combatants)) {
     if (combatant.side !== (side === "party" ? "party" : "foes") || !isPresent(combatant)) continue;

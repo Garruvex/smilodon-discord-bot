@@ -363,6 +363,11 @@ export const campaignZhTW = {
   "campaign.msg.deathRises": "以 1 點生命重新站起",
   "campaign.msg.deathHolds": "仍在苦撐",
   "campaign.msg.loot": "獲得：{items}",
+  "campaign.msg.goldAmount": "{gold} 金幣",
+  "campaign.msg.reward": "🎁 **獎勵** · {what}",
+  "campaign.msg.keepsake": "🗝️ 隊伍得到了 **{name}**——{description}",
+  "campaign.msg.payment": "🪙 **{hero}** 付了 {amount} 金幣。",
+  "campaign.msg.saveLabel": "{name}豁免",
 
   "campaign.cmd.setupDone": "D&D 已設定完成。團務會列在 <#{hub}>，每個新團都會在 D&D 分類下建立自己的頻道",
   "campaign.cmd.setupMissing": "我還需要更多權限才能設定：{permissions}",

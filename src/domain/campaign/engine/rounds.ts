@@ -2,6 +2,7 @@ import type { CharacterId } from "../core/ids.js";
 import type { RoundCloseReason } from "../events/campaign-event.js";
 import { isFallen, presentMembers, type CampaignState, type RoundState } from "../state/campaign-state.js";
 import { deadlineAfter, type Decision } from "./decision.js";
+import { takeEnvironmentalDamage } from "./environmental-damage.js";
 import { rollTimerId, roundTimerId } from "./ids.js";
 import type { Rejection } from "./rejection.js";
 import { scheduleReminder } from "./reminders.js";
@@ -156,12 +157,16 @@ export function finishRoundIfResolved(decision: Decision): void {
   if (checks.some((check) => check.status !== "resolved")) return;
   // Scene first, so the Narrator describes the round in the scene it leads to.
   const fired = [...firedEffects(state, round)].sort((a, b) => effectOrder[a.effect.kind] - effectOrder[b.effect.kind]);
-  for (const { effect } of fired) decision.applyStory(round.number, effect);
+  for (const { effect } of fired) {
+    // Harm to a hero is an Exploration rule (the dice decide); a hero already down or already hurt this moment is spared.
+    if (effect.kind === "hurt") takeEnvironmentalDamage(decision, effect.characterId, { kind: "damage", count: effect.count, sides: effect.sides, damageType: effect.damageType });
+    else decision.applyStory(round.number, effect);
+  }
   decision.emit({ kind: "roundResolved", roundNumber: round.number, quiet: false });
   decision.request({ kind: "narrate", roundNumber: round.number });
 }
 
-const effectOrder = { transitionScene: 0, setFlag: 1, spendGold: 1, revealClue: 2, grantReward: 2, startEncounter: 3, advanceClock: 4 } as const;
+const effectOrder = { transitionScene: 0, setFlag: 1, spendGold: 1, revealClue: 2, grantReward: 2, grantKeepsake: 2, notice: 2, hurt: 3, startEncounter: 3, advanceClock: 4 } as const;
 
 // Nobody is present: suspend all timers and hold pending work until a
 // returning player explicitly continues.

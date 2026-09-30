@@ -81,5 +81,5 @@ export function roundRecords(events: readonly CampaignEvent[]): readonly RoundRe
 }
 
 export function checkLabel(test: CheckTest): string {
-  return test.kind === "skill" ? test.skill : `${test.ability} check`;
+  return test.kind === "skill" ? test.skill : `${test.ability} ${test.kind === "save" ? "save" : "check"}`;
 }

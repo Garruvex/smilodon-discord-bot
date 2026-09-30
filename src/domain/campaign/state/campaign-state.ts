@@ -15,6 +15,13 @@ import type { Ability, DamageType } from "../rules/effects.js";
 
 // The in-memory aggregate the engine decides against. The repository
 // assembles it from the campaign tables; evolve() produces the next one.
+// A story object with no rules of its own: a name and what the party knows of it.
+export interface Keepsake {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string;
+}
+
 export interface CampaignState {
   readonly campaignId: CampaignId;
   readonly organizerId: UserId;
@@ -65,6 +72,8 @@ export interface CampaignState {
   readonly clues: readonly RevealedClue[];
   // Story facts an adventure sets and later text requires (flag name to value); absent: none yet.
   readonly flags?: Readonly<Record<string, number>>;
+  // Story objects the party carries, by id; absent: none yet.
+  readonly keepsakes?: Readonly<Record<string, Keepsake>>;
   // Heroes' HP and limited resources between fights; a hero missing here is
   // fresh (full HP, every slot and use).
   readonly heroStatus: Readonly<Record<CharacterId, HeroStatus>>;

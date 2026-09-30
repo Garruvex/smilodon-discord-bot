@@ -1,6 +1,6 @@
 // The effects a story beat can have, applied by the engine: a round's planned effects after its checks, and a fight's triggers and
 // victory. One vocabulary for both, so an adventure is data and never code.
-import type { EncounterSpec, PlannedEffect } from "../commands/campaign-command.js";
+import type { EncounterSpec, PartyEffect } from "../commands/campaign-command.js";
 import { assertNever } from "../core/assert-never.js";
 import { lootGold } from "../rules/house-rules.js";
 import { isFallen, type CampaignState } from "../state/campaign-state.js";
@@ -9,7 +9,7 @@ import type { Decision } from "./decision.js";
 
 // One fired effect. A fight can be queued only once at a time, and one that
 // was already fought is not queued again (a filled clock may name it).
-export function applyStoryEffect(decision: Decision, roundNumber: number, effect: PlannedEffect["effect"]): void {
+export function applyStoryEffect(decision: Decision, roundNumber: number, effect: PartyEffect): void {
   const { state } = decision;
   switch (effect.kind) {
     case "transitionScene":
@@ -39,12 +39,27 @@ export function applyStoryEffect(decision: Decision, roundNumber: number, effect
       decision.emit({ kind: "flagSet", roundNumber, flag: key, value: 1 });
       const split = decision.ctx.rules.houseRules.option(lootGold) === "split" ? rewardShares(state, effect.gold) : undefined;
       decision.emit({ kind: "lootFound", encounterId: effect.rewardId, items: effect.items, gold: effect.gold, ...(split === undefined ? {} : { split }) });
+      decision.request({ kind: "deliver", delivery: { kind: "rewardFound", rewardId: effect.rewardId } });
       return;
     }
+    case "notice": {
+      const key = `notice:${effect.noticeId}`;
+      if (state.flags?.[key] !== undefined) return;
+      decision.emit({ kind: "flagSet", roundNumber, flag: key, value: 1 });
+      decision.request({ kind: "deliver", delivery: { kind: "storyNotice", text: effect.text } });
+      return;
+    }
+    case "grantKeepsake":
+      if (state.keepsakes?.[effect.keepsake.id] !== undefined) return;
+      decision.emit({ kind: "keepsakeGained", roundNumber, keepsake: effect.keepsake });
+      decision.request({ kind: "deliver", delivery: { kind: "keepsakeGained", keepsakeId: effect.keepsake.id } });
+      return;
     case "spendGold": {
       const split = decision.ctx.rules.houseRules.option(lootGold) === "split";
       const available = split ? (state.heroGold?.[effect.characterId] ?? 0) : state.gold;
-      if (available >= effect.amount) decision.emit({ kind: "goldSpent", roundNumber, characterId: effect.characterId, amount: effect.amount, wallet: split ? "hero" : "pool" });
+      if (available < effect.amount) return;
+      decision.emit({ kind: "goldSpent", roundNumber, characterId: effect.characterId, amount: effect.amount, wallet: split ? "hero" : "pool" });
+      decision.request({ kind: "deliver", delivery: { kind: "paymentMade", characterId: effect.characterId, amount: effect.amount } });
       return;
     }
     default:

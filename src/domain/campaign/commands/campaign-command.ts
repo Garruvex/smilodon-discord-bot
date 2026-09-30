@@ -7,6 +7,7 @@ import type { LedgerVisibility } from "../ledger/ledger.js";
 import type { ContentId } from "../rules/content-id.js";
 import type { DcTier, RollModeReason } from "../rules/difficulty.js";
 import type { Ability, DamageType } from "../rules/effects.js";
+import type { Keepsake } from "../state/campaign-state.js";
 
 // Who issued a command. Users are checked against saved campaign state
 // (membership, ownership, organizer); the system covers timers and workers.
@@ -271,13 +272,17 @@ export interface EncounterSpec {
   // Beats inside the fight: each fires once, the first time its condition holds. Absent: none.
   readonly triggers?: readonly EncounterTrigger[];
   // Story effects applied when the party wins (after the loot and experience). Absent: none.
-  readonly onVictory?: readonly StoryEffect[];
+  readonly onVictory?: readonly PartyEffect[];
+  // Foes lying in wait: unless some hero's passive Perception reaches this, the party is taken by surprise.
+  readonly ambush?: { readonly dc: number };
+  // Something dreadful as the fight breaks out: every hero saves against it, and one who fails is frightened until their first turn ends.
+  readonly dread?: { readonly ability: Ability; readonly dc: number };
 }
 
 // What can happen inside a fight: any story effect except starting another fight, plus foes arriving, the fight ending in the
 // party's favour (a truce: the rest of the foes stand down), and a line the table sees.
 export type FightEffect =
-  | Exclude<StoryEffect, { readonly kind: "startEncounter" | "advanceClock" }>
+  | Exclude<PartyEffect, { readonly kind: "startEncounter" | "advanceClock" }>
   | { readonly kind: "addMonsters"; readonly monsters: readonly EncounterMonster[] }
   | { readonly kind: "endFight" }
   | { readonly kind: "announce"; readonly text: string };
@@ -343,7 +348,16 @@ export type StoryEffect =
   // Gold and items the party is given, once: a second grant with the same rewardId does nothing.
   | { readonly kind: "grantReward"; readonly rewardId: string; readonly gold: number; readonly items: readonly ContentId<"item">[] }
   // The hero pays gold (their own share, or the party purse) for what the story sells; nothing happens if they cannot.
-  | { readonly kind: "spendGold"; readonly characterId: CharacterId; readonly amount: number };
+  | { readonly kind: "spendGold"; readonly characterId: CharacterId; readonly amount: number }
+  // A line the table sees, once: a second notice with the same id does nothing.
+  | { readonly kind: "notice"; readonly noticeId: string; readonly text: string }
+  // A story object the party now carries (a token, a letter), with the name and words the table knows it by. Once per id.
+  | { readonly kind: "grantKeepsake"; readonly keepsake: Keepsake }
+  // Harm to one hero between fights (a trap, foul water): the dice decide how much. Not available inside a fight.
+  | { readonly kind: "hurt"; readonly characterId: CharacterId; readonly count: number; readonly sides: 4 | 6 | 8 | 10 | 12; readonly damageType: DamageType };
+
+// The effects that need no more than the shared state, so a fight's beats and a victory can use them too (hurt is a between-fights rule).
+export type PartyEffect = Exclude<StoryEffect, { readonly kind: "hurt" }>;
 
 export type EffectCondition =
   | { readonly kind: "always" }

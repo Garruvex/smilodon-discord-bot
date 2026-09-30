@@ -91,7 +91,9 @@ export interface Spellcasting {
 // An ability check, optionally using a skill.
 export type CheckTest =
   | { readonly kind: "ability"; readonly ability: Ability }
-  | { readonly kind: "skill"; readonly skill: Skill };
+  | { readonly kind: "skill"; readonly skill: Skill }
+  // A saving throw against something the story sets (a trap, a glare): the ability's save, with proficiency where the hero has it.
+  | { readonly kind: "save"; readonly ability: Ability };
 
 export function abilityModifier(score: number): number {
   return Math.floor((score - 10) / 2);
@@ -102,6 +104,7 @@ export function abilityOf(test: CheckTest): Ability {
 }
 
 export function checkModifier(sheet: CharacterSheet, test: CheckTest): number {
+  if (test.kind === "save") return savingThrowModifier(sheet, test.ability);
   const base = abilityModifier(sheet.abilityScores[abilityOf(test)]);
   const proficiency = test.kind === "skill" ? sheet.skills[test.skill] : undefined;
   if (proficiency === "expertise") return base + sheet.proficiencyBonus * 2;

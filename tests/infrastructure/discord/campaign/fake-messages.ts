@@ -1,4 +1,4 @@
-import type { CampaignMessageGateway } from "../../../../src/infrastructure/discord/campaign/campaign-message-gateway.js";
+import type { CampaignMessageGateway, MessageStyle } from "../../../../src/infrastructure/discord/campaign/campaign-message-gateway.js";
 import type { CardPayload } from "../../../../src/infrastructure/discord/campaign/card-payload.js";
 
 export interface Sent {
@@ -50,11 +50,11 @@ export class FakeMessages implements CampaignMessageGateway {
     return Promise.resolve();
   }
 
-  public readonly posts: { channelId: string; content: string; order: number; mentions: readonly string[]; nonce: string | undefined }[] = [];
+  public readonly posts: { channelId: string; content: string; order: number; mentions: readonly string[]; nonce: string | undefined; style: MessageStyle | undefined }[] = [];
 
-  public post(channelId: string, content: string, mentions: readonly string[] = [], nonce?: string): Promise<string> {
+  public post(channelId: string, content: string, mentions: readonly string[] = [], nonce?: string, style?: MessageStyle): Promise<string> {
     this.next += 1;
-    this.posts.push({ channelId, content, order: this.next, mentions, nonce });
+    this.posts.push({ channelId, content, order: this.next, mentions, nonce, style });
     return Promise.resolve(`p${this.next}`);
   }
 
@@ -67,7 +67,7 @@ export class FakeMessages implements CampaignMessageGateway {
 
   public readonly textEdits: { messageId: string; content: string }[] = [];
 
-  public editText(_channelId: string, messageId: string, content: string): Promise<"ok" | "missing"> {
+  public editText(_channelId: string, messageId: string, content: string, _style?: MessageStyle): Promise<"ok" | "missing"> {
     const post = this.posts.find((candidate) => `p${candidate.order}` === messageId);
     if (post === undefined || this.deleted.has(messageId)) return Promise.resolve("missing");
     post.content = content;
