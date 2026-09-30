@@ -341,8 +341,15 @@ for (const monster of monsters) {
     const cost = Number(/Costs (\d+) Actions/.exec(legendary.name)?.[1] ?? 1);
     const key = legendary.name.replace(/ *\(.*\)/, "").toLowerCase().replace(/ attack$/, "");
     const weapon = key === "attack" ? [...weaponByAction.values()][0] : weaponByAction.get(key);
+    const wing = key === "wing" && legendary.dc !== undefined ? damageList(monster, legendary) : null;
     if (weapon !== undefined) legendaryOptions.push(`{ weapon: ${quote(weapon)}, cost: ${cost} }`);
-    else notes.push(`legendary: ${legendary.name}`);
+    else if (wing !== null) {
+      // Wing Attack: everyone within 10 feet saves or takes the damage and is knocked prone.
+      const wingWeapon = weaponFor(legendary, wing.type);
+      const ability = abilityCodes[legendary.dc.dc_type.name.toLowerCase()] ?? legendary.dc.dc_type.index;
+      traits.push(`{ kind: "areaAttack", weapon: ${quote(wingWeapon)}, ability: ${quote(ability)}, dc: ${legendary.dc.dc_value}, damage: ${wing.code}, damageType: ${quote(wing.type)}, condition: "condition:prone", halfOnSave: false, range: 10, cooldown: 0, legendary: true }`);
+      legendaryOptions.push(`{ weapon: ${quote(wingWeapon)}, cost: ${cost} }`);
+    } else notes.push(`legendary: ${legendary.name}`);
   }
   if (legendaryOptions.length > 0) traits.push(`{ kind: "legendaryActions", uses: 3, options: [${legendaryOptions.join(", ")}] }`);
   traits.push(...damageTraits(monster, notes));

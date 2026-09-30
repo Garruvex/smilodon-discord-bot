@@ -524,6 +524,7 @@ export const srd51GeneratedNames: Readonly<Record<string, string>> = {
   "item:tail": "Tail",
   "item:frightful-presence": "Frightful Presence",
   "item:acid-breath": "Acid Breath",
+  "item:wing-attack": "Wing Attack (Costs 2 Actions)",
   "item:lightning-breath": "Lightning Breath",
   "item:poison-breath": "Poison Breath",
   "item:fire-breath": "Fire Breath",

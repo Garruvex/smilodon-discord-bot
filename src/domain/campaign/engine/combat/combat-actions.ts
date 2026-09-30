@@ -58,15 +58,15 @@ export function declareWeaponAttack(
 }
 
 // A monster's breath weapon: the action, on every target caught.
-export function declareAreaAttack(decision: Decision, attacker: Combatant, area: AreaAttack, targetIds: readonly string[]): Rejection | null {
-  if (targetIds.length === 0 || !attacker.budget.action) return { code: "noActionLeft" };
+export function declareAreaAttack(decision: Decision, attacker: Combatant, area: AreaAttack, targetIds: readonly string[], purpose: "action" | "legendary" = "action"): Rejection | null {
+  if (targetIds.length === 0 || (purpose === "action" && !attacker.budget.action)) return { code: "noActionLeft" };
   return declareResolution(decision, {
     actor: attacker,
     source: { kind: "area", area },
     targetIds,
-    purpose: "action",
-    // An aura costs nothing of the action itself.
-    cost: { ...noCost, action: area.free !== true },
+    purpose,
+    // An aura costs nothing of the action itself, and neither does a legendary action.
+    cost: { ...noCost, action: area.free !== true && purpose === "action" },
   });
 }
 

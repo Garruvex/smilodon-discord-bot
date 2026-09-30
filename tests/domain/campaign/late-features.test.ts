@@ -398,3 +398,17 @@ describe("Ranger and druid capstones", () => {
     expect(hit(["feature:foe-slayer"])).toBe(hit([]) + 3);
   });
 });
+
+describe("A dragon's Wing Attack", () => {
+  it("is a legendary action that knocks nearby creatures prone", () => {
+    const spec: EncounterSpec = { ...skirmish, partyZoneId: "courtyard", monsters: [{ monsterId: "monster:adult-red-dragon", zoneId: "courtyard", npcId: null, fleeBelowHpFraction: null }] };
+    const fight = new Fight(partyOfThree()).rolls([20, 1, 1, 1], []).run(organizer, { kind: "startEncounter", spec });
+    expect(fight.combatant("adult-red-dragon").traits.some((trait) => trait.kind === "areaAttack" && trait.legendary === true)).toBe(true);
+    fight.rolls(Array.from({ length: 12 }, () => 2), Array.from({ length: 12 }, () => 3));
+    fight.run(alex, { kind: "combatEngage", combatantId: "c-mira", targetId: "adult-red-dragon" });
+    fight.run(alex, { kind: "endTurn", combatantId: "c-mira" });
+    const declared = fight.events.filter((event) => event.kind === "resolutionDeclared" && event.resolution.purpose === "legendary");
+    expect(declared.length).toBeGreaterThan(0);
+    expect(fight.combatant("c-mira").effects.map((effect) => effect.definition)).toContain("condition:prone");
+  });
+});

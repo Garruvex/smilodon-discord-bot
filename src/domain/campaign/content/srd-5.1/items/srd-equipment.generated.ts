@@ -230,6 +230,7 @@ export const tentacle = defineWeapon({ id: "item:tentacle", source, damage: dice
 export const tail = defineWeapon({ id: "item:tail", source, damage: dice(1, 6), damageType: "bludgeoning", range: melee, finesse: false, natural: true });
 export const frightfulPresence = defineWeapon({ id: "item:frightful-presence", source, damage: dice(1, 6), damageType: "psychic", range: melee, finesse: false, natural: true });
 export const acidBreath = defineWeapon({ id: "item:acid-breath", source, damage: dice(1, 6), damageType: "acid", range: melee, finesse: false, natural: true });
+export const wingAttack = defineWeapon({ id: "item:wing-attack", source, damage: dice(1, 6), damageType: "bludgeoning", range: melee, finesse: false, natural: true });
 export const lightningBreath = defineWeapon({ id: "item:lightning-breath", source, damage: dice(1, 6), damageType: "lightning", range: melee, finesse: false, natural: true });
 export const poisonBreath = defineWeapon({ id: "item:poison-breath", source, damage: dice(1, 6), damageType: "poison", range: melee, finesse: false, natural: true });
 export const fireBreath = defineWeapon({ id: "item:fire-breath", source, damage: dice(1, 6), damageType: "fire", range: melee, finesse: false, natural: true });
@@ -520,6 +521,7 @@ export const srd51GeneratedItems: readonly ItemDefinition[] = [
   tail,
   frightfulPresence,
   acidBreath,
+  wingAttack,
   lightningBreath,
   poisonBreath,
   fireBreath,

@@ -256,7 +256,7 @@ describe("Spellcasting monsters", () => {
 });
 
 describe("Legendary actions", () => {
-  it("has an adult dragon strike with its tail at the end of a hero's turn, and only once per turn", () => {
+  it("has an adult dragon strike with its tail or wings at the end of a hero's turn, and only once per turn", () => {
     // The heroes go first, and are made tough enough to last.
     const fight = new Fight(partyOfThree()).rolls([1, 1, 20, 15]).run(organizer, { kind: "startEncounter", spec: alone("monster:adult-red-dragon") });
     const tough = Object.fromEntries(Object.entries(fight.encounter.combatants).map(([id, combatant]) => [id, combatant.side === "party" ? { ...combatant, hp: 900, maxHp: 900 } : combatant]));
@@ -264,12 +264,18 @@ describe("Legendary actions", () => {
     for (let round = 0; round < 4; round += 1) passHeroTurns(fight);
     const legendary = ofKind(fight, "resolutionDeclared").filter((event) => event.resolution.purpose === "legendary");
     expect(legendary.length).toBeGreaterThan(0);
-    expect(legendary.every((event) => event.resolution.source.kind === "weapon" && event.resolution.source.option.weapon === "item:tail")).toBe(true);
+    // The tail strike, or the wing beat when several creatures are close.
+    expect(legendary.every((event) => (event.resolution.source.kind === "weapon" && event.resolution.source.option.weapon === "item:tail") || (event.resolution.source.kind === "area" && event.resolution.source.area.weapon === "item:wing-attack"))).toBe(true);
     // Never two after the same turn: each is spent on a different turn's end.
     const turns = ofKind(fight, "monsterStateChanged").flatMap((event) => (event.legendaryTurn === undefined ? [] : [event.legendaryTurn]));
     expect(new Set(turns).size).toBe(turns.length);
-    // Its legendary actions are back after its own turn.
-    expect(fight.combatant(monsterId(fight)).resources.featureUses["trait:legendary-actions"]).toBeGreaterThan(0);
+    // Its legendary actions are back after its own turn: no more than three are spent between one of its turns and the next.
+    let spent = 0;
+    for (const event of fight.events) {
+      if (event.kind === "turnStarted" && event.combatantId === monsterId(fight)) spent = 0;
+      if (event.kind === "monsterStateChanged" && event.legendarySpent !== undefined) spent += event.legendarySpent;
+      expect(spent).toBeLessThanOrEqual(3);
+    }
   });
 });
 

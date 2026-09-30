@@ -524,6 +524,7 @@ export const srd51GeneratedNames: Readonly<Record<string, string>> = {
   "item:tail": "尾擊",
   "item:frightful-presence": "恐怖威懾",
   "item:acid-breath": "酸液吐息",
+  "item:wing-attack": "翼擊",
   "item:lightning-breath": "閃電吐息",
   "item:poison-breath": "毒氣吐息",
   "item:fire-breath": "火焰吐息",

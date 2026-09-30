@@ -46,7 +46,7 @@ export function chooseMonsterPlan(encounter: EncounterState, monster: Combatant,
   // An aura that costs no action goes first.
   const ordered = [...monster.traits].sort((a, b) => Number(b.kind === "areaAttack" && b.free === true) - Number(a.kind === "areaAttack" && a.free === true));
   for (const trait of ordered) {
-    if (trait.kind !== "areaAttack" || (monster.cooldowns[trait.weapon] ?? 0) > 0) continue;
+    if (trait.kind !== "areaAttack" || trait.legendary === true || (monster.cooldowns[trait.weapon] ?? 0) > 0) continue;
     const caught = foes.filter((foe) => (distanceBetween(encounter, monster.id, foe.id) ?? Infinity) <= trait.range);
     if (caught.length > 0) return { ...idle, area: { area: trait, targetIds: caught.map((foe) => foe.id) } };
   }

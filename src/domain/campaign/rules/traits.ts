@@ -206,6 +206,8 @@ export type Trait =
       readonly cooldown: number;
       // An aura (Frightful Presence) is used as part of the action, not in place of it.
       readonly free?: boolean;
+      // Used only as a legendary action (a dragon's Wing Attack), never on the monster's own turn.
+      readonly legendary?: boolean;
     }
   // Regains these hit points at the start of its turn, unless it took damage of
   // one of the listed types since its last turn.
