@@ -191,6 +191,7 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     case "deathSaveRolled":
     case "combatantFled":
     case "combatantSummoned":
+    case "encounterTriggerFired":
     case "turnEnded":
     case "turnDeferred":
     case "encounterEnded":

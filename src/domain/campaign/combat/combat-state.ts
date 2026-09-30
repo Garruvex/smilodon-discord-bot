@@ -343,6 +343,8 @@ export interface EncounterState {
   readonly deferredTurn: { readonly turnIndex: number; readonly round: number } | null;
   // The last round the Narrator described; later flourishes only.
   readonly narratedRound: number;
+  // Indexes of the spec's triggers that have fired.
+  readonly triggersFired?: readonly number[];
   // Found by the party if it wins.
   readonly loot: readonly ContentId<"item">[];
   readonly gold: number;

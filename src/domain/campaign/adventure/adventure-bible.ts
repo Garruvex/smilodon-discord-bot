@@ -1,4 +1,4 @@
-import type { EncounterMonster, EncounterSpec } from "../commands/campaign-command.js";
+import type { EncounterMonster, EncounterSpec, EncounterTrigger, FightEffect, StoryEffect } from "../commands/campaign-command.js";
 import type { ContentId } from "../rules/content-id.js";
 import type { Ability } from "../rules/effects.js";
 
@@ -145,6 +145,24 @@ export interface BibleEncounter {
   // Winning this fight is a story milestone: at a milestone table the party is
   // raised to this level. An experience table ignores it.
   readonly milestoneLevel?: number;
+  // Beats inside the fight, each once: foes that arrive, a truce, story effects, a line for the table.
+  readonly triggers?: readonly BibleTrigger[];
+  // Story effects when the party wins (a fight never starts another fight).
+  readonly onVictory?: readonly BibleEffect[];
+}
+
+export type BibleFightEffect =
+  | Exclude<BibleEffect, { readonly kind: "encounter" }>
+  // Foes join the fight, in zones the encounter has.
+  | { readonly kind: "add"; readonly monsters: readonly EncounterMonster[] }
+  // The rest of the foes stand down: the fight ends in the party's favour, and the victory effects follow.
+  | { readonly kind: "end" }
+  // A line the table sees as the trigger fires.
+  | { readonly kind: "announce"; readonly text: string };
+
+export interface BibleTrigger {
+  readonly when: { readonly kind: "foesDown"; readonly count: number } | { readonly kind: "round"; readonly round: number };
+  readonly effects: readonly BibleFightEffect[];
 }
 
 export function findScene(bible: AdventureBible, sceneId: string | null): BibleScene | undefined {
@@ -167,7 +185,56 @@ export function findClue(bible: AdventureBible, clueId: string): BibleClue | und
   return bible.clues.find((clue) => clue.id === clueId);
 }
 
-export function encounterSpec(encounter: BibleEncounter): EncounterSpec {
+// An authored effect as the engine applies it. Null for what a fight cannot do (start another fight).
+export function storyEffectOf(effect: BibleEffect, rewardId: string, bible?: AdventureBible): StoryEffect | null {
+  switch (effect.kind) {
+    case "reveal":
+      return { kind: "revealClue", clueId: effect.clue, text: bible?.clues.find((clue) => clue.id === effect.clue)?.publicText ?? effect.clue };
+    case "set":
+      return { kind: "setFlag", flag: effect.flag, value: effect.value ?? 1 };
+    case "reward":
+      return { kind: "grantReward", rewardId, gold: effect.gold ?? 0, items: effect.items ?? [] };
+    case "goto":
+      return { kind: "transitionScene", sceneId: effect.scene };
+    case "clock":
+      return { kind: "advanceClock", clockId: effect.clock, segments: bible?.clocks.find((clock) => clock.id === effect.clock)?.segments ?? 2, by: effect.by, onFull: null };
+    case "encounter":
+      return null;
+  }
+}
+
+function fightEffectOf(effect: BibleFightEffect, rewardId: string, bible?: AdventureBible): FightEffect | null {
+  switch (effect.kind) {
+    case "add":
+      return { kind: "addMonsters", monsters: effect.monsters };
+    case "end":
+      return { kind: "endFight" };
+    case "announce":
+      return { kind: "announce", text: effect.text };
+    default: {
+      const story = storyEffectOf(effect, rewardId, bible);
+      return story === null || story.kind === "startEncounter" || story.kind === "advanceClock" ? null : story;
+    }
+  }
+}
+
+export function encounterSpec(encounter: BibleEncounter, bible?: AdventureBible): EncounterSpec {
   const { id, zones, edges, partyZoneId, monsters, loot, gold, milestoneLevel } = encounter;
-  return { id, zones, edges, partyZoneId, monsters, loot, gold, ...(milestoneLevel === undefined ? {} : { milestoneLevel }) };
+  const triggers: EncounterTrigger[] = (encounter.triggers ?? []).map((trigger, index) => ({
+    when: trigger.when,
+    effects: trigger.effects.flatMap((effect, position) => fightEffectOf(effect, `${id}:trigger${index}:${position}`, bible) ?? []),
+  }));
+  const onVictory = (encounter.onVictory ?? []).flatMap((effect, position) => storyEffectOf(effect, `${id}:victory:${position}`, bible) ?? []);
+  return {
+    id,
+    zones,
+    edges,
+    partyZoneId,
+    monsters,
+    loot,
+    gold,
+    ...(milestoneLevel === undefined ? {} : { milestoneLevel }),
+    ...(triggers.length === 0 ? {} : { triggers }),
+    ...(onVictory.length === 0 ? {} : { onVictory }),
+  };
 }

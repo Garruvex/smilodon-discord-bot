@@ -153,6 +153,9 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
         if (turn !== null) await say(adventureChannelId, turn.content, [turn.userId]);
         break;
       }
+      case "fightNotice":
+        await say(adventureChannelId, delivery.text);
+        break;
       case "encounterEnded":
         await say(adventureChannelId, this.encounterEnd(events, delivery.encounterId, text, this.options.glossaries[record.language]));
         break;

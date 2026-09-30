@@ -92,6 +92,8 @@ export type DeliverySpec =
   // A turn action with no attack of its own: the table sees one template line.
   | { readonly kind: "combatBeat"; readonly encounterId: string; readonly combatantId: string; readonly beat: "dodge" | "dash" | "disengage" | "useItem" | "fled" | "reaction" | "counterspell" }
   | { readonly kind: "encounterEnded"; readonly encounterId: string }
+  // A line an authored trigger shows the table mid-fight (a new foe steps out of the mist).
+  | { readonly kind: "fightNotice"; readonly encounterId: string; readonly text: string }
   | { readonly kind: "combatNarration"; readonly encounterId: string; readonly round: number }
   // A trade offer waits for the other hero's owner.
   | { readonly kind: "itemOffered"; readonly offerId: string }

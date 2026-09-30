@@ -37,7 +37,7 @@ const rules: readonly (readonly [RegExp, System])[] = [
   [/^lobby\//, "Table"],
   [/^engine\/(members|pause|speech|dm)\.ts$/, "Table"],
   [/^(state|events|commands)\//, "Kernel"],
-  [/^engine\/(decide|decision|rejection|engine-request|ids|narration-limits|reminders)\.ts$/, "Kernel"],
+  [/^engine\/(decide|decision|rejection|engine-request|ids|narration-limits|reminders|story-effects)\.ts$/, "Kernel"],
 ];
 
 export const domainRoot = "src/domain/campaign";

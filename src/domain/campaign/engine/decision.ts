@@ -6,6 +6,7 @@ import type { SealedRuleset } from "../rules/ruleset.js";
 import type { CampaignState } from "../state/campaign-state.js";
 import type { EngineRequest } from "./engine-request.js";
 import type { Rejection } from "./rejection.js";
+import { applyStoryEffect } from "./story-effects.js";
 
 export interface EngineContext {
   readonly rules: SealedRuleset;
@@ -42,6 +43,11 @@ export class Decision {
   public emit(event: CampaignEvent): void {
     this.emitted.push(event);
     this.current = evolve(this.current, event);
+  }
+
+  // Applies one story effect (a round's planned effect, or a fight's trigger or victory): the engine's single story vocabulary.
+  public applyStory(roundNumber: number, effect: Parameters<typeof applyStoryEffect>[2]): void {
+    applyStoryEffect(this, roundNumber, effect);
   }
 
   public request(request: EngineRequest): void {

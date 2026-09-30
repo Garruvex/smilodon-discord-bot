@@ -197,6 +197,7 @@ export type CombatEvent =
   | { readonly kind: "combatantFled"; readonly combatantId: CombatantId }
   // A conjured creature joins the fight on its summoner's side, right after the summoner in the turn order.
   | { readonly kind: "combatantSummoned"; readonly combatant: Combatant; readonly summonerId: CombatantId }
+  | { readonly kind: "encounterTriggerFired"; readonly index: number }
   | { readonly kind: "turnEnded"; readonly combatantId: CombatantId }
   | { readonly kind: "turnDeferred"; readonly turnIndex: number; readonly round: number }
   // A hero's gear changed mid-fight (a hand-over): armor class, attacks, and traits follow it.
@@ -264,6 +265,7 @@ export const combatEventKinds: readonly CombatEventKind[] = [
   "deathSaveRolled",
   "combatantFled",
   "combatantSummoned",
+  "encounterTriggerFired",
   "turnEnded",
   "turnDeferred",
   "gearChanged",

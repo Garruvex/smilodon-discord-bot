@@ -268,6 +268,24 @@ export interface EncounterSpec {
   // A victory here raises the party to this level at a milestone table (the
   // adventure's own story beat). Ignored where XP levels the party.
   readonly milestoneLevel?: number;
+  // Beats inside the fight: each fires once, the first time its condition holds. Absent: none.
+  readonly triggers?: readonly EncounterTrigger[];
+  // Story effects applied when the party wins (after the loot and experience). Absent: none.
+  readonly onVictory?: readonly StoryEffect[];
+}
+
+// What can happen inside a fight: any story effect except starting another fight, plus foes arriving, the fight ending in the
+// party's favour (a truce: the rest of the foes stand down), and a line the table sees.
+export type FightEffect =
+  | Exclude<StoryEffect, { readonly kind: "startEncounter" | "advanceClock" }>
+  | { readonly kind: "addMonsters"; readonly monsters: readonly EncounterMonster[] }
+  | { readonly kind: "endFight" }
+  | { readonly kind: "announce"; readonly text: string };
+
+export interface EncounterTrigger {
+  // foesDown: this many foes are dead or knocked out. round: the fight has reached this round.
+  readonly when: { readonly kind: "foesDown"; readonly count: number } | { readonly kind: "round"; readonly round: number };
+  readonly effects: readonly FightEffect[];
 }
 
 export interface EncounterMonster {

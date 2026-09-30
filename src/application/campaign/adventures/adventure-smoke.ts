@@ -72,7 +72,7 @@ export function rehearseEncounter(document: AdventureDocument, encounter: BibleE
     return null;
   };
 
-  const started = apply({ kind: "user", userId: "rehearsal-1" }, { kind: "startEncounter", spec: encounterSpec(encounter) });
+  const started = apply({ kind: "user", userId: "rehearsal-1" }, { kind: "startEncounter", spec: encounterSpec(encounter, document.bible) });
   if (started !== null) return finish("rejected", started);
 
   for (let step = 0; step < maxSteps; step += 1) {

@@ -56,7 +56,7 @@ export function resolveStoryEffects(
         if (encounter === undefined) problems.push(`Unknown encounter "${effect.encounterId}".`);
         else if (state.encounterHistory.includes(encounter.id)) problems.push(`${encounter.id} has already been fought.`);
         else if (!reachable.has(encounter.sceneId)) problems.push(`${encounter.id} belongs to ${encounter.sceneId}, where the party is not.`);
-        else effects.push({ effect: { kind: "startEncounter", encounter: encounterSpec(encounter) }, when: effect.when });
+        else effects.push({ effect: { kind: "startEncounter", encounter: encounterSpec(encounter, bible) }, when: effect.when });
         break;
       }
       case "advanceClock": {
@@ -159,7 +159,7 @@ function plannedEffect(effect: BibleEffect, rewardId: string, bible: AdventureBi
     case "encounter": {
       const encounter = findEncounter(bible, effect.encounter);
       if (encounter === undefined) problems.push(`Unknown encounter "${effect.encounter}".`);
-      return encounter === undefined || state.encounterHistory.includes(encounter.id) ? null : { kind: "startEncounter", encounter: encounterSpec(encounter) };
+      return encounter === undefined || state.encounterHistory.includes(encounter.id) ? null : { kind: "startEncounter", encounter: encounterSpec(encounter, bible) };
     }
     case "clock": {
       const clock = findClock(bible, effect.clock);
@@ -172,7 +172,7 @@ function plannedEffect(effect: BibleEffect, rewardId: string, bible: AdventureBi
 function clockEffect(bible: AdventureBible, state: CampaignState, clockId: string, by: number): Extract<PlannedEffect["effect"], { kind: "advanceClock" }> {
   const clock = findClock(bible, clockId);
   const fight = findEncounter(bible, clock?.onFull ?? null);
-  const onFull = fight === undefined || state.encounterHistory.includes(fight.id) ? null : encounterSpec(fight);
+  const onFull = fight === undefined || state.encounterHistory.includes(fight.id) ? null : encounterSpec(fight, bible);
   return { kind: "advanceClock", clockId, segments: clock?.segments ?? 2, by, onFull };
 }
 

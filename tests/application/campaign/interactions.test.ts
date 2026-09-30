@@ -4,6 +4,7 @@ import { AdventureDocumentError, parseAdventureDocument } from "../../../src/app
 import { availableInteractions, reachableScenes } from "../../../src/application/campaign/dm/interactions.js";
 import { plannerStory, resolveStoryEffects } from "../../../src/application/campaign/dm/story-effects.js";
 import type { PlannerProposal } from "../../../src/application/campaign/ports/dm-ports.js";
+import { encounterSpec } from "../../../src/domain/campaign/adventure/adventure-bible.js";
 import { newCampaign } from "../../domain/campaign/campaign-fixtures.js";
 
 const hero = `
@@ -207,5 +208,62 @@ describe("choosing an interaction", () => {
     if (resolved.kind !== "resolved") throw new Error(resolved.problems.join(" "));
     expect(resolved.proposal.actions[0]?.resolution).toMatchObject({ test: { skill: "perception" }, dcTier: "medium" });
     expect(resolved.proposal.effects).toEqual([]);
+  });
+});
+
+describe("a fight's authored beats", () => {
+  const fight = `
+encounters:
+  - id: encounter:field
+    sceneId: scene:field
+    publicDescription: Night falls.
+    dmNotes: Notes.
+    zones: [{ id: rows, name: Rows }, { id: edge, name: Edge }]
+    edges: [{ from: edge, to: rows, feet: 30 }]
+    partyZoneId: edge
+    gold: 100
+    monsters:
+      - { monsterId: monster:goblin, zoneId: rows }
+    triggers:
+      - when: { kind: foesDown, count: 1 }
+        effects:
+          - { kind: announce, text: A hag steps out. }
+          - { kind: add, monsters: [{ monsterId: monster:green-hag, zoneId: rows }] }
+          - { kind: set, flag: hag-here }
+      - when: { kind: round, round: 4 }
+        effects:
+          - { kind: end }
+    onVictory:
+      - { kind: reveal, clue: clue:tracks }
+      - { kind: reward, gold: 50 }
+      - { kind: goto, scene: scene:cellar }
+`;
+
+  it("becomes an encounter spec the engine plays, with clue text and reward ids filled in", () => {
+    const { bible } = parseAdventureDocument(yaml(search, fight));
+    const spec = encounterSpec(bible.encounters[0]!, bible);
+    expect(spec.triggers).toEqual([
+      {
+        when: { kind: "foesDown", count: 1 },
+        effects: [
+          { kind: "announce", text: "A hag steps out." },
+          { kind: "addMonsters", monsters: [{ monsterId: "monster:green-hag", zoneId: "rows", npcId: null, fleeBelowHpFraction: null }] },
+          { kind: "setFlag", flag: "hag-here", value: 1 },
+        ],
+      },
+      { when: { kind: "round", round: 4 }, effects: [{ kind: "endFight" }] },
+    ]);
+    expect(spec.onVictory).toEqual([
+      { kind: "revealClue", clueId: "clue:tracks", text: "Big tracks." },
+      { kind: "grantReward", rewardId: "encounter:field:victory:1", gold: 50, items: [] },
+      { kind: "transitionScene", sceneId: "scene:cellar" },
+    ]);
+  });
+
+  it("counts a flag a fight sets as set, and names a foe placed in a zone the fight lacks", () => {
+    const gated = search.replace("check: { skill: survival, dc: 10 }", "requires: { flags: [hag-here] }\n    check: { skill: survival, dc: 10 }");
+    expect(() => parseAdventureDocument(yaml(gated, fight))).not.toThrow();
+    const lost = fight.replace("monsterId: monster:green-hag, zoneId: rows", "monsterId: monster:green-hag, zoneId: moat");
+    expect(() => parseAdventureDocument(yaml(search, lost))).toThrow(/unknown zone moat/);
   });
 });

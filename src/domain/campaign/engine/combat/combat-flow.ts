@@ -16,6 +16,7 @@ import type { Rejection } from "../rejection.js";
 import { maxNarrationLength } from "../narration-limits.js";
 import { changeShieldInCombat, useItemInCombat } from "./combat-gear.js";
 import { recordTriggerRoll } from "./effect-triggers.js";
+import { fireTriggers } from "./triggers.js";
 import { answerReaction, reactionTimerExpired } from "./reactions.js";
 import { answerSmite, smiteTimerExpired } from "./smite.js";
 import { recordResolutionRoll } from "./resolution.js";
@@ -234,11 +235,15 @@ function grantExperience(decision: Decision, encounterId: string, shares: Readon
 }
 
 export function endIfDecided(decision: Decision): boolean {
+  const started = activeEncounter(decision);
+  if (started === null || started.status !== "active") return false;
+  // The fight's authored beats come first: foes may arrive, or the rest may stand down (a truce, which is a win).
+  const truce = fireTriggers(decision, started);
   const encounter = activeEncounter(decision);
-  if (encounter === null || encounter.status !== "active") return false;
+  if (encounter === null) return false;
   const combatants = Object.values(encounter.combatants);
   // A foe knocked out (stable at 0) is out of the fight, though alive.
-  const foesLeft = combatants.some((combatant) => combatant.side === "foes" && isPresent(combatant) && combatant.condition !== "stable");
+  const foesLeft = !truce && combatants.some((combatant) => combatant.side === "foes" && isPresent(combatant) && combatant.condition !== "stable");
   const heroesStanding = combatants.some((combatant) => combatant.side === "party" && combatant.source.kind === "hero" && isActive(combatant));
   if (foesLeft && heroesStanding) return false;
   if (encounter.turnEndsAt !== null) decision.request({ kind: "cancelTimer", timerId: turnTimerId(encounter.id, encounter.turnNumber) });
@@ -256,6 +261,7 @@ export function endIfDecided(decision: Decision): boolean {
       const xpShares = experienceShares(decision, encounter);
       if (xpShares !== undefined) grantExperience(decision, encounter.id, xpShares);
     }
+    for (const effect of encounter.spec.onVictory ?? []) decision.applyStory(decision.state.lastRoundNumber, effect);
   }
   decision.request({ kind: "deliver", delivery: { kind: "encounterEnded", encounterId: encounter.id } });
   // The closing narration covers the last round; exploration resumes after it.
