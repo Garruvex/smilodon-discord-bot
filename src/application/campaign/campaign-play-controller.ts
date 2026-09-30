@@ -1,10 +1,10 @@
-import type { AdventureBible, NpcId } from "../../domain/campaign/adventure/adventure-bible.js";
+import { longRestEffects, type AdventureBible, type NpcId } from "../../domain/campaign/adventure/adventure-bible.js";
 import type { Skill } from "../../domain/campaign/character/character-sheet.js";
 import { abilities } from "../../domain/campaign/rules/effects.js";
 import { sceneNpcs } from "./views/explore-view.js";
 import { raiseToLevel } from "../../domain/campaign/character/leveling.js";
 import type { ContentId } from "../../domain/campaign/rules/content-id.js";
-import type { CampaignCommand, CombatCommand, EnvironmentalDamageSource } from "../../domain/campaign/commands/campaign-command.js";
+import type { CampaignCommand, CombatCommand, EnvironmentalDamageSource, PartyEffect } from "../../domain/campaign/commands/campaign-command.js";
 import type { Ability } from "../../domain/campaign/rules/effects.js";
 import { actingHero } from "../../domain/campaign/engine/members.js";
 import { isFallen } from "../../domain/campaign/state/campaign-state.js";
@@ -334,14 +334,24 @@ export class CampaignPlayController {
     return this.perform(key, userId, interactionId, () => ({ kind: "retryPlan" }));
   }
 
-  public rest(key: CampaignKey, userId: UserId, rest: "short" | "long", interactionId: string): Promise<PlayResult> {
-    return this.perform(key, userId, interactionId, () => ({ kind: "takeRest", rest }));
+  public async rest(key: CampaignKey, userId: UserId, rest: "short" | "long", interactionId: string): Promise<PlayResult> {
+    const story = rest === "long" ? await this.longRestStory(key) : [];
+    return this.perform(key, userId, interactionId, () => ({ kind: "takeRest", rest, ...(story.length === 0 ? {} : { story }) }));
+  }
+
+  // What the scene the party is in brings with a long rest, from the adventure the game joined.
+  private async longRestStory(key: CampaignKey): Promise<readonly PartyEffect[]> {
+    const loaded = await this.options.unitOfWork.transaction(async (tx) => ({ record: await tx.loadRecord(key), stored: await tx.loadCampaign(key) }));
+    if (loaded.record === undefined || loaded.stored === undefined) return [];
+    const { adventure, language } = loaded.record.record;
+    return longRestEffects(this.options.adventures.find(adventure.adventureId, adventure.version, language), loaded.stored.state.sceneId);
   }
 
   // A DnD Admin (checked by the caller, which knows the server's role) runs
   // an organizer control on a game they do not organize. The engine still
   // sees the organizer's own rights, so it decides exactly as it would for them.
-  public manage(key: CampaignKey, verb: ManageAction, interactionId: string): Promise<PlayResult> {
+  public async manage(key: CampaignKey, verb: ManageAction, interactionId: string): Promise<PlayResult> {
+    const story = verb === "longRest" ? await this.longRestStory(key) : [];
     const command = (state: CampaignState): CampaignCommand =>
       verb === "pause"
         ? { kind: "pauseCampaign", reason: "organizer" }
@@ -360,7 +370,7 @@ export class CampaignPlayController {
                     : verb === "illustrateScene"
                       // The scene the party is in now; a scene with no picture yet is painted, one with a picture is painted again.
                       ? { kind: "redoPicture", subject: state.sceneId ?? "" }
-                      : { kind: "takeRest", rest: verb === "longRest" ? "long" : "short" };
+                      : { kind: "takeRest", rest: verb === "longRest" ? "long" : "short", ...(story.length === 0 ? {} : { story }) };
     return this.perform(key, null, interactionId, command);
   }
 

@@ -65,7 +65,16 @@ const randomEffect = z
   .strict();
 const effectSchema = z.discriminatedUnion("kind", [revealEffect, setEffect, rewardEffect, gotoEffect, clockEffect, noticeEffect, keepsakeEffect, encounterEffect, hurtEffect, randomEffect]);
 // A fight's effects: the story ones (a fight never starts another fight), foes arriving, a truce, a line for the table.
-const monsterEntry = z.object({ monsterId: contentId("monster"), zoneId, npcId: npcId.nullable().default(null), fleeBelowHpFraction: z.number().gt(0).lt(1).nullable().default(null) }).strict();
+// A borrowed stat block made tougher or weaker: hit points, armor class, and a bonus to every attack roll and damage roll.
+const monsterStats = z
+  .object({
+    hp: z.number().int().min(1).max(1000).optional(),
+    armorClass: z.number().int().min(5).max(30).optional(),
+    toHit: z.number().int().min(-5).max(10).optional(),
+    damage: z.number().int().min(-5).max(20).optional(),
+  })
+  .strict();
+const monsterEntry = z.object({ monsterId: contentId("monster"), zoneId, npcId: npcId.nullable().default(null), fleeBelowHpFraction: z.number().gt(0).lt(1).nullable().default(null), stats: monsterStats.optional() }).strict();
 const fightEffectSchema = z.discriminatedUnion("kind", [
   revealEffect,
   setEffect,
@@ -118,7 +127,7 @@ const documentSchema = z
     startScene: sceneId,
     scenes: z
       .array(
-        z.object({ id: sceneId, title: text, publicDescription: text, dmNotes: text, npcIds: z.array(npcId), exits: z.array(z.object({ to: sceneId, requires: requirementSchema.optional() }).strict()).optional(), onEnter: z.array(enterEffectSchema).optional() }).strict(),
+        z.object({ id: sceneId, title: text, publicDescription: text, dmNotes: text, npcIds: z.array(npcId), exits: z.array(z.object({ to: sceneId, requires: requirementSchema.optional() }).strict()).optional(), onEnter: z.array(enterEffectSchema).optional(), onLongRest: z.array(enterEffectSchema).optional() }).strict(),
       )
       .min(1),
     npcs: z.array(
@@ -162,16 +171,7 @@ const documentSchema = z
             ambush: z.object({ dc: z.number().int().min(1).max(30) }).strict().optional(),
             dread: z.object({ ability: z.enum(abilities), dc: z.number().int().min(1).max(30) }).strict().optional(),
             monsters: z
-              .array(
-                z
-                  .object({
-                    monsterId: contentId("monster"),
-                    zoneId,
-                    npcId: npcId.nullable().default(null),
-                    fleeBelowHpFraction: z.number().gt(0).lt(1).nullable().default(null),
-                  })
-                  .strict(),
-              )
+              .array(monsterEntry)
               .min(1),
             triggers: z.array(triggerSchema).default([]),
             onVictory: z.array(victoryEffectSchema).default([]),
@@ -330,7 +330,7 @@ export function checkEditionsMatch(editions: readonly AdventureDocument[]): read
       version: document.bible.version,
       startScene: document.bible.startScene,
       startingLevel: document.bible.startingLevel ?? null,
-      scenes: document.bible.scenes.map((scene) => [scene.id, scene.npcIds, scene.exits ?? null, withoutWords(scene.onEnter ?? null)]),
+      scenes: document.bible.scenes.map((scene) => [scene.id, scene.npcIds, scene.exits ?? null, withoutWords(scene.onEnter ?? null), withoutWords(scene.onLongRest ?? null)]),
       interactions: (document.bible.interactions ?? []).map(({ label: _label, dmNotes: _notes, ...mechanics }) => withoutWords(mechanics)),
       npcs: document.bible.npcs.map((npc) => [npc.id, npc.shop ?? null]),
       clocks: document.bible.clocks.map((clock) => [clock.id, clock.sceneId, clock.segments, clock.onFull]),
@@ -374,7 +374,7 @@ function interactionProblems(data: z.infer<typeof documentSchema>): readonly str
   const flatten = (list: readonly BibleEffect[]): BibleEffect[] => list.flatMap((effect) => (effect.kind === "random" ? effect.options.flatMap((option) => flatten(option.effects)) : [effect]));
   const allEffects = data.interactions.flatMap((interaction) => [...flatten(interaction.onSuccess as BibleEffect[]), ...flatten(interaction.onFailure as BibleEffect[]), ...interaction.tiers.flatMap((tier) => flatten(tier.effects as BibleEffect[]))]);
   const fightEffects = data.encounters.flatMap((encounter) => [...encounter.triggers.flatMap((trigger) => trigger.effects as BibleFightEffect[]), ...(encounter.onVictory as BibleEffect[])]);
-  const enterEffects = data.scenes.flatMap((scene) => (scene.onEnter ?? []) as BibleEffect[]);
+  const enterEffects = data.scenes.flatMap((scene) => [...((scene.onEnter ?? []) as BibleEffect[]), ...((scene.onLongRest ?? []) as BibleEffect[])]);
   const setFlags = new Set([...allEffects, ...fightEffects, ...enterEffects].flatMap((effect) => (effect.kind === "set" ? [effect.flag] : [])));
   const checkEffects = (owner: string, list: readonly BibleEffect[]): void => {
     for (const effect of flatten(list)) {
@@ -430,6 +430,7 @@ function interactionProblems(data: z.infer<typeof documentSchema>): readonly str
   }
   for (const scene of data.scenes) {
     checkEffects(`${scene.id} arrival`, (scene.onEnter ?? []) as BibleEffect[]);
+    checkEffects(`${scene.id} long rest`, (scene.onLongRest ?? []) as BibleEffect[]);
     for (const exit of scene.exits ?? []) {
       if (!sceneIds.has(exit.to)) problems.push(`${scene.id} has an exit to unknown ${exit.to}.`);
       checkRequirement(`${scene.id}'s exit to ${exit.to}`, exit.requires as BibleRequirement | undefined);
@@ -468,7 +469,7 @@ export function checkAdventureContent(document: AdventureDocument, content: Seal
       if (effect.kind === "reward") for (const item of effect.items ?? []) expectKind(interaction.id, item, "item");
     }
   }
-  for (const scene of document.bible.scenes) for (const effect of scene.onEnter ?? []) if (effect.kind === "reward") for (const item of effect.items ?? []) expectKind(scene.id, item, "item");
+  for (const scene of document.bible.scenes) for (const effect of [...(scene.onEnter ?? []), ...(scene.onLongRest ?? [])]) if (effect.kind === "reward") for (const item of effect.items ?? []) expectKind(scene.id, item, "item");
   for (const encounter of document.bible.encounters) {
     for (const monster of encounter.monsters) expectKind(encounter.id, monster.monsterId, "monster");
     for (const trigger of encounter.triggers ?? []) {

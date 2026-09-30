@@ -77,6 +77,7 @@ export function beginEncounter(decision: Decision, spec: EncounterSpec): void {
       zoneId: entry.zoneId,
       npcId: entry.npcId,
       fleeBelowHpFraction: entry.fleeBelowHpFraction,
+      ...(entry.stats === undefined ? {} : { stats: entry.stats }),
     });
   }
 

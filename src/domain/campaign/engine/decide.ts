@@ -110,7 +110,7 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
     case "replaceNarration":
       return replaceNarration(decision, command.roundNumber, command.text);
     case "takeRest":
-      return takeRest(decision, command.rest);
+      return takeRest(decision, command.rest, command.story ?? []);
     case "offerItem":
     case "respondToOffer":
     case "cancelOffer":

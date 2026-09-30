@@ -130,6 +130,8 @@ export interface BibleScene {
   readonly exits?: readonly { readonly to: SceneId; readonly requires?: BibleRequirement }[];
   // What happens whenever the party arrives here by any route: clues, flags, rewards, notices, keepsakes (each lands only once).
   readonly onEnter?: readonly Exclude<BiblePartyEffect, { readonly kind: "goto" | "encounter" | "clock" }>[];
+  // What happens when the party takes a long rest here: the same kinds as onEnter.
+  readonly onLongRest?: readonly Exclude<BiblePartyEffect, { readonly kind: "goto" | "encounter" | "clock" }>[];
 }
 
 export interface BibleNpc {
@@ -242,6 +244,12 @@ export function storyEffectOf(effect: BiblePartyEffect, rewardId: string, bible?
 export function enterEffects(bible: AdventureBible | undefined, sceneId: string): readonly PartyEffect[] {
   const scene = bible?.scenes.find((candidate) => candidate.id === sceneId);
   return (scene?.onEnter ?? []).flatMap((effect, position) => storyEffectOf(effect, `${sceneId}:enter:${position}`, bible) ?? []);
+}
+
+// What a long rest in a scene brings, as engine effects.
+export function longRestEffects(bible: AdventureBible | undefined, sceneId: string | null): readonly PartyEffect[] {
+  const scene = sceneId === null ? undefined : bible?.scenes.find((candidate) => candidate.id === sceneId);
+  return (scene?.onLongRest ?? []).flatMap((effect, position) => storyEffectOf(effect, `${sceneId}:rest:${position}`, bible) ?? []);
 }
 
 // A move to a scene brings that scene's arrival effects with it.

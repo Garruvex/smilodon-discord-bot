@@ -70,7 +70,8 @@ export type CampaignCommand =
   | { readonly kind: "recordSummary"; readonly throughRound: number; readonly visibility: "public" | "private"; readonly text: string }
   // Organizer, outside combat. Short: limited features recharge. Long: HP,
   // spell slots, and every feature recharge.
-  | { readonly kind: "takeRest"; readonly rest: "short" | "long" }
+  // story: what the scene attaches to a long rest (lines, clues, flags, rewards, keepsakes), from the adventure.
+  | { readonly kind: "takeRest"; readonly rest: "short" | "long"; readonly story?: readonly PartyEffect[] }
   | InventoryCommand
   // Organizer, after a lost fight: play it again from its start, with fresh dice.
   | { readonly kind: "retryEncounter" }
@@ -293,12 +294,21 @@ export interface EncounterTrigger {
   readonly effects: readonly FightEffect[];
 }
 
+// What an adventure changes about a borrowed stat block: a tougher or weaker version of an SRD monster. Bonuses are added to every attack.
+export interface MonsterStats {
+  readonly hp?: number;
+  readonly armorClass?: number;
+  readonly toHit?: number;
+  readonly damage?: number;
+}
+
 export interface EncounterMonster {
   readonly monsterId: ContentId<"monster">;
   readonly zoneId: string;
   // A named NPC this monster plays, e.g. npc:skarn.
   readonly npcId: string | null;
   readonly fleeBelowHpFraction: number | null;
+  readonly stats?: MonsterStats;
 }
 
 export interface RecordLedgerFactCommand {

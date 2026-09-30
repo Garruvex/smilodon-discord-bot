@@ -14,11 +14,18 @@ import type { Rejection } from "./rejection.js";
 // hero is at full HP or out of dice, each healing its average plus the
 // Constitution modifier (no roll, so a rest is deterministic). Long: HP,
 // spell slots, every feature, and half the Hit Dice back (at least one).
-export function takeRest(decision: Decision, rest: "short" | "long"): Rejection | null {
+// What a scene may attach to a long rest, in the shape the engine applies.
+type StoryEffect = Parameters<Decision["applyStory"]>[1];
+
+export function takeRest(decision: Decision, rest: "short" | "long", story: readonly StoryEffect[] = []): Rejection | null {
   const { state, ctx } = decision;
   if (ctx.actor.kind === "user" && ctx.actor.userId !== state.organizerId) return { code: "notOrganizer" };
   if (state.encounter !== null && state.encounter.status !== "ended") return { code: "inCombat" };
   if (state.round !== null) return { code: "roundInProgress" };
+  // What a scene attaches to a long rest is only ever a line, a clue, a flag, a reward or a keepsake; a short rest attaches nothing.
+  const allowed = new Set<StoryEffect["kind"]>(["notice", "revealClue", "setFlag", "grantReward", "grantKeepsake"]);
+  const stray = story.filter((effect) => !allowed.has(effect.kind));
+  if (stray.length > 0 || (rest === "short" && story.length > 0)) return { code: "invalidPlan", problems: ["A rest can only bring lines, clues, flags, rewards and keepsakes."] };
   const content = ctx.rules.content;
   const heroStatus: Record<CharacterId, HeroStatus> = {};
   // Song of Rest: a bard's song adds one more Hit Die of healing (its average) to every hero who spent a Hit Die on this rest.
@@ -94,5 +101,6 @@ export function takeRest(decision: Decision, rest: "short" | "long"): Rejection 
     };
   }
   decision.emit({ kind: "restTaken", rest, heroStatus });
+  for (const effect of story) decision.applyStory(state.lastRoundNumber, effect);
   return null;
 }

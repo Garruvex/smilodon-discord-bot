@@ -47,7 +47,7 @@ Anything the players try that is not listed is still planned by the model as bef
 | `hurt` | harm between fights; `who: rollers` (default) or `party` |
 | `random` | picks one of several `options` by chance when the round is planned (`weight` defaults to 1) |
 
-`onEnter` may use `reveal`, `set`, `reward`, `notice` and `keepsake`.
+`onEnter` (arriving) and `onLongRest` (the party takes a long rest in the scene) may use `reveal`, `set`, `reward`, `notice` and `keepsake`; each lands once.
 
 ## Fights
 
@@ -57,6 +57,7 @@ encounters:
     zones: [...]
     monsters:
       - { monsterId: monster:awakened-shrub, zoneId: centre, npcId: npc:scarecrow }   # an NPC gives a reskinned monster its name
+      - { monsterId: monster:goblin, zoneId: centre, stats: { hp: 20, armorClass: 15, toHit: 2, damage: 1 } }   # tougher or weaker than the SRD block
     ambush: { dc: 13 }                  # foes lie in wait: the party is surprised unless a hero's passive Perception reaches this
     surprised: foes                     # or say outright who is surprised
     dread: { ability: wis, dc: 11 }     # every hero saves; one who fails is frightened until their first turn ends
@@ -77,5 +78,5 @@ two editions are compared with the words removed.
 
 ## Not modelled
 
-`onLongRest` triggers, monster stat changes (a reskin keeps the stats of the SRD monster it borrows), and hazards that
-affect heroes who did not choose the interaction.
+a monster's other stats (speed, abilities, extra attacks: only `hp`, `armorClass`, `toHit` and `damage` can change), and a hazard
+for one hero that is not the one who chose the interaction (`who: party` hurts everyone, `who: rollers` those who rolled).
