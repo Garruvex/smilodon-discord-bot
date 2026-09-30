@@ -14,6 +14,9 @@ export const hubActions = [
   "wizLoot",
   "wizVisibility",
   "wizAdventure",
+  // The adventure list: a page of it, and the choice made from it.
+  "wizAdventurePage",
+  "wizAdventurePick",
   "wizNext",
   "wizName",
   "manage",

@@ -102,7 +102,7 @@ interface Harness {
   intake: { uploads: { guildId: string; file: { url: string; size: number } | null }[]; authors: { guildId: string; input: unknown }[] };
 }
 
-function harness(options: { modelConfigured?: boolean; launcher?: boolean; canAuthor?: boolean; images?: boolean; icons?: boolean } = {}): Harness {
+function harness(options: { modelConfigured?: boolean; launcher?: boolean; canAuthor?: boolean; images?: boolean; icons?: boolean; catalog?: readonly { id: string; version: string; languages: ("en" | "zh-TW")[]; titles: Partial<Record<"en" | "zh-TW", string>> }[] } = {}): Harness {
   const r = rig();
   const messages = new FakeMessages();
   const glossaries = { en: enSrd51Glossary, "zh-TW": zhTwSrd51Glossary };
@@ -149,6 +149,7 @@ function harness(options: { modelConfigured?: boolean; launcher?: boolean; canAu
     creator,
     authority,
     ...(options.images === undefined ? {} : { imagesEnabled: options.images }),
+    ...(options.catalog === undefined ? {} : { adventures: { listForGuild: () => options.catalog ?? [] } }),
     ...(options.icons === true ? { icons: applicationIcons((name) => ({ id: `id-${name}`, name })) } : {}),
   });
   return {
@@ -249,6 +250,37 @@ describe("the Create game wizard", () => {
     const loot = await t.click("dndhub:wizLoot:zh-TW.playByPost.5.pooled", { userId: "u-a", admin: true }, { values: ["split"] });
     expect(rowsOf(loot).at(-1)?.[0]?.customId).toBe("dndhub:wizNext:zh-TW.playByPost.5.split");
     expect(contentOf(loot)).toContain("由英雄平分");
+  });
+
+  it("lists the adventures for the game's language, and creates the game from the one chosen", async () => {
+    const catalog = [
+      { id: "moonlit-ruins", version: "1", languages: ["en" as const, "zh-TW" as const], titles: { en: "Moonlit Ruins", "zh-TW": "月光遺跡" } },
+      { id: "gabc123-harbor", version: "2", languages: ["en" as const], titles: { en: "Harbor Heist" } },
+      { id: "gabc123-farm", version: "1", languages: ["en" as const, "zh-TW" as const], titles: { en: "Farm Fright", "zh-TW": "農場驚魂" } },
+    ];
+    const t = harness({ catalog });
+    await withSettings(t);
+    const start = wizardState(defaultWizardChoices);
+    const opened = await t.click(hubCustomId("wizAdventure", start), { userId: "u-a", admin: true });
+    const menu = (payload: unknown): { custom_id: string; options: { label: string; value: string; description: string }[] } =>
+      (payload as { components: { toJSON(): { components: unknown[] } }[] }).components[0]?.toJSON().components[0] as never;
+    const list = menu(opened.at(-1)?.payload);
+    expect(list.options.map((option) => option.label)).toEqual(["Moonlit Ruins", "Harbor Heist", "Farm Fright"]);
+    expect(list.options[1]?.description).toBe("v2 · en");
+    expect(list.options[0]?.value).toBe("default");
+
+    // Choosing one brings back the wizard with it named and carried in the controls.
+    const picked = await t.click(list.custom_id, { userId: "u-a", admin: true }, { values: ["gabc123-farm"] });
+    expect(contentOf(picked)).toContain("Adventure: Farm Fright");
+    expect(rowsOf(picked).at(-1)?.[0]?.customId).toBe("dndhub:wizNext:en.live.3.pooled.open.gabc123-farm");
+
+    // In Chinese the English-only adventure is not offered, and a chosen one that has no Chinese edition is dropped.
+    const chinese = await t.click(hubCustomId("wizAdventure", "zh-TW.live.3.pooled"), { userId: "u-a", admin: true });
+    expect(menu(chinese.at(-1)?.payload).options.map((option) => option.label)).toEqual(["月光遺跡", "農場驚魂"]);
+    const harbor = await t.click(hubCustomId("wizLanguage", "en.live.3.pooled.open.gabc123-harbor"), { userId: "u-a", admin: true }, { values: ["zh-TW"] });
+    expect(rowsOf(harbor).at(-1)?.[0]?.customId).toBe("dndhub:wizNext:zh-TW.live.3.pooled");
+    const kept = await t.click(hubCustomId("wizLanguage", "en.live.3.pooled.open.gabc123-farm"), { userId: "u-a", admin: true }, { values: ["zh-TW"] });
+    expect(rowsOf(kept).at(-1)?.[0]?.customId).toBe("dndhub:wizNext:zh-TW.live.3.pooled.open.gabc123-farm");
   });
 
   it("switches between open and players-only with a button, and remembers it in the controls", async () => {

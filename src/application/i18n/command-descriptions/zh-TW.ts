@@ -168,6 +168,7 @@ export const zhTWCommandDescriptions = {
   "dnd/new": "建立新團務與專屬頻道", // Creates a new game with its own channels.
   "dnd/new:name": "團務名稱", // The game's name.
   "dnd/new:language": "遊玩語言（預設：English）", // The language the game is played in (default: English).
+  "dnd/new:adventure": "要玩的冒險：標題或標題的一部分（預設為機器人內建的冒險）", // The adventure to play: its title or part of it (default: the one that comes with the bot).
   "dnd/new:pacing": "回合節奏（預設：即時）", // How fast rounds go (default: live).
   "dnd/new:players": "桌上最多玩家數（預設 3）", // Most players at the table (default: 3).
   "dnd/new:visibility": "遊戲開始後誰可以觀看（預設為看得到分類的所有人）", // Who can watch once the game starts (default: everyone).

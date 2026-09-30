@@ -63,13 +63,15 @@ export interface CampaignHubDependencies {
   readonly libraryScreens?: Pick<CharacterLibraryComponentHandler, "homeScreen" | "builderScreen" | "importFromFile">;
   readonly intake?: Pick<AdventureIntake, "uploadFile" | "authorFrom" | "canAuthor">;
   // The adventures this server can start from; without it the wizard offers only the bundled one.
-  readonly adventures?: { listForGuild(guildId: string): readonly { readonly id: string; readonly titles: Readonly<Partial<Record<"en" | "zh-TW", string>>> }[] };
+  readonly adventures?: { listForGuild(guildId: string): readonly { readonly id: string; readonly version?: string; readonly languages?: readonly ("en" | "zh-TW")[]; readonly titles: Readonly<Partial<Record<"en" | "zh-TW", string>>> }[] };
 }
 
 interface Screen {
   readonly content: string;
   readonly components: ActionRowBuilder<MessageActionRowComponentBuilder>[];
 }
+
+const adventuresPerPage = 25;
 
 const nameField = "name";
 const fileField = "file";
@@ -112,7 +114,13 @@ export class CampaignHubComponentHandler implements ComponentHandler {
         if (interaction.isButton()) await this.toggleVisibility(interaction, first);
         return;
       case "wizAdventure":
-        if (interaction.isButton()) await this.cycleAdventure(interaction, first);
+        if (interaction.isButton()) await this.showAdventures(interaction, first, 0);
+        return;
+      case "wizAdventurePage":
+        if (interaction.isButton()) await this.showAdventures(interaction, first, Number(second) || 0);
+        return;
+      case "wizAdventurePick":
+        if (interaction.isStringSelectMenu()) await this.pickAdventure(interaction, first);
         return;
       case "wizNext":
         if (interaction.isButton()) await this.askName(interaction, first);
@@ -494,7 +502,7 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     const value = interaction.values[0] ?? "";
     const next: WizardChoices =
       action === "wizLanguage"
-        ? { ...current, language: value === "zh-TW" ? "zh-TW" : "en" }
+        ? this.inLanguage({ ...current, language: value === "zh-TW" ? "zh-TW" : "en" }, interaction.guildId)
         : action === "wizPacing"
           ? { ...current, pacing: value === "playByPost" ? "playByPost" : "live" }
           : action === "wizLoot"
@@ -512,22 +520,67 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     await interaction.update(this.screen({ ...current, visibility: current.visibility === "open" ? "membersOnly" : "open" }, interaction.guildId));
   }
 
-  // Steps through the adventures the server can start from, the bundled one first.
-  private async cycleAdventure(interaction: ButtonInteraction<"cached">, state: string | undefined): Promise<void> {
+  // The adventures this server can start a game in this language from, the bundled one first.
+  private adventuresIn(language: WizardChoices["language"], guildId: string): readonly { readonly id: string; readonly version?: string; readonly languages?: readonly ("en" | "zh-TW")[]; readonly titles: Readonly<Partial<Record<"en" | "zh-TW", string>>> }[] {
+    return (this.deps.adventures?.listForGuild(guildId) ?? []).filter((entry) => entry.languages === undefined || entry.languages.includes(language));
+  }
+
+  // A chosen adventure that has no edition in the game's language goes back to the bundled one, so the game can be created.
+  private inLanguage(choices: WizardChoices, guildId: string): WizardChoices {
+    return choices.adventure === null || this.adventuresIn(choices.language, guildId).some((entry) => entry.id === choices.adventure) ? choices : { ...choices, adventure: null };
+  }
+
+  // The list of adventures to choose from (a page of it, when there are many), instead of stepping through them one by one.
+  private async showAdventures(interaction: ButtonInteraction<"cached">, state: string | undefined, page: number): Promise<void> {
     const current = parseWizardState(state);
     if (!(await this.deps.authority.isAdmin(interaction))) {
       await interaction.update({ content: texts[current.language].campaign.wizard.notAllowed, components: [] });
       return;
     }
-    const ids = (this.deps.adventures?.listForGuild(interaction.guildId) ?? []).map((entry) => entry.id);
-    const at = ids.indexOf(current.adventure ?? ids[0] ?? "");
-    const next = ids[(at + 1) % Math.max(ids.length, 1)];
-    await interaction.update(this.screen({ ...current, adventure: next === undefined || next === ids[0] ? null : next }, interaction.guildId));
+    const t = texts[current.language].campaign.adventure;
+    const list = this.adventuresIn(current.language, interaction.guildId);
+    const pages = Math.max(1, Math.ceil(list.length / adventuresPerPage));
+    const at = Math.min(Math.max(0, page), pages - 1);
+    const shown = list.slice(at * adventuresPerPage, (at + 1) * adventuresPerPage);
+    // The picker's controls carry the wizard's choices without the adventure, which travels in the choice itself.
+    const base = wizardState({ ...current, adventure: null });
+    const rows: ActionRowBuilder<MessageActionRowComponentBuilder>[] = [
+      new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
+        new StringSelectMenuBuilder().setCustomId(hubCustomId("wizAdventurePick", base)).setPlaceholder(t.pickerPlaceholder).addOptions(
+          shown.map((entry, index) => ({
+            label: (entry.titles[current.language] ?? entry.titles.en ?? entry.id).slice(0, 100),
+            value: at === 0 && index === 0 ? "default" : entry.id,
+            description: `${entry.version === undefined ? "" : `v${entry.version} · `}${(entry.languages ?? [current.language]).join(" / ")}`.slice(0, 100),
+          })),
+        ),
+      ),
+    ];
+    if (pages > 1) {
+      rows.push(
+        row(
+          new ButtonBuilder().setCustomId(hubCustomId("wizAdventurePage", base, String(at - 1))).setLabel(t.pickerPrevious).setStyle(ButtonStyle.Secondary).setDisabled(at === 0),
+          new ButtonBuilder().setCustomId(hubCustomId("wizAdventurePage", base, String(at + 1))).setLabel(t.pickerNext({ page: at + 1, pages })).setStyle(ButtonStyle.Secondary).setDisabled(at + 1 >= pages),
+        ),
+      );
+    }
+    await interaction.update({ content: t.pickerPrompt({ count: list.length }), components: rows });
+  }
+
+  private async pickAdventure(interaction: StringSelectMenuInteraction<"cached">, state: string | undefined): Promise<void> {
+    const current = parseWizardState(state);
+    if (!(await this.deps.authority.isAdmin(interaction))) {
+      await interaction.update({ content: texts[current.language].campaign.wizard.notAllowed, components: [] });
+      return;
+    }
+    const value = interaction.values[0] ?? "default";
+    const list = this.adventuresIn(current.language, interaction.guildId);
+    const chosen = value === "default" || value === list[0]?.id ? null : list.find((entry) => entry.id === value)?.id ?? null;
+    await interaction.update(this.screen({ ...current, adventure: chosen }, interaction.guildId));
   }
 
   // The wizard, with the adventure's title and a way to change it when the server has more than one.
   private screen(choices: WizardChoices, guildId: string): Screen {
-    const list = this.deps.adventures?.listForGuild(guildId) ?? [];
+    const list = this.adventuresIn(choices.language, guildId);
     const titleOf = (id: string | null): string | null => {
       const entry = list.find((candidate) => candidate.id === (id ?? list[0]?.id));
       return entry === undefined ? null : (entry.titles[choices.language] ?? entry.titles.en ?? entry.titles["zh-TW"] ?? entry.id);

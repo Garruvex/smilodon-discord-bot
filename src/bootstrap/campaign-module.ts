@@ -1,4 +1,5 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
 
@@ -250,7 +251,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
   // The Author never writes heroes: it borrows the bundled adventure's, in the language asked for.
   const author = model === null ? null : new AdventureAuthor({ client: model, content, heroesFor: (language): typeof starter.en.heroes => starter[language].heroes });
   const intake = new AdventureIntake({ catalog, author, glossaries });
-  const adventureHandler = new AdventureComponentHandler({ catalog, authority, glossaries });
+  const adventureHandler = new AdventureComponentHandler({ catalog, authority, glossaries, example: (language) => readFileSync(fileURLToPath(new URL(`../../assets/campaign/adventures/moonlit-ruins/${language}.yaml`, import.meta.url)), "utf8") });
   const command = new DndCommand({ lobby, play, setup, cards, creator, authority, library, libraryScreens: libraryHandler, intake });
   const handler = new CampaignComponentHandler({ lobby, play, cards, unitOfWork, rulesets, adventures, glossaries, library, pictures: heroPictures, ...(input.icons === undefined ? {} : { icons: input.icons }) });
   const hubHandler = new CampaignHubComponentHandler({ lobby, play, setup, cards, creator, authority, adventures, libraryScreens: libraryHandler, intake, imagesEnabled: configuration.campaignImages !== null && configuration.campaignImages !== undefined, ...(input.icons === undefined ? {} : { icons: input.icons }) });

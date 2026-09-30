@@ -59,6 +59,7 @@ export class DndCommand implements BotCommand {
               { name: "繁體中文", value: "zh-TW" },
             ],
           },
+          { type: "string", name: "adventure", description: "The adventure to play: its title or part of it (default: the one that comes with the bot).", maxLength: 100 },
           {
             type: "string",
             name: "pacing",
@@ -212,11 +213,19 @@ export class DndCommand implements BotCommand {
   }
 
   private async create(interaction: ChatInputCommandInteraction<"cached">, text: Texts, responses: CommandContext["responses"]): Promise<void> {
+    const language = interaction.options.getString("language") === "zh-TW" ? "zh-TW" : "en";
+    const named = this.deps.creator.findAdventure(interaction.guildId, language, interaction.options.getString("adventure"));
+    if (named.kind !== "found") {
+      const t = text.campaign.cmd;
+      await responses.edit(named.kind === "none" ? t.adventureNotFound({ list: named.available.join(", ") }) : t.adventureAmbiguous({ list: named.matches.join(", ") }));
+      return;
+    }
     const result = await this.deps.creator.create({
       guildId: interaction.guildId,
       organizerId: interaction.user.id,
       name: interaction.options.getString("name", true),
-      language: interaction.options.getString("language") === "zh-TW" ? "zh-TW" : "en",
+      language,
+      ...(named.adventureId === undefined ? {} : { adventureId: named.adventureId }),
       pacing: interaction.options.getString("pacing") === "playByPost" ? "playByPost" : "live",
       players: interaction.options.getInteger("players") ?? 3,
       visibility: interaction.options.getString("visibility") === "membersOnly" ? "membersOnly" : "open",

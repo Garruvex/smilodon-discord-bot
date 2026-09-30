@@ -166,6 +166,7 @@ export const jaCommandDescriptions = {
   "dnd/new": "専用チャンネル付きで新しいゲームを作成します", // Creates a new game with its own channels.
   "dnd/new:name": "ゲーム名", // The game's name.
   "dnd/new:language": "プレイする言語（既定: English）", // The language the game is played in (default: English).
+  "dnd/new:adventure": "遊ぶ冒険: タイトルまたはその一部（既定はボット付属の冒険）", // The adventure to play: its title or part of it (default: the one that comes with the bot).
   "dnd/new:pacing": "ラウンドの進み方（既定: ライブ）", // How fast rounds go (default: live).
   "dnd/new:players": "卓の最大人数（既定 3）", // Most players at the table (default: 3).
   "dnd/new:visibility": "開始後に誰が観戦できるか（既定はカテゴリを見られる全員）", // Who can watch once the game starts (default: everyone).

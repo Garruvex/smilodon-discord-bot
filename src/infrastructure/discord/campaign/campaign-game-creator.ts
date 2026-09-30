@@ -41,12 +41,25 @@ export class CampaignGameCreator {
       // False when no CAMPAIGN_MODEL is set: a game could not be run, so none is started.
       readonly modelConfigured: boolean;
       // The adventures a server may start from (its own and the bundled one).
-      readonly adventures?: { listForGuild(guildId: string): readonly { readonly id: string }[] };
+      readonly adventures?: { listForGuild(guildId: string): readonly { readonly id: string; readonly languages?: readonly CampaignLanguage[]; readonly titles?: Readonly<Partial<Record<CampaignLanguage, string>>> }[] };
     },
   ) {}
 
   public get modelConfigured(): boolean {
     return this.options.modelConfigured;
+  }
+
+  // The adventure a person named (its title or ID, or part of the title) among those this server can start in this language,
+  // for /dnd new. None named is the bundled one; no match lists what there is.
+  public findAdventure(guildId: string, language: CampaignLanguage, query: string | null): { readonly kind: "found"; readonly adventureId: string | undefined } | { readonly kind: "none"; readonly available: readonly string[] } | { readonly kind: "ambiguous"; readonly matches: readonly string[] } {
+    if (query === null || query.trim() === "") return { kind: "found", adventureId: undefined };
+    const wanted = query.trim().toLowerCase();
+    const offered = (this.options.adventures?.listForGuild(guildId) ?? []).filter((entry) => entry.languages === undefined || entry.languages.includes(language));
+    const titleOf = (entry: (typeof offered)[number]): string => entry.titles?.[language] ?? entry.titles?.en ?? entry.id;
+    const exact = offered.filter((entry) => entry.id.toLowerCase() === wanted || titleOf(entry).toLowerCase() === wanted);
+    const matches = exact.length > 0 ? exact : offered.filter((entry) => titleOf(entry).toLowerCase().includes(wanted));
+    if (matches.length === 1 && matches[0] !== undefined) return { kind: "found", adventureId: matches[0].id === this.options.defaultAdventureId ? undefined : matches[0].id };
+    return matches.length === 0 ? { kind: "none", available: offered.map(titleOf) } : { kind: "ambiguous", matches: matches.map(titleOf) };
   }
 
   public async create(game: NewGame): Promise<CreateGameResult> {
