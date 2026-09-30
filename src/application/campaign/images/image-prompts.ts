@@ -48,13 +48,15 @@ const lines = (...parts: readonly string[]): string => parts.filter((part) => pa
 const readable = (id: string): string => id.replace(/^[a-z]+:/, "").replace(/-/g, " ");
 
 // A scene the party has entered: the place itself, wide.
-export function scenePrompt(scene: { readonly title: string; readonly description: string; readonly party?: readonly string[]; readonly atmosphere?: string }): PictureBrief {
+export function scenePrompt(scene: { readonly title: string; readonly description: string; readonly party?: readonly string[]; readonly atmosphere?: string; readonly creatures?: readonly string[]; readonly encounter?: string }): PictureBrief {
   return {
     aspect: "wide",
     prompt: lines(
       `Scene: ${sentence(plain(scene.title, 80))} ${sentence(plain(scene.description, 900))}`,
       scene.atmosphere === undefined ? "" : `Time of day and weather: ${sentence(plain(scene.atmosphere, 60))} Light and sky must match.`,
       scene.party?.length ? `Party present: ${scene.party.map((hero) => sentence(plain(hero, 140))).join(" ")}` : "",
+      scene.encounter === undefined ? "" : `Encounter beginning: ${sentence(plain(scene.encounter, 500))}`,
+      scene.creatures?.length ? `Foes present (one entry per creature): ${scene.creatures.map((creature) => sentence(plain(creature, 180))).join(" ")} Show these foes within the scene facing the party as combat begins; keep the environment prominent, not a creature portrait.` : "",
       "Composition: a wide establishing shot of the described place at this moment, with its atmosphere, architecture and people in clear spatial relation. Props are supporting details, never an isolated item or product shot. Show foreground, middle ground and background.",
       "When party reference images are supplied, keep each named hero's recognizable appearance, race and gear; use the references for likeness, not as the scene's framing.",
       artDirection,

@@ -346,7 +346,7 @@ describe("pictures of monsters and moments", () => {
       await tx.saveRecord({ ...stored.record, channels: { ...stored.record.channels, adventurePostId: "chan" } }, stored.revision);
     });
 
-  it("asks for one portrait per kind of monster as a fight breaks out, and reuses it", async () => {
+  it("paints one scene with all foes as a fight begins, and reuses it on retry", async () => {
     const c = await campaign();
     await playRound(c, 1);
     await c.r.store.transaction(async (tx) => {
@@ -357,21 +357,41 @@ describe("pictures of monsters and moments", () => {
     const fight = findEncounter(starter.en.bible, "encounter:chapel-fight");
     if (fight === undefined) throw new Error("encounter");
     await c.r.bus.execute(c.key, { kind: "startEncounter", spec: encounterSpec(fight) }, { commandId: "fight", actor: player });
-    const asked = (await c.r.store.transaction((tx) => tx.pendingOutbox("monsterImage"))).flatMap((item) => (item.request.kind === "monsterImage" ? [item.request.npcId ?? item.request.monsterId] : []));
-    const kinds = new Set(fight.monsters.map((monster) => monster.npcId ?? monster.monsterId));
-    expect(asked.sort()).toEqual([...kinds].sort());
-
+    const asked = await c.r.store.transaction((tx) => tx.pendingOutbox("encounterImage"));
+    expect(asked).toHaveLength(1);
+    expect(await c.r.store.transaction((tx) => tx.pendingOutbox("monsterImage"))).toHaveLength(0);
+    const request = asked[0]!.request;
+    if (request.kind !== "encounterImage") throw new Error("picture");
+    expect(request.monsters).toHaveLength(fight.monsters.length);
+    const scene = starter.en.bible.scenes.find((entry) => entry.id === request.snapshot.sceneId);
+    if (scene === undefined) throw new Error("scene");
+    // An existing arrival picture must not suppress the fight illustration.
+    // A slow image job still paints where this fight started.
+    await c.r.store.transaction(async (tx) => {
+      const stored = await tx.loadCampaign(c.key);
+      const record = await tx.loadRecord(c.key);
+      if (stored === undefined || record === undefined) throw new Error("state");
+      await tx.saveCampaign(c.key, { ...stored.state, sceneId: "scene:old-watchtower" }, stored.revision);
+      await tx.saveRecord({ ...record.record, images: { ...record.record.images, [scene.id]: "done" } }, record.revision);
+    });
     await withChannel(c);
     const p = painter();
     const worker = p.worker(c);
     await worker.runOnce();
-    expect(p.prompts).toHaveLength(kinds.size);
-    // The same fight again paints nothing new for those monsters.
-    await c.r.store.transaction((tx) => tx.enqueue(c.key, "again", { kind: "monsterImage", monsterId: fight.monsters[0]?.monsterId ?? "", npcId: fight.monsters[0]?.npcId ?? null }, 9));
+    expect(p.prompts).toHaveLength(1);
+    expect(p.prompts[0]).toContain("wide establishing shot");
+    expect(p.prompts[0]).toContain("Foes present");
+    expect(p.prompts[0]).toContain(scene.title);
+    expect(p.prompts[0]).toContain(fight.publicDescription);
+    await c.r.store.transaction((tx) => tx.enqueue(c.key, "again", request, 9));
     await worker.runOnce();
-    expect(p.prompts).toHaveLength(kinds.size);
+    expect(p.prompts).toHaveLength(1);
+    await c.r.store.transaction((tx) => tx.enqueue(c.key, "redo-encounter", { kind: "redoImage", subject: `encounter:${request.encounterId}` }, 10));
+    await worker.runOnce();
+    expect(p.prompts).toHaveLength(2);
+    expect(p.prompts[1]).toContain(scene.title);
     const goblin = fight.monsters.find((monster) => monster.npcId === null);
-    if (goblin !== undefined) expect(p.prompts.some((prompt) => prompt.includes(enSrd51Glossary.names[goblin.monsterId] ?? "?"))).toBe(true);
+    if (goblin !== undefined) expect(p.prompts[0]).toContain(enSrd51Glossary.names[goblin.monsterId] ?? "?");
   });
 
   it("paints the moment the organizer picks from the narration the table already read, and only for them", async () => {

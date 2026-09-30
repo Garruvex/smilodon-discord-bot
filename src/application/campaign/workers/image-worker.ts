@@ -32,10 +32,10 @@ export interface ImageWorkerOptions {
 
 const defaultMaxBytes = 8 * 1024 * 1024;
 
-type PictureRequest = Extract<EngineRequest, { kind: "sceneImage" | "monsterImage" | "momentImage" | "heroImage" | "redoImage" }>;
+type PictureRequest = Extract<EngineRequest, { kind: "sceneImage" | "encounterImage" | "monsterImage" | "momentImage" | "heroImage" | "redoImage" }>;
 // The kinds a picture can be painted for; a redo names one of them by its subject.
 type Painted = Exclude<PictureRequest, { kind: "redoImage" }>;
-const pictureKinds = ["sceneImage", "monsterImage", "momentImage", "heroImage", "redoImage"] as const;
+const pictureKinds = ["sceneImage", "encounterImage", "monsterImage", "momentImage", "heroImage", "redoImage"] as const;
 // An automatic moment picture waits until this many rounds after the last one.
 const autoMomentGap = 3;
 
@@ -43,6 +43,7 @@ const autoMomentGap = 3;
 // A scene, a kind of monster (or a named NPC), or one told round each get one picture.
 export function pictureSubject(request: PictureRequest): string {
   if (request.kind === "sceneImage") return request.sceneId;
+  if (request.kind === "encounterImage") return `encounter:${request.encounterId}`;
   if (request.kind === "monsterImage") return request.npcId ?? request.monsterId;
   if (request.kind === "heroImage") return `hero:${request.characterId}`;
   if (request.kind === "redoImage") return request.subject;
@@ -63,7 +64,7 @@ function paintedFor(subject: string, bible: AdventureBible): Painted | undefined
 }
 
 // Makes pictures as background jobs (plan §6, Adventures and images): one per
-// scene the party enters, one per kind of monster it meets, and one for a
+// scene the party enters, one establishing shot per fight, and one for a
 // moment the organizer asks for. Text play never waits for them: a failure
 // only means there is no picture, and a picture that arrives late
 // is posted for what it was made for. Every prompt is built from text the table
@@ -82,7 +83,7 @@ export class ImageWorker {
 
   private async runPending(): Promise<WorkerRunResult> {
     const items = (
-      await this.options.unitOfWork.transaction(async (tx) => [...(await tx.pendingOutbox("sceneImage")), ...(await tx.pendingOutbox("monsterImage")), ...(await tx.pendingOutbox("heroImage")), ...(await tx.pendingOutbox("momentImage")), ...(await tx.pendingOutbox("redoImage"))])
+      await this.options.unitOfWork.transaction(async (tx) => [...(await tx.pendingOutbox("sceneImage")), ...(await tx.pendingOutbox("encounterImage")), ...(await tx.pendingOutbox("monsterImage")), ...(await tx.pendingOutbox("heroImage")), ...(await tx.pendingOutbox("momentImage")), ...(await tx.pendingOutbox("redoImage"))])
     );
     const failed: { id: string; error: string }[] = [];
     let processed = 0;
@@ -139,7 +140,14 @@ export class ImageWorker {
     const bible = adventures.find(record.adventure.adventureId, record.adventure.version, record.language);
     // A redo paints the subject again; anything else keeps the picture it has.
     const forced = asked.kind === "redoImage";
-    const request = asked.kind === "redoImage" ? (bible === undefined ? undefined : paintedFor(asked.subject, bible)) : asked;
+    const original = forced && subject.startsWith("encounter:")
+      ? (await unitOfWork.transaction((tx) => tx.outboxForCampaign(item.key)))
+        .map((entry) => entry.request)
+        .find((entry) => entry.kind === "encounterImage" && pictureSubject(entry) === subject)
+      : undefined;
+    const request = asked.kind === "redoImage"
+      ? original?.kind === "encounterImage" ? original : (bible === undefined ? undefined : paintedFor(asked.subject, bible))
+      : asked;
     // A redo of a scene that has no picture yet simply paints it: that is how the organizer asks for the scene they are in.
     if (request === undefined || (forced && existing === undefined && request.kind !== "sceneImage")) return;
     if (existing === "made") {
@@ -250,6 +258,19 @@ export class ImageWorker {
       const party = await this.partyFor(key, request.snapshot);
       const atmosphere = await this.atmosphereOf(key, request.snapshot);
       return { ...scenePrompt({ title: scene.title, description, party: party.descriptions, ...(atmosphere === undefined ? {} : { atmosphere }) }), caption: scene.title, references: party.references };
+    }
+    if (request.kind === "encounterImage") {
+      const scene = findScene(bible, request.snapshot.sceneId);
+      if (scene === undefined) return undefined;
+      const encounter = bible.encounters.find((entry) => entry.id === request.encounterId.replace(/~\d+$/, ""));
+      const creatures = request.monsters.map((entry) => {
+        const kind = this.options.monsterName?.(entry.monsterId, "en") ?? entry.monsterId.replace(/^monster:/, "").replace(/-/g, " ");
+        const npc = entry.npcId === null ? undefined : bible.npcs.find((candidate) => candidate.id === entry.npcId);
+        return npc === undefined ? kind : `${npc.name}, ${kind}: ${npc.publicDescription}`;
+      });
+      const party = await this.partyFor(key, request.snapshot);
+      const atmosphere = await this.atmosphereOf(key, request.snapshot);
+      return { ...scenePrompt({ title: scene.title, description: scene.publicDescription, party: party.descriptions, creatures, ...(encounter === undefined ? {} : { encounter: encounter.publicDescription }), ...(atmosphere === undefined ? {} : { atmosphere }) }), caption: scene.title, references: party.references };
     }
     if (request.kind === "monsterImage") {
       const name = this.options.monsterName?.(request.monsterId, "en") ?? request.monsterId.replace(/^monster:/, "").replace(/-/g, " ");

@@ -46,12 +46,14 @@ describe("story effects", () => {
     expect(told(12).requests.some((request) => request.kind === "momentImage")).toBe(false);
   });
 
-  it("asks for a portrait of each kind of monster as its fight begins", () => {
+  it("asks for one scene with the monsters as its fight begins", () => {
     const planned = run(closedRound(), system, { kind: "applyRoundPlan", proposal: sneaking([ambushIfSpotted]) }).state;
     const narrated = run(rollStealth(planned, 3).state, system, { kind: "recordNarration", roundNumber: 1, text: "A goblin spots Mira!" });
-    const asked = narrated.requests.flatMap((request) => (request.kind === "monsterImage" ? [request.monsterId] : []));
-    expect(asked.length).toBeGreaterThan(0);
-    expect(new Set(asked).size).toBe(asked.length);
+    const asked = narrated.requests.filter((request) => request.kind === "encounterImage");
+    expect(asked).toHaveLength(1);
+    expect(asked[0]?.monsters.length).toBeGreaterThan(0);
+    expect(asked[0]?.snapshot.sceneId).toBe(narrated.state.sceneId);
+    expect(narrated.requests.some((request) => request.kind === "monsterImage")).toBe(false);
   });
 
   it("moves the scene and queues the fight on a failed check, then starts it after narration", () => {
