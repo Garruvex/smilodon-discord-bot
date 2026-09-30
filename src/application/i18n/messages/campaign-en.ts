@@ -357,6 +357,7 @@ export const campaignEn = {
   "campaign.refusal.haggleAlreadyPending": "This hero already has a haggle roll waiting.",
   "campaign.refusal.invalidPressSkill": "Prying at a secret only works with Persuasion, Deception, Intimidation, or Insight.",
   "campaign.refusal.pressAlreadyPending": "This hero already has a press roll waiting.",
+  "campaign.refusal.npcDown": "That character is dead.",
   "campaign.refusal.dialoguePending": "Wait for the NPC's reply before speaking again.",
   "campaign.refusal.secretAlreadyRevealed": "This NPC has already given that up.",
   "campaign.refusal.notARitualSpell": "That spell can't be cast as a ritual.",

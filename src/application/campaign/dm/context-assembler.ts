@@ -171,7 +171,7 @@ function adventure(input: ContextInput): ContextSection {
   }
   const scene = findScene(bible, state.sceneId);
   const npcs = bible.npcs
-    .filter((npc) => scene?.npcIds.includes(npc.id) === true)
+    .filter((npc) => scene?.npcIds.includes(npc.id) === true && state.npcsDown?.includes(npc.id) !== true)
     .map((npc) => `${npc.name} (voice: ${npc.voice}): ${npc.publicDescription}`);
   const sceneText = scene === undefined ? [] : [`Scene: ${scene.title}. ${scene.publicDescription}`];
   return { layer: "B", title: "Adventure", text: [bible.title, bible.premise, ...sceneText, ...npcs].join("\n") };

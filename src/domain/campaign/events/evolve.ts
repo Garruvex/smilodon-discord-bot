@@ -436,7 +436,9 @@ function evolveCombat(state: CampaignState, event: CombatEvent): CampaignState {
       characters[id] = { ...sheet, equipment: [] };
     }
   }
-  return withoutOffers(withCompanions({ ...state, encounter, heroStatus, characters, stash }, afterFight(state.companions, Object.values(encounter.combatants))), (offer) => fallen.includes(offer.fromCharacterId) || fallen.includes(offer.toCharacterId));
+  const killed = Object.values(encounter.combatants).flatMap((combatant) => (combatant.source.kind === "monster" && combatant.source.npcId !== null && combatant.condition === "dead" ? [combatant.source.npcId] : []));
+  const npcsDown: CampaignState["npcsDown"] = killed.length === 0 ? state.npcsDown : [...new Set([...(state.npcsDown ?? []), ...killed])] as NonNullable<CampaignState["npcsDown"]>;
+  return withoutOffers(withCompanions({ ...state, encounter, heroStatus, characters, stash, ...(npcsDown === undefined ? {} : { npcsDown }) }, afterFight(state.companions, Object.values(encounter.combatants))), (offer) => fallen.includes(offer.fromCharacterId) || fallen.includes(offer.toCharacterId));
 }
 
 // The state with a new roster; an absent roster stays absent.

@@ -351,6 +351,7 @@ export const campaignZhTW = {
   "campaign.refusal.haggleAlreadyPending": "這名角色已經有一筆議價正在等待擲骰。",
   "campaign.refusal.invalidPressSkill": "追問秘密只能使用說服、欺瞞、威嚇或洞察。",
   "campaign.refusal.pressAlreadyPending": "這名角色已經有一筆追問正在等待擲骰。",
+  "campaign.refusal.npcDown": "那個角色已經死了。",
   "campaign.refusal.dialoguePending": "請等 NPC 回應後再繼續交談。",
   "campaign.refusal.secretAlreadyRevealed": "這名NPC已經透露過那件事了。",
   "campaign.refusal.notARitualSpell": "這個法術無法以儀式施法。",

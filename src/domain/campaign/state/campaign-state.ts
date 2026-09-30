@@ -118,6 +118,8 @@ export interface CampaignState {
   // NPCs who have given up their authored secret (adventure-bible.ts's
   // BibleNpc.secret) to a successful press; once true, pressNpc refuses a
   // second attempt on that NPC and later conversation may reference it.
+  // NPCs killed in a fight: they are no longer in their scene, and can be neither spoken to nor traded with.
+  readonly npcsDown?: readonly NpcId[];
   readonly npcSecretsRevealed?: Readonly<Record<NpcId, boolean>>;
   // A ritual spell cast outside combat, waiting for the Narrator to describe
   // what it reveals or does (engine/utility-magic.ts); removed once

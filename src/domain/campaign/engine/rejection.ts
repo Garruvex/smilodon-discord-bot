@@ -67,6 +67,7 @@ export type Rejection =
   | { readonly code: "invalidPressSkill" }
   | { readonly code: "pressAlreadyPending" }
   | { readonly code: "dialoguePending" }
+  | { readonly code: "npcDown" }
   | { readonly code: "secretAlreadyRevealed" }
   | { readonly code: "notARitualSpell" }
   | { readonly code: "hazardAlreadyPending" }

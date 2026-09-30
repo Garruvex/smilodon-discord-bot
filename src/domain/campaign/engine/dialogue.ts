@@ -34,8 +34,9 @@ export function handleDialogueCommand(decision: Decision, command: DialogueComma
 const pressSkills = ["persuasion", "deception", "intimidation", "insight"] as const;
 export const maxQuestionLength = 1000;
 
-function mayTalk(decision: Decision, characterId: CharacterId): Rejection | null {
+function mayTalk(decision: Decision, characterId: CharacterId, npcId: DialogueRecord["npcId"]): Rejection | null {
   const { state, ctx } = decision;
+  if (state.npcsDown?.includes(npcId) === true) return { code: "npcDown" };
   if (ctx.actor.kind !== "user" || state.characters[characterId]?.ownerUserId !== ctx.actor.userId) return { code: "notYourCharacter" };
   if (isFallen(state, characterId)) return { code: "heroFallen" };
   if (state.encounter !== null && state.encounter.status !== "ended") return { code: "inCombat" };
@@ -43,7 +44,7 @@ function mayTalk(decision: Decision, characterId: CharacterId): Rejection | null
 }
 
 function askNpc(decision: Decision, characterId: CharacterId, npcId: DialogueRecord["npcId"], question: string): Rejection | null {
-  const refusal = mayTalk(decision, characterId);
+  const refusal = mayTalk(decision, characterId, npcId);
   if (refusal !== null) return refusal;
   if (Object.values(decision.state.dialogues).some((dialogue) => dialogue.characterId === characterId) || decision.state.pressPending?.[characterId] !== undefined) return { code: "dialoguePending" };
   const trimmed = question.trim();
@@ -63,7 +64,7 @@ function askNpc(decision: Decision, characterId: CharacterId, npcId: DialogueRec
 
 function pressNpc(decision: Decision, command: Extract<DialogueCommand, { kind: "pressNpc" }>): Rejection | null {
   const { characterId, npcId, skill } = command;
-  const refusal = mayTalk(decision, characterId);
+  const refusal = mayTalk(decision, characterId, npcId);
   if (refusal !== null) return refusal;
   const { state } = decision;
   if (!isSkill(skill) || !(pressSkills as readonly string[]).includes(skill)) return { code: "invalidPressSkill" };

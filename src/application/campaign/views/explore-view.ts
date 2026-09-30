@@ -84,7 +84,7 @@ export const haggleSkills: readonly Skill[] = ["persuasion", "deception", "intim
 // The NPCs the party can reach: those the current scene lists.
 export function sceneNpcs(state: CampaignState, bible: AdventureBible): readonly BibleNpc[] {
   const scene = bible.scenes.find((candidate) => candidate.id === state.sceneId);
-  return (scene?.npcIds ?? []).flatMap((id) => bible.npcs.filter((npc) => npc.id === id));
+  return (scene?.npcIds ?? []).filter((id) => state.npcsDown?.includes(id) !== true).flatMap((id) => bible.npcs.filter((npc) => npc.id === id));
 }
 
 function exploreNpc(state: CampaignState, npc: BibleNpc): ExploreNpc {

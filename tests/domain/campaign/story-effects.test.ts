@@ -248,4 +248,19 @@ describe("after a fight", () => {
     expect(ended("victory").heroStatus["c-mira"]?.hp).toBe(9);
     expect(ended("defeat").heroStatus["c-borin"]?.hp).toBe(1);
   });
+
+  it("remembers an NPC killed in the fight, and refuses to talk to or trade with them afterwards", () => {
+    const named: EncounterSpec = { ...skirmish, monsters: [{ monsterId: "monster:goblin", zoneId: "courtyard", npcId: "npc:smith", fleeBelowHpFraction: null }, { monsterId: "monster:goblin", zoneId: "courtyard", npcId: null, fleeBelowHpFraction: null }] };
+    const fight = new Fight().rolls([20, 15, 5, 4]).run(organizer, { kind: "startEncounter", spec: named });
+    const slain = {
+      ...fight.encounter,
+      combatants: Object.fromEntries(
+        Object.entries(fight.encounter.combatants).map(([id, combatant]) => [id, combatant.source.kind === "monster" && combatant.source.npcId === "npc:smith" ? { ...combatant, hp: 0, condition: "dead" as const } : combatant]),
+      ),
+    };
+    const after = replay({ ...fight.state, encounter: slain }, [{ kind: "encounterEnded", outcome: "victory" }]);
+    expect(after.npcsDown).toEqual(["npc:smith"]);
+    expect(reject(after, jamie, { kind: "askNpc", characterId: "c-borin", npcId: "npc:smith", question: "Are you well?" })).toEqual({ code: "npcDown" });
+    expect(reject(after, jamie, { kind: "buyItem", characterId: "c-borin", npcId: "npc:smith", itemId: "item:dagger", price: 2 })).toEqual({ code: "npcDown" });
+  });
 });
