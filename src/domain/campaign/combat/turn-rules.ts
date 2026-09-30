@@ -146,7 +146,7 @@ export function wildShapeProblem(hero: Combatant, content: SealedContent, monste
   if (!hero.traits.some((trait) => trait.kind === "wildShape")) return { code: "unknownFeature" };
   const beast = content.find(monsterId);
   if (beast?.kind !== "monster" || !mayWildShapeInto(hero.level, beast)) return { code: "unknownFeature" };
-  return (hero.resources.featureUses[wildShapeFeature] ?? wildShapeUses) < 1 ? { code: "noUsesLeft" } : null;
+  return (hero.resources.featureUses[wildShapeFeature] ?? wildShapeUses) < 1 && !hero.traits.some((trait) => trait.kind === "unlimitedWildShape") ? { code: "noUsesLeft" } : null;
 }
 
 // Every beast this druid may take now.
@@ -169,7 +169,7 @@ export function featureProblem(hero: Combatant, content: SealedContent, featureI
     const engaged = engagedWith(encounter, hero.id).some((other) => other.side !== hero.side && isPresent(other) && other.hp > 0);
     if (engaged || (zone?.cover === undefined && zone?.lighting !== "dark")) return refuse({ code: "notUsable" });
   }
-  const bonus = feature.action.cost === "bonusAction" || (feature.id === "feature:hide" && hero.traits.some((trait) => trait.kind === "cunningAction"));
+  const bonus = feature.action.cost === "bonusAction" || (feature.id === "feature:hide" && hero.traits.some((trait) => trait.kind === "cunningAction" || trait.kind === "quickHide"));
   const free = feature.action.cost === "free";
   const cost = free ? (canAct(hero, conditionLookup(content)) ? null : { code: "noActionLeft" as const }) : costProblem(hero, bonus ? "bonusAction" : "action", content);
   return cost === null ? accept({ feature, bonus, free }) : refuse(cost);

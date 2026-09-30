@@ -385,3 +385,16 @@ describe("Late features that act like spells or reactions", () => {
     expect(fight.combatant("c-borin").budget).toMatchObject({ bonusAction: false, action: true });
   });
 });
+
+describe("Ranger and druid capstones", () => {
+  it("Foe Slayer adds the Wisdom modifier to a weapon hit", () => {
+    const hit = (features: readonly string[]): number => {
+      const fight = new Fight(withFeatures(partyOfThree(), "c-elspeth", features)).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec: { ...skirmish, partyZoneId: "courtyard" } });
+      fight.run(sam, { kind: "combatEngage", combatantId: "c-elspeth", targetId: "goblin-a" });
+      fight.rolls([15], [1]).run(sam, { kind: "combatAttack", combatantId: "c-elspeth", targetId: "goblin-a", weapon: "item:mace" });
+      return 7 - fight.combatant("goblin-a").hp;
+    };
+    // Elspeth's spellcasting modifier is her Wisdom modifier, +3.
+    expect(hit(["feature:foe-slayer"])).toBe(hit([]) + 3);
+  });
+});

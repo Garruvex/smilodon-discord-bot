@@ -132,6 +132,12 @@ export type Trait =
   | { readonly kind: "fastHands" }
   // Beast Spells (Druid 18): may cast spells while in a beast shape.
   | { readonly kind: "beastSpells" }
+  // Archdruid (Druid 20): Wild Shape has no limit on its uses.
+  | { readonly kind: "unlimitedWildShape" }
+  // Vanish (Ranger 14): Hiding takes a bonus action.
+  | { readonly kind: "quickHide" }
+  // Foe Slayer (Ranger 20): the Wisdom modifier on weapon damage.
+  | { readonly kind: "foeSlayer" }
   // Cutting Words (College of Lore): a Bardic Inspiration use and the reaction take the die's average off a foe's attack roll within 60 feet, when that turns a hit into a miss.
   | { readonly kind: "cuttingWords" }
   // Fighting Style (Protection): when a creature attacks another one standing beside the holder, the holder's reaction gives that attack disadvantage. The shield the SRD asks for is not checked.

@@ -12,7 +12,7 @@ import type { ContentId } from "../../rules/content-id.js";
 import { monsterAttackOptions, monsterCombatant } from "../../combat/combatant-profile.js";
 import { distanceBetween, shortestPath } from "../../combat/positioning.js";
 import { resolveD20Test, type D20TestSpec } from "../../dice/d20-test.js";
-import { combine, dice } from "../../dice/dice-expression.js";
+import { combine, dice, flat } from "../../dice/dice-expression.js";
 import { resolveRollMode } from "../../dice/roll.js";
 import { classifyRollMoments } from "../../dice/roll-moments.js";
 import { resultMatchesSpec, type RollResult, type RollSpec } from "../../dice/roll-spec.js";
@@ -262,7 +262,7 @@ export function settleCheck(decision: Decision, resolutionId: string, rollId: Ro
 // through this instead of the plan directly so the extra effect reaches damage
 // rolling and application the same way any other does.
 export function landEffects(resolution: ResolutionState, encounter: EncounterState): readonly Effect[] {
-  const onLand = withStunningStrike(resolution, withMark(resolution, encounter, withDivineStrike(resolution, encounter, withImprovedSmite(resolution, encounter, withSavageAttacks(resolution, encounter)))));
+  const onLand = withStunningStrike(resolution, withFoeSlayer(resolution, encounter, withMark(resolution, encounter, withDivineStrike(resolution, encounter, withImprovedSmite(resolution, encounter, withSavageAttacks(resolution, encounter))))));
   const slot = resolution.smiteSlot !== undefined ? resolution.smiteSlot : resolution.source.kind === "weapon" ? (resolution.source.smiteSlot ?? null) : null;
   if (slot === null) return onLand;
   // 2d8 for a 1st-level slot, +1d8 per level above that, capped at 5d8; one more d8 against a fiend or undead.
@@ -330,6 +330,14 @@ function withMark(resolution: ResolutionState, encounter: EncounterState, effect
   if (resolution.source.kind !== "weapon" || target === undefined) return effects;
   const marked = target.effects.some((held) => held.sourceId === resolution.actorId && held.modifiers.some((modifier) => modifier.kind === "marked"));
   return marked ? [...effects, { kind: "damage", target: "target", amount: dice(1, 6), damageType: resolution.source.option.damageType }] : effects;
+}
+
+// Foe Slayer: the Wisdom modifier on a weapon hit.
+function withFoeSlayer(resolution: ResolutionState, encounter: EncounterState, effects: readonly Effect[]): readonly Effect[] {
+  const actor = encounter.combatants[resolution.actorId];
+  if (resolution.source.kind !== "weapon" || actor === undefined || !actor.traits.some((trait) => trait.kind === "foeSlayer")) return effects;
+  const wisdom = actor.spellcasting?.modifier ?? 0;
+  return wisdom <= 0 ? effects : [...effects, { kind: "damage", target: "target", amount: flat(wisdom), damageType: resolution.source.option.damageType }];
 }
 
 // Divine Strike: a weapon hit deals 1d8 more radiant damage, 2d8 from level 14.
