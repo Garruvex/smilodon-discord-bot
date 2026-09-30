@@ -67,6 +67,18 @@ describe("Spiritual Weapon", () => {
   });
 });
 
+describe("The other conjuring spells", () => {
+  it("Giant Insect grows three centipedes on the party's side and Animate Objects six flying swords", () => {
+    const summoned = (spell: `spell:${string}`, slot: number, prefix: string): number => {
+      const fight = new Fight(partyWithSpells([spell], { [slot]: 1 })).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec: skirmish });
+      fight.run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: spell, slotLevel: slot, targetIds: ["c-elspeth"] });
+      return Object.values(fight.encounter.combatants).filter((combatant) => combatant.id.startsWith(prefix) && combatant.side === "party").length;
+    };
+    expect(summoned("spell:giant-insect", 4, "c-elspeth-giant-centipede")).toBe(3);
+    expect(summoned("spell:animate-objects", 5, "c-elspeth-flying-sword")).toBe(6);
+  });
+});
+
 describe("Thunderwave", () => {
   it("pushes a creature that fails its save into the next zone, out of reach", () => {
     const state = partyWithSpells(["spell:thunderwave"]);

@@ -170,6 +170,14 @@ const curated = {
   "misty-step": { relation: "self", count: 1, note: "Thirty feet of movement that provokes no opportunity attacks stands in for the teleport; the caster walks to the zone.", effects: [{ movement: 30 }, { modifiers: [{ kind: "avoidsOpportunityAttacks" }], duration: { kind: "rounds", count: 1 } }] },
   "mirror-image": { relation: "self", count: 1, note: "Armor class +3 stands in for the three duplicates.", effects: [{ modifiers: [{ kind: "acBonus", amount: 3 }], duration: { kind: "rounds", count: 10 } }] },
   "enlarge-reduce": { relation: "ally-or-self", count: 1, note: "Only Enlarge is modeled: +2 melee damage stands in for the extra d4.", effects: [{ modifiers: [{ kind: "meleeDamageBonus", amount: 2 }], duration: { kind: "rounds", count: 10 } }] },
+  "animate-dead": { relation: "self", count: 1, summon: { monster: "skeleton", count: 1 }, note: "A skeleton fights beside the caster until the fight ends; it does not need a corpse and is not raised for a day.", effects: [] },
+  "conjure-minor-elementals": { relation: "self", count: 1, summon: { monster: "steam-mephit", count: 4 }, note: "Four steam mephits stand in for the elementals the caster would choose.", effects: [] },
+  "conjure-woodland-beings": { relation: "self", count: 1, summon: { monster: "satyr", count: 2 }, note: "Two satyrs stand in for the fey the caster would choose.", effects: [] },
+  "conjure-elemental": { relation: "self", count: 1, summon: { monster: "fire-elemental", count: 1 }, note: "A fire elemental stands in for the elemental the caster would choose; it does not turn on the caster if concentration slips.", effects: [] },
+  "conjure-celestial": { relation: "self", count: 1, summon: { monster: "couatl", count: 1 }, note: "A couatl stands in for the celestial the caster would choose.", effects: [] },
+  "giant-insect": { relation: "self", count: 1, summon: { monster: "giant-centipede", count: 3 }, note: "Three giant centipedes stand in for the insects the caster would grow.", effects: [] },
+  "animate-objects": { relation: "self", count: 1, summon: { monster: "flying-sword", count: 6 }, note: "Six flying swords stand in for the objects the caster would animate.", effects: [] },
+  "create-undead": { relation: "self", count: 1, summon: { monster: "ghoul", count: 3 }, note: "Three ghouls stand in for the undead the caster would raise; they do not need corpses and obey until the fight ends.", effects: [] },
   darkness: { relation: "enemy", count: 6, save: null, note: "Blinds the creatures in the area for the duration; there is no lighting in the engine.", effects: [{ condition: "blinded", duration: { kind: "untilRemoved" }, onLand: true }] },
 };
 

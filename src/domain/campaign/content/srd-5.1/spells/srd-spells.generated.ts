@@ -149,28 +149,28 @@ export const animalShapes = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// A skeleton fights beside the caster until the fight ends; it does not need a corpse and is not raised for a day.
 export const animateDead = defineSpell({
   id: "spell:animate-dead",
   source,
   level: 3,
   castingTime: "long",
   range: { kind: "feet", feet: 10 },
-  targeting: { relation: "creature", count: 4 },
+  targeting: { relation: "self", count: 1 },
   concentration: false,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "summon", target: "self", monsterId: "monster:skeleton", count: 1 }], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Six flying swords stand in for the objects the caster would animate.
 export const animateObjects = defineSpell({
   id: "spell:animate-objects",
   source,
   level: 5,
   castingTime: "action",
   range: { kind: "feet", feet: 120 },
-  targeting: { relation: "creature", count: 1 },
+  targeting: { relation: "self", count: 1 },
   concentration: true,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "summon", target: "self", monsterId: "monster:flying-sword", count: 6 }], onAvoid: [] }),
 });
 
 // Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
@@ -630,28 +630,28 @@ export const conjureAnimals = defineSpell({
   plan: () => ({ check: null, onLand: [{ kind: "summon", target: "self", monsterId: "monster:brown-bear", count: 2 }], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// A couatl stands in for the celestial the caster would choose.
 export const conjureCelestial = defineSpell({
   id: "spell:conjure-celestial",
   source,
   level: 7,
   castingTime: "long",
   range: { kind: "feet", feet: 90 },
-  targeting: { relation: "creature", count: 1 },
+  targeting: { relation: "self", count: 1 },
   concentration: true,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "summon", target: "self", monsterId: "monster:couatl", count: 1 }], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// A fire elemental stands in for the elemental the caster would choose; it does not turn on the caster if concentration slips.
 export const conjureElemental = defineSpell({
   id: "spell:conjure-elemental",
   source,
   level: 5,
   castingTime: "long",
   range: { kind: "feet", feet: 90 },
-  targeting: { relation: "creature", count: 6 },
+  targeting: { relation: "self", count: 1 },
   concentration: true,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "summon", target: "self", monsterId: "monster:fire-elemental", count: 1 }], onAvoid: [] }),
 });
 
 // Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
@@ -666,28 +666,28 @@ export const conjureFey = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Four steam mephits stand in for the elementals the caster would choose.
 export const conjureMinorElementals = defineSpell({
   id: "spell:conjure-minor-elementals",
   source,
   level: 4,
   castingTime: "long",
   range: { kind: "feet", feet: 90 },
-  targeting: { relation: "creature", count: 1 },
+  targeting: { relation: "self", count: 1 },
   concentration: true,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "summon", target: "self", monsterId: "monster:steam-mephit", count: 4 }], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Two satyrs stand in for the fey the caster would choose.
 export const conjureWoodlandBeings = defineSpell({
   id: "spell:conjure-woodland-beings",
   source,
   level: 4,
   castingTime: "action",
   range: { kind: "feet", feet: 60 },
-  targeting: { relation: "creature", count: 1 },
+  targeting: { relation: "self", count: 1 },
   concentration: true,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "summon", target: "self", monsterId: "monster:satyr", count: 2 }], onAvoid: [] }),
 });
 
 // Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
@@ -785,16 +785,16 @@ export const createFoodAndWater = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Three ghouls stand in for the undead the caster would raise; they do not need corpses and obey until the fight ends.
 export const createUndead = defineSpell({
   id: "spell:create-undead",
   source,
   level: 6,
   castingTime: "long",
   range: { kind: "feet", feet: 10 },
-  targeting: { relation: "creature", count: 3 },
+  targeting: { relation: "self", count: 1 },
   concentration: false,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "summon", target: "self", monsterId: "monster:ghoul", count: 3 }], onAvoid: [] }),
 });
 
 // Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
@@ -1552,16 +1552,16 @@ export const gentleRepose = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Three giant centipedes stand in for the insects the caster would grow.
 export const giantInsect = defineSpell({
   id: "spell:giant-insect",
   source,
   level: 4,
   castingTime: "action",
   range: { kind: "feet", feet: 30 },
-  targeting: { relation: "creature", count: 1 },
+  targeting: { relation: "self", count: 1 },
   concentration: true,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "summon", target: "self", monsterId: "monster:giant-centipede", count: 3 }], onAvoid: [] }),
 });
 
 // Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
