@@ -7,7 +7,7 @@ import type { MetamagicOption } from "../rules/modifiers.js";
 import type { SealedContent } from "../rules/content-registry.js";
 import { healingPotionCost, type HouseRules } from "../rules/house-rules.js";
 import { mayWildShapeInto, wildShapeFeature, wildShapeUses } from "../rules/wild-shape-rules.js";
-import { canAct, conditionLookup, isFlying, speedOf } from "../effects/effect-queries.js";
+import { canAct, conditionLookup, hasCondition, isFlying, speedOf } from "../effects/effect-queries.js";
 import { castableSlotLevels, slotUnavailable, spellMaxTargets, usePoolOf } from "../magic/spell-rules.js";
 import { areEngaged, availableSlots, currentCombatant, engagedWith, isPresent, type AttackOption, type Combatant, type EncounterState } from "./combat-state.js";
 import { isWorn } from "./combatant-profile.js";
@@ -182,6 +182,11 @@ export function featureProblem(hero: Combatant, content: SealedContent, featureI
   // Only a slot the hero still holds can be turned into points, and only when the points have room.
   const convert = /^feature:slot-to-points-(\d)$/.exec(feature.id);
   if (convert !== null && ((hero.resources.spellSlots[Number(convert[1])] ?? 0) < 1 || (hero.resources.featureUses["feature:font-of-magic"] ?? 0) >= hero.level)) return refuse({ code: "notUsable" });
+  // The reactions switch shows only the side it can flip to.
+  if (feature.id === "feature:hold-reactions" || feature.id === "feature:resume-reactions") {
+    const holding = hasCondition(hero, "condition:holding-reactions", conditionLookup(content));
+    if (holding === (feature.id === "feature:hold-reactions")) return refuse({ code: "notUsable" });
+  }
   if (feature.id === "feature:hide" && encounter !== null) {
     const zone = encounter.zones.find((candidate) => candidate.id === hero.zoneId);
     const engaged = engagedWith(encounter, hero.id).some((other) => other.side !== hero.side && isPresent(other) && other.hp > 0);

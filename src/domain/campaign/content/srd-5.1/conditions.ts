@@ -25,6 +25,10 @@ export const prone = defineCondition({
   ],
 });
 
+// A marker, not a hardship: the creature keeps its reaction for something it chooses, so the reactions that fire by themselves
+// (Protection, Deflect Missiles, Cutting Words, Uncanny Dodge) hold back.
+export const holdingReactions = defineCondition({ id: "condition:holding-reactions", source, includes: [], modifiers: [] });
+
 export const frightened = defineCondition({ id: "condition:frightened", source, includes: [], modifiers: [{ kind: "ownAttacks", mode: "disadvantage" }] });
 // Turned by Turn Undead: it flees, so it takes no actions and attacks poorly if forced to.
 export const turned = defineCondition({ id: "condition:turned", source, includes: [frightened.id, incapacitated.id], modifiers: [] });
@@ -106,6 +110,7 @@ export const invisible = defineCondition({
 export const charmed = defineCondition({ id: "condition:charmed", source, includes: [], modifiers: [{ kind: "cannotTargetSource" }] });
 
 export const srd51Conditions: readonly ConditionDefinition[] = [
+  holdingReactions,
   incapacitated,
   prone,
   frightened,

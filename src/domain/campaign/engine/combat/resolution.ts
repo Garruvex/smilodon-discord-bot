@@ -4,7 +4,7 @@ import type { RollId } from "../../core/ids.js";
 import { abilityModifier } from "../../character/character-sheet.js";
 import type { ActionCost } from "../../combat/combat-events.js";
 import { areEngaged, isPresent, type Combatant, type CombatantId, type EncounterState, type PendingCheck, type PendingCombatRoll, type PendingEffectRoll, type ResolutionSource, type ResolutionState, type TargetOutcome } from "../../combat/combat-state.js";
-import { armorClassOf, attackBonusOf, autoFailsSave, bonusDiceFor, conditionLookup, hitsAreCritical, modifiersOf, saveBias } from "../../effects/effect-queries.js";
+import { armorClassOf, attackBonusOf, autoFailsSave, bonusDiceFor, conditionLookup, hasCondition, hitsAreCritical, modifiersOf, saveBias } from "../../effects/effect-queries.js";
 import type { EffectInstance } from "../../effects/effect-instance.js";
 import type { D20TestRoll } from "../../dice/d20-test.js";
 import type { SealedContent } from "../../rules/content-registry.js";
@@ -294,7 +294,7 @@ function cuttingWords(decision: Decision, encounter: EncounterState, attackerId:
   if (attacker === undefined) return 0;
   const key = "spell:bardic-inspiration";
   for (const bard of Object.values(encounter.combatants)) {
-    if (bard.side === attacker.side || !isPresent(bard) || bard.hp <= 0 || !bard.budget.reaction || !bard.traits.some((trait) => trait.kind === "cuttingWords")) continue;
+    if (bard.side === attacker.side || !isPresent(bard) || bard.hp <= 0 || !bard.budget.reaction || !bard.traits.some((trait) => trait.kind === "cuttingWords") || hasCondition(bard, "condition:holding-reactions", conditionLookup(decision.ctx.rules.content))) continue;
     if ((distanceBetween(encounter, bard.id, attacker.id) ?? Infinity) > 60) continue;
     if ((bard.resources.featureUses[innateUseKey(key)] ?? bard.spellcasting?.innate?.[key] ?? 0) < 1) continue;
     const sides = bard.level >= 15 ? 12 : bard.level >= 10 ? 10 : bard.level >= 5 ? 8 : 6;
@@ -510,14 +510,15 @@ export function applyEffect(
       // prompt). Only against an attack roll, not a saving throw, matching
       // the SRD ("hits you with an attack").
       const isAttack = resolution.plan.check?.kind === "weaponAttack" || resolution.plan.check?.kind === "spellAttack";
-      const dodges = isAttack && recipient.traits.some((trait) => trait.kind === "uncannyDodge") && recipient.budget.reaction;
+      const holding = hasCondition(recipient, "condition:holding-reactions", conditionLookup(decision.ctx.rules.content));
+      const dodges = isAttack && recipient.traits.some((trait) => trait.kind === "uncannyDodge") && recipient.budget.reaction && !holding;
       if (dodges) decision.emit({ kind: "uncannyDodgeUsed", combatantId: recipient.id });
       // Evasion: a Dexterity save against damage that halves on a success takes nothing on a success and half on a failure.
       const evades =
         resolution.plan.check?.kind === "savingThrow" && resolution.plan.check.ability === "dex" && recipient.traits.some((trait) => trait.kind === "evasion") && resolution.plan.onAvoid.some((other) => other.kind === "damage" && other.halfOfLand === true);
       const taken = evades ? (effect.halfOfLand === true ? 0 : Math.floor(rolled / 2)) : rolled;
       // Deflect Missiles: the reaction turns a ranged weapon hit down by the die's average, the Dexterity modifier and the level.
-      const deflects = !dodges && resolution.source.kind === "weapon" && resolution.source.option.range.kind === "ranged" && isAttack && recipient.traits.some((trait) => trait.kind === "deflectMissiles") && recipient.budget.reaction;
+      const deflects = !dodges && resolution.source.kind === "weapon" && resolution.source.option.range.kind === "ranged" && isAttack && recipient.traits.some((trait) => trait.kind === "deflectMissiles") && recipient.budget.reaction && !holding;
       if (deflects) decision.emit({ kind: "uncannyDodgeUsed", combatantId: recipient.id });
       const deflected = deflects ? 6 + abilityModifier(decision.state.characters[recipient.id]?.abilityScores.dex ?? 10) + recipient.level : 0;
       applyDamage(decision, recipient, dodges ? Math.floor(taken / 2) : Math.max(0, taken - deflected), critical, effect.damageType);

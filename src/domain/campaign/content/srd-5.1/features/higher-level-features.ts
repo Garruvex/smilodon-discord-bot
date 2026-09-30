@@ -1,4 +1,5 @@
 import { defineFeature, type FeatureDefinition } from "../../../rules/content-definitions.js";
+import type { Effect } from "../../../rules/effects.js";
 import type { MetamagicOption } from "../../../rules/modifiers.js";
 
 // Level 2, 3, 5, 11 and 20 class features (SRD 5.1, Classes), granted
@@ -68,6 +69,11 @@ export const reliableTalent = narrative("reliable-talent");
 // Every martial class can grapple and shove (spells/class-ability-spells.ts); at will, on Strength.
 export const grappleFeature = defineFeature({ id: "feature:grapple", source, traits: [{ kind: "featureSpell", spell: "spell:grapple", ability: "str", uses: null, recharge: "longRest" }], action: null });
 export const escapeGrappleFeature = defineFeature({ id: "feature:escape-grapple", source, traits: [{ kind: "featureSpell", spell: "spell:escape-grapple", ability: "str", uses: null, recharge: "longRest" }], action: null });
+// Reactions that fire by themselves can be held back, so the reaction is kept for a choice (an opportunity attack, Shield, a Counterspell).
+const freeSwitch = (id: string, onLand: readonly Effect[]): FeatureDefinition =>
+  defineFeature({ id: `feature:${id}`, source, traits: [], action: { cost: "free", uses: { count: 99, recharge: "shortRest" }, plan: () => ({ check: null, onLand, onAvoid: [] }) } });
+export const holdReactions = freeSwitch("hold-reactions", [{ kind: "applyCondition", target: "self", condition: "condition:holding-reactions", duration: { kind: "untilRemoved" } }]);
+export const resumeReactions = freeSwitch("resume-reactions", [{ kind: "removeCondition", target: "self", conditions: ["condition:holding-reactions"] }]);
 export const shoveFeature = defineFeature({ id: "feature:shove", source, traits: [{ kind: "featureSpell", spell: "spell:shove", ability: "str", uses: null, recharge: "longRest" }], action: null });
 // Barbarian 11: read where damage drops a raging barbarian to 0 (engine/combat/damage.ts).
 export const relentlessRage = defineFeature({ id: "feature:relentless-rage", source, traits: [], action: null, resource: { count: 1, recharge: "longRest" } });
@@ -199,6 +205,8 @@ export const srd51HigherLevelFeatures: readonly FeatureDefinition[] = [
   grappleFeature,
   shoveFeature,
   escapeGrappleFeature,
+  holdReactions,
+  resumeReactions,
   reliableTalent,
   agonizingBlast,
   armorOfShadows,

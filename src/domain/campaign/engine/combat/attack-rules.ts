@@ -1,7 +1,7 @@
 // The rules an attack or spell is built from: its plan, advantage and disadvantage, and Sneak Attack.
 import { assertNever } from "../../core/assert-never.js";
 import { engagedWith, isActive, type Combatant, type EncounterState, type ResolutionSource } from "../../combat/combat-state.js";
-import { attackBias, canAct, conditionLookup, effectsUsedUpByAttack, meleeDamageBonusOf, type ConditionLookup } from "../../effects/effect-queries.js";
+import { attackBias, canAct, conditionLookup, effectsUsedUpByAttack, hasCondition, meleeDamageBonusOf, type ConditionLookup } from "../../effects/effect-queries.js";
 import type { DiceExpression } from "../../dice/dice-expression.js";
 import { distanceBetween, engagedDistance } from "../../combat/positioning.js";
 import type { D20TestSpec } from "../../dice/d20-test.js";
@@ -161,7 +161,7 @@ export function coverBonus(encounter: EncounterState, sourceId: string, target: 
 // Protection (Fighting Style): a creature standing beside the target, with its reaction to spare, that can throw the attack off.
 export function protectorFor(encounter: EncounterState, target: Combatant, lookup: ConditionLookup): Combatant | undefined {
   return Object.values(encounter.combatants).find(
-    (other) => other.id !== target.id && other.side === target.side && other.zoneId === target.zoneId && isActive(other) && other.hp > 0 && other.budget.reaction && other.traits.some((trait) => trait.kind === "protectionStyle") && canAct(other, lookup),
+    (other) => other.id !== target.id && other.side === target.side && other.zoneId === target.zoneId && isActive(other) && other.hp > 0 && other.budget.reaction && other.traits.some((trait) => trait.kind === "protectionStyle") && canAct(other, lookup) && !hasCondition(other, "condition:holding-reactions", lookup),
   );
 }
 

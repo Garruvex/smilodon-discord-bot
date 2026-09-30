@@ -156,6 +156,31 @@ describe("Fighting Style: Protection", () => {
   });
 });
 
+describe("Holding reactions back", () => {
+  it("keeps the neighbor's reaction for later: Protection does not fire on its own", () => {
+    const state = withFeatures(partyOfThree(), "c-borin", ["feature:fighting-style-protection", "feature:hold-reactions", "feature:resume-reactions"]);
+    // Borin goes first.
+    const fight = new Fight(state).rolls([5, 20, 4, 3, 2]).run(organizer, { kind: "startEncounter", spec: skirmish });
+    fight.run(jamie, { kind: "combatUseFeature", combatantId: "c-borin", featureId: "feature:hold-reactions" });
+    // Only the way back is offered now, and holding costs nothing of the turn.
+    expect(fight.reject(jamie, { kind: "combatUseFeature", combatantId: "c-borin", featureId: "feature:hold-reactions" })).toEqual({ code: "notUsable" });
+    expect(fight.combatant("c-borin").budget.action).toBe(true);
+    fight.run(jamie, { kind: "endTurn", combatantId: "c-borin" });
+    fight.run(alex, { kind: "endTurn", combatantId: "c-mira" });
+    fight.rolls(Array.from({ length: 6 }, () => 10), Array.from({ length: 6 }, () => 3)).run(sam, { kind: "endTurn", combatantId: "c-elspeth" });
+    expect(fight.events.some((event) => event.kind === "resolutionDeclared")).toBe(true);
+    expect(fight.events.some((event) => event.kind === "uncannyDodgeUsed")).toBe(false);
+  });
+
+  it("gives the same fight the reaction back when reactions are resumed", () => {
+    const state = withFeatures(partyOfThree(), "c-borin", ["feature:fighting-style-protection", "feature:hold-reactions", "feature:resume-reactions"]);
+    const fight = new Fight(state).rolls([5, 20, 4, 3, 2]).run(organizer, { kind: "startEncounter", spec: skirmish });
+    fight.run(jamie, { kind: "combatUseFeature", combatantId: "c-borin", featureId: "feature:hold-reactions" });
+    fight.run(jamie, { kind: "combatUseFeature", combatantId: "c-borin", featureId: "feature:resume-reactions" });
+    expect(fight.combatant("c-borin").effects).toEqual([]);
+  });
+});
+
 describe("Aura of Courage", () => {
   function afterDragon(features: readonly string[]): readonly string[] {
     const spec: EncounterSpec = { ...skirmish, monsters: [{ monsterId: "monster:adult-blue-dragon", zoneId: "courtyard", npcId: null, fleeBelowHpFraction: null }] };
