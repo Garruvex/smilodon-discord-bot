@@ -174,7 +174,7 @@ describe("approving an adventure", () => {
     const followUps: { files?: { name: string }[]; content?: string }[] = [];
     const { interaction } = fakeButton(buttonId, "u-up");
     (interaction as unknown as { followUp: (payload: never) => Promise<void> }).followUp = (payload: never): Promise<void> => (followUps.push(payload), Promise.resolve());
-    const withExample = new AdventureComponentHandler({ catalog: t.catalog, authority: { isAdmin: () => Promise.resolve(false) } as never, example: (language) => `id: example-${language}` });
+    const withExample = new AdventureComponentHandler({ catalog: t.catalog, authority: { isAdmin: () => Promise.resolve(false) } as never, example: (language): string => `id: example-${language}` });
     await withExample.execute({ interaction, logger: quiet as never });
     expect(followUps[0]?.files?.[0]?.name).toBe("example-adventure-en.yaml");
     expect(followUps[0]?.content).toContain("complete adventure");
@@ -403,7 +403,9 @@ describe("a game from an approved adventure", () => {
     expect(t.creator.findAdventure("g-1", "en", submitted.adventure.id)).toEqual({ kind: "found", adventureId: submitted.adventure.id });
     // The bundled one is the default, so naming it changes nothing.
     expect(t.creator.findAdventure("g-1", "en", starterAdventureId)).toEqual({ kind: "found", adventureId: undefined });
-    expect(t.creator.findAdventure("g-1", "en", "nothing like it")).toMatchObject({ kind: "none", available: expect.arrayContaining(["Harbor Heist"]) });
+    const none = t.creator.findAdventure("g-1", "en", "nothing like it");
+    expect(none.kind).toBe("none");
+    expect(none.kind === "none" ? none.available : []).toContain("Harbor Heist");
     // Another server does not see it.
     expect(t.creator.findAdventure("g-2", "en", "harbor")).toMatchObject({ kind: "none" });
     // An adventure with no Chinese edition is not offered for a Chinese game.

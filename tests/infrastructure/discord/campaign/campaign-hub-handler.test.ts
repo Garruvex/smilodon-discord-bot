@@ -149,7 +149,7 @@ function harness(options: { modelConfigured?: boolean; launcher?: boolean; canAu
     creator,
     authority,
     ...(options.images === undefined ? {} : { imagesEnabled: options.images }),
-    ...(options.catalog === undefined ? {} : { adventures: { listForGuild: () => options.catalog ?? [] } }),
+    ...(options.catalog === undefined ? {} : { adventures: { listForGuild: (): NonNullable<typeof options.catalog> => options.catalog ?? [] } }),
     ...(options.icons === true ? { icons: applicationIcons((name) => ({ id: `id-${name}`, name })) } : {}),
   });
   return {
