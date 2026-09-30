@@ -186,6 +186,7 @@ const curated = {
   "hunters-mark": { relation: "enemy", count: 1, save: null, note: "The mark adds 1d6 to the caster's weapon hits on the creature; moving it when the creature falls is not modeled.", effects: [{ modifiers: [{ kind: "marked" }], duration: { kind: "untilRemoved" }, onLand: true }] },
   light: { relation: "self", count: 1, save: null, note: "Lights the zone the caster stands in, for the rest of the fight.", effects: [{ lighting: "bright" }] },
   daylight: { relation: "self", count: 1, save: null, note: "Lights the zone the caster stands in, for the rest of the fight.", effects: [{ lighting: "bright" }] },
+  "spirit-guardians": { relation: "enemy", count: 6, range: 15, save: null, note: "Each creature named is hurt as its own turn starts, for 2d8 radiant damage, which stands in for 3d8 with a Wisdom save for half; the spirits do not move with the caster or catch newcomers.", effects: [{ modifiers: [], triggers: [{ follows: "target", boundary: "start", does: { kind: "damage", amount: { terms: [{ count: 2, sides: 8 }], modifier: 0 }, damageType: "radiant" } }], duration: { kind: "untilRemoved" }, onLand: true }] },
   darkness: { relation: "self", count: 1, save: null, note: "Darkens the zone the caster stands in for the rest of the fight; creatures without darkvision, the caster's friends included, attack in or into it at disadvantage.", effects: [{ lighting: "dark" }] },
 };
 
@@ -265,7 +266,7 @@ function planFor(spell, notes) {
       else if (effect.movement !== undefined) code = `{ kind: "grantMovement", target: "target", feet: ${effect.movement} }`;
       else if (effect.damage !== undefined) code = `{ kind: "damage", target: "target", amount: ${effect.damage[0][0] === 0 ? `flat(${effect.damage[0][2]})` : "flat(0)"}, damageType: ${quote(effect.damageType)} }`;
       else if (effect.condition !== undefined) code = `{ kind: "applyCondition", target: "target", condition: "condition:${effect.condition}", duration: ${durationCode(effect.duration)} }`;
-      else code = `{ kind: "applyModifiers", target: "target", modifiers: ${JSON.stringify(effect.modifiers).replace(/"([a-zA-Z]+)":/g, "$1:").replace(/,/g, ", ").replace(/:/g, ": ").replace(/\{/g, "{ ").replace(/\}/g, " }")}, duration: ${durationCode(effect.duration)} }`;
+      else code = `{ kind: "applyModifiers", target: "target", modifiers: ${JSON.stringify(effect.modifiers).replace(/"([a-zA-Z]+)":/g, "$1:").replace(/,/g, ", ").replace(/:/g, ": ").replace(/\{/g, "{ ").replace(/\}/g, " }")}, duration: ${durationCode(effect.duration)}${effect.triggers === undefined ? "" : `, triggers: ${JSON.stringify(effect.triggers).replace(/"([a-zA-Z]+)":/g, "$1:").replace(/,/g, ", ").replace(/:/g, ": ").replace(/\{/g, "{ ").replace(/\}/g, " }")}`} }`;
       (effect.onLand === true || special.save !== undefined ? land : self).push(code);
     }
     const check = special.save === undefined || special.save === null ? "null" : `{ kind: "savingThrow", ability: ${quote(special.save)} }`;
@@ -326,7 +327,7 @@ for (const spell of spells) {
   const planned = planFor(spell, notes);
   // Thunderwave: a creature that fails its save is also pushed away (into the next zone, or out of the melee).
   if (spell.index === "thunderwave" && planned !== null) planned.body = planned.body.replace("], onAvoid:", ", { kind: \"push\", target: \"target\" }], onAvoid:");
-  const range = rangeOf(spell);
+  const range = curated[spell.index]?.range === undefined ? rangeOf(spell) : { kind: "feet", feet: curated[spell.index].range };
   const castingTime = castingTimeOf(spell.casting_time);
   const name = camel(spell.index);
   let relation;
@@ -345,7 +346,7 @@ for (const spell of spells) {
     count = planned.count;
     perHigher = planned.countPerHigherSlot;
     plan = planned.wrap(planned.body);
-    if (range.kind === "self" && relation !== "self" && spell.area_of_effect === undefined) relation = "self";
+    if (range.kind === "self" && relation !== "self" && spell.area_of_effect === undefined && curated[spell.index] === undefined) relation = "self";
   }
   const cleanNotes = notes.filter((note) => note !== "");
   const comment = cleanNotes.length === 0 ? "" : cleanNotes.map((note) => `// ${note}`).join(nl) + nl;

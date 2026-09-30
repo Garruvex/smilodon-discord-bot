@@ -1,3 +1,4 @@
+import type { EffectTrigger } from "../effects/effect-instance.js";
 import type { DiceExpression } from "../dice/dice-expression.js";
 import type { ContentId } from "./content-id.js";
 import type { Modifier } from "./modifiers.js";
@@ -95,6 +96,8 @@ export type Effect =
       readonly target: EffectTarget;
       readonly modifiers: readonly Modifier[];
       readonly duration: EffectDuration;
+      // What the effect does at turn boundaries (Spirit Guardians hurts its holder as its turn starts).
+      readonly triggers?: readonly EffectTrigger[];
     }
   // Gains (positive) or removes (negative) this many levels of Exhaustion, a
   // 6-level stacking condition unlike every other one here (Greater

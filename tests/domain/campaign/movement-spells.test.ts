@@ -110,3 +110,15 @@ describe("Staffs", () => {
     expect(fight.combatant("c-borin").spellcasting?.pools?.["spell:burning-hands"]).toEqual({ key: "pool:staff-of-fire", cost: 1 });
   });
 });
+
+describe("Spirit Guardians", () => {
+  it("hurts each creature it names as its turn starts", () => {
+    const fight = new Fight(partyWithSpells(["spell:spirit-guardians"], { 3: 1 })).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec: { ...spec, edges: [{ from: "gate", to: "courtyard", feet: 10 }] } });
+    fight.run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:spirit-guardians", slotLevel: 3, targetIds: ["goblin-a"] });
+    fight.run(sam, { kind: "endTurn", combatantId: "c-elspeth" });
+    fight.rolls(Array.from({ length: 6 }, () => 1), [2, 3, 1, 1, 1, 1, 1, 1]).run(alex, { kind: "endTurn", combatantId: "c-mira" });
+    // Two d8 as goblin A's turn begins (2 and 3), before it acts.
+    expect(fight.combatant("goblin-a").hp).toBe(2);
+    expect(fight.combatant("goblin-b").hp).toBe(7);
+  });
+});

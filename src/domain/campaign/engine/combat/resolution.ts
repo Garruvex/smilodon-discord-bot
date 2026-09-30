@@ -572,7 +572,7 @@ export function applyEffect(
           sourceId: resolution.actorId,
           conditions: [],
           modifiers: effect.modifiers,
-          triggers: [],
+          triggers: effect.triggers ?? [],
           clock: effect.duration.kind === "rounds" ? { follows: "source", boundary: "start", untilRound: round + effect.duration.count } : null,
           concentrationId: concentrating ? resolution.id : null,
           stacking: "replace",

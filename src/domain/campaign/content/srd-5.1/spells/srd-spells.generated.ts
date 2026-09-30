@@ -1184,7 +1184,7 @@ export const eyebite = defineSpell({
   level: 6,
   castingTime: "action",
   range: { kind: "self" },
-  targeting: { relation: "self", count: 1 },
+  targeting: { relation: "enemy", count: 1 },
   concentration: true,
   plan: () => ({ check: { kind: "savingThrow", ability: "wis" }, onLand: [{ kind: "applyCondition", target: "target", condition: "condition:frightened", duration: { kind: "untilRemoved" } }], onAvoid: [] }),
 });
@@ -3059,16 +3059,16 @@ export const spikeGrowth = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Each creature named is hurt as its own turn starts, for 2d8 radiant damage, which stands in for 3d8 with a Wisdom save for half; the spirits do not move with the caster or catch newcomers.
 export const spiritGuardians = defineSpell({
   id: "spell:spirit-guardians",
   source,
   level: 3,
   castingTime: "action",
-  range: { kind: "self" },
-  targeting: { relation: "self", count: 1 },
+  range: { kind: "feet", feet: 15 },
+  targeting: { relation: "enemy", count: 6 },
   concentration: true,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "applyModifiers", target: "target", modifiers: [], duration: { kind: "untilRemoved" }, triggers: [{ follows: "target", boundary: "start", does: { kind: "damage", amount: { terms: [{ count: 2, sides: 8 }], modifier: 0 }, damageType: "radiant" } }] }], onAvoid: [] }),
 });
 
 // A spectral weapon fights beside the caster until the fight ends, as a creature with its own turn; the book makes it a bonus action each turn and untargetable.
