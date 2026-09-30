@@ -15,7 +15,7 @@ gaps grouped by the engine primitive they need, with size (S: a day or less, M: 
 | **Positions inside a zone** | the zone is the position. Cover on a zone (half +2, three-quarters +5); a hostile area of ten feet or more is aimed at one creature and reaches everyone in its zone, friends and the caster included (Careful Spell and Sculpt Spells spare friends); monster casters aim only where foes outnumber friends | Range bands inside a zone, area shapes (a cone or line hits the whole zone), cover from creatures |
 | ~~Summons and companions~~ | done: Conjure Animals, Spiritual Weapon, the other conjuring spells, summons end with concentration when the spell needs it, Flaming Sphere, and companions kept between fights (Find Familiar is an owl that stays until dismissed; Animate Dead and Create Undead can be cast beforehand and last through the next fight) | the player does not steer them or pick what is summoned; the familiar fights where the book only lets it help |
 | ~~Sorcery points and spell modification~~ | done: Quickened, Twinned, Heightened, Empowered, Extended, Subtle, and Flexible Casting both ways (slots into points, points into slots) | the SRD's per-level Twinned cost. Distant and Careful Spell do nothing here: range is by zone and no spell hits an ally |
-| ~~Warlock invocations~~ | done: ten invocations and the three pact boons are chosen in the level-up form (as many as the level allows); Mystic Arcanum uses a fixed spell for each level | The other SRD invocations, the Blade's weapon (narrative), choosing the Arcanum spell |
+| ~~Warlock invocations~~ | done: ten invocations and the three pact boons are chosen in the level-up form (as many as the level allows); Mystic Arcanum uses a fixed spell for each level | The other SRD invocations, choosing the Arcanum spell. Pact of the Blade gives a weapon that is always at hand in a fight (no bonus action to summon it, no Hex Warrior) |
 | ~~Grapple and shove~~ | done, including escaping (an action that always works) | The contest rolls |
 | **Forms** | Wild Shape (Archdruid has no limit), Polymorph and True Polymorph (hostile use, into a frog), Shapechange and Animal Shapes (the caster takes a form from the wild-shape menu) | Animal Shapes for allies, the form's own mind, choosing the Polymorph form, Circle of the Moon |
 | **Charges and active magic items** | wands, spell scrolls, effect potions, staffs (Fire, Frost, Healing, Power) sharing one pool | Rods, bags, boots, cursed items, the other staffs |
@@ -26,18 +26,18 @@ gaps grouped by the engine primitive they need, with size (S: a day or less, M: 
 
 Every SRD class feature from level 1 to 20 is on the sheet from its level (`features/late-features.ts`). The mechanical ones are listed in `dnd-mechanics-status.md`. What has no rule yet:
 
-- **Barbarian:** Retaliation (14), Persistent Rage (no early end to persist).
-- **Bard:** Countercharm, Magical Secrets (no spells outside the class list), Expertise (3, 10).
-- **Cleric:** Divine Intervention.
-- **Druid:** Circle of the Land bonus spells, Nature's Ward and Sanctuary.
+- **Barbarian:** Persistent Rage (a rage has no early end to persist through). Retaliation is done (a melee hit back with the reaction, on its own unless the hero holds their reactions).
+- **Bard:** Magical Secrets (no spells outside the class list), Expertise (3, 10).
+- **Cleric:** none. Divine Intervention rolls the d100 and heals the whole party on a success, once per long rest (the book holds it back for a week after it works and leaves the answer to the DM).
+- **Druid:** Circle of the Land bonus spells, Nature's Sanctuary. (Nature's Ward gives immunity to poison only.)
 - **Fighter:** Additional Fighting Style (the builder holds one style).
-- **Monk:** Tongue of the Sun and Moon, Timeless Body, Quivering Palm, Open Hand Technique, Tranquility, Slow Fall.
+- **Monk:** Tongue of the Sun and Moon, Timeless Body, Open Hand Technique, Tranquility, Slow Fall. (Quivering Palm ends the vibrations at once: the target saves on the hit.)
 - **Paladin:** Cleansing Touch, Purity of Heart, Divine Health.
-- **Ranger:** Favored Enemy and Natural Explorer (out of combat), Primeval Awareness, Defensive Tactics, Hunter's Multiattack, Superior Hunter's Defense, Feral Senses.
+- **Ranger:** Favored Enemy and Natural Explorer (out of combat), Primeval Awareness, Defensive Tactics, Hunter's Multiattack (a weapon attack on several creatures needs a command the menu does not have), Feral Senses. Superior Hunter's Defense is done.
 - **Rogue:** Blindsense, Thief's Reflexes, Supreme Sneak, Use Magic Device, Second-Story Work.
-- **Sorcerer:** Dragon Wings, Draconic Presence. (Careful Spell is a Metamagic option here; Distant Spell does nothing when range is by zone.)
-- **Warlock:** Dark One's Own Luck, Fiendish Resilience, Hurl Through Hell, Eldritch Master.
-- **Wizard:** Spell Mastery, Signature Spells.
+- **Sorcerer:** none. (Dragon Wings fly until the fight ends; Draconic Presence frightens only, for five sorcery points. Careful Spell is a Metamagic option here; Distant Spell does nothing when range is by zone.)
+- **Warlock:** Dark One's Own Luck, Fiendish Resilience, Eldritch Master. (Hurl Through Hell costs the target 10d10 psychic damage and a round out of the fight.)
+- **Wizard:** none. (Spell Mastery and Signature Spells fix the spells: Magic Missile and Misty Step at will; Fireball and Fly once per short rest.)
 - **All classes:** the builder has no choices for feats, and the SRD has none beyond Grappler.
 
 ## 3. Spells
@@ -51,6 +51,7 @@ Every SRD class feature from level 1 to 20 is on the sheet from its level (`feat
 ## 4. Monsters
 
 - Legendary actions: weapon attacks and the dragon Wing Attack are played; Detect, Move and Teleport are not. Lair actions and regional effects are not.
+- Death Burst is done (the mephits and the magmin): it goes off when the monster dies and catches everyone in its zone, when the action that killed it ends. Deaths outside an action (a poison at the start of a turn) do not set it off.
 - Possession, charm gazes, engulf and swallow, life drain that lowers maximum HP, Aversion to fire/sunlight, shapechanging (Werewolf, Vampire), summon-on-death.
 - Fear, aura and spell-like traits stated only in text; grapple and shove.
 - Challenge-rating-aware encounter building (only hand-picked encounters exist).
