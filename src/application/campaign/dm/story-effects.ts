@@ -8,19 +8,22 @@ import { availableInteractions, doneFlag, goldOf, reachableScenes, triedFlag, ty
 
 // The IDs a proposal's story effects may name right now.
 export function plannerStory(bible: AdventureBible, state: CampaignState): PlannerRequest["story"] {
+  const sceneIds = reachableScenes(bible, state);
+  // A fight, clock or clue only works in the party's scene or one this round moves to; offering the rest only invites a refused plan.
+  const here = new Set<string>([...(state.sceneId === null ? [] : [state.sceneId]), ...sceneIds]);
   return {
     sceneId: state.sceneId,
-    sceneIds: reachableScenes(bible, state),
+    sceneIds,
     encounters: bible.encounters
-      .filter((encounter) => !state.encounterHistory.includes(encounter.id))
+      .filter((encounter) => here.has(encounter.sceneId) && !state.encounterHistory.includes(encounter.id))
       .map((encounter) => ({ id: encounter.id, sceneId: encounter.sceneId })),
-    clocks: bible.clocks.map((clock) => ({
+    clocks: bible.clocks.filter((clock) => here.has(clock.sceneId)).map((clock) => ({
       id: clock.id,
       sceneId: clock.sceneId,
       filled: state.clocks[clock.id]?.filled ?? 0,
       segments: clock.segments,
     })),
-    clues: bible.clues.filter((clue) => !state.clues.some((known) => known.id === clue.id)).map((clue) => ({ id: clue.id, sceneId: clue.sceneId })),
+    clues: bible.clues.filter((clue) => here.has(clue.sceneId) && !state.clues.some((known) => known.id === clue.id)).map((clue) => ({ id: clue.id, sceneId: clue.sceneId })),
     interactions: availableInteractions(bible, state).map((interaction) => ({ id: interaction.id, sceneId: interaction.sceneId, label: interaction.label })),
   };
 }
@@ -68,15 +71,15 @@ export function resolveStoryEffects(
       case "startEncounter": {
         const encounter = findEncounter(bible, effect.encounterId);
         if (encounter === undefined) problems.push(`Unknown encounter "${effect.encounterId}".`);
-        else if (state.encounterHistory.includes(encounter.id)) problems.push(`${encounter.id} has already been fought.`);
-        else if (!reachable.has(encounter.sceneId)) problems.push(`${encounter.id} belongs to ${encounter.sceneId}, where the party is not.`);
+        // A fight that is already over or belongs to another scene is left out rather than holding the round: the players' actions still resolve.
+        else if (state.encounterHistory.includes(encounter.id) || !reachable.has(encounter.sceneId)) break;
         else effects.push({ effect: { kind: "startEncounter", encounter: encounterSpec(encounter, bible) }, when: effect.when });
         break;
       }
       case "advanceClock": {
         const clock = findClock(bible, effect.clockId);
         if (clock === undefined) problems.push(`Unknown clock "${effect.clockId}".`);
-        else if (!reachable.has(clock.sceneId)) problems.push(`${clock.id} belongs to ${clock.sceneId}, where the party is not.`);
+        else if (!reachable.has(clock.sceneId)) break;
         else if (!Number.isInteger(effect.by) || effect.by < 1 || effect.by > 3) problems.push(`${clock.id} may advance by 1 to 3 segments.`);
         else effects.push({ effect: clockEffect(bible, state, clock.id, effect.by), when: effect.when });
         break;
@@ -84,8 +87,7 @@ export function resolveStoryEffects(
       case "revealClue": {
         const clue = findClue(bible, effect.clueId);
         if (clue === undefined) problems.push(`Unknown clue "${effect.clueId}".`);
-        else if (state.clues.some((known) => known.id === clue.id)) problems.push(`${clue.id} was already revealed.`);
-        else if (!reachable.has(clue.sceneId)) problems.push(`${clue.id} belongs to ${clue.sceneId}, where the party is not.`);
+        else if (state.clues.some((known) => known.id === clue.id) || !reachable.has(clue.sceneId)) break;
         else effects.push({ effect: { kind: "revealClue", clueId: clue.id, text: clue.publicText }, when: effect.when });
         break;
       }
