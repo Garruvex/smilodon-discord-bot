@@ -893,7 +893,7 @@ export const cat = defineMonster({
   beast: { challengeRating: 0, flies: false, swims: false },
 });
 
-// Not modeled: Charge.
+// Not modeled: Charge (only the extra damage and the fall are played).
 export const centaur = defineMonster({
   id: "monster:centaur",
   source,
@@ -1448,7 +1448,7 @@ export const efreeti = defineMonster({
   spellcasting: { casterLevel: 1, saveDc: 15, attackBonus: 7, modifier: 7, slots: {  }, spells: [], innate: [{ spell: "spell:detect-magic", perDay: null }, { spell: "spell:enlarge-reduce", perDay: 3 }, { spell: "spell:tongues", perDay: 3 }, { spell: "spell:conjure-elemental", perDay: 1 }, { spell: "spell:gaseous-form", perDay: 1 }, { spell: "spell:invisibility", perDay: 1 }, { spell: "spell:major-image", perDay: 1 }, { spell: "spell:plane-shift", perDay: 1 }, { spell: "spell:wall-of-fire", perDay: 1 }] },
 });
 
-// Not modeled: Trampling Charge.
+// Not modeled: Trampling Charge (only the extra damage and the fall are played).
 export const elephant = defineMonster({
   id: "monster:elephant",
   source,
@@ -1462,11 +1462,11 @@ export const elephant = defineMonster({
     { weapon: "item:stomp", toHit: 8, damage: plus(dice(3, 10), 6) },
   ],
   tactic: "brute",
-  traits: [],
+  traits: [{ kind: "charge", feet: 20, dc: 12 }],
   beast: { challengeRating: 4, flies: false, swims: false },
 });
 
-// Not modeled: Charge.
+// Not modeled: Charge (only the extra damage and the fall are played).
 export const elk = defineMonster({
   id: "monster:elk",
   source,
@@ -1480,7 +1480,7 @@ export const elk = defineMonster({
     { weapon: "item:hooves", toHit: 5, damage: plus(dice(2, 4), 3) },
   ],
   tactic: "brute",
-  traits: [],
+  traits: [{ kind: "charge", feet: 20, dc: 13, extra: dice(2, 6) }],
   beast: { challengeRating: 0.25, flies: false, swims: false },
 });
 
@@ -1803,7 +1803,7 @@ export const giantEagle = defineMonster({
   beast: { challengeRating: 1, flies: true, swims: false },
 });
 
-// Not modeled: Charge.
+// Not modeled: Charge (only the extra damage and the fall are played).
 export const giantElk = defineMonster({
   id: "monster:giant-elk",
   source,
@@ -1817,7 +1817,7 @@ export const giantElk = defineMonster({
     { weapon: "item:hooves", toHit: 6, damage: plus(dice(4, 8), 4) },
   ],
   tactic: "brute",
-  traits: [],
+  traits: [{ kind: "charge", feet: 20, dc: 14, extra: dice(2, 6) }],
   beast: { challengeRating: 2, flies: false, swims: false },
 });
 
@@ -1855,7 +1855,7 @@ export const giantFrog = defineMonster({
   beast: { challengeRating: 0.25, flies: false, swims: true },
 });
 
-// Not modeled: Charge; Sure-Footed.
+// Not modeled: Charge (only the extra damage and the fall are played); Sure-Footed.
 export const giantGoat = defineMonster({
   id: "monster:giant-goat",
   source,
@@ -1868,7 +1868,7 @@ export const giantGoat = defineMonster({
     { weapon: "item:ram", toHit: 5, damage: plus(dice(2, 4), 3) },
   ],
   tactic: "brute",
-  traits: [],
+  traits: [{ kind: "charge", feet: 20, dc: 13, extra: dice(2, 4), damageType: "bludgeoning" }],
   beast: { challengeRating: 0.5, flies: false, swims: false },
 });
 
@@ -1973,7 +1973,7 @@ export const giantScorpion = defineMonster({
   beast: { challengeRating: 3, flies: false, swims: false },
 });
 
-// Not modeled: Charge; Water Breathing.
+// Not modeled: Charge (only the extra damage and the fall are played); Water Breathing.
 export const giantSeaHorse = defineMonster({
   id: "monster:giant-sea-horse",
   source,
@@ -1986,7 +1986,7 @@ export const giantSeaHorse = defineMonster({
     { weapon: "item:ram", toHit: 3, damage: plus(dice(1, 6), 1) },
   ],
   tactic: "brute",
-  traits: [],
+  traits: [{ kind: "charge", feet: 20, dc: 11, extra: dice(2, 6), damageType: "bludgeoning" }],
   beast: { challengeRating: 0.5, flies: false, swims: true },
 });
 
@@ -2124,7 +2124,7 @@ export const gladiator = defineMonster({
   traits: [],
 });
 
-// Not modeled: Charge; Sure-Footed.
+// Not modeled: Charge (only the extra damage and the fall are played); Sure-Footed.
 export const goat = defineMonster({
   id: "monster:goat",
   source,
@@ -2137,7 +2137,7 @@ export const goat = defineMonster({
     { weapon: "item:ram", toHit: 3, damage: plus(dice(1, 4), 1) },
   ],
   tactic: "brute",
-  traits: [],
+  traits: [{ kind: "charge", feet: 20, dc: 10, extra: dice(1, 4), damageType: "bludgeoning" }],
   beast: { challengeRating: 0, flies: false, swims: false },
 });
 
@@ -2157,7 +2157,7 @@ export const goldDragonWyrmling = defineMonster({
   traits: [{ kind: "damageImmunity", damageTypes: ["fire"] }],
 });
 
-// Not modeled: Trampling Charge.
+// Not modeled: Trampling Charge (only the extra damage and the fall are played).
 export const gorgon = defineMonster({
   id: "monster:gorgon",
   source,
@@ -2171,7 +2171,7 @@ export const gorgon = defineMonster({
     { weapon: "item:hooves", toHit: 8, damage: plus(dice(2, 10), 5) },
   ],
   tactic: "brute",
-  traits: [{ kind: "areaAttack", weapon: "item:petrifying-breath", ability: "con", dc: 13, condition: "condition:restrained", halfOnSave: false, range: 30, cooldown: 3 }],
+  traits: [{ kind: "charge", feet: 20, dc: 16 }, { kind: "areaAttack", weapon: "item:petrifying-breath", ability: "con", dc: 13, condition: "condition:restrained", halfOnSave: false, range: 30, cooldown: 3 }],
 });
 
 // Not modeled: Pseudopod's extra damage types are folded into one; Amorphous; Corrode Metal; False Appearance.
@@ -2693,7 +2693,7 @@ export const lich = defineMonster({
   spellcasting: { casterLevel: 18, saveDc: 20, attackBonus: 12, modifier: 12, slots: { 1: 4, 2: 3, 3: 3, 4: 3, 5: 3, 6: 1, 7: 1, 8: 1, 9: 1 }, spells: ["spell:mage-hand", "spell:prestidigitation", "spell:ray-of-frost", "spell:detect-magic", "spell:magic-missile", "spell:shield", "spell:thunderwave", "spell:acid-arrow", "spell:detect-thoughts", "spell:invisibility", "spell:mirror-image", "spell:animate-dead", "spell:counterspell", "spell:dispel-magic", "spell:fireball", "spell:blight", "spell:dimension-door", "spell:cloudkill", "spell:scrying", "spell:disintegrate", "spell:globe-of-invulnerability", "spell:finger-of-death", "spell:plane-shift", "spell:dominate-monster", "spell:power-word-stun", "spell:power-word-kill"], innate: [] },
 });
 
-// Not modeled: Keen Smell; Pounce; Running Leap.
+// Not modeled: Keen Smell; Pounce (only the extra damage and the fall are played); Running Leap.
 export const lion = defineMonster({
   id: "monster:lion",
   source,
@@ -2707,7 +2707,7 @@ export const lion = defineMonster({
     { weapon: "item:claw", toHit: 5, damage: plus(dice(1, 6), 3) },
   ],
   tactic: "brute",
-  traits: [{ kind: "packTactics" }],
+  traits: [{ kind: "packTactics" }, { kind: "charge", feet: 20, dc: 13 }],
   beast: { challengeRating: 1, flies: false, swims: false },
 });
 
@@ -2776,7 +2776,7 @@ export const magmin = defineMonster({
   traits: [{ kind: "damageImmunity", damageTypes: ["fire"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }],
 });
 
-// Not modeled: Trampling Charge.
+// Not modeled: Trampling Charge (only the extra damage and the fall are played).
 export const mammoth = defineMonster({
   id: "monster:mammoth",
   source,
@@ -2790,7 +2790,7 @@ export const mammoth = defineMonster({
     { weapon: "item:stomp", toHit: 10, damage: plus(dice(4, 10), 7) },
   ],
   tactic: "brute",
-  traits: [],
+  traits: [{ kind: "charge", feet: 20, dc: 18 }],
   beast: { challengeRating: 6, flies: false, swims: false },
 });
 
@@ -2915,7 +2915,7 @@ export const mimic = defineMonster({
   traits: [{ kind: "damageImmunity", damageTypes: ["acid"] }, { kind: "conditionImmunity", conditions: ["condition:prone"] }],
 });
 
-// Not modeled: Charge; Labyrinthine Recall; Reckless.
+// Not modeled: Charge (only the extra damage and the fall are played); Labyrinthine Recall; Reckless.
 export const minotaur = defineMonster({
   id: "monster:minotaur",
   source,
@@ -2929,10 +2929,10 @@ export const minotaur = defineMonster({
     { weapon: "item:gore", toHit: 6, damage: plus(dice(2, 8), 4) },
   ],
   tactic: "brute",
-  traits: [],
+  traits: [{ kind: "charge", feet: 10, dc: 14, extra: dice(2, 8), damageType: "piercing" }],
 });
 
-// Not modeled: Charge.
+// Not modeled: Charge (only the extra damage and the fall are played).
 export const minotaurSkeleton = defineMonster({
   id: "monster:minotaur-skeleton",
   source,
@@ -2946,7 +2946,7 @@ export const minotaurSkeleton = defineMonster({
     { weapon: "item:gore", toHit: 6, damage: plus(dice(2, 8), 4) },
   ],
   tactic: "brute",
-  traits: [{ kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageVulnerability", damageTypes: ["bludgeoning"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  traits: [{ kind: "charge", feet: 10, dc: 14, extra: dice(2, 8), damageType: "piercing" }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageVulnerability", damageTypes: ["bludgeoning"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
 });
 
 // Not modeled: Beast of Burden; Sure-Footed.
@@ -3165,7 +3165,7 @@ export const owl = defineMonster({
   beast: { challengeRating: 0, flies: true, swims: false },
 });
 
-// Not modeled: Keen Smell; Pounce.
+// Not modeled: Keen Smell; Pounce (only the extra damage and the fall are played).
 export const panther = defineMonster({
   id: "monster:panther",
   source,
@@ -3179,7 +3179,7 @@ export const panther = defineMonster({
     { weapon: "item:claw", toHit: 4, damage: plus(dice(1, 4), 2) },
   ],
   tactic: "brute",
-  traits: [],
+  traits: [{ kind: "charge", feet: 20, dc: 12 }],
   beast: { challengeRating: 0.25, flies: false, swims: false },
 });
 
@@ -3502,7 +3502,7 @@ export const remorhaz = defineMonster({
   traits: [{ kind: "damageImmunity", damageTypes: ["cold", "fire"] }],
 });
 
-// Not modeled: Charge.
+// Not modeled: Charge (only the extra damage and the fall are played).
 export const rhinoceros = defineMonster({
   id: "monster:rhinoceros",
   source,
@@ -3515,7 +3515,7 @@ export const rhinoceros = defineMonster({
     { weapon: "item:gore-bludgeoning", toHit: 7, damage: plus(dice(2, 8), 5) },
   ],
   tactic: "brute",
-  traits: [],
+  traits: [{ kind: "charge", feet: 20, dc: 15, extra: dice(2, 8), damageType: "bludgeoning" }],
   beast: { challengeRating: 2, flies: false, swims: false },
 });
 
@@ -3600,7 +3600,7 @@ export const rustMonster = defineMonster({
   traits: [],
 });
 
-// Not modeled: Keen Smell; Pounce.
+// Not modeled: Keen Smell; Pounce (only the extra damage and the fall are played).
 export const saberToothedTiger = defineMonster({
   id: "monster:saber-toothed-tiger",
   source,
@@ -3614,7 +3614,7 @@ export const saberToothedTiger = defineMonster({
     { weapon: "item:claw", toHit: 6, damage: plus(dice(2, 6), 5) },
   ],
   tactic: "brute",
-  traits: [],
+  traits: [{ kind: "charge", feet: 20, dc: 14 }],
   beast: { challengeRating: 2, flies: false, swims: false },
 });
 
@@ -4196,7 +4196,7 @@ export const thug = defineMonster({
   traits: [{ kind: "multiattack", weapons: ["item:mace", "item:mace"] }, { kind: "packTactics" }],
 });
 
-// Not modeled: Keen Smell; Pounce.
+// Not modeled: Keen Smell; Pounce (only the extra damage and the fall are played).
 export const tiger = defineMonster({
   id: "monster:tiger",
   source,
@@ -4210,7 +4210,7 @@ export const tiger = defineMonster({
     { weapon: "item:claw", toHit: 5, damage: plus(dice(1, 8), 3) },
   ],
   tactic: "brute",
-  traits: [],
+  traits: [{ kind: "charge", feet: 20, dc: 13 }],
   beast: { challengeRating: 1, flies: false, swims: false },
 });
 
@@ -4247,7 +4247,7 @@ export const tribalWarrior = defineMonster({
   traits: [{ kind: "packTactics" }],
 });
 
-// Not modeled: Trampling Charge.
+// Not modeled: Trampling Charge (only the extra damage and the fall are played).
 export const triceratops = defineMonster({
   id: "monster:triceratops",
   source,
@@ -4261,7 +4261,7 @@ export const triceratops = defineMonster({
     { weapon: "item:stomp", toHit: 9, damage: plus(dice(3, 10), 6) },
   ],
   tactic: "brute",
-  traits: [],
+  traits: [{ kind: "charge", feet: 20, dc: 13 }],
   beast: { challengeRating: 5, flies: false, swims: false },
 });
 
@@ -4299,7 +4299,7 @@ export const tyrannosaurusRex = defineMonster({
   beast: { challengeRating: 8, flies: false, swims: false },
 });
 
-// Not modeled: Healing Touch; Teleport; Charge; Magic Weapons; legendary: Shimmering Shield (Costs 2 Actions); legendary: Heal Self (Costs 3 Actions).
+// Not modeled: Healing Touch; Teleport; Charge (only the extra damage and the fall are played); Magic Weapons; legendary: Shimmering Shield (Costs 2 Actions); legendary: Heal Self (Costs 3 Actions).
 export const unicorn = defineMonster({
   id: "monster:unicorn",
   source,
@@ -4313,7 +4313,7 @@ export const unicorn = defineMonster({
     { weapon: "item:horn", toHit: 7, damage: plus(dice(1, 8), 4) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:hooves", "item:horn"] }, { kind: "saveAdvantage", magic: true }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:hooves", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:paralyzed", "condition:poisoned"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:hooves", "item:horn"] }, { kind: "saveAdvantage", magic: true }, { kind: "charge", feet: 20, dc: 15, extra: dice(2, 8), damageType: "piercing" }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:hooves", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:paralyzed", "condition:poisoned"] }],
   spellcasting: { casterLevel: 1, saveDc: 14, attackBonus: 6, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:detect-evil-and-good", perDay: null }, { spell: "spell:druidcraft", perDay: null }, { spell: "spell:pass-without-trace", perDay: null }, { spell: "spell:calm-emotions", perDay: 1 }, { spell: "spell:dispel-evil-and-good", perDay: 1 }, { spell: "spell:entangle", perDay: 1 }] },
 });
 
@@ -4450,7 +4450,7 @@ export const vulture = defineMonster({
   beast: { challengeRating: 0, flies: true, swims: false },
 });
 
-// Not modeled: Trampling Charge.
+// Not modeled: Trampling Charge (only the extra damage and the fall are played).
 export const warhorse = defineMonster({
   id: "monster:warhorse",
   source,
@@ -4463,7 +4463,7 @@ export const warhorse = defineMonster({
     { weapon: "item:hooves", toHit: 6, damage: plus(dice(2, 6), 4) },
   ],
   tactic: "brute",
-  traits: [],
+  traits: [{ kind: "charge", feet: 20, dc: 14 }],
   beast: { challengeRating: 0.5, flies: false, swims: false },
 });
 
@@ -4683,7 +4683,7 @@ export const weretigerHuman = defineMonster({
   traits: [{ kind: "multiattack", weapons: ["item:scimitar", "item:scimitar"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }],
 });
 
-// Not modeled: Shapechanger; Keen Hearing and Smell; Pounce; Immunity to mundane weapons is played as resistance.
+// Not modeled: Shapechanger; Keen Hearing and Smell; Pounce (only the extra damage and the fall are played); Immunity to mundane weapons is played as resistance.
 export const weretigerHybrid = defineMonster({
   id: "monster:weretiger-hybrid",
   source,
@@ -4699,10 +4699,10 @@ export const weretigerHybrid = defineMonster({
     { weapon: "item:longbow", toHit: 4, damage: plus(dice(1, 8), 2) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:scimitar", "item:scimitar"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:scimitar", "item:scimitar"] }, { kind: "charge", feet: 15, dc: 14 }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }],
 });
 
-// Not modeled: Shapechanger; Keen Hearing and Smell; Pounce; Immunity to mundane weapons is played as resistance.
+// Not modeled: Shapechanger; Keen Hearing and Smell; Pounce (only the extra damage and the fall are played); Immunity to mundane weapons is played as resistance.
 export const weretigerTiger = defineMonster({
   id: "monster:weretiger-tiger",
   source,
@@ -4716,7 +4716,7 @@ export const weretigerTiger = defineMonster({
     { weapon: "item:claw", toHit: 5, damage: plus(dice(1, 8), 3) },
   ],
   tactic: "brute",
-  traits: [{ kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }],
+  traits: [{ kind: "charge", feet: 15, dc: 14 }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }],
 });
 
 // Not modeled: No weapon attack; it deals no damage yet; Spear; Shapechanger; Keen Hearing and Smell; Immunity to mundane weapons is played as resistance.

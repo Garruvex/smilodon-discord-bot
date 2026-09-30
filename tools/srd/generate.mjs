@@ -315,6 +315,15 @@ for (const monster of monsters) {
   if (abilityNames.includes("Nimble Escape")) traits.push(`{ kind: "nimbleEscape" }`);
   if (abilityNames.includes("Magic Resistance")) traits.push(`{ kind: "saveAdvantage", magic: true }`);
   if (abilityNames.includes("Blood Frenzy")) traits.push(`{ kind: "bloodFrenzy" }`);
+  for (const ability of monster.special_abilities ?? []) {
+    if (!["Charge", "Pounce", "Trampling Charge"].includes(ability.name)) continue;
+    const run = /moves at least (\d+) f(?:ee)?t/.exec(ability.desc);
+    const save = /DC (\d+) Strength/.exec(ability.desc);
+    const extra = /extra \d+ \((\d+d\d+)\)(?: (\w+))? damage/.exec(ability.desc);
+    if (run === null || save === null) continue;
+    const extraCode = extra === null ? "" : `, extra: ${diceCode(extra[1])}${damageTypes.includes(extra[2]) ? `, damageType: ${quote(extra[2])}` : ""}`;
+    traits.push(`{ kind: "charge", feet: ${run[1]}, dc: ${save[1]}${extraCode} }`);
+  }
   if (abilityNames.includes("Sunlight Sensitivity")) traits.push(`{ kind: "sunlightSensitivity" }`);
   traits.push(...areaTraits);
   for (const ability of monster.special_abilities ?? []) {
@@ -333,7 +342,7 @@ for (const monster of monsters) {
       continue;
     }
     if (ability.spellcasting !== undefined) continue;
-    if (!["Pack Tactics", "Nimble Escape", "Magic Resistance", "Blood Frenzy", "Sunlight Sensitivity"].includes(ability.name)) notes.push(ability.name);
+    if (!["Pack Tactics", "Nimble Escape", "Magic Resistance", "Blood Frenzy", "Sunlight Sensitivity"].includes(ability.name)) notes.push(ability.name === "Charge" || ability.name === "Pounce" || ability.name === "Trampling Charge" ? `${ability.name} (only the extra damage and the fall are played)` : ability.name);
   }
   // Legendary actions that are one of the monster's own attacks are played; the rest are noted.
   const legendaryOptions = [];

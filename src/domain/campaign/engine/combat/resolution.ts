@@ -262,7 +262,7 @@ export function settleCheck(decision: Decision, resolutionId: string, rollId: Ro
 // through this instead of the plan directly so the extra effect reaches damage
 // rolling and application the same way any other does.
 export function landEffects(resolution: ResolutionState, encounter: EncounterState): readonly Effect[] {
-  const onLand = withStunningStrike(resolution, withFoeSlayer(resolution, encounter, withMark(resolution, encounter, withDivineStrike(resolution, encounter, withImprovedSmite(resolution, encounter, withSavageAttacks(resolution, encounter))))));
+  const onLand = withStunningStrike(resolution, withCharge(resolution, encounter, withFoeSlayer(resolution, encounter, withMark(resolution, encounter, withDivineStrike(resolution, encounter, withImprovedSmite(resolution, encounter, withSavageAttacks(resolution, encounter)))))));
   const slot = resolution.smiteSlot !== undefined ? resolution.smiteSlot : resolution.source.kind === "weapon" ? (resolution.source.smiteSlot ?? null) : null;
   if (slot === null) return onLand;
   // 2d8 for a 1st-level slot, +1d8 per level above that, capped at 5d8; one more d8 against a fiend or undead.
@@ -330,6 +330,16 @@ function withMark(resolution: ResolutionState, encounter: EncounterState, effect
   if (resolution.source.kind !== "weapon" || target === undefined) return effects;
   const marked = target.effects.some((held) => held.sourceId === resolution.actorId && held.modifiers.some((modifier) => modifier.kind === "marked"));
   return marked ? [...effects, { kind: "damage", target: "target", amount: dice(1, 6), damageType: resolution.source.option.damageType }] : effects;
+}
+
+// Charge and its kin: a melee hit after a run at the target hits harder and may knock it down.
+function withCharge(resolution: ResolutionState, encounter: EncounterState, effects: readonly Effect[]): readonly Effect[] {
+  const actor = encounter.combatants[resolution.actorId];
+  if (resolution.source.kind !== "weapon" || resolution.source.option.range.kind !== "melee" || actor === undefined) return effects;
+  const charge = actor.traits.find((trait) => trait.kind === "charge");
+  if (charge?.kind !== "charge" || actor.speed - actor.budget.movement < charge.feet) return effects;
+  const extra: Effect[] = charge.extra === undefined ? [] : [{ kind: "damage", target: "target", amount: charge.extra, damageType: charge.damageType ?? resolution.source.option.damageType }];
+  return [...effects, ...extra, { kind: "conditionUnlessSave", target: "target", ability: "str", dc: charge.dc, condition: "condition:prone" }];
 }
 
 // Foe Slayer: the Wisdom modifier on a weapon hit.

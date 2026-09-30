@@ -138,6 +138,9 @@ export type Trait =
   | { readonly kind: "quickHide" }
   // Foe Slayer (Ranger 20): the Wisdom modifier on weapon damage.
   | { readonly kind: "foeSlayer" }
+  // Charge, Pounce, Trampling Charge: a melee hit after moving at least this far in the turn deals extra damage (of the weapon's type when none is named)
+  // and the target makes a Strength save or is knocked prone.
+  | { readonly kind: "charge"; readonly feet: number; readonly dc: number; readonly extra?: DiceExpression; readonly damageType?: DamageType }
   // Cutting Words (College of Lore): a Bardic Inspiration use and the reaction take the die's average off a foe's attack roll within 60 feet, when that turns a hit into a miss.
   | { readonly kind: "cuttingWords" }
   // Fighting Style (Protection): when a creature attacks another one standing beside the holder, the holder's reaction gives that attack disadvantage. The shield the SRD asks for is not checked.

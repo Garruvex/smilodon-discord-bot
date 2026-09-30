@@ -412,3 +412,21 @@ describe("A dragon's Wing Attack", () => {
     expect(fight.combatant("c-mira").effects.map((effect) => effect.definition)).toContain("condition:prone");
   });
 });
+
+describe("Charge", () => {
+  const run = (edge: number): { readonly lost: number; readonly prone: boolean } => {
+    const spec: EncounterSpec = { ...skirmish, edges: [{ from: "gate", to: "courtyard", feet: edge }], monsters: [{ monsterId: "monster:boar", zoneId: "courtyard", npcId: null, fleeBelowHpFraction: null }] };
+    // The boar goes first: it hits (19), the target's save fails (2), and every die rolls a 3.
+    const fight = new Fight(partyOfThree()).rolls([1, 1, 1, 20, 19, 2], Array.from({ length: 6 }, () => 3)).run(organizer, { kind: "startEncounter", spec });
+    const heroes = ["c-mira", "c-borin", "c-elspeth"].map((id) => fight.combatant(id));
+    return { lost: 9 + 12 + 9 - heroes.reduce((sum, hero) => sum + hero.hp, 0), prone: heroes.some((hero) => hero.effects.some((effect) => effect.definition === "condition:prone")) };
+  };
+
+  it("adds damage and a fall to a hit made after a run at the target, and not to one made without it", () => {
+    const charged = run(20);
+    const walked = run(5);
+    expect(charged.prone).toBe(true);
+    expect(walked.prone).toBe(false);
+    expect(charged.lost).toBeGreaterThan(walked.lost);
+  });
+});

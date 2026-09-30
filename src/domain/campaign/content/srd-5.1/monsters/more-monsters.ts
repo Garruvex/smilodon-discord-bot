@@ -100,7 +100,7 @@ export const boar = defineMonster({
   abilityScores: { str: 13, dex: 11, con: 12, int: 2, wis: 9, cha: 5 },
   attacks: [{ weapon: "item:tusk", toHit: 3, damage: plus(dice(1, 6), 1) }],
   tactic: "brute",
-  traits: [],
+  traits: [{ kind: "charge", feet: 20, dc: 11, extra: dice(1, 6), damageType: "slashing" }],
   beast: { challengeRating: 0.25, flies: false, swims: false },
 });
 
@@ -114,7 +114,7 @@ export const giantBoar = defineMonster({
   abilityScores: { str: 17, dex: 10, con: 16, int: 2, wis: 7, cha: 5 },
   attacks: [{ weapon: "item:tusk", toHit: 5, damage: plus(dice(2, 6), 3) }],
   tactic: "brute",
-  traits: [],
+  traits: [{ kind: "charge", feet: 20, dc: 13, extra: dice(2, 6), damageType: "slashing" }],
   beast: { challengeRating: 2, flies: false, swims: false },
 });
 
