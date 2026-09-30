@@ -1,4 +1,4 @@
-import type { EffectTrigger } from "../effects/effect-instance.js";
+import type { EffectTrigger } from "./effect-triggers.js";
 import type { DiceExpression } from "../dice/dice-expression.js";
 import type { ContentId } from "./content-id.js";
 import type { Modifier } from "./modifiers.js";
