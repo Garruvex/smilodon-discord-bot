@@ -103,6 +103,17 @@ async function contextFor(c: Campaign, audience: "planner" | "narrator", budgetT
 }
 
 describe("a campaign over three sessions", () => {
+  it("keeps recent NPC exchanges in context for a continuous conversation", async () => {
+    const c = await campaign();
+    const said = "What happened on the road? Did anyone follow them?";
+    const asked = await c.r.bus.execute(c.key, { kind: "askNpc", characterId: hero, npcId: "npc:garrick", question: said }, { commandId: "ask-continuity", actor: player });
+    expect(asked.kind).toBe("accepted");
+    await c.r.bus.execute(c.key, { kind: "recordDialogueNarration", dialogueId: "dialogue:1", text: "I saw a rider, but no pursuer." }, { commandId: "reply-continuity", actor: { kind: "system" } });
+    const context = await contextFor(c, "narrator");
+    expect(context.text).toContain(said);
+    expect(context.text).toContain("I saw a rider, but no pursuer.");
+  });
+
   it("condenses played rounds as it goes, keeps names and facts, and never lets a secret into what the table reads", async () => {
     const c = await campaign();
     let number = 0;

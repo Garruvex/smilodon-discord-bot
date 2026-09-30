@@ -73,7 +73,7 @@ export class DmJobWorker {
         if (item.request.kind === "narrate") await this.narrate(item, item.request.roundNumber);
         if (item.request.kind === "narrateCombat") await this.narrateCombat(item, item.request.encounterId, item.request.round, item.request.final);
         if (item.request.kind === "narrateTrade") await this.narrateTrade(item, item.request.tradeId);
-        if (item.request.kind === "narrateDialogue") await this.narrateDialogue(item, item.request.dialogueId);
+        if (item.request.kind === "narrateDialogue" && !(await this.narrateDialogue(item, item.request.dialogueId))) continue;
         if (item.request.kind === "narrateUtilityCast") await this.narrateUtilityCast(item, item.request.castId);
         if (item.request.kind === "narrateHazard") await this.narrateHazard(item, item.request.hazardId);
         if (item.request.kind === "chronicle") await this.chronicle(item, item.request.throughRound);
@@ -290,9 +290,11 @@ export class DmJobWorker {
   // A settled conversation waiting for its Narrator line (engine/dialogue.ts).
   // Same "not load-bearing" shape as narrateTrade: a failure that exhausts
   // its attempts just leaves the fallback line.
-  private async narrateDialogue(item: OutboxItem, dialogueId: string): Promise<void> {
+  private async narrateDialogue(item: OutboxItem, dialogueId: string): Promise<boolean> {
     const loaded = await this.load(item.key);
-    if (loaded.stored.state.dialogues[dialogueId] === undefined) return; // Already narrated, or gone.
+    if (loaded.stored.state.dialogues[dialogueId] === undefined) return true; // Already narrated, or gone.
+    const current = loaded.stored.state.dialogues[dialogueId];
+    if (current !== undefined && Object.values(loaded.stored.state.dialogues).some((dialogue) => dialogue.npcId === current.npcId && Number(dialogue.id.split(":")[1]) < Number(dialogueId.split(":")[1]))) return false;
     const request = this.dialogueNarratorRequest(loaded, dialogueId);
     let text: string;
     try {
@@ -302,6 +304,7 @@ export class DmJobWorker {
       text = fallbackDialogueNarration(request);
     }
     await this.options.bus.execute(item.key, { kind: "recordDialogueNarration", dialogueId, text }, { commandId: `${item.id}:dialogue-narration`, actor: system });
+    return true;
   }
 
   // A ritual spell cast outside combat, waiting on its Narrator line

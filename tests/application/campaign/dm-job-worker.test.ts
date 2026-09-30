@@ -345,6 +345,19 @@ describe("narrateDialogue", () => {
     expect(log).toContainEqual({ kind: "dialogueNarrated", dialogueId: "dialogue:1", text: 'Garrick grunts: "Nothing worth telling."' });
   });
 
+  it("answers two heroes at the same NPC in submission order with the first reply in the second context", async () => {
+    const narrator = new ScriptedNarrator([], [], [], [{ text: "First answer." }, { text: "Second answer." }]);
+    const { bus, worker, store } = await table(new ScriptedPlanner([]), narrator);
+    expect((await bus.execute(key, { kind: "askNpc", characterId: "c-mira", npcId: "npc:garrick", question: "First question?" }, { commandId: "talk-mira", actor: alex })).kind).toBe("accepted");
+    expect((await bus.execute(key, { kind: "askNpc", characterId: "c-borin", npcId: "npc:garrick", question: "Second question?" }, { commandId: "talk-borin", actor: jamie })).kind).toBe("accepted");
+    await worker.runOnce();
+    await worker.runOnce();
+    expect(narrator.dialogueRequests.map((request) => request.question)).toEqual(["First question?", "Second question?"]);
+    expect(narrator.dialogueRequests[1]?.context.sections.some((section) => section.text.includes("First answer."))).toBe(true);
+    const told = (await events(store)).filter((event) => event.kind === "dialogueNarrated");
+    expect(told.map((event) => event.dialogueId)).toEqual(["dialogue:1", "dialogue:2"]);
+  });
+
   it("falls back to a template line once the Narrator's attempts are spent", async () => {
     const narrator = new ScriptedNarrator([], [], [], [new Error("rate limited"), new Error("rate limited")]);
     const { store, worker } = await tableWithADialogue(narrator);

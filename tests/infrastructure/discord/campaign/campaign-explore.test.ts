@@ -114,7 +114,7 @@ describe("Explore: the people in the scene", () => {
     const npc = screenOf(await choose(t, id(t, "exploreNpc"), "npc:garrick"));
     expect(npc.content).toContain("**Garrick**");
     expect(npc.content).toContain("polishing the same mug");
-    expect(npc.buttons.map((button) => button.label)).toEqual(["Talk", "Press for a secret", "Shop", "Back"]);
+    expect(npc.buttons.map((button) => button.label)).toEqual(["Talk", "Press for a secret", "Shop", "Refresh", "Back"]);
     // Skarn is not in the inn, whatever the menu was made to say.
     expect(screenOf(await choose(t, id(t, "exploreNpc"), "npc:skarn")).content).toContain("They are not here right now.");
     const back = screenOf(await click(t, id(t, "exploreBack", "garrick")));
@@ -136,9 +136,21 @@ describe("Explore: asking and pressing", () => {
     const { interaction, sent } = fakeInteraction({ customId: id(t, "exploreAskSubmit", "garrick"), userId: "u-org", fields: { question: speech }, kind: "modal" });
     await t.handler.executeModal({ interaction, logger: quiet as never });
     expect(contentOf(sent)).toContain("You speak to Garrick");
+    expect(screenOf(sent).content).toContain("Waiting for a reply");
+    expect(screenOf(sent).buttons.find((button) => button.label === "Talk")?.disabled).toBe(true);
     const queued = await t.r.store.transaction((tx) => tx.pendingOutbox("narrateDialogue"));
     expect(queued).toHaveLength(1);
     expect((await stateOf(t)).state.dialogues["dialogue:1"]).toMatchObject({ characterId: heroId, npcId: "npc:garrick", kind: "ask", question: speech });
+    const refreshed = screenOf(await click(t, id(t, "exploreRefresh", "garrick")));
+    expect(refreshed.content).toContain("Waiting for a reply");
+    await t.r.store.transaction((tx) => tx.failOutboxAttempt(queued[0]?.id ?? "", "narrator unavailable", 1));
+    const failed = screenOf(await click(t, id(t, "exploreRefresh", "garrick")));
+    expect(failed.content).toContain("The reply failed");
+    expect(failed.buttons.map((button) => button.label)).toContain("Retry reply");
+    const retried = screenOf(await click(t, id(t, "exploreRetry", "garrick")));
+    expect(retried.content).toContain("Retrying the reply");
+    expect(await t.r.store.transaction((tx) => tx.pendingOutbox("narrateDialogue"))).toHaveLength(1);
+    expect((await stateOf(t)).state.dialogueCount).toBe(1);
   });
 
   it("says why an empty question or a stranger's hero cannot ask", async () => {
@@ -149,6 +161,21 @@ describe("Explore: asking and pressing", () => {
     const other = fakeInteraction({ customId: id(t, "exploreAskSubmit", "garrick"), userId: "u-stranger", fields: { question: "Hello?" }, kind: "modal" });
     await t.handler.executeModal({ interaction: other.interaction, logger: quiet as never });
     expect(contentOf(other.sent)).toContain("You do not have a hero");
+  });
+
+  it("lets the speaker retry a failed Discord reply without asking the NPC twice", async () => {
+    const { t, heroId } = await table();
+    await t.r.bus.execute(t.key, { kind: "askNpc", characterId: heroId, npcId: "npc:garrick", question: "Where are the travelers?" }, { commandId: "talk-delivery", actor: { kind: "user", userId: "u-org" } });
+    await t.r.bus.execute(t.key, { kind: "recordDialogueNarration", dialogueId: "dialogue:1", text: "I don't know." }, { commandId: "tell-delivery", actor: { kind: "system" } });
+    const deliveries = await t.r.store.transaction((tx) => tx.pendingOutbox("deliver"));
+    const reply = deliveries.find((job) => job.request.kind === "deliver" && job.request.delivery.kind === "dialogueNarrated");
+    expect(reply).toBeDefined();
+    await t.r.store.transaction((tx) => tx.failOutboxAttempt(reply?.id ?? "", "Discord unavailable", 1));
+    expect(screenOf(await click(t, id(t, "exploreRefresh", "garrick"))).content).toContain("The reply failed");
+    await click(t, id(t, "exploreRetry", "garrick"));
+    const retried = await t.r.store.transaction((tx) => tx.pendingOutbox("deliver"));
+    expect(retried.some((job) => job.id === reply?.id)).toBe(true);
+    expect((await stateOf(t)).state.dialogueCount).toBe(1);
   });
 
   it("presses for the secret over a hard check the player picks the skill for", async () => {
@@ -401,6 +428,7 @@ describe("what the table is told", () => {
   it("tells a question and a press with what the dice said", async () => {
     const g = await play();
     await g.controller.ask(g.key, "u-org", "npc:garrick", "Seen anything odd on the road?", "i-1");
+    await g.settle();
     await g.controller.press(g.key, "u-org", "npc:garrick", "insight", "i-2");
     await g.settle();
     const said = g.said().join("\n");

@@ -103,12 +103,14 @@ export interface CampaignTransaction {
 
   enqueue(key: CampaignKey, id: string, request: OutboxRequest, now: Instant): Promise<void>;
   pendingOutbox(kind: OutboxRequest["kind"]): Promise<readonly OutboxItem[]>;
+  outboxForCampaign(key: CampaignKey): Promise<readonly OutboxItem[]>;
   completeOutbox(id: string): Promise<void>;
   // `retryAt` holds the next attempt back (backoff); without it the next pass retries.
   failOutboxAttempt(id: string, error: string, maxAttempts: number, retryAt?: Instant): Promise<void>;
   // Puts the campaign's given-up work back in the queue with a fresh count
   // (Repair). Returns how many items were requeued.
   requeueFailedOutbox(key: CampaignKey): Promise<number>;
+  requeueFailedOutboxItem(key: CampaignKey, id: string): Promise<boolean>;
 
   // Scheduling a timer ID that already exists replaces it (a resumed
   // campaign reschedules its roll timers).

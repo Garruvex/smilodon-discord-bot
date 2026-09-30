@@ -45,6 +45,7 @@ function mayTalk(decision: Decision, characterId: CharacterId): Rejection | null
 function askNpc(decision: Decision, characterId: CharacterId, npcId: DialogueRecord["npcId"], question: string): Rejection | null {
   const refusal = mayTalk(decision, characterId);
   if (refusal !== null) return refusal;
+  if (Object.values(decision.state.dialogues).some((dialogue) => dialogue.characterId === characterId) || decision.state.pressPending?.[characterId] !== undefined) return { code: "dialoguePending" };
   const trimmed = question.trim();
   if (trimmed.length === 0) return { code: "emptyAction" };
   if (trimmed.length > maxQuestionLength) return { code: "actionTooLong", maxLength: maxQuestionLength };
@@ -68,6 +69,7 @@ function pressNpc(decision: Decision, command: Extract<DialogueCommand, { kind: 
   if (!isSkill(skill) || !(pressSkills as readonly string[]).includes(skill)) return { code: "invalidPressSkill" };
   if (state.pressPending?.[characterId] !== undefined) return { code: "pressAlreadyPending" };
   if (state.npcSecretsRevealed?.[npcId] === true) return { code: "secretAlreadyRevealed" };
+  if (Object.values(state.dialogues).some((dialogue) => dialogue.characterId === characterId)) return { code: "dialoguePending" };
   const sheet = state.characters[characterId];
   if (sheet === undefined) return { code: "notYourCharacter" };
 

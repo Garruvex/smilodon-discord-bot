@@ -207,6 +207,20 @@ class SqliteTransaction implements CampaignTransaction {
     );
   }
 
+  public outboxForCampaign(key: CampaignKey): Promise<readonly OutboxItem[]> {
+    const rows = this.db.prepare("SELECT * FROM campaign_outbox WHERE guild_id = ? AND campaign_id = ? ORDER BY rowid").all(key.guildId, key.campaignId) as Row[];
+    return Promise.resolve(rows.map((row) => ({
+      id: row.id as string,
+      key,
+      request: parse<OutboxRequest>(row.request),
+      status: row.status as OutboxItem["status"],
+      attempts: row.attempts as number,
+      createdAt: row.created_at as number,
+      lastError: (row.last_error as string | null) ?? null,
+      notBefore: (row.not_before as number | undefined) ?? 0,
+    })));
+  }
+
   public completeOutbox(id: string): Promise<void> {
     this.db.prepare("UPDATE campaign_outbox SET status = 'done' WHERE id = ?").run(id);
     return Promise.resolve();
@@ -224,6 +238,11 @@ class SqliteTransaction implements CampaignTransaction {
       .prepare("UPDATE campaign_outbox SET status = 'pending', attempts = 0, not_before = 0 WHERE guild_id = ? AND campaign_id = ? AND status = 'failed'")
       .run(key.guildId, key.campaignId);
     return Promise.resolve(result.changes);
+  }
+
+  public requeueFailedOutboxItem(key: CampaignKey, id: string): Promise<boolean> {
+    const result = this.db.prepare("UPDATE campaign_outbox SET status = 'pending', attempts = 0, last_error = NULL, not_before = 0 WHERE guild_id = ? AND campaign_id = ? AND id = ? AND status = 'failed'").run(key.guildId, key.campaignId, id);
+    return Promise.resolve(result.changes > 0);
   }
 
   public scheduleTimer(key: CampaignKey, timer: TimerSpec): Promise<void> {

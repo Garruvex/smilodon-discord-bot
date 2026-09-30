@@ -121,6 +121,10 @@ class InMemoryTransaction implements CampaignTransaction {
     );
   }
 
+  public outboxForCampaign(key: CampaignKey): Promise<readonly OutboxItem[]> {
+    return Promise.resolve([...this.data.outbox.values()].filter((item) => item.key.guildId === key.guildId && item.key.campaignId === key.campaignId));
+  }
+
   public completeOutbox(id: string): Promise<void> {
     const item = this.data.outbox.get(id);
     if (item !== undefined) this.data.outbox.set(id, { ...item, status: "done" });
@@ -144,6 +148,13 @@ class InMemoryTransaction implements CampaignTransaction {
       count += 1;
     }
     return Promise.resolve(count);
+  }
+
+  public requeueFailedOutboxItem(key: CampaignKey, id: string): Promise<boolean> {
+    const item = this.data.outbox.get(id);
+    if (item?.status !== "failed" || item.key.guildId !== key.guildId || item.key.campaignId !== key.campaignId) return Promise.resolve(false);
+    this.data.outbox.set(id, { ...item, status: "pending", attempts: 0, lastError: null, notBefore: 0 });
+    return Promise.resolve(true);
   }
 
   public scheduleTimer(key: CampaignKey, timer: TimerSpec): Promise<void> {

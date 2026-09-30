@@ -154,6 +154,13 @@ class PostgresTransaction implements CampaignTransaction {
     }));
   }
 
+  public async outboxForCampaign(key: CampaignKey): Promise<readonly OutboxItem[]> {
+    const rows = await this.db.select().from(t.campaignOutbox)
+      .where(and(eq(t.campaignOutbox.guildId, key.guildId), eq(t.campaignOutbox.campaignId, key.campaignId)))
+      .orderBy(asc(t.campaignOutbox.position));
+    return rows.map((row) => ({ id: row.id, key, request: row.request as OutboxRequest, status: row.status as OutboxItem["status"], attempts: row.attempts, createdAt: row.createdAt, lastError: row.lastError, notBefore: row.notBefore }));
+  }
+
   public async completeOutbox(id: string): Promise<void> {
     await this.db.update(t.campaignOutbox).set({ status: "done" }).where(eq(t.campaignOutbox.id, id));
   }
@@ -177,6 +184,13 @@ class PostgresTransaction implements CampaignTransaction {
       .where(and(eq(t.campaignOutbox.guildId, key.guildId), eq(t.campaignOutbox.campaignId, key.campaignId), eq(t.campaignOutbox.status, "failed")))
       .returning({ id: t.campaignOutbox.id });
     return updated.length;
+  }
+
+  public async requeueFailedOutboxItem(key: CampaignKey, id: string): Promise<boolean> {
+    const updated = await this.db.update(t.campaignOutbox).set({ status: "pending", attempts: 0, lastError: null, notBefore: 0 })
+      .where(and(eq(t.campaignOutbox.guildId, key.guildId), eq(t.campaignOutbox.campaignId, key.campaignId), eq(t.campaignOutbox.id, id), eq(t.campaignOutbox.status, "failed")))
+      .returning({ id: t.campaignOutbox.id });
+    return updated.length > 0;
   }
 
   // ---- timers

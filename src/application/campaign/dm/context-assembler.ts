@@ -237,6 +237,21 @@ function liveState(input: ContextInput): ContextSection {
   if (state.clues.length > 0) lines.push(`Revealed clues: ${state.clues.map((clue) => clue.text).join(" ")}`);
   const arrival = input.events.findLast((event) => event.kind === "heroJoined" && event.entrance !== undefined);
   if (arrival?.kind === "heroJoined" && arrival.entrance !== undefined) lines.push(`New companion ${arrival.sheet.name} joined at this scene: ${arrival.entrance}`);
+  // Keep the current scene's recent exchanges available to the next NPC reply.
+  // The settled event contains the player's words; the narrated event contains
+  // the NPC's actual answer, so a follow-up can refer to both.
+  const sceneStart = input.events.findLastIndex((event) => event.kind === "sceneTransitioned");
+  const sceneEvents = input.events.slice(sceneStart + 1);
+  const replies = sceneEvents.filter((event) => event.kind === "dialogueNarrated").slice(-6);
+  const exchanges = replies.flatMap((reply) => {
+    const settled = sceneEvents.find((event) => event.kind === "dialogueSettled" && event.dialogue.id === reply.dialogueId);
+    if (settled?.kind !== "dialogueSettled" || reply.kind !== "dialogueNarrated") return [];
+    const hero = state.characters[settled.dialogue.characterId]?.name ?? settled.dialogue.characterId;
+    const npc = input.bible.npcs.find((candidate) => candidate.id === settled.dialogue.npcId)?.name ?? settled.dialogue.npcId;
+    const said = settled.dialogue.question === null ? `${hero} pressed ${npc}.` : `${hero} to ${npc}: ${settled.dialogue.question}`;
+    return [`${said}\n${npc}: ${reply.text}`];
+  });
+  if (exchanges.length > 0) lines.push("Recent conversation in this scene:\n" + exchanges.join("\n"));
   if (encounter !== null) {
     const foes = Object.values(encounter.combatants)
       .filter((combatant) => combatant.side === "foes")
