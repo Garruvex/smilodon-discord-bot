@@ -167,7 +167,8 @@ const curated = {
   longstrider: { relation: "ally-or-self", count: 1, note: "", effects: [{ modifiers: [{ kind: "speedBonus", amount: 10 }], duration: { kind: "untilRemoved" } }] },
   "expeditious-retreat": { relation: "self", count: 1, note: "Thirty more feet of movement each turn stands in for the Dash as a bonus action.", effects: [{ modifiers: [{ kind: "speedBonus", amount: 30 }], duration: { kind: "untilRemoved" } }] },
   fly: { relation: "ally-or-self", count: 1, note: "Thirty more feet of movement each turn stands in for the flying speed; flying itself is not modeled.", effects: [{ modifiers: [{ kind: "speedBonus", amount: 30 }], duration: { kind: "untilRemoved" } }] },
-  "misty-step": { relation: "self", count: 1, note: "Thirty feet of movement that provokes no opportunity attacks stands in for the teleport; the caster walks to the zone.", effects: [{ movement: 30 }, { modifiers: [{ kind: "avoidsOpportunityAttacks" }], duration: { kind: "rounds", count: 1 } }] },
+  "misty-step": { relation: "self", count: 1, destination: true, range: 30, note: "The caster names a zone within thirty feet and appears there; the book has them pick a point they can see.", effects: [{ teleport: true }] },
+  "dimension-door": { relation: "self", count: 1, destination: true, range: 500, note: "The caster names a zone within five hundred feet and appears there; carrying a willing creature along is not modeled.", effects: [{ teleport: true }] },
   "mirror-image": { relation: "self", count: 1, note: "Armor class +3 stands in for the three duplicates.", effects: [{ modifiers: [{ kind: "acBonus", amount: 3 }], duration: { kind: "rounds", count: 10 } }] },
   "enlarge-reduce": { relation: "ally-or-self", count: 1, note: "Only Enlarge is modeled: +2 melee damage stands in for the extra d4.", effects: [{ modifiers: [{ kind: "meleeDamageBonus", amount: 2 }], duration: { kind: "rounds", count: 10 } }] },
   "flaming-sphere": { relation: "self", count: 1, summon: { monster: "flaming-sphere", count: 1 }, note: "A ball of fire fights beside the caster until the fight ends, attacking for the same 2d6 fire; the book has it roll into a creature for a Dexterity save.", effects: [] },
@@ -265,6 +266,7 @@ function planFor(spell, notes) {
       if (effect.lighting !== undefined) code = `{ kind: "setLighting", target: "target", lighting: ${quote(effect.lighting)} }`;
       else if (effect.removes !== undefined) code = `{ kind: "removeCondition", target: "target", conditions: [${effect.removes.map((name) => `"condition:${name}"`).join(", ")}] }`;
       else if (effect.polymorph !== undefined) code = `{ kind: "polymorph", target: "target", monsterId: "monster:${effect.polymorph}" }`;
+      else if (effect.teleport === true) code = `{ kind: "teleport", target: "target" }`;
       else if (effect.movement !== undefined) code = `{ kind: "grantMovement", target: "target", feet: ${effect.movement} }`;
       else if (effect.damage !== undefined) code = `{ kind: "damage", target: "target", amount: ${effect.damage[0][0] === 0 ? `flat(${effect.damage[0][2]})` : "flat(0)"}, damageType: ${quote(effect.damageType)} }`;
       else if (effect.condition !== undefined) code = `{ kind: "applyCondition", target: "target", condition: "condition:${effect.condition}", duration: ${durationCode(effect.duration)} }`;
@@ -336,6 +338,7 @@ for (const spell of spells) {
   let count;
   let perHigher = 0;
   let area = false;
+  let destination = false;
   let plan;
   if (planned === null) {
     summary.narrative += 1;
@@ -349,6 +352,7 @@ for (const spell of spells) {
     count = planned.count;
     perHigher = planned.countPerHigherSlot;
     // A hostile area of ten feet or more reaches everyone in the zone it is aimed at.
+    if (curated[spell.index]?.destination === true) destination = true;
     if (relation === "enemy" && (spell.area_of_effect?.size ?? 0) >= 10) {
       area = true;
       count = 1;
@@ -360,7 +364,7 @@ for (const spell of spells) {
   const cleanNotes = notes.filter((note) => note !== "");
   const comment = cleanNotes.length === 0 ? "" : cleanNotes.map((note) => `// ${note}`).join(nl) + nl;
   const rangeCode = range.kind === "feet" ? `{ kind: "feet", feet: ${range.feet} }` : `{ kind: ${quote(range.kind)} }`;
-  const targeting = `{ relation: ${quote(relation)}, count: ${count}${perHigher > 0 ? `, countPerHigherSlot: ${perHigher}` : ""}${area ? ", area: true" : ""} }`;
+  const targeting = `{ relation: ${quote(relation)}, count: ${count}${perHigher > 0 ? `, countPerHigherSlot: ${perHigher}` : ""}${area ? ", area: true" : ""}${destination ? ", destination: true" : ""} }`;
   spellLines.push(`${comment}export const ${name} = defineSpell({
   id: ${quote(`spell:${spell.index}`)},
   source,

@@ -19,14 +19,25 @@ function start(spells: readonly `spell:${string}`[], slots: Readonly<Record<numb
 }
 
 describe("Misty Step", () => {
-  it("gives thirty feet of movement that provokes nothing, as a bonus action", () => {
-    const fight = start(["spell:misty-step"]);
+  const near = { ...skirmish, edges: [{ from: "gate", to: "courtyard", feet: 30 }] };
+  const jump = { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:misty-step", slotLevel: 2, targetIds: ["c-elspeth"], zoneId: "courtyard" } as const;
+
+  it("carries the caster to the zone named, as a bonus action, without spending movement", () => {
+    const fight = new Fight(partyWithSpells(["spell:misty-step"], { 1: 2, 2: 1 })).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec: near });
     const before = fight.combatant("c-elspeth").budget.movement;
-    fight.run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:misty-step", slotLevel: 2, targetIds: ["c-elspeth"] });
+    fight.run(sam, jump);
     const after = fight.combatant("c-elspeth");
-    expect(after.budget.movement).toBe(before + 30);
+    expect(after.zoneId).toBe("courtyard");
+    expect(after.budget.movement).toBe(before);
     expect(after.budget.bonusAction).toBe(false);
-    expect(after.effects.some((effect) => effect.modifiers.some((modifier) => modifier.kind === "avoidsOpportunityAttacks"))).toBe(true);
+  });
+
+  it("refuses a zone out of reach, the caster's own zone, or none at all", () => {
+    const fight = new Fight(partyWithSpells(["spell:misty-step"], { 1: 2, 2: 1 })).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec });
+    expect(fight.reject(sam, jump)).toEqual({ code: "invalidTarget" });
+    expect(fight.reject(sam, { ...jump, zoneId: "gate" })).toEqual({ code: "invalidTarget" });
+    const { zoneId: _none, ...bare } = jump;
+    expect(fight.reject(sam, bare)).toEqual({ code: "invalidTarget" });
   });
 });
 

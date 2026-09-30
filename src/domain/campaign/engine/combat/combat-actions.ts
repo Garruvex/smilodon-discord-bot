@@ -77,9 +77,10 @@ export function castSpell(
   spellId: ContentId<"spell">,
   slotLevel: number,
   targetIds: readonly string[],
+  zoneId?: string,
 ): Rejection | null {
   const armed = armedMetamagic(caster, conditionLookup(decision.ctx.rules.content));
-  const checked = spellProblem(encounter, decision.ctx.rules.content, caster, spellId, slotLevel, targetIds, armed?.option ?? null);
+  const checked = spellProblem(encounter, decision.ctx.rules.content, caster, spellId, slotLevel, targetIds, armed?.option ?? null, zoneId);
   if ("problem" in checked) return checked.problem;
   const { spell, bonus, targets } = checked.value;
   const overchannel = spell.level >= 1 && spell.level <= 5 ? armedOverchannel(caster, conditionLookup(decision.ctx.rules.content)) : null;
@@ -90,6 +91,7 @@ export function castSpell(
       spellId: spell.id,
       slotLevel,
       ...(overchannel === null ? {} : { maximized: true as const }),
+      ...(spell.targeting.destination === true && zoneId !== undefined ? { destination: zoneId } : {}),
       ...(armed === null || armed.option === "quickened" || armed.option === "twinned" ? {} : { metamagic: armed.option }),
     },
     targetIds: targets,

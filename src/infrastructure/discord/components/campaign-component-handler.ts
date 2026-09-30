@@ -100,6 +100,8 @@ function combatCommand(choice: TurnChoice, targetIds: readonly string[]): ((comb
       return (combatantId): CombatCommand => ({ kind: "combatUseItem", combatantId, itemId: choice.item as ContentId<"item"> });
     case "move":
       return (combatantId): CombatCommand => ({ kind: "combatMove", combatantId, zoneId: choice.zone });
+    case "teleport":
+      return (combatantId): CombatCommand => ({ kind: "combatCast", combatantId, spellId: choice.spell as ContentId<"spell">, slotLevel: choice.slot, targetIds: [combatantId], zoneId: choice.zone });
     case "shield":
       return (combatantId): CombatCommand => ({ kind: "combatShield", combatantId, itemId: choice.item as ContentId<"item">, on: choice.on });
     case "withdraw":

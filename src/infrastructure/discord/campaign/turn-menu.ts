@@ -24,6 +24,8 @@ export type TurnChoice =
   | { readonly kind: "feature"; readonly feature: string }
   | { readonly kind: "potion"; readonly item: string }
   | { readonly kind: "move"; readonly zone: string }
+  // A spell that carries the hero to a zone (Misty Step).
+  | { readonly kind: "teleport"; readonly spell: string; readonly slot: number; readonly zone: string }
   | { readonly kind: "shield"; readonly item: string; readonly on: boolean }
   | { readonly kind: "engage" }
   | { readonly kind: "withdraw" }
@@ -52,6 +54,8 @@ export function encodeChoice(choice: TurnChoice): string {
       return `potion|${choice.item}`;
     case "move":
       return `move|${choice.zone}`;
+    case "teleport":
+      return `teleport|${choice.spell}|${choice.slot}|${choice.zone}`;
     case "shield":
       return `shield|${choice.on ? "on" : "off"}|${choice.item}`;
     default:
@@ -60,7 +64,7 @@ export function encodeChoice(choice: TurnChoice): string {
 }
 
 export function parseChoice(value: string): TurnChoice | null {
-  const [kind, first, second] = value.split("|");
+  const [kind, first, second, third] = value.split("|");
   switch (kind) {
     case "attack":
       return first?.startsWith("item:") === true ? { kind, weapon: first } : null;
@@ -84,6 +88,10 @@ export function parseChoice(value: string): TurnChoice | null {
       return first?.startsWith("item:") === true ? { kind, item: first } : null;
     case "move":
       return first !== undefined && first.length > 0 ? { kind, zone: first } : null;
+    case "teleport": {
+      const slot = Number(second);
+      return first?.startsWith("spell:") === true && Number.isInteger(slot) && slot >= 0 && third !== undefined && third.length > 0 ? { kind, spell: first, slot, zone: third } : null;
+    }
     case "shield":
       return (first === "on" || first === "off") && second?.startsWith("item:") === true ? { kind, item: second, on: first === "on" } : null;
     case "engage":
@@ -244,6 +252,7 @@ function choicesOf(view: TurnView): readonly TurnChoice[] {
     ...view.potions.map((potion): TurnChoice => ({ kind: "potion", item: potion.id })),
     ...view.shields.map((shield): TurnChoice => ({ kind: "shield", item: shield.id, on: !shield.on })),
     ...view.moves.map((move): TurnChoice => ({ kind: "move", zone: move.zoneId })),
+    ...view.teleports.map((jump): TurnChoice => ({ kind: "teleport", spell: jump.spellId, slot: jump.slotLevel, zone: jump.zoneId })),
     ...(view.engage.length > 0 ? [{ kind: "engage" } as const] : []),
     ...(view.canWithdraw ? [{ kind: "withdraw" } as const] : []),
     ...(view.canDodge ? [{ kind: "dodge" } as const] : []),
@@ -299,6 +308,11 @@ function choiceLabel(choice: TurnChoice, view: TurnView, text: Texts, glossary: 
     case "move": {
       const move = view.moves.find((candidate) => candidate.zoneId === choice.zone);
       return t.move({ zone: move?.zone ?? choice.zone, feet: move?.feet ?? 0 });
+    }
+    case "teleport": {
+      const jump = view.teleports.find((candidate) => candidate.spellId === choice.spell && candidate.slotLevel === choice.slot && candidate.zoneId === choice.zone);
+      const base = `${name(choice.spell)}: ${t.move({ zone: jump?.zone ?? choice.zone, feet: jump?.feet ?? 0 })}`;
+      return jump?.bonusAction === true ? `${base} · ${t.bonusTag}` : base;
     }
     case "shield":
       return choice.on ? t.shieldOn({ item: name(choice.item) }) : t.shieldOff({ item: name(choice.item) });

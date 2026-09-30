@@ -176,7 +176,7 @@ export type ResolutionSource =
   // stunDc: a readied Stunning Strike; a melee hit calls for a Constitution save against it.
   | { readonly kind: "weapon"; readonly option: AttackOption; readonly smiteSlot?: number; readonly stunDc?: number }
   // maximized: Overchannel, so its damage and healing are the most the dice can give. metamagic: heightened, empowered, extended, subtle or careful, readied for this casting.
-  | { readonly kind: "spell"; readonly spellId: ContentId<"spell">; readonly slotLevel: number; readonly maximized?: true; readonly metamagic?: "heightened" | "empowered" | "extended" | "subtle" | "careful" }
+  | { readonly kind: "spell"; readonly spellId: ContentId<"spell">; readonly slotLevel: number; readonly maximized?: true; readonly destination?: string; readonly metamagic?: "heightened" | "empowered" | "extended" | "subtle" | "careful" }
   | { readonly kind: "feature"; readonly featureId: ContentId<"feature"> }
   // A potion drunk in a fight whose effects are more than healing.
   | { readonly kind: "item"; readonly itemId: ContentId<"item"> }

@@ -63,7 +63,7 @@ export function handleCombatCommand(decision: Decision, command: CombatCommand):
       });
     case "combatCast":
       return withHeroTurn(decision, command.combatantId, (hero, encounter) =>
-        castSpell(decision, encounter, hero, command.spellId, command.slotLevel, command.targetIds),
+        castSpell(decision, encounter, hero, command.spellId, command.slotLevel, command.targetIds, command.zoneId),
       );
     case "combatUseItem":
       return useItemInCombat(decision, command.combatantId, command.itemId);

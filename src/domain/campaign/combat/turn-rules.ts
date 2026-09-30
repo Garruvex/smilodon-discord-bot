@@ -12,7 +12,7 @@ import { castableSlotLevels, slotUnavailable, spellMaxTargets, usePoolOf } from 
 import { areEngaged, availableSlots, currentCombatant, engagedWith, isPresent, type AttackOption, type Combatant, type EncounterState } from "./combat-state.js";
 import { isWorn } from "./combatant-profile.js";
 import { spellTargetProblem, spellTargets, weaponTargetProblem, weaponTargets } from "./legal-targets.js";
-import { engageCost, stepCost, withdrawCost } from "./positioning.js";
+import { engageCost, shortestPath, stepCost, withdrawCost } from "./positioning.js";
 
 // The rules of a combat turn, in one place. Every choice a hero can make has a
 // *problem* function: null when the choice is legal now, or why it is not.
@@ -101,6 +101,7 @@ export function spellProblem(
   slotLevel: number,
   targetIds: readonly string[],
   metamagic: MetamagicOption | null = null,
+  zoneId?: string,
 ): Checked<{ readonly spell: SpellDefinition; readonly bonus: boolean; readonly targets: readonly string[] }> {
   const casting = caster.spellcasting;
   const spell = content.find(spellId);
@@ -124,6 +125,13 @@ export function spellProblem(
   if (caster.budget.bonusSpellCast && (bonus || spell.level > 0)) return refuse({ code: "bonusSpellCast" });
   const cost = costProblem(caster, bonus ? "bonusAction" : "action", content);
   if (cost !== null) return refuse(cost);
+  // A teleport is aimed at a zone within reach, other than the one the caster stands in.
+  if (spell.targeting.destination === true) {
+    const reach = spell.range.kind === "feet" ? spell.range.feet : 0;
+    const distance = zoneId === undefined ? null : (shortestPath(encounter.edges, caster.zoneId, zoneId)?.feet ?? null);
+    if (zoneId === undefined || zoneId === caster.zoneId || distance === null || distance > reach || encounter.zones.every((zone) => zone.id !== zoneId)) return refuse({ code: "invalidTarget" });
+    return accept({ spell, bonus, targets: [caster.id] });
+  }
   // Twinned Spell: a spell that targets only one creature (and does not grow with the slot) may target a second.
   const twin = metamagic === "twinned" && spell.targeting.count === 1 && (spell.targeting.countPerHigherSlot ?? 0) === 0 && spell.targeting.relation !== "self" ? 1 : 0;
   const maxTargets = spell.targeting.relation === "self" ? spell.targeting.count : spellMaxTargets(spell, slotLevel) + twin;
@@ -270,6 +278,8 @@ export interface TurnOptions {
   // Shields carried, whether each is on, and whether it can be switched now.
   readonly shields: readonly { readonly itemId: ContentId<"item">; readonly on: boolean; readonly canSwitch: boolean }[];
   readonly moves: readonly { readonly zoneId: string; readonly feet: number }[];
+  // Spells that carry the caster to a zone: each with the slot levels it can be cast at and the zones in reach.
+  readonly teleports: readonly { readonly spell: SpellDefinition; readonly slotLevels: readonly number[]; readonly bonusAction: boolean; readonly zones: readonly { readonly zoneId: string; readonly feet: number }[] }[];
   readonly engage: readonly string[];
   readonly canWithdraw: boolean;
   // Dodge always costs the action.
@@ -306,6 +316,7 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
       });
 
   const spells: TurnOptions["spells"][number][] = [];
+  const teleports: TurnOptions["teleports"][number][] = [];
   if (!busy && (hero.wildShapeOriginal === null || hero.traits.some((trait) => trait.kind === "beastSpells"))) {
     for (const id of hero.spellcasting?.spells ?? []) {
       const spell = content.find(id);
@@ -317,6 +328,15 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
       const pool = usePoolOf(hero.spellcasting, id);
       if (innate !== undefined && innate !== null && (hero.resources.featureUses[pool.key] ?? innate) < pool.cost) continue;
       const slotLevels = castableSlotLevels(spell, availableSlots(hero.resources));
+      if (spell.targeting.destination === true) {
+        const zones = encounter.zones.flatMap((zone) => {
+          const checked = spellProblem(encounter, content, hero, id, slotLevels[0] ?? spell.level, [], null, zone.id);
+          const feet = shortestPath(encounter.edges, hero.zoneId, zone.id)?.feet;
+          return "value" in checked && feet !== undefined ? [{ zoneId: zone.id, feet }] : [];
+        });
+        if (slotLevels.length > 0 && zones.length > 0) teleports.push({ spell, slotLevels, bonusAction, zones });
+        continue;
+      }
       const targetIds = spellTargets(encounter, hero, spell, content).map((target) => target.id);
       if (slotLevels.length > 0 && targetIds.length > 0) spells.push({ spell, slotLevels, bonusAction, targetIds });
     }
@@ -369,12 +389,13 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
     potions,
     shields,
     moves,
+    teleports,
     engage,
     canWithdraw: !busy && withdrawProblem(encounter, hero, content) === null,
     canTakeAction,
     canDashOrDisengage,
     wildShapeForms: formsNow,
     canRevertShape,
-    hasUnspent: !busy && (hero.budget.action || hero.budget.bonusAction) && attacks.length + spells.length + features.length + potions.length > 0,
+    hasUnspent: !busy && (hero.budget.action || hero.budget.bonusAction) && attacks.length + spells.length + teleports.length + features.length + potions.length > 0,
   };
 }

@@ -50,6 +50,8 @@ export interface SpellTargeting {
   // Extra targets per slot level above the spell's level (Bless: 1).
   // An area: the caster names one creature and the spell reaches every creature in its zone, friends and the caster included.
   readonly area?: boolean;
+  // The spell is aimed at a place, not a creature: the caster names a zone within its range.
+  readonly destination?: boolean;
   readonly countPerHigherSlot?: number;
 }
 
@@ -542,6 +544,7 @@ function capabilitiesFor(effect: Effect): readonly Capability[] {
     case "grantMovement":
     case "gainSlot":
     case "convertSlot":
+    case "teleport":
       return [];
     default:
       return assertNever(effect);

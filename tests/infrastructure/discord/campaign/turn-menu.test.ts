@@ -25,6 +25,7 @@ const view: TurnView = {
   potions: [{ id: "item:potion-of-healing", count: 2, bonusAction: false }],
   shields: [{ id: "item:shield", on: true }],
   moves: [{ zoneId: "gate", zone: "Gate", feet: 10 }],
+  teleports: [],
   engage: [],
   canWithdraw: true,
   canDodge: true,
@@ -141,6 +142,17 @@ describe("the turn menu", () => {
     const optionsAtTwo = atTwo === null ? undefined : json(atTwo).find((component) => Array.isArray(component.options));
     expect(optionsAtOne?.max_values).toBe(2);
     expect(optionsAtTwo?.max_values).toBe(1);
+  });
+
+  it("lists a teleporting spell once per zone in reach, and needs no second step", () => {
+    const jumping: TurnView = { ...view, teleports: [{ spellId: "spell:misty-step", slotLevel: 2, slotsLeft: 1, bonusAction: true, zoneId: "yard", zone: "Yard", feet: 20 }] };
+    const menu = renderTurnMenu(jumping, texts.en, enSrd51Glossary, "camp");
+    const options = (json(menu).find((component) => Array.isArray(component.options))?.options ?? []) as { label: string; value: string }[];
+    const jump = options.find((option) => option.value === "teleport|spell:misty-step|2|yard");
+    expect(jump?.label).toContain("Misty Step");
+    expect(parseChoice("teleport|spell:misty-step|2|yard")).toEqual({ kind: "teleport", spell: "spell:misty-step", slot: 2, zone: "yard" });
+    expect(parseChoice("teleport|spell:misty-step|2")).toBeNull();
+    expect(renderTargetMenu({ kind: "teleport", spell: "spell:misty-step", slot: 2, zone: "yard" }, jumping, texts.en, enSrd51Glossary, "camp")).toBeNull();
   });
 
   it("only offers Refresh while an attack is being resolved", () => {

@@ -592,6 +592,11 @@ export function applyEffect(
     case "gainSlot":
       decision.emit({ kind: "slotGained", combatantId: recipient.id, level: effect.level });
       return;
+    case "teleport":
+      if (resolution.source.kind === "spell" && resolution.source.destination !== undefined) {
+        decision.emit({ kind: "combatantMoved", combatantId: recipient.id, zoneId: resolution.source.destination, feet: 0 });
+      }
+      return;
     case "convertSlot":
       if ((recipient.resources.spellSlots[effect.level] ?? 0) > 0) decision.emit({ kind: "slotConverted", combatantId: recipient.id, level: effect.level });
       return;

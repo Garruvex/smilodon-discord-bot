@@ -203,6 +203,8 @@ export type CombatCommand =
       // 0 for cantrips.
       readonly slotLevel: number;
       readonly targetIds: readonly string[];
+      // The zone a teleporting spell is aimed at (Misty Step).
+      readonly zoneId?: string;
     }
   | { readonly kind: "combatUseFeature"; readonly combatantId: string; readonly featureId: ContentId<"feature"> }
   | { readonly kind: "combatUseItem"; readonly combatantId: string; readonly itemId: ContentId<"item"> }

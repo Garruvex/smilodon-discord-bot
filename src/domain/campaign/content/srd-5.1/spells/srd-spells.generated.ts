@@ -20,7 +20,6 @@ const cloudkillDamage: DiceTable = { 5: [5, 8, 0], 6: [6, 8, 0], 7: [7, 8, 0], 8
 const coneOfColdDamage: DiceTable = { 5: [8, 8, 0], 6: [9, 8, 0], 7: [10, 8, 0], 8: [11, 8, 0], 9: [12, 8, 0] };
 const controlWaterDamage: DiceTable = { 4: [2, 8, 0] };
 const delayedBlastFireballDamage: DiceTable = { 7: [12, 6, 0], 8: [13, 6, 0], 9: [14, 6, 0] };
-const dimensionDoorDamage: DiceTable = { 4: [4, 6, 0] };
 const disintegrateDamage: DiceTable = { 6: [10, 6, 40] };
 const divineFavorDamage: DiceTable = { 1: [1, 4, 0] };
 const dreamDamage: DiceTable = { 5: [3, 6, 0] };
@@ -940,15 +939,16 @@ export const detectThoughts = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
+// The caster names a zone within five hundred feet and appears there; carrying a willing creature along is not modeled.
 export const dimensionDoor = defineSpell({
   id: "spell:dimension-door",
   source,
   level: 4,
   castingTime: "action",
   range: { kind: "feet", feet: 500 },
-  targeting: { relation: "enemy", count: 1 },
+  targeting: { relation: "self", count: 1, destination: true },
   concentration: false,
-  plan: ({ slotLevel }) => ({ check: null, onLand: [{ kind: "damage", target: "target", amount: diceAt(dimensionDoorDamage, slotLevel), damageType: "force" }], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "teleport", target: "target" }], onAvoid: [] }),
 });
 
 // Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
@@ -2329,16 +2329,16 @@ export const mislead = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Thirty feet of movement that provokes no opportunity attacks stands in for the teleport; the caster walks to the zone.
+// The caster names a zone within thirty feet and appears there; the book has them pick a point they can see.
 export const mistyStep = defineSpell({
   id: "spell:misty-step",
   source,
   level: 2,
   castingTime: "bonus-action",
-  range: { kind: "self" },
-  targeting: { relation: "self", count: 1 },
+  range: { kind: "feet", feet: 30 },
+  targeting: { relation: "self", count: 1, destination: true },
   concentration: false,
-  plan: () => ({ check: null, onLand: [{ kind: "grantMovement", target: "target", feet: 30 }, { kind: "applyModifiers", target: "target", modifiers: [{ kind: "avoidsOpportunityAttacks" }], duration: { kind: "rounds", count: 1 } }], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "teleport", target: "target" }], onAvoid: [] }),
 });
 
 // Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.

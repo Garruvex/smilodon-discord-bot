@@ -58,6 +58,8 @@ export interface TurnView {
   // Shields carried, and whether each is on: putting one on or off costs the action.
   readonly shields: readonly { readonly id: string; readonly on: boolean }[];
   readonly moves: readonly { readonly zoneId: string; readonly zone: string; readonly feet: number }[];
+  // A spell that carries the hero to a zone: one entry per spell, slot level and zone in reach.
+  readonly teleports: readonly { readonly spellId: string; readonly slotLevel: number; readonly slotsLeft: number; readonly bonusAction: boolean; readonly zoneId: string; readonly zone: string; readonly feet: number }[];
   // Foes in the hero's zone they are not yet in reach of.
   readonly engage: readonly TargetView[];
   readonly canWithdraw: boolean;
@@ -142,6 +144,9 @@ export function buildTurnView(
     potions: options.potions.map(({ itemId, count, bonusAction }) => ({ id: itemId, count, bonusAction })),
     shields: options.shields.filter((shield) => shield.canSwitch).map(({ itemId, on }) => ({ id: itemId, on })),
     moves: options.moves.map(({ zoneId, feet }) => ({ zoneId, zone: zoneOf(zoneId), feet })),
+    teleports: options.teleports.flatMap(({ spell, slotLevels, bonusAction, zones }) =>
+      slotLevels.flatMap((slotLevel) => zones.map(({ zoneId, feet }) => ({ spellId: spell.id, slotLevel, slotsLeft: slotLevel === 0 ? 0 : (slots[slotLevel] ?? 0), bonusAction, zoneId, zone: zoneOf(zoneId), feet }))),
+    ),
     engage: options.engage.flatMap(targetView),
     canWithdraw: options.canWithdraw,
     canDodge: options.canTakeAction,

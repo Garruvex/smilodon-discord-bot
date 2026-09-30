@@ -90,6 +90,8 @@ export type Effect =
   // One more spell slot of this level (Flexible Casting), gone with the next long rest.
   | { readonly kind: "gainSlot"; readonly target: EffectTarget; readonly level: number }
   // Flexible Casting the other way: a spell slot of this level becomes that many sorcery points.
+  // The caster appears in the zone the casting was aimed at (Misty Step): no movement is spent and no one gets an opportunity attack.
+  | { readonly kind: "teleport"; readonly target: EffectTarget }
   | { readonly kind: "convertSlot"; readonly target: EffectTarget; readonly level: number }
   // Feet of movement to use this turn (Misty Step's teleport is played as movement that provokes nothing).
   | { readonly kind: "grantMovement"; readonly target: EffectTarget; readonly feet: number }
