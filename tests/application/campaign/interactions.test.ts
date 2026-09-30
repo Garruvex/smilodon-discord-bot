@@ -197,10 +197,17 @@ describe("choosing an interaction", () => {
     const atInn = { ...newCampaign(), sceneId: "scene:inn" as const, gold: 2 };
     const broke = resolveStoryEffects(proposal("interaction:ask-innkeeper"), bible, atInn);
     expect(broke).toMatchObject({ kind: "invalid" });
-    const paid = resolveStoryEffects(proposal("interaction:ask-innkeeper"), bible, { ...atInn, gold: 9 });
+    const paid = resolveStoryEffects(proposal("interaction:ask-innkeeper"), bible, { ...newCampaign(), sceneId: "scene:inn" as const, gold: 9 });
     if (paid.kind !== "resolved") throw new Error(paid.problems.join(" "));
     expect(paid.proposal.actions[0]?.resolution).toEqual({ kind: "automatic", reason: "Ask the innkeeper about the field" });
     expect(paid.proposal.effects?.map((planned) => planned.effect.kind)).toEqual(["spendGold", "setFlag", "setFlag", "transitionScene"]);
+  });
+
+  it("keeps one scene change when an interaction moves the party and the model proposes the same move", () => {
+    const duplicate: PlannerProposal = { ...proposal("interaction:ask-innkeeper"), effects: [{ kind: "transitionScene", sceneId: "scene:field", when: { kind: "always" } }] };
+    const resolved = resolveStoryEffects(duplicate, bible, { ...newCampaign(), sceneId: "scene:inn" as const, gold: 9 });
+    if (resolved.kind !== "resolved") throw new Error(resolved.problems.join(" "));
+    expect(resolved.proposal.effects?.filter((planned) => planned.effect.kind === "transitionScene")).toHaveLength(1);
   });
 
   it("leaves an action without an interaction exactly as the Planner planned it", () => {

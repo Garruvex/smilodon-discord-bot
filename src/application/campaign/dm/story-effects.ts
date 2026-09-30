@@ -49,7 +49,13 @@ export function resolveStoryEffects(
   for (const effect of proposal.effects) if (effect.kind === "transitionScene") reachable.add(effect.sceneId);
   const exits = new Set(reachableScenes(bible, state));
 
+  // An authored interaction that moves the party or starts a fight already says so; the model's own proposal of the same kind
+  // would be a second one, which the engine refuses (one scene change and one fight per round), so the authored one stands.
+  const resolvedInteractions = resolveInteractions(proposal, bible, state, options, problems);
+  const authored = new Set(resolvedInteractions.interactionEffects.map(({ effect }) => effect.kind));
+
   for (const effect of proposal.effects) {
+    if ((effect.kind === "transitionScene" || effect.kind === "startEncounter") && authored.has(effect.kind)) continue;
     switch (effect.kind) {
       case "transitionScene": {
         const scene = bible.scenes.find((candidate) => candidate.id === effect.sceneId);
@@ -88,7 +94,7 @@ export function resolveStoryEffects(
     }
   }
 
-  const { actions, interactionEffects } = resolveInteractions(proposal, bible, state, options, problems);
+  const { actions, interactionEffects } = resolvedInteractions;
   effects.push(...interactionEffects);
   if (problems.length > 0) return { kind: "invalid", problems };
   return { kind: "resolved", proposal: { roundNumber: proposal.roundNumber, actions, effects } };
