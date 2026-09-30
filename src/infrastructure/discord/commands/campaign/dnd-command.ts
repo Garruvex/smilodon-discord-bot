@@ -91,6 +91,7 @@ export class DndCommand implements BotCommand {
         description: "Adds an adventure from a file to this server, after checks and your approval.",
         options: [{ type: "attachment", name: "file", description: "The adventure file (YAML or JSON).", required: true }],
       },
+      { name: "adventures", description: "Lists this server's adventures: review a draft, remove one, or restore it." },
       {
         name: "author",
         description: "Has the Adventure Author write an adventure from an idea or your notes.",
@@ -158,7 +159,7 @@ export class DndCommand implements BotCommand {
     const allowed =
       subcommand === "setup"
         ? this.deps.authority.isBotAdministrator(interaction)
-        : subcommand === "new" || subcommand === "upload-adventure" || subcommand === "author"
+        : subcommand === "new" || subcommand === "upload-adventure" || subcommand === "adventures" || subcommand === "author"
           ? await this.deps.authority.isAdmin(interaction)
           : true;
     if (!allowed) {
@@ -172,6 +173,8 @@ export class DndCommand implements BotCommand {
         return this.importCharacter(interaction);
       case "upload-adventure":
         return this.deps.intake.upload(interaction);
+      case "adventures":
+        return this.deps.intake.adventures(interaction);
       case "author":
         return this.deps.intake.author(interaction);
       case "setup":

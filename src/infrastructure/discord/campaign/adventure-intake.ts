@@ -7,7 +7,7 @@ import { texts, type Texts } from "../../../application/i18n/texts.js";
 import type { Glossary } from "../../../domain/campaign/rules/content-registry.js";
 import { languageOf } from "../components/character-library-component-handler.js";
 import { downloadAttachmentText } from "./attachment-download.js";
-import { renderReview } from "./adventure-preview.js";
+import { renderLibrary, renderReview } from "./adventure-preview.js";
 
 export interface AdventureIntakeOptions {
   readonly catalog: AdventureCatalog;
@@ -26,6 +26,8 @@ export interface IntakeContext {
   readonly guildId: string;
   readonly userId: string;
   readonly language: "en" | "zh-TW";
+  // Both ways in (the command and the hub's forms) are for DnD Admins only, and check it before this point.
+  readonly isAdmin: boolean;
   readonly editReply: (payload: { readonly content: string; readonly components?: readonly ActionRowBuilder<never>[] }) => Promise<unknown>;
 }
 
@@ -39,6 +41,7 @@ export function slashContext(interaction: ChatInputCommandInteraction<"cached">)
     guildId: interaction.guildId,
     userId: interaction.user.id,
     language: languageOf(interaction),
+    isAdmin: true,
     editReply: (payload) => interaction.editReply(payload),
   };
 }
@@ -55,6 +58,10 @@ export class AdventureIntake {
     return this.uploadFile(slashContext(interaction), file === null ? null : { url: file.url, size: file.size });
   }
 
+  public adventures(interaction: ChatInputCommandInteraction<"cached">): Promise<void> {
+    return this.browse(slashContext(interaction));
+  }
+
   public author(interaction: ChatInputCommandInteraction<"cached">): Promise<void> {
     const attachment = interaction.options.getAttachment("notes");
     return this.authorFrom(slashContext(interaction), {
@@ -64,6 +71,12 @@ export class AdventureIntake {
     });
   }
 
+  // /dnd adventures: what the server holds, with a way to reopen a review, remove or restore.
+  public async browse(ctx: IntakeContext): Promise<void> {
+    const adventures = await this.options.catalog.list(ctx.guildId);
+    await ctx.editReply(renderLibrary({ adventures, text: texts[ctx.language] }) as never);
+  }
+
   public async uploadFile(ctx: IntakeContext, file: UploadedFile | null): Promise<void> {
     const text = texts[ctx.language];
     const reply = (content: string): Promise<void> => ctx.editReply({ content }).then(() => undefined);
@@ -71,7 +84,7 @@ export class AdventureIntake {
     if (file.size > adventureLimits.maxBytes) return reply(text.campaign.adventure.unreadable.tooLarge);
     const downloaded = await downloadAttachmentText(file.url, adventureLimits.maxBytes);
     if (!downloaded.ok) return reply(text.campaign.adventure.unreadable[downloaded.reason]);
-    const result = await this.options.catalog.submit({ guildId: ctx.guildId, uploaderUserId: ctx.userId, source: "upload", text: downloaded.text });
+    const result = await this.options.catalog.submit({ guildId: ctx.guildId, uploaderUserId: ctx.userId, source: "upload", text: downloaded.text, isAdmin: ctx.isAdmin });
     await this.review(ctx, result, text);
   }
 
@@ -97,7 +110,7 @@ export class AdventureIntake {
     }
     if (written.kind === "tooLong") return reply(t.authorTooLong({ idea: maxIdeaChars, notes: maxNotesChars }));
     if (written.kind === "failed") return reply([t.authorFailed, ...written.problems.slice(0, 10).map((problem) => `• ${problem}`)].join("\n"));
-    const result = await this.options.catalog.submit({ guildId: ctx.guildId, uploaderUserId: ctx.userId, source: "author", text: written.yaml });
+    const result = await this.options.catalog.submit({ guildId: ctx.guildId, uploaderUserId: ctx.userId, source: "author", text: written.yaml, isAdmin: ctx.isAdmin });
     await this.review(ctx, result, text);
   }
 
@@ -106,12 +119,14 @@ export class AdventureIntake {
     switch (result.kind) {
       case "exists":
         return void (await ctx.editReply({ content: t.exists }));
+      case "notAllowed":
+        return void (await ctx.editReply({ content: t.replaceNotAllowed }));
       case "full":
         return void (await ctx.editReply({ content: t.full({ max: defaultMaxAdventuresPerGuild }) }));
       case "invalid":
         return void (await ctx.editReply(renderReview({ report: result.report, adventure: null, text, glossary: this.options.glossaries[ctx.language] }) as never));
       case "pending":
-        return void (await ctx.editReply(renderReview({ report: result.report, adventure: result.adventure, text, glossary: this.options.glossaries[result.adventure.language] }) as never));
+        return void (await ctx.editReply(renderReview({ report: result.report, adventure: result.adventure, replaced: result.replaced !== null, text, glossary: this.options.glossaries[result.adventure.language] }) as never));
     }
   }
 }

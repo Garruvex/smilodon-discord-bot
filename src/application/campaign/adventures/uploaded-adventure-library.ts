@@ -2,6 +2,8 @@ import type { CampaignLanguage } from "../../../domain/campaign/adventure/advent
 import type { AdventureLibrary, AdventureSummary } from "../ports/adventure-library.js";
 import type { AdventureDocument } from "./adventure-document.js";
 
+const retiredKey = (adventureId: string, version: string, language: CampaignLanguage): string => `${adventureId}|${version}|${language}`;
+
 interface Uploaded {
   readonly guildId: string;
   readonly document: AdventureDocument;
@@ -14,6 +16,8 @@ interface Uploaded {
 // with, so approving a newer version never changes a running game.
 export class UploadedAdventureLibrary implements AdventureLibrary {
   // adventure ID -> version -> language edition
+  // Editions taken out of the library: still found by the games that use them, never offered to a new one.
+  private readonly retired = new Set<string>();
   private readonly uploads = new Map<string, Map<string, Map<CampaignLanguage, Uploaded>>>();
 
   public constructor(private readonly base: AdventureLibrary) {}
@@ -25,6 +29,14 @@ export class UploadedAdventureLibrary implements AdventureLibrary {
     editions.set(language, { guildId, document });
     versions.set(version, editions);
     this.uploads.set(id, versions);
+  }
+
+  public retire(adventureId: string, version: string, language: CampaignLanguage): void {
+    this.retired.add(retiredKey(adventureId, version, language));
+  }
+
+  public restore(adventureId: string, version: string, language: CampaignLanguage): void {
+    this.retired.delete(retiredKey(adventureId, version, language));
   }
 
   public list(): readonly AdventureSummary[] {
@@ -59,7 +71,7 @@ export class UploadedAdventureLibrary implements AdventureLibrary {
   // Versions are ordered by when they were added: the last added wins.
   private latest(adventureId: string): Map<CampaignLanguage, Uploaded> {
     const newest = new Map<CampaignLanguage, Uploaded>();
-    for (const editions of this.uploads.get(adventureId)?.values() ?? []) for (const [language, uploaded] of editions) newest.set(language, uploaded);
+    for (const [version, editions] of this.uploads.get(adventureId) ?? []) for (const [language, uploaded] of editions) if (!this.retired.has(retiredKey(adventureId, version, language))) newest.set(language, uploaded);
     return newest;
   }
 

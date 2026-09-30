@@ -2,6 +2,9 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
+import { CampaignCommandBus } from "../../../src/application/campaign/campaign-command-bus.js";
+import { CampaignLobbyService } from "../../../src/application/campaign/campaign-lobby-service.js";
+import { RulesetCatalog } from "../../../src/application/campaign/rules/ruleset-catalog.js";
 import { AdventureAuthor, authorJsonSchema, maxIdeaChars } from "../../../src/application/campaign/adventures/adventure-author.js";
 import { AdventureCatalog, dump, namespacedId } from "../../../src/application/campaign/adventures/adventure-catalog.js";
 import { adventureKey } from "../../../src/application/campaign/adventures/stored-adventure.js";
@@ -224,5 +227,86 @@ describe("the Adventure Author", () => {
     const submitted = await c.submit({ guildId: "g-1", uploaderUserId: "u-up", source: "author", text: written.yaml });
     expect(submitted).toMatchObject({ kind: "pending", adventure: { source: "author", status: "pending" } });
     expect(Object.keys((authorJsonSchema(content) as { properties: object }).properties)).toContain("encounters");
+  });
+});
+
+describe("replacing a draft", () => {
+  const upload = (c: AdventureCatalog, userId: string, isAdmin?: boolean, text = yamlOf("en")): ReturnType<AdventureCatalog["submit"]> =>
+    c.submit({ guildId: "g-1", uploaderUserId: userId, source: "upload", text, ...(isAdmin === undefined ? {} : { isAdmin }) });
+
+  it("lets only the uploader or an admin replace someone's waiting draft, and never hands it over", async () => {
+    const { catalog: c } = catalog();
+    const first = await upload(c, "u-one");
+    if (first.kind !== "pending") throw new Error("submit");
+    expect(first.replaced).toBeNull();
+    expect(await upload(c, "u-two", false)).toEqual({ kind: "notAllowed" });
+    const again = await upload(c, "u-two", true, yamlOf("en").replace(/^title:.*$/m, "title: Second take"));
+    expect(again).toMatchObject({ kind: "pending", replaced: { title: first.adventure.title }, adventure: { uploaderUserId: "u-one", title: "Second take" } });
+    expect((await c.get(first.adventure.key))?.uploaderUserId).toBe("u-one");
+  });
+});
+
+describe("removing an adventure from the library", () => {
+  async function approved(c: ReturnType<typeof catalog>, text = yamlOf("en")): Promise<{ key: string; id: string }> {
+    const submitted = await c.catalog.submit({ guildId: "g-1", uploaderUserId: "u-up", source: "upload", text });
+    if (submitted.kind !== "pending") throw new Error("submit");
+    await c.catalog.approve(submitted.adventure.key, "u-up", false);
+    return { key: submitted.adventure.key, id: submitted.adventure.id };
+  }
+
+  it("hides it from new games, frees its place in the allowance, and lets only its uploader or an admin do it", async () => {
+    const c = catalog(undefined, 1);
+    const { key, id } = await approved(c);
+    expect(await c.catalog.remove(key, "u-other", false)).toEqual({ kind: "notAllowed" });
+    expect(await c.catalog.remove("nope", "u-up", false)).toEqual({ kind: "notFound" });
+    expect(await c.catalog.remove(key, "u-up", false)).toMatchObject({ kind: "ok", adventure: { status: "removed" } });
+    expect(await c.catalog.remove(key, "u-up", false)).toEqual({ kind: "wrongStatus" });
+    expect(c.library.listForGuild("g-1").map((entry) => entry.id)).toEqual([starterAdventureId]);
+    expect(c.library.document(id, "en")).toBeUndefined();
+    // The place is free again: another adventure fits under the limit of one.
+    const other = yamlOf("en").replace("id: moonlit-ruins", "id: another-ruin");
+    expect((await c.catalog.submit({ guildId: "g-1", uploaderUserId: "u-up", source: "upload", text: other })).kind).toBe("pending");
+    // The removed text is not overwritten by uploading the same version again.
+    expect(await c.catalog.submit({ guildId: "g-1", uploaderUserId: "u-up", source: "upload", text: yamlOf("en") })).toEqual({ kind: "exists" });
+  });
+
+  it("restores it when there is room, and not when the server is full", async () => {
+    const c = catalog(undefined, 1);
+    const { key, id } = await approved(c);
+    await c.catalog.remove(key, "u-up", false);
+    expect(await c.catalog.restore(key, "u-up", false)).toMatchObject({ kind: "ok", adventure: { status: "approved" } });
+    expect(c.library.document(id, "en")).toBeDefined();
+    await c.catalog.remove(key, "u-up", false);
+    await c.catalog.submit({ guildId: "g-1", uploaderUserId: "u-up", source: "upload", text: yamlOf("en").replace("id: moonlit-ruins", "id: another-ruin") });
+    expect(await c.catalog.restore(key, "u-up", true)).toEqual({ kind: "full" });
+  });
+
+  it("keeps a lobby that joined it going, counts it, and survives a restart", async () => {
+    const c = catalog();
+    const { key, id } = await approved(c);
+    const bus = new CampaignCommandBus({ unitOfWork: c.store, rulesets: new RulesetCatalog([content]), clock: new ManualClock(1_000) });
+    const lobby = new CampaignLobbyService({
+      unitOfWork: c.store,
+      bus,
+      adventures: c.library,
+      clock: new ManualClock(1_000),
+      ruleset: { rulesetId: content.rulesetId, rulesetVersion: content.version, houseRules: {} },
+      newId: (): string => "camp-1",
+    });
+    const created = await lobby.create({ guildId: "g-1", organizerId: "u-org", name: "Ruins", language: "en", adventureId: id, pacing: { preset: "live" } });
+    if (created.kind !== "ok") throw new Error("create");
+    const stored = await c.catalog.get(key);
+    expect(await c.catalog.usage(stored as NonNullable<typeof stored>)).toEqual({ lobbies: 1, running: 0 });
+
+    await c.catalog.remove(key, "u-up", false);
+    // A new game can no longer pick it; the one already open still finds its exact version.
+    expect((await lobby.create({ guildId: "g-1", organizerId: "u-org", name: "Again", language: "en", adventureId: id, pacing: { preset: "live" } })).kind).toBe("refused");
+    expect(c.library.documentAt(id, "1", "en")).toBeDefined();
+
+    const restarted = catalog(c.store);
+    await restarted.catalog.load();
+    expect(restarted.library.documentAt(id, "1", "en")).toBeDefined();
+    expect(restarted.library.document(id, "en")).toBeUndefined();
+    expect(restarted.library.listForGuild("g-1").map((entry) => entry.id)).toEqual([starterAdventureId]);
   });
 });

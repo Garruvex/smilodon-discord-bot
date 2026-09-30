@@ -289,6 +289,7 @@ export class CampaignHubComponentHandler implements ComponentHandler {
       guildId: interaction.guildId,
       userId: interaction.user.id,
       language: languageOf(interaction),
+      isAdmin: true,
       editReply: (payload) => interaction.editReply(payload),
     };
   }

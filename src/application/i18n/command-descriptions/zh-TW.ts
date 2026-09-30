@@ -185,6 +185,7 @@ export const zhTWCommandDescriptions = {
   "dnd/import-character:file": "從「我的角色」匯出的角色檔案（.json）", // The character file (.json) exported from My Characters.
   "dnd/upload-adventure": "從檔案把冒險加入這個伺服器（經過檢查與你的核准）", // Adds an adventure from a file to this server, after checks and your approval.
   "dnd/upload-adventure:file": "冒險檔案（YAML 或 JSON）", // The adventure file (YAML or JSON).
+  "dnd/adventures": "列出這個伺服器的冒險：檢視草稿、移除或還原", // Lists this server's adventures: review a draft, remove one, or restore it.
   "dnd/author": "請冒險作者依你的點子或筆記寫一個冒險", // Has the Adventure Author write an adventure from an idea or your notes.
   "dnd/author:idea": "這個冒險在說什麼", // What the adventure is about.
   "dnd/author:language": "撰寫的語言（預設英文）", // The language to write it in (default: English).

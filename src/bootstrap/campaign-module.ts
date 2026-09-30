@@ -247,7 +247,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
   // The Author never writes heroes: it borrows the bundled adventure's, in the language asked for.
   const author = model === null ? null : new AdventureAuthor({ client: model, content, heroesFor: (language): typeof starter.en.heroes => starter[language].heroes });
   const intake = new AdventureIntake({ catalog, author, glossaries });
-  const adventureHandler = new AdventureComponentHandler({ catalog, authority });
+  const adventureHandler = new AdventureComponentHandler({ catalog, authority, glossaries });
   const command = new DndCommand({ lobby, play, setup, cards, creator, authority, library, libraryScreens: libraryHandler, intake });
   const handler = new CampaignComponentHandler({ lobby, play, cards, unitOfWork, rulesets, adventures, glossaries, library, pictures: heroPictures });
   const hubHandler = new CampaignHubComponentHandler({ lobby, play, setup, cards, creator, authority, adventures, libraryScreens: libraryHandler, intake });

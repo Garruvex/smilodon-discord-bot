@@ -18,6 +18,8 @@ import { texts } from "../../../../src/application/i18n/texts.js";
 import { starterAdventureId } from "../../../../src/infrastructure/campaign/starter-adventures.js";
 import { InMemoryCampaignStore } from "../../../../src/infrastructure/persistence/campaign/in-memory-campaign-store.js";
 import { AdventureIntake } from "../../../../src/infrastructure/discord/campaign/adventure-intake.js";
+import { revisionOf, type StoredAdventure } from "../../../../src/application/campaign/adventures/stored-adventure.js";
+import { renderLibrary, type AdventureAction } from "../../../../src/infrastructure/discord/campaign/adventure-preview.js";
 import { adventureCustomId, parseAdventureId, renderReview } from "../../../../src/infrastructure/discord/campaign/adventure-preview.js";
 import { CampaignGameCreator } from "../../../../src/infrastructure/discord/campaign/campaign-game-creator.js";
 import { AdventureComponentHandler } from "../../../../src/infrastructure/discord/components/adventure-component-handler.js";
@@ -82,7 +84,8 @@ describe("the adventure review", () => {
   });
 
   it("round-trips an approval control and rejects anything else", () => {
-    expect(parseAdventureId(adventureCustomId("approve", "en:g1-x:1"))).toEqual({ action: "approve", key: "en:g1-x:1" });
+    expect(parseAdventureId(adventureCustomId("approve", "en:g1-x:1", "abcdef01"))).toEqual({ action: "approve", revision: "abcdef01", key: "en:g1-x:1" });
+    expect(parseAdventureId("dndadv:approve:en:g1-x:1")).toBeNull();
     expect(parseAdventureId("dndadv:delete:x")).toBeNull();
     expect(parseAdventureId("dnd:join:c1")).toBeNull();
   });
@@ -115,11 +118,61 @@ describe("approving an adventure", () => {
     const handler = new AdventureComponentHandler({ catalog, authority: { isAdmin: () => Promise.resolve(admin.value) } as never });
     return { handler, catalog, library, key: submitted.adventure.key, id: submitted.adventure.id, admin };
   }
-  const press = async (t: Awaited<ReturnType<typeof drafted>>, action: "approve" | "discard", userId: string, guildId?: string): Promise<{ kind: string; payload: { content?: string } }[]> => {
-    const { interaction, sent } = fakeButton(adventureCustomId(action, t.key), userId, guildId);
+  const press = async (t: Awaited<ReturnType<typeof drafted>>, action: AdventureAction, userId: string, guildId?: string): Promise<{ kind: string; payload: { content?: string } }[]> => {
+    const draft = await t.catalog.get(t.key);
+    const { interaction, sent } = fakeButton(adventureCustomId(action, t.key, revisionOf(draft as StoredAdventure)), userId, guildId);
     await t.handler.execute({ interaction, logger: quiet as never });
     return sent;
   };
+
+  it("refuses a review made before the draft was replaced, and shows the replacement", async () => {
+    const t = await drafted();
+    const first = await t.catalog.get(t.key);
+    const oldButton = adventureCustomId("approve", t.key, revisionOf(first as StoredAdventure));
+    const changed = yamlOf("en").replace(/^title:.*$/m, "title: A different tale");
+    const replaced = await t.catalog.submit({ guildId: "g-1", uploaderUserId: "u-up", source: "upload", text: changed });
+    expect(replaced).toMatchObject({ kind: "pending", replaced: { title: starter.en.bible.title } });
+    const { interaction, sent } = fakeButton(oldButton, "u-up");
+    await t.handler.execute({ interaction, logger: quiet as never });
+    expect(sent.at(-1)?.payload.content).toContain("replaced");
+    expect((await t.catalog.get(t.key))?.status).toBe("pending");
+    // The new review's own button works.
+    expect((await press(t, "approve", "u-up")).at(-1)?.payload.content).toContain("A different tale");
+  });
+
+  it("puts the errors and warnings before a long preview, and says when a draft was replaced", async () => {
+    const { catalog: c } = setup();
+    const submitted = await c.submit({ guildId: "g-1", uploaderUserId: "u-up", source: "upload", text: yamlOf("en") });
+    if (submitted.kind !== "pending") throw new Error("submit");
+    const long = { ...submitted.report, warnings: ["the first warning", ...Array.from({ length: 40 }, (_, index) => `warning ${index} ${"x".repeat(100)}`)] };
+    const screen = renderReview({ report: long, adventure: submitted.adventure, replaced: true, text: texts.en, glossary: undefined });
+    expect(screen.content.indexOf("the first warning")).toBeGreaterThanOrEqual(0);
+    expect(screen.content.indexOf("replaces a draft")).toBeLessThan(screen.content.indexOf("the first warning"));
+  });
+
+  it("lists the server's adventures, asks before removing one, and removes and restores it", async () => {
+    const t = await drafted();
+    const pending = await t.catalog.list("g-1");
+    const listed = renderLibrary({ adventures: pending, text: texts.en });
+    expect(listed.content).toContain("waiting for approval");
+    expect(parseAdventureId((listed.components[0]?.toJSON().components[0] as { custom_id: string }).custom_id)?.action).toBe("review");
+    // A draft reopens as a review with Approve on it.
+    const reopened = await press(t, "review", "u-up");
+    expect(reopened.at(-1)?.payload.content).toContain(starter.en.bible.title);
+
+    await press(t, "approve", "u-up");
+    const ask = (await press(t, "remove", "u-up")).at(-1)?.payload.content ?? "";
+    expect(ask).toContain(starter.en.bible.title);
+    expect(ask).toContain("0 open lobbies, 0 running or paused games");
+    expect((await t.catalog.get(t.key))?.status).toBe("approved");
+
+    expect((await press(t, "remove", "u-other")).at(-1)).toEqual({ kind: "followUp", payload: { content: "Only the person who brought this adventure, or a DnD Admin, can decide.", ephemeral: true } });
+    expect((await press(t, "keep", "u-up")).at(-1)?.payload.content).toBe("Kept in the library.");
+    expect((await press(t, "confirmremove", "u-up")).at(-1)?.payload.content).toContain("was removed from the library");
+    expect(t.library.document(t.id, "en")).toBeUndefined();
+    expect((await press(t, "restore", "u-up")).at(-1)?.payload.content).toContain("is back in the library");
+    expect(t.library.document(t.id, "en")).toBeDefined();
+  });
 
   it("lets the uploader approve, and puts the adventure in play for that server", async () => {
     const t = await drafted();
