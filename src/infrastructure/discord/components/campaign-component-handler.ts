@@ -190,6 +190,8 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "exploreNpc":
     case "exploreAsk":
     case "exploreAskSubmit":
+    case "exploreRefresh":
+    case "exploreRetry":
     case "explorePress":
     case "explorePressPick":
     case "exploreShop":
@@ -200,6 +202,7 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "exploreCastPick":
     case "exploreHealSlot":
     case "exploreHealWho":
+    case "exploreConjureSlot":
       return [];
     case "reactCast":
     case "reactDecline":

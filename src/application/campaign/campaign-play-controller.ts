@@ -137,6 +137,11 @@ export class CampaignPlayController {
     return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "castRitualSpell", characterId, spellId }));
   }
 
+  // A familiar or a conjuring cast between fights: the creatures wait and join the next fight.
+  public summonCompanion(key: CampaignKey, userId: UserId, spellId: ContentId<"spell">, slotLevel: number, interactionId: string): Promise<PlayResult> {
+    return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "summonCompanion", characterId, spellId, slotLevel }));
+  }
+
   // A slotted healing spell on a friend between fights; the dice decide how much it heals.
   public healSpell(key: CampaignKey, userId: UserId, spellId: ContentId<"spell">, slotLevel: number, targetId: string, interactionId: string): Promise<PlayResult> {
     return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "castHealingSpell", characterId, targetId, spellId, slotLevel }));

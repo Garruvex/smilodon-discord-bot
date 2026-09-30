@@ -82,6 +82,8 @@ export const campaignActions = [
   "exploreNpc",
   "exploreAsk",
   "exploreAskSubmit",
+  "exploreRefresh",
+  "exploreRetry",
   "explorePress",
   "explorePressPick",
   "exploreShop",
@@ -92,6 +94,7 @@ export const campaignActions = [
   "exploreCastPick",
   "exploreHealSlot",
   "exploreHealWho",
+  "exploreConjureSlot",
 ] as const;
 export type CampaignAction = (typeof campaignActions)[number];
 

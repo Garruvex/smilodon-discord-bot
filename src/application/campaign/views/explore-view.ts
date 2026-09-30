@@ -7,6 +7,7 @@ import { lootGold, type HouseRules } from "../../../domain/campaign/rules/house-
 import { abilityModifier } from "../../../domain/campaign/character/character-sheet.js";
 import { defaultHeroResources } from "../../../domain/campaign/character/hero-status.js";
 import { spellbookOf } from "../../../domain/campaign/character/spell-access.js";
+import { companionEffectOf } from "../../../domain/campaign/engine/companion-magic.js";
 import { healingEffectOf } from "../../../domain/campaign/engine/healing-magic.js";
 import { castableSlotLevels, mergeSlots } from "../../../domain/campaign/magic/spell-rules.js";
 import { isFallen, type CampaignState } from "../../../domain/campaign/state/campaign-state.js";
@@ -51,6 +52,8 @@ export interface ExploreView {
   readonly spells: readonly ExploreSpell[];
   // Healing spells the hero can cast now (a slot is left), and the friends who are hurt.
   readonly healing: readonly HealingSpell[];
+  // Spells that call creatures to wait for the next fight, with the slots the hero can cast them at.
+  readonly conjuring: readonly HealingSpell[];
   readonly hurt: readonly HurtHero[];
 }
 
@@ -117,6 +120,20 @@ export function healingSpells(state: CampaignState, characterId: CharacterId, co
   });
 }
 
+// Spells that call creatures to join the next fight (a ritual one is already among castableSpells), at each slot level still held.
+export function conjuringSpells(state: CampaignState, characterId: CharacterId, content: SealedContent, glossary: Glossary): readonly HealingSpell[] {
+  const sheet = state.characters[characterId];
+  if (sheet?.spellcasting === null || sheet === undefined) return [];
+  const resources = state.heroStatus[characterId]?.resources ?? defaultHeroResources(sheet, content);
+  const slots = mergeSlots(resources.spellSlots, resources.pactSlots ?? {});
+  return spellbookOf(sheet, content).flatMap((id) => {
+    const spell = content.find(id);
+    if (spell?.kind !== "spell" || spell.ritual === true || companionEffectOf(spell) === undefined) return [];
+    const levels = castableSlotLevels(spell, slots).map((level) => ({ level, left: slots[level] ?? 0 }));
+    return levels.length === 0 ? [] : [{ id, name: glossary.names[id] ?? id, slots: levels }];
+  });
+}
+
 export function hurtHeroes(state: CampaignState): readonly HurtHero[] {
   return Object.values(state.characters).flatMap((sheet) => {
     const hp = state.heroStatus[sheet.id]?.hp ?? sheet.maxHp;
@@ -129,6 +146,7 @@ export function buildExploreView(state: CampaignState, bible: AdventureBible, co
     npcs: sceneNpcs(state, bible).map((npc) => exploreNpc(state, npc)),
     spells: castableSpells(state, characterId, content, glossary),
     healing: healingSpells(state, characterId, content, glossary),
+    conjuring: conjuringSpells(state, characterId, content, glossary),
     hurt: hurtHeroes(state),
   };
 }

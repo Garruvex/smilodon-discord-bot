@@ -14,7 +14,7 @@ import {
 import type { CampaignPlayController, PlayResult } from "../../../application/campaign/campaign-play-controller.js";
 import type { AdventureLibrary } from "../../../application/campaign/ports/adventure-library.js";
 import type { CampaignRecord } from "../../../application/campaign/ports/campaign-record.js";
-import type { CampaignUnitOfWork } from "../../../application/campaign/ports/campaign-store.js";
+import type { CampaignUnitOfWork, OutboxItem } from "../../../application/campaign/ports/campaign-store.js";
 import { buildExploreView, buildShopView, haggleSkills, pressSkills, sceneNpcs } from "../../../application/campaign/views/explore-view.js";
 import type { RulesetCatalog } from "../../../application/campaign/rules/ruleset-catalog.js";
 import type { Texts } from "../../../application/i18n/texts.js";
@@ -48,7 +48,7 @@ export interface ExploreScreen {
 }
 
 export interface ExploreFlowDependencies {
-  readonly play: Pick<CampaignPlayController, "ask" | "press" | "trade" | "castSpell" | "healSpell">;
+  readonly play: Pick<CampaignPlayController, "ask" | "press" | "trade" | "castSpell" | "healSpell" | "summonCompanion">;
   readonly unitOfWork: CampaignUnitOfWork;
   readonly rulesets: RulesetCatalog;
   readonly adventures: AdventureLibrary;
@@ -62,6 +62,8 @@ export const exploreActions: readonly CampaignAction[] = [
   "exploreNpc",
   "exploreAsk",
   "exploreAskSubmit",
+  "exploreRefresh",
+  "exploreRetry",
   "explorePress",
   "explorePressPick",
   "exploreShop",
@@ -72,12 +74,15 @@ export const exploreActions: readonly CampaignAction[] = [
   "exploreCastPick",
   "exploreHealSlot",
   "exploreHealWho",
+  "exploreConjureSlot",
 ];
 export const isExploreAction = (action: CampaignAction): boolean => exploreActions.includes(action);
 
 const questionField = "question";
 // A menu value that starts a healing cast rather than a free one.
 const healPrefix = "heal:";
+// A menu value that calls creatures to wait for the next fight.
+const conjurePrefix = "conjure:";
 // A shop’s haggle choice, as one letter in the control ID.
 const haggleCodes: Readonly<Record<string, Skill | undefined>> = { n: undefined, p: "persuasion", d: "deception", i: "intimidation" };
 const codeOf = (skill: Skill | undefined): string => Object.entries(haggleCodes).find(([, value]) => value === skill)?.[0] ?? "n";
@@ -119,6 +124,13 @@ export class ExploreFlow {
     switch (action) {
       case "exploreHome":
         return void (await interaction.editReply(await this.home(record, text, userId)));
+      case "exploreRefresh":
+        return void (await interaction.editReply(await this.npcScreen(record, text, userId, argument ?? "")));
+      case "exploreRetry": {
+        const npcArg = argument ?? "";
+        const result = await this.retryReply(record, userId, withPrefix(npcArg));
+        return void (await interaction.editReply(await this.npcScreen(record, text, userId, npcArg, result ? (record.language === "zh-TW" ? "正在重試回應。" : "Retrying the reply.") : (record.language === "zh-TW" ? "目前沒有可重試的回應。" : "No failed reply to retry."))));
+      }
       case "exploreBack":
         return void (await interaction.editReply(await this.npcScreen(record, text, userId, argument ?? "")));
       case "explorePress":
@@ -179,10 +191,17 @@ export class ExploreFlow {
         const spell = this.deps.glossaries[record.language]?.names[spellId] ?? spellId;
         return void (await interaction.editReply(await this.home(record, text, userId, this.told(text, result, text.campaign.explore.healCast({ spell })))));
       }
+      case "exploreConjureSlot": {
+        const spellId = `spell:${argument ?? ""}` as const;
+        const result = await this.deps.play.summonCompanion(record.key, userId, spellId, Number(value), interaction.id);
+        const spell = this.deps.glossaries[record.language]?.names[spellId] ?? spellId;
+        return void (await interaction.editReply(await this.home(record, text, userId, this.told(text, result, text.campaign.explore.cast({ spell })))));
+      }
       case "exploreCastPick": {
         const page = pageAsked(value);
         if (page !== null) return void (await interaction.editReply(await this.castScreen(record, text, userId, page)));
         if (value.startsWith(healPrefix)) return void (await interaction.editReply(await this.healSlotScreen(record, text, userId, value.slice(healPrefix.length + "spell:".length))));
+        if (value.startsWith(conjurePrefix)) return void (await interaction.editReply(await this.conjureSlotScreen(record, text, userId, value.slice(conjurePrefix.length + "spell:".length))));
         const result = await this.deps.play.castSpell(record.key, userId, value as ContentId<"spell">, interaction.id);
         const spell = this.deps.glossaries[record.language]?.names[value] ?? value;
         return void (await interaction.editReply(await this.home(record, text, userId, this.told(text, result, text.campaign.explore.cast({ spell })))));
@@ -276,20 +295,47 @@ export class ExploreFlow {
     const npc = sceneNpcs(loaded.state, loaded.bible).find((candidate) => candidate.id === withPrefix(npcArg));
     if (npc === undefined) return this.home(record, text, userId, refusalText(text, "npcNotHere"));
     const known = loaded.state.npcSecretsRevealed?.[npc.id] === true;
+    const progress = await this.replyProgress(record, loaded.hero.id, npc.id);
+    const waiting = progress.status === "waiting";
+    const failed = progress.status === "failed";
     const id = record.key.campaignId;
     const button = (action: CampaignAction, label: string, style = ButtonStyle.Secondary, disabled = false): ButtonBuilder =>
       new ButtonBuilder().setCustomId(campaignCustomId(action, id, npcArg)).setLabel(label).setStyle(style).setDisabled(disabled);
     return {
-      content: [...(note === undefined ? [] : [note, ""]), `**${npc.name}**`, npc.publicDescription, ...(known ? ["", t.secretKnown] : [])].join("\n"),
+      content: [...(note === undefined ? [] : [note, ""]), `**${npc.name}**`, npc.publicDescription, ...(known ? ["", t.secretKnown] : []), ...(waiting ? ["", record.language === "zh-TW" ? "⏳ 正在等候回應。按「更新」查看進度；回應會顯示在冒險頻道。" : "⏳ Waiting for a reply. Press Refresh to check; the reply appears in Adventure."] : []), ...(failed ? ["", record.language === "zh-TW" ? "⚠️ 回應未送達。按「重試回應」，不會重複提交你的話。" : "⚠️ The reply failed. Press Retry reply; your words will not be submitted again."] : [])].join("\n"),
       components: [
         new ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>().addComponents(
-          button("exploreAsk", t.askButton, ButtonStyle.Primary),
-          button("explorePress", t.pressButton, ButtonStyle.Secondary, known),
+          button("exploreAsk", progress.status === "ready" && progress.hasReply ? (record.language === "zh-TW" ? "繼續交談" : "Talk again") : t.askButton, ButtonStyle.Primary, waiting || failed),
+          button("explorePress", t.pressButton, ButtonStyle.Secondary, known || waiting || failed),
           ...(npc.shop === undefined ? [] : [new ButtonBuilder().setCustomId(campaignCustomId("exploreShop", id, `${npcArg}.n`)).setLabel(t.shopButton).setStyle(ButtonStyle.Secondary)]),
+          button(failed ? "exploreRetry" : "exploreRefresh", failed ? (record.language === "zh-TW" ? "重試回應" : "Retry reply") : (record.language === "zh-TW" ? "更新" : "Refresh")),
           this.back("exploreHome", record, text),
         ),
       ],
     };
+  }
+
+  private async replyProgress(record: CampaignRecord, characterId: string, npcId: string): Promise<{ status: "ready" | "waiting" | "failed"; hasReply: boolean; failedJob?: OutboxItem }> {
+    return this.deps.unitOfWork.transaction(async (tx) => {
+      const events = (await tx.readEvents(record.key)).map((envelope) => envelope.event);
+      const sceneStart = events.findLastIndex((event) => event.kind === "sceneTransitioned");
+      const latest = events.slice(sceneStart + 1).findLast((event) => event.kind === "dialogueSettled" && event.dialogue.characterId === characterId && event.dialogue.npcId === npcId);
+      if (latest?.kind !== "dialogueSettled") return { status: "ready", hasReply: false };
+      const jobs = await tx.outboxForCampaign(record.key);
+      const relevant = jobs.filter((job) => (job.request.kind === "narrateDialogue" || (job.request.kind === "deliver" && job.request.delivery.kind === "dialogueNarrated")) && (job.request.kind === "narrateDialogue" ? job.request.dialogueId : job.request.delivery.kind === "dialogueNarrated" && job.request.delivery.dialogueId) === latest.dialogue.id);
+      const failedJob = relevant.find((job) => job.status === "failed");
+      if (failedJob !== undefined) return { status: "failed", hasReply: false, failedJob };
+      const delivery = relevant.find((job) => job.request.kind === "deliver");
+      return { status: delivery?.status === "done" ? "ready" : "waiting", hasReply: delivery?.status === "done" };
+    });
+  }
+
+  private async retryReply(record: CampaignRecord, userId: string, npcId: string): Promise<boolean> {
+    const loaded = await this.load(record, userId);
+    if (loaded === null || !sceneNpcs(loaded.state, loaded.bible).some((npc) => npc.id === npcId)) return false;
+    const progress = await this.replyProgress(record, loaded.hero.id, npcId);
+    if (progress.failedJob === undefined) return false;
+    return this.deps.unitOfWork.transaction((tx) => tx.requeueFailedOutboxItem(record.key, progress.failedJob?.id ?? ""));
   }
 
   private async pressScreen(record: CampaignRecord, text: Texts, userId: string, npcArg: string): Promise<ExploreScreen> {
@@ -376,6 +422,28 @@ export class ExploreFlow {
     };
   }
 
+  // Which slot to call creatures with; skipped when there is only one to choose.
+  private async conjureSlotScreen(record: CampaignRecord, text: Texts, userId: string, short: string): Promise<ExploreScreen> {
+    const loaded = await this.load(record, userId);
+    if (loaded === null) return this.noHero(text);
+    const t = text.campaign.explore;
+    const view = buildExploreView(loaded.state, loaded.bible, loaded.content, loaded.glossary, loaded.hero.id);
+    const spell = view.conjuring.find((candidate) => candidate.id === `spell:${short}`);
+    if (spell === undefined) return this.home(record, text, userId, text.campaign.refusal.noSpellSlot);
+    return {
+      content: t.healSlotPlaceholder,
+      components: [
+        new ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId(campaignCustomId("exploreConjureSlot", record.key.campaignId, short))
+            .setPlaceholder(t.healSlotPlaceholder)
+            .addOptions(spell.slots.slice(0, 25).map((slot) => ({ label: t.healSlotOption({ level: slot.level, left: slot.left }), value: String(slot.level) }))),
+        ),
+        new ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>().addComponents(this.back("exploreCast", record, text)),
+      ],
+    };
+  }
+
   // Whom to heal: the friends who are hurt, with how hurt.
   private async healWhoScreen(record: CampaignRecord, text: Texts, userId: string, short: string, level: number): Promise<ExploreScreen> {
     const loaded = await this.load(record, userId);
@@ -402,11 +470,12 @@ export class ExploreFlow {
     if (loaded === null) return this.noHero(text);
     const t = text.campaign.explore;
     const view = buildExploreView(loaded.state, loaded.bible, loaded.content, loaded.glossary, loaded.hero.id);
-    if (view.spells.length === 0 && view.healing.length === 0) return this.home(record, text, userId, t.noSpells);
+    if (view.spells.length === 0 && view.healing.length === 0 && view.conjuring.length === 0) return this.home(record, text, userId, t.noSpells);
     // Healing first, then rituals, then cantrips, so the useful ones are on the first page of a long spellbook.
     const options = [
       // A healing spell spends a slot, so the menu says so; the value tells the next step to ask which.
       ...view.healing.map((spell) => ({ label: spell.name.slice(0, 100), description: t.castHeals, value: `${healPrefix}${spell.id}` })),
+      ...view.conjuring.map((spell) => ({ label: spell.name.slice(0, 100), value: `${conjurePrefix}${spell.id}` })),
       ...[...view.spells].sort((a, b) => Number(a.cantrip) - Number(b.cantrip)).map((spell) => ({ label: spell.name.slice(0, 100), description: spell.cantrip ? t.castCantrip : t.castRitual, value: spell.id })),
     ];
     return {

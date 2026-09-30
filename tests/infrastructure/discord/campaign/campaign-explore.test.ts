@@ -460,3 +460,33 @@ describe("what the table is told", () => {
     expect(await g.controller.hazard(g.key, null, "party", "nope" as never, 15, "i-5")).toEqual({ kind: "refused", reason: "invalidHazard" });
   });
 });
+
+describe("Explore: calling creatures for the next fight", () => {
+  it("offers Animate Dead with the slots left, spends the chosen one, and leaves a skeleton waiting", async () => {
+    const { t, heroId } = await table();
+    await t.r.store.transaction(async (tx) => {
+      const latest = await tx.loadCampaign(t.key);
+      const sheet = latest?.state.characters[heroId];
+      if (latest === undefined || sheet === undefined) throw new Error("state");
+      const slots = { 3: 2 };
+      await tx.saveCampaign(
+        t.key,
+        {
+          ...latest.state,
+          characters: { ...latest.state.characters, [heroId]: { ...sheet, spellcasting: { ability: "wis", spells: ["spell:animate-dead"], slots } } },
+          heroStatus: { ...latest.state.heroStatus, [heroId]: { hp: 10, resources: { spellSlots: slots, featureUses: {} } } },
+        },
+        latest.revision,
+      );
+    });
+    const cast = screenOf(await click(t, id(t, "exploreCast")));
+    expect(cast.menus[0]?.options.map((option) => option.value)).toEqual(["conjure:spell:animate-dead"]);
+    const slot = screenOf(await choose(t, id(t, "exploreCastPick"), "conjure:spell:animate-dead"));
+    expect(slot.menus[0]?.id).toBe(id(t, "exploreConjureSlot", "animate-dead"));
+    const done = screenOf(await choose(t, id(t, "exploreConjureSlot", "animate-dead"), "3"));
+    expect(done.content).toContain("You cast Animate Dead");
+    const state = (await stateOf(t)).state;
+    expect(Object.values(state.companions?.members ?? {})).toEqual([expect.objectContaining({ monsterId: "monster:skeleton", lasts: "nextFight" })]);
+    expect(state.heroStatus[heroId]?.resources.spellSlots[3]).toBe(1);
+  });
+});
