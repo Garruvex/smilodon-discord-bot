@@ -91,6 +91,19 @@ describe("My Characters", () => {
     expect((await r.library.entry("u-alice", made.character.id))?.snapshots).toHaveLength(2);
   });
 
+  it("lets an edit deal the ability scores again from the first one", async () => {
+    const r = rig();
+    const made = await r.library.create("u-alice", { ...fighterBuild, race: "human" });
+    if (made.kind !== "ok") throw new Error("create");
+    const handler = libraryHandler(r);
+    const viewed = screenOf(await click(handler, libraryCustomId("view", made.character.id)));
+    const editing = screenOf(await click(handler, viewed.buttons.find((button) => button.label === "Edit character")?.id ?? ""));
+    const scores = screenOf(await click(handler, editing.buttons.find((button) => button.label === "Ability scores")?.id ?? ""));
+    expect(scores.content).toContain("Give **15** to which ability?");
+    expect(scores.menus[0]?.id).toContain("bScore");
+    expect(scores.menus[0]?.id).toContain(made.character.id);
+  });
+
   it("asks a Half-Elf to choose two distinct non-Charisma ability bonuses before the kit", async () => {
     const handler = libraryHandler(rig());
     let screen = screenOf(await click(handler, libraryCustomId("new")));

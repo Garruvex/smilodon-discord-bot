@@ -252,6 +252,7 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
           : first === "race" ? this.raceScreen(draft, language)
           : first === "kit" ? this.kitScreen(draft, text)
           : first === "skills" ? this.skillsScreen(draft, language)
+          : first === "scores" ? this.scoresScreen({ ...draft, order: [] }, language)
           : this.scoresScreen(draft, language);
         return void (await this.show(interaction, next));
       }
