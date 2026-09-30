@@ -107,6 +107,10 @@ export type Trait =
   | { readonly kind: "survivor" }
   // Elusive (Rogue 18): no attack roll has advantage against the holder unless it is incapacitated.
   | { readonly kind: "elusive" }
+  // Aura of Courage and Aura of Devotion (Paladin 10, 7): the holder and its conscious allies in its zone cannot gain these conditions.
+  | { readonly kind: "auraOfImmunity"; readonly conditions: readonly ContentId<"condition">[] }
+  // Cutting Words (College of Lore): a Bardic Inspiration use and the reaction take the die's average off a foe's attack roll within 60 feet, when that turns a hit into a miss.
+  | { readonly kind: "cuttingWords" }
   // Fighting Style (Protection): when a creature attacks another one standing beside the holder, the holder's reaction gives that attack disadvantage. The shield the SRD asks for is not checked.
   | { readonly kind: "protectionStyle" }
   // Divine Strike (Cleric 8): a weapon hit deals 1d8 more radiant damage (2d8 from level 14).

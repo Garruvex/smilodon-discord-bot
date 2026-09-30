@@ -5,6 +5,7 @@ import { applyProgression, levelUp, progressionOf, progressionProblems, xpThresh
 import { savingThrowModifier, type CharacterSheet } from "../../../src/domain/campaign/character/character-sheet.js";
 import { conditionLookup } from "../../../src/domain/campaign/effects/effect-queries.js";
 import { attackMode } from "../../../src/domain/campaign/engine/combat/attack-rules.js";
+import type { EncounterSpec } from "../../../src/domain/campaign/commands/campaign-command.js";
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
 import { alex, d20Roll, jamie, newCampaign, organizer, partyOfThree, run, ruleset, sam, system } from "./campaign-fixtures.js";
 import { Fight, skirmish } from "./combat-fixtures.js";
@@ -151,5 +152,38 @@ describe("Fighting Style: Protection", () => {
     expect(shot?.resolution.targetIds).toEqual(["c-elspeth"]);
     expect(Object.values(shot?.resolution.checks ?? {})[0]?.spec.mode).toBe("disadvantage");
     expect(fight.events).toContainEqual({ kind: "uncannyDodgeUsed", combatantId: "c-borin" });
+  });
+});
+
+describe("Aura of Courage", () => {
+  function afterDragon(features: readonly string[]): readonly string[] {
+    const spec: EncounterSpec = { ...skirmish, monsters: [{ monsterId: "monster:adult-blue-dragon", zoneId: "courtyard", npcId: null, fleeBelowHpFraction: null }] };
+    const fight = new Fight(withFeatures(partyOfThree(), "c-elspeth", features)).rolls([20, 1, 1, 1], []).run(organizer, { kind: "startEncounter", spec });
+    fight.rolls(Array.from({ length: 30 }, () => 2), Array.from({ length: 30 }, () => 1));
+    fight.run(alex, { kind: "endTurn", combatantId: "c-mira" });
+    fight.run(jamie, { kind: "endTurn", combatantId: "c-borin" });
+    fight.run(sam, { kind: "endTurn", combatantId: "c-elspeth" });
+    return fight.combatant("c-borin").effects.map((effect) => effect.definition);
+  }
+
+  it("keeps the paladin's allies in the same zone from being frightened", () => {
+    expect(afterDragon([])).toContain("condition:frightened");
+    expect(afterDragon(["feature:aura-of-courage"])).not.toContain("condition:frightened");
+  });
+});
+
+describe("Cutting Words", () => {
+  function shotAtElspeth(features: readonly string[]): { readonly lost: number; readonly spent: boolean } {
+    const fight = new Fight(withFeatures(partyOfThree(), "c-elspeth", features)).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec: skirmish });
+    fight.run(sam, { kind: "endTurn", combatantId: "c-elspeth" });
+    const before = fight.combatant("c-elspeth").hp;
+    // 14 + 4 is exactly Elspeth's armor class; the inspiration die takes the average off.
+    fight.rolls([14, ...Array.from({ length: 5 }, () => 2)], Array.from({ length: 6 }, () => 3)).run(alex, { kind: "endTurn", combatantId: "c-mira" });
+    return { lost: before - fight.combatant("c-elspeth").hp, spent: fight.events.some((event) => event.kind === "uncannyDodgeUsed" && event.combatantId === "c-elspeth") };
+  }
+
+  it("turns a hit into a miss by spending a Bardic Inspiration use and the reaction", () => {
+    expect(shotAtElspeth(["feature:bardic-inspiration"]).lost).toBeGreaterThan(0);
+    expect(shotAtElspeth(["feature:bardic-inspiration", "feature:cutting-words"])).toEqual({ lost: 0, spent: true });
   });
 });

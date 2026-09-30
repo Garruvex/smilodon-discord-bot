@@ -255,6 +255,7 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
         if (event.legendaryResistanceSpent === true) uses[legendaryResistanceKey] = Math.max(0, (uses[legendaryResistanceKey] ?? 0) - 1);
         if (event.relentlessSpent === true) uses[relentlessEnduranceKey] = 0;
         if (event.relentlessRageSpent === true) uses[relentlessRageKey] = 0;
+        if (event.innateSpent !== undefined) uses[innateUseKey(event.innateSpent)] = Math.max(0, (uses[innateUseKey(event.innateSpent)] ?? combatant.spellcasting?.innate?.[event.innateSpent] ?? 0) - 1);
         if (event.indomitableSpent === true) uses[indomitableKey] = Math.max(0, (uses[indomitableKey] ?? 0) - 1);
         if (event.legendarySpent !== undefined) uses[legendaryActionsKey] = Math.max(0, (uses[legendaryActionsKey] ?? 0) - event.legendarySpent);
         return {

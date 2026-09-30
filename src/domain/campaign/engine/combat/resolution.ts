@@ -18,7 +18,7 @@ import { classifyRollMoments } from "../../dice/roll-moments.js";
 import { resultMatchesSpec, type RollResult, type RollSpec } from "../../dice/roll-spec.js";
 import type { Effect, EffectDuration } from "../../rules/effects.js";
 import { criticalHits, naturalRollsOnChecks } from "../../rules/house-rules.js";
-import { creatureTypeOf, critThreshold, hasSaveAdvantage, indomitableKey, isImmuneToCondition, legendaryResistanceKey } from "../../rules/traits.js";
+import { creatureTypeOf, critThreshold, hasSaveAdvantage, indomitableKey, innateUseKey, isImmuneToCondition, legendaryResistanceKey } from "../../rules/traits.js";
 import type { Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { activeEncounter, afterResolution, endIfDecided } from "./combat-flow.js";
@@ -195,11 +195,12 @@ function rerollIfLucky(decision: Decision, encounter: EncounterState, resolution
 // A check's dice are in: works out whether it landed (an attack against the armor
 // class the target has now, so a reaction can change the answer), records it, and
 // goes on to the effects once every check is settled and no reaction is pending.
-export function settleCheck(decision: Decision, resolutionId: string, rollId: RollId, roll: D20TestRoll): Rejection | null {
+export function settleCheck(decision: Decision, resolutionId: string, rollId: RollId, rolled: D20TestRoll): Rejection | null {
   const encounter = activeEncounter(decision);
   const resolution = encounter?.resolution;
   const check = resolution?.checks[rollId];
   if (encounter == null || resolution == null || resolution.id !== resolutionId || check === undefined) return { code: "unknownRoll" };
+  let roll = rolled;
   const lookup = conditionLookup(decision.ctx.rules.content);
   const target = encounter.combatants[check.targetId];
   let landed: boolean;
@@ -213,6 +214,11 @@ export function settleCheck(decision: Decision, resolutionId: string, rollId: Ro
     // A hit on an unconscious creature from within 5 feet is a critical hit.
     const closeCrit = target !== undefined && hitsAreCritical(target, lookup, areEngaged(encounter, resolution.actorId, target.id));
     critical = outcome.critical || (landed && closeCrit);
+    const cut = landed && !outcome.critical ? cuttingWords(decision, encounter, resolution.actorId, roll.total, against) : 0;
+    if (cut > 0) {
+      landed = false;
+      roll = { ...roll, total: roll.total - cut };
+    }
     moments = classifyRollMoments({ kind: "attack", roll, target: against, naturalRule: "no-effect" });
   } else {
     const naturalRule = decision.ctx.rules.houseRules.option(naturalRollsOnChecks);
@@ -263,6 +269,34 @@ function withStunningStrike(resolution: ResolutionState, effects: readonly Effec
   const { source } = resolution;
   if (source.kind !== "weapon" || source.stunDc === undefined) return effects;
   return [...effects, { kind: "conditionUnlessSave", target: "target", ability: "con", dc: source.stunDc, condition: "condition:stunned", duration: { kind: "rounds", count: 1 } }];
+}
+
+// Cutting Words: a bard on the other side, with its reaction and an inspiration use left, takes the die's average off an attack roll
+// that would hit. Returns how much was taken (0 when nothing was done, or it would not have turned the hit).
+function cuttingWords(decision: Decision, encounter: EncounterState, attackerId: CombatantId, total: number, against: number): number {
+  const attacker = encounter.combatants[attackerId];
+  if (attacker === undefined) return 0;
+  const key = "spell:bardic-inspiration";
+  for (const bard of Object.values(encounter.combatants)) {
+    if (bard.side === attacker.side || !isPresent(bard) || bard.hp <= 0 || !bard.budget.reaction || !bard.traits.some((trait) => trait.kind === "cuttingWords")) continue;
+    if ((distanceBetween(encounter, bard.id, attacker.id) ?? Infinity) > 60) continue;
+    if ((bard.resources.featureUses[innateUseKey(key)] ?? bard.spellcasting?.innate?.[key] ?? 0) < 1) continue;
+    const sides = bard.level >= 15 ? 12 : bard.level >= 10 ? 10 : bard.level >= 5 ? 8 : 6;
+    const taken = Math.floor((sides + 1) / 2);
+    if (total - taken >= against) continue;
+    decision.emit({ kind: "uncannyDodgeUsed", combatantId: bard.id });
+    decision.emit({ kind: "monsterStateChanged", combatantId: bard.id, innateSpent: key });
+    return taken;
+  }
+  return 0;
+}
+
+// A condition the creature cannot gain, of its own or from an ally's aura in the same zone.
+function immuneTo(encounter: EncounterState | undefined, target: Combatant, condition: ContentId<"condition">): boolean {
+  if (isImmuneToCondition(target.traits, condition)) return true;
+  return Object.values(encounter?.combatants ?? {}).some(
+    (other) => other.side === target.side && other.zoneId === target.zoneId && other.hp > 0 && other.traits.some((trait) => trait.kind === "auraOfImmunity" && trait.conditions.includes(condition)),
+  );
 }
 
 // Dark One's Blessing: the attacker gains temporary hit points for dropping a hostile creature to 0.
@@ -345,7 +379,7 @@ export function proceedToEffects(decision: Decision): void {
       if (effect.kind === "conditionUnlessSave") {
         for (const targetId of targets) {
           const target = encounter.combatants[effect.target === "self" ? resolution.actorId : targetId];
-          if (target === undefined || isImmuneToCondition(target.traits, effect.condition)) continue;
+          if (target === undefined || immuneTo(encounter, target, effect.condition)) continue;
           const lookup = conditionLookup(decision.ctx.rules.content);
           if (autoFailsSave(target, effect.ability, lookup)) continue;
           const bias = saveBias(target, effect.ability, lookup);
@@ -454,7 +488,7 @@ export function applyEffect(
       applyTempHp(decision, recipient, resolution.rolled[key] ?? 0);
       return;
     case "applyCondition":
-      if (!isImmuneToCondition(recipient.traits, effect.condition)) {
+      if (!immuneTo(activeEncounter(decision) ?? undefined, recipient, effect.condition)) {
         decision.emit({ kind: "effectApplied", combatantId: recipient.id, effect: conditionInstance(resolution, recipient, effect.condition, key, effect.duration, round, decision.ctx.rules.content) });
       }
       return;
@@ -523,7 +557,7 @@ export function applyEffect(
       return;
     case "conditionUnlessSave":
       if (
-        !isImmuneToCondition(recipient.traits, effect.condition) &&
+        !immuneTo(activeEncounter(decision) ?? undefined, recipient, effect.condition) &&
         (resolution.rolled[`rider:${recipient.id}:${key}`] === 0 || autoFailsSave(recipient, effect.ability, conditionLookup(decision.ctx.rules.content)))
       ) {
         decision.emit({ kind: "effectApplied", combatantId: recipient.id, effect: conditionInstance(resolution, recipient, effect.condition, key, effect.duration ?? null, round, decision.ctx.rules.content) });
