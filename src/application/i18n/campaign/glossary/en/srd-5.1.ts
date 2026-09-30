@@ -100,6 +100,7 @@ const enBase: Glossary = {
     "feature:unarmored-movement": "Unarmored Movement",
     "feature:fighting-style-archery": "Fighting Style: Archery",
     "feature:fighting-style-protection": "Fighting Style: Protection",
+    "feature:fighting-style-two-weapon-fighting": "Fighting Style: Two-Weapon Fighting",
     "feature:fighting-style-defense": "Fighting Style: Defense",
     "feature:unarmored-movement-6": "Unarmored Movement (improved)",
     "feature:unarmored-movement-10": "Unarmored Movement (improved)",

@@ -77,6 +77,15 @@ export function attackProblem(encounter: EncounterState, attacker: Combatant, op
   return problem === null ? null : { code: problem };
 }
 
+// Two-weapon fighting: after attacking with a light melee weapon in the Attack action, a bonus action attacks with a different
+// light melee weapon (no ability modifier on the damage, unless the hero fights with two weapons).
+export function offHandProblem(encounter: EncounterState, attacker: Combatant, option: AttackOption, targetId: string, content: SealedContent): TurnProblem | null {
+  if (!attacker.budget.bonusAction || !canAct(attacker, conditionLookup(content))) return { code: "noActionLeft" };
+  if (option.light !== true || option.range.kind !== "melee" || attacker.budget.lightAttack === undefined || attacker.budget.lightAttack === option.weapon) return { code: "noActionLeft" };
+  const problem = weaponTargetProblem(encounter, attacker, encounter.combatants[targetId], option, content);
+  return problem === null ? null : { code: problem };
+}
+
 // Divine Smite: spending a slot with a melee hit for bonus radiant damage.
 // A slot declared up front with the attack is spent then; otherwise the paladin
 // is offered the choice once the hit is confirmed (engine/combat/smite.ts).
@@ -296,7 +305,7 @@ export interface TurnOptions {
   readonly combatantId: string;
   // An attack or move is being resolved: nothing new can be started yet.
   readonly busy: boolean;
-  readonly attacks: readonly { readonly option: AttackOption; readonly targetIds: readonly string[] }[];
+  readonly attacks: readonly { readonly option: AttackOption; readonly targetIds: readonly string[]; readonly offHand?: true }[];
   readonly spells: readonly {
     readonly spell: SpellDefinition;
     // Every slot level it can be cast at now (0 for a cantrip).
@@ -345,6 +354,16 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
         const targetIds = weaponTargets(encounter, hero, option, content).map((target) => target.id);
         return targetIds.length === 0 ? [] : [{ option, targetIds }];
       });
+
+  // The off-hand attack: a different light melee weapon than the one just swung, for the bonus action.
+  const offHand: TurnOptions["attacks"][number][] =
+    busy || !hero.budget.bonusAction || hero.budget.lightAttack === undefined
+      ? []
+      : hero.attacks.flatMap((option) => {
+          if (option.light !== true || option.weapon === hero.budget.lightAttack) return [];
+          const targetIds = weaponTargets(encounter, hero, option, content).map((target) => target.id);
+          return targetIds.length === 0 ? [] : [{ option: { ...option, damage: option.offHandDamage ?? option.damage }, targetIds, offHand: true as const }];
+        });
 
   const spells: TurnOptions["spells"][number][] = [];
   const teleports: TurnOptions["teleports"][number][] = [];
@@ -414,7 +433,7 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
   return {
     combatantId: characterId,
     busy,
-    attacks,
+    attacks: [...attacks, ...offHand],
     spells,
     features,
     potions,
@@ -427,6 +446,6 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
     canDashOrDisengage,
     wildShapeForms: formsNow,
     canRevertShape,
-    hasUnspent: !busy && (hero.budget.action || hero.budget.bonusAction) && attacks.length + spells.length + teleports.length + features.length + potions.length > 0,
+    hasUnspent: !busy && (hero.budget.action || hero.budget.bonusAction) && attacks.length + offHand.length + spells.length + teleports.length + features.length + potions.length > 0,
   };
 }

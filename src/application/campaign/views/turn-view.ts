@@ -98,8 +98,8 @@ export function buildTurnView(
       : [{ id: combatant.id, name: nameOf(combatant), zone: zoneOf(combatant.zoneId), side: combatant.side, hp: combatant.hp, maxHp: combatant.maxHp, band: bandOf(combatant), self: combatant.id === hero.id }];
   };
 
-  const attacks: AttackChoice[] = options.attacks.map(({ option, targetIds }) => ({
-    weapon: option.weapon,
+  const attacks: AttackChoice[] = options.attacks.map(({ option, targetIds, offHand }) => ({
+    weapon: offHand === true ? `offhand:${option.weapon}` : option.weapon,
     toHit: option.toHit,
     damage: formatDiceExpression(option.damage),
     ranged: option.range.kind === "ranged",

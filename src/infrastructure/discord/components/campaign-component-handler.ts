@@ -89,7 +89,12 @@ function combatCommand(choice: TurnChoice, targetIds: readonly string[]): ((comb
   const first = targetIds[0];
   switch (choice.kind) {
     case "attack":
-      return first === undefined ? null : (combatantId): CombatCommand => ({ kind: "combatAttack", combatantId, targetId: first, weapon: choice.weapon as ContentId<"item"> });
+      return first === undefined
+        ? null
+        : (combatantId): CombatCommand =>
+            choice.weapon.startsWith("offhand:")
+              ? { kind: "combatAttack", combatantId, targetId: first, weapon: choice.weapon.slice("offhand:".length) as ContentId<"item">, offHand: true }
+              : { kind: "combatAttack", combatantId, targetId: first, weapon: choice.weapon as ContentId<"item"> };
     case "cast":
       return targetIds.length === 0 ? null : (combatantId): CombatCommand => ({ kind: "combatCast", combatantId, spellId: choice.spell as ContentId<"spell">, slotLevel: choice.slot, targetIds });
     case "engage":

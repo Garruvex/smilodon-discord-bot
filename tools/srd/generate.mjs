@@ -95,7 +95,7 @@ for (const entry of equipment) {
     const properties = (entry.properties ?? []).map((property) => property.index);
     const ranged = entry.weapon_range === "Ranged";
     const range = ranged ? `{ kind: "ranged", normal: ${entry.range.normal}, long: ${entry.range.long ?? entry.range.normal} }` : "melee";
-    weaponLines.push(`export const ${camel(index)} = defineWeapon({ id: ${quote(id)}, source, damage: ${expression}, damageType: ${quote(type)}, range: ${range}, finesse: ${properties.includes("finesse")}, natural: false });`);
+    weaponLines.push(`export const ${camel(index)} = defineWeapon({ id: ${quote(id)}, source, damage: ${expression}, damageType: ${quote(type)}, range: ${range}, finesse: ${properties.includes("finesse")},${properties.includes("light") ? " light: true," : ""} natural: false });`);
     equipmentIds.push(camel(index));
     itemNames[id] = entry.name;
   } else if (category === "armor" && !knownItems.has(id)) {

@@ -98,6 +98,8 @@ export type Trait =
   | { readonly kind: "agonizingBlast" }
   // Hunter's Multiattack (Whirlwind Attack): a melee attack also strikes every other foe in melee with the holder, each with its own attack roll.
   | { readonly kind: "whirlwind" }
+  // Fighting Style (Two-Weapon Fighting): the off-hand attack adds the ability modifier to damage.
+  | { readonly kind: "twoWeaponFighting" }
   // Retaliation (Berserker 10): a creature that damages the holder from close by is struck back, with the holder's reaction.
   | { readonly kind: "retaliation" }
   // Countercharm (Bard 6): friends near the holder, the holder too, have advantage on saves against being frightened or charmed.

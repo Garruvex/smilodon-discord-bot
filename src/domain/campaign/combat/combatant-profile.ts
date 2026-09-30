@@ -84,6 +84,9 @@ export function heroAttackOption(sheet: CharacterSheet, weapon: WeaponDefinition
     range: weapon.range,
     finesse: weapon.finesse || weapon.range.kind === "ranged",
     onHit: weapon.onHit ?? [],
+    ...(weapon.light === true && weapon.range.kind === "melee"
+      ? { light: true, offHandDamage: plus(weapon.damage, (traits.some((trait) => trait.kind === "twoWeaponFighting") ? ability : Math.min(0, ability)) + (weapon.enchantment ?? 0)) }
+      : {}),
   };
 }
 

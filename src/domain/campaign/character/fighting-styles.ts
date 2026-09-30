@@ -1,6 +1,6 @@
 // Fighting Style: fighters, paladins and rangers hold one style feature, and may swap it for another while
 // they level up. The starting style is Dueling; the others are chosen in the level-up form.
-export const fightingStyles = ["feature:fighting-style-dueling", "feature:fighting-style-archery", "feature:fighting-style-defense", "feature:fighting-style-protection"] as const;
+export const fightingStyles = ["feature:fighting-style-dueling", "feature:fighting-style-archery", "feature:fighting-style-defense", "feature:fighting-style-protection", "feature:fighting-style-two-weapon-fighting"] as const;
 export type FightingStyleId = (typeof fightingStyles)[number];
 
 export const isFightingStyle = (id: string): id is FightingStyleId => (fightingStyles as readonly string[]).includes(id);

@@ -8,8 +8,8 @@ const source = "SRD 5.1";
 const melee = { kind: "melee" } as const;
 
 export const longsword = defineWeapon({ id: "item:longsword", source, damage: dice(1, 8), damageType: "slashing", range: melee, finesse: false, natural: false });
-export const shortsword = defineWeapon({ id: "item:shortsword", source, damage: dice(1, 6), damageType: "piercing", range: melee, finesse: true, natural: false });
-export const scimitar = defineWeapon({ id: "item:scimitar", source, damage: dice(1, 6), damageType: "slashing", range: melee, finesse: true, natural: false });
+export const shortsword = defineWeapon({ id: "item:shortsword", source, light: true, damage: dice(1, 6), damageType: "piercing", range: melee, finesse: true, natural: false });
+export const scimitar = defineWeapon({ id: "item:scimitar", source, light: true, damage: dice(1, 6), damageType: "slashing", range: melee, finesse: true, natural: false });
 export const mace = defineWeapon({ id: "item:mace", source, damage: dice(1, 6), damageType: "bludgeoning", range: melee, finesse: false, natural: false });
 export const morningstar = defineWeapon({ id: "item:morningstar", source, damage: dice(1, 8), damageType: "piercing", range: melee, finesse: false, natural: false });
 export const shortbow = defineWeapon({
@@ -42,7 +42,7 @@ export const spectralWeapon = defineWeapon({ id: "item:spectral-weapon", source,
 export const greataxe = defineWeapon({ id: "item:greataxe", source, damage: dice(1, 12), damageType: "slashing", range: melee, finesse: false, natural: false });
 export const quarterstaff = defineWeapon({ id: "item:quarterstaff", source, damage: dice(1, 6), damageType: "bludgeoning", range: melee, finesse: false, natural: false });
 export const rapier = defineWeapon({ id: "item:rapier", source, damage: dice(1, 8), damageType: "piercing", range: melee, finesse: true, natural: false });
-export const dagger = defineWeapon({ id: "item:dagger", source, damage: dice(1, 4), damageType: "piercing", range: melee, finesse: true, natural: false });
+export const dagger = defineWeapon({ id: "item:dagger", source, light: true, damage: dice(1, 4), damageType: "piercing", range: melee, finesse: true, natural: false });
 export const longbow = defineWeapon({
   id: "item:longbow",
   source,
@@ -61,7 +61,7 @@ export const greatclub = defineWeapon({ id: "item:greatclub", source, damage: di
 export const lifeDrain = defineWeapon({ id: "item:life-drain", source, damage: dice(3, 6), damageType: "necrotic", range: melee, finesse: false, natural: true });
 
 // Added with the wider monster roster: what those stat blocks swing, shoot and claw with.
-export const club = defineWeapon({ id: "item:club", source, damage: dice(1, 4), damageType: "bludgeoning", range: melee, finesse: false, natural: false });
+export const club = defineWeapon({ id: "item:club", source, light: true, damage: dice(1, 4), damageType: "bludgeoning", range: melee, finesse: false, natural: false });
 export const spear = defineWeapon({ id: "item:spear", source, damage: dice(1, 6), damageType: "piercing", range: melee, finesse: false, natural: false });
 export const lightCrossbow = defineWeapon({
   id: "item:light-crossbow",

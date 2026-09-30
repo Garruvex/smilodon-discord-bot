@@ -103,6 +103,8 @@ export interface WeaponDefinition extends DefinitionBase<"item"> {
   readonly range: WeaponRange;
   // Finesse: the wielder may use Dexterity instead of Strength.
   readonly finesse: boolean;
+  // Light: a second light weapon may attack as a bonus action (two-weapon fighting).
+  readonly light?: boolean;
   // Natural weapons (bite, claws) belong to monsters and are never carried.
   readonly natural: boolean;
   // A magic weapon's bonus to attack and damage rolls (+1 to +3).

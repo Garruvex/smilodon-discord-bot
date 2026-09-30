@@ -22,7 +22,7 @@ export function planFor(decision: Decision, actor: Combatant, source: Resolution
       // the plan this function fixes at declare time.
       return {
         check: { kind: "weaponAttack" },
-        onLand: [{ kind: "damage", target: "target", amount: withRageBonus(source.option.damage, source.option.range.kind === "melee", actor, decision), damageType: source.option.damageType }, ...source.option.onHit],
+        onLand: [{ kind: "damage", target: "target", amount: withRageBonus(source.offHand === true ? (source.option.offHandDamage ?? source.option.damage) : source.option.damage, source.option.range.kind === "melee", actor, decision), damageType: source.option.damageType }, ...source.option.onHit],
         onAvoid: [],
       };
     }

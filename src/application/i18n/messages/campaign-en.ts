@@ -837,6 +837,7 @@ export const campaignEn = {
   "campaign.turn.cast": "Cast {spell} (cantrip)",
   "campaign.turn.castSlot": "Cast {spell} (level {level} slot, {left} left)",
   "campaign.turn.bonusTag": "bonus action",
+  "campaign.turn.offHandTag": "off-hand",
   "campaign.turn.spellbook": "Cast a spell… ({count} ready)",
   "campaign.turn.spellbookPrompt": "**Spells**: choose one to cast.",
   "campaign.turn.spellbookPlaceholder": "Choose a spell",

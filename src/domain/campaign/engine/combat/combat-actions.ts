@@ -4,7 +4,7 @@ import { proficiencyBonusForLevel } from "../../character/leveling.js";
 import { armedMetamagic, armedHurl, armedOverchannel, armedQuiveringPalm, armedStunningStrike, conditionLookup, hidingEffects } from "../../effects/effect-queries.js";
 import type { ActionCost } from "../../combat/combat-events.js";
 import { type AttackOption, type Combatant, type EncounterState, type ResolutionState } from "../../combat/combat-state.js";
-import { attackProblem, featureProblem, smiteProblem, spellProblem } from "../../combat/turn-rules.js";
+import { attackProblem, featureProblem, offHandProblem, smiteProblem, spellProblem } from "../../combat/turn-rules.js";
 import type { ContentId } from "../../rules/content-id.js";
 import type { AreaAttack } from "../../rules/traits.js";
 import type { Decision } from "../decision.js";
@@ -25,10 +25,12 @@ export function declareWeaponAttack(
   resumes?: ResolutionState,
   // Further creatures struck by the same attack (Whirlwind Attack).
   alsoIds: readonly string[] = [],
+  // Two-weapon fighting: the bonus-action attack with a second light weapon.
+  offHand = false,
 ): Rejection | null {
   const encounter = activeEncounter(decision);
   if (encounter === null) return { code: "notInCombat" };
-  const problem = attackProblem(encounter, attacker, option, targetId, purpose, decision.ctx.rules.content);
+  const problem = offHand ? offHandProblem(encounter, attacker, option, targetId, decision.ctx.rules.content) : attackProblem(encounter, attacker, option, targetId, purpose, decision.ctx.rules.content);
   if (problem !== null) return problem;
   if (smiteSlot !== undefined) {
     const smite = smiteProblem(attacker, option, smiteSlot);
@@ -51,13 +53,14 @@ export function declareWeaponAttack(
   const hurl = armedHurl(attacker, conditionLookup(decision.ctx.rules.content));
   const declared = declareResolution(decision, {
     actor: attacker,
-    source: { kind: "weapon", option, ...(smiteSlot === undefined ? {} : { smiteSlot }), ...(stunDc === undefined ? {} : { stunDc }), ...(palmDc === undefined ? {} : { palmDc }), ...(hurl === null ? {} : { hurl: true as const }) },
+    source: { kind: "weapon", option, ...(smiteSlot === undefined ? {} : { smiteSlot }), ...(stunDc === undefined ? {} : { stunDc }), ...(palmDc === undefined ? {} : { palmDc }), ...(hurl === null ? {} : { hurl: true as const }), ...(offHand ? { offHand: true as const } : {}) },
     targetIds: [targetId, ...alsoIds],
     purpose,
     ...(resumes === undefined ? {} : { resumes }),
     cost: {
       ...noCost,
-      action: purpose === "action",
+      action: purpose === "action" && !offHand,
+      bonusAction: offHand,
       reaction: purpose === "opportunity" || purpose === "reaction",
       spellSlot: smiteSlot ?? null,
     },

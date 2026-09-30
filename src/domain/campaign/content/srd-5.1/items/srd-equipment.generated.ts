@@ -5,9 +5,9 @@ import { defineArmor, defineGear, defineWeapon, type ItemDefinition } from "../.
 const source = "SRD 5.1";
 const melee = { kind: "melee" } as const;
 
-export const handaxe = defineWeapon({ id: "item:handaxe", source, damage: dice(1, 6), damageType: "slashing", range: melee, finesse: false, natural: false });
-export const lightHammer = defineWeapon({ id: "item:light-hammer", source, damage: dice(1, 4), damageType: "bludgeoning", range: melee, finesse: false, natural: false });
-export const sickle = defineWeapon({ id: "item:sickle", source, damage: dice(1, 4), damageType: "slashing", range: melee, finesse: false, natural: false });
+export const handaxe = defineWeapon({ id: "item:handaxe", source, damage: dice(1, 6), damageType: "slashing", range: melee, finesse: false, light: true, natural: false });
+export const lightHammer = defineWeapon({ id: "item:light-hammer", source, damage: dice(1, 4), damageType: "bludgeoning", range: melee, finesse: false, light: true, natural: false });
+export const sickle = defineWeapon({ id: "item:sickle", source, damage: dice(1, 4), damageType: "slashing", range: melee, finesse: false, light: true, natural: false });
 export const dart = defineWeapon({ id: "item:dart", source, damage: dice(1, 4), damageType: "piercing", range: { kind: "ranged", normal: 20, long: 60 }, finesse: true, natural: false });
 export const sling = defineWeapon({ id: "item:sling", source, damage: dice(1, 4), damageType: "bludgeoning", range: { kind: "ranged", normal: 30, long: 120 }, finesse: false, natural: false });
 export const battleaxe = defineWeapon({ id: "item:battleaxe", source, damage: dice(1, 8), damageType: "slashing", range: melee, finesse: false, natural: false });
@@ -23,7 +23,7 @@ export const warPick = defineWeapon({ id: "item:war-pick", source, damage: dice(
 export const warhammer = defineWeapon({ id: "item:warhammer", source, damage: dice(1, 8), damageType: "bludgeoning", range: melee, finesse: false, natural: false });
 export const whip = defineWeapon({ id: "item:whip", source, damage: dice(1, 4), damageType: "slashing", range: melee, finesse: true, natural: false });
 export const blowgun = defineWeapon({ id: "item:blowgun", source, damage: flat(1), damageType: "piercing", range: { kind: "ranged", normal: 25, long: 100 }, finesse: false, natural: false });
-export const handCrossbow = defineWeapon({ id: "item:hand-crossbow", source, damage: dice(1, 6), damageType: "piercing", range: { kind: "ranged", normal: 30, long: 120 }, finesse: false, natural: false });
+export const handCrossbow = defineWeapon({ id: "item:hand-crossbow", source, damage: dice(1, 6), damageType: "piercing", range: { kind: "ranged", normal: 30, long: 120 }, finesse: false, light: true, natural: false });
 export const heavyCrossbow = defineWeapon({ id: "item:heavy-crossbow", source, damage: dice(1, 10), damageType: "piercing", range: { kind: "ranged", normal: 100, long: 400 }, finesse: false, natural: false });
 export const paddedArmor = defineArmor({ id: "item:padded-armor", source, category: "light", baseArmorClass: 11, dexterityCap: null, stealthDisadvantage: true, strengthRequirement: null });
 export const studdedLeatherArmor = defineArmor({ id: "item:studded-leather-armor", source, category: "light", baseArmorClass: 12, dexterityCap: null, stealthDisadvantage: false, strengthRequirement: null });

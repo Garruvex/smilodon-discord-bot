@@ -67,7 +67,7 @@ export function parseChoice(value: string): TurnChoice | null {
   const [kind, first, second, third] = value.split("|");
   switch (kind) {
     case "attack":
-      return first?.startsWith("item:") === true ? { kind, weapon: first } : null;
+      return first?.startsWith("item:") === true || first?.startsWith("offhand:item:") === true ? { kind, weapon: first } : null;
     case "cast": {
       const slot = Number(second);
       return first?.startsWith("spell:") === true && Number.isInteger(slot) && slot >= 0 ? { kind, spell: first, slot } : null;
@@ -284,7 +284,9 @@ function choiceLabel(choice: TurnChoice, view: TurnView, text: Texts, glossary: 
     case "attack": {
       const attack = view.attacks.find((candidate) => candidate.weapon === choice.weapon);
       const toHit = attack === undefined ? 0 : attack.toHit;
-      return t.attack({ weapon: name(choice.weapon), toHit: toHit >= 0 ? `+${toHit}` : `${toHit}`, damage: attack?.damage ?? "" });
+      const offHand = choice.weapon.startsWith("offhand:");
+      const label = t.attack({ weapon: name(offHand ? choice.weapon.slice("offhand:".length) : choice.weapon), toHit: toHit >= 0 ? `+${toHit}` : `${toHit}`, damage: attack?.damage ?? "" });
+      return offHand ? `${label} · ${t.offHandTag}` : label;
     }
     case "cast": {
       const spell = view.spells.find((candidate) => candidate.spellId === choice.spell && candidate.slotLevel === choice.slot);

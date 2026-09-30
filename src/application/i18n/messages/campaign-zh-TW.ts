@@ -836,6 +836,7 @@ export const campaignZhTW = {
   "campaign.turn.cast": "施放{spell}（戲法）",
   "campaign.turn.castSlot": "施放{spell}（{level} 環法術位，剩 {left}）",
   "campaign.turn.bonusTag": "附贈動作",
+  "campaign.turn.offHandTag": "副手",
   "campaign.turn.spellbook": "施放法術…（{count} 個可用）",
   "campaign.turn.spellbookPrompt": "**法術**：選擇要施放的法術。",
   "campaign.turn.spellbookPlaceholder": "選擇法術",

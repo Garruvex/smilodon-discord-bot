@@ -229,3 +229,39 @@ describe("the Help action", () => {
     expect(fight.combatant("goblin-a").effects.some((effect) => effect.modifiers.some((modifier) => modifier.kind === "attacksAgainst" && modifier.mode === "advantage"))).toBe(true);
   });
 });
+
+describe("two-weapon fighting", () => {
+  function twoBlades(style: boolean): Fight {
+    const base = partyOfThree();
+    const sheet = base.characters["c-borin"];
+    if (sheet === undefined) throw new Error("borin");
+    const borin = { ...sheet, equipment: [...sheet.equipment, "item:dagger", "item:shortsword"] as typeof sheet.equipment, features: [...sheet.features, ...(style ? ["feature:fighting-style-two-weapon-fighting"] : [])] as typeof sheet.features };
+    const state: CampaignState = { ...base, characters: { ...base.characters, "c-borin": borin } };
+    const fight = new Fight(state).rolls([5, 20, 4, 3, 2]).run(organizer, { kind: "startEncounter", spec: { ...skirmish, partyZoneId: "courtyard" } });
+    return fight.run(jamie, { kind: "combatEngage", combatantId: "c-borin", targetId: "goblin-a" });
+  }
+
+  it("lets a second light weapon attack as a bonus action after the first, without spending the action twice", () => {
+    const fight = twoBlades(false);
+    const offHand = { kind: "combatAttack", combatantId: "c-borin", targetId: "goblin-a", weapon: "item:shortsword", offHand: true } as const;
+    // Nothing to follow yet, and never the same weapon.
+    expect(fight.reject(jamie, offHand)).toEqual({ code: "noActionLeft" });
+    fight.rolls([15], [1]).run(jamie, { kind: "combatAttack", combatantId: "c-borin", targetId: "goblin-a", weapon: "item:dagger" });
+    expect(fight.reject(jamie, { ...offHand, weapon: "item:dagger" })).toEqual({ code: "noActionLeft" });
+    fight.rolls([15], [1]).run(jamie, offHand);
+    expect(fight.combatant("c-borin").budget.bonusAction).toBe(false);
+    expect(fight.reject(jamie, offHand)).toEqual({ code: "noActionLeft" });
+  });
+
+  it("leaves the ability modifier off the off-hand damage, unless the hero holds the fighting style", () => {
+    const shortsword = (fight: Fight): { damage: { modifier: number }; offHandDamage?: { modifier: number } } => {
+      const option = fight.combatant("c-borin").attacks.find((attack) => attack.weapon === "item:shortsword");
+      if (option === undefined) throw new Error("no shortsword");
+      return option;
+    };
+    const plain = shortsword(twoBlades(false));
+    const styled = shortsword(twoBlades(true));
+    expect(plain.offHandDamage?.modifier).toBe(Math.min(0, plain.damage.modifier));
+    expect(styled.offHandDamage?.modifier).toBe(styled.damage.modifier);
+  });
+});

@@ -27,6 +27,9 @@ export interface AttackOption {
   // Finesse or ranged: eligible for Sneak Attack.
   readonly finesse: boolean;
   readonly onHit: readonly Effect[];
+  // A light melee weapon (two-weapon fighting), and what its off-hand attack rolls for damage: no ability modifier, unless it is negative or the hero fights with two weapons.
+  readonly light?: boolean;
+  readonly offHandDamage?: DiceExpression;
 }
 
 export type CombatantSource =
@@ -152,6 +155,8 @@ export interface TurnBudget {
   // A spell was cast as a bonus action this turn: only a cantrip with a casting
   // time of one action may follow (SRD 5.1).
   readonly bonusSpellCast: boolean;
+  // The light melee weapon attacked with in this turn's Attack action (an off-hand attack needs a different one).
+  readonly lightAttack?: string | undefined;
 }
 
 export interface Zone {
@@ -174,7 +179,7 @@ export interface ZoneEdge {
 export type ResolutionSource =
   // smiteSlot: Divine Smite's chosen slot level, when spent on this hit.
   // stunDc: a readied Stunning Strike; a melee hit calls for a Constitution save against it.
-  | { readonly kind: "weapon"; readonly option: AttackOption; readonly smiteSlot?: number; readonly stunDc?: number; readonly palmDc?: number; readonly hurl?: true }
+  | { readonly kind: "weapon"; readonly option: AttackOption; readonly smiteSlot?: number; readonly stunDc?: number; readonly palmDc?: number; readonly hurl?: true; readonly offHand?: true }
   // maximized: Overchannel, so its damage and healing are the most the dice can give. metamagic: heightened, empowered, extended, subtle or careful, readied for this casting.
   | { readonly kind: "spell"; readonly spellId: ContentId<"spell">; readonly slotLevel: number; readonly maximized?: true; readonly destination?: string; readonly metamagic?: "heightened" | "empowered" | "extended" | "subtle" | "careful" }
   | { readonly kind: "feature"; readonly featureId: ContentId<"feature"> }

@@ -109,7 +109,8 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
       // of the turn's attacksLeft instead of the action itself; only the
       // last of them (cost.action true) actually spends the action. Spending
       // the action on anything else (a spell, a feature) owes no more attacks.
-      const spendsAnAttack = resolution.source.kind === "weapon" && resolution.purpose === "action";
+      const spendsAnAttack = resolution.source.kind === "weapon" && resolution.purpose === "action" && resolution.source.offHand !== true;
+      const lightSwing = resolution.source.kind === "weapon" && resolution.purpose === "action" && resolution.source.offHand !== true && resolution.source.option.light === true ? resolution.source.option.weapon : undefined;
       const spent = update(encounter, resolution.actorId, (combatant) => {
         const resources = cost.spellSlot !== null ? spendSlot(combatant.resources, cost.spellSlot) : combatant.resources;
         const uses = { ...resources.featureUses };
@@ -135,6 +136,7 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
             reaction: cost.reaction ? false : combatant.budget.reaction,
             attacksLeft,
             bonusSpellCast: combatant.budget.bonusSpellCast || (resolution.source.kind === "spell" && cost.bonusAction),
+            ...(lightSwing === undefined ? {} : { lightAttack: lightSwing }),
           },
           resources: { ...resources, featureUses: uses },
           cooldowns,

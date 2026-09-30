@@ -63,7 +63,7 @@ export function handleCombatCommand(decision: Decision, command: CombatCommand):
         // Whirlwind Attack: a melee swing also strikes every other foe the hero is in melee with.
         const encounter = activeEncounter(decision);
         const sweep = encounter !== null && option.range.kind === "melee" && hero.traits.some((trait) => trait.kind === "whirlwind") ? weaponTargets(encounter, hero, option, decision.ctx.rules.content).map((foe) => foe.id).filter((id) => id !== command.targetId) : [];
-        return declareWeaponAttack(decision, hero, command.targetId, option, "action", command.smiteSlot, undefined, sweep);
+        return declareWeaponAttack(decision, hero, command.targetId, option, "action", command.smiteSlot, undefined, command.offHand === true ? [] : sweep, command.offHand === true);
       });
     case "combatCast":
       return withHeroTurn(decision, command.combatantId, (hero, encounter) =>
