@@ -643,6 +643,7 @@ export const campaignZhTW = {
   "campaign.adventure.wrongStatus": "這個冒險目前無法這樣變更。",
   "campaign.adventure.notPending": "那份草稿已經決定過了",
   "campaign.adventure.uploadNeedsFile": "請附上冒險檔案（YAML 或 JSON）。/dnd adventures 有範例檔案可以參考；檢視時會列出找到的所有問題。",
+  "campaign.adventure.uploadLanguageMismatch": "此檔案標示為{declared}，但你選擇了{selected}。請選擇檔案的語言，或先修正檔案中的語言欄位再上傳。",
   "campaign.adventure.unreadable.notDiscord": "只能讀取上傳到 Discord 的檔案",
   "campaign.adventure.unreadable.tooLarge": "這個檔案太大，不像是冒險",
   "campaign.adventure.unreadable.failed": "無法下載那個檔案，請再上傳一次",

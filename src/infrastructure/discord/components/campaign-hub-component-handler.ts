@@ -217,7 +217,7 @@ export class CampaignHubComponentHandler implements ComponentHandler {
 
   // My Characters and New character: the same private screens /dnd characters opens.
   private async openLibrary(interaction: ButtonInteraction<"cached">, action: "characters" | "newCharacter"): Promise<void> {
-    const language = languageOf(interaction);
+    const language = this.deps.authority.guildLanguage(interaction.guildId);
     if (this.deps.libraryScreens === undefined) {
       await interaction.reply({ content: texts[language].campaign.hub.unavailable, flags: MessageFlags.Ephemeral });
       return;
@@ -266,7 +266,14 @@ export class CampaignHubComponentHandler implements ComponentHandler {
       return;
     }
     if (action === "uploadOpen") {
-      await interaction.showModal(this.fileModal(hubCustomId("uploadSubmit"), t.uploadTitle, t.uploadFileLabel, t.uploadFileHint, true));
+      await interaction.showModal(this.fileModal(hubCustomId("uploadSubmit"), t.uploadTitle, t.uploadFileLabel, t.uploadFileHint, true).addLabelComponents(
+        new LabelBuilder().setLabel(t.authorLanguageLabel).setStringSelectMenuComponent(
+          new StringSelectMenuBuilder().setCustomId(languageField).setRequired(true).addOptions([
+            { label: text.campaign.language.en, value: "en", default: language === "en" },
+            { label: text.campaign.language.zhTW, value: "zh-TW", default: language === "zh-TW" },
+          ]),
+        ),
+      ));
       return;
     }
     if (!this.deps.intake.canAuthor) {
@@ -314,7 +321,8 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     if (!(await this.deps.authority.isAdmin(interaction))) return void (await interaction.editReply({ content: text.campaign.cmd.adminOnly }));
     if (this.deps.intake === undefined) return void (await interaction.editReply({ content: text.campaign.hub.unavailable }));
     const file = interaction.fields.getUploadedFiles(fileField, false)?.first();
-    await this.deps.intake.uploadFile(this.intakeContext(interaction), file === undefined ? null : { url: file.url, size: file.size });
+    const selected = interaction.fields.getStringSelectValues(languageField)[0];
+    await this.deps.intake.uploadFile(this.intakeContext(interaction), file === undefined ? null : { url: file.url, size: file.size }, selected === "zh-TW" ? "zh-TW" : "en");
   }
 
   private async submitAuthor(interaction: ModalSubmitInteraction<"cached">): Promise<void> {
@@ -490,7 +498,7 @@ export class CampaignHubComponentHandler implements ComponentHandler {
       await interaction.reply({ content: text.campaign.cmd.noModel, flags: MessageFlags.Ephemeral });
       return;
     }
-    await interaction.reply({ ...this.screen(defaultWizardChoices, interaction.guildId), flags: MessageFlags.Ephemeral });
+    await interaction.reply({ ...this.screen({ ...defaultWizardChoices, language: this.deps.authority.guildLanguage(interaction.guildId) }, interaction.guildId), flags: MessageFlags.Ephemeral });
   }
 
   private async chooseOption(interaction: StringSelectMenuInteraction<"cached">, action: "wizLanguage" | "wizPacing" | "wizPlayers" | "wizLoot", state: string | undefined): Promise<void> {
@@ -500,9 +508,15 @@ export class CampaignHubComponentHandler implements ComponentHandler {
       return;
     }
     const value = interaction.values[0] ?? "";
+    const requestedLanguage = value === "zh-TW" ? "zh-TW" : "en";
+    const selectedAdventure = current.adventure === null ? undefined : this.deps.adventures?.listForGuild(interaction.guildId).find((entry) => entry.id === current.adventure);
+    if (action === "wizLanguage" && selectedAdventure?.languages !== undefined && !selectedAdventure.languages.includes(requestedLanguage)) {
+      await interaction.update(this.screen(current, interaction.guildId));
+      return;
+    }
     const next: WizardChoices =
       action === "wizLanguage"
-        ? this.inLanguage({ ...current, language: value === "zh-TW" ? "zh-TW" : "en" }, interaction.guildId)
+        ? { ...current, language: requestedLanguage }
         : action === "wizPacing"
           ? { ...current, pacing: value === "playByPost" ? "playByPost" : "live" }
           : action === "wizLoot"
@@ -523,11 +537,6 @@ export class CampaignHubComponentHandler implements ComponentHandler {
   // The adventures this server can start a game in this language from, the bundled one first.
   private adventuresIn(language: WizardChoices["language"], guildId: string): readonly { readonly id: string; readonly version?: string; readonly languages?: readonly ("en" | "zh-TW")[]; readonly titles: Readonly<Partial<Record<"en" | "zh-TW", string>>> }[] {
     return (this.deps.adventures?.listForGuild(guildId) ?? []).filter((entry) => entry.languages === undefined || entry.languages.includes(language));
-  }
-
-  // A chosen adventure that has no edition in the game's language goes back to the bundled one, so the game can be created.
-  private inLanguage(choices: WizardChoices, guildId: string): WizardChoices {
-    return choices.adventure === null || this.adventuresIn(choices.language, guildId).some((entry) => entry.id === choices.adventure) ? choices : { ...choices, adventure: null };
   }
 
   // The list of adventures to choose from (a page of it, when there are many), instead of stepping through them one by one.
@@ -581,11 +590,13 @@ export class CampaignHubComponentHandler implements ComponentHandler {
   // The wizard, with the adventure's title and a way to change it when the server has more than one.
   private screen(choices: WizardChoices, guildId: string): Screen {
     const list = this.adventuresIn(choices.language, guildId);
+    const selected = choices.adventure === null ? undefined : this.deps.adventures?.listForGuild(guildId).find((entry) => entry.id === choices.adventure);
+    const unavailable = choices.adventure !== null && !list.some((entry) => entry.id === choices.adventure);
     const titleOf = (id: string | null): string | null => {
       const entry = list.find((candidate) => candidate.id === (id ?? list[0]?.id));
       return entry === undefined ? null : (entry.titles[choices.language] ?? entry.titles.en ?? entry.titles["zh-TW"] ?? entry.id);
     };
-    return wizardScreen(choices, list.length > 1 ? titleOf(choices.adventure) : null);
+    return wizardScreen(choices, list.length > 1 ? titleOf(choices.adventure) : null, unavailable, selected?.languages);
   }
 
   private async askName(interaction: ButtonInteraction<"cached">, state: string | undefined): Promise<void> {
@@ -593,6 +604,10 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     const text = texts[choices.language].campaign.wizard;
     if (!(await this.deps.authority.isAdmin(interaction))) {
       await interaction.update({ content: text.notAllowed, components: [] });
+      return;
+    }
+    if (choices.adventure !== null && !this.adventuresIn(choices.language, interaction.guildId).some((entry) => entry.id === choices.adventure)) {
+      await interaction.update(this.screen(choices, interaction.guildId));
       return;
     }
     await interaction.showModal(
@@ -885,7 +900,7 @@ function successText(verb: ManageVerb, text: Texts): string {
 
 // The wizard: the choices so far live in each control's custom ID.
 // `adventureTitle` is null when there is only the bundled adventure to choose.
-function wizardScreen(choices: WizardChoices, adventureTitle: string | null): Screen {
+function wizardScreen(choices: WizardChoices, adventureTitle: string | null, unavailable = false, allowedLanguages?: readonly ("en" | "zh-TW")[]): Screen {
   const text = texts[choices.language];
   const t = text.campaign.wizard;
   const state = wizardState(choices);
@@ -899,12 +914,12 @@ function wizardScreen(choices: WizardChoices, adventureTitle: string | null): Sc
   const language = choices.language === "en" ? text.campaign.language.en : text.campaign.language.zhTW;
   const pacing = choices.pacing === "live" ? text.campaign.pacing.live : text.campaign.pacing.playByPost;
   return {
-    content: `**${t.title}**\n${t.intro}\n\n${t.summary({ language, pacing, count: choices.players, loot: choices.loot === "split" ? t.lootSplit : t.lootPooled })}\n${t.visibilityLine({ who: choices.visibility === "membersOnly" ? t.visibilityPlayers : t.visibilityOpen })}${adventureTitle === null ? "" : `\n${text.campaign.adventure.wizardLine({ title: adventureTitle })}`}`,
+    content: `**${t.title}**\n${t.intro}\n\n${t.summary({ language, pacing, count: choices.players, loot: choices.loot === "split" ? t.lootSplit : t.lootPooled })}\n${t.visibilityLine({ who: choices.visibility === "membersOnly" ? t.visibilityPlayers : t.visibilityOpen })}${unavailable ? `\n⚠️ ${text.campaign.refusal.languageUnavailable}` : adventureTitle === null ? "" : `\n${text.campaign.adventure.wizardLine({ title: adventureTitle })}`}`,
     components: [
       select("wizLanguage", t.languagePlaceholder, [
         { label: text.campaign.language.en, value: "en", selected: choices.language === "en" },
         { label: text.campaign.language.zhTW, value: "zh-TW", selected: choices.language === "zh-TW" },
-      ]),
+      ].filter((option) => allowedLanguages === undefined || allowedLanguages.includes(option.value as "en" | "zh-TW"))),
       select("wizPacing", t.pacingPlaceholder, [
         { label: t.pacingLive, value: "live", selected: choices.pacing === "live" },
         { label: t.pacingPost, value: "playByPost", selected: choices.pacing === "playByPost" },
@@ -919,7 +934,7 @@ function wizardScreen(choices: WizardChoices, adventureTitle: string | null): Sc
         { label: t.lootSplit, value: "split", selected: choices.loot === "split" },
       ]),
       row(
-        new ButtonBuilder().setCustomId(hubCustomId("wizNext", state)).setLabel(t.next).setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId(hubCustomId("wizNext", state)).setLabel(t.next).setStyle(ButtonStyle.Primary).setDisabled(unavailable),
         new ButtonBuilder()
           .setCustomId(hubCustomId("wizVisibility", state))
           .setLabel(choices.visibility === "membersOnly" ? t.visibilityButtonPlayers : t.visibilityButtonOpen)

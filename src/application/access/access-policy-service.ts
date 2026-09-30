@@ -6,6 +6,7 @@ import type {
 } from "discord.js";
 
 import type { ApplicationConfiguration } from "../../config/configuration.js";
+import type { Language } from "../i18n/language.js";
 import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
 import type { CommandModule } from "../commands/command.js";
 import { AccessDenialReason, type AccessDecision } from "../../domain/access/access-decision.js";
@@ -19,6 +20,10 @@ export class AccessPolicyService {
     private readonly guildConfigurationProvider: GuildConfigurationProvider,
     private readonly engine: AccessPolicyEngine = new AccessPolicyEngine(),
   ) {}
+
+  public guildLanguage(guildId: string): Language | null {
+    return this.guildConfigurationProvider.find(guildId)?.language ?? null;
+  }
 
   public evaluate(
     policy: CommandAccessPolicy,

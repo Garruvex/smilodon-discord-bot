@@ -289,6 +289,15 @@ describe("the adventure commands", () => {
     expect(buttonsOf(replies.at(-1))).toBe(2);
   });
 
+  it("rejects an uploaded adventure when its declared language differs from the selected language", async () => {
+    const { intake, catalog } = intakeFor(null);
+    serve(yamlOf("zh-TW"));
+    const { interaction, replies } = fakeCommand({ file: { url: "https://cdn.discordapp.com/attachments/1/2/a.yaml", size: 5_000 }, language: "en" });
+    await intake.upload(interaction);
+    expect(replies.at(-1)?.content).toContain("declares 繁體中文");
+    expect(await catalog.list("g-1")).toEqual([]);
+  });
+
   it("names what is wrong with a file that fails, and offers nothing to approve", async () => {
     const { intake } = intakeFor(null);
     serve(yamlOf("en").replace("monster:goblin", "monster:beholder"));
@@ -410,5 +419,15 @@ describe("a game from an approved adventure", () => {
     expect(t.creator.findAdventure("g-2", "en", "harbor")).toMatchObject({ kind: "none" });
     // An adventure with no Chinese edition is not offered for a Chinese game.
     expect(t.creator.findAdventure("g-1", "zh-TW", "harbor")).toMatchObject({ kind: "none" });
+  });
+
+  it("refuses an English game using a Chinese-only uploaded adventure", async () => {
+    const t = table();
+    const submitted = await t.catalog.submit({ guildId: "g-1", uploaderUserId: "u-up", source: "upload", text: yamlOf("zh-TW") });
+    if (submitted.kind !== "pending") throw new Error("submit");
+    await t.catalog.approve(submitted.adventure.key, "u-up", false);
+    const game = { guildId: "g-1", organizerId: "u-up", name: "Language Check", language: "en" as const, pacing: "live" as const, players: 3, adventureId: submitted.adventure.id };
+    expect(await t.creator.create(game)).toEqual({ kind: "refused", reason: "unknownAdventure" });
+    expect((await t.creator.create({ ...game, language: "zh-TW", name: "中文冒險" })).kind).toBe("created");
   });
 });

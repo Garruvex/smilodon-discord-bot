@@ -169,25 +169,27 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
         case "bRace": {
           const draft = decodeDraft(first);
           const race = buildRaces.find((id) => id === value) ?? null;
-          const chosen = { ...draft, race, raceAbilities: [], raceSkills: [] };
+          const chosen = { ...draft, race, raceAbilities: [], raceSkills: [], kit: null, skills: [], expertise: [], order: [] };
           return void (await this.show(interaction, race === "half-elf" ? this.raceAbilityScreen(chosen, text) : this.kitScreen(chosen, text)));
         }
         case "bRaceAbility": {
           const draft = decodeDraft(first);
           const ability = abilities.find((candidate) => candidate === value && candidate !== "cha" && !draft.raceAbilities.includes(candidate));
-          const chosen = ability === undefined ? draft : { ...draft, raceAbilities: [...draft.raceAbilities, ability] };
+          const chosen = ability === undefined ? draft : { ...draft, raceAbilities: [...draft.raceAbilities, ability], raceSkills: [], kit: null, skills: [], expertise: [], order: [] };
           return void (await this.show(interaction, chosen.raceAbilities.length === 2 ? this.raceSkillScreen(chosen, text) : this.raceAbilityScreen(chosen, text)));
         }
         case "bRaceSkills": {
           const draft = decodeDraft(first);
           const raceSkills = interaction.values.filter((skill): skill is Draft["raceSkills"][number] => isSkill(skill)).slice(0, 2);
-          return void (await this.show(interaction, this.kitScreen({ ...draft, raceSkills }, text)));
+          return void (await this.show(interaction, this.kitScreen({ ...draft, raceSkills, kit: null, skills: [], expertise: [], order: [] }, text)));
         }
-        case "bKit":
-          return void (await this.show(interaction, this.skillsScreen({ ...decodeDraft(first), kit: value }, language)));
+        case "bKit": {
+          const draft = decodeDraft(first);
+          return void (await this.show(interaction, this.skillsScreen({ ...draft, kit: value, ...(draft.kit === value ? {} : { skills: [], expertise: [], order: [] }) }, language)));
+        }
         case "bSkills": {
           const draft = decodeDraft(first);
-          const chosen = { ...draft, skills: interaction.values.flatMap((skill) => (classTemplates[draft.class ?? "fighter"].skillChoices as readonly string[]).includes(skill) && !(draft.raceSkills as readonly string[]).includes(skill) ? [skill as Draft["skills"][number]] : []), expertise: [] };
+          const chosen = { ...draft, skills: interaction.values.flatMap((skill) => (classTemplates[draft.class ?? "fighter"].skillChoices as readonly string[]).includes(skill) && !(draft.raceSkills as readonly string[]).includes(skill) ? [skill as Draft["skills"][number]] : []), expertise: [], order: [] };
           const needsExpertise = draft.class !== null && classTemplates[draft.class].expertiseCount > 0;
           return void (await this.show(interaction, needsExpertise ? this.expertiseScreen(chosen, language) : this.scoresScreen(chosen, language)));
         }
@@ -222,6 +224,20 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
       case "new":
         await interaction.deferUpdate();
         return void (await this.show(interaction, this.classScreen(text)));
+      case "bBack": {
+        await interaction.deferUpdate();
+        const draft = decodeDraft(parsed.parts[1]);
+        const stage = first;
+        const previous = stage === "race" ? this.classScreen(text)
+          : stage === "raceAbility" ? draft.raceAbilities.length > 0 ? this.raceAbilityScreen({ ...draft, raceAbilities: draft.raceAbilities.slice(0, -1) }, text) : this.raceScreen(draft, language)
+          : stage === "raceSkills" ? this.raceAbilityScreen({ ...draft, raceAbilities: draft.raceAbilities.slice(0, -1) }, text)
+          : stage === "kit" ? draft.race === "half-elf" ? this.raceSkillScreen(draft, text) : this.raceScreen(draft, language)
+          : stage === "skills" ? this.kitScreen(draft, text)
+          : stage === "expert" ? this.skillsScreen(draft, language)
+          : stage === "scores" ? draft.order.length > 0 ? this.scoresScreen({ ...draft, order: draft.order.slice(0, -1) }, language) : draft.class !== null && classTemplates[draft.class].expertiseCount > 0 ? this.expertiseScreen(draft, language) : this.skillsScreen(draft, language)
+          : this.classScreen(text);
+        return void (await this.show(interaction, previous));
+      }
       case "bRecommended": {
         await interaction.deferUpdate();
         const draft = decodeDraft(first);
@@ -413,7 +429,7 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
     const t = text.campaign.chars;
     return {
       content: t.bClass,
-      components: [select(libraryCustomId("bClass"), t.bClassPlaceholder, buildClasses.map((id) => ({ label: classLabel(text, id), value: id })))],
+      components: [select(libraryCustomId("bClass"), t.bClassPlaceholder, buildClasses.map((id) => ({ label: classLabel(text, id), value: id }))), new ActionRowBuilder<ButtonBuilder>().addComponents(button(libraryCustomId("home"), t.backButton, ButtonStyle.Secondary))],
     };
   }
 
@@ -423,26 +439,26 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
     if (draft.class === null) return this.classScreen(text);
     const glossary = this.deps.glossaries[language];
     const options = selectableBuildRaces.map((race) => ({ label: glossary?.names[`race:${race}`] ?? race, value: race }));
-    return { content: t.bRace({ class: classLabel(text, draft.class) }), components: [select(libraryCustomId("bRace", encodeDraft(draft)), t.bRacePlaceholder, options)] };
+    return this.builderBack({ content: t.bRace({ class: classLabel(text, draft.class) }), components: [select(libraryCustomId("bRace", encodeDraft(draft)), t.bRacePlaceholder, options)] }, "race", draft, text);
   }
 
   private raceAbilityScreen(draft: Draft, text: Texts): LibraryScreen {
     if (draft.race !== "half-elf") return this.kitScreen(draft, text);
     const t = text.campaign.chars;
     const options = abilities.filter((ability) => ability !== "cha" && !draft.raceAbilities.includes(ability)).map((ability) => ({ label: text.campaign.ability[ability], value: ability }));
-    return { content: t.bRaceAbility({ count: 2 - draft.raceAbilities.length }), components: [select(libraryCustomId("bRaceAbility", encodeDraft(draft)), t.bRaceAbilityPlaceholder, options)] };
+    return this.builderBack({ content: t.bRaceAbility({ count: 2 - draft.raceAbilities.length }), components: [select(libraryCustomId("bRaceAbility", encodeDraft(draft)), t.bRaceAbilityPlaceholder, options)] }, "raceAbility", draft, text);
   }
 
   private raceSkillScreen(draft: Draft, text: Texts): LibraryScreen {
     const t = text.campaign.chars;
-    return { content: t.bRaceSkills, components: [select(libraryCustomId("bRaceSkills", encodeDraft(draft)), t.bRaceSkillsPlaceholder, skills.map((skill) => ({ label: text.campaign.skill[skillKey(skill)], value: skill })), 2, 2)] };
+    return this.builderBack({ content: t.bRaceSkills, components: [select(libraryCustomId("bRaceSkills", encodeDraft(draft)), t.bRaceSkillsPlaceholder, skills.map((skill) => ({ label: text.campaign.skill[skillKey(skill)], value: skill })), 2, 2)] }, "raceSkills", draft, text);
   }
 
   private kitScreen(draft: Draft, text: Texts): LibraryScreen {
     const t = text.campaign.chars;
     if (draft.class === null) return this.classScreen(text);
     const kits = classTemplates[draft.class].kits.map((kit) => ({ label: (t.kit as Readonly<Record<string, string>>)[kit.id] ?? kit.id, value: kit.id }));
-    return { content: t.bKit({ class: classLabel(text, draft.class) }), components: [select(libraryCustomId("bKit", encodeDraft(draft)), t.bKitPlaceholder, kits)] };
+    return this.builderBack({ content: t.bKit({ class: classLabel(text, draft.class) }), components: [select(libraryCustomId("bKit", encodeDraft(draft)), t.bKitPlaceholder, kits)] }, "kit", draft, text);
   }
 
   private skillsScreen(draft: Draft, language: Language): LibraryScreen {
@@ -451,10 +467,10 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
     if (draft.class === null) return this.classScreen(text);
     const template = classTemplates[draft.class];
     const options = template.skillChoices.filter((skill) => !draft.raceSkills.includes(skill)).map((skill) => ({ label: `${text.campaign.skill[skillKey(skill)]} (${text.campaign.ability[skillAbilities[skill]]})`, value: skill }));
-    return {
+    return this.builderBack({
       content: t.bSkills({ count: template.skillCount }),
       components: [select(libraryCustomId("bSkills", encodeDraft(draft)), t.bSkillsPlaceholder, options, template.skillCount, template.skillCount)],
-    };
+    }, "skills", draft, text);
   }
 
   private expertiseScreen(draft: Draft, language: Language): LibraryScreen {
@@ -463,7 +479,7 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
     if (draft.class === null) return this.classScreen(text);
     const count = classTemplates[draft.class].expertiseCount;
     const options = draft.skills.map((skill) => ({ label: text.campaign.skill[skillKey(skill)], value: skill }));
-    return { content: t.bExpert({ count }), components: [select(libraryCustomId("bExpert", encodeDraft(draft)), t.bExpertPlaceholder, options, count, count)] };
+    return this.builderBack({ content: t.bExpert({ count }), components: [select(libraryCustomId("bExpert", encodeDraft(draft)), t.bExpertPlaceholder, options, count, count)] }, "expert", draft, text);
   }
 
   // Deals the standard array out ability by ability, or all at once with the suggestion.
@@ -475,21 +491,25 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
     if (draft.order.length >= abilities.length - 1) {
       const scores = scoresOf(draft.order);
       const done = abilities.map((ability) => `${text.campaign.ability[ability]} ${scores[ability] ?? 0}`).join(" · ");
-      return {
+      return this.builderBack({
         content: t.bScoresDone({ scores: done }),
         components: [new ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>().addComponents(button(libraryCustomId("bName", encodeDraft({ ...draft, order: this.fullOrder(draft.order) })), t.bNameButton, ButtonStyle.Primary))],
-      };
+      }, "scores", draft, text);
     }
     const value = [15, 14, 13, 12, 10, 8][draft.order.length] ?? 8;
     const soFar = draft.order.length === 0 ? "" : ` (${draft.order.map((ability, index) => `${text.campaign.ability[ability]} ${[15, 14, 13, 12, 10, 8][index] ?? 0}`).join(", ")})`;
     const left = abilities.filter((ability) => !draft.order.includes(ability));
-    return {
+    return this.builderBack({
       content: t.bScores({ value, so_far: soFar }),
       components: [
         select(libraryCustomId("bScore", token), t.bScoresPlaceholder, left.map((ability) => ({ label: text.campaign.ability[ability], value: ability }))),
         new ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>().addComponents(button(libraryCustomId("bRecommended", token), t.bRecommended, ButtonStyle.Secondary)),
       ],
-    };
+    }, "scores", draft, text);
+  }
+
+  private builderBack(screen: LibraryScreen, stage: string, draft: Draft, text: Texts): LibraryScreen {
+    return { ...screen, components: [...screen.components, new ActionRowBuilder<ButtonBuilder>().addComponents(button(libraryCustomId("bBack", stage, encodeDraft(draft)), text.campaign.chars.backButton, ButtonStyle.Secondary))] };
   }
 
   private fullOrder(order: readonly Ability[]): readonly Ability[] {
@@ -576,4 +596,3 @@ function select(customId: string, placeholder: string, options: readonly { reado
     new StringSelectMenuBuilder().setCustomId(customId).setPlaceholder(placeholder).setMinValues(min).setMaxValues(max).addOptions(options.map((option) => ({ label: option.label.slice(0, 100), value: option.value }))),
   );
 }
-

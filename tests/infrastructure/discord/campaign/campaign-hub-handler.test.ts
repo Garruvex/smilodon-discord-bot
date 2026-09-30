@@ -102,7 +102,7 @@ interface Harness {
   intake: { uploads: { guildId: string; file: { url: string; size: number } | null }[]; authors: { guildId: string; input: unknown }[] };
 }
 
-function harness(options: { modelConfigured?: boolean; launcher?: boolean; canAuthor?: boolean; images?: boolean; icons?: boolean; catalog?: readonly { id: string; version: string; languages: ("en" | "zh-TW")[]; titles: Partial<Record<"en" | "zh-TW", string>> }[] } = {}): Harness {
+function harness(options: { modelConfigured?: boolean; launcher?: boolean; canAuthor?: boolean; images?: boolean; icons?: boolean; guildLanguage?: "en" | "zh-TW"; catalog?: readonly { id: string; version: string; languages: ("en" | "zh-TW")[]; titles: Partial<Record<"en" | "zh-TW", string>> }[] } = {}): Harness {
   const r = rig();
   const messages = new FakeMessages();
   const glossaries = { en: enSrd51Glossary, "zh-TW": zhTwSrd51Glossary };
@@ -121,7 +121,7 @@ function harness(options: { modelConfigured?: boolean; launcher?: boolean; canAu
     repair: (key: CampaignKey): Promise<{ kind: "ok"; requeued: number }> => (provisioned.push(key), Promise.resolve({ kind: "ok", requeued: 0 })),
   } as unknown as CampaignSetupService;
   // Only a marked interaction counts as a bot administrator.
-  const access = { evaluate: (_policy: unknown, _module: unknown, interaction: { botAdmin?: boolean }): { allowed: boolean } => ({ allowed: interaction.botAdmin === true }) } as unknown as AccessPolicyService;
+  const access = { evaluate: (_policy: unknown, _module: unknown, interaction: { botAdmin?: boolean }): { allowed: boolean } => ({ allowed: interaction.botAdmin === true }), guildLanguage: (_guildId: string): "en" | "zh-TW" => options.guildLanguage ?? "en" } as unknown as AccessPolicyService;
   const authority = new CampaignAuthority(access, r.store);
   const library: Harness["library"] = { imports: [] };
   const intake: Harness["intake"] = { uploads: [], authors: [] };
@@ -274,13 +274,28 @@ describe("the Create game wizard", () => {
     expect(contentOf(picked)).toContain("Adventure: Farm Fright");
     expect(rowsOf(picked).at(-1)?.[0]?.customId).toBe("dndhub:wizNext:en.live.3.pooled.open.gabc123-farm");
 
-    // In Chinese the English-only adventure is not offered, and a chosen one that has no Chinese edition is dropped.
+    // In Chinese the English-only adventure is not offered. A selected English-only adventure cannot switch to Chinese.
     const chinese = await t.click(hubCustomId("wizAdventure", "zh-TW.live.3.pooled"), { userId: "u-a", admin: true });
     expect(menu(chinese.at(-1)?.payload).options.map((option) => option.label)).toEqual(["月光遺跡", "農場驚魂"]);
     const harbor = await t.click(hubCustomId("wizLanguage", "en.live.3.pooled.open.gabc123-harbor"), { userId: "u-a", admin: true }, { values: ["zh-TW"] });
-    expect(rowsOf(harbor).at(-1)?.[0]?.customId).toBe("dndhub:wizNext:zh-TW.live.3.pooled");
+    expect(rowsOf(harbor).at(-1)?.[0]?.customId).toBe("dndhub:wizNext:en.live.3.pooled.open.gabc123-harbor");
+    expect(contentOf(harbor)).toContain("Adventure: Harbor Heist");
     const kept = await t.click(hubCustomId("wizLanguage", "en.live.3.pooled.open.gabc123-farm"), { userId: "u-a", admin: true }, { values: ["zh-TW"] });
     expect(rowsOf(kept).at(-1)?.[0]?.customId).toBe("dndhub:wizNext:zh-TW.live.3.pooled.open.gabc123-farm");
+  });
+
+  it("does not offer English for a Chinese-only selected adventure", async () => {
+    const t = harness({ catalog: [
+      { id: "moonlit-ruins", version: "1", languages: ["en", "zh-TW"], titles: { en: "Moonlit Ruins", "zh-TW": "月光遺跡" } },
+      { id: "chinese-only", version: "1", languages: ["zh-TW"], titles: { "zh-TW": "中文冒險" } },
+    ] });
+    await withSettings(t);
+    const picked = await t.click(hubCustomId("wizAdventurePick", "zh-TW.live.3.pooled"), { userId: "u-a", admin: true }, { values: ["chinese-only"] });
+    const languageMenu = (picked.at(-1)?.payload as { components: { toJSON(): { components: { options?: { value: string }[] }[] } }[] }).components[0]?.toJSON().components[0];
+    expect(languageMenu?.options?.map((option) => option.value)).toEqual(["zh-TW"]);
+    const forged = await t.click(hubCustomId("wizLanguage", "zh-TW.live.3.pooled.open.chinese-only"), { userId: "u-a", admin: true }, { values: ["en"] });
+    expect(contentOf(forged)).toContain("中文冒險");
+    expect(rowsOf(forged).at(-1)?.[0]?.customId).toBe("dndhub:wizNext:zh-TW.live.3.pooled.open.chinese-only");
   });
 
   it("switches between open and players-only with a button, and remembers it in the controls", async () => {
@@ -475,6 +490,15 @@ describe("the hub launcher", () => {
     expect(contentOf(await t.click("dndhub:newCharacter", anyone))).toBe("builder in en");
   });
 
+  it("opens the builder in the server language even when the player uses an English Discord client", async () => {
+    const t = harness({ guildLanguage: "zh-TW" });
+    const opened = await t.click("dndhub:newCharacter", { userId: "u-x" });
+    expect(contentOf(opened)).toBe("builder in zh-TW");
+    await withSettings(t);
+    const wizard = await t.click("dndhub:create", { userId: "u-a", admin: true });
+    expect(contentOf(wizard)).toContain("語言：繁體中文");
+  });
+
   it("says a button is unavailable when the bot was started without that part", async () => {
     const t = harness({ launcher: false });
     await withSettings(t);
@@ -515,7 +539,7 @@ describe("the hub launcher", () => {
     const modal = modalOf(await t.click("dndhub:uploadOpen", admin));
     expect(modal?.custom_id).toBe("dndhub:uploadSubmit");
     expect(modal?.title).toBe("Upload an adventure");
-    expect(contentOf(await t.form("dndhub:uploadSubmit", admin, { uploads: { file: [upload] } }))).toBe("under review");
+    expect(contentOf(await t.form("dndhub:uploadSubmit", admin, { uploads: { file: [upload] }, selects: { language: ["zh-TW"] } }))).toBe("under review");
     expect(t.intake.uploads).toEqual([{ guildId, file: upload }]);
   });
 

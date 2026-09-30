@@ -66,7 +66,7 @@ export class CampaignGameCreator {
     if (!this.options.modelConfigured) return { kind: "noModel" };
     const adventureId = game.adventureId ?? this.options.defaultAdventureId;
     // Only the bundled adventure, or one this server itself approved.
-    const allowed = adventureId === this.options.defaultAdventureId || this.options.adventures?.listForGuild(game.guildId).some((entry) => entry.id === adventureId) === true;
+    const allowed = adventureId === this.options.defaultAdventureId || this.options.adventures?.listForGuild(game.guildId).some((entry) => entry.id === adventureId && (entry.languages === undefined || entry.languages.includes(game.language))) === true;
     if (!allowed) return { kind: "refused", reason: "unknownAdventure" };
     const created = await this.options.lobby.create({
       guildId: game.guildId,

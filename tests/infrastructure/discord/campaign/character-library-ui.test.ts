@@ -154,6 +154,19 @@ describe("My Characters", () => {
     expect(saved?.build.abilities).toEqual({ dex: 15, cha: 14, int: 13, con: 12, wis: 10, str: 8 });
   });
 
+  it("goes back one builder step while keeping earlier choices and language", async () => {
+    const handler = libraryHandler(rig());
+    let screen = screenOf(await click(handler, libraryCustomId("new"), "u-alice", { locale: "zh-TW" }));
+    screen = screenOf(await click(handler, screen.menus[0]?.id ?? "", "u-alice", { values: ["fighter"], locale: "en-US" }));
+    screen = screenOf(await click(handler, screen.menus[0]?.id ?? "", "u-alice", { values: ["high-elf"], locale: "en-US" }));
+    expect(screen.content).toContain("起始裝備");
+    const back = screen.buttons.find((button) => button.label === "返回");
+    screen = screenOf(await click(handler, back?.id ?? "", "u-alice", { locale: "en-US" }));
+    expect(screen.content).toContain("戰士");
+    screen = screenOf(await click(handler, screen.menus[0]?.id ?? "", "u-alice", { values: ["high-elf"], locale: "en-US" }));
+    expect(screen.content).toContain("起始裝備");
+  });
+
   it("names the trouble when a tampered form or draft would make an illegal character", async () => {
     const r = rig();
     const handler = libraryHandler(r);

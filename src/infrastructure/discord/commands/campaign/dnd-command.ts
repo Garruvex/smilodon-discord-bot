@@ -14,7 +14,7 @@ import { createGameText } from "../../campaign/campaign-game-creator.js";
 import type { CampaignCardService } from "../../campaign/campaign-card-service.js";
 import type { CharacterLibrary } from "../../../../application/campaign/library/character-library.js";
 import type { AdventureIntake } from "../../campaign/adventure-intake.js";
-import { languageOf, type CharacterLibraryComponentHandler } from "../../components/character-library-component-handler.js";
+import type { CharacterLibraryComponentHandler } from "../../components/character-library-component-handler.js";
 import type { CampaignSetupService } from "../../campaign/campaign-setup-service.js";
 import { refusalText } from "../../campaign/refusal-text.js";
 import { repairText } from "../../campaign/repair-text.js";
@@ -92,7 +92,10 @@ export class DndCommand implements BotCommand {
       {
         name: "upload-adventure",
         description: "Adds an adventure from a file to this server, after checks and your approval.",
-        options: [{ type: "attachment", name: "file", description: "The adventure file (YAML or JSON).", required: true }],
+        options: [
+          { type: "attachment", name: "file", description: "The adventure file (YAML or JSON).", required: true },
+          { type: "string", name: "language", description: "Language this adventure is written and played in.", required: true, choices: [{ name: "English", value: "en" }, { name: "繁體中文", value: "zh-TW" }] },
+        ],
       },
       { name: "adventures", description: "Lists this server's adventures: review a draft, remove one, or restore it." },
       {
@@ -201,7 +204,7 @@ export class DndCommand implements BotCommand {
 
   // My Characters: a private screen for the person who asked, in their own client's language.
   private async characters(interaction: ChatInputCommandInteraction<"cached">): Promise<void> {
-    const screen = await this.deps.libraryScreens.homeScreen(interaction.user.id, languageOf(interaction));
+    const screen = await this.deps.libraryScreens.homeScreen(interaction.user.id, await this.characterLanguage(interaction));
     await interaction.editReply({ content: screen.content, components: screen.components });
   }
 
@@ -209,7 +212,14 @@ export class DndCommand implements BotCommand {
   // the asker's library, or says exactly why it cannot.
   private async importCharacter(interaction: ChatInputCommandInteraction<"cached">): Promise<void> {
     const file = interaction.options.getAttachment("file");
-    await interaction.editReply({ content: await this.deps.libraryScreens.importFromFile(interaction.user.id, languageOf(interaction), file === null ? null : { url: file.url, size: file.size }) });
+    await interaction.editReply({ content: await this.deps.libraryScreens.importFromFile(interaction.user.id, await this.characterLanguage(interaction), file === null ? null : { url: file.url, size: file.size }) });
+  }
+
+  private async characterLanguage(interaction: ChatInputCommandInteraction<"cached">): Promise<"en" | "zh-TW"> {
+    const channel = interaction.channel;
+    const ids = [interaction.channelId, ...(channel?.isThread() && channel.parentId !== null ? [channel.parentId] : [])];
+    const game = await this.deps.lobby.findByChannel(interaction.guildId, ids);
+    return game?.record.language ?? this.deps.authority.guildLanguage(interaction.guildId);
   }
 
   private async setup(interaction: ChatInputCommandInteraction<"cached">, text: Texts, responses: CommandContext["responses"]): Promise<void> {
@@ -225,7 +235,7 @@ export class DndCommand implements BotCommand {
   }
 
   private async create(interaction: ChatInputCommandInteraction<"cached">, text: Texts, responses: CommandContext["responses"]): Promise<void> {
-    const language = interaction.options.getString("language") === "zh-TW" ? "zh-TW" : "en";
+    const language = interaction.options.getString("language") === "zh-TW" ? "zh-TW" : interaction.options.getString("language") === "en" ? "en" : this.deps.authority.guildLanguage(interaction.guildId);
     const named = this.deps.creator.findAdventure(interaction.guildId, language, interaction.options.getString("adventure"));
     if (named.kind !== "found") {
       const t = text.campaign.cmd;

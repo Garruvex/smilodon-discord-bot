@@ -644,6 +644,7 @@ export const campaignEn = {
   "campaign.adventure.wrongStatus": "That adventure cannot be changed that way now.",
   "campaign.adventure.notPending": "That draft was already decided.",
   "campaign.adventure.uploadNeedsFile": "Attach an adventure file (YAML or JSON). /dnd adventures has an example file to start from; every problem found is listed in the review.",
+  "campaign.adventure.uploadLanguageMismatch": "This file declares {declared}, but you selected {selected}. Choose the file's language or correct its language field before uploading.",
   "campaign.adventure.unreadable.notDiscord": "Only a file uploaded to Discord can be read.",
   "campaign.adventure.unreadable.tooLarge": "That file is too large to be an adventure.",
   "campaign.adventure.unreadable.failed": "That file could not be downloaded. Try uploading it again.",

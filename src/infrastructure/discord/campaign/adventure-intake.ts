@@ -3,6 +3,7 @@ import type { ActionRowBuilder, ChatInputCommandInteraction } from "discord.js";
 import { defaultMaxAdventuresPerGuild, type AdventureCatalog, type SubmitResult } from "../../../application/campaign/adventures/adventure-catalog.js";
 import { maxIdeaChars, maxNotesChars, type AdventureAuthor } from "../../../application/campaign/adventures/adventure-author.js";
 import { adventureLimits } from "../../../application/campaign/adventures/adventure-validator.js";
+import { parseAdventureDocument } from "../../../application/campaign/adventures/adventure-document.js";
 import { texts, type Texts } from "../../../application/i18n/texts.js";
 import type { Glossary } from "../../../domain/campaign/rules/content-registry.js";
 import { languageOf } from "../components/character-library-component-handler.js";
@@ -55,7 +56,7 @@ export class AdventureIntake {
 
   public upload(interaction: ChatInputCommandInteraction<"cached">): Promise<void> {
     const file = interaction.options.getAttachment("file");
-    return this.uploadFile(slashContext(interaction), file === null ? null : { url: file.url, size: file.size });
+    return this.uploadFile(slashContext(interaction), file === null ? null : { url: file.url, size: file.size }, interaction.options.getString("language") === "zh-TW" ? "zh-TW" : "en");
   }
 
   public adventures(interaction: ChatInputCommandInteraction<"cached">): Promise<void> {
@@ -77,13 +78,19 @@ export class AdventureIntake {
     await ctx.editReply(renderLibrary({ adventures, text: texts[ctx.language] }) as never);
   }
 
-  public async uploadFile(ctx: IntakeContext, file: UploadedFile | null): Promise<void> {
+  public async uploadFile(ctx: IntakeContext, file: UploadedFile | null, gameLanguage: "en" | "zh-TW"): Promise<void> {
     const text = texts[ctx.language];
     const reply = (content: string): Promise<void> => ctx.editReply({ content }).then(() => undefined);
     if (file === null) return reply(text.campaign.adventure.uploadNeedsFile);
     if (file.size > adventureLimits.maxBytes) return reply(text.campaign.adventure.unreadable.tooLarge);
     const downloaded = await downloadAttachmentText(file.url, adventureLimits.maxBytes);
     if (!downloaded.ok) return reply(text.campaign.adventure.unreadable[downloaded.reason]);
+    try {
+      const declaredLanguage = parseAdventureDocument(downloaded.text).bible.language;
+      if (declaredLanguage !== gameLanguage) return reply(text.campaign.adventure.uploadLanguageMismatch({ selected: text.campaign.language[gameLanguage === "en" ? "en" : "zhTW"], declared: text.campaign.language[declaredLanguage === "en" ? "en" : "zhTW"] }));
+    } catch {
+      // The catalog produces the full validation report for malformed files.
+    }
     const result = await this.options.catalog.submit({ guildId: ctx.guildId, uploaderUserId: ctx.userId, source: "upload", text: downloaded.text, isAdmin: ctx.isAdmin });
     await this.review(ctx, result, text);
   }

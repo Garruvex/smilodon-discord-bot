@@ -18,6 +18,11 @@ export class CampaignAuthority {
     private readonly unitOfWork: CampaignUnitOfWork,
   ) {}
 
+  public guildLanguage(guildId: string): "en" | "zh-TW" {
+    const language = this.access.guildLanguage(guildId);
+    return language === "zh-TW" ? "zh-TW" : "en";
+  }
+
   public isBotAdministrator(interaction: AuthorityInteraction): boolean {
     return this.access.evaluate(botAdministratorPolicy, CommandModule.Campaign, interaction).allowed;
   }

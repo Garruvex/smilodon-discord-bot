@@ -25,6 +25,7 @@ export const libraryActions = [
   "bExpert",
   "bScore",
   "bRecommended",
+  "bBack",
   "bName",
   "export",
   "deleteAsk",
