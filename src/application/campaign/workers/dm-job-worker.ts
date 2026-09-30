@@ -12,6 +12,7 @@ import { latestSummaryRound } from "../../../domain/campaign/engine/dm.js";
 import { encounterRecords } from "../dm/combat-records.js";
 import { checkLabel, roundRecords } from "../dm/round-records.js";
 import { plannerStory, resolveStoryEffects } from "../dm/story-effects.js";
+import type { RuntimeLogger } from "../campaign-runtime.js";
 import type { CampaignKey, CampaignUnitOfWork, OutboxItem, StoredCampaign } from "../ports/campaign-store.js";
 import type {
   AdventureCatalog,
@@ -44,6 +45,8 @@ export interface DmJobWorkerOptions {
   readonly maxAttempts?: number;
   // Chance for the tables an adventure rolls on (0 up to but excluding 1); tests pin it.
   readonly random?: () => number;
+  // Where a failed planning attempt is written, so the reason is not lost with the organizer notice.
+  readonly logger?: RuntimeLogger;
 }
 
 const system = { kind: "system" } as const;
@@ -131,6 +134,7 @@ export class DmJobWorker {
         const resolved = resolveStoryEffects(proposal, loaded.bible, loaded.stored.state, { wallet, ...(this.options.random === undefined ? {} : { random: this.options.random }) });
         if (resolved.kind === "invalid") {
           problems = resolved.problems;
+          this.options.logger?.warn({ campaignId: item.key.campaignId, roundNumber, attempt, problems }, "Planner proposal was invalid");
           continue;
         }
         const outcome = await this.options.bus.execute(
@@ -141,10 +145,13 @@ export class DmJobWorker {
         if (outcome.kind !== "rejected") return;
         if (outcome.rejection.code !== "invalidPlan") return; // Stale: the round moved on.
         problems = outcome.rejection.problems;
+        this.options.logger?.warn({ campaignId: item.key.campaignId, roundNumber, attempt, problems }, "Engine refused the round plan");
       } catch (error) {
         problems = [`The planner call failed: ${error instanceof Error ? error.message : String(error)}`];
+        this.options.logger?.warn({ err: error, campaignId: item.key.campaignId, roundNumber, attempt }, "Planner call failed");
       }
     }
+    this.options.logger?.error({ campaignId: item.key.campaignId, roundNumber, problems }, "Round held: the planner failed twice");
     await this.options.bus.execute(
       item.key,
       { kind: "reportPlannerFailure", roundNumber, problems },
