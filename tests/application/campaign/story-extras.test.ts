@@ -6,6 +6,7 @@ import type { PlannerProposal } from "../../../src/application/campaign/ports/dm
 import { encounterSpec, longRestEffects } from "../../../src/domain/campaign/adventure/adventure-bible.js";
 import type { RoundPlanProposal } from "../../../src/domain/campaign/commands/campaign-command.js";
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
+import { buildStartingState } from "../../../src/application/campaign/setup/starting-state.js";
 import { newCampaign } from "../../domain/campaign/campaign-fixtures.js";
 
 // Hazards, saving throws, random tables, keepsakes, notices, arrival effects, ambushes and a fight's dread, as an adventure says them.
@@ -235,6 +236,39 @@ describe("whose gold pays", () => {
     expect(resolveStoryEffects(attempt("interaction:bribe"), bible, rich, { wallet: "pool" })).toMatchObject({ kind: "resolved" });
     // A split table where no hero has been paid yet: the guess that used to be made from the wallets is gone.
     expect(resolveStoryEffects(attempt("interaction:bribe"), bible, { ...inField, gold: 100 }, { wallet: "hero" })).toMatchObject({ kind: "invalid" });
+  });
+});
+
+describe("the story's clock, as an adventure says it", () => {
+  const withClock = (extra: string): string => document(extra).replace("startScene: scene:inn", "startScene: scene:inn\nstartTime: { day: 2, time: dusk, weather: rain }");
+
+  it("starts where the adventure says, and gives the game that day, time and weather", () => {
+    const parsed = parseAdventureDocument(withClock(""));
+    expect(parsed.bible.startTime).toEqual({ day: 2, time: "dusk", weather: "rain" });
+    const state = buildStartingState({ campaignId: "camp", organizerId: "u-org", adventure: parsed, seats: [{ userId: "u-a", heroId: "c-borin" }], pacing: { preset: "live" } as never });
+    expect(state.world).toEqual({ day: 2, time: "dusk", weather: "rain" });
+    expect(buildStartingState({ campaignId: "camp", organizerId: "u-org", adventure: parseAdventureDocument(document("")), seats: [{ userId: "u-a", heroId: "c-borin" }], pacing: { preset: "live" } as never }).world).toBeUndefined();
+  });
+
+  it("lets an interaction pass time or turn the weather, within range", () => {
+    const wait = `
+  - id: interaction:wait
+    sceneId: scene:field
+    label: Wait out the night
+    dmNotes: They sleep under the stars.
+    onSuccess:
+      - { kind: time, advance: 3 }
+      - { kind: weather, weather: fog }`;
+    const plan = resolve(withClock(wait), "interaction:wait");
+    expect(plan.effects?.map((planned) => planned.effect)).toEqual(expect.arrayContaining([{ kind: "advanceTime", steps: 3 }, { kind: "setWeather", weather: "fog" }]));
+    expect(() => parseAdventureDocument(withClock(wait.replace("advance: 3", "advance: 40")))).toThrow(AdventureDocumentError);
+    expect(() => parseAdventureDocument(withClock(wait.replace("weather: fog", "weather: hail")))).toThrow(AdventureDocumentError);
+  });
+
+  it("must match in both editions", () => {
+    const english = parseAdventureDocument(withClock(""));
+    const chinese = parseAdventureDocument(withClock("").replace("time: dusk", "time: dawn"));
+    expect(checkEditionsMatch([english, { ...chinese, bible: { ...chinese.bible, language: "zh-TW" } }]).length).toBeGreaterThan(0);
   });
 });
 

@@ -29,6 +29,7 @@ import type {
   PendingHealing,
 } from "../state/campaign-state.js";
 import type { Skill } from "../rules/skills.js";
+import type { WorldState } from "../state/world-state.js";
 
 // The version of the event shapes below. It goes up whenever a change to an
 // event could not be read by code written for the old shape, and every recorded
@@ -80,6 +81,8 @@ export type CampaignEvent =
   | { readonly kind: "clueRevealed"; readonly roundNumber: number; readonly clueId: string; readonly text: string }
   | { readonly kind: "flagSet"; readonly roundNumber: number; readonly flag: string; readonly value: number }
   | { readonly kind: "keepsakeGained"; readonly roundNumber: number; readonly keepsake: Keepsake }
+  // The story's day, time or weather changed; the event carries the whole world after. Why: the story moved it, a rest did, or the organizer corrected it.
+  | { readonly kind: "worldChanged"; readonly roundNumber: number; readonly world: WorldState; readonly reason: "story" | "rest" | "correction"; readonly note?: string }
   | { readonly kind: "goldSpent"; readonly roundNumber: number; readonly characterId: CharacterId; readonly amount: number; readonly wallet: "pool" | "hero" }
   | { readonly kind: "memberMarkedAway"; readonly userId: UserId; readonly reason: AwayReason }
   | { readonly kind: "memberReturned"; readonly userId: UserId }

@@ -35,6 +35,13 @@ describe("the adventure panel", () => {
     expect(card.buttons.map((button) => button.id)).toEqual(["dnd:act:camp", "dnd:speak:camp", "dnd:pass:camp", "dnd:myHero:camp", "dnd:away:camp", "dnd:explore:camp", "dnd:safety:camp", "dnd:more:camp"]);
   });
 
+  it("shows the story's day, time and weather when the adventure keeps a clock, and nothing when it does not", () => {
+    const world = { day: 2, time: "dusk", weather: "rain" };
+    expect(flatten(renderAdventurePanel({ ...collecting, world }, texts.en, "camp")).text).toContain("Day 2 · dusk · rain");
+    expect(flatten(renderAdventurePanel({ ...collecting, world }, texts["zh-TW"], "camp")).text).toContain("第 2 天 · 黃昏 · 下雨");
+    expect(flatten(renderAdventurePanel(collecting, texts.en, "camp")).text).not.toContain("Day ");
+  });
+
   it("says so when there is no timer", () => {
     expect(flatten(renderAdventurePanel({ ...collecting, closesAt: null }, texts.en, "camp")).text).toContain("No timer.");
   });

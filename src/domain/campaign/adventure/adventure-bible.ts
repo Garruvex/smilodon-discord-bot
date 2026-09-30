@@ -1,6 +1,7 @@
 import type { EncounterMonster, EncounterSpec, EncounterTrigger, FightEffect, PartyEffect } from "../commands/campaign-command.js";
 import type { ContentId } from "../rules/content-id.js";
 import type { Ability, DamageType } from "../rules/effects.js";
+import type { TimeOfDay, Weather } from "../rules/world-rules.js";
 
 // The adventure as authored (plan §6, layer B). Fields are split by who may
 // see them: public fields can reach narration; dmOverview, dmNotes, and
@@ -25,6 +26,8 @@ export interface AdventureBible {
   readonly startingLevel?: number;
   readonly dmOverview: string;
   readonly startScene: SceneId;
+  // When the story begins: day (1 if not given), time of day and weather. Absent: the adventure keeps no clock and nobody invents one.
+  readonly startTime?: { readonly day?: number; readonly time: TimeOfDay; readonly weather?: Weather };
   readonly scenes: readonly BibleScene[];
   readonly npcs: readonly BibleNpc[];
   readonly encounters: readonly BibleEncounter[];
@@ -47,7 +50,10 @@ export type BiblePartyEffect =
   // A line the table sees, once (the same words are never shown twice).
   | { readonly kind: "notice"; readonly text: string }
   // A story object the party now carries, with the name and words the table knows it by.
-  | { readonly kind: "keepsake"; readonly id: string; readonly name: string; readonly description: string };
+  | { readonly kind: "keepsake"; readonly id: string; readonly name: string; readonly description: string }
+  // Time passes in the story by phases of the day (six make a day); the sky changes. Only when the adventure has a clock (startTime).
+  | { readonly kind: "time"; readonly advance: number }
+  | { readonly kind: "weather"; readonly weather: Weather };
 
 // Harm between fights, rolled by the dice: to the heroes the effect follows (rollers, the default: each hero who took the attempt and
 // whose result it hangs on) or to the whole party.
@@ -235,6 +241,10 @@ export function storyEffectOf(effect: BiblePartyEffect, rewardId: string, bible?
       return { kind: "notice", noticeId: rewardId, text: effect.text };
     case "keepsake":
       return { kind: "grantKeepsake", keepsake: { id: effect.id, name: effect.name, description: effect.description } };
+    case "time":
+      return { kind: "advanceTime", steps: effect.advance };
+    case "weather":
+      return { kind: "setWeather", weather: effect.weather };
     case "encounter":
       return null;
   }

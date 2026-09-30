@@ -14,7 +14,7 @@ export function applyStoryEffect(decision: Decision, roundNumber: number, effect
   switch (effect.kind) {
     case "transitionScene":
       decision.emit({ kind: "sceneTransitioned", roundNumber, sceneId: effect.sceneId });
-      decision.request({ kind: "sceneImage", sceneId: effect.sceneId, roundNumber });
+      decision.request({ kind: "sceneImage", sceneId: effect.sceneId, roundNumber, snapshot: decision.pictureSnapshot() });
       return;
     case "revealClue":
       if (!state.clues.some((clue) => clue.id === effect.clueId)) decision.emit({ kind: "clueRevealed", roundNumber, clueId: effect.clueId, text: effect.text });
@@ -53,6 +53,12 @@ export function applyStoryEffect(decision: Decision, roundNumber: number, effect
       if (state.keepsakes?.[effect.keepsake.id] !== undefined) return;
       decision.emit({ kind: "keepsakeGained", roundNumber, keepsake: effect.keepsake });
       decision.request({ kind: "deliver", delivery: { kind: "keepsakeGained", keepsakeId: effect.keepsake.id } });
+      return;
+    case "advanceTime":
+      decision.changeWorld(roundNumber, { kind: "advance", steps: effect.steps }, "story");
+      return;
+    case "setWeather":
+      decision.changeWorld(roundNumber, { kind: "weather", weather: effect.weather }, "story");
       return;
     case "spendGold": {
       const split = decision.ctx.rules.houseRules.option(lootGold) === "split";

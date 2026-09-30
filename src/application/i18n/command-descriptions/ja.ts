@@ -178,6 +178,11 @@ export const jaCommandDescriptions = {
   "dnd/rest:type": "休憩の長さ", // How long the rest is.
   "dnd/level": "生存中のヒーロー全員を指定のレベルに上げます。マイルストーン方式用（主催者）", // Raises every living hero to a level, for milestone leveling (organizer).
   "dnd/level:level": "パーティを上げるレベル", // The level to raise the party to.
+  "dnd/time": "物語の日数・時間帯・天気を修正します（主催者）", // Corrects the story's day, time of day or weather (organizer).
+  "dnd/time:day": "物語の日（初日は 1）", // The day of the story (the first day is 1).
+  "dnd/time:time": "時間帯", // The time of day.
+  "dnd/time:weather": "天気（none で解除）", // The weather (none clears it).
+  "dnd/time:note": "修正の理由（ゲームの履歴に残ります）", // Why it is being corrected (kept in the game's history).
   "dnd/retry": "保留になったラウンドを DM にやり直させます（主催者）", // Asks the DM to try the held round again (organizer).
   "dnd/characters": "あなたのキャラクターライブラリを開きます（作成・表示・書き出し・削除）", // Opens your character library: build, view, export and delete characters.
   "dnd/import-character": "書き出したファイルからキャラクターをライブラリに追加します", // Adds a character from an exported file to your library.

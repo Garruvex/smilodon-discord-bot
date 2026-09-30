@@ -155,6 +155,12 @@ function effectProblems(decision: Decision, proposal: RoundPlanProposal, checkEn
       case "grantKeepsake":
         if (!/^[a-z0-9-]{1,60}$/.test(effect.keepsake.id) || effect.keepsake.name.trim().length === 0 || effect.keepsake.description.trim().length === 0) problems.push(`Keepsake ${effect.keepsake.id} needs an id, a name and a description.`);
         break;
+      case "advanceTime":
+        problems.push(...[decision.worldProblem({ kind: "advance", steps: effect.steps })].filter((problem) => problem !== null));
+        break;
+      case "setWeather":
+        problems.push(...[decision.worldProblem({ kind: "weather", weather: effect.weather })].filter((problem) => problem !== null));
+        break;
       case "hurt":
         if (!Number.isInteger(effect.count) || effect.count < 1 || effect.count > 20 || ![4, 6, 8, 10, 12].includes(effect.sides)) problems.push(`Harm of ${effect.count}d${effect.sides} is out of range.`);
         if (decision.state.characters[effect.characterId] === undefined) problems.push(`Harm names ${effect.characterId}, who is not a hero here.`);

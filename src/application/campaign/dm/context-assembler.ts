@@ -129,6 +129,7 @@ function instructions(input: ContextInput): ContextSection {
           "Treat committed results as facts. Weave the heroes' attempts and their resolved consequences into one unfolding scene; give important moments room to breathe and keep routine actions brief.",
           "Choose a few concrete sensory details that fit the established scene. You may add harmless atmosphere, but never invent discoveries, rewards, threats, characters, routes, or lasting changes. A decorative detail must not imply a clue or an available game action.",
           "Give named NPCs distinct voices and reactions grounded in their established personalities and knowledge. Use dialogue, hesitation, humor, or tension when the scene supports it; do not invent hidden motives or knowledge.",
+          "The story's day, time of day and weather in the state are facts. Never tell a different time or weather, and never say that time has passed unless the state says so; the engine moves the clock, not you. You may add harmless atmosphere that fits the time and weather.",
           "Never invent a player's dialogue, choices, or motives, and never change or add mechanical results.",
           "Respect the heroes' agency: never decide their feelings or next actions. Follow the specific output rules for this telling's length, speaker, and ending.",
         ];
@@ -230,6 +231,7 @@ function liveState(input: ContextInput): ContextSection {
   });
   const scene = findScene(input.bible, state.sceneId);
   const lines = [`Scene: ${scene === undefined ? "none" : `${scene.title}`}.`];
+  if (state.world !== undefined) lines.push(`Story time: ${worldText(state.world)}.`);
   lines.push(state.round === null ? "Between rounds." : `Round ${state.round.number}: ${state.round.status}.`);
   if (input.audience === "planner") {
     for (const clock of input.bible.clocks) lines.push(`Clock ${clock.id}: ${state.clocks[clock.id]?.filled ?? 0}/${clock.segments}.`);
@@ -316,4 +318,9 @@ function resolutionText(record: RoundRecord, characterId: string, audience: Cont
     default:
       return "unknown";
   }
+}
+
+// "day 2, dusk, rain": the story's clock in one line.
+export function worldText(world: { readonly day: number; readonly time: string; readonly weather?: string }): string {
+  return `day ${world.day}, ${world.time}${world.weather === undefined ? "" : `, ${world.weather}`}`;
 }

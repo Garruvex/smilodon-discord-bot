@@ -166,7 +166,7 @@ export function finishRoundIfResolved(decision: Decision): void {
   decision.request({ kind: "narrate", roundNumber: round.number });
 }
 
-const effectOrder = { transitionScene: 0, setFlag: 1, spendGold: 1, revealClue: 2, grantReward: 2, grantKeepsake: 2, notice: 2, hurt: 3, startEncounter: 3, advanceClock: 4 } as const;
+const effectOrder = { transitionScene: 0, setFlag: 1, spendGold: 1, revealClue: 2, grantReward: 2, grantKeepsake: 2, notice: 2, advanceTime: 2, setWeather: 2, hurt: 3, startEncounter: 3, advanceClock: 4 } as const;
 
 // Nobody is present: suspend all timers and hold pending work until a
 // returning player explicitly continues.

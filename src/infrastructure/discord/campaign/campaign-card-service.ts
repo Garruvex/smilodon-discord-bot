@@ -396,6 +396,7 @@ export class CampaignCardService implements CardRefresher {
           {
             campaignName: record.name,
             sceneTitle: panel.sceneTitle,
+            ...(panel.world === undefined ? {} : { world: panel.world }),
             mode: panel.mode,
             language: record.language,
             pacingPreset: record.pacingPreset,

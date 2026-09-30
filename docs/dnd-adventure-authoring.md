@@ -44,10 +44,24 @@ Anything the players try that is not listed is still planned by the model as bef
 | `goto` | moves the party; the new scene's `onEnter` effects come with it |
 | `encounter` | starts an authored fight (not inside a fight or an arrival) |
 | `clock` | advances a skill-challenge clock |
+| `time`, `weather` | pass time (`advance`: 1 to 12 phases of the day) or change the sky; only when the adventure has a `startTime` |
 | `hurt` | harm between fights; `who: rollers` (default) or `party` |
 | `random` | picks one of several `options` by chance when the round is planned (`weight` defaults to 1) |
 
 `onEnter` (arriving) and `onLongRest` (the party takes a long rest in the scene) may use `reveal`, `set`, `reward`, `notice` and `keepsake`; each lands once.
+
+## The story's clock
+
+An adventure may give a start time; without one it keeps no clock and nobody invents one.
+
+```yaml
+startTime: { day: 1, time: dusk, weather: rain }   # time: dawn, morning, midday, afternoon, dusk, night. weather: clear, rain, storm, fog, snow, wind
+```
+
+Time moves only when the story says so, never with the wall clock or how long the table waited: `{ kind: time, advance: 2 }` passes two
+phases of the day (six make a day), `{ kind: weather, weather: fog }` turns the sky, a short rest passes one phase and a long rest runs
+to the next dawn. Fights do not pass time. The Narrator and the Planner are told the clock as fact, the game's cards show it, and pictures are
+painted in its light. An organizer can correct it with `/dnd time` (the correction and its reason are kept in the game's history).
 
 ## Fights
 

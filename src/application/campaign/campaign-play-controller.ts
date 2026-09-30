@@ -1,5 +1,6 @@
 import { longRestEffects, type AdventureBible, type NpcId } from "../../domain/campaign/adventure/adventure-bible.js";
 import type { Skill } from "../../domain/campaign/character/character-sheet.js";
+import type { TimeOfDay, Weather } from "../../domain/campaign/rules/world-rules.js";
 import { abilities } from "../../domain/campaign/rules/effects.js";
 import { sceneNpcs } from "./views/explore-view.js";
 import { raiseToLevel } from "../../domain/campaign/character/leveling.js";
@@ -83,6 +84,11 @@ export class CampaignPlayController {
   // The organizer raises every living hero to `level` (milestone leveling).
   public raiseLevel(key: CampaignKey, userId: UserId | null, level: number, interactionId: string): Promise<PlayResult> {
     return this.perform(key, userId, interactionId, () => ({ kind: "raiseLevel", level }));
+  }
+
+  // The organizer corrects the story's day, time of day or weather (a DnD Admin acts for them: userId null).
+  public setWorld(key: CampaignKey, userId: UserId | null, patch: { readonly day?: number; readonly time?: TimeOfDay; readonly weather?: Weather | null; readonly note?: string }, interactionId: string): Promise<PlayResult> {
+    return this.perform(key, userId, interactionId, () => ({ kind: "setWorld", ...patch }));
   }
 
   // The hero's next level lands in `buildClass` (their own, or a multiclass they qualify for).

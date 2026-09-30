@@ -1,3 +1,5 @@
+import { isTimeOfDay, isWeather } from "../../../../domain/campaign/rules/world-rules.js";
+import { worldLine } from "../../campaign/world-text.js";
 import { ChannelType, type ChatInputCommandInteraction } from "discord.js";
 
 import { CommandModule, CommandResponseVisibility, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
@@ -134,6 +136,16 @@ export class DndCommand implements BotCommand {
         name: "level",
         description: "Raises every living hero to a level, for milestone leveling (organizer).",
         options: [{ type: "integer", name: "level", description: "The level to raise the party to.", required: true, minValue: 2, maxValue: 20 }],
+      },
+      {
+        name: "time",
+        description: "Corrects the story's day, time of day or weather (organizer).",
+        options: [
+          { type: "integer", name: "day", description: "The day of the story (the first day is 1).", minValue: 1, maxValue: 10000 },
+          { type: "string", name: "time", description: "The time of day.", choices: [{ name: "Dawn", value: "dawn" }, { name: "Morning", value: "morning" }, { name: "Midday", value: "midday" }, { name: "Afternoon", value: "afternoon" }, { name: "Dusk", value: "dusk" }, { name: "Night", value: "night" }] },
+          { type: "string", name: "weather", description: "The weather (none clears it).", choices: [{ name: "Clear", value: "clear" }, { name: "Rain", value: "rain" }, { name: "Storm", value: "storm" }, { name: "Fog", value: "fog" }, { name: "Snow", value: "snow" }, { name: "Wind", value: "wind" }, { name: "None", value: "none" }] },
+          { type: "string", name: "note", description: "Why it is being corrected (kept in the game's history).", maxLength: 200 },
+        ],
       },
       { name: "retry", description: "Asks the DM to try the held round again (organizer)." },
       { name: "repair", description: "Checks this game's channels and redraws its cards (organizer)." },
@@ -272,6 +284,22 @@ export class DndCommand implements BotCommand {
         const level = interaction.options.getInteger("level", true);
         // A DnD Admin acts for the organizer: no user is named, so the engine sees the organizer.
         return done(await this.deps.play.raiseLevel(key, manager ? null : userId, level, id), text.campaign.cmd.levelRaised({ level }));
+      }
+      case "time": {
+        const day = interaction.options.getInteger("day");
+        const time = interaction.options.getString("time");
+        const weather = interaction.options.getString("weather");
+        const note = interaction.options.getString("note");
+        if (day === null && time === null && weather === null) return responses.edit(text.campaign.world.nothingToSet);
+        const patch = {
+          ...(day === null ? {} : { day }),
+          ...(time !== null && isTimeOfDay(time) ? { time } : {}),
+          ...(weather === "none" ? { weather: null } : weather !== null && isWeather(weather) ? { weather } : {}),
+          ...(note === null ? {} : { note }),
+        };
+        const result = await this.deps.play.setWorld(key, manager ? null : userId, patch, id);
+        const shown = await this.deps.cards.describe(key);
+        return done(result, text.campaign.world.corrected({ world: worldLine(shown?.panel?.world, text) }));
       }
       case "retry":
         return done(await control("retry", () => this.deps.play.retryPlan(key, userId, id)), text.campaign.cmd.retried);

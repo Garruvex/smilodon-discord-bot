@@ -66,7 +66,7 @@ export function recordOpening(decision: Decision, text: string): Rejection | nul
   decision.request({ kind: "deliver", delivery: { kind: "opening" } });
   // Establish the place the players just heard about. Hero portraits already
   // belong on the Party cards, so they do not interrupt the opening narration.
-  if (state.sceneId !== null) decision.request({ kind: "sceneImage", sceneId: state.sceneId, roundNumber: 0 });
+  if (state.sceneId !== null) decision.request({ kind: "sceneImage", sceneId: state.sceneId, roundNumber: 0, snapshot: decision.pictureSnapshot() });
   if (decision.state.status === "active") finishReadyCheck(decision);
   return null;
 }
@@ -112,7 +112,7 @@ export function recordNarration(decision: Decision, roundNumber: number, text: s
   decision.request({ kind: "deliver", delivery: { kind: "narration", roundNumber } });
   // A natural 20 or 1 in the round is a moment worth a picture (the worker rations these).
   const dramatic = Object.values(state.checks).some((check) => check.roundNumber === roundNumber && (check.result?.moments.headline?.kind === "natural20" || check.result?.moments.headline?.kind === "natural1"));
-  if (dramatic) decision.request({ kind: "momentImage", roundNumber, auto: true });
+  if (dramatic) decision.request({ kind: "momentImage", roundNumber, auto: true, snapshot: decision.pictureSnapshot() });
   // A chapter closed, or enough rounds piled up: the Chronicler condenses them in the background.
   if (state.sceneChangedRound === roundNumber || roundNumber - latestSummaryRound(state.summaries, "public") >= chronicleEveryRounds) {
     decision.request({ kind: "chronicle", throughRound: roundNumber });
@@ -143,7 +143,18 @@ export function illustrateMoment(decision: Decision, roundNumber: number): Rejec
   const { state, ctx } = decision;
   if (ctx.actor.kind !== "user" || ctx.actor.userId !== state.organizerId) return { code: "notOrganizer" };
   if (roundNumber !== state.lastNarratedRound || roundNumber < 1) return { code: "nothingToIllustrate" };
-  decision.request({ kind: "momentImage", roundNumber });
+  decision.request({ kind: "momentImage", roundNumber, snapshot: decision.pictureSnapshot() });
+  return null;
+}
+
+// The organizer corrects the story's day, time or weather. The event records that it was a correction (and why), and the history before it stays.
+export function correctWorld(decision: Decision, command: Extract<CampaignCommand, { kind: "setWorld" }>): Rejection | null {
+  const { state, ctx } = decision;
+  if (ctx.actor.kind !== "user" || ctx.actor.userId !== state.organizerId) return { code: "notOrganizer" };
+  const change = { kind: "set", ...(command.day === undefined ? {} : { day: command.day }), ...(command.time === undefined ? {} : { time: command.time }), ...(command.weather === undefined ? {} : { weather: command.weather }) } as const;
+  const problem = decision.worldProblem(change);
+  if (problem !== null) return { code: "invalidPlan", problems: [problem] };
+  decision.changeWorld(state.lastRoundNumber, change, "correction", command.note);
   return null;
 }
 

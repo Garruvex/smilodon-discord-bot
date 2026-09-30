@@ -139,6 +139,29 @@ describe("scene pictures", () => {
     expect(t.posted).toHaveLength(2);
   });
 
+  it("paints the moment that was asked for: its light, its place and its party, even after the story has moved on", async () => {
+    const t = await table();
+    const before = await t.r.store.transaction((tx) => tx.loadCampaign(t.key));
+    if (before === undefined) throw new Error("campaign");
+    const ids = Object.keys(before.state.characters);
+    const first = before.state.characters[ids[0] ?? ""];
+    if (first === undefined) throw new Error("hero");
+    // The picture is asked for at dusk in the chapel, with one hero at level 1 carrying a mace ...
+    const snapshot = { sceneId: chapel, world: { day: 2, time: "dusk", weather: "rain" }, heroes: [{ id: first.id, level: 1, equipment: ["item:mace"] }] };
+    await t.r.store.transaction((tx) => tx.enqueue(t.key, "img-dusk", { kind: "sceneImage", sceneId: chapel, roundNumber: 0, snapshot }, 1));
+    // ... and by the time the painter gets to it, it is dawn in another place and the hero has a different weapon.
+    await t.r.store.transaction((tx) => tx.saveCampaign(t.key, { ...before.state, sceneId: "scene:old-watchtower", world: { day: 3, time: "dawn" }, characters: { ...before.state.characters, [first.id]: { ...first, level: 4, equipment: ["item:greataxe"] } } }, before.revision));
+    await t.worker.runOnce();
+    const prompt = t.painter.prompts[0] ?? "";
+    expect(prompt).toContain("dusk, rain");
+    expect(prompt).not.toContain("dawn");
+    expect(prompt).toContain(`${first.name}, a level 1`);
+    expect(prompt).toContain("mace");
+    expect(prompt).not.toContain("greataxe");
+    // Only the heroes who were there.
+    for (const other of ids.slice(1)) expect(prompt).not.toContain(before.state.characters[other]?.name ?? " ");
+  });
+
   it("paints each distinct scene without a campaign image cap", async () => {
     const t = await table();
     await t.r.store.transaction(async (tx) => {

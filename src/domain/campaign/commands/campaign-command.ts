@@ -8,6 +8,7 @@ import type { ContentId } from "../rules/content-id.js";
 import type { DcTier, RollModeReason } from "../rules/difficulty.js";
 import type { Ability, DamageType } from "../rules/effects.js";
 import type { Keepsake } from "../state/campaign-state.js";
+import type { TimeOfDay, Weather } from "../rules/world-rules.js";
 
 // Who issued a command. Users are checked against saved campaign state
 // (membership, ownership, organizer); the system covers timers and workers.
@@ -71,6 +72,8 @@ export type CampaignCommand =
   // Organizer, outside combat. Short: limited features recharge. Long: HP,
   // spell slots, and every feature recharge.
   // story: what the scene attaches to a long rest (lines, clues, flags, rewards, keepsakes), from the adventure.
+  // The organizer corrects the story's day, time or weather (audited: the event says it was a correction, and why).
+  | { readonly kind: "setWorld"; readonly day?: number; readonly time?: TimeOfDay; readonly weather?: Weather | null; readonly note?: string }
   | { readonly kind: "takeRest"; readonly rest: "short" | "long"; readonly story?: readonly PartyEffect[] }
   | InventoryCommand
   // Organizer, after a lost fight: play it again from its start, with fresh dice.
@@ -363,6 +366,10 @@ export type StoryEffect =
   | { readonly kind: "notice"; readonly noticeId: string; readonly text: string }
   // A story object the party now carries (a token, a letter), with the name and words the table knows it by. Once per id.
   | { readonly kind: "grantKeepsake"; readonly keepsake: Keepsake }
+  // Time passes in the story by this many phases of the day (six make a day). Ignored when the adventure has no clock.
+  | { readonly kind: "advanceTime"; readonly steps: number }
+  // The sky changes.
+  | { readonly kind: "setWeather"; readonly weather: Weather }
   // Harm to one hero between fights (a trap, foul water): the dice decide how much. Not available inside a fight.
   | { readonly kind: "hurt"; readonly characterId: CharacterId; readonly count: number; readonly sides: 4 | 6 | 8 | 10 | 12; readonly damageType: DamageType };
 

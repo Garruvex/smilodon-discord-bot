@@ -3,6 +3,14 @@ import type { RollSpec } from "../dice/roll-spec.js";
 
 // Work the engine needs the application to do, expressed as data and saved
 // to the outbox in the same transaction as the events.
+// What a picture is of at the moment it is asked for, kept with the request: a slow job paints that moment even if the party has moved on,
+// changed gear or lost a member since. Times and gear come from the story's own state, never from the job's clock.
+export interface PictureSnapshot {
+  readonly sceneId: string | null;
+  readonly world?: { readonly day: number; readonly time: string; readonly weather?: string };
+  readonly heroes: readonly { readonly id: string; readonly level: number; readonly equipment: readonly string[] }[];
+}
+
 export type EngineRequest =
   // Roll this spec once and re-enter with recordRoll; a retry reuses the saved roll.
   | { readonly kind: "roll"; readonly rollId: RollId; readonly spec: RollSpec }
@@ -25,12 +33,12 @@ export type EngineRequest =
   // A settled travel or environmental hazard, waiting on the toll it took (engine/travel.ts).
   | { readonly kind: "narrateHazard"; readonly hazardId: string }
   // A picture for a scene the party just entered; made in the background and never awaited.
-  | { readonly kind: "sceneImage"; readonly sceneId: string; readonly roundNumber: number }
+  | { readonly kind: "sceneImage"; readonly sceneId: string; readonly roundNumber: number; readonly snapshot?: PictureSnapshot }
   // A portrait of a monster the party meets for the first time (or of the named NPC it plays); made once and reused.
   | { readonly kind: "monsterImage"; readonly monsterId: string; readonly npcId: string | null }
   // A picture of what just happened, from a round's already-told narration (the organizer asked for it).
   // `auto`: the engine noticed a dramatic roll; closely spaced pictures are skipped.
-  | { readonly kind: "momentImage"; readonly roundNumber: number; readonly auto?: boolean }
+  | { readonly kind: "momentImage"; readonly roundNumber: number; readonly auto?: boolean; readonly snapshot?: PictureSnapshot }
   // A portrait of a hero who joined the party.
   | { readonly kind: "heroImage"; readonly characterId: string }
   // Paint a picture again (the organizer did not like it).

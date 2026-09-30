@@ -1,3 +1,4 @@
+import { worldLine } from "./world-text.js";
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, SeparatorBuilder, TextDisplayBuilder } from "discord.js";
 
 import type { PanelMode, PanelView, RosterEntry } from "../../../application/campaign/views/campaign-views.js";
@@ -53,7 +54,7 @@ export function renderAdventurePanel(view: PanelView, text: Texts, campaignId: s
     view.roundNumber === null ? t.panel.heading({ scene: view.sceneTitle, mode }) : t.panel.headingRound({ scene: view.sceneTitle, mode, round: view.roundNumber });
   const container = new ContainerBuilder()
     .setAccentColor(accentFor[view.mode])
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ${heading}\n${statusLine(view, text)}`));
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ${heading}\n${statusLine(view, text)}${view.world === undefined ? "" : `\n-# ${worldLine(view.world, text)}`}`));
 
   const details = view.mode === "combat" ? combatLines(view, text) : rosterLine(view.roster, text);
   if (details !== "") container.addSeparatorComponents(new SeparatorBuilder()).addTextDisplayComponents(new TextDisplayBuilder().setContent(details));

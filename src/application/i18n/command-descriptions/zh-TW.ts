@@ -180,6 +180,11 @@ export const zhTWCommandDescriptions = {
   "dnd/rest:type": "休息的長度", // How long the rest is.
   "dnd/level": "把所有存活的角色提升到指定等級，用於里程碑升級（主辦人）", // Raises every living hero to a level, for milestone leveling (organizer).
   "dnd/level:level": "隊伍要提升到的等級", // The level to raise the party to.
+  "dnd/time": "修正故事的天數、時段或天氣（主辦人）", // Corrects the story's day, time of day or weather (organizer).
+  "dnd/time:day": "故事的第幾天（第一天為 1）", // The day of the story (the first day is 1).
+  "dnd/time:time": "時段", // The time of day.
+  "dnd/time:weather": "天氣（none 為清除）", // The weather (none clears it).
+  "dnd/time:note": "修正的原因（會記在遊戲歷史中）", // Why it is being corrected (kept in the game's history).
   "dnd/retry": "請地下城主重新結算被擱置的回合（主辦人）", // Asks the DM to try the held round again (organizer).
   "dnd/characters": "開啟你的角色庫：建立、檢視、匯出與刪除角色", // Opens your character library: build, view, export and delete characters.
   "dnd/import-character": "從匯出的檔案把角色加入你的角色庫", // Adds a character from an exported file to your library.

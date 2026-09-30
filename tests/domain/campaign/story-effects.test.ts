@@ -41,8 +41,8 @@ describe("story effects", () => {
   it("asks for a moment picture when a natural 20 or 1 decided a round, and not for an ordinary roll", () => {
     const planned = run(closedRound(), system, { kind: "applyRoundPlan", proposal: sneaking([toChapel]) }).state;
     const told = (d20: number): ReturnType<typeof run> => run(rollStealth(planned, d20).state, system, { kind: "recordNarration", roundNumber: 1, text: "Mira slips inside." });
-    expect(told(20).requests).toContainEqual({ kind: "momentImage", roundNumber: 1, auto: true });
-    expect(told(1).requests).toContainEqual({ kind: "momentImage", roundNumber: 1, auto: true });
+    expect(told(20).requests).toContainEqual(expect.objectContaining({ kind: "momentImage", roundNumber: 1, auto: true }));
+    expect(told(1).requests).toContainEqual(expect.objectContaining({ kind: "momentImage", roundNumber: 1, auto: true }));
     expect(told(12).requests.some((request) => request.kind === "momentImage")).toBe(false);
   });
 
@@ -65,7 +65,7 @@ describe("story effects", () => {
     expect(failed.state.pendingEncounter?.id).toBe("encounter:gate-ambush");
     expect(failed.requests).toContainEqual({ kind: "narrate", roundNumber: 1 });
     // The new scene asks for a picture, which nothing waits on.
-    expect(failed.requests).toContainEqual({ kind: "sceneImage", sceneId: "scene:ruined-chapel", roundNumber: 1 });
+    expect(failed.requests).toContainEqual(expect.objectContaining({ kind: "sceneImage", sceneId: "scene:ruined-chapel", roundNumber: 1 }));
 
     const narrated = run(failed.state, system, { kind: "recordNarration", roundNumber: 1, text: "A goblin spots Mira!" });
     expect(kinds(narrated.events)).toEqual(["narrationRecorded", "encounterStarted"]);

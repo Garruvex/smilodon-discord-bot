@@ -57,6 +57,7 @@ export function buildStartingState(input: {
     language: adventure.bible.language,
     pacing: input.pacing,
     sceneId: adventure.bible.startScene,
+    ...(adventure.bible.startTime === undefined ? {} : { world: { day: adventure.bible.startTime.day ?? 1, time: adventure.bible.startTime.time, ...(adventure.bible.startTime.weather === undefined ? {} : { weather: adventure.bible.startTime.weather }) } }),
     members,
     characters,
     round: null,

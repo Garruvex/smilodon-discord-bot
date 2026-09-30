@@ -16,6 +16,8 @@ import type { Ability, DamageType } from "../rules/effects.js";
 // The in-memory aggregate the engine decides against. The repository
 // assembles it from the campaign tables; evolve() produces the next one.
 // A story object with no rules of its own: a name and what the party knows of it.
+import type { WorldState } from "./world-state.js";
+
 export interface Keepsake {
   readonly id: string;
   readonly name: string;
@@ -74,6 +76,8 @@ export interface CampaignState {
   readonly flags?: Readonly<Record<string, number>>;
   // Story objects the party carries, by id; absent: none yet.
   readonly keepsakes?: Readonly<Record<string, Keepsake>>;
+  // The story's day, time of day and weather; absent when the adventure gives none.
+  readonly world?: WorldState;
   // Heroes' HP and limited resources between fights; a hero missing here is
   // fresh (full HP, every slot and use).
   readonly heroStatus: Readonly<Record<CharacterId, HeroStatus>>;

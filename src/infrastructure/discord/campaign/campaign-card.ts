@@ -1,3 +1,4 @@
+import { worldLine } from "./world-text.js";
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, SeparatorBuilder, TextDisplayBuilder } from "discord.js";
 
 import type { HeroView, PanelMode } from "../../../application/campaign/views/campaign-views.js";
@@ -9,6 +10,7 @@ import { accents, cardPayload, type CardPayload } from "./card-payload.js";
 export interface CampaignCardInput {
   readonly campaignName: string;
   readonly sceneTitle: string;
+  readonly world?: { readonly day: number; readonly time: string; readonly weather?: string };
   readonly mode: PanelMode;
   readonly language: "en" | "zh-TW";
   readonly pacingPreset: PacingPresetId;
@@ -47,6 +49,7 @@ export function renderCampaignCard(input: CampaignCardInput, text: Texts, campai
         [
           `## ${t.card.title({ name: input.campaignName })}`,
           t.card.scene({ scene: input.sceneTitle, mode: t.mode[input.mode] }),
+          ...(input.world === undefined ? [] : [`-# ${worldLine(input.world, text)}`]),
           `-# ${t.card.pacing({ pacing: t.pacing[input.pacingPreset], language: input.language === "en" ? t.language.en : t.language.zhTW, user: `<@${input.organizerId}>` })}`,
         ].join("\n"),
       ),

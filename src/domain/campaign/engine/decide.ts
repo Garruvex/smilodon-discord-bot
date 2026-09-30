@@ -19,7 +19,7 @@ import { chooseWarlockOptions } from "./warlock-choices.js";
 import { handleCompanionMagicCommand } from "./companion-magic.js";
 import { handleUtilityMagicCommand } from "./utility-magic.js";
 import { Decision, type DecideResult, type EngineContext } from "./decision.js";
-import { beginAdventure, beginPlay, illustrateMoment, markReady, redoPicture, recordLedgerFact, recordNarration, recordOpening, recordSummary, regenerateNarration, replaceNarration, reportPlannerFailure, retryPlan } from "./dm.js";
+import { beginAdventure, beginPlay, correctWorld, illustrateMoment, markReady, redoPicture, recordLedgerFact, recordNarration, recordOpening, recordSummary, regenerateNarration, replaceNarration, reportPlannerFailure, retryPlan } from "./dm.js";
 import { raisePartyLevel } from "./level-up.js";
 import { chooseAsi, chooseClassLevel, chooseFightingStyle, continueCampaign, grantProxy, joinHero, markAway, markReturned, revokeProxy } from "./members.js";
 import { isSkill } from "../character/character-sheet.js";
@@ -109,6 +109,8 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
       return regenerateNarration(decision, command.roundNumber);
     case "replaceNarration":
       return replaceNarration(decision, command.roundNumber, command.text);
+    case "setWorld":
+      return correctWorld(decision, command);
     case "takeRest":
       return takeRest(decision, command.rest, command.story ?? []);
     case "offerItem":

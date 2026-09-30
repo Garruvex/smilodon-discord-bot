@@ -1,5 +1,5 @@
 import { findScene, type AdventureBible } from "../../../domain/campaign/adventure/adventure-bible.js";
-import type { EngineRequest } from "../../../domain/campaign/engine/engine-request.js";
+import type { EngineRequest, PictureSnapshot } from "../../../domain/campaign/engine/engine-request.js";
 import type { CampaignRecord } from "../ports/campaign-record.js";
 import { RevisionConflictError, type CampaignKey, type CampaignUnitOfWork, type OutboxItem } from "../ports/campaign-store.js";
 import type { AdventureLibrary } from "../ports/adventure-library.js";
@@ -217,8 +217,9 @@ export class ImageWorker {
           .findLast((event) => event.kind === "openingRecorded")
         : undefined;
       const description = opening?.kind === "openingRecorded" ? `${scene.publicDescription} ${opening.text}` : scene.publicDescription;
-      const party = await this.partyFor(key);
-      return { ...scenePrompt({ title: scene.title, description, party: party.descriptions }), caption: scene.title, references: party.references };
+      const party = await this.partyFor(key, request.snapshot);
+      const atmosphere = await this.atmosphereOf(key, request.snapshot);
+      return { ...scenePrompt({ title: scene.title, description, party: party.descriptions, ...(atmosphere === undefined ? {} : { atmosphere }) }), caption: scene.title, references: party.references };
     }
     if (request.kind === "monsterImage") {
       const name = this.options.monsterName?.(request.monsterId, "en") ?? request.monsterId.replace(/^monster:/, "").replace(/-/g, " ");
@@ -237,26 +238,37 @@ export class ImageWorker {
     const told = events.map((envelope) => envelope.event).findLast((event) => event.kind === "narrationRecorded" && event.roundNumber === request.roundNumber);
     if (told?.kind !== "narrationRecorded") return undefined;
     const state = await this.options.unitOfWork.transaction((tx) => tx.loadCampaign(key));
-    const scene = findScene(bible, state?.state.sceneId ?? null);
-    const party = await this.partyFor(key);
-    return { ...momentPrompt({ narration: told.text, ...(scene === undefined ? {} : { sceneTitle: scene.title }), party: party.descriptions }), caption: scene?.title ?? record.name, references: party.references };
+    // The scene, time and party as they were when the picture was asked for; only a request without them (an old one) looks at the story now.
+    const scene = findScene(bible, request.snapshot === undefined ? (state?.state.sceneId ?? null) : request.snapshot.sceneId);
+    const party = await this.partyFor(key, request.snapshot);
+    const atmosphere = await this.atmosphereOf(key, request.snapshot);
+    return { ...momentPrompt({ narration: told.text, ...(scene === undefined ? {} : { sceneTitle: scene.title }), party: party.descriptions, ...(atmosphere === undefined ? {} : { atmosphere }) }), caption: scene?.title ?? record.name, references: party.references };
   }
 
-  private async partyFor(key: CampaignKey): Promise<{ readonly descriptions: string[]; readonly references: { readonly name: string; readonly image: GeneratedImage }[] }> {
+  // The light of the moment: the time of day and weather the story had then (the snapshot), or has now for a request that carries none.
+  private async atmosphereOf(key: CampaignKey, snapshot: PictureSnapshot | undefined): Promise<string | undefined> {
+    const world = snapshot === undefined ? (await this.options.unitOfWork.transaction((tx) => tx.loadCampaign(key)))?.state.world : snapshot.world;
+    return world === undefined ? undefined : `${world.time}${world.weather === undefined ? "" : `, ${world.weather}`}`;
+  }
+
+  private async partyFor(key: CampaignKey, snapshot?: PictureSnapshot): Promise<{ readonly descriptions: string[]; readonly references: { readonly name: string; readonly image: GeneratedImage }[] }> {
     const state = (await this.options.unitOfWork.transaction((tx) => tx.loadCampaign(key)))?.state;
     if (state === undefined) return { descriptions: [], references: [] };
     const descriptions: string[] = [];
     const references: { name: string; image: GeneratedImage }[] = [];
-    for (const member of Object.values(state.members)) {
-      if (member.availability !== "present" || member.characterId === null) continue;
-      const hero = state.characters[member.characterId];
-      if (hero === undefined || state.heroStatus[hero.id]?.dead === true) continue;
+    // Who was there is what the snapshot says (with the level and gear they had then); without one, whoever is present now.
+    const present = snapshot === undefined ? Object.values(state.members).flatMap((member) => (member.availability === "present" && member.characterId !== null ? [{ id: member.characterId }] : [])) : snapshot.heroes;
+    for (const seen of present) {
+      const hero = state.characters[seen.id];
+      if (hero === undefined || (snapshot === undefined && state.heroStatus[hero.id]?.dead === true)) continue;
+      const level = "level" in seen ? seen.level : hero.level;
+      const equipment = "equipment" in seen ? seen.equipment : hero.equipment;
       const race = hero.race?.replace(/^race:/, "").replace(/-/g, " ") ?? "unspecified ancestry";
       const klass = Object.keys(hero.classLevels ?? {})[0] ?? hero.className ?? "adventurer";
       const image = hero.origin === undefined ? undefined : await this.options.portraits?.forGame(hero.origin.libraryCharacterId).catch(() => undefined);
       if (image !== undefined) references.push({ name: hero.name, image });
-      const gear = hero.equipment.slice(0, 3).map((item) => item.replace(/^item:/, "").replace(/-/g, " ")).join(", ");
-      descriptions.push(`${hero.name}, a level ${hero.level} ${race} ${klass}${gear === "" ? "" : ` carrying ${gear}`}${image === undefined ? "" : ` (reference image ${references.length})`}`);
+      const gear = equipment.slice(0, 3).map((item) => item.replace(/^item:/, "").replace(/-/g, " ")).join(", ");
+      descriptions.push(`${hero.name}, a level ${level} ${race} ${klass}${gear === "" ? "" : ` carrying ${gear}`}${image === undefined ? "" : ` (reference image ${references.length})`}`);
     }
     return { descriptions, references };
   }

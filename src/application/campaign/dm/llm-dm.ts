@@ -26,7 +26,7 @@ import type { ModelUsage, StructuredModelClient } from "../ports/structured-mode
 // Prompt and schema versions are recorded with each call so harness results
 // and bug reports stay comparable (code structure §8).
 export const plannerPromptVersion = "planner-7";
-export const narratorPromptVersion = "narrator-5";
+export const narratorPromptVersion = "narrator-6";
 export const flourishPromptVersion = "flourish-5";
 export const tradePromptVersion = "trade-2";
 export const dialoguePromptVersion = "dialogue-4";

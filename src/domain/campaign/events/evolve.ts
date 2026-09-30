@@ -90,6 +90,8 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       return { ...state, flags: { ...state.flags, [event.flag]: event.value } };
     case "keepsakeGained":
       return { ...state, keepsakes: { ...state.keepsakes, [event.keepsake.id]: event.keepsake } };
+    case "worldChanged":
+      return { ...state, world: event.world };
     case "goldSpent":
       return event.wallet === "pool"
         ? { ...state, gold: state.gold - event.amount }

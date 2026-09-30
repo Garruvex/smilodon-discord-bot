@@ -153,6 +153,8 @@ export interface OpportunityAttackView {
 export interface PanelView {
   readonly campaignName: string;
   readonly sceneTitle: string;
+  // The story's day, time and weather; absent when the adventure keeps no clock.
+  readonly world?: { readonly day: number; readonly time: string; readonly weather?: string };
   readonly mode: PanelMode;
   readonly roundNumber: number | null;
   // When the current window or turn closes; null means no timer.
@@ -381,6 +383,7 @@ export function buildPanelView(record: CampaignRecord, state: CampaignState, bib
   return {
     campaignName: record.name,
     sceneTitle: scene?.title ?? bible.title,
+    ...(state.world === undefined ? {} : { world: state.world }),
     mode: modeOf(record, state, fight !== null, pendingRolls.length > 0),
     roundNumber: fight?.round ?? state.round?.number ?? null,
     closesAt: fight?.turnEndsAt ?? state.round?.closesAt ?? null,

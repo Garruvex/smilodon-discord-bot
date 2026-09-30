@@ -101,6 +101,8 @@ export function takeRest(decision: Decision, rest: "short" | "long", story: read
     };
   }
   decision.emit({ kind: "restTaken", rest, heroStatus });
+  // Time passes with the rest: a short one is a phase of the day, a long one runs to the next dawn.
+  decision.changeWorld(state.lastRoundNumber, { kind: "rest", rest }, "rest");
   for (const effect of story) decision.applyStory(state.lastRoundNumber, effect);
   return null;
 }
