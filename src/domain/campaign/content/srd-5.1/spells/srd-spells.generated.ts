@@ -1118,16 +1118,16 @@ export const enhanceAbility = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Only Enlarge is modeled: +2 melee damage stands in for the extra d4.
 export const enlargeReduce = defineSpell({
   id: "spell:enlarge-reduce",
   source,
   level: 2,
   castingTime: "action",
   range: { kind: "feet", feet: 30 },
-  targeting: { relation: "creature", count: 1 },
+  targeting: { relation: "ally-or-self", count: 1 },
   concentration: true,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "applyModifiers", target: "target", modifiers: [{ kind: "meleeDamageBonus", amount: 2 }], duration: { kind: "rounds", count: 10 } }], onAvoid: [] }),
 });
 
 export const entangle = defineSpell({
@@ -1165,7 +1165,7 @@ export const etherealness = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Thirty more feet of movement each turn stands in for the Dash as a bonus action.
 export const expeditiousRetreat = defineSpell({
   id: "spell:expeditious-retreat",
   source,
@@ -1174,7 +1174,7 @@ export const expeditiousRetreat = defineSpell({
   range: { kind: "self" },
   targeting: { relation: "self", count: 1 },
   concentration: true,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "applyModifiers", target: "target", modifiers: [{ kind: "speedBonus", amount: 30 }], duration: { kind: "untilRemoved" } }], onAvoid: [] }),
 });
 
 // Only the frightening option is modeled.
@@ -1420,16 +1420,16 @@ export const floatingDisk = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Thirty more feet of movement each turn stands in for the flying speed; flying itself is not modeled.
 export const fly = defineSpell({
   id: "spell:fly",
   source,
   level: 3,
   castingTime: "action",
   range: { kind: "touch" },
-  targeting: { relation: "ally-or-self", count: 1, countPerHigherSlot: 1 },
+  targeting: { relation: "ally-or-self", count: 1 },
   concentration: true,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "applyModifiers", target: "target", modifiers: [{ kind: "speedBonus", amount: 30 }], duration: { kind: "untilRemoved" } }], onAvoid: [] }),
 });
 
 // Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
@@ -2068,16 +2068,15 @@ export const locateObject = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
 export const longstrider = defineSpell({
   id: "spell:longstrider",
   source,
   level: 1,
   castingTime: "action",
   range: { kind: "touch" },
-  targeting: { relation: "ally-or-self", count: 1, countPerHigherSlot: 1 },
+  targeting: { relation: "ally-or-self", count: 1 },
   concentration: false,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "applyModifiers", target: "target", modifiers: [{ kind: "speedBonus", amount: 10 }], duration: { kind: "untilRemoved" } }], onAvoid: [] }),
 });
 
 // Armor class +3 stands in for 13 + Dexterity.
@@ -2129,7 +2128,7 @@ export const magicMouth = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// The bonus goes on every attack and every melee damage roll the creature makes, not on one weapon.
 export const magicWeapon = defineSpell({
   id: "spell:magic-weapon",
   source,
@@ -2138,7 +2137,7 @@ export const magicWeapon = defineSpell({
   range: { kind: "touch" },
   targeting: { relation: "ally-or-self", count: 1 },
   concentration: true,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "applyModifiers", target: "target", modifiers: [{ kind: "attackBonus", amount: 1 }, { kind: "meleeDamageBonus", amount: 1 }], duration: { kind: "untilRemoved" } }], onAvoid: [] }),
 });
 
 // Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
@@ -2306,7 +2305,7 @@ export const mirageArcane = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Armor class +3 stands in for the three duplicates.
 export const mirrorImage = defineSpell({
   id: "spell:mirror-image",
   source,
@@ -2315,7 +2314,7 @@ export const mirrorImage = defineSpell({
   range: { kind: "self" },
   targeting: { relation: "self", count: 1 },
   concentration: false,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "applyModifiers", target: "target", modifiers: [{ kind: "acBonus", amount: 3 }], duration: { kind: "rounds", count: 10 } }], onAvoid: [] }),
 });
 
 // Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
@@ -2330,7 +2329,7 @@ export const mislead = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Thirty feet of movement that provokes no opportunity attacks stands in for the teleport; the caster walks to the zone.
 export const mistyStep = defineSpell({
   id: "spell:misty-step",
   source,
@@ -2339,7 +2338,7 @@ export const mistyStep = defineSpell({
   range: { kind: "self" },
   targeting: { relation: "self", count: 1 },
   concentration: false,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "grantMovement", target: "target", feet: 30 }, { kind: "applyModifiers", target: "target", modifiers: [{ kind: "avoidsOpportunityAttacks" }], duration: { kind: "rounds", count: 1 } }], onAvoid: [] }),
 });
 
 // Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
@@ -2593,7 +2592,7 @@ export const projectImage = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Resistance to fire stands in for the damage type the caster would choose.
 export const protectionFromEnergy = defineSpell({
   id: "spell:protection-from-energy",
   source,
@@ -2602,7 +2601,7 @@ export const protectionFromEnergy = defineSpell({
   range: { kind: "touch" },
   targeting: { relation: "ally-or-self", count: 1 },
   concentration: true,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "applyModifiers", target: "target", modifiers: [{ kind: "damageResistance", damageTypes: ["fire"] }], duration: { kind: "untilRemoved" } }], onAvoid: [] }),
 });
 
 // Disadvantage against every attacker stands in for disadvantage against aberrations, celestials, elementals, fey, fiends and undead.
@@ -2713,7 +2712,7 @@ export const resilientSphere = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// The d4 goes on the next saving throw for a minute (it is not used up).
 export const resistance = defineSpell({
   id: "spell:resistance",
   source,
@@ -2722,7 +2721,7 @@ export const resistance = defineSpell({
   range: { kind: "touch" },
   targeting: { relation: "ally-or-self", count: 1 },
   concentration: true,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "applyModifiers", target: "target", modifiers: [{ kind: "bonusDie", die: { terms: [{ count: 1, sides: 4 }], modifier: 0 }, appliesTo: ["save"], source: "spell: resistance" }], duration: { kind: "rounds", count: 10 } }], onAvoid: [] }),
 });
 
 // Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
@@ -3108,7 +3107,6 @@ export const stoneShape = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
 export const stoneskin = defineSpell({
   id: "spell:stoneskin",
   source,
@@ -3117,7 +3115,7 @@ export const stoneskin = defineSpell({
   range: { kind: "touch" },
   targeting: { relation: "ally-or-self", count: 1 },
   concentration: true,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "applyModifiers", target: "target", modifiers: [{ kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }], duration: { kind: "untilRemoved" } }], onAvoid: [] }),
 });
 
 export const stormOfVengeance = defineSpell({
@@ -3334,16 +3332,16 @@ export const trueSeeing = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Advantage on attacks for the caster's next turn stands in for advantage on the first attack.
 export const trueStrike = defineSpell({
   id: "spell:true-strike",
   source,
   level: 0,
   castingTime: "action",
   range: { kind: "feet", feet: 30 },
-  targeting: { relation: "creature", count: 1 },
+  targeting: { relation: "self", count: 1 },
   concentration: true,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "applyModifiers", target: "target", modifiers: [{ kind: "ownAttacks", mode: "advantage" }], duration: { kind: "rounds", count: 2 } }], onAvoid: [] }),
 });
 
 // Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
@@ -3465,16 +3463,16 @@ export const waterWalk = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Restrained until it breaks free, which is not modeled.
 export const web = defineSpell({
   id: "spell:web",
   source,
   level: 2,
   castingTime: "action",
   range: { kind: "feet", feet: 60 },
-  targeting: { relation: "creature", count: 6 },
+  targeting: { relation: "enemy", count: 6 },
   concentration: true,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: { kind: "savingThrow", ability: "dex" }, onLand: [{ kind: "applyCondition", target: "target", condition: "condition:restrained", duration: { kind: "untilRemoved" } }], onAvoid: [] }),
 });
 
 // Frightened stands in for the psychic damage each turn.

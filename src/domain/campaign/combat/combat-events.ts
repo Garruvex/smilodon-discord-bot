@@ -54,6 +54,8 @@ export type CombatEvent =
       readonly round: number;
       readonly turnNumber: number;
       readonly endsAt: Instant | null;
+      // Feet of movement for the turn when speed bonuses (Longstrider, Fly) raise it above the creature's speed.
+      readonly movement?: number;
     }
   | { readonly kind: "stoodUp"; readonly combatantId: CombatantId; readonly feet: number }
   | { readonly kind: "combatantMoved"; readonly combatantId: CombatantId; readonly zoneId: ZoneId; readonly feet: number }
@@ -129,6 +131,7 @@ export type CombatEvent =
   // A monster's Regeneration was blocked (or is free again), or one Legendary Resistance was spent.
   // Action Surge: the combatant has its action (and the attacks of it) again.
   | { readonly kind: "actionGranted"; readonly combatantId: CombatantId; readonly attacks?: number }
+  | { readonly kind: "movementGranted"; readonly combatantId: CombatantId; readonly feet: number }
   | { readonly kind: "monsterStateChanged"; readonly combatantId: CombatantId; readonly regenBlocked?: boolean; readonly legendaryResistanceSpent?: boolean; readonly legendarySpent?: number; readonly legendaryTurn?: number; readonly relentlessSpent?: boolean; readonly indomitableSpent?: boolean; readonly relentlessRageSpent?: boolean; readonly innateSpent?: ContentId<"spell"> }
   // A check's roll was thrown away and made again (Halfling Lucky, Indomitable); the new roll takes its place.
   | { readonly kind: "checkRerolled"; readonly resolutionId: string; readonly oldRollId: RollId; readonly rollId: RollId; readonly reason: "lucky" | "indomitable" }
@@ -239,6 +242,7 @@ export const combatEventKinds: readonly CombatEventKind[] = [
   "exhaustionChanged",
   "monsterStateChanged",
   "actionGranted",
+  "movementGranted",
   "uncannyDodgeUsed",
   "wildShapeChanged",
   "concentrationStarted",

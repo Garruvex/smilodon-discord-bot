@@ -515,6 +515,9 @@ export function applyEffect(
       });
       return;
     }
+    case "grantMovement":
+      decision.emit({ kind: "movementGranted", combatantId: recipient.id, feet: effect.feet });
+      return;
     case "grantAction":
       decision.emit({ kind: "actionGranted", combatantId: recipient.id, ...(effect.attacks === undefined ? {} : { attacks: effect.attacks }) });
       return;

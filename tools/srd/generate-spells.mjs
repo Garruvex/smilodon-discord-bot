@@ -158,6 +158,18 @@ const curated = {
   eyebite: { relation: "enemy", count: 1, save: "wis", note: "Only the frightening option is modeled.", effects: [{ condition: "frightened", duration: { kind: "untilRemoved" }, onLand: true }] },
   "conjure-animals": { relation: "self", count: 1, summon: { monster: "brown-bear", count: 2 }, note: "Two brown bears stand in for the beasts the caster would choose; they fight until the fight ends, not for the spell's minute.", effects: [] },
   "spiritual-weapon": { relation: "self", count: 1, summon: { monster: "spiritual-weapon", count: 1 }, note: "A spectral weapon fights beside the caster until the fight ends, as a creature with its own turn; the book makes it a bonus action each turn and untargetable.", effects: [] },
+  web: { relation: "enemy", count: 6, save: "dex", note: "Restrained until it breaks free, which is not modeled.", effects: [{ condition: "restrained", duration: { kind: "untilRemoved" }, onLand: true }] },
+  resistance: { relation: "ally-or-self", count: 1, save: null, note: "The d4 goes on the next saving throw for a minute (it is not used up).", effects: [{ modifiers: [{ kind: "bonusDie", die: { terms: [{ count: 1, sides: 4 }], modifier: 0 }, appliesTo: ["save"], source: "spell:resistance" }], duration: { kind: "rounds", count: 10 } }] },
+  "true-strike": { relation: "self", count: 1, note: "Advantage on attacks for the caster's next turn stands in for advantage on the first attack.", effects: [{ modifiers: [{ kind: "ownAttacks", mode: "advantage" }], duration: { kind: "rounds", count: 2 } }] },
+  "magic-weapon": { relation: "ally-or-self", count: 1, note: "The bonus goes on every attack and every melee damage roll the creature makes, not on one weapon.", effects: [{ modifiers: [{ kind: "attackBonus", amount: 1 }, { kind: "meleeDamageBonus", amount: 1 }], duration: { kind: "untilRemoved" } }] },
+  "protection-from-energy": { relation: "ally-or-self", count: 1, note: "Resistance to fire stands in for the damage type the caster would choose.", effects: [{ modifiers: [{ kind: "damageResistance", damageTypes: ["fire"] }], duration: { kind: "untilRemoved" } }] },
+  stoneskin: { relation: "ally-or-self", count: 1, note: "", effects: [{ modifiers: [{ kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }], duration: { kind: "untilRemoved" } }] },
+  longstrider: { relation: "ally-or-self", count: 1, note: "", effects: [{ modifiers: [{ kind: "speedBonus", amount: 10 }], duration: { kind: "untilRemoved" } }] },
+  "expeditious-retreat": { relation: "self", count: 1, note: "Thirty more feet of movement each turn stands in for the Dash as a bonus action.", effects: [{ modifiers: [{ kind: "speedBonus", amount: 30 }], duration: { kind: "untilRemoved" } }] },
+  fly: { relation: "ally-or-self", count: 1, note: "Thirty more feet of movement each turn stands in for the flying speed; flying itself is not modeled.", effects: [{ modifiers: [{ kind: "speedBonus", amount: 30 }], duration: { kind: "untilRemoved" } }] },
+  "misty-step": { relation: "self", count: 1, note: "Thirty feet of movement that provokes no opportunity attacks stands in for the teleport; the caster walks to the zone.", effects: [{ movement: 30 }, { modifiers: [{ kind: "avoidsOpportunityAttacks" }], duration: { kind: "rounds", count: 1 } }] },
+  "mirror-image": { relation: "self", count: 1, note: "Armor class +3 stands in for the three duplicates.", effects: [{ modifiers: [{ kind: "acBonus", amount: 3 }], duration: { kind: "rounds", count: 10 } }] },
+  "enlarge-reduce": { relation: "ally-or-self", count: 1, note: "Only Enlarge is modeled: +2 melee damage stands in for the extra d4.", effects: [{ modifiers: [{ kind: "meleeDamageBonus", amount: 2 }], duration: { kind: "rounds", count: 10 } }] },
   darkness: { relation: "enemy", count: 6, save: null, note: "Blinds the creatures in the area for the duration; there is no lighting in the engine.", effects: [{ condition: "blinded", duration: { kind: "untilRemoved" }, onLand: true }] },
 };
 
@@ -231,7 +243,8 @@ function planFor(spell, notes) {
     const self = [];
     for (const effect of special.effects) {
       let code;
-      if (effect.damage !== undefined) code = `{ kind: "damage", target: "target", amount: ${effect.damage[0][0] === 0 ? `flat(${effect.damage[0][2]})` : "flat(0)"}, damageType: ${quote(effect.damageType)} }`;
+      if (effect.movement !== undefined) code = `{ kind: "grantMovement", target: "target", feet: ${effect.movement} }`;
+      else if (effect.damage !== undefined) code = `{ kind: "damage", target: "target", amount: ${effect.damage[0][0] === 0 ? `flat(${effect.damage[0][2]})` : "flat(0)"}, damageType: ${quote(effect.damageType)} }`;
       else if (effect.condition !== undefined) code = `{ kind: "applyCondition", target: "target", condition: "condition:${effect.condition}", duration: ${durationCode(effect.duration)} }`;
       else code = `{ kind: "applyModifiers", target: "target", modifiers: ${JSON.stringify(effect.modifiers).replace(/"([a-zA-Z]+)":/g, "$1:").replace(/,/g, ", ").replace(/:/g, ": ").replace(/\{/g, "{ ").replace(/\}/g, " }")}, duration: ${durationCode(effect.duration)} }`;
       (effect.onLand === true || special.save !== undefined ? land : self).push(code);

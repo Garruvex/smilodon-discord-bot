@@ -130,6 +130,11 @@ export function speedOf(holder: EffectHolder, lookup: ConditionLookup): number {
   return holder.exhaustion >= 2 ? Math.floor(holder.speed / 2) : holder.speed;
 }
 
+// Feet a creature's lasting effects add to its speed each turn.
+export function speedBonusOf(holder: EffectHolder, lookup: ConditionLookup): number {
+  return modifiersOf(holder, lookup).reduce((sum, { modifier }) => sum + (modifier.kind === "speedBonus" ? modifier.amount : 0), 0);
+}
+
 // Armor class after effects (Shield adds 5 until the caster's next turn).
 export function armorClassOf(holder: EffectHolder & { readonly armorClass: number }, lookup: ConditionLookup): number {
   return holder.armorClass + modifiersOf(holder, lookup).reduce((sum, { modifier }) => sum + (modifier.kind === "acBonus" ? modifier.amount : 0), 0);

@@ -50,6 +50,8 @@ export type Modifier =
   | { readonly kind: "metamagic"; readonly option: MetamagicOption }
   // A monk's readied Stunning Strike: the next melee weapon hit may stun (used up by the attack).
   | { readonly kind: "stunningStrike" }
+  // More feet of movement every turn while the effect lasts (Longstrider).
+  | { readonly kind: "speedBonus"; readonly amount: number }
   // Cannot gain these conditions while the effect lasts (Mindless Rage).
   | { readonly kind: "conditionImmunity"; readonly conditions: readonly ContentId<"condition">[] }
   // A wizard's readied Overchannel: the next spell of the 1st to 5th level deals its maximum damage or healing (used up by the casting).

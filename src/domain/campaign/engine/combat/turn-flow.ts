@@ -1,7 +1,7 @@
 // The order of a fight's turns: what happens when one starts (clocks, standing up, triggers), how a foe or an autopilot plays it, and how it ends.
 import { scheduleReminder } from "../reminders.js";
 import { currentCombatant, isActive, isPresent, type Combatant, type TurnPlanRemainder } from "../../combat/combat-state.js";
-import { bonusDiceFor, canAct, conditionLookup, effectsDueAt, hasCondition } from "../../effects/effect-queries.js";
+import { bonusDiceFor, canAct, conditionLookup, effectsDueAt, hasCondition, speedBonusOf } from "../../effects/effect-queries.js";
 import { engageCost } from "../../combat/positioning.js";
 import { engageProblem, moveProblem } from "../../combat/turn-rules.js";
 import { chooseAutopilotPlan, chooseMonsterPlan, type TurnPlan } from "../../combat/tactics.js";
@@ -68,7 +68,9 @@ export function beginTurn(decision: Decision, turnIndex: number, round: number):
   const playerTurn = isPlayerControlled(decision, combatant) && isActive(combatant);
   const endsAt = playerTurn ? deadlineAfter(decision.ctx.now, decision.state.pacing.turnSeconds) : null;
   const turnNumber = encounter.turnNumber + 1;
-  decision.emit({ kind: "turnStarted", combatantId: combatant.id, turnIndex: index, round: currentRound, turnNumber, endsAt });
+  const conditions = conditionLookup(decision.ctx.rules.content);
+  const faster = speedBonusOf(combatant, conditions);
+  decision.emit({ kind: "turnStarted", combatantId: combatant.id, turnIndex: index, round: currentRound, turnNumber, endsAt, ...(faster === 0 ? {} : { movement: combatant.speed + faster }) });
   decision.request({ kind: "deliver", delivery: { kind: "combatTurn", encounterId: encounter.id, combatantId: combatant.id } });
   if (endsAt !== null) {
     decision.request({

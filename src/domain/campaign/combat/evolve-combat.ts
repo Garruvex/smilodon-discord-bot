@@ -41,7 +41,7 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
             action: true,
             bonusAction: true,
             reaction: true,
-            movement: combatant.speed,
+            movement: event.movement ?? combatant.speed,
             attacksLeft: attacksPerAction(combatant.traits),
             bonusSpellCast: false,
           },
@@ -247,6 +247,8 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
     case "sneakAttackUsed":
       return update(encounter, event.combatantId, (combatant) => ({ ...combatant, sneakAttackUsed: true }));
     // A 6th level of Exhaustion kills (SRD 5.1), same as any other death.
+    case "movementGranted":
+      return update(encounter, event.combatantId, (combatant) => ({ ...combatant, budget: { ...combatant.budget, movement: combatant.budget.movement + event.feet } }));
     case "actionGranted":
       return update(encounter, event.combatantId, (combatant) => ({ ...combatant, budget: event.attacks === undefined ? { ...combatant.budget, action: true, attacksLeft: attacksPerAction(combatant.traits) } : { ...combatant.budget, attacksLeft: combatant.budget.attacksLeft + event.attacks } }));
     case "monsterStateChanged":
