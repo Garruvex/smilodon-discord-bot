@@ -1420,7 +1420,7 @@ export const floatingDisk = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Thirty more feet of movement each turn stands in for the flying speed; flying itself is not modeled.
+// Thirty more feet of movement each turn; while it lasts the creature is out of reach of anyone on the ground, and it does not fall when the spell ends.
 export const fly = defineSpell({
   id: "spell:fly",
   source,
@@ -1429,7 +1429,7 @@ export const fly = defineSpell({
   range: { kind: "touch" },
   targeting: { relation: "ally-or-self", count: 1 },
   concentration: true,
-  plan: () => ({ check: null, onLand: [{ kind: "applyModifiers", target: "target", modifiers: [{ kind: "speedBonus", amount: 30 }], duration: { kind: "untilRemoved" } }], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "applyModifiers", target: "target", modifiers: [{ kind: "speedBonus", amount: 30 }, { kind: "flying" }], duration: { kind: "untilRemoved" } }], onAvoid: [] }),
 });
 
 // Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.

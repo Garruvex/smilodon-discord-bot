@@ -1,5 +1,5 @@
 import { spellTargetProblem as magicTargetProblem } from "../magic/spell-rules.js";
-import { conditionLookup, forbiddenAttackTargets } from "../effects/effect-queries.js";
+import { conditionLookup, forbiddenAttackTargets, isFlying } from "../effects/effect-queries.js";
 import type { SpellDefinition } from "../rules/content-definitions.js";
 import type { SealedContent } from "../rules/content-registry.js";
 import { areEngaged, isPresent, type AttackOption, type Combatant, type EncounterState } from "./combat-state.js";
@@ -25,6 +25,8 @@ export function weaponTargetProblem(
   if (target === undefined || target.side === attacker.side || !isPresent(target)) return "invalidTarget";
   if (forbiddenAttackTargets(attacker, conditionLookup(content)).includes(target.id)) return "invalidTarget";
   if (option.range.kind === "melee" && !areEngaged(encounter, attacker.id, target.id)) return "notEngaged";
+  // Out of reach of anyone on the ground.
+  if (option.range.kind === "melee" && isFlying(target, conditionLookup(content)) && !isFlying(attacker, conditionLookup(content))) return "invalidTarget";
   const distance = distanceBetween(encounter, attacker.id, target.id);
   if (option.range.kind === "ranged" && (distance === null || distance > option.range.long)) return "outOfRange";
   return null;

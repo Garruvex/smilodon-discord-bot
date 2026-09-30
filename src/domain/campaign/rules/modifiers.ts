@@ -34,6 +34,8 @@ export type Modifier =
   | { readonly kind: "bonusDie"; readonly die: DiceExpression; readonly appliesTo: readonly ("attack" | "save")[]; readonly source: string }
   // Leaving a hostile's reach provokes no opportunity attack (Disengage).
   | { readonly kind: "avoidsOpportunityAttacks" }
+  // Airborne: creatures on the ground cannot reach it in melee, and it cannot be engaged by them.
+  | { readonly kind: "flying" }
   // Adds to the holder's armor class (Shield).
   | { readonly kind: "acBonus"; readonly amount: number }
   // Takes half damage of these types while it lasts (Rage).

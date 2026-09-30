@@ -624,6 +624,8 @@ export function applyEffect(
           stacking: "replace",
         },
       });
+      // Rising into the air breaks every melee the creature was in.
+      if (effect.modifiers.some((modifier) => modifier.kind === "flying")) decision.emit({ kind: "combatantMoved", combatantId: recipient.id, zoneId: recipient.zoneId, feet: 0 });
       return;
     }
     case "nextAttackAdvantage":

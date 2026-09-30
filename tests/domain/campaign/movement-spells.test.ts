@@ -133,3 +133,18 @@ describe("Spirit Guardians", () => {
     expect(fight.combatant("goblin-b").hp).toBe(7);
   });
 });
+
+describe("Fly", () => {
+  it("puts the flyer out of reach of the goblins' blades and breaks the melee they were in", () => {
+    const fight = new Fight(partyWithSpells(["spell:fly"], { 3: 1 })).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec: { ...skirmish, partyZoneId: "courtyard" } });
+    fight.run(sam, { kind: "combatEngage", combatantId: "c-elspeth", targetId: "goblin-a" });
+    expect(fight.combatant("c-elspeth").budget.movement).toBeLessThan(fight.combatant("c-elspeth").speed);
+    fight.run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:fly", slotLevel: 3, targetIds: ["c-elspeth"] });
+    // The goblin cannot be engaged by Elspeth once she is up, nor she by a goblin on the ground.
+    expect(fight.encounter.engagements.some(([a, b]) => a === "c-elspeth" || b === "c-elspeth")).toBe(false);
+    expect(fight.combatant("c-elspeth").effects.some((effect) => effect.modifiers.some((modifier) => modifier.kind === "flying"))).toBe(true);
+    // The goblins' turns pass without a blow landing on her.
+    fight.rolls(Array.from({ length: 12 }, () => 10), Array.from({ length: 12 }, () => 3)).run(sam, { kind: "endTurn", combatantId: "c-elspeth" });
+    expect(fight.events.some((event) => event.kind === "combatantHpChanged" && event.combatantId === "c-elspeth" && event.change < 0)).toBe(false);
+  });
+});

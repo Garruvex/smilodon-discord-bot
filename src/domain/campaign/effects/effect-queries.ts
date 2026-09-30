@@ -145,6 +145,10 @@ export function armorClassOf(holder: EffectHolder & { readonly armorClass: numbe
   return holder.armorClass + modifiersOf(holder, lookup).reduce((sum, { modifier }) => sum + (modifier.kind === "acBonus" ? modifier.amount : 0), 0);
 }
 
+export function isFlying(holder: EffectHolder, lookup: ConditionLookup): boolean {
+  return modifiersOf(holder, lookup).some(({ modifier }) => modifier.kind === "flying");
+}
+
 export function avoidsOpportunityAttacks(holder: EffectHolder, lookup: ConditionLookup): boolean {
   return modifiersOf(holder, lookup).some(({ modifier }) => modifier.kind === "avoidsOpportunityAttacks");
 }

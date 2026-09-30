@@ -7,7 +7,7 @@ import type { MetamagicOption } from "../rules/modifiers.js";
 import type { SealedContent } from "../rules/content-registry.js";
 import { healingPotionCost, type HouseRules } from "../rules/house-rules.js";
 import { mayWildShapeInto, wildShapeFeature, wildShapeUses } from "../rules/wild-shape-rules.js";
-import { canAct, conditionLookup, speedOf } from "../effects/effect-queries.js";
+import { canAct, conditionLookup, isFlying, speedOf } from "../effects/effect-queries.js";
 import { castableSlotLevels, slotUnavailable, spellMaxTargets, usePoolOf } from "../magic/spell-rules.js";
 import { areEngaged, availableSlots, currentCombatant, engagedWith, isPresent, type AttackOption, type Combatant, type EncounterState } from "./combat-state.js";
 import { isWorn } from "./combatant-profile.js";
@@ -215,6 +215,7 @@ export function engageProblem(encounter: EncounterState, hero: Combatant, target
   if (target === undefined || target.side === hero.side || !isPresent(target)) return { code: "invalidTarget" };
   if (target.zoneId !== hero.zoneId) return { code: "notAdjacent" };
   if (areEngaged(encounter, hero.id, target.id)) return { code: "alreadyEngaged" };
+  if (isFlying(target, conditionLookup(content)) && !isFlying(hero, conditionLookup(content))) return { code: "invalidTarget" };
   const left = movementLeft(hero, content);
   if (left < engageCost) return { code: "notEnoughMovement", needed: engageCost, left };
   return null;
