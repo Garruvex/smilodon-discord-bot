@@ -35,6 +35,18 @@ export const dnd = group("dnd", [
     },
   }),
 
+  action("language", {
+    params: { language: { kind: "choice", choices: ["en", "zh-TW"], required: true } },
+    run: async ({ deps, request, text, path, values }) => {
+      if (deps.campaign === undefined) return { ok: false, message: text.message(path, "unavailable") };
+      const language = values.getString("language") === "zh-TW" ? "zh-TW" : "en";
+      const changed = await deps.campaign.setLanguage(request.guildId, language);
+      return changed
+        ? { ok: true, message: text.message(path, "done") }
+        : { ok: false, message: text.message(path, "notSetUp") };
+    },
+  }),
+
   action("hub-channel", {
     params: { channel: { kind: "channel", textOnly: true, required: true } },
     run: async ({ deps, request, text, path, values }) => {

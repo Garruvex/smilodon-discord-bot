@@ -281,7 +281,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
     hubHandler,
     libraryHandler,
     adventureHandler,
-    settings: new CampaignSettingsAccess({ unitOfWork, lobby, setup, modelConfigured: model !== null }),
+    settings: new CampaignSettingsAccess({ unitOfWork, lobby, setup, cards, modelConfigured: model !== null }),
     handleMessagesDeleted: (guildId, channelId, messageIds): void => {
       void cards.handleMessagesDeleted(guildId, channelId, messageIds).catch(logFailure("Campaign card recovery after a deleted message failed", guildId));
     },

@@ -21,7 +21,7 @@ interface Fake {
 function access(overrides: { status?: CampaignServerStatus; setUp?: unknown; setAdminRole?: boolean } = {}): Fake {
   const setUp = vi.fn(() => Promise.resolve(overrides.setUp ?? { kind: "ok", settings: {} }));
   const setAdminRole = vi.fn(() => Promise.resolve(overrides.setAdminRole ?? true));
-  const campaign = { status: () => Promise.resolve(overrides.status ?? ready), setUp, setAdminRole } as unknown as CampaignSettingsAccess;
+  const campaign = { status: () => Promise.resolve(overrides.status ?? ready), setUp, setAdminRole, setLanguage: vi.fn(() => Promise.resolve(true)) } as unknown as CampaignSettingsAccess;
   return { campaign, setUp, setAdminRole };
 }
 
@@ -53,6 +53,21 @@ describe("D&D settings", () => {
     expect(text).toContain("Not set up yet");
     expect(text).toContain("not set");
     expect(text).toContain("not configured");
+  });
+
+  it("changes the language directly without running setup", async () => {
+    const fake = access();
+    const fixture = engineFixture({ deps: { campaign: fake.campaign } });
+    const result = await fixture.run("dnd.language", slashValues({ language: "zh-TW" }));
+    expect(result.kind).toBe("done");
+    expect(fake.campaign.setLanguage).toHaveBeenCalledWith(guildId, "zh-TW");
+    expect(fake.setUp).not.toHaveBeenCalled();
+    expect(messageOf(result)).toContain("Existing games keep their language");
+
+    vi.mocked(fake.campaign.setLanguage).mockResolvedValue(false);
+    const unset = await fixture.run("dnd.language", slashValues({ language: "en" }));
+    expect(unset.kind).toBe("rejected");
+    expect(messageOf(unset)).toContain("Set up D&D first");
   });
 
   it("moves the hub to the chosen channel", async () => {

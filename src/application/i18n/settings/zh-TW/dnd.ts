@@ -32,6 +32,12 @@ export const zhTWDnd: SettingsTextCatalog = {
   },
   "dnd.setup.language": { label: "語言", description: "D&D 大廳與新頻道使用的語言。", choices: { en: "英文", "zh-TW": "繁體中文" } },
 
+  "dnd.language": {
+    label: "D&D 語言", description: "選擇大廳與新遊戲預設使用的語言。",
+    messages: { unavailable: "這個機器人無法使用 D&D", notSetUp: "請先設定 D&D，再選擇語言。", done: "D&D 語言已更新，現有遊戲保留原本的語言。" },
+  },
+  "dnd.language.language": { label: "語言", description: "選擇大廳與新遊戲預設使用的語言。", choices: { en: "英文", "zh-TW": "繁體中文" } },
+
   "dnd.hub-channel": {
     label: "移動大廳",
     description: "把遊戲大廳與「建立遊戲」按鈕放到你選的頻道，而不是 #dnd-games",
