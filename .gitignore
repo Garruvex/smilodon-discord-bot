@@ -16,3 +16,6 @@ lavalink/logs/
 .claude/scheduled_tasks.lock
 drizzle-sqlite/*.sqlite
 drizzle-sqlite/*.sqlite-*
+
+# Community adventures converted for private play; never committed
+private/

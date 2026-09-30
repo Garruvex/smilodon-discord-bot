@@ -343,8 +343,15 @@ export class ReactionReplyScheduler {
     const displayNames = new Map(mentionedUsers.map((user) => [user.id, user.displayName]));
     const syntheticPrompt = `(${reactorIds.size} ${reactorIds.size === 1 ? "person" : "people"} reacted to your message ` +
       `"${message.content.slice(0, chatMemoryLimits.maxUserMessageChars)}": ` +
-      `${describeReactions(reactions, (id) => displayNames.get(id) ?? id)})`;
+      `${describeReactions(reactions, (id) => displayNames.get(id) ?? id)})` +
+      // Tell the model how to tag the reactors; pings are limited to exactly
+      // these people via reactorMentions below.
+      (mentionedUsers.length > 0
+        ? ` Tag the people who reacted in your reply so they know it's for them: ` +
+          mentionedUsers.map((user) => `${user.displayName}=<@${user.id}>`).join(", ")
+        : "");
     const persona = await this.personaSource.resolve(profile);
+    const reactorMentions = { repliedUser: false, parse: [] as never[], users: mentionedUsers.map((user) => user.id) };
 
     try {
       const response = await this.conversation.run({
@@ -367,11 +374,11 @@ export class ReactionReplyScheduler {
           sender: {
             first: (payload) => message.reply({
               content: payload.content, files: [...payload.files],
-              allowedMentions: { repliedUser: false, parse: [] },
+              allowedMentions: reactorMentions,
             }),
             rest: (payload) => channel.send({
               content: payload.content, files: [...payload.files],
-              allowedMentions: { repliedUser: false, parse: [] },
+              allowedMentions: reactorMentions,
             }),
           },
           text: deliveredResponse.text,

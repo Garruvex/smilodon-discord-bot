@@ -136,6 +136,7 @@ export const guildConfigurationFileSchema = z
         chatbot: z.boolean().default(false),
         birthdays: z.boolean().default(false),
         reminders: z.boolean().default(false),
+        campaign: z.boolean().default(false),
         nsfw: z.boolean().default(false),
         linkFix: z.boolean().default(false),
         retainMemberDataOnLeave: z.boolean().default(true),
@@ -146,7 +147,7 @@ export const guildConfigurationFileSchema = z
       })
       .default({
         common: true, diagnostics: true, music: false, chatbot: false, birthdays: false,
-        reminders: false, nsfw: false, linkFix: false, retainMemberDataOnLeave: true, ambientReplies: false,
+        reminders: false, campaign: false, nsfw: false, linkFix: false, retainMemberDataOnLeave: true, ambientReplies: false,
         channelHistory: false, reactionReplies: false, historyReactions: false,
       }),
     roles: z

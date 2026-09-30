@@ -7,6 +7,7 @@ import type { ChatToolRegistry } from "../../../../application/chat/tools/chat-t
 import type { ChannelSummaryCheckpointStore } from "../../../../application/context/channel-summary-checkpoint-store.js";
 import type { Language } from "../../../../application/i18n/language.js";
 import type { ApplicationEmojiCatalog } from "../../application-emoji-catalog.js";
+import type { CampaignSettingsAccess } from "../../campaign/campaign-settings-access.js";
 
 // The option values a setting reads, with the same getters (and required
 // overloads) as a slash command's options. The slash command passes its
@@ -49,6 +50,9 @@ export interface SettingDeps {
   // False when no configured chat provider can summarize channels, so
   // history scans are refused up front instead of queued forever.
   channelSummaryProviderAvailable?: boolean;
+  // The D&D hub channel, admin role and status, which live with the campaign
+  // data rather than the guild configuration.
+  campaign?: CampaignSettingsAccess;
   // Bound once the admin panel exists (see SettingsEngine.bindAdminPanel),
   // which needs the engine first.
   adminPanel?: AdminPanelRepair;

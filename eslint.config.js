@@ -30,4 +30,18 @@ export default tseslint.config(
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_", destructuredArrayIgnorePattern: "^_" }],
     },
   },
+  {
+    // The campaign rules engine must stay pure and deterministic (see
+    // docs/dnd-code-structure.md §1): no Discord, database, provider, or
+    // Node APIs, and no reaching outward into application/infrastructure.
+    files: ["src/domain/campaign/**/*.ts"],
+    rules: {
+      "no-restricted-imports": ["error", {
+        patterns: [
+          { group: ["**/application/**", "**/infrastructure/**", "**/bootstrap/**"], message: "The campaign domain must not depend on outer layers." },
+          { group: ["node:*", "discord.js", "drizzle-orm", "drizzle-orm/*", "postgres", "better-sqlite3", "pino"], message: "The campaign domain must stay free of I/O and framework imports." },
+        ],
+      }],
+    },
+  },
 );

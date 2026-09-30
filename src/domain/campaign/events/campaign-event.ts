@@ -1,0 +1,233 @@
+import type { CharacterId, CheckId, Instant, RollId, UserId } from "../core/ids.js";
+import type { Companion } from "../companions/companion-roster.js";
+import type { InvocationId, PactBoonId } from "../character/warlock-choices.js";
+import type { FightingStyleId } from "../character/fighting-styles.js";
+import type { CombatEvent } from "../combat/combat-events.js";
+import type { HeroStatus } from "../combat/combatant-profile.js";
+import type { LedgerVisibility } from "../ledger/ledger.js";
+import type { SceneId } from "../adventure/adventure-bible.js";
+import type { EncounterSpec, PlannedEffect } from "../commands/campaign-command.js";
+import type { CharacterSheet } from "../character/character-sheet.js";
+import type { Ability } from "../rules/effects.js";
+import type { ContentId } from "../rules/content-id.js";
+import type {
+  CheckResult,
+  CheckState,
+  DialogueRecord,
+  HazardRecord,
+  ItemOffer,
+  Keepsake,
+  PendingHaggle,
+  PendingEnvironmentalDamage,
+  PendingHazard,
+  PendingPress,
+  Resolution,
+  TradeRecord,
+  UtilityCastRecord,
+  EnvironmentalDamageRecord,
+  HealingRecord,
+  PendingHealing,
+} from "../state/campaign-state.js";
+import type { Skill } from "../rules/skills.js";
+
+// The version of the event shapes below. It goes up whenever a change to an
+// event could not be read by code written for the old shape, and every recorded
+// envelope carries the version it was written with, so old history can be
+// upcast on read if it ever has to be replayed (docs/dnd-engine-architecture.md §7).
+//   1  Everything up to milestone 6.
+//   2  Conditions and lasting effects became one effect record: conditionAdded and
+//      effectAdded were replaced by effectApplied.
+export const eventSchemaVersion = 2;
+
+// Domain event payloads. The command bus wraps each in an envelope with
+// campaign ID, sequence, causation, actor, and rules revision.
+export type CampaignEvent =
+  | {
+      readonly kind: "roundOpened";
+      readonly roundNumber: number;
+      readonly participants: readonly CharacterId[];
+      readonly closesAt: Instant | null;
+    }
+  | {
+      readonly kind: "actionSubmitted";
+      readonly roundNumber: number;
+      readonly characterId: CharacterId;
+      readonly text: string;
+      readonly revision: number;
+    }
+  | { readonly kind: "passSubmitted"; readonly roundNumber: number; readonly characterId: CharacterId }
+  | { readonly kind: "slotExcused"; readonly roundNumber: number; readonly characterId: CharacterId }
+  | {
+      readonly kind: "roundClosed";
+      readonly roundNumber: number;
+      readonly reason: RoundCloseReason;
+      readonly missed: readonly CharacterId[];
+    }
+  | {
+      readonly kind: "roundPlanApplied";
+      readonly roundNumber: number;
+      readonly resolutions: Readonly<Record<CharacterId, Resolution>>;
+      readonly checks: readonly CheckState[];
+      readonly effects: readonly PlannedEffect[];
+    }
+  | { readonly kind: "checkRollStarted"; readonly checkId: CheckId; readonly rollId: RollId; readonly timedOut: boolean }
+  | { readonly kind: "checkResolved"; readonly checkId: CheckId; readonly result: CheckResult }
+  | { readonly kind: "roundResolved"; readonly roundNumber: number; readonly quiet: boolean }
+  // Story effects that fired when a round resolved.
+  | { readonly kind: "sceneTransitioned"; readonly roundNumber: number; readonly sceneId: SceneId }
+  | { readonly kind: "encounterQueued"; readonly roundNumber: number; readonly encounter: EncounterSpec }
+  | { readonly kind: "clockAdvanced"; readonly roundNumber: number; readonly clockId: string; readonly segments: number; readonly filled: number }
+  | { readonly kind: "clueRevealed"; readonly roundNumber: number; readonly clueId: string; readonly text: string }
+  | { readonly kind: "flagSet"; readonly roundNumber: number; readonly flag: string; readonly value: number }
+  | { readonly kind: "keepsakeGained"; readonly roundNumber: number; readonly keepsake: Keepsake }
+  | { readonly kind: "goldSpent"; readonly roundNumber: number; readonly characterId: CharacterId; readonly amount: number; readonly wallet: "pool" | "hero" }
+  | { readonly kind: "memberMarkedAway"; readonly userId: UserId; readonly reason: AwayReason }
+  | { readonly kind: "memberReturned"; readonly userId: UserId }
+  | { readonly kind: "waitingForPlayers" }
+  | { readonly kind: "plannerFailed"; readonly roundNumber: number; readonly problems: readonly string[] }
+  | { readonly kind: "planRetryRequested"; readonly roundNumber: number }
+  | { readonly kind: "narrationRecorded"; readonly roundNumber: number; readonly text: string }
+  | { readonly kind: "proxyGranted"; readonly ownerUserId: string; readonly proxyUserId: string }
+  | { readonly kind: "proxyRevoked"; readonly ownerUserId: string }
+  | { readonly kind: "summaryRecorded"; readonly throughRound: number; readonly visibility: "public" | "private"; readonly text: string }
+  | { readonly kind: "adventureBegan" }
+  | { readonly kind: "openingRecorded"; readonly text: string }
+  | { readonly kind: "memberReadied"; readonly userId: UserId }
+  | { readonly kind: "tableReady" }
+  | {
+      readonly kind: "ledgerFactRecorded";
+      readonly entityId: string;
+      readonly canonicalName: string;
+      readonly fact: string;
+      readonly visibility: LedgerVisibility;
+    }
+  // Pending checks get fresh roll deadlines; timers were cancelled while waiting.
+  | {
+      readonly kind: "resumed";
+      readonly checkDeadlines: Readonly<Record<CheckId, Instant | null>>;
+      // Fresh windows for the round and the current player's turn, when they had one.
+      readonly roundClosesAt?: Instant;
+      readonly turnEndsAt?: Instant;
+    }
+  | { readonly kind: "campaignPaused"; readonly reason: "organizer" | "recovery" | "safety" }
+  | { readonly kind: "heroSpoke"; readonly characterId: CharacterId; readonly roundNumber: number; readonly text: string }
+  | { readonly kind: "restTaken"; readonly rest: "short" | "long"; readonly heroStatus: Readonly<Record<CharacterId, HeroStatus>> }
+  | { readonly kind: "itemOffered"; readonly offer: ItemOffer }
+  // The offer was accepted: the items change hands.
+  | { readonly kind: "offerAccepted"; readonly offerId: string }
+  | { readonly kind: "offerClosed"; readonly offerId: string; readonly reason: OfferClosedReason }
+  | { readonly kind: "itemStashed"; readonly characterId: CharacterId; readonly itemId: ContentId<"item"> }
+  | { readonly kind: "itemTaken"; readonly characterId: CharacterId; readonly itemId: ContentId<"item"> }
+  // A hero's worn armor and shield changed; `worn` is the whole list now.
+  | { readonly kind: "wornChanged"; readonly characterId: CharacterId; readonly worn: readonly ContentId<"item">[] }
+  // A victory's spoils reach the party stash, and the gold the purse or, when
+  // `split` is given, the heroes' own coins by that amount each.
+  | {
+      readonly kind: "lootFound";
+      readonly encounterId: string;
+      readonly items: readonly ContentId<"item">[];
+      readonly gold: number;
+      readonly split?: Readonly<Record<CharacterId, number>>;
+    }
+  // The potion is drunk (and gone); healed is what it actually restored.
+  | { readonly kind: "itemUsed"; readonly characterId: CharacterId; readonly itemId: ContentId<"item">; readonly healed: number }
+  // The player has this hero from now on (a new player, or a replacement).
+  | { readonly kind: "heroJoined"; readonly sheet: CharacterSheet; readonly entrance?: string }
+  // The lost fight is set aside and the party is back as it stood at its start.
+  | { readonly kind: "encounterRetried"; readonly encounterId: string }
+  // A victory's XP, split evenly among the heroes still standing (character/leveling.ts).
+  | { readonly kind: "experienceAwarded"; readonly encounterId: string; readonly xp: Readonly<Record<CharacterId, number>> }
+  // One level gained, from crossing an XP threshold. Emitted once per level
+  // when a big XP award crosses more than one at once.
+  | {
+      readonly kind: "characterLeveledUp";
+      readonly characterId: CharacterId;
+      readonly level: number;
+      readonly maxHp: number;
+      readonly abilityScores: Readonly<Record<Ability, number>>;
+      readonly spellcasting: CharacterSheet["spellcasting"];
+      readonly features: readonly ContentId<"feature">[];
+      // Levels per class after this one, and skill proficiencies after any
+      // multiclass skill this level granted (character/leveling.ts).
+      readonly classLevels: Readonly<Partial<Record<string, number>>>;
+      readonly skills: CharacterSheet["skills"];
+      // Present exactly when this recomputes to a Warlock holding levels.
+      readonly pactMagic?: CharacterSheet["pactMagic"];
+      // Unspent Ability Score Improvements after this level (character/leveling.ts's asiLevels).
+      readonly pendingAsi?: number;
+      // Present when the level was given rather than earned (milestone): the
+      // XP threshold of the level, so XP and level stay in step.
+      readonly xp?: number;
+    }
+  // The hero's next level will land in `buildClass` (character-build.ts's
+  // BuildClass), and, if that class is new to them and grants one, the skill
+  // named. Declaring again before the next level replaces it; reaching the
+  // next level spends and clears it (engine/members.ts's chooseClassLevel).
+  | { readonly kind: "classLevelPlanChosen"; readonly characterId: CharacterId; readonly buildClass: string; readonly skillChoice?: Skill }
+  // One unspent Ability Score Improvement was allocated (engine/members.ts's
+  // chooseAsi): the abilities named each rose by 1 (two abilities) or 2 (one
+  // ability), and the hero's pendingAsi count dropped by one.
+  | { readonly kind: "abilityScoreImproved"; readonly characterId: CharacterId; readonly abilityScores: Readonly<Record<Ability, number>>; readonly pendingAsi: number }
+  // The hero swapped their Fighting Style (engine/members.ts's chooseFightingStyle).
+  | { readonly kind: "warlockOptionsChosen"; readonly characterId: CharacterId; readonly invocations?: readonly InvocationId[]; readonly pactBoon?: PactBoonId }
+  | { readonly kind: "fightingStyleChosen"; readonly characterId: CharacterId; readonly styleId: FightingStyleId }
+  // A haggle roll was requested; the pending state a settled roll (or a
+  // pause-and-resume re-arm, if one is ever added) needs to finish it.
+  | { readonly kind: "haggleStarted"; readonly haggle: PendingHaggle }
+  // A trade landed — instantly (buyItem/sellItem) or once a haggle roll
+  // settled it — and is now waiting on a Narrator line (engine/shop.ts).
+  // `wallet` says which gold this drew on or paid into (the "split" house
+  // rule's own choice, resolved once at settlement time, not re-derived
+  // later — evolve() is pure and has no house rule to read).
+  | { readonly kind: "tradeSettled"; readonly trade: TradeRecord; readonly wallet: "pool" | "hero" }
+  // The Narrator's line for a settled trade; the trade record is spent.
+  | { readonly kind: "tradeNarrated"; readonly tradeId: string; readonly text: string }
+  // A press roll was requested (engine/dialogue.ts's pressNpc); the pending
+  // state a settled roll needs to finish it.
+  | { readonly kind: "pressStarted"; readonly press: PendingPress }
+  // A conversation landed — instantly (askNpc) or once a press roll settled
+  // it — and is now waiting on a Narrator line. `revealSecret`: a press
+  // succeeded, so the NPC's authored secret is now known to the party.
+  | { readonly kind: "dialogueSettled"; readonly dialogue: DialogueRecord; readonly revealSecret: boolean }
+  // The Narrator's line for a settled conversation; the dialogue record is spent.
+  | { readonly kind: "dialogueNarrated"; readonly dialogueId: string; readonly text: string }
+  // A ritual (or cantrip) spell was cast outside combat, waiting on a Narrator line.
+  | { readonly kind: "utilitySpellCast"; readonly cast: UtilityCastRecord }
+  // The Narrator's line for a settled utility cast; the cast record is spent.
+  | { readonly kind: "utilityCastNarrated"; readonly castId: string; readonly text: string }
+  // A hazard save was requested; the pending state a settled roll needs to finish it.
+  // A healing spell was cast outside combat; its dice are requested.
+  // Creatures a hero brought along between fights (engine/companion-magic.ts); `heroStatus` is the caster's, with the slot spent.
+  | { readonly kind: "companionsSummoned"; readonly companions: readonly Companion[]; readonly replaced: readonly string[]; readonly heroStatus: Readonly<Record<CharacterId, HeroStatus>> }
+  // A fallen hero rises again (engine/revival-magic.ts); `heroStatus` holds the hero, alive, and the caster with the slot spent.
+  | { readonly kind: "heroRevived"; readonly characterId: CharacterId; readonly heroStatus: Readonly<Record<CharacterId, HeroStatus>> }
+  | { readonly kind: "companionDismissed"; readonly companionId: string }
+  | { readonly kind: "healingStarted"; readonly healing: PendingHealing }
+  // The healing dice landed: the slot is spent and the hit points restored,
+  // both carried as the statuses of the caster and (if another) the target.
+  | { readonly kind: "healingSettled"; readonly healing: HealingRecord; readonly heroStatus: Readonly<Record<CharacterId, HeroStatus>> }
+  // Damage between fights: its dice were requested.
+  | { readonly kind: "environmentalDamageStarted"; readonly pending: PendingEnvironmentalDamage }
+  // The damage landed; `heroStatus` is the hero with their new hit points (dead when it killed them).
+  | { readonly kind: "environmentalDamageSettled"; readonly damage: EnvironmentalDamageRecord; readonly heroStatus: HeroStatus }
+  | { readonly kind: "hazardStarted"; readonly hazard: PendingHazard }
+  // A hazard save landed — Exhaustion gained on a failure, nothing on a
+  // success — and is now waiting on a Narrator line. `heroStatus`, when
+  // present, is the hero's full resolved status with that Exhaustion
+  // already folded in (engine/travel.ts defaults it, the same way
+  // engine/rest.ts does, when the hero never had one yet); absent only if
+  // the hero's sheet somehow no longer exists.
+  | { readonly kind: "hazardSettled"; readonly hazard: HazardRecord; readonly heroStatus?: HeroStatus }
+  // The Narrator's line for a settled hazard; the hazard record is spent.
+  | { readonly kind: "hazardNarrated"; readonly hazardId: string; readonly text: string }
+  | CombatEvent;
+
+export type OfferClosedReason = "declined" | "cancelled" | "unavailable";
+
+export type CampaignEventKind = CampaignEvent["kind"];
+
+// Only a timer expiry counts toward automatic away; an organizer closing
+// the window early does not.
+export type RoundCloseReason = "allResponded" | "timer" | "organizer";
+
+export type AwayReason = "self" | "organizer" | "missedTimers";

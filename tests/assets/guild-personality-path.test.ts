@@ -26,7 +26,7 @@ function profile(overrides: Partial<GuildConfiguration["chat"]> = {}): GuildConf
       music: false,
       chatbot: true,
       birthdays: false,
-      reminders: false,
+      reminders: false, campaign: false,
       nsfw: false,
       linkFix: false,
       retainMemberDataOnLeave: true,
