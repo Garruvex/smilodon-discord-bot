@@ -3,7 +3,7 @@ import type { EffectInstance } from "../effects/effect-instance.js";
 import { attacksPerAction, indomitableKey, relentlessRageKey, legendaryActionsKey, legendaryResistanceKey, relentlessEnduranceKey } from "../rules/traits.js";
 import { wildShapeUses } from "../rules/wild-shape-rules.js";
 import type { CombatEvent } from "./combat-events.js";
-import { innateUseKey } from "../magic/spell-rules.js";
+import { innateUseKey, usePoolOf } from "../magic/spell-rules.js";
 import { spendSlot, type Combatant, type CombatantId, type EncounterState, type ResolutionState } from "./combat-state.js";
 
 const prone = "condition:prone";
@@ -117,7 +117,8 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
         // An innate spell cast a number of times a day uses one of them up.
         if (resolution.source.kind === "spell") {
           const innate = combatant.spellcasting?.innate?.[resolution.source.spellId];
-          if (typeof innate === "number") uses[innateUseKey(resolution.source.spellId)] = Math.max(0, (uses[innateUseKey(resolution.source.spellId)] ?? innate) - 1);
+          const pool = usePoolOf(combatant.spellcasting, resolution.source.spellId);
+          if (typeof innate === "number") uses[pool.key] = Math.max(0, (uses[pool.key] ?? innate) - pool.cost);
         }
         const cooldowns = resolution.source.kind === "area" ? { ...combatant.cooldowns, [resolution.source.area.weapon]: resolution.source.area.cooldown } : combatant.cooldowns;
         const attacksLeft = spendsAnAttack

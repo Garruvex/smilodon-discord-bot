@@ -1,6 +1,6 @@
 import type { HeroResources } from "../character/hero-status.js";
 import type { SpellDefinition } from "../rules/content-definitions.js";
-import { creatureTypeOf, type Trait } from "../rules/traits.js";
+import { creatureTypeOf, innateUseKey as ownUseKey, type Trait } from "../rules/traits.js";
 
 // The rules of spellcasting that do not depend on where a fight is happening:
 // slots, how many targets, whom a spell may name, and what keeps concentration.
@@ -37,6 +37,12 @@ export function spellMaxTargets(spell: SpellDefinition, slotLevel: number): numb
 
 // Where an innate spell's uses left are counted (resources.featureUses).
 export { innateUseKey } from "../rules/traits.js";
+
+// Where an innate spell's charges are counted and what one casting takes: its own count and one use, unless it draws on a shared pool.
+export function usePoolOf(casting: { readonly pools?: Readonly<Record<string, { readonly key: string; readonly cost: number }>> } | null | undefined, spellId: string): { readonly key: string; readonly cost: number } {
+  return casting?.pools?.[spellId] ?? { key: innateUseKeyOf(spellId), cost: 1 };
+}
+const innateUseKeyOf = (spellId: string): string => ownUseKey(spellId);
 
 // A slot is unavailable when it is too low for the spell, empty, or (for a cantrip) not zero.
 export function slotUnavailable(spell: SpellDefinition, slots: SpellSlots, slotLevel: number): boolean {

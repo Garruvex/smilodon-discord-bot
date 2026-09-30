@@ -8,7 +8,7 @@ import type { SealedContent } from "../rules/content-registry.js";
 import { healingPotionCost, type HouseRules } from "../rules/house-rules.js";
 import { mayWildShapeInto, wildShapeFeature, wildShapeUses } from "../rules/wild-shape-rules.js";
 import { canAct, conditionLookup, speedOf } from "../effects/effect-queries.js";
-import { castableSlotLevels, innateUseKey, slotUnavailable, spellMaxTargets } from "../magic/spell-rules.js";
+import { castableSlotLevels, slotUnavailable, spellMaxTargets, usePoolOf } from "../magic/spell-rules.js";
 import { areEngaged, availableSlots, currentCombatant, engagedWith, isPresent, type AttackOption, type Combatant, type EncounterState } from "./combat-state.js";
 import { isWorn } from "./combatant-profile.js";
 import { spellTargetProblem, spellTargets, weaponTargetProblem, weaponTargets } from "./legal-targets.js";
@@ -110,7 +110,8 @@ export function spellProblem(
   const innate = casting.innate?.[spell.id];
   if (innate !== undefined) {
     if (slotLevel !== spell.level) return refuse({ code: "noSpellSlot", slotLevel });
-    if (innate !== null && (caster.resources.featureUses[innateUseKey(spell.id)] ?? innate) < 1) return refuse({ code: "noUsesLeft" });
+    const pool = usePoolOf(casting, spell.id);
+    if (innate !== null && (caster.resources.featureUses[pool.key] ?? innate) < pool.cost) return refuse({ code: "noUsesLeft" });
   } else {
     const slot = spellSlotProblem(caster, spell, slotLevel);
     if (slot !== null) return refuse(slot);
@@ -303,7 +304,8 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
       if (costProblem(hero, bonusAction ? "bonusAction" : "action", content) !== null) continue;
       if (hero.budget.bonusSpellCast && (bonusAction || spell.level > 0)) continue;
       const innate = hero.spellcasting?.innate?.[id];
-      if (innate !== undefined && innate !== null && (hero.resources.featureUses[innateUseKey(id)] ?? innate) < 1) continue;
+      const pool = usePoolOf(hero.spellcasting, id);
+      if (innate !== undefined && innate !== null && (hero.resources.featureUses[pool.key] ?? innate) < pool.cost) continue;
       const slotLevels = castableSlotLevels(spell, availableSlots(hero.resources));
       const targetIds = spellTargets(encounter, hero, spell, content).map((target) => target.id);
       if (slotLevels.length > 0 && targetIds.length > 0) spells.push({ spell, slotLevels, bonusAction, targetIds });

@@ -48,6 +48,8 @@ export interface CombatSpellcasting {
   readonly innate?: Readonly<Record<string, number | null>>;
   // Save DCs that differ from saveDc for particular spells (a Dragonborn's breath uses Constitution).
   readonly saveDcs?: Readonly<Record<string, number>>;
+  // Innate spells that share a pool of charges (a staff): where the pool is counted and what a casting costs.
+  readonly pools?: Readonly<Record<string, { readonly key: string; readonly cost: number }>>;
 }
 
 // A combatant's spell slots and feature uses left (a hero's own resources).

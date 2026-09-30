@@ -54,6 +54,12 @@ TRAITS["wand-of-fireballs"] = wand("fireball");
 TRAITS["wand-of-lightning-bolts"] = wand("lightning-bolt");
 TRAITS["wand-of-fear"] = wand("fear");
 TRAITS["wand-of-paralysis"] = wand("hold-person");
+// Staffs: several spells drawing on one pool of charges (each spell costs its own number), cast at the staff's save DC. The pool comes back with the day's rest.
+const staff = (name, charges, dc, spells) => spells.map(([spell, cost]) => `{ kind: "featureSpell", spell: "spell:${spell}", ability: "cha", uses: ${charges}, saveDc: ${dc}, recharge: "longRest", pool: "${name}", cost: ${cost} }`);
+TRAITS["staff-of-fire"] = staff("staff-of-fire", 10, 15, [["burning-hands", 1], ["fireball", 3], ["wall-of-fire", 4]]);
+TRAITS["staff-of-frost"] = staff("staff-of-frost", 10, 15, [["fog-cloud", 1], ["ice-storm", 4], ["wall-of-ice", 4], ["cone-of-cold", 5]]);
+TRAITS["staff-of-healing"] = staff("staff-of-healing", 10, 15, [["cure-wounds", 1], ["lesser-restoration", 2], ["mass-cure-wounds", 5]]);
+TRAITS["staff-of-power"] = staff("staff-of-power", 20, 17, [["magic-missile", 1], ["ray-of-enfeeblement", 1], ["levitate", 2], ["lightning-bolt", 3], ["fireball", 5], ["cone-of-cold", 5], ["hold-monster", 5], ["wall-of-force", 5]]);
 for (const type of ["acid", "cold", "fire", "force", "lightning", "necrotic", "poison", "psychic", "radiant", "thunder"]) TRAITS[`ring-of-resistance-${type}`] = [resist(type)];
 
 // Potions that do something in a fight, worked out through the same pipeline as a spell (effects on the drinker).

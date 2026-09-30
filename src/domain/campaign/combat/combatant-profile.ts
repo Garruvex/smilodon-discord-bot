@@ -105,11 +105,13 @@ function heroSpellcasting(sheet: CharacterSheet, content: SealedContent, traits:
   const modifier = castingModifier ?? abilityModifier(sheet.abilityScores[first?.ability ?? "cha"]);
   const innate: Record<string, number | null> = {};
   const saveDcs: Record<string, number> = {};
+  const pools: Record<string, { readonly key: string; readonly cost: number }> = {};
   for (const trait of granted) {
     const mod = abilityModifier(sheet.abilityScores[trait.ability]);
     const atLevel = trait.usesAt?.filter((step) => step.level <= sheet.level).at(-1)?.uses;
     innate[trait.spell] = trait.usesAbility === true ? Math.max(1, mod) : (atLevel ?? trait.uses);
     saveDcs[trait.spell] = trait.saveDc ?? 8 + base + mod;
+    if (trait.pool !== undefined) pools[trait.spell] = { key: `pool:${trait.pool}`, cost: trait.cost ?? 1 };
   }
   return {
     attackBonus: base + modifier,
@@ -118,6 +120,7 @@ function heroSpellcasting(sheet: CharacterSheet, content: SealedContent, traits:
     spells: [...(castingModifier === null ? [] : spellbookOf(sheet, content)), ...granted.map((trait) => trait.spell)],
     innate,
     saveDcs,
+    ...(Object.keys(pools).length === 0 ? {} : { pools }),
   };
 }
 

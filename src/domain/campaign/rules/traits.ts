@@ -81,6 +81,9 @@ export type Trait =
       // A fixed save DC, for an item that casts the spell for its holder (a wand's DC 15).
       readonly saveDc?: number;
       readonly recharge: "shortRest" | "longRest" | "never";
+      // Spells that draw on one shared pool of charges (a staff): the pool's name, and how many charges this spell costs.
+      readonly pool?: string;
+      readonly cost?: number;
     }
   // A flat bonus to saving throws (Ring of Protection, Cloak of Protection).
   | { readonly kind: "saveBonus"; readonly amount: number }

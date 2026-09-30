@@ -96,3 +96,17 @@ describe("Hunter's Mark", () => {
     expect(shoot(true)).toBe(shoot(false) + 4);
   });
 });
+
+describe("Staffs", () => {
+  it("spend charges from one shared pool, each spell at its own price", () => {
+    const base = partyWithSpells([]);
+    const hero = base.characters["c-borin"];
+    if (hero === undefined) throw new Error("borin");
+    const state: CampaignState = { ...base, characters: { ...base.characters, "c-borin": { ...hero, equipment: [...hero.equipment, "item:staff-of-fire" as const] } } };
+    const fight = new Fight(state).rolls([1, 20, 5, 4]).run(organizer, { kind: "startEncounter", spec: { ...skirmish, edges: [{ from: "gate", to: "courtyard", feet: 10 }] } });
+    fight.rolls([3, 3], Array.from({ length: 8 }, () => 1)).run(jamie, { kind: "combatCast", combatantId: "c-borin", spellId: "spell:fireball", slotLevel: 3, targetIds: ["goblin-a", "goblin-b"] });
+    // Fireball costs three of the ten charges.
+    expect(fight.combatant("c-borin").resources.featureUses["pool:staff-of-fire"]).toBe(7);
+    expect(fight.combatant("c-borin").spellcasting?.pools?.["spell:burning-hands"]).toEqual({ key: "pool:staff-of-fire", cost: 1 });
+  });
+});
