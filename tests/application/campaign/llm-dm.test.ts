@@ -5,12 +5,13 @@ import {
   LlmCampaignPlanner,
   PlannerOutputError,
   buildCombatNarratorPrompt,
+  buildDialogueNarratorPrompt,
   buildNarratorPrompt,
   buildPlannerPrompt,
   parsePlannerOutput,
   plannerJsonSchema,
 } from "../../../src/application/campaign/dm/llm-dm.js";
-import type { CombatNarratorRequest, DmContext, NarratorRequest, PlannerRequest } from "../../../src/application/campaign/ports/dm-ports.js";
+import type { CombatNarratorRequest, DialogueNarratorRequest, DmContext, NarratorRequest, PlannerRequest } from "../../../src/application/campaign/ports/dm-ports.js";
 import type {
   StructuredModelClient,
   StructuredModelRequest,
@@ -55,6 +56,25 @@ const narratorRequest: NarratorRequest = {
   spotlight: ["波林"],
   threat: null,
 };
+
+it("grounds an NPC's performance in their voice and the established scene", () => {
+  const request: DialogueNarratorRequest = {
+    context: { ...context, sections: [...context.sections, { layer: "B", title: "Adventure", text: "A smoky inn where Garrick watches the door." }] },
+    language: "en",
+    npc: { id: "npc:garrick", name: "Garrick", voice: "Gruff and guarded", publicDescription: "An innkeeper polishing a mug while watching the door.", secret: null },
+    heroName: "Mira",
+    kind: "ask",
+    question: "What happened on the road?",
+    press: null,
+    secretRevealed: false,
+  };
+  const prompt = buildDialogueNarratorPrompt(request);
+  expect(prompt.system).toContain("smoky inn");
+  expect(prompt.system).toContain("Gruff and guarded");
+  expect(prompt.system).toContain("brief gesture or reaction");
+  expect(prompt.system).toContain("Do not reveal an unrevealed secret or invent new facts");
+  expect(prompt.user).toContain("What happened on the road?");
+});
 
 class FakeClient implements StructuredModelClient {
   public readonly name = "fake";

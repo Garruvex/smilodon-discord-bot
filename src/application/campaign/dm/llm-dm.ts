@@ -28,7 +28,7 @@ export const plannerPromptVersion = "planner-5";
 export const narratorPromptVersion = "narrator-5";
 export const flourishPromptVersion = "flourish-5";
 export const tradePromptVersion = "trade-2";
-export const dialoguePromptVersion = "dialogue-3";
+export const dialoguePromptVersion = "dialogue-4";
 export const utilityCastPromptVersion = "utility-cast-2";
 export const hazardPromptVersion = "hazard-2";
 
@@ -429,7 +429,7 @@ export function buildDialogueNarratorPrompt(request: DialogueNarratorRequest): {
   const rules = [
     "## Output rules",
     zh ? "Write up to 350 Traditional Chinese characters (Taiwan usage) in the narration field." : "Write up to 150 words of English in the narration field.",
-    `Speak only as ${request.npc.name}, in their own voice (${request.npc.voice}), replying to the hero below. If the hero makes several statements or asks several questions, address each relevant point naturally in one reply. Do not force a one-sentence answer or invent an extra exchange with the hero. Do not narrate the hero's actions or describe the scene; just the NPC's reply.`,
+    `Play ${request.npc.name} as the particular person established by this adventure, in their own voice (${request.npc.voice}). Let their manner, priorities, and knowledge shape what they say. A brief gesture or reaction is welcome when grounded in their public description or the current scene; do not repeat the scene's atmosphere every reply. If the hero makes several statements or asks several questions, address each relevant point naturally in one reply. Do not invent an extra exchange with the hero, narrate the hero's actions, or make the NPC know facts they have not learned.`,
     grounding,
     "Never mention dice, DCs, or checks.",
   ].join("\n");
