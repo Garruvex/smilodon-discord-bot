@@ -22,7 +22,7 @@ import { texts, type Texts } from "../../../application/i18n/texts.js";
 import { publicAccessPolicy } from "../../../domain/access/access-policy.js";
 import { deriveSnapshotSheet } from "../../../domain/campaign/character/leveling.js";
 import { buildClasses, buildRaces, classTemplates, selectableBuildRaces, suggestedAbilities, type BuildChoices, type BuildProblem } from "../../../domain/campaign/character/character-build.js";
-import { abilityModifier, skillAbilities, type CharacterSheet, type Skill } from "../../../domain/campaign/character/character-sheet.js";
+import { abilityModifier, skillAbilities, type CharacterSheet } from "../../../domain/campaign/character/character-sheet.js";
 import { armorClassFrom, heroTraits, unarmoredModifier } from "../../../domain/campaign/combat/combatant-profile.js";
 import type { Glossary, SealedContent } from "../../../domain/campaign/rules/content-registry.js";
 import { abilities, type Ability } from "../../../domain/campaign/rules/effects.js";
@@ -450,7 +450,7 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
     const t = text.campaign.chars;
     if (draft.class === null) return this.classScreen(text);
     const template = classTemplates[draft.class];
-    const options = template.skillChoices.filter((skill) => !draft.raceSkills.includes(skill)).map((skill) => ({ label: `${text.campaign.skill[skillKey(skill)]} (${skillAbility(skill)})`, value: skill }));
+    const options = template.skillChoices.filter((skill) => !draft.raceSkills.includes(skill)).map((skill) => ({ label: `${text.campaign.skill[skillKey(skill)]} (${text.campaign.ability[skillAbilities[skill]]})`, value: skill }));
     return {
       content: t.bSkills({ count: template.skillCount }),
       components: [select(libraryCustomId("bSkills", encodeDraft(draft)), t.bSkillsPlaceholder, options, template.skillCount, template.skillCount)],
@@ -577,7 +577,3 @@ function select(customId: string, placeholder: string, options: readonly { reado
   );
 }
 
-// "acrobatics" reads "DEX" next to its name.
-function skillAbility(skill: Skill): string {
-  return skillAbilities[skill].toUpperCase();
-}

@@ -128,7 +128,7 @@ describe("My Characters", () => {
     // A rogue picks exactly four skills.
     expect(screen.content).toBe("Choose 4 skills you are good at.");
     expect(screen.menus[0]).toMatchObject({ min: 4, max: 4 });
-    expect(screen.menus[0]?.options.map((option) => option.label)).toContain("Stealth (DEX)");
+    expect(screen.menus[0]?.options.map((option) => option.label)).toContain("Stealth (Dexterity)");
 
     screen = screenOf(await click(handler, screen.menus[0]?.id ?? "", "u-alice", { values: ["stealth", "perception", "acrobatics", "deception"] }));
     expect(screen.content).toContain("Choose 2 of them to be expert in");

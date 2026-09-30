@@ -146,7 +146,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
   let runtime: CampaignRuntime | null = null;
   const bus = new CampaignCommandBus({ unitOfWork, rulesets, clock, onWorkQueued: (): void => runtime?.kick() });
 
-  const messages = new DiscordMessageGateway(client);
+  const messages = new DiscordMessageGateway(client, input.icons);
   const issues = new CampaignIssues({ unitOfWork, clock, notify: organizerNotice(messages) });
   const resources = new DiscordResourceGateway(client);
   const library = new CharacterLibrary({ unitOfWork, clock, content, rulesetVersion: content.version });
