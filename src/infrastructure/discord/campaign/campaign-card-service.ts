@@ -491,7 +491,7 @@ export class CampaignCardService implements CardRefresher {
         if (current.epoch === card.epoch) {
           if (current.renderedHash === hash) {
             if (!verify || await messages.exists(current.channelId, current.messageId)) return current;
-          } else if ((await messages.edit(current.channelId, current.messageId, card.payload)) === "ok") {
+          } else if ((this.options.logger.info({ card: card.key, epoch: card.epoch }, "Editing a campaign card"), await messages.edit(current.channelId, current.messageId, card.payload)) === "ok") {
             return { ...current, renderedHash: hash };
           }
         }

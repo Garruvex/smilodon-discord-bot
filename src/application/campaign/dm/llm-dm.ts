@@ -171,12 +171,17 @@ export function buildPlannerPrompt(request: PlannerRequest): { system: string; u
   };
 }
 
+// How a reply that is not JSON ends, so a log shows whether the model was cut off at its output limit or wrote something else.
+function cutOff(text: string): string {
+  return ` (${text.length} characters, ending ${JSON.stringify(text.slice(-40))})`;
+}
+
 export function parsePlannerOutput(text: string, roundNumber: number): PlannerProposal {
   let json: unknown;
   try {
     json = JSON.parse(text);
   } catch {
-    throw new PlannerOutputError(["The output was not valid JSON."]);
+    throw new PlannerOutputError([`The output was not valid JSON${cutOff(text)}.`]);
   }
   const parsed = plannerOutputSchema.safeParse(json);
   if (!parsed.success) throw new PlannerOutputError(parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`));
@@ -247,7 +252,7 @@ export class LlmCampaignPlanner implements CampaignPlanner {
       ...cacheKeyFor(this.options, "planner"),
       schemaName: "campaign_round_plan",
       jsonSchema: plannerJsonSchema(request),
-      maxOutputTokens: this.options.maxOutputTokens ?? 2_000,
+      maxOutputTokens: this.options.maxOutputTokens ?? 3_000,
       timeoutMs: this.options.timeoutMs ?? 45_000,
     });
     this.options.onCall?.({ call: "planner", model: response.model, promptVersion: plannerPromptVersion, usage: response.usage });
@@ -317,7 +322,7 @@ export function parseNarratorOutput(text: string): string {
   try {
     json = JSON.parse(text);
   } catch {
-    throw new Error("Narrator output was not valid JSON.");
+    throw new Error(`Narrator output was not valid JSON${cutOff(text)}.`);
   }
   const parsed = narratorOutputSchema.safeParse(json);
   if (!parsed.success) throw new Error("Narrator output had no narration.");
@@ -346,7 +351,7 @@ export class LlmCampaignNarrator implements CampaignNarrator {
       ...cacheKeyFor(this.options, "flourish"),
       schemaName: "campaign_combat_narration",
       jsonSchema: narratorJsonSchema,
-      maxOutputTokens: this.options.maxOutputTokens ?? 800,
+      maxOutputTokens: this.options.maxOutputTokens ?? 1_200,
       timeoutMs: this.options.timeoutMs ?? 30_000,
     });
     this.options.onCall?.({ call: "flourish", model: response.model, promptVersion: flourishPromptVersion, usage: response.usage });
@@ -359,7 +364,7 @@ export class LlmCampaignNarrator implements CampaignNarrator {
       ...cacheKeyFor(this.options, "trade"),
       schemaName: "campaign_trade_narration",
       jsonSchema: narratorJsonSchema,
-      maxOutputTokens: this.options.maxOutputTokens ?? 400,
+      maxOutputTokens: this.options.maxOutputTokens ?? 800,
       timeoutMs: this.options.timeoutMs ?? 20_000,
     });
     this.options.onCall?.({ call: "trade", model: response.model, promptVersion: tradePromptVersion, usage: response.usage });
@@ -372,7 +377,7 @@ export class LlmCampaignNarrator implements CampaignNarrator {
       ...cacheKeyFor(this.options, "dialogue"),
       schemaName: "campaign_dialogue_narration",
       jsonSchema: narratorJsonSchema,
-      maxOutputTokens: this.options.maxOutputTokens ?? 500,
+      maxOutputTokens: this.options.maxOutputTokens ?? 800,
       timeoutMs: this.options.timeoutMs ?? 20_000,
     });
     this.options.onCall?.({ call: "dialogue", model: response.model, promptVersion: dialoguePromptVersion, usage: response.usage });
@@ -385,7 +390,7 @@ export class LlmCampaignNarrator implements CampaignNarrator {
       ...cacheKeyFor(this.options, "utilityCast"),
       schemaName: "campaign_utility_cast_narration",
       jsonSchema: narratorJsonSchema,
-      maxOutputTokens: this.options.maxOutputTokens ?? 400,
+      maxOutputTokens: this.options.maxOutputTokens ?? 800,
       timeoutMs: this.options.timeoutMs ?? 20_000,
     });
     this.options.onCall?.({ call: "utilityCast", model: response.model, promptVersion: utilityCastPromptVersion, usage: response.usage });
@@ -398,7 +403,7 @@ export class LlmCampaignNarrator implements CampaignNarrator {
       ...cacheKeyFor(this.options, "hazard"),
       schemaName: "campaign_hazard_narration",
       jsonSchema: narratorJsonSchema,
-      maxOutputTokens: this.options.maxOutputTokens ?? 400,
+      maxOutputTokens: this.options.maxOutputTokens ?? 800,
       timeoutMs: this.options.timeoutMs ?? 20_000,
     });
     this.options.onCall?.({ call: "hazard", model: response.model, promptVersion: hazardPromptVersion, usage: response.usage });
