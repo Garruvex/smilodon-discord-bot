@@ -639,14 +639,19 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     if (verb === "repair") {
       await interaction.deferUpdate();
       notice = repairText(await this.deps.setup.repair(record.key), text);
-    } else if ((verb === "redoPicture" || verb === "illustrate") && this.deps.imagesEnabled === false) {
+    } else if ((verb === "redoPicture" || verb === "illustrate" || verb === "illustrateScene" || verb === "retryPicture") && this.deps.imagesEnabled === false) {
       await interaction.deferUpdate();
       notice = text.campaign.cmd.picturesOff;
+    } else if (verb === "retryPicture") {
+      await interaction.deferUpdate();
+      const failed = Object.entries(record.images ?? {}).find(([, status]) => status === "failed")?.[0];
+      const result = failed === undefined ? undefined : await this.deps.play.redoPicture(record.key, failed, interaction.id);
+      notice = result === undefined ? text.campaign.cmd.nothingFailed : result.kind === "ok" ? text.campaign.cmd.pictureRetried : refusalText(text, result.reason);
     } else if (verb === "redoPicture") {
       await interaction.deferUpdate();
       const result = await this.deps.play.redoPicture(record.key, record.lastPicture ?? "", interaction.id);
       notice = result.kind === "ok" ? text.campaign.cmd.pictureRedone : refusalText(text, result.reason);
-    } else if (isManageVerb(verb) && verb !== "repair" && verb !== "redoPicture") {
+    } else if (isManageVerb(verb) && verb !== "repair" && verb !== "redoPicture" && verb !== "retryPicture") {
       await interaction.deferUpdate();
       const result = await this.deps.play.manage(record.key, verb, interaction.id);
       notice = result.kind === "ok" ? successText(verb, text) : refusalText(text, result.reason);
@@ -726,11 +731,13 @@ export class CampaignHubComponentHandler implements ComponentHandler {
           paused ? verb("resume", t.resume).setStyle(ButtonStyle.Success) : verb("pause", t.pause),
           verb("closeRound", t.closeRound),
           verb("retry", t.retry),
-          ...(pictures ? [verb("redoPicture", t.redoPicture)] : []),
+          ...(pictures ? [verb("redoPicture", record.lastPicture === undefined ? t.redoPicture : cut(t.redoPictureOf({ subject: pictureName(record.lastPicture) })))] : []),
           new ButtonBuilder().setCustomId(hubCustomId("levelOpen", id)).setLabel(t.levelButton).setStyle(ButtonStyle.Secondary),
         ),
         row(verb("shortRest", t.shortRest), verb("longRest", t.longRest), verb("retryFight", t.retryFight), verb("retell", t.retell), ...(pictures ? [verb("illustrate", t.illustrate)] : [])),
       );
+      const failedPictures = Object.values(record.images ?? {}).filter((status) => status === "failed").length;
+      if (pictures) rows.push(row(verb("illustrateScene", t.illustrateScene), ...(failedPictures === 0 ? [] : [verb("retryPicture", t.retryPicture({ count: failedPictures })).setStyle(ButtonStyle.Primary)])));
       const pendingCount = Object.values(record.joinRequests ?? {}).filter((request) => request.status === "requested" && request.expiresAt > Date.now()).length;
       rows.push(row(
         new ButtonBuilder().setCustomId(hubCustomId("inviteOpen", id)).setLabel(record.language === "zh-TW" ? "邀請玩家" : "Invite player").setStyle(ButtonStyle.Secondary),
@@ -750,13 +757,23 @@ export class CampaignHubComponentHandler implements ComponentHandler {
       ),
     );
     const problems = (record.issues ?? []).map((issue) => `⚠️ ${text.campaign.issue.short[issue.code]({ detail: issue.detail })}`);
-    const title = `**${t.title({ name: record.name })}**${status === "" ? "" : ` · ${status}`}`;
+    const painted = Object.values(record.images ?? {});
+    const pictureLine = !pictures || painted.length === 0 ? "" : `\n${t.pictureStatus({ done: painted.filter((s) => s === "done").length, failed: painted.filter((s) => s === "failed").length, skipped: painted.filter((s) => s === "skipped").length })}`;
+    const title = `**${t.title({ name: record.name })}**${status === "" ? "" : ` · ${status}`}${pictureLine}`;
     return { content: problems.length === 0 ? title : `${title}\n${t.needsAttention}\n${problems.join("\n")}`, components: rows };
   }
 
   private refreshHub(guildId: string): void {
     void this.deps.cards.syncHub(guildId).catch(() => undefined);
   }
+}
+
+const cut = (label: string): string => (label.length <= 80 ? label : `${label.slice(0, 79)}…`);
+
+// A picture's subject in words a person reads: "scene:cheese-field" is "cheese field".
+function pictureName(subject: string): string {
+  const round = /^moment:round-(\d+)$/.exec(subject);
+  return round === null ? subject.replace(/^[a-z]+:/, "").replace(/-/g, " ") : `round ${round[1]}`;
 }
 
 function row(...buttons: ButtonBuilder[]): ActionRowBuilder<MessageActionRowComponentBuilder> {
@@ -782,6 +799,10 @@ function successText(verb: ManageVerb, text: Texts): string {
       return t.illustrated;
     case "redoPicture":
       return t.pictureRedone;
+    case "illustrateScene":
+      return t.sceneIllustrated;
+    case "retryPicture":
+      return t.pictureRetried;
     case "shortRest":
     case "longRest":
       return t.rested;

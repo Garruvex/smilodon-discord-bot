@@ -90,7 +90,8 @@ export class ImageWorker {
       for (let lane = queue.shift(); lane !== undefined; lane = queue.shift()) {
         for (const item of lane) {
           try {
-            await this.process(item);
+            // A scene picture asked for by a round waits until that round has been told, so it lands after its narration.
+            if ((await this.process(item)) === "later") continue;
             await this.options.unitOfWork.transaction((tx) => tx.completeOutbox(item.id));
             processed += 1;
           } catch (error) {
@@ -115,13 +116,15 @@ export class ImageWorker {
     return { processed, failed };
   }
 
-  private async process(item: OutboxItem): Promise<void> {
+  private async process(item: OutboxItem): Promise<"later" | void> {
     const asked = item.request;
     if (!isPicture(asked)) return;
     const { unitOfWork, adventures, generator, sink, assets } = this.options;
     const subject = pictureSubject(asked);
     const loaded = await unitOfWork.transaction(async (tx) => ({ stored: await tx.loadRecord(item.key), campaign: await tx.loadCampaign(item.key) }));
     if (loaded.stored === undefined || loaded.campaign === undefined) return;
+    const { state } = loaded.campaign;
+    if (asked.kind === "sceneImage" && asked.roundNumber > 0 && state.lastRoundNumber === asked.roundNumber && state.lastNarratedRound < asked.roundNumber) return "later";
     const { record } = loaded.stored;
     const existing = record.images?.[subject];
     // A subject keeps the picture it has, and a finished game makes no more.
@@ -131,7 +134,8 @@ export class ImageWorker {
     // A redo paints the subject again; anything else keeps the picture it has.
     const forced = asked.kind === "redoImage";
     const request = asked.kind === "redoImage" ? (bible === undefined ? undefined : paintedFor(asked.subject, bible)) : asked;
-    if (request === undefined || (forced && existing === undefined)) return;
+    // A redo of a scene that has no picture yet simply paints it: that is how the organizer asks for the scene they are in.
+    if (request === undefined || (forced && existing === undefined && request.kind !== "sceneImage")) return;
     if (existing === "made") {
       // Made and paid for, but the post failed: post the saved picture; never paint again.
       const saved = await assets.load(item.key, subject);

@@ -70,8 +70,8 @@ async function table(): Promise<{ r: Rig; key: CampaignKey; painter: Painter; po
   return { r, key, painter, posted, worker, failPost, shelf };
 }
 
-const ask = (t: Awaited<ReturnType<typeof table>>, sceneId: string, id = sceneId): Promise<void> =>
-  t.r.store.transaction((tx) => tx.enqueue(t.key, `img-${id}`, { kind: "sceneImage", sceneId, roundNumber: 1 }, 1));
+const ask = (t: Awaited<ReturnType<typeof table>>, sceneId: string, id = sceneId, roundNumber = 0): Promise<void> =>
+  t.r.store.transaction((tx) => tx.enqueue(t.key, `img-${id}`, { kind: "sceneImage", sceneId, roundNumber }, 1));
 const recordOf = async (t: Awaited<ReturnType<typeof table>>): Promise<NonNullable<Awaited<ReturnType<Rig["service"]["get"]>>>["record"]> => {
   const stored = await t.r.service.get(t.key);
   if (stored === undefined) throw new Error("record");
@@ -104,6 +104,39 @@ describe("scene pictures", () => {
     await ask(t, "scene:old-watchtower");
     await t.worker.runOnce();
     expect(t.posted[0]?.caption).toBe(starter.en.bible.scenes.find((scene) => scene.id === "scene:old-watchtower")?.title);
+  });
+
+  it("waits for the round that moved the party to be told, then paints", async () => {
+    const t = await table();
+    const withRound = (lastRoundNumber: number, lastNarratedRound: number): Promise<void> =>
+      t.r.store.transaction(async (tx) => {
+        const stored = await tx.loadCampaign(t.key);
+        if (stored === undefined) throw new Error("campaign");
+        await tx.saveCampaign(t.key, { ...stored.state, lastRoundNumber, lastNarratedRound }, stored.revision);
+      });
+    await withRound(1, 0);
+    await ask(t, chapel, chapel, 1);
+    expect((await t.worker.runOnce()).processed).toBe(0);
+    expect(t.painter.prompts).toHaveLength(0);
+    // Still waiting, not failed or dropped.
+    expect((await recordOf(t)).images?.[chapel]).toBeUndefined();
+    expect(await t.r.store.transaction((tx) => tx.pendingOutbox("sceneImage"))).toHaveLength(1);
+
+    await withRound(1, 1);
+    expect((await t.worker.runOnce()).processed).toBe(1);
+    expect(t.posted).toHaveLength(1);
+  });
+
+  it("paints the scene the organizer asks for even if it has no picture yet, and again if it has one", async () => {
+    const t = await table();
+    const redo = (id: string): Promise<void> => t.r.store.transaction((tx) => tx.enqueue(t.key, id, { kind: "redoImage", subject: chapel }, 1));
+    await redo("r1");
+    await t.worker.runOnce();
+    expect(t.painter.prompts).toHaveLength(1);
+    await redo("r2");
+    await t.worker.runOnce();
+    expect(t.painter.prompts).toHaveLength(2);
+    expect(t.posted).toHaveLength(2);
   });
 
   it("paints each distinct scene without a campaign image cap", async () => {
@@ -192,7 +225,7 @@ describe("scene pictures", () => {
     await ask(t, chapel);
     await ask(t, chapel, "twice");
     await ask(t, "scene:old-watchtower");
-    await t.r.store.transaction((tx) => tx.enqueue(second, "img-second", { kind: "sceneImage", sceneId: chapel, roundNumber: 1 }, 1));
+    await t.r.store.transaction((tx) => tx.enqueue(second, "img-second", { kind: "sceneImage", sceneId: chapel, roundNumber: 0 }, 1));
     await t.worker.runOnce();
     expect(peak).toBe(2);
     // The first campaign: chapel once, then the watchtower. The second: its chapel.

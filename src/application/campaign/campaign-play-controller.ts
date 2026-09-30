@@ -21,7 +21,7 @@ import type { CampaignKey, CampaignUnitOfWork } from "./ports/campaign-store.js"
 export type PlayRefusal = RejectionCode | "notFound" | "notActive" | "noHero" | "noPendingRoll" | "npcNotHere" | "notForSale" | "invalidHazard";
 
 // What a manager can do to a game from the hub.
-export type ManageAction = "pause" | "resume" | "closeRound" | "retry" | "retryFight" | "retell" | "illustrate" | "shortRest" | "longRest";
+export type ManageAction = "pause" | "resume" | "closeRound" | "retry" | "retryFight" | "retell" | "illustrate" | "illustrateScene" | "shortRest" | "longRest";
 
 export type PlayResult = { readonly kind: "ok" } | { readonly kind: "refused"; readonly reason: PlayRefusal };
 
@@ -357,7 +357,10 @@ export class CampaignPlayController {
                   ? { kind: "regenerateNarration", roundNumber: state.lastNarratedRound }
                   : verb === "illustrate"
                     ? { kind: "illustrateMoment", roundNumber: state.lastNarratedRound }
-                    : { kind: "takeRest", rest: verb === "longRest" ? "long" : "short" };
+                    : verb === "illustrateScene"
+                      // The scene the party is in now; a scene with no picture yet is painted, one with a picture is painted again.
+                      ? { kind: "redoPicture", subject: state.sceneId ?? "" }
+                      : { kind: "takeRest", rest: verb === "longRest" ? "long" : "short" };
     return this.perform(key, null, interactionId, command);
   }
 
