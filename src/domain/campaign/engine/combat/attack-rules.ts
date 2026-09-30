@@ -40,7 +40,9 @@ export function planFor(decision: Decision, actor: Combatant, source: Resolution
       // Potent Cantrip: the save that would have avoided a damaging cantrip still takes half.
       const potent = spell.level === 0 && cast.check?.kind === "savingThrow" && cast.onAvoid.length === 0 && actor.traits.some((trait) => trait.kind === "potentCantrip");
       const halved = potent ? { ...cast, onAvoid: cast.onLand.flatMap((effect): Effect[] => (effect.kind === "damage" ? [{ ...effect, halfOfLand: true }] : [])) } : cast;
-      const plan = agonizing === 0 ? halved : { ...halved, onLand: cast.onLand.map((effect): Effect => (effect.kind === "damage" ? { ...effect, amount: plus(effect.amount, agonizing) } : effect)) };
+      const repelled = source.spellId === "spell:eldritch-blast" && actor.traits.some((trait) => trait.kind === "repellingBlast") ? [{ kind: "push", target: "target" } as const] : [];
+      const damaged = repelled.length === 0 ? halved : { ...halved, onLand: [...halved.onLand, ...repelled] };
+      const plan = agonizing === 0 ? damaged : { ...damaged, onLand: damaged.onLand.map((effect): Effect => (effect.kind === "damage" ? { ...effect, amount: plus(effect.amount, agonizing) } : effect)) };
       // Empowered Evocation, Empowered Spell and Elemental Affinity: the modifier on one damage roll.
       const affinity = plan.onLand.some((effect) => effect.kind === "damage" && actor.traits.some((trait) => trait.kind === "elementalAffinity" && trait.damageType === effect.damageType));
       const empowered = (spell.school === "evocation" && actor.traits.some((trait) => trait.kind === "empoweredEvocation")) || affinity || source.metamagic === "empowered" ? (actor.spellcasting?.modifier ?? 0) : 0;

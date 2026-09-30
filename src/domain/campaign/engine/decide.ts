@@ -13,6 +13,7 @@ import { handleDialogueCommand, recordPressRoll } from "./dialogue.js";
 import { handleShopCommand, recordHaggleRoll } from "./shop.js";
 import { handleTravelCommand, recordHazardRoll } from "./travel.js";
 import { handleHealingMagicCommand, recordHealingRoll } from "./healing-magic.js";
+import { chooseWarlockOptions } from "./warlock-choices.js";
 import { handleCompanionMagicCommand } from "./companion-magic.js";
 import { handleUtilityMagicCommand } from "./utility-magic.js";
 import { Decision, type DecideResult, type EngineContext } from "./decision.js";
@@ -147,6 +148,8 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
     }
     case "chooseAsi":
       return chooseAsi(decision, command.characterId, command.allocation);
+    case "chooseWarlockOptions":
+      return chooseWarlockOptions(decision, command.characterId, command.invocations, command.pactBoon);
     case "chooseFightingStyle":
       return chooseFightingStyle(decision, command.characterId, command.styleId);
     case "raiseLevel":

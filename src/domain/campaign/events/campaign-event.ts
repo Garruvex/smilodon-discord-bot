@@ -1,5 +1,6 @@
 import type { CharacterId, CheckId, Instant, RollId, UserId } from "../core/ids.js";
 import type { Companion } from "../companions/companion-roster.js";
+import type { InvocationId, PactBoonId } from "../character/warlock-choices.js";
 import type { FightingStyleId } from "../character/fighting-styles.js";
 import type { CombatEvent } from "../combat/combat-events.js";
 import type { HeroStatus } from "../combat/combatant-profile.js";
@@ -162,6 +163,7 @@ export type CampaignEvent =
   // ability), and the hero's pendingAsi count dropped by one.
   | { readonly kind: "abilityScoreImproved"; readonly characterId: CharacterId; readonly abilityScores: Readonly<Record<Ability, number>>; readonly pendingAsi: number }
   // The hero swapped their Fighting Style (engine/members.ts's chooseFightingStyle).
+  | { readonly kind: "warlockOptionsChosen"; readonly characterId: CharacterId; readonly invocations?: readonly InvocationId[]; readonly pactBoon?: PactBoonId }
   | { readonly kind: "fightingStyleChosen"; readonly characterId: CharacterId; readonly styleId: FightingStyleId }
   // A haggle roll was requested; the pending state a settled roll (or a
   // pause-and-resume re-arm, if one is ever added) needs to finish it.

@@ -629,6 +629,13 @@ export const campaignEn = {
   "campaign.reply.styleChosen": "Fighting Style: {style}.",
   "campaign.level.styleNow": "**Fighting Style:** {style}",
   "campaign.level.stylePlaceholder": "Change your Fighting Style",
+  "campaign.reply.invocationsChosen": "Eldritch Invocations: {names}.",
+  "campaign.reply.boonChosen": "Pact Boon: {name}.",
+  "campaign.level.none": "none",
+  "campaign.level.invocationsNow": "**Eldritch Invocations** ({slots} at your level): {names}",
+  "campaign.level.invocationsPlaceholder": "Choose up to {slots} Eldritch Invocations",
+  "campaign.level.boonNow": "**Pact Boon:** {name}",
+  "campaign.level.boonPlaceholder": "Choose your Pact Boon",
   "campaign.reply.asiApplied": "Ability score improved: {changes}.",
 
   "campaign.pack.placeholder": "Pack and stash",

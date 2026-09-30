@@ -628,6 +628,13 @@ export const campaignZhTW = {
   "campaign.reply.styleChosen": "戰鬥風格：{style}。",
   "campaign.level.styleNow": "**戰鬥風格：**{style}",
   "campaign.level.stylePlaceholder": "更換戰鬥風格",
+  "campaign.reply.invocationsChosen": "邪術祕法：{names}。",
+  "campaign.reply.boonChosen": "契約恩賜：{name}。",
+  "campaign.level.none": "無",
+  "campaign.level.invocationsNow": "**邪術祕法**（目前可選 {slots} 個）：{names}",
+  "campaign.level.invocationsPlaceholder": "選擇最多 {slots} 個邪術祕法",
+  "campaign.level.boonNow": "**契約恩賜：**{name}",
+  "campaign.level.boonPlaceholder": "選擇契約恩賜",
   "campaign.reply.asiApplied": "能力值已提升：{changes}",
 
   "campaign.pack.placeholder": "背包與隊伍儲藏",

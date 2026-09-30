@@ -260,6 +260,16 @@ export class CampaignPlayController {
   }
 
   // Swaps the hero's Fighting Style for another.
+  // A warlock's Eldritch Invocations (a list) or Pact Boon, swapped between fights.
+  public chooseWarlockOptions(key: CampaignKey, userId: UserId, choice: { readonly invocations?: readonly string[]; readonly pactBoon?: string }, interactionId: string): Promise<PlayResult> {
+    return this.asHero(key, userId, interactionId, (characterId) => ({
+      kind: "chooseWarlockOptions",
+      characterId,
+      ...(choice.invocations === undefined ? {} : { invocations: choice.invocations }),
+      ...(choice.pactBoon === undefined ? {} : { pactBoon: choice.pactBoon }),
+    }));
+  }
+
   public chooseFightingStyle(key: CampaignKey, userId: UserId, styleId: string, interactionId: string): Promise<PlayResult> {
     return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "chooseFightingStyle", characterId, styleId }));
   }

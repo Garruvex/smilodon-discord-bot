@@ -72,6 +72,8 @@ export const campaignActions = [
   "levelOpen",
   "asiPick",
   "stylePick",
+  "invocationPick",
+  "boonPick",
   "levelClass",
   "levelSkill",
   // Between fights (the Explore button): people in the scene, asking, pressing,

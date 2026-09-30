@@ -9,6 +9,7 @@ import type { Glossary } from "../../../domain/campaign/rules/content-registry.j
 import { campaignCustomId } from "./campaign-ids.js";
 import { classLabel, skillKey } from "./text-keys.js";
 import { fightingStyles, heldFightingStyle } from "../../../domain/campaign/character/fighting-styles.js";
+import { heldInvocations, heldPactBoon, invocationOptions, invocationSlots, pactBoonLevel, pactBoons } from "../../../domain/campaign/character/warlock-choices.js";
 
 export interface LevelForm {
   readonly content: string;
@@ -110,6 +111,35 @@ export function renderLevelForm(input: { readonly campaignId: string; readonly s
           .addOptions(fightingStyles.map((id) => ({ label: (glossary.names[id] ?? id).slice(0, 100), value: id, default: id === style }))),
       ),
     );
+  }
+  // A warlock's invocations and, from the third level, their Pact Boon.
+  const warlockLevel = sheet.classLevels?.warlock ?? (sheet.className === "warlock" ? sheet.level : 0);
+  if (warlockLevel >= 2) {
+    const held = heldInvocations(sheet.features);
+    const slots = invocationSlots(warlockLevel);
+    lines.push(t.level.invocationsNow({ names: held.length === 0 ? t.level.none : held.map((id) => glossary.names[id] ?? id).join(", "), slots }));
+    components.push(
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId(campaignCustomId("invocationPick", campaignId))
+          .setPlaceholder(t.level.invocationsPlaceholder({ slots }))
+          .setMinValues(0)
+          .setMaxValues(Math.min(slots, invocationOptions.length))
+          .addOptions(invocationOptions.map((id) => ({ label: (glossary.names[id] ?? id).slice(0, 100), value: id, default: held.includes(id) }))),
+      ),
+    );
+    if (warlockLevel >= pactBoonLevel) {
+      const boon = heldPactBoon(sheet.features);
+      lines.push(t.level.boonNow({ name: boon === null ? t.level.none : (glossary.names[boon] ?? boon) }));
+      components.push(
+        new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId(campaignCustomId("boonPick", campaignId))
+            .setPlaceholder(t.level.boonPlaceholder)
+            .addOptions(pactBoons.map((id) => ({ label: (glossary.names[id] ?? id).slice(0, 100), value: id, default: id === boon }))),
+        ),
+      );
+    }
   }
   if (components.length > 0) lines.push("", t.level.hint);
   return { content: lines.join("\n"), components };

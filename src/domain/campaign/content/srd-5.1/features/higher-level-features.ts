@@ -196,6 +196,28 @@ export const oathOfDevotion = defineFeature({
 export const hunter = defineFeature({ id: "feature:hunter", source, traits: [{ kind: "colossusSlayer" }], action: null });
 export const metamagic = narrative("metamagic");
 export const pactBoon = narrative("pact-boon");
+// The invocations and pact boons a warlock may choose (character/warlock-choices.ts).
+export const repellingBlast = defineFeature({ id: "feature:repelling-blast", source, traits: [{ kind: "repellingBlast" }], action: null });
+export const devilsSight = defineFeature({ id: "feature:devils-sight", source, traits: [{ kind: "darkvision", feet: 120 }], action: null });
+export const thiefOfFiveFates = defineFeature({ id: "feature:thief-of-five-fates", source, traits: [{ kind: "featureSpell", spell: "spell:bane", ability: "cha", uses: 1, recharge: "longRest" }], action: null });
+export const eldritchSight = narrative("eldritch-sight");
+export const beastSpeech = narrative("beast-speech");
+export const maskOfManyFaces = narrative("mask-of-many-faces");
+export const mistyVisions = narrative("misty-visions");
+// The chain's familiar is Find Familiar as a ritual (kept between fights, companions/companion-roster.ts); the tome's book holds three cantrips
+// from any list; the blade's weapon is narrative here, the warlock fights with the weapons they carry.
+export const pactOfTheChain = defineFeature({ id: "feature:pact-of-the-chain", source, traits: [{ kind: "featureSpell", spell: "spell:find-familiar", ability: "cha", uses: null, recharge: "longRest" }], action: null });
+export const pactOfTheBlade = narrative("pact-of-the-blade");
+export const pactOfTheTome = defineFeature({
+  id: "feature:pact-of-the-tome",
+  source,
+  traits: [
+    { kind: "featureSpell", spell: "spell:guidance", ability: "cha", uses: null, recharge: "longRest" },
+    { kind: "featureSpell", spell: "spell:sacred-flame", ability: "cha", uses: null, recharge: "longRest" },
+    { kind: "featureSpell", spell: "spell:shocking-grasp", ability: "cha", uses: null, recharge: "longRest" },
+  ],
+  action: null,
+});
 // School of Evocation (Wizard 2): narrative. Sculpt Spells needs
 // area-of-effect spells to matter, and none are modeled yet.
 export const schoolOfEvocation = narrative("school-of-evocation");
@@ -209,6 +231,16 @@ export const srd51HigherLevelFeatures: readonly FeatureDefinition[] = [
   resumeReactions,
   reliableTalent,
   agonizingBlast,
+  repellingBlast,
+  devilsSight,
+  thiefOfFiveFates,
+  eldritchSight,
+  beastSpeech,
+  maskOfManyFaces,
+  mistyVisions,
+  pactOfTheChain,
+  pactOfTheBlade,
+  pactOfTheTome,
   armorOfShadows,
   fiendishVigor,
   quickenedSpell,

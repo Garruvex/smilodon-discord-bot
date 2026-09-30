@@ -6,7 +6,7 @@ import type { ContentId } from "../../../domain/campaign/rules/content-id.js";
 import { lootGold, type HouseRules } from "../../../domain/campaign/rules/house-rules.js";
 import { abilityModifier } from "../../../domain/campaign/character/character-sheet.js";
 import { defaultHeroResources } from "../../../domain/campaign/character/hero-status.js";
-import { spellbookOf } from "../../../domain/campaign/character/spell-access.js";
+import { knownSpells, spellbookOf } from "../../../domain/campaign/character/spell-access.js";
 import { companionEffectOf } from "../../../domain/campaign/engine/companion-magic.js";
 import { healingEffectOf } from "../../../domain/campaign/engine/healing-magic.js";
 import { castableSlotLevels, mergeSlots } from "../../../domain/campaign/magic/spell-rules.js";
@@ -96,7 +96,7 @@ function exploreNpc(state: CampaignState, npc: BibleNpc): ExploreNpc {
 // A spell cast outside a fight must be a cantrip or a ritual the hero knows.
 export function castableSpells(state: CampaignState, characterId: CharacterId, content: SealedContent, glossary: Glossary): readonly ExploreSpell[] {
   const sheet = state.characters[characterId];
-  const known = sheet === undefined ? [] : spellbookOf(sheet, content);
+  const known = sheet === undefined ? [] : knownSpells(sheet, content);
   return known.flatMap((id) => {
     const spell = content.find(id);
     if (spell?.kind !== "spell" || (spell.level !== 0 && spell.ritual !== true)) return [];
@@ -126,7 +126,7 @@ export function conjuringSpells(state: CampaignState, characterId: CharacterId, 
   if (sheet?.spellcasting === null || sheet === undefined) return [];
   const resources = state.heroStatus[characterId]?.resources ?? defaultHeroResources(sheet, content);
   const slots = mergeSlots(resources.spellSlots, resources.pactSlots ?? {});
-  return spellbookOf(sheet, content).flatMap((id) => {
+  return knownSpells(sheet, content).flatMap((id) => {
     const spell = content.find(id);
     if (spell?.kind !== "spell" || spell.ritual === true || companionEffectOf(spell) === undefined) return [];
     const levels = castableSlotLevels(spell, slots).map((level) => ({ level, left: slots[level] ?? 0 }));

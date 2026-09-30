@@ -179,6 +179,8 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "ruleValue":
     case "asiPick":
     case "stylePick":
+    case "invocationPick":
+    case "boonPick":
     case "levelClass":
     case "levelSkill":
     case "useSaved":
@@ -260,6 +262,7 @@ export class CampaignComponentHandler implements ComponentHandler {
       else if (parsed.action === "proxy") await this.changeProxy(interaction, record, text);
       else if (parsed.action === "asiPick") await this.chooseAsi(interaction, record, text);
       else if (parsed.action === "stylePick") await this.chooseStyle(interaction, record, text);
+      else if (parsed.action === "invocationPick" || parsed.action === "boonPick") await this.chooseWarlock(interaction, record, text, parsed.action);
       else if (parsed.action === "levelClass" || parsed.action === "levelSkill") await this.chooseClass(interaction, record, text, parsed.action, parsed.argument);
       else if (isExploreAction(parsed.action)) {
         await interaction.deferUpdate();
@@ -977,6 +980,22 @@ export class CampaignComponentHandler implements ComponentHandler {
     }
     const glossary = this.deps.glossaries[record.language];
     const note = text.campaign.reply.styleChosen({ style: glossary?.names[style] ?? style });
+    const form = await this.levelForm(record, text, interaction.user.id, note);
+    if (form === null) await this.showHeroAgain(interaction, record, text, note);
+    else await interaction.editReply(form);
+  }
+
+  // A warlock's invocations (a list of them) or Pact Boon (one), saved as picked; the form is drawn again.
+  private async chooseWarlock(interaction: StringSelectMenuInteraction, record: CampaignRecord, text: Texts, action: "invocationPick" | "boonPick"): Promise<void> {
+    await interaction.deferUpdate();
+    const result = await this.deps.play.chooseWarlockOptions(record.key, interaction.user.id, action === "invocationPick" ? { invocations: interaction.values } : { pactBoon: interaction.values[0] ?? "" }, interaction.id);
+    if (result.kind !== "ok") {
+      await interaction.editReply({ content: refusalText(text, result.reason), components: [] });
+      return;
+    }
+    const glossary = this.deps.glossaries[record.language];
+    const names = interaction.values.map((id) => glossary?.names[id] ?? id).join(", ");
+    const note = action === "invocationPick" ? text.campaign.reply.invocationsChosen({ names: names.length > 0 ? names : text.campaign.level.none }) : text.campaign.reply.boonChosen({ name: names });
     const form = await this.levelForm(record, text, interaction.user.id, note);
     if (form === null) await this.showHeroAgain(interaction, record, text, note);
     else await interaction.editReply(form);

@@ -21,7 +21,7 @@ const rules: readonly (readonly [RegExp, System])[] = [
   [/^engine\/((utility|healing|companion)-magic|outside-combat)\.ts$/, "Magic"],
   [/^companions\//, "Character"],
   [/^character\//, "Character"],
-  [/^engine\/(rest|level-up)\.ts$/, "Character"],
+  [/^engine\/(rest|level-up|warlock-choices)\.ts$/, "Character"],
   [/^engine\/inventory\.ts$/, "Inventory"],
   [/^engine\/potions\.ts$/, "Inventory"],
   [/^engine\/shop\.ts$/, "Inventory"],

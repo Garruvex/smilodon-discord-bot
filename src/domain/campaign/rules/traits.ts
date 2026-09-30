@@ -96,6 +96,8 @@ export type Trait =
   | { readonly kind: "darkvision"; readonly feet: number }
   // Warlock invocation Agonizing Blast: the spellcasting modifier is added to each beam of Eldritch Blast.
   | { readonly kind: "agonizingBlast" }
+  // Repelling Blast: a creature Eldritch Blast hits is pushed away.
+  | { readonly kind: "repellingBlast" }
   // Fighting Style (Archery): a bonus to attack rolls with ranged weapons.
   | { readonly kind: "rangedAttackBonus"; readonly amount: number }
   // Fighting Style (Defense): a bonus to armor class while wearing armor.

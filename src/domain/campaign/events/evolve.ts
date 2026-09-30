@@ -1,6 +1,7 @@
 import { afterFight, afterRest, withSummoned, withoutCompanions } from "../companions/companion-roster.js";
 import { assertNever } from "../core/assert-never.js";
 import { swapFightingStyle } from "../character/fighting-styles.js";
+import { withWarlockChoices } from "../character/warlock-choices.js";
 import type { ContentId } from "../rules/content-id.js";
 import type { CharacterId, UserId } from "../core/ids.js";
 import type { CampaignState, CheckState, ItemOffer, MemberState, RoundState, Submission } from "../state/campaign-state.js";
@@ -347,6 +348,11 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       const sheet = state.characters[event.characterId];
       if (sheet === undefined) return state;
       return { ...state, characters: { ...state.characters, [sheet.id]: { ...sheet, abilityScores: event.abilityScores, pendingAsi: event.pendingAsi } } };
+    }
+    case "warlockOptionsChosen": {
+      const sheet = state.characters[event.characterId];
+      if (sheet === undefined) return state;
+      return { ...state, characters: { ...state.characters, [sheet.id]: { ...sheet, features: withWarlockChoices(sheet.features, event.invocations, event.pactBoon) } } };
     }
     case "fightingStyleChosen": {
       const sheet = state.characters[event.characterId];

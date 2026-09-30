@@ -1,4 +1,4 @@
-import type { ClassDefinition } from "../rules/content-definitions.js";
+import { traitsOf, type ClassDefinition } from "../rules/content-definitions.js";
 import type { SealedContent } from "../rules/content-registry.js";
 import type { ContentId } from "../rules/content-id.js";
 import type { CharacterSheet } from "./character-sheet.js";
@@ -22,6 +22,15 @@ export function spellbookOf(sheet: Pick<CharacterSheet, "spellcasting" | "classN
     }
   }
   return [...book];
+}
+
+// Everything the hero can cast outside a fight: the spellbook, and the spells their features give (a pact boon, an invocation).
+export function knownSpells(sheet: Pick<CharacterSheet, "spellcasting" | "className" | "level" | "classLevels" | "features">, content: SealedContent): readonly ContentId<"spell">[] {
+  const granted = sheet.features.flatMap((id) => {
+    const definition = content.find(id);
+    return (definition === undefined ? [] : traitsOf(definition)).flatMap((trait) => (trait.kind === "featureSpell" ? [trait.spell] : []));
+  });
+  return [...new Set([...spellbookOf(sheet, content), ...granted])];
 }
 
 // Cantrips always; leveled spells up to the highest slot the class alone grants at this level.

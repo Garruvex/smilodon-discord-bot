@@ -86,6 +86,8 @@ export type CampaignCommand =
   | { readonly kind: "chooseAsi"; readonly characterId: CharacterId; readonly allocation: { readonly plusTwo: Ability } | { readonly plusOne: readonly [Ability, Ability] } }
   // Swaps the hero's Fighting Style for another (character/fighting-styles.ts).
   | { readonly kind: "chooseFightingStyle"; readonly characterId: CharacterId; readonly styleId: string }
+  // A warlock's Eldritch Invocations and Pact Boon (engine/warlock-choices.ts); a list or boon left out stays as it is.
+  | { readonly kind: "chooseWarlockOptions"; readonly characterId: CharacterId; readonly invocations?: readonly string[]; readonly pactBoon?: string }
   // The organizer raises every living hero to this level (milestone
   // leveling, or a reward at an experience table). Not during a fight.
   | { readonly kind: "raiseLevel"; readonly level: number }

@@ -1,6 +1,6 @@
 import type { CompanionMagicCommand } from "../commands/campaign-command.js";
 import { companionsOf, type Companion } from "../companions/companion-roster.js";
-import { spellbookOf } from "../character/spell-access.js";
+import { knownSpells } from "../character/spell-access.js";
 import { defaultHeroResources } from "../character/hero-status.js";
 import type { CharacterId } from "../core/ids.js";
 import { mergeSlots, slotUnavailable, spendSlot } from "../magic/spell-rules.js";
@@ -47,7 +47,7 @@ function summonCompanion(decision: Decision, casterId: CharacterId, spellId: Con
   const { state, ctx } = decision;
   const caster = state.characters[casterId];
   const spell = ctx.rules.content.find(spellId);
-  if (caster === undefined || spell?.kind !== "spell" || !spellbookOf(caster, ctx.rules.content).includes(spellId)) return { code: "unknownSpell" };
+  if (caster === undefined || spell?.kind !== "spell" || !knownSpells(caster, ctx.rules.content).includes(spellId)) return { code: "unknownSpell" };
   const summon = companionEffectOf(spell);
   if (summon === undefined) return { code: "unknownSpell" };
 

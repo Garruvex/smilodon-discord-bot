@@ -615,6 +615,30 @@ describe("an Ability Score Improvement owed on My Hero", () => {
     expect(contentOf(owed)).toContain("1 Ability Score Improvement");
   });
 
+  it("offers a warlock their invocations and Pact Boon, and saves what is picked", async () => {
+    const t = await harness();
+    await started(t);
+    const stored = await t.r.store.transaction((tx) => tx.loadCampaign(t.key));
+    const heroId = stored?.state.members["u-org"]?.characterId ?? "";
+    const sheet = stored?.state.characters[heroId];
+    if (stored === undefined || sheet === undefined) throw new Error("hero");
+    await t.r.store.transaction(async (tx) => {
+      const latest = await tx.loadCampaign(t.key);
+      if (latest === undefined) throw new Error("state");
+      await tx.saveCampaign(t.key, { ...latest.state, characters: { ...latest.state.characters, [heroId]: { ...sheet, className: "warlock", level: 3, classLevels: { warlock: 3 } } } }, latest.revision);
+    });
+    const form = await t.press("levelOpen", "u-org");
+    expect(menuIds(form).some((id) => id.startsWith("dnd:invocationPick:"))).toBe(true);
+    expect(menuIds(form).some((id) => id.startsWith("dnd:boonPick:"))).toBe(true);
+    const picked = fakeInteraction({ customId: `dnd:invocationPick:${t.key.campaignId}`, userId: "u-org", values: ["feature:devils-sight", "feature:repelling-blast"], kind: "select" });
+    await t.handler.execute({ interaction: picked.interaction, logger: quiet as never });
+    expect(contentOf(picked.sent)).toContain("Eldritch Invocations: Devil's Sight, Repelling Blast.");
+    const boon = fakeInteraction({ customId: `dnd:boonPick:${t.key.campaignId}`, userId: "u-org", values: ["feature:pact-of-the-tome"], kind: "select" });
+    await t.handler.execute({ interaction: boon.interaction, logger: quiet as never });
+    const after = await t.r.store.transaction((tx) => tx.loadCampaign(t.key));
+    expect(after?.state.characters[heroId]?.features).toEqual(expect.arrayContaining(["feature:devils-sight", "feature:repelling-blast", "feature:pact-of-the-tome"]));
+  });
+
   it("shows how far the hero is from the next level, and says so plainly at a milestone table", async () => {
     const t = await harness();
     await started(t);
