@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import type { AdventureDocument } from "../../../src/application/campaign/adventures/adventure-document.js";
+import { UploadedAdventureLibrary } from "../../../src/application/campaign/adventures/uploaded-adventure-library.js";
 import { StaticAdventureLibrary } from "../../../src/application/campaign/adventures/static-adventure-library.js";
 import { CampaignCommandBus } from "../../../src/application/campaign/campaign-command-bus.js";
 import {
@@ -246,5 +248,56 @@ describe("joining an ongoing campaign", () => {
     expect((await service.get(key))?.record.joinRequests?.["u-b"]?.status).toBe("approved");
     value(await service.inviteOngoing(key, "u-org", "u-c", "They arrive later."));
     expect(refusal(await service.inviteOngoing(key, "u-org", "u-d", "They arrive later."))).toBe("gameFull");
+  });
+});
+
+describe("an adventure that changes after the lobby opened", () => {
+  const renamed = (document: AdventureDocument, version: string): AdventureDocument => ({
+    ...document,
+    bible: { ...document.bible, id: "uploaded-tale", version },
+    heroes: document.heroes.map((hero) => ({ ...hero, id: `${hero.id}-v${version}` })),
+  });
+
+  function uploadedSetup(): { service: CampaignLobbyService; library: UploadedAdventureLibrary; store: InMemoryCampaignStore } {
+    const store = new InMemoryCampaignStore();
+    const content = ruleset().content;
+    const clock = new ManualClock(1_000);
+    const library = new UploadedAdventureLibrary(new StaticAdventureLibrary([{ id: starterAdventureId, editions: starter }]));
+    library.add(guildId, renamed(starter.en, "1"));
+    const service = new CampaignLobbyService({
+      unitOfWork: store,
+      bus: new CampaignCommandBus({ unitOfWork: store, rulesets: new RulesetCatalog([content]), clock }),
+      adventures: library,
+      clock,
+      ruleset: { rulesetId: content.rulesetId, rulesetVersion: content.version, houseRules: {} },
+      newId: (): string => "camp-1",
+    });
+    return { service, library, store };
+  }
+
+  it("keeps the heroes and story of the version the lobby was opened with", async () => {
+    const { service, library, store } = uploadedSetup();
+    const { key } = value(await service.create(input({ adventureId: "uploaded-tale" })));
+    library.add(guildId, renamed(starter.en, "2"));
+    value(await service.join(key, "u-org"));
+
+    const v1Hero = `${heroIds[0]}-v1`;
+    expect(refusal(await service.chooseHero(key, "u-org", `${heroIds[0]}-v2`))).toBe("unknownHero");
+    value(await service.chooseHero(key, "u-org", v1Hero));
+    const started = value(await service.start(key, "u-org"));
+
+    const stored = await store.transaction((tx) => tx.loadCampaign(key));
+    expect(Object.keys(stored?.state.characters ?? {})).toEqual([v1Hero]);
+    expect(started.record.adventure).toMatchObject({ adventureId: "uploaded-tale", version: "1" });
+  });
+
+  it("keeps one language's earlier edition available when a newer version has only another language", () => {
+    const { library } = uploadedSetup();
+    library.add(guildId, renamed(starter["zh-TW"], "1"));
+    library.add(guildId, renamed(starter.en, "2"));
+    expect(library.document("uploaded-tale", "zh-TW")?.bible.version).toBe("1");
+    expect(library.document("uploaded-tale", "en")?.bible.version).toBe("2");
+    expect([...(library.list().find((entry) => entry.id === "uploaded-tale")?.languages ?? [])].sort()).toEqual(["en", "zh-TW"]);
+    expect(library.documentAt("uploaded-tale", "2", "zh-TW")).toBeUndefined();
   });
 });

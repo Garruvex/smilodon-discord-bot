@@ -238,7 +238,7 @@ export class CampaignLobbyService {
         if (checkCompatibility(snapshot, content).length > 0) return refused("savedCharacterProblem");
         sheet = { ...instantiateHero(snapshot, record.houseRules), ownerUserId: userId };
       } else {
-        const preset = this.options.adventures.document(record.adventure.adventureId, record.language)?.heroes.find((hero) => hero.id === heroRef);
+        const preset = this.options.adventures.documentAt(record.adventure.adventureId, record.adventure.version, record.language)?.heroes.find((hero) => hero.id === heroRef);
         if (preset === undefined) return refused("unknownHero");
         if (Object.values(state.characters).some((hero) => !isFallen(state, hero.id) && (hero.id === preset.id || hero.id.startsWith(`${preset.id}-`)))) return refused("heroTaken");
         const { class: className, ...rest } = preset;
@@ -304,7 +304,7 @@ export class CampaignLobbyService {
 
   public chooseHero(key: CampaignKey, userId: UserId, heroId: string): Promise<ServiceResult<CampaignRecord>> {
     return this.change(key, (lobby, record) => {
-      const heroes = this.options.adventures.document(record.adventure.adventureId, record.language)?.heroes ?? [];
+      const heroes = this.options.adventures.documentAt(record.adventure.adventureId, record.adventure.version, record.language)?.heroes ?? [];
       return lobbyRules.chooseHero(lobby, userId, heroId, heroes.map((hero) => hero.id));
     });
   }
@@ -432,7 +432,7 @@ export class CampaignLobbyService {
         if (record.lifecycle !== "lobby") return refused("notLobby");
         const result = lobbyRules.start(record.lobby, actorId, record.organizerId);
         if (!result.ok) return refused(result.reason);
-        const document = this.options.adventures.document(record.adventure.adventureId, record.language);
+        const document = this.options.adventures.documentAt(record.adventure.adventureId, record.adventure.version, record.language);
         if (document === undefined) return refused("unknownAdventure");
         const seats: Seat[] = [];
         for (const member of lobbyRules.activeMembers(result.lobby)) {

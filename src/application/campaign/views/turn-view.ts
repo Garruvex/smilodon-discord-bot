@@ -1,7 +1,6 @@
 import type { CharacterId } from "../../../domain/campaign/core/ids.js";
 import { availableSlots, type Combatant, type TurnBudget } from "../../../domain/campaign/combat/combat-state.js";
-import { turnOptions } from "../../../domain/campaign/combat/turn-rules.js";
-import { spellMaxTargets } from "../../../domain/campaign/magic/spell-rules.js";
+import { spellTargetLimit, turnOptions } from "../../../domain/campaign/combat/turn-rules.js";
 import { formatDiceExpression } from "../../../domain/campaign/dice/dice-expression.js";
 import type { SealedContent } from "../../../domain/campaign/rules/content-registry.js";
 import type { HouseRules } from "../../../domain/campaign/rules/house-rules.js";
@@ -40,6 +39,8 @@ export interface SpellChoice {
   readonly slotsLeft: number;
   readonly bonusAction: boolean;
   readonly maxTargets: number;
+  // Cast by nature or from item charges: no slot is spent.
+  readonly innate?: boolean;
   readonly targets: readonly TargetView[];
 }
 
@@ -120,13 +121,14 @@ export function buildTurnView(
   // together, the same total availableSlots() already used to decide which
   // levels are offered at all.
   const slots = availableSlots(hero.resources);
-  const spells: SpellChoice[] = options.spells.flatMap(({ spell, slotLevels, bonusAction, targetIds }) =>
+  const spells: SpellChoice[] = options.spells.flatMap(({ spell, slotLevels, bonusAction, targetIds, metamagic, innate }) =>
     slotLevels.map((slotLevel) => ({
       spellId: spell.id,
       slotLevel,
-      slotsLeft: slotLevel === 0 ? 0 : (slots[slotLevel] ?? 0),
+      slotsLeft: slotLevel === 0 || innate ? 0 : (slots[slotLevel] ?? 0),
       bonusAction,
-      maxTargets: spellMaxTargets(spell, slotLevel),
+      maxTargets: spellTargetLimit(spell, slotLevel, metamagic),
+      innate,
       targets: targetIds.flatMap(targetView),
     })),
   );

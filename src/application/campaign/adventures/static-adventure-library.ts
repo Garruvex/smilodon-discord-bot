@@ -36,6 +36,11 @@ export class StaticAdventureLibrary implements AdventureLibrary {
     return this.entries.get(adventureId)?.editions[language];
   }
 
+  public documentAt(adventureId: string, version: string, language: CampaignLanguage): AdventureDocument | undefined {
+    const document = this.document(adventureId, language);
+    return document?.bible.version === version ? document : undefined;
+  }
+
   public find(adventureId: string, version: string, language: CampaignLanguage): AdventureDocument["bible"] | undefined {
     const bible = this.document(adventureId, language)?.bible;
     return bible?.version === version ? bible : undefined;

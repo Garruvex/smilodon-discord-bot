@@ -7,7 +7,7 @@ import type { MetamagicOption } from "../rules/modifiers.js";
 import type { SealedContent } from "../rules/content-registry.js";
 import { healingPotionCost, type HouseRules } from "../rules/house-rules.js";
 import { mayWildShapeInto, wildShapeFeature, wildShapeUses } from "../rules/wild-shape-rules.js";
-import { canAct, conditionLookup, hasCondition, isFlying, shapechangeOf, speedOf } from "../effects/effect-queries.js";
+import { armedMetamagic, canAct, conditionLookup, hasCondition, isFlying, shapechangeOf, speedOf } from "../effects/effect-queries.js";
 import { castableSlotLevels, slotUnavailable, spellMaxTargets, usePoolOf } from "../magic/spell-rules.js";
 import { areEngaged, availableSlots, currentCombatant, engagedWith, isPresent, type AttackOption, type Combatant, type EncounterState } from "./combat-state.js";
 import { isWorn } from "./combatant-profile.js";
@@ -102,6 +102,18 @@ export function spellSlotProblem(caster: Combatant, spell: SpellDefinition, slot
   return slotUnavailable(spell, availableSlots(caster.resources), slotLevel) ? { code: "noSpellSlot", slotLevel } : null;
 }
 
+// Quickened Spell: a spell that takes an action is cast as a bonus action instead.
+function castAsBonusAction(spell: SpellDefinition, metamagic: MetamagicOption | null): boolean {
+  return spell.castingTime === "bonus-action" || (metamagic === "quickened" && spell.castingTime === "action");
+}
+
+// How many creatures a spell may name at this level: Twinned Spell adds a second to a spell that targets only one and does not grow with the slot.
+export function spellTargetLimit(spell: SpellDefinition, slotLevel: number, metamagic: MetamagicOption | null): number {
+  if (spell.targeting.relation === "self") return spell.targeting.count;
+  const twin = metamagic === "twinned" && spell.targeting.count === 1 && (spell.targeting.countPerHigherSlot ?? 0) === 0 ? 1 : 0;
+  return spellMaxTargets(spell, slotLevel) + twin;
+}
+
 export function spellProblem(
   encounter: EncounterState,
   content: SealedContent,
@@ -128,8 +140,7 @@ export function spellProblem(
   }
   // A reaction spell is cast in response to something, never on the caster's turn.
   if (spell.castingTime === "reaction" || spell.castingTime === "long") return refuse({ code: "unknownSpell" });
-  // Quickened Spell: a spell that takes an action is cast as a bonus action instead.
-  const bonus = spell.castingTime === "bonus-action" || (metamagic === "quickened" && spell.castingTime === "action");
+  const bonus = castAsBonusAction(spell, metamagic);
   // After a bonus-action spell, only a one-action cantrip may be cast this turn.
   if (caster.budget.bonusSpellCast && (bonus || spell.level > 0)) return refuse({ code: "bonusSpellCast" });
   const cost = costProblem(caster, bonus ? "bonusAction" : "action", content);
@@ -141,9 +152,7 @@ export function spellProblem(
     if (zoneId === undefined || zoneId === caster.zoneId || distance === null || distance > reach || encounter.zones.every((zone) => zone.id !== zoneId)) return refuse({ code: "invalidTarget" });
     return accept({ spell, bonus, targets: [caster.id] });
   }
-  // Twinned Spell: a spell that targets only one creature (and does not grow with the slot) may target a second.
-  const twin = metamagic === "twinned" && spell.targeting.count === 1 && (spell.targeting.countPerHigherSlot ?? 0) === 0 && spell.targeting.relation !== "self" ? 1 : 0;
-  const maxTargets = spell.targeting.relation === "self" ? spell.targeting.count : spellMaxTargets(spell, slotLevel) + twin;
+  const maxTargets = spellTargetLimit(spell, slotLevel, metamagic);
   const targets = spell.targeting.relation === "self" ? [caster.id] : targetIds;
   if (targets.length === 0 || targets.length > maxTargets || new Set(targets).size !== targets.length) return refuse({ code: "invalidTargets", maxTargets });
   for (const targetId of targets) {
@@ -312,6 +321,10 @@ export interface TurnOptions {
     readonly slotLevels: readonly number[];
     readonly bonusAction: boolean;
     readonly targetIds: readonly string[];
+    // The Metamagic readied for it, which changes how many creatures it may name (spellTargetLimit).
+    readonly metamagic: MetamagicOption | null;
+    // Cast by nature or from an item's charges: cast at its own level, from its uses rather than a slot.
+    readonly innate: boolean;
   }[];
   readonly features: readonly { readonly feature: FeatureDefinition; readonly bonusAction: boolean; readonly left: number }[];
   readonly potions: readonly { readonly itemId: ContentId<"item">; readonly count: number; readonly bonusAction: boolean }[];
@@ -368,16 +381,19 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
   const spells: TurnOptions["spells"][number][] = [];
   const teleports: TurnOptions["teleports"][number][] = [];
   if (!busy && (hero.wildShapeOriginal === null || hero.traits.some((trait) => trait.kind === "beastSpells"))) {
+    const metamagic = armedMetamagic(hero, lookup)?.option ?? null;
     for (const id of hero.spellcasting?.spells ?? []) {
       const spell = content.find(id);
       if (spell?.kind !== "spell" || spell.castingTime === "reaction" || spell.castingTime === "long") continue;
-      const bonusAction = spell.castingTime === "bonus-action";
+      const bonusAction = castAsBonusAction(spell, metamagic);
       if (costProblem(hero, bonusAction ? "bonusAction" : "action", content) !== null) continue;
       if (hero.budget.bonusSpellCast && (bonusAction || spell.level > 0)) continue;
       const innate = hero.spellcasting?.innate?.[id];
       const pool = usePoolOf(hero.spellcasting, id);
       if (innate !== undefined && innate !== null && (hero.resources.featureUses[pool.key] ?? innate) < pool.cost) continue;
-      const slotLevels = castableSlotLevels(spell, availableSlots(hero.resources));
+      // An innate spell is cast at its own level; ordinary slots (and their upcasts) do not apply to it.
+      const isInnate = innate !== undefined;
+      const slotLevels = isInnate ? [spell.level] : castableSlotLevels(spell, availableSlots(hero.resources));
       if (spell.targeting.destination === true) {
         const zones = encounter.zones.flatMap((zone) => {
           const checked = spellProblem(encounter, content, hero, id, slotLevels[0] ?? spell.level, [], null, zone.id);
@@ -388,7 +404,7 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
         continue;
       }
       const targetIds = spellTargets(encounter, hero, spell, content).map((target) => target.id);
-      if (slotLevels.length > 0 && targetIds.length > 0) spells.push({ spell, slotLevels, bonusAction, targetIds });
+      if (slotLevels.length > 0 && targetIds.length > 0) spells.push({ spell, slotLevels, bonusAction, targetIds, metamagic, innate: isInnate });
     }
   }
 

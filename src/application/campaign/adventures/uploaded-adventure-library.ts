@@ -44,24 +44,27 @@ export class UploadedAdventureLibrary implements AdventureLibrary {
   }
 
   public document(adventureId: string, language: CampaignLanguage): AdventureDocument | undefined {
-    const latest = this.latest(adventureId);
-    return latest?.get(language)?.document ?? this.base.document(adventureId, language);
+    return this.latest(adventureId).get(language)?.document ?? this.base.document(adventureId, language);
+  }
+
+  public documentAt(adventureId: string, version: string, language: CampaignLanguage): AdventureDocument | undefined {
+    return this.uploads.get(adventureId)?.get(version)?.get(language)?.document ?? this.base.documentAt(adventureId, version, language);
   }
 
   public find(adventureId: string, version: string, language: CampaignLanguage): AdventureDocument["bible"] | undefined {
     return this.uploads.get(adventureId)?.get(version)?.get(language)?.document.bible ?? this.base.find(adventureId, version, language);
   }
 
-  private latest(adventureId: string): Map<CampaignLanguage, Uploaded> | undefined {
-    const versions = this.uploads.get(adventureId);
-    if (versions === undefined) return undefined;
-    // Versions are compared as text, then by how recently they were added: the last added wins.
-    return [...versions.values()].at(-1);
+  // Each language's newest edition. A version that has only one language does not hide another language's earlier edition.
+  // Versions are ordered by when they were added: the last added wins.
+  private latest(adventureId: string): Map<CampaignLanguage, Uploaded> {
+    const newest = new Map<CampaignLanguage, Uploaded>();
+    for (const editions of this.uploads.get(adventureId)?.values() ?? []) for (const [language, uploaded] of editions) newest.set(language, uploaded);
+    return newest;
   }
 
   private summaryOf(adventureId: string): readonly AdventureSummary[] {
-    const editions = this.latest(adventureId);
-    const entries = editions === undefined ? [] : ([...editions.entries()] as [CampaignLanguage, Uploaded][]);
+    const entries = [...this.latest(adventureId).entries()];
     const first = entries[0]?.[1].document;
     if (first === undefined) return [];
     return [

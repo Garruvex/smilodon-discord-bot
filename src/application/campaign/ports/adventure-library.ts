@@ -17,4 +17,6 @@ export interface AdventureSummary {
 export interface AdventureLibrary extends AdventureCatalog {
   list(): readonly AdventureSummary[];
   document(adventureId: string, language: CampaignLanguage): AdventureDocument | undefined;
+  // The edition of exactly this version, never a newer one: a lobby and a game keep the adventure they joined.
+  documentAt(adventureId: string, version: string, language: CampaignLanguage): AdventureDocument | undefined;
 }

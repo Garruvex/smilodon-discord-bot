@@ -291,7 +291,7 @@ function choiceLabel(choice: TurnChoice, view: TurnView, text: Texts, glossary: 
     }
     case "cast": {
       const spell = view.spells.find((candidate) => candidate.spellId === choice.spell && candidate.slotLevel === choice.slot);
-      const base = choice.slot === 0 ? t.cast({ spell: name(choice.spell) }) : t.castSlot({ spell: name(choice.spell), level: choice.slot, left: spell?.slotsLeft ?? 0 });
+      const base = choice.slot === 0 || spell?.innate === true ? t.cast({ spell: name(choice.spell) }) : t.castSlot({ spell: name(choice.spell), level: choice.slot, left: spell?.slotsLeft ?? 0 });
       return spell?.bonusAction === true ? `${base} · ${t.bonusTag}` : base;
     }
     case "spells":

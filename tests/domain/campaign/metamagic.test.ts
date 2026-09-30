@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import { turnOptions } from "../../../src/domain/campaign/combat/turn-rules.js";
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
-import { organizer, partyOfThree, sam } from "./campaign-fixtures.js";
+import { organizer, partyOfThree, ruleset, sam } from "./campaign-fixtures.js";
 import { Fight, skirmish } from "./combat-fixtures.js";
 
 // A sorcerer's Metamagic: sorcery points from Font of Magic, readied before a spell and used up by it.
@@ -100,5 +101,44 @@ describe("Metamagic", () => {
     expect(fight.combatant("c-elspeth").resources.spellSlots[1]).toBe(slots - 1);
     // One point came back.
     expect(fight.combatant("c-elspeth").resources.featureUses["feature:font-of-magic"]).toBe(3);
+  });
+});
+
+describe("the turn menu agrees with the rules", () => {
+  const rules = ruleset();
+  const optionsOf = (fight: Fight): ReturnType<typeof turnOptions> => turnOptions(fight.encounter, fight.state.characters["c-elspeth"], rules.content, rules.houseRules, "c-elspeth");
+  const flame = (options: ReturnType<typeof turnOptions>): NonNullable<ReturnType<typeof turnOptions>>["spells"][number] | undefined => options?.spells.find((entry) => entry.spell.id === "spell:sacred-flame");
+
+  it("offers a Quickened action spell after the action is spent, as a bonus action", () => {
+    const fight = started();
+    fight.run(sam, { kind: "combatUseFeature", combatantId: "c-elspeth", featureId: "feature:quickened-spell" });
+    fight.state = { ...fight.state, encounter: { ...fight.encounter, combatants: { ...fight.encounter.combatants, "c-elspeth": { ...fight.combatant("c-elspeth"), budget: { ...fight.combatant("c-elspeth").budget, action: false } } } } };
+    expect(flame(optionsOf(fight))).toMatchObject({ bonusAction: true });
+    // The rules take the same cast.
+    fight.rolls([3], [4]).run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:sacred-flame", slotLevel: 0, targetIds: ["goblin-a"] });
+    expect(fight.combatant("c-elspeth").budget.bonusAction).toBe(false);
+  });
+
+  it("does not offer that spell once the action is spent and nothing is readied", () => {
+    const fight = started();
+    fight.state = { ...fight.state, encounter: { ...fight.encounter, combatants: { ...fight.encounter.combatants, "c-elspeth": { ...fight.combatant("c-elspeth"), budget: { ...fight.combatant("c-elspeth").budget, action: false } } } } };
+    expect(flame(optionsOf(fight))).toBeUndefined();
+  });
+
+  it("counts the second creature Twinned Spell allows", () => {
+    const fight = started();
+    expect(flame(optionsOf(fight))?.metamagic).toBeNull();
+    fight.run(sam, { kind: "combatUseFeature", combatantId: "c-elspeth", featureId: "feature:twinned-spell" });
+    expect(flame(optionsOf(fight))?.metamagic).toBe("twinned");
+  });
+
+  it("casts an innate spell at its own level, whatever slots the caster has", () => {
+    const fight = started();
+    const caster = fight.combatant("c-elspeth");
+    if (caster.spellcasting === null) throw new Error("no spellcasting");
+    const spellcasting = { ...caster.spellcasting, spells: [...caster.spellcasting.spells, "spell:magic-missile" as const], innate: { "spell:magic-missile": null } };
+    fight.state = { ...fight.state, encounter: { ...fight.encounter, combatants: { ...fight.encounter.combatants, "c-elspeth": { ...caster, spellcasting, resources: { ...caster.resources, spellSlots: {} } } } } };
+    const missile = optionsOf(fight)?.spells.find((entry) => entry.spell.id === "spell:magic-missile");
+    expect(missile).toMatchObject({ slotLevels: [1], innate: true });
   });
 });
