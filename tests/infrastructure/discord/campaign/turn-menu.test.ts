@@ -4,6 +4,7 @@ import { enSrd51Glossary } from "../../../../src/application/i18n/campaign/gloss
 import { zhTwSrd51Glossary } from "../../../../src/application/i18n/campaign/glossary/zh-TW/srd-5.1.js";
 import type { TurnView } from "../../../../src/application/campaign/views/turn-view.js";
 import { texts } from "../../../../src/application/i18n/texts.js";
+import { applicationIcons } from "../../../../src/infrastructure/discord/campaign/campaign-icons.js";
 import { encodeAim, encodeChoice, parseAim, parseChoice, renderEndConfirm, renderSpellMenu, renderTargetMenu, renderTurnMenu, type TurnChoice } from "../../../../src/infrastructure/discord/campaign/turn-menu.js";
 
 const goblin = { id: "goblin-a", name: "Goblin A", zone: "Yard", side: "foes", hp: 5, maxHp: 7, band: "bloodied", self: false } as const;
@@ -181,5 +182,31 @@ describe("the turn menu", () => {
     const labels = (json(zh).find((component) => Array.isArray(component.options))?.options as { label: string }[]).map((option) => option.label);
     expect(labels.at(-1)).toBe("結束回合");
     expect(json(renderEndConfirm(texts["zh-TW"], "camp")).map((component) => component.label)).toEqual(["仍然結束回合", "返回"]);
+  });
+});
+
+describe("icons on the turn menu", () => {
+  const icons = applicationIcons((name) => ({ id: `id-${name}`, name }));
+  const options = (menu: ReturnType<typeof renderTurnMenu>): { label: string; emoji?: { id: string; name: string } }[] => {
+    const select = json(menu).find((component) => Array.isArray(component.options));
+    return (select?.options ?? []) as { label: string; emoji?: { id: string; name: string } }[];
+  };
+
+  it("marks each kind of action with its icon, and leaves entries without one alone", () => {
+    const menu = options(renderTurnMenu(view, texts.en, enSrd51Glossary, "camp-1", 0, icons));
+    expect(menu[0]?.emoji?.name).toBe("dnd_attack");
+    expect(menu.some((option) => option.emoji?.name === "dnd_spell")).toBe(true);
+    expect(menu.some((option) => option.emoji?.name === "dnd_potion")).toBe(true);
+    expect(menu.some((option) => option.emoji?.name === "dnd_move")).toBe(true);
+    expect(menu.some((option) => option.emoji?.name === "dnd_dodge")).toBe(true);
+    expect(menu.at(-1)?.emoji).toBeUndefined();
+  });
+
+  it("is plain text without icons, or before they are uploaded", () => {
+    expect(options(renderTurnMenu(view, texts.en, enSrd51Glossary, "camp-1")).every((option) => option.emoji === undefined)).toBe(true);
+    const missing = applicationIcons(() => undefined);
+    expect(options(renderTurnMenu(view, texts.en, enSrd51Glossary, "camp-1", 0, missing)).every((option) => option.emoji === undefined)).toBe(true);
+    expect(missing.tag("attack")).toBeUndefined();
+    expect(icons.tag("attack")).toBe("<:dnd_attack:id-dnd_attack>");
   });
 });

@@ -30,7 +30,7 @@ import { isSkill, skills } from "../../../domain/campaign/rules/skills.js";
 import { classLabel, skillKey } from "../campaign/text-keys.js";
 import { downloadAttachmentBytes, downloadAttachmentText, type BytesResult } from "../campaign/attachment-download.js";
 import { fileField, noteField, portraitHome, portraitModal, portraitPreview, portraitRefused, portraitWorking, styleField, type PortraitScreen } from "../campaign/portrait-screens.js";
-import { decodeDraft, emptyDraft, encodeDraft, libraryCustomId, libraryIdPrefix, parseLibraryId, scoresOf, type Draft } from "../campaign/library-ids.js";
+import { decodeDraft, emptyDraft, encodeDraft, libraryCustomId, libraryIdPrefix, parseLibraryId, scoresOf, type Draft, withLanguage } from "../campaign/library-ids.js";
 
 export interface CharacterLibraryHandlerDependencies {
   readonly library: CharacterLibrary;
@@ -57,6 +57,23 @@ type Language = "en" | "zh-TW";
 // person, not to any one server or game.
 export const languageOf = (interaction: { readonly locale: string }): Language => (interaction.locale.startsWith("zh") ? "zh-TW" : "en");
 
+// A form remembers the language too, so the screen after it is in the same one.
+function speakModal(modal: ModalBuilder, language: Language): ModalBuilder {
+  const id = modal.data.custom_id;
+  return typeof id === "string" ? modal.setCustomId(withLanguage(id, language)) : modal;
+}
+
+// Every control on a screen remembers the language the screen is in.
+function speak(screen: LibraryScreen, language: Language): LibraryScreen {
+  for (const row of screen.components) {
+    for (const component of row.components) {
+      const id = "custom_id" in component.data ? component.data.custom_id : undefined;
+      if (typeof id === "string" && id.startsWith(`${libraryIdPrefix}:`) && parseLibraryId(id)?.language === undefined) component.setCustomId(withLanguage(id, language));
+    }
+  }
+  return screen;
+}
+
 const nameField = "name";
 const appearanceField = "appearance";
 const backstoryField = "backstory";
@@ -75,6 +92,10 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
 
   // The opening screen, for /dnd characters.
   public async homeScreen(userId: string, language: Language): Promise<LibraryScreen> {
+    return speak(await this.home(userId, language), language);
+  }
+
+  private async home(userId: string, language: Language): Promise<LibraryScreen> {
     const text = texts[language];
     const entries = await this.deps.library.list(userId);
     const t = text.campaign.chars;
@@ -89,14 +110,19 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
         ),
       );
     }
-    rows.push(new ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>().addComponents(button(libraryCustomId("new"), t.newButton, ButtonStyle.Primary, entries.length >= maxCharactersPerOwner)));
+    rows.push(
+      new ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>().addComponents(
+        button(libraryCustomId("new"), t.newButton, ButtonStyle.Primary, entries.length >= maxCharactersPerOwner),
+        button(libraryCustomId("lang", language === "en" ? "zh-TW" : "en"), t.switchLanguage, ButtonStyle.Secondary),
+      ),
+    );
     const lines = entries.map((entry) => t.line({ name: entry.character.name, class: classLabel(text, entry.character.className), count: entry.snapshots.length }));
     return { content: `**${t.title}**\n${t.intro}\n\n${lines.length === 0 ? t.empty : lines.join("\n")}`, components: rows };
   }
 
   // The builder's first screen (choose a class), for the hub's New character button.
   public builderScreen(language: Language): LibraryScreen {
-    return this.classScreen(texts[language]);
+    return speak(this.classScreen(texts[language]), language);
   }
 
   // Reads an uploaded character file as data and makes it a new character in
@@ -127,7 +153,7 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
     const { interaction } = context;
     const parsed = parseLibraryId(interaction.customId);
     if (parsed === null) return;
-    const language = languageOf(interaction);
+    const language = parsed.language ?? languageOf(interaction);
     const text = texts[language];
     const userId = interaction.user.id;
     const [first] = parsed.parts;
@@ -184,6 +210,9 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
     }
     if (!interaction.isButton()) return;
     switch (parsed.action) {
+      case "lang":
+        await interaction.deferUpdate();
+        return void (await this.show(interaction, speak(await this.home(userId, first === "zh-TW" ? "zh-TW" : "en"), first === "zh-TW" ? "zh-TW" : "en")));
       case "home":
         await interaction.deferUpdate();
         return void (await this.show(interaction, await this.homeScreen(userId, language)));
@@ -201,9 +230,9 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
       }
       case "bName":
         // A form has to be the first response.
-        return void (await interaction.showModal(this.nameModal(first ?? "", text)));
+        return void (await interaction.showModal(speakModal(this.nameModal(first ?? "", text), language)));
       case "pUpload":
-        return void (await interaction.showModal(portraitModal(text, first ?? "")));
+        return void (await interaction.showModal(speakModal(portraitModal(text, first ?? ""), language)));
       case "pHome":
         await interaction.deferUpdate();
         return void (await this.show(interaction, await this.portraitHomeFor(userId, first ?? "", language)));
@@ -270,9 +299,9 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
   public async executeModal(context: ModalContext): Promise<void> {
     const { interaction } = context;
     const parsed = parseLibraryId(interaction.customId);
-    if (parsed?.action === "pSubmit") return void (await this.submitPortrait(interaction, parsed.parts[0] ?? ""));
+    if (parsed?.action === "pSubmit") return void (await this.submitPortrait(interaction, parsed.parts[0] ?? "", parsed.language ?? languageOf(interaction)));
     if (parsed?.action !== "bName") return;
-    const language = languageOf(interaction);
+    const language = parsed.language ?? languageOf(interaction);
     const text = texts[language];
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const draft = decodeDraft(parsed.parts[0]);
@@ -297,17 +326,16 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
     const offer = this.deps.portraits?.available === true;
     await interaction.editReply({
       content: text.campaign.chars.created({ name: made.character.name, sheet: this.sheetLine(made.snapshot, text) }) + (offer ? `\n\n${text.campaign.portrait.offer}` : ""),
-      components: offer ? [new ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>().addComponents(button(libraryCustomId("pHome", made.character.id), text.campaign.portrait.button, ButtonStyle.Primary), button(libraryCustomId("view", made.character.id), text.campaign.chars.viewButton, ButtonStyle.Secondary))] : [],
+      components: offer ? speak({ content: "", components: [new ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>().addComponents(button(libraryCustomId("pHome", made.character.id), text.campaign.portrait.button, ButtonStyle.Primary), button(libraryCustomId("view", made.character.id), text.campaign.chars.viewButton, ButtonStyle.Secondary))] }, language).components : [],
     });
   }
 
   // The upload form was sent: read the picture, make the portrait, show it for a yes.
-  private async submitPortrait(interaction: ModalSubmitInteraction, characterId: string): Promise<void> {
-    const language = languageOf(interaction);
+  private async submitPortrait(interaction: ModalSubmitInteraction, characterId: string, language: Language): Promise<void> {
     const text = texts[language];
     const userId = interaction.user.id;
     await interaction.deferUpdate();
-    const shown = async (screen: LibraryScreen): Promise<void> => void (await interaction.editReply({ content: screen.content, components: screen.components, files: [...(screen.files ?? [])], attachments: [] }));
+    const shown = async (screen: LibraryScreen): Promise<void> => void (await interaction.editReply({ content: screen.content, components: speak(screen, language).components, files: [...(screen.files ?? [])], attachments: [] }));
     const attachment = interaction.fields.getUploadedFiles(fileField, false)?.first();
     if (attachment === undefined) return shown(portraitRefused(text, characterId, "noFile"));
     if (attachment.size > maxUploadBytes) return shown(portraitRefused(text, characterId, "tooLarge"));
@@ -513,7 +541,9 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
 
   // A screen replaces the last one, picture included: no files means the old picture goes.
   private async show(interaction: ButtonInteraction | StringSelectMenuInteraction, screen: LibraryScreen): Promise<void> {
-    await interaction.editReply({ content: screen.content, components: screen.components, files: [...(screen.files ?? [])], attachments: [] });
+    // Whatever language this screen's control was shown in, the next one keeps.
+    const language = parseLibraryId(interaction.customId)?.language ?? languageOf(interaction);
+    await interaction.editReply({ content: screen.content, components: speak(screen, language).components, files: [...(screen.files ?? [])], attachments: [] });
   }
 }
 

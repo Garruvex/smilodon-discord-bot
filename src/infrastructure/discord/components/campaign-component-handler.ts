@@ -33,6 +33,7 @@ import { maxSpeechLength } from "../../../domain/campaign/engine/speech.js";
 import type { CombatCommand } from "../../../domain/campaign/commands/campaign-command.js";
 import { abilities, type Ability } from "../../../domain/campaign/rules/effects.js";
 import { buildTurnView, type TurnView } from "../../../application/campaign/views/turn-view.js";
+import type { CampaignIcon, CampaignIcons } from "../campaign/campaign-icons.js";
 import { encodeChoice, parseAim, parseChoice, renderEndConfirm, renderShapeMenu, renderSpellMenu, renderTargetMenu, renderTurnMenu, type TurnChoice, type TurnMenu } from "../campaign/turn-menu.js";
 import type { CampaignAction } from "../campaign/campaign-ids.js";
 import { campaignCustomId, campaignIdPrefix, parseCampaignId } from "../campaign/campaign-ids.js";
@@ -77,6 +78,15 @@ export interface CampaignComponentDependencies {
   readonly library?: CharacterLibrary;
   // A hero's portrait for the full-size picture on their sheet; without it the sheet is text only.
   readonly pictures?: HeroPictures;
+  // Icons for the turn menus and the help legend; without them the menus are text only.
+  readonly icons?: CampaignIcons;
+}
+
+// A line under the help that says what each icon on the menus means; empty until the icons are uploaded.
+function iconLegend(icons: CampaignIcons | undefined, text: Texts): string {
+  const tag = (icon: CampaignIcon): string => icons?.tag(icon) ?? "";
+  if (icons === undefined || icons.tag("attack") === undefined) return "";
+  return `\n${text.campaign.more.iconLegend({ attack: tag("attack"), ranged: tag("ranged"), spell: tag("spell"), move: tag("move"), dodge: tag("dodge"), shield: tag("shield"), potion: tag("potion"), shape: tag("shape"), withdraw: tag("withdraw"), dash: tag("dash") })}`;
 }
 
 const maxActionLength = 500;
@@ -452,7 +462,7 @@ export class CampaignComponentHandler implements ComponentHandler {
         return;
       case "more":
         await interaction.editReply({
-          content: `${text.campaign.more.help}\n\n**${text.campaign.rules.title}**\n${ruleLines(text, record.houseRules).join("\n")}`,
+          content: `${text.campaign.more.help}${iconLegend(this.deps.icons, text)}\n\n**${text.campaign.rules.title}**\n${ruleLines(text, record.houseRules).join("\n")}`,
           components: [this.storyRow(record, text), ...this.linkRow(record, text)],
         });
         return;
@@ -732,7 +742,7 @@ export class CampaignComponentHandler implements ComponentHandler {
       await interaction.editReply({ content: notice === null ? context.content : `${notice}\n\n${context.content}`, components: [] });
       return;
     }
-    const menu = renderTurnMenu(context.view, text, context.glossary, record.key.campaignId);
+    const menu = renderTurnMenu(context.view, text, context.glossary, record.key.campaignId, 0, this.deps.icons);
     await this.editMenu(interaction, menu, notice);
   }
 
@@ -758,15 +768,15 @@ export class CampaignComponentHandler implements ComponentHandler {
       return;
     }
     if (choice.kind === "spells") {
-      await this.editMenu(interaction, renderSpellMenu(context.view, choice.page, text, context.glossary, record.key.campaignId), null);
+      await this.editMenu(interaction, renderSpellMenu(context.view, choice.page, text, context.glossary, record.key.campaignId, this.deps.icons), null);
       return;
     }
     if (choice.kind === "more") {
-      await this.editMenu(interaction, renderTurnMenu(context.view, text, context.glossary, record.key.campaignId, choice.page), null);
+      await this.editMenu(interaction, renderTurnMenu(context.view, text, context.glossary, record.key.campaignId, choice.page, this.deps.icons), null);
       return;
     }
     if (choice.kind === "shapes") {
-      await this.editMenu(interaction, renderShapeMenu(context.view, choice.page, text, context.glossary, record.key.campaignId), null);
+      await this.editMenu(interaction, renderShapeMenu(context.view, choice.page, text, context.glossary, record.key.campaignId, this.deps.icons), null);
       return;
     }
     const aimed = choice.kind === "attack" || choice.kind === "cast" || choice.kind === "engage";

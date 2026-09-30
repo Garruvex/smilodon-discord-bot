@@ -118,6 +118,7 @@ import { FilePersonaSource } from "../infrastructure/chat/file-persona-source.js
 import { OpenAiEmbeddingsClient } from "../infrastructure/chat/openai-embeddings-client.js";
 import { GeminiEmbeddingsClient } from "../infrastructure/chat/gemini-embeddings-client.js";
 import { embeddingDimensions } from "../infrastructure/database/schema.js";
+import { applicationIcons } from "../infrastructure/discord/campaign/campaign-icons.js";
 import { ApplicationEmojiCatalog } from "../infrastructure/discord/application-emoji-catalog.js";
 import type { AuditLogService } from "../application/audit/audit-log-service.js";
 import { MemberProfileService } from "../application/members/member-profile-service.js";
@@ -406,7 +407,7 @@ export function registerCommands(
     guildConfigurationProvider,
   );
   commandRegistry.register(new HelpCommand(commandRegistry, accessPolicyService, guildConfigurationProvider));
-  const campaign = createCampaignModule({ configuration, logger, client: discordClient, accessPolicyService });
+  const campaign = createCampaignModule({ configuration, logger, client: discordClient, accessPolicyService, icons: applicationIcons((name) => applicationEmojiCatalog.getEmoji(name)) });
   commandRegistry.register(campaign.command);
   componentRegistry.register(campaign.handler);
   componentRegistry.register(campaign.hubHandler);

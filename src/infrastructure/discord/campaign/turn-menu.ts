@@ -4,6 +4,7 @@ import type { TargetView, TurnView } from "../../../application/campaign/views/t
 import type { Texts } from "../../../application/i18n/texts.js";
 import type { Glossary } from "../../../domain/campaign/rules/content-registry.js";
 import { campaignCustomId } from "./campaign-ids.js";
+import { noIcons, type CampaignIcon, type CampaignIcons } from "./campaign-icons.js";
 
 // The private turn menu (panel spec: Combat targeting). Each option is one
 // legal action; targets come in a second menu. A choice is written into the
@@ -125,18 +126,63 @@ export interface TurnMenu {
 }
 
 const maxOptions = 25;
+// The icon a menu entry carries, so kinds of action can be told apart at a glance.
+function iconOf(choice: TurnChoice, view: TurnView): CampaignIcon | undefined {
+  switch (choice.kind) {
+    case "attack":
+      return view.attacks.find((attack) => attack.weapon === choice.weapon)?.ranged === true ? "ranged" : "attack";
+    case "cast":
+    case "spells":
+    case "teleport":
+      return "spell";
+    case "shape":
+    case "shapes":
+    case "unshape":
+      return "shape";
+    case "potion":
+      return "potion";
+    case "shield":
+      return "shield";
+    case "move":
+      return "move";
+    case "engage":
+      return "attack";
+    case "withdraw":
+    case "disengage":
+      return "withdraw";
+    case "dodge":
+      return "dodge";
+    case "dash":
+      return "dash";
+    default:
+      return undefined;
+  }
+}
+
+interface MenuOption {
+  readonly label: string;
+  readonly value: string;
+  readonly emoji?: { readonly id: string; readonly name: string };
+}
+
+function optionOf(choice: TurnChoice, view: TurnView, text: Texts, glossary: Glossary, icons: CampaignIcons): MenuOption {
+  const icon = iconOf(choice, view);
+  const emoji = icon === undefined ? undefined : icons.emoji(icon);
+  return { label: choiceLabel(choice, view, text, glossary).slice(0, 100), value: encodeChoice(choice), ...(emoji === undefined ? {} : { emoji }) };
+}
+
 // The main menu keeps a place for "More actions…" and for End turn.
 const actionsPerPage = maxOptions - 2;
 
 // The turn view: what is left this turn, then one menu of everything legal.
-export function renderTurnMenu(view: TurnView, text: Texts, glossary: Glossary, campaignId: string, page = 0): TurnMenu {
+export function renderTurnMenu(view: TurnView, text: Texts, glossary: Glossary, campaignId: string, page = 0, icons: CampaignIcons = noIcons): TurnMenu {
   const t = text.campaign.turn;
   const mark = (left: boolean): string => (left ? "✅" : "❌");
   const lines = [
     t.header({ hero: view.heroName, zone: view.zone, action: mark(view.budget.action), bonus: mark(view.budget.bonusAction), reaction: mark(view.budget.reaction), feet: view.budget.movement }),
   ];
   if (view.engagedWith.length > 0) lines.push(t.engaged({ names: view.engagedWith.join(", ") }));
-  const options = choicesOf(view).map((choice) => ({ label: choiceLabel(choice, view, text, glossary).slice(0, 100), value: encodeChoice(choice) }));
+  const options: MenuOption[] = choicesOf(view).map((choice) => optionOf(choice, view, text, glossary, icons));
   const refresh = refreshRow(campaignId, text.campaign.button.refresh);
   if (view.busy) return { content: [...lines, t.busy].join("\n"), components: [refresh] };
   // End turn is on every page; a long list continues on the next one, so no action is ever cut off.
@@ -162,12 +208,12 @@ const spellbookThreshold = 8;
 const spellsPerPage = maxOptions - 2;
 
 // The spellbook: one page of the spells the hero can cast now, each at each slot level it fits.
-export function renderSpellMenu(view: TurnView, page: number, text: Texts, glossary: Glossary, campaignId: string): TurnMenu {
+export function renderSpellMenu(view: TurnView, page: number, text: Texts, glossary: Glossary, campaignId: string, icons: CampaignIcons = noIcons): TurnMenu {
   const t = text.campaign.turn;
   const pages = Math.max(1, Math.ceil(view.spells.length / spellsPerPage));
   const at = Math.min(Math.max(0, page), pages - 1);
   const choices = view.spells.slice(at * spellsPerPage, (at + 1) * spellsPerPage).map((spell): TurnChoice => ({ kind: "cast", spell: spell.spellId, slot: spell.slotLevel }));
-  const options = choices.map((choice) => ({ label: choiceLabel(choice, view, text, glossary).slice(0, 100), value: encodeChoice(choice) }));
+  const options: MenuOption[] = choices.map((choice) => optionOf(choice, view, text, glossary, icons));
   if (at + 1 < pages) options.push({ label: t.spellbookMore({ page: at + 2 }), value: encodeChoice({ kind: "spells", page: at + 1 }) });
   return {
     content: t.spellbookPrompt,
@@ -181,12 +227,12 @@ export function renderSpellMenu(view: TurnView, page: number, text: Texts, gloss
 }
 
 // Wild Shape: one page of the beasts the druid may become now.
-export function renderShapeMenu(view: TurnView, page: number, text: Texts, glossary: Glossary, campaignId: string): TurnMenu {
+export function renderShapeMenu(view: TurnView, page: number, text: Texts, glossary: Glossary, campaignId: string, icons: CampaignIcons = noIcons): TurnMenu {
   const t = text.campaign.turn;
   const pages = Math.max(1, Math.ceil(view.wildShapes.length / spellsPerPage));
   const at = Math.min(Math.max(0, page), pages - 1);
   const choices = view.wildShapes.slice(at * spellsPerPage, (at + 1) * spellsPerPage).map((monster): TurnChoice => ({ kind: "shape", monster }));
-  const options = choices.map((choice) => ({ label: choiceLabel(choice, view, text, glossary).slice(0, 100), value: encodeChoice(choice) }));
+  const options: MenuOption[] = choices.map((choice) => optionOf(choice, view, text, glossary, icons));
   if (at + 1 < pages) options.push({ label: t.shapesMore({ page: at + 2 }), value: encodeChoice({ kind: "shapes", page: at + 1 }) });
   return {
     content: t.shapesPrompt,

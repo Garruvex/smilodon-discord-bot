@@ -221,6 +221,37 @@ describe("My Characters", () => {
   });
 });
 
+describe("the language stays the one the screen was opened in", () => {
+  it("keeps a Traditional Chinese creator Chinese through every menu even when the client says English", async () => {
+    const r = rig();
+    const handler = libraryHandler(r);
+    await r.library.create("u-alice", fighterBuild);
+    // Opened for a Chinese game: the screen is in Chinese whatever the person's client is.
+    const home = await handler.homeScreen("u-alice", "zh-TW");
+    expect(home.content).toContain("我的角色");
+    const ids = home.components.flatMap((row) => row.toJSON().components.map((component) => String((component as { custom_id: string }).custom_id)));
+    expect(ids.every((id) => id.endsWith(":~zh"))).toBe(true);
+    const builder = screenOf(await click(handler, ids.find((id) => id.startsWith("dndchar:new")) ?? "", "u-alice", { locale: "en-US" }));
+    expect(builder.content).toBe("請選擇職業");
+    const races = screenOf(await click(handler, builder.menus[0]?.id ?? "", "u-alice", { values: ["fighter"], locale: "en-US" }));
+    expect(races.menus[0]?.options).toEqual(expect.arrayContaining([expect.objectContaining({ value: "mountain-dwarf", label: "高山矮人" })]));
+    // The next step still carries the language.
+    expect(races.menus[0]?.id.endsWith(":~zh")).toBe(true);
+  });
+
+  it("offers a switch on the home screen that changes the language of everything after it", async () => {
+    const r = rig();
+    const handler = libraryHandler(r);
+    const english = screenOf(await click(handler, libraryCustomId("home"), "u-alice", { locale: "en-US" }));
+    const toChinese = english.buttons.find((button) => button.label === "繁體中文");
+    expect(toChinese?.id).toContain("dndchar:lang:zh-TW");
+    const chinese = screenOf(await click(handler, toChinese?.id ?? "", "u-alice", { locale: "en-US" }));
+    expect(chinese.content).toContain("我的角色");
+    const back = chinese.buttons.find((button) => button.label === "English");
+    expect(screenOf(await click(handler, back?.id ?? "", "u-alice", { locale: "zh-TW" })).content).toContain("My Characters");
+  });
+});
+
 // ---- a saved character in a game's lobby -------------------------------------
 
 async function savedInLobby(t: Harness, owner = "u-org"): Promise<LibrarySnapshot> {

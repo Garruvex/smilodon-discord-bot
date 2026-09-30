@@ -1,3 +1,4 @@
+import { applicationIcons } from "../../../../src/infrastructure/discord/campaign/campaign-icons.js";
 import { describe, expect, it } from "vitest";
 
 import { CampaignPlayController } from "../../../../src/application/campaign/campaign-play-controller.js";
@@ -101,7 +102,7 @@ interface Harness {
   intake: { uploads: { guildId: string; file: { url: string; size: number } | null }[]; authors: { guildId: string; input: unknown }[] };
 }
 
-function harness(options: { modelConfigured?: boolean; launcher?: boolean; canAuthor?: boolean; images?: boolean } = {}): Harness {
+function harness(options: { modelConfigured?: boolean; launcher?: boolean; canAuthor?: boolean; images?: boolean; icons?: boolean } = {}): Harness {
   const r = rig();
   const messages = new FakeMessages();
   const glossaries = { en: enSrd51Glossary, "zh-TW": zhTwSrd51Glossary };
@@ -148,6 +149,7 @@ function harness(options: { modelConfigured?: boolean; launcher?: boolean; canAu
     creator,
     authority,
     ...(options.images === undefined ? {} : { imagesEnabled: options.images }),
+    ...(options.icons === true ? { icons: applicationIcons((name) => ({ id: `id-${name}`, name })) } : {}),
   });
   return {
     r,
@@ -328,6 +330,18 @@ describe("Manage a game", () => {
     const asked = (await t.r.store.transaction((tx) => tx.pendingOutbox("redoImage"))).map((item) => (item.request.kind === "redoImage" ? item.request.subject : ""));
     expect(asked).toContain("scene:ruined-chapel");
     expect(asked).toHaveLength(2);
+  });
+
+  it("puts an icon on the manage buttons that have one, once the icons are uploaded", async () => {
+    const t = harness({ icons: true });
+    const { key, hubMessageId } = await activeGame(t);
+    const sent = await t.click(hubCustomId("manage", key.campaignId), { userId: "u-org" }, { messageId: hubMessageId });
+    const last = [...sent].reverse().find((entry) => entry.kind === "edit" || entry.kind === "update" || entry.kind === "reply");
+    const rows = (last?.payload as { components: { toJSON(): { components: { label?: string; emoji?: { name: string } }[] } }[] }).components;
+    const buttons = rows.flatMap((row) => row.toJSON().components);
+    expect(buttons.find((button) => button.label === "Pause")?.emoji?.name).toBe("dnd_pause");
+    expect(buttons.find((button) => button.label === "Short rest")?.emoji?.name).toBe("dnd_rest");
+    expect(buttons.find((button) => button.label === "Close round")?.emoji).toBeUndefined();
   });
 
   it("refuses Retry the fight when there is no lost fight", async () => {

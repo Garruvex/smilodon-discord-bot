@@ -26,6 +26,7 @@ import { CryptoRandomSource } from "../application/campaign/random/crypto-random
 import { RulesetCatalog } from "../application/campaign/rules/ruleset-catalog.js";
 import { SystemClock } from "../application/campaign/time/system-clock.js";
 import { DeliveryWorker } from "../application/campaign/workers/delivery-worker.js";
+import type { CampaignIcons } from "../infrastructure/discord/campaign/campaign-icons.js";
 import { ImageWorker } from "../application/campaign/workers/image-worker.js";
 import { monsterGalleryImage } from "../infrastructure/campaign/image/monster-gallery.js";
 import { FileImageAssetStore } from "../infrastructure/campaign/image/file-image-asset-store.js";
@@ -92,6 +93,8 @@ export interface CampaignModuleInput {
   readonly logger: Logger;
   readonly client: Client;
   readonly accessPolicyService: AccessPolicyService;
+  // The game icons on buttons and menus (from the bot's application emoji); without them everything is text.
+  readonly icons?: CampaignIcons;
 }
 
 // The whole campaign stack (plan §11): store, engine bus, workers, the AI
@@ -249,8 +252,8 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
   const intake = new AdventureIntake({ catalog, author, glossaries });
   const adventureHandler = new AdventureComponentHandler({ catalog, authority, glossaries });
   const command = new DndCommand({ lobby, play, setup, cards, creator, authority, library, libraryScreens: libraryHandler, intake });
-  const handler = new CampaignComponentHandler({ lobby, play, cards, unitOfWork, rulesets, adventures, glossaries, library, pictures: heroPictures });
-  const hubHandler = new CampaignHubComponentHandler({ lobby, play, setup, cards, creator, authority, adventures, libraryScreens: libraryHandler, intake, imagesEnabled: configuration.campaignImages !== null && configuration.campaignImages !== undefined });
+  const handler = new CampaignComponentHandler({ lobby, play, cards, unitOfWork, rulesets, adventures, glossaries, library, pictures: heroPictures, ...(input.icons === undefined ? {} : { icons: input.icons }) });
+  const hubHandler = new CampaignHubComponentHandler({ lobby, play, setup, cards, creator, authority, adventures, libraryScreens: libraryHandler, intake, imagesEnabled: configuration.campaignImages !== null && configuration.campaignImages !== undefined, ...(input.icons === undefined ? {} : { icons: input.icons }) });
 
   // A deleted hub channel or game post (a forum thread) is made again (its
   // cards are drawn into the new one), within limits; a deleted message is

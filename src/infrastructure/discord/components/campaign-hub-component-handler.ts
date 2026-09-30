@@ -28,6 +28,7 @@ import { publicAccessPolicy } from "../../../domain/access/access-policy.js";
 import { abilities } from "../../../domain/campaign/rules/effects.js";
 import { maxIdeaChars } from "../../../application/campaign/adventures/adventure-author.js";
 import type { AdventureIntake, IntakeContext } from "../campaign/adventure-intake.js";
+import type { CampaignIcon, CampaignIcons } from "../campaign/campaign-icons.js";
 import type { CampaignAuthority } from "../campaign/campaign-authority.js";
 import type { CampaignCardService } from "../campaign/campaign-card-service.js";
 import { createGameText, type CampaignGameCreator } from "../campaign/campaign-game-creator.js";
@@ -56,6 +57,8 @@ export interface CampaignHubDependencies {
   readonly authority: CampaignAuthority;
   // Whether this bot can paint pictures. Without it the picture buttons are not shown. Unset counts as yes.
   readonly imagesEnabled?: boolean;
+  // Icons on the manage buttons; without them the buttons are text only.
+  readonly icons?: CampaignIcons;
   // The launcher's character and adventure buttons; without them those buttons say they are unavailable.
   readonly libraryScreens?: Pick<CharacterLibraryComponentHandler, "homeScreen" | "builderScreen" | "importFromFile">;
   readonly intake?: Pick<AdventureIntake, "uploadFile" | "authorFrom" | "canAuthor">;
@@ -722,7 +725,11 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     const paused = mode === "paused" || mode === "recovery" || mode === "safety";
     const status = mode === null ? "" : text.campaign.mode[mode];
     const id = record.key.campaignId;
-    const verb = (action: ManageVerb, label: string): ButtonBuilder => new ButtonBuilder().setCustomId(hubCustomId("do", id, action)).setLabel(label).setStyle(ButtonStyle.Secondary);
+    const verb = (action: ManageVerb, label: string): ButtonBuilder => {
+      const button = new ButtonBuilder().setCustomId(hubCustomId("do", id, action)).setLabel(label).setStyle(ButtonStyle.Secondary);
+      const icon = manageIcons[action] === undefined ? undefined : this.deps.icons?.emoji(manageIcons[action]);
+      return icon === undefined ? button : button.setEmoji(icon);
+    };
     const pictures = this.deps.imagesEnabled !== false;
     const rows: ActionRowBuilder<MessageActionRowComponentBuilder>[] = [];
     if (record.lifecycle !== "lobby") {
@@ -767,6 +774,18 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     void this.deps.cards.syncHub(guildId).catch(() => undefined);
   }
 }
+
+// The icon a manage button carries.
+const manageIcons: Partial<Record<ManageVerb, CampaignIcon>> = {
+  pause: "pause",
+  resume: "play",
+  shortRest: "rest",
+  longRest: "rest",
+  illustrate: "picture",
+  illustrateScene: "picture",
+  redoPicture: "picture",
+  retryPicture: "picture",
+};
 
 const cut = (label: string): string => (label.length <= 80 ? label : `${label.slice(0, 79)}…`);
 
