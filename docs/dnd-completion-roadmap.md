@@ -8,18 +8,18 @@ gaps grouped by the engine primitive they need, with size (S: a day or less, M: 
 | Primitive | State | What is left |
 |---|---|---|
 | **Reaction windows** | "you were hit", "a foe is casting" and "a foe hurt you" open a prompt (Shield, Counterspell, Hellish Rebuke). Deflect Missiles, Cutting Words and the Protection style are applied automatically, like Uncanny Dodge | A prompt for "an ally was hit" and "a save is about to be rolled" (Cutting Words on saves and damage, Sentinel-style feats) |
-| **Rerolls** | Halfling Lucky and Indomitable on attacks and saves; Stroke of Luck on a missed attack | Ability checks, rider saves and concentration saves |
+| **Rerolls** | Halfling Lucky on attacks, saves and ability checks, Indomitable on saves; Stroke of Luck on a missed attack | Stroke of Luck and Lucky on hazard, haggle and press rolls, rider saves and concentration saves |
 | ~~Temporary hit points~~ | done (Dark One's Blessing, False Life, Heroism potions; the hero card shows them) | Armor of Agathys, Inspiring Leader |
 | ~~Creature types~~ | done | Holy Avenger, Dragon Slayer, Giant Slayer and Protection from Evil and Good can read them |
-| **Lighting and vision** | darkvision, dark zones, Light, Daylight and Darkness (they change a zone's lighting for the rest of the fight), Sunlight Sensitivity where a zone is lit as bright | Dim light has no effect; creatures do not carry their own light |
+| **Lighting and vision** | darkvision, dark zones, Light, Daylight and Darkness (they change a zone's lighting for the rest of the fight), Sunlight Sensitivity where a zone is lit as bright | Dim light has no combat effect in the book either (only Perception); creatures do not carry their own light |
 | **Positions inside a zone** | cover on a zone (half +2, three-quarters +5) against attacks and Dexterity effects from another zone | Range bands, area shapes that pick their targets, cover from creatures, Sculpt Spells (allies are never in an area here, so it does nothing) |
 | ~~Summons and companions~~ | done: Conjure Animals, Spiritual Weapon, the other conjuring spells, summons end with concentration when the spell needs it, Flaming Sphere, and companions kept between fights (Find Familiar is an owl that stays until dismissed; Animate Dead and Create Undead can be cast beforehand and last through the next fight) | the player does not steer them or pick what is summoned; a slotted companion spell has an engine command but no Discord menu entry yet, and the familiar fights where the book only lets it help |
-| ~~Sorcery points and spell modification~~ | done: Quickened, Twinned, Heightened, Empowered, Extended, Subtle, and Flexible Casting (creating slots) | Distant and Careful Spell, turning slots into points, the SRD's per-level Twinned cost |
+| ~~Sorcery points and spell modification~~ | done: Quickened, Twinned, Heightened, Empowered, Extended, Subtle, and Flexible Casting both ways (slots into points, points into slots) | the SRD's per-level Twinned cost. Distant and Careful Spell do nothing here: range is by zone and no spell hits an ally |
 | **Warlock invocations** | three fixed invocations at level 2, Mystic Arcanum with a fixed spell for each level | Choosing invocations and pact boons, more invocations |
 | ~~Grapple and shove~~ | done, including escaping (an action that always works) | The contest rolls |
 | **Forms** | Wild Shape (Archdruid has no limit), Polymorph and True Polymorph (hostile use, into a frog) | Shapechange, Animal Shapes, choosing the form, Circle of the Moon |
 | **Charges and active magic items** | wands, spell scrolls, effect potions, staffs (Fire, Frost, Healing, Power) sharing one pool | Rods, bags, boots, cursed items, the other staffs |
-| **Movement effects** | push (Thunderwave), movement grants (Misty Step is thirty feet that provokes nothing), speed bonuses (Longstrider, Fly) | A real teleport to a chosen zone, flight, difficult terrain |
+| **Movement effects** | push (Thunderwave), movement grants (Misty Step is thirty feet that provokes nothing), speed bonuses (Longstrider, Fly), difficult terrain (a zone may cost double to enter) | A real teleport to a chosen zone, flight; no spell makes terrain difficult yet |
 | **Hide and stealth** | Hide (in a zone with cover or darkness, out of foes' reach); the next attack or spell ends it | The Stealth contest, surprise, searching |
 
 ## 2. Class features by level
