@@ -724,16 +724,16 @@ export const contingency = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Lights the zone of the creature named for the rest of the fight.
 export const continualFlame = defineSpell({
   id: "spell:continual-flame",
   source,
   level: 2,
   castingTime: "action",
   range: { kind: "touch" },
-  targeting: { relation: "ally-or-self", count: 1 },
+  targeting: { relation: "creature", count: 1 },
   concentration: false,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "setLighting", target: "target", lighting: "bright" }], onAvoid: [] }),
 });
 
 export const controlWater = defineSpell({
@@ -819,7 +819,7 @@ export const creation = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Lights the zone of the creature named for the rest of the fight.
 export const dancingLights = defineSpell({
   id: "spell:dancing-lights",
   source,
@@ -828,7 +828,7 @@ export const dancingLights = defineSpell({
   range: { kind: "feet", feet: 120 },
   targeting: { relation: "creature", count: 1 },
   concentration: true,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "setLighting", target: "target", lighting: "bright" }], onAvoid: [] }),
 });
 
 // Darkens the zone the caster stands in for the rest of the fight; creatures without darkvision, the caster's friends included, attack in or into it at disadvantage.
@@ -986,7 +986,7 @@ export const dispelEvilAndGood = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Ends every lasting spell on the creature; the check for a spell of a higher level, and the spells on an object, are not modeled.
 export const dispelMagic = defineSpell({
   id: "spell:dispel-magic",
   source,
@@ -995,7 +995,7 @@ export const dispelMagic = defineSpell({
   range: { kind: "feet", feet: 120 },
   targeting: { relation: "creature", count: 1 },
   concentration: false,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "dispel", target: "target" }], onAvoid: [] }),
 });
 
 // Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
@@ -1432,16 +1432,16 @@ export const fly = defineSpell({
   plan: () => ({ check: null, onLand: [{ kind: "applyModifiers", target: "target", modifiers: [{ kind: "speedBonus", amount: 30 }, { kind: "flying" }], duration: { kind: "untilRemoved" } }], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// The zone of the creature named goes dark for the rest of the fight, for anyone without darkvision.
 export const fogCloud = defineSpell({
   id: "spell:fog-cloud",
   source,
   level: 1,
   castingTime: "action",
   range: { kind: "feet", feet: 120 },
-  targeting: { relation: "creature", count: 6 },
+  targeting: { relation: "creature", count: 1 },
   concentration: true,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "setLighting", target: "target", lighting: "dark" }], onAvoid: [] }),
 });
 
 // Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
@@ -1481,7 +1481,7 @@ export const foresight = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Grants immunity to being restrained and grappled; the rest of what it frees is not modeled.
 export const freedomOfMovement = defineSpell({
   id: "spell:freedom-of-movement",
   source,
@@ -1490,7 +1490,7 @@ export const freedomOfMovement = defineSpell({
   range: { kind: "touch" },
   targeting: { relation: "ally-or-self", count: 1 },
   concentration: false,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "applyModifiers", target: "target", modifiers: [{ kind: "conditionImmunity", conditions: ["condition: restrained", "condition: grappled"] }], duration: { kind: "untilRemoved" } }], onAvoid: [] }),
 });
 
 export const freezingSphere = defineSpell({
@@ -1878,16 +1878,16 @@ export const illusoryScript = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Incapacitated stands in for being bound beneath the earth.
 export const imprisonment = defineSpell({
   id: "spell:imprisonment",
   source,
   level: 9,
   castingTime: "long",
   range: { kind: "feet", feet: 30 },
-  targeting: { relation: "creature", count: 1 },
+  targeting: { relation: "enemy", count: 1 },
   concentration: false,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: { kind: "savingThrow", ability: "wis" }, onLand: [{ kind: "applyCondition", target: "target", condition: "condition:incapacitated", duration: { kind: "untilRemoved" } }], onAvoid: [] }),
 });
 
 export const incendiaryCloud = defineSpell({
@@ -1996,7 +1996,7 @@ export const lesserRestoration = defineSpell({
   plan: () => ({ check: null, onLand: [{ kind: "removeCondition", target: "target", conditions: ["condition:poisoned", "condition:blinded", "condition:paralyzed"] }], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// The creature rises out of reach of anyone on the ground; the save an unwilling creature gets and its inability to move except by pushing are not modeled.
 export const levitate = defineSpell({
   id: "spell:levitate",
   source,
@@ -2005,7 +2005,7 @@ export const levitate = defineSpell({
   range: { kind: "feet", feet: 60 },
   targeting: { relation: "creature", count: 1 },
   concentration: true,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "applyModifiers", target: "target", modifiers: [{ kind: "flying" }], duration: { kind: "untilRemoved" } }], onAvoid: [] }),
 });
 
 // Lights the zone the caster stands in, for the rest of the fight.
@@ -2209,16 +2209,16 @@ export const massSuggestion = defineSpell({
   plan: () => ({ check: { kind: "savingThrow", ability: "wis" }, onLand: [{ kind: "applyCondition", target: "target", condition: "condition:charmed", duration: { kind: "untilRemoved" } }], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Incapacitated stands in for being lost in the labyrinth; the book gives no save on the cast and an Intelligence check to escape.
 export const maze = defineSpell({
   id: "spell:maze",
   source,
   level: 8,
   castingTime: "action",
   range: { kind: "feet", feet: 60 },
-  targeting: { relation: "creature", count: 1 },
+  targeting: { relation: "enemy", count: 1 },
   concentration: true,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "applyCondition", target: "target", condition: "condition:incapacitated", duration: { kind: "untilRemoved" } }], onAvoid: [] }),
 });
 
 // Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
@@ -2473,7 +2473,7 @@ export const planeShift = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// The zone of the creature named becomes difficult terrain for the rest of the fight; the book's wide area and its enriching use are not modeled.
 export const plantGrowth = defineSpell({
   id: "spell:plant-growth",
   source,
@@ -2482,7 +2482,7 @@ export const plantGrowth = defineSpell({
   range: { kind: "feet", feet: 150 },
   targeting: { relation: "creature", count: 1 },
   concentration: false,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "makeDifficult", target: "target" }], onAvoid: [] }),
 });
 
 // Only the hostile use is modeled: a creature that fails its save becomes a frog until it is brought to 0 hit points or concentration ends.
@@ -2616,7 +2616,7 @@ export const protectionFromEvilAndGood = defineSpell({
   plan: () => ({ check: null, onLand: [{ kind: "applyModifiers", target: "target", modifiers: [{ kind: "attacksAgainst", mode: "disadvantage", reach: "any" }], duration: { kind: "untilRemoved" } }], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Resistance to poison damage and immunity to the poisoned condition; the neutralizing of a poison already in the body is not modeled.
 export const protectionFromPoison = defineSpell({
   id: "spell:protection-from-poison",
   source,
@@ -2625,7 +2625,7 @@ export const protectionFromPoison = defineSpell({
   range: { kind: "touch" },
   targeting: { relation: "ally-or-self", count: 1 },
   concentration: false,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "applyModifiers", target: "target", modifiers: [{ kind: "damageResistance", damageTypes: ["poison"] }, { kind: "conditionImmunity", conditions: ["condition: poisoned"] }], duration: { kind: "untilRemoved" } }], onAvoid: [] }),
 });
 
 // Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
@@ -2962,16 +2962,16 @@ export const sleep = defineSpell({
   plan: () => ({ check: { kind: "savingThrow", ability: "wis" }, onLand: [{ kind: "applyCondition", target: "target", condition: "condition:unconscious", duration: { kind: "rounds", count: 10 } }], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// The zone of the creature named becomes difficult terrain for the rest of the fight; the darkness, the ground that drops the prone and the doused flames are not modeled.
 export const sleetStorm = defineSpell({
   id: "spell:sleet-storm",
   source,
   level: 3,
   castingTime: "action",
   range: { kind: "feet", feet: 150 },
-  targeting: { relation: "creature", count: 6 },
+  targeting: { relation: "creature", count: 1 },
   concentration: true,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "makeDifficult", target: "target" }], onAvoid: [] }),
 });
 
 // Armor class -2 and disadvantage on Dexterity saves; the lost action and halved speed are not modeled.
@@ -2986,7 +2986,6 @@ export const slow = defineSpell({
   plan: () => ({ check: { kind: "savingThrow", ability: "wis" }, onLand: [{ kind: "applyModifiers", target: "target", modifiers: [{ kind: "acBonus", amount: -2 }, { kind: "saves", ability: "dex", mode: "disadvantage" }], duration: { kind: "untilRemoved" } }], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
 export const spareTheDying = defineSpell({
   id: "spell:spare-the-dying",
   source,
@@ -2995,7 +2994,7 @@ export const spareTheDying = defineSpell({
   range: { kind: "touch" },
   targeting: { relation: "ally-or-self", count: 1 },
   concentration: false,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "stabilize", target: "target" }], onAvoid: [] }),
 });
 
 // Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
@@ -3047,16 +3046,16 @@ export const spiderClimb = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// The zone of the creature named becomes difficult terrain for the rest of the fight; the damage for every five feet moved is not modeled.
 export const spikeGrowth = defineSpell({
   id: "spell:spike-growth",
   source,
   level: 2,
   castingTime: "action",
   range: { kind: "feet", feet: 150 },
-  targeting: { relation: "creature", count: 6 },
+  targeting: { relation: "creature", count: 1 },
   concentration: true,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "makeDifficult", target: "target" }], onAvoid: [] }),
 });
 
 // Each creature named is hurt as its own turn starts, for 2d8 radiant damage, which stands in for 3d8 with a Wisdom save for half; the spirits do not move with the caster or catch newcomers.

@@ -192,6 +192,19 @@ const curated = {
   light: { relation: "self", count: 1, save: null, note: "Lights the zone the caster stands in, for the rest of the fight.", effects: [{ lighting: "bright" }] },
   daylight: { relation: "self", count: 1, save: null, note: "Lights the zone the caster stands in, for the rest of the fight.", effects: [{ lighting: "bright" }] },
   "spirit-guardians": { relation: "enemy", count: 6, range: 15, save: null, note: "Each creature named is hurt as its own turn starts, for 2d8 radiant damage, which stands in for 3d8 with a Wisdom save for half; the spirits do not move with the caster or catch newcomers.", effects: [{ modifiers: [], triggers: [{ follows: "target", boundary: "start", does: { kind: "damage", amount: { terms: [{ count: 2, sides: 8 }], modifier: 0 }, damageType: "radiant" } }], duration: { kind: "untilRemoved" }, onLand: true }] },
+  "spare-the-dying": { relation: "ally-or-self", count: 1, save: null, note: "", effects: [{ kind: "stabilize" }] },
+  "dispel-magic": { relation: "creature", count: 1, save: null, note: "Ends every lasting spell on the creature; the check for a spell of a higher level, and the spells on an object, are not modeled.", effects: [{ kind: "dispel" }] },
+  "plant-growth": { relation: "creature", count: 1, save: null, note: "The zone of the creature named becomes difficult terrain for the rest of the fight; the book's wide area and its enriching use are not modeled.", effects: [{ kind: "makeDifficult" }] },
+  "spike-growth": { relation: "creature", count: 1, save: null, note: "The zone of the creature named becomes difficult terrain for the rest of the fight; the damage for every five feet moved is not modeled.", effects: [{ kind: "makeDifficult" }] },
+  "sleet-storm": { relation: "creature", count: 1, save: null, note: "The zone of the creature named becomes difficult terrain for the rest of the fight; the darkness, the ground that drops the prone and the doused flames are not modeled.", effects: [{ kind: "makeDifficult" }] },
+  "fog-cloud": { relation: "creature", count: 1, save: null, note: "The zone of the creature named goes dark for the rest of the fight, for anyone without darkvision.", effects: [{ lighting: "dark" }] },
+  "dancing-lights": { relation: "creature", count: 1, save: null, note: "Lights the zone of the creature named for the rest of the fight.", effects: [{ lighting: "bright" }] },
+  "continual-flame": { relation: "creature", count: 1, save: null, note: "Lights the zone of the creature named for the rest of the fight.", effects: [{ lighting: "bright" }] },
+  "freedom-of-movement": { relation: "ally-or-self", count: 1, save: null, note: "Grants immunity to being restrained and grappled; the rest of what it frees is not modeled.", effects: [{ modifiers: [{ kind: "conditionImmunity", conditions: ["condition:restrained", "condition:grappled"] }], duration: { kind: "untilRemoved" } }] },
+  "protection-from-poison": { relation: "ally-or-self", count: 1, save: null, note: "Resistance to poison damage and immunity to the poisoned condition; the neutralizing of a poison already in the body is not modeled.", effects: [{ modifiers: [{ kind: "damageResistance", damageTypes: ["poison"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }], duration: { kind: "untilRemoved" } }] },
+  levitate: { relation: "creature", count: 1, save: null, note: "The creature rises out of reach of anyone on the ground; the save an unwilling creature gets and its inability to move except by pushing are not modeled.", effects: [{ modifiers: [{ kind: "flying" }], duration: { kind: "untilRemoved" } }] },
+  imprisonment: { relation: "enemy", count: 1, save: "wis", note: "Incapacitated stands in for being bound beneath the earth.", effects: [{ condition: "incapacitated", duration: { kind: "untilRemoved" }, onLand: true }] },
+  maze: { relation: "enemy", count: 1, save: null, note: "Incapacitated stands in for being lost in the labyrinth; the book gives no save on the cast and an Intelligence check to escape.", effects: [{ condition: "incapacitated", duration: { kind: "untilRemoved" }, onLand: true }] },
   darkness: { relation: "self", count: 1, save: null, note: "Darkens the zone the caster stands in for the rest of the fight; creatures without darkvision, the caster's friends included, attack in or into it at disadvantage.", effects: [{ lighting: "dark" }] },
 };
 
@@ -265,7 +278,8 @@ function planFor(spell, notes) {
     const self = [];
     for (const effect of special.effects) {
       let code;
-      if (effect.lighting !== undefined) code = `{ kind: "setLighting", target: "target", lighting: ${quote(effect.lighting)} }`;
+      if (effect.kind !== undefined) code = `{ kind: ${quote(effect.kind)}, target: "target" }`;
+      else if (effect.lighting !== undefined) code = `{ kind: "setLighting", target: "target", lighting: ${quote(effect.lighting)} }`;
       else if (effect.removes !== undefined) code = `{ kind: "removeCondition", target: "target", conditions: [${effect.removes.map((name) => `"condition:${name}"`).join(", ")}] }`;
       else if (effect.polymorph !== undefined) code = `{ kind: "polymorph", target: "target", monsterId: "monster:${effect.polymorph}" }`;
       else if (effect.teleport === true) code = `{ kind: "teleport", target: "target" }`;

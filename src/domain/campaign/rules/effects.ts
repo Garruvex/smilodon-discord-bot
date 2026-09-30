@@ -92,6 +92,12 @@ export type Effect =
   // Flexible Casting the other way: a spell slot of this level becomes that many sorcery points.
   // The caster appears in the zone the casting was aimed at (Misty Step): no movement is spent and no one gets an opportunity attack.
   | { readonly kind: "teleport"; readonly target: EffectTarget }
+  // A downed creature stops dying: stable at 0 hit points (Spare the Dying).
+  | { readonly kind: "stabilize"; readonly target: EffectTarget }
+  // Every lasting spell on the creature ends (Dispel Magic).
+  | { readonly kind: "dispel"; readonly target: EffectTarget }
+  // The zone the creature stands in becomes difficult terrain for the rest of the fight (Plant Growth, Spike Growth).
+  | { readonly kind: "makeDifficult"; readonly target: EffectTarget }
   | { readonly kind: "convertSlot"; readonly target: EffectTarget; readonly level: number }
   // Feet of movement to use this turn (Misty Step's teleport is played as movement that provokes nothing).
   | { readonly kind: "grantMovement"; readonly target: EffectTarget; readonly feet: number }

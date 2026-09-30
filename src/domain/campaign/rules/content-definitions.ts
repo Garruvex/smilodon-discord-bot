@@ -545,7 +545,11 @@ function capabilitiesFor(effect: Effect): readonly Capability[] {
     case "gainSlot":
     case "convertSlot":
     case "teleport":
+    case "stabilize":
+    case "makeDifficult":
       return [];
+    case "dispel":
+      return ["conditions"];
     default:
       return assertNever(effect);
   }

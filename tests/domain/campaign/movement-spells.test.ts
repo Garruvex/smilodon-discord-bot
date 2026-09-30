@@ -180,3 +180,40 @@ describe("Shapechange and Animal Shapes", () => {
     expect(fight.combatant("c-elspeth").wildShapeOriginal).toBeNull();
   });
 });
+
+describe("Spells that change the ground and the effects on it", () => {
+  const cast = (spell: `spell:${string}`, slot: number, target: string): Fight => {
+    const fight = new Fight(partyWithSpells([spell], { [slot]: 1 })).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec });
+    return fight.run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: spell, slotLevel: slot, targetIds: [target] });
+  };
+
+  it("Plant Growth makes the zone difficult terrain, and Fog Cloud darkens it", () => {
+    const grown = cast("spell:plant-growth", 3, "goblin-a");
+    expect(grown.encounter.zones.find((zone) => zone.id === "courtyard")?.difficult).toBe(true);
+    expect(grown.encounter.zones.find((zone) => zone.id === "gate")?.difficult).toBeUndefined();
+    const fogged = cast("spell:fog-cloud", 1, "goblin-a");
+    expect(fogged.encounter.zones.find((zone) => zone.id === "courtyard")?.lighting).toBe("dark");
+  });
+
+  it("Dispel Magic ends the lasting spells on a creature", () => {
+    const fight = new Fight(partyWithSpells(["spell:dispel-magic", "spell:mage-armor"], { 1: 1, 3: 1 })).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec });
+    fight.run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:mage-armor", slotLevel: 1, targetIds: ["c-elspeth"] });
+    expect(fight.combatant("c-elspeth").effects.length).toBeGreaterThan(0);
+    fight.run(sam, { kind: "endTurn", combatantId: "c-elspeth" });
+    fight.rolls(Array.from({ length: 12 }, () => 1), Array.from({ length: 12 }, () => 1)).run(alex, { kind: "endTurn", combatantId: "c-mira" });
+    fight.run(jamie, { kind: "endTurn", combatantId: "c-borin" });
+    fight.run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:dispel-magic", slotLevel: 3, targetIds: ["c-elspeth"] });
+    expect(fight.combatant("c-elspeth").effects.filter((effect) => effect.definition === "spell:mage-armor")).toHaveLength(0);
+  });
+
+  it("Spare the Dying steadies a dying hero at 0 hit points", () => {
+    const fight = new Fight(partyWithSpells(["spell:spare-the-dying"], {})).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec });
+    const encounter = fight.state.encounter;
+    if (encounter === null) throw new Error("encounter");
+    const mira = encounter.combatants["c-mira"];
+    if (mira === undefined) throw new Error("mira");
+    fight.state = { ...fight.state, encounter: { ...encounter, combatants: { ...encounter.combatants, "c-mira": { ...mira, hp: 0, condition: "unconscious", deathSaves: { successes: 1, failures: 1 } } } } };
+    fight.run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:spare-the-dying", slotLevel: 0, targetIds: ["c-mira"] });
+    expect(fight.combatant("c-mira")).toMatchObject({ condition: "stable", hp: 0, deathSaves: { successes: 0, failures: 0 } });
+  });
+});

@@ -587,6 +587,19 @@ export function applyEffect(
       if (effectIds.length > 0) decision.emit({ kind: "effectsRemoved", combatantId: recipient.id, effectIds, reason: "cured" });
       return;
     }
+    case "stabilize":
+      if (recipient.condition === "unconscious" && recipient.hp === 0) {
+        decision.emit({ kind: "combatantHpChanged", combatantId: recipient.id, change: 0, hp: 0, condition: "stable", deathSaves: { successes: 0, failures: 0 }, cause: "healing" });
+      }
+      return;
+    case "dispel": {
+      const ended = recipient.effects.filter((held) => held.definition.startsWith("spell:") || held.definition === "effect:modifiers").map((held) => held.id);
+      if (ended.length > 0) decision.emit({ kind: "effectsRemoved", combatantId: recipient.id, effectIds: ended, reason: "cured" });
+      return;
+    }
+    case "makeDifficult":
+      decision.emit({ kind: "terrainChanged", zoneId: recipient.zoneId, difficult: true });
+      return;
     case "setLighting":
       decision.emit({ kind: "lightingChanged", zoneId: recipient.zoneId, lighting: effect.lighting });
       return;
