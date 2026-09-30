@@ -82,6 +82,8 @@ export type Effect =
   | { readonly kind: "grantAction"; readonly target: EffectTarget; readonly attacks?: number }
   // Turns the target into this beast until its hit points run out or the spell's concentration ends (Polymorph).
   | { readonly kind: "polymorph"; readonly target: EffectTarget; readonly monsterId: ContentId<"monster"> }
+  // Ends the target's effects that are one of these conditions (Lesser Restoration, escaping a grapple).
+  | { readonly kind: "removeCondition"; readonly target: EffectTarget; readonly conditions: readonly ContentId<"condition">[] }
   // One more spell slot of this level (Flexible Casting), gone with the next long rest.
   | { readonly kind: "gainSlot"; readonly target: EffectTarget; readonly level: number }
   // Feet of movement to use this turn (Misty Step's teleport is played as movement that provokes nothing).

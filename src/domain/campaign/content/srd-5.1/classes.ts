@@ -18,7 +18,7 @@ export const fighter = defineClass({
   skillChoices: ["acrobatics", "animal-handling", "athletics", "history", "insight", "intimidation", "perception", "survival"],
   skillCount: 2,
   expertiseCount: 0,
-  features: ["feature:hide", "feature:fighting-style-dueling", "feature:second-wind", "feature:grapple", "feature:shove"],
+  features: ["feature:hide", "feature:escape-grapple", "feature:fighting-style-dueling", "feature:second-wind", "feature:grapple", "feature:shove"],
   kits: [
     { id: "knight", equipment: ["item:longsword", "item:chain-mail", "item:shield"] },
     { id: "skirmisher", equipment: ["item:scimitar", "item:shortbow", "item:leather-armor"] },
@@ -40,7 +40,7 @@ export const rogue = defineClass({
   skillChoices: ["acrobatics", "athletics", "deception", "insight", "intimidation", "investigation", "perception", "performance", "persuasion", "sleight-of-hand", "stealth"],
   skillCount: 4,
   expertiseCount: 2,
-  features: ["feature:hide", "feature:sneak-attack", "feature:thieves-cant", "feature:grapple", "feature:shove"],
+  features: ["feature:hide", "feature:escape-grapple", "feature:sneak-attack", "feature:thieves-cant", "feature:grapple", "feature:shove"],
   kits: [
     { id: "shadow", equipment: ["item:shortsword", "item:shortbow", "item:leather-armor"] },
     { id: "duelist", equipment: ["item:scimitar", "item:shortsword", "item:leather-armor"] },
@@ -63,7 +63,7 @@ export const cleric = defineClass({
   skillChoices: ["history", "insight", "medicine", "persuasion", "religion"],
   skillCount: 2,
   expertiseCount: 0,
-  features: ["feature:hide", "feature:disciple-of-life"],
+  features: ["feature:hide", "feature:escape-grapple", "feature:disciple-of-life"],
   kits: [
     // The Life Domain grants heavy armor proficiency.
     { id: "shieldbearer", equipment: ["item:mace", "item:chain-mail", "item:shield"] },
@@ -94,7 +94,7 @@ export const barbarian = defineClass({
   skillChoices: ["animal-handling", "athletics", "intimidation", "nature", "perception", "survival"],
   skillCount: 2,
   expertiseCount: 0,
-  features: ["feature:hide", "feature:rage", "feature:grapple", "feature:shove"],
+  features: ["feature:hide", "feature:escape-grapple", "feature:rage", "feature:grapple", "feature:shove"],
   kits: [
     { id: "berserker", equipment: ["item:greataxe", "item:hide-armor"] },
     { id: "totemic", equipment: ["item:greataxe", "item:leather-armor"] },
@@ -135,7 +135,7 @@ export const bard = defineClass({
   ],
   skillCount: 3,
   expertiseCount: 0,
-  features: ["feature:hide", "feature:bardic-inspiration"],
+  features: ["feature:hide", "feature:escape-grapple", "feature:bardic-inspiration"],
   kits: [
     { id: "lore", equipment: ["item:rapier", "item:leather-armor"] },
     { id: "skald", equipment: ["item:quarterstaff", "item:leather-armor"] },
@@ -178,7 +178,7 @@ export const druid = defineClass({
   skillChoices: ["arcana", "animal-handling", "insight", "medicine", "nature", "perception", "religion", "survival"],
   skillCount: 2,
   expertiseCount: 0,
-  features: ["feature:hide", "feature:druidic"],
+  features: ["feature:hide", "feature:escape-grapple", "feature:druidic"],
   kits: [
     { id: "land", equipment: ["item:quarterstaff", "item:leather-armor", "item:shield"] },
     { id: "moonlit", equipment: ["item:scimitar", "item:leather-armor"] },
@@ -204,7 +204,7 @@ export const monk = defineClass({
   // No armor and no shield: Unarmored Defense is out of scope for the
   // starter roster (it would need a base-AC formula per class, not just
   // per item), so a monk's AC is 10 + Dex, as if unarmed and unarmored.
-  features: ["feature:hide", "feature:martial-arts", "feature:grapple", "feature:shove"],
+  features: ["feature:hide", "feature:escape-grapple", "feature:martial-arts", "feature:grapple", "feature:shove"],
   kits: [
     { id: "openhand", equipment: ["item:shortsword"] },
     { id: "umbra", equipment: ["item:dagger"] },
@@ -227,7 +227,7 @@ export const paladin = defineClass({
   skillCount: 2,
   expertiseCount: 0,
   // No spellcasting: paladin spells begin at level 2 in the SRD.
-  features: ["feature:hide", "feature:divine-sense", "feature:lay-on-hands", "feature:grapple", "feature:shove"],
+  features: ["feature:hide", "feature:escape-grapple", "feature:divine-sense", "feature:lay-on-hands", "feature:grapple", "feature:shove"],
   kits: [
     { id: "oath", equipment: ["item:longsword", "item:chain-mail", "item:shield"] },
     { id: "vengeance", equipment: ["item:longsword", "item:leather-armor", "item:javelin"] },
@@ -254,7 +254,7 @@ export const ranger = defineClass({
   skillCount: 3,
   expertiseCount: 0,
   // No spellcasting: ranger spells begin at level 2 in the SRD.
-  features: ["feature:hide", "feature:favored-enemy", "feature:natural-explorer", "feature:grapple", "feature:shove"],
+  features: ["feature:hide", "feature:escape-grapple", "feature:favored-enemy", "feature:natural-explorer", "feature:grapple", "feature:shove"],
   kits: [
     { id: "hunter", equipment: ["item:longbow", "item:leather-armor"] },
     { id: "beastmaster", equipment: ["item:shortbow", "item:scimitar", "item:leather-armor"] },
@@ -278,7 +278,7 @@ export const sorcerer = defineClass({
   skillChoices: ["arcana", "deception", "insight", "intimidation", "persuasion", "religion"],
   skillCount: 2,
   expertiseCount: 0,
-  features: ["feature:hide", "feature:draconic-bloodline"],
+  features: ["feature:hide", "feature:escape-grapple", "feature:draconic-bloodline"],
   kits: [
     { id: "wildmagic", equipment: ["item:dagger"] },
     { id: "draconic", equipment: ["item:quarterstaff"] },
@@ -301,7 +301,7 @@ export const warlock = defineClass({
   skillChoices: ["arcana", "deception", "history", "intimidation", "investigation", "nature", "religion"],
   skillCount: 2,
   expertiseCount: 0,
-  features: ["feature:hide", "feature:fiend-patron", "feature:dark-ones-blessing"],
+  features: ["feature:hide", "feature:escape-grapple", "feature:fiend-patron", "feature:dark-ones-blessing"],
   kits: [
     { id: "fiendpact", equipment: ["item:dagger", "item:leather-armor"] },
     { id: "oldone", equipment: ["item:quarterstaff", "item:leather-armor"] },
@@ -325,7 +325,7 @@ export const wizard = defineClass({
   skillChoices: ["arcana", "history", "insight", "investigation", "medicine", "religion"],
   skillCount: 2,
   expertiseCount: 0,
-  features: ["feature:hide", "feature:arcane-recovery"],
+  features: ["feature:hide", "feature:escape-grapple", "feature:arcane-recovery"],
   kits: [
     { id: "scholar", equipment: ["item:dagger", "item:quarterstaff"] },
     { id: "evoker", equipment: ["item:dagger"] },

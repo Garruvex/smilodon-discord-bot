@@ -466,16 +466,16 @@ export const callLightning = defineSpell({
   plan: ({ slotLevel }) => ({ check: null, onLand: [{ kind: "damage", target: "target", amount: diceAt(callLightningDamage, slotLevel), damageType: "lightning" }], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Ends charmed and frightened on willing creatures; the suppression of hostility is not modeled.
 export const calmEmotions = defineSpell({
   id: "spell:calm-emotions",
   source,
   level: 2,
   castingTime: "action",
   range: { kind: "feet", feet: 60 },
-  targeting: { relation: "creature", count: 6 },
+  targeting: { relation: "ally-or-self", count: 6 },
   concentration: true,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "removeCondition", target: "target", conditions: ["condition:charmed", "condition:frightened"] }], onAvoid: [] }),
 });
 
 export const chainLightning = defineSpell({
@@ -1634,7 +1634,7 @@ export const greaterInvisibility = defineSpell({
   plan: () => ({ check: null, onLand: [{ kind: "applyCondition", target: "target", condition: "condition:invisible", duration: { kind: "untilRemoved" } }], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Ends charmed, stunned, poisoned, blinded or paralyzed; the other conditions it cures are not modeled.
 export const greaterRestoration = defineSpell({
   id: "spell:greater-restoration",
   source,
@@ -1643,7 +1643,7 @@ export const greaterRestoration = defineSpell({
   range: { kind: "touch" },
   targeting: { relation: "ally-or-self", count: 1 },
   concentration: false,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "removeCondition", target: "target", conditions: ["condition:charmed", "condition:stunned", "condition:poisoned", "condition:blinded", "condition:paralyzed"] }], onAvoid: [] }),
 });
 
 export const guardianOfFaith = defineSpell({
@@ -1984,7 +1984,7 @@ export const legendLore = defineSpell({
   plan: () => ({ check: null, onLand: [], onAvoid: [] }),
 });
 
-// Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.
+// Ends poisoned, blinded or paralyzed; the deafness and disease it also cures are not modeled.
 export const lesserRestoration = defineSpell({
   id: "spell:lesser-restoration",
   source,
@@ -1993,7 +1993,7 @@ export const lesserRestoration = defineSpell({
   range: { kind: "touch" },
   targeting: { relation: "ally-or-self", count: 1 },
   concentration: false,
-  plan: () => ({ check: null, onLand: [], onAvoid: [] }),
+  plan: () => ({ check: null, onLand: [{ kind: "removeCondition", target: "target", conditions: ["condition:poisoned", "condition:blinded", "condition:paralyzed"] }], onAvoid: [] }),
 });
 
 // Narrative only: casting it spends the slot and the Narrator describes it; the engine changes nothing.

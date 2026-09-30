@@ -67,6 +67,7 @@ const unarmoredMovementGrowth = (level: number): FeatureDefinition => defineFeat
 export const reliableTalent = narrative("reliable-talent");
 // Every martial class can grapple and shove (spells/class-ability-spells.ts); at will, on Strength.
 export const grappleFeature = defineFeature({ id: "feature:grapple", source, traits: [{ kind: "featureSpell", spell: "spell:grapple", ability: "str", uses: null, recharge: "longRest" }], action: null });
+export const escapeGrappleFeature = defineFeature({ id: "feature:escape-grapple", source, traits: [{ kind: "featureSpell", spell: "spell:escape-grapple", ability: "str", uses: null, recharge: "longRest" }], action: null });
 export const shoveFeature = defineFeature({ id: "feature:shove", source, traits: [{ kind: "featureSpell", spell: "spell:shove", ability: "str", uses: null, recharge: "longRest" }], action: null });
 // Barbarian 11: read where damage drops a raging barbarian to 0 (engine/combat/damage.ts).
 export const relentlessRage = defineFeature({ id: "feature:relentless-rage", source, traits: [], action: null, resource: { count: 1, recharge: "longRest" } });
@@ -186,6 +187,7 @@ export const srd51HigherLevelFeatures: readonly FeatureDefinition[] = [
   relentlessRage,
   grappleFeature,
   shoveFeature,
+  escapeGrappleFeature,
   reliableTalent,
   agonizingBlast,
   armorOfShadows,

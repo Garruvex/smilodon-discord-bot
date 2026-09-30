@@ -102,6 +102,19 @@ export const wholenessOfBody = defineSpell({
   plan: ({ casterLevel }) => ({ check: null, onLand: [{ kind: "heal", target: "target", amount: flat(casterLevel * 3) }], onAvoid: [] }),
 });
 
+// Escaping a grapple: the action the grappled creature spends to break free. The SRD makes it a contest; here it always works,
+// which makes a grapple cost the grappler an action and the target an action.
+export const escapeGrapple = defineSpell({
+  id: "spell:escape-grapple",
+  source,
+  level: 0,
+  castingTime: "action",
+  range: { kind: "self" },
+  targeting: { relation: "self", count: 1 },
+  concentration: false,
+  plan: () => ({ check: null, onLand: [{ kind: "removeCondition", target: "target", conditions: ["condition:grappled"] }], onAvoid: [] }),
+});
+
 export const turnUndead = defineSpell({
   id: "spell:turn-undead",
   source,
@@ -156,4 +169,4 @@ export const breathWeapons: readonly SpellDefinition[] = breathAncestries.map(([
   }),
 );
 
-export const srd51ClassAbilitySpells: readonly SpellDefinition[] = [bardicInspiration, layOnHands, preserveLife, turnUndead, grapple, shove, intimidatingPresence, wholenessOfBody, ...breathWeapons];
+export const srd51ClassAbilitySpells: readonly SpellDefinition[] = [bardicInspiration, layOnHands, preserveLife, turnUndead, grapple, shove, escapeGrapple, intimidatingPresence, wholenessOfBody, ...breathWeapons];

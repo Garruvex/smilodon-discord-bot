@@ -27,7 +27,7 @@ import type {
 export type TriggerOutcome = { readonly kind: "damage"; readonly amount: number } | { readonly kind: "save"; readonly ended: boolean; readonly dc: number };
 
 // Why lasting effects ended.
-export type EffectEnd = "expired" | "concentration" | "usedUp" | "stoodUp" | "saved";
+export type EffectEnd = "expired" | "concentration" | "usedUp" | "stoodUp" | "saved" | "cured";
 
 // What an action spends when it is declared.
 export interface ActionCost {

@@ -535,6 +535,11 @@ export function applyEffect(
       });
       return;
     }
+    case "removeCondition": {
+      const effectIds = recipient.effects.filter((held) => effect.conditions.some((condition) => held.definition === condition)).map((held) => held.id);
+      if (effectIds.length > 0) decision.emit({ kind: "effectsRemoved", combatantId: recipient.id, effectIds, reason: "cured" });
+      return;
+    }
     case "gainSlot":
       decision.emit({ kind: "slotGained", combatantId: recipient.id, level: effect.level });
       return;

@@ -180,6 +180,9 @@ const curated = {
   "create-undead": { relation: "self", count: 1, summon: { monster: "ghoul", count: 3 }, note: "Three ghouls stand in for the undead the caster would raise; they do not need corpses and obey until the fight ends.", effects: [] },
   polymorph: { relation: "enemy", count: 1, save: "wis", note: "Only the hostile use is modeled: a creature that fails its save becomes a frog until it is brought to 0 hit points or concentration ends.", effects: [{ polymorph: "frog", onLand: true }] },
   "true-polymorph": { relation: "enemy", count: 1, save: "wis", note: "Played as Polymorph: the target becomes a frog; the permanent form and the other uses are not modeled.", effects: [{ polymorph: "frog", onLand: true }] },
+  "lesser-restoration": { relation: "ally-or-self", count: 1, save: null, note: "Ends poisoned, blinded or paralyzed; the deafness and disease it also cures are not modeled.", effects: [{ removes: ["poisoned", "blinded", "paralyzed"] }] },
+  "greater-restoration": { relation: "ally-or-self", count: 1, save: null, note: "Ends charmed, stunned, poisoned, blinded or paralyzed; the other conditions it cures are not modeled.", effects: [{ removes: ["charmed", "stunned", "poisoned", "blinded", "paralyzed"] }] },
+  "calm-emotions": { relation: "ally-or-self", count: 6, save: null, note: "Ends charmed and frightened on willing creatures; the suppression of hostility is not modeled.", effects: [{ removes: ["charmed", "frightened"] }] },
   darkness: { relation: "enemy", count: 6, save: null, note: "Blinds the creatures in the area for the duration; there is no lighting in the engine.", effects: [{ condition: "blinded", duration: { kind: "untilRemoved" }, onLand: true }] },
 };
 
@@ -253,7 +256,8 @@ function planFor(spell, notes) {
     const self = [];
     for (const effect of special.effects) {
       let code;
-      if (effect.polymorph !== undefined) code = `{ kind: "polymorph", target: "target", monsterId: "monster:${effect.polymorph}" }`;
+      if (effect.removes !== undefined) code = `{ kind: "removeCondition", target: "target", conditions: [${effect.removes.map((name) => `"condition:${name}"`).join(", ")}] }`;
+      else if (effect.polymorph !== undefined) code = `{ kind: "polymorph", target: "target", monsterId: "monster:${effect.polymorph}" }`;
       else if (effect.movement !== undefined) code = `{ kind: "grantMovement", target: "target", feet: ${effect.movement} }`;
       else if (effect.damage !== undefined) code = `{ kind: "damage", target: "target", amount: ${effect.damage[0][0] === 0 ? `flat(${effect.damage[0][2]})` : "flat(0)"}, damageType: ${quote(effect.damageType)} }`;
       else if (effect.condition !== undefined) code = `{ kind: "applyCondition", target: "target", condition: "condition:${effect.condition}", duration: ${durationCode(effect.duration)} }`;

@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 
+import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
 import { alex, jamie, organizer, partyWithSpells, sam } from "./campaign-fixtures.js";
 import { Fight, skirmish } from "./combat-fixtures.js";
+
+function withFeatures(state: CampaignState, heroId: string, features: readonly string[]): CampaignState {
+  const sheet = state.characters[heroId];
+  if (sheet === undefined) throw new Error(heroId);
+  return { ...state, characters: { ...state.characters, [heroId]: { ...sheet, features: [...sheet.features, ...features] as typeof sheet.features } } };
+}
 
 // Spells that change how far a creature moves, and a few buffs and controls the curated table now holds.
 
@@ -44,5 +51,34 @@ describe("Web", () => {
     fight.rolls([2, 20]).run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:web", slotLevel: 2, targetIds: ["goblin-a", "goblin-b"] });
     expect(fight.combatant("goblin-a").effects.map((effect) => effect.definition)).toContain("condition:restrained");
     expect(fight.combatant("goblin-b").effects.map((effect) => effect.definition)).not.toContain("condition:restrained");
+  });
+});
+
+describe("Escaping and curing", () => {
+  const grappledElspeth = (extra: readonly `spell:${string}`[] = []): Fight => {
+    const fight = new Fight(withFeatures(partyWithSpells(extra, { 2: 1 }), "c-elspeth", ["feature:escape-grapple"])).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec });
+    const encounter = fight.encounter;
+    const elspeth = encounter.combatants["c-elspeth"];
+    if (elspeth === undefined) throw new Error("elspeth");
+    const held = { id: "held", definition: "condition:grappled" as const, sourceId: "goblin-a", conditions: [], modifiers: [{ kind: "speedZero" as const }], triggers: [], clock: null, concentrationId: null, stacking: "coexist" as const };
+    fight.state = { ...fight.state, encounter: { ...encounter, combatants: { ...encounter.combatants, "c-elspeth": { ...elspeth, effects: [...elspeth.effects, held] } } } };
+    return fight;
+  };
+
+  it("a grappled hero breaks free with an action", () => {
+    const fight = grappledElspeth();
+    expect(fight.combatant("c-elspeth").effects.map((effect) => effect.definition)).toContain("condition:grappled");
+    fight.run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:escape-grapple", slotLevel: 0, targetIds: ["c-elspeth"] });
+    expect(fight.combatant("c-elspeth").effects.map((effect) => effect.definition)).not.toContain("condition:grappled");
+    expect(fight.combatant("c-elspeth").budget.action).toBe(false);
+  });
+
+  it("Lesser Restoration ends a poisoning", () => {
+    const fight = grappledElspeth(["spell:lesser-restoration"]);
+    const elspeth = fight.combatant("c-elspeth");
+    const poisoned = { ...elspeth.effects[0]!, id: "sick", definition: "condition:poisoned" as const };
+    fight.state = { ...fight.state, encounter: { ...fight.encounter, combatants: { ...fight.encounter.combatants, "c-elspeth": { ...elspeth, effects: [...elspeth.effects, poisoned] } } } };
+    fight.run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:lesser-restoration", slotLevel: 2, targetIds: ["c-elspeth"] });
+    expect(fight.combatant("c-elspeth").effects.map((effect) => effect.definition)).toEqual(["condition:grappled"]);
   });
 });
