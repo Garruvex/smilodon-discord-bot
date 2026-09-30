@@ -23,6 +23,8 @@ export function declareWeaponAttack(
   smiteSlot?: number,
   // A reaction made in the middle of another resolution, which carries on once this one is done.
   resumes?: ResolutionState,
+  // Further creatures struck by the same attack (Whirlwind Attack).
+  alsoIds: readonly string[] = [],
 ): Rejection | null {
   const encounter = activeEncounter(decision);
   if (encounter === null) return { code: "notInCombat" };
@@ -50,7 +52,7 @@ export function declareWeaponAttack(
   const declared = declareResolution(decision, {
     actor: attacker,
     source: { kind: "weapon", option, ...(smiteSlot === undefined ? {} : { smiteSlot }), ...(stunDc === undefined ? {} : { stunDc }), ...(palmDc === undefined ? {} : { palmDc }), ...(hurl === null ? {} : { hurl: true as const }) },
-    targetIds: [targetId],
+    targetIds: [targetId, ...alsoIds],
     purpose,
     ...(resumes === undefined ? {} : { resumes }),
     cost: {

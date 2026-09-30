@@ -20,6 +20,7 @@ import { answerReaction, reactionTimerExpired } from "./reactions.js";
 import { answerSmite, smiteTimerExpired } from "./smite.js";
 import { recordResolutionRoll } from "./resolution.js";
 import { initiativeOrder, startEncounter } from "./encounter-start.js";
+import { weaponTargets } from "../../combat/legal-targets.js";
 import { castSpell, declareWeaponAttack, useFeature } from "./combat-actions.js";
 import { answerOpportunityAttack, opportunityAttackTimerExpired, startMove } from "./movement.js";
 import { resolveDeathSave } from "./death-saves.js";
@@ -59,7 +60,10 @@ export function handleCombatCommand(decision: Decision, command: CombatCommand):
       return withHeroTurn(decision, command.combatantId, (hero) => {
         const option = hero.attacks.find((attack) => attack.weapon === command.weapon);
         if (option === undefined) return { code: "unknownWeapon" };
-        return declareWeaponAttack(decision, hero, command.targetId, option, "action", command.smiteSlot);
+        // Whirlwind Attack: a melee swing also strikes every other foe the hero is in melee with.
+        const encounter = activeEncounter(decision);
+        const sweep = encounter !== null && option.range.kind === "melee" && hero.traits.some((trait) => trait.kind === "whirlwind") ? weaponTargets(encounter, hero, option, decision.ctx.rules.content).map((foe) => foe.id).filter((id) => id !== command.targetId) : [];
+        return declareWeaponAttack(decision, hero, command.targetId, option, "action", command.smiteSlot, undefined, sweep);
       });
     case "combatCast":
       return withHeroTurn(decision, command.combatantId, (hero, encounter) =>

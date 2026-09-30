@@ -33,7 +33,7 @@ Every SRD class feature from level 1 to 20 is on the sheet from its level (`feat
 - **Fighter:** Additional Fighting Style (the builder holds one style).
 - **Monk:** Tongue of the Sun and Moon, Timeless Body, Open Hand Technique, Tranquility, Slow Fall. (Quivering Palm ends the vibrations at once: the target saves on the hit.)
 - **Paladin:** Cleansing Touch, Purity of Heart, Divine Health.
-- **Ranger:** Favored Enemy and Natural Explorer (out of combat), Primeval Awareness, Defensive Tactics, Hunter's Multiattack (a weapon attack on several creatures needs a command the menu does not have), Feral Senses. Superior Hunter's Defense is done.
+- **Ranger:** Favored Enemy and Natural Explorer (out of combat), Primeval Awareness, Defensive Tactics, Feral Senses. Superior Hunter's Defense is done, and so is Hunter's Multiattack (fixed to Whirlwind Attack: a melee attack also strikes every other foe in melee with the ranger, with one shared damage roll).
 - **Rogue:** Blindsense, Thief's Reflexes, Supreme Sneak, Use Magic Device, Second-Story Work.
 - **Sorcerer:** none. (Dragon Wings fly until the fight ends; Draconic Presence frightens only, for five sorcery points. Careful Spell is a Metamagic option here; Distant Spell does nothing when range is by zone.)
 - **Warlock:** Dark One's Own Luck, Fiendish Resilience, Eldritch Master. (Hurl Through Hell costs the target 10d10 psychic damage and a round out of the fight.)

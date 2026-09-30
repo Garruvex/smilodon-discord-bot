@@ -201,3 +201,18 @@ describe("Pact of the Blade and Nature's Ward", () => {
     expect(hero.traits.some((trait) => trait.kind === "conditionImmunity" && trait.conditions.includes("condition:poisoned"))).toBe(true);
   });
 });
+
+describe("Hunter's Multiattack", () => {
+  it("makes one melee attack strike every foe the hero is in melee with", () => {
+    const base = partyOfThree();
+    const sheet = base.characters["c-borin"];
+    if (sheet === undefined) throw new Error("borin");
+    const state: CampaignState = { ...base, characters: { ...base.characters, "c-borin": { ...sheet, features: [...sheet.features, "feature:hunter-multiattack"] as typeof sheet.features } } };
+    const fight = new Fight(state).rolls([5, 20, 4, 3, 2]).run(organizer, { kind: "startEncounter", spec: { ...skirmish, partyZoneId: "courtyard" } });
+    fight.run(jamie, { kind: "combatEngage", combatantId: "c-borin", targetId: "goblin-a" });
+    fight.run(jamie, { kind: "combatEngage", combatantId: "c-borin", targetId: "goblin-b" });
+    fight.rolls([15, 15], [1, 1]).run(jamie, { kind: "combatAttack", combatantId: "c-borin", targetId: "goblin-a", weapon: "item:longsword" });
+    const swing = fight.events.find((event) => event.kind === "resolutionDeclared" && event.resolution.actorId === "c-borin");
+    expect(swing?.kind === "resolutionDeclared" ? [...swing.resolution.targetIds].sort() : []).toEqual(["goblin-a", "goblin-b"]);
+  });
+});

@@ -94,7 +94,8 @@ export const primevalAwareness = narrative("primeval-awareness");
 export const defensiveTactics = narrative("defensive-tactics");
 export const rangersLandsStride = defineFeature({ id: "feature:rangers-lands-stride", source, traits: [{ kind: "landsStride" }], action: null });
 export const hideInPlainSight = narrative("hide-in-plain-sight");
-export const hunterMultiattack = narrative("hunter-multiattack");
+// The Hunter picks Volley or Whirlwind Attack; this build fixes Whirlwind. The attacks share one damage roll.
+export const hunterMultiattack = defineFeature({ id: "feature:hunter-multiattack", source, traits: [{ kind: "whirlwind" }], action: null });
 export const vanish = defineFeature({ id: "feature:vanish", source, traits: [{ kind: "quickHide" }], action: null });
 export const superiorHuntersDefense = defineFeature({ id: "feature:superior-hunters-defense", source, traits: [{ kind: "hunterDefense" }], action: null });
 export const feralSenses = narrative("feral-senses");
