@@ -117,6 +117,10 @@ export type Trait =
   | { readonly kind: "unarmoredBonus"; readonly amount: number }
   // Elemental Affinity (Draconic sorcerer 6): the spellcasting modifier is added to one damage roll of a spell that deals this type.
   | { readonly kind: "elementalAffinity"; readonly damageType: DamageType }
+  // Blood Frenzy: advantage on melee attack rolls against a creature that is missing hit points.
+  | { readonly kind: "bloodFrenzy" }
+  // Sunlight Sensitivity: disadvantage on attack rolls while the creature, or its target, is in a zone lit as bright (explicitly: a zone with no lighting named counts for nothing).
+  | { readonly kind: "sunlightSensitivity" }
   // Cutting Words (College of Lore): a Bardic Inspiration use and the reaction take the die's average off a foe's attack roll within 60 feet, when that turns a hit into a miss.
   | { readonly kind: "cuttingWords" }
   // Fighting Style (Protection): when a creature attacks another one standing beside the holder, the holder's reaction gives that attack disadvantage. The shield the SRD asks for is not checked.

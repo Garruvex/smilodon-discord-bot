@@ -466,7 +466,6 @@ export const ape = defineMonster({
   beast: { challengeRating: 0.5, flies: false, swims: false },
 });
 
-// Not modeled: Magic Resistance.
 export const archmage = defineMonster({
   id: "monster:archmage",
   source,
@@ -479,7 +478,7 @@ export const archmage = defineMonster({
     { weapon: "item:dagger", toHit: 6, damage: plus(dice(1, 4), 2) },
   ],
   tactic: "skirmisher",
-  traits: [{ kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }],
+  traits: [{ kind: "saveAdvantage", magic: true }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }],
   spellcasting: { casterLevel: 18, saveDc: 17, attackBonus: 9, modifier: 9, slots: { 1: 4, 2: 3, 3: 3, 4: 3, 5: 3, 6: 1, 7: 1, 8: 1, 9: 1 }, spells: ["spell:fire-bolt", "spell:light", "spell:mage-hand", "spell:prestidigitation", "spell:shocking-grasp", "spell:detect-magic", "spell:identify", "spell:mage-armor", "spell:magic-missile", "spell:detect-thoughts", "spell:mirror-image", "spell:misty-step", "spell:counterspell", "spell:fly", "spell:lightning-bolt", "spell:banishment", "spell:fire-shield", "spell:stoneskin", "spell:cone-of-cold", "spell:scrying", "spell:wall-of-force", "spell:globe-of-invulnerability", "spell:teleport", "spell:mind-blank", "spell:time-stop"], innate: [{ spell: "spell:disguise-self", perDay: null }, { spell: "spell:invisibility", perDay: null }] },
 });
 
@@ -597,7 +596,7 @@ export const badger = defineMonster({
   beast: { challengeRating: 0, flies: false, swims: false },
 });
 
-// Not modeled: Longsword's extra damage types are folded into one; Whip's extra damage types are folded into one; Teleport; Death Throes; Fire Aura; Magic Resistance; Magic Weapons.
+// Not modeled: Longsword's extra damage types are folded into one; Whip's extra damage types are folded into one; Teleport; Death Throes; Fire Aura; Magic Weapons.
 export const balor = defineMonster({
   id: "monster:balor",
   source,
@@ -611,10 +610,10 @@ export const balor = defineMonster({
     { weapon: "item:whip", toHit: 14, damage: combine(plus(dice(2, 6), 8), dice(3, 6)) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:longsword", "item:whip"] }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageResistance", damageTypes: ["cold", "lightning", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:longsword", "item:whip"] }, { kind: "saveAdvantage", magic: true }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageResistance", damageTypes: ["cold", "lightning", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
 });
 
-// Not modeled: Barbed Hide; Devil's Sight; Magic Resistance.
+// Not modeled: Barbed Hide; Devil's Sight.
 export const barbedDevil = defineMonster({
   id: "monster:barbed-devil",
   source,
@@ -629,7 +628,7 @@ export const barbedDevil = defineMonster({
     { weapon: "item:hurl-flame", toHit: 5, damage: dice(3, 6) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:tail-piercing", "item:claw-piercing", "item:claw-piercing"] }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageResistance", damageTypes: ["cold", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:tail-piercing", "item:claw-piercing", "item:claw-piercing"] }, { kind: "saveAdvantage", magic: true }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageResistance", damageTypes: ["cold", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
 });
 
 // Not modeled: Bite's extra damage types are folded into one; Petrifying Gaze.
@@ -665,7 +664,7 @@ export const bat = defineMonster({
   beast: { challengeRating: 0, flies: true, swims: false },
 });
 
-// Not modeled: Devil's Sight; Magic Resistance; Steadfast.
+// Not modeled: Devil's Sight; Steadfast.
 export const beardedDevil = defineMonster({
   id: "monster:bearded-devil",
   source,
@@ -679,7 +678,7 @@ export const beardedDevil = defineMonster({
     { weapon: "item:glaive", toHit: 5, damage: plus(dice(1, 10), 3) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:beard", "item:glaive"] }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageResistance", damageTypes: ["cold", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:beard", "item:glaive"] }, { kind: "saveAdvantage", magic: true }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageResistance", damageTypes: ["cold", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
 });
 
 // Not modeled: Constrict's extra damage types are folded into one; Swallow.
@@ -796,7 +795,7 @@ export const blueDragonWyrmling = defineMonster({
   traits: [{ kind: "areaAttack", weapon: "item:lightning-breath", ability: "dex", dc: 12, damage: dice(4, 10), damageType: "lightning", halfOnSave: true, range: 30, cooldown: 3 }, { kind: "damageImmunity", damageTypes: ["lightning"] }],
 });
 
-// Not modeled: Sting's extra damage types are folded into one; Devil's Sight; Magic Resistance.
+// Not modeled: Sting's extra damage types are folded into one; Devil's Sight.
 export const boneDevil = defineMonster({
   id: "monster:bone-devil",
   source,
@@ -810,7 +809,7 @@ export const boneDevil = defineMonster({
     { weapon: "item:sting", toHit: 8, damage: combine(plus(dice(2, 8), 4), dice(5, 6)), onHit: [{ kind: "conditionUnlessSave", target: "target", ability: "con", dc: 14, condition: "condition:poisoned" }] },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:claw", "item:claw", "item:sting"] }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageResistance", damageTypes: ["cold", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:claw", "item:claw", "item:sting"] }, { kind: "saveAdvantage", magic: true }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageResistance", damageTypes: ["cold", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
 });
 
 // Not modeled: Breath Weapons.
@@ -912,7 +911,7 @@ export const centaur = defineMonster({
   traits: [{ kind: "multiattack", weapons: ["item:pike", "item:hooves"] }],
 });
 
-// Not modeled: Animate Chains; Devil's Sight; Magic Resistance.
+// Not modeled: Animate Chains; Devil's Sight.
 export const chainDevil = defineMonster({
   id: "monster:chain-devil",
   source,
@@ -925,7 +924,7 @@ export const chainDevil = defineMonster({
     { weapon: "item:chain", toHit: 8, damage: plus(dice(2, 6), 4), onHit: [{ kind: "conditionUnlessSave", target: "target", ability: "str", dc: 14, condition: "condition:grappled" }] },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:chain", "item:chain"] }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageResistance", damageTypes: ["cold", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:chain", "item:chain"] }, { kind: "saveAdvantage", magic: true }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageResistance", damageTypes: ["cold", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
 });
 
 export const chimera = defineMonster({
@@ -961,7 +960,7 @@ export const chuul = defineMonster({
   traits: [{ kind: "multiattack", weapons: ["item:pincer", "item:pincer"] }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
 });
 
-// Not modeled: Haste; Acid Absorption; Berserk; Immutable Form; Magic Resistance; Magic Weapons; Immunity to mundane weapons is played as resistance.
+// Not modeled: Haste; Acid Absorption; Berserk; Immutable Form; Magic Weapons; Immunity to mundane weapons is played as resistance.
 export const clayGolem = defineMonster({
   id: "monster:clay-golem",
   source,
@@ -974,7 +973,7 @@ export const clayGolem = defineMonster({
     { weapon: "item:slam", toHit: 8, damage: plus(dice(2, 10), 5) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:slam", "item:slam"] }, { kind: "damageImmunity", damageTypes: ["acid", "poison", "psychic"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:paralyzed", "condition:poisoned"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:slam", "item:slam"] }, { kind: "saveAdvantage", magic: true }, { kind: "damageImmunity", damageTypes: ["acid", "poison", "psychic"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:paralyzed", "condition:poisoned"] }],
 });
 
 // Not modeled: Phantasms; Damage Transfer; False Appearance; Light Sensitivity.
@@ -1193,7 +1192,7 @@ export const deer = defineMonster({
   beast: { challengeRating: 0, flies: false, swims: false },
 });
 
-// Not modeled: Mace's extra damage types are folded into one; Healing Touch; Change Shape; Angelic Weapons; Magic Resistance.
+// Not modeled: Mace's extra damage types are folded into one; Healing Touch; Change Shape; Angelic Weapons.
 export const deva = defineMonster({
   id: "monster:deva",
   source,
@@ -1206,7 +1205,7 @@ export const deva = defineMonster({
     { weapon: "item:mace", toHit: 8, damage: combine(plus(dice(1, 6), 4), dice(4, 8)) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:mace", "item:mace"] }, { kind: "damageResistance", damageTypes: ["radiant", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:mace", "item:mace"] }, { kind: "saveAdvantage", magic: true }, { kind: "damageResistance", damageTypes: ["radiant", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened"] }],
   spellcasting: { casterLevel: 1, saveDc: 17, attackBonus: 9, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:detect-evil-and-good", perDay: null }, { spell: "spell:commune", perDay: 1 }, { spell: "spell:raise-dead", perDay: 1 }] },
 });
 
@@ -1294,7 +1293,7 @@ export const dretch = defineMonster({
   traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claws"] }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageResistance", damageTypes: ["cold", "fire", "lightning"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
 });
 
-// Not modeled: Bite's extra damage types are folded into one; Longsword; Longbow's extra damage types are folded into one; Fey Ancestry; Spider Climb; Sunlight Sensitivity; Web Walker.
+// Not modeled: Bite's extra damage types are folded into one; Longsword; Longbow's extra damage types are folded into one; Fey Ancestry; Spider Climb; Web Walker.
 export const drider = defineMonster({
   id: "monster:drider",
   source,
@@ -1308,11 +1307,11 @@ export const drider = defineMonster({
     { weapon: "item:longbow", toHit: 6, damage: combine(plus(dice(1, 8), 3), dice(1, 8)) },
   ],
   tactic: "brute",
-  traits: [],
+  traits: [{ kind: "sunlightSensitivity" }],
   spellcasting: { casterLevel: 1, saveDc: 13, attackBonus: 5, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:dancing-lights", perDay: null }, { spell: "spell:darkness", perDay: 1 }, { spell: "spell:faerie-fire", perDay: 1 }] },
 });
 
-// Not modeled: Fey Ancestry; Sunlight Sensitivity.
+// Not modeled: Fey Ancestry.
 export const drow = defineMonster({
   id: "monster:drow",
   source,
@@ -1326,7 +1325,7 @@ export const drow = defineMonster({
     { weapon: "item:hand-crossbow", toHit: 4, damage: plus(dice(1, 6), 2), onHit: [{ kind: "conditionUnlessSave", target: "target", ability: "con", dc: 13, condition: "condition:poisoned" }] },
   ],
   tactic: "brute",
-  traits: [],
+  traits: [{ kind: "sunlightSensitivity" }],
   spellcasting: { casterLevel: 1, saveDc: 11, attackBonus: 3, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:dancing-lights", perDay: null }, { spell: "spell:darkness", perDay: 1 }, { spell: "spell:faerie-fire", perDay: 1 }] },
 });
 
@@ -1347,7 +1346,7 @@ export const druid = defineMonster({
   spellcasting: { casterLevel: 4, saveDc: 12, attackBonus: 4, modifier: 4, slots: { 1: 4, 2: 3 }, spells: ["spell:druidcraft", "spell:produce-flame", "spell:shillelagh", "spell:entangle", "spell:longstrider", "spell:speak-with-animals", "spell:thunderwave", "spell:animal-messenger", "spell:barkskin"], innate: [] },
 });
 
-// Not modeled: Fey Charm; Magic Resistance; Speak with Beasts and Plants; Tree Stride.
+// Not modeled: Fey Charm; Speak with Beasts and Plants; Tree Stride.
 export const dryad = defineMonster({
   id: "monster:dryad",
   source,
@@ -1360,11 +1359,11 @@ export const dryad = defineMonster({
     { weapon: "item:club", toHit: 2, damage: dice(1, 4) },
   ],
   tactic: "brute",
-  traits: [],
+  traits: [{ kind: "saveAdvantage", magic: true }],
   spellcasting: { casterLevel: 1, saveDc: 14, attackBonus: 6, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:druidcraft", perDay: null }, { spell: "spell:entangle", perDay: 3 }, { spell: "spell:goodberry", perDay: 3 }, { spell: "spell:barkskin", perDay: 1 }, { spell: "spell:pass-without-trace", perDay: 1 }, { spell: "spell:shillelagh", perDay: 1 }] },
 });
 
-// Not modeled: Enlarge; Invisibility; Duergar Resilience; Sunlight Sensitivity.
+// Not modeled: Enlarge; Invisibility; Duergar Resilience.
 export const duergar = defineMonster({
   id: "monster:duergar",
   source,
@@ -1378,7 +1377,7 @@ export const duergar = defineMonster({
     { weapon: "item:javelin", toHit: 4, damage: plus(dice(1, 6), 2) },
   ],
   tactic: "brute",
-  traits: [{ kind: "damageResistance", damageTypes: ["poison"] }],
+  traits: [{ kind: "sunlightSensitivity" }, { kind: "damageResistance", damageTypes: ["poison"] }],
 });
 
 // Not modeled: Death Burst.
@@ -1485,7 +1484,7 @@ export const elk = defineMonster({
   beast: { challengeRating: 0.25, flies: false, swims: false },
 });
 
-// Not modeled: Longbow's extra damage types are folded into one; Hellish Weapons; Magic Resistance.
+// Not modeled: Longbow's extra damage types are folded into one; Hellish Weapons.
 export const erinyes = defineMonster({
   id: "monster:erinyes",
   source,
@@ -1499,7 +1498,7 @@ export const erinyes = defineMonster({
     { weapon: "item:longbow", toHit: 7, damage: combine(plus(dice(1, 8), 3), dice(3, 8)), onHit: [{ kind: "conditionUnlessSave", target: "target", ability: "con", dc: 14, condition: "condition:poisoned" }] },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:longsword", "item:longsword", "item:longsword"] }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageResistance", damageTypes: ["cold", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:longsword", "item:longsword", "item:longsword"] }, { kind: "saveAdvantage", magic: true }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageResistance", damageTypes: ["cold", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
 });
 
 // Not modeled: Bite's extra damage types are folded into one; Web; Spider Climb; Web Sense; Web Walker.
@@ -1568,7 +1567,7 @@ export const fireGiant = defineMonster({
   traits: [{ kind: "multiattack", weapons: ["item:greatsword", "item:greatsword"] }, { kind: "damageImmunity", damageTypes: ["fire"] }],
 });
 
-// Not modeled: Berserk; Aversion of Fire; Immutable Form; Lightning Absorption; Magic Resistance; Magic Weapons; Immunity to mundane weapons is played as resistance.
+// Not modeled: Berserk; Aversion of Fire; Immutable Form; Lightning Absorption; Magic Weapons; Immunity to mundane weapons is played as resistance.
 export const fleshGolem = defineMonster({
   id: "monster:flesh-golem",
   source,
@@ -1581,7 +1580,7 @@ export const fleshGolem = defineMonster({
     { weapon: "item:slam", toHit: 7, damage: plus(dice(2, 8), 4) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:slam", "item:slam"] }, { kind: "damageImmunity", damageTypes: ["lightning", "poison"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:paralyzed", "condition:poisoned"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:slam", "item:slam"] }, { kind: "saveAdvantage", magic: true }, { kind: "damageImmunity", damageTypes: ["lightning", "poison"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:paralyzed", "condition:poisoned"] }],
 });
 
 // Not modeled: Bite's extra damage types are folded into one; Flyby.
@@ -1991,7 +1990,7 @@ export const giantSeaHorse = defineMonster({
   beast: { challengeRating: 0.5, flies: false, swims: true },
 });
 
-// Not modeled: Blood Frenzy; Water Breathing.
+// Not modeled: Water Breathing.
 export const giantShark = defineMonster({
   id: "monster:giant-shark",
   source,
@@ -2004,7 +2003,7 @@ export const giantShark = defineMonster({
     { weapon: "item:bite", toHit: 9, damage: plus(dice(3, 10), 6) },
   ],
   tactic: "brute",
-  traits: [],
+  traits: [{ kind: "bloodFrenzy" }],
   beast: { challengeRating: 5, flies: false, swims: true },
 });
 
@@ -2092,7 +2091,6 @@ export const gibberingMouther = defineMonster({
   traits: [{ kind: "areaAttack", weapon: "item:blinding-spittle", ability: "dex", dc: 13, condition: "condition:blinded", halfOnSave: false, range: 15, cooldown: 3 }, { kind: "conditionImmunity", conditions: ["condition:prone"] }],
 });
 
-// Not modeled: Magic Resistance.
 export const glabrezu = defineMonster({
   id: "monster:glabrezu",
   source,
@@ -2106,7 +2104,7 @@ export const glabrezu = defineMonster({
     { weapon: "item:fist", toHit: 9, damage: plus(dice(2, 4), 2) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:pincer", "item:pincer", "item:fist", "item:fist"] }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageResistance", damageTypes: ["cold", "fire", "lightning", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:pincer", "item:pincer", "item:fist", "item:fist"] }, { kind: "saveAdvantage", magic: true }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageResistance", damageTypes: ["cold", "fire", "lightning", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
   spellcasting: { casterLevel: 1, saveDc: 16, attackBonus: 8, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:darkness", perDay: null }, { spell: "spell:detect-magic", perDay: null }, { spell: "spell:dispel-magic", perDay: null }, { spell: "spell:confusion", perDay: 1 }, { spell: "spell:fly", perDay: 1 }, { spell: "spell:power-word-stun", perDay: 1 }] },
 });
 
@@ -2359,7 +2357,7 @@ export const hellHound = defineMonster({
   traits: [{ kind: "packTactics" }, { kind: "areaAttack", weapon: "item:fire-breath", ability: "dex", dc: 12, damage: dice(6, 6), damageType: "fire", halfOnSave: true, range: 15, cooldown: 3 }, { kind: "damageImmunity", damageTypes: ["fire"] }],
 });
 
-// Not modeled: Magic Resistance; Stench.
+// Not modeled: Stench.
 export const hezrou = defineMonster({
   id: "monster:hezrou",
   source,
@@ -2373,7 +2371,7 @@ export const hezrou = defineMonster({
     { weapon: "item:claws", toHit: 7, damage: plus(dice(2, 6), 4) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claws", "item:claws"] }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageResistance", damageTypes: ["cold", "fire", "lightning", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claws", "item:claws"] }, { kind: "saveAdvantage", magic: true }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageResistance", damageTypes: ["cold", "fire", "lightning", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
 });
 
 export const hillGiant = defineMonster({
@@ -2425,7 +2423,7 @@ export const homunculus = defineMonster({
   traits: [{ kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:poisoned"] }],
 });
 
-// Not modeled: Devil's Sight; Magic Resistance.
+// Not modeled: Devil's Sight.
 export const hornedDevil = defineMonster({
   id: "monster:horned-devil",
   source,
@@ -2440,10 +2438,10 @@ export const hornedDevil = defineMonster({
     { weapon: "item:hurl-flame", toHit: 7, damage: dice(4, 6) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:fork", "item:fork", "item:tail-piercing"] }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageResistance", damageTypes: ["cold", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:fork", "item:fork", "item:tail-piercing"] }, { kind: "saveAdvantage", magic: true }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageResistance", damageTypes: ["cold", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
 });
 
-// Not modeled: Blood Frenzy; Water Breathing.
+// Not modeled: Water Breathing.
 export const hunterShark = defineMonster({
   id: "monster:hunter-shark",
   source,
@@ -2456,7 +2454,7 @@ export const hunterShark = defineMonster({
     { weapon: "item:bite", toHit: 6, damage: plus(dice(2, 8), 4) },
   ],
   tactic: "brute",
-  traits: [],
+  traits: [{ kind: "bloodFrenzy" }],
   beast: { challengeRating: 2, flies: false, swims: true },
 });
 
@@ -2492,7 +2490,7 @@ export const hyena = defineMonster({
   beast: { challengeRating: 0, flies: false, swims: false },
 });
 
-// Not modeled: Bite's extra damage types are folded into one; Claws's extra damage types are folded into one; Tail's extra damage types are folded into one; Wall of Ice; Devil's Sight; Magic Resistance.
+// Not modeled: Bite's extra damage types are folded into one; Claws's extra damage types are folded into one; Tail's extra damage types are folded into one; Wall of Ice; Devil's Sight.
 export const iceDevil = defineMonster({
   id: "monster:ice-devil",
   source,
@@ -2507,7 +2505,7 @@ export const iceDevil = defineMonster({
     { weapon: "item:tail", toHit: 10, damage: combine(plus(dice(2, 6), 5), dice(3, 6)) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claws", "item:tail"] }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claws", "item:tail"] }, { kind: "saveAdvantage", magic: true }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
 });
 
 // Not modeled: Claws's extra damage types are folded into one; Death Burst; False Appearance.
@@ -2527,7 +2525,7 @@ export const iceMephit = defineMonster({
   spellcasting: { casterLevel: 1, saveDc: 10, attackBonus: 2, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:fog-cloud", perDay: 1 }] },
 });
 
-// Not modeled: Invisibility; Shapechanger; Devil's Sight; Magic Resistance.
+// Not modeled: Invisibility; Shapechanger; Devil's Sight.
 export const imp = defineMonster({
   id: "monster:imp",
   source,
@@ -2540,7 +2538,7 @@ export const imp = defineMonster({
     { weapon: "item:sting", toHit: 5, damage: plus(dice(1, 4), 3) },
   ],
   tactic: "brute",
-  traits: [{ kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageResistance", damageTypes: ["cold", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  traits: [{ kind: "saveAdvantage", magic: true }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageResistance", damageTypes: ["cold", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
 });
 
 // Not modeled: Invisibility; Faultless Tracker.
@@ -2559,7 +2557,7 @@ export const invisibleStalker = defineMonster({
   traits: [{ kind: "multiattack", weapons: ["item:slam", "item:slam"] }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:grappled", "condition:paralyzed", "condition:poisoned", "condition:prone", "condition:restrained"] }],
 });
 
-// Not modeled: Fire Absorption; Immutable Form; Magic Resistance; Magic Weapons; Immunity to mundane weapons is played as resistance.
+// Not modeled: Fire Absorption; Immutable Form; Magic Weapons; Immunity to mundane weapons is played as resistance.
 export const ironGolem = defineMonster({
   id: "monster:iron-golem",
   source,
@@ -2573,7 +2571,7 @@ export const ironGolem = defineMonster({
     { weapon: "item:sword", toHit: 13, damage: plus(dice(3, 10), 7) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:slam", "item:slam"] }, { kind: "areaAttack", weapon: "item:poison-breath", ability: "con", dc: 19, damage: dice(10, 8), damageType: "poison", halfOnSave: true, range: 15, cooldown: 3 }, { kind: "damageImmunity", damageTypes: ["fire", "poison", "psychic"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:paralyzed", "condition:poisoned"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:slam", "item:slam"] }, { kind: "saveAdvantage", magic: true }, { kind: "areaAttack", weapon: "item:poison-breath", ability: "con", dc: 19, damage: dice(10, 8), damageType: "poison", halfOnSave: true, range: 15, cooldown: 3 }, { kind: "damageImmunity", damageTypes: ["fire", "poison", "psychic"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:paralyzed", "condition:poisoned"] }],
 });
 
 // Not modeled: Keen Hearing and Smell.
@@ -2814,7 +2812,7 @@ export const manticore = defineMonster({
   traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }],
 });
 
-// Not modeled: Teleport; Magic Resistance; Magic Weapons; Reactive.
+// Not modeled: Teleport; Magic Weapons; Reactive.
 export const marilith = defineMonster({
   id: "monster:marilith",
   source,
@@ -2828,7 +2826,7 @@ export const marilith = defineMonster({
     { weapon: "item:tail", toHit: 9, damage: plus(dice(2, 10), 4), onHit: [{ kind: "conditionUnlessSave", target: "target", ability: "str", dc: 19, condition: "condition:grappled" }] },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:longsword", "item:longsword", "item:longsword", "item:longsword", "item:longsword", "item:longsword", "item:tail"] }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageResistance", damageTypes: ["cold", "fire", "lightning", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:longsword", "item:longsword", "item:longsword", "item:longsword", "item:longsword", "item:longsword", "item:tail"] }, { kind: "saveAdvantage", magic: true }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageResistance", damageTypes: ["cold", "fire", "lightning", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
 });
 
 // Not modeled: Keen Hearing and Smell.
@@ -2984,7 +2982,7 @@ export const mummy = defineMonster({
   traits: [{ kind: "damageImmunity", damageTypes: ["necrotic", "poison"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "damageVulnerability", damageTypes: ["fire"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:paralyzed", "condition:poisoned"] }],
 });
 
-// Not modeled: Rotting Fist's extra damage types are folded into one; Dreadful Glare; Magic Resistance; Rejuvenation; legendary: Blinding Dust; legendary: Blasphemous Word (Costs 2 Actions); legendary: Channel Negative Energy (Costs 2 Actions); legendary: Whirlwind of Sand (Costs 2 Actions); Immunity to mundane weapons is played as resistance.
+// Not modeled: Rotting Fist's extra damage types are folded into one; Dreadful Glare; Rejuvenation; legendary: Blinding Dust; legendary: Blasphemous Word (Costs 2 Actions); legendary: Channel Negative Energy (Costs 2 Actions); legendary: Whirlwind of Sand (Costs 2 Actions); Immunity to mundane weapons is played as resistance.
 export const mummyLord = defineMonster({
   id: "monster:mummy-lord",
   source,
@@ -2997,11 +2995,11 @@ export const mummyLord = defineMonster({
     { weapon: "item:rotting-fist", toHit: 9, damage: combine(plus(dice(3, 6), 4), dice(6, 6)) },
   ],
   tactic: "brute",
-  traits: [{ kind: "legendaryActions", uses: 3, options: [{ weapon: "item:rotting-fist", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["necrotic", "poison"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "damageVulnerability", damageTypes: ["fire"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:paralyzed", "condition:poisoned"] }],
+  traits: [{ kind: "saveAdvantage", magic: true }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:rotting-fist", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["necrotic", "poison"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "damageVulnerability", damageTypes: ["fire"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:paralyzed", "condition:poisoned"] }],
   spellcasting: { casterLevel: 10, saveDc: 17, attackBonus: 9, modifier: 9, slots: { 1: 4, 2: 3, 3: 3, 4: 3, 5: 2, 6: 1 }, spells: ["spell:sacred-flame", "spell:thaumaturgy", "spell:command", "spell:guiding-bolt", "spell:shield-of-faith", "spell:hold-person", "spell:silence", "spell:spiritual-weapon", "spell:animate-dead", "spell:dispel-magic", "spell:divination", "spell:guardian-of-faith", "spell:contagion", "spell:insect-plague", "spell:harm"], innate: [] },
 });
 
-// Not modeled: Teleport; Horror Nimbus; Magic Resistance.
+// Not modeled: Teleport; Horror Nimbus.
 export const nalfeshnee = defineMonster({
   id: "monster:nalfeshnee",
   source,
@@ -3015,10 +3013,10 @@ export const nalfeshnee = defineMonster({
     { weapon: "item:claw", toHit: 10, damage: plus(dice(3, 6), 5) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "areaAttack", weapon: "item:horror-nimbus", ability: "wis", dc: 15, condition: "condition:frightened", halfOnSave: false, range: 15, cooldown: 3 }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageResistance", damageTypes: ["cold", "fire", "lightning", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw"] }, { kind: "saveAdvantage", magic: true }, { kind: "areaAttack", weapon: "item:horror-nimbus", ability: "wis", dc: 15, condition: "condition:frightened", halfOnSave: false, range: 15, cooldown: 3 }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageResistance", damageTypes: ["cold", "fire", "lightning", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
 });
 
-// Not modeled: Change Shape; Etherealness; Nightmare Haunting; Magic Resistance; Night Hag Items.
+// Not modeled: Change Shape; Etherealness; Nightmare Haunting; Night Hag Items.
 export const nightHag = defineMonster({
   id: "monster:night-hag",
   source,
@@ -3031,7 +3029,7 @@ export const nightHag = defineMonster({
     { weapon: "item:claws", toHit: 7, damage: plus(dice(2, 8), 4) },
   ],
   tactic: "brute",
-  traits: [{ kind: "damageResistance", damageTypes: ["cold", "fire", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed"] }],
+  traits: [{ kind: "saveAdvantage", magic: true }, { kind: "damageResistance", damageTypes: ["cold", "fire", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed"] }],
   spellcasting: { casterLevel: 1, saveDc: 14, attackBonus: 6, modifier: 6, slots: {  }, spells: [], innate: [{ spell: "spell:detect-magic", perDay: null }, { spell: "spell:magic-missile", perDay: null }, { spell: "spell:plane-shift", perDay: 2 }, { spell: "spell:ray-of-enfeeblement", perDay: 2 }, { spell: "spell:sleep", perDay: 2 }] },
 });
 
@@ -3216,7 +3214,7 @@ export const phaseSpider = defineMonster({
   traits: [],
 });
 
-// Not modeled: Fear Aura; Magic Resistance; Magic Weapons.
+// Not modeled: Fear Aura; Magic Weapons.
 export const pitFiend = defineMonster({
   id: "monster:pit-fiend",
   source,
@@ -3232,11 +3230,11 @@ export const pitFiend = defineMonster({
     { weapon: "item:tail", toHit: 14, damage: plus(dice(3, 10), 8) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:mace", "item:tail"] }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageResistance", damageTypes: ["cold", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:mace", "item:tail"] }, { kind: "saveAdvantage", magic: true }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageResistance", damageTypes: ["cold", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
   spellcasting: { casterLevel: 1, saveDc: 21, attackBonus: 13, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:detect-magic", perDay: null }, { spell: "spell:fireball", perDay: null }, { spell: "spell:hold-monster", perDay: 3 }, { spell: "spell:wall-of-fire", perDay: 3 }] },
 });
 
-// Not modeled: Greatsword's extra damage types are folded into one; Healing Touch; Angelic Weapons; Divine Awareness; Magic Resistance.
+// Not modeled: Greatsword's extra damage types are folded into one; Healing Touch; Angelic Weapons; Divine Awareness.
 export const planetar = defineMonster({
   id: "monster:planetar",
   source,
@@ -3249,7 +3247,7 @@ export const planetar = defineMonster({
     { weapon: "item:greatsword", toHit: 12, damage: combine(plus(dice(4, 6), 7), dice(5, 8)) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:greatsword", "item:greatsword"] }, { kind: "damageResistance", damageTypes: ["radiant", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:greatsword", "item:greatsword"] }, { kind: "saveAdvantage", magic: true }, { kind: "damageResistance", damageTypes: ["radiant", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened"] }],
   spellcasting: { casterLevel: 1, saveDc: 20, attackBonus: 12, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:detect-evil-and-good", perDay: null }, { spell: "spell:invisibility", perDay: null }, { spell: "spell:blade-barrier", perDay: 3 }, { spell: "spell:dispel-evil-and-good", perDay: 3 }, { spell: "spell:flame-strike", perDay: 3 }, { spell: "spell:raise-dead", perDay: 3 }, { spell: "spell:commune", perDay: 1 }, { spell: "spell:control-weather", perDay: 1 }, { spell: "spell:insect-plague", perDay: 1 }] },
 });
 
@@ -3337,7 +3335,7 @@ export const priest = defineMonster({
   spellcasting: { casterLevel: 5, saveDc: 13, attackBonus: 5, modifier: 5, slots: { 1: 4, 2: 3, 3: 2 }, spells: ["spell:light", "spell:sacred-flame", "spell:thaumaturgy", "spell:cure-wounds", "spell:guiding-bolt", "spell:sanctuary", "spell:lesser-restoration", "spell:spiritual-weapon", "spell:dispel-magic", "spell:spirit-guardians"], innate: [] },
 });
 
-// Not modeled: Keen Senses; Magic Resistance; Limited Telepathy.
+// Not modeled: Keen Senses; Limited Telepathy.
 export const pseudodragon = defineMonster({
   id: "monster:pseudodragon",
   source,
@@ -3351,7 +3349,7 @@ export const pseudodragon = defineMonster({
     { weapon: "item:sting", toHit: 4, damage: plus(dice(1, 4), 2), onHit: [{ kind: "conditionUnlessSave", target: "target", ability: "con", dc: 11, condition: "condition:poisoned" }] },
   ],
   tactic: "brute",
-  traits: [],
+  traits: [{ kind: "saveAdvantage", magic: true }],
 });
 
 // Not modeled: Tunneler.
@@ -3371,7 +3369,7 @@ export const purpleWorm = defineMonster({
   traits: [{ kind: "multiattack", weapons: ["item:bite", "item:tail-stinger"] }],
 });
 
-// Not modeled: Scare; Invisibility; Shapechanger; Magic Resistance.
+// Not modeled: Scare; Invisibility; Shapechanger.
 export const quasit = defineMonster({
   id: "monster:quasit",
   source,
@@ -3384,10 +3382,10 @@ export const quasit = defineMonster({
     { weapon: "item:claw-piercing", toHit: 4, damage: plus(dice(1, 4), 3) },
   ],
   tactic: "brute",
-  traits: [{ kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageResistance", damageTypes: ["cold", "fire", "lightning", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  traits: [{ kind: "saveAdvantage", magic: true }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageResistance", damageTypes: ["cold", "fire", "lightning", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
 });
 
-// Not modeled: Blood Frenzy; Water Breathing.
+// Not modeled: Water Breathing.
 export const quipper = defineMonster({
   id: "monster:quipper",
   source,
@@ -3400,7 +3398,7 @@ export const quipper = defineMonster({
     { weapon: "item:bite", toHit: 5, damage: flat(1) },
   ],
   tactic: "brute",
-  traits: [],
+  traits: [{ kind: "bloodFrenzy" }],
   beast: { challengeRating: 0, flies: false, swims: true },
 });
 
@@ -3620,7 +3618,7 @@ export const saberToothedTiger = defineMonster({
   beast: { challengeRating: 2, flies: false, swims: false },
 });
 
-// Not modeled: Spear; Blood Frenzy; Limited Amphibiousness; Shark Telepathy.
+// Not modeled: Spear; Limited Amphibiousness; Shark Telepathy.
 export const sahuagin = defineMonster({
   id: "monster:sahuagin",
   source,
@@ -3634,7 +3632,7 @@ export const sahuagin = defineMonster({
     { weapon: "item:claws", toHit: 3, damage: plus(dice(1, 4), 1) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claws"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claws"] }, { kind: "bloodFrenzy" }],
 });
 
 // Not modeled: Tail's extra damage types are folded into one; Heated Body; Heated Weapons.
@@ -3654,7 +3652,6 @@ export const salamander = defineMonster({
   traits: [{ kind: "multiattack", weapons: ["item:spear", "item:tail"] }, { kind: "damageImmunity", damageTypes: ["fire"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "damageVulnerability", damageTypes: ["cold"] }],
 });
 
-// Not modeled: Magic Resistance.
 export const satyr = defineMonster({
   id: "monster:satyr",
   source,
@@ -3669,7 +3666,7 @@ export const satyr = defineMonster({
     { weapon: "item:shortbow", toHit: 5, damage: plus(dice(1, 6), 3) },
   ],
   tactic: "brute",
-  traits: [],
+  traits: [{ kind: "saveAdvantage", magic: true }],
 });
 
 export const scorpion = defineMonster({
@@ -3818,7 +3815,7 @@ export const silverDragonWyrmling = defineMonster({
   traits: [{ kind: "damageImmunity", damageTypes: ["cold"] }],
 });
 
-// Not modeled: Greatsword's extra damage types are folded into one; Slaying Longbow's extra damage types are folded into one; Flying Sword; Healing Touch; Angelic Weapons; Divine Awareness; Magic Resistance; legendary: Teleport; legendary: Searing Burst (Costs 2 Actions); legendary: Blinding Gaze (Costs 3 Actions).
+// Not modeled: Greatsword's extra damage types are folded into one; Slaying Longbow's extra damage types are folded into one; Flying Sword; Healing Touch; Angelic Weapons; Divine Awareness; legendary: Teleport; legendary: Searing Burst (Costs 2 Actions); legendary: Blinding Gaze (Costs 3 Actions).
 export const solar = defineMonster({
   id: "monster:solar",
   source,
@@ -3832,7 +3829,7 @@ export const solar = defineMonster({
     { weapon: "item:slaying-longbow", toHit: 13, damage: combine(plus(dice(2, 8), 6), dice(6, 8)) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:greatsword", "item:greatsword"] }, { kind: "damageImmunity", damageTypes: ["necrotic", "poison"] }, { kind: "damageResistance", damageTypes: ["radiant", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:poisoned"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:greatsword", "item:greatsword"] }, { kind: "saveAdvantage", magic: true }, { kind: "damageImmunity", damageTypes: ["necrotic", "poison"] }, { kind: "damageResistance", damageTypes: ["radiant", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:poisoned"] }],
   spellcasting: { casterLevel: 1, saveDc: 25, attackBonus: 17, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:detect-evil-and-good", perDay: null }, { spell: "spell:invisibility", perDay: null }, { spell: "spell:blade-barrier", perDay: 3 }, { spell: "spell:dispel-evil-and-good", perDay: 3 }, { spell: "spell:resurrection", perDay: 3 }, { spell: "spell:commune", perDay: 1 }, { spell: "spell:control-weather", perDay: 1 }] },
 });
 
@@ -3954,7 +3951,7 @@ export const stoneGiant = defineMonster({
   traits: [{ kind: "multiattack", weapons: ["item:greatclub", "item:greatclub"] }],
 });
 
-// Not modeled: Slow; Immutable Form; Magic Resistance; Magic Weapons; Immunity to mundane weapons is played as resistance.
+// Not modeled: Slow; Immutable Form; Magic Weapons; Immunity to mundane weapons is played as resistance.
 export const stoneGolem = defineMonster({
   id: "monster:stone-golem",
   source,
@@ -3967,7 +3964,7 @@ export const stoneGolem = defineMonster({
     { weapon: "item:slam", toHit: 10, damage: plus(dice(3, 8), 6) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:slam", "item:slam"] }, { kind: "damageImmunity", damageTypes: ["poison", "psychic"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:paralyzed", "condition:poisoned"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:slam", "item:slam"] }, { kind: "saveAdvantage", magic: true }, { kind: "damageImmunity", damageTypes: ["poison", "psychic"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:paralyzed", "condition:poisoned"] }],
 });
 
 // Not modeled: Lightning Strike; Amphibious.
@@ -4084,7 +4081,7 @@ export const swarmOfPoisonousSnakes = defineMonster({
   traits: [{ kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:grappled", "condition:paralyzed", "condition:prone", "condition:restrained", "condition:stunned"] }],
 });
 
-// Not modeled: Blood Frenzy; Swarm; Water Breathing.
+// Not modeled: Swarm; Water Breathing.
 export const swarmOfQuippers = defineMonster({
   id: "monster:swarm-of-quippers",
   source,
@@ -4097,7 +4094,7 @@ export const swarmOfQuippers = defineMonster({
     { weapon: "item:bites", toHit: 5, damage: dice(4, 6) },
   ],
   tactic: "brute",
-  traits: [{ kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:grappled", "condition:paralyzed", "condition:prone", "condition:restrained", "condition:stunned"] }],
+  traits: [{ kind: "bloodFrenzy" }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:grappled", "condition:paralyzed", "condition:prone", "condition:restrained", "condition:stunned"] }],
 });
 
 // Not modeled: Keen Smell; Swarm.
@@ -4164,7 +4161,7 @@ export const swarmOfWasps = defineMonster({
   traits: [{ kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:grappled", "condition:paralyzed", "condition:prone", "condition:restrained", "condition:stunned"] }],
 });
 
-// Not modeled: Swallow; Frightful Presence; Magic Resistance; Reflective Carapace; Siege Monster; legendary: Move; legendary: Chomp (Costs 2 Actions); Immunity to mundane weapons is played as resistance.
+// Not modeled: Swallow; Frightful Presence; Reflective Carapace; Siege Monster; legendary: Move; legendary: Chomp (Costs 2 Actions); Immunity to mundane weapons is played as resistance.
 export const tarrasque = defineMonster({
   id: "monster:tarrasque",
   source,
@@ -4180,7 +4177,7 @@ export const tarrasque = defineMonster({
     { weapon: "item:tail", toHit: 19, damage: plus(dice(4, 6), 10), onHit: [{ kind: "conditionUnlessSave", target: "target", ability: "str", dc: 20, condition: "condition:prone" }] },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw", "item:horns-piercing", "item:tail"] }, { kind: "areaAttack", weapon: "item:frightful-presence", ability: "wis", dc: 17, condition: "condition:frightened", halfOnSave: false, range: 120, cooldown: 99, free: true }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:bite", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:paralyzed", "condition:poisoned"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claw", "item:claw", "item:horns-piercing", "item:tail"] }, { kind: "saveAdvantage", magic: true }, { kind: "areaAttack", weapon: "item:frightful-presence", ability: "wis", dc: 17, condition: "condition:frightened", halfOnSave: false, range: 120, cooldown: 99, free: true }, { kind: "legendaryResistance", uses: 3 }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:bite", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:frightened", "condition:paralyzed", "condition:poisoned"] }],
 });
 
 export const thug = defineMonster({
@@ -4302,7 +4299,7 @@ export const tyrannosaurusRex = defineMonster({
   beast: { challengeRating: 8, flies: false, swims: false },
 });
 
-// Not modeled: Healing Touch; Teleport; Charge; Magic Resistance; Magic Weapons; legendary: Shimmering Shield (Costs 2 Actions); legendary: Heal Self (Costs 3 Actions).
+// Not modeled: Healing Touch; Teleport; Charge; Magic Weapons; legendary: Shimmering Shield (Costs 2 Actions); legendary: Heal Self (Costs 3 Actions).
 export const unicorn = defineMonster({
   id: "monster:unicorn",
   source,
@@ -4316,7 +4313,7 @@ export const unicorn = defineMonster({
     { weapon: "item:horn", toHit: 7, damage: plus(dice(1, 8), 4) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:hooves", "item:horn"] }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:hooves", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:paralyzed", "condition:poisoned"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:hooves", "item:horn"] }, { kind: "saveAdvantage", magic: true }, { kind: "legendaryActions", uses: 3, options: [{ weapon: "item:hooves", cost: 1 }] }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:paralyzed", "condition:poisoned"] }],
   spellcasting: { casterLevel: 1, saveDc: 14, attackBonus: 6, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:detect-evil-and-good", perDay: null }, { spell: "spell:druidcraft", perDay: null }, { spell: "spell:pass-without-trace", perDay: null }, { spell: "spell:calm-emotions", perDay: 1 }, { spell: "spell:dispel-evil-and-good", perDay: 1 }, { spell: "spell:entangle", perDay: 1 }] },
 });
 
@@ -4419,7 +4416,7 @@ export const violetFungus = defineMonster({
   traits: [{ kind: "conditionImmunity", conditions: ["condition:blinded", "condition:blinded", "condition:frightened"] }],
 });
 
-// Not modeled: Spores; Magic Resistance.
+// Not modeled: Spores.
 export const vrock = defineMonster({
   id: "monster:vrock",
   source,
@@ -4433,7 +4430,7 @@ export const vrock = defineMonster({
     { weapon: "item:talons", toHit: 6, damage: plus(dice(2, 10), 3) },
   ],
   tactic: "brute",
-  traits: [{ kind: "multiattack", weapons: ["item:beak-piercing", "item:talons"] }, { kind: "areaAttack", weapon: "item:stunning-screech", ability: "con", dc: 14, condition: "condition:stunned", halfOnSave: false, range: 20, cooldown: 99 }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageResistance", damageTypes: ["cold", "fire", "lightning", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  traits: [{ kind: "multiattack", weapons: ["item:beak-piercing", "item:talons"] }, { kind: "saveAdvantage", magic: true }, { kind: "areaAttack", weapon: "item:stunning-screech", ability: "con", dc: 14, condition: "condition:stunned", halfOnSave: false, range: 20, cooldown: 99 }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageResistance", damageTypes: ["cold", "fire", "lightning", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
 });
 
 // Not modeled: Keen Sight and Smell.
@@ -4787,7 +4784,7 @@ export const whiteDragonWyrmling = defineMonster({
   traits: [{ kind: "areaAttack", weapon: "item:cold-breath", ability: "con", dc: 12, damage: dice(5, 8), damageType: "cold", halfOnSave: true, range: 15, cooldown: 3 }, { kind: "damageImmunity", damageTypes: ["cold"] }],
 });
 
-// Not modeled: Longsword; Sunlight Sensitivity.
+// Not modeled: Longsword.
 export const wight = defineMonster({
   id: "monster:wight",
   source,
@@ -4801,7 +4798,7 @@ export const wight = defineMonster({
     { weapon: "item:longbow", toHit: 4, damage: plus(dice(1, 8), 2) },
   ],
   tactic: "brute",
-  traits: [{ kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageResistance", damageTypes: ["necrotic", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  traits: [{ kind: "sunlightSensitivity" }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageResistance", damageTypes: ["necrotic", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
 });
 
 // Not modeled: Invisibility; Consume Life; Ephemeral; Incorporeal Movement; Variable Illumination.
@@ -4852,7 +4849,7 @@ export const worg = defineMonster({
   traits: [],
 });
 
-// Not modeled: Create Specter; Incorporeal Movement; Sunlight Sensitivity.
+// Not modeled: Create Specter; Incorporeal Movement.
 export const wraith = defineMonster({
   id: "monster:wraith",
   source,
@@ -4865,7 +4862,7 @@ export const wraith = defineMonster({
     { weapon: "item:life-drain", toHit: 6, damage: plus(dice(4, 8), 3) },
   ],
   tactic: "brute",
-  traits: [{ kind: "damageImmunity", damageTypes: ["necrotic", "poison"] }, { kind: "damageResistance", damageTypes: ["acid", "cold", "fire", "lightning", "thunder", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:grappled", "condition:paralyzed", "condition:poisoned", "condition:prone", "condition:restrained"] }],
+  traits: [{ kind: "sunlightSensitivity" }, { kind: "damageImmunity", damageTypes: ["necrotic", "poison"] }, { kind: "damageResistance", damageTypes: ["acid", "cold", "fire", "lightning", "thunder", "bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:charmed", "condition:grappled", "condition:paralyzed", "condition:poisoned", "condition:prone", "condition:restrained"] }],
 });
 
 export const wyvern = defineMonster({

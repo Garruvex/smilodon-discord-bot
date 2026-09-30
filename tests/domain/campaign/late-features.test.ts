@@ -311,3 +311,29 @@ describe("Draconic Bloodline", () => {
     expect(burn(["feature:elemental-affinity"])).toBe(burn([]) + 3);
   });
 });
+
+describe("Monster traits", () => {
+  const seen = (traits: readonly { readonly kind: string }[], lighting?: "bright" | "dim" | "dark", wounded = false): string => {
+    const spec: EncounterSpec = { ...skirmish, zones: skirmish.zones.map((zone) => (lighting === undefined ? zone : { ...zone, lighting })) };
+    const fight = new Fight(partyOfThree()).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec });
+    const goblin = { ...fight.combatant("goblin-a"), traits: [...fight.combatant("goblin-a").traits, ...traits] } as ReturnType<Fight["combatant"]>;
+    const mira = { ...fight.combatant("c-mira"), ...(wounded ? { hp: 3 } : {}), zoneId: "courtyard" };
+    return attackMode(fight.encounter, goblin, mira, false, false, conditionLookup(ruleset().content)).mode;
+  };
+
+  it("Blood Frenzy gives advantage against a wounded creature only", () => {
+    expect(seen([{ kind: "bloodFrenzy" }], undefined, true)).toBe("advantage");
+    expect(seen([{ kind: "bloodFrenzy" }], undefined, false)).toBe("normal");
+  });
+
+  it("Sunlight Sensitivity gives disadvantage in a zone lit as bright, and nowhere else", () => {
+    expect(seen([{ kind: "sunlightSensitivity" }], "bright")).toBe("disadvantage");
+    expect(seen([{ kind: "sunlightSensitivity" }], "dim")).toBe("normal");
+    expect(seen([{ kind: "sunlightSensitivity" }])).toBe("normal");
+  });
+
+  it("Magic Resistance is played as advantage on saves against spells", () => {
+    const traits = ruleset().content.get("monster:balor").traits;
+    expect(traits).toContainEqual({ kind: "saveAdvantage", magic: true });
+  });
+});

@@ -313,6 +313,9 @@ for (const monster of monsters) {
   const abilityNames = (monster.special_abilities ?? []).map((ability) => ability.name);
   if (abilityNames.includes("Pack Tactics")) traits.push(`{ kind: "packTactics" }`);
   if (abilityNames.includes("Nimble Escape")) traits.push(`{ kind: "nimbleEscape" }`);
+  if (abilityNames.includes("Magic Resistance")) traits.push(`{ kind: "saveAdvantage", magic: true }`);
+  if (abilityNames.includes("Blood Frenzy")) traits.push(`{ kind: "bloodFrenzy" }`);
+  if (abilityNames.includes("Sunlight Sensitivity")) traits.push(`{ kind: "sunlightSensitivity" }`);
   traits.push(...areaTraits);
   for (const ability of monster.special_abilities ?? []) {
     if (ability.name === "Regeneration") {
@@ -330,7 +333,7 @@ for (const monster of monsters) {
       continue;
     }
     if (ability.spellcasting !== undefined) continue;
-    if (!["Pack Tactics", "Nimble Escape"].includes(ability.name)) notes.push(ability.name);
+    if (!["Pack Tactics", "Nimble Escape", "Magic Resistance", "Blood Frenzy", "Sunlight Sensitivity"].includes(ability.name)) notes.push(ability.name);
   }
   // Legendary actions that are one of the monster's own attacks are played; the rest are noted.
   const legendaryOptions = [];
