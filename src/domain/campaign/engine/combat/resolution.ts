@@ -522,7 +522,12 @@ export function applyEffect(
         const letter = effect.count > 1 ? String.fromCharCode(65 + index) : null;
         const id = `${recipient.id}-${slug}${letter === null ? "" : `-${letter.toLowerCase()}`}-${resolution.id}`;
         const summoned = monsterCombatant(monster, decision.ctx.rules.content, { id, letter, zoneId: recipient.zoneId, npcId: null, fleeBelowHpFraction: null });
-        decision.emit({ kind: "combatantSummoned", summonerId: recipient.id, combatant: { ...summoned, side: "party", initiative: recipient.initiative } });
+        const concentrating = resolution.source.kind === "spell" && decision.ctx.rules.content.get(resolution.source.spellId).concentration;
+        decision.emit({
+          kind: "combatantSummoned",
+          summonerId: recipient.id,
+          combatant: { ...summoned, side: "party", initiative: recipient.initiative, ...(concentrating ? { boundTo: resolution.id } : {}) },
+        });
       }
       return;
     }

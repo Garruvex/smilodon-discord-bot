@@ -151,5 +151,9 @@ export function endConcentration(
   for (const combatant of Object.values(encounter.combatants)) {
     const effectIds = combatant.effects.flatMap((effect) => (effect.concentrationId === concentration.resolutionId ? [effect.id] : []));
     if (effectIds.length > 0) decision.emit({ kind: "effectsRemoved", combatantId: combatant.id, effectIds, reason: "concentration" });
+    // A creature the spell called goes with it.
+    if (combatant.boundTo === concentration.resolutionId && combatant.hp > 0) {
+      decision.emit({ kind: "combatantHpChanged", combatantId: combatant.id, change: -combatant.hp, hp: 0, condition: "dead", deathSaves: combatant.deathSaves, cause: "damage" });
+    }
   }
 }

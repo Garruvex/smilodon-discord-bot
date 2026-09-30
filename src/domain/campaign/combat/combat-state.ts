@@ -106,6 +106,8 @@ export interface Combatant {
   readonly tactic: MonsterTactic | null;
   // Flee at the start of its turn when HP falls below this share of max.
   readonly fleeBelowHpFraction: number | null;
+  // A summon held up by concentration: the resolution of the spell that called it. It vanishes when that ends.
+  readonly boundTo?: string;
   readonly zoneId: ZoneId;
   readonly initiative: number | null;
   readonly budget: TurnBudget;

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
-import { organizer, partyOfThree, sam } from "./campaign-fixtures.js";
+import type { Combatant } from "../../../src/domain/campaign/combat/combat-state.js";
+import { alex, jamie, organizer, partyOfThree, sam } from "./campaign-fixtures.js";
 import { Fight, skirmish } from "./combat-fixtures.js";
 
 // Conjured creatures: they join the fight on the caster's side, act on their own turns, and never count as heroes.
@@ -39,6 +40,21 @@ describe("Conjure Animals", () => {
     const awarded = fight.events.filter((event) => event.kind === "experienceAwarded");
     expect(awarded).toHaveLength(1);
     expect(JSON.stringify(awarded[0])).not.toContain("brown-bear");
+  });
+});
+
+describe("a summon held by concentration", () => {
+  it("vanishes when the caster's concentration ends", () => {
+    const fight = new Fight(withConjure()).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec: skirmish });
+    fight.run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:conjure-animals", slotLevel: 3, targetIds: ["c-elspeth"] });
+    const bears = (): Combatant[] => Object.values(fight.encounter.combatants).filter((combatant) => combatant.id.startsWith("c-elspeth-brown-bear"));
+    expect(bears().every((bear) => bear.hp > 0 && bear.boundTo !== undefined)).toBe(true);
+    // Everything misses through the round; on her next turn she takes up another concentration spell.
+    fight.rolls(Array.from({ length: 12 }, () => 1), Array.from({ length: 12 }, () => 1)).run(sam, { kind: "endTurn", combatantId: "c-elspeth" });
+    fight.rolls(Array.from({ length: 12 }, () => 1), Array.from({ length: 12 }, () => 1)).run(alex, { kind: "endTurn", combatantId: "c-mira" });
+    fight.run(jamie, { kind: "endTurn", combatantId: "c-borin" });
+    fight.run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:bless", slotLevel: 1, targetIds: ["c-elspeth"] });
+    expect(bears().every((bear) => bear.hp === 0 && bear.condition === "dead")).toBe(true);
   });
 });
 
