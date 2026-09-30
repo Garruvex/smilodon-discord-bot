@@ -337,3 +337,51 @@ describe("Monster traits", () => {
     expect(traits).toContainEqual({ kind: "saveAdvantage", magic: true });
   });
 });
+
+describe("Late features that act like spells or reactions", () => {
+  it("Stroke of Luck turns a miss into a hit, once", () => {
+    const base = withFeatures(partyOfThree(), "c-mira", ["feature:stroke-of-luck"]);
+    const state: CampaignState = { ...base, heroStatus: { ...base.heroStatus, "c-mira": { hp: 9, resources: { spellSlots: {}, featureUses: { "feature:stroke-of-luck": 1 } } } } };
+    const fight = new Fight(state).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec: skirmish });
+    fight.run(sam, { kind: "endTurn", combatantId: "c-elspeth" });
+    fight.rolls([2], [3]).run(alex, { kind: "combatAttack", combatantId: "c-mira", targetId: "goblin-a", weapon: "item:shortbow" });
+    expect(fight.combatant("goblin-a").hp).toBeLessThan(7);
+    expect(fight.combatant("c-mira").resources.featureUses["feature:stroke-of-luck"]).toBe(0);
+  });
+
+  it("Blessed Healer heals the caster when a spell heals someone else", () => {
+    const base = withFeatures(partyOfThree(), "c-elspeth", ["feature:blessed-healer"]);
+    const status = (hp: number): CampaignState["heroStatus"][string] => ({ hp, resources: { spellSlots: { 1: 2 }, featureUses: {} } });
+    const state: CampaignState = { ...base, heroStatus: { ...base.heroStatus, "c-elspeth": status(3), "c-borin": status(2) } };
+    const fight = new Fight(state).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec: skirmish });
+    fight.rolls([], [1]).run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:cure-wounds", slotLevel: 1, targetIds: ["c-borin"] });
+    // 2 plus the spell's level 1.
+    expect(fight.combatant("c-elspeth").hp).toBe(6);
+  });
+
+  it("Mystic Arcanum casts a fixed high spell once", () => {
+    const fight = new Fight(withFeatures(partyOfThree(), "c-elspeth", ["feature:mystic-arcanum-9"])).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec: { ...skirmish, edges: [{ from: "gate", to: "courtyard", feet: 10 }] } });
+    fight.run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:power-word-kill", slotLevel: 9, targetIds: ["goblin-a"] });
+    expect(fight.combatant("goblin-a").hp).toBe(0);
+    expect(fight.combatant("c-elspeth").resources.featureUses["innate:spell:power-word-kill"]).toBe(0);
+  });
+
+  it("Holy Nimbus burns each foe as its turn starts", () => {
+    const fight = new Fight(withFeatures(partyOfThree(), "c-elspeth", ["feature:holy-nimbus"])).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec: { ...skirmish, edges: [{ from: "gate", to: "courtyard", feet: 10 }] } });
+    fight.run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:holy-nimbus", slotLevel: 0, targetIds: ["goblin-a"] });
+    fight.run(sam, { kind: "endTurn", combatantId: "c-elspeth" });
+    fight.rolls(Array.from({ length: 6 }, () => 1), Array.from({ length: 6 }, () => 1)).run(alex, { kind: "endTurn", combatantId: "c-mira" });
+    expect(fight.combatant("goblin-a").hp).toBe(0);
+    expect(fight.combatant("goblin-b").hp).toBe(7);
+  });
+
+  it("Fast Hands makes drinking a potion a bonus action", () => {
+    const base = withFeatures(partyOfThree(), "c-borin", ["feature:fast-hands"]);
+    const borin = base.characters["c-borin"];
+    if (borin === undefined) throw new Error("borin");
+    const state: CampaignState = { ...base, characters: { ...base.characters, "c-borin": { ...borin, equipment: [...borin.equipment, "item:potion-of-healing" as const] } }, heroStatus: { ...base.heroStatus, "c-borin": { hp: 2, resources: { spellSlots: {}, featureUses: {} } } } };
+    const fight = new Fight(state).rolls([1, 20, 5, 4]).run(organizer, { kind: "startEncounter", spec: skirmish });
+    fight.rolls([], [2, 2]).run(jamie, { kind: "combatUseItem", combatantId: "c-borin", itemId: "item:potion-of-healing" });
+    expect(fight.combatant("c-borin").budget).toMatchObject({ bonusAction: false, action: true });
+  });
+});

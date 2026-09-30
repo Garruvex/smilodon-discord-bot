@@ -216,7 +216,13 @@ export function settleCheck(decision: Decision, resolutionId: string, rollId: Ro
     // A hit on an unconscious creature from within 5 feet is a critical hit.
     const closeCrit = target !== undefined && hitsAreCritical(target, lookup, areEngaged(encounter, resolution.actorId, target.id));
     critical = outcome.critical || (landed && closeCrit);
-    const cut = landed && !outcome.critical ? cuttingWords(decision, encounter, resolution.actorId, roll.total, against) : 0;
+    // Stroke of Luck: a miss becomes a hit, once a short rest.
+    const lucky = !landed && attacker !== undefined && attacker.traits.some((trait) => trait.kind === "strokeOfLuck") && (attacker.resources.featureUses["feature:stroke-of-luck"] ?? 0) > 0;
+    if (lucky) {
+      landed = true;
+      decision.emit({ kind: "monsterStateChanged", combatantId: resolution.actorId, featureSpent: "feature:stroke-of-luck" });
+    }
+    const cut = landed && !outcome.critical && !lucky ? cuttingWords(decision, encounter, resolution.actorId, roll.total, against) : 0;
     if (cut > 0) {
       landed = false;
       roll = { ...roll, total: roll.total - cut };
@@ -492,9 +498,15 @@ export function applyEffect(
       blessedByKill(decision, resolution, recipient);
       return;
     }
-    case "heal":
+    case "heal": {
       applyHealing(decision, recipient, resolution.rolled[key] ?? 0);
+      // Blessed Healer: a spell that heals someone else heals the caster too.
+      const healer = activeEncounter(decision)?.combatants[resolution.actorId];
+      if (healer !== undefined && healer.id !== recipient.id && resolution.source.kind === "spell" && resolution.source.slotLevel > 0 && healer.traits.some((trait) => trait.kind === "blessedHealer")) {
+        applyHealing(decision, healer, 2 + resolution.source.slotLevel);
+      }
       return;
+    }
     case "tempHp":
       applyTempHp(decision, recipient, resolution.rolled[key] ?? 0);
       return;

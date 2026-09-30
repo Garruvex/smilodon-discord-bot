@@ -256,6 +256,7 @@ const enBase: Glossary = {
     "spell:intimidating-presence": "Intimidating Presence",
     "spell:wholeness-of-body": "Wholeness of Body",
     "spell:grapple": "Grapple",
+    "spell:holy-nimbus": "Holy Nimbus",
     "spell:escape-grapple": "Escape Grapple",
     "spell:shove": "Shove",
     "feature:grapple": "Grapple",

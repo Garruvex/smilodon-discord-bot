@@ -20,7 +20,7 @@ export const additionalMagicalSecrets = narrative("additional-magical-secrets");
 export const magicalSecrets = narrative("magical-secrets");
 export const peerlessSkill = narrative("peerless-skill");
 export const superiorInspiration = narrative("superior-inspiration");
-export const blessedHealer = narrative("blessed-healer");
+export const blessedHealer = defineFeature({ id: "feature:blessed-healer", source, traits: [{ kind: "blessedHealer" }], action: null });
 export const divineStrike = defineFeature({ id: "feature:divine-strike", source, traits: [{ kind: "divineStrike" }], action: null });
 export const divineIntervention = narrative("divine-intervention");
 export const supremeHealing = defineFeature({ id: "feature:supreme-healing", source, traits: [{ kind: "supremeHealing" }], action: null });
@@ -28,7 +28,7 @@ export const landsStride = narrative("lands-stride");
 export const naturesWard = narrative("natures-ward");
 export const naturesSanctuary = narrative("natures-sanctuary");
 export const timelessBody = narrative("timeless-body");
-export const beastSpells = narrative("beast-spells");
+export const beastSpells = defineFeature({ id: "feature:beast-spells", source, traits: [{ kind: "beastSpells" }], action: null });
 export const archdruid = narrative("archdruid");
 export const additionalFightingStyle = narrative("additional-fighting-style");
 export const survivor = defineFeature({ id: "feature:survivor", source, traits: [{ kind: "survivor" }], action: null });
@@ -37,19 +37,43 @@ export const openHandTechnique = narrative("open-hand-technique");
 export const slowFall = narrative("slow-fall");
 export const kiEmpoweredStrikes = narrative("ki-empowered-strikes");
 export const wholenessOfBody = defineFeature({ id: "feature:wholeness-of-body", source, traits: [{ kind: "featureSpell", spell: "spell:wholeness-of-body", ability: "wis", uses: 1, recharge: "longRest" }], action: null });
-export const stillnessOfMind = narrative("stillness-of-mind");
+// Ends charmed or frightened on the monk.
+export const stillnessOfMind = defineFeature({
+  id: "feature:stillness-of-mind",
+  source,
+  traits: [],
+  action: { cost: "action", uses: { count: 99, recharge: "shortRest" }, plan: () => ({ check: null, onLand: [{ kind: "removeCondition", target: "self", conditions: ["condition:charmed", "condition:frightened"] }], onAvoid: [] }) },
+});
 export const tranquility = narrative("tranquility");
 export const tongueOfTheSunAndMoon = narrative("tongue-of-the-sun-and-moon");
 export const diamondSoul = narrative("diamond-soul");
 export const timelessBodyMonk = narrative("timeless-body-monk");
 export const quiveringPalm = narrative("quivering-palm");
-export const emptyBody = narrative("empty-body");
+// Four ki: invisible, and resistant to everything but force, for a minute.
+export const emptyBody = defineFeature({
+  id: "feature:empty-body",
+  source,
+  traits: [],
+  action: {
+    cost: "action",
+    uses: { pool: "feature:ki" },
+    spend: 4,
+    plan: () => ({
+      check: null,
+      onLand: [
+        { kind: "applyCondition", target: "self", condition: "condition:invisible", duration: { kind: "rounds", count: 10 } },
+        { kind: "applyModifiers", target: "self", modifiers: [{ kind: "damageResistance", damageTypes: ["acid", "bludgeoning", "cold", "fire", "lightning", "necrotic", "piercing", "poison", "psychic", "radiant", "slashing", "thunder"] }], duration: { kind: "rounds", count: 10 } },
+      ],
+      onAvoid: [],
+    }),
+  },
+});
 export const perfectSelf = narrative("perfect-self");
 export const divineHealth = narrative("divine-health");
 export const auraOfDevotion = defineFeature({ id: "feature:aura-of-devotion", source, traits: [{ kind: "auraOfImmunity", conditions: ["condition:charmed"] }], action: null });
 export const cleansingTouch = narrative("cleansing-touch");
 export const purityOfHeart = narrative("purity-of-heart");
-export const holyNimbus = narrative("holy-nimbus");
+export const holyNimbus = defineFeature({ id: "feature:holy-nimbus", source, traits: [{ kind: "featureSpell", spell: "spell:holy-nimbus", ability: "cha", uses: 1, recharge: "longRest" }], action: null });
 export const primevalAwareness = narrative("primeval-awareness");
 export const defensiveTactics = narrative("defensive-tactics");
 export const rangersLandsStride = narrative("rangers-lands-stride");
@@ -59,7 +83,7 @@ export const vanish = narrative("vanish");
 export const superiorHuntersDefense = narrative("superior-hunters-defense");
 export const feralSenses = narrative("feral-senses");
 export const foeSlayer = narrative("foe-slayer");
-export const fastHands = narrative("fast-hands");
+export const fastHands = defineFeature({ id: "feature:fast-hands", source, traits: [{ kind: "fastHands" }], action: null });
 export const secondStoryWork = narrative("second-story-work");
 export const supremeSneak = narrative("supreme-sneak");
 export const useMagicDevice = narrative("use-magic-device");
@@ -67,7 +91,8 @@ export const blindsense = narrative("blindsense");
 export const slipperyMind = narrative("slippery-mind");
 export const thiefsReflexes = narrative("thiefs-reflexes");
 export const elusive = defineFeature({ id: "feature:elusive", source, traits: [{ kind: "elusive" }], action: null });
-export const strokeOfLuck = narrative("stroke-of-luck");
+// A miss becomes a hit, once per short rest (a failed ability check is not covered).
+export const strokeOfLuck = defineFeature({ id: "feature:stroke-of-luck", source, traits: [{ kind: "strokeOfLuck" }], action: null, resource: { count: 1, recharge: "shortRest" } });
 // Every sorcerer here descends from a red dragon (draconic-bloodline), so the affinity is for fire.
 export const elementalAffinity = defineFeature({ id: "feature:elemental-affinity", source, traits: [{ kind: "elementalAffinity", damageType: "fire" }], action: null });
 export const metamagicAdditional = narrative("metamagic-additional");
@@ -77,11 +102,13 @@ export const sorcerousRestoration = narrative("sorcerous-restoration");
 export const darkOnesBlessing = defineFeature({ id: "feature:dark-ones-blessing", source, traits: [{ kind: "darkOnesBlessing" }], action: null });
 export const darkOnesOwnLuck = narrative("dark-ones-own-luck");
 export const fiendishResilience = narrative("fiendish-resilience");
-export const mysticArcanum6 = narrative("mystic-arcanum-6");
-export const mysticArcanum7 = narrative("mystic-arcanum-7");
+// One free casting of a high spell each per long rest. This build fixes which spell: the SRD has the warlock choose.
+const arcanum = (level: number, spell: `spell:${string}`): FeatureDefinition => defineFeature({ id: `feature:mystic-arcanum-${level}`, source, traits: [{ kind: "featureSpell", spell, ability: "cha", uses: 1, recharge: "longRest" }], action: null });
+export const mysticArcanum6 = arcanum(6, "spell:circle-of-death");
+export const mysticArcanum7 = arcanum(7, "spell:finger-of-death");
 export const hurlThroughHell = narrative("hurl-through-hell");
-export const mysticArcanum8 = narrative("mystic-arcanum-8");
-export const mysticArcanum9 = narrative("mystic-arcanum-9");
+export const mysticArcanum8 = arcanum(8, "spell:power-word-stun");
+export const mysticArcanum9 = arcanum(9, "spell:power-word-kill");
 export const eldritchMaster = narrative("eldritch-master");
 export const sculptSpells = narrative("sculpt-spells");
 export const potentCantrip = defineFeature({ id: "feature:potent-cantrip", source, traits: [{ kind: "potentCantrip" }], action: null });

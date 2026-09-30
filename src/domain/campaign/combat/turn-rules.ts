@@ -105,7 +105,7 @@ export function spellProblem(
   const casting = caster.spellcasting;
   const spell = content.find(spellId);
   // Wild Shape: no spellcasting while shaped (SRD 5.1).
-  if (caster.wildShapeOriginal !== null || casting === null || spell?.kind !== "spell" || !casting.spells.includes(spell.id)) return refuse({ code: "unknownSpell" });
+  if ((caster.wildShapeOriginal !== null && !caster.traits.some((trait) => trait.kind === "beastSpells")) || casting === null || spell?.kind !== "spell" || !casting.spells.includes(spell.id)) return refuse({ code: "unknownSpell" });
   // A spell cast by nature needs no slot, only uses left; it is cast at its own level.
   const innate = casting.innate?.[spell.id];
   if (innate !== undefined) {
@@ -216,7 +216,7 @@ export function potionProblem(sheet: CharacterSheet | undefined, content: Sealed
   if (hero.source.kind !== "hero") return refuse({ code: "notUsable" });
   const potion = potionOf(sheet, content, itemId);
   if (potion === null) return refuse({ code: sheet?.equipment.includes(itemId) === true ? "notUsable" : "itemNotHeld" });
-  const bonus = houseRules.option(healingPotionCost) === "bonus-action";
+  const bonus = houseRules.option(healingPotionCost) === "bonus-action" || hero.traits.some((trait) => trait.kind === "fastHands");
   const cost = costProblem(hero, bonus ? "bonusAction" : "action", content);
   return cost === null ? accept({ bonus, healing: potion.healing }) : refuse(cost);
 }
@@ -296,7 +296,7 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
       });
 
   const spells: TurnOptions["spells"][number][] = [];
-  if (!busy && hero.wildShapeOriginal === null) {
+  if (!busy && (hero.wildShapeOriginal === null || hero.traits.some((trait) => trait.kind === "beastSpells"))) {
     for (const id of hero.spellcasting?.spells ?? []) {
       const spell = content.find(id);
       if (spell?.kind !== "spell" || spell.castingTime === "reaction" || spell.castingTime === "long") continue;

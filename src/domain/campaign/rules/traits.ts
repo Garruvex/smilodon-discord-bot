@@ -124,6 +124,14 @@ export type Trait =
   | { readonly kind: "bloodFrenzy" }
   // Sunlight Sensitivity: disadvantage on attack rolls while the creature, or its target, is in a zone lit as bright (explicitly: a zone with no lighting named counts for nothing).
   | { readonly kind: "sunlightSensitivity" }
+  // Blessed Healer (Life Cleric 6): healing another creature with a spell also heals the caster, 2 plus the spell's level.
+  | { readonly kind: "blessedHealer" }
+  // Stroke of Luck (Rogue 20): once per short rest, a missed attack roll hits instead.
+  | { readonly kind: "strokeOfLuck" }
+  // Fast Hands (Thief 3): drinking a potion or using an object takes a bonus action.
+  | { readonly kind: "fastHands" }
+  // Beast Spells (Druid 18): may cast spells while in a beast shape.
+  | { readonly kind: "beastSpells" }
   // Cutting Words (College of Lore): a Bardic Inspiration use and the reaction take the die's average off a foe's attack roll within 60 feet, when that turns a hit into a miss.
   | { readonly kind: "cuttingWords" }
   // Fighting Style (Protection): when a creature attacks another one standing beside the holder, the holder's reaction gives that attack disadvantage. The shield the SRD asks for is not checked.

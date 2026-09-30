@@ -211,6 +211,7 @@ const zhTwBase: Glossary = {
     "spell:intimidating-presence": "威嚇存在",
     "spell:wholeness-of-body": "完整之軀",
     "spell:grapple": "擒抱",
+    "spell:holy-nimbus": "神聖光暈",
     "spell:escape-grapple": "掙脫擒抱",
     "spell:shove": "推撞",
     "feature:grapple": "擒抱",

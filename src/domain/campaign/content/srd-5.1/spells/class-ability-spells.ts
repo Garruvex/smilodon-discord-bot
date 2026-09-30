@@ -115,6 +115,22 @@ export const escapeGrapple = defineSpell({
   plan: () => ({ check: null, onLand: [{ kind: "removeCondition", target: "target", conditions: ["condition:grappled"] }], onAvoid: [] }),
 });
 
+// Paladin 20: for a minute, foes within 30 feet take 10 radiant damage as each of their turns starts.
+export const holyNimbus = defineSpell({
+  id: "spell:holy-nimbus",
+  source,
+  level: 0,
+  castingTime: "action",
+  range: { kind: "feet", feet: 30 },
+  targeting: { relation: "enemy", count: 6 },
+  concentration: false,
+  plan: () => ({
+    check: null,
+    onLand: [{ kind: "applyModifiers", target: "target", modifiers: [], duration: { kind: "rounds", count: 10 }, triggers: [{ follows: "target", boundary: "start", does: { kind: "damage", amount: flat(10), damageType: "radiant" } }] }],
+    onAvoid: [],
+  }),
+});
+
 export const turnUndead = defineSpell({
   id: "spell:turn-undead",
   source,
@@ -169,4 +185,4 @@ export const breathWeapons: readonly SpellDefinition[] = breathAncestries.map(([
   }),
 );
 
-export const srd51ClassAbilitySpells: readonly SpellDefinition[] = [bardicInspiration, layOnHands, preserveLife, turnUndead, grapple, shove, escapeGrapple, intimidatingPresence, wholenessOfBody, ...breathWeapons];
+export const srd51ClassAbilitySpells: readonly SpellDefinition[] = [bardicInspiration, layOnHands, preserveLife, turnUndead, grapple, shove, escapeGrapple, holyNimbus, intimidatingPresence, wholenessOfBody, ...breathWeapons];
