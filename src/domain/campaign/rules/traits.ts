@@ -96,6 +96,14 @@ export type Trait =
   | { readonly kind: "darkvision"; readonly feet: number }
   // Warlock invocation Agonizing Blast: the spellcasting modifier is added to each beam of Eldritch Blast.
   | { readonly kind: "agonizingBlast" }
+  // Land's Stride: difficult terrain costs nothing extra to cross.
+  | { readonly kind: "landsStride" }
+  // Sculpt Spells (School of Evocation): the wizard spares some friends from an evocation area, one more than the spell's level.
+  | { readonly kind: "sculptSpells" }
+  // Perfect Self (Monk 20): a monk with no ki left regains four when initiative is rolled.
+  | { readonly kind: "perfectSelf" }
+  // Superior Inspiration (Bard 20): a bard with no Bardic Inspiration left regains one when initiative is rolled.
+  | { readonly kind: "superiorInspiration" }
   // Repelling Blast: a creature Eldritch Blast hits is pushed away.
   | { readonly kind: "repellingBlast" }
   // Fighting Style (Archery): a bonus to attack rolls with ranged weapons.

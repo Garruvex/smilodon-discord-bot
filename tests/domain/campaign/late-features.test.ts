@@ -481,3 +481,39 @@ describe("Halfling Lucky on an ability check", () => {
     expect(second.events.find((event) => event.kind === "checkResolved")).toMatchObject({ result: { roll: { d20: { natural: 1 } } } });
   });
 });
+
+describe("Sculpt Spells", () => {
+  const together: EncounterSpec = { ...skirmish, partyZoneId: "courtyard" };
+  function fireball(features: readonly string[]): ReadonlySet<string> {
+    const fight = new Fight(withFeatures(partyWithSpells(["spell:fireball"], { 3: 1 }), "c-elspeth", features)).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec: together });
+    fight.rolls(Array.from({ length: 6 }, () => 2), Array.from({ length: 8 }, () => 3)).run(sam, { kind: "combatCast", combatantId: "c-elspeth", spellId: "spell:fireball", slotLevel: 3, targetIds: ["goblin-a"] });
+    return new Set(fight.events.flatMap((event) => (event.kind === "combatantHpChanged" && event.change < 0 ? [event.combatantId] : [])));
+  }
+
+  it("keeps the caster's friends out of an evocation area, as many as the spell's level plus one", () => {
+    expect(fireball([])).toEqual(new Set(["goblin-a", "goblin-b", "c-mira", "c-borin", "c-elspeth"]));
+    // Fireball is 3rd level: four friends spared, which is all three heroes.
+    expect(fireball(["feature:sculpt-spells"]).has("c-mira")).toBe(false);
+    expect(fireball(["feature:sculpt-spells"])).toEqual(new Set(["goblin-a", "goblin-b"]));
+  });
+});
+
+describe("Land's Stride", () => {
+  const rough: EncounterSpec = { ...skirmish, zones: [{ id: "gate", name: "Gate" }, { id: "courtyard", name: "Courtyard", difficult: true }] };
+  it("crosses difficult terrain at the plain price", () => {
+    const stride = new Fight(withFeatures(partyOfThree(), "c-elspeth", ["feature:lands-stride"])).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec: rough });
+    stride.run(sam, { kind: "combatMove", combatantId: "c-elspeth", zoneId: "courtyard" });
+    const plain = new Fight(partyOfThree()).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec: rough });
+    expect(plain.reject(sam, { kind: "combatMove", combatantId: "c-elspeth", zoneId: "courtyard" })).toMatchObject({ code: "notEnoughMovement", needed: 40 });
+    expect(stride.combatant("c-elspeth").budget.movement).toBe(10);
+  });
+});
+
+describe("Perfect Self and Superior Inspiration", () => {
+  it("bring back four ki and one Bardic Inspiration when initiative is rolled with none left", () => {
+    const base = withFeatures(partyOfThree(), "c-mira", ["feature:perfect-self", "feature:ki"]);
+    const state: CampaignState = { ...base, heroStatus: { ...base.heroStatus, "c-mira": { hp: 9, resources: { spellSlots: {}, featureUses: { "feature:ki": 0 } } } } };
+    const fight = new Fight(state).rolls([5, 4, 20, 3, 2]).run(organizer, { kind: "startEncounter", spec: skirmish });
+    expect(fight.combatant("c-mira").resources.featureUses["feature:ki"]).toBe(4);
+  });
+});

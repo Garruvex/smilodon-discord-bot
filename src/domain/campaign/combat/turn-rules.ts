@@ -141,14 +141,28 @@ export function spellProblem(
     const problem = spellTargetProblem(encounter, caster, spell, encounter.combatants[targetId], content);
     if (problem !== null) return refuse({ code: problem });
   }
-  return accept({ spell, bonus, targets: spell.targeting.area === true ? withEveryoneInTheirZones(encounter, targets) : targets });
+  return accept({ spell, bonus, targets: spell.targeting.area === true ? withEveryoneInTheirZones(encounter, targets, sparedBy(caster, spell)) : targets });
+}
+
+// How many of the caster's friends an area spares: one more than the spell's level, for an evocation cast by a wizard who can sculpt.
+function sparedBy(caster: Combatant, spell: SpellDefinition): { readonly side: Combatant["side"]; readonly count: number } {
+  return { side: caster.side, count: spell.school === "evocation" && caster.traits.some((trait) => trait.kind === "sculptSpells") ? spell.level + 1 : 0 };
 }
 
 // An area reaches everyone in the zone it is aimed at: the creature named first, then the others, friends and the caster among them.
-function withEveryoneInTheirZones(encounter: EncounterState, named: readonly string[]): readonly string[] {
+function withEveryoneInTheirZones(encounter: EncounterState, named: readonly string[], spared: { readonly side: Combatant["side"]; readonly count: number }): readonly string[] {
   const zones = new Set(named.flatMap((id) => (encounter.combatants[id] === undefined ? [] : [encounter.combatants[id].zoneId])));
   const others = Object.values(encounter.combatants).filter((other) => zones.has(other.zoneId) && isPresent(other) && !named.includes(other.id));
-  return [...named, ...others.map((other) => other.id)];
+  // Sculpt Spells: some of the caster's friends are left out of the blast.
+  let left = spared.count;
+  const hit = others.filter((other) => {
+    if (left > 0 && other.side === spared.side) {
+      left -= 1;
+      return false;
+    }
+    return true;
+  });
+  return [...named, ...hit.map((other) => other.id)];
 }
 
 // ------------------------------------------------------------- Wild Shape
@@ -219,7 +233,7 @@ export function featureProblem(hero: Combatant, content: SealedContent, featureI
 export const movementLeft = (hero: Combatant, content: SealedContent): number => (speedOf(hero, conditionLookup(content)) === 0 ? 0 : hero.budget.movement);
 
 export function moveProblem(encounter: EncounterState, hero: Combatant, zoneId: string, content: SealedContent): Checked<{ readonly feet: number }> {
-  const feet = stepCost(encounter.edges, encounter.zones, hero.zoneId, zoneId);
+  const feet = stepCost(encounter.edges, encounter.zones, hero.zoneId, zoneId, hero.traits.some((trait) => trait.kind === "landsStride"));
   if (feet === undefined) return refuse({ code: "notAdjacent" });
   const left = movementLeft(hero, content);
   if (feet > left) return refuse({ code: "notEnoughMovement", needed: feet, left });

@@ -19,12 +19,12 @@ export const countercharm = narrative("countercharm");
 export const additionalMagicalSecrets = narrative("additional-magical-secrets");
 export const magicalSecrets = narrative("magical-secrets");
 export const peerlessSkill = narrative("peerless-skill");
-export const superiorInspiration = narrative("superior-inspiration");
+export const superiorInspiration = defineFeature({ id: "feature:superior-inspiration", source, traits: [{ kind: "superiorInspiration" }], action: null });
 export const blessedHealer = defineFeature({ id: "feature:blessed-healer", source, traits: [{ kind: "blessedHealer" }], action: null });
 export const divineStrike = defineFeature({ id: "feature:divine-strike", source, traits: [{ kind: "divineStrike" }], action: null });
 export const divineIntervention = narrative("divine-intervention");
 export const supremeHealing = defineFeature({ id: "feature:supreme-healing", source, traits: [{ kind: "supremeHealing" }], action: null });
-export const landsStride = narrative("lands-stride");
+export const landsStride = defineFeature({ id: "feature:lands-stride", source, traits: [{ kind: "landsStride" }], action: null });
 export const naturesWard = narrative("natures-ward");
 export const naturesSanctuary = narrative("natures-sanctuary");
 export const timelessBody = narrative("timeless-body");
@@ -68,7 +68,7 @@ export const emptyBody = defineFeature({
     }),
   },
 });
-export const perfectSelf = narrative("perfect-self");
+export const perfectSelf = defineFeature({ id: "feature:perfect-self", source, traits: [{ kind: "perfectSelf" }], action: null });
 export const divineHealth = narrative("divine-health");
 export const auraOfDevotion = defineFeature({ id: "feature:aura-of-devotion", source, traits: [{ kind: "auraOfImmunity", conditions: ["condition:charmed"] }], action: null });
 export const cleansingTouch = narrative("cleansing-touch");
@@ -76,7 +76,7 @@ export const purityOfHeart = narrative("purity-of-heart");
 export const holyNimbus = defineFeature({ id: "feature:holy-nimbus", source, traits: [{ kind: "featureSpell", spell: "spell:holy-nimbus", ability: "cha", uses: 1, recharge: "longRest" }], action: null });
 export const primevalAwareness = narrative("primeval-awareness");
 export const defensiveTactics = narrative("defensive-tactics");
-export const rangersLandsStride = narrative("rangers-lands-stride");
+export const rangersLandsStride = defineFeature({ id: "feature:rangers-lands-stride", source, traits: [{ kind: "landsStride" }], action: null });
 export const hideInPlainSight = narrative("hide-in-plain-sight");
 export const hunterMultiattack = narrative("hunter-multiattack");
 export const vanish = defineFeature({ id: "feature:vanish", source, traits: [{ kind: "quickHide" }], action: null });
@@ -110,7 +110,7 @@ export const hurlThroughHell = narrative("hurl-through-hell");
 export const mysticArcanum8 = arcanum(8, "spell:power-word-stun");
 export const mysticArcanum9 = arcanum(9, "spell:power-word-kill");
 export const eldritchMaster = narrative("eldritch-master");
-export const sculptSpells = narrative("sculpt-spells");
+export const sculptSpells = defineFeature({ id: "feature:sculpt-spells", source, traits: [{ kind: "sculptSpells" }], action: null });
 export const potentCantrip = defineFeature({ id: "feature:potent-cantrip", source, traits: [{ kind: "potentCantrip" }], action: null });
 export const empoweredEvocation = defineFeature({ id: "feature:empowered-evocation", source, traits: [{ kind: "empoweredEvocation" }], action: null });
 // Readies the next spell of the 1st to 5th level to deal its maximum (used up by the casting). The SRD's damage to the wizard for later uses is not modeled: it is once per long rest.

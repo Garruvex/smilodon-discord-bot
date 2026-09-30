@@ -158,7 +158,8 @@ export function chooseAutopilotPlan(encounter: EncounterState, hero: Combatant):
 // Walk toward the target and engage it. Attack if it can be reached with
 // normal movement; otherwise Dash (spending the action) to close the gap.
 function approach(encounter: EncounterState, monster: Combatant, target: Combatant, melee: AttackOption): TurnPlan {
-  const path = shortestPath(encounter.edges, monster.zoneId, target.zoneId, encounter.zones);
+  const ignoresTerrain = monster.traits.some((trait) => trait.kind === "landsStride");
+  const path = shortestPath(encounter.edges, monster.zoneId, target.zoneId, ignoresTerrain ? [] : encounter.zones);
   if (path === null) return idle;
   const needed = path.feet + engageCost;
   if (needed <= monster.speed) {
@@ -169,7 +170,7 @@ function approach(encounter: EncounterState, monster: Combatant, target: Combata
   let spent = 0;
   let at = monster.zoneId;
   for (const zone of path.zones) {
-    const feet = stepCost(encounter.edges, encounter.zones, at, zone) ?? Infinity;
+    const feet = stepCost(encounter.edges, encounter.zones, at, zone, ignoresTerrain) ?? Infinity;
     if (spent + feet > budget) break;
     moves.push(zone);
     spent += feet;

@@ -5,10 +5,20 @@ import { companionsOf } from "../../companions/companion-roster.js";
 import { isFallen } from "../../state/campaign-state.js";
 import { type Combatant, type EncounterState, type PendingCombatRoll } from "../../combat/combat-state.js";
 import { defaultHeroResources } from "../../character/hero-status.js";
+import { innateUseKey } from "../../rules/traits.js";
 import { heroCombatant, monsterCombatant } from "../../combat/combatant-profile.js";
 import type { D20TestSpec } from "../../dice/d20-test.js";
 import type { Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
+
+// Perfect Self and Superior Inspiration: rolling initiative with none left brings some back.
+function refilledAtInitiative(hero: Combatant): Combatant {
+  const uses = { ...hero.resources.featureUses };
+  if (hero.traits.some((trait) => trait.kind === "perfectSelf") && (uses["feature:ki"] ?? 1) <= 0) uses["feature:ki"] = 4;
+  const inspiration = innateUseKey("spell:bardic-inspiration");
+  if (hero.traits.some((trait) => trait.kind === "superiorInspiration") && (uses[inspiration] ?? 1) <= 0) uses[inspiration] = 1;
+  return { ...hero, resources: { ...hero.resources, featureUses: uses } };
+}
 
 export function startEncounter(decision: Decision, spec: EncounterSpec): Rejection | null {
   const { state, ctx } = decision;
@@ -32,7 +42,7 @@ export function beginEncounter(decision: Decision, spec: EncounterSpec): void {
     const sheet = member.characterId === null ? undefined : state.characters[member.characterId];
     if (sheet === undefined || isFallen(state, sheet.id)) continue;
     const status = state.heroStatus[sheet.id] ?? { hp: sheet.maxHp, resources: defaultHeroResources(sheet, content) };
-    combatants[sheet.id] = heroCombatant(sheet, content, spec.partyZoneId, status);
+    combatants[sheet.id] = refilledAtInitiative(heroCombatant(sheet, content, spec.partyZoneId, status));
     // What the hero brought along joins on the party's side, wounds and all.
     for (const companion of companionsOf(state.companions, sheet.id)) {
       const monster = content.find(companion.monsterId);

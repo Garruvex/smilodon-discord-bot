@@ -13,10 +13,10 @@ export function zoneDistance(edges: readonly ZoneEdge[], from: ZoneId, to: ZoneI
 }
 
 // What crossing one edge into a zone costs to walk: double when the zone is difficult terrain.
-export function stepCost(edges: readonly ZoneEdge[], zones: readonly Zone[], from: ZoneId, into: ZoneId): number | undefined {
+export function stepCost(edges: readonly ZoneEdge[], zones: readonly Zone[], from: ZoneId, into: ZoneId, ignoresTerrain = false): number | undefined {
   const edge = edgeBetween(edges, from, into);
   if (edge === undefined) return undefined;
-  return zones.find((zone) => zone.id === into)?.difficult === true ? edge.feet * 2 : edge.feet;
+  return !ignoresTerrain && zones.find((zone) => zone.id === into)?.difficult === true ? edge.feet * 2 : edge.feet;
 }
 
 // The zones to walk through (excluding the start) and the total cost. With the terrain given, difficult terrain costs double
