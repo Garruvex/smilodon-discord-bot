@@ -250,7 +250,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
   const adventureHandler = new AdventureComponentHandler({ catalog, authority, glossaries });
   const command = new DndCommand({ lobby, play, setup, cards, creator, authority, library, libraryScreens: libraryHandler, intake });
   const handler = new CampaignComponentHandler({ lobby, play, cards, unitOfWork, rulesets, adventures, glossaries, library, pictures: heroPictures });
-  const hubHandler = new CampaignHubComponentHandler({ lobby, play, setup, cards, creator, authority, adventures, libraryScreens: libraryHandler, intake });
+  const hubHandler = new CampaignHubComponentHandler({ lobby, play, setup, cards, creator, authority, adventures, libraryScreens: libraryHandler, intake, imagesEnabled: configuration.campaignImages !== null && configuration.campaignImages !== undefined });
 
   // A deleted hub channel or game post (a forum thread) is made again (its
   // cards are drawn into the new one), within limits; a deleted message is

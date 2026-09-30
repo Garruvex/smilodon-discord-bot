@@ -367,14 +367,12 @@ export class CampaignCardService implements CardRefresher {
     const text = allTexts[language];
     const campaignId = record.key.campaignId;
     const { partyPostId: partyChannelId, adventurePostId: adventureChannelId } = record.channels;
-    const summary = this.options.adventures.list().find((adventure) => adventure.id === record.adventure.adventureId);
-    const presets = summary?.heroes.map((hero) => ({ id: hero.id, name: hero.name, className: hero.class })) ?? [];
     const cards: DesiredCard[] = [];
 
     if (record.lifecycle === "lobby" || campaign === undefined) {
       if (partyChannelId !== null) {
-        const document = this.options.adventures.document(record.adventure.adventureId, record.language);
-        const view = buildLobbyView(record, document?.bible.title ?? record.name, document?.heroes.map((hero) => ({ id: hero.id, name: hero.name, className: hero.class })) ?? presets);
+        const document = this.options.adventures.documentAt(record.adventure.adventureId, record.adventure.version, record.language);
+        const view = buildLobbyView(record, document?.bible.title ?? record.name, document?.heroes.map((hero) => ({ id: hero.id, name: hero.name, className: hero.class })) ?? []);
         cards.push({ key: "lobby", channelId: partyChannelId, payload: renderLobbyCard(view, text, campaignId), epoch: "party", pin: true });
       }
       return cards;

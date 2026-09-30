@@ -101,7 +101,7 @@ interface Harness {
   intake: { uploads: { guildId: string; file: { url: string; size: number } | null }[]; authors: { guildId: string; input: unknown }[] };
 }
 
-function harness(options: { modelConfigured?: boolean; launcher?: boolean; canAuthor?: boolean } = {}): Harness {
+function harness(options: { modelConfigured?: boolean; launcher?: boolean; canAuthor?: boolean; images?: boolean } = {}): Harness {
   const r = rig();
   const messages = new FakeMessages();
   const glossaries = { en: enSrd51Glossary, "zh-TW": zhTwSrd51Glossary };
@@ -147,6 +147,7 @@ function harness(options: { modelConfigured?: boolean; launcher?: boolean; canAu
     cards,
     creator,
     authority,
+    ...(options.images === undefined ? {} : { imagesEnabled: options.images }),
   });
   return {
     r,
@@ -292,8 +293,19 @@ describe("Manage a game", () => {
     expect(contentOf(await t.click(id, { userId: "u-x" }, { messageId: hubMessageId }))).toBe("Only DnD Admins and the game's organizer can manage a game.");
     const organizer = await t.click(id, { userId: "u-org" }, { messageId: hubMessageId });
     expect(contentOf(organizer)).toContain("Manage Moonlit Ruins");
-    expect(rowsOf(organizer).flat().map((button) => button.label)).toEqual(["Pause", "Close round", "Retry the DM", "Redo the last picture", "Raise level", "Short rest", "Long rest", "Retry the fight", "Retell the last scene", "Picture this moment", "Invite player", "Join requests (0)", "Repair cards", "Hazard", "Hurt", "End game"]);
+    expect(rowsOf(organizer).flat().map((button) => button.label)).toEqual(["Pause", "Close round", "Retry the DM", "Redo the last picture", "Raise level", "Short rest", "Long rest", "Retry the fight", "Retell the last scene", "Picture the latest moment", "Invite player", "Join requests (0)", "Repair cards", "Hazard", "Hurt", "End game"]);
     expect(rowsOf(await t.click(id, { userId: "u-a", admin: true }, { messageId: hubMessageId })).flat()).toHaveLength(16);
+  });
+
+  it("shows no picture buttons when the bot cannot paint, and says so if one is pressed anyway", async () => {
+    const t = harness({ images: false });
+    const { key, hubMessageId } = await activeGame(t);
+    const organizer = await t.click(hubCustomId("manage", key.campaignId), { userId: "u-org" }, { messageId: hubMessageId });
+    const labels = rowsOf(organizer).flat().map((button) => button.label);
+    expect(labels).not.toContain("Redo the last picture");
+    expect(labels).not.toContain("Picture the latest moment");
+    const pressed = await t.click(hubCustomId("do", key.campaignId, "illustrate"), { userId: "u-org" }, { messageId: hubMessageId });
+    expect(contentOf(pressed)).toContain("no picture painter");
   });
 
   it("refuses Retry the fight when there is no lost fight", async () => {

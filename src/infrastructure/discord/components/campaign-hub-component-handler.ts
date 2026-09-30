@@ -54,6 +54,8 @@ export interface CampaignHubDependencies {
   readonly cards: CampaignCardService;
   readonly creator: CampaignGameCreator;
   readonly authority: CampaignAuthority;
+  // Whether this bot can paint pictures. Without it the picture buttons are not shown. Unset counts as yes.
+  readonly imagesEnabled?: boolean;
   // The launcher's character and adventure buttons; without them those buttons say they are unavailable.
   readonly libraryScreens?: Pick<CharacterLibraryComponentHandler, "homeScreen" | "builderScreen" | "importFromFile">;
   readonly intake?: Pick<AdventureIntake, "uploadFile" | "authorFrom" | "canAuthor">;
@@ -637,6 +639,9 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     if (verb === "repair") {
       await interaction.deferUpdate();
       notice = repairText(await this.deps.setup.repair(record.key), text);
+    } else if ((verb === "redoPicture" || verb === "illustrate") && this.deps.imagesEnabled === false) {
+      await interaction.deferUpdate();
+      notice = text.campaign.cmd.picturesOff;
     } else if (verb === "redoPicture") {
       await interaction.deferUpdate();
       const result = await this.deps.play.redoPicture(record.key, record.lastPicture ?? "", interaction.id);
@@ -713,6 +718,7 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     const status = mode === null ? "" : text.campaign.mode[mode];
     const id = record.key.campaignId;
     const verb = (action: ManageVerb, label: string): ButtonBuilder => new ButtonBuilder().setCustomId(hubCustomId("do", id, action)).setLabel(label).setStyle(ButtonStyle.Secondary);
+    const pictures = this.deps.imagesEnabled !== false;
     const rows: ActionRowBuilder<MessageActionRowComponentBuilder>[] = [];
     if (record.lifecycle !== "lobby") {
       rows.push(
@@ -720,10 +726,10 @@ export class CampaignHubComponentHandler implements ComponentHandler {
           paused ? verb("resume", t.resume).setStyle(ButtonStyle.Success) : verb("pause", t.pause),
           verb("closeRound", t.closeRound),
           verb("retry", t.retry),
-          verb("redoPicture", t.redoPicture),
+          ...(pictures ? [verb("redoPicture", t.redoPicture)] : []),
           new ButtonBuilder().setCustomId(hubCustomId("levelOpen", id)).setLabel(t.levelButton).setStyle(ButtonStyle.Secondary),
         ),
-        row(verb("shortRest", t.shortRest), verb("longRest", t.longRest), verb("retryFight", t.retryFight), verb("retell", t.retell), verb("illustrate", t.illustrate)),
+        row(verb("shortRest", t.shortRest), verb("longRest", t.longRest), verb("retryFight", t.retryFight), verb("retell", t.retell), ...(pictures ? [verb("illustrate", t.illustrate)] : [])),
       );
       const pendingCount = Object.values(record.joinRequests ?? {}).filter((request) => request.status === "requested" && request.expiresAt > Date.now()).length;
       rows.push(row(

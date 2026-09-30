@@ -564,7 +564,7 @@ export class CampaignComponentHandler implements ComponentHandler {
 
   // The free heroes, plus the one this player already holds so they can keep or change it.
   private async showHeroPicker(interaction: ButtonInteraction, record: CampaignRecord, text: Texts, prompt: string): Promise<void> {
-    const document = this.deps.adventures.document(record.adventure.adventureId, record.language);
+    const document = this.deps.adventures.documentAt(record.adventure.adventureId, record.adventure.version, record.language);
     const stored = await this.deps.lobby.get(record.key);
     const lobby = (stored?.record ?? record).lobby;
     const own = lobby.members.find((member) => member.userId === interaction.user.id)?.heroId ?? null;
@@ -614,13 +614,13 @@ export class CampaignComponentHandler implements ComponentHandler {
       await interaction.update({ content: refusalText(text, result.reason), components: [] });
       return;
     }
-    const hero = this.deps.adventures.document(record.adventure.adventureId, record.language)?.heroes.find((candidate) => candidate.id === presetId);
+    const hero = this.deps.adventures.documentAt(record.adventure.adventureId, record.adventure.version, record.language)?.heroes.find((candidate) => candidate.id === presetId);
     await interaction.update({ content: text.campaign.reply.newHero({ hero: hero?.name ?? presetId }), components: [] });
   }
 
   private async showOngoingHeroPicker(interaction: ButtonInteraction, record: CampaignRecord, text: Texts): Promise<void> {
     const state = (await this.deps.unitOfWork.transaction((tx) => tx.loadCampaign(record.key)))?.state;
-    const document = this.deps.adventures.document(record.adventure.adventureId, record.language);
+    const document = this.deps.adventures.documentAt(record.adventure.adventureId, record.adventure.version, record.language);
     const used = Object.values(state?.characters ?? {}).filter((hero) => state === undefined || !isFallen(state, hero.id)).map((hero) => hero.id);
     const presets = (document?.heroes ?? []).filter((hero) => !used.some((id) => id === hero.id || id.startsWith(`${hero.id}-`))).map((hero) => ({ label: text.campaign.pick.option({ hero: hero.name, class: classLabel(text, hero.class) }).slice(0, 100), value: hero.id }));
     const saved = (await this.savedOptions(interaction.user.id, text, null)).map(({ label, value }) => ({ label, value }));
@@ -701,7 +701,7 @@ export class CampaignComponentHandler implements ComponentHandler {
       return;
     }
     this.deps.cards.refresh(record.key);
-    const hero = this.deps.adventures.document(record.adventure.adventureId, record.language)?.heroes.find((candidate) => candidate.id === heroId);
+    const hero = this.deps.adventures.documentAt(record.adventure.adventureId, record.adventure.version, record.language)?.heroes.find((candidate) => candidate.id === heroId);
     await interaction.update({ content: text.campaign.reply.heroChosen({ hero: hero?.name ?? heroId }), components: [] });
   }
 

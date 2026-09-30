@@ -47,7 +47,7 @@ export class CampaignPlayController {
     const { state } = loaded.stored;
     const current = state.members[userId]?.characterId ?? null;
     if (current === null || !isFallen(state, current)) return [];
-    const heroes = this.options.adventures.document(loaded.record.record.adventure.adventureId, loaded.record.record.language)?.heroes ?? [];
+    const heroes = this.options.adventures.documentAt(loaded.record.record.adventure.adventureId, loaded.record.record.adventure.version, loaded.record.record.language)?.heroes ?? [];
     const living = Object.values(state.characters).filter((sheet) => !isFallen(state, sheet.id));
     return heroes
       .filter((hero) => !living.some((sheet) => baseHeroId(sheet.id) === hero.id))
@@ -61,7 +61,7 @@ export class CampaignPlayController {
     if (!options.some((option) => option.id === presetId)) return { kind: "refused", reason: "heroNotReplaceable" };
     const loaded = await this.options.unitOfWork.transaction(async (tx) => ({ record: await tx.loadRecord(key), stored: await tx.loadCampaign(key) }));
     if (loaded.record === undefined || loaded.stored === undefined) return { kind: "refused", reason: "notFound" };
-    const document = this.options.adventures.document(loaded.record.record.adventure.adventureId, loaded.record.record.language);
+    const document = this.options.adventures.documentAt(loaded.record.record.adventure.adventureId, loaded.record.record.adventure.version, loaded.record.record.language);
     const preset = document?.heroes.find((hero) => hero.id === presetId);
     if (preset === undefined) return { kind: "refused", reason: "invalidHero" };
     const used = Object.values(loaded.stored.state.characters).filter((sheet) => baseHeroId(sheet.id) === presetId).length;
