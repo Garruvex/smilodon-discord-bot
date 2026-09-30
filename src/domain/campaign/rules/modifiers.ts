@@ -54,6 +54,8 @@ export type Modifier =
   | { readonly kind: "metamagic"; readonly option: MetamagicOption }
   // A monk's readied Stunning Strike: the next melee weapon hit may stun (used up by the attack).
   | { readonly kind: "stunningStrike" }
+  // A monk readies Quivering Palm: the next melee weapon hit may drop the target to 0 hit points (used up by the attack).
+  | { readonly kind: "quiveringPalm" }
   // More feet of movement every turn while the effect lasts (Longstrider).
   | { readonly kind: "speedBonus"; readonly amount: number }
   // Unseen by the foes: attacks against the holder have disadvantage and its own attacks advantage; the first attack or spell ends it (Hide).

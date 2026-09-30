@@ -5,7 +5,7 @@ import { traitsOf, type MonsterDefinition, type MonsterSpellcasting, type Weapon
 import { innateUseKey } from "../magic/spell-rules.js";
 import type { SealedContent } from "../rules/content-registry.js";
 import { abilities, type Ability } from "../rules/effects.js";
-import { legendaryActionsKey, legendaryResistanceKey, type Trait } from "../rules/traits.js";
+import { deathBurstKey, legendaryActionsKey, legendaryResistanceKey, type Trait } from "../rules/traits.js";
 import type { HeroStatus } from "../character/hero-status.js";
 import { armorSpeedPenalty, isWorn } from "../engine/gear.js";
 import type { AttackOption, Combatant, CombatSpellcasting, ZoneId } from "./combat-state.js";
@@ -111,7 +111,7 @@ function heroSpellcasting(sheet: CharacterSheet, content: SealedContent, traits:
     const atLevel = trait.usesAt?.filter((step) => step.level <= sheet.level).at(-1)?.uses;
     innate[trait.spell] = trait.usesAbility === true ? Math.max(1, mod) : (atLevel ?? trait.uses);
     saveDcs[trait.spell] = trait.saveDc ?? 8 + base + mod;
-    if (trait.pool !== undefined) pools[trait.spell] = { key: `pool:${trait.pool}`, cost: trait.cost ?? 1 };
+    if (trait.pool !== undefined) pools[trait.spell] = { key: trait.pool.startsWith("feature:") ? trait.pool : `pool:${trait.pool}`, cost: trait.cost ?? 1 };
   }
   return {
     attackBonus: base + modifier,
@@ -218,6 +218,11 @@ function legendaryResistances(traits: readonly Trait[]): Readonly<Record<string,
   return uses > 0 ? { [legendaryResistanceKey]: uses } : {};
 }
 
+// A monster with a Death Burst begins with it still to go off.
+function deathBursts(traits: readonly Trait[]): Readonly<Record<string, number>> {
+  return traits.some((trait) => trait.kind === "deathBurst") ? { [deathBurstKey]: 1 } : {};
+}
+
 function monsterSpellcasting(casting: MonsterSpellcasting): CombatSpellcasting {
   return {
     attackBonus: casting.attackBonus,
@@ -252,7 +257,7 @@ export function monsterCombatant(monster: MonsterDefinition, content: SealedCont
     attacks,
     spellcasting: monster.spellcasting === undefined ? null : monsterSpellcasting(monster.spellcasting),
     features: [],
-    resources: { spellSlots: { ...(monster.spellcasting?.slots ?? {}) }, pactSlots: {}, featureUses: { ...legendaryResistances(monster.traits), ...legendaryActionUses(monster.traits), ...innateUses(monster.spellcasting) } },
+    resources: { spellSlots: { ...(monster.spellcasting?.slots ?? {}) }, pactSlots: {}, featureUses: { ...legendaryResistances(monster.traits), ...legendaryActionUses(monster.traits), ...deathBursts(monster.traits), ...innateUses(monster.spellcasting) } },
     traits: monster.traits,
     tactic: monster.tactic,
     fleeBelowHpFraction: placement.fleeBelowHpFraction,

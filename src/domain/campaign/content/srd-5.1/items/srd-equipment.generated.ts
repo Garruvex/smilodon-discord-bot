@@ -262,6 +262,7 @@ export const crush = defineWeapon({ id: "item:crush", source, damage: dice(1, 6)
 export const poisonedDart = defineWeapon({ id: "item:poisoned-dart", source, damage: dice(1, 6), damageType: "piercing", range: { kind: "ranged", normal: 30, long: 120 }, finesse: false, natural: true });
 export const steamBreath = defineWeapon({ id: "item:steam-breath", source, damage: dice(1, 6), damageType: "fire", range: melee, finesse: false, natural: true });
 export const blindingBreath = defineWeapon({ id: "item:blinding-breath", source, damage: dice(1, 6), damageType: "psychic", range: melee, finesse: false, natural: true });
+export const deathBurst = defineWeapon({ id: "item:death-burst", source, damage: dice(1, 6), damageType: "psychic", range: melee, finesse: false, natural: true });
 export const talons = defineWeapon({ id: "item:talons", source, damage: dice(1, 6), damageType: "slashing", range: melee, finesse: false, natural: true });
 export const gore = defineWeapon({ id: "item:gore", source, damage: dice(1, 6), damageType: "piercing", range: melee, finesse: false, natural: true });
 export const stomp = defineWeapon({ id: "item:stomp", source, damage: dice(1, 6), damageType: "bludgeoning", range: melee, finesse: false, natural: true });
@@ -278,8 +279,10 @@ export const tentaclesSlashing = defineWeapon({ id: "item:tentacles-slashing", s
 export const spikedBoneClub = defineWeapon({ id: "item:spiked-bone-club", source, damage: dice(1, 6), damageType: "bludgeoning", range: melee, finesse: false, natural: true });
 export const fork = defineWeapon({ id: "item:fork", source, damage: dice(1, 6), damageType: "piercing", range: melee, finesse: false, natural: true });
 export const frostBreath = defineWeapon({ id: "item:frost-breath", source, damage: dice(1, 6), damageType: "cold", range: melee, finesse: false, natural: true });
+export const deathBurstSlashing = defineWeapon({ id: "item:death-burst-slashing", source, damage: dice(1, 6), damageType: "slashing", range: melee, finesse: false, natural: true });
 export const sword = defineWeapon({ id: "item:sword", source, damage: dice(1, 6), damageType: "slashing", range: melee, finesse: false, natural: true });
 export const paralyzingTouch = defineWeapon({ id: "item:paralyzing-touch", source, damage: dice(1, 6), damageType: "cold", range: melee, finesse: false, natural: true });
+export const deathBurstFire = defineWeapon({ id: "item:death-burst-fire", source, damage: dice(1, 6), damageType: "fire", range: melee, finesse: false, natural: true });
 export const tailSpike = defineWeapon({ id: "item:tail-spike", source, damage: dice(1, 6), damageType: "piercing", range: { kind: "ranged", normal: 100, long: 200 }, finesse: false, natural: true });
 export const snakeHair = defineWeapon({ id: "item:snake-hair", source, damage: dice(1, 6), damageType: "piercing", range: melee, finesse: false, natural: true });
 export const harpoon = defineWeapon({ id: "item:harpoon", source, damage: dice(1, 6), damageType: "piercing", range: { kind: "ranged", normal: 20, long: 60 }, finesse: false, natural: true });
@@ -553,6 +556,7 @@ export const srd51GeneratedItems: readonly ItemDefinition[] = [
   poisonedDart,
   steamBreath,
   blindingBreath,
+  deathBurst,
   talons,
   gore,
   stomp,
@@ -569,8 +573,10 @@ export const srd51GeneratedItems: readonly ItemDefinition[] = [
   spikedBoneClub,
   fork,
   frostBreath,
+  deathBurstSlashing,
   sword,
   paralyzingTouch,
+  deathBurstFire,
   tailSpike,
   snakeHair,
   harpoon,

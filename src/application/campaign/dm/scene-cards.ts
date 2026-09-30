@@ -39,6 +39,8 @@ function describeTrait(trait: Trait, name: (id: string) => string): string[] {
       return ["makes several attacks in one turn"];
     case "areaAttack":
       return [`has an area attack (${name(trait.weapon)}) it can only use now and then`];
+    case "deathBurst":
+      return ["bursts when it dies, catching everyone near it"];
     case "regeneration":
       return ["regenerates hit points each turn"];
     case "legendaryResistance":

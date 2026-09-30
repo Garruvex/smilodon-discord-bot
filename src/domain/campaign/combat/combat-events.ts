@@ -136,7 +136,7 @@ export type CombatEvent =
   | { readonly kind: "slotConverted"; readonly combatantId: CombatantId; readonly level: number }
   | { readonly kind: "lightingChanged"; readonly zoneId: ZoneId; readonly lighting: "bright" | "dim" | "dark" }
   | { readonly kind: "terrainChanged"; readonly zoneId: ZoneId; readonly difficult: boolean }
-  | { readonly kind: "monsterStateChanged"; readonly combatantId: CombatantId; readonly regenBlocked?: boolean; readonly legendaryResistanceSpent?: boolean; readonly legendarySpent?: number; readonly legendaryTurn?: number; readonly relentlessSpent?: boolean; readonly indomitableSpent?: boolean; readonly relentlessRageSpent?: boolean; readonly innateSpent?: ContentId<"spell">; readonly featureSpent?: ContentId<"feature"> }
+  | { readonly kind: "monsterStateChanged"; readonly combatantId: CombatantId; readonly regenBlocked?: boolean; readonly legendaryResistanceSpent?: boolean; readonly legendarySpent?: number; readonly legendaryTurn?: number; readonly relentlessSpent?: boolean; readonly indomitableSpent?: boolean; readonly relentlessRageSpent?: boolean; readonly burstSpent?: boolean; readonly innateSpent?: ContentId<"spell">; readonly featureSpent?: ContentId<"feature"> }
   // A check's roll was thrown away and made again (Halfling Lucky, Indomitable); the new roll takes its place.
   | { readonly kind: "checkRerolled"; readonly resolutionId: string; readonly oldRollId: RollId; readonly rollId: RollId; readonly reason: "lucky" | "indomitable" }
   // Uncanny Dodge halved an attack's damage; spends the reaction it uses.

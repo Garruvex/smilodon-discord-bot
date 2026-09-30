@@ -222,6 +222,18 @@ export type Trait =
       // Used only as a legendary action (a dragon's Wing Attack), never on the monster's own turn.
       readonly legendary?: boolean;
     }
+  // Death Burst: when the holder dies, everyone else in its zone makes the saving throw (a zone is a place, so the
+  // SRD's five or ten feet all mean the same thing). Fields are those of an area attack.
+  | {
+      readonly kind: "deathBurst";
+      readonly weapon: ContentId<"item">;
+      readonly ability: Ability;
+      readonly dc: number;
+      readonly damage?: DiceExpression;
+      readonly damageType?: DamageType;
+      readonly condition?: ContentId<"condition">;
+      readonly halfOnSave: boolean;
+    }
   // Regains these hit points at the start of its turn, unless it took damage of
   // one of the listed types since its last turn.
   | { readonly kind: "regeneration"; readonly amount: number; readonly blockedBy: readonly DamageType[] }
@@ -247,6 +259,8 @@ export const relentlessEnduranceKey = "trait:relentless-endurance";
 // Relentless Rage (Barbarian 11): where its use is counted.
 export const relentlessRageKey = "feature:relentless-rage";
 export const legendaryResistanceKey = "trait:legendary-resistance";
+// A Death Burst still to go off (1) or gone off (0).
+export const deathBurstKey = "trait:death-burst";
 export const indomitableKey = "feature:indomitable";
 // And its legendary actions left this round.
 export const legendaryActionsKey = "trait:legendary-actions";

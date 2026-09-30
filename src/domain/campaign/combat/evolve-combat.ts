@@ -1,6 +1,6 @@
 import { assertNever } from "../core/assert-never.js";
 import type { EffectInstance } from "../effects/effect-instance.js";
-import { attacksPerAction, indomitableKey, relentlessRageKey, legendaryActionsKey, legendaryResistanceKey, relentlessEnduranceKey } from "../rules/traits.js";
+import { attacksPerAction, deathBurstKey, indomitableKey, relentlessRageKey, legendaryActionsKey, legendaryResistanceKey, relentlessEnduranceKey } from "../rules/traits.js";
 import { wildShapeUses } from "../rules/wild-shape-rules.js";
 import type { CombatEvent } from "./combat-events.js";
 import { innateUseKey, usePoolOf } from "../magic/spell-rules.js";
@@ -277,6 +277,7 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
         if (event.legendaryResistanceSpent === true) uses[legendaryResistanceKey] = Math.max(0, (uses[legendaryResistanceKey] ?? 0) - 1);
         if (event.relentlessSpent === true) uses[relentlessEnduranceKey] = 0;
         if (event.relentlessRageSpent === true) uses[relentlessRageKey] = 0;
+        if (event.burstSpent === true) uses[deathBurstKey] = 0;
         if (event.featureSpent !== undefined) uses[event.featureSpent] = Math.max(0, (uses[event.featureSpent] ?? 0) - 1);
         if (event.innateSpent !== undefined) uses[innateUseKey(event.innateSpent)] = Math.max(0, (uses[innateUseKey(event.innateSpent)] ?? combatant.spellcasting?.innate?.[event.innateSpent] ?? 0) - 1);
         if (event.indomitableSpent === true) uses[indomitableKey] = Math.max(0, (uses[indomitableKey] ?? 0) - 1);

@@ -48,7 +48,14 @@ export const tranquility = narrative("tranquility");
 export const tongueOfTheSunAndMoon = narrative("tongue-of-the-sun-and-moon");
 export const diamondSoul = narrative("diamond-soul");
 export const timelessBodyMonk = narrative("timeless-body-monk");
-export const quiveringPalm = narrative("quivering-palm");
+// Three ki ready the palm for the next melee hit: the target makes a Constitution save or drops to 0 hit points, and takes 10d10 necrotic damage if it passes.
+// The SRD lets the monk set the vibrations going and end them later; here they end at once.
+export const quiveringPalm = defineFeature({
+  id: "feature:quivering-palm",
+  source,
+  traits: [],
+  action: { cost: "free", uses: { pool: "feature:ki" }, spend: 3, plan: () => ({ check: null, onLand: [{ kind: "applyModifiers", target: "self", modifiers: [{ kind: "quiveringPalm" }], duration: { kind: "rounds", count: 1 } }], onAvoid: [] }) },
+});
 // Four ki: invisible, and resistant to everything but force, for a minute.
 export const emptyBody = defineFeature({
   id: "feature:empty-body",
@@ -96,8 +103,15 @@ export const strokeOfLuck = defineFeature({ id: "feature:stroke-of-luck", source
 // Every sorcerer here descends from a red dragon (draconic-bloodline), so the affinity is for fire.
 export const elementalAffinity = defineFeature({ id: "feature:elemental-affinity", source, traits: [{ kind: "elementalAffinity", damageType: "fire" }], action: null });
 export const metamagicAdditional = narrative("metamagic-additional");
-export const dragonWings = narrative("dragon-wings");
-export const draconicPresence = narrative("draconic-presence");
+// Sprouts wings and flies until the sorcerer is done (the SRD has a bonus action to dismiss them too, and no armor to wear over them: neither is modeled).
+export const dragonWings = defineFeature({
+  id: "feature:dragon-wings",
+  source,
+  traits: [],
+  action: { cost: "bonusAction", uses: { count: 99, recharge: "shortRest" }, plan: () => ({ check: null, onLand: [{ kind: "applyModifiers", target: "self", modifiers: [{ kind: "flying" }], duration: { kind: "untilRemoved" } }], onAvoid: [] }) },
+});
+// Five sorcery points buy a frightening presence (the SRD lets the sorcerer choose charmed instead, and keeps the aura for a minute).
+export const draconicPresence = defineFeature({ id: "feature:draconic-presence", source, traits: [{ kind: "featureSpell", spell: "spell:draconic-presence", ability: "cha", uses: 1, recharge: "longRest", pool: "feature:font-of-magic", cost: 5 }], action: null });
 export const sorcerousRestoration = narrative("sorcerous-restoration");
 export const darkOnesBlessing = defineFeature({ id: "feature:dark-ones-blessing", source, traits: [{ kind: "darkOnesBlessing" }], action: null });
 export const darkOnesOwnLuck = narrative("dark-ones-own-luck");
@@ -124,7 +138,25 @@ export const overchannel = defineFeature({
     plan: () => ({ check: null, onLand: [{ kind: "applyModifiers", target: "self", modifiers: [{ kind: "overchannel" }], duration: { kind: "rounds", count: 1 } }], onAvoid: [] }),
   },
 });
-export const spellMastery = narrative("spell-mastery");
-export const signatureSpells = narrative("signature-spells");
+// The wizard picks one 1st- and one 2nd-level spell to cast at will; this build fixes them (Magic Missile and Misty Step).
+export const spellMastery = defineFeature({
+  id: "feature:spell-mastery",
+  source,
+  traits: [
+    { kind: "featureSpell", spell: "spell:magic-missile", ability: "int", uses: null, recharge: "never" },
+    { kind: "featureSpell", spell: "spell:misty-step", ability: "int", uses: null, recharge: "never" },
+  ],
+  action: null,
+});
+// Two 3rd-level spells once per short rest each, without a slot; this build fixes them (Fireball and Fly).
+export const signatureSpells = defineFeature({
+  id: "feature:signature-spells",
+  source,
+  traits: [
+    { kind: "featureSpell", spell: "spell:fireball", ability: "int", uses: 1, recharge: "shortRest" },
+    { kind: "featureSpell", spell: "spell:fly", ability: "int", uses: 1, recharge: "shortRest" },
+  ],
+  action: null,
+});
 
 export const srd51LateFeatures: readonly FeatureDefinition[] = [mindlessRage, intimidatingPresence, retaliation, persistentRage, indomitableMight, primalChampion, songOfRest, cuttingWords, countercharm, additionalMagicalSecrets, magicalSecrets, peerlessSkill, superiorInspiration, blessedHealer, divineStrike, divineIntervention, supremeHealing, landsStride, naturesWard, naturesSanctuary, timelessBody, beastSpells, archdruid, additionalFightingStyle, survivor, deflectMissiles, openHandTechnique, slowFall, kiEmpoweredStrikes, wholenessOfBody, stillnessOfMind, tranquility, tongueOfTheSunAndMoon, diamondSoul, timelessBodyMonk, quiveringPalm, emptyBody, perfectSelf, divineHealth, auraOfDevotion, cleansingTouch, purityOfHeart, holyNimbus, primevalAwareness, defensiveTactics, rangersLandsStride, hideInPlainSight, hunterMultiattack, vanish, superiorHuntersDefense, feralSenses, foeSlayer, fastHands, secondStoryWork, supremeSneak, useMagicDevice, blindsense, slipperyMind, thiefsReflexes, elusive, strokeOfLuck, elementalAffinity, metamagicAdditional, dragonWings, draconicPresence, sorcerousRestoration, darkOnesBlessing, darkOnesOwnLuck, fiendishResilience, mysticArcanum6, mysticArcanum7, hurlThroughHell, mysticArcanum8, mysticArcanum9, eldritchMaster, sculptSpells, potentCantrip, empoweredEvocation, overchannel, spellMastery, signatureSpells];

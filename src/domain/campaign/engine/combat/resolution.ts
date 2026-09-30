@@ -22,6 +22,7 @@ import { creatureTypeOf, critThreshold, hasSaveAdvantage, indomitableKey, innate
 import type { Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { activeEncounter, afterResolution, endIfDecided } from "./combat-flow.js";
+import { offerDeathBurst } from "./death-burst.js";
 import { offerCounterspell, offerReaction, offerRetort } from "./reactions.js";
 import { offerSmite } from "./smite.js";
 import { applyDamage, applyHealing, applyTempHp, endConcentration, recordConcentration } from "./damage.js";
@@ -270,7 +271,7 @@ export function settleCheck(decision: Decision, resolutionId: string, rollId: Ro
 // through this instead of the plan directly so the extra effect reaches damage
 // rolling and application the same way any other does.
 export function landEffects(resolution: ResolutionState, encounter: EncounterState): readonly Effect[] {
-  const onLand = withStunningStrike(resolution, withCharge(resolution, encounter, withFoeSlayer(resolution, encounter, withMark(resolution, encounter, withDivineStrike(resolution, encounter, withImprovedSmite(resolution, encounter, withSavageAttacks(resolution, encounter)))))));
+  const onLand = withQuiveringPalm(resolution, withStunningStrike(resolution, withCharge(resolution, encounter, withFoeSlayer(resolution, encounter, withMark(resolution, encounter, withDivineStrike(resolution, encounter, withImprovedSmite(resolution, encounter, withSavageAttacks(resolution, encounter))))))));
   const slot = resolution.smiteSlot !== undefined ? resolution.smiteSlot : resolution.source.kind === "weapon" ? (resolution.source.smiteSlot ?? null) : null;
   if (slot === null) return onLand;
   // 2d8 for a 1st-level slot, +1d8 per level above that, capped at 5d8; one more d8 against a fiend or undead.
@@ -285,6 +286,13 @@ function withStunningStrike(resolution: ResolutionState, effects: readonly Effec
   const { source } = resolution;
   if (source.kind !== "weapon" || source.stunDc === undefined) return effects;
   return [...effects, { kind: "conditionUnlessSave", target: "target", ability: "con", dc: source.stunDc, condition: "condition:stunned", duration: { kind: "rounds", count: 1 } }];
+}
+
+// Quivering Palm: the hit drops the target to 0 hit points unless it makes a Constitution save, and then it takes 10d10 necrotic damage.
+function withQuiveringPalm(resolution: ResolutionState, effects: readonly Effect[]): readonly Effect[] {
+  const { source } = resolution;
+  if (source.kind !== "weapon" || source.palmDc === undefined) return effects;
+  return [...effects, { kind: "slayUnlessSave", target: "target", ability: "con", dc: source.palmDc, damage: dice(10, 10), damageType: "necrotic" }];
 }
 
 // Cutting Words: a bard on the other side, with its reaction and an inspiration use left, takes the die's average off an attack roll
@@ -419,14 +427,15 @@ export function proceedToEffects(decision: Decision): void {
         };
         rolls[`${encounter.id}:roll:${++sequence}`] = { effectKey: key, targetId: null, spec };
       }
-      if (effect.kind === "conditionUnlessSave") {
+      if (effect.kind === "slayUnlessSave") rolls[`${encounter.id}:roll:${++sequence}`] = { effectKey: key, targetId: null, spec: { kind: "dice", expression: effect.damage, critical: false } };
+      if (effect.kind === "conditionUnlessSave" || effect.kind === "slayUnlessSave") {
         for (const targetId of targets) {
           const target = encounter.combatants[effect.target === "self" ? resolution.actorId : targetId];
-          if (target === undefined || immuneTo(decision, encounter, target, effect.condition)) continue;
+          if (target === undefined || (effect.kind === "conditionUnlessSave" && immuneTo(decision, encounter, target, effect.condition))) continue;
           const lookup = conditionLookup(decision.ctx.rules.content);
           if (autoFailsSave(target, effect.ability, lookup)) continue;
           const bias = saveBias(target, effect.ability, lookup);
-          const racial = hasSaveAdvantage(target.traits, effect.ability, { conditions: [effect.condition], damageTypes: [], magic: resolution.source.kind === "spell" }) ? 1 : 0;
+          const racial = hasSaveAdvantage(target.traits, effect.ability, { conditions: effect.kind === "conditionUnlessSave" ? [effect.condition] : [], damageTypes: [], magic: resolution.source.kind === "spell" }) ? 1 : 0;
           const spec: RollSpec = {
             kind: "d20Test",
             spec: { mode: resolveRollMode(bias.advantage + racial, bias.disadvantage), modifier: target.saves[effect.ability] + auraBonusFor(encounter, target), bonusDice: bonusDiceFor(target, "save") },
@@ -453,8 +462,10 @@ export function recordEffect(decision: Decision, resolution: ResolutionState, ro
   if (result.kind === "dice") {
     value = Math.max(0, result.roll.total);
   } else {
-    const effect = effectForKey(resolution.plan, pending.effectKey);
-    const dc = effect?.kind === "conditionUnlessSave" ? effect.dc : 10;
+    // A rider added to the hit (a readied stun or palm) is not in the plan itself.
+    const encounter = activeEncounter(decision);
+    const effect = effectForKey(encounter === null ? resolution.plan : { ...resolution.plan, onLand: landEffects(resolution, encounter) }, pending.effectKey);
+    const dc = effect?.kind === "conditionUnlessSave" || effect?.kind === "slayUnlessSave" ? effect.dc : 10;
     const naturalRule = decision.ctx.rules.houseRules.option(naturalRollsOnChecks);
     value = resolveD20Test("savingThrow", result.roll.d20.natural, result.roll.total, dc, naturalRule).success ? 1 : 0;
   }
@@ -671,6 +682,13 @@ export function applyEffect(
         decision.emit({ kind: "effectApplied", combatantId: recipient.id, effect: conditionInstance(resolution, recipient, effect.condition, key, effect.duration ?? null, round, decision.ctx.rules.content) });
       }
       return;
+    case "slayUnlessSave": {
+      const failed = resolution.rolled[`rider:${recipient.id}:${key}`] === 0 || autoFailsSave(recipient, effect.ability, conditionLookup(decision.ctx.rules.content));
+      // Failing takes the hit points to 0 (a hero falls, a monster dies); passing takes the necrotic damage.
+      if (failed) applyDamage(decision, recipient, recipient.hp + (recipient.tempHp ?? 0), false);
+      else applyDamage(decision, recipient, resolution.rolled[key] ?? 0, false, effect.damageType);
+      return;
+    }
     case "push": {
       const from = decision.state.encounter?.combatants[resolution.actorId]?.zoneId ?? recipient.zoneId;
       const encounter = activeEncounter(decision);
@@ -747,6 +765,8 @@ export function finishResolution(decision: Decision): void {
   if (encounter == null || resolution == null) return;
   decision.emit({ kind: "resolutionFinished", resolutionId: resolution.id });
   decision.request({ kind: "deliver", delivery: { kind: "attackResolved", encounterId: encounter.id, attackId: resolution.id } });
+  // A monster that has just died may go off before anything else carries on.
+  if (offerDeathBurst(decision, resolution)) return;
   if (endIfDecided(decision)) return;
   afterResolution(decision, resolution.resumes ?? resolution);
 }

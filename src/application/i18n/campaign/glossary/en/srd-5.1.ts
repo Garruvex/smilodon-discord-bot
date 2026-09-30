@@ -273,6 +273,7 @@ const enBase: Glossary = {
     "spell:acid-splash": "Acid Splash",
     "spell:shocking-grasp": "Shocking Grasp",
     "spell:intimidating-presence": "Intimidating Presence",
+    "spell:draconic-presence": "Draconic Presence",
     "spell:wholeness-of-body": "Wholeness of Body",
     "spell:grapple": "Grapple",
     "spell:holy-nimbus": "Holy Nimbus",

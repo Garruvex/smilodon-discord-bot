@@ -76,6 +76,15 @@ export type Effect =
       // How long it lasts; until removed when absent.
       readonly duration?: EffectDuration;
     }
+  // Quivering Palm: unless the target passes the saving throw it drops to 0 hit points; passing, it still takes this damage.
+  | {
+      readonly kind: "slayUnlessSave";
+      readonly target: EffectTarget;
+      readonly ability: Ability;
+      readonly dc: number;
+      readonly damage: DiceExpression;
+      readonly damageType: DamageType;
+    }
   // A lasting effect made of modifiers alone (Mage Armor's armor class, Faerie Fire's
   // advantage to hit): the same effect record a condition is, ending with its duration
   // or the caster's concentration.

@@ -341,6 +341,17 @@ for (const monster of monsters) {
       traits.push(`{ kind: "legendaryResistance", uses: ${resistance} }`);
       continue;
     }
+    if (ability.name === "Death Burst" && ability.dc !== undefined) {
+      const burst = damageList(monster, ability);
+      const condition = burst === null ? new RegExp("(blinded|frightened|paralyzed|stunned|poisoned)", "i").exec(ability.desc)?.[1] : undefined;
+      if (burst !== null || condition !== undefined) {
+        const weapon = weaponFor({ name: ability.name, desc: ability.desc }, burst?.type ?? "psychic");
+        const scores = abilityCodes[ability.dc.dc_type.name.toLowerCase()] ?? ability.dc.dc_type.index;
+        const effect = burst === null ? `condition: "condition:${conditionNames[condition.toLowerCase()]}"` : `damage: ${burst.code}, damageType: ${quote(burst.type)}`;
+        traits.push(`{ kind: "deathBurst", weapon: ${quote(weapon)}, ability: ${quote(scores)}, dc: ${ability.dc.dc_value}, ${effect}, halfOnSave: ${ability.dc.success_type === "half"} }`);
+        continue;
+      }
+    }
     if (ability.spellcasting !== undefined) continue;
     if (!["Pack Tactics", "Nimble Escape", "Magic Resistance", "Blood Frenzy", "Sunlight Sensitivity"].includes(ability.name)) notes.push(ability.name === "Charge" || ability.name === "Pounce" || ability.name === "Trampling Charge" ? `${ability.name} (only the extra damage and the fall are played)` : ability.name);
   }

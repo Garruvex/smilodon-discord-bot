@@ -524,6 +524,8 @@ function capabilitiesFor(effect: Effect): readonly Capability[] {
       return ["attack-rolls"];
     case "conditionUnlessSave":
       return ["saving-throws", "conditions"];
+    case "slayUnlessSave":
+      return ["saving-throws", "damage"];
     case "exhaustion":
       return ["exhaustion"];
     case "destroy":

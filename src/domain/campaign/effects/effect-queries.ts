@@ -116,6 +116,12 @@ export function armedStunningStrike(holder: EffectHolder, lookup: ConditionLooku
   return null;
 }
 
+// The readied Quivering Palm, if any, and the effect to use up once the attack is made.
+export function armedQuiveringPalm(holder: EffectHolder, lookup: ConditionLookup): string | null {
+  for (const { modifier, effectId } of modifiersOf(holder, lookup)) if (modifier.kind === "quiveringPalm" && effectId !== null) return effectId;
+  return null;
+}
+
 export function meleeDamageBonusOf(holder: EffectHolder, lookup: ConditionLookup): number {
   return modifiersOf(holder, lookup).reduce((sum, { modifier }) => sum + (modifier.kind === "meleeDamageBonus" ? modifier.amount : 0), 0);
 }

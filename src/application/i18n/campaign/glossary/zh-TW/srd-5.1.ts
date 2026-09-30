@@ -218,6 +218,7 @@ const zhTwBase: Glossary = {
     "feature:relentless-rage": "不屈狂怒",
     "feature:stunning-strike": "震懾拳",
     "spell:intimidating-presence": "威嚇存在",
+    "spell:draconic-presence": "龍威",
     "spell:wholeness-of-body": "完整之軀",
     "spell:grapple": "擒抱",
     "spell:holy-nimbus": "神聖光暈",

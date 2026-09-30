@@ -90,6 +90,18 @@ export const intimidatingPresence = defineSpell({
   plan: () => ({ check: { kind: "savingThrow", ability: "wis" }, onLand: [{ kind: "applyCondition", target: "target", condition: "condition:frightened", duration: { kind: "rounds", count: 10 } }], onAvoid: [] }),
 });
 
+// Sorcerer 18 (Draconic Bloodline): up to six foes within 60 feet that fail a Wisdom save are frightened while the aura lasts.
+export const draconicPresence = defineSpell({
+  id: "spell:draconic-presence",
+  source,
+  level: 0,
+  castingTime: "action",
+  range: { kind: "feet", feet: 60 },
+  targeting: { relation: "enemy", count: 6 },
+  concentration: true,
+  plan: () => ({ check: { kind: "savingThrow", ability: "wis" }, onLand: [{ kind: "applyCondition", target: "target", condition: "condition:frightened", duration: { kind: "rounds", count: 10 } }], onAvoid: [] }),
+});
+
 // Monk 6 (Open Hand): heals three times the monk's level, once per long rest.
 export const wholenessOfBody = defineSpell({
   id: "spell:wholeness-of-body",
@@ -185,4 +197,4 @@ export const breathWeapons: readonly SpellDefinition[] = breathAncestries.map(([
   }),
 );
 
-export const srd51ClassAbilitySpells: readonly SpellDefinition[] = [bardicInspiration, layOnHands, preserveLife, turnUndead, grapple, shove, escapeGrapple, holyNimbus, intimidatingPresence, wholenessOfBody, ...breathWeapons];
+export const srd51ClassAbilitySpells: readonly SpellDefinition[] = [bardicInspiration, layOnHands, preserveLife, turnUndead, grapple, shove, escapeGrapple, holyNimbus, intimidatingPresence, draconicPresence, wholenessOfBody, ...breathWeapons];

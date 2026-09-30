@@ -1380,7 +1380,6 @@ export const duergar = defineMonster({
   traits: [{ kind: "sunlightSensitivity" }, { kind: "damageResistance", damageTypes: ["poison"] }],
 });
 
-// Not modeled: Death Burst.
 export const dustMephit = defineMonster({
   id: "monster:dust-mephit",
   source,
@@ -1393,7 +1392,7 @@ export const dustMephit = defineMonster({
     { weapon: "item:claws", toHit: 4, damage: plus(dice(1, 4), 2) },
   ],
   tactic: "brute",
-  traits: [{ kind: "areaAttack", weapon: "item:blinding-breath", ability: "dex", dc: 10, condition: "condition:blinded", halfOnSave: false, range: 15, cooldown: 6 }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageVulnerability", damageTypes: ["fire"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  traits: [{ kind: "areaAttack", weapon: "item:blinding-breath", ability: "dex", dc: 10, condition: "condition:blinded", halfOnSave: false, range: 15, cooldown: 6 }, { kind: "deathBurst", weapon: "item:death-burst", ability: "con", dc: 10, condition: "condition:blinded", halfOnSave: false }, { kind: "damageImmunity", damageTypes: ["poison"] }, { kind: "damageVulnerability", damageTypes: ["fire"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
   spellcasting: { casterLevel: 1, saveDc: 10, attackBonus: 2, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:sleep", perDay: 1 }] },
 });
 
@@ -2508,7 +2507,7 @@ export const iceDevil = defineMonster({
   traits: [{ kind: "multiattack", weapons: ["item:bite", "item:claws", "item:tail"] }, { kind: "saveAdvantage", magic: true }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
 });
 
-// Not modeled: Claws's extra damage types are folded into one; Death Burst; False Appearance.
+// Not modeled: Claws's extra damage types are folded into one; False Appearance.
 export const iceMephit = defineMonster({
   id: "monster:ice-mephit",
   source,
@@ -2521,7 +2520,7 @@ export const iceMephit = defineMonster({
     { weapon: "item:claws", toHit: 3, damage: combine(plus(dice(1, 4), 1), dice(1, 4)) },
   ],
   tactic: "brute",
-  traits: [{ kind: "areaAttack", weapon: "item:frost-breath", ability: "dex", dc: 10, damage: dice(2, 4), damageType: "cold", halfOnSave: true, range: 15, cooldown: 6 }, { kind: "damageImmunity", damageTypes: ["cold", "poison"] }, { kind: "damageVulnerability", damageTypes: ["bludgeoning", "fire"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  traits: [{ kind: "areaAttack", weapon: "item:frost-breath", ability: "dex", dc: 10, damage: dice(2, 4), damageType: "cold", halfOnSave: true, range: 15, cooldown: 6 }, { kind: "deathBurst", weapon: "item:death-burst-slashing", ability: "dex", dc: 10, damage: dice(1, 8), damageType: "slashing", halfOnSave: true }, { kind: "damageImmunity", damageTypes: ["cold", "poison"] }, { kind: "damageVulnerability", damageTypes: ["bludgeoning", "fire"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
   spellcasting: { casterLevel: 1, saveDc: 10, attackBonus: 2, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:fog-cloud", perDay: 1 }] },
 });
 
@@ -2743,7 +2742,7 @@ export const mage = defineMonster({
   spellcasting: { casterLevel: 9, saveDc: 14, attackBonus: 6, modifier: 6, slots: { 1: 4, 2: 3, 3: 3, 4: 3, 5: 1 }, spells: ["spell:fire-bolt", "spell:light", "spell:mage-hand", "spell:prestidigitation", "spell:detect-magic", "spell:mage-armor", "spell:magic-missile", "spell:shield", "spell:misty-step", "spell:suggestion", "spell:counterspell", "spell:fireball", "spell:fly", "spell:greater-invisibility", "spell:ice-storm", "spell:cone-of-cold"], innate: [] },
 });
 
-// Not modeled: Claws's extra damage types are folded into one; Death Burst; False Appearance.
+// Not modeled: Claws's extra damage types are folded into one; False Appearance.
 export const magmaMephit = defineMonster({
   id: "monster:magma-mephit",
   source,
@@ -2756,11 +2755,11 @@ export const magmaMephit = defineMonster({
     { weapon: "item:claws", toHit: 3, damage: combine(plus(dice(1, 4), 1), dice(1, 4)) },
   ],
   tactic: "brute",
-  traits: [{ kind: "areaAttack", weapon: "item:fire-breath", ability: "dex", dc: 11, damage: dice(2, 6), damageType: "fire", halfOnSave: true, range: 15, cooldown: 6 }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageVulnerability", damageTypes: ["cold"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  traits: [{ kind: "areaAttack", weapon: "item:fire-breath", ability: "dex", dc: 11, damage: dice(2, 6), damageType: "fire", halfOnSave: true, range: 15, cooldown: 6 }, { kind: "deathBurst", weapon: "item:death-burst-fire", ability: "dex", dc: 11, damage: dice(2, 6), damageType: "fire", halfOnSave: true }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "damageVulnerability", damageTypes: ["cold"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
   spellcasting: { casterLevel: 1, saveDc: 10, attackBonus: 2, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:heat-metal", perDay: 1 }] },
 });
 
-// Not modeled: Death Burst; Ignited Illumination.
+// Not modeled: Ignited Illumination.
 export const magmin = defineMonster({
   id: "monster:magmin",
   source,
@@ -2773,7 +2772,7 @@ export const magmin = defineMonster({
     { weapon: "item:touch", toHit: 4, damage: dice(2, 6) },
   ],
   tactic: "brute",
-  traits: [{ kind: "damageImmunity", damageTypes: ["fire"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }],
+  traits: [{ kind: "deathBurst", weapon: "item:death-burst-fire", ability: "dex", dc: 11, damage: dice(2, 6), damageType: "fire", halfOnSave: true }, { kind: "damageImmunity", damageTypes: ["fire"] }, { kind: "damageResistance", damageTypes: ["bludgeoning", "piercing", "slashing"] }],
 });
 
 // Not modeled: Trampling Charge (only the extra damage and the fall are played).
@@ -3901,7 +3900,7 @@ export const spy = defineMonster({
   traits: [{ kind: "multiattack", weapons: ["item:shortsword", "item:shortsword"] }],
 });
 
-// Not modeled: Claws's extra damage types are folded into one; Death Burst.
+// Not modeled: Claws's extra damage types are folded into one.
 export const steamMephit = defineMonster({
   id: "monster:steam-mephit",
   source,
@@ -3914,7 +3913,7 @@ export const steamMephit = defineMonster({
     { weapon: "item:claws", toHit: 2, damage: combine(dice(1, 4), dice(1, 4)) },
   ],
   tactic: "brute",
-  traits: [{ kind: "areaAttack", weapon: "item:steam-breath", ability: "dex", dc: 10, damage: dice(1, 8), damageType: "fire", halfOnSave: true, range: 15, cooldown: 6 }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
+  traits: [{ kind: "areaAttack", weapon: "item:steam-breath", ability: "dex", dc: 10, damage: dice(1, 8), damageType: "fire", halfOnSave: true, range: 15, cooldown: 6 }, { kind: "deathBurst", weapon: "item:death-burst-fire", ability: "dex", dc: 10, damage: dice(1, 8), damageType: "fire", halfOnSave: false }, { kind: "damageImmunity", damageTypes: ["fire", "poison"] }, { kind: "conditionImmunity", conditions: ["condition:poisoned"] }],
   spellcasting: { casterLevel: 1, saveDc: 11, attackBonus: 3, modifier: 0, slots: {  }, spells: [], innate: [{ spell: "spell:blur", perDay: 1 }] },
 });
 
