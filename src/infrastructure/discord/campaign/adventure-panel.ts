@@ -68,7 +68,9 @@ export function renderAdventurePanel(view: PanelView, text: Texts, campaignId: s
   }
   if (view.mode !== "archived") {
     // Explore (people, shops, spells) is for between fights.
-    const second: readonly CampaignAction[] = view.mode === "combat" ? safetyControls : ["explore", ...safetyControls];
+    // A player marked away can always come back, whatever state the game is in (waiting already shows it in the first row).
+    const comeBack: readonly CampaignAction[] = view.mode === "waiting" ? [] : ["back"];
+    const second: readonly CampaignAction[] = view.mode === "combat" ? [...safetyControls, ...comeBack] : ["explore", ...safetyControls, ...comeBack];
     container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(second.map((action) => controlButton(action, campaignId, text))));
   }
   return cardPayload(container);
