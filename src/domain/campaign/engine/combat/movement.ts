@@ -158,7 +158,12 @@ export function afterResolution(decision: Decision, resolution: ResolutionState)
   }
   const encounter = activeEncounter(decision);
   const actor = encounter?.combatants[resolution.actorId];
-  if (encounter == null || actor === undefined || isPlayerControlled(decision, actor)) return;
+  if (encounter == null || actor === undefined) return;
+  if (isPlayerControlled(decision, actor)) {
+    // Players end their own turns, but a hero this action left down (a reaction's damage, a spell's backlash) has no menu to end it from.
+    if (!isActive(actor) && currentCombatant(encounter)?.id === actor.id) endTurn(decision);
+    return;
+  }
   // An aura (Frightful Presence) was part of the action: the rest of the turn is still to play.
   if (resolution.source.kind === "area" && resolution.source.area.free === true && isActive(actor) && actor.budget.action) {
     playPlan(decision, actor, chooseMonsterPlan(encounter, actor, decision.ctx.rules.content));

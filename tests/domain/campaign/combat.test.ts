@@ -303,3 +303,29 @@ describe("autopilot combat mode", () => {
     expect(fight.encounter.status).toBe("ended");
   });
 });
+
+describe("a hero who goes down on their own turn", () => {
+  function downedOnOwnTurn(): { fight: Fight; id: string } {
+    const fight = startedFight();
+    const id = fight.current ?? "";
+    expect(fight.combatant(id).source.kind).toBe("hero");
+    const combatant = { ...fight.combatant(id), hp: 0, condition: "unconscious" as const };
+    fight.state = { ...fight.state, encounter: { ...fight.encounter, combatants: { ...fight.encounter.combatants, [id]: combatant } } };
+    return { fight, id };
+  }
+
+  it("can still end the turn, so the fight is not held until the timer runs out", () => {
+    const { fight, id } = downedOnOwnTurn();
+    const owner = fight.state.characters[id]?.ownerUserId ?? "";
+    fight.run({ kind: "user", userId: owner }, { kind: "endTurn", combatantId: id });
+    expect(fight.current).not.toBe(id);
+    expect(fight.kinds()).toContain("turnEnded");
+  });
+
+  it("cannot end the turn while a death save is still to be rolled", () => {
+    const { fight, id } = downedOnOwnTurn();
+    const owner = fight.state.characters[id]?.ownerUserId ?? "";
+    fight.state = { ...fight.state, encounter: { ...fight.encounter, pendingRolls: { r1: { purpose: "deathSave", combatantId: id, spec: { mode: "normal", modifier: 0, bonusDice: [] } } } as never } };
+    expect(fight.reject({ kind: "user", userId: owner }, { kind: "endTurn", combatantId: id })).toEqual({ code: "notYourTurn" });
+  });
+});
