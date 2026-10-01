@@ -75,7 +75,7 @@ export type CampaignEvent =
   | { readonly kind: "checkResolved"; readonly checkId: CheckId; readonly result: CheckResult }
   | { readonly kind: "roundResolved"; readonly roundNumber: number; readonly quiet: boolean }
   // Story effects that fired when a round resolved.
-  | { readonly kind: "sceneTransitioned"; readonly roundNumber: number; readonly sceneId: SceneId }
+  | { readonly kind: "sceneTransitioned"; readonly roundNumber: number; readonly sceneId: SceneId; readonly reason?: "agreed" | "organizer" | "story" }
   // A move the Planner proposed waits for the table: the effects are what
   // arriving brings (the scene change first), applied if the party goes.
   | { readonly kind: "sceneMoveProposed"; readonly roundNumber: number; readonly sceneId: SceneId; readonly effects: readonly PartyEffect[] }

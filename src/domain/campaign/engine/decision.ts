@@ -3,7 +3,7 @@ import type { Instant } from "../core/ids.js";
 import type { CampaignEvent } from "../events/campaign-event.js";
 import { evolve } from "../events/evolve.js";
 import type { SealedRuleset } from "../rules/ruleset.js";
-import { isFallen, type CampaignState } from "../state/campaign-state.js";
+import { isFallen, type CampaignState, type MoveReason } from "../state/campaign-state.js";
 import { changedWorld, isTimeOfDay, isWeather, maxDay, timesOfDay, weathers, type WorldChange } from "../state/world-state.js";
 import type { EngineRequest, PictureSnapshot } from "./engine-request.js";
 import type { Rejection } from "./rejection.js";
@@ -47,8 +47,8 @@ export class Decision {
   }
 
   // Applies one story effect (a round's planned effect, or a fight's trigger or victory): the engine's single story vocabulary.
-  public applyStory(roundNumber: number, effect: PartyEffect): void {
-    applyStoryEffect(this, roundNumber, effect);
+  public applyStory(roundNumber: number, effect: PartyEffect, moveReason?: MoveReason): void {
+    applyStoryEffect(this, roundNumber, effect, moveReason);
   }
 
   // The story's clock or sky moves (or does not, when the adventure keeps none or the change changes nothing). Returns whether it moved.

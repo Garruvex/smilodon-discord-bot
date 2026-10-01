@@ -63,6 +63,9 @@ export interface CampaignState {
   // the next round closes: the party goes unless more than half of the
   // present players pressed Stay (a tie stays).
   readonly pendingMove?: PendingMove;
+  // Each stay in a scene, oldest first; the last is where the party is. Absent in
+  // games that began before visits were kept: the first move starts the record.
+  readonly visits?: readonly SceneVisit[];
   // Checks of the current round only; earlier ones live in the event log.
   readonly checks: Readonly<Record<CheckId, CheckState>>;
   readonly ledger: Readonly<Record<string, LedgerEntry>>;
@@ -327,6 +330,23 @@ export interface Pacing {
   // Consecutive timed-out rounds before a player is marked away.
   readonly awayAfterMisses: number;
 }
+
+// One stay in a scene. The party can come back, so the same scene may have
+// several, each with its own id. A round belongs to the visit it was played in:
+// from the round the party arrived (the round the move happened, whose telling
+// is already in the new scene) up to, not including, the round it left.
+export interface SceneVisit {
+  readonly id: string;
+  readonly sceneId: SceneId;
+  readonly arrivedRound: number;
+  // Absent while the party is still there.
+  readonly leftRound?: number;
+  readonly cameFrom?: SceneId;
+  // How the party got here: the table agreed, the organizer sent it, or the story did.
+  readonly arrivedBy?: MoveReason;
+}
+
+export type MoveReason = "agreed" | "organizer" | "story";
 
 export interface PendingMove {
   readonly sceneId: SceneId;

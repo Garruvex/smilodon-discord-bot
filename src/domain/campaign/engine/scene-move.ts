@@ -82,7 +82,7 @@ function settle(decision: Decision, roundNumber: number, outcome: "go" | "stay",
     return;
   }
   decision.emit({ kind: "sceneMoveAgreed", roundNumber, sceneId, objectors, by });
-  for (const effect of effects) decision.applyStory(roundNumber, effect);
+  for (const effect of effects) decision.applyStory(roundNumber, effect, by === "organizer" ? "organizer" : "agreed");
 }
 
 function presentPlayer(decision: Decision): UserId | Rejection {

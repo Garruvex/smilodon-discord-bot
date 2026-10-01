@@ -50,7 +50,7 @@ import type { HeroPictures } from "../campaign/hero-pictures.js";
 import type { CharacterLibrary } from "../../../application/campaign/library/character-library.js";
 import { libraryHeroRef, savedSnapshotIdOf } from "../../../application/campaign/library/library-types.js";
 import { conflictLines } from "./character-library-component-handler.js";
-import { buildJournal, buildRecap } from "../../../application/campaign/views/story-views.js";
+import { buildJournal, buildPlaces, buildRecap, type PlaceView } from "../../../application/campaign/views/story-views.js";
 import { actingHero } from "../../../domain/campaign/engine/members.js";
 import { renderRulesScreen, ruleLines } from "../campaign/rules-screen.js";
 import { houseRulePresets, levelingMode } from "../../../domain/campaign/rules/house-rules.js";
@@ -60,6 +60,18 @@ import { ExploreFlow, isExploreAction } from "../campaign/explore-flow.js";
 import { refusalText } from "../campaign/refusal-text.js";
 
 // Joins lines, dropping the earliest content lines when they do not fit, so the latest news survives.
+// One stay in the journal: where and when, the opening of how it was told, what came of it, what was left.
+function placeLines(place: PlaceView, text: Texts): readonly string[] {
+  const t = text.campaign.journal;
+  const scene = place.sceneTitle;
+  return [
+    place.throughRound === null ? t.placeHere({ scene, from: place.fromRound }) : t.placeRounds({ scene, from: place.fromRound, through: place.throughRound }),
+    ...(place.told === null ? [] : [`  > ${place.told}`]),
+    ...(place.cluesFound === 0 && place.fights === 0 ? [] : [t.placeFacts({ clues: place.cluesFound, fights: place.fights })]),
+    ...(place.cluesLeft === 0 ? [] : [t.placeLeft({ count: place.cluesLeft })]),
+  ];
+}
+
 function fit(lines: readonly string[], limit: number): string {
   const kept = [...lines];
   while (kept.join("\n").length > limit && kept.length > 3) kept.splice(2, 1);
@@ -918,11 +930,13 @@ export class CampaignComponentHandler implements ComponentHandler {
     const story = await this.story(record);
     if (story === null) return t.empty;
     const journal = buildJournal(story.state, story.bible);
+    const places = buildPlaces(story.state, story.events, story.bible);
     const lines = [`**${t.title}**`, journal.sceneTitle === null ? "" : t.where({ scene: journal.sceneTitle })].filter((line) => line !== "");
     if (journal.chapters.length > 0) lines.push("", t.chapters, ...journal.chapters.map((chapter) => t.chapter({ from: chapter.fromRound, through: chapter.throughRound, text: chapter.text })));
+    if (places.length > 0) lines.push("", t.places, ...places.flatMap((place) => placeLines(place, text)));
     if (journal.people.length > 0) lines.push("", t.people, ...journal.people.map((person) => `• **${person.name}:** ${person.facts.join(" ")}`));
     if (journal.clues.length > 0) lines.push("", t.clues, ...journal.clues.map((clue) => `• ${clue}`));
-    if (journal.chapters.length === 0 && journal.people.length === 0 && journal.clues.length === 0) lines.push("", t.nothingYet);
+    if (journal.chapters.length === 0 && places.length === 0 && journal.people.length === 0 && journal.clues.length === 0) lines.push("", t.nothingYet);
     return fit(lines, 1900);
   }
 

@@ -3,17 +3,17 @@
 import type { EncounterSpec, PartyEffect } from "../commands/campaign-command.js";
 import { assertNever } from "../core/assert-never.js";
 import { lootGold } from "../rules/house-rules.js";
-import { isFallen, type CampaignState } from "../state/campaign-state.js";
+import { isFallen, type CampaignState, type MoveReason } from "../state/campaign-state.js";
 import type { Decision } from "./decision.js";
 
 
 // One fired effect. A fight can be queued only once at a time, and one that
 // was already fought is not queued again (a filled clock may name it).
-export function applyStoryEffect(decision: Decision, roundNumber: number, effect: PartyEffect): void {
+export function applyStoryEffect(decision: Decision, roundNumber: number, effect: PartyEffect, moveReason?: MoveReason): void {
   const { state } = decision;
   switch (effect.kind) {
     case "transitionScene":
-      decision.emit({ kind: "sceneTransitioned", roundNumber, sceneId: effect.sceneId });
+      decision.emit({ kind: "sceneTransitioned", roundNumber, sceneId: effect.sceneId, ...(moveReason === undefined ? {} : { reason: moveReason }) });
       decision.request({ kind: "sceneImage", sceneId: effect.sceneId, roundNumber, snapshot: decision.pictureSnapshot() });
       return;
     case "revealClue":

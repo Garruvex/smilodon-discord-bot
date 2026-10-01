@@ -4,7 +4,8 @@ import { swapFightingStyle } from "../character/fighting-styles.js";
 import { withWarlockChoices } from "../character/warlock-choices.js";
 import type { ContentId } from "../rules/content-id.js";
 import type { CharacterId, UserId } from "../core/ids.js";
-import type { CampaignState, CheckState, ItemOffer, MemberState, RoundState, Submission } from "../state/campaign-state.js";
+import type { CampaignState, CheckState, ItemOffer, MemberState, MoveReason, RoundState, SceneVisit, Submission } from "../state/campaign-state.js";
+import type { SceneId } from "../adventure/adventure-bible.js";
 import type { CombatEvent } from "../combat/combat-events.js";
 import type { HeroStatus } from "../combat/combatant-profile.js";
 import { baseEncounterId } from "../engine/ids.js";
@@ -71,7 +72,7 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     case "roundResolved":
       return state.round?.number === event.roundNumber ? { ...state, round: null } : state;
     case "sceneTransitioned":
-      return { ...state, sceneId: event.sceneId, sceneChangedRound: event.roundNumber };
+      return { ...state, sceneId: event.sceneId, sceneChangedRound: event.roundNumber, visits: visitsAfterMove(state, event.sceneId, event.roundNumber, event.reason) };
     case "sceneMoveProposed":
       return { ...state, pendingMove: { sceneId: event.sceneId, proposedRound: event.roundNumber, effects: event.effects, objectors: [] } };
     case "sceneMoveObjected":
@@ -532,4 +533,20 @@ function updateOwner(
 ): CampaignState {
   const ownerId = state.characters[characterId]?.ownerUserId;
   return ownerId === undefined ? state : updateMember(state, ownerId, update);
+}
+
+// The party leaves the scene it was in and starts a new stay. A game that began
+// before visits were kept gets its first stay from where the party stood.
+function visitsAfterMove(state: CampaignState, sceneId: SceneId, roundNumber: number, reason: MoveReason | undefined): readonly SceneVisit[] {
+  const known = state.visits ?? (state.sceneId === null ? [] : [{ id: "visit-1", sceneId: state.sceneId, arrivedRound: 1 }]);
+  const last = known.at(-1);
+  const left = known.map((visit) => (visit === last && visit.leftRound === undefined ? { ...visit, leftRound: roundNumber } : visit));
+  const arrival: SceneVisit = {
+    id: `visit-${known.length + 1}`,
+    sceneId,
+    arrivedRound: roundNumber,
+    ...(last === undefined ? {} : { cameFrom: last.sceneId }),
+    arrivedBy: reason ?? "story",
+  };
+  return [...left, arrival];
 }

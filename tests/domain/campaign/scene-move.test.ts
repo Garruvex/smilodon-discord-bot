@@ -90,6 +90,20 @@ describe("a fight proposed with a move", () => {
   });
 });
 
+describe("how the party got there, as recorded", () => {
+  const arrivedBy = (state: CampaignState): string | undefined => state.visits?.at(-1)?.arrivedBy;
+
+  it("says the table agreed, the organizer sent the party, or the story did", () => {
+    expect(arrivedBy(playRound(moveProposed()))).toBe("agreed");
+    expect(arrivedBy(run(moveProposed(), organizer, { kind: "settleMove", outcome: "go" }).state)).toBe("organizer");
+    expect(arrivedBy(moveProposed([{ ...toChapel, forced: true }]))).toBe("story");
+  });
+
+  it("records nothing when the party stays", () => {
+    expect(run(moveProposed(), organizer, { kind: "settleMove", outcome: "stay" }).state.visits).toBeUndefined();
+  });
+});
+
 describe("objecting to a move", () => {
   it("stops it when more than half of the present players press Stay", () => {
     let state = moveProposed([toChapel], partyOfThree());
