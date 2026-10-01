@@ -74,3 +74,19 @@ describe("rounds played in a place the party has left, in what the DM reads", ()
     expect(text).toContain("look around");
   });
 });
+
+describe("a defeated NPC, in what the DM reads", () => {
+  it("is named as unable to speak or react", async () => {
+    const r = rig();
+    const key = await startedCampaign(r);
+    const stored = await r.store.transaction((tx) => tx.loadCampaign(key));
+    if (stored === undefined) throw new Error("state");
+    const npc = starter.en.bible.npcs[0];
+    if (npc === undefined) throw new Error("npc");
+    const state = { ...stored.state, npcsDown: [npc.id] };
+    for (const audience of ["planner", "narrator"] as const) {
+      const built = assembleContext({ audience, state, events: [], bible: starter.en.bible, glossary: enSrd51Glossary, budgetTokens: 30_000 });
+      expect(built.sections.map((section) => section.text).join("\n")).toContain(`Defeated and dead or unconscious: ${npc.name}`);
+    }
+  });
+});

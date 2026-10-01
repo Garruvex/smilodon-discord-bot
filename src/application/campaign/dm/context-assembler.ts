@@ -236,6 +236,8 @@ function liveState(input: ContextInput): ContextSection {
     // The party has not left: the table can still stop the move, so nothing may be told as if it had arrived.
     lines.push(`The party is heading to ${heading?.title ?? state.pendingMove.sceneId} but has not arrived and is still in ${scene?.title ?? "the scene above"}. Describe them setting out or on the way, never arriving or what is there.`);
   }
+  const down = (state.npcsDown ?? []).flatMap((id) => input.bible.npcs.filter((npc) => npc.id === id).map((npc) => npc.name));
+  if (down.length > 0) lines.push(`Defeated and dead or unconscious: ${down.join(", ")}. They cannot speak, react, answer questions or be interrogated; any action aimed at them finds only a body, resolved as impossible.`);
   if (state.world !== undefined) lines.push(`Story time: ${worldText(state.world)}.`);
   lines.push(state.round === null ? "Between rounds." : `Round ${state.round.number}: ${state.round.status}.`);
   if (input.audience === "planner") {
