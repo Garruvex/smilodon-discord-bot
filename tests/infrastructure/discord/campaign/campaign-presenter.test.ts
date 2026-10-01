@@ -143,6 +143,32 @@ describe("the presenter", () => {
     expect(t.messages.posts.slice(before).filter((post) => post.content.startsWith("⏰"))).toEqual([]);
   });
 
+  it("tags the players who must roll when a game played by post waits on dice, and says nothing at a live table", async () => {
+    for (const pacingPreset of ["playByPost", "live"] as const) {
+      const t = await table();
+      await t.r.store.transaction(async (tx) => {
+        const stored = await tx.loadRecord(t.key);
+        if (stored !== undefined) await tx.saveRecord({ ...stored.record, pacingPreset }, stored.revision);
+      });
+      const presenter = new DiscordCampaignPresenter({ unitOfWork: t.r.store, messages: t.messages, cards: t.cards, adventures: t.r.adventures, glossaries });
+      t.r.plannerScript.push({
+        roundNumber: 1,
+        actions: [{ characterId: t.hero, resolution: { kind: "check", test: { kind: "skill", skill: "stealth" }, dcTier: "medium", rollModeReasons: [] } }],
+      });
+      await t.r.bus.execute(t.key, { kind: "submitAction", characterId: t.hero, text: "I sneak in." }, { commandId: "a", actor });
+      await t.runtime.runOnce();
+      const before = t.messages.posts.length;
+      await presenter.present(t.key, { kind: "rollsCalled", roundNumber: 1 });
+      const called = t.messages.posts.slice(before);
+      if (pacingPreset === "live") expect(called).toEqual([]);
+      else {
+        expect(called).toHaveLength(1);
+        expect(called[0]?.content).toBe("🎲 <@u-org> — your dice are waiting. Press **Roll** on the panel.");
+        expect(called[0]?.mentions).toEqual(["u-org"]);
+      }
+    }
+  });
+
   it("stages the dice reveal: the die is thrown, then the same message shows the result", async () => {
     const t = await table();
     const presenter = new DiscordCampaignPresenter({ unitOfWork: t.r.store, messages: t.messages, cards: t.cards, adventures: t.r.adventures, glossaries, revealDelayMs: 5 });

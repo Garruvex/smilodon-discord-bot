@@ -74,6 +74,8 @@ export type DeliverySpec =
   | { readonly kind: "timerReminder"; readonly target: ReminderTarget }
   // The "?" die appears (panel spec: Dice moments).
   | { readonly kind: "rollStarted"; readonly checkId: CheckId }
+  // The round is waiting on dice: whoever must roll is tagged once (the panel only shows them).
+  | { readonly kind: "rollsCalled"; readonly roundNumber: number }
   // The staged reveal lands on the saved result.
   | { readonly kind: "rollResult"; readonly checkId: CheckId }
   // Everyone passed or missed: a template waiting status, no model call.

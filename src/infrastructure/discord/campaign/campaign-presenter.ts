@@ -138,6 +138,12 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
         if (hero !== undefined) await say(adventureChannelId, text.campaign.msg.speech({ hero: hero.name, text: delivery.text }));
         break;
       }
+      case "rollsCalled": {
+        // Only a game played by post pings: at a live table the panel and the dice on the screen are enough.
+        const waiting = record.pacingPreset === "playByPost" && state !== undefined ? this.rollCall(state, delivery.roundNumber) : [];
+        if (waiting.length > 0) await say(adventureChannelId, text.campaign.msg.rollsCalled({ users: waiting.map((id) => `<@${id}>`).join(" ") }), waiting);
+        break;
+      }
       case "timerReminder": {
         const reminder = state === undefined ? null : this.reminderNotice(state, delivery.target, text);
         if (reminder !== null) await say(adventureChannelId, reminder.content, reminder.userIds);
@@ -283,6 +289,15 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
 
   // Halfway through a long wait: only the players still being waited for are
   // named. Discord shows the time left in each reader's own clock.
+  // The players whose heroes still have a roll to make this round and who are at the table.
+  private rollCall(state: CampaignState, roundNumber: number): readonly string[] {
+    const owners = Object.values(state.checks)
+      .filter((check) => check.roundNumber === roundNumber && check.status === "pending")
+      .flatMap((check) => (state.characters[check.characterId] === undefined ? [] : [state.characters[check.characterId]?.ownerUserId ?? ""]))
+      .filter((userId) => userId !== "" && state.members[userId]?.availability === "present");
+    return [...new Set(owners)];
+  }
+
   private reminderNotice(state: CampaignState, target: Extract<DeliverySpec, { kind: "timerReminder" }>["target"], text: Texts): { readonly content: string; readonly userIds: readonly string[] } | null {
     const when = (at: number): string => `<t:${Math.floor(at / 1000)}:R>`;
     const present = (userId: string): boolean => state.members[userId]?.availability === "present";

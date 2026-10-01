@@ -277,6 +277,7 @@ export const campaignEn = {
   "campaign.manage.kept": "Nothing changed.",
   "campaign.manage.needsAttention": "Needs attention:",
 
+  "campaign.msg.rollsCalled": "🎲 {users} — your dice are waiting. Press **Roll** on the panel.",
   "campaign.msg.reminderRound": "⏰ {users} — this round closes {when}, and you have not answered yet.",
   "campaign.msg.reminderRoll": "⏰ {user} — {hero}'s roll is still waiting. It will be made for you {when}.",
   "campaign.msg.reminderTurn": "⏰ {user} — it is still {hero}'s turn. It ends {when}.",

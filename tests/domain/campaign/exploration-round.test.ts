@@ -220,6 +220,7 @@ describe("round plans and checks", () => {
     });
     expect(step.state.round?.resolutions).toEqual({ "c-mira": { kind: "check", checkId: "r1:c-mira" } });
     expect(step.requests).toEqual([
+      { kind: "deliver", delivery: { kind: "rollsCalled", roundNumber: 1 } },
       { kind: "startTimer", timer: { kind: "roll", timerId: "roll:r1:c-mira", dueAt: 121_000, checkId: "r1:c-mira" } },
     ]);
   });

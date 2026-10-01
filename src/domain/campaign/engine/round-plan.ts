@@ -70,6 +70,7 @@ export function applyRoundPlan(decision: Decision, proposal: RoundPlanProposal, 
   }
 
   decision.emit({ kind: "roundPlanApplied", roundNumber: round.number, resolutions, checks, effects: proposal.effects ?? [] });
+  if (checks.length > 0) decision.request({ kind: "deliver", delivery: { kind: "rollsCalled", roundNumber: round.number } });
   for (const check of checks) {
     if (check.deadline !== null) {
       decision.request({
