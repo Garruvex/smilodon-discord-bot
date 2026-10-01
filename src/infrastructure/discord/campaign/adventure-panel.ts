@@ -26,7 +26,7 @@ const accentFor: Readonly<Record<PanelMode, number>> = {
 // The Adventure channel's one live control message, replaced at each round
 // boundary. Deadlines are Discord relative timestamps, so the message never
 // needs editing every second.
-export function renderAdventurePanel(view: PanelView, text: Texts, campaignId: string, partyUrl: string | null = null): CardPayload {
+export function renderAdventurePanel(view: PanelView, text: Texts, campaignId: string, partyUrl: string | null = null, activity = false): CardPayload {
   const t = text.campaign;
   const mode = t.mode[view.mode];
   const heading =
@@ -53,6 +53,12 @@ export function renderAdventurePanel(view: PanelView, text: Texts, campaignId: s
     // A link button needs no click handler: it takes a player straight to the Party channel and its hero cards.
     if (partyUrl !== null) row.addComponents(new ButtonBuilder().setURL(partyUrl).setLabel(text.campaign.button.partyChannel).setStyle(ButtonStyle.Link));
     container.addActionRowComponents(row);
+  }
+  // Opens the Activity; Discord answers the click itself, so the button needs no saved state.
+  if (activity && view.mode !== "archived") {
+    container.addActionRowComponents(
+      new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(campaignCustomId("playActivity", campaignId)).setLabel(text.campaign.button.playActivity).setStyle(ButtonStyle.Secondary)),
+    );
   }
   return cardPayload(container);
 }

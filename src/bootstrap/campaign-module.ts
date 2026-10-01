@@ -177,7 +177,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
   });
   // Each hero's thumbnail on the party channel and portrait on their sheet: their saved character's portrait, or their initials.
   const heroPictures = new HeroPictures({ portraitFor: (libraryCharacterId): ReturnType<typeof portraits.forGame> => portraits.forGame(libraryCharacterId) });
-  const cards = new CampaignCardService({ unitOfWork, rulesets, adventures, messages, glossaries, logger, issues, resources, pictures: heroPictures, drawMap: true });
+  const cards = new CampaignCardService({ unitOfWork, rulesets, adventures, messages, glossaries, logger, issues, resources, pictures: heroPictures, drawMap: true, activity: configuration.activity?.enabled === true });
   const presenter = new DiscordCampaignPresenter({ unitOfWork, messages, cards, adventures, glossaries });
   const imageAssets = new FileImageAssetStore(resolve(configuration.runtimeDataDirectory, "campaign-images"));
   const lobby = new CampaignLobbyService({

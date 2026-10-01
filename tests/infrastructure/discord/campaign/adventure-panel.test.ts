@@ -329,4 +329,9 @@ describe("hero cards", () => {
     expect(hpBar(20, 9)).toBe("▰▰▰▰▰▰▰▰");
     expect(hpBar(-3, 9)).toBe("▱▱▱▱▱▱▱▱");
   });
+
+  it("offers Play in Activity only when the Activity is on", () => {
+    expect(flatten(renderAdventurePanel(collecting, texts.en, "camp")).buttons.map((button) => button.label)).not.toContain("Play in Activity");
+    expect(flatten(renderAdventurePanel(collecting, texts.en, "camp", null, true)).buttons.map((button) => button.label)).toContain("Play in Activity");
+  });
 });

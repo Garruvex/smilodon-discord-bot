@@ -47,6 +47,8 @@ export const campaignActions = [
   "safety",
   "safetyPause",
   "more",
+  // Opens the Discord Activity (the in-app game screen) for this game.
+  "playActivity",
   // The Table rules screen (a private view): open it, pick a bundle, pick an
   // option, pick its value.
   "rules",

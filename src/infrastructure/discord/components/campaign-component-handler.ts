@@ -135,6 +135,8 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "more":
     case "explore":
       return ["adventure"];
+    case "playActivity":
+      return [];
     case "offerYes":
     case "offerNo":
     case "offerCancel":
@@ -232,6 +234,11 @@ export class CampaignComponentHandler implements ComponentHandler {
     const { interaction } = context;
     const parsed = parseCampaignId(interaction.customId);
     if (parsed === null || interaction.guildId === null) return;
+    // Discord opens the Activity itself as the click's only response.
+    if (parsed.action === "playActivity" && interaction.isButton()) {
+      await interaction.launchActivity();
+      return;
+    }
     const key: CampaignKey = { guildId: interaction.guildId, campaignId: parsed.campaignId };
     const stored = await this.deps.lobby.get(key);
     if (stored === undefined) {

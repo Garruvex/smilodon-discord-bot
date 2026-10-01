@@ -130,6 +130,7 @@ export const campaignEn = {
   "campaign.button.more": "More…",
   "campaign.button.pauseGame": "Pause the game",
   "campaign.button.partyChannel": "Party channel",
+  "campaign.button.playActivity": "Play in Activity",
   "campaign.button.accept": "Accept",
   "campaign.button.decline": "Decline",
   "campaign.button.cancelOffer": "Take back",

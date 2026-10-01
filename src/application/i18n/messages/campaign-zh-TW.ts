@@ -130,6 +130,7 @@ export const campaignZhTW = {
   "campaign.button.more": "更多…",
   "campaign.button.pauseGame": "暫停遊戲",
   "campaign.button.partyChannel": "隊伍頻道",
+  "campaign.button.playActivity": "在 Activity 中遊玩",
   "campaign.button.accept": "接受",
   "campaign.button.decline": "拒絕",
   "campaign.button.cancelOffer": "收回",

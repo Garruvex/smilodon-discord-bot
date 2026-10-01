@@ -60,6 +60,8 @@ export interface CampaignCardServiceOptions {
   readonly pictures?: HeroPictures;
   // Draws the party's map at the top of the party card.
   readonly drawMap?: boolean;
+  // Adds the Play in Activity button to the Adventure panel.
+  readonly activity?: boolean;
   // Waits (milliseconds) before each retry of a card that could not be drawn for a reason that may pass (a rate limit, a timeout); tests shorten it.
   readonly retryDelaysMs?: readonly number[];
 }
@@ -452,7 +454,7 @@ export class CampaignCardService implements CardRefresher {
       if (opportunity !== null) {
         cards.push({ key: "opportunity", channelId: adventureChannelId, payload: renderOpportunityAttackCard(opportunity, text, campaignId), epoch: "opportunity", pin: false });
       }
-      cards.push({ key: "adventure", channelId: adventureChannelId, payload: renderAdventurePanel(panel, text, campaignId, guildUrl(partyChannelId)), epoch: panelEpoch(state), pin: false });
+      cards.push({ key: "adventure", channelId: adventureChannelId, payload: renderAdventurePanel(panel, text, campaignId, guildUrl(partyChannelId), this.options.activity === true), epoch: panelEpoch(state), pin: false });
     }
     return cards;
   }
