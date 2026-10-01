@@ -74,7 +74,11 @@ export function routeWarnings(document: AdventureDocument): readonly string[] {
   for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
     const scene = byId.get(next);
     const targets = scene?.exits === undefined ? scenes.map((other) => other.id as string) : scene.exits.map((exit) => exit.to as string);
-    for (const target of targets) if (!reached.has(target)) (reached.add(target), queue.push(target));
+    for (const target of targets) {
+      if (reached.has(target)) continue;
+      reached.add(target);
+      queue.push(target);
+    }
   }
   const warnings: string[] = [];
   for (const scene of scenes) {
