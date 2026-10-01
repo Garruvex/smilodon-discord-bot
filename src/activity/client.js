@@ -216,7 +216,7 @@ async function setArtwork(imageElement, fallbackElement, imageUrl, alt, revalida
 function makeButton(label, onClick, primary = false, iconName = null) {
   const button = document.createElement("button");
   button.type = "button";
-  button.className = `live-action-choice${primary ? " primary" : ""}`;
+  button.className = `live-action-choice ui-control${primary ? " primary" : ""}`;
   if (iconName) button.append(iconImage(iconName));
   const text = document.createElement("span");
   text.textContent = label;
@@ -227,7 +227,7 @@ function makeButton(label, onClick, primary = false, iconName = null) {
 
 function createGameCard(game) {
   const card = document.createElement("article");
-  card.className = "lobby-card";
+  card.className = "lobby-card ui-card";
   card.dataset.lifecycle = game.lifecycle;
   const art = document.createElement("div");
   art.className = "lobby-card-art";
@@ -248,7 +248,7 @@ function createGameCard(game) {
   players.textContent = t("activity.lobby.players", { count: game.playerCount, max: game.maxPlayers });
   copy.append(status, title, adventure, players);
   const action = document.createElement("button");
-  action.className = "lobby-card-action";
+  action.className = "lobby-card-action ui-control";
   action.type = "button";
   action.textContent = t(actionKeys[game.action] ?? "activity.lobby.action.view");
   action.disabled = game.action === "full";
@@ -812,7 +812,7 @@ function renderTable(game) {
 function makeEnemy(enemy) {
   const card = document.createElement("button");
   card.type = "button";
-  card.className = `live-party-card live-enemy${enemy.active ? " is-active" : ""}${enemy.name === selectedEnemyName ? " is-selected" : ""}`;
+  card.className = `live-party-card live-enemy ui-card${enemy.active ? " is-active" : ""}${enemy.name === selectedEnemyName ? " is-selected" : ""}`;
   card.classList.toggle("is-active", enemy.active);
   card.setAttribute("aria-label", `${enemy.name}. ${t(`activity.band.${enemy.band}`)}, ${enemy.zone}`);
   card.setAttribute("aria-pressed", String(enemy.name === selectedEnemyName));
@@ -825,7 +825,7 @@ function makeEnemy(enemy) {
   const health = document.createElement("span");
   health.textContent = t("activity.hero.enemyHealth", { band: t(`activity.band.${enemy.band}`), zone: enemy.zone });
   const track = document.createElement("span");
-  track.className = "party-health live-party-health";
+  track.className = "party-health live-party-health ui-meter";
   const fill = document.createElement("i");
   fill.style.width = `${{ unhurt: 100, hurt: 66, bloodied: 33, down: 0 }[enemy.band] ?? 100}%`;
   track.append(fill);
@@ -833,7 +833,7 @@ function makeEnemy(enemy) {
   card.append(copy);
   if (enemy.active) {
     const turn = document.createElement("span");
-    turn.className = "live-party-status enemy-turn-label";
+    turn.className = "live-party-status ui-status enemy-turn-label";
     turn.textContent = t("activity.party.turnNow");
     copy.append(turn);
   }
@@ -867,7 +867,7 @@ function renderEquipment(hero) {
 function renderParty(members) {
   liveParty.replaceChildren(...members.map((hero) => {
     const card = document.createElement(hero.hp !== null && hero.maxHp !== null ? "button" : "div");
-    card.className = `live-party-card${hero.isYou ? " is-you" : ""}${!selectedEnemyName && hero.characterId === selectedPartyCharacterId ? " is-selected" : ""}`;
+    card.className = `live-party-card ui-card${hero.isYou ? " is-you" : ""}${!selectedEnemyName && hero.characterId === selectedPartyCharacterId ? " is-selected" : ""}`;
     card.dataset.status = hero.tableStatus ?? (hero.presence === "away" ? "away" : "waiting");
     if (hero.hp !== null && hero.maxHp !== null) {
       card.type = "button";
@@ -912,14 +912,14 @@ function renderParty(members) {
     subtitle.textContent = hero.level === null ? classText(hero.className) ?? t(`activity.party.presence.${hero.presence}`) : `${hero.raceName ?? ""} ${classText(hero.className) ?? t("activity.hero.heroClass")} ${hero.level}`.trim();
     copy.append(name, subtitle);
     const status = document.createElement("span");
-    status.className = "live-party-status";
+    status.className = "live-party-status ui-status";
     const statusWords = { acting: t("activity.party.turnNow"), submitted: hero.presence === "ready" ? t("activity.party.ready") : t("activity.party.actionIn"), passed: t("activity.party.passed"), missed: t("activity.party.missed"), away: t("activity.party.away"), waiting: t("activity.party.waiting") };
     if (hero.tableStatus === "acting") status.append(iconImage("attack"));
     status.append(document.createTextNode(statusWords[hero.tableStatus] ?? statusWords.waiting));
     copy.append(status);
     if (hero.hp !== null && hero.maxHp !== null) {
       const track = document.createElement("span");
-      track.className = "party-health live-party-health";
+      track.className = "party-health live-party-health ui-meter";
       const fill = document.createElement("i");
       fill.style.width = `${Math.max(0, Math.min(100, hero.hp / Math.max(1, hero.maxHp) * 100))}%`;
       track.append(fill);
@@ -1009,6 +1009,7 @@ function renderCharacterWorkspace(game) {
   tablist.replaceChildren(...tabs.map(([id, key]) => {
     const button = document.createElement("button");
     button.type = "button";
+    button.className = "ui-control";
     button.role = "tab";
     button.id = `hero-tab-${id}`;
     button.setAttribute("aria-selected", String(selectedWorkspaceTab === id));
