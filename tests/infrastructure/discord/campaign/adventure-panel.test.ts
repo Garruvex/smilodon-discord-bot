@@ -115,9 +115,10 @@ describe("the adventure panel", () => {
   it("names who rolls, which check, and the action that called for it", () => {
     const view: PanelView = { ...collecting, mode: "awaitingRolls", pendingRolls: [{ characterId: "c-mira", userId: "1", heroName: "Mira", test: { kind: "skill", skill: "persuasion" }, action: "talk the guard round" }] };
     const card = flatten(renderAdventurePanel(view, texts.en, "camp"));
-    expect(card.accent).toBe(accents.amber);
+    // Its own colour, so a call for dice is not mistaken for the amber DM-is-working panel; the player is tagged.
+    expect(card.accent).toBe(accents.purple);
     expect(card.text).toContain("If yours is listed, press Roll.");
-    expect(card.text).toContain("**Mira** · Persuasion (CHA)\nAttempt: talk the guard round");
+    expect(card.text).toContain("<@1> **Mira** · Persuasion (CHA)\nAttempt: talk the guard round");
     expect(card.buttons.map((button) => button.label)).toContain("Roll");
   });
 

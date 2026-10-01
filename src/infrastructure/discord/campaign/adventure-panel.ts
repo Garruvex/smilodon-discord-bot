@@ -14,7 +14,7 @@ const accentFor: Readonly<Record<PanelMode, number>> = {
   readyCheck: accents.amber,
   collecting: accents.green,
   planning: accents.amber,
-  awaitingRolls: accents.amber,
+  awaitingRolls: accents.purple,
   combat: accents.red,
   waiting: accents.gray,
   paused: accents.gray,
@@ -76,7 +76,8 @@ function statusLine(view: PanelView, text: Texts): string {
           const check = checkLabel(roll.test, text);
           // The player's own words are why the dice are called for; a long one is cut.
           const action = roll.action === null ? "" : escapeMarkdown(roll.action.replace(/\s+/g, " ").trim().slice(0, 80));
-          return action === "" ? t.rollWhyBare({ hero, check }) : t.rollWhy({ hero, check, action });
+          const user = `<@${roll.userId}>`;
+          return action === "" ? t.rollWhyBare({ user, hero, check }) : t.rollWhy({ user, hero, check, action });
         }),
       ].join("\n");
     case "combat":
