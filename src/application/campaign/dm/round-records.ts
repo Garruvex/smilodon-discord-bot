@@ -16,14 +16,17 @@ export interface RoundRecord {
   resolutions: Readonly<Record<CharacterId, Resolution>>;
   readonly checks: Map<string, { readonly test: CheckTest; readonly dc: number; result: CheckResult | null }>;
   narration: string | null;
+  // How many scene changes came before the round opened; a lower number than the party's now means it was played somewhere else.
+  readonly scenesBefore: number;
 }
 
 export function roundRecords(events: readonly CampaignEvent[]): readonly RoundRecord[] {
   const rounds = new Map<number, RoundRecord>();
+  let scenesBefore = 0;
   const roundOf = (number: number): RoundRecord => {
     let record = rounds.get(number);
     if (record === undefined) {
-      record = { number, actions: new Map(), passed: new Set(), missed: new Set(), speech: [], resolutions: {}, checks: new Map(), narration: null };
+      record = { number, actions: new Map(), passed: new Set(), missed: new Set(), speech: [], resolutions: {}, checks: new Map(), narration: null, scenesBefore };
       rounds.set(number, record);
     }
     return record;
@@ -32,6 +35,9 @@ export function roundRecords(events: readonly CampaignEvent[]): readonly RoundRe
 
   for (const event of events) {
     switch (event.kind) {
+      case "sceneTransitioned":
+        scenesBefore += 1;
+        break;
       case "roundOpened":
         roundOf(event.roundNumber);
         break;

@@ -48,3 +48,29 @@ describe("a scene change the table has not agreed to, in what the DM reads", () 
     expect(quiet.sections.map((section) => section.text).join("\n")).not.toContain("is heading to");
   });
 });
+
+describe("rounds played in a place the party has left, in what the DM reads", () => {
+  it("keeps only their narration, so their doors and creatures are not taken for this room's", async () => {
+    const r = rig();
+    const key = await startedCampaign(r);
+    const stored = await r.store.transaction((tx) => tx.loadCampaign(key));
+    if (stored === undefined) throw new Error("state");
+    const [, there] = starter.en.bible.scenes;
+    if (there === undefined) throw new Error("scene");
+    const hero = Object.keys(stored.state.characters)[0];
+    if (hero === undefined) throw new Error("hero");
+    const events = [
+      { kind: "roundOpened", roundNumber: 1, participants: [hero], closesAt: null },
+      { kind: "actionSubmitted", roundNumber: 1, characterId: hero, text: "talk to the snake" },
+      { kind: "narrationRecorded", roundNumber: 1, text: "The snake hisses." },
+      { kind: "sceneTransitioned", roundNumber: 1, sceneId: there.id },
+      { kind: "roundOpened", roundNumber: 2, participants: [hero], closesAt: null },
+      { kind: "actionSubmitted", roundNumber: 2, characterId: hero, text: "look around" },
+    ] as unknown as Parameters<typeof assembleContext>[0]["events"];
+    const built = assembleContext({ audience: "narrator", state: stored.state, events, bible: starter.en.bible, glossary: enSrd51Glossary, budgetTokens: 30_000 });
+    const text = built.sections.map((section) => section.text).join("\n");
+    expect(text).toContain("The snake hisses.");
+    expect(text).not.toContain("talk to the snake");
+    expect(text).toContain("look around");
+  });
+});

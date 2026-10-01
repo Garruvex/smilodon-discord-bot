@@ -288,6 +288,9 @@ function renderFight(fight: EncounterRecord): string {
 }
 
 function renderRound(record: RoundRecord, input: ContextInput): string {
+  // A round from a place the party has left keeps only its narration, so its doors, creatures and objects are not mistaken for this room's.
+  if (record.scenesBefore < scenesEntered(input.events)) return `Round ${record.number} (earlier, in a place the party has since left; none of it is here now)${record.narration === null ? "" : `
+Narration: ${record.narration}`}`;
   const nameOf = (characterId: string): string => input.state.characters[characterId]?.name ?? characterId;
   const lines = [`Round ${record.number}`];
   for (const [characterId, text] of record.actions) {
@@ -301,6 +304,10 @@ function renderRound(record: RoundRecord, input: ContextInput): string {
   for (const [characterId, said] of spoken) lines.push(`- ${nameOf(characterId)} said in character (not an action): ${said.map((text) => `"${text}"`).join(" ")}`);
   if (record.narration !== null) lines.push(`Narration: ${record.narration}`);
   return lines.join("\n");
+}
+
+function scenesEntered(events: readonly CampaignEvent[]): number {
+  return events.filter((event) => event.kind === "sceneTransitioned").length;
 }
 
 function resolutionText(record: RoundRecord, characterId: string, audience: ContextAudience): string {
