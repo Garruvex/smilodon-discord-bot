@@ -45,6 +45,13 @@ const apiErrorKeys = {
 };
 const artIconPrefix = "/art-icons";
 
+let classNames = {};
+
+// A class as the game's language names it; an unknown class shows as written.
+function classText(raw) {
+  return raw ? classNames[raw.toLowerCase()] ?? raw : raw;
+}
+
 function t(key, values = {}) {
   const message = activityStrings[key] ?? key;
   return message.replace(/\{(\w+)\}/g, (_, name) => values[name] === undefined ? `{${name}}` : String(values[name]));
@@ -125,7 +132,7 @@ async function requestJson(url, options = {}) {
 const actionIcon = { attack: "attack", combatSpell: "spell", exploreSpell: "spell", healSpell: "heal", reviveSpell: "heal", useItem: "potion", combatItem: "potion", move: "move", moveScene: "move", dash: "dash", combatDodge: "dodge", withdraw: "withdraw", shield: "shield", wildShape: "shape", roll: "roll", ready: "play", begin: "play", continue: "play", details: "notice", submit: "attack", pass: "pause", shop: "coins", askNpc: "clue", feature: "shape", reaction: "shield", smite: "attack", opportunityAttack: "attack", teleport: "move", summonCompanion: "shape", acceptInvite: "play", joinHero: "play", chooseHero: "play", startLobby: "play" };
 const classIcon = { wizard: "spell", sorcerer: "spell", warlock: "spell", cleric: "heal", druid: "shape", paladin: "shield", ranger: "ranged", rogue: "withdraw", fighter: "attack", barbarian: "attack", monk: "dodge", bard: "clue" };
 const artworkCache = new Map();
-const artworkMisses = new Set();
+const artworkMisses = new Map();
 
 function iconImage(name, label = "") {
   const image = document.createElement("img");
@@ -154,7 +161,8 @@ async function setArtwork(imageElement, fallbackElement, imageUrl, alt, revalida
     return;
   }
   imageElement.alt = alt;
-  if (artworkMisses.has(imageUrl)) return;
+  // A picture that was not ready is asked for again after a while.
+  if (Date.now() - (artworkMisses.get(imageUrl) ?? 0) < artworkRecheckMs) return;
   const changed = imageElement.dataset.source !== imageUrl;
   imageElement.dataset.source = imageUrl;
   const show = (objectUrl) => {
@@ -182,7 +190,8 @@ async function setArtwork(imageElement, fallbackElement, imageUrl, alt, revalida
       return;
     }
     if (!response.ok) {
-      if (response.status === 404) artworkMisses.add(imageUrl);
+      if (response.status === 404) artworkMisses.set(imageUrl, Date.now());
+      console.warn(`Picture could not be loaded (${response.status}).`, imageUrl);
       return;
     }
     const objectUrl = URL.createObjectURL(await response.blob());
@@ -309,6 +318,7 @@ async function loadTable() {
 }
 
 function renderGame(game) {
+  classNames = game.classNames ?? {};
   document.querySelector("#live-campaign").textContent = game.campaignName;
   document.querySelector("#live-adventure").textContent = game.adventureTitle.toLocaleUpperCase();
   document.querySelector("#live-scene-title").textContent = game.kind === "lobby" ? t("activity.scene.chooseHero") : game.scene.title;
@@ -538,11 +548,12 @@ function renderLobby(game) {
   document.querySelector("#live-turn").textContent = game.selectedHeroId ? t("activity.hero.ready") : t("activity.status.chooseHero");
   document.querySelector("#live-turn").classList.remove("is-active");
   document.querySelector("#live-hero-name").textContent = game.selectedHeroName ?? t("activity.hero.name");
-  document.querySelector("#live-hero-subtitle").textContent = game.selectedHeroClass ?? t("activity.hero.chooseAvailable");
+  document.querySelector("#live-hero-subtitle").textContent = classText(game.selectedHeroClass) ?? t("activity.hero.chooseAvailable");
   document.querySelector("#live-hero-hp").textContent = t("activity.hero.preGame");
   document.querySelector("#live-hero-ac").textContent = "";
   document.querySelector("#live-hero-health").style.width = "0%";
   document.querySelector("#live-hero-class").textContent = t("activity.hero.choose");
+  setHeroWatermark(null);
   document.querySelector("#live-hero-sigil").replaceChildren(iconImage("shape"));
   void setArtwork(document.querySelector("#live-hero-image"), document.querySelector("#live-hero-sigil"), null, "");
   document.querySelector("#live-resources").replaceChildren();
@@ -550,7 +561,7 @@ function renderLobby(game) {
   liveEnemies.replaceChildren();
   liveActions.replaceChildren();
   for (const hero of game.heroChoices) {
-    const button = makeButton(t("activity.action.chooseHero", { name: hero.name, class: hero.className }) + (hero.available ? "" : t("activity.action.chosen")), () => void performAction({ kind: "chooseHero", heroId: hero.id }), hero.id === game.selectedHeroId);
+    const button = makeButton(t("activity.action.chooseHero", { name: hero.name, class: classText(hero.className) }) + (hero.available ? "" : t("activity.action.chosen")), () => void performAction({ kind: "chooseHero", heroId: hero.id }), hero.id === game.selectedHeroId);
     button.disabled = !hero.available;
     liveActions.append(button);
   }
@@ -611,8 +622,8 @@ function renderTable(game) {
   document.querySelector("#table-status-subtitle").textContent = statusSubtitle;
   const hero = game.myHero;
   document.querySelector("#live-hero-name").textContent = hero?.name ?? t("activity.hero.notSelected");
-  document.querySelector("#live-hero-subtitle").textContent = hero ? `${hero.raceName ?? t("activity.hero.adventurer")} ${hero.className ?? t("activity.hero.heroClass")} ${hero.level}` : t("activity.hero.joinToChoose");
-  document.querySelector("#live-hero-class").textContent = (hero?.className ?? t("activity.hero.adventurerCaps")).toLocaleUpperCase();
+  document.querySelector("#live-hero-subtitle").textContent = hero ? `${hero.raceName ?? t("activity.hero.adventurer")} ${classText(hero.className) ?? t("activity.hero.heroClass")} ${hero.level}` : t("activity.hero.joinToChoose");
+  document.querySelector("#live-hero-class").textContent = (classText(hero?.className) ?? t("activity.hero.adventurerCaps")).toLocaleUpperCase();
   const classSigil = document.querySelector("#live-hero-sigil");
   classSigil.replaceChildren(iconImage(iconForClass(hero?.className)));
   void setArtwork(document.querySelector("#live-hero-image"), classSigil, hero?.imageUrl, t("activity.hero.portraitAlt", { name: hero?.name ?? t("activity.hero.heroClass") }));
@@ -744,7 +755,7 @@ function renderParty(members) {
       name.append(you);
     }
     const subtitle = document.createElement("span");
-    subtitle.textContent = hero.level === null ? hero.className ?? t(`activity.party.presence.${hero.presence}`) : `${hero.raceName ?? ""} ${hero.className ?? t("activity.hero.heroClass")} ${hero.level}`.trim();
+    subtitle.textContent = hero.level === null ? classText(hero.className) ?? t(`activity.party.presence.${hero.presence}`) : `${hero.raceName ?? ""} ${classText(hero.className) ?? t("activity.hero.heroClass")} ${hero.level}`.trim();
     copy.append(name, subtitle);
     const status = document.createElement("span");
     status.className = "live-party-status";
@@ -769,6 +780,17 @@ function renderParty(members) {
     card.append(sigil, copy);
     return card;
   }));
+}
+
+// The class emblem sits faintly in the corner of the hero page; it is the backdrop, not a mark on the portrait.
+function setHeroWatermark(className) {
+  const mark = document.querySelector("#hero-watermark");
+  if (!className) {
+    mark.hidden = true;
+    return;
+  }
+  mark.src = `${artIconPrefix}/${iconForClass(className)}.svg`;
+  mark.hidden = false;
 }
 
 function renderCharacterWorkspace(game) {
@@ -808,11 +830,12 @@ function renderCharacterWorkspace(game) {
   turnLabel.textContent = selected.tableStatus === "acting" ? viewingOwn ? t("activity.hero.turn") : t("activity.party.turnNow") : selected.tableStatus === "submitted" ? t("activity.party.actionIn") : selected.tableStatus === "passed" ? t("activity.party.passed") : t("activity.party.waiting");
   document.querySelector("#hero-workspace-label").textContent = viewingOwn ? t("activity.hero.label") : t("activity.hero.viewingMember");
   document.querySelector("#live-hero-name").textContent = profile.name;
-  document.querySelector("#live-hero-subtitle").textContent = `${profile.raceName ?? t("activity.hero.adventurer")} ${profile.className ?? t("activity.hero.heroClass")} ${profile.level}`;
-  document.querySelector("#live-hero-class").textContent = (profile.className ?? t("activity.hero.adventurerCaps")).toLocaleUpperCase();
+  document.querySelector("#live-hero-subtitle").textContent = `${profile.raceName ?? t("activity.hero.adventurer")} ${classText(profile.className) ?? t("activity.hero.heroClass")} ${profile.level}`;
+  document.querySelector("#live-hero-class").textContent = (classText(profile.className) ?? t("activity.hero.adventurerCaps")).toLocaleUpperCase();
   const sigil = document.querySelector("#live-hero-sigil");
   sigil.replaceChildren(iconImage(iconForClass(profile.className)));
   void setArtwork(document.querySelector("#live-hero-image"), sigil, profile.imageUrl, t("activity.hero.portraitAlt", { name: profile.name }));
+  setHeroWatermark(profile.className);
   document.querySelector("#live-hero-hp").textContent = t("activity.hero.hp", { hp: profile.hp, max: profile.maxHp });
   document.querySelector("#live-hero-ac").textContent = t("activity.hero.ac", { value: profile.armorClass });
   document.querySelector("#live-hero-health").style.width = `${Math.max(0, Math.min(100, profile.hp / Math.max(1, profile.maxHp) * 100))}%`;
@@ -959,8 +982,8 @@ function renderTableActions(game) {
     (place === "top" ? top : place === "composer" ? composer : place === "bottom" ? bottom : groups.get(actionCategoryOf[action.kind] ?? "other")).push(button);
   };
   if (game.canAcceptInvite) addAction(t("activity.action.acceptInvite"), { kind: "acceptInvite" }, true);
-  for (const hero of game.joinChoices) addAction(t("activity.action.joinAs", { name: hero.name, class: hero.className }), { kind: "joinHero", heroRef: hero.id }, true);
-  for (const hero of game.savedHeroChoices ?? []) addAction(t("activity.action.joinWith", { name: hero.name, class: hero.className }), { kind: "joinHero", heroRef: hero.id }, true);
+  for (const hero of game.joinChoices) addAction(t("activity.action.joinAs", { name: hero.name, class: classText(hero.className) }), { kind: "joinHero", heroRef: hero.id }, true);
+  for (const hero of game.savedHeroChoices ?? []) addAction(t("activity.action.joinWith", { name: hero.name, class: classText(hero.className) }), { kind: "joinHero", heroRef: hero.id }, true);
   if (game.reactionIsYours && game.reaction) {
     addAction(t("activity.action.declineReaction", { name: game.reaction.attackerName }), { kind: "reaction", spellId: null, slotLevel: null }, true);
     for (const spell of [...new Map(game.reaction.options.map((option) => [option.spellId, option])).values()]) addAction(t("activity.action.cast", { name: spell.spellName }), { kind: "reaction", spellId: spell.spellId, slotLevel: spell.slotLevel });
@@ -1178,7 +1201,7 @@ function openDetails() {
   document.querySelector("#detail-dialog > .eyebrow").textContent = t("activity.detail.character");
   document.querySelectorAll(".detail-private").forEach((element) => { element.hidden = false; });
   document.querySelector("#detail-name").textContent = hero.name;
-  document.querySelector("#detail-subtitle").textContent = `${hero.raceName ?? t("activity.hero.adventurer")} ${hero.className ?? t("activity.hero.heroClass")} ${hero.level}`;
+  document.querySelector("#detail-subtitle").textContent = `${hero.raceName ?? t("activity.hero.adventurer")} ${classText(hero.className) ?? t("activity.hero.heroClass")} ${hero.level}`;
   document.querySelector("#detail-hp").textContent = `${hero.hp} / ${hero.maxHp}`;
   document.querySelector("#detail-ac").textContent = String(hero.armorClass);
   document.querySelector("#detail-gold").textContent = String(hero.gold + hero.partyGold);
@@ -1227,7 +1250,7 @@ function openPublicDetails(hero) {
   document.querySelector("#detail-dialog > .eyebrow").textContent = t("activity.party.publicDetails");
   document.querySelectorAll(".detail-private").forEach((element) => { element.hidden = true; });
   document.querySelector("#detail-name").textContent = hero.name;
-  document.querySelector("#detail-subtitle").textContent = `${hero.raceName ?? t("activity.hero.adventurer")} ${hero.className ?? t("activity.hero.heroClass")} ${hero.level ?? ""}`.trim();
+  document.querySelector("#detail-subtitle").textContent = `${hero.raceName ?? t("activity.hero.adventurer")} ${classText(hero.className) ?? t("activity.hero.heroClass")} ${hero.level ?? ""}`.trim();
   document.querySelector("#detail-hp").textContent = `${hero.hp} / ${hero.maxHp}`;
   document.querySelector("#detail-ac").textContent = hero.armorClass === null ? t("activity.detail.unknown") : String(hero.armorClass);
   document.querySelector("#detail-dialog").showModal();
@@ -1324,8 +1347,9 @@ function designPreviewSnapshot() {
     down: false, fallen: false, conditions: [], isYou,
   });
   return {
+    classNames: new URLSearchParams(window.location.search).get("language") === "zh-TW" ? { wizard: "法師", paladin: "聖騎士", ranger: "遊俠", rogue: "盜賊", cleric: "牧師", bard: "吟遊詩人" } : {},
     kind: "table", campaignId: "local-preview", campaignName: "The Lantern Company", adventureTitle: "Moonlit Ruins",
-    mode: "combat", roundNumber: 4, scene: { title: "The Drowned Observatory", description: "Cold moonlight spills through the broken dome. Something stirs beneath the flooded floor.", imageUrl: null },
+    mode: "combat", roundNumber: 4, scene: { title: "The Drowned Observatory", description: "Cold moonlight spills through the broken dome. Something stirs beneath the flooded floor.", imageUrl: new URLSearchParams(window.location.search).has("scene-image") ? "/gallery/giant_wolf_spider.webp" : null },
     map: { kind: "battlefield", edges: [{ from: "shattered-dais", to: "flooded-floor", feet: 30 }, { from: "flooded-floor", to: "broken-gallery", feet: 25 }], zones: [
       { id: "shattered-dais", name: "Shattered dais", lighting: "Moonlit", cover: "half", difficult: false, canMove: true, occupants: [{ name: "Aria", side: "party", active: true, hp: 27, maxHp: 34 }] },
       { id: "flooded-floor", name: "Flooded floor", lighting: "Dim", cover: null, difficult: true, canMove: false, occupants: [{ name: "Hollow Sentinel", side: "foes", active: true, hp: 18, maxHp: 36 }] },

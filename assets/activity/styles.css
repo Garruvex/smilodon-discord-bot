@@ -1163,21 +1163,11 @@ body {
 @media (max-width: 760px) { .live-feature-grid { padding: 13px; border-width: 5px; gap: 15px; background: #eddbb8; } .live-feature-grid::before { display: none; } .live-feature-grid > .live-hero .live-hero-art { margin: 12px 0 12px 12px; } .live-party-card .live-party-sigil { width: 47px; height: 58px; flex-basis: 47px; } }
 @media (prefers-reduced-motion: reduce) { .live-hero { animation: none; transition: none; } }
 
-/* One-page table: the hero workspace first, party tiles beneath, no left-hand column or spine. */
-.live-shell { display: flex; flex-direction: column; }
-.live-feature-grid { display: flex; flex-direction: column; align-items: stretch; gap: 16px; padding: 18px 20px 20px; background: #efddba; }
-.live-feature-grid::before, .live-feature-grid::after { content: none; }
-.live-feature-grid > .live-hero { order: 1; grid-template-columns: 104px minmax(0, 1fr); align-items: start; min-height: 0; border-radius: 6px; background: linear-gradient(135deg, #f1e1c1, #dfc99e); box-shadow: inset 0 0 0 2px #fff0c970; transform: none; }
-.live-feature-grid > .party-section { order: 2; padding: 0; }
-.live-feature-grid > .live-hero .live-hero-art { grid-row: 1; width: 80px; height: 104px; min-height: 0; margin: 16px 0 0 16px; border-width: 4px; border-radius: 40px 40px 4px 4px; }
-.live-feature-grid > .live-hero .live-hero-art::before, .live-feature-grid > .live-hero .live-hero-art::after { top: 10px; width: 64px; height: 64px; }
-.live-feature-grid > .live-hero .live-hero-art .hero-class-backdrop { top: 22px; width: 44px; height: 44px; }
-.live-feature-grid > .live-hero .live-hero-art .hero-art-caption { display: none; }
-.live-feature-grid > .live-hero .live-hero-copy { grid-row: 1; align-self: center; padding: 16px 20px 6px 8px; }
-.live-feature-grid .live-hero-copy h2 { font-size: clamp(26px, 3vw, 34px); }
-.live-feature-grid .live-hero-copy .hero-subtitle { margin-bottom: 8px; }
-.hero-body { grid-column: 1 / -1; padding: 0 18px 16px; }
-.hero-body .hero-workspace-tabs { margin: 6px 0 12px; }
+/* Journal layout: the party page on the left, the hero page on the right. The portrait runs the height of the page with the workspace beside it. */
+.live-feature-grid > .live-hero { grid-template-columns: minmax(210px, 42%) minmax(0, 1fr); grid-template-rows: auto 1fr; align-items: start; align-self: stretch; }
+.live-feature-grid > .live-hero .live-hero-art { grid-column: 1; grid-row: 1 / 3; align-self: stretch; width: auto; height: auto; min-height: 340px; margin: 18px 0 18px 18px; border-width: 6px; border-radius: 44px 44px 6px 6px; }
+.live-feature-grid > .live-hero .live-hero-copy { grid-column: 2; grid-row: 1; align-self: start; padding: 22px clamp(16px, 2vw, 28px) 4px; }
+.hero-body { grid-column: 2; grid-row: 2; padding: 0 clamp(16px, 2vw, 28px) 22px; }
 .hero-body .hero-tab-panel { min-height: 0; max-height: none; padding: 0; overflow: visible; }
 
 /* Actions: urgent choices, the round composer, then one category list at a time, and the closing button. */
@@ -1203,11 +1193,16 @@ body {
 .action-list .live-action-input { grid-column: 1 / -1; }
 
 /* Party tiles. */
-.live-party-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.live-party-card { min-height: 78px; }
-.live-party-card .live-party-sigil { width: 46px; height: 58px; flex-basis: 46px; }
+.live-party-card { min-height: 0; padding: 6px; }
+.live-party-card .live-party-sigil { width: 40px; height: 50px; flex-basis: 40px; }
 .live-party-copy strong { font-size: 13px; }
 .live-feature-grid .section-heading { margin-bottom: 8px; }
+.live-party-card { height: auto; }
+.live-party-copy { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 8px; row-gap: 3px; }
+.live-party-copy > strong, .live-party-copy > span:nth-of-type(1), .live-party-copy > .party-health { grid-column: 1 / -1; }
+.live-party-copy > .live-party-status { grid-row: 3; grid-column: 1; margin-top: 0 !important; }
+.live-party-copy > .party-health + span { grid-row: 3; grid-column: 2; }
+.live-party-copy > .party-health { grid-row: 4; }
 
 /* Enemy cards: the name belongs in the text column, beside the emblem. */
 .live-enemy strong { grid-column: 2; }
@@ -1217,14 +1212,12 @@ body {
 .live-scene-copy { padding: 16px 22px; }
 
 @media (max-width: 760px) {
-  .live-feature-grid { padding: 10px; gap: 12px; }
-  .live-feature-grid > .live-hero { grid-template-columns: 88px minmax(0, 1fr); }
-  .live-feature-grid > .live-hero .live-hero-art { width: 66px; height: 88px; margin: 12px 0 0 12px; }
-  .live-feature-grid > .live-hero .live-hero-art::before, .live-feature-grid > .live-hero .live-hero-art::after { width: 52px; height: 52px; }
-  .live-feature-grid > .live-hero .live-hero-art .hero-class-backdrop { top: 16px; width: 34px; height: 34px; }
+  .live-feature-grid > .live-hero { grid-template-columns: 112px minmax(0, 1fr); grid-template-rows: auto auto; }
+  .live-feature-grid > .live-hero .live-hero-art { grid-row: 1; width: 88px; height: 124px; min-height: 0; margin: 12px 0 0 12px; border-width: 4px; border-radius: 30px 30px 4px 4px; }
+  .live-feature-grid > .live-hero .live-hero-art .hero-art-caption { display: none; }
   .live-feature-grid > .live-hero .live-hero-copy { padding: 12px 12px 4px 4px; }
-  .hero-body { padding: 0 12px 12px; }
-  .live-scene { min-height: 0; }
+  .hero-body { grid-column: 1 / -1; grid-row: 2; padding: 0 12px 12px; }
+  .live-scene { min-height: 280px; }
   .live-scene-copy { padding: 14px 16px; }
   .live-scene-copy p { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
   .action-list { grid-template-columns: 1fr; }
@@ -1242,19 +1235,77 @@ body {
 .live-scene-copy h2, .live-scene-copy p { text-shadow: 0 1px 6px #000a; }
 .live-scene-copy p { font-size: 14px; }
 
-/* The hero portrait: a wide frame so more of the picture shows. */
-.live-feature-grid > .live-hero { grid-template-columns: 200px minmax(0, 1fr); }
-.live-feature-grid > .live-hero .live-hero-art { width: 176px; height: 220px; margin: 16px 0 0 16px; border-width: 4px; border-radius: 12px 12px 4px 4px; }
-.live-feature-grid > .live-hero .live-hero-art::before, .live-feature-grid > .live-hero .live-hero-art::after { top: 30px; width: 120px; height: 120px; }
-.live-feature-grid > .live-hero .live-hero-art .hero-class-backdrop { top: 58px; width: 64px; height: 64px; }
-.live-feature-grid > .live-hero .live-hero-art > img:not([hidden]) { object-fit: cover; object-position: center 18%; -webkit-mask-image: none; mask-image: none; }
+/* The hero portrait: the whole picture, anchored high so faces stay in frame. */
+.live-feature-grid > .live-hero .live-hero-art > img:not([hidden]) { object-fit: cover; object-position: center 20%; -webkit-mask-image: none; mask-image: none; }
 .live-feature-grid > .live-hero .live-hero-art:has(> img:not([hidden]))::after { content: none; }
-.live-feature-grid > .live-hero .live-hero-copy { align-self: center; }
 
-@media (max-width: 760px) {
-  .live-scene { min-height: 280px; }
-  .live-feature-grid > .live-hero { grid-template-columns: 124px minmax(0, 1fr); }
-  .live-feature-grid > .live-hero .live-hero-art { width: 104px; height: 136px; margin: 12px 0 0 12px; }
-  .live-feature-grid > .live-hero .live-hero-art::before, .live-feature-grid > .live-hero .live-hero-art::after { top: 20px; width: 72px; height: 72px; }
-  .live-feature-grid > .live-hero .live-hero-art .hero-class-backdrop { top: 34px; width: 44px; height: 44px; }
+/* No rings over the portrait; the class emblem is a faint watermark in the corner of the hero page. */
+.live-hero-art::before, .live-hero-art::after, .live-feature-grid > .live-hero .live-hero-art::before, .live-feature-grid > .live-hero .live-hero-art::after { content: none; }
+.live-feature-grid > .live-hero { position: relative; }
+.hero-watermark { position: absolute; right: 22px; bottom: 16px; z-index: 0; width: 170px; height: 170px; opacity: .12; filter: brightness(0); pointer-events: none; }
+.hero-watermark[hidden] { display: none; }
+.live-feature-grid > .live-hero .live-hero-copy, .hero-body { position: relative; z-index: 1; }
+@media (max-width: 760px) { .hero-watermark { right: 12px; bottom: 10px; width: 104px; height: 104px; } }
+
+/* Lobby: light text on the dark board, parchment cards in dark ink, sizes that read at a glance. */
+.lobby-shell { width: min(960px, 100%); }
+.lobby-header { border-bottom-color: #6d4a3a; }
+.lobby-header .eyebrow, .lobby-intro .eyebrow { color: #dcc08a; font-size: 12px; }
+.lobby-brand h1 { color: #fff0d4; font-size: 28px; }
+.server-badge { padding: 8px 14px; border-color: #8a6840; background: #2a1b17; color: #f0dfbf; font-size: 13px; }
+.lobby-intro { margin: 24px 0 14px; }
+.lobby-intro h2 { color: #fff0d4; font-size: 38px; text-shadow: 0 2px 8px #0008; }
+.lobby-intro p { color: #e8d9bb; font-size: 16px; }
+.lobby-message { min-height: 24px; color: #f0dfbf; font-size: 14px; }
+.lobby-games { gap: 14px; }
+.lobby-card { min-height: 118px; border: 2px solid #967044; border-radius: 8px; background: linear-gradient(145deg, #f3e4c7, #e1cb9f); box-shadow: inset 0 0 0 2px #fff0c970, 0 6px 14px #10080650; color: #39271c; }
+.lobby-card-art, .lobby-card[data-lifecycle="active"] .lobby-card-art, .lobby-card[data-lifecycle="paused"] .lobby-card-art { border: 3px double #a58658; border-radius: 6px; background: radial-gradient(ellipse at 50% 40%, #864032, #4c2420 58%, #211513); color: #f3dca5; font-size: 34px; }
+.lobby-card[data-lifecycle="paused"] .lobby-card-art { background: radial-gradient(ellipse at 50% 40%, #77705b, #4a4535 58%, #25231b); }
+.lobby-card-status, .lobby-card[data-lifecycle="active"] .lobby-card-status, .lobby-card[data-lifecycle="paused"] .lobby-card-status { color: #4f6a35; font-size: 12px; }
+.lobby-card[data-lifecycle="active"] .lobby-card-status { color: #8f342c; }
+.lobby-card[data-lifecycle="paused"] .lobby-card-status { color: #7a6537; }
+.lobby-card h3 { margin: 4px 0 2px; color: #302018; font-size: 26px; }
+.lobby-card-adventure { color: #6a5139; font-size: 15px; }
+.lobby-card-players { margin-top: 6px; color: #4e3826; font-size: 14px; }
+.lobby-card-action { min-width: 132px; min-height: 44px; border: 1px solid #58211e; border-radius: 5px; background: linear-gradient(180deg, #a43c31, #72241f); box-shadow: inset 0 1px #e4ad8260, 0 2px 0 #4a211c; color: #fff0d4; font-size: 15px; }
+.lobby-card-action:disabled { border-color: #b49a6d; background: #d3bf99; box-shadow: none; color: #7a6850; }
+.lobby-empty, .lobby-error { border: 2px dashed #a58658; background: #f0dfbb; color: #39271c; }
+.lobby-empty h2, .lobby-error h2 { color: #302018; font-size: 26px; }
+.lobby-empty p, .lobby-error p { color: #6a5139; font-size: 15px; }
+.empty-sigil { color: #8f342c; }
+.lobby-error .lobby-retry { min-height: 42px; padding: 9px 20px; border: 1px solid #58211e; border-radius: 5px; background: linear-gradient(180deg, #a43c31, #72241f); color: #fff0d4; font-size: 15px; }
+.lobby-footer { border-top-color: #6d4a3a; color: #dcccab; font-size: 13px; }
+@media (max-width: 580px) {
+  .lobby-intro h2 { font-size: 30px; }
+  .lobby-card h3 { font-size: 22px; }
 }
+.hero-body .hero-workspace-tabs { flex-wrap: wrap; overflow: visible; }
+.hero-body .hero-workspace-tabs button { padding: 6px 10px; }
+@media (max-width: 760px) {
+  .live-party-copy { grid-template-columns: minmax(0, 1fr); }
+  .live-party-copy > .live-party-status, .live-party-copy > .party-health + span { grid-column: 1; }
+  .live-party-copy > .party-health + span { grid-row: 5; }
+}
+
+/* Scene: the picture is a clean banner with nothing drawn over it; the words sit on parchment beneath. */
+.live-scene { display: grid; grid-template-columns: minmax(0, 1fr); min-height: 0; overflow: hidden; border: 2px solid #967044; border-radius: 8px; background: linear-gradient(145deg, #f3e4c7, #e1cb9f); box-shadow: inset 0 0 0 2px #fff0c970, 0 10px 25px #100b093d; }
+.live-scene::before, .live-scene::after { content: none; }
+.live-scene-art { position: relative; inset: auto; grid-column: 1 / -1; width: 100%; height: auto; aspect-ratio: 8 / 3; min-height: 200px; max-height: 380px; border: 0; border-bottom: 3px double #a58658; }
+.live-scene-art > img:not([hidden]) { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.live-scene-art:has(> img:not([hidden]))::after { content: none; }
+.live-scene-copy { position: static; align-self: center; padding: 18px 26px 20px; color: #39271c; }
+.live-scene-copy .eyebrow { color: #8f342c; font-size: 12px; }
+.live-scene-copy h2 { max-width: none; margin: 4px 0 6px; color: #302018; font-size: clamp(26px, 3vw, 36px); text-shadow: none; }
+.live-scene-copy p { max-width: 70ch; color: #5a4631; font-size: 15px; line-height: 1.55; text-shadow: none; }
+.live-scene-copy::after { content: none; }
+.live-scene.has-enemies { grid-template-columns: minmax(0, 1fr) minmax(260px, 38%); }
+.live-scene .live-enemies { grid-column: 2; align-self: stretch; margin: 0; padding: 16px 20px 18px; border: 0; border-left: 1px solid #b49a6d; border-radius: 0; background: #ead8b2; backdrop-filter: none; }
+.live-scene:not(.has-enemies) .live-enemies { display: none; }
+@media (max-width: 760px) {
+  .live-scene, .live-scene.has-enemies { grid-template-columns: minmax(0, 1fr); min-height: 0; }
+  .live-scene-art { aspect-ratio: 16 / 10; min-height: 180px; }
+  .live-scene-copy { padding: 14px 16px 16px; }
+  .live-scene-copy p { display: block; overflow: visible; font-size: 14px; }
+  .live-scene .live-enemies { grid-column: 1; border-left: 0; border-top: 1px solid #b49a6d; }
+}
+.live-enemy .enemy-emblem { filter: brightness(0) opacity(.6); opacity: 1; }

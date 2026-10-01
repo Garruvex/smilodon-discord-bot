@@ -14,9 +14,14 @@ import { readyToStart } from "../../domain/campaign/lobby/lobby.js";
 import { texts } from "../i18n/texts.js";
 import { buildMapView } from "./views/map-view.js";
 
+// A picture is on disk once it is made, even while its Discord post is still being retried.
+const hasPicture = (status: string | undefined): boolean => status === "done" || status === "made";
+
 export interface ActivityTableView {
   readonly kind: "table";
   readonly language: CampaignRecord["language"];
+  // Class names in the game's language, keyed by the class id.
+  readonly classNames: Readonly<Record<string, string>>;
   readonly campaignId: string;
   readonly campaignName: string;
   readonly adventureTitle: string;
@@ -104,6 +109,7 @@ export interface ActivityTableView {
 export interface ActivityLobbyView {
   readonly kind: "lobby";
   readonly language: CampaignRecord["language"];
+  readonly classNames: Readonly<Record<string, string>>;
   readonly campaignId: string;
   readonly campaignName: string;
   readonly adventureTitle: string;
@@ -130,6 +136,7 @@ export function buildActivityLobbyView(record: CampaignRecord, bible: AdventureB
   return {
     kind: "lobby",
     language: record.language,
+    classNames: texts[record.language].campaign.classes,
     campaignId: record.key.campaignId,
     campaignName: record.name,
     adventureTitle: bible.title,
@@ -218,7 +225,7 @@ export function buildActivityTableView(
       down: hero.down,
       fallen: hero.fallen,
       conditions: hero.conditions,
-      imageUrl: partySheet?.origin === undefined && record.images?.[`hero:${hero.characterId}`] !== "done" ? null : `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/characters/${encodeURIComponent(hero.characterId)}`,
+      imageUrl: partySheet?.origin === undefined && !hasPicture(record.images?.[`hero:${hero.characterId}`]) ? null : `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/characters/${encodeURIComponent(hero.characterId)}`,
       isYou: hero.ownerUserId === userId,
       tableStatus: panel.combat?.party.some((combatant) => combatant.name === hero.name && combatant.active) === true
         ? "acting"
@@ -230,7 +237,7 @@ export function buildActivityTableView(
   });
   const fullHero = heroView === null ? null : {
     characterId: heroView.characterId,
-    imageUrl: sheet?.origin === undefined && record.images?.[`hero:${heroView.characterId}`] !== "done" ? null : `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/characters/${encodeURIComponent(heroView.characterId)}`,
+    imageUrl: sheet?.origin === undefined && !hasPicture(record.images?.[`hero:${heroView.characterId}`]) ? null : `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/characters/${encodeURIComponent(heroView.characterId)}`,
     name: heroView.name,
     className: heroView.className,
     raceName: sheet?.race === undefined ? null : glossary.names[sheet.race] ?? sheet.race,
@@ -264,13 +271,14 @@ export function buildActivityTableView(
   return {
     kind: "table",
     language: record.language,
+    classNames: texts[record.language].campaign.classes,
     campaignId: record.key.campaignId,
     campaignName: record.name,
     adventureTitle: bible.title,
     mode: panel.mode,
     roundNumber: panel.roundNumber,
     mapText: texts[record.language].campaign.map,
-    scene: { title: panel.sceneTitle, description: scene?.publicDescription ?? "", imageUrl: scene === undefined || record.images?.[scene.id] !== "done" ? null : `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/scenes/${encodeURIComponent(scene.id)}` },
+    scene: { title: panel.sceneTitle, description: scene?.publicDescription ?? "", imageUrl: scene === undefined || !hasPicture(record.images?.[scene.id]) ? null : `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/scenes/${encodeURIComponent(scene.id)}` },
     map: panel.combat !== null && state.encounter !== null
       ? {
         kind: "battlefield",
