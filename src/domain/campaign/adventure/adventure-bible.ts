@@ -26,6 +26,8 @@ export interface AdventureBible {
   readonly startingLevel?: number;
   readonly dmOverview: string;
   readonly startScene: SceneId;
+  // The story only moves forward on purpose (a train, a dream, a descent): one-way exits are not reported as mistakes.
+  readonly linear?: boolean;
   // When the story begins: day (1 if not given), time of day and weather. Absent: the adventure keeps no clock and nobody invents one.
   readonly startTime?: { readonly day?: number; readonly time: TimeOfDay; readonly weather?: Weather };
   readonly scenes: readonly BibleScene[];

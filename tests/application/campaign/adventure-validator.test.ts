@@ -116,5 +116,7 @@ describe("checking the routes between scenes", () => {
     expect(oneWay).toContain(`${first.id} leads to ${second.id}, but there is no way back.`);
     const both = routeWarnings(withScenes([{ ...first, exits: [{ to: second.id }] }, { ...second, exits: [{ to: first.id }, { to: third.id }] }, { ...third, exits: [{ to: second.id }] }]));
     expect(both).toEqual([]);
+    const chain = withScenes([{ ...first, exits: [{ to: second.id }] }, { ...second, exits: [{ to: third.id }] }, { ...third, exits: [{ to: second.id }] }]);
+    expect(routeWarnings({ ...chain, bible: { ...chain.bible, linear: true } })).toEqual([]);
   });
 });

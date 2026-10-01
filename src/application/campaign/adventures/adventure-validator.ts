@@ -85,7 +85,7 @@ export function routeWarnings(document: AdventureDocument): readonly string[] {
     if (!reached.has(scene.id)) warnings.push(`${scene.id} cannot be reached from the start scene by its exits.`);
     if (scene.exits?.length === 0) warnings.push(`${scene.id} has no way out; the party would be stuck there.`);
   }
-  for (const scene of scenes) {
+  for (const scene of document.bible.linear === true ? [] : scenes) {
     for (const exit of scene.exits ?? []) {
       const there = byId.get(exit.to);
       if (there?.exits !== undefined && there.exits.length > 0 && !there.exits.some((back) => back.to === scene.id)) warnings.push(`${scene.id} leads to ${exit.to}, but there is no way back.`);

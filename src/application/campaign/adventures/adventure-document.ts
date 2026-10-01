@@ -128,6 +128,7 @@ const documentSchema = z
     startingLevel: z.number().int().min(1).max(10).optional(),
     dmOverview: text,
     startScene: sceneId,
+    linear: z.boolean().optional(),
     startTime: z.object({ day: z.number().int().min(1).max(10_000).optional(), time: z.enum(timesOfDay), weather: z.enum(weathers).optional() }).strict().optional(),
     scenes: z
       .array(
@@ -295,7 +296,7 @@ export function parseAdventureDocument(source: string): AdventureDocument {
   });
   if (problems.length > 0) throw new AdventureDocumentError(problems);
 
-  const { heroes: _heroes, startingLevel, startTime, encounters, interactions, scenes, ...rest } = data;
+  const { heroes: _heroes, startingLevel, linear, startTime, encounters, interactions, scenes, ...rest } = data;
   // zod's .optional() leaves the key present with value undefined, which
   // exactOptionalPropertyTypes treats as different from the key being
   // absent; strip it so an npc with no shop matches BibleNpc exactly.
@@ -320,6 +321,7 @@ export function parseAdventureDocument(source: string): AdventureDocument {
     encounters: bibleEncounters as unknown as AdventureBible["encounters"],
     ...(interactions.length === 0 ? {} : { interactions: clean(interactions) as unknown as readonly BibleInteraction[] }),
     ...(startingLevel === undefined ? {} : { startingLevel }),
+    ...(linear === undefined ? {} : { linear }),
     ...(startTime === undefined ? {} : { startTime: clean(startTime) as unknown as NonNullable<AdventureBible["startTime"]> }),
   };
   return { bible, heroes };
