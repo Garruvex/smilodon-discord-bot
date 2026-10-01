@@ -110,7 +110,7 @@ function movingLines(view: PanelView, text: Texts): string {
 }
 
 function rosterLine(roster: readonly RosterEntry[], text: Texts): string {
-  return roster.map((entry) => `${entry.heroName} ${text.campaign.roster[entry.status]}`).join(" · ");
+  return roster.map((entry) => `${entry.heroName} ${text.campaign.roster[entry.status]}`).join("\n");
 }
 
 // Separate sides, one combatant per line. A crowded fight keeps the active

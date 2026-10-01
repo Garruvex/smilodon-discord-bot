@@ -32,7 +32,7 @@ describe("the adventure panel", () => {
     expect(card.text).toContain("## Old Watchtower · Exploration · Round 4");
     expect(card.text).toContain("Press Act / Edit to describe what you want to do");
     expect(card.text).toContain("Closes <t:1800000000:R>.");
-    expect(card.text).toContain("Mira ✓ Submitted · Borin … Thinking · Elin — Away");
+    expect(card.text).toContain("Mira ✓ Submitted\nBorin … Thinking\nElin — Away");
     expect(card.buttons.map((button) => button.id)).toEqual(["dnd:act:camp", "dnd:speak:camp", "dnd:pass:camp", "dnd:myHero:camp", "dnd:away:camp", "dnd:explore:camp", "dnd:safety:camp", "dnd:more:camp"]);
   });
 
@@ -99,7 +99,7 @@ describe("the adventure panel", () => {
     const card = flatten(renderAdventurePanel(view, texts.en, "camp"));
     expect(card.text).toContain("Getting ready");
     expect(card.text).toContain("press Ready");
-    expect(card.text).toContain("Mira ✓ Ready · Borin … Thinking");
+    expect(card.text).toContain("Mira ✓ Ready\nBorin … Thinking");
     expect(card.buttons.map((button) => button.id)).toEqual(["dnd:ready:camp", "dnd:begin:camp", "dnd:myHero:camp", "dnd:away:camp", "dnd:explore:camp", "dnd:safety:camp", "dnd:more:camp"]);
     expect(labels(view, "zh-TW")).toEqual(["準備好了", "立即開始", "我的英雄", "離開／我回來了", "探索", "安全", "更多…"]);
   });
@@ -185,7 +185,7 @@ describe("the adventure panel", () => {
   it("speaks Traditional Chinese with short labels, and stays within Discord's limits", () => {
     const card = flatten(renderAdventurePanel(collecting, texts["zh-TW"], "camp"));
     expect(card.text).toContain("Old Watchtower · 探索 · 第 4 回合");
-    expect(card.text).toContain("Mira ✓ 已提交 · Borin … 思考中 · Elin — 離開");
+    expect(card.text).toContain("Mira ✓ 已提交\nBorin … 思考中\nElin — 離開");
     expect(card.buttons.map((button) => button.label)).toEqual(["行動／修改", "說話", "跳過", "我的英雄", "離開／我回來了", "探索", "安全", "更多…"]);
     expect(card.componentCount).toBeLessThan(cardLimits.components);
     expect(card.text.length).toBeLessThan(cardLimits.characters);

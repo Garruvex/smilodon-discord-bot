@@ -346,7 +346,12 @@ export function parseNarratorOutput(text: string): string {
   }
   const parsed = narratorOutputSchema.safeParse(json);
   if (!parsed.success) throw new Error("Narrator output had no narration.");
-  return parsed.data.narration;
+  return restoreLineBreaks(parsed.data.narration);
+}
+
+// The model sometimes writes a line break as the two characters backslash and n, which would show in the channel as a literal \n.
+export function restoreLineBreaks(text: string): string {
+  return text.replace(/(?:\\r)?\\n/g, "\n").trim();
 }
 
 export class LlmCampaignNarrator implements CampaignNarrator {
