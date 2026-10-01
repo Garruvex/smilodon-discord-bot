@@ -10,6 +10,7 @@ import { buildExploreView, buildShopView, type ExploreView, type ShopView } from
 import { buildTurnView } from "./views/turn-view.js";
 import type { CampaignRecord } from "./ports/campaign-record.js";
 import { readyToStart } from "../../domain/campaign/lobby/lobby.js";
+import { texts } from "../i18n/texts.js";
 import { buildMapView } from "./views/map-view.js";
 
 export interface ActivityTableView {
@@ -23,6 +24,8 @@ export interface ActivityTableView {
   readonly map:
     | { readonly kind: "battlefield"; readonly zones: readonly { readonly id: string; readonly name: string; readonly lighting: string | null; readonly cover: string | null; readonly difficult: boolean; readonly canMove: boolean; readonly occupants: readonly { readonly name: string; readonly side: "party" | "foes"; readonly active: boolean; readonly hp: number; readonly maxHp: number }[] }[] }
     | { readonly kind: "journey"; readonly nodes: readonly { readonly id: string; readonly title: string; readonly status: "current" | "visited" | "known" | "reachable" | "locked"; readonly locked: boolean; readonly deadEnd: boolean; readonly canTravel: boolean; readonly column: number; readonly row: number }[]; readonly routes: readonly { readonly from: string; readonly to: string; readonly oneWay: boolean }[] };
+  // Every word of the map, in the game's language.
+  readonly mapText: Readonly<Record<"journeyKind" | "journeyTitle" | "tacticalKind" | "battlefield" | "keyParty" | "keyFoes" | "keyHere" | "keyOpen" | "keyLocked" | "empty" | "routeLabel" | "here" | "deadEnd" | "locked" | "visited" | "mapped" | "openRoute" | "openGround" | "difficult" | "coverHalf" | "coverThreeQuarters" | "lightBright" | "lightDim" | "lightDark" | "moveHere", string>>;
   readonly yourTurn: boolean;
   readonly canBegin: boolean;
   readonly activeName: string | null;
@@ -246,6 +249,7 @@ export function buildActivityTableView(
     adventureTitle: bible.title,
     mode: panel.mode,
     roundNumber: panel.roundNumber,
+    mapText: texts[record.language].campaign.map,
     scene: { title: panel.sceneTitle, description: scene?.publicDescription ?? "" },
     map: panel.combat !== null && state.encounter !== null
       ? {
