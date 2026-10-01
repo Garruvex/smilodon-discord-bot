@@ -23,13 +23,17 @@ import {
   buildSmiteView,
 } from "../../../application/campaign/views/campaign-views.js";
 import type { Language } from "../../../application/i18n/language.js";
-import { texts as allTexts } from "../../../application/i18n/texts.js";
+import { texts as allTexts, type Texts } from "../../../application/i18n/texts.js";
+import { buildMapView } from "../../../application/campaign/views/map-view.js";
+import type { AdventureBible } from "../../../domain/campaign/adventure/adventure-bible.js";
+import type { CampaignState } from "../../../domain/campaign/state/campaign-state.js";
 import type { Glossary } from "../../../domain/campaign/rules/content-registry.js";
 import { renderAdventurePanel } from "./adventure-panel.js";
 import { renderCampaignCard } from "./campaign-card.js";
 import type { CampaignMessageGateway } from "./campaign-message-gateway.js";
 import type { CardPayload } from "./card-payload.js";
 import { renderHeroCard } from "./hero-card.js";
+import { renderMapImage, type MapImage } from "./map-image.js";
 import type { HeroPictureFile, HeroPictures } from "./hero-pictures.js";
 import { renderHubControl, renderHubGame, type HubGame } from "./hub-card.js";
 import { renderLobbyCard } from "./lobby-card.js";
@@ -54,6 +58,8 @@ export interface CampaignCardServiceOptions {
   readonly resources?: CampaignResourceGateway;
   // Hero thumbnails for the party channel's hero cards; omitted in tests that don't draw them.
   readonly pictures?: HeroPictures;
+  // Draws the party's map at the top of the party card.
+  readonly drawMap?: boolean;
   // Waits (milliseconds) before each retry of a card that could not be drawn for a reason that may pass (a rate limit, a timeout); tests shorten it.
   readonly retryDelaysMs?: readonly number[];
 }
@@ -414,6 +420,7 @@ export class CampaignCardService implements CardRefresher {
             organizerId: record.organizerId,
             heroes,
             adventureUrl: guildUrl(adventureChannelId),
+            ...(this.options.drawMap === true ? mapOf(state, bible, text) : {}),
           },
           text,
           campaignId,
@@ -611,4 +618,13 @@ function hashOf(payload: CardPayload): string {
   // A card's pictures are part of what it shows: a new portrait is an edit.
   for (const file of payload.files ?? []) hash.update(file.name).update(file.bytes);
   return hash.digest("hex");
+}
+
+// The party's map as a picture; absent while there is only the one place to show.
+function mapOf(state: CampaignState, bible: AdventureBible, text: Texts): { readonly map?: MapImage } {
+  const view = buildMapView(state, bible);
+  if (view.nodes.length < 2) return {};
+  const t = text.campaign.map;
+  const map = renderMapImage(view, { unknown: t.unknown, here: t.here, deadEnd: t.deadEnd, locked: t.locked });
+  return map === undefined ? {} : { map };
 }

@@ -15,13 +15,15 @@ import { UploadedAdventureLibrary } from "../application/campaign/adventures/upl
 import { CampaignCommandBus } from "../application/campaign/campaign-command-bus.js";
 import { CampaignIssues } from "../application/campaign/campaign-issues.js";
 import { CharacterLibrary } from "../application/campaign/library/character-library.js";
-import { CampaignLobbyService } from "../application/campaign/campaign-lobby-service.js";
+import { CampaignLobbyService, type ActivityCampaignListingItem, type ServiceResult } from "../application/campaign/campaign-lobby-service.js";
 import { CampaignPlayController } from "../application/campaign/campaign-play-controller.js";
 import { CampaignRuntime } from "../application/campaign/campaign-runtime.js";
 import { LlmCampaignChronicler } from "../application/campaign/dm/llm-chronicler.js";
 import { LlmCampaignNarrator, LlmCampaignPlanner } from "../application/campaign/dm/llm-dm.js";
 import type { CampaignNarrator, CampaignPlanner } from "../application/campaign/ports/dm-ports.js";
-import type { CampaignTransaction, CampaignUnitOfWork } from "../application/campaign/ports/campaign-store.js";
+import type { CampaignKey, CampaignTransaction, CampaignUnitOfWork } from "../application/campaign/ports/campaign-store.js";
+import type { CampaignRecord } from "../application/campaign/ports/campaign-record.js";
+import type { UserId } from "../domain/campaign/core/ids.js";
 import type { StructuredModelClient } from "../application/campaign/ports/structured-model-client.js";
 import { CryptoRandomSource } from "../application/campaign/random/crypto-random-source.js";
 import { RulesetCatalog } from "../application/campaign/rules/ruleset-catalog.js";
@@ -79,6 +81,11 @@ export interface CampaignModule {
   readonly adventureHandler: AdventureComponentHandler;
   // What the admin panel's D&D settings read and change.
   readonly settings: CampaignSettingsAccess;
+  readonly activity: {
+    listGames(guildId: string, userId: UserId): Promise<readonly ActivityCampaignListingItem[]>;
+    joinLobby(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>>;
+    requestJoin(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>>;
+  };
   // Discord events that can take a card or a place away: a message was
   // deleted (or many at once), or a channel was. Each puts things back.
   handleMessagesDeleted(guildId: string, channelId: string, messageIds: readonly string[]): void;
@@ -164,7 +171,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
   });
   // Each hero's thumbnail on the party channel and portrait on their sheet: their saved character's portrait, or their initials.
   const heroPictures = new HeroPictures({ portraitFor: (libraryCharacterId): ReturnType<typeof portraits.forGame> => portraits.forGame(libraryCharacterId) });
-  const cards = new CampaignCardService({ unitOfWork, rulesets, adventures, messages, glossaries, logger, issues, resources, pictures: heroPictures });
+  const cards = new CampaignCardService({ unitOfWork, rulesets, adventures, messages, glossaries, logger, issues, resources, pictures: heroPictures, drawMap: true });
   const presenter = new DiscordCampaignPresenter({ unitOfWork, messages, cards, adventures, glossaries });
   const imageAssets = new FileImageAssetStore(resolve(configuration.runtimeDataDirectory, "campaign-images"));
   const lobby = new CampaignLobbyService({
@@ -286,6 +293,11 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
     libraryHandler,
     adventureHandler,
     settings: new CampaignSettingsAccess({ unitOfWork, lobby, setup, cards, modelConfigured: model !== null }),
+    activity: {
+      listGames: (guildId, userId): Promise<readonly ActivityCampaignListingItem[]> => lobby.activityGames(guildId, userId),
+      joinLobby: (key, userId): Promise<ServiceResult<CampaignRecord>> => lobby.joinFromActivity(key, userId),
+      requestJoin: (key, userId): Promise<ServiceResult<CampaignRecord>> => lobby.requestOngoingJoin(key, userId),
+    },
     handleMessagesDeleted: (guildId, channelId, messageIds): void => {
       void cards.handleMessagesDeleted(guildId, channelId, messageIds).catch(logFailure("Campaign card recovery after a deleted message failed", guildId));
     },

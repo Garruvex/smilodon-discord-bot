@@ -182,6 +182,11 @@ export const campaignEn = {
   "campaign.card.scene": "{scene} · {mode}",
   "campaign.card.pacing": "{pacing} · {language} · Organizer {user}",
   "campaign.card.party": "Party",
+  "campaign.map.unknown": "???",
+  "campaign.map.here": "You are here",
+  "campaign.map.deadEnd": "Dead end",
+  "campaign.map.locked": "Locked",
+  "campaign.map.alt": "Map of the places the party has been",
   "campaign.card.hero": "{hero} — {user} — {status}",
   "campaign.card.linkAdventure": "Adventure",
 

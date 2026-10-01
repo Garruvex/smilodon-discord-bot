@@ -1,11 +1,12 @@
 import { worldLine } from "./world-text.js";
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, SeparatorBuilder, TextDisplayBuilder } from "discord.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, SeparatorBuilder, TextDisplayBuilder } from "discord.js";
 
 import type { HeroView, PanelMode } from "../../../application/campaign/views/campaign-views.js";
 import type { PacingPresetId } from "../../../application/campaign/ports/campaign-record.js";
 import type { Texts } from "../../../application/i18n/texts.js";
 import { campaignCustomId } from "./campaign-ids.js";
 import { accents, cardPayload, type CardPayload } from "./card-payload.js";
+import type { MapImage } from "./map-image.js";
 
 export interface CampaignCardInput {
   readonly campaignName: string;
@@ -19,6 +20,8 @@ export interface CampaignCardInput {
   // Link to the Games post, when it exists. Players talk directly in this
   // card's own Parties post; there is no separate Table Talk link any more.
   readonly adventureUrl: string | null;
+  // The map of where the party has been, drawn at the top of the card.
+  readonly map?: MapImage;
 }
 
 const accentFor: Readonly<Record<PanelMode, number>> = {
@@ -43,7 +46,9 @@ export function renderCampaignCard(input: CampaignCardInput, text: Texts, campai
     hero.fallen ? t.hero.fallen : hero.down ? t.hero.down : hero.presence === "away" ? t.hero.away : t.hero.present;
   const party = input.heroes.map((hero) => t.card.hero({ hero: hero.name, user: `<@${hero.ownerUserId}>`, status: status(hero) })).join("\n");
   const container = new ContainerBuilder()
-    .setAccentColor(accentFor[input.mode])
+    .setAccentColor(accentFor[input.mode]);
+  if (input.map !== undefined) container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(`attachment://${input.map.name}`).setDescription(t.map.alt)));
+  container
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         [
@@ -62,5 +67,5 @@ export function renderCampaignCard(input: CampaignCardInput, text: Texts, campai
     new ButtonBuilder().setCustomId(campaignCustomId("joinOngoing", campaignId)).setLabel(input.language === "zh-TW" ? "申請／加入遊戲" : "Request / join game").setStyle(ButtonStyle.Secondary),
   );
   if (input.adventureUrl !== null) row.addComponents(new ButtonBuilder().setURL(input.adventureUrl).setLabel(t.card.linkAdventure).setStyle(ButtonStyle.Link));
-  return cardPayload(container.addActionRowComponents(row));
+  return cardPayload(container.addActionRowComponents(row), input.map === undefined ? [] : [{ name: input.map.name, bytes: input.map.bytes }]);
 }

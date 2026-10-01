@@ -182,6 +182,11 @@ export const campaignZhTW = {
   "campaign.card.scene": "{scene} · {mode}",
   "campaign.card.pacing": "{pacing} · {language} · 主辦人 {user}",
   "campaign.card.party": "隊伍",
+  "campaign.map.unknown": "???",
+  "campaign.map.here": "目前位置",
+  "campaign.map.deadEnd": "死路",
+  "campaign.map.locked": "未解鎖",
+  "campaign.map.alt": "隊伍走過的地點地圖",
   "campaign.card.hero": "{hero} — {user} — {status}",
   "campaign.card.linkAdventure": "冒險",
 
