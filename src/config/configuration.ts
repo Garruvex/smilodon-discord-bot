@@ -3,6 +3,12 @@ export interface DiscordConfiguration {
   applicationId: string;
 }
 
+export interface ActivityConfiguration {
+  enabled: boolean;
+  host: string;
+  port: number;
+}
+
 export interface LavalinkConfiguration {
   host: string;
   port: number;
@@ -95,6 +101,7 @@ export interface ApplicationConfiguration {
   environment: "development" | "test" | "production";
   logLevel: "trace" | "debug" | "info" | "warn" | "error" | "fatal";
   discord: DiscordConfiguration;
+  activity?: ActivityConfiguration;
   ownerUserIds: ReadonlySet<string>;
   guildConfigurationDirectory: string;
   runtimeDataDirectory: string;

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#111813">
+    <title>D&amp;D Table Preview</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script type="module" src="/activity.js"></script>
+  </head>
+  <body>
+    <main class="table-shell">
+      <div class="preview-note"><span class="preview-mark" aria-hidden="true"></span> UI preview with sample party</div>
+      <header class="table-header">
+        <div class="brand-lockup"><div class="brand-mark" aria-hidden="true">✦</div><div><div class="eyebrow">THE LANTERN COMPANY</div><h1>Moonlit Ruins</h1></div></div>
+        <div class="header-state"><span class="phase-icon" aria-hidden="true"><img src="/icons/attack.png" alt=""></span><div><strong>Combat</strong><span>Round 4</span></div></div>
+        <button class="icon-button history-button" type="button" data-action="history" aria-label="Open Discord history" title="Open Discord history">↗</button>
+      </header>
+
+      <section class="scene-strip" aria-label="Current scene">
+        <div class="scene-art" aria-hidden="true"><div class="moon"></div><div class="ruin ruin-one"></div><div class="ruin ruin-two"></div><div class="ridge"></div></div>
+        <div class="scene-copy"><span class="eyebrow">CURRENT SCENE</span><h2>The Drowned Observatory</h2><p>Cold moonlight spills through the broken dome. Something stirs beneath the flooded floor.</p></div>
+        <div class="scene-enemies"><span class="eyebrow">REVEALED FOES</span><div class="enemy-row"><span class="enemy-icon" aria-hidden="true">♟</span><div><strong>Hollow Sentinel</strong><span>Bloodied</span></div><div class="enemy-health band-bloodied" aria-label="Bloodied"><i></i><i></i><i></i><i></i></div></div></div>
+      </section>
+
+      <section class="hero-workspace" aria-labelledby="hero-title">
+        <div class="hero-art" aria-hidden="true"><div class="hero-aura"></div><div class="hero-sigil">✧</div><div class="hero-figure"><span class="figure-hair"></span><span class="figure-face"></span><span class="figure-cloak"></span></div></div>
+        <div class="hero-copy">
+          <div class="hero-context"><span class="eyebrow">YOUR HERO</span><span class="turn-label"><span class="turn-dot"></span> Your turn</span></div>
+          <h2 id="hero-title">Aria Vell</h2><p class="hero-subtitle">High Elf Wizard 5</p>
+          <div class="vitals"><div class="vital-top"><span>♥ <b>27</b> / 34 HP</span><span>AC <b>15</b></span></div><div class="health-track"><i style="width:79%"></i></div></div>
+          <div class="resource-row"><span class="resource"><b>◈</b> 2 / 3 arcane charges</span><span class="resource"><b>✦</b> 2 spell slots</span></div>
+          <div class="hero-actions"><button class="primary-action" type="button" data-action="cast"><img src="/icons/spell.png" alt=""> Choose an action</button><button class="secondary-action" type="button" data-action="details"><img src="/icons/notice.png" alt=""> Details</button></div>
+          <div class="pinned-actions"><span class="eyebrow">QUICK SPELLS</span><div class="spell-row"><button class="spell-chip" type="button" data-action="spell"><img src="/icons/spell.png" alt=""> Fire bolt</button><button class="spell-chip" type="button" data-action="spell"><img src="/icons/ranged.png" alt=""> Frost ray</button><button class="spell-chip" type="button" data-action="spell"><img src="/icons/shield.png" alt=""> Shield</button></div></div>
+        </div>
+        <div class="turn-rail"><span class="eyebrow">INITIATIVE</span><div class="initiative-list"><div class="initiative-item active"><span class="initiative-avatar">A</span><strong>Aria</strong><b>18</b></div><div class="initiative-item"><span class="initiative-avatar enemy">♟</span><strong>Sentinel</strong><b>14</b></div><div class="initiative-item"><span class="initiative-avatar">T</span><strong>Thorne</strong><b>11</b></div><div class="initiative-item"><span class="initiative-avatar">M</span><strong>Mira</strong><b>8</b></div></div><div class="turn-budget"><span class="eyebrow">TURN BUDGET</span><strong><span>Action ready</span><span>Bonus ready</span><span>Move available</span></strong></div></div>
+      </section>
+
+      <section class="party-section" aria-labelledby="party-title"><div class="section-heading"><div><span class="eyebrow">AT THE TABLE</span><h2 id="party-title">The party</h2></div><span class="party-count">6 heroes</span></div>
+        <div class="party-grid">
+          <button class="party-card is-you" type="button" data-hero="Aria Vell" data-subtitle="High Elf Wizard 5" data-hp="27" data-max="34" aria-pressed="true"><span class="portrait portrait-aria">A</span><span class="party-info"><strong>Aria Vell <small>YOU</small></strong><span>High Elf Wizard 5</span><span class="party-health"><i style="width:79%"></i></span><span class="hp-label">27 / 34 HP</span></span><span class="class-mark" aria-hidden="true">✧</span><span class="party-turn">TURN</span></button>
+          <button class="party-card" type="button" data-hero="Thorne Oakshield" data-subtitle="Hill Dwarf Paladin 5" data-hp="38" data-max="42" aria-pressed="false"><span class="portrait portrait-thorne">T</span><span class="party-info"><strong>Thorne Oakshield</strong><span>Hill Dwarf Paladin 5</span><span class="party-health"><i style="width:90%"></i></span><span class="hp-label">38 / 42 HP</span></span><span class="class-mark" aria-hidden="true">⛨</span></button>
+          <button class="party-card" type="button" data-hero="Mira Fen" data-subtitle="Wood Elf Ranger 5" data-hp="22" data-max="31" aria-pressed="false"><span class="portrait portrait-mira">M</span><span class="party-info"><strong>Mira Fen</strong><span>Wood Elf Ranger 5</span><span class="party-health"><i style="width:71%"></i></span><span class="hp-label">22 / 31 HP</span></span><span class="class-mark" aria-hidden="true">➶</span></button>
+          <button class="party-card" type="button" data-hero="Pip Underbough" data-subtitle="Lightfoot Halfling Rogue 5" data-hp="19" data-max="28" aria-pressed="false"><span class="portrait portrait-pip">P</span><span class="party-info"><strong>Pip Underbough</strong><span>Lightfoot Halfling Rogue 5</span><span class="party-health"><i style="width:68%"></i></span><span class="hp-label">19 / 28 HP</span></span><span class="class-mark" aria-hidden="true">⌁</span></button>
+          <button class="party-card" type="button" data-hero="Sable Dusk" data-subtitle="Tiefling Cleric 5" data-hp="29" data-max="33" aria-pressed="false"><span class="portrait portrait-sable">S</span><span class="party-info"><strong>Sable Dusk</strong><span>Tiefling Cleric 5</span><span class="party-health"><i style="width:88%"></i></span><span class="hp-label">29 / 33 HP</span></span><span class="class-mark" aria-hidden="true">✣</span></button>
+          <button class="party-card" type="button" data-hero="Kestrel Vale" data-subtitle="Human Bard 5" data-hp="25" data-max="30" aria-pressed="false"><span class="portrait portrait-kestrel">K</span><span class="party-info"><strong>Kestrel Vale</strong><span>Human Bard 5</span><span class="party-health"><i style="width:83%"></i></span><span class="hp-label">25 / 30 HP</span></span><span class="class-mark" aria-hidden="true">♫</span></button>
+        </div>
+      </section>
+      <footer class="table-footer"><span><span class="connection-dot"></span> Preview only. Game connection comes next.</span></footer>
+    </main>
+    <dialog class="detail-dialog" id="detail-dialog"><form method="dialog"><button class="dialog-close" aria-label="Close details">×</button></form><span class="eyebrow">CHARACTER DETAILS</span><h2 id="detail-name">Aria Vell</h2><p id="detail-subtitle">High Elf Wizard 5</p><div class="detail-stats"><span><b>27 / 34</b>Hit points</span><span><b>15</b>Armor class</span><span><b>30 ft</b>Speed</span></div><h3>Spellbook</h3><p>Browse spells and resources here when the game data is connected.</p><h3>Inventory</h3><p>Inventory appears in this detail view.</p></dialog>
+    <div class="toast" role="status" aria-live="polite"></div>
+  </body>
+</html>

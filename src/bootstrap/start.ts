@@ -18,9 +18,13 @@ import { BirthdayAnnouncer } from "../application/birthdays/birthday-announcer.j
 import { MemberDepartureService } from "../application/members/member-departure-service.js";
 import { MemberWelcomeService } from "../application/members/member-welcome-service.js";
 import { BoostTrackingService } from "../application/members/boost-tracking-service.js";
+import { createActivityServer } from "../infrastructure/activity/activity-server.js";
 
 const configuration = loadConfiguration();
 const logger = createLogger(configuration);
+const activityServer = configuration.activity?.enabled
+  ? createActivityServer(configuration.activity, logger.child({ component: "activity" }), configuration.discord.applicationId)
+  : null;
 const persistence = await createPersistenceServices(configuration);
 const guildConfigurationProvider = persistence.guildConfigurationProvider;
 const discordClient = createDiscordClient();
@@ -145,6 +149,7 @@ async function shutdown(signal: string, exitCode = 0): Promise<void> {
 
   shuttingDown = true;
   try {
+    await activityServer?.stop();
     await application.stop(signal);
     await persistence.close();
   } catch (error) {
@@ -172,4 +177,5 @@ process.on("uncaughtException", (error) => {
   void shutdown("uncaughtException", 1);
 });
 
+await activityServer?.start();
 await application.start();

@@ -42,6 +42,9 @@ const environmentSchema = z.object({
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal"]).default("info"),
   DISCORD_TOKEN: z.string().min(1),
   DISCORD_APPLICATION_ID: z.string().regex(discordSnowflake),
+  ACTIVITY_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  ACTIVITY_HOST: z.string().min(1).default("127.0.0.1"),
+  ACTIVITY_PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
   BOT_OWNER_IDS: requiredSnowflakeList,
   GUILD_CONFIG_DIRECTORY: z.string().min(1).default("./config/local/guilds"),
   RUNTIME_DATA_DIRECTORY: z.string().min(1).default("./data/local"),
@@ -259,6 +262,11 @@ export function loadConfiguration(
     discord: {
       token: parsed.data.DISCORD_TOKEN,
       applicationId: parsed.data.DISCORD_APPLICATION_ID,
+    },
+    activity: {
+      enabled: parsed.data.ACTIVITY_ENABLED,
+      host: parsed.data.ACTIVITY_HOST,
+      port: parsed.data.ACTIVITY_PORT,
     },
     ownerUserIds: new Set(parsed.data.BOT_OWNER_IDS),
     guildConfigurationDirectory: parsed.data.GUILD_CONFIG_DIRECTORY,
