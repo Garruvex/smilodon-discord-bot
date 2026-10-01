@@ -238,7 +238,7 @@ describe("DmJobWorker", () => {
     const { store, bus, worker } = await table(planner, new ScriptedNarrator([]));
     await closeRoundOne(bus);
     // The first try fails and the job is queued again; the round is not held yet.
-    expect(await worker.runOnce()).toMatchObject({ processed: 0, failed: [{ error: expect.stringContaining("provider timeout") }] });
+    expect(await worker.runOnce()).toMatchObject({ processed: 0, failed: [{ id: expect.any(String) as string, error: "The planner failed: The planner call failed: provider timeout" }] });
     expect((await events(store)).some((event) => event.kind === "plannerFailed")).toBe(false);
     expect(await worker.runOnce()).toEqual({ processed: 1, failed: [] });
 
