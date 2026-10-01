@@ -83,6 +83,15 @@ Then go through the adventures and fix real dead ends. Do not auto-add links: so
 
 Exit checks: tests for refused, agreed, forced and timed-out moves; a replay test that rebuilds the scene record from events; the validator run over all adventures with a list of scenes to fix.
 
+## Phase 2b: fallen and new players (stream A)
+
+The engine already replaces a fallen hero (`joinHero`, My hero picker) and admits a late player (hub request, organizer approval, `joinOngoing`). The gap is that players cannot find it and are refused mid-fight with no follow-up.
+
+- Done: a fallen hero is named on the Adventure panel with a line pointing at My Hero.
+- Partly done: a late joiner refused mid-fight is now told their approval stays valid. Still to do: queue the join (pick the hero now, arrive when the fight ends). A fallen player's replacement already works mid-fight.
+- Fallen and waiting players may read the journal and Explore (read only), but cannot act. Spectating beyond that waits on the Activity.
+- Check that a replacement joining above its preset level gets sensible HP and spells.
+
 ## Phase 3: lifecycle cleanup (stream C)
 
 Two tiers, so nothing the organizer may want back is destroyed:
@@ -97,6 +106,8 @@ Safeguards: never remove shared assets (portraits of saved characters, the monst
 Exit checks: archive then reopen still works inside the grace period; a rerun of cleanup changes nothing; shared assets survive.
 
 ## Phase 4: Activity prototype (stream D, only if the Phase 0 numbers support it)
+
+The player-facing launch, campaign-picking, live-table layout, fallback, and prototype acceptance flow are specified in [the D&D Activity UI spec](dnd-activity-ui-spec.md). Treat that as the UX contract for this phase; this section remains the architecture and implementation outline.
 
 Phase 0 counting is deferred until just before this phase; Phases 1 to 3 do not depend on it.
 

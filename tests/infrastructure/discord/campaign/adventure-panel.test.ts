@@ -36,6 +36,12 @@ describe("the adventure panel", () => {
     expect(card.buttons.map((button) => button.id)).toEqual(["dnd:act:camp", "dnd:speak:camp", "dnd:pass:camp", "dnd:myHero:camp", "dnd:away:camp", "dnd:explore:camp", "dnd:safety:camp", "dnd:more:camp"]);
   });
 
+  it("names a fallen hero and points at My Hero", () => {
+    const card = flatten(renderAdventurePanel({ ...collecting, fallen: ["Borin"] }, texts.en, "camp"));
+    expect(card.text).toContain("Fallen: Borin. Press **My Hero** to take a new hero.");
+    expect(flatten(renderAdventurePanel(collecting, texts.en, "camp")).text).not.toContain("Fallen:");
+  });
+
   it("shows the story's day, time and weather when the adventure keeps a clock, and nothing when it does not", () => {
     const world = { day: 2, time: "dusk", weather: "rain" };
     expect(flatten(renderAdventurePanel({ ...collecting, world }, texts.en, "camp")).text).toContain("Day 2 · dusk · rain");

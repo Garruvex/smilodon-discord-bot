@@ -169,6 +169,8 @@ export interface PanelView {
   readonly pendingRolls: readonly { readonly characterId: string; readonly userId: string; readonly heroName: string; readonly test: CheckTest; readonly action: string | null }[];
   readonly combat: CombatView | null;
   // A scene change waiting for the table: where to, and which heroes pressed Stay.
+  // Heroes who fell for good whose players have not taken a new one yet.
+  readonly fallen?: readonly string[];
   readonly pendingMove?: { readonly sceneTitle: string; readonly staying: readonly string[]; readonly stayingUserIds: readonly string[] };
 }
 
@@ -403,8 +405,16 @@ export function buildPanelView(record: CampaignRecord, state: CampaignState, bib
     roster,
     pendingRolls,
     combat: fight === null ? null : combatViewOf({ state, bible, glossary }, fight, record.houseRules[combatModeId] !== "autopilot"),
+    ...(fallenNames(state).length === 0 ? {} : { fallen: fallenNames(state) }),
     ...(state.pendingMove === undefined || fight !== null ? {} : { pendingMove: pendingMoveOf(state, bible) }),
   };
+}
+
+function fallenNames(state: CampaignState): readonly string[] {
+  return Object.values(state.members).flatMap((member) => {
+    const sheet = member.characterId === null ? undefined : state.characters[member.characterId];
+    return sheet !== undefined && isFallen(state, sheet.id) ? [sheet.name] : [];
+  });
 }
 
 function pendingMoveOf(state: CampaignState, bible: AdventureBible): NonNullable<PanelView["pendingMove"]> {

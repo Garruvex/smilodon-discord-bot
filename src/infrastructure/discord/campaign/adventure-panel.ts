@@ -37,7 +37,9 @@ export function renderAdventurePanel(view: PanelView, text: Texts, campaignId: s
     .setAccentColor(accentFor[view.mode])
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ${heading}\n${statusLine(view, text)}${view.world === undefined ? "" : `\n-# ${worldLine(view.world, text)}`}`));
 
-  const details = view.mode === "combat" ? combatLines(view, text) : [movingLines(view, text), rosterLine(view.roster, text)].filter((line) => line !== "").join("\n");
+  const fallenLine = view.fallen === undefined ? "" : text.campaign.panel.fallen({ names: view.fallen.map(displayName).join(", ") });
+  const main = view.mode === "combat" ? combatLines(view, text) : [movingLines(view, text), rosterLine(view.roster, text)].filter((line) => line !== "").join("\n");
+  const details = [main, fallenLine].filter((line) => line !== "").join("\n");
   if (details !== "") container.addSeparatorComponents(new SeparatorBuilder()).addTextDisplayComponents(new TextDisplayBuilder().setContent(details));
 
   const { primary, secondary } = panelActions(view);
