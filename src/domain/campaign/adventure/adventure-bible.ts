@@ -135,7 +135,9 @@ export interface BibleScene {
   // NPCs present in the scene.
   readonly npcIds: readonly NpcId[];
   // Where the party can go from here. Absent: anywhere the Planner sends them.
-  readonly exits?: readonly { readonly to: SceneId; readonly requires?: BibleRequirement }[];
+  // hidden: the map does not show this way until the party has used it (a secret door). hint: what the map says about a place not yet
+  // visited, instead of "???" ("A path north"); it must give nothing away.
+  readonly exits?: readonly { readonly to: SceneId; readonly requires?: BibleRequirement; readonly hidden?: boolean; readonly hint?: string }[];
   // What happens whenever the party arrives here by any route: clues, flags, rewards, notices, keepsakes (each lands only once).
   readonly onEnter?: readonly Exclude<BiblePartyEffect, { readonly kind: "goto" | "encounter" | "clock" }>[];
   // What happens when the party takes a long rest here: the same kinds as onEnter.

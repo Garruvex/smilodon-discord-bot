@@ -132,7 +132,7 @@ const documentSchema = z
     startTime: z.object({ day: z.number().int().min(1).max(10_000).optional(), time: z.enum(timesOfDay), weather: z.enum(weathers).optional() }).strict().optional(),
     scenes: z
       .array(
-        z.object({ id: sceneId, title: text, publicDescription: text, dmNotes: text, npcIds: z.array(npcId), exits: z.array(z.object({ to: sceneId, requires: requirementSchema.optional() }).strict()).optional(), onEnter: z.array(enterEffectSchema).optional(), onLongRest: z.array(enterEffectSchema).optional() }).strict(),
+        z.object({ id: sceneId, title: text, publicDescription: text, dmNotes: text, npcIds: z.array(npcId), exits: z.array(z.object({ to: sceneId, requires: requirementSchema.optional(), hidden: z.boolean().optional(), hint: text.optional() }).strict()).optional(), onEnter: z.array(enterEffectSchema).optional(), onLongRest: z.array(enterEffectSchema).optional() }).strict(),
       )
       .min(1),
     npcs: z.array(
@@ -338,7 +338,7 @@ export function checkEditionsMatch(editions: readonly AdventureDocument[]): read
       startScene: document.bible.startScene,
       startingLevel: document.bible.startingLevel ?? null,
       startTime: document.bible.startTime ?? null,
-      scenes: document.bible.scenes.map((scene) => [scene.id, scene.npcIds, scene.exits ?? null, withoutWords(scene.onEnter ?? null), withoutWords(scene.onLongRest ?? null)]),
+      scenes: document.bible.scenes.map((scene) => [scene.id, scene.npcIds, scene.exits?.map(({ hint: _hint, ...exit }) => exit) ?? null, withoutWords(scene.onEnter ?? null), withoutWords(scene.onLongRest ?? null)]),
       interactions: (document.bible.interactions ?? []).map(({ label: _label, dmNotes: _notes, ...mechanics }) => withoutWords(mechanics)),
       npcs: document.bible.npcs.map((npc) => [npc.id, npc.shop ?? null]),
       clocks: document.bible.clocks.map((clock) => [clock.id, clock.sceneId, clock.segments, clock.onFull]),

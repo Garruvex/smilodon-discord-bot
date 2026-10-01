@@ -55,4 +55,15 @@ describe("the party's map", () => {
     expect(view.nodes.map((node) => node.id).sort()).toEqual(["scene:inn", "scene:road"]);
     expect(view.edges).toEqual([{ from: "scene:inn", to: "scene:road", oneWay: false }]);
   });
+
+  it("keeps a secret exit off the map until it is used, and shows a hint instead of ??? when the adventure gives one", () => {
+    const secret = bible([scene("scene:inn", "Inn", [to("scene:road")]), scene("scene:road", "Road", [{ to: "scene:vault", hidden: true }, { to: "scene:cave", hint: "A dark opening" }]), scene("scene:vault", "Vault", [to("scene:road")]), scene("scene:cave", "Cave", [to("scene:road")])]);
+    const before = buildMapView(at("scene:road", [["scene:inn"], ["scene:road", "scene:inn"]]), secret);
+    expect(before.nodes.map((node) => node.id)).not.toContain("scene:vault");
+    expect(before.nodes.find((node) => node.id === "scene:cave")).toMatchObject({ state: "unknown", hint: "A dark opening" });
+    const after = buildMapView(at("scene:vault", [["scene:inn"], ["scene:road", "scene:inn"], ["scene:vault", "scene:road"]]), secret);
+    expect(after.nodes.find((node) => node.id === "scene:vault")).toMatchObject({ title: "Vault", state: "current" });
+    // A hint never replaces the name of a place already visited.
+    expect(after.nodes.find((node) => node.id === "scene:road")?.hint).toBeUndefined();
+  });
 });

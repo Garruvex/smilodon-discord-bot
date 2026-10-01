@@ -13,6 +13,8 @@ export interface MapNode {
   readonly id: string;
   // Absent for a place the party has not been to.
   readonly title?: string;
+  // What the adventure says about a place not yet visited, in place of "???".
+  readonly hint?: string;
   readonly state: MapNodeState;
   // A way out the party cannot take yet (it needs something first).
   readonly locked: boolean;
@@ -41,6 +43,7 @@ export function buildMapView(state: CampaignState, bible: AdventureBible): MapVi
   const visited = new Set<string>([bible.startScene, ...(state.sceneId === null ? [] : [state.sceneId]), ...visits.map((visit) => visit.sceneId)]);
   const cameFrom = new Map<string, string>();
   const links = new Map<string, { readonly to: string; readonly locked: boolean }>();
+  const hints = new Map<string, string>();
   const link = (from: string, to: string, locked: boolean): void => {
     if (from === to) return;
     const key = `${from}>${to}`;
@@ -57,7 +60,12 @@ export function buildMapView(state: CampaignState, bible: AdventureBible): MapVi
   // The ways on that the visited places list.
   for (const id of visited) {
     const scene = scenes.get(id);
-    for (const exit of scene?.exits ?? []) link(id, exit.to, id === state.sceneId && !requirementMet(exit.requires, state));
+    for (const exit of scene?.exits ?? []) {
+      // A secret way stays off the map until the party has used it.
+      if (exit.hidden === true && !visited.has(exit.to)) continue;
+      link(id, exit.to, id === state.sceneId && !requirementMet(exit.requires, state));
+      if (exit.hint !== undefined && !hints.has(exit.to)) hints.set(exit.to, exit.hint);
+    }
   }
 
   const known = new Set<string>(visited);
@@ -98,6 +106,7 @@ export function buildMapView(state: CampaignState, bible: AdventureBible): MapVi
     return {
       id,
       ...(seen && scene !== undefined ? { title: scene.title } : {}),
+      ...(!seen && hints.has(id) ? { hint: hints.get(id) as string } : {}),
       state: id === state.sceneId ? "current" : seen ? "visited" : "unknown",
       locked: !seen && edges.some((edge) => edge.to === id && links.get(`${edge.from}>${id}`)?.locked === true) && !edges.some((edge) => edge.to === id && links.get(`${edge.from}>${id}`)?.locked === false),
       deadEnd: seen && id !== state.sceneId && id !== bible.startScene && scene?.exits !== undefined && onward.length === 0,
