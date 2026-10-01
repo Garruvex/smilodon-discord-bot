@@ -5,6 +5,7 @@ import { findScene } from "../../../domain/campaign/adventure/adventure-bible.js
 import { abilityModifier, type CharacterSheet, type CheckTest } from "../../../domain/campaign/character/character-sheet.js";
 import { armorClassFrom, heroTraits, isWorn, unarmoredModifier } from "../../../domain/campaign/combat/combatant-profile.js";
 import type { Combatant } from "../../../domain/campaign/combat/combat-state.js";
+import { isPresent } from "../../../domain/campaign/combat/combat-state.js";
 import type { Glossary, SealedContent } from "../../../domain/campaign/rules/content-registry.js";
 import { isFallen, type CampaignState, type Submission } from "../../../domain/campaign/state/campaign-state.js";
 import { activeMembers, readyToStart, type LobbyMember } from "../../../domain/campaign/lobby/lobby.js";
@@ -79,6 +80,8 @@ export interface RosterEntry {
 export interface CombatView {
   readonly round: number;
   readonly activeName: string | null;
+  // Next distinct participants in initiative order, wrapping at the round boundary.
+  readonly upcoming?: readonly string[];
   // Whose turn it is, when a player's hero has it.
   readonly activeUserId: string | null;
   // Players take their heroes' turns (false: the engine plays them on autopilot).
@@ -450,10 +453,18 @@ function combatViewOf(names: CombatNames, fight: NonNullable<CampaignState["enco
   const zoneName = (zoneId: string): string => fight.zones.find((zone) => zone.id === zoneId)?.name ?? zoneId;
   const active = fight.status === "active" && current !== undefined ? fight.combatants[current] : undefined;
   const owner = active?.source.kind === "hero" ? names.state.characters[active.source.characterId]?.ownerUserId ?? null : null;
+  const upcoming: string[] = [];
+  if (active !== undefined) {
+    for (let offset = 1; offset < fight.order.length && upcoming.length < 3; offset += 1) {
+      const candidate = fight.combatants[fight.order[(fight.turnIndex + offset) % fight.order.length] ?? ""];
+      if (candidate !== undefined && isPresent(candidate)) upcoming.push(name(candidate));
+    }
+  }
   return {
     round: fight.round,
     activeName: active === undefined ? null : name(active),
     activeUserId: owner,
+    upcoming,
     playersControl,
     zones: fight.zones.map((zone) => zone.name),
     party: combatants

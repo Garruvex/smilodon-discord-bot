@@ -68,6 +68,8 @@ export type TimerSpec =
   | { readonly kind: "opportunityAttack"; readonly timerId: TimerId; readonly dueAt: Instant; readonly encounterId: string; readonly combatantId: string };
 
 export type DeliverySpec =
+  // The accepted intent, before the planner or dice decide its outcome.
+  | { readonly kind: "actionIntent"; readonly roundNumber: number; readonly characterId: string; readonly revision: number }
   // Halfway through a long wait: whoever is still being waited for is nudged.
   | { readonly kind: "timerReminder"; readonly target: ReminderTarget }
   // The "?" die appears (panel spec: Dice moments).

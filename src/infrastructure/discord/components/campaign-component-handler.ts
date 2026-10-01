@@ -43,6 +43,7 @@ import { isFallen } from "../../../domain/campaign/state/campaign-state.js";
 import { combatantName } from "../../../application/campaign/dm/combat-records.js";
 import { classLabel } from "../campaign/text-keys.js";
 import { giveMenu, packMenu, parseGift, parsePackChoice } from "../campaign/pack-menu.js";
+import { inspectMenu, inspectText } from "../campaign/info-menu.js";
 import { CampaignCardService } from "../campaign/campaign-card-service.js";
 import { renderHeroSheet } from "../campaign/hero-sheet.js";
 import type { HeroPictures } from "../campaign/hero-pictures.js";
@@ -181,6 +182,7 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "joinOngoing":
       return ["party"];
     case "details":
+    case "inspect":
       return [`hero:${argument ?? ""}`];
     case "heroChoice":
     case "lateHeroChoice":
@@ -191,6 +193,7 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "aim":
     case "pack":
     case "giveTo":
+    case "inspectPick":
     case "safetyPause":
     case "rulePreset":
     case "ruleOption":
@@ -277,6 +280,7 @@ export class CampaignComponentHandler implements ComponentHandler {
       else if (parsed.action === "gear") await this.changeGear(interaction, record, text);
       else if (parsed.action === "pack") await this.changePack(interaction, record, text);
       else if (parsed.action === "giveTo") await this.giveItem(interaction, record, text);
+      else if (parsed.action === "inspectPick") await this.inspectPick(interaction, record, text, parsed.argument);
       else if (parsed.action === "pick") await this.pickTurnAction(interaction, record, text);
       else if (parsed.action === "aim") await this.aimTurnAction(interaction, record, text);
       else if (parsed.action === "proxy") await this.changeProxy(interaction, record, text);
@@ -480,6 +484,11 @@ export class CampaignComponentHandler implements ComponentHandler {
       case "endTurn":
         await this.requestEndTurn(interaction, record, text);
         return;
+      case "inspect": {
+        const menu = await this.inspectOpen(record, text, parsed.argument);
+        await interaction.editReply(menu === null ? { content: text.campaign.info.nothing, components: [] } : { content: menu.content, components: [menu.row] });
+        return;
+      }
       case "myHero":
       case "details": {
         // A player whose hero fell is offered a new one instead of a sheet.
@@ -1139,6 +1148,29 @@ export class CampaignComponentHandler implements ComponentHandler {
     if (image === undefined) return undefined;
     const extension = image.mediaType === "image/jpeg" ? "jpg" : image.mediaType === "image/webp" ? "webp" : "png";
     return { attachment: image.bytes, name: `portrait.${extension}` };
+  }
+
+  // The look-up menu for a hero's spells, items and features (anyone may read a hero's public sheet).
+  private async inspectOpen(record: CampaignRecord, text: Texts, characterId: string | null): Promise<ReturnType<typeof inspectMenu>> {
+    const loaded = await this.deps.unitOfWork.transaction((tx) => tx.loadCampaign(record.key));
+    const sheet = characterId === null ? undefined : loaded?.state.characters[characterId];
+    const glossary = this.deps.glossaries[record.language];
+    return sheet === undefined || glossary === undefined ? null : inspectMenu(sheet, glossary, text, record.key.campaignId);
+  }
+
+  // One pick: its stats above the same menu, so a player can keep looking things up.
+  private async inspectPick(interaction: StringSelectMenuInteraction, record: CampaignRecord, text: Texts, characterId: string | null): Promise<void> {
+    await interaction.deferUpdate();
+    const loaded = await this.deps.unitOfWork.transaction((tx) => tx.loadCampaign(record.key));
+    const sheet = characterId === null ? undefined : loaded?.state.characters[characterId];
+    const glossary = this.deps.glossaries[record.language];
+    const menu = await this.inspectOpen(record, text, characterId);
+    if (loaded === undefined || sheet === undefined || glossary === undefined || menu === null) {
+      await interaction.editReply({ content: text.campaign.info.nothing, components: [] });
+      return;
+    }
+    const content = this.deps.rulesets.resolve(loaded.ruleset).content;
+    await interaction.editReply({ content: inspectText(sheet, interaction.values[0] ?? "", content, glossary, text), components: [menu.row] });
   }
 
   private async heroSheet(record: CampaignRecord, text: Texts, characterId: string | null, userId: string): Promise<string> {

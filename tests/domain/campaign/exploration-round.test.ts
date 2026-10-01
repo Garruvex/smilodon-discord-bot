@@ -71,7 +71,9 @@ describe("exploration rounds", () => {
     expect(revised.events).toEqual([
       { kind: "actionSubmitted", roundNumber: 1, characterId: "c-mira", text: "I pick the lock.", revision: 2 },
     ]);
-    expect(revised.requests).toEqual([]);
+    expect(revised.requests).toEqual([
+      { kind: "deliver", delivery: { kind: "actionIntent", roundNumber: 1, characterId: "c-mira", revision: 2 } },
+    ]);
 
     const last = run(revised.state, jamie, { kind: "pass", characterId: "c-borin" });
     expect(kinds(last.events)).toEqual(["passSubmitted", "roundClosed"]);

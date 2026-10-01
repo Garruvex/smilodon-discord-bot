@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { escapeMarkdown } from "discord.js";
 
 import type { AdventureLibrary } from "../../../application/campaign/ports/adventure-library.js";
 import type { AdventureBible } from "../../../domain/campaign/adventure/adventure-bible.js";
@@ -64,6 +65,16 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
     const combat = state === undefined ? null : this.combatText(record, state, events, text);
 
     switch (delivery.kind) {
+      case "actionIntent": {
+        const submitted = events.find((event) => event.kind === "actionSubmitted" && event.roundNumber === delivery.roundNumber && event.characterId === delivery.characterId && event.revision === delivery.revision);
+        if (submitted?.kind !== "actionSubmitted") break;
+        const hero = escapeMarkdown(state?.characters[delivery.characterId]?.name ?? delivery.characterId);
+        const intent = escapeMarkdown(submitted.text).replace(/\r?\n/g, "\n> ");
+        const zh = record.language === "zh-TW";
+        const label = delivery.revision > 1 ? (zh ? "更新意圖" : "Updated intent") : (zh ? "行動意圖" : "Action intent");
+        await say(adventureChannelId, `**${label} · ${hero}**\n> ${intent}\n${zh ? "等待判定。" : "Awaiting resolution."}`, [], "intent");
+        break;
+      }
       case "rollResult": {
         const line = state === undefined ? null : rollLine(events, state, delivery.checkId, text);
         const delay = this.options.revealDelayMs ?? 0;
@@ -82,12 +93,12 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
       case "narration":
         {
           const told = narration(events, delivery.roundNumber);
-          await say(adventureChannelId, told === null || delivery.regenerated !== true ? told : `${text.campaign.msg.retold}\n${told}`);
+          await say(adventureChannelId, told === null || delivery.regenerated !== true ? told : `${text.campaign.msg.retold}\n${told}`, [], "narration");
         }
         break;
       case "opening": {
         const opening = events.findLast((event) => event.kind === "openingRecorded");
-        await say(adventureChannelId, opening?.kind === "openingRecorded" ? opening.text : null);
+        await say(adventureChannelId, opening?.kind === "openingRecorded" ? opening.text : null, [], "narration");
         break;
       }
       case "heroArrival": {
@@ -111,7 +122,7 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
         break;
       }
       case "combatNarration":
-        await say(adventureChannelId, combatNarration(events, delivery.round));
+        await say(adventureChannelId, combatNarration(events, delivery.round), [], "narration");
         break;
       case "attackResolved":
         if (playersFight) await say(adventureChannelId, combat?.action(delivery.attackId) ?? null, [], "action");
@@ -414,9 +425,9 @@ function actionLine(beat: Extract<CombatBeat, { kind: "action" }>, text: Texts):
     if (target.condition === "dead") parts.push(t.combatDead);
     else if (target.condition === "unconscious" || target.condition === "stable") parts.push(t.combatDown);
     if (target.knockedProne) parts.push(t.combatProne);
-    return parts.length === 0 ? target.name : t.combatTarget({ name: target.name, result: parts.join(", ") });
+    return parts.length === 0 ? `**${escapeMarkdown(target.name)}**` : t.combatTarget({ name: escapeMarkdown(target.name), result: parts.join(", ") });
   });
-  const line = { actor: beat.actor, using: beat.using, results: results.join("; ") };
+  const line = { actor: escapeMarkdown(beat.actor), using: escapeMarkdown(beat.using), results: results.join("; ") };
   return beat.opportunity ? t.combatOpportunity(line) : t.combatAction(line);
 }
 

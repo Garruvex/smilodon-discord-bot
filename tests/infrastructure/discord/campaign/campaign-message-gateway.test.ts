@@ -19,6 +19,15 @@ const embedOf = (payload: Record<string, unknown> | undefined): { color?: number
   ((payload?.embeds as { toJSON(): Record<string, unknown> }[] | undefined)?.[0]?.toJSON() ?? {});
 
 describe("styled messages", () => {
+  it("separates blue intent cards from prose narration and combat results", async () => {
+    const { gateway, sent } = gatewayWith();
+    await gateway.post("c1", "Mira tries to check the surroundings.", [], undefined, "intent");
+    await gateway.post("c1", "The trees rustle.", [], undefined, "narration");
+    await gateway.post("c1", "Mira hits.", [], undefined, "action");
+    expect(embedOf(sent[0])).toMatchObject({ color: 0x3498db, description: "Mira tries to check the surroundings." });
+    expect(sent[1]).toMatchObject({ content: "The trees rustle.", embeds: [] });
+    expect(embedOf(sent[2]).color).not.toBe(embedOf(sent[0]).color);
+  });
   it("draws each kind of message as a coloured panel with its icon in the corner once the icons are uploaded", async () => {
     const { gateway, sent } = gatewayWith((name) => ({ id: `id-${name}`, name }));
     await gateway.post("c1", "Mira rolled a 17.", [], undefined, "roll");

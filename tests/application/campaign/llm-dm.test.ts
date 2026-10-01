@@ -105,6 +105,16 @@ const validPlan = JSON.stringify({
 });
 
 describe("planner prompt and schema", () => {
+  it("keeps declared intent separate from outcomes and narrative presentation", () => {
+    expect(buildPlannerPrompt(plannerRequest).system).toContain("an attempt is not a completed success");
+    const prompt = buildNarratorPrompt(narratorRequest);
+    expect(prompt.system).toContain("professional Dungeon Master");
+    expect(prompt.system).toContain("never invent traversable routes");
+    expect(prompt.system).toContain("separate cards");
+    expect(prompt.user).toContain("我悄悄溜過去");
+    const opening = buildNarratorPrompt({ ...narratorRequest, opening: { heroes: [{ name: "Mira", className: "Rogue" }] } });
+    expect(opening.system).toContain("professional Dungeon Master");
+  });
   it("puts stable context in the system prompt and fences player text as untrusted", () => {
     const prompt = buildPlannerPrompt(plannerRequest);
     expect(prompt.system).toContain("## A. DM instructions\nBe fair.");
@@ -208,13 +218,15 @@ describe("LLM DM", () => {
     expect(proposal.actions).toHaveLength(1);
     expect(client.requests[0]?.schemaName).toBe("campaign_round_plan");
     expect(observed).toEqual([
-      { call: "planner", model: "fake-model", promptVersion: "planner-8", usage: { inputTokens: 100, outputTokens: 20, cachedInputTokens: 60 } },
+      { call: "planner", model: "fake-model", promptVersion: "planner-9", usage: { inputTokens: 100, outputTokens: 20, cachedInputTokens: 60 } },
     ]);
   });
 
   it("asks for Traditional Chinese narration with the right length and spotlight", async () => {
     const prompt = buildNarratorPrompt(narratorRequest);
-    expect(prompt.system).toContain("150-300 Traditional Chinese characters");
+    expect(prompt.system).toContain("80-180 Traditional Chinese characters");
+    expect(prompt.system).toContain("natural Taiwan conversational phrasing");
+    expect(prompt.system).toContain("one idea per sentence");
     expect(prompt.user).toContain('米拉 attempted: "我悄悄溜過去。" -> stealth check, SUCCESS (moment: natural20).');
     expect(prompt.user).toContain("Quiet heroes to invite: 波林.");
     expect(prompt.user).not.toContain("17");
@@ -234,7 +246,7 @@ describe("LLM DM", () => {
       opening: { heroes: [{ name: "Mira", className: "Rogue" }, { name: "Borin", className: null }] },
     });
     expect(prompt.user).toContain("Open the adventure. The party: Mira (Rogue), Borin.");
-    expect(prompt.system).toContain("180-260 words of English");
+    expect(prompt.system).toContain("80-130 words of English");
     expect(prompt.system).toContain("ask what the heroes do");
     expect(prompt.system).toContain("Never invent new threats");
     expect(prompt.user).not.toContain("outcomes:");
@@ -278,7 +290,7 @@ describe("LLM DM", () => {
       },
     });
     expect(await narrator.narrateCombat(request)).toEqual({ text: "Borin's blade flashes." });
-    expect(observed).toMatchObject([{ call: "flourish", promptVersion: "flourish-5" }]);
+    expect(observed).toMatchObject([{ call: "flourish", promptVersion: "flourish-8" }]);
     expect(buildCombatNarratorPrompt({ ...request, final: true, outcome: "victory", language: "zh-TW" }).system).toContain("100-200 Traditional Chinese");
   });
 });

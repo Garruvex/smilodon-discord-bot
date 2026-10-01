@@ -71,6 +71,7 @@ export function submitAction(decision: Decision, characterId: CharacterId, text:
   const previous = round.submissions[characterId];
   const revision = previous?.kind === "action" ? previous.revision + 1 : 1;
   decision.emit({ kind: "actionSubmitted", roundNumber: round.number, characterId, text: trimmed, revision });
+  decision.request({ kind: "deliver", delivery: { kind: "actionIntent", roundNumber: round.number, characterId, revision } });
   closeIfEveryoneResponded(decision);
   return null;
 }

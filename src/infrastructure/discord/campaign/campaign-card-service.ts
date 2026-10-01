@@ -445,7 +445,7 @@ export class CampaignCardService implements CardRefresher {
       if (opportunity !== null) {
         cards.push({ key: "opportunity", channelId: adventureChannelId, payload: renderOpportunityAttackCard(opportunity, text, campaignId), epoch: "opportunity", pin: false });
       }
-      cards.push({ key: "adventure", channelId: adventureChannelId, payload: renderAdventurePanel(panel, text, campaignId), epoch: panelEpoch(state), pin: false });
+      cards.push({ key: "adventure", channelId: adventureChannelId, payload: renderAdventurePanel(panel, text, campaignId, guildUrl(partyChannelId)), epoch: panelEpoch(state), pin: false });
     }
     return cards;
   }

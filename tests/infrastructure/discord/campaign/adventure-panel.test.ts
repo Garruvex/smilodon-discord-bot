@@ -30,7 +30,8 @@ describe("the adventure panel", () => {
     const card = flatten(renderAdventurePanel(collecting, texts.en, "camp"));
     expect(card.accent).toBe(accents.green);
     expect(card.text).toContain("## Old Watchtower · Exploration · Round 4");
-    expect(card.text).toContain("Submit an action or Pass. Closes <t:1800000000:R>.");
+    expect(card.text).toContain("Press Act / Edit to describe what you want to do");
+    expect(card.text).toContain("Closes <t:1800000000:R>.");
     expect(card.text).toContain("Mira ✓ Submitted · Borin … Thinking · Elin — Away");
     expect(card.buttons.map((button) => button.id)).toEqual(["dnd:act:camp", "dnd:speak:camp", "dnd:pass:camp", "dnd:myHero:camp", "dnd:away:camp", "dnd:explore:camp", "dnd:safety:camp", "dnd:more:camp"]);
   });
@@ -40,6 +41,14 @@ describe("the adventure panel", () => {
     expect(flatten(renderAdventurePanel({ ...collecting, world }, texts.en, "camp")).text).toContain("Day 2 · dusk · rain");
     expect(flatten(renderAdventurePanel({ ...collecting, world }, texts["zh-TW"], "camp")).text).toContain("第 2 天 · 黃昏 · 下雨");
     expect(flatten(renderAdventurePanel(collecting, texts.en, "camp")).text).not.toContain("Day ");
+  });
+
+  it("links straight to the Party channel when it has one, in every live state", () => {
+    const url = "https://discord.com/channels/1/2";
+    const withLink = (view: PanelView): string[] => flatten(renderAdventurePanel(view, texts.en, "camp", url)).buttons.map((button) => button.label);
+    expect(withLink(collecting)).toContain("Party channel");
+    expect(withLink({ ...collecting, mode: "paused" })).toContain("Party channel");
+    expect(labels(collecting)).not.toContain("Party channel");
   });
 
   it("says so when there is no timer", () => {
@@ -67,7 +76,7 @@ describe("the adventure panel", () => {
     };
     const card = flatten(renderAdventurePanel(view, texts.en, "camp"));
     expect(card.text).toContain("Getting ready");
-    expect(card.text).toContain("Press Ready");
+    expect(card.text).toContain("press Ready");
     expect(card.text).toContain("Mira ✓ Ready · Borin … Thinking");
     expect(card.buttons.map((button) => button.id)).toEqual(["dnd:ready:camp", "dnd:begin:camp", "dnd:myHero:camp", "dnd:away:camp", "dnd:explore:camp", "dnd:safety:camp", "dnd:more:camp"]);
     expect(labels(view, "zh-TW")).toEqual(["準備好了", "立即開始", "我的英雄", "離開／我回來了", "探索", "安全", "更多…"]);
@@ -85,8 +94,8 @@ describe("the adventure panel", () => {
     const view: PanelView = { ...collecting, mode: "awaitingRolls", pendingRolls: [{ characterId: "c-mira", userId: "1", heroName: "Mira", test: { kind: "skill", skill: "persuasion" }, action: "talk the guard round" }] };
     const card = flatten(renderAdventurePanel(view, texts.en, "camp"));
     expect(card.accent).toBe(accents.amber);
-    expect(card.text).toContain("Waiting for rolls. If it is your hero's, press Roll.");
-    expect(card.text).toContain("Mira** rolls **Persuasion (CHA)** for “talk the guard round”");
+    expect(card.text).toContain("If yours is listed, press Roll.");
+    expect(card.text).toContain("**Mira** · Persuasion (CHA)\nAttempt: talk the guard round");
     expect(card.buttons.map((button) => button.label)).toContain("Roll");
   });
 
@@ -124,7 +133,7 @@ describe("the adventure panel", () => {
     expect(card.buttons.map((button) => button.id)).toEqual(["dnd:myHero:camp", "dnd:safety:camp", "dnd:more:camp", "dnd:away:camp"]);
   });
 
-  it("gives a fight the players play a Take turn and End turn button", () => {
+  it("leads with the active turn, the next three, and clear shared controls", () => {
     const view: PanelView = {
       ...collecting,
       mode: "combat",
@@ -132,6 +141,7 @@ describe("the adventure panel", () => {
       combat: {
         round: 1,
         activeName: "Mira",
+        upcoming: ["Wolf", "Borin", "Goblin"],
         activeUserId: "1",
         playersControl: true,
         zones: ["Cellar"],
@@ -140,9 +150,13 @@ describe("the adventure panel", () => {
       },
     };
     const card = flatten(renderAdventurePanel(view, texts.en, "camp"));
+    expect(card.text).toMatch(/^## ▶ \*\*Mira\*\* is taking their turn\.\nUp next: \*\*Wolf\*\* → \*\*Borin\*\* → \*\*Goblin\*\*/);
+    expect(card.text).toContain("for the active player or their assigned substitute");
+    expect(card.buttons.map((button) => button.label)).toContain("Turn actions");
     expect(card.text).toContain("\nTurn deadline: <t:1800000000:d> <t:1800000000:t>");
     expect(card.buttons.map((button) => button.id)).toEqual(["dnd:turn:camp", "dnd:endTurn:camp", "dnd:speak:camp", "dnd:myHero:camp", "dnd:away:camp", "dnd:safety:camp", "dnd:more:camp"]);
-    expect(labels(view, "zh-TW")).toEqual(["輪到我", "結束回合", "說話", "我的英雄", "離開／我回來了", "安全", "更多…"]);
+    expect(labels(view, "zh-TW")).toEqual(["回合行動", "結束我的回合", "說話", "我的英雄", "離開／我回來了", "安全", "更多…"]);
+    expect(flatten(renderAdventurePanel(view, texts["zh-TW"], "camp")).text).toContain("接下來：**Wolf** → **Borin** → **Goblin**");
   });
 
   it("speaks Traditional Chinese with short labels, and stays within Discord's limits", () => {
@@ -167,7 +181,8 @@ describe("the adventure panel", () => {
       },
     };
     const card = flatten(renderAdventurePanel(view, texts["zh-TW"], "camp"));
-    expect(card.text).toContain("▶ 輪到 **空虎** 行動\n行動截止時間：<t:1800000000:d> <t:1800000000:t>");
+    expect(card.text).toContain("## ▶ 輪到 **空虎** 行動");
+    expect(card.text).toContain("\n行動截止時間：<t:1800000000:d> <t:1800000000:t>");
     expect(card.text).toContain("### 隊伍（2）\n▶ **空虎** · ▰▰▰▰▰▰▰▰ 生命 10/10 · +3 臨時生命值");
     expect(card.text).toContain("• **Onyx** · ▱▱▱▱▱▱▱▱ 生命 0/8 · 倒地");
     expect(card.text).toContain("### 敵方（1）\n• **飛蛇** · ▰▰▰▰▱▱▱▱ 生命 2/5 · 重傷");
@@ -227,7 +242,7 @@ describe("hero cards", () => {
     expect(card.text).toContain("Played by <@42>");
     expect(card.text).toContain("HP 4/9 · AC 14");
     expect(card.text).toContain("Prone · Present");
-    expect(card.buttons).toEqual([{ id: "dnd:details:camp:c-mira", label: "Details", disabled: false }]);
+    expect(card.buttons).toEqual([{ id: "dnd:details:camp:c-mira", label: "Details", disabled: false }, { id: "dnd:inspect:camp:c-mira", label: "Items & spells", disabled: false }]);
   });
 
   it("always shows gear, pack, gold, stash, spells, slots, and limited uses", () => {

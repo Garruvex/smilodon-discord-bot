@@ -8,10 +8,11 @@ import { noIcons, type CampaignIcon, type CampaignIcons } from "./campaign-icons
 // can be saved; edits report a message that no longer exists instead of
 // throwing, because a deleted card is normal and is replaced.
 // How a history message looks, so the eye can tell the story from the mechanics. The story itself (narration, speech) is plain
-// prose; every other kind is a coloured panel: dice, actions in a fight, rewards, table notices and hazards.
-export type MessageStyle = "roll" | "action" | "reward" | "notice" | "hazard";
+// prose; declared intents are blue cards and resolved combat actions are red cards.
+// Dice, rewards, table notices and hazards retain their own result styles.
+export type MessageStyle = "intent" | "narration" | "roll" | "action" | "reward" | "notice" | "hazard";
 
-const styleColors: Readonly<Record<MessageStyle, number>> = { roll: 0x5865f2, action: 0xed4245, reward: 0xf1c40f, notice: 0x9b59b6, hazard: 0xe67e22 };
+const styleColors: Readonly<Record<Exclude<MessageStyle, "narration">, number>> = { intent: 0x3498db, roll: 0x5865f2, action: 0xed4245, reward: 0xf1c40f, notice: 0x9b59b6, hazard: 0xe67e22 };
 
 export interface CampaignMessageGateway {
   send(channelId: string, payload: CardPayload): Promise<string>;
@@ -115,12 +116,13 @@ export class DiscordMessageGateway implements CampaignMessageGateway {
 }
 
 // The icon in the corner of each kind of panel.
-const styleIcons: Readonly<Record<MessageStyle, CampaignIcon>> = { roll: "roll", action: "attack", reward: "reward", notice: "notice", hazard: "hazard" };
+const styleIcons: Readonly<Partial<Record<MessageStyle, CampaignIcon>>> = { roll: "roll", action: "attack", reward: "reward", notice: "notice", hazard: "hazard" };
 
 function body(content: string, style: MessageStyle | undefined, icons: CampaignIcons): { content: string; embeds: EmbedBuilder[] } {
-  if (style === undefined) return { content, embeds: [] };
+  if (style === undefined || style === "narration") return { content, embeds: [] };
   const embed = new EmbedBuilder().setColor(styleColors[style]).setDescription(content);
-  const icon = icons.emoji(styleIcons[style]);
+  const iconName = styleIcons[style];
+  const icon = iconName === undefined ? undefined : icons.emoji(iconName);
   return { content: "", embeds: [icon === undefined ? embed : embed.setThumbnail(`https://cdn.discordapp.com/emojis/${icon.id}.png?size=64`)] };
 }
 

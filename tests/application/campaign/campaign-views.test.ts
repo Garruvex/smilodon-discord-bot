@@ -176,6 +176,20 @@ describe("the adventure panel view", () => {
   });
 });
 
+it("previews initiative across the round boundary and skips creatures out of combat", () => {
+  const fight = startedFight();
+  const encounter = fight.state.encounter!;
+  const foes = Object.values(encounter.combatants).filter((creature) => creature.side === "foes");
+  const first = foes[0]!;
+  const last = foes[1]!;
+  const ordered = { ...encounter, order: ["c-mira", "c-borin", first.id, last.id], turnIndex: 3 };
+  const state = { ...fight.state, encounter: ordered };
+  const panel = buildPanelView(record(lobbyOf()), state, starter.bible, enSrd51Glossary);
+  expect(panel.combat?.upcoming).toEqual(["Mira", "Borin", panel.combat!.foes.find((foe) => !foe.active)!.name]);
+  const removed = { ...state, encounter: { ...ordered, combatants: { ...ordered.combatants, "c-borin": { ...ordered.combatants["c-borin"]!, condition: "dead" as const }, [first.id]: { ...first, condition: "fled" as const } } } };
+  expect(buildPanelView(record(lobbyOf()), removed, starter.bible, enSrd51Glossary).combat?.upcoming).toEqual(["Mira"]);
+});
+
 describe("buildReactionView", () => {
   // Elspeth, made a wizard for this test, has Shield prepared. Goblin A shoots
   // her with a natural 15 (+4 to hit against armor class 18, but not 23), so

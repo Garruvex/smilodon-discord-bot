@@ -22,6 +22,9 @@ export const campaignActions = [
   "back",
   "continue",
   "details",
+  // Look up a hero's spell, item or feature: open the list (on a hero card), then pick one.
+  "inspect",
+  "inspectPick",
   "ready",
   "begin",
   "gear",

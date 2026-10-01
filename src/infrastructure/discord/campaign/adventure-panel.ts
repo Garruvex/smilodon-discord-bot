@@ -49,11 +49,13 @@ const safetyControls: readonly CampaignAction[] = ["safety", "more"];
 // The Adventure channel's one live control message, replaced at each round
 // boundary. Deadlines are Discord relative timestamps, so the message never
 // needs editing every second.
-export function renderAdventurePanel(view: PanelView, text: Texts, campaignId: string): CardPayload {
+export function renderAdventurePanel(view: PanelView, text: Texts, campaignId: string, partyUrl: string | null = null): CardPayload {
   const t = text.campaign;
   const mode = t.mode[view.mode];
   const heading =
-    view.roundNumber === null ? t.panel.heading({ scene: view.sceneTitle, mode }) : t.panel.headingRound({ scene: view.sceneTitle, mode, round: view.roundNumber });
+    view.mode === "combat" && view.combat?.activeName != null
+      ? t.panel.combatTurn({ name: displayName(view.combat.activeName) })
+      : view.roundNumber === null ? t.panel.heading({ scene: view.sceneTitle, mode }) : t.panel.headingRound({ scene: view.sceneTitle, mode, round: view.roundNumber });
   const container = new ContainerBuilder()
     .setAccentColor(accentFor[view.mode])
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ${heading}\n${statusLine(view, text)}${view.world === undefined ? "" : `\n-# ${worldLine(view.world, text)}`}`));
@@ -72,7 +74,10 @@ export function renderAdventurePanel(view: PanelView, text: Texts, campaignId: s
     // Away and back are one toggle, present in every state so a player marked away can always return (the first row may already hold it).
     const toggle: readonly CampaignAction[] = controls.includes("away") ? [] : ["away"];
     const second: readonly CampaignAction[] = view.mode === "combat" ? [...safetyControls, ...toggle] : ["explore", ...safetyControls, ...toggle];
-    container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(second.map((action) => controlButton(action, campaignId, text))));
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(second.map((action) => controlButton(action, campaignId, text)));
+    // A link button needs no click handler: it takes a player straight to the Party channel and its hero cards.
+    if (partyUrl !== null) row.addComponents(new ButtonBuilder().setURL(partyUrl).setLabel(text.campaign.button.partyChannel).setStyle(ButtonStyle.Link));
+    container.addActionRowComponents(row);
   }
   return cardPayload(container);
 }
@@ -100,11 +105,13 @@ function statusLine(view: PanelView, text: Texts): string {
         }),
       ].join("\n");
     case "combat":
-      return view.combat === null
-        ? ""
-        : view.combat.activeName === null
-          ? t.combatIdle({ round: view.combat.round })
-          : `${t.combatTurn({ name: displayName(view.combat.activeName) })}${view.closesAt === null ? "" : `\n${t.turnDeadline({ date: timestamp(view.closesAt, "d"), time: timestamp(view.closesAt, "t") })}`}`;
+      if (view.combat === null) return "";
+      return [
+        ...((view.combat.upcoming?.length ?? 0) === 0 ? [] : [t.upNext({ names: view.combat.upcoming!.map((name) => `**${displayName(name)}**`).join(" → ") })]),
+        `${displayName(view.sceneTitle)} · ${t.combatIdle({ round: view.combat.round })}`,
+        ...(view.closesAt === null ? [] : [t.turnDeadline({ date: timestamp(view.closesAt, "d"), time: timestamp(view.closesAt, "t") })]),
+        ...(view.combat.playersControl ? [t.turnControls] : []),
+      ].join("\n");
     case "waiting":
       return t.waiting;
     case "paused":
