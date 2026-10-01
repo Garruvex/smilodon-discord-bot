@@ -229,6 +229,9 @@ export const campaignEn = {
   "campaign.hub.levelLabel": "Level (2 to 20)",
   "campaign.hub.levelPlaceholder": "3",
   "campaign.manage.levelButton": "Raise level",
+  "campaign.manage.sizeButton": "Party size",
+  "campaign.hub.sizeTitle": "Party size",
+  "campaign.hub.sizeLabel": "Players the game takes (1 to 6)",
 
   "campaign.wizard.title": "New game",
   "campaign.wizard.intro": "Choose how the game is played, then press Next to name it.",

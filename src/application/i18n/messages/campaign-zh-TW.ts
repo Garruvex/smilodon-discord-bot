@@ -229,6 +229,9 @@ export const campaignZhTW = {
   "campaign.hub.levelLabel": "等級（2 到 20）",
   "campaign.hub.levelPlaceholder": "3",
   "campaign.manage.levelButton": "提升等級",
+  "campaign.manage.sizeButton": "隊伍人數",
+  "campaign.hub.sizeTitle": "隊伍人數",
+  "campaign.hub.sizeLabel": "團務可容納的玩家人數（1 到 6）",
 
   "campaign.wizard.title": "新團務",
   "campaign.wizard.intro": "選好進行方式，再按「下一步」為團務命名",

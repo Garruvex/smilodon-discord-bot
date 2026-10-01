@@ -78,6 +78,7 @@ const fileField = "file";
 const ideaField = "idea";
 const languageField = "language";
 const levelField = "level";
+const sizeField = "size";
 const whoField = "who";
 const abilityField = "ability";
 const dcField = "dc";
@@ -166,6 +167,9 @@ export class CampaignHubComponentHandler implements ComponentHandler {
       case "authorOpen":
         if (interaction.isButton()) await this.openAdventureForm(interaction, parsed.action);
         return;
+      case "sizeOpen":
+        if (interaction.isButton() && first !== undefined) await this.openSize(interaction, first);
+        return;
       case "levelOpen":
         if (interaction.isButton() && first !== undefined) await this.openLevel(interaction, first);
         return;
@@ -187,6 +191,7 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     if (parsed.action === "importSubmit") return void (await this.submitImport(interaction));
     if (parsed.action === "uploadSubmit") return void (await this.submitUpload(interaction));
     if (parsed.action === "authorSubmit") return void (await this.submitAuthor(interaction));
+    if (parsed.action === "sizeSubmit") return void (await this.submitSize(interaction, parsed.parts[0] ?? ""));
     if (parsed.action === "levelSubmit") return void (await this.submitLevel(interaction, parsed.parts[0] ?? ""));
     if (parsed.action === "hazardSubmit") return void (await this.submitHazard(interaction, parsed.parts[0] ?? ""));
     if (parsed.action === "hurtSubmit") return void (await this.submitHurt(interaction, parsed.parts[0] ?? ""));
@@ -336,6 +341,46 @@ export class CampaignHubComponentHandler implements ComponentHandler {
       gameLanguage: interaction.fields.getStringSelectValues(languageField)[0] === "zh-TW" ? "zh-TW" : "en",
       notes: notes === undefined ? null : { url: notes.url, size: notes.size },
     });
+  }
+
+  // ---- Party size (Manage) -------------------------------------------------
+
+  private async openSize(interaction: ButtonInteraction<"cached">, campaignId: string): Promise<void> {
+    const record = (await this.deps.lobby.get({ guildId: interaction.guildId, campaignId }))?.record;
+    if (record === undefined) {
+      await interaction.reply({ content: texts.en.campaign.manage.gone, flags: MessageFlags.Ephemeral });
+      return;
+    }
+    const text = texts[record.language];
+    if (!(await this.deps.authority.canManage(interaction, record))) {
+      await interaction.reply({ content: text.campaign.manage.notAllowed, flags: MessageFlags.Ephemeral });
+      return;
+    }
+    await interaction.showModal(
+      new ModalBuilder()
+        .setCustomId(hubCustomId("sizeSubmit", campaignId))
+        .setTitle(text.campaign.hub.sizeTitle)
+        .addLabelComponents(
+          new LabelBuilder()
+            .setLabel(text.campaign.hub.sizeLabel)
+            .setTextInputComponent(new TextInputBuilder().setCustomId(sizeField).setStyle(TextInputStyle.Short).setRequired(true).setMinLength(1).setMaxLength(1).setValue(String(record.lobby.maxPlayers))),
+        ),
+    );
+  }
+
+  private async submitSize(interaction: ModalSubmitInteraction<"cached">, campaignId: string): Promise<void> {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const record = (await this.deps.lobby.get({ guildId: interaction.guildId, campaignId }))?.record;
+    if (record === undefined) return void (await interaction.editReply({ content: texts.en.campaign.manage.gone }));
+    const text = texts[record.language];
+    // Checked again here: the form is only a request.
+    if (!(await this.deps.authority.canManage(interaction, record))) return void (await interaction.editReply({ content: text.campaign.manage.notAllowed }));
+    const players = Number(interaction.fields.getTextInputValue(sizeField).trim());
+    // A DnD Admin acts for the organizer: no user is named.
+    const result = await this.deps.lobby.setPartySize(record.key, null, Number.isInteger(players) ? players : 0);
+    if (result.kind === "refused") return void (await interaction.editReply({ content: refusalText(text, result.reason) }));
+    await this.deps.cards.sync(record.key);
+    await interaction.editReply({ content: text.campaign.cmd.sized({ count: players }) });
   }
 
   // ---- Raise level (Manage) -------------------------------------------------
@@ -822,6 +867,7 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     rows.push(
       row(
         verb("repair", t.repair),
+        new ButtonBuilder().setCustomId(hubCustomId("sizeOpen", id)).setLabel(t.sizeButton).setStyle(ButtonStyle.Secondary),
         ...(record.lifecycle === "lobby"
           ? []
           : [

@@ -354,8 +354,8 @@ describe("Manage a game", () => {
     expect(contentOf(await t.click(id, { userId: "u-x" }, { messageId: hubMessageId }))).toBe("Only DnD Admins and the game's organizer can manage a game.");
     const organizer = await t.click(id, { userId: "u-org" }, { messageId: hubMessageId });
     expect(contentOf(organizer)).toContain("Manage Moonlit Ruins");
-    expect(rowsOf(organizer).flat().map((button) => button.label)).toEqual(["Pause", "Close round", "Retry the DM", "Redo the last picture", "Raise level", "Short rest", "Long rest", "Retry the fight", "Retell the last scene", "Picture the latest moment", "Picture the current scene", "Invite player", "Join requests (0)", "Repair cards", "Hazard", "Hurt", "End game"]);
-    expect(rowsOf(await t.click(id, { userId: "u-a", admin: true }, { messageId: hubMessageId })).flat()).toHaveLength(17);
+    expect(rowsOf(organizer).flat().map((button) => button.label)).toEqual(["Pause", "Close round", "Retry the DM", "Redo the last picture", "Raise level", "Short rest", "Long rest", "Retry the fight", "Retell the last scene", "Picture the latest moment", "Picture the current scene", "Invite player", "Join requests (0)", "Repair cards", "Party size", "Hazard", "Hurt", "End game"]);
+    expect(rowsOf(await t.click(id, { userId: "u-a", admin: true }, { messageId: hubMessageId })).flat()).toHaveLength(18);
   });
 
   it("shows no picture buttons when the bot cannot paint, and says so if one is pressed anyway", async () => {
@@ -599,6 +599,24 @@ describe("Raise level in Manage", () => {
     const t = harness();
     const { key } = await activeGame(t);
     expect(contentOf(await t.form(hubCustomId("levelSubmit", key.campaignId), { userId: "u-a", admin: true }, { fields: { level: "2" } }))).toContain("The party is now level 2");
+  });
+});
+
+describe("Party size in Manage", () => {
+  it("opens a form for the organizer only, and changes the seats from it", async () => {
+    const t = harness();
+    const { key } = await activeGame(t);
+    const id = hubCustomId("sizeOpen", key.campaignId);
+    expect(contentOf(await t.click(id, { userId: "u-x" }))).toBe("Only DnD Admins and the game's organizer can manage a game.");
+    const opened = await t.click(id, { userId: "u-org" });
+    const modal = (opened.find((entry) => entry.kind === "modal")?.payload as { toJSON(): { custom_id: string; components: { label: string }[] } }).toJSON();
+    expect(modal.custom_id).toBe(hubCustomId("sizeSubmit", key.campaignId));
+    expect(modal.components[0]?.label).toBe("Players the game takes (1 to 6)");
+
+    expect(contentOf(await t.form(hubCustomId("sizeSubmit", key.campaignId), { userId: "u-org" }, { fields: { size: "5" } }))).toContain("up to 5 players");
+    expect((await t.r.store.transaction((tx) => tx.loadRecord(key)))?.record.lobby.maxPlayers).toBe(5);
+    expect(contentOf(await t.form(hubCustomId("sizeSubmit", key.campaignId), { userId: "u-org" }, { fields: { size: "9" } }))).toContain("1–6");
+    expect(contentOf(await t.form(hubCustomId("sizeSubmit", key.campaignId), { userId: "u-x" }, { fields: { size: "4" } }))).toBe("Only DnD Admins and the game's organizer can manage a game.");
   });
 });
 

@@ -43,6 +43,9 @@ export const hubActions = [
   // Manage: raise the party's level (a form for the number).
   "levelOpen",
   "levelSubmit",
+  // Manage: change how many players the game takes (a form for the number).
+  "sizeOpen",
+  "sizeSubmit",
   // Manage: set a hazard save for a hero or the whole party.
   "hazardOpen",
   "hazardSubmit",
