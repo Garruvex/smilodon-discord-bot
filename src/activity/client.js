@@ -4,6 +4,7 @@ const gamesElement = document.querySelector("#lobby-games");
 const messageElement = document.querySelector("#lobby-message");
 const emptyElement = document.querySelector("#lobby-empty");
 const errorElement = document.querySelector("#lobby-error");
+const errorTitleElement = document.querySelector("#lobby-error-title");
 const errorMessageElement = document.querySelector("#lobby-error-message");
 const userElement = document.querySelector("#lobby-user");
 const serverElement = document.querySelector("#server-label");
@@ -19,6 +20,8 @@ let currentGameId = null;
 let tableTimer = null;
 let loadingTable = false;
 let currentSnapshot = null;
+let connectionStage = "Discord connection";
+let discordConnected = false;
 
 const lifecycleLabels = { lobby: "Open lobby", active: "Live game", paused: "On a break" };
 const actionLabels = { join: "Join game", continue: "Open table", request: "Request to join", requested: "Request sent", invited: "Open invitation", full: "Table full", resume: "Open table" };
@@ -50,8 +53,16 @@ function showError(error) {
   gamesElement.replaceChildren();
   emptyElement.hidden = true;
   errorElement.hidden = false;
+  errorTitleElement.textContent = connectionStage === "Discord connection"
+    ? "Could not connect to Discord"
+    : connectionStage === "Discord authorization"
+      ? "Could not sign in to Discord"
+      : connectionStage === "Account verification"
+        ? "Could not verify your Discord account"
+        : "Could not load your games";
   errorMessageElement.textContent = error;
-  userElement.textContent = "Sign-in needs attention";
+  userElement.textContent = "Connection needs attention";
+  serverElement.textContent = discordConnected ? "Discord connected" : "Connecting to Discord";
   setMessage("");
 }
 
@@ -597,18 +608,24 @@ document.querySelector("#lobby-retry").addEventListener("click", () => {
 });
 
 async function authenticate() {
+  connectionStage = "Activity setup";
+  discordConnected = false;
   errorElement.hidden = true;
   userElement.textContent = "Connecting to Discord…";
+  serverElement.textContent = "Connecting to Discord…";
   setMessage("Connecting to Discord Activity…");
   const configResponse = await fetchWithTimeout("/activity-config.json", { cache: "no-store" });
   if (!configResponse.ok) throw new Error("Could not load the Discord application configuration.");
   const config = await configResponse.json();
   if (typeof config.applicationId !== "string" || config.applicationId.length === 0) throw new Error("The Discord application ID is not configured.");
   discordSdk = new DiscordSDK(config.applicationId);
+  connectionStage = "Discord connection";
   setMessage("Waiting for Discord to connect…");
   await withTimeout(discordSdk.ready(), 12000, "Discord did not connect to the Activity. Close and relaunch it inside Discord, then check the Activity URL mapping if it still fails.");
+  discordConnected = true;
   if (!discordSdk.guildId) throw new Error("Open this Activity from a server to see its games.");
   serverElement.textContent = "Discord connected";
+  connectionStage = "Discord authorization";
   setMessage("Checking your Discord authorization…");
   const authorization = await withTimeout(discordSdk.commands.authorize({
     client_id: config.applicationId,
@@ -617,6 +634,7 @@ async function authenticate() {
     prompt: "none",
     scope: ["identify", "guilds.members.read"],
   }), 20000, "Discord authorization did not finish. Close and reopen the Activity; if it repeats, check its OAuth2 redirect and requested scopes.");
+  connectionStage = "Account verification";
   setMessage("Verifying your Discord account…");
   const session = await requestJson("/api/activity/session", {
     method: "POST",
@@ -627,11 +645,12 @@ async function authenticate() {
   const identity = await discordSdk.commands.authenticate({ access_token: session.access_token });
   userElement.textContent = identity.user.global_name || identity.user.username;
   serverElement.textContent = "This Discord server";
+  connectionStage = "Loading games";
   if (typeof session.launchCampaignId === "string") await openGame(session.launchCampaignId);
   else await loadGames();
 }
 
 void authenticate().catch((error) => {
-  console.info("Discord Activity sign-in is unavailable in this browser preview.", error);
+  console.warn(`Discord Activity failed during ${connectionStage}.`, error);
   showError(error instanceof Error ? error.message : "Discord sign-in failed.");
 });
