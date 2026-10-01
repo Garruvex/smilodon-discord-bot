@@ -26,7 +26,7 @@ const accentFor: Readonly<Record<PanelMode, number>> = {
 // The Adventure channel's one live control message, replaced at each round
 // boundary. Deadlines are Discord relative timestamps, so the message never
 // needs editing every second.
-export function renderAdventurePanel(view: PanelView, text: Texts, campaignId: string, partyUrl: string | null = null, activity = false): CardPayload {
+export function renderAdventurePanel(view: PanelView, text: Texts, campaignId: string, partyUrl: string | null = null): CardPayload {
   const t = text.campaign;
   const mode = t.mode[view.mode];
   const heading =
@@ -43,23 +43,19 @@ export function renderAdventurePanel(view: PanelView, text: Texts, campaignId: s
   if (details !== "") container.addSeparatorComponents(new SeparatorBuilder()).addTextDisplayComponents(new TextDisplayBuilder().setContent(details));
 
   const { primary, secondary } = panelActions(view);
-  if (primary.length > 0) {
-    container.addActionRowComponents(
-      new ActionRowBuilder<ButtonBuilder>().addComponents(primary.map((action) => controlButton(action, campaignId, text))),
-    );
-  }
-  if (secondary.length > 0) {
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(secondary.map((action) => controlButton(action, campaignId, text)));
-    // A link button needs no click handler: it takes a player straight to the Party channel and its hero cards.
-    if (partyUrl !== null) row.addComponents(new ButtonBuilder().setURL(partyUrl).setLabel(text.campaign.button.partyChannel).setStyle(ButtonStyle.Link));
-    container.addActionRowComponents(row);
-  }
-  // Opens the Activity; Discord answers the click itself, so the button needs no saved state.
-  if (activity && view.mode !== "archived") {
-    container.addActionRowComponents(
-      new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(campaignCustomId("playActivity", campaignId)).setLabel(text.campaign.button.playActivity).setStyle(ButtonStyle.Secondary)),
-    );
-  }
+  const controls = [...primary, ...secondary];
+  const tableControls: readonly PanelActionId[] = ["away", "safety", "more"];
+  const navigation: readonly PanelActionId[] = ["myHero", "explore"];
+  const play = controls.filter((action) => !tableControls.includes(action) && !navigation.includes(action));
+  const addRows = (buttons: readonly ButtonBuilder[]): void => {
+    for (let offset = 0; offset < buttons.length; offset += 5) container.addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(buttons.slice(offset, offset + 5)));
+  };
+  if (controls.length > 0) container.addSeparatorComponents(new SeparatorBuilder());
+  addRows(play.map((action) => controlButton(action, campaignId, text)));
+  const links = navigation.filter((action) => controls.includes(action)).map((action) => controlButton(action, campaignId, text));
+  if (partyUrl !== null && view.mode !== "archived") links.push(new ButtonBuilder().setURL(partyUrl).setLabel(text.campaign.button.partyChannel).setStyle(ButtonStyle.Link));
+  addRows(links);
+  addRows(tableControls.filter((action) => controls.includes(action)).map((action) => controlButton(action, campaignId, text)));
   return cardPayload(container);
 }
 

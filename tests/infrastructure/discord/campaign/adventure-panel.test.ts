@@ -29,11 +29,11 @@ describe("the adventure panel", () => {
   it("shows the scene, round, deadline, and who has submitted", () => {
     const card = flatten(renderAdventurePanel(collecting, texts.en, "camp"));
     expect(card.accent).toBe(accents.green);
-    expect(card.text).toContain("## Old Watchtower · Exploration · Round 4");
+    expect(card.text).toContain("## Old Watchtower\n-# Exploration — Round 4");
     expect(card.text).toContain("Press Act / Edit to describe what you want to do");
     expect(card.text).toContain("Closes <t:1800000000:R>.");
     expect(card.text).toContain("Mira ✓ Submitted\nBorin … Thinking\nElin — Away");
-    expect(card.buttons.map((button) => button.id)).toEqual(["dnd:act:camp", "dnd:speak:camp", "dnd:pass:camp", "dnd:myHero:camp", "dnd:away:camp", "dnd:explore:camp", "dnd:safety:camp", "dnd:more:camp"]);
+    expect(card.buttons.map((button) => button.id)).toEqual(["dnd:act:camp", "dnd:speak:camp", "dnd:pass:camp", "dnd:myHero:camp", "dnd:explore:camp", "dnd:away:camp", "dnd:safety:camp", "dnd:more:camp"]);
   });
 
   it("says who wants a move when it names them", () => {
@@ -67,10 +67,10 @@ describe("the adventure panel", () => {
   });
 
   it("changes its controls with the state", () => {
-    expect(labels({ ...collecting, mode: "planning" })).toEqual(["My Hero", "Away / I'm back", "Explore", "Safety", "More…"]);
-    expect(labels({ ...collecting, mode: "awaitingRolls", pendingRolls: [{ characterId: "c-mira", userId: "1", heroName: "Mira", test: { kind: "skill", skill: "persuasion" }, action: "talk the guard round" }] })).toEqual(["Roll", "My Hero", "Away / I'm back", "Explore", "Safety", "More…"]);
-    expect(labels({ ...collecting, mode: "waiting" })).toEqual(["Continue", "Away / I'm back", "My Hero", "Explore", "Safety", "More…"]);
-    expect(labels({ ...collecting, mode: "paused" })).toEqual(["My Hero", "Explore", "Safety", "More…", "Away / I'm back"]);
+    expect(labels({ ...collecting, mode: "planning" })).toEqual(["My Hero", "Explore", "Away / I'm back", "Safety", "More…"]);
+    expect(labels({ ...collecting, mode: "awaitingRolls", pendingRolls: [{ characterId: "c-mira", userId: "1", heroName: "Mira", test: { kind: "skill", skill: "persuasion" }, action: "talk the guard round" }] })).toEqual(["Roll", "My Hero", "Explore", "Away / I'm back", "Safety", "More…"]);
+    expect(labels({ ...collecting, mode: "waiting" })).toEqual(["Continue", "My Hero", "Explore", "Away / I'm back", "Safety", "More…"]);
+    expect(labels({ ...collecting, mode: "paused" })).toEqual(["My Hero", "Explore", "Away / I'm back", "Safety", "More…"]);
     expect(labels({ ...collecting, mode: "archived" })).toEqual([]);
   });
 
@@ -79,7 +79,7 @@ describe("the adventure panel", () => {
     const card = flatten(renderAdventurePanel(heading, texts.en, "camp")).text;
     expect(card).toContain("heading to **Ruined Chapel**");
     expect(card).toContain("Wants to stay: Borin");
-    expect(labels(heading)).toEqual(["Act / Edit", "Speak", "Pass", "My Hero", "Away / I'm back", "Stay here / Go along", "Explore", "Safety", "More…"]);
+    expect(labels(heading)).toEqual(["Act / Edit", "Speak", "Pass", "Stay here / Go along", "My Hero", "Explore", "Away / I'm back", "Safety", "More…"]);
     expect(flatten(renderAdventurePanel(heading, texts["zh-TW"], "camp")).text).toContain("**Ruined Chapel**");
     expect(flatten(renderAdventurePanel(collecting, texts.en, "camp")).text).not.toContain("heading to");
     expect(labels({ ...heading, mode: "planning" })).not.toContain("Stay here / Go along");
@@ -100,8 +100,8 @@ describe("the adventure panel", () => {
     expect(card.text).toContain("Getting ready");
     expect(card.text).toContain("press Ready");
     expect(card.text).toContain("Mira ✓ Ready\nBorin … Thinking");
-    expect(card.buttons.map((button) => button.id)).toEqual(["dnd:ready:camp", "dnd:begin:camp", "dnd:myHero:camp", "dnd:away:camp", "dnd:explore:camp", "dnd:safety:camp", "dnd:more:camp"]);
-    expect(labels(view, "zh-TW")).toEqual(["準備好了", "立即開始", "我的英雄", "離開／我回來了", "探索", "安全", "更多…"]);
+    expect(card.buttons.map((button) => button.id)).toEqual(["dnd:ready:camp", "dnd:begin:camp", "dnd:myHero:camp", "dnd:explore:camp", "dnd:away:camp", "dnd:safety:camp", "dnd:more:camp"]);
+    expect(labels(view, "zh-TW")).toEqual(["準備好了", "立即開始", "我的英雄", "探索", "離開／我回來了", "安全", "更多…"]);
   });
 
   it("explains a pause and a restart pause in words, on a gray card", () => {
@@ -153,7 +153,7 @@ describe("the adventure panel", () => {
     expect(card.text).toContain("HP 2/7 · bloodied · 📍 Cellar");
     expect(card.text).toContain("HP 11/11 · unhurt · 📍 Stairs");
     // On autopilot nobody takes turns, so there is only My Hero (and the safety row).
-    expect(card.buttons.map((button) => button.id)).toEqual(["dnd:myHero:camp", "dnd:safety:camp", "dnd:more:camp", "dnd:away:camp"]);
+    expect(card.buttons.map((button) => button.id)).toEqual(["dnd:myHero:camp", "dnd:away:camp", "dnd:safety:camp", "dnd:more:camp"]);
   });
 
   it("leads with the active turn, the next three, and clear shared controls", () => {
@@ -184,9 +184,9 @@ describe("the adventure panel", () => {
 
   it("speaks Traditional Chinese with short labels, and stays within Discord's limits", () => {
     const card = flatten(renderAdventurePanel(collecting, texts["zh-TW"], "camp"));
-    expect(card.text).toContain("Old Watchtower · 探索 · 第 4 回合");
+    expect(card.text).toContain("Old Watchtower\n-# 探索 — 第 4 回合");
     expect(card.text).toContain("Mira ✓ 已提交\nBorin … 思考中\nElin — 離開");
-    expect(card.buttons.map((button) => button.label)).toEqual(["行動／修改", "說話", "跳過", "我的英雄", "離開／我回來了", "探索", "安全", "更多…"]);
+    expect(card.buttons.map((button) => button.label)).toEqual(["行動／修改", "說話", "跳過", "我的英雄", "探索", "離開／我回來了", "安全", "更多…"]);
     expect(card.componentCount).toBeLessThan(cardLimits.components);
     expect(card.text.length).toBeLessThan(cardLimits.characters);
   });
@@ -330,8 +330,19 @@ describe("hero cards", () => {
     expect(hpBar(-3, 9)).toBe("▱▱▱▱▱▱▱▱");
   });
 
-  it("offers Play in Activity only when the Activity is on", () => {
+  it("keeps the Activity launcher out of the Adventure panel", () => {
     expect(flatten(renderAdventurePanel(collecting, texts.en, "camp")).buttons.map((button) => button.label)).not.toContain("Play in Activity");
-    expect(flatten(renderAdventurePanel(collecting, texts.en, "camp", null, true)).buttons.map((button) => button.label)).toContain("Play in Activity");
+    expect(flatten(renderAdventurePanel({ ...collecting, mode: "combat" }, texts.en, "camp", "https://discord.com/channels/1/2")).buttons.map((button) => button.id)).not.toContain("dnd:playActivity:camp");
+  });
+  it("separates play, navigation, and table controls into valid rows", () => {
+    const payload = renderAdventurePanel({ ...collecting, pendingMove: { sceneTitle: "Ruined Chapel", staying: [], stayingUserIds: [] } }, texts.en, "camp", "https://discord.com/channels/1/2");
+    const root = payload.components[0].toJSON() as unknown as { components: { type: number; components?: { custom_id?: string; url?: string }[] }[] };
+    const rows = root.components.filter((component) => component.type === 1).map((row) => row.components ?? []);
+    expect(rows.every((row) => row.length <= 5)).toBe(true);
+    expect(rows.map((row) => row.map((button) => button.custom_id ?? button.url))).toEqual([
+      ["dnd:act:camp", "dnd:speak:camp", "dnd:pass:camp", "dnd:stay:camp"],
+      ["dnd:myHero:camp", "dnd:explore:camp", "https://discord.com/channels/1/2"],
+      ["dnd:away:camp", "dnd:safety:camp", "dnd:more:camp"],
+    ]);
   });
 });
