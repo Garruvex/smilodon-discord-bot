@@ -2,8 +2,9 @@ import { worldLine } from "./world-text.js";
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, SeparatorBuilder, TextDisplayBuilder, escapeMarkdown } from "discord.js";
 
 import type { PanelMode, PanelView, RosterEntry } from "../../../application/campaign/views/campaign-views.js";
+import { panelActions, type PanelActionId } from "../../../application/campaign/views/panel-actions.js";
 import type { Texts } from "../../../application/i18n/texts.js";
-import { campaignCustomId, type CampaignAction } from "./campaign-ids.js";
+import { campaignCustomId } from "./campaign-ids.js";
 import { accents, cardPayload, type CardPayload } from "./card-payload.js";
 import { hpBar } from "./hero-card.js";
 import { checkLabel } from "./text-keys.js";
@@ -22,30 +23,6 @@ const accentFor: Readonly<Record<PanelMode, number>> = {
   archived: accents.gray,
 };
 
-// Which controls each state shows (panel spec, State and control matrix). A
-// shared message shows the same buttons to everyone; every click is checked
-// again on the server, and a click that cannot apply gets a private reply.
-const controlsFor: Readonly<Record<PanelMode, readonly CampaignAction[]>> = {
-  opening: ["myHero", "away"],
-  readyCheck: ["ready", "begin", "myHero", "away"],
-  collecting: ["act", "speak", "pass", "myHero", "away"],
-  planning: ["myHero", "away"],
-  awaitingRolls: ["roll", "myHero", "away"],
-  combat: ["myHero"],
-  waiting: ["continue", "away", "myHero"],
-  paused: ["myHero"],
-  safety: ["myHero"],
-  recovery: ["myHero"],
-  archived: [],
-};
-
-// A fight the players play: Take turn opens the private turn menu.
-const combatControls: readonly CampaignAction[] = ["turn", "endTurn", "speak", "myHero", "away"];
-
-// The second row, in every state until the game is over: the way to stop play
-// for a moment, and the help and links.
-const safetyControls: readonly CampaignAction[] = ["safety", "more"];
-
 // The Adventure channel's one live control message, replaced at each round
 // boundary. Deadlines are Discord relative timestamps, so the message never
 // needs editing every second.
@@ -63,18 +40,14 @@ export function renderAdventurePanel(view: PanelView, text: Texts, campaignId: s
   const details = view.mode === "combat" ? combatLines(view, text) : rosterLine(view.roster, text);
   if (details !== "") container.addSeparatorComponents(new SeparatorBuilder()).addTextDisplayComponents(new TextDisplayBuilder().setContent(details));
 
-  const controls = view.mode === "combat" && view.combat?.playersControl === true ? combatControls : controlsFor[view.mode];
-  if (controls.length > 0) {
+  const { primary, secondary } = panelActions(view);
+  if (primary.length > 0) {
     container.addActionRowComponents(
-      new ActionRowBuilder<ButtonBuilder>().addComponents(controls.map((action) => controlButton(action, campaignId, text))),
+      new ActionRowBuilder<ButtonBuilder>().addComponents(primary.map((action) => controlButton(action, campaignId, text))),
     );
   }
-  if (view.mode !== "archived") {
-    // Explore (people, shops, spells) is for between fights.
-    // Away and back are one toggle, present in every state so a player marked away can always return (the first row may already hold it).
-    const toggle: readonly CampaignAction[] = controls.includes("away") ? [] : ["away"];
-    const second: readonly CampaignAction[] = view.mode === "combat" ? [...safetyControls, ...toggle] : ["explore", ...safetyControls, ...toggle];
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(second.map((action) => controlButton(action, campaignId, text)));
+  if (secondary.length > 0) {
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(secondary.map((action) => controlButton(action, campaignId, text)));
     // A link button needs no click handler: it takes a player straight to the Party channel and its hero cards.
     if (partyUrl !== null) row.addComponents(new ButtonBuilder().setURL(partyUrl).setLabel(text.campaign.button.partyChannel).setStyle(ButtonStyle.Link));
     container.addActionRowComponents(row);
@@ -163,15 +136,14 @@ function displayName(name: string): string {
   return escapeMarkdown(name.replace(/[\r\n]/g, " ").slice(0, 64));
 }
 
-function controlButton(action: CampaignAction, campaignId: string, text: Texts): ButtonBuilder {
+function controlButton(action: PanelActionId, campaignId: string, text: Texts): ButtonBuilder {
   const t = text.campaign.button;
-  const labels: Partial<Record<CampaignAction, string>> = {
+  const labels: Readonly<Record<PanelActionId, string>> = {
     act: t.act,
     pass: t.pass,
     roll: t.roll,
     myHero: t.myHero,
     away: t.away,
-    back: t.back,
     continue: t.continue,
     ready: t.ready,
     begin: t.begin,
