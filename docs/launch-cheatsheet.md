@@ -39,7 +39,8 @@ same Discord application.
 | Goal | Command |
 | --- | --- |
 | Validate all instance files | `npm.cmd run instances:validate` |
-| Build and start declared bots, PostgreSQL, and Lavalink | `npm.cmd run stack:up` |
+| Build and start declared bots, PostgreSQL, Lavalink, and the configured Cloudflare Tunnel | `npm.cmd run stack:up` |
+| Show the full stack, including the Cloudflare Tunnel overlay | `npm.cmd run stack:ps` |
 | Start native PostgreSQL and Lavalink together | `npm.cmd run services:start` |
 | Start PostgreSQL and Lavalink in Docker (detached) | `npm.cmd run services:start:docker` |
 | Follow stack logs | `npm.cmd run stack:logs` |

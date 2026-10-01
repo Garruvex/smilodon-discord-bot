@@ -100,7 +100,7 @@ services:
       GUILD_CONFIG_DIRECTORY: /app/config/local/instances/myinstance/guilds
       RUNTIME_DATA_DIRECTORY: /app/data/instances/myinstance
 
-  # Optional. Keep the connector here so it shares the Compose network with bots.
+  # Optional. The npm stack scripts also load compose.tunnel.yaml for it.
   cloudflared:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
