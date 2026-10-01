@@ -121,7 +121,7 @@ function drawNode(context: SKRSContext2D, node: MapNode, at: { x: number; y: num
   context.textBaseline = "middle";
   context.fillStyle = unknown ? colours.muted : colours.text;
   context.font = `600 ${unknown ? 22 : 15}px "${fontFamily}"`;
-  const title = unknown ? (node.locked ? `🔒 ${labels.unknown}` : labels.unknown) : fitted(context, node.title ?? labels.unknown, boxWidth - 20);
+  const title = unknown ? labels.unknown : fitted(context, node.title ?? labels.unknown, boxWidth - 20);
   const note = current ? labels.here : node.deadEnd ? labels.deadEnd : node.locked ? labels.locked : "";
   context.fillText(title, at.x + boxWidth / 2, at.y + boxHeight / (note === "" ? 2 : 2.6));
   if (note !== "") {
