@@ -354,6 +354,8 @@ export interface PlannedEffect {
   // This effect is part of arriving in that scene (its onEnter effects), so it
   // waits with the move instead of happening before the party gets there.
   readonly arrivalOf?: SceneId;
+  // On a Planner's move: the heroes whose actions head there. Fewer than half of those who acted and the move is not proposed.
+  readonly movers?: readonly CharacterId[];
 }
 
 // The application resolves authored IDs (encounters) to their definitions

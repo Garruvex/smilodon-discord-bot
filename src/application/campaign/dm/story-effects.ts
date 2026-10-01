@@ -71,7 +71,7 @@ export function resolveStoryEffects(
         else if (scene.id === state.sceneId) problems.push(`The party is already in ${scene.id}; drop the transition.`);
         else if (!exits.has(scene.id)) problems.push(`${scene.id} cannot be reached from ${state.sceneId ?? "here"}; the way on is ${[...exits].join(", ") || "closed"}.`);
         // The model's move waits for the table, with the effects of arriving; an authored one (below) happens at once.
-        else effects.push(...withArrival({ kind: "transitionScene", sceneId: scene.id }, bible).map((planned) => ({ effect: planned, when: effect.when, ...(planned.kind === "transitionScene" ? {} : { arrivalOf: scene.id }) })));
+        else effects.push(...withArrival({ kind: "transitionScene", sceneId: scene.id }, bible).map((planned) => ({ effect: planned, when: effect.when, ...(planned.kind === "transitionScene" ? (effect.movers === undefined ? {} : { movers: effect.movers }) : { arrivalOf: scene.id }) })));
         break;
       }
       case "startEncounter": {

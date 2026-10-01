@@ -74,7 +74,7 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     case "sceneTransitioned":
       return { ...state, sceneId: event.sceneId, sceneChangedRound: event.roundNumber, visits: visitsAfterMove(state, event.sceneId, event.roundNumber, event.reason) };
     case "sceneMoveProposed":
-      return { ...state, pendingMove: { sceneId: event.sceneId, proposedRound: event.roundNumber, effects: event.effects, objectors: [] } };
+      return { ...state, pendingMove: { sceneId: event.sceneId, proposedRound: event.roundNumber, effects: event.effects, objectors: [], ...(event.heroes === undefined ? {} : { heroes: event.heroes }) } };
     case "sceneMoveObjected":
       return state.pendingMove === undefined || state.pendingMove.objectors.includes(event.userId)
         ? state

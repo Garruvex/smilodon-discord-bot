@@ -37,8 +37,12 @@ export function proposeMove(decision: Decision, roundNumber: number, deferred: r
   if (move === undefined || move.effect.kind !== "transitionScene") return;
   const { sceneId } = move.effect;
   if (decision.state.pendingMove?.sceneId === sceneId) return;
+  // The party moves together: one hero's wish does not send everyone. Heroes who act are counted from the round in progress.
+  const submissions = Object.values(decision.state.round?.submissions ?? {}).filter((submission) => submission.kind === "action").length;
+  const movers = move.movers ?? [];
+  if (movers.length > 0 && movers.length * 2 < submissions) return;
   const effects = [move, ...deferred.filter((planned) => planned !== move)].map((planned) => planned.effect).filter(isPartyEffect);
-  decision.emit({ kind: "sceneMoveProposed", roundNumber, sceneId, effects });
+  decision.emit({ kind: "sceneMoveProposed", roundNumber, sceneId, effects, ...(movers.length === 0 ? {} : { heroes: movers }) });
 }
 
 // A player suggests a scene. It waits for the table like any other move, and the window that answers it is the round in progress:
@@ -53,7 +57,8 @@ export function proposeMoveByPlayer(decision: Decision, sceneId: SceneId, effect
   if (sceneId === state.sceneId || first?.kind !== "transitionScene" || first.sceneId !== sceneId) return { code: "invalidMove" };
   if (state.pendingMove?.sceneId === sceneId) return null;
   const roundNumber = state.round === null ? state.lastRoundNumber : state.round.number - 1;
-  decision.emit({ kind: "sceneMoveProposed", roundNumber, sceneId, effects, by: userId });
+  const hero = state.members[userId]?.characterId;
+  decision.emit({ kind: "sceneMoveProposed", roundNumber, sceneId, effects, by: userId, ...(hero === null || hero === undefined ? {} : { heroes: [hero] }) });
   return null;
 }
 

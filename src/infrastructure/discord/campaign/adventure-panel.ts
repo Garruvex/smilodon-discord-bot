@@ -105,7 +105,7 @@ function movingLines(view: PanelView, text: Texts): string {
   const move = view.pendingMove;
   if (move === undefined) return "";
   const t = text.campaign.panel;
-  return [t.moving({ scene: displayName(move.sceneTitle) }), ...(move.staying.length === 0 ? [] : [t.movingStay({ names: move.staying.map(displayName).join(", ") })])].join("\n");
+  return [move.wantedBy === undefined || move.wantedBy.length === 0 ? t.moving({ scene: displayName(move.sceneTitle) }) : t.movingBy({ names: move.wantedBy.map(displayName).join(", "), scene: displayName(move.sceneTitle) }), ...(move.staying.length === 0 ? [] : [t.movingStay({ names: move.staying.map(displayName).join(", ") })])].join("\n");
 }
 
 function rosterLine(roster: readonly RosterEntry[], text: Texts): string {

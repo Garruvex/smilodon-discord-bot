@@ -60,7 +60,8 @@ export interface PlannerProposal {
 }
 
 export type PlannerEffect =
-  | { readonly kind: "transitionScene"; readonly sceneId: string; readonly when: EffectCondition }
+  // movers: the heroes whose actions head there this round (absent: not stated, so the move is not judged by who wants it).
+  | { readonly kind: "transitionScene"; readonly sceneId: string; readonly when: EffectCondition; readonly movers?: readonly string[] }
   | { readonly kind: "startEncounter"; readonly encounterId: string; readonly when: EffectCondition }
   | { readonly kind: "advanceClock"; readonly clockId: string; readonly by: number; readonly when: EffectCondition }
   | { readonly kind: "revealClue"; readonly clueId: string; readonly when: EffectCondition };

@@ -90,6 +90,7 @@ export const campaignEn = {
   "campaign.panel.combatStable": "Stable",
   "campaign.panel.combatFled": "Fled",
   "campaign.panel.fallen": "🕯️ Fallen: {names}. Press **My Hero** to take a new hero.",
+  "campaign.panel.movingBy": "🧭 {names} want to go to **{scene}**. If nobody objects, the party goes when this round closes.",
   "campaign.panel.moving": "🧭 The party is heading to **{scene}**. If nobody objects, they go when this round closes.",
   "campaign.panel.movingStay": "Wants to stay: {names}",
   "campaign.panel.waiting": "Nobody is present, so play is on hold. Anyone can press Continue after returning.",

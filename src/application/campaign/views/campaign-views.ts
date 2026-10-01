@@ -171,7 +171,7 @@ export interface PanelView {
   // A scene change waiting for the table: where to, and which heroes pressed Stay.
   // Heroes who fell for good whose players have not taken a new one yet.
   readonly fallen?: readonly string[];
-  readonly pendingMove?: { readonly sceneTitle: string; readonly staying: readonly string[]; readonly stayingUserIds: readonly string[] };
+  readonly pendingMove?: { readonly sceneTitle: string; readonly wantedBy?: readonly string[]; readonly staying: readonly string[]; readonly stayingUserIds: readonly string[] };
 }
 
 export type LobbyMissing = "notEnoughPlayers" | "notReady" | null;
@@ -422,6 +422,7 @@ function pendingMoveOf(state: CampaignState, bible: AdventureBible): NonNullable
   const objectors = move?.objectors ?? [];
   return {
     sceneTitle: findScene(bible, move?.sceneId ?? null)?.title ?? move?.sceneId ?? "",
+    wantedBy: (move?.heroes ?? []).map((characterId) => state.characters[characterId]?.name ?? characterId),
     staying: objectors.flatMap((userId) => {
       const characterId = state.members[userId]?.characterId;
       return characterId === null || characterId === undefined ? [] : [state.characters[characterId]?.name ?? characterId];

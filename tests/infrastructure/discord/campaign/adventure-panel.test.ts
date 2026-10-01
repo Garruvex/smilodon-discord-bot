@@ -36,6 +36,11 @@ describe("the adventure panel", () => {
     expect(card.buttons.map((button) => button.id)).toEqual(["dnd:act:camp", "dnd:speak:camp", "dnd:pass:camp", "dnd:myHero:camp", "dnd:away:camp", "dnd:explore:camp", "dnd:safety:camp", "dnd:more:camp"]);
   });
 
+  it("says who wants a move when it names them", () => {
+    const view: PanelView = { ...collecting, pendingMove: { sceneTitle: "Ruined Chapel", wantedBy: ["Mira"], staying: [], stayingUserIds: [] } };
+    expect(flatten(renderAdventurePanel(view, texts.en, "camp")).text).toContain("Mira want to go to **Ruined Chapel**");
+  });
+
   it("names a fallen hero and points at My Hero", () => {
     const card = flatten(renderAdventurePanel({ ...collecting, fallen: ["Borin"] }, texts.en, "camp"));
     expect(card.text).toContain("Fallen: Borin. Press **My Hero** to take a new hero.");

@@ -213,3 +213,25 @@ describe("the organizer settling a move", () => {
     expect(reject(newCampaign(), organizer, { kind: "settleMove", outcome: "go" })).toEqual({ code: "noPendingMove" });
   });
 });
+
+describe("who wants the move", () => {
+  const heroes = Object.keys(newCampaign().characters);
+  it("is not proposed when fewer than half of the heroes who acted head there", () => {
+    const alone = { ...toChapel, movers: [heroes[0] as string] };
+    const crowd = Object.keys(playRound(run(partyOfThree(), system, { kind: "openRound" }).state).round?.submissions ?? {});
+    expect(crowd.length).toBeGreaterThanOrEqual(3);
+    const state = moveProposed([alone], partyOfThree());
+    expect(state.pendingMove).toBeUndefined();
+    expect(state.sceneId).not.toBe(chapel);
+  });
+
+  it("is proposed with the heroes who want it when at least half head there", () => {
+    const state = moveProposed([{ ...toChapel, movers: heroes }]);
+    expect(state.pendingMove?.heroes).toEqual(heroes);
+  });
+
+  it("is proposed as before when the Planner does not say who is heading there", () => {
+    expect(moveProposed().pendingMove?.heroes).toBeUndefined();
+    expect(moveProposed().pendingMove?.sceneId).toBe(chapel);
+  });
+});

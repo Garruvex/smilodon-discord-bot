@@ -90,6 +90,7 @@ export const campaignZhTW = {
   "campaign.panel.combatStable": "傷勢穩定",
   "campaign.panel.combatFled": "已撤離",
   "campaign.panel.fallen": "🕯️ 倒下：{names}。按「我的英雄」選擇新英雄",
+  "campaign.panel.movingBy": "🧭 {names} 想前往 **{scene}**。若沒有人反對，本回合結束時隊伍就會出發",
   "campaign.panel.moving": "🧭 隊伍正前往 **{scene}**。若沒有人反對，本回合結束時就會出發",
   "campaign.panel.movingStay": "想留下：{names}",
   "campaign.panel.waiting": "目前沒有人在場，遊戲已暫停。\n回來後按「繼續」。",

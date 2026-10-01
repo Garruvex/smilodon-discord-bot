@@ -354,6 +354,8 @@ export interface PendingMove {
   // What happens on arrival, the scene change first.
   readonly effects: readonly PartyEffect[];
   readonly objectors: readonly UserId[];
+  // Who wants to go: the heroes behind the proposal, when it names them.
+  readonly heroes?: readonly CharacterId[];
 }
 
 export interface MemberState {

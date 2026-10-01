@@ -78,7 +78,7 @@ export type CampaignEvent =
   | { readonly kind: "sceneTransitioned"; readonly roundNumber: number; readonly sceneId: SceneId; readonly reason?: "agreed" | "organizer" | "story" }
   // A move the Planner proposed waits for the table: the effects are what
   // arriving brings (the scene change first), applied if the party goes.
-  | { readonly kind: "sceneMoveProposed"; readonly roundNumber: number; readonly sceneId: SceneId; readonly effects: readonly PartyEffect[]; readonly by?: UserId }
+  | { readonly kind: "sceneMoveProposed"; readonly roundNumber: number; readonly sceneId: SceneId; readonly effects: readonly PartyEffect[]; readonly by?: UserId; readonly heroes?: readonly CharacterId[] }
   | { readonly kind: "sceneMoveObjected"; readonly userId: UserId }
   | { readonly kind: "sceneMoveObjectionWithdrawn"; readonly userId: UserId }
   | { readonly kind: "sceneMoveAgreed"; readonly roundNumber: number; readonly sceneId: SceneId; readonly objectors: readonly UserId[]; readonly by: "table" | "organizer" }
