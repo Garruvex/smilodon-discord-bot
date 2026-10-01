@@ -26,7 +26,7 @@ import type { ModelUsage, StructuredModelClient } from "../ports/structured-mode
 // Prompt and schema versions are recorded with each call so harness results
 // and bug reports stay comparable (code structure §8).
 export const plannerPromptVersion = "planner-9";
-export const narratorPromptVersion = "narrator-9";
+export const narratorPromptVersion = "narrator-10";
 export const flourishPromptVersion = "flourish-8";
 export const tradePromptVersion = "trade-2";
 export const dialoguePromptVersion = "dialogue-4";
@@ -295,6 +295,7 @@ export function buildNarratorPrompt(request: NarratorRequest): { system: string;
     zh
       ? "Write 80-180 Traditional Chinese characters (Taiwan usage) in the narration field. A quiet beat may be shorter; cover all committed outcomes even when more space is needed."
       : "Write 40-90 words of English in the narration field. A quiet beat may be shorter; cover all committed outcomes even when more space is needed.",
+    "The whole party is always together in the one place the Scene line names. Never put some heroes in another room, never say they have arrived or moved somewhere the Scene does not name, and never narrate a place the party has not reached. If a hero wanted to go elsewhere, they are only setting out, and only when the context says the party is heading there.",
     "Narrate every outcome below faithfully, in a natural order. Successes succeed and failures fail; never soften or reverse a result.",
     "Connect the outcomes into a scene rather than a list of individual reports. Show the immediate, supported response of the world; vary the rhythm with the stakes, and do not pad a quiet round to meet the target length.",
     "Do not repeat dice numbers or DCs; the table already sees them. A headline moment (a natural 20, a clutch save) deserves a vivid beat.",

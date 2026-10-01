@@ -231,6 +231,11 @@ function liveState(input: ContextInput): ContextSection {
   });
   const scene = findScene(input.bible, state.sceneId);
   const lines = [`Scene: ${scene === undefined ? "none" : `${scene.title}`}.`];
+  if (state.pendingMove !== undefined) {
+    const heading = findScene(input.bible, state.pendingMove.sceneId);
+    // The party has not left: the table can still stop the move, so nothing may be told as if it had arrived.
+    lines.push(`The party is heading to ${heading?.title ?? state.pendingMove.sceneId} but has not arrived and is still in ${scene?.title ?? "the scene above"}. Describe them setting out or on the way, never arriving or what is there.`);
+  }
   if (state.world !== undefined) lines.push(`Story time: ${worldText(state.world)}.`);
   lines.push(state.round === null ? "Between rounds." : `Round ${state.round.number}: ${state.round.status}.`);
   if (input.audience === "planner") {
