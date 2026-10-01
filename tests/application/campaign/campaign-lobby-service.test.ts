@@ -301,3 +301,15 @@ describe("an adventure that changes after the lobby opened", () => {
     expect(library.documentAt("uploaded-tale", "2", "zh-TW")).toBeUndefined();
   });
 });
+
+describe("changing the party size", () => {
+  it("lets the organizer (or an admin) change it, and nobody else", async () => {
+    const { service } = setup();
+    const created = value(await service.create(input({ maxPlayers: 3 })));
+    const key = created.key;
+    expect(value(await service.setPartySize(key, "u-org", 5)).lobby.maxPlayers).toBe(5);
+    expect(value(await service.setPartySize(key, null, 4)).lobby.maxPlayers).toBe(4);
+    expect(await service.setPartySize(key, "u-other", 2)).toEqual({ kind: "refused", reason: "notOrganizer" });
+    expect(await service.setPartySize(key, "u-org", 9)).toEqual({ kind: "refused", reason: "invalidLimits" });
+  });
+});

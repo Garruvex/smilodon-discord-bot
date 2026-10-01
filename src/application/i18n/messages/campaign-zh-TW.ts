@@ -433,6 +433,7 @@ export const campaignZhTW = {
   "campaign.cmd.rested": "隊伍休息了一下",
   "campaign.cmd.fightRetried": "戰鬥從頭開始，骰子全部重擲",
   "campaign.cmd.retried": "地下城主會重新結算這一回合",
+  "campaign.cmd.sized": "團務現在最多可容納 {count} 位玩家",
   "campaign.cmd.reopened": "團務已重新開啟，並暫停在結束的地方。大家準備好後請按繼續",
   "campaign.cmd.repaired": "已檢查並重新繪製這個團務的頻道與卡片",
   "campaign.cmd.repairedRequeued": "已檢查並重新繪製這個團務的頻道與卡片，另有 {count} 則未送出的訊息現在會補送",

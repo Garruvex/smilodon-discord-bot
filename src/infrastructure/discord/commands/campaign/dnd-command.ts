@@ -171,6 +171,11 @@ export class DndCommand implements BotCommand {
       },
       { name: "retry", description: "Asks the DM to try the held round again (organizer)." },
       { name: "repair", description: "Checks this game's channels and redraws its cards (organizer)." },
+      {
+        name: "size",
+        description: "Changes how many players the game takes (organizer).",
+        options: [{ type: "integer", name: "players", description: "Seats in the game, 1 to 6. Never fewer than the players already in it.", required: true, minValue: 1, maxValue: 6 }],
+      },
       { name: "reopen", description: "Opens a finished game again, paused where it stopped (organizer)." },
     ],
   } satisfies BotCommand["definition"];
@@ -181,7 +186,7 @@ export class DndCommand implements BotCommand {
   public readonly helpDetails = [
     "/dnd setup creates the D&D category with a #dnd-games hub channel (or uses the channel you give it), the Public/Private Games and Parties forums, and the DnD Admin and Private Games roles, and posts the hub's Create game button.",
     "The hub is the same things as buttons: Create game, My Characters, New character, Import character, Upload adventure, Write an adventure and a short guide, with each live game listed below and a Manage button on it. /dnd new does the same as Create game: a Games post and a matching Parties post, in the public or private forum pair its visibility picks.",
-    "Everything else is run inside a game's posts: players use the buttons, and the organizer or a DnD Admin uses /dnd pause, resume, close-round, move, rest, level, retry, repair, and reopen (for a finished game).",
+    "Everything else is run inside a game's posts: players use the buttons, and the organizer or a DnD Admin uses /dnd pause, resume, close-round, move, size, rest, level, retry, repair, and reopen (for a finished game).",
   ];
 
   public constructor(private readonly deps: DndCommandDependencies) {}
@@ -338,6 +343,21 @@ export class DndCommand implements BotCommand {
       }
       case "retry":
         return done(await control("retry", () => this.deps.play.retryPlan(key, userId, id)), text.campaign.cmd.retried);
+      case "size": {
+        if (!manager) {
+          await responses.edit(text.campaign.refusal.notOrganizer);
+          return;
+        }
+        const players = interaction.options.getInteger("players", true);
+        const resized = await this.deps.lobby.setPartySize(key, interaction.user.id === found.record.organizerId ? userId : null, players);
+        if (resized.kind === "refused") {
+          await responses.edit(refusalText(text, resized.reason));
+          return;
+        }
+        await this.deps.cards.sync(key);
+        await responses.edit(text.campaign.cmd.sized({ count: players }));
+        return;
+      }
       case "reopen": {
         if (!manager) {
           await responses.edit(text.campaign.refusal.notOrganizer);

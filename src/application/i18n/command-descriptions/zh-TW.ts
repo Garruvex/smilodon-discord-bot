@@ -201,5 +201,7 @@ export const zhTWCommandDescriptions = {
   "dnd/author:language": "撰寫的語言（預設英文）", // The language to write it in (default: English).
   "dnd/author:notes": "你自己的筆記（文字或 Markdown）", // Your own notes to build from (text or Markdown).
   "dnd/repair": "檢查這場團務的頻道並重新繪製卡片（主辦人）", // Checks this game's channels and redraws its cards (organizer).
+  "dnd/size": "更改團務可容納的玩家人數（主辦人）", // Changes how many players the game takes (organizer).
+  "dnd/size:players": "座位數，1 到 6，不能少於已加入的玩家", // Seats in the game, 1 to 6. Never fewer than the players already in it.
   "dnd/reopen": "重新開啟已結束的團務，並暫停在結束的地方（主辦人）", // Opens a finished game again, paused where it stopped (organizer).
 } as const satisfies CommandDescriptionCatalog<keyof typeof jaCommandDescriptions>;

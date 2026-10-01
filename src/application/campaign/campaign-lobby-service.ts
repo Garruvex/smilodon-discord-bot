@@ -374,6 +374,28 @@ export class CampaignLobbyService {
     });
   }
 
+  // The organizer (null: a DnD Admin acting for them) changes how many players the game takes, in the lobby or while it is being played.
+  // It never goes below the players already seated.
+  public setPartySize(key: CampaignKey, actorId: UserId | null, maxPlayers: number): Promise<ServiceResult<CampaignRecord>> {
+    return this.queue.run(queueKey(key), () =>
+      this.options.unitOfWork.transaction(async (tx): Promise<ServiceResult<CampaignRecord>> => {
+        const stored = await tx.loadRecord(key);
+        if (stored === undefined) return refused("notFound");
+        const { record } = stored;
+        if (record.lifecycle === "archived") return refused("closed");
+        if (actorId !== null && record.organizerId !== actorId) return refused("notOrganizer");
+        const campaign = await tx.loadCampaign(key);
+        const seated = Math.max(lobbyRules.activeMembers(record.lobby).length, Object.keys(campaign?.state.members ?? {}).length);
+        const resized = lobbyRules.resize(record.lobby, maxPlayers, seated);
+        if (!resized.ok) return refused(resized.reason);
+        if (resized.lobby === record.lobby) return ok(record);
+        const next: CampaignRecord = { ...record, lobby: resized.lobby };
+        await tx.saveRecord(next, stored.revision);
+        return ok(next);
+      }),
+    );
+  }
+
   // Changes house-rule options while the game is still in its lobby, for the
   // organizer only. Every value is checked against the options the engine
   // implements; nothing else can be saved.

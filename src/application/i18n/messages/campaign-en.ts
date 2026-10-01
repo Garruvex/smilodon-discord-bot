@@ -433,6 +433,7 @@ export const campaignEn = {
   "campaign.cmd.rested": "The party took a rest.",
   "campaign.cmd.retried": "The DM will try that round again.",
   "campaign.cmd.fightRetried": "The fight starts again from the beginning, with fresh dice.",
+  "campaign.cmd.sized": "The game now takes up to {count} players.",
   "campaign.cmd.reopened": "The game is open again and paused where it stopped. Press Resume when everyone is ready.",
   "campaign.cmd.repaired": "The game's channels and cards were checked and redrawn.",
   "campaign.cmd.repairedRequeued": "The game's channels and cards were checked and redrawn. {count} messages that had not gone out will be sent now.",

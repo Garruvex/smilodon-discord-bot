@@ -199,5 +199,7 @@ export const jaCommandDescriptions = {
   "dnd/author:language": "書く言語（既定は英語）", // The language to write it in (default: English).
   "dnd/author:notes": "元にする自分のメモ（テキストまたは Markdown）", // Your own notes to build from (text or Markdown).
   "dnd/repair": "このゲームのチャンネルを確認しカードを描き直します（主催者）", // Checks this game's channels and redraws its cards (organizer).
+  "dnd/size": "ゲームの参加人数を変更します（主催者）", // Changes how many players the game takes (organizer).
+  "dnd/size:players": "席数（1〜6）。すでに参加しているプレイヤー数より少なくはできません", // Seats in the game, 1 to 6. Never fewer than the players already in it.
   "dnd/reopen": "終了したゲームを、止まった場所で一時停止したまま再開できる状態にします（主催者）", // Opens a finished game again, paused where it stopped (organizer).
 } as const satisfies CommandDescriptionCatalog;
