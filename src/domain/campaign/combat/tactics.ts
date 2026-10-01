@@ -127,13 +127,13 @@ function chooseSpell(encounter: EncounterState, monster: Combatant, content: Sea
   return best?.cast ?? null;
 }
 
-// Where an area is best aimed: the zone that catches the most foes for every friend of the caster (itself included) it also catches,
+// Where an area is best aimed: the zone that catches the most foes for every friend of the caster (not itself: it is never caught) it also catches,
 // and never one that catches more friends than foes.
 function bestAreaAnchor(encounter: EncounterState, monster: Combatant, reachable: readonly Combatant[]): { readonly anchor: Combatant | null; readonly net: number } {
   let best: { readonly anchor: Combatant | null; readonly net: number } = { anchor: null, net: 0 };
   for (const anchor of reachable) {
     const inZone = Object.values(encounter.combatants).filter((other) => other.zoneId === anchor.zoneId && isActive(other));
-    const net = inZone.filter((other) => other.side !== monster.side).length - inZone.filter((other) => other.side === monster.side).length;
+    const net = inZone.filter((other) => other.side !== monster.side).length - inZone.filter((other) => other.side === monster.side && other.id !== monster.id).length;
     if (net > best.net) best = { anchor, net };
   }
   return best;

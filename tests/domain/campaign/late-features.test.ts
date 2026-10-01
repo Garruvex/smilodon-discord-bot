@@ -491,8 +491,8 @@ describe("Sculpt Spells", () => {
   }
 
   it("keeps the caster's friends out of an evocation area, as many as the spell's level plus one", () => {
-    expect(fireball([])).toEqual(new Set(["goblin-a", "goblin-b", "c-mira", "c-borin", "c-elspeth"]));
-    // Fireball is 3rd level: four friends spared, which is all three heroes.
+    expect(fireball([])).toEqual(new Set(["goblin-a", "goblin-b", "c-mira", "c-borin"]));
+    // Fireball is 3rd level: four friends spared, which is both of the caster's friends.
     expect(fireball(["feature:sculpt-spells"]).has("c-mira")).toBe(false);
     expect(fireball(["feature:sculpt-spells"])).toEqual(new Set(["goblin-a", "goblin-b"]));
   });

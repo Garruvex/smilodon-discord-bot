@@ -166,7 +166,7 @@ export function spellProblem(
     const problem = spellTargetProblem(encounter, caster, spell, encounter.combatants[targetId], content);
     if (problem !== null) return refuse({ code: problem });
   }
-  return accept({ spell, bonus, targets: spell.targeting.area === true ? withEveryoneInTheirZones(encounter, targets, sparedBy(caster, spell)) : targets });
+  return accept({ spell, bonus, targets: spell.targeting.area === true ? withEveryoneInTheirZones(encounter, targets, sparedBy(caster, spell), caster.id) : targets });
 }
 
 // How many of the caster's friends an area spares: one more than the spell's level, for an evocation cast by a wizard who can sculpt.
@@ -174,10 +174,11 @@ function sparedBy(caster: Combatant, spell: SpellDefinition): { readonly side: C
   return { side: caster.side, count: spell.school === "evocation" && caster.traits.some((trait) => trait.kind === "sculptSpells") ? spell.level + 1 : 0 };
 }
 
-// An area reaches everyone in the zone it is aimed at: the creature named first, then the others, friends and the caster among them.
-function withEveryoneInTheirZones(encounter: EncounterState, named: readonly string[], spared: { readonly side: Combatant["side"]; readonly count: number }): readonly string[] {
+// An area reaches everyone in the zone it is aimed at: the creature named first, then the others, friends among them. The caster aims it
+// and is never caught by it (unless they named themselves).
+function withEveryoneInTheirZones(encounter: EncounterState, named: readonly string[], spared: { readonly side: Combatant["side"]; readonly count: number }, casterId: string): readonly string[] {
   const zones = new Set(named.flatMap((id) => (encounter.combatants[id] === undefined ? [] : [encounter.combatants[id].zoneId])));
-  const others = Object.values(encounter.combatants).filter((other) => zones.has(other.zoneId) && isPresent(other) && !named.includes(other.id));
+  const others = Object.values(encounter.combatants).filter((other) => zones.has(other.zoneId) && isPresent(other) && other.id !== casterId && !named.includes(other.id));
   // Sculpt Spells: some of the caster's friends are left out of the blast.
   let left = spared.count;
   const hit = others.filter((other) => {
