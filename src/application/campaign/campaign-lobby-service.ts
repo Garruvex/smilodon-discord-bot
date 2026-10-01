@@ -72,6 +72,16 @@ export type ChooseSavedResult = ServiceResult<CampaignRecord> | { readonly kind:
 
 export type ServiceResult<T> = { readonly kind: "ok"; readonly value: T } | { readonly kind: "refused"; readonly reason: ServiceRefusal };
 
+export interface ActivityCampaignListingItem {
+  readonly campaignId: string;
+  readonly name: string;
+  readonly adventureTitle: string;
+  readonly lifecycle: "lobby" | "active" | "paused";
+  readonly playerCount: number;
+  readonly maxPlayers: number;
+  readonly action: "join" | "continue" | "request" | "requested" | "invited" | "full" | "resume";
+}
+
 export interface CampaignLobbyServiceOptions {
   readonly unitOfWork: CampaignUnitOfWork;
   readonly bus: CampaignCommandBus;
@@ -165,6 +175,81 @@ export class CampaignLobbyService {
 
   public list(guildId: string): Promise<readonly StoredRecord[]> {
     return this.options.unitOfWork.transaction((tx) => tx.listRecords(guildId));
+  }
+
+  // A deliberately small, access-filtered projection for the Discord Activity lobby.
+  public activityGames(guildId: string, userId: UserId): Promise<readonly ActivityCampaignListingItem[]> {
+    return this.options.unitOfWork.transaction(async (tx) => {
+      const records = await tx.listRecords(guildId, ["lobby", "active", "paused"]);
+      const now = this.options.clock.now();
+      const games: ActivityCampaignListingItem[] = [];
+      for (const { record } of records) {
+        if (record.lifecycle !== "lobby" && record.lifecycle !== "active" && record.lifecycle !== "paused") continue;
+        if (record.lifecycle === "lobby" && record.lobby.status !== "open") continue;
+        const storedCampaign = record.lifecycle === "lobby" ? undefined : await tx.loadCampaign(record.key);
+        if (record.lifecycle !== "lobby" && storedCampaign === undefined) continue;
+        const campaignMember = storedCampaign?.state.members[userId] !== undefined;
+        const lobbyMember = record.lobby.members.some((member) => member.userId === userId && member.status !== "withdrawn");
+        const organizer = record.organizerId === userId;
+        const request = record.joinRequests?.[userId];
+        const requestIsCurrent = request !== undefined && request.expiresAt > now;
+        const invited = requestIsCurrent && (request.status === "invited" || request.status === "approved");
+        const participant = organizer || lobbyMember || campaignMember;
+        const privateGame = record.visibility === "membersOnly";
+
+        // A private campaign name, roster, and existence stay hidden unless the
+        // player already belongs to it or has an unexpired invitation.
+        if (privateGame && !participant && !invited) continue;
+        if (record.lifecycle === "lobby" && !participant && privateGame) continue;
+        if (record.lifecycle !== "lobby" && !participant && !invited && privateGame) continue;
+
+        const adventureTitle = this.options.adventures.documentAt(record.adventure.adventureId, record.adventure.version, record.language)?.bible.title
+          ?? record.adventure.adventureId;
+        if (record.lifecycle === "lobby") {
+          const playerCount = lobbyRules.activeMembers(record.lobby).length;
+          games.push({
+            campaignId: record.key.campaignId,
+            name: record.name,
+            adventureTitle,
+            lifecycle: record.lifecycle,
+            playerCount,
+            maxPlayers: record.lobby.maxPlayers,
+            action: participant ? "continue" : playerCount >= record.lobby.maxPlayers ? "full" : "join",
+          });
+          continue;
+        }
+
+        const playerCount = Object.keys(storedCampaign?.state.members ?? {}).length;
+        const action = participant
+          ? "resume"
+          : invited
+            ? "invited"
+            : requestIsCurrent && request.status === "requested"
+              ? "requested"
+              : "request";
+        games.push({
+          campaignId: record.key.campaignId,
+          name: record.name,
+          adventureTitle,
+          lifecycle: record.lifecycle,
+          playerCount,
+          maxPlayers: record.lobby.maxPlayers,
+          action,
+        });
+      }
+      return games.sort((left, right) => {
+        const lifecycleOrder = { lobby: 0, active: 1, paused: 2 } as const;
+        return lifecycleOrder[left.lifecycle] - lifecycleOrder[right.lifecycle] || left.name.localeCompare(right.name);
+      });
+    });
+  }
+
+  public async joinFromActivity(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>> {
+    const stored = await this.get(key);
+    if (stored === undefined) return refused("notFound");
+    const existing = stored.record.lobby.members.some((member) => member.userId === userId && member.status !== "withdrawn");
+    if (stored.record.visibility === "membersOnly" && stored.record.organizerId !== userId && !existing) return refused("privateInviteOnly");
+    return this.join(key, userId);
   }
 
   public join(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>> {
