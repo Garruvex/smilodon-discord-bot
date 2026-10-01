@@ -89,6 +89,8 @@ export const campaignZhTW = {
   "campaign.panel.combatMore": "…另有 {count} 名參戰者",
   "campaign.panel.combatStable": "傷勢穩定",
   "campaign.panel.combatFled": "已撤離",
+  "campaign.panel.moving": "🧭 隊伍正前往 **{scene}**。若沒有人反對，本回合結束時就會出發",
+  "campaign.panel.movingStay": "想留下：{names}",
   "campaign.panel.waiting": "目前沒有人在場，遊戲已暫停。\n回來後按「繼續」。",
   "campaign.panel.paused": "主辦人已暫停這場團務",
   "campaign.panel.safety": "有玩家需要暫停。\n等大家準備好後，由主辦人繼續遊戲。",
@@ -110,6 +112,7 @@ export const campaignZhTW = {
 
   "campaign.button.act": "行動／修改",
   "campaign.button.pass": "跳過",
+  "campaign.button.stay": "留下／跟上",
   "campaign.button.roll": "擲骰",
   "campaign.button.myHero": "我的英雄",
   "campaign.button.away": "離開／我回來了",
@@ -436,6 +439,8 @@ export const campaignZhTW = {
   "campaign.reply.obsolete": "這個按鈕已過期，請使用最新的訊息",
   "campaign.reply.actionSaved": "已儲存你的行動，回合結束前都可以修改",
   "campaign.reply.passed": "你這回合跳過了",
+  "campaign.reply.stayed": "你想留下。若超過半數的人同意，隊伍就會留下；再按一次即可跟上",
+  "campaign.reply.wentAlong": "你會跟著隊伍前進",
   "campaign.reply.rolled": "擲骰中…",
   "campaign.reply.away": "你已標記為離開，隊伍會繼續前進",
   "campaign.reply.back": "歡迎回來，你會在下一回合加入",
@@ -1004,6 +1009,7 @@ export const campaignZhTW = {
 
   "campaign.refusal.noHero": "你在這個團務中沒有英雄",
   "campaign.refusal.noPendingRoll": "你沒有等待中的擲骰",
+  "campaign.refusal.noPendingMove": "隊伍目前沒有要前往的地方",
   "campaign.refusal.notActive": "這個團務目前沒有進行",
   "campaign.refusal.roundNotCollecting": "現在這一回合沒有在收行動",
   "campaign.refusal.notWearable": "只有護甲與盾牌可以穿上或脫下",

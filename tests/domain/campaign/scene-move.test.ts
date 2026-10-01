@@ -77,6 +77,19 @@ describe("a move the Planner proposes", () => {
   });
 });
 
+describe("a fight proposed with a move", () => {
+  const fightHere: PlannedEffect = { effect: { kind: "startEncounter", encounter: ambush }, when: { kind: "always" } };
+
+  it("calls the move off, since the party is not going anywhere", () => {
+    const state = run(newCampaign(), system, { kind: "openRound" }).state;
+    const played = playRound(state);
+    const applied = run(played, system, { kind: "applyRoundPlan", proposal: plan(played, [toChapel, fightHere]) });
+    expect(kinds(applied.events)).toContain("encounterQueued");
+    expect(kinds(applied.events)).not.toContain("sceneMoveProposed");
+    expect(applied.state.pendingMove).toBeUndefined();
+  });
+});
+
 describe("objecting to a move", () => {
   it("stops it when more than half of the present players press Stay", () => {
     let state = moveProposed([toChapel], partyOfThree());

@@ -274,3 +274,36 @@ encounters:
     expect(() => parseAdventureDocument(yaml(search, lost))).toThrow(/unknown zone moat/);
   });
 });
+
+describe("a move waiting for the table", () => {
+  const { bible } = parseAdventureDocument(yaml(search));
+  const atInn = { ...newCampaign(), sceneId: "scene:inn" as const, gold: 9 };
+
+  it("marks what the model's move brings with it, and nothing else, as arriving with the move", () => {
+    const toField: PlannerProposal = {
+      roundNumber: 1,
+      actions: [],
+      effects: [
+        { kind: "transitionScene", sceneId: "scene:field", when: { kind: "always" } },
+        { kind: "revealClue", clueId: "clue:tracks", when: { kind: "always" } },
+      ],
+    };
+    const resolved = resolveStoryEffects(toField, bible, atInn);
+    if (resolved.kind !== "resolved") throw new Error(resolved.problems.join(" "));
+    const planned = resolved.proposal.effects ?? [];
+    expect(planned.find((effect) => effect.effect.kind === "transitionScene")?.forced).toBeUndefined();
+    expect(planned.find((effect) => effect.effect.kind === "revealClue")?.arrivalOf).toBe("scene:field");
+  });
+
+  it("forces a move the story makes", () => {
+    const resolved = resolveStoryEffects(proposal("interaction:ask-innkeeper"), bible, atInn);
+    if (resolved.kind !== "resolved") throw new Error(resolved.problems.join(" "));
+    expect(resolved.proposal.effects?.find((planned) => planned.effect.kind === "transitionScene")?.forced).toBe(true);
+  });
+
+  it("tells the Planner where the party is already heading", () => {
+    expect(plannerStory(bible, atInn).pendingMoveTo).toBeUndefined();
+    const heading = { ...atInn, pendingMove: { sceneId: "scene:field" as const, proposedRound: 1, effects: [], objectors: [] } };
+    expect(plannerStory(bible, heading).pendingMoveTo).toBe("scene:field");
+  });
+});

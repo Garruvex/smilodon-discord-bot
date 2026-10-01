@@ -63,6 +63,17 @@ describe("the adventure panel", () => {
     expect(labels({ ...collecting, mode: "archived" })).toEqual([]);
   });
 
+  it("says where the party is heading and who wants to stay, with one button to object or go along", () => {
+    const heading: PanelView = { ...collecting, pendingMove: { sceneTitle: "Ruined Chapel", staying: ["Borin"], stayingUserIds: ["2"] } };
+    const card = flatten(renderAdventurePanel(heading, texts.en, "camp")).text;
+    expect(card).toContain("heading to **Ruined Chapel**");
+    expect(card).toContain("Wants to stay: Borin");
+    expect(labels(heading)).toEqual(["Act / Edit", "Speak", "Pass", "My Hero", "Away / I'm back", "Stay here / Go along", "Explore", "Safety", "More…"]);
+    expect(flatten(renderAdventurePanel(heading, texts["zh-TW"], "camp")).text).toContain("**Ruined Chapel**");
+    expect(flatten(renderAdventurePanel(collecting, texts.en, "camp")).text).not.toContain("heading to");
+    expect(labels({ ...heading, mode: "planning" })).not.toContain("Stay here / Go along");
+  });
+
   it("asks everyone to press Ready after the opening, showing who has", () => {
     const view: PanelView = {
       ...collecting,

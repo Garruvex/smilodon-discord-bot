@@ -19,6 +19,7 @@ export const panelActionKinds = {
   continue: "game",
   turn: "game",
   endTurn: "game",
+  stay: "game",
   myHero: "navigation",
   explore: "navigation",
   more: "navigation",
@@ -59,12 +60,14 @@ export interface PanelActions {
   readonly secondary: readonly PanelActionId[];
 }
 
-export function panelActions(view: Pick<PanelView, "mode" | "combat">): PanelActions {
+export function panelActions(view: Pick<PanelView, "mode" | "combat" | "pendingMove">): PanelActions {
   const primary = view.mode === "combat" && view.combat?.playersControl === true ? combatControls : controlsFor[view.mode];
   if (view.mode === "archived") return { primary, secondary: [] };
   // Away and back are one toggle, present in every state so a player marked away can always return.
   const toggle: readonly PanelActionId[] = primary.includes("away") ? [] : ["away"];
   // Explore (people, shops, spells) is for between fights.
-  const secondary: readonly PanelActionId[] = view.mode === "combat" ? [...safetyControls, ...toggle] : ["explore", ...safetyControls, ...toggle];
+  // Stay here is one toggle (object, or take it back), offered while the window that settles a pending move is open.
+  const stay: readonly PanelActionId[] = view.pendingMove !== undefined && view.mode === "collecting" ? ["stay"] : [];
+  const secondary: readonly PanelActionId[] = view.mode === "combat" ? [...safetyControls, ...toggle] : [...stay, "explore", ...safetyControls, ...toggle];
   return { primary, secondary };
 }

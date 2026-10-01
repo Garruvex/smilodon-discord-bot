@@ -168,6 +168,8 @@ export interface PanelView {
   // Heroes whose check is waiting for a click (or its auto-roll).
   readonly pendingRolls: readonly { readonly characterId: string; readonly userId: string; readonly heroName: string; readonly test: CheckTest; readonly action: string | null }[];
   readonly combat: CombatView | null;
+  // A scene change waiting for the table: where to, and which heroes pressed Stay.
+  readonly pendingMove?: { readonly sceneTitle: string; readonly staying: readonly string[]; readonly stayingUserIds: readonly string[] };
 }
 
 export type LobbyMissing = "notEnoughPlayers" | "notReady" | null;
@@ -401,6 +403,20 @@ export function buildPanelView(record: CampaignRecord, state: CampaignState, bib
     roster,
     pendingRolls,
     combat: fight === null ? null : combatViewOf({ state, bible, glossary }, fight, record.houseRules[combatModeId] !== "autopilot"),
+    ...(state.pendingMove === undefined || fight !== null ? {} : { pendingMove: pendingMoveOf(state, bible) }),
+  };
+}
+
+function pendingMoveOf(state: CampaignState, bible: AdventureBible): NonNullable<PanelView["pendingMove"]> {
+  const move = state.pendingMove;
+  const objectors = move?.objectors ?? [];
+  return {
+    sceneTitle: findScene(bible, move?.sceneId ?? null)?.title ?? move?.sceneId ?? "",
+    staying: objectors.flatMap((userId) => {
+      const characterId = state.members[userId]?.characterId;
+      return characterId === null || characterId === undefined ? [] : [state.characters[characterId]?.name ?? characterId];
+    }),
+    stayingUserIds: objectors,
   };
 }
 

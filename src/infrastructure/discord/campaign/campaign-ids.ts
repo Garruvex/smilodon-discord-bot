@@ -43,6 +43,7 @@ export const campaignActions = [
   "offerCancel",
   // Speak in character, the anonymous pause, and the help and links menu.
   "speak",
+  "stay",
   "safety",
   "safetyPause",
   "more",

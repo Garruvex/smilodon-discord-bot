@@ -32,6 +32,8 @@ export interface PlannerRequest {
   // Where the story may go: story effects may name only these IDs.
   readonly story: {
     readonly sceneId: string | null;
+    // A move the table has not yet agreed to: the party is already heading there.
+    readonly pendingMoveTo?: string;
     readonly sceneIds: readonly string[];
     // Encounters not yet fought, with the scene each belongs to.
     readonly encounters: readonly { readonly id: string; readonly sceneId: string }[];

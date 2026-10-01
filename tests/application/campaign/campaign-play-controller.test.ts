@@ -175,4 +175,11 @@ describe("raising the party's level", () => {
     // A DnD Admin acts for the organizer without being named.
     expect(await controller.raiseLevel(key, null, 4, "i-5")).toEqual({ kind: "ok" });
   });
+
+  it("refuses Stay here when the party is not about to go anywhere", async () => {
+    const r = rig();
+    const key = await twoPlayerCampaign(r);
+    const { controller } = controllerFor(r);
+    expect(refusal(await controller.toggleMoveObjection(key, "u-org", "i-stay"))).toBe("noPendingMove");
+  });
 });

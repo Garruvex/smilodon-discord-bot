@@ -13,6 +13,7 @@ export function plannerStory(bible: AdventureBible, state: CampaignState): Plann
   const here = new Set<string>([...(state.sceneId === null ? [] : [state.sceneId]), ...sceneIds]);
   return {
     sceneId: state.sceneId,
+    ...(state.pendingMove === undefined ? {} : { pendingMoveTo: state.pendingMove.sceneId }),
     sceneIds,
     encounters: bible.encounters
       .filter((encounter) => here.has(encounter.sceneId) && !state.encounterHistory.includes(encounter.id))

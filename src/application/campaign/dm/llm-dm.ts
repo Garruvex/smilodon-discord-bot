@@ -158,6 +158,9 @@ export function buildPlannerPrompt(request: PlannerRequest): { system: string; u
   const state = [
     `Clocks: ${request.story.clocks.map((clock) => `${clock.id} ${clock.filled}/${clock.segments} (${clock.sceneId})`).join(", ") || "none"}. Clues not yet revealed: ${request.story.clues.map((clue) => `${clue.id} (${clue.sceneId})`).join(", ") || "none"}.`,
     `Interactions available now: ${(request.story.interactions ?? []).map((interaction) => `${interaction.id} (${interaction.label})`).join("; ") || "none"}.`,
+    ...(request.story.pendingMoveTo === undefined
+      ? []
+      : [`The party is already heading to ${request.story.pendingMoveTo} and the table has not objected yet. Do not propose another scene change this round unless the players clearly head somewhere else.`]),
     `Current scene: ${request.story.sceneId ?? "none"}. Encounters not yet fought: ${request.story.encounters.map((encounter) => `${encounter.id} (${encounter.sceneId})`).join(", ") || "none"}.`,
   ].join("\n");
   const actions = request.actions

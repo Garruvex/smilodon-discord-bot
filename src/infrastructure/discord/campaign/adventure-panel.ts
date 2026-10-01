@@ -37,7 +37,7 @@ export function renderAdventurePanel(view: PanelView, text: Texts, campaignId: s
     .setAccentColor(accentFor[view.mode])
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ${heading}\n${statusLine(view, text)}${view.world === undefined ? "" : `\n-# ${worldLine(view.world, text)}`}`));
 
-  const details = view.mode === "combat" ? combatLines(view, text) : rosterLine(view.roster, text);
+  const details = view.mode === "combat" ? combatLines(view, text) : [movingLines(view, text), rosterLine(view.roster, text)].filter((line) => line !== "").join("\n");
   if (details !== "") container.addSeparatorComponents(new SeparatorBuilder()).addTextDisplayComponents(new TextDisplayBuilder().setContent(details));
 
   const { primary, secondary } = panelActions(view);
@@ -98,6 +98,14 @@ function statusLine(view: PanelView, text: Texts): string {
   }
 }
 
+// A scene change waiting for the table, and who wants to stay.
+function movingLines(view: PanelView, text: Texts): string {
+  const move = view.pendingMove;
+  if (move === undefined) return "";
+  const t = text.campaign.panel;
+  return [t.moving({ scene: displayName(move.sceneTitle) }), ...(move.staying.length === 0 ? [] : [t.movingStay({ names: move.staying.map(displayName).join(", ") })])].join("\n");
+}
+
 function rosterLine(roster: readonly RosterEntry[], text: Texts): string {
   return roster.map((entry) => `${entry.heroName} ${text.campaign.roster[entry.status]}`).join(" · ");
 }
@@ -153,6 +161,7 @@ function controlButton(action: PanelActionId, campaignId: string, text: Texts): 
     safety: t.safety,
     more: t.more,
     explore: t.explore,
+    stay: t.stay,
   };
   const style = action === "act" || action === "roll" || action === "continue" || action === "ready" || action === "turn" ? ButtonStyle.Primary : ButtonStyle.Secondary;
   return new ButtonBuilder().setCustomId(campaignCustomId(action, campaignId)).setLabel(labels[action] ?? action).setStyle(style);

@@ -19,7 +19,7 @@ import type { CampaignKey, CampaignUnitOfWork } from "./ports/campaign-store.js"
 
 // Why a control did nothing. Engine rejections keep their code; the rest are
 // the controller's own. The Discord layer turns each into a private message.
-export type PlayRefusal = RejectionCode | "notFound" | "notActive" | "noHero" | "noPendingRoll" | "npcNotHere" | "notForSale" | "invalidHazard";
+export type PlayRefusal = RejectionCode | "noPendingMove" | "notFound" | "notActive" | "noHero" | "noPendingRoll" | "npcNotHere" | "notForSale" | "invalidHazard";
 
 // What a manager can do to a game from the hub.
 export type ManageAction = "pause" | "resume" | "closeRound" | "retry" | "retryFight" | "retell" | "illustrate" | "illustrateScene" | "shortRest" | "longRest";
@@ -227,6 +227,16 @@ export class CampaignPlayController {
       const check = Object.values(state.checks).find((candidate) => candidate.characterId === heroId && candidate.status === "pending");
       return check === undefined ? "noPendingRoll" : { kind: "requestRoll", checkId: check.id };
     });
+  }
+
+  // Stay here / Go along is one toggle: a player who objected takes it back, anyone else objects.
+  public toggleMoveObjection(key: CampaignKey, userId: UserId, interactionId: string): Promise<PlayResult & { readonly staying?: boolean }> {
+    let staying = false;
+    return this.perform(key, userId, interactionId, (state) => {
+      if (state.pendingMove === undefined) return "noPendingMove";
+      staying = !state.pendingMove.objectors.includes(userId);
+      return { kind: staying ? "objectToMove" : "withdrawObjection" };
+    }).then((result) => (result.kind === "ok" ? { ...result, staying } : result));
   }
 
   public away(key: CampaignKey, userId: UserId, interactionId: string): Promise<PlayResult> {

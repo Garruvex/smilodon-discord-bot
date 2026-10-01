@@ -46,6 +46,14 @@ describe("panelActions", () => {
     }
   });
 
+  it("offers Stay here first on the second row while a move waits and the round is collecting", () => {
+    const pendingMove = { sceneTitle: "Chapel", staying: [], stayingUserIds: [] };
+    expect(panelActions({ ...outside("collecting"), pendingMove }).secondary).toEqual(["stay", "explore", "safety", "more"]);
+    expect(panelActions({ ...outside("planning"), pendingMove }).secondary).not.toContain("stay");
+    expect(panelActions({ ...fight(true), pendingMove }).secondary).not.toContain("stay");
+    expect(panelActions({ ...outside("collecting"), pendingMove }).secondary.length).toBeLessThanOrEqual(4);
+  });
+
   it("classifies actions by what they do", () => {
     expect(panelActionKind("act")).toBe("game");
     expect(panelActionKind("myHero")).toBe("navigation");

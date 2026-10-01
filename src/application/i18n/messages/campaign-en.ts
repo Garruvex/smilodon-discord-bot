@@ -89,6 +89,8 @@ export const campaignEn = {
   "campaign.panel.combatMore": "… {count} more combatants",
   "campaign.panel.combatStable": "Stable",
   "campaign.panel.combatFled": "Fled",
+  "campaign.panel.moving": "🧭 The party is heading to **{scene}**. If nobody objects, they go when this round closes.",
+  "campaign.panel.movingStay": "Wants to stay: {names}",
   "campaign.panel.waiting": "Nobody is present, so play is on hold. Anyone can press Continue after returning.",
   "campaign.panel.paused": "The organizer paused the campaign.",
   "campaign.panel.safety": "Play is paused at a player's request. The organizer resumes it when the table is ready.",
@@ -110,6 +112,7 @@ export const campaignEn = {
 
   "campaign.button.act": "Act / Edit",
   "campaign.button.pass": "Pass",
+  "campaign.button.stay": "Stay here / Go along",
   "campaign.button.roll": "Roll",
   "campaign.button.myHero": "My Hero",
   "campaign.button.away": "Away / I'm back",
@@ -436,6 +439,8 @@ export const campaignEn = {
   "campaign.reply.obsolete": "That control is out of date. Use the newest message.",
   "campaign.reply.actionSaved": "Your action is saved. You can change it until the round closes.",
   "campaign.reply.passed": "You passed this round.",
+  "campaign.reply.stayed": "You want to stay. If more than half of the table agrees, the party stays; press the button again to go along.",
+  "campaign.reply.wentAlong": "You will go along with the party.",
   "campaign.reply.rolled": "Rolling…",
   "campaign.reply.away": "You are away. The party will carry on without you.",
   "campaign.reply.back": "Welcome back. You rejoin at the next round.",
@@ -1004,6 +1009,7 @@ export const campaignEn = {
 
   "campaign.refusal.noHero": "You do not have a hero in this campaign.",
   "campaign.refusal.noPendingRoll": "You have no roll waiting.",
+  "campaign.refusal.noPendingMove": "The party is not about to go anywhere.",
   "campaign.refusal.notActive": "This campaign is not running right now.",
   "campaign.refusal.roundNotCollecting": "The round is not taking actions right now.",
   "campaign.refusal.noOpenRound": "There is no open round.",

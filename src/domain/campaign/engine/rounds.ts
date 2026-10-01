@@ -167,7 +167,9 @@ export function finishRoundIfResolved(decision: Decision): void {
     if (effect.kind === "hurt") takeEnvironmentalDamage(decision, effect.characterId, { kind: "damage", count: effect.count, sides: effect.sides, damageType: effect.damageType });
     else decision.applyStory(round.number, effect);
   }
-  proposeMove(decision, round.number, held);
+  // A fight where the party stands this round settles the matter: a move proposed with it is off. (A move proposed earlier has
+  // already settled by now, as the round closed.)
+  if (decision.state.pendingEncounter === null) proposeMove(decision, round.number, held);
   decision.emit({ kind: "roundResolved", roundNumber: round.number, quiet: false });
   decision.request({ kind: "narrate", roundNumber: round.number });
 }

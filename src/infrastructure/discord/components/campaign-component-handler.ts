@@ -165,6 +165,7 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "begin":
     case "turn":
     case "speak":
+    case "stay":
     case "safety":
     case "more":
     case "explore":
@@ -390,6 +391,10 @@ export class CampaignComponentHandler implements ComponentHandler {
         return void (await this.outcome(await this.deps.play.pass(key, userId, interaction.id), text.campaign.reply.passed, reply, text));
       case "roll":
         return void (await this.outcome(await this.deps.play.roll(key, userId, interaction.id), text.campaign.reply.rolled, reply, text));
+      case "stay": {
+        const toggled = await this.deps.play.toggleMoveObjection(key, userId, interaction.id);
+        return void (await reply(toggled.kind === "ok" ? (toggled.staying === true ? text.campaign.reply.stayed : text.campaign.reply.wentAlong) : refusalText(text, toggled.reason)));
+      }
       case "away":
       case "back": {
         // One toggle: a player who is away comes back, anyone else goes away ("back" is kept for panels posted before the merge).
