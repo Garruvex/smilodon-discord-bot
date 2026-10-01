@@ -1,6 +1,7 @@
 export interface DiscordConfiguration {
   token: string;
   applicationId: string;
+  clientSecret: string | null;
 }
 
 export interface ActivityConfiguration {

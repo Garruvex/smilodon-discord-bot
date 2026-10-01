@@ -1,8 +1,14 @@
+import { randomBytes } from "node:crypto";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { resolve, sep } from "node:path";
 import type { Logger } from "pino";
 
+import type { ActivityCampaignListingItem, ServiceResult } from "../../application/campaign/campaign-lobby-service.js";
+import type { ActivityGameView } from "../../application/campaign/activity-view.js";
+import type { CampaignRecord } from "../../application/campaign/ports/campaign-record.js";
+import type { CampaignKey } from "../../application/campaign/ports/campaign-store.js";
+import type { UserId } from "../../domain/campaign/core/ids.js";
 import type { ActivityConfiguration } from "../../config/configuration.js";
 
 const activityDirectory = resolve(process.cwd(), "assets", "activity");
@@ -19,8 +25,36 @@ export interface ActivityServer {
   stop(): Promise<void>;
 }
 
-export function createActivityServer(configuration: ActivityConfiguration, logger: Logger, applicationId: string): ActivityServer {
+export interface ActivityCampaignApi {
+  listGames(guildId: string, userId: UserId): Promise<readonly ActivityCampaignListingItem[]>;
+  joinLobby(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>>;
+  requestJoin(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>>;
+  withdrawJoin(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>>;
+  snapshot(key: CampaignKey, userId: UserId): Promise<{ readonly kind: "ok"; readonly value: ActivityGameView } | { readonly kind: "refused"; readonly reason: string }>;
+  act(key: CampaignKey, userId: UserId, input: unknown): Promise<{ readonly kind: "ok" } | { readonly kind: "refused"; readonly reason: string }>;
+}
+
+interface ActivitySession {
+  readonly userId: UserId;
+  readonly guildId: string;
+  readonly username: string;
+  readonly displayName: string;
+  readonly expiresAt: number;
+}
+
+const discordApiBase = "https://discord.com/api/v10";
+const sessionLifetimeMs = 60 * 60 * 1000;
+const maxRequestBodyBytes = 16 * 1024;
+
+export function createActivityServer(
+  configuration: ActivityConfiguration,
+  logger: Logger,
+  applicationId: string,
+  clientSecret: string | null,
+  campaigns: ActivityCampaignApi,
+): ActivityServer {
   let server: Server | null = null;
+  const sessions = new Map<string, ActivitySession>();
 
   return {
     start: async (): Promise<void> => {
@@ -28,7 +62,13 @@ export function createActivityServer(configuration: ActivityConfiguration, logge
       if (!existsSync(resolve(activityDirectory, "index.html"))) {
         throw new Error(`Activity web assets are missing from ${activityDirectory}.`);
       }
-      const instance = createServer((request, response) => respond(request, response, applicationId));
+      const instance = createServer((request, response) => {
+        void respond(request, response, applicationId, clientSecret, campaigns, sessions).catch((error: unknown) => {
+          logger.error({ err: error, path: request.url }, "Activity request failed");
+          if (!response.headersSent) writeJson(response, 500, { error: "serverError" });
+          else response.destroy();
+        });
+      });
       await new Promise<void>((resolveListen, rejectListen) => {
         instance.once("error", rejectListen);
         instance.listen(configuration.port, configuration.host, () => {
@@ -43,6 +83,7 @@ export function createActivityServer(configuration: ActivityConfiguration, logge
       const instance = server;
       if (instance === null) return;
       server = null;
+      sessions.clear();
       await new Promise<void>((resolveClose, rejectClose) => {
         instance.close((error) => error ? rejectClose(error) : resolveClose());
       });
@@ -50,15 +91,71 @@ export function createActivityServer(configuration: ActivityConfiguration, logge
   };
 }
 
-function respond(request: IncomingMessage, response: ServerResponse, applicationId: string): void {
+async function respond(
+  request: IncomingMessage,
+  response: ServerResponse,
+  applicationId: string,
+  clientSecret: string | null,
+  campaigns: ActivityCampaignApi,
+  sessions: Map<string, ActivitySession>,
+): Promise<void> {
   const headers = {
     "Content-Security-Policy": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors https://discord.com https://discordapp.com http://localhost:* http://127.0.0.1:*",
     "Referrer-Policy": "no-referrer",
     "X-Content-Type-Options": "nosniff",
   };
   const url = new URL(request.url ?? "/", "http://localhost");
+  if (url.pathname === "/api/activity/session" && request.method === "POST") {
+    await createSession(request, response, headers, applicationId, clientSecret, sessions);
+    return;
+  }
+  if (url.pathname === "/api/activity/games" && request.method === "GET") {
+    const session = requireSession(request, sessions);
+    if (session === null) return writeJson(response, 401, { error: "unauthorized" }, headers);
+    return writeJson(response, 200, { user: { username: session.username, displayName: session.displayName }, games: await campaigns.listGames(session.guildId, session.userId) }, headers);
+  }
+
+  const tableMatch = url.pathname.match(/^\/api\/activity\/games\/([0-9a-f-]{1,64})\/(table|action)$/i);
+  if (tableMatch !== null && tableMatch[1] !== undefined) {
+    const session = requireSession(request, sessions);
+    if (session === null) return writeJson(response, 401, { error: "unauthorized" }, headers);
+    const key: CampaignKey = { guildId: session.guildId, campaignId: tableMatch[1] };
+    if (tableMatch[2] === "table" && request.method === "GET") {
+      const result = await campaigns.snapshot(key, session.userId);
+      if (result.kind === "refused") return writeJson(response, result.reason === "notFound" ? 404 : 403, { error: result.reason }, headers);
+      return writeJson(response, 200, { snapshot: result.value }, headers);
+    }
+    if (tableMatch[2] === "action" && request.method === "POST") {
+      let body: unknown;
+      try {
+        body = await readJsonBody(request);
+      } catch {
+        return writeJson(response, 400, { error: "invalidRequest" }, headers);
+      }
+      const action = await campaigns.act(key, session.userId, body);
+      if (action.kind === "refused") return writeJson(response, 409, { error: action.reason }, headers);
+      const snapshot = await campaigns.snapshot(key, session.userId);
+      if (snapshot.kind === "refused") return writeJson(response, snapshot.reason === "notFound" ? 404 : 403, { error: snapshot.reason }, headers);
+      return writeJson(response, 200, { snapshot: snapshot.value }, headers);
+    }
+  }
+
+  const actionMatch = url.pathname.match(/^\/api\/activity\/games\/([0-9a-f-]{1,64})\/(join|request|withdraw)$/i);
+  if (actionMatch !== null && actionMatch[1] !== undefined && request.method === "POST") {
+    const session = requireSession(request, sessions);
+    if (session === null) return writeJson(response, 401, { error: "unauthorized" }, headers);
+    const key: CampaignKey = { guildId: session.guildId, campaignId: actionMatch[1] };
+    const result = actionMatch[2] === "join"
+      ? await campaigns.joinLobby(key, session.userId)
+      : actionMatch[2] === "request"
+        ? await campaigns.requestJoin(key, session.userId)
+        : await campaigns.withdrawJoin(key, session.userId);
+    if (result.kind === "refused") return writeJson(response, 409, { error: result.reason }, headers);
+    return writeJson(response, 200, { games: await campaigns.listGames(session.guildId, session.userId) }, headers);
+  }
+
   if (request.method !== "GET" && request.method !== "HEAD") {
-    response.writeHead(405, { ...headers, Allow: "GET, HEAD", "Content-Type": "text/plain; charset=utf-8" });
+    response.writeHead(405, { ...headers, Allow: "GET, HEAD, POST", "Content-Type": "text/plain; charset=utf-8" });
     response.end("Method not allowed");
     return;
   }
@@ -92,4 +189,107 @@ function respond(request: IncomingMessage, response: ServerResponse, application
   });
   if (request.method === "HEAD") response.end();
   else createReadStream(filePath).pipe(response);
+}
+
+async function createSession(
+  request: IncomingMessage,
+  response: ServerResponse,
+  headers: Record<string, string>,
+  applicationId: string,
+  clientSecret: string | null,
+  sessions: Map<string, ActivitySession>,
+): Promise<void> {
+  if (clientSecret === null) return writeJson(response, 503, { error: "activityAuthNotConfigured" }, headers);
+  let body: unknown;
+  try {
+    body = await readJsonBody(request);
+  } catch {
+    return writeJson(response, 400, { error: "invalidRequest" }, headers);
+  }
+  if (typeof body !== "object" || body === null) return writeJson(response, 400, { error: "invalidRequest" }, headers);
+  const { code, guildId } = body as { code?: unknown; guildId?: unknown };
+  if (typeof code !== "string" || code.length < 8 || code.length > 4096 || typeof guildId !== "string" || !/^\d{17,20}$/.test(guildId)) {
+    return writeJson(response, 400, { error: "invalidRequest" }, headers);
+  }
+
+  const tokenResponse = await fetch(`${discordApiBase}/oauth2/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: applicationId,
+      client_secret: clientSecret,
+      grant_type: "authorization_code",
+      code,
+    }),
+  });
+  if (!tokenResponse.ok) return writeJson(response, 401, { error: "discordAuthorizationFailed" }, headers);
+  const tokenPayload = await tokenResponse.json() as { access_token?: unknown; expires_in?: unknown };
+  if (typeof tokenPayload.access_token !== "string") return writeJson(response, 401, { error: "discordAuthorizationFailed" }, headers);
+  const accessToken = tokenPayload.access_token;
+
+  // This user-scoped endpoint requires `guilds.members.read`; the returned
+  // member identity both proves guild access and avoids a second Discord API call.
+  const memberResponse = await fetch(`${discordApiBase}/users/@me/guilds/${guildId}/member`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!memberResponse.ok) return writeJson(response, 403, { error: "notInLaunchGuild" }, headers);
+  const member = await memberResponse.json() as { user?: { id?: unknown; username?: unknown; global_name?: unknown } };
+  const user = member.user;
+  if (user === undefined || typeof user.id !== "string" || !/^\d{17,20}$/.test(user.id)) {
+    return writeJson(response, 401, { error: "discordIdentityFailed" }, headers);
+  }
+
+  const now = Date.now();
+  for (const [token, session] of sessions) if (session.expiresAt <= now) sessions.delete(token);
+  if (sessions.size >= 5000) return writeJson(response, 503, { error: "activityBusy" }, headers);
+  const sessionToken = randomBytes(32).toString("base64url");
+  const displayName = typeof user.global_name === "string" && user.global_name.length > 0
+    ? user.global_name
+    : typeof user.username === "string" ? user.username : "Adventurer";
+  sessions.set(sessionToken, {
+    userId: user.id,
+    guildId,
+    username: typeof user.username === "string" ? user.username : displayName,
+    displayName,
+    expiresAt: now + sessionLifetimeMs,
+  });
+  writeJson(response, 200, {
+    access_token: accessToken,
+    session_token: sessionToken,
+    user: { id: user.id, username: typeof user.username === "string" ? user.username : displayName, displayName },
+  }, headers);
+}
+
+function requireSession(request: IncomingMessage, sessions: Map<string, ActivitySession>): ActivitySession | null {
+  const authorization = request.headers.authorization;
+  if (authorization === undefined || !authorization.startsWith("Bearer ")) return null;
+  const token = authorization.slice("Bearer ".length);
+  const session = sessions.get(token);
+  if (session === undefined) return null;
+  if (session.expiresAt <= Date.now()) {
+    sessions.delete(token);
+    return null;
+  }
+  return session;
+}
+
+async function readJsonBody(request: IncomingMessage): Promise<unknown> {
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for await (const chunk of request) {
+    const bytes = typeof chunk === "string" ? Buffer.from(chunk) : chunk as Uint8Array;
+    size += bytes.byteLength;
+    if (size > maxRequestBodyBytes) throw new Error("Request body too large");
+    chunks.push(bytes);
+  }
+  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
+}
+
+function writeJson(response: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}): void {
+  response.writeHead(status, {
+    ...headers,
+    "Cache-Control": "no-store",
+    "Content-Type": "application/json; charset=utf-8",
+  });
+  response.end(JSON.stringify(body));
 }

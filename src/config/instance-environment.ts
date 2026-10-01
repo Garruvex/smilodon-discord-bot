@@ -9,7 +9,7 @@ const instanceNamePattern = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 // master's model), and OPENAI_*/GOOGLE_* (the shared per-vendor API key pool
 // every task draws from) — all instance-owned,
 // none inherited from the shared root .env.
-const instanceOwnedEnvironmentPrefixes = ["CHATBOT_", "UTILITY_", "CAMPAIGN_", "OPENAI_", "GOOGLE_"] as const;
+const instanceOwnedEnvironmentPrefixes = ["DISCORD_CLIENT_SECRET", "CHATBOT_", "UTILITY_", "CAMPAIGN_", "OPENAI_", "GOOGLE_"] as const;
 
 export interface LoadedInstanceEnvironment {
   name: string;

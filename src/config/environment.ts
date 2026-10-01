@@ -42,6 +42,7 @@ const environmentSchema = z.object({
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal"]).default("info"),
   DISCORD_TOKEN: z.string().min(1),
   DISCORD_APPLICATION_ID: z.string().regex(discordSnowflake),
+  DISCORD_CLIENT_SECRET: optionalNonEmptyString,
   ACTIVITY_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   ACTIVITY_HOST: z.string().min(1).default("127.0.0.1"),
   ACTIVITY_PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
@@ -262,6 +263,7 @@ export function loadConfiguration(
     discord: {
       token: parsed.data.DISCORD_TOKEN,
       applicationId: parsed.data.DISCORD_APPLICATION_ID,
+      clientSecret: parsed.data.DISCORD_CLIENT_SECRET ?? null,
     },
     activity: {
       enabled: parsed.data.ACTIVITY_ENABLED,

@@ -22,9 +22,7 @@ import { createActivityServer } from "../infrastructure/activity/activity-server
 
 const configuration = loadConfiguration();
 const logger = createLogger(configuration);
-const activityServer = configuration.activity?.enabled
-  ? createActivityServer(configuration.activity, logger.child({ component: "activity" }), configuration.discord.applicationId)
-  : null;
+let activityServer: ReturnType<typeof createActivityServer> | null = null;
 const persistence = await createPersistenceServices(configuration);
 const guildConfigurationProvider = persistence.guildConfigurationProvider;
 const discordClient = createDiscordClient();
@@ -62,6 +60,16 @@ const dependencies = createDependencies(
   persistence.roleMenuStore,
   persistence.messageReactionWatchStore,
 );
+const activityConfiguration = configuration.activity;
+activityServer = activityConfiguration?.enabled === true
+  ? createActivityServer(
+      activityConfiguration,
+      logger.child({ component: "activity" }),
+      configuration.discord.applicationId,
+      configuration.discord.clientSecret,
+      dependencies.campaign.activity,
+    )
+  : null;
 const controlPanelStateStore = persistence.controlPanelStateStore;
 const controlChannelService = new ControlChannelService(
   discordClient,

@@ -16,7 +16,9 @@ import { CampaignCommandBus } from "../application/campaign/campaign-command-bus
 import { CampaignIssues } from "../application/campaign/campaign-issues.js";
 import { CharacterLibrary } from "../application/campaign/library/character-library.js";
 import { CampaignLobbyService, type ActivityCampaignListingItem, type ServiceResult } from "../application/campaign/campaign-lobby-service.js";
-import { CampaignPlayController } from "../application/campaign/campaign-play-controller.js";
+import { CampaignPlayController, type PlayResult } from "../application/campaign/campaign-play-controller.js";
+import { buildActivityLobbyView, buildActivityTableView, canSeeActivityCampaign, type ActivityGameView } from "../application/campaign/activity-view.js";
+import { libraryHeroRef } from "../application/campaign/library/library-types.js";
 import { CampaignRuntime } from "../application/campaign/campaign-runtime.js";
 import { LlmCampaignChronicler } from "../application/campaign/dm/llm-chronicler.js";
 import { LlmCampaignNarrator, LlmCampaignPlanner } from "../application/campaign/dm/llm-dm.js";
@@ -24,6 +26,7 @@ import type { CampaignNarrator, CampaignPlanner } from "../application/campaign/
 import type { CampaignKey, CampaignTransaction, CampaignUnitOfWork } from "../application/campaign/ports/campaign-store.js";
 import type { CampaignRecord } from "../application/campaign/ports/campaign-record.js";
 import type { UserId } from "../domain/campaign/core/ids.js";
+import type { ContentId } from "../domain/campaign/rules/content-id.js";
 import type { StructuredModelClient } from "../application/campaign/ports/structured-model-client.js";
 import { CryptoRandomSource } from "../application/campaign/random/crypto-random-source.js";
 import { RulesetCatalog } from "../application/campaign/rules/ruleset-catalog.js";
@@ -85,6 +88,9 @@ export interface CampaignModule {
     listGames(guildId: string, userId: UserId): Promise<readonly ActivityCampaignListingItem[]>;
     joinLobby(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>>;
     requestJoin(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>>;
+    withdrawJoin(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>>;
+    snapshot(key: CampaignKey, userId: UserId): Promise<{ readonly kind: "ok"; readonly value: ActivityGameView } | { readonly kind: "refused"; readonly reason: "notFound" | "notActive" | "privateInviteOnly" }>;
+    act(key: CampaignKey, userId: UserId, input: unknown): Promise<{ readonly kind: "ok" } | { readonly kind: "refused"; readonly reason: string }>;
   };
   // Discord events that can take a card or a place away: a message was
   // deleted (or many at once), or a channel was. Each puts things back.
@@ -191,6 +197,9 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
     },
   });
   const play = new CampaignPlayController({ unitOfWork, bus, refresher: cards, adventures });
+  // Activity writes use the same command bus and engine checks, but redraws
+  // the Activity itself instead of also editing Discord cards on every click.
+  const activityPlay = new CampaignPlayController({ unitOfWork, bus, refresher: { refresh: (): void => {} }, adventures });
   const setup = new CampaignSetupService({ unitOfWork, resources, cards, logger, issues });
 
   const model = createModelClient(configuration);
@@ -297,6 +306,207 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
       listGames: (guildId, userId): Promise<readonly ActivityCampaignListingItem[]> => lobby.activityGames(guildId, userId),
       joinLobby: (key, userId): Promise<ServiceResult<CampaignRecord>> => lobby.joinFromActivity(key, userId),
       requestJoin: (key, userId): Promise<ServiceResult<CampaignRecord>> => lobby.requestOngoingJoin(key, userId),
+      withdrawJoin: (key, userId): Promise<ServiceResult<CampaignRecord>> => lobby.withdrawOngoingJoin(key, userId),
+      snapshot: async (key, userId) => {
+        const savedHeroChoices = (await library.list(userId)).flatMap((entry) => entry.snapshots.slice(-1).map((snapshot) => ({ id: libraryHeroRef(snapshot.id), name: entry.character.name, className: entry.character.className })));
+        return unitOfWork.transaction(async (tx) => {
+        const storedRecord = await tx.loadRecord(key);
+        if (storedRecord === undefined) return { kind: "refused", reason: "notFound" } as const;
+        const storedCampaign = await tx.loadCampaign(key);
+        if (!canSeeActivityCampaign(storedRecord.record, storedCampaign?.state, userId, clock.now())) {
+          return { kind: "refused", reason: "privateInviteOnly" } as const;
+        }
+        const adventure = adventures.documentAt(storedRecord.record.adventure.adventureId, storedRecord.record.adventure.version, storedRecord.record.language);
+        if (adventure === undefined) return { kind: "refused", reason: "notFound" } as const;
+        if (storedRecord.record.lifecycle === "lobby") {
+          return { kind: "ok", value: buildActivityLobbyView(storedRecord.record, adventure.bible, userId, adventure.heroes) } as const;
+        }
+        if ((storedRecord.record.lifecycle !== "active" && storedRecord.record.lifecycle !== "paused") || storedCampaign === undefined) {
+          return { kind: "refused", reason: "notActive" } as const;
+        }
+        return {
+          kind: "ok",
+          value: buildActivityTableView(storedRecord.record, storedCampaign.state, adventure.bible, content, glossaries[storedRecord.record.language], userId, adventure.heroes, clock.now(), savedHeroChoices),
+        } as const;
+        });
+      },
+      act: async (key, userId, input) => {
+        if (typeof input !== "object" || input === null || !("kind" in input) || typeof input.kind !== "string") {
+          return { kind: "refused", reason: "invalidAction" };
+        }
+        const action = input as Record<string, unknown>;
+        const id = randomUUID();
+        const textValue = (value: unknown, max = 128): string | null => typeof value === "string" && value.trim().length > 0 && value.length <= max ? value.trim() : null;
+        const integerValue = (value: unknown, min = 0, max = 9): number | null => typeof value === "number" && Number.isInteger(value) && value >= min && value <= max ? value : null;
+        const stringList = (value: unknown): string[] | null => Array.isArray(value) && value.length > 0 && value.length <= 6 && value.every((item) => typeof item === "string" && item.length <= 128) ? value : null;
+        switch (action.kind) {
+          case "chooseHero": {
+            const heroId = textValue(action.heroId);
+            if (heroId === null) return { kind: "refused", reason: "invalidAction" };
+            return lobby.chooseHero(key, userId, heroId).then((result) => result.kind === "ok" ? { kind: "ok" as const } : { kind: "refused" as const, reason: result.reason });
+          }
+          case "startLobby": {
+            const result = await lobby.start(key, userId);
+            return result.kind === "ok" ? { kind: "ok" } : { kind: "refused", reason: result.reason };
+          }
+          case "acceptInvite": return lobby.acceptOngoingInvite(key, userId).then((result) => result.kind === "ok" ? { kind: "ok" as const } : { kind: "refused" as const, reason: result.reason });
+          case "joinHero": {
+            const heroRef = textValue(action.heroRef);
+            if (heroRef === null) return { kind: "refused", reason: "invalidAction" };
+            return lobby.joinOngoingHero(key, userId, heroRef, id).then((result) => result.kind === "ok" ? { kind: "ok" as const } : { kind: "refused" as const, reason: result.reason });
+          }
+          case "withdrawJoin": return lobby.withdrawOngoingJoin(key, userId).then((result) => result.kind === "ok" ? { kind: "ok" as const } : { kind: "refused" as const, reason: result.reason });
+          case "submit": {
+            const text = textValue(action.text, 1500);
+            if (text === null) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.submitAction(key, userId, text, id).then(mapPlayResult);
+          }
+          case "pass": return activityPlay.pass(key, userId, id).then(mapPlayResult);
+          case "roll": return activityPlay.roll(key, userId, id).then(mapPlayResult);
+          case "ready": return activityPlay.ready(key, userId, id).then(mapPlayResult);
+          case "begin": return activityPlay.begin(key, userId, id).then(mapPlayResult);
+          case "continue": return activityPlay.continue(key, userId, id).then(mapPlayResult);
+          case "attack": {
+            const targetId = textValue(action.targetId);
+            const weaponId = textValue(action.weaponId);
+            if (targetId === null || weaponId === null) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatAttack", combatantId: characterId, targetId, weapon: weaponId as ContentId<"item">, ...(action.offHand === true ? { offHand: true as const } : {}), ...(action.nonlethal === true ? { nonlethal: true as const } : {}) })).then(mapPlayResult);
+          }
+          case "move": {
+            const zoneId = textValue(action.zoneId);
+            if (zoneId === null) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatMove", combatantId: characterId, zoneId })).then(mapPlayResult);
+          }
+          case "engage": {
+            const targetId = textValue(action.targetId);
+            if (targetId === null) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatEngage", combatantId: characterId, targetId })).then(mapPlayResult);
+          }
+          case "withdraw": return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatWithdraw", combatantId: characterId })).then(mapPlayResult);
+          case "dash": return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatDash", combatantId: characterId })).then(mapPlayResult);
+          case "feature": {
+            const featureId = textValue(action.featureId);
+            if (featureId === null) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatUseFeature", combatantId: characterId, featureId: featureId as ContentId<"feature"> })).then(mapPlayResult);
+          }
+          case "combatItem": {
+            const itemId = textValue(action.itemId);
+            if (itemId === null) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatUseItem", combatantId: characterId, itemId: itemId as ContentId<"item"> })).then(mapPlayResult);
+          }
+          case "shield": {
+            const itemId = textValue(action.itemId);
+            if (itemId === null || typeof action.on !== "boolean") return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatShield", combatantId: characterId, itemId: itemId as ContentId<"item">, on: action.on as boolean })).then(mapPlayResult);
+          }
+          case "wildShape": {
+            const monsterId = action.monsterId === null ? null : textValue(action.monsterId);
+            if (action.monsterId !== null && monsterId === null) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatWildShape", combatantId: characterId, ...(monsterId === null ? {} : { monsterId: monsterId as ContentId<"monster"> }) })).then(mapPlayResult);
+          }
+          case "moveScene": {
+            const sceneId = textValue(action.sceneId);
+            if (sceneId === null) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.proposeMove(key, userId, sceneId, id).then(mapPlayResult);
+          }
+          case "endTurn": return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "endTurn", combatantId: characterId })).then(mapPlayResult);
+          case "combatDodge": return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatDodge", combatantId: characterId })).then(mapPlayResult);
+          case "combatSpell": {
+            const spellId = textValue(action.spellId);
+            const slotLevel = integerValue(action.slotLevel);
+            const targetIds = stringList(action.targetIds);
+            if (spellId === null || slotLevel === null || targetIds === null) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatCast", combatantId: characterId, spellId: spellId as ContentId<"spell">, slotLevel, targetIds })).then(mapPlayResult);
+          }
+          case "teleport": {
+            const spellId = textValue(action.spellId);
+            const slotLevel = integerValue(action.slotLevel);
+            const zoneId = textValue(action.zoneId);
+            if (spellId === null || slotLevel === null || zoneId === null) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatCast", combatantId: characterId, spellId: spellId as ContentId<"spell">, slotLevel, targetIds: [characterId], zoneId })).then(mapPlayResult);
+          }
+          case "exploreSpell": {
+            const spellId = textValue(action.spellId);
+            if (spellId === null) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.castSpell(key, userId, spellId as ContentId<"spell">, id).then(mapPlayResult);
+          }
+          case "healSpell":
+          case "reviveSpell": {
+            const spellId = textValue(action.spellId);
+            const slotLevel = integerValue(action.slotLevel);
+            const targetId = textValue(action.targetId);
+            if (spellId === null || slotLevel === null || targetId === null) return { kind: "refused", reason: "invalidAction" };
+            const result = action.kind === "healSpell"
+              ? await activityPlay.healSpell(key, userId, spellId as ContentId<"spell">, slotLevel, targetId, id)
+              : await activityPlay.reviveSpell(key, userId, spellId as ContentId<"spell">, slotLevel, targetId, id);
+            return mapPlayResult(result);
+          }
+          case "summonCompanion": {
+            const spellId = textValue(action.spellId);
+            const slotLevel = integerValue(action.slotLevel);
+            if (spellId === null || slotLevel === null) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.summonCompanion(key, userId, spellId as ContentId<"spell">, slotLevel, id).then(mapPlayResult);
+          }
+          case "askNpc": {
+            const npcId = textValue(action.npcId);
+            const question = textValue(action.question, 500);
+            if (npcId === null || question === null) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.ask(key, userId, npcId, question, id).then(mapPlayResult);
+          }
+          case "pressNpc": {
+            const npcId = textValue(action.npcId);
+            const skill = textValue(action.skill, 32);
+            if (npcId === null || !["insight", "persuasion", "deception", "intimidation"].includes(skill ?? "")) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.press(key, userId, npcId, skill as "insight" | "persuasion" | "deception" | "intimidation", id).then(mapPlayResult);
+          }
+          case "shop": {
+            const npcId = textValue(action.npcId);
+            const itemId = textValue(action.itemId);
+            if (npcId === null || itemId === null || (action.direction !== "buy" && action.direction !== "sell")) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.trade(key, userId, { npcId, itemId: itemId as ContentId<"item">, direction: action.direction }, id).then(mapPlayResult);
+          }
+          case "useItem": {
+            const itemId = textValue(action.itemId);
+            if (itemId === null) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.useItem(key, userId, itemId as ContentId<"item">, id).then(mapPlayResult);
+          }
+          case "stashItem":
+          case "takeFromStash": {
+            const itemId = textValue(action.itemId);
+            if (itemId === null) return { kind: "refused", reason: "invalidAction" };
+            const result = action.kind === "stashItem"
+              ? await activityPlay.stash(key, userId, itemId as ContentId<"item">, id)
+              : await activityPlay.takeFromStash(key, userId, itemId as ContentId<"item">, id);
+            return mapPlayResult(result);
+          }
+          case "wearItem":
+          case "removeItem": {
+            const itemId = textValue(action.itemId);
+            if (itemId === null) return { kind: "refused", reason: "invalidAction" };
+            const result = action.kind === "wearItem"
+              ? await activityPlay.wear(key, userId, itemId as ContentId<"item">, id)
+              : await activityPlay.remove(key, userId, itemId as ContentId<"item">, id);
+            return mapPlayResult(result);
+          }
+          case "reaction": {
+            const spellId = action.spellId === null ? null : textValue(action.spellId);
+            const slotLevel = action.slotLevel === null ? null : integerValue(action.slotLevel);
+            if (action.spellId !== null && (spellId === null || slotLevel === null)) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatReact", combatantId: characterId, spellId: spellId as ContentId<"spell"> | null })).then(mapPlayResult);
+          }
+          case "smite": {
+            const slotLevel = action.slotLevel === null ? null : integerValue(action.slotLevel);
+            if (action.slotLevel !== null && slotLevel === null) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatSmite", combatantId: characterId, slotLevel })).then(mapPlayResult);
+          }
+          case "opportunityAttack": {
+            const targetId = textValue(action.targetId);
+            if (action.accept === true && targetId === null) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatOpportunityAttack", combatantId: characterId, take: action.accept === true })).then(mapPlayResult);
+          }
+          default: return { kind: "refused", reason: "invalidAction" };
+        }
+      },
     },
     handleMessagesDeleted: (guildId, channelId, messageIds): void => {
       void cards.handleMessagesDeleted(guildId, channelId, messageIds).catch(logFailure("Campaign card recovery after a deleted message failed", guildId));
@@ -331,6 +541,10 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
       await postgres?.close();
     },
   };
+}
+
+function mapPlayResult(result: PlayResult): { readonly kind: "ok" } | { readonly kind: "refused"; readonly reason: string } {
+  return result.kind === "ok" ? result : { kind: "refused", reason: result.reason };
 }
 
 function createModelClient(configuration: ApplicationConfiguration): StructuredModelClient | null {

@@ -248,7 +248,11 @@ export class CampaignLobbyService {
     const stored = await this.get(key);
     if (stored === undefined) return refused("notFound");
     const existing = stored.record.lobby.members.some((member) => member.userId === userId && member.status !== "withdrawn");
-    if (stored.record.visibility === "membersOnly" && stored.record.organizerId !== userId && !existing) return refused("privateInviteOnly");
+    const invitation = stored.record.joinRequests?.[userId];
+    const hasInvitation = invitation !== undefined
+      && invitation.expiresAt > this.options.clock.now()
+      && (invitation.status === "invited" || invitation.status === "approved");
+    if (stored.record.visibility === "membersOnly" && stored.record.organizerId !== userId && !existing && !hasInvitation) return refused("privateInviteOnly");
     return this.join(key, userId);
   }
 
@@ -265,6 +269,14 @@ export class CampaignLobbyService {
       const current = record.joinRequests?.[userId];
       if (current !== undefined && current.expiresAt > this.options.clock.now()) return current;
       return { status: "requested", expiresAt: this.options.clock.now() + 7 * 24 * 60 * 60 * 1000 };
+    });
+  }
+
+  public withdrawOngoingJoin(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>> {
+    return this.changeJoinRequest(key, userId, (record) => {
+      const current = record.joinRequests?.[userId];
+      if (current === undefined || current.status !== "requested") return "notMember";
+      return null;
     });
   }
 
