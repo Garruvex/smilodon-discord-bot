@@ -120,3 +120,15 @@ describe("checking the routes between scenes", () => {
     expect(routeWarnings({ ...chain, bible: { ...chain.bible, linear: true } })).toEqual([]);
   });
 });
+
+describe("routes and authored jumps", () => {
+  it("counts a scene an authored goto leads to as reachable", () => {
+    const [first, second, third] = starter.en.bible.scenes;
+    if (first === undefined || second === undefined || third === undefined) throw new Error("scenes");
+    const scenes = [{ ...first, exits: [{ to: second.id }] }, { ...second, exits: [{ to: first.id }] }, { ...third, exits: [{ to: second.id }] }];
+    const base = { ...starter.en, bible: { ...starter.en.bible, startScene: first.id, scenes, encounters: [], interactions: [] } };
+    expect(routeWarnings(base)).toContain(`${third.id} cannot be reached from the start scene by its exits.`);
+    const jump = { kind: "goto", scene: third.id };
+    expect(routeWarnings({ ...base, bible: { ...base.bible, interactions: [{ onSuccess: [jump] }] as unknown as typeof base.bible.interactions } })).not.toContain(`${third.id} cannot be reached from the start scene by its exits.`);
+  });
+});

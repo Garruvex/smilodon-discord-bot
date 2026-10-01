@@ -69,8 +69,19 @@ export function routeWarnings(document: AdventureDocument): readonly string[] {
   const { scenes, startScene } = document.bible;
   if (!scenes.some((scene) => scene.exits !== undefined)) return [];
   const byId = new Map(scenes.map((scene) => [scene.id as string, scene]));
-  const reached = new Set<string>([startScene]);
-  const queue = [startScene as string];
+  // An authored goto (a fight's victory, an interaction's result) takes the party there whatever the exits say.
+  const jumps = new Set<string>();
+  const collect = (value: unknown): void => {
+    if (Array.isArray(value)) value.forEach(collect);
+    else if (typeof value === "object" && value !== null) {
+      const record = value as Record<string, unknown>;
+      if (record["kind"] === "goto" && typeof record["scene"] === "string") jumps.add(record["scene"]);
+      Object.values(record).forEach(collect);
+    }
+  };
+  collect(document.bible);
+  const reached = new Set<string>([startScene, ...jumps]);
+  const queue = [...reached];
   for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
     const scene = byId.get(next);
     const targets = scene?.exits === undefined ? scenes.map((other) => other.id as string) : scene.exits.map((exit) => exit.to as string);
