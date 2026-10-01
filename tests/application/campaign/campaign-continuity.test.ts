@@ -331,6 +331,7 @@ describe("pictures of monsters and moments", () => {
             save: (key, subject, image): Promise<void> => (kept.set(`${key.campaignId}:${subject}`, image), Promise.resolve()),
             load: (key, subject): Promise<GeneratedImage | undefined> => Promise.resolve(kept.get(`${key.campaignId}:${subject}`)),
             remove: (key, subject): Promise<void> => (kept.delete(`${key.campaignId}:${subject}`), Promise.resolve()),
+            removeAll: (): Promise<void> => Promise.resolve(),
           },
           monsterName: (id, language): string | undefined => (language === "en" ? enSrd51Glossary : zhTwSrd51Glossary).names[id],
           ...extra,

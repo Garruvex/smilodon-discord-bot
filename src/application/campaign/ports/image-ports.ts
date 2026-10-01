@@ -35,6 +35,8 @@ export interface ImageAssetStore {
   save(key: { readonly guildId: string; readonly campaignId: string }, sceneId: string, image: GeneratedImage): Promise<void>;
   load(key: { readonly guildId: string; readonly campaignId: string }, sceneId: string): Promise<GeneratedImage | undefined>;
   remove(key: { readonly guildId: string; readonly campaignId: string }, sceneId: string): Promise<void>;
+  // Every picture still waiting for a game (when it ends).
+  removeAll(key: { readonly guildId: string; readonly campaignId: string }): Promise<void>;
 }
 
 // Where a finished picture goes: the game's Adventure channel.

@@ -42,6 +42,10 @@ class Shelf implements ImageAssetStore {
     this.kept.delete(`${key.campaignId}:${sceneId}`);
     return Promise.resolve();
   }
+  public removeAll(key: CampaignKey): Promise<void> {
+    for (const name of [...this.kept.keys()]) if (name.startsWith(`${key.campaignId}:`)) this.kept.delete(name);
+    return Promise.resolve();
+  }
 }
 
 async function table(): Promise<{ r: Rig; key: CampaignKey; painter: Painter; posted: { channelId: string; caption: string }[]; worker: ImageWorker; failPost: { on: boolean }; shelf: Shelf }> {

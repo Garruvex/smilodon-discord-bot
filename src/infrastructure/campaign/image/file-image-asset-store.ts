@@ -32,6 +32,10 @@ export class FileImageAssetStore implements ImageAssetStore {
     for (const extension of Object.values(extensions)) await rm(join(this.folder(key), `${safe(sceneId)}.${extension}`), { force: true });
   }
 
+  public async removeAll(key: { guildId: string; campaignId: string }): Promise<void> {
+    await rm(this.folder(key), { recursive: true, force: true });
+  }
+
   private folder(key: { guildId: string; campaignId: string }): string {
     return join(this.directory, safe(key.guildId), safe(key.campaignId));
   }

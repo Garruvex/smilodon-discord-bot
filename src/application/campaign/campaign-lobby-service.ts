@@ -87,6 +87,8 @@ export interface CampaignLobbyServiceOptions {
   // Called after a game starts, so the places it lives in can be adjusted (a
   // players-only game hides its channels then).
   readonly onStarted?: (key: CampaignKey) => void;
+  // Called after a game is ended, to clear what it left behind (pictures waiting to be posted).
+  readonly onEnded?: (key: CampaignKey) => void;
 }
 
 export const nameLimits = { min: 2, max: 60 } as const;
@@ -328,6 +330,7 @@ export class CampaignLobbyService {
       if (ended.kind === "refused") return ended;
       // Stops the clock. Refused when it is already paused or never started, which is fine.
       await this.options.bus.execute(key, { kind: "pauseCampaign", reason: "organizer" }, { commandId: `end:${key.campaignId}`, actor: { kind: "system" } });
+      this.options.onEnded?.(key);
       return ended;
     });
   }

@@ -166,6 +166,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
   const heroPictures = new HeroPictures({ portraitFor: (libraryCharacterId): ReturnType<typeof portraits.forGame> => portraits.forGame(libraryCharacterId) });
   const cards = new CampaignCardService({ unitOfWork, rulesets, adventures, messages, glossaries, logger, issues, resources, pictures: heroPictures });
   const presenter = new DiscordCampaignPresenter({ unitOfWork, messages, cards, adventures, glossaries });
+  const imageAssets = new FileImageAssetStore(resolve(configuration.runtimeDataDirectory, "campaign-images"));
   const lobby = new CampaignLobbyService({
     unitOfWork,
     library,
@@ -175,6 +176,9 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
     clock,
     ruleset: { rulesetId: content.rulesetId, rulesetVersion: content.version, houseRules: {} },
     // A players-only game hides its channels once it starts.
+    onEnded: (key): void => {
+      void imageAssets.removeAll(key).catch(logFailure("Leftover campaign pictures could not be removed", key.guildId));
+    },
     onStarted: (key): void => {
       void setup.applyVisibility(key).catch(logFailure("Campaign visibility could not be applied", key.guildId));
     },
@@ -209,7 +213,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
             sink: { post: (channelId, image, caption): Promise<void> => messages.sendImage(channelId, image.bytes, image.mediaType, caption) },
             fallback: monsterGalleryImage,
             monsterName: (monsterId, language): string | undefined => glossaries[language].names[monsterId],
-            assets: new FileImageAssetStore(resolve(configuration.runtimeDataDirectory, "campaign-images")),
+            assets: imageAssets,
             portraits,
           }),
         }),
