@@ -2,6 +2,7 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ChannelType,
   MessageFlags,
   ModalBuilder,
   StringSelectMenuBuilder,
@@ -234,11 +235,6 @@ export class CampaignComponentHandler implements ComponentHandler {
     const { interaction } = context;
     const parsed = parseCampaignId(interaction.customId);
     if (parsed === null || interaction.guildId === null) return;
-    // Discord opens the Activity itself as the click's only response.
-    if (parsed.action === "playActivity" && interaction.isButton()) {
-      await interaction.launchActivity();
-      return;
-    }
     const key: CampaignKey = { guildId: interaction.guildId, campaignId: parsed.campaignId };
     const stored = await this.deps.lobby.get(key);
     if (stored === undefined) {
@@ -247,6 +243,17 @@ export class CampaignComponentHandler implements ComponentHandler {
     }
     const { record } = stored;
     const text = texts[record.language];
+
+    // Discord opens the Activity itself as the click's only response. A forum post cannot host one, so there the player is told how to start it.
+    if (parsed.action === "playActivity" && interaction.isButton()) {
+      const channel = interaction.channel;
+      if (channel?.isThread() === true && channel.parent?.type === ChannelType.GuildForum) {
+        await interaction.reply({ content: text.campaign.reply.activityNotHere, flags: MessageFlags.Ephemeral });
+        return;
+      }
+      await interaction.launchActivity();
+      return;
+    }
 
     if (interaction.isStringSelectMenu()) {
       if (parsed.action === "newHero") await this.joinReplacement(interaction, record, text);

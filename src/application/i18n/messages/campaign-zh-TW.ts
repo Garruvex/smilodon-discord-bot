@@ -451,6 +451,7 @@ export const campaignZhTW = {
 
   "campaign.reply.fallen": "你的英雄已經陣亡。請選擇一位新英雄，下一回合加入隊伍",
   "campaign.reply.newHero": "**{hero}** 加入了隊伍",
+  "campaign.reply.activityNotHere": "論壇貼文無法執行 Activity，請在這個伺服器的語音頻道或其他文字頻道啟動 D&D Table，再選擇這場遊戲",
   "campaign.reply.obsolete": "這個按鈕已過期，請使用最新的訊息",
   "campaign.reply.actionSaved": "已儲存你的行動，回合結束前都可以修改",
   "campaign.reply.passed": "你這回合跳過了",
