@@ -256,7 +256,8 @@ export class LlmCampaignPlanner implements CampaignPlanner {
       ...cacheKeyFor(this.options, "planner"),
       schemaName: "campaign_round_plan",
       jsonSchema: plannerJsonSchema(request),
-      maxOutputTokens: this.options.maxOutputTokens ?? 3_000,
+      // Reasoning tokens count against this limit: a plan cut off at 3,000 came back unfinished.
+      maxOutputTokens: this.options.maxOutputTokens ?? 6_000,
       timeoutMs: this.options.timeoutMs ?? 45_000,
     });
     this.options.onCall?.({ call: "planner", model: response.model, promptVersion: plannerPromptVersion, usage: response.usage });

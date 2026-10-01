@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { EncounterSpec, PlannedEffect, RoundPlanProposal } from "../../../src/domain/campaign/commands/campaign-command.js";
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
 import { alex, d20Roll, jamie, kinds, newCampaign, organizer, reject, run, system } from "./campaign-fixtures.js";
+import { deferredMove, surplusMove } from "../../../src/domain/campaign/engine/scene-move.js";
 import { replay } from "../../../src/domain/campaign/events/evolve.js";
 import { Fight, skirmish } from "./combat-fixtures.js";
 
@@ -100,6 +101,27 @@ describe("story effects", () => {
         "Encounter encounter:other: Unknown monster monster:dragon.",
       ],
     });
+  });
+
+  it("accepts a move for each way a check can go, and holds only the one that fires", () => {
+    const onSuccess: PlannedEffect = { effect: { kind: "transitionScene", sceneId: "scene:ruined-chapel" }, when: { kind: "checkOutcome", characterId: "c-mira", success: true } };
+    const onFailure: PlannedEffect = { effect: { kind: "transitionScene", sceneId: "scene:old-watchtower" }, when: { kind: "checkOutcome", characterId: "c-mira", success: false } };
+    const planned = run(closedRound(), system, { kind: "applyRoundPlan", proposal: sneaking([onSuccess, onFailure]) }).state;
+    const succeeded = rollStealth(planned, 15);
+    const proposed = succeeded.events.filter((event) => event.kind === "sceneMoveProposed");
+    expect(proposed).toHaveLength(1);
+    expect(proposed[0]).toMatchObject({ sceneId: "scene:ruined-chapel" });
+    expect(kinds(succeeded.events)).not.toContain("sceneTransitioned");
+  });
+
+  it("holds the first move when two fire at once, and drops the other with what it brings", () => {
+    const first: PlannedEffect = { effect: { kind: "transitionScene", sceneId: "scene:ruined-chapel" }, when: { kind: "always" } };
+    const second: PlannedEffect = { effect: { kind: "transitionScene", sceneId: "scene:old-watchtower" }, when: { kind: "always" } };
+    const clue: PlannedEffect = { effect: { kind: "transitionScene", sceneId: "scene:old-watchtower" }, when: { kind: "always" }, arrivalOf: "scene:old-watchtower" };
+    const held = deferredMove([first, second, clue]);
+    expect(held).toEqual([first]);
+    expect(surplusMove([first, second, clue], held)).toEqual([second, clue]);
+    expect(surplusMove([first], deferredMove([first]))).toEqual([]);
   });
 
   it("runs each encounter only once", () => {

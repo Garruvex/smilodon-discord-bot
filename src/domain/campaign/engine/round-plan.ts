@@ -109,7 +109,8 @@ function effectProblems(decision: Decision, proposal: RoundPlanProposal, checkEn
   const effects = proposal.effects ?? [];
   const problems: string[] = [];
   const count = (kind: PlannedEffect["effect"]["kind"]): number => effects.filter((planned) => planned.effect.kind === kind).length;
-  if (count("transitionScene") > 1) problems.push("Only one scene transition per round.");
+  // Several moves are fine when the checks decide between them (success one way, failure another); only one may fire, see rounds.ts.
+  if (effects.filter((planned) => planned.effect.kind === "transitionScene" && planned.when.kind === "always").length > 1) problems.push("Only one scene transition per round.");
   if (count("startEncounter") > 1) problems.push("Only one encounter per round.");
   const clocks = effects.flatMap(({ effect }) => (effect.kind === "advanceClock" ? [effect.clockId] : []));
   if (new Set(clocks).size !== clocks.length) problems.push("Advance each clock at most once per round.");

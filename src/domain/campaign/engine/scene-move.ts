@@ -22,6 +22,14 @@ export function deferredMove(fired: readonly PlannedEffect[]): readonly PlannedE
   return fired.filter((planned) => planned === move || planned.arrivalOf === sceneId);
 }
 
+// A second move that fired in the same round (the checks decided two branches at once): the party can only head one way, so the
+// first stands and the other, with what arriving there would have brought, is dropped.
+export function surplusMove(fired: readonly PlannedEffect[], held: readonly PlannedEffect[]): readonly PlannedEffect[] {
+  const extra = fired.filter((planned) => planned.effect.kind === "transitionScene" && planned.forced !== true && !held.includes(planned));
+  const dropped = new Set(extra.flatMap((planned) => (planned.effect.kind === "transitionScene" ? [planned.effect.sceneId] : [])));
+  return fired.filter((planned) => extra.includes(planned) || (planned.arrivalOf !== undefined && dropped.has(planned.arrivalOf) && !held.includes(planned)));
+}
+
 // Holds a proposed move for the table. A repeat of the move already waiting
 // changes nothing, so objections stand; a different one replaces it.
 export function proposeMove(decision: Decision, roundNumber: number, deferred: readonly PlannedEffect[]): void {

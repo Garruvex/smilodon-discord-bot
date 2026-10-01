@@ -7,7 +7,7 @@ import { rollTimerId, roundTimerId } from "./ids.js";
 import type { Rejection } from "./rejection.js";
 import { scheduleReminder } from "./reminders.js";
 import { firedEffects } from "./round-plan.js";
-import { deferredMove, proposeMove, settleDueMove } from "./scene-move.js";
+import { deferredMove, proposeMove, settleDueMove, surplusMove } from "./scene-move.js";
 
 export const maxActionLength = 500;
 
@@ -162,7 +162,8 @@ export function finishRoundIfResolved(decision: Decision): void {
   const fired = [...firedEffects(state, round)].sort((a, b) => effectOrder[a.effect.kind] - effectOrder[b.effect.kind]);
   // A move the story does not force waits for the table; everything else happens now.
   const held = deferredMove(fired);
-  for (const { effect } of fired.filter((candidate) => !held.includes(candidate))) {
+  const surplus = surplusMove(fired, held);
+  for (const { effect } of fired.filter((candidate) => !held.includes(candidate) && !surplus.includes(candidate))) {
     // Harm to a hero is an Exploration rule (the dice decide); a hero already down or already hurt this moment is spared.
     if (effect.kind === "hurt") takeEnvironmentalDamage(decision, effect.characterId, { kind: "damage", count: effect.count, sides: effect.sides, damageType: effect.damageType });
     else decision.applyStory(round.number, effect);
