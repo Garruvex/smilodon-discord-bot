@@ -1,4 +1,5 @@
 import type { PartyEffect, PlannedEffect } from "../commands/campaign-command.js";
+import type { SceneId } from "../adventure/adventure-bible.js";
 import type { UserId } from "../core/ids.js";
 import { presentMembers, type CampaignState } from "../state/campaign-state.js";
 import type { Decision } from "./decision.js";
@@ -30,6 +31,22 @@ export function proposeMove(decision: Decision, roundNumber: number, deferred: r
   if (decision.state.pendingMove?.sceneId === sceneId) return;
   const effects = [move, ...deferred.filter((planned) => planned !== move)].map((planned) => planned.effect).filter(isPartyEffect);
   decision.emit({ kind: "sceneMoveProposed", roundNumber, sceneId, effects });
+}
+
+// A player suggests a scene. It waits for the table like any other move, and the window that answers it is the round in progress:
+// it settles as that round closes. (A move the Planner proposes was settled a round later, since its round was already over.)
+export function proposeMoveByPlayer(decision: Decision, sceneId: SceneId, effects: readonly PartyEffect[]): Rejection | null {
+  const userId = presentPlayer(decision);
+  if (typeof userId !== "string") return userId;
+  const { state } = decision;
+  if (state.status === "waitingForPlayers") return { code: "campaignWaiting" };
+  if ((state.encounter !== null && state.encounter.status !== "ended") || state.pendingEncounter !== null) return { code: "inCombat" };
+  const first = effects[0];
+  if (sceneId === state.sceneId || first?.kind !== "transitionScene" || first.sceneId !== sceneId) return { code: "invalidMove" };
+  if (state.pendingMove?.sceneId === sceneId) return null;
+  const roundNumber = state.round === null ? state.lastRoundNumber : state.round.number - 1;
+  decision.emit({ kind: "sceneMoveProposed", roundNumber, sceneId, effects, by: userId });
+  return null;
 }
 
 export function objectToMove(decision: Decision): Rejection | null {

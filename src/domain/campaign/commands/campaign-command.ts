@@ -42,6 +42,9 @@ export type CampaignCommand =
   // The owner lets another player at the table play their hero in fights while they are away, or takes it back.
   | { readonly kind: "grantProxy"; readonly proxyUserId: UserId }
   | { readonly kind: "revokeProxy" }
+  // A player suggests heading to a scene: the same vote as a move the Planner proposes. The application checks the way is open and
+  // supplies what arriving brings (the scene change first).
+  | { readonly kind: "proposeMove"; readonly sceneId: SceneId; readonly effects: readonly PartyEffect[] }
   // The party is heading to a new scene. A player presses Stay to object, or takes it back.
   | { readonly kind: "objectToMove" }
   | { readonly kind: "withdrawObjection" }

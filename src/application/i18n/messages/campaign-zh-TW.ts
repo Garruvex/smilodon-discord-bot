@@ -818,6 +818,9 @@ export const campaignZhTW = {
   "campaign.explore.intro": "和這裡的人交談、交易，或施展法術。每次回應後都能繼續交談；按「返回」可離開對話。交談不會結束本回合，全桌玩家都會聽到結果。",
   "campaign.explore.nobody": "這裡沒有可以交談的人。",
   "campaign.explore.npcPlaceholder": "你要和誰交談？",
+  "campaign.explore.placePlaceholder": "提議隊伍前往哪裡…",
+  "campaign.explore.placeVisited": "你們來過這裡",
+  "campaign.explore.proposed": "你提議前往 **{scene}**。若沒有人反對，本回合結束時隊伍就會出發",
   "campaign.explore.trades": "有商店",
   "campaign.explore.castButton": "施展法術",
   "campaign.explore.backButton": "返回",
@@ -1016,6 +1019,7 @@ export const campaignZhTW = {
 
   "campaign.refusal.noHero": "你在這個團務中沒有英雄",
   "campaign.refusal.noPendingRoll": "你沒有等待中的擲骰",
+  "campaign.refusal.invalidMove": "隊伍無法從這裡前往那裡",
   "campaign.refusal.noPendingMove": "隊伍目前沒有要前往的地方",
   "campaign.refusal.notActive": "這個團務目前沒有進行",
   "campaign.refusal.roundNotCollecting": "現在這一回合沒有在收行動",

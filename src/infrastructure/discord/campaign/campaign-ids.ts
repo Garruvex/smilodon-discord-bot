@@ -98,6 +98,7 @@ export const campaignActions = [
   "exploreHaggle",
   "exploreCast",
   "exploreCastPick",
+  "exploreGo",
   "exploreHealSlot",
   "exploreHealWho",
   "exploreConjureSlot",

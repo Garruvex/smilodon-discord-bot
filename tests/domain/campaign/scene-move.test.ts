@@ -155,6 +155,49 @@ describe("objecting to a move", () => {
   });
 });
 
+describe("a player suggesting a move", () => {
+  const suggest = { kind: "proposeMove", sceneId: chapel, effects: [{ kind: "transitionScene", sceneId: chapel }] } as const;
+  const open = (): CampaignState => run(newCampaign(), system, { kind: "openRound" }).state;
+
+  it("waits for the table, and settles as the round in progress closes", () => {
+    const state = run(open(), alex, suggest).state;
+    expect(state.pendingMove).toMatchObject({ sceneId: chapel, proposedRound: 0, objectors: [] });
+    expect(state.sceneId).not.toBe(chapel);
+    expect(playRound(state).sceneId).toBe(chapel);
+  });
+
+  it("can be objected to like any other", () => {
+    let state = run(open(), alex, suggest).state;
+    state = run(state, jamie, { kind: "objectToMove" }).state;
+    const closed = run(state, system, { kind: "roundTimerExpired", roundNumber: 1 });
+    expect(kinds(closed.events)).toContain("sceneMoveDeclined");
+    expect(closed.state.sceneId).not.toBe(chapel);
+  });
+
+  it("records who suggested it", () => {
+    expect(run(open(), alex, suggest).events.find((event) => event.kind === "sceneMoveProposed")).toMatchObject({ by: "u-alex" });
+  });
+
+  it("keeps the objections when the same move is suggested again, and replaces a different one", () => {
+    let state = run(open(), alex, suggest).state;
+    state = run(state, jamie, { kind: "objectToMove" }).state;
+    state = run(state, alex, suggest).state;
+    expect(state.pendingMove?.objectors).toEqual(["u-jamie"]);
+    const elsewhere = "scene:old-watchtower" as const;
+    state = run(state, alex, { kind: "proposeMove", sceneId: elsewhere, effects: [{ kind: "transitionScene", sceneId: elsewhere }] }).state;
+    expect(state.pendingMove).toMatchObject({ sceneId: elsewhere, objectors: [] });
+  });
+
+  it("is refused for the scene the party is in, for effects that do not start with the move, and for an outsider or someone away", () => {
+    const here = { ...open(), sceneId: chapel };
+    expect(reject(here, alex, suggest)).toEqual({ code: "invalidMove" });
+    expect(reject(open(), alex, { kind: "proposeMove", sceneId: chapel, effects: [] })).toEqual({ code: "invalidMove" });
+    expect(reject(open(), sam, suggest)).toEqual({ code: "notMember" });
+    const away = run(open(), jamie, { kind: "markAway", userId: "u-jamie" }).state;
+    expect(reject(away, jamie, suggest)).toEqual({ code: "memberAway" });
+  });
+});
+
 describe("the organizer settling a move", () => {
   it("can send the party now, or keep it where it is", () => {
     const go = run(moveProposed(), organizer, { kind: "settleMove", outcome: "go" });

@@ -819,6 +819,9 @@ export const campaignEn = {
   "campaign.explore.intro": "Talk to the people here, trade, or cast a spell. You can keep talking after each reply; Back leaves the conversation. Talking does not end the round. The table hears what happens.",
   "campaign.explore.nobody": "There is nobody here to talk to.",
   "campaign.explore.npcPlaceholder": "Who do you talk to?",
+  "campaign.explore.placePlaceholder": "Suggest where the party goes…",
+  "campaign.explore.placeVisited": "You have been here",
+  "campaign.explore.proposed": "You suggested heading to **{scene}**. If nobody objects, the party goes when this round closes.",
   "campaign.explore.trades": "trades",
   "campaign.explore.castButton": "Cast a spell",
   "campaign.explore.backButton": "Back",
@@ -1016,6 +1019,7 @@ export const campaignEn = {
 
   "campaign.refusal.noHero": "You do not have a hero in this campaign.",
   "campaign.refusal.noPendingRoll": "You have no roll waiting.",
+  "campaign.refusal.invalidMove": "The party cannot go there from here.",
   "campaign.refusal.noPendingMove": "The party is not about to go anywhere.",
   "campaign.refusal.notActive": "This campaign is not running right now.",
   "campaign.refusal.roundNotCollecting": "The round is not taking actions right now.",

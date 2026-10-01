@@ -59,7 +59,6 @@ import { renderLevelForm } from "../campaign/level-up-form.js";
 import { ExploreFlow, isExploreAction } from "../campaign/explore-flow.js";
 import { refusalText } from "../campaign/refusal-text.js";
 
-// Joins lines, dropping the earliest content lines when they do not fit, so the latest news survives.
 // One stay in the journal: where and when, the opening of how it was told, what came of it, what was left.
 function placeLines(place: PlaceView, text: Texts): readonly string[] {
   const t = text.campaign.journal;
@@ -72,6 +71,7 @@ function placeLines(place: PlaceView, text: Texts): readonly string[] {
   ];
 }
 
+// Joins lines, dropping the earliest content lines when they do not fit, so the latest news survives.
 function fit(lines: readonly string[], limit: number): string {
   const kept = [...lines];
   while (kept.join("\n").length > limit && kept.length > 3) kept.splice(2, 1);
@@ -238,6 +238,7 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "exploreHaggle":
     case "exploreCast":
     case "exploreCastPick":
+    case "exploreGo":
     case "exploreHealSlot":
     case "exploreHealWho":
     case "exploreConjureSlot":

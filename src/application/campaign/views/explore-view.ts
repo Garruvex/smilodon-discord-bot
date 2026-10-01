@@ -1,4 +1,5 @@
 import type { AdventureBible, BibleNpc } from "../../../domain/campaign/adventure/adventure-bible.js";
+import { reachableScenes } from "../dm/interactions.js";
 import type { Skill } from "../../../domain/campaign/character/character-sheet.js";
 import type { CharacterId } from "../../../domain/campaign/core/ids.js";
 import type { Glossary, SealedContent } from "../../../domain/campaign/rules/content-registry.js";
@@ -48,8 +49,18 @@ export interface HurtHero {
   readonly maxHp: number;
 }
 
+// A place the party can head to from here.
+export interface PlaceChoice {
+  readonly id: string;
+  readonly title: string;
+  // The party has been there before.
+  readonly visited: boolean;
+}
+
 export interface ExploreView {
   readonly npcs: readonly ExploreNpc[];
+  // Where the party can go from here (the scene's open exits). Empty during a fight.
+  readonly places: readonly PlaceChoice[];
   readonly spells: readonly ExploreSpell[];
   // Healing spells the hero can cast now (a slot is left), and the friends who are hurt.
   readonly healing: readonly HealingSpell[];
@@ -163,9 +174,19 @@ export function hurtHeroes(state: CampaignState): readonly HurtHero[] {
   });
 }
 
+function placesToGo(state: CampaignState, bible: AdventureBible): readonly PlaceChoice[] {
+  if (state.encounter !== null && state.encounter.status !== "ended") return [];
+  const been = new Set((state.visits ?? []).map((visit) => visit.sceneId));
+  return reachableScenes(bible, state).flatMap((id) => {
+    const scene = bible.scenes.find((candidate) => candidate.id === id);
+    return scene === undefined || scene.id === state.sceneId ? [] : [{ id: scene.id, title: scene.title, visited: been.has(scene.id) }];
+  });
+}
+
 export function buildExploreView(state: CampaignState, bible: AdventureBible, content: SealedContent, glossary: Glossary, characterId: CharacterId): ExploreView {
   return {
     npcs: sceneNpcs(state, bible).map((npc) => exploreNpc(state, npc)),
+    places: placesToGo(state, bible),
     spells: castableSpells(state, characterId, content, glossary),
     healing: healingSpells(state, characterId, content, glossary),
     conjuring: conjuringSpells(state, characterId, content, glossary),

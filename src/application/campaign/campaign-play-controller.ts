@@ -1,4 +1,5 @@
-import { longRestEffects, type AdventureBible, type NpcId } from "../../domain/campaign/adventure/adventure-bible.js";
+import { longRestEffects, withArrival, type AdventureBible, type NpcId } from "../../domain/campaign/adventure/adventure-bible.js";
+import { reachableScenes } from "./dm/interactions.js";
 import type { Skill } from "../../domain/campaign/character/character-sheet.js";
 import type { TimeOfDay, Weather } from "../../domain/campaign/rules/world-rules.js";
 import { abilities } from "../../domain/campaign/rules/effects.js";
@@ -19,7 +20,7 @@ import type { CampaignKey, CampaignUnitOfWork } from "./ports/campaign-store.js"
 
 // Why a control did nothing. Engine rejections keep their code; the rest are
 // the controller's own. The Discord layer turns each into a private message.
-export type PlayRefusal = RejectionCode | "noPendingMove" | "notFound" | "notActive" | "noHero" | "noPendingRoll" | "npcNotHere" | "notForSale" | "invalidHazard";
+export type PlayRefusal = RejectionCode | "noPendingMove" | "invalidMove" | "notFound" | "notActive" | "noHero" | "noPendingRoll" | "npcNotHere" | "notForSale" | "invalidHazard";
 
 // What a manager can do to a game from the hub.
 export type ManageAction = "pause" | "resume" | "closeRound" | "retry" | "retryFight" | "retell" | "illustrate" | "illustrateScene" | "shortRest" | "longRest";
@@ -191,6 +192,18 @@ export class CampaignPlayController {
       if (result.kind === "refused" && first === null) first = result;
     }
     return first ?? { kind: "ok" };
+  }
+
+  // A player suggests heading to a scene the story leaves open from here. It waits for the table like any other move.
+  public async proposeMove(key: CampaignKey, userId: UserId, sceneId: string, interactionId: string): Promise<PlayResult> {
+    const stored = await this.options.unitOfWork.transaction((tx) => tx.loadRecord(key));
+    const bible = stored === undefined ? undefined : this.options.adventures.find(stored.record.adventure.adventureId, stored.record.adventure.version, stored.record.language);
+    if (bible === undefined) return { kind: "refused", reason: "notFound" };
+    return this.perform(key, userId, interactionId, (state) => {
+      const scene = bible.scenes.find((candidate) => candidate.id === sceneId);
+      if (scene === undefined || !reachableScenes(bible, state).includes(scene.id)) return "invalidMove";
+      return { kind: "proposeMove", sceneId: scene.id, effects: withArrival({ kind: "transitionScene", sceneId: scene.id }, bible) };
+    });
   }
 
   // Runs a command for the clicker's hero against an NPC the scene actually has.
