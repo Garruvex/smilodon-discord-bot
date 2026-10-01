@@ -28,6 +28,11 @@ export interface CampaignCommandBusOptions {
   // Called after a commit that queued work, so workers can run promptly
   // instead of waiting for their next poll.
   readonly onWorkQueued?: (key: CampaignKey) => void;
+  // Called once after each commit that changed the campaign, with its new
+  // revision: the signal for every front end to show the new state. Not called
+  // for a rejected command or a repeated command ID. A listener that throws
+  // never undoes or fails a command that is already saved.
+  readonly onCommitted?: (key: CampaignKey, revision: number) => void;
 }
 
 // The single write path (code structure §5). Every state change, from a
@@ -51,12 +56,12 @@ export class CampaignCommandBus {
   }
 
   private async attempt(key: CampaignKey, command: CampaignCommand, meta: CommandMeta): Promise<CommandOutcome> {
-    const { outcome, queuedWork } = await this.options.unitOfWork.transaction(async (tx) => {
+    const { outcome, queuedWork, committed } = await this.options.unitOfWork.transaction(async (tx) => {
       const previous = await tx.findProcessedCommand(key, meta.commandId);
-      if (previous !== undefined) return { outcome: previous, queuedWork: false };
+      if (previous !== undefined) return { outcome: previous, queuedWork: false, committed: false };
 
       const stored = await tx.loadCampaign(key);
-      if (stored === undefined) return { outcome: { kind: "notFound" } as const, queuedWork: false };
+      if (stored === undefined) return { outcome: { kind: "notFound" } as const, queuedWork: false, committed: false };
 
       const now = this.options.clock.now();
       const result = decide(stored.state, command, {
@@ -66,7 +71,7 @@ export class CampaignCommandBus {
       });
       // Rejections are not recorded: they change nothing, and the same
       // command may be valid once the state moves on.
-      if (result.kind === "rejected") return { outcome: result, queuedWork: false };
+      if (result.kind === "rejected") return { outcome: result, queuedWork: false, committed: false };
 
       const revision = await tx.saveCampaign(key, replay(stored.state, result.events), stored.revision);
       const rulesRevision = pinKey(stored.ruleset.rulesetId, stored.ruleset.rulesetVersion);
@@ -86,9 +91,16 @@ export class CampaignCommandBus {
       await writeRequests(tx, key, meta.commandId, result.requests, now);
       const accepted: CommandOutcome = { kind: "accepted", revision, eventCount: result.events.length };
       await tx.recordProcessedCommand(key, meta.commandId, accepted);
-      return { outcome: accepted, queuedWork: result.requests.length > 0 };
+      return { outcome: accepted, queuedWork: result.requests.length > 0, committed: true };
     });
     if (queuedWork) this.options.onWorkQueued?.(key);
+    if (committed && outcome.kind === "accepted") {
+      try {
+        this.options.onCommitted?.(key, outcome.revision);
+      } catch {
+        // The command is saved; a failing listener must not report it as failed.
+      }
+    }
     return outcome;
   }
 }

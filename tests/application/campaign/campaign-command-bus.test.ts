@@ -25,12 +25,14 @@ interface Harness {
   readonly clock: ManualClock;
   readonly bus: CampaignCommandBus;
   readonly queued: CampaignKey[];
+  readonly committed: { readonly key: CampaignKey; readonly revision: number }[];
 }
 
 async function setup(unitOfWork?: (store: InMemoryCampaignStore) => CampaignUnitOfWork): Promise<Harness> {
   const store = new InMemoryCampaignStore();
   const clock = new ManualClock(0);
   const queued: CampaignKey[] = [];
+  const committed: { readonly key: CampaignKey; readonly revision: number }[] = [];
   const content = ruleset().content;
   const bus = new CampaignCommandBus({
     unitOfWork: unitOfWork?.(store) ?? store,
@@ -38,6 +40,9 @@ async function setup(unitOfWork?: (store: InMemoryCampaignStore) => CampaignUnit
     clock,
     onWorkQueued: (queuedKey): void => {
       queued.push(queuedKey);
+    },
+    onCommitted: (committedKey, revision): void => {
+      committed.push({ key: committedKey, revision });
     },
   });
   await store.transaction((tx) =>
@@ -48,7 +53,7 @@ async function setup(unitOfWork?: (store: InMemoryCampaignStore) => CampaignUnit
       adventure: { adventureId: "test-adventure", version: "1" },
     }),
   );
-  return { store, clock, bus, queued };
+  return { store, clock, bus, queued, committed };
 }
 
 let nextId = 0;
@@ -134,6 +139,31 @@ describe("CampaignCommandBus", () => {
     expect(again).toEqual(first);
     expect((await load(harness.store))?.revision).toBe(1);
     expect(await harness.store.transaction((tx) => tx.readEvents(key))).toHaveLength(1);
+  });
+
+  it("announces each new revision once, never for a repeat or a rejection", async () => {
+    const harness = await setup();
+    await harness.bus.execute(key, { kind: "closeRound" }, meta(alex));
+    expect(harness.committed).toEqual([]);
+    await harness.bus.execute(key, { kind: "openRound" }, meta(system, "same"));
+    await harness.bus.execute(key, { kind: "openRound" }, meta(system, "same"));
+    expect(harness.committed).toEqual([{ key, revision: 1 }]);
+  });
+
+  it("still reports a saved command as accepted when a listener throws", async () => {
+    const harness = await setup();
+    const store = harness.store;
+    const content = ruleset().content;
+    const bus = new CampaignCommandBus({
+      unitOfWork: store,
+      rulesets: new RulesetCatalog([content]),
+      clock: harness.clock,
+      onCommitted: (): void => {
+        throw new Error("listener failed");
+      },
+    });
+    expect(await bus.execute(key, { kind: "openRound" }, meta(system))).toEqual({ kind: "accepted", revision: 1, eventCount: 1 });
+    expect((await load(store))?.revision).toBe(1);
   });
 
   it("saves nothing for a rejected command", async () => {
