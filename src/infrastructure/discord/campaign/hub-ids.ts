@@ -8,6 +8,8 @@ export const hubIdPrefix = "dndhub";
 
 export const hubActions = [
   "create",
+  // Opens the Discord Activity from the hub channel, which can host one (a forum post cannot).
+  "playActivity",
   "wizLanguage",
   "wizPacing",
   "wizPlayers",

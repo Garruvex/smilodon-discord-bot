@@ -206,6 +206,7 @@ export const campaignEn = {
   "campaign.hub.sectionGames": "**Games**",
   "campaign.hub.sectionCharacters": "**Characters** · yours in every server",
   "campaign.hub.sectionAdventures": "**Adventures** · for DnD Admins",
+  "campaign.hub.playActivityButton": "Play in Activity",
   "campaign.hub.helpButton": "How it works",
   "campaign.hub.charactersButton": "My Characters",
   "campaign.hub.newCharacterButton": "New character",
@@ -451,7 +452,7 @@ export const campaignEn = {
 
   "campaign.reply.fallen": "Your hero has fallen for good. Choose a new one to join the party at the next round.",
   "campaign.reply.newHero": "**{hero}** joins the party.",
-  "campaign.reply.activityNotHere": "A forum post cannot run the Activity. Start D&D Table from a voice channel or another text channel in this server, then pick this game.",
+  "campaign.reply.activityNotHere": "A forum post cannot run the Activity. Press Play in Activity on the pinned message in the games hub channel, then pick this game.",
   "campaign.reply.obsolete": "That control is out of date. Use the newest message.",
   "campaign.reply.actionSaved": "Your action is saved. You can change it until the round closes.",
   "campaign.reply.passed": "You passed this round.",

@@ -89,6 +89,9 @@ const entranceField = "entrance";
 // The hub's controls: the Create game wizard and each game's Manage view. All
 // replies are private. Who may do what is decided on every click from the
 // server's DnD Admin role and the game's organizer, never from the message.
+// How long Discord's own "started an activity" message stays in the hub before it is cleaned up.
+const launchMessageLifetimeMs = 30_000;
+
 export class CampaignHubComponentHandler implements ComponentHandler {
   public readonly customIdPrefix = hubIdPrefix;
   public readonly module = CommandModule.Campaign;
@@ -102,6 +105,15 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     if (parsed === null || !interaction.inCachedGuild()) return;
     const [first, second] = parsed.parts;
     switch (parsed.action) {
+      case "playActivity":
+        // Discord opens the Activity itself as the click's only response. If it also leaves a launch message in the hub, that is removed
+        // after a moment so the channel keeps only the control panel and the games.
+        if (interaction.isButton()) {
+          const launched = await interaction.launchActivity({ withResponse: true });
+          const message = launched.resource?.message;
+          if (message !== undefined && message !== null) setTimeout(() => void message.delete().catch(() => undefined), launchMessageLifetimeMs);
+        }
+        return;
       case "create":
         if (interaction.isButton()) await this.startWizard(interaction);
         return;

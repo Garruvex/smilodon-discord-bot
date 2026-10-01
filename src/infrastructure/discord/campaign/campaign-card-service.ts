@@ -323,7 +323,7 @@ export class CampaignCardService implements CardRefresher {
     const live = games.filter(({ record }) => record.lifecycle !== "archived");
     const language: Language = settings.language ?? "en";
     const control = await this.place(
-      { key: "hub", channelId: hubChannelId, payload: renderHubControl(live.length, allTexts[language]), epoch: "hub", pin: true },
+      { key: "hub", channelId: hubChannelId, payload: renderHubControl(live.length, allTexts[language], this.options.activity === true), epoch: "hub", pin: true },
       settings.hubCard ?? undefined,
       verify,
     );
