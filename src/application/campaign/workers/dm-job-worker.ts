@@ -140,7 +140,7 @@ export class DmJobWorker {
         const outcome = await this.options.bus.execute(
           item.key,
           { kind: "applyRoundPlan", proposal: resolved.proposal },
-          { commandId: `${item.id}:plan:${attempt}`, actor: system },
+          { commandId: `${item.id}:${item.attempts}:plan:${attempt}`, actor: system },
         );
         if (outcome.kind !== "rejected") return;
         if (outcome.rejection.code !== "invalidPlan") return; // Stale: the round moved on.
@@ -151,7 +151,9 @@ export class DmJobWorker {
         this.options.logger?.warn({ err: error, campaignId: item.key.campaignId, roundNumber, attempt }, "Planner call failed");
       }
     }
-    this.options.logger?.error({ campaignId: item.key.campaignId, roundNumber, problems }, "Round held: the planner failed twice");
+    // A provider hiccup should not hold the round for the organizer: the job is tried again later, and only the last try holds it.
+    if (item.attempts + 1 < this.maxAttempts) throw new Error(`The planner failed: ${problems.join(" ")}`);
+    this.options.logger?.error({ campaignId: item.key.campaignId, roundNumber, problems }, "Round held: the planner failed on every try");
     await this.options.bus.execute(
       item.key,
       { kind: "reportPlannerFailure", roundNumber, problems },

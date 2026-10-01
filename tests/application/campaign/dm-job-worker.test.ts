@@ -233,10 +233,13 @@ describe("DmJobWorker", () => {
     expect(stored?.state.round?.status).toBe("resolving");
   });
 
-  it("holds the round for the organizer after two failed attempts, applying nothing", async () => {
-    const planner = new ScriptedPlanner([offLadder, new Error("provider timeout")]);
+  it("tries a failed plan again later, then holds the round for the organizer, applying nothing", async () => {
+    const planner = new ScriptedPlanner([offLadder, new Error("provider timeout"), offLadder, new Error("provider timeout")]);
     const { store, bus, worker } = await table(planner, new ScriptedNarrator([]));
     await closeRoundOne(bus);
+    // The first try fails and the job is queued again; the round is not held yet.
+    expect(await worker.runOnce()).toMatchObject({ processed: 0, failed: [{ error: expect.stringContaining("provider timeout") }] });
+    expect((await events(store)).some((event) => event.kind === "plannerFailed")).toBe(false);
     expect(await worker.runOnce()).toEqual({ processed: 1, failed: [] });
 
     const log = await events(store);
@@ -266,14 +269,15 @@ describe("DmJobWorker", () => {
   });
 
   it("carries validation feedback into an organizer retry so the round can reach its roll", async () => {
-    const planner = new ScriptedPlanner([offLadder, offLadder, sneak]);
+    const planner = new ScriptedPlanner([offLadder, offLadder, offLadder, offLadder, sneak]);
     const { store, bus, worker } = await table(planner, new ScriptedNarrator([]));
     await closeRoundOne(bus);
+    await worker.runOnce();
     await worker.runOnce();
     expect((await store.transaction((tx) => tx.loadCampaign(key)))?.state.round?.status).toBe("planning");
     await bus.execute(key, { kind: "retryPlan" }, { commandId: "retry-validation", actor: organizer });
     await worker.runOnce();
-    expect(planner.requests[2]?.previousProblems).toEqual(['c-mira: DC tier "tricky" is not on the ladder.']);
+    expect(planner.requests[4]?.previousProblems).toEqual(['c-mira: DC tier "tricky" is not on the ladder.']);
     const state = (await store.transaction((tx) => tx.loadCampaign(key)))?.state;
     expect(state?.round?.status).toBe("resolving");
     expect(state?.checks["r1:c-mira"]?.status).toBe("pending");
