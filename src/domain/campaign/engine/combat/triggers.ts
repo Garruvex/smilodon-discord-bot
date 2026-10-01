@@ -49,6 +49,5 @@ function addMonsters(decision: Decision, triggerIndex: number, monsters: readonl
     if (summonerId === undefined) return;
     const combatant = monsterCombatant(monster, content, { id, letter: null, zoneId: entry.zoneId, npcId: entry.npcId, fleeBelowHpFraction: entry.fleeBelowHpFraction, ...(entry.stats === undefined ? {} : { stats: entry.stats }) });
     decision.emit({ kind: "combatantSummoned", summonerId, combatant: { ...combatant, initiative: 0 } });
-    decision.request({ kind: "monsterImage", monsterId: entry.monsterId, npcId: entry.npcId });
   });
 }
