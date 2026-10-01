@@ -12,6 +12,7 @@ const liveScreen = document.querySelector("#live-screen");
 const liveActions = document.querySelector("#live-actions");
 const liveParty = document.querySelector("#live-party");
 const liveEnemies = document.querySelector("#live-enemies");
+const liveMap = document.querySelector("#live-map");
 let sessionToken = null;
 let discordSdk = null;
 let currentGameId = null;
@@ -26,11 +27,31 @@ const phaseLabels = { opening: "Opening scene", readyCheck: "Gathering the party
 function setMessage(message) { messageElement.textContent = message; }
 function setLiveMessage(message) { document.querySelector("#live-message").textContent = message; }
 
+function withTimeout(promise, milliseconds, message) {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => { timeoutId = setTimeout(() => reject(new Error(message)), milliseconds); });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
+}
+
+async function fetchWithTimeout(url, options = {}, milliseconds = 12000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), milliseconds);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw new Error("The Activity server did not respond in time. Check that the bot and tunnel are running.");
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 function showError(error) {
   gamesElement.replaceChildren();
   emptyElement.hidden = true;
   errorElement.hidden = false;
   errorMessageElement.textContent = error;
+  userElement.textContent = "Sign-in needs attention";
   setMessage("");
 }
 
@@ -62,9 +83,9 @@ async function requestJson(url, options = {}) {
   const headers = new Headers(options.headers);
   if (options.body !== undefined) headers.set("Content-Type", "application/json");
   if (sessionToken !== null) headers.set("Authorization", `Bearer ${sessionToken}`);
-  const response = await fetch(url, { ...options, headers, cache: "no-store" });
+  const response = await fetchWithTimeout(url, { ...options, headers, cache: "no-store" });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(apiErrorMessage(payload.error));
+  if (!response.ok) throw new Error(typeof payload.error === "string" ? apiErrorMessage(payload.error) : `The Activity server returned an unexpected response (${response.status}). Check the tunnel route and bot logs.`);
   return payload;
 }
 
@@ -180,8 +201,109 @@ function renderGame(game) {
   document.querySelector("#live-scene-description").textContent = game.kind === "lobby"
     ? "Choose an available character. The organizer can start once the party is ready."
     : game.scene.description;
-  if (game.kind === "lobby") renderLobby(game);
-  else renderTable(game);
+  if (game.kind === "lobby") {
+    document.querySelector(".adventure-map-panel").hidden = true;
+    renderLobby(game);
+  } else {
+    document.querySelector(".adventure-map-panel").hidden = false;
+    renderMap(game.map);
+    renderTable(game);
+  }
+}
+
+function renderMap(map) {
+  liveMap.replaceChildren();
+  if (map.kind === "battlefield") {
+    document.querySelector("#live-map-kind").textContent = "TACTICAL VIEW";
+    document.querySelector("#live-map-title").textContent = "Battlefield";
+    document.querySelector(".map-key").innerHTML = '<i class="current-key"></i> Party <i class="foe-key"></i> Foes';
+    const zones = document.createElement("div");
+    zones.className = "battle-map-zones";
+    for (const zone of map.zones) {
+      const tile = document.createElement(zone.canMove ? "button" : "article");
+      tile.className = `battle-zone${zone.canMove ? " can-move" : ""}${zone.occupants.some((occupant) => occupant.active) ? " has-active" : ""}`;
+      if (zone.canMove) {
+        tile.type = "button";
+        tile.addEventListener("click", () => void performAction({ kind: "move", zoneId: zone.id }));
+      }
+      const name = document.createElement("strong"); name.textContent = zone.name;
+      const terrain = document.createElement("span"); terrain.className = "zone-terrain";
+      terrain.textContent = [zone.lighting, zone.cover ? `${zone.cover} cover` : "", zone.difficult ? "difficult terrain" : ""].filter(Boolean).join(" · ") || "Open ground";
+      const occupants = document.createElement("div"); occupants.className = "zone-occupants";
+      for (const occupant of zone.occupants) {
+        const token = document.createElement("span");
+        token.className = `zone-token ${occupant.side}${occupant.active ? " active" : ""}`;
+        token.title = `${occupant.name} · ${occupant.hp}/${occupant.maxHp} HP`;
+        token.textContent = occupant.name;
+        occupants.append(token);
+      }
+      tile.append(name, terrain, occupants);
+      if (zone.canMove) { const move = document.createElement("small"); move.textContent = "Move here"; tile.append(move); }
+      zones.append(tile);
+    }
+    liveMap.append(zones);
+    return;
+  }
+  document.querySelector("#live-map-kind").textContent = "THE JOURNEY";
+  document.querySelector("#live-map-title").textContent = "Adventure map";
+  document.querySelector(".map-key").innerHTML = '<i class="current-key"></i> Here <i class="reachable-key"></i> Open route <i class="locked-key"></i> Locked';
+  if (map.nodes.length === 0) { liveMap.textContent = "No mapped routes are known yet."; return; }
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.classList.add("route-map-svg");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", "Adventure route map. Open routes can be selected to travel.");
+  const columns = new Map();
+  for (const node of map.nodes) { if (!columns.has(node.column)) columns.set(node.column, []); columns.get(node.column).push(node); }
+  const maxColumn = Math.max(...columns.keys());
+  const maxRows = Math.max(...[...columns.values()].map((nodes) => nodes.length));
+  const positions = new Map();
+  for (const node of map.nodes) {
+    const rowsInColumn = columns.get(node.column).length;
+    positions.set(node.id, { x: 110 + node.column * 205, y: 54 + node.row * 90 + ((maxRows - rowsInColumn) * 45) });
+  }
+  const mapWidth = Math.max(240, 220 + maxColumn * 205);
+  const mapHeight = Math.max(118, 92 + maxRows * 90);
+  svg.setAttribute("viewBox", `0 0 ${mapWidth} ${mapHeight}`);
+  svg.setAttribute("width", String(mapWidth)); svg.setAttribute("height", String(mapHeight));
+  const defs = document.createElementNS(ns, "defs");
+  const marker = document.createElementNS(ns, "marker");
+  marker.setAttribute("id", "route-arrow"); marker.setAttribute("markerWidth", "8"); marker.setAttribute("markerHeight", "8");
+  marker.setAttribute("refX", "6"); marker.setAttribute("refY", "4"); marker.setAttribute("orient", "auto"); marker.setAttribute("markerUnits", "strokeWidth");
+  const arrow = document.createElementNS(ns, "path"); arrow.setAttribute("d", "M0,0 L8,4 L0,8 z"); arrow.setAttribute("fill", "#9aa1a9"); marker.append(arrow); defs.append(marker); svg.append(defs);
+  for (const route of map.routes) {
+    const from = positions.get(route.from); const to = positions.get(route.to); if (!from || !to) continue;
+    const line = document.createElementNS(ns, "line");
+    line.setAttribute("x1", String(from.x + 76)); line.setAttribute("y1", String(from.y));
+    line.setAttribute("x2", String(to.x - 76)); line.setAttribute("y2", String(to.y));
+    line.setAttribute("class", route.oneWay ? "route-line one-way" : "route-line");
+    line.setAttribute("marker-end", "url(#route-arrow)"); svg.append(line);
+    if (route.oneWay) {
+      const bar = document.createElementNS(ns, "line");
+      const middleX = (from.x + to.x) / 2; const middleY = (from.y + to.y) / 2;
+      bar.setAttribute("x1", String(middleX)); bar.setAttribute("y1", String(middleY - 7));
+      bar.setAttribute("x2", String(middleX)); bar.setAttribute("y2", String(middleY + 7));
+      bar.setAttribute("class", "route-one-way-mark"); svg.append(bar);
+    }
+  }
+  for (const node of map.nodes) {
+    const point = positions.get(node.id); const group = document.createElementNS(ns, "g");
+    group.setAttribute("class", `route-node ${node.status}`);
+    if (node.canTravel) {
+      group.setAttribute("role", "button"); group.setAttribute("tabindex", "0");
+      group.addEventListener("click", () => void performAction({ kind: "moveScene", sceneId: node.id }));
+      group.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); void performAction({ kind: "moveScene", sceneId: node.id }); } });
+    }
+    const rect = document.createElementNS(ns, "rect");
+    rect.setAttribute("x", String(point.x - 76)); rect.setAttribute("y", String(point.y - 26)); rect.setAttribute("width", "152"); rect.setAttribute("height", "52"); rect.setAttribute("rx", "10");
+    const title = document.createElementNS(ns, "text");
+    title.setAttribute("x", String(point.x)); title.setAttribute("y", String(point.y + 4)); title.setAttribute("text-anchor", "middle"); title.textContent = node.title;
+    const subtitle = document.createElementNS(ns, "text");
+    subtitle.setAttribute("x", String(point.x)); subtitle.setAttribute("y", String(point.y + 18)); subtitle.setAttribute("text-anchor", "middle"); subtitle.setAttribute("class", "route-subtitle");
+    subtitle.textContent = node.status === "current" ? "You are here" : node.deadEnd ? "Dead end" : node.status === "visited" ? "Visited" : node.status === "locked" ? "Locked" : node.status === "known" ? "Mapped" : "Open route";
+    group.append(rect, title, subtitle); svg.append(group);
+  }
+  liveMap.append(svg);
 }
 
 function renderLobby(game) {
@@ -475,21 +597,27 @@ document.querySelector("#lobby-retry").addEventListener("click", () => {
 });
 
 async function authenticate() {
-  const configResponse = await fetch("/activity-config.json", { cache: "no-store" });
+  errorElement.hidden = true;
+  userElement.textContent = "Connecting to Discord…";
+  setMessage("Connecting to Discord Activity…");
+  const configResponse = await fetchWithTimeout("/activity-config.json", { cache: "no-store" });
   if (!configResponse.ok) throw new Error("Could not load the Discord application configuration.");
   const config = await configResponse.json();
   if (typeof config.applicationId !== "string" || config.applicationId.length === 0) throw new Error("The Discord application ID is not configured.");
   discordSdk = new DiscordSDK(config.applicationId);
-  await discordSdk.ready();
+  setMessage("Waiting for Discord to connect…");
+  await withTimeout(discordSdk.ready(), 12000, "Discord did not connect to the Activity. Close and relaunch it inside Discord, then check the Activity URL mapping if it still fails.");
   if (!discordSdk.guildId) throw new Error("Open this Activity from a server to see its games.");
-  setMessage("Connect your Discord account to find your games…");
-  const authorization = await discordSdk.commands.authorize({
+  serverElement.textContent = "Discord connected";
+  setMessage("Checking your Discord authorization…");
+  const authorization = await withTimeout(discordSdk.commands.authorize({
     client_id: config.applicationId,
     response_type: "code",
     state: crypto.randomUUID(),
     prompt: "none",
     scope: ["identify", "guilds.members.read"],
-  });
+  }), 20000, "Discord authorization did not finish. Close and reopen the Activity; if it repeats, check its OAuth2 redirect and requested scopes.");
+  setMessage("Verifying your Discord account…");
   const session = await requestJson("/api/activity/session", {
     method: "POST",
     body: JSON.stringify({ code: authorization.code, guildId: discordSdk.guildId }),

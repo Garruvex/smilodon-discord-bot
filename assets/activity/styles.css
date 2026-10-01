@@ -276,6 +276,43 @@ h1, h2, h3, p { margin-top: 0; }
 .live-scene-copy { align-self: center; padding: 20px 24px; }
 .live-scene-copy h2 { margin: 4px 0 6px; font: 24px/1.15 var(--serif); }
 .live-scene-copy p { max-width: 62ch; margin: 0; color: #c3c7ba; font-size: 12px; }
+.adventure-map-panel { margin-top: 18px; padding: 18px; overflow: hidden; border: 1px solid #354135; border-radius: 15px; background: linear-gradient(145deg, #1d2921, #141b17); }
+.adventure-map-panel .section-heading { margin: 0 2px 12px; }
+.map-key { display: flex; align-items: center; gap: 7px; color: #929b8e; font-size: 9px; }
+.map-key i { width: 9px; height: 9px; border-radius: 50%; background: #58c99a; }
+.map-key .reachable-key { background: #8096ad; }
+.map-key .locked-key { border: 1px dashed #737b7d; background: transparent; }
+.map-key .foe-key { background: #ce7770; }
+.live-map { overflow: auto; scrollbar-color: #52604e #141b17; }
+.route-map-svg { display: block; min-width: 100%; max-height: 380px; }
+.route-line { stroke: #8b9a91; stroke-width: 2; }
+.route-one-way-mark { stroke: #e0775f; stroke-width: 3; }
+.route-node { cursor: default; }
+.route-node rect { fill: #293847; stroke: #718ca3; stroke-width: 2; }
+.route-node text { fill: #ecece3; font: 12px var(--sans); pointer-events: none; }
+.route-node .route-subtitle { fill: #a3aaa6; font-size: 9px; }
+.route-node.current rect { fill: #235f48; stroke: #4bd398; stroke-width: 3; }
+.route-node.current .route-subtitle { fill: #91dfba; }
+.route-node.visited rect { fill: #303b47; }
+.route-node.known rect { fill: #27352e; stroke: #6f876f; }
+.route-node.reachable { cursor: pointer; }
+.route-node.reachable rect { fill: #344958; stroke: #a1c0d4; }
+.route-node.reachable:hover rect, .route-node.reachable:focus rect { stroke: #dfc77f; stroke-width: 3; }
+.route-node.locked rect { fill: #25292c; stroke: #72797e; stroke-dasharray: 6 4; }
+.route-node.locked text { fill: #a2a6a6; }
+.battle-map-zones { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.battle-zone { min-height: 128px; padding: 14px; text-align: left; border: 1px solid #46584a; border-radius: 11px; background: linear-gradient(150deg, #25362b, #1b241e); color: var(--ink); }
+.battle-zone.can-move { cursor: pointer; border-color: #8096ad; }
+.battle-zone.can-move:hover, .battle-zone.can-move:focus { outline: 2px solid #dfc77f; }
+.battle-zone.has-active { box-shadow: inset 0 0 0 1px #d6bf74; }
+.battle-zone strong, .zone-terrain { display: block; }
+.battle-zone strong { font: 16px var(--serif); }
+.zone-terrain { margin-top: 4px; color: #a8b0a5; font-size: 9px; }
+.zone-occupants { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 12px; }
+.zone-token { padding: 5px 7px; border: 1px solid #637484; border-radius: 99px; background: #303e4b; color: #e3e6e1; font-size: 9px; }
+.zone-token.foes { border-color: #895955; background: #4b302e; }
+.zone-token.active { box-shadow: 0 0 0 1px #dfc77f; }
+.battle-zone small { display: block; margin-top: 9px; color: #bed3df; font-size: 9px; }
 .live-enemies { display: flex; align-content: center; flex-wrap: wrap; gap: 8px; padding: 16px; border-left: 1px solid #344136; }
 .live-enemy { display: grid; min-width: 115px; flex: 1; gap: 6px; padding: 10px; border: 1px solid #5a4237; border-radius: 10px; background: #211c19; }
 .live-enemy strong { font-size: 11px; }
@@ -316,6 +353,8 @@ h1, h2, h3, p { margin-top: 0; }
   .live-heading-right { align-items: flex-end; flex-direction: column-reverse; }
   .live-scene { grid-template-columns: 1fr; gap: 0; }
   .live-scene-copy { padding: 17px; }
+  .adventure-map-panel { padding: 14px; }
+  .adventure-map-panel .section-heading { align-items: flex-start; gap: 8px; }
   .live-enemies { padding: 10px 13px; border-top: 1px solid #344136; border-left: 0; }
   .live-hero { grid-template-columns: 1fr; }
   .live-hero-art { min-height: 135px; }

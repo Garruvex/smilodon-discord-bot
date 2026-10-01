@@ -10,6 +10,7 @@ import { buildExploreView, buildShopView, type ExploreView, type ShopView } from
 import { buildTurnView } from "./views/turn-view.js";
 import type { CampaignRecord } from "./ports/campaign-record.js";
 import { readyToStart } from "../../domain/campaign/lobby/lobby.js";
+import { buildMapView } from "./views/map-view.js";
 
 export interface ActivityTableView {
   readonly kind: "table";
@@ -19,6 +20,9 @@ export interface ActivityTableView {
   readonly mode: string;
   readonly roundNumber: number | null;
   readonly scene: { readonly title: string; readonly description: string };
+  readonly map:
+    | { readonly kind: "battlefield"; readonly zones: readonly { readonly id: string; readonly name: string; readonly lighting: string | null; readonly cover: string | null; readonly difficult: boolean; readonly canMove: boolean; readonly occupants: readonly { readonly name: string; readonly side: "party" | "foes"; readonly active: boolean; readonly hp: number; readonly maxHp: number }[] }[] }
+    | { readonly kind: "journey"; readonly nodes: readonly { readonly id: string; readonly title: string; readonly status: "current" | "visited" | "known" | "reachable" | "locked"; readonly locked: boolean; readonly deadEnd: boolean; readonly canTravel: boolean; readonly column: number; readonly row: number }[]; readonly routes: readonly { readonly from: string; readonly to: string; readonly oneWay: boolean }[] };
   readonly yourTurn: boolean;
   readonly canBegin: boolean;
   readonly activeName: string | null;
@@ -154,6 +158,30 @@ export function buildActivityTableView(
   const sheet = ownCharacterId === null ? undefined : state.characters[ownCharacterId];
   const heroView = sheet === undefined ? null : buildHeroView(state, sheet, content);
   const scene = findScene(bible, state.sceneId);
+  const explore = controlledHeroId === null || panel.mode === "combat"
+    ? null
+    : (() => {
+      const view = buildExploreView(state, bible, content, glossary, controlledHeroId);
+      return { ...view, shops: view.npcs.flatMap((npc) => {
+        const shop = buildShopView(state, bible, glossary, resolveHouseRules(record.houseRules), controlledHeroId, npc.id);
+        return shop === undefined ? [] : [shop];
+      }) };
+    })();
+  const sharedMap = buildMapView(state, bible);
+  const journeyMap: Extract<ActivityTableView["map"], { readonly kind: "journey" }> = {
+    kind: "journey",
+    nodes: sharedMap.nodes.map((node) => ({
+      id: node.id,
+      title: node.title ?? node.hint ?? "???",
+      status: node.state === "current" ? "current" : node.state === "visited" ? "visited" : node.locked ? "locked" : explore?.places.some((place) => place.id === node.id) === true ? "reachable" : "known",
+      locked: node.locked,
+      deadEnd: node.deadEnd,
+      canTravel: explore?.places.some((place) => place.id === node.id) === true,
+      column: node.column,
+      row: node.row,
+    })),
+    routes: sharedMap.edges,
+  };
   const roundSubmission = ownCharacterId === null ? undefined : state.round?.submissions[ownCharacterId];
   const joinRequest = record.joinRequests?.[userId];
   const inviteCurrent = joinRequest !== undefined && joinRequest.expiresAt > now;
@@ -219,6 +247,23 @@ export function buildActivityTableView(
     mode: panel.mode,
     roundNumber: panel.roundNumber,
     scene: { title: panel.sceneTitle, description: scene?.publicDescription ?? "" },
+    map: panel.combat !== null && state.encounter !== null
+      ? {
+        kind: "battlefield",
+        zones: state.encounter.zones.map((zone) => ({
+          id: zone.id,
+          name: zone.name,
+          lighting: zone.lighting ?? null,
+          cover: zone.cover ?? null,
+          difficult: zone.difficult ?? false,
+          canMove: turn?.moves.some((move) => move.zoneId === zone.id) ?? false,
+          occupants: [
+            ...panel.combat!.party.filter((hero) => hero.zone === zone.name).map((hero) => ({ name: hero.name, side: "party" as const, active: hero.active, hp: hero.hp, maxHp: hero.maxHp })),
+            ...panel.combat!.foes.filter((foe) => foe.zone === zone.name).map((foe) => ({ name: foe.name, side: "foes" as const, active: foe.active, hp: foe.hp, maxHp: foe.maxHp })),
+          ],
+        })),
+      }
+      : journeyMap,
     yourTurn: turn !== null,
     canBegin: record.organizerId === userId,
     activeName: panel.combat?.activeName ?? null,
@@ -228,13 +273,7 @@ export function buildActivityTableView(
     turn,
     explore: controlledHeroId === null || panel.mode === "combat"
       ? null
-      : (() => {
-        const view = buildExploreView(state, bible, content, glossary, controlledHeroId);
-        return { ...view, shops: view.npcs.flatMap((npc) => {
-          const shop = buildShopView(state, bible, glossary, resolveHouseRules(record.houseRules), controlledHeroId, npc.id);
-          return shop === undefined ? [] : [shop];
-        }) };
-      })(),
+      : explore,
     pendingRoll: panel.pendingRolls.some((roll) => roll.userId === userId),
     submission: roundSubmission?.kind === "action" ? "action" : roundSubmission?.kind ?? null,
     canAcceptInvite: ownCharacterId === null && inviteCurrent && joinRequest?.status === "invited",
