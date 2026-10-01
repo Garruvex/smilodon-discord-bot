@@ -176,6 +176,8 @@ export const zhTWCommandDescriptions = {
   "dnd/pause": "暫停這場團務（主辦人）", // Pauses this game (organizer).
   "dnd/resume": "繼續已暫停的團務（主辦人）", // Resumes a paused game (organizer).
   "dnd/close-round": "不再等待，直接結束這一回合的收件（主辦人）", // Closes the current round without waiting (organizer).
+  "dnd/move": "決定隊伍等待中的場景轉換（主辦人）", // Settles a scene change the party is waiting on (organizer).
+  "dnd/move:decision": "立刻讓隊伍出發，或讓隊伍留在原地", // Send the party now, or keep it where it is.
   "dnd/rest": "讓隊伍在戰鬥之間休息（主辦人）", // Has the party take a rest between fights (organizer).
   "dnd/rest:type": "休息的長度", // How long the rest is.
   "dnd/level": "把所有存活的角色提升到指定等級，用於里程碑升級（主辦人）", // Raises every living hero to a level, for milestone leveling (organizer).

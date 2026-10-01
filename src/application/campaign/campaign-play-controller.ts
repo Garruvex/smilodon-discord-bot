@@ -345,6 +345,11 @@ export class CampaignPlayController {
     return this.perform(key, userId, interactionId, () => ({ kind: "closeRound" }));
   }
 
+  // Organizer: send the party to the scene it is waiting to move to, or keep it where it is. userId null is a DnD Admin acting for them.
+  public settleMove(key: CampaignKey, userId: UserId | null, outcome: "go" | "stay", interactionId: string): Promise<PlayResult> {
+    return this.perform(key, userId, interactionId, (state) => (state.pendingMove === undefined ? "noPendingMove" : { kind: "settleMove", outcome }));
+  }
+
   // The DM could not resolve a round; the organizer asks it to try again.
   public retryPlan(key: CampaignKey, userId: UserId, interactionId: string): Promise<PlayResult> {
     return this.perform(key, userId, interactionId, () => ({ kind: "retryPlan" }));

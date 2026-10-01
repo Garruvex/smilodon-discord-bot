@@ -176,6 +176,14 @@ describe("raising the party's level", () => {
     expect(await controller.raiseLevel(key, null, 4, "i-5")).toEqual({ kind: "ok" });
   });
 
+  it("refuses to settle a move when there is none, for the organizer and for an admin acting for them", async () => {
+    const r = rig();
+    const key = await twoPlayerCampaign(r);
+    const { controller } = controllerFor(r);
+    expect(refusal(await controller.settleMove(key, "u-org", "go", "i-go"))).toBe("noPendingMove");
+    expect(refusal(await controller.settleMove(key, null, "stay", "i-stay2"))).toBe("noPendingMove");
+  });
+
   it("refuses Stay here when the party is not about to go anywhere", async () => {
     const r = rig();
     const key = await twoPlayerCampaign(r);

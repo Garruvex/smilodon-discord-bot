@@ -421,6 +421,8 @@ export const campaignZhTW = {
   "campaign.cmd.notInGame": "請在這場團務的貼文中執行（隊伍貼文或冒險貼文）",
   "campaign.cmd.paused": "團務已暫停，用 /dnd resume 繼續",
   "campaign.cmd.resumed": "遊戲繼續",
+  "campaign.cmd.moveSent": "隊伍出發了",
+  "campaign.cmd.moveHeld": "隊伍留在原地",
   "campaign.cmd.roundClosed": "這一回合已結束收件",
   "campaign.cmd.rested": "隊伍休息了一下",
   "campaign.cmd.fightRetried": "戰鬥從頭開始，骰子全部重擲",

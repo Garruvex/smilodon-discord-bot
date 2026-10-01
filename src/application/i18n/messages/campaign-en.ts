@@ -422,6 +422,8 @@ export const campaignEn = {
   "campaign.cmd.paused": "The campaign is paused. Use /dnd resume to continue.",
   "campaign.cmd.resumed": "Play continues.",
   "campaign.cmd.roundClosed": "The round is closed.",
+  "campaign.cmd.moveSent": "The party is on its way.",
+  "campaign.cmd.moveHeld": "The party stays where it is.",
   "campaign.cmd.rested": "The party took a rest.",
   "campaign.cmd.retried": "The DM will try that round again.",
   "campaign.cmd.fightRetried": "The fight starts again from the beginning, with fresh dice.",

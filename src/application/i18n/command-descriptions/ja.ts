@@ -174,6 +174,8 @@ export const jaCommandDescriptions = {
   "dnd/pause": "このゲームを一時停止します（主催者）", // Pauses this game (organizer).
   "dnd/resume": "一時停止したゲームを再開します（主催者）", // Resumes a paused game (organizer).
   "dnd/close-round": "待たずに現在のラウンドを締め切ります（主催者）", // Closes the current round without waiting (organizer).
+  "dnd/move": "パーティが待っている場面転換を決めます（主催者）", // Settles a scene change the party is waiting on (organizer).
+  "dnd/move:decision": "今すぐ出発させるか、その場に留めるか", // Send the party now, or keep it where it is.
   "dnd/rest": "戦闘の合間にパーティを休ませます（主催者）", // Has the party take a rest between fights (organizer).
   "dnd/rest:type": "休憩の長さ", // How long the rest is.
   "dnd/level": "生存中のヒーロー全員を指定のレベルに上げます。マイルストーン方式用（主催者）", // Raises every living hero to a level, for milestone leveling (organizer).
