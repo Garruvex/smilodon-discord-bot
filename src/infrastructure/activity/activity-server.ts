@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { resolve, sep } from "node:path";
@@ -152,7 +152,14 @@ async function respond(
     if (session === null) return writeJson(response, 401, { error: "unauthorized" }, headers);
     const image = await campaigns.image({ guildId: session.guildId, campaignId: imageMatch[1] }, session.userId, imageMatch[2] === "scenes" ? "scene" : "character", imageMatch[3]);
     if (image === null) return writeJson(response, 404, { error: "imageNotAvailable" }, headers);
-    response.writeHead(200, { ...headers, "Content-Type": image.mediaType, "Content-Length": String(image.bytes.byteLength), "Cache-Control": "private, no-store", "Cross-Origin-Resource-Policy": "same-origin" });
+    // The picture under an address can be repainted, so clients ask again with the tag they hold.
+    const etag = `"${createHash("sha1").update(image.bytes).digest("hex")}"`;
+    if (request.headers["if-none-match"] === etag) {
+      response.writeHead(304, { ...headers, ETag: etag, "Cache-Control": "private, no-store" });
+      response.end();
+      return;
+    }
+    response.writeHead(200, { ...headers, "Content-Type": image.mediaType, "Content-Length": String(image.bytes.byteLength), "Cache-Control": "private, no-store", ETag: etag, "Cross-Origin-Resource-Policy": "same-origin" });
     response.end(image.bytes);
     return;
   }

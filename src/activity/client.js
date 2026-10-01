@@ -140,7 +140,11 @@ function iconForClass(className) {
   return classIcon[key] ?? "shape";
 }
 
-async function setArtwork(imageElement, fallbackElement, imageUrl, alt) {
+// A picture can be repainted under the same address (an organizer's redo), so ones that must stay current are re-checked now and then.
+const artworkRecheckMs = 20000;
+const artworkPending = new Set();
+
+async function setArtwork(imageElement, fallbackElement, imageUrl, alt, revalidate = false) {
   if (typeof imageUrl !== "string" || imageUrl.length === 0) {
     imageElement.removeAttribute("src");
     imageElement.dataset.source = "";
@@ -149,33 +153,46 @@ async function setArtwork(imageElement, fallbackElement, imageUrl, alt) {
     fallbackElement.hidden = false;
     return;
   }
-  if (imageElement.dataset.source === imageUrl && !imageElement.hidden) return;
-  imageElement.dataset.source = imageUrl;
   imageElement.alt = alt;
   if (artworkMisses.has(imageUrl)) return;
-  const cached = artworkCache.get(imageUrl);
-  if (cached !== undefined) {
-    imageElement.src = cached;
+  const changed = imageElement.dataset.source !== imageUrl;
+  imageElement.dataset.source = imageUrl;
+  const show = (objectUrl) => {
+    if (imageElement.dataset.source !== imageUrl) return;
+    if (imageElement.src !== objectUrl) imageElement.src = objectUrl;
     imageElement.hidden = false;
     fallbackElement.hidden = true;
-    return;
+  };
+  const cached = artworkCache.get(imageUrl);
+  if (cached !== undefined) {
+    show(cached.objectUrl);
+    if (!revalidate || Date.now() - cached.checkedAt < artworkRecheckMs) return;
+  } else if (changed || imageElement.hidden) {
+    imageElement.hidden = true;
+    fallbackElement.hidden = false;
   }
-  imageElement.hidden = true;
-  fallbackElement.hidden = false;
+  if (artworkPending.has(imageUrl)) return;
+  artworkPending.add(imageUrl);
   try {
-    const response = await fetchWithTimeout(imageUrl, { headers: { Authorization: `Bearer ${sessionToken}` }, cache: "no-store" });
+    const headers = { Authorization: `Bearer ${sessionToken}` };
+    if (cached?.etag) headers["If-None-Match"] = cached.etag;
+    const response = await fetchWithTimeout(imageUrl, { headers, cache: "no-store" });
+    if (response.status === 304 && cached !== undefined) {
+      cached.checkedAt = Date.now();
+      return;
+    }
     if (!response.ok) {
       if (response.status === 404) artworkMisses.add(imageUrl);
       return;
     }
     const objectUrl = URL.createObjectURL(await response.blob());
-    artworkCache.set(imageUrl, objectUrl);
-    if (imageElement.dataset.source !== imageUrl) return;
-    imageElement.src = objectUrl;
-    imageElement.hidden = false;
-    fallbackElement.hidden = true;
+    artworkCache.set(imageUrl, { objectUrl, etag: response.headers.get("ETag"), checkedAt: Date.now() });
+    show(objectUrl);
+    if (cached !== undefined) setTimeout(() => URL.revokeObjectURL(cached.objectUrl), 2000);
   } catch {
     // Keep the class or scene illustration visible if art is not ready yet.
+  } finally {
+    artworkPending.delete(imageUrl);
   }
 }
 
@@ -299,7 +316,7 @@ function renderGame(game) {
     ? t("activity.scene.chooseHeroDescription")
     : game.scene.description;
   document.querySelector(".live-scene").classList.toggle("has-enemies", game.kind === "table" && (game.foes?.length ?? 0) > 0);
-  void setArtwork(document.querySelector("#live-scene-image"), document.querySelector(".scene-art-fallback"), game.kind === "table" ? game.scene.imageUrl : null, game.scene.title);
+  void setArtwork(document.querySelector("#live-scene-image"), document.querySelector(".scene-art-fallback"), game.kind === "table" ? game.scene.imageUrl : null, game.scene.title, true);
   if (game.kind === "lobby") {
     document.querySelector(".adventure-map-panel").hidden = true;
     renderLobby(game);
@@ -646,11 +663,11 @@ function makeEnemy(enemy) {
   const name = document.createElement("strong");
   name.textContent = enemy.name;
   const health = document.createElement("span");
-  health.textContent = t("activity.hero.enemyHealth", { hp: enemy.hp, max: enemy.maxHp, zone: enemy.zone });
+  health.textContent = t("activity.hero.enemyHealth", { band: t(`activity.band.${enemy.band}`), zone: enemy.zone });
   const track = document.createElement("div");
   track.className = "health-track";
   const fill = document.createElement("i");
-  fill.style.width = `${Math.max(0, Math.min(100, enemy.hp / Math.max(1, enemy.maxHp) * 100))}%`;
+  fill.style.width = `${{ unhurt: 100, hurt: 66, bloodied: 33, down: 0 }[enemy.band] ?? 100}%`;
   track.append(fill);
   card.append(name, health, track);
   if (enemy.active) {
@@ -915,10 +932,32 @@ function renderTrade(game, fixedTarget) {
   if (!recipient && !relevant.length) target.textContent = t("activity.trade.none");
 }
 
+// Where each kind of action is shown: urgent decisions on top, the round composer, a category list, or the closing button.
+const actionPlacement = { acceptInvite: "top", joinHero: "top", reaction: "top", smite: "top", opportunityAttack: "top", ready: "top", begin: "top", continue: "top", submit: "composer", pass: "composer", endTurn: "bottom" };
+const actionCategoryOf = { attack: "attack", combatSpell: "spells", exploreSpell: "spells", healSpell: "spells", reviveSpell: "spells", summonCompanion: "spells", move: "move", moveScene: "move", teleport: "move", engage: "move", withdraw: "move", dash: "move", useItem: "items", combatItem: "items", shield: "items", shop: "items", askNpc: "talk", pressNpc: "talk", feature: "other", wildShape: "other", combatDodge: "other" };
+const actionCategoryOrder = ["attack", "spells", "move", "items", "talk", "other"];
+const actionCategoryIcon = { attack: "attack", spells: "spell", move: "move", items: "potion", talk: "clue", other: "shape" };
+let selectedActionCategory = null;
+const drafts = { action: "", ask: "" };
+
+function draftInput(element, draftKey, label, placeholder) {
+  element.className = "live-action-input";
+  element.placeholder = placeholder;
+  element.setAttribute("aria-label", label);
+  element.value = drafts[draftKey];
+  element.addEventListener("input", () => { drafts[draftKey] = element.value; });
+  return element;
+}
+
 function renderTableActions(game) {
   liveActions.replaceChildren();
-  let actionTarget = liveActions;
-  const addAction = (label, action, primary = false) => actionTarget.append(makeButton(label, () => void performAction(action), primary, actionIcon[action.kind] ?? "notice"));
+  const top = [], composer = [], bottom = [];
+  const groups = new Map(actionCategoryOrder.map((category) => [category, []]));
+  const addAction = (label, action, primary = false) => {
+    const button = makeButton(label, () => void performAction(action), primary, actionIcon[action.kind] ?? "notice");
+    const place = actionPlacement[action.kind];
+    (place === "top" ? top : place === "composer" ? composer : place === "bottom" ? bottom : groups.get(actionCategoryOf[action.kind] ?? "other")).push(button);
+  };
   if (game.canAcceptInvite) addAction(t("activity.action.acceptInvite"), { kind: "acceptInvite" }, true);
   for (const hero of game.joinChoices) addAction(t("activity.action.joinAs", { name: hero.name, class: hero.className }), { kind: "joinHero", heroRef: hero.id }, true);
   for (const hero of game.savedHeroChoices ?? []) addAction(t("activity.action.joinWith", { name: hero.name, class: hero.className }), { kind: "joinHero", heroRef: hero.id }, true);
@@ -939,24 +978,11 @@ function renderTableActions(game) {
     if (game.canBegin) addAction(t("activity.action.beginAdventure"), { kind: "begin" });
   } else if (game.mode === "paused" && game.canBegin) addAction(t("activity.action.resumeGame"), { kind: "continue" }, true);
 
-  const hasActionChoices = Boolean((game.turn && !game.turn.busy) || (game.mode === "collecting" && game.submission === null && game.myHero) || (game.explore && game.myHero));
-  if (hasActionChoices) {
-    const actionDetails = document.createElement("details");
-    actionDetails.className = "action-drawer";
-    const summary = document.createElement("summary");
-    summary.textContent = game.mode === "combat" ? t("activity.action.choose") : t("activity.action.explore");
-    const choices = document.createElement("div");
-    choices.className = "action-drawer-content";
-    actionDetails.append(summary, choices);
-    liveActions.append(actionDetails);
-    actionTarget = choices;
-  }
-
+  let note = null;
   if (game.mode === "collecting" && game.submission !== null) {
-    const note = document.createElement("span");
+    note = document.createElement("span");
     note.className = "live-action-note status-note";
     note.textContent = game.submission === "action" ? t("activity.status.submittedFollow") : game.submission === "pass" ? t("activity.status.passedFollow") : t("activity.status.roundMovedOn");
-    liveActions.append(note);
   }
 
   if (game.turn && !game.turn.busy) {
@@ -983,24 +1009,20 @@ function renderTableActions(game) {
     if (game.turn.canWithdraw) addAction(t("activity.action.withdrawSafely"), { kind: "withdraw" });
     if (game.turn.canDashOrDisengage) addAction(t("activity.action.dash"), { kind: "dash" });
     if (game.turn.canDodge) addAction(t("activity.action.dodge"), { kind: "combatDodge" });
-    addAction(t("activity.action.endTurn"), { kind: "endTurn"});
+    addAction(t("activity.action.endTurn"), { kind: "endTurn" });
   } else if (game.mode === "collecting" && game.submission === null && game.myHero !== null) {
-    const input = document.createElement("textarea");
-    input.className = "live-action-input";
+    const input = draftInput(document.createElement("textarea"), "action", t("activity.action.submit"), t("activity.action.inputPlaceholder"));
     input.maxLength = 1500;
     input.rows = 2;
-    input.placeholder = t("activity.action.inputPlaceholder");
-    actionTarget.append(input);
+    composer.push(input);
     addAction(t("activity.action.submit"), { kind: "submit", text: () => input.value }, true);
     addAction(t("activity.action.pass"), { kind: "pass" });
   }
   if (game.explore && game.myHero) {
     if (game.explore.npcs.length) {
-      const question = document.createElement("input");
-      question.className = "live-action-input";
+      const question = draftInput(document.createElement("input"), "ask", t("activity.category.talk"), t("activity.action.askPlaceholder"));
       question.maxLength = 500;
-      question.placeholder = t("activity.action.askPlaceholder");
-      actionTarget.append(question);
+      groups.get("talk").push(question);
       for (const npc of game.explore.npcs) {
         addAction(t("activity.action.ask", { name: npc.name }), { kind: "askNpc", npcId: npc.id, question: () => question.value }, true);
         if (!npc.secretKnown) for (const skill of ["insight", "persuasion", "deception", "intimidation"]) addAction(t("activity.action.pressNpc", { name: npc.name, skill: t(`activity.skill.${skill}`) }), { kind: "pressNpc", npcId: npc.id, skill });
@@ -1017,12 +1039,52 @@ function renderTableActions(game) {
     for (const spell of game.explore.conjuring) for (const slot of spell.slots) addAction(t("activity.action.summon", { spell: spell.name, level: slot.level }), { kind: "summonCompanion", spellId: spell.id, slotLevel: slot.level });
     for (const place of game.explore.places) addAction(t("activity.action.travel", { name: place.title }), { kind: "moveScene", sceneId: place.id });
   }
-  actionTarget = liveActions;
+
+  const row = (className, nodes) => {
+    const element = document.createElement("div");
+    element.className = className;
+    element.append(...nodes);
+    return element;
+  };
+  if (top.length) liveActions.append(row("action-row action-urgent", top));
+  if (composer.length) liveActions.append(row("action-composer", composer));
+  if (note) liveActions.append(note);
+  const choiceCount = (category) => groups.get(category).filter((node) => node instanceof HTMLButtonElement).length;
+  const categories = actionCategoryOrder.filter((category) => choiceCount(category) > 0);
+  if (categories.length) {
+    if (!categories.includes(selectedActionCategory)) selectedActionCategory = categories[0];
+    const chips = document.createElement("div");
+    chips.className = "action-chips";
+    chips.setAttribute("role", "tablist");
+    const lists = new Map();
+    const select = (category) => {
+      selectedActionCategory = category;
+      for (const [id, list] of lists) list.hidden = id !== category;
+      for (const chip of chips.children) chip.setAttribute("aria-selected", String(chip.dataset.category === category));
+    };
+    for (const category of categories) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.role = "tab";
+      chip.dataset.category = category;
+      const badge = document.createElement("b");
+      badge.textContent = String(choiceCount(category));
+      chip.append(iconImage(actionCategoryIcon[category]), document.createTextNode(t(`activity.category.${category}`)), badge);
+      chip.addEventListener("click", () => select(category));
+      chips.append(chip);
+      const list = row("action-list", groups.get(category));
+      list.setAttribute("role", "tabpanel");
+      lists.set(category, list);
+    }
+    liveActions.append(chips, ...lists.values());
+    select(selectedActionCategory);
+  }
+  if (bottom.length) liveActions.append(row("action-row action-end", bottom));
   if (liveActions.childElementCount === 0) {
-    const note = document.createElement("span");
-    note.className = "live-action-note";
-    note.textContent = t("activity.status.waitUpdate");
-    liveActions.append(note);
+    const empty = document.createElement("span");
+    empty.className = "live-action-note";
+    empty.textContent = t("activity.status.waitUpdate");
+    liveActions.append(empty);
   }
 }
 
@@ -1279,7 +1341,7 @@ function designPreviewSnapshot() {
       { ...hero("sable", "Sable Dusk", "Cleric", "Tiefling", 29, 33), tableStatus: "waiting" },
       { ...hero("kestrel", "Kestrel Vale", "Bard", "Human", 25, 30), tableStatus: "waiting" },
     ],
-    foes: [{ name: "Hollow Sentinel", hp: 18, maxHp: 36, band: "Bloodied", zone: "Flooded floor", active: false }],
+    foes: [{ name: "Hollow Sentinel", hp: 18, maxHp: 36, band: "bloodied", zone: "Flooded floor", active: false }],
     myHero: { ...hero("aria", "Aria Vell", "Wizard", "High Elf", 27, 34, true), imageUrl: null, gold: 18, partyGold: 42, weapons: ["Quarterstaff"], worn: ["Traveler's robe"], pack: [], stash: [], inventoryChoices: [], usablePotions: [], cantrips: ["Fire Bolt", "Ray of Frost"], prepared: ["Shield", "Magic Missile"], slots: [{ level: 1, left: 2, max: 3 }, { level: 2, left: 1, max: 2 }], pactSlots: [], uses: [] },
     turn: { busy: false, attacks: [{ weapon: "Quarterstaff", targets: [{ id: "sentinel", name: "Hollow Sentinel" }] }], spells: [], features: [], potions: [], shields: [], moves: [], engage: [], teleports: [], wildShapes: [], canRevertShape: false, canWithdraw: false, canDashOrDisengage: true, canDodge: true },
     explore: null, pendingRoll: null, pendingRollCount: 0, submittedCount: 2, participantCount: 6, submission: null, canAcceptInvite: false, joinChoices: [], joinRequestStatus: null,
