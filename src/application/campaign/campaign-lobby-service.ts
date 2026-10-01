@@ -180,9 +180,12 @@ export class CampaignLobbyService {
   // Resolves a Discord Activity launched from a campaign's Party or Adventure
   // post to that game, while keeping the Activity's normal lobby as fallback.
   public async activityGameForChannel(guildId: string, userId: UserId, channelId: string): Promise<ActivityCampaignListingItem | null> {
+    const games = await this.activityGames(guildId, userId);
     const stored = await this.findByChannel(guildId, [channelId]);
-    if (stored === undefined) return null;
-    return (await this.activityGames(guildId, userId)).find((game) => game.campaignId === stored.record.key.campaignId) ?? null;
+    if (stored !== undefined) return games.find((game) => game.campaignId === stored.record.key.campaignId) ?? null;
+    // Started from somewhere that is not a game's own channel (the hub): a player in exactly one game goes straight into it instead of choosing from a list.
+    const mine = games.filter((game) => game.action === "resume" || game.action === "continue");
+    return mine.length === 1 ? (mine[0] ?? null) : null;
   }
 
   // A deliberately small, access-filtered projection for the Discord Activity lobby.

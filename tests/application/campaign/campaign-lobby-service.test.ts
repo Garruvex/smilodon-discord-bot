@@ -313,3 +313,16 @@ describe("changing the party size", () => {
     expect(await service.setPartySize(key, "u-org", 9)).toEqual({ kind: "refused", reason: "invalidLimits" });
   });
 });
+
+describe("opening the Activity from a channel that is not a game's", () => {
+  it("goes straight into the one game the player is in, and lists when there are several or none", async () => {
+    const { service } = setup();
+    const first = value(await service.create(input({ name: "First" }))).key;
+    value(await service.join(first, "u-a"));
+    expect((await service.activityGameForChannel(guildId, "u-a", "hub"))?.campaignId).toBe(first.campaignId);
+    expect(await service.activityGameForChannel(guildId, "u-stranger", "hub")).toBeNull();
+    const second = value(await service.create(input({ name: "Second", organizerId: "u-other" }))).key;
+    value(await service.join(second, "u-a"));
+    expect(await service.activityGameForChannel(guildId, "u-a", "hub")).toBeNull();
+  });
+});
