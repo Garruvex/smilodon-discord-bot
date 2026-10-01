@@ -44,6 +44,16 @@ interface ActivitySession {
   readonly expiresAt: number;
 }
 
+// The game each player last opened, so a reload (the pop-out button restarts the Activity in a new window) goes back to it.
+const lastOpenedGames = new Map<string, string>();
+const maxRememberedGames = 5000;
+function rememberGame(guildId: string, userId: string, campaignId: string): void {
+  const key = `${guildId}:${userId}`;
+  lastOpenedGames.delete(key);
+  lastOpenedGames.set(key, campaignId);
+  if (lastOpenedGames.size > maxRememberedGames) lastOpenedGames.delete(lastOpenedGames.keys().next().value as string);
+}
+
 const discordApiBase = "https://discord.com/api/v10";
 const sessionLifetimeMs = 60 * 60 * 1000;
 const maxRequestBodyBytes = 16 * 1024;
@@ -125,6 +135,7 @@ async function respond(
     if (tableMatch[2] === "table" && request.method === "GET") {
       const result = await campaigns.snapshot(key, session.userId);
       if (result.kind === "refused") return writeJson(response, result.reason === "notFound" ? 404 : 403, { error: result.reason }, headers);
+      rememberGame(session.guildId, session.userId, key.campaignId);
       return writeJson(response, 200, { snapshot: result.value }, headers);
     }
     if (tableMatch[2] === "action" && request.method === "POST") {
@@ -252,7 +263,10 @@ async function createSession(
   const displayName = typeof user.global_name === "string" && user.global_name.length > 0
     ? user.global_name
     : typeof user.username === "string" ? user.username : "Adventurer";
-  const launchGame = typeof channelId === "string" ? await campaigns.gameForChannel(guildId, user.id, channelId) : null;
+  const channelGame = typeof channelId === "string" ? await campaigns.gameForChannel(guildId, user.id, channelId) : null;
+  // Failing that, the game this player last had open, if they are still in it.
+  const remembered = lastOpenedGames.get(`${guildId}:${user.id}`);
+  const launchGame = channelGame ?? (remembered === undefined ? null : (await campaigns.listGames(guildId, user.id)).find((game) => game.campaignId === remembered && (game.action === "resume" || game.action === "continue")) ?? null);
   sessions.set(sessionToken, {
     userId: user.id,
     guildId,
