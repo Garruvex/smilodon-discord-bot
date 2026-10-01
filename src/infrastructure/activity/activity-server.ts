@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { resolve, sep } from "node:path";
 import type { Logger } from "pino";
@@ -10,14 +10,19 @@ import type { CampaignRecord } from "../../application/campaign/ports/campaign-r
 import type { CampaignKey } from "../../application/campaign/ports/campaign-store.js";
 import type { UserId } from "../../domain/campaign/core/ids.js";
 import type { ActivityConfiguration } from "../../config/configuration.js";
+import { campaignEn } from "../../application/i18n/messages/campaign-en.js";
+import { campaignZhTW } from "../../application/i18n/messages/campaign-zh-TW.js";
+import { isLanguage, type Language } from "../../application/i18n/language.js";
 
 const activityDirectory = resolve(process.cwd(), "assets", "activity");
 const campaignIconDirectory = resolve(process.cwd(), "assets", "emojis", "dnd");
+const campaignArtIconDirectory = resolve(process.cwd(), "assets", "campaign", "icons", "svg");
 const contentTypes: Readonly<Record<string, string>> = {
   ".css": "text/css; charset=utf-8",
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".png": "image/png",
+  ".svg": "image/svg+xml; charset=utf-8",
 };
 
 export interface ActivityServer {
@@ -33,6 +38,7 @@ export interface ActivityCampaignApi {
   withdrawJoin(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>>;
   snapshot(key: CampaignKey, userId: UserId): Promise<{ readonly kind: "ok"; readonly value: ActivityGameView } | { readonly kind: "refused"; readonly reason: string }>;
   act(key: CampaignKey, userId: UserId, input: unknown): Promise<{ readonly kind: "ok" } | { readonly kind: "refused"; readonly reason: string }>;
+  image(key: CampaignKey, userId: UserId, kind: "scene" | "character", id: string): Promise<{ readonly bytes: Buffer; readonly mediaType: "image/png" | "image/jpeg" | "image/webp" } | null>;
 }
 
 interface ActivitySession {
@@ -57,6 +63,11 @@ function rememberGame(guildId: string, userId: string, campaignId: string): void
 const discordApiBase = "https://discord.com/api/v10";
 const sessionLifetimeMs = 60 * 60 * 1000;
 const maxRequestBodyBytes = 16 * 1024;
+const activityCatalogs: Readonly<Record<Language, Readonly<Record<string, string | undefined>>>> = {
+  en: campaignEn,
+  "zh-TW": campaignZhTW,
+  ja: {},
+};
 
 export function createActivityServer(
   configuration: ActivityConfiguration,
@@ -112,7 +123,7 @@ async function respond(
   sessions: Map<string, ActivitySession>,
 ): Promise<void> {
   const headers = {
-    "Content-Security-Policy": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors https://discord.com https://discordapp.com http://localhost:* http://127.0.0.1:*",
+    "Content-Security-Policy": "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors https://discord.com https://discordapp.com http://localhost:* http://127.0.0.1:*",
     "Referrer-Policy": "no-referrer",
     "X-Content-Type-Options": "nosniff",
   };
@@ -121,10 +132,29 @@ async function respond(
     await createSession(request, response, headers, applicationId, clientSecret, campaigns, sessions);
     return;
   }
+  if (url.pathname === "/api/activity/i18n" && request.method === "GET") {
+    const requestedLanguage = url.searchParams.get("language");
+    const language: Language = isLanguage(requestedLanguage) ? requestedLanguage : "en";
+    const dictionary = Object.fromEntries(Object.entries(campaignEn)
+      .filter(([key]) => key.startsWith("activity."))
+      .map(([key, english]) => [key, activityCatalogs[language][key] ?? english]));
+    return writeJson(response, 200, dictionary, headers);
+  }
   if (url.pathname === "/api/activity/games" && request.method === "GET") {
     const session = requireSession(request, sessions);
     if (session === null) return writeJson(response, 401, { error: "unauthorized" }, headers);
     return writeJson(response, 200, { user: { username: session.username, displayName: session.displayName }, games: await campaigns.listGames(session.guildId, session.userId) }, headers);
+  }
+
+  const imageMatch = url.pathname.match(/^\/api\/activity\/games\/([0-9a-f-]{1,64})\/images\/(scenes|characters)\/([a-z0-9_-]{1,128})$/i);
+  if (imageMatch !== null && imageMatch[1] !== undefined && imageMatch[3] !== undefined && request.method === "GET") {
+    const session = requireSession(request, sessions);
+    if (session === null) return writeJson(response, 401, { error: "unauthorized" }, headers);
+    const image = await campaigns.image({ guildId: session.guildId, campaignId: imageMatch[1] }, session.userId, imageMatch[2] === "scenes" ? "scene" : "character", imageMatch[3]);
+    if (image === null) return writeJson(response, 404, { error: "imageNotAvailable" }, headers);
+    response.writeHead(200, { ...headers, "Content-Type": image.mediaType, "Content-Length": String(image.bytes.byteLength), "Cache-Control": "private, no-store", "Cross-Origin-Resource-Policy": "same-origin" });
+    response.end(image.bytes);
+    return;
   }
 
   const tableMatch = url.pathname.match(/^\/api\/activity\/games\/([0-9a-f-]{1,64})\/(table|action)$/i);
@@ -184,11 +214,14 @@ async function respond(
   }
 
   const isCampaignIcon = /^\/icons\/[a-z-]+\.png$/.test(url.pathname);
+  const isCampaignArtIcon = /^\/art-icons\/[a-z-]+\.svg$/.test(url.pathname);
   const relativePath = url.pathname === "/" ? "index.html" : url.pathname.slice(1);
   const filePath = isCampaignIcon
     ? resolve(campaignIconDirectory, relativePath.slice("icons/".length))
-    : resolve(activityDirectory, relativePath);
-  const allowedRoot = isCampaignIcon ? campaignIconDirectory : activityDirectory;
+    : isCampaignArtIcon
+      ? resolve(campaignArtIconDirectory, relativePath.slice("art-icons/".length))
+      : resolve(activityDirectory, relativePath);
+  const allowedRoot = isCampaignIcon ? campaignIconDirectory : isCampaignArtIcon ? campaignArtIconDirectory : activityDirectory;
   if (!filePath.startsWith(`${allowedRoot}${sep}`) || !existsSync(filePath) || !statSync(filePath).isFile()) {
     response.writeHead(404, { ...headers, "Content-Type": "text/plain; charset=utf-8" });
     response.end("Not found");
@@ -200,6 +233,11 @@ async function respond(
     "Content-Type": contentTypes[extension] ?? "application/octet-stream",
     "Cache-Control": "no-store",
   });
+  if (isCampaignArtIcon) {
+    const svg = readFileSync(filePath, "utf8").replace('<path d="M0 0h512v512H0z"/>', "");
+    response.end(request.method === "HEAD" ? undefined : svg);
+    return;
+  }
   if (request.method === "HEAD") response.end();
   else createReadStream(filePath).pipe(response);
 }

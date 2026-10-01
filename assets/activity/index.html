@@ -11,31 +11,35 @@
   <body>
     <main class="lobby-shell" id="lobby-screen">
       <header class="lobby-header">
-        <div class="lobby-brand"><span class="lobby-brand-mark" aria-hidden="true">✦</span><div><span class="eyebrow">FNTU ADVENTURES</span><h1>Your tables</h1></div></div>
+        <div class="lobby-brand"><span class="lobby-brand-mark" aria-hidden="true"><img src="/art-icons/roll.svg" alt=""></span><div><span class="eyebrow" data-i18n="activity.brand">FNTU ADVENTURES</span><h1 data-i18n="activity.lobby.title">Your tables</h1></div></div>
         <span class="server-badge" id="server-label">Discord server</span>
       </header>
-      <section class="lobby-intro"><span class="eyebrow">THE ADVENTURING BOARD</span><h2>Find your next game</h2><p>Open lobbies and live games you can join in this server.</p></section>
+      <section class="lobby-intro"><span class="eyebrow" data-i18n="activity.lobby.eyebrow">THE ADVENTURING BOARD</span><h2 data-i18n="activity.lobby.heading">Find your next game</h2><p data-i18n="activity.lobby.description">Open lobbies and live games you can join in this server.</p></section>
       <div class="lobby-message" id="lobby-message" role="status" aria-live="polite">Connecting to Discord…</div>
-      <section class="lobby-games" id="lobby-games" aria-label="Available games" aria-live="polite"></section>
-      <section class="lobby-empty" id="lobby-empty" hidden><span class="empty-sigil" aria-hidden="true">✧</span><h2>No games to show yet</h2><p>Open lobbies and games you belong to will appear here.</p></section>
-      <section class="lobby-error" id="lobby-error" hidden><h2 id="lobby-error-title">Could not load your games</h2><p id="lobby-error-message">Reconnect to Discord and try again.</p><button class="lobby-retry" id="lobby-retry" type="button">Try again</button></section>
-      <footer class="lobby-footer"><span class="connection-dot"></span><span id="lobby-user">Waiting for Discord</span><span class="server-only-note">Games are shown for the server where this Activity was opened.</span></footer>
+      <section class="lobby-games" id="lobby-games" data-i18n-aria-label="activity.lobby.availableGames" aria-label="Available games" aria-live="polite"></section>
+      <section class="lobby-empty" id="lobby-empty" hidden><span class="empty-sigil" aria-hidden="true">✧</span><h2 data-i18n="activity.lobby.emptyTitle">No games to show yet</h2><p data-i18n="activity.lobby.emptyDescription">Open lobbies and games you belong to will appear here.</p></section>
+      <section class="lobby-error" id="lobby-error" hidden><h2 id="lobby-error-title" data-i18n="activity.lobby.error.load">Could not load your games</h2><p id="lobby-error-message" data-i18n="activity.lobby.error.help">Reconnect to Discord and try again.</p><button class="lobby-retry" id="lobby-retry" data-i18n="activity.lobby.retry" type="button">Try again</button></section>
+      <footer class="lobby-footer"><span class="connection-dot"></span><span id="lobby-user" data-i18n="activity.lobby.waitingDiscord">Waiting for Discord</span><span class="server-only-note" data-i18n="activity.lobby.serverNote">Games are shown for the server where this Activity was opened.</span></footer>
     </main>
 
     <main class="live-shell" id="live-screen" hidden>
       <header class="live-header">
-        <div class="lobby-brand"><span class="lobby-brand-mark" aria-hidden="true">✦</span><div><span class="eyebrow" id="live-adventure">ADVENTURE</span><h1 id="live-campaign">Campaign</h1></div></div>
-        <div class="live-heading-right"><span class="live-phase" id="live-phase">Loading game…</span><button class="lobby-retry" id="back-to-lobby" type="button">All games</button></div>
+        <div class="lobby-brand"><span class="lobby-brand-mark" aria-hidden="true"><img src="/art-icons/roll.svg" alt=""></span><div><span class="eyebrow" id="live-adventure">ADVENTURE</span><h1 id="live-campaign">Campaign</h1></div></div>
+        <div class="live-heading-right"><span class="live-phase"><span id="live-phase">Loading game…</span><span id="live-round"></span></span><button class="lobby-retry" id="back-to-lobby" data-i18n="activity.button.allGames" type="button">All games</button></div>
       </header>
-      <section class="live-scene"><div class="live-scene-copy"><span class="eyebrow">CURRENT SCENE</span><h2 id="live-scene-title">Loading scene…</h2><p id="live-scene-description"></p></div><div class="live-enemies" id="live-enemies" aria-label="Enemies"></div></section>
-      <section class="adventure-map-panel" aria-labelledby="live-map-title"><div class="section-heading"><div><span class="eyebrow" id="live-map-kind">THE JOURNEY</span><h2 id="live-map-title">Adventure map</h2></div><span class="map-key"><i class="current-key"></i> Here <i class="reachable-key"></i> Open route <i class="locked-key"></i> Locked</span></div><div class="live-map" id="live-map" aria-live="polite"></div></section>
+      <section class="table-status" aria-live="polite"><span class="table-status-mark" aria-hidden="true"></span><div><strong id="table-status-title">Connecting to the table</strong><span id="table-status-subtitle">Game status will appear here.</span></div></section>
+      <section class="live-scene"><div class="live-scene-art" id="live-scene-art"><img id="live-scene-image" alt="" hidden><span class="scene-art-fallback" aria-hidden="true"><i class="scene-fallback-moon"></i><i class="scene-fallback-hill"></i><i class="scene-fallback-ruin ruin-left"></i><i class="scene-fallback-ruin ruin-right"></i></span></div><div class="live-scene-copy"><span class="eyebrow" data-i18n="activity.scene.label">CURRENT SCENE</span><h2 id="live-scene-title" data-i18n="activity.scene.loading">Loading scene…</h2><p id="live-scene-description"></p></div><div class="live-enemies" id="live-enemies" data-i18n-aria-label="activity.scene.enemies" aria-label="Enemies"></div></section>
+      <div class="live-feature-grid">
+      <section class="party-section"><div class="section-heading"><div><span class="eyebrow" data-i18n="activity.party.label">AT THE TABLE</span><h2 data-i18n="activity.party.title">The party</h2></div><span class="party-count" id="live-party-count"></span></div><div class="party-grid live-party-grid" id="live-party"></div></section>
       <section class="live-hero" aria-labelledby="live-hero-name">
-        <div class="live-hero-art" aria-hidden="true"><span id="live-hero-sigil">✧</span></div>
-        <div class="live-hero-copy"><div class="live-hero-context"><span class="eyebrow">YOUR HERO</span><span class="live-turn" id="live-turn"></span></div><h2 id="live-hero-name">Choose a character</h2><p class="hero-subtitle" id="live-hero-subtitle"></p><div class="vitals"><div class="vital-top"><span id="live-hero-hp"></span><span id="live-hero-ac"></span></div><div class="health-track"><i id="live-hero-health"></i></div></div><div class="resource-row" id="live-resources"></div><div class="live-actions" id="live-actions"></div></div>
+        <div class="live-hero-art" id="live-hero-art"><img id="live-hero-image" alt="" hidden><span class="hero-class-backdrop" id="live-hero-sigil" aria-hidden="true">✧</span><span class="hero-art-caption" id="live-hero-class">YOUR CHARACTER</span></div>
+        <div class="live-hero-copy"><div class="live-hero-context"><span class="eyebrow" id="hero-workspace-label" data-i18n="activity.hero.label">YOUR HERO</span><span class="live-turn" id="live-turn"></span></div><h2 id="live-hero-name">Choose a character</h2><p class="hero-subtitle" id="live-hero-subtitle"></p><div class="vitals"><div class="vital-top"><span id="live-hero-hp"></span><span id="live-hero-ac"></span></div><div class="health-track"><i id="live-hero-health"></i></div></div></div>
+        <div class="hero-workspace"><nav class="hero-workspace-tabs" id="hero-workspace-tabs" role="tablist" data-i18n-aria-label="activity.workspace.label" aria-label="Character workspace" hidden></nav><section class="hero-tab-panel" id="hero-panel-overview" role="tabpanel" aria-labelledby="hero-tab-overview" hidden><div class="resource-row" id="live-resources"></div><div class="hero-equipment" id="live-equipment"></div></section><section class="hero-tab-panel" id="hero-panel-actions" role="tabpanel" aria-labelledby="hero-tab-actions"><div class="live-actions" id="live-actions"></div></section><section class="hero-tab-panel" id="hero-panel-spells" role="tabpanel" aria-labelledby="hero-tab-spells" hidden><div id="live-spellbook" class="hero-spellbook"></div></section><section class="hero-tab-panel" id="hero-panel-inventory" role="tabpanel" aria-labelledby="hero-tab-inventory" hidden><div id="live-inventory" class="hero-inventory"></div></section><section class="hero-tab-panel" id="hero-panel-trade" role="tabpanel" aria-labelledby="hero-tab-trade" hidden><div id="live-trade" class="hero-trade"></div></section></div>
       </section>
-      <section class="party-section"><div class="section-heading"><div><span class="eyebrow">AT THE TABLE</span><h2>The party</h2></div><span class="party-count" id="live-party-count"></span></div><div class="party-grid live-party-grid" id="live-party"></div></section>
+      </div>
+      <details class="adventure-map-panel" aria-labelledby="live-map-title"><summary class="map-summary"><span><span class="eyebrow" id="live-map-kind">THE JOURNEY</span><strong id="live-map-title">Adventure map</strong></span><span class="map-key"><i class="current-key"></i> Here <i class="reachable-key"></i> Open route <i class="locked-key"></i> Locked</span></summary><div class="live-map" id="live-map" aria-live="polite"></div></details>
       <div class="live-message" id="live-message" role="status" aria-live="polite"></div>
-      <footer class="table-footer"><span><span class="connection-dot"></span> Live campaign data · updates every few seconds</span></footer>
+      <footer class="table-footer"><span><span class="connection-dot"></span> <span data-i18n="activity.footer.live">Live campaign data · updates every few seconds</span></span></footer>
     </main>
 
     <main class="table-shell" id="table-preview" hidden>
@@ -55,7 +59,7 @@
       <section class="hero-workspace" aria-labelledby="hero-title">
         <div class="hero-art" aria-hidden="true"><div class="hero-aura"></div><div class="hero-sigil">✧</div><div class="hero-figure"><span class="figure-hair"></span><span class="figure-face"></span><span class="figure-cloak"></span></div></div>
         <div class="hero-copy">
-          <div class="hero-context"><span class="eyebrow">YOUR HERO</span><span class="turn-label"><span class="turn-dot"></span> Your turn</span></div>
+          <div class="hero-context"><span class="eyebrow" data-i18n="activity.hero.label">YOUR HERO</span><span class="turn-label"><span class="turn-dot"></span> Your turn</span></div>
           <h2 id="hero-title">Aria Vell</h2><p class="hero-subtitle">High Elf Wizard 5</p>
           <div class="vitals"><div class="vital-top"><span>♥ <b>27</b> / 34 HP</span><span>AC <b>15</b></span></div><div class="health-track"><i style="width:79%"></i></div></div>
           <div class="resource-row"><span class="resource"><b>◈</b> 2 / 3 arcane charges</span><span class="resource"><b>✦</b> 2 spell slots</span></div>
@@ -77,7 +81,17 @@
       </section>
       <footer class="table-footer"><span><span class="connection-dot"></span> Table view connection is the next step.</span></footer>
     </main>
-    <dialog class="detail-dialog" id="detail-dialog"><form method="dialog"><button class="dialog-close" aria-label="Close details">×</button></form><span class="eyebrow">YOUR CHARACTER</span><h2 id="detail-name"></h2><p id="detail-subtitle"></p><div class="detail-stats"><span><b id="detail-hp"></b>Hit points</span><span><b id="detail-ac"></b>Armor class</span><span><b id="detail-gold"></b>Gold</span></div><h3>Spellbook</h3><p id="detail-spells"></p><h3>Inventory</h3><div id="detail-inventory" class="detail-items"></div><h3>Party stash</h3><div id="detail-stash" class="detail-items"></div></dialog>
+    <dialog class="dice-dialog" id="dice-dialog" aria-labelledby="dice-title" aria-describedby="dice-description">
+      <button class="dialog-close" id="dice-close" data-i18n-aria-label="activity.dice.close" type="button" aria-label="Close roll prompt">×</button>
+      <span class="eyebrow" data-i18n="activity.dice.readyEyebrow">YOUR CHECK IS READY</span>
+      <div class="dice-animation" id="dice-animation" aria-hidden="true"><img src="/art-icons/roll.svg" alt=""></div>
+      <h2 id="dice-title" data-i18n="activity.dice.title">Roll the dice</h2>
+      <p class="dice-test" id="dice-test"></p>
+      <p id="dice-description" data-i18n="activity.dice.description">Your check is ready. The game will apply the roll to the scene.</p>
+      <p class="dice-action" id="dice-action"></p>
+      <button class="live-action-choice primary dice-roll-button" id="dice-roll-button" type="button"><img src="/art-icons/roll.svg" alt=""><span data-i18n="activity.dice.rollD20">Roll d20</span></button>
+    </dialog>
+    <dialog class="detail-dialog" id="detail-dialog"><form method="dialog"><button class="dialog-close" data-i18n-aria-label="activity.detail.close" aria-label="Close details">×</button></form><span class="eyebrow" data-i18n="activity.detail.character">YOUR CHARACTER</span><h2 id="detail-name"></h2><p id="detail-subtitle"></p><div class="detail-stats"><span><b id="detail-hp"></b><span data-i18n="activity.detail.hitPoints">Hit points</span></span><span><b id="detail-ac"></b><span data-i18n="activity.detail.armorClass">Armor class</span></span><span class="detail-private"><b id="detail-gold"></b><span data-i18n="activity.detail.gold">Gold</span></span></div><section class="detail-private"><h3 data-i18n="activity.detail.spellbook">Spellbook</h3><p id="detail-spells"></p><h3 data-i18n="activity.detail.inventory">Inventory</h3><div id="detail-inventory" class="detail-items"></div><h3 data-i18n="activity.detail.partyStash">Party stash</h3><div id="detail-stash" class="detail-items"></div></section></dialog>
     <div class="toast" role="status" aria-live="polite"></div>
   </body>
 </html>

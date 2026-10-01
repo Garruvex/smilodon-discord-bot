@@ -157,7 +157,7 @@ export class ImageWorker {
       if (saved === undefined || found === undefined || channelId === null) return void (await this.mark(item.key, subject, "failed"));
       await sink.post(channelId, saved, found.caption);
       await this.mark(item.key, subject, "done");
-      await assets.remove(item.key, subject).catch(() => undefined);
+      if (request.kind !== "sceneImage" && request.kind !== "heroImage") await assets.remove(item.key, subject).catch(() => undefined);
       return;
     }
     if (existing !== undefined && !forced) return;
@@ -194,7 +194,7 @@ export class ImageWorker {
     await this.mark(item.key, subject, "made");
     await sink.post(channelId, image, described.caption);
     await this.mark(item.key, subject, "done");
-    await assets.remove(item.key, subject).catch(() => undefined);
+    if (request.kind !== "sceneImage" && request.kind !== "heroImage") await assets.remove(item.key, subject).catch(() => undefined);
   }
 
   // The player's own portrait for a hero that came from their library, if they gave one.

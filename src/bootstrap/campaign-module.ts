@@ -25,7 +25,7 @@ import { LlmCampaignNarrator, LlmCampaignPlanner } from "../application/campaign
 import type { CampaignNarrator, CampaignPlanner } from "../application/campaign/ports/dm-ports.js";
 import type { CampaignKey, CampaignTransaction, CampaignUnitOfWork } from "../application/campaign/ports/campaign-store.js";
 import type { CampaignRecord } from "../application/campaign/ports/campaign-record.js";
-import type { UserId } from "../domain/campaign/core/ids.js";
+import type { CharacterId, UserId } from "../domain/campaign/core/ids.js";
 import type { ContentId } from "../domain/campaign/rules/content-id.js";
 import type { StructuredModelClient } from "../application/campaign/ports/structured-model-client.js";
 import { CryptoRandomSource } from "../application/campaign/random/crypto-random-source.js";
@@ -92,6 +92,7 @@ export interface CampaignModule {
     withdrawJoin(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>>;
     snapshot(key: CampaignKey, userId: UserId): Promise<{ readonly kind: "ok"; readonly value: ActivityGameView } | { readonly kind: "refused"; readonly reason: "notFound" | "notActive" | "privateInviteOnly" }>;
     act(key: CampaignKey, userId: UserId, input: unknown): Promise<{ readonly kind: "ok" } | { readonly kind: "refused"; readonly reason: string }>;
+    image(key: CampaignKey, userId: UserId, kind: "scene" | "character", id: string): Promise<{ readonly bytes: Buffer; readonly mediaType: "image/png" | "image/jpeg" | "image/webp" } | null>;
   };
   // Discord events that can take a card or a place away: a message was
   // deleted (or many at once), or a channel was. Each puts things back.
@@ -332,6 +333,22 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
         } as const;
         });
       },
+      image: async (key, userId, kind, id) => {
+        const owner = await unitOfWork.transaction(async (tx) => {
+          const storedRecord = await tx.loadRecord(key);
+          const storedCampaign = await tx.loadCampaign(key);
+          if (storedRecord === undefined || !canSeeActivityCampaign(storedRecord.record, storedCampaign?.state, userId, clock.now()) || storedCampaign === undefined) return null;
+          if (kind === "scene") return storedCampaign.state.sceneId === id ? { kind, id } : null;
+          const character = storedCampaign.state.characters[id];
+          const isPartyMember = Object.values(storedCampaign.state.members).some((member) => member.characterId === id);
+          const libraryCharacterId = character?.origin?.libraryCharacterId;
+          return isPartyMember ? { kind, id, libraryCharacterId } : null;
+        });
+        if (owner === null) return null;
+        if (kind === "scene") return (await imageAssets.load(key, owner.id)) ?? null;
+        const generated = await imageAssets.load(key, `hero:${owner.id}`);
+        return generated ?? (owner.libraryCharacterId === undefined ? null : (await portraits.forGame(owner.libraryCharacterId)) ?? null);
+      },
       act: async (key, userId, input) => {
         if (typeof input !== "object" || input === null || !("kind" in input) || typeof input.kind !== "string") {
           return { kind: "refused", reason: "invalidAction" };
@@ -480,6 +497,18 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
               ? await activityPlay.stash(key, userId, itemId as ContentId<"item">, id)
               : await activityPlay.takeFromStash(key, userId, itemId as ContentId<"item">, id);
             return mapPlayResult(result);
+          }
+          case "giveItem": {
+            const itemId = textValue(action.itemId);
+            const toCharacterId = textValue(action.toCharacterId);
+            if (itemId === null || toCharacterId === null) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.give(key, userId, itemId as ContentId<"item">, toCharacterId as CharacterId, id).then(mapPlayResult);
+          }
+          case "offerResponse": {
+            const offerId = textValue(action.offerId);
+            const answer = action.answer;
+            if (offerId === null || (answer !== "accept" && answer !== "decline" && answer !== "cancel")) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.answerOffer(key, userId, offerId, answer, id).then(mapPlayResult);
           }
           case "wearItem":
           case "removeItem": {

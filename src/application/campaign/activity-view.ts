@@ -3,6 +3,7 @@ import type { UserId } from "../../domain/campaign/core/ids.js";
 import { actingHero } from "../../domain/campaign/engine/members.js";
 import { isFallen, type CampaignState } from "../../domain/campaign/state/campaign-state.js";
 import type { SealedContent, Glossary } from "../../domain/campaign/rules/content-registry.js";
+import type { CheckTest } from "../../domain/campaign/character/character-sheet.js";
 import { findScene } from "../../domain/campaign/adventure/adventure-bible.js";
 import { resolveHouseRules } from "../../domain/campaign/rules/house-rules.js";
 import { buildPanelView, buildPartyView, buildHeroView, buildReactionView, buildSmiteView, buildOpportunityAttackView } from "./views/campaign-views.js";
@@ -15,14 +16,15 @@ import { buildMapView } from "./views/map-view.js";
 
 export interface ActivityTableView {
   readonly kind: "table";
+  readonly language: CampaignRecord["language"];
   readonly campaignId: string;
   readonly campaignName: string;
   readonly adventureTitle: string;
   readonly mode: string;
   readonly roundNumber: number | null;
-  readonly scene: { readonly title: string; readonly description: string };
+  readonly scene: { readonly title: string; readonly description: string; readonly imageUrl: string | null };
   readonly map:
-    | { readonly kind: "battlefield"; readonly zones: readonly { readonly id: string; readonly name: string; readonly lighting: string | null; readonly cover: string | null; readonly difficult: boolean; readonly canMove: boolean; readonly occupants: readonly { readonly name: string; readonly side: "party" | "foes"; readonly active: boolean; readonly hp: number; readonly maxHp: number }[] }[] }
+    | { readonly kind: "battlefield"; readonly zones: readonly { readonly id: string; readonly name: string; readonly lighting: string | null; readonly cover: string | null; readonly difficult: boolean; readonly canMove: boolean; readonly occupants: readonly { readonly name: string; readonly side: "party" | "foes"; readonly active: boolean; readonly hp: number; readonly maxHp: number }[] }[]; readonly edges: readonly { readonly from: string; readonly to: string; readonly feet: number }[] }
     | { readonly kind: "journey"; readonly nodes: readonly { readonly id: string; readonly title: string; readonly status: "current" | "visited" | "known" | "reachable" | "locked"; readonly locked: boolean; readonly deadEnd: boolean; readonly canTravel: boolean; readonly column: number; readonly row: number }[]; readonly routes: readonly { readonly from: string; readonly to: string; readonly oneWay: boolean }[] };
   // Every word of the map, in the game's language.
   readonly mapText: Readonly<Record<"journeyKind" | "journeyTitle" | "tacticalKind" | "battlefield" | "keyParty" | "keyFoes" | "keyHere" | "keyOpen" | "keyLocked" | "empty" | "routeLabel" | "here" | "deadEnd" | "locked" | "visited" | "mapped" | "openRoute" | "openGround" | "difficult" | "coverHalf" | "coverThreeQuarters" | "lightBright" | "lightDim" | "lightDark" | "moveHere", string>>;
@@ -42,7 +44,9 @@ export interface ActivityTableView {
     readonly down: boolean;
     readonly fallen: boolean;
     readonly conditions: readonly string[];
+    readonly imageUrl: string | null;
     readonly isYou: boolean;
+    readonly tableStatus: "acting" | "submitted" | "passed" | "missed" | "away" | "waiting";
   }[];
   readonly foes: readonly {
     readonly name: string;
@@ -52,9 +56,11 @@ export interface ActivityTableView {
     readonly zone: string;
     readonly active: boolean;
   }[];
+  readonly offers: readonly { readonly id: string; readonly fromCharacterId: string; readonly toCharacterId: string; readonly fromName: string; readonly toName: string; readonly itemName: string; readonly direction: "incoming" | "outgoing" }[];
   // Full inventory/resource details are disclosed for the requesting player's hero only.
   readonly myHero: null | {
     readonly characterId: string;
+    readonly imageUrl: string | null;
     readonly name: string;
     readonly className: string | null;
     readonly raceName: string | null;
@@ -78,7 +84,10 @@ export interface ActivityTableView {
   };
   readonly turn: ReturnType<typeof buildTurnView>;
   readonly explore: (ExploreView & { readonly shops: readonly ShopView[] }) | null;
-  readonly pendingRoll: boolean;
+  readonly pendingRoll: null | { readonly checkId: string; readonly test: CheckTest; readonly action: string | null };
+  readonly pendingRollCount: number;
+  readonly submittedCount: number;
+  readonly participantCount: number;
   readonly submission: "action" | "pass" | "missed" | "excused" | null;
   readonly canAcceptInvite: boolean;
   readonly joinChoices: readonly { readonly id: string; readonly name: string; readonly className: string }[];
@@ -94,6 +103,7 @@ export interface ActivityTableView {
 
 export interface ActivityLobbyView {
   readonly kind: "lobby";
+  readonly language: CampaignRecord["language"];
   readonly campaignId: string;
   readonly campaignName: string;
   readonly adventureTitle: string;
@@ -119,6 +129,7 @@ export function buildActivityLobbyView(record: CampaignRecord, bible: AdventureB
   const startProblem = readyToStart(record.lobby);
   return {
     kind: "lobby",
+    language: record.language,
     campaignId: record.key.campaignId,
     campaignName: record.name,
     adventureTitle: bible.title,
@@ -191,7 +202,7 @@ export function buildActivityTableView(
   const turn = controlledHeroId === null || panel.mode !== "combat"
     ? null
     : buildTurnView(state, content, resolveHouseRules(record.houseRules), names, controlledHeroId);
-  const publicParty = buildPartyView(state, content).map((hero) => {
+  const publicParty: ActivityTableView["party"] = buildPartyView(state, content).map((hero) => {
     const partySheet = state.characters[hero.characterId];
     const raceId = partySheet?.race;
     return {
@@ -207,11 +218,19 @@ export function buildActivityTableView(
       down: hero.down,
       fallen: hero.fallen,
       conditions: hero.conditions,
+      imageUrl: partySheet?.origin === undefined && record.images?.[`hero:${hero.characterId}`] !== "done" ? null : `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/characters/${encodeURIComponent(hero.characterId)}`,
       isYou: hero.ownerUserId === userId,
+      tableStatus: panel.combat?.party.some((combatant) => combatant.name === hero.name && combatant.active) === true
+        ? "acting"
+        : state.round?.submissions[hero.characterId]?.kind === "action" ? "submitted"
+          : state.round?.submissions[hero.characterId]?.kind === "pass" ? "passed"
+            : state.round?.submissions[hero.characterId]?.kind === "missed" ? "missed"
+              : state.members[hero.ownerUserId]?.availability === "away" ? "away" : "waiting",
     };
   });
   const fullHero = heroView === null ? null : {
     characterId: heroView.characterId,
+    imageUrl: sheet?.origin === undefined && record.images?.[`hero:${heroView.characterId}`] !== "done" ? null : `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/characters/${encodeURIComponent(heroView.characterId)}`,
     name: heroView.name,
     className: heroView.className,
     raceName: sheet?.race === undefined ? null : glossary.names[sheet.race] ?? sheet.race,
@@ -244,16 +263,18 @@ export function buildActivityTableView(
   };
   return {
     kind: "table",
+    language: record.language,
     campaignId: record.key.campaignId,
     campaignName: record.name,
     adventureTitle: bible.title,
     mode: panel.mode,
     roundNumber: panel.roundNumber,
     mapText: texts[record.language].campaign.map,
-    scene: { title: panel.sceneTitle, description: scene?.publicDescription ?? "" },
+    scene: { title: panel.sceneTitle, description: scene?.publicDescription ?? "", imageUrl: scene === undefined || record.images?.[scene.id] !== "done" ? null : `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/scenes/${encodeURIComponent(scene.id)}` },
     map: panel.combat !== null && state.encounter !== null
       ? {
         kind: "battlefield",
+        edges: state.encounter.edges,
         zones: state.encounter.zones.map((zone) => ({
           id: zone.id,
           name: zone.name,
@@ -273,12 +294,27 @@ export function buildActivityTableView(
     activeName: panel.combat?.activeName ?? null,
     party: publicParty,
     foes: panel.combat?.foes ?? [],
+    offers: Object.values(state.offers).flatMap((offer) => {
+      const from = state.characters[offer.fromCharacterId];
+      const to = state.characters[offer.toCharacterId];
+      if (from === undefined || to === undefined || (from.ownerUserId !== userId && to.ownerUserId !== userId)) return [];
+      return [{ id: offer.id, fromCharacterId: from.id, toCharacterId: to.id, fromName: from.name, toName: to.name, itemName: glossary.names[offer.give] ?? offer.give, direction: from.ownerUserId === userId ? "outgoing" as const : "incoming" as const }];
+    }),
     myHero: fullHero,
     turn,
     explore: controlledHeroId === null || panel.mode === "combat"
       ? null
       : explore,
-    pendingRoll: panel.pendingRolls.some((roll) => roll.userId === userId),
+    pendingRoll: panel.pendingRolls.find((roll) => roll.userId === userId) === undefined
+      ? null
+      : (() => {
+        const roll = panel.pendingRolls.find((item) => item.userId === userId)!;
+        const check = Object.values(state.checks).find((item) => item.characterId === roll.characterId && (item.status === "pending" || item.status === "rolling"));
+        return check === undefined ? null : { checkId: check.id, test: roll.test, action: roll.action };
+      })(),
+    pendingRollCount: panel.pendingRolls.length,
+    submittedCount: state.round == null ? 0 : Object.values(state.round.submissions).filter((submission) => submission.kind === "action" || submission.kind === "pass").length,
+    participantCount: state.round?.participants.length ?? 0,
     submission: roundSubmission?.kind === "action" ? "action" : roundSubmission?.kind ?? null,
     canAcceptInvite: ownCharacterId === null && inviteCurrent && joinRequest?.status === "invited",
     joinRequestStatus: inviteCurrent ? joinRequest.status : null,
