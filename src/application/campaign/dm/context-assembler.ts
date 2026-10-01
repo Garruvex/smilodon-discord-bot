@@ -147,7 +147,7 @@ function instructions(input: ContextInput): ContextSection {
 function adventure(input: ContextInput): ContextSection {
   const { bible, state, audience } = input;
   if (audience === "planner") {
-    const scenes = bible.scenes.map((scene) => `${scene.id} ${scene.title}: ${scene.publicDescription}\nDM notes: ${scene.dmNotes}`);
+    const scenes = bible.scenes.map((scene) => `${scene.id} ${scene.title}: ${scene.publicDescription}${scene.details === undefined ? "" : ` ${scene.details}`}\nDM notes: ${scene.dmNotes}`);
     const npcs = bible.npcs.map(
       (npc) => `${npc.id} ${npc.name} (voice: ${npc.voice}): ${npc.publicDescription}\nSecret: ${npc.secret}`,
     );
@@ -173,7 +173,7 @@ function adventure(input: ContextInput): ContextSection {
   const npcs = bible.npcs
     .filter((npc) => scene?.npcIds.includes(npc.id) === true && state.npcsDown?.includes(npc.id) !== true)
     .map((npc) => `${npc.name} (voice: ${npc.voice}): ${npc.publicDescription}`);
-  const sceneText = scene === undefined ? [] : [`Scene: ${scene.title}. ${scene.publicDescription}`];
+  const sceneText = scene === undefined ? [] : [`Scene: ${scene.title}. ${scene.publicDescription}${scene.details === undefined ? "" : ` ${scene.details}`}`];
   return { layer: "B", title: "Adventure", text: [bible.title, bible.premise, ...sceneText, ...npcs].join("\n") };
 }
 

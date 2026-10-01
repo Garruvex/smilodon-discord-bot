@@ -90,3 +90,17 @@ describe("a defeated NPC, in what the DM reads", () => {
     }
   });
 });
+
+describe("a scene's public details, in what the DM reads", () => {
+  it("reach the Narrator and the Planner", async () => {
+    const r = rig();
+    const key = await startedCampaign(r);
+    const stored = await r.store.transaction((tx) => tx.loadCampaign(key));
+    if (stored === undefined) throw new Error("state");
+    const bible = { ...starter.en.bible, scenes: starter.en.bible.scenes.map((scene) => (scene.id === stored.state.sceneId ? { ...scene, details: "Four keyholes are engraved with spell names." } : scene)) };
+    for (const audience of ["planner", "narrator"] as const) {
+      const built = assembleContext({ audience, state: stored.state, events: [], bible, glossary: enSrd51Glossary, budgetTokens: 30_000 });
+      expect(built.sections.map((section) => section.text).join("\n")).toContain("Four keyholes are engraved");
+    }
+  });
+});

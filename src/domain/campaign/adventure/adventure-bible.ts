@@ -132,6 +132,8 @@ export interface BibleScene {
   readonly title: string;
   readonly publicDescription: string;
   readonly dmNotes: string;
+  // More of what the table can learn here (what is engraved, what the room says about the people who left): the Narrator may use it, so it holds nothing secret.
+  readonly details?: string;
   // NPCs present in the scene.
   readonly npcIds: readonly NpcId[];
   // Where the party can go from here. Absent: anywhere the Planner sends them.
