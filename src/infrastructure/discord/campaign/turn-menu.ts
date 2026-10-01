@@ -1,5 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } from "discord.js";
 
+import type { TurnChoice } from "../../../application/campaign/views/turn-choice.js";
 import type { TargetView, TurnView } from "../../../application/campaign/views/turn-view.js";
 import type { Texts } from "../../../application/i18n/texts.js";
 import type { Glossary } from "../../../domain/campaign/rules/content-registry.js";
@@ -11,29 +12,7 @@ import { noIcons, type CampaignIcon, type CampaignIcons } from "./campaign-icons
 // menu's option values, so a menu still works after a restart and never grants
 // authority: the engine checks every command again.
 
-export type TurnChoice =
-  | { readonly kind: "attack"; readonly weapon: string }
-  | { readonly kind: "cast"; readonly spell: string; readonly slot: number }
-  // The spellbook: a hero with many spells picks from a page of them (renderSpellMenu).
-  | { readonly kind: "spells"; readonly page: number }
-  // Wild Shape: a beast to become, the beasts to choose from, or a return to the druid's own form.
-  | { readonly kind: "shape"; readonly monster: string }
-  | { readonly kind: "shapes"; readonly page: number }
-  // The rest of the main menu, when it holds more actions than one menu can show.
-  | { readonly kind: "more"; readonly page: number }
-  | { readonly kind: "unshape" }
-  | { readonly kind: "feature"; readonly feature: string }
-  | { readonly kind: "potion"; readonly item: string }
-  | { readonly kind: "move"; readonly zone: string }
-  // A spell that carries the hero to a zone (Misty Step).
-  | { readonly kind: "teleport"; readonly spell: string; readonly slot: number; readonly zone: string }
-  | { readonly kind: "shield"; readonly item: string; readonly on: boolean }
-  | { readonly kind: "engage" }
-  | { readonly kind: "withdraw" }
-  | { readonly kind: "dodge" }
-  | { readonly kind: "dash" }
-  | { readonly kind: "disengage" }
-  | { readonly kind: "end" };
+export type { TurnChoice };
 
 export function encodeChoice(choice: TurnChoice): string {
   switch (choice.kind) {

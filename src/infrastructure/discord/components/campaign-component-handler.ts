@@ -34,6 +34,7 @@ import type { CombatCommand } from "../../../domain/campaign/commands/campaign-c
 import { abilities, type Ability } from "../../../domain/campaign/rules/effects.js";
 import { buildTurnView, type TurnView } from "../../../application/campaign/views/turn-view.js";
 import type { CampaignIcon, CampaignIcons } from "../campaign/campaign-icons.js";
+import { combatCommand } from "../../../application/campaign/views/turn-choice.js";
 import { encodeChoice, parseAim, parseChoice, renderEndConfirm, renderShapeMenu, renderSpellMenu, renderTargetMenu, renderTurnMenu, type TurnChoice, type TurnMenu } from "../campaign/turn-menu.js";
 import type { CampaignAction } from "../campaign/campaign-ids.js";
 import { campaignCustomId, campaignIdPrefix, parseCampaignId } from "../campaign/campaign-ids.js";
@@ -106,54 +107,6 @@ const maxActionLength = 500;
 const actionField = "action";
 
 type TurnInteraction = ButtonInteraction | StringSelectMenuInteraction;
-
-// The engine command for a picked action; null when a target it needs is missing.
-function combatCommand(choice: TurnChoice, targetIds: readonly string[]): ((combatantId: CharacterId) => CombatCommand) | null {
-  const first = targetIds[0];
-  switch (choice.kind) {
-    case "attack":
-      return first === undefined
-        ? null
-        : (combatantId): CombatCommand =>
-            choice.weapon.startsWith("offhand:")
-              ? { kind: "combatAttack", combatantId, targetId: first, weapon: choice.weapon.slice("offhand:".length) as ContentId<"item">, offHand: true }
-              : choice.weapon.startsWith("nonlethal:")
-                ? { kind: "combatAttack", combatantId, targetId: first, weapon: choice.weapon.slice("nonlethal:".length) as ContentId<"item">, nonlethal: true }
-                : { kind: "combatAttack", combatantId, targetId: first, weapon: choice.weapon as ContentId<"item"> };
-    case "cast":
-      return targetIds.length === 0 ? null : (combatantId): CombatCommand => ({ kind: "combatCast", combatantId, spellId: choice.spell as ContentId<"spell">, slotLevel: choice.slot, targetIds });
-    case "engage":
-      return first === undefined ? null : (combatantId): CombatCommand => ({ kind: "combatEngage", combatantId, targetId: first });
-    case "feature":
-      return (combatantId): CombatCommand => ({ kind: "combatUseFeature", combatantId, featureId: choice.feature as ContentId<"feature"> });
-    case "potion":
-      return (combatantId): CombatCommand => ({ kind: "combatUseItem", combatantId, itemId: choice.item as ContentId<"item"> });
-    case "move":
-      return (combatantId): CombatCommand => ({ kind: "combatMove", combatantId, zoneId: choice.zone });
-    case "teleport":
-      return (combatantId): CombatCommand => ({ kind: "combatCast", combatantId, spellId: choice.spell as ContentId<"spell">, slotLevel: choice.slot, targetIds: [combatantId], zoneId: choice.zone });
-    case "shield":
-      return (combatantId): CombatCommand => ({ kind: "combatShield", combatantId, itemId: choice.item as ContentId<"item">, on: choice.on });
-    case "withdraw":
-      return (combatantId): CombatCommand => ({ kind: "combatWithdraw", combatantId });
-    case "dodge":
-      return (combatantId): CombatCommand => ({ kind: "combatDodge", combatantId });
-    case "dash":
-      return (combatantId): CombatCommand => ({ kind: "combatDash", combatantId });
-    case "disengage":
-      return (combatantId): CombatCommand => ({ kind: "combatDisengage", combatantId });
-    case "end":
-      return (combatantId): CombatCommand => ({ kind: "endTurn", combatantId });
-    case "shape":
-      return (combatantId): CombatCommand => ({ kind: "combatWildShape", combatantId, monsterId: choice.monster as ContentId<"monster"> });
-    case "unshape":
-      return (combatantId): CombatCommand => ({ kind: "combatWildShape", combatantId });
-    case "spells":
-    case "shapes":
-    case "more":
-      return null;
-  }
-}
 
 // Which saved card a control must sit on to count as current. A control on any
 // other message (an old panel, a copied link) is obsolete and only gets a
