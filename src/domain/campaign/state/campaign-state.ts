@@ -1,7 +1,7 @@
 import type { CompanionRoster } from "../companions/companion-roster.js";
 import type { CampaignLanguage, NpcId, SceneId } from "../adventure/adventure-bible.js";
 import type { CharacterSheet, CheckTest } from "../character/character-sheet.js";
-import type { EncounterSpec, PlannedEffect } from "../commands/campaign-command.js";
+import type { EncounterSpec, PartyEffect, PlannedEffect } from "../commands/campaign-command.js";
 import type { EncounterState } from "../combat/combat-state.js";
 import type { HeroStatus } from "../combat/combatant-profile.js";
 import type { CampaignId, CharacterId, CheckId, Instant, RollId, UserId } from "../core/ids.js";
@@ -59,6 +59,10 @@ export interface CampaignState {
   readonly safetyNote?: boolean;
   // The round in which the party last changed scene: the moment a chapter closes.
   readonly sceneChangedRound?: number;
+  // A move to another scene the table has not yet agreed to. It settles when
+  // the next round closes: the party goes unless more than half of the
+  // present players pressed Stay (a tie stays).
+  readonly pendingMove?: PendingMove;
   // Checks of the current round only; earlier ones live in the event log.
   readonly checks: Readonly<Record<CheckId, CheckState>>;
   readonly ledger: Readonly<Record<string, LedgerEntry>>;
@@ -322,6 +326,14 @@ export interface Pacing {
   readonly turnSeconds: number | null;
   // Consecutive timed-out rounds before a player is marked away.
   readonly awayAfterMisses: number;
+}
+
+export interface PendingMove {
+  readonly sceneId: SceneId;
+  readonly proposedRound: number;
+  // What happens on arrival, the scene change first.
+  readonly effects: readonly PartyEffect[];
+  readonly objectors: readonly UserId[];
 }
 
 export interface MemberState {

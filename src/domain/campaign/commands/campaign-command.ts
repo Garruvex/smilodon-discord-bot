@@ -42,6 +42,11 @@ export type CampaignCommand =
   // The owner lets another player at the table play their hero in fights while they are away, or takes it back.
   | { readonly kind: "grantProxy"; readonly proxyUserId: UserId }
   | { readonly kind: "revokeProxy" }
+  // The party is heading to a new scene. A player presses Stay to object, or takes it back.
+  | { readonly kind: "objectToMove" }
+  | { readonly kind: "withdrawObjection" }
+  // The organizer settles a pending move now: the party goes, or stays where it is.
+  | { readonly kind: "settleMove"; readonly outcome: "go" | "stay" }
   // Resumes a campaign that was waiting for players.
   | { readonly kind: "continue" }
   // Stops play: every timer is cancelled and no round, roll, or model work
@@ -339,6 +344,13 @@ export interface RoundPlanProposal {
 export interface PlannedEffect {
   readonly effect: StoryEffect;
   readonly when: EffectCondition;
+  // A scene change the story itself makes (an authored result, a trapdoor)
+  // happens at once. Without this, a move the Planner proposes waits for the
+  // table: silence agrees, and a majority pressing Stay stops it.
+  readonly forced?: boolean;
+  // This effect is part of arriving in that scene (its onEnter effects), so it
+  // waits with the move instead of happening before the party gets there.
+  readonly arrivalOf?: SceneId;
 }
 
 // The application resolves authored IDs (encounters) to their definitions

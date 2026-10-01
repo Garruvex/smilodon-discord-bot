@@ -28,6 +28,7 @@ import { remind } from "./reminders.js";
 import { speak } from "./speech.js";
 import type { Rejection } from "./rejection.js";
 import { applyRoundPlan } from "./round-plan.js";
+import { objectToMove, settleMoveByOrganizer, withdrawObjection } from "./scene-move.js";
 import { closeRoundByOrganizer, openRound, pass, roundTimerExpired, submitAction } from "./rounds.js";
 
 // Pure. Validates a command against the state and rules and returns the
@@ -69,6 +70,12 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
       return grantProxy(decision, command.proxyUserId);
     case "revokeProxy":
       return revokeProxy(decision);
+    case "objectToMove":
+      return objectToMove(decision);
+    case "withdrawObjection":
+      return withdrawObjection(decision);
+    case "settleMove":
+      return settleMoveByOrganizer(decision, command.outcome);
     case "continue":
       return continueCampaign(decision);
     case "pauseCampaign":

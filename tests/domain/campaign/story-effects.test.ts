@@ -8,7 +8,7 @@ import { Fight, skirmish } from "./combat-fixtures.js";
 
 const ambush: EncounterSpec = { ...skirmish, id: "encounter:gate-ambush" };
 
-const toChapel: PlannedEffect = { effect: { kind: "transitionScene", sceneId: "scene:ruined-chapel" }, when: { kind: "always" } };
+const toChapel: PlannedEffect = { effect: { kind: "transitionScene", sceneId: "scene:ruined-chapel" }, when: { kind: "always" }, forced: true };
 const ambushIfSpotted: PlannedEffect = {
   effect: { kind: "startEncounter", encounter: ambush },
   when: { kind: "checkOutcome", characterId: "c-mira", success: false },

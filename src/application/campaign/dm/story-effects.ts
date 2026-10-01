@@ -51,6 +51,10 @@ export function resolveStoryEffects(
   const reachable = new Set<string>(state.sceneId === null ? [] : [state.sceneId]);
   for (const effect of proposal.effects) if (effect.kind === "transitionScene") reachable.add(effect.sceneId);
   const exits = new Set(reachableScenes(bible, state));
+  // The scene the model moves the party to: what is set there (its fight, clock or clue) waits with the move.
+  const movedTo = proposal.effects.find((effect) => effect.kind === "transitionScene" && effect.sceneId !== state.sceneId && exits.has(effect.sceneId));
+  const arrival = movedTo?.kind === "transitionScene" ? bible.scenes.find((scene) => scene.id === movedTo.sceneId)?.id : undefined;
+  const arrivesWith = (sceneId: string): Partial<Pick<PlannedEffect, "arrivalOf">> => (arrival !== undefined && sceneId === arrival ? { arrivalOf: arrival } : {});
 
   // An authored interaction that moves the party or starts a fight already says so; the model's own proposal of the same kind
   // would be a second one, which the engine refuses (one scene change and one fight per round), so the authored one stands.
@@ -65,7 +69,8 @@ export function resolveStoryEffects(
         if (scene === undefined) problems.push(`Unknown scene "${effect.sceneId}".`);
         else if (scene.id === state.sceneId) problems.push(`The party is already in ${scene.id}; drop the transition.`);
         else if (!exits.has(scene.id)) problems.push(`${scene.id} cannot be reached from ${state.sceneId ?? "here"}; the way on is ${[...exits].join(", ") || "closed"}.`);
-        else effects.push(...withArrival({ kind: "transitionScene", sceneId: scene.id }, bible).map((planned) => ({ effect: planned, when: effect.when })));
+        // The model's move waits for the table, with the effects of arriving; an authored one (below) happens at once.
+        else effects.push(...withArrival({ kind: "transitionScene", sceneId: scene.id }, bible).map((planned) => ({ effect: planned, when: effect.when, ...(planned.kind === "transitionScene" ? {} : { arrivalOf: scene.id }) })));
         break;
       }
       case "startEncounter": {
@@ -73,7 +78,7 @@ export function resolveStoryEffects(
         if (encounter === undefined) problems.push(`Unknown encounter "${effect.encounterId}".`);
         // A fight that is already over or belongs to another scene is left out rather than holding the round: the players' actions still resolve.
         else if (state.encounterHistory.includes(encounter.id) || !reachable.has(encounter.sceneId)) break;
-        else effects.push({ effect: { kind: "startEncounter", encounter: encounterSpec(encounter, bible) }, when: effect.when });
+        else effects.push({ effect: { kind: "startEncounter", encounter: encounterSpec(encounter, bible) }, when: effect.when, ...arrivesWith(encounter.sceneId) });
         break;
       }
       case "advanceClock": {
@@ -81,14 +86,14 @@ export function resolveStoryEffects(
         if (clock === undefined) problems.push(`Unknown clock "${effect.clockId}".`);
         else if (!reachable.has(clock.sceneId)) break;
         else if (!Number.isInteger(effect.by) || effect.by < 1 || effect.by > 3) problems.push(`${clock.id} may advance by 1 to 3 segments.`);
-        else effects.push({ effect: clockEffect(bible, state, clock.id, effect.by), when: effect.when });
+        else effects.push({ effect: clockEffect(bible, state, clock.id, effect.by), when: effect.when, ...arrivesWith(clock.sceneId) });
         break;
       }
       case "revealClue": {
         const clue = findClue(bible, effect.clueId);
         if (clue === undefined) problems.push(`Unknown clue "${effect.clueId}".`);
         else if (state.clues.some((known) => known.id === clue.id) || !reachable.has(clue.sceneId)) break;
-        else effects.push({ effect: { kind: "revealClue", clueId: clue.id, text: clue.publicText }, when: effect.when });
+        else effects.push({ effect: { kind: "revealClue", clueId: clue.id, text: clue.publicText }, when: effect.when, ...arrivesWith(clue.sceneId) });
         break;
       }
       default:
@@ -204,7 +209,7 @@ function plannedEffects(effect: BibleEffect, scopeId: string, context: EffectCon
       return clue === undefined || state.clues.some((known) => known.id === clue.id) ? [] : [{ effect: { kind: "revealClue", clueId: clue.id, text: clue.publicText }, when }];
     }
     case "goto":
-      return effect.scene === state.sceneId ? [] : withArrival({ kind: "transitionScene", sceneId: effect.scene }, bible).map((planned) => ({ effect: planned, when }));
+      return effect.scene === state.sceneId ? [] : withArrival({ kind: "transitionScene", sceneId: effect.scene }, bible).map((planned) => ({ effect: planned, when, ...(planned.kind === "transitionScene" ? { forced: true } : {}) }));
     case "encounter": {
       const encounter = findEncounter(bible, effect.encounter);
       if (encounter === undefined) problems.push(`Unknown encounter "${effect.encounter}".`);

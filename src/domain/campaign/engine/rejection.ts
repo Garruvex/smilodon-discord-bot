@@ -32,6 +32,7 @@ export type Rejection =
   | { readonly code: "nothingToIllustrate" }
   | { readonly code: "nothingToRedo" }
   | { readonly code: "noReaction" }
+  | { readonly code: "noPendingMove" }
   | { readonly code: "noOpportunityAttack" }
   | { readonly code: "noSmite" }
   | { readonly code: "invalidProxy" }

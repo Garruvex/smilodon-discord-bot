@@ -6,7 +6,7 @@ import type { CombatEvent } from "../combat/combat-events.js";
 import type { HeroStatus } from "../combat/combatant-profile.js";
 import type { LedgerVisibility } from "../ledger/ledger.js";
 import type { SceneId } from "../adventure/adventure-bible.js";
-import type { EncounterSpec, PlannedEffect } from "../commands/campaign-command.js";
+import type { EncounterSpec, PartyEffect, PlannedEffect } from "../commands/campaign-command.js";
 import type { CharacterSheet } from "../character/character-sheet.js";
 import type { Ability } from "../rules/effects.js";
 import type { ContentId } from "../rules/content-id.js";
@@ -76,6 +76,13 @@ export type CampaignEvent =
   | { readonly kind: "roundResolved"; readonly roundNumber: number; readonly quiet: boolean }
   // Story effects that fired when a round resolved.
   | { readonly kind: "sceneTransitioned"; readonly roundNumber: number; readonly sceneId: SceneId }
+  // A move the Planner proposed waits for the table: the effects are what
+  // arriving brings (the scene change first), applied if the party goes.
+  | { readonly kind: "sceneMoveProposed"; readonly roundNumber: number; readonly sceneId: SceneId; readonly effects: readonly PartyEffect[] }
+  | { readonly kind: "sceneMoveObjected"; readonly userId: UserId }
+  | { readonly kind: "sceneMoveObjectionWithdrawn"; readonly userId: UserId }
+  | { readonly kind: "sceneMoveAgreed"; readonly roundNumber: number; readonly sceneId: SceneId; readonly objectors: readonly UserId[]; readonly by: "table" | "organizer" }
+  | { readonly kind: "sceneMoveDeclined"; readonly roundNumber: number; readonly sceneId: SceneId; readonly objectors: readonly UserId[]; readonly by: "table" | "organizer" }
   | { readonly kind: "encounterQueued"; readonly roundNumber: number; readonly encounter: EncounterSpec }
   | { readonly kind: "clockAdvanced"; readonly roundNumber: number; readonly clockId: string; readonly segments: number; readonly filled: number }
   | { readonly kind: "clueRevealed"; readonly roundNumber: number; readonly clueId: string; readonly text: string }

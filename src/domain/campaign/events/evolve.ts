@@ -72,6 +72,21 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       return state.round?.number === event.roundNumber ? { ...state, round: null } : state;
     case "sceneTransitioned":
       return { ...state, sceneId: event.sceneId, sceneChangedRound: event.roundNumber };
+    case "sceneMoveProposed":
+      return { ...state, pendingMove: { sceneId: event.sceneId, proposedRound: event.roundNumber, effects: event.effects, objectors: [] } };
+    case "sceneMoveObjected":
+      return state.pendingMove === undefined || state.pendingMove.objectors.includes(event.userId)
+        ? state
+        : { ...state, pendingMove: { ...state.pendingMove, objectors: [...state.pendingMove.objectors, event.userId] } };
+    case "sceneMoveObjectionWithdrawn":
+      return state.pendingMove === undefined
+        ? state
+        : { ...state, pendingMove: { ...state.pendingMove, objectors: state.pendingMove.objectors.filter((userId) => userId !== event.userId) } };
+    case "sceneMoveAgreed":
+    case "sceneMoveDeclined": {
+      const { pendingMove: _settled, ...rest } = state;
+      return rest;
+    }
     case "proxyGranted":
       return { ...state, proxies: { ...(state.proxies ?? {}), [event.ownerUserId]: event.proxyUserId } };
     case "proxyRevoked": {

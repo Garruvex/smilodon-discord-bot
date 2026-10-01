@@ -30,7 +30,7 @@ const rules: readonly (readonly [RegExp, System])[] = [
   [/^engine\/environmental-damage\.ts$/, "Exploration"],
   [/^combat\//, "Combat"],
   [/^engine\/combat\//, "Combat"],
-  [/^engine\/(rounds|checks|round-plan)\.ts$/, "Exploration"],
+  [/^engine\/(rounds|checks|round-plan|scene-move)\.ts$/, "Exploration"],
   [/^engine\/gear\.ts$/, "Inventory"],
   [/^character\/(hero-status|ownership)\.ts$/, "Character"],
   [/^ledger\//, "Exploration"],

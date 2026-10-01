@@ -7,6 +7,7 @@ import { rollTimerId, roundTimerId } from "./ids.js";
 import type { Rejection } from "./rejection.js";
 import { scheduleReminder } from "./reminders.js";
 import { firedEffects } from "./round-plan.js";
+import { deferredMove, proposeMove, settleDueMove } from "./scene-move.js";
 
 export const maxActionLength = 500;
 
@@ -122,6 +123,7 @@ function closeRound(decision: Decision, reason: RoundCloseReason): void {
     decision.request({ kind: "cancelTimer", timerId: roundTimerId(round.number) });
   }
   decision.emit({ kind: "roundClosed", roundNumber: round.number, reason, missed });
+  settleDueMove(decision, round.number);
 
   const { awayAfterMisses } = decision.state.pacing;
   for (const member of Object.values(decision.state.members)) {
@@ -158,11 +160,14 @@ export function finishRoundIfResolved(decision: Decision): void {
   if (checks.some((check) => check.status !== "resolved")) return;
   // Scene first, so the Narrator describes the round in the scene it leads to.
   const fired = [...firedEffects(state, round)].sort((a, b) => effectOrder[a.effect.kind] - effectOrder[b.effect.kind]);
-  for (const { effect } of fired) {
+  // A move the story does not force waits for the table; everything else happens now.
+  const held = deferredMove(fired);
+  for (const { effect } of fired.filter((candidate) => !held.includes(candidate))) {
     // Harm to a hero is an Exploration rule (the dice decide); a hero already down or already hurt this moment is spared.
     if (effect.kind === "hurt") takeEnvironmentalDamage(decision, effect.characterId, { kind: "damage", count: effect.count, sides: effect.sides, damageType: effect.damageType });
     else decision.applyStory(round.number, effect);
   }
+  proposeMove(decision, round.number, held);
   decision.emit({ kind: "roundResolved", roundNumber: round.number, quiet: false });
   decision.request({ kind: "narrate", roundNumber: round.number });
 }
