@@ -86,6 +86,7 @@ export interface CampaignModule {
   readonly settings: CampaignSettingsAccess;
   readonly activity: {
     listGames(guildId: string, userId: UserId): Promise<readonly ActivityCampaignListingItem[]>;
+    gameForChannel(guildId: string, userId: UserId, channelId: string): Promise<ActivityCampaignListingItem | null>;
     joinLobby(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>>;
     requestJoin(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>>;
     withdrawJoin(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>>;
@@ -304,6 +305,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
     settings: new CampaignSettingsAccess({ unitOfWork, lobby, setup, cards, modelConfigured: model !== null }),
     activity: {
       listGames: (guildId, userId): Promise<readonly ActivityCampaignListingItem[]> => lobby.activityGames(guildId, userId),
+      gameForChannel: (guildId, userId, channelId): Promise<ActivityCampaignListingItem | null> => lobby.activityGameForChannel(guildId, userId, channelId),
       joinLobby: (key, userId): Promise<ServiceResult<CampaignRecord>> => lobby.joinFromActivity(key, userId),
       requestJoin: (key, userId): Promise<ServiceResult<CampaignRecord>> => lobby.requestOngoingJoin(key, userId),
       withdrawJoin: (key, userId): Promise<ServiceResult<CampaignRecord>> => lobby.withdrawOngoingJoin(key, userId),

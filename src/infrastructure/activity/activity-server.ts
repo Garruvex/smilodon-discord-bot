@@ -27,6 +27,7 @@ export interface ActivityServer {
 
 export interface ActivityCampaignApi {
   listGames(guildId: string, userId: UserId): Promise<readonly ActivityCampaignListingItem[]>;
+  gameForChannel(guildId: string, userId: UserId, channelId: string): Promise<ActivityCampaignListingItem | null>;
   joinLobby(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>>;
   requestJoin(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>>;
   withdrawJoin(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>>;
@@ -39,6 +40,7 @@ interface ActivitySession {
   readonly guildId: string;
   readonly username: string;
   readonly displayName: string;
+  readonly launchCampaignId: string | null;
   readonly expiresAt: number;
 }
 
@@ -106,7 +108,7 @@ async function respond(
   };
   const url = new URL(request.url ?? "/", "http://localhost");
   if (url.pathname === "/api/activity/session" && request.method === "POST") {
-    await createSession(request, response, headers, applicationId, clientSecret, sessions);
+    await createSession(request, response, headers, applicationId, clientSecret, campaigns, sessions);
     return;
   }
   if (url.pathname === "/api/activity/games" && request.method === "GET") {
@@ -197,6 +199,7 @@ async function createSession(
   headers: Record<string, string>,
   applicationId: string,
   clientSecret: string | null,
+  campaigns: ActivityCampaignApi,
   sessions: Map<string, ActivitySession>,
 ): Promise<void> {
   if (clientSecret === null) return writeJson(response, 503, { error: "activityAuthNotConfigured" }, headers);
@@ -207,8 +210,11 @@ async function createSession(
     return writeJson(response, 400, { error: "invalidRequest" }, headers);
   }
   if (typeof body !== "object" || body === null) return writeJson(response, 400, { error: "invalidRequest" }, headers);
-  const { code, guildId } = body as { code?: unknown; guildId?: unknown };
+  const { code, guildId, channelId } = body as { code?: unknown; guildId?: unknown; channelId?: unknown };
   if (typeof code !== "string" || code.length < 8 || code.length > 4096 || typeof guildId !== "string" || !/^\d{17,20}$/.test(guildId)) {
+    return writeJson(response, 400, { error: "invalidRequest" }, headers);
+  }
+  if (channelId !== undefined && channelId !== null && (typeof channelId !== "string" || !/^\d{17,20}$/.test(channelId))) {
     return writeJson(response, 400, { error: "invalidRequest" }, headers);
   }
 
@@ -246,17 +252,20 @@ async function createSession(
   const displayName = typeof user.global_name === "string" && user.global_name.length > 0
     ? user.global_name
     : typeof user.username === "string" ? user.username : "Adventurer";
+  const launchGame = typeof channelId === "string" ? await campaigns.gameForChannel(guildId, user.id, channelId) : null;
   sessions.set(sessionToken, {
     userId: user.id,
     guildId,
     username: typeof user.username === "string" ? user.username : displayName,
     displayName,
+    launchCampaignId: launchGame?.campaignId ?? null,
     expiresAt: now + sessionLifetimeMs,
   });
   writeJson(response, 200, {
     access_token: accessToken,
     session_token: sessionToken,
     user: { id: user.id, username: typeof user.username === "string" ? user.username : displayName, displayName },
+    launchCampaignId: launchGame?.campaignId ?? null,
   }, headers);
 }
 

@@ -177,6 +177,14 @@ export class CampaignLobbyService {
     return this.options.unitOfWork.transaction((tx) => tx.listRecords(guildId));
   }
 
+  // Resolves a Discord Activity launched from a campaign's Party or Adventure
+  // post to that game, while keeping the Activity's normal lobby as fallback.
+  public async activityGameForChannel(guildId: string, userId: UserId, channelId: string): Promise<ActivityCampaignListingItem | null> {
+    const stored = await this.findByChannel(guildId, [channelId]);
+    if (stored === undefined) return null;
+    return (await this.activityGames(guildId, userId)).find((game) => game.campaignId === stored.record.key.campaignId) ?? null;
+  }
+
   // A deliberately small, access-filtered projection for the Discord Activity lobby.
   public activityGames(guildId: string, userId: UserId): Promise<readonly ActivityCampaignListingItem[]> {
     return this.options.unitOfWork.transaction(async (tx) => {

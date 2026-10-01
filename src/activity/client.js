@@ -620,14 +620,15 @@ async function authenticate() {
   setMessage("Verifying your Discord account…");
   const session = await requestJson("/api/activity/session", {
     method: "POST",
-    body: JSON.stringify({ code: authorization.code, guildId: discordSdk.guildId }),
+    body: JSON.stringify({ code: authorization.code, guildId: discordSdk.guildId, channelId: discordSdk.channelId }),
   });
   sessionToken = session.session_token;
   if (typeof session.access_token !== "string" || typeof sessionToken !== "string") throw new Error("Discord sign-in did not return a valid session.");
   const identity = await discordSdk.commands.authenticate({ access_token: session.access_token });
   userElement.textContent = identity.user.global_name || identity.user.username;
   serverElement.textContent = "This Discord server";
-  await loadGames();
+  if (typeof session.launchCampaignId === "string") await openGame(session.launchCampaignId);
+  else await loadGames();
 }
 
 void authenticate().catch((error) => {
