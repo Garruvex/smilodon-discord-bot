@@ -5,6 +5,9 @@
 x-bot-environment: &bot-environment
   NODE_ENV: production
   LOG_LEVEL: ${LOG_LEVEL:-info}
+  # Keep Activity traffic on the Compose network; cloudflared targets the bot service.
+  ACTIVITY_HOST: 0.0.0.0
+  ACTIVITY_PORT: 3000
   LAVALINK_HOST: lavalink
   LAVALINK_PORT: 2333
   LAVALINK_PASSWORD: ${LAVALINK_PASSWORD:?Set LAVALINK_PASSWORD in .env}
@@ -96,3 +99,11 @@ services:
       <<: *bot-environment
       GUILD_CONFIG_DIRECTORY: /app/config/local/instances/myinstance/guilds
       RUNTIME_DATA_DIRECTORY: /app/data/instances/myinstance
+
+  # Optional. Keep the connector here so it shares the Compose network with bots.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?Set CLOUDFLARE_TUNNEL_TOKEN in .env}

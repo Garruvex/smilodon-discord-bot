@@ -16,7 +16,11 @@ For a named bot instance, put the settings in `config/instances/<instance-name>.
 
 Start that bot as usual. The preview should answer at `http://127.0.0.1:3000/`, and its health endpoint is `http://127.0.0.1:3000/healthz`. Point the existing Cloudflare published-application route at the same HTTP service. The public Activity address should be the hostname configured in Discord's Activities URL mapping.
 
-If the bot runs in Docker, set `ACTIVITY_HOST=0.0.0.0` inside its container and publish container port `3000` to a loopback-only host port. Keep the published host side bound to `127.0.0.1`; Cloudflare Tunnel should be the public ingress.
+For Docker Compose, the bot binds the Activity to its container network on port `3000`. Use the `cloudflared` service from `compose.example.yaml` (or add that service to your local `compose.yaml`) so it shares the Compose network. Set the Cloudflare published-application origin to the selected service name, such as `http://bot-yohta:3000` or `http://bot-pinecone:3000`. Inside a container, `localhost` refers to that container itself, so `http://localhost:3000` is not the bot service. No public host port needs to be published.
+
+Set `CLOUDFLARE_TUNNEL_TOKEN` in the server's root `.env` file. Keep the existing remotely managed Tunnel and its public hostname route; only change its origin to the bot service URL above. To let Compose manage the connector on future restarts and deployments, start the `cloudflared` service with the other Compose services. After confirming the Compose-managed connector is connected, stop and remove the old standalone `jovial_leavitt` container so there is only one connector using the token.
+
+If the tunnel process runs directly on the host instead, publish the selected bot's container port on a loopback-only host port and route it to `http://127.0.0.1:3000`.
 
 ## What is not wired yet
 
