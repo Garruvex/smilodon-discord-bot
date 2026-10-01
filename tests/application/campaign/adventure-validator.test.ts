@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { adventurePreview, routeWarnings, validateAdventure } from "../../../src/application/campaign/adventures/adventure-validator.js";
+import { raiseToLevel } from "../../../src/domain/campaign/character/leveling.js";
 import { rehearseEncounter } from "../../../src/application/campaign/adventures/adventure-smoke.js";
 import { ruleset } from "../../domain/campaign/campaign-fixtures.js";
 import { starter } from "./campaign-rig.js";
@@ -130,5 +131,16 @@ describe("routes and authored jumps", () => {
     expect(routeWarnings(base)).toContain(`${third.id} cannot be reached from the start scene by its exits.`);
     const jump = { kind: "goto", scene: third.id };
     expect(routeWarnings({ ...base, bible: { ...base.bible, interactions: [{ onSuccess: [jump] }] as unknown as typeof base.bible.interactions } })).not.toContain(`${third.id} cannot be reached from the start scene by its exits.`);
+  });
+});
+
+describe("a replacement hero raised to the party's level", () => {
+  it("gives a caster the slots and hit points of that level", () => {
+    const { class: className, ...cleric } = starter.en.heroes.find((hero) => hero.class === "cleric") ?? (() => { throw new Error("cleric"); })();
+    const raised = raiseToLevel({ ...cleric, className, ownerUserId: "u-1" }, 5);
+    expect(raised.level).toBe(5);
+    expect(raised.maxHp).toBeGreaterThan(cleric.maxHp);
+    expect(raised.spellcasting?.slots[3]).toBeGreaterThan(0);
+    expect(raised.spellcasting?.slots[1]).toBeGreaterThan(cleric.spellcasting?.slots[1] ?? 0);
   });
 });
