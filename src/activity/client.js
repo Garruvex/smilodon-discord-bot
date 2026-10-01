@@ -30,6 +30,13 @@ let activityStrings = {};
 let selectedPartyCharacterId = null;
 let selectedWorkspaceTab = "actions";
 let selectedEnemyName = null;
+let mapScale = 1;
+let mapIdentity = "";
+let mapBaseSize = null;
+let mapPointers = new Map();
+let mapDrag = null;
+let pinchStart = null;
+let suppressMapClick = false;
 
 const lifecycleKeys = { lobby: "activity.lobby.status.open", active: "activity.lobby.status.live", paused: "activity.lobby.status.paused" };
 const actionKeys = { join: "activity.lobby.action.join", continue: "activity.lobby.action.continue", request: "activity.lobby.action.request", requested: "activity.lobby.action.requested", invited: "activity.lobby.action.invited", full: "activity.lobby.action.full", resume: "activity.lobby.action.continue" };
@@ -391,16 +398,17 @@ function renderMap(map, words) {
     document.querySelector("#live-map-title").textContent = words.battlefield;
     document.querySelector(".map-key").replaceChildren(keyItem("current-key", words.keyParty), keyItem("foe-key", words.keyFoes));
     renderBattlefieldMap(map, words);
+    prepareMapView("battlefield", document.querySelector(".battlefield-map-svg"));
     return;
   }
   document.querySelector("#live-map-kind").textContent = words.journeyKind;
   document.querySelector("#live-map-title").textContent = words.journeyTitle;
   document.querySelector(".map-key").replaceChildren(keyItem("current-key", words.keyHere), keyItem("reachable-key", words.keyOpen), keyItem("locked-key", words.keyLocked));
-  if (map.nodes.length === 0) { liveMap.textContent = words.empty; return; }
+  if (map.nodes.length === 0) { liveMap.textContent = words.empty; document.querySelector("#map-toolbar").hidden = true; return; }
   const ns = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(ns, "svg");
   svg.classList.add("route-map-svg");
-  svg.setAttribute("role", "img");
+  svg.setAttribute("role", "group");
   svg.setAttribute("aria-label", words.routeLabel);
   const columns = new Map();
   for (const node of map.nodes) { if (!columns.has(node.column)) columns.set(node.column, []); columns.get(node.column).push(node); }
@@ -455,6 +463,132 @@ function renderMap(map, words) {
     group.append(rect, title, subtitle); svg.append(group);
   }
   liveMap.append(svg);
+  prepareMapView("journey", svg);
+}
+
+function prepareMapView(kind, svg) {
+  const toolbar = document.querySelector("#map-toolbar");
+  toolbar.hidden = !svg;
+  if (!svg) return;
+  const viewport = document.querySelector("#live-map-viewport");
+  const width = Number(svg.getAttribute("width"));
+  const height = Number(svg.getAttribute("height"));
+  const nextIdentity = `${currentGameId ?? "preview"}:${kind}`;
+  if (mapIdentity !== nextIdentity) {
+    mapIdentity = nextIdentity;
+    mapBaseSize = { width, height };
+    mapScale = 1;
+    requestAnimationFrame(() => fitMap());
+  } else {
+    mapBaseSize = { width, height };
+    requestAnimationFrame(() => applyMapScale());
+  }
+}
+
+function applyMapScale(focal = null) {
+  const svg = liveMap.querySelector("svg");
+  const viewport = document.querySelector("#live-map-viewport");
+  if (!svg || !mapBaseSize) return;
+  const oldWidth = Number(svg.getAttribute("width"));
+  const oldHeight = Number(svg.getAttribute("height"));
+  const center = focal ?? { x: viewport.clientWidth / 2, y: viewport.clientHeight / 2 };
+  const mapX = viewport.scrollLeft + center.x;
+  const mapY = viewport.scrollTop + center.y;
+  const ratioX = oldWidth ? mapX / oldWidth : .5;
+  const ratioY = oldHeight ? mapY / oldHeight : .5;
+  svg.setAttribute("width", String(Math.round(mapBaseSize.width * mapScale)));
+  svg.setAttribute("height", String(Math.round(mapBaseSize.height * mapScale)));
+  document.querySelector("#map-zoom-level").textContent = `${Math.round(mapScale * 100)}%`;
+  requestAnimationFrame(() => {
+    viewport.scrollLeft = Math.max(0, ratioX * svg.clientWidth - center.x);
+    viewport.scrollTop = Math.max(0, ratioY * svg.clientHeight - center.y);
+  });
+}
+
+function zoomMap(delta, focal = null) {
+  mapScale = Math.max(.35, Math.min(2.5, Math.round((mapScale + delta) * 100) / 100));
+  applyMapScale(focal);
+}
+
+function fitMap() {
+  if (!mapBaseSize) return;
+  const viewport = document.querySelector("#live-map-viewport");
+  mapScale = Math.min(1, (viewport.clientWidth - 24) / mapBaseSize.width, (viewport.clientHeight - 24) / mapBaseSize.height);
+  mapScale = Math.max(.35, mapScale);
+  applyMapScale({ x: 0, y: 0 });
+  requestAnimationFrame(() => { viewport.scrollLeft = 0; viewport.scrollTop = 0; });
+}
+
+function bindMapControls() {
+  const viewport = document.querySelector("#live-map-viewport");
+  const toggle = document.querySelector("#map-pan-toggle");
+  document.querySelector("#map-zoom-in").addEventListener("click", () => zoomMap(.2));
+  document.querySelector("#map-zoom-out").addEventListener("click", () => zoomMap(-.2));
+  document.querySelector("#map-fit").addEventListener("click", fitMap);
+  toggle.addEventListener("click", () => {
+    const enabled = toggle.getAttribute("aria-pressed") !== "true";
+    toggle.setAttribute("aria-pressed", String(enabled));
+    toggle.textContent = t(enabled ? "activity.map.moving" : "activity.map.move");
+    viewport.classList.toggle("is-moving", enabled);
+  });
+  viewport.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    const rect = viewport.getBoundingClientRect();
+    zoomMap(event.deltaY < 0 ? .12 : -.12, { x: event.clientX - rect.left, y: event.clientY - rect.top });
+  }, { passive: false });
+  viewport.addEventListener("keydown", (event) => {
+    if (event.target !== viewport) return;
+    if (event.key === "+" || event.key === "=") { event.preventDefault(); zoomMap(.2); }
+    else if (event.key === "-") { event.preventDefault(); zoomMap(-.2); }
+    else if (event.key === "0") { event.preventDefault(); fitMap(); }
+    else if (event.key.startsWith("Arrow")) {
+      event.preventDefault();
+      const amount = event.shiftKey ? 120 : 48;
+      viewport.scrollBy(event.key === "ArrowLeft" ? -amount : event.key === "ArrowRight" ? amount : 0, event.key === "ArrowUp" ? -amount : event.key === "ArrowDown" ? amount : 0);
+    }
+  });
+  viewport.addEventListener("pointerdown", (event) => {
+    mapPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (mapPointers.size === 2) {
+      const points = [...mapPointers.values()];
+      pinchStart = { distance: Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y), scale: mapScale };
+      mapDrag = null;
+      return;
+    }
+    const panEnabled = toggle.getAttribute("aria-pressed") === "true";
+    if (!panEnabled || event.button !== 0) return;
+    mapDrag = { x: event.clientX, y: event.clientY, left: viewport.scrollLeft, top: viewport.scrollTop, moved: false };
+    viewport.setPointerCapture(event.pointerId);
+  });
+  viewport.addEventListener("pointermove", (event) => {
+    if (!mapPointers.has(event.pointerId)) return;
+    mapPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (mapPointers.size >= 2 && pinchStart) {
+      const points = [...mapPointers.values()];
+      const distance = Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+      if (pinchStart.distance > 0 && distance > 0) {
+        mapScale = Math.max(.35, Math.min(2.5, pinchStart.scale * distance / pinchStart.distance));
+        applyMapScale({ x: (points[0].x + points[1].x) / 2 - viewport.getBoundingClientRect().left, y: (points[0].y + points[1].y) / 2 - viewport.getBoundingClientRect().top });
+      }
+      return;
+    }
+    if (!mapDrag) return;
+    const dx = event.clientX - mapDrag.x, dy = event.clientY - mapDrag.y;
+    if (Math.abs(dx) + Math.abs(dy) > 5) mapDrag.moved = true;
+    if (mapDrag.moved) { viewport.scrollLeft = mapDrag.left - dx; viewport.scrollTop = mapDrag.top - dy; }
+  });
+  const finishPointer = (event) => {
+    if (mapDrag?.moved) suppressMapClick = true;
+    mapPointers.delete(event.pointerId);
+    if (mapPointers.size < 2) pinchStart = null;
+    mapDrag = null;
+  };
+  viewport.addEventListener("pointerup", finishPointer);
+  viewport.addEventListener("pointercancel", finishPointer);
+  viewport.addEventListener("click", (event) => {
+    if (!suppressMapClick) return;
+    suppressMapClick = false; event.preventDefault(); event.stopImmediatePropagation();
+  }, true);
 }
 
 function renderBattlefieldMap(map, words) {
@@ -643,52 +777,48 @@ function renderTable(game) {
   } else {
     document.querySelector("#live-equipment").replaceChildren();
   }
-  if (game.foes.length) {
-    const heading = document.createElement("span");
-    heading.className = "live-enemies-heading";
-    heading.textContent = t("activity.scene.encounter");
-    liveEnemies.replaceChildren(heading, ...game.foes.map(makeEnemy));
-  } else {
-    liveEnemies.replaceChildren();
-  }
   document.querySelector("#live-party-count").textContent = t("activity.party.count", { count: game.party.length });
   renderTableActions(game);
   renderCharacterWorkspace(game);
+  renderEnemies(game.foes);
   renderParty(game.party);
   setLiveMessage(game.submission === "action" ? t("activity.status.actionIn") : game.submission === "pass" ? t("activity.status.youPassed") : "");
   updateRollPrompt(game.pendingRoll);
 }
 
 function makeEnemy(enemy) {
-  const card = document.createElement("div");
-  card.className = "live-enemy";
+  const card = document.createElement("button");
+  card.type = "button";
+  card.className = `live-party-card live-enemy${enemy.active ? " is-active" : ""}${enemy.name === selectedEnemyName ? " is-selected" : ""}`;
   card.classList.toggle("is-active", enemy.active);
-  card.setAttribute("role", "button");
-  card.tabIndex = 0;
-  const inspect = () => { selectedEnemyName = enemy.name; if (currentSnapshot?.kind === "table") renderCharacterWorkspace(currentSnapshot); };
-  card.addEventListener("click", inspect);
-  card.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); inspect(); } });
-  const emblem = iconImage("attack");
-  emblem.className = "enemy-emblem";
-  card.append(emblem);
+  card.setAttribute("aria-label", `${enemy.name}. ${t(`activity.band.${enemy.band}`)}, ${enemy.zone}`);
+  card.setAttribute("aria-pressed", String(enemy.name === selectedEnemyName));
+  card.addEventListener("click", () => { selectedEnemyName = enemy.name; if (currentSnapshot?.kind === "table") { renderParty(currentSnapshot.party); renderCharacterWorkspace(currentSnapshot); renderEnemies(currentSnapshot.foes); } });
+  const sigil = document.createElement("span"); sigil.className = "live-party-sigil enemy-sigil"; sigil.setAttribute("aria-hidden", "true");
+  sigil.append(iconImage("attack")); card.append(sigil);
+  const copy = document.createElement("span"); copy.className = "live-party-copy enemy-copy";
   const name = document.createElement("strong");
   name.textContent = enemy.name;
   const health = document.createElement("span");
   health.textContent = t("activity.hero.enemyHealth", { band: t(`activity.band.${enemy.band}`), zone: enemy.zone });
-  const track = document.createElement("div");
-  track.className = "health-track";
+  const track = document.createElement("span");
+  track.className = "party-health live-party-health";
   const fill = document.createElement("i");
   fill.style.width = `${{ unhurt: 100, hurt: 66, bloodied: 33, down: 0 }[enemy.band] ?? 100}%`;
   track.append(fill);
-  card.append(name, health, track);
+  copy.append(name, health);
+  card.append(copy);
   if (enemy.active) {
     const turn = document.createElement("span");
-    turn.className = "enemy-turn-label";
+    turn.className = "live-party-status enemy-turn-label";
     turn.textContent = t("activity.party.turnNow");
-    card.append(turn);
+    copy.append(turn);
   }
+  copy.append(track);
   return card;
 }
+
+function renderEnemies(enemies) { liveEnemies.replaceChildren(...(enemies.length ? [Object.assign(document.createElement("span"), { className: "live-enemies-heading", textContent: t("activity.scene.encounter") }), ...enemies.map(makeEnemy)] : [])); }
 
 function renderEquipment(hero) {
   const target = document.querySelector("#live-equipment");
@@ -714,12 +844,12 @@ function renderEquipment(hero) {
 function renderParty(members) {
   liveParty.replaceChildren(...members.map((hero) => {
     const card = document.createElement(hero.hp !== null && hero.maxHp !== null ? "button" : "div");
-    card.className = `live-party-card${hero.isYou ? " is-you" : ""}${hero.characterId === selectedPartyCharacterId ? " is-selected" : ""}`;
+    card.className = `live-party-card${hero.isYou ? " is-you" : ""}${!selectedEnemyName && hero.characterId === selectedPartyCharacterId ? " is-selected" : ""}`;
     card.dataset.status = hero.tableStatus ?? (hero.presence === "away" ? "away" : "waiting");
     if (hero.hp !== null && hero.maxHp !== null) {
       card.type = "button";
       card.setAttribute("aria-label", t("activity.party.inspect", { name: hero.name }));
-      card.setAttribute("aria-pressed", String(hero.characterId === selectedPartyCharacterId));
+      card.setAttribute("aria-pressed", String(!selectedEnemyName && hero.characterId === selectedPartyCharacterId));
       card.addEventListener("click", () => {
         selectedEnemyName = null;
         const page = document.querySelector(".live-hero");
@@ -732,6 +862,7 @@ function renderParty(members) {
         if (currentSnapshot?.kind === "table") {
           renderParty(currentSnapshot.party);
           renderCharacterWorkspace(currentSnapshot);
+          renderEnemies(currentSnapshot.foes);
         }
       });
     }
@@ -802,17 +933,20 @@ function renderCharacterWorkspace(game) {
     document.querySelector("#live-hero-name").textContent = enemy.name;
     document.querySelector("#live-hero-subtitle").textContent = enemy.zone;
     document.querySelector("#live-hero-class").textContent = enemy.band;
-    document.querySelector("#live-hero-hp").textContent = t("activity.hero.hp", { hp: enemy.hp, max: enemy.maxHp });
+    setHeroWatermark(null);
+    document.querySelector("#live-hero-hp").textContent = t(`activity.band.${enemy.band}`);
     document.querySelector("#live-hero-ac").textContent = "";
-    document.querySelector("#live-hero-health").style.width = `${Math.max(0, Math.min(100, enemy.hp / Math.max(1, enemy.maxHp) * 100))}%`;
+    document.querySelector("#live-hero-health").style.width = `${{ unhurt: 100, hurt: 66, bloodied: 33, down: 0 }[enemy.band] ?? 100}%`;
     const sigil = document.querySelector("#live-hero-sigil"); sigil.replaceChildren(iconImage("attack"));
     void setArtwork(document.querySelector("#live-hero-image"), sigil, null, enemy.name);
     const tabs = document.querySelector("#hero-workspace-tabs"); tabs.hidden = false; tabs.replaceChildren();
     const overview = document.createElement("button"); overview.type = "button"; overview.textContent = t("activity.tab.overview"); overview.setAttribute("role", "tab"); overview.setAttribute("aria-selected", "true"); overview.id = "hero-tab-overview"; tabs.append(overview);
-    if (game.myHero) tabs.append(makeButton(t("activity.tab.actions"), () => { selectedEnemyName = null; selectedPartyCharacterId = game.myHero.characterId; selectedWorkspaceTab = "actions"; renderCharacterWorkspace(game); renderParty(game.party); }));
+    if (game.myHero) tabs.append(makeButton(t("activity.tab.actions"), () => { selectedEnemyName = null; selectedPartyCharacterId = game.myHero.characterId; selectedWorkspaceTab = "actions"; renderCharacterWorkspace(game); renderParty(game.party); renderEnemies(game.foes); }));
     document.querySelectorAll(".hero-tab-panel").forEach((panel) => { panel.hidden = panel.id !== "hero-panel-overview"; });
     document.querySelector("#live-resources").textContent = enemy.band;
     document.querySelector("#live-equipment").replaceChildren();
+    document.querySelector("#hero-action-dock").hidden = !game.myHero;
+    if (game.myHero) document.querySelector("#hero-action-dock").append(liveActions);
     return;
   }
   selectedEnemyName = null;
@@ -823,6 +957,9 @@ function renderCharacterWorkspace(game) {
   }
   const selected = game.party.find((member) => member.characterId === selectedPartyCharacterId) ?? game.party.find((member) => member.isYou) ?? null;
   const viewingOwn = selected?.isYou === true && ownHero !== null;
+  document.querySelector("#hero-action-dock").hidden = viewingOwn;
+  if (viewingOwn) document.querySelector("#hero-panel-actions").append(liveActions);
+  else document.querySelector("#hero-action-dock").append(liveActions);
   const profile = viewingOwn ? ownHero : selected;
   if (!profile) return;
   const turnLabel = document.querySelector("#live-turn");
@@ -1318,6 +1455,8 @@ async function authenticate() {
   if (typeof session.launchCampaignId === "string") await openGame(session.launchCampaignId);
   else await loadGames();
 }
+
+bindMapControls();
 
 if (new URLSearchParams(window.location.search).has("design-preview")) {
   lobbyScreen.hidden = true;

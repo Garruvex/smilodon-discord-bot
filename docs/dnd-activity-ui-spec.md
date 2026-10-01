@@ -85,6 +85,30 @@ The preferred layout puts **Your Hero** in the main workspace, with the scene as
 
 Stack in this order: compact campaign header; own-hero summary and current task; six party tiles; collapsible scene context. Expanding spells or a character detail screen reduces the art to a scene-title header so controls have space. Use one primary action button and put secondary actions under **More**. Menus and confirmations use full-width sheets. Safety stays directly accessible. Never require hover, drag, or a wide map to submit a normal action.
 
+### Current visual direction: compact adventurer's journal
+
+The current prototype's tall arched portrait, large sepia surfaces, burgundy framing, and decorative serif headings read as gothic/vampire styling and leave too much space around controls. Refine it toward an illustrated tabletop field journal: restrained parchment, dark ink, leather binding, small engraved dividers, and character/map illustrations. Use a readable book serif only for titles; use a high-legibility sans or readable Ming/Song system fallback for body copy and dense Traditional Chinese text. Avoid script faces, tiny uppercase labels, heavy gradients, and repeated ornamental borders.
+
+Keep the book metaphor compact. The party is a short portrait roster/bookmark rail that shows all six members with name, class, HP, and one status. The selected character's page uses tabs and sizes itself to its content; don't reserve a full-height portrait column or leave a mostly empty page. Keep the current player's action dock available while inspecting another character or enemy. Give selection a quiet ink outline, identify **You** with a label, and use one distinct crimson turn marker for the active turn so the states cannot be confused.
+
+Use a compact encounter header that combines scene art, location, phase/round, and current turn. Render each revealed enemy as a tile in the same visual system as the hero cards: matching portrait frame, name/classification line, compact health bar, and short status. Party and enemy tiles should read as one encounter roster while their ink/sigil and side label keep the two groups distinct. Highlight the active enemy with a crimson edge and explicit turn label. Enemy selection can open its public details on the journal page without replacing the player's action dock.
+
+The world map is an illustrated parchment panel below the journal. In exploration, landmarks are connected by discovered routes and footprint marks; locked or unknown branches stay obscured. In combat, show the actual encounter zones, occupants, and distances as a clear tactical diagram over restrained terrain art. Footprints may mark a movement preview/path, but must not imply an exact square grid or coordinates when the game state has none. These are two visual treatments of the existing journey/battlefield projections, not invented geography.
+
+## Movable map interaction
+
+Both journey and tactical maps support pan and zoom when their content exceeds the available viewport. Keep the compact map embedded in the page and provide an optional expanded map view for detailed inspection. The first view fits the complete known map to the viewport; a player should not need to pan just to find the current location or the next available route.
+
+- Provide visible **+**, **−**, and **Reset / Fit** controls with localized accessible names. Show the current zoom percentage or a simple zoom indicator.
+- Support mouse/pen drag to pan, trackpad or pointer-wheel zoom when the pointer is over the map, and two-finger pinch on touch screens. A zoom gesture keeps the point under the pointer/fingers in place where possible.
+- On touch, offer a clear **Move map** toggle so one-finger movement is deliberate and ordinary page scrolling remains natural. Pinch zoom remains available without enabling that mode.
+- Keyboard users can focus the map, use arrow keys to pan, `+` / `−` to zoom, and **Reset / Fit** to return to the full map. Keep individual location/zone controls reachable in a predictable focus order and activate them with Enter/Space.
+- Keep pan/zoom controls outside the map drawing's hit targets. Starting a pan must not activate a landmark, tactical zone, or move action. Show a move cursor only where the input device supports it; don't rely on hover or dragging as the sole way to navigate.
+- Clamp pan so the map cannot be lost entirely, preserve readable label sizes, and reset to fit when switching campaigns or between journey and combat maps. Preserve the user's view while polling updates the same map; don't jump back to fit on every snapshot.
+- Respect reduced-motion settings. Do not animate the whole map on every pan, zoom, or live update.
+
+Basic map pan and zoom can use the existing SVG/canvas layer and do not by themselves require a game engine. A future token movement/measurement/grid editor would be a separate interaction and backend decision.
+
 ### Visual hierarchy
 
 - Scene art and title establish where the party is.
@@ -124,7 +148,7 @@ The visual prototype may use example subjects/destinations to explore layout; a 
 
 Show initiative order, active hero, current actor, visible enemies with zone and health band, and the active player's remaining budget. **Act** opens legal actions and targets, then a server-generated preview, then **Roll**. Roll presentation in the Activity may stage the already-saved result, but the saved result and Discord roll/history line are canonical. Reactions appear only to eligible responders. **End turn** is explicit and server-validated.
 
-Revealed enemies use compact portrait/name tiles beside the scene with a broad health-band indicator, public conditions, and an active-turn marker. Display **Unhurt / Hurt / Bloodied / Down** alongside the indicator; do not draw a precise percentage from hidden HP. Selecting an attack/spell highlights legal targets using these same tiles. Exact enemy HP requires an explicit supported table policy and an authorized server projection; it is not a client visibility toggle.
+Revealed enemies use the same compact card geometry as hero tiles beside the scene, with a distinct foe treatment, portrait/glyph, name, broad health-band bar, public conditions, and an active-turn marker. Display **Unhurt / Hurt / Bloodied / Down** alongside the indicator; do not draw a precise percentage from hidden HP. Selecting an attack/spell highlights legal targets using these same tiles. Exact enemy HP requires an explicit supported table policy and an authorized server projection; it is not a client visibility toggle.
 
 ### Pending scene move
 
@@ -281,6 +305,8 @@ Build in this order:
 5. Combat turn with spell search/pinning/slot selection/target previews, scene agreement, Speak, and authorized inventory operations after the narrow path is proven. Preparation/learning rules remain a separate backend feature.
 
 Acceptance for the first prototype: two members launch/join one table from the same campaign context; both see the same public revision; each sees only their own private view; one can submit a valid action and the other sees the committed update without a routine Discord panel edit; a Discord-only member can still use the fallback; reconnect recovers the current state without duplicate actions.
+
+Map interaction acceptance: both map types open fitted to their viewport; zoom/pan work with pointer and touch; map dragging never triggers a location or movement action; keyboard controls can pan/zoom/reset and activate locations; polling preserves the current map view; the expanded view can always return to fit.
 
 ## Open product decisions
 
