@@ -33,6 +33,7 @@ let selectedEnemyName = null;
 let mapScale = 1;
 let mapIdentity = "";
 let mapBaseSize = null;
+let mapOffset = { x: 0, y: 0 };
 let mapPointers = new Map();
 let mapDrag = null;
 let pinchStart = null;
@@ -478,6 +479,7 @@ function prepareMapView(kind, svg) {
     mapIdentity = nextIdentity;
     mapBaseSize = { width, height };
     mapScale = 1;
+    mapOffset = { x: 0, y: 0 };
     requestAnimationFrame(() => fitMap());
   } else {
     mapBaseSize = { width, height };
@@ -485,38 +487,56 @@ function prepareMapView(kind, svg) {
   }
 }
 
-function applyMapScale(focal = null) {
+function applyMapScale(focal = null, previousScale = mapScale) {
   const svg = liveMap.querySelector("svg");
   const viewport = document.querySelector("#live-map-viewport");
   if (!svg || !mapBaseSize) return;
   const oldWidth = Number(svg.getAttribute("width"));
   const oldHeight = Number(svg.getAttribute("height"));
   const center = focal ?? { x: viewport.clientWidth / 2, y: viewport.clientHeight / 2 };
-  const mapX = viewport.scrollLeft + center.x;
-  const mapY = viewport.scrollTop + center.y;
-  const ratioX = oldWidth ? mapX / oldWidth : .5;
-  const ratioY = oldHeight ? mapY / oldHeight : .5;
+  // The SVG is rebuilt from base dimensions on each live refresh; mapScale is
+  // therefore the currently displayed scale even when its fresh attributes are 1x.
+  const mapX = (center.x - mapOffset.x) / previousScale;
+  const mapY = (center.y - mapOffset.y) / previousScale;
+  const ratioX = mapBaseSize.width ? mapX / mapBaseSize.width : .5;
+  const ratioY = mapBaseSize.height ? mapY / mapBaseSize.height : .5;
   svg.setAttribute("width", String(Math.round(mapBaseSize.width * mapScale)));
   svg.setAttribute("height", String(Math.round(mapBaseSize.height * mapScale)));
+  svg.style.width = `${Math.round(mapBaseSize.width * mapScale)}px`;
+  svg.style.height = `${Math.round(mapBaseSize.height * mapScale)}px`;
   document.querySelector("#map-zoom-level").textContent = `${Math.round(mapScale * 100)}%`;
   requestAnimationFrame(() => {
-    viewport.scrollLeft = Math.max(0, ratioX * svg.clientWidth - center.x);
-    viewport.scrollTop = Math.max(0, ratioY * svg.clientHeight - center.y);
+    mapOffset.x = center.x - ratioX * svg.clientWidth;
+    mapOffset.y = center.y - ratioY * svg.clientHeight;
+    applyMapOffset();
   });
 }
 
+function applyMapOffset() {
+  const svg = liveMap.querySelector("svg");
+  if (!svg) return;
+  const viewport = document.querySelector("#live-map-viewport");
+  const minX = Math.min(0, viewport.clientWidth - svg.clientWidth);
+  const minY = Math.min(0, viewport.clientHeight - svg.clientHeight);
+  mapOffset.x = Math.max(minX, Math.min(0, mapOffset.x));
+  mapOffset.y = Math.max(minY, Math.min(0, mapOffset.y));
+  svg.style.transform = `translate(${mapOffset.x}px, ${mapOffset.y}px)`;
+}
+
 function zoomMap(delta, focal = null) {
+  const previousScale = mapScale;
   mapScale = Math.max(.35, Math.min(2.5, Math.round((mapScale + delta) * 100) / 100));
-  applyMapScale(focal);
+  applyMapScale(focal, previousScale);
 }
 
 function fitMap() {
   if (!mapBaseSize) return;
   const viewport = document.querySelector("#live-map-viewport");
+  const previousScale = mapScale;
   mapScale = Math.min(1, (viewport.clientWidth - 24) / mapBaseSize.width, (viewport.clientHeight - 24) / mapBaseSize.height);
-  mapScale = Math.max(.35, mapScale);
-  applyMapScale({ x: 0, y: 0 });
-  requestAnimationFrame(() => { viewport.scrollLeft = 0; viewport.scrollTop = 0; });
+  mapScale = Math.max(.2, mapScale);
+  mapOffset = { x: 0, y: 0 };
+  applyMapScale({ x: 0, y: 0 }, previousScale);
 }
 
 function bindMapControls() {
@@ -544,7 +564,9 @@ function bindMapControls() {
     else if (event.key.startsWith("Arrow")) {
       event.preventDefault();
       const amount = event.shiftKey ? 120 : 48;
-      viewport.scrollBy(event.key === "ArrowLeft" ? -amount : event.key === "ArrowRight" ? amount : 0, event.key === "ArrowUp" ? -amount : event.key === "ArrowDown" ? amount : 0);
+      mapOffset.x += event.key === "ArrowLeft" ? amount : event.key === "ArrowRight" ? -amount : 0;
+      mapOffset.y += event.key === "ArrowUp" ? amount : event.key === "ArrowDown" ? -amount : 0;
+      applyMapOffset();
     }
   });
   viewport.addEventListener("pointerdown", (event) => {
@@ -557,7 +579,7 @@ function bindMapControls() {
     }
     const panEnabled = toggle.getAttribute("aria-pressed") === "true";
     if (!panEnabled || event.button !== 0) return;
-    mapDrag = { x: event.clientX, y: event.clientY, left: viewport.scrollLeft, top: viewport.scrollTop, moved: false };
+    mapDrag = { x: event.clientX, y: event.clientY, left: mapOffset.x, top: mapOffset.y, moved: false };
     viewport.setPointerCapture(event.pointerId);
   });
   viewport.addEventListener("pointermove", (event) => {
@@ -567,15 +589,16 @@ function bindMapControls() {
       const points = [...mapPointers.values()];
       const distance = Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
       if (pinchStart.distance > 0 && distance > 0) {
+        const previousScale = mapScale;
         mapScale = Math.max(.35, Math.min(2.5, pinchStart.scale * distance / pinchStart.distance));
-        applyMapScale({ x: (points[0].x + points[1].x) / 2 - viewport.getBoundingClientRect().left, y: (points[0].y + points[1].y) / 2 - viewport.getBoundingClientRect().top });
+        applyMapScale({ x: (points[0].x + points[1].x) / 2 - viewport.getBoundingClientRect().left, y: (points[0].y + points[1].y) / 2 - viewport.getBoundingClientRect().top }, previousScale);
       }
       return;
     }
     if (!mapDrag) return;
     const dx = event.clientX - mapDrag.x, dy = event.clientY - mapDrag.y;
     if (Math.abs(dx) + Math.abs(dy) > 5) mapDrag.moved = true;
-    if (mapDrag.moved) { viewport.scrollLeft = mapDrag.left - dx; viewport.scrollTop = mapDrag.top - dy; }
+    if (mapDrag.moved) { mapOffset.x = mapDrag.left + dx; mapOffset.y = mapDrag.top + dy; applyMapOffset(); }
   });
   const finishPointer = (event) => {
     if (mapDrag?.moved) suppressMapClick = true;
@@ -1488,8 +1511,15 @@ function designPreviewSnapshot() {
   return {
     classNames: new URLSearchParams(window.location.search).get("language") === "zh-TW" ? { wizard: "法師", paladin: "聖騎士", ranger: "遊俠", rogue: "盜賊", cleric: "牧師", bard: "吟遊詩人" } : {},
     kind: "table", campaignId: "local-preview", campaignName: "The Lantern Company", adventureTitle: "Moonlit Ruins",
-    mode: "combat", roundNumber: 4, scene: { title: "The Drowned Observatory", description: "Cold moonlight spills through the broken dome. Something stirs beneath the flooded floor.", imageUrl: new URLSearchParams(window.location.search).has("scene-image") ? "/gallery/giant_wolf_spider.webp" : null },
-    map: { kind: "battlefield", edges: [{ from: "shattered-dais", to: "flooded-floor", feet: 30 }, { from: "flooded-floor", to: "broken-gallery", feet: 25 }], zones: [
+    mode: "combat", roundNumber: 4, scene: { title: "The Drowned Observatory", description: "Cold moonlight spills through the broken dome. Something stirs beneath the flooded floor.", imageUrl: null },
+    map: new URLSearchParams(window.location.search).has("journey") ? { kind: "journey", nodes: [
+      { id: "entrance", title: "The Old Hall", column: 0, row: 1, status: "visited", canTravel: false, deadEnd: false },
+      { id: "current", title: "The Drowned Observatory", column: 1, row: 1, status: "current", canTravel: false, deadEnd: false },
+      { id: "gallery", title: "Broken Gallery", column: 2, row: 0, status: "reachable", canTravel: true, deadEnd: false },
+      { id: "vault", title: "The Lower Vault", column: 2, row: 1, status: "known", canTravel: false, deadEnd: false },
+      { id: "sanctum", title: "Moonlit Sanctum", column: 2, row: 2, status: "reachable", canTravel: true, deadEnd: true },
+      { id: "unknown", title: "???", column: 3, row: 1, status: "locked", canTravel: false, deadEnd: false },
+    ], routes: [{ from: "entrance", to: "current", oneWay: false }, { from: "current", to: "gallery", oneWay: false }, { from: "current", to: "vault", oneWay: false }, { from: "current", to: "sanctum", oneWay: true }, { from: "vault", to: "unknown", oneWay: false }] } : { kind: "battlefield", edges: [{ from: "shattered-dais", to: "flooded-floor", feet: 30 }, { from: "flooded-floor", to: "broken-gallery", feet: 25 }], zones: [
       { id: "shattered-dais", name: "Shattered dais", lighting: "Moonlit", cover: "half", difficult: false, canMove: true, occupants: [{ name: "Aria", side: "party", active: true, hp: 27, maxHp: 34 }] },
       { id: "flooded-floor", name: "Flooded floor", lighting: "Dim", cover: null, difficult: true, canMove: false, occupants: [{ name: "Hollow Sentinel", side: "foes", active: true, hp: 18, maxHp: 36 }] },
       { id: "broken-gallery", name: "Broken gallery", lighting: "Dark", cover: "three-quarters", difficult: false, canMove: true, occupants: [{ name: "Thorne", side: "party", active: false, hp: 38, maxHp: 42 }] },

@@ -278,7 +278,10 @@ export function buildActivityTableView(
     mode: panel.mode,
     roundNumber: panel.roundNumber,
     mapText: texts[record.language].campaign.map,
-    scene: { title: panel.sceneTitle, description: scene?.publicDescription ?? "", imageUrl: scene === undefined || !hasPicture(record.images?.[scene.id]) ? null : `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/scenes/${encodeURIComponent(scene.id)}` },
+    // Let the image endpoint decide whether an asset exists. The generated file can
+    // outlive or arrive before the image-status metadata, so gating this URL on that
+    // metadata made valid scene art disappear from the Activity.
+    scene: { title: panel.sceneTitle, description: scene?.publicDescription ?? "", imageUrl: scene === undefined ? null : `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/scenes/${encodeURIComponent(scene.id)}` },
     map: panel.combat !== null && state.encounter !== null
       ? {
         kind: "battlefield",
