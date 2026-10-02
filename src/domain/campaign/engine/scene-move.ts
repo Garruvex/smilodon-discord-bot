@@ -83,6 +83,13 @@ export function supportMove(decision: Decision): Rejection | null {
   const { pendingMove } = decision.state;
   if (pendingMove === undefined) return { code: "noPendingMove" };
   if (!pendingMove.supporters?.includes(userId)) decision.emit({ kind: "sceneMoveSupported", userId });
+  // A unanimous explicit Go vote is already a complete decision; do not make
+  // the table wait for the round timer just because silence also defaults to Go.
+  const current = decision.state.pendingMove;
+  const present = presentMembers(decision.state).map((member) => member.userId);
+  if (current !== undefined && present.length > 0 && present.every((id) => current.supporters?.includes(id))) {
+    settle(decision, decision.state.round?.number ?? decision.state.lastRoundNumber, "go", "table");
+  }
   return null;
 }
 
