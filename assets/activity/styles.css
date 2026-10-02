@@ -1669,3 +1669,28 @@ body { background: #30251f; }
 .live-party-copy > .party-meta-line { gap: 8px; margin-top: 3px; }
 .live-party-copy > .party-meta-line > .party-health { flex: 1; min-width: 28px; margin: 0; }
 .live-party-copy > .party-meta-line > .party-hp-label { flex: 0 0 auto; margin-left: 0; font-size: 11px; font-weight: 600; color: var(--ui-ink); }
+
+/* The scene is a tall banner: the picture is wide (16:9), so it keeps most of its height and only the very bottom is trimmed. */
+.live-scene-art { aspect-ratio: 16 / 9; min-height: 0; max-height: clamp(260px, 48vh, 520px); }
+.live-scene-art > img:not([hidden]) { object-position: center 40%; }
+@media (max-width: 760px) { .live-scene-art { max-height: none; } }
+
+/* Hero info: each fact is one row of label and value, so nothing is cut short. */
+.member-overview { gap: 14px; padding-top: 4px; }
+.member-overview-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.member-stat { grid-template-columns: minmax(0, 1fr); align-content: center; gap: 4px; min-height: 0; padding: 10px 13px; }
+.member-stat > strong { overflow: visible; font-size: 17px; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
+.member-stat-label { font-size: 12px; }
+.hero-tab-panel { scrollbar-color: var(--ui-border-strong) transparent; scrollbar-width: thin; }
+
+/* Party tiles: health colours the bar, the turn stands out, and heroes who are away look dimmed. */
+.live-party-card { transition: background-color .12s, transform .12s, box-shadow .12s; }
+.live-party-card:hover:not(.is-selected) { background: var(--ui-paper-raised); transform: translateY(-1px); box-shadow: var(--ui-shadow); }
+.party-health[data-health="good"] > i { background: #6c7d4c; }
+.party-health[data-health="hurt"] > i { background: #b8892f; }
+.party-health[data-health="low"] > i { background: #a8443a; }
+.party-name-line > .party-status-icon[data-status="submitted"] { border-color: #7d8c5e; background: #dfe6cb; }
+.party-name-line > .party-status-icon[data-status="away"] { border-style: dashed; opacity: .6; }
+.live-party-card[data-status="away"] .party-portrait { filter: grayscale(.7); opacity: .8; }
+.live-party-card.is-selected { background: var(--ui-paper-raised); }
+.live-party-copy .party-name-line > strong small { margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: var(--ui-paper-inset); color: var(--ui-muted); font-size: 10px; font-weight: 600; vertical-align: 1px; }

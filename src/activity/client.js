@@ -919,7 +919,9 @@ function renderParty(members) {
       const bar = document.createElement("span");
       bar.className = "party-health live-party-health ui-meter";
       const fill = document.createElement("i");
-      fill.style.width = `${hero.maxHp > 0 ? Math.max(0, Math.min(100, Math.round((hero.hp / hero.maxHp) * 100))) : 0}%`;
+      const percent = hero.maxHp > 0 ? Math.max(0, Math.min(100, Math.round((hero.hp / hero.maxHp) * 100))) : 0;
+      fill.style.width = `${percent}%`;
+      bar.dataset.health = percent > 60 ? "good" : percent > 30 ? "hurt" : "low";
       bar.append(fill);
       meta.append(bar);
       const hp = document.createElement("span");
