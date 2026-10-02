@@ -93,7 +93,7 @@ export interface CampaignModule {
     joinLobby(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>>;
     requestJoin(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>>;
     withdrawJoin(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>>;
-    snapshot(key: CampaignKey, userId: UserId): Promise<{ readonly kind: "ok"; readonly value: ActivityGameView } | { readonly kind: "refused"; readonly reason: "notFound" | "notActive" | "privateInviteOnly" }>;
+    snapshot(key: CampaignKey, userId: UserId, since?: string): Promise<{ readonly kind: "ok"; readonly value: ActivityGameView; readonly token: string } | { readonly kind: "unchanged"; readonly token: string } | { readonly kind: "refused"; readonly reason: "notFound" | "notActive" | "privateInviteOnly" }>;
     act(key: CampaignKey, userId: UserId, input: unknown): Promise<{ readonly kind: "ok" } | { readonly kind: "refused"; readonly reason: string }>;
     image(key: CampaignKey, userId: UserId, kind: "scene" | "character" | "encounter", id: string): Promise<{ readonly bytes: Buffer; readonly mediaType: "image/png" | "image/jpeg" | "image/webp" } | null>;
   };
@@ -314,8 +314,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
       joinLobby: (key, userId): Promise<ServiceResult<CampaignRecord>> => lobby.joinFromActivity(key, userId),
       requestJoin: (key, userId): Promise<ServiceResult<CampaignRecord>> => lobby.requestOngoingJoin(key, userId),
       withdrawJoin: (key, userId): Promise<ServiceResult<CampaignRecord>> => lobby.withdrawOngoingJoin(key, userId),
-      snapshot: async (key, userId) => {
-        const savedHeroChoices = (await library.list(userId)).flatMap((entry) => entry.snapshots.slice(-1).map((snapshot) => ({ id: libraryHeroRef(snapshot.id), name: entry.character.name, className: entry.character.className })));
+      snapshot: async (key, userId, since) => {
         return unitOfWork.transaction(async (tx) => {
         const storedRecord = await tx.loadRecord(key);
         if (storedRecord === undefined) return { kind: "refused", reason: "notFound" } as const;
@@ -323,10 +322,14 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
         if (!canSeeActivityCampaign(storedRecord.record, storedCampaign?.state, userId, clock.now())) {
           return { kind: "refused", reason: "privateInviteOnly" } as const;
         }
+        // Both revisions move with every change to the game; a client that already holds this one is told so instead of being sent it again.
+        const token = `${storedRecord.revision}.${storedCampaign?.revision ?? 0}`;
+        if (since === token) return { kind: "unchanged", token } as const;
+        const savedHeroChoices = (await library.list(userId)).flatMap((entry) => entry.snapshots.slice(-1).map((snapshot) => ({ id: libraryHeroRef(snapshot.id), name: entry.character.name, className: entry.character.className })));
         const adventure = adventures.documentAt(storedRecord.record.adventure.adventureId, storedRecord.record.adventure.version, storedRecord.record.language);
         if (adventure === undefined) return { kind: "refused", reason: "notFound" } as const;
         if (storedRecord.record.lifecycle === "lobby") {
-          return { kind: "ok", value: buildActivityLobbyView(storedRecord.record, adventure.bible, userId, adventure.heroes) } as const;
+          return { kind: "ok", value: buildActivityLobbyView(storedRecord.record, adventure.bible, userId, adventure.heroes), token } as const;
         }
         if ((storedRecord.record.lifecycle !== "active" && storedRecord.record.lifecycle !== "paused") || storedCampaign === undefined) {
           return { kind: "refused", reason: "notActive" } as const;
@@ -334,6 +337,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
         return {
           kind: "ok",
           value: buildActivityTableView(storedRecord.record, storedCampaign.state, adventure.bible, content, glossaries[storedRecord.record.language], userId, adventure.heroes, clock.now(), savedHeroChoices),
+          token,
         } as const;
         });
       },

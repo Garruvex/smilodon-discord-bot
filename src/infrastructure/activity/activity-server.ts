@@ -36,7 +36,8 @@ export interface ActivityCampaignApi {
   joinLobby(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>>;
   requestJoin(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>>;
   withdrawJoin(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>>;
-  snapshot(key: CampaignKey, userId: UserId): Promise<{ readonly kind: "ok"; readonly value: ActivityGameView } | { readonly kind: "refused"; readonly reason: string }>;
+  // `since` is the token of the snapshot the client already has: when nothing has changed since, no view is built.
+  snapshot(key: CampaignKey, userId: UserId, since?: string): Promise<{ readonly kind: "ok"; readonly value: ActivityGameView; readonly token: string } | { readonly kind: "unchanged"; readonly token: string } | { readonly kind: "refused"; readonly reason: string }>;
   act(key: CampaignKey, userId: UserId, input: unknown): Promise<{ readonly kind: "ok" } | { readonly kind: "refused"; readonly reason: string }>;
   image(key: CampaignKey, userId: UserId, kind: "scene" | "character" | "encounter", id: string): Promise<{ readonly bytes: Buffer; readonly mediaType: "image/png" | "image/jpeg" | "image/webp" } | null>;
 }
@@ -174,10 +175,12 @@ async function respond(
     if (session === null) return writeJson(response, 401, { error: "unauthorized" }, headers);
     const key: CampaignKey = { guildId: session.guildId, campaignId: tableMatch[1] };
     if (tableMatch[2] === "table" && request.method === "GET") {
-      const result = await campaigns.snapshot(key, session.userId);
+      const since = url.searchParams.get("since") ?? undefined;
+      const result = await campaigns.snapshot(key, session.userId, since);
       if (result.kind === "refused") return writeJson(response, result.reason === "notFound" ? 404 : 403, { error: result.reason }, headers);
       rememberGame(session.guildId, session.userId, key.campaignId);
-      return writeJson(response, 200, { snapshot: result.value }, headers);
+      if (result.kind === "unchanged") return writeJson(response, 200, { unchanged: true, token: result.token }, headers);
+      return writeJson(response, 200, { snapshot: result.value, token: result.token }, headers);
     }
     if (tableMatch[2] === "action" && request.method === "POST") {
       let body: unknown;
@@ -190,7 +193,8 @@ async function respond(
       if (action.kind === "refused") return writeJson(response, 409, { error: action.reason }, headers);
       const snapshot = await campaigns.snapshot(key, session.userId);
       if (snapshot.kind === "refused") return writeJson(response, snapshot.reason === "notFound" ? 404 : 403, { error: snapshot.reason }, headers);
-      return writeJson(response, 200, { snapshot: snapshot.value }, headers);
+      if (snapshot.kind === "unchanged") return writeJson(response, 200, { unchanged: true, token: snapshot.token }, headers);
+      return writeJson(response, 200, { snapshot: snapshot.value, token: snapshot.token }, headers);
     }
   }
 

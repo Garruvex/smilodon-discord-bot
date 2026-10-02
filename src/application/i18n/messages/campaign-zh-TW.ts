@@ -307,6 +307,8 @@ export const campaignZhTW = {
   "activity.move.going": "贊成前往：{names}。",
   "activity.move.voteGo": "投票前往",
   "activity.move.voteStay": "投票留在原地",
+  "activity.move.yourVote": "需要你的表決",
+  "activity.move.voteRecorded": "已記錄你的選擇 · 再按一次可更改",
   "activity.move.withdrawGo": "取消前往票",
   "activity.move.withdrawStay": "取消留下票",
   "activity.action.details": "角色詳情",

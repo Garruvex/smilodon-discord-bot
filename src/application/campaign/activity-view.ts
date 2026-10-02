@@ -32,6 +32,7 @@ export interface ActivityTableView {
   readonly scene: { readonly title: string; readonly description: string; readonly imageUrl: string | null };
   // present and needed: how many players vote, and how many Stay votes keep the party where it is. closesAt: when the window closes (epoch ms), or null.
   readonly pendingMove: null | { readonly sceneId: string; readonly sceneTitle: string; readonly sceneDescription: string; readonly proposedBy: string | null; readonly supporters: readonly string[]; readonly staying: readonly string[]; readonly choiceByYou: "go" | "stay" | null; readonly present: number; readonly needed: number; readonly closesAt: number | null };
+  readonly canVoteMove: boolean;
   readonly map:
     | { readonly kind: "battlefield"; readonly zones: readonly { readonly id: string; readonly name: string; readonly lighting: string | null; readonly cover: string | null; readonly difficult: boolean; readonly canMove: boolean; readonly occupants: readonly { readonly name: string; readonly side: "party" | "foes"; readonly rank?: "boss" | "elite" | "minion" | "standard"; readonly active: boolean; readonly hp: number; readonly maxHp: number }[] }[]; readonly edges: readonly { readonly from: string; readonly to: string; readonly feet: number }[] }
     | { readonly kind: "journey"; readonly nodes: readonly { readonly id: string; readonly title: string; readonly status: "current" | "visited" | "known" | "reachable" | "locked"; readonly locked: boolean; readonly deadEnd: boolean; readonly canTravel: boolean; readonly column: number; readonly row: number }[]; readonly routes: readonly { readonly from: string; readonly to: string; readonly oneWay: boolean }[] };
@@ -324,6 +325,7 @@ export function buildActivityTableView(
       }),
       choiceByYou: state.pendingMove.objectors.includes(userId) ? "stay" : state.pendingMove.supporters?.includes(userId) ? "go" : null,
     },
+    canVoteMove: state.pendingMove !== undefined && state.members[userId]?.availability === "present",
     map: panel.combat !== null && state.encounter !== null
       ? {
         kind: "battlefield",

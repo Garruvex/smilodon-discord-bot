@@ -21,6 +21,11 @@ let tableTimer = null;
 let loadingTable = false;
 let tableRefreshFailures = 0;
 let lastTableRefreshAt = 0;
+// What the server last sent for this game: asking again with it returns "unchanged" instead of the whole table. Time-driven bits
+// (away marks, deadlines) are not in it, so a full table is fetched anyway every so often.
+let tableToken = null;
+let lastFullTableAt = 0;
+const fullTableEveryMs = 30000;
 let currentSnapshot = null;
 let connectionStage = "Discord connection";
 let discordConnected = false;
@@ -314,6 +319,7 @@ async function openGame(campaignId) {
   const diceDialog = document.querySelector("#dice-dialog");
   if (diceDialog.open) diceDialog.close();
   currentGameId = campaignId;
+  tableToken = null;
   resetPaint();
   setTableConnectionState("connecting");
   lobbyScreen.hidden = true;
@@ -322,17 +328,24 @@ async function openGame(campaignId) {
   setLiveMessage(t("activity.status.loadingCampaign"));
   await loadTable();
   clearInterval(tableTimer);
-  tableTimer = setInterval(() => void loadTable().catch(() => {}), 5000);
+  tableTimer = setInterval(() => void loadTable().catch(() => {}), 3000);
 }
 
 async function loadTable() {
   if (currentGameId === null || loadingTable) return;
   loadingTable = true;
   try {
-    const payload = await requestJson(`/api/activity/games/${encodeURIComponent(currentGameId)}/table`);
-    currentSnapshot = payload.snapshot;
+    const wantsFull = tableToken === null || Date.now() - lastFullTableAt >= fullTableEveryMs;
+    const payload = await requestJson(`/api/activity/games/${encodeURIComponent(currentGameId)}/table${wantsFull ? "" : `?since=${encodeURIComponent(tableToken)}`}`);
     tableRefreshFailures = 0;
     lastTableRefreshAt = Date.now();
+    if (payload.unchanged) {
+      setTableConnectionState("live");
+      return;
+    }
+    tableToken = payload.token ?? null;
+    lastFullTableAt = Date.now();
+    currentSnapshot = payload.snapshot;
     await setLanguage(currentSnapshot.language ?? uiLanguage);
     setTableConnectionState("live");
     renderGame(currentSnapshot);
@@ -392,7 +405,7 @@ function paintGame(game) {
   document.querySelector("#live-scene-description").textContent = game.kind === "lobby"
     ? t("activity.lobby.chooseCharacterDescription")
     : game.scene.description;
-  renderMoveNotice(game.kind === "table" ? game.pendingMove : null);
+  renderMoveNotice(game.kind === "table" ? game.pendingMove : null, game.kind === "table" && game.canVoteMove);
   renderStageTrack(game);
   showRolls(game.kind === "table" ? game.rolls ?? [] : []);
   document.querySelector(".live-scene").classList.toggle("has-enemies", game.kind === "table" && (game.foes?.length ?? 0) > 0);
@@ -412,7 +425,7 @@ let moveCountdown = null;
 
 let movePainted = "";
 
-function renderMoveNotice(move) {
+function renderMoveNotice(move, canVote) {
   const notice = document.querySelector("#live-scene-move");
   const key = JSON.stringify([move, uiLanguage]);
   if (key === movePainted) return;
@@ -432,7 +445,20 @@ function renderMoveNotice(move) {
   const going = move.supporters?.length ? line("move-names", t("activity.move.going", { names: move.supporters.join(", ") })) : null;
   const names = move.staying.length ? line("move-names", t("activity.move.staying", { names: move.staying.join(", ") })) : null;
   const clock = line("move-clock", "");
-  notice.replaceChildren(heading, proposedBy, ...(description ? [description] : []), line("move-paused", t("activity.move.paused")), tally, ...(going ? [going] : []), ...(names ? [names] : []), clock);
+  heading.id = "live-move-heading";
+  const prompt = line("move-prompt", t(move.choiceByYou === null ? "activity.move.yourVote" : "activity.move.voteRecorded", { scene: move.sceneTitle }));
+  const choices = document.createElement("div");
+  choices.className = "move-vote-actions";
+  if (canVote) {
+    for (const choice of ["go", "stay"]) {
+      const labelKey = move.choiceByYou === choice ? choice === "go" ? "activity.move.withdrawGo" : "activity.move.withdrawStay" : choice === "go" ? "activity.move.voteGo" : "activity.move.voteStay";
+      const button = makeButton(t(labelKey), () => void performAction({ kind: "moveVote", choice }), choice !== "stay", choice === "go" ? "move" : "pause");
+      button.dataset.choice = choice;
+      button.dataset.selected = String(move.choiceByYou === choice);
+      choices.append(button);
+    }
+  }
+  notice.replaceChildren(prompt, heading, proposedBy, ...(description ? [description] : []), line("move-paused", t("activity.move.paused")), tally, ...(going ? [going] : []), ...(names ? [names] : []), clock, ...(canVote ? [choices] : []));
   const tick = () => {
     const left = Math.max(0, Math.ceil((move.closesAt - Date.now()) / 1000));
     if (left === 0) clock.textContent = t("activity.move.deciding");
@@ -1821,6 +1847,8 @@ async function performAction(action) {
   try {
     const payload = await requestJson(`/api/activity/games/${encodeURIComponent(currentGameId)}/action`, { method: "POST", body: JSON.stringify(body) });
     currentSnapshot = payload.snapshot;
+    tableToken = payload.token ?? null;
+    lastFullTableAt = Date.now();
     renderGame(currentSnapshot);
     if (action.kind === "joinHero" && currentSnapshot?.queuedJoin) setLiveMessage(t("activity.join.queuedConfirmation", { name: currentSnapshot.queuedJoin.heroName }));
     else if (["combatSpell", "exploreSpell", "healSpell", "reviveSpell", "summonCompanion", "teleport"].includes(action.kind)) {
@@ -1886,8 +1914,12 @@ async function rollPendingCheck() {
       body: JSON.stringify({ kind: "roll" }),
     });
     await new Promise((resolve) => setTimeout(resolve, Math.max(0, 1150 - (Date.now() - startedAt))));
-    currentSnapshot = response.snapshot;
-    renderGame(currentSnapshot);
+    if (response.snapshot) {
+      currentSnapshot = response.snapshot;
+      tableToken = response.token ?? null;
+      lastFullTableAt = Date.now();
+      renderGame(currentSnapshot);
+    }
     document.querySelector("#dice-title").textContent = t("activity.dice.sent");
     document.querySelector("#dice-description").textContent = t("activity.dice.applying");
     button.querySelector("span").textContent = t("activity.dice.done");
@@ -2097,7 +2129,10 @@ if (new URLSearchParams(window.location.search).has("design-preview")) {
     preview.activeName = null;
     preview.foes = [];
     preview.turn = null;
-    if (new URLSearchParams(window.location.search).has("vote")) preview.pendingMove = { sceneId: "gallery", present: 6, needed: 3, closesAt: Date.now() + 83000, sceneTitle: previewLanguage === "zh-TW" ? "破碎長廊" : "Broken Gallery", sceneDescription: previewLanguage === "zh-TW" ? "月光照亮橫跨裂縫的長廊，東側拱門通往古老的觀星台。" : "A moonlit gallery crosses a deep fissure. Its eastern arch leads toward the old observatory.", proposedBy: previewLanguage === "zh-TW" ? "米拉・芬" : "Mira Fen", supporters: [previewLanguage === "zh-TW" ? "米拉・芬" : "Mira Fen"], staying: [previewLanguage === "zh-TW" ? "索恩・橡盾" : "Thorne Oakshield"], choiceByYou: new URLSearchParams(window.location.search).has("stay") ? "stay" : null };
+    if (new URLSearchParams(window.location.search).has("vote")) {
+      preview.canVoteMove = true;
+      preview.pendingMove = { sceneId: "gallery", present: 6, needed: 3, closesAt: Date.now() + 83000, sceneTitle: previewLanguage === "zh-TW" ? "破碎長廊" : "Broken Gallery", sceneDescription: previewLanguage === "zh-TW" ? "月光照亮橫跨裂縫的長廊，東側拱門通往古老的觀星台。" : "A moonlit gallery crosses a deep fissure. Its eastern arch leads toward the old observatory.", proposedBy: previewLanguage === "zh-TW" ? "米拉・芬" : "Mira Fen", supporters: [previewLanguage === "zh-TW" ? "米拉・芬" : "Mira Fen"], staying: [previewLanguage === "zh-TW" ? "索恩・橡盾" : "Thorne Oakshield"], choiceByYou: new URLSearchParams(window.location.search).has("stay") ? "stay" : null };
+    }
   }
   void setLanguage(previewLanguage).then(() => { setTableConnectionState("live"); renderGame(preview); });
   }

@@ -280,6 +280,8 @@ export const campaignEn = {
   "activity.move.going": "Going: {names}.",
   "activity.move.voteGo": "Vote to go",
   "activity.move.voteStay": "Vote to stay",
+  "activity.move.yourVote": "Your vote is needed",
+  "activity.move.voteRecorded": "Your vote is recorded · choose again to change it",
   "activity.move.withdrawGo": "Change Go vote",
   "activity.move.withdrawStay": "Change Stay vote",
   "activity.action.details": "Character details",
