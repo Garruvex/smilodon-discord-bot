@@ -17,6 +17,8 @@ export interface CharacterSheet {
   readonly id: CharacterId;
   readonly ownerUserId: UserId;
   readonly name: string;
+  // Player-authored visual identity copied from a library build, when present.
+  readonly appearance?: string;
   // The class as the table reads it, in the campaign's language (display
   // only): always the hero's first class, even once multiclassed — showing
   // every class held is a Discord-layer task, out of scope here.

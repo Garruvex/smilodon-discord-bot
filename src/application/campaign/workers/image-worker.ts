@@ -131,9 +131,9 @@ export class ImageWorker {
     const loaded = await unitOfWork.transaction(async (tx) => ({ stored: await tx.loadRecord(item.key), campaign: await tx.loadCampaign(item.key) }));
     if (loaded.stored === undefined || loaded.campaign === undefined) return;
     const { state } = loaded.campaign;
-    // A slow picture for a room the party has already left must not land after
-    // the next room's text and look like it belongs to that room.
-    if (asked.kind === "sceneImage" && state.sceneId !== asked.sceneId) return;
+    // Keep a room's picture even if the party moves on before this background
+    // job starts. It is stored under that scene and can be reused on return;
+    // posting is still gated below so it cannot appear beside another room.
     if (asked.kind === "sceneImage" && asked.roundNumber > 0 && state.lastRoundNumber === asked.roundNumber && state.lastNarratedRound < asked.roundNumber) return "later";
     if (asked.kind === "sceneImage" && asked.roundNumber > 0) {
       const arrival = await unitOfWork.transaction(async (tx) => (await tx.outboxForCampaign(item.key)).find((entry) =>
@@ -166,7 +166,10 @@ export class ImageWorker {
       const saved = await assets.load(item.key, subject);
       const found = bible === undefined ? undefined : await this.describe(request, item.key, record, bible);
       if (saved === undefined || found === undefined || channelId === null) return void (await this.mark(item.key, subject, "failed"));
-      if (request.kind === "sceneImage" && !(await this.sceneIsCurrent(item.key, request.sceneId))) return;
+      if (request.kind === "sceneImage" && !(await this.sceneIsCurrent(item.key, request.sceneId))) {
+        await this.mark(item.key, subject, "done");
+        return;
+      }
       await sink.post(channelId, saved, found.caption);
       await this.mark(item.key, subject, "done");
       if (request.kind !== "sceneImage" && request.kind !== "heroImage") await assets.remove(item.key, subject).catch(() => undefined);
@@ -200,15 +203,14 @@ export class ImageWorker {
 
     const image = await generator.generate({ prompt: described.prompt, aspect: described.aspect, timeoutMs: this.options.timeoutMs ?? 90_000, ...(described.references === undefined ? {} : { references: described.references }) });
     if (image.bytes.byteLength > (this.options.maxBytes ?? defaultMaxBytes)) throw new Error("The picture is larger than the limit.");
-    if (asked.kind === "sceneImage") {
-      const stillCurrent = await unitOfWork.transaction(async (tx) => (await tx.loadCampaign(item.key))?.state.sceneId === asked.sceneId);
-      if (!stillCurrent) return;
-    }
     // Keep the generated picture before posting, so a failed post retries
     // the same image without paying the provider again.
     await assets.save(item.key, subject, image);
     await this.mark(item.key, subject, "made");
-    if (request.kind === "sceneImage" && !(await this.sceneIsCurrent(item.key, request.sceneId))) return;
+    if (request.kind === "sceneImage" && !(await this.sceneIsCurrent(item.key, request.sceneId))) {
+      await this.mark(item.key, subject, "done");
+      return;
+    }
     await sink.post(channelId, image, described.caption);
     await this.mark(item.key, subject, "done");
     if (request.kind !== "sceneImage" && request.kind !== "heroImage") await assets.remove(item.key, subject).catch(() => undefined);
@@ -275,10 +277,10 @@ export class ImageWorker {
           .map((envelope) => envelope.event)
           .findLast((event) => event.kind === "openingRecorded")
         : undefined;
-      const description = opening?.kind === "openingRecorded" ? `${scene.publicDescription} ${opening.text}` : scene.publicDescription;
+      const openingText = opening?.kind === "openingRecorded" ? opening.text : undefined;
       const party = await this.partyFor(key, request.snapshot);
       const atmosphere = await this.atmosphereOf(key, request.snapshot);
-      return { ...scenePrompt({ title: scene.title, description, party: party.descriptions, ...(atmosphere === undefined ? {} : { atmosphere }) }), caption: scene.title, references: party.references };
+      return { ...scenePrompt({ title: scene.title, description: scene.publicDescription, ...(openingText === undefined ? {} : { opening: openingText }), party: party.descriptions, ...(atmosphere === undefined ? {} : { atmosphere }) }), caption: scene.title, references: party.references };
     }
     if (request.kind === "encounterImage") {
       const scene = findScene(bible, request.snapshot.sceneId);
@@ -304,7 +306,7 @@ export class ImageWorker {
       if (sheet === undefined) return undefined;
       // The class by its builder name (English) when the sheet has one, so the prompt is not in the table's language.
       const className = Object.keys(sheet.classLevels ?? {})[0] ?? sheet.className ?? "adventurer";
-      return { ...heroPrompt({ name: sheet.name, level: sheet.level, className, ...(sheet.race === undefined ? {} : { race: sheet.race }), gear: sheet.equipment }), caption: sheet.name };
+      return { ...heroPrompt({ name: sheet.name, level: sheet.level, className, ...(sheet.race === undefined ? {} : { race: sheet.race }), ...(sheet.appearance === undefined ? {} : { appearance: sheet.appearance }), gear: sheet.equipment }), caption: sheet.name };
     }
     const events = await this.options.unitOfWork.transaction((tx) => tx.readEvents(key));
     const told = events.map((envelope) => envelope.event).findLast((event) => event.kind === "narrationRecorded" && event.roundNumber === request.roundNumber);
@@ -337,10 +339,11 @@ export class ImageWorker {
       const equipment = "equipment" in seen ? seen.equipment : hero.equipment;
       const race = hero.race?.replace(/^race:/, "").replace(/-/g, " ") ?? "unspecified ancestry";
       const klass = Object.keys(hero.classLevels ?? {})[0] ?? hero.className ?? "adventurer";
+      const appearance = hero.appearance === undefined ? "" : `; appearance: ${hero.appearance}`;
       const image = hero.origin === undefined ? undefined : await this.options.portraits?.forGame(hero.origin.libraryCharacterId).catch(() => undefined);
       if (image !== undefined) references.push({ name: hero.name, image });
       const gear = equipment.slice(0, 3).map((item) => item.replace(/^item:/, "").replace(/-/g, " ")).join(", ");
-      descriptions.push(`${hero.name}, a level ${level} ${race} ${klass}${gear === "" ? "" : ` carrying ${gear}`}${image === undefined ? "" : ` (reference image ${references.length})`}`);
+      descriptions.push(`${hero.name}, a level ${level} ${race} ${klass}${appearance}${gear === "" ? "" : ` carrying ${gear}`}${image === undefined ? "" : ` (reference image ${references.length})`}`);
     }
     return { descriptions, references };
   }

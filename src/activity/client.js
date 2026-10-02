@@ -410,7 +410,7 @@ function paintGame(game) {
     ? t("activity.lobby.chooseCharacterDescription")
     : game.scene.description;
   renderPresenceToggle(game);
-  renderMoveNotice(game.kind === "table" ? game.pendingMove : null, game.kind === "table" && game.canVoteMove);
+  renderMoveNotice(game.kind === "table" ? game.pendingMove : null, game.kind === "table" && game.canVoteMove, game);
   renderStageTrack(game);
   showRolls(game.kind === "table" ? game.rolls ?? [] : []);
   document.querySelector(".live-scene").classList.toggle("has-enemies", game.kind === "table" && (game.foes?.length ?? 0) > 0);
@@ -429,22 +429,31 @@ function paintGame(game) {
 let moveCountdown = null;
 
 let movePainted = "";
+// One vote, from its proposal to its settling: focus goes to the vote when it opens and back to where it was when it ends.
 let activeMoveKey = null;
-document.querySelector("#live-scene-move").addEventListener("cancel", (event) => {
-  // A table decision pauses actions; keep its modal visible until it resolves.
-  event.preventDefault();
-});
+let focusBeforeVote = null;
 
-function renderMoveNotice(move, canVote) {
+// The card sits under the header, which wraps to two rows on a phone.
+function placeMoveNotice() {
+  const header = document.querySelector(".live-header");
+  if (header) document.documentElement.style.setProperty("--vote-top", `${Math.round(header.getBoundingClientRect().bottom) + 12}px`);
+}
+window.addEventListener("resize", placeMoveNotice);
+
+function renderMoveNotice(move, canVote, game) {
   const notice = document.querySelector("#live-scene-move");
   const shield = document.querySelector("#vote-shield");
   const key = move === null ? null : JSON.stringify([currentGameId, move.sceneId, move.closesAt]);
-  if (key !== activeMoveKey) activeMoveKey = key;
-  const paintKey = JSON.stringify([move, canVote, uiLanguage]);
+  const opening = key !== null && key !== activeMoveKey;
+  if (opening) focusBeforeVote = document.activeElement instanceof HTMLElement && !notice.contains(document.activeElement) ? document.activeElement : null;
+  activeMoveKey = key;
+  const canSpeak = game?.kind === "table" && game.myHero !== null && game.myHero !== undefined;
+  const paintKey = JSON.stringify([move, canVote, canSpeak, uiLanguage]);
   if (paintKey === movePainted) {
     if (move !== null && !notice.open) {
       notice.hidden = false;
       shield.hidden = false;
+      placeMoveNotice();
       notice.show();
     }
     return;
@@ -457,9 +466,14 @@ function renderMoveNotice(move, canVote) {
     notice.hidden = true;
     shield.hidden = true;
     notice.replaceChildren();
+    const back = focusBeforeVote;
+    focusBeforeVote = null;
+    if (back?.isConnected) back.focus({ preventScroll: true });
     return;
   }
-  if (notice.open) notice.close();
+  const typing = notice.contains(document.activeElement) && document.activeElement.matches("input, textarea")
+    ? { label: document.activeElement.getAttribute("aria-label"), start: document.activeElement.selectionStart, end: document.activeElement.selectionEnd }
+    : null;
   notice.hidden = false;
   const line = (className, text) => { const item = document.createElement("span"); item.className = className; item.textContent = text; return item; };
   const heading = line("move-heading", t("activity.move.heading", { scene: move.sceneTitle }));
@@ -483,8 +497,17 @@ function renderMoveNotice(move, canVote) {
     }
   }
   notice.replaceChildren(prompt, heading, proposedBy, ...(description ? [description] : []), line("move-paused", t("activity.move.paused")), tally, ...(going ? [going] : []), ...(names ? [names] : []), clock, ...(canVote ? [choices] : []));
+  const speech = canSpeak ? speechRow(game) : null;
+  if (speech) notice.append(speech);
   shield.hidden = false;
-  notice.show();
+  placeMoveNotice();
+  if (!notice.open) notice.show();
+  // A vote from someone else repaints the card: keep the sentence being typed, otherwise start at the first choice.
+  const again = typing ? [...notice.querySelectorAll("input, textarea")].find((element) => element.getAttribute("aria-label") === typing.label) : null;
+  if (again instanceof HTMLElement) {
+    again.focus({ preventScroll: true });
+    if (typing.start !== null && "setSelectionRange" in again) again.setSelectionRange(typing.start, typing.end);
+  } else if (opening) notice.querySelector(".move-vote-actions button")?.focus({ preventScroll: true });
   const tick = () => {
     const left = Math.max(0, Math.ceil((move.closesAt - Date.now()) / 1000));
     if (left === 0) clock.textContent = t("activity.move.deciding");
@@ -1543,21 +1566,32 @@ function draftInput(element, draftKey, label, placeholder) {
 }
 
 // In-character words: they tell the table and the DM, use no action, and work in a fight too.
+const maxSpeechLength = 300;
+
 function speechRow(game) {
   if (!game.myHero || !["collecting", "combat"].includes(game.mode)) return null;
   const input = draftInput(document.createElement("input"), "say", t("activity.action.say"), t("activity.action.sayPlaceholder"));
   input.maxLength = 300;
-  const send = () => {
+  // Shown beside the box as well as in the page status, which a vote card can cover.
+  const problem = document.createElement("span");
+  problem.className = "speech-problem";
+  problem.setAttribute("role", "alert");
+  problem.hidden = true;
+  const fail = (message) => { setLiveMessage(message); problem.textContent = message; problem.hidden = false; };
+  input.addEventListener("input", () => { problem.hidden = true; });
+  const send = async () => {
     const text = input.value.trim();
     if (text.length === 0) return;
+    if (text.length > maxSpeechLength) return fail(t("activity.error.actionTooLong"));
+    // The words stay in the box until the table has taken them.
+    if (!(await performAction({ kind: "speak", text }))) return fail(document.querySelector("#live-message")?.textContent || t("activity.status.actionFailed"));
     drafts.say = "";
     input.value = "";
-    void performAction({ kind: "speak", text });
   };
   input.addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.isComposing) { event.preventDefault(); send(); } });
   const row = document.createElement("div");
   row.className = "action-speech";
-  row.append(input, makeButton(t("activity.action.say"), send, false, "notice"));
+  row.append(input, makeButton(t("activity.action.say"), send, false, "notice"), problem);
   return row;
 }
 
@@ -1720,16 +1754,18 @@ function buildTableActions(game, liveActions, log) {
     input.maxLength = 500;
     input.rows = 2;
     composer.push(input);
-    composer.push(makeButton(t("activity.action.say"), () => {
+    composer.push(makeButton(t("activity.action.say"), async () => {
       const text = input.value.trim();
       if (!text) {
         setLiveMessage(t("activity.error.emptyAction"));
         input.focus();
         return;
       }
+      // An action may run to 500 characters, words to 300; the text stays in the box until the table has taken it.
+      if (text.length > maxSpeechLength) return setLiveMessage(t("activity.error.actionTooLong"));
+      if (!(await performAction({ kind: "speak", text }))) return;
       drafts.action = "";
       input.value = "";
-      void performAction({ kind: "speak", text });
     }, false, "notice"));
     addAction(t(game.submission === "action" ? "activity.action.updateAction" : "activity.action.takeAction"), { kind: "submit", text: () => input.value, roundNumber: game.roundNumber, sceneId: game.sceneId }, true);
     addAction(t("activity.action.pass"), { kind: "pass" });
@@ -1869,7 +1905,7 @@ async function performAction(action) {
     move.choiceByYou = action.choice;
     renderGame(currentSnapshot);
     setLiveMessage(t(action.choice === "stay" ? "activity.status.moveVoteStay" : "activity.status.moveVoteGo"));
-    return;
+    return true;
   }
   const body = { ...action };
   for (const [key, value] of Object.entries(body)) if (typeof value === "function") body[key] = value();
@@ -1892,9 +1928,11 @@ async function performAction(action) {
       setLiveMessage(t("activity.status.castSuccess", { spell }));
     } else if (action.kind === "moveVote") setLiveMessage(t(action.choice === "stay" ? "activity.status.moveVoteStay" : "activity.status.moveVoteGo"));
     else setLiveMessage(t("activity.status.actionSuccess"));
+    return true;
   } catch (error) {
     setLiveMessage(error instanceof Error ? error.message : t("activity.status.actionFailed"));
     await loadTable();
+    return false;
   } finally {
     actionInFlight = false;
     document.body.classList.remove("is-sending");

@@ -13,6 +13,7 @@ export function instantiateHero(snapshot: LibrarySnapshot, houseRules: Readonly<
   const derived = deriveSnapshotSheet(snapshot.build, starter ? undefined : snapshot.gear, snapshot.progression);
   return {
     ...derived,
+    appearance: snapshot.build.appearance,
     id: heroIdFor(snapshot.id),
     origin: { libraryCharacterId: snapshot.characterId, snapshotId: snapshot.id },
   };
