@@ -25,11 +25,13 @@
     <main class="live-shell" id="live-screen" hidden>
       <header class="live-header">
         <div class="lobby-brand"><span class="lobby-brand-mark" aria-hidden="true"><img src="/art-icons/roll.svg" alt=""></span><div><span class="eyebrow" id="live-adventure">ADVENTURE</span><div class="live-title-row"><h1 id="live-campaign">Campaign</h1><span class="table-connection-dot" id="table-connection-dot" data-state="connecting" role="img" aria-label="Connecting to the live table" title="Connecting to the live table"></span></div></div></div>
-        <div class="live-heading-right"><span class="live-phase ui-status"><span id="live-phase">Loading game…</span><span id="live-round"></span></span><button class="lobby-retry ui-control" id="back-to-lobby" data-i18n="activity.button.allGames" type="button">All games</button></div>
+        <div class="live-header-status"><span class="live-phase ui-status"><span id="live-phase">Loading game…</span></span><span class="live-round ui-status" id="live-round"></span></div>
+        <div class="live-heading-right"><button class="presence-toggle ui-control" id="live-presence-toggle" type="button" hidden></button><button class="lobby-retry ui-control" id="back-to-lobby" data-i18n="activity.button.allGames" type="button">All games</button></div>
       </header>
       <nav class="live-stage-track" id="live-stage-track" aria-label="Adventure progress"></nav>
-      <p class="live-stage-detail" id="live-stage-detail" role="status"></p>
-      <section class="scene-move-decision" id="live-scene-move" aria-labelledby="live-move-heading" aria-live="polite" hidden></section>
+      <div class="live-stage-detail" id="live-stage-detail" role="status"></div>
+      <div class="vote-shield" id="vote-shield" aria-hidden="true" hidden></div>
+      <dialog class="scene-move-decision" id="live-scene-move" aria-labelledby="live-move-heading" hidden></dialog>
       <section class="live-scene ui-card"><div class="live-scene-art" id="live-scene-art"><img id="live-scene-image" alt="" hidden><span class="scene-art-fallback" aria-hidden="true"><i class="scene-fallback-moon"></i><i class="scene-fallback-hill"></i><i class="scene-fallback-ruin ruin-left"></i><i class="scene-fallback-ruin ruin-right"></i></span><div class="live-scene-copy"><span class="eyebrow" id="live-scene-eyebrow" data-i18n="activity.scene.label">CURRENT SCENE</span><h2 id="live-scene-title" data-i18n="activity.scene.loading">Loading scene…</h2><p id="live-scene-description"></p></div></div><div class="live-enemies" id="live-enemies" data-i18n-aria-label="activity.scene.enemies" aria-label="Enemies"></div></section>
       <section class="combat-turn-strip" id="combat-turn-strip" hidden data-i18n-aria-label="activity.combat.initiative" aria-label="Initiative"><div class="combat-active-turn"><span class="eyebrow" data-i18n="activity.combat.initiative">INITIATIVE</span><strong id="combat-active-name"></strong></div><div class="combat-up-next"><span class="eyebrow" data-i18n="activity.combat.upNext">UP NEXT</span><div id="combat-upcoming"></div></div></section>
       <div class="live-feature-grid">

@@ -81,7 +81,11 @@ async function setLanguage(language) {
   const normalized = language === "zh-TW" ? "zh-TW" : "en";
   if (normalized === uiLanguage && Object.keys(activityStrings).length > 0) return;
   let response = await fetchWithTimeout(`/api/activity/i18n?language=${encodeURIComponent(normalized)}`, { cache: "no-store" });
-  if (!response.ok) response = await fetchWithTimeout(`/i18n/${encodeURIComponent(normalized)}.json`, { cache: "no-store" });
+  // Static preview servers may serve their index page (200 HTML) for unknown
+  // API routes. Treat that as a miss so local previews load their bundled text.
+  if (!response.ok || !response.headers.get("content-type")?.includes("application/json")) {
+    response = await fetchWithTimeout(`/i18n/${encodeURIComponent(normalized)}.json`, { cache: "no-store" });
+  }
   if (!response.ok) throw new Error(t("activity.connection.requestFailed"));
   activityStrings = await response.json();
   uiLanguage = normalized;
@@ -405,6 +409,7 @@ function paintGame(game) {
   document.querySelector("#live-scene-description").textContent = game.kind === "lobby"
     ? t("activity.lobby.chooseCharacterDescription")
     : game.scene.description;
+  renderPresenceToggle(game);
   renderMoveNotice(game.kind === "table" ? game.pendingMove : null, game.kind === "table" && game.canVoteMove);
   renderStageTrack(game);
   showRolls(game.kind === "table" ? game.rolls ?? [] : []);
@@ -424,19 +429,38 @@ function paintGame(game) {
 let moveCountdown = null;
 
 let movePainted = "";
+let activeMoveKey = null;
+document.querySelector("#live-scene-move").addEventListener("cancel", (event) => {
+  // A table decision pauses actions; keep its modal visible until it resolves.
+  event.preventDefault();
+});
 
 function renderMoveNotice(move, canVote) {
   const notice = document.querySelector("#live-scene-move");
-  const key = JSON.stringify([move, uiLanguage]);
-  if (key === movePainted) return;
-  movePainted = key;
+  const shield = document.querySelector("#vote-shield");
+  const key = move === null ? null : JSON.stringify([currentGameId, move.sceneId, move.closesAt]);
+  if (key !== activeMoveKey) activeMoveKey = key;
+  const paintKey = JSON.stringify([move, canVote, uiLanguage]);
+  if (paintKey === movePainted) {
+    if (move !== null && !notice.open) {
+      notice.hidden = false;
+      shield.hidden = false;
+      notice.show();
+    }
+    return;
+  }
+  movePainted = paintKey;
   if (moveCountdown !== null) clearInterval(moveCountdown);
   moveCountdown = null;
-  notice.hidden = !move;
-  if (!move) {
+  if (move === null) {
+    if (notice.open) notice.close();
+    notice.hidden = true;
+    shield.hidden = true;
     notice.replaceChildren();
     return;
   }
+  if (notice.open) notice.close();
+  notice.hidden = false;
   const line = (className, text) => { const item = document.createElement("span"); item.className = className; item.textContent = text; return item; };
   const heading = line("move-heading", t("activity.move.heading", { scene: move.sceneTitle }));
   const proposedBy = line("move-proposer", t(move.proposedBy ? "activity.move.proposedBy" : "activity.move.proposedByStory", { name: move.proposedBy ?? "" }));
@@ -459,6 +483,8 @@ function renderMoveNotice(move, canVote) {
     }
   }
   notice.replaceChildren(prompt, heading, proposedBy, ...(description ? [description] : []), line("move-paused", t("activity.move.paused")), tally, ...(going ? [going] : []), ...(names ? [names] : []), clock, ...(canVote ? [choices] : []));
+  shield.hidden = false;
+  notice.show();
   const tick = () => {
     const left = Math.max(0, Math.ceil((move.closesAt - Date.now()) / 1000));
     if (left === 0) clock.textContent = t("activity.move.deciding");
@@ -474,6 +500,21 @@ function renderMoveNotice(move, canVote) {
     moveCountdown = setInterval(tick, 1000);
   }
 }
+
+function renderPresenceToggle(game) {
+  const button = document.querySelector("#live-presence-toggle");
+  const available = game.kind === "table" && game.canTogglePresence && !["paused", "safety", "recovery", "archived"].includes(game.mode);
+  button.hidden = !available;
+  if (!available) return;
+  button.textContent = t(game.ownPresence === "away" ? "activity.action.back" : "activity.action.away");
+  button.dataset.presence = game.ownPresence;
+  button.setAttribute("aria-pressed", String(game.ownPresence === "away"));
+}
+
+document.querySelector("#live-presence-toggle").addEventListener("click", () => {
+  if (currentSnapshot?.kind !== "table" || !currentSnapshot.canTogglePresence) return;
+  void performAction({ kind: currentSnapshot.ownPresence === "away" ? "back" : "away" });
+});
 
 function renderStageTrack(game) {
   const track = document.querySelector("#live-stage-track");
@@ -492,7 +533,7 @@ function renderStageTrack(game) {
     return item;
   }));
   const detailKey = game.pendingMove ? "activity.stage.detailVote" : game.mode === "combat" ? "activity.stage.detailCombat" : game.mode === "planning" ? "activity.stage.detailStory" : game.mode === "awaitingRolls" ? "activity.stage.detailRolls" : game.mode === "collecting" ? (game.submission ? "activity.stage.detailSubmitted" : "activity.stage.detailExplore") : `activity.stage.detail.${game.mode}`;
-  detail.textContent = t(detailKey, { name: game.pendingMove?.sceneTitle ?? game.activeName ?? "" });
+  detail.replaceChildren(document.createTextNode(t(detailKey, { name: game.pendingMove?.sceneTitle ?? game.activeName ?? "" })));
 }
 
 // One entry of a map key: its colour swatch and its label.
@@ -1545,11 +1586,6 @@ function renderTableActions(game) {
 
 function buildTableActions(game, liveActions, log) {
   liveActions.replaceChildren();
-  if (!["paused", "safety", "recovery", "archived"].includes(game.mode)) {
-    const presenceAction = { kind: game.ownPresence === "away" ? "back" : "away" };
-    log.push(JSON.stringify(presenceAction));
-    liveActions.append(makeButton(t(game.ownPresence === "away" ? "activity.action.back" : "activity.action.away"), () => void performAction(presenceAction), false, "pause"));
-  }
   if (game.joinRequestStatus === "requested") {
     const note = document.createElement("span");
     note.className = "live-action-note status-note join-queue-note";
@@ -2151,7 +2187,8 @@ function designPreviewSnapshot() {
   return {
     classNames: new URLSearchParams(window.location.search).get("language") === "zh-TW" ? { wizard: "法師", paladin: "聖騎士", ranger: "遊俠", rogue: "盜賊", cleric: "牧師", bard: "吟遊詩人" } : {},
     kind: "table", campaignId: "local-preview", campaignName: "The Lantern Company", adventureTitle: "Moonlit Ruins",
-    mode: "combat", roundNumber: 4, scene: { title: "The Drowned Observatory", description: "Cold moonlight spills through the broken dome. Something stirs beneath the flooded floor.", imageUrl: null },
+    mode: "combat", roundNumber: 4, ownPresence: "present", canTogglePresence: true, canVoteMove: true,
+    scene: { title: "The Drowned Observatory", description: "Cold moonlight spills through the broken dome. Something stirs beneath the flooded floor.", imageUrl: null },
     map: new URLSearchParams(window.location.search).has("journey") ? { kind: "journey", nodes: [
       { id: "entrance", title: "The Old Hall", column: 0, row: 1, status: "visited", canTravel: false, deadEnd: false },
       { id: "current", title: "The Drowned Observatory", column: 1, row: 1, status: "current", canTravel: false, deadEnd: false },
