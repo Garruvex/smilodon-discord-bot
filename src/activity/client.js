@@ -19,6 +19,8 @@ let discordSdk = null;
 let currentGameId = null;
 let tableTimer = null;
 let loadingTable = false;
+let tableRefreshFailures = 0;
+let lastTableRefreshAt = 0;
 let currentSnapshot = null;
 let connectionStage = "Discord connection";
 let discordConnected = false;
@@ -48,7 +50,7 @@ const apiErrorKeys = {
   privateInviteOnly: "activity.error.privateInvite", full: "activity.error.full", gameFull: "activity.error.gameFull",
   heroTaken: "activity.error.heroTaken", unknownHero: "activity.error.unknownHero", notReady: "activity.error.notReady",
   notEnoughPlayers: "activity.error.notEnoughPlayers", unauthorized: "activity.connection.sessionExpired",
-  notActive: "activity.error.notActive", notMember: "activity.error.notMember", joinNotAtBreak: "activity.error.joinNotAtBreak",
+  notActive: "activity.error.notActive", notMember: "activity.error.notMember", campaignPaused: "activity.error.campaignPaused", joinNotAtBreak: "activity.error.joinNotAtBreak",
   joinNotApproved: "activity.error.joinNotApproved", notYourTurn: "activity.error.notYourTurn", invalidAction: "activity.status.actionAvailable",
 };
 const artIconPrefix = "/art-icons";
@@ -206,8 +208,8 @@ async function setArtwork(imageElement, fallbackElement, imageUrl, alt, revalida
     artworkCache.set(imageUrl, { objectUrl, etag: response.headers.get("ETag"), checkedAt: Date.now() });
     show(objectUrl);
     if (cached !== undefined) setTimeout(() => URL.revokeObjectURL(cached.objectUrl), 2000);
-  } catch {
-    // Keep the class or scene illustration visible if art is not ready yet.
+  } catch (error) {
+    console.warn("Picture request failed; showing the illustration fallback.", imageUrl, error);
   } finally {
     artworkPending.delete(imageUrl);
   }
@@ -297,6 +299,7 @@ async function openGame(campaignId) {
   const diceDialog = document.querySelector("#dice-dialog");
   if (diceDialog.open) diceDialog.close();
   currentGameId = campaignId;
+  setTableConnectionState("connecting");
   lobbyScreen.hidden = true;
   liveScreen.hidden = false;
   liveActions.replaceChildren();
@@ -312,9 +315,14 @@ async function loadTable() {
   try {
     const payload = await requestJson(`/api/activity/games/${encodeURIComponent(currentGameId)}/table`);
     currentSnapshot = payload.snapshot;
+    tableRefreshFailures = 0;
+    lastTableRefreshAt = Date.now();
     await setLanguage(currentSnapshot.language ?? uiLanguage);
+    setTableConnectionState("live");
     renderGame(currentSnapshot);
   } catch (error) {
+    tableRefreshFailures += 1;
+    setTableConnectionState(tableRefreshFailures >= 3 || Date.now() - lastTableRefreshAt >= 15000 ? "offline" : "delayed");
     setLiveMessage(error instanceof Error ? error.message : t("activity.status.couldNotLoad"));
     if (error instanceof Error && error.message === apiErrorMessage("notActive")) {
       clearInterval(tableTimer);
@@ -323,6 +331,15 @@ async function loadTable() {
   } finally {
     loadingTable = false;
   }
+}
+
+function setTableConnectionState(state) {
+  const dot = document.querySelector("#table-connection-dot");
+  if (!dot) return;
+  const key = ({ live: "activity.connection.live", delayed: "activity.connection.delayed", offline: "activity.connection.offline", connecting: "activity.connection.connecting" })[state] ?? "activity.connection.connecting";
+  dot.dataset.state = state;
+  dot.title = t(key);
+  dot.setAttribute("aria-label", t(key));
 }
 
 function renderGame(game) {
@@ -699,9 +716,6 @@ function renderLobby(game) {
   document.querySelector("#live-phase").textContent = t("activity.status.openTable");
   document.querySelector("#live-round").textContent = t("activity.status.seats", { count: game.playerCount, max: game.maxPlayers });
   document.querySelector(".live-phase").dataset.mode = "lobby";
-  document.querySelector("#table-status-title").textContent = t("activity.status.gathering");
-  document.querySelector("#table-status-subtitle").textContent = game.selectedHeroId ? t("activity.status.heroReady") : t("activity.status.chooseHero");
-  document.querySelector(".table-status").dataset.mode = "lobby";
   document.querySelector("#live-turn").textContent = game.selectedHeroId ? t("activity.hero.ready") : t("activity.status.chooseHero");
   document.querySelector("#live-turn").classList.remove("is-active");
   document.querySelector("#live-hero-name").textContent = game.selectedHeroName ?? t("activity.hero.name");
@@ -752,31 +766,6 @@ function renderTable(game) {
   const ownStatus = game.submission === "action" ? t("activity.status.actionSubmitted") : game.submission === "pass" ? t("activity.status.passedRound") : game.pendingRoll ? t("activity.status.rollNeeded") : t("activity.status.waitTurn");
   turn.textContent = game.yourTurn ? game.turn?.busy ? t("activity.status.resolvingAction") : t("activity.hero.turn") : game.mode === "collecting" && game.myHero ? ownStatus : game.activeName ? t("activity.status.activeTurnPossessive", { name: game.activeName }) : t("activity.status.waitTable");
   turn.classList.toggle("is-active", game.yourTurn);
-  const status = document.querySelector(".table-status");
-  status.dataset.mode = game.mode;
-  let statusTitle = t("activity.status.adventureContinues");
-  let statusSubtitle = t("activity.status.tableUpdated");
-  if (game.mode === "combat") {
-    statusTitle = game.activeName ? game.yourTurn && game.turn?.busy ? t("activity.status.activeResolving", { name: game.activeName }) : t("activity.status.activeTurn", { name: game.activeName }) : t("activity.status.combatResolving");
-    statusSubtitle = game.yourTurn ? game.turn?.busy ? t("activity.status.yourActionResolving") : t("activity.status.heroActive") : t("activity.status.watchTurn");
-  } else if (game.mode === "collecting") {
-    statusTitle = t("activity.status.partyChoosing");
-    statusSubtitle = t("activity.status.submittedCount", { count: game.submittedCount, total: game.participantCount });
-  } else if (game.mode === "awaitingRolls") {
-    statusTitle = game.pendingRollCount === 1 ? t("activity.status.oneRollNeeded") : t("activity.status.manyRollsNeeded", { count: game.pendingRollCount });
-    statusSubtitle = game.pendingRoll ? t("activity.status.rollReady") : t("activity.status.waitRolls");
-  } else if (game.mode === "planning") {
-    statusTitle = t("activity.status.dmResolving");
-    statusSubtitle = t("activity.status.storyReady");
-  } else if (game.mode === "readyCheck") {
-    statusTitle = t("activity.status.partyReady");
-    statusSubtitle = t("activity.status.confirmSeat");
-  } else if (game.mode === "paused" || game.mode === "safety") {
-    statusTitle = t("activity.status.paused");
-    statusSubtitle = t("activity.status.resumeOrganizer");
-  }
-  document.querySelector("#table-status-title").textContent = statusTitle;
-  document.querySelector("#table-status-subtitle").textContent = statusSubtitle;
   const hero = game.myHero;
   document.querySelector("#live-hero-name").textContent = hero?.name ?? t("activity.hero.notSelected");
   document.querySelector("#live-hero-subtitle").textContent = hero ? `${hero.raceName ?? t("activity.hero.adventurer")} ${classText(hero.className) ?? t("activity.hero.heroClass")} ${hero.level}` : t("activity.hero.joinToChoose");
@@ -806,7 +795,7 @@ function renderTable(game) {
   renderEnemies(game.foes);
   renderParty(game.party);
   setLiveMessage(game.submission === "action" ? t("activity.status.actionIn") : game.submission === "pass" ? t("activity.status.youPassed") : "");
-  updateRollPrompt(game.pendingRoll);
+  updateRollPrompt(["paused", "safety", "recovery"].includes(game.mode) ? null : game.pendingRoll);
 }
 
 function makeEnemy(enemy) {
@@ -901,6 +890,8 @@ function renderParty(members) {
     void setArtwork(portrait, classGlyph, hero.imageUrl, t("activity.hero.portraitAlt", { name: hero.name }));
     const copy = document.createElement("span");
     copy.className = "live-party-copy";
+    const nameLine = document.createElement("span");
+    nameLine.className = "party-name-line";
     const name = document.createElement("strong");
     name.textContent = hero.name;
     if (hero.isYou) {
@@ -908,29 +899,40 @@ function renderParty(members) {
       you.textContent = t("activity.party.you");
       name.append(you);
     }
-    const subtitle = document.createElement("span");
-    subtitle.textContent = hero.level === null ? classText(hero.className) ?? t(`activity.party.presence.${hero.presence}`) : `${hero.raceName ?? ""} ${classText(hero.className) ?? t("activity.hero.heroClass")} ${hero.level}`.trim();
-    copy.append(name, subtitle);
     const status = document.createElement("span");
-    status.className = "live-party-status ui-status";
-    const statusWords = { acting: t("activity.party.turnNow"), submitted: hero.presence === "ready" ? t("activity.party.ready") : t("activity.party.actionIn"), passed: t("activity.party.passed"), missed: t("activity.party.missed"), away: t("activity.party.away"), waiting: t("activity.party.waiting") };
-    if (hero.tableStatus === "acting") status.append(iconImage("attack"));
-    status.append(document.createTextNode(statusWords[hero.tableStatus] ?? statusWords.waiting));
-    copy.append(status);
-    if (hero.hp !== null && hero.maxHp !== null) {
-      const track = document.createElement("span");
-      track.className = "party-health live-party-health ui-meter";
-      const fill = document.createElement("i");
-      fill.style.width = `${Math.max(0, Math.min(100, hero.hp / Math.max(1, hero.maxHp) * 100))}%`;
-      track.append(fill);
-      const hp = document.createElement("span");
-      hp.textContent = t("activity.hero.hp", { hp: hero.hp, max: hero.maxHp });
-      copy.append(track, hp);
-    } else {
-      const status = document.createElement("span");
-      status.textContent = hero.presence === "ready" ? t("activity.party.characterSelected") : t("activity.party.choosingCharacter");
-      copy.append(status);
+    status.className = "live-party-status party-status-icon";
+    const statusText = partyStatusText(hero);
+    status.title = statusText;
+    status.setAttribute("aria-label", statusText);
+    status.setAttribute("role", "img");
+    status.dataset.status = hero.tableStatus ?? (hero.presence === "away" ? "away" : "waiting");
+    status.append(iconImage(partyStatusIcon(hero)));
+    nameLine.append(name, status);
+    const subtitle = document.createElement("span");
+    subtitle.className = "party-class-line";
+    subtitle.textContent = hero.level === null ? classText(hero.className) ?? t(`activity.party.presence.${hero.presence}`) : `${hero.raceName ?? ""} ${classText(hero.className) ?? t("activity.hero.heroClass")}`.trim();
+    copy.append(nameLine, subtitle);
+    const meta = document.createElement("span");
+    meta.className = "party-meta-line";
+    if (hero.level !== null) {
+      const level = document.createElement("span");
+      level.className = "party-level-badge";
+      level.setAttribute("aria-label", `${t("activity.detail.level")} ${hero.level}`);
+      level.textContent = String(hero.level);
+      meta.append(level);
     }
+    if (hero.hp !== null && hero.maxHp !== null) {
+      const hp = document.createElement("span");
+      hp.className = "party-hp-label";
+      hp.textContent = t("activity.hero.hp", { hp: hero.hp, max: hero.maxHp });
+      meta.append(hp);
+    } else {
+      const presence = document.createElement("span");
+      presence.className = "party-hp-label";
+      presence.textContent = hero.presence === "ready" ? t("activity.party.characterSelected") : t("activity.party.choosingCharacter");
+      meta.append(presence);
+    }
+    copy.append(meta);
     card.append(sigil, copy);
     return card;
   }));
@@ -947,7 +949,60 @@ function setHeroWatermark(className) {
   mark.hidden = false;
 }
 
+function populateMemberOverview(profile, status, conditions = [], customEntries = null) {
+  const overview = document.querySelector("#member-overview");
+  overview.hidden = false;
+  const entries = customEntries ?? [
+    ["activity.detail.level", String(profile.level), "reward"],
+    ["activity.detail.hitPoints", t("activity.hero.hp", { hp: profile.hp, max: profile.maxHp }), "heal"],
+    ["activity.detail.armorClass", String(profile.armorClass), "shield"],
+    ["activity.detail.status", status, "notice"],
+  ];
+  const stats = document.querySelector("#member-overview-stats");
+  stats.replaceChildren(...entries.map(([label, value, icon]) => {
+    const card = document.createElement("div"); card.className = "member-stat";
+    const heading = document.createElement("span"); heading.className = "member-stat-label"; heading.append(iconImage(icon), document.createTextNode(t(label)));
+    const amount = document.createElement("strong"); amount.textContent = value;
+    card.append(heading, amount);
+    return card;
+  }));
+  const conditionList = document.querySelector("#member-overview-conditions");
+  conditionList.replaceChildren();
+  if (conditions.length === 0) conditionList.textContent = t("activity.party.noConditions");
+  else for (const condition of conditions) {
+    const chip = document.createElement("span"); chip.className = "member-condition"; chip.append(iconImage("hazard"), document.createTextNode(condition)); conditionList.append(chip);
+  }
+}
+
+function partyStatusText(hero) {
+  const statusWords = { acting: t("activity.party.turnNow"), submitted: hero.presence === "ready" ? t("activity.party.ready") : t("activity.party.actionIn"), passed: t("activity.party.passed"), missed: t("activity.party.missed"), away: t("activity.party.away"), waiting: t("activity.party.waiting") };
+  return statusWords[hero.tableStatus] ?? statusWords.waiting;
+}
+
+function partyStatusIcon(hero) {
+  const status = hero.tableStatus ?? (hero.presence === "away" ? "away" : "waiting");
+  return ({ acting: "attack", submitted: "reward", passed: "pause", missed: "hazard", away: "notice", waiting: "rest" })[status] ?? "rest";
+}
+
+function setWorkspaceTabs(game, tabs) {
+  const tablist = document.querySelector("#hero-workspace-tabs");
+  tablist.hidden = false;
+  tablist.replaceChildren(...tabs.map(([id, key]) => {
+    const button = document.createElement("button");
+    button.type = "button"; button.className = "ui-control"; button.role = "tab";
+    button.id = `hero-tab-${id}`; button.setAttribute("aria-selected", String(selectedWorkspaceTab === id));
+    button.setAttribute("aria-controls", `hero-panel-${id}`); button.tabIndex = selectedWorkspaceTab === id ? 0 : -1;
+    button.textContent = t(key); button.addEventListener("click", () => { selectedWorkspaceTab = id; renderCharacterWorkspace(game); });
+    return button;
+  }));
+  for (const id of ["overview", "actions", "spells", "inventory", "trade"]) {
+    const panel = document.querySelector(`#hero-panel-${id}`);
+    panel.hidden = !tabs.some(([tabId]) => tabId === id) || selectedWorkspaceTab !== id;
+  }
+}
+
 function renderCharacterWorkspace(game) {
+  document.querySelector("#hero-panel-actions").append(liveActions);
   const enemy = game.foes.find((foe) => foe.name === selectedEnemyName);
   if (enemy) {
     document.querySelector("#live-turn").textContent = enemy.active ? t("activity.party.turnNow") : "";
@@ -962,14 +1017,17 @@ function renderCharacterWorkspace(game) {
     document.querySelector("#live-hero-health").style.width = `${{ unhurt: 100, hurt: 66, bloodied: 33, down: 0 }[enemy.band] ?? 100}%`;
     const sigil = document.querySelector("#live-hero-sigil"); sigil.replaceChildren(iconImage("attack"));
     void setArtwork(document.querySelector("#live-hero-image"), sigil, null, enemy.name);
-    const tabs = document.querySelector("#hero-workspace-tabs"); tabs.hidden = false; tabs.replaceChildren();
-    const overview = document.createElement("button"); overview.type = "button"; overview.textContent = t("activity.tab.overview"); overview.setAttribute("role", "tab"); overview.setAttribute("aria-selected", "true"); overview.id = "hero-tab-overview"; tabs.append(overview);
-    if (game.myHero) tabs.append(makeButton(t("activity.tab.actions"), () => { selectedEnemyName = null; selectedPartyCharacterId = game.myHero.characterId; selectedWorkspaceTab = "actions"; renderCharacterWorkspace(game); renderParty(game.party); renderEnemies(game.foes); }));
-    document.querySelectorAll(".hero-tab-panel").forEach((panel) => { panel.hidden = panel.id !== "hero-panel-overview"; });
-    document.querySelector("#live-resources").textContent = enemy.band;
+    const enemyTabs = game.myHero ? [["overview", "activity.tab.overview"], ["actions", "activity.tab.myActions"]] : [["overview", "activity.tab.overview"]];
+    if (!enemyTabs.some(([id]) => id === selectedWorkspaceTab)) selectedWorkspaceTab = "overview";
+    setWorkspaceTabs(game, enemyTabs);
+    populateMemberOverview(null, null, [], [
+      ["activity.detail.healthBand", t(`activity.band.${enemy.band}`), "heal"],
+      ["activity.detail.location", enemy.zone, "move"],
+      ["activity.detail.status", enemy.active ? t("activity.party.turnNow") : t("activity.party.waiting"), "notice"],
+    ]);
+    document.querySelector("#live-resources").replaceChildren();
     document.querySelector("#live-equipment").replaceChildren();
-    document.querySelector("#hero-action-dock").hidden = !game.myHero;
-    if (game.myHero) document.querySelector("#hero-action-dock").append(liveActions);
+    if (!game.myHero) document.querySelector("#hero-panel-overview").hidden = false;
     return;
   }
   selectedEnemyName = null;
@@ -980,14 +1038,11 @@ function renderCharacterWorkspace(game) {
   }
   const selected = game.party.find((member) => member.characterId === selectedPartyCharacterId) ?? game.party.find((member) => member.isYou) ?? null;
   const viewingOwn = selected?.isYou === true && ownHero !== null;
-  document.querySelector("#hero-action-dock").hidden = viewingOwn;
-  if (viewingOwn) document.querySelector("#hero-panel-actions").append(liveActions);
-  else document.querySelector("#hero-action-dock").append(liveActions);
   const profile = viewingOwn ? ownHero : selected;
   if (!profile) return;
   const turnLabel = document.querySelector("#live-turn");
   turnLabel.classList.toggle("is-active", selected.tableStatus === "acting");
-  turnLabel.textContent = selected.tableStatus === "acting" ? viewingOwn ? t("activity.hero.turn") : t("activity.party.turnNow") : selected.tableStatus === "submitted" ? t("activity.party.actionIn") : selected.tableStatus === "passed" ? t("activity.party.passed") : t("activity.party.waiting");
+  turnLabel.textContent = selected.tableStatus === "acting" && viewingOwn ? t("activity.hero.turn") : partyStatusText(selected);
   document.querySelector("#hero-workspace-label").textContent = viewingOwn ? t("activity.hero.label") : t("activity.hero.viewingMember");
   document.querySelector("#live-hero-name").textContent = profile.name;
   document.querySelector("#live-hero-subtitle").textContent = `${profile.raceName ?? t("activity.hero.adventurer")} ${classText(profile.className) ?? t("activity.hero.heroClass")} ${profile.level}`;
@@ -1002,33 +1057,18 @@ function renderCharacterWorkspace(game) {
 
   const tabs = viewingOwn
     ? [["overview", "activity.tab.overview"], ["actions", "activity.tab.actions"], ["spells", "activity.tab.spells"], ["inventory", "activity.tab.inventory"], ["trade", "activity.tab.trade"]]
-    : [["overview", "activity.tab.overview"], ["trade", "activity.tab.trade"]];
+    : ownHero
+      ? [["overview", "activity.tab.overview"], ["actions", "activity.tab.myActions"], ["trade", "activity.tab.trade"]]
+      : [["overview", "activity.tab.overview"], ["trade", "activity.tab.trade"]];
   if (!tabs.some(([id]) => id === selectedWorkspaceTab)) selectedWorkspaceTab = viewingOwn ? "actions" : "overview";
-  const tablist = document.querySelector("#hero-workspace-tabs");
-  tablist.hidden = false;
-  tablist.replaceChildren(...tabs.map(([id, key]) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "ui-control";
-    button.role = "tab";
-    button.id = `hero-tab-${id}`;
-    button.setAttribute("aria-selected", String(selectedWorkspaceTab === id));
-    button.setAttribute("aria-controls", `hero-panel-${id}`);
-    button.tabIndex = selectedWorkspaceTab === id ? 0 : -1;
-    button.textContent = t(key);
-    button.addEventListener("click", () => { selectedWorkspaceTab = id; renderCharacterWorkspace(game); });
-    return button;
-  }));
-  for (const [id] of [["overview"], ["actions"], ["spells"], ["inventory"], ["trade"]]) {
-    const panel = document.querySelector(`#hero-panel-${id}`);
-    panel.hidden = !tabs.some(([tabId]) => tabId === id) || selectedWorkspaceTab !== id;
-  }
+  setWorkspaceTabs(game, tabs);
 
   const resources = document.querySelector("#live-resources");
   const equipment = document.querySelector("#live-equipment");
   resources.replaceChildren();
   equipment.replaceChildren();
   if (viewingOwn) {
+    document.querySelector("#member-overview").hidden = true;
     for (const slot of [...ownHero.slots, ...ownHero.pactSlots]) {
       const resource = document.createElement("span"); resource.className = "resource";
       resource.textContent = t("activity.hero.slot", { level: slot.level, left: slot.left, max: slot.max }); resources.append(resource);
@@ -1037,10 +1077,8 @@ function renderCharacterWorkspace(game) {
     renderSpellbook(ownHero);
     renderInventory(ownHero);
   } else {
-    for (const condition of selected.conditions ?? []) {
-      const chip = document.createElement("span"); chip.className = "resource"; chip.textContent = condition; resources.append(chip);
-    }
-    if (resources.childElementCount === 0) resources.textContent = t("activity.party.noConditions");
+    populateMemberOverview(selected, partyStatusText(selected), selected.conditions ?? []);
+    resources.replaceChildren();
     document.querySelector("#live-spellbook").replaceChildren();
     document.querySelector("#live-inventory").replaceChildren();
   }
@@ -1135,6 +1173,16 @@ function draftInput(element, draftKey, label, placeholder) {
 
 function renderTableActions(game) {
   liveActions.replaceChildren();
+  if (["paused", "safety", "recovery"].includes(game.mode)) {
+    if (game.canBegin) liveActions.append(makeButton(t("activity.action.resumeGame"), () => void performAction({ kind: "continue" }), true, "play"));
+    else {
+      const note = document.createElement("span");
+      note.className = "live-action-note status-note";
+      note.textContent = t("activity.status.paused");
+      liveActions.append(note);
+    }
+    return;
+  }
   const top = [], composer = [], bottom = [];
   const groups = new Map(actionCategoryOrder.map((category) => [category, []]));
   const addAction = (label, action, primary = false) => {
@@ -1487,6 +1535,10 @@ if (new URLSearchParams(window.location.search).has("design-preview")) {
   liveScreen.hidden = false;
   const preview = designPreviewSnapshot();
   currentSnapshot = preview;
+  if (new URLSearchParams(window.location.search).has("member-preview")) {
+    selectedPartyCharacterId = "thorne";
+    selectedWorkspaceTab = "overview";
+  }
   if (new URLSearchParams(window.location.search).has("roll")) {
     preview.mode = "awaitingRolls";
     preview.yourTurn = false;
@@ -1496,7 +1548,7 @@ if (new URLSearchParams(window.location.search).has("design-preview")) {
     preview.party = preview.party.map((hero) => ({ ...hero, tableStatus: "waiting" }));
   }
   const previewLanguage = new URLSearchParams(window.location.search).get("language") === "zh-TW" ? "zh-TW" : "en";
-  void setLanguage(previewLanguage).then(() => renderGame(preview));
+  void setLanguage(previewLanguage).then(() => { setTableConnectionState("live"); renderGame(preview); });
 } else {
   void authenticate().catch((error) => {
     console.warn(`Discord Activity failed during ${connectionStage}.`, error);

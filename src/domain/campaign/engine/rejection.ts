@@ -9,6 +9,7 @@ export type Rejection =
   | { readonly code: "memberAway" }
   | { readonly code: "systemOnly" }
   | { readonly code: "campaignWaiting" }
+  | { readonly code: "campaignPaused" }
   | { readonly code: "campaignNotWaiting" }
   | { readonly code: "nobodyPresent" }
   | { readonly code: "roundAlreadyOpen" }

@@ -197,7 +197,7 @@ export function buildActivityTableView(
       status: node.state === "current" ? "current" : node.state === "visited" ? "visited" : node.locked ? "locked" : explore?.places.some((place) => place.id === node.id) === true ? "reachable" : "known",
       locked: node.locked,
       deadEnd: node.deadEnd,
-      canTravel: explore?.places.some((place) => place.id === node.id) === true,
+      canTravel: panel.mode !== "paused" && panel.mode !== "safety" && panel.mode !== "recovery" && explore?.places.some((place) => place.id === node.id) === true,
       column: node.column,
       row: node.row,
     })),
@@ -313,7 +313,7 @@ export function buildActivityTableView(
     }),
     myHero: fullHero,
     turn,
-    explore: controlledHeroId === null || panel.mode === "combat"
+    explore: controlledHeroId === null || panel.mode === "combat" || panel.mode === "paused" || panel.mode === "safety" || panel.mode === "recovery"
       ? null
       : explore,
     pendingRoll: panel.pendingRolls.find((roll) => roll.userId === userId) === undefined

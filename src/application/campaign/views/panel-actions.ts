@@ -63,6 +63,9 @@ export interface PanelActions {
 export function panelActions(view: Pick<PanelView, "mode" | "combat" | "pendingMove">): PanelActions {
   const primary = view.mode === "combat" && view.combat?.playersControl === true ? combatControls : controlsFor[view.mode];
   if (view.mode === "archived") return { primary, secondary: [] };
+  // Pause, recovery, and safety are read-only modes. In particular, do not
+  // leave Explore available here: it opens spells, travel, and other actions.
+  if (view.mode === "paused" || view.mode === "safety" || view.mode === "recovery") return { primary, secondary: ["myHero"] };
   // Away and back are one toggle, present in every state so a player marked away can always return.
   const toggle: readonly PanelActionId[] = primary.includes("away") ? [] : ["away"];
   // Explore (people, shops, spells) is for between fights.

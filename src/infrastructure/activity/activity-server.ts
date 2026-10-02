@@ -146,11 +146,14 @@ async function respond(
     return writeJson(response, 200, { user: { username: session.username, displayName: session.displayName }, games: await campaigns.listGames(session.guildId, session.userId) }, headers);
   }
 
-  const imageMatch = url.pathname.match(/^\/api\/activity\/games\/([0-9a-f-]{1,64})\/images\/(scenes|characters)\/([a-z0-9_-]{1,128})$/i);
+  const imageMatch = url.pathname.match(/^\/api\/activity\/games\/([0-9a-f-]{1,64})\/images\/(scenes|characters)\/([^/]{1,384})$/i);
   if (imageMatch !== null && imageMatch[1] !== undefined && imageMatch[3] !== undefined && request.method === "GET") {
     const session = requireSession(request, sessions);
     if (session === null) return writeJson(response, 401, { error: "unauthorized" }, headers);
-    const image = await campaigns.image({ guildId: session.guildId, campaignId: imageMatch[1] }, session.userId, imageMatch[2] === "scenes" ? "scene" : "character", imageMatch[3]);
+    let imageId: string;
+    try { imageId = decodeURIComponent(imageMatch[3]); } catch { return writeJson(response, 400, { error: "invalidRequest" }, headers); }
+    if (imageId.length === 0 || imageId.length > 128) return writeJson(response, 400, { error: "invalidRequest" }, headers);
+    const image = await campaigns.image({ guildId: session.guildId, campaignId: imageMatch[1] }, session.userId, imageMatch[2] === "scenes" ? "scene" : "character", imageId);
     if (image === null) return writeJson(response, 404, { error: "imageNotAvailable" }, headers);
     // The picture under an address can be repainted, so clients ask again with the tag they hold.
     const etag = `"${createHash("sha1").update(image.bytes).digest("hex")}"`;

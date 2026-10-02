@@ -35,6 +35,12 @@ import { closeRoundByOrganizer, openRound, pass, roundTimerExpired, submitAction
 // events and requests it causes, or a typed rejection. A rejected command
 // changes nothing, even if a step emitted events before refusing.
 export function decide(state: CampaignState, command: CampaignCommand, ctx: EngineContext): DecideResult {
+  // Pause is a campaign-wide stop, not just a frozen timer. Keep every player
+  // action behind the same gate; otherwise commands without their own state
+  // check (such as a free cantrip) can still change the game while paused.
+  if (state.pausedBy !== null && ctx.actor.kind === "user" && command.kind !== "continue" && command.kind !== "pauseCampaign") {
+    return { kind: "rejected", rejection: { code: "campaignPaused" } };
+  }
   const decision = new Decision(state, ctx);
   const rejection = handle(decision, command);
   return rejection === null ? decision.result() : { kind: "rejected", rejection };
