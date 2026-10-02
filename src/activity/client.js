@@ -454,7 +454,7 @@ function renderStageTrack(game) {
     return item;
   }));
   const detailKey = game.pendingMove ? "activity.stage.detailVote" : game.mode === "combat" ? "activity.stage.detailCombat" : game.mode === "planning" ? "activity.stage.detailStory" : game.mode === "awaitingRolls" ? "activity.stage.detailRolls" : game.mode === "collecting" ? (game.submission ? "activity.stage.detailSubmitted" : "activity.stage.detailExplore") : `activity.stage.detail.${game.mode}`;
-  detail.textContent = t(detailKey, { name: game.activeName ?? "" });
+  detail.textContent = t(detailKey, { name: game.pendingMove?.sceneTitle ?? game.activeName ?? "" });
 }
 
 // One entry of a map key: its colour swatch and its label.
@@ -909,7 +909,7 @@ function wireCharacterCreator() {
   const raceKeys = { Human: "human", "Wood Elf": "woodElf", Dwarf: "hillDwarf", Halfling: "lightfootHalfling", Dragonborn: "dragonborn", Gnome: "gnome", "Half-Elf": "halfElf", "Half-Orc": "halfOrc", Tiefling: "tiefling" };
   for (const option of dialog.querySelectorAll("#builder-race option")) option.dataset.i18n = `activity.creator.race.${raceKeys[option.textContent.trim()]}`;
   for (const option of dialog.querySelectorAll(".builder-fields select option")) {
-    const key = { Perception: "activity.creator.skill.perception", Stealth: "activity.creator.skill.stealth", Survival: "activity.creator.skill.survival", "Explorer’s kit": "activity.creator.kit.explorer", "Dungeoneer’s kit": "activity.creator.kit.dungeoneer" }[option.textContent.trim()];
+    const key = { Perception: "activity.creator.skill.perception", Stealth: "activity.creator.skill.stealth", Survival: "activity.creator.skill.survival", "Explorer’s kit": "activity.creator.kitOption.explorer", "Dungeoneer’s kit": "activity.creator.kitOption.dungeoneer" }[option.textContent.trim()];
     if (key) option.dataset.i18n = key;
   }
   const steps = [...dialog.querySelectorAll("[data-builder-step]")];
@@ -938,7 +938,7 @@ function wireCharacterCreator() {
 wireCharacterCreator();
 
 function renderTable(game) {
-  const phase = t(phaseKeys[game.mode] ?? "activity.phase.adventure");
+  const phase = game.pendingMove ? t("activity.status.moveVoting") : t(phaseKeys[game.mode] ?? "activity.phase.adventure");
   document.querySelector("#live-phase").textContent = phase;
   document.querySelector("#live-round").textContent = game.roundNumber === null ? "" : t("activity.status.round", { round: game.roundNumber });
   document.querySelector(".live-phase").dataset.mode = game.mode;
@@ -1434,7 +1434,7 @@ function renderTrade(game, fixedTarget) {
 }
 
 // Where each kind of action is shown: urgent decisions on top, the round composer, a category list, or the closing button.
-const actionPlacement = { acceptInvite: "top", joinHero: "top", reaction: "top", smite: "top", opportunityAttack: "top", ready: "top", begin: "top", continue: "top", toggleMoveObjection: "top", submit: "composer", pass: "composer", endTurn: "bottom" };
+const actionPlacement = { acceptInvite: "top", joinHero: "top", reaction: "top", smite: "top", opportunityAttack: "top", ready: "top", begin: "top", continue: "top", toggleMoveObjection: "top", moveVote: "top", submit: "composer", pass: "composer", endTurn: "bottom" };
 const actionCategoryOf = { attack: "attack", combatSpell: "spells", exploreSpell: "spells", healSpell: "spells", reviveSpell: "spells", summonCompanion: "spells", move: "move", moveScene: "move", teleport: "move", engage: "move", withdraw: "move", dash: "move", useItem: "items", combatItem: "items", shield: "items", shop: "items", askNpc: "talk", pressNpc: "talk", feature: "other", wildShape: "other", combatDodge: "other" };
 const actionCategoryOrder = ["attack", "spells", "move", "items", "talk", "other"];
 const actionCategoryIcon = { attack: "attack", spells: "spell", move: "move", items: "potion", talk: "clue", other: "shape" };
@@ -1712,6 +1712,17 @@ function showRolls(rolls) {
 async function performAction(action) {
   if (currentGameId === null || actionInFlight) return;
   if (action.kind === "details") return openDetails();
+  if (currentGameId === "local-preview" && action.kind === "moveVote") {
+    const move = currentSnapshot.pendingMove;
+    const ownName = uiLanguage === "zh-TW" ? "艾莉亞・維爾" : "Aria Vell";
+    move.supporters = (move.supporters ?? []).filter((name) => name !== ownName);
+    move.staying = move.staying.filter((name) => name !== ownName);
+    if (action.choice === "go") move.supporters.push(ownName); else move.staying.push(ownName);
+    move.choiceByYou = action.choice;
+    renderGame(currentSnapshot);
+    setLiveMessage(t(action.choice === "stay" ? "activity.status.moveVoteStay" : "activity.status.moveVoteGo"));
+    return;
+  }
   const body = { ...action };
   for (const [key, value] of Object.entries(body)) if (typeof value === "function") body[key] = value();
   setLiveMessage(t("activity.status.sendingAction"));
@@ -1991,7 +2002,7 @@ if (new URLSearchParams(window.location.search).has("design-preview")) {
     preview.activeName = null;
     preview.foes = [];
     preview.turn = null;
-    if (new URLSearchParams(window.location.search).has("vote")) preview.pendingMove = { sceneId: "gallery", present: 6, needed: 3, closesAt: Date.now() + 83000, sceneTitle: "Broken Gallery", sceneDescription: "A moonlit gallery crosses a deep fissure. Its eastern arch leads toward the old observatory.", proposedBy: "Mira Fen", supporters: ["Aria Vell"], staying: ["Thorne Oakshield"], choiceByYou: new URLSearchParams(window.location.search).has("stay") ? "stay" : null };
+    if (new URLSearchParams(window.location.search).has("vote")) preview.pendingMove = { sceneId: "gallery", present: 6, needed: 3, closesAt: Date.now() + 83000, sceneTitle: previewLanguage === "zh-TW" ? "破碎長廊" : "Broken Gallery", sceneDescription: previewLanguage === "zh-TW" ? "月光照亮橫跨裂縫的長廊，東側拱門通往古老的觀星台。" : "A moonlit gallery crosses a deep fissure. Its eastern arch leads toward the old observatory.", proposedBy: previewLanguage === "zh-TW" ? "米拉・芬" : "Mira Fen", supporters: [previewLanguage === "zh-TW" ? "米拉・芬" : "Mira Fen"], staying: [previewLanguage === "zh-TW" ? "索恩・橡盾" : "Thorne Oakshield"], choiceByYou: new URLSearchParams(window.location.search).has("stay") ? "stay" : null };
   }
   void setLanguage(previewLanguage).then(() => { setTableConnectionState("live"); renderGame(preview); });
   }
