@@ -77,7 +77,7 @@ const monsterStats = z
     damage: z.number().int().min(-5).max(20).optional(),
   })
   .strict();
-const monsterEntry = z.object({ monsterId: contentId("monster"), zoneId, npcId: npcId.nullable().default(null), fleeBelowHpFraction: z.number().gt(0).lt(1).nullable().default(null), stats: monsterStats.optional() }).strict();
+const monsterEntry = z.object({ monsterId: contentId("monster"), zoneId, npcId: npcId.nullable().default(null), rank: z.enum(["boss", "elite", "minion"]).optional(), fleeBelowHpFraction: z.number().gt(0).lt(1).nullable().default(null), stats: monsterStats.optional() }).strict();
 const fightEffectSchema = z.discriminatedUnion("kind", [
   revealEffect,
   setEffect,

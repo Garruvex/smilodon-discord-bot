@@ -131,7 +131,18 @@ export class ImageWorker {
     const loaded = await unitOfWork.transaction(async (tx) => ({ stored: await tx.loadRecord(item.key), campaign: await tx.loadCampaign(item.key) }));
     if (loaded.stored === undefined || loaded.campaign === undefined) return;
     const { state } = loaded.campaign;
+    // A slow picture for a room the party has already left must not land after
+    // the next room's text and look like it belongs to that room.
+    if (asked.kind === "sceneImage" && state.sceneId !== asked.sceneId) return;
     if (asked.kind === "sceneImage" && asked.roundNumber > 0 && state.lastRoundNumber === asked.roundNumber && state.lastNarratedRound < asked.roundNumber) return "later";
+    if (asked.kind === "sceneImage" && asked.roundNumber > 0) {
+      const arrival = await unitOfWork.transaction(async (tx) => (await tx.outboxForCampaign(item.key)).find((entry) =>
+        entry.request.kind === "deliver" && entry.request.delivery.kind === "sceneArrival" &&
+        entry.request.delivery.sceneId === asked.sceneId && entry.request.delivery.roundNumber === asked.roundNumber));
+      if (arrival?.status === "pending") return "later";
+      // If the matching room text could not be delivered, omit its picture too.
+      if (arrival?.status === "failed") return;
+    }
     const { record } = loaded.stored;
     const existing = record.images?.[subject];
     // A subject keeps the picture it has, and a finished game makes no more.
@@ -155,6 +166,7 @@ export class ImageWorker {
       const saved = await assets.load(item.key, subject);
       const found = bible === undefined ? undefined : await this.describe(request, item.key, record, bible);
       if (saved === undefined || found === undefined || channelId === null) return void (await this.mark(item.key, subject, "failed"));
+      if (request.kind === "sceneImage" && !(await this.sceneIsCurrent(item.key, request.sceneId))) return;
       await sink.post(channelId, saved, found.caption);
       await this.mark(item.key, subject, "done");
       if (request.kind !== "sceneImage" && request.kind !== "heroImage") await assets.remove(item.key, subject).catch(() => undefined);
@@ -188,10 +200,15 @@ export class ImageWorker {
 
     const image = await generator.generate({ prompt: described.prompt, aspect: described.aspect, timeoutMs: this.options.timeoutMs ?? 90_000, ...(described.references === undefined ? {} : { references: described.references }) });
     if (image.bytes.byteLength > (this.options.maxBytes ?? defaultMaxBytes)) throw new Error("The picture is larger than the limit.");
+    if (asked.kind === "sceneImage") {
+      const stillCurrent = await unitOfWork.transaction(async (tx) => (await tx.loadCampaign(item.key))?.state.sceneId === asked.sceneId);
+      if (!stillCurrent) return;
+    }
     // Keep the generated picture before posting, so a failed post retries
     // the same image without paying the provider again.
     await assets.save(item.key, subject, image);
     await this.mark(item.key, subject, "made");
+    if (request.kind === "sceneImage" && !(await this.sceneIsCurrent(item.key, request.sceneId))) return;
     await sink.post(channelId, image, described.caption);
     await this.mark(item.key, subject, "done");
     if (request.kind !== "sceneImage" && request.kind !== "heroImage") await assets.remove(item.key, subject).catch(() => undefined);
@@ -214,6 +231,10 @@ export class ImageWorker {
       }
     }
     return false;
+  }
+
+  private async sceneIsCurrent(key: CampaignKey, sceneId: string): Promise<boolean> {
+    return this.options.unitOfWork.transaction(async (tx) => (await tx.loadCampaign(key))?.state.sceneId === sceneId);
   }
 
   private async ownPortrait(key: CampaignKey, characterId: string): Promise<{ readonly image: GeneratedImage; readonly name: string } | undefined> {

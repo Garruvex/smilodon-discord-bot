@@ -101,6 +101,24 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
         await say(adventureChannelId, opening?.kind === "openingRecorded" ? opening.text : null, [], "narration");
         break;
       }
+      case "sceneMoveProposed": {
+        const bible = this.options.adventures.find(record.adventure.adventureId, record.adventure.version, record.language);
+        const scene = bible?.scenes.find((candidate) => candidate.id === delivery.sceneId);
+        if (scene !== undefined) {
+          await say(adventureChannelId, text.campaign.msg.sceneMoveProposed({ scene: escapeMarkdown(scene.title) }), [], "notice");
+        }
+        break;
+      }
+      case "sceneArrival": {
+        const bible = this.options.adventures.find(record.adventure.adventureId, record.adventure.version, record.language);
+        const scene = bible?.scenes.find((candidate) => candidate.id === delivery.sceneId);
+        const description = scene?.publicDescription.trim();
+        if (scene !== undefined) {
+          // Keep the move itself visible even when this scene has no public description.
+          await say(adventureChannelId, text.campaign.msg.sceneArrival({ scene: escapeMarkdown(scene.title), description: description ?? "" }));
+        }
+        break;
+      }
       case "heroArrival": {
         const joined = events.findLast((event) => event.kind === "heroJoined" && event.sheet.id === delivery.characterId);
         if (joined?.kind === "heroJoined" && joined.entrance !== undefined) await say(adventureChannelId, `${joined.sheet.name} — ${joined.entrance}`);
@@ -130,6 +148,17 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
       case "combatBeat":
         if (playersFight) await say(adventureChannelId, combat?.beat(delivery.combatantId, delivery.beat) ?? null, [], "action");
         break;
+      case "combatMove": {
+        if (!playersFight || state === undefined) break;
+        const bible = this.options.adventures.find(record.adventure.adventureId, record.adventure.version, record.language);
+        const glossary = this.options.glossaries[record.language];
+        const started = events.findLast((event) => event.kind === "encounterStarted" && event.encounter.id === delivery.encounterId);
+        const combatant = started?.kind === "encounterStarted" ? started.encounter.combatants[delivery.combatantId] : undefined;
+        if (bible !== undefined && glossary !== undefined && combatant !== undefined) {
+          await say(adventureChannelId, text.campaign.msg.combatMove({ actor: combatantName(combatant, { state, bible, glossary }), zone: delivery.zoneName }), [], "action");
+        }
+        break;
+      }
       case "deathSave":
         if (playersFight) await say(adventureChannelId, combat?.deathSave(delivery.combatantId) ?? null, [], "action");
         break;

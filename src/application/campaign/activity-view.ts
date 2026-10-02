@@ -25,13 +25,14 @@ export interface ActivityTableView {
   readonly campaignId: string;
   readonly campaignName: string;
   readonly adventureTitle: string;
+  readonly sceneId: string | null;
   readonly mode: string;
   readonly roundNumber: number | null;
   readonly scene: { readonly title: string; readonly description: string; readonly imageUrl: string | null };
   // present and needed: how many players vote, and how many Stay votes keep the party where it is. closesAt: when the window closes (epoch ms), or null.
   readonly pendingMove: null | { readonly sceneId: string; readonly sceneTitle: string; readonly sceneDescription: string; readonly proposedBy: string | null; readonly supporters: readonly string[]; readonly staying: readonly string[]; readonly choiceByYou: "go" | "stay" | null; readonly present: number; readonly needed: number; readonly closesAt: number | null };
   readonly map:
-    | { readonly kind: "battlefield"; readonly zones: readonly { readonly id: string; readonly name: string; readonly lighting: string | null; readonly cover: string | null; readonly difficult: boolean; readonly canMove: boolean; readonly occupants: readonly { readonly name: string; readonly side: "party" | "foes"; readonly active: boolean; readonly hp: number; readonly maxHp: number }[] }[]; readonly edges: readonly { readonly from: string; readonly to: string; readonly feet: number }[] }
+    | { readonly kind: "battlefield"; readonly zones: readonly { readonly id: string; readonly name: string; readonly lighting: string | null; readonly cover: string | null; readonly difficult: boolean; readonly canMove: boolean; readonly occupants: readonly { readonly name: string; readonly side: "party" | "foes"; readonly rank?: "boss" | "elite" | "minion" | "standard"; readonly active: boolean; readonly hp: number; readonly maxHp: number }[] }[]; readonly edges: readonly { readonly from: string; readonly to: string; readonly feet: number }[] }
     | { readonly kind: "journey"; readonly nodes: readonly { readonly id: string; readonly title: string; readonly status: "current" | "visited" | "known" | "reachable" | "locked"; readonly locked: boolean; readonly deadEnd: boolean; readonly canTravel: boolean; readonly column: number; readonly row: number }[]; readonly routes: readonly { readonly from: string; readonly to: string; readonly oneWay: boolean }[] };
   // Every word of the map, in the game's language.
   readonly mapText: Readonly<Record<"journeyKind" | "journeyTitle" | "tacticalKind" | "battlefield" | "keyParty" | "keyFoes" | "keyHere" | "keyOpen" | "keyLocked" | "empty" | "routeLabel" | "here" | "deadEnd" | "locked" | "visited" | "mapped" | "openRoute" | "openGround" | "difficult" | "coverHalf" | "coverThreeQuarters" | "lightBright" | "lightDim" | "lightDark" | "moveHere", string>>;
@@ -58,6 +59,7 @@ export interface ActivityTableView {
   }[];
   readonly foes: readonly {
     readonly name: string;
+    readonly rank?: "boss" | "elite" | "minion" | "standard";
     readonly hp: number;
     readonly maxHp: number;
     readonly band: string;
@@ -99,9 +101,12 @@ export interface ActivityTableView {
   readonly submittedCount: number;
   readonly participantCount: number;
   readonly submission: "action" | "pass" | "missed" | "excused" | null;
+  readonly submissionText: string | null;
+  readonly submissionRevision: number | null;
   readonly canAcceptInvite: boolean;
   readonly joinChoices: readonly { readonly id: string; readonly name: string; readonly className: string }[];
-  readonly joinRequestStatus: "requested" | "invited" | "approved" | null;
+  readonly joinRequestStatus: "requested" | "invited" | "approved" | "queued" | null;
+  readonly queuedJoin: null | { readonly heroName: string; readonly encounterRound: number | null; readonly nextEncounter: boolean };
   readonly savedHeroChoices: readonly { readonly id: string; readonly name: string; readonly className: string }[];
   readonly reaction: ReturnType<typeof buildReactionView>;
   readonly reactionIsYours: boolean;
@@ -280,13 +285,19 @@ export function buildActivityTableView(
     campaignId: record.key.campaignId,
     campaignName: record.name,
     adventureTitle: bible.title,
+    sceneId: state.sceneId,
     mode: panel.mode,
     roundNumber: panel.roundNumber,
     mapText: texts[record.language].campaign.map,
-    // Let the image endpoint decide whether an asset exists. The generated file can
-    // outlive or arrive before the image-status metadata, so gating this URL on that
-    // metadata made valid scene art disappear from the Activity.
-    scene: { title: panel.sceneTitle, description: scene?.publicDescription ?? "", imageUrl: scene === undefined ? null : `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/scenes/${encodeURIComponent(scene.id)}` },
+    // Show the encounter illustration during combat when it is ready; otherwise
+    // keep the scene art visible. When combat ends, this naturally returns to scene art.
+    scene: {
+      title: panel.sceneTitle,
+      description: scene?.publicDescription ?? "",
+      imageUrl: panel.combat !== null && hasPicture(record.images?.[`encounter:${panel.combat.encounterId}`])
+        ? `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/encounters/${encodeURIComponent(panel.combat.encounterId)}`
+        : scene === undefined ? null : `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/scenes/${encodeURIComponent(scene.id)}`,
+    },
     pendingMove: state.pendingMove === undefined ? null : {
       sceneId: state.pendingMove.sceneId,
       present: presentMembers(state).length,
@@ -324,7 +335,7 @@ export function buildActivityTableView(
           canMove: turn?.moves.some((move) => move.zoneId === zone.id) ?? false,
           occupants: [
             ...panel.combat!.party.filter((hero) => hero.zone === zone.name).map((hero) => ({ name: hero.name, side: "party" as const, active: hero.active, hp: hero.hp, maxHp: hero.maxHp })),
-            ...panel.combat!.foes.filter((foe) => foe.zone === zone.name).map((foe) => ({ name: foe.name, side: "foes" as const, active: foe.active, hp: foe.hp, maxHp: foe.maxHp })),
+            ...panel.combat!.foes.filter((foe) => foe.zone === zone.name).map((foe) => ({ name: foe.name, side: "foes" as const, ...(foe.rank === undefined ? {} : { rank: foe.rank }), active: foe.active, hp: foe.hp, maxHp: foe.maxHp })),
           ],
         })),
       }
@@ -343,7 +354,7 @@ export function buildActivityTableView(
     }),
     myHero: fullHero,
     turn,
-    explore: controlledHeroId === null || state.pendingMove !== undefined || panel.mode === "combat" || panel.mode === "paused" || panel.mode === "safety" || panel.mode === "recovery"
+    explore: controlledHeroId === null || state.pendingMove !== undefined || panel.mode !== "collecting"
       ? null
       : explore,
     pendingRoll: panel.pendingRolls.find((roll) => roll.userId === userId) === undefined
@@ -358,8 +369,13 @@ export function buildActivityTableView(
     submittedCount: state.round == null ? 0 : Object.values(state.round.submissions).filter((submission) => submission.kind === "action" || submission.kind === "pass").length,
     participantCount: state.round?.participants.length ?? 0,
     submission: roundSubmission?.kind === "action" ? "action" : roundSubmission?.kind ?? null,
+    submissionText: roundSubmission?.kind === "action" ? roundSubmission.text : null,
+    submissionRevision: roundSubmission?.kind === "action" ? roundSubmission.revision : null,
     canAcceptInvite: ownCharacterId === null && inviteCurrent && joinRequest?.status === "invited",
     joinRequestStatus: inviteCurrent ? joinRequest.status : null,
+    queuedJoin: inviteCurrent && joinRequest?.status === "queued" && joinRequest.queuedHero !== undefined
+      ? { heroName: joinRequest.queuedHero.name, encounterRound: state.encounter?.round ?? null, nextEncounter: state.pendingEncounter !== null }
+      : null,
     joinChoices: ownCharacterId === null && inviteCurrent && joinRequest?.status === "approved"
       ? heroes.flatMap((hero) => Object.values(state.characters).some((existing) => !isFallen(state, existing.id) && (existing.id === hero.id || existing.id.startsWith(`${hero.id}-`)))
         ? []
@@ -383,7 +399,7 @@ export function canSeeActivityCampaign(record: CampaignRecord, state: CampaignSt
     || record.lobby.members.some((member) => member.userId === userId && member.status !== "withdrawn")
     || state?.members[userId] !== undefined;
   const invite = record.joinRequests?.[userId];
-  const invited = invite !== undefined && invite.expiresAt > now && (invite.status === "invited" || invite.status === "approved");
+  const invited = invite !== undefined && invite.expiresAt > now && (invite.status === "invited" || invite.status === "approved" || invite.status === "queued");
   return participant || invited;
 }
 

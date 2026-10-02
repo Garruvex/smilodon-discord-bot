@@ -89,6 +89,10 @@ export type DeliverySpec =
   | { readonly kind: "campaignPaused"; readonly reason: "organizer" | "recovery" | "safety" }
   // A hero's in-character line, posted as they said it.
   | { readonly kind: "speech"; readonly characterId: string; readonly text: string }
+  // A destination is waiting for the table's vote.
+  | { readonly kind: "sceneMoveProposed"; readonly sceneId: string; readonly roundNumber: number }
+  // The party entered a new scene after a resolved round; tell the table its public description.
+  | { readonly kind: "sceneArrival"; readonly sceneId: string; readonly roundNumber: number }
   | { readonly kind: "narration"; readonly roundNumber: number; readonly regenerated?: boolean }
   | { readonly kind: "opening" }
   | { readonly kind: "heroArrival"; readonly characterId: string }
@@ -109,6 +113,8 @@ export type DeliverySpec =
   | { readonly kind: "deathSave"; readonly encounterId: string; readonly combatantId: string }
   // A turn action with no attack of its own: the table sees one template line.
   | { readonly kind: "combatBeat"; readonly encounterId: string; readonly combatantId: string; readonly beat: "dodge" | "dash" | "disengage" | "useItem" | "fled" | "reaction" | "counterspell" }
+  // A combatant used tactical movement to reach a battlefield zone.
+  | { readonly kind: "combatMove"; readonly encounterId: string; readonly combatantId: string; readonly zoneName: string }
   | { readonly kind: "encounterEnded"; readonly encounterId: string }
   // A line an authored trigger shows the table mid-fight (a new foe steps out of the mist).
   | { readonly kind: "fightNotice"; readonly encounterId: string; readonly text: string }

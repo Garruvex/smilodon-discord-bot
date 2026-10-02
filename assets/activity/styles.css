@@ -1854,6 +1854,28 @@ body { background: #30251f; }
 .bf-token.foe circle { fill: #f1d3c8; stroke: #a8443a; }
 .bf-token.is-active circle { stroke: var(--ui-accent); stroke-width: 4; }
 .bf-initial { fill: var(--ui-ink); font: 700 14px var(--serif); }
+.bf-token.foe.rank-boss circle { fill: #f4d6a1; stroke: #92551d; stroke-width: 3; }
+.bf-token.foe.rank-elite circle { fill: #efc6a1; stroke: #9a452f; stroke-width: 2.5; }
+.bf-token.foe.rank-minion circle { fill: #e7d5cc; stroke: #9b6556; }
+.bf-enemy-icon { filter: brightness(0) saturate(100%) invert(24%) sepia(32%) saturate(1500%) hue-rotate(330deg) brightness(82%); }
+.live-enemy .enemy-rank-label { width: fit-content; padding: 2px 6px; border-radius: 999px; background: #e9d8bd; color: #684330; font-size: 10px; font-weight: 700; }
+.live-enemy.rank-boss .enemy-sigil { background: #e8c481; }
+.live-enemy.rank-elite .enemy-sigil { background: #e5b398; }
+.live-enemy.rank-minion .enemy-sigil { background: #dbc9b8; }
+.live-enemy.rank-boss .enemy-rank-label { background: #ead19e; color: #6a4315; }
+.live-enemy.rank-elite .enemy-rank-label { background: #eac3a5; color: #713a2b; }
+.live-enemy.rank-minion .enemy-rank-label { background: #e3d6ca; color: #655247; }
+.bf-token.foe.rank-boss circle { fill: #f4d6a1; stroke: #92551d; stroke-width: 3; }
+.bf-token.foe.rank-elite circle { fill: #efc6a1; stroke: #9a452f; stroke-width: 2.5; }
+.bf-token.foe.rank-minion circle { fill: #e7d5cc; stroke: #9b6556; }
+.bf-enemy-icon { filter: brightness(0) saturate(100%) invert(24%) sepia(32%) saturate(1500%) hue-rotate(330deg) brightness(82%); }
+.live-enemy .enemy-rank-label { width: fit-content; padding: 2px 6px; border-radius: 999px; background: #e9d8bd; color: #684330; font-size: 10px; font-weight: 700; }
+.live-enemy.rank-boss .enemy-sigil { background: #e8c481; }
+.live-enemy.rank-elite .enemy-sigil { background: #e5b398; }
+.live-enemy.rank-minion .enemy-sigil { background: #dbc9b8; }
+.live-enemy.rank-boss .enemy-rank-label { background: #ead19e; color: #6a4315; }
+.live-enemy.rank-elite .enemy-rank-label { background: #eac3a5; color: #713a2b; }
+.live-enemy.rank-minion .enemy-rank-label { background: #e3d6ca; color: #655247; }
 .bf-zone.is-dim { opacity: .42; }
 .bf-zone.is-target { cursor: pointer; }
 .bf-zone.is-target .bf-area { fill: #f8e8d0; stroke: var(--ui-accent); stroke-width: 3; stroke-dasharray: 8 5; }
@@ -2062,6 +2084,8 @@ body { background: #30251f; }
 .is-sending .live-action-choice { opacity: 0.55; pointer-events: none; cursor: progress; }
 .live-action-choice.is-pending { opacity: 1; position: relative; }
 .live-action-choice.is-pending::after { content: ""; width: 14px; height: 14px; margin-left: 8px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: pending-spin 0.7s linear infinite; }
+.join-queue-note { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #a9874e; border-radius: 7px; background: #f4e5c6; color: #563c26; font-weight: 700; }
+.lobby-card-request-status { margin: 4px 0 0; color: #725533; font-size: 11px; line-height: 1.35; }
 @keyframes pending-spin { to { transform: rotate(360deg); } }
 #roll-toast { position: fixed; left: 50%; bottom: 96px; z-index: 60; min-width: 220px; max-width: calc(100% - 32px); padding: 14px 20px; border: 1px solid #796546; border-radius: 16px; background: #211e1bf2; color: #eee7d9; text-align: center; box-shadow: 0 14px 50px #000b; transform: translate(-50%, 20px); opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; }
 #roll-toast.is-tumbling, #roll-toast.is-success, #roll-toast.is-failure { opacity: 1; transform: translate(-50%, 0); }

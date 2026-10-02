@@ -95,7 +95,7 @@ export interface CampaignModule {
     withdrawJoin(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>>;
     snapshot(key: CampaignKey, userId: UserId): Promise<{ readonly kind: "ok"; readonly value: ActivityGameView } | { readonly kind: "refused"; readonly reason: "notFound" | "notActive" | "privateInviteOnly" }>;
     act(key: CampaignKey, userId: UserId, input: unknown): Promise<{ readonly kind: "ok" } | { readonly kind: "refused"; readonly reason: string }>;
-    image(key: CampaignKey, userId: UserId, kind: "scene" | "character", id: string): Promise<{ readonly bytes: Buffer; readonly mediaType: "image/png" | "image/jpeg" | "image/webp" } | null>;
+    image(key: CampaignKey, userId: UserId, kind: "scene" | "character" | "encounter", id: string): Promise<{ readonly bytes: Buffer; readonly mediaType: "image/png" | "image/jpeg" | "image/webp" } | null>;
   };
   // Discord events that can take a card or a place away: a message was
   // deleted (or many at once), or a channel was. Each puts things back.
@@ -224,6 +224,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
         await issues.raise(key, "deliveryFailed", item.request.kind === "deliver" ? item.request.delivery.kind : item.request.kind);
       },
     }),
+    queuedJoins: { runOnce: () => lobby.processQueuedJoins() },
     ...(configuration.campaignImages === null || configuration.campaignImages === undefined
       ? {}
       : {
@@ -342,6 +343,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
           const storedCampaign = await tx.loadCampaign(key);
           if (storedRecord === undefined || !canSeeActivityCampaign(storedRecord.record, storedCampaign?.state, userId, clock.now()) || storedCampaign === undefined) return null;
           if (kind === "scene") return storedCampaign.state.sceneId === id ? { kind, id } : null;
+          if (kind === "encounter") return storedCampaign.state.encounter?.id === id && storedCampaign.state.encounter.status !== "ended" ? { kind, id } : null;
           const character = storedCampaign.state.characters[id];
           const isPartyMember = Object.values(storedCampaign.state.members).some((member) => member.characterId === id);
           const libraryCharacterId = character?.origin?.libraryCharacterId;
@@ -349,6 +351,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
         });
         if (owner === null) return null;
         if (kind === "scene") return (await imageAssets.load(key, owner.id)) ?? null;
+        if (kind === "encounter") return (await imageAssets.load(key, `encounter:${owner.id}`)) ?? null;
         const generated = await imageAssets.load(key, `hero:${owner.id}`);
         return generated ?? (owner.libraryCharacterId === undefined ? null : (await portraits.forGame(owner.libraryCharacterId)) ?? null);
       },
@@ -381,7 +384,9 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
           case "submit": {
             const text = textValue(action.text, maxActionLength);
             if (text === null) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.submitAction(key, userId, text, id).then(mapPlayResult);
+            const roundNumber = typeof action.roundNumber === "number" && Number.isInteger(action.roundNumber) ? action.roundNumber : undefined;
+            const sceneId = textValue(action.sceneId, 200) ?? undefined;
+            return activityPlay.submitAction(key, userId, text, id, roundNumber, sceneId).then(mapPlayResult);
           }
           case "speak": {
             const text = textValue(action.text, maxSpeechLength);

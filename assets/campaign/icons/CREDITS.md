@@ -11,3 +11,5 @@ white and set on a coloured rounded tile by `src/scripts/build-campaign-icons.ts
 | dodge (Dodge) | [Felbrigg](http://blackdogofdoom.blogspot.co.uk) |
 | shield (Round Shield) | [Willdabeast](http://wjbstories.blogspot.com) |
 | pause (Pause Button), play (Play Button) | [Guard13007](https://guard13007.com) |
+| crowned-skull (Crowned Skull), evil-minion (Evil Minion), minions (Minions) | [Lorc](http://lorcblog.blogspot.com) |
+| crowned-skull (Crowned Skull), evil-minion (Evil Minion), minions (Minions) | [Lorc](http://lorcblog.blogspot.com) |

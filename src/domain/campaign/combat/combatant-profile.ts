@@ -188,6 +188,7 @@ export interface MonsterPlacement {
   readonly zoneId: ZoneId;
   readonly npcId: string | null;
   readonly fleeBelowHpFraction: number | null;
+  readonly rank?: "boss" | "elite" | "minion";
   // The adventure's changes to the stat block (a reskinned monster made tougher or weaker).
   readonly stats?: MonsterStats;
 }
@@ -259,6 +260,7 @@ export function monsterCombatant(monster: MonsterDefinition, content: SealedCont
     id: placement.id,
     side: "foes",
     source: { kind: "monster", monsterId: monster.id, npcId: placement.npcId },
+    ...(placement.rank === undefined ? {} : { rank: placement.rank }),
     letter: placement.letter,
     level: 0,
     armorClass: stats?.armorClass ?? monster.armorClass,

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { CampaignLanguage } from "../../domain/campaign/adventure/adventure-bible.js";
 import type { UserId } from "../../domain/campaign/core/ids.js";
+import type { CharacterSheet } from "../../domain/campaign/character/character-sheet.js";
 import * as lobbyRules from "../../domain/campaign/lobby/lobby.js";
 import type { LobbyRefusal, LobbyResult } from "../../domain/campaign/lobby/lobby.js";
 import { HouseRuleError, resolveHouseRules, startingLevelFor } from "../../domain/campaign/rules/house-rules.js";
@@ -79,7 +80,7 @@ export interface ActivityCampaignListingItem {
   readonly lifecycle: "lobby" | "active" | "paused";
   readonly playerCount: number;
   readonly maxPlayers: number;
-  readonly action: "join" | "continue" | "request" | "requested" | "invited" | "full" | "resume";
+  readonly action: "join" | "continue" | "request" | "requested" | "queued" | "invited" | "full" | "resume";
 }
 
 export interface CampaignLobbyServiceOptions {
@@ -204,7 +205,7 @@ export class CampaignLobbyService {
         const organizer = record.organizerId === userId;
         const request = record.joinRequests?.[userId];
         const requestIsCurrent = request !== undefined && request.expiresAt > now;
-        const invited = requestIsCurrent && (request.status === "invited" || request.status === "approved");
+        const invited = requestIsCurrent && (request.status === "invited" || request.status === "approved" || request.status === "queued");
         const participant = organizer || lobbyMember || campaignMember;
         const privateGame = record.visibility === "membersOnly";
 
@@ -233,7 +234,9 @@ export class CampaignLobbyService {
         const playerCount = Object.keys(storedCampaign?.state.members ?? {}).length;
         const action = participant
           ? "resume"
-          : invited
+          : requestIsCurrent && request.status === "queued"
+            ? "queued"
+            : invited
             ? "invited"
             : requestIsCurrent && request.status === "requested"
               ? "requested"
@@ -286,8 +289,13 @@ export class CampaignLobbyService {
   public withdrawOngoingJoin(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>> {
     return this.changeJoinRequest(key, userId, (record) => {
       const current = record.joinRequests?.[userId];
-      if (current === undefined || current.status !== "requested") return "notMember";
-      return null;
+      if (current === undefined) return "notMember";
+      if (current.status === "requested") return null;
+      if (current.status === "queued") {
+        const { queuedHero: _queuedHero, queueId: _queueId, ...approved } = current;
+        return { ...approved, status: "approved" };
+      }
+      return "notMember";
     });
   }
 
@@ -331,36 +339,99 @@ export class CampaignLobbyService {
       const state = loaded.campaign.state;
       if (record.lifecycle !== "active" && record.lifecycle !== "paused") return refused("closed");
       const request = record.joinRequests?.[userId];
-      if (request?.status !== "approved" || request.expiresAt <= this.options.clock.now()) return refused("joinNotApproved");
+      if ((request?.status !== "approved" && request?.status !== "queued") || request.expiresAt <= this.options.clock.now()) return refused("joinNotApproved");
       if (state.members[userId]?.characterId != null) {
-        return this.finishOngoingJoin(key, userId, heroRef);
+        return this.finishOngoingJoin(key, userId, state.members[userId]!.characterId!);
       }
-      if ((state.encounter !== null && state.encounter.status !== "ended") || state.pendingEncounter !== null) return refused("joinNotAtBreak");
       if (state.members[userId] === undefined && Object.keys(state.members).length >= record.lobby.maxPlayers) return refused("gameFull");
-      const snapshotId = savedSnapshotIdOf(heroRef);
-      let sheet;
-      if (snapshotId !== null) {
-        if (this.options.library === undefined || this.options.rulesets === undefined) return refused("libraryUnavailable");
-        const snapshot = await this.options.library.snapshot(userId, snapshotId);
-        if (snapshot === undefined) return refused("savedCharacterMissing");
-        const content = this.options.rulesets.resolve({ ...this.options.ruleset, houseRules: record.houseRules }).content;
-        if (checkCompatibility(snapshot, content).length > 0) return refused("savedCharacterProblem");
-        sheet = { ...instantiateHero(snapshot, record.houseRules), ownerUserId: userId };
-      } else {
-        const preset = this.options.adventures.documentAt(record.adventure.adventureId, record.adventure.version, record.language)?.heroes.find((hero) => hero.id === heroRef);
-        if (preset === undefined) return refused("unknownHero");
-        if (Object.values(state.characters).some((hero) => !isFallen(state, hero.id) && (hero.id === preset.id || hero.id.startsWith(`${preset.id}-`)))) return refused("heroTaken");
-        const { class: className, ...rest } = preset;
-        const used = Object.keys(state.characters).filter((id) => id === preset.id || id.startsWith(`${preset.id}-`)).length;
-        sheet = { ...rest, id: used === 0 ? preset.id : `${preset.id}-${used + 1}`, className, ownerUserId: userId };
+      const prepared = await this.ongoingHeroSheet(record, state, userId, heroRef);
+      if (prepared.kind === "refused") return prepared;
+      const joining = prepared.value;
+      if (this.shouldWaitForEncounter(state)) {
+        const joinRequests = { ...(record.joinRequests ?? {}), [userId]: { ...request, status: "queued" as const, queuedHero: joining, queueId: interactionId } };
+        const updated: CampaignRecord = { ...record, joinRequests };
+        await this.options.unitOfWork.transaction((tx) => tx.saveRecord(updated, loaded.stored!.revision));
+        return ok(updated);
       }
       const partyLevel = Math.max(1, ...Object.values(state.characters).filter((hero) => !isFallen(state, hero.id)).map((hero) => hero.level));
-      if (sheet.level > partyLevel) return refused("savedCharacterProblem");
-      const joining = raiseToLevel(sheet, partyLevel);
-      const outcome = await this.options.bus.execute(key, { kind: "joinHero", sheet: joining, entrance: request.entrance ?? "A new companion joins the party." }, { commandId: `dnd:${interactionId}`, actor: { kind: "user", userId } });
+      const outcome = await this.options.bus.execute(key, { kind: "joinHero", sheet: raiseToLevel(joining, partyLevel), entrance: request.entrance ?? "A new companion joins the party." }, { commandId: `dnd:${interactionId}`, actor: { kind: "user", userId } });
       if (outcome.kind !== "accepted") return refused(outcome.kind === "notFound" ? "notFound" : "savedCharacterProblem");
-      return this.finishOngoingJoin(key, userId, heroRef);
+      return this.finishOngoingJoin(key, userId, joining.id);
     });
+  }
+
+  // The runtime checks these reservations after combat's closing narration and
+  // joins each selected hero at the first safe break. Requests remain on the
+  // campaign record, so a restart cannot lose someone's place in the queue.
+  public async processQueuedJoins(): Promise<{ readonly processed: number; readonly failed: readonly { readonly id: string; readonly error: string }[] }> {
+    const records = await this.options.unitOfWork.transaction((tx) => tx.listRecordsByLifecycle(["active", "paused"]));
+    const failed: { id: string; error: string }[] = [];
+    let processed = 0;
+    for (const { record } of records) {
+      for (const [userId, request] of Object.entries(record.joinRequests ?? {})) {
+        if (request.status !== "queued" || request.queuedHero === undefined || request.expiresAt <= this.options.clock.now()) continue;
+        try {
+          const joined = await this.queue.run(queueKey(record.key), async () => {
+            const latest = await this.options.unitOfWork.transaction(async (tx) => ({ stored: await tx.loadRecord(record.key), campaign: await tx.loadCampaign(record.key) }));
+            if (latest.stored === undefined || latest.campaign === undefined) return false;
+            const currentRequest = latest.stored.record.joinRequests?.[userId];
+            const state = latest.campaign.state;
+            if (currentRequest?.status !== "queued" || currentRequest.queuedHero === undefined || currentRequest.expiresAt <= this.options.clock.now()) return false;
+            if (state.members[userId]?.characterId != null) {
+              const result = await this.finishOngoingJoin(record.key, userId, state.members[userId]!.characterId!);
+              return result.kind === "ok";
+            }
+            if (this.shouldWaitForEncounter(state)) return false;
+            if (state.members[userId] === undefined && Object.keys(state.members).length >= latest.stored.record.lobby.maxPlayers) {
+              await this.returnQueuedJoinToApproval(record.key, userId, currentRequest.queueId);
+              return false;
+            }
+            const partyLevel = Math.max(1, ...Object.values(state.characters).filter((hero) => !isFallen(state, hero.id)).map((hero) => hero.level));
+            const commandId = `dnd:queued-join:${currentRequest.queueId ?? currentRequest.expiresAt}`;
+            const outcome = await this.options.bus.execute(record.key, { kind: "joinHero", sheet: raiseToLevel(currentRequest.queuedHero, partyLevel), entrance: currentRequest.entrance ?? "A new companion joins the party." }, { commandId, actor: { kind: "user", userId } });
+            if (outcome.kind !== "accepted") {
+              await this.returnQueuedJoinToApproval(record.key, userId, currentRequest.queueId);
+              return false;
+            }
+            const result = await this.finishOngoingJoin(record.key, userId, currentRequest.queuedHero.id);
+            return result.kind === "ok";
+          });
+          if (joined) processed += 1;
+        } catch (error) {
+          failed.push({ id: `${record.key.campaignId}:${userId}`, error: error instanceof Error ? error.message : String(error) });
+        }
+      }
+    }
+    return { processed, failed };
+  }
+
+  private shouldWaitForEncounter(state: import("../../domain/campaign/state/campaign-state.js").CampaignState): boolean {
+    if (state.pendingEncounter !== null || (state.encounter !== null && state.encounter.status !== "ended")) return true;
+    return state.encounter !== null && state.encounter.narratedRound < state.encounter.round;
+  }
+
+  private async ongoingHeroSheet(record: CampaignRecord, state: import("../../domain/campaign/state/campaign-state.js").CampaignState, userId: UserId, heroRef: string): Promise<ServiceResult<CharacterSheet>> {
+    const snapshotId = savedSnapshotIdOf(heroRef);
+    let sheet: CharacterSheet;
+    if (snapshotId !== null) {
+      if (this.options.library === undefined || this.options.rulesets === undefined) return refused("libraryUnavailable");
+      const snapshot = await this.options.library.snapshot(userId, snapshotId);
+      if (snapshot === undefined) return refused("savedCharacterMissing");
+      const content = this.options.rulesets.resolve({ ...this.options.ruleset, houseRules: record.houseRules }).content;
+      if (checkCompatibility(snapshot, content).length > 0) return refused("savedCharacterProblem");
+      sheet = { ...instantiateHero(snapshot, record.houseRules), ownerUserId: userId };
+    } else {
+      const preset = this.options.adventures.documentAt(record.adventure.adventureId, record.adventure.version, record.language)?.heroes.find((hero) => hero.id === heroRef);
+      if (preset === undefined) return refused("unknownHero");
+      const { class: className, ...rest } = preset;
+      const queuedIds = Object.values(record.joinRequests ?? {}).flatMap((request) => request.status === "queued" && request.queuedHero !== undefined ? [request.queuedHero.id] : []);
+      const used = Object.keys(state.characters).filter((id) => id === preset.id || id.startsWith(`${preset.id}-`)).length
+        + queuedIds.filter((id) => id === preset.id || id.startsWith(`${preset.id}-`)).length;
+      sheet = { ...rest, id: used === 0 ? preset.id : `${preset.id}-${used + 1}`, className, ownerUserId: userId };
+    }
+    const partyLevel = Math.max(1, ...Object.values(state.characters).filter((hero) => !isFallen(state, hero.id)).map((hero) => hero.level));
+    if (sheet.level > partyLevel) return refused("savedCharacterProblem");
+    return ok(sheet);
   }
 
   private async finishOngoingJoin(key: CampaignKey, userId: UserId, heroRef: string): Promise<ServiceResult<CampaignRecord>> {
@@ -379,8 +450,19 @@ export class CampaignLobbyService {
       return next === undefined ? refused("notFound") : ok(next);
   }
 
+  private async returnQueuedJoinToApproval(key: CampaignKey, userId: UserId, queueId: string | undefined): Promise<void> {
+    await this.options.unitOfWork.transaction(async (tx) => {
+      const latest = await tx.loadRecord(key);
+      const request = latest?.record.joinRequests?.[userId];
+      if (latest === undefined || request?.status !== "queued" || request.queueId !== queueId) return;
+      const { queuedHero: _queuedHero, queueId: _queueId, ...approved } = request;
+      const joinRequests = { ...latest.record.joinRequests, [userId]: { ...approved, status: "approved" as const } };
+      await tx.saveRecord({ ...latest.record, joinRequests }, latest.revision);
+    });
+  }
+
   private reservedSeats(record: CampaignRecord): number {
-    return record.lobby.members.length + Object.entries(record.joinRequests ?? {}).filter(([userId, request]) => !record.lobby.members.some((member) => member.userId === userId) && (request.status === "invited" || request.status === "approved") && request.expiresAt > this.options.clock.now()).length;
+    return record.lobby.members.length + Object.entries(record.joinRequests ?? {}).filter(([userId, request]) => !record.lobby.members.some((member) => member.userId === userId) && (request.status === "invited" || request.status === "approved" || request.status === "queued") && request.expiresAt > this.options.clock.now()).length;
   }
 
   private changeJoinRequest(key: CampaignKey, userId: UserId, decide: (record: CampaignRecord, playing: boolean, reserved: boolean) => NonNullable<CampaignRecord["joinRequests"]>[string] | ServiceRefusal | null): Promise<ServiceResult<CampaignRecord>> {
@@ -391,7 +473,7 @@ export class CampaignLobbyService {
       const { record } = stored;
       if (record.lifecycle !== "active" && record.lifecycle !== "paused") return refused("closed");
       const playing = campaign.state.members[userId]?.characterId != null;
-      const reserved = record.joinRequests?.[userId]?.status === "invited" || record.joinRequests?.[userId]?.status === "approved";
+      const reserved = record.joinRequests?.[userId]?.status === "invited" || record.joinRequests?.[userId]?.status === "approved" || record.joinRequests?.[userId]?.status === "queued";
       const result = decide(record, playing, reserved);
       if (typeof result === "string") return refused(result);
       const joinRequests = { ...(record.joinRequests ?? {}) };

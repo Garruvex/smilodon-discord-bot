@@ -223,9 +223,12 @@ export class CampaignPlayController {
     });
   }
 
-  // roundNumber is the round the form was opened for; the engine refuses it in any other round.
-  public submitAction(key: CampaignKey, userId: UserId, text: string, interactionId: string, roundNumber?: number): Promise<PlayResult> {
-    return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "submitAction", characterId, text, ...(roundNumber === undefined ? {} : { roundNumber }) }));
+  // The form carries both its round and scene so stale drafts cannot cross a room transition.
+  public submitAction(key: CampaignKey, userId: UserId, text: string, interactionId: string, roundNumber?: number, sceneId?: string): Promise<PlayResult> {
+    return this.asHero(key, userId, interactionId, (characterId, state) => {
+      if (sceneId !== undefined && sceneId !== state.sceneId) return "staleRound";
+      return { kind: "submitAction", characterId, text, ...(roundNumber === undefined ? {} : { roundNumber }) };
+    });
   }
 
   public pass(key: CampaignKey, userId: UserId, interactionId: string): Promise<PlayResult> {

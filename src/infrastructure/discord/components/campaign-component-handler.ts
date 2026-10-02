@@ -647,7 +647,11 @@ export class CampaignComponentHandler implements ComponentHandler {
     const result = await this.deps.lobby.joinOngoingHero(record.key, interaction.user.id, interaction.values[0] ?? "", interaction.id);
     if (result.kind === "refused") return void (await interaction.editReply({ content: refusalText(text, result.reason), components: [] }));
     this.deps.cards.refresh(record.key);
-    await interaction.editReply({ content: record.language === "zh-TW" ? "角色已加入隊伍。請查看冒險頻道的登場敘述。" : "Your character has joined the party. Watch the Adventure channel for their entrance.", components: [] });
+    const queued = result.value.joinRequests?.[interaction.user.id]?.status === "queued";
+    const content = queued
+      ? record.language === "zh-TW" ? "角色已選定，並已排入隊伍。這場戰鬥結束後就會加入，請查看冒險頻道的登場敘述。" : "Character selected and queued. You’ll join the party when this encounter ends; watch the Adventure channel for your entrance."
+      : record.language === "zh-TW" ? "角色已加入隊伍。請查看冒險頻道的登場敘述。" : "Your character has joined the party. Watch the Adventure channel for their entrance.";
+    await interaction.editReply({ content, components: [] });
   }
 
   // Every saved version of the player's characters, newest first, as picker options.

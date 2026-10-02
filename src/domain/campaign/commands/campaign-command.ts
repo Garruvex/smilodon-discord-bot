@@ -320,6 +320,8 @@ export interface MonsterStats {
 export interface EncounterMonster {
   readonly monsterId: ContentId<"monster">;
   readonly zoneId: string;
+  // Optional authored role used only for clear visual identification in the Activity.
+  readonly rank?: "boss" | "elite" | "minion";
   // A named NPC this monster plays, e.g. npc:skarn.
   readonly npcId: string | null;
   readonly fleeBelowHpFraction: number | null;

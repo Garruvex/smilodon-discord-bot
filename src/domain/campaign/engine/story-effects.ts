@@ -14,6 +14,7 @@ export function applyStoryEffect(decision: Decision, roundNumber: number, effect
   switch (effect.kind) {
     case "transitionScene":
       decision.emit({ kind: "sceneTransitioned", roundNumber, sceneId: effect.sceneId, ...(moveReason === undefined ? {} : { reason: moveReason }) });
+      decision.request({ kind: "deliver", delivery: { kind: "sceneArrival", sceneId: effect.sceneId, roundNumber } });
       decision.request({ kind: "sceneImage", sceneId: effect.sceneId, roundNumber, snapshot: decision.pictureSnapshot() });
       return;
     case "revealClue":

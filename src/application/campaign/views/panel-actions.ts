@@ -71,9 +71,14 @@ export function panelActions(view: Pick<PanelView, "mode" | "combat" | "pendingM
   // Pause, recovery, and safety are read-only modes. In particular, do not
   // leave Explore available here: it opens spells, travel, and other actions.
   if (view.mode === "paused" || view.mode === "safety" || view.mode === "recovery") return { primary, secondary: ["myHero"] };
+  // Resolution permits only the requested roll (plus safety and presence controls).
+  if (view.mode === "planning" || view.mode === "awaitingRolls") {
+    const toggle: readonly PanelActionId[] = primary.includes("away") ? [] : ["away"];
+    return { primary, secondary: [...safetyControls, ...toggle] };
+  }
   // Away and back are one toggle, present in every state so a player marked away can always return.
   const toggle: readonly PanelActionId[] = primary.includes("away") ? [] : ["away"];
   // Explore (people, shops, spells) is for between fights.
-  const secondary: readonly PanelActionId[] = view.mode === "combat" ? [...safetyControls, ...toggle] : ["explore", ...safetyControls, ...toggle];
+  const secondary: readonly PanelActionId[] = view.mode === "collecting" ? ["explore", ...safetyControls, ...toggle] : [...safetyControls, ...toggle];
   return { primary, secondary };
 }

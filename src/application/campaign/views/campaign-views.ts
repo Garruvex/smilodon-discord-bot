@@ -78,6 +78,7 @@ export interface RosterEntry {
 }
 
 export interface CombatView {
+  readonly encounterId: string;
   readonly round: number;
   readonly activeName: string | null;
   // Next distinct participants in initiative order, wrapping at the round boundary.
@@ -100,6 +101,7 @@ export interface CombatView {
   // Health is shown numerically on the shared combat panel, with a short status.
   readonly foes: readonly {
     readonly name: string;
+    readonly rank?: "boss" | "elite" | "minion" | "standard";
     readonly hp: number;
     readonly maxHp: number;
     readonly band: "unhurt" | "hurt" | "bloodied" | "down";
@@ -488,6 +490,7 @@ function combatViewOf(names: CombatNames, fight: NonNullable<CampaignState["enco
     }
   }
   return {
+    encounterId: fight.id,
     round: fight.round,
     activeName: active === undefined ? null : name(active),
     activeUserId: owner,
@@ -501,6 +504,7 @@ function combatViewOf(names: CombatNames, fight: NonNullable<CampaignState["enco
       .filter((combatant) => combatant.side === "foes")
       .map((combatant) => ({
         name: name(combatant),
+        rank: combatant.rank ?? "standard",
         hp: combatant.hp,
         maxHp: combatant.maxHp,
         band: combatant.hp <= 0 ? "down" : combatant.hp >= combatant.maxHp ? "unhurt" : combatant.hp * 2 > combatant.maxHp ? "hurt" : "bloodied",

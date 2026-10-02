@@ -91,6 +91,7 @@ export interface Combatant {
   readonly id: CombatantId;
   readonly side: Side;
   readonly source: CombatantSource;
+  readonly rank?: "boss" | "elite" | "minion";
   // "A", "B" for repeated monster types; null for heroes and unique foes.
   readonly letter: string | null;
   readonly level: number;

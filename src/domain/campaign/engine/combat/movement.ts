@@ -140,8 +140,14 @@ export function completeMove(decision: Decision): void {
 }
 
 export function performMove(decision: Decision, combatantId: string, kind: "move" | "withdraw", zoneId: string | null, feet: number): void {
-  if (kind === "move" && zoneId !== null) decision.emit({ kind: "combatantMoved", combatantId, zoneId, feet });
-  else decision.emit({ kind: "combatantWithdrew", combatantId, feet });
+  if (kind === "move" && zoneId !== null) {
+    const encounter = decision.state.encounter;
+    decision.emit({ kind: "combatantMoved", combatantId, zoneId, feet });
+    const zoneName = encounter?.zones.find((zone) => zone.id === zoneId)?.name;
+    if (encounter !== null && encounter !== undefined && zoneName !== undefined) {
+      decision.request({ kind: "deliver", delivery: { kind: "combatMove", encounterId: encounter.id, combatantId, zoneName } });
+    }
+  } else decision.emit({ kind: "combatantWithdrew", combatantId, feet });
 }
 
 // Called when an action finishes: resume an interrupted move, or end a turn

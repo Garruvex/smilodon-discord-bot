@@ -45,6 +45,7 @@ export function proposeMove(decision: Decision, roundNumber: number, deferred: r
   if (movers.length > 0 && movers.length * 2 < submissions) return;
   const effects = [move, ...deferred.filter((planned) => planned !== move)].map((planned) => planned.effect).filter(isPartyEffect);
   decision.emit({ kind: "sceneMoveProposed", roundNumber, sceneId, effects, ...(movers.length === 0 ? {} : { heroes: movers }) });
+  decision.request({ kind: "deliver", delivery: { kind: "sceneMoveProposed", sceneId, roundNumber } });
 }
 
 // A player suggests a scene. It waits for the table like any other move, and the window that answers it is the round in progress:
@@ -61,6 +62,7 @@ export function proposeMoveByPlayer(decision: Decision, sceneId: SceneId, effect
   const roundNumber = state.round === null ? state.lastRoundNumber : state.round.number - 1;
   const hero = state.members[userId]?.characterId;
   decision.emit({ kind: "sceneMoveProposed", roundNumber, sceneId, effects, by: userId, ...(hero === null || hero === undefined ? {} : { heroes: [hero] }) });
+  decision.request({ kind: "deliver", delivery: { kind: "sceneMoveProposed", sceneId, roundNumber } });
   return null;
 }
 

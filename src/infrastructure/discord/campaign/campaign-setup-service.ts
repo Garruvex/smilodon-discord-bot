@@ -215,7 +215,7 @@ export class CampaignSetupService {
           settings = { ...settings, privateGamesRoleId: roleId };
           await unitOfWork.transaction((tx) => tx.saveGuildSettings(settings!));
         }
-        const invited = Object.entries(stored.record.joinRequests ?? {}).filter(([, request]) => (request.status === "invited" || request.status === "approved") && request.expiresAt > Date.now()).map(([userId]) => userId);
+        const invited = Object.entries(stored.record.joinRequests ?? {}).filter(([, request]) => (request.status === "invited" || request.status === "approved" || request.status === "queued") && request.expiresAt > Date.now()).map(([userId]) => userId);
         const players = [...new Set([stored.record.organizerId, ...activeMembers(stored.record.lobby).map((member) => member.userId), ...invited])];
         for (const userId of players) await resources.grantRole(key.guildId, roleId, userId);
         return { kind: "applied", roleId };
