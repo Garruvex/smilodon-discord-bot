@@ -390,6 +390,10 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
           }
           case "pass": return activityPlay.pass(key, userId, id).then(mapPlayResult);
           case "toggleMoveObjection": return activityPlay.toggleMoveObjection(key, userId, id).then(mapPlayResult);
+          case "moveVote": {
+            if (action.choice !== "go" && action.choice !== "stay") return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.voteOnMove(key, userId, action.choice, id).then(mapPlayResult);
+          }
           case "roll": return activityPlay.roll(key, userId, id).then(mapPlayResult);
           case "ready": return activityPlay.ready(key, userId, id).then(mapPlayResult);
           case "begin": return activityPlay.begin(key, userId, id).then(mapPlayResult);

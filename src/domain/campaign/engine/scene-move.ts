@@ -37,6 +37,8 @@ export function proposeMove(decision: Decision, roundNumber: number, deferred: r
   if (move === undefined || move.effect.kind !== "transitionScene") return;
   const { sceneId } = move.effect;
   if (decision.state.pendingMove?.sceneId === sceneId) return;
+  // The table already said no to this room: only a player's suggestion or the story brings it back.
+  if (decision.state.sceneMoveDeclinedScene === sceneId) return;
   // The party moves together: one hero's wish does not send everyone. Heroes who act are counted from the round in progress.
   const submissions = Object.values(decision.state.round?.submissions ?? {}).filter((submission) => submission.kind === "action").length;
   const movers = move.movers ?? [];
@@ -67,10 +69,29 @@ export function objectToMove(decision: Decision): Rejection | null {
   if (typeof userId !== "string") return userId;
   const { pendingMove } = decision.state;
   if (pendingMove === undefined) return { code: "noPendingMove" };
+  if (pendingMove.supporters?.includes(userId)) decision.emit({ kind: "sceneMoveSupportWithdrawn", userId });
   if (!pendingMove.objectors.includes(userId)) decision.emit({ kind: "sceneMoveObjected", userId });
   // Enough have pressed Stay that waiting cannot change the answer (silence only ever adds Go): settle now, and the round carries on.
   const { pendingMove: current } = decision.state;
   if (current !== undefined && stays(decision.state, current.objectors)) settle(decision, decision.state.round?.number ?? decision.state.lastRoundNumber, "stay", "table");
+  return null;
+}
+
+export function supportMove(decision: Decision): Rejection | null {
+  const userId = presentPlayer(decision);
+  if (typeof userId !== "string") return userId;
+  const { pendingMove } = decision.state;
+  if (pendingMove === undefined) return { code: "noPendingMove" };
+  if (!pendingMove.supporters?.includes(userId)) decision.emit({ kind: "sceneMoveSupported", userId });
+  return null;
+}
+
+export function withdrawMoveSupport(decision: Decision): Rejection | null {
+  const userId = presentPlayer(decision);
+  if (typeof userId !== "string") return userId;
+  const { pendingMove } = decision.state;
+  if (pendingMove === undefined) return { code: "noPendingMove" };
+  if (pendingMove.supporters?.includes(userId)) decision.emit({ kind: "sceneMoveSupportWithdrawn", userId });
   return null;
 }
 

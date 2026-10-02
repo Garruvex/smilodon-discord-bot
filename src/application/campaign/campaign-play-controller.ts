@@ -252,6 +252,14 @@ export class CampaignPlayController {
     }).then((result) => (result.kind === "ok" ? { ...result, staying } : result));
   }
 
+  public voteOnMove(key: CampaignKey, userId: UserId, choice: "go" | "stay", interactionId: string): Promise<PlayResult> {
+    return this.perform(key, userId, interactionId, (state) => {
+      if (state.pendingMove === undefined) return "noPendingMove";
+      if (choice === "stay") return state.pendingMove.objectors.includes(userId) ? { kind: "withdrawObjection" } : { kind: "objectToMove" };
+      return state.pendingMove.supporters?.includes(userId) ? { kind: "withdrawMoveSupport" } : { kind: "supportMove" };
+    });
+  }
+
   public away(key: CampaignKey, userId: UserId, interactionId: string): Promise<PlayResult> {
     return this.perform(key, userId, interactionId, () => ({ kind: "markAway", userId }));
   }

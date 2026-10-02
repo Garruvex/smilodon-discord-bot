@@ -73,25 +73,33 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       if (state.round?.number !== event.roundNumber) return state;
       { const { sceneMoveSettledRound: _round, sceneMoveSettledDestination: _destination, ...rest } = state; return { ...rest, round: null }; }
     case "sceneTransitioned":
-      return { ...state, sceneId: event.sceneId, sceneChangedRound: event.roundNumber, visits: visitsAfterMove(state, event.sceneId, event.roundNumber, event.reason) };
+      return { ...omitDeclined(state), sceneId: event.sceneId, sceneChangedRound: event.roundNumber, visits: visitsAfterMove(state, event.sceneId, event.roundNumber, event.reason) };
     case "sceneVisitStarted":
       return { ...state, visits: state.visits ?? [{ id: "visit-1", sceneId: event.sceneId, arrivedRound: event.roundNumber }] };
     case "sceneVisitNarrationClosed":
       return { ...state, visits: (state.visits ?? []).map((visit) => visit.sceneId === event.sceneId && visit.leftRound === undefined ? { ...visit, narratedThroughRound: event.roundNumber } : visit) };
     case "sceneMoveProposed":
-      return { ...state, pendingMove: { sceneId: event.sceneId, proposedRound: event.roundNumber, effects: event.effects, objectors: [], ...(event.heroes === undefined ? {} : { heroes: event.heroes }) } };
+      return { ...state, pendingMove: { sceneId: event.sceneId, proposedRound: event.roundNumber, effects: event.effects, objectors: [], supporters: [], ...(event.by === undefined ? {} : { proposedBy: event.by }), ...(event.heroes === undefined ? {} : { heroes: event.heroes }) } };
     case "sceneMoveObjected":
       return state.pendingMove === undefined || state.pendingMove.objectors.includes(event.userId)
         ? state
-        : { ...state, pendingMove: { ...state.pendingMove, objectors: [...state.pendingMove.objectors, event.userId] } };
+        : { ...state, pendingMove: { ...state.pendingMove, supporters: (state.pendingMove.supporters ?? []).filter((userId) => userId !== event.userId), objectors: [...state.pendingMove.objectors, event.userId] } };
     case "sceneMoveObjectionWithdrawn":
       return state.pendingMove === undefined
         ? state
         : { ...state, pendingMove: { ...state.pendingMove, objectors: state.pendingMove.objectors.filter((userId) => userId !== event.userId) } };
+    case "sceneMoveSupported":
+      return state.pendingMove === undefined || state.pendingMove.supporters?.includes(event.userId)
+        ? state
+        : { ...state, pendingMove: { ...state.pendingMove, objectors: state.pendingMove.objectors.filter((userId) => userId !== event.userId), supporters: [...(state.pendingMove.supporters ?? []), event.userId] } };
+    case "sceneMoveSupportWithdrawn":
+      return state.pendingMove === undefined
+        ? state
+        : { ...state, pendingMove: { ...state.pendingMove, supporters: (state.pendingMove.supporters ?? []).filter((userId) => userId !== event.userId) } };
     case "sceneMoveAgreed":
     case "sceneMoveDeclined": {
       const { pendingMove: _settled, ...rest } = state;
-      return { ...rest, sceneMoveSettledRound: event.roundNumber, sceneMoveSettledDestination: event.kind === "sceneMoveAgreed" ? event.sceneId : null };
+      return { ...rest, sceneMoveSettledRound: event.roundNumber, sceneMoveSettledDestination: event.kind === "sceneMoveAgreed" ? event.sceneId : null, ...(event.kind === "sceneMoveDeclined" ? { sceneMoveDeclinedScene: event.sceneId } : {}) };
     }
     case "proxyGranted":
       return { ...state, proxies: { ...(state.proxies ?? {}), [event.ownerUserId]: event.proxyUserId } };
@@ -570,4 +578,9 @@ function visitsAfterMove(state: CampaignState, sceneId: SceneId, roundNumber: nu
     arrivedBy: reason ?? "story",
   };
   return [...left, arrival];
+}
+
+function omitDeclined(state: CampaignState): CampaignState {
+  const { sceneMoveDeclinedScene: _declined, ...rest } = state;
+  return rest;
 }

@@ -48,6 +48,8 @@ export type CampaignCommand =
   // The party is heading to a new scene. A player presses Stay to object, or takes it back.
   | { readonly kind: "objectToMove" }
   | { readonly kind: "withdrawObjection" }
+  | { readonly kind: "supportMove" }
+  | { readonly kind: "withdrawMoveSupport" }
   // The organizer settles a pending move now: the party goes, or stays where it is.
   | { readonly kind: "settleMove"; readonly outcome: "go" | "stay" }
   // Resumes a campaign that was waiting for players.

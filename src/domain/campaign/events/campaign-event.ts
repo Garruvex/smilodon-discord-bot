@@ -83,6 +83,8 @@ export type CampaignEvent =
   | { readonly kind: "sceneMoveProposed"; readonly roundNumber: number; readonly sceneId: SceneId; readonly effects: readonly PartyEffect[]; readonly by?: UserId; readonly heroes?: readonly CharacterId[] }
   | { readonly kind: "sceneMoveObjected"; readonly userId: UserId }
   | { readonly kind: "sceneMoveObjectionWithdrawn"; readonly userId: UserId }
+  | { readonly kind: "sceneMoveSupported"; readonly userId: UserId }
+  | { readonly kind: "sceneMoveSupportWithdrawn"; readonly userId: UserId }
   | { readonly kind: "sceneMoveAgreed"; readonly roundNumber: number; readonly sceneId: SceneId; readonly objectors: readonly UserId[]; readonly by: "table" | "organizer" }
   | { readonly kind: "sceneMoveDeclined"; readonly roundNumber: number; readonly sceneId: SceneId; readonly objectors: readonly UserId[]; readonly by: "table" | "organizer" }
   | { readonly kind: "encounterQueued"; readonly roundNumber: number; readonly encounter: EncounterSpec }

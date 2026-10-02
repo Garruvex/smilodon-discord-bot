@@ -40,6 +40,7 @@ let mapOffset = { x: 0, y: 0 };
 const lifecycleKeys = { lobby: "activity.lobby.status.open", active: "activity.lobby.status.live", paused: "activity.lobby.status.paused" };
 const actionKeys = { join: "activity.lobby.action.join", continue: "activity.lobby.action.continue", request: "activity.lobby.action.request", requested: "activity.lobby.action.requested", invited: "activity.lobby.action.invited", full: "activity.lobby.action.full", resume: "activity.lobby.action.continue" };
 const phaseKeys = { opening: "activity.phase.opening", readyCheck: "activity.status.gathering", collecting: "activity.phase.collecting", planning: "activity.phase.planning", awaitingRolls: "activity.phase.awaitingRolls", combat: "activity.phase.combat", waiting: "activity.phase.waiting", paused: "activity.phase.paused", safety: "activity.phase.safety", recovery: "activity.phase.recovery", archived: "activity.phase.archived" };
+const stageKeys = ["activity.stage.setup", "activity.stage.explore", "activity.stage.vote", "activity.stage.story", "activity.stage.combat"];
 const apiErrorKeys = {
   ...Object.fromEntries(["actionTooLong", "emptyAction", "invalidAction", "heroFallen", "moveDecisionPending", "roundNotCollecting", "memberAway", "campaignWaiting", "staleRound"].map((code) => [code, `activity.error.${code}`])),
   noOpenRound: "activity.error.roundNotCollecting",
@@ -221,7 +222,11 @@ function makeButton(label, onClick, primary = false, iconName = null) {
   const text = document.createElement("span");
   text.textContent = label;
   button.append(text);
-  button.addEventListener("click", onClick);
+  button.addEventListener("click", (event) => {
+    onClick(event);
+    // The press went out: this button shows it, and the rest wait until the table answers.
+    if (actionInFlight) button.classList.add("is-pending");
+  });
   return button;
 }
 
@@ -367,13 +372,17 @@ function renderGame(game) {
 
 function paintGame(game) {
   classNames = game.classNames ?? {};
+  liveScreen.dataset.mode = game.kind === "lobby" ? "lobby" : game.mode;
   document.querySelector("#live-campaign").textContent = game.campaignName;
   document.querySelector("#live-adventure").textContent = game.adventureTitle.toLocaleUpperCase();
-  document.querySelector("#live-scene-title").textContent = game.kind === "lobby" ? t("activity.scene.chooseHero") : game.scene.title;
+  document.querySelector("#live-scene-eyebrow").textContent = game.kind === "lobby" ? t("activity.lobby.setupEyebrow") : t("activity.scene.label");
+  document.querySelector("#live-scene-title").textContent = game.kind === "lobby" ? t("activity.lobby.chooseCharacter") : game.scene.title;
   document.querySelector("#live-scene-description").textContent = game.kind === "lobby"
-    ? t("activity.scene.chooseHeroDescription")
+    ? t("activity.lobby.chooseCharacterDescription")
     : game.scene.description;
   renderMoveNotice(game.kind === "table" ? game.pendingMove : null);
+  renderStageTrack(game);
+  showRolls(game.kind === "table" ? game.rolls ?? [] : []);
   document.querySelector(".live-scene").classList.toggle("has-enemies", game.kind === "table" && (game.foes?.length ?? 0) > 0);
   void setArtwork(document.querySelector("#live-scene-image"), document.querySelector(".scene-art-fallback"), game.kind === "table" ? game.scene.imageUrl : null, game.scene.title, true);
   if (game.kind === "lobby") {
@@ -405,19 +414,47 @@ function renderMoveNotice(move) {
   }
   const line = (className, text) => { const item = document.createElement("span"); item.className = className; item.textContent = text; return item; };
   const heading = line("move-heading", t("activity.move.heading", { scene: move.sceneTitle }));
-  const tally = line("move-tally", t("activity.move.tally", { count: move.staying.length, present: move.present, needed: move.needed }));
+  const proposedBy = line("move-proposer", t(move.proposedBy ? "activity.move.proposedBy" : "activity.move.proposedByStory", { name: move.proposedBy ?? "" }));
+  const description = move.sceneDescription ? line("move-description", move.sceneDescription) : null;
+  const tally = line("move-tally", t("activity.move.tallyChoices", { go: move.supporters?.length ?? 0, stay: move.staying.length, present: move.present, undecided: Math.max(0, move.present - (move.supporters?.length ?? 0) - move.staying.length), needed: move.needed }));
+  const going = move.supporters?.length ? line("move-names", t("activity.move.going", { names: move.supporters.join(", ") })) : null;
   const names = move.staying.length ? line("move-names", t("activity.move.staying", { names: move.staying.join(", ") })) : null;
   const clock = line("move-clock", "");
-  notice.replaceChildren(heading, line("move-paused", t("activity.move.paused")), tally, ...(names ? [names] : []), clock);
+  notice.replaceChildren(heading, proposedBy, ...(description ? [description] : []), line("move-paused", t("activity.move.paused")), tally, ...(going ? [going] : []), ...(names ? [names] : []), clock);
   const tick = () => {
     const left = Math.max(0, Math.ceil((move.closesAt - Date.now()) / 1000));
-    clock.textContent = left === 0 ? t("activity.move.deciding") : t("activity.move.countdown", { time: `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}` });
+    if (left === 0) clock.textContent = t("activity.move.deciding");
+    else {
+      const days = Math.floor(left / 86400), hours = Math.floor((left % 86400) / 3600), minutes = Math.floor((left % 3600) / 60), seconds = left % 60;
+      const time = days ? t("activity.move.daysHours", { days, hours }) : hours ? t("activity.move.hoursMinutes", { hours, minutes }) : `${minutes}:${String(seconds).padStart(2, "0")}`;
+      clock.textContent = t("activity.move.countdown", { time });
+    }
   };
   clock.hidden = move.closesAt === null;
   if (move.closesAt !== null) {
     tick();
     moveCountdown = setInterval(tick, 1000);
   }
+}
+
+function renderStageTrack(game) {
+  const track = document.querySelector("#live-stage-track");
+  const detail = document.querySelector("#live-stage-detail");
+  if (game.kind === "lobby") { track.hidden = true; detail.hidden = true; return; }
+  track.hidden = false; detail.hidden = false;
+  const mode = game.pendingMove ? "vote" : game.mode === "combat" ? "combat" : ["planning", "awaitingRolls"].includes(game.mode) ? "story" : ["opening", "readyCheck", "waiting"].includes(game.mode) ? "setup" : "explore";
+  const activeIndex = ({ setup: 0, explore: 1, vote: 2, story: 3, combat: 4 })[mode];
+  track.dataset.stage = mode;
+  track.replaceChildren(...stageKeys.map((key, index) => {
+    const item = document.createElement("span");
+    item.className = "live-stage";
+    item.dataset.state = index === activeIndex ? "current" : index < activeIndex ? "past" : "next";
+    if (index > 0) item.append(Object.assign(document.createElement("i"), { className: "stage-connector", "aria-hidden": "true" }));
+    item.append(Object.assign(document.createElement("strong"), { textContent: t(key) }));
+    return item;
+  }));
+  const detailKey = game.pendingMove ? "activity.stage.detailVote" : game.mode === "combat" ? "activity.stage.detailCombat" : game.mode === "planning" ? "activity.stage.detailStory" : game.mode === "awaitingRolls" ? "activity.stage.detailRolls" : game.mode === "collecting" ? (game.submission ? "activity.stage.detailSubmitted" : "activity.stage.detailExplore") : `activity.stage.detail.${game.mode}`;
+  detail.textContent = t(detailKey, { name: game.activeName ?? "" });
 }
 
 // One entry of a map key: its colour swatch and its label.
@@ -779,19 +816,20 @@ function bindMapControls() {
 
 function renderLobby(game) {
   document.querySelector("#hero-workspace-tabs").hidden = true;
+  document.querySelector("#hero-workspace-label").textContent = t("activity.lobby.yourCharacter");
   document.querySelectorAll(".hero-tab-panel").forEach((panel) => { panel.hidden = panel.id !== "hero-panel-actions"; });
   document.querySelector("#live-phase").textContent = t("activity.status.openTable");
   document.querySelector("#live-round").textContent = t("activity.status.seats", { count: game.playerCount, max: game.maxPlayers });
   document.querySelector(".live-phase").dataset.mode = "lobby";
-  document.querySelector("#live-turn").textContent = game.selectedHeroId ? t("activity.hero.ready") : t("activity.status.chooseHero");
+  document.querySelector("#live-turn").textContent = game.selectedHeroId ? t("activity.lobby.characterSelected") : t("activity.lobby.chooseCharacter");
   document.querySelector("#live-turn").classList.remove("is-active");
-  document.querySelector("#live-hero-name").textContent = game.selectedHeroName ?? t("activity.hero.name");
-  document.querySelector("#live-hero-subtitle").textContent = classText(game.selectedHeroClass) ?? t("activity.hero.chooseAvailable");
+  document.querySelector("#live-hero-name").textContent = game.selectedHeroName ?? t("activity.lobby.noCharacterSelected");
+  document.querySelector("#live-hero-subtitle").textContent = classText(game.selectedHeroClass) ?? t("activity.lobby.chooseCharacter");
   document.querySelector("#live-hero-hp").textContent = t("activity.hero.preGame");
   document.querySelector("#live-hero-ac").textContent = "";
   updateHealthMeter(0, 1);
   document.querySelector("#member-overview").hidden = true;
-  document.querySelector("#live-hero-class").textContent = t("activity.hero.choose");
+  document.querySelector("#live-hero-class").textContent = t("activity.lobby.yourCharacter");
   setHeroWatermark(null);
   document.querySelector("#live-hero-sigil").replaceChildren(iconImage("shape"));
   void setArtwork(document.querySelector("#live-hero-image"), document.querySelector("#live-hero-sigil"), null, "");
@@ -799,11 +837,45 @@ function renderLobby(game) {
   document.querySelector("#live-equipment").replaceChildren();
   liveEnemies.replaceChildren();
   liveActions.replaceChildren();
+  const choices = document.createElement("details");
+  choices.className = "lobby-presets";
+  const choicesHeading = document.createElement("summary");
+  choicesHeading.textContent = `${t("activity.lobby.adventureCharacters")} · ${game.heroChoices.length}`;
+  const choiceList = document.createElement("div");
+  choiceList.className = "lobby-preset-list";
   for (const hero of game.heroChoices) {
-    const button = makeButton(t("activity.action.chooseHero", { name: hero.name, class: classText(hero.className) }) + (hero.available ? "" : t("activity.action.chosen")), () => void performAction({ kind: "chooseHero", heroId: hero.id }), hero.id === game.selectedHeroId);
+    const button = makeButton(t("activity.action.chooseHero", { name: hero.name, class: classText(hero.className) }) + (hero.available ? "" : t("activity.action.chosen")), () => {
+      if (currentGameId === "local-preview") {
+        document.querySelector("#live-hero-name").textContent = hero.name;
+        document.querySelector("#live-hero-subtitle").textContent = classText(hero.className);
+        document.querySelector("#live-turn").textContent = t("activity.lobby.characterSelected");
+      } else void performAction({ kind: "chooseHero", heroId: hero.id });
+    }, hero.id === game.selectedHeroId);
     button.disabled = !hero.available;
-    liveActions.append(button);
+    choiceList.append(button);
   }
+  choices.append(choicesHeading, choiceList);
+  const createCard = document.createElement("section");
+  createCard.className = "lobby-create-card";
+  const createCopy = document.createElement("div");
+  const createTitle = document.createElement("h3");
+  createTitle.textContent = t("activity.lobby.createCharacter");
+  const createDescription = document.createElement("p");
+  createDescription.textContent = t("activity.lobby.createCharacterDescription");
+  createCopy.append(createTitle, createDescription);
+  const createButton = makeButton(t("activity.lobby.startCreator"), () => openCharacterCreator(), true, "shape");
+  createCard.append(createCopy, createButton);
+  liveActions.append(createCard);
+  const saved = document.createElement("section");
+  saved.className = "lobby-saved-card";
+  const savedHeading = document.createElement("h3");
+  savedHeading.textContent = t("activity.lobby.savedCharacters");
+  const savedButton = makeButton(t("activity.lobby.previewSavedCharacter"), () => {
+    setLiveMessage(t("activity.lobby.savedCharacterPreview"));
+  });
+  saved.append(savedHeading, savedButton);
+  liveActions.append(saved);
+  liveActions.append(choices);
   if (game.joinRequestStatus === "requested") liveActions.append(makeButton(t("activity.action.withdrawJoin"), () => void performAction({ kind: "withdrawJoin" })));
   if (game.canStart) liveActions.append(makeButton(t("activity.action.startAdventure"), () => void performAction({ kind: "startLobby" }), true));
   renderParty(game.members.map((member, index) => ({
@@ -822,8 +894,48 @@ function renderLobby(game) {
     tableStatus: member.ready ? "submitted" : "waiting",
   })));
   document.querySelector("#live-party-count").textContent = t("activity.lobby.players", { count: game.playerCount, max: game.maxPlayers });
-  setLiveMessage(game.startBlockReason === "notEnoughPlayers" ? t("activity.status.waitingPlayers") : game.startBlockReason === "notReady" ? t("activity.status.waitingReady") : game.selectedHeroId ? t("activity.status.readyOrganizer") : t("activity.status.chooseReserve"));
+  setLiveMessage(game.startBlockReason === "notEnoughPlayers" ? t("activity.status.waitingPlayers") : game.startBlockReason === "notReady" ? t("activity.lobby.waitingReady") : game.selectedHeroId ? t("activity.status.readyOrganizer") : t("activity.lobby.chooseCharacterPrompt"));
 }
+
+function openCharacterCreator() {
+  const dialog = document.querySelector("#character-builder-dialog");
+  dialog.showModal();
+}
+
+function wireCharacterCreator() {
+  const dialog = document.querySelector("#character-builder-dialog");
+  dialog.querySelector("textarea").value = "";
+  for (const option of dialog.querySelectorAll("#builder-class option")) option.dataset.i18n = `activity.creator.classOption.${option.textContent.trim().toLowerCase()}`;
+  const raceKeys = { Human: "human", "Wood Elf": "woodElf", Dwarf: "hillDwarf", Halfling: "lightfootHalfling", Dragonborn: "dragonborn", Gnome: "gnome", "Half-Elf": "halfElf", "Half-Orc": "halfOrc", Tiefling: "tiefling" };
+  for (const option of dialog.querySelectorAll("#builder-race option")) option.dataset.i18n = `activity.creator.race.${raceKeys[option.textContent.trim()]}`;
+  for (const option of dialog.querySelectorAll(".builder-fields select option")) {
+    const key = { Perception: "activity.creator.skill.perception", Stealth: "activity.creator.skill.stealth", Survival: "activity.creator.skill.survival", "Explorer’s kit": "activity.creator.kit.explorer", "Dungeoneer’s kit": "activity.creator.kit.dungeoneer" }[option.textContent.trim()];
+    if (key) option.dataset.i18n = key;
+  }
+  const steps = [...dialog.querySelectorAll("[data-builder-step]")];
+  const panels = [...dialog.querySelectorAll("[data-builder-panel]")];
+  const setStep = (step) => {
+    steps.forEach((button) => button.setAttribute("aria-current", String(button.dataset.builderStep === step)));
+    panels.forEach((panel) => { panel.hidden = panel.dataset.builderPanel !== step; });
+    if (step === "review") {
+      dialog.querySelector("#builder-review-name").textContent = dialog.querySelector("#builder-name").value.trim() || t("activity.lobby.newCharacter");
+      dialog.querySelector("#builder-review-subtitle").textContent = `${dialog.querySelector("#builder-race").selectedOptions[0].textContent} ${dialog.querySelector("#builder-class").selectedOptions[0].textContent} · ${t("activity.lobby.levelOne")}`;
+    }
+  };
+  steps.forEach((button) => button.addEventListener("click", () => setStep(button.dataset.builderStep)));
+  dialog.querySelector("[data-builder-close]").addEventListener("click", () => dialog.close());
+  dialog.querySelector("[data-builder-save]").addEventListener("click", () => {
+    const name = dialog.querySelector("#builder-name").value.trim() || t("activity.lobby.newCharacter");
+    const className = dialog.querySelector("#builder-class").value;
+    document.querySelector("#live-hero-name").textContent = name;
+    document.querySelector("#live-hero-subtitle").textContent = `${dialog.querySelector("#builder-race").selectedOptions[0].textContent} ${classText(className)}`;
+    document.querySelector("#live-turn").textContent = t("activity.lobby.characterSelected");
+    setLiveMessage(t("activity.lobby.previewSaved"));
+    dialog.close();
+  });
+}
+
+wireCharacterCreator();
 
 function renderTable(game) {
   const phase = t(phaseKeys[game.mode] ?? "activity.phase.adventure");
@@ -1394,15 +1506,17 @@ function buildTableActions(game, liveActions, log) {
   }
   const top = [], composer = [], bottom = [];
   const groups = new Map(actionCategoryOrder.map((category) => [category, []]));
-  const addAction = (label, action, primary = false) => {
+  const addAction = (label, action, primary = false, selected = false) => {
     log.push(JSON.stringify(action));
     const button = makeButton(label, () => void performAction(action), primary, actionIcon[action.kind] ?? "notice");
+    if (action.kind === "moveVote") { button.dataset.choice = action.choice; button.dataset.selected = String(selected); }
     const place = actionPlacement[action.kind];
     (place === "top" ? top : place === "composer" ? composer : place === "bottom" ? bottom : groups.get(actionCategoryOf[action.kind] ?? "other")).push(button);
   };
   if (game.pendingMove && game.mode === "collecting") {
-    const label = t(game.pendingMove.stayingByYou ? "activity.move.withdrawStay" : "activity.move.stayHere");
-    addAction(label, { kind: "toggleMoveObjection" }, true);
+    const choice = game.pendingMove.choiceByYou;
+    addAction(t(choice === "go" ? "activity.move.withdrawGo" : "activity.move.voteGo"), { kind: "moveVote", choice: "go" }, choice !== "go", choice === "go");
+    addAction(t(choice === "stay" ? "activity.move.withdrawStay" : "activity.move.voteStay"), { kind: "moveVote", choice: "stay" }, choice === "stay", choice === "stay");
     const voteRow = document.createElement("div");
     voteRow.className = "action-row action-urgent";
     voteRow.append(...top);
@@ -1550,19 +1664,74 @@ function buildTableActions(game, liveActions, log) {
   }
 }
 
+let actionInFlight = false;
+
+// A settled roll of the viewer's hero: numbers tumble for a moment, then the real result stays up. Each roll shows once; what was
+// already settled when the page opened is marked seen without a show.
+const seenRolls = new Set();
+let rollsPrimed = false;
+let rollToastTimer = 0;
+
+function showRolls(rolls) {
+  const fresh = rolls.filter((roll) => !seenRolls.has(roll.id));
+  for (const roll of rolls) seenRolls.add(roll.id);
+  if (!rollsPrimed) { rollsPrimed = true; return; }
+  const roll = fresh.at(-1);
+  if (!roll) return;
+  let toast = document.querySelector("#roll-toast");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "roll-toast";
+    toast.setAttribute("role", "status");
+    document.body.append(toast);
+  }
+  const modifier = roll.total - roll.natural;
+  const sum = `${modifier < 0 ? "−" : "+"} ${Math.abs(modifier)}`;
+  const label = document.createElement("div");
+  label.className = "roll-toast-label";
+  label.textContent = rollLabel(roll.test);
+  const number = document.createElement("div");
+  number.className = "roll-toast-number";
+  const detail = document.createElement("div");
+  detail.className = "roll-toast-detail";
+  toast.replaceChildren(label, number, detail);
+  toast.className = "is-tumbling";
+  clearTimeout(rollToastTimer);
+  let ticks = 0;
+  const tumble = setInterval(() => {
+    number.textContent = String(1 + Math.floor(Math.random() * 20));
+    if (++ticks < 11) return;
+    clearInterval(tumble);
+    number.textContent = String(roll.natural);
+    detail.textContent = t("activity.roll.result", { natural: roll.natural, sum, total: roll.total, dc: roll.dc, outcome: t(roll.success ? "activity.roll.success" : "activity.roll.failure") });
+    toast.className = roll.success ? "is-success" : "is-failure";
+    rollToastTimer = setTimeout(() => { toast.className = ""; }, 5000);
+  }, 80);
+}
+
 async function performAction(action) {
-  if (currentGameId === null) return;
+  if (currentGameId === null || actionInFlight) return;
   if (action.kind === "details") return openDetails();
   const body = { ...action };
   for (const [key, value] of Object.entries(body)) if (typeof value === "function") body[key] = value();
   setLiveMessage(t("activity.status.sendingAction"));
+  actionInFlight = true;
+  document.body.classList.add("is-sending");
   try {
     const payload = await requestJson(`/api/activity/games/${encodeURIComponent(currentGameId)}/action`, { method: "POST", body: JSON.stringify(body) });
     currentSnapshot = payload.snapshot;
     renderGame(currentSnapshot);
+    if (["combatSpell", "exploreSpell", "healSpell", "reviveSpell", "summonCompanion", "teleport"].includes(action.kind)) {
+      const spell = String(action.spellId ?? "").replace(/^spell:/, "").replaceAll("-", " ");
+      setLiveMessage(t("activity.status.castSuccess", { spell }));
+    } else if (action.kind === "moveVote") setLiveMessage(t(action.choice === "stay" ? "activity.status.moveVoteStay" : "activity.status.moveVoteGo"));
+    else setLiveMessage(t("activity.status.actionSuccess"));
   } catch (error) {
     setLiveMessage(error instanceof Error ? error.message : t("activity.status.actionFailed"));
     await loadTable();
+  } finally {
+    actionInFlight = false;
+    document.body.classList.remove("is-sending");
   }
 }
 
@@ -1770,6 +1939,25 @@ if (new URLSearchParams(window.location.search).has("design-preview")) {
   const preview = designPreviewSnapshot();
   const previewLanguage = new URLSearchParams(window.location.search).get("language") === "zh-TW" ? "zh-TW" : "en";
   currentSnapshot = preview;
+  if (new URLSearchParams(window.location.search).has("lobby-preview")) {
+    currentGameId = "local-preview";
+    Object.assign(preview, {
+      kind: "lobby", campaignName: "The Lantern Company", adventureTitle: "Moonlit Ruins", language: previewLanguage,
+      playerCount: 3, maxPlayers: 6, canStart: false, startBlockReason: "notReady", selectedHeroId: null,
+      selectedHeroName: null, selectedHeroClass: null,
+      members: [
+        { heroName: "Thorne Oakshield", className: "Paladin", ready: true, isYou: false },
+        { heroName: "Aria Vell", className: "Wizard", ready: true, isYou: false },
+        { heroName: previewLanguage === "zh-TW" ? "選擇角色中" : "Choosing a character", className: null, ready: false, isYou: true },
+      ],
+      heroChoices: [
+        { id: "mira", name: "Mira Fen", className: "Ranger", available: true },
+        { id: "pip", name: "Pip Underbough", className: "Rogue", available: true },
+        { id: "sable", name: "Sable Dusk", className: "Cleric", available: false },
+      ],
+    });
+    void setLanguage(previewLanguage).then(() => { setTableConnectionState("live"); renderGame(preview); });
+  } else {
   if (new URLSearchParams(window.location.search).has("state-preview")) {
     const effects = previewLanguage === "zh-TW" ? ["專注", "祝福"] : ["Concentrating", "Blessed"];
     preview.party = preview.party.map((hero) => hero.characterId === "aria" ? { ...hero, hp: 21, conditions: effects } : hero);
@@ -1803,9 +1991,10 @@ if (new URLSearchParams(window.location.search).has("design-preview")) {
     preview.activeName = null;
     preview.foes = [];
     preview.turn = null;
-    if (new URLSearchParams(window.location.search).has("vote")) preview.pendingMove = { sceneId: "gallery", present: 6, needed: 3, closesAt: Date.now() + 83000, sceneTitle: "Broken Gallery", staying: ["Thorne Oakshield"], stayingByYou: new URLSearchParams(window.location.search).has("stay") };
+    if (new URLSearchParams(window.location.search).has("vote")) preview.pendingMove = { sceneId: "gallery", present: 6, needed: 3, closesAt: Date.now() + 83000, sceneTitle: "Broken Gallery", sceneDescription: "A moonlit gallery crosses a deep fissure. Its eastern arch leads toward the old observatory.", proposedBy: "Mira Fen", supporters: ["Aria Vell"], staying: ["Thorne Oakshield"], choiceByYou: new URLSearchParams(window.location.search).has("stay") ? "stay" : null };
   }
   void setLanguage(previewLanguage).then(() => { setTableConnectionState("live"); renderGame(preview); });
+  }
 } else {
   void authenticate().catch((error) => {
     console.warn(`Discord Activity failed during ${connectionStage}.`, error);

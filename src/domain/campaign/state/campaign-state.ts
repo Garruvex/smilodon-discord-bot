@@ -72,6 +72,8 @@ export interface CampaignState {
   readonly pendingMove?: PendingMove;
   readonly sceneMoveSettledRound?: number;
   readonly sceneMoveSettledDestination?: SceneId | null;
+  // A scene the table voted to stay out of; the Planner does not propose it again until the party moves on.
+  readonly sceneMoveDeclinedScene?: SceneId;
   // Each stay in a scene, oldest first; the last is where the party is. Absent in
   // games that began before visits were kept: the first move starts the record.
   readonly visits?: readonly SceneVisit[];
@@ -264,7 +266,7 @@ export interface DialogueRecord {
   readonly npcId: NpcId;
   readonly kind: "ask" | "press";
   readonly question: string | null;
-  readonly check: { readonly test: CheckTest; readonly dc: number; readonly total: number; readonly success: boolean; readonly moments: RollMoments } | null;
+  readonly check: { readonly test: CheckTest; readonly dc: number; readonly total: number; readonly natural?: number; readonly success: boolean; readonly moments: RollMoments } | null;
 }
 
 // A ritual spell cast outside combat (engine/utility-magic.ts): no roll, no
@@ -365,6 +367,9 @@ export interface PendingMove {
   // What happens on arrival, the scene change first.
   readonly effects: readonly PartyEffect[];
   readonly objectors: readonly UserId[];
+  // Players who explicitly voted to go; missing votes still follow the table's go-by-silence rule.
+  readonly supporters?: readonly UserId[];
+  readonly proposedBy?: UserId;
   // Who wants to go: the heroes behind the proposal, when it names them.
   readonly heroes?: readonly CharacterId[];
 }

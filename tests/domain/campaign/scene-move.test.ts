@@ -50,6 +50,15 @@ describe("a move the Planner proposes", () => {
     expect(state.round?.number).toBe(2);
   });
 
+  it("is not proposed again once the table has said stay, until the party moves on", () => {
+    let state = run(moveProposed(), alex, { kind: "objectToMove" }).state;
+    expect(state.pendingMove).toBeUndefined();
+    expect(state.sceneMoveDeclinedScene).toBe(chapel);
+    state = playRound(state);
+    state = run(state, system, { kind: "applyRoundPlan", proposal: plan(state, [toChapel]) }).state;
+    expect(state.pendingMove).toBeUndefined();
+  });
+
   it("happens at once when the story forces it", () => {
     const state = moveProposed([{ ...toChapel, forced: true }]);
     expect(state.sceneId).toBe(chapel);

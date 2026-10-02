@@ -198,7 +198,8 @@ export function parsePlannerOutput(text: string, roundNumber: number): PlannerPr
     resolution: toResolution(action, problems),
     ...(action.interactionId == null ? {} : { interactionId: action.interactionId }),
   }));
-  const effects = parsed.data.effects.map((effect) => toEffect(effect, problems));
+  // A scene change nobody's action asked for is not put to the table: the Planner's sense that the story moved on is not a vote.
+  const effects = parsed.data.effects.map((effect) => toEffect(effect, problems)).filter((effect) => effect.kind !== "transitionScene" || (effect.movers?.length ?? 0) > 0);
   if (problems.length > 0) throw new PlannerOutputError(problems);
   // Remaining checks (known skills, ladder tiers, every action planned,
   // authored IDs) are the DM job's and the engine's; their problems feed the retry.

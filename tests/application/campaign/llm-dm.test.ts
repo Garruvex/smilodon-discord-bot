@@ -178,19 +178,25 @@ describe("parsePlannerOutput", () => {
   it("maps story effects, keyed to a check outcome when asked", () => {
     const plan = JSON.parse(validPlan) as Record<string, unknown>;
     plan.effects = [
-      { kind: "transitionScene", target: "scene:ruined-chapel", amount: null, when: "always", characterId: null },
+      { kind: "transitionScene", target: "scene:ruined-chapel", amount: null, when: "always", characterId: null, movers: ["c-mira"] },
       { kind: "startEncounter", target: "encounter:chapel-fight", amount: null, when: "onFailure", characterId: "c-mira" },
       { kind: "advanceClock", target: "clock:scouts-return", amount: 2, when: "onFailure", characterId: "c-mira" },
       { kind: "revealClue", target: "clue:chapel-map", amount: null, when: "onSuccess", characterId: "c-mira" },
     ];
     expect(parsePlannerOutput(JSON.stringify(plan), 3).effects).toEqual([
-      { kind: "transitionScene", sceneId: "scene:ruined-chapel", when: { kind: "always" } },
+      { kind: "transitionScene", sceneId: "scene:ruined-chapel", when: { kind: "always" }, movers: ["c-mira"] },
       { kind: "startEncounter", encounterId: "encounter:chapel-fight", when: { kind: "checkOutcome", characterId: "c-mira", success: false } },
       { kind: "advanceClock", clockId: "clock:scouts-return", by: 2, when: { kind: "checkOutcome", characterId: "c-mira", success: false } },
       { kind: "revealClue", clueId: "clue:chapel-map", when: { kind: "checkOutcome", characterId: "c-mira", success: true } },
     ]);
     plan.effects = [{ kind: "startEncounter", target: "encounter:chapel-fight", amount: null, when: "onSuccess", characterId: null }];
     expect(() => parsePlannerOutput(JSON.stringify(plan), 3)).toThrow("needs the characterId whose check decides it");
+  });
+
+  it("drops a scene change that no hero's action asked for", () => {
+    const plan = JSON.parse(validPlan) as Record<string, unknown>;
+    plan.effects = [{ kind: "transitionScene", target: "scene:ruined-chapel", amount: null, when: "always", characterId: null, movers: [] }];
+    expect(parsePlannerOutput(JSON.stringify(plan), 3).effects).toEqual([]);
   });
 
   it("reads an effect by its target's own prefix when the model labels it with the wrong kind", () => {

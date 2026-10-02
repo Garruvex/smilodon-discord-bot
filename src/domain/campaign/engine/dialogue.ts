@@ -109,7 +109,7 @@ export function recordPressRoll(decision: Decision, press: PendingPress, result:
     npcId: press.npcId,
     kind: "press",
     question: null,
-    check: { test: press.test, dc: press.dc, total: result.roll.total, success: outcome.success, moments },
+    check: { test: press.test, dc: press.dc, total: result.roll.total, natural: result.roll.d20.natural, success: outcome.success, moments },
   };
   settleDialogue(decision, dialogue, outcome.success);
   return null;

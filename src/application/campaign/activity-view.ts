@@ -29,7 +29,7 @@ export interface ActivityTableView {
   readonly roundNumber: number | null;
   readonly scene: { readonly title: string; readonly description: string; readonly imageUrl: string | null };
   // present and needed: how many players vote, and how many Stay votes keep the party where it is. closesAt: when the window closes (epoch ms), or null.
-  readonly pendingMove: null | { readonly sceneId: string; readonly sceneTitle: string; readonly staying: readonly string[]; readonly stayingByYou: boolean; readonly present: number; readonly needed: number; readonly closesAt: number | null };
+  readonly pendingMove: null | { readonly sceneId: string; readonly sceneTitle: string; readonly sceneDescription: string; readonly proposedBy: string | null; readonly supporters: readonly string[]; readonly staying: readonly string[]; readonly choiceByYou: "go" | "stay" | null; readonly present: number; readonly needed: number; readonly closesAt: number | null };
   readonly map:
     | { readonly kind: "battlefield"; readonly zones: readonly { readonly id: string; readonly name: string; readonly lighting: string | null; readonly cover: string | null; readonly difficult: boolean; readonly canMove: boolean; readonly occupants: readonly { readonly name: string; readonly side: "party" | "foes"; readonly active: boolean; readonly hp: number; readonly maxHp: number }[] }[]; readonly edges: readonly { readonly from: string; readonly to: string; readonly feet: number }[] }
     | { readonly kind: "journey"; readonly nodes: readonly { readonly id: string; readonly title: string; readonly status: "current" | "visited" | "known" | "reachable" | "locked"; readonly locked: boolean; readonly deadEnd: boolean; readonly canTravel: boolean; readonly column: number; readonly row: number }[]; readonly routes: readonly { readonly from: string; readonly to: string; readonly oneWay: boolean }[] };
@@ -94,6 +94,8 @@ export interface ActivityTableView {
   readonly explore: (ExploreView & { readonly shops: readonly ShopView[] }) | null;
   readonly pendingRoll: null | { readonly checkId: string; readonly test: CheckTest; readonly action: string | null };
   readonly pendingRollCount: number;
+  // The viewer's newest settled rolls (a check, a press); the client shows each one once.
+  readonly rolls: readonly { readonly id: string; readonly test: CheckTest; readonly natural: number; readonly total: number; readonly dc: number; readonly success: boolean }[];
   readonly submittedCount: number;
   readonly participantCount: number;
   readonly submission: "action" | "pass" | "missed" | "excused" | null;
@@ -153,7 +155,7 @@ export function buildActivityLobbyView(record: CampaignRecord, bible: AdventureB
     members: record.lobby.members.filter((member) => member.status !== "withdrawn").map((member) => {
       const preset = heroes.find((hero) => hero.id === member.heroId);
       return {
-        heroName: member.label?.name ?? preset?.name ?? (member.userId === userId ? "Choose a hero" : "Choosing a hero"),
+        heroName: member.label?.name ?? preset?.name ?? (member.userId === userId ? texts[record.language].activity.lobby.memberChoose : texts[record.language].activity.lobby.memberChoosing),
         className: member.label?.className ?? preset?.class ?? null,
         ready: member.status === "ready",
         isYou: member.userId === userId,
@@ -291,11 +293,23 @@ export function buildActivityTableView(
       needed: Math.ceil(presentMembers(state).length / 2),
       closesAt: state.round?.closesAt ?? null,
       sceneTitle: findScene(bible, state.pendingMove.sceneId)?.title ?? state.pendingMove.sceneId,
+      sceneDescription: findScene(bible, state.pendingMove.sceneId)?.publicDescription ?? "",
+      proposedBy: state.pendingMove.proposedBy === undefined
+        ? state.pendingMove.heroes?.flatMap((id) => state.characters[id]?.name ?? []).join(", ") || null
+        : (() => {
+          const proposer = state.members[state.pendingMove!.proposedBy!];
+          const characterId = proposer?.characterId;
+          return characterId == null ? null : state.characters[characterId]?.name ?? characterId;
+        })(),
+      supporters: (state.pendingMove.supporters ?? []).flatMap((supporter) => {
+        const characterId = state.members[supporter]?.characterId;
+        return characterId == null ? [] : [state.characters[characterId]?.name ?? characterId];
+      }),
       staying: state.pendingMove.objectors.flatMap((objector) => {
         const objectorHero = state.members[objector]?.characterId;
         return objectorHero === null || objectorHero === undefined ? [] : [state.characters[objectorHero]?.name ?? objectorHero];
       }),
-      stayingByYou: state.pendingMove.objectors.includes(userId),
+      choiceByYou: state.pendingMove.objectors.includes(userId) ? "stay" : state.pendingMove.supporters?.includes(userId) ? "go" : null,
     },
     map: panel.combat !== null && state.encounter !== null
       ? {
@@ -340,6 +354,7 @@ export function buildActivityTableView(
         return check === undefined ? null : { checkId: check.id, test: roll.test, action: roll.action };
       })(),
     pendingRollCount: panel.pendingRolls.length,
+    rolls: ownCharacterId === null ? [] : recentRolls(state, ownCharacterId),
     submittedCount: state.round == null ? 0 : Object.values(state.round.submissions).filter((submission) => submission.kind === "action" || submission.kind === "pass").length,
     participantCount: state.round?.participants.length ?? 0,
     submission: roundSubmission?.kind === "action" ? "action" : roundSubmission?.kind ?? null,
@@ -370,4 +385,12 @@ export function canSeeActivityCampaign(record: CampaignRecord, state: CampaignSt
   const invite = record.joinRequests?.[userId];
   const invited = invite !== undefined && invite.expiresAt > now && (invite.status === "invited" || invite.status === "approved");
   return participant || invited;
+}
+
+function recentRolls(state: CampaignState, characterId: string) {
+  const checks = Object.values(state.checks).filter((check) => check.characterId === characterId && check.result !== null).sort((a, b) => b.roundNumber - a.roundNumber).slice(0, 1)
+    .map((check) => ({ id: check.id as string, test: check.test, natural: check.result!.roll.d20.natural, total: check.result!.roll.total, dc: check.dc, success: check.result!.success }));
+  const presses = Object.values(state.dialogues).filter((dialogue) => dialogue.characterId === characterId && dialogue.check?.natural !== undefined).slice(-1)
+    .map((dialogue) => ({ id: dialogue.id, test: dialogue.check!.test, natural: dialogue.check!.natural!, total: dialogue.check!.total, dc: dialogue.check!.dc, success: dialogue.check!.success }));
+  return [...checks, ...presses];
 }

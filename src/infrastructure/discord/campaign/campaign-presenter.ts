@@ -531,7 +531,7 @@ function outsideCombatText(
       const line =
         dialogue.kind === "ask" || dialogue.check === null
           ? t.askLine({ hero, npc, question: dialogue.question ?? "" })
-          : t.pressLine({ hero, npc, skill: checkLabel(dialogue.check.test, text), total: dialogue.check.total, dc: dialogue.check.dc, result: passed(dialogue.check.success, text) });
+          : t.pressLine({ hero, npc, skill: checkLabel(dialogue.check.test, text), total: dialogue.check.natural === undefined ? dialogue.check.total : `🎲 d20 ${dialogue.check.natural} ${dialogue.check.total - dialogue.check.natural >= 0 ? "+" : "−"} ${Math.abs(dialogue.check.total - dialogue.check.natural)} = ${dialogue.check.total}`, dc: dialogue.check.dc, result: passed(dialogue.check.success, text) });
       return join([line], told.text);
     }
     case "utilityCastNarrated": {
