@@ -17,7 +17,7 @@ describe("panelActions", () => {
   });
 
   it("adds the away toggle to the second row when the first does not hold it", () => {
-    expect(panelActions(outside("paused"))).toEqual({ primary: ["myHero"], secondary: ["explore", "safety", "more", "away"] });
+    expect(panelActions(outside("paused"))).toEqual({ primary: ["myHero"], secondary: ["myHero"] });
   });
 
   it("drops Explore during a fight", () => {
@@ -48,7 +48,8 @@ describe("panelActions", () => {
 
   it("offers Stay here first on the second row while a move waits and the round is collecting", () => {
     const pendingMove = { sceneTitle: "Chapel", staying: [], stayingUserIds: [] };
-    expect(panelActions({ ...outside("collecting"), pendingMove }).secondary).toEqual(["stay", "explore", "safety", "more"]);
+    expect(panelActions({ ...outside("collecting"), pendingMove }).secondary).toEqual(["safety", "more"]);
+    expect(panelActions({ ...outside("collecting"), pendingMove }).primary).toEqual(["stay", "myHero", "away"]);
     expect(panelActions({ ...outside("planning"), pendingMove }).secondary).not.toContain("stay");
     expect(panelActions({ ...fight(true), pendingMove }).secondary).not.toContain("stay");
     expect(panelActions({ ...outside("collecting"), pendingMove }).secondary.length).toBeLessThanOrEqual(4);

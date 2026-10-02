@@ -61,6 +61,11 @@ export interface PanelActions {
 }
 
 export function panelActions(view: Pick<PanelView, "mode" | "combat" | "pendingMove">): PanelActions {
+  // A move proposal owns the next response window. Keep the vote prominent
+  // and remove Act, Pass, and Explore until the destination is settled.
+  if (view.pendingMove !== undefined && view.mode === "collecting") {
+    return { primary: ["stay", "myHero", "away"], secondary: [...safetyControls] };
+  }
   const primary = view.mode === "combat" && view.combat?.playersControl === true ? combatControls : controlsFor[view.mode];
   if (view.mode === "archived") return { primary, secondary: [] };
   // Pause, recovery, and safety are read-only modes. In particular, do not
@@ -69,8 +74,6 @@ export function panelActions(view: Pick<PanelView, "mode" | "combat" | "pendingM
   // Away and back are one toggle, present in every state so a player marked away can always return.
   const toggle: readonly PanelActionId[] = primary.includes("away") ? [] : ["away"];
   // Explore (people, shops, spells) is for between fights.
-  // Stay here is one toggle (object, or take it back), offered while the window that settles a pending move is open.
-  const stay: readonly PanelActionId[] = view.pendingMove !== undefined && view.mode === "collecting" ? ["stay"] : [];
-  const secondary: readonly PanelActionId[] = view.mode === "combat" ? [...safetyControls, ...toggle] : [...stay, "explore", ...safetyControls, ...toggle];
+  const secondary: readonly PanelActionId[] = view.mode === "combat" ? [...safetyControls, ...toggle] : ["explore", ...safetyControls, ...toggle];
   return { primary, secondary };
 }

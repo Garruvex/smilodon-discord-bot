@@ -76,6 +76,8 @@ export type CampaignEvent =
   | { readonly kind: "roundResolved"; readonly roundNumber: number; readonly quiet: boolean }
   // Story effects that fired when a round resolved.
   | { readonly kind: "sceneTransitioned"; readonly roundNumber: number; readonly sceneId: SceneId; readonly reason?: "agreed" | "organizer" | "story" }
+  | { readonly kind: "sceneVisitStarted"; readonly sceneId: SceneId; readonly roundNumber: number }
+  | { readonly kind: "sceneVisitNarrationClosed"; readonly sceneId: SceneId; readonly roundNumber: number }
   // A move the Planner proposed waits for the table: the effects are what
   // arriving brings (the scene change first), applied if the party goes.
   | { readonly kind: "sceneMoveProposed"; readonly roundNumber: number; readonly sceneId: SceneId; readonly effects: readonly PartyEffect[]; readonly by?: UserId; readonly heroes?: readonly CharacterId[] }
@@ -97,6 +99,9 @@ export type CampaignEvent =
   | { readonly kind: "plannerFailed"; readonly roundNumber: number; readonly problems: readonly string[] }
   | { readonly kind: "planRetryRequested"; readonly roundNumber: number }
   | { readonly kind: "narrationRecorded"; readonly roundNumber: number; readonly text: string }
+  | { readonly kind: "sceneNoteProposed"; readonly roundNumber: number; readonly sceneId: SceneId; readonly noteIndex: number; readonly text: string }
+  | { readonly kind: "sceneNoteReviewed"; readonly roundNumber: number; readonly sceneId: SceneId; readonly noteIndex: number; readonly decision: "keep" | "reword" | "drop"; readonly text: string; readonly reason: string }
+  | { readonly kind: "sceneNotesCompacted"; readonly sceneId: SceneId; readonly throughRound: number; readonly text: string }
   | { readonly kind: "proxyGranted"; readonly ownerUserId: string; readonly proxyUserId: string }
   | { readonly kind: "proxyRevoked"; readonly ownerUserId: string }
   | { readonly kind: "summaryRecorded"; readonly throughRound: number; readonly visibility: "public" | "private"; readonly text: string }

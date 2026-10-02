@@ -38,7 +38,7 @@ describe("the adventure panel", () => {
 
   it("says who wants a move when it names them", () => {
     const view: PanelView = { ...collecting, pendingMove: { sceneTitle: "Ruined Chapel", wantedBy: ["Mira"], staying: [], stayingUserIds: [] } };
-    expect(flatten(renderAdventurePanel(view, texts.en, "camp")).text).toContain("Mira want to go to **Ruined Chapel**");
+    expect(flatten(renderAdventurePanel(view, texts.en, "camp")).text).toContain("Mira proposed **Ruined Chapel**");
   });
 
   it("names a fallen hero and points at My Hero", () => {
@@ -70,18 +70,18 @@ describe("the adventure panel", () => {
     expect(labels({ ...collecting, mode: "planning" })).toEqual(["My Hero", "Explore", "Away / I'm back", "Safety", "More…"]);
     expect(labels({ ...collecting, mode: "awaitingRolls", pendingRolls: [{ characterId: "c-mira", userId: "1", heroName: "Mira", test: { kind: "skill", skill: "persuasion" }, action: "talk the guard round" }] })).toEqual(["Roll", "My Hero", "Explore", "Away / I'm back", "Safety", "More…"]);
     expect(labels({ ...collecting, mode: "waiting" })).toEqual(["Continue", "My Hero", "Explore", "Away / I'm back", "Safety", "More…"]);
-    expect(labels({ ...collecting, mode: "paused" })).toEqual(["My Hero", "Explore", "Away / I'm back", "Safety", "More…"]);
+    expect(labels({ ...collecting, mode: "paused" })).toEqual(["My Hero"]);
     expect(labels({ ...collecting, mode: "archived" })).toEqual([]);
   });
 
   it("says where the party is heading and who wants to stay, with one button to object or go along", () => {
     const heading: PanelView = { ...collecting, pendingMove: { sceneTitle: "Ruined Chapel", staying: ["Borin"], stayingUserIds: ["2"] } };
     const card = flatten(renderAdventurePanel(heading, texts.en, "camp")).text;
-    expect(card).toContain("heading to **Ruined Chapel**");
-    expect(card).toContain("Wants to stay: Borin");
-    expect(labels(heading)).toEqual(["Act / Edit", "Speak", "Pass", "Stay here / Go along", "My Hero", "Explore", "Away / I'm back", "Safety", "More…"]);
+    expect(card).toContain("may go to **Ruined Chapel**");
+    expect(card).toContain("Voting to stay: Borin");
+    expect(labels(heading)).toEqual(["Stay here", "My Hero", "Away / I'm back", "Safety", "More…"]);
     expect(flatten(renderAdventurePanel(heading, texts["zh-TW"], "camp")).text).toContain("**Ruined Chapel**");
-    expect(flatten(renderAdventurePanel(collecting, texts.en, "camp")).text).not.toContain("heading to");
+    expect(flatten(renderAdventurePanel(collecting, texts.en, "camp")).text).not.toContain("may go to");
     expect(labels({ ...heading, mode: "planning" })).not.toContain("Stay here / Go along");
   });
 
@@ -340,8 +340,8 @@ describe("hero cards", () => {
     const rows = root.components.filter((component) => component.type === 1).map((row) => row.components ?? []);
     expect(rows.every((row) => row.length <= 5)).toBe(true);
     expect(rows.map((row) => row.map((button) => button.custom_id ?? button.url))).toEqual([
-      ["dnd:act:camp", "dnd:speak:camp", "dnd:pass:camp", "dnd:stay:camp"],
-      ["dnd:myHero:camp", "dnd:explore:camp", "https://discord.com/channels/1/2"],
+      ["dnd:stay:camp"],
+      ["dnd:myHero:camp", "https://discord.com/channels/1/2"],
       ["dnd:away:camp", "dnd:safety:camp", "dnd:more:camp"],
     ]);
   });

@@ -64,7 +64,9 @@ export type CampaignCommand =
   | { readonly kind: "reportPlannerFailure"; readonly roundNumber: number; readonly problems: readonly string[] }
   // The organizer asks the Planner to try the held round again.
   | { readonly kind: "retryPlan" }
-  | { readonly kind: "recordNarration"; readonly roundNumber: number; readonly text: string }
+  | { readonly kind: "recordNarration"; readonly roundNumber: number; readonly text: string; readonly note?: string }
+  | { readonly kind: "reviewSceneNotes"; readonly roundNumber: number; readonly sceneId: SceneId; readonly results: readonly { readonly noteIndex: number; readonly decision: "keep" | "reword" | "drop"; readonly text: string; readonly reason: string }[] }
+  | { readonly kind: "compactSceneNotes"; readonly sceneId: SceneId; readonly throughRound: number; readonly text: string }
   // The Narrator's flourish for a combat round, or the fight's closing line.
   | { readonly kind: "recordCombatNarration"; readonly encounterId: string; readonly round: number; readonly text: string }
   | RecordLedgerFactCommand

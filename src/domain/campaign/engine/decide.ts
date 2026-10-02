@@ -19,7 +19,7 @@ import { chooseWarlockOptions } from "./warlock-choices.js";
 import { handleCompanionMagicCommand } from "./companion-magic.js";
 import { handleUtilityMagicCommand } from "./utility-magic.js";
 import { Decision, type DecideResult, type EngineContext } from "./decision.js";
-import { beginAdventure, beginPlay, correctWorld, illustrateMoment, markReady, redoPicture, recordLedgerFact, recordNarration, recordOpening, recordSummary, regenerateNarration, replaceNarration, reportPlannerFailure, retryPlan } from "./dm.js";
+import { beginAdventure, beginPlay, compactSceneNotes, correctWorld, illustrateMoment, markReady, redoPicture, recordLedgerFact, recordNarration, recordOpening, recordSummary, regenerateNarration, replaceNarration, reportPlannerFailure, retryPlan, reviewSceneNotes } from "./dm.js";
 import { raisePartyLevel } from "./level-up.js";
 import { chooseAsi, chooseClassLevel, chooseFightingStyle, continueCampaign, grantProxy, joinHero, markAway, markReturned, revokeProxy } from "./members.js";
 import { isSkill } from "../character/character-sheet.js";
@@ -95,7 +95,11 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
     case "retryPlan":
       return retryPlan(decision);
     case "recordNarration":
-      return recordNarration(decision, command.roundNumber, command.text);
+      return recordNarration(decision, command.roundNumber, command.text, command.note);
+    case "reviewSceneNotes":
+      return reviewSceneNotes(decision, command);
+    case "compactSceneNotes":
+      return compactSceneNotes(decision, command);
     case "beginAdventure":
       return beginAdventure(decision);
     case "recordOpening":

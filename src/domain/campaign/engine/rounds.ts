@@ -125,6 +125,12 @@ function closeRound(decision: Decision, reason: RoundCloseReason): void {
   }
   decision.emit({ kind: "roundClosed", roundNumber: round.number, reason, missed });
   settleDueMove(decision, round.number);
+  if (decision.state.pendingMove === undefined && decision.state.visits !== undefined) {
+    const openVisit = decision.state.visits.at(-1);
+    if (openVisit !== undefined && openVisit.leftRound === undefined && openVisit.arrivedRound <= round.number && openVisit.narratedThroughRound === undefined) {
+      decision.emit({ kind: "sceneVisitNarrationClosed", sceneId: openVisit.sceneId, roundNumber: round.number });
+    }
+  }
 
   const { awayAfterMisses } = decision.state.pacing;
   for (const member of Object.values(decision.state.members)) {

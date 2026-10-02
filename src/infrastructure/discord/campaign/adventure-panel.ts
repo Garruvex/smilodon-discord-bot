@@ -168,7 +168,7 @@ function controlButton(action: PanelActionId, campaignId: string, text: Texts): 
     explore: t.explore,
     stay: t.stay,
   };
-  const style = action === "act" || action === "roll" || action === "continue" || action === "ready" || action === "turn" ? ButtonStyle.Primary : ButtonStyle.Secondary;
+  const style = action === "act" || action === "roll" || action === "continue" || action === "ready" || action === "turn" || action === "stay" ? ButtonStyle.Primary : ButtonStyle.Secondary;
   return new ButtonBuilder().setCustomId(campaignCustomId(action, campaignId)).setLabel(labels[action] ?? action).setStyle(style);
 }
 

@@ -346,6 +346,15 @@ function renderGame(game) {
   document.querySelector("#live-scene-description").textContent = game.kind === "lobby"
     ? t("activity.scene.chooseHeroDescription")
     : game.scene.description;
+  const moveNotice = document.querySelector("#live-scene-move");
+  if (game.kind === "table" && game.pendingMove) {
+    const voters = game.pendingMove.staying.length ? ` ${t("activity.move.staying", { names: game.pendingMove.staying.join(", ") })}` : "";
+    moveNotice.textContent = `${t("activity.move.pending", { scene: game.pendingMove.sceneTitle })}${voters}`;
+    moveNotice.hidden = false;
+  } else {
+    moveNotice.textContent = "";
+    moveNotice.hidden = true;
+  }
   document.querySelector(".live-scene").classList.toggle("has-enemies", game.kind === "table" && (game.foes?.length ?? 0) > 0);
   void setArtwork(document.querySelector("#live-scene-image"), document.querySelector(".scene-art-fallback"), game.kind === "table" ? game.scene.imageUrl : null, game.scene.title, true);
   if (game.kind === "lobby") {
@@ -771,7 +780,7 @@ function renderTable(game) {
   renderCombatTurn(game);
   const turn = document.querySelector("#live-turn");
   const ownStatus = game.submission === "action" ? t("activity.status.actionSubmitted") : game.submission === "pass" ? t("activity.status.passedRound") : game.pendingRoll ? t("activity.status.rollNeeded") : t("activity.status.waitTurn");
-  turn.textContent = game.yourTurn ? game.turn?.busy ? t("activity.status.resolvingAction") : t("activity.hero.turn") : game.mode === "collecting" && game.myHero ? ownStatus : game.activeName ? t("activity.status.activeTurnPossessive", { name: game.activeName }) : t("activity.status.waitTable");
+  turn.textContent = game.pendingMove ? t("activity.status.moveDecision") : game.yourTurn ? game.turn?.busy ? t("activity.status.resolvingAction") : t("activity.hero.turn") : game.mode === "collecting" && game.myHero ? ownStatus : game.activeName ? t("activity.status.activeTurnPossessive", { name: game.activeName }) : t("activity.status.waitTable");
   turn.classList.toggle("is-active", game.yourTurn);
   const hero = game.myHero;
   document.querySelector("#live-hero-name").textContent = hero?.name ?? t("activity.hero.notSelected");
@@ -1195,7 +1204,7 @@ function renderTrade(game, fixedTarget) {
 }
 
 // Where each kind of action is shown: urgent decisions on top, the round composer, a category list, or the closing button.
-const actionPlacement = { acceptInvite: "top", joinHero: "top", reaction: "top", smite: "top", opportunityAttack: "top", ready: "top", begin: "top", continue: "top", submit: "composer", pass: "composer", endTurn: "bottom" };
+const actionPlacement = { acceptInvite: "top", joinHero: "top", reaction: "top", smite: "top", opportunityAttack: "top", ready: "top", begin: "top", continue: "top", toggleMoveObjection: "top", submit: "composer", pass: "composer", endTurn: "bottom" };
 const actionCategoryOf = { attack: "attack", combatSpell: "spells", exploreSpell: "spells", healSpell: "spells", reviveSpell: "spells", summonCompanion: "spells", move: "move", moveScene: "move", teleport: "move", engage: "move", withdraw: "move", dash: "move", useItem: "items", combatItem: "items", shield: "items", shop: "items", askNpc: "talk", pressNpc: "talk", feature: "other", wildShape: "other", combatDodge: "other" };
 const actionCategoryOrder = ["attack", "spells", "move", "items", "talk", "other"];
 const actionCategoryIcon = { attack: "attack", spells: "spell", move: "move", items: "potion", talk: "clue", other: "shape" };
@@ -1230,6 +1239,18 @@ function renderTableActions(game) {
     const place = actionPlacement[action.kind];
     (place === "top" ? top : place === "composer" ? composer : place === "bottom" ? bottom : groups.get(actionCategoryOf[action.kind] ?? "other")).push(button);
   };
+  if (game.pendingMove && game.mode === "collecting") {
+    const label = t(game.pendingMove.stayingByYou ? "activity.move.withdrawStay" : "activity.move.stayHere");
+    addAction(label, { kind: "toggleMoveObjection" }, true);
+    const decision = document.createElement("span");
+    decision.className = "live-action-note status-note";
+    decision.textContent = t("activity.move.instructions");
+    const voteRow = document.createElement("div");
+    voteRow.className = "action-row action-urgent";
+    voteRow.append(...top);
+    liveActions.append(voteRow, decision);
+    return;
+  }
   if (game.canAcceptInvite) addAction(t("activity.action.acceptInvite"), { kind: "acceptInvite" }, true);
   for (const hero of game.joinChoices) addAction(t("activity.action.joinAs", { name: hero.name, class: classText(hero.className) }), { kind: "joinHero", heroRef: hero.id }, true);
   for (const hero of game.savedHeroChoices ?? []) addAction(t("activity.action.joinWith", { name: hero.name, class: classText(hero.className) }), { kind: "joinHero", heroRef: hero.id }, true);
@@ -1592,6 +1613,13 @@ if (new URLSearchParams(window.location.search).has("design-preview")) {
     preview.pendingRoll = { checkId: "preview-check", test: { kind: "skill", skill: "arcana" }, action: "Identify the runes before the sentinel moves." };
     preview.pendingRollCount = 1;
     preview.party = preview.party.map((hero) => ({ ...hero, tableStatus: "waiting" }));
+  }
+  if (new URLSearchParams(window.location.search).has("vote")) {
+    preview.mode = "collecting";
+    preview.yourTurn = false;
+    preview.activeName = null;
+    preview.foes = [];
+    preview.pendingMove = { sceneTitle: "Broken Gallery", staying: ["Thorne Oakshield"], stayingByYou: new URLSearchParams(window.location.search).has("stay") };
   }
   const previewLanguage = new URLSearchParams(window.location.search).get("language") === "zh-TW" ? "zh-TW" : "en";
   void setLanguage(previewLanguage).then(() => { setTableConnectionState("live"); renderGame(preview); });

@@ -22,6 +22,7 @@ import { libraryHeroRef } from "../application/campaign/library/library-types.js
 import { CampaignRuntime } from "../application/campaign/campaign-runtime.js";
 import { LlmCampaignChronicler } from "../application/campaign/dm/llm-chronicler.js";
 import { LlmCampaignNarrator, LlmCampaignPlanner } from "../application/campaign/dm/llm-dm.js";
+import { LlmSceneNoteJudge } from "../application/campaign/dm/llm-scene-note-judge.js";
 import type { CampaignNarrator, CampaignPlanner } from "../application/campaign/ports/dm-ports.js";
 import type { CampaignKey, CampaignTransaction, CampaignUnitOfWork } from "../application/campaign/ports/campaign-store.js";
 import type { CampaignRecord } from "../application/campaign/ports/campaign-record.js";
@@ -214,7 +215,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
     bus,
     rolls: new RollWorker(unitOfWork, bus, new CryptoRandomSource(), clock),
     timers: new TimerWorker(unitOfWork, bus, clock),
-    dm: new DmJobWorker({ unitOfWork, bus, planner, narrator, ...(model === null ? {} : { chronicler: new LlmCampaignChronicler({ client: model, cacheKey }) }), adventures, glossaries, rulesets, logger }),
+    dm: new DmJobWorker({ unitOfWork, bus, planner, narrator, ...(model === null ? {} : { chronicler: new LlmCampaignChronicler({ client: model, cacheKey }), noteJudge: new LlmSceneNoteJudge({ client: model, cacheKey }) }), adventures, glossaries, rulesets, logger }),
     delivery: new DeliveryWorker(unitOfWork, presenter, {
       clock,
       onAbandoned: async (key, item): Promise<void> => {
@@ -381,6 +382,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
             return activityPlay.submitAction(key, userId, text, id).then(mapPlayResult);
           }
           case "pass": return activityPlay.pass(key, userId, id).then(mapPlayResult);
+          case "toggleMoveObjection": return activityPlay.toggleMoveObjection(key, userId, id).then(mapPlayResult);
           case "roll": return activityPlay.roll(key, userId, id).then(mapPlayResult);
           case "ready": return activityPlay.ready(key, userId, id).then(mapPlayResult);
           case "begin": return activityPlay.begin(key, userId, id).then(mapPlayResult);

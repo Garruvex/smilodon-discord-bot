@@ -177,7 +177,7 @@ export interface HazardNarratorRequest {
 }
 
 export interface CampaignNarrator {
-  narrate(request: NarratorRequest): Promise<{ readonly text: string }>;
+  narrate(request: NarratorRequest): Promise<{ readonly text: string; readonly note?: string }>;
   narrateCombat(request: CombatNarratorRequest): Promise<{ readonly text: string }>;
   narrateTrade(request: TradeNarratorRequest): Promise<{ readonly text: string }>;
   narrateDialogue(request: DialogueNarratorRequest): Promise<{ readonly text: string }>;
@@ -194,6 +194,8 @@ export interface ChronicleRequest {
   readonly previousSummary: string | null;
   // Entities already in the ledger this audience may see: their IDs and locked names.
   readonly knownEntities: readonly { readonly entityId: string; readonly canonicalName: string }[];
+  // Present while merging public notes from one scene; omitted for the private full-story memory.
+  readonly scene?: { readonly id: string; readonly title: string };
 }
 
 export interface ChronicleResult {
@@ -203,6 +205,26 @@ export interface ChronicleResult {
 
 export interface CampaignChronicler {
   chronicle(request: ChronicleRequest): Promise<ChronicleResult>;
+}
+
+export interface SceneNoteJudgeRequest {
+  readonly language: CampaignLanguage;
+  readonly scene: { readonly id: string; readonly title: string; readonly publicDescription: string; readonly details?: string; readonly dmNotes: string };
+  readonly adventure: { readonly title: string; readonly premise: string; readonly dmOverview: string };
+  readonly establishedPeople: readonly { readonly id: string; readonly name: string; readonly description: string; readonly secret?: string }[];
+  readonly committedOutcomes: readonly string[];
+  readonly notes: readonly { readonly noteIndex: number; readonly text: string }[];
+}
+
+export interface SceneNoteJudgment {
+  readonly noteIndex: number;
+  readonly decision: "keep" | "reword" | "drop";
+  readonly text: string;
+  readonly reason: string;
+}
+
+export interface CampaignSceneNoteJudge {
+  judge(request: SceneNoteJudgeRequest): Promise<readonly SceneNoteJudgment[]>;
 }
 
 export interface AdventureCatalog {

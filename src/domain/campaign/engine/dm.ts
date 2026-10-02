@@ -8,7 +8,9 @@ import { finishReadyCheck, openRound } from "./rounds.js";
 
 export const maxLedgerFactLength = 300;
 export const maxSummaryLength = 1_500;
-// A summary is asked for at a scene change, or after this many narrated rounds without one.
+export const maxSceneNoteLength = 400;
+export const sceneNoteCompactionThreshold = 1_600;
+// Kept as a compatibility export; compaction is triggered by note size now.
 export const chronicleEveryRounds = 6;
 
 // Numbers such as hit points, slots and gold change all the time; a summary
@@ -50,6 +52,7 @@ export function beginAdventure(decision: Decision): Rejection | null {
   if (ctx.actor.kind !== "system") return { code: "systemOnly" };
   if (state.opening !== undefined || state.lastRoundNumber > 0 || state.round !== null) return null;
   decision.emit({ kind: "adventureBegan" });
+  if (state.visits === undefined && state.sceneId !== null) decision.emit({ kind: "sceneVisitStarted", sceneId: state.sceneId, roundNumber: 1 });
   decision.request({ kind: "narrateOpening" });
   return null;
 }
@@ -100,7 +103,7 @@ export function beginPlay(decision: Decision): Rejection | null {
 // round queued, or opens the next round, if anyone is present. Narration
 // that arrives while the table is waiting is still kept; the next step waits
 // for continue.
-export function recordNarration(decision: Decision, roundNumber: number, text: string): Rejection | null {
+export function recordNarration(decision: Decision, roundNumber: number, text: string, note?: string): Rejection | null {
   const { state, ctx } = decision;
   if (ctx.actor.kind !== "system") return { code: "systemOnly" };
   const trimmed = text.trim();
@@ -109,14 +112,19 @@ export function recordNarration(decision: Decision, roundNumber: number, text: s
     return { code: "staleNarration" };
   }
   decision.emit({ kind: "narrationRecorded", roundNumber, text: trimmed });
+  const sceneId = decision.state.visits?.findLast((visit) => visit.arrivedRound <= roundNumber && (visit.leftRound === undefined || visit.leftRound >= roundNumber))?.sceneId ?? decision.state.sceneId;
+  const noteLines = (note ?? "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean).slice(0, 2);
+  if (sceneId !== null && noteLines.length > 0) {
+    noteLines.forEach((line, noteIndex) => decision.emit({ kind: "sceneNoteProposed", roundNumber, sceneId, noteIndex, text: line.slice(0, maxSceneNoteLength) }));
+    decision.request({ kind: "judgeSceneNotes", roundNumber, sceneId });
+  }
   decision.request({ kind: "deliver", delivery: { kind: "narration", roundNumber } });
   // A natural 20 or 1 in the round is a moment worth a picture (the worker rations these).
   const dramatic = Object.values(state.checks).some((check) => check.roundNumber === roundNumber && (check.result?.moments.headline?.kind === "natural20" || check.result?.moments.headline?.kind === "natural1"));
   if (dramatic) decision.request({ kind: "momentImage", roundNumber, auto: true, snapshot: decision.pictureSnapshot() });
-  // A chapter closed, or enough rounds piled up: the Chronicler condenses them in the background.
-  if (state.sceneChangedRound === roundNumber || roundNumber - latestSummaryRound(state.summaries, "public") >= chronicleEveryRounds) {
-    decision.request({ kind: "chronicle", throughRound: roundNumber });
-  }
+  // Keep private, secret-bearing story memory when a chapter closes. Public
+  // summaries are now per-scene and compact only when that scene's notes grow large.
+  if (state.sceneChangedRound === roundNumber) decision.request({ kind: "chronicle", throughRound: roundNumber, privateOnly: true });
   if (decision.state.status !== "active") return null;
   const pending = decision.state.pendingEncounter;
   if (pending !== null) {
@@ -124,6 +132,29 @@ export function recordNarration(decision: Decision, roundNumber: number, text: s
     return null;
   }
   return openRound(decision);
+}
+
+export function reviewSceneNotes(decision: Decision, command: Extract<CampaignCommand, { kind: "reviewSceneNotes" }>): Rejection | null {
+  if (decision.ctx.actor.kind !== "system") return { code: "systemOnly" };
+  const pending = (decision.state.pendingSceneNotes ?? []).filter((note) => note.roundNumber === command.roundNumber && note.sceneId === command.sceneId);
+  if (pending.length === 0) return { code: "staleSummary" };
+  const results = new Map(command.results.map((result) => [result.noteIndex, result]));
+  if (command.results.length !== pending.length || new Set(command.results.map((result) => result.noteIndex)).size !== command.results.length || command.results.some((result) => !pending.some((note) => note.noteIndex === result.noteIndex))) return { code: "staleSummary" };
+  for (const note of pending) {
+    const result = results.get(note.noteIndex);
+    let outcome: "keep" | "reword" | "drop" = result?.decision ?? "drop";
+    let text = outcome === "keep" ? note.text : (result?.text ?? "").trim();
+    const reason = (result?.reason ?? "No valid judge result; note discarded.").trim().slice(0, 240);
+    const hasUnknownIds = /\bscene:[a-z0-9:_-]+/i.test(text);
+    const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    if (outcome !== "drop" && (text.length === 0 || text.length > maxSceneNoteLength || lines.length > 2 || hasUnknownIds)) outcome = "drop";
+    if (outcome === "reword" && result?.decision !== "reword") outcome = "drop";
+    text = outcome === "keep" ? note.text : lines.slice(0, 2).map((line) => line.slice(0, maxSceneNoteLength)).join("\n");
+    decision.emit({ kind: "sceneNoteReviewed", roundNumber: command.roundNumber, sceneId: command.sceneId, noteIndex: note.noteIndex, decision: outcome, text, reason });
+  }
+  const characters = (decision.state.sceneNotes ?? []).filter((note) => note.sceneId === command.sceneId).reduce((sum, note) => sum + note.text.length, 0);
+  if (characters >= sceneNoteCompactionThreshold) decision.request({ kind: "compactSceneNotes", sceneId: command.sceneId, throughRound: command.roundNumber });
+  return null;
 }
 
 // The organizer asks for the last narration to be told again. It changes no
@@ -191,6 +222,20 @@ export function recordSummary(decision: Decision, command: Extract<CampaignComma
   if (!Number.isInteger(command.throughRound) || command.throughRound < 1 || command.throughRound > state.lastNarratedRound) return { code: "staleSummary" };
   if (command.throughRound <= latestSummaryRound(state.summaries, command.visibility)) return { code: "staleSummary" };
   decision.emit({ kind: "summaryRecorded", throughRound: command.throughRound, visibility: command.visibility, text });
+  return null;
+}
+
+export function compactSceneNotes(decision: Decision, command: Extract<CampaignCommand, { kind: "compactSceneNotes" }>): Rejection | null {
+  if (decision.ctx.actor.kind !== "system") return { code: "systemOnly" };
+  const text = command.text.trim();
+  const previous = decision.state.sceneSummaries?.[command.sceneId];
+  const notes = (decision.state.sceneNotes ?? []).filter((note) => note.sceneId === command.sceneId && note.roundNumber <= command.throughRound);
+  if (text.length === 0 || text.length > maxSummaryLength) return { code: "invalidSummary", problem: "text" };
+  if (vitalNumbers.test(text)) return { code: "invalidSummary", problem: "numbers" };
+  if (!Number.isInteger(command.throughRound) || command.throughRound < 1 || command.throughRound > decision.state.lastNarratedRound || notes.length === 0 || command.throughRound <= (previous?.throughRound ?? 0)) {
+    return { code: "staleSummary" };
+  }
+  decision.emit({ kind: "sceneNotesCompacted", sceneId: command.sceneId, throughRound: command.throughRound, text });
   return null;
 }
 

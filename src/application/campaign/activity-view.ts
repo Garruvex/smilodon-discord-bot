@@ -28,6 +28,7 @@ export interface ActivityTableView {
   readonly mode: string;
   readonly roundNumber: number | null;
   readonly scene: { readonly title: string; readonly description: string; readonly imageUrl: string | null };
+  readonly pendingMove: null | { readonly sceneTitle: string; readonly staying: readonly string[]; readonly stayingByYou: boolean };
   readonly map:
     | { readonly kind: "battlefield"; readonly zones: readonly { readonly id: string; readonly name: string; readonly lighting: string | null; readonly cover: string | null; readonly difficult: boolean; readonly canMove: boolean; readonly occupants: readonly { readonly name: string; readonly side: "party" | "foes"; readonly active: boolean; readonly hp: number; readonly maxHp: number }[] }[]; readonly edges: readonly { readonly from: string; readonly to: string; readonly feet: number }[] }
     | { readonly kind: "journey"; readonly nodes: readonly { readonly id: string; readonly title: string; readonly status: "current" | "visited" | "known" | "reachable" | "locked"; readonly locked: boolean; readonly deadEnd: boolean; readonly canTravel: boolean; readonly column: number; readonly row: number }[]; readonly routes: readonly { readonly from: string; readonly to: string; readonly oneWay: boolean }[] };
@@ -182,7 +183,7 @@ export function buildActivityTableView(
   const scene = findScene(bible, state.sceneId);
   const explore = controlledHeroId === null || panel.mode === "combat"
     ? null
-    : (() => {
+    : ((): ExploreView & { readonly shops: readonly ShopView[] } => {
       const view = buildExploreView(state, bible, content, glossary, controlledHeroId);
       return { ...view, shops: view.npcs.flatMap((npc) => {
         const shop = buildShopView(state, bible, glossary, resolveHouseRules(record.houseRules), controlledHeroId, npc.id);
@@ -198,7 +199,7 @@ export function buildActivityTableView(
       status: node.state === "current" ? "current" : node.state === "visited" ? "visited" : node.locked ? "locked" : explore?.places.some((place) => place.id === node.id) === true ? "reachable" : "known",
       locked: node.locked,
       deadEnd: node.deadEnd,
-      canTravel: panel.mode !== "paused" && panel.mode !== "safety" && panel.mode !== "recovery" && explore?.places.some((place) => place.id === node.id) === true,
+      canTravel: state.pendingMove === undefined && panel.mode !== "paused" && panel.mode !== "safety" && panel.mode !== "recovery" && explore?.places.some((place) => place.id === node.id) === true,
       column: node.column,
       row: node.row,
     })),
@@ -283,6 +284,14 @@ export function buildActivityTableView(
     // outlive or arrive before the image-status metadata, so gating this URL on that
     // metadata made valid scene art disappear from the Activity.
     scene: { title: panel.sceneTitle, description: scene?.publicDescription ?? "", imageUrl: scene === undefined ? null : `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/scenes/${encodeURIComponent(scene.id)}` },
+    pendingMove: state.pendingMove === undefined ? null : {
+      sceneTitle: findScene(bible, state.pendingMove.sceneId)?.title ?? state.pendingMove.sceneId,
+      staying: state.pendingMove.objectors.flatMap((objector) => {
+        const objectorHero = state.members[objector]?.characterId;
+        return objectorHero === null || objectorHero === undefined ? [] : [state.characters[objectorHero]?.name ?? objectorHero];
+      }),
+      stayingByYou: state.pendingMove.objectors.includes(userId),
+    },
     map: panel.combat !== null && state.encounter !== null
       ? {
         kind: "battlefield",
@@ -315,12 +324,12 @@ export function buildActivityTableView(
     }),
     myHero: fullHero,
     turn,
-    explore: controlledHeroId === null || panel.mode === "combat" || panel.mode === "paused" || panel.mode === "safety" || panel.mode === "recovery"
+    explore: controlledHeroId === null || state.pendingMove !== undefined || panel.mode === "combat" || panel.mode === "paused" || panel.mode === "safety" || panel.mode === "recovery"
       ? null
       : explore,
     pendingRoll: panel.pendingRolls.find((roll) => roll.userId === userId) === undefined
       ? null
-      : (() => {
+      : ((): { readonly checkId: string; readonly test: CheckTest; readonly action: string | null } | null => {
         const roll = panel.pendingRolls.find((item) => item.userId === userId)!;
         const check = Object.values(state.checks).find((item) => item.characterId === roll.characterId && (item.status === "pending" || item.status === "rolling"));
         return check === undefined ? null : { checkId: check.id, test: roll.test, action: roll.action };

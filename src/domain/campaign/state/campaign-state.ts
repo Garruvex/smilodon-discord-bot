@@ -50,6 +50,13 @@ export interface CampaignState {
   // Each covers the rounds after the previous one of its kind, through its own
   // round. Absent in games that started before summaries existed.
   readonly summaries?: readonly StorySummary[];
+  // Public, narrator-written changes for each scene. Recent notes stay verbatim;
+  // the Chronicler folds a scene's notes into sceneSummaries when they grow large.
+  readonly sceneNotes?: readonly SceneNote[];
+  readonly sceneSummaries?: Readonly<Record<string, SceneSummary>>;
+  // Pending notes are not shown as facts. The asynchronous judge either admits
+  // a verified wording to sceneNotes or drops it after its bounded retries.
+  readonly pendingSceneNotes?: readonly PendingSceneNote[];
   // Who may play a hero in a fight while its owner is away: owner -> proxy.
   // A grant does nothing while the owner is present, and only reaches turns
   // (never the owner's items, story choices or anything outside a fight).
@@ -63,6 +70,8 @@ export interface CampaignState {
   // the next round closes: the party goes unless more than half of the
   // present players pressed Stay (a tie stays).
   readonly pendingMove?: PendingMove;
+  readonly sceneMoveSettledRound?: number;
+  readonly sceneMoveSettledDestination?: SceneId | null;
   // Each stay in a scene, oldest first; the last is where the party is. Absent in
   // games that began before visits were kept: the first move starts the record.
   readonly visits?: readonly SceneVisit[];
@@ -339,6 +348,8 @@ export interface SceneVisit {
   readonly id: string;
   readonly sceneId: SceneId;
   readonly arrivedRound: number;
+  // The move round's narration describes the departure and belongs to where it began.
+  readonly narratedThroughRound?: number;
   // Absent while the party is still there.
   readonly leftRound?: number;
   readonly cameFrom?: SceneId;
@@ -399,6 +410,21 @@ export type Resolution =
 export interface StorySummary {
   readonly throughRound: number;
   readonly visibility: "public" | "private";
+  readonly text: string;
+}
+
+export interface SceneNote {
+  readonly roundNumber: number;
+  readonly sceneId: string;
+  readonly text: string;
+}
+
+export interface PendingSceneNote extends SceneNote {
+  readonly noteIndex: number;
+}
+
+export interface SceneSummary {
+  readonly throughRound: number;
   readonly text: string;
 }
 

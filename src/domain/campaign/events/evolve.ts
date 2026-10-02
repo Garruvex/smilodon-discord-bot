@@ -70,9 +70,14 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     case "checkResolved":
       return updateCheck(state, event.checkId, (check) => ({ ...check, status: "resolved", result: event.result }));
     case "roundResolved":
-      return state.round?.number === event.roundNumber ? { ...state, round: null } : state;
+      if (state.round?.number !== event.roundNumber) return state;
+      { const { sceneMoveSettledRound: _round, sceneMoveSettledDestination: _destination, ...rest } = state; return { ...rest, round: null }; }
     case "sceneTransitioned":
       return { ...state, sceneId: event.sceneId, sceneChangedRound: event.roundNumber, visits: visitsAfterMove(state, event.sceneId, event.roundNumber, event.reason) };
+    case "sceneVisitStarted":
+      return { ...state, visits: state.visits ?? [{ id: "visit-1", sceneId: event.sceneId, arrivedRound: event.roundNumber }] };
+    case "sceneVisitNarrationClosed":
+      return { ...state, visits: (state.visits ?? []).map((visit) => visit.sceneId === event.sceneId && visit.leftRound === undefined ? { ...visit, narratedThroughRound: event.roundNumber } : visit) };
     case "sceneMoveProposed":
       return { ...state, pendingMove: { sceneId: event.sceneId, proposedRound: event.roundNumber, effects: event.effects, objectors: [], ...(event.heroes === undefined ? {} : { heroes: event.heroes }) } };
     case "sceneMoveObjected":
@@ -86,7 +91,7 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     case "sceneMoveAgreed":
     case "sceneMoveDeclined": {
       const { pendingMove: _settled, ...rest } = state;
-      return rest;
+      return { ...rest, sceneMoveSettledRound: event.roundNumber, sceneMoveSettledDestination: event.kind === "sceneMoveAgreed" ? event.sceneId : null };
     }
     case "proxyGranted":
       return { ...state, proxies: { ...(state.proxies ?? {}), [event.ownerUserId]: event.proxyUserId } };
@@ -96,6 +101,22 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     }
     case "summaryRecorded":
       return { ...state, summaries: [...(state.summaries ?? []), { throughRound: event.throughRound, visibility: event.visibility, text: event.text }] };
+    case "sceneNoteProposed":
+      return { ...state, pendingSceneNotes: [...(state.pendingSceneNotes ?? []), { roundNumber: event.roundNumber, sceneId: event.sceneId, noteIndex: event.noteIndex, text: event.text }] };
+    case "sceneNoteReviewed": {
+      const pendingSceneNotes = (state.pendingSceneNotes ?? []).filter((note) => note.roundNumber !== event.roundNumber || note.sceneId !== event.sceneId || note.noteIndex !== event.noteIndex);
+      return event.decision === "drop"
+        ? { ...state, pendingSceneNotes }
+        : { ...state, pendingSceneNotes, sceneNotes: [...(state.sceneNotes ?? []), { roundNumber: event.roundNumber, sceneId: event.sceneId, text: event.text }] };
+    }
+    case "sceneNotesCompacted": {
+      const { [event.sceneId]: _old, ...otherSummaries } = state.sceneSummaries ?? {};
+      return {
+        ...state,
+        sceneSummaries: { ...otherSummaries, [event.sceneId]: { throughRound: event.throughRound, text: event.text } },
+        sceneNotes: (state.sceneNotes ?? []).filter((note) => note.sceneId !== event.sceneId || note.roundNumber > event.throughRound),
+      };
+    }
     case "encounterQueued":
       return { ...state, pendingEncounter: event.encounter };
     case "clockAdvanced":
@@ -540,7 +561,7 @@ function updateOwner(
 function visitsAfterMove(state: CampaignState, sceneId: SceneId, roundNumber: number, reason: MoveReason | undefined): readonly SceneVisit[] {
   const known = state.visits ?? (state.sceneId === null ? [] : [{ id: "visit-1", sceneId: state.sceneId, arrivedRound: 1 }]);
   const last = known.at(-1);
-  const left = known.map((visit) => (visit === last && visit.leftRound === undefined ? { ...visit, leftRound: roundNumber } : visit));
+  const left = known.map((visit) => (visit === last && visit.leftRound === undefined ? { ...visit, leftRound: roundNumber, narratedThroughRound: roundNumber } : visit));
   const arrival: SceneVisit = {
     id: `visit-${known.length + 1}`,
     sceneId,

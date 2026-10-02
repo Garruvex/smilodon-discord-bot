@@ -231,7 +231,7 @@ describe("LLM DM", () => {
     expect(prompt.user).toContain("Quiet heroes to invite: 波林.");
     expect(prompt.user).not.toContain("17");
 
-    const narrator = new LlmCampaignNarrator({ client: new FakeClient([JSON.stringify({ narration: " 米拉消失在陰影中。 " })]) });
+    const narrator = new LlmCampaignNarrator({ client: new FakeClient([JSON.stringify({ narration: " 米拉消失在陰影中。 ", note: "" })]) });
     expect(await narrator.narrate(narratorRequest)).toEqual({ text: "米拉消失在陰影中。" });
     await expect(new LlmCampaignNarrator({ client: new FakeClient(['{"narration":""}']) }).narrate(narratorRequest)).rejects.toThrow();
   });

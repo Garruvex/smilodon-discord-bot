@@ -21,7 +21,11 @@ export type EngineRequest =
   // Tell the last narrated round again (the organizer did not like it).
   | { readonly kind: "renarrate"; readonly roundNumber: number }
   // Condense the rounds through this one (background; a scene just closed, or enough rounds piled up).
-  | { readonly kind: "chronicle"; readonly throughRound: number }
+  | { readonly kind: "chronicle"; readonly throughRound: number; readonly privateOnly?: boolean }
+  // Validate a public scene note in the background; it does not delay narration or the next round.
+  | { readonly kind: "judgeSceneNotes"; readonly roundNumber: number; readonly sceneId: string }
+  // Compact a scene's public notes after their stored text crosses the size threshold.
+  | { readonly kind: "compactSceneNotes"; readonly sceneId: string; readonly throughRound: number }
   // A combat round's flourish, or (final) the fight's closing narration.
   | { readonly kind: "narrateCombat"; readonly encounterId: string; readonly round: number; readonly final: boolean }
   // A settled trade's NPC reaction (engine/shop.ts).
