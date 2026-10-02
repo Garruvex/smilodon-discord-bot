@@ -118,7 +118,8 @@ export function closeIfEveryoneResponded(decision: Decision): void {
 function closeRound(decision: Decision, reason: RoundCloseReason): void {
   const round = decision.state.round;
   if (round === null) return;
-  const missed = round.participants.filter((characterId) => round.submissions[characterId] === undefined);
+  // While a scene change waits for the table nobody can act, so nobody has missed the round.
+  const missed = decision.state.pendingMove !== undefined ? [] : round.participants.filter((characterId) => round.submissions[characterId] === undefined);
   if (reason !== "timer" && round.closesAt !== null) {
     decision.request({ kind: "cancelTimer", timerId: roundTimerId(round.number) });
   }
@@ -214,6 +215,9 @@ function roundAcceptingResponse(decision: Decision, characterId: CharacterId): R
   if (state.status === "waitingForPlayers") return { code: "campaignWaiting" };
   if (state.round === null) return { code: "noOpenRound" };
   if (state.round.status !== "collecting") return { code: "roundNotCollecting" };
+  // A pending scene change is a table decision, not another action round.
+  // The deadline (or organizer close) settles it before actions reopen.
+  if (state.pendingMove !== undefined) return { code: "moveDecisionPending" };
   if (!state.round.participants.includes(characterId)) return { code: "notParticipant" };
   return state.round;
 }

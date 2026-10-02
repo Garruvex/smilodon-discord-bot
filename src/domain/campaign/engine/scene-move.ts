@@ -68,6 +68,9 @@ export function objectToMove(decision: Decision): Rejection | null {
   const { pendingMove } = decision.state;
   if (pendingMove === undefined) return { code: "noPendingMove" };
   if (!pendingMove.objectors.includes(userId)) decision.emit({ kind: "sceneMoveObjected", userId });
+  // Enough have pressed Stay that waiting cannot change the answer (silence only ever adds Go): settle now, and the round carries on.
+  const { pendingMove: current } = decision.state;
+  if (current !== undefined && stays(decision.state, current.objectors)) settle(decision, decision.state.round?.number ?? decision.state.lastRoundNumber, "stay", "table");
   return null;
 }
 

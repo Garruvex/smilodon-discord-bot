@@ -15,6 +15,7 @@ export type Rejection =
   | { readonly code: "roundAlreadyOpen" }
   | { readonly code: "noOpenRound" }
   | { readonly code: "roundNotCollecting" }
+  | { readonly code: "moveDecisionPending" }
   | { readonly code: "notParticipant" }
   | { readonly code: "emptyAction" }
   | { readonly code: "actionTooLong"; readonly maxLength: number }

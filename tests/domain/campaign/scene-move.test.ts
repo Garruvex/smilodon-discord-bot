@@ -29,6 +29,11 @@ function playRound(state: CampaignState): CampaignState {
   }, state);
 }
 
+// Nobody can act while a move waits, so the window closes on its timer.
+function closeWindow(state: CampaignState): CampaignState {
+  return run(state, system, { kind: "roundTimerExpired", roundNumber: state.round?.number ?? 0 }).state;
+}
+
 // Round 1 ends with the Planner proposing a move and the Narrator telling it; round 2 is open.
 function moveProposed(effects: readonly PlannedEffect[] = [toChapel], base: CampaignState = newCampaign()): CampaignState {
   let next = run(base, system, { kind: "openRound" }).state;
@@ -58,7 +63,7 @@ describe("a move the Planner proposes", () => {
   });
 
   it("goes when nobody objects, as the next round closes", () => {
-    const closed = playRound(moveProposed());
+    const closed = closeWindow(moveProposed());
     expect(closed.sceneId).toBe(chapel);
     expect(closed.pendingMove).toBeUndefined();
   });
@@ -71,7 +76,7 @@ describe("a move the Planner proposes", () => {
   });
 
   it("brings the fight along when the party goes", () => {
-    const closed = playRound(moveProposed([toChapel, chapelFight]));
+    const closed = closeWindow(moveProposed([toChapel, chapelFight]));
     expect(closed.sceneId).toBe(chapel);
     expect(closed.pendingEncounter?.id).toBe("encounter:chapel-ambush");
   });
@@ -94,7 +99,7 @@ describe("how the party got there, as recorded", () => {
   const arrivedBy = (state: CampaignState): string | undefined => state.visits?.at(-1)?.arrivedBy;
 
   it("says the table agreed, the organizer sent the party, or the story did", () => {
-    expect(arrivedBy(playRound(moveProposed()))).toBe("agreed");
+    expect(arrivedBy(closeWindow(moveProposed()))).toBe("agreed");
     expect(arrivedBy(run(moveProposed(), organizer, { kind: "settleMove", outcome: "go" }).state)).toBe("organizer");
     expect(arrivedBy(moveProposed([{ ...toChapel, forced: true }]))).toBe("story");
   });
@@ -108,12 +113,24 @@ describe("objecting to a move", () => {
   it("stops it when more than half of the present players press Stay", () => {
     let state = moveProposed([toChapel], partyOfThree());
     state = run(state, alex, { kind: "objectToMove" }).state;
-    state = run(state, jamie, { kind: "objectToMove" }).state;
-    expect(state.pendingMove?.objectors).toEqual(["u-alex", "u-jamie"]);
-    const closed = run(state, system, { kind: "roundTimerExpired", roundNumber: 2 });
+    expect(state.pendingMove?.objectors).toEqual(["u-alex"]);
+    const closed = run(state, jamie, { kind: "objectToMove" });
     expect(kinds(closed.events)).toContain("sceneMoveDeclined");
     expect(closed.state.sceneId).not.toBe(chapel);
     expect(closed.state.pendingMove).toBeUndefined();
+  });
+
+  it("settles as soon as the Stay votes decide it, and the round carries on", () => {
+    const closed = run(moveProposed(), alex, { kind: "objectToMove" });
+    expect(kinds(closed.events)).toContain("sceneMoveDeclined");
+    expect(closed.state.pendingMove).toBeUndefined();
+    expect(closed.state.round).toMatchObject({ number: 2, status: "collecting" });
+  });
+
+  it("does not count the vote round as missed, since nobody could act in it", () => {
+    const state = run(moveProposed([toChapel], partyOfThree()), alex, { kind: "objectToMove" }).state;
+    const closed = run(state, system, { kind: "roundTimerExpired", roundNumber: 2 }).state;
+    expect(Object.values(closed.members).map((member) => member.consecutiveMisses)).toEqual([0, 0, 0]);
   });
 
   it("lets one holdout be outvoted in a party of three", () => {
@@ -124,13 +141,11 @@ describe("objecting to a move", () => {
   });
 
   it("stays on a tie", () => {
-    const state = run(moveProposed(), alex, { kind: "objectToMove" }).state;
-    const closed = run(state, system, { kind: "roundTimerExpired", roundNumber: 2 });
-    expect(kinds(closed.events)).toContain("sceneMoveDeclined");
+    expect(kinds(run(moveProposed(), alex, { kind: "objectToMove" }).events)).toContain("sceneMoveDeclined");
   });
 
   it("counts a player once, and lets them take it back", () => {
-    let state = run(moveProposed(), alex, { kind: "objectToMove" }).state;
+    let state = run(moveProposed([toChapel], partyOfThree()), alex, { kind: "objectToMove" }).state;
     state = run(state, alex, { kind: "objectToMove" }).state;
     expect(state.pendingMove?.objectors).toEqual(["u-alex"]);
     state = run(state, alex, { kind: "withdrawObjection" }).state;
@@ -163,13 +178,12 @@ describe("a player suggesting a move", () => {
     const state = run(open(), alex, suggest).state;
     expect(state.pendingMove).toMatchObject({ sceneId: chapel, proposedRound: 0, objectors: [] });
     expect(state.sceneId).not.toBe(chapel);
-    expect(playRound(state).sceneId).toBe(chapel);
+    expect(closeWindow(state).sceneId).toBe(chapel);
   });
 
   it("can be objected to like any other", () => {
     let state = run(open(), alex, suggest).state;
-    state = run(state, jamie, { kind: "objectToMove" }).state;
-    const closed = run(state, system, { kind: "roundTimerExpired", roundNumber: 1 });
+    const closed = run(state, jamie, { kind: "objectToMove" });
     expect(kinds(closed.events)).toContain("sceneMoveDeclined");
     expect(closed.state.sceneId).not.toBe(chapel);
   });
@@ -179,7 +193,7 @@ describe("a player suggesting a move", () => {
   });
 
   it("keeps the objections when the same move is suggested again, and replaces a different one", () => {
-    let state = run(open(), alex, suggest).state;
+    let state = run(run(partyOfThree(), system, { kind: "openRound" }).state, alex, suggest).state;
     state = run(state, jamie, { kind: "objectToMove" }).state;
     state = run(state, alex, suggest).state;
     expect(state.pendingMove?.objectors).toEqual(["u-jamie"]);
