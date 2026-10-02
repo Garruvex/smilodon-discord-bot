@@ -910,18 +910,18 @@ function renderParty(members) {
     nameLine.append(name, status);
     const subtitle = document.createElement("span");
     subtitle.className = "party-class-line";
-    subtitle.textContent = hero.level === null ? classText(hero.className) ?? t(`activity.party.presence.${hero.presence}`) : `${hero.raceName ?? ""} ${classText(hero.className) ?? t("activity.hero.heroClass")}`.trim();
+    const kind = `${hero.raceName ?? ""} ${classText(hero.className) ?? t("activity.hero.heroClass")}`.trim();
+    subtitle.textContent = hero.level === null ? classText(hero.className) ?? t(`activity.party.presence.${hero.presence}`) : `${t("activity.detail.level")} ${hero.level} · ${kind}`;
     copy.append(nameLine, subtitle);
     const meta = document.createElement("span");
     meta.className = "party-meta-line";
-    if (hero.level !== null) {
-      const level = document.createElement("span");
-      level.className = "party-level-badge";
-      level.setAttribute("aria-label", `${t("activity.detail.level")} ${hero.level}`);
-      level.textContent = String(hero.level);
-      meta.append(level);
-    }
     if (hero.hp !== null && hero.maxHp !== null) {
+      const bar = document.createElement("span");
+      bar.className = "party-health live-party-health ui-meter";
+      const fill = document.createElement("i");
+      fill.style.width = `${hero.maxHp > 0 ? Math.max(0, Math.min(100, Math.round((hero.hp / hero.maxHp) * 100))) : 0}%`;
+      bar.append(fill);
+      meta.append(bar);
       const hp = document.createElement("span");
       hp.className = "party-hp-label";
       hp.textContent = t("activity.hero.hp", { hp: hero.hp, max: hero.maxHp });
