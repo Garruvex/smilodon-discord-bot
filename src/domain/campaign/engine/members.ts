@@ -13,6 +13,7 @@ import { scheduleReminder } from "./reminders.js";
 import { reactionTimerId } from "./combat/reactions.js";
 import { smiteTimerId } from "./combat/smite.js";
 import { opportunityAttackTimerId } from "./combat/movement.js";
+import { rollChecksForAwayMember } from "./checks.js";
 import { awayRestriction, beginEncounter, onMemberAway, rearmedTurnDeadline, resumeCombat, turnTimerId } from "./combat/combat-flow.js";
 import { closeIfEveryoneResponded, enterWaiting, finishReadyCheck, finishRoundIfResolved, openRound } from "./rounds.js";
 
@@ -65,6 +66,7 @@ export function markAway(decision: Decision, userId: UserId): Rejection | null {
     if (restriction !== null) return restriction;
   }
   decision.emit({ kind: "memberMarkedAway", userId, reason });
+  rollChecksForAwayMember(decision, userId);
   onMemberAway(decision, userId);
   const round = decision.state.round;
   const characterId = member.characterId;

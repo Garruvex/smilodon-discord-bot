@@ -70,6 +70,7 @@ export type Rejection =
   | { readonly code: "haggleAlreadyPending" }
   | { readonly code: "invalidPressSkill" }
   | { readonly code: "pressAlreadyPending" }
+  | { readonly code: "pressAlreadyAttempted" }
   | { readonly code: "dialoguePending" }
   | { readonly code: "npcDown" }
   | { readonly code: "secretAlreadyRevealed" }

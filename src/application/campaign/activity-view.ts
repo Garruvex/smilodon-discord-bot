@@ -27,6 +27,7 @@ export interface ActivityTableView {
   readonly adventureTitle: string;
   readonly sceneId: string | null;
   readonly mode: string;
+  readonly ownPresence: "present" | "away";
   readonly roundNumber: number | null;
   readonly scene: { readonly title: string; readonly description: string; readonly imageUrl: string | null };
   // present and needed: how many players vote, and how many Stay votes keep the party where it is. closesAt: when the window closes (epoch ms), or null.
@@ -287,6 +288,7 @@ export function buildActivityTableView(
     adventureTitle: bible.title,
     sceneId: state.sceneId,
     mode: panel.mode,
+    ownPresence: state.members[userId]?.availability ?? "away",
     roundNumber: panel.roundNumber,
     mapText: texts[record.language].campaign.map,
     // Show the encounter illustration during combat when it is ready; otherwise

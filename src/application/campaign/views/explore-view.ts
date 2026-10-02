@@ -27,6 +27,7 @@ export interface ExploreNpc {
   readonly trades: boolean;
   // Their secret was already won: pressing them again is refused.
   readonly secretKnown: boolean;
+  readonly pressAttempted: boolean;
 }
 
 export interface ExploreSpell {
@@ -105,6 +106,7 @@ function exploreNpc(state: CampaignState, npc: BibleNpc): ExploreNpc {
     description: npc.publicDescription,
     trades: npc.shop !== undefined,
     secretKnown: state.npcSecretsRevealed?.[npc.id] === true,
+    pressAttempted: state.npcPressAttempts?.includes(npc.id) === true,
   };
 }
 

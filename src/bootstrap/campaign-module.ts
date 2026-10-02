@@ -394,6 +394,8 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
             return activityPlay.speak(key, userId, text, id).then(mapPlayResult);
           }
           case "pass": return activityPlay.pass(key, userId, id).then(mapPlayResult);
+          case "away": return activityPlay.away(key, userId, id).then(mapPlayResult);
+          case "back": return activityPlay.back(key, userId, id).then(mapPlayResult);
           case "toggleMoveObjection": return activityPlay.toggleMoveObjection(key, userId, id).then(mapPlayResult);
           case "moveVote": {
             if (action.choice !== "go" && action.choice !== "stay") return { kind: "refused", reason: "invalidAction" };

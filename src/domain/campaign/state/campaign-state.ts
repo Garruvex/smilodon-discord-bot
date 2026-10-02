@@ -128,6 +128,9 @@ export interface CampaignState {
   // (engine/dialogue.ts). One at a time per hero; cleared once the roll
   // settles the conversation.
   readonly pressPending?: Readonly<Record<CharacterId, PendingPress>>;
+  // Each NPC can be pressed for their secret once by the party; the four
+  // skill buttons are alternative approaches to that single attempt.
+  readonly npcPressAttempts?: readonly NpcId[];
   // A conversation already decided (a plain question, or a settled press),
   // waiting for the Narrator to voice the NPC's reply; removed once
   // recordDialogueNarration lands. Not gameplay state, same as trades.

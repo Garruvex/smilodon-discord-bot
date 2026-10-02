@@ -308,7 +308,13 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       return { ...state, trades };
     }
     case "pressStarted":
-      return { ...state, pressPending: { ...state.pressPending, [event.press.characterId]: event.press } };
+      return {
+        ...state,
+        pressPending: { ...state.pressPending, [event.press.characterId]: event.press },
+        npcPressAttempts: state.npcPressAttempts?.includes(event.press.npcId) === true
+          ? state.npcPressAttempts
+          : [...(state.npcPressAttempts ?? []), event.press.npcId],
+      };
     case "dialogueSettled": {
       const { dialogue, revealSecret } = event;
       const { [dialogue.characterId]: _spentPress, ...pressPending } = state.pressPending ?? {};

@@ -1519,6 +1519,11 @@ function renderTableActions(game) {
 
 function buildTableActions(game, liveActions, log) {
   liveActions.replaceChildren();
+  if (!["paused", "safety", "recovery", "archived"].includes(game.mode)) {
+    const presenceAction = { kind: game.ownPresence === "away" ? "back" : "away" };
+    log.push(JSON.stringify(presenceAction));
+    liveActions.append(makeButton(t(game.ownPresence === "away" ? "activity.action.back" : "activity.action.away"), () => void performAction(presenceAction), false, "pause"));
+  }
   if (game.joinRequestStatus === "requested") {
     const note = document.createElement("span");
     note.className = "live-action-note status-note join-queue-note";
@@ -1565,7 +1570,7 @@ function buildTableActions(game, liveActions, log) {
     const note = document.createElement("span");
     note.className = "live-action-note status-note";
     note.textContent = t(game.mode === "planning" ? "activity.status.dmResolving" : "activity.status.waitRolls");
-    liveActions.append(note);
+    liveActions.prepend(note);
     return;
   }
   const top = [], composer = [], bottom = [];
@@ -1674,7 +1679,13 @@ function buildTableActions(game, liveActions, log) {
       groups.get("talk").push(question);
       for (const npc of game.explore.npcs) {
         addAction(t("activity.action.ask", { name: npc.name }), { kind: "askNpc", npcId: npc.id, question: () => question.value }, true);
-        if (!npc.secretKnown) for (const skill of ["insight", "persuasion", "deception", "intimidation"]) addAction(t("activity.action.pressNpc", { name: npc.name, skill: t(`activity.skill.${skill}`) }), { kind: "pressNpc", npcId: npc.id, skill });
+        if (!npc.secretKnown && !npc.pressAttempted) for (const skill of ["insight", "persuasion", "deception", "intimidation"]) addAction(t("activity.action.pressNpc", { name: npc.name, skill: t(`activity.skill.${skill}`) }), { kind: "pressNpc", npcId: npc.id, skill });
+        if (npc.pressAttempted && !npc.secretKnown) {
+          const note = document.createElement("span");
+          note.className = "live-action-note status-note";
+          note.textContent = t("activity.dialogue.pressAlreadyAttempted");
+          groups.get("talk").push(note);
+        }
       }
     }
     for (const shop of game.explore.shops ?? []) {

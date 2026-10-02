@@ -18,7 +18,8 @@ import type { Rejection } from "./rejection.js";
 // and that is a real Insight, Persuasion, Deception, or Intimidation check
 // against a fixed DC: dice decide whether it gives anything up, the same
 // "dice decide, the model only narrates" rule engine/shop.ts's haggling
-// already follows for prices.
+// already follows for prices. Press is one attempt per NPC for the whole
+// party: the listed skills are alternative approaches, not repeat chances.
 export function handleDialogueCommand(decision: Decision, command: DialogueCommand): Rejection | null {
   switch (command.kind) {
     case "askNpc":
@@ -69,6 +70,7 @@ function pressNpc(decision: Decision, command: Extract<DialogueCommand, { kind: 
   const { state } = decision;
   if (!isSkill(skill) || !(pressSkills as readonly string[]).includes(skill)) return { code: "invalidPressSkill" };
   if (state.pressPending?.[characterId] !== undefined) return { code: "pressAlreadyPending" };
+  if (state.npcPressAttempts?.includes(npcId) === true) return { code: "pressAlreadyAttempted" };
   if (state.npcSecretsRevealed?.[npcId] === true) return { code: "secretAlreadyRevealed" };
   if (Object.values(state.dialogues).some((dialogue) => dialogue.characterId === characterId)) return { code: "dialoguePending" };
   const sheet = state.characters[characterId];
@@ -96,7 +98,7 @@ function pressNpc(decision: Decision, command: Extract<DialogueCommand, { kind: 
 // The roll worker saved a result for a pending press (decide.ts's recordRoll
 // dispatcher tries this after round-plan checks and a pending haggle). A
 // success gives the party the NPC's authored secret for good; a failure
-// gives up nothing, and the hero may try again later (no cooldown modeled).
+// gives up nothing, and the one party attempt remains spent.
 export function recordPressRoll(decision: Decision, press: PendingPress, result: RollResult): Rejection | null {
   if (result.kind !== "d20Test" || !rollMatchesSpec(result.roll, press.spec)) return { code: "rollMismatch" };
   const { ctx, state } = decision;
