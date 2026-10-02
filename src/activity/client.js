@@ -846,15 +846,8 @@ function renderTable(game) {
   document.querySelector("#live-hero-hp").textContent = hero ? t("activity.hero.hp", { hp: hero.hp, max: hero.maxHp }) : "";
   document.querySelector("#live-hero-ac").textContent = hero ? t("activity.hero.ac", { value: hero.armorClass }) : "";
   document.querySelector("#live-hero-health").style.width = hero ? `${Math.max(0, Math.min(100, (hero.hp / Math.max(1, hero.maxHp)) * 100))}%` : "0%";
-  const resources = document.querySelector("#live-resources");
-  resources.replaceChildren();
+  document.querySelector("#live-resources").replaceChildren();
   if (hero) {
-    for (const slot of [...hero.slots, ...hero.pactSlots]) {
-      const resource = document.createElement("span");
-      resource.className = "resource";
-      resource.textContent = t("activity.hero.slot", { level: slot.level, left: slot.left, max: slot.max });
-      resources.append(resource);
-    }
     renderEquipment(hero);
   } else {
     document.querySelector("#live-equipment").replaceChildren();
@@ -1131,6 +1124,47 @@ function setWorkspaceTabs(game, tabs) {
   }
 }
 
+// What a caster checks before almost every turn, kept in view on every tab: spell slots and class feature uses as pips (filled = left).
+function renderHeroResources(hero) {
+  const panel = document.querySelector("#hero-resources");
+  const slots = hero ? [...hero.slots.map((slot) => ({ ...slot, pact: false })), ...hero.pactSlots.map((slot) => ({ ...slot, pact: true }))].filter((slot) => slot.max > 0) : [];
+  const uses = hero ? hero.uses.filter((use) => use.max > 0) : [];
+  panel.hidden = slots.length === 0 && uses.length === 0;
+  const pips = (left, max) => {
+    const track = document.createElement("span");
+    track.className = "hr-pips";
+    if (max > 8) {
+      track.textContent = `${left}/${max}`;
+      return track;
+    }
+    for (let index = 0; index < max; index += 1) {
+      const pip = document.createElement("i");
+      pip.className = "hr-pip";
+      pip.dataset.state = index < left ? "full" : "spent";
+      track.append(pip);
+    }
+    return track;
+  };
+  const row = (className, label, left, max, spoken) => {
+    const item = document.createElement("div");
+    item.className = className;
+    item.setAttribute("role", "img");
+    item.setAttribute("aria-label", spoken);
+    const name = document.createElement("span");
+    name.className = "hr-label";
+    name.textContent = label;
+    item.append(name, pips(left, max));
+    return item;
+  };
+  document.querySelector("#hr-slots").replaceChildren(...slots.map((slot) => {
+    const spoken = t(slot.pact ? "activity.resources.pact" : "activity.resources.slotLevel", { level: slot.level });
+    const item = row("hr-slot", slot.pact ? t("activity.resources.pactShort", { level: slot.level }) : String(slot.level), slot.left, slot.max, `${spoken}: ${slot.left} / ${slot.max}`);
+    item.title = spoken;
+    return item;
+  }));
+  document.querySelector("#hr-uses").replaceChildren(...uses.map((use) => row("hr-use", use.name, use.left, use.max, `${use.name}: ${use.left} / ${use.max}`)));
+}
+
 function renderCharacterWorkspace(game) {
   document.querySelector("#hero-panel-actions").append(liveActions);
   const enemy = game.foes.find((foe) => foe.name === selectedEnemyName);
@@ -1142,6 +1176,7 @@ function renderCharacterWorkspace(game) {
     document.querySelector("#live-hero-subtitle").textContent = enemy.zone;
     document.querySelector("#live-hero-class").textContent = enemy.band;
     setHeroWatermark(null);
+    renderHeroResources(null);
     document.querySelector("#live-hero-hp").textContent = t("activity.hero.hp", { hp: enemy.hp, max: enemy.maxHp });
     document.querySelector("#live-hero-ac").textContent = "";
     updateHealthMeter(enemy.hp, enemy.maxHp);
@@ -1171,6 +1206,7 @@ function renderCharacterWorkspace(game) {
   const selected = game.party.find((member) => member.characterId === selectedPartyCharacterId) ?? game.party.find((member) => member.isYou) ?? null;
   const viewingOwn = selected?.isYou === true && ownHero !== null;
   const profile = viewingOwn ? ownHero : selected;
+  renderHeroResources(viewingOwn ? ownHero : null);
   if (!profile) return;
   const turnLabel = document.querySelector("#live-turn");
   turnLabel.classList.toggle("is-active", selected.tableStatus === "acting");
@@ -1809,7 +1845,7 @@ function designPreviewSnapshot() {
       { ...hero("kestrel", "Kestrel Vale", "Bard", "Human", 25, 30), tableStatus: "waiting" },
     ],
     foes: [{ name: "Hollow Sentinel", hp: 18, maxHp: 36, band: "bloodied", zone: "Flooded floor", active: false }],
-    myHero: { ...hero("aria", "Aria Vell", "Wizard", "High Elf", 27, 34, true), imageUrl: null, gold: 18, partyGold: 42, weapons: ["Quarterstaff"], worn: ["Traveler's robe"], pack: [], stash: [], inventoryChoices: [], usablePotions: [], cantrips: ["Fire Bolt", "Ray of Frost"], prepared: ["Shield", "Magic Missile"], slots: [{ level: 1, left: 2, max: 3 }, { level: 2, left: 1, max: 2 }], pactSlots: [], uses: [] },
+    myHero: { ...hero("aria", "Aria Vell", "Wizard", "High Elf", 27, 34, true), imageUrl: null, gold: 18, partyGold: 42, weapons: ["Quarterstaff"], worn: ["Traveler's robe"], pack: [], stash: [], inventoryChoices: [], usablePotions: [], cantrips: ["Fire Bolt", "Ray of Frost"], prepared: ["Shield", "Magic Missile"], slots: [{ level: 1, left: 2, max: 4 }, { level: 2, left: 1, max: 3 }, { level: 3, left: 2, max: 2 }], pactSlots: [], uses: [{ id: "feature:arcane-recovery", name: "Arcane Recovery", left: 1, max: 1 }, { id: "feature:sculpt-spells", name: "Portent", left: 0, max: 2 }] },
     turn: { busy: false, attacks: [{ weapon: "Quarterstaff", targets: [{ id: "sentinel", name: "Hollow Sentinel" }] }], spells: [], features: [], potions: [], shields: [], moves: [], engage: [], teleports: [], wildShapes: [], canRevertShape: false, canWithdraw: false, canDashOrDisengage: true, canDodge: true },
     explore: null, pendingRoll: null, pendingRollCount: 0, submittedCount: 2, participantCount: 6, submission: null, canAcceptInvite: false, joinChoices: [], joinRequestStatus: null,
     savedHeroChoices: [], reaction: null, reactionIsYours: false, smite: null, smiteIsYours: false, opportunityAttack: null, opportunityAttackIsYours: false,
