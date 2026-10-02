@@ -8,7 +8,7 @@ import { progressionOf, type Progression } from "../../../domain/campaign/charac
 import type { UserId } from "../../../domain/campaign/core/ids.js";
 import { abilities } from "../../../domain/campaign/rules/effects.js";
 import type { SealedContent } from "../../../domain/campaign/rules/content-registry.js";
-import type { CampaignKey, CampaignUnitOfWork } from "../ports/campaign-store.js";
+import type { CampaignKey, CampaignTransaction, CampaignUnitOfWork } from "../ports/campaign-store.js";
 import type { Clock } from "../ports/clock.js";
 import { checkCompatibility, type ImportConflict } from "./compatibility.js";
 import type { LibraryCharacter, LibrarySnapshot, PortableCharacter, SnapshotGear } from "./library-types.js";
@@ -88,10 +88,13 @@ export class CharacterLibrary {
   }
 
   public list(ownerUserId: UserId): Promise<readonly LibraryEntry[]> {
-    return this.options.unitOfWork.transaction(async (tx) => {
-      const characters = await tx.listLibraryCharacters(ownerUserId);
-      return Promise.all(characters.map(async (character) => ({ character, snapshots: await tx.listLibrarySnapshots(character.id) })));
-    });
+    return this.options.unitOfWork.transaction((tx) => this.listInTransaction(tx, ownerUserId));
+  }
+
+  public listInTransaction(tx: CampaignTransaction, ownerUserId: UserId): Promise<readonly LibraryEntry[]> {
+    return tx.listLibraryCharacters(ownerUserId).then((characters) =>
+      Promise.all(characters.map(async (character) => ({ character, snapshots: await tx.listLibrarySnapshots(character.id) }))),
+    );
   }
 
   public snapshot(ownerUserId: UserId, snapshotId: string): Promise<LibrarySnapshot | undefined> {
