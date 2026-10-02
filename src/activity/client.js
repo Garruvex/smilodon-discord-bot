@@ -36,10 +36,6 @@ let mapScale = 1;
 let mapIdentity = "";
 let mapBaseSize = null;
 let mapOffset = { x: 0, y: 0 };
-let mapPointers = new Map();
-let mapDrag = null;
-let pinchStart = null;
-let suppressMapClick = false;
 
 const lifecycleKeys = { lobby: "activity.lobby.status.open", active: "activity.lobby.status.live", paused: "activity.lobby.status.paused" };
 const actionKeys = { join: "activity.lobby.action.join", continue: "activity.lobby.action.continue", request: "activity.lobby.action.request", requested: "activity.lobby.action.requested", invited: "activity.lobby.action.invited", full: "activity.lobby.action.full", resume: "activity.lobby.action.continue" };
@@ -371,36 +367,57 @@ function keyItem(swatchClass, label) {
   return item;
 }
 
-function mapFootprints(svg, from, to, padding = 40) {
-  const ns = "http://www.w3.org/2000/svg";
-  const dx = to.x - from.x, dy = to.y - from.y;
-  const length = Math.hypot(dx, dy);
-  if (length < padding * 2) return;
-  const angle = Math.atan2(dy, dx) * 180 / Math.PI;
-  for (let distance = padding; distance < length - padding; distance += 17) {
-    const side = Math.floor(distance / 17) % 2 ? 4 : -4;
-    const x = from.x + dx / length * distance - dy / length * side;
-    const y = from.y + dy / length * distance + dx / length * side;
-    const foot = document.createElementNS(ns, "path");
-    foot.setAttribute("d", "M-4,-2 Q0,-3 4,-1 L4,1 Q0,3 -4,2 Z M-7,-2 L-5,-2 L-5,2 L-7,2 Z");
-    foot.setAttribute("transform", `translate(${x} ${y}) rotate(${angle})`);
-    foot.setAttribute("class", "map-footprint");
-    svg.append(foot);
-  }
+const svgNs = "http://www.w3.org/2000/svg";
+
+function svgElement(name, attributes = {}, text = null) {
+  const element = document.createElementNS(svgNs, name);
+  for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, String(value));
+  if (text !== null) element.textContent = text;
+  return element;
 }
 
-function decorateMap(svg, width, height) {
-  const ns = "http://www.w3.org/2000/svg";
-  const scenery = document.createElementNS(ns, "g");
-  scenery.setAttribute("class", "map-terrain"); scenery.setAttribute("aria-hidden", "true");
-  for (let i = 0; i < 5; i++) {
-    const contour = document.createElementNS(ns, "path");
-    contour.setAttribute("d", `M${width * .05},${height * .18 + i * 8} Q${width * .2},${-height * .15 + i * 13} ${width * .4},${height * .12 + i * 7} T${width * .93},${height * .22 + i * 7}`);
-    scenery.append(contour);
+// Wide characters (Chinese) take about twice the room of Latin ones, so a name's box is sized from its letters.
+function labelWidth(text, size = 13) {
+  return [...text].reduce((sum, character) => sum + (character.charCodeAt(0) > 255 ? size * 1.05 : size * .56), 0);
+}
+
+function clipLabel(text, size, limit) {
+  if (labelWidth(text, size) <= limit) return text;
+  let shown = "";
+  for (const character of text) {
+    if (labelWidth(`${shown}${character}…`, size) > limit) break;
+    shown += character;
   }
-  const compass = document.createElementNS(ns, "text");
-  compass.setAttribute("x", String(width - 28)); compass.setAttribute("y", String(height - 22)); compass.textContent = "✥"; compass.setAttribute("class", "map-compass"); scenery.append(compass);
-  svg.append(scenery);
+  return `${shown}…`;
+}
+
+// Where a line from one box's centre toward another leaves the first box's edge.
+function edgePoint(from, toward, halfWidth, halfHeight) {
+  const dx = toward.x - from.x;
+  const dy = toward.y - from.y;
+  if (dx === 0 && dy === 0) return { ...from };
+  const scale = Math.min(dx === 0 ? Infinity : halfWidth / Math.abs(dx), dy === 0 ? Infinity : halfHeight / Math.abs(dy));
+  return { x: from.x + dx * scale, y: from.y + dy * scale };
+}
+
+// Moving is a choice made in two steps: the button turns on "pick a place", the map shows where the party may go, and one click on it sends the move.
+let mapPick = false;
+
+function setMapPick(on) {
+  mapPick = on;
+  if (currentSnapshot?.kind === "table") renderMap(currentSnapshot.map, currentSnapshot.mapText);
+}
+
+function updateMapGo(targetCount) {
+  if (targetCount === 0) mapPick = false;
+  const button = document.querySelector("#map-go");
+  const hint = document.querySelector("#map-go-hint");
+  button.hidden = targetCount === 0;
+  document.querySelector("#map-toolbar").hidden = targetCount === 0;
+  button.textContent = t(mapPick ? "activity.map.goCancel" : "activity.map.go");
+  button.setAttribute("aria-pressed", String(mapPick));
+  hint.hidden = !mapPick;
+  hint.textContent = t("activity.map.goHint");
 }
 
 function renderMap(map, words) {
@@ -410,83 +427,157 @@ function renderMap(map, words) {
   if (mapPanel.dataset.mapKind !== mapKind) {
     mapPanel.open = true;
     mapPanel.dataset.mapKind = mapKind;
+    mapPick = false;
   }
   if (map.kind === "battlefield") {
     document.querySelector("#live-map-kind").textContent = words.tacticalKind;
     document.querySelector("#live-map-title").textContent = words.battlefield;
-    document.querySelector(".map-key").replaceChildren(keyItem("current-key", words.keyParty), keyItem("foe-key", words.keyFoes));
-    renderBattlefieldMap(map, words);
-    prepareMapView("battlefield", document.querySelector(".battlefield-map-svg"));
+    document.querySelector(".map-key").replaceChildren(keyItem("party-key", words.keyParty), keyItem("foe-key", words.keyFoes));
+    updateMapGo(map.zones.filter((zone) => zone.canMove).length);
+    const svg = renderBattlefieldMap(map, words);
+    liveMap.append(svg);
+    prepareMapView("battlefield", svg);
     return;
   }
   document.querySelector("#live-map-kind").textContent = words.journeyKind;
   document.querySelector("#live-map-title").textContent = words.journeyTitle;
-  document.querySelector(".map-key").replaceChildren(keyItem("current-key", words.keyHere), keyItem("reachable-key", words.keyOpen), keyItem("locked-key", words.keyLocked));
-  if (map.nodes.length === 0) { liveMap.textContent = words.empty; document.querySelector("#map-toolbar").hidden = true; return; }
-  const ns = "http://www.w3.org/2000/svg";
-  const svg = document.createElementNS(ns, "svg");
-  svg.classList.add("route-map-svg");
-  svg.setAttribute("role", "group");
-  svg.setAttribute("aria-label", words.routeLabel);
-  const columns = new Map();
-  for (const node of map.nodes) { if (!columns.has(node.column)) columns.set(node.column, []); columns.get(node.column).push(node); }
-  const maxColumn = Math.max(...columns.keys());
-  const maxRows = Math.max(...[...columns.values()].map((nodes) => nodes.length));
-  const positions = new Map();
-  for (const node of map.nodes) {
-    const rowsInColumn = columns.get(node.column).length;
-    positions.set(node.id, { x: 92 + node.column * 176, y: 48 + node.row * 78 + ((maxRows - rowsInColumn) * 39) });
-  }
-  const mapWidth = Math.max(210, 184 + maxColumn * 176);
-  const mapHeight = Math.max(100, 84 + maxRows * 78);
-  svg.setAttribute("viewBox", `0 0 ${mapWidth} ${mapHeight}`);
-  svg.setAttribute("width", String(mapWidth)); svg.setAttribute("height", String(mapHeight));
-  decorateMap(svg, mapWidth, mapHeight);
-  const defs = document.createElementNS(ns, "defs");
-  const marker = document.createElementNS(ns, "marker");
-  marker.setAttribute("id", "route-arrow"); marker.setAttribute("markerWidth", "8"); marker.setAttribute("markerHeight", "8");
-  marker.setAttribute("refX", "6"); marker.setAttribute("refY", "4"); marker.setAttribute("orient", "auto"); marker.setAttribute("markerUnits", "strokeWidth");
-  const arrow = document.createElementNS(ns, "path"); arrow.setAttribute("d", "M0,0 L8,4 L0,8 z"); arrow.setAttribute("fill", "#9aa1a9"); marker.append(arrow); defs.append(marker); svg.append(defs);
-  for (const route of map.routes) {
-    const from = positions.get(route.from); const to = positions.get(route.to); if (!from || !to) continue;
-    const line = document.createElementNS(ns, "line");
-    line.setAttribute("x1", String(from.x + 68)); line.setAttribute("y1", String(from.y));
-    line.setAttribute("x2", String(to.x - 68)); line.setAttribute("y2", String(to.y));
-    line.setAttribute("class", route.oneWay ? "route-line one-way" : "route-line");
-    line.setAttribute("marker-end", "url(#route-arrow)"); svg.append(line);
-    mapFootprints(svg, from, to, 72);
-    if (route.oneWay) {
-      const bar = document.createElementNS(ns, "line");
-      const middleX = (from.x + to.x) / 2; const middleY = (from.y + to.y) / 2;
-      bar.setAttribute("x1", String(middleX)); bar.setAttribute("y1", String(middleY - 7));
-      bar.setAttribute("x2", String(middleX)); bar.setAttribute("y2", String(middleY + 7));
-      bar.setAttribute("class", "route-one-way-mark"); svg.append(bar);
-    }
-  }
-  for (const node of map.nodes) {
-    const point = positions.get(node.id); const group = document.createElementNS(ns, "g");
-    group.setAttribute("class", `route-node ${node.status}`);
-    if (node.canTravel) {
-      group.setAttribute("role", "button"); group.setAttribute("tabindex", "0");
-      group.addEventListener("click", () => void performAction({ kind: "moveScene", sceneId: node.id }));
-      group.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); void performAction({ kind: "moveScene", sceneId: node.id }); } });
-    }
-    const rect = document.createElementNS(ns, "rect");
-    rect.setAttribute("x", String(point.x - 68)); rect.setAttribute("y", String(point.y - 23)); rect.setAttribute("width", "136"); rect.setAttribute("height", "46"); rect.setAttribute("rx", "9");
-    const title = document.createElementNS(ns, "text");
-    title.setAttribute("x", String(point.x)); title.setAttribute("y", String(point.y + 4)); title.setAttribute("text-anchor", "middle"); title.textContent = node.title;
-    const subtitle = document.createElementNS(ns, "text");
-    subtitle.setAttribute("x", String(point.x)); subtitle.setAttribute("y", String(point.y + 18)); subtitle.setAttribute("text-anchor", "middle"); subtitle.setAttribute("class", "route-subtitle");
-    subtitle.textContent = node.status === "current" ? words.here : node.deadEnd ? words.deadEnd : node.status === "visited" ? words.visited : node.status === "locked" ? words.locked : node.status === "known" ? words.mapped : words.openRoute;
-    group.append(rect, title, subtitle); svg.append(group);
-  }
+  document.querySelector(".map-key").replaceChildren(keyItem("current-key", words.keyHere), keyItem("visited-key", words.visited), keyItem("reachable-key", words.keyOpen), keyItem("locked-key", words.keyLocked));
+  updateMapGo(map.nodes.filter((node) => node.canTravel).length);
+  if (map.nodes.length === 0) { liveMap.textContent = words.empty; return; }
+  const svg = renderJourneyMap(map, words);
   liveMap.append(svg);
   prepareMapView("journey", svg);
 }
 
+function renderJourneyMap(map, words) {
+  const svg = svgElement("svg", { role: "group", "aria-label": words.routeLabel });
+  svg.classList.add("route-map-svg");
+  const subtitleOf = (node) => node.status === "current" ? words.here : node.deadEnd ? words.deadEnd : node.status === "visited" ? words.visited : node.status === "locked" ? words.locked : node.status === "known" ? words.mapped : words.openRoute;
+  const boxHeight = 54;
+  const widths = new Map(map.nodes.map((node) => [node.id, Math.max(132, Math.min(240, 44 + labelWidth(node.title)))]));
+  const widest = Math.max(...widths.values());
+  const columns = new Map();
+  for (const node of map.nodes) { if (!columns.has(node.column)) columns.set(node.column, []); columns.get(node.column).push(node); }
+  const maxColumn = Math.max(...columns.keys());
+  const maxRows = Math.max(...[...columns.values()].map((nodes) => nodes.length));
+  const columnStep = widest + 70;
+  const rowStep = boxHeight + 34;
+  const positions = new Map();
+  for (const node of map.nodes) {
+    const rowsInColumn = columns.get(node.column).length;
+    positions.set(node.id, { x: 32 + widest / 2 + node.column * columnStep, y: 32 + boxHeight / 2 + node.row * rowStep + ((maxRows - rowsInColumn) * rowStep) / 2 });
+  }
+  const width = 64 + widest + maxColumn * columnStep;
+  const height = 64 + boxHeight + (maxRows - 1) * rowStep;
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.setAttribute("width", String(width));
+  svg.setAttribute("height", String(height));
+  const defs = svgElement("defs");
+  const marker = svgElement("marker", { id: "route-arrow", markerWidth: 9, markerHeight: 9, refX: 8, refY: 4.5, orient: "auto", markerUnits: "userSpaceOnUse" });
+  marker.append(svgElement("path", { d: "M0,0 L9,4.5 L0,9 z", class: "jr-arrow" }));
+  defs.append(marker);
+  svg.append(defs);
+  for (const route of map.routes) {
+    const from = positions.get(route.from);
+    const to = positions.get(route.to);
+    if (!from || !to) continue;
+    const start = edgePoint(from, to, widths.get(route.from) / 2, boxHeight / 2);
+    const end = edgePoint(to, from, widths.get(route.to) / 2, boxHeight / 2);
+    // A way that can be walked back is a plain line; only a one-way route has a direction.
+    const line = svgElement("line", { x1: start.x, y1: start.y, x2: end.x, y2: end.y, class: route.oneWay ? "jr-line one-way" : "jr-line" });
+    if (route.oneWay) line.setAttribute("marker-end", "url(#route-arrow)");
+    svg.append(line);
+  }
+  for (const node of map.nodes) {
+    const point = positions.get(node.id);
+    const boxWidth = widths.get(node.id);
+    const pickable = mapPick && node.canTravel === true;
+    const group = svgElement("g", { class: `jr-node ${node.status}${pickable ? " is-target" : ""}${mapPick && !pickable && node.status !== "current" ? " is-dim" : ""}` });
+    if (pickable) {
+      group.setAttribute("role", "button");
+      group.setAttribute("tabindex", "0");
+      group.setAttribute("aria-label", `${node.title}. ${words.moveHere}`);
+      const go = () => { mapPick = false; void performAction({ kind: "moveScene", sceneId: node.id }); };
+      group.addEventListener("click", go);
+      group.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); go(); } });
+    }
+    group.append(
+      svgElement("rect", { x: point.x - boxWidth / 2, y: point.y - boxHeight / 2, width: boxWidth, height: boxHeight, rx: 9 }),
+      svgElement("circle", { cx: point.x - boxWidth / 2 + 15, cy: point.y, r: 5, class: "jr-dot" }),
+      svgElement("text", { x: point.x + 7, y: point.y - 3, "text-anchor": "middle", class: "jr-title" }, node.title),
+      svgElement("text", { x: point.x + 7, y: point.y + 14, "text-anchor": "middle", class: "jr-sub" }, pickable ? words.moveHere : subtitleOf(node)),
+    );
+    svg.append(group);
+  }
+  return svg;
+}
+
+function renderBattlefieldMap(map, words) {
+  const svg = svgElement("svg", { role: "group", "aria-label": words.battlefield });
+  svg.classList.add("battlefield-map-svg");
+  const zoneWidth = 188;
+  const zoneHeight = 116;
+  const perRow = 4;
+  const stepX = zoneWidth + 56;
+  const stepY = zoneHeight + 52;
+  const columnsUsed = Math.min(perRow, map.zones.length);
+  const rows = Math.ceil(map.zones.length / perRow);
+  const positions = new Map(map.zones.map((zone, index) => [zone.id, { x: 32 + zoneWidth / 2 + (index % perRow) * stepX, y: 32 + zoneHeight / 2 + Math.floor(index / perRow) * stepY }]));
+  const width = 64 + zoneWidth + (columnsUsed - 1) * stepX;
+  const height = 64 + zoneHeight + (rows - 1) * stepY;
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.setAttribute("width", String(width));
+  svg.setAttribute("height", String(height));
+  for (const edge of map.edges) {
+    const from = positions.get(edge.from);
+    const to = positions.get(edge.to);
+    if (!from || !to) continue;
+    const start = edgePoint(from, to, zoneWidth / 2, zoneHeight / 2);
+    const end = edgePoint(to, from, zoneWidth / 2, zoneHeight / 2);
+    svg.append(svgElement("line", { x1: start.x, y1: start.y, x2: end.x, y2: end.y, class: "bf-edge" }));
+    const label = `${edge.feet} ft`;
+    const middle = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
+    const pill = labelWidth(label, 11) + 14;
+    svg.append(svgElement("rect", { x: middle.x - pill / 2, y: middle.y - 10, width: pill, height: 20, rx: 10, class: "bf-distance-bg" }), svgElement("text", { x: middle.x, y: middle.y + 4, class: "bf-distance" }, label));
+  }
+  for (const zone of map.zones) {
+    const point = positions.get(zone.id);
+    const hasFoe = zone.occupants.some((occupant) => occupant.side === "foes");
+    const active = zone.occupants.some((occupant) => occupant.active);
+    const pickable = mapPick && zone.canMove === true;
+    const group = svgElement("g", { class: `bf-zone${active ? " has-active" : ""}${hasFoe ? " has-foe" : ""}${pickable ? " is-target" : ""}${mapPick && !pickable && !active ? " is-dim" : ""}` });
+    group.setAttribute("aria-label", `${zone.name}${zone.occupants.length ? `: ${zone.occupants.map((occupant) => occupant.name).join(", ")}` : ""}`);
+    if (pickable) {
+      group.setAttribute("role", "button");
+      group.setAttribute("tabindex", "0");
+      group.setAttribute("aria-label", `${zone.name}. ${words.moveHere}`);
+      const go = () => { mapPick = false; void performAction({ kind: "move", zoneId: zone.id }); };
+      group.addEventListener("click", go);
+      group.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); go(); } });
+    }
+    const left = point.x - zoneWidth / 2;
+    const top = point.y - zoneHeight / 2;
+    group.append(svgElement("rect", { x: left, y: top, width: zoneWidth, height: zoneHeight, rx: 14, class: "bf-area" }));
+    group.append(svgElement("text", { x: point.x, y: top + 24, class: "bf-title" }, clipLabel(zone.name, 14, zoneWidth - 20)));
+    const terrain = [zone.lighting ? { bright: words.lightBright, dim: words.lightDim, dark: words.lightDark }[zone.lighting] : "", zone.cover ? { half: words.coverHalf, "three-quarters": words.coverThreeQuarters }[zone.cover] : "", zone.difficult ? words.difficult : ""].filter(Boolean).join(" · ") || words.openGround;
+    group.append(svgElement("text", { x: point.x, y: top + 41, class: "bf-terrain" }, clipLabel(terrain, 11, zoneWidth - 20)));
+    const shown = zone.occupants.slice(0, 4);
+    const tokenStep = 38;
+    shown.forEach((occupant, index) => {
+      const cx = point.x + (index - (shown.length - 1) / 2) * tokenStep;
+      const token = svgElement("g", { class: `bf-token ${occupant.side === "foes" ? "foe" : "party"}${occupant.active ? " is-active" : ""}` });
+      token.append(svgElement("circle", { cx, cy: top + 70, r: 16 }), svgElement("text", { x: cx, y: top + 75, class: "bf-initial" }, [...occupant.name][0]?.toLocaleUpperCase() ?? "?"));
+      group.append(token);
+    });
+    if (zone.occupants.length > shown.length) group.append(svgElement("text", { x: left + zoneWidth - 14, y: top + 75, class: "bf-more", "text-anchor": "end" }, `+${zone.occupants.length - shown.length}`));
+    const footer = pickable ? words.moveHere : zone.occupants.map((occupant) => occupant.name).join(", ");
+    if (footer) group.append(svgElement("text", { x: point.x, y: top + 105, class: pickable ? "bf-go" : "bf-names" }, clipLabel(footer, 10, zoneWidth - 20)));
+    svg.append(group);
+  }
+  return svg;
+}
+
 function prepareMapView(kind, svg) {
-  const toolbar = document.querySelector("#map-toolbar");
-  toolbar.hidden = !svg;
   if (!svg) return;
   const viewport = document.querySelector("#live-map-viewport");
   const width = Number(svg.getAttribute("width"));
@@ -521,7 +612,6 @@ function applyMapScale(focal = null, previousScale = mapScale) {
   svg.setAttribute("height", String(Math.round(mapBaseSize.height * mapScale)));
   svg.style.width = `${Math.round(mapBaseSize.width * mapScale)}px`;
   svg.style.height = `${Math.round(mapBaseSize.height * mapScale)}px`;
-  document.querySelector("#map-zoom-level").textContent = `${Math.round(mapScale * 100)}%`;
   requestAnimationFrame(() => {
     mapOffset.x = center.x - ratioX * svg.clientWidth;
     mapOffset.y = center.y - ratioY * svg.clientHeight;
@@ -533,10 +623,11 @@ function applyMapOffset() {
   const svg = liveMap.querySelector("svg");
   if (!svg) return;
   const viewport = document.querySelector("#live-map-viewport");
-  const minX = Math.min(0, viewport.clientWidth - svg.clientWidth);
-  const minY = Math.min(0, viewport.clientHeight - svg.clientHeight);
-  mapOffset.x = Math.max(minX, Math.min(0, mapOffset.x));
-  mapOffset.y = Math.max(minY, Math.min(0, mapOffset.y));
+  // A map smaller than the window sits in the middle of it; a larger one can be dragged but not off its edges.
+  const spareX = viewport.clientWidth - svg.clientWidth;
+  const spareY = viewport.clientHeight - svg.clientHeight;
+  mapOffset.x = spareX >= 0 ? spareX / 2 : Math.max(spareX, Math.min(0, mapOffset.x));
+  mapOffset.y = spareY >= 0 ? spareY / 2 : Math.max(spareY, Math.min(0, mapOffset.y));
   svg.style.transform = `translate(${mapOffset.x}px, ${mapOffset.y}px)`;
 }
 
@@ -550,43 +641,32 @@ function fitMap() {
   if (!mapBaseSize) return;
   const viewport = document.querySelector("#live-map-viewport");
   const previousScale = mapScale;
-  mapScale = Math.min(1, (viewport.clientWidth - 24) / mapBaseSize.width, (viewport.clientHeight - 24) / mapBaseSize.height);
+  mapScale = Math.min(1.5, (viewport.clientWidth - 24) / mapBaseSize.width, (viewport.clientHeight - 24) / mapBaseSize.height);
   mapScale = Math.max(.2, mapScale);
   mapOffset = { x: 0, y: 0 };
   applyMapScale({ x: 0, y: 0 }, previousScale);
 }
 
+// The map can always be zoomed (wheel or pinch) and dragged; a double click fits it to the window again.
+const mapPointers = new Map();
+let mapDrag = null;
+let pinchStart = null;
+let suppressMapClick = false;
+
 function bindMapControls() {
   const viewport = document.querySelector("#live-map-viewport");
-  const toggle = document.querySelector("#map-pan-toggle");
-  document.querySelector("#map-zoom-in").addEventListener("click", () => zoomMap(.2));
-  document.querySelector("#map-zoom-out").addEventListener("click", () => zoomMap(-.2));
-  document.querySelector("#map-fit").addEventListener("click", fitMap);
-  toggle.addEventListener("click", () => {
-    const enabled = toggle.getAttribute("aria-pressed") !== "true";
-    toggle.setAttribute("aria-pressed", String(enabled));
-    toggle.textContent = t(enabled ? "activity.map.moving" : "activity.map.move");
-    viewport.classList.toggle("is-moving", enabled);
-  });
+  document.querySelector("#map-go").addEventListener("click", () => setMapPick(!mapPick));
+  document.addEventListener("keydown", (event) => { if (event.key === "Escape" && mapPick) setMapPick(false); });
+  // The map always fits its window to begin with, so it is refitted whenever the window changes size.
+  new ResizeObserver(() => { if (mapBaseSize) fitMap(); }).observe(viewport);
   viewport.addEventListener("wheel", (event) => {
     event.preventDefault();
     const rect = viewport.getBoundingClientRect();
     zoomMap(event.deltaY < 0 ? .12 : -.12, { x: event.clientX - rect.left, y: event.clientY - rect.top });
   }, { passive: false });
-  viewport.addEventListener("keydown", (event) => {
-    if (event.target !== viewport) return;
-    if (event.key === "+" || event.key === "=") { event.preventDefault(); zoomMap(.2); }
-    else if (event.key === "-") { event.preventDefault(); zoomMap(-.2); }
-    else if (event.key === "0") { event.preventDefault(); fitMap(); }
-    else if (event.key.startsWith("Arrow")) {
-      event.preventDefault();
-      const amount = event.shiftKey ? 120 : 48;
-      mapOffset.x += event.key === "ArrowLeft" ? amount : event.key === "ArrowRight" ? -amount : 0;
-      mapOffset.y += event.key === "ArrowUp" ? amount : event.key === "ArrowDown" ? -amount : 0;
-      applyMapOffset();
-    }
-  });
+  viewport.addEventListener("dblclick", fitMap);
   viewport.addEventListener("pointerdown", (event) => {
+    suppressMapClick = false;
     mapPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (mapPointers.size === 2) {
       const points = [...mapPointers.values()];
@@ -594,12 +674,11 @@ function bindMapControls() {
       mapDrag = null;
       return;
     }
-    const panEnabled = toggle.getAttribute("aria-pressed") === "true";
-    if (!panEnabled || event.button !== 0) return;
+    if (event.button !== 0) return;
     mapDrag = { x: event.clientX, y: event.clientY, left: mapOffset.x, top: mapOffset.y, moved: false };
-    viewport.setPointerCapture(event.pointerId);
   });
-  viewport.addEventListener("pointermove", (event) => {
+  // Listening on the window (not capturing the pointer) keeps a plain click reaching the place that was clicked.
+  window.addEventListener("pointermove", (event) => {
     if (!mapPointers.has(event.pointerId)) return;
     mapPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (mapPointers.size >= 2 && pinchStart) {
@@ -608,12 +687,14 @@ function bindMapControls() {
       if (pinchStart.distance > 0 && distance > 0) {
         const previousScale = mapScale;
         mapScale = Math.max(.35, Math.min(2.5, pinchStart.scale * distance / pinchStart.distance));
-        applyMapScale({ x: (points[0].x + points[1].x) / 2 - viewport.getBoundingClientRect().left, y: (points[0].y + points[1].y) / 2 - viewport.getBoundingClientRect().top }, previousScale);
+        const rect = viewport.getBoundingClientRect();
+        applyMapScale({ x: (points[0].x + points[1].x) / 2 - rect.left, y: (points[0].y + points[1].y) / 2 - rect.top }, previousScale);
       }
       return;
     }
     if (!mapDrag) return;
-    const dx = event.clientX - mapDrag.x, dy = event.clientY - mapDrag.y;
+    const dx = event.clientX - mapDrag.x;
+    const dy = event.clientY - mapDrag.y;
     if (Math.abs(dx) + Math.abs(dy) > 5) mapDrag.moved = true;
     if (mapDrag.moved) { mapOffset.x = mapDrag.left + dx; mapOffset.y = mapDrag.top + dy; applyMapOffset(); }
   });
@@ -623,91 +704,15 @@ function bindMapControls() {
     if (mapPointers.size < 2) pinchStart = null;
     mapDrag = null;
   };
-  viewport.addEventListener("pointerup", finishPointer);
-  viewport.addEventListener("pointercancel", finishPointer);
+  window.addEventListener("pointerup", finishPointer);
+  window.addEventListener("pointercancel", finishPointer);
+  // A drag that ends over a place is not a click on it.
   viewport.addEventListener("click", (event) => {
     if (!suppressMapClick) return;
-    suppressMapClick = false; event.preventDefault(); event.stopImmediatePropagation();
+    suppressMapClick = false;
+    event.preventDefault();
+    event.stopImmediatePropagation();
   }, true);
-}
-
-function renderBattlefieldMap(map, words) {
-  const ns = "http://www.w3.org/2000/svg";
-  const svg = document.createElementNS(ns, "svg");
-  svg.classList.add("battlefield-map-svg");
-  svg.setAttribute("role", "group");
-  svg.setAttribute("aria-label", words.battlefield);
-  const positions = new Map(map.zones.map((zone, index) => [zone.id, { x: 95 + index * 220, y: 105 + (index % 2 === 0 ? -18 : 18) }]));
-  const width = Math.max(210, 190 + (map.zones.length - 1) * 220);
-  svg.setAttribute("viewBox", `0 0 ${width} 245`);
-  svg.setAttribute("width", String(width));
-  svg.setAttribute("height", "245");
-  decorateMap(svg, width, 245);
-
-  for (const edge of map.edges) {
-    const from = positions.get(edge.from);
-    const to = positions.get(edge.to);
-    if (!from || !to) continue;
-    const line = document.createElementNS(ns, "line");
-    const dx = to.x - from.x; const dy = to.y - from.y; const length = Math.hypot(dx, dy) || 1;
-    const ux = dx / length; const uy = dy / length;
-    line.setAttribute("x1", String(from.x + ux * 39)); line.setAttribute("y1", String(from.y + uy * 39));
-    line.setAttribute("x2", String(to.x - ux * 39)); line.setAttribute("y2", String(to.y - uy * 39));
-    line.setAttribute("class", "battlefield-edge");
-    svg.append(line);
-    mapFootprints(svg, from, to);
-    const distance = document.createElementNS(ns, "text");
-    distance.setAttribute("x", String((from.x + to.x) / 2));
-    distance.setAttribute("y", String((from.y + to.y) / 2 - 7));
-    distance.setAttribute("class", "battlefield-distance");
-    distance.setAttribute("text-anchor", "middle");
-    distance.textContent = `${edge.feet} ft`;
-    svg.append(distance);
-  }
-
-  for (const zone of map.zones) {
-    const point = positions.get(zone.id);
-    const active = zone.occupants.some((occupant) => occupant.active);
-    const group = document.createElementNS(ns, "g");
-    group.setAttribute("class", `battle-zone-node${zone.canMove ? " can-move" : ""}${active ? " has-active" : ""}${zone.occupants.some((occupant) => occupant.side === "foes") ? " has-foe" : ""}`);
-    group.setAttribute("aria-label", `${zone.name}${zone.occupants.length ? `: ${zone.occupants.map((occupant) => occupant.name).join(", ")}` : ""}`);
-    if (zone.canMove) {
-      group.setAttribute("role", "button");
-      group.setAttribute("tabindex", "0");
-      group.setAttribute("aria-label", `${zone.name}. ${words.moveHere}`);
-      const move = () => void performAction({ kind: "move", zoneId: zone.id });
-      group.addEventListener("click", move);
-      group.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); move(); } });
-    }
-    const circle = document.createElementNS(ns, "circle");
-    circle.setAttribute("cx", String(point.x)); circle.setAttribute("cy", String(point.y));
-    circle.setAttribute("r", "37");
-    group.append(circle);
-    const marker = document.createElementNS(ns, "text");
-    marker.setAttribute("x", String(point.x)); marker.setAttribute("y", String(point.y + 7));
-    marker.setAttribute("class", "battle-zone-marker"); marker.setAttribute("text-anchor", "middle");
-    marker.textContent = zone.occupants.length > 2 ? String(zone.occupants.length) : zone.occupants.length ? zone.occupants.map((occupant) => occupant.name.slice(0, 1)).join(" / ") : "◇";
-    group.append(marker);
-
-    const title = document.createElementNS(ns, "text");
-    title.setAttribute("x", String(point.x)); title.setAttribute("y", String(point.y + 59));
-    title.setAttribute("class", "battle-zone-title"); title.setAttribute("text-anchor", "middle");
-    title.textContent = zone.name;
-    group.append(title);
-    const terrain = [zone.lighting ? { bright: words.lightBright, dim: words.lightDim, dark: words.lightDark }[zone.lighting] : "", zone.cover ? { half: words.coverHalf, "three-quarters": words.coverThreeQuarters }[zone.cover] : "", zone.difficult ? words.difficult : ""].filter(Boolean).join(" / ") || words.openGround;
-    const detail = document.createElementNS(ns, "text");
-    detail.setAttribute("x", String(point.x)); detail.setAttribute("y", String(point.y + 77));
-    detail.setAttribute("class", "battle-zone-detail"); detail.setAttribute("text-anchor", "middle");
-    detail.textContent = terrain;
-    group.append(detail);
-    const occupants = document.createElementNS(ns, "text");
-    occupants.setAttribute("x", String(point.x)); occupants.setAttribute("y", String(point.y + 94));
-    occupants.setAttribute("class", "battle-zone-occupants"); occupants.setAttribute("text-anchor", "middle");
-    occupants.textContent = zone.occupants.map((occupant) => occupant.name).join(", ") || words.openGround;
-    group.append(occupants);
-    svg.append(group);
-  }
-  liveMap.append(svg);
 }
 
 function renderLobby(game) {
@@ -762,6 +767,8 @@ function renderTable(game) {
   document.querySelector("#live-phase").textContent = phase;
   document.querySelector("#live-round").textContent = game.roundNumber === null ? "" : t("activity.status.round", { round: game.roundNumber });
   document.querySelector(".live-phase").dataset.mode = game.mode;
+  document.querySelector("#live-screen").dataset.mode = game.mode;
+  renderCombatTurn(game);
   const turn = document.querySelector("#live-turn");
   const ownStatus = game.submission === "action" ? t("activity.status.actionSubmitted") : game.submission === "pass" ? t("activity.status.passedRound") : game.pendingRoll ? t("activity.status.rollNeeded") : t("activity.status.waitTurn");
   turn.textContent = game.yourTurn ? game.turn?.busy ? t("activity.status.resolvingAction") : t("activity.hero.turn") : game.mode === "collecting" && game.myHero ? ownStatus : game.activeName ? t("activity.status.activeTurnPossessive", { name: game.activeName }) : t("activity.status.waitTable");
@@ -798,12 +805,30 @@ function renderTable(game) {
   updateRollPrompt(["paused", "safety", "recovery"].includes(game.mode) ? null : game.pendingRoll);
 }
 
+function renderCombatTurn(game) {
+  const strip = document.querySelector("#combat-turn-strip");
+  const visible = game.mode === "combat";
+  strip.hidden = !visible;
+  if (!visible) return;
+  document.querySelector("#combat-active-name").textContent = game.activeName ?? t("activity.phase.waiting");
+  const upcoming = document.querySelector("#combat-upcoming");
+  upcoming.replaceChildren(...(game.upcomingNames ?? []).slice(0, 3).map((name, index) => {
+    const item = document.createElement("span");
+    item.className = "initiative-next-name";
+    item.dataset.position = String(index + 1);
+    item.textContent = name;
+    return item;
+  }));
+  if (!upcoming.childElementCount) upcoming.textContent = t("activity.combat.noUpcoming");
+}
+
 function makeEnemy(enemy) {
   const card = document.createElement("button");
   card.type = "button";
   card.className = `live-party-card live-enemy ui-card${enemy.active ? " is-active" : ""}${enemy.name === selectedEnemyName ? " is-selected" : ""}`;
   card.classList.toggle("is-active", enemy.active);
-  card.setAttribute("aria-label", `${enemy.name}. ${t(`activity.band.${enemy.band}`)}, ${enemy.zone}`);
+  const hpText = t("activity.hero.enemyHealth", { hp: enemy.hp, max: enemy.maxHp, band: t(`activity.band.${enemy.band}`), zone: enemy.zone });
+  card.setAttribute("aria-label", `${enemy.name}. ${hpText}`);
   card.setAttribute("aria-pressed", String(enemy.name === selectedEnemyName));
   card.addEventListener("click", () => { selectedEnemyName = enemy.name; if (currentSnapshot?.kind === "table") { renderParty(currentSnapshot.party); renderCharacterWorkspace(currentSnapshot); renderEnemies(currentSnapshot.foes); } });
   const sigil = document.createElement("span"); sigil.className = "live-party-sigil enemy-sigil"; sigil.setAttribute("aria-hidden", "true");
@@ -812,11 +837,11 @@ function makeEnemy(enemy) {
   const name = document.createElement("strong");
   name.textContent = enemy.name;
   const health = document.createElement("span");
-  health.textContent = t("activity.hero.enemyHealth", { band: t(`activity.band.${enemy.band}`), zone: enemy.zone });
+  health.textContent = hpText;
   const track = document.createElement("span");
   track.className = "party-health live-party-health ui-meter";
   const fill = document.createElement("i");
-  fill.style.width = `${{ unhurt: 100, hurt: 66, bloodied: 33, down: 0 }[enemy.band] ?? 100}%`;
+  fill.style.width = `${enemy.maxHp > 0 ? Math.max(0, Math.min(100, Math.round((enemy.hp / enemy.maxHp) * 100))) : 0}%`;
   track.append(fill);
   copy.append(name, health);
   card.append(copy);
@@ -858,6 +883,8 @@ function renderParty(members) {
     const card = document.createElement(hero.hp !== null && hero.maxHp !== null ? "button" : "div");
     card.className = `live-party-card ui-card${hero.isYou ? " is-you" : ""}${!selectedEnemyName && hero.characterId === selectedPartyCharacterId ? " is-selected" : ""}`;
     card.dataset.status = hero.tableStatus ?? (hero.presence === "away" ? "away" : "waiting");
+    card.dataset.presence = hero.presence ?? "present";
+    card.dataset.condition = hero.fallen ? "dead" : hero.down ? "down" : "healthy";
     if (hero.hp !== null && hero.maxHp !== null) {
       card.type = "button";
       card.setAttribute("aria-label", t("activity.party.inspect", { name: hero.name }));
@@ -936,6 +963,12 @@ function renderParty(members) {
     }
     copy.append(meta);
     card.append(sigil, copy);
+    if (hero.presence === "away" || hero.fallen || hero.down) {
+      const condition = document.createElement("span");
+      condition.className = "party-condition-overlay";
+      condition.textContent = hero.presence === "away" ? t("activity.party.offline") : hero.fallen ? t("activity.party.dead") : t("activity.party.down");
+      card.append(condition);
+    }
     return card;
   }));
 }
@@ -956,8 +989,6 @@ function populateMemberOverview(profile, status, conditions = [], customEntries 
   overview.hidden = false;
   const entries = customEntries ?? [
     ["activity.detail.level", String(profile.level), "reward"],
-    ["activity.detail.hitPoints", t("activity.hero.hp", { hp: profile.hp, max: profile.maxHp }), "heal"],
-    ["activity.detail.armorClass", String(profile.armorClass), "shield"],
     ["activity.detail.status", status, "notice"],
   ];
   const stats = document.querySelector("#member-overview-stats");
@@ -977,11 +1008,17 @@ function populateMemberOverview(profile, status, conditions = [], customEntries 
 }
 
 function partyStatusText(hero) {
+  if (hero.fallen) return t("activity.party.dead");
+  if (hero.down) return t("activity.party.down");
+  if (hero.presence === "away") return t("activity.party.presence.away");
   const statusWords = { acting: t("activity.party.turnNow"), submitted: hero.presence === "ready" ? t("activity.party.ready") : t("activity.party.actionIn"), passed: t("activity.party.passed"), missed: t("activity.party.missed"), away: t("activity.party.away"), waiting: t("activity.party.waiting") };
   return statusWords[hero.tableStatus] ?? statusWords.waiting;
 }
 
 function partyStatusIcon(hero) {
+  if (hero.fallen) return "hazard";
+  if (hero.down) return "heal";
+  if (hero.presence === "away") return "notice";
   const status = hero.tableStatus ?? (hero.presence === "away" ? "away" : "waiting");
   return ({ acting: "attack", submitted: "reward", passed: "pause", missed: "hazard", away: "notice", waiting: "rest" })[status] ?? "rest";
 }
@@ -1014,19 +1051,21 @@ function renderCharacterWorkspace(game) {
     document.querySelector("#live-hero-subtitle").textContent = enemy.zone;
     document.querySelector("#live-hero-class").textContent = enemy.band;
     setHeroWatermark(null);
-    document.querySelector("#live-hero-hp").textContent = t(`activity.band.${enemy.band}`);
+    document.querySelector("#live-hero-hp").textContent = t("activity.hero.hp", { hp: enemy.hp, max: enemy.maxHp });
     document.querySelector("#live-hero-ac").textContent = "";
-    document.querySelector("#live-hero-health").style.width = `${{ unhurt: 100, hurt: 66, bloodied: 33, down: 0 }[enemy.band] ?? 100}%`;
+    document.querySelector("#live-hero-health").style.width = `${enemy.maxHp > 0 ? Math.max(0, Math.min(100, Math.round((enemy.hp / enemy.maxHp) * 100))) : 0}%`;
     const sigil = document.querySelector("#live-hero-sigil"); sigil.replaceChildren(iconImage("attack"));
     void setArtwork(document.querySelector("#live-hero-image"), sigil, null, enemy.name);
     const enemyTabs = game.myHero ? [["overview", "activity.tab.overview"], ["actions", "activity.tab.myActions"]] : [["overview", "activity.tab.overview"]];
     if (!enemyTabs.some(([id]) => id === selectedWorkspaceTab)) selectedWorkspaceTab = "overview";
     setWorkspaceTabs(game, enemyTabs);
     populateMemberOverview(null, null, [], [
-      ["activity.detail.healthBand", t(`activity.band.${enemy.band}`), "heal"],
       ["activity.detail.location", enemy.zone, "move"],
       ["activity.detail.status", enemy.active ? t("activity.party.turnNow") : t("activity.party.waiting"), "notice"],
     ]);
+    const enemyConditions = document.querySelector("#member-overview-conditions");
+    enemyConditions.replaceChildren();
+    document.querySelector("#member-overview").hidden = false;
     document.querySelector("#live-resources").replaceChildren();
     document.querySelector("#live-equipment").replaceChildren();
     if (!game.myHero) document.querySelector("#hero-panel-overview").hidden = false;
@@ -1056,6 +1095,7 @@ function renderCharacterWorkspace(game) {
   document.querySelector("#live-hero-hp").textContent = t("activity.hero.hp", { hp: profile.hp, max: profile.maxHp });
   document.querySelector("#live-hero-ac").textContent = t("activity.hero.ac", { value: profile.armorClass });
   document.querySelector("#live-hero-health").style.width = `${Math.max(0, Math.min(100, profile.hp / Math.max(1, profile.maxHp) * 100))}%`;
+  populateMemberOverview(profile, partyStatusText(selected), selected.conditions ?? []);
 
   const tabs = viewingOwn
     ? [["overview", "activity.tab.overview"], ["actions", "activity.tab.actions"], ["spells", "activity.tab.spells"], ["inventory", "activity.tab.inventory"], ["trade", "activity.tab.trade"]]
@@ -1070,7 +1110,6 @@ function renderCharacterWorkspace(game) {
   resources.replaceChildren();
   equipment.replaceChildren();
   if (viewingOwn) {
-    document.querySelector("#member-overview").hidden = true;
     for (const slot of [...ownHero.slots, ...ownHero.pactSlots]) {
       const resource = document.createElement("span"); resource.className = "resource";
       resource.textContent = t("activity.hero.slot", { level: slot.level, left: slot.left, max: slot.max }); resources.append(resource);
@@ -1079,7 +1118,6 @@ function renderCharacterWorkspace(game) {
     renderSpellbook(ownHero);
     renderInventory(ownHero);
   } else {
-    populateMemberOverview(selected, partyStatusText(selected), selected.conditions ?? []);
     resources.replaceChildren();
     document.querySelector("#live-spellbook").replaceChildren();
     document.querySelector("#live-inventory").replaceChildren();
@@ -1541,6 +1579,12 @@ if (new URLSearchParams(window.location.search).has("design-preview")) {
     selectedPartyCharacterId = "thorne";
     selectedWorkspaceTab = "overview";
   }
+  if (new URLSearchParams(window.location.search).has("party-states")) {
+    preview.party = preview.party.map((hero) => hero.characterId === "pip" ? { ...hero, presence: "away" }
+      : hero.characterId === "sable" ? { ...hero, hp: 0, down: true }
+        : hero.characterId === "kestrel" ? { ...hero, hp: 0, fallen: true }
+          : hero);
+  }
   if (new URLSearchParams(window.location.search).has("roll")) {
     preview.mode = "awaitingRolls";
     preview.yourTurn = false;
@@ -1580,7 +1624,7 @@ function designPreviewSnapshot() {
       { id: "broken-gallery", name: "Broken gallery", lighting: "Dark", cover: "three-quarters", difficult: false, canMove: true, occupants: [{ name: "Thorne", side: "party", active: false, hp: 38, maxHp: 42 }] },
     ] },
     mapText: { journeyKind: "THE JOURNEY", journeyTitle: "Adventure map", tacticalKind: "TACTICAL VIEW", battlefield: "Battlefield", keyParty: "Party", keyFoes: "Foes", keyHere: "Here", keyOpen: "Open route", keyLocked: "Locked", empty: "No mapped routes are known yet.", routeLabel: "Route", here: "You are here", deadEnd: "Dead end", locked: "Locked", visited: "Visited", mapped: "Mapped", openRoute: "Open route", openGround: "Open ground", difficult: "Difficult terrain", coverHalf: "Half cover", coverThreeQuarters: "Three-quarters cover", lightBright: "Bright", lightDim: "Dim", lightDark: "Dark", moveHere: "Move here" },
-    yourTurn: true, canBegin: false, activeName: "Aria Vell",
+    yourTurn: true, canBegin: false, activeName: "Aria Vell", upcomingNames: ["Hollow Sentinel", "Thorne Oakshield", "Mira Fen"],
     party: [
       { ...hero("aria", "Aria Vell", "Wizard", "High Elf", 27, 34, true), tableStatus: "acting" },
       { ...hero("thorne", "Thorne Oakshield", "Paladin", "Hill Dwarf", 38, 42), tableStatus: "submitted" },

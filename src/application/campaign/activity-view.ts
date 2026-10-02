@@ -36,6 +36,7 @@ export interface ActivityTableView {
   readonly yourTurn: boolean;
   readonly canBegin: boolean;
   readonly activeName: string | null;
+  readonly upcomingNames: readonly string[];
   readonly party: readonly {
     readonly characterId: string;
     readonly name: string;
@@ -303,6 +304,7 @@ export function buildActivityTableView(
     yourTurn: turn !== null,
     canBegin: record.organizerId === userId,
     activeName: panel.combat?.activeName ?? null,
+    upcomingNames: panel.combat?.upcoming ?? [],
     party: publicParty,
     foes: panel.combat?.foes ?? [],
     offers: Object.values(state.offers).flatMap((offer) => {
