@@ -1001,7 +1001,12 @@ function renderParty(members) {
     const subtitle = document.createElement("span");
     subtitle.className = "party-class-line";
     const kind = `${hero.raceName ?? ""} ${classText(hero.className) ?? t("activity.hero.heroClass")}`.trim();
-    subtitle.textContent = hero.level === null ? classText(hero.className) ?? t(`activity.party.presence.${hero.presence}`) : `${t("activity.detail.level")} ${hero.level} · ${kind}`;
+    if (hero.level === null) subtitle.textContent = classText(hero.className) ?? t(`activity.party.presence.${hero.presence}`);
+    else {
+      // The class and the level each get a line, so neither needs a separator and a long class name has the whole width.
+      const line = (text) => Object.assign(document.createElement("span"), { textContent: text, title: text });
+      subtitle.replaceChildren(line(kind), line(`${t("activity.detail.level")} ${hero.level}`));
+    }
     copy.append(nameLine, subtitle);
     const meta = document.createElement("span");
     meta.className = "party-meta-line";
@@ -1424,10 +1429,17 @@ function buildTableActions(game, liveActions, log) {
     addAction(t("activity.action.endTurn"), { kind: "endTurn" });
   } else if (game.mode === "collecting" && game.submission === null && game.myHero !== null) {
     const input = draftInput(document.createElement("textarea"), "action", t("activity.action.submit"), t("activity.action.inputPlaceholder"));
-    input.maxLength = 500;
+    input.maxLength = 300;
     input.rows = 2;
     composer.push(input);
-    addAction(t("activity.action.submit"), { kind: "submit", text: () => input.value }, true);
+    composer.push(makeButton(t("activity.action.say"), () => {
+      const text = input.value.trim();
+      if (!text) return;
+      drafts.action = "";
+      input.value = "";
+      void performAction({ kind: "speak", text });
+    }, false, "notice"));
+    addAction(t("activity.action.takeAction"), { kind: "submit", text: () => input.value }, true);
     addAction(t("activity.action.pass"), { kind: "pass" });
   }
   if (game.explore && game.myHero) {
@@ -1461,7 +1473,7 @@ function buildTableActions(game, liveActions, log) {
   if (top.length) liveActions.append(row("action-row action-urgent", top));
   if (composer.length) liveActions.append(row("action-composer", composer));
   if (note) liveActions.append(note);
-  const speech = speechRow(game);
+  const speech = game.mode === "collecting" && game.submission === null ? null : speechRow(game);
   if (speech) liveActions.append(speech);
   const choiceCount = (category) => groups.get(category).filter((node) => node instanceof HTMLButtonElement).length;
   const categories = actionCategoryOrder.filter((category) => choiceCount(category) > 0);
