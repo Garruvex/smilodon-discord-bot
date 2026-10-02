@@ -1,7 +1,7 @@
 import type { AdventureBible } from "../../domain/campaign/adventure/adventure-bible.js";
 import type { UserId } from "../../domain/campaign/core/ids.js";
 import { actingHero } from "../../domain/campaign/engine/members.js";
-import { isFallen, type CampaignState } from "../../domain/campaign/state/campaign-state.js";
+import { isFallen, presentMembers, type CampaignState } from "../../domain/campaign/state/campaign-state.js";
 import type { SealedContent, Glossary } from "../../domain/campaign/rules/content-registry.js";
 import type { CheckTest } from "../../domain/campaign/character/character-sheet.js";
 import { findScene } from "../../domain/campaign/adventure/adventure-bible.js";
@@ -28,7 +28,8 @@ export interface ActivityTableView {
   readonly mode: string;
   readonly roundNumber: number | null;
   readonly scene: { readonly title: string; readonly description: string; readonly imageUrl: string | null };
-  readonly pendingMove: null | { readonly sceneTitle: string; readonly staying: readonly string[]; readonly stayingByYou: boolean };
+  // present and needed: how many players vote, and how many Stay votes keep the party where it is. closesAt: when the window closes (epoch ms), or null.
+  readonly pendingMove: null | { readonly sceneId: string; readonly sceneTitle: string; readonly staying: readonly string[]; readonly stayingByYou: boolean; readonly present: number; readonly needed: number; readonly closesAt: number | null };
   readonly map:
     | { readonly kind: "battlefield"; readonly zones: readonly { readonly id: string; readonly name: string; readonly lighting: string | null; readonly cover: string | null; readonly difficult: boolean; readonly canMove: boolean; readonly occupants: readonly { readonly name: string; readonly side: "party" | "foes"; readonly active: boolean; readonly hp: number; readonly maxHp: number }[] }[]; readonly edges: readonly { readonly from: string; readonly to: string; readonly feet: number }[] }
     | { readonly kind: "journey"; readonly nodes: readonly { readonly id: string; readonly title: string; readonly status: "current" | "visited" | "known" | "reachable" | "locked"; readonly locked: boolean; readonly deadEnd: boolean; readonly canTravel: boolean; readonly column: number; readonly row: number }[]; readonly routes: readonly { readonly from: string; readonly to: string; readonly oneWay: boolean }[] };
@@ -285,6 +286,10 @@ export function buildActivityTableView(
     // metadata made valid scene art disappear from the Activity.
     scene: { title: panel.sceneTitle, description: scene?.publicDescription ?? "", imageUrl: scene === undefined ? null : `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/scenes/${encodeURIComponent(scene.id)}` },
     pendingMove: state.pendingMove === undefined ? null : {
+      sceneId: state.pendingMove.sceneId,
+      present: presentMembers(state).length,
+      needed: Math.ceil(presentMembers(state).length / 2),
+      closesAt: state.round?.closesAt ?? null,
       sceneTitle: findScene(bible, state.pendingMove.sceneId)?.title ?? state.pendingMove.sceneId,
       staying: state.pendingMove.objectors.flatMap((objector) => {
         const objectorHero = state.members[objector]?.characterId;

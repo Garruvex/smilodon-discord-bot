@@ -70,6 +70,8 @@ import { AdventureIntake } from "../infrastructure/discord/campaign/adventure-in
 import { AdventureComponentHandler } from "../infrastructure/discord/components/adventure-component-handler.js";
 import { CampaignHubComponentHandler } from "../infrastructure/discord/components/campaign-hub-component-handler.js";
 import { CharacterLibraryComponentHandler } from "../infrastructure/discord/components/character-library-component-handler.js";
+import { maxActionLength } from "../domain/campaign/engine/rounds.js";
+import { maxSpeechLength } from "../domain/campaign/engine/speech.js";
 import { createDatabaseConnection, resolveInstanceSchemaName, type DatabaseConnection } from "../infrastructure/database/database.js";
 import { PostgresCampaignStore } from "../infrastructure/persistence/campaign/postgres-campaign-store.js";
 import { SqliteCampaignStore } from "../infrastructure/persistence/campaign/sqlite-campaign-store.js";
@@ -377,9 +379,14 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
           }
           case "withdrawJoin": return lobby.withdrawOngoingJoin(key, userId).then((result) => result.kind === "ok" ? { kind: "ok" as const } : { kind: "refused" as const, reason: result.reason });
           case "submit": {
-            const text = textValue(action.text, 1500);
+            const text = textValue(action.text, maxActionLength);
             if (text === null) return { kind: "refused", reason: "invalidAction" };
             return activityPlay.submitAction(key, userId, text, id).then(mapPlayResult);
+          }
+          case "speak": {
+            const text = textValue(action.text, maxSpeechLength);
+            if (text === null) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.speak(key, userId, text, id).then(mapPlayResult);
           }
           case "pass": return activityPlay.pass(key, userId, id).then(mapPlayResult);
           case "toggleMoveObjection": return activityPlay.toggleMoveObjection(key, userId, id).then(mapPlayResult);

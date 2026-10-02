@@ -41,6 +41,8 @@ const lifecycleKeys = { lobby: "activity.lobby.status.open", active: "activity.l
 const actionKeys = { join: "activity.lobby.action.join", continue: "activity.lobby.action.continue", request: "activity.lobby.action.request", requested: "activity.lobby.action.requested", invited: "activity.lobby.action.invited", full: "activity.lobby.action.full", resume: "activity.lobby.action.continue" };
 const phaseKeys = { opening: "activity.phase.opening", readyCheck: "activity.status.gathering", collecting: "activity.phase.collecting", planning: "activity.phase.planning", awaitingRolls: "activity.phase.awaitingRolls", combat: "activity.phase.combat", waiting: "activity.phase.waiting", paused: "activity.phase.paused", safety: "activity.phase.safety", recovery: "activity.phase.recovery", archived: "activity.phase.archived" };
 const apiErrorKeys = {
+  ...Object.fromEntries(["actionTooLong", "emptyAction", "invalidAction", "heroFallen", "moveDecisionPending", "roundNotCollecting", "memberAway", "campaignWaiting", "staleRound"].map((code) => [code, `activity.error.${code}`])),
+  noOpenRound: "activity.error.roundNotCollecting",
   activityAuthNotConfigured: "activity.connection.signInConfig", discordAuthorizationFailed: "activity.connection.discordAuthorize",
   discordIdentityFailed: "activity.connection.discordIdentity", notInLaunchGuild: "activity.connection.guildRequired",
   privateInviteOnly: "activity.error.privateInvite", full: "activity.error.full", gameFull: "activity.error.gameFull",
@@ -295,6 +297,7 @@ async function openGame(campaignId) {
   const diceDialog = document.querySelector("#dice-dialog");
   if (diceDialog.open) diceDialog.close();
   currentGameId = campaignId;
+  resetPaint();
   setTableConnectionState("connecting");
   lobbyScreen.hidden = true;
   liveScreen.hidden = false;
@@ -338,7 +341,31 @@ function setTableConnectionState(state) {
   dot.setAttribute("aria-label", t(key));
 }
 
+// The table is fetched every few seconds. A fetch that brings nothing new repaints nothing, and a changed one repaints only the parts whose data changed.
+let lastGameSignature = "";
+const paintedSections = new Map();
+
+function resetPaint() {
+  lastGameSignature = "";
+  actionsSignature = "";
+  paintedSections.clear();
+}
+
+function paintSection(name, inputs, paint) {
+  const signature = JSON.stringify(inputs);
+  if (paintedSections.get(name) === signature) return;
+  paint();
+  paintedSections.set(name, signature);
+}
+
 function renderGame(game) {
+  const signature = JSON.stringify([uiLanguage, game, selectedPartyCharacterId, selectedEnemyName, selectedWorkspaceTab, mapPick]);
+  if (signature === lastGameSignature) return;
+  paintGame(game);
+  lastGameSignature = signature;
+}
+
+function paintGame(game) {
   classNames = game.classNames ?? {};
   document.querySelector("#live-campaign").textContent = game.campaignName;
   document.querySelector("#live-adventure").textContent = game.adventureTitle.toLocaleUpperCase();
@@ -346,15 +373,7 @@ function renderGame(game) {
   document.querySelector("#live-scene-description").textContent = game.kind === "lobby"
     ? t("activity.scene.chooseHeroDescription")
     : game.scene.description;
-  const moveNotice = document.querySelector("#live-scene-move");
-  if (game.kind === "table" && game.pendingMove) {
-    const voters = game.pendingMove.staying.length ? ` ${t("activity.move.staying", { names: game.pendingMove.staying.join(", ") })}` : "";
-    moveNotice.textContent = `${t("activity.move.pending", { scene: game.pendingMove.sceneTitle })}${voters}`;
-    moveNotice.hidden = false;
-  } else {
-    moveNotice.textContent = "";
-    moveNotice.hidden = true;
-  }
+  renderMoveNotice(game.kind === "table" ? game.pendingMove : null);
   document.querySelector(".live-scene").classList.toggle("has-enemies", game.kind === "table" && (game.foes?.length ?? 0) > 0);
   void setArtwork(document.querySelector("#live-scene-image"), document.querySelector(".scene-art-fallback"), game.kind === "table" ? game.scene.imageUrl : null, game.scene.title, true);
   if (game.kind === "lobby") {
@@ -362,8 +381,42 @@ function renderGame(game) {
     renderLobby(game);
   } else {
     document.querySelector(".adventure-map-panel").hidden = false;
-    renderMap(game.map, game.mapText);
+    paintSection("map", [game.map, game.mapText, mapPick, uiLanguage], () => renderMap(game.map, game.mapText));
     renderTable(game);
+  }
+}
+
+// The scene change waiting for the table: where to, how many want to stay and how many are needed, and when the window closes.
+let moveCountdown = null;
+
+let movePainted = "";
+
+function renderMoveNotice(move) {
+  const notice = document.querySelector("#live-scene-move");
+  const key = JSON.stringify([move, uiLanguage]);
+  if (key === movePainted) return;
+  movePainted = key;
+  if (moveCountdown !== null) clearInterval(moveCountdown);
+  moveCountdown = null;
+  notice.hidden = !move;
+  if (!move) {
+    notice.replaceChildren();
+    return;
+  }
+  const line = (className, text) => { const item = document.createElement("span"); item.className = className; item.textContent = text; return item; };
+  const heading = line("move-heading", t("activity.move.heading", { scene: move.sceneTitle }));
+  const tally = line("move-tally", t("activity.move.tally", { count: move.staying.length, present: move.present, needed: move.needed }));
+  const names = move.staying.length ? line("move-names", t("activity.move.staying", { names: move.staying.join(", ") })) : null;
+  const clock = line("move-clock", "");
+  notice.replaceChildren(heading, line("move-paused", t("activity.move.paused")), tally, ...(names ? [names] : []), clock);
+  const tick = () => {
+    const left = Math.max(0, Math.ceil((move.closesAt - Date.now()) / 1000));
+    clock.textContent = left === 0 ? t("activity.move.deciding") : t("activity.move.countdown", { time: `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}` });
+  };
+  clock.hidden = move.closesAt === null;
+  if (move.closesAt !== null) {
+    tick();
+    moveCountdown = setInterval(tick, 1000);
   }
 }
 
@@ -501,7 +554,7 @@ function renderJourneyMap(map, words) {
     const point = positions.get(node.id);
     const boxWidth = widths.get(node.id);
     const pickable = mapPick && node.canTravel === true;
-    const group = svgElement("g", { class: `jr-node ${node.status}${pickable ? " is-target" : ""}${mapPick && !pickable && node.status !== "current" ? " is-dim" : ""}` });
+    const group = svgElement("g", { class: `jr-node ${node.status}${currentSnapshot?.pendingMove?.sceneId === node.id ? " is-heading" : ""}${pickable ? " is-target" : ""}${mapPick && !pickable && node.status !== "current" ? " is-dim" : ""}` });
     if (pickable) {
       group.setAttribute("role", "button");
       group.setAttribute("tabindex", "0");
@@ -736,7 +789,8 @@ function renderLobby(game) {
   document.querySelector("#live-hero-subtitle").textContent = classText(game.selectedHeroClass) ?? t("activity.hero.chooseAvailable");
   document.querySelector("#live-hero-hp").textContent = t("activity.hero.preGame");
   document.querySelector("#live-hero-ac").textContent = "";
-  document.querySelector("#live-hero-health").style.width = "0%";
+  updateHealthMeter(0, 1);
+  document.querySelector("#member-overview").hidden = true;
   document.querySelector("#live-hero-class").textContent = t("activity.hero.choose");
   setHeroWatermark(null);
   document.querySelector("#live-hero-sigil").replaceChildren(iconImage("shape"));
@@ -808,8 +862,8 @@ function renderTable(game) {
   document.querySelector("#live-party-count").textContent = t("activity.party.count", { count: game.party.length });
   renderTableActions(game);
   renderCharacterWorkspace(game);
-  renderEnemies(game.foes);
-  renderParty(game.party);
+  paintSection("enemies", [game.foes, selectedEnemyName, uiLanguage], () => renderEnemies(game.foes));
+  paintSection("party", [game.party, selectedPartyCharacterId, selectedEnemyName, uiLanguage], () => renderParty(game.party));
   setLiveMessage(game.submission === "action" ? t("activity.status.actionIn") : game.submission === "pass" ? t("activity.status.youPassed") : "");
   updateRollPrompt(["paused", "safety", "recovery"].includes(game.mode) ? null : game.pendingRoll);
 }
@@ -821,7 +875,7 @@ function renderCombatTurn(game) {
   if (!visible) return;
   document.querySelector("#combat-active-name").textContent = game.activeName ?? t("activity.phase.waiting");
   const upcoming = document.querySelector("#combat-upcoming");
-  upcoming.replaceChildren(...(game.upcomingNames ?? []).slice(0, 3).map((name, index) => {
+  upcoming.replaceChildren(...(game.upcomingNames ?? []).slice(0, 1).map((name, index) => {
     const item = document.createElement("span");
     item.className = "initiative-next-name";
     item.dataset.position = String(index + 1);
@@ -996,10 +1050,8 @@ function setHeroWatermark(className) {
 function populateMemberOverview(profile, status, conditions = [], customEntries = null) {
   const overview = document.querySelector("#member-overview");
   overview.hidden = false;
-  const entries = customEntries ?? [
-    ["activity.detail.level", String(profile.level), "reward"],
-    ["activity.detail.status", status, "notice"],
-  ];
+  // Level is in the subtitle and the turn is in the header and the party tile, so a hero has no stat tiles of its own here.
+  const entries = customEntries ?? [];
   const stats = document.querySelector("#member-overview-stats");
   stats.replaceChildren(...entries.map(([label, value, icon]) => {
     const card = document.createElement("div"); card.className = "member-stat";
@@ -1010,10 +1062,35 @@ function populateMemberOverview(profile, status, conditions = [], customEntries 
   }));
   const conditionList = document.querySelector("#member-overview-conditions");
   conditionList.replaceChildren();
-  if (conditions.length === 0) conditionList.textContent = t("activity.party.noConditions");
-  else for (const condition of conditions) {
-    const chip = document.createElement("span"); chip.className = "member-condition"; chip.append(iconImage("hazard"), document.createTextNode(condition)); conditionList.append(chip);
+  stats.hidden = entries.length === 0;
+  document.querySelector("#member-overview .member-condition-block").hidden = customEntries !== null;
+  const stateBadge = document.querySelector("#member-condition-state");
+  const state = customEntries === null
+    ? profile?.fallen ? "fallen" : profile?.down ? "down" : profile?.presence === "away" ? "away" : "clear"
+    : null;
+  stateBadge.hidden = state === null || state === "clear";
+  stateBadge.dataset.state = state ?? "";
+  stateBadge.textContent = state === "fallen" ? t("activity.party.dead") : state === "down" ? t("activity.party.down") : state === "away" ? t("activity.party.offline") : "";
+  if (conditions.length === 0 && state === "clear" && customEntries === null) {
+    conditionList.textContent = t("activity.party.noConditions");
+  } else {
+    for (const condition of conditions) {
+      const chip = document.createElement("span"); chip.className = "member-condition"; chip.textContent = condition; conditionList.append(chip);
+    }
   }
+}
+
+function updateHealthMeter(hp, maxHp) {
+  const health = document.querySelector("#live-hero-health");
+  const meter = document.querySelector("#live-hero-health-meter");
+  const safeMax = Math.max(1, maxHp);
+  const current = Math.max(0, Math.min(safeMax, hp));
+  const percent = Math.round(current / safeMax * 100);
+  health.style.width = `${percent}%`;
+  health.dataset.health = percent > 60 ? "healthy" : percent > 30 ? "wounded" : "critical";
+  meter.setAttribute("aria-valuemax", String(safeMax));
+  meter.setAttribute("aria-valuenow", String(current));
+  meter.setAttribute("aria-valuetext", t("activity.hero.hp", { hp: current, max: safeMax }));
 }
 
 function partyStatusText(hero) {
@@ -1062,7 +1139,7 @@ function renderCharacterWorkspace(game) {
     setHeroWatermark(null);
     document.querySelector("#live-hero-hp").textContent = t("activity.hero.hp", { hp: enemy.hp, max: enemy.maxHp });
     document.querySelector("#live-hero-ac").textContent = "";
-    document.querySelector("#live-hero-health").style.width = `${enemy.maxHp > 0 ? Math.max(0, Math.min(100, Math.round((enemy.hp / enemy.maxHp) * 100))) : 0}%`;
+    updateHealthMeter(enemy.hp, enemy.maxHp);
     const sigil = document.querySelector("#live-hero-sigil"); sigil.replaceChildren(iconImage("attack"));
     void setArtwork(document.querySelector("#live-hero-image"), sigil, null, enemy.name);
     const enemyTabs = game.myHero ? [["overview", "activity.tab.overview"], ["actions", "activity.tab.myActions"]] : [["overview", "activity.tab.overview"]];
@@ -1103,8 +1180,8 @@ function renderCharacterWorkspace(game) {
   setHeroWatermark(profile.className);
   document.querySelector("#live-hero-hp").textContent = t("activity.hero.hp", { hp: profile.hp, max: profile.maxHp });
   document.querySelector("#live-hero-ac").textContent = t("activity.hero.ac", { value: profile.armorClass });
-  document.querySelector("#live-hero-health").style.width = `${Math.max(0, Math.min(100, profile.hp / Math.max(1, profile.maxHp) * 100))}%`;
-  populateMemberOverview(profile, partyStatusText(selected), selected.conditions ?? []);
+  updateHealthMeter(profile.hp, profile.maxHp);
+  populateMemberOverview(selected, partyStatusText(selected), selected.conditions ?? []);
 
   const tabs = viewingOwn
     ? [["overview", "activity.tab.overview"], ["actions", "activity.tab.actions"], ["spells", "activity.tab.spells"], ["inventory", "activity.tab.inventory"], ["trade", "activity.tab.trade"]]
@@ -1209,7 +1286,7 @@ const actionCategoryOf = { attack: "attack", combatSpell: "spells", exploreSpell
 const actionCategoryOrder = ["attack", "spells", "move", "items", "talk", "other"];
 const actionCategoryIcon = { attack: "attack", spells: "spell", move: "move", items: "potion", talk: "clue", other: "shape" };
 let selectedActionCategory = null;
-const drafts = { action: "", ask: "" };
+const drafts = { action: "", ask: "", say: "" };
 
 function draftInput(element, draftKey, label, placeholder) {
   element.className = "live-action-input";
@@ -1220,7 +1297,49 @@ function draftInput(element, draftKey, label, placeholder) {
   return element;
 }
 
+// In-character words: they tell the table and the DM, use no action, and work in a fight too.
+function speechRow(game) {
+  if (!game.myHero || !["collecting", "combat"].includes(game.mode)) return null;
+  const input = draftInput(document.createElement("input"), "say", t("activity.action.say"), t("activity.action.sayPlaceholder"));
+  input.maxLength = 300;
+  const send = () => {
+    const text = input.value.trim();
+    if (text.length === 0) return;
+    drafts.say = "";
+    input.value = "";
+    void performAction({ kind: "speak", text });
+  };
+  input.addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.isComposing) { event.preventDefault(); send(); } });
+  const row = document.createElement("div");
+  row.className = "action-speech";
+  row.append(input, makeButton(t("activity.action.say"), send, false, "notice"));
+  return row;
+}
+
+// The action panel is built off to the side and swapped in only when it differs from what is showing. Rebuilding an identical panel would
+// take focus out of the text box mid-sentence and swallow a click that started on the old button; a real change keeps the caret.
+let actionsSignature = "";
+
 function renderTableActions(game) {
+  const next = document.createElement("div");
+  const log = [];
+  buildTableActions(game, next, log);
+  const signature = next.innerHTML + JSON.stringify(log);
+  if (signature === actionsSignature && liveActions.childElementCount > 0) return;
+  actionsSignature = signature;
+  const active = document.activeElement;
+  const focused = active instanceof HTMLElement && liveActions.contains(active) && active.getAttribute("aria-label")
+    ? { label: active.getAttribute("aria-label"), start: active.selectionStart, end: active.selectionEnd }
+    : null;
+  liveActions.replaceChildren(...next.childNodes);
+  if (focused === null) return;
+  const again = [...liveActions.querySelectorAll("[aria-label]")].find((element) => element.getAttribute("aria-label") === focused.label);
+  if (!(again instanceof HTMLElement)) return;
+  again.focus({ preventScroll: true });
+  if (focused.start !== null && "setSelectionRange" in again) again.setSelectionRange(focused.start, focused.end);
+}
+
+function buildTableActions(game, liveActions, log) {
   liveActions.replaceChildren();
   if (["paused", "safety", "recovery"].includes(game.mode)) {
     if (game.canBegin) liveActions.append(makeButton(t("activity.action.resumeGame"), () => void performAction({ kind: "continue" }), true, "play"));
@@ -1235,6 +1354,7 @@ function renderTableActions(game) {
   const top = [], composer = [], bottom = [];
   const groups = new Map(actionCategoryOrder.map((category) => [category, []]));
   const addAction = (label, action, primary = false) => {
+    log.push(JSON.stringify(action));
     const button = makeButton(label, () => void performAction(action), primary, actionIcon[action.kind] ?? "notice");
     const place = actionPlacement[action.kind];
     (place === "top" ? top : place === "composer" ? composer : place === "bottom" ? bottom : groups.get(actionCategoryOf[action.kind] ?? "other")).push(button);
@@ -1242,13 +1362,12 @@ function renderTableActions(game) {
   if (game.pendingMove && game.mode === "collecting") {
     const label = t(game.pendingMove.stayingByYou ? "activity.move.withdrawStay" : "activity.move.stayHere");
     addAction(label, { kind: "toggleMoveObjection" }, true);
-    const decision = document.createElement("span");
-    decision.className = "live-action-note status-note";
-    decision.textContent = t("activity.move.instructions");
     const voteRow = document.createElement("div");
     voteRow.className = "action-row action-urgent";
     voteRow.append(...top);
-    liveActions.append(voteRow, decision);
+    liveActions.append(voteRow);
+    const voteSpeech = speechRow(game);
+    if (voteSpeech) liveActions.append(voteSpeech);
     return;
   }
   if (game.canAcceptInvite) addAction(t("activity.action.acceptInvite"), { kind: "acceptInvite" }, true);
@@ -1305,7 +1424,7 @@ function renderTableActions(game) {
     addAction(t("activity.action.endTurn"), { kind: "endTurn" });
   } else if (game.mode === "collecting" && game.submission === null && game.myHero !== null) {
     const input = draftInput(document.createElement("textarea"), "action", t("activity.action.submit"), t("activity.action.inputPlaceholder"));
-    input.maxLength = 1500;
+    input.maxLength = 500;
     input.rows = 2;
     composer.push(input);
     addAction(t("activity.action.submit"), { kind: "submit", text: () => input.value }, true);
@@ -1342,6 +1461,8 @@ function renderTableActions(game) {
   if (top.length) liveActions.append(row("action-row action-urgent", top));
   if (composer.length) liveActions.append(row("action-composer", composer));
   if (note) liveActions.append(note);
+  const speech = speechRow(game);
+  if (speech) liveActions.append(speech);
   const choiceCount = (category) => groups.get(category).filter((node) => node instanceof HTMLButtonElement).length;
   const categories = actionCategoryOrder.filter((category) => choiceCount(category) > 0);
   if (categories.length) {
@@ -1420,7 +1541,9 @@ function updateRollPrompt(pendingRoll) {
   document.querySelector("#dice-test").textContent = rollLabel(pendingRoll.test);
   document.querySelector("#dice-action").textContent = pendingRoll.action?.trim() || t("activity.dice.waiting");
   document.querySelector("#dice-title").textContent = t("activity.dice.title");
-  document.querySelector("#dice-description").textContent = t("activity.dice.description");
+  const diceDescription = document.querySelector("#dice-description");
+  diceDescription.textContent = "";
+  diceDescription.hidden = true;
   document.querySelector("#dice-roll-button span").textContent = t("activity.dice.rollD20");
   document.querySelector("#dice-roll-button").disabled = false;
   if (!dialog.open) dialog.showModal();
@@ -1435,6 +1558,7 @@ async function rollPendingCheck() {
   button.querySelector("span").textContent = t("activity.dice.rolling");
   dialog.classList.add("is-rolling");
   document.querySelector("#dice-title").textContent = t("activity.dice.rollingTitle");
+  document.querySelector("#dice-description").hidden = false;
   document.querySelector("#dice-description").textContent = t("activity.dice.sending");
   const startedAt = Date.now();
   try {
@@ -1530,6 +1654,7 @@ document.querySelector("#back-to-lobby").addEventListener("click", () => {
   clearInterval(tableTimer);
   tableTimer = null;
   currentGameId = null;
+  resetPaint();
   currentSnapshot = null;
   liveScreen.hidden = true;
   lobbyScreen.hidden = false;
@@ -1595,7 +1720,17 @@ if (new URLSearchParams(window.location.search).has("design-preview")) {
   lobbyScreen.hidden = true;
   liveScreen.hidden = false;
   const preview = designPreviewSnapshot();
+  const previewLanguage = new URLSearchParams(window.location.search).get("language") === "zh-TW" ? "zh-TW" : "en";
   currentSnapshot = preview;
+  if (new URLSearchParams(window.location.search).has("state-preview")) {
+    const effects = previewLanguage === "zh-TW" ? ["專注", "祝福"] : ["Concentrating", "Blessed"];
+    preview.party = preview.party.map((hero) => hero.characterId === "aria" ? { ...hero, hp: 21, conditions: effects } : hero);
+    preview.myHero = { ...preview.myHero, hp: 21, conditions: effects };
+  }
+  if (new URLSearchParams(window.location.search).has("down-preview")) {
+    preview.party = preview.party.map((hero) => hero.characterId === "aria" ? { ...hero, hp: 0, down: true, conditions: [] } : hero);
+    preview.myHero = { ...preview.myHero, hp: 0, conditions: [] };
+  }
   if (new URLSearchParams(window.location.search).has("member-preview")) {
     selectedPartyCharacterId = "thorne";
     selectedWorkspaceTab = "overview";
@@ -1614,14 +1749,14 @@ if (new URLSearchParams(window.location.search).has("design-preview")) {
     preview.pendingRollCount = 1;
     preview.party = preview.party.map((hero) => ({ ...hero, tableStatus: "waiting" }));
   }
-  if (new URLSearchParams(window.location.search).has("vote")) {
+  if (new URLSearchParams(window.location.search).has("vote") || new URLSearchParams(window.location.search).has("collect")) {
     preview.mode = "collecting";
     preview.yourTurn = false;
     preview.activeName = null;
     preview.foes = [];
-    preview.pendingMove = { sceneTitle: "Broken Gallery", staying: ["Thorne Oakshield"], stayingByYou: new URLSearchParams(window.location.search).has("stay") };
+    preview.turn = null;
+    if (new URLSearchParams(window.location.search).has("vote")) preview.pendingMove = { sceneId: "gallery", present: 6, needed: 3, closesAt: Date.now() + 83000, sceneTitle: "Broken Gallery", staying: ["Thorne Oakshield"], stayingByYou: new URLSearchParams(window.location.search).has("stay") };
   }
-  const previewLanguage = new URLSearchParams(window.location.search).get("language") === "zh-TW" ? "zh-TW" : "en";
   void setLanguage(previewLanguage).then(() => { setTableConnectionState("live"); renderGame(preview); });
 } else {
   void authenticate().catch((error) => {
