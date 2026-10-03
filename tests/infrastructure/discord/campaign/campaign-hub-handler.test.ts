@@ -354,8 +354,8 @@ describe("Manage a game", () => {
     expect(contentOf(await t.click(id, { userId: "u-x" }, { messageId: hubMessageId }))).toBe("Only DnD Admins and the game's organizer can manage a game.");
     const organizer = await t.click(id, { userId: "u-org" }, { messageId: hubMessageId });
     expect(contentOf(organizer)).toContain("Manage Moonlit Ruins");
-    expect(rowsOf(organizer).flat().map((button) => button.label)).toEqual(["Pause", "Close round", "Retry the DM", "Redo the last picture", "Raise level", "Short rest", "Long rest", "Retry the fight", "Retell the last scene", "Picture the latest moment", "Picture the current scene", "Invite player", "Join requests (0)", "Repair cards", "Party size", "Hazard", "Hurt", "End game"]);
-    expect(rowsOf(await t.click(id, { userId: "u-a", admin: true }, { messageId: hubMessageId })).flat()).toHaveLength(18);
+    expect(rowsOf(organizer).flat().map((button) => button.label)).toEqual(["Pause", "Close round", "Retry the DM", "Raise level", "Short rest", "Long rest", "Retry the fight", "Retell the last scene", "Invite player", "Join requests (0)", "Repair cards", "Party size", "Hazard", "Hurt", "End game"]);
+    expect(rowsOf(await t.click(id, { userId: "u-a", admin: true }, { messageId: hubMessageId })).flat()).toHaveLength(15);
   });
 
   it("shows no picture buttons when the bot cannot paint, and says so if one is pressed anyway", async () => {
@@ -370,7 +370,7 @@ describe("Manage a game", () => {
     expect(contentOf(pressed)).toContain("no picture painter");
   });
 
-  it("asks for the current scene, retries a failed picture, and shows how the pictures are doing", async () => {
+  it("keeps pictures out of the manage screen, whatever has been painted", async () => {
     const t = harness();
     const { key, hubMessageId } = await activeGame(t);
     await t.r.store.transaction(async (tx) => {
@@ -379,16 +379,8 @@ describe("Manage a game", () => {
       await tx.saveRecord({ ...stored.record, images: { "scene:ruined-chapel": "failed", "moment:round-2": "done" }, lastPicture: "moment:round-2" }, stored.revision);
     });
     const screen = await t.click(hubCustomId("manage", key.campaignId), { userId: "u-org" }, { messageId: hubMessageId });
-    expect(contentOf(screen)).toContain("Pictures: 1 posted, 1 failed, 0 skipped.");
-    const labels = rowsOf(screen).flat().map((button) => button.label);
-    expect(labels).toContain("Retry failed picture (1)");
-    expect(labels).toContain("Redo picture: round 2");
-
-    await t.click(hubCustomId("do", key.campaignId, "retryPicture"), { userId: "u-org" }, { messageId: hubMessageId });
-    await t.click(hubCustomId("do", key.campaignId, "illustrateScene"), { userId: "u-org" }, { messageId: hubMessageId });
-    const asked = (await t.r.store.transaction((tx) => tx.pendingOutbox("redoImage"))).map((item) => (item.request.kind === "redoImage" ? item.request.subject : ""));
-    expect(asked).toContain("scene:ruined-chapel");
-    expect(asked).toHaveLength(2);
+    expect(contentOf(screen)).not.toMatch(/picture/i);
+    expect(rowsOf(screen).flat().map((button) => button.label).join(" ")).not.toMatch(/picture/i);
   });
 
   it("puts an icon on the manage buttons that have one, once the icons are uploaded", async () => {

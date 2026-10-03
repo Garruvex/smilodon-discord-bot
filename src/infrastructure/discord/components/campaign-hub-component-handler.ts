@@ -855,21 +855,17 @@ export class CampaignHubComponentHandler implements ComponentHandler {
       const icon = manageIcons[action] === undefined ? undefined : this.deps.icons?.emoji(manageIcons[action]);
       return icon === undefined ? button : button.setEmoji(icon);
     };
-    const pictures = this.deps.imagesEnabled !== false;
     const rows: ActionRowBuilder<MessageActionRowComponentBuilder>[] = [];
     if (record.lifecycle !== "lobby") {
       rows.push(
         row(
-          paused ? verb("resume", t.resume).setStyle(ButtonStyle.Success) : verb("pause", t.pause),
+          paused ? verb("resume", t.resume).setStyle(ButtonStyle.Primary) : verb("pause", t.pause),
           verb("closeRound", t.closeRound),
           verb("retry", t.retry),
-          ...(pictures ? [verb("redoPicture", record.lastPicture === undefined ? t.redoPicture : cut(t.redoPictureOf({ subject: pictureName(record.lastPicture) })))] : []),
           new ButtonBuilder().setCustomId(hubCustomId("levelOpen", id)).setLabel(t.levelButton).setStyle(ButtonStyle.Secondary),
         ),
-        row(verb("shortRest", t.shortRest), verb("longRest", t.longRest), verb("retryFight", t.retryFight), verb("retell", t.retell), ...(pictures ? [verb("illustrate", t.illustrate)] : [])),
+        row(verb("shortRest", t.shortRest), verb("longRest", t.longRest), verb("retryFight", t.retryFight), verb("retell", t.retell)),
       );
-      const failedPictures = Object.values(record.images ?? {}).filter((status) => status === "failed").length;
-      if (pictures) rows.push(row(verb("illustrateScene", t.illustrateScene), ...(failedPictures === 0 ? [] : [verb("retryPicture", t.retryPicture({ count: failedPictures })).setStyle(ButtonStyle.Primary)])));
       const pendingCount = Object.values(record.joinRequests ?? {}).filter((request) => request.status === "requested" && request.expiresAt > Date.now()).length;
       rows.push(row(
         new ButtonBuilder().setCustomId(hubCustomId("inviteOpen", id)).setLabel(record.language === "zh-TW" ? "邀請玩家" : "Invite player").setStyle(ButtonStyle.Secondary),
@@ -890,9 +886,7 @@ export class CampaignHubComponentHandler implements ComponentHandler {
       ),
     );
     const problems = (record.issues ?? []).map((issue) => `⚠️ ${text.campaign.issue.short[issue.code]({ detail: issue.detail })}`);
-    const painted = Object.values(record.images ?? {});
-    const pictureLine = !pictures || painted.length === 0 ? "" : `\n${t.pictureStatus({ done: painted.filter((s) => s === "done").length, failed: painted.filter((s) => s === "failed").length, skipped: painted.filter((s) => s === "skipped").length })}`;
-    const title = `**${t.title({ name: record.name })}**${status === "" ? "" : ` · ${status}`}${pictureLine}`;
+    const title = `**${t.title({ name: record.name })}**${status === "" ? "" : ` · ${status}`}`;
     return { content: problems.length === 0 ? title : `${title}\n${t.needsAttention}\n${problems.join("\n")}`, components: rows };
   }
 
@@ -912,14 +906,6 @@ const manageIcons: Partial<Record<ManageVerb, CampaignIcon>> = {
   redoPicture: "picture",
   retryPicture: "picture",
 };
-
-const cut = (label: string): string => (label.length <= 80 ? label : `${label.slice(0, 79)}…`);
-
-// A picture's subject in words a person reads: "scene:cheese-field" is "cheese field".
-function pictureName(subject: string): string {
-  const round = /^moment:round-(\d+)$/.exec(subject);
-  return round === null ? subject.replace(/^[a-z]+:/, "").replace(/-/g, " ") : `round ${round[1]}`;
-}
 
 function row(...buttons: ButtonBuilder[]): ActionRowBuilder<MessageActionRowComponentBuilder> {
   return new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(buttons);
