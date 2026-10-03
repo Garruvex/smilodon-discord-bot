@@ -1,12 +1,15 @@
-import { app } from "./state.js";
 import { requestJson } from "./api.js";
 import { classText, t } from "./i18n.js";
-import { setMessage } from "./dom.js";
 
 const abilities = ["str", "dex", "con", "int", "wis", "cha"];
 const standardScores = [15, 14, 13, 12, 10, 8];
 let catalog = null;
 let step = 0;
+let characters = [];
+let currentCharacter = null;
+let selectedCharacterId = null;
+let selectedVersionId = null;
+let editingCharacterId = null;
 
 const dialog = () => document.querySelector("#character-builder-dialog");
 const field = (id) => dialog().querySelector(`#${id}`);
@@ -44,32 +47,140 @@ const button = (text, click, primary = false) => {
 };
 const feedback = (message) => { field("builder-feedback").textContent = message; };
 const chosen = (name) => [...dialog().querySelectorAll(`input[name="${name}"]:checked`)].map((node) => node.value);
-const raceText = (id) => t(`activity.creator.race.${id.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())}`).startsWith("activity.") ? label(id) : t(`activity.creator.race.${id.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())}`);
+const raceText = (id) => {
+  if (!id) return t("activity.characters.noAncestry");
+  const translated = t(`activity.creator.race.${id.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())}`);
+  return translated.startsWith("activity.") ? label(id) : translated;
+};
 const skillText = (id) => {
   const translated = t(`activity.creator.skill.${id.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())}`);
   return translated.startsWith("activity.") ? label(id) : translated;
 };
 
 export async function loadCharacters() {
-  const area = document.querySelector("#lobby-characters");
-  if (!area) return;
   const payload = await requestJson("/api/activity/characters");
   catalog = payload.catalog;
+  characters = payload.characters;
   if (!dialog().childElementCount) wireCharacterCreator();
   document.dispatchEvent(new Event("activity-characters-loaded"));
-  area.replaceChildren();
-  const heading = element("div", "section-heading");
-  const title = element("h2", "", t("activity.lobby.savedCharacters"));
-  heading.append(title, button(t("activity.lobby.startCreator"), openCharacterCreator, true));
-  area.append(heading);
-  if (!payload.characters.length) area.append(element("p", "lobby-character-empty", t("activity.creator.emptyLibrary")));
-  const list = element("div", "lobby-character-list");
-  for (const character of payload.characters) {
-    const card = element("article", "lobby-character-card ui-card");
-    card.append(element("strong", "", character.name), element("span", "", `${raceText(character.race ?? "human")} · ${className(character.className)}`));
+  document.querySelector("#lobby-character-count").textContent = t("activity.characters.count", { count: characters.length });
+  renderCharacterList();
+  if (selectedCharacterId && characters.some((character) => character.id === selectedCharacterId)) await selectCharacter(selectedCharacterId, selectedVersionId);
+  else {
+    selectedCharacterId = null;
+    currentCharacter = null;
+    document.querySelector("#characters-detail").textContent = t("activity.characters.choosePrompt");
+  }
+}
+
+const characterMessage = (text) => { document.querySelector("#characters-message").textContent = text; };
+
+function renderCharacterList() {
+  const list = document.querySelector("#characters-list");
+  list.replaceChildren();
+  if (!characters.length) list.append(element("p", "lobby-character-empty", t("activity.creator.emptyLibrary")));
+  for (const character of characters) {
+    const card = button(character.name, () => void selectCharacter(character.id), character.id === selectedCharacterId);
+    card.classList.add("characters-list-item");
+    card.append(element("small", "", `${raceText(character.race)} · ${className(character.className)} · ${t("activity.characters.versions", { count: character.versionCount })}`));
+    card.setAttribute("aria-current", String(character.id === selectedCharacterId));
     list.append(card);
   }
-  area.append(list);
+}
+
+export function openCharactersScreen() {
+  document.querySelector("#lobby-screen").hidden = true;
+  document.querySelector("#live-screen").hidden = true;
+  document.querySelector("#characters-screen").hidden = false;
+  if (!catalog) void loadCharacters().catch((error) => characterMessage(error.message));
+}
+
+export function wireCharacterScreen() {
+  document.querySelector("#open-characters").addEventListener("click", openCharactersScreen);
+  document.querySelector("#characters-back").addEventListener("click", () => {
+    document.querySelector("#characters-screen").hidden = true;
+    document.querySelector("#lobby-screen").hidden = false;
+    characterMessage("");
+  });
+  document.querySelector("#characters-create").addEventListener("click", () => openCharacterCreator());
+}
+
+async function selectCharacter(characterId, versionId = null) {
+  const detail = document.querySelector("#characters-detail");
+  detail.textContent = t("activity.characters.loading");
+  try {
+    const payload = await requestJson(`/api/activity/characters/${encodeURIComponent(characterId)}`);
+    currentCharacter = payload.character;
+    selectedCharacterId = characterId;
+    selectedVersionId = versionId && currentCharacter.versions.some((version) => version.id === versionId) ? versionId : currentCharacter.versions.filter((version) => version.branch === "main").at(-1)?.id ?? currentCharacter.versions.at(-1)?.id ?? null;
+    renderCharacterList();
+    renderCharacterDetail();
+  } catch (error) {
+    detail.textContent = error instanceof Error ? error.message : t("activity.connection.requestFailed");
+  }
+}
+
+function detailLine(title, value) {
+  const row = element("div", "characters-detail-line");
+  row.append(element("strong", "", title), element("span", "", value || "—"));
+  return row;
+}
+
+function renderCharacterDetail() {
+  const detail = document.querySelector("#characters-detail");
+  detail.replaceChildren();
+  if (!currentCharacter) return;
+  const version = currentCharacter.versions.find((item) => item.id === selectedVersionId);
+  if (!version) return;
+  const build = version.build;
+  const title = element("div", "characters-detail-heading");
+  title.append(element("h2", "", build.name), element("p", "", `${raceText(build.race)} · ${className(build.class)}`));
+  detail.append(title);
+  const versionPicker = select("characters-version", [...currentCharacter.versions].reverse().map((item) => item.id), (id) => {
+    const item = currentCharacter.versions.find((candidate) => candidate.id === id);
+    const number = item.branch === "main" ? currentCharacter.versions.filter((candidate) => candidate.branch === "main" && candidate.revision <= item.revision).length : item.revision;
+    return `${t("activity.characters.version", { number })}${item.branch === "main" ? "" : ` · ${t("activity.characters.gameVersion")}`}`;
+  });
+  versionPicker.value = version.id;
+  versionPicker.addEventListener("change", () => { selectedVersionId = versionPicker.value; renderCharacterDetail(); });
+  detail.append(labelled(t("activity.characters.viewVersion"), versionPicker));
+  const stats = element("div", "characters-stats");
+  for (const ability of abilities) stats.append(detailLine(ability.toUpperCase(), String((version.progression?.abilityScores ?? build.abilities)[ability])));
+  detail.append(stats);
+  detail.append(detailLine(t("activity.creator.skills"), build.skills.map(skillText).join(", ")));
+  if (build.expertise.length) detail.append(detailLine(t("activity.characters.expertise"), build.expertise.map(skillText).join(", ")));
+  if (build.raceAbilityChoices?.length) detail.append(detailLine(t("activity.creator.halfElfAbilities"), build.raceAbilityChoices.map((item) => item.toUpperCase()).join(", ")));
+  if (build.raceSkillChoices?.length) detail.append(detailLine(t("activity.creator.halfElfSkills"), build.raceSkillChoices.map(skillText).join(", ")));
+  detail.append(detailLine(t("activity.creator.kit"), t(`campaign.chars.kit.${build.kit}`)));
+  detail.append(detailLine(t("activity.characters.equipment"), version.gear.equipment.map((id) => label(id.replace(/^item:/, ""))).join(", ")));
+  detail.append(detailLine(t("activity.creator.appearance"), build.appearance));
+  detail.append(detailLine(t("activity.creator.backstory"), build.backstory));
+  if (version.progression) detail.append(detailLine(t("activity.characters.level"), String(Object.values(version.progression.classLevels).reduce((total, level) => total + level, 0))));
+  const actions = element("div", "characters-detail-actions");
+  if (version.branch === "main") actions.append(button(t("activity.characters.edit"), () => openCharacterCreator(build, currentCharacter.id), true));
+  actions.append(button(t("activity.characters.delete"), () => showDeleteConfirmation()));
+  detail.append(actions);
+}
+
+function showDeleteConfirmation() {
+  const detail = document.querySelector("#characters-detail");
+  detail.querySelector(".characters-delete-confirm")?.remove();
+  const confirm = element("div", "characters-delete-confirm");
+  confirm.append(element("p", "", t("activity.characters.deleteConfirm", { name: currentCharacter.name })));
+  const yes = button(t("activity.characters.deleteForever"), async () => {
+    yes.disabled = true;
+    try {
+      await requestJson(`/api/activity/characters/${encodeURIComponent(currentCharacter.id)}`, { method: "DELETE" });
+      selectedCharacterId = null;
+      selectedVersionId = null;
+      currentCharacter = null;
+      await loadCharacters();
+      characterMessage(t("activity.characters.deleted"));
+    } catch (error) { characterMessage(error instanceof Error ? error.message : t("activity.connection.requestFailed")); yes.disabled = false; }
+  });
+  yes.classList.add("danger");
+  confirm.append(yes, button(t("activity.creator.cancel"), () => confirm.remove()));
+  detail.append(confirm);
 }
 
 function buildChoices() {
@@ -159,13 +270,29 @@ function showStep(next) {
   }
 }
 
-export function openCharacterCreator() {
-  if (!catalog) { setMessage(t("activity.creator.unavailable")); return; }
+export function openCharacterCreator(existingBuild = null, characterId = null) {
+  if (!catalog) { characterMessage(t("activity.creator.unavailable")); return; }
+  editingCharacterId = characterId;
+  const saveButton = field("builder-save");
+  saveButton.textContent = t(characterId ? "activity.characters.saveVersion" : "activity.creator.save");
   const form = dialog();
   form.querySelectorAll("input[type=text], textarea").forEach((input) => { input.value = ""; });
   field("builder-race").value = "human";
   field("builder-class").value = "fighter";
   renderClassChoices();
+  if (existingBuild) {
+    field("builder-name").value = existingBuild.name;
+    field("builder-appearance").value = existingBuild.appearance;
+    field("builder-backstory").value = existingBuild.backstory;
+    field("builder-race").value = existingBuild.race ?? "human";
+    field("builder-class").value = existingBuild.class;
+    renderClassChoices();
+    field("builder-kit").value = existingBuild.kit;
+    for (const ability of abilities) field(`builder-${ability}`).value = String(existingBuild.abilities[ability]);
+    for (const [name, values] of [["builder-skill", existingBuild.skills], ["builder-expertise", existingBuild.expertise], ["builder-race-ability", existingBuild.raceAbilityChoices ?? []], ["builder-race-skill", existingBuild.raceSkillChoices ?? []]]) {
+      for (const input of form.querySelectorAll(`input[name="${name}"]`)) input.checked = values.includes(input.value);
+    }
+  }
   step = 0;
   showStep(0);
   form.showModal();
@@ -212,13 +339,19 @@ export function wireCharacterCreator() {
     if (error) { feedback(error); return; }
     save.disabled = true;
     try {
-      await requestJson("/api/activity/characters", { method: "POST", body: JSON.stringify(buildChoices()) });
+      const wasEditing = editingCharacterId !== null;
+      const targetId = editingCharacterId;
+      const result = await requestJson(wasEditing ? `/api/activity/characters/${encodeURIComponent(targetId)}` : "/api/activity/characters", { method: wasEditing ? "PUT" : "POST", body: JSON.stringify(buildChoices()) });
       form.close();
+      editingCharacterId = null;
+      selectedCharacterId = targetId ?? result.characterId;
+      selectedVersionId = null;
       await loadCharacters();
-      setMessage(t("activity.creator.saved"));
+      characterMessage(t(wasEditing ? "activity.characters.updated" : "activity.creator.saved"));
     } catch (failure) { feedback(failure instanceof Error ? failure.message : t("activity.connection.requestFailed")); }
     finally { save.disabled = false; }
   }, true);
+  save.id = "builder-save";
   reviewButtons.append(button(t("activity.creator.back"), () => showStep(1)), save);
   review.append(reviewName, subtitle, stats, details, reviewButtons);
   const message = element("p", "builder-feedback"); message.id = "builder-feedback"; message.setAttribute("role", "alert");

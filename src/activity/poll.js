@@ -15,6 +15,7 @@ export async function openGame(campaignId) {
   resetPaint();
   setTableConnectionState("connecting");
   lobbyScreen.hidden = true;
+  document.querySelector("#characters-screen").hidden = true;
   liveScreen.hidden = false;
   liveActions.replaceChildren();
   setLiveMessage(t("activity.status.loadingCampaign"));

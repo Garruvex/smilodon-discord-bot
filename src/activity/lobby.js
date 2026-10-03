@@ -2,7 +2,7 @@ import { app } from "./state.js";
 import { performAction } from "./actions.js";
 import { requestJson } from "./api.js";
 import { emptyElement, errorElement, errorMessageElement, errorTitleElement, gamesElement, iconImage, liveActions, liveEnemies, makeButton, serverElement, setArtwork, setLiveMessage, setMessage, userElement } from "./dom.js";
-import { loadCharacters, openCharacterCreator, wireCharacterCreator } from "./character-builder.js";
+import { loadCharacters } from "./character-builder.js";
 import { setHeroWatermark, updateHealthMeter } from "./hero.js";
 import { classText, t } from "./i18n.js";
 import { renderParty } from "./party.js";
@@ -82,8 +82,7 @@ export async function loadGames() {
   setMessage(t("activity.lobby.loading"));
   const payload = await requestJson("/api/activity/games");
   try { await loadCharacters(); } catch {
-    const area = document.querySelector("#lobby-characters");
-    if (area) area.textContent = t("activity.creator.unavailable");
+    document.querySelector("#lobby-character-count").textContent = t("activity.creator.unavailable");
   }
   userElement.textContent = payload.user?.displayName ?? t("activity.lobby.connectedUser");
   gamesElement.replaceChildren(...(payload.games ?? []).map(createGameCard));
@@ -190,7 +189,3 @@ export function renderLobby(game) {
   document.querySelector("#live-party-count").textContent = t("activity.lobby.players", { count: game.playerCount, max: game.maxPlayers });
   setLiveMessage(game.startBlockReason === "notEnoughPlayers" ? t("activity.status.waitingPlayers") : game.startBlockReason === "notReady" ? t("activity.lobby.waitingReady") : game.selectedHeroId ? t("activity.status.readyOrganizer") : t("activity.lobby.chooseCharacterPrompt"));
 }
-
-
-export { openCharacterCreator, wireCharacterCreator };
-

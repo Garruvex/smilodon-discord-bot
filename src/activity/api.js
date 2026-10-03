@@ -13,6 +13,7 @@ export const apiErrorKeys = {
   notFound: "activity.error.gameGone", notActive: "activity.error.notActive", notMember: "activity.error.notMember", campaignPaused: "activity.error.campaignPaused", joinNotAtBreak: "activity.error.joinNotAtBreak",
   joinNotApproved: "activity.error.joinNotApproved", notYourTurn: "activity.error.notYourTurn", invalidAction: "activity.status.actionAvailable",
   invalidCharacter: "activity.creator.invalid", characterLibraryFull: "activity.creator.full", characterIncompatible: "activity.creator.incompatible",
+  characterMissing: "activity.characters.missing",
 };
 
 export function withTimeout(promise, milliseconds, message) {

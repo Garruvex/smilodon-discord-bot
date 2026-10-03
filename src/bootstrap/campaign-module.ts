@@ -92,7 +92,10 @@ export interface CampaignModule {
   readonly activity: {
     characterCatalog(): unknown;
     listCharacters(userId: UserId): Promise<unknown>;
-    createCharacter(userId: UserId, build: BuildChoices): Promise<{ readonly kind: "ok" } | { readonly kind: "invalid"; readonly problems: readonly { readonly code: string }[] } | { readonly kind: "full" }>;
+    getCharacter(userId: UserId, characterId: string): Promise<unknown | null>;
+    createCharacter(userId: UserId, build: BuildChoices): Promise<{ readonly kind: "ok"; readonly characterId: string } | { readonly kind: "invalid"; readonly problems: readonly { readonly code: string }[] } | { readonly kind: "full" }>;
+    editCharacter(userId: UserId, characterId: string, build: BuildChoices): Promise<{ readonly kind: "ok" } | { readonly kind: "invalid"; readonly problems: readonly { readonly code: string }[] } | { readonly kind: "notFound" }>;
+    deleteCharacter(userId: UserId, characterId: string): Promise<boolean>;
     listGames(guildId: string, userId: UserId): Promise<readonly ActivityCampaignListingItem[]>;
     gameForChannel(guildId: string, userId: UserId, channelId: string): Promise<ActivityCampaignListingItem | null>;
     joinLobby(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>>;
@@ -315,11 +318,21 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
     settings: new CampaignSettingsAccess({ unitOfWork, lobby, setup, cards, modelConfigured: model !== null }),
     activity: {
       characterCatalog: () => ({ races: selectableBuildRaces, skills, classes: buildClasses.map((id) => ({ id, skillChoices: classTemplates[id].skillChoices, skillCount: classTemplates[id].skillCount, expertiseCount: classTemplates[id].expertiseCount, kits: classTemplates[id].kits.map((kit) => kit.id), suggestedAbilities: suggestedAbilities(id) })) }),
-      listCharacters: async (userId) => (await library.list(userId)).flatMap((entry) => entry.snapshots.filter((snapshot) => snapshot.branch === "main").slice(-1).map((snapshot) => ({ id: snapshot.id, name: entry.character.name, className: entry.character.className, race: snapshot.build.race ?? null }))),
+      listCharacters: async (userId) => (await library.list(userId)).flatMap((entry) => entry.snapshots.filter((snapshot) => snapshot.branch === "main").sort((a, b) => a.revision - b.revision).slice(-1).map((snapshot) => ({ id: entry.character.id, snapshotId: snapshot.id, name: entry.character.name, className: entry.character.className, race: snapshot.build.race ?? null, versionCount: entry.snapshots.filter((version) => version.branch === "main").length }))),
+      getCharacter: async (userId, characterId) => {
+        const entry = await library.entry(userId, characterId);
+        if (entry === undefined) return null;
+        return { id: entry.character.id, name: entry.character.name, versions: [...entry.snapshots].sort((a, b) => a.revision - b.revision).map((snapshot) => ({ id: snapshot.id, revision: snapshot.revision, branch: snapshot.branch, source: snapshot.source.kind, createdAt: snapshot.createdAt, build: snapshot.build, gear: snapshot.gear, progression: snapshot.progression ?? null })) };
+      },
       createCharacter: async (userId, build) => {
         const result = await library.create(userId, build);
+        return result.kind === "ok" ? { kind: "ok" as const, characterId: result.character.id } : result;
+      },
+      editCharacter: async (userId, characterId, build) => {
+        const result = await library.edit(userId, characterId, build);
         return result.kind === "ok" ? { kind: "ok" as const } : result;
       },
+      deleteCharacter: (userId, characterId) => library.remove(userId, characterId),
       listGames: (guildId, userId): Promise<readonly ActivityCampaignListingItem[]> => lobby.activityGames(guildId, userId),
       gameForChannel: (guildId, userId, channelId): Promise<ActivityCampaignListingItem | null> => lobby.activityGameForChannel(guildId, userId, channelId),
       joinLobby: (key, userId): Promise<ServiceResult<CampaignRecord>> => lobby.joinFromActivity(key, userId),

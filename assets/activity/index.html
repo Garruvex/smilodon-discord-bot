@@ -16,11 +16,18 @@
       </header>
       <section class="lobby-intro"><span class="eyebrow" data-i18n="activity.lobby.eyebrow">THE ADVENTURING BOARD</span><h2 data-i18n="activity.lobby.heading">Find your next game</h2><p data-i18n="activity.lobby.description">Open lobbies and live games you can join in this server.</p></section>
       <div class="lobby-message" id="lobby-message" role="status" aria-live="polite">Connecting to Discord…</div>
-      <section class="lobby-characters" id="lobby-characters" aria-label="My characters"></section>
+      <button class="lobby-characters-link ui-control" id="open-characters" type="button"><span><strong data-i18n="activity.characters.title">My characters</strong><small id="lobby-character-count"></small></span><span aria-hidden="true">→</span></button>
       <section class="lobby-games" id="lobby-games" data-i18n-aria-label="activity.lobby.availableGames" aria-label="Available games" aria-live="polite"></section>
       <section class="lobby-empty" id="lobby-empty" hidden><span class="empty-sigil" aria-hidden="true">✧</span><h2 data-i18n="activity.lobby.emptyTitle">No games to show yet</h2><p data-i18n="activity.lobby.emptyDescription">Open lobbies and games you belong to will appear here.</p></section>
       <section class="lobby-error" id="lobby-error" hidden><h2 id="lobby-error-title" data-i18n="activity.lobby.error.load">Could not load your games</h2><p id="lobby-error-message" data-i18n="activity.lobby.error.help">Reconnect to Discord and try again.</p><button class="lobby-retry" id="lobby-retry" data-i18n="activity.lobby.retry" type="button">Try again</button></section>
       <footer class="lobby-footer"><span class="connection-dot"></span><span id="lobby-user" data-i18n="activity.lobby.waitingDiscord">Waiting for Discord</span><span class="server-only-note" data-i18n="activity.lobby.serverNote">Games are shown for the server where this Activity was opened.</span></footer>
+    </main>
+
+    <main class="characters-shell" id="characters-screen" hidden>
+      <header class="characters-header"><button class="lobby-retry ui-control" id="characters-back" type="button" data-i18n="activity.characters.backToGames">← All games</button><div><span class="eyebrow" data-i18n="activity.characters.eyebrow">YOUR ADVENTURERS</span><h1 data-i18n="activity.characters.title">My characters</h1></div><button class="lobby-card-action ui-control" id="characters-create" type="button" data-i18n="activity.characters.create">Create new</button></header>
+      <p class="characters-intro" data-i18n="activity.characters.description">Your saved characters can join any compatible game. Choose one to view its details and versions.</p>
+      <div class="characters-layout"><nav class="characters-list" id="characters-list" aria-label="Saved characters"></nav><section class="characters-detail ui-card" id="characters-detail" aria-live="polite"></section></div>
+      <p class="characters-message" id="characters-message" role="status" aria-live="polite"></p>
     </main>
 
     <main class="live-shell" id="live-screen" hidden>

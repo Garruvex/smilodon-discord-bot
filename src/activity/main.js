@@ -3,6 +3,7 @@ import { showRolls } from "./dice.js";
 import { liveScreen, lobbyScreen } from "./dom.js";
 import { setLanguage, t } from "./i18n.js";
 import { showError } from "./lobby.js";
+import { wireCharacterScreen } from "./character-builder.js";
 import { bindMapControls } from "./map.js";
 import { setTableConnectionState } from "./poll.js";
 import { designPreviewSnapshot } from "./preview.js";
@@ -10,6 +11,7 @@ import { renderGame } from "./render.js";
 import { authenticate } from "./session.js";
 
 bindMapControls();
+wireCharacterScreen();
 
 
 if (new URLSearchParams(window.location.search).has("design-preview")) {

@@ -37,7 +37,10 @@ export interface ActivityServer {
 export interface ActivityCampaignApi {
   characterCatalog(): unknown;
   listCharacters(userId: UserId): Promise<unknown>;
-  createCharacter(userId: UserId, build: BuildChoices): Promise<{ readonly kind: "ok" } | { readonly kind: "invalid"; readonly problems: readonly { readonly code: string }[] } | { readonly kind: "full" }>;
+  getCharacter(userId: UserId, characterId: string): Promise<unknown | null>;
+  createCharacter(userId: UserId, build: BuildChoices): Promise<{ readonly kind: "ok"; readonly characterId: string } | { readonly kind: "invalid"; readonly problems: readonly { readonly code: string }[] } | { readonly kind: "full" }>;
+  editCharacter(userId: UserId, characterId: string, build: BuildChoices): Promise<{ readonly kind: "ok" } | { readonly kind: "invalid"; readonly problems: readonly { readonly code: string }[] } | { readonly kind: "notFound" }>;
+  deleteCharacter(userId: UserId, characterId: string): Promise<boolean>;
   listGames(guildId: string, userId: UserId): Promise<readonly ActivityCampaignListingItem[]>;
   gameForChannel(guildId: string, userId: UserId, channelId: string): Promise<ActivityCampaignListingItem | null>;
   joinLobby(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>>;
@@ -176,7 +179,32 @@ async function respond(
       const build: BuildChoices = { ...required, ...(raceAbilityChoices === undefined ? {} : { raceAbilityChoices }), ...(raceSkillChoices === undefined ? {} : { raceSkillChoices }) };
       const result = await campaigns.createCharacter(session.userId, build);
       if (result.kind !== "ok") return writeJson(response, 409, { error: result.kind === "full" ? "characterLibraryFull" : "invalidCharacter", ...("problems" in result ? { problems: result.problems } : {}) }, headers);
-      return writeJson(response, 201, { characters: await campaigns.listCharacters(session.userId) }, headers);
+      return writeJson(response, 201, { characterId: result.characterId, characters: await campaigns.listCharacters(session.userId) }, headers);
+    }
+  }
+  const characterMatch = url.pathname.match(/^\/api\/activity\/characters\/([a-zA-Z0-9_-]{1,128})$/);
+  if (characterMatch !== null && characterMatch[1] !== undefined) {
+    const session = requireSession(request, sessions);
+    if (session === null) return writeJson(response, 401, { error: "unauthorized" }, headers);
+    const characterId = characterMatch[1];
+    if (request.method === "GET") {
+      const character = await campaigns.getCharacter(session.userId, characterId);
+      return character === null ? writeJson(response, 404, { error: "characterMissing" }, headers) : writeJson(response, 200, { character }, headers);
+    }
+    if (request.method === "DELETE") {
+      const removed = await campaigns.deleteCharacter(session.userId, characterId);
+      return writeJson(response, removed ? 200 : 404, removed ? { deleted: true } : { error: "characterMissing" }, headers);
+    }
+    if (request.method === "PUT") {
+      let body: unknown;
+      try { body = await readJsonBody(request); } catch { return writeJson(response, 400, { error: "invalidRequest" }, headers); }
+      const parsed = characterBuildSchema.safeParse(body);
+      if (!parsed.success) return writeJson(response, 400, { error: "invalidCharacter" }, headers);
+      const { raceAbilityChoices, raceSkillChoices, ...required } = parsed.data;
+      const build: BuildChoices = { ...required, ...(raceAbilityChoices === undefined ? {} : { raceAbilityChoices }), ...(raceSkillChoices === undefined ? {} : { raceSkillChoices }) };
+      const result = await campaigns.editCharacter(session.userId, characterId, build);
+      if (result.kind !== "ok") return writeJson(response, result.kind === "notFound" ? 404 : 409, { error: result.kind === "notFound" ? "characterMissing" : "invalidCharacter" }, headers);
+      return writeJson(response, 200, { character: await campaigns.getCharacter(session.userId, characterId) }, headers);
     }
   }
 
@@ -246,7 +274,7 @@ async function respond(
   }
 
   if (request.method !== "GET" && request.method !== "HEAD") {
-    response.writeHead(405, { ...headers, Allow: "GET, HEAD, POST", "Content-Type": "text/plain; charset=utf-8" });
+    response.writeHead(405, { ...headers, Allow: "GET, HEAD, POST, PUT, DELETE", "Content-Type": "text/plain; charset=utf-8" });
     response.end("Method not allowed");
     return;
   }
