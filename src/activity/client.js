@@ -45,7 +45,6 @@ let mapOffset = { x: 0, y: 0 };
 const lifecycleKeys = { lobby: "activity.lobby.status.open", active: "activity.lobby.status.live", paused: "activity.lobby.status.paused" };
 const actionKeys = { join: "activity.lobby.action.join", continue: "activity.lobby.action.continue", request: "activity.lobby.action.request", requested: "activity.lobby.action.requested", queued: "activity.lobby.action.queued", invited: "activity.lobby.action.invited", full: "activity.lobby.action.full", resume: "activity.lobby.action.continue" };
 const phaseKeys = { opening: "activity.phase.opening", readyCheck: "activity.status.gathering", collecting: "activity.phase.collecting", planning: "activity.phase.planning", awaitingRolls: "activity.phase.awaitingRolls", combat: "activity.phase.combat", waiting: "activity.phase.waiting", paused: "activity.phase.paused", safety: "activity.phase.safety", recovery: "activity.phase.recovery", archived: "activity.phase.archived" };
-const stageKeys = ["activity.stage.setup", "activity.stage.explore", "activity.stage.vote", "activity.stage.story", "activity.stage.combat"];
 const apiErrorKeys = {
   ...Object.fromEntries(["actionTooLong", "emptyAction", "invalidAction", "heroFallen", "moveDecisionPending", "roundNotCollecting", "memberAway", "campaignWaiting", "staleRound"].map((code) => [code, `activity.error.${code}`])),
   noOpenRound: "activity.error.roundNotCollecting",
@@ -411,7 +410,6 @@ function paintGame(game) {
     : game.scene.description;
   renderPresenceToggle(game);
   renderMoveNotice(game.kind === "table" ? game.pendingMove : null, game.kind === "table" && game.canVoteMove, game);
-  renderStageTrack(game);
   showRolls(game.kind === "table" ? game.rolls ?? [] : []);
   document.querySelector(".live-scene").classList.toggle("has-enemies", game.kind === "table" && (game.foes?.length ?? 0) > 0);
   void setArtwork(document.querySelector("#live-scene-image"), document.querySelector(".scene-art-fallback"), game.kind === "table" ? game.scene.imageUrl : null, game.scene.title, true);
@@ -441,6 +439,7 @@ function placeMoveNotice() {
 window.addEventListener("resize", placeMoveNotice);
 
 function renderMoveNotice(move, canVote, game) {
+  move = move ?? null;
   const notice = document.querySelector("#live-scene-move");
   const shield = document.querySelector("#vote-shield");
   const key = move === null ? null : JSON.stringify([currentGameId, move.sceneId, move.closesAt]);
@@ -538,26 +537,6 @@ document.querySelector("#live-presence-toggle").addEventListener("click", () => 
   if (currentSnapshot?.kind !== "table" || !currentSnapshot.canTogglePresence) return;
   void performAction({ kind: currentSnapshot.ownPresence === "away" ? "back" : "away" });
 });
-
-function renderStageTrack(game) {
-  const track = document.querySelector("#live-stage-track");
-  const detail = document.querySelector("#live-stage-detail");
-  if (game.kind === "lobby") { track.hidden = true; detail.hidden = true; return; }
-  track.hidden = false; detail.hidden = false;
-  const mode = game.pendingMove ? "vote" : game.mode === "combat" ? "combat" : ["planning", "awaitingRolls"].includes(game.mode) ? "story" : ["opening", "readyCheck", "waiting"].includes(game.mode) ? "setup" : "explore";
-  const activeIndex = ({ setup: 0, explore: 1, vote: 2, story: 3, combat: 4 })[mode];
-  track.dataset.stage = mode;
-  track.replaceChildren(...stageKeys.map((key, index) => {
-    const item = document.createElement("span");
-    item.className = "live-stage";
-    item.dataset.state = index === activeIndex ? "current" : index < activeIndex ? "past" : "next";
-    if (index > 0) item.append(Object.assign(document.createElement("i"), { className: "stage-connector", "aria-hidden": "true" }));
-    item.append(Object.assign(document.createElement("strong"), { textContent: t(key) }));
-    return item;
-  }));
-  const detailKey = game.pendingMove ? "activity.stage.detailVote" : game.mode === "combat" ? "activity.stage.detailCombat" : game.mode === "planning" ? "activity.stage.detailStory" : game.mode === "awaitingRolls" ? "activity.stage.detailRolls" : game.mode === "collecting" ? (game.submission ? "activity.stage.detailSubmitted" : "activity.stage.detailExplore") : `activity.stage.detail.${game.mode}`;
-  detail.replaceChildren(document.createTextNode(t(detailKey, { name: game.pendingMove?.sceneTitle ?? game.activeName ?? "" })));
-}
 
 // One entry of a map key: its colour swatch and its label.
 function keyItem(swatchClass, label) {
@@ -1876,10 +1855,15 @@ function showRolls(rolls) {
   label.textContent = rollLabel(roll.test);
   const number = document.createElement("div");
   number.className = "roll-toast-number";
+  number.setAttribute("aria-hidden", "true");
+  const moment = document.createElement("div");
+  moment.className = "roll-toast-moment";
+  moment.textContent = roll.moment === "natural20" ? t("activity.roll.natural20") : roll.moment === "natural1" ? t("activity.roll.natural1") : "";
   const detail = document.createElement("div");
   detail.className = "roll-toast-detail";
-  toast.replaceChildren(label, number, detail);
-  toast.className = "is-tumbling";
+  toast.replaceChildren(label, number, moment, detail);
+  toast.className = `is-tumbling${roll.moment === "natural20" ? " is-natural20" : roll.moment === "natural1" ? " is-natural1" : ""}`;
+  toast.setAttribute("aria-label", `${rollLabel(roll.test)}: ${roll.natural}, ${t(roll.success ? "activity.roll.success" : "activity.roll.failure")}`);
   clearTimeout(rollToastTimer);
   let ticks = 0;
   const tumble = setInterval(() => {
@@ -1888,7 +1872,7 @@ function showRolls(rolls) {
     clearInterval(tumble);
     number.textContent = String(roll.natural);
     detail.textContent = t("activity.roll.result", { natural: roll.natural, sum, total: roll.total, dc: roll.dc, outcome: t(roll.success ? "activity.roll.success" : "activity.roll.failure") });
-    toast.className = roll.success ? "is-success" : "is-failure";
+    toast.className = `${roll.success ? "is-success" : "is-failure"}${roll.moment === "natural20" ? " is-natural20" : roll.moment === "natural1" ? " is-natural1" : ""}`;
     rollToastTimer = setTimeout(() => { toast.className = ""; }, 5000);
   }, 80);
 }
@@ -2208,7 +2192,15 @@ if (new URLSearchParams(window.location.search).has("design-preview")) {
       preview.pendingMove = { sceneId: "gallery", present: 6, needed: 3, closesAt: Date.now() + 83000, sceneTitle: previewLanguage === "zh-TW" ? "破碎長廊" : "Broken Gallery", sceneDescription: previewLanguage === "zh-TW" ? "月光照亮橫跨裂縫的長廊，東側拱門通往古老的觀星台。" : "A moonlit gallery crosses a deep fissure. Its eastern arch leads toward the old observatory.", proposedBy: previewLanguage === "zh-TW" ? "米拉・芬" : "Mira Fen", supporters: [previewLanguage === "zh-TW" ? "米拉・芬" : "Mira Fen"], staying: [previewLanguage === "zh-TW" ? "索恩・橡盾" : "Thorne Oakshield"], choiceByYou: new URLSearchParams(window.location.search).has("stay") ? "stay" : null };
     }
   }
-  void setLanguage(previewLanguage).then(() => { setTableConnectionState("live"); renderGame(preview); });
+  void setLanguage(previewLanguage).then(() => {
+    setTableConnectionState("live");
+    renderGame(preview);
+    const rollPreview = new URLSearchParams(window.location.search).get("roll-preview");
+    if (rollPreview === "20" || rollPreview === "1") {
+      const natural = Number(rollPreview);
+      showRolls([{ id: `preview-roll-${natural}`, test: { kind: "skill", skill: "persuasion" }, natural, total: natural === 20 ? 25 : 4, dc: 15, success: natural === 20, moment: natural === 20 ? "natural20" : "natural1" }]);
+    }
+  });
   }
 } else {
   void authenticate().catch((error) => {

@@ -100,7 +100,7 @@ export interface ActivityTableView {
   readonly pendingRoll: null | { readonly checkId: string; readonly test: CheckTest; readonly action: string | null };
   readonly pendingRollCount: number;
   // The viewer's newest settled rolls (a check, a press); the client shows each one once.
-  readonly rolls: readonly { readonly id: string; readonly test: CheckTest; readonly natural: number; readonly total: number; readonly dc: number; readonly success: boolean }[];
+  readonly rolls: readonly { readonly id: string; readonly test: CheckTest; readonly natural: number; readonly total: number; readonly dc: number; readonly success: boolean; readonly moment: "natural20" | "natural1" | null }[];
   readonly submittedCount: number;
   readonly participantCount: number;
   readonly submission: "action" | "pass" | "missed" | "excused" | null;
@@ -411,8 +411,8 @@ export function canSeeActivityCampaign(record: CampaignRecord, state: CampaignSt
 
 function recentRolls(state: CampaignState, characterId: string) {
   const checks = Object.values(state.checks).filter((check) => check.characterId === characterId && check.result !== null).sort((a, b) => b.roundNumber - a.roundNumber).slice(0, 1)
-    .map((check) => ({ id: check.id as string, test: check.test, natural: check.result!.roll.d20.natural, total: check.result!.roll.total, dc: check.dc, success: check.result!.success }));
+    .map((check) => ({ id: check.id as string, test: check.test, natural: check.result!.roll.d20.natural, total: check.result!.roll.total, dc: check.dc, success: check.result!.success, moment: check.result!.moments.headline?.kind === "natural20" || check.result!.moments.headline?.kind === "natural1" ? check.result!.moments.headline.kind : null }));
   const presses = Object.values(state.dialogues).filter((dialogue) => dialogue.characterId === characterId && dialogue.check?.natural !== undefined).slice(-1)
-    .map((dialogue) => ({ id: dialogue.id, test: dialogue.check!.test, natural: dialogue.check!.natural!, total: dialogue.check!.total, dc: dialogue.check!.dc, success: dialogue.check!.success }));
+    .map((dialogue) => ({ id: dialogue.id, test: dialogue.check!.test, natural: dialogue.check!.natural!, total: dialogue.check!.total, dc: dialogue.check!.dc, success: dialogue.check!.success, moment: dialogue.check!.moments.headline?.kind === "natural20" || dialogue.check!.moments.headline?.kind === "natural1" ? dialogue.check!.moments.headline.kind : null }));
   return [...checks, ...presses];
 }

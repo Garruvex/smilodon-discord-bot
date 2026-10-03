@@ -1954,17 +1954,6 @@ body { background: #30251f; }
 .move-vote-actions .live-action-choice[data-selected="true"] { box-shadow: inset 0 0 0 2px currentColor, 0 0 12px #fff3; }
 .move-presence-actions { display: flex; justify-content: flex-end; margin-top: 2px; padding-top: 10px; border-top: 1px solid #d8bd7845; }
 .move-presence-actions .live-action-choice { min-height: 38px; border-color: #ad9975; color: #dfd0b4; }
-.live-stage-detail { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-.live-stage-track { display: flex; align-items: center; gap: 0; margin: 0 0 4px; padding: 0; overflow-x: auto; list-style: none; }
-.live-stage-track[hidden], .live-stage-detail[hidden] { display: none; }
-.live-stage { display: inline-flex; align-items: center; gap: 8px; flex: 1 0 auto; color: #9e927d; font-size: 10px; white-space: nowrap; }
-.live-stage strong { padding: 6px 9px; border: 1px solid #524638; border-radius: 999px; font-weight: 700; }
-.live-stage[data-state="current"] strong { border-color: #dfb866; background: #3e3021; color: #ffe5a7; box-shadow: 0 0 12px #dfb86624; }
-.live-stage[data-state="past"] strong { border-color: #706043; color: #d4c29d; }
-.stage-connector { display: inline-block; width: 18px; height: 1px; background: #635744; }
-.live-stage-detail { margin: 0 0 10px; color: #d3c3a7; font-size: 12px; line-height: 1.45; }
-.live-stage-track[data-stage="vote"] .live-stage[data-state="current"] strong { border-color: #e6bd63; background: #49371e; color: #ffe5a7; }
-.live-stage-track[data-stage="combat"] .live-stage[data-state="current"] strong { border-color: #bd6350; background: #49241f; color: #ffd0bc; }
 .live-actions .action-urgent .live-action-choice.primary { border-color: #ba8950; }
 .live-actions .action-urgent .live-action-choice[data-choice="go"] { border-color: #62875c; }
 .live-actions .action-urgent .live-action-choice[data-choice="stay"] { border-color: #a06e58; }
@@ -2107,15 +2096,24 @@ body { background: #30251f; }
 .join-queue-note { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #a9874e; border-radius: 7px; background: #f4e5c6; color: #563c26; font-weight: 700; }
 .lobby-card-request-status { margin: 4px 0 0; color: #725533; font-size: 11px; line-height: 1.35; }
 @keyframes pending-spin { to { transform: rotate(360deg); } }
-#roll-toast { position: fixed; left: 50%; bottom: 96px; z-index: 60; min-width: 220px; max-width: calc(100% - 32px); padding: 14px 20px; border: 1px solid #796546; border-radius: 16px; background: #211e1bf2; color: #eee7d9; text-align: center; box-shadow: 0 14px 50px #000b; transform: translate(-50%, 20px); opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; }
+#roll-toast { position: fixed; left: 50%; bottom: 96px; z-index: 60; min-width: 220px; max-width: calc(100% - 32px); padding: 14px 20px; border: 1px solid #796546; border-radius: 16px; background: #211e1bf2; color: #eee7d9; text-align: center; box-shadow: 0 14px 50px #000b; transform: translate(-50%, 20px); opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s, box-shadow .3s; }
 #roll-toast.is-tumbling, #roll-toast.is-success, #roll-toast.is-failure { opacity: 1; transform: translate(-50%, 0); }
 .roll-toast-label { font-size: 13px; opacity: .8; }
-.roll-toast-number { font-size: 44px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.roll-toast-number { font-size: 52px; font-weight: 900; line-height: 1.08; font-variant-numeric: tabular-nums; text-shadow: 0 2px 15px #fff3; }
 .is-tumbling .roll-toast-number { animation: roll-shake .16s linear infinite; }
+.roll-toast-moment { min-height: 1.2em; margin: 3px 0 5px; font-size: 11px; font-weight: 900; letter-spacing: .12em; }
 .roll-toast-detail { min-height: 1.3em; font-size: 14px; }
 #roll-toast.is-success { border-color: #6fa86b; }
 #roll-toast.is-failure { border-color: #b4574a; }
+#roll-toast.is-natural20 { border-color: #f2cb67; background: radial-gradient(ellipse at 50% 0%, #765425, #241b12 72%); box-shadow: 0 0 0 1px #f2cb6766, 0 0 38px #ffc94d80, 0 16px 55px #000c; animation: roll-legendary .58s cubic-bezier(.15,.8,.25,1.2) both; }
+#roll-toast.is-natural20 .roll-toast-number, #roll-toast.is-natural20 .roll-toast-moment { color: #ffe18a; }
+#roll-toast.is-natural1 { border-color: #d75c42; background: radial-gradient(ellipse at 50% 100%, #702b24, #241513 72%); box-shadow: 0 0 0 1px #d75c4266, 0 0 34px #d33c2b70, 0 16px 55px #000c; }
+#roll-toast.is-natural1 .roll-toast-number, #roll-toast.is-natural1 .roll-toast-moment { color: #ff9075; }
+#roll-toast.is-natural1:not(.is-tumbling) { animation: roll-fumble .42s ease-out both; }
 @keyframes roll-shake { 0% { transform: rotate(-6deg); } 50% { transform: rotate(6deg); } 100% { transform: rotate(-6deg); } }
+@keyframes roll-legendary { 0% { scale: .72; filter: brightness(1.8); } 60% { scale: 1.045; } 100% { scale: 1; filter: brightness(1); } }
+@keyframes roll-fumble { 0%, 100% { translate: 0 0; } 18%, 54% { translate: -8px 0; } 36%, 72% { translate: 7px 0; } }
+@media (prefers-reduced-motion: reduce) { #roll-toast, #roll-toast.is-natural20, #roll-toast.is-natural1:not(.is-tumbling) { animation: none; transition: none; } }
 
 /* The vote card clears the header (its height is set from the client) so nothing of it is covered, and keeps its own speech box. */
 .scene-move-decision[open] { top: var(--vote-top, 50%); transform: translate(-50%, 0); max-height: calc(100dvh - var(--vote-top, 16px) - 16px); }
