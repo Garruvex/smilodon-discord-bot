@@ -1,4 +1,4 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } from "discord.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, escapeMarkdown } from "discord.js";
 
 import type { TurnChoice } from "../../../application/campaign/views/turn-choice.js";
 import type { TargetView, TurnView } from "../../../application/campaign/views/turn-view.js";
@@ -250,12 +250,37 @@ export function renderTargetMenu(choice: TurnChoice, view: TurnView, text: Texts
   const t = text.campaign.turn;
   const max = Math.max(1, Math.min(targets.max, targets.targets.length, maxOptions));
   const action = choiceLabel(choice, view, text, glossary);
-  const options = targets.targets.slice(0, maxOptions).map((target) => ({ label: targetLabel(target, text).slice(0, 100), value: encodeAim(choice, target.id) }));
+  const spell = choice.kind === "cast" ? view.spells.find((candidate) => candidate.spellId === choice.spell && candidate.slotLevel === choice.slot) : undefined;
+  const options = targets.targets.slice(0, maxOptions).map((target) => {
+    const affected = spell?.affectedByTarget?.[target.id];
+    const description = affected === undefined ? undefined : t.areaPreview({ target: target.name, names: affected.map((person) => person.side === "party" ? t.areaAlly({ name: person.name }) : person.name).join(", ") });
+    return { label: targetLabel(target, text).slice(0, 100), value: encodeAim(choice, target.id), ...(description === undefined ? {} : { description: description.slice(0, 100) }) };
+  });
   return {
     content: max > 1 ? t.targetsPrompt({ action, max }) : t.targetPrompt({ action }),
     components: [
       new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
         new StringSelectMenuBuilder().setCustomId(campaignCustomId("aim", campaignId)).setPlaceholder(t.targetPlaceholder).setMinValues(1).setMaxValues(max).addOptions(options),
+      ),
+      refreshRow(campaignId, t.back),
+    ],
+  };
+}
+
+// A selected area anchor gets a full hit list before the spell is committed.
+export function renderAreaConfirm(choice: Extract<TurnChoice, { readonly kind: "cast" }>, targetId: string, view: TurnView, text: Texts, glossary: Glossary, campaignId: string): TurnMenu | null {
+  const spell = view.spells.find((candidate) => candidate.spellId === choice.spell && candidate.slotLevel === choice.slot);
+  const target = spell?.targets.find((candidate) => candidate.id === targetId);
+  const affected = spell?.affectedByTarget?.[targetId];
+  if (target === undefined || affected === undefined) return null;
+  const t = text.campaign.turn;
+  const name = glossary.names[choice.spell] ?? choice.spell;
+  const names = affected.map((person) => `• ${person.side === "party" ? t.areaAlly({ name: escapeMarkdown(person.name) }) : escapeMarkdown(person.name)}`).join("\n");
+  return {
+    content: t.areaConfirm({ spell: escapeMarkdown(name), target: escapeMarkdown(target.name), names }),
+    components: [
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+        new StringSelectMenuBuilder().setCustomId(campaignCustomId("areaConfirm", campaignId)).setPlaceholder(t.areaCastNow({ spell: name }).slice(0, 150)).addOptions({ label: t.areaCastNow({ spell: name }).slice(0, 100), value: encodeAim(choice, targetId) }),
       ),
       refreshRow(campaignId, t.back),
     ],

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { CampaignState } from "../../../../src/domain/campaign/state/campaign-state.js";
 import { quiet, starter, tellOpening } from "../../../application/campaign/campaign-rig.js";
-import { alex, jamie, newCampaign, organizer as fightOrganizer, partyOfThree, sam } from "../../../domain/campaign/campaign-fixtures.js";
+import { alex, jamie, newCampaign, organizer as fightOrganizer, partyOfThree, partyWithSpells, sam } from "../../../domain/campaign/campaign-fixtures.js";
 import { Fight, skirmish } from "../../../domain/campaign/combat-fixtures.js";
 import { adventure, contentOf, fakeInteraction, harness, heroes, party, started, type Sent } from "./handler-harness.js";
 
@@ -359,6 +359,35 @@ describe("the pack, the stash, and gifts", () => {
     await t.r.bus.execute(t.key, { kind: "startEncounter", spec }, { commandId: "f", actor: { kind: "user", userId: "u-org" } });
     await t.cards.sync(t.key);
     expect(menuValues(await t.press("myHero", "u-org"), "pack")).toEqual([]);
+  });
+});
+
+describe("area spell confirmation", () => {
+  it("shows the affected allies before spending the spell slot", async () => {
+    const t = await harness();
+    await started(t);
+    const fight = new Fight(partyWithSpells(["spell:fireball"], { 3: 1 }))
+      .rolls([5, 4, 20, 3, 2])
+      .run(fightOrganizer, { kind: "startEncounter", spec: { ...skirmish, partyZoneId: "courtyard" } });
+    await t.r.store.transaction(async (tx) => {
+      const stored = await tx.loadCampaign(t.key);
+      if (stored === undefined) throw new Error("campaign");
+      await tx.saveCampaign(t.key, fight.state, stored.revision);
+    });
+    await t.cards.sync(t.key);
+    const choose = async (action: string): Promise<Sent[]> => {
+      const { interaction, sent } = fakeInteraction({ customId: `dnd:${action}:${t.key.campaignId}`, userId: "u-sam", values: ["cast|spell:fireball|3>goblin-a"], kind: "select" });
+      await t.handler.execute({ interaction, logger: quiet as never });
+      return sent;
+    };
+    const preview = await choose("aim");
+    expect(contentOf(preview)).toContain("Mira (ally)");
+    expect(contentOf(preview)).toContain("Borin (ally)");
+    const before = await t.r.store.transaction((tx) => tx.loadCampaign(t.key));
+    expect(before?.state.encounter?.combatants["c-elspeth"]?.resources.spellSlots[3]).toBe(1);
+    await choose("areaConfirm");
+    const after = await t.r.store.transaction((tx) => tx.loadCampaign(t.key));
+    expect(after?.state.encounter?.combatants["c-elspeth"]?.resources.spellSlots[3]).toBe(0);
   });
 });
 

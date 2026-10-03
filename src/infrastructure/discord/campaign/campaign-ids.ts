@@ -34,6 +34,7 @@ export const campaignActions = [
   "turnRefresh",
   "pick",
   "aim",
+  "areaConfirm",
   "endTurn",
   // Inventory: the pack menu, choosing who gets a gift, and answering an offer.
   "pack",

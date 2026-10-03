@@ -67,6 +67,18 @@ function pickerCard(config) {
       refreshActions();
     }));
   }
+  if (config.impactPreview && picker.targets.length > 0) {
+    const preview = config.impactPreview(picker.level, picker.targets);
+    const impact = document.createElement("div");
+    impact.className = "picker-impact";
+    const label = document.createElement("span");
+    label.className = "picker-caption";
+    label.textContent = t("activity.picker.willAffect");
+    const details = document.createElement("p");
+    details.textContent = preview;
+    impact.append(label, details);
+    card.append(impact);
+  }
   const buttons = document.createElement("div");
   buttons.className = "action-row";
   const confirm = makeButton(config.confirmLabel, () => {
@@ -286,7 +298,8 @@ export function buildTableActions(game, liveActions, log) {
       const targets = [...new Map(entries.flatMap((entry) => entry.targets).map((target) => [target.id, target])).values()];
       if (targets.length === 0) continue;
       const levels = entries.map((entry) => ({ id: String(entry.slotLevel), label: slotLabel(entry.slotLevel, entry.slotsLeft, entry.innate) }));
-      if (levels.length === 1 && targets.length === 1) {
+      const area = entries[0].affectedByTarget !== undefined;
+      if (!area && levels.length === 1 && targets.length === 1) {
         addAction(t("activity.action.castOn", { spell: name, name: targets[0].name }), { kind: "combatSpell", spellId, slotLevel: entries[0].slotLevel, targetIds: [targets[0].id] });
         continue;
       }
@@ -294,6 +307,11 @@ export function buildTableActions(game, liveActions, log) {
         icon: "spell", title: name, confirmLabel: t("activity.action.cast", { name }), levelCaption: t("activity.picker.chooseLevel"), targetCaption: t("activity.picker.chooseTarget"),
         levels, targets: targets.map((target) => ({ id: target.id, name: target.name })),
         maxTargets: (level) => Math.max(1, entries.find((entry) => String(entry.slotLevel) === level)?.maxTargets ?? 1),
+        ...(area ? { impactPreview: (level, targetIds) => {
+          const entry = entries.find((candidate) => String(candidate.slotLevel) === level);
+          const affected = [...new Map(targetIds.flatMap((id) => entry?.affectedByTarget?.[id] ?? []).map((target) => [target.id, target])).values()];
+          return affected.map((target) => target.side === "party" ? t("activity.picker.allyName", { name: target.name }) : target.name).join(", ");
+        } } : {}),
         build: (level, targetIds) => ({ kind: "combatSpell", spellId, slotLevel: Number(level), targetIds }),
       });
     }

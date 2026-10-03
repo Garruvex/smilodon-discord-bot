@@ -36,7 +36,7 @@ import { abilities, type Ability } from "../../../domain/campaign/rules/effects.
 import { buildTurnView, type TurnView } from "../../../application/campaign/views/turn-view.js";
 import type { CampaignIcon, CampaignIcons } from "../campaign/campaign-icons.js";
 import { combatCommand } from "../../../application/campaign/views/turn-choice.js";
-import { encodeChoice, parseAim, parseChoice, renderEndConfirm, renderShapeMenu, renderSpellMenu, renderTargetMenu, renderTurnMenu, type TurnChoice, type TurnMenu } from "../campaign/turn-menu.js";
+import { encodeChoice, parseAim, parseChoice, renderAreaConfirm, renderEndConfirm, renderShapeMenu, renderSpellMenu, renderTargetMenu, renderTurnMenu, type TurnChoice, type TurnMenu } from "../campaign/turn-menu.js";
 import type { CampaignAction } from "../campaign/campaign-ids.js";
 import { campaignCustomId, campaignIdPrefix, parseCampaignId } from "../campaign/campaign-ids.js";
 import type { ContentId } from "../../../domain/campaign/rules/content-id.js";
@@ -160,6 +160,7 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "turnRefresh":
     case "pick":
     case "aim":
+    case "areaConfirm":
     case "pack":
     case "giveTo":
     case "inspectPick":
@@ -264,6 +265,7 @@ export class CampaignComponentHandler implements ComponentHandler {
       else if (parsed.action === "inspectPick") await this.inspectPick(interaction, record, text, parsed.argument);
       else if (parsed.action === "pick") await this.pickTurnAction(interaction, record, text);
       else if (parsed.action === "aim") await this.aimTurnAction(interaction, record, text);
+      else if (parsed.action === "areaConfirm") await this.confirmAreaSpell(interaction, record, text);
       else if (parsed.action === "proxy") await this.changeProxy(interaction, record, text);
       else if (parsed.action === "asiPick") await this.chooseAsi(interaction, record, text);
       else if (parsed.action === "stylePick") await this.chooseStyle(interaction, record, text);
@@ -794,7 +796,7 @@ export class CampaignComponentHandler implements ComponentHandler {
     else await this.editMenu(interaction, menu, null);
   }
 
-  // Step two: the targets are picked and the action happens.
+  // Step two: the targets are picked. Area spells show everyone affected before casting.
   private async aimTurnAction(interaction: StringSelectMenuInteraction, record: CampaignRecord, text: Texts): Promise<void> {
     await interaction.deferUpdate();
     const aims = interaction.values.map((value) => parseAim(value));
@@ -803,7 +805,41 @@ export class CampaignComponentHandler implements ComponentHandler {
       await this.showTurn(interaction, record, text, text.campaign.refusal.generic);
       return;
     }
-    await this.runChoice(interaction, record, text, first.choice, aims.flatMap((aim) => (aim === null ? [] : [aim.targetId])));
+    const targetIds = aims.flatMap((aim) => (aim === null ? [] : [aim.targetId]));
+    if (first.choice.kind === "cast") {
+      const context = await this.turnContext(record, text, interaction.user.id);
+      if (context.kind === "message") {
+        await interaction.editReply({ content: context.content, components: [] });
+        return;
+      }
+      if (targetIds.length === 1) {
+        const menu = renderAreaConfirm(first.choice, first.targetId, context.view, text, context.glossary, record.key.campaignId);
+        if (menu !== null) {
+          await this.editMenu(interaction, menu, null);
+          return;
+        }
+      }
+    }
+    await this.runChoice(interaction, record, text, first.choice, targetIds);
+  }
+
+  private async confirmAreaSpell(interaction: StringSelectMenuInteraction, record: CampaignRecord, text: Texts): Promise<void> {
+    await interaction.deferUpdate();
+    const aim = parseAim(interaction.values[0] ?? "");
+    if (aim?.choice.kind !== "cast") {
+      await this.showTurn(interaction, record, text, text.campaign.refusal.generic);
+      return;
+    }
+    const context = await this.turnContext(record, text, interaction.user.id);
+    if (context.kind === "message") {
+      await interaction.editReply({ content: context.content, components: [] });
+      return;
+    }
+    if (renderAreaConfirm(aim.choice, aim.targetId, context.view, text, context.glossary, record.key.campaignId) === null) {
+      await this.showTurn(interaction, record, text, text.campaign.refusal.invalidTarget);
+      return;
+    }
+    await this.runChoice(interaction, record, text, aim.choice, [aim.targetId]);
   }
 
   private async runChoice(interaction: TurnInteraction, record: CampaignRecord, text: Texts, choice: TurnChoice, targetIds: readonly string[]): Promise<void> {

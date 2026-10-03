@@ -115,7 +115,7 @@ function castAsBonusAction(spell: SpellDefinition, metamagic: MetamagicOption | 
 // How many creatures a spell may name at this level: Twinned Spell adds a second to a spell that targets only one and does not grow with the slot.
 export function spellTargetLimit(spell: SpellDefinition, slotLevel: number, metamagic: MetamagicOption | null): number {
   if (spell.targeting.relation === "self") return spell.targeting.count;
-  const twin = metamagic === "twinned" && spell.targeting.count === 1 && (spell.targeting.countPerHigherSlot ?? 0) === 0 ? 1 : 0;
+  const twin = metamagic === "twinned" && spell.targeting.area !== true && spell.targeting.count === 1 && (spell.targeting.countPerHigherSlot ?? 0) === 0 ? 1 : 0;
   return spellMaxTargets(spell, slotLevel) + twin;
 }
 

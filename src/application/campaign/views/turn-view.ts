@@ -1,6 +1,6 @@
 import type { CharacterId } from "../../../domain/campaign/core/ids.js";
 import { availableSlots, type Combatant, type TurnBudget } from "../../../domain/campaign/combat/combat-state.js";
-import { spellTargetLimit, turnOptions } from "../../../domain/campaign/combat/turn-rules.js";
+import { spellProblem, spellTargetLimit, turnOptions } from "../../../domain/campaign/combat/turn-rules.js";
 import { formatDiceExpression } from "../../../domain/campaign/dice/dice-expression.js";
 import type { SealedContent } from "../../../domain/campaign/rules/content-registry.js";
 import type { HouseRules } from "../../../domain/campaign/rules/house-rules.js";
@@ -44,6 +44,8 @@ export interface SpellChoice {
   // Cast by nature or from item charges: no slot is spent.
   readonly innate?: boolean;
   readonly targets: readonly TargetView[];
+  // Area spells are aimed at a creature; this is the complete hit list for each legal anchor.
+  readonly affectedByTarget?: Readonly<Record<string, readonly TargetView[]>>;
 }
 
 export interface TurnView {
@@ -133,6 +135,12 @@ export function buildTurnView(
       maxTargets: spellTargetLimit(spell, slotLevel, metamagic),
       innate,
       targets: targetIds.flatMap(targetView),
+      ...(spell.targeting.area === true ? {
+        affectedByTarget: Object.fromEntries(targetIds.map((targetId) => {
+          const checked = spellProblem(encounter, content, hero, spell.id, slotLevel, [targetId], metamagic);
+          return [targetId, "value" in checked ? checked.value.targets.flatMap(targetView) : []];
+        })),
+      } : {}),
     })),
   );
 

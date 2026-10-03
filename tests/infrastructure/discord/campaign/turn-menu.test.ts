@@ -5,7 +5,7 @@ import { zhTwSrd51Glossary } from "../../../../src/application/i18n/campaign/glo
 import type { TurnView } from "../../../../src/application/campaign/views/turn-view.js";
 import { texts } from "../../../../src/application/i18n/texts.js";
 import { applicationIcons } from "../../../../src/infrastructure/discord/campaign/campaign-icons.js";
-import { encodeAim, encodeChoice, parseAim, parseChoice, renderEndConfirm, renderSpellMenu, renderTargetMenu, renderTurnMenu, type TurnChoice } from "../../../../src/infrastructure/discord/campaign/turn-menu.js";
+import { encodeAim, encodeChoice, parseAim, parseChoice, renderAreaConfirm, renderEndConfirm, renderSpellMenu, renderTargetMenu, renderTurnMenu, type TurnChoice } from "../../../../src/infrastructure/discord/campaign/turn-menu.js";
 
 const goblin = { id: "goblin-a", name: "Goblin A", zone: "Yard", side: "foes", hp: 5, maxHp: 7, band: "bloodied", self: false } as const;
 const ally = { id: "c-mira", name: "Mira", zone: "Yard", side: "party", hp: 6, maxHp: 9, band: "hurt", self: false } as const;
@@ -130,6 +130,19 @@ describe("the turn menu", () => {
     // A choice that is not in the view (stale) has no menu.
     expect(renderTargetMenu({ kind: "attack", weapon: "item:longsword" }, view, texts.en, enSrd51Glossary, "camp")).toBeNull();
     expect(renderTargetMenu({ kind: "dodge" }, view, texts.en, enSrd51Glossary, "camp")).toBeNull();
+  });
+
+  it("shows the full area hit list before confirming a cast", () => {
+    const choice = { kind: "cast", spell: "spell:fireball", slot: 3 } as const;
+    const area: TurnView = { ...view, spells: [{ spellId: choice.spell, slotLevel: 3, slotsLeft: 1, bonusAction: false, maxTargets: 1, targets: [goblin], affectedByTarget: { [goblin.id]: [goblin, ally] } }] };
+    const targetMenu = renderTargetMenu(choice, area, texts.en, enSrd51Glossary, "camp");
+    const select = targetMenu === null ? undefined : json(targetMenu).find((component) => Array.isArray(component.options));
+    expect((select?.options as { description: string }[])[0]?.description).toContain("Mira (ally)");
+    const confirmation = renderAreaConfirm(choice, goblin.id, area, texts.en, enSrd51Glossary, "camp");
+    expect(confirmation?.content).toContain("Goblin A");
+    expect(confirmation?.content).toContain("Mira (ally)");
+    expect(json(confirmation!).find((component) => component.custom_id === "dnd:areaConfirm:camp")).toBeDefined();
+    expect(renderAreaConfirm(choice, "missing", area, texts.en, enSrd51Glossary, "camp")).toBeNull();
   });
 
   it("lists a spell at every slot level it could be upcast to, as separate choices", () => {
