@@ -1,5 +1,11 @@
 /* An action is on its way: buttons dim and ignore clicks until the table answers. */
-.is-sending .live-action-choice { opacity: 0.55; pointer-events: none; cursor: progress; }
+.is-sending .live-action-choice, .is-sending .presence-toggle, .is-sending .live-action-input, .is-sending .picker-chip, .is-sending .move-vote-actions button { opacity: 0.55; pointer-events: none; cursor: progress; }
+.action-busy { position: fixed; left: 50%; bottom: 20px; z-index: 70; display: flex; align-items: center; gap: 10px; max-width: calc(100% - 32px); padding: 10px 16px; border: 1px solid #796546; border-radius: 999px; background: #211e1bf2; color: #eee7d9; font-size: 13px; font-weight: 700; box-shadow: 0 10px 34px #0009; transform: translateX(-50%); }
+.action-busy[hidden] { display: none; }
+.action-busy .busy-mark { flex: none; width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: pending-spin 0.7s linear infinite; }
+.action-busy[data-state="done"] .busy-mark { width: 8px; height: 8px; border: 0; border-radius: 50%; background: #e5c988; animation: none; }
+.action-busy[data-state="failed"] { border-color: #b4584c; }
+.action-busy[data-state="failed"] .busy-mark { width: 8px; height: 8px; border: 0; border-radius: 50%; background: #e0897c; animation: none; }
 .live-action-choice.is-pending { opacity: 1; position: relative; }
 .live-action-choice.is-pending::after { content: ""; width: 14px; height: 14px; margin-left: 8px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: pending-spin 0.7s linear infinite; }
 .join-queue-note { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #a9874e; border-radius: 7px; background: #f4e5c6; color: #563c26; font-weight: 700; }

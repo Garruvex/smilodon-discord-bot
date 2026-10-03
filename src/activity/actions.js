@@ -1,7 +1,7 @@
 import { app } from "./state.js";
 import { openRollPrompt } from "./dice.js";
 import { requestJson } from "./api.js";
-import { actionIcon, iconImage, liveActions, makeButton, setLiveMessage } from "./dom.js";
+import { actionIcon, finishBusy, iconImage, liveActions, makeButton, setLiveMessage, showBusy } from "./dom.js";
 import { classText, t } from "./i18n.js";
 import { loadTable } from "./poll.js";
 import { renderGame } from "./render.js";
@@ -496,6 +496,7 @@ export async function performAction(action) {
     return;
   }
   setLiveMessage(t("activity.status.sendingAction"));
+  showBusy(t("activity.status.sendingAction"), t("activity.status.stillSending"));
   app.actionInFlight = true;
   document.body.classList.add("is-sending");
   try {
@@ -510,9 +511,12 @@ export async function performAction(action) {
       setLiveMessage(t("activity.status.castSuccess", { spell }));
     } else if (action.kind === "moveVote") setLiveMessage(t(action.choice === "stay" ? "activity.status.moveVoteStay" : "activity.status.moveVoteGo"));
     else setLiveMessage(t("activity.status.actionSuccess"));
+    finishBusy(document.querySelector("#live-message").textContent, false);
     return true;
   } catch (error) {
-    setLiveMessage(error instanceof Error ? error.message : t("activity.status.actionFailed"));
+    const reason = error instanceof Error ? error.message : t("activity.status.actionFailed");
+    setLiveMessage(reason);
+    finishBusy(reason, true);
     await loadTable();
     return false;
   } finally {

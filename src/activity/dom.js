@@ -36,6 +36,29 @@ export function setMessage(message) { messageElement.textContent = message; }
 
 export function setLiveMessage(message) { document.querySelector("#live-message").textContent = message; }
 
+// The pill that says an action is on its way. It sits at the bottom of the screen, where the small status line cannot be missed,
+// says so again if the answer is slow, and ends with what happened.
+let busyTimers = [];
+const busyPill = () => document.querySelector("#action-busy");
+const clearBusyTimers = () => { for (const id of busyTimers) clearTimeout(id); busyTimers = []; };
+export function showBusy(message, slowMessage) {
+  const pill = busyPill();
+  clearBusyTimers();
+  pill.dataset.state = "busy";
+  pill.querySelector(".busy-text").textContent = message;
+  // A reply that comes straight back needs no flicker of "sending": the pill only appears if it is not instant.
+  busyTimers.push(setTimeout(() => { pill.hidden = false; }, 150));
+  busyTimers.push(setTimeout(() => { pill.querySelector(".busy-text").textContent = slowMessage; }, 4000));
+}
+export function finishBusy(message, failed) {
+  const pill = busyPill();
+  clearBusyTimers();
+  pill.hidden = false;
+  pill.dataset.state = failed ? "failed" : "done";
+  pill.querySelector(".busy-text").textContent = message;
+  busyTimers.push(setTimeout(() => { pill.hidden = true; }, failed ? 5000 : 1800));
+}
+
 
 export const actionIcon = { attack: "attack", combatSpell: "spell", exploreSpell: "spell", healSpell: "heal", reviveSpell: "heal", useItem: "potion", combatItem: "potion", move: "move", moveScene: "move", dash: "dash", combatDodge: "dodge", withdraw: "withdraw", shield: "shield", wildShape: "shape", roll: "roll", ready: "play", begin: "play", continue: "play", details: "notice", submit: "attack", pass: "pause", shop: "coins", askNpc: "clue", feature: "shape", reaction: "shield", smite: "attack", opportunityAttack: "attack", teleport: "move", summonCompanion: "shape", acceptInvite: "play", joinHero: "play", chooseHero: "play", startLobby: "play" };
 

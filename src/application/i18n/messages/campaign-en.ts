@@ -303,6 +303,7 @@ export const campaignEn = {
   "activity.status.loadingCampaign": "Loading campaign…",
   "activity.status.couldNotLoad": "Could not load this game.",
   "activity.status.sendingAction": "Sending your action…",
+  "activity.status.stillSending": "Still working. Please wait, no need to press again.",
   "activity.status.actionFailed": "That action could not be sent.",
   "activity.status.actionSuccess": "Action completed.",
   "activity.status.castSuccess": "Cast {spell}. Spell resources have been updated.",
