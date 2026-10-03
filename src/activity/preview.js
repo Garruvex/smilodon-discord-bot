@@ -4,7 +4,7 @@ import { showRolls } from "./dice.js";
 export function previewRoll(pending) {
   const natural = Number(new URLSearchParams(window.location.search).get("natural")) || 14;
   const total = natural + 3;
-  setTimeout(() => showRolls([{ id: pending.checkId, test: pending.test, natural, total, dc: 15, success: natural === 20 || (natural !== 1 && total >= 15), moment: natural === 20 ? "natural20" : natural === 1 ? "natural1" : null }]), 1600);
+  setTimeout(() => showRolls([{ id: pending.checkId, test: pending.test, natural, total, dc: 15, success: total >= 15, moment: natural === 20 ? "natural20" : natural === 1 ? "natural1" : null }]), 1600);
   return {};
 }
 
