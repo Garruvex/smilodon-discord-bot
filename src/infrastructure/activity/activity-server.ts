@@ -13,6 +13,10 @@ import type { ActivityConfiguration } from "../../config/configuration.js";
 import { campaignEn } from "../../application/i18n/messages/campaign-en.js";
 import { campaignZhTW } from "../../application/i18n/messages/campaign-zh-TW.js";
 import { isLanguage, type Language } from "../../application/i18n/language.js";
+import { z } from "zod";
+import { abilities } from "../../domain/campaign/rules/effects.js";
+import { buildClasses, selectableBuildRaces, type BuildChoices } from "../../domain/campaign/character/character-build.js";
+import { skills } from "../../domain/campaign/rules/skills.js";
 
 const activityDirectory = resolve(process.cwd(), "assets", "activity");
 const campaignIconDirectory = resolve(process.cwd(), "assets", "emojis", "dnd");
@@ -31,6 +35,9 @@ export interface ActivityServer {
 }
 
 export interface ActivityCampaignApi {
+  characterCatalog(): unknown;
+  listCharacters(userId: UserId): Promise<unknown>;
+  createCharacter(userId: UserId, build: BuildChoices): Promise<{ readonly kind: "ok" } | { readonly kind: "invalid"; readonly problems: readonly { readonly code: string }[] } | { readonly kind: "full" }>;
   listGames(guildId: string, userId: UserId): Promise<readonly ActivityCampaignListingItem[]>;
   gameForChannel(guildId: string, userId: UserId, channelId: string): Promise<ActivityCampaignListingItem | null>;
   joinLobby(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>>;
@@ -41,6 +48,16 @@ export interface ActivityCampaignApi {
   act(key: CampaignKey, userId: UserId, input: unknown): Promise<{ readonly kind: "ok" } | { readonly kind: "refused"; readonly reason: string }>;
   image(key: CampaignKey, userId: UserId, kind: "scene" | "character" | "encounter", id: string): Promise<{ readonly bytes: Buffer; readonly mediaType: "image/png" | "image/jpeg" | "image/webp" } | null>;
 }
+
+const characterBuildSchema = z.object({
+  class: z.enum(buildClasses), race: z.enum(selectableBuildRaces as [typeof selectableBuildRaces[number], ...typeof selectableBuildRaces[number][]]),
+  kit: z.string().min(1).max(100),
+  abilities: z.object(Object.fromEntries(abilities.map((ability) => [ability, z.number().int().min(3).max(20)])) as Record<typeof abilities[number], z.ZodNumber>),
+  skills: z.array(z.enum(skills as [typeof skills[number], ...typeof skills[number][]])).max(18),
+  expertise: z.array(z.enum(skills as [typeof skills[number], ...typeof skills[number][]])).max(18),
+  name: z.string().max(80), appearance: z.string().max(400), backstory: z.string().max(400),
+  raceAbilityChoices: z.array(z.enum(abilities)).optional(), raceSkillChoices: z.array(z.enum(skills as [typeof skills[number], ...typeof skills[number][]])).optional(),
+});
 
 interface ActivitySession {
   readonly userId: UserId;
@@ -137,7 +154,7 @@ async function respond(
     const requestedLanguage = url.searchParams.get("language");
     const language: Language = isLanguage(requestedLanguage) ? requestedLanguage : "en";
     const dictionary = Object.fromEntries(Object.entries(campaignEn)
-      .filter(([key]) => key.startsWith("activity."))
+      .filter(([key]) => key.startsWith("activity.") || key.startsWith("campaign.chars.kit."))
       .map(([key, english]) => [key, activityCatalogs[language][key] ?? english]));
     return writeJson(response, 200, dictionary, headers);
   }
@@ -145,6 +162,22 @@ async function respond(
     const session = requireSession(request, sessions);
     if (session === null) return writeJson(response, 401, { error: "unauthorized" }, headers);
     return writeJson(response, 200, { user: { username: session.username, displayName: session.displayName }, games: await campaigns.listGames(session.guildId, session.userId) }, headers);
+  }
+  if (url.pathname === "/api/activity/characters") {
+    const session = requireSession(request, sessions);
+    if (session === null) return writeJson(response, 401, { error: "unauthorized" }, headers);
+    if (request.method === "GET") return writeJson(response, 200, { characters: await campaigns.listCharacters(session.userId), catalog: campaigns.characterCatalog() }, headers);
+    if (request.method === "POST") {
+      let body: unknown;
+      try { body = await readJsonBody(request); } catch { return writeJson(response, 400, { error: "invalidRequest" }, headers); }
+      const parsed = characterBuildSchema.safeParse(body);
+      if (!parsed.success) return writeJson(response, 400, { error: "invalidCharacter", problems: parsed.error.issues.map((issue) => ({ code: issue.message })) }, headers);
+      const { raceAbilityChoices, raceSkillChoices, ...required } = parsed.data;
+      const build: BuildChoices = { ...required, ...(raceAbilityChoices === undefined ? {} : { raceAbilityChoices }), ...(raceSkillChoices === undefined ? {} : { raceSkillChoices }) };
+      const result = await campaigns.createCharacter(session.userId, build);
+      if (result.kind !== "ok") return writeJson(response, 409, { error: result.kind === "full" ? "characterLibraryFull" : "invalidCharacter", ...("problems" in result ? { problems: result.problems } : {}) }, headers);
+      return writeJson(response, 201, { characters: await campaigns.listCharacters(session.userId) }, headers);
+    }
   }
 
   const imageMatch = url.pathname.match(/^\/api\/activity\/games\/([0-9a-f-]{1,64})\/images\/(scenes|characters|encounters)\/([^/]{1,384})$/i);

@@ -2,6 +2,7 @@ import { app } from "./state.js";
 import { performAction } from "./actions.js";
 import { requestJson } from "./api.js";
 import { emptyElement, errorElement, errorMessageElement, errorTitleElement, gamesElement, iconImage, liveActions, liveEnemies, makeButton, serverElement, setArtwork, setLiveMessage, setMessage, userElement } from "./dom.js";
+import { loadCharacters, openCharacterCreator, wireCharacterCreator } from "./character-builder.js";
 import { setHeroWatermark, updateHealthMeter } from "./hero.js";
 import { classText, t } from "./i18n.js";
 import { renderParty } from "./party.js";
@@ -80,6 +81,10 @@ export async function loadGames() {
   emptyElement.hidden = true;
   setMessage(t("activity.lobby.loading"));
   const payload = await requestJson("/api/activity/games");
+  try { await loadCharacters(); } catch {
+    const area = document.querySelector("#lobby-characters");
+    if (area) area.textContent = t("activity.creator.unavailable");
+  }
   userElement.textContent = payload.user?.displayName ?? t("activity.lobby.connectedUser");
   gamesElement.replaceChildren(...(payload.games ?? []).map(createGameCard));
   emptyElement.hidden = (payload.games ?? []).length !== 0;
@@ -152,28 +157,17 @@ export function renderLobby(game) {
     choiceList.append(button);
   }
   choices.append(choicesHeading, choiceList);
-  // Making a character and saved characters are not connected to the game yet: only the design preview shows them.
-  if (app.currentGameId === "local-preview") {
-  const createCard = document.createElement("section");
-  createCard.className = "lobby-create-card";
-  const createCopy = document.createElement("div");
-  const createTitle = document.createElement("h3");
-  createTitle.textContent = t("activity.lobby.createCharacter");
-  const createDescription = document.createElement("p");
-  createDescription.textContent = t("activity.lobby.createCharacterDescription");
-  createCopy.append(createTitle, createDescription);
-  const createButton = makeButton(t("activity.lobby.startCreator"), () => openCharacterCreator(), true, "shape");
-  createCard.append(createCopy, createButton);
-  liveActions.append(createCard);
-  const saved = document.createElement("section");
-  saved.className = "lobby-saved-card";
-  const savedHeading = document.createElement("h3");
-  savedHeading.textContent = t("activity.lobby.savedCharacters");
-  const savedButton = makeButton(t("activity.lobby.previewSavedCharacter"), () => {
-    setLiveMessage(t("activity.lobby.savedCharacterPreview"));
-  });
-  saved.append(savedHeading, savedButton);
-  liveActions.append(saved);
+  if (game.savedHeroChoices?.length) {
+    const saved = document.createElement("section");
+    saved.className = "lobby-saved-card";
+    const heading = document.createElement("h3");
+    heading.textContent = t("activity.lobby.savedCharacters");
+    saved.append(heading);
+    for (const hero of game.savedHeroChoices) saved.append(makeButton(`${hero.name} · ${classText(hero.className)}`, () => {
+      if (app.currentGameId === "local-preview") setLiveMessage(hero.name);
+      else void performAction({ kind: "chooseSaved", snapshotId: hero.id.replace(/^lib:/, "") });
+    }));
+    liveActions.append(saved);
   }
   liveActions.append(choices);
   if (game.joinRequestStatus === "requested") liveActions.append(makeButton(t("activity.action.withdrawJoin"), () => void performAction({ kind: "withdrawJoin" })));
@@ -198,42 +192,5 @@ export function renderLobby(game) {
 }
 
 
-export function openCharacterCreator() {
-  const dialog = document.querySelector("#character-builder-dialog");
-  dialog.showModal();
-}
-
-
-export function wireCharacterCreator() {
-  const dialog = document.querySelector("#character-builder-dialog");
-  dialog.querySelector("textarea").value = "";
-  for (const option of dialog.querySelectorAll("#builder-class option")) option.dataset.i18n = `activity.creator.classOption.${option.textContent.trim().toLowerCase()}`;
-  const raceKeys = { Human: "human", "Wood Elf": "woodElf", Dwarf: "hillDwarf", Halfling: "lightfootHalfling", Dragonborn: "dragonborn", Gnome: "gnome", "Half-Elf": "halfElf", "Half-Orc": "halfOrc", Tiefling: "tiefling" };
-  for (const option of dialog.querySelectorAll("#builder-race option")) option.dataset.i18n = `activity.creator.race.${raceKeys[option.textContent.trim()]}`;
-  for (const option of dialog.querySelectorAll(".builder-fields select option")) {
-    const key = { Perception: "activity.creator.skill.perception", Stealth: "activity.creator.skill.stealth", Survival: "activity.creator.skill.survival", "Explorer’s kit": "activity.creator.kitOption.explorer", "Dungeoneer’s kit": "activity.creator.kitOption.dungeoneer" }[option.textContent.trim()];
-    if (key) option.dataset.i18n = key;
-  }
-  const steps = [...dialog.querySelectorAll("[data-builder-step]")];
-  const panels = [...dialog.querySelectorAll("[data-builder-panel]")];
-  const setStep = (step) => {
-    steps.forEach((button) => button.setAttribute("aria-current", String(button.dataset.builderStep === step)));
-    panels.forEach((panel) => { panel.hidden = panel.dataset.builderPanel !== step; });
-    if (step === "review") {
-      dialog.querySelector("#builder-review-name").textContent = dialog.querySelector("#builder-name").value.trim() || t("activity.lobby.newCharacter");
-      dialog.querySelector("#builder-review-subtitle").textContent = `${dialog.querySelector("#builder-race").selectedOptions[0].textContent} ${dialog.querySelector("#builder-class").selectedOptions[0].textContent} · ${t("activity.lobby.levelOne")}`;
-    }
-  };
-  steps.forEach((button) => button.addEventListener("click", () => setStep(button.dataset.builderStep)));
-  dialog.querySelector("[data-builder-close]").addEventListener("click", () => dialog.close());
-  dialog.querySelector("[data-builder-save]").addEventListener("click", () => {
-    const name = dialog.querySelector("#builder-name").value.trim() || t("activity.lobby.newCharacter");
-    const className = dialog.querySelector("#builder-class").value;
-    document.querySelector("#live-hero-name").textContent = name;
-    document.querySelector("#live-hero-subtitle").textContent = `${dialog.querySelector("#builder-race").selectedOptions[0].textContent} ${classText(className)}`;
-    document.querySelector("#live-turn").textContent = t("activity.lobby.characterSelected");
-    setLiveMessage(t("activity.lobby.previewSaved"));
-    dialog.close();
-  });
-}
+export { openCharacterCreator, wireCharacterCreator };
 

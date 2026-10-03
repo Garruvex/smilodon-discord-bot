@@ -2,15 +2,12 @@ import { app } from "./state.js";
 import { showRolls } from "./dice.js";
 import { liveScreen, lobbyScreen } from "./dom.js";
 import { setLanguage, t } from "./i18n.js";
-import { showError, wireCharacterCreator } from "./lobby.js";
+import { showError } from "./lobby.js";
 import { bindMapControls } from "./map.js";
 import { setTableConnectionState } from "./poll.js";
 import { designPreviewSnapshot } from "./preview.js";
 import { renderGame } from "./render.js";
 import { authenticate } from "./session.js";
-
-wireCharacterCreator();
-
 
 bindMapControls();
 

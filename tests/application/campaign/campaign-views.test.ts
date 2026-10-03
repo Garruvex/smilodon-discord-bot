@@ -2,6 +2,7 @@ import { appliedCondition } from "../../domain/campaign/effect-fixtures.js";
 import { describe, expect, it } from "vitest";
 
 import { emptyChannels, type CampaignRecord } from "../../../src/application/campaign/ports/campaign-record.js";
+import { buildActivityLobbyView } from "../../../src/application/campaign/activity-view.js";
 import {
   buildHeroView,
   buildLobbyView,
@@ -60,6 +61,14 @@ const inStory = (state: CampaignState): CampaignState => ({ ...state, sceneId: s
 const heroIds = presets.map((preset) => preset.id);
 
 describe("the lobby view", () => {
+  it("offers the viewer's saved character in the Activity waiting room", () => {
+    const lobby = lobbyOf((l) => join(l, "u-a"));
+    const saved = [{ id: "lib:ls-1", name: "Elara", className: "wizard" }];
+    const view = buildActivityLobbyView(record(lobby, { lifecycle: "lobby" }), starter.bible, "u-a", starter.heroes, saved);
+    expect(view.savedHeroChoices).toEqual(saved);
+    expect(view.heroChoices.length).toBeGreaterThan(0);
+  });
+
   it("lists members with their chosen heroes and says what is missing to start", () => {
     const lobby = lobbyOf((l) => join(l, "u-a"), (l) => join(l, "u-b"), (l) => chooseHero(l, "u-a", heroIds[0] ?? "", heroIds));
     const view = buildLobbyView(record(lobby, { lifecycle: "lobby" }), starter.bible.title, presets);

@@ -9,7 +9,7 @@ mkdirSync(outputDirectory, { recursive: true });
 
 for (const [language, catalog] of Object.entries({ en: campaignEn, "zh-TW": campaignZhTW })) {
   const dictionary = Object.fromEntries(Object.entries(campaignEn)
-    .filter(([key]) => key.startsWith("activity."))
+    .filter(([key]) => key.startsWith("activity.") || key.startsWith("campaign.chars.kit."))
     .map(([key, english]) => [key, catalog[key as keyof typeof catalog] ?? english]));
   writeFileSync(resolve(outputDirectory, `${language}.json`), `${JSON.stringify(dictionary)}\n`, "utf8");
 }

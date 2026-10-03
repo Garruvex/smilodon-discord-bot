@@ -15,6 +15,8 @@ import { UploadedAdventureLibrary } from "../application/campaign/adventures/upl
 import { CampaignCommandBus } from "../application/campaign/campaign-command-bus.js";
 import { CampaignIssues } from "../application/campaign/campaign-issues.js";
 import { CharacterLibrary } from "../application/campaign/library/character-library.js";
+import { buildClasses, classTemplates, selectableBuildRaces, suggestedAbilities, type BuildChoices } from "../domain/campaign/character/character-build.js";
+import { skills } from "../domain/campaign/rules/skills.js";
 import { CampaignLobbyService, type ActivityCampaignListingItem, type ServiceResult } from "../application/campaign/campaign-lobby-service.js";
 import { CampaignPlayController, type PlayResult } from "../application/campaign/campaign-play-controller.js";
 import { buildActivityLobbyView, buildActivityTableView, canSeeActivityCampaign, type ActivityGameView } from "../application/campaign/activity-view.js";
@@ -88,6 +90,9 @@ export interface CampaignModule {
   // What the admin panel's D&D settings read and change.
   readonly settings: CampaignSettingsAccess;
   readonly activity: {
+    characterCatalog(): unknown;
+    listCharacters(userId: UserId): Promise<unknown>;
+    createCharacter(userId: UserId, build: BuildChoices): Promise<{ readonly kind: "ok" } | { readonly kind: "invalid"; readonly problems: readonly { readonly code: string }[] } | { readonly kind: "full" }>;
     listGames(guildId: string, userId: UserId): Promise<readonly ActivityCampaignListingItem[]>;
     gameForChannel(guildId: string, userId: UserId, channelId: string): Promise<ActivityCampaignListingItem | null>;
     joinLobby(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>>;
@@ -309,6 +314,12 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
     adventureHandler,
     settings: new CampaignSettingsAccess({ unitOfWork, lobby, setup, cards, modelConfigured: model !== null }),
     activity: {
+      characterCatalog: () => ({ races: selectableBuildRaces, skills, classes: buildClasses.map((id) => ({ id, skillChoices: classTemplates[id].skillChoices, skillCount: classTemplates[id].skillCount, expertiseCount: classTemplates[id].expertiseCount, kits: classTemplates[id].kits.map((kit) => kit.id), suggestedAbilities: suggestedAbilities(id) })) }),
+      listCharacters: async (userId) => (await library.list(userId)).flatMap((entry) => entry.snapshots.filter((snapshot) => snapshot.branch === "main").slice(-1).map((snapshot) => ({ id: snapshot.id, name: entry.character.name, className: entry.character.className, race: snapshot.build.race ?? null }))),
+      createCharacter: async (userId, build) => {
+        const result = await library.create(userId, build);
+        return result.kind === "ok" ? { kind: "ok" as const } : result;
+      },
       listGames: (guildId, userId): Promise<readonly ActivityCampaignListingItem[]> => lobby.activityGames(guildId, userId),
       gameForChannel: (guildId, userId, channelId): Promise<ActivityCampaignListingItem | null> => lobby.activityGameForChannel(guildId, userId, channelId),
       joinLobby: (key, userId): Promise<ServiceResult<CampaignRecord>> => lobby.joinFromActivity(key, userId),
@@ -325,11 +336,11 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
         // Both revisions move with every change to the game; a client that already holds this one is told so instead of being sent it again.
         const token = `${storedRecord.revision}.${storedCampaign?.revision ?? 0}`;
         if (since === token) return { kind: "unchanged", token } as const;
-        const savedHeroChoices = (await library.listInTransaction(tx, userId)).flatMap((entry) => entry.snapshots.slice(-1).map((snapshot) => ({ id: libraryHeroRef(snapshot.id), name: entry.character.name, className: entry.character.className })));
+        const savedHeroChoices = (await library.listInTransaction(tx, userId)).flatMap((entry) => entry.snapshots.filter((snapshot) => snapshot.branch === "main").slice(-1).map((snapshot) => ({ id: libraryHeroRef(snapshot.id), name: entry.character.name, className: entry.character.className })));
         const adventure = adventures.documentAt(storedRecord.record.adventure.adventureId, storedRecord.record.adventure.version, storedRecord.record.language);
         if (adventure === undefined) return { kind: "refused", reason: "notFound" } as const;
         if (storedRecord.record.lifecycle === "lobby") {
-          return { kind: "ok", value: buildActivityLobbyView(storedRecord.record, adventure.bible, userId, adventure.heroes), token } as const;
+          return { kind: "ok", value: buildActivityLobbyView(storedRecord.record, adventure.bible, userId, adventure.heroes, savedHeroChoices), token } as const;
         }
         if ((storedRecord.record.lifecycle !== "active" && storedRecord.record.lifecycle !== "paused") || storedCampaign === undefined) {
           return { kind: "refused", reason: "notActive" } as const;
@@ -373,6 +384,12 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
             const heroId = textValue(action.heroId);
             if (heroId === null) return { kind: "refused", reason: "invalidAction" };
             return lobby.chooseHero(key, userId, heroId).then((result) => result.kind === "ok" ? { kind: "ok" as const } : { kind: "refused" as const, reason: result.reason });
+          }
+          case "chooseSaved": {
+            const snapshotId = textValue(action.snapshotId);
+            if (snapshotId === null) return { kind: "refused", reason: "invalidAction" };
+            const result = await lobby.chooseSaved(key, userId, snapshotId);
+            return result.kind === "ok" ? { kind: "ok" } : { kind: "refused", reason: result.kind === "conflicts" ? "characterIncompatible" : result.reason };
           }
           case "startLobby": {
             const result = await lobby.start(key, userId);

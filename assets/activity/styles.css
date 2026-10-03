@@ -1425,6 +1425,21 @@ body { background: #30251f; }
 
 /* 08-lobby-builder.css */
 /* Pre-game character choices and the embedded builder preview. */
+.lobby-characters { margin: 16px 0 24px; padding: 18px; border: 1px solid #b39869; border-radius: 10px; background: #eadbbd; color: #3b2a1e; }
+.lobby-characters .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.lobby-characters h2 { margin: 0; font: 23px/1.2 var(--serif); }
+.lobby-character-empty { margin: 8px 0 0; color: #725c44; }
+.lobby-character-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+.lobby-character-card { display: grid; gap: 3px; padding: 12px; color: #3b2a1e; }
+.lobby-character-card span { color: #725c44; font-size: 12px; }
+.builder-score-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.builder-choice-grid { display: flex; flex-wrap: wrap; gap: 7px; }
+.builder-choice-grid h3 { width: 100%; margin: 0; font: 16px/1.2 var(--serif); }
+.builder-choice-grid label { display: flex; align-items: center; gap: 5px; padding: 6px 8px; border: 1px solid #b49a6b; border-radius: 6px; background: #f8eed9; font-size: 12px; }
+.builder-panel .builder-choice-grid input { width: auto; min-width: auto; }
+.builder-feedback { min-height: 18px; color: #87372e; font-weight: 700; }
+.builder-panel[hidden] { display: none; }
+.builder-score-grid label { display: grid; gap: 4px; }
 .live-screen[data-mode="lobby"] .live-scene, .live-screen[data-mode="lobby"] .live-feature-grid > .live-scene { min-height: 0; }
 .live-screen[data-mode="lobby"] .live-scene-art { aspect-ratio: auto; height: 150px; min-height: 150px; max-height: 150px; }
 .lobby-presets { grid-column: 1 / -1; border: 1px solid #b9a37c; border-radius: 7px; background: #eadbbd; }
@@ -1471,6 +1486,7 @@ body { background: #30251f; }
   .builder-fields { grid-template-columns: 1fr; }
   .ability-assignment { grid-template-columns: 35px minmax(0, 1fr); }
   .builder-review-stats { grid-template-columns: repeat(3, 1fr); }
+  .builder-score-grid { grid-template-columns: repeat(2, 1fr); }
 }
 
 /* 09-actions.css */

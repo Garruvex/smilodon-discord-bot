@@ -145,11 +145,12 @@ export interface ActivityLobbyView {
   readonly selectedHeroClass: string | null;
   readonly members: readonly { readonly heroName: string; readonly className: string | null; readonly ready: boolean; readonly isYou: boolean }[];
   readonly heroChoices: readonly { readonly id: string; readonly name: string; readonly className: string; readonly available: boolean }[];
+  readonly savedHeroChoices: readonly { readonly id: string; readonly name: string; readonly className: string }[];
 }
 
 export type ActivityGameView = ActivityLobbyView | ActivityTableView;
 
-export function buildActivityLobbyView(record: CampaignRecord, bible: AdventureBible, userId: UserId, heroes: readonly { readonly id: string; readonly name: string; readonly class: string }[]): ActivityLobbyView {
+export function buildActivityLobbyView(record: CampaignRecord, bible: AdventureBible, userId: UserId, heroes: readonly { readonly id: string; readonly name: string; readonly class: string }[], savedHeroChoices: readonly { readonly id: string; readonly name: string; readonly className: string }[] = []): ActivityLobbyView {
   const ownMember = record.lobby.members.find((member) => member.userId === userId && member.status !== "withdrawn");
   const takenIds = new Set(record.lobby.members.flatMap((member) => member.status !== "withdrawn" && member.heroId !== null && member.userId !== userId ? [member.heroId] : []));
   const selectedPreset = heroes.find((hero) => hero.id === ownMember?.heroId);
@@ -180,6 +181,7 @@ export function buildActivityLobbyView(record: CampaignRecord, bible: AdventureB
       };
     }),
     heroChoices: heroes.map((hero) => ({ id: hero.id, name: hero.name, className: hero.class, available: !takenIds.has(hero.id) })),
+    savedHeroChoices,
   };
 }
 
