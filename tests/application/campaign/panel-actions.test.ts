@@ -17,7 +17,7 @@ describe("panelActions", () => {
   });
 
   it("adds the away toggle to the second row when the first does not hold it", () => {
-    expect(panelActions(outside("paused"))).toEqual({ primary: ["myHero"], secondary: ["myHero"] });
+    expect(panelActions(outside("paused"))).toEqual({ primary: ["myHero"], secondary: ["myHero", "away"] });
   });
 
   it("drops Explore during a fight", () => {

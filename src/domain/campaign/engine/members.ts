@@ -103,11 +103,12 @@ export function continueCampaign(decision: Decision): Rejection | null {
   if (ctx.actor.kind !== "user") return { code: "notMember" };
   const member = state.members[ctx.actor.userId];
   if (member === undefined && ctx.actor.userId !== state.organizerId) return { code: "notMember" };
-  if (member?.availability === "away") return { code: "memberAway" };
   if (state.status !== "waitingForPlayers") return { code: "campaignNotWaiting" };
   // A deliberate pause is the organizer's to lift.
   if (state.pausedBy !== null && ctx.actor.userId !== state.organizerId) return { code: "notOrganizer" };
-  if (presentMembers(state).length === 0) return { code: "nobodyPresent" };
+  // Resuming the table is also saying "I am back": an away organizer must not be locked out of their own table.
+  if (member?.availability === "away") decision.emit({ kind: "memberReturned", userId: ctx.actor.userId });
+  if (presentMembers(decision.state).length === 0) return { code: "nobodyPresent" };
 
   const checkDeadlines: Record<CheckId, Instant | null> = {};
   for (const check of Object.values(state.checks)) {

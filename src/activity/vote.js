@@ -103,7 +103,7 @@ export function renderMoveNotice(move, canVote, game) {
 
 export function renderPresenceToggle(game) {
   const button = document.querySelector("#live-presence-toggle");
-  const available = game.kind === "table" && game.canTogglePresence && !["paused", "safety", "recovery", "archived"].includes(game.mode);
+  const available = game.kind === "table" && game.canTogglePresence && game.mode !== "archived";
   button.hidden = !available;
   if (!available) return;
   button.textContent = t(game.ownPresence === "away" ? "activity.action.back" : "activity.action.away");

@@ -189,12 +189,10 @@ describe("timers and away mode", () => {
 
     // Nothing proceeds while waiting.
     expect(reject(state, system, { kind: "applyRoundPlan", proposal: miraSneaks })).toEqual({ code: "campaignWaiting" });
-    expect(reject(state, alex, { kind: "continue" })).toEqual({ code: "memberAway" });
 
-    state = run(state, alex, { kind: "markReturned", userId: "u-alex" }).state;
-    expect(state.status).toBe("waitingForPlayers");
+    // Resuming from away is also coming back, so nobody is locked out of the table they run.
     const resumed = run(state, alex, { kind: "continue" });
-    expect(kinds(resumed.events)).toEqual(["resumed"]);
+    expect(kinds(resumed.events)).toEqual(["memberReturned", "resumed"]);
     expect(resumed.requests).toEqual([{ kind: "plan", roundNumber: 1 }]);
     expect(resumed.state.status).toBe("active");
   });
