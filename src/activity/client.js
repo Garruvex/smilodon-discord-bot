@@ -1853,16 +1853,25 @@ function showRolls(rolls) {
   const label = document.createElement("div");
   label.className = "roll-toast-label";
   label.textContent = rollLabel(roll.test);
+  const die = document.createElement("div");
+  die.className = "roll-toast-die";
+  const dieIcon = document.createElement("img");
+  dieIcon.src = "/art-icons/roll.svg";
+  dieIcon.alt = "";
   const number = document.createElement("div");
   number.className = "roll-toast-number";
   number.setAttribute("aria-hidden", "true");
+  die.append(dieIcon, number);
   const moment = document.createElement("div");
   moment.className = "roll-toast-moment";
-  moment.textContent = roll.moment === "natural20" ? t("activity.roll.natural20") : roll.moment === "natural1" ? t("activity.roll.natural1") : "";
+  moment.textContent = roll.moment === "natural20" ? t(roll.success ? "activity.roll.natural20Success" : "activity.roll.natural20Failure")
+    : roll.moment === "natural1" ? t(roll.success ? "activity.roll.natural1Success" : "activity.roll.natural1Failure") : "";
   const detail = document.createElement("div");
   detail.className = "roll-toast-detail";
-  toast.replaceChildren(label, number, moment, detail);
-  toast.className = `is-tumbling${roll.moment === "natural20" ? " is-natural20" : roll.moment === "natural1" ? " is-natural1" : ""}`;
+  toast.replaceChildren(label, die, moment, detail);
+  const momentClass = roll.moment === "natural20" ? " is-natural20" : roll.moment === "natural1" ? " is-natural1" : "";
+  const criticalClass = roll.moment === "natural20" && roll.success ? " is-critical-success" : roll.moment === "natural1" && !roll.success ? " is-critical-failure" : "";
+  toast.className = `is-tumbling${momentClass}${criticalClass}`;
   toast.setAttribute("aria-label", `${rollLabel(roll.test)}: ${roll.natural}, ${t(roll.success ? "activity.roll.success" : "activity.roll.failure")}`);
   clearTimeout(rollToastTimer);
   let ticks = 0;
@@ -1872,7 +1881,7 @@ function showRolls(rolls) {
     clearInterval(tumble);
     number.textContent = String(roll.natural);
     detail.textContent = t("activity.roll.result", { natural: roll.natural, sum, total: roll.total, dc: roll.dc, outcome: t(roll.success ? "activity.roll.success" : "activity.roll.failure") });
-    toast.className = `${roll.success ? "is-success" : "is-failure"}${roll.moment === "natural20" ? " is-natural20" : roll.moment === "natural1" ? " is-natural1" : ""}`;
+    toast.className = `${roll.success ? "is-success" : "is-failure"}${momentClass}${criticalClass}`;
     rollToastTimer = setTimeout(() => { toast.className = ""; }, 5000);
   }, 80);
 }
