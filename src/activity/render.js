@@ -1,0 +1,119 @@
+import { app } from "./state.js";
+import { renderTableActions } from "./actions.js";
+import { showRolls, updateRollPrompt } from "./dice.js";
+import { iconForClass, iconImage, liveScreen, setArtwork, setLiveMessage } from "./dom.js";
+import { renderCharacterWorkspace, renderEquipment } from "./hero.js";
+import { classText, t } from "./i18n.js";
+import { renderLobby } from "./lobby.js";
+import { renderMap } from "./map.js";
+import { renderEnemies, renderParty } from "./party.js";
+import { renderMoveNotice, renderPresenceToggle } from "./vote.js";
+
+export const phaseKeys = { opening: "activity.phase.opening", readyCheck: "activity.status.gathering", collecting: "activity.phase.collecting", planning: "activity.phase.planning", awaitingRolls: "activity.phase.awaitingRolls", combat: "activity.phase.combat", waiting: "activity.phase.waiting", paused: "activity.phase.paused", safety: "activity.phase.safety", recovery: "activity.phase.recovery", archived: "activity.phase.archived" };
+
+export const paintedSections = new Map();
+
+
+export function resetPaint() {
+  app.lastGameSignature = "";
+  app.actionsSignature = "";
+  paintedSections.clear();
+}
+
+
+export function paintSection(name, inputs, paint) {
+  const signature = JSON.stringify(inputs);
+  if (paintedSections.get(name) === signature) return;
+  paint();
+  paintedSections.set(name, signature);
+}
+
+
+export function renderGame(game) {
+  const signature = JSON.stringify([app.uiLanguage, game, app.selectedPartyCharacterId, app.selectedEnemyName, app.selectedWorkspaceTab, app.mapPick]);
+  if (signature === app.lastGameSignature) return;
+  paintGame(game);
+  app.lastGameSignature = signature;
+}
+
+
+export function paintGame(game) {
+  app.classNames = game.classNames ?? {};
+  liveScreen.dataset.mode = game.kind === "lobby" ? "lobby" : game.mode;
+  document.querySelector("#live-campaign").textContent = game.campaignName;
+  document.querySelector("#live-adventure").textContent = game.adventureTitle.toLocaleUpperCase();
+  document.querySelector("#live-scene-eyebrow").textContent = game.kind === "lobby" ? t("activity.lobby.setupEyebrow") : t("activity.scene.label");
+  document.querySelector("#live-scene-title").textContent = game.kind === "lobby" ? t("activity.lobby.chooseCharacter") : game.scene.title;
+  document.querySelector("#live-scene-description").textContent = game.kind === "lobby"
+    ? t("activity.lobby.chooseCharacterDescription")
+    : game.scene.description;
+  renderPresenceToggle(game);
+  renderMoveNotice(game.kind === "table" ? game.pendingMove : null, game.kind === "table" && game.canVoteMove, game);
+  showRolls(game.kind === "table" ? game.rolls ?? [] : []);
+  document.querySelector(".live-scene").classList.toggle("has-enemies", game.kind === "table" && (game.foes?.length ?? 0) > 0);
+  void setArtwork(document.querySelector("#live-scene-image"), document.querySelector(".scene-art-fallback"), game.kind === "table" ? game.scene.imageUrl : null, game.scene.title, true);
+  if (game.kind === "lobby") {
+    document.querySelector(".adventure-map-panel").hidden = true;
+    renderLobby(game);
+  } else {
+    document.querySelector(".adventure-map-panel").hidden = false;
+    paintSection("map", [game.map, game.mapText, app.mapPick, app.uiLanguage], () => renderMap(game.map, game.mapText));
+    renderTable(game);
+  }
+}
+
+
+export function renderTable(game) {
+  const phase = game.pendingMove ? t("activity.status.moveVoting") : t(phaseKeys[game.mode] ?? "activity.phase.adventure");
+  document.querySelector("#live-phase").textContent = phase;
+  document.querySelector("#live-round").textContent = game.roundNumber === null ? "" : t("activity.status.round", { round: game.roundNumber });
+  document.querySelector(".live-phase").dataset.mode = game.mode;
+  document.querySelector("#live-screen").dataset.mode = game.mode;
+  renderCombatTurn(game);
+  const turn = document.querySelector("#live-turn");
+  const ownStatus = game.submission === "action" ? t("activity.status.actionSubmitted") : game.submission === "pass" ? t("activity.status.passedRound") : game.pendingRoll ? t("activity.status.rollNeeded") : t("activity.status.waitTurn");
+  turn.textContent = game.pendingMove ? t("activity.status.moveDecision") : game.yourTurn ? game.turn?.busy ? t("activity.status.resolvingAction") : t("activity.hero.turn") : game.mode === "collecting" && game.myHero ? ownStatus : game.activeName ? t("activity.status.activeTurnPossessive", { name: game.activeName }) : t("activity.status.waitTable");
+  turn.classList.toggle("is-active", game.yourTurn);
+  const hero = game.myHero;
+  document.querySelector("#live-hero-name").textContent = hero?.name ?? t("activity.hero.notSelected");
+  document.querySelector("#live-hero-subtitle").textContent = hero ? `${hero.raceName ?? t("activity.hero.adventurer")} ${classText(hero.className) ?? t("activity.hero.heroClass")} ${hero.level}` : t("activity.hero.joinToChoose");
+  document.querySelector("#live-hero-class").textContent = (classText(hero?.className) ?? t("activity.hero.adventurerCaps")).toLocaleUpperCase();
+  const classSigil = document.querySelector("#live-hero-sigil");
+  classSigil.replaceChildren(iconImage(iconForClass(hero?.className)));
+  void setArtwork(document.querySelector("#live-hero-image"), classSigil, hero?.imageUrl, t("activity.hero.portraitAlt", { name: hero?.name ?? t("activity.hero.heroClass") }));
+  document.querySelector("#live-hero-hp").textContent = hero ? t("activity.hero.hp", { hp: hero.hp, max: hero.maxHp }) : "";
+  document.querySelector("#live-hero-ac").textContent = hero ? t("activity.hero.ac", { value: hero.armorClass }) : "";
+  document.querySelector("#live-hero-health").style.width = hero ? `${Math.max(0, Math.min(100, (hero.hp / Math.max(1, hero.maxHp)) * 100))}%` : "0%";
+  document.querySelector("#live-resources").replaceChildren();
+  if (hero) {
+    renderEquipment(hero);
+  } else {
+    document.querySelector("#live-equipment").replaceChildren();
+  }
+  document.querySelector("#live-party-count").textContent = t("activity.party.count", { count: game.party.length });
+  renderTableActions(game);
+  renderCharacterWorkspace(game);
+  paintSection("enemies", [game.foes, app.selectedEnemyName, app.uiLanguage], () => renderEnemies(game.foes));
+  paintSection("party", [game.party, app.selectedPartyCharacterId, app.selectedEnemyName, app.uiLanguage], () => renderParty(game.party));
+  setLiveMessage(game.submission === "action" ? t("activity.status.actionIn") : game.submission === "pass" ? t("activity.status.youPassed") : "");
+  updateRollPrompt(["paused", "safety", "recovery"].includes(game.mode) ? null : game.pendingRoll);
+}
+
+
+export function renderCombatTurn(game) {
+  const strip = document.querySelector("#combat-turn-strip");
+  const visible = game.mode === "combat";
+  strip.hidden = !visible;
+  if (!visible) return;
+  document.querySelector("#combat-active-name").textContent = game.activeName ?? t("activity.phase.waiting");
+  const upcoming = document.querySelector("#combat-upcoming");
+  upcoming.replaceChildren(...(game.upcomingNames ?? []).slice(0, 1).map((name, index) => {
+    const item = document.createElement("span");
+    item.className = "initiative-next-name";
+    item.dataset.position = String(index + 1);
+    item.textContent = name;
+    return item;
+  }));
+  if (!upcoming.childElementCount) upcoming.textContent = t("activity.combat.noUpcoming");
+}
+

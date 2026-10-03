@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "npm run build:activity && tsc -p tsconfig.build.json",
-    "build:activity": "esbuild src/activity/client.js --bundle --format=esm --target=es2022 --minify --outfile=assets/activity/activity.js && tsx src/scripts/build-activity-i18n.ts",
+    "build:activity": "esbuild src/activity/main.js --bundle --format=esm --target=es2022 --minify --outfile=assets/activity/activity.js && tsx src/scripts/build-activity-i18n.ts",
     "check": "npm run typecheck && npm run lint && npm run migrations:check && npm run test",
     "campaign:harness": "tsx src/scripts/campaign-harness.ts",
     "command:create": "tsx src/scripts/generate-command.ts",
