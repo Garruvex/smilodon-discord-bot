@@ -24,6 +24,30 @@ document.querySelector("#lobby-retry").addEventListener("click", () => {
 });
 
 
+// Signs in again with Discord for a new session token, without leaving the page. Many requests can hit an expired session at once; they share one renewal.
+let renewing = null;
+
+export function renewSession() {
+  renewing ??= (async () => {
+    const authorization = await withTimeout(app.discordSdk.commands.authorize({
+      client_id: app.applicationId,
+      response_type: "code",
+      state: crypto.randomUUID(),
+      prompt: "none",
+      scope: ["identify", "guilds.members.read"],
+    }), 20000, t("activity.connection.authTimeout"));
+    const session = await requestJson("/api/activity/session", {
+      method: "POST",
+      renewed: true,
+      body: JSON.stringify({ code: authorization.code, guildId: app.discordSdk.guildId, channelId: app.discordSdk.channelId }),
+    });
+    if (typeof session.access_token !== "string" || typeof session.session_token !== "string") throw new Error(t("activity.connection.invalidSession"));
+    app.sessionToken = session.session_token;
+    await app.discordSdk.commands.authenticate({ access_token: session.access_token }).catch(() => {});
+  })().finally(() => { renewing = null; });
+  return renewing;
+}
+
 export async function authenticate() {
   await setLanguage("en");
   app.connectionStage = "Activity setup";
@@ -36,6 +60,7 @@ export async function authenticate() {
   if (!configResponse.ok) throw new Error(t("activity.connection.activityConfig"));
   const config = await configResponse.json();
   if (typeof config.applicationId !== "string" || config.applicationId.length === 0) throw new Error(t("activity.connection.appId"));
+  app.applicationId = config.applicationId;
   app.discordSdk = new DiscordSDK(config.applicationId);
   app.connectionStage = "Discord connection";
   setMessage(t("activity.connection.waitDiscord"));

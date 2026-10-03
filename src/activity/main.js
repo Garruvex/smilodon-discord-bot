@@ -79,7 +79,8 @@ if (new URLSearchParams(window.location.search).has("design-preview")) {
     preview.foes = [];
     preview.turn = null;
     if (new URLSearchParams(window.location.search).has("vote")) {
-      preview.canVoteMove = true;
+      preview.canVoteMove = !new URLSearchParams(window.location.search).has("away");
+      if (!preview.canVoteMove) preview.ownPresence = "away";
       preview.pendingMove = { sceneId: "gallery", present: 6, needed: 3, closesAt: Date.now() + 83000, sceneTitle: previewLanguage === "zh-TW" ? "破碎長廊" : "Broken Gallery", sceneDescription: previewLanguage === "zh-TW" ? "月光照亮橫跨裂縫的長廊，東側拱門通往古老的觀星台。" : "A moonlit gallery crosses a deep fissure. Its eastern arch leads toward the old observatory.", proposedBy: previewLanguage === "zh-TW" ? "米拉・芬" : "Mira Fen", supporters: [previewLanguage === "zh-TW" ? "米拉・芬" : "Mira Fen"], staying: [previewLanguage === "zh-TW" ? "索恩・橡盾" : "Thorne Oakshield"], choiceByYou: new URLSearchParams(window.location.search).has("stay") ? "stay" : null };
     }
   }

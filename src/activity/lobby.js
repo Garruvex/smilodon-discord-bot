@@ -152,6 +152,8 @@ export function renderLobby(game) {
     choiceList.append(button);
   }
   choices.append(choicesHeading, choiceList);
+  // Making a character and saved characters are not connected to the game yet: only the design preview shows them.
+  if (app.currentGameId === "local-preview") {
   const createCard = document.createElement("section");
   createCard.className = "lobby-create-card";
   const createCopy = document.createElement("div");
@@ -172,6 +174,7 @@ export function renderLobby(game) {
   });
   saved.append(savedHeading, savedButton);
   liveActions.append(saved);
+  }
   liveActions.append(choices);
   if (game.joinRequestStatus === "requested") liveActions.append(makeButton(t("activity.action.withdrawJoin"), () => void performAction({ kind: "withdrawJoin" })));
   if (game.canStart) liveActions.append(makeButton(t("activity.action.startAdventure"), () => void performAction({ kind: "startLobby" }), true));

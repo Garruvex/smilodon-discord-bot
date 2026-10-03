@@ -8,7 +8,7 @@ import { findScene } from "../../domain/campaign/adventure/adventure-bible.js";
 import { resolveHouseRules } from "../../domain/campaign/rules/house-rules.js";
 import { buildPanelView, buildPartyView, buildHeroView, buildReactionView, buildSmiteView, buildOpportunityAttackView } from "./views/campaign-views.js";
 import { buildExploreView, buildShopView, type ExploreView, type ShopView } from "./views/explore-view.js";
-import { buildTurnView } from "./views/turn-view.js";
+import { buildTurnView, type AttackChoice, type SpellChoice, type TurnView } from "./views/turn-view.js";
 import type { CampaignRecord } from "./ports/campaign-record.js";
 import { readyToStart } from "../../domain/campaign/lobby/lobby.js";
 import { texts } from "../i18n/texts.js";
@@ -95,7 +95,7 @@ export interface ActivityTableView {
     readonly pactSlots: readonly { readonly level: number; readonly left: number; readonly max: number }[];
     readonly uses: readonly { readonly id: string; readonly name: string; readonly left: number; readonly max: number }[];
   };
-  readonly turn: ReturnType<typeof buildTurnView>;
+  readonly turn: ActivityTurnView | null;
   readonly explore: (ExploreView & { readonly shops: readonly ShopView[] }) | null;
   readonly pendingRoll: null | { readonly checkId: string; readonly test: CheckTest; readonly action: string | null };
   readonly pendingRollCount: number;
@@ -118,6 +118,16 @@ export interface ActivityTableView {
   readonly opportunityAttack: ReturnType<typeof buildOpportunityAttackView>;
   readonly opportunityAttackIsYours: boolean;
 }
+
+// A turn menu with every choice named in the game's language, so the page never has to make a label from a content id.
+export type ActivityTurnView = Omit<TurnView, "attacks" | "spells" | "features" | "potions" | "teleports"> & {
+  readonly attacks: readonly (AttackChoice & { readonly weaponName: string })[];
+  readonly spells: readonly (SpellChoice & { readonly spellName: string })[];
+  readonly features: readonly (TurnView["features"][number] & { readonly name: string })[];
+  readonly potions: readonly (TurnView["potions"][number] & { readonly name: string })[];
+  readonly teleports: readonly (TurnView["teleports"][number] & { readonly spellName: string })[];
+  readonly wildShapeChoices: readonly { readonly id: string; readonly name: string }[];
+};
 
 export interface ActivityLobbyView {
   readonly kind: "lobby";
@@ -359,7 +369,7 @@ export function buildActivityTableView(
       return [{ id: offer.id, fromCharacterId: from.id, toCharacterId: to.id, fromName: from.name, toName: to.name, itemName: glossary.names[offer.give] ?? offer.give, direction: from.ownerUserId === userId ? "outgoing" as const : "incoming" as const }];
     }),
     myHero: fullHero,
-    turn,
+    turn: turn === null ? null : nameTurn(turn, glossary),
     explore: controlledHeroId === null || state.pendingMove !== undefined || panel.mode !== "collecting"
       ? null
       : explore,
@@ -411,6 +421,20 @@ export function canSeeActivityCampaign(record: CampaignRecord, state: CampaignSt
 
 // The viewer's newest settled checks, oldest first, so a roll waiting in the dice dialog finds its own result even when another
 // check settled in the same round. Presses (NPC dialogue) follow, as before.
+function nameTurn(turn: TurnView, glossary: Glossary): ActivityTurnView {
+  // A content id with no name in the glossary still reads as words rather than as an id.
+  const named = (id: string): string => glossary.names[id] ?? id.replace(/^[a-z]+:/, "").replaceAll("-", " ");
+  return {
+    ...turn,
+    attacks: turn.attacks.map((attack) => ({ ...attack, weaponName: named(attack.weapon.replace(/^(offhand:|nonlethal:)/, "")) })),
+    spells: turn.spells.map((spell) => ({ ...spell, spellName: named(spell.spellId) })),
+    features: turn.features.map((feature) => ({ ...feature, name: named(feature.id) })),
+    potions: turn.potions.map((potion) => ({ ...potion, name: named(potion.id) })),
+    teleports: turn.teleports.map((teleport) => ({ ...teleport, spellName: named(teleport.spellId) })),
+    wildShapeChoices: turn.wildShapes.map((id) => ({ id, name: named(id) })),
+  };
+}
+
 function recentRolls(state: CampaignState, characterId: string): ActivityTableView["rolls"] {
   const rollOf = (check: CampaignState["checks"][string]): ActivityTableView["rolls"][number] => ({ id: check.id, test: check.test, natural: check.result!.roll.d20.natural, total: check.result!.roll.total, dc: check.dc, success: check.result!.success, moment: check.result!.moments.headline?.kind === "natural20" || check.result!.moments.headline?.kind === "natural1" ? check.result!.moments.headline.kind : null });
   const checks = Object.values(state.checks).filter((check) => check.characterId === characterId && check.result !== null).sort((a, b) => a.roundNumber - b.roundNumber).slice(-3).map(rollOf);

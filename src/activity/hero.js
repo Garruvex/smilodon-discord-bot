@@ -218,10 +218,6 @@ export function renderCharacterWorkspace(game) {
   resources.replaceChildren();
   equipment.replaceChildren();
   if (viewingOwn) {
-    for (const slot of [...ownHero.slots, ...ownHero.pactSlots]) {
-      const resource = document.createElement("span"); resource.className = "resource";
-      resource.textContent = t("activity.hero.slot", { level: slot.level, left: slot.left, max: slot.max }); resources.append(resource);
-    }
     renderEquipment(ownHero);
     renderSpellbook(ownHero);
     renderInventory(ownHero);

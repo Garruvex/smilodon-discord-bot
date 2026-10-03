@@ -1,6 +1,5 @@
 import { app } from "./state.js";
 import { fetchWithTimeout } from "./api.js";
-import { t } from "./i18n.js";
 
 export const gamesElement = document.querySelector("#lobby-games");
 

@@ -4,9 +4,82 @@ import { requestJson } from "./api.js";
 import { actionIcon, iconImage, liveActions, makeButton, setLiveMessage } from "./dom.js";
 import { classText, t } from "./i18n.js";
 import { loadTable } from "./poll.js";
-import { renderGame, renderTable } from "./render.js";
+import { renderGame } from "./render.js";
 
 // Where each kind of action is shown: urgent decisions on top, the round composer, a category list, or the closing button.
+// Spell names as the table sends them, so a cast is confirmed by name.
+const spellNames = new Map();
+
+function groupBy(items, keyOf) {
+  const groups = new Map();
+  for (const item of items) {
+    const key = keyOf(item);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
+  }
+  return groups;
+}
+
+function slotLabel(level, left, innate) {
+  return innate ? t("activity.spell.innateChoice") : level === 0 ? t("activity.spell.cantripChoice") : t("activity.spell.slotChoice", { level, left });
+}
+
+function refreshActions() {
+  if (app.currentSnapshot?.kind === "table") renderTableActions(app.currentSnapshot);
+}
+
+// The card for a choice made in steps: chips for the level and the targets, then the confirm button.
+function pickerCard(config) {
+  const picker = app.picker;
+  if (!config.levels.some((level) => level.id === picker.level)) picker.level = config.levels[0]?.id ?? null;
+  const card = document.createElement("section");
+  card.className = "action-picker";
+  const title = document.createElement("strong");
+  title.textContent = config.title;
+  card.append(title);
+  const chips = (caption, options, selected, onPick) => {
+    const group = document.createElement("div");
+    group.className = "picker-group";
+    const label = document.createElement("span");
+    label.className = "picker-caption";
+    label.textContent = caption;
+    const row = document.createElement("div");
+    row.className = "picker-chips";
+    for (const option of options) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "picker-chip ui-control";
+      chip.setAttribute("aria-pressed", String(selected.includes(option.id)));
+      chip.textContent = option.label;
+      chip.addEventListener("click", () => onPick(option.id));
+      row.append(chip);
+    }
+    group.append(label, row);
+    return group;
+  };
+  const limit = config.maxTargets(picker.level);
+  picker.targets = picker.targets.filter((id) => config.targets.some((target) => target.id === id)).slice(0, Math.max(1, limit));
+  if (config.levels.length > 1) card.append(chips(config.levelCaption, config.levels, [picker.level], (id) => { picker.level = id; refreshActions(); }));
+  if (config.targets.length > 0) {
+    const caption = limit > 1 ? t("activity.picker.chooseTargets", { max: limit }) : config.targetCaption;
+    card.append(chips(caption, config.targets.map((target) => ({ id: target.id, label: target.name })), picker.targets, (id) => {
+      picker.targets = picker.targets.includes(id) ? picker.targets.filter((chosen) => chosen !== id) : limit <= 1 ? [id] : [...picker.targets, id].slice(-limit);
+      refreshActions();
+    }));
+  }
+  const buttons = document.createElement("div");
+  buttons.className = "action-row";
+  const confirm = makeButton(config.confirmLabel, () => {
+    const action = config.build(picker.level, picker.targets);
+    app.picker = null;
+    void performAction(action);
+  }, true, config.icon);
+  confirm.disabled = config.targets.length > 0 && picker.targets.length === 0;
+  buttons.append(confirm, makeButton(t("activity.picker.cancel"), () => { app.picker = null; refreshActions(); }));
+  card.append(buttons);
+  return card;
+}
+
 export const actionPlacement = { acceptInvite: "top", joinHero: "top", reaction: "top", smite: "top", opportunityAttack: "top", ready: "top", begin: "top", continue: "top", toggleMoveObjection: "top", moveVote: "top", submit: "composer", pass: "composer", endTurn: "bottom" };
 
 export const actionCategoryOf = { attack: "attack", combatSpell: "spells", exploreSpell: "spells", healSpell: "spells", reviveSpell: "spells", summonCompanion: "spells", move: "move", moveScene: "move", teleport: "move", engage: "move", withdraw: "move", dash: "move", useItem: "items", combatItem: "items", shield: "items", shop: "items", askNpc: "talk", pressNpc: "talk", feature: "other", wildShape: "other", combatDodge: "other" };
@@ -148,14 +221,22 @@ export function buildTableActions(game, liveActions, log) {
     const place = actionPlacement[action.kind];
     (place === "top" ? top : place === "composer" ? composer : place === "bottom" ? bottom : groups.get(actionCategoryOf[action.kind] ?? "other")).push(button);
   };
+  // A choice that needs more than a press (which spell level, which targets): its opener sits in the list and the card opens above it.
+  const panels = [];
+  const addPicker = (key, category, openLabel, config) => {
+    log.push(JSON.stringify(["picker", key]));
+    const open = app.picker?.key === key;
+    const opener = makeButton(openLabel, () => { app.picker = open ? null : { key, level: config.levels[0]?.id ?? null, targets: [] }; refreshActions(); }, false, config.icon);
+    opener.setAttribute("aria-expanded", String(open));
+    groups.get(category).push(opener);
+    if (open) panels.push(pickerCard(config));
+  };
   if (game.pendingMove && game.mode === "collecting") {
-    const choice = game.pendingMove.choiceByYou;
-    addAction(t(choice === "go" ? "activity.move.withdrawGo" : "activity.move.voteGo"), { kind: "moveVote", choice: "go" }, choice !== "go", choice === "go");
-    addAction(t(choice === "stay" ? "activity.move.withdrawStay" : "activity.move.voteStay"), { kind: "moveVote", choice: "stay" }, choice === "stay", choice === "stay");
-    const voteRow = document.createElement("div");
-    voteRow.className = "action-row action-urgent";
-    voteRow.append(...top);
-    liveActions.append(voteRow);
+    // The vote card above the table is where the vote is cast; this panel keeps only what can still be done beside it.
+    const note = document.createElement("span");
+    note.className = "live-action-note status-note";
+    note.textContent = t("activity.status.moveDecision");
+    liveActions.append(note);
     const voteSpeech = speechRow(game);
     if (voteSpeech) liveActions.append(voteSpeech);
     return;
@@ -194,21 +275,49 @@ export function buildTableActions(game, liveActions, log) {
       const offHand = attack.weapon.startsWith("offhand:");
       const nonlethal = attack.weapon.startsWith("nonlethal:");
       const weaponId = attack.weapon.replace(/^(offhand:|nonlethal:)/, "");
+      const weapon = offHand ? t("activity.weapon.offhand", { name: attack.weaponName }) : nonlethal ? t("activity.weapon.nonlethal", { name: attack.weaponName }) : attack.weaponName;
       for (const target of attack.targets) {
-        addAction(t("activity.action.attack", { name: target.name, weapon: weaponId.replace(/^item:/, "") }), { kind: "attack", weaponId, targetId: target.id, offHand, nonlethal }, true);
+        addAction(t("activity.action.attack", { name: target.name, weapon }), { kind: "attack", weaponId, targetId: target.id, offHand, nonlethal }, true);
       }
     }
-    for (const spell of game.turn.spells) {
-      const target = spell.targets[0];
-      if (target) addAction(t("activity.action.castOn", { spell: spell.spellId.replace(/^spell:/, ""), name: target.name }), { kind: "combatSpell", spellId: spell.spellId, slotLevel: spell.slotLevel, targetIds: [target.id] });
+    for (const [spellId, entries] of groupBy(game.turn.spells, (spell) => spell.spellId)) {
+      const name = entries[0].spellName;
+      spellNames.set(spellId, name);
+      const targets = [...new Map(entries.flatMap((entry) => entry.targets).map((target) => [target.id, target])).values()];
+      if (targets.length === 0) continue;
+      const levels = entries.map((entry) => ({ id: String(entry.slotLevel), label: slotLabel(entry.slotLevel, entry.slotsLeft, entry.innate) }));
+      if (levels.length === 1 && targets.length === 1) {
+        addAction(t("activity.action.castOn", { spell: name, name: targets[0].name }), { kind: "combatSpell", spellId, slotLevel: entries[0].slotLevel, targetIds: [targets[0].id] });
+        continue;
+      }
+      addPicker(`spell:${spellId}`, "spells", t("activity.action.castOpen", { name }), {
+        icon: "spell", title: name, confirmLabel: t("activity.action.cast", { name }), levelCaption: t("activity.picker.chooseLevel"), targetCaption: t("activity.picker.chooseTarget"),
+        levels, targets: targets.map((target) => ({ id: target.id, name: target.name })),
+        maxTargets: (level) => Math.max(1, entries.find((entry) => String(entry.slotLevel) === level)?.maxTargets ?? 1),
+        build: (level, targetIds) => ({ kind: "combatSpell", spellId, slotLevel: Number(level), targetIds }),
+      });
     }
-    for (const feature of game.turn.features) addAction(t("activity.action.useFeature", { name: feature.id.replace(/^feature:/, "").replaceAll("-", " ") }), { kind: "feature", featureId: feature.id });
-    for (const potion of game.turn.potions) addAction(t("activity.action.usePotion", { name: potion.id.replace(/^item:/, "").replaceAll("-", " "), count: potion.count }), { kind: "combatItem", itemId: potion.id });
+    for (const feature of game.turn.features) addAction(t("activity.action.useFeature", { name: feature.name }), { kind: "feature", featureId: feature.id });
+    for (const potion of game.turn.potions) addAction(t("activity.action.usePotion", { name: potion.name, count: potion.count }), { kind: "combatItem", itemId: potion.id });
     for (const shield of game.turn.shields) addAction(t(shield.on ? "activity.action.shieldStow" : "activity.action.shieldRaise"), { kind: "shield", itemId: shield.id, on: !shield.on });
     for (const move of game.turn.moves) addAction(t("activity.action.moveTo", { name: move.zone }), { kind: "move", zoneId: move.zoneId });
     for (const target of game.turn.engage) addAction(t("activity.action.engage", { name: target.name }), { kind: "engage", targetId: target.id });
-    for (const teleport of game.turn.teleports) addAction(t("activity.action.teleport", { name: teleport.zone }), { kind: "teleport", spellId: teleport.spellId, slotLevel: teleport.slotLevel, zoneId: teleport.zoneId });
-    for (const monsterId of game.turn.wildShapes) addAction(t("activity.action.wildShape", { name: monsterId.replace(/^monster:/, "").replaceAll("-", " ") }), { kind: "wildShape", monsterId });
+    for (const [spellId, entries] of groupBy(game.turn.teleports, (teleport) => teleport.spellId)) {
+      const name = entries[0].spellName;
+      spellNames.set(spellId, name);
+      const zones = [...new Map(entries.map((entry) => [entry.zoneId, { id: entry.zoneId, name: `${entry.zone} · ${entry.feet} ft` }])).values()];
+      const levels = [...new Map(entries.map((entry) => [entry.slotLevel, { id: String(entry.slotLevel), label: slotLabel(entry.slotLevel, entry.slotsLeft, false) }])).values()];
+      if (levels.length === 1 && zones.length === 1) {
+        addAction(t("activity.action.teleport", { name: entries[0].zone }), { kind: "teleport", spellId, slotLevel: entries[0].slotLevel, zoneId: entries[0].zoneId });
+        continue;
+      }
+      addPicker(`teleport:${spellId}`, "move", t("activity.action.castOpen", { name }), {
+        icon: "move", title: name, confirmLabel: t("activity.action.cast", { name }), levelCaption: t("activity.picker.chooseLevel"), targetCaption: t("activity.picker.chooseZone"),
+        levels, targets: zones, maxTargets: () => 1,
+        build: (level, zoneIds) => ({ kind: "teleport", spellId, slotLevel: Number(level), zoneId: zoneIds[0] }),
+      });
+    }
+    for (const form of game.turn.wildShapeChoices) addAction(t("activity.action.wildShape", { name: form.name }), { kind: "wildShape", monsterId: form.id });
     if (game.turn.canRevertShape) addAction(t("activity.action.returnForm"), { kind: "wildShape", monsterId: null });
     if (game.turn.canWithdraw) addAction(t("activity.action.withdrawSafely"), { kind: "withdraw" });
     if (game.turn.canDashOrDisengage) addAction(t("activity.action.dash"), { kind: "dash" });
@@ -247,7 +356,13 @@ export function buildTableActions(game, liveActions, log) {
       groups.get("talk").push(question);
       for (const npc of game.explore.npcs) {
         addAction(t("activity.action.ask", { name: npc.name }), { kind: "askNpc", npcId: npc.id, question: () => question.value }, true);
-        if (!npc.secretKnown && !npc.pressAttempted) for (const skill of ["insight", "persuasion", "deception", "intimidation"]) addAction(t("activity.action.pressNpc", { name: npc.name, skill: t(`activity.skill.${skill}`) }), { kind: "pressNpc", npcId: npc.id, skill });
+        if (!npc.secretKnown && !npc.pressAttempted) {
+          addPicker(`press:${npc.id}`, "talk", t("activity.action.pressNpcOpen", { name: npc.name }), {
+            icon: "clue", title: t("activity.action.pressNpcOpen", { name: npc.name }), confirmLabel: t("activity.action.pressConfirm"), levelCaption: t("activity.picker.chooseSkill"), targetCaption: "",
+            levels: ["insight", "persuasion", "deception", "intimidation"].map((skill) => ({ id: skill, label: t(`activity.skill.${skill}`) })), targets: [], maxTargets: () => 0,
+            build: (skill) => ({ kind: "pressNpc", npcId: npc.id, skill }),
+          });
+        }
         if (npc.pressAttempted && !npc.secretKnown) {
           const note = document.createElement("span");
           note.className = "live-action-note status-note";
@@ -262,9 +377,31 @@ export function buildTableActions(game, liveActions, log) {
     }
     for (const spell of game.explore.spells) addAction(t("activity.action.cast", { name: spell.name }), { kind: "exploreSpell", spellId: spell.id });
     for (const potion of game.myHero.usablePotions ?? []) addAction(t("activity.action.drink", { name: potion.name, count: potion.count }), { kind: "useItem", itemId: potion.id });
-    for (const spell of game.explore.healing) for (const slot of spell.slots) for (const target of game.explore.hurt) addAction(t("activity.action.heal", { target: target.name, spell: spell.name, level: slot.level }), { kind: "healSpell", spellId: spell.id, slotLevel: slot.level, targetId: target.id });
-    for (const spell of game.explore.reviving) for (const slot of spell.slots) for (const target of game.explore.fallen) addAction(t("activity.action.revive", { target: target.name, spell: spell.name, level: slot.level }), { kind: "reviveSpell", spellId: spell.id, slotLevel: slot.level, targetId: target.id });
-    for (const spell of game.explore.conjuring) for (const slot of spell.slots) addAction(t("activity.action.summon", { spell: spell.name, level: slot.level }), { kind: "summonCompanion", spellId: spell.id, slotLevel: slot.level });
+    const castCard = (key, spell, slots, targets, direct, build) => {
+      spellNames.set(spell.id, spell.name);
+      if (slots.length === 1 && targets.length <= 1) return direct(slots[0], targets[0]);
+      addPicker(key, "spells", t("activity.action.castOpen", { name: spell.name }), {
+        icon: "heal", title: spell.name, confirmLabel: t("activity.action.cast", { name: spell.name }), levelCaption: t("activity.picker.chooseLevel"), targetCaption: t("activity.picker.chooseTarget"),
+        levels: slots.map((slot) => ({ id: String(slot.level), label: slotLabel(slot.level, slot.left, false) })), targets: targets.map((target) => ({ id: target.id, name: target.name })), maxTargets: () => 1, build,
+      });
+    };
+    for (const spell of game.explore.healing) {
+      if (game.explore.hurt.length === 0) continue;
+      castCard(`heal:${spell.id}`, spell, spell.slots, game.explore.hurt,
+        (slot, target) => addAction(t("activity.action.heal", { target: target.name, spell: spell.name, level: slot.level }), { kind: "healSpell", spellId: spell.id, slotLevel: slot.level, targetId: target.id }),
+        (level, ids) => ({ kind: "healSpell", spellId: spell.id, slotLevel: Number(level), targetId: ids[0] }));
+    }
+    for (const spell of game.explore.reviving) {
+      if (game.explore.fallen.length === 0) continue;
+      castCard(`revive:${spell.id}`, spell, spell.slots, game.explore.fallen,
+        (slot, target) => addAction(t("activity.action.revive", { target: target.name, spell: spell.name, level: slot.level }), { kind: "reviveSpell", spellId: spell.id, slotLevel: slot.level, targetId: target.id }),
+        (level, ids) => ({ kind: "reviveSpell", spellId: spell.id, slotLevel: Number(level), targetId: ids[0] }));
+    }
+    for (const spell of game.explore.conjuring) {
+      castCard(`summon:${spell.id}`, spell, spell.slots, [],
+        (slot) => addAction(t("activity.action.summon", { spell: spell.name, level: slot.level }), { kind: "summonCompanion", spellId: spell.id, slotLevel: slot.level }),
+        (level) => ({ kind: "summonCompanion", spellId: spell.id, slotLevel: Number(level) }));
+    }
     for (const place of game.explore.places) addAction(t("activity.action.travel", { name: place.title }), { kind: "moveScene", sceneId: place.id });
   }
 
@@ -275,6 +412,7 @@ export function buildTableActions(game, liveActions, log) {
     return element;
   };
   if (top.length) liveActions.append(row("action-row action-urgent", top));
+  for (const panel of panels) liveActions.append(panel);
   if (composer.length) liveActions.append(row("action-composer", composer));
   if (note) liveActions.append(note);
   const speech = game.mode === "collecting" && game.submission === null ? null : speechRow(game);
@@ -310,6 +448,7 @@ export function buildTableActions(game, liveActions, log) {
     select(app.selectedActionCategory);
   }
   if (bottom.length) liveActions.append(row("action-row action-end", bottom));
+  if (app.picker !== null && panels.length === 0) app.picker = null;
   if (liveActions.childElementCount === 0) {
     const empty = document.createElement("span");
     empty.className = "live-action-note";
@@ -349,7 +488,7 @@ export async function performAction(action) {
     renderGame(app.currentSnapshot);
     if (action.kind === "joinHero" && app.currentSnapshot?.queuedJoin) setLiveMessage(t("activity.join.queuedConfirmation", { name: app.currentSnapshot.queuedJoin.heroName }));
     else if (["combatSpell", "exploreSpell", "healSpell", "reviveSpell", "summonCompanion", "teleport"].includes(action.kind)) {
-      const spell = String(action.spellId ?? "").replace(/^spell:/, "").replaceAll("-", " ");
+      const spell = spellNames.get(action.spellId) ?? String(action.spellId ?? "").replace(/^spell:/, "").replaceAll("-", " ");
       setLiveMessage(t("activity.status.castSuccess", { spell }));
     } else if (action.kind === "moveVote") setLiveMessage(t(action.choice === "stay" ? "activity.status.moveVoteStay" : "activity.status.moveVoteGo"));
     else setLiveMessage(t("activity.status.actionSuccess"));
@@ -361,6 +500,8 @@ export async function performAction(action) {
   } finally {
     app.actionInFlight = false;
     document.body.classList.remove("is-sending");
+    // A refused press or one that changes nothing leaves the panel as it was, so the spinner on its button is cleared here.
+    for (const pending of document.querySelectorAll(".live-action-choice.is-pending")) pending.classList.remove("is-pending");
   }
 }
 

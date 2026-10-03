@@ -68,8 +68,11 @@ export function renderMoveNotice(move, canVote, game) {
       button.dataset.selected = String(move.choiceByYou === choice);
       choices.append(button);
     }
+  } else if (game?.kind === "table" && game.canTogglePresence && game.ownPresence === "away") {
+    // Marked away: no vote to cast, but the way back is one press.
+    choices.append(makeButton(t("activity.action.back"), () => void performAction({ kind: "back" }), true, "play"));
   }
-  notice.replaceChildren(prompt, heading, proposedBy, ...(description ? [description] : []), line("move-paused", t("activity.move.paused")), tally, ...(going ? [going] : []), ...(names ? [names] : []), clock, ...(canVote ? [choices] : []));
+  notice.replaceChildren(prompt, heading, proposedBy, ...(description ? [description] : []), line("move-paused", t("activity.move.paused")), ...(canVote ? [] : [line("move-names", t("activity.move.awayNote"))]), tally, ...(going ? [going] : []), ...(names ? [names] : []), clock, ...(choices.childElementCount > 0 ? [choices] : []));
   const speech = canSpeak ? speechRow(game) : null;
   if (speech) notice.append(speech);
   shield.hidden = false;

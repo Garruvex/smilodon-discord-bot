@@ -228,7 +228,6 @@ export function renderBattlefieldMap(map, words) {
 
 export function prepareMapView(kind, svg) {
   if (!svg) return;
-  const viewport = document.querySelector("#live-map-viewport");
   const width = Number(svg.getAttribute("width"));
   const height = Number(svg.getAttribute("height"));
   const nextIdentity = `${app.currentGameId ?? "preview"}:${kind}`;
@@ -249,8 +248,6 @@ export function applyMapScale(focal = null, previousScale = app.mapScale) {
   const svg = liveMap.querySelector("svg");
   const viewport = document.querySelector("#live-map-viewport");
   if (!svg || !app.mapBaseSize) return;
-  const oldWidth = Number(svg.getAttribute("width"));
-  const oldHeight = Number(svg.getAttribute("height"));
   const center = focal ?? { x: viewport.clientWidth / 2, y: viewport.clientHeight / 2 };
   // The SVG is rebuilt from base dimensions on each live refresh; app.mapScale is
   // therefore the currently displayed scale even when its fresh attributes are 1x.

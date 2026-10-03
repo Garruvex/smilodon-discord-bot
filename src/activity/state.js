@@ -1,6 +1,9 @@
 // What the Activity page knows right now, shared by its parts. A part changes it by assigning to a field.
 export const app = {
   sessionToken: null,
+  picker: null,
+  applicationId: null,
+  pollErrorShown: false,
   discordSdk: null,
   currentGameId: null,
   tableTimer: null,

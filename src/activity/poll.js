@@ -1,5 +1,5 @@
 import { app } from "./state.js";
-import { apiErrorMessage, requestJson } from "./api.js";
+import { requestJson } from "./api.js";
 import { liveActions, liveScreen, lobbyScreen, setLiveMessage } from "./dom.js";
 import { setLanguage, t } from "./i18n.js";
 import { renderGame, resetPaint } from "./render.js";
@@ -32,6 +32,11 @@ export async function loadTable() {
     const payload = await requestJson(`/api/activity/games/${encodeURIComponent(app.currentGameId)}/table${wantsFull ? "" : `?since=${encodeURIComponent(app.tableToken)}`}`);
     app.tableRefreshFailures = 0;
     app.lastTableRefreshAt = Date.now();
+    // The table is answering again, so a connection complaint from an earlier try no longer applies.
+    if (app.pollErrorShown) {
+      app.pollErrorShown = false;
+      setLiveMessage("");
+    }
     if (payload.unchanged) {
       setTableConnectionState("live");
       return;
@@ -46,7 +51,10 @@ export async function loadTable() {
     app.tableRefreshFailures += 1;
     setTableConnectionState(app.tableRefreshFailures >= 3 || Date.now() - app.lastTableRefreshAt >= 15000 ? "offline" : "delayed");
     setLiveMessage(error instanceof Error ? error.message : t("activity.status.couldNotLoad"));
-    if (error instanceof Error && error.message === apiErrorMessage("notActive")) {
+    app.pollErrorShown = true;
+    // Gone, closed to this player, or no longer theirs: asking again every few seconds cannot help.
+    if (["notFound", "notActive", "notMember", "privateInviteOnly"].includes(error?.code)) {
+      setTableConnectionState("offline");
       clearInterval(app.tableTimer);
       app.tableTimer = null;
     }
