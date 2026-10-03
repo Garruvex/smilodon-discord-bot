@@ -69,6 +69,7 @@ if (new URLSearchParams(window.location.search).has("design-preview")) {
     preview.activeName = null;
     preview.pendingRoll = { checkId: "preview-check", test: { kind: "skill", skill: "arcana" }, action: "Identify the runes before the sentinel moves." };
     preview.pendingRollCount = 1;
+    app.currentGameId = "local-preview";
     preview.party = preview.party.map((hero) => ({ ...hero, tableStatus: "waiting" }));
   }
   if (new URLSearchParams(window.location.search).has("vote") || new URLSearchParams(window.location.search).has("collect")) {

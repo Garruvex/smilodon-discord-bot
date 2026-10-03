@@ -1,5 +1,14 @@
 import { app } from "./state.js";
+import { showRolls } from "./dice.js";
 import { t } from "./i18n.js";
+
+// The design preview has no table to roll for: the result "arrives" a moment after the press. ?natural=20 or ?natural=1 picks the roll.
+export function previewRoll(pending) {
+  const natural = Number(new URLSearchParams(window.location.search).get("natural")) || 14;
+  const total = natural + 3;
+  setTimeout(() => showRolls([{ id: pending.checkId, test: pending.test, natural, total, dc: 15, success: natural === 20 || (natural !== 1 && total >= 15), moment: natural === 20 ? "natural20" : natural === 1 ? "natural1" : null }]), 1600);
+  return {};
+}
 
 export function designPreviewSnapshot() {
   const hero = (characterId, name, className, raceName, hp, maxHp, isYou = false) => ({

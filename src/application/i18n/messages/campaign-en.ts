@@ -366,6 +366,8 @@ export const campaignEn = {
   "activity.dice.sending": "Sending your roll to the game…",
   "activity.dice.sent": "Roll sent",
   "activity.dice.applying": "The table is applying the result to your check.",
+  "activity.dice.versusDc": "vs DC {dc}",
+  "activity.dice.slow": "The roll is still being worked out. Its result will appear when it lands.",
   "activity.dice.done": "Done",
   "activity.dice.failed": "The roll didn’t go through",
   "activity.dice.tryAgain": "Try again",

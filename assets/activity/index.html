@@ -62,7 +62,8 @@
     <dialog class="dice-dialog" id="dice-dialog" aria-labelledby="dice-title" aria-describedby="dice-description">
       <button class="dialog-close" id="dice-close" data-i18n-aria-label="activity.dice.close" type="button" aria-label="Close roll prompt">×</button>
       <span class="eyebrow" data-i18n="activity.dice.readyEyebrow">YOUR CHECK IS READY</span>
-      <div class="dice-animation" id="dice-animation" aria-hidden="true"><img src="/art-icons/roll.svg" alt=""></div>
+      <div class="dice-animation" id="dice-animation" aria-hidden="true"><svg class="dice-d20" viewBox="0 0 100 100" focusable="false"><polygon class="d20-body" points="50,4 91,27 91,73 50,96 9,73 9,27"/><polygon class="d20-facet" points="50,22 78,66 22,66"/><path class="d20-edges" d="M50 22V4M50 22L9 27M50 22L91 27M78 66L91 27M78 66L91 73M78 66L50 96M22 66L9 27M22 66L9 73M22 66L50 96"/><path class="d20-crack" d="M53 6L45 31L57 45L43 64L52 94"/></svg><span class="dice-face" id="dice-face">20</span></div>
+      <div class="dice-result" id="dice-result" aria-live="polite" hidden><span class="dr-step" id="dr-mod"></span><span class="dr-step" id="dr-total"></span><span class="dr-step" id="dr-dc"></span><span class="dr-moment" id="dr-moment"></span></div>
       <h2 id="dice-title" data-i18n="activity.dice.title">Roll the dice</h2>
       <p class="dice-test" id="dice-test"></p>
       <p id="dice-description" data-i18n="activity.dice.description">Your check is ready. The game will apply the roll to the scene.</p>

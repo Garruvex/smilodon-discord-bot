@@ -2134,3 +2134,44 @@ body { background: #30251f; }
 .action-speech { flex-wrap: wrap; }
 .speech-problem { flex: 1 0 100%; color: #ffb4a3; font-size: 12px; font-weight: 700; }
 .speech-problem[hidden] { display: none; }
+
+/* The roll dialog: a d20 that tumbles while the server rolls, slows, lands on the real number and builds the sum a step at a time. */
+.dice-animation { position: relative; }
+.dice-d20 { width: 84px; height: 84px; overflow: visible; filter: drop-shadow(0 5px 6px #2a150d66); }
+.d20-body { fill: #7e2c28; stroke: #432c1e; stroke-width: 3; stroke-linejoin: round; transition: fill .25s; }
+.d20-facet { fill: #a03a31; stroke: none; }
+.d20-edges { fill: none; stroke: #432c1e; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; opacity: .8; }
+.d20-crack { fill: none; stroke: #1b0f0a; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
+.dice-face { position: absolute; inset: 0; display: grid; place-items: center; color: #fff0d4; font: 900 27px/1 var(--serif); font-variant-numeric: tabular-nums; text-shadow: 0 2px 4px #2a110c, 0 0 10px #2a110c99; pointer-events: none; }
+.dice-dialog.is-rolling .dice-d20 { animation: d20-spin .55s linear infinite; }
+.dice-dialog.is-settling .dice-d20 { animation: d20-settle 1.6s cubic-bezier(.12, .8, .2, 1) both; }
+.dice-dialog.is-landed .dice-d20 { animation: d20-land .45s cubic-bezier(.2, .9, .3, 1.35) both; }
+.dice-dialog.is-success .d20-body { fill: #2f5a38; }
+.dice-dialog.is-success .d20-facet { fill: #3f7549; }
+.dice-dialog.is-failure .d20-body { fill: #5a1d1a; }
+.dice-dialog.is-failure .d20-facet { fill: #70251f; }
+.dice-dialog.is-critical-success .d20-body { fill: #9a7220; stroke: #5a3d0f; }
+.dice-dialog.is-critical-success .d20-facet { fill: #c39a36; }
+.dice-dialog.is-critical-success .dice-animation { box-shadow: 0 0 0 2px #e8c35a, 0 0 34px #f2c94d99; }
+.dice-dialog.is-critical-success .dice-animation::after { position: absolute; inset: -4px; border: 3px solid #f2cb67; border-radius: inherit; content: ""; opacity: 0; pointer-events: none; animation: d20-burst .9s ease-out both; }
+.dice-dialog.is-critical-failure .d20-crack { opacity: 1; }
+.dice-dialog.is-critical-failure { animation: dice-fumble .45s ease-out both; }
+.dice-result { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 4px 12px; margin: 2px 0 6px; font-size: 20px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.dice-result[hidden] { display: none; }
+.dr-step { opacity: 0; transform: translateY(8px); transition: opacity .3s, transform .3s; }
+.dr-step.is-shown { opacity: 1; transform: none; }
+#dr-dc { font-size: 14px; font-weight: 800; color: #664d35; }
+.dr-moment { flex-basis: 100%; min-height: 1.2em; font-size: 11px; font-weight: 900; letter-spacing: .12em; text-align: center; }
+.dice-dialog.is-success .dice-result { color: #24502d; }
+.dice-dialog.is-failure .dice-result { color: #8c2a22; }
+.dice-dialog.is-critical-success .dr-moment { color: #8a6012; }
+.dice-dialog.is-critical-failure .dr-moment { color: #8c2a22; }
+@keyframes d20-spin { 0% { transform: rotate(0) scale(.96); } 50% { transform: rotate(190deg) scale(1.1); } 100% { transform: rotate(360deg) scale(.96); } }
+@keyframes d20-settle { from { transform: rotate(-330deg) scale(1.12); } to { transform: rotate(0) scale(1); } }
+@keyframes d20-land { from { transform: scale(1.22); } to { transform: scale(1); } }
+@keyframes d20-burst { from { opacity: .95; transform: scale(.85); } to { opacity: 0; transform: scale(1.7); } }
+@keyframes dice-fumble { 0%, 100% { transform: translate(-50%, -50%); } 20% { transform: translate(calc(-50% - 7px), -50%); } 45% { transform: translate(calc(-50% + 6px), -50%); } 70% { transform: translate(calc(-50% - 3px), -50%); } }
+@media (prefers-reduced-motion: reduce) {
+  .dice-dialog.is-rolling .dice-d20, .dice-dialog.is-settling .dice-d20, .dice-dialog.is-landed .dice-d20, .dice-dialog.is-critical-failure, .dice-dialog.is-critical-success .dice-animation::after { animation: none; }
+  .dr-step { transition: none; }
+}

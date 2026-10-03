@@ -25,7 +25,7 @@ export async function openGame(campaignId) {
 
 
 export async function loadTable() {
-  if (app.currentGameId === null || app.loadingTable) return;
+  if (app.currentGameId === null || app.currentGameId === "local-preview" || app.loadingTable) return;
   app.loadingTable = true;
   try {
     const wantsFull = app.tableToken === null || Date.now() - app.lastFullTableAt >= fullTableEveryMs;

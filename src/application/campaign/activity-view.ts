@@ -409,9 +409,11 @@ export function canSeeActivityCampaign(record: CampaignRecord, state: CampaignSt
   return participant || invited;
 }
 
-function recentRolls(state: CampaignState, characterId: string) {
-  const checks = Object.values(state.checks).filter((check) => check.characterId === characterId && check.result !== null).sort((a, b) => b.roundNumber - a.roundNumber).slice(0, 1)
-    .map((check) => ({ id: check.id as string, test: check.test, natural: check.result!.roll.d20.natural, total: check.result!.roll.total, dc: check.dc, success: check.result!.success, moment: check.result!.moments.headline?.kind === "natural20" || check.result!.moments.headline?.kind === "natural1" ? check.result!.moments.headline.kind : null }));
+// The viewer's newest settled checks, oldest first, so a roll waiting in the dice dialog finds its own result even when another
+// check settled in the same round. Presses (NPC dialogue) follow, as before.
+function recentRolls(state: CampaignState, characterId: string): ActivityTableView["rolls"] {
+  const rollOf = (check: CampaignState["checks"][string]): ActivityTableView["rolls"][number] => ({ id: check.id, test: check.test, natural: check.result!.roll.d20.natural, total: check.result!.roll.total, dc: check.dc, success: check.result!.success, moment: check.result!.moments.headline?.kind === "natural20" || check.result!.moments.headline?.kind === "natural1" ? check.result!.moments.headline.kind : null });
+  const checks = Object.values(state.checks).filter((check) => check.characterId === characterId && check.result !== null).sort((a, b) => a.roundNumber - b.roundNumber).slice(-3).map(rollOf);
   const presses = Object.values(state.dialogues).filter((dialogue) => dialogue.characterId === characterId && dialogue.check?.natural !== undefined).slice(-1)
     .map((dialogue) => ({ id: dialogue.id, test: dialogue.check!.test, natural: dialogue.check!.natural!, total: dialogue.check!.total, dc: dialogue.check!.dc, success: dialogue.check!.success, moment: dialogue.check!.moments.headline?.kind === "natural20" || dialogue.check!.moments.headline?.kind === "natural1" ? dialogue.check!.moments.headline.kind : null }));
   return [...checks, ...presses];

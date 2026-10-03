@@ -1,4 +1,5 @@
 import { app } from "./state.js";
+import { openRollPrompt } from "./dice.js";
 import { requestJson } from "./api.js";
 import { actionIcon, iconImage, liveActions, makeButton, setLiveMessage } from "./dom.js";
 import { classText, t } from "./i18n.js";
@@ -112,6 +113,14 @@ export function buildTableActions(game, liveActions, log) {
     const cancelJoin = { kind: "withdrawJoin" };
     log.push(JSON.stringify(cancelJoin));
     liveActions.append(makeButton(t("activity.action.cancelQueuedJoin"), () => void performAction(cancelJoin), false, "pause"));
+  }
+  // A prompt the player closed, or one they have not met yet, can always be brought back from here.
+  if (game.pendingRoll && !["paused", "safety", "recovery"].includes(game.mode)) {
+    const row = document.createElement("div");
+    row.className = "action-row action-urgent";
+    log.push(JSON.stringify({ kind: "openRoll", checkId: game.pendingRoll.checkId }));
+    row.append(makeButton(t("activity.dice.rollD20"), () => openRollPrompt(), true, "roll"));
+    liveActions.append(row);
   }
   if (["paused", "safety", "recovery"].includes(game.mode)) {
     if (game.canBegin) liveActions.append(makeButton(t("activity.action.resumeGame"), () => void performAction({ kind: "continue" }), true, "play"));

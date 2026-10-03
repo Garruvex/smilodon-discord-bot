@@ -394,6 +394,8 @@ export const campaignZhTW = {
   "activity.dice.sending": "正在將擲骰結果送至遊戲…",
   "activity.dice.sent": "已送出擲骰結果",
   "activity.dice.applying": "遊戲桌正在套用這次檢定結果。",
+  "activity.dice.versusDc": "對抗 DC {dc}",
+  "activity.dice.slow": "擲骰結果還在處理中，完成後會顯示。",
   "activity.dice.done": "完成",
   "activity.dice.failed": "擲骰沒有成功",
   "activity.dice.tryAgain": "再試一次",
