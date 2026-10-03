@@ -326,6 +326,7 @@ export const campaignZhTW = {
   "activity.status.loadingCampaign": "正在載入團務…",
   "activity.status.couldNotLoad": "無法載入這場遊戲。",
   "activity.status.sendingAction": "正在送出你的行動…",
+  "activity.status.didAction": "已完成：{action}",
   "activity.status.stillSending": "還在處理中，請稍候，不用重複按。",
   "activity.status.actionFailed": "無法送出這個行動。",
   "activity.status.actionSuccess": "行動已完成。",

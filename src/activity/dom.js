@@ -56,7 +56,7 @@ export function finishBusy(message, failed) {
   pill.hidden = false;
   pill.dataset.state = failed ? "failed" : "done";
   pill.querySelector(".busy-text").textContent = message;
-  busyTimers.push(setTimeout(() => { pill.hidden = true; }, failed ? 5000 : 1800));
+  busyTimers.push(setTimeout(() => { pill.hidden = true; }, failed ? 5000 : 2000));
 }
 
 
@@ -154,6 +154,7 @@ export function makeButton(label, onClick, primary = false, iconName = null) {
   text.textContent = label;
   button.append(text);
   button.addEventListener("click", (event) => {
+    app.pressedLabel = label;
     onClick(event);
     // The press went out: this button shows it, and the rest wait until the table answers.
     if (app.actionInFlight) button.classList.add("is-pending");

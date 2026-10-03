@@ -476,6 +476,9 @@ export function buildTableActions(game, liveActions, log) {
 }
 
 
+// After an action goes through, the panel stays locked for this long, with the pill saying what was done, so a press is not repeated by mistake.
+const cooldownMs = 2000;
+
 export async function performAction(action) {
   if (app.currentGameId === null || app.actionInFlight) return;
   if (app.currentGameId === "local-preview" && action.kind === "moveVote") {
@@ -510,8 +513,9 @@ export async function performAction(action) {
       const spell = spellNames.get(action.spellId) ?? String(action.spellId ?? "").replace(/^spell:/, "").replaceAll("-", " ");
       setLiveMessage(t("activity.status.castSuccess", { spell }));
     } else if (action.kind === "moveVote") setLiveMessage(t(action.choice === "stay" ? "activity.status.moveVoteStay" : "activity.status.moveVoteGo"));
-    else setLiveMessage(t("activity.status.actionSuccess"));
+    else setLiveMessage(app.pressedLabel === null ? t("activity.status.actionSuccess") : t("activity.status.didAction", { action: app.pressedLabel }));
     finishBusy(document.querySelector("#live-message").textContent, false);
+    await new Promise((resolve) => setTimeout(resolve, cooldownMs));
     return true;
   } catch (error) {
     const reason = error instanceof Error ? error.message : t("activity.status.actionFailed");
@@ -521,6 +525,7 @@ export async function performAction(action) {
     return false;
   } finally {
     app.actionInFlight = false;
+    app.pressedLabel = null;
     document.body.classList.remove("is-sending");
     // A refused press or one that changes nothing leaves the panel as it was, so the spinner on its button is cleared here.
     for (const pending of document.querySelectorAll(".live-action-choice.is-pending")) pending.classList.remove("is-pending");

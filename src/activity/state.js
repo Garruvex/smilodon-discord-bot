@@ -41,6 +41,8 @@ export const app = {
   actionDraftSubmissionKey: null,
   actionsSignature: "",
   actionInFlight: false,
+  // The label of the button last pressed, so the pill can say what was done.
+  pressedLabel: null,
   rollsPrimed: false,
   rollToastTimer: 0,
 };
