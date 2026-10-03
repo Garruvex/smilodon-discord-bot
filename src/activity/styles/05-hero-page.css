@@ -1,0 +1,42 @@
+/* Hero page: the name sits at the top, the tabs close the header so the actions start right under them, and actions use the full width. */
+.live-feature-grid > .live-hero { grid-template-rows: minmax(190px, 34%) minmax(0, 1fr); }
+.live-feature-grid > .live-hero .live-hero-copy { align-self: stretch; justify-content: flex-start; }
+.live-feature-grid > .live-hero .hero-workspace-tabs { margin-top: auto; flex-wrap: wrap; overflow: visible; }
+.hero-body .action-list { grid-template-columns: minmax(0, 1fr); }
+.hero-body .action-list > * { min-width: 0; }
+
+/* The class mark is a small backdrop in the corner, clear of the End turn button. */
+.hero-watermark { right: 14px; bottom: 12px; width: 124px; height: 124px; }
+@media (max-width: 760px) { .hero-watermark { width: 88px; height: 88px; } }
+
+/* Enemy details wrap instead of being cut off. */
+.live-enemy .live-party-copy > span:not(.party-health) { overflow: visible; text-overflow: clip; white-space: normal; }
+
+/* Turn status icons are dark enough to read; the colour of the circle says which state it is. */
+.party-name-line > .party-status-icon { width: 24px; height: 24px; flex-basis: 24px; border-color: var(--ui-border-strong); background: var(--ui-paper-inset); }
+.party-status-icon img { width: 14px; height: 14px; filter: brightness(0); opacity: .72; }
+.party-name-line > .party-status-icon[data-status="submitted"] { border-color: #6c7d4c; background: #cfdcb4; }
+.party-name-line > .party-status-icon[data-status="missed"] { border-color: #a8443a; background: #f1d3c8; }
+.party-name-line > .party-status-icon[data-status="acting"] img { filter: brightness(0) invert(1); opacity: 1; }
+
+/* Scene banner: no decorative ring over a picture, and the fade for the text eases in from the middle of the picture to its foot. */
+.live-scene-art:has(> img:not([hidden]))::before { content: none; }
+.live-scene-art::after { inset: 0; border: 0; border-radius: 0; box-shadow: none; background: linear-gradient(180deg, transparent 0%, transparent 40%, #1b171622 54%, #1b171670 70%, #17120fbd 88%, #17120fe6 100%); }
+
+/* Hero page: the portrait and stats are one column, the name, tabs and actions the other, so neither column sets the other's height and no gap opens under the name. */
+.live-feature-grid > .live-hero { grid-template-columns: minmax(200px, .78fr) minmax(0, 1.65fr); grid-template-rows: minmax(0, 1fr); align-items: stretch; }
+.hero-side, .hero-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.hero-side { grid-column: 1; grid-row: 1; overflow-y: auto; }
+.hero-main { grid-column: 2; grid-row: 1; }
+.live-feature-grid > .live-hero .hero-side .live-hero-art { flex: 0 0 auto; width: auto; height: auto; min-height: 0; }
+.live-feature-grid > .live-hero .hero-side .hero-stats { flex: 0 0 auto; }
+.live-feature-grid > .live-hero .hero-main .live-hero-copy { flex: 0 0 auto; align-self: stretch; }
+.live-feature-grid > .live-hero .hero-main .hero-workspace-tabs { margin: 12px 0 0; padding: 0; }
+.live-feature-grid > .live-hero .hero-main .hero-body { flex: 1 1 auto; min-height: 0; }
+@media (max-width: 760px) {
+  .live-feature-grid > .live-hero { grid-template-columns: minmax(125px, 34%) minmax(0, 1fr); grid-template-rows: auto; }
+  .hero-side { overflow: visible; }
+  .live-feature-grid > .live-hero .hero-side .live-hero-art { aspect-ratio: 3 / 4; }
+}
+@media (max-width: 480px) { .live-feature-grid > .live-hero { grid-template-columns: 104px minmax(0, 1fr); } }
+.hero-stats .member-stat-label img { filter: brightness(0); opacity: .6; }

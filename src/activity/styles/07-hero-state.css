@@ -1,0 +1,73 @@
+/* Character state: keep health and protection prominent, with live effects grouped below. */
+.hero-stats { display: flex; flex-direction: column; gap: 9px; overflow: visible; }
+.hero-stats .vitals { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "hp armor" "meter meter"; align-items: center; gap: 8px 10px; padding: 10px 11px; border-color: #aa8a58; border-radius: 7px; background: linear-gradient(145deg, #f0e1c3, #e2cfaa); box-shadow: inset 0 1px #fff4dd; }
+.hero-stats .vital-top { display: contents; }
+.hero-stats .vital-top span:first-child { grid-area: hp; color: #39271c; font: 700 17px/1.2 var(--serif); white-space: nowrap; }
+.hero-stats .vital-top span:last-child { grid-area: armor; padding: 5px 8px; border: 1px solid #9e8053; border-radius: 5px; background: #d4bd91; color: #482f20; font-size: 12px; font-weight: 800; white-space: nowrap; }
+.hero-stats .health-track { grid-area: meter; height: 9px; margin: 0; border: 1px solid #b19a71; border-radius: 99px; background: #c9b691; box-shadow: inset 0 1px 2px #49321e30; }
+.hero-stats .health-track i { display: block; height: 100%; border-radius: inherit; background: #6b7c48; transition: width .25s ease, background-color .2s ease; }
+.hero-stats .health-track i[data-health="wounded"] { background: #bd833b; }
+.hero-stats .health-track i[data-health="critical"] { background: #a53a30; }
+.hero-stats .member-overview { padding: 0; }
+.hero-stats .member-overview { display: block; }
+.hero-stats .member-condition-block { display: grid; gap: 6px; padding: 0; }
+.hero-stats .state-pane-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.hero-stats .member-condition-block h3 { margin: 0; color: #735d45; font-size: 9px; font-weight: 900; letter-spacing: .13em; text-transform: uppercase; }
+.hero-condition-state { padding: 3px 7px; border: 1px solid #718153; border-radius: 999px; background: #e3e8d2; color: #4c6037; font-size: 9px; font-weight: 900; letter-spacing: .06em; }
+.hero-condition-state[data-state="down"], .hero-condition-state[data-state="fallen"] { border-color: #a53a30; background: #f1d3c8; color: #842d26; }
+.hero-condition-state[data-state="away"] { border-color: #918675; background: #e4ded2; color: #655d51; }
+.hero-stats #member-overview-conditions { min-height: 22px; gap: 5px; color: #79664d; font-size: 11px; }
+.hero-stats .member-condition { padding: 3px 7px; border-color: #9f8358; border-radius: 999px; background: #e9d9b8; color: #493422; font-size: 10px; line-height: 1.2; }
+@media (max-width: 760px) {
+  .live-feature-grid > .live-hero { grid-template-rows: minmax(190px, 38%) auto minmax(250px, 1fr); }
+  .live-feature-grid > .live-hero .hero-side,
+  .live-feature-grid > .live-hero .hero-main { display: contents; }
+  .live-feature-grid > .live-hero .live-hero-copy { grid-column: 2; grid-row: 1; }
+  .live-feature-grid > .live-hero .hero-stats { grid-column: 1 / -1; grid-row: 2; }
+  .live-feature-grid > .live-hero .hero-body { grid-column: 1 / -1; grid-row: 3; }
+  .hero-stats { grid-column: 1 / -1; grid-row: 2; display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); align-items: center; gap: 12px; padding: 10px 12px; border-top: 1px solid #b18c51; }
+  .hero-body { grid-column: 1 / -1; grid-row: 3; min-height: 250px; }
+}
+@media (max-width: 430px) {
+  .live-feature-grid > .live-hero { grid-template-columns: 104px minmax(0, 1fr); grid-template-rows: 170px auto minmax(250px, 1fr); }
+  .hero-stats { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 8px; padding: 9px; }
+  .hero-stats .vitals { gap: 6px; padding: 8px; }
+  .hero-stats .vital-top span:first-child { font-size: 14px; }
+  .hero-stats .vital-top span:last-child { padding: 4px 6px; font-size: 10px; }
+  .hero-stats .member-condition-block h3 { font-size: 8px; }
+  .hero-stats .member-condition { padding: 3px 6px; font-size: 9px; }
+}
+
+/* The in-character line sits under the action composer and never takes the action slot. */
+.action-speech { display: flex; gap: 8px; margin-top: 8px; }
+.action-speech .live-action-input { flex: 1 1 auto; min-width: 0; }
+.action-speech .live-action-choice { flex: 0 0 auto; }
+.live-party-copy > .party-class-line { display: grid; gap: 1px; }
+.live-party-copy > .party-class-line > span { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Resources: spell slots and class feature uses as pips, under the vitals on every tab. */
+.hero-resources { display: grid; margin: 0 0 12px 12px; border: 1px solid #aa8a58; border-radius: 7px; background: linear-gradient(145deg, #f0e1c3, #e2cfaa); box-shadow: inset 0 1px #fff4dd; }
+.hero-resources h3 { margin: 0; color: #735d45; font-size: 9px; font-weight: 900; letter-spacing: .13em; text-transform: uppercase; }
+.hero-resources [hidden] { display: none; }
+.hr-slots { display: grid; grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); }
+.hr-slot, .hr-use { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 8px; }
+.hr-label { min-width: 0; overflow: hidden; color: #4a3626; font-size: 11px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.hr-slot .hr-label { color: #735d45; }
+.hr-uses { display: grid; border-top: 1px dashed #b79c71; }
+.hr-uses:empty { display: none; }
+.hr-pips { display: inline-flex; flex: 0 0 auto; color: #4a3626; font-size: 11px; font-weight: 800; }
+.hr-pip { border: 1.5px solid #8a3a2e; border-radius: 50%; box-sizing: border-box; background: transparent; }
+.hr-pip[data-state="full"] { background: radial-gradient(circle at 35% 30%, #c45a46, #8a3a2e); box-shadow: 0 1px 2px #4a1f1840; }
+.hr-use .hr-pip { border-color: #5f6f3f; }
+.hr-use .hr-pip[data-state="full"] { background: radial-gradient(circle at 35% 30%, #8fa263, #5f6f3f); }
+.hero-resources { gap: 6px; padding: 8px 10px 9px; }
+.hr-slots { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 12px; }
+.hr-slot .hr-label { min-width: 10px; font-size: 11px; font-weight: 900; }
+.hr-pips { gap: 3px; }
+.hr-pip { width: 9px; height: 9px; }
+.hr-uses { gap: 4px; padding-top: 6px; }
+.live-feature-grid > .live-hero .hero-side .live-hero-art { aspect-ratio: 9 / 10; }
+.hr-slot { justify-content: flex-start; gap: 7px; }
+.hr-slot .hr-label { flex: 0 0 12px; }
+.hero-side { scrollbar-width: thin; }
+.hero-resources { margin-bottom: 6px; }

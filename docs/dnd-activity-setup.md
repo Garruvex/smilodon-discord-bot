@@ -37,3 +37,12 @@ If the tunnel process runs directly on the host instead, publish the selected bo
 - OAuth identity and launch-server membership are verified through Discord on the bot server. The Activity receives an opaque, in-memory session token; a bot restart expires those sessions, so players should reopen the Activity after a restart.
 
 The game list is scoped to the server in which the Activity was launched. Private campaigns are only shown to their members, organizer, or a player with an active invitation. The Activity and Discord campaign controls act on the same saved campaign, so updates appear in both views; routine snapshot polling itself is backend-only.
+
+## Source layout and build
+
+`assets/activity/activity.js` and `assets/activity/styles.css` are build output; edit the sources and run `npm run build:activity`.
+
+- `src/activity/main.js` starts the page. The rest of `src/activity/` is one module per job: `api` (requests, quiet re-sign-in), `poll` (the table refresh), `render`, `lobby`, `map`, `party`, `hero`, `actions` (the action panel and its pickers), `vote`, `dice`, `session`, `preview`. `state.js` holds what the page knows, as the single `app` object; assign to its fields instead of keeping module-level variables.
+- `src/activity/styles/` is the stylesheet, bundled in the order of `index.css`. The files are layered redesigns, so that order is the cascade: do not reorder them.
+- `?design-preview` (with `&journey`, `&vote`, `&vote&away`, `&roll&natural=20`, `&lobby-preview` and others, plus `&language=zh-TW`) shows the table with sample data and no server.
+- `tools/activity/compare-server.mjs` checks a change did not alter what the page looks like: it serves an old and a new build side by side, and `/compare` compares the page HTML while `/compare?styles` compares the computed style of every element at desktop and phone width. Keep a copy of the old `activity.js` and `styles.css`, pass them as arguments, and expect "ALL SAME" for a refactor.

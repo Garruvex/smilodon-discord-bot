@@ -1,0 +1,8 @@
+/* The vote card clears the header (its height is set from the client) so nothing of it is covered, and keeps its own speech box. */
+.scene-move-decision[open] { top: var(--vote-top, 50%); transform: translate(-50%, 0); max-height: calc(100dvh - var(--vote-top, 16px) - 16px); }
+@media (min-width: 801px) { .scene-move-decision[open] { top: 50%; transform: translate(-50%, -50%); max-height: calc(100dvh - 32px); } }
+.scene-move-decision .action-speech { margin-top: 4px; padding-top: 10px; border-top: 1px solid #d8bd7845; }
+.scene-move-decision .action-speech input { background: #1b1612; color: #f8e9c9; border-color: #ad9975; }
+.action-speech { flex-wrap: wrap; }
+.speech-problem { flex: 1 0 100%; color: #ffb4a3; font-size: 12px; font-weight: 700; }
+.speech-problem[hidden] { display: none; }
