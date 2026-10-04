@@ -34,19 +34,22 @@ const script = zh ? {
 };
 
 const layoutCss = `
-:root { --lp-side-h: min(54vh, 480px); --lp-map-h: min(40vh, 380px); --lp-left-w: 300px; --lp-right-w: 340px; --lp-map-w: min(600px, calc(100vw - 24px)); }
-.lp-tab { position: fixed; z-index: 60; top: calc(54px + var(--lp-side-h) / 2); transition: left .22s ease, right .22s ease, bottom .22s ease; display: flex; align-items: center; gap: 8px; padding: 14px 7px; border: 1px solid #796546; background: #211e1bf2; color: #eee7d9; font: 800 12px/1 system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; writing-mode: vertical-rl; box-shadow: 0 6px 24px #0008; transform: translateY(-50%); }
+:root { --lp-gutter: clamp(16px, 3.5vw, 48px); --lp-side-h: min(calc(100vh - 48px), 680px); --lp-map-h: min(68vh, 520px); --lp-left-w: 320px; --lp-right-w: 340px; /* as wide as the page's own panels: the shell is 1120px with a gutter each side */ --lp-map-w: min(calc(1120px - 2 * var(--lp-gutter)), calc(100vw - 2 * var(--lp-gutter))); }
+.lp-tab { position: fixed; z-index: 60; top: 50%; transition: left .22s ease, right .22s ease, bottom .22s ease; display: flex; align-items: center; gap: 8px; padding: 14px 7px; border: 1px solid #796546; background: #211e1bf2; color: #eee7d9; font: 800 12px/1 system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; writing-mode: vertical-rl; box-shadow: 0 6px 24px #0008; transform: translateY(-50%); }
 .lp-tab[data-side="left"] { left: 0; border-left: 0; border-radius: 0 10px 10px 0; }
 .lp-tab[data-side="bottom"] { top: auto; transition: bottom .22s ease; bottom: 0; left: 50%; padding: 8px 18px; border-bottom: 0; border-radius: 10px 10px 0 0; writing-mode: horizontal-tb; transform: translateX(-50%); }
 .lp-tab[data-side="right"] { right: 0; border-right: 0; border-radius: 10px 0 0 10px; }
 .lp-tab[aria-expanded="true"] { background: #4a3b27; border-color: #e5c988; }
 .lp-badge { min-width: 18px; padding: 3px 5px; border-radius: 999px; background: #a43c31; color: #fff0d4; font: 800 10px/1 system-ui, sans-serif; text-align: center; writing-mode: horizontal-tb; letter-spacing: 0; }
 .lp-badge[hidden] { display: none; }
-.lp-drawer { position: fixed; z-index: 55; top: 54px; height: var(--lp-side-h); width: min(340px, 92vw); display: flex; flex-direction: column; border: 1px solid #9c7a4b; background: #f3e7cb; color: #33241a; box-shadow: 0 10px 40px #000a; transition: transform .22s ease; }
+.lp-drawer { position: fixed; z-index: 55; top: calc((100vh - var(--lp-side-h)) / 2); height: var(--lp-side-h); width: min(340px, 92vw); display: flex; flex-direction: column; border: 1px solid #9c7a4b; background: #f3e7cb; color: #33241a; box-shadow: 0 10px 40px #000a; transition: transform .22s ease; }
 .lp-drawer[data-side="left"] { left: 0; border-left: 0; border-radius: 0 12px 12px 0; transform: translateX(-104%); width: min(var(--lp-left-w), 92vw); }
 .lp-drawer[data-side="left"] .party-section { margin: 0; padding: 10px; background: transparent; border: 0; box-shadow: none; }
 .lp-drawer[data-side="left"] .live-party-grid { grid-template-columns: minmax(0, 1fr); }
-.lp-drawer[data-side="bottom"] { top: auto; bottom: 0; left: 50%; right: auto; width: var(--lp-map-w); height: var(--lp-map-h); border-bottom: 0; border-radius: 12px 12px 0 0; transform: translate(-50%, 104%); }
+.lp-drawer[data-side="left"] .section-heading { display: none; }
+/* One line for the class, so the whole party fits without scrolling. */
+.lp-drawer[data-side="left"] .party-class-line { display: flex; gap: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lp-drawer[data-side="bottom"] { z-index: 57; top: auto; bottom: 0; left: 50%; right: auto; width: var(--lp-map-w); height: var(--lp-map-h); border-bottom: 0; border-radius: 12px 12px 0 0; transform: translate(-50%, 104%); }
 .lp-drawer[data-side="bottom"][data-open="true"] { transform: translate(-50%, 0); }
 .lp-tab[data-side="bottom"][aria-expanded="true"] { bottom: var(--lp-map-h); }
 /* A tab rides the edge of its panel: out to the panel's edge when it opens, back to the screen edge when it closes. */
