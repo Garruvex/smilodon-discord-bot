@@ -1,11 +1,11 @@
 // Design preview only (?design-preview&story): a story panel with made-up entries, in four places, so the placement can be chosen by looking at it.
 // It builds its own markup and styles and touches nothing else on the page. Switch the place with the bar at the top, or with &placement=scene|side|drawer|subtitle.
 const zh = new URLSearchParams(window.location.search).get("language") === "zh-TW";
-const words = zh
+export const words = zh
   ? { title: "故事", story: "故事", combat: "戰鬥", all: "全部", newEntries: (n) => `${n} 則新訊息`, jump: "跳到最新", simulate: "模擬新事件", places: { scene: "場景下方", side: "右側欄", drawer: "底部抽屜", subtitle: "場景字幕" }, bar: "故事面板位置", empty: "還沒有故事。", expand: "展開", collapse: "收合" }
   : { title: "Story", story: "Story", combat: "Combat", all: "All", newEntries: (n) => `${n} new`, jump: "Jump to latest", simulate: "Simulate an event", places: { scene: "Under the scene", side: "Side column", drawer: "Bottom drawer", subtitle: "Scene subtitle" }, bar: "Story panel placement", empty: "Nothing told yet.", expand: "Expand", collapse: "Collapse" };
 
-const entries = zh ? [
+export const entries = zh ? [
   { kind: "narration", text: "月光穿過坍塌的穹頂，照在灰塵瀰漫的聖堂裡。空氣中有一股潮濕的鐵鏽味。" },
   { kind: "action", who: "艾莉亞・維爾", text: "舉起提燈，慢慢走向祭壇。" },
   { kind: "roll", who: "艾莉亞・維爾", text: "奧秘檢定", total: 17, dc: 15, ok: true },
@@ -27,7 +27,7 @@ const entries = zh ? [
   { kind: "narration", text: "The sentinel gives a low rumble, and blue light seeps through the cracks in its stone." },
 ];
 
-const more = zh ? [
+export const more = zh ? [
   { kind: "combat", who: "霍洛哨兵", text: "用石拳攻擊 皮普", detail: "命中 (17 對 AC 14)，造成 6 點傷害" },
   { kind: "narration", text: "皮普被擊退，撞在冰冷的石柱上，喘不過氣來。" },
   { kind: "roll", who: "皮普", text: "體質豁免", total: 12, dc: 13, ok: false },
@@ -37,7 +37,7 @@ const more = zh ? [
   { kind: "roll", who: "Pip", text: "Constitution save", total: 12, dc: 13, ok: false },
 ];
 
-const css = `
+export const css = `
 .sp-bar { position: fixed; z-index: 90; top: 8px; right: 8px; display: flex; gap: 4px; align-items: center; flex-wrap: wrap; justify-content: flex-end; max-width: calc(100% - 16px); padding: 5px 6px; border: 1px solid #796546; border-radius: 10px; background: #211e1bf2; color: #eee7d9; font: 700 11px/1 system-ui, sans-serif; box-shadow: 0 6px 24px #0008; }
 .sp-bar span { padding: 0 6px; color: #c8b794; }
 .sp-bar button { padding: 6px 9px; border: 1px solid #5d4d38; border-radius: 7px; background: #2c2620; color: inherit; font: inherit; cursor: pointer; }
@@ -95,7 +95,7 @@ const css = `
 }
 `;
 
-function entryNode(entry, fresh) {
+export function entryNode(entry, fresh) {
   const node = document.createElement("p");
   node.className = `sp-entry${fresh ? " is-new" : ""}`;
   node.dataset.kind = entry.kind;
@@ -125,11 +125,8 @@ function entryNode(entry, fresh) {
   return node;
 }
 
-export function mountStoryPreview() {
-  const style = document.createElement("style");
-  style.textContent = css;
-  document.head.append(style);
-
+// The panel itself: head with tabs, a feed that sticks to the newest entry, and a jump button when it does not. add() appends an entry.
+export function buildStoryPanel() {
   const panel = document.createElement("section");
   panel.className = "sp";
   panel.dataset.open = "true";
@@ -184,6 +181,15 @@ export function mountStoryPreview() {
   feed.addEventListener("scroll", () => { if (atBottom()) { unread = 0; jump.hidden = true; } });
   for (const entry of entries) add(entry, false);
   applyFilter();
+  return { panel, feed, fold, add, applyFilter };
+}
+
+export function mountStoryPreview() {
+  const style = document.createElement("style");
+  style.textContent = css;
+  document.head.append(style);
+
+  const { panel, feed, fold, add } = buildStoryPanel();
 
   const setOpen = (open) => {
     panel.dataset.open = String(open);

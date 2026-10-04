@@ -8,7 +8,7 @@ import { bindMapControls } from "./map.js";
 import { setTableConnectionState } from "./poll.js";
 import { designPreviewSnapshot } from "./preview.js";
 import { renderGame } from "./render.js";
-import { authenticate } from "./session.js";
+import { mountLayoutPreview } from "./layout-preview.js";
 import { mountStoryPreview } from "./story-preview.js";
 
 bindMapControls();
@@ -103,6 +103,8 @@ if (new URLSearchParams(window.location.search).has("design-preview")) {
     const rollPreview = new URLSearchParams(window.location.search).get("roll-preview");
     if (rollPreview === "20" || rollPreview === "1") {
     if (new URLSearchParams(window.location.search).has("story")) mountStoryPreview();
+    if (new URLSearchParams(window.location.search).has("story")) mountStoryPreview();
+    if (new URLSearchParams(window.location.search).has("layout")) mountLayoutPreview();
       const natural = Number(rollPreview);
       showRolls([{ id: `preview-roll-${natural}`, test: { kind: "skill", skill: "persuasion" }, natural, total: natural === 20 ? 25 : 4, dc: 15, success: natural === 20, moment: natural === 20 ? "natural20" : "natural1" }]);
     }
