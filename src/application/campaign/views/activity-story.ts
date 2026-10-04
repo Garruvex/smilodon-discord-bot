@@ -3,7 +3,8 @@ import type { CampaignEvent } from "../../../domain/campaign/events/campaign-eve
 import type { Glossary } from "../../../domain/campaign/rules/content-registry.js";
 import type { CheckTest } from "../../../domain/campaign/character/character-sheet.js";
 import type { CampaignState } from "../../../domain/campaign/state/campaign-state.js";
-import { encounterRecords, type CombatTargetResult } from "../dm/combat-records.js";
+import type { Combatant, CombatantCondition, EncounterState } from "../../../domain/campaign/combat/combat-state.js";
+import { combatantName, encounterRecords, type CombatTargetResult } from "../dm/combat-records.js";
 
 // The story as the Activity shows it: what the table has already read in the Adventure channel, rebuilt from the event log, newest last. Public
 // only (the Narrator's tellings, what heroes did and said, the visible results of a fight): nothing from a private summary, the DM's notes or a
@@ -19,6 +20,11 @@ export type StoryEntry =
   // A place change, the start of a fight or its end: the client words it.
   | { readonly id: string; readonly kind: "system"; readonly code: "scene" | "combatBegins" | "victory" | "defeat"; readonly text: string | null }
   | { readonly id: string; readonly kind: "combat"; readonly who: string; readonly using: string; readonly opportunity: boolean; readonly targets: readonly StoryTarget[] }
+  // The turn-by-turn moments of a fight that are not an attack or a spell.
+  | { readonly id: string; readonly kind: "maneuver"; readonly who: string; readonly maneuver: "dash" | "dodge" | "disengage" | "giveItem" | "useItem" }
+  | { readonly id: string; readonly kind: "move"; readonly who: string; readonly zone: string }
+  | { readonly id: string; readonly kind: "fled"; readonly who: string }
+  | { readonly id: string; readonly kind: "deathSave"; readonly who: string; readonly natural: number; readonly condition: CombatantCondition }
   // A hero going down, or a foe falling: the moments the Activity may call out.
   | { readonly id: string; readonly kind: "alert"; readonly tone: "down" | "slain"; readonly name: string };
 
@@ -59,6 +65,14 @@ export function buildActivityStory(state: CampaignState, events: readonly Campai
   // Where each declared fight action sits in the log, so its result line can be put in order with the rest.
   const declaredAt = new Map<string, number>();
   events.forEach((event, index) => { if (event.kind === "resolutionDeclared") declaredAt.set(event.resolution.id, index); });
+
+  // The fight being told, to put names to its combatants and zones.
+  let encounter: EncounterState | null = null;
+  const names = { state, bible, glossary };
+  const combatantOf = (id: string): string => {
+    const combatant: Combatant | undefined = encounter?.combatants[id];
+    return combatant === undefined ? id : combatantName(combatant, names);
+  };
 
   events.forEach((event, index) => {
     switch (event.kind) {
@@ -102,10 +116,23 @@ export function buildActivityStory(state: CampaignState, events: readonly Campai
         add(index, { id: `e${index}`, kind: "system", code: "scene", text: findScene(bible, event.sceneId)?.title ?? null });
         break;
       case "encounterStarted":
+        encounter = event.encounter;
         add(index, { id: `e${index}`, kind: "system", code: "combatBegins", text: null });
         break;
       case "encounterEnded":
         add(index, { id: `e${index}`, kind: "system", code: event.outcome, text: null });
+        break;
+      case "actionTaken":
+        add(index, { id: `e${index}`, kind: "maneuver", who: combatantOf(event.combatantId), maneuver: event.action });
+        break;
+      case "combatantMoved":
+        add(index, { id: `e${index}`, kind: "move", who: combatantOf(event.combatantId), zone: encounter?.zones.find((zone) => zone.id === event.zoneId)?.name ?? event.zoneId });
+        break;
+      case "combatantFled":
+        add(index, { id: `e${index}`, kind: "fled", who: combatantOf(event.combatantId) });
+        break;
+      case "deathSaveRolled":
+        add(index, { id: `e${index}`, kind: "deathSave", who: combatantOf(event.combatantId), natural: event.roll.d20.natural, condition: event.condition });
         break;
       default:
         break;

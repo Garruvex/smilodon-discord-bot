@@ -4,7 +4,7 @@ import { rollLabel } from "./dice.js";
 // The story the table has read, kept in a drawer, and its newest line shown as a strip under the scene.
 // game.story is the server's list of entries (newest last); the ids stay the same between snapshots, so only what is new is added.
 
-const combatKinds = new Set(["combat", "alert"]);
+const combatKinds = new Set(["combat", "alert", "maneuver", "move", "fled", "deathSave"]);
 // What counts as news for the badge on the closed drawer: not the fight's blow-by-blow.
 const newsKinds = new Set(["narration", "action", "speech", "clue", "alert"]);
 
@@ -34,6 +34,13 @@ export function entryText(entry) {
     case "clue": return entry.text;
     case "roll": return `${entry.who}: ${rollLabel(entry.test)}, ${entry.total} ${t("activity.dice.versusDc", { dc: entry.dc })} ${entry.success ? "✓" : "✗"}`;
     case "combat": return t("activity.story.combatLine", { who: entry.who, using: entry.using, results: entry.targets.map(checkText).join("; ") });
+    case "maneuver": return t(`activity.story.${entry.maneuver}`, { who: entry.who });
+    case "move": return t("activity.story.move", { who: entry.who, zone: entry.zone });
+    case "fled": return t("activity.story.fled", { who: entry.who });
+    case "deathSave": {
+      const result = entry.condition === "stable" ? "deathStable" : entry.condition === "dead" ? "deathDead" : entry.condition === "active" ? "deathRises" : "deathHolds";
+      return t("activity.story.deathSave", { who: entry.who, natural: entry.natural, result: t(`activity.story.${result}`) });
+    }
     case "alert": return t(entry.tone === "slain" ? "activity.story.alertSlain" : "activity.story.alertDown", { name: entry.name });
     case "system":
       return entry.code === "scene" ? t("activity.story.scene", { scene: entry.text ?? "" }) : t(`activity.story.${entry.code}`);

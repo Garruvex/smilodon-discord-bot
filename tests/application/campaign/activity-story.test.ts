@@ -4,7 +4,9 @@ import type { AdventureBible } from "../../../src/domain/campaign/adventure/adve
 import type { CampaignEvent } from "../../../src/domain/campaign/events/campaign-event.js";
 import type { Glossary } from "../../../src/domain/campaign/rules/content-registry.js";
 import { buildActivityStory, storyBudget, storyMinimum } from "../../../src/application/campaign/views/activity-story.js";
-import { newCampaign } from "../../domain/campaign/campaign-fixtures.js";
+import { enSrd51Glossary } from "../../../src/application/i18n/campaign/glossary/en/srd-5.1.js";
+import { alex, newCampaign } from "../../domain/campaign/campaign-fixtures.js";
+import { startedFight } from "../../domain/campaign/combat-fixtures.js";
 
 // The story the Activity shows is the public log: tellings, what heroes did and said, clues, place changes. Nothing private reaches it.
 
@@ -85,5 +87,33 @@ describe("the Activity story", () => {
   it("carries nothing from a private summary or a hidden note", () => {
     const entries = story([{ kind: "summaryRecorded", throughRound: 3, visibility: "private", text: "The DM's secret." }]);
     expect(entries).toEqual([]);
+  });
+});
+
+describe("the Activity story in a fight", () => {
+  const told = (fight: ReturnType<typeof startedFight>) => buildActivityStory(fight.state, fight.events, bible, enSrd51Glossary);
+
+  it("tells where the fight began, what an attack did, and who fell", () => {
+    const fight = startedFight().rolls([12], [5]);
+    fight.run(alex, { kind: "combatAttack", combatantId: "c-mira", targetId: "goblin-a", weapon: "item:shortbow" });
+    const entries = told(fight);
+    expect(entries.map((entry) => entry.kind)).toEqual(["system", "combat", "alert"]);
+    expect(entries[0]).toMatchObject({ code: "combatBegins" });
+    expect(entries[1]).toMatchObject({ kind: "combat", who: "Mira", using: "Shortbow", targets: [{ name: "Goblin A", check: "hit", damage: 8 }] });
+    expect(entries[2]).toMatchObject({ kind: "alert", tone: "slain", name: "Goblin A" });
+  });
+
+  it("tells the turn's other moves: a dodge by name", () => {
+    const fight = startedFight();
+    fight.run(alex, { kind: "combatDodge", combatantId: "c-mira" });
+    expect(told(fight)).toContainEqual({ id: expect.any(String), kind: "maneuver", who: "Mira", maneuver: "dodge" });
+  });
+
+  it("reports a miss as a miss, with no call-out", () => {
+    const fight = startedFight().rolls([2]);
+    fight.run(alex, { kind: "combatAttack", combatantId: "c-mira", targetId: "goblin-a", weapon: "item:shortbow" });
+    const combat = told(fight).find((entry) => entry.kind === "combat");
+    expect(combat).toMatchObject({ targets: [{ name: "Goblin A", check: "miss", damage: 0 }] });
+    expect(told(fight).some((entry) => entry.kind === "alert")).toBe(false);
   });
 });
