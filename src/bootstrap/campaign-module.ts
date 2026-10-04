@@ -360,9 +360,10 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
         if ((storedRecord.record.lifecycle !== "active" && storedRecord.record.lifecycle !== "paused") || storedCampaign === undefined) {
           return { kind: "refused", reason: "notActive" } as const;
         }
+        const events = (await tx.readEvents(key)).map((envelope) => envelope.event);
         return {
           kind: "ok",
-          value: buildActivityTableView(storedRecord.record, storedCampaign.state, adventure.bible, content, glossaries[storedRecord.record.language], userId, adventure.heroes, clock.now(), savedHeroChoices),
+          value: buildActivityTableView(storedRecord.record, storedCampaign.state, adventure.bible, content, glossaries[storedRecord.record.language], userId, adventure.heroes, clock.now(), savedHeroChoices, events),
           token,
         } as const;
         });

@@ -8,6 +8,8 @@ import { renderLobby } from "./lobby.js";
 import { renderMap } from "./map.js";
 import { renderEnemies, renderParty } from "./party.js";
 import { renderMoveNotice, renderPresenceToggle } from "./vote.js";
+import { syncDrawers } from "./drawers.js";
+import { renderStory } from "./story.js";
 
 export const phaseKeys = { opening: "activity.phase.opening", readyCheck: "activity.status.gathering", collecting: "activity.phase.collecting", planning: "activity.phase.planning", awaitingRolls: "activity.phase.awaitingRolls", combat: "activity.phase.combat", waiting: "activity.phase.waiting", paused: "activity.phase.paused", safety: "activity.phase.safety", recovery: "activity.phase.recovery", archived: "activity.phase.archived" };
 
@@ -60,6 +62,8 @@ export function paintGame(game) {
     paintSection("map", [game.map, game.mapText, app.mapPick, app.uiLanguage], () => renderMap(game.map, game.mapText));
     renderTable(game);
   }
+  syncDrawers(game);
+  renderStory(game);
 }
 
 

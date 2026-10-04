@@ -7,13 +7,13 @@ import { openCharactersScreen, wireCharacterScreen } from "./character-builder.j
 import { wireArtworkViewer } from "./artwork-viewer.js";
 import { bindMapControls } from "./map.js";
 import { setTableConnectionState } from "./poll.js";
-import { designPreviewSnapshot } from "./preview.js";
+import { designPreviewSnapshot, previewStoryNext } from "./preview.js";
 import { renderGame } from "./render.js";
-import { mountLayoutPreview } from "./layout-preview.js";
-import { mountStoryPreview } from "./story-preview.js";
+import { mountDrawers } from "./drawers.js";
 import { authenticate } from "./session.js";
 
 bindMapControls();
+mountDrawers();
 wireCharacterScreen();
 wireArtworkViewer();
 
@@ -105,8 +105,10 @@ if (new URLSearchParams(window.location.search).has("design-preview")) {
   void setLanguage(previewLanguage).then(() => {
     setTableConnectionState("live");
     renderGame(preview);
-    if (new URLSearchParams(window.location.search).has("story")) mountStoryPreview();
-    if (new URLSearchParams(window.location.search).has("layout")) mountLayoutPreview();
+    if (new URLSearchParams(window.location.search).has("story-live")) {
+      let n = 0;
+      setInterval(() => { preview.story = [...preview.story, previewStoryNext(n)]; n += 1; renderGame(preview); }, 4000);
+    }
     const rollPreview = new URLSearchParams(window.location.search).get("roll-preview");
     if (rollPreview === "20" || rollPreview === "1") {
       const natural = Number(rollPreview);

@@ -13,6 +13,8 @@ import type { CampaignRecord } from "./ports/campaign-record.js";
 import { readyToStart } from "../../domain/campaign/lobby/lobby.js";
 import { texts } from "../i18n/texts.js";
 import { buildMapView } from "./views/map-view.js";
+import { buildActivityStory, type StoryEntry } from "./views/activity-story.js";
+import type { CampaignEvent } from "../../domain/campaign/events/campaign-event.js";
 
 // A picture is on disk once it is made, even while its Discord post is still being retried.
 const hasPicture = (status: string | undefined): boolean => status === "done" || status === "made";
@@ -100,6 +102,8 @@ export interface ActivityTableView {
   readonly pendingRoll: null | { readonly checkId: string; readonly test: CheckTest; readonly action: string | null };
   readonly pendingRollCount: number;
   // The viewer's newest settled rolls (a check, a press); the client shows each one once.
+  // The story so far, newest last: what the table has read in the Adventure channel and what the fight did.
+  readonly story: readonly StoryEntry[];
   readonly rolls: readonly { readonly id: string; readonly test: CheckTest; readonly natural: number; readonly total: number; readonly dc: number; readonly success: boolean; readonly moment: "natural20" | "natural1" | null }[];
   readonly submittedCount: number;
   readonly participantCount: number;
@@ -195,6 +199,7 @@ export function buildActivityTableView(
   heroes: readonly { readonly id: string; readonly name: string; readonly class: string }[],
   now: number,
   savedHeroChoices: readonly { readonly id: string; readonly name: string; readonly className: string }[] = [],
+  events: readonly CampaignEvent[] = [],
 ): ActivityTableView {
   const panel = buildPanelView(record, state, bible, glossary);
   const names = { state, bible, glossary };
@@ -383,6 +388,7 @@ export function buildActivityTableView(
         return check === undefined ? null : { checkId: check.id, test: roll.test, action: roll.action };
       })(),
     pendingRollCount: panel.pendingRolls.length,
+    story: buildActivityStory(state, events, bible, glossary),
     rolls: ownCharacterId === null ? [] : recentRolls(state, ownCharacterId),
     submittedCount: state.round == null ? 0 : Object.values(state.round.submissions).filter((submission) => submission.kind === "action" || submission.kind === "pass").length,
     participantCount: state.round?.participants.length ?? 0,

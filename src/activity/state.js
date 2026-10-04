@@ -43,6 +43,11 @@ export const app = {
   actionInFlight: false,
   // The label of the button last pressed, so the pill can say what was done.
   pressedLabel: null,
+  // The panels at the screen's edges: which ones the table opened by itself, whether it was your turn at the last paint, how many story lines came while the story was shut, and the language the story was last worded in.
+  drawerAuto: { left: false, bottom: false, right: false },
+  wasMyTurn: false,
+  unreadStory: 0,
+  drawerLanguage: null,
   rollsPrimed: false,
   rollToastTimer: 0,
 };
