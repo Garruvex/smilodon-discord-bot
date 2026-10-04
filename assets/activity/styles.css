@@ -1724,6 +1724,9 @@ div.live-party-card:hover:not(.is-selected) { border-color: var(--ui-border); tr
 .party-portrait-open { display: none; position: absolute; inset: 0; z-index: 4; width: 100%; height: 100%; align-items: flex-end; justify-content: flex-end; padding: 2px; border: 0; background: transparent; color: var(--ui-paper-raised); cursor: zoom-in; pointer-events: auto; }
 .live-party-sigil:has(> .party-portrait:not([hidden])) > .party-portrait-open { display: flex; }
 .party-portrait-open svg { width: 14px; height: 14px; padding: 4px; }
+.characters-portrait-large > .characters-portrait-open { display: none; position: absolute; right: 3px; bottom: 3px; z-index: 2; width: 44px; height: 44px; align-items: center; justify-content: center; padding: 0; border: 0; background: transparent; color: var(--ui-paper-raised); cursor: zoom-in; }
+.characters-portrait-large:has(> img:not([hidden])) > .characters-portrait-open { display: flex; }
+.characters-portrait-open:hover svg { background: color-mix(in srgb, var(--ui-ink) 88%, transparent); }
 .artwork-viewer { width: min(1200px, calc(100vw - 24px)); max-width: none; max-height: calc(100dvh - 24px); padding: 12px; border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius); background: var(--ui-paper); color: var(--ui-ink); box-shadow: 0 20px 60px #120c09aa; }
 .artwork-viewer::backdrop { background: #110c09dc; }
 .artwork-viewer header { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 10px; }

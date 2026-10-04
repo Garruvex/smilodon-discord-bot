@@ -1,6 +1,7 @@
 import { requestJson } from "./api.js";
 import { previewCharacterRequest } from "./character-preview.js";
 import { setArtwork } from "./dom.js";
+import { openArtwork } from "./artwork-viewer.js";
 import { classText, t } from "./i18n.js";
 
 const abilities = ["str", "dex", "con", "int", "wis", "cha"];
@@ -23,6 +24,15 @@ const portrait = (id, name, large = false) => {
   picture.hidden = true;
   const fallback = element("span", "characters-portrait-fallback", large ? t("activity.characters.noPortrait") : name.trim().slice(0, 1).toUpperCase());
   frame.append(picture, fallback);
+  if (large) {
+    const inspect = element("button", "characters-portrait-open artwork-open");
+    inspect.type = "button";
+    inspect.setAttribute("aria-label", t("activity.artwork.viewPartyPortrait", { name }));
+    inspect.setAttribute("aria-haspopup", "dialog");
+    inspect.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 5 5"></path></svg>';
+    inspect.addEventListener("click", () => { void openArtwork(picture, name); });
+    frame.append(inspect);
+  }
   void setArtwork(picture, fallback, portraitUrl(id), t("activity.hero.portraitAlt", { name }));
   return frame;
 };
