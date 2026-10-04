@@ -16,6 +16,13 @@ export const zhTWCommandDescriptions = {
   "birthday/view": "顯示成員的生日", // Shows a member's birthday.
   "birthday/view:user": "要查詢的成員，預設為你自己", // The member to look up; defaults to you.
   "birthday/list": "顯示此伺服器所有已儲存的生日", // Shows all saved birthdays in this server.
+  "birthday/set:year": "選填出生年份，用於顯示年齡",
+  "birthday/set:message": "選填個人生日公告訊息，最多 1000 字元",
+  "birthday/set:clear-year": "移除已儲存的出生年份",
+  "birthday/set:clear-message": "移除個人訊息，改用伺服器訊息",
+  "birthday/template": "檢視或修改伺服器生日訊息（僅限機器人管理員）",
+  "birthday/template:message": "範本：{member}、{birthday}、{age}、{ordinal}、{date}、{days}，最多 1000 字元",
+  "birthday/template:reset": "還原預設生日公告訊息",
   "birthday/remove": "移除你的生日", // Removes your birthday.
   "birthday/remove:user": "改為移除其他成員的生日（僅限機器人管理員）", // Remove another member's birthday instead (bot administrators only).
   "birthday/next": "顯示接下來是誰的生日", // Shows whose birthday is coming up next.

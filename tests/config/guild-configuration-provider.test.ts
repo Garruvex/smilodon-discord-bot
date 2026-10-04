@@ -45,6 +45,15 @@ afterEach(() => {
 });
 
 describe("LocalGuildConfigurationProvider", () => {
+  it("persists and resets the shared birthday template", async () => {
+    const directory = createTemporaryDirectory();
+    writeFileSync(join(directory, "guild.yaml"), validProfile(), "utf8");
+    const provider = new LocalGuildConfigurationProvider(directory);
+    await provider.update("123456789012345678", { birthdayMessageTemplate: "Happy {birthday}, {member}!" });
+    expect(new LocalGuildConfigurationProvider(directory).require("123456789012345678").birthdayMessageTemplate).toBe("Happy {birthday}, {member}!");
+    await provider.update("123456789012345678", { birthdayMessageTemplate: null });
+    expect(provider.require("123456789012345678").birthdayMessageTemplate).toBeNull();
+  });
   it("loads and normalizes a valid guild profile", () => {
     const directory = createTemporaryDirectory();
     writeFileSync(join(directory, "guild.yaml"), validProfile(), "utf8");

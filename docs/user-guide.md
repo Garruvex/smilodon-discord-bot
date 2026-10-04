@@ -42,9 +42,16 @@ group. `/help` only lists commands you're currently allowed to use.
 | `/qa <question> <answer> [image] [spoiler]` | Posts a Q&A embed, optionally with an image and spoiler-hidden answer. |
 | `/owoify <text>` | Twanslates youw text into owo speak. |
 | `/wolfy <text>` | Turns a sentence into random dog noises. |
-| `/birthday set <month> <day> [user]` | Saves your birthday for the server's birthday announcements. Bot administrators can pass `user` to set someone else's. |
-| `/birthday view [user]` | Shows a member's saved birthday. |
+| `/birthday set <month> <day> [user] [year] [message] [clear-year] [clear-message]` | Saves a birthday with an optional birth year and personal announcement message. Bot administrators can set another member's details. Omitted optional details keep their saved values; clear options remove them. |
+| `/birthday view [user]` | Shows the next birthday date, days remaining, and age if a birth year is saved. |
+| `/birthday list` | Privately lists all saved birthdays in the server, sorted by month and day. |
+| `/birthday next [public]` | Shows the next member birthdays, including age when known. |
+| `/birthday template [message] [reset]` | Bot administrators can view or change the shared announcement template, or reset it to the default. |
 | `/birthday remove [user]` | Removes your saved birthday. Bot administrators can pass `user` to remove someone else's. |
+
+Birthday messages use `{member}` (a member mention), `{birthday}` (e.g. `28th birthday`, or `birthday` when the year is unknown), `{age}`, `{ordinal}`, `{date}`, and `{days}`. Templates and personal messages can contain up to 1,000 characters. On the birthday, `{days}` is `0`. A member's message takes priority over the shared server template, which takes priority over the built-in greeting. `{age}` and `{ordinal}` are blank when no birth year is saved. Birthday command replies and generated placeholder wording follow the server's configured language (English, Traditional Chinese, or Japanese). `{ordinal}` is an English ordinal such as `28th`, or an age label such as `28 歲` / `28歳`. Custom template wording is kept exactly as written, with only placeholders replaced.
+
+For example, set the shared announcement with `/birthday template message:Happy {birthday}, {member}! 🎂`. With chat tool calling enabled, members can ask the bot to save their own date, year, and message. Bot administrators can also ask it to set a mentioned member's birthday using the `set_member_birthday` tool. The model must use an explicitly supplied year rather than infer one from age. February 29 birthdays are observed on March 1 during non-leap years. Birthday dates use the server's configured time zone.
 | Right-click a message → Apps → **Quote**, or `/quote message:<link or ID>` | Generates an image quote card from that message — greyscale avatar, wrapped quote text, author name and handle. |
 | `/remind set <duration> <message> [delivery]` | Sets a personal reminder (e.g. `30m`, `2h`, `1d`, or `1d12h`). `delivery` picks **DM** (default — private, falls back to the channel it was set in if your DMs are closed) or **This channel** (always posts there, visible to everyone). |
 | `/remind list` | Shows your pending reminders and their IDs. |

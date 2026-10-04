@@ -51,6 +51,48 @@ function stubLogger(): Logger {
 }
 
 describe("BirthdayAnnouncer", () => {
+  it.each([
+    { language: "zh-TW" as const, expected: "28 歲生日" },
+    { language: "ja" as const, expected: "28歳の誕生日" },
+  ])("uses the server language inside custom announcement placeholders ($language)", async ({ language, expected }) => {
+    const { store, listForGuildOnDate } = stubStore();
+    listForGuildOnDate.mockResolvedValue(["user"]);
+    store.getBirthday = vi.fn().mockResolvedValue({ userId: "user", month: 8, day: 17, birthYear: 1999, message: "CUSTOM: {birthday} / {date}" });
+    const send = vi.fn().mockResolvedValue(undefined);
+    const client = { channels: { fetch: vi.fn().mockResolvedValue({ isTextBased: () => true, isDMBased: () => false, guildId: "guild", send }) } } as unknown as Client;
+    await new BirthdayAnnouncer(client, stubProvider([profile({ language })]), store, stubLogger()).checkNow(new Date("2027-08-17T12:00:00Z"));
+    const payload = send.mock.calls[0]![0] as { embeds: { toJSON(): { description?: string } }[] };
+    expect(payload.embeds[0]!.toJSON().description).toBe(`CUSTOM: ${expected} / 2027年8月17日`);
+  });
+  it.each([null, "Member override: {member} turns {age} on {date}"])("uses the member override or shared template (%s)", async (message) => {
+    const { store, listForGuildOnDate } = stubStore();
+    listForGuildOnDate.mockResolvedValue(["user"]);
+    const getBirthday = vi.fn().mockResolvedValue({ userId: "user", month: 8, day: 17, birthYear: 1999, message });
+    const markAnnounced = vi.fn().mockResolvedValue(undefined);
+    store.getBirthday = getBirthday;
+    store.markAnnounced = markAnnounced;
+    const send = vi.fn().mockResolvedValue(undefined);
+    const client = { channels: { fetch: vi.fn().mockResolvedValue({ isTextBased: () => true, isDMBased: () => false, guildId: "guild", send }) } } as unknown as Client;
+    const announcer = new BirthdayAnnouncer(client, stubProvider([profile({ language: "en", birthdayMessageTemplate: "Shared: {member}'s {birthday}" })]), store, stubLogger());
+
+    await announcer.checkNow(new Date("2027-08-17T12:00:00Z"));
+
+    expect(send).toHaveBeenCalledOnce();
+    const payload = send.mock.calls[0]![0] as { embeds: { toJSON(): { description?: string } }[]; allowedMentions: unknown };
+    expect(payload.embeds[0]!.toJSON().description).toBe(message ? "Member override: <@user> turns 28 on 17 August 2027" : "Shared: <@user>'s 28th birthday");
+    expect(payload.allowedMentions).toEqual({ parse: [] });
+    expect(markAnnounced).toHaveBeenCalledWith("guild", "2027-08-17");
+  });
+
+  it("announces February 29 birthdays on March 1 in non-leap years", async () => {
+    const { store, listForGuildOnDate } = stubStore();
+    listForGuildOnDate.mockResolvedValueOnce([]).mockResolvedValueOnce(["user"]);
+    store.getBirthday = vi.fn().mockResolvedValue({ userId: "user", month: 2, day: 29, birthYear: 2000 });
+    const send = vi.fn().mockResolvedValue(undefined);
+    const client = { channels: { fetch: vi.fn().mockResolvedValue({ isTextBased: () => true, isDMBased: () => false, guildId: "guild", send }) } } as unknown as Client;
+    await new BirthdayAnnouncer(client, stubProvider([profile({ language: "en" })]), store, stubLogger()).checkNow(new Date("2027-03-01T12:00:00Z"));
+    expect(send).toHaveBeenCalledOnce();
+  });
   it("resolves 'today' using the guild's configured time zone, not UTC", async () => {
     // 2024-01-01T05:00:00Z is still 2023-12-31 evening in Pacific/Honolulu
     // (UTC-10) — a guild there should be checked against Dec 31, not Jan 1.

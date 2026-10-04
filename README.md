@@ -495,7 +495,7 @@ or `gemini`. Within `openai`, `CHATBOT_MODE` picks the wire variant —
 `chat_completions` (default) for generic OpenAI-compatible providers, or
 `responses` for OpenAI's own Responses API to enable guarded image input,
 optional model-selected web search, and LLM tool calling (dice, 8-ball, booru
-search, memory/birthday lookup, music control — see
+search, memory lookup, birthday lookup and updates, music control — see
 `/settings-chat abilities tool-calling`).
 
 `CHATBOT_PROVIDER=gemini` gets the same image input, tool calling, and web

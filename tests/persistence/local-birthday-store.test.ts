@@ -7,6 +7,16 @@ import { describe, expect, it } from "vitest";
 import { LocalBirthdayStore } from "../../src/infrastructure/persistence/local-birthday-store.js";
 
 describe("LocalBirthdayStore", () => {
+  it("preserves optional details on date edits and supports clearing them", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "birthdays-"));
+    const store = new LocalBirthdayStore(directory);
+    await store.setBirthday("guild", "user", 8, 17, { birthYear: 1999, message: "Happy {birthday}, {member}!" });
+    await store.setBirthday("guild", "user", 8, 18);
+    const reloaded = new LocalBirthdayStore(directory);
+    expect(await reloaded.getBirthday("guild", "user")).toEqual({ userId: "user", month: 8, day: 18, birthYear: 1999, message: "Happy {birthday}, {member}!" });
+    await reloaded.setBirthday("guild", "user", 8, 18, { birthYear: null, message: null });
+    expect(await reloaded.getBirthday("guild", "user")).toEqual({ userId: "user", month: 8, day: 18, birthYear: null, message: null });
+  });
   it("sets, retrieves, and lists birthdays for a guild", async () => {
     const directory = mkdtempSync(join(tmpdir(), "birthdays-"));
     const store = new LocalBirthdayStore(directory);

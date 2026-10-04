@@ -94,6 +94,7 @@ const defaultProgressBar = {
 
 export const guildConfigurationFileSchema = z
   .object({
+    birthdayMessageTemplate: z.string().trim().min(1).max(1000).nullable().default(null),
     schemaVersion: z.literal(1),
     guild: z.object({
       id: snowflake,

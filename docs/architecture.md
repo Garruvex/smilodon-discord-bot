@@ -245,15 +245,21 @@ continuity without paying to send all retained history on every request.
 
 `BirthdayStore` follows the same local/PostgreSQL split as chat state: local
 JSON is one document per guild (`birthdays/<guildId>.json`) holding each
-member's month/day and a bounded list of already-announced dates; PostgreSQL
-uses `birthdays` and `birthday_announcements` tables with the same shape. No
-birth year is stored.
+member's month/day, optional birth year and personal announcement message, and a bounded list of already-announced dates; PostgreSQL
+uses `birthdays` and `birthday_announcements` tables with the same shape. Optional
+details are preserved when a date is updated, and can be explicitly cleared.
+The shared template lives in guild configuration as `birthdayMessageTemplate`.
 
 `BirthdayAnnouncer` checks hourly, using a per-guild-per-date record in the
 store to avoid re-posting after a same-day restart. Announcements require both
 `features.birthdays` and a configured `channels.birthdayAnnouncements`, enforced
-at the schema level. `/settings-community birthdays` manages both; `/birthday set|view|remove`
-is user-facing.
+at the schema level. `/settings-community birthdays` manages both; `/birthday set|view|remove|list|next`
+is user-facing. Bot administrators manage the shared message with `/birthday template`.
+Personal messages override the shared template. Countdown and age calculations use the
+guild's calendar date and real leap years, with February 29 observed on March 1 in non-leap years.
+Chat exposes `set_my_birthday` and administrator-only `set_member_birthday`; each checks
+the current birthday feature setting before writing. The member tool verifies live roles
+and target guild membership using a Discord resolver injected at bootstrap.
 
 ## NSFW image commands
 

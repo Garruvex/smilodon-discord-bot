@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
-import type { BirthdayRecord, BirthdayStore } from "../../application/birthdays/birthday-store.js";
+import type { BirthdayDetails, BirthdayRecord, BirthdayStore } from "../../application/birthdays/birthday-store.js";
 import * as schema from "../database/schema.js";
 import type { GuildMemberRegistry } from "./guild-member-registry.js";
 
@@ -15,13 +15,13 @@ export class PostgresBirthdayStore implements BirthdayStore {
     return Promise.resolve();
   }
 
-  public async setBirthday(guildId: string, userId: string, month: number, day: number): Promise<void> {
+  public async setBirthday(guildId: string, userId: string, month: number, day: number, details: BirthdayDetails = {}): Promise<void> {
     const memberId = await this.memberRegistry.resolveMemberId(guildId, userId);
     await this.database.insert(schema.birthdays).values({
-      guildId, userId, memberId, month, day, updatedAt: new Date(),
+      guildId, userId, memberId, month, day, ...details, updatedAt: new Date(),
     }).onConflictDoUpdate({
       target: [schema.birthdays.guildId, schema.birthdays.userId],
-      set: { month, day, updatedAt: new Date(), memberId },
+      set: { month, day, ...details, updatedAt: new Date(), memberId },
     });
   }
 
@@ -39,7 +39,7 @@ export class PostgresBirthdayStore implements BirthdayStore {
       eq(schema.birthdays.userId, userId),
     )).limit(1);
     const row = rows[0];
-    return row ? { userId: row.userId, month: row.month, day: row.day } : null;
+    return row ? { userId: row.userId, month: row.month, day: row.day, birthYear: row.birthYear, message: row.message } : null;
   }
 
   public async listForGuildOnDate(guildId: string, month: number, day: number): Promise<readonly string[]> {
@@ -56,6 +56,8 @@ export class PostgresBirthdayStore implements BirthdayStore {
       userId: schema.birthdays.userId,
       month: schema.birthdays.month,
       day: schema.birthdays.day,
+      birthYear: schema.birthdays.birthYear,
+      message: schema.birthdays.message,
     }).from(schema.birthdays).where(eq(schema.birthdays.guildId, guildId));
     return rows;
   }

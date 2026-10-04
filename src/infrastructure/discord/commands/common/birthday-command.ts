@@ -9,39 +9,26 @@ import {
 import type { BirthdayRecord, BirthdayStore } from "../../../../application/birthdays/birthday-store.js";
 import type { GuildConfigurationProvider } from "../../../../config/guild-configuration-provider.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
+import { formatBirthdayDate, birthdayOccurrence, guildCalendarDate, renderBirthdayMessage, validateBirthday } from "../../../../application/birthdays/birthday-message.js";
+import { birthdayTexts } from "../../../../application/i18n/birthday-text.js";
+import type { Language } from "../../../../application/i18n/language.js";
 
-const monthNames = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-] as const;
-const daysInMonth = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] as const;
-const daysInYear = daysInMonth.reduce((total, count) => total + count, 0);
 
 function isBotAdministrator(member: GuildMember, botAdministratorRoleIds: ReadonlySet<string>): boolean {
   return member.roles.cache.some((role) => botAdministratorRoleIds.has(role.id));
 }
 
-// Ordinal day-of-year using the same (leap) days-in-month scheme for both the
-// birthday and "today", so the two stay comparable even outside leap years.
-function dayOfYear(month: number, day: number): number {
-  return daysInMonth.slice(0, month - 1).reduce((total, count) => total + count, day);
-}
 
-function resolveGuildToday(timeZone: string): { month: number; day: number } {
-  const parts = new Intl.DateTimeFormat("en-US", { timeZone, month: "numeric", day: "numeric" }).formatToParts(new Date());
-  const lookup = Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
-  return { month: Number(lookup.month), day: Number(lookup.day) };
-}
-
-export function formatBirthdayListPages(records: readonly BirthdayRecord[]): string[] {
+export function formatBirthdayListPages(records: readonly BirthdayRecord[], language: Language = "en"): string[] {
+  const copy = birthdayTexts[language];
   const sorted = [...records].sort((a, b) => a.month - b.month || a.day - b.day || a.userId.localeCompare(b.userId));
   const pages: string[] = [];
-  let page = `🎂 Server birthdays (${sorted.length}):`;
+  let page = copy.listTitle(sorted.length);
   for (const record of sorted) {
-    const line = `\n${monthNames[record.month - 1]} ${record.day} — <@${record.userId}>`;
+    const line = `\n${formatBirthdayDate(record.month, record.day, language)} — <@${record.userId}>`;
     if (page.length + line.length > 1_900) {
       pages.push(page);
-      page = "🎂 Server birthdays (continued):";
+      page = copy.listContinued;
     }
     page += line;
   }
@@ -61,6 +48,10 @@ export class BirthdayCommand implements BotCommand {
           { type: "integer", name: "month", description: "Birth month.", minValue: 1, maxValue: 12, required: true },
           { type: "integer", name: "day", description: "Birth day.", minValue: 1, maxValue: 31, required: true },
           { type: "user", name: "user", description: "Set another member's birthday instead (bot administrators only).", required: false },
+          { type: "integer", name: "year", description: "Optional birth year, used to show age.", minValue: 1900, required: false },
+          { type: "string", name: "message", description: "Optional custom birthday announcement message (up to 1000 characters).", required: false },
+          { type: "boolean", name: "clear-year", description: "Remove the saved birth year.", required: false },
+          { type: "boolean", name: "clear-message", description: "Use the server message instead of a member message.", required: false },
         ],
       },
       {
@@ -73,6 +64,14 @@ export class BirthdayCommand implements BotCommand {
       {
         name: "list",
         description: "Shows all saved birthdays in this server.",
+      },
+      {
+        name: "template",
+        description: "Views or changes the server birthday message (bot administrators only).",
+        options: [
+          { type: "string", name: "message", description: "Template: {member}, {birthday}, {age}, {ordinal}, {date}, {days} (up to 1000 characters).", required: false },
+          { type: "boolean", name: "reset", description: "Restore the default birthday announcement message.", required: false },
+        ],
       },
       {
         name: "remove",
@@ -104,24 +103,53 @@ export class BirthdayCommand implements BotCommand {
   ) {}
 
   private async replyPrivately(context: CommandContext, content: string): Promise<void> {
-    await context.responses.reply({ content, flags: MessageFlags.Ephemeral });
+    if (context.interaction.deferred) await context.responses.edit({ content });
+    else await context.responses.reply({ content, flags: MessageFlags.Ephemeral });
   }
 
   public async execute(context: CommandContext): Promise<void> {
     if (!context.interaction.inCachedGuild()) {
-      await this.replyPrivately(context, "This only works in a server.");
+      await this.replyPrivately(context, birthdayTexts.en.serverOnly);
       return;
     }
     const guildId = context.interaction.guildId;
+    const language = this.guildConfigurationProvider.find(guildId)?.language ?? "en";
+    const copy = birthdayTexts[language];
     const subcommand = context.interaction.options.getSubcommand(true);
+
+    if (subcommand === "template") {
+      const profile = this.guildConfigurationProvider.find(guildId);
+      if (!isBotAdministrator(context.interaction.member, profile?.roles.botAdministrator ?? new Set())) {
+        await this.replyPrivately(context, copy.adminTemplate);
+        return;
+      }
+      const message = context.interaction.options.getString("message");
+      const reset = context.interaction.options.getBoolean("reset") ?? false;
+      if (message !== null && reset) {
+        await this.replyPrivately(context, copy.templateConflict);
+        return;
+      }
+      if (message !== null) {
+        const error = validateBirthday(1, 1, { message }, new Date().getUTCFullYear(), language);
+        if (error) return this.replyPrivately(context, error);
+      }
+      if (message !== null || reset) {
+        await context.interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        await this.guildConfigurationProvider.update(guildId, { birthdayMessageTemplate: reset ? null : message });
+        await this.replyPrivately(context, reset ? copy.templateReset : copy.templateUpdated);
+      } else {
+        await this.replyPrivately(context, profile?.birthdayMessageTemplate ?? copy.templateDefault);
+      }
+      return;
+    }
 
     if (subcommand === "list") {
       const records = await this.birthdayStore.listAllForGuild(guildId);
       if (records.length === 0) {
-        await this.replyPrivately(context, "No one has set a birthday yet. Use `/birthday set` to add one.");
+        await this.replyPrivately(context, copy.empty);
         return;
       }
-      const [first, ...rest] = formatBirthdayListPages(records);
+      const [first, ...rest] = formatBirthdayListPages(records, language);
       await context.responses.reply({ content: first!, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
       for (const content of rest) {
         await context.interaction.followUp({ content, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
@@ -134,25 +162,43 @@ export class BirthdayCommand implements BotCommand {
       if (targetUser && targetUser.id !== context.interaction.user.id) {
         const botAdministratorRoleIds = this.guildConfigurationProvider.find(guildId)?.roles.botAdministrator ?? new Set();
         if (!isBotAdministrator(context.interaction.member, botAdministratorRoleIds)) {
-          await this.replyPrivately(context, "Only bot administrators can set or remove another member's birthday.");
+          await this.replyPrivately(context, copy.adminMember);
           return;
         }
       }
       const actingOnUserId = targetUser?.id ?? context.interaction.user.id;
 
       if (subcommand === "set") {
-        const month = context.interaction.options.getInteger("month", true);
-        const day = context.interaction.options.getInteger("day", true);
-        if (day > daysInMonth[month - 1]!) {
-          await this.replyPrivately(context, `${monthNames[month - 1]} only has ${daysInMonth[month - 1]} days.`);
+        await context.interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        if (targetUser && targetUser.id !== context.interaction.user.id &&
+            !await context.interaction.guild.members.fetch(targetUser.id).catch(() => null)) {
+          await this.replyPrivately(context, copy.notMember);
           return;
         }
-        await this.birthdayStore.setBirthday(guildId, actingOnUserId, month, day);
+        const month = context.interaction.options.getInteger("month", true);
+        const day = context.interaction.options.getInteger("day", true);
+        const year = context.interaction.options.getInteger("year");
+        const message = context.interaction.options.getString("message");
+        const clearYear = context.interaction.options.getBoolean("clear-year") ?? false;
+        const clearMessage = context.interaction.options.getBoolean("clear-message") ?? false;
+        if ((year !== null && clearYear) || (message !== null && clearMessage)) {
+          await this.replyPrivately(context, copy.detailsConflict);
+          return;
+        }
+        const details = {
+          ...(clearYear ? { birthYear: null } : year !== null ? { birthYear: year } : {}),
+          ...(clearMessage ? { message: null } : message !== null ? { message } : {}),
+        };
+        const previous = await this.birthdayStore.getBirthday(guildId, actingOnUserId);
+        const timezone = this.guildConfigurationProvider.find(guildId)?.timezone ?? "UTC";
+        const error = validateBirthday(month, day, { ...previous, ...details }, guildCalendarDate(new Date(), timezone).year, language);
+        if (error) return this.replyPrivately(context, error);
+        await this.birthdayStore.setBirthday(guildId, actingOnUserId, month, day, details);
         await this.replyPrivately(
           context,
           targetUser
-            ? `<@${actingOnUserId}>'s birthday is set to ${monthNames[month - 1]} ${day}.`
-            : `Your birthday is set to ${monthNames[month - 1]} ${day}.`,
+            ? copy.setMember(`<@${actingOnUserId}>`, formatBirthdayDate(month, day, language))
+            : copy.setSelf(formatBirthdayDate(month, day, language)),
         );
         return;
       }
@@ -161,8 +207,8 @@ export class BirthdayCommand implements BotCommand {
       await this.replyPrivately(
         context,
         removed
-          ? (targetUser ? `<@${actingOnUserId}>'s birthday has been removed.` : "Your birthday has been removed.")
-          : (targetUser ? `<@${actingOnUserId}> doesn't have a birthday set.` : "You don't have a birthday set."),
+          ? (targetUser ? copy.removedMember(`<@${actingOnUserId}>`) : copy.removedSelf)
+          : (targetUser ? copy.missingMember(`<@${actingOnUserId}>`) : copy.missingSelf),
       );
       return;
     }
@@ -172,20 +218,19 @@ export class BirthdayCommand implements BotCommand {
       const isPublic = context.interaction.options.getBoolean("public") ?? false;
       if (records.length === 0) {
         await context.responses.reply({
-          content: "No one has set a birthday yet. Use `/birthday set` to add one.",
+          content: copy.empty,
           flags: isPublic ? undefined : MessageFlags.Ephemeral,
         });
         return;
       }
 
       const timezone = this.guildConfigurationProvider.find(guildId)?.timezone ?? "UTC";
-      const today = resolveGuildToday(timezone);
-      const todayOrdinal = dayOfYear(today.month, today.day);
+      const today = guildCalendarDate(new Date(), timezone);
 
       let closestDaysUntil = Infinity;
-      let closest: { userId: string; month: number; day: number }[] = [];
+      let closest: BirthdayRecord[] = [];
       for (const record of records) {
-        const daysUntil = (dayOfYear(record.month, record.day) - todayOrdinal + daysInYear) % daysInYear;
+        const daysUntil = birthdayOccurrence(record, today).days;
         if (daysUntil < closestDaysUntil) {
           closestDaysUntil = daysUntil;
           closest = [record];
@@ -194,14 +239,18 @@ export class BirthdayCommand implements BotCommand {
         }
       }
 
-      const { month, day } = closest[0]!;
-      const names = closest.map((record) => `<@${record.userId}>`).join(", ");
-      const when =
-        closestDaysUntil === 0 ? "today" : closestDaysUntil === 1 ? "tomorrow" : `in ${closestDaysUntil} days`;
-      await context.responses.reply({
-        content: `🎂 Next up: ${names} — ${monthNames[month - 1]} ${day} (${when}).`,
-        flags: isPublic ? undefined : MessageFlags.Ephemeral,
-      });
+      let content = copy.nextTitle;
+      for (const record of closest) {
+        const line = renderBirthdayMessage(copy.countdownTemplate, record, birthdayOccurrence(record, today), language);
+        if (content.length + line.length + 1 > 1_900) {
+          if (!context.interaction.replied) await context.responses.reply({ content, flags: isPublic ? undefined : MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+          else await context.interaction.followUp({ content, flags: isPublic ? undefined : MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+          content = copy.nextContinued;
+        }
+        content += `${line}\n`;
+      }
+      if (!context.interaction.replied) await context.responses.reply({ content, flags: isPublic ? undefined : MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+      else await context.interaction.followUp({ content, flags: isPublic ? undefined : MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
       return;
     }
 
@@ -211,11 +260,12 @@ export class BirthdayCommand implements BotCommand {
       await this.replyPrivately(
         context,
         targetUser.id === context.interaction.user.id
-          ? "You don't have a birthday set. Use `/birthday set` to add one."
-          : `<@${targetUser.id}> hasn't set a birthday.`,
+          ? copy.missingSelf
+          : copy.missingMember(`<@${targetUser.id}>`),
       );
       return;
     }
-    await this.replyPrivately(context, `🎂 <@${targetUser.id}>'s birthday is ${monthNames[birthday.month - 1]} ${birthday.day}.`);
+    const today = guildCalendarDate(new Date(), this.guildConfigurationProvider.find(guildId)?.timezone ?? "UTC");
+    await this.replyPrivately(context, renderBirthdayMessage(copy.countdownTemplate, birthday, birthdayOccurrence(birthday, today), language));
   }
 }

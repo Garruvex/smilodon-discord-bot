@@ -101,6 +101,7 @@ import { BooruSearchTool } from "../application/chat/tools/booru-search-tool.js"
 import { MemoryLookupTool } from "../application/chat/tools/memory-lookup-tool.js";
 import { BirthdayLookupTool } from "../application/chat/tools/birthday-lookup-tool.js";
 import { BirthdaySetTool } from "../application/chat/tools/birthday-set-tool.js";
+import { BirthdayMemberSetTool } from "../application/chat/tools/birthday-member-set-tool.js";
 import { ReadLinkTool } from "../application/chat/tools/read-link-tool.js";
 import { GenerateSelfImageTool } from "../application/chat/tools/generate-self-image-tool.js";
 import { CachingEmbeddingsClient } from "../application/chat/caching-embeddings-client.js";
@@ -614,8 +615,14 @@ export function createDependencies(
     new EightBallTool(),
     new BooruSearchTool(),
     new MemoryLookupTool(memoryEngine),
-    new BirthdayLookupTool(birthdayStore),
+    new BirthdayLookupTool(birthdayStore, guildConfigurationProvider),
     new BirthdaySetTool(birthdayStore, guildConfigurationProvider),
+    new BirthdayMemberSetTool(birthdayStore, guildConfigurationProvider, async (guildId, userId) => {
+      const guild = discordClient.guilds.cache.get(guildId);
+      if (!guild) return null;
+      const member = await guild.members.fetch({ user: userId, force: true }).catch(() => null);
+      return member ? [...member.roles.cache.keys()] : null;
+    }),
     new ReadLinkTool(),
     // Needs a real ChatProvider to make its own isolated image-generation
     // request (see ChatProvider.generateReferenceImage) — omitted entirely

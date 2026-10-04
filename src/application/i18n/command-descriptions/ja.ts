@@ -14,6 +14,13 @@ export const jaCommandDescriptions = {
   "birthday/view": "メンバーの誕生日を表示します。", // Shows a member's birthday.
   "birthday/view:user": "調べるメンバー。省略すると自分になります。", // The member to look up; defaults to you.
   "birthday/list": "このサーバーに登録された誕生日をすべて表示します。", // Shows all saved birthdays in this server.
+  "birthday/set:year": "年齢表示に使う生年（任意）。",
+  "birthday/set:message": "個別の誕生日告知メッセージ（1000文字以内、任意）。",
+  "birthday/set:clear-year": "保存した生年を削除します。",
+  "birthday/set:clear-message": "個別メッセージを削除し、サーバーの設定を使います。",
+  "birthday/template": "サーバーの誕生日メッセージを表示・変更します（ボット管理者のみ）。",
+  "birthday/template:message": "テンプレート：{member}, {birthday}, {age}, {ordinal}, {date}, {days}（1000文字以内）。",
+  "birthday/template:reset": "既定の誕生日告知メッセージに戻します。",
   "birthday/remove": "自分の誕生日を削除します。", // Removes your birthday.
   "birthday/remove:user": "代わりに他のメンバーの誕生日を削除します（ボット管理者のみ）。", // Remove another member's birthday instead (bot administrators only).
   "birthday/next": "次に誕生日を迎えるメンバーを表示します。", // Shows whose birthday is coming up next.

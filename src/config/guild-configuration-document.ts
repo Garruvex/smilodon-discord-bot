@@ -66,6 +66,7 @@ export interface UpdateGuildConfigurationInput {
   contextSeedDays?: number;
   birthdaysEnabled?: boolean;
   birthdayAnnouncementsChannelId?: string | null;
+  birthdayMessageTemplate?: string | null;
   remindersEnabled?: boolean;
   campaignEnabled?: boolean;
   joinAnnouncementsChannelId?: string | null;
@@ -149,6 +150,7 @@ export function toGuildConfiguration(parsed: ParsedGuildConfigurationFile, sourc
   return {
     schemaVersion: 1,
     guildId: parsed.guild.id,
+    birthdayMessageTemplate: parsed.birthdayMessageTemplate,
     guildName: parsed.guild.name,
     displayName: parsed.branding.displayName,
     embedColor: parsed.branding.embedColor,
@@ -206,6 +208,7 @@ export function toGuildConfigurationDocument(configuration: GuildConfiguration):
       idleImageUrl: configuration.idleImageUrl,
       idleImageAsset: configuration.idleImageAsset,
     },
+    birthdayMessageTemplate: configuration.birthdayMessageTemplate ?? null,
     panel: configuration.panel,
     features: configuration.features,
     roles: {
@@ -319,6 +322,7 @@ export function applyGuildConfigurationUpdate(
   if (input.reactionReplyMinReactors !== undefined) next.chat.reactionReplyMinReactors = input.reactionReplyMinReactors;
   if (input.historyReactions !== undefined) next.features.historyReactions = input.historyReactions;
   if (input.birthdaysEnabled !== undefined) next.features.birthdays = input.birthdaysEnabled;
+  if (input.birthdayMessageTemplate !== undefined) next.birthdayMessageTemplate = input.birthdayMessageTemplate;
   if (input.birthdayAnnouncementsChannelId !== undefined) next.channels.birthdayAnnouncements = input.birthdayAnnouncementsChannelId;
   if (input.remindersEnabled !== undefined) next.features.reminders = input.remindersEnabled;
   if (input.campaignEnabled !== undefined) next.features.campaign = input.campaignEnabled;
