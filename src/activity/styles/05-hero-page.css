@@ -40,3 +40,8 @@
 }
 @media (max-width: 480px) { .live-feature-grid > .live-hero { grid-template-columns: 104px minmax(0, 1fr); } }
 .hero-stats .member-stat-label img { filter: brightness(0); opacity: .6; }
+
+/* The character panel is as tall as the roster beside it, never shorter: a long party stretches both, a short one keeps the minimum height. */
+@media (min-width: 761px) {
+  .live-feature-grid > .live-hero { height: auto; min-height: clamp(510px, 64vh, 660px); }
+}
