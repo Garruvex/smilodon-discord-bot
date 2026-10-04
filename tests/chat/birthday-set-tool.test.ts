@@ -1,13 +1,14 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, type Mock } from "vitest";
 
 import { BirthdaySetTool } from "../../src/application/chat/tools/birthday-set-tool.js";
 import type { ChatToolContext } from "../../src/application/chat/tools/chat-tool.js";
 import type { BirthdayStore } from "../../src/application/birthdays/birthday-store.js";
 import type { GuildConfiguration } from "../../src/config/guild-configuration.js";
+import type { GuildConfigurationProvider } from "../../src/config/guild-configuration-provider.js";
 
-function profiles(enabled: boolean | null = true) {
+function profiles(enabled: boolean | null = true): { find: Mock<GuildConfigurationProvider["find"]> } {
   return {
-    find: vi.fn().mockReturnValue(enabled === null ? null : { features: { birthdays: enabled } } as GuildConfiguration),
+    find: vi.fn<GuildConfigurationProvider["find"]>().mockReturnValue(enabled === null ? null : { features: { birthdays: enabled } } as GuildConfiguration),
   };
 }
 
