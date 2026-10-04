@@ -199,6 +199,7 @@ export const campaignZhTW = {
   "activity.scene.label": "目前場景",
   "activity.artwork.viewScene": "查看完整場景圖片",
   "activity.artwork.viewPortrait": "查看完整角色肖像",
+  "activity.artwork.viewPartyPortrait": "查看{name}的完整肖像",
   "activity.artwork.close": "關閉圖片",
   "activity.scene.loading": "正在載入場景…",
   "activity.scene.encounter": "遭遇",

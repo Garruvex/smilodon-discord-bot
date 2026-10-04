@@ -1,4 +1,5 @@
 import { app } from "./state.js";
+import { openArtwork } from "./artwork-viewer.js";
 import { iconForClass, iconImage, liveEnemies, liveParty, setArtwork } from "./dom.js";
 import { renderCharacterWorkspace } from "./hero.js";
 import { classText, t } from "./i18n.js";
@@ -51,16 +52,19 @@ export function renderParty(members) {
   liveParty.replaceChildren(...members.map((hero) => {
     // Only your own card answers a press (it brings you back from an enemy's details). Someone else's has nothing to open, so it is not a button.
     const pressable = hero.isYou && hero.hp !== null && hero.maxHp !== null;
-    const card = document.createElement(pressable ? "button" : "div");
+    const card = document.createElement("div");
     card.className = `live-party-card ui-card${hero.isYou ? " is-you" : ""}${!app.selectedEnemyName && hero.characterId === app.selectedPartyCharacterId ? " is-selected" : ""}`;
     card.dataset.status = hero.tableStatus ?? (hero.presence === "away" ? "away" : "waiting");
     card.dataset.presence = hero.presence ?? "present";
     card.dataset.condition = hero.fallen ? "dead" : hero.down ? "down" : "healthy";
+    let selectTarget = null;
     if (pressable) {
-      card.type = "button";
-      card.setAttribute("aria-label", t("activity.party.inspect", { name: hero.name }));
-      card.setAttribute("aria-pressed", String(!app.selectedEnemyName && hero.characterId === app.selectedPartyCharacterId));
-      card.addEventListener("click", () => {
+      selectTarget = document.createElement("button");
+      selectTarget.type = "button";
+      selectTarget.className = "party-select-target";
+      selectTarget.setAttribute("aria-label", t("activity.party.inspect", { name: hero.name }));
+      selectTarget.setAttribute("aria-pressed", String(!app.selectedEnemyName && hero.characterId === app.selectedPartyCharacterId));
+      selectTarget.addEventListener("click", () => {
         app.selectedEnemyName = null;
         const page = document.querySelector(".live-hero");
         if (app.selectedPartyCharacterId !== hero.characterId && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -78,14 +82,19 @@ export function renderParty(members) {
     }
     const sigil = document.createElement("span");
     sigil.className = "live-party-sigil";
-    sigil.setAttribute("aria-hidden", "true");
     const classGlyph = iconImage(iconForClass(hero.className));
     classGlyph.className = "party-class-glyph";
     const portrait = document.createElement("img");
     portrait.className = "party-portrait";
     portrait.alt = "";
-    sigil.append(classGlyph, portrait);
-    void setArtwork(portrait, classGlyph, hero.imageUrl, t("activity.hero.portraitAlt", { name: hero.name }));
+    const inspectPortrait = document.createElement("button");
+    inspectPortrait.type = "button";
+    inspectPortrait.className = "party-portrait-open";
+    inspectPortrait.setAttribute("aria-label", t("activity.artwork.viewPartyPortrait", { name: hero.name }));
+    inspectPortrait.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 5 5"></path></svg>';
+    inspectPortrait.addEventListener("click", (event) => { event.stopPropagation(); void openArtwork(portrait, hero.name); });
+    sigil.append(classGlyph, portrait, inspectPortrait);
+    void setArtwork(portrait, classGlyph, hero.imageUrl, "");
     const copy = document.createElement("span");
     copy.className = "live-party-copy";
     const nameLine = document.createElement("span");
@@ -139,6 +148,7 @@ export function renderParty(members) {
     }
     copy.append(meta);
     card.append(sigil, copy);
+    if (selectTarget) card.append(selectTarget);
     if (hero.presence === "away" || hero.fallen || hero.down) {
       const condition = document.createElement("span");
       condition.className = "party-condition-overlay";

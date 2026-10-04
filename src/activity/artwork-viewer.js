@@ -3,7 +3,7 @@ const viewerImage = () => document.querySelector("#artwork-viewer-image");
 let temporaryUrl = null;
 let opening = false;
 
-async function openArtwork(image, title) {
+export async function openArtwork(image, title) {
   if (opening || viewer().open || image.hidden || !image.currentSrc) return;
   opening = true;
   const source = image.currentSrc;
@@ -21,7 +21,7 @@ async function openArtwork(image, title) {
     document.querySelector("#artwork-viewer-title").textContent = title;
     const fullImage = viewerImage();
     fullImage.src = displaySource;
-    fullImage.alt = image.alt;
+    fullImage.alt = image.alt || title;
     viewer().showModal();
   } finally {
     opening = false;

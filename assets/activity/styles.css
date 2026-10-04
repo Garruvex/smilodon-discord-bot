@@ -1710,11 +1710,20 @@ div.live-party-card:hover:not(.is-selected) { border-color: var(--ui-border); tr
 
 /* 14-artwork-viewer.css */
 /* The magnifier appears only when an actual picture is available. */
-.live-scene-art > .artwork-open, .live-hero-art > .artwork-open { display: none; position: absolute; right: 12px; bottom: 12px; z-index: 5; width: 42px; height: 42px; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius-small); background: var(--ui-paper-raised); color: var(--ui-ink); box-shadow: 0 3px 10px #1b120d88; cursor: zoom-in; }
+.live-scene-art > .artwork-open, .live-hero-art > .artwork-open { display: none; position: absolute; right: 5px; bottom: 5px; z-index: 5; width: 44px; height: 44px; align-items: center; justify-content: center; padding: 0; border: 0; background: transparent; color: var(--ui-paper-raised); cursor: zoom-in; }
 .live-scene-art:has(> img:not([hidden])) > .artwork-open, .live-hero-art:has(> img:not([hidden])) > .artwork-open { display: flex; }
-.live-scene-art > .artwork-open:hover, .live-hero-art > .artwork-open:hover { background: var(--ui-paper); border-color: var(--ui-accent); }
-.artwork-open svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.live-scene-art > .artwork-open:hover svg, .live-hero-art > .artwork-open:hover svg, .party-portrait-open:hover svg { background: color-mix(in srgb, var(--ui-ink) 88%, transparent); }
+.artwork-open svg, .party-portrait-open svg { width: 19px; height: 19px; padding: 6px; border-radius: 999px; background: color-mix(in srgb, var(--ui-ink) 68%, transparent); fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; box-sizing: content-box; }
+.artwork-open:focus-visible, .party-portrait-open:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: -2px; }
 #live-scene-image:not([hidden]), #live-hero-image:not([hidden]) { cursor: zoom-in; }
+.live-party-card { position: relative; }
+.live-party-card .live-party-sigil { z-index: 2; pointer-events: none; }
+.party-select-target { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; padding: 0; border: 0; border-radius: inherit; background: transparent; cursor: pointer; }
+.party-select-target:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+.live-party-card .party-condition-overlay { pointer-events: none; }
+.party-portrait-open { display: none; position: absolute; inset: 0; z-index: 4; width: 100%; height: 100%; align-items: flex-end; justify-content: flex-end; padding: 2px; border: 0; background: transparent; color: var(--ui-paper-raised); cursor: zoom-in; pointer-events: auto; }
+.live-party-sigil:has(> .party-portrait:not([hidden])) > .party-portrait-open { display: flex; }
+.party-portrait-open svg { width: 14px; height: 14px; padding: 4px; }
 .artwork-viewer { width: min(1200px, calc(100vw - 24px)); max-width: none; max-height: calc(100dvh - 24px); padding: 12px; border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius); background: var(--ui-paper); color: var(--ui-ink); box-shadow: 0 20px 60px #120c09aa; }
 .artwork-viewer::backdrop { background: #110c09dc; }
 .artwork-viewer header { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 10px; }

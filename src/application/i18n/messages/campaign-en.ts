@@ -199,6 +199,7 @@ export const campaignEn = {
   "activity.scene.label": "CURRENT SCENE",
   "activity.artwork.viewScene": "View full scene image",
   "activity.artwork.viewPortrait": "View full character portrait",
+  "activity.artwork.viewPartyPortrait": "View {name}'s full portrait",
   "activity.artwork.close": "Close image",
   "activity.scene.loading": "Loading scene…",
   "activity.scene.encounter": "ENCOUNTER",
