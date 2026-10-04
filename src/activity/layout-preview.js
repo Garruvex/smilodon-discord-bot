@@ -56,15 +56,16 @@ const layoutCss = `
 body.lp-pin-left .live-shell { padding-left: 408px; }
 body.lp-pin-right .live-shell { padding-right: 408px; }
 /* the subtitle on the scene art */
-.lp-sub { position: absolute; z-index: 5; left: 14px; right: 14px; bottom: 14px; display: block; max-width: 760px; margin: 0 auto; padding: 10px 14px; border: 1px solid #ffffff1f; border-radius: 10px; background: linear-gradient(180deg, #17120ed8, #17120ef2); color: #f2e8d2; font: 15px/1.45 Georgia, "Noto Serif TC", serif; text-align: left; cursor: pointer; box-shadow: 0 8px 28px #000a; opacity: 1; transition: opacity .6s ease; }
+/* A strip of its own right under the scene card, so it never covers the art; the page orders sections by their order value, and sharing the scene's keeps it next to it. */
+.lp-sub { order: 1; display: flex; align-items: center; gap: 14px; min-height: 62px; margin: 8px 0 0; padding: 10px 14px; border: 1px solid #5d4d38; border-left: 4px solid #a98550; border-radius: 8px; background: #211e1b; color: #f2e8d2; font: 15px/1.45 Georgia, "Noto Serif TC", serif; text-align: left; cursor: pointer; box-sizing: border-box; transition: opacity .6s ease; }
 .lp-sub[hidden] { display: none; }
-.lp-sub[data-fading="true"] { opacity: 0; pointer-events: none; }
-.lp-sub-text { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.lp-sub[data-fading="true"] { opacity: .55; }
+.lp-sub-text { flex: 1; min-width: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .lp-sub[data-kind="narration"] .lp-sub-text { font-style: italic; }
 .lp-sub[data-kind="combat"] .lp-sub-text { font: 13px/1.4 system-ui, sans-serif; }
-.lp-sub small { display: block; margin-top: 4px; color: #d9c48f; font: 700 10px/1.2 system-ui, sans-serif; letter-spacing: .06em; text-transform: uppercase; }
-.lp-sub[data-kind="alert"] { border-color: #b4584c; background: linear-gradient(180deg, #4a1713f2, #2c0d0af5); font: 800 17px/1.35 system-ui, sans-serif; }
-.lp-sub[data-kind="alert"][data-tone="slain"] { border-color: #c9a24a; background: linear-gradient(180deg, #43340ff2, #2a210af5); }
+.lp-sub small { flex: none; margin: 0; color: #d9c48f; font: 700 10px/1.2 system-ui, sans-serif; letter-spacing: .06em; text-transform: uppercase; }
+.lp-sub[data-kind="alert"] { border-color: #b4584c; border-left-color: #e0897c; background: #3a1411; font: 800 16px/1.35 system-ui, sans-serif; }
+.lp-sub[data-kind="alert"][data-tone="slain"] { border-color: #c9a24a; background: #352a0c; }
 .lp-sub.is-new { animation: lp-in .45s ease-out; }
 @keyframes lp-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .sp-entry[data-kind="alert"] { align-self: flex-start; padding: 3px 10px; border-radius: 6px; background: #f1c5bd; color: #7a1f17; font: 800 12px/1.4 system-ui, sans-serif; }
@@ -85,7 +86,8 @@ body.lp-pin-right .live-shell { padding-right: 408px; }
   .live-shell { padding-bottom: 60px; }
   .lp-bar { top: auto; bottom: 52px; max-width: calc(100% - 16px); }
   .lp-pin { display: none; }
-  .lp-sub { left: 8px; right: 8px; bottom: 8px; padding: 8px 10px; font-size: 14px; }
+  .lp-sub { min-height: 0; padding: 8px 10px; font-size: 14px; }
+  .lp-sub small { display: none; }
   .lp-sub-text { -webkit-line-clamp: 2; }
 }
 `;
@@ -176,7 +178,7 @@ export function mountLayoutPreview() {
   const subMore = document.createElement("small");
   subMore.textContent = words.more;
   sub.append(subText, subMore);
-  document.querySelector(".live-scene")?.append(sub);
+  document.querySelector(".live-scene")?.after(sub);
   sub.addEventListener("click", () => drawers.right.set(true));
   let fade = null;
   const show = (entry) => {
@@ -190,7 +192,7 @@ export function mountLayoutPreview() {
     sub.classList.remove("is-new");
     void sub.offsetWidth;
     sub.classList.add("is-new");
-    // Narration stays until something newer arrives; a combat line fades after six seconds; an alert after eight.
+    // Narration stays until something newer arrives; a combat line dims after six seconds and an alert after eight, but the strip keeps its height so nothing jumps.
     if (entry.kind === "combat") fade = setTimeout(() => { sub.dataset.fading = "true"; }, 6000);
     if (entry.kind === "alert") fade = setTimeout(() => { sub.dataset.fading = "true"; }, 8000);
   };
