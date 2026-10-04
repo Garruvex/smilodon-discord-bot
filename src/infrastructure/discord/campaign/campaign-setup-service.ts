@@ -83,7 +83,7 @@ export class CampaignSetupService {
       if (hubChannelId === null) {
         hubChannelId = await resources.createTextChannel(
           guildId,
-          { name: names.hub, topic: names.topic, parentId: categoryId, playersReadOnly: true, allowThreadMessages: false },
+          { name: names.hub, topic: names.topic, parentId: categoryId },
           reasonFor("hub channel"),
         );
       }
@@ -122,6 +122,7 @@ export class CampaignSetupService {
         privateGamesRoleId,
       };
       await unitOfWork.transaction((tx) => tx.saveGuildSettings(settings));
+      await this.lockChannels(settings);
       // The hub is the door to everything in the category, so it sits first, above the forums made after it.
       await resources.placeFirst(guildId, hubChannelId, categoryId).catch((error: unknown) => {
         this.options.logger.warn({ err: error, guildId }, "The hub channel could not be moved to the top");
@@ -131,6 +132,32 @@ export class CampaignSetupService {
       const saved = await unitOfWork.transaction((tx) => tx.loadGuildSettings(guildId));
       return { kind: "ok", settings: saved ?? settings };
     });
+  }
+
+  // Players never type in a D&D channel, new or already there (an older setup,
+  // or a hub channel the organizer picked), so every channel of a set-up server
+  // is locked on each setup run and once at startup.
+  public async lockAllGuilds(): Promise<void> {
+    const all = await this.options.unitOfWork.transaction((tx) => tx.listGuildSettings());
+    for (const settings of all) await this.lockChannels(settings);
+  }
+
+  private async lockChannels(settings: GuildCampaignSettings): Promise<void> {
+    const { guildId } = settings;
+    const reason = reasonFor("players do not write in game channels");
+    const locks: [string | null | undefined, string | null | undefined][] = [
+      [settings.hubChannelId, null],
+      [settings.publicGamesForumId, null],
+      [settings.publicPartiesForumId, null],
+      [settings.privateGamesForumId, settings.privateGamesRoleId],
+      [settings.privatePartiesForumId, settings.privateGamesRoleId],
+    ];
+    for (const [channelId, roleId] of locks) {
+      if (channelId === null || channelId === undefined) continue;
+      await this.options.resources.lockToPlayers(guildId, channelId, roleId ?? null, reason).catch((error: unknown) => {
+        this.options.logger.warn({ err: error, guildId, channelId }, "A game channel could not be locked to players");
+      });
+    }
   }
 
   // Creates a game's Games (Adventure) post and its matching Parties post, in

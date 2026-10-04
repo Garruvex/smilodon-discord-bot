@@ -43,6 +43,9 @@ export interface CampaignResourceGateway {
   forumPostExists(postId: string): Promise<boolean>;
   // Applies one of the forum's status tags to a post, replacing any it had.
   setForumPostTag(forumId: string, postId: string, tag: string | null, reason: string): Promise<void>;
+  // Makes a D&D channel (hub or forum) unwritable for everyone but the bot,
+  // whatever its permissions were. Safe to repeat; used on channels that already exist.
+  lockToPlayers(guildId: string, channelId: string, viewerRoleId: string | null, reason: string): Promise<void>;
   // Closes a finished campaign's post to further replies without deleting its history.
   archiveForumPost(postId: string, locked: boolean, reason: string): Promise<void>;
 }
@@ -51,10 +54,6 @@ export interface TextChannelOptions {
   readonly name: string;
   readonly topic: string;
   readonly parentId: string | null;
-  // Players cannot type here; they act through buttons and forms.
-  readonly playersReadOnly: boolean;
-  // Players may write in threads under this channel.
-  readonly allowThreadMessages: boolean;
   // A players-only game's role: the channel is made visible to it alone.
   readonly viewerRoleId?: string | null;
 }
@@ -104,13 +103,17 @@ const botPermissions = [
 
 const reasonFirst = "D&D campaign: hub channel first";
 
-const viewerAllowed = (allowThreadMessages: boolean): bigint[] => [
-  PermissionFlagsBits.ViewChannel,
-  PermissionFlagsBits.ReadMessageHistory,
-  ...(allowThreadMessages ? [PermissionFlagsBits.SendMessagesInThreads] : []),
-];
+const viewerAllowed = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory];
 
-const playerDenied = [PermissionFlagsBits.SendMessages, PermissionFlagsBits.CreatePublicThreads, PermissionFlagsBits.CreatePrivateThreads];
+// Not configurable: D&D channels belong to the narrator and its cards. Players
+// act through buttons, forms and the Activity, never by typing, in a channel or
+// in a post or thread under it.
+const playerDenied = [
+  PermissionFlagsBits.SendMessages,
+  PermissionFlagsBits.SendMessagesInThreads,
+  PermissionFlagsBits.CreatePublicThreads,
+  PermissionFlagsBits.CreatePrivateThreads,
+];
 
 export class DiscordResourceGateway implements CampaignResourceGateway {
   public constructor(private readonly client: Client) {}
@@ -135,14 +138,9 @@ export class DiscordResourceGateway implements CampaignResourceGateway {
       ...(options.parentId === null ? {} : { parent: options.parentId }),
       permissionOverwrites: [
         options.viewerRoleId === undefined || options.viewerRoleId === null
-          ? {
-              id: guild.roles.everyone.id,
-              ...(options.playersReadOnly
-                ? { deny: playerDenied, ...(options.allowThreadMessages ? { allow: [PermissionFlagsBits.SendMessagesInThreads] } : {}) }
-                : {}),
-            }
+          ? { id: guild.roles.everyone.id, deny: playerDenied }
           : { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel, ...playerDenied] },
-        ...(options.viewerRoleId === undefined || options.viewerRoleId === null ? [] : [{ id: options.viewerRoleId, allow: viewerAllowed(options.allowThreadMessages) }]),
+        ...(options.viewerRoleId === undefined || options.viewerRoleId === null ? [] : [{ id: options.viewerRoleId, allow: viewerAllowed, deny: playerDenied }]),
         { id: me.id, allow: botPermissions },
       ],
       reason,
@@ -228,11 +226,11 @@ export class DiscordResourceGateway implements CampaignResourceGateway {
       ...(options.parentId === null ? {} : { parent: options.parentId }),
       permissionOverwrites: [
         options.viewerRoleId === undefined || options.viewerRoleId === null
-          ? { id: guild.roles.everyone.id }
-          : { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
+          ? { id: guild.roles.everyone.id, deny: playerDenied }
+          : { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel, ...playerDenied] },
         ...(options.viewerRoleId === undefined || options.viewerRoleId === null
           ? []
-          : [{ id: options.viewerRoleId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.SendMessagesInThreads] }]),
+          : [{ id: options.viewerRoleId, allow: viewerAllowed, deny: playerDenied }]),
         { id: me.id, allow: botPermissions },
       ],
       reason,
@@ -282,6 +280,15 @@ export class DiscordResourceGateway implements CampaignResourceGateway {
     if (post?.isThread() !== true) throw new Error(`Channel ${postId} is not a forum post.`);
     const tagId = tag === null ? null : forum.availableTags.find((available) => available.name === tag)?.id;
     await post.setAppliedTags(tagId === undefined || tagId === null ? [] : [tagId], reason);
+  }
+
+  public async lockToPlayers(guildId: string, channelId: string, viewerRoleId: string | null, reason: string): Promise<void> {
+    const guild = await this.guild(guildId);
+    const channel = await guild.channels.fetch(channelId).catch(() => null);
+    if (channel === null || !("permissionOverwrites" in channel)) return;
+    const denied = Object.fromEntries(playerDenied.map((flag) => [new PermissionsBitField(flag).toArray()[0] ?? "", false]));
+    await channel.permissionOverwrites.edit(guild.roles.everyone.id, denied, { reason });
+    if (viewerRoleId !== null) await channel.permissionOverwrites.edit(viewerRoleId, denied, { reason });
   }
 
   public async archiveForumPost(postId: string, locked: boolean, reason: string): Promise<void> {

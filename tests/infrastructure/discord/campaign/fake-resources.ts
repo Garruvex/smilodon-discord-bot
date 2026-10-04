@@ -64,6 +64,13 @@ export class FakeResources implements CampaignResourceGateway {
     return Promise.resolve(id);
   }
 
+  public readonly locked: { channelId: string; roleId: string | null }[] = [];
+
+  public lockToPlayers(_guildId: string, channelId: string, roleId: string | null): Promise<void> {
+    this.locked.push({ channelId, roleId });
+    return Promise.resolve();
+  }
+
   public readonly placedFirst: string[] = [];
 
   public placeFirst(_guildId: string, channelId: string): Promise<void> {

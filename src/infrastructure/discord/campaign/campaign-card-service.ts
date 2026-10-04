@@ -236,7 +236,7 @@ export class CampaignCardService implements CardRefresher {
     const loaded = await this.options.unitOfWork.transaction(async (tx) => ({ stored: await tx.loadRecord(key), campaign: await tx.loadCampaign(key) }));
     if (loaded.stored === undefined) return;
     const { record } = loaded.stored;
-    const desired = this.desiredCards(record, loaded.campaign, await this.thumbnails(loaded.campaign));
+    const desired = await this.desiredCards(record, loaded.campaign, await this.thumbnails(loaded.campaign));
     const updates: Record<string, CardReference> = {};
     const failures: CardFailure[] = [];
     // A lobby card becomes the campaign card in place when the adventure starts.
@@ -381,7 +381,7 @@ export class CampaignCardService implements CardRefresher {
     return made;
   }
 
-  private desiredCards(record: CampaignRecord, campaign: StoredCampaign | undefined, thumbnails: ReadonlyMap<string, HeroPictureFile> = new Map()): readonly DesiredCard[] {
+  private async desiredCards(record: CampaignRecord, campaign: StoredCampaign | undefined, thumbnails: ReadonlyMap<string, HeroPictureFile> = new Map()): Promise<readonly DesiredCard[]> {
     const language: Language = record.language;
     const text = allTexts[language];
     const campaignId = record.key.campaignId;
@@ -422,7 +422,7 @@ export class CampaignCardService implements CardRefresher {
             organizerId: record.organizerId,
             heroes,
             adventureUrl: guildUrl(adventureChannelId),
-            ...(this.options.drawMap === true ? mapOf(state, bible, text) : {}),
+            ...(this.options.drawMap === true ? await mapOf(state, bible, text) : {}),
           },
           text,
           campaignId,
@@ -623,10 +623,10 @@ function hashOf(payload: CardPayload): string {
 }
 
 // The party's map as a picture; absent while there is only the one place to show.
-function mapOf(state: CampaignState, bible: AdventureBible, text: Texts): { readonly map?: MapImage } {
+async function mapOf(state: CampaignState, bible: AdventureBible, text: Texts): Promise<{ readonly map?: MapImage }> {
   const view = buildMapView(state, bible);
   if (view.nodes.length < 2) return {};
   const t = text.campaign.map;
-  const map = renderMapImage(view, { unknown: t.unknown, here: t.here, deadEnd: t.deadEnd, locked: t.locked });
+  const map = await renderMapImage(view, { unknown: t.unknown, here: t.here, deadEnd: t.deadEnd, locked: t.locked });
   return map === undefined ? {} : { map };
 }

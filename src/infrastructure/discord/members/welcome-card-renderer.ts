@@ -4,6 +4,7 @@ import type { GuildMember } from "discord.js";
 import { extractAvatarPalette } from "../canvas/avatar-palette.js";
 import { texts, type Texts } from "../../../application/i18n/texts.js";
 import { fontFamily } from "../canvas/card-font.js";
+import { drawRichText, warmEmoji } from "../canvas/rich-text.js";
 
 const width = 1000;
 const height = 500;
@@ -76,15 +77,17 @@ export async function renderWelcomeCard(member: GuildMember, text: Texts = texts
     ctx.fill();
   }
 
-  const displayName = member.displayName;
+  const title = welcome.title({ name: member.displayName });
+  const subtitle = welcome.subtitle({ server: member.guild.name });
+  await warmEmoji([title, subtitle]);
   ctx.textAlign = "center";
   ctx.fillStyle = "#FFFFFF";
   ctx.font = `bold 44px "${fontFamily}"`;
-  ctx.fillText(welcome.title({ name: displayName }), avatarCenterX, 345);
+  drawRichText(ctx, title, avatarCenterX, 345, 44, "center");
 
   ctx.fillStyle = "#A9A6B8";
   ctx.font = `23px "${fontFamily}"`;
-  ctx.fillText(welcome.subtitle({ server: member.guild.name }), avatarCenterX, 382);
+  drawRichText(ctx, subtitle, avatarCenterX, 382, 23, "center");
 
   const pillText = welcome.number({ number: member.guild.memberCount });
   ctx.font = `600 19px "${fontFamily}"`;

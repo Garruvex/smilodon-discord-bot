@@ -615,7 +615,7 @@ export function createDependencies(
     new BooruSearchTool(),
     new MemoryLookupTool(memoryEngine),
     new BirthdayLookupTool(birthdayStore),
-    new BirthdaySetTool(birthdayStore),
+    new BirthdaySetTool(birthdayStore, guildConfigurationProvider),
     new ReadLinkTool(),
     // Needs a real ChatProvider to make its own isolated image-generation
     // request (see ChatProvider.generateReferenceImage) — omitted entirely
@@ -662,6 +662,7 @@ export function createDependencies(
     personaSource,
     logger.child({ component: "chat" }),
     messageReactionWatchStore,
+    campaign.isGameChannel,
   ));
   behaviorRegistry.register(new AmbientChatBehavior(
     () => discordClient.user?.id ?? null,
@@ -671,6 +672,7 @@ export function createDependencies(
     personaSource,
     logger.child({ component: "ambient-chat" }),
     messageReactionWatchStore,
+    campaign.isGameChannel,
   ));
   behaviorRegistry.register(new ReactionArmBehavior(
     () => discordClient.user?.id ?? null,
@@ -682,6 +684,7 @@ export function createDependencies(
     guildConfigurationProvider,
     new BilibiliEmbedService(logger.child({ component: "bilibili-embed" })),
     logger.child({ component: "link-fix" }),
+    campaign.isGameChannel,
   ));
 
   return {

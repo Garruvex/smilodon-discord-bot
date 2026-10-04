@@ -7,6 +7,7 @@ import type { GuildLinkFixPlatformConfiguration, LinkFixPlatform } from "../../.
 import { extractBilibiliLinks } from "../../../domain/links/bilibili-link.js";
 import { extractLinkRewrites, type LinkRewriteMatch } from "../../../domain/links/link-rewrite.js";
 import type { BilibiliEmbedService } from "../../links/bilibili-embed-service.js";
+import { isInGameChannel, type IsGameChannel } from "./game-channel-guard.js";
 
 function enabledRewritePlatforms(platforms: GuildLinkFixPlatformConfiguration): ReadonlySet<LinkFixPlatform> {
   return new Set(
@@ -45,18 +46,20 @@ export class LinkFixBehavior implements BotBehavior<BehaviorEvent.MessageCreated
     private readonly profiles: GuildConfigurationProvider,
     private readonly bilibiliEmbeds: BilibiliEmbedService,
     private readonly logger: Logger,
+    // The narrator owns a D&D game's channels; link fixes stay out of them.
+    private readonly isGameChannel: IsGameChannel | null = null,
   ) {}
 
-  public matches(message: Message): Promise<boolean> {
-    if (!message.inGuild() || message.author.bot) return Promise.resolve(false);
+  public async matches(message: Message): Promise<boolean> {
+    if (!message.inGuild() || message.author.bot) return false;
     const profile = this.profiles.find(message.guildId);
-    if (!profile?.features.linkFix) return Promise.resolve(false);
-    if (!profile.channels.linkFix.has(message.channelId)) return Promise.resolve(false);
+    if (!profile?.features.linkFix) return false;
+    if (!profile.channels.linkFix.has(message.channelId)) return false;
     const enabledPlatforms = enabledRewritePlatforms(profile.linkFixPlatforms);
-    return Promise.resolve(
+    const hasLinks =
       extractLinkRewrites(message.content, enabledPlatforms).length > 0 ||
-      (profile.linkFixPlatforms.bilibili && extractBilibiliLinks(message.content).length > 0),
-    );
+      (profile.linkFixPlatforms.bilibili && extractBilibiliLinks(message.content).length > 0);
+    return hasLinks && !(await isInGameChannel(message, this.isGameChannel));
   }
 
   public async execute(message: Message): Promise<BehaviorResult> {

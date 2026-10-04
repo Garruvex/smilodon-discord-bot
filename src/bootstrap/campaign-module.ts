@@ -89,6 +89,8 @@ export interface CampaignModule {
   readonly adventureHandler: AdventureComponentHandler;
   // What the admin panel's D&D settings read and change.
   readonly settings: CampaignSettingsAccess;
+  // Whether one of these channels (a message's own and, in a thread, its parent) is a game's Party or Adventure post.
+  isGameChannel(guildId: string, channelIds: readonly string[]): Promise<boolean>;
   readonly activity: {
     characterCatalog(): unknown;
     listCharacters(userId: UserId): Promise<unknown>;
@@ -317,6 +319,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
     libraryHandler,
     adventureHandler,
     settings: new CampaignSettingsAccess({ unitOfWork, lobby, setup, cards, modelConfigured: model !== null }),
+    isGameChannel: async (guildId, channelIds) => (await lobby.findByChannel(guildId, channelIds)) !== undefined,
     activity: {
       characterCatalog: () => ({ races: selectableBuildRaces, skills, classes: buildClasses.map((id) => ({ id, skillChoices: classTemplates[id].skillChoices, skillCount: classTemplates[id].skillCount, expertiseCount: classTemplates[id].expertiseCount, kits: classTemplates[id].kits.map((kit) => kit.id), suggestedAbilities: suggestedAbilities(id) })) }),
       listCharacters: async (userId) => (await library.list(userId)).flatMap((entry) => entry.snapshots.filter((snapshot) => snapshot.branch === "main").sort((a, b) => a.revision - b.revision).slice(-1).map((snapshot) => ({ id: entry.character.id, snapshotId: snapshot.id, name: entry.character.name, className: entry.character.className, race: snapshot.build.race ?? null, versionCount: entry.snapshots.filter((version) => version.branch === "main").length }))),
@@ -616,6 +619,8 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
       cardRecovery = cards.recoverAll()
         .catch((error: unknown) => logger.error({ err: error }, "Campaign card recovery at startup failed"))
         .finally(() => { cardRecovery = null; });
+      // Servers set up before players were barred from typing in game channels are locked now.
+      void setup.lockAllGuilds().catch(logFailure("Game channels could not be locked to players at startup", "-"));
       reconcileTimer = setInterval(reconcileCards, 60_000);
       reconcileTimer.unref();
     },

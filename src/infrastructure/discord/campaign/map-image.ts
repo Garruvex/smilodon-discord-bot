@@ -4,6 +4,7 @@ import { createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
 
 import type { MapNode, MapView } from "../../../application/campaign/views/map-view.js";
 import { fontFamily } from "../canvas/card-font.js";
+import { drawRichText, measureRichText, warmEmoji } from "../canvas/rich-text.js";
 
 // The party's map as a picture, drawn locally from the map view: no model and no
 // network. Visited places are named boxes, places the party only knows a way to are
@@ -43,8 +44,9 @@ const colours = {
   deadEnd: "#e0775f",
 } as const;
 
-export function renderMapImage(view: MapView, labels: MapLabels): MapImage | undefined {
+export async function renderMapImage(view: MapView, labels: MapLabels): Promise<MapImage | undefined> {
   if (view.nodes.length === 0) return undefined;
+  await warmEmoji(view.nodes.flatMap((node) => [node.title, node.hint]));
   const columns = Math.max(...view.nodes.map((node) => node.column)) + 1;
   const rows = Math.max(...view.nodes.map((node) => node.row)) + 1;
   const width = margin * 2 + columns * boxWidth + (columns - 1) * gapX;
@@ -118,13 +120,15 @@ function drawNode(context: SKRSContext2D, node: MapNode, at: { x: number; y: num
   context.setLineDash([]);
 
   context.textAlign = "center";
-  context.textBaseline = "middle";
+  context.textBaseline = "alphabetic";
   context.fillStyle = unknown ? colours.muted : colours.text;
   const hinted = unknown && node.hint !== undefined;
-  context.font = `${hinted ? "italic " : ""}600 ${unknown && !hinted ? 22 : 15}px "${fontFamily}"`;
-  const title = hinted ? fitted(context, node.hint ?? "", boxWidth - 20) : unknown ? labels.unknown : fitted(context, node.title ?? labels.unknown, boxWidth - 20);
+  const titleSize = unknown && !hinted ? 22 : 15;
+  context.font = `${hinted ? "italic " : ""}600 ${titleSize}px "${fontFamily}"`;
+  const title = hinted ? fitted(context, node.hint ?? "", boxWidth - 20, titleSize) : unknown ? labels.unknown : fitted(context, node.title ?? labels.unknown, boxWidth - 20, titleSize);
   const note = current ? labels.here : node.deadEnd ? labels.deadEnd : node.locked ? labels.locked : "";
-  context.fillText(title, at.x + boxWidth / 2, at.y + boxHeight / (note === "" ? 2 : 2.6));
+  // Middle baseline is not available for drawn emoji, so the baseline is set by hand.
+  drawRichText(context, title, at.x + boxWidth / 2, at.y + boxHeight / (note === "" ? 2 : 2.6) + titleSize * 0.35, titleSize, "center");
   if (note !== "") {
     context.fillStyle = node.deadEnd ? colours.deadEnd : colours.muted;
     context.font = `11px "${fontFamily}"`;
@@ -143,9 +147,9 @@ function roundedBox(context: SKRSContext2D, x: number, y: number, width: number,
 }
 
 // The name cut to fit the box, with an ellipsis.
-function fitted(context: SKRSContext2D, text: string, width: number): string {
-  if (context.measureText(text).width <= width) return text;
+function fitted(context: SKRSContext2D, text: string, width: number, fontSize: number): string {
+  if (measureRichText(context, text, fontSize) <= width) return text;
   const characters = [...text];
-  while (characters.length > 1 && context.measureText(`${characters.join("")}…`).width > width) characters.pop();
+  while (characters.length > 1 && measureRichText(context, `${characters.join("")}…`, fontSize) > width) characters.pop();
   return `${characters.join("")}…`;
 }

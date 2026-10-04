@@ -3,6 +3,13 @@ import { describe, expect, it, vi } from "vitest";
 import { BirthdaySetTool } from "../../src/application/chat/tools/birthday-set-tool.js";
 import type { ChatToolContext } from "../../src/application/chat/tools/chat-tool.js";
 import type { BirthdayStore } from "../../src/application/birthdays/birthday-store.js";
+import type { GuildConfiguration } from "../../src/config/guild-configuration.js";
+
+function profiles(enabled: boolean | null = true) {
+  return {
+    find: vi.fn().mockReturnValue(enabled === null ? null : { features: { birthdays: enabled } } as GuildConfiguration),
+  };
+}
 
 function context(signal?: AbortSignal): ChatToolContext {
   return {
@@ -21,7 +28,7 @@ function context(signal?: AbortSignal): ChatToolContext {
 describe("BirthdaySetTool", () => {
   it("saves a valid date only for the current user in the current guild", async () => {
     const setBirthday = vi.fn().mockResolvedValue(undefined);
-    const tool = new BirthdaySetTool({ setBirthday } as unknown as BirthdayStore);
+    const tool = new BirthdaySetTool({ setBirthday } as unknown as BirthdayStore, profiles());
 
     const result = await tool.execute({ month: 2, day: 29 }, context());
 
@@ -38,7 +45,7 @@ describe("BirthdaySetTool", () => {
     { month: 1.5, day: 1 },
   ])("rejects invalid calendar date $month/$day", async (date) => {
     const setBirthday = vi.fn();
-    const tool = new BirthdaySetTool({ setBirthday } as unknown as BirthdayStore);
+    const tool = new BirthdaySetTool({ setBirthday } as unknown as BirthdayStore, profiles());
 
     const result = await tool.execute(date, context());
 
@@ -48,7 +55,7 @@ describe("BirthdaySetTool", () => {
 
   it("does not write after the tool call times out", async () => {
     const setBirthday = vi.fn();
-    const tool = new BirthdaySetTool({ setBirthday } as unknown as BirthdayStore);
+    const tool = new BirthdaySetTool({ setBirthday } as unknown as BirthdayStore, profiles());
     const controller = new AbortController();
     controller.abort();
 
@@ -60,10 +67,35 @@ describe("BirthdaySetTool", () => {
 
   it("does not claim success when storage fails", async () => {
     const setBirthday = vi.fn().mockRejectedValue(new Error("storage unavailable"));
-    const tool = new BirthdaySetTool({ setBirthday } as unknown as BirthdayStore);
+    const tool = new BirthdaySetTool({ setBirthday } as unknown as BirthdayStore, profiles());
 
     const result = await tool.execute({ month: 5, day: 4 }, context());
 
     expect(result.content).toContain("Could not save");
+  });
+
+  it.each([false, null])("does not write when birthdays are disabled or the guild is unconfigured (%s)", async (enabled) => {
+    const setBirthday = vi.fn();
+    const configuration = profiles(enabled);
+    const tool = new BirthdaySetTool({ setBirthday } as unknown as BirthdayStore, configuration);
+
+    const result = await tool.execute({ month: 5, day: 4 }, context());
+
+    expect(configuration.find).toHaveBeenCalledWith("guild-1");
+    expect(setBirthday).not.toHaveBeenCalled();
+    expect(result.content).toContain("nothing was saved");
+  });
+
+  it("checks the current feature setting on every call", async () => {
+    const setBirthday = vi.fn().mockResolvedValue(undefined);
+    const configuration = profiles();
+    const tool = new BirthdaySetTool({ setBirthday } as unknown as BirthdayStore, configuration);
+
+    await tool.execute({ month: 5, day: 4 }, context());
+    configuration.find.mockReturnValue({ features: { birthdays: false } } as GuildConfiguration);
+    const result = await tool.execute({ month: 6, day: 4 }, context());
+
+    expect(setBirthday).toHaveBeenCalledExactlyOnceWith("guild-1", "speaker-1", 5, 4);
+    expect(result.content).toContain("nothing was saved");
   });
 });

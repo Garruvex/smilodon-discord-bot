@@ -109,6 +109,7 @@ function message(overrides: {
     author: { id: overrides.authorId ?? "890123456789012345", bot: overrides.bot ?? false },
     member: member(),
     mentions: { users: { has: (id: string) => (overrides.mentionsBot ?? false) && id === botId } },
+    channel: { isThread: () => false, parentId: null },
     guild: { members: { me: { nickname: null, displayName: "Test Bot" } } },
   } as unknown as Message;
 }
@@ -117,7 +118,7 @@ function provider(profileValue: GuildConfiguration | null): GuildConfigurationPr
   return { find: () => profileValue } as unknown as GuildConfigurationProvider;
 }
 
-function behavior(profileValue: GuildConfiguration | null, conversation: ChatConversationService | null = {} as ChatConversationService): AmbientChatBehavior {
+function behavior(profileValue: GuildConfiguration | null, conversation: ChatConversationService | null = {} as ChatConversationService, isGameChannel: ((guildId: string, channelIds: readonly string[]) => Promise<boolean>) | null = null): AmbientChatBehavior {
   return new AmbientChatBehavior(
     () => botId,
     configuration(),
@@ -125,6 +126,8 @@ function behavior(profileValue: GuildConfiguration | null, conversation: ChatCon
     conversation,
     { resolve: () => Promise.resolve({ personality: "Test persona", loreChunks: [], examplePool: [], personaDrift: null, personalitySourceHash: "test-hash" }) },
     { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } as never,
+    null,
+    isGameChannel,
   );
 }
 
@@ -155,5 +158,10 @@ describe("AmbientChatBehavior.matches", () => {
 
   it("does not match a bot author", async () => {
     await expect(behavior(profile()).matches(message({ bot: true }))).resolves.toBe(false);
+  });
+
+  it("stays out of a D&D game's channel even when chat is allowed there", async () => {
+    await expect(behavior(profile(), {} as ChatConversationService, () => Promise.resolve(true)).matches(message())).resolves.toBe(false);
+    await expect(behavior(profile(), {} as ChatConversationService, () => Promise.resolve(false)).matches(message())).resolves.toBe(true);
   });
 });

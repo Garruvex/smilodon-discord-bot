@@ -1,4 +1,5 @@
 import type { BirthdayStore } from "../../birthdays/birthday-store.js";
+import type { GuildConfigurationProvider } from "../../../config/guild-configuration-provider.js";
 import type { ChatTool, ChatToolContext, ChatToolResult } from "./chat-tool.js";
 
 interface BirthdaySetToolArgs {
@@ -29,7 +30,10 @@ export class BirthdaySetTool implements ChatTool<BirthdaySetToolArgs> {
     },
   };
 
-  public constructor(private readonly birthdayStore: BirthdayStore) {}
+  public constructor(
+    private readonly birthdayStore: BirthdayStore,
+    private readonly guildConfigurationProvider: Pick<GuildConfigurationProvider, "find">,
+  ) {}
 
   public async execute(args: BirthdaySetToolArgs, ctx: ChatToolContext): Promise<ChatToolResult> {
     const { month, day } = args;
@@ -40,6 +44,9 @@ export class BirthdaySetTool implements ChatTool<BirthdaySetToolArgs> {
     if (ctx.signal?.aborted) return { content: "Birthday update timed out; nothing was saved." };
 
     try {
+      if (!this.guildConfigurationProvider.find(ctx.guildId)?.features.birthdays) {
+        return { content: "Birthdays are not enabled in this server; nothing was saved." };
+      }
       await this.birthdayStore.setBirthday(ctx.guildId, ctx.currentUser.id, month, day);
       return { content: `Your birthday is set to ${monthNames[month - 1]} ${day} in this server.` };
     } catch {

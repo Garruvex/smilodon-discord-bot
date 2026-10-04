@@ -5,6 +5,7 @@ import { createCanvas, loadImage } from "@napi-rs/canvas";
 import type { GeneratedImage } from "../../../application/campaign/ports/image-ports.js";
 import { sniffImageType } from "../../../application/campaign/images/image-bytes.js";
 import { fontFamily } from "../canvas/card-font.js";
+import { drawRichText, warmEmoji } from "../canvas/rich-text.js";
 
 // A hero's picture on Discord (panel spec, Hero cards): the player's portrait
 // as a small square thumbnail on the public card, and the same portrait full
@@ -34,10 +35,14 @@ const size = 160;
 const cacheLimit = 200;
 
 // The first letter of up to two words, or the first character of a name with no spaces (a Chinese name).
+const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+// Whole characters, so a flag or a family emoji is never cut in half.
+const firstCharacter = (word: string): string | undefined => segmenter.segment(word)[Symbol.iterator]().next().value?.segment;
+
 export function initialsOf(name: string): string {
   const words = name.trim().split(/\s+/).filter((word) => word !== "");
   if (words.length === 0) return "?";
-  const letters = words.length === 1 ? [[...(words[0] ?? "")][0] ?? "?"] : words.slice(0, 2).map((word) => [...word][0] ?? "");
+  const letters = words.length === 1 ? [firstCharacter(words[0] ?? "") ?? "?"] : words.slice(0, 2).map((word) => firstCharacter(word) ?? "");
   return letters.join("").toUpperCase();
 }
 
@@ -78,7 +83,7 @@ export class HeroPictures {
     // If the local image decoder cannot crop a valid portrait, let Discord
     // display the original instead of silently replacing it with initials.
     const original = portrait !== undefined && sniffImageType(portrait.bytes) === portrait.mediaType ? portrait : undefined;
-    const bytes = cropped ?? original?.bytes ?? this.tile(subject.name);
+    const bytes = cropped ?? original?.bytes ?? await this.tile(subject.name);
     const mediaType = cropped === undefined && original !== undefined ? original.mediaType : "image/png";
     const file: HeroPictureFile = { name: fileNameOf(subject.characterId, bytes, mediaType), bytes };
     if (this.cache.size >= cacheLimit) this.cache.delete(this.cache.keys().next().value ?? "");
@@ -96,7 +101,9 @@ export class HeroPictures {
     return canvas.toBuffer("image/png");
   }
 
-  private tile(name: string): Buffer {
+  private async tile(name: string): Promise<Buffer> {
+    const initials = initialsOf(name);
+    await warmEmoji([initials]);
     const canvas = createCanvas(size, size);
     const context = canvas.getContext("2d");
     const hue = hueOf(name);
@@ -104,9 +111,8 @@ export class HeroPictures {
     context.fillRect(0, 0, size, size);
     context.fillStyle = `hsl(${hue}, 45%, 92%)`;
     context.font = `bold 64px "${fontFamily}"`;
-    context.textAlign = "center";
-    context.textBaseline = "middle";
-    context.fillText(initialsOf(name), size / 2, size / 2 + 4);
+    context.textBaseline = "alphabetic";
+    drawRichText(context, initials, size / 2, size / 2 + 4 + 64 * 0.35, 64, "center");
     return canvas.toBuffer("image/png");
   }
 }

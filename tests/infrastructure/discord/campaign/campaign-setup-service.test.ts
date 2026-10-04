@@ -55,7 +55,10 @@ describe("server setup", () => {
     if (result.kind !== "ok") throw new Error("setup");
     expect(resources.categories.size).toBe(1);
     expect(resources.channels).toHaveLength(1);
-    expect(resources.channels[0]?.options).toMatchObject({ name: "dnd-games", playersReadOnly: true });
+    expect(resources.channels[0]?.options).toMatchObject({ name: "dnd-games" });
+    // Every D&D channel is locked to players, the picked hub and the private forums' viewer role included.
+    expect(resources.locked.map((lock) => lock.channelId).sort()).toEqual([result.settings.hubChannelId, result.settings.publicGamesForumId, result.settings.publicPartiesForumId, result.settings.privateGamesForumId, result.settings.privatePartiesForumId].sort());
+    expect(resources.locked.find((lock) => lock.channelId === result.settings.privateGamesForumId)?.roleId).toBe(result.settings.privateGamesRoleId);
     expect(resources.forums.map((forum) => forum.options.name)).toEqual(["public-games", "public-parties", "private-games", "private-parties"]);
     expect(resources.forums.find((forum) => forum.options.name === "public-games")?.options.tags).toEqual(["Recruiting", "Active", "Paused", "Completed"]);
     expect(resources.forums.find((forum) => forum.options.name === "public-parties")?.options.tags).toEqual([]);
@@ -90,7 +93,7 @@ describe("server setup", () => {
   it("uses the channel the organizer ran it in as the hub, and keeps the category on a repeat", async () => {
     const r = rig();
     const { service, resources } = setup(r);
-    resources.channels.push({ id: "mine", options: { name: "general", topic: "", parentId: null, playersReadOnly: false, allowThreadMessages: false } });
+    resources.channels.push({ id: "mine", options: { name: "general", topic: "", parentId: null } });
     const first = await service.setupGuild(guildId, "mine");
     const again = await service.setupGuild(guildId, "mine");
     expect(first).toEqual(again);
