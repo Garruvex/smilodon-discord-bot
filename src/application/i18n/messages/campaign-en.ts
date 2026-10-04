@@ -317,7 +317,6 @@ export const campaignEn = {
   "activity.story.title": "Story",
   "activity.story.tabStory": "Story",
   "activity.story.tabCombat": "Combat",
-  "activity.story.tabAll": "All",
   "activity.story.empty": "Nothing told yet.",
   "activity.story.new": "{count} new",
   "activity.story.jump": "Jump to latest",

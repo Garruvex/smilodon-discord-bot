@@ -8,7 +8,7 @@ const combatKinds = new Set(["combat", "alert", "maneuver", "move", "fled", "dea
 // What counts as news for the badge on the closed drawer: not the fight's blow-by-blow.
 const newsKinds = new Set(["narration", "action", "speech", "clue", "alert"]);
 
-const feed = { nodes: new Map(), filter: "story", unread: 0, ready: false, element: null, jump: null, tabs: new Map(), listeners: [] };
+const feed = { nodes: new Map(), filter: "story", inFight: false, unread: 0, ready: false, element: null, jump: null, tabs: new Map(), listeners: [] };
 let strip = null;
 let stripFade = null;
 
@@ -85,20 +85,23 @@ function fillNode(node, entry) {
 const atBottom = () => feed.element.scrollHeight - feed.element.scrollTop - feed.element.clientHeight < 40;
 
 function applyFilter() {
+  // Out of a fight there is one list, so no tabs; a fight's end puts the reader back on the story.
+  if (!feed.inFight) feed.filter = "story";
   for (const [key, button] of feed.tabs) button.setAttribute("aria-pressed", String(key === feed.filter));
+  feed.tabs.get("story").parentElement.hidden = !feed.inFight;
   for (const node of feed.element.querySelectorAll(".story-entry")) {
-    node.hidden = !(feed.filter === "all" || node.dataset.group === feed.filter || node.dataset.group === "system");
+    node.hidden = !(node.dataset.group === feed.filter || node.dataset.group === "system");
   }
   feed.element.dataset.empty = String(![...feed.element.querySelectorAll(".story-entry")].some((node) => !node.hidden));
 }
 
-// The feed itself, with its Story | Combat | All tabs, for the drawer to hold.
+// The feed itself, with its Story and Combat tabs, for the drawer to hold. The Combat tab is there only while a fight is on, and the Story tab never carries its blow-by-blow.
 export function buildStoryFeed() {
   const panel = document.createElement("div");
   panel.className = "story-panel";
   const tabs = document.createElement("div");
   tabs.className = "story-tabs";
-  for (const [key, label] of [["story", "activity.story.tabStory"], ["combat", "activity.story.tabCombat"], ["all", "activity.story.tabAll"]]) {
+  for (const [key, label] of [["story", "activity.story.tabStory"], ["combat", "activity.story.tabCombat"]]) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "story-tab ui-control";
@@ -202,6 +205,7 @@ export function buildStoryStrip(onOpen) {
 export function renderStory(game) {
   if (feed.element === null || strip === null) return;
   const entries = game.kind === "table" ? game.story ?? [] : [];
+  feed.inFight = game.kind === "table" && game.mode === "combat";
   strip.querySelector(".story-now-more").textContent = t("activity.story.readAll");
   const stick = atBottom();
   const ids = new Set(entries.map((entry) => entry.id));
@@ -232,7 +236,7 @@ export function renderStory(game) {
     for (const listener of feed.listeners) listener(news);
   } else if (!feed.ready) feed.element.scrollTop = feed.element.scrollHeight;
   // The strip follows what is newest and fitting: in a fight the latest fight line, otherwise the latest telling.
-  const inFight = game.kind === "table" && game.mode === "combat";
+  const inFight = feed.inFight;
   const fits = entries.filter((entry) => stripKinds.has(entry.kind) && (inFight || entry.kind === "narration"));
   const newest = fits.at(-1);
   if (newest === undefined) strip.hidden = true;

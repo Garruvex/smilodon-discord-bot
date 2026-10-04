@@ -340,7 +340,6 @@ export const campaignZhTW = {
   "activity.story.title": "故事",
   "activity.story.tabStory": "故事",
   "activity.story.tabCombat": "戰鬥",
-  "activity.story.tabAll": "全部",
   "activity.story.empty": "還沒有故事。",
   "activity.story.new": "{count} 則新訊息",
   "activity.story.jump": "跳到最新",
