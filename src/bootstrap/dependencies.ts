@@ -100,6 +100,7 @@ import { EightBallTool } from "../application/chat/tools/eightball-tool.js";
 import { BooruSearchTool } from "../application/chat/tools/booru-search-tool.js";
 import { MemoryLookupTool } from "../application/chat/tools/memory-lookup-tool.js";
 import { BirthdayLookupTool } from "../application/chat/tools/birthday-lookup-tool.js";
+import { BirthdaySetTool } from "../application/chat/tools/birthday-set-tool.js";
 import { ReadLinkTool } from "../application/chat/tools/read-link-tool.js";
 import { GenerateSelfImageTool } from "../application/chat/tools/generate-self-image-tool.js";
 import { CachingEmbeddingsClient } from "../application/chat/caching-embeddings-client.js";
@@ -614,6 +615,7 @@ export function createDependencies(
     new BooruSearchTool(),
     new MemoryLookupTool(memoryEngine),
     new BirthdayLookupTool(birthdayStore),
+    new BirthdaySetTool(birthdayStore),
     new ReadLinkTool(),
     // Needs a real ChatProvider to make its own isolated image-generation
     // request (see ChatProvider.generateReferenceImage) — omitted entirely

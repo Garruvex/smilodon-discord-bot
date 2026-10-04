@@ -15,6 +15,7 @@ export const zhTWCommandDescriptions = {
   "birthday/set:user": "改為設定其他成員的生日（僅限機器人管理員）", // Set another member's birthday instead (bot administrators only).
   "birthday/view": "顯示成員的生日", // Shows a member's birthday.
   "birthday/view:user": "要查詢的成員，預設為你自己", // The member to look up; defaults to you.
+  "birthday/list": "顯示此伺服器所有已儲存的生日", // Shows all saved birthdays in this server.
   "birthday/remove": "移除你的生日", // Removes your birthday.
   "birthday/remove:user": "改為移除其他成員的生日（僅限機器人管理員）", // Remove another member's birthday instead (bot administrators only).
   "birthday/next": "顯示接下來是誰的生日", // Shows whose birthday is coming up next.

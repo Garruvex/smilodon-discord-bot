@@ -13,6 +13,7 @@ export const jaCommandDescriptions = {
   "birthday/set:user": "代わりに他のメンバーの誕生日を設定します（ボット管理者のみ）。", // Set another member's birthday instead (bot administrators only).
   "birthday/view": "メンバーの誕生日を表示します。", // Shows a member's birthday.
   "birthday/view:user": "調べるメンバー。省略すると自分になります。", // The member to look up; defaults to you.
+  "birthday/list": "このサーバーに登録された誕生日をすべて表示します。", // Shows all saved birthdays in this server.
   "birthday/remove": "自分の誕生日を削除します。", // Removes your birthday.
   "birthday/remove:user": "代わりに他のメンバーの誕生日を削除します（ボット管理者のみ）。", // Remove another member's birthday instead (bot administrators only).
   "birthday/next": "次に誕生日を迎えるメンバーを表示します。", // Shows whose birthday is coming up next.

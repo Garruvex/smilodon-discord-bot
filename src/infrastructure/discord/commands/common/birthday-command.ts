@@ -6,7 +6,7 @@ import {
   type BotCommand,
   type CommandContext,
 } from "../../../../application/commands/command.js";
-import type { BirthdayStore } from "../../../../application/birthdays/birthday-store.js";
+import type { BirthdayRecord, BirthdayStore } from "../../../../application/birthdays/birthday-store.js";
 import type { GuildConfigurationProvider } from "../../../../config/guild-configuration-provider.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
 
@@ -33,6 +33,22 @@ function resolveGuildToday(timeZone: string): { month: number; day: number } {
   return { month: Number(lookup.month), day: Number(lookup.day) };
 }
 
+export function formatBirthdayListPages(records: readonly BirthdayRecord[]): string[] {
+  const sorted = [...records].sort((a, b) => a.month - b.month || a.day - b.day || a.userId.localeCompare(b.userId));
+  const pages: string[] = [];
+  let page = `🎂 Server birthdays (${sorted.length}):`;
+  for (const record of sorted) {
+    const line = `\n${monthNames[record.month - 1]} ${record.day} — <@${record.userId}>`;
+    if (page.length + line.length > 1_900) {
+      pages.push(page);
+      page = "🎂 Server birthdays (continued):";
+    }
+    page += line;
+  }
+  pages.push(page);
+  return pages;
+}
+
 export class BirthdayCommand implements BotCommand {
   public readonly definition = {
     name: "birthday",
@@ -53,6 +69,10 @@ export class BirthdayCommand implements BotCommand {
         options: [
           { type: "user", name: "user", description: "The member to look up; defaults to you.", required: false },
         ],
+      },
+      {
+        name: "list",
+        description: "Shows all saved birthdays in this server.",
       },
       {
         name: "remove",
@@ -94,6 +114,20 @@ export class BirthdayCommand implements BotCommand {
     }
     const guildId = context.interaction.guildId;
     const subcommand = context.interaction.options.getSubcommand(true);
+
+    if (subcommand === "list") {
+      const records = await this.birthdayStore.listAllForGuild(guildId);
+      if (records.length === 0) {
+        await this.replyPrivately(context, "No one has set a birthday yet. Use `/birthday set` to add one.");
+        return;
+      }
+      const [first, ...rest] = formatBirthdayListPages(records);
+      await context.responses.reply({ content: first!, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+      for (const content of rest) {
+        await context.interaction.followUp({ content, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+      }
+      return;
+    }
 
     if (subcommand === "set" || subcommand === "remove") {
       const targetUser = context.interaction.options.getUser("user");
