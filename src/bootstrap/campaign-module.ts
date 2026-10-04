@@ -93,6 +93,7 @@ export interface CampaignModule {
     characterCatalog(): unknown;
     listCharacters(userId: UserId): Promise<unknown>;
     getCharacter(userId: UserId, characterId: string): Promise<unknown | null>;
+    characterPortrait(userId: UserId, characterId: string): Promise<{ readonly bytes: Buffer; readonly mediaType: "image/png" | "image/jpeg" | "image/webp" } | null>;
     createCharacter(userId: UserId, build: BuildChoices): Promise<{ readonly kind: "ok"; readonly characterId: string } | { readonly kind: "invalid"; readonly problems: readonly { readonly code: string }[] } | { readonly kind: "full" }>;
     editCharacter(userId: UserId, characterId: string, build: BuildChoices): Promise<{ readonly kind: "ok" } | { readonly kind: "invalid"; readonly problems: readonly { readonly code: string }[] } | { readonly kind: "notFound" }>;
     deleteCharacter(userId: UserId, characterId: string): Promise<boolean>;
@@ -324,6 +325,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
         if (entry === undefined) return null;
         return { id: entry.character.id, name: entry.character.name, versions: [...entry.snapshots].sort((a, b) => a.revision - b.revision).map((snapshot) => ({ id: snapshot.id, revision: snapshot.revision, branch: snapshot.branch, source: snapshot.source.kind, createdAt: snapshot.createdAt, build: snapshot.build, gear: snapshot.gear, progression: snapshot.progression ?? null })) };
       },
+      characterPortrait: async (userId, characterId) => (await portraits.current(userId, characterId)) ?? null,
       createCharacter: async (userId, build) => {
         const result = await library.create(userId, build);
         return result.kind === "ok" ? { kind: "ok" as const, characterId: result.character.id } : result;

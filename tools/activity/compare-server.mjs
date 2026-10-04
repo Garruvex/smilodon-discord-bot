@@ -8,7 +8,7 @@ import { resolve } from "node:path";
 const root = process.cwd();
 const oldBundle = process.argv[2] === undefined || process.argv[2] === "-" ? null : resolve(process.argv[2]);
 const oldStyles = process.argv[3] === undefined ? null : resolve(process.argv[3]);
-const types = { ".js": "text/javascript", ".css": "text/css", ".html": "text/html", ".svg": "image/svg+xml", ".png": "image/png", ".json": "application/json" };
+const types = { ".js": "text/javascript", ".css": "text/css", ".html": "text/html", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".json": "application/json" };
 const comparePage = `<!doctype html><meta charset=utf-8><pre id=out>running</pre><script type="module" src="/compare-page.js"></script>`;
 
 createServer((request, response) => {

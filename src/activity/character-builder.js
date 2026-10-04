@@ -1,4 +1,6 @@
 import { requestJson } from "./api.js";
+import { previewCharacterRequest } from "./character-preview.js";
+import { setArtwork } from "./dom.js";
 import { classText, t } from "./i18n.js";
 
 const abilities = ["str", "dex", "con", "int", "wis", "cha"];
@@ -10,6 +12,20 @@ let currentCharacter = null;
 let selectedCharacterId = null;
 let selectedVersionId = null;
 let editingCharacterId = null;
+const previewParams = new URLSearchParams(window.location.search);
+const characterRequest = previewParams.has("characters-preview") && previewParams.has("design-preview") ? previewCharacterRequest : requestJson;
+const portraitUrl = (id) => characterRequest === previewCharacterRequest
+  ? ({ "preview-mira": "/previews/mira.jpg", "preview-pip": "/previews/pip.jpg" })[id] ?? null
+  : `/api/activity/characters/${encodeURIComponent(id)}/portrait`;
+const portrait = (id, name, large = false) => {
+  const frame = element("div", large ? "characters-portrait characters-portrait-large" : "characters-portrait");
+  const picture = element("img");
+  picture.hidden = true;
+  const fallback = element("span", "characters-portrait-fallback", large ? t("activity.characters.noPortrait") : name.trim().slice(0, 1).toUpperCase());
+  frame.append(picture, fallback);
+  void setArtwork(picture, fallback, portraitUrl(id), t("activity.hero.portraitAlt", { name }));
+  return frame;
+};
 
 const dialog = () => document.querySelector("#character-builder-dialog");
 const field = (id) => dialog().querySelector(`#${id}`);
@@ -40,7 +56,7 @@ const labelled = (text, control) => {
   return node;
 };
 const button = (text, click, primary = false) => {
-  const node = element("button", `live-action-choice${primary ? " primary" : ""}`, text);
+  const node = element("button", `ui-control${primary ? " primary" : ""}`, text);
   node.type = "button";
   node.addEventListener("click", click);
   return node;
@@ -58,7 +74,7 @@ const skillText = (id) => {
 };
 
 export async function loadCharacters() {
-  const payload = await requestJson("/api/activity/characters");
+  const payload = await characterRequest("/api/activity/characters");
   catalog = payload.catalog;
   characters = payload.characters;
   if (!dialog().childElementCount) wireCharacterCreator();
@@ -66,6 +82,7 @@ export async function loadCharacters() {
   document.querySelector("#lobby-character-count").textContent = t("activity.characters.count", { count: characters.length });
   renderCharacterList();
   if (selectedCharacterId && characters.some((character) => character.id === selectedCharacterId)) await selectCharacter(selectedCharacterId, selectedVersionId);
+  else if (characterRequest === previewCharacterRequest && characters.length) await selectCharacter(characters[0].id);
   else {
     selectedCharacterId = null;
     currentCharacter = null;
@@ -80,9 +97,11 @@ function renderCharacterList() {
   list.replaceChildren();
   if (!characters.length) list.append(element("p", "lobby-character-empty", t("activity.creator.emptyLibrary")));
   for (const character of characters) {
-    const card = button(character.name, () => void selectCharacter(character.id), character.id === selectedCharacterId);
+    const card = button("", () => void selectCharacter(character.id));
     card.classList.add("characters-list-item");
-    card.append(element("small", "", `${raceText(character.race)} · ${className(character.className)} · ${t("activity.characters.versions", { count: character.versionCount })}`));
+    const copy = element("span", "characters-list-copy");
+    copy.append(element("strong", "", character.name), element("small", "", `${raceText(character.race)} · ${className(character.className)} · ${t("activity.characters.versions", { count: character.versionCount })}`));
+    card.append(portrait(character.id, character.name), copy);
     card.setAttribute("aria-current", String(character.id === selectedCharacterId));
     list.append(card);
   }
@@ -109,7 +128,7 @@ async function selectCharacter(characterId, versionId = null) {
   const detail = document.querySelector("#characters-detail");
   detail.textContent = t("activity.characters.loading");
   try {
-    const payload = await requestJson(`/api/activity/characters/${encodeURIComponent(characterId)}`);
+    const payload = await characterRequest(`/api/activity/characters/${encodeURIComponent(characterId)}`);
     currentCharacter = payload.character;
     selectedCharacterId = characterId;
     selectedVersionId = versionId && currentCharacter.versions.some((version) => version.id === versionId) ? versionId : currentCharacter.versions.filter((version) => version.branch === "main").at(-1)?.id ?? currentCharacter.versions.at(-1)?.id ?? null;
@@ -133,9 +152,12 @@ function renderCharacterDetail() {
   const version = currentCharacter.versions.find((item) => item.id === selectedVersionId);
   if (!version) return;
   const build = version.build;
+  const hero = element("div", "characters-detail-hero");
+  hero.append(portrait(currentCharacter.id, build.name, true));
   const title = element("div", "characters-detail-heading");
   title.append(element("h2", "", build.name), element("p", "", `${raceText(build.race)} · ${className(build.class)}`));
-  detail.append(title);
+  hero.append(title);
+  detail.append(hero);
   const versionPicker = select("characters-version", [...currentCharacter.versions].reverse().map((item) => item.id), (id) => {
     const item = currentCharacter.versions.find((candidate) => candidate.id === id);
     const number = item.branch === "main" ? currentCharacter.versions.filter((candidate) => candidate.branch === "main" && candidate.revision <= item.revision).length : item.revision;
@@ -170,7 +192,7 @@ function showDeleteConfirmation() {
   const yes = button(t("activity.characters.deleteForever"), async () => {
     yes.disabled = true;
     try {
-      await requestJson(`/api/activity/characters/${encodeURIComponent(currentCharacter.id)}`, { method: "DELETE" });
+      await characterRequest(`/api/activity/characters/${encodeURIComponent(currentCharacter.id)}`, { method: "DELETE" });
       selectedCharacterId = null;
       selectedVersionId = null;
       currentCharacter = null;
@@ -341,7 +363,7 @@ export function wireCharacterCreator() {
     try {
       const wasEditing = editingCharacterId !== null;
       const targetId = editingCharacterId;
-      const result = await requestJson(wasEditing ? `/api/activity/characters/${encodeURIComponent(targetId)}` : "/api/activity/characters", { method: wasEditing ? "PUT" : "POST", body: JSON.stringify(buildChoices()) });
+      const result = await characterRequest(wasEditing ? `/api/activity/characters/${encodeURIComponent(targetId)}` : "/api/activity/characters", { method: wasEditing ? "PUT" : "POST", body: JSON.stringify(buildChoices()) });
       form.close();
       editingCharacterId = null;
       selectedCharacterId = targetId ?? result.characterId;

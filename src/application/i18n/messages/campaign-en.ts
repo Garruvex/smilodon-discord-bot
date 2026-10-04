@@ -120,6 +120,7 @@ export const campaignEn = {
   "activity.creator.full": "Your character library is full (20 characters).",
   "activity.creator.incompatible": "This character cannot join this game with its current rules.",
   "activity.characters.noAncestry": "Ancestry unspecified",
+  "activity.characters.noPortrait": "No portrait yet",
   "activity.characters.equipment": "Equipment",
   "activity.characters.title": "My characters",
   "activity.characters.eyebrow": "YOUR ADVENTURERS",

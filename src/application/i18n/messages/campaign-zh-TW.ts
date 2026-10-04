@@ -120,6 +120,7 @@ export const campaignZhTW = {
   "activity.creator.full": "角色收藏庫已滿（20 位角色）。",
   "activity.creator.incompatible": "此角色與這場遊戲的規則不相容。",
   "activity.characters.noAncestry": "未指定種族",
+  "activity.characters.noPortrait": "尚無肖像",
   "activity.characters.equipment": "裝備",
   "activity.characters.title": "我的角色",
   "activity.characters.eyebrow": "你的冒險者",

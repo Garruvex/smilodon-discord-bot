@@ -26,6 +26,7 @@ const contentTypes: Readonly<Record<string, string>> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".png": "image/png",
+  ".jpg": "image/jpeg",
   ".svg": "image/svg+xml; charset=utf-8",
 };
 
@@ -38,6 +39,7 @@ export interface ActivityCampaignApi {
   characterCatalog(): unknown;
   listCharacters(userId: UserId): Promise<unknown>;
   getCharacter(userId: UserId, characterId: string): Promise<unknown | null>;
+  characterPortrait(userId: UserId, characterId: string): Promise<{ readonly bytes: Buffer; readonly mediaType: "image/png" | "image/jpeg" | "image/webp" } | null>;
   createCharacter(userId: UserId, build: BuildChoices): Promise<{ readonly kind: "ok"; readonly characterId: string } | { readonly kind: "invalid"; readonly problems: readonly { readonly code: string }[] } | { readonly kind: "full" }>;
   editCharacter(userId: UserId, characterId: string, build: BuildChoices): Promise<{ readonly kind: "ok" } | { readonly kind: "invalid"; readonly problems: readonly { readonly code: string }[] } | { readonly kind: "notFound" }>;
   deleteCharacter(userId: UserId, characterId: string): Promise<boolean>;
@@ -206,6 +208,17 @@ async function respond(
       if (result.kind !== "ok") return writeJson(response, result.kind === "notFound" ? 404 : 409, { error: result.kind === "notFound" ? "characterMissing" : "invalidCharacter" }, headers);
       return writeJson(response, 200, { character: await campaigns.getCharacter(session.userId, characterId) }, headers);
     }
+  }
+
+  const portraitMatch = url.pathname.match(/^\/api\/activity\/characters\/([a-zA-Z0-9_-]{1,128})\/portrait$/);
+  if (portraitMatch !== null && portraitMatch[1] !== undefined && request.method === "GET") {
+    const session = requireSession(request, sessions);
+    if (session === null) return writeJson(response, 401, { error: "unauthorized" }, headers);
+    const portrait = await campaigns.characterPortrait(session.userId, portraitMatch[1]);
+    if (portrait === null) return writeJson(response, 404, { error: "imageNotAvailable" }, headers);
+    response.writeHead(200, { ...headers, "Content-Type": portrait.mediaType, "Content-Length": String(portrait.bytes.byteLength), "Cache-Control": "private, no-store", "Cross-Origin-Resource-Policy": "same-origin" });
+    response.end(portrait.bytes);
+    return;
   }
 
   const imageMatch = url.pathname.match(/^\/api\/activity\/games\/([0-9a-f-]{1,64})\/images\/(scenes|characters|encounters)\/([^/]{1,384})$/i);

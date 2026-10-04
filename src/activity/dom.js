@@ -87,7 +87,7 @@ export function iconForClass(className) {
 // A picture can be repainted under the same address (an organizer's redo), so ones that must stay current are re-checked now and then.
 export const artworkRecheckMs = 20000;
 
-export const artworkPending = new Set();
+export const artworkPending = new Map();
 
 
 export async function setArtwork(imageElement, fallbackElement, imageUrl, alt, revalidate = false) {
@@ -118,8 +118,14 @@ export async function setArtwork(imageElement, fallbackElement, imageUrl, alt, r
     imageElement.hidden = true;
     fallbackElement.hidden = false;
   }
-  if (artworkPending.has(imageUrl)) return;
-  artworkPending.add(imageUrl);
+  const pending = artworkPending.get(imageUrl);
+  if (pending) {
+    await pending;
+    const loaded = artworkCache.get(imageUrl);
+    if (loaded) show(loaded.objectUrl);
+    return;
+  }
+  const loading = (async () => {
   try {
     const headers = { Authorization: `Bearer ${app.sessionToken}` };
     if (cached?.etag) headers["If-None-Match"] = cached.etag;
@@ -142,6 +148,9 @@ export async function setArtwork(imageElement, fallbackElement, imageUrl, alt, r
   } finally {
     artworkPending.delete(imageUrl);
   }
+  })();
+  artworkPending.set(imageUrl, loading);
+  await loading;
 }
 
 

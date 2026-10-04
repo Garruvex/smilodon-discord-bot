@@ -3,7 +3,7 @@ import { showRolls } from "./dice.js";
 import { liveScreen, lobbyScreen } from "./dom.js";
 import { setLanguage, t } from "./i18n.js";
 import { showError } from "./lobby.js";
-import { wireCharacterScreen } from "./character-builder.js";
+import { openCharactersScreen, wireCharacterScreen } from "./character-builder.js";
 import { bindMapControls } from "./map.js";
 import { setTableConnectionState } from "./poll.js";
 import { designPreviewSnapshot } from "./preview.js";
@@ -15,12 +15,25 @@ wireCharacterScreen();
 
 
 if (new URLSearchParams(window.location.search).has("design-preview")) {
+  const charactersPreview = new URLSearchParams(window.location.search).has("characters-preview");
   lobbyScreen.hidden = true;
-  liveScreen.hidden = false;
+  liveScreen.hidden = charactersPreview;
   const preview = designPreviewSnapshot();
   const previewLanguage = new URLSearchParams(window.location.search).get("language") === "zh-TW" ? "zh-TW" : "en";
   app.currentSnapshot = preview;
-  if (new URLSearchParams(window.location.search).has("lobby-preview")) {
+  if (charactersPreview) {
+    void setLanguage(previewLanguage).then(() => {
+      document.querySelector("#server-label").textContent = previewLanguage === "zh-TW" ? "預覽伺服器" : "Preview server";
+      document.querySelector("#lobby-message").hidden = true;
+      document.querySelector("#lobby-empty").hidden = false;
+      document.querySelector("#lobby-user").textContent = previewLanguage === "zh-TW" ? "設計預覽" : "Design preview";
+      const note = document.createElement("p");
+      note.className = "characters-preview-note";
+      note.textContent = previewLanguage === "zh-TW" ? "設計預覽 · 範例角色只會保留到頁面重新整理。" : "Design preview · sample characters reset when you refresh this page.";
+      document.querySelector("#characters-screen .characters-intro").after(note);
+      openCharactersScreen();
+    });
+  } else if (new URLSearchParams(window.location.search).has("lobby-preview")) {
     app.currentGameId = "local-preview";
     Object.assign(preview, {
       kind: "lobby", campaignName: "The Lantern Company", adventureTitle: "Moonlit Ruins", language: previewLanguage,
