@@ -375,7 +375,6 @@ export const campaignZhTW = {
   "activity.drawer.party": "隊伍",
   "activity.drawer.map": "地圖",
   "activity.drawer.story": "故事",
-  "activity.drawer.close": "關閉",
   "activity.status.actionFailed": "無法送出這個行動。",
   "activity.status.actionSuccess": "行動已完成。",
   "activity.status.castSuccess": "已施放 {spell}，法術資源已更新。",

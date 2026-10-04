@@ -39,10 +39,8 @@ body.drawer-open-right .drawer-tab[data-side="right"] { right: var(--drawer-righ
 .drawer[data-side="bottom"] { z-index: 57; top: auto; bottom: 0; left: 50%; width: var(--drawer-map-w); height: var(--drawer-map-h); border-bottom: 0; border-radius: 12px 12px 0 0; transform: translate(-50%, 104%); }
 .drawer[data-open="true"] { transform: none; }
 .drawer[data-side="bottom"][data-open="true"] { transform: translate(-50%, 0); }
-.drawer-head { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--ui-border, #c4a874); background: var(--ui-paper-inset, #e8d6af); font-weight: 800; font-size: 12px; line-height: 1; font-family: inherit; letter-spacing: .06em; text-transform: uppercase; }
-.drawer-head h2 { flex: 1; margin: 0; font: inherit; }
 .drawer-body { flex: 1; min-height: 0; overflow: auto; }
-.drawer[data-side="left"] .party-section { margin: 0; padding: 10px; border: 0; background: transparent; box-shadow: none; }
+.drawer[data-side="left"] .party-section { margin: 0; padding: 8px; border: 0; background: transparent; box-shadow: none; }
 .drawer[data-side="left"] .section-heading { display: none; }
 .drawer[data-side="left"] .live-party-grid { grid-template-columns: minmax(0, 1fr); }
 /* One line for the class and level, so the whole party fits without scrolling. */
@@ -52,10 +50,10 @@ body.drawer-open-right .drawer-tab[data-side="right"] { right: var(--drawer-righ
 
 /* The story feed. */
 .story-panel { display: flex; flex: 1; min-height: 0; flex-direction: column; }
-.story-tabs { display: flex; gap: 4px; padding: 8px 12px 0; }
-.story-tab { padding: 6px 10px; font-size: 11px; font-weight: 700; }
+.story-tabs { display: flex; gap: 4px; padding: 8px 10px 6px; border-bottom: 1px solid var(--ui-border, #c4a874); }
+.story-tab { flex: 1; min-height: 30px; padding: 4px 8px; font-size: 11px; font-weight: 700; }
 .story-tab[aria-pressed="true"] { border-color: var(--ui-accent, #87332b); background: var(--ui-accent, #a43c31); color: #fff0d4; }
-.story-feed { position: relative; display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 9px; padding: 10px 14px; overflow-y: auto; scroll-behavior: smooth; }
+.story-feed { position: relative; display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 8px; padding: 8px 12px; overflow-y: auto; scroll-behavior: smooth; }
 .story-empty { display: none; margin: 0; color: var(--ui-ink-soft, #7a6244); font-style: italic; }
 .story-feed[data-empty="true"] .story-empty { display: block; }
 .story-entry { margin: 0; font-size: 15px; line-height: 1.5; }

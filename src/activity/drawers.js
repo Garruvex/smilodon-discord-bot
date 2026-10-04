@@ -13,17 +13,10 @@ function makeDrawer(side, titleKey, body, onOpen) {
   drawer.id = `drawer-${side}`;
   drawer.dataset.side = side;
   drawer.dataset.open = "false";
-  const head = document.createElement("header");
-  head.className = "drawer-head";
-  const title = document.createElement("h2");
-  const close = document.createElement("button");
-  close.type = "button";
-  close.className = "ui-control";
-  head.append(title, close);
   const content = document.createElement("div");
   content.className = "drawer-body";
   content.append(body);
-  drawer.append(head, content);
+  drawer.append(content);
 
   const tab = document.createElement("button");
   tab.type = "button";
@@ -37,7 +30,7 @@ function makeDrawer(side, titleKey, body, onOpen) {
   badge.hidden = true;
   tab.append(label, badge);
 
-  const entry = { drawer, tab, badge, titleKey, title, close, label, dots: null, onOpen };
+  const entry = { drawer, tab, badge, titleKey, label, dots: null, onOpen };
   entry.set = (open) => {
     if (drawer.dataset.open === String(open)) return;
     drawer.dataset.open = String(open);
@@ -52,7 +45,6 @@ function makeDrawer(side, titleKey, body, onOpen) {
     }
   };
   tab.addEventListener("click", () => { app.drawerAuto[side] = false; entry.set(drawer.dataset.open !== "true"); });
-  close.addEventListener("click", () => { app.drawerAuto[side] = false; entry.set(false); tab.focus(); });
   document.body.append(drawer, tab);
   drawers[side] = entry;
   order.push(side);
@@ -97,9 +89,7 @@ export function mountDrawers() {
 function paintTitles() {
   for (const entry of Object.values(drawers)) {
     const text = t(entry.titleKey);
-    entry.title.textContent = text;
     entry.label.textContent = text;
-    entry.close.textContent = t("activity.drawer.close");
     entry.drawer.setAttribute("aria-label", text);
   }
 }

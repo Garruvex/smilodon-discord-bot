@@ -352,7 +352,6 @@ export const campaignEn = {
   "activity.drawer.party": "Party",
   "activity.drawer.map": "Map",
   "activity.drawer.story": "Story",
-  "activity.drawer.close": "Close",
   "activity.status.actionFailed": "That action could not be sent.",
   "activity.status.actionSuccess": "Action completed.",
   "activity.status.castSuccess": "Cast {spell}. Spell resources have been updated.",
