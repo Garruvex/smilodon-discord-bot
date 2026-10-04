@@ -31,6 +31,7 @@ const portrait = (id, name, large = false) => {
     inspect.setAttribute("aria-haspopup", "dialog");
     inspect.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 5 5"></path></svg>';
     inspect.addEventListener("click", () => { void openArtwork(picture, name); });
+    picture.addEventListener("click", () => { void openArtwork(picture, name); });
     frame.append(inspect);
   }
   void setArtwork(picture, fallback, portraitUrl(id), t("activity.hero.portraitAlt", { name }));

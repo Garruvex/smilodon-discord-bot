@@ -1715,7 +1715,7 @@ div.live-party-card:hover:not(.is-selected) { border-color: var(--ui-border); tr
 .live-scene-art > .artwork-open:hover svg, .live-hero-art > .artwork-open:hover svg, .party-portrait-open:hover svg { background: color-mix(in srgb, var(--ui-ink) 88%, transparent); }
 .artwork-open svg, .party-portrait-open svg { width: 19px; height: 19px; padding: 6px; border-radius: 999px; background: color-mix(in srgb, var(--ui-ink) 68%, transparent); fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; box-sizing: content-box; }
 .artwork-open:focus-visible, .party-portrait-open:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: -2px; }
-#live-scene-image:not([hidden]), #live-hero-image:not([hidden]) { cursor: zoom-in; }
+#live-scene-image:not([hidden]), #live-hero-image:not([hidden]), .characters-portrait-large > img:not([hidden]) { cursor: zoom-in; }
 .live-party-card { position: relative; }
 .live-party-card .live-party-sigil { z-index: 2; pointer-events: none; }
 .party-select-target { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; padding: 0; border: 0; border-radius: inherit; background: transparent; cursor: pointer; }

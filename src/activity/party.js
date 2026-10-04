@@ -91,6 +91,7 @@ export function renderParty(members) {
     inspectPortrait.type = "button";
     inspectPortrait.className = "party-portrait-open";
     inspectPortrait.setAttribute("aria-label", t("activity.artwork.viewPartyPortrait", { name: hero.name }));
+    inspectPortrait.setAttribute("aria-haspopup", "dialog");
     inspectPortrait.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 5 5"></path></svg>';
     inspectPortrait.addEventListener("click", (event) => { event.stopPropagation(); void openArtwork(portrait, hero.name); });
     sigil.append(classGlyph, portrait, inspectPortrait);
