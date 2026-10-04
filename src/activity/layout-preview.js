@@ -34,21 +34,25 @@ const script = zh ? {
 };
 
 const layoutCss = `
-.lp-tab { position: fixed; z-index: 60; top: 50%; display: flex; align-items: center; gap: 8px; padding: 14px 7px; border: 1px solid #796546; background: #211e1bf2; color: #eee7d9; font: 800 12px/1 system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; writing-mode: vertical-rl; box-shadow: 0 6px 24px #0008; transform: translateY(-50%); }
+:root { --lp-side-h: min(54vh, 480px); --lp-map-h: min(40vh, 380px); --lp-left-w: 300px; --lp-right-w: 340px; --lp-map-w: min(600px, calc(100vw - 24px)); }
+.lp-tab { position: fixed; z-index: 60; top: calc(54px + var(--lp-side-h) / 2); transition: left .22s ease, right .22s ease, bottom .22s ease; display: flex; align-items: center; gap: 8px; padding: 14px 7px; border: 1px solid #796546; background: #211e1bf2; color: #eee7d9; font: 800 12px/1 system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; writing-mode: vertical-rl; box-shadow: 0 6px 24px #0008; transform: translateY(-50%); }
 .lp-tab[data-side="left"] { left: 0; border-left: 0; border-radius: 0 10px 10px 0; }
-.lp-tab[data-side="bottom"] { top: auto; bottom: 0; left: 50%; padding: 8px 18px; border-bottom: 0; border-radius: 10px 10px 0 0; writing-mode: horizontal-tb; transform: translateX(-50%); }
+.lp-tab[data-side="bottom"] { top: auto; transition: bottom .22s ease; bottom: 0; left: 50%; padding: 8px 18px; border-bottom: 0; border-radius: 10px 10px 0 0; writing-mode: horizontal-tb; transform: translateX(-50%); }
 .lp-tab[data-side="right"] { right: 0; border-right: 0; border-radius: 10px 0 0 10px; }
 .lp-tab[aria-expanded="true"] { background: #4a3b27; border-color: #e5c988; }
 .lp-badge { min-width: 18px; padding: 3px 5px; border-radius: 999px; background: #a43c31; color: #fff0d4; font: 800 10px/1 system-ui, sans-serif; text-align: center; writing-mode: horizontal-tb; letter-spacing: 0; }
 .lp-badge[hidden] { display: none; }
-.lp-drawer { position: fixed; z-index: 55; top: 54px; bottom: 12px; width: min(392px, 92vw); display: flex; flex-direction: column; border: 1px solid #9c7a4b; background: #f3e7cb; color: #33241a; box-shadow: 0 10px 40px #000a; transition: transform .22s ease; }
-.lp-drawer[data-side="left"] { left: 0; border-left: 0; border-radius: 0 12px 12px 0; transform: translateX(-104%); width: min(340px, 92vw); }
+.lp-drawer { position: fixed; z-index: 55; top: 54px; height: var(--lp-side-h); width: min(340px, 92vw); display: flex; flex-direction: column; border: 1px solid #9c7a4b; background: #f3e7cb; color: #33241a; box-shadow: 0 10px 40px #000a; transition: transform .22s ease; }
+.lp-drawer[data-side="left"] { left: 0; border-left: 0; border-radius: 0 12px 12px 0; transform: translateX(-104%); width: min(var(--lp-left-w), 92vw); }
 .lp-drawer[data-side="left"] .party-section { margin: 0; padding: 10px; background: transparent; border: 0; box-shadow: none; }
 .lp-drawer[data-side="left"] .live-party-grid { grid-template-columns: minmax(0, 1fr); }
-.lp-drawer[data-side="bottom"] { top: auto; bottom: 0; left: 12px; right: 12px; width: auto; height: min(64vh, 540px); border-bottom: 0; border-radius: 12px 12px 0 0; transform: translateY(104%); }
-body.lp-story-open .lp-drawer[data-side="bottom"] { right: 416px; }
-.lp-tab[data-side="bottom"][aria-expanded="true"] { bottom: min(64vh, 540px); }
-.lp-drawer[data-side="right"] { right: 0; border-right: 0; border-radius: 12px 0 0 12px; transform: translateX(104%); }
+.lp-drawer[data-side="bottom"] { top: auto; bottom: 0; left: 50%; right: auto; width: var(--lp-map-w); height: var(--lp-map-h); border-bottom: 0; border-radius: 12px 12px 0 0; transform: translate(-50%, 104%); }
+.lp-drawer[data-side="bottom"][data-open="true"] { transform: translate(-50%, 0); }
+.lp-tab[data-side="bottom"][aria-expanded="true"] { bottom: var(--lp-map-h); }
+/* A tab rides the edge of its panel: out to the panel's edge when it opens, back to the screen edge when it closes. */
+body.lp-open-left .lp-tab[data-side="left"] { left: var(--lp-left-w); }
+body.lp-open-right .lp-tab[data-side="right"] { right: var(--lp-right-w); }
+.lp-drawer[data-side="right"] { right: 0; border-right: 0; border-radius: 12px 0 0 12px; transform: translateX(104%); width: min(var(--lp-right-w), 92vw); }
 .lp-drawer[data-open="true"] { transform: none; }
 .lp-drawer-head { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid #c4a874; background: #e8d6af; font: 800 12px/1 system-ui, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: #5c4128; }
 .lp-drawer-head h2 { flex: 1; margin: 0; font: inherit; }
@@ -59,7 +63,8 @@ body.lp-story-open .lp-drawer[data-side="bottom"] { right: 416px; }
 .lp-drawer[data-side="right"] .sp-head { display: none; }
 .lp-drawer[data-side="right"] .lp-sp-tabs { padding: 8px 12px 0; }
 .lp-drawer .adventure-map-panel { margin: 0; border: 0; border-radius: 0; box-shadow: none; }
-body.lp-pin-left .live-shell { padding-left: 356px; }
+body.lp-pin-left .live-shell { padding-left: calc(var(--lp-left-w) + 16px); }
+body.lp-pin-right .live-shell { padding-right: calc(var(--lp-right-w) + 16px); }
 body.lp-party-moved .live-feature-grid { grid-template-columns: minmax(0, 1fr); }
 body.lp-party-moved .live-feature-grid > .live-hero { grid-column: 1; }
 .lp-dots { display: inline-flex; flex-direction: column; gap: 3px; writing-mode: horizontal-tb; }
@@ -67,8 +72,7 @@ body.lp-party-moved .live-feature-grid > .live-hero { grid-column: 1; }
 .lp-dots i[data-state="down"] { background: #d7873a; }
 .lp-dots i[data-state="dead"] { background: #b4584c; }
 .lp-dots i[data-state="away"] { background: #6b6358; }
-body.lp-pin-bottom .live-shell { padding-bottom: calc(min(64vh, 540px) + 20px); }
-body.lp-pin-right .live-shell { padding-right: 408px; }
+body.lp-pin-bottom .live-shell { padding-bottom: calc(var(--lp-map-h) + 20px); }
 /* the subtitle on the scene art */
 /* A strip of its own right under the scene card, so it never covers the art; the page orders sections by their order value, and sharing the scene's keeps it next to it. */
 .lp-sub { order: 1; display: flex; align-items: center; gap: 14px; min-height: 62px; margin: 8px 0 0; padding: 10px 14px; border: 1px solid #5d4d38; border-left: 4px solid #a98550; border-radius: 8px; background: #211e1b; color: #f2e8d2; font: 15px/1.45 Georgia, "Noto Serif TC", serif; text-align: left; cursor: pointer; box-sizing: border-box; transition: opacity .6s ease; }
@@ -98,8 +102,9 @@ body.lp-pin-right .live-shell { padding-right: 408px; }
   .lp-dots { flex-direction: row; }
   .lp-drawer, .lp-drawer[data-side="bottom"], .lp-drawer[data-side="left"] { top: auto; bottom: 44px; left: 0; right: 0; width: auto; height: 62vh; border: 1px solid #9c7a4b; border-radius: 12px 12px 0 0; }
   .lp-drawer[data-side="bottom"], .lp-drawer[data-side="right"], .lp-drawer[data-side="left"] { border-radius: 12px 12px 0 0; transform: translateY(110%); }
-  body.lp-story-open .lp-drawer[data-side="bottom"] { right: 0; }
-  .lp-drawer[data-open="true"] { transform: none; }
+  .lp-drawer[data-open="true"], .lp-drawer[data-side="bottom"][data-open="true"] { transform: none; }
+  body.lp-open-left .lp-tab[data-side="left"] { left: 0; }
+  body.lp-open-right .lp-tab[data-side="right"] { right: 0; }
   body.lp-pin-left .live-shell, body.lp-pin-bottom .live-shell, body.lp-pin-right .live-shell { padding-left: 0; padding-right: 0; padding-bottom: 60px; }
   .live-shell { padding-bottom: 60px; }
   .lp-bar { top: auto; bottom: 52px; max-width: calc(100% - 16px); }
@@ -161,7 +166,7 @@ export function mountLayoutPreview() {
     const set = (open) => {
       drawer.dataset.open = String(open);
       tab.setAttribute("aria-expanded", String(open));
-      if (side === "right") document.body.classList.toggle("lp-story-open", open);
+      document.body.classList.toggle(`lp-open-${side}`, open);
       if (open && side === "right") { unread = 0; badge.hidden = true; const feed = panel.querySelector(".sp-feed"); feed.scrollTop = feed.scrollHeight; }
       // On a narrow screen only one sheet is up at a time.
       if (open && window.matchMedia("(max-width: 900px)").matches) for (const other of Object.keys(drawers)) if (other !== side) drawers[other].set(false);
