@@ -1,6 +1,6 @@
 import { app } from "./state.js";
 import { t } from "./i18n.js";
-import { buildStoryFeed, buildStoryStrip, onStoryNews, retranslateStory, storyOpened } from "./story.js";
+import { buildStoryFeed, buildStoryStrip, onStoryNews, resetStory, retranslateStory, storyOpened } from "./story.js";
 
 // The party, the map and the story sit in panels that slide in from the edge of the screen, each with a tab on its edge. They are built once,
 // and the party's and the map's own markup is moved into them, so everything that paints those sections keeps working where it is.
@@ -102,6 +102,17 @@ function paintTitles() {
     entry.close.textContent = t("activity.drawer.close");
     entry.drawer.setAttribute("aria-label", text);
   }
+}
+
+// Leaving a game for the lobby: every panel put away, and nothing of that game's story or turn left behind.
+export function resetDrawers() {
+  for (const entry of Object.values(drawers)) entry.set(false);
+  for (const side of Object.keys(app.drawerAuto)) app.drawerAuto[side] = false;
+  app.wasMyTurn = false;
+  app.unreadStory = 0;
+  if (drawers.right !== undefined) drawers.right.badge.hidden = true;
+  delete document.body.dataset.gameKind;
+  resetStory();
 }
 
 // Called on every paint of the game: the party tab's dots, the words in the language of the game, and the map coming up by itself on your turn.

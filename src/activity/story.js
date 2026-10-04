@@ -141,6 +141,17 @@ export function storyOpened() {
 // The drawer registers here to be told how many entries arrived while it was closed.
 export function onStoryNews(listener) { feed.listeners.push(listener); }
 
+// Leaving a game: its story must not carry over into the next one, and the next one's first sight is not "news".
+export function resetStory() {
+  if (feed.element === null) return;
+  retranslateStory();
+  feed.unread = 0;
+  feed.filter = "story";
+  applyFilter();
+  feed.jump.hidden = true;
+  if (strip !== null) { clearTimeout(stripFade); strip.hidden = true; delete strip.dataset.shown; }
+}
+
 export function retranslateStory() {
   for (const button of feed.tabs.values()) button.textContent = t(button.dataset.label);
   if (feed.element === null) return;

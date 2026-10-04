@@ -4,6 +4,7 @@ import { fetchWithTimeout, requestJson, withTimeout } from "./api.js";
 import { errorElement, liveScreen, lobbyScreen, serverElement, setMessage, userElement } from "./dom.js";
 import { languageFromBrowser, languageFromDiscordLocale, setLanguage, t } from "./i18n.js";
 import { loadGames, showError } from "./lobby.js";
+import { resetDrawers } from "./drawers.js";
 import { openGame } from "./poll.js";
 import { resetPaint } from "./render.js";
 
@@ -12,6 +13,7 @@ document.querySelector("#back-to-lobby").addEventListener("click", () => {
   app.tableTimer = null;
   app.currentGameId = null;
   resetPaint();
+  resetDrawers();
   app.currentSnapshot = null;
   liveScreen.hidden = true;
   lobbyScreen.hidden = false;

@@ -1826,8 +1826,11 @@ body.drawer-open-right .drawer-tab[data-side="right"] { right: var(--drawer-righ
 @keyframes story-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .drawer, .drawer-tab, .story-now, .story-now.is-new, .story-entry.is-new { transition: none; animation: none; } }
 
-/* No panels in the lobby: nothing there to open. */
-body[data-game-kind="lobby"] .drawer, body[data-game-kind="lobby"] .drawer-tab, body[data-game-kind="lobby"] .story-now { display: none; }
+/* The panels and their tabs belong to a table being played: not the list of games, not the characters, not a game still in its lobby. They are shown only while the game page is up and holds a table. */
+.drawer, .drawer-tab { display: none; }
+body[data-game-kind="table"]:has(#live-screen:not([hidden])) .drawer { display: flex; }
+body[data-game-kind="table"]:has(#live-screen:not([hidden])) .drawer-tab { display: flex; }
+body[data-game-kind="lobby"] .story-now { display: none; }
 
 /* Below 900px: one bottom dock, Party | Map | Story, and each panel is a sheet above it. */
 @media (max-width: 900px) {
