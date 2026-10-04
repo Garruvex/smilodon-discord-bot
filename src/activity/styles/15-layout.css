@@ -19,6 +19,9 @@
 .drawer-tab[data-side="right"] { right: 0; border-right: 0; border-radius: 10px 0 0 10px; }
 .drawer-tab[data-side="bottom"] { top: auto; bottom: 0; left: 50%; padding: 8px 18px; border-bottom: 0; border-radius: 10px 10px 0 0; writing-mode: horizontal-tb; transform: translateX(-50%); }
 .drawer-tab[aria-expanded="true"] { border-color: #e5c988; background: #4a3b27; }
+/* On the two side tabs the name reads upward, from the bottom to the top, with the count above it. */
+.drawer-tab[data-side="left"], .drawer-tab[data-side="right"] { flex-direction: row-reverse; }
+.drawer-tab[data-side="left"] > span:first-child, .drawer-tab[data-side="right"] > span:first-child { transform: rotate(180deg); }
 .drawer-tab:focus-visible { outline: 2px solid #e5c988; outline-offset: 2px; }
 /* A tab rides the edge of its panel: out to the panel's edge when it opens, back to the screen's edge when it closes. */
 body.drawer-open-left .drawer-tab[data-side="left"] { left: var(--drawer-left-w); }
@@ -98,6 +101,8 @@ body[data-game-kind="lobby"] .story-now { display: none; }
 /* Below 900px: one bottom dock, Party | Map | Story, and each panel is a sheet above it. */
 @media (max-width: 900px) {
   .drawer-tab { top: auto; bottom: 0; width: 33.34%; justify-content: center; padding: 12px 8px; border: 1px solid #796546; border-radius: 0; writing-mode: horizontal-tb; transform: none; }
+  .drawer-tab[data-side="left"], .drawer-tab[data-side="right"] { flex-direction: row; }
+  .drawer-tab > span:first-child { transform: none !important; }
   .drawer-tab[data-side="left"] { left: 0; right: auto; }
   .drawer-tab[data-side="bottom"] { left: 33.33%; right: auto; padding: 12px 8px; border-bottom: 1px solid #796546; border-radius: 0; transform: none; }
   .drawer-tab[data-side="right"] { right: 0; left: auto; }
