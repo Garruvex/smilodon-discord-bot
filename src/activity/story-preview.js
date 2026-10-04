@@ -66,7 +66,8 @@ const css = `
 .sp-jump[hidden] { display: none; }
 .sp-empty { color: #7a6244; font: italic 13px system-ui, sans-serif; }
 /* under the scene */
-.sp-place-scene .sp { max-height: 300px; margin: 12px 0; }
+/* The page lays its sections out by their order value; sharing the scene's keeps the panel right after it. */
+.sp-place-scene .sp { order: 1; max-height: 300px; margin: 12px 0; }
 /* side column: the page makes room on the right */
 .sp-place-side .live-shell { padding-right: 372px; }
 .sp-place-side .sp { position: fixed; z-index: 40; top: 54px; right: 12px; bottom: 12px; width: 348px; }
