@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { AdventureBible } from "../../../src/domain/campaign/adventure/adventure-bible.js";
 import type { CampaignEvent } from "../../../src/domain/campaign/events/campaign-event.js";
 import type { Glossary } from "../../../src/domain/campaign/rules/content-registry.js";
-import { buildActivityStory, storyLength } from "../../../src/application/campaign/views/activity-story.js";
+import { buildActivityStory, storyBudget, storyMinimum } from "../../../src/application/campaign/views/activity-story.js";
 import { newCampaign } from "../../domain/campaign/campaign-fixtures.js";
 
 // The story the Activity shows is the public log: tellings, what heroes did and said, clues, place changes. Nothing private reaches it.
@@ -47,12 +47,39 @@ describe("the Activity story", () => {
     ]);
   });
 
-  it("leaves out empty tellings and keeps only the newest entries", () => {
-    const many: CampaignEvent[] = Array.from({ length: storyLength + 10 }, (_, n) => ({ kind: "narrationRecorded", roundNumber: n, text: `Telling ${n}` }));
-    many.push({ kind: "narrationRecorded", roundNumber: 99, text: "   " });
+  it("leaves out empty tellings", () => {
+    expect(story([{ kind: "narrationRecorded", roundNumber: 1, text: "   " }])).toEqual([]);
+  });
+
+  it("keeps the newest entries within a size budget, but never fewer than a few", () => {
+    const long = "x".repeat(3000);
+    const many: CampaignEvent[] = Array.from({ length: 30 }, (_, n) => ({ kind: "narrationRecorded", roundNumber: n, text: `${n}:${long}` }));
     const entries = story(many);
-    expect(entries).toHaveLength(storyLength);
-    expect(entries.at(-1)).toMatchObject({ text: `Telling ${storyLength + 9}` });
+    const size = entries.reduce((total, entry) => total + ("text" in entry && entry.text !== null ? entry.text.length + 80 : 80), 0);
+    expect(entries.length).toBeGreaterThanOrEqual(storyMinimum);
+    expect(entries.length).toBeLessThan(30);
+    expect(size).toBeLessThanOrEqual(storyBudget + 3100 * 12);
+    expect(entries.at(-1)).toMatchObject({ text: expect.stringMatching(/^29:/) });
+  });
+
+  it("cuts a telling from several rounds back to its opening and keeps the last rounds whole", () => {
+    const long = `${"The cold wind rose over the old road. ".repeat(20)}`;
+    const state = { ...newCampaign(), lastRoundNumber: 5 };
+    const entries = buildActivityStory(state, [
+      { kind: "narrationRecorded", roundNumber: 1, text: long },
+      { kind: "narrationRecorded", roundNumber: 4, text: long },
+      { kind: "narrationRecorded", roundNumber: 5, text: long },
+    ], bible, glossary);
+    expect(entries[0]).toMatchObject({ clipped: true });
+    expect((entries[0] as { text: string }).text.length).toBeLessThan(long.length);
+    expect(entries[1]).not.toHaveProperty("clipped");
+    expect(entries[2]).not.toHaveProperty("clipped");
+  });
+
+  it("shows a settled check as the total against its DC", () => {
+    const state = { ...newCampaign(), checks: { "check-1": { id: "check-1", characterId: "c-mira", test: { kind: "skill", skill: "arcana" }, dc: 15, roundNumber: 1, status: "resolved", result: null } } } as unknown as ReturnType<typeof newCampaign>;
+    const entries = buildActivityStory(state, [{ kind: "checkResolved", checkId: "check-1", result: { roll: { total: 17, d20: { natural: 20 } }, success: true, moments: {} } } as unknown as CampaignEvent], bible, glossary);
+    expect(entries).toEqual([{ id: "e0", kind: "roll", who: "Mira", test: { kind: "skill", skill: "arcana" }, total: 17, dc: 15, success: true }]);
   });
 
   it("carries nothing from a private summary or a hidden note", () => {

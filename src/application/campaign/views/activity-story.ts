@@ -1,6 +1,7 @@
 import { findScene, type AdventureBible } from "../../../domain/campaign/adventure/adventure-bible.js";
 import type { CampaignEvent } from "../../../domain/campaign/events/campaign-event.js";
 import type { Glossary } from "../../../domain/campaign/rules/content-registry.js";
+import type { CheckTest } from "../../../domain/campaign/character/character-sheet.js";
 import type { CampaignState } from "../../../domain/campaign/state/campaign-state.js";
 import { encounterRecords, type CombatTargetResult } from "../dm/combat-records.js";
 
@@ -8,10 +9,13 @@ import { encounterRecords, type CombatTargetResult } from "../dm/combat-records.
 // only (the Narrator's tellings, what heroes did and said, the visible results of a fight): nothing from a private summary, the DM's notes or a
 // hidden roll can be here, because only these public event kinds are read.
 export type StoryEntry =
-  | { readonly id: string; readonly kind: "narration"; readonly text: string }
+  // round: the exploration round it was told for (absent for a fight's). clipped: an older telling cut short to keep the snapshot small; the whole text is in the Adventure channel.
+  | { readonly id: string; readonly kind: "narration"; readonly text: string; readonly round?: number; readonly clipped?: true }
   | { readonly id: string; readonly kind: "action"; readonly who: string; readonly text: string }
   | { readonly id: string; readonly kind: "speech"; readonly who: string; readonly text: string }
   | { readonly id: string; readonly kind: "clue"; readonly text: string }
+  // A check the table saw rolled: the total against the DC. A natural 20 or 1 on a check changes nothing by itself, so the result is only total against DC.
+  | { readonly id: string; readonly kind: "roll"; readonly who: string; readonly test: CheckTest; readonly total: number; readonly dc: number; readonly success: boolean }
   // A place change, the start of a fight or its end: the client words it.
   | { readonly id: string; readonly kind: "system"; readonly code: "scene" | "combatBegins" | "victory" | "defeat"; readonly text: string | null }
   | { readonly id: string; readonly kind: "combat"; readonly who: string; readonly using: string; readonly opportunity: boolean; readonly targets: readonly StoryTarget[] }
@@ -26,8 +30,14 @@ export interface StoryTarget {
   readonly prone: boolean;
 }
 
-// How many of the latest entries a snapshot carries.
-export const storyLength = 60;
+// The latest entries a snapshot carries, by their size: the current and the last round in full, older tellings cut to their opening, and the whole bounded so a long game does not bloat every snapshot.
+export const storyBudget = 14000;
+export const storyMinimum = 12;
+// Tellings older than this many rounds behind the current one are cut to their opening.
+const fullRounds = 1;
+const clippedLength = 280;
+
+const weight = (entry: StoryEntry): number => ("text" in entry && entry.text !== null ? entry.text.length : 0) + 80;
 
 interface Placed {
   readonly order: number;
@@ -41,9 +51,9 @@ export function buildActivityStory(state: CampaignState, events: readonly Campai
   // A hero's wording for a round may be replaced; the entry keeps its place and takes the newest words.
   const actionAt = new Map<string, Placed>();
 
-  const narrate = (index: number, text: string): void => {
+  const narrate = (index: number, text: string, round?: number): void => {
     const trimmed = text.trim();
-    if (trimmed.length > 0) add(index, { id: `e${index}`, kind: "narration", text: trimmed });
+    if (trimmed.length > 0) add(index, { id: `e${index}`, kind: "narration", text: trimmed, ...(round === undefined ? {} : { round }) });
   };
 
   // Where each declared fight action sits in the log, so its result line can be put in order with the rest.
@@ -52,8 +62,12 @@ export function buildActivityStory(state: CampaignState, events: readonly Campai
 
   events.forEach((event, index) => {
     switch (event.kind) {
-      case "openingRecorded":
       case "narrationRecorded":
+        narrate(index, event.text, event.roundNumber);
+        break;
+      case "openingRecorded":
+        narrate(index, event.text, 0);
+        break;
       case "combatNarrationRecorded":
       case "tradeNarrated":
       case "dialogueNarrated":
@@ -76,6 +90,11 @@ export function buildActivityStory(state: CampaignState, events: readonly Campai
       case "heroSpoke":
         if (event.text.trim().length > 0) add(index, { id: `e${index}`, kind: "speech", who: heroName(event.characterId), text: event.text.trim() });
         break;
+      case "checkResolved": {
+        const check = state.checks[event.checkId];
+        if (check !== undefined) add(index, { id: `e${index}`, kind: "roll", who: heroName(check.characterId), test: check.test, total: event.result.roll.total, dc: check.dc, success: event.result.success });
+        break;
+      }
       case "clueRevealed":
         add(index, { id: `e${index}`, kind: "clue", text: event.text });
         break;
@@ -120,5 +139,17 @@ export function buildActivityStory(state: CampaignState, events: readonly Campai
     }
   }
 
-  return placed.sort((left, right) => left.order - right.order).slice(-storyLength).map((item) => item.entry);
+  const sorted = placed.sort((left, right) => left.order - right.order).map((item) => item.entry);
+  // Older tellings give way first: cut to their opening, then dropped from the front once the whole is over budget.
+  const current = state.lastRoundNumber;
+  const shaped = sorted.map((entry) => entry.kind === "narration" && entry.round !== undefined && entry.round > 0 && entry.round < current - fullRounds && entry.text.length > clippedLength
+    ? { ...entry, text: `${entry.text.slice(0, clippedLength - 1).trimEnd()}…`, clipped: true as const }
+    : entry);
+  let size = 0;
+  let start = shaped.length;
+  while (start > 0 && (shaped.length - start < storyMinimum || size + weight(shaped[start - 1]!) <= storyBudget)) {
+    start -= 1;
+    size += weight(shaped[start]!);
+  }
+  return shaped.slice(start);
 }

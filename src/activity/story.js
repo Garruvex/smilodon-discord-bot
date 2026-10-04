@@ -1,4 +1,5 @@
 import { t } from "./i18n.js";
+import { rollLabel } from "./dice.js";
 
 // The story the table has read, kept in a drawer, and its newest line shown as a strip under the scene.
 // game.story is the server's list of entries (newest last); the ids stay the same between snapshots, so only what is new is added.
@@ -31,6 +32,7 @@ export function entryText(entry) {
     case "action": return `${entry.who} ${entry.text}`;
     case "speech": return `${entry.who}: “${entry.text}”`;
     case "clue": return entry.text;
+    case "roll": return `${entry.who}: ${rollLabel(entry.test)}, ${entry.total} ${t("activity.dice.versusDc", { dc: entry.dc })} ${entry.success ? "✓" : "✗"}`;
     case "combat": return t("activity.story.combatLine", { who: entry.who, using: entry.using, results: entry.targets.map(checkText).join("; ") });
     case "alert": return t(entry.tone === "slain" ? "activity.story.alertSlain" : "activity.story.alertDown", { name: entry.name });
     case "system":
@@ -50,7 +52,14 @@ function entryNode(entry) {
 }
 
 function fillNode(node, entry) {
-  if (entry.kind === "action" || entry.kind === "speech") {
+  if (entry.kind === "roll") {
+    node.dataset.ok = String(entry.success);
+    const who = document.createElement("b");
+    who.textContent = entry.who;
+    const total = document.createElement("i");
+    total.textContent = String(entry.total);
+    node.replaceChildren(who, ` ${rollLabel(entry.test)} `, total, ` ${t("activity.dice.versusDc", { dc: entry.dc })} ${entry.success ? "✓" : "✗"}`);
+  } else if (entry.kind === "action" || entry.kind === "speech") {
     const who = document.createElement("b");
     who.textContent = entry.who;
     node.replaceChildren(who, entry.kind === "action" ? ` ${entry.text}` : `: “${entry.text}”`);
