@@ -1,5 +1,5 @@
 // Design preview only (?design-preview&layout): the whole proposal in one page. The latest line of the story sits as a subtitle on the scene art,
-// the full story lives in a drawer on the right, and the map in a drawer on the left (moved here from its card). Below 900px both become one bottom dock.
+// the full story lives in a drawer on the right, and the map in a sheet along the bottom (moved here from its card, since maps run sideways). Below 900px both become one bottom dock.
 // Nothing here ships: it builds its own markup and styles on top of the preview page.
 import { buildStoryPanel, css as storyCss } from "./story-preview.js";
 
@@ -35,13 +35,15 @@ const script = zh ? {
 
 const layoutCss = `
 .lp-tab { position: fixed; z-index: 60; top: 50%; display: flex; align-items: center; gap: 8px; padding: 14px 7px; border: 1px solid #796546; background: #211e1bf2; color: #eee7d9; font: 800 12px/1 system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; writing-mode: vertical-rl; box-shadow: 0 6px 24px #0008; transform: translateY(-50%); }
-.lp-tab[data-side="left"] { left: 0; border-left: 0; border-radius: 0 10px 10px 0; }
+.lp-tab[data-side="bottom"] { top: auto; bottom: 0; left: 50%; padding: 8px 18px; border-bottom: 0; border-radius: 10px 10px 0 0; writing-mode: horizontal-tb; transform: translateX(-50%); }
 .lp-tab[data-side="right"] { right: 0; border-right: 0; border-radius: 10px 0 0 10px; }
 .lp-tab[aria-expanded="true"] { background: #4a3b27; border-color: #e5c988; }
 .lp-badge { min-width: 18px; padding: 3px 5px; border-radius: 999px; background: #a43c31; color: #fff0d4; font: 800 10px/1 system-ui, sans-serif; text-align: center; writing-mode: horizontal-tb; letter-spacing: 0; }
 .lp-badge[hidden] { display: none; }
 .lp-drawer { position: fixed; z-index: 55; top: 54px; bottom: 12px; width: min(392px, 92vw); display: flex; flex-direction: column; border: 1px solid #9c7a4b; background: #f3e7cb; color: #33241a; box-shadow: 0 10px 40px #000a; transition: transform .22s ease; }
-.lp-drawer[data-side="left"] { left: 0; border-left: 0; border-radius: 0 12px 12px 0; transform: translateX(-104%); }
+.lp-drawer[data-side="bottom"] { top: auto; bottom: 0; left: 12px; right: 12px; width: auto; height: min(64vh, 540px); border-bottom: 0; border-radius: 12px 12px 0 0; transform: translateY(104%); }
+body.lp-story-open .lp-drawer[data-side="bottom"] { right: 416px; }
+.lp-tab[data-side="bottom"][aria-expanded="true"] { bottom: min(64vh, 540px); }
 .lp-drawer[data-side="right"] { right: 0; border-right: 0; border-radius: 12px 0 0 12px; transform: translateX(104%); }
 .lp-drawer[data-open="true"] { transform: none; }
 .lp-drawer-head { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid #c4a874; background: #e8d6af; font: 800 12px/1 system-ui, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: #5c4128; }
@@ -53,7 +55,7 @@ const layoutCss = `
 .lp-drawer[data-side="right"] .sp-head { display: none; }
 .lp-drawer[data-side="right"] .lp-sp-tabs { padding: 8px 12px 0; }
 .lp-drawer .adventure-map-panel { margin: 0; border: 0; border-radius: 0; box-shadow: none; }
-body.lp-pin-left .live-shell { padding-left: 408px; }
+body.lp-pin-bottom .live-shell { padding-bottom: calc(min(64vh, 540px) + 20px); }
 body.lp-pin-right .live-shell { padding-right: 408px; }
 /* the subtitle on the scene art */
 /* A strip of its own right under the scene card, so it never covers the art; the page orders sections by their order value, and sharing the scene's keeps it next to it. */
@@ -77,12 +79,14 @@ body.lp-pin-right .live-shell { padding-right: 408px; }
 /* below 900px: one bottom dock with Map | Story, and the drawers become sheets */
 @media (max-width: 900px) {
   .lp-tab { top: auto; bottom: 0; width: 50%; justify-content: center; padding: 12px 8px; border: 1px solid #796546; border-radius: 0; writing-mode: horizontal-tb; transform: none; }
-  .lp-tab[data-side="left"] { left: 0; right: auto; }
+  .lp-tab[data-side="bottom"] { left: 0; right: auto; bottom: 0; padding: 12px 8px; border: 1px solid #796546; border-radius: 0; transform: none; }
+  .lp-tab[data-side="bottom"][aria-expanded="true"] { bottom: 0; }
   .lp-tab[data-side="right"] { right: 0; left: auto; }
-  .lp-drawer { top: auto; bottom: 44px; left: 0; right: 0; width: auto; height: 62vh; border: 1px solid #9c7a4b; border-radius: 12px 12px 0 0; }
-  .lp-drawer[data-side="left"], .lp-drawer[data-side="right"] { border-radius: 12px 12px 0 0; transform: translateY(110%); }
+  .lp-drawer, .lp-drawer[data-side="bottom"] { top: auto; bottom: 44px; left: 0; right: 0; width: auto; height: 62vh; border: 1px solid #9c7a4b; border-radius: 12px 12px 0 0; }
+  .lp-drawer[data-side="bottom"], .lp-drawer[data-side="right"] { border-radius: 12px 12px 0 0; transform: translateY(110%); }
+  body.lp-story-open .lp-drawer[data-side="bottom"] { right: 0; }
   .lp-drawer[data-open="true"] { transform: none; }
-  body.lp-pin-left .live-shell, body.lp-pin-right .live-shell { padding-left: 0; padding-right: 0; }
+  body.lp-pin-bottom .live-shell, body.lp-pin-right .live-shell { padding-left: 0; padding-right: 0; padding-bottom: 60px; }
   .live-shell { padding-bottom: 60px; }
   .lp-bar { top: auto; bottom: 52px; max-width: calc(100% - 16px); }
   .lp-pin { display: none; }
@@ -143,6 +147,7 @@ export function mountLayoutPreview() {
     const set = (open) => {
       drawer.dataset.open = String(open);
       tab.setAttribute("aria-expanded", String(open));
+      if (side === "right") document.body.classList.toggle("lp-story-open", open);
       if (open && side === "right") { unread = 0; badge.hidden = true; const feed = panel.querySelector(".sp-feed"); feed.scrollTop = feed.scrollHeight; }
       // On a narrow screen only one sheet is up at a time.
       if (open && window.matchMedia("(max-width: 900px)").matches) for (const other of Object.keys(drawers)) if (other !== side) drawers[other].set(false);
@@ -163,7 +168,7 @@ export function mountLayoutPreview() {
   const mapPanel = document.querySelector(".adventure-map-panel");
   if (mapPanel !== null) {
     mapPanel.setAttribute("open", "");
-    makeDrawer("left", words.map, mapPanel);
+    makeDrawer("bottom", words.map, mapPanel);
   }
   makeDrawer("right", words.story, panel);
 
@@ -234,7 +239,7 @@ export function mountLayoutPreview() {
   const turn = control(words.turn, () => {
     myTurn = !myTurn;
     turn.textContent = myTurn ? words.turnDone : words.turn;
-    drawers.left?.set(myTurn);
+    drawers.bottom?.set(myTurn);
   });
   document.body.append(bar);
 }
