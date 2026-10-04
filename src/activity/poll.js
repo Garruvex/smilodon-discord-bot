@@ -45,7 +45,7 @@ export async function loadTable() {
     app.tableToken = payload.token ?? null;
     app.lastFullTableAt = Date.now();
     app.currentSnapshot = payload.snapshot;
-    await setLanguage(app.currentSnapshot.language ?? app.uiLanguage);
+    await setLanguage(app.discordLanguage);
     setTableConnectionState("live");
     renderGame(app.currentSnapshot);
   } catch (error) {

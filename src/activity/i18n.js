@@ -3,7 +3,9 @@ import { fetchWithTimeout } from "./api.js";
 
 // A class as the game's language names it; an unknown class shows as written.
 export function classText(raw) {
-  return raw ? app.classNames[raw.toLowerCase()] ?? raw : raw;
+  if (!raw) return raw;
+  const translated = app.activityStrings[`activity.creator.classOption.${raw.toLowerCase()}`];
+  return translated ?? app.classNames[raw.toLowerCase()] ?? raw;
 }
 
 
@@ -32,11 +34,16 @@ export async function setLanguage(language) {
   if (!response.ok) throw new Error(t("activity.connection.requestFailed"));
   app.activityStrings = await response.json();
   app.uiLanguage = normalized;
+  document.documentElement.lang = normalized;
   applyStaticTranslations();
 }
 
 
 export function languageFromDiscordLocale(locale) {
   return typeof locale === "string" && (/^zh-TW(?:$|-)/i.test(locale) || /^zh-Hant(?:$|-)/i.test(locale)) ? "zh-TW" : "en";
+}
+
+export function languageFromBrowser() {
+  return languageFromDiscordLocale(globalThis.navigator?.languages?.[0] ?? globalThis.navigator?.language);
 }
 

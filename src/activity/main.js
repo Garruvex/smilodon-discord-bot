@@ -1,18 +1,21 @@
 import { app } from "./state.js";
 import { showRolls } from "./dice.js";
 import { liveScreen, lobbyScreen } from "./dom.js";
-import { setLanguage, t } from "./i18n.js";
+import { languageFromBrowser, setLanguage, t } from "./i18n.js";
 import { showError } from "./lobby.js";
 import { openCharactersScreen, wireCharacterScreen } from "./character-builder.js";
+import { wireArtworkViewer } from "./artwork-viewer.js";
 import { bindMapControls } from "./map.js";
 import { setTableConnectionState } from "./poll.js";
 import { designPreviewSnapshot } from "./preview.js";
 import { renderGame } from "./render.js";
 import { mountLayoutPreview } from "./layout-preview.js";
 import { mountStoryPreview } from "./story-preview.js";
+import { authenticate } from "./session.js";
 
 bindMapControls();
 wireCharacterScreen();
+wireArtworkViewer();
 
 
 if (new URLSearchParams(window.location.search).has("design-preview")) {
@@ -20,7 +23,9 @@ if (new URLSearchParams(window.location.search).has("design-preview")) {
   lobbyScreen.hidden = true;
   liveScreen.hidden = charactersPreview;
   const preview = designPreviewSnapshot();
-  const previewLanguage = new URLSearchParams(window.location.search).get("language") === "zh-TW" ? "zh-TW" : "en";
+  const requestedLanguage = new URLSearchParams(window.location.search).get("language");
+  const previewLanguage = requestedLanguage === null ? languageFromBrowser() : requestedLanguage === "zh-TW" ? "zh-TW" : "en";
+  app.discordLanguage = previewLanguage;
   app.currentSnapshot = preview;
   if (charactersPreview) {
     void setLanguage(previewLanguage).then(() => {
@@ -37,18 +42,18 @@ if (new URLSearchParams(window.location.search).has("design-preview")) {
   } else if (new URLSearchParams(window.location.search).has("lobby-preview")) {
     app.currentGameId = "local-preview";
     Object.assign(preview, {
-      kind: "lobby", campaignName: "The Lantern Company", adventureTitle: "Moonlit Ruins", language: previewLanguage,
+      kind: "lobby", campaignName: previewLanguage === "zh-TW" ? "提燈旅團" : "The Lantern Company", adventureTitle: previewLanguage === "zh-TW" ? "月下遺跡" : "Moonlit Ruins", language: previewLanguage,
       playerCount: 3, maxPlayers: 6, canStart: false, startBlockReason: "notReady", selectedHeroId: null,
       selectedHeroName: null, selectedHeroClass: null,
       members: [
-        { heroName: "Thorne Oakshield", className: "Paladin", ready: true, isYou: false },
-        { heroName: "Aria Vell", className: "Wizard", ready: true, isYou: false },
+        { heroName: previewLanguage === "zh-TW" ? "索恩・橡盾" : "Thorne Oakshield", className: "Paladin", ready: true, isYou: false },
+        { heroName: previewLanguage === "zh-TW" ? "艾莉亞・維爾" : "Aria Vell", className: "Wizard", ready: true, isYou: false },
         { heroName: previewLanguage === "zh-TW" ? "選擇角色中" : "Choosing a character", className: null, ready: false, isYou: true },
       ],
       heroChoices: [
-        { id: "mira", name: "Mira Fen", className: "Ranger", available: true },
-        { id: "pip", name: "Pip Underbough", className: "Rogue", available: true },
-        { id: "sable", name: "Sable Dusk", className: "Cleric", available: false },
+        { id: "mira", name: previewLanguage === "zh-TW" ? "米拉・芬" : "Mira Fen", className: "Ranger", available: true },
+        { id: "pip", name: previewLanguage === "zh-TW" ? "皮普・安德堡" : "Pip Underbough", className: "Rogue", available: true },
+        { id: "sable", name: previewLanguage === "zh-TW" ? "賽布爾・暮影" : "Sable Dusk", className: "Cleric", available: false },
       ],
     });
     void setLanguage(previewLanguage).then(() => { setTableConnectionState("live"); renderGame(preview); });
@@ -100,11 +105,10 @@ if (new URLSearchParams(window.location.search).has("design-preview")) {
   void setLanguage(previewLanguage).then(() => {
     setTableConnectionState("live");
     renderGame(preview);
-    const rollPreview = new URLSearchParams(window.location.search).get("roll-preview");
-    if (rollPreview === "20" || rollPreview === "1") {
-    if (new URLSearchParams(window.location.search).has("story")) mountStoryPreview();
     if (new URLSearchParams(window.location.search).has("story")) mountStoryPreview();
     if (new URLSearchParams(window.location.search).has("layout")) mountLayoutPreview();
+    const rollPreview = new URLSearchParams(window.location.search).get("roll-preview");
+    if (rollPreview === "20" || rollPreview === "1") {
       const natural = Number(rollPreview);
       showRolls([{ id: `preview-roll-${natural}`, test: { kind: "skill", skill: "persuasion" }, natural, total: natural === 20 ? 25 : 4, dc: 15, success: natural === 20, moment: natural === 20 ? "natural20" : "natural1" }]);
     }

@@ -2,7 +2,7 @@ import { DiscordSDK } from "@discord/embedded-app-sdk";
 import { app } from "./state.js";
 import { fetchWithTimeout, requestJson, withTimeout } from "./api.js";
 import { errorElement, liveScreen, lobbyScreen, serverElement, setMessage, userElement } from "./dom.js";
-import { languageFromDiscordLocale, setLanguage, t } from "./i18n.js";
+import { languageFromBrowser, languageFromDiscordLocale, setLanguage, t } from "./i18n.js";
 import { loadGames, showError } from "./lobby.js";
 import { openGame } from "./poll.js";
 import { resetPaint } from "./render.js";
@@ -49,7 +49,8 @@ export function renewSession() {
 }
 
 export async function authenticate() {
-  await setLanguage("en");
+  app.discordLanguage = languageFromBrowser();
+  await setLanguage(app.discordLanguage);
   app.connectionStage = "Activity setup";
   app.discordConnected = false;
   errorElement.hidden = true;
@@ -65,7 +66,7 @@ export async function authenticate() {
   app.connectionStage = "Discord connection";
   setMessage(t("activity.connection.waitDiscord"));
   await withTimeout(app.discordSdk.ready(), 12000, t("activity.connection.discordTimeout"));
-  const localeResult = await app.discordSdk.commands.userSettingsGetLocale().catch(() => ({ locale: "en" }));
+  const localeResult = await app.discordSdk.commands.userSettingsGetLocale().catch(() => ({ locale: app.discordLanguage }));
   app.discordLanguage = languageFromDiscordLocale(localeResult.locale);
   await setLanguage(app.discordLanguage);
   app.discordConnected = true;

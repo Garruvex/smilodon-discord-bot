@@ -1,0 +1,13 @@
+/* The magnifier appears only when an actual picture is available. */
+.live-scene-art > .artwork-open, .live-hero-art > .artwork-open { display: none; position: absolute; right: 12px; bottom: 12px; z-index: 5; width: 42px; height: 42px; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius-small); background: var(--ui-paper-raised); color: var(--ui-ink); box-shadow: 0 3px 10px #1b120d88; cursor: zoom-in; }
+.live-scene-art:has(> img:not([hidden])) > .artwork-open, .live-hero-art:has(> img:not([hidden])) > .artwork-open { display: flex; }
+.live-scene-art > .artwork-open:hover, .live-hero-art > .artwork-open:hover { background: var(--ui-paper); border-color: var(--ui-accent); }
+.artwork-open svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+#live-scene-image:not([hidden]), #live-hero-image:not([hidden]) { cursor: zoom-in; }
+.artwork-viewer { width: min(1200px, calc(100vw - 24px)); max-width: none; max-height: calc(100dvh - 24px); padding: 12px; border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius); background: var(--ui-paper); color: var(--ui-ink); box-shadow: 0 20px 60px #120c09aa; }
+.artwork-viewer::backdrop { background: #110c09dc; }
+.artwork-viewer header { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 10px; }
+.artwork-viewer h2 { margin: 0; font: 22px/1.2 var(--serif); }
+.artwork-viewer header button { flex: 0 0 auto; font-size: 22px; }
+.artwork-viewer > img { display: block; width: 100%; max-height: calc(100dvh - 105px); object-fit: contain; background: var(--ui-paper-inset); }
+@media (max-width: 540px) { .artwork-viewer { padding: 8px; } .artwork-viewer h2 { font-size: 17px; } }

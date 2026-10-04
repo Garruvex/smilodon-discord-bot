@@ -80,13 +80,18 @@ export async function loadCharacters() {
   if (!dialog().childElementCount) wireCharacterCreator();
   document.dispatchEvent(new Event("activity-characters-loaded"));
   document.querySelector("#lobby-character-count").textContent = t("activity.characters.count", { count: characters.length });
+  document.querySelector("#characters-rail-count").textContent = t("activity.characters.count", { count: characters.length });
   renderCharacterList();
   if (selectedCharacterId && characters.some((character) => character.id === selectedCharacterId)) await selectCharacter(selectedCharacterId, selectedVersionId);
-  else if (characterRequest === previewCharacterRequest && characters.length) await selectCharacter(characters[0].id);
+  else if (characters.length) await selectCharacter(characters[0].id);
   else {
     selectedCharacterId = null;
     currentCharacter = null;
-    document.querySelector("#characters-detail").textContent = t("activity.characters.choosePrompt");
+    const detail = document.querySelector("#characters-detail");
+    detail.replaceChildren();
+    const empty = element("div", "characters-detail-empty");
+    empty.append(element("h2", "", t("activity.characters.emptyTitle")), element("p", "", t("activity.creator.emptyLibrary")), button(t("activity.characters.create"), () => openCharacterCreator(), true));
+    detail.append(empty);
   }
 }
 
@@ -95,7 +100,7 @@ const characterMessage = (text) => { document.querySelector("#characters-message
 function renderCharacterList() {
   const list = document.querySelector("#characters-list");
   list.replaceChildren();
-  if (!characters.length) list.append(element("p", "lobby-character-empty", t("activity.creator.emptyLibrary")));
+  if (!characters.length) list.append(element("p", "lobby-character-empty", t("activity.characters.emptyRail")));
   for (const character of characters) {
     const card = button("", () => void selectCharacter(character.id));
     card.classList.add("characters-list-item");
@@ -165,19 +170,25 @@ function renderCharacterDetail() {
   });
   versionPicker.value = version.id;
   versionPicker.addEventListener("change", () => { selectedVersionId = versionPicker.value; renderCharacterDetail(); });
-  detail.append(labelled(t("activity.characters.viewVersion"), versionPicker));
+  title.append(labelled(t("activity.characters.viewVersion"), versionPicker));
   const stats = element("div", "characters-stats");
   for (const ability of abilities) stats.append(detailLine(ability.toUpperCase(), String((version.progression?.abilityScores ?? build.abilities)[ability])));
   detail.append(stats);
-  detail.append(detailLine(t("activity.creator.skills"), build.skills.map(skillText).join(", ")));
-  if (build.expertise.length) detail.append(detailLine(t("activity.characters.expertise"), build.expertise.map(skillText).join(", ")));
-  if (build.raceAbilityChoices?.length) detail.append(detailLine(t("activity.creator.halfElfAbilities"), build.raceAbilityChoices.map((item) => item.toUpperCase()).join(", ")));
-  if (build.raceSkillChoices?.length) detail.append(detailLine(t("activity.creator.halfElfSkills"), build.raceSkillChoices.map(skillText).join(", ")));
-  detail.append(detailLine(t("activity.creator.kit"), t(`campaign.chars.kit.${build.kit}`)));
-  detail.append(detailLine(t("activity.characters.equipment"), version.gear.equipment.map((id) => label(id.replace(/^item:/, ""))).join(", ")));
-  detail.append(detailLine(t("activity.creator.appearance"), build.appearance));
-  detail.append(detailLine(t("activity.creator.backstory"), build.backstory));
-  if (version.progression) detail.append(detailLine(t("activity.characters.level"), String(Object.values(version.progression.classLevels).reduce((total, level) => total + level, 0))));
+  const buildSection = element("section", "characters-sheet-section");
+  buildSection.append(element("h3", "", t("activity.characters.buildSection")));
+  const buildGrid = element("div", "characters-sheet-grid");
+  buildGrid.append(detailLine(t("activity.creator.skills"), build.skills.map(skillText).join(", ")));
+  if (build.expertise.length) buildGrid.append(detailLine(t("activity.characters.expertise"), build.expertise.map(skillText).join(", ")));
+  if (build.raceAbilityChoices?.length) buildGrid.append(detailLine(t("activity.creator.halfElfAbilities"), build.raceAbilityChoices.map((item) => item.toUpperCase()).join(", ")));
+  if (build.raceSkillChoices?.length) buildGrid.append(detailLine(t("activity.creator.halfElfSkills"), build.raceSkillChoices.map(skillText).join(", ")));
+  buildGrid.append(detailLine(t("activity.creator.kit"), t(`campaign.chars.kit.${build.kit}`)));
+  buildGrid.append(detailLine(t("activity.characters.equipment"), version.gear.equipment.map((id) => label(id.replace(/^item:/, ""))).join(", ")));
+  if (version.progression) buildGrid.append(detailLine(t("activity.characters.level"), String(Object.values(version.progression.classLevels).reduce((total, level) => total + level, 0))));
+  buildSection.append(buildGrid);
+  detail.append(buildSection);
+  const storySection = element("section", "characters-sheet-section");
+  storySection.append(element("h3", "", t("activity.characters.storySection")), detailLine(t("activity.creator.appearance"), build.appearance), detailLine(t("activity.creator.backstory"), build.backstory));
+  detail.append(storySection);
   const actions = element("div", "characters-detail-actions");
   if (version.branch === "main") actions.append(button(t("activity.characters.edit"), () => openCharacterCreator(build, currentCharacter.id), true));
   actions.append(button(t("activity.characters.delete"), () => showDeleteConfirmation()));

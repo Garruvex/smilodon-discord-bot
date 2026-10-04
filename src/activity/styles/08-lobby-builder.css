@@ -85,11 +85,61 @@
 .builder-review-stats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
 .builder-review-stats span { display: grid; gap: 3px; justify-items: center; padding: 8px 3px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-small); background: var(--ui-paper-raised); color: var(--ui-muted); font-size: 9px; font-weight: 900; }
 .builder-review-stats b { color: var(--ui-ink); font-size: 14px; }
+
+/* Character management belongs in the header navigation, not among game cards. */
+.lobby-header-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; min-width: 0; }
+.lobby-header-actions .server-badge { max-width: none; }
+.lobby-characters-link.ui-control { display: inline-flex; width: auto; min-height: 38px; gap: 8px; margin: 0; padding: 8px 11px; border-color: var(--ui-border-strong); background: transparent; color: var(--ui-paper-raised); box-shadow: none; white-space: nowrap; }
+.lobby-characters-link.ui-control:hover { border-color: var(--ui-paper-raised); background: color-mix(in srgb, var(--ui-paper-raised) 9%, transparent); }
+.lobby-characters-link span:first-child { display: inline-grid; gap: 0; }
+.lobby-characters-mark { width: 20px; place-items: center; color: var(--ui-paper-inset); font: 16px/1 var(--serif); }
+.lobby-characters-link small { padding-left: 8px; border-left: 1px solid var(--ui-border-strong); color: var(--ui-paper-inset); font: 11px/1.2 var(--sans); }
+
+/* A quiet library rail and a readable character sheet share the journal palette. */
+.characters-shell { width: min(1160px, 100%); }
+.characters-header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 18px; }
+.characters-header > div { min-width: 0; }
+.characters-header .characters-create { margin-left: auto; }
+.characters-intro { margin: 16px 0 20px; }
+.characters-layout { grid-template-columns: minmax(240px, 29%) minmax(0, 1fr); gap: 14px; }
+.characters-rail { padding: 14px; }
+.characters-rail-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 0 2px 12px; }
+.characters-rail-heading h2 { margin: 0; font: 19px/1.2 var(--serif); }
+.characters-rail-heading span { color: var(--ui-muted); font: 12px/1.2 var(--sans); white-space: nowrap; }
+.characters-list { gap: 6px; }
+.characters-list-item.ui-control { min-height: 72px; padding: 7px; box-shadow: none; }
+.characters-list-item.ui-control[aria-current="true"] { box-shadow: inset 3px 0 0 var(--ui-accent); }
+.characters-list-copy small { line-height: 1.4; }
+.characters-detail { align-content: start; min-height: 390px; gap: 18px; padding: clamp(17px, 2.5vw, 28px); }
+.characters-detail-empty { display: grid; justify-items: start; align-content: center; min-height: 330px; gap: 12px; }
+.characters-detail-empty h2 { margin: 0; font: 27px/1.2 var(--serif); }
+.characters-detail-empty p { max-width: 360px; margin: 0; color: var(--ui-muted); }
+.characters-detail-hero { align-items: flex-start; gap: clamp(14px, 2.2vw, 24px); }
+.characters-detail-heading { display: grid; align-content: start; gap: 6px; min-width: 0; flex: 1; }
+.characters-detail-heading h2 { font-size: clamp(25px, 3vw, 33px); overflow-wrap: anywhere; }
+.characters-detail-heading p { margin: 0 0 8px; }
+.characters-detail-heading label { display: grid; max-width: 260px; gap: 6px; color: var(--ui-muted); font: 700 11px/1.2 var(--sans); text-transform: uppercase; }
+.characters-detail-heading select { margin: 0; font: 13px/1.25 var(--sans); text-transform: none; }
+.characters-stats { gap: 8px; }
+.characters-stats .characters-detail-line { padding: 12px 4px; }
+.characters-stats .characters-detail-line span { font: 21px/1.1 var(--serif); }
+.characters-sheet-section { display: grid; gap: 12px; padding-top: 17px; border-top: 1px solid var(--ui-border); }
+.characters-sheet-section h3 { margin: 0; font: 20px/1.2 var(--serif); }
+.characters-sheet-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 24px; }
+.characters-sheet-section > .characters-detail-line { margin: 0; }
+.characters-detail-actions { padding-top: 18px; border-top: 1px solid var(--ui-border); }
+.characters-detail-actions .ui-control:not(.primary) { margin-left: auto; border-color: var(--ui-border); background: transparent; }
 @media (max-width: 540px) {
-  .characters-header { flex-wrap: wrap; }
-  .characters-header .lobby-card-action { margin-left: 0; }
+  .lobby-header { flex-wrap: wrap; }
+  .lobby-header-actions { width: 100%; flex-wrap: wrap; justify-content: space-between; }
+  .lobby-header-actions .server-badge { max-width: 100%; }
+  .characters-header { grid-template-columns: 1fr auto; gap: 12px; }
+  .characters-header > div { grid-column: 1 / -1; grid-row: 1; }
+  .characters-header #characters-back { grid-column: 1; grid-row: 2; justify-self: start; }
+  .characters-header .characters-create { grid-column: 2; grid-row: 2; }
   .characters-layout { grid-template-columns: 1fr; }
   .characters-stats { grid-template-columns: repeat(3, 1fr); }
+  .characters-sheet-grid { grid-template-columns: 1fr; }
   .characters-portrait-large { width: 105px; height: 126px; flex-basis: 105px; }
   .character-builder-dialog { padding: 16px; }
   .builder-steps button { flex-direction: column; gap: 4px; font-size: 9px; }
