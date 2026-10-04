@@ -45,3 +45,7 @@
 @media (min-width: 761px) {
   .live-feature-grid > .live-hero { height: auto; min-height: clamp(510px, 64vh, 660px); }
 }
+
+/* A party card that is not a button (someone else's hero) has nothing to open, so it does not look like it does. */
+div.live-party-card { cursor: default; }
+div.live-party-card:hover:not(.is-selected) { border-color: var(--ui-border); transform: none; box-shadow: none; }

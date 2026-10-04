@@ -49,12 +49,14 @@ export function renderEnemies(enemies) { liveEnemies.replaceChildren(...(enemies
 
 export function renderParty(members) {
   liveParty.replaceChildren(...members.map((hero) => {
-    const card = document.createElement(hero.hp !== null && hero.maxHp !== null ? "button" : "div");
+    // Only your own card answers a press (it brings you back from an enemy's details). Someone else's has nothing to open, so it is not a button.
+    const pressable = hero.isYou && hero.hp !== null && hero.maxHp !== null;
+    const card = document.createElement(pressable ? "button" : "div");
     card.className = `live-party-card ui-card${hero.isYou ? " is-you" : ""}${!app.selectedEnemyName && hero.characterId === app.selectedPartyCharacterId ? " is-selected" : ""}`;
     card.dataset.status = hero.tableStatus ?? (hero.presence === "away" ? "away" : "waiting");
     card.dataset.presence = hero.presence ?? "present";
     card.dataset.condition = hero.fallen ? "dead" : hero.down ? "down" : "healthy";
-    if (hero.hp !== null && hero.maxHp !== null) {
+    if (pressable) {
       card.type = "button";
       card.setAttribute("aria-label", t("activity.party.inspect", { name: hero.name }));
       card.setAttribute("aria-pressed", String(!app.selectedEnemyName && hero.characterId === app.selectedPartyCharacterId));

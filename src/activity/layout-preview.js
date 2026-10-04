@@ -1,5 +1,5 @@
 // Design preview only (?design-preview&layout): the whole proposal in one page. The latest line of the story sits as a subtitle on the scene art,
-// the full story lives in a drawer on the right, and the map in a sheet along the bottom (moved here from its card, since maps run sideways). Below 900px both become one bottom dock.
+// the party in a drawer on the left (so no one else's card needs to open anything), the full story in a drawer on the right, and the map in a sheet along the bottom (moved here from its card, since maps run sideways). Below 900px both become one bottom dock.
 // Nothing here ships: it builds its own markup and styles on top of the preview page.
 import { buildStoryPanel, css as storyCss } from "./story-preview.js";
 
@@ -35,12 +35,16 @@ const script = zh ? {
 
 const layoutCss = `
 .lp-tab { position: fixed; z-index: 60; top: 50%; display: flex; align-items: center; gap: 8px; padding: 14px 7px; border: 1px solid #796546; background: #211e1bf2; color: #eee7d9; font: 800 12px/1 system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; writing-mode: vertical-rl; box-shadow: 0 6px 24px #0008; transform: translateY(-50%); }
+.lp-tab[data-side="left"] { left: 0; border-left: 0; border-radius: 0 10px 10px 0; }
 .lp-tab[data-side="bottom"] { top: auto; bottom: 0; left: 50%; padding: 8px 18px; border-bottom: 0; border-radius: 10px 10px 0 0; writing-mode: horizontal-tb; transform: translateX(-50%); }
 .lp-tab[data-side="right"] { right: 0; border-right: 0; border-radius: 10px 0 0 10px; }
 .lp-tab[aria-expanded="true"] { background: #4a3b27; border-color: #e5c988; }
 .lp-badge { min-width: 18px; padding: 3px 5px; border-radius: 999px; background: #a43c31; color: #fff0d4; font: 800 10px/1 system-ui, sans-serif; text-align: center; writing-mode: horizontal-tb; letter-spacing: 0; }
 .lp-badge[hidden] { display: none; }
 .lp-drawer { position: fixed; z-index: 55; top: 54px; bottom: 12px; width: min(392px, 92vw); display: flex; flex-direction: column; border: 1px solid #9c7a4b; background: #f3e7cb; color: #33241a; box-shadow: 0 10px 40px #000a; transition: transform .22s ease; }
+.lp-drawer[data-side="left"] { left: 0; border-left: 0; border-radius: 0 12px 12px 0; transform: translateX(-104%); width: min(340px, 92vw); }
+.lp-drawer[data-side="left"] .party-section { margin: 0; padding: 10px; background: transparent; border: 0; box-shadow: none; }
+.lp-drawer[data-side="left"] .live-party-grid { grid-template-columns: minmax(0, 1fr); }
 .lp-drawer[data-side="bottom"] { top: auto; bottom: 0; left: 12px; right: 12px; width: auto; height: min(64vh, 540px); border-bottom: 0; border-radius: 12px 12px 0 0; transform: translateY(104%); }
 body.lp-story-open .lp-drawer[data-side="bottom"] { right: 416px; }
 .lp-tab[data-side="bottom"][aria-expanded="true"] { bottom: min(64vh, 540px); }
@@ -55,6 +59,14 @@ body.lp-story-open .lp-drawer[data-side="bottom"] { right: 416px; }
 .lp-drawer[data-side="right"] .sp-head { display: none; }
 .lp-drawer[data-side="right"] .lp-sp-tabs { padding: 8px 12px 0; }
 .lp-drawer .adventure-map-panel { margin: 0; border: 0; border-radius: 0; box-shadow: none; }
+body.lp-pin-left .live-shell { padding-left: 356px; }
+body.lp-party-moved .live-feature-grid { grid-template-columns: minmax(0, 1fr); }
+body.lp-party-moved .live-feature-grid > .live-hero { grid-column: 1; }
+.lp-dots { display: inline-flex; flex-direction: column; gap: 3px; writing-mode: horizontal-tb; }
+.lp-dots i { width: 8px; height: 8px; border-radius: 50%; background: #7a9a62; }
+.lp-dots i[data-state="down"] { background: #d7873a; }
+.lp-dots i[data-state="dead"] { background: #b4584c; }
+.lp-dots i[data-state="away"] { background: #6b6358; }
 body.lp-pin-bottom .live-shell { padding-bottom: calc(min(64vh, 540px) + 20px); }
 body.lp-pin-right .live-shell { padding-right: 408px; }
 /* the subtitle on the scene art */
@@ -78,15 +90,17 @@ body.lp-pin-right .live-shell { padding-right: 408px; }
 .lp-bar button { padding: 6px 9px; border: 1px solid #5d4d38; border-radius: 7px; background: #2c2620; color: inherit; font: inherit; cursor: pointer; }
 /* below 900px: one bottom dock with Map | Story, and the drawers become sheets */
 @media (max-width: 900px) {
-  .lp-tab { top: auto; bottom: 0; width: 50%; justify-content: center; padding: 12px 8px; border: 1px solid #796546; border-radius: 0; writing-mode: horizontal-tb; transform: none; }
-  .lp-tab[data-side="bottom"] { left: 0; right: auto; bottom: 0; padding: 12px 8px; border: 1px solid #796546; border-radius: 0; transform: none; }
+  .lp-tab { top: auto; bottom: 0; width: 33.34%; justify-content: center; padding: 12px 8px; border: 1px solid #796546; border-radius: 0; writing-mode: horizontal-tb; transform: none; }
+  .lp-tab[data-side="left"] { left: 0; right: auto; border-left: 1px solid #796546; border-radius: 0; }
+  .lp-tab[data-side="bottom"] { left: 33.33%; right: auto; bottom: 0; padding: 12px 8px; border: 1px solid #796546; border-radius: 0; transform: none; }
   .lp-tab[data-side="bottom"][aria-expanded="true"] { bottom: 0; }
   .lp-tab[data-side="right"] { right: 0; left: auto; }
-  .lp-drawer, .lp-drawer[data-side="bottom"] { top: auto; bottom: 44px; left: 0; right: 0; width: auto; height: 62vh; border: 1px solid #9c7a4b; border-radius: 12px 12px 0 0; }
-  .lp-drawer[data-side="bottom"], .lp-drawer[data-side="right"] { border-radius: 12px 12px 0 0; transform: translateY(110%); }
+  .lp-dots { flex-direction: row; }
+  .lp-drawer, .lp-drawer[data-side="bottom"], .lp-drawer[data-side="left"] { top: auto; bottom: 44px; left: 0; right: 0; width: auto; height: 62vh; border: 1px solid #9c7a4b; border-radius: 12px 12px 0 0; }
+  .lp-drawer[data-side="bottom"], .lp-drawer[data-side="right"], .lp-drawer[data-side="left"] { border-radius: 12px 12px 0 0; transform: translateY(110%); }
   body.lp-story-open .lp-drawer[data-side="bottom"] { right: 0; }
   .lp-drawer[data-open="true"] { transform: none; }
-  body.lp-pin-bottom .live-shell, body.lp-pin-right .live-shell { padding-left: 0; padding-right: 0; padding-bottom: 60px; }
+  body.lp-pin-left .live-shell, body.lp-pin-bottom .live-shell, body.lp-pin-right .live-shell { padding-left: 0; padding-right: 0; padding-bottom: 60px; }
   .live-shell { padding-bottom: 60px; }
   .lp-bar { top: auto; bottom: 52px; max-width: calc(100% - 16px); }
   .lp-pin { display: none; }
@@ -165,6 +179,24 @@ export function mountLayoutPreview() {
   };
 
   let unread = 0;
+  // The roster moves out of the page into a left drawer; its edge tab shows one dot per hero (green well, orange down, red fallen, grey away).
+  const partySection = document.querySelector(".party-section");
+  if (partySection !== null) {
+    makeDrawer("left", zh ? "隊伍" : "Party", partySection);
+    document.body.classList.add("lp-party-moved");
+    const dots = document.createElement("span");
+    dots.className = "lp-dots";
+    const paintDots = () => {
+      dots.replaceChildren(...[...partySection.querySelectorAll(".live-party-card")].map((card) => {
+        const dot = document.createElement("i");
+        dot.dataset.state = card.dataset.condition !== "healthy" ? card.dataset.condition : card.dataset.presence === "away" ? "away" : "well";
+        return dot;
+      }));
+    };
+    paintDots();
+    new MutationObserver(paintDots).observe(partySection, { childList: true, subtree: true });
+    tabs.left.append(dots);
+  }
   const mapPanel = document.querySelector(".adventure-map-panel");
   if (mapPanel !== null) {
     mapPanel.setAttribute("open", "");
