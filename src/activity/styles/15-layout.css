@@ -22,6 +22,9 @@
 /* The party tab on the left reads downward. The story tab on the right reads upward, from the bottom to the top, with the count above it. */
 .drawer-tab[data-side="right"] { flex-direction: row-reverse; }
 .drawer-tab[data-side="right"] > span:first-child { transform: rotate(180deg); }
+/* Chinese stands upright and reads downward in a vertical tab; turning it over would put every character upside down, so the story tab reads the same way as the party tab. */
+html[lang^="zh"] .drawer-tab[data-side="right"] { flex-direction: row; }
+html[lang^="zh"] .drawer-tab[data-side="right"] > span:first-child { transform: none; }
 .drawer-tab:focus-visible { outline: 2px solid #e5c988; outline-offset: 2px; }
 /* A tab rides the edge of its panel: out to the panel's edge when it opens, back to the screen's edge when it closes. */
 body.drawer-open-left .drawer-tab[data-side="left"] { left: var(--drawer-left-w); }
