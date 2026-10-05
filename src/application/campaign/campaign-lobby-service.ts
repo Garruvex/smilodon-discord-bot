@@ -460,14 +460,16 @@ export class CampaignLobbyService {
       if (savedSnapshotIdOf(heroRef) === null && Object.values(state.characters).some((hero) => !isFallen(state, hero.id) && baseId(hero.id) === heroRef)) return refused("heroNotReplaceable");
       const prepared = await this.ongoingHeroSheet(record, state, userId, heroRef);
       if (prepared.kind === "refused") return prepared;
-      // A hero played again from the same preset is told apart by a numeral: "Mira II".
-      const repeat = /-(\d+)$/.exec(prepared.value.id);
+      // A preset hero always gets a numbered id, and one played again is told apart by a numeral in its name: "Mira II".
       const numerals = ["", "", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
-      const joining = repeat === null || savedSnapshotIdOf(heroRef) !== null ? prepared.value : { ...prepared.value, name: `${prepared.value.name} ${numerals[Number(repeat[1])] ?? repeat[1]}` };
+      const isSaved = savedSnapshotIdOf(heroRef) !== null;
+      const turn = prepared.value.id === heroRef ? 1 : Number(/-(\d+)$/.exec(prepared.value.id)?.[1] ?? 1);
+      const joining = isSaved ? prepared.value : { ...prepared.value, id: `${heroRef}-${turn}`, name: turn >= 2 ? `${prepared.value.name} ${numerals[turn] ?? turn}` : prepared.value.name };
       const partyLevel = Math.max(1, ...Object.values(state.characters).filter((hero) => !isFallen(state, hero.id)).map((hero) => hero.level));
       const outcome = await this.options.bus.execute(key, { kind: "joinHero", sheet: raiseToLevel(joining, partyLevel), entrance: arrival === undefined || arrival === "" ? "A new companion joins the party." : arrival }, { commandId: `dnd:${interactionId}`, actor: { kind: "user", userId } });
       if (outcome.kind !== "accepted") return refused(outcome.kind === "notFound" ? "notFound" : "savedCharacterProblem");
-      return this.finishOngoingJoin(key, userId, joining.id);
+      // The lobby record keeps which hero the seat took (the preset or the saved hero), not the numbered character it became.
+      return this.finishOngoingJoin(key, userId, heroRef);
     });
   }
 

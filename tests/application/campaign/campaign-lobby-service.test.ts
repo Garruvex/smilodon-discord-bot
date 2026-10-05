@@ -316,7 +316,7 @@ describe("replacing a fallen hero", () => {
     await kill(store, key);
     value(await service.replaceFallenHero(key, "u-org", heroIds[1] ?? "", "  She steps out of the mist.  ", "swap"));
     const state = (await store.transaction((tx) => tx.loadCampaign(key)))?.state;
-    expect(state?.members["u-org"]?.characterId).toBe(heroIds[1]);
+    expect(state?.members["u-org"]?.characterId).toBe(`${heroIds[1]}-1`);
     expect((await service.get(key))?.record.lobby.members.find((member) => member.userId === "u-org")?.heroId).toBe(heroIds[1]);
     expect((await store.transaction((tx) => tx.readEvents(key))).map((entry) => entry.event)).toContainEqual(expect.objectContaining({ kind: "heroJoined", entrance: "She steps out of the mist." }));
   });
