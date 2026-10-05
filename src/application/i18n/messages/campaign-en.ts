@@ -478,6 +478,7 @@ export const campaignEn = {
   "activity.action.finishRest": "Finish resting",
   "activity.status.shortRestPrompt": "Short rest: spend Hit Dice to heal",
   "activity.tab.sheet": "Sheet",
+  "activity.tab.companions": "Companions",
   "activity.sheet.ability.str": "STR",
   "activity.sheet.ability.dex": "DEX",
   "activity.sheet.ability.con": "CON",

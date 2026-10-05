@@ -5,6 +5,7 @@ import { classText, t } from "./i18n.js";
 import { partyStatusText } from "./party.js";
 import { openRules } from "./rules-book.js";
 import { renderSheet } from "./hero-sheet.js";
+import { renderCompanions } from "./companions.js";
 import { renderLevelUpBanner } from "./level-up.js";
 import { renderReplacementBanner } from "./replacement.js";
 
@@ -116,7 +117,7 @@ export function setWorkspaceTabs(game, tabs) {
     button.textContent = t(key); button.addEventListener("click", () => { app.selectedWorkspaceTab = id; renderCharacterWorkspace(game); });
     return button;
   }));
-  for (const id of ["overview", "sheet", "actions", "spells", "inventory", "trade"]) {
+  for (const id of ["overview", "sheet", "actions", "spells", "inventory", "trade", "companions"]) {
     const panel = document.querySelector(`#hero-panel-${id}`);
     panel.hidden = !tabs.some(([tabId]) => tabId === id) || app.selectedWorkspaceTab !== id;
   }
@@ -228,12 +229,13 @@ export function renderCharacterWorkspace(game) {
   renderHitDiceLine(selected);
 
   const tabs = viewingOwn
-    ? [["overview", "activity.tab.overview"], ["sheet", "activity.tab.sheet"], ["actions", "activity.tab.actions"], ["spells", "activity.tab.spells"], ["inventory", "activity.tab.inventory"], ["trade", "activity.tab.trade"]]
+    ? [["overview", "activity.tab.overview"], ["sheet", "activity.tab.sheet"], ["actions", "activity.tab.actions"], ["spells", "activity.tab.spells"], ["inventory", "activity.tab.inventory"], ["trade", "activity.tab.trade"], ...(game.companions?.length ? [["companions", "activity.tab.companions"]] : [])]
     : ownHero
       ? [["overview", "activity.tab.overview"], ["actions", "activity.tab.myActions"], ["trade", "activity.tab.trade"]]
       : [["overview", "activity.tab.overview"], ["trade", "activity.tab.trade"]];
   if (!tabs.some(([id]) => id === app.selectedWorkspaceTab)) app.selectedWorkspaceTab = viewingOwn ? "actions" : "overview";
   renderSheet(game);
+  renderCompanions(viewingOwn ? game : { companions: [] });
   renderLevelUpBanner(viewingOwn ? game : { levelUp: null });
   renderReplacementBanner(viewingOwn ? game : { replacement: null });
   setWorkspaceTabs(game, tabs);

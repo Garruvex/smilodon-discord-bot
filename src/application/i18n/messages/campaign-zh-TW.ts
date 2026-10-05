@@ -501,6 +501,7 @@ export const campaignZhTW = {
   "activity.action.finishRest": "結束休息",
   "activity.status.shortRestPrompt": "短休：花費生命骰療傷",
   "activity.tab.sheet": "角色表",
+  "activity.tab.companions": "同伴",
   "activity.sheet.ability.str": "力量",
   "activity.sheet.ability.dex": "敏捷",
   "activity.sheet.ability.con": "體質",
