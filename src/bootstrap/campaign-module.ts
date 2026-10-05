@@ -514,6 +514,11 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
             if (spellId === null) return { kind: "refused", reason: "invalidAction" };
             return activityPlay.castSpell(key, userId, spellId as ContentId<"spell">, id).then(mapPlayResult);
           }
+          case "spendHitDice": {
+            const count = integerValue(action.count);
+            if (count === null) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.spendHitDice(key, userId, count, id).then(mapPlayResult);
+          }
           case "healSpell":
           case "reviveSpell": {
             const spellId = textValue(action.spellId);

@@ -974,6 +974,7 @@ function successText(verb: ManageVerb, text: Texts): string {
     case "retryPicture":
       return t.pictureRetried;
     case "shortRest":
+      return t.shortRested;
     case "longRest":
       return t.rested;
     case "repair":

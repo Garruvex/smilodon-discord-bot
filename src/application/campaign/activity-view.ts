@@ -2,6 +2,7 @@ import type { AdventureBible } from "../../domain/campaign/adventure/adventure-b
 import type { UserId } from "../../domain/campaign/core/ids.js";
 import { actingHero } from "../../domain/campaign/engine/members.js";
 import { isFallen, presentMembers, type CampaignState } from "../../domain/campaign/state/campaign-state.js";
+import { hitDicePool } from "../../domain/campaign/character/character-build.js";
 import type { SealedContent, Glossary } from "../../domain/campaign/rules/content-registry.js";
 import type { CheckTest } from "../../domain/campaign/character/character-sheet.js";
 import { findScene } from "../../domain/campaign/adventure/adventure-bible.js";
@@ -42,6 +43,8 @@ export interface ActivityTableView {
     | { readonly kind: "journey"; readonly nodes: readonly { readonly id: string; readonly title: string; readonly status: "current" | "visited" | "known" | "reachable" | "locked"; readonly locked: boolean; readonly deadEnd: boolean; readonly canTravel: boolean; readonly column: number; readonly row: number }[]; readonly routes: readonly { readonly from: string; readonly to: string; readonly oneWay: boolean }[] };
   // Every word of the map, in the game's language.
   readonly mapText: Readonly<Record<"journeyKind" | "journeyTitle" | "tacticalKind" | "battlefield" | "keyParty" | "keyFoes" | "keyHere" | "keyOpen" | "keyLocked" | "empty" | "routeLabel" | "here" | "deadEnd" | "locked" | "visited" | "mapped" | "openRoute" | "openGround" | "difficult" | "coverHalf" | "coverThreeQuarters" | "lightBright" | "lightDim" | "lightDark" | "moveHere", string>>;
+  // Your Hit Dice: how many are left, the size of the next one, and whether they can be spent now (after a short rest, before the next round or fight).
+  readonly hitDice: { readonly left: number; readonly die: number | null; readonly canSpend: boolean; readonly rolling: boolean } | null;
   readonly yourTurn: boolean;
   readonly canBegin: boolean;
   readonly activeName: string | null;
@@ -372,6 +375,14 @@ export function buildActivityTableView(
         })),
       }
       : journeyMap,
+    hitDice: sheet === undefined ? null : ((): ActivityTableView["hitDice"] => {
+      const status = state.heroStatus[sheet.id];
+      const left = status?.hitDice ?? sheet.level;
+      const pool = hitDicePool(sheet);
+      const rolling = state.hitDicePending?.[sheet.id] !== undefined;
+      const open = state.shortRestOpen === true && state.round === null && (state.encounter === null || state.encounter.status === "ended") && !isFallen(state, sheet.id);
+      return { left, die: pool[pool.length - left] ?? null, canSpend: open && !rolling && left > 0 && (status?.hp ?? sheet.maxHp) < sheet.maxHp, rolling };
+    })(),
     yourTurn: turn !== null,
     canBegin: record.organizerId === userId,
     activeName: panel.combat?.activeName ?? null,

@@ -139,6 +139,11 @@ export class DndCommand implements BotCommand {
         ],
       },
       {
+        name: "hit-dice",
+        description: "Spend Hit Dice to heal after a short rest (your own hero).",
+        options: [{ type: "integer", name: "count", description: "How many Hit Dice to spend.", required: true, minValue: 1, maxValue: 20 }],
+      },
+      {
         name: "level",
         description: "Raises every living hero to a level, for milestone leveling (organizer).",
         options: [{ type: "integer", name: "level", description: "The level to raise the party to.", required: true, minValue: 2, maxValue: 20 }],
@@ -318,7 +323,11 @@ export class DndCommand implements BotCommand {
       }
       case "rest": {
         const long = interaction.options.getString("type", true) === "long";
-        return done(await control(long ? "longRest" : "shortRest", () => this.deps.play.rest(key, userId, long ? "long" : "short", id)), text.campaign.cmd.rested);
+        return done(await control(long ? "longRest" : "shortRest", () => this.deps.play.rest(key, userId, long ? "long" : "short", id)), long ? text.campaign.cmd.rested : text.campaign.cmd.shortRested);
+      }
+      case "hit-dice": {
+        const count = interaction.options.getInteger("count", true);
+        return done(await this.deps.play.spendHitDice(key, userId, count, id), text.campaign.cmd.hitDiceAsked);
       }
       case "level": {
         const level = interaction.options.getInteger("level", true);

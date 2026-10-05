@@ -94,7 +94,7 @@ function pickerCard(config) {
 
 export const actionPlacement = { acceptInvite: "top", joinHero: "top", reaction: "top", smite: "top", opportunityAttack: "top", ready: "top", begin: "top", continue: "top", toggleMoveObjection: "top", moveVote: "top", submit: "composer", pass: "composer", endTurn: "bottom" };
 
-export const actionCategoryOf = { attack: "attack", combatSpell: "spells", exploreSpell: "spells", healSpell: "spells", reviveSpell: "spells", summonCompanion: "spells", move: "move", moveScene: "move", teleport: "move", engage: "move", withdraw: "move", dash: "move", useItem: "items", combatItem: "items", shield: "items", shop: "items", askNpc: "talk", pressNpc: "talk", feature: "other", wildShape: "other", combatDodge: "other" };
+export const actionCategoryOf = { attack: "attack", combatSpell: "spells", exploreSpell: "spells", healSpell: "spells", reviveSpell: "spells", summonCompanion: "spells", move: "move", moveScene: "move", teleport: "move", engage: "move", withdraw: "move", dash: "move", useItem: "items", combatItem: "items", shield: "items", shop: "items", askNpc: "talk", pressNpc: "talk", feature: "other", wildShape: "other", combatDodge: "other", spendHitDice: "other" };
 
 export const actionCategoryOrder = ["attack", "spells", "move", "items", "talk", "other"];
 
@@ -377,6 +377,11 @@ export function buildTableActions(game, liveActions, log) {
     }, false, "notice"));
     addAction(t(game.submission === "action" ? "activity.action.updateAction" : "activity.action.takeAction"), { kind: "submit", text: () => input.value, roundNumber: game.roundNumber, sceneId: game.sceneId }, true);
     addAction(t("activity.action.pass"), { kind: "pass" });
+  }
+  // After a short rest the hero may spend Hit Dice: each one is rolled, the Constitution modifier added, and the total healed.
+  if (game.hitDice?.canSpend) {
+    addAction(t("activity.action.spendHitDice", { die: `d${game.hitDice.die ?? ""}` }), { kind: "spendHitDice", count: 1 });
+    if (game.hitDice.left > 1) addAction(t("activity.action.spendAllHitDice", { count: game.hitDice.left }), { kind: "spendHitDice", count: game.hitDice.left });
   }
   if (game.explore && game.myHero) {
     if (game.explore.npcs.length) {

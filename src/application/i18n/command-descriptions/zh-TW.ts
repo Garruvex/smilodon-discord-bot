@@ -188,6 +188,8 @@ export const zhTWCommandDescriptions = {
   "dnd/move:decision": "立刻讓隊伍出發，或讓隊伍留在原地", // Send the party now, or keep it where it is.
   "dnd/rest": "讓隊伍在戰鬥之間休息（主辦人）", // Has the party take a rest between fights (organizer).
   "dnd/rest:type": "休息的長度", // How long the rest is.
+  "dnd/hit-dice": "短休後花費生命骰來恢復生命值（你自己的角色）", // Spend Hit Dice to heal after a short rest (your own hero).
+  "dnd/hit-dice:count": "要花費幾顆生命骰", // How many Hit Dice to spend.
   "dnd/level": "把所有存活的角色提升到指定等級，用於里程碑升級（主辦人）", // Raises every living hero to a level, for milestone leveling (organizer).
   "dnd/level:level": "隊伍要提升到的等級", // The level to raise the party to.
   "dnd/time": "修正故事的天數、時段或天氣（主辦人）", // Corrects the story's day, time of day or weather (organizer).

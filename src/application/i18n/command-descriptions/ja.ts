@@ -186,6 +186,8 @@ export const jaCommandDescriptions = {
   "dnd/move:decision": "今すぐ出発させるか、その場に留めるか", // Send the party now, or keep it where it is.
   "dnd/rest": "戦闘の合間にパーティを休ませます（主催者）", // Has the party take a rest between fights (organizer).
   "dnd/rest:type": "休憩の長さ", // How long the rest is.
+  "dnd/hit-dice": "ショートレスト後にヒットダイスを使って回復します（自分のキャラクター）", // Spend Hit Dice to heal after a short rest (your own hero).
+  "dnd/hit-dice:count": "使うヒットダイスの数", // How many Hit Dice to spend.
   "dnd/level": "生存中のヒーロー全員を指定のレベルに上げます。マイルストーン方式用（主催者）", // Raises every living hero to a level, for milestone leveling (organizer).
   "dnd/level:level": "パーティを上げるレベル", // The level to raise the party to.
   "dnd/time": "物語の日数・時間帯・天気を修正します（主催者）", // Corrects the story's day, time of day or weather (organizer).

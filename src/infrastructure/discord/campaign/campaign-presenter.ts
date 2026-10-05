@@ -277,6 +277,12 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
         if (state !== undefined && bible !== undefined && glossary !== undefined) await say(adventureChannelId, outsideCombatText(delivery, events, state, bible, glossary, text));
         break;
       }
+      case "hitDiceSettled": {
+        // A hero spent Hit Dice on a short rest: what was rolled and healed, from the saved event alone.
+        const hero = state?.characters[delivery.characterId];
+        if (hero !== undefined) await say(adventureChannelId, text.campaign.msg.hitDiceSettled({ hero: hero.name, count: delivery.count, rolled: delivery.rolled, healed: delivery.healed, hp: delivery.hpAfter, max: hero.maxHp }), [], "notice");
+        break;
+      }
       case "healingSettled": {
         // A healing spell between fights: what was rolled and restored, from the saved event alone.
         const settled = events.findLast((event) => event.kind === "healingSettled" && event.healing.id === delivery.healingId);
