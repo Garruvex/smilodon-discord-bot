@@ -135,7 +135,8 @@ export async function setArtwork(imageElement, fallbackElement, imageUrl, alt, r
       return;
     }
     if (!response.ok) {
-      if (response.status === 404) artworkMisses.set(imageUrl, Date.now());
+      // Any refusal counts as "not ready": asked again after a while, not on every poll.
+      artworkMisses.set(imageUrl, Date.now());
       console.warn(`Picture could not be loaded (${response.status}).`, imageUrl);
       return;
     }

@@ -32,7 +32,8 @@ export interface ActivityTableView {
   readonly ownPresence: "present" | "away";
   readonly canTogglePresence: boolean;
   readonly roundNumber: number | null;
-  readonly scene: { readonly title: string; readonly description: string; readonly imageUrl: string | null };
+  // fallbackImageUrl: the scene's own picture, when imageUrl is a fight's picture that may not be there yet.
+  readonly scene: { readonly title: string; readonly description: string; readonly imageUrl: string | null; readonly fallbackImageUrl?: string | null };
   // present and needed: how many players vote, and how many Stay votes keep the party where it is. closesAt: when the window closes (epoch ms), or null.
   readonly pendingMove: null | { readonly sceneId: string; readonly sceneTitle: string; readonly sceneDescription: string; readonly proposedBy: string | null; readonly supporters: readonly string[]; readonly staying: readonly string[]; readonly choiceByYou: "go" | "stay" | null; readonly present: number; readonly needed: number; readonly closesAt: number | null };
   readonly canVoteMove: boolean;
@@ -324,6 +325,9 @@ export function buildActivityTableView(
       imageUrl: panel.combat !== null && hasPicture(record.images?.[`encounter:${panel.combat.encounterId}`])
         ? `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/encounters/${encodeURIComponent(panel.combat.encounterId)}`
         : scene === undefined ? null : `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/scenes/${encodeURIComponent(scene.id)}`,
+      ...(panel.combat !== null && hasPicture(record.images?.[`encounter:${panel.combat.encounterId}`]) && scene !== undefined
+        ? { fallbackImageUrl: `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/scenes/${encodeURIComponent(scene.id)}` }
+        : {}),
     },
     pendingMove: state.pendingMove === undefined ? null : {
       sceneId: state.pendingMove.sceneId,

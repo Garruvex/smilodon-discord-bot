@@ -53,7 +53,13 @@ export function paintGame(game) {
   renderMoveNotice(game.kind === "table" ? game.pendingMove : null, game.kind === "table" && game.canVoteMove, game);
   showRolls(game.kind === "table" ? game.rolls ?? [] : []);
   document.querySelector(".live-scene").classList.toggle("has-enemies", game.kind === "table" && (game.foes?.length ?? 0) > 0);
-  void setArtwork(document.querySelector("#live-scene-image"), document.querySelector(".scene-art-fallback"), game.kind === "table" ? game.scene.imageUrl : null, game.scene.title, true);
+  const sceneImage = document.querySelector("#live-scene-image");
+  const sceneUrl = game.kind === "table" ? game.scene.imageUrl : null;
+  // A fight's picture may not be there yet or may fail to load: the scene's own picture stays up instead of the placeholder.
+  void setArtwork(sceneImage, document.querySelector(".scene-art-fallback"), sceneUrl, game.scene.title, true).then(() => {
+    const fallback = game.kind === "table" ? game.scene.fallbackImageUrl : null;
+    if (fallback && sceneImage.hidden && sceneImage.dataset.source === sceneUrl) void setArtwork(sceneImage, document.querySelector(".scene-art-fallback"), fallback, game.scene.title, true);
+  });
   if (game.kind === "lobby") {
     document.querySelector(".adventure-map-panel").hidden = true;
     renderLobby(game);
