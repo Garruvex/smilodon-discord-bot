@@ -50,7 +50,17 @@ body.drawer-open-right .drawer-tab[data-side="right"] { right: var(--drawer-righ
 /* One line for the class and level, so the whole party fits without scrolling. */
 .drawer[data-side="left"] .party-class-line { display: flex; gap: 8px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .drawer[data-side="right"] .drawer-body { display: flex; flex-direction: column; overflow: hidden; }
-.drawer[data-side="bottom"] .adventure-map-panel { margin: 0; border: 0; border-radius: 0; box-shadow: none; }
+/* The map fills its sheet: the tab already names it, so no title or fold control; the key is one quiet row, and the map takes all the rest. */
+.drawer[data-side="bottom"] .drawer-body { display: flex; flex-direction: column; overflow: hidden; }
+.drawer[data-side="bottom"] .adventure-map-panel { display: flex; flex: 1; min-height: 0; flex-direction: column; margin: 0; padding: 10px 14px 14px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.drawer[data-side="bottom"] .adventure-map-panel::before, .drawer[data-side="bottom"] .adventure-map-panel::after { display: none; }
+.drawer[data-side="bottom"] .map-summary { flex: none; justify-content: flex-start; padding: 0 0 8px; pointer-events: none; }
+.drawer[data-side="bottom"] .map-summary > span:first-child, .drawer[data-side="bottom"] .map-summary::after { display: none; }
+.drawer[data-side="bottom"] .map-toolbar { flex: none; margin-bottom: 8px; }
+/* The sheet's height is known, so the map is given what is left of it (a details box does not stretch its content). */
+.drawer[data-side="bottom"] .live-map-viewport { height: calc(var(--drawer-map-h) - 78px); max-height: none; }
+.drawer[data-side="bottom"] .adventure-map-panel:has(#map-toolbar:not([hidden])) .live-map-viewport { height: calc(var(--drawer-map-h) - 122px); }
+.drawer[data-side="bottom"] .adventure-map-panel[open] .live-map { margin-top: 0; padding-bottom: 0; }
 
 /* The story feed. */
 .story-panel { display: flex; flex: 1; min-height: 0; flex-direction: column; }
@@ -117,6 +127,8 @@ body[data-game-kind="lobby"] .story-now { display: none; }
 
 /* Below 900px: one bottom dock, Party | Map | Story, and each panel is a sheet above it. */
 @media (max-width: 900px) {
+  .drawer[data-side="bottom"] .live-map-viewport { height: calc(62vh - 78px); }
+  .drawer[data-side="bottom"] .adventure-map-panel:has(#map-toolbar:not([hidden])) .live-map-viewport { height: calc(62vh - 122px); }
   .drawer-tab { top: auto; bottom: 0; width: 33.34%; justify-content: center; padding: 12px 8px; border: 1px solid #796546; border-radius: 0; writing-mode: horizontal-tb; transform: none; }
   .drawer-tab[data-side="right"] { flex-direction: row; }
   .drawer-tab > span:first-child { transform: none !important; }

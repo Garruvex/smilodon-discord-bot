@@ -291,7 +291,7 @@ export function fitMap() {
   if (!app.mapBaseSize) return;
   const viewport = document.querySelector("#live-map-viewport");
   const previousScale = app.mapScale;
-  app.mapScale = Math.min(1.5, (viewport.clientWidth - 24) / app.mapBaseSize.width, (viewport.clientHeight - 24) / app.mapBaseSize.height);
+  app.mapScale = Math.min(2.2, (viewport.clientWidth - 24) / app.mapBaseSize.width, (viewport.clientHeight - 24) / app.mapBaseSize.height);
   app.mapScale = Math.max(.2, app.mapScale);
   app.mapOffset = { x: 0, y: 0 };
   applyMapScale({ x: 0, y: 0 }, previousScale);
