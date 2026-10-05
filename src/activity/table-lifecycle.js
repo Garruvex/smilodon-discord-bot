@@ -147,9 +147,41 @@ export function renderTableLobby(game) {
   }
   const liveMessage = message();
   liveMessage.id = "table-lobby-message";
-  aside.append(roster, start, liveMessage);
+  aside.append(roster, start, houseRulesPanel(game.houseRules), liveMessage);
   columns.append(heroPanel, aside);
   screen.replaceChildren(heading(game.campaignName, game.adventureTitle, game.isOrganizer, t("activity.status.openTable")), columns);
+}
+
+// The table's house rules: everyone reads what is in force; the organizer changes them here until the game starts.
+function houseRulesPanel(rules) {
+  const box = panel(t("activity.rules.houseTitle"));
+  box.append(flowElement("p", "table-flow-muted", t(rules.editable ? "activity.rules.houseIntro" : "activity.rules.houseReadOnly")));
+  if (rules.editable) {
+    const preset = flowElement("select", "ui-input");
+    preset.setAttribute("aria-label", t("activity.rules.presetLabel"));
+    preset.append(Object.assign(flowElement("option", "", t("activity.rules.presetPick")), { value: "" }));
+    for (const entry of rules.presets) preset.append(Object.assign(flowElement("option", "", entry.name), { value: entry.id }));
+    preset.addEventListener("change", () => { if (preset.value !== "") void performAction({ kind: "applyRulePreset", presetId: preset.value }); });
+    box.append(preset);
+  }
+  for (const option of rules.options) {
+    const row = flowElement("div", "table-member-row");
+    const copy = flowElement("div", "table-hero-copy");
+    copy.append(flowElement("strong", "", option.name), flowElement("small", "", option.info));
+    row.append(copy);
+    if (rules.editable) {
+      const choice = flowElement("select", "ui-input");
+      choice.setAttribute("aria-label", option.name);
+      for (const value of option.values) choice.append(Object.assign(flowElement("option", "", value.label), { value: value.id }));
+      choice.value = option.value;
+      choice.addEventListener("change", () => void performAction({ kind: "setHouseRule", ruleId: option.id, value: choice.value }));
+      row.append(choice);
+    } else {
+      row.append(flowElement("span", "table-choice-state", option.values.find((value) => value.id === option.value)?.label ?? option.value));
+    }
+    box.append(row);
+  }
+  return box;
 }
 
 export async function openCreateTable() {

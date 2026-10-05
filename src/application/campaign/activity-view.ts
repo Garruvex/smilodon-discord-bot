@@ -20,6 +20,7 @@ import { texts } from "../i18n/texts.js";
 import { buildMapView } from "./views/map-view.js";
 import { spellFactsByName, type SpellFacts } from "./views/spell-facts.js";
 import { buildHeroSheetView, buildLevelUpView, type HeroSheetView, type LevelUpView } from "./views/hero-sheet.js";
+import { buildHouseRulesView, type HouseRulesView } from "./views/house-rules-view.js";
 import { buildJournal, buildPlaces, buildRecap, type JournalView, type PlaceView, type RecapView } from "./views/story-views.js";
 import { buildActivityStory, type StoryEntry } from "./views/activity-story.js";
 import type { CampaignEvent } from "../../domain/campaign/events/campaign-event.js";
@@ -62,6 +63,8 @@ export interface ActivityTableView {
   readonly controls: {
     readonly canStop: boolean;
     readonly canPause: boolean;
+    // The organizer can open a finished game again.
+    readonly canReopen: boolean;
     // The organizer's way to run the game: which verbs make sense right now, the party's level, and the story clock. Null for everyone else.
     readonly run: null | {
       readonly closeRound: boolean;
@@ -87,6 +90,8 @@ export interface ActivityTableView {
   // Your hero's companions between fights, and whether they can be sent away now (not during a fight).
   readonly companions: readonly { readonly id: string; readonly name: string; readonly spellName: string; readonly hp: number | null }[];
   readonly canDismissCompanion: boolean;
+  // Your hero came from your library and no fight or roll is open, so its progress can be saved for your next game.
+  readonly canSaveProgress: boolean;
   readonly canRequestJoin: boolean;
   readonly joinEntrance: string | null;
   readonly activeName: string | null;
@@ -235,6 +240,8 @@ export interface ActivityLobbyView {
   readonly members: readonly { readonly heroName: string; readonly className: string | null; readonly ready: boolean; readonly isYou: boolean }[];
   readonly heroChoices: readonly { readonly id: string; readonly name: string; readonly className: string; readonly available: boolean }[];
   readonly savedHeroChoices: readonly { readonly id: string; readonly name: string; readonly className: string; readonly imageUrl?: string }[];
+  // The table's house rules: everyone can read them, the organizer can change them until the game starts.
+  readonly houseRules: HouseRulesView;
 }
 
 export type ActivityGameView = ActivityLobbyView | ActivityTableView;
@@ -277,6 +284,7 @@ export function buildActivityLobbyView(record: CampaignRecord, bible: AdventureB
     }),
     heroChoices: heroes.map((hero) => ({ id: hero.id, name: hero.name, className: hero.class, available: !takenIds.has(hero.id) })),
     savedHeroChoices,
+    houseRules: buildHouseRulesView(texts[record.language], record.houseRules, record.lifecycle === "lobby" && record.organizerId === userId),
   };
 }
 
@@ -495,6 +503,7 @@ export function buildActivityTableView(
       return {
         canStop: playing && state.members[userId] !== undefined,
         canPause: playing && organizer,
+        canReopen: organizer && record.lifecycle === "archived" && record.startedAt !== null,
         run: !playing || !organizer ? null : {
           closeRound: state.round?.status === "collecting",
           retry: state.round?.status === "planning",
@@ -532,6 +541,7 @@ export function buildActivityTableView(
     })(),
     companions: ownCharacterId === null ? [] : companionsOf(state.companions, ownCharacterId).map((companion) => ({ id: companion.id, name: glossary.names[companion.monsterId] ?? companion.monsterId, spellName: glossary.names[companion.spellId] ?? companion.spellId, hp: companion.hp })),
     canDismissCompanion: sheet !== undefined && !isFallen(state, sheet.id) && (state.encounter === null || state.encounter.status === "ended"),
+    canSaveProgress: sheet !== undefined && sheet.origin !== undefined && (state.encounter === null || state.encounter.status === "ended") && !Object.values(state.checks).some((check) => check.status !== "resolved"),
     canRequestJoin: ownCharacterId === null && record.organizerId !== userId && record.visibility !== "membersOnly"
       && Object.keys(state.members).length + Object.entries(record.joinRequests ?? {}).filter(([id, request]) => state.members[id] === undefined && request.expiresAt > now && (request.status === "invited" || request.status === "approved" || request.status === "queued")).length < record.lobby.maxPlayers,
     joinEntrance: inviteCurrent ? joinRequest.entrance ?? null : null,

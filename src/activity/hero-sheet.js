@@ -1,6 +1,8 @@
 import { app } from "./state.js";
 import { t } from "./i18n.js";
 import { featureText } from "./feature-texts.js";
+import { performAction } from "./actions.js";
+import { setLiveMessage } from "./dom.js";
 
 // The Sheet tab: what the hero is good at, how far they have come, and what they can do, read from the numbers the game holds.
 const abilityOrder = ["str", "dex", "con", "int", "wis", "cha"];
@@ -78,6 +80,18 @@ function skillsBlock(sheet) {
   return block("activity.sheet.skills", Object.assign(document.createElement("h4"), { textContent: t("activity.sheet.saves") }), saves, Object.assign(document.createElement("h4"), { textContent: t("activity.sheet.skillList") }), list, legend);
 }
 
+// Saves this hero's progress to your library, to pick when you join another game.
+function saveBlock() {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "ui-control";
+  button.textContent = t("activity.sheet.saveProgress");
+  button.addEventListener("click", async () => {
+    if (await performAction({ kind: "saveProgress" })) setLiveMessage(t("activity.sheet.progressSaved"));
+  });
+  return block("activity.sheet.saveTitle", Object.assign(document.createElement("p"), { className: "sheet-note", textContent: t("activity.sheet.saveWhat") }), button);
+}
+
 function featuresBlock(sheet) {
   const list = document.createElement("div");
   list.className = "sheet-features";
@@ -128,5 +142,5 @@ export function renderSheet(game) {
     );
     scores.append(tile);
   }
-  panel.replaceChildren(strip, block("activity.sheet.abilities", scores), progressBlock(sheet), skillsBlock(sheet), featuresBlock(sheet));
+  panel.replaceChildren(strip, block("activity.sheet.abilities", scores), progressBlock(sheet), skillsBlock(sheet), featuresBlock(sheet), ...(game.canSaveProgress ? [saveBlock()] : []));
 }

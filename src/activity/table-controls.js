@@ -156,6 +156,12 @@ function openControls() {
     pause.append(button);
     parts.push(pause);
   }
+  if (game.canReopen) {
+    const reopen = document.createElement("section");
+    reopen.className = "level-up-section";
+    reopen.append(note(t("activity.controls.reopenWhat")), confirmButton(t("activity.controls.reopen"), { kind: "reopen" }, box, true));
+    parts.push(reopen);
+  }
   if (game.run != null) parts.push(...runSections(game.run, box));
   if (game.proxy != null && game.proxy.options.length > 0) {
     const proxy = document.createElement("section");
@@ -198,7 +204,7 @@ export function renderTableControls(game) {
   stopButton.replaceChildren(Object.assign(document.createElement("span"), { textContent: "⏸", "aria-hidden": "true" }), Object.assign(document.createElement("span"), { className: "stop-label", textContent: t("activity.controls.stop") }));
   stopButton.title = t("activity.controls.stopHint");
   stopButton.setAttribute("aria-label", `${t("activity.controls.stop")}. ${t("activity.controls.stopHint")}`);
-  const organizer = controls !== null && (controls.canPause || controls.run != null || controls.rest !== null || controls.canPropose || (controls.proxy != null && controls.proxy.options.length > 0));
+  const organizer = controls !== null && (controls.canPause || controls.canReopen || controls.run != null || controls.rest !== null || controls.canPropose || (controls.proxy != null && controls.proxy.options.length > 0));
   menuButton.hidden = !organizer;
   menuButton.textContent = t("activity.controls.menu");
   const box = document.querySelector("#table-controls-dialog");

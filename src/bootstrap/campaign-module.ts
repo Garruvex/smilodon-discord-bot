@@ -18,6 +18,7 @@ import { CampaignIssues } from "../application/campaign/campaign-issues.js";
 import { CharacterLibrary } from "../application/campaign/library/character-library.js";
 import { buildClasses, classTemplates, selectableBuildRaces, suggestedAbilities, type BuildChoices } from "../domain/campaign/character/character-build.js";
 import { skills } from "../domain/campaign/rules/skills.js";
+import { houseRulePresets } from "../domain/campaign/rules/house-rules.js";
 import { isTimeOfDay, isWeather, type TimeOfDay, type Weather } from "../domain/campaign/rules/world-rules.js";
 import { CampaignLobbyService, type ActivityCampaignListingItem, type ServiceResult } from "../application/campaign/campaign-lobby-service.js";
 import { CampaignPlayController, type PlayResult } from "../application/campaign/campaign-play-controller.js";
@@ -599,6 +600,24 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
             if (day === undefined && time === undefined && weather === undefined) return { kind: "refused", reason: "invalidAction" };
             return activityPlay.setWorld(key, userId, { ...(day === undefined ? {} : { day }), ...(time === undefined ? {} : { time: time as TimeOfDay }), ...(weather === undefined ? {} : { weather: weather === "none" ? null : (weather as Weather) }), ...(note === undefined ? {} : { note }) }, id).then(mapPlayResult);
           }
+          case "saveProgress": {
+            const saved = await library.saveProgress(userId, key);
+            if (saved.kind === "refused") return { kind: "refused", reason: saved.reason };
+            return { kind: "ok" };
+          }
+          case "setHouseRule": {
+            const ruleId = textValue(action.ruleId, 64);
+            const value = textValue(action.value, 64);
+            if (ruleId === null || value === null) return { kind: "refused", reason: "invalidAction" };
+            return lobby.setHouseRules(key, userId, { [ruleId]: value }).then((result) => (result.kind === "refused" ? { kind: "refused" as const, reason: result.reason } : { kind: "ok" as const }));
+          }
+          case "applyRulePreset": {
+            const presetId = textValue(action.presetId, 32);
+            const preset = houseRulePresets.find((candidate) => candidate.id === presetId);
+            if (preset === undefined) return { kind: "refused", reason: "invalidAction" };
+            return lobby.setHouseRules(key, userId, preset.values).then((result) => (result.kind === "refused" ? { kind: "refused" as const, reason: result.reason } : { kind: "ok" as const }));
+          }
+          case "reopen": return lobby.reopen(key, userId).then((result) => (result.kind === "refused" ? { kind: "refused" as const, reason: result.reason } : { kind: "ok" as const }));
           case "spendHitDice": {
             const count = integerValue(action.count);
             if (count === null) return { kind: "refused", reason: "invalidAction" };
