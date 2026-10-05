@@ -65,6 +65,7 @@ export type PanelMode =
   | "awaitingRolls"
   | "combat"
   | "waiting"
+  | "resting"
   | "paused"
   | "safety"
   | "recovery"
@@ -450,6 +451,7 @@ function modeOf(record: CampaignRecord, state: CampaignState, inFight: boolean, 
   if (state.pausedBy === "safety") return "safety";
   if (state.pausedBy === "organizer" || record.lifecycle === "paused") return "paused";
   if (state.status === "waitingForPlayers") return "waiting";
+  if (state.resting !== undefined && !inFight) return "resting";
   if (state.opening === "pending") return "opening";
   if (state.opening === "waiting") return "readyCheck";
   if (inFight) return "combat";

@@ -132,6 +132,10 @@ export type CampaignEvent =
   | { readonly kind: "campaignPaused"; readonly reason: "organizer" | "recovery" | "safety" }
   | { readonly kind: "heroSpoke"; readonly characterId: CharacterId; readonly roundNumber: number; readonly text: string }
   | { readonly kind: "restTaken"; readonly rest: "short" | "long"; readonly heroStatus: Readonly<Record<CharacterId, HeroStatus>> }
+  // The organizer asked for a rest at the end of the round (rest null: asked no more).
+  | { readonly kind: "restQueued"; readonly rest: "short" | "long" | null; readonly sceneId?: string | null; readonly story?: readonly PartyEffect[] }
+  // The organizer finished the rest: the next round can open.
+  | { readonly kind: "restEnded" }
   | { readonly kind: "itemOffered"; readonly offer: ItemOffer }
   // The offer was accepted: the items change hands.
   | { readonly kind: "offerAccepted"; readonly offerId: string }

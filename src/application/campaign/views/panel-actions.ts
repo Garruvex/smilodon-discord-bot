@@ -39,6 +39,7 @@ const controlsFor: Readonly<Record<PanelMode, readonly PanelActionId[]>> = {
   awaitingRolls: ["roll", "myHero", "away"],
   combat: ["myHero"],
   waiting: ["continue", "away", "myHero"],
+  resting: ["continue", "myHero"],
   paused: ["myHero"],
   safety: ["myHero"],
   recovery: ["myHero"],

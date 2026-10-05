@@ -23,6 +23,37 @@ export function takeRest(decision: Decision, rest: "short" | "long", story: read
   const allowed = new Set<StoryEffect["kind"]>(["notice", "revealClue", "setFlag", "grantReward", "grantKeepsake"]);
   const stray = story.filter((effect) => !allowed.has(effect.kind));
   if (stray.length > 0 || (rest === "short" && story.length > 0)) return { code: "invalidPlan", problems: ["A rest can only bring lines, clues, flags, rewards and keepsakes."] };
+  performRest(decision, rest, story);
+  return null;
+}
+
+// The organizer asks for a rest. Taken at once when nothing is going; otherwise kept until the round or fight in progress is over,
+// and taken just before the next round would open (openRound). rest null takes the request back.
+export function queueRest(decision: Decision, rest: "short" | "long" | null, story: readonly StoryEffect[] = []): Rejection | null {
+  const { state, ctx } = decision;
+  if (ctx.actor.kind === "user" && ctx.actor.userId !== state.organizerId) return { code: "notOrganizer" };
+  if (rest === null) {
+    if (state.pendingRest !== undefined) decision.emit({ kind: "restQueued", rest: null });
+    return null;
+  }
+  if (state.status !== "active" && state.status !== "waitingForPlayers") return { code: "nothingToRest" };
+  const idle = state.round === null && (state.encounter === null || state.encounter.status === "ended");
+  if (idle) return takeRest(decision, rest, story);
+  const allowed = new Set<StoryEffect["kind"]>(["notice", "revealClue", "setFlag", "grantReward", "grantKeepsake"]);
+  if (story.some((effect) => !allowed.has(effect.kind)) || (rest === "short" && story.length > 0)) return { code: "invalidPlan", problems: ["A rest can only bring lines, clues, flags, rewards and keepsakes."] };
+  decision.emit({ kind: "restQueued", rest, sceneId: state.sceneId, story });
+  return null;
+}
+
+// The queued rest, taken now that nothing is going. Its scene lines count only if the party is still where it was asked.
+export function takeQueuedRest(decision: Decision): void {
+  const queued = decision.state.pendingRest;
+  if (queued === undefined) return;
+  performRest(decision, queued.rest, queued.sceneId === decision.state.sceneId ? queued.story : []);
+}
+
+function performRest(decision: Decision, rest: "short" | "long", story: readonly StoryEffect[]): void {
+  const { state, ctx } = decision;
   const content = ctx.rules.content;
   const heroStatus: Record<CharacterId, HeroStatus> = {};
   for (const sheet of Object.values(state.characters)) {
@@ -91,5 +122,4 @@ export function takeRest(decision: Decision, rest: "short" | "long", story: read
   // Time passes with the rest: a short one is a phase of the day, a long one runs to the next dawn.
   decision.changeWorld(state.lastRoundNumber, { kind: "rest", rest }, "rest");
   for (const effect of story) decision.applyStory(state.lastRoundNumber, effect);
-  return null;
 }

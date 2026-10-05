@@ -49,6 +49,12 @@ export interface ActivityTableView {
   readonly hitDice: { readonly left: number; readonly die: number | null; readonly canSpend: boolean; readonly rolling: boolean } | null;
   readonly yourTurn: boolean;
   readonly canBegin: boolean;
+  // Stopping and resting: any player may stop play, the organizer may pause and ask for a rest.
+  readonly controls: {
+    readonly canStop: boolean;
+    readonly canPause: boolean;
+    readonly rest: null | { readonly askedFor: "short" | "long" | null; readonly resting: "short" | "long" | null; readonly now: boolean };
+  };
   readonly canRequestJoin: boolean;
   readonly joinEntrance: string | null;
   readonly activeName: string | null;
@@ -74,6 +80,8 @@ export interface ActivityTableView {
     readonly seatUserId?: string;
     // Where the hero stands in a fight (the zone's name), otherwise null.
     readonly zone: string | null;
+    // The action they sent for this round, when they have sent one.
+    readonly intent: string | null;
     readonly tableStatus: "acting" | "submitted" | "passed" | "missed" | "away" | "waiting";
   }[];
   // Your own hero's full sheet, and what you may choose when you level up. Null without a hero.
@@ -289,6 +297,8 @@ export function buildActivityTableView(
       isYou: hero.ownerUserId === userId,
       ...(record.organizerId === userId && hero.ownerUserId !== userId && state.members[hero.ownerUserId]?.availability === "away" && (state.encounter === null || state.encounter.status === "ended") ? { seatUserId: hero.ownerUserId } : {}),
       zone: panel.combat?.party.find((combatant) => combatant.name === hero.name)?.zone ?? null,
+      // What they said they would do this round: the Adventure channel posts it for everyone when it is sent.
+      intent: ((): string | null => { const sent = state.round?.submissions[hero.characterId]; return sent?.kind === "action" ? sent.text.slice(0, 240) : null; })(),
       tableStatus: panel.combat?.party.some((combatant) => combatant.name === hero.name && combatant.active) === true
         ? "acting"
         : state.round?.submissions[hero.characterId]?.kind === "action" ? "submitted"
@@ -408,6 +418,15 @@ export function buildActivityTableView(
     })(),
     yourTurn: turn !== null,
     canBegin: record.organizerId === userId,
+    controls: ((): ActivityTableView["controls"] => {
+      const playing = record.lifecycle !== "archived" && state.pausedBy === null && panel.mode !== "paused";
+      const organizer = record.organizerId === userId;
+      return {
+        canStop: playing && state.members[userId] !== undefined,
+        canPause: playing && organizer,
+        rest: !organizer || record.lifecycle === "archived" ? null : { askedFor: state.pendingRest?.rest ?? null, resting: state.resting ?? null, now: state.round === null && (state.encounter === null || state.encounter.status === "ended") },
+      };
+    })(),
     canRequestJoin: ownCharacterId === null && record.organizerId !== userId && record.visibility !== "membersOnly"
       && Object.keys(state.members).length + Object.entries(record.joinRequests ?? {}).filter(([id, request]) => state.members[id] === undefined && request.expiresAt > now && (request.status === "invited" || request.status === "approved" || request.status === "queued")).length < record.lobby.maxPlayers,
     joinEntrance: inviteCurrent ? joinRequest.entrance ?? null : null,

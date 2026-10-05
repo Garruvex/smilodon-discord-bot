@@ -166,6 +166,11 @@ export interface CampaignState {
   readonly healingPending?: Readonly<Record<CharacterId, PendingHealing>>;
   // After a short rest, until the next round or fight begins: the heroes may spend Hit Dice, each one rolled.
   readonly shortRestOpen?: boolean;
+  // A rest the organizer asked for while a round or a fight is going: taken when it ends, before the next round opens (engine/rest.ts).
+  // The scene's long-rest lines are kept with it, and used only if the party is still in that scene.
+  readonly pendingRest?: { readonly rest: "short" | "long"; readonly sceneId: string | null; readonly story: readonly PartyEffect[] };
+  // The party is resting: the next round waits until the organizer finishes (continue). Hit Dice are spent in this time.
+  readonly resting?: "short" | "long";
   readonly hitDicePending?: Readonly<Record<CharacterId, PendingHitDice>>;
   readonly hitDiceCount?: number;
   readonly healingCount: number;

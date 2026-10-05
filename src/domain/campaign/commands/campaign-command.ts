@@ -89,6 +89,8 @@ export type CampaignCommand =
   // The organizer corrects the story's day, time or weather (audited: the event says it was a correction, and why).
   | { readonly kind: "setWorld"; readonly day?: number; readonly time?: TimeOfDay; readonly weather?: Weather | null; readonly note?: string }
   | { readonly kind: "takeRest"; readonly rest: "short" | "long"; readonly story?: readonly PartyEffect[] }
+  // Organizer: rest as soon as the round or fight in progress is over (taken at once if nothing is going). rest null takes the request back.
+  | { readonly kind: "queueRest"; readonly rest: "short" | "long" | null; readonly story?: readonly PartyEffect[] }
   | InventoryCommand
   // Organizer, after a lost fight: play it again from its start, with fresh dice.
   | { readonly kind: "retryEncounter" }

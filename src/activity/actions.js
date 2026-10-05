@@ -347,6 +347,13 @@ export function buildTableActions(game, liveActions, log) {
     addAction(t("activity.action.spendHitDice", { die: `d${game.hitDice.die ?? ""}` }), { kind: "spendHitDice", count: 1 });
     if (game.hitDice.left > 1) addAction(t("activity.action.spendAllHitDice", { count: game.hitDice.left }), { kind: "spendHitDice", count: game.hitDice.left });
   }
+  // While the party rests the next round waits: heroes spend Hit Dice, and the organizer finishes the rest.
+  if (game.mode === "resting") {
+    note = document.createElement("span");
+    note.className = "live-action-note status-note";
+    note.textContent = t(game.hitDice?.canSpend ? "activity.status.restingHitDice" : "activity.status.resting");
+    if (game.canBegin) addAction(t("activity.action.finishRest"), { kind: "continue" }, true);
+  }
   if (game.explore && game.myHero) {
     if (game.explore.npcs.length) {
       const question = draftInput(document.createElement("input"), "ask", t("activity.category.talk"), t("activity.action.askPlaceholder"));

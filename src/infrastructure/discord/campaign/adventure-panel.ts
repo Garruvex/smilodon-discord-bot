@@ -17,6 +17,7 @@ const accentFor: Readonly<Record<PanelMode, number>> = {
   awaitingRolls: accents.purple,
   combat: accents.red,
   waiting: accents.gray,
+  resting: accents.amber,
   paused: accents.gray,
   safety: accents.gray,
   recovery: accents.gray,
@@ -92,6 +93,8 @@ function statusLine(view: PanelView, text: Texts): string {
       ].join("\n");
     case "waiting":
       return t.waiting;
+    case "resting":
+      return t.resting;
     case "paused":
       return t.paused;
     case "safety":

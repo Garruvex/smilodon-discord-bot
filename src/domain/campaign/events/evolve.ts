@@ -275,8 +275,16 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     case "gearChanged":
     case "combatNarrationRecorded":
       return evolveCombat(state, event);
+    case "restQueued": {
+      const { pendingRest: _asked, ...rest } = state;
+      return event.rest === null ? rest : { ...rest, pendingRest: { rest: event.rest, sceneId: event.sceneId ?? null, story: event.story ?? [] } };
+    }
+    case "restEnded": {
+      const { resting: _over, ...rest } = state;
+      return rest;
+    }
     case "restTaken":
-      return withCompanions({ ...state, shortRestOpen: event.rest === "short", heroStatus: { ...state.heroStatus, ...event.heroStatus } }, afterRest(state.companions, event.rest));
+      return withCompanions({ ...omitPendingRest(state), resting: event.rest, shortRestOpen: event.rest === "short", heroStatus: { ...state.heroStatus, ...event.heroStatus } }, afterRest(state.companions, event.rest));
     case "companionsSummoned":
       return { ...state, companions: withSummoned(state.companions, event.companions, event.replaced), heroStatus: { ...state.heroStatus, ...event.heroStatus } };
     case "heroRevived":
@@ -528,6 +536,11 @@ function evolveCombat(state: CampaignState, event: CombatEvent): CampaignState {
 }
 
 // The state with a new roster; an absent roster stays absent.
+function omitPendingRest(state: CampaignState): CampaignState {
+  const { pendingRest: _taken, ...rest } = state;
+  return rest;
+}
+
 function withCompanions(state: CampaignState, companions: CampaignState["companions"]): CampaignState {
   return companions === undefined ? state : { ...state, companions };
 }

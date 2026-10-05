@@ -121,6 +121,12 @@ export function continueCampaign(decision: Decision): Rejection | null {
   if (ctx.actor.kind !== "user") return { code: "notMember" };
   const member = state.members[ctx.actor.userId];
   if (member === undefined && ctx.actor.userId !== state.organizerId) return { code: "notMember" };
+  // Resting: the organizer's continue ends it, and the next round opens.
+  if (state.resting !== undefined && state.status === "active" && state.pausedBy === null) {
+    if (ctx.actor.userId !== state.organizerId) return { code: "notOrganizer" };
+    decision.emit({ kind: "restEnded" });
+    return openRound(decision, { skipActorCheck: true });
+  }
   if (state.status !== "waitingForPlayers") return { code: "campaignNotWaiting" };
   // A deliberate pause is the organizer's to lift.
   if (state.pausedBy !== null && ctx.actor.userId !== state.organizerId) return { code: "notOrganizer" };
@@ -199,7 +205,8 @@ export function continueCampaign(decision: Decision): Rejection | null {
     if (decision.state.lastNarratedRound >= decision.state.lastRoundNumber) beginEncounter(decision, pending);
     return null;
   }
-  if (round === null) return openRound(decision);
+  // Still resting after the pause: the organizer finishes the rest with the next continue.
+  if (round === null) return decision.state.resting !== undefined ? null : openRound(decision);
   if (round.status === "planning") decision.request({ kind: "plan", roundNumber: round.number });
   if (round.status === "resolving") finishRoundIfResolved(decision);
   return null;

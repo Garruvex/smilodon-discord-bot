@@ -384,6 +384,12 @@ export class CampaignPlayController {
     return this.perform(key, userId, interactionId, () => ({ kind: "retryPlan" }));
   }
 
+  // Organizer: rest now if nothing is going, otherwise as soon as the round or fight in progress is over. rest null takes the request back.
+  public async queueRest(key: CampaignKey, userId: UserId, rest: "short" | "long" | null, interactionId: string): Promise<PlayResult> {
+    const story = rest === "long" ? await this.longRestStory(key) : [];
+    return this.perform(key, userId, interactionId, () => ({ kind: "queueRest", rest, ...(story.length === 0 ? {} : { story }) }));
+  }
+
   public async rest(key: CampaignKey, userId: UserId, rest: "short" | "long", interactionId: string): Promise<PlayResult> {
     const story = rest === "long" ? await this.longRestStory(key) : [];
     return this.perform(key, userId, interactionId, () => ({ kind: "takeRest", rest, ...(story.length === 0 ? {} : { story }) }));

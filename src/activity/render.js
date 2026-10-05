@@ -11,8 +11,9 @@ import { renderEnemies, renderParty } from "./party.js";
 import { renderMoveNotice, renderPresenceToggle, syncAwayLock } from "./vote.js";
 import { syncDrawers } from "./drawers.js";
 import { renderStory } from "./story.js";
+import { renderTableControls } from "./table-controls.js";
 
-export const phaseKeys = { opening: "activity.phase.opening", readyCheck: "activity.status.gathering", collecting: "activity.phase.collecting", planning: "activity.phase.planning", awaitingRolls: "activity.phase.awaitingRolls", combat: "activity.phase.combat", waiting: "activity.phase.waiting", paused: "activity.phase.paused", safety: "activity.phase.safety", recovery: "activity.phase.recovery", archived: "activity.phase.archived" };
+export const phaseKeys = { opening: "activity.phase.opening", readyCheck: "activity.status.gathering", collecting: "activity.phase.collecting", planning: "activity.phase.planning", awaitingRolls: "activity.phase.awaitingRolls", combat: "activity.phase.combat", waiting: "activity.phase.waiting", resting: "activity.phase.resting", paused: "activity.phase.paused", safety: "activity.phase.safety", recovery: "activity.phase.recovery", archived: "activity.phase.archived" };
 
 export const paintedSections = new Map();
 
@@ -111,11 +112,14 @@ export function renderTable(game) {
   } else {
     document.querySelector("#live-equipment").replaceChildren();
   }
-  document.querySelector("#live-party-count").textContent = t("activity.party.count", { count: game.party.length });
+  const readyCount = game.mode === "collecting" ? game.party.filter((hero) => hero.presence !== "away" && !hero.fallen && ["submitted", "passed"].includes(hero.tableStatus)).length : null;
+  const presentCount = game.party.filter((hero) => hero.presence !== "away" && !hero.fallen).length;
+  document.querySelector("#live-party-count").textContent = t("activity.party.count", { count: game.party.length }) + (readyCount === null ? "" : ` · ${t("activity.party.readyCount", { ready: readyCount, total: presentCount })}`);
+  renderTableControls(game);
   renderTableActions(game);
   renderCharacterWorkspace(game);
   paintSection("enemies", [game.foes, game.allies, app.selectedEnemyName, app.uiLanguage], () => renderEnemies(game.foes, game.allies ?? []));
-  paintSection("party", [game.party, app.selectedPartyCharacterId, app.selectedEnemyName, app.uiLanguage], () => renderParty(game.party));
+  paintSection("party", [game.party, game.mode, game.upcomingNames, app.selectedPartyCharacterId, app.selectedEnemyName, app.uiLanguage], () => renderParty(game.party));
   setLiveMessage(game.submission === "action" ? t("activity.status.actionIn") : game.submission === "pass" ? t("activity.status.youPassed") : "");
   updateRollPrompt(["paused", "safety", "recovery"].includes(game.mode) ? null : game.pendingRoll);
 }

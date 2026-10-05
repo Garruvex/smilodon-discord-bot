@@ -6,6 +6,7 @@ import { takeEnvironmentalDamage } from "./environmental-damage.js";
 import { rollTimerId, roundTimerId } from "./ids.js";
 import type { Rejection } from "./rejection.js";
 import { scheduleReminder } from "./reminders.js";
+import { takeQueuedRest } from "./rest.js";
 import { firedEffects } from "./round-plan.js";
 import { deferredMove, proposeMove, settleDueMove, surplusMove } from "./scene-move.js";
 
@@ -22,6 +23,9 @@ export function openRound(decision: Decision, options: { readonly skipActorCheck
   if (state.status === "waitingForPlayers") return { code: "campaignWaiting" };
   if (state.encounter !== null && state.encounter.status !== "ended") return { code: "inCombat" };
   if (state.round !== null) return { code: "roundAlreadyOpen" };
+  // A rest asked for during the round that just ended is taken now; the party then rests until the organizer finishes.
+  if (state.pendingRest !== undefined && state.status === "active") takeQueuedRest(decision);
+  if (decision.state.resting !== undefined) return ctx.actor.kind === "user" ? { code: "resting" } : null;
 
   // The opening is still being told, or the table is getting ready: the first
   // round opens when everyone is.

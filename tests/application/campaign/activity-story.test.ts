@@ -82,6 +82,16 @@ describe("the Activity story", () => {
     expect(story([{ kind: "memberRetired", userId: "u-jamie", characterId: "c-borin", name: "Borin" }])).toEqual([{ id: "e0", kind: "system", code: "seatFreed", text: "Borin" }]);
   });
 
+  it("tells the table about rests and pauses, and never says who paused", () => {
+    const entries = story([
+      { kind: "restTaken", rest: "short", heroStatus: {} },
+      { kind: "restEnded" },
+      { kind: "campaignPaused", reason: "safety" },
+      { kind: "resumed", checkDeadlines: {} },
+    ] as never);
+    expect(entries.map((entry) => (entry.kind === "system" ? [entry.code, entry.text] : null))).toEqual([["shortRest", null], ["restOver", null], ["paused", null], ["resumed", null]]);
+  });
+
   it("leaves out empty tellings", () => {
     expect(story([{ kind: "narrationRecorded", roundNumber: 1, text: "   " }])).toEqual([]);
   });

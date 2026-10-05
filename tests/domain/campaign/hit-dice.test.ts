@@ -42,8 +42,10 @@ describe("spending Hit Dice on a short rest", () => {
     expect(reject(settled.state, jamie, { kind: "spendHitDice", characterId: "c-borin", count: 1 })).toEqual({ code: "noHitDice" });
   });
 
-  it("closes when the next round opens", () => {
-    const next = run(rested(), system, { kind: "openRound" }).state;
+  it("stays open while the party rests, and closes when the organizer finishes and the next round opens", () => {
+    expect(run(rested(), system, { kind: "openRound" }).state.round).toBeNull();
+    const next = run(rested(), organizer, { kind: "continue" }).state;
+    expect(next.round?.number).toBe(1);
     expect(reject(next, jamie, { kind: "spendHitDice", characterId: "c-borin", count: 1 })).toEqual({ code: "noShortRest" });
   });
 });

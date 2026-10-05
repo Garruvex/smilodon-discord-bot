@@ -124,7 +124,7 @@ export function syncDrawers(game) {
   if (fit > 0) drawers.left.drawer.style.setProperty("--drawer-fit", `${fit + 2}px`);
   drawers.left.dots.replaceChildren(...game.party.map((hero) => {
     const dot = document.createElement("i");
-    dot.dataset.state = hero.fallen ? "dead" : hero.down ? "down" : hero.presence === "away" ? "away" : "well";
+    dot.dataset.state = hero.fallen ? "dead" : hero.down ? "down" : hero.presence === "away" ? "away" : game.mode === "collecting" && hero.tableStatus === "waiting" ? "thinking" : "well";
     dot.title = hero.name;
     return dot;
   }));

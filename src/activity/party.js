@@ -183,6 +183,8 @@ export function renderParty(members) {
       subtitle.replaceChildren(line(kind), line(`${t("activity.detail.level")} ${hero.level}`));
     }
     copy.append(nameLine, subtitle);
+    const liveLine = partyLiveLine(hero, app.currentSnapshot);
+    if (liveLine !== null) copy.append(liveLine);
     if (hero.zone != null) copy.append(Object.assign(document.createElement("span"), { className: "party-class-line combat-place", textContent: t("activity.combat.at", { zone: hero.zone }), title: hero.zone }));
     const meta = document.createElement("span");
     meta.className = "party-meta-line";
@@ -219,6 +221,31 @@ export function renderParty(members) {
   }), ...Array.from({ length: Math.max(0, seats - members.length) }, openSeat));
 }
 
+
+// What this hero is doing right now, in a line: thinking, what they sent, passed, acting, up next. Nothing when there is nothing to say.
+function partyLiveLine(hero, game) {
+  if (game === undefined || game.kind !== "table" || hero.fallen || hero.down) return null;
+  const line = (state, text, full = text) => {
+    const node = Object.assign(document.createElement("span"), { className: "party-live", textContent: text, title: full });
+    node.dataset.live = state;
+    return node;
+  };
+  if (hero.presence === "away") return line("away", t("activity.party.live.away"));
+  if (game.mode === "collecting") {
+    switch (hero.tableStatus) {
+      case "submitted": return line("ready", hero.intent ? `✓ ${hero.intent}` : t("activity.party.live.ready"), hero.intent ?? t("activity.party.live.ready"));
+      case "passed": return line("passed", t("activity.party.live.passed"));
+      case "missed": return line("missed", t("activity.party.live.missed"));
+      default: return line("thinking", t("activity.party.live.thinking"));
+    }
+  }
+  if ((game.mode === "planning" || game.mode === "awaitingRolls") && hero.intent) return line("done", `▸ ${hero.intent}`, hero.intent);
+  if (game.mode === "combat") {
+    if (hero.tableStatus === "acting") return line("acting", t("activity.party.live.acting"));
+    if (game.upcomingNames?.[0] === hero.name) return line("next", t("activity.party.live.next"));
+  }
+  return null;
+}
 
 export function partyStatusText(hero) {
   if (hero.fallen) return t("activity.party.dead");

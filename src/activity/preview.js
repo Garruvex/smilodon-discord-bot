@@ -66,7 +66,8 @@ export function designPreviewSnapshot() {
   return {
     classNames: new URLSearchParams(window.location.search).get("language") === "zh-TW" ? { wizard: "法師", paladin: "聖騎士", ranger: "遊俠", rogue: "盜賊", cleric: "牧師", bard: "吟遊詩人" } : {},
     kind: "table", campaignId: "local-preview", campaignName: "The Lantern Company", adventureTitle: "Moonlit Ruins",
-    mode: "combat", roundNumber: 4, ownPresence: new URLSearchParams(window.location.search).has("away") ? "away" : "present", canTogglePresence: true, canVoteMove: true,
+    mode: new URLSearchParams(window.location.search).has("round") ? "collecting" : new URLSearchParams(window.location.search).has("resting") ? "resting" : "combat", roundNumber: 4,
+    controls: { canStop: true, canPause: true, rest: { askedFor: null, resting: new URLSearchParams(window.location.search).has("resting") ? "short" : null, now: false } }, ownPresence: new URLSearchParams(window.location.search).has("away") ? "away" : "present", canTogglePresence: true, canVoteMove: true,
     scene: { title: "The Drowned Observatory", description: "Cold moonlight spills through the broken dome. Something stirs beneath the flooded floor.", imageUrl: null },
     map: new URLSearchParams(window.location.search).has("journey") ? { kind: "journey", nodes: [
       { id: "entrance", title: "The Old Hall", column: 0, row: 1, status: "visited", canTravel: false, deadEnd: false },
@@ -84,9 +85,9 @@ export function designPreviewSnapshot() {
     story: previewStory(),
     yourTurn: true, canBegin: false, activeName: "Aria Vell", upcomingNames: ["Hollow Sentinel", "Thorne Oakshield", "Mira Fen"], partySeats: 6,
     party: [
-      { ...hero("aria", "Aria Vell", "Wizard", "High Elf", 27, 34, true), tableStatus: "acting" },
-      { ...hero("thorne", "Thorne Oakshield", "Paladin", "Hill Dwarf", 38, 42), tableStatus: "submitted" },
-      { ...hero("mira", "Mira Fen", "Ranger", "Wood Elf", 22, 31), tableStatus: "submitted" },
+      { ...hero("aria", "Aria Vell", "Wizard", "High Elf", 27, 34, true), tableStatus: new URLSearchParams(window.location.search).has("round") ? "waiting" : "acting" },
+      { ...hero("thorne", "Thorne Oakshield", "Paladin", "Hill Dwarf", 38, 42), tableStatus: "submitted", intent: "I put my shoulder to the stuck door and heave it open." },
+      { ...hero("mira", "Mira Fen", "Ranger", "Wood Elf", 22, 31), tableStatus: "passed" },
       { ...hero("pip", "Pip Underbough", "Rogue", "Lightfoot Halfling", 19, 28), tableStatus: "waiting" },
       { ...hero("sable", "Sable Dusk", "Cleric", "Tiefling", 29, 33), tableStatus: "waiting" },
       { ...hero("kestrel", "Kestrel Vale", "Bard", "Human", 25, 30), tableStatus: "waiting" },

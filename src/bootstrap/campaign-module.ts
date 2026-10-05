@@ -543,6 +543,14 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
             if (spellId === null) return { kind: "refused", reason: "invalidAction" };
             return activityPlay.castSpell(key, userId, spellId as ContentId<"spell">, id).then(mapPlayResult);
           }
+          // Stopping play is for every player; pausing and resting are the organizer's (the engine refuses anyone else).
+          case "safetyStop": return activityPlay.safety(key, userId, id).then(mapPlayResult);
+          case "pause": return activityPlay.pause(key, userId, id).then(mapPlayResult);
+          case "queueRest": {
+            const rest = action.rest === "short" || action.rest === "long" ? action.rest : action.rest === "none" ? null : undefined;
+            if (rest === undefined) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.queueRest(key, userId, rest, id).then(mapPlayResult);
+          }
           case "spendHitDice": {
             const count = integerValue(action.count);
             if (count === null) return { kind: "refused", reason: "invalidAction" };

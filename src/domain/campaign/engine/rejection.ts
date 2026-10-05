@@ -9,6 +9,8 @@ export type Rejection =
   | { readonly code: "memberAway" }
   | { readonly code: "memberNotAway" }
   | { readonly code: "noShortRest" }
+  | { readonly code: "resting" }
+  | { readonly code: "nothingToRest" }
   | { readonly code: "hitDicePending" }
   | { readonly code: "noHitDice" }
   | { readonly code: "organizerStays" }
