@@ -3,11 +3,14 @@ import { previewCharacterRequest } from "./character-preview.js";
 import { setArtwork } from "./dom.js";
 import { openArtwork } from "./artwork-viewer.js";
 import { classText, t } from "./i18n.js";
+import { openPortraitStudio } from "./portrait-studio.js";
+import { standardScores, availableScores, assignScore } from "./score-assignment.js";
 
 const abilities = ["str", "dex", "con", "int", "wis", "cha"];
-const standardScores = [15, 14, 13, 12, 10, 8];
 let catalog = null;
-let step = 0;
+let assignments = Object.fromEntries(abilities.map((ability) => [ability, null]));
+let portraitDraft = { mode: "none", file: null };
+let draftImageUrl = null;
 let characters = [];
 let currentCharacter = null;
 let selectedCharacterId = null;
@@ -161,49 +164,70 @@ function detailLine(title, value) {
   return row;
 }
 
-function renderCharacterDetail() {
+function renderCharacterDetail(activeTab = "sheet") {
   const detail = document.querySelector("#characters-detail");
   detail.replaceChildren();
   if (!currentCharacter) return;
   const version = currentCharacter.versions.find((item) => item.id === selectedVersionId);
   if (!version) return;
   const build = version.build;
+  const characterId = currentCharacter.id;
   const hero = element("div", "characters-detail-hero");
-  hero.append(portrait(currentCharacter.id, build.name, true));
+  hero.append(portrait(characterId, build.name, true));
   const title = element("div", "characters-detail-heading");
-  title.append(element("h2", "", build.name), element("p", "", `${raceText(build.race)} · ${className(build.class)}`));
-  hero.append(title);
-  detail.append(hero);
+  title.append(element("h2", "", build.name), element("p", "", raceText(build.race) + " · " + className(build.class)));
+  const actions = element("div", "characters-detail-actions");
+  if (version.branch === "main") actions.append(button(t("activity.characters.edit"), () => openCharacterCreator(build, characterId), true));
+  if (characterRequest !== previewCharacterRequest) actions.append(button(t("activity.portrait.manage"), () => void openPortraitStudio(characterId, build.name, () => { renderCharacterList(); renderCharacterDetail(activeTab); }).catch((error) => characterMessage(error.message))));
+  title.append(actions);
+  const history = element("details", "characters-history");
+  history.append(element("summary", "", t("activity.characters.versionHistory")));
   const versionPicker = select("characters-version", [...currentCharacter.versions].reverse().map((item) => item.id), (id) => {
     const item = currentCharacter.versions.find((candidate) => candidate.id === id);
     const number = item.branch === "main" ? currentCharacter.versions.filter((candidate) => candidate.branch === "main" && candidate.revision <= item.revision).length : item.revision;
-    return `${t("activity.characters.version", { number })}${item.branch === "main" ? "" : ` · ${t("activity.characters.gameVersion")}`}`;
+    return t("activity.characters.version", { number }) + (item.branch === "main" ? "" : " · " + t("activity.characters.gameVersion"));
   });
   versionPicker.value = version.id;
-  versionPicker.addEventListener("change", () => { selectedVersionId = versionPicker.value; renderCharacterDetail(); });
-  title.append(labelled(t("activity.characters.viewVersion"), versionPicker));
-  const stats = element("div", "characters-stats");
-  for (const ability of abilities) stats.append(detailLine(ability.toUpperCase(), String((version.progression?.abilityScores ?? build.abilities)[ability])));
-  detail.append(stats);
-  const buildSection = element("section", "characters-sheet-section");
-  buildSection.append(element("h3", "", t("activity.characters.buildSection")));
-  const buildGrid = element("div", "characters-sheet-grid");
-  buildGrid.append(detailLine(t("activity.creator.skills"), build.skills.map(skillText).join(", ")));
-  if (build.expertise.length) buildGrid.append(detailLine(t("activity.characters.expertise"), build.expertise.map(skillText).join(", ")));
-  if (build.raceAbilityChoices?.length) buildGrid.append(detailLine(t("activity.creator.halfElfAbilities"), build.raceAbilityChoices.map((item) => item.toUpperCase()).join(", ")));
-  if (build.raceSkillChoices?.length) buildGrid.append(detailLine(t("activity.creator.halfElfSkills"), build.raceSkillChoices.map(skillText).join(", ")));
-  buildGrid.append(detailLine(t("activity.creator.kit"), t(`campaign.chars.kit.${build.kit}`)));
-  buildGrid.append(detailLine(t("activity.characters.equipment"), version.gear.equipment.map((id) => label(id.replace(/^item:/, ""))).join(", ")));
-  if (version.progression) buildGrid.append(detailLine(t("activity.characters.level"), String(Object.values(version.progression.classLevels).reduce((total, level) => total + level, 0))));
-  buildSection.append(buildGrid);
-  detail.append(buildSection);
-  const storySection = element("section", "characters-sheet-section");
-  storySection.append(element("h3", "", t("activity.characters.storySection")), detailLine(t("activity.creator.appearance"), build.appearance), detailLine(t("activity.creator.backstory"), build.backstory));
-  detail.append(storySection);
-  const actions = element("div", "characters-detail-actions");
-  if (version.branch === "main") actions.append(button(t("activity.characters.edit"), () => openCharacterCreator(build, currentCharacter.id), true));
-  actions.append(button(t("activity.characters.delete"), () => showDeleteConfirmation()));
-  detail.append(actions);
+  versionPicker.addEventListener("change", () => { selectedVersionId = versionPicker.value; renderCharacterDetail(activeTab); });
+  history.append(labelled(t("activity.characters.viewVersion"), versionPicker));
+  title.append(history);
+  hero.append(title);
+  detail.append(hero);
+  const tabs = element("nav", "hero-workspace-tabs characters-sheet-tabs"); tabs.setAttribute("role", "tablist"); tabs.setAttribute("aria-label", t("activity.characters.title"));
+  for (const id of ["sheet", "equipment", "story"]) {
+    const tab = button(t("activity.characters.tab." + id), () => renderCharacterDetail(id));
+    tab.id = "characters-tab-" + id; tab.setAttribute("role", "tab"); tab.setAttribute("aria-selected", String(activeTab === id)); tab.setAttribute("aria-controls", "characters-panel");
+    tabs.append(tab);
+  }
+  tabs.addEventListener("keydown", (event) => {
+    const index = ["sheet", "equipment", "story"].indexOf(activeTab);
+    const next = event.key === "ArrowRight" ? (index + 1) % 3 : event.key === "ArrowLeft" ? (index + 2) % 3 : event.key === "Home" ? 0 : event.key === "End" ? 2 : null;
+    if (next === null) return;
+    event.preventDefault(); const id = ["sheet", "equipment", "story"][next]; renderCharacterDetail(id); document.querySelector("#characters-tab-" + id).focus();
+  });
+  detail.append(tabs);
+  const panel = element("section", "characters-sheet-panel"); panel.id = "characters-panel"; panel.setAttribute("role", "tabpanel"); panel.setAttribute("aria-labelledby", "characters-tab-" + activeTab);
+  if (activeTab === "sheet") {
+    const stats = element("div", "sheet-abilities characters-stats");
+    for (const ability of abilities) {
+      const score = (version.progression?.abilityScores ?? build.abilities)[ability];
+      const modifier = Math.floor((score - 10) / 2);
+      const tile = element("div", "sheet-ability");
+      tile.append(element("span", "", ability.toUpperCase()), element("strong", "", (modifier >= 0 ? "+" : "") + modifier), element("small", "", String(score)));
+      stats.append(tile);
+    }
+    panel.append(stats, detailLine(t("activity.creator.skills"), build.skills.map(skillText).join(", ")));
+    if (build.expertise.length) panel.append(detailLine(t("activity.characters.expertise"), build.expertise.map(skillText).join(", ")));
+    if (build.raceAbilityChoices?.length) panel.append(detailLine(t("activity.creator.halfElfAbilities"), build.raceAbilityChoices.map((item) => item.toUpperCase()).join(", ")));
+    if (build.raceSkillChoices?.length) panel.append(detailLine(t("activity.creator.halfElfSkills"), build.raceSkillChoices.map(skillText).join(", ")));
+    panel.append(detailLine(t("activity.characters.level"), String(version.progression ? Object.values(version.progression.classLevels).reduce((total, level) => total + level, 0) : 1)));
+  } else if (activeTab === "equipment") {
+    panel.append(detailLine(t("activity.creator.kit"), t("campaign.chars.kit." + build.kit)), detailLine(t("activity.characters.equipment"), version.gear.equipment.map((id) => label(id.replace(/^item:/, ""))).join(", ")));
+  } else panel.append(detailLine(t("activity.creator.appearance"), build.appearance), detailLine(t("activity.creator.backstory"), build.backstory));
+  detail.append(panel);
+  const more = element("details", "characters-more"); more.append(element("summary", "", t("activity.characters.more")));
+  more.append(button(t("activity.characters.delete"), () => showDeleteConfirmation()));
+  detail.append(more);
 }
 
 function showDeleteConfirmation() {
@@ -232,183 +256,281 @@ function buildChoices() {
     name: field("builder-name").value.trim(), race: field("builder-race").value, class: field("builder-class").value,
     appearance: field("builder-appearance").value.trim(), backstory: field("builder-backstory").value.trim(),
     kit: field("builder-kit").value,
-    abilities: Object.fromEntries(abilities.map((ability) => [ability, Number(field(`builder-${ability}`).value)])),
+    abilities: Object.fromEntries(abilities.map((ability) => [ability, assignments[ability] ?? 0])),
     skills: chosen("builder-skill"), expertise: chosen("builder-expertise"),
     ...(field("builder-race").value === "half-elf" ? { raceAbilityChoices: chosen("builder-race-ability"), raceSkillChoices: chosen("builder-race-skill") } : {}),
   };
 }
 
-function validate(stage) {
+function validate() {
   const build = buildChoices();
   const chosenClass = catalog.classes.find((entry) => entry.id === build.class);
-  if (stage >= 0 && !build.name) return t("activity.creator.nameRequired");
-  if (stage >= 1) {
-    if (new Set(Object.values(build.abilities)).size !== 6 || [...Object.values(build.abilities)].sort((a, b) => b - a).some((score, index) => score !== standardScores[index])) return t("activity.creator.scoreError");
-    if (build.skills.length !== chosenClass.skillCount) return t("activity.creator.skillCount", { count: chosenClass.skillCount });
-    if (build.expertise.length !== chosenClass.expertiseCount || build.expertise.some((skill) => !build.skills.includes(skill))) return t("activity.creator.expertiseCount", { count: chosenClass.expertiseCount });
-    if (build.race === "half-elf" && (build.raceAbilityChoices.length !== 2 || build.raceSkillChoices.length !== 2 || build.raceSkillChoices.some((skill) => build.skills.includes(skill)))) return t("activity.creator.halfElfError");
-  }
+  if (!build.name) return { message: t("activity.creator.nameRequired"), target: "builder-name" };
+  if (new Set(Object.values(build.abilities)).size !== 6 || [...Object.values(build.abilities)].sort((a, b) => b - a).some((score, index) => score !== standardScores[index])) return { message: t("activity.creator.scoreError"), target: "builder-str" };
+  if (build.skills.length !== chosenClass.skillCount) return { message: t("activity.creator.skillCount", { count: chosenClass.skillCount }), target: "builder-skills" };
+  if (build.expertise.length !== chosenClass.expertiseCount || build.expertise.some((skill) => !build.skills.includes(skill))) return { message: t("activity.creator.expertiseCount", { count: chosenClass.expertiseCount }), target: "builder-expertise" };
+  if (build.race === "half-elf" && (build.raceAbilityChoices.length !== 2 || build.raceSkillChoices.length !== 2 || build.raceSkillChoices.some((skill) => build.skills.includes(skill)))) return { message: t("activity.creator.halfElfError"), target: "builder-race-choices" };
+  if (portraitDraft.mode === "upload" && !portraitDraft.file) return { message: t("activity.portrait.chooseReference"), target: "builder-portrait-file" };
   return null;
 }
 
-function renderClassChoices() {
-  if (!catalog) return;
-  const chosenClass = catalog.classes.find((entry) => entry.id === field("builder-class").value);
-  const scores = field("builder-scores");
-  scores.replaceChildren();
-  for (const ability of abilities) scores.append(labelled(ability.toUpperCase(), select(`builder-${ability}`, standardScores, String)));
-  for (const ability of abilities) field(`builder-${ability}`).value = String(chosenClass.suggestedAbilities[ability]);
-  const skills = field("builder-skills");
-  skills.replaceChildren(element("h3", "", t("activity.creator.skillCount", { count: chosenClass.skillCount })));
-  for (const skill of chosenClass.skillChoices) {
-    const input = element("input"); input.type = "checkbox"; input.name = "builder-skill"; input.value = skill;
-    skills.append(labelled(skillText(skill), input));
-  }
-  const expertise = field("builder-expertise");
-  expertise.replaceChildren();
-  if (chosenClass.expertiseCount) {
-    expertise.append(element("h3", "", t("activity.creator.expertiseCount", { count: chosenClass.expertiseCount })));
-    for (const skill of chosenClass.skillChoices) {
-      const input = element("input"); input.type = "checkbox"; input.name = "builder-expertise"; input.value = skill;
-      expertise.append(labelled(skillText(skill), input));
+function renderScores() {
+  const root = field("builder-scores");
+  root.replaceChildren();
+  for (const ability of abilities) {
+    const tile = element("label", "sheet-ability builder-ability");
+    const control = select("builder-" + ability, [], String);
+    control.setAttribute("aria-label", ability.toUpperCase());
+    const empty = element("option", "", t("activity.creator.assignScore"));
+    empty.value = "";
+    control.append(empty);
+    for (const score of availableScores(assignments, ability)) {
+      const option = element("option", "", String(score));
+      option.value = String(score);
+      control.append(option);
     }
+    control.value = assignments[ability] === null ? "" : String(assignments[ability]);
+    const modifier = assignments[ability] === null ? "—" : Math.floor((assignments[ability] - 10) / 2);
+    tile.append(element("span", "", ability.toUpperCase()), element("strong", "", typeof modifier === "number" && modifier >= 0 ? "+" + modifier : String(modifier)), control);
+    root.append(tile);
   }
-  field("builder-kit").replaceWith(select("builder-kit", chosenClass.kits, (kit) => {
-    const translated = t(`campaign.chars.kit.${kit}`);
-    return translated.startsWith("campaign.") ? label(kit) : translated;
-  }));
-  renderRaceChoices();
+  const remaining = standardScores.filter((score) => !Object.values(assignments).includes(score));
+  field("builder-score-status").textContent = remaining.length ? t("activity.creator.remainingScores", { scores: remaining.join(" · ") }) : t("activity.creator.scoresAssigned");
 }
 
-function renderRaceChoices() {
+function autoAssign() {
+  assignments = { ...catalog.classes.find((entry) => entry.id === field("builder-class").value).suggestedAbilities };
+  renderScores();
+  feedback("");
+}
+
+function addChoices(root, name, choices, title, selected = []) {
+  root.append(element("h3", "", title));
+  for (const value of choices) {
+    const input = element("input"); input.type = "checkbox"; input.name = name; input.value = value; input.checked = selected.includes(value);
+    root.append(labelled(name === "builder-race-ability" ? value.toUpperCase() : skillText(value), input));
+  }
+}
+
+function renderClassChoices(preserve = false) {
+  if (!catalog) return;
+  const selectedSkills = preserve ? chosen("builder-skill") : [];
+  const selectedExpertise = preserve ? chosen("builder-expertise") : [];
+  const oldKit = field("builder-kit").value;
+  const chosenClass = catalog.classes.find((entry) => entry.id === field("builder-class").value);
+  const skills = field("builder-skills"); skills.replaceChildren();
+  addChoices(skills, "builder-skill", chosenClass.skillChoices, t("activity.creator.skillCount", { count: chosenClass.skillCount }), selectedSkills.filter((skill) => chosenClass.skillChoices.includes(skill)).slice(0, chosenClass.skillCount));
+  const expertise = field("builder-expertise"); expertise.replaceChildren();
+  if (chosenClass.expertiseCount) addChoices(expertise, "builder-expertise", chosenClass.skillChoices, t("activity.creator.expertiseCount", { count: chosenClass.expertiseCount }), selectedExpertise.filter((skill) => chosen("builder-skill").includes(skill)).slice(0, chosenClass.expertiseCount));
+  field("builder-kit").replaceWith(select("builder-kit", chosenClass.kits, (kit) => {
+    const translated = t("campaign.chars.kit." + kit);
+    return translated.startsWith("campaign.") ? label(kit) : translated;
+  }));
+  if (preserve && chosenClass.kits.includes(oldKit)) field("builder-kit").value = oldKit;
+  renderRaceChoices(preserve);
+  renderScores();
+  updateChoiceLimits();
+}
+
+function renderRaceChoices(preserve = false) {
+  const selectedAbilities = preserve ? chosen("builder-race-ability") : [];
+  const selectedSkills = preserve ? chosen("builder-race-skill") : [];
   const area = field("builder-race-choices");
   area.replaceChildren();
   if (field("builder-race").value !== "half-elf") return;
-  area.append(element("h3", "", t("activity.creator.halfElfAbilities")));
-  for (const ability of abilities.filter((item) => item !== "cha")) {
-    const input = element("input"); input.type = "checkbox"; input.name = "builder-race-ability"; input.value = ability;
-    area.append(labelled(ability.toUpperCase(), input));
-  }
-  area.append(element("h3", "", t("activity.creator.halfElfSkills")));
-  for (const skill of catalog.skills) {
-    const input = element("input"); input.type = "checkbox"; input.name = "builder-race-skill"; input.value = skill;
-    area.append(labelled(skillText(skill), input));
-  }
+  addChoices(area, "builder-race-ability", abilities.filter((item) => item !== "cha"), t("activity.creator.halfElfAbilities"), selectedAbilities);
+  addChoices(area, "builder-race-skill", catalog.skills, t("activity.creator.halfElfSkills"), selectedSkills);
 }
 
-function showStep(next) {
-  if (next > step) {
-    const error = validate(step);
-    if (error) { feedback(error); return; }
+function updateChoiceLimits() {
+  const chosenClass = catalog.classes.find((entry) => entry.id === field("builder-class").value);
+  const selectedSkills = chosen("builder-skill");
+  for (const input of dialog().querySelectorAll('input[name="builder-expertise"]')) if (!selectedSkills.includes(input.value)) input.checked = false;
+  for (const input of dialog().querySelectorAll('input[name="builder-race-skill"]')) if (selectedSkills.includes(input.value)) input.checked = false;
+  const limits = { "builder-skill": chosenClass.skillCount, "builder-expertise": chosenClass.expertiseCount, "builder-race-ability": 2, "builder-race-skill": 2 };
+  for (const [name, limit] of Object.entries(limits)) {
+    const count = chosen(name).length;
+    for (const input of dialog().querySelectorAll('input[name="' + name + '"]')) {
+      input.disabled = !input.checked && (count >= limit || (name === "builder-expertise" && !selectedSkills.includes(input.value)) || (name === "builder-race-skill" && selectedSkills.includes(input.value)));
+    }
   }
-  feedback("");
-  step = next;
-  for (const [index, panel] of [...dialog().querySelectorAll("[data-builder-panel]")].entries()) panel.hidden = index !== step;
-  for (const [index, tab] of [...dialog().querySelectorAll("[data-builder-step]")].entries()) tab.setAttribute("aria-current", String(index === step));
-  if (step === 2) {
-    const build = buildChoices();
-    field("builder-review-name").textContent = build.name;
-    field("builder-review-subtitle").textContent = `${raceText(build.race)} ${className(build.class)} · ${t("activity.lobby.levelOne")}`;
-    field("builder-review-details").textContent = `${t("activity.creator.skills")}: ${build.skills.map(skillText).join(", ")} · ${t("activity.creator.kit")}: ${t(`campaign.chars.kit.${build.kit}`)}`;
-    field("builder-review-stats").replaceChildren(...abilities.map((ability) => element("span", "", `${ability.toUpperCase()} ${build.abilities[ability]}`)));
-  }
+  field("builder-choice-status").textContent = t("activity.creator.skillsSelected", { count: selectedSkills.length, max: chosenClass.skillCount });
+}
+
+function updatePortraitDraft() {
+  portraitDraft.mode = field("builder-portrait-mode").value;
+  field("builder-save").textContent = t(portraitDraft.mode === "none" ? "activity.creator.save" : "activity.creator.saveContinue");
+  field("builder-portrait-settings").hidden = portraitDraft.mode !== "upload";
+  field("builder-portrait-upload").hidden = portraitDraft.mode !== "upload";
+  const image = field("builder-portrait-image");
+  const fallback = field("builder-portrait-fallback");
+  image.hidden = !portraitDraft.file || portraitDraft.mode !== "upload";
+  fallback.hidden = !image.hidden;
+  if (image.hidden && editingCharacterId) void setArtwork(image, fallback, portraitUrl(editingCharacterId), t("activity.hero.portraitAlt", { name: field("builder-name").value }));
 }
 
 export function openCharacterCreator(existingBuild = null, characterId = null) {
   if (!catalog) { characterMessage(t("activity.creator.unavailable")); return; }
   editingCharacterId = characterId;
-  const saveButton = field("builder-save");
-  saveButton.textContent = t(characterId ? "activity.characters.saveVersion" : "activity.creator.save");
   const form = dialog();
   form.querySelectorAll("input[type=text], textarea").forEach((input) => { input.value = ""; });
-  field("builder-race").value = "human";
-  field("builder-class").value = "fighter";
+  field("builder-name").value = existingBuild?.name ?? "";
+  field("builder-appearance").value = existingBuild?.appearance ?? "";
+  field("builder-backstory").value = existingBuild?.backstory ?? "";
+  field("builder-race").value = existingBuild?.race ?? "human";
+  field("builder-class").value = existingBuild?.class ?? "fighter";
+  assignments = existingBuild ? { ...existingBuild.abilities } : Object.fromEntries(abilities.map((ability) => [ability, null]));
   renderClassChoices();
   if (existingBuild) {
-    field("builder-name").value = existingBuild.name;
-    field("builder-appearance").value = existingBuild.appearance;
-    field("builder-backstory").value = existingBuild.backstory;
-    field("builder-race").value = existingBuild.race ?? "human";
-    field("builder-class").value = existingBuild.class;
-    renderClassChoices();
     field("builder-kit").value = existingBuild.kit;
-    for (const ability of abilities) field(`builder-${ability}`).value = String(existingBuild.abilities[ability]);
     for (const [name, values] of [["builder-skill", existingBuild.skills], ["builder-expertise", existingBuild.expertise], ["builder-race-ability", existingBuild.raceAbilityChoices ?? []], ["builder-race-skill", existingBuild.raceSkillChoices ?? []]]) {
-      for (const input of form.querySelectorAll(`input[name="${name}"]`)) input.checked = values.includes(input.value);
+      for (const input of form.querySelectorAll('input[name="' + name + '"]')) input.checked = values.includes(input.value);
     }
   }
-  step = 0;
-  showStep(0);
+  updateChoiceLimits();
+  portraitDraft = { mode: "none", file: null };
+  if (draftImageUrl) URL.revokeObjectURL(draftImageUrl);
+  draftImageUrl = null;
+  field("builder-portrait-file").value = "";
+  field("builder-portrait-mode").value = "none";
+  field("builder-portrait-style").value = "painterly";
+  updatePortraitDraft();
+  field("builder-save").textContent = t("activity.creator.save");
+  field("builder-sheet-title").textContent = t(characterId ? "activity.creator.editSheet" : "activity.creator.title");
+  feedback("");
   form.showModal();
+  form.querySelector(".builder-sheet").scrollTop = 0;
 }
 
 export function wireCharacterCreator() {
   const form = dialog();
+  form.classList.add("character-sheet-editor");
   form.replaceChildren();
   const header = element("header", "builder-header");
   const copy = element("div");
-  copy.append(element("h2", "", t("activity.creator.title")), element("p", "", t("activity.creator.description")));
-  header.append(copy, button("×", () => form.close()));
-  const tabs = element("nav", "builder-steps");
-  ["identity", "build", "review"].forEach((name, index) => {
-    const tab = button(`${index + 1}  ${t(`activity.creator.${name}`)}`, () => showStep(index));
-    tab.dataset.builderStep = name;
-    tabs.append(tab);
+  const title = element("h2", "", t("activity.creator.title")); title.id = "builder-sheet-title";
+  copy.append(title, element("p", "", t("activity.creator.sheetDescription")));
+  const close = button("×", () => form.close()); close.setAttribute("aria-label", t("activity.creator.cancel"));
+  header.append(copy, close);
+  const sheet = element("div", "builder-sheet");
+  const side = element("aside", "builder-sheet-side builder-panel");
+  const frame = element("div", "portrait-studio-preview");
+  const picture = element("img"); picture.id = "builder-portrait-image"; picture.hidden = true; picture.alt = t("activity.portrait.referencePreview");
+  const fallback = element("span", "", t("activity.portrait.draftHelp")); fallback.id = "builder-portrait-fallback";
+  frame.append(picture, fallback);
+  const mode = select("builder-portrait-mode", ["none", "description", "upload"], (value) => t("activity.portrait.mode." + value));
+  mode.setAttribute("aria-label", t("activity.portrait.section"));
+  side.append(frame, element("h3", "", t("activity.portrait.section")), element("p", "builder-help", t("activity.portrait.nextStep")));
+  mode.hidden = false;
+  side.append(mode);
+  const portraitSettings = element("div", "builder-panel"); portraitSettings.id = "builder-portrait-settings";
+  const file = element("input"); file.type = "file"; file.accept = "image/png,image/jpeg,image/webp"; file.id = "builder-portrait-file";
+  const upload = labelled(t("activity.portrait.upload"), file); upload.id = "builder-portrait-upload";
+  const note = element("textarea"); note.id = "builder-portrait-note"; note.maxLength = 200; note.placeholder = t("activity.portrait.notePlaceholder");
+  portraitSettings.append(upload, labelled(t("activity.portrait.styleLabel"), select("builder-portrait-style", ["painterly", "ink", "watercolor", "realistic"], (value) => t("activity.portrait.style." + value))), labelled(t("activity.portrait.noteLabel"), note), element("p", "builder-help", t("activity.portrait.afterSave")));
+  for (const child of [...portraitSettings.children].slice(1)) child.hidden = true;
+  const removePhoto = button(t("activity.portrait.clearReference"), () => {
+    portraitDraft.file = null; field("builder-portrait-file").value = "";
+    if (draftImageUrl) URL.revokeObjectURL(draftImageUrl);
+    draftImageUrl = null; updatePortraitDraft();
   });
-  const identity = element("section", "builder-panel"); identity.dataset.builderPanel = "identity";
-  const name = element("input"); name.id = "builder-name"; name.type = "text"; name.maxLength = 40;
+  portraitSettings.append(element("p", "builder-help", t("activity.portrait.uploadFirstHelp")), removePhoto);
+  portraitSettings.hidden = true;
+  side.append(portraitSettings);
+  const main = element("div", "builder-sheet-main builder-panel");
+  const identity = element("section", "builder-panel");
+  const name = element("input"); name.id = "builder-name"; name.type = "text"; name.maxLength = 40; name.placeholder = t("activity.creator.namePlaceholder");
   identity.append(labelled(t("activity.creator.name"), name));
   const identityFields = element("div", "builder-fields");
   identityFields.append(labelled(t("activity.creator.ancestry"), select("builder-race", [], String)), labelled(t("activity.creator.class"), select("builder-class", [], String)));
   identity.append(identityFields);
-  const appearance = element("textarea"); appearance.id = "builder-appearance"; appearance.maxLength = 300;
-  const backstory = element("textarea"); backstory.id = "builder-backstory"; backstory.maxLength = 300;
-  identity.append(labelled(t("activity.creator.appearance"), appearance), labelled(t("activity.creator.backstory"), backstory), button(t("activity.creator.continue"), () => showStep(1), true));
-  const build = element("section", "builder-panel"); build.dataset.builderPanel = "build";
-  build.append(element("h3", "", t("activity.creator.abilities")), element("p", "", t("activity.creator.scoreHelp")));
-  const scores = element("div", "builder-score-grid"); scores.id = "builder-scores"; build.append(scores);
-  const skills = element("div", "builder-choice-grid"); skills.id = "builder-skills"; build.append(skills);
-  const expertise = element("div", "builder-choice-grid"); expertise.id = "builder-expertise"; build.append(expertise);
-  const raceChoices = element("div", "builder-choice-grid"); raceChoices.id = "builder-race-choices"; build.append(raceChoices);
-  build.append(labelled(t("activity.creator.kit"), select("builder-kit", [], String)));
-  const buildButtons = element("div", "builder-buttons"); buildButtons.append(button(t("activity.creator.back"), () => showStep(0)), button(t("activity.creator.continue"), () => showStep(2), true)); build.append(buildButtons);
-  const review = element("section", "builder-panel"); review.dataset.builderPanel = "review";
-  const reviewName = element("h3"); reviewName.id = "builder-review-name";
-  const subtitle = element("p"); subtitle.id = "builder-review-subtitle";
-  const details = element("p"); details.id = "builder-review-details";
-  const stats = element("div", "builder-review-stats"); stats.id = "builder-review-stats";
-  const reviewButtons = element("div", "builder-buttons");
-  const save = button(t("activity.creator.save"), async () => {
-    const error = validate(1);
-    if (error) { feedback(error); return; }
+  const stats = element("section", "builder-panel builder-sheet-section");
+  const statsHeading = element("div", "builder-section-heading");
+  statsHeading.append(element("h3", "", t("activity.creator.abilities")), button(t("activity.creator.autoAssign"), autoAssign));
+  const scoreStatus = element("p", "builder-help"); scoreStatus.id = "builder-score-status"; scoreStatus.setAttribute("aria-live", "polite");
+  const scores = element("div", "sheet-abilities builder-score-grid"); scores.id = "builder-scores";
+  stats.append(statsHeading, element("p", "builder-help", t("activity.creator.eliminationHelp")), scores, scoreStatus);
+  const skillsSection = element("section", "builder-panel builder-sheet-section");
+  const skills = element("div", "builder-choice-grid"); skills.id = "builder-skills";
+  const expertise = element("div", "builder-choice-grid"); expertise.id = "builder-expertise";
+  const raceChoices = element("div", "builder-choice-grid"); raceChoices.id = "builder-race-choices";
+  const choiceStatus = element("p", "builder-help"); choiceStatus.id = "builder-choice-status"; choiceStatus.setAttribute("aria-live", "polite");
+  skillsSection.append(skills, choiceStatus, expertise, raceChoices);
+  const gear = element("section", "builder-panel builder-sheet-section");
+  gear.append(labelled(t("activity.creator.kit"), select("builder-kit", [], String)));
+  const story = element("details", "builder-panel builder-sheet-section builder-story");
+  story.append(element("summary", "", t("activity.creator.optionalStory")));
+  const appearance = element("textarea"); appearance.id = "builder-appearance"; appearance.maxLength = 300; appearance.placeholder = t("activity.creator.appearancePlaceholder");
+  const backstory = element("textarea"); backstory.id = "builder-backstory"; backstory.maxLength = 300; backstory.placeholder = t("activity.creator.backstoryPlaceholder");
+  const storyFields = element("div", "builder-panel"); storyFields.append(labelled(t("activity.creator.appearance"), appearance), labelled(t("activity.creator.backstory"), backstory)); story.append(storyFields);
+  main.append(identity, stats, skillsSection, gear, story);
+  sheet.append(side, main);
+  const footer = element("footer", "builder-sheet-footer");
+  const message = element("p", "builder-feedback"); message.id = "builder-feedback"; message.setAttribute("role", "alert");
+  const save = button(t("activity.creator.saveContinue"), async () => {
+    const error = validate();
+    if (error) {
+      feedback(error.message);
+      const target = field(error.target);
+      const details = target.closest("details"); if (details) details.open = true;
+      const focus = target.matches("input, select, textarea") ? target : target.querySelector("input:not(:disabled), select");
+      focus?.focus();
+      target.scrollIntoView({ block: "center", behavior: "smooth" });
+      return;
+    }
+    const build = buildChoices();
+    const draft = { ...portraitDraft, style: field("builder-portrait-style").value, note: field("builder-portrait-note").value.trim() };
     save.disabled = true;
+    feedback(t("activity.tables.saving"));
     try {
       const wasEditing = editingCharacterId !== null;
       const targetId = editingCharacterId;
-      const result = await characterRequest(wasEditing ? `/api/activity/characters/${encodeURIComponent(targetId)}` : "/api/activity/characters", { method: wasEditing ? "PUT" : "POST", body: JSON.stringify(buildChoices()) });
+      const result = await characterRequest(wasEditing ? "/api/activity/characters/" + encodeURIComponent(targetId) : "/api/activity/characters", { method: wasEditing ? "PUT" : "POST", body: JSON.stringify(build) });
       form.close();
-      editingCharacterId = null;
+      editingCharacterId = targetId ?? result.characterId;
       selectedCharacterId = targetId ?? result.characterId;
       selectedVersionId = null;
       await loadCharacters();
       characterMessage(t(wasEditing ? "activity.characters.updated" : "activity.creator.saved"));
+      if (draft.mode !== "none") await openPortraitStudio(selectedCharacterId, build.name, () => { renderCharacterList(); renderCharacterDetail(); }, { ...draft, build, previewMode: characterRequest === previewCharacterRequest, onBack: () => { feedback(""); form.showModal(); } }).catch((failure) => characterMessage(failure.message));
     } catch (failure) { feedback(failure instanceof Error ? failure.message : t("activity.connection.requestFailed")); }
     finally { save.disabled = false; }
   }, true);
   save.id = "builder-save";
-  reviewButtons.append(button(t("activity.creator.back"), () => showStep(1)), save);
-  review.append(reviewName, subtitle, stats, details, reviewButtons);
-  const message = element("p", "builder-feedback"); message.id = "builder-feedback"; message.setAttribute("role", "alert");
-  form.append(header, tabs, identity, build, review, message);
+  footer.append(message, button(t("activity.creator.cancel"), () => form.close()), save);
+  form.append(header, sheet, footer);
   form.addEventListener("change", (event) => {
-    if (event.target.id === "builder-class") renderClassChoices();
-    if (event.target.id === "builder-race") renderRaceChoices();
+    if (event.target.id === "builder-class") { renderClassChoices(true); feedback(t("activity.creator.classChanged")); }
+    if (event.target.id === "builder-race") { renderRaceChoices(true); updateChoiceLimits(); }
+    if (event.target.id.startsWith("builder-") && abilities.includes(event.target.id.slice(8))) {
+      const ability = event.target.id.slice(8);
+      assignments = assignScore(assignments, ability, event.target.value === "" ? null : Number(event.target.value));
+      renderScores();
+      field("builder-" + ability).focus();
+    }
+    if (event.target.name?.startsWith("builder-")) updateChoiceLimits();
+    if (event.target.id === "builder-portrait-mode") updatePortraitDraft();
+    if (event.target.id === "builder-portrait-file") {
+      const file = event.target.files?.[0];
+      if (file && (file.size > 8 * 1024 * 1024 || !["image/png", "image/jpeg", "image/webp"].includes(file.type))) {
+        feedback(t(file.size > 8 * 1024 * 1024 ? "activity.portrait.error.tooLarge" : "activity.portrait.error.badType"));
+        event.target.value = ""; portraitDraft.file = null;
+        if (draftImageUrl) URL.revokeObjectURL(draftImageUrl);
+        draftImageUrl = null; updatePortraitDraft(); return;
+      }
+      portraitDraft.file = file ?? null;
+      if (draftImageUrl) URL.revokeObjectURL(draftImageUrl);
+      draftImageUrl = file ? URL.createObjectURL(file) : null;
+      if (draftImageUrl) {
+        field("builder-portrait-image").dataset.source = "";
+        field("builder-portrait-image").src = draftImageUrl;
+      }
+      updatePortraitDraft();
+    }
   });
-  // The authenticated lobby load fills these pickers; the dialog is never opened before then.
-  const populate = () => {
+  document.addEventListener("activity-characters-loaded", () => {
     if (!catalog) return;
     field("builder-race").replaceWith(select("builder-race", catalog.races, raceText));
     field("builder-class").replaceWith(select("builder-class", catalog.classes.map((entry) => entry.id), className));
-  };
-  document.addEventListener("activity-characters-loaded", populate);
+  });
 }

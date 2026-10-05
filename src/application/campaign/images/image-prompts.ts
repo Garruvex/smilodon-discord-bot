@@ -162,6 +162,7 @@ export function portraitPrompt(build: BuildChoices, style: PortraitStyle, note: 
     : `Character identity: depict ${who} as a fantasy tabletop RPG character. Treat the written appearance below as defining details; do not replace them with a generic class stereotype.`;
   return lines(
     `${lead}${look === "" ? "" : ` Appearance details: ${look}.`}`,
+    `Starting equipment theme: ${plain(build.kit, 80)}. Show only suitable worn clothing and equipment visible in a head and shoulders portrait. Appearance details take priority.`,
     `Composition: one character, head and shoulders, face unobstructed, in ${styleWords[style]}.`,
     rules,
   );

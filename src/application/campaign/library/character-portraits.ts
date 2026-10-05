@@ -61,6 +61,30 @@ export class CharacterPortraits {
     return this.canUpload || this.canPaint;
   }
 
+  // An unsaved sheet can preview art without creating a library character.
+  public async preview(ownerUserId: UserId, build: BuildChoices, style: PortraitStyle, note: string, bytes?: Buffer): Promise<PortraitResult> {
+    if (bytes === undefined ? !this.canPaint : !this.canUpload) return { kind: "refused", reason: "unavailable" };
+    let source: GeneratedImage | undefined;
+    if (bytes !== undefined) {
+      if (bytes.byteLength > maxUploadBytes) return { kind: "refused", reason: "tooLarge" };
+      const mediaType = sniffImageType(bytes);
+      if (mediaType === undefined) return { kind: "refused", reason: "badType" };
+      source = { bytes, mediaType };
+    }
+    const limited = this.limit(ownerUserId);
+    if (limited !== null) return limited;
+    return this.paint(build, source, style, note.trim().slice(0, maxNoteLength));
+  }
+
+  public async savePreview(ownerUserId: UserId, characterId: string, bytes: Buffer): Promise<{ readonly kind: "ok" } | { readonly kind: "refused"; readonly reason: PortraitRefusal }> {
+    if ((await this.owned(ownerUserId, characterId)) === undefined) return { kind: "refused", reason: "notFound" };
+    if (bytes.byteLength > maxUploadBytes) return { kind: "refused", reason: "tooLarge" };
+    const mediaType = sniffImageType(bytes);
+    if (mediaType === undefined) return { kind: "refused", reason: "badType" };
+    await this.options.store.saveImage(characterId, "portrait", { bytes, mediaType });
+    return { kind: "ok" };
+  }
+
   // The portrait in use, for the owner's screens.
   public async current(ownerUserId: UserId, characterId: string): Promise<GeneratedImage | undefined> {
     return (await this.owned(ownerUserId, characterId)) === undefined ? undefined : this.options.store.loadImage(characterId, "portrait");
@@ -147,6 +171,16 @@ export class CharacterPortraits {
   }
 
   private async make(characterId: string, build: BuildChoices, source: GeneratedImage | undefined, style: PortraitStyle, note: string, fromUpload: boolean): Promise<PortraitResult> {
+    const result = await this.paint(build, source, style, note);
+    if (result.kind !== "ok") return result;
+    try {
+      await this.options.store.saveImage(characterId, "candidate", result.image);
+      await this.options.store.saveNote(characterId, JSON.stringify({ style, note, fromUpload } satisfies Note));
+      return result;
+    } catch { return { kind: "refused", reason: "failed" }; }
+  }
+
+  private async paint(build: BuildChoices, source: GeneratedImage | undefined, style: PortraitStyle, note: string): Promise<PortraitResult> {
     const timeoutMs = this.options.timeoutMs ?? 90_000;
     try {
       const prompt = portraitPrompt(build, style, note, source !== undefined);
@@ -156,18 +190,16 @@ export class CharacterPortraits {
           : await this.options.generator?.generate({ prompt, timeoutMs });
       if (image === undefined) return { kind: "refused", reason: "unavailable" };
       if (image.bytes.byteLength > maxUploadBytes) return { kind: "refused", reason: "failed" };
-      await this.options.store.saveImage(characterId, "candidate", image);
-      await this.options.store.saveNote(characterId, JSON.stringify({ style, note, fromUpload } satisfies Note));
-      return { kind: "ok", image, style, fromUpload };
+      return { kind: "ok", image, style, fromUpload: source !== undefined };
     } catch {
       return { kind: "refused", reason: "failed" };
     }
   }
 
-  // The first saved build of a character the person owns, or undefined.
+  // The latest saved build of a character the person owns, or undefined.
   private async owned(ownerUserId: UserId, characterId: string): Promise<BuildChoices | undefined> {
     const entry = await this.options.library.entry(ownerUserId, characterId);
-    return entry?.snapshots[0]?.build;
+    return entry?.snapshots.at(-1)?.build;
   }
 
   private async readNote(characterId: string): Promise<Note | undefined> {

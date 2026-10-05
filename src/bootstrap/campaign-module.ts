@@ -95,6 +95,7 @@ export interface CampaignModule {
   // Whether one of these channels (a message's own and, in a thread, its parent) is a game's Party or Adventure post.
   isGameChannel(guildId: string, channelIds: readonly string[]): Promise<boolean>;
   readonly activity: {
+    readonly portraits: CharacterPortraits;
     readonly tables: ActivityTableService;
     characterCatalog(): unknown;
     listCharacters(userId: UserId): Promise<unknown>;
@@ -356,6 +357,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
         return { id: entry.character.id, name: entry.character.name, versions: [...entry.snapshots].sort((a, b) => a.revision - b.revision).map((snapshot) => ({ id: snapshot.id, revision: snapshot.revision, branch: snapshot.branch, source: snapshot.source.kind, createdAt: snapshot.createdAt, build: snapshot.build, gear: snapshot.gear, progression: snapshot.progression ?? null })) };
       },
       characterPortrait: async (userId, characterId) => (await portraits.current(userId, characterId)) ?? null,
+      portraits,
       createCharacter: async (userId, build) => {
         const result = await library.create(userId, build);
         return result.kind === "ok" ? { kind: "ok" as const, characterId: result.character.id } : result;

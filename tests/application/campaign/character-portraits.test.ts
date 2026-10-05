@@ -44,6 +44,16 @@ async function setup(options: { stylizer?: boolean; generator?: boolean; maxPerW
 }
 
 describe("reading an upload", () => {
+  it("can select an earlier generated image without accepting the latest candidate", async () => {
+    const { portraits, characterId } = await setup();
+    const earlier = Buffer.concat([pngBytes, Buffer.from("earlier")]);
+    await portraits.fromDescription("u-alice", characterId, "ink", "");
+    expect(await portraits.savePreview("u-alice", characterId, earlier)).toEqual({ kind: "ok" });
+    await portraits.discard("u-alice", characterId);
+    expect((await portraits.current("u-alice", characterId))?.bytes).toEqual(earlier);
+    expect(await portraits.savePreview("u-bob", characterId, pngBytes)).toEqual({ kind: "refused", reason: "notFound" });
+    expect(await portraits.savePreview("u-alice", characterId, Buffer.from("not an image"))).toEqual({ kind: "refused", reason: "badType" });
+  });
   it("knows a picture by its first bytes, not by what it claims", () => {
     expect(sniffImageType(pngBytes)).toBe("image/png");
     expect(sniffImageType(Buffer.from([0xff, 0xd8, 0xff, 0xe0]))).toBe("image/jpeg");

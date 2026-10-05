@@ -98,7 +98,7 @@ export async function loadGames() {
   gamesElement.replaceChildren(...(payload.games ?? []).map(createGameCard));
   gamesElement.dataset.signature = JSON.stringify(payload.games);
   emptyElement.hidden = (payload.games ?? []).length !== 0;
-  setMessage(payload.games?.length ? t("activity.lobby.choose") : "");
+  setMessage("");
   clearInterval(app.gamesTimer);
   app.gamesTimer = setInterval(() => {
     if (app.currentGameId !== null || document.querySelector("#lobby-screen").hidden) return;

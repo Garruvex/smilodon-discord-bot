@@ -19,6 +19,8 @@ import { buildClasses, selectableBuildRaces, type BuildChoices } from "../../dom
 import { skills } from "../../domain/campaign/rules/skills.js";
 import type { ActivityTableService } from "./activity-table-service.js";
 
+import { isPortraitStyle, maxNoteLength, maxUploadBytes, type CharacterPortraits } from "../../application/campaign/library/character-portraits.js";
+
 const activityDirectory = resolve(process.cwd(), "assets", "activity");
 const campaignIconDirectory = resolve(process.cwd(), "assets", "emojis", "dnd");
 const campaignArtIconDirectory = resolve(process.cwd(), "assets", "campaign", "icons", "svg");
@@ -42,6 +44,7 @@ export interface ActivityCampaignApi {
   listCharacters(userId: UserId): Promise<unknown>;
   getCharacter(userId: UserId, characterId: string): Promise<unknown | null>;
   characterPortrait(userId: UserId, characterId: string): Promise<{ readonly bytes: Buffer; readonly mediaType: "image/png" | "image/jpeg" | "image/webp" } | null>;
+  readonly portraits: CharacterPortraits;
   createCharacter(userId: UserId, build: BuildChoices): Promise<{ readonly kind: "ok"; readonly characterId: string } | { readonly kind: "invalid"; readonly problems: readonly { readonly code: string }[] } | { readonly kind: "full" }>;
   editCharacter(userId: UserId, characterId: string, build: BuildChoices): Promise<{ readonly kind: "ok" } | { readonly kind: "invalid"; readonly problems: readonly { readonly code: string }[] } | { readonly kind: "notFound" }>;
   deleteCharacter(userId: UserId, characterId: string): Promise<boolean>;
@@ -268,14 +271,60 @@ async function respond(
   }
 
   const portraitMatch = url.pathname.match(/^\/api\/activity\/characters\/([a-zA-Z0-9_-]{1,128})\/portrait$/);
-  if (portraitMatch !== null && portraitMatch[1] !== undefined && request.method === "GET") {
+  if (portraitMatch !== null && portraitMatch[1] !== undefined) {
     const session = requireSession(request, sessions);
     if (session === null) return writeJson(response, 401, { error: "unauthorized" }, headers);
+    if (request.method === "PUT") {
+      let bytes: Buffer;
+      try { bytes = await readBody(request, maxUploadBytes); } catch { return writeJson(response, 413, { error: "portraitTooLarge" }, headers); }
+      const result = await campaigns.portraits.savePreview(session.userId, portraitMatch[1], bytes);
+      return result.kind === "ok" ? writeJson(response, 200, { accepted: true }, headers) : writeJson(response, 422, { error: `portrait_${result.reason}` }, headers);
+    }
+    if (request.method === "DELETE") {
+      if (await campaigns.getCharacter(session.userId, portraitMatch[1]) === null) return writeJson(response, 404, { error: "characterMissing" }, headers);
+      await campaigns.portraits.remove(session.userId, portraitMatch[1]);
+      return writeJson(response, 200, { removed: true }, headers);
+    }
+    if (request.method !== "GET") return writeJson(response, 405, { error: "invalidRequest" }, headers);
     const portrait = await campaigns.characterPortrait(session.userId, portraitMatch[1]);
     if (portrait === null) return writeJson(response, 404, { error: "imageNotAvailable" }, headers);
     response.writeHead(200, { ...headers, "Content-Type": portrait.mediaType, "Content-Length": String(portrait.bytes.byteLength), "Cache-Control": "private, no-store", "Cross-Origin-Resource-Policy": "same-origin" });
     response.end(portrait.bytes);
     return;
+  }
+  const portraitJob = url.pathname.match(/^\/api\/activity\/characters\/([a-zA-Z0-9_-]{1,128})\/portrait\/(options|candidate|generate|upload|accept|discard)$/);
+  if (portraitJob !== null && portraitJob[1] !== undefined) {
+    const session = requireSession(request, sessions);
+    if (session === null) return writeJson(response, 401, { error: "unauthorized" }, headers);
+    const [, characterId, action] = portraitJob;
+    if (await campaigns.getCharacter(session.userId, characterId) === null) return writeJson(response, 404, { error: "characterMissing" }, headers);
+    if (request.method === "GET" && action === "options") return writeJson(response, 200, { canPaint: campaigns.portraits.canPaint, canUpload: campaigns.portraits.canUpload, hasCandidate: (await campaigns.portraits.candidate(session.userId, characterId)) !== undefined }, headers);
+    if (request.method === "GET" && action === "candidate") {
+      const candidate = await campaigns.portraits.candidate(session.userId, characterId);
+      if (candidate === undefined) return writeJson(response, 404, { error: "imageNotAvailable" }, headers);
+      response.writeHead(200, { ...headers, "Content-Type": candidate.image.mediaType, "Content-Length": String(candidate.image.bytes.byteLength), "Cache-Control": "private, no-store", "Cross-Origin-Resource-Policy": "same-origin" });
+      response.end(candidate.image.bytes);
+      return;
+    }
+    if (request.method === "POST" && (action === "generate" || action === "upload")) {
+      const style = url.searchParams.get("style") ?? "painterly";
+      const note = url.searchParams.get("note") ?? "";
+      if (!isPortraitStyle(style) || note.length > maxNoteLength) return writeJson(response, 400, { error: "invalidRequest" }, headers);
+      let result;
+      if (action === "upload") {
+        const length = Number(request.headers["content-length"] ?? 0);
+        if (length > maxUploadBytes) return writeJson(response, 413, { error: "portraitTooLarge" }, headers);
+        let bytes: Buffer;
+        try { bytes = await readBody(request, maxUploadBytes); } catch { return writeJson(response, 413, { error: "portraitTooLarge" }, headers); }
+        result = await campaigns.portraits.fromUpload(session.userId, characterId, bytes, style, note);
+      } else result = await campaigns.portraits.fromDescription(session.userId, characterId, style, note);
+      return result.kind === "ok" ? writeJson(response, 200, { candidate: true }, headers) : writeJson(response, result.reason === "rateLimited" ? 429 : 422, { error: `portrait_${result.reason}`, retryAfterMinutes: result.retryAfterMinutes }, headers);
+    }
+    if (request.method === "POST" && action === "accept") return writeJson(response, 200, { accepted: await campaigns.portraits.accept(session.userId, characterId) }, headers);
+    if (request.method === "POST" && action === "discard") {
+      await campaigns.portraits.discard(session.userId, characterId);
+      return writeJson(response, 200, { discarded: true }, headers);
+    }
   }
 
   const imageMatch = url.pathname.match(/^\/api\/activity\/games\/([0-9a-f-]{1,64})\/images\/(scenes|characters|encounters)\/([^/]{1,384})$/i);
@@ -481,15 +530,19 @@ function requireSession(request: IncomingMessage, sessions: Map<string, Activity
 }
 
 async function readJsonBody(request: IncomingMessage): Promise<unknown> {
+  return JSON.parse((await readBody(request, maxRequestBodyBytes)).toString("utf8")) as unknown;
+}
+
+async function readBody(request: IncomingMessage, limit: number): Promise<Buffer> {
   const chunks: Uint8Array[] = [];
   let size = 0;
   for await (const chunk of request) {
     const bytes = typeof chunk === "string" ? Buffer.from(chunk) : chunk as Uint8Array;
     size += bytes.byteLength;
-    if (size > maxRequestBodyBytes) throw new Error("Request body too large");
+    if (size > limit) throw new Error("Request body too large");
     chunks.push(bytes);
   }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
+  return Buffer.concat(chunks);
 }
 
 function writeJson(response: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}): void {
