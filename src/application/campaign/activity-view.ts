@@ -14,6 +14,7 @@ import type { CampaignRecord } from "./ports/campaign-record.js";
 import { readyToStart } from "../../domain/campaign/lobby/lobby.js";
 import { texts } from "../i18n/texts.js";
 import { buildMapView } from "./views/map-view.js";
+import { spellFactsByName, type SpellFacts } from "./views/spell-facts.js";
 import { buildActivityStory, type StoryEntry } from "./views/activity-story.js";
 import type { CampaignEvent } from "../../domain/campaign/events/campaign-event.js";
 
@@ -74,6 +75,8 @@ export interface ActivityTableView {
   }[];
   // Summons and companions fighting for the party, each with the hero or creature it belongs to.
   readonly allies: readonly { readonly name: string; readonly hp: number; readonly maxHp: number; readonly condition: string; readonly zone: string; readonly active: boolean; readonly ownerName: string | null }[];
+  // The rules book's lines for every spell this hero can see, by the name shown on the page.
+  readonly spellFacts: Readonly<Record<string, SpellFacts>>;
   readonly foes: readonly {
     readonly name: string;
     readonly rank?: "boss" | "elite" | "minion" | "standard";
@@ -406,6 +409,11 @@ export function buildActivityTableView(
     turn: turn === null ? null : nameTurn(turn, glossary),
     explore: controlledHeroId === null || state.pendingMove !== undefined || panel.mode !== "collecting"
       ? null
+    allies: panel.combat?.allies ?? [],
+    spellFacts: spellFactsByName([
+      ...(heroView?.cantrips ?? []), ...(heroView?.prepared ?? []), ...(turn?.spells.map((spell) => spell.spellId) ?? []),
+      ...(explore === null ? [] : [...explore.spells, ...explore.healing, ...explore.conjuring, ...explore.reviving].map((spell) => spell.id)),
+    ], content, glossary),
       : explore,
     pendingRoll: panel.pendingRolls.find((roll) => roll.userId === userId) === undefined
       ? null

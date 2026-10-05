@@ -3,6 +3,7 @@ import { performAction } from "./actions.js";
 import { artIconPrefix, iconForClass, iconImage, liveActions, makeButton, setArtwork } from "./dom.js";
 import { classText, t } from "./i18n.js";
 import { partyStatusText } from "./party.js";
+import { openRules } from "./rules-book.js";
 
 export function renderEquipment(hero) {
   const target = document.querySelector("#live-equipment");
@@ -238,7 +239,11 @@ export function renderSpellbook(hero) {
     const group = document.createElement("section"); group.className = "workspace-list-group";
     const heading = document.createElement("h3"); heading.textContent = t(labelKey); group.append(heading);
     const list = document.createElement("div"); list.className = "workspace-chip-list";
-    for (const spell of spells) { const chip = document.createElement("span"); chip.className = "resource"; chip.append(iconImage("spell"), document.createTextNode(spell)); list.append(chip); }
+    for (const spell of spells) {
+      const chip = document.createElement("button"); chip.type = "button"; chip.className = "resource spell-chip"; chip.append(iconImage("spell"), document.createTextNode(spell));
+      if (app.currentSnapshot?.spellFacts?.[spell] !== undefined) { chip.title = t("activity.spellInfo.info"); chip.addEventListener("click", () => openRules(undefined, spell)); } else chip.disabled = true;
+      list.append(chip);
+    }
     group.append(list); target.append(group);
   };
   addGroup("activity.spell.cantrips", hero.cantrips ?? []);

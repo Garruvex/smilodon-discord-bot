@@ -96,15 +96,97 @@ function filter(query) {
   document.querySelector("#rules-empty").hidden = matches !== 0;
 }
 
-// Opens the book, on an entry when one is named.
-export function openRules(entryId) {
+const abilityNames = { str: "strength", dex: "dexterity", con: "constitution", int: "intelligence", wis: "wisdom", cha: "charisma" };
+
+// One spell, in words, from the facts the game holds about it: the engine's own numbers, not a copy of the spell text.
+function spellLines(facts) {
+  const words = (key, values) => t(`activity.spellInfo.${key}`, values);
+  const range = facts.range.kind === "feet" ? words("range.feet", { n: facts.range.feet }) : words(`range.${facts.range.kind}`);
+  const who = facts.area ? words("target.area") : facts.destination ? words("target.place") : words(`target.${facts.relation}`);
+  const targets = !facts.area && !facts.destination && facts.targets > 1 ? `${words("target.upTo", { n: facts.targets })} ${who}` : who;
+  const check = facts.check === "none" ? words("check.none") : facts.check === "attack" ? words("check.attack") : words("check.save", { ability: t(`activity.rule.${abilityNames[facts.check] ?? facts.check}`) });
+  const effects = facts.effects.map((effect) => {
+    switch (effect.kind) {
+      case "damage": return words("effect.damage", { dice: effect.dice, type: words(`dt.${effect.damageType}`) }) + (effect.half ? ` (${words("effect.half")})` : "");
+      case "heal": case "tempHp": return words(`effect.${effect.kind}`, { dice: effect.dice });
+      case "condition": return words("effect.condition", { name: effect.name });
+      case "summon": return words("effect.summon", { count: effect.count, name: effect.name });
+      default: return words(`effectKind.${effect.what}`);
+    }
+  });
+  const flags = [facts.concentration ? words("flag.concentration") : null, facts.ritual ? words("flag.ritual") : null, facts.scales ? words(facts.level === 0 ? "flag.scalesCantrip" : "flag.scalesSpell") : null, facts.addsModifier ? words("flag.addsModifier") : null].filter(Boolean);
+  const head = [facts.level === 0 ? words("cantrip") : words("level", { n: facts.level }), facts.school === null ? null : words(`school.${facts.school}`)].filter(Boolean).join(" · ");
+  return { head, rows: [[words("label.casting"), words(`time.${facts.castingTime}`)], [words("label.range"), range], [words("label.targets"), targets], [words("label.roll"), check], ...(effects.length ? [[words("label.does"), effects.join("; ")]] : [])], flags, note: words("note") };
+}
+
+function paintSpell(name) {
+  let box = document.querySelector("#rules-spell");
+  if (box === null) {
+    box = document.createElement("section");
+    box.id = "rules-spell";
+    document.querySelector("#rules-list").before(box);
+  }
+  const facts = name === undefined ? undefined : app.currentSnapshot?.spellFacts?.[name];
+  box.hidden = facts === undefined;
+  if (facts === undefined) return;
+  const lines = spellLines(facts);
+  const title = document.createElement("h3");
+  title.textContent = facts.name;
+  const kind = document.createElement("p");
+  kind.className = "rules-spell-kind";
+  kind.textContent = lines.head;
+  const list = document.createElement("dl");
+  for (const [label, value] of lines.rows) list.append(Object.assign(document.createElement("dt"), { textContent: label }), Object.assign(document.createElement("dd"), { textContent: value }));
+  const flags = document.createElement("p");
+  flags.className = "rules-spell-flags";
+  flags.textContent = lines.flags.join(" · ");
+  flags.hidden = lines.flags.length === 0;
+  const note = Object.assign(document.createElement("small"), { textContent: lines.note });
+  box.replaceChildren(title, kind, list, flags, note);
+}
+
+// A small ⓘ that opens the book on a spell (by its name on the page) or on a rules entry.
+export function infoChip(label, { spell, entry }) {
+  const chip = document.createElement("button");
+  chip.type = "button";
+  chip.className = "info-chip";
+  chip.textContent = "ⓘ " + label;
+  chip.setAttribute("aria-label", t("activity.spellInfo.info") + ": " + label);
+  chip.addEventListener("click", () => openRules(entry, spell));
+  return chip;
+}
+
+// The rules for the basic actions of a turn, as a row of ⓘ chips.
+export function actionGuide() {
+  const row = document.createElement("div");
+  row.className = "action-guide";
+  for (const id of ["attack", "cast", "dodge", "dash", "disengage", "help", "hide", "ready"]) {
+    const item = entries.find((entry) => entry[0] === id);
+    row.append(infoChip(zh() ? item[4] : item[2], { entry: id }));
+  }
+  return row;
+}
+
+// The spells this hero can see, each a chip that opens its page; lowest level first.
+export function spellGuide(spellFacts) {
+  const row = document.createElement("div");
+  row.className = "action-guide spell-guide";
+  for (const facts of Object.values(spellFacts ?? {}).sort((a, b) => a.level - b.level || a.name.localeCompare(b.name))) row.append(infoChip(facts.name, { spell: facts.name }));
+  row.hidden = row.childElementCount === 0;
+  return row;
+}
+
+// Opens the book, on an entry when one is named, or on a spell's page.
+export function openRules(entryId, spellName) {
   const box = dialog();
   if (box === null) return;
   document.querySelector("#rules-search").value = "";
   paint();
+  paintSpell(spellName);
   if (!box.open) box.showModal();
   const target = entryId === undefined ? null : box.querySelector(`#rules-${entryId}`);
   if (target !== null) { target.open = true; target.scrollIntoView({ block: "start" }); }
+  else if (spellName !== undefined) box.querySelector("#rules-spell")?.scrollIntoView({ block: "start" });
 }
 
 export function wireRulesBook() {
@@ -113,5 +195,5 @@ export function wireRulesBook() {
   document.querySelector("#rules-open").addEventListener("click", () => openRules());
   document.querySelector("#rules-close").addEventListener("click", () => box.close());
   box.addEventListener("click", (event) => { if (event.target === box) box.close(); });
-  document.querySelector("#rules-search").addEventListener("input", (event) => filter(event.target.value));
+  document.querySelector("#rules-search").addEventListener("input", (event) => { paintSpell(undefined); filter(event.target.value); });
 }

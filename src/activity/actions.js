@@ -4,6 +4,7 @@ import { requestJson } from "./api.js";
 import { actionIcon, finishBusy, iconImage, liveActions, makeButton, setLiveMessage, showBusy } from "./dom.js";
 import { classText, t } from "./i18n.js";
 import { loadTable } from "./poll.js";
+import { actionGuide, spellGuide } from "./rules-book.js";
 import { renderGame } from "./render.js";
 
 // Where each kind of action is shown: urgent decisions on top, the round composer, a category list, or the closing button.
@@ -439,6 +440,8 @@ export function buildTableActions(game, liveActions, log) {
     for (const place of game.explore.places) addAction(t("activity.action.travel", { name: place.title }), { kind: "moveScene", sceneId: place.id });
   }
 
+      if (category === "spells") list.append(spellGuide(game.spellFacts));
+      if (category === "attack" && game.mode === "combat") list.append(actionGuide());
   const row = (className, nodes) => {
     const element = document.createElement("div");
     element.className = className;

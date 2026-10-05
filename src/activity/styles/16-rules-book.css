@@ -18,3 +18,18 @@
 .rules-empty, .rules-note { margin: 0; padding: 8px 16px 12px; color: var(--ui-muted); font-size: 12px; }
 .rules-empty[hidden] { display: none; }
 @media (max-width: 540px) { .rules-open { width: 34px; height: 34px; } }
+
+/* ⓘ chips: a quiet way into the rules book from the spell list and the action list. */
+.action-guide { display: flex; flex-wrap: wrap; gap: 6px; grid-column: 1 / -1; padding-top: 6px; border-top: 1px dashed var(--ui-border); }
+.info-chip { padding: 3px 9px; border: 1px solid var(--ui-border); border-radius: 999px; background: var(--ui-paper-inset); color: var(--ui-muted); font-size: 12px; cursor: pointer; }
+.info-chip:hover, .info-chip:focus-visible { border-color: var(--ui-accent); color: var(--ui-ink); }
+.resource.spell-chip { cursor: pointer; font: inherit; }
+.resource.spell-chip:disabled { cursor: default; }
+#rules-spell { margin: 0 0 12px; padding: 12px 14px; border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius); background: var(--ui-paper-inset); }
+#rules-spell h3 { margin: 0; font-size: 18px; }
+#rules-spell .rules-spell-kind { margin: 2px 0 8px; color: var(--ui-muted); font-size: 12px; }
+#rules-spell dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0; }
+#rules-spell dt { color: var(--ui-muted); font-size: 12px; }
+#rules-spell dd { margin: 0; font-size: 13px; }
+#rules-spell .rules-spell-flags { margin: 8px 0 0; font-size: 12px; font-weight: 700; color: var(--ui-accent-dark); }
+#rules-spell small { display: block; margin-top: 8px; color: var(--ui-muted); }
