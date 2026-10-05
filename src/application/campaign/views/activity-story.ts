@@ -16,6 +16,8 @@ export type StoryEntry =
   | { readonly id: string; readonly kind: "speech"; readonly who: string; readonly text: string }
   | { readonly id: string; readonly kind: "clue"; readonly text: string }
   // A spell cast between fights: who cast what, then the Narrator's telling of it (the same two parts the channel posts).
+  // A hero speaking with an NPC: the question asked, or the press and its roll, then the Narrator's telling of the answer.
+  | { readonly id: string; readonly kind: "talk"; readonly who: string; readonly npc: string; readonly question: string | null; readonly roll: { readonly test: CheckTest; readonly total: number; readonly dc: number; readonly success: boolean } | null; readonly text: string }
   | { readonly id: string; readonly kind: "cast"; readonly who: string; readonly spell: string; readonly text: string }
   // A check the table saw rolled: the total against the DC. A natural 20 or 1 on a check changes nothing by itself, so the result is only total against DC.
   | { readonly id: string; readonly kind: "roll"; readonly who: string; readonly test: CheckTest; readonly total: number; readonly dc: number; readonly success: boolean }
@@ -59,6 +61,7 @@ export function buildActivityStory(state: CampaignState, events: readonly Campai
   // A hero's wording for a round may be replaced; the entry keeps its place and takes the newest words.
   const actionAt = new Map<string, Placed>();
   const casts = new Map<string, { who: string; spell: string }>();
+  const talks = new Map<string, Omit<Extract<StoryEntry, { kind: "talk" }>, "id" | "kind" | "text">>();
 
   const narrate = (index: number, text: string, round?: number): void => {
     const trimmed = text.trim();
@@ -85,6 +88,24 @@ export function buildActivityStory(state: CampaignState, events: readonly Campai
       case "openingRecorded":
         narrate(index, event.text, 0);
         break;
+      case "dialogueSettled": {
+        const { dialogue } = event;
+        const check = dialogue.kind === "press" ? dialogue.check : null;
+        talks.set(dialogue.id, {
+          who: heroName(dialogue.characterId),
+          npc: bible.npcs.find((npc) => npc.id === dialogue.npcId)?.name ?? dialogue.npcId,
+          question: dialogue.kind === "ask" || check === null ? dialogue.question : null,
+          roll: check === null ? null : { test: check.test, total: check.total, dc: check.dc, success: check.success },
+        });
+        break;
+      }
+      case "dialogueNarrated": {
+        const talk = talks.get(event.dialogueId);
+        const told = event.text.trim();
+        if (talk === undefined) narrate(index, event.text);
+        else if (told.length > 0) add(index, { id: `e${index}`, kind: "talk", ...talk, text: told });
+        break;
+      }
       case "utilitySpellCast":
         casts.set(event.cast.id, { who: heroName(event.cast.characterId), spell: glossary.names[event.cast.spellId] ?? event.cast.spellId });
         break;
@@ -97,7 +118,6 @@ export function buildActivityStory(state: CampaignState, events: readonly Campai
       }
       case "combatNarrationRecorded":
       case "tradeNarrated":
-      case "dialogueNarrated":
       case "hazardNarrated":
         narrate(index, event.text);
         break;

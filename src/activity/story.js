@@ -6,7 +6,7 @@ import { rollLabel } from "./dice.js";
 
 const combatKinds = new Set(["combat", "alert", "maneuver", "move", "fled", "deathSave"]);
 // What counts as news for the badge on the closed drawer: not the fight's blow-by-blow.
-const newsKinds = new Set(["narration", "action", "speech", "clue", "cast", "alert"]);
+const newsKinds = new Set(["narration", "action", "speech", "clue", "cast", "talk", "alert"]);
 
 const feed = { nodes: new Map(), filter: "story", inFight: false, unread: 0, ready: false, element: null, jump: null, tabs: new Map(), listeners: [] };
 let strip = null;
@@ -25,6 +25,11 @@ function checkText(target) {
   return parts.length === 0 ? target.name : `${target.name}: ${parts.join(", ")}`;
 }
 
+function talkHead(entry) {
+  if (entry.roll === null) return t("activity.story.ask", { who: entry.who, npc: entry.npc, question: entry.question ?? "" });
+  return `${t("activity.story.press", { who: entry.who, npc: entry.npc })} ${rollLabel(entry.roll.test)} ${entry.roll.total} ${t("activity.dice.versusDc", { dc: entry.roll.dc })} ${entry.roll.success ? "✓" : "✗"}`;
+}
+
 // One entry, in words, for the strip and for screen readers.
 export function entryText(entry) {
   switch (entry.kind) {
@@ -32,6 +37,7 @@ export function entryText(entry) {
     case "action": return `${entry.who} ${entry.text}`;
     case "speech": return `${entry.who}: “${entry.text}”`;
     case "clue": return entry.text;
+    case "talk": return `${talkHead(entry)}. ${entry.text}`;
     case "cast": return `${t("activity.story.cast", { who: entry.who, spell: entry.spell })}. ${entry.text}`;
     case "roll": return `${entry.who}: ${rollLabel(entry.test)}, ${entry.total} ${t("activity.dice.versusDc", { dc: entry.dc })} ${entry.success ? "✓" : "✗"}`;
     case "combat": return t("activity.story.combatLine", { who: entry.who, using: entry.using, results: entry.targets.map(checkText).join("; ") });
@@ -67,9 +73,9 @@ function fillNode(node, entry) {
     const total = document.createElement("i");
     total.textContent = String(entry.total);
     node.replaceChildren(who, ` ${rollLabel(entry.test)} `, total, ` ${t("activity.dice.versusDc", { dc: entry.dc })} ${entry.success ? "✓" : "✗"}`);
-  } else if (entry.kind === "cast") {
+  } else if (entry.kind === "cast" || entry.kind === "talk") {
     const head = document.createElement("b");
-    head.textContent = t("activity.story.cast", { who: entry.who, spell: entry.spell });
+    head.textContent = entry.kind === "talk" ? talkHead(entry) : t("activity.story.cast", { who: entry.who, spell: entry.spell });
     const told = document.createElement("span");
     told.textContent = entry.text;
     node.replaceChildren(head, told);

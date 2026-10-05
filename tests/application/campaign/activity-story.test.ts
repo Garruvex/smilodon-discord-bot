@@ -58,6 +58,16 @@ describe("the Activity story", () => {
     expect(entries).toEqual([{ id: "e1", kind: "cast", who: "Mira", spell: "Help", text: "The air hums." }]);
   });
 
+  it("shows a conversation with an NPC as the question asked, then the telling", () => {
+    const state = { ...newCampaign(), characters: { "c-mira": { name: "Mira" } } } as unknown as ReturnType<typeof newCampaign>;
+    const withNpc = { scenes: [], npcs: [{ id: "npc:reni", name: "Reni" }] } as unknown as AdventureBible;
+    const entries = buildActivityStory(state, [
+      { kind: "dialogueSettled", revealSecret: false, dialogue: { id: "d1", characterId: "c-mira", npcId: "npc:reni", kind: "ask", question: "Who built it?", check: null } },
+      { kind: "dialogueNarrated", dialogueId: "d1", text: "Monks, long ago." },
+    ] as unknown as CampaignEvent[], withNpc, glossary);
+    expect(entries).toEqual([{ id: "e1", kind: "talk", who: "Mira", npc: "Reni", question: "Who built it?", roll: null, text: "Monks, long ago." }]);
+  });
+
   it("leaves out empty tellings", () => {
     expect(story([{ kind: "narrationRecorded", roundNumber: 1, text: "   " }])).toEqual([]);
   });
