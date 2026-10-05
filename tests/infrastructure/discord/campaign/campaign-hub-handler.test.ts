@@ -354,8 +354,20 @@ describe("Manage a game", () => {
     expect(contentOf(await t.click(id, { userId: "u-x" }, { messageId: hubMessageId }))).toBe("Only DnD Admins and the game's organizer can manage a game.");
     const organizer = await t.click(id, { userId: "u-org" }, { messageId: hubMessageId });
     expect(contentOf(organizer)).toContain("Manage Moonlit Ruins");
-    expect(rowsOf(organizer).flat().map((button) => button.label)).toEqual(["Pause", "Close round", "Retry the DM", "Raise level", "Short rest", "Long rest", "Retry the fight", "Retell the last scene", "Invite player", "Join requests (0)", "Repair cards", "Party size", "Hazard", "Hurt", "End game"]);
-    expect(rowsOf(await t.click(id, { userId: "u-a", admin: true }, { messageId: hubMessageId })).flat()).toHaveLength(15);
+    expect(rowsOf(organizer).flat().map((button) => button.label)).toEqual(["Pause", "Close round", "Retry the DM", "Raise level", "Short rest", "Long rest", "Retry the fight", "Retell the last scene", "Invite player", "Free a seat", "Join requests (0)", "Repair cards", "Party size", "Hazard", "Hurt", "End game"]);
+    expect(rowsOf(await t.click(id, { userId: "u-a", admin: true }, { messageId: hubMessageId })).flat()).toHaveLength(16);
+  });
+
+  it("lists nobody to free when no one is away, and asks again before freeing a seat", async () => {
+    const t = harness();
+    const { key, hubMessageId } = await activeGame(t);
+    const none = await t.click(hubCustomId("seatOpen", key.campaignId), { userId: "u-org" }, { messageId: hubMessageId });
+    expect(contentOf(none)).toBe("Nobody is marked away right now.");
+    const ask = await t.click(hubCustomId("seatAsk", key.campaignId, "u-a"), { userId: "u-org" }, { messageId: hubMessageId });
+    expect(contentOf(ask)).toContain("Free <@u-a>'s seat?");
+    expect(rowsOf(ask).flat().map((button) => button.label)).toEqual(["Free the seat"]);
+    const refused = await t.click(hubCustomId("seatYes", key.campaignId, "u-a"), { userId: "u-x" }, { messageId: hubMessageId });
+    expect(contentOf(refused)).toBe("Only DnD Admins and the game's organizer can manage a game.");
   });
 
   it("shows no picture buttons when the bot cannot paint, and says so if one is pressed anyway", async () => {

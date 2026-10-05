@@ -150,6 +150,15 @@ export class CampaignHubComponentHandler implements ComponentHandler {
       case "joinApproveOpen":
         if (interaction.isButton() && first !== undefined) await this.openJoinForm(interaction, first, parsed.action, second);
         return;
+      case "seatOpen":
+        if (interaction.isButton() && first !== undefined) await this.showAwaySeats(interaction, first);
+        return;
+      case "seatAsk":
+        if (interaction.isButton() && first !== undefined && second !== undefined) await this.askFreeSeat(interaction, first, second);
+        return;
+      case "seatYes":
+        if (interaction.isButton() && first !== undefined && second !== undefined) await this.freeSeat(interaction, first, second);
+        return;
       case "joinRequests":
         if (interaction.isButton() && first !== undefined) await this.showJoinRequests(interaction, first);
         return;
@@ -752,6 +761,35 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     });
   }
 
+  // Who is away, as one button each; freeing a seat asks once more before it is done.
+  private async showAwaySeats(interaction: ButtonInteraction<"cached">, campaignId: string): Promise<void> {
+    const found = await this.allowed(interaction, campaignId);
+    if (found === null) return;
+    const zh = found.record.language === "zh-TW";
+    const away = (await this.deps.lobby.awaySeats(found.record.key)).slice(0, 5);
+    await interaction.update({
+      content: away.length === 0 ? (zh ? "目前沒有離開中的玩家。" : "Nobody is marked away right now.") : (zh ? "選擇要釋出座位的玩家（只限離開中的玩家，且不能在戰鬥中）。" : "Pick a player to free the seat of (only players marked away, and not during a fight)."),
+      components: away.map((seat) => row(new ButtonBuilder().setCustomId(hubCustomId("seatAsk", campaignId, seat.userId)).setLabel(`${seat.heroName ?? seat.userId}`.slice(0, 60)).setStyle(ButtonStyle.Secondary))),
+    });
+  }
+
+  private async askFreeSeat(interaction: ButtonInteraction<"cached">, campaignId: string, userId: string): Promise<void> {
+    const found = await this.allowed(interaction, campaignId);
+    if (found === null) return;
+    const zh = found.record.language === "zh-TW";
+    await interaction.update({
+      content: zh ? `要釋出 <@${userId}> 的座位嗎？他們的英雄會離開牌桌，座位開放給新的夥伴。` : `Free <@${userId}>'s seat? Their hero leaves the table and the seat opens for someone new.`,
+      components: [row(new ButtonBuilder().setCustomId(hubCustomId("seatYes", campaignId, userId)).setLabel(zh ? "釋出座位" : "Free the seat").setStyle(ButtonStyle.Danger))],
+    });
+  }
+
+  private async freeSeat(interaction: ButtonInteraction<"cached">, campaignId: string, userId: string): Promise<void> {
+    const found = await this.allowed(interaction, campaignId);
+    if (found === null) return;
+    const result = await this.deps.lobby.retireSeat(found.record.key, interaction.user.id, userId, interaction.id);
+    await interaction.update({ content: result.kind === "refused" ? refusalText(found.text, result.reason) : (found.record.language === "zh-TW" ? "已釋出座位。" : "Seat freed."), components: [] });
+  }
+
   private async declineJoin(interaction: ButtonInteraction<"cached">, campaignId: string, userId: string): Promise<void> {
     const found = await this.allowed(interaction, campaignId);
     if (found === null) return;
@@ -869,6 +907,7 @@ export class CampaignHubComponentHandler implements ComponentHandler {
       const pendingCount = Object.values(record.joinRequests ?? {}).filter((request) => request.status === "requested" && request.expiresAt > Date.now()).length;
       rows.push(row(
         new ButtonBuilder().setCustomId(hubCustomId("inviteOpen", id)).setLabel(record.language === "zh-TW" ? "邀請玩家" : "Invite player").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(hubCustomId("seatOpen", id)).setLabel(record.language === "zh-TW" ? "釋出座位" : "Free a seat").setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId(hubCustomId("joinRequests", id)).setLabel(record.language === "zh-TW" ? `加入申請 (${pendingCount})` : `Join requests (${pendingCount})`).setStyle(ButtonStyle.Secondary),
       ));
     }

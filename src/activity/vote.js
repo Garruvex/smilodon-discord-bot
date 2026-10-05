@@ -135,7 +135,13 @@ export function syncAwayLock(game) {
   notice.hidden = !locked || document.querySelector("#hero-panel-overview")?.hidden === false;
   notice.querySelector("span").textContent = t("activity.away.locked");
   notice.querySelector("button").textContent = t("activity.action.back");
-  for (const id of ["actions", "spells", "inventory", "trade"]) {
+  // The table-level controls (resume the game, come back) stay usable: the lock is on what the hero would do, not on running the table.
+  for (const control of document.querySelectorAll("#hero-panel-actions button, #hero-panel-actions textarea, #hero-panel-actions input, #hero-panel-actions select")) {
+    const stays = control.dataset.allowAway === "true";
+    control.toggleAttribute("inert", locked && !stays);
+    control.classList.toggle("is-away-locked", locked && !stays);
+  }
+  for (const id of ["spells", "inventory", "trade"]) {
     const panel = document.querySelector(`#hero-panel-${id}`);
     panel.toggleAttribute("inert", locked);
     panel.classList.toggle("is-away-locked", locked);

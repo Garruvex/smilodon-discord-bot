@@ -208,7 +208,11 @@ export function buildTableActions(game, liveActions, log) {
     liveActions.append(row);
   }
   if (["paused", "safety", "recovery"].includes(game.mode)) {
-    if (game.canBegin) liveActions.append(makeButton(t("activity.action.resumeGame"), () => void performAction({ kind: "continue" }), true, "play"));
+    if (game.canBegin) {
+      const resume = makeButton(t("activity.action.resumeGame"), () => void performAction({ kind: "continue" }), true, "play");
+      resume.dataset.allowAway = "true";
+      liveActions.append(resume);
+    }
     else {
       const note = document.createElement("span");
       note.className = "live-action-note status-note";
@@ -229,6 +233,8 @@ export function buildTableActions(game, liveActions, log) {
   const addAction = (label, action, primary = false, selected = false) => {
     log.push(JSON.stringify(action));
     const button = makeButton(label, () => void performAction(action), primary, actionIcon[action.kind] ?? "notice");
+    // Resuming the table is the organizer's even while marked away, so the away lock leaves it alone.
+    if (action.kind === "continue" || action.kind === "back") button.dataset.allowAway = "true";
     if (action.kind === "moveVote") { button.dataset.choice = action.choice; button.dataset.selected = String(selected); }
     const place = actionPlacement[action.kind];
     (place === "top" ? top : place === "composer" ? composer : place === "bottom" ? bottom : groups.get(actionCategoryOf[action.kind] ?? "other")).push(button);

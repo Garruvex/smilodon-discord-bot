@@ -289,6 +289,16 @@ export class CampaignLobbyService {
     });
   }
 
+  // The players who are marked away right now, with their hero, for the organizer to pick whose seat to free.
+  public async awaySeats(key: CampaignKey): Promise<readonly { readonly userId: UserId; readonly heroName: string | null }[]> {
+    const campaign = await this.options.unitOfWork.transaction((tx) => tx.loadCampaign(key));
+    if (campaign === undefined) return [];
+    const { state } = campaign;
+    return Object.values(state.members)
+      .filter((member) => member.availability === "away" && member.userId !== state.organizerId)
+      .map((member) => ({ userId: member.userId, heroName: member.characterId === null ? null : (state.characters[member.characterId]?.name ?? null) }));
+  }
+
   // The organizer frees an away player's seat: the hero leaves the table, and the seat, and any request the player had, are released so someone else can be invited into it.
   public retireSeat(key: CampaignKey, actorId: UserId, userId: UserId, interactionId: string): Promise<ServiceResult<CampaignRecord>> {
     return this.queue.run(queueKey(key), async () => {
