@@ -97,6 +97,8 @@ export type CampaignEvent =
   | { readonly kind: "goldSpent"; readonly roundNumber: number; readonly characterId: CharacterId; readonly amount: number; readonly wallet: "pool" | "hero" }
   | { readonly kind: "memberMarkedAway"; readonly userId: UserId; readonly reason: AwayReason }
   | { readonly kind: "memberReturned"; readonly userId: UserId }
+  // An away player's seat was freed by the organizer. The hero's name stays, for the story already told about them.
+  | { readonly kind: "memberRetired"; readonly userId: UserId; readonly characterId: CharacterId | null; readonly name: string | null }
   | { readonly kind: "waitingForPlayers" }
   | { readonly kind: "plannerFailed"; readonly roundNumber: number; readonly problems: readonly string[] }
   | { readonly kind: "planRetryRequested"; readonly roundNumber: number }

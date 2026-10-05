@@ -7,6 +7,8 @@ export type Rejection =
   | { readonly code: "notOrganizer" }
   | { readonly code: "notYourCharacter" }
   | { readonly code: "memberAway" }
+  | { readonly code: "memberNotAway" }
+  | { readonly code: "organizerStays" }
   | { readonly code: "systemOnly" }
   | { readonly code: "campaignWaiting" }
   | { readonly code: "campaignPaused" }

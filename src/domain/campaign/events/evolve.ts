@@ -145,6 +145,32 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       return updateMember(state, event.userId, (member) => ({ ...member, availability: "away", consecutiveMisses: 0 }));
     case "memberReturned":
       return updateMember(state, event.userId, (member) => ({ ...member, availability: "present", consecutiveMisses: 0 }));
+    case "memberRetired": {
+      const { [event.userId]: _left, ...members } = state.members;
+      const characters = { ...state.characters };
+      const heroStatus = { ...state.heroStatus };
+      const id = event.characterId;
+      if (id !== null) { delete characters[id]; delete heroStatus[id]; }
+      const proxies = Object.fromEntries(Object.entries(state.proxies ?? {}).filter(([owner, proxy]) => owner !== event.userId && proxy !== event.userId));
+      const without = <T,>(list: readonly T[] | undefined, value: T): readonly T[] | undefined => list?.filter((item) => item !== value);
+      const round = state.round === null || id === null ? state.round : {
+        ...state.round,
+        participants: state.round.participants.filter((participant) => participant !== id),
+        submissions: Object.fromEntries(Object.entries(state.round.submissions).filter(([submitter]) => submitter !== id)),
+      };
+      const pending = state.pendingMove === undefined ? undefined : { ...state.pendingMove, objectors: state.pendingMove.objectors.filter((user) => user !== event.userId), supporters: without(state.pendingMove.supporters, event.userId) ?? [] };
+      return {
+        ...state,
+        members,
+        characters,
+        heroStatus,
+        round,
+        proxies,
+        ...(state.openingReady === undefined ? {} : { openingReady: state.openingReady.filter((user) => user !== event.userId) }),
+        ...(pending === undefined ? {} : { pendingMove: pending }),
+        ...(id !== null && event.name !== null ? { retiredHeroes: { ...state.retiredHeroes, [id]: event.name } } : {}),
+      };
+    }
     case "waitingForPlayers":
       return { ...state, status: "waitingForPlayers", pausedBy: null };
     case "campaignPaused":

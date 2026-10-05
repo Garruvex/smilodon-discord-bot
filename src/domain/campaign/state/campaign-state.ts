@@ -61,6 +61,8 @@ export interface CampaignState {
   // A grant does nothing while the owner is present, and only reaches turns
   // (never the owner's items, story choices or anything outside a fight).
   readonly proxies?: Readonly<Record<UserId, UserId>>;
+  // Heroes whose seat was freed, by name, so what was already told about them still reads.
+  readonly retiredHeroes?: Readonly<Record<CharacterId, string>>;
   // Someone used the safety pause: the next narration is asked to keep gentle
   // (plan §5, Table safety). Cleared once that narration is told.
   readonly safetyNote?: boolean;

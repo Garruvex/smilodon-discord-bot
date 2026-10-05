@@ -62,7 +62,10 @@ export type ServiceRefusal =
   | "joinAlreadyPlaying"
   | "joinNotAtBreak"
   | "invalidEntrance"
-  | "privateInviteOnly";
+  | "privateInviteOnly"
+  | "memberNotAway"
+  | "organizerStays"
+  | "inCombat";
 
 // What choosing a saved character would bring, and what stands in the way.
 export type SavedPreview =
@@ -283,6 +286,32 @@ export class CampaignLobbyService {
       const current = record.joinRequests?.[userId];
       if (current !== undefined && current.expiresAt > this.options.clock.now()) return current;
       return { status: "requested", expiresAt: this.options.clock.now() + 7 * 24 * 60 * 60 * 1000 };
+    });
+  }
+
+  // The organizer frees an away player's seat: the hero leaves the table, and the seat, and any request the player had, are released so someone else can be invited into it.
+  public retireSeat(key: CampaignKey, actorId: UserId, userId: UserId, interactionId: string): Promise<ServiceResult<CampaignRecord>> {
+    return this.queue.run(queueKey(key), async () => {
+      const stored = await this.options.unitOfWork.transaction((tx) => tx.loadRecord(key));
+      if (stored === undefined) return refused("notFound");
+      if (stored.record.lifecycle !== "active" && stored.record.lifecycle !== "paused") return refused("closed");
+      if (stored.record.organizerId !== actorId) return refused("notOrganizer");
+      const outcome = await this.options.bus.execute(key, { kind: "retireMember", userId }, { commandId: `dnd:${interactionId}`, actor: { kind: "user", userId: actorId } });
+      if (outcome.kind === "notFound") return refused("notFound");
+      if (outcome.kind === "rejected") {
+        const code = outcome.rejection.code;
+        return refused(code === "memberNotAway" || code === "organizerStays" || code === "inCombat" || code === "notOrganizer" ? code : "notMember");
+      }
+      const next = await this.options.unitOfWork.transaction(async (tx) => {
+        const latest = await tx.loadRecord(key);
+        if (latest === undefined) return undefined;
+        const joinRequests = { ...(latest.record.joinRequests ?? {}) };
+        delete joinRequests[userId];
+        const updated: CampaignRecord = { ...latest.record, joinRequests, lobby: { ...latest.record.lobby, members: latest.record.lobby.members.filter((member) => member.userId !== userId) } };
+        await tx.saveRecord(updated, latest.revision);
+        return updated;
+      });
+      return next === undefined ? refused("notFound") : ok(next);
     });
   }
 

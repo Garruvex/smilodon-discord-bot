@@ -2,6 +2,7 @@ import { app } from "./state.js";
 import { openArtwork } from "./artwork-viewer.js";
 import { iconForClass, iconImage, liveEnemies, liveParty, setArtwork } from "./dom.js";
 import { renderCharacterWorkspace } from "./hero.js";
+import { performAction } from "./actions.js";
 import { classText, t } from "./i18n.js";
 
 export function enemyRankIcon(rank) { return rank === "boss" ? "crowned-skull" : rank === "elite" ? "evil-minion" : rank === "minion" ? "minions" : "attack"; }
@@ -47,6 +48,27 @@ export function makeEnemy(enemy) {
 
 export function renderEnemies(enemies) { liveEnemies.replaceChildren(...(enemies.length ? [Object.assign(document.createElement("span"), { className: "live-enemies-heading", textContent: t("activity.scene.encounter") }), ...enemies.map(makeEnemy)] : [])); }
 
+
+// The organizer's way out of a full table with someone away: free their seat. It asks for a second press first, since it removes their hero from the table.
+function freeSeatButton(seatUserId) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "party-free-seat ui-control";
+  button.textContent = t("activity.party.freeSeat");
+  let armed = null;
+  button.addEventListener("click", () => {
+    if (armed === null) {
+      button.textContent = t("activity.party.freeSeatSure");
+      button.dataset.armed = "true";
+      armed = setTimeout(() => { armed = null; button.textContent = t("activity.party.freeSeat"); delete button.dataset.armed; }, 4000);
+      return;
+    }
+    clearTimeout(armed);
+    armed = null;
+    void performAction({ kind: "retireSeat", userId: seatUserId });
+  });
+  return button;
+}
 
 // A seat nobody has taken yet, drawn as an outline the size of a hero card, so the panel is as tall as the table can ever be.
 function openSeat() {
@@ -159,6 +181,7 @@ export function renderParty(members) {
     copy.append(meta);
     card.append(sigil, copy);
     if (selectTarget) card.append(selectTarget);
+    if (hero.seatUserId !== undefined) card.append(freeSeatButton(hero.seatUserId));
     if (hero.presence === "away" || hero.fallen || hero.down) {
       const condition = document.createElement("span");
       condition.className = "party-condition-overlay";

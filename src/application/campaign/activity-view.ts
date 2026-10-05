@@ -62,6 +62,8 @@ export interface ActivityTableView {
     readonly conditions: readonly string[];
     readonly imageUrl: string | null;
     readonly isYou: boolean;
+    // Only for the organizer, on an away player's hero: whose seat the "free seat" button releases.
+    readonly seatUserId?: string;
     readonly tableStatus: "acting" | "submitted" | "passed" | "missed" | "away" | "waiting";
   }[];
   readonly foes: readonly {
@@ -259,6 +261,7 @@ export function buildActivityTableView(
       conditions: hero.conditions,
       imageUrl: partySheet?.origin === undefined && !hasPicture(record.images?.[`hero:${hero.characterId}`]) ? null : `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/characters/${encodeURIComponent(hero.characterId)}`,
       isYou: hero.ownerUserId === userId,
+      ...(record.organizerId === userId && hero.ownerUserId !== userId && state.members[hero.ownerUserId]?.availability === "away" && (state.encounter === null || state.encounter.status === "ended") ? { seatUserId: hero.ownerUserId } : {}),
       tableStatus: panel.combat?.party.some((combatant) => combatant.name === hero.name && combatant.active) === true
         ? "acting"
         : state.round?.submissions[hero.characterId]?.kind === "action" ? "submitted"

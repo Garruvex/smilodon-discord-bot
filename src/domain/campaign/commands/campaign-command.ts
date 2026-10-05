@@ -39,6 +39,8 @@ export type CampaignCommand =
   | { readonly kind: "recordRoll"; readonly rollId: RollId; readonly result: RollResult }
   | { readonly kind: "markAway"; readonly userId: UserId }
   | { readonly kind: "markReturned"; readonly userId: UserId }
+  // The organizer frees the seat of a player who is away: their hero leaves the table, and the player can come back later with a hero of their own.
+  | { readonly kind: "retireMember"; readonly userId: UserId }
   // The owner lets another player at the table play their hero in fights while they are away, or takes it back.
   | { readonly kind: "grantProxy"; readonly proxyUserId: UserId }
   | { readonly kind: "revokeProxy" }

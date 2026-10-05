@@ -21,7 +21,7 @@ import { handleUtilityMagicCommand } from "./utility-magic.js";
 import { Decision, type DecideResult, type EngineContext } from "./decision.js";
 import { beginAdventure, beginPlay, compactSceneNotes, correctWorld, illustrateMoment, markReady, redoPicture, recordLedgerFact, recordNarration, recordOpening, recordSummary, regenerateNarration, replaceNarration, reportPlannerFailure, retryPlan, reviewSceneNotes } from "./dm.js";
 import { raisePartyLevel } from "./level-up.js";
-import { chooseAsi, chooseClassLevel, chooseFightingStyle, continueCampaign, grantProxy, joinHero, markAway, markReturned, revokeProxy } from "./members.js";
+import { chooseAsi, chooseClassLevel, chooseFightingStyle, continueCampaign, grantProxy, joinHero, markAway, markReturned, retireMember, revokeProxy } from "./members.js";
 import { isSkill } from "../character/character-sheet.js";
 import { pauseCampaign } from "./pause.js";
 import { remind } from "./reminders.js";
@@ -72,6 +72,8 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
       return markAway(decision, command.userId);
     case "markReturned":
       return markReturned(decision, command.userId);
+    case "retireMember":
+      return retireMember(decision, command.userId);
     case "grantProxy":
       return grantProxy(decision, command.proxyUserId);
     case "revokeProxy":

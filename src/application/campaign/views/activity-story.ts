@@ -57,7 +57,7 @@ interface Placed {
 export function buildActivityStory(state: CampaignState, events: readonly CampaignEvent[], bible: AdventureBible, glossary: Glossary, ownCharacterId: string | null = null): readonly StoryEntry[] {
   const placed: Placed[] = [];
   const add = (order: number, entry: StoryEntry): void => { placed.push({ order, entry }); };
-  const heroName = (id: string): string => state.characters[id]?.name ?? id;
+  const heroName = (id: string): string => state.characters[id]?.name ?? state.retiredHeroes?.[id] ?? id;
   // The viewer's own lines are marked, so they can find what they did among the table's.
   const mine = (id: string): { readonly mine?: true } => (id === ownCharacterId ? { mine: true } : {});
   // A hero's wording for a round may be replaced; the entry keeps its place and takes the newest words.
