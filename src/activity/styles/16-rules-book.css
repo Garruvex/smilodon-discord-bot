@@ -1,0 +1,20 @@
+/* The rulebook: a header button and a paper dialog with a search box and short entries. */
+.rules-open { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; padding: 0; }
+.rules-open svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.rules-book { width: min(640px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); padding: 0; overflow: hidden; border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius); background: var(--ui-paper); color: var(--ui-ink); box-shadow: 0 20px 60px #120c09aa; }
+.rules-book[open] { display: flex; flex-direction: column; }
+.rules-book::backdrop { background: #110c09dc; }
+.rules-book header { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px 8px; }
+.rules-book h2 { margin: 0; font: 22px/1.2 var(--serif); }
+.rules-book header button { flex: none; width: 36px; height: 36px; padding: 0; font-size: 22px; line-height: 1; }
+.rules-search { flex: none; margin: 0 16px 8px; padding: 8px 12px; border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius-small, 7px); background: var(--ui-paper-inset); color: inherit; font: inherit; }
+.rules-list { flex: 1; min-height: 0; padding: 0 16px 8px; overflow-y: auto; }
+.rules-list h3 { margin: 14px 0 6px; color: var(--ui-accent); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+.rules-list h3[hidden], .rules-entry[hidden] { display: none; }
+.rules-entry { border: 1px solid var(--ui-border); border-radius: var(--ui-radius-small, 7px); background: var(--ui-paper-inset); }
+.rules-entry + .rules-entry { margin-top: 6px; }
+.rules-entry summary { padding: 8px 12px; font-weight: 700; cursor: pointer; }
+.rules-entry p { margin: 0; padding: 0 12px 10px; font-size: 14px; line-height: 1.55; }
+.rules-empty, .rules-note { margin: 0; padding: 8px 16px 12px; color: var(--ui-muted); font-size: 12px; }
+.rules-empty[hidden] { display: none; }
+@media (max-width: 540px) { .rules-open { width: 34px; height: 34px; } }

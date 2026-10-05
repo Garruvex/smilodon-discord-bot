@@ -33,7 +33,7 @@
       <header class="live-header">
         <div class="lobby-brand"><span class="lobby-brand-mark" aria-hidden="true"><img src="/art-icons/roll.svg" alt=""></span><div><span class="eyebrow" id="live-adventure">ADVENTURE</span><div class="live-title-row"><h1 id="live-campaign">Campaign</h1><span class="table-connection-dot" id="table-connection-dot" data-state="connecting" role="img" aria-label="Connecting to the live table" title="Connecting to the live table"></span></div></div></div>
         <div class="live-header-status"><span class="live-phase ui-status"><span id="live-phase">Loading game…</span></span><span class="live-round ui-status" id="live-round"></span></div>
-        <div class="live-heading-right"><button class="presence-toggle ui-control" id="live-presence-toggle" type="button" hidden></button><button class="lobby-retry ui-control" id="back-to-lobby" data-i18n="activity.button.allGames" type="button">All games</button></div>
+        <div class="live-heading-right"><button class="rules-open ui-control" id="rules-open" type="button" data-i18n-aria-label="activity.rules.open" data-i18n-title="activity.rules.open" aria-label="Rules"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M4 21.5A2.5 2.5 0 0 1 6.5 19H20"/><path d="M9 8h7M9 11.5h5"/></svg></button><button class="presence-toggle ui-control" id="live-presence-toggle" type="button" hidden></button><button class="lobby-retry ui-control" id="back-to-lobby" data-i18n="activity.button.allGames" type="button">All games</button></div>
       </header>
       <div class="vote-shield" id="vote-shield" aria-hidden="true" hidden></div>
       <dialog class="scene-move-decision" id="live-scene-move" aria-labelledby="live-move-heading" hidden></dialog>
@@ -60,6 +60,7 @@
     </main>
 
     <dialog class="character-builder-dialog" id="character-builder-dialog" aria-label="Create a character"></dialog>
+    <dialog class="rules-book" id="rules-book" aria-labelledby="rules-title"><header><h2 id="rules-title" data-i18n="activity.rules.title">Rules</h2><button class="ui-control" id="rules-close" type="button" data-i18n-aria-label="activity.rules.close" aria-label="Close">×</button></header><input class="rules-search" id="rules-search" type="search" autocomplete="off" data-i18n-placeholder="activity.rules.search" placeholder="Search the rules"><div class="rules-list" id="rules-list"></div><p class="rules-empty" id="rules-empty" hidden data-i18n="activity.rules.empty">Nothing matches.</p><p class="rules-note" data-i18n="activity.rules.note">After the 5th Edition SRD. The game decides every outcome; this is only a reference.</p></dialog>
     <dialog class="artwork-viewer" id="artwork-viewer" aria-labelledby="artwork-viewer-title"><header><h2 id="artwork-viewer-title"></h2><button class="ui-control" id="artwork-viewer-close" type="button" data-i18n-aria-label="activity.artwork.close" aria-label="Close image">×</button></header><img id="artwork-viewer-image" alt=""></dialog>
     <dialog class="dice-dialog" id="dice-dialog" aria-labelledby="dice-title" aria-describedby="dice-description">
       <button class="dialog-close" id="dice-close" data-i18n-aria-label="activity.dice.close" type="button" aria-label="Close roll prompt">×</button>

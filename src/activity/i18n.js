@@ -18,6 +18,7 @@ export function t(key, values = {}) {
 export function applyStaticTranslations() {
   for (const element of document.querySelectorAll("[data-i18n]")) element.textContent = t(element.dataset.i18n);
   for (const element of document.querySelectorAll("[data-i18n-aria-label]")) element.setAttribute("aria-label", t(element.dataset.i18nAriaLabel));
+  for (const element of document.querySelectorAll("[data-i18n-placeholder]")) element.setAttribute("placeholder", t(element.dataset.i18nPlaceholder));
   for (const element of document.querySelectorAll("[data-i18n-title]")) element.setAttribute("title", t(element.dataset.i18nTitle));
 }
 

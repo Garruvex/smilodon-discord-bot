@@ -5,6 +5,7 @@ import { languageFromBrowser, setLanguage, t } from "./i18n.js";
 import { showError } from "./lobby.js";
 import { openCharactersScreen, wireCharacterScreen } from "./character-builder.js";
 import { wireArtworkViewer } from "./artwork-viewer.js";
+import { wireRulesBook } from "./rules-book.js";
 import { bindMapControls } from "./map.js";
 import { setTableConnectionState } from "./poll.js";
 import { designPreviewSnapshot, previewStoryNext } from "./preview.js";
@@ -16,6 +17,7 @@ bindMapControls();
 mountDrawers();
 wireCharacterScreen();
 wireArtworkViewer();
+wireRulesBook();
 
 
 if (new URLSearchParams(window.location.search).has("design-preview")) {
