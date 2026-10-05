@@ -386,7 +386,7 @@ export class CampaignLobbyService {
       const prepared = await this.ongoingHeroSheet(record, state, userId, heroRef);
       if (prepared.kind === "refused") return prepared;
       const joining = prepared.value;
-      if (this.shouldWaitForEncounter(state)) {
+      if (await this.mustWaitForFight(key, state)) {
         const joinRequests = { ...(record.joinRequests ?? {}), [userId]: { ...request, status: "queued" as const, queuedHero: joining, queueId: interactionId } };
         const updated: CampaignRecord = { ...record, joinRequests };
         await this.options.unitOfWork.transaction((tx) => tx.saveRecord(updated, loaded.stored!.revision));
@@ -420,7 +420,7 @@ export class CampaignLobbyService {
               const result = await this.finishOngoingJoin(record.key, userId, state.members[userId]!.characterId!);
               return result.kind === "ok";
             }
-            if (this.shouldWaitForEncounter(state)) return false;
+            if (await this.mustWaitForFight(record.key, state)) return false;
             if (state.members[userId] === undefined && Object.keys(state.members).length >= latest.stored.record.lobby.maxPlayers) {
               await this.returnQueuedJoinToApproval(record.key, userId, currentRequest.queueId);
               return false;
@@ -444,9 +444,15 @@ export class CampaignLobbyService {
     return { processed, failed };
   }
 
-  private shouldWaitForEncounter(state: import("../../domain/campaign/state/campaign-state.js").CampaignState): boolean {
-    if (state.pendingEncounter !== null || (state.encounter !== null && state.encounter.status !== "ended")) return true;
-    return state.encounter !== null && state.encounter.narratedRound < state.encounter.round;
+  // A hero joins at a safe break: not while a fight is on or about to start, and not before its closing narration is told. A closing narration that was given up on (the Narrator failed every attempt) is not waited for, or nobody could ever join after that fight.
+  private async mustWaitForFight(key: CampaignKey, state: import("../../domain/campaign/state/campaign-state.js").CampaignState): Promise<boolean> {
+    if (state.pendingEncounter !== null) return true;
+    const encounter = state.encounter;
+    if (encounter === null) return false;
+    if (encounter.status !== "ended") return true;
+    if (encounter.narratedRound >= encounter.round) return false;
+    const work = await this.options.unitOfWork.transaction((tx) => tx.outboxForCampaign(key));
+    return work.some((item) => item.status === "pending" && item.request.kind === "narrateCombat");
   }
 
   private async ongoingHeroSheet(record: CampaignRecord, state: import("../../domain/campaign/state/campaign-state.js").CampaignState, userId: UserId, heroRef: string): Promise<ServiceResult<CharacterSheet>> {
