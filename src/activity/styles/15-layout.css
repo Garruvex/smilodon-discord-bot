@@ -47,7 +47,7 @@ body.drawer-open-right .drawer-tab[data-side="right"] { right: var(--drawer-righ
 .drawer[data-side="left"] .section-heading { display: none; }
 .party-free-seat { position: absolute; z-index: 6; right: 8px; bottom: 6px; padding: 3px 10px; font-size: 11px; font-weight: 700; }
 .party-free-seat[data-armed="true"] { background: #a8362c; border-color: #a8362c; color: #fff0d4; }
-.party-open-seat { display: flex; align-items: center; justify-content: center; min-height: 92px; border: 2px dashed #b39a70; border-radius: 10px; background: transparent; color: #8a7350; font-size: 13px; font-weight: 700; letter-spacing: .06em; }
+.party-open-seat { display: flex; align-items: center; justify-content: center; box-sizing: border-box; height: var(--seat-h, 96px); min-height: 0; border: 2px dashed #b39a70; border-radius: 10px; background: transparent; color: #8a7350; font-size: 13px; font-weight: 700; letter-spacing: .06em; }
 .drawer[data-side="left"] .live-party-grid { grid-template-columns: minmax(0, 1fr); }
 /* One line for the class and level, so the whole party fits without scrolling. */
 .drawer[data-side="left"] .party-class-line { display: flex; gap: 8px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

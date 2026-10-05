@@ -116,6 +116,9 @@ export function syncDrawers(game) {
     for (const entry of Object.values(drawers)) entry.set(false);
     return;
   }
+  // An open seat is exactly as tall as a hero's card, so a seat and a hero take the same room.
+  const card = document.querySelector("#live-party > .live-party-card:not(.party-open-seat)");
+  if (card !== null && card.offsetHeight > 0) document.querySelector("#live-party").style.setProperty("--seat-h", `${card.offsetHeight}px`);
   // The party panel is as tall as its cards, not as tall as the screen allows.
   const fit = document.querySelector(".party-section").offsetHeight;
   if (fit > 0) drawers.left.drawer.style.setProperty("--drawer-fit", `${fit + 2}px`);
