@@ -78,6 +78,10 @@ describe("the Activity story", () => {
     expect(entries).toEqual([{ id: "e1", kind: "talk", who: "Mira", npc: "Reni", question: "Who built it?", roll: null, text: "Monks, long ago." }]);
   });
 
+  it("marks where a seat was freed", () => {
+    expect(story([{ kind: "memberRetired", userId: "u-jamie", characterId: "c-borin", name: "Borin" }])).toEqual([{ id: "e0", kind: "system", code: "seatFreed", text: "Borin" }]);
+  });
+
   it("leaves out empty tellings", () => {
     expect(story([{ kind: "narrationRecorded", roundNumber: 1, text: "   " }])).toEqual([]);
   });

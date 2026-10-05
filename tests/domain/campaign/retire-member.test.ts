@@ -17,6 +17,11 @@ describe("freeing an away player's seat", () => {
     expect(step.state.members["u-alex"]).toBeDefined();
   });
 
+  it("tells the table the seat is open", () => {
+    const step = run(awayJamie(), organizer, { kind: "retireMember", userId: "u-jamie" });
+    expect(step.requests).toContainEqual({ kind: "deliver", delivery: { kind: "seatFreed", name: expect.any(String) } });
+  });
+
   it("is the organizer's to do, and only for a player who is away", () => {
     expect(reject(awayJamie(), alex, { kind: "retireMember", userId: "u-jamie" })).toEqual({ code: "notOrganizer" });
     expect(reject(newCampaign(), organizer, { kind: "retireMember", userId: "u-jamie" })).toEqual({ code: "memberNotAway" });

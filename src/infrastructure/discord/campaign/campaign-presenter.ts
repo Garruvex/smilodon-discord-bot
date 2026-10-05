@@ -203,6 +203,9 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
       case "storyNotice":
         await say(adventureChannelId, delivery.text, [], "notice");
         break;
+      case "seatFreed":
+        await say(adventureChannelId, delivery.name === null ? text.campaign.msg.seatFreedNobody : text.campaign.msg.seatFreed({ hero: delivery.name }), [], "notice");
+        break;
       case "clueFound":
         await say(adventureChannelId, `🔍 ${delivery.text}`, [], "notice");
         break;

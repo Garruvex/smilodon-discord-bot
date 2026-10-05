@@ -22,7 +22,7 @@ export type StoryEntry =
   // A check the table saw rolled: the total against the DC. A natural 20 or 1 on a check changes nothing by itself, so the result is only total against DC.
   | { readonly id: string; readonly kind: "roll"; readonly mine?: true; readonly who: string; readonly test: CheckTest; readonly total: number; readonly dc: number; readonly success: boolean }
   // A place change, the start of a fight or its end: the client words it.
-  | { readonly id: string; readonly kind: "system"; readonly code: "scene" | "combatBegins" | "victory" | "defeat"; readonly text: string | null }
+  | { readonly id: string; readonly kind: "system"; readonly code: "scene" | "combatBegins" | "victory" | "defeat" | "seatFreed"; readonly text: string | null }
   | { readonly id: string; readonly kind: "combat"; readonly who: string; readonly using: string; readonly source: "weapon" | "spell" | "area" | "item" | "feature"; readonly opportunity: boolean; readonly targets: readonly StoryTarget[] }
   // The turn-by-turn moments of a fight that are not an attack or a spell.
   | { readonly id: string; readonly kind: "maneuver"; readonly who: string; readonly maneuver: "dash" | "dodge" | "disengage" | "giveItem" | "useItem" }
@@ -140,6 +140,9 @@ export function buildActivityStory(state: CampaignState, events: readonly Campai
       }
       case "heroSpoke":
         if (event.text.trim().length > 0) add(index, { id: `e${index}`, kind: "speech", ...mine(event.characterId), who: heroName(event.characterId), text: event.text.trim() });
+        break;
+      case "memberRetired":
+        add(index, { id: `e${index}`, kind: "system", code: "seatFreed", text: event.name });
         break;
       case "roundPlanApplied":
         for (const planned of event.checks) calledChecks.set(planned.id, planned);

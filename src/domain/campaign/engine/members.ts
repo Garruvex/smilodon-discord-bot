@@ -107,6 +107,7 @@ export function retireMember(decision: Decision, userId: UserId): Rejection | nu
   if (state.encounter !== null && state.encounter.status !== "ended") return { code: "inCombat" };
   const characterId = member.characterId;
   decision.emit({ kind: "memberRetired", userId, characterId, name: characterId === null ? null : (state.characters[characterId]?.name ?? null) });
+  decision.request({ kind: "deliver", delivery: { kind: "seatFreed", name: characterId === null ? null : (state.characters[characterId]?.name ?? null) } });
   const round = decision.state.round;
   if (round?.status === "collecting") closeIfEveryoneResponded(decision);
   if (decision.state.status === "active" && presentMembers(decision.state).length === 0) enterWaiting(decision);

@@ -122,6 +122,8 @@ export type DeliverySpec =
   | { readonly kind: "storyNotice"; readonly text: string }
   // A clue the party has just found: the adventure's own words for it.
   | { readonly kind: "clueFound"; readonly text: string }
+  // An away player's seat was freed by the organizer; the hero's name, when there was one.
+  | { readonly kind: "seatFreed"; readonly name: string | null }
   // Gold and items an authored reward gave the party (the loot event tells what).
   | { readonly kind: "rewardFound"; readonly rewardId: string }
   // A story object joined the party's belongings.
