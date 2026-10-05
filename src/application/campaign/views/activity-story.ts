@@ -15,6 +15,8 @@ export type StoryEntry =
   | { readonly id: string; readonly kind: "action"; readonly who: string; readonly text: string }
   | { readonly id: string; readonly kind: "speech"; readonly who: string; readonly text: string }
   | { readonly id: string; readonly kind: "clue"; readonly text: string }
+  // A spell cast between fights: who cast what, then the Narrator's telling of it (the same two parts the channel posts).
+  | { readonly id: string; readonly kind: "cast"; readonly who: string; readonly spell: string; readonly text: string }
   // A check the table saw rolled: the total against the DC. A natural 20 or 1 on a check changes nothing by itself, so the result is only total against DC.
   | { readonly id: string; readonly kind: "roll"; readonly who: string; readonly test: CheckTest; readonly total: number; readonly dc: number; readonly success: boolean }
   // A place change, the start of a fight or its end: the client words it.
@@ -56,6 +58,7 @@ export function buildActivityStory(state: CampaignState, events: readonly Campai
   const heroName = (id: string): string => state.characters[id]?.name ?? id;
   // A hero's wording for a round may be replaced; the entry keeps its place and takes the newest words.
   const actionAt = new Map<string, Placed>();
+  const casts = new Map<string, { who: string; spell: string }>();
 
   const narrate = (index: number, text: string, round?: number): void => {
     const trimmed = text.trim();
@@ -82,10 +85,19 @@ export function buildActivityStory(state: CampaignState, events: readonly Campai
       case "openingRecorded":
         narrate(index, event.text, 0);
         break;
+      case "utilitySpellCast":
+        casts.set(event.cast.id, { who: heroName(event.cast.characterId), spell: glossary.names[event.cast.spellId] ?? event.cast.spellId });
+        break;
+      case "utilityCastNarrated": {
+        const cast = casts.get(event.castId);
+        const told = event.text.trim();
+        if (cast === undefined) narrate(index, event.text);
+        else if (told.length > 0) add(index, { id: `e${index}`, kind: "cast", ...cast, text: told });
+        break;
+      }
       case "combatNarrationRecorded":
       case "tradeNarrated":
       case "dialogueNarrated":
-      case "utilityCastNarrated":
       case "hazardNarrated":
         narrate(index, event.text);
         break;

@@ -316,6 +316,7 @@ export const campaignEn = {
   "activity.status.didAction": "Done: {action}",
   "activity.status.stillSending": "Still working. Please wait, no need to press again.",
   "activity.story.title": "Story",
+  "activity.story.cast": "{who} casts {spell}",
   "activity.story.tabStory": "Story",
   "activity.story.tabCombat": "Combat",
   "activity.story.empty": "Nothing told yet.",

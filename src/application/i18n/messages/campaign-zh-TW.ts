@@ -339,6 +339,7 @@ export const campaignZhTW = {
   "activity.status.didAction": "已完成：{action}",
   "activity.status.stillSending": "還在處理中，請稍候，不用重複按。",
   "activity.story.title": "故事",
+  "activity.story.cast": "{who}施展{spell}",
   "activity.story.tabStory": "故事",
   "activity.story.tabCombat": "戰鬥",
   "activity.story.empty": "還沒有故事。",

@@ -6,7 +6,7 @@ import { rollLabel } from "./dice.js";
 
 const combatKinds = new Set(["combat", "alert", "maneuver", "move", "fled", "deathSave"]);
 // What counts as news for the badge on the closed drawer: not the fight's blow-by-blow.
-const newsKinds = new Set(["narration", "action", "speech", "clue", "alert"]);
+const newsKinds = new Set(["narration", "action", "speech", "clue", "cast", "alert"]);
 
 const feed = { nodes: new Map(), filter: "story", inFight: false, unread: 0, ready: false, element: null, jump: null, tabs: new Map(), listeners: [] };
 let strip = null;
@@ -32,6 +32,7 @@ export function entryText(entry) {
     case "action": return `${entry.who} ${entry.text}`;
     case "speech": return `${entry.who}: “${entry.text}”`;
     case "clue": return entry.text;
+    case "cast": return `${t("activity.story.cast", { who: entry.who, spell: entry.spell })}. ${entry.text}`;
     case "roll": return `${entry.who}: ${rollLabel(entry.test)}, ${entry.total} ${t("activity.dice.versusDc", { dc: entry.dc })} ${entry.success ? "✓" : "✗"}`;
     case "combat": return t("activity.story.combatLine", { who: entry.who, using: entry.using, results: entry.targets.map(checkText).join("; ") });
     case "maneuver": return t(`activity.story.${entry.maneuver}`, { who: entry.who });
@@ -66,6 +67,12 @@ function fillNode(node, entry) {
     const total = document.createElement("i");
     total.textContent = String(entry.total);
     node.replaceChildren(who, ` ${rollLabel(entry.test)} `, total, ` ${t("activity.dice.versusDc", { dc: entry.dc })} ${entry.success ? "✓" : "✗"}`);
+  } else if (entry.kind === "cast") {
+    const head = document.createElement("b");
+    head.textContent = t("activity.story.cast", { who: entry.who, spell: entry.spell });
+    const told = document.createElement("span");
+    told.textContent = entry.text;
+    node.replaceChildren(head, told);
   } else if (entry.kind === "clue") {
     node.textContent = `🔍 ${entry.text}`;
   } else if (entry.kind === "action" || entry.kind === "speech") {

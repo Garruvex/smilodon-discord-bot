@@ -49,6 +49,15 @@ describe("the Activity story", () => {
     ]);
   });
 
+  it("shows a spell cast between fights as who cast what, then the telling", () => {
+    const state = { ...newCampaign(), characters: { "c-mira": { name: "Mira" } } } as unknown as ReturnType<typeof newCampaign>;
+    const entries = buildActivityStory(state, [
+      { kind: "utilitySpellCast", cast: { id: "cast-1", characterId: "c-mira", spellId: "spell:help" } },
+      { kind: "utilityCastNarrated", castId: "cast-1", text: "The air hums." },
+    ] as unknown as CampaignEvent[], bible, { names: { "spell:help": "Help" } } as unknown as Glossary);
+    expect(entries).toEqual([{ id: "e1", kind: "cast", who: "Mira", spell: "Help", text: "The air hums." }]);
+  });
+
   it("leaves out empty tellings", () => {
     expect(story([{ kind: "narrationRecorded", roundNumber: 1, text: "   " }])).toEqual([]);
   });
