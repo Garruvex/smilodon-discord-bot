@@ -249,6 +249,15 @@ describe("joining an ongoing campaign", () => {
     value(await service.inviteOngoing(key, "u-org", "u-c", "They arrive later."));
     expect(refusal(await service.inviteOngoing(key, "u-org", "u-d", "They arrive later."))).toBe("gameFull");
   });
+  it("shows a run-out invitation as expired and lets the player ask again, even in a private game", async () => {
+    const { service, key, store } = await running("membersOnly");
+    value(await service.inviteOngoing(key, "u-org", "u-b", "They arrive."));
+    const stored = await store.transaction((tx) => tx.loadRecord(key));
+    await store.transaction((tx) => tx.saveRecord({ ...stored!.record, joinRequests: { "u-b": { ...stored!.record.joinRequests!["u-b"]!, expiresAt: 0 } } }, stored!.revision));
+    expect((await service.activityGames(guildId, "u-b")).find((game) => game.campaignId === key.campaignId)?.action).toBe("expired");
+    value(await service.requestOngoingJoin(key, "u-b"));
+    expect((await service.get(key))?.record.joinRequests?.["u-b"]?.status).toBe("requested");
+  });
 });
 
 describe("an adventure that changes after the lobby opened", () => {

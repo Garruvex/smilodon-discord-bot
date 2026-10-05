@@ -83,7 +83,7 @@ export interface ActivityCampaignListingItem {
   readonly lifecycle: "lobby" | "active" | "paused";
   readonly playerCount: number;
   readonly maxPlayers: number;
-  readonly action: "join" | "continue" | "request" | "requested" | "queued" | "invited" | "full" | "resume";
+  readonly action: "join" | "continue" | "request" | "requested" | "queued" | "invited" | "expired" | "full" | "resume";
 }
 
 export interface CampaignLobbyServiceOptions {
@@ -214,9 +214,11 @@ export class CampaignLobbyService {
 
         // A private campaign name, roster, and existence stay hidden unless the
         // player already belongs to it or has an unexpired invitation.
-        if (privateGame && !participant && !invited) continue;
+        // A private game stays hidden unless there is an invitation, or there was one that has since run out, which the player is told about.
+        const expired = request !== undefined && !requestIsCurrent;
+        if (privateGame && !participant && !invited && !expired) continue;
         if (record.lifecycle === "lobby" && !participant && privateGame) continue;
-        if (record.lifecycle !== "lobby" && !participant && !invited && privateGame) continue;
+        if (record.lifecycle !== "lobby" && !participant && !invited && !expired && privateGame) continue;
 
         const adventureTitle = this.options.adventures.documentAt(record.adventure.adventureId, record.adventure.version, record.language)?.bible.title
           ?? record.adventure.adventureId;
@@ -243,7 +245,9 @@ export class CampaignLobbyService {
             ? "invited"
             : requestIsCurrent && request.status === "requested"
               ? "requested"
-              : "request";
+              : expired
+                ? "expired"
+                : "request";
         games.push({
           campaignId: record.key.campaignId,
           name: record.name,
@@ -281,9 +285,10 @@ export class CampaignLobbyService {
   // entered through an organizer invitation.
   public requestOngoingJoin(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>> {
     return this.changeJoinRequest(key, userId, (record, playing) => {
-      if (record.visibility === "membersOnly") return "privateInviteOnly";
-      if (playing) return "joinAlreadyPlaying";
       const current = record.joinRequests?.[userId];
+      // Someone whose invitation to a private game ran out may ask again; otherwise a private game is entered by invitation only.
+      if (record.visibility === "membersOnly" && current === undefined) return "privateInviteOnly";
+      if (playing) return "joinAlreadyPlaying";
       if (current !== undefined && current.expiresAt > this.options.clock.now()) return current;
       return { status: "requested", expiresAt: this.options.clock.now() + 7 * 24 * 60 * 60 * 1000 };
     });

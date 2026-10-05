@@ -10,7 +10,7 @@ import { openGame } from "./poll.js";
 
 export const lifecycleKeys = { lobby: "activity.lobby.status.open", active: "activity.lobby.status.live", paused: "activity.lobby.status.paused" };
 
-export const actionKeys = { join: "activity.lobby.action.join", continue: "activity.lobby.action.continue", request: "activity.lobby.action.request", requested: "activity.lobby.action.requested", queued: "activity.lobby.action.queued", invited: "activity.lobby.action.invited", full: "activity.lobby.action.full", resume: "activity.lobby.action.continue" };
+export const actionKeys = { join: "activity.lobby.action.join", continue: "activity.lobby.action.continue", request: "activity.lobby.action.request", requested: "activity.lobby.action.requested", queued: "activity.lobby.action.queued", invited: "activity.lobby.action.invited", expired: "activity.lobby.action.expired", full: "activity.lobby.action.full", resume: "activity.lobby.action.continue" };
 
 export function showError(error) {
   gamesElement.replaceChildren();
@@ -57,6 +57,11 @@ export function createGameCard(game) {
     pending.className = "lobby-card-request-status";
     pending.textContent = t("activity.join.waitingApproval");
     copy.append(pending);
+  } else if (game.action === "expired") {
+    const note = document.createElement("p");
+    note.className = "lobby-card-request-status";
+    note.textContent = t("activity.lobby.request.expired");
+    copy.append(note);
   } else if (game.action === "queued") {
     const pending = document.createElement("p");
     pending.className = "lobby-card-request-status";
@@ -92,12 +97,12 @@ export async function loadGames() {
 
 
 export async function selectGame(game, button) {
-  if (game.action === "join" || game.action === "request" || game.action === "requested") {
+  if (game.action === "join" || game.action === "request" || game.action === "expired" || game.action === "requested") {
     button.disabled = true;
     const originalLabel = button.textContent;
     button.textContent = game.action === "join" ? t("activity.lobby.action.joining") : game.action === "requested" ? t("activity.lobby.action.withdrawing") : t("activity.lobby.action.sending");
     try {
-      await requestJson(`/api/activity/games/${encodeURIComponent(game.campaignId)}/${game.action === "requested" ? "withdraw" : game.action}`, { method: "POST" });
+      await requestJson(`/api/activity/games/${encodeURIComponent(game.campaignId)}/${game.action === "requested" ? "withdraw" : game.action === "expired" ? "request" : game.action}`, { method: "POST" });
       if (game.action === "join") await openGame(game.campaignId);
       else {
         await loadGames();
@@ -187,5 +192,10 @@ export function renderLobby(game) {
     tableStatus: member.ready ? "submitted" : "waiting",
   })));
   document.querySelector("#live-party-count").textContent = t("activity.lobby.players", { count: game.playerCount, max: game.maxPlayers });
-  setLiveMessage(game.startBlockReason === "notEnoughPlayers" ? t("activity.status.waitingPlayers") : game.startBlockReason === "notReady" ? t("activity.lobby.waitingReady") : game.selectedHeroId ? t("activity.status.readyOrganizer") : t("activity.lobby.chooseCharacterPrompt"));
+  // What to say follows where this player is: no hero yet comes first, then whether the table can start and who starts it.
+  setLiveMessage(!game.selectedHeroId ? t("activity.lobby.chooseCharacterPrompt")
+    : game.canStart ? t("activity.status.readyToStart")
+      : game.startBlockReason === "notEnoughPlayers" ? t("activity.status.waitingPlayers")
+        : game.startBlockReason === "notReady" ? t("activity.lobby.waitingReady")
+          : t("activity.status.readyOrganizer"));
 }
