@@ -275,6 +275,18 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     case "gearChanged":
     case "combatNarrationRecorded":
       return evolveCombat(state, event);
+    case "restProposed":
+      return { ...state, restVote: { rest: event.rest, proposedBy: event.by, agree: [event.by], decline: [], closesAt: event.closesAt, sceneId: event.sceneId, story: event.story } };
+    case "restVoteCast": {
+      const vote = state.restVote;
+      if (vote === undefined) return state;
+      const others = (list: readonly UserId[]): readonly UserId[] => list.filter((userId) => userId !== event.userId);
+      return { ...state, restVote: { ...vote, agree: event.agree ? [...others(vote.agree), event.userId] : others(vote.agree), decline: event.agree ? others(vote.decline) : [...others(vote.decline), event.userId] } };
+    }
+    case "restVoteClosed": {
+      const { restVote: _closed, ...rest } = state;
+      return rest;
+    }
     case "restQueued": {
       const { pendingRest: _asked, ...rest } = state;
       return event.rest === null ? rest : { ...rest, pendingRest: { rest: event.rest, sceneId: event.sceneId ?? null, story: event.story ?? [] } };
@@ -537,7 +549,7 @@ function evolveCombat(state: CampaignState, event: CombatEvent): CampaignState {
 
 // The state with a new roster; an absent roster stays absent.
 function omitPendingRest(state: CampaignState): CampaignState {
-  const { pendingRest: _taken, ...rest } = state;
+  const { pendingRest: _taken, restVote: _voted, ...rest } = state;
   return rest;
 }
 

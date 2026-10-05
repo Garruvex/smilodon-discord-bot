@@ -390,6 +390,16 @@ export class CampaignPlayController {
     return this.perform(key, userId, interactionId, () => ({ kind: "queueRest", rest, ...(story.length === 0 ? {} : { story }) }));
   }
 
+  // Any player present: propose a rest to the table, or answer the proposal that is open. A majority of the players present makes it happen.
+  public async proposeRest(key: CampaignKey, userId: UserId, rest: "short" | "long", interactionId: string): Promise<PlayResult> {
+    const story = rest === "long" ? await this.longRestStory(key) : [];
+    return this.perform(key, userId, interactionId, () => ({ kind: "proposeRest", rest, ...(story.length === 0 ? {} : { story }) }));
+  }
+
+  public answerRestVote(key: CampaignKey, userId: UserId, agree: boolean, interactionId: string): Promise<PlayResult> {
+    return this.perform(key, userId, interactionId, () => ({ kind: "answerRestVote", agree }));
+  }
+
   public async rest(key: CampaignKey, userId: UserId, rest: "short" | "long", interactionId: string): Promise<PlayResult> {
     const story = rest === "long" ? await this.longRestStory(key) : [];
     return this.perform(key, userId, interactionId, () => ({ kind: "takeRest", rest, ...(story.length === 0 ? {} : { story }) }));

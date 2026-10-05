@@ -8,7 +8,7 @@ import { retryEncounter } from "./combat/combat-retry.js";
 import { canHandOver, refreshGear, startHandOver } from "./combat/combat-gear.js";
 import { encounterProblems, handleCombatCommand, recordCombatNarration, recordCombatRoll } from "./combat/combat-flow.js";
 import { handleInventoryCommand } from "./inventory.js";
-import { queueRest, takeRest } from "./rest.js";
+import { answerRestVote, proposeRest, queueRest, takeRest } from "./rest.js";
 import { handleDialogueCommand, recordPressRoll } from "./dialogue.js";
 import { handleShopCommand, recordHaggleRoll } from "./shop.js";
 import { recordEnvironmentalDamageRoll } from "./environmental-damage.js";
@@ -141,6 +141,10 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
       return takeRest(decision, command.rest, command.story ?? []);
     case "queueRest":
       return queueRest(decision, command.rest, command.story ?? []);
+    case "proposeRest":
+      return proposeRest(decision, command.rest, command.story ?? []);
+    case "answerRestVote":
+      return answerRestVote(decision, command.agree);
     case "offerItem":
     case "respondToOffer":
     case "cancelOffer":

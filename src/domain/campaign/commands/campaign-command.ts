@@ -91,6 +91,9 @@ export type CampaignCommand =
   | { readonly kind: "takeRest"; readonly rest: "short" | "long"; readonly story?: readonly PartyEffect[] }
   // Organizer: rest as soon as the round or fight in progress is over (taken at once if nothing is going). rest null takes the request back.
   | { readonly kind: "queueRest"; readonly rest: "short" | "long" | null; readonly story?: readonly PartyEffect[] }
+  // Any player present proposes a rest; the others answer. A majority of those present makes it as good as the organizer's own request.
+  | { readonly kind: "proposeRest"; readonly rest: "short" | "long"; readonly story?: readonly PartyEffect[] }
+  | { readonly kind: "answerRestVote"; readonly agree: boolean }
   | InventoryCommand
   // Organizer, after a lost fight: play it again from its start, with fresh dice.
   | { readonly kind: "retryEncounter" }

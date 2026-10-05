@@ -22,7 +22,7 @@ export type StoryEntry =
   // A check the table saw rolled: the total against the DC. A natural 20 or 1 on a check changes nothing by itself, so the result is only total against DC.
   | { readonly id: string; readonly kind: "roll"; readonly mine?: true; readonly who: string; readonly test: CheckTest; readonly total: number; readonly dc: number; readonly success: boolean }
   // A place change, the start of a fight or its end: the client words it.
-  | { readonly id: string; readonly kind: "system"; readonly code: "scene" | "combatBegins" | "victory" | "defeat" | "seatFreed" | "shortRest" | "longRest" | "restOver" | "paused" | "resumed" | "heroJoined"; readonly text: string | null; readonly detail?: string }
+  | { readonly id: string; readonly kind: "system"; readonly code: "scene" | "combatBegins" | "victory" | "defeat" | "seatFreed" | "shortRest" | "longRest" | "restOver" | "shortRestProposed" | "longRestProposed" | "restAgreed" | "restDeclined" | "paused" | "resumed" | "heroJoined"; readonly text: string | null; readonly detail?: string }
   | { readonly id: string; readonly kind: "combat"; readonly who: string; readonly using: string; readonly source: "weapon" | "spell" | "area" | "item" | "feature"; readonly opportunity: boolean; readonly targets: readonly StoryTarget[] }
   // The turn-by-turn moments of a fight that are not an attack or a spell.
   | { readonly id: string; readonly kind: "maneuver"; readonly who: string; readonly maneuver: "dash" | "dodge" | "disengage" | "giveItem" | "useItem" }
@@ -150,6 +150,12 @@ export function buildActivityStory(state: CampaignState, events: readonly Campai
         break;
       case "heroJoined":
         add(index, { id: `e${index}`, kind: "system", code: "heroJoined", text: event.sheet.name, ...(event.entrance === undefined || event.entrance.trim() === "" || event.entrance === "A new companion joins the party." ? {} : { detail: event.entrance.trim() }) });
+        break;
+      case "restProposed":
+        add(index, { id: `e${index}`, kind: "system", code: event.rest === "short" ? "shortRestProposed" : "longRestProposed", text: null });
+        break;
+      case "restVoteClosed":
+        if (event.outcome !== "expired") add(index, { id: `e${index}`, kind: "system", code: event.outcome === "passed" ? "restAgreed" : "restDeclined", text: null });
         break;
       case "restEnded":
         add(index, { id: `e${index}`, kind: "system", code: "restOver", text: null });

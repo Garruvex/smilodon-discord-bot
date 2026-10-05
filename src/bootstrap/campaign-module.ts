@@ -559,6 +559,14 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
             if (rest === undefined) return { kind: "refused", reason: "invalidAction" };
             return activityPlay.queueRest(key, userId, rest, id).then(mapPlayResult);
           }
+          case "proposeRest": {
+            if (action.rest !== "short" && action.rest !== "long") return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.proposeRest(key, userId, action.rest, id).then(mapPlayResult);
+          }
+          case "answerRestVote": {
+            if (typeof action.agree !== "boolean") return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.answerRestVote(key, userId, action.agree, id).then(mapPlayResult);
+          }
           case "spendHitDice": {
             const count = integerValue(action.count);
             if (count === null) return { kind: "refused", reason: "invalidAction" };

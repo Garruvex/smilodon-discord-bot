@@ -133,6 +133,9 @@ export type CampaignEvent =
   | { readonly kind: "heroSpoke"; readonly characterId: CharacterId; readonly roundNumber: number; readonly text: string }
   | { readonly kind: "restTaken"; readonly rest: "short" | "long"; readonly heroStatus: Readonly<Record<CharacterId, HeroStatus>>; readonly longRestAt?: number }
   // The organizer asked for a rest at the end of the round (rest null: asked no more).
+  | { readonly kind: "restProposed"; readonly rest: "short" | "long"; readonly by: UserId; readonly closesAt: Instant; readonly sceneId: string | null; readonly story: readonly PartyEffect[] }
+  | { readonly kind: "restVoteCast"; readonly userId: UserId; readonly agree: boolean }
+  | { readonly kind: "restVoteClosed"; readonly outcome: "passed" | "declined" | "expired" }
   | { readonly kind: "restQueued"; readonly rest: "short" | "long" | null; readonly sceneId?: string | null; readonly story?: readonly PartyEffect[] }
   // The organizer finished the rest: the next round can open.
   | { readonly kind: "restEnded" }

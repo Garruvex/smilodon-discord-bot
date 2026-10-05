@@ -12,6 +12,8 @@ export type Rejection =
   | { readonly code: "resting" }
   | { readonly code: "nothingToRest" }
   | { readonly code: "alreadyRested" }
+  | { readonly code: "restVoteOpen" }
+  | { readonly code: "noRestVote" }
   | { readonly code: "hitDicePending" }
   | { readonly code: "noHitDice" }
   | { readonly code: "organizerStays" }

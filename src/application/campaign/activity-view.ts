@@ -54,8 +54,12 @@ export interface ActivityTableView {
   readonly controls: {
     readonly canStop: boolean;
     readonly canPause: boolean;
+    // A player present may propose a rest to the table.
+    readonly canPropose: boolean;
     readonly rest: null | { readonly askedFor: "short" | "long" | null; readonly resting: "short" | "long" | null; readonly now: boolean };
   };
+  // A player's proposal to rest that is open now, with where the vote stands. Null when none is.
+  readonly restVote: null | { readonly rest: "short" | "long"; readonly proposedBy: string; readonly agree: number; readonly decline: number; readonly needed: number; readonly present: number; readonly yourAnswer: "agree" | "decline" | null; readonly canAnswer: boolean; readonly closesAt: number };
   readonly canRequestJoin: boolean;
   readonly joinEntrance: string | null;
   readonly activeName: string | null;
@@ -454,7 +458,25 @@ export function buildActivityTableView(
       return {
         canStop: playing && state.members[userId] !== undefined,
         canPause: playing && organizer,
+        canPropose: playing && !organizer && ownCharacterId !== null && state.members[userId]?.availability !== "away" && state.resting === undefined && (state.restVote === undefined || state.restVote.closesAt <= now) && (state.status === "active" || state.status === "waitingForPlayers"),
         rest: !organizer || record.lifecycle === "archived" ? null : { askedFor: state.pendingRest?.rest ?? null, resting: state.resting ?? null, now: state.round === null && (state.encounter === null || state.encounter.status === "ended") },
+      };
+    })(),
+    restVote: ((): ActivityTableView["restVote"] => {
+      const vote = state.restVote;
+      if (vote === undefined || vote.closesAt <= now) return null;
+      const present = Object.values(state.members).filter((member) => member.characterId !== null && member.availability !== "away").map((member) => member.userId);
+      const proposerHero = state.members[vote.proposedBy]?.characterId;
+      return {
+        rest: vote.rest,
+        proposedBy: proposerHero === null || proposerHero === undefined ? "" : state.characters[proposerHero]?.name ?? "",
+        agree: vote.agree.filter((id) => present.includes(id)).length,
+        decline: vote.decline.filter((id) => present.includes(id)).length,
+        needed: Math.floor(present.length / 2) + 1,
+        present: present.length,
+        yourAnswer: vote.agree.includes(userId) ? "agree" : vote.decline.includes(userId) ? "decline" : null,
+        canAnswer: present.includes(userId),
+        closesAt: vote.closesAt,
       };
     })(),
     canRequestJoin: ownCharacterId === null && record.organizerId !== userId && record.visibility !== "membersOnly"

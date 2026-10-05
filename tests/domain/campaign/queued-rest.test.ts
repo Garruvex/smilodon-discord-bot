@@ -83,3 +83,48 @@ describe("a long rest takes a day of the story", () => {
     expect(kinds(run(finished(clockless), organizer, { kind: "queueRest", rest: "long" }).events)).toContain("restTaken");
   });
 });
+
+describe("the table votes on a rest", () => {
+  const alexId = alex.kind === "user" ? alex.userId : "";
+  const idle = (): CampaignState => newCampaign();
+
+  it("takes the rest once a majority of the players present agree, the proposer included", () => {
+    const proposed = run(idle(), alex, { kind: "proposeRest", rest: "short" });
+    expect(kinds(proposed.events)).toEqual(["restProposed"]);
+    expect(proposed.state.restVote).toMatchObject({ rest: "short", proposedBy: alexId, agree: [alexId] });
+    expect(proposed.state.resting).toBeUndefined();
+    const agreed = run(proposed.state, jamie, { kind: "answerRestVote", agree: true });
+    expect(kinds(agreed.events)).toEqual(expect.arrayContaining(["restVoteCast", "restTaken", "restVoteClosed"]));
+    expect(agreed.state.resting).toBe("short");
+    expect(agreed.state.restVote).toBeUndefined();
+  });
+
+  it("is kept until the round ends when one is going", () => {
+    const proposed = run(openRound(), alex, { kind: "proposeRest", rest: "long" });
+    const agreed = run(proposed.state, jamie, { kind: "answerRestVote", agree: true });
+    expect(agreed.state.pendingRest).toMatchObject({ rest: "long" });
+    expect(agreed.state.restVote).toBeUndefined();
+  });
+
+  it("ends when a majority can no longer agree, and anyone may propose again", () => {
+    const proposed = run(idle(), alex, { kind: "proposeRest", rest: "short" });
+    const declined = run(proposed.state, jamie, { kind: "answerRestVote", agree: false });
+    expect(declined.state.restVote).toBeUndefined();
+    expect(declined.state.resting).toBeUndefined();
+    expect(kinds(run(declined.state, jamie, { kind: "proposeRest", rest: "short" }).events)).toEqual(["restProposed"]);
+  });
+
+  it("allows one proposal at a time, and lets an old one lapse", () => {
+    const proposed = run(idle(), alex, { kind: "proposeRest", rest: "short" }).state;
+    expect(reject(proposed, jamie, { kind: "proposeRest", rest: "long" })).toEqual({ code: "restVoteOpen" });
+    const lapsed = { ...proposed, restVote: { ...proposed.restVote!, closesAt: 0 } };
+    expect(kinds(run(lapsed, jamie, { kind: "proposeRest", rest: "long" }).events)).toEqual(["restProposed"]);
+    expect(reject(lapsed, jamie, { kind: "answerRestVote", agree: true })).toEqual({ code: "noRestVote" });
+  });
+
+  it("is for players with a hero who are present", () => {
+    expect(reject(idle(), organizer, { kind: "answerRestVote", agree: true })).toEqual({ code: "notMember" });
+    const away = { ...idle(), members: { ...idle().members, [alexId]: { ...idle().members[alexId]!, availability: "away" as const } } };
+    expect(reject(away, alex, { kind: "proposeRest", rest: "short" })).toEqual({ code: "memberAway" });
+  });
+});

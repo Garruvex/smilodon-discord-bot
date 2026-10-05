@@ -96,6 +96,20 @@ function openControls() {
     pause.append(button);
     parts.push(pause);
   }
+  if (game.canPropose) {
+    const propose = document.createElement("section");
+    propose.className = "level-up-section";
+    propose.append(Object.assign(document.createElement("p"), { className: "sheet-note", textContent: t("activity.controls.proposeWhat") }));
+    for (const kind of ["short", "long"]) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "ui-control";
+      button.textContent = t(kind === "short" ? "activity.controls.proposeShort" : "activity.controls.proposeLong");
+      button.addEventListener("click", () => void send({ kind: "proposeRest", rest: kind }, box));
+      propose.append(button);
+    }
+    parts.push(propose);
+  }
   if (game.rest !== null && game.rest.resting === null) parts.push(restCard("short", game, box), restCard("long", game, box));
   if (game.rest !== null && game.rest.resting !== null) parts.push(Object.assign(document.createElement("p"), { className: "level-up-status", textContent: t("activity.status.resting") }));
   box.replaceChildren(...parts);
@@ -111,9 +125,45 @@ export function renderTableControls(game) {
   stopButton.replaceChildren(Object.assign(document.createElement("span"), { textContent: "⏸", "aria-hidden": "true" }), Object.assign(document.createElement("span"), { className: "stop-label", textContent: t("activity.controls.stop") }));
   stopButton.title = t("activity.controls.stopHint");
   stopButton.setAttribute("aria-label", `${t("activity.controls.stop")}. ${t("activity.controls.stopHint")}`);
-  const organizer = controls !== null && (controls.canPause || controls.rest !== null);
+  const organizer = controls !== null && (controls.canPause || controls.rest !== null || controls.canPropose);
   menuButton.hidden = !organizer;
   menuButton.textContent = t("activity.controls.menu");
   const box = document.querySelector("#table-controls-dialog");
   if (box?.open) { if (organizer) openControls(); else box.close(); }
+  renderRestVote(game.kind === "table" ? game.restVote : null);
+}
+
+// A player's proposal to rest: shown to the whole table under the header with where the vote stands, and Agree / Not now for the players present.
+function renderRestVote(vote) {
+  let banner = document.querySelector("#rest-vote");
+  if (banner === null) {
+    const header = document.querySelector(".live-header");
+    if (header === null) return;
+    banner = document.createElement("div");
+    banner.id = "rest-vote";
+    banner.className = "level-up-banner";
+    banner.setAttribute("role", "status");
+    header.after(banner);
+  }
+  banner.hidden = vote === null || vote === undefined;
+  if (banner.hidden) { banner.replaceChildren(); return; }
+  const text = document.createElement("span");
+  text.append(
+    Object.assign(document.createElement("strong"), { textContent: t(vote.rest === "short" ? "activity.restVote.shortTitle" : "activity.restVote.longTitle", { name: vote.proposedBy }) }),
+    document.createTextNode(" · "),
+    document.createTextNode(t("activity.restVote.tally", { agree: vote.agree, decline: vote.decline, needed: vote.needed, present: vote.present })),
+  );
+  const buttons = [];
+  if (vote.canAnswer) {
+    for (const agree of [true, false]) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = agree ? "ui-control primary" : "ui-control";
+      button.textContent = t(agree ? "activity.restVote.agree" : "activity.restVote.decline");
+      button.setAttribute("aria-pressed", String(vote.yourAnswer === (agree ? "agree" : "decline")));
+      button.addEventListener("click", () => void performAction({ kind: "answerRestVote", agree }));
+      buttons.push(button);
+    }
+  }
+  banner.replaceChildren(text, ...buttons);
 }

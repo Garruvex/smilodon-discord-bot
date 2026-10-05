@@ -3,7 +3,7 @@ import { featureUsesOf, traitsOf } from "../rules/content-definitions.js";
 import { innateUseKey } from "../rules/traits.js";
 import { defaultHeroResources, type HeroStatus } from "../character/hero-status.js";
 import type { CharacterId } from "../core/ids.js";
-import { isFallen } from "../state/campaign-state.js";
+import { isFallen, presentMembers } from "../state/campaign-state.js";
 import { longRestTooSoon, worldPhase } from "../rules/world-rules.js";
 import type { Decision } from "./decision.js";
 import type { Rejection } from "./rejection.js";
@@ -38,12 +38,22 @@ export function queueRest(decision: Decision, rest: "short" | "long" | null, sto
     if (state.pendingRest !== undefined) decision.emit({ kind: "restQueued", rest: null });
     return null;
   }
+  return requestRest(decision, rest, story);
+}
+
+// A rest asked for, by the organizer or by the table's vote: taken now when nothing is going, otherwise kept until it is over.
+function requestRest(decision: Decision, rest: "short" | "long", story: readonly StoryEffect[]): Rejection | null {
+  const { state } = decision;
   if (state.status !== "active" && state.status !== "waitingForPlayers") return { code: "nothingToRest" };
+  if (state.resting !== undefined) return { code: "resting" };
   if (rest === "long" && longRestTooSoon(state.world, state.lastLongRestAt)) return { code: "alreadyRested" };
   const idle = state.round === null && (state.encounter === null || state.encounter.status === "ended");
-  if (idle) return takeRest(decision, rest, story);
   const allowed = new Set<StoryEffect["kind"]>(["notice", "revealClue", "setFlag", "grantReward", "grantKeepsake"]);
   if (story.some((effect) => !allowed.has(effect.kind)) || (rest === "short" && story.length > 0)) return { code: "invalidPlan", problems: ["A rest can only bring lines, clues, flags, rewards and keepsakes."] };
+  if (idle) {
+    performRest(decision, rest, story);
+    return null;
+  }
   decision.emit({ kind: "restQueued", rest, sceneId: state.sceneId, story });
   return null;
 }
@@ -128,4 +138,63 @@ function performRest(decision: Decision, rest: "short" | "long", story: readonly
   // Time passes with the rest: a short one is a phase of the day, a long one runs to the next dawn.
   decision.changeWorld(state.lastRoundNumber, { kind: "rest", rest }, "rest");
   for (const effect of story) decision.applyStory(state.lastRoundNumber, effect);
+}
+
+// How long a proposal to rest stays open.
+const restVoteMillis = 10 * 60 * 1000;
+
+// The vote still open: one past its time is as good as gone.
+function openVote(decision: Decision): NonNullable<Decision["state"]["restVote"]> | undefined {
+  const vote = decision.state.restVote;
+  return vote !== undefined && vote.closesAt > decision.ctx.now ? vote : undefined;
+}
+
+// A player present proposes a rest. They count as agreeing; the others answer. Nothing happens to the table until a majority agrees.
+export function proposeRest(decision: Decision, rest: "short" | "long", story: readonly StoryEffect[]): Rejection | null {
+  const { state, ctx } = decision;
+  if (ctx.actor.kind !== "user") return { code: "notMember" };
+  const member = state.members[ctx.actor.userId];
+  if (member === undefined || member.characterId === null) return { code: "notMember" };
+  if (member.availability === "away") return { code: "memberAway" };
+  if (state.status !== "active" && state.status !== "waitingForPlayers") return { code: "nothingToRest" };
+  if (state.resting !== undefined) return { code: "resting" };
+  if (rest === "long" && longRestTooSoon(state.world, state.lastLongRestAt)) return { code: "alreadyRested" };
+  if (openVote(decision) !== undefined) return { code: "restVoteOpen" };
+  const allowed = new Set<StoryEffect["kind"]>(["notice", "revealClue", "setFlag", "grantReward", "grantKeepsake"]);
+  if (story.some((effect) => !allowed.has(effect.kind)) || (rest === "short" && story.length > 0)) return { code: "invalidPlan", problems: ["A rest can only bring lines, clues, flags, rewards and keepsakes."] };
+  decision.emit({ kind: "restProposed", rest, by: ctx.actor.userId, closesAt: ctx.now + restVoteMillis, sceneId: state.sceneId, story });
+  settleVote(decision);
+  return null;
+}
+
+export function answerRestVote(decision: Decision, agree: boolean): Rejection | null {
+  const { state, ctx } = decision;
+  if (ctx.actor.kind !== "user") return { code: "notMember" };
+  const member = state.members[ctx.actor.userId];
+  if (member === undefined || member.characterId === null) return { code: "notMember" };
+  if (member.availability === "away") return { code: "memberAway" };
+  if (state.restVote === undefined) return { code: "noRestVote" };
+  if (openVote(decision) === undefined) {
+    decision.emit({ kind: "restVoteClosed", outcome: "expired" });
+    return { code: "noRestVote" };
+  }
+  decision.emit({ kind: "restVoteCast", userId: ctx.actor.userId, agree });
+  settleVote(decision);
+  return null;
+}
+
+// A majority of the players present agreeing makes the rest happen as if the organizer had asked; enough saying "not now" that a majority is out of reach ends it.
+function settleVote(decision: Decision): void {
+  const vote = decision.state.restVote;
+  if (vote === undefined) return;
+  const present = presentMembers(decision.state).filter((member) => member.characterId !== null).map((member) => member.userId);
+  const agreeing = vote.agree.filter((userId) => present.includes(userId)).length;
+  const declining = vote.decline.filter((userId) => present.includes(userId)).length;
+  if (agreeing * 2 > present.length) {
+    // A rest that cannot be taken now (the clock moved, or the game ended) closes the vote as declined.
+    const refused = requestRest(decision, vote.rest, vote.sceneId === decision.state.sceneId ? vote.story : []);
+    decision.emit({ kind: "restVoteClosed", outcome: refused === null ? "passed" : "declined" });
+  } else if (declining * 2 >= present.length) {
+    decision.emit({ kind: "restVoteClosed", outcome: "declined" });
+  }
 }
