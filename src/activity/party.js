@@ -48,7 +48,16 @@ export function makeEnemy(enemy) {
 export function renderEnemies(enemies) { liveEnemies.replaceChildren(...(enemies.length ? [Object.assign(document.createElement("span"), { className: "live-enemies-heading", textContent: t("activity.scene.encounter") }), ...enemies.map(makeEnemy)] : [])); }
 
 
+// A seat nobody has taken yet, drawn as an outline the size of a hero card, so the panel is as tall as the table can ever be.
+function openSeat() {
+  const seat = document.createElement("div");
+  seat.className = "live-party-card party-open-seat";
+  seat.textContent = t("activity.party.openSeat");
+  return seat;
+}
+
 export function renderParty(members) {
+  const seats = app.currentSnapshot?.kind === "table" ? app.currentSnapshot.partySeats ?? 0 : 0;
   liveParty.replaceChildren(...members.map((hero) => {
     // Only your own card answers a press (it brings you back from an enemy's details). Someone else's has nothing to open, so it is not a button.
     const pressable = hero.isYou && hero.hp !== null && hero.maxHp !== null;
@@ -157,7 +166,7 @@ export function renderParty(members) {
       card.append(condition);
     }
     return card;
-  }));
+  }), ...Array.from({ length: Math.max(0, seats - members.length) }, openSeat));
 }
 
 

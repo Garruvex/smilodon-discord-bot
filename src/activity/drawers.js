@@ -116,6 +116,9 @@ export function syncDrawers(game) {
     for (const entry of Object.values(drawers)) entry.set(false);
     return;
   }
+  // The party panel is as tall as its cards, not as tall as the screen allows.
+  const fit = document.querySelector(".party-section").offsetHeight;
+  if (fit > 0) drawers.left.drawer.style.setProperty("--drawer-fit", `${fit + 2}px`);
   drawers.left.dots.replaceChildren(...game.party.map((hero) => {
     const dot = document.createElement("i");
     dot.dataset.state = hero.fallen ? "dead" : hero.down ? "down" : hero.presence === "away" ? "away" : "well";

@@ -45,6 +45,8 @@ export interface ActivityTableView {
   readonly canBegin: boolean;
   readonly activeName: string | null;
   readonly upcomingNames: readonly string[];
+  // How many heroes the table was opened for, so the party panel can show the seats still open.
+  readonly partySeats: number;
   readonly party: readonly {
     readonly characterId: string;
     readonly name: string;
@@ -367,6 +369,7 @@ export function buildActivityTableView(
     canBegin: record.organizerId === userId,
     activeName: panel.combat?.activeName ?? null,
     upcomingNames: panel.combat?.upcoming ?? [],
+    partySeats: Math.max(record.lobby.maxPlayers, publicParty.length),
     party: publicParty,
     foes: panel.combat?.foes ?? [],
     offers: Object.values(state.offers).flatMap((offer) => {

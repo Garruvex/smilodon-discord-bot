@@ -264,6 +264,7 @@ export const campaignZhTW = {
   "activity.party.title": "隊伍",
   "activity.party.count": "{count} 位英雄",
   "activity.party.you": "你",
+  "activity.party.openSeat": "空位",
   "activity.party.turnNow": "目前回合",
   "activity.party.ready": "已就緒",
   "activity.party.actionIn": "已提交行動",

@@ -251,6 +251,7 @@ export const campaignEn = {
   "activity.party.title": "The party",
   "activity.party.count": "{count} heroes",
   "activity.party.you": "YOU",
+  "activity.party.openSeat": "Open seat",
   "activity.party.turnNow": "TURN NOW",
   "activity.party.ready": "READY",
   "activity.party.actionIn": "ACTION IN",

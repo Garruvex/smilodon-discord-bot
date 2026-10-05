@@ -37,7 +37,7 @@ body.drawer-open-right .drawer-tab[data-side="right"] { right: var(--drawer-righ
 .drawer-dots i[data-state="away"] { background: #6b6358; }
 
 .drawer { position: fixed; z-index: 55; top: calc((100vh - var(--drawer-side-h)) / 2); height: var(--drawer-side-h); display: flex; flex-direction: column; border: 1px solid var(--ui-border-strong, #9c7a4b); background: var(--ui-paper-raised, #f3e7cb); color: var(--ui-ink, #33241a); box-shadow: 0 10px 40px #000a; transition: transform .22s ease; }
-.drawer[data-side="left"] { left: 0; width: min(var(--drawer-left-w), 92vw); border-left: 0; border-radius: 0 12px 12px 0; transform: translateX(-104%); }
+.drawer[data-side="left"] { --left-h: min(var(--drawer-fit, var(--drawer-side-h)), var(--drawer-side-h)); top: calc((100vh - var(--left-h)) / 2); height: var(--left-h); left: 0; width: min(var(--drawer-left-w), 92vw); border-left: 0; border-radius: 0 12px 12px 0; transform: translateX(-104%); }
 .drawer[data-side="right"] { right: 0; width: min(var(--drawer-right-w), 92vw); border-right: 0; border-radius: 12px 0 0 12px; transform: translateX(104%); }
 .drawer[data-side="bottom"] { z-index: 57; top: auto; bottom: 0; left: 50%; width: var(--drawer-map-w); height: var(--drawer-map-h); border-bottom: 0; border-radius: 12px 12px 0 0; transform: translate(-50%, 104%); }
 .drawer[data-open="true"] { transform: none; }
@@ -45,6 +45,7 @@ body.drawer-open-right .drawer-tab[data-side="right"] { right: var(--drawer-righ
 .drawer-body { flex: 1; min-height: 0; overflow: auto; }
 .drawer[data-side="left"] .party-section { margin: 0; padding: 8px; border: 0; background: transparent; box-shadow: none; }
 .drawer[data-side="left"] .section-heading { display: none; }
+.party-open-seat { display: flex; align-items: center; justify-content: center; min-height: 92px; border: 2px dashed #b39a70; border-radius: 10px; background: transparent; color: #8a7350; font-size: 13px; font-weight: 700; letter-spacing: .06em; }
 .drawer[data-side="left"] .live-party-grid { grid-template-columns: minmax(0, 1fr); }
 /* One line for the class and level, so the whole party fits without scrolling. */
 .drawer[data-side="left"] .party-class-line { display: flex; gap: 8px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
