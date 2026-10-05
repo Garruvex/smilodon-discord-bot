@@ -65,6 +65,7 @@ export type ServiceRefusal =
   | "privateInviteOnly"
   | "memberNotAway"
   | "organizerStays"
+  | "heroNotReplaceable"
   | "inCombat";
 
 // What choosing a saved character would bring, and what stands in the way.
@@ -437,6 +438,34 @@ export class CampaignLobbyService {
       }
       const partyLevel = Math.max(1, ...Object.values(state.characters).filter((hero) => !isFallen(state, hero.id)).map((hero) => hero.level));
       const outcome = await this.options.bus.execute(key, { kind: "joinHero", sheet: raiseToLevel(joining, partyLevel), entrance: request.entrance ?? "A new companion joins the party." }, { commandId: `dnd:${interactionId}`, actor: { kind: "user", userId } });
+      if (outcome.kind !== "accepted") return refused(outcome.kind === "notFound" ? "notFound" : "savedCharacterProblem");
+      return this.finishOngoingJoin(key, userId, joining.id);
+    });
+  }
+
+  // A player whose hero has fallen takes a new one: a preset of the adventure that no living hero already is, or one of their saved heroes.
+  // It joins at the party's level with its own starting gear, and plays from the next round or fight. No one has to approve it: it is the player's own seat.
+  public async replaceFallenHero(key: CampaignKey, userId: UserId, heroRef: string, entrance: string | undefined, interactionId: string): Promise<ServiceResult<CampaignRecord>> {
+    return this.queue.run(queueKey(key), async () => {
+      const loaded = await this.options.unitOfWork.transaction(async (tx) => ({ stored: await tx.loadRecord(key), campaign: await tx.loadCampaign(key) }));
+      if (loaded.stored === undefined || loaded.campaign === undefined) return refused("notFound");
+      const { record } = loaded.stored;
+      const state = loaded.campaign.state;
+      if (record.lifecycle !== "active" && record.lifecycle !== "paused") return refused("closed");
+      const current = state.members[userId]?.characterId ?? null;
+      if (current === null || !isFallen(state, current)) return refused("heroNotReplaceable");
+      const arrival = entrance?.trim();
+      if (arrival !== undefined && arrival.length > 500) return refused("invalidEntrance");
+      const baseId = (id: string): string => id.replace(/-\d+$/, "");
+      if (savedSnapshotIdOf(heroRef) === null && Object.values(state.characters).some((hero) => !isFallen(state, hero.id) && baseId(hero.id) === heroRef)) return refused("heroNotReplaceable");
+      const prepared = await this.ongoingHeroSheet(record, state, userId, heroRef);
+      if (prepared.kind === "refused") return prepared;
+      // A hero played again from the same preset is told apart by a numeral: "Mira II".
+      const repeat = /-(\d+)$/.exec(prepared.value.id);
+      const numerals = ["", "", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
+      const joining = repeat === null || savedSnapshotIdOf(heroRef) !== null ? prepared.value : { ...prepared.value, name: `${prepared.value.name} ${numerals[Number(repeat[1])] ?? repeat[1]}` };
+      const partyLevel = Math.max(1, ...Object.values(state.characters).filter((hero) => !isFallen(state, hero.id)).map((hero) => hero.level));
+      const outcome = await this.options.bus.execute(key, { kind: "joinHero", sheet: raiseToLevel(joining, partyLevel), entrance: arrival === undefined || arrival === "" ? "A new companion joins the party." : arrival }, { commandId: `dnd:${interactionId}`, actor: { kind: "user", userId } });
       if (outcome.kind !== "accepted") return refused(outcome.kind === "notFound" ? "notFound" : "savedCharacterProblem");
       return this.finishOngoingJoin(key, userId, joining.id);
     });

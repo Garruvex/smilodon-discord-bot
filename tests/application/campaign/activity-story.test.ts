@@ -92,6 +92,12 @@ describe("the Activity story", () => {
     expect(entries.map((entry) => (entry.kind === "system" ? [entry.code, entry.text] : null))).toEqual([["shortRest", null], ["restOver", null], ["paused", null], ["resumed", null]]);
   });
 
+  it("tells when a hero joins, with the arrival unless it is the plain default", () => {
+    const sheet = { name: "Kestrel II" };
+    expect(story([{ kind: "heroJoined", sheet, entrance: "She steps out of the mist." }] as never)).toEqual([{ id: "e0", kind: "system", code: "heroJoined", text: "Kestrel II", detail: "She steps out of the mist." }]);
+    expect(story([{ kind: "heroJoined", sheet, entrance: "A new companion joins the party." }] as never)).toEqual([{ id: "e0", kind: "system", code: "heroJoined", text: "Kestrel II" }]);
+  });
+
   it("leaves out empty tellings", () => {
     expect(story([{ kind: "narrationRecorded", roundNumber: 1, text: "   " }])).toEqual([]);
   });

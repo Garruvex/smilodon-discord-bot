@@ -5,6 +5,7 @@ import { actionIcon, finishBusy, iconImage, liveActions, makeButton, setLiveMess
 import { classText, t } from "./i18n.js";
 import { loadTable } from "./poll.js";
 import { actionGuide, spellGuide } from "./rules-book.js";
+import { openReplacement } from "./replacement.js";
 import { renderGame } from "./render.js";
 
 // Where each kind of action is shown: urgent decisions on top, the round composer, a category list, or the closing button.
@@ -188,6 +189,14 @@ export function buildTableActions(game, liveActions, log) {
       note.textContent = t("activity.status.paused");
       liveActions.append(note);
     }
+    return;
+  }
+  // A player whose hero has fallen has no turn to take: the way back is a new hero.
+  if (game.replacement) {
+    const note = document.createElement("span");
+    note.className = "live-action-note status-note";
+    note.textContent = t("activity.replace.fallenNote", { name: game.replacement.fallenName });
+    liveActions.append(note, makeButton(t("activity.replace.open"), () => openReplacement(), true, "play"));
     return;
   }
   if (game.mode === "planning" || game.mode === "awaitingRolls") {

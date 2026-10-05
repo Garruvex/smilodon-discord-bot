@@ -50,6 +50,7 @@ export function entryText(entry) {
     }
     case "alert": return t(entry.tone === "slain" ? "activity.story.alertSlain" : "activity.story.alertDown", { name: entry.name });
     case "system":
+      if (entry.code === "heroJoined") return t("activity.story.heroJoined", { name: entry.text ?? "" }) + (entry.detail ? ` — ${entry.detail}` : "");
       return entry.code === "scene" ? t("activity.story.scene", { scene: entry.text ?? "" }) : entry.code === "seatFreed" ? t(entry.text === null ? "activity.story.seatFreedNobody" : "activity.story.seatFreed", { name: entry.text ?? "" }) : t(`activity.story.${entry.code}`);
     default: return "";
   }

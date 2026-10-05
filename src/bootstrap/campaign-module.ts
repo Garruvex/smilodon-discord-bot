@@ -449,6 +449,13 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
             if (heroRef === null) return { kind: "refused", reason: "invalidAction" };
             return lobby.joinOngoingHero(key, userId, heroRef, id).then((result) => result.kind === "ok" ? { kind: "ok" as const } : { kind: "refused" as const, reason: result.reason });
           }
+          // A player whose hero has fallen takes a new one (the engine and the lobby record both learn of it).
+          case "replaceHero": {
+            const heroRef = textValue(action.heroRef);
+            if (heroRef === null) return { kind: "refused", reason: "invalidAction" };
+            const entrance = typeof action.entrance === "string" ? action.entrance.slice(0, 600) : undefined;
+            return lobby.replaceFallenHero(key, userId, heroRef, entrance, id).then((result) => result.kind === "ok" ? { kind: "ok" as const } : { kind: "refused" as const, reason: result.reason });
+          }
           case "retireSeat": {
             const target = textValue(action.userId, 64);
             if (target === null) return { kind: "refused", reason: "invalidAction" };

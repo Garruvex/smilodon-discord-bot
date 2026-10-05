@@ -85,7 +85,7 @@ export function designPreviewSnapshot() {
     story: previewStory(),
     yourTurn: true, canBegin: false, activeName: "Aria Vell", upcomingNames: ["Hollow Sentinel", "Thorne Oakshield", "Mira Fen"], partySeats: 6,
     party: [
-      { ...hero("aria", "Aria Vell", "Wizard", "High Elf", 27, 34, true), tableStatus: new URLSearchParams(window.location.search).has("round") ? "waiting" : "acting" },
+      { ...hero("aria", "Aria Vell", "Wizard", "High Elf", 27, 34, true), tableStatus: new URLSearchParams(window.location.search).has("round") ? "waiting" : "acting", ...(new URLSearchParams(window.location.search).has("dead") ? { hp: 0, fallen: true } : {}) },
       { ...hero("thorne", "Thorne Oakshield", "Paladin", "Hill Dwarf", 38, 42), tableStatus: "submitted", intent: "I put my shoulder to the stuck door and heave it open." },
       { ...hero("mira", "Mira Fen", "Ranger", "Wood Elf", 22, 31), tableStatus: "passed" },
       { ...hero("pip", "Pip Underbough", "Rogue", "Lightfoot Halfling", 19, 28), tableStatus: "waiting" },
@@ -111,6 +111,7 @@ export function designPreviewSnapshot() {
       ] },
       fightingStyle: null, warlock: null,
     },
+    replacement: new URLSearchParams(window.location.search).has("dead") ? { fallenName: "Aria Vell", partyLevel: 5, fightOn: true, options: [{ id: "elowen", name: "Elowen Thorn", className: "druid" }, { id: "brann", name: "Brann Ironvale", className: "fighter" }], saved: [{ id: "saved:1", name: "Tamsin Reed", className: "rogue" }] } : null,
     spellFacts: {
       "Fire Bolt": { name: "Fire Bolt", level: 0, school: "evocation", castingTime: "action", range: { kind: "feet", feet: 120 }, concentration: false, ritual: false, relation: "creature", targets: 1, area: false, destination: false, check: "attack", effects: [{ kind: "damage", dice: "1d10", damageType: "fire", half: false }], scales: true, addsModifier: false },
       "Ray of Frost": { name: "Ray of Frost", level: 0, school: "evocation", castingTime: "action", range: { kind: "feet", feet: 60 }, concentration: false, ritual: false, relation: "creature", targets: 1, area: false, destination: false, check: "attack", effects: [{ kind: "damage", dice: "1d8", damageType: "cold", half: false }], scales: true, addsModifier: false },

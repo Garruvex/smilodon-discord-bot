@@ -84,6 +84,14 @@ export interface ActivityTableView {
     readonly intent: string | null;
     readonly tableStatus: "acting" | "submitted" | "passed" | "missed" | "away" | "waiting";
   }[];
+  // When your hero has fallen: the heroes you may take instead. Null otherwise.
+  readonly replacement: null | {
+    readonly fallenName: string;
+    readonly partyLevel: number;
+    readonly fightOn: boolean;
+    readonly options: readonly { readonly id: string; readonly name: string; readonly className: string }[];
+    readonly saved: readonly { readonly id: string; readonly name: string; readonly className: string }[];
+  };
   // Your own hero's full sheet, and what you may choose when you level up. Null without a hero.
   readonly heroSheet: HeroSheetView | null;
   readonly levelUp: LevelUpView | null;
@@ -436,6 +444,18 @@ export function buildActivityTableView(
     party: publicParty,
     foes: panel.combat?.foes ?? [],
     allies: panel.combat?.allies ?? [],
+    replacement: ((): ActivityTableView["replacement"] => {
+      if (sheet === undefined || !isFallen(state, sheet.id) || record.lifecycle === "archived") return null;
+      const living = Object.values(state.characters).filter((hero) => !isFallen(state, hero.id));
+      const baseId = (id: string): string => id.replace(/-\d+$/, "");
+      return {
+        fallenName: sheet.name,
+        partyLevel: Math.max(1, ...living.map((hero) => hero.level)),
+        fightOn: state.encounter !== null && state.encounter.status !== "ended",
+        options: heroes.filter((hero) => !living.some((alive) => baseId(alive.id) === hero.id)).map((hero) => ({ id: hero.id, name: hero.name, className: hero.class })),
+        saved: savedHeroChoices,
+      };
+    })(),
     heroSheet: sheet === undefined ? null : buildHeroSheetView(sheet, state.heroStatus[sheet.id]?.hitDice, record.houseRules[levelingMode.id] === "milestone", glossary),
     levelUp: sheet === undefined ? null : buildLevelUpView(sheet, glossary),
     spellFacts: spellFactsByName([

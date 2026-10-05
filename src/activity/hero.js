@@ -6,6 +6,7 @@ import { partyStatusText } from "./party.js";
 import { openRules } from "./rules-book.js";
 import { renderSheet } from "./hero-sheet.js";
 import { renderLevelUpBanner } from "./level-up.js";
+import { renderReplacementBanner } from "./replacement.js";
 
 export function renderEquipment(hero) {
   const target = document.querySelector("#live-equipment");
@@ -154,6 +155,7 @@ export function renderCharacterWorkspace(game) {
   const enemy = game.foes.find((foe) => foe.name === app.selectedEnemyName);
   if (enemy) {
     renderLevelUpBanner({ levelUp: null });
+    renderReplacementBanner({ replacement: null });
     document.querySelector("#live-turn").textContent = enemy.active ? t("activity.party.turnNow") : "";
     document.querySelector("#live-turn").classList.toggle("is-active", enemy.active);
     document.querySelector("#hero-workspace-label").textContent = t("activity.scene.encounter");
@@ -217,6 +219,7 @@ export function renderCharacterWorkspace(game) {
   if (!tabs.some(([id]) => id === app.selectedWorkspaceTab)) app.selectedWorkspaceTab = viewingOwn ? "actions" : "overview";
   renderSheet(game);
   renderLevelUpBanner(viewingOwn ? game : { levelUp: null });
+  renderReplacementBanner(viewingOwn ? game : { replacement: null });
   setWorkspaceTabs(game, tabs);
 
   const resources = document.querySelector("#live-resources");

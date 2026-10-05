@@ -621,7 +621,7 @@ export class CampaignComponentHandler implements ComponentHandler {
 
   private async joinReplacement(interaction: StringSelectMenuInteraction, record: CampaignRecord, text: Texts): Promise<void> {
     const presetId = interaction.values[0] ?? "";
-    const result = await this.deps.play.joinHero(record.key, interaction.user.id, presetId, interaction.id);
+    const result = await this.deps.lobby.replaceFallenHero(record.key, interaction.user.id, presetId, undefined, interaction.id);
     if (result.kind === "refused") {
       await interaction.update({ content: refusalText(text, result.reason), components: [] });
       return;

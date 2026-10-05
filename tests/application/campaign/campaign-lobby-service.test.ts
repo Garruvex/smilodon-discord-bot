@@ -288,6 +288,51 @@ describe("joining an ongoing campaign", () => {
   });
 });
 
+describe("replacing a fallen hero", () => {
+  async function fallen(): Promise<{ service: ReturnType<typeof setup>["service"]; store: ReturnType<typeof setup>["store"]; key: CampaignKey }> {
+    const { service, store } = setup();
+    const { key } = value(await service.create(input({ maxPlayers: 3 })));
+    value(await service.join(key, "u-org"));
+    value(await service.chooseHero(key, "u-org", heroIds[0] ?? ""));
+    value(await service.start(key, "u-org"));
+    return { service, store, key };
+  }
+  const kill = async (store: ReturnType<typeof setup>["store"], key: CampaignKey): Promise<void> => {
+    const stored = await store.transaction((tx) => tx.loadCampaign(key));
+    if (stored === undefined) throw new Error("no campaign");
+    const id = heroIds[0] ?? "";
+    const status = { ...(stored.state.heroStatus[id] ?? {}), hp: 0, dead: true } as never;
+    await store.transaction((tx) => tx.saveCampaign(key, { ...stored.state, heroStatus: { ...stored.state.heroStatus, [id]: status } }, stored.revision));
+  };
+
+  it("is for a player whose hero has fallen, and for no one else", async () => {
+    const { service, key } = await fallen();
+    expect(refusal(await service.replaceFallenHero(key, "u-org", heroIds[1] ?? "", undefined, "early"))).toBe("heroNotReplaceable");
+    expect(refusal(await service.replaceFallenHero(key, "u-nobody", heroIds[1] ?? "", undefined, "stranger"))).toBe("heroNotReplaceable");
+  });
+
+  it("gives the player a new hero in the engine and in the lobby record, with the arrival told", async () => {
+    const { service, store, key } = await fallen();
+    await kill(store, key);
+    value(await service.replaceFallenHero(key, "u-org", heroIds[1] ?? "", "  She steps out of the mist.  ", "swap"));
+    const state = (await store.transaction((tx) => tx.loadCampaign(key)))?.state;
+    expect(state?.members["u-org"]?.characterId).toBe(heroIds[1]);
+    expect((await service.get(key))?.record.lobby.members.find((member) => member.userId === "u-org")?.heroId).toBe(heroIds[1]);
+    expect((await store.transaction((tx) => tx.readEvents(key))).map((entry) => entry.event)).toContainEqual(expect.objectContaining({ kind: "heroJoined", entrance: "She steps out of the mist." }));
+  });
+
+  it("numbers a hero played again from the same preset, and refuses an arrival that is too long", async () => {
+    const { service, store, key } = await fallen();
+    await kill(store, key);
+    expect(refusal(await service.replaceFallenHero(key, "u-org", heroIds[0] ?? "", "x".repeat(501), "long"))).toBe("invalidEntrance");
+    value(await service.replaceFallenHero(key, "u-org", heroIds[0] ?? "", undefined, "again"));
+    const state = (await store.transaction((tx) => tx.loadCampaign(key)))?.state;
+    const joined = state?.characters[state.members["u-org"]?.characterId ?? ""];
+    expect(joined?.id).toBe(`${heroIds[0]}-2`);
+    expect(joined?.name.endsWith(" II")).toBe(true);
+  });
+});
+
 describe("an adventure that changes after the lobby opened", () => {
   const renamed = (document: AdventureDocument, version: string): AdventureDocument => ({
     ...document,
