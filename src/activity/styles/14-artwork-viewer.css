@@ -16,10 +16,12 @@
 .characters-portrait-large > .characters-portrait-open { display: none; position: absolute; right: 3px; bottom: 3px; z-index: 2; width: 44px; height: 44px; align-items: center; justify-content: center; padding: 0; border: 0; background: transparent; color: var(--ui-paper-raised); cursor: zoom-in; }
 .characters-portrait-large:has(> img:not([hidden])) > .characters-portrait-open { display: flex; }
 .characters-portrait-open:hover svg { background: color-mix(in srgb, var(--ui-ink) 88%, transparent); }
-.artwork-viewer { width: min(1200px, calc(100vw - 24px)); max-width: none; max-height: calc(100dvh - 24px); padding: 12px; border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius); background: var(--ui-paper); color: var(--ui-ink); box-shadow: 0 20px 60px #120c09aa; }
+/* The picture is the whole window: the frame hugs it, the name is a caption laid over its foot, and the close button sits on its corner. */
+.artwork-viewer { position: relative; width: fit-content; max-width: calc(100vw - 24px); max-height: calc(100dvh - 24px); padding: 0; overflow: hidden; border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius); background: #17110d; color: #f6ead2; box-shadow: 0 20px 60px #120c09aa; }
 .artwork-viewer::backdrop { background: #110c09dc; }
-.artwork-viewer header { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 10px; }
-.artwork-viewer h2 { margin: 0; font: 22px/1.2 var(--serif); }
-.artwork-viewer header button { flex: 0 0 auto; font-size: 22px; }
-.artwork-viewer > img { display: block; width: 100%; max-height: calc(100dvh - 105px); object-fit: contain; background: var(--ui-paper-inset); }
-@media (max-width: 540px) { .artwork-viewer { padding: 8px; } .artwork-viewer h2 { font-size: 17px; } }
+.artwork-viewer header { display: contents; }
+.artwork-viewer h2 { position: absolute; z-index: 1; right: 0; bottom: 0; left: 0; margin: 0; padding: 44px 20px 14px; background: linear-gradient(to top, #110c09ea, #110c0900); color: #f6ead2; font: 22px/1.2 var(--serif); text-shadow: 0 1px 3px #000; pointer-events: none; }
+.artwork-viewer header button { position: absolute; z-index: 2; top: 10px; right: 10px; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border: 1px solid #f6ead24d; border-radius: 999px; background: #110c09b3; color: #f6ead2; font-size: 22px; line-height: 1; }
+.artwork-viewer header button:hover { background: #110c09e6; }
+.artwork-viewer > img { display: block; width: auto; height: auto; max-width: calc(100vw - 26px); max-height: calc(100dvh - 26px); object-fit: contain; }
+@media (max-width: 540px) { .artwork-viewer h2 { padding: 36px 14px 10px; font-size: 17px; } }
