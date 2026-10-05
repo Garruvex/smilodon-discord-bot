@@ -120,6 +120,8 @@ export type DeliverySpec =
   | { readonly kind: "fightNotice"; readonly encounterId: string; readonly text: string }
   // A line the story shows the table (an authored notice, once).
   | { readonly kind: "storyNotice"; readonly text: string }
+  // A clue the party has just found: the adventure's own words for it.
+  | { readonly kind: "clueFound"; readonly text: string }
   // Gold and items an authored reward gave the party (the loot event tells what).
   | { readonly kind: "rewardFound"; readonly rewardId: string }
   // A story object joined the party's belongings.

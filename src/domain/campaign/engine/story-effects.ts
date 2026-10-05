@@ -18,7 +18,9 @@ export function applyStoryEffect(decision: Decision, roundNumber: number, effect
       decision.request({ kind: "sceneImage", sceneId: effect.sceneId, roundNumber, snapshot: decision.pictureSnapshot() });
       return;
     case "revealClue":
-      if (!state.clues.some((clue) => clue.id === effect.clueId)) decision.emit({ kind: "clueRevealed", roundNumber, clueId: effect.clueId, text: effect.text });
+      if (state.clues.some((clue) => clue.id === effect.clueId)) return;
+      decision.emit({ kind: "clueRevealed", roundNumber, clueId: effect.clueId, text: effect.text });
+      decision.request({ kind: "deliver", delivery: { kind: "clueFound", text: effect.text } });
       return;
     case "advanceClock": {
       const before = state.clocks[effect.clockId]?.filled ?? 0;

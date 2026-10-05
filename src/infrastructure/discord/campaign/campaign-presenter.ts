@@ -203,6 +203,9 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
       case "storyNotice":
         await say(adventureChannelId, delivery.text, [], "notice");
         break;
+      case "clueFound":
+        await say(adventureChannelId, `🔍 ${delivery.text}`, [], "notice");
+        break;
       case "rewardFound": {
         // Gold and items an authored reward gave the party, from the saved loot event.
         const loot = events.findLast((event) => event.kind === "lootFound" && event.encounterId === delivery.rewardId);
