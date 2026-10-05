@@ -1814,6 +1814,11 @@ body.drawer-open-right .drawer-tab[data-side="right"] { right: var(--drawer-righ
 .story-entry[data-kind="roll"][data-ok="true"] i { color: #2f6b3a; }
 .story-entry[data-kind="roll"][data-ok="false"] i { color: #9b2f26; }
 .story-entry[data-kind="combat"] { font-size: 13px; line-height: 1.4; }
+.story-entry[data-kind="combat"] { padding: 4px 8px 4px 10px; border-left: 3px solid #b39a70; }
+.story-entry[data-kind="combat"][data-source="spell"] { border-left-color: #6a4aa8; background: rgba(106, 74, 168, .10); }
+.story-entry[data-kind="combat"][data-source="spell"] b::before { content: "✦ "; color: #6a4aa8; }
+.story-entry[data-kind="combat"][data-source="weapon"] b::before, .story-entry[data-kind="combat"][data-source="area"] b::before { content: "⚔ "; color: #7a6244; }
+.story-entry[data-kind="combat"][data-source="item"] b::before { content: "◆ "; color: #7a6244; }
 .story-entry[data-kind="combat"] small { display: block; color: var(--ui-ink-soft, #7a6244); font-size: 11px; }
 .story-entry[data-kind="system"] { align-self: center; padding: 2px 12px; border-radius: 999px; background: #d9c48f; color: #5c4128; font-size: 10px; font-weight: 800; letter-spacing: .08em; line-height: 1.6; text-transform: uppercase; }
 .story-entry[data-kind="alert"] { align-self: flex-start; padding: 3px 10px; border-radius: 6px; background: #f1c5bd; color: #7a1f17; font-size: 12px; font-weight: 800; line-height: 1.4; }

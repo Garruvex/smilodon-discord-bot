@@ -73,6 +73,7 @@ function fillNode(node, entry) {
     who.textContent = entry.who;
     node.replaceChildren(who, entry.kind === "action" ? ` ${entry.text}` : `: “${entry.text}”`);
   } else if (entry.kind === "combat") {
+    node.dataset.source = entry.source ?? "weapon";
     const who = document.createElement("b");
     who.textContent = entry.who;
     const detail = document.createElement("small");

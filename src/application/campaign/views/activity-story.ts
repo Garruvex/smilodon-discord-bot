@@ -19,7 +19,7 @@ export type StoryEntry =
   | { readonly id: string; readonly kind: "roll"; readonly who: string; readonly test: CheckTest; readonly total: number; readonly dc: number; readonly success: boolean }
   // A place change, the start of a fight or its end: the client words it.
   | { readonly id: string; readonly kind: "system"; readonly code: "scene" | "combatBegins" | "victory" | "defeat"; readonly text: string | null }
-  | { readonly id: string; readonly kind: "combat"; readonly who: string; readonly using: string; readonly opportunity: boolean; readonly targets: readonly StoryTarget[] }
+  | { readonly id: string; readonly kind: "combat"; readonly who: string; readonly using: string; readonly source: "weapon" | "spell" | "area" | "item" | "feature"; readonly opportunity: boolean; readonly targets: readonly StoryTarget[] }
   // The turn-by-turn moments of a fight that are not an attack or a spell.
   | { readonly id: string; readonly kind: "maneuver"; readonly who: string; readonly maneuver: "dash" | "dodge" | "disengage" | "giveItem" | "useItem" }
   | { readonly id: string; readonly kind: "move"; readonly who: string; readonly zone: string }
@@ -153,6 +153,7 @@ export function buildActivityStory(state: CampaignState, events: readonly Campai
           kind: "combat",
           who: beat.actor,
           using: beat.using,
+          source: beat.sourceKind ?? "weapon",
           opportunity: beat.opportunity,
           targets: beat.targets.map((target) => ({ name: target.name, check: target.check, damage: Math.max(0, -target.hpChange), heal: Math.max(0, target.hpChange), prone: target.knockedProne })),
         });

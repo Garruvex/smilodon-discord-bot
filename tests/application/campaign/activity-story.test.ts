@@ -99,7 +99,7 @@ describe("the Activity story in a fight", () => {
     const entries = told(fight);
     expect(entries.map((entry) => entry.kind)).toEqual(["system", "combat", "alert"]);
     expect(entries[0]).toMatchObject({ code: "combatBegins" });
-    expect(entries[1]).toMatchObject({ kind: "combat", who: "Mira", using: "Shortbow", targets: [{ name: "Goblin A", check: "hit", damage: 8 }] });
+    expect(entries[1]).toMatchObject({ kind: "combat", who: "Mira", using: "Shortbow", source: "weapon", targets: [{ name: "Goblin A", check: "hit", damage: 8 }] });
     expect(entries[2]).toMatchObject({ kind: "alert", tone: "slain", name: "Goblin A" });
   });
 

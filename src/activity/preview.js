@@ -19,8 +19,8 @@ export function previewStory() {
     { id: "e3r", kind: "roll", who: "艾莉亞・維爾", test: { kind: "skill", skill: "arcana" }, total: 17, dc: 15, success: true },
     { id: "e4", kind: "narration", text: "符文在燈光下微微發亮。艾莉亞認出這是守衛咒文：祭壇後面有東西在醒來。" },
     { id: "e5", kind: "system", code: "combatBegins", text: null },
-    { id: "c6", kind: "combat", who: "霍洛哨兵", using: "石拳", opportunity: false, targets: [{ name: "艾莉亞・維爾", check: "hit", damage: 8, heal: 0, prone: false }] },
-    { id: "c7", kind: "combat", who: "艾莉亞・維爾", using: "魔法飛彈", opportunity: false, targets: [{ name: "霍洛哨兵", check: null, damage: 11, heal: 0, prone: false }] },
+    { id: "c6", kind: "combat", who: "霍洛哨兵", using: "石拳", source: "weapon", opportunity: false, targets: [{ name: "艾莉亞・維爾", check: "hit", damage: 8, heal: 0, prone: false }] },
+    { id: "c7", kind: "combat", who: "艾莉亞・維爾", using: "魔法飛彈", source: "spell", opportunity: false, targets: [{ name: "霍洛哨兵", check: null, damage: 11, heal: 0, prone: false }] },
     { id: "e8", kind: "narration", text: "哨兵發出低沉的轟鳴，石頭的裂縫中透出藍光。" },
   ] : [
     { id: "e1", kind: "narration", text: "Moonlight falls through the broken dome onto a chapel thick with dust. The air smells of wet iron." },
@@ -29,8 +29,8 @@ export function previewStory() {
     { id: "e3r", kind: "roll", who: "Aria Vell", test: { kind: "skill", skill: "arcana" }, total: 17, dc: 15, success: true },
     { id: "e4", kind: "narration", text: "The runes glow faintly in the lamplight. Aria knows a warding spell when she sees one: something behind the altar is waking." },
     { id: "e5", kind: "system", code: "combatBegins", text: null },
-    { id: "c6", kind: "combat", who: "Hollow Sentinel", using: "Stone Fist", opportunity: false, targets: [{ name: "Aria Vell", check: "hit", damage: 8, heal: 0, prone: false }] },
-    { id: "c7", kind: "combat", who: "Aria Vell", using: "Magic Missile", opportunity: false, targets: [{ name: "Hollow Sentinel", check: null, damage: 11, heal: 0, prone: false }] },
+    { id: "c6", kind: "combat", who: "Hollow Sentinel", using: "Stone Fist", source: "weapon", opportunity: false, targets: [{ name: "Aria Vell", check: "hit", damage: 8, heal: 0, prone: false }] },
+    { id: "c7", kind: "combat", who: "Aria Vell", using: "Magic Missile", source: "spell", opportunity: false, targets: [{ name: "Hollow Sentinel", check: null, damage: 11, heal: 0, prone: false }] },
     { id: "e8", kind: "narration", text: "The sentinel gives a low rumble, and blue light seeps through the cracks in its stone." },
   ];
 }
@@ -39,13 +39,13 @@ export function previewStory() {
 export function previewStoryNext(n) {
   const zh = zhPreview();
   const steps = zh ? [
-    { kind: "combat", who: "霍洛哨兵", using: "石拳", opportunity: false, targets: [{ name: "索恩・橡盾", check: "miss", damage: 0, heal: 0, prone: false }] },
+    { kind: "combat", who: "霍洛哨兵", using: "石拳", source: "weapon", opportunity: false, targets: [{ name: "索恩・橡盾", check: "miss", damage: 0, heal: 0, prone: false }] },
     { kind: "narration", text: "皮普靠著石柱慢慢站起來，手還在發抖，卻握緊了短弓。長廊盡頭傳來另一種更輕的腳步聲。" },
     { kind: "alert", tone: "down", name: "皮普・林下" },
     { kind: "alert", tone: "slain", name: "霍洛哨兵" },
     { kind: "narration", text: "石像轟然倒下，揚起一片灰塵。聖堂又恢復了寂靜。" },
   ] : [
-    { kind: "combat", who: "Hollow Sentinel", using: "Stone Fist", opportunity: false, targets: [{ name: "Thorne Oakshield", check: "miss", damage: 0, heal: 0, prone: false }] },
+    { kind: "combat", who: "Hollow Sentinel", using: "Stone Fist", source: "weapon", opportunity: false, targets: [{ name: "Thorne Oakshield", check: "miss", damage: 0, heal: 0, prone: false }] },
     { kind: "narration", text: "Pip pushes up from the pillar, hands still shaking, and tightens a grip on the shortbow. Down the gallery comes another sound, lighter than stone." },
     { kind: "alert", tone: "down", name: "Pip Underbough" },
     { kind: "alert", tone: "slain", name: "Hollow Sentinel" },
