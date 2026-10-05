@@ -66,6 +66,14 @@ function entryNode(entry) {
 }
 
 function fillNode(node, entry) {
+  fillBody(node, entry);
+  // Your own lines carry a YOU tag after the name.
+  node.dataset.mine = String(entry.mine === true);
+  const name = node.querySelector("b");
+  if (name !== null) { if (entry.mine === true) name.dataset.you = t("activity.party.you"); else delete name.dataset.you; }
+}
+
+function fillBody(node, entry) {
   if (entry.kind === "roll") {
     node.dataset.ok = String(entry.success);
     const who = document.createElement("b");

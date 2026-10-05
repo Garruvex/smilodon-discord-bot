@@ -391,7 +391,7 @@ export function buildActivityTableView(
         return check === undefined ? null : { checkId: check.id, test: roll.test, action: roll.action };
       })(),
     pendingRollCount: panel.pendingRolls.length,
-    story: buildActivityStory(state, events, bible, glossary),
+    story: buildActivityStory(state, events, bible, glossary, ownCharacterId),
     rolls: ownCharacterId === null ? [] : recentRolls(state, ownCharacterId),
     submittedCount: state.round == null ? 0 : Object.values(state.round.submissions).filter((submission) => submission.kind === "action" || submission.kind === "pass").length,
     participantCount: state.round?.participants.length ?? 0,

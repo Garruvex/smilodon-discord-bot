@@ -12,15 +12,15 @@ import { combatantName, encounterRecords, type CombatTargetResult } from "../dm/
 export type StoryEntry =
   // round: the exploration round it was told for (absent for a fight's). clipped: an older telling cut short to keep the snapshot small; the whole text is in the Adventure channel.
   | { readonly id: string; readonly kind: "narration"; readonly text: string; readonly round?: number; readonly clipped?: true }
-  | { readonly id: string; readonly kind: "action"; readonly who: string; readonly text: string }
-  | { readonly id: string; readonly kind: "speech"; readonly who: string; readonly text: string }
+  | { readonly id: string; readonly kind: "action"; readonly mine?: true; readonly who: string; readonly text: string }
+  | { readonly id: string; readonly kind: "speech"; readonly mine?: true; readonly who: string; readonly text: string }
   | { readonly id: string; readonly kind: "clue"; readonly text: string }
   // A spell cast between fights: who cast what, then the Narrator's telling of it (the same two parts the channel posts).
   // A hero speaking with an NPC: the question asked, or the press and its roll, then the Narrator's telling of the answer.
-  | { readonly id: string; readonly kind: "talk"; readonly who: string; readonly npc: string; readonly question: string | null; readonly roll: { readonly test: CheckTest; readonly total: number; readonly dc: number; readonly success: boolean } | null; readonly text: string }
-  | { readonly id: string; readonly kind: "cast"; readonly who: string; readonly spell: string; readonly text: string }
+  | { readonly id: string; readonly kind: "talk"; readonly mine?: true; readonly who: string; readonly npc: string; readonly question: string | null; readonly roll: { readonly test: CheckTest; readonly total: number; readonly dc: number; readonly success: boolean } | null; readonly text: string }
+  | { readonly id: string; readonly kind: "cast"; readonly mine?: true; readonly who: string; readonly spell: string; readonly text: string }
   // A check the table saw rolled: the total against the DC. A natural 20 or 1 on a check changes nothing by itself, so the result is only total against DC.
-  | { readonly id: string; readonly kind: "roll"; readonly who: string; readonly test: CheckTest; readonly total: number; readonly dc: number; readonly success: boolean }
+  | { readonly id: string; readonly kind: "roll"; readonly mine?: true; readonly who: string; readonly test: CheckTest; readonly total: number; readonly dc: number; readonly success: boolean }
   // A place change, the start of a fight or its end: the client words it.
   | { readonly id: string; readonly kind: "system"; readonly code: "scene" | "combatBegins" | "victory" | "defeat"; readonly text: string | null }
   | { readonly id: string; readonly kind: "combat"; readonly who: string; readonly using: string; readonly source: "weapon" | "spell" | "area" | "item" | "feature"; readonly opportunity: boolean; readonly targets: readonly StoryTarget[] }
@@ -54,13 +54,15 @@ interface Placed {
   entry: StoryEntry;
 }
 
-export function buildActivityStory(state: CampaignState, events: readonly CampaignEvent[], bible: AdventureBible, glossary: Glossary): readonly StoryEntry[] {
+export function buildActivityStory(state: CampaignState, events: readonly CampaignEvent[], bible: AdventureBible, glossary: Glossary, ownCharacterId: string | null = null): readonly StoryEntry[] {
   const placed: Placed[] = [];
   const add = (order: number, entry: StoryEntry): void => { placed.push({ order, entry }); };
   const heroName = (id: string): string => state.characters[id]?.name ?? id;
+  // The viewer's own lines are marked, so they can find what they did among the table's.
+  const mine = (id: string): { readonly mine?: true } => (id === ownCharacterId ? { mine: true } : {});
   // A hero's wording for a round may be replaced; the entry keeps its place and takes the newest words.
   const actionAt = new Map<string, Placed>();
-  const casts = new Map<string, { who: string; spell: string }>();
+  const casts = new Map<string, { mine?: true; who: string; spell: string }>();
   const talks = new Map<string, Omit<Extract<StoryEntry, { kind: "talk" }>, "id" | "kind" | "text">>();
 
   const narrate = (index: number, text: string, round?: number): void => {
@@ -92,6 +94,7 @@ export function buildActivityStory(state: CampaignState, events: readonly Campai
         const { dialogue } = event;
         const check = dialogue.kind === "press" ? dialogue.check : null;
         talks.set(dialogue.id, {
+          ...mine(dialogue.characterId),
           who: heroName(dialogue.characterId),
           npc: bible.npcs.find((npc) => npc.id === dialogue.npcId)?.name ?? dialogue.npcId,
           question: dialogue.kind === "ask" || check === null ? dialogue.question : null,
@@ -107,7 +110,7 @@ export function buildActivityStory(state: CampaignState, events: readonly Campai
         break;
       }
       case "utilitySpellCast":
-        casts.set(event.cast.id, { who: heroName(event.cast.characterId), spell: glossary.names[event.cast.spellId] ?? event.cast.spellId });
+        casts.set(event.cast.id, { ...mine(event.cast.characterId), who: heroName(event.cast.characterId), spell: glossary.names[event.cast.spellId] ?? event.cast.spellId });
         break;
       case "utilityCastNarrated": {
         const cast = casts.get(event.castId);
@@ -127,18 +130,18 @@ export function buildActivityStory(state: CampaignState, events: readonly Campai
         const found = actionAt.get(key);
         if (found !== undefined && found.entry.kind === "action") found.entry = { ...found.entry, text };
         else if (text.length > 0) {
-          const item: Placed = { order: index, entry: { id: `e${index}`, kind: "action", who: heroName(event.characterId), text } };
+          const item: Placed = { order: index, entry: { id: `e${index}`, kind: "action", ...mine(event.characterId), who: heroName(event.characterId), text } };
           actionAt.set(key, item);
           placed.push(item);
         }
         break;
       }
       case "heroSpoke":
-        if (event.text.trim().length > 0) add(index, { id: `e${index}`, kind: "speech", who: heroName(event.characterId), text: event.text.trim() });
+        if (event.text.trim().length > 0) add(index, { id: `e${index}`, kind: "speech", ...mine(event.characterId), who: heroName(event.characterId), text: event.text.trim() });
         break;
       case "checkResolved": {
         const check = state.checks[event.checkId];
-        if (check !== undefined) add(index, { id: `e${index}`, kind: "roll", who: heroName(check.characterId), test: check.test, total: event.result.roll.total, dc: check.dc, success: event.result.success });
+        if (check !== undefined) add(index, { id: `e${index}`, kind: "roll", ...mine(check.characterId), who: heroName(check.characterId), test: check.test, total: event.result.roll.total, dc: check.dc, success: event.result.success });
         break;
       }
       case "clueRevealed":

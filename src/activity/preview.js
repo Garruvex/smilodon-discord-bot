@@ -14,7 +14,7 @@ export function previewStory() {
   const zh = zhPreview();
   return zh ? [
     { id: "e1", kind: "narration", text: "月光穿過坍塌的穹頂，照在灰塵瀰漫的聖堂裡。空氣中有一股潮濕的鐵鏽味。" },
-    { id: "e2", kind: "action", who: "艾莉亞・維爾", text: "舉起提燈，慢慢走向祭壇。" },
+    { id: "e2", kind: "action", mine: true, who: "艾莉亞・維爾", text: "舉起提燈，慢慢走向祭壇。" },
     { id: "e3", kind: "speech", who: "索恩・橡盾", text: "小心腳下。" },
     { id: "e3r", kind: "roll", who: "艾莉亞・維爾", test: { kind: "skill", skill: "arcana" }, total: 17, dc: 15, success: true },
     { id: "e3t", kind: "talk", who: "艾莉亞・維爾", npc: "老雷妮", question: "這間聖堂是誰蓋的？", roll: null, text: "雷妮瞇起眼：「很久以前的僧侶，他們再也沒回來。」" },
@@ -26,7 +26,7 @@ export function previewStory() {
     { id: "e8", kind: "narration", text: "哨兵發出低沉的轟鳴，石頭的裂縫中透出藍光。" },
   ] : [
     { id: "e1", kind: "narration", text: "Moonlight falls through the broken dome onto a chapel thick with dust. The air smells of wet iron." },
-    { id: "e2", kind: "action", who: "Aria Vell", text: "raises the lantern and walks slowly toward the altar." },
+    { id: "e2", kind: "action", mine: true, who: "Aria Vell", text: "raises the lantern and walks slowly toward the altar." },
     { id: "e3", kind: "speech", who: "Thorne Oakshield", text: "Watch your step." },
     { id: "e3r", kind: "roll", who: "Aria Vell", test: { kind: "skill", skill: "arcana" }, total: 17, dc: 15, success: true },
     { id: "e3t", kind: "talk", who: "Aria Vell", npc: "Old Reni", question: "Who built this chapel?", roll: null, text: "Reni squints. \"Monks, long ago. They never came back.\"" },

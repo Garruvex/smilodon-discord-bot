@@ -28,6 +28,16 @@ describe("the Activity story", () => {
     expect(entries[2]).toMatchObject({ kind: "speech", who: "Borin", text: "Stay close." });
   });
 
+  it("marks the viewer's own lines and no one else's", () => {
+    const events: CampaignEvent[] = [
+      { kind: "actionSubmitted", roundNumber: 1, characterId: "c-mira", text: "Raise the lantern.", revision: 1 },
+      { kind: "heroSpoke", roundNumber: 1, characterId: "c-borin", text: "Stay close." },
+    ];
+    const entries = buildActivityStory(newCampaign(), events, bible, glossary, "c-mira");
+    expect(entries[0]).toMatchObject({ kind: "action", mine: true });
+    expect(entries[1]).not.toHaveProperty("mine");
+  });
+
   it("keeps a hero's action in its place and shows the newest wording after an edit", () => {
     const entries = story([
       { kind: "actionSubmitted", roundNumber: 1, characterId: "c-mira", text: "Open the door.", revision: 1 },

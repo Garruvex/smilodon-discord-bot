@@ -1845,6 +1845,10 @@ body.drawer-open-right .drawer-tab[data-side="right"] { right: var(--drawer-righ
 .story-entry[data-kind="system"][data-code="combatBegins"] { background: #a8362c; color: #fff0d4; }
 .story-entry[data-kind="system"][data-code="victory"] { background: #5d7a3c; color: #f3f6e4; }
 .story-entry[data-kind="system"][data-code="defeat"] { background: #3a1411; color: #f1c5bd; }
+.story-entry[data-mine="true"] b::after { content: attr(data-you); margin-left: 6px; padding: 0 5px; border-radius: 999px; background: #87332b; color: #fff0d4; font-size: 9px; font-weight: 800; letter-spacing: .06em; vertical-align: 1px; }
+.story-entry[data-mine="true"][data-kind="action"] { box-shadow: inset 3px 0 0 #87332b; }
+.story-entry[data-mine="true"][data-kind="speech"] { border-color: #87332b; }
+.story-entry[data-mine="true"][data-kind="cast"], .story-entry[data-mine="true"][data-kind="talk"] { border-left-width: 6px; }
 .story-entry[data-kind="alert"] { align-self: flex-start; padding: 3px 10px; border-radius: 6px; background: #f1c5bd; color: #7a1f17; font-size: 12px; font-weight: 800; line-height: 1.4; }
 .story-entry[data-kind="alert"][data-tone="slain"] { background: #f0dba4; color: #5a430c; }
 .story-entry.is-new { animation: story-new 1.6s ease-out; }
